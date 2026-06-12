@@ -1,22 +1,28 @@
+import json
+import logging
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 import asyncpg
 
 from ..deps import get_current_user, get_db
+from ..grant_deps import (
+    GrantLevel,
+    authorize_book,
+    book_for_chapter,
+    get_grant_client_dep,
+)
+
+log = logging.getLogger(__name__)
 from ..models import (
     ChapterTranslation,
     ChapterVersionsResponse,
     LanguageVersionGroup,
     VersionSummary,
     ActiveVersionResponse,
+    SaveEditedTranslationRequest,
 )
 
 router = APIRouter(prefix="/v1/translation", tags=["translation-versions"])
-
-
-def _assert_owner(row, user_id: str) -> None:
-    if not row or str(row["owner_user_id"]) != user_id:
-        raise HTTPException(status_code=403, detail={"code": "TRANSL_FORBIDDEN", "message": "Access denied"})
 
 
 # ── List all versions for a chapter, grouped by language ───────────────────────
@@ -25,9 +31,18 @@ def _assert_owner(row, user_id: str) -> None:
 async def list_chapter_versions(
     chapter_id: UUID,
     user_id: str = Depends(get_current_user),
+    gc=Depends(get_grant_client_dep),
     db: asyncpg.Pool = Depends(get_db),
 ):
-    # Fetch all chapter_translations for this chapter owned by user, newest first
+    # E0-4a: a chapter with no translations yet has no book to resolve a grant on
+    # → return empty (leak-safe, preserves the prior empty-list behavior for owners
+    # too). Once translations exist, gate on the book grant (view) then show ALL
+    # versions for the chapter (D-E0-4-F shared per-book view — drop owner_user_id).
+    book_id = await book_for_chapter(db, chapter_id)
+    if book_id is None:
+        return ChapterVersionsResponse(chapter_id=chapter_id, languages=[])
+    await authorize_book(gc, book_id, UUID(user_id), GrantLevel.VIEW)
+
     rows = await db.fetch(
         """
         SELECT ct.*,
@@ -38,10 +53,9 @@ async def list_chapter_versions(
           ON actv.chapter_id = ct.chapter_id
          AND actv.target_language = ct.target_language
         WHERE ct.chapter_id = $1
-          AND ct.owner_user_id = $2
         ORDER BY ct.target_language, ct.version_num DESC
         """,
-        chapter_id, UUID(user_id),
+        chapter_id,
     )
 
     if not rows:
@@ -86,6 +100,7 @@ async def get_chapter_version(
     chapter_id: UUID,
     version_id: UUID,
     user_id: str = Depends(get_current_user),
+    gc=Depends(get_grant_client_dep),
     db: asyncpg.Pool = Depends(get_db),
 ):
     row = await db.fetchrow(
@@ -94,7 +109,8 @@ async def get_chapter_version(
     )
     if not row:
         raise HTTPException(status_code=404, detail={"code": "TRANSL_NOT_FOUND", "message": "Version not found"})
-    _assert_owner(row, user_id)
+    # E0-4a view gate (version→book grant); non-grantee → 404 (uniform anti-oracle).
+    await authorize_book(gc, row["book_id"], UUID(user_id), GrantLevel.VIEW)
 
     return ChapterTranslation(**dict(row))
 
@@ -105,21 +121,44 @@ async def get_chapter_version(
 async def set_active_version(
     chapter_id: UUID,
     version_id: UUID,
+    acknowledge_issues: bool = False,
     user_id: str = Depends(get_current_user),
+    gc=Depends(get_grant_client_dep),
     db: asyncpg.Pool = Depends(get_db),
 ):
     row = await db.fetchrow(
-        "SELECT owner_user_id, target_language, status FROM chapter_translations WHERE id=$1 AND chapter_id=$2",
+        "SELECT owner_user_id, book_id, target_language, status, unresolved_high_count "
+        "FROM chapter_translations WHERE id=$1 AND chapter_id=$2",
         version_id, chapter_id,
     )
     if not row:
         raise HTTPException(status_code=404, detail={"code": "TRANSL_NOT_FOUND", "message": "Version not found"})
-    _assert_owner(row, user_id)
+    # E0-4a edit gate (version→book) — publishing the active version is an edit
+    # action; the published version is per-(chapter,language) shared state. The
+    # set_by_user_id below is the caller (caller-attributed). Non-grantee → 404.
+    await authorize_book(gc, row["book_id"], UUID(user_id), GrantLevel.EDIT)
 
     if row["status"] != "completed":
         raise HTTPException(
             status_code=422,
             detail={"code": "TRANSL_NOT_COMPLETED", "message": "Only completed versions can be set as active"},
+        )
+
+    # M5b publish quality-gate: hold a version the verifier flagged with unresolved
+    # high-severity issues, unless the user explicitly acknowledges. Soft gate —
+    # the verifier can false-positive, so the human stays in control.
+    unresolved = row["unresolved_high_count"] or 0
+    if unresolved > 0 and not acknowledge_issues:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "TRANSL_NEEDS_REVIEW",
+                "message": (
+                    f"This version has {unresolved} unresolved high-severity issue(s) "
+                    "flagged by the verifier. Acknowledge to publish it anyway."
+                ),
+                "unresolved_high_count": unresolved,
+            },
         )
 
     await db.execute(
@@ -133,8 +172,130 @@ async def set_active_version(
         chapter_id, row["target_language"], version_id, UUID(user_id),
     )
 
+    # M7b (Channel 1a — human signal): setting a version active is a human-only
+    # action (the worker auto-activates via a different path), so it is a genuine
+    # "this translation is good enough to publish" judgment → learning source=human.
+    # acknowledge_issues=true is the high-value case: the human published DESPITE
+    # the verifier's flags (verifier-calibration signal). Best-effort + post-commit
+    # (the active version is already set — a feedback-log failure must not 500 the
+    # publish). aggregate_type='translation' reuses M7a's stream.
+    try:
+        await db.execute(
+            """INSERT INTO outbox_events (event_type, aggregate_type, aggregate_id, payload)
+               VALUES ('translation.reviewed', 'translation', $1, $2::jsonb)""",
+            version_id,
+            json.dumps({
+                "user_id": user_id,
+                "book_id": str(row["book_id"]),
+                "chapter_id": str(chapter_id),
+                "chapter_translation_id": str(version_id),
+                "target_language": row["target_language"],
+                "acknowledged_issues": bool(acknowledge_issues),
+                "unresolved_high_count": unresolved,
+            }),
+        )
+    except Exception:  # noqa: BLE001 — telemetry must not break publish
+        log.warning("M7b: failed to emit translation.reviewed (non-fatal)", exc_info=True)
+
     return ActiveVersionResponse(
         chapter_id=chapter_id,
         target_language=row["target_language"],
         active_id=version_id,
     )
+
+
+# ── Save a human-edited translation (M7c human-fix gold) ──────────────────────
+
+@router.post(
+    "/chapters/{chapter_id}/versions/edit",
+    response_model=ChapterTranslation,
+    status_code=201,
+)
+async def save_edited_version(
+    chapter_id: UUID,
+    body: SaveEditedTranslationRequest,
+    user_id: str = Depends(get_current_user),
+    gc=Depends(get_grant_client_dep),
+    db: asyncpg.Pool = Depends(get_db),
+):
+    """M7c (Channel 1b): save a human-edited translation as a NEW version
+    (``authored_by='human'``, linked to the LLM version it was edited from). The
+    LLM-draft → human-edit diff is emitted as learning gold (`translation.corrected`,
+    before=LLM / after=human) so future tuning can see what the LLM got wrong."""
+    src = await db.fetchrow(
+        "SELECT owner_user_id, book_id, target_language, version_num, "
+        "translated_body, translated_body_json "
+        "FROM chapter_translations WHERE id=$1 AND chapter_id=$2",
+        body.edited_from_version_id, chapter_id,
+    )
+    if not src:
+        raise HTTPException(status_code=404, detail={"code": "TRANSL_NOT_FOUND", "message": "Source version not found"})
+    # E0-4a edit gate (source-version→book). Saving a human edit creates a new
+    # version attributed to the caller; an edit grant on the book authorizes it.
+    await authorize_book(gc, src["book_id"], UUID(user_id), GrantLevel.EDIT)
+    if src["target_language"] != body.target_language:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "TRANSL_LANG_MISMATCH", "message": "target_language does not match the source version"},
+        )
+
+    # New human version: max(version_num)+1 for (chapter, lang); reuse the source
+    # version's job_id/book_id (the edit attaches to the same job — avoids making
+    # job_id a nullable FK). E0-4a caller-attribution: owner_user_id is the CALLER
+    # ($7), NOT the source's owner — a collaborator's human edit belongs to the
+    # collaborator (review-impl MED-1). authored_by='human' + the parent link.
+    new = await db.fetchrow(
+        """
+        INSERT INTO chapter_translations
+          (job_id, chapter_id, book_id, owner_user_id, status, target_language,
+           translated_body, translated_body_json, translated_body_format,
+           version_num, authored_by, edited_from_version_id, finished_at)
+        SELECT job_id, chapter_id, book_id, $7::uuid, 'completed', target_language,
+               $3, $4::jsonb, $5,
+               COALESCE((SELECT MAX(version_num) FROM chapter_translations
+                          WHERE chapter_id=$2 AND target_language=$6), 0) + 1,
+               'human', $1, now()
+        FROM chapter_translations WHERE id=$1
+        RETURNING *
+        """,
+        body.edited_from_version_id, chapter_id,
+        body.translated_body,
+        json.dumps(body.translated_body_json) if body.translated_body_json is not None else None,
+        body.translated_body_format, body.target_language,
+        UUID(user_id),
+    )
+
+    # M7c gold: emit the LLM→human diff (best-effort post-commit; a feedback-log
+    # failure must not lose the user's edit). Raw before/after bodies — PO chose
+    # raw-text retention for translation tuning.
+    try:
+        before_json = src["translated_body_json"]
+        if isinstance(before_json, str):
+            before_json = json.loads(before_json)
+        before_body = before_json if before_json is not None else src["translated_body"]
+        after_body = (
+            body.translated_body_json
+            if body.translated_body_json is not None
+            else body.translated_body
+        )
+        await db.execute(
+            """INSERT INTO outbox_events (event_type, aggregate_type, aggregate_id, payload)
+               VALUES ('translation.corrected', 'translation', $1, $2::jsonb)""",
+            new["id"],
+            json.dumps({
+                "user_id": user_id,
+                "book_id": str(src["book_id"]),
+                "chapter_id": str(chapter_id),
+                "chapter_translation_id": str(new["id"]),
+                "edited_from_version_id": str(body.edited_from_version_id),
+                "target_language": body.target_language,
+                "before": {"target_language": body.target_language,
+                           "version_num": src["version_num"], "body": before_body},
+                "after": {"target_language": body.target_language,
+                          "version_num": new["version_num"], "body": after_body},
+            }),
+        )
+    except Exception:  # noqa: BLE001 — telemetry must not lose the edit
+        log.warning("M7c: failed to emit translation.corrected (non-fatal)", exc_info=True)
+
+    return ChapterTranslation(**dict(new))

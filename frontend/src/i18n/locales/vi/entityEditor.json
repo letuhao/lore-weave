@@ -1,0 +1,131 @@
+{
+  "modal": {
+    "untitled": "Chưa đặt tên",
+    "status": {
+      "draft": "Bản nháp",
+      "active": "Hoạt động",
+      "inactive": "Không hoạt động"
+    },
+    "discard": "Hủy bỏ",
+    "save": "Lưu",
+    "save_entity": "Lưu thực thể",
+    "cancel": "Hủy",
+    "move_to_trash": "Chuyển vào thùng rác",
+    "meta": {
+      "chapters": "{{count}} chương",
+      "translations": "{{count}} bản dịch",
+      "evidences": "{{count}} dẫn chứng"
+    },
+    "tab": {
+      "attributes": "Thuộc tính",
+      "evidences": "Dẫn chứng"
+    },
+    "translation_lang_aria": "Ngôn ngữ bản dịch",
+    "no_translation": "Không dịch",
+    "add_language": "+ Thêm ngôn ngữ...",
+    "lang_placeholder": "ví dụ: en",
+    "system_attrs": "Thuộc tính hệ thống",
+    "user_attrs": "Thuộc tính người dùng",
+    "no_attributes": "Chưa có thuộc tính nào được định nghĩa cho loại thực thể này.",
+    "toast": {
+      "saved": "Đã lưu thực thể",
+      "status_changed": "Đã đổi trạng thái thành {{status}}",
+      "invalid_lang": "Mã ngôn ngữ không hợp lệ (ví dụ: en, zh, zh-tw)"
+    }
+  },
+  "attr_card": {
+    "required": "*bắt buộc",
+    "modified": "đã sửa",
+    "has_translations": "Có bản dịch"
+  },
+  "translation_row": {
+    "confidence": {
+      "draft": "Bản nháp",
+      "verified": "Đã xác minh",
+      "machine": "Máy dịch"
+    },
+    "confidence_aria": "Độ tin cậy bản dịch",
+    "by": "bởi {{name}}",
+    "discard_aria": "Hủy thay đổi",
+    "save": "Lưu",
+    "delete_aria": "Xóa bản dịch",
+    "placeholder": "Bản dịch {{lang}}...",
+    "delete_title": "Xóa bản dịch?",
+    "delete_desc": "Bản dịch {{lang}} cho thuộc tính này sẽ bị xóa vĩnh viễn.",
+    "delete_confirm": "Xóa",
+    "toast": {
+      "updated": "Đã cập nhật bản dịch",
+      "created": "Đã tạo bản dịch",
+      "deleted": "Đã xóa bản dịch"
+    }
+  },
+  "evidence": {
+    "type": {
+      "quote": "Trích dẫn",
+      "summary": "Tóm tắt",
+      "reference": "Tham chiếu"
+    },
+    "filter": {
+      "all": "Tất cả",
+      "attr_aria": "Lọc theo thuộc tính",
+      "all_attributes": "Tất cả thuộc tính",
+      "chapter_aria": "Lọc theo chương",
+      "all_chapters": "Tất cả chương",
+      "chapter_n": "Chương {{n}}",
+      "lang_aria": "Ngôn ngữ hiển thị",
+      "original": "Nguyên gốc",
+      "sort_aria": "Sắp xếp theo",
+      "sort": {
+        "created": "Ngày tạo",
+        "chapter": "Chương",
+        "block_line": "Khối/Dòng",
+        "attribute": "Thuộc tính"
+      },
+      "ascending": "Tăng dần",
+      "descending": "Giảm dần",
+      "add": "Thêm"
+    },
+    "create": {
+      "title": "Dẫn chứng mới",
+      "attribute": "Thuộc tính *",
+      "attr_aria": "Thuộc tính cho dẫn chứng mới",
+      "type": "Loại",
+      "type_aria": "Loại dẫn chứng",
+      "original_text": "Văn bản gốc *",
+      "text_placeholder": "Dán văn bản nguồn...",
+      "block_line": "Khối / Dòng",
+      "block_placeholder": "ví dụ: tr.42",
+      "note": "Ghi chú",
+      "note_placeholder": "Ghi chú tùy chọn",
+      "cancel": "Hủy",
+      "create": "Tạo"
+    },
+    "card": {
+      "edit_type_aria": "Sửa loại dẫn chứng",
+      "cancel_title": "Hủy",
+      "block_line": "Khối / Dòng",
+      "note": "Ghi chú",
+      "cancel": "Hủy",
+      "save": "Lưu",
+      "edit_title": "Sửa",
+      "delete_title": "Xóa",
+      "translated": "Đã dịch ({{lang}})",
+      "note_label": "Ghi chú: {{note}}"
+    },
+    "tab": {
+      "no_evidences": "Không tìm thấy dẫn chứng",
+      "clear_filters": "Xóa bộ lọc",
+      "prev_page": "Trang trước",
+      "next_page": "Trang sau",
+      "delete_title": "Xóa dẫn chứng?",
+      "delete_desc": "Dẫn chứng từ \"{{attr}}\" sẽ bị xóa vĩnh viễn.",
+      "delete_confirm": "Xóa"
+    },
+    "toast": {
+      "updated": "Đã cập nhật dẫn chứng",
+      "deleted": "Đã xóa dẫn chứng",
+      "created": "Đã tạo dẫn chứng",
+      "text_required": "Văn bản gốc là bắt buộc"
+    }
+  }
+}

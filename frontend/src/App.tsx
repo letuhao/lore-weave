@@ -23,6 +23,7 @@ import { TrashPage } from '@/pages/TrashPage';
 import { ChatPage } from '@/pages/ChatPage';
 import { BookDetailPage } from '@/pages/BookDetailPage';
 import { ChapterEditorPage } from '@/pages/ChapterEditorPage';
+import { ChapterComparePage } from '@/pages/ChapterComparePage';
 import { WikiEditorPage } from '@/pages/WikiEditorPage';
 import { ReaderPage } from '@/pages/ReaderPage';
 import { ThemeProvider } from '@/providers/ThemeProvider';
@@ -35,6 +36,9 @@ import { ResetPage } from '@/pages/auth/ResetPage';
 import { HomePage } from '@/pages/HomePage';
 import { UsagePage } from '@/pages/UsagePage';
 import { KnowledgePage } from '@/pages/KnowledgePage';
+import { CampaignsPage } from '@/features/campaigns/pages/CampaignsPage';
+import { CreateCampaignWizardPage } from '@/features/campaigns/pages/CreateCampaignWizardPage';
+import { CampaignDetailPage } from '@/features/campaigns/pages/CampaignDetailPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { BrowsePage } from '@/pages/BrowsePage';
 import { PublicBookDetailPage } from '@/pages/PublicBookDetailPage';
@@ -44,6 +48,8 @@ import TranslationReviewPage from '@/pages/TranslationReviewPage';
 import ReadingHistoryPage from '@/pages/ReadingHistoryPage';
 import { LeaderboardPage } from '@/pages/LeaderboardPage';
 import { ProfilePage } from '@/pages/ProfilePage';
+import { NotificationsPage } from '@/pages/NotificationsPage';
+import { RawSearchPage } from '@/pages/RawSearchPage';
 
 function AuthenticatedThemeProvider({ children }: { children: React.ReactNode }) {
   const { accessToken } = useAuth();
@@ -97,6 +103,7 @@ export function App() {
           {/* Editor (collapsed sidebar) */}
           <Route element={<RequireAuth><EditorLayout /></RequireAuth>}>
             <Route path="/books/:bookId/chapters/:chapterId/edit" element={<ChapterEditorPage />} />
+            <Route path="/books/:bookId/chapters/:chapterId/compare" element={<ChapterComparePage />} />
             <Route path="/books/:bookId/chapters/:chapterId/translations" element={<ChapterTranslationsPage />} />
             <Route path="/books/:bookId/wiki/:articleId/edit" element={<WikiEditorPage />} />
           </Route>
@@ -115,15 +122,22 @@ export function App() {
             <Route path="/books/:bookId" element={<BookDetailPage />} />
             <Route path="/books/:bookId/translation" element={<BookDetailPage />} />
             <Route path="/books/:bookId/glossary" element={<BookDetailPage />} />
+            <Route path="/books/:bookId/enrichment" element={<BookDetailPage />} />
             <Route path="/books/:bookId/sharing" element={<BookDetailPage />} />
             <Route path="/books/:bookId/settings" element={<BookDetailPage />} />
             <Route path="/books/:bookId/wiki" element={<BookDetailPage />} />
+            <Route path="/books/:bookId/search" element={<RawSearchPage />} />
 
             {/* Chat — placeholder removed, see FullBleedLayout below */}
 
             {/* Knowledge Service */}
             <Route path="/knowledge" element={<Navigate to="/knowledge/projects" replace />} />
             <Route path="/knowledge/:tab" element={<KnowledgePage />} />
+
+            {/* Auto-Draft Factory (campaigns) */}
+            <Route path="/campaigns" element={<CampaignsPage />} />
+            <Route path="/campaigns/new" element={<CreateCampaignWizardPage />} />
+            <Route path="/campaigns/:campaignId" element={<CampaignDetailPage />} />
 
             {/* Manage */}
             <Route path="/usage" element={<UsagePage />} />
@@ -133,7 +147,7 @@ export function App() {
             <Route path="/settings/:tab" element={<SettingsPage />} />
 
             {/* Notifications */}
-            <Route path="/notifications" element={<PlaceholderPage title="Notifications" description="Notification center — coming in P2-09." />} />
+            <Route path="/notifications" element={<NotificationsPage />} />
           </Route>
 
           {/* 404 */}

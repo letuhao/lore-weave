@@ -1,0 +1,200 @@
+{
+  "entities": [
+    {
+      "name": "花果山",
+      "kind": "place",
+      "aliases": []
+    },
+    {
+      "name": "傲來國",
+      "kind": "place",
+      "aliases": [
+        "傲來小國"
+      ]
+    },
+    {
+      "name": "東勝神洲",
+      "kind": "place",
+      "aliases": []
+    },
+    {
+      "name": "仙石",
+      "kind": "artifact",
+      "aliases": []
+    },
+    {
+      "name": "石猴",
+      "kind": "person",
+      "aliases": [
+        "猴"
+      ]
+    },
+    {
+      "name": "玉皇大天尊",
+      "kind": "person",
+      "aliases": [
+        "玉帝",
+        "玄穹高上帝"
+      ]
+    },
+    {
+      "name": "千里眼",
+      "kind": "person",
+      "aliases": []
+    },
+    {
+      "name": "順風耳",
+      "kind": "person",
+      "aliases": []
+    },
+    {
+      "name": "靈霄寶殿",
+      "kind": "place",
+      "aliases": [
+        "金闕雲宮靈霄寶殿"
+      ]
+    },
+    {
+      "name": "南天門",
+      "kind": "place",
+      "aliases": []
+    }
+  ],
+  "relations": [
+    {
+      "subject": "花果山",
+      "predicate": "located_in",
+      "object": "傲來國",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "傲來國",
+      "predicate": "located_in",
+      "object": "東勝神洲",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "仙石",
+      "predicate": "located_on",
+      "object": "花果山",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "石猴",
+      "predicate": "born_from",
+      "object": "仙石",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "玉皇大天尊",
+      "predicate": "commands",
+      "object": "千里眼",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "玉皇大天尊",
+      "predicate": "commands",
+      "object": "順風耳",
+      "polarity": "affirm"
+    }
+  ],
+  "events": [
+    {
+      "summary": "石猴從仙石中破殼而出，五官四肢俱全",
+      "participants": [
+        "石猴",
+        "仙石"
+      ]
+    },
+    {
+      "summary": "石猴拜了四方，目射金光直沖斗府",
+      "participants": [
+        "石猴"
+      ]
+    },
+    {
+      "summary": "玉帝命千里眼與順風耳開南天門觀看金光來源",
+      "participants": [
+        "玉皇大天尊",
+        "千里眼",
+        "順風耳"
+      ]
+    },
+    {
+      "summary": "千里眼與順風耳回報石猴金光來自花果山仙石",
+      "participants": [
+        "千里眼",
+        "順風耳",
+        "玉皇大天尊"
+      ]
+    },
+    {
+      "summary": "玉帝判定石猴金光乃天地精華所生不足為異",
+      "participants": [
+        "玉皇大天尊"
+      ]
+    }
+  ],
+  "traps": [
+    {
+      "kind": "entity",
+      "name": "周天三百六十五度",
+      "reason": "Numerological description of the stone's height; not a named entity"
+    },
+    {
+      "kind": "entity",
+      "name": "二十四氣",
+      "reason": "Numerological description of the stone's circumference; not an entity"
+    },
+    {
+      "kind": "entity",
+      "name": "九宮八卦",
+      "reason": "Geomancy framework reference; not a named entity in this scene"
+    },
+    {
+      "kind": "entity",
+      "name": "三皇",
+      "reason": "Generic ruler-class reference, not specific named individuals here"
+    },
+    {
+      "kind": "entity",
+      "name": "五帝",
+      "reason": "Generic ruler-class reference, not specific named individuals here"
+    },
+    {
+      "kind": "entity",
+      "name": "十洲",
+      "reason": "Mythic geographical idiom referenced in passing, not a real location entity"
+    },
+    {
+      "kind": "entity",
+      "name": "三島",
+      "reason": "Mythic geographical idiom referenced in passing, not a real location entity"
+    },
+    {
+      "kind": "entity",
+      "name": "西牛賀洲",
+      "reason": "Listed in four-continents enumeration; narrative narrows to 東勝神洲 only"
+    },
+    {
+      "kind": "entity",
+      "name": "南贍部洲",
+      "reason": "Listed in four-continents enumeration; narrative narrows to 東勝神洲 only"
+    },
+    {
+      "kind": "entity",
+      "name": "北俱蘆洲",
+      "reason": "Listed in four-continents enumeration; narrative narrows to 東勝神洲 only"
+    },
+    {
+      "kind": "event",
+      "summary": "山中無甲子寒盡不知年",
+      "reason": "Proverb quote narrating the timeless state, not an event happening in this scene"
+    },
+    {
+      "kind": "entity",
+      "name": "盤古",
+      "reason": "Mentioned in opening cosmology, not an actor in this chapter's narrative"
+    }
+  ]
+}

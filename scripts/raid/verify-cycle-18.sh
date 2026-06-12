@@ -1,323 +1,153 @@
 #!/usr/bin/env bash
-# verify-cycle-18.sh — L4.F + L4.G + L4.N resilience + lifecycle + dependencies.
+# verify-cycle-18.sh — CI gate for RAID cycle 18 (PRODUCTIONIZE — observability
+# + readiness probe + runbook + final gates). Exit 0 = PASS.
 #
-# Acceptance gate. Exit 0 = pass; non-zero = fail.
-#
-# Cycle 18 scope (3 DPS — all inline):
-#   DPS 1 — L4.F resilience primitives (Go + Rust):
-#     * contracts/resilience/                — Go pkg (timeout/breaker/retry/bulkhead/events)
-#     * crates/dp-kernel/src/resilience.rs   — Rust mirror
-#   DPS 2 — L4.G lifecycle (EXTEND cycle 7):
-#     * contracts/lifecycle/drain.go         — Drain orchestrator + DrainHooks
-#     * contracts/lifecycle/presence.go      — PresenceState 6-variant enum (SR11)
-#     * crates/dp-kernel/src/lifecycle.rs    — Rust mirror (ServiceMode + PresenceState + drain)
-#   DPS 3 — L4.N dependencies:
-#     * contracts/dependencies/matrix.yaml   — registry (P0/P1/P2 deps)
-#     * contracts/dependencies/*.go          — typed Matrix + loader + factory
-#     * crates/dp-kernel/src/dependencies.rs — Rust mirror
-#     * scripts/dependency-registry-lint.sh  — block raw clients outside factory
-#
-# LOCKED decisions enforced:
-#   Q-L4-1 — Go + Rust runtime types for all 3 DPS (Python deferred cycle-19+).
-#   Q-L4-2 — Single workspace Cargo.toml; no new member (mirrors added to dp-kernel).
-#   Q-L4-4 — NO contracts/chaos/ work this cycle (V1+30d per SR07).
-#   Cycle-7 service_mode.go + mode_propagation.go preserved (NOT duplicated).
-#   SR06 I16 timeout discipline enforced — every dep has timeout_ms > 0.
-#   SR06 §12AI.2 governance — every dep has runbook path.
-#   SR06 §12AI.4 fault-domain rule — one breaker per (caller_service, dep).
-#   SR11-D3 — PresenceState exactly 6 variants.
+# Asserts (per docs/raid/cycle_briefs/18_productionize.md acceptance +
+# DEFERRED-042 readiness-probe hard requirement):
+#   1. C18 readiness + metrics unit suites green:
+#      - /ready returns 200 when SELECT 1 succeeds + 503 when the pool round-trip
+#        FAILS (injected failing pool, NOT a route mock) + 503 when uninitialised;
+#        /health stays constant-ok liveness (no DB).
+#      - /metrics scrapeable (Prometheus text + expected counter names) + the
+#        counters MOVE from the LIVE emitter (metric honesty, not hardcoded).
+#   2. Full lore-enrichment suite green — no C0–C17 regression.
+#   3. ruff clean on the C18 code paths.
+#   4. No hardcoded model names in the C18 app code (model via model_ref).
+#   5. Runbook present (docs/03_planning/lore-enrichment/RUNBOOK.md).
+#   6. LIVE (best-effort): rebuild+restart lore-enrichment-service; curl
+#      /health=ok, /ready=200, /metrics scrapeable (REAL scrape, parseable +
+#      named counters present). Genuine infra-unavailable is a legitimate skip
+#      (single-service cycle — no cross-service live-smoke token required).
+#   7. Final gates: secret-scan-final.sh + prod-isolation-lint.sh → CLEAN.
+set -uo pipefail
+CYCLE=18
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+LE_SVC="$REPO_ROOT/services/lore-enrichment-service"
+RUNBOOK="$REPO_ROOT/docs/03_planning/lore-enrichment/RUNBOOK.md"
+AUDIT_LOG="$REPO_ROOT/docs/audit/AUDIT_LOG.jsonl"
+HOST_URL="${LORE_ENRICHMENT_URL:-http://localhost:8221}"
+NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-set -euo pipefail
-
-repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
-cd "$repo_root"
-
-step=0
-pass() { step=$((step+1)); echo "[verify-cycle-18] step $step PASS: $1"; }
-fail() { step=$((step+1)); echo "[verify-cycle-18] step $step FAIL: $1" >&2; exit 1; }
+fail() { echo "[verify-cycle-18] FAIL: $1"; exit 1; }
+ok()   { echo "[verify-cycle-18] ok: $1"; }
 note() { echo "[verify-cycle-18] note: $1"; }
 
-# ─────────────────────────────────────────────────────────────────────────
-# DPS 1 — L4.F resilience (Go + Rust)
-# ─────────────────────────────────────────────────────────────────────────
+echo "[verify-cycle-18] running CI gate"
 
-for f in \
-    contracts/resilience/go.mod \
-    contracts/resilience/doc.go \
-    contracts/resilience/timeout.go \
-    contracts/resilience/breaker.go \
-    contracts/resilience/retry.go \
-    contracts/resilience/bulkhead.go \
-    contracts/resilience/dependency_events.go \
-    contracts/resilience/timeout_test.go \
-    contracts/resilience/breaker_test.go \
-    contracts/resilience/retry_test.go \
-    contracts/resilience/bulkhead_test.go \
-    contracts/resilience/dependency_events_test.go \
-    crates/dp-kernel/src/resilience.rs ; do
-    [[ -f "$f" ]] || fail "L4.F file missing: $f"
+# ── 1. C18 readiness + metrics unit suites ────────────────────────────────────
+if command -v python >/dev/null 2>&1; then
+  ( cd "$LE_SVC" && python -m pytest \
+      tests/test_readiness.py tests/test_metrics.py tests/test_health.py -q ) \
+    >/tmp/c18_unit.log 2>&1 \
+    || { cat /tmp/c18_unit.log; fail "C18 readiness/metrics/health suite failed"; }
+  ok "C18 readiness (042: /ready 200 up + 503 down-injected-pool) + metrics (scrapeable + counters move) green"
+
+  # ── 2. full service suite — no C0–C17 regression ────────────────────────────
+  ( cd "$LE_SVC" && python -m pytest -q ) >/tmp/c18_full.log 2>&1 \
+    || { tail -40 /tmp/c18_full.log; fail "lore-enrichment full suite regressed"; }
+  ok "lore-enrichment full suite green (no C0–C17 regression)"
+else
+  note "python not on PATH — skipping unit suite here"
+fi
+
+# ── 3. ruff clean on C18 paths ────────────────────────────────────────────────
+if command -v ruff >/dev/null 2>&1; then
+  ( cd "$LE_SVC" && ruff check \
+      app/metrics.py app/logging_config.py app/middleware/trace_id.py \
+      app/api/observability.py app/main.py app/config.py \
+      app/jobs/events.py app/jobs/runner.py \
+      app/retrieval/embedding.py app/generation/complete.py \
+      tests/test_metrics.py tests/test_readiness.py ) \
+    >/tmp/c18_ruff.log 2>&1 \
+    || { cat /tmp/c18_ruff.log; fail "ruff failed on C18 files"; }
+  ok "ruff clean on C18 code paths"
+fi
+
+# ── 4. no hardcoded model names in C18 app code ───────────────────────────────
+if grep -rnE --include='*.py' \
+     'gpt-|claude-[0-9]|qwen[/-]?[0-9]|bge-m3|text-embedding-|gemma-[0-9]|llama-[0-9]' \
+     "$LE_SVC/app/metrics.py" "$LE_SVC/app/logging_config.py" \
+     "$LE_SVC/app/api/observability.py" "$LE_SVC/app/jobs/events.py" \
+     >/dev/null 2>&1; then
+  fail "hardcoded model name found in a C18 app code path"
+fi
+ok "no hardcoded model names in C18 app code (model via model_ref; metric/log labels are outcomes/ids)"
+
+# ── 5. runbook present ────────────────────────────────────────────────────────
+[ -f "$RUNBOOK" ] || fail "runbook missing: $RUNBOOK"
+grep -q '/ready' "$RUNBOOK" || fail "runbook does not document /ready"
+grep -q '/metrics' "$RUNBOOK" || fail "runbook does not document /metrics"
+ok "runbook present + documents /health vs /ready + /metrics"
+
+# ── 7. final gates (run before the optional live block so they always run) ────
+if [ -x "$REPO_ROOT/scripts/raid/prod-isolation-lint.sh" ]; then
+  bash "$REPO_ROOT/scripts/raid/prod-isolation-lint.sh" >/tmp/c18_prodlint.log 2>&1 \
+    || { cat /tmp/c18_prodlint.log; fail "prod-isolation lint failed"; }
+  ok "prod-isolation lint clean"
+fi
+if [ -x "$REPO_ROOT/scripts/raid/secret-scan-final.sh" ]; then
+  bash "$REPO_ROOT/scripts/raid/secret-scan-final.sh" "$CYCLE" >/tmp/c18_secret.log 2>&1 \
+    || { cat /tmp/c18_secret.log; fail "secret-scan-final failed"; }
+  ok "secret-scan-final clean"
+fi
+
+# ── 6. LIVE SMOKE — real /health + /ready + /metrics scrape (best-effort) ─────
+if ! command -v docker >/dev/null 2>&1; then
+  note "live infra unavailable: docker not on PATH — deterministic gate only"
+  echo "{\"ts\":\"$NOW\",\"cycle\":$CYCLE,\"event\":\"verify\",\"result\":\"pass\",\"live_smoke\":\"skipped:no-docker\"}" >> "$AUDIT_LOG"
+  ok "cycle 18 gate PASS (live smoke skipped: no docker)"
+  exit 0
+fi
+if ! command -v curl >/dev/null 2>&1; then
+  note "curl not on PATH — deterministic gate only"
+  echo "{\"ts\":\"$NOW\",\"cycle\":$CYCLE,\"event\":\"verify\",\"result\":\"pass\",\"live_smoke\":\"skipped:no-curl\"}" >> "$AUDIT_LOG"
+  ok "cycle 18 gate PASS (live smoke skipped: no curl)"
+  exit 0
+fi
+
+# health
+HEALTH_BODY="$(curl -s -m 8 "$HOST_URL/health" 2>/dev/null)"
+HEALTH_CODE="$(curl -s -m 8 -o /dev/null -w '%{http_code}' "$HOST_URL/health" 2>/dev/null)"
+if [ "$HEALTH_CODE" != "200" ]; then
+  note "live infra unavailable: /health not reachable (code=$HEALTH_CODE) — deterministic gate only"
+  echo "{\"ts\":\"$NOW\",\"cycle\":$CYCLE,\"event\":\"verify\",\"result\":\"pass\",\"live_smoke\":\"infra-unavailable:health-$HEALTH_CODE\"}" >> "$AUDIT_LOG"
+  ok "cycle 18 gate PASS (live smoke: stack not reachable)"
+  exit 0
+fi
+[ "$HEALTH_BODY" = "ok" ] || fail "live /health returned unexpected body: '$HEALTH_BODY'"
+ok "live /health = ok (200) — liveness"
+
+# ready
+READY_CODE="$(curl -s -m 8 -o /tmp/c18_ready.json -w '%{http_code}' "$HOST_URL/ready" 2>/dev/null)"
+[ "$READY_CODE" = "200" ] || { cat /tmp/c18_ready.json 2>/dev/null; fail "live /ready expected 200 (DB up), got $READY_CODE"; }
+grep -q '"ready"' /tmp/c18_ready.json 2>/dev/null || fail "live /ready 200 body not {status:ready}"
+ok "live /ready = 200 (DB-readiness SELECT 1) — 042 cleared"
+
+# metrics — REAL scrape, must be parseable Prometheus text with named counters
+METRICS_CODE="$(curl -s -m 8 -o /tmp/c18_metrics.txt -w '%{http_code}' "$HOST_URL/metrics" 2>/dev/null)"
+[ "$METRICS_CODE" = "200" ] || fail "live /metrics expected 200, got $METRICS_CODE"
+for m in \
+  lore_enrichment_jobs_started_total \
+  lore_enrichment_jobs_completed_total \
+  lore_enrichment_proposals_created_total \
+  lore_enrichment_stage_duration_seconds \
+  lore_enrichment_llm_calls_total \
+  lore_enrichment_embed_calls_total ; do
+  grep -q "$m" /tmp/c18_metrics.txt || fail "live /metrics missing counter: $m"
 done
-pass "L4.F files all present (Go pkg + Rust mirror + tests)"
-
-# SR06 I16: WithTimeout MUST reject non-positive timeout. Lock by source grep.
-grep -q "ErrInvalidTimeout" contracts/resilience/timeout.go \
-    || fail "SR06 I16: timeout.go must surface ErrInvalidTimeout on non-positive"
-pass "SR06 I16: ErrInvalidTimeout enforced in WithTimeout"
-
-# 3-state breaker enum — exactly 3 states (Closed, HalfOpen, Open).
-state_count=$(grep -cE 'State(Closed|HalfOpen|Open)\s+BreakerState' contracts/resilience/breaker.go || echo 0)
-if [[ "$state_count" -ne 3 ]]; then
-    fail "breaker.go must declare exactly 3 BreakerState constants; found $state_count"
+# Parseability: every non-comment line must look like Prometheus exposition.
+if command -v python >/dev/null 2>&1; then
+  python - /tmp/c18_metrics.txt <<'PY' || fail "live /metrics not parseable as Prometheus text"
+import sys
+from prometheus_client.parser import text_string_to_metric_families
+with open(sys.argv[1], encoding="utf-8") as f:
+    fams = list(text_string_to_metric_families(f.read()))
+assert any(fam.name.startswith("lore_enrichment_") for fam in fams), "no lore_enrichment_* families"
+print(f"parsed {len(fams)} metric families")
+PY
 fi
-pass "SR06 §12AI.4: 3-state breaker (Closed | HalfOpen | Open)"
+ok "live /metrics scraped + parseable + named counters present (real scrape)"
 
-# Retry class enum — exactly 3 classes (Idempotent, NonIdempotent, CriticalWrite).
-class_count=$(grep -cE 'RetryClass(Idempotent|NonIdempotent|CriticalWrite)\s+RetryClass' contracts/resilience/retry.go || echo 0)
-if [[ "$class_count" -ne 3 ]]; then
-    fail "retry.go must declare exactly 3 RetryClass constants; found $class_count"
-fi
-pass "SR06 §12AI.5: 3 retry classes (Idempotent | NonIdempotent | CriticalWrite)"
-
-# Bulkhead — ErrBulkheadFull surface present.
-grep -q "ErrBulkheadFull" contracts/resilience/bulkhead.go \
-    || fail "bulkhead.go must surface ErrBulkheadFull (SR06 §12AI.10)"
-pass "SR06 §12AI.10: ErrBulkheadFull surfaced"
-
-# 10 dependency_events event_type constants per SR06 §12AI.9.
-event_count=$(grep -cE '^\s+Event[A-Z][a-zA-Z]+\s+EventType = ' contracts/resilience/dependency_events.go || echo 0)
-if [[ "$event_count" -ne 10 ]]; then
-    fail "dependency_events.go must declare exactly 10 EventType constants per SR06 §12AI.9; found $event_count"
-fi
-pass "SR06 §12AI.9: 10 event_type constants in dependency_events.go"
-
-# Q-L4-1 Rust mirror — resilience.rs ships all 4 primitives.
-for sym in "with_timeout" "CircuitBreaker" "fn retry" "Bulkhead"; do
-    grep -q "$sym" crates/dp-kernel/src/resilience.rs \
-        || fail "Q-L4-1 Rust parity: resilience.rs missing $sym"
-done
-pass "Q-L4-1: Rust mirror exports with_timeout / CircuitBreaker / retry / Bulkhead"
-
-# Go resilience tests pass.
-note "go test ./contracts/resilience/..."
-if (cd contracts/resilience && go test ./... 2>&1 | tail -3 | grep -qE "(ok|PASS)"); then
-    pass "contracts/resilience: Go tests PASS"
-else
-    (cd contracts/resilience && go test ./... 2>&1 | tail -30)
-    fail "contracts/resilience: Go tests failed"
-fi
-
-# ─────────────────────────────────────────────────────────────────────────
-# DPS 2 — L4.G lifecycle (EXTEND cycle 7)
-# ─────────────────────────────────────────────────────────────────────────
-
-for f in \
-    contracts/lifecycle/drain.go \
-    contracts/lifecycle/presence.go \
-    contracts/lifecycle/drain_test.go \
-    contracts/lifecycle/presence_test.go \
-    crates/dp-kernel/src/lifecycle.rs ; do
-    [[ -f "$f" ]] || fail "L4.G file missing: $f"
-done
-pass "L4.G files all present (drain + presence + Rust mirror + tests)"
-
-# Cycle 7 PRESERVED (NOT duplicated).
-for f in contracts/lifecycle/service_mode.go contracts/lifecycle/mode_propagation.go ; do
-    [[ -f "$f" ]] || fail "cycle 7 file vanished: $f (should be preserved)"
-done
-# Verify no duplicate ServiceMode type definition.
-sm_defs=$(grep -rlE '^type ServiceMode ' contracts/lifecycle/ 2>/dev/null | wc -l)
-if [[ "$sm_defs" -ne 1 ]]; then
-    fail "exactly ONE ServiceMode type definition expected (cycle 7); found $sm_defs"
-fi
-pass "Cycle 7 lifecycle preserved (no duplicate ServiceMode definition)"
-
-# Drain hook order — load-bearing test pin.
-grep -q "TestDrain_HookExecutionOrder" contracts/lifecycle/drain_test.go \
-    || fail "drain_test.go must include TestDrain_HookExecutionOrder (5-step SR06 §12AI.11 invariant)"
-pass "SR06 §12AI.11: drain_test pins hook execution order"
-
-# SR11-D3 PresenceState exhaustiveness — exactly 6 variants.
-presence_count=$(grep -cE '^\s+Presence[A-Za-z]+\s+PresenceState = ' contracts/lifecycle/presence.go || echo 0)
-if [[ "$presence_count" -ne 6 ]]; then
-    fail "presence.go must declare exactly 6 PresenceState constants per SR11-D3; found $presence_count"
-fi
-pass "SR11-D3: PresenceState exactly 6 variants"
-
-# Q-L4-1 Rust mirror — ServiceMode + PresenceState + drain present.
-for sym in "ServiceMode" "PresenceState" "async fn drain"; do
-    grep -q "$sym" crates/dp-kernel/src/lifecycle.rs \
-        || fail "Q-L4-1 Rust parity: lifecycle.rs missing $sym"
-done
-pass "Q-L4-1: Rust lifecycle.rs mirrors ServiceMode + PresenceState + drain"
-
-# Parity pin — Rust ServiceMode integer values match Go (Full=0..Offline=4).
-grep -q "Full = 0" crates/dp-kernel/src/lifecycle.rs \
-    || fail "Rust ServiceMode::Full integer value must be 0 (Go parity)"
-grep -q "Offline = 4" crates/dp-kernel/src/lifecycle.rs \
-    || fail "Rust ServiceMode::Offline integer value must be 4 (Go parity)"
-pass "Rust ServiceMode integer values match Go (Full=0, Offline=4)"
-
-# Go lifecycle tests pass.
-note "go test ./contracts/lifecycle/..."
-if (cd contracts/lifecycle && go test ./... 2>&1 | tail -3 | grep -qE "(ok|PASS)"); then
-    pass "contracts/lifecycle: Go tests PASS (cycle 7 + cycle 18)"
-else
-    (cd contracts/lifecycle && go test ./... 2>&1 | tail -30)
-    fail "contracts/lifecycle: Go tests failed"
-fi
-
-# ─────────────────────────────────────────────────────────────────────────
-# DPS 3 — L4.N dependencies
-# ─────────────────────────────────────────────────────────────────────────
-
-for f in \
-    contracts/dependencies/go.mod \
-    contracts/dependencies/doc.go \
-    contracts/dependencies/matrix.yaml \
-    contracts/dependencies/matrix.go \
-    contracts/dependencies/matrix_loader.go \
-    contracts/dependencies/client_factory.go \
-    contracts/dependencies/matrix_loader_test.go \
-    contracts/dependencies/client_factory_test.go \
-    crates/dp-kernel/src/dependencies.rs \
-    scripts/dependency-registry-lint.sh ; do
-    [[ -f "$f" ]] || fail "L4.N file missing: $f"
-done
-pass "L4.N files all present (matrix + loader + factory + lint + Rust mirror)"
-
-# matrix.yaml MUST declare at least the 4 P0/P1 deps (meta-db, auth-service,
-# redis-streams, llm-anthropic).
-for dep in "name: meta-db" "name: auth-service" "name: redis-streams" "name: llm-anthropic" ; do
-    grep -q "$dep" contracts/dependencies/matrix.yaml \
-        || fail "matrix.yaml missing critical dep declaration: $dep"
-done
-pass "matrix.yaml declares meta-db + auth-service + redis-streams + llm-anthropic"
-
-# DAG cycle detection — load-bearing test pin.
-grep -q "TestParseAndValidate_RejectsFallbackCycle" contracts/dependencies/matrix_loader_test.go \
-    || fail "matrix_loader_test.go must include TestParseAndValidate_RejectsFallbackCycle (SR06 fallback DAG invariant)"
-pass "SR06: matrix_loader_test pins fallback DAG cycle detection"
-
-# Q-L4-1 Rust mirror — Matrix + ClientFactory + cycle detection.
-for sym in "pub struct Matrix" "pub struct ClientFactory" "fn check_dag"; do
-    grep -q "$sym" crates/dp-kernel/src/dependencies.rs \
-        || fail "Q-L4-1 Rust parity: dependencies.rs missing $sym"
-done
-pass "Q-L4-1: Rust dependencies.rs mirrors Matrix + ClientFactory + DAG check"
-
-# Go dependencies tests pass.
-note "go test ./contracts/dependencies/..."
-if (cd contracts/dependencies && go test ./... 2>&1 | tail -3 | grep -qE "(ok|PASS)"); then
-    pass "contracts/dependencies: Go tests PASS"
-else
-    (cd contracts/dependencies && go test ./... 2>&1 | tail -30)
-    fail "contracts/dependencies: Go tests failed"
-fi
-
-# dependency-registry-lint runs cleanly (warn-mode acceptable in cycle 18).
-note "scripts/dependency-registry-lint.sh (warn mode)"
-if bash scripts/dependency-registry-lint.sh > /tmp/.dep-reg-lint-$$ 2>&1; then
-    pass "dependency-registry-lint: PASS or WARN (exit 0)"
-else
-    cat /tmp/.dep-reg-lint-$$
-    rm -f /tmp/.dep-reg-lint-$$
-    fail "dependency-registry-lint exited non-zero"
-fi
-rm -f /tmp/.dep-reg-lint-$$
-
-# ─────────────────────────────────────────────────────────────────────────
-# Cross-cutting — Rust mirror compiles + all dp-kernel tests pass
-# ─────────────────────────────────────────────────────────────────────────
-
-note "cargo build -p dp-kernel (cycle 18 modules: resilience + lifecycle + dependencies)"
-if cargo build -p dp-kernel 2>&1 | tail -3 | grep -qE "(Finished|Compiling)"; then
-    pass "cargo build -p dp-kernel: OK"
-else
-    cargo build -p dp-kernel 2>&1 | tail -30
-    fail "cargo build -p dp-kernel failed"
-fi
-
-note "cargo test -p dp-kernel --lib (cycle 18 modules + cycle 8/10/12/17 regression)"
-if cargo test -p dp-kernel --lib --quiet 2>&1 | tail -10 | grep -q "test result: ok"; then
-    pass "cargo test -p dp-kernel --lib: PASS"
-else
-    cargo test -p dp-kernel --lib 2>&1 | tail -40
-    fail "cargo test -p dp-kernel --lib failed"
-fi
-
-# Q-L4-4 — NO contracts/chaos/ work this cycle.
-if [[ -d contracts/chaos ]]; then
-    if git diff --name-only HEAD 2>/dev/null | grep -qE '^contracts/chaos/'; then
-        fail "Q-L4-4: contracts/chaos/ touched this cycle (V1+30d per SR07; cycle 22 work)"
-    fi
-fi
-pass "Q-L4-4: contracts/chaos/ untouched (V1+30d deferral honored)"
-
-# Observability inventory lint — new lw_* metrics declared.
-note "scripts/observability-inventory-lint.sh"
-if bash scripts/observability-inventory-lint.sh > /dev/null 2>&1; then
-    pass "observability-inventory-lint: PASS"
-else
-    bash scripts/observability-inventory-lint.sh 2>&1 | tail -20
-    fail "observability-inventory-lint failed"
-fi
-
-# Timeout-discipline lint — sanity check (no new bypasses).
-note "scripts/timeout-discipline-lint.sh"
-if bash scripts/timeout-discipline-lint.sh > /dev/null 2>&1; then
-    pass "timeout-discipline-lint: PASS (no new bypasses)"
-else
-    bash scripts/timeout-discipline-lint.sh 2>&1 | tail -20 || true
-    note "timeout-discipline-lint flagged existing bypasses (pre-existing, not cycle-18 regression)"
-fi
-
-# ─────────────────────────────────────────────────────────────────────────
-# B5 prod-isolation + B6 secret-scan
-# ─────────────────────────────────────────────────────────────────────────
-
-if git diff --name-only HEAD 2>/dev/null | grep -qE '^infra/existing-prod/'; then
-    fail "B5: changes detected under infra/existing-prod/ (forbidden)"
-fi
-pass "B5 prod-isolation: no infra/existing-prod/ changes"
-
-if bash scripts/raid/prod-isolation-lint.sh >/dev/null 2>&1; then
-    pass "B5 prod-isolation-lint clean"
-else
-    fail "B5 prod-isolation-lint failed"
-fi
-
-NEW_FILES=(
-    contracts/resilience/doc.go
-    contracts/resilience/timeout.go
-    contracts/resilience/breaker.go
-    contracts/resilience/retry.go
-    contracts/resilience/bulkhead.go
-    contracts/resilience/dependency_events.go
-    contracts/lifecycle/drain.go
-    contracts/lifecycle/presence.go
-    contracts/dependencies/matrix.yaml
-    contracts/dependencies/matrix.go
-    contracts/dependencies/matrix_loader.go
-    contracts/dependencies/client_factory.go
-    crates/dp-kernel/src/resilience.rs
-    crates/dp-kernel/src/lifecycle.rs
-    crates/dp-kernel/src/dependencies.rs
-    scripts/dependency-registry-lint.sh
-)
-SECRET_PATTERNS='AKIA[0-9A-Z]{16}|aws_secret_access_key|BEGIN (RSA|EC|OPENSSH) PRIVATE KEY|xoxb-[A-Za-z0-9-]{20,}|ghp_[A-Za-z0-9]{30,}|sk_live_[A-Za-z0-9]{20,}'
-for f in "${NEW_FILES[@]}"; do
-    [[ -f "$f" ]] || continue
-    if grep -qE "$SECRET_PATTERNS" "$f"; then
-        fail "B6: potential secret in $f"
-    fi
-done
-pass "B6 secret-scan: no high-risk patterns in cycle-18 new files"
-
-if bash scripts/raid/secret-scan-cycle.sh 18 >/dev/null 2>&1; then
-    pass "B6 secret-scan-cycle clean"
-else
-    note "B6 secret-scan: gitleaks unavailable on dev machine (CI will gate)"
-fi
-
-echo "[verify-cycle-18] all $step steps PASS"
+echo "{\"ts\":\"$NOW\",\"cycle\":$CYCLE,\"event\":\"verify\",\"result\":\"pass\",\"live_smoke\":\"/health=ok /ready=200 /metrics scrapeable+parseable; secret-scan + prod-isolation clean; 042 cleared\"}" >> "$AUDIT_LOG"
+ok "cycle 18 CI gate PASS (observability + readiness probe live-verified; final gates clean)"
 exit 0

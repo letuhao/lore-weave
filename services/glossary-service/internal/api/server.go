@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/loreweave/grantclient"
 	"github.com/loreweave/observability"
 
 	"github.com/loreweave/glossary-service/internal/config"
@@ -22,10 +23,18 @@ type Server struct {
 	pool   *pgxpool.Pool
 	cfg    *config.Config
 	secret []byte
+	// grantClient resolves (user, book) grants against book-service (E0-1).
+	// Positive-grant caching lives in the client; nil → guards fail closed.
+	grantClient *grantclient.Client
 }
 
 func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
-	return &Server{pool: pool, cfg: cfg, secret: []byte(cfg.JWTSecret)}
+	return &Server{
+		pool:        pool,
+		cfg:         cfg,
+		secret:      []byte(cfg.JWTSecret),
+		grantClient: buildGrantClient(cfg.BookServiceURL, cfg.InternalServiceToken),
+	}
 }
 
 func (s *Server) Router() http.Handler {
@@ -73,6 +82,11 @@ func (s *Server) Router() http.Handler {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 	})
 
+	// ── MCP server (Tier-R read tools, ai-gateway provider #2) ────────────
+	// Internal-only; the identity middleware (in mcpHandler) validates the
+	// service token and lifts X-User-Id into ctx for the ownership guard.
+	r.Handle("/mcp", s.mcpHandler())
+
 	// ── Internal service-to-service endpoints ─────────────────────────────
 	r.Route("/internal", func(r chi.Router) {
 		r.Use(s.requireInternalToken)
@@ -83,12 +97,51 @@ func (s *Server) Router() http.Handler {
 		r.Post("/books/{book_id}/extract-entities", s.bulkExtractEntities)
 		r.Get("/books/{book_id}/entity-count", s.internalEntityCount)
 		r.Get("/books/{book_id}/entities", s.internalListEntities)
+		// mui #4 — batch fetch by id for the knowledge semantic selector.
+		r.Post("/books/{book_id}/entities/by-ids", s.internalEntitiesByIDs)
+		// mui #1c G-cand — knowledge's coref detector proposes merge clusters here.
+		r.Post("/books/{book_id}/merge-candidates", s.internalProposeMergeCandidates)
+		// Set canonical content (short_description) on an existing entity.
+		// Used by lore-enrichment promote to write enriched canon THROUGH the
+		// glossary SSOT (Q2) — extract-entities can't set this column.
+		r.Post("/books/{book_id}/entities/{entity_id}/canon-content", s.internalSetCanonContent)
+		// Read the current canonical content. Used by the lore-enrichment
+		// re-promote SELF-HEAL (adversary WARN-1): if a prior canon-content
+		// write failed transiently, a re-promote reads NULL here and re-writes.
+		r.Get("/books/{book_id}/entities/{entity_id}/canon-content", s.internalGetCanonContent)
+		// Enrichment SUPPLEMENT layer (F-C13-1 + F-C13-2 / PO ruling B1):
+		// lore-enrichment writes/retracts the distinguished enrichment `dị bản`
+		// here (its own table, FK→entity) instead of overwriting short_description.
+		// DELETE is the F-C13-1 fix — retract un-canonizes via the internal token,
+		// no user JWT, leaving the canonical entity + original canon untouched.
+		r.Post("/books/{book_id}/entities/{entity_id}/enrichments", s.internalUpsertEnrichments)
+		r.Delete("/books/{book_id}/entities/{entity_id}/enrichments", s.internalDeleteEnrichments)
+		// Per-entity enrichment coverage for the lore-enrichment gap engine (D1
+		// gap-auto-detect): entities + mention_count + promoted-enrichment dims.
+		r.Get("/books/{book_id}/enrichment-coverage", s.internalEnrichmentCoverage)
+		// wiki-llm M5 — knowledge-service writes an AI-generated article here
+		// (clobber-guard: upsert an ai/stub draft, else file a wiki_suggestion).
+		r.Post("/books/{book_id}/wiki/articles", s.internalWriteWikiArticle)
+		// wiki-llm Phase-2 (§5.2) — on-demand recipe-drift sweep: flag AI articles
+		// whose stored prompt/pipeline version lags the current one (the caller
+		// supplies the current versions, which live in knowledge's config).
+		r.Post("/books/{book_id}/wiki/staleness-sweep", s.sweepWikiStaleness)
+		// wiki-llm M8 (D-WIKI-M8-FEWSHOT) — gold AI→human revision pairs (plaintext,
+		// truncated) for few-shot generation in knowledge-service.
+		r.Get("/books/{book_id}/wiki/gold-pairs", s.listWikiGoldPairs)
 	})
 
 	r.Route("/v1/glossary", func(r chi.Router) {
 		r.Get("/kinds", s.listKinds)
 		r.Post("/kinds", s.createKind)
 		r.Patch("/kinds/reorder", s.reorderKinds)
+		// Tier-S (P4): the ONLY schema-create path for the assistant — JWT-only,
+		// gated on a server-minted confirm token (INV-9/H8). The gateway/MCP side
+		// can mint a token (propose tools) but has no route here.
+		r.Post("/schema/confirm", s.confirmSchema)
+		// Kind-resolution epic: alias table (alias_code → kind) for the unknown-kind review.
+		r.Get("/kind-aliases", s.listKindAliases)
+		r.Post("/kind-aliases", s.createKindAlias)
 		r.Route("/kinds/{kind_id}", func(r chi.Router) {
 			r.Patch("/", s.patchKind)
 			r.Delete("/", s.deleteKind)
@@ -99,6 +152,10 @@ func (s *Server) Router() http.Handler {
 				r.Delete("/", s.deleteAttrDef)
 			})
 		})
+
+		// Cross-book wiki contributions for a user's public profile (UI-2a).
+		// Optional auth: self sees private/draft; others see public+published only.
+		r.Get("/users/{user_id}/wiki-contributions", s.listUserWikiContributions)
 
 		r.Route("/books/{book_id}", func(r chi.Router) {
 			r.Get("/extraction-profile", s.getExtractionProfile)
@@ -120,6 +177,22 @@ func (s *Server) Router() http.Handler {
 				r.Get("/", s.listWikiArticles)
 				r.Post("/", s.createWikiArticle)
 				r.Post("/generate", s.generateWikiStubs)
+				// wiki-llm Phase-2b (D-WIKI-P2B-COST-ESTIMATE) — flat per-article cost.
+				r.Get("/gen-config", s.getWikiGenConfigStatus)
+				// wiki-llm M7b — LLM-gen job lifecycle proxy (status + resume/cancel).
+				r.Route("/job", func(r chi.Router) {
+					r.Get("/", s.getWikiGenJobStatus)
+					r.Post("/{job_id}/resume", s.resumeWikiGenJob)
+					r.Post("/{job_id}/cancel", s.cancelWikiGenJob)
+				})
+				// wiki-llm Phase-2b (§5.3) — the "Knowledge updates" change-feed.
+				r.Route("/staleness", func(r chi.Router) {
+					r.Get("/", s.listWikiStaleness)
+					r.Post("/sweep", s.sweepWikiStalenessPublic)
+					r.Post("/dismiss-batch", s.dismissWikiStalenessBatch)
+					r.Get("/{staleness_id}/diff", s.getWikiStalenessDiff)
+					r.Post("/{staleness_id}/dismiss", s.dismissWikiStaleness)
+				})
 				r.Get("/suggestions", s.listWikiSuggestions)
 				r.Get("/public", s.publicListWikiArticles)
 				r.Get("/public/{article_id}", s.publicGetWikiArticle)
@@ -141,6 +214,14 @@ func (s *Server) Router() http.Handler {
 				})
 			})
 			r.Get("/entity-names", s.listEntityNames)
+			// Kind-resolution epic: the per-book unknown-kind review queue.
+			r.Get("/unknown-entities", s.listUnknownEntities)
+			// mui #1c: revert a recorded entity merge.
+			r.Post("/merge-journal/{journal_id}/revert", s.revertMerge)
+			// mui #1c G-cand: the merge-candidate review inbox (list + dismiss).
+			// Confirm == the existing entities/{id}/merge endpoint.
+			r.Get("/merge-candidates", s.listMergeCandidates)
+			r.Post("/merge-candidates/{candidate_id}/dismiss", s.dismissMergeCandidate)
 			r.Route("/entities", func(r chi.Router) {
 				r.Get("/", s.listEntities)
 				r.Post("/", s.createEntity)
@@ -148,8 +229,13 @@ func (s *Server) Router() http.Handler {
 					r.Get("/", s.getEntityDetail)
 					r.Patch("/", s.patchEntity)
 					r.Delete("/", s.deleteEntity)
+					r.Post("/apply-edit", s.applyEntityEdit) // EDIT-ATOMIC: multi-field single-tx edit (assistant diff-card Apply); P3 PATCH endpoints stay for the UI
 					r.Post("/pin", s.pinEntity)
 					r.Delete("/pin", s.unpinEntity)
+					// Kind-resolution epic: move a parked entity onto a real kind.
+					r.Post("/reassign-kind", s.reassignEntityKind)
+					// mui #1c: merge loser entities into this (winner) entity.
+					r.Post("/merge", s.mergeEntities)
 					r.Route("/chapter-links", func(r chi.Router) {
 						r.Get("/", s.listChapterLinks)
 						r.Post("/", s.createChapterLink)
@@ -159,6 +245,14 @@ func (s *Server) Router() http.Handler {
 						})
 					})
 					r.Get("/evidences", s.listEntityEvidences)
+					// VG-2: entity version history + restore (mirrors wiki/revisions).
+					r.Route("/revisions", func(r chi.Router) {
+						r.Get("/", s.listEntityRevisions)
+						r.Route("/{rev_id}", func(r chi.Router) {
+							r.Get("/", s.getEntityRevision)
+							r.Post("/restore", s.restoreEntityRevision)
+						})
+					})
 					r.Route("/attributes/{attr_value_id}", func(r chi.Router) {
 						r.Patch("/", s.patchAttributeValue)
 						r.Route("/translations", func(r chi.Router) {
@@ -326,9 +420,11 @@ all_entities AS (
     ) combined GROUP BY entity_id
 )
 SELECT
+    e.entity_id AS entity_id,
     eav.original_value AS name_zh,
     COALESCE(at.value, '') AS name_target,
     ek.code AS kind_code,
+    COALESCE(at.confidence, '') AS name_confidence,
     ae.best_tier
 FROM all_entities ae
 JOIN glossary_entities e ON e.entity_id = ae.entity_id
@@ -348,9 +444,11 @@ LIMIT $4`
 		// No chapter scoping — return most-linked entities across the book
 		query = `
 SELECT
+    e.entity_id AS entity_id,
     eav.original_value AS name_zh,
     COALESCE(at.value, '') AS name_target,
     ek.code AS kind_code,
+    COALESCE(at.confidence, '') AS name_confidence,
     0 AS best_tier
 FROM glossary_entities e
 JOIN entity_kinds ek ON ek.kind_id = e.kind_id
@@ -364,7 +462,7 @@ LEFT JOIN attribute_translations at ON at.attr_value_id = eav.attr_value_id
 LEFT JOIN chapter_entity_links cel ON cel.entity_id = e.entity_id
 WHERE e.book_id = $1 AND e.status = 'active' AND e.deleted_at IS NULL
     AND eav.original_value IS NOT NULL AND eav.original_value != ''
-GROUP BY e.entity_id, eav.original_value, at.value, ek.code
+GROUP BY e.entity_id, eav.original_value, at.value, at.confidence, ek.code
 ORDER BY COUNT(cel.link_id) DESC, length(eav.original_value) DESC
 LIMIT $3`
 		args = []any{bookID, targetLang, maxEntries}
@@ -385,17 +483,24 @@ LIMIT $3`
 
 	items := make([]map[string]any, 0, maxEntries)
 	for rows.Next() {
-		var nameZH, nameTarget, kindCode string
+		var entityID uuid.UUID
+		var nameZH, nameTarget, kindCode, nameConfidence string
 		var tier int
-		if err := rows.Scan(&nameZH, &nameTarget, &kindCode, &tier); err != nil {
+		if err := rows.Scan(&entityID, &nameZH, &nameTarget, &kindCode, &nameConfidence, &tier); err != nil {
 			continue
 		}
 		entry := map[string]any{
-			"zh":   []string{nameZH},
-			"kind": kindCode,
+			// M6b: entity_id lets translation-service record per-chapter glossary
+			// usage so a later entity change flags only the chapters that used it.
+			"entity_id": entityID.String(),
+			"zh":        []string{nameZH},
+			"kind":      kindCode,
 		}
 		if nameTarget != "" {
 			entry[targetLang] = []string{nameTarget}
+			// D-TRANSL-M1D trust ladder: expose the translation's confidence tier
+			// (verified|machine|draft) so the V3 verifier hard-enforces only canon.
+			entry["confidence"] = nameConfidence
 		}
 		items = append(items, entry)
 	}

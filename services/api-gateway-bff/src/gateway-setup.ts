@@ -23,6 +23,10 @@ export function configureGatewayApp(
     statisticsUrl: string;
     notificationUrl: string;
     knowledgeUrl: string;
+    campaignUrl: string;
+    loreEnrichmentUrl: string;
+    learningUrl: string;
+    compositionUrl: string;
   },
 ): void {
   app.enableCors({
@@ -170,6 +174,74 @@ export function configureGatewayApp(
       },
     },
   });
+  // Auto-Draft Factory S1 — campaign-service (saga orchestrator API).
+  const campaignProxy = createProxyMiddleware({
+    target: urls.campaignUrl,
+    changeOrigin: true,
+    pathFilter: (pathname: string) => pathname.startsWith('/v1/campaigns'),
+  });
+
+  const loreEnrichmentProxy = createProxyMiddleware({
+    target: urls.loreEnrichmentUrl,
+    changeOrigin: true,
+    pathFilter: (pathname: string) => pathname.startsWith('/v1/lore-enrichment'),
+  });
+
+  // Phase B — learning-service (Axis-1 correction read API).
+  const learningProxy = createProxyMiddleware({
+    target: urls.learningUrl,
+    changeOrigin: true,
+    pathFilter: (pathname: string) => pathname.startsWith('/v1/learning'),
+  });
+
+  // LOOM M7 — composition-service (co-writer). `selfHandleResponse:false` so the
+  // POST /v1/composition/works/{id}/generate SSE stream passes through
+  // un-buffered (chat precedent). 503-on-down mirrors knowledgeProxy so the FE
+  // can show "backend down" vs a real error.
+  const compositionProxy = createProxyMiddleware({
+    target: urls.compositionUrl,
+    changeOrigin: true,
+    selfHandleResponse: false,
+    pathFilter: (pathname: string) => pathname.startsWith('/v1/composition'),
+    on: {
+      error: (
+        err: NodeJS.ErrnoException,
+        req: Request,
+        res: Response | Socket,
+      ) => {
+        if (!('status' in res) || typeof res.status !== 'function') {
+          try {
+            (res as Socket).destroy?.();
+          } catch {
+            // ignore
+          }
+          return;
+        }
+        const httpRes = res as Response;
+        if (httpRes.headersSent) {
+          try {
+            httpRes.end();
+          } catch {
+            // socket likely already destroyed
+          }
+          return;
+        }
+        const traceId =
+          (req.headers['x-trace-id'] as string | undefined) ?? null;
+        httpRes.status(503).set('Content-Type', 'application/json');
+        if (traceId) {
+          httpRes.set('X-Trace-Id', traceId);
+        }
+        httpRes.end(
+          JSON.stringify({
+            detail: 'composition_service_unavailable',
+            code: err?.code ?? 'ECONNREFUSED',
+            trace_id: traceId,
+          }),
+        );
+      },
+    },
+  });
 
   const httpAdapter = app.getHttpAdapter();
   const instance = httpAdapter.getInstance();
@@ -243,6 +315,26 @@ export function configureGatewayApp(
     res: Response,
     next: NextFunction,
   ) => void;
+  const campaignProxyFn = campaignProxy as unknown as (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => void;
+  const loreEnrichmentProxyFn = loreEnrichmentProxy as unknown as (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => void;
+  const learningProxyFn = learningProxy as unknown as (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => void;
+  const compositionProxyFn = compositionProxy as unknown as (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => void;
   instance.use((req: Request, res: Response, next: NextFunction) => {
     if (req.path.startsWith('/v1/auth') || req.path.startsWith('/v1/account') || req.path.startsWith('/v1/me/preferences') || req.path.startsWith('/v1/users')) {
       return authProxyFn(req, res, next);
@@ -288,6 +380,18 @@ export function configureGatewayApp(
     }
     if (req.path.startsWith('/v1/knowledge')) {
       return knowledgeProxyFn(req, res, next);
+    }
+    if (req.path.startsWith('/v1/campaigns')) {
+      return campaignProxyFn(req, res, next);
+    }
+    if (req.path.startsWith('/v1/learning')) {
+      return learningProxyFn(req, res, next);
+    }
+    if (req.path.startsWith('/v1/composition')) {
+      return compositionProxyFn(req, res, next);
+    }
+    if (req.path.startsWith('/v1/lore-enrichment')) {
+      return loreEnrichmentProxyFn(req, res, next);
     }
     return next();
   });

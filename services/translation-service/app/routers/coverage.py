@@ -3,7 +3,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends
 import asyncpg
 
-from ..deps import get_current_user, get_db
+from ..deps import get_db
+from ..grant_deps import GrantLevel, require_book_grant
 from ..models import BookCoverageResponse, ChapterCoverage, CoverageCell
 
 router = APIRouter(prefix="/v1/translation", tags=["translation-coverage"])
@@ -12,7 +13,9 @@ router = APIRouter(prefix="/v1/translation", tags=["translation-coverage"])
 @router.get("/books/{book_id}/coverage", response_model=BookCoverageResponse)
 async def get_book_coverage(
     book_id: UUID,
-    user_id: str = Depends(get_current_user),
+    # E0-4a view gate + D-E0-4-F shared per-book view: the matrix shows ALL of the
+    # book's translations (drop owner_user_id; book_id still scopes → IDOR-safe).
+    _grant: UUID = Depends(require_book_grant(GrantLevel.VIEW)),
     db: asyncpg.Pool = Depends(get_db),
 ):
     """
@@ -41,17 +44,30 @@ async def get_book_coverage(
           actv.chapter_translation_id                                        AS active_ct_id,
           (SELECT version_num
              FROM chapter_translations ct3
-            WHERE ct3.id = actv.chapter_translation_id)                      AS active_version_num
+            WHERE ct3.id = actv.chapter_translation_id)                      AS active_version_num,
+          -- M6b-2: the active version's staleness (what the reader sees); fall
+          -- back to the latest version when no version is active yet.
+          COALESCE(
+            (SELECT is_glossary_stale
+               FROM chapter_translations ct4
+              WHERE ct4.id = actv.chapter_translation_id),
+            (SELECT is_glossary_stale
+               FROM chapter_translations ct5
+              WHERE ct5.chapter_id      = ct.chapter_id
+                AND ct5.target_language = ct.target_language
+              ORDER BY ct5.created_at DESC
+              LIMIT 1),
+            false
+          )                                                                  AS is_glossary_stale
         FROM chapter_translations ct
         LEFT JOIN active_chapter_translation_versions actv
           ON actv.chapter_id      = ct.chapter_id
          AND actv.target_language = ct.target_language
         WHERE ct.book_id       = $1
-          AND ct.owner_user_id = $2
         GROUP BY ct.chapter_id, ct.target_language, actv.chapter_translation_id
         ORDER BY ct.chapter_id, ct.target_language
         """,
-        book_id, UUID(user_id),
+        book_id,
     )
 
     # Build chapter → {language → CoverageCell} map
@@ -72,6 +88,7 @@ async def get_book_coverage(
             latest_version_num=row["latest_version_num"],
             latest_status=row["latest_status"],
             version_count=row["version_count"],
+            is_glossary_stale=row["is_glossary_stale"],
         )
 
     coverage = [

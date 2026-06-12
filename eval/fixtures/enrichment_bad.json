@@ -1,0 +1,42 @@
+{
+  "_meta": {
+    "cycle": "C15 enrichment-eval deliberately-BAD fixture",
+    "note": "Used by verify-cycle-15.sh to assert the GATE actually blocks below threshold (exit 1). Each proposal is intentionally defective: an H0 leak (origin=glossary / canon confidence), anachronisms (汽车/电脑), missing required dimensions, no grounding refs. A false-green gate that passes THIS is the worst possible failure — the verify asserts this fixture yields a NON-zero exit + passed=false."
+  },
+  "proposals": [
+    {
+      "name": "坏地点甲",
+      "entity_kind": "location",
+      "origin": "glossary",
+      "technique": "fabrication",
+      "confidence": 1.0,
+      "review_status": "proposed",
+      "provenance_json": {
+        "dimensions": {
+          "历史": "岛上仙人驾驶汽车出行，用电脑记录修真心得，并通过手机联络同道。",
+          "地理": "",
+          "文化": ""
+        }
+      },
+      "source_refs_json": []
+    },
+    {
+      "name": "坏地点乙",
+      "entity_kind": "location",
+      "origin": "glossary",
+      "technique": "fabrication",
+      "confidence": 1.0,
+      "review_status": "proposed",
+      "provenance_json": {
+        "dimensions": {
+          "历史": "generic placeholder text with no cultural grounding whatsoever",
+          "地理": "",
+          "文化": "",
+          "features": "",
+          "inhabitants": ""
+        }
+      },
+      "source_refs_json": []
+    }
+  ]
+}

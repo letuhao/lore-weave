@@ -80,7 +80,12 @@ def _event(
 
 
 def _fact(
-    content: str, type: str = "description",
+    # Default to a valid FACT_TYPES member ('decision'|'preference'|'milestone'
+    # |'negation'). Was 'description' — never a valid type; it only survived
+    # because merge_fact is mocked here, but pass2_writer now (correctly) filters
+    # off-taxonomy facts BEFORE merge_fact, so the invalid default produced 0
+    # merges. See app/db/neo4j_repos/facts.py:FACT_TYPES.
+    content: str, type: str = "milestone",
     subject: str | None = None, subject_id: str | None = None,
     confidence: float = 0.9,
 ) -> LLMFactCandidate:
@@ -312,15 +317,17 @@ async def test_events_merged_with_evidence(
 
 
 @pytest.mark.asyncio
+@patch(f"{_PATCH_BASE}.rerank_chronological_order", new_callable=AsyncMock)
 @patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
 @patch(f"{_PATCH_BASE}.merge_event", new_callable=AsyncMock)
 @patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
 async def test_event_date_threaded_to_merge_event(
-    mock_upsert_source, mock_merge_event, mock_evidence,
+    mock_upsert_source, mock_merge_event, mock_evidence, mock_rerank,
 ):
     """C18: when LLMEventCandidate.event_date is non-null, the value
     is threaded as event_date_iso to merge_event() so the structured
-    date lands on the :Event node."""
+    date lands on the :Event node. (CM4: a dated event also triggers the
+    project chronological rerank — mocked here.)"""
     mock_upsert_source.return_value = _make_source_result()
     mock_merge_event.return_value = _make_event_result("evid-dated")
     mock_evidence.return_value = _make_evidence_result(True)
@@ -383,19 +390,23 @@ async def test_facts_merged_with_evidence(
         user_id=USER_ID, project_id=PROJECT_ID,
         source_type="chapter", source_id="ch-1",
         job_id=JOB_ID,
-        facts=[_fact("Kai is brave.", "attribute", subject="Kai",
+        facts=[_fact("Kai is brave.", "milestone", subject="Kai",
                      subject_id="eid-kai")],
     )
 
     assert result.facts_merged == 1
     assert result.evidence_edges == 1
-    # Intentional drop: ``subject``, ``subject_id`` and the candidate's
-    # own ``fact_id`` are not forwarded to merge_fact (K11.7 derives its
-    # own ID from sanitized content; subject params tracked for K18+).
+    # K11.7: merge_fact derives its own ID from sanitized content, so the raw
+    # ``subject`` name and the candidate's own ``fact_id`` are NOT forwarded.
+    # T2.1 (LOOM-103): a RESOLVED ``subject_id`` IS now forwarded so merge_fact can
+    # MATCH the fact's :ABOUT-> subject entity. Here it resolves to None — the name
+    # "Kai" isn't in the (empty) chapter map and the candidate's "eid-kai" isn't in
+    # merged_entity_ids, so the fact is kept but unlinked (the unresolved-but-kept
+    # path). Subject-resolution coverage lives in test_pass2_writer_facts.py.
     kwargs = mock_merge_fact.call_args.kwargs
     assert "subject" not in kwargs
-    assert "subject_id" not in kwargs
     assert "fact_id" not in kwargs
+    assert kwargs["subject_id"] is None
 
 
 # ── K17.9 Injection defense regressions ────────────────────────
@@ -895,3 +906,181 @@ async def test_anchor_miss_still_mints_new_entity(
     merge_kwargs = mock_merge_entity.await_args.kwargs
     assert merge_kwargs["name"] == "Lancelot"
     assert result.entities_merged == 1
+
+
+# ── CM4: event_order assignment + debounced chronological rerank ──────
+
+
+def _hierarchy_paths(chapter_index: int, chapter_id: str = "ch-1"):
+    from app.extraction.hierarchy_writer import HierarchyPaths
+    return HierarchyPaths(
+        book_id="b", book_path="book", book_title=None,
+        part_id="p", part_path="book/part-1", part_index=1, part_title=None,
+        chapter_id=chapter_id, chapter_path="book/part-1/chapter-x",
+        chapter_index=chapter_index, chapter_title=None, scenes=[],
+    )
+
+
+@pytest.mark.asyncio
+@patch(f"{_PATCH_BASE}.rerank_chronological_order", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.upsert_for_chapter", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.merge_event", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
+async def test_event_order_from_hierarchy_chapter_index(
+    mock_src, mock_merge, mock_evid, mock_hier, mock_rerank,
+):
+    """CM4: event_order = chapter_index×1e6 + within-chapter index, advancing
+    per written event (the chapter ordinal comes from hierarchy_paths)."""
+    mock_src.return_value = _make_source_result()
+    mock_merge.return_value = _make_event_result("e")
+    mock_evid.return_value = _make_evidence_result(True)
+
+    await write_pass2_extraction(
+        _fake_session(),
+        user_id=USER_ID, project_id=PROJECT_ID,
+        source_type="chapter", source_id="ch-1", job_id=JOB_ID,
+        events=[_event("First", ["x"]), _event("Second", ["y"])],
+        hierarchy_paths=_hierarchy_paths(chapter_index=3),
+    )
+
+    orders = [c.kwargs["event_order"] for c in mock_merge.call_args_list]
+    assert orders == [3_000_000 + 0, 3_000_000 + 1]
+
+
+@pytest.mark.asyncio
+@patch(f"{_PATCH_BASE}.rerank_chronological_order", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.merge_event", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
+async def test_event_order_none_without_hierarchy(
+    mock_src, mock_merge, mock_evid, mock_rerank,
+):
+    """Legacy/chat path (no hierarchy_paths) → event_order None → the timeline
+    null-sinks the event (coalesce(event_order, 2147483647))."""
+    mock_src.return_value = _make_source_result()
+    mock_merge.return_value = _make_event_result("e")
+    mock_evid.return_value = _make_evidence_result(True)
+
+    await write_pass2_extraction(
+        _fake_session(),
+        user_id=USER_ID, project_id=PROJECT_ID,
+        source_type="chapter", source_id="ch-1", job_id=JOB_ID,
+        events=[_event("Untethered", ["x"])],
+    )
+    assert mock_merge.call_args.kwargs["event_order"] is None
+
+
+@pytest.mark.asyncio
+@patch(f"{_PATCH_BASE}.rerank_chronological_order", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.upsert_for_chapter", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.merge_event", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
+async def test_chrono_rerank_runs_when_dated_event_written(
+    mock_src, mock_merge, mock_evid, mock_hier, mock_rerank,
+):
+    """Debounce: a chapter that writes ≥1 dated event triggers the project
+    chronological rerank."""
+    mock_src.return_value = _make_source_result()
+    mock_merge.return_value = _make_event_result("e")
+    mock_evid.return_value = _make_evidence_result(True)
+
+    await write_pass2_extraction(
+        _fake_session(),
+        user_id=USER_ID, project_id=PROJECT_ID,
+        source_type="chapter", source_id="ch-1", job_id=JOB_ID,
+        events=[_event("Dated", ["x"], event_date="1880-06")],
+        hierarchy_paths=_hierarchy_paths(chapter_index=3),
+    )
+    mock_rerank.assert_awaited_once()
+    kw = mock_rerank.await_args.kwargs
+    assert kw["user_id"] == USER_ID and kw["project_id"] == PROJECT_ID
+
+
+@pytest.mark.asyncio
+@patch(f"{_PATCH_BASE}.rerank_chronological_order", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.upsert_for_chapter", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.merge_event", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
+async def test_chrono_rerank_skipped_when_no_dated_event(
+    mock_src, mock_merge, mock_evid, mock_hier, mock_rerank,
+):
+    """Debounce: an all-undated chapter (or chat turn) must NOT trigger the
+    O(project-events) rerank."""
+    mock_src.return_value = _make_source_result()
+    mock_merge.return_value = _make_event_result("e")
+    mock_evid.return_value = _make_evidence_result(True)
+
+    await write_pass2_extraction(
+        _fake_session(),
+        user_id=USER_ID, project_id=PROJECT_ID,
+        source_type="chapter", source_id="ch-1", job_id=JOB_ID,
+        events=[_event("Undated", ["x"])],
+        hierarchy_paths=_hierarchy_paths(chapter_index=3),
+    )
+    mock_rerank.assert_not_awaited()
+
+
+# ── CM5: provenance threaded to every node merge ─────────────────────
+
+
+@pytest.mark.asyncio
+@patch(f"{_PATCH_BASE}.rerank_chronological_order", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.merge_fact", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.merge_event", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.resolve_or_merge_entity", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
+async def test_provenance_threaded_to_entity_event_fact_merges(
+    mock_src, mock_entity, mock_event, mock_fact, mock_evid, mock_rerank,
+):
+    """CM5: the provenance hint reaches every node-creating merge
+    (entity/event/fact) so the node's `provenances` set is stamped."""
+    mock_src.return_value = _make_source_result()
+    mock_entity.return_value = _make_entity_result("e-1")
+    mock_event.return_value = _make_event_result("ev-1")
+    mock_fact.return_value = _make_fact_result("f-1")
+    mock_evid.return_value = _make_evidence_result(True)
+
+    await write_pass2_extraction(
+        _fake_session(),
+        user_id=USER_ID, project_id=PROJECT_ID,
+        source_type="chapter", source_id="ch-1", job_id=JOB_ID,
+        entities=[_entity("Kai")],
+        events=[_event("Duel", ["Kai"])],  # undated → no rerank
+        facts=[_fact("Kai trains daily")],
+        provenance="ai_assisted",
+    )
+
+    assert mock_entity.call_args.kwargs["provenance"] == "ai_assisted"
+    assert mock_event.call_args.kwargs["provenance"] == "ai_assisted"
+    assert mock_fact.call_args.kwargs["provenance"] == "ai_assisted"
+
+
+@pytest.mark.asyncio
+@patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.merge_fact", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.resolve_or_merge_entity", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
+async def test_provenance_defaults_to_human_authored(
+    mock_src, mock_entity, mock_fact, mock_evid,
+):
+    """Default path (no provenance passed) stamps human_authored — every
+    existing caller (chapters, orchestrator) is unchanged."""
+    mock_src.return_value = _make_source_result()
+    mock_entity.return_value = _make_entity_result("e-1")
+    mock_fact.return_value = _make_fact_result("f-1")
+    mock_evid.return_value = _make_evidence_result(True)
+
+    await write_pass2_extraction(
+        _fake_session(),
+        user_id=USER_ID, project_id=PROJECT_ID,
+        source_type="chapter", source_id="ch-1", job_id=JOB_ID,
+        entities=[_entity("Kai")],
+        facts=[_fact("Kai trains daily")],
+    )
+
+    assert mock_entity.call_args.kwargs["provenance"] == "human_authored"
+    assert mock_fact.call_args.kwargs["provenance"] == "human_authored"

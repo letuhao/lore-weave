@@ -10,6 +10,7 @@ import type { EntityRelation } from '../api';
 import { TOUCH_TARGET_SQUARE_MOBILE_ONLY_CLASS } from '../lib/touchTarget';
 import { EntityEditDialog } from './EntityEditDialog';
 import { EntityMergeDialog } from './EntityMergeDialog';
+import { RelationEditDialog } from './RelationEditDialog';
 
 // K19d.3 — slide-over entity detail panel (read-only MVP).
 // Opens when EntitiesTab sets `selectedEntityId`; closes via X,
@@ -31,9 +32,11 @@ export interface EntityDetailPanelProps {
 function RelationRow({
   relation,
   entityId,
+  onEdit,
 }: {
   relation: EntityRelation;
   entityId: string;
+  onEdit: (relation: EntityRelation) => void;
 }) {
   const { t } = useTranslation('knowledge');
   const isOutgoing = relation.subject_id === entityId;
@@ -70,6 +73,22 @@ function RelationRow({
           {t('entities.detail.pendingBadge')}
         </span>
       )}
+      {/* Phase B C-FE — correct / mark-wrong this relation. Icon-only, so it
+          needs the square 44×44 tap target on mobile. Opens the SINGLE
+          panel-scoped dialog (not one per row) via onEdit. */}
+      <button
+        type="button"
+        onClick={() => onEdit(relation)}
+        title={t('relations.edit.cta')}
+        aria-label={t('relations.edit.cta')}
+        className={cn(
+          'inline-flex shrink-0 items-center justify-center rounded-sm p-1 text-muted-foreground transition-colors hover:text-foreground',
+          TOUCH_TARGET_SQUARE_MOBILE_ONLY_CLASS,
+        )}
+        data-testid="entity-detail-relation-edit"
+      >
+        <Pencil className="h-3 w-3" />
+      </button>
     </li>
   );
 }
@@ -85,6 +104,10 @@ export function EntityDetailPanel({
   );
   const [showEdit, setShowEdit] = useState(false);
   const [showMerge, setShowMerge] = useState(false);
+  // Phase B C-FE — ONE relation-edit dialog at panel scope (not one per row),
+  // keyed by the relation the user clicked. Mirrors the entity edit/merge
+  // single-dialog pattern below.
+  const [editingRelation, setEditingRelation] = useState<EntityRelation | null>(null);
 
   // C9 (D-K19d-γa-02) — unlock user_edited so extractions can
   // contribute aliases again. No confirm dialog state — a single
@@ -316,14 +339,14 @@ export function EntityDetailPanel({
                       {outgoing.length > 0 && (
                         <ul className="space-y-1" data-testid="entity-detail-outgoing">
                           {outgoing.map((r) => (
-                            <RelationRow key={r.id} relation={r} entityId={entityId!} />
+                            <RelationRow key={r.id} relation={r} entityId={entityId!} onEdit={setEditingRelation} />
                           ))}
                         </ul>
                       )}
                       {incoming.length > 0 && (
                         <ul className="space-y-1" data-testid="entity-detail-incoming">
                           {incoming.map((r) => (
-                            <RelationRow key={r.id} relation={r} entityId={entityId!} />
+                            <RelationRow key={r.id} relation={r} entityId={entityId!} onEdit={setEditingRelation} />
                           ))}
                         </ul>
                       )}
@@ -357,6 +380,15 @@ export function EntityDetailPanel({
               onOpenChange(false);
             }}
           />
+          {editingRelation && (
+            <RelationEditDialog
+              open={editingRelation !== null}
+              onOpenChange={(o) => {
+                if (!o) setEditingRelation(null);
+              }}
+              relation={editingRelation}
+            />
+          )}
         </>
       )}
     </Dialog.Root>

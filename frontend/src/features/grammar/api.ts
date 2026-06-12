@@ -17,15 +17,39 @@ interface LTMatch {
   rule: { id: string; description: string };
 }
 
+// ── Graceful-degrade circuit breaker ────────────────────────────────────────
+// Grammar is best-effort and optional: the LanguageTool service may simply not
+// be running (it's not a release blocker). Without a breaker, every paragraph
+// blur / debounce fires another request to the dead service, spamming the
+// browser console with failed-request logs. After one failure we "open" the
+// breaker for a cooldown window — `checkGrammar` then short-circuits to `[]`
+// without hitting the network. A later success auto-closes it (self-healing).
+const BREAKER_COOLDOWN_MS = 60_000;
+let breakerOpenUntil = 0;
+
+/** True when LanguageTool is presumed reachable (breaker closed). For UI/tests. */
+export function grammarServiceAvailable(): boolean {
+  return Date.now() >= breakerOpenUntil;
+}
+
+/** Test-only: reset the circuit breaker between cases. No-op in normal use. */
+export function __resetGrammarBreaker(): void {
+  breakerOpenUntil = 0;
+}
+
 /**
  * Check text for grammar/spelling issues via LanguageTool.
  * Returns empty array on any error (grammar check is best-effort).
+ * When the service has recently failed, short-circuits without a request
+ * (see the circuit breaker above) so a missing LT service degrades quietly.
  */
 export async function checkGrammar(
   text: string,
   language = 'auto',
 ): Promise<GrammarMatch[]> {
   if (!text.trim()) return [];
+  // Breaker open → skip the request entirely (no console-500 spam).
+  if (Date.now() < breakerOpenUntil) return [];
   const params = new URLSearchParams({
     text,
     language,
@@ -37,8 +61,16 @@ export async function checkGrammar(
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: params.toString(),
     });
-    if (!res.ok) return [];
+    if (!res.ok) {
+      // 5xx (or a proxy gateway error) means the service is unhealthy → back
+      // off. A 4xx is a problem with this specific request (e.g. text too
+      // long) — return empty but keep the breaker closed so other paragraphs
+      // still get checked.
+      if (res.status >= 500) breakerOpenUntil = Date.now() + BREAKER_COOLDOWN_MS;
+      return [];
+    }
     const data = (await res.json()) as { matches: LTMatch[] };
+    breakerOpenUntil = 0; // success → close the breaker
     return data.matches.map((m) => ({
       message: m.message,
       offset: m.offset,
@@ -47,6 +79,8 @@ export async function checkGrammar(
       rule: { id: m.rule.id, description: m.rule.description },
     }));
   } catch {
+    // Network error / service down → back off so we stop hammering it.
+    breakerOpenUntil = Date.now() + BREAKER_COOLDOWN_MS;
     return [];
   }
 }

@@ -59,6 +59,70 @@ impl TerrainKind {
             Self::Subterranean => "subterranean",
         }
     }
+
+    /// TMP-Q2 chunk B — inverse of [`Self::tag`]. Resolves a snake_case
+    /// `TerrainKind::tag()` value to its enum variant. Returns `None`
+    /// for unknown strings — chunk-B [`crate::engine::modificators::biome_theme_painter`]
+    /// relies on this AFTER registry-load validation (`is_valid_biome_key`)
+    /// already gated the input, so an `Option::expect` at call site is
+    /// safe.
+    ///
+    /// Closed-set match against the enum variants directly so adding a
+    /// future variant fails this lookup AND `is_valid_biome_key` AND
+    /// `tag()` in the same commit — no silent drift between the three.
+    pub fn from_tag(tag: &str) -> Option<Self> {
+        match tag {
+            "grass" => Some(Self::Grass),
+            "forest" => Some(Self::Forest),
+            "mountain" => Some(Self::Mountain),
+            "water" => Some(Self::Water),
+            "sand" => Some(Self::Sand),
+            "snow" => Some(Self::Snow),
+            "swamp" => Some(Self::Swamp),
+            "road" => Some(Self::Road),
+            "rough" => Some(Self::Rough),
+            "subterranean" => Some(Self::Subterranean),
+            _ => None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests_terrain_kind_tag {
+    use super::*;
+
+    #[test]
+    fn from_tag_round_trips_all_ten_variants() {
+        for tk in [
+            TerrainKind::Grass,
+            TerrainKind::Forest,
+            TerrainKind::Mountain,
+            TerrainKind::Water,
+            TerrainKind::Sand,
+            TerrainKind::Snow,
+            TerrainKind::Swamp,
+            TerrainKind::Road,
+            TerrainKind::Rough,
+            TerrainKind::Subterranean,
+        ] {
+            assert_eq!(
+                TerrainKind::from_tag(tk.tag()),
+                Some(tk),
+                "round-trip failed for {tk:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn from_tag_returns_none_for_unknown() {
+        for unknown in ["atmosphere", "GRASS", "", " grass", "grass "] {
+            assert_eq!(
+                TerrainKind::from_tag(unknown),
+                None,
+                "from_tag({unknown:?}) should be None"
+            );
+        }
+    }
 }
 
 /// V1+30d 4-variant tile state machine per TMP_001 §5 (standard procedural
@@ -92,10 +156,27 @@ impl TileState {
 /// the u8 values in `TilemapView.terrain_layer`. The dict pattern keeps
 /// `terrain_layer` compact (one byte per tile) while letting the cell
 /// definitions live once per vocabulary.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+///
+/// TMP-Q3 chunk C — extended with optional per-kind shader hints
+/// (`blend_radius`, `blend_strength`) for the frontend Stage-2
+/// cross-tile blend filter. Backward-compat: `Eq` + `Hash` derives
+/// dropped because `f32` only impls `PartialEq`. No call site
+/// depended on TerrainCell as a HashMap key, only on `==` checks.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TerrainCell {
     pub primitive: TerrainPrimitive,
     pub tag: String,
+    /// TMP-Q3 chunk C — frontend Stage-2 shader hint. Carries the
+    /// `TerrainKindDef.blend_radius` value through the
+    /// `terrain_vocabulary` to the frontend. `None` ⇒ frontend uses
+    /// `STAGE2_BLEND_DEFAULTS.blendRadius`. Additive — preserves V2
+    /// byte-identical when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blend_radius: Option<f32>,
+    /// TMP-Q3 chunk C — frontend Stage-2 shader hint. See
+    /// [`Self::blend_radius`]; same mechanism.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blend_strength: Option<f32>,
 }
 
 /// V2 terrain default — every V1 `TerrainKind` variant resolves to a
@@ -105,20 +186,43 @@ pub struct TerrainCell {
 /// registry.
 impl TerrainKind {
     /// V2 default cell (primitive + tag) for this V1 terrain kind.
+    ///
+    /// TMP-Q3 chunk C — also returns the per-kind blend hints that
+    /// the default registry (`registry/default.toml`) declares for
+    /// this kind. The drift-prevention test
+    /// `build_default_terrain_vocabulary_matches_static_helper` keeps
+    /// this helper and `registry/default.toml` in sync. If the TOML
+    /// adds/changes a hint, update the match arm below or the test
+    /// fails — caught at backend test time, not silently at runtime.
     pub fn v2_cell(self) -> TerrainCell {
-        let (primitive, tag) = match self {
-            Self::Grass => (TerrainPrimitive::Land, "lw:grass"),
-            Self::Forest => (TerrainPrimitive::Land, "lw:forest"),
-            Self::Mountain => (TerrainPrimitive::Land, "lw:mountain"),
-            Self::Water => (TerrainPrimitive::Water, "lw:water"),
-            Self::Sand => (TerrainPrimitive::Land, "lw:sand"),
-            Self::Snow => (TerrainPrimitive::Land, "lw:snow"),
-            Self::Swamp => (TerrainPrimitive::Land, "lw:swamp"),
-            Self::Road => (TerrainPrimitive::Path, "lw:road"),
-            Self::Rough => (TerrainPrimitive::Land, "lw:rough"),
-            Self::Subterranean => (TerrainPrimitive::Land, "lw:subterranean"),
+        let (primitive, tag, blend_radius, blend_strength) = match self {
+            Self::Grass => (TerrainPrimitive::Land, "lw:grass", None, None),
+            Self::Forest => (TerrainPrimitive::Land, "lw:forest", None, None),
+            Self::Mountain => (
+                TerrainPrimitive::Land,
+                "lw:mountain",
+                Some(0.55_f32),
+                Some(0.45_f32),
+            ),
+            Self::Water => (
+                TerrainPrimitive::Water,
+                "lw:water",
+                Some(0.95_f32),
+                Some(0.55_f32),
+            ),
+            Self::Sand => (TerrainPrimitive::Land, "lw:sand", None, None),
+            Self::Snow => (TerrainPrimitive::Land, "lw:snow", None, None),
+            Self::Swamp => (TerrainPrimitive::Land, "lw:swamp", None, None),
+            Self::Road => (TerrainPrimitive::Path, "lw:road", None, None),
+            Self::Rough => (TerrainPrimitive::Land, "lw:rough", None, None),
+            Self::Subterranean => (TerrainPrimitive::Land, "lw:subterranean", None, None),
         };
-        TerrainCell { primitive, tag: tag.to_string() }
+        TerrainCell {
+            primitive,
+            tag: tag.to_string(),
+            blend_radius,
+            blend_strength,
+        }
     }
 }
 
@@ -132,7 +236,12 @@ impl TerrainKind {
 /// `Registry::build_default_terrain_vocabulary()`.
 pub fn default_terrain_vocabulary() -> Vec<TerrainCell> {
     vec![
-        TerrainCell { primitive: TerrainPrimitive::Void, tag: "lw:void".to_string() },
+        TerrainCell {
+            primitive: TerrainPrimitive::Void,
+            tag: "lw:void".to_string(),
+            blend_radius: None,
+            blend_strength: None,
+        },
         TerrainKind::Grass.v2_cell(),        // index 1
         TerrainKind::Forest.v2_cell(),       // index 2
         TerrainKind::Mountain.v2_cell(),     // index 3

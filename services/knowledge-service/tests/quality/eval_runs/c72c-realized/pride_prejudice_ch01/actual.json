@@ -1,0 +1,286 @@
+{
+  "entities": [
+    {
+      "name": "Mr. Bennet",
+      "kind": "person",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "mr. bennet",
+      "canonical_id": "eid-loaded-0"
+    },
+    {
+      "name": "Netherfield Park",
+      "kind": "place",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "netherfield park",
+      "canonical_id": "eid-loaded-1"
+    },
+    {
+      "name": "Bingley",
+      "kind": "person",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "bingley",
+      "canonical_id": "eid-loaded-2"
+    },
+    {
+      "name": "Mrs. Long",
+      "kind": "person",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "mrs. long",
+      "canonical_id": "eid-loaded-3"
+    },
+    {
+      "name": "Lizzy",
+      "kind": "person",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "lizzy",
+      "canonical_id": "eid-loaded-4"
+    },
+    {
+      "name": "Jane",
+      "kind": "person",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "jane",
+      "canonical_id": "eid-loaded-6"
+    },
+    {
+      "name": "Lydia",
+      "kind": "person",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "lydia",
+      "canonical_id": "eid-loaded-7"
+    }
+  ],
+  "relations": [
+    {
+      "subject": "Bingley",
+      "predicate": "lives_in",
+      "object": "Netherfield Park",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-0"
+    },
+    {
+      "subject": "Lizzy",
+      "predicate": "child_of",
+      "object": "Mr. Bennet",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-1"
+    },
+    {
+      "subject": "Bingley",
+      "predicate": "rents",
+      "object": "Netherfield Park",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-3"
+    },
+    {
+      "subject": "Jane",
+      "predicate": "sibling_of",
+      "object": "Lydia",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-5"
+    },
+    {
+      "subject": "Lydia",
+      "predicate": "sibling_of",
+      "object": "Jane",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-6"
+    }
+  ],
+  "events": [
+    {
+      "name": "Mrs. Bennet informs Mr. Bennet that a yo",
+      "kind": "action",
+      "participants": [
+        "Mrs. Bennet",
+        "Mr. Bennet"
+      ],
+      "participant_ids": [
+        null,
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Mrs. Bennet informs Mr. Bennet that a young man named Bingley has taken Netherfield Park, and she elaborates on his background and intentions.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-0"
+    },
+    {
+      "name": "Mrs. Long informs Mrs. Bennet that Nethe",
+      "kind": "action",
+      "participants": [
+        "Mrs. Long"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Mrs. Long informs Mrs. Bennet that Netherfield Park has finally been leased.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-1"
+    },
+    {
+      "name": "Bingley finalizes the lease agreement wi",
+      "kind": "action",
+      "participants": [
+        "Bingley",
+        "Mr. Morris"
+      ],
+      "participant_ids": [
+        null,
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Bingley finalizes the lease agreement with Mr. Morris upon being delighted by Netherfield Park.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-2"
+    },
+    {
+      "name": "A young man of large fortune from the no",
+      "kind": "action",
+      "participants": [
+        "Bingley"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "A young man of large fortune from the north of England arrives at Netherfield Park in a chaise and four to inspect the property.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-3"
+    },
+    {
+      "name": "Mrs. Bennet formulates the idea that Mr.",
+      "kind": "action",
+      "participants": [
+        "Mrs. Bennet"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Mrs. Bennet formulates the idea that Mr. Bingley may marry one of her daughters, and she begins to plan accordingly.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-4"
+    },
+    {
+      "name": "Mrs. Bennet insists that Mr. Bennet must",
+      "kind": "action",
+      "participants": [
+        "Mrs. Bennet",
+        "Mr. Bennet"
+      ],
+      "participant_ids": [
+        null,
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Mrs. Bennet insists that Mr. Bennet must visit Bingley, arguing that it will benefit their daughters and be essential for securing a marriage.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-5"
+    },
+    {
+      "name": "It is announced that Bingley will assume",
+      "kind": "action",
+      "participants": [
+        "Bingley"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "It is announced that Bingley will assume full residence at Netherfield Park prior to the feast of Michaelmas.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-6"
+    },
+    {
+      "name": "It is suggested that Bingley might fall ",
+      "kind": "action",
+      "participants": [
+        "Bingley"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "It is suggested that Bingley might fall in love with one of the Bennet daughters during his stay at Netherfield.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-9"
+    },
+    {
+      "name": "Some of Bingley’s servants are expected ",
+      "kind": "action",
+      "participants": [
+        "Bingley"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Some of Bingley’s servants are expected to be in Netherfield Park by the conclusion of the following week.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-10"
+    },
+    {
+      "name": "The Lucases resolve to visit Mr. Bingley",
+      "kind": "action",
+      "participants": [
+        "Sir William and Lady Lucas"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "The Lucases resolve to visit Mr. Bingley, motivated by the prospect of one of their daughters marrying him.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-11"
+    }
+  ],
+  "facts": []
+}

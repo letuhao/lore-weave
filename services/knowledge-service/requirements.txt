@@ -23,6 +23,11 @@ redis[hiredis]>=5.0
 # Port of Google's language-detection library; pure Python, no
 # native deps. Seeded for deterministic output in app code.
 langdetect>=1.0.9
+# wiki-llm M4 — jieba POS segmenter for the canon-verify contradiction
+# check (extract_canon_terms: CJK proper-noun extraction, lazy-loaded so
+# its dict cost is paid only when a contradiction term is needed). Same
+# version lore-enrichment pins; pure Python, no native deps.
+jieba>=0.42
 # D-T2-01 — tiktoken for accurate token counting (CJK especially).
 # The len/4 heuristic undercounts CJK by ~3-7x, which over-promises
 # context budget. tiktoken.cl100k_base matches GPT-4/Claude-3.x
@@ -41,3 +46,9 @@ deepeval==4.0.4
 seqeval==1.2.2
 datasets==2.21.0
 krippendorff==0.7.0
+
+# ARCH-1 C1 (2026-06-01) — MCP server facade for the memory tools.
+# FastMCP ships inside the official `mcp` SDK; the [cli] extra adds the
+# fastmcp CLI + dev tooling. Mounted at /mcp in app/main.py. The
+# bespoke /internal/tools/* path is retained (dual-run).
+mcp[cli]>=1.9,<2

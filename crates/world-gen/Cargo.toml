@@ -39,12 +39,33 @@ geo-clipper = "0.9"
 # Re-exported by geo-clipper but we use `geo_types::Coord`/`LineString`/`Polygon`
 # directly in `shape/csg.rs` — declare a direct dep so the import resolves.
 geo-types = "0.7"
-# blocking HTTP for the optional LLM CreativeSeed authoring (Phase 4).
-reqwest = { workspace = true, features = ["blocking"] }
+# **Provider gateway invariant (CLAUDE.md)**: world-gen MUST go through the
+# loreweave_llm SDK for ALL LLM calls — direct provider HTTP from
+# shape/{anthropic,openai,ollama}.rs was removed 2026-05-30 as the violation
+# that landed via PR #5 (Phase 4 author.rs llm_json_request) + PR #8 (v4.3
+# dispatch direct providers). The SDK routes through provider-registry-service
+# which resolves `model_ref: Uuid` → provider config server-side.
+loreweave_llm = { path = "../../sdks/rust/loreweave_llm" }
+# Required by loreweave_llm's `ChatStreamRequest.model_ref` + user_id.
+uuid = { workspace = true }
+# v4.3e: optional Postgres-backed DispatchCache. Uses tokio runtime
+# internally via block_on so the sync DispatchCache trait stays sync.
+# Only constructed when a caller opts in via `PostgresDispatchCache::connect`;
+# CLI / examples don't add `--cache postgres` until the world-gen crate
+# ships into a platform service with a real Postgres available.
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "json", "macros"] }
+# Async runtime — needed by loreweave_llm SDK (streaming) AND by the existing
+# PostgresDispatchCache sync-async bridge. shape/llm.rs's GatewayLlmProvider /
+# GatewayTextProvider use `Handle::block_on` so the sync LlmProvider /
+# TextProvider trait surfaces are preserved.
+tokio = { version = "1", default-features = false, features = ["rt-multi-thread", "macros"] }
 
 [dev-dependencies]
 # Statistical benchmark harness — `cargo bench` (see benches/generate.rs).
 criterion = "0.5"
+# Mock gateway for naming.rs / author.rs tests — same as loreweave_llm's
+# own test harness in sdks/rust/loreweave_llm/tests/gateway_mock.rs.
+wiremock = { workspace = true }
 
 [[bench]]
 name = "generate"

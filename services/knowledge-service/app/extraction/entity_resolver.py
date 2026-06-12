@@ -136,6 +136,8 @@ async def resolve_or_merge_entity(
     source_type: str,
     confidence: float = 0.0,
     alias_map_repo: EntityAliasMapRepo | None = None,
+    auto_created: bool = False,
+    provenance: str = "human_authored",
 ) -> Entity:
     """Anchor-aware wrapper around `merge_entity`.
 
@@ -203,6 +205,7 @@ async def resolve_or_merge_entity(
                     kind=kind,
                     source_type=source_type,
                     confidence=confidence,
+                    provenance=provenance,
                 )
                 if redirected is not None:
                     return redirected
@@ -224,4 +227,6 @@ async def resolve_or_merge_entity(
         kind=kind,
         source_type=source_type,
         confidence=confidence,
+        auto_created=auto_created,
+        provenance=provenance,
     )

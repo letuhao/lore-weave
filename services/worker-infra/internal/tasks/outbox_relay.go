@@ -16,14 +16,39 @@ import (
 
 // streamMaxLen keys the Redis Stream MAXLEN per aggregate_type.
 // Matches 101_DATA_RE_ENGINEERING_PLAN.md §"Stream MAXLEN budgets":
-// chapter/glossary/generic run cool, chat spikes under active use.
+// chapter/generic run cool, chat spikes under active use.
+//
+// glossary + knowledge feed learning-service's append-only correction log
+// (Phase B, docs/specs/2026-05-31-phase-b-correction-capture.md §10.1).
+// Corrections are eval-grade history, NOT re-derivable like glossary_sync, so
+// MAXLEN trim must not drop unread events during a learning-service outage —
+// hence a large budget here (trim-before-consume effectively impossible inside
+// any realistic outage; the event_log + ReplayCorrections task is the backstop).
 var streamMaxLen = map[string]int64{
-	"chapter":  10000,
-	"chat":     50000,
-	"glossary": 10000,
+	"chapter":   10000,
+	"chat":      50000,
+	"glossary":  200000,
+	"knowledge": 200000,
 }
 
 const defaultStreamMaxLen int64 = 10000
+
+// relayStreamValues builds the Redis Stream field map for one relayed event.
+//
+// `outbox_id` = the producer's outbox row PK. It is stable across relay
+// re-emission of the same row (unlike the Redis message_id, which changes on
+// re-emit), so it is the end-to-end idempotency key for consumers that must
+// dedup an append-only log (e.g. learning-service's corrections). Phase B §4.0.
+// Additive: existing consumers ignore the unknown field.
+func relayStreamValues(eventType, aggregateID, payload, source, outboxID string) map[string]any {
+	return map[string]any{
+		"event_type":   eventType,
+		"aggregate_id": aggregateID,
+		"payload":      payload,
+		"source":       source,
+		"outbox_id":    outboxID,
+	}
+}
 
 // maxLenFor returns the retention cap for an aggregate_type's Redis Stream,
 // falling back to defaultStreamMaxLen for unknown types (e.g. "voice", "generic").
@@ -156,12 +181,7 @@ LIMIT 100
 			Stream: streamKey,
 			MaxLen: maxLenFor(aggregateType),
 			Approx: true,
-			Values: map[string]any{
-				"event_type":    eventType,
-				"aggregate_id":  aggIDStr,
-				"payload":       string(payload),
-				"source":        sourceName,
-			},
+			Values: relayStreamValues(eventType, aggIDStr, string(payload), sourceName, idStr),
 		}).Err()
 		if err != nil {
 			slog.Error("outbox-relay redis XADD failed", "source", sourceName, "id", idStr, "error", err)

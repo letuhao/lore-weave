@@ -1,0 +1,62 @@
+{
+  "browse": {
+    "title": "物語を見つける",
+    "subtitle": "LoreWeave コミュニティの公開小説を閲覧。言語を越えて読み、翻訳し、物語を探索しましょう。",
+    "search_placeholder": "タイトル・著者・言語で検索...",
+    "search_aria": "カタログを検索",
+    "no_books": "書籍が見つかりません。別の検索やフィルターをお試しください。",
+    "load_failed": "カタログの読み込みに失敗しました"
+  },
+  "filter": {
+    "lang_all": "すべて",
+    "clear_genres": "ジャンルをクリア",
+    "books_found": "{{count}} 件の書籍が見つかりました",
+    "sort_aria": "書籍の並び替え",
+    "sort": {
+      "recent": "新着順",
+      "popular": "人気順",
+      "chapters": "章数順",
+      "alpha": "アルファベット順"
+    }
+  },
+  "card": {
+    "chapters_short": "{{count}} 章"
+  },
+  "detail": {
+    "breadcrumb_browse": "閲覧",
+    "public_badge": "公開",
+    "unlisted_badge": "限定公開",
+    "chapters_count": "{{count}} 章",
+    "available_languages": "利用可能な言語",
+    "original": "原文",
+    "start_reading": "読み始める",
+    "no_chapters_yet": "まだ章がありません",
+    "share": "共有",
+    "copy_link": "リンクをコピー",
+    "loading": "読み込み中...",
+    "chapters_heading": "章",
+    "no_chapters_available": "利用可能な章がありません。",
+    "untitled": "無題",
+    "words": "{{count}} 語",
+    "showing_chapters": "{{total}} 章中 {{from}}–{{to}} を表示",
+    "stat_chapters": "章数",
+    "stat_languages": "言語",
+    "stat_original": "原文",
+    "stat_published": "公開日",
+    "na": "なし",
+    "book_not_found": "書籍が見つかりません",
+    "back_to_browse": "閲覧に戻る",
+    "link_copied": "リンクをコピーしました",
+    "copy_failed": "コピーに失敗しました",
+    "load_chapters_failed": "章の読み込みに失敗しました"
+  },
+  "shared": {
+    "indicator": "共有リンクを表示しています。この書籍は公開されていません。",
+    "invalid": "この共有リンクは無効か、有効期限が切れています。",
+    "not_found": "共有リンクが見つからないか、有効期限が切れています",
+    "browse_instead": "代わりに公開書籍を閲覧",
+    "back_to_chapters": "章に戻る",
+    "ch_short": "第 {{n}} 章",
+    "load_chapter_failed": "章の読み込みに失敗しました: {{error}}"
+  }
+}

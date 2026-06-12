@@ -1,0 +1,101 @@
+{
+  "entities": [
+    {
+      "name": "Sherlock Holmes",
+      "kind": "person"
+    },
+    {
+      "name": "Irene Adler",
+      "kind": "person"
+    },
+    {
+      "name": "Baker Street",
+      "kind": "place"
+    },
+    {
+      "name": "Study in Scarlet",
+      "kind": "artifact"
+    },
+    {
+      "name": "March",
+      "kind": "concept"
+    }
+  ],
+  "relations": [
+    {
+      "subject": "Sherlock Holmes",
+      "predicate": "knows",
+      "object": "Irene Adler",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Sherlock Holmes",
+      "predicate": "lives_in",
+      "object": "Baker Street",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Sherlock Holmes",
+      "predicate": "eclipses",
+      "object": "her sex",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Irene Adler",
+      "predicate": "born_from",
+      "object": "Study in Scarlet",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Sherlock Holmes",
+      "predicate": "predominates",
+      "object": "her sex",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Sherlock Holmes",
+      "predicate": "married_to",
+      "object": "Irene Adler",
+      "polarity": "negate"
+    },
+    {
+      "subject": "Sherlock Holmes",
+      "predicate": "works_for",
+      "object": "civil practice",
+      "polarity": "affirm"
+    }
+  ],
+  "events": [
+    {
+      "summary": "The narrator arrives in Baker Street on the twentieth of March, 1888, after a journey to visit a patient.",
+      "participants": [
+        "Narrator"
+      ]
+    },
+    {
+      "summary": "Sherlock Holmes encounters Irene Adler, who becomes the definitive woman in his life.",
+      "participants": [
+        "Sherlock Holmes",
+        "Irene Adler"
+      ]
+    },
+    {
+      "summary": "Sherlock Holmes develops a profound and enduring admiration for Irene Adler, surpassing all other women.",
+      "participants": [
+        "Sherlock Holmes"
+      ]
+    },
+    {
+      "summary": "Sherlock Holmes expresses his thoughts about Irene Adler, highlighting her significance in his life.",
+      "participants": [
+        "Sherlock Holmes"
+      ]
+    },
+    {
+      "summary": "The narrator, returning from a patient visit, feels a strong desire to reunite with Sherlock Holmes in Baker Street.",
+      "participants": [
+        "Narrator"
+      ]
+    }
+  ]
+}

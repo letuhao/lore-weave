@@ -1,0 +1,197 @@
+{
+  "entities": [
+    {
+      "name": "Sherlock Holmes",
+      "kind": "person",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "sherlock holmes",
+      "canonical_id": "eid-loaded-0"
+    },
+    {
+      "name": "Irene Adler",
+      "kind": "person",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "irene adler",
+      "canonical_id": "eid-loaded-1"
+    },
+    {
+      "name": "Baker Street",
+      "kind": "place",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "baker street",
+      "canonical_id": "eid-loaded-2"
+    },
+    {
+      "name": "Study in Scarlet",
+      "kind": "artifact",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "study in scarlet",
+      "canonical_id": "eid-loaded-3"
+    },
+    {
+      "name": "March",
+      "kind": "concept",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "march",
+      "canonical_id": "eid-loaded-4"
+    }
+  ],
+  "relations": [
+    {
+      "subject": "Sherlock Holmes",
+      "predicate": "knows",
+      "object": "Irene Adler",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-0"
+    },
+    {
+      "subject": "Sherlock Holmes",
+      "predicate": "lives_in",
+      "object": "Baker Street",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-1"
+    },
+    {
+      "subject": "Sherlock Holmes",
+      "predicate": "eclipses",
+      "object": "her sex",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-2"
+    },
+    {
+      "subject": "Sherlock Holmes",
+      "predicate": "predominates",
+      "object": "her sex",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-4"
+    },
+    {
+      "subject": "Sherlock Holmes",
+      "predicate": "married_to",
+      "object": "Irene Adler",
+      "polarity": "negate",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-5"
+    },
+    {
+      "subject": "Sherlock Holmes",
+      "predicate": "works_for",
+      "object": "civil practice",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-6"
+    }
+  ],
+  "events": [
+    {
+      "name": "The narrator arrives in Baker Street on ",
+      "kind": "action",
+      "participants": [
+        "Narrator"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "The narrator arrives in Baker Street on the twentieth of March, 1888, after a journey to visit a patient.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-0"
+    },
+    {
+      "name": "Sherlock Holmes encounters Irene Adler, ",
+      "kind": "action",
+      "participants": [
+        "Sherlock Holmes",
+        "Irene Adler"
+      ],
+      "participant_ids": [
+        null,
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Sherlock Holmes encounters Irene Adler, who becomes the definitive woman in his life.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-1"
+    },
+    {
+      "name": "Sherlock Holmes develops a profound and ",
+      "kind": "action",
+      "participants": [
+        "Sherlock Holmes"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Sherlock Holmes develops a profound and enduring admiration for Irene Adler, surpassing all other women.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-2"
+    },
+    {
+      "name": "Sherlock Holmes expresses his thoughts a",
+      "kind": "action",
+      "participants": [
+        "Sherlock Holmes"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Sherlock Holmes expresses his thoughts about Irene Adler, highlighting her significance in his life.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-3"
+    },
+    {
+      "name": "The narrator, returning from a patient v",
+      "kind": "action",
+      "participants": [
+        "Narrator"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "The narrator, returning from a patient visit, feels a strong desire to reunite with Sherlock Holmes in Baker Street.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-4"
+    }
+  ],
+  "facts": []
+}

@@ -1,4 +1,5 @@
 import type { JSONContent } from '@tiptap/react';
+import { useTranslation } from 'react-i18next';
 
 interface AudioBlockProps {
   node: JSONContent;
@@ -12,6 +13,7 @@ function formatDuration(ms: number): string {
 }
 
 export function AudioBlock({ node }: AudioBlockProps) {
+  const { t } = useTranslation('reader');
   const src = node.attrs?.src as string | null;
   const subtitle = (node.attrs?.subtitle as string) || '';
   const title = (node.attrs?.title as string) || '';
@@ -26,7 +28,7 @@ export function AudioBlock({ node }: AudioBlockProps) {
             <circle cx="6" cy="18" r="3" />
             <circle cx="18" cy="16" r="3" />
           </svg>
-          <span>Audio not available</span>
+          <span>{t('block.audio_unavailable')}</span>
         </div>
       </figure>
     );
@@ -36,7 +38,7 @@ export function AudioBlock({ node }: AudioBlockProps) {
     <figure className="block-audio">
       <div className="audio-player">
         <audio controls preload="metadata" src={src}>
-          Your browser does not support the audio element.
+          {t('block.audio_fallback')}
         </audio>
         {(durationMs != null || title) && (
           <div className="audio-meta">

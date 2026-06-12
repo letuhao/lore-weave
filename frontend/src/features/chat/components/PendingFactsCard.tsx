@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Check, Sparkles, X } from 'lucide-react';
 import { toast } from 'sonner';
 import type { PendingFact, PendingFactType } from '../types';
@@ -25,15 +26,15 @@ interface Props {
   onReject: (pendingFactId: string) => Promise<void>;
 }
 
-// fact_type → a short human label for the row badge.
-const FACT_TYPE_LABELS: Record<PendingFactType, string> = {
-  decision: 'Decision',
-  preference: 'Preference',
-  milestone: 'Milestone',
-  negation: 'Correction',
-};
-
 export function PendingFactsCard({ pendingFacts, onConfirm, onReject }: Props) {
+  const { t } = useTranslation('chat');
+  // fact_type → a short human label for the row badge.
+  const FACT_TYPE_LABELS: Record<PendingFactType, string> = {
+    decision: t('facts.type.decision'),
+    preference: t('facts.type.preference'),
+    milestone: t('facts.type.milestone'),
+    negation: t('facts.type.negation'),
+  };
   // Which row currently has an action in flight. Lets one row show a
   // disabled/pending state without freezing the others.
   const [actingId, setActingId] = useState<string | null>(null);
@@ -66,7 +67,7 @@ export function PendingFactsCard({ pendingFacts, onConfirm, onReject }: Props) {
         <div className="mb-2 flex items-center gap-1.5">
           <Sparkles className="h-3.5 w-3.5 text-primary" />
           <span className="text-xs font-semibold text-foreground">
-            Memories awaiting your confirmation
+            {t('facts.title')}
           </span>
         </div>
 
@@ -91,26 +92,26 @@ export function PendingFactsCard({ pendingFacts, onConfirm, onReject }: Props) {
                     data-testid="pending-fact-confirm"
                     disabled={busy}
                     onClick={() =>
-                      run(fact.pending_fact_id, onConfirm, 'Confirm failed')
+                      run(fact.pending_fact_id, onConfirm, t('facts.confirm_failed'))
                     }
-                    title="Confirm — save this memory"
+                    title={t('facts.confirm_title')}
                     className="flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[11px] font-medium text-emerald-400 transition-colors hover:bg-emerald-500/20 disabled:opacity-50"
                   >
                     <Check className="h-3 w-3" />
-                    Confirm
+                    {t('facts.confirm')}
                   </button>
                   <button
                     type="button"
                     data-testid="pending-fact-reject"
                     disabled={busy}
                     onClick={() =>
-                      run(fact.pending_fact_id, onReject, 'Reject failed')
+                      run(fact.pending_fact_id, onReject, t('facts.reject_failed'))
                     }
-                    title="Reject — discard this memory"
+                    title={t('facts.reject_title')}
                     className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-50"
                   >
                     <X className="h-3 w-3" />
-                    Reject
+                    {t('facts.reject')}
                   </button>
                 </div>
               </li>

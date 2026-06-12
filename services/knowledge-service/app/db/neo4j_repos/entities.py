@@ -48,6 +48,8 @@ __all__ = [
     "get_entity",
     "find_entities_by_name",
     "find_entities_by_vector",
+    "set_entity_embedding",
+    "find_entities_needing_embedding",
     "link_to_glossary",
     "get_entity_by_glossary_id",
     "unlink_from_glossary",
@@ -58,6 +60,7 @@ __all__ = [
     "delete_entities_with_zero_evidence",
     "list_entities_filtered",
     "get_entity_with_relations",
+    "get_neighborhood_by_glossary_id",
     "update_entity_fields",
     "unlock_entity_user_edited",
     "merge_entities",
@@ -127,6 +130,14 @@ class Entity(BaseModel):
     # `W/"<version>"` and requires If-Match on PATCH.
     version: int = 1
 
+    # Cycle 73e: True when minted by Pass2 writer's Tier-B autocreate
+    # (relation subject/object unresolved against extracted entity
+    # list AND not in anchors). Cleared on legit re-extraction via
+    # `_MERGE_ENTITY_CYPHER`'s ON MATCH promotion CASE. Legacy nodes
+    # without the property read as False via `_node_to_entity` +
+    # `coalesce(e.auto_created, false)` Cypher idiom.
+    auto_created: bool = False
+
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -165,6 +176,11 @@ def _node_to_entity(node: Any) -> Entity:
     # `test_cypher_version_coalesce_default_matches_read_path`.
     if data.get("version") is None:
         data["version"] = 1
+    # Cycle 73e: legacy (pre-73e) entities lack `auto_created`. Coalesce
+    # to False at read time; Cypher read sites mirror via `coalesce(
+    # e.auto_created, false)` per the same backfill idiom.
+    if data.get("auto_created") is None:
+        data["auto_created"] = False
     return Entity.model_validate(data)
 
 
@@ -178,6 +194,16 @@ def _node_to_entity(node: Any) -> Entity:
 # γ-a nodes lacking the property (null → false = un-edited) so
 # existing extraction behaviour is preserved until a user explicitly
 # touches the row. The remaining arms are the pre-γ-a append logic.
+#
+# Cycle 73e: `auto_created` flag tracks entities minted by the
+# Pass2 writer's Tier-B autocreate path (relation subject/object
+# unresolved against extracted entity list AND not in anchors).
+# Read sites MUST use `coalesce(e.auto_created, false)` because
+# legacy nodes (pre-73e) lack the property — same backfill idiom
+# as `user_edited` and `version`. ON MATCH promotion: any non-auto
+# write (default `$auto_created = false`) clears the flag — so
+# a real extractor hit on a previously-auto-created entity promotes
+# it (cycle 73e M1 fold).
 _MERGE_ENTITY_CYPHER = """
 MERGE (e:Entity {id: $id})
 ON CREATE SET
@@ -189,6 +215,7 @@ ON CREATE SET
   e.aliases = [$name],
   e.canonical_version = $canonical_version,
   e.source_types = [$source_type],
+  e.provenances = [$provenance],
   e.confidence = $confidence,
   e.glossary_entity_id = NULL,
   e.anchor_score = 0.0,
@@ -197,6 +224,7 @@ ON CREATE SET
   e.mention_count = 0,
   e.user_edited = false,
   e.version = 1,
+  e.auto_created = $auto_created,
   e.created_at = datetime(),
   e.updated_at = datetime()
 ON MATCH SET
@@ -209,9 +237,20 @@ ON MATCH SET
     WHEN $source_type IN e.source_types THEN e.source_types
     ELSE e.source_types + $source_type
   END,
+  // CM5 provenance — accumulate the deduped set of authorship origins
+  // (PO: accumulate). Mirrors source_types. coalesce guards pre-CM5 nodes
+  // that have no provenances property yet.
+  e.provenances = CASE
+    WHEN $provenance IN coalesce(e.provenances, []) THEN e.provenances
+    ELSE coalesce(e.provenances, []) + $provenance
+  END,
   e.confidence = CASE
     WHEN $confidence > e.confidence THEN $confidence
     ELSE e.confidence
+  END,
+  e.auto_created = CASE
+    WHEN $auto_created = false THEN false
+    ELSE coalesce(e.auto_created, false)
   END,
   e.version = coalesce(e.version, 1) + 1,
   e.updated_at = datetime()
@@ -231,6 +270,8 @@ async def merge_entity(
     source_type: str,
     confidence: float = 0.0,
     canonical_version: int = 1,
+    auto_created: bool = False,
+    provenance: str = "human_authored",
 ) -> Entity:
     """Idempotent upsert. Re-running with the same (user_id, project_id,
     name, kind) tuple returns the same node — no duplicates.
@@ -244,6 +285,13 @@ async def merge_entity(
     because the MERGE has already mutated the node by the time
     the WHERE filters the return. K11.5a-R1/R2: docstring fixed
     to be honest. The real defense is the canonical_id hash.
+
+    Cycle 73e: `auto_created` defaults False (legit extractor write).
+    When True, marks the entity as minted by Pass2 writer's autocreate
+    path (relation subject/object unresolved). ON MATCH promotion
+    semantics: a later auto_created=False call (real extraction)
+    clears the flag, so the "show only auto-created" UI list shrinks
+    naturally on legit re-extraction.
     """
     canonical_id = entity_canonical_id(
         user_id=user_id,
@@ -267,6 +315,8 @@ async def merge_entity(
         canonical_version=canonical_version,
         source_type=source_type,
         confidence=confidence,
+        auto_created=auto_created,
+        provenance=provenance,
     )
     record = await result.single()
     if record is None:
@@ -290,6 +340,7 @@ async def merge_entity_at_id(
     kind: str,
     source_type: str,
     confidence: float = 0.0,
+    provenance: str = "human_authored",
 ) -> "Entity | None":
     """C17 — upsert at a caller-supplied entity id (no SHA derivation).
 
@@ -332,6 +383,10 @@ async def merge_entity_at_id(
               WHEN $source_type IN e.source_types THEN e.source_types
               ELSE e.source_types + $source_type
             END,
+            e.provenances = CASE
+              WHEN $provenance IN coalesce(e.provenances, []) THEN e.provenances
+              ELSE coalesce(e.provenances, []) + $provenance
+            END,
             e.confidence = CASE
               WHEN $confidence > e.confidence THEN $confidence
               ELSE e.confidence
@@ -347,6 +402,7 @@ async def merge_entity_at_id(
         kind=kind,
         source_type=source_type,
         confidence=confidence,
+        provenance=provenance,
     )
     record = await result.single()
     if record is None:
@@ -944,6 +1000,133 @@ async def find_entities_by_vector(
     return hits
 
 
+# ── K17 entity-embedding WRITE pipeline ────────────────────────────────
+#
+# The read counterpart (find_entities_by_vector, above) expects every
+# anchored :Entity to carry `embedding_{dim}` + `embedding_model`. K17 is the
+# producer that stamps them. Mirrors the passage embedding write
+# (app/db/neo4j_repos/passages.py upsert_passage): dim-validated f-string into
+# the property name (closed-set, no injection), only the dim-matching property
+# written so mixed-model tenants coexist. Unlike passages (chapter-scoped,
+# MERGE-on-ingest), an entity already exists — we MATCH and SET in place.
+
+# `embed_prop` is f-string-substituted; it is validated against the closed
+# SUPPORTED_VECTOR_DIMS set below, so there is no injection surface.
+_SET_ENTITY_EMBEDDING_CYPHER_TEMPLATE = """
+MATCH (e:Entity {{id: $id}})
+WHERE e.user_id = $user_id
+SET e.{embed_prop} = $embedding,
+    e.embedding_model = $embedding_model,
+    e.embedding_version = $embedding_version
+RETURN e.id AS id
+"""
+# NOTE: deliberately does NOT touch `e.updated_at`. Embedding is a DERIVED-data
+# write, not a content edit; bumping the shared `updated_at` would make an
+# embedded entity falsely float to the top of the recency-ordered listing
+# queries (`ORDER BY e.updated_at DESC` — list_entities_filtered etc.) and skew
+# `find_entities_needing_embedding`'s own newest-content-first ordering.
+# `embedding_version` is the embed-freshness tracker (review-impl MED).
+
+
+async def set_entity_embedding(
+    session: CypherSession,
+    *,
+    user_id: str,
+    entity_id: str,
+    embedding: list[float],
+    embedding_dim: int,
+    embedding_model: str,
+    embedding_version: int,
+) -> bool:
+    """Stamp a per-dim embedding on an EXISTING `:Entity` (K17).
+
+    MATCH (not MERGE) — the entity must already exist (created by the Pass-2
+    writer / glossary anchor). Writes only the `embedding_{dim}` property that
+    matches `embedding_dim`; the other dim properties stay untouched so
+    mixed-model tenants (projects on different embedding models) coexist —
+    same invariant as `upsert_passage`. `embedding_version` records the
+    entity's `version` at embed time so the dirty-signal in
+    `find_entities_needing_embedding` can detect content drift. Returns True
+    when a row was updated, False when no entity matched (id/user mismatch)."""
+    if embedding_dim not in SUPPORTED_VECTOR_DIMS:
+        raise ValueError(
+            f"unsupported embedding_dim {embedding_dim}; "
+            f"must be one of {SUPPORTED_VECTOR_DIMS}"
+        )
+    if len(embedding) != embedding_dim:
+        raise ValueError(
+            f"embedding length {len(embedding)} does not match dim {embedding_dim}"
+        )
+    cypher = _SET_ENTITY_EMBEDDING_CYPHER_TEMPLATE.format(
+        embed_prop=f"embedding_{embedding_dim}",
+    )
+    result = await run_write(
+        session,
+        cypher,
+        user_id=user_id,
+        id=entity_id,
+        embedding=embedding,
+        embedding_model=embedding_model,
+        embedding_version=embedding_version,
+    )
+    record = await result.single()
+    return record is not None
+
+
+# Anchored entities whose embedding is MISSING or STALE for the project's
+# current model: never embedded, embedded under a different model, or whose
+# content (version) advanced since the last embed. Scoped to anchored
+# (glossary_entity_id) + active (not archived) entities — exactly the set the
+# read path (find_entities_by_vector) can surface, so we never embed an orphan
+# KG node that would never be returned anyway.
+_FIND_NEEDING_EMBEDDING_CYPHER = """
+MATCH (e:Entity)
+WHERE e.user_id = $user_id
+  AND ($project_id IS NULL OR e.project_id = $project_id)
+  AND e.glossary_entity_id IS NOT NULL
+  AND e.archived_at IS NULL
+  AND (
+    e.embedding_model IS NULL
+    OR e.embedding_model <> $embedding_model
+    OR coalesce(e.embedding_version, -1) < coalesce(e.version, 1)
+  )
+RETURN e
+ORDER BY e.updated_at DESC
+LIMIT $limit
+"""
+
+
+async def find_entities_needing_embedding(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str | None,
+    embedding_model: str,
+    limit: int = 200,
+) -> list[Entity]:
+    """Anchored, active entities that need a (re)embed for `embedding_model`.
+
+    "Need" = never embedded, embedded under a different model, or content
+    advanced (`embedding_version < version`) since the last embed. Newest-first
+    so an incremental run after an extraction touches the just-changed entities
+    first. The producer (`app.extraction.entity_embedder`) drains this with a
+    per-run cap; `limit` bounds one batch."""
+    if limit <= 0:
+        raise ValueError(f"limit must be positive, got {limit}")
+    result = await run_read(
+        session,
+        _FIND_NEEDING_EMBEDDING_CYPHER,
+        user_id=user_id,
+        project_id=project_id,
+        embedding_model=embedding_model,
+        limit=limit,
+    )
+    out: list[Entity] = []
+    async for record in result:
+        out.append(_node_to_entity(record["e"]))
+    return out
+
+
 # ── link_to_glossary / unlink_from_glossary ───────────────────────────
 
 
@@ -1517,6 +1700,109 @@ async def get_entity_with_relations(
     )
 
 
+# ── C5 (D4-03) — get_neighborhood_by_glossary_id ─────────────────────
+#
+# Wiki-from-KG read path. glossary-service hosts the wiki feature but
+# does NOT hold the entity-to-entity relationship graph — that lives
+# only here in Neo4j, keyed by `glossary_entity_id`. The wiki renderer
+# in glossary-service calls the internal endpoint that wraps this, so
+# it can build an article body from the entity's 1-hop neighborhood.
+#
+# This is a READ-ONLY path (Q2 LOCKED: enrichment/wiki never write
+# Neo4j canonical content directly). It is the glossary-FK-keyed twin
+# of `get_entity_with_relations`: same relation projection + cap, but
+# matched by the glossary FK instead of the canonical id, because the
+# wiki caller knows the glossary entity_id, not the hash-derived
+# canonical_id (which drifts on rename).
+
+_GET_NEIGHBORHOOD_BY_GLOSSARY_ID_CYPHER = """
+MATCH (e:Entity {glossary_entity_id: $glossary_entity_id})
+WHERE e.user_id = $user_id
+CALL {
+  WITH e
+  OPTIONAL MATCH (subj:Entity)-[r:RELATES_TO]->(obj:Entity)
+  WHERE (subj = e OR obj = e)
+    AND r.user_id = $user_id
+    AND r.valid_until IS NULL
+  WITH r, subj, obj
+  WHERE r IS NOT NULL
+  ORDER BY r.confidence DESC, r.created_at DESC
+  LIMIT $rel_cap
+  RETURN collect({r: r, subj: subj, obj: obj}) AS edges
+}
+CALL {
+  WITH e
+  OPTIONAL MATCH (subj:Entity)-[r:RELATES_TO]->(obj:Entity)
+  WHERE (subj = e OR obj = e)
+    AND r.user_id = $user_id
+    AND r.valid_until IS NULL
+  RETURN count(r) AS total
+}
+RETURN e, edges, total
+"""
+
+
+async def get_neighborhood_by_glossary_id(
+    session: CypherSession,
+    *,
+    user_id: str,
+    glossary_entity_id: str,
+    rel_cap: int = ENTITIES_DETAIL_REL_CAP,
+) -> EntityDetail | None:
+    """C5 (D4-03) — entity + 1-hop active RELATES_TO edges, keyed by the
+    glossary FK rather than the canonical id.
+
+    Returns None when no anchored entity carries the given
+    `glossary_entity_id` for this user (a glossary entity that has
+    never been synced into the KG, or a cross-user lookup). A None
+    result is a VALID "empty neighborhood" signal for the wiki
+    renderer — it produces a minimal body rather than failing.
+
+    Relations carry `confidence` + `pending_validation`, and the
+    entity carries `source_types`, so the caller can mark enriched
+    (`source_type='enriched'`, pending, confidence<1.0) facts as
+    visibly distinct from glossary canon (H0 LOCKED).
+    """
+    if not glossary_entity_id:
+        raise ValueError("glossary_entity_id must be a non-empty string")
+    result = await run_read(
+        session,
+        _GET_NEIGHBORHOOD_BY_GLOSSARY_ID_CYPHER,
+        user_id=user_id,
+        glossary_entity_id=glossary_entity_id,
+        rel_cap=rel_cap,
+    )
+    record = await result.single()
+    if record is None:
+        return None
+    entity = _node_to_entity(record["e"])
+    total = int(record["total"] or 0)
+
+    relations: list[Relation] = []
+    for edge in record["edges"]:
+        r = edge["r"]
+        subj = edge["subj"]
+        obj = edge["obj"]
+        r_data = dict(r.items() if hasattr(r, "items") else r)
+        for k, v in list(r_data.items()):
+            if v is not None and hasattr(v, "to_native"):
+                r_data[k] = v.to_native()
+        subj_data = dict(subj.items() if hasattr(subj, "items") else subj)
+        obj_data = dict(obj.items() if hasattr(obj, "items") else obj)
+        r_data["subject_name"] = subj_data.get("name")
+        r_data["subject_kind"] = subj_data.get("kind")
+        r_data["object_name"] = obj_data.get("name")
+        r_data["object_kind"] = obj_data.get("kind")
+        relations.append(Relation.model_validate(r_data))
+
+    return EntityDetail(
+        entity=entity,
+        relations=relations,
+        relations_truncated=total > len(relations),
+        total_relations=total,
+    )
+
+
 # ── K19d γ-a — update_entity_fields (PATCH backend) ──────────────────
 #
 # Only fields the caller passes are written — None leaves the existing
@@ -1548,7 +1834,11 @@ async def get_entity_with_relations(
 _UPDATE_ENTITY_FIELDS_CYPHER = """
 MATCH (e:Entity {id: $id})
 WHERE e.user_id = $user_id
-WITH e, coalesce(e.version, 1) AS current_version
+// Phase B: capture the pre-edit snapshot in the SAME query (design §6.3 —
+// same-Cypher, NOT read-before-write, so before/after are TOCTOU-consistent).
+// The WITH materialises `before` eagerly, before the FOREACH SET mutates e.
+WITH e, coalesce(e.version, 1) AS current_version,
+     {name: e.name, kind: e.kind, aliases: coalesce(e.aliases, [])} AS before
 FOREACH (_ IN CASE WHEN current_version = $expected_version THEN [1] ELSE [] END |
   SET
     e.name = CASE WHEN $name IS NULL THEN e.name ELSE $name END,
@@ -1565,7 +1855,7 @@ FOREACH (_ IN CASE WHEN current_version = $expected_version THEN [1] ELSE [] END
     e.version = current_version + 1,
     e.updated_at = datetime()
 )
-RETURN e, current_version = $expected_version AS applied
+RETURN e, current_version = $expected_version AS applied, before
 """
 
 
@@ -1578,9 +1868,16 @@ async def update_entity_fields(
     kind: str | None,
     aliases: list[str] | None,
     expected_version: int,
-) -> Entity | None:
+) -> tuple[Entity | None, dict | None]:
     """K19d.5 + C9 — patch an entity's display fields with optimistic
     concurrency.
+
+    Phase B: returns ``(entity, before)`` where ``before`` is the pre-edit
+    ``{name, kind, aliases}`` snapshot captured in the SAME Cypher (design §6.3)
+    — used by the router to emit a ``knowledge.entity_corrected`` event.
+    ``before`` is ``None`` when no row matched. On a version mismatch the
+    function still raises ``VersionMismatchError`` (before is irrelevant — no
+    edit happened).
 
     Sets `user_edited=true` + bumps `version` on any successful write.
     `expected_version` must match the row's current version (coalesced
@@ -1621,11 +1918,13 @@ async def update_entity_fields(
     )
     record = await result.single()
     if record is None:
-        return None
+        return None, None
     entity = _node_to_entity(record["e"])
     if not record["applied"]:
         raise VersionMismatchError(entity)
-    return entity
+    before_raw = record["before"]
+    before = dict(before_raw) if before_raw is not None else None
+    return entity, before
 
 
 # C9 (D-K19d-γa-02) — unlock user_edited so extractions can contribute
@@ -1861,6 +2160,20 @@ RETURN t
 """
 
 
+# T2.1 — re-point the source's `(:Fact)-[:ABOUT]->` edges onto target before the
+# DETACH DELETE, else facts about a merged-away entity orphan (vanish from the live
+# entity's codex list). MERGE is idempotent — a fact already ABOUT target gains no
+# dup; the stale source edge is removed by the DETACH DELETE in step 7.
+_MERGE_REWIRE_ABOUT_CYPHER = """
+MATCH (f:Fact)-[:ABOUT]->(s:Entity {id: $source_id})
+WHERE f.user_id = $user_id
+MATCH (t:Entity {id: $target_id})
+WHERE t.user_id = $user_id
+MERGE (f)-[:ABOUT]->(t)
+RETURN count(*) AS rewired
+"""
+
+
 _MERGE_DELETE_SOURCE_CYPHER = """
 MATCH (s:Entity {id: $source_id})
 WHERE s.user_id = $user_id
@@ -2058,6 +2371,15 @@ async def merge_entities(
         await run_write(
             tx,
             _MERGE_REWIRE_EVIDENCED_BY_CYPHER,
+            user_id=user_id,
+            source_id=source_id,
+            target_id=target_id,
+        )
+
+        # 5b. T2.1 — re-point (:Fact)-[:ABOUT]-> edges onto target (before delete).
+        await run_write(
+            tx,
+            _MERGE_REWIRE_ABOUT_CYPHER,
             user_id=user_id,
             source_id=source_id,
             target_id=target_id,

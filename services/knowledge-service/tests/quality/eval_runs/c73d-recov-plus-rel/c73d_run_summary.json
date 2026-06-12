@@ -1,0 +1,269 @@
+{
+  "variant": "c73d-recov-plus-rel",
+  "recovery_model_ref": "019e5650-eca7-78c2-985d-465aa3bce1ce",
+  "has_filter": true,
+  "elapsed_sec": 271.2,
+  "chapters": [
+    {
+      "chapter": "alice_ch01",
+      "pre": {
+        "entities": 11,
+        "relations": 11,
+        "events": 7,
+        "facts": 0
+      },
+      "post": {
+        "entities": 11,
+        "relations": 7,
+        "events": 7,
+        "facts": 0
+      },
+      "recovery_decisions": [],
+      "duration_sec": 43.8
+    },
+    {
+      "chapter": "alice_ch02",
+      "pre": {
+        "entities": 13,
+        "relations": 11,
+        "events": 12,
+        "facts": 0
+      },
+      "post": {
+        "entities": 13,
+        "relations": 8,
+        "events": 12,
+        "facts": 0
+      },
+      "recovery_decisions": [],
+      "duration_sec": 49.0
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "pre": {
+        "entities": 16,
+        "relations": 11,
+        "events": 4,
+        "facts": 0
+      },
+      "post": {
+        "entities": 19,
+        "relations": 8,
+        "events": 4,
+        "facts": 0
+      },
+      "recovery_decisions": [
+        {
+          "name": "仙卿",
+          "verdict": "entity",
+          "source": "llm",
+          "kind": "organization"
+        },
+        {
+          "name": "大海",
+          "verdict": "entity",
+          "source": "llm",
+          "kind": "place"
+        },
+        {
+          "name": "四方",
+          "verdict": "entity",
+          "source": "llm",
+          "kind": "concept"
+        }
+      ],
+      "duration_sec": 45.9
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "pre": {
+        "entities": 20,
+        "relations": 20,
+        "events": 11,
+        "facts": 0
+      },
+      "post": {
+        "entities": 21,
+        "relations": 12,
+        "events": 11,
+        "facts": 0
+      },
+      "recovery_decisions": [
+        {
+          "name": "大鬧天宮",
+          "verdict": "entity",
+          "source": "llm",
+          "kind": "concept"
+        }
+      ],
+      "duration_sec": 40.9
+    },
+    {
+      "chapter": "little_women_ch01",
+      "pre": {
+        "entities": 18,
+        "relations": 18,
+        "events": 38,
+        "facts": 0
+      },
+      "post": {
+        "entities": 19,
+        "relations": 4,
+        "events": 38,
+        "facts": 0
+      },
+      "recovery_decisions": [
+        {
+          "name": "boy's games and work and manners",
+          "verdict": "abstract",
+          "source": "llm",
+          "kind": null
+        },
+        {
+          "name": "fancy words and refined speech",
+          "verdict": "abstract",
+          "source": "llm",
+          "kind": null
+        },
+        {
+          "name": "music at home",
+          "verdict": "abstract",
+          "source": "llm",
+          "kind": null
+        },
+        {
+          "name": "the room with the fire crackled cheerfully within",
+          "verdict": "entity",
+          "source": "llm",
+          "kind": "place"
+        },
+        {
+          "name": "tiresome children",
+          "verdict": "abstract",
+          "source": "llm",
+          "kind": null
+        },
+        {
+          "name": "the reason for not having presents this Christmas",
+          "verdict": "abstract",
+          "source": "llm",
+          "kind": null
+        },
+        {
+          "name": "home peace and comfort",
+          "verdict": "abstract",
+          "source": "llm",
+          "kind": null
+        }
+      ],
+      "duration_sec": 26.3
+    },
+    {
+      "chapter": "pride_prejudice_ch01",
+      "pre": {
+        "entities": 8,
+        "relations": 16,
+        "events": 12,
+        "facts": 0
+      },
+      "post": {
+        "entities": 9,
+        "relations": 7,
+        "events": 12,
+        "facts": 0
+      },
+      "recovery_decisions": [
+        {
+          "name": "north of England",
+          "verdict": "entity",
+          "source": "llm",
+          "kind": "place"
+        }
+      ],
+      "duration_sec": 24.7
+    },
+    {
+      "chapter": "sherlock_scandal_ch01",
+      "pre": {
+        "entities": 5,
+        "relations": 7,
+        "events": 5,
+        "facts": 0
+      },
+      "post": {
+        "entities": 5,
+        "relations": 2,
+        "events": 5,
+        "facts": 0
+      },
+      "recovery_decisions": [
+        {
+          "name": "her sex",
+          "verdict": "abstract",
+          "source": "llm",
+          "kind": null
+        },
+        {
+          "name": "civil practice",
+          "verdict": "abstract",
+          "source": "llm",
+          "kind": null
+        }
+      ],
+      "duration_sec": 7.4
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "pre": {
+        "entities": 16,
+        "relations": 12,
+        "events": 10,
+        "facts": 0
+      },
+      "post": {
+        "entities": 16,
+        "relations": 11,
+        "events": 10,
+        "facts": 0
+      },
+      "recovery_decisions": [],
+      "duration_sec": 13.9
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "pre": {
+        "entities": 13,
+        "relations": 15,
+        "events": 14,
+        "facts": 0
+      },
+      "post": {
+        "entities": 16,
+        "relations": 13,
+        "events": 14,
+        "facts": 0
+      },
+      "recovery_decisions": [
+        {
+          "name": "mẹ ruột Tấm",
+          "verdict": "entity",
+          "source": "llm",
+          "kind": "person"
+        },
+        {
+          "name": "cung",
+          "verdict": "entity",
+          "source": "llm",
+          "kind": "place"
+        },
+        {
+          "name": "cha Tấm",
+          "verdict": "entity",
+          "source": "llm",
+          "kind": "person"
+        }
+      ],
+      "duration_sec": 19.3
+    }
+  ]
+}

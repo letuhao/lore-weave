@@ -1,0 +1,410 @@
+{
+  "chapter": "journey_west_zh_ch01",
+  "entities": {
+    "tp": [
+      {
+        "actual_idx": 0,
+        "expected_idx": 1,
+        "actual_name": "傲來國",
+        "actual_kind": "place",
+        "expected_name": "傲來國",
+        "expected_kind": "place",
+        "matched_via": "canonical_name"
+      },
+      {
+        "actual_idx": 1,
+        "expected_idx": 6,
+        "actual_name": "千里眼",
+        "actual_kind": "person",
+        "expected_name": "千里眼",
+        "expected_kind": "person",
+        "matched_via": "canonical_name"
+      },
+      {
+        "actual_idx": 2,
+        "expected_idx": 2,
+        "actual_name": "東勝神洲",
+        "actual_kind": "place",
+        "expected_name": "東勝神洲",
+        "expected_kind": "place",
+        "matched_via": "canonical_name"
+      },
+      {
+        "actual_idx": 4,
+        "expected_idx": 4,
+        "actual_name": "石猴",
+        "actual_kind": "person",
+        "expected_name": "石猴",
+        "expected_kind": "person",
+        "matched_via": "canonical_name"
+      },
+      {
+        "actual_idx": 5,
+        "expected_idx": 0,
+        "actual_name": "花果山",
+        "actual_kind": "place",
+        "expected_name": "花果山",
+        "expected_kind": "place",
+        "matched_via": "canonical_name"
+      },
+      {
+        "actual_idx": 6,
+        "expected_idx": 7,
+        "actual_name": "順風耳",
+        "actual_kind": "person",
+        "expected_name": "順風耳",
+        "expected_kind": "person",
+        "matched_via": "canonical_name"
+      },
+      {
+        "actual_idx": 7,
+        "expected_idx": 3,
+        "actual_name": "仙石",
+        "actual_kind": "artifact",
+        "expected_name": "仙石",
+        "expected_kind": "artifact",
+        "matched_via": "canonical_name"
+      },
+      {
+        "actual_idx": 12,
+        "expected_idx": 8,
+        "actual_name": "金闕雲宮靈霄寶殿",
+        "actual_kind": "place",
+        "expected_name": "靈霄寶殿",
+        "expected_kind": "place",
+        "matched_via": "alias"
+      }
+    ],
+    "fp": [
+      {
+        "actual_idx": 3,
+        "actual_name": "玉皇大天尊玄穹高上帝",
+        "actual_kind": "person"
+      },
+      {
+        "actual_idx": 8,
+        "actual_name": "北俱蘆洲",
+        "actual_kind": "place"
+      },
+      {
+        "actual_idx": 9,
+        "actual_name": "南贍部洲",
+        "actual_kind": "place"
+      },
+      {
+        "actual_idx": 10,
+        "actual_name": "盤古開闢",
+        "actual_kind": "concept"
+      },
+      {
+        "actual_idx": 11,
+        "actual_name": "西牛賀洲",
+        "actual_kind": "place"
+      },
+      {
+        "actual_idx": 13,
+        "actual_name": "三皇治世",
+        "actual_kind": "concept"
+      },
+      {
+        "actual_idx": 14,
+        "actual_name": "五帝定倫",
+        "actual_kind": "concept"
+      },
+      {
+        "actual_idx": 15,
+        "actual_name": "石卵",
+        "actual_kind": "artifact"
+      }
+    ],
+    "fn": [
+      {
+        "expected_idx": 5,
+        "expected_name": "玉皇大天尊",
+        "expected_kind": "person",
+        "expected_aliases": [
+          "玉帝",
+          "玄穹高上帝"
+        ]
+      },
+      {
+        "expected_idx": 9,
+        "expected_name": "南天門",
+        "expected_kind": "place",
+        "expected_aliases": []
+      }
+    ],
+    "fp_trap": [
+      {
+        "actual_idx": 11,
+        "actual_name": "西牛賀洲",
+        "actual_kind": "place",
+        "trap_idx": 7,
+        "trap_name": "西牛賀洲",
+        "trap_reason": "Listed in four-continents enumeration; narrative narrows to 東勝神洲 only"
+      },
+      {
+        "actual_idx": 9,
+        "actual_name": "南贍部洲",
+        "actual_kind": "place",
+        "trap_idx": 8,
+        "trap_name": "南贍部洲",
+        "trap_reason": "Listed in four-continents enumeration; narrative narrows to 東勝神洲 only"
+      },
+      {
+        "actual_idx": 8,
+        "actual_name": "北俱蘆洲",
+        "actual_kind": "place",
+        "trap_idx": 9,
+        "trap_name": "北俱蘆洲",
+        "trap_reason": "Listed in four-continents enumeration; narrative narrows to 東勝神洲 only"
+      }
+    ],
+    "fp_annotation_gap": []
+  },
+  "relations": {
+    "tp": [],
+    "fp": [
+      {
+        "actual_idx": 1,
+        "actual": [
+          "千里眼",
+          "works_for",
+          "玉皇大天尊玄穹高上帝",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 2,
+        "actual": [
+          "石卵",
+          "born_from",
+          "仙石",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 5,
+        "actual": [
+          "順風耳",
+          "works_for",
+          "玉皇大天尊玄穹高上帝",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 6,
+        "actual": [
+          "玉皇大天尊玄穹高上帝",
+          "commands",
+          "仙卿",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 7,
+        "actual": [
+          "玉皇大天尊玄穹高上帝",
+          "trusts",
+          "石猴",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 8,
+        "actual": [
+          "花果山",
+          "located_on",
+          "大海",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 9,
+        "actual": [
+          "石猴",
+          "knows",
+          "四方",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 10,
+        "actual": [
+          "石猴",
+          "instructs",
+          "四方",
+          "affirm"
+        ]
+      }
+    ],
+    "fn": [
+      {
+        "expected_idx": 0,
+        "expected": [
+          "花果山",
+          "located_in",
+          "傲來國",
+          "affirm"
+        ]
+      },
+      {
+        "expected_idx": 1,
+        "expected": [
+          "傲來國",
+          "located_in",
+          "東勝神洲",
+          "affirm"
+        ]
+      },
+      {
+        "expected_idx": 2,
+        "expected": [
+          "仙石",
+          "located_on",
+          "花果山",
+          "affirm"
+        ]
+      },
+      {
+        "expected_idx": 3,
+        "expected": [
+          "石猴",
+          "born_from",
+          "仙石",
+          "affirm"
+        ]
+      },
+      {
+        "expected_idx": 4,
+        "expected": [
+          "玉皇大天尊",
+          "commands",
+          "千里眼",
+          "affirm"
+        ]
+      },
+      {
+        "expected_idx": 5,
+        "expected": [
+          "玉皇大天尊",
+          "commands",
+          "順風耳",
+          "affirm"
+        ]
+      }
+    ],
+    "fp_trap": [],
+    "fp_annotation_gap": [
+      {
+        "actual_idx": 0,
+        "actual": [
+          "仙石",
+          "located_in",
+          "花果山",
+          "affirm"
+        ],
+        "reason": "Both endpoints in fixture entity list, predicate canonical, polarity affirm — likely correct but missing from conservative annotation"
+      },
+      {
+        "actual_idx": 3,
+        "actual": [
+          "石猴",
+          "lives_in",
+          "花果山",
+          "affirm"
+        ],
+        "reason": "Both endpoints in fixture entity list, predicate canonical, polarity affirm — likely correct but missing from conservative annotation"
+      },
+      {
+        "actual_idx": 4,
+        "actual": [
+          "花果山",
+          "located_in",
+          "東勝神洲",
+          "affirm"
+        ],
+        "reason": "Both endpoints in fixture entity list, predicate canonical, polarity affirm — likely correct but missing from conservative annotation"
+      }
+    ]
+  },
+  "events": {
+    "tp": [],
+    "fp": [
+      {
+        "actual_idx": 0,
+        "actual_summary": "The Jade Emperor, seated in the Golden Palace of Clouds and Palaces, observes golden light from Earth and summons his celestial ministers.",
+        "actual_participants": [
+          "玉皇大天尊玄穹高上帝"
+        ]
+      },
+      {
+        "actual_idx": 1,
+        "actual_summary": "The two celestial officials return and report that the golden light originates from a stone egg on Flower-God Mountain in Aolai Country, which has hatched into a stone monkey now worshiping the four directions.",
+        "actual_participants": [
+          "千里眼",
+          "順風耳"
+        ]
+      },
+      {
+        "actual_idx": 2,
+        "actual_summary": "The Jade Emperor declares that the stone monkey, born from earthly essence and celestial light, is a remarkable being worthy of divine recognition.",
+        "actual_participants": [
+          "玉皇大天尊玄穹高上帝"
+        ]
+      },
+      {
+        "actual_idx": 3,
+        "actual_summary": "The celestial officials Thousand-Eyed and Thousand-Hearing are sent from the Jade Emperor’s palace to observe the source of the golden light.",
+        "actual_participants": [
+          "千里眼",
+          "順風耳"
+        ]
+      }
+    ],
+    "fn": [
+      {
+        "expected_idx": 0,
+        "expected_summary": "石猴從仙石中破殼而出，五官四肢俱全",
+        "expected_participants": [
+          "石猴",
+          "仙石"
+        ]
+      },
+      {
+        "expected_idx": 1,
+        "expected_summary": "石猴拜了四方，目射金光直沖斗府",
+        "expected_participants": [
+          "石猴"
+        ]
+      },
+      {
+        "expected_idx": 2,
+        "expected_summary": "玉帝命千里眼與順風耳開南天門觀看金光來源",
+        "expected_participants": [
+          "玉皇大天尊",
+          "千里眼",
+          "順風耳"
+        ]
+      },
+      {
+        "expected_idx": 3,
+        "expected_summary": "千里眼與順風耳回報石猴金光來自花果山仙石",
+        "expected_participants": [
+          "千里眼",
+          "順風耳",
+          "玉皇大天尊"
+        ]
+      },
+      {
+        "expected_idx": 4,
+        "expected_summary": "玉帝判定石猴金光乃天地精華所生不足為異",
+        "expected_participants": [
+          "玉皇大天尊"
+        ]
+      }
+    ],
+    "fp_trap": [],
+    "fp_annotation_gap": []
+  }
+}

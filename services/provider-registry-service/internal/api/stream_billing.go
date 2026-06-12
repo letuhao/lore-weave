@@ -209,6 +209,7 @@ func (g *streamGuard) settle(ctx context.Context) {
 			Operation:    g.op,
 			InputTokens:  g.finalUsage.InputTokens,
 			OutputTokens: g.finalUsage.OutputTokens + reasoning,
+			TotalCostUSD: actual, // authoritative per-model cost (matches reconcile)
 		}); err != nil {
 			slog.Warn("stream usage record failed",
 				"request_id", g.jobID.String(), "err", err)

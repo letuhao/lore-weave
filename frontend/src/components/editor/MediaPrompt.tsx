@@ -1,5 +1,6 @@
 import { Sparkles, Copy, Check, Wand2, Loader2 } from 'lucide-react';
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 
 interface MediaPromptProps {
@@ -19,8 +20,10 @@ export function MediaPrompt({
   onChange,
   onRegenerate,
   regenerateDisabled = true,
-  regenerateLabel = 'Re-generate',
+  regenerateLabel,
 }: MediaPromptProps) {
+  const { t } = useTranslation('editor');
+  const label = regenerateLabel ?? t('media.regenerate');
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -56,11 +59,11 @@ export function MediaPrompt({
         aria-expanded={open}
       >
         <Sparkles className="h-3 w-3" />
-        <span>AI Prompt</span>
+        <span>{t('media.ai_prompt')}</span>
         {hasPrompt ? (
-          <span className="rounded bg-info/10 px-1 text-[8px] font-semibold text-info">saved</span>
+          <span className="rounded bg-info/10 px-1 text-[8px] font-semibold text-info">{t('media.saved')}</span>
         ) : (
-          <span className="rounded bg-secondary px-1 text-[8px] text-muted-foreground/60">empty</span>
+          <span className="rounded bg-secondary px-1 text-[8px] text-muted-foreground/60">{t('media.empty')}</span>
         )}
         <span className="ml-auto text-[9px]">{open ? '▾' : '▸'}</span>
       </button>
@@ -72,12 +75,12 @@ export function MediaPrompt({
             ref={textareaRef}
             value={prompt}
             onChange={(e) => onChange(e.target.value)}
-            placeholder="Describe this media for AI context and generation..."
+            placeholder={t('media.placeholder')}
             className="w-full resize-none rounded-md border bg-input px-2.5 py-2 text-[11px] leading-relaxed text-foreground outline-none transition-colors placeholder:text-muted-foreground/35 focus:border-ring focus:ring-1 focus:ring-ring/20"
             rows={2}
           />
           <p className="mt-1 text-[9px] text-muted-foreground/60">
-            Stored with media for AI context and re-generation.
+            {t('media.stored_note')}
           </p>
           <div className="mt-2 flex items-center gap-2">
             {onRegenerate !== undefined && (
@@ -92,12 +95,12 @@ export function MediaPrompt({
                     : 'border-accent/30 bg-accent-muted text-accent-foreground hover:bg-accent hover:text-white',
                 )}
               >
-                {regenerateDisabled && regenerateLabel.includes('...') ? (
+                {regenerateDisabled && label.includes('...') ? (
                   <Loader2 className="h-3 w-3 animate-spin" />
                 ) : (
                   <Wand2 className="h-3 w-3" />
                 )}
-                {regenerateLabel}
+                {label}
               </button>
             )}
             <button
@@ -114,9 +117,9 @@ export function MediaPrompt({
               )}
             >
               {copied ? (
-                <><Check className="h-3 w-3" /> Copied</>
+                <><Check className="h-3 w-3" /> {t('media.copied')}</>
               ) : (
-                <><Copy className="h-3 w-3" /> Copy prompt</>
+                <><Copy className="h-3 w-3" /> {t('media.copy_prompt')}</>
               )}
             </button>
           </div>

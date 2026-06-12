@@ -14,13 +14,41 @@ func TestMaxLenFor(t *testing.T) {
 	}{
 		{"chapter", 10000},
 		{"chat", 50000},
-		{"glossary", 10000},
+		// Phase B: glossary + knowledge feed learning-service's append-only
+		// correction log — large budget so MAXLEN trim can't drop unread
+		// events during a learning-service outage (design §10.1).
+		{"glossary", 200000},
+		{"knowledge", 200000},
 		{"unknown", defaultStreamMaxLen},
 		{"", defaultStreamMaxLen},
 	}
 	for _, c := range cases {
 		if got := maxLenFor(c.aggregateType); got != c.want {
 			t.Errorf("maxLenFor(%q) = %d, want %d", c.aggregateType, got, c.want)
+		}
+	}
+}
+
+// Phase B §4.0 (F1/F2) — the relay MUST carry the producer's outbox row id on
+// the stream as `outbox_id`, equal to the row PK. Consumers dedup on it; a
+// missing/wrong field re-introduces the F2 correction-collapse bug.
+func TestRelayStreamValues_CarriesOutboxID(t *testing.T) {
+	v := relayStreamValues("glossary.entity_updated", "agg-123", `{"x":1}`, "glossary", "outbox-row-pk-abc")
+
+	got, ok := v["outbox_id"]
+	if !ok {
+		t.Fatal("relay stream values MUST include outbox_id (the dedup key)")
+	}
+	if got != "outbox-row-pk-abc" {
+		t.Fatalf("outbox_id = %v, want the outbox row PK", got)
+	}
+	// outbox_id must NOT be the aggregate_id (the reused target id — F2).
+	if v["outbox_id"] == v["aggregate_id"] {
+		t.Fatal("outbox_id must be distinct from aggregate_id (F2: aggregate_id is reused per edit)")
+	}
+	for _, k := range []string{"event_type", "aggregate_id", "payload", "source", "outbox_id"} {
+		if _, present := v[k]; !present {
+			t.Errorf("relay stream values missing field %q", k)
 		}
 	}
 }

@@ -40,7 +40,7 @@ export function VoiceChatOverlay({
   onCancel,
   pipelineSnapshot,
 }: VoiceChatOverlayProps) {
-  const { t } = useTranslation('voice');
+  const { t } = useTranslation('common');
   const config = STATE_CONFIG[state] || STATE_CONFIG.inactive;
   const Icon = config.icon;
 
@@ -75,7 +75,7 @@ export function VoiceChatOverlay({
           <button
             onClick={onExit}
             className="rounded-full p-2 text-white/60 hover:bg-white/10 hover:text-white"
-            aria-label="Exit voice mode"
+            aria-label={t('voice.exitVoiceModeAria')}
           >
             <X className="h-4 w-4" />
           </button>
@@ -92,7 +92,7 @@ export function VoiceChatOverlay({
             onClick={state === 'receiving' ? onCancel : undefined}
             className={state === 'receiving' ? 'cursor-pointer' : ''}
             role={state === 'receiving' ? 'button' : undefined}
-            aria-label={state === 'receiving' ? 'Tap to stop' : undefined}
+            aria-label={state === 'receiving' ? t('voice.tapToStop') : undefined}
           >
             <WaveformVisualizer active={state === 'listening'} />
             {state === 'receiving' && (
@@ -179,7 +179,7 @@ export function VoiceChatOverlay({
 
         {/* Keyboard hints (desktop only) */}
         <p className="hidden text-[10px] text-white/20 md:block">
-          Esc to exit &middot; Space to cancel
+          {t('voice.kbHints')}
         </p>
       </div>
     </div>

@@ -16,9 +16,9 @@ import { StatsRow } from '@/features/profile/StatsRow';
 import { AchievementBar } from '@/features/profile/AchievementBar';
 import { BooksTab } from '@/features/profile/BooksTab';
 import { TranslationsTab } from '@/features/profile/TranslationsTab';
-import { StubTab } from '@/features/profile/StubTab';
+import { WikiTab } from '@/features/profile/WikiTab';
 
-type Tab = 'books' | 'translations' | 'wiki' | 'reviews';
+type Tab = 'books' | 'translations' | 'wiki';
 
 export function ProfilePage() {
   const { userId } = useParams<{ userId: string }>();
@@ -121,7 +121,6 @@ export function ProfilePage() {
       count: translatorStats?.total_chapters_done ?? 0,
     },
     { key: 'wiki', label: t('tabs.wiki') },
-    { key: 'reviews', label: t('tabs.reviews') },
   ];
 
   return (
@@ -169,8 +168,7 @@ export function ProfilePage() {
       {/* Tab content */}
       {activeTab === 'books' && <BooksTab userId={userId!} />}
       {activeTab === 'translations' && <TranslationsTab translator={translatorStats} />}
-      {activeTab === 'wiki' && <StubTab label={t('tabs.wiki')} />}
-      {activeTab === 'reviews' && <StubTab label={t('tabs.reviews')} />}
+      {activeTab === 'wiki' && <WikiTab userId={userId!} isSelf={isSelf} />}
     </div>
   );
 }

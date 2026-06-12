@@ -151,6 +151,7 @@ pub fn build(
                 seed,
                 cs.plate_count,
                 cs.continental_fraction,
+                cs.continent_latitude_spread,
                 centers,
                 neighbors,
             );

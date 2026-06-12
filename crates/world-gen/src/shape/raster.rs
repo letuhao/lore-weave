@@ -927,6 +927,7 @@ mod tests {
             world_theme: None,
             edge_jitter: 0.0,
             vertex_count_range: (24, 96),
+            params: None,
         }
     }
 

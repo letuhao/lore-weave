@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/loreweave/glossary-service/internal/domain"
+	"github.com/loreweave/grantclient"
 )
 
 const (
@@ -17,13 +18,17 @@ const (
 
 // createGenre creates a new genre group for a book.
 func (s *Server) createGenre(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireUserID(r); !ok {
+	userID, ok := s.requireUserID(r)
+	if !ok {
 		writeError(w, http.StatusUnauthorized, "GLOSS_UNAUTHORIZED", "valid Bearer token required")
 		return
 	}
 
 	bookID, ok := parsePathUUID(w, r, "book_id")
 	if !ok {
+		return
+	}
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantEdit) {
 		return
 	}
 
@@ -86,7 +91,8 @@ func (s *Server) createGenre(w http.ResponseWriter, r *http.Request) {
 
 // patchGenre updates a genre group's fields.
 func (s *Server) patchGenre(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireUserID(r); !ok {
+	userID, ok := s.requireUserID(r)
+	if !ok {
 		writeError(w, http.StatusUnauthorized, "GLOSS_UNAUTHORIZED", "valid Bearer token required")
 		return
 	}
@@ -97,6 +103,9 @@ func (s *Server) patchGenre(w http.ResponseWriter, r *http.Request) {
 	}
 	genreID, ok := parsePathUUID(w, r, "genre_id")
 	if !ok {
+		return
+	}
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantEdit) {
 		return
 	}
 
@@ -194,7 +203,8 @@ func (s *Server) patchGenre(w http.ResponseWriter, r *http.Request) {
 
 // deleteGenre removes a genre group.
 func (s *Server) deleteGenre(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireUserID(r); !ok {
+	userID, ok := s.requireUserID(r)
+	if !ok {
 		writeError(w, http.StatusUnauthorized, "GLOSS_UNAUTHORIZED", "valid Bearer token required")
 		return
 	}
@@ -205,6 +215,9 @@ func (s *Server) deleteGenre(w http.ResponseWriter, r *http.Request) {
 	}
 	genreID, ok := parsePathUUID(w, r, "genre_id")
 	if !ok {
+		return
+	}
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantManage) {
 		return
 	}
 

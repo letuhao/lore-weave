@@ -54,6 +54,7 @@ fn minimal_template() -> TilemapTemplate {
             treasure_tiers: vec![],
             biome_selection_rules: None,
             inherit_treasure_from: None,
+            biome_theme: None,
         }
     }
     TilemapTemplate {
@@ -67,6 +68,8 @@ fn minimal_template() -> TilemapTemplate {
         ],
         seed_offset: 0,
         world_zone: None,
+        decoration_density: None,
+        background_biome: None,
     }
 }
 
@@ -214,6 +217,116 @@ async fn ac_http_2_valid_request_returns_200_with_tilemap_view() {
     let view: Value = resp.json().await.expect("json");
     assert_eq!(view["template_id"], "http_integration_minimal");
     assert!(!view["zones"].as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn tmp_q4_render_endpoint_emits_tier_index_on_treasure_placements() {
+    // TMP-Q4 MED-1 from /review-impl — locks the HTTP wire contract for
+    // the new `tier_index` field. The lib-level placer tests prove the
+    // struct is populated; this test proves the field SURVIVES axum's
+    // JSON response codepath and ends up readable by HTTP clients.
+    //
+    // A future refactor that dropped `tier_index` from `commit_placement`
+    // OR from `TilemapObjectPlacement`'s serde derive OR from the response
+    // serializer would slip past the lib tests but fail here.
+    //
+    // Template strategy: declare a zone with two value-disjoint tiers
+    // (low-first author order) so the post-sort `tier_index` mapping is
+    // unambiguous (high-`max` ⇒ tier_index=0).
+    use tilemap_service::types::template::TemplateConnection;
+    use tilemap_service::types::treasure::TreasureTierSpec;
+    let mut tmpl = minimal_template();
+    let capital_idx = tmpl
+        .zones
+        .iter()
+        .position(|z| z.zone_id.0 == "capital")
+        .expect("minimal template has 'capital'");
+    tmpl.zones[capital_idx].treasure_tiers = vec![
+        TreasureTierSpec { min: 300, max: 800, density: 5 },
+        TreasureTierSpec { min: 5000, max: 9000, density: 4 },
+    ];
+    // The minimal template's `frontier` zone is unreachable from
+    // `capital` via the default Open + Threshold connections + the
+    // Forbidden `rival`. We don't depend on the connection topology —
+    // capital is Wilderness which TreasurePlacer processes.
+    let _ = TemplateConnection::new(ZoneId("frontier".to_string()), PassageKind::Open);
+    let base = boot_server().await;
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("{base}/internal/v1/tilemaps/render"))
+        .bearer_auth(TOKEN)
+        .json(&minimal_render_body(&tmpl, 19))
+        .send()
+        .await
+        .expect("send");
+    assert_eq!(resp.status(), StatusCode::OK, "expected 200 with tier-bearing template");
+    let view: Value = resp.json().await.expect("json");
+
+    let placements = view["object_placements"]
+        .as_array()
+        .expect("object_placements must be an array");
+    let treasures: Vec<&Value> = placements
+        .iter()
+        .filter(|p| p["kind"] == "treasure")
+        .collect();
+    assert!(
+        !treasures.is_empty(),
+        "tier-populated zone must produce at least one treasure placement on the wire"
+    );
+    for p in &treasures {
+        let v = p["value"].as_u64().expect("treasure has value");
+        let idx = p["tier_index"]
+            .as_u64()
+            .expect("MED-1: treasure placement MUST carry tier_index on the HTTP wire");
+        let expected = if v >= 5000 { 0 } else { 1 };
+        assert_eq!(
+            idx, expected,
+            "value {v} expects tier_index {expected} (high-max first); got {idx} on the wire",
+        );
+    }
+
+    // A non-treasure placement (obstacle / connection guard / decoration)
+    // MUST NOT serialise `tier_index` — `skip_serializing_if` discipline
+    // pins V2 byte-identical for everything else.
+    for p in placements.iter().filter(|p| p["kind"] != "treasure" && p["kind"] != "monster_lair") {
+        assert!(
+            p.get("tier_index").is_none() || p["tier_index"].is_null(),
+            "MED-1: non-treasure placement (kind={}) MUST NOT carry tier_index on the wire; got {:?}",
+            p["kind"],
+            p["tier_index"],
+        );
+    }
+}
+
+#[tokio::test]
+async fn tmp_q4_render_endpoint_emits_registry_ref_without_value_band_thresholds_for_default() {
+    // TMP-Q4 MED-1 from /review-impl (companion test) — the default `lw`
+    // registry does NOT declare `value_band_thresholds`, so the wire-shape
+    // contract is: the field is OMITTED entirely (not present as `null`).
+    // A regression where `RegistryRef` serialized `value_band_thresholds:
+    // null` instead of skipping it would shift the V2 byte-identical
+    // baseline and break frontend strict-key consumers.
+    let base = boot_server().await;
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("{base}/internal/v1/tilemaps/render"))
+        .bearer_auth(TOKEN)
+        .json(&minimal_render_body(&minimal_template(), 23))
+        .send()
+        .await
+        .expect("send");
+    assert_eq!(resp.status(), StatusCode::OK);
+    // Pull the raw body so we can inspect serialization (not just parse).
+    let view: Value = resp.json().await.expect("json");
+    let registry_ref = view["registry_ref"]
+        .as_object()
+        .expect("default registry must emit registry_ref");
+    assert_eq!(registry_ref["id"], "lw", "default is the lw registry");
+    assert!(
+        !registry_ref.contains_key("value_band_thresholds"),
+        "MED-1: default registry omits value_band_thresholds (None ⇒ skipped); \
+         got {registry_ref:?}",
+    );
 }
 
 #[tokio::test]
@@ -373,6 +486,7 @@ async fn med_1_oversized_zone_count_returns_413_problem_json() {
             treasure_tiers: vec![],
             biome_selection_rules: None,
             inherit_treasure_from: None,
+            biome_theme: None,
         })
         .collect();
     let template = TilemapTemplate {
@@ -380,6 +494,8 @@ async fn med_1_oversized_zone_count_returns_413_problem_json() {
         zones,
         seed_offset: 0,
         world_zone: None,
+        decoration_density: None,
+        background_biome: None,
     };
     let base = boot_server().await;
     let client = reqwest::Client::new();

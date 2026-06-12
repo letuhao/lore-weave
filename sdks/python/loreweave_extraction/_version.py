@@ -79,15 +79,23 @@ def _compute_op_extractor_version(op: str) -> str:
     return f"v1-{op}-{h.hexdigest()[:8]}"
 
 
-def get_extractor_version(op: str | None = None) -> str:
+def get_extractor_version(op: str | None = None, *, override_text: str | None = None) -> str:
     """Return the extractor version.
 
     op=None (legacy back-compat): hashes ALL prompts.
     op=<op_name>: hashes ONLY that op's prompt files (P3 M3 fix).
+    override_text set (B2 per-novel raw-prompt editing): returns
+        ``custom-<sha256(override_text)[:8]>`` — the identity of a
+        project's custom prompt for this op, NOT the default file-hash.
+        Takes precedence over the file-hash paths so a custom prompt
+        invalidates the op's cache + changes the config_hash.
 
     Honors LOREWEAVE_EXTRACTOR_VERSION_DEV_RECOMPUTE=1 for dev
     hot-reload (recomputes every call).
     """
+    if override_text is not None:
+        digest = hashlib.sha256(override_text.encode("utf-8")).hexdigest()[:8]
+        return f"custom-{digest}"
     dev_recompute = os.environ.get("LOREWEAVE_EXTRACTOR_VERSION_DEV_RECOMPUTE") == "1"
     if op is None:
         # P2 back-compat path; eventually deprecate after P2 migrates.

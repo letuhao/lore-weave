@@ -1,15 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Brain, MessageSquare, Search, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { aiModelsApi, type UserModel } from '@/features/ai-models/api';
 import type { CreateSessionPayload, GenerationParams } from '../types';
 
-const PRESETS: { label: string; prompt: string; icon: string }[] = [
-  { label: 'Novel Assistant', icon: '📖', prompt: 'You are a creative writing assistant specializing in novels. Analyze character arcs, plot structure, and worldbuilding. Provide concrete scene rewrites when suggesting changes.' },
-  { label: 'Translator', icon: '🌐', prompt: 'You are a literary translator. Preserve tone, style, and nuance. Explain translation choices involving cultural adaptation or idioms.' },
-  { label: 'Worldbuilder', icon: '🗺️', prompt: 'You are a worldbuilding consultant. Help create consistent magic systems, politics, geography, and cultures. Flag inconsistencies.' },
-  { label: 'Editor', icon: '✏️', prompt: 'You are a professional book editor. Focus on pacing, dialogue, show-vs-tell, and narrative voice. Be specific and constructive.' },
+// `key` → i18n label; `prompt` stays English (it is an LLM system directive).
+const PRESETS: { key: string; prompt: string; icon: string }[] = [
+  { key: 'novel', icon: '📖', prompt: 'You are a creative writing assistant specializing in novels. Analyze character arcs, plot structure, and worldbuilding. Provide concrete scene rewrites when suggesting changes.' },
+  { key: 'translator', icon: '🌐', prompt: 'You are a literary translator. Preserve tone, style, and nuance. Explain translation choices involving cultural adaptation or idioms.' },
+  { key: 'worldbuilder', icon: '🗺️', prompt: 'You are a worldbuilding consultant. Help create consistent magic systems, politics, geography, and cultures. Flag inconsistencies.' },
+  { key: 'editor', icon: '✏️', prompt: 'You are a professional book editor. Focus on pacing, dialogue, show-vs-tell, and narrative voice. Be specific and constructive.' },
 ];
 
 interface NewChatDialogProps {
@@ -19,6 +21,7 @@ interface NewChatDialogProps {
 }
 
 export function NewChatDialog({ open, onClose, onCreate }: NewChatDialogProps) {
+  const { t } = useTranslation('chat');
   const { accessToken } = useAuth();
   const [userModels, setUserModels] = useState<UserModel[]>([]);
   const [selectedModel, setSelectedModel] = useState('');
@@ -102,7 +105,7 @@ export function NewChatDialog({ open, onClose, onCreate }: NewChatDialogProps) {
         undefined,
       );
     } catch (err) {
-      toast.error(`Failed to create chat: ${(err as Error).message}`);
+      toast.error(t('new.create_failed', { error: (err as Error).message }));
     } finally {
       // Reset after a short delay to prevent double-clicks but not permanently disable
       setTimeout(() => setCreating(false), 1000);
@@ -118,7 +121,7 @@ export function NewChatDialog({ open, onClose, onCreate }: NewChatDialogProps) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-sm font-semibold">Start New Chat</h3>
+          <h3 className="text-sm font-semibold">{t('new.title')}</h3>
           <button type="button" onClick={onClose} className="rounded p-1 text-muted-foreground hover:bg-secondary hover:text-foreground">
             <X className="h-4 w-4" />
           </button>
@@ -127,12 +130,12 @@ export function NewChatDialog({ open, onClose, onCreate }: NewChatDialogProps) {
         <div className="space-y-4">
           {/* Model selector with search */}
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-muted-foreground">Model</label>
+            <label className="text-xs font-medium text-muted-foreground">{t('new.model')}</label>
             {loading ? (
               <div className="h-9 animate-pulse rounded-md bg-muted" />
             ) : userModels.length === 0 ? (
               <p className="text-xs text-muted-foreground">
-                No active models. Add one in Settings &rarr; Providers.
+                {t('new.no_models')}
               </p>
             ) : (
               <>
@@ -143,8 +146,8 @@ export function NewChatDialog({ open, onClose, onCreate }: NewChatDialogProps) {
                     type="text"
                     value={modelSearch}
                     onChange={(e) => setModelSearch(e.target.value)}
-                    placeholder="Search models..."
-                    aria-label="Search models"
+                    placeholder={t('new.search_models')}
+                    aria-label={t('new.search_models')}
                     className="w-full rounded-t-md border border-border bg-background py-1.5 pl-7 pr-2 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:border-ring"
                   />
                 </div>
@@ -176,12 +179,12 @@ export function NewChatDialog({ open, onClose, onCreate }: NewChatDialogProps) {
                 </span>
                 {selectedModelInfo.context_length && (
                   <span className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-[10px] text-accent">
-                    {Math.round(selectedModelInfo.context_length / 1024)}K ctx
+                    {t('new.ctx', { n: Math.round(selectedModelInfo.context_length / 1024) })}
                   </span>
                 )}
                 {selectedModelInfo.is_favorite && (
                   <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] text-primary">
-                    &#9733; Favorite
+                    &#9733; {t('new.favorite')}
                   </span>
                 )}
               </div>
@@ -190,7 +193,7 @@ export function NewChatDialog({ open, onClose, onCreate }: NewChatDialogProps) {
 
           {/* Quick-start presets */}
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Quick Start</label>
+            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">{t('new.quick_start')}</label>
             <div className="grid grid-cols-2 gap-2">
               {PRESETS.map((p, i) => (
                 <button
@@ -204,7 +207,7 @@ export function NewChatDialog({ open, onClose, onCreate }: NewChatDialogProps) {
                   }`}
                 >
                   <span className="text-base">{p.icon}</span>
-                  <p className="mt-0.5 text-[11px] font-medium text-foreground">{p.label}</p>
+                  <p className="mt-0.5 text-[11px] font-medium text-foreground">{t(`new.preset.${p.key}`)}</p>
                 </button>
               ))}
             </div>
@@ -217,13 +220,13 @@ export function NewChatDialog({ open, onClose, onCreate }: NewChatDialogProps) {
               onClick={() => setShowPrompt(!showPrompt)}
               className="text-xs text-accent hover:underline"
             >
-              {showPrompt ? 'Hide' : 'Add'} system prompt
+              {showPrompt ? t('new.hide_prompt') : t('new.add_prompt')}
             </button>
             {showPrompt && (
               <textarea
                 value={systemPrompt}
                 onChange={(e) => { setSystemPrompt(e.target.value); setSelectedPreset(null); }}
-                placeholder="Custom instructions for the AI..."
+                placeholder={t('new.prompt_placeholder')}
                 className="mt-1.5 min-h-[80px] w-full resize-y rounded-md border border-border bg-background p-2.5 text-xs leading-relaxed text-foreground placeholder:text-muted-foreground/50 outline-none focus:border-ring"
               />
             )}
@@ -235,7 +238,7 @@ export function NewChatDialog({ open, onClose, onCreate }: NewChatDialogProps) {
             disabled={!selectedModel || loading || creating}
             onClick={handleCreate}
           >
-            Start Chat
+            {t('new.start_chat')}
           </button>
         </div>
       </div>

@@ -294,9 +294,9 @@ export function VoiceSettingsPanel({ open, onClose }: VoiceSettingsPanelProps) {
         {prefs.ttsSource === 'ai_model' && prefs.ttsModelRef && (
           <FieldGroup label={t('voice.providerVoice', 'Voice')}>
             {voicesLoading ? (
-              <p className="text-[10px] text-muted-foreground">Loading voices...</p>
+              <p className="text-[10px] text-muted-foreground">{t('voice.loadingVoices')}</p>
             ) : providerVoices.length === 0 ? (
-              <p className="text-[10px] text-muted-foreground">No voices available</p>
+              <p className="text-[10px] text-muted-foreground">{t('voice.noVoices')}</p>
             ) : (
               <div className="space-y-1.5">
                 <select
@@ -304,7 +304,7 @@ export function VoiceSettingsPanel({ open, onClose }: VoiceSettingsPanelProps) {
                   onChange={(e) => { update('ttsVoiceId', e.target.value); stopPreview(); }}
                   className="h-8 w-full rounded-md border bg-background px-2 text-xs focus:border-ring focus:outline-none"
                 >
-                  <option value="">Auto (default)</option>
+                  <option value="">{t('voice.autoVoice')}</option>
                   {/* Group by language */}
                   {Array.from(new Set(providerVoices.map((v) => v.language))).sort().map((lang) => (
                     <optgroup key={lang} label={lang.toUpperCase()}>
@@ -337,9 +337,9 @@ export function VoiceSettingsPanel({ open, onClose }: VoiceSettingsPanelProps) {
                       )}
                     >
                       {previewPlaying === selectedVoice.voice_id ? (
-                        <><Square className="h-2.5 w-2.5" /> Stop</>
+                        <><Square className="h-2.5 w-2.5" /> {t('voice.stop')}</>
                       ) : (
-                        <><Play className="h-2.5 w-2.5" /> Preview</>
+                        <><Play className="h-2.5 w-2.5" /> {t('voice.preview')}</>
                       )}
                     </button>
                   );
@@ -410,12 +410,10 @@ export function VoiceSettingsPanel({ open, onClose }: VoiceSettingsPanelProps) {
           {recommendation && recommendation.silenceFrames !== prefs.vadSilenceFrames && (
             <div className="mb-3 rounded-md border border-accent/30 bg-accent/5 px-3 py-2">
               <p className="text-[10px] text-accent font-medium">
-                Recommended for you
+                {t('voice.recommendedForYou')}
               </p>
               <p className="text-[10px] text-muted-foreground mt-0.5">
-                Based on {recommendation.totalTurns} voice turns
-                ({Math.round(recommendation.misfireRate * 100)}% misfire rate),
-                we suggest adjusting your settings.
+                {t('voice.recommendedDesc', { turns: recommendation.totalTurns, rate: Math.round(recommendation.misfireRate * 100) })}
               </p>
               <button
                 onClick={() => {
@@ -425,7 +423,7 @@ export function VoiceSettingsPanel({ open, onClose }: VoiceSettingsPanelProps) {
                 }}
                 className="mt-1.5 rounded border border-accent/50 px-2.5 py-1 text-[10px] font-medium text-accent hover:bg-accent/10 transition-colors"
               >
-                Apply recommended settings
+                {t('voice.applyRecommended')}
               </button>
             </div>
           )}
@@ -433,25 +431,25 @@ export function VoiceSettingsPanel({ open, onClose }: VoiceSettingsPanelProps) {
           {/* Presets */}
           <div className="flex gap-1.5 mb-3">
             {[
-              { label: 'Fast', silence: 5, minDuration: 300, desc: 'Quick response, may misfire in noise' },
-              { label: 'Normal', silence: 8, minDuration: 500, desc: 'Balanced (default)' },
-              { label: 'Patient', silence: 12, minDuration: 700, desc: 'Waits longer, good for slow speakers' },
-              { label: 'Learner', silence: 16, minDuration: 1000, desc: 'Long pauses OK, for language practice' },
+              { key: 'Fast', silence: 5, minDuration: 300 },
+              { key: 'Normal', silence: 8, minDuration: 500 },
+              { key: 'Patient', silence: 12, minDuration: 700 },
+              { key: 'Learner', silence: 16, minDuration: 1000 },
             ].map((preset) => (
               <button
-                key={preset.label}
+                key={preset.key}
                 onClick={() => {
                   update('vadSilenceFrames', preset.silence);
                   update('minSpeechDurationMs', preset.minDuration);
                 }}
-                title={preset.desc}
+                title={t(`voice.preset${preset.key}Desc`)}
                 className={`flex-1 rounded border px-2 py-1 text-[10px] transition-colors ${
                   prefs.vadSilenceFrames === preset.silence
                     ? 'border-accent/50 bg-accent/10 text-accent'
                     : 'border-border text-muted-foreground hover:text-foreground'
                 }`}
               >
-                {preset.label}
+                {t(`voice.preset${preset.key}`)}
               </button>
             ))}
           </div>
@@ -513,7 +511,7 @@ export function VoiceSettingsPanel({ open, onClose }: VoiceSettingsPanelProps) {
 
         {/* ── Audio Retention Info ── */}
         <p className="text-[9px] text-muted-foreground/50 mt-2">
-          Voice audio is stored for 48 hours for replay, then automatically deleted.
+          {t('voice.audioRetention')}
         </p>
 
         {/* Reset */}

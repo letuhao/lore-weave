@@ -33,8 +33,16 @@ from loreweave_llm import (
 from app.client.billing_client import BillingClient
 from app.client.knowledge_client import get_knowledge_client
 from app.config import settings
+from app.db.suspended_runs import (
+    delete_suspended_run,
+    load_suspended_run,
+    save_suspended_run,
+)
 from app.models import ProviderCredentials
+from app.services.composer import build_composer_messages, is_composer_tool
+from app.services.frontend_tools import is_frontend_tool
 from app.services.output_extractor import extract_outputs
+from app.services.stream_events import make_emitter
 
 logger = logging.getLogger(__name__)
 
@@ -131,6 +139,11 @@ async def _stream_via_gateway(
 # pass is forced tool-free (tool_choice="none") so the loop always
 # terminates with a text answer (design D7).
 MAX_TOOL_ITERATIONS = 5
+# Glossary-assistant P5 (H11): book-scoped surfaces run a richer multi-step
+# workflow (list_kinds → search → get_entity → propose ≈ 4 calls; multi-entity
+# tasks need headroom), so the cap is raised there. Per-turn token budget still
+# bounds cost. Plain chat keeps the default 5.
+GLOSSARY_TOOL_ITERATIONS = 10
 
 
 def _is_tools_unsupported(exc: LLMError) -> bool:
@@ -169,6 +182,41 @@ def _reassemble_tool_calls(frags: dict) -> list[dict]:
     return calls
 
 
+async def _run_composer(
+    client,
+    composer_model: tuple[str, str],
+    composer_system_prompt: str | None,
+    args_obj: dict,
+    gen_params: dict,
+) -> tuple[str, int, int]:
+    """A2A phase-2 — stream the composer (writer) model for a compose_prose call.
+
+    Returns (prose, input_tokens, output_tokens). Reuses the orchestrator's
+    `client` (the gateway resolves the model per request via model_ref), offers
+    NO tools (pure generation), and discards the composer's reasoning — only its
+    prose is returned to the orchestrator."""
+    src, ref = composer_model
+    msgs = build_composer_messages(args_obj, composer_system_prompt)
+    kwargs: dict = {"model_source": src, "model_ref": ref, "messages": msgs}
+    max_tokens = gen_params.get("max_tokens")
+    if max_tokens is not None and max_tokens > 0:
+        kwargs["max_tokens"] = max_tokens
+    if gen_params.get("temperature") is not None:
+        kwargs["temperature"] = gen_params["temperature"]
+    req = StreamRequest(**kwargs)
+    parts: list[str] = []
+    used_in = 0
+    used_out = 0
+    async for ev in client.stream(req):
+        if isinstance(ev, TokenEvent):
+            parts.append(ev.delta)
+        elif isinstance(ev, UsageEvent):
+            used_in += ev.input_tokens
+            used_out += ev.output_tokens
+        # ReasoningEvent (composer's thinking) and DoneEvent are intentionally ignored.
+    return "".join(parts).strip(), used_in, used_out
+
+
 async def _stream_with_tools(
     model_source: str,
     model_ref: str,
@@ -179,6 +227,10 @@ async def _stream_with_tools(
     knowledge_client,
     session_id: str,
     project_id: str | None,
+    seed_usage: tuple[int, int] | None = None,
+    composer_model: tuple[str, str] | None = None,
+    composer_system_prompt: str | None = None,
+    max_iterations: int = MAX_TOOL_ITERATIONS,
 ) -> AsyncGenerator[dict, None]:
     """K21-B — the tool-calling loop.
 
@@ -203,15 +255,17 @@ async def _stream_with_tools(
     )
     try:
         working: list[dict] = list(messages)
-        total_input = 0
-        total_output = 0
+        # C6: on a resume pass, seed the token totals from the suspended first
+        # run so the final usage is summed across both runs (design D10).
+        total_input = seed_usage[0] if seed_usage else 0
+        total_output = seed_usage[1] if seed_usage else 0
         max_tokens = gen_params.get("max_tokens")
         if max_tokens is not None and max_tokens <= 0:
             max_tokens = None
         tools_supported = True  # D8 — flipped off if the provider rejects tools
 
-        for iteration in range(MAX_TOOL_ITERATIONS):
-            last_iter = iteration == MAX_TOOL_ITERATIONS - 1
+        for iteration in range(max_iterations):
+            last_iter = iteration == max_iterations - 1
             request_kwargs: dict = {
                 "model_source": model_source,
                 "model_ref": model_ref,
@@ -288,33 +342,86 @@ async def _stream_with_tools(
                     for c in calls
                 ],
             })
+
+            # ARCH-1 C6 — frontend tool: SUSPEND instead of executing. The first
+            # frontend tool call pauses the run; the FE executes it (the user
+            # reviews + applies/dismisses) and POSTs the result to the resume
+            # endpoint, which re-enters this loop with the result appended. Any
+            # backend tools in the SAME pass already ran above? No — execution
+            # happens in the loop below, which we have NOT entered yet. So if a
+            # pass mixes backend + frontend tools, we execute the backend ones
+            # first (so their results are in `working`), THEN suspend on the
+            # frontend one. Process calls in order: run backend tools inline,
+            # and on the first frontend tool, suspend with the partial state.
+            suspended_call: dict | None = None
             for c in calls:
+                if is_frontend_tool(c["name"]):
+                    suspended_call = {
+                        "id": c["id"],
+                        "name": c["name"],
+                        "args": _parse_tool_args(c["arguments"]),
+                    }
+                    break
                 args_obj = _parse_tool_args(c["arguments"])
-                envelope = await knowledge_client.execute_tool(
-                    user_id=user_id,
-                    session_id=session_id,
-                    project_id=project_id,
-                    tool_name=c["name"],
-                    tool_args=args_obj,
+                # A2A phase-2: compose_prose → stream the composer model inline
+                # and return its prose as the tool result. Usage is summed into
+                # the turn (design D10) so both models are billed.
+                if is_composer_tool(c["name"]) and composer_model is not None:
+                    # Signal the UI before the (often slow) composer streams, so
+                    # it can show "✍️ Drafting…" instead of a silent panel.
+                    yield {"composing": {"active": True}}
+                    try:
+                        prose, c_in, c_out = await _run_composer(
+                            client, composer_model, composer_system_prompt, args_obj, gen_params,
+                        )
+                    finally:
+                        yield {"composing": {"active": False}}
+                    total_input += c_in
+                    total_output += c_out
+                    working.append({
+                        "role": "tool", "tool_call_id": c["id"],
+                        "content": json.dumps({"prose": prose}),
+                    })
+                    yield {"tool_call": {
+                        "id": c["id"], "iteration": iteration, "tool": c["name"],
+                        "args": args_obj, "ok": True,
+                        "result": {"prose": prose}, "error": None,
+                    }}
+                    continue
+                # backend (memory) tool — execute via the ai-gateway over MCP
+                # (ai-gateway P0: the only tool transport; the bespoke path was
+                # retired with the hard cutover).
+                envelope = await knowledge_client.mcp_execute_tool(
+                    user_id=user_id, session_id=session_id, project_id=project_id,
+                    tool_name=c["name"], tool_args=args_obj,
                 )
                 ok = bool(envelope.get("success"))
-                tool_payload = (
-                    envelope.get("result") if ok
-                    else {"error": envelope.get("error")}
-                )
+                tool_payload = envelope.get("result") if ok else {"error": envelope.get("error")}
                 working.append({
-                    "role": "tool",
-                    "tool_call_id": c["id"],
+                    "role": "tool", "tool_call_id": c["id"],
                     "content": json.dumps(tool_payload),
                 })
                 yield {"tool_call": {
-                    "iteration": iteration,
-                    "tool": c["name"],
-                    "args": args_obj,
-                    "ok": ok,
+                    "id": c["id"], "iteration": iteration, "tool": c["name"],
+                    "args": args_obj, "ok": ok,
                     "result": envelope.get("result") if ok else None,
                     "error": None if ok else envelope.get("error"),
                 }}
+
+            if suspended_call is not None:
+                # Hand the full conversation + the pending frontend call back to
+                # the caller, which persists the suspended run and emits the
+                # pending tool-call events + a "suspended" finish. No further
+                # passes; the resume request continues the loop.
+                yield {"suspend": {
+                    "working": working,
+                    "pending_tool_call": suspended_call,
+                    "input_tokens": total_input,
+                    "output_tokens": total_output,
+                }}
+                return
+            # (all-backend-tools case: the inline loop above already executed
+            # them and appended results; just continue to the next pass.)
 
         # MAX_TOOL_ITERATIONS exhausted. The final pass is forced
         # tool-free (D7) so this is unreachable in practice — defensive.
@@ -338,12 +445,32 @@ async def stream_response(
     parent_message_id: str | None = None,
     context: str | None = None,
     thinking: bool | None = None,
+    stream_format: str = "legacy",
+    editor_context: dict | None = None,
+    book_context: dict | None = None,
+    disable_tools: bool = False,
 ) -> AsyncGenerator[str, None]:
-    """Async generator that yields AI SDK data stream protocol v1 SSE lines."""
+    """Async generator that yields chat-turn SSE lines.
+
+    ARCH-1 C3: the event serialization is selected per request via
+    ``stream_format`` ("legacy" | "agui").
+
+    ARCH-1 C6: ``editor_context`` ({book_id, chapter_id}) — when present (agui +
+    editor `<Chat>` panel), the frontend write-back tool (propose_edit) is
+    advertised to the LLM; a call to it SUSPENDS the run for client execution
+    (see _emit_chat_turn + resume_stream_response).
+
+    ``disable_tools`` — when True, advertise NO tools this turn (memory tools
+    AND the editor write-back tool). This is the editor "Compose" mode: the
+    user wants the model to write prose to Apply manually, not call tools. Lore
+    still reaches the model via the injected context (build_context), only
+    tool-*calling* is off — which lets a reasoning model (Qwen 3.5/3.6) draft
+    without spending its budget deciding whether to call a tool."""
 
     # ── Load session settings ───────────────────────────────────────────────
     session_row = await pool.fetchrow(
-        "SELECT system_prompt, generation_params, project_id FROM chat_sessions WHERE session_id = $1",
+        "SELECT system_prompt, generation_params, project_id, composer_model_source, composer_model_ref "
+        "FROM chat_sessions WHERE session_id = $1",
         session_id,
     )
     system_prompt = session_row["system_prompt"] if session_row else None
@@ -354,6 +481,12 @@ async def stream_response(
     # asyncpg.Record supports .get() since 0.27; using it lets test mocks
     # that pass a plain dict without project_id continue to work.
     project_id = session_row.get("project_id") if session_row else None
+    # A2A phase-2: optional composer model for in-turn prose delegation.
+    composer_src = session_row.get("composer_model_source") if session_row else None
+    composer_ref = session_row.get("composer_model_ref") if session_row else None
+    composer_model = (composer_src, str(composer_ref)) if composer_src and composer_ref else None
+
+    knowledge_client = get_knowledge_client()
 
     # ── K5: build memory block via knowledge-service ────────────────────────
     # Always called — Mode 1 (no project) returns just the user's global
@@ -361,7 +494,6 @@ async def stream_response(
     # full L0/L1/glossary block. Failures degrade silently inside the
     # client and return KnowledgeContext(mode="degraded", context="",
     # recent_message_count=50).
-    knowledge_client = get_knowledge_client()
     kctx = await knowledge_client.build_context(
         user_id=user_id,
         session_id=session_id,
@@ -417,6 +549,22 @@ async def stream_response(
     #     → cached; stable per-session, doesn't change between turns
     # Non-Anthropic providers and the degraded / unsplit fallback take
     # the plain-string path.
+    # Glossary-assistant P5 (OD-5 / INV-6): on a book-scoped surface where the
+    # glossary tools are advertised, prepend-as-system the static glossary skill —
+    # tool workflow + human-gated tiers + the data-not-instructions trust boundary
+    # + the canonical glossary_search (H7). Static + cacheable; the kind/attr list
+    # is fetched on demand, never baked per turn.
+    inject_glossary_skill = (
+        stream_format == "agui"
+        and bool(editor_context or book_context)
+        and not disable_tools
+        and kctx.tool_calling_enabled
+    )
+    glossary_skill: str | None = None
+    if inject_glossary_skill:
+        from app.services.glossary_skill import GLOSSARY_SKILL_PROMPT
+        glossary_skill = GLOSSARY_SKILL_PROMPT
+
     use_anthropic_cache = (
         creds.provider_kind == "anthropic"
         and kctx.stable_context.strip() != ""
@@ -438,6 +586,8 @@ async def stream_response(
                 "text": system_prompt.strip(),
                 "cache_control": {"type": "ephemeral"},
             })
+        if glossary_skill:
+            parts.append({"type": "text", "text": glossary_skill, "cache_control": {"type": "ephemeral"}})
         messages.insert(0, {"role": "system", "content": parts})
     else:
         system_parts: list[str] = []
@@ -449,6 +599,8 @@ async def stream_response(
             stripped = system_prompt.strip()
             if stripped:
                 system_parts.append(stripped)
+        if glossary_skill:
+            system_parts.append(glossary_skill)
         if system_parts:
             messages.insert(0, {"role": "system", "content": "\n\n".join(system_parts)})
 
@@ -465,25 +617,117 @@ async def stream_response(
     # (kctx.tool_calling_enabled) AND knowledge-service serves the tool
     # schemas. A fetch failure → empty list → the turn runs tool-free.
     tool_defs: list[dict] = []
-    if kctx.tool_calling_enabled:
+    if not disable_tools and kctx.tool_calling_enabled:
         tool_defs = await knowledge_client.get_tool_definitions()
+        # Frontend (browser-executed, suspend→Apply) write-back tools, advertised
+        # per surface (agui only — other clients never see them):
+        #   propose_edit                 — chapter editor panel (editor_context)
+        #   glossary_propose_entity_edit — any book-scoped chat (editor OR a
+        #     glossary-page/reader chat carrying book_context) [glossary P3]
+        if stream_format == "agui" and (editor_context or book_context):
+            from app.services.frontend_tools import frontend_tool_defs
+            tool_defs = tool_defs + frontend_tool_defs(
+                editor=bool(editor_context),
+                book_scoped=bool(editor_context or book_context),
+            )
+        # A2A phase-2: advertise compose_prose only when a composer model is
+        # configured for this session (orchestrator → writer delegation).
+        if composer_model is not None:
+            from app.services.composer import compose_prose_defs
+            tool_defs = tool_defs + compose_prose_defs()
     use_tools = bool(tool_defs)
 
-    # ── Stream ──────────────────────────────────────────────────────────────
+    # ── Stream the turn ──────────────────────────────────────────────────────
+    # The Stream/persist/finish body is shared with the C6 resume path via
+    # _emit_chat_turn — both a fresh turn and a resumed (post-frontend-tool)
+    # turn run the same consume→persist→finish logic.
+    async for line in _emit_chat_turn(
+        session_id=session_id,
+        user_message_content=user_message_content,
+        user_id=user_id,
+        model_source=model_source,
+        model_ref=model_ref,
+        creds=creds,
+        pool=pool,
+        billing=billing,
+        parent_message_id=parent_message_id,
+        project_id=str(project_id) if project_id else None,
+        stream_format=stream_format,
+        editor_context=editor_context,
+        messages=messages,
+        gen_params=gen_params,
+        tool_defs=tool_defs,
+        use_tools=use_tools,
+        knowledge_client=knowledge_client,
+        fe_memory_mode=fe_memory_mode,
+        msg_id=str(uuid4()),
+        seed_usage=None,
+        composer_model=composer_model,
+        composer_system_prompt=system_prompt,
+        # H11: book-scoped surfaces get the richer iteration budget.
+        max_iterations=GLOSSARY_TOOL_ITERATIONS if (editor_context or book_context) else MAX_TOOL_ITERATIONS,
+    ):
+        yield line
+
+
+async def _emit_chat_turn(
+    *,
+    session_id: str,
+    user_message_content: str,
+    user_id: str,
+    model_source: str,
+    model_ref: str,
+    creds: ProviderCredentials,
+    pool: asyncpg.Pool,
+    billing: BillingClient,
+    parent_message_id: str | None,
+    project_id: str | None,
+    stream_format: str,
+    editor_context: dict | None,
+    messages: list[dict],
+    gen_params: dict,
+    tool_defs: list[dict],
+    use_tools: bool,
+    knowledge_client,
+    fe_memory_mode: str | None,
+    msg_id: str,
+    seed_usage: tuple[int, int] | None,
+    composer_model: tuple[str, str] | None = None,
+    composer_system_prompt: str | None = None,
+    max_iterations: int = MAX_TOOL_ITERATIONS,
+) -> AsyncGenerator[str, None]:
+    """Shared Stream→persist→finish body for a chat turn (fresh OR C6 resume).
+
+    Consumes chunks from the LLM (tool loop or plain), emits AG-UI/legacy events,
+    persists the assistant message, and runs post-turn best-effort work. When the
+    tool loop yields a ``suspend`` chunk (a frontend tool awaiting client
+    execution), this persists the suspended run instead and emits a "suspended"
+    finish — NO assistant message is written (the turn isn't done yet)."""
     full_content: list[str] = []
     full_reasoning: list[str] = []
     tool_calls_history: list[dict] = []
     last_usage = None
-    msg_id = str(uuid4())
     import time as _time
     stream_start = _time.monotonic()
     time_to_first_token: float | None = None
+    # C6: set when the tool loop suspends on a frontend tool.
+    suspend_state: dict | None = None
 
-    # K-CLEAN-5 (D-K8-04): emit memory_mode as the FIRST SSE event so the
-    # FE can flip the indicator badge before any tokens render. Yielded
-    # outside the try/except below so it lands even if the LLM call
-    # immediately fails downstream.
-    yield f'data: {json.dumps({"type": "memory-mode", "mode": fe_memory_mode})}\n\n'
+    # ARCH-1 C3: select the wire-event serializer for this request.
+    emitter = make_emitter(stream_format, thread_id=session_id, message_id=msg_id)
+
+    # AG-UI requires a RUN_STARTED before any other event (no-op in legacy mode).
+    for line in emitter.open_run():
+        yield line
+
+    # K-CLEAN-5: emit memory_mode first (skipped on resume — the FE already has
+    # it from run 1, so fe_memory_mode is None there).
+    if fe_memory_mode is not None:
+        for line in emitter.memory_mode(fe_memory_mode):
+            yield line
+
+    turn_succeeded = False
+    post_finish_state: dict | None = None
 
     try:
         if use_tools:
@@ -496,7 +740,11 @@ async def stream_response(
                 tools=tool_defs,
                 knowledge_client=knowledge_client,
                 session_id=session_id,
-                project_id=str(project_id) if project_id else None,
+                project_id=project_id,
+                seed_usage=seed_usage,
+                composer_model=composer_model,
+                composer_system_prompt=composer_system_prompt,
+                max_iterations=max_iterations,
             )
         else:
             chunk_stream = _stream_via_gateway(
@@ -508,18 +756,24 @@ async def stream_response(
             )
 
         async for chunk_data in chunk_stream:
+            # ARCH-1 C6: a suspend chunk — a frontend tool is awaiting client
+            # execution. Capture it, stop consuming, and handle below.
+            if chunk_data.get("suspend") is not None:
+                suspend_state = chunk_data["suspend"]
+                break
             # K21-B: a tool_call chunk → record it for persistence + emit
             # the SSE indicator. It carries no text/usage, so skip the rest.
             tool_call = chunk_data.get("tool_call")
             if tool_call is not None:
                 tool_calls_history.append(tool_call)
-                yield (
-                    'data: '
-                    + json.dumps({"type": "tool-call",
-                                  "tool": tool_call["tool"],
-                                  "ok": tool_call["ok"]})
-                    + '\n\n'
-                )
+                for line in emitter.tool_call(tool_call):
+                    yield line
+                continue
+            # A2A phase-2: composer drafting on/off → transient UI indicator.
+            composing = chunk_data.get("composing")
+            if composing is not None:
+                for line in emitter.composing(composing["active"]):
+                    yield line
                 continue
             reasoning = chunk_data["reasoning_content"]
             content = chunk_data["content"]
@@ -532,10 +786,59 @@ async def stream_response(
 
             if reasoning:
                 full_reasoning.append(reasoning)
-                yield f'data: {json.dumps({"type": "reasoning-delta", "delta": reasoning})}\n\n'
+                for line in emitter.reasoning_delta(reasoning):
+                    yield line
             if content:
                 full_content.append(content)
-                yield f'data: {json.dumps({"type": "text-delta", "delta": content})}\n\n'
+                for line in emitter.text_delta(content):
+                    yield line
+
+        # ARCH-1 C6: SUSPEND path — a frontend tool was called. Persist the
+        # suspended run (so the resume request can rehydrate it) and emit the
+        # pending tool-call events + a "suspended" finish. NO assistant message
+        # is written; the logical turn completes on resume.
+        if suspend_state is not None:
+            run_id = str(uuid4())
+            pending = suspend_state["pending_tool_call"]
+            await save_suspended_run(
+                pool,
+                run_id=run_id,
+                session_id=session_id,
+                owner_user_id=user_id,
+                message_id=msg_id,
+                working=suspend_state["working"],
+                pending_tool_call=pending,
+                input_tokens=suspend_state["input_tokens"],
+                output_tokens=suspend_state["output_tokens"],
+                model_source=model_source,
+                model_ref=model_ref,
+                parent_message_id=parent_message_id,
+                user_message_content=user_message_content,
+            )
+            # close any open assistant/reasoning message first
+            for line in emitter.close_message():
+                yield line
+            for line in emitter.tool_call_pending(pending):
+                yield line
+            finish = {"type": "finish-message", "finishReason": "tool_calls",
+                      "usage": {"promptTokens": suspend_state["input_tokens"],
+                                "completionTokens": suspend_state["output_tokens"]},
+                      "timing": {}}
+            for line in emitter.finish(
+                finish, status="suspended",
+                pending={"runId": run_id, "toolCallId": pending["id"],
+                         "toolName": pending["name"]},
+            ):
+                yield line
+            for line in emitter.done():
+                yield line
+            return
+
+        # ARCH-1 C3: token stream is done — close the open assistant/reasoning
+        # message so its END frames the content, before the run-level
+        # persisted/finish events (no-op in legacy mode).
+        for line in emitter.close_message():
+            yield line
 
         response_time_ms = (_time.monotonic() - stream_start) * 1000
         final_text = "".join(full_content)
@@ -637,7 +940,8 @@ async def stream_response(
             data_payload["output_id"] = output_id
         if final_reasoning:
             data_payload["has_reasoning"] = True
-        yield f'data: {json.dumps({"type": "data", "data": [data_payload]})}\n\n'
+        for line in emitter.persisted_data(data_payload):
+            yield line
 
         # Finish event — includes timing metrics
         finish = {
@@ -652,42 +956,20 @@ async def stream_response(
                 "timeToFirstTokenMs": round(time_to_first_token) if time_to_first_token is not None else None,
             },
         }
-        yield f'data: {json.dumps(finish)}\n\n'
+        for line in emitter.finish(finish):
+            yield line
 
-        # Auto-title: generate title after first assistant message
-        current_count = await pool.fetchval(
-            "SELECT message_count FROM chat_sessions WHERE session_id = $1",
-            session_id,
-        )
-        if current_count is not None and current_count <= 2:
-            asyncio.create_task(
-                _auto_generate_title(
-                    session_id=session_id,
-                    user_id=user_id,
-                    user_message=user_message_content,
-                    assistant_message=final_text[:500],
-                    model_source=model_source,
-                    model_ref=model_ref,
-                    pool=pool,
-                )
-            )
-
-        # Log usage async (non-blocking)
-        if last_usage:
-            asyncio.create_task(
-                billing.log_usage(
-                    user_id=user_id,
-                    model_source=model_source,
-                    model_ref=model_ref,
-                    provider_kind=creds.provider_kind,
-                    input_tokens=input_tok or 0,
-                    output_tokens=output_tok or 0,
-                    session_id=session_id,
-                    message_id=msg_id,
-                    input_payload={"messages": messages},
-                    output_payload={"content": final_text, "reasoning": final_reasoning or None},
-                )
-            )
+        # The turn is durably persisted and finished; everything below is
+        # best-effort post-turn work that must NOT be able to emit another
+        # terminator. Carry the values it needs out of the try.
+        turn_succeeded = True
+        post_finish_state = {
+            "final_text": final_text,
+            "final_reasoning": final_reasoning,
+            "input_tok": input_tok,
+            "output_tok": output_tok,
+            "last_usage": last_usage,
+        }
 
     except Exception as exc:
         logger.exception("Stream error for session %s", session_id)
@@ -695,9 +977,180 @@ async def stream_response(
         safe_msg = str(exc)
         if any(kw in safe_msg.lower() for kw in ("traceback", "file ", "/usr/", "password", "secret")):
             safe_msg = "An internal error occurred. Please try again."
-        yield f'data: {json.dumps({"type": "error", "errorText": safe_msg})}\n\n'
+        for line in emitter.error(safe_msg):
+            yield line
 
-    yield "data: [DONE]\n\n"
+    # ── Post-turn best-effort side-effects (auto-title + billing) ────────────
+    # Runs OUTSIDE the try so a failure here can never emit error/RUN_ERROR
+    # after finish/RUN_FINISHED. Both branches schedule background tasks (which
+    # swallow their own errors); only the auto-title count read touches the DB,
+    # so it is guarded.
+    if turn_succeeded and post_finish_state is not None:
+        try:
+            current_count = await pool.fetchval(
+                "SELECT message_count FROM chat_sessions WHERE session_id = $1",
+                session_id,
+            )
+        except Exception:
+            logger.warning(
+                "auto-title count lookup failed for session %s (post-finish)",
+                session_id, exc_info=True,
+            )
+            current_count = None
+        if current_count is not None and current_count <= 2:
+            asyncio.create_task(
+                _auto_generate_title(
+                    session_id=session_id,
+                    user_id=user_id,
+                    user_message=user_message_content,
+                    assistant_message=post_finish_state["final_text"][:500],
+                    model_source=model_source,
+                    model_ref=model_ref,
+                    pool=pool,
+                )
+            )
+
+        # Log usage async (non-blocking)
+        if post_finish_state["last_usage"]:
+            asyncio.create_task(
+                billing.log_usage(
+                    user_id=user_id,
+                    model_source=model_source,
+                    model_ref=model_ref,
+                    provider_kind=creds.provider_kind,
+                    input_tokens=post_finish_state["input_tok"] or 0,
+                    output_tokens=post_finish_state["output_tok"] or 0,
+                    session_id=session_id,
+                    message_id=msg_id,
+                    input_payload={"messages": messages},
+                    output_payload={
+                        "content": post_finish_state["final_text"],
+                        "reasoning": post_finish_state["final_reasoning"] or None,
+                    },
+                )
+            )
+
+    for line in emitter.done():
+        yield line
+
+
+async def resume_stream_response(
+    *,
+    session_id: str,
+    user_id: str,
+    run_id: str,
+    tool_call_id: str,
+    outcome: str,
+    applied_text: str | None,
+    creds: ProviderCredentials,
+    pool: asyncpg.Pool,
+    billing: BillingClient,
+    stream_format: str = "agui",
+) -> AsyncGenerator[str, None]:
+    """ARCH-1 C6 — resume a suspended run after the FE executed a frontend tool.
+
+    Loads the suspended run (scoped to user), appends the tool result to the
+    rehydrated conversation, re-derives tool defs, and streams the 2nd LLM pass
+    via the shared _emit_chat_turn. Yields an AG-UI RUN_ERROR if the suspended
+    run is missing/expired."""
+    from app.services.frontend_tools import frontend_tool_defs
+
+    susp = await load_suspended_run(pool, run_id, user_id)
+    if susp is None or susp.pending_tool_call.get("id") != tool_call_id:
+        # Unknown/expired/mismatched — surface a clean AG-UI error.
+        emitter = make_emitter(stream_format, thread_id=session_id, message_id=str(uuid4()))
+        for line in emitter.open_run():
+            yield line
+        for line in emitter.error("This suggestion has expired. Please ask again."):
+            yield line
+        for line in emitter.done():
+            yield line
+        return
+
+    # Append the frontend tool's result (the human's apply decision) so the
+    # agent can acknowledge it in the 2nd pass.
+    working = list(susp.working)
+    result_payload = {"outcome": outcome}
+    if applied_text is not None:
+        result_payload["applied_text"] = applied_text
+    working.append({
+        "role": "tool",
+        "tool_call_id": tool_call_id,
+        "content": json.dumps(result_payload),
+    })
+
+    # Re-derive session gen_params + tool defs for the 2nd pass.
+    session_row = await pool.fetchrow(
+        "SELECT generation_params, project_id, system_prompt, composer_model_source, composer_model_ref "
+        "FROM chat_sessions WHERE session_id = $1",
+        session_id,
+    )
+    gp_raw = session_row["generation_params"] if session_row else {}
+    if isinstance(gp_raw, str):
+        gp_raw = json.loads(gp_raw)
+    gen_params: dict = gp_raw if gp_raw else {}
+    project_id = session_row.get("project_id") if session_row else None
+    # A2A phase-2: keep compose_prose available on resume too (the agent may
+    # delegate prose again after the user's apply/dismiss).
+    composer_src = session_row.get("composer_model_source") if session_row else None
+    composer_ref = session_row.get("composer_model_ref") if session_row else None
+    composer_model = (composer_src, str(composer_ref)) if composer_src and composer_ref else None
+    composer_system_prompt = session_row.get("system_prompt") if session_row else None
+
+    knowledge_client = get_knowledge_client()
+    tool_defs: list[dict] = []
+    try:
+        tool_defs = await knowledge_client.get_tool_definitions()
+    except Exception:
+        tool_defs = []
+    # The editor tool stays advertised on resume (the agent may propose again).
+    # Append it WHENEVER agui — mirror the fresh path (stream_response), which
+    # adds the frontend tool regardless of whether memory tools are present.
+    # Gating on `tool_defs` was a bug: with no memory tools (no project) the
+    # frontend tool was dropped AND the run fell through to the no-tools gateway
+    # path, which ignores seed_usage → resume usage was NOT summed across the two
+    # runs (caught by C6 live smoke). Going through _stream_with_tools keeps the
+    # seed and re-advertises the tool.
+    if stream_format == "agui":
+        # Re-advertise both frontend write-back tools on resume — the agent may
+        # propose again (prose or a glossary edit) after the user's decision.
+        tool_defs = tool_defs + frontend_tool_defs(editor=True, book_scoped=True)
+    if composer_model is not None:
+        from app.services.composer import compose_prose_defs
+        tool_defs = tool_defs + compose_prose_defs()
+    use_tools = bool(tool_defs)
+
+    # Delete the suspended run up front — the 2nd pass owns the turn now.
+    await delete_suspended_run(pool, run_id)
+
+    async for line in _emit_chat_turn(
+        session_id=session_id,
+        user_message_content=susp.user_message_content,
+        user_id=user_id,
+        model_source=susp.model_source,
+        model_ref=susp.model_ref,
+        creds=creds,
+        pool=pool,
+        billing=billing,
+        parent_message_id=susp.parent_message_id,
+        project_id=str(project_id) if project_id else None,
+        stream_format=stream_format,
+        editor_context={"resumed": True},  # truthy so the frontend tool stays advertised
+        messages=working,
+        gen_params=gen_params,
+        tool_defs=tool_defs,
+        use_tools=use_tools,
+        knowledge_client=knowledge_client,
+        fe_memory_mode=None,  # already sent in run 1
+        msg_id=susp.message_id,  # share the assistant message id across both runs
+        seed_usage=(susp.input_tokens, susp.output_tokens),
+        composer_model=composer_model,
+        composer_system_prompt=composer_system_prompt,
+        # H11: a resume continues a book-scoped frontend-tool turn (agui) → keep
+        # the richer cap so the post-Apply/Confirm follow-up isn't truncated.
+        max_iterations=GLOSSARY_TOOL_ITERATIONS if stream_format == "agui" else MAX_TOOL_ITERATIONS,
+    ):
+        yield line
 
 
 async def _auto_generate_title(

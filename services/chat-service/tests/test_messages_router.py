@@ -224,3 +224,89 @@ class TestSendMessage:
 
         mock_stream.assert_called_once()
         assert mock_stream.call_args.kwargs.get("parent_message_id") is None
+
+
+class TestStreamFormatHeader:
+    """ARCH-1 C3 — the x-loreweave-stream-format header selects the wire format
+    per request; absent/unknown falls back to the legacy default."""
+
+    @staticmethod
+    def _provider_ok(mock_provider):
+        from app.models import ProviderCredentials
+        mock_provider.return_value.resolve = AsyncMock(return_value=ProviderCredentials(
+            provider_kind="openai", provider_model_name="gpt-4",
+            base_url="https://api.openai.com", api_key="sk-test", context_length=8192,
+        ))
+
+    @pytest.mark.asyncio
+    @patch("app.routers.messages.get_provider_client")
+    @patch("app.routers.messages.get_billing_client")
+    @patch("app.routers.messages.stream_response")
+    async def test_agui_header_forwarded(
+        self, mock_stream, mock_billing, mock_provider, client, mock_pool
+    ):
+        conn = mock_pool._conn
+        mock_pool.fetchrow.return_value = make_session_record()
+        conn.fetchval.return_value = 1
+        self._provider_ok(mock_provider)
+
+        async def fake_stream(**kwargs):
+            yield "data: [DONE]\n\n"
+        mock_stream.return_value = fake_stream()
+
+        resp = await client.post(
+            f"/v1/chat/sessions/{TEST_SESSION_ID}/messages",
+            json={"content": "Hello"},
+            headers={"x-loreweave-stream-format": "agui"},
+        )
+        assert resp.status_code == 200
+        assert mock_stream.call_args.kwargs.get("stream_format") == "agui"
+        # The negotiated format is echoed back on the response.
+        assert resp.headers.get("x-loreweave-stream-format") == "agui"
+
+    @pytest.mark.asyncio
+    @patch("app.routers.messages.get_provider_client")
+    @patch("app.routers.messages.get_billing_client")
+    @patch("app.routers.messages.stream_response")
+    async def test_no_header_defaults_to_legacy(
+        self, mock_stream, mock_billing, mock_provider, client, mock_pool
+    ):
+        conn = mock_pool._conn
+        mock_pool.fetchrow.return_value = make_session_record()
+        conn.fetchval.return_value = 1
+        self._provider_ok(mock_provider)
+
+        async def fake_stream(**kwargs):
+            yield "data: [DONE]\n\n"
+        mock_stream.return_value = fake_stream()
+
+        resp = await client.post(
+            f"/v1/chat/sessions/{TEST_SESSION_ID}/messages",
+            json={"content": "Hello"},
+        )
+        assert resp.status_code == 200
+        assert mock_stream.call_args.kwargs.get("stream_format") == "legacy"
+
+    @pytest.mark.asyncio
+    @patch("app.routers.messages.get_provider_client")
+    @patch("app.routers.messages.get_billing_client")
+    @patch("app.routers.messages.stream_response")
+    async def test_unknown_header_falls_back_to_legacy(
+        self, mock_stream, mock_billing, mock_provider, client, mock_pool
+    ):
+        conn = mock_pool._conn
+        mock_pool.fetchrow.return_value = make_session_record()
+        conn.fetchval.return_value = 1
+        self._provider_ok(mock_provider)
+
+        async def fake_stream(**kwargs):
+            yield "data: [DONE]\n\n"
+        mock_stream.return_value = fake_stream()
+
+        resp = await client.post(
+            f"/v1/chat/sessions/{TEST_SESSION_ID}/messages",
+            json={"content": "Hello"},
+            headers={"x-loreweave-stream-format": "bogus"},
+        )
+        assert resp.status_code == 200
+        assert mock_stream.call_args.kwargs.get("stream_format") == "legacy"

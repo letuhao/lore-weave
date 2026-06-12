@@ -14,11 +14,23 @@ import logging
 import asyncpg
 from loreweave_obs import setup_tracing
 
-from app.clients import BookClient, GlossaryClient, KnowledgeClient
+from app.clients import (
+    BookClient,
+    ChatClient,
+    GlossaryClient,
+    KnowledgeClient,
+    ProviderRegistryClient,
+)
 from app.config import settings
 from app.llm_client import close_llm_client, get_llm_client
-from app.runner import poll_and_run
+from app.metrics import start_metrics_server
+from app.runner import (
+    consume_filter_reload_signal,
+    hydrate_precision_filter_config_from_redis,
+    poll_and_run,
+)
 from app.summary_consumer import consume_summary_stream
+from app.wake import WakeWaiter
 
 logger = logging.getLogger("worker-ai")
 
@@ -35,6 +47,10 @@ async def main() -> None:
     setup_tracing("worker-ai")
 
     logger.info("worker-ai starting (poll_interval=%.1fs)", settings.poll_interval_s)
+
+    # Cycle 73h — Prometheus /metrics endpoint (daemon thread, runs
+    # alongside asyncio loop). No-op when METRICS_PORT=0.
+    start_metrics_server(settings.metrics_port)
 
     pool = await asyncpg.create_pool(
         settings.knowledge_db_url,
@@ -62,11 +78,25 @@ async def main() -> None:
         internal_token=settings.internal_service_token,
         timeout_s=settings.book_client_timeout_s,
     )
+    # FD-2 — chat-service client: fetch a chat turn's text so the chat drain branch
+    # extracts real knowledge (was a text="" no-op).
+    chat_client = ChatClient(
+        base_url=settings.chat_service_url,
+        internal_token=settings.internal_service_token,
+        timeout_s=settings.chat_client_timeout_s,
+    )
     # C12c-a: client for the scope='glossary_sync' branch + all-scope tail.
     glossary_client = GlossaryClient(
         base_url=settings.glossary_service_url,
         internal_token=settings.internal_service_token,
         timeout_s=settings.glossary_client_timeout_s,
+    )
+    # FD-27 — provider-registry model-info client for the once-per-job
+    # reasoning-model advisory (best-effort; failures degrade the advisory off).
+    provider_client = ProviderRegistryClient(
+        base_url=settings.provider_registry_internal_url,
+        internal_token=settings.internal_service_token,
+        timeout_s=settings.provider_registry_client_timeout_s,
     )
     # Phase 4b-γ — loreweave_llm SDK wrapper for in-process Pass 2
     # extraction. Touched here so SDK construction errors (bad
@@ -74,19 +104,34 @@ async def main() -> None:
     # than at the first job.
     llm_client = get_llm_client()
 
+    # FD-22 — block on the knowledge-service wake stream between poll cycles so
+    # a freshly started job is picked up immediately. None (disabled / no
+    # redis_url) → plain sleep. The poll body is unchanged: the wake only
+    # shortens the wait, the atomic claim in poll_and_run still owns correctness.
+    wake_waiter: WakeWaiter | None = None
+    if settings.extraction_wake_enabled and settings.redis_url:
+        wake_waiter = WakeWaiter(settings.redis_url, settings.extraction_wake_stream)
+        logger.info("FD-22: extraction wake enabled (stream=%s)", settings.extraction_wake_stream)
+    else:
+        logger.info("FD-22: extraction wake disabled — plain polling")
+
     async def _job_poll_loop() -> None:
         while True:
             try:
                 count = await poll_and_run(
                     pool, knowledge_client, llm_client,
-                    book_client, glossary_client,
+                    book_client, glossary_client, chat_client, provider_client,
                 )
                 if count > 0:
                     logger.info("Poll cycle: processed %d job(s)", count)
             except Exception:
                 logger.exception("Poll cycle error (will retry)")
 
-            await asyncio.sleep(settings.poll_interval_s)
+            if wake_waiter is not None:
+                if await wake_waiter.wait(settings.poll_interval_s):
+                    logger.debug("FD-22: woke on extraction signal — polling now")
+            else:
+                await asyncio.sleep(settings.poll_interval_s)
 
     # P3 D-P3-WORKER-AI-CONSUMER-WIRING: run the extraction-job poll loop
     # AND the Redis Stream consumer for `extraction.summarize` in
@@ -105,6 +150,23 @@ async def main() -> None:
     else:
         logger.info("summary consumer disabled via config")
 
+    # Cycle 73f — runtime filter config reload. Subscribes to Redis
+    # pubsub; on each signal, re-reads the Redis config key + atomically
+    # swaps module-level `_PRECISION_FILTER_CONFIG`. Resilient: SDK
+    # subscriber has outer try/except with backoff. Skip gracefully if
+    # redis_url is empty (dev/test without Redis).
+    #
+    # r3 H1 fold: hydrate first (one-shot Redis GET to seed cache from
+    # any active ops-override) — without this, worker restart silently
+    # reverts to env defaults regardless of Redis state. Symmetric with
+    # KS lifespan hydrate (r2 H1 fold).
+    if settings.redis_url:
+        await hydrate_precision_filter_config_from_redis(settings.redis_url)
+        coroutines.append(consume_filter_reload_signal(settings.redis_url))
+        logger.info("cycle 73f: filter reload hydrate + subscriber started")
+    else:
+        logger.info("cycle 73f: filter reload subscriber skipped (no redis_url)")
+
     try:
         await asyncio.gather(*coroutines)
     except asyncio.CancelledError:
@@ -113,7 +175,11 @@ async def main() -> None:
         await close_llm_client()
         await knowledge_client.aclose()
         await book_client.aclose()
+        await chat_client.aclose()
         await glossary_client.aclose()
+        await provider_client.aclose()
+        if wake_waiter is not None:
+            await wake_waiter.aclose()
         await pool.close()
         logger.info("worker-ai stopped")
 

@@ -1,4 +1,5 @@
 import { BookOpen, FileText, MessageSquare, RotateCcw, Trash2, Clock } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import type { TrashItem } from './types';
 
@@ -17,11 +18,8 @@ function daysLeft(deletedAt: string): number {
   return Math.max(0, Math.ceil((expiry - Date.now()) / (24 * 60 * 60 * 1000)));
 }
 
-function relativeDeleted(iso: string): string {
-  const days = Math.floor((Date.now() - new Date(iso).getTime()) / (24 * 60 * 60 * 1000));
-  if (days === 0) return 'Deleted today';
-  if (days === 1) return 'Deleted yesterday';
-  return `Deleted ${days} days ago`;
+function daysSinceDeleted(iso: string): number {
+  return Math.floor((Date.now() - new Date(iso).getTime()) / (24 * 60 * 60 * 1000));
 }
 
 const TYPE_ICON: Record<string, { icon: React.ReactNode; bg: string; fg: string }> = {
@@ -31,8 +29,16 @@ const TYPE_ICON: Record<string, { icon: React.ReactNode; bg: string; fg: string 
 };
 
 export function TrashCard({ item, selected, onToggle, onRestore, onPurge, disabled }: TrashCardProps) {
+  const { t } = useTranslation('books');
   const remaining = daysLeft(item.deletedAt);
   const urgent = remaining <= 7;
+  const sinceDeleted = daysSinceDeleted(item.deletedAt);
+  const deletedLabel =
+    sinceDeleted === 0
+      ? t('trash.deleted_today')
+      : sinceDeleted === 1
+        ? t('trash.deleted_yesterday')
+        : t('trash.deleted_days_ago', { count: sinceDeleted });
 
   return (
     <div
@@ -77,7 +83,7 @@ export function TrashCard({ item, selected, onToggle, onRestore, onPurge, disabl
               <span className="opacity-40">·</span>
             </>
           )}
-          <span>{relativeDeleted(item.deletedAt)}</span>
+          <span>{deletedLabel}</span>
         </div>
       </div>
 
@@ -88,7 +94,7 @@ export function TrashCard({ item, selected, onToggle, onRestore, onPurge, disabl
         )}
       >
         <Clock className="h-2.5 w-2.5" />
-        {remaining}d left
+        {t('trash.days_left', { count: remaining })}
       </span>
 
       <div className="flex shrink-0 gap-1">
@@ -99,13 +105,13 @@ export function TrashCard({ item, selected, onToggle, onRestore, onPurge, disabl
           className="flex h-7 items-center gap-1.5 rounded-md border border-border bg-transparent px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-secondary disabled:opacity-50"
         >
           <RotateCcw className="h-3 w-3" />
-          Restore
+          {t('trash.restore')}
         </button>
         <button
           type="button"
           onClick={onPurge}
           disabled={disabled}
-          title="Delete permanently"
+          title={t('trash.delete_tooltip')}
           className="flex h-7 w-7 items-center justify-center rounded-md text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50"
         >
           <Trash2 className="h-3 w-3" />

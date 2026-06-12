@@ -124,10 +124,13 @@ func (s *Server) parseClientCall(
 //
 // On parse failure -> 502 BOOK_PARSE_UPSTREAM_FAILURE. Returns total chapters
 // created via the response body (matches startImport's UX).
+// processTxtImport — E0-2: `caller` is the importing editor (revision author);
+// `owner` is the book owner whose storage quota the imported content bills.
 func (s *Server) processTxtImport(
 	w http.ResponseWriter,
 	r *http.Request,
-	ownerID uuid.UUID,
+	caller uuid.UUID,
+	owner uuid.UUID,
 	bookID uuid.UUID,
 	originalFilename string,
 	body string,
@@ -149,12 +152,13 @@ func (s *Server) processTxtImport(
 	multiPart := len(tree.Parts) > 1
 
 	// Quota check ONCE for the whole import body (cheaper than per-chapter).
-	_ = s.ensureQuotaRow(r.Context(), ownerID)
-	_ = s.recalcQuota(r.Context(), ownerID)
+	// Content bills the book owner, not the importing editor.
+	_ = s.ensureQuotaRow(r.Context(), owner)
+	_ = s.recalcQuota(r.Context(), owner)
 	var used, quota int64
 	_ = s.pool.QueryRow(r.Context(),
 		`SELECT used_bytes, quota_bytes FROM user_storage_quota WHERE owner_user_id=$1`,
-		ownerID).Scan(&used, &quota)
+		owner).Scan(&used, &quota)
 	if used+int64(len(body)) > quota {
 		writeError(w, http.StatusInsufficientStorage, "STORAGE_QUOTA_EXCEEDED", "quota exceeded")
 		return
@@ -248,11 +252,30 @@ RETURNING id
 			_, _ = tx.Exec(r.Context(),
 				`INSERT INTO chapter_drafts(chapter_id, body, draft_format, draft_updated_at, draft_version) VALUES($1,$2,'json',now(),1)`,
 				chapterID, jsonBody)
-			_, _ = tx.Exec(r.Context(),
-				`INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id) VALUES($1,$2,$3,$4,$5)`,
-				chapterID, jsonBody, "json", "imported from "+originalFilename, ownerID)
-			_, _ = tx.Exec(r.Context(),
-				`UPDATE chapters SET draft_revision_count=1 WHERE id=$1`, chapterID)
+			// Canon Model CM1: capture the import revision id (error-checked,
+			// NOT fire-and-forget) so the chapter can be pinned as published.
+			var importRevID uuid.UUID
+			if err := tx.QueryRow(r.Context(),
+				`INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id) VALUES($1,$2,$3,$4,$5) RETURNING id`,
+				chapterID, jsonBody, "json", "imported from "+originalFilename, caller).Scan(&importRevID); err != nil {
+				tx.Rollback(r.Context())
+				writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT",
+					fmt.Sprintf("insert revision: %v", err))
+				return
+			}
+			// Imported content is finished canon → publish it and pin the import
+			// revision (else CM3c has nothing to pin → imported canon never extracted).
+			// Error-checked (NOT fire-and-forget): this UPDATE is what actually pins
+			// the revision + flips to published — swallowing its error would commit an
+			// orphan revision with the chapter stuck at 'draft' (adversary review-code W1).
+			if _, err := tx.Exec(r.Context(),
+				`UPDATE chapters SET draft_revision_count=1, editorial_status='published', published_revision_id=$2 WHERE id=$1`,
+				chapterID, importRevID); err != nil {
+				tx.Rollback(r.Context())
+				writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT",
+					fmt.Sprintf("publish imported chapter: %v", err))
+				return
+			}
 
 			for _, sc := range ch.Scenes {
 				_, err := tx.Exec(r.Context(),
@@ -284,11 +307,11 @@ RETURNING id
 		}
 	}
 
-	_ = s.recalcQuota(r.Context(), ownerID)
+	_ = s.recalcQuota(r.Context(), owner)
 
 	// Match existing UX: respond with the (last) created chapter (or summary).
 	if totalCount == 1 {
-		s.getChapterByID(w, r.Context(), bookID, lastChapterID, ownerID, http.StatusCreated)
+		s.getChapterByID(w, r.Context(), bookID, lastChapterID, caller, http.StatusCreated)
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{

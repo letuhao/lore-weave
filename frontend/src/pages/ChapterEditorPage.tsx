@@ -1,11 +1,13 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import {
   Save, PanelLeft, PanelRight, Clock, ChevronRight, ChevronLeft, ChevronRight as ChevronRightNav, SpellCheck,
-  BookOpen, FileText, BookMarked, Pen, Sparkles, Languages,
+  BookOpen, FileText, BookMarked, ListTree, Pen, Sparkles, Languages, AlertTriangle,
 } from 'lucide-react';
 import { useAuth } from '@/auth';
+import { apiBase } from '@/api';
 import { booksApi, type Chapter } from '@/features/books/api';
 import { useEditorPanels } from '@/hooks/useEditorPanels';
 import { useEditorDirty } from '@/contexts/EditorDirtyContext';
@@ -14,6 +16,7 @@ import { TiptapEditor, type TiptapEditorHandle } from '@/components/editor/Tipta
 import { Skeleton } from '@/components/shared/Skeleton';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { UnsavedChangesDialog } from '@/components/shared/UnsavedChangesDialog';
+import { PublishControl } from '@/features/books/components/PublishControl';
 import { cn } from '@/lib/utils';
 import { useGrammarEnabled } from '@/hooks/useGrammarCheck';
 import { useEditorMode } from '@/hooks/useEditorMode';
@@ -25,15 +28,97 @@ import { GlossaryAutocomplete } from '@/components/editor/GlossaryAutocomplete';
 import { GlossaryPanel } from '@/components/editor/GlossaryPanel';
 import { glossaryApi } from '@/features/glossary/api';
 import type { EntityNameEntry } from '@/features/glossary/types';
+import { Chat } from '@/features/chat/Chat';
+import { fireSendToChat } from '@/features/chat/context/sendToChat';
+import { registerEditorTarget } from '@/features/chat/context/editorBridge';
+import { CompositionPanel } from '@/features/composition/components/CompositionPanel';
+import { SelectionToolbar } from '@/features/composition/components/SelectionToolbar';
+import { InlineAiLayer } from '@/features/composition/components/InlineAiLayer';
+import { useWorkResolution } from '@/features/composition/hooks/useWork';
+import { OutlineTree } from '@/features/composition/components/OutlineTree';
+import { useChapterPublishGate, publishGateMessages } from '@/features/composition/hooks/usePublishGate';
 
 function wordCount(text: string): number {
   return text.trim() ? text.trim().split(/\s+/).length : 0;
 }
 
 export function ChapterEditorPage() {
+  const { t } = useTranslation('editor');
   const { bookId = '', chapterId = '' } = useParams();
   const { accessToken } = useAuth();
   const panels = useEditorPanels();
+
+  // Resizable right panel — drag the left edge. Width is per-device UI state
+  // (persisted in useEditorPanels → localStorage per CLAUDE.md). During the
+  // drag we update a transient `liveRightWidth` for instant feedback and only
+  // persist on mouse-up (avoids a localStorage write every frame).
+  const [liveRightWidth, setLiveRightWidth] = useState<number | null>(null);
+  const rightDragRef = useRef(0);
+  const startRightResize = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = panels.rightWidth ?? 320;
+    const clamp = (w: number) => Math.min(Math.max(w, 280), Math.min(window.innerWidth * 0.7, 900));
+    rightDragRef.current = startW;
+    const onMove = (ev: MouseEvent) => {
+      // dragging left → panel grows (right panel is anchored to the right edge)
+      rightDragRef.current = clamp(startW + (startX - ev.clientX));
+      setLiveRightWidth(rightDragRef.current);
+    };
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      panels.setRightWidth(rightDragRef.current);
+      setLiveRightWidth(null);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }, [panels.rightWidth, panels.setRightWidth]);
+  const rightWidth = liveRightWidth ?? panels.rightWidth ?? 320;
+
+  // Resizable left panel — drag its RIGHT edge (left panel is anchored to the
+  // left, so dragging right grows it). Same persist-on-mouse-up pattern.
+  const [liveLeftWidth, setLiveLeftWidth] = useState<number | null>(null);
+  const leftDragRef = useRef(0);
+  const startLeftResize = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = panels.leftWidth ?? 300;
+    const clamp = (w: number) => Math.min(Math.max(w, 240), Math.min(window.innerWidth * 0.5, 720));
+    leftDragRef.current = startW;
+    const onMove = (ev: MouseEvent) => {
+      leftDragRef.current = clamp(startW + (ev.clientX - startX));
+      setLiveLeftWidth(leftDragRef.current);
+    };
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      panels.setLeftWidth(leftDragRef.current);
+      setLiveLeftWidth(null);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }, [panels.leftWidth, panels.setLeftWidth]);
+  const leftWidth = liveLeftWidth ?? panels.leftWidth ?? 300;
+
+  // Editor AI "Compose" mode (per-device UI pref). Agent = tools on
+  // (propose_edit edits the doc). Compose = prose-only, no tools — for
+  // reasoning models that write well but stumble on tool-calling.
+  const [composeMode, setComposeModeState] = useState<boolean>(() => {
+    try { return localStorage.getItem('lw_editor_compose_mode') === '1'; } catch { return false; }
+  });
+  const setComposeMode = useCallback((v: boolean) => {
+    setComposeModeState(v);
+    try { localStorage.setItem('lw_editor_compose_mode', v ? '1' : '0'); } catch { /* ignore */ }
+  }, []);
 
   // Draft state
   const [version, setVersion] = useState<number | undefined>();
@@ -43,6 +128,7 @@ export function ChapterEditorPage() {
   // Chapter metadata
   const [title, setTitle] = useState('');
   const [savedTitle, setSavedTitle] = useState('');
+  const [editorialStatus, setEditorialStatus] = useState<'draft' | 'published' | undefined>();
 
   // Editor content
   const [savedBody, setSavedBody] = useState<any>(null);
@@ -55,8 +141,51 @@ export function ChapterEditorPage() {
   const [grammarEnabled, setGrammarEnabled] = useGrammarEnabled();
 
   // Panels
-  const [rightTab, setRightTab] = useState<'history' | 'ai'>('history');
+  const [rightTab, setRightTab] = useState<'history' | 'ai' | 'compose'>('history');
   const [revKey, setRevKey] = useState(0);
+
+  // T3.2 — resolve the co-writer Work (for the editor Selection Tools' projectId)
+  // + lift the active scene so the toolbar grounds on the compose panel's scene.
+  // useWorkResolution is react-query-cached, so CompositionPanel reuses this fetch.
+  const workResolution = useWorkResolution(bookId, accessToken);
+  const composeWork =
+    workResolution.data?.status === 'found' ? workResolution.data.work
+      : workResolution.data?.status === 'candidates' ? (workResolution.data.candidates[0] ?? null)
+        : null;
+  const composeProjectId = composeWork?.project_id ?? null;
+  const composeDefaultModel =
+    typeof composeWork?.settings?.default_model_ref === 'string' ? composeWork.settings.default_model_ref : null;
+  const [activeSceneId, setActiveSceneId] = useState('');
+
+  // ARCH-1 C5: when the AI panel opens (or the chapter changes while it's
+  // open), auto-attach the current chapter as chat context via the existing
+  // send-to-chat event. The chat listener re-fetches the chapter body fresh at
+  // send time, so we only pass identity (book/chapter/title) — the title is
+  // read through a ref so editing it doesn't re-fire on every keystroke; only
+  // tab-open / chapter change triggers it. A microtask defer lets <Chat>'s
+  // listener mount first (the defer is belt-and-suspenders for toggle-open).
+  const chapterTitleRef = useRef('');
+  chapterTitleRef.current = title;
+  useEffect(() => {
+    if (rightTab !== 'ai' || !bookId || !chapterId) return;
+    const id = setTimeout(() => {
+      fireSendToChat({
+        bookId,
+        chapterId,
+        chapterTitle: chapterTitleRef.current || 'Untitled chapter',
+      });
+    }, 0);
+    return () => clearTimeout(id);
+  }, [rightTab, bookId, chapterId]);
+
+  // ARCH-1 C6 — register this chapter's Tiptap handle so the AI panel's
+  // Apply-edit handler can write back to the open document (and verify the
+  // proposal targets THIS chapter). Cleared on unmount / chapter change.
+  useEffect(() => {
+    if (!bookId || !chapterId) return;
+    registerEditorTarget({ bookId, chapterId, handleRef: tiptapEditorRef });
+    return () => registerEditorTarget(null);
+  }, [bookId, chapterId]);
 
   // Glossary integration
   const [glossaryEntities, setGlossaryEntities] = useState<EntityNameEntry[]>([]);
@@ -64,7 +193,7 @@ export function ChapterEditorPage() {
   const editorElRef = useRef<HTMLElement | null>(null);
 
   // Left sidebar
-  const [leftTab, setLeftTab] = useState<'source' | 'chapters' | 'glossary'>('chapters');
+  const [leftTab, setLeftTab] = useState<'source' | 'chapters' | 'glossary' | 'outline'>('chapters');
   const [originalContent, setOriginalContent] = useState<string | null>(null);
   const [originalLoading, setOriginalLoading] = useState(false);
   const [allChapters, setAllChapters] = useState<Chapter[]>([]);
@@ -82,6 +211,15 @@ export function ChapterEditorPage() {
   const bodyChanged = tiptapJson ? JSON.stringify(tiptapJson) !== JSON.stringify(savedBody) : false;
   const titleChanged = title !== savedTitle;
   const isDirty = bodyChanged || titleChanged;
+
+  // M9 chapter-gate (OI-1) + A2-S4b: if this book has a composition Work, block
+  // Publish until every scene is 'done' AND no scene's latest auto-generation
+  // left a CONFIRMED canon contradiction; separately warn (non-blocking) when
+  // canon couldn't be verified. No Work → ungated. Reason-building is the pure
+  // publishGateMessages helper (unit-tested), kept here so i18n stays in the view.
+  const publishGate = useChapterPublishGate(bookId, chapterId, accessToken);
+  const { blockedReason: publishBlockedReason, uncheckedWarning: publishUncheckedWarning } =
+    publishGateMessages(publishGate, t);
 
   // Sync isDirty into context so EditorLayout sidebar can read it
   useEffect(() => {
@@ -143,10 +281,21 @@ export function ChapterEditorPage() {
       setTextContent(draft.text_content ?? '');
       setTiptapJson(null);
       setVersion(draft.draft_version);
-      const t = chapter.title ?? '';
-      setTitle(t);
-      setSavedTitle(t);
+      const chTitle = chapter.title ?? '';
+      setTitle(chTitle);
+      setSavedTitle(chTitle);
+      setEditorialStatus(chapter.editorial_status);
     } catch (e) { toast.error((e as Error).message); }
+  }, [accessToken, bookId, chapterId]);
+
+  // CM-FE: light refetch of just the editorial_status after publish/unpublish
+  // — must NOT touch body/title (would clobber the editor).
+  const refreshEditorialStatus = useCallback(async () => {
+    if (!accessToken) return;
+    try {
+      const chapter = await booksApi.getChapter(accessToken, bookId, chapterId);
+      setEditorialStatus(chapter.editorial_status);
+    } catch { /* non-fatal — badge stays until next load */ }
   }, [accessToken, bookId, chapterId]);
 
   useEffect(() => { void load(); }, [load]);
@@ -230,8 +379,11 @@ export function ChapterEditorPage() {
           expected_draft_version: version,
         });
       } catch (e) {
-        // On version conflict, retry without version check (single-user, last-write-wins)
-        if ((e as Error).message?.includes('stale draft version')) {
+        // On version conflict, retry without version check (single-user, last-write-wins).
+        // Match the structured error (book-service: 409 CHAPTER_DRAFT_CONFLICT) like the
+        // publish path does — not a substring of the message, which is brittle to wording.
+        const err = e as { code?: string; status?: number };
+        if (err.code === 'CHAPTER_DRAFT_CONFLICT' || err.status === 409) {
           await booksApi.patchDraft(accessToken, bookId, chapterId, {
             body: bodyToSave,
             body_format: 'json',
@@ -245,7 +397,7 @@ export function ChapterEditorPage() {
         await booksApi.patchChapter(accessToken, bookId, chapterId, { title: title || null });
       }
       setSaveNote('');
-      toast.success('Chapter saved');
+      toast.success(t('saved'));
       setRevKey((k) => k + 1);
       await load();
     } catch (e) { toast.error((e as Error).message); }
@@ -274,12 +426,12 @@ export function ChapterEditorPage() {
     if (!accessToken || !tiptapJson) return;
     const blocks = (tiptapJson as any)?.content;
     if (!Array.isArray(blocks) || blocks.length === 0) {
-      toast.error('No content to translate');
+      toast.error(t('no_content'));
       return;
     }
     setTranslating(true);
     try {
-      const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3000';
+      const API_BASE = apiBase();
       const res = await fetch(`${API_BASE}/v1/translation/translate-text`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
@@ -287,18 +439,18 @@ export function ChapterEditorPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        toast.error(data?.detail?.message || data?.detail || 'Translation failed');
+        toast.error(data?.detail?.message || data?.detail || t('translation_failed'));
         return;
       }
       if (data.translated_blocks && Array.isArray(data.translated_blocks)) {
         const newDoc = { type: 'doc', content: data.translated_blocks };
         tiptapEditorRef.current?.setContent(newDoc);
-        toast.success(`Translated ${data.translated_blocks.length} blocks`);
+        toast.success(t('translated_blocks', { count: data.translated_blocks.length }));
       } else if (data.translated_text) {
-        toast.info('Text translation received — block mode recommended');
+        toast.info(t('text_translation_received'));
       }
     } catch (e) {
-      toast.error((e as Error).message || 'Translation failed');
+      toast.error((e as Error).message || t('translation_failed'));
     } finally {
       setTranslating(false);
     }
@@ -354,21 +506,21 @@ export function ChapterEditorPage() {
             <button
               onClick={() => navigateToChapter(prevChapterId)}
               className="rounded p-1 hover:bg-secondary hover:text-foreground"
-              title="Previous chapter"
+              title={t('prev_chapter')}
             >
               <ChevronLeft className="h-3 w-3" />
             </button>
           )}
-          <button onClick={() => guardedNavigate('/books')} className="hover:text-foreground">Workspace</button>
+          <button onClick={() => guardedNavigate('/books')} className="hover:text-foreground">{t('breadcrumb.workspace')}</button>
           <ChevronRight className="h-3 w-3" />
-          <button onClick={() => guardedNavigate(`/books/${bookId}`)} className="hover:text-foreground">Book</button>
+          <button onClick={() => guardedNavigate(`/books/${bookId}`)} className="hover:text-foreground">{t('breadcrumb.book')}</button>
           <ChevronRight className="h-3 w-3" />
-          <span className="font-medium text-foreground">{title || 'Chapter'}</span>
+          <span className="font-medium text-foreground">{title || t('breadcrumb.chapter')}</span>
           {nextChapterId && (
             <button
               onClick={() => navigateToChapter(nextChapterId)}
               className="rounded p-1 hover:bg-secondary hover:text-foreground"
-              title="Next chapter"
+              title={t('next_chapter')}
             >
               <ChevronRightNav className="h-3 w-3" />
             </button>
@@ -387,10 +539,10 @@ export function ChapterEditorPage() {
                   ? 'bg-background text-foreground shadow-sm'
                   : 'text-muted-foreground hover:text-foreground',
               )}
-              title="Classic mode — focused writing"
+              title={t('mode.classic_title')}
             >
               <Pen className="h-3 w-3" />
-              Classic
+              {t('mode.classic')}
             </button>
             <button
               onClick={() => handleModeSwitch('ai')}
@@ -400,10 +552,10 @@ export function ChapterEditorPage() {
                   ? 'bg-background text-foreground shadow-sm'
                   : 'text-muted-foreground hover:text-foreground',
               )}
-              title="AI Assistant mode — full features"
+              title={t('mode.ai_title')}
             >
               <Sparkles className="h-3 w-3" />
-              AI
+              {t('mode.ai')}
             </button>
           </div>
 
@@ -415,7 +567,7 @@ export function ChapterEditorPage() {
               'flex cursor-pointer items-center gap-1.5 rounded px-2 py-1 text-[10px] font-medium transition-colors',
               grammarEnabled ? 'text-warning' : 'text-muted-foreground hover:text-foreground',
             )}
-            title="Toggle grammar & spell check (LanguageTool)"
+            title={t('grammar_title')}
           >
             <input
               type="checkbox"
@@ -434,23 +586,23 @@ export function ChapterEditorPage() {
               'flex items-center gap-1 rounded px-2 py-1 text-[10px] font-medium transition-colors',
               translating ? 'text-primary animate-pulse' : 'text-muted-foreground hover:text-foreground',
             )}
-            title="Translate content using AI (block mode)"
+            title={t('translate_title')}
           >
             <Languages className="h-3.5 w-3.5" />
-            {translating ? 'Translating...' : 'Translate'}
+            {translating ? t('translating') : t('translate')}
           </button>
 
           <button
             onClick={panels.toggleLeft}
             className={cn('rounded p-1.5 transition-colors', panels.left ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-secondary')}
-            title="Toggle source panel"
+            title={t('toggle_source')}
           >
             <PanelLeft className="h-3.5 w-3.5" />
           </button>
           <button
             onClick={panels.toggleRight}
             className={cn('rounded p-1.5 transition-colors', panels.right ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-secondary')}
-            title="Toggle history / AI panel"
+            title={t('toggle_history')}
           >
             <PanelRight className="h-3.5 w-3.5" />
           </button>
@@ -460,12 +612,12 @@ export function ChapterEditorPage() {
           {isDirty ? (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-warning/12 px-2 py-0.5 text-[10px] font-medium text-warning">
               <span className="h-1.5 w-1.5 rounded-full bg-warning" />
-              Unsaved
+              {t('unsaved')}
             </span>
           ) : (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-success/12 px-2 py-0.5 text-[10px] font-medium text-success">
               <span className="h-1.5 w-1.5 rounded-full bg-success" />
-              Saved
+              {t('saved_badge')}
             </span>
           )}
           <span className="text-[10px] font-mono text-muted-foreground">v{version ?? '?'}</span>
@@ -474,21 +626,50 @@ export function ChapterEditorPage() {
             <button
               onClick={() => setShowDiscardConfirm(true)}
               className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-destructive/50 hover:text-destructive"
-              title="Discard all unsaved changes"
+              title={t('discard_title')}
             >
-              Discard
+              {t('discard')}
             </button>
           )}
 
           <button
+            data-testid="chapter-save-button"
             onClick={() => void save()}
             disabled={saving}
             className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
             <Save className="h-3 w-3" />
-            Save
+            {t('save')}
             <kbd className="ml-1 rounded border border-primary-foreground/20 bg-primary-foreground/10 px-1 py-px font-mono text-[9px]">Ctrl+S</kbd>
           </button>
+
+          <div className="mx-1 h-4 w-px bg-border" />
+
+          {/* A2-S4b: canon could not be verified in some scenes (dirty data —
+              cast present but no resolved reading position). NON-blocking: publish
+              stays enabled; the author is warned so they can act. */}
+          {publishUncheckedWarning && (
+            <span
+              data-testid="publish-canon-unchecked"
+              className="inline-flex items-center gap-1 rounded-full bg-amber-500/12 px-2 py-0.5 text-[10px] font-medium text-amber-600"
+              title={t('publish.gate_unchecked_hint')}
+            >
+              <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+              {publishUncheckedWarning}
+            </span>
+          )}
+
+          {/* CM-FE: canon publish affordance (canon = published) */}
+          <PublishControl
+            token={accessToken ?? ''}
+            bookId={bookId}
+            chapterId={chapterId}
+            draftVersion={version}
+            editorialStatus={editorialStatus}
+            dirty={isDirty}
+            blockedReason={publishBlockedReason}
+            onChanged={refreshEditorialStatus}
+          />
         </div>
       </div>
 
@@ -498,7 +679,17 @@ export function ChapterEditorPage() {
 
         {/* Left panel */}
         {panels.left && (
-          <div className="flex w-[300px] flex-shrink-0 flex-col border-r bg-card">
+          <div className="relative flex flex-shrink-0 flex-col border-r bg-card" style={{ width: leftWidth }}>
+            {/* Drag handle — resize by dragging the right edge. */}
+            <div
+              onMouseDown={startLeftResize}
+              role="separator"
+              aria-orientation="vertical"
+              title={t('resize_panel', { defaultValue: 'Drag to resize' })}
+              className="group absolute right-0 top-0 z-20 h-full w-1.5 translate-x-1/2 cursor-col-resize"
+            >
+              <div className="mx-auto h-full w-px bg-transparent transition-colors group-hover:bg-primary/50" />
+            </div>
             {/* Tab bar */}
             <div className="flex border-b">
               <button
@@ -508,7 +699,7 @@ export function ChapterEditorPage() {
                   leftTab === 'chapters' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground',
                 )}
               >
-                <BookOpen className="h-3 w-3" />Chapters
+                <BookOpen className="h-3 w-3" />{t('tabs.chapters')}
               </button>
               <button
                 onClick={() => setLeftTab('source')}
@@ -517,7 +708,7 @@ export function ChapterEditorPage() {
                   leftTab === 'source' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground',
                 )}
               >
-                <FileText className="h-3 w-3" />Original
+                <FileText className="h-3 w-3" />{t('tabs.original')}
               </button>
               <button
                 onClick={() => setLeftTab('glossary')}
@@ -526,20 +717,39 @@ export function ChapterEditorPage() {
                   leftTab === 'glossary' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground',
                 )}
               >
-                <BookMarked className="h-3 w-3" />Glossary
+                <BookMarked className="h-3 w-3" />{t('tabs.glossary')}
                 {glossaryEntities.length > 0 && (
                   <span className="text-[9px] px-1 py-px rounded-full bg-[var(--primary-muted)] text-[var(--primary)]">
                     {glossaryEntities.length}
                   </span>
                 )}
               </button>
+              <button
+                onClick={() => setLeftTab('outline')}
+                className={cn(
+                  'flex flex-1 items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors',
+                  leftTab === 'outline' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                <ListTree className="h-3 w-3" />{t('tabs.outline')}
+              </button>
             </div>
+
+            {/* ── Outline tab (T1.1a — committed-outline browser) ───────── */}
+            {leftTab === 'outline' && (
+              <OutlineTree
+                bookId={bookId}
+                token={accessToken}
+                currentChapterId={chapterId}
+                onNavigateChapter={navigateToChapter}
+              />
+            )}
 
             {/* ── Chapters tab ─────────────────────────────────────────── */}
             {leftTab === 'chapters' && (
               <div className="flex flex-1 flex-col overflow-hidden">
                 <div className="flex-shrink-0 border-b px-3 py-2 text-[10px] text-muted-foreground">
-                  {allChapters.length} chapter{allChapters.length !== 1 ? 's' : ''}
+                  {t('chapter_count', { count: allChapters.length })}
                 </div>
                 <div className="flex-1 overflow-y-auto">
                   {allChapters.length === 0 && (
@@ -576,7 +786,7 @@ export function ChapterEditorPage() {
             {leftTab === 'source' && (
               <div className="flex flex-1 flex-col overflow-hidden">
                 <div className="flex-shrink-0 border-b px-3 py-2 text-[10px] text-muted-foreground">
-                  Original uploaded text — read only
+                  {t('original_readonly')}
                 </div>
                 <div className="flex-1 overflow-y-auto p-3">
                   {originalLoading ? (
@@ -598,7 +808,7 @@ export function ChapterEditorPage() {
                     </div>
                   ) : (
                     <p className="text-[10px] italic text-muted-foreground">
-                      No original source — this chapter was created directly in the editor (no file was imported).
+                      {t('no_original')}
                     </p>
                   )}
                 </div>
@@ -624,10 +834,11 @@ export function ChapterEditorPage() {
           <div className="flex-shrink-0 border-b px-6 pt-4 pb-3">
             <input
               type="text"
+              data-testid="chapter-title-input"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               className="w-full bg-transparent font-serif text-xl font-semibold outline-none placeholder:text-muted-foreground/30"
-              placeholder="Chapter title"
+              placeholder={t('title_placeholder')}
             />
             <div className="mt-1.5 flex items-center gap-2 text-[10px] text-muted-foreground">
               {chapterLang && (
@@ -636,11 +847,11 @@ export function ChapterEditorPage() {
                   <span className="text-border">|</span>
                 </>
               )}
-              <span>{charCount.toLocaleString()} chars</span>
+              <span>{t('chars', { n: charCount.toLocaleString() })}</span>
               <span className="text-border">|</span>
-              <span>{wc.toLocaleString()} words</span>
+              <span>{t('words', { n: wc.toLocaleString() })}</span>
               <span className="text-border">|</span>
-              <span>{paraCount} paragraph{paraCount !== 1 ? 's' : ''}</span>
+              <span>{t('paragraphs', { count: paraCount })}</span>
             </div>
           </div>
 
@@ -667,10 +878,33 @@ export function ChapterEditorPage() {
             <TiptapEditor
               ref={tiptapEditorRef}
               content={savedBody}
-              onUpdate={(json) => setTiptapJson(json)}
+              onUpdate={(json, text) => { setTiptapJson(json); setTextContent(text); }}
               grammarEnabled={grammarEnabled}
               editorMode={editorMode}
               className="flex-1 overflow-y-auto"
+              // T3.2: AI Selection Tools — only when a co-writer Work exists.
+              selectionMenu={composeProjectId
+                ? (editor) => (
+                    <SelectionToolbar
+                      editor={editor}
+                      projectId={composeProjectId}
+                      sceneContext={activeSceneId || null}
+                      token={accessToken}
+                    />
+                  )
+                : undefined}
+              // T3.3: Classic⇄AI inline mode (toggle + inline ghost) — co-writer Work only.
+              aiLayer={composeProjectId
+                ? (editor) => (
+                    <InlineAiLayer
+                      editor={editor}
+                      projectId={composeProjectId}
+                      sceneId={activeSceneId || null}
+                      modelRef={composeDefaultModel}
+                      token={accessToken}
+                    />
+                  )
+                : undefined}
             />
           )}
 
@@ -679,7 +913,7 @@ export function ChapterEditorPage() {
             <input
               value={saveNote}
               onChange={(e) => setSaveNote(e.target.value)}
-              placeholder="Save note (optional) — e.g. &quot;added flashback scene&quot;"
+              placeholder={t('save_note_placeholder')}
               className="w-full rounded border bg-background px-3 py-1.5 text-xs placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-ring/40"
             />
           </div>
@@ -687,26 +921,98 @@ export function ChapterEditorPage() {
 
         {/* Right panel */}
         {panels.right && (
-          <div className="flex w-[300px] flex-shrink-0 flex-col border-l bg-card">
+          <div className="relative flex flex-shrink-0 flex-col border-l bg-card" style={{ width: rightWidth }}>
+            {/* Drag handle — resize the panel by dragging its left edge. */}
+            <div
+              onMouseDown={startRightResize}
+              role="separator"
+              aria-orientation="vertical"
+              title={t('resize_panel', { defaultValue: 'Drag to resize' })}
+              className="group absolute left-0 top-0 z-20 h-full w-1.5 -translate-x-1/2 cursor-col-resize"
+            >
+              <div className="mx-auto h-full w-px bg-transparent transition-colors group-hover:bg-primary/50" />
+            </div>
             <div className="flex border-b">
               <button
                 onClick={() => setRightTab('history')}
                 className={cn('flex-1 px-3 py-2 text-xs font-medium', rightTab === 'history' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground')}
               >
-                <Clock className="mr-1.5 inline h-3 w-3" />History
+                <Clock className="mr-1.5 inline h-3 w-3" />{t('history')}
               </button>
               <button
                 onClick={() => setRightTab('ai')}
-                className={cn('flex-1 cursor-not-allowed px-3 py-2 text-xs text-muted-foreground/40')}
-                title="Coming soon"
-                disabled
+                className={cn('flex-1 px-3 py-2 text-xs font-medium', rightTab === 'ai' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground')}
               >
-                AI Chat
+                <Sparkles className="mr-1.5 inline h-3 w-3" />{t('ai_chat')}
+              </button>
+              <button
+                data-testid="chapter-righttab-compose"
+                onClick={() => setRightTab('compose')}
+                className={cn('flex-1 px-3 py-2 text-xs font-medium', rightTab === 'compose' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground')}
+              >
+                <Pen className="mr-1.5 inline h-3 w-3" />{t('composition:compose', { defaultValue: 'Co-write' })}
               </button>
             </div>
             <div className="flex-1 overflow-hidden">
               {rightTab === 'history' && (
                 <RevisionHistory key={revKey} bookId={bookId} chapterId={chapterId} onRestore={() => void load()} />
+              )}
+              {/* ARCH-1 C5: the editor AI panel — the reusable <Chat> bound to
+                  the book's knowledge project, with the current chapter
+                  auto-attached as context (fired below when the tab opens).
+                  key={bookId} forces a full remount when the user navigates to
+                  a different book, so the per-book binding (session, project,
+                  dialog state) resets instead of bleeding the previous book's
+                  session into the new book (review-impl C5 #1). */}
+              {rightTab === 'ai' && (
+                <div className="flex h-full flex-col">
+                  {/* Agent vs Compose mode. Agent = AI may call tools + edit the
+                      doc (propose_edit). Compose = prose-only (no tools) so a
+                      reasoning model drafts and you Apply via "Send to editor" —
+                      reasoning models write better but stumble on tool-calling. */}
+                  <div className="flex items-center gap-1.5 border-b px-2 py-1.5">
+                    <span className="text-[10px] text-muted-foreground">{t('chat_mode', { defaultValue: 'Mode' })}</span>
+                    <div className="ml-auto inline-flex rounded-md bg-secondary p-0.5 text-[10px] font-medium">
+                      <button
+                        type="button"
+                        onClick={() => setComposeMode(false)}
+                        title={t('mode_agent_hint', { defaultValue: 'AI can use tools and edit your document' })}
+                        className={cn('flex items-center gap-1 rounded px-2 py-0.5 transition-colors', !composeMode ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground')}
+                      >
+                        <Sparkles className="h-2.5 w-2.5" />{t('mode_agent', { defaultValue: 'Agent' })}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setComposeMode(true)}
+                        title={t('mode_compose_hint', { defaultValue: 'Prose only — AI writes, you Apply. Best for reasoning models.' })}
+                        className={cn('flex items-center gap-1 rounded px-2 py-0.5 transition-colors', composeMode ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground')}
+                      >
+                        <Pen className="h-2.5 w-2.5" />{t('mode_compose', { defaultValue: 'Compose' })}
+                      </button>
+                    </div>
+                  </div>
+                  <Chat
+                    key={bookId}
+                    bookId={bookId}
+                    editorContext={{ book_id: bookId, chapter_id: chapterId }}
+                    composeMode={composeMode}
+                    className="min-h-0 flex-1"
+                  />
+                </div>
+              )}
+              {/* LOOM M8 — the lore-grounded co-writer Power panel. Accepted prose
+                  inserts at the cursor via insertAtCursor (which dirties + autosaves
+                  the EDITOR doc); the streaming ghost stays FE-local until then. */}
+              {rightTab === 'compose' && (
+                <CompositionPanel
+                  key={bookId}
+                  bookId={bookId}
+                  chapterId={chapterId}
+                  token={accessToken}
+                  onAccept={(text) => tiptapEditorRef.current?.insertAtCursor(text)}
+                  sceneId={activeSceneId}
+                  onSceneChange={setActiveSceneId}
+                />
               )}
             </div>
           </div>
@@ -718,15 +1024,15 @@ export function ChapterEditorPage() {
         <div className="flex items-center gap-3">
           <span className="inline-flex items-center gap-1">
             <span className="h-1.5 w-1.5 rounded-full bg-success" />
-            Connected
+            {t('connected')}
           </span>
           {chapterLang && <span>{chapterLang}</span>}
-          <span>{wc.toLocaleString()} words</span>
+          <span>{t('words', { n: wc.toLocaleString() })}</span>
         </div>
         <div className="flex items-center gap-3">
-          <span><kbd className="rounded border border-border bg-secondary px-1 py-px font-mono text-[9px]">Ctrl+B</kbd> Left panel</span>
-          <span><kbd className="rounded border border-border bg-secondary px-1 py-px font-mono text-[9px]">Ctrl+J</kbd> Right panel</span>
-          <span><kbd className="rounded border border-border bg-secondary px-1 py-px font-mono text-[9px]">Ctrl+S</kbd> Save</span>
+          <span><kbd className="rounded border border-border bg-secondary px-1 py-px font-mono text-[9px]">Ctrl+B</kbd> {t('left_panel')}</span>
+          <span><kbd className="rounded border border-border bg-secondary px-1 py-px font-mono text-[9px]">Ctrl+J</kbd> {t('right_panel')}</span>
+          <span><kbd className="rounded border border-border bg-secondary px-1 py-px font-mono text-[9px]">Ctrl+S</kbd> {t('save')}</span>
         </div>
       </div>
 
@@ -734,10 +1040,10 @@ export function ChapterEditorPage() {
       <ConfirmDialog
         open={showDiscardConfirm}
         onOpenChange={setShowDiscardConfirm}
-        title="Discard changes?"
-        description="All unsaved changes will be permanently lost. This cannot be undone."
-        confirmLabel="Discard changes"
-        cancelLabel="Keep editing"
+        title={t('discard_confirm.title')}
+        description={t('discard_confirm.desc')}
+        confirmLabel={t('discard_confirm.confirm')}
+        cancelLabel={t('discard_confirm.cancel')}
         variant="destructive"
         onConfirm={() => { discardChanges(); setShowDiscardConfirm(false); }}
       />

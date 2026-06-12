@@ -1,0 +1,341 @@
+{
+  "saved": "已儲存章節",
+  "no_content": "沒有可翻譯的內容",
+  "translation_failed": "翻譯失敗",
+  "translated_blocks": "已翻譯 {{count}} 個區塊",
+  "text_translation_received": "已收到文字翻譯 — 建議使用區塊模式",
+  "breadcrumb": {
+    "workspace": "工作區",
+    "book": "書籍",
+    "chapter": "章節"
+  },
+  "prev_chapter": "上一章",
+  "next_chapter": "下一章",
+  "mode": {
+    "classic": "經典",
+    "classic_title": "經典模式 — 專注寫作",
+    "ai": "AI",
+    "ai_title": "AI 助手模式 — 完整功能"
+  },
+  "grammar_title": "切換文法與拼字檢查（LanguageTool）",
+  "translate_title": "使用 AI 翻譯內容（區塊模式）",
+  "translating": "翻譯中...",
+  "translate": "翻譯",
+  "toggle_source": "切換來源面板",
+  "toggle_history": "切換歷史 / AI 面板",
+  "unsaved": "未儲存",
+  "saved_badge": "已儲存",
+  "discard_title": "捨棄所有未儲存的變更",
+  "discard": "捨棄",
+  "save": "儲存",
+  "tabs": {
+    "chapters": "章節",
+    "original": "原文",
+    "glossary": "詞彙表",
+    "outline": "大綱"
+  },
+  "chapter_count": "{{count}} 章節",
+  "chapter_count_other": "{{count}} 章節",
+  "original_readonly": "已上傳的原文 — 唯讀",
+  "no_original": "無原始來源 — 此章節直接在編輯器中建立（未匯入檔案）。",
+  "title_placeholder": "章節標題",
+  "chars": "{{n}} 字元",
+  "words": "{{n}} 字",
+  "paragraphs": "{{count}} 段",
+  "paragraphs_other": "{{count}} 段",
+  "save_note_placeholder": "儲存備註（選填） — 例如：「新增回憶場景」",
+  "history": "歷史",
+  "ai_chat": "AI 聊天",
+  "coming_soon": "即將推出",
+  "connected": "已連線",
+  "left_panel": "左面板",
+  "right_panel": "右面板",
+  "discard_confirm": {
+    "title": "捨棄變更？",
+    "desc": "所有未儲存的變更將永久遺失，此操作無法復原。",
+    "confirm": "捨棄變更",
+    "cancel": "繼續編輯"
+  },
+  "toolbar": {
+    "paragraph": "段落",
+    "h1": "標題 1",
+    "h2": "標題 2",
+    "h3": "標題 3",
+    "bold": "粗體 (Ctrl+B)",
+    "italic": "斜體 (Ctrl+I)",
+    "strike": "刪除線",
+    "underline": "底線 (Ctrl+U)",
+    "inline_code": "行內程式碼",
+    "link": "連結",
+    "url_prompt": "URL：",
+    "highlight": "螢光標示 (Ctrl+Shift+H)",
+    "subscript": "下標",
+    "superscript": "上標",
+    "bullet_list": "項目符號清單",
+    "ordered_list": "編號清單",
+    "blockquote": "引言",
+    "insert_image": "插入圖片",
+    "insert_video": "插入影片",
+    "insert_audio": "插入音訊",
+    "code_block": "程式碼區塊",
+    "horizontal_rule": "水平線",
+    "undo": "復原 (Ctrl+Z)",
+    "redo": "重做 (Ctrl+Shift+Z)"
+  },
+  "slash": {
+    "paragraph": {
+      "title": "段落",
+      "desc": "純文字區塊"
+    },
+    "heading1": {
+      "title": "標題 1",
+      "desc": "大型章節標題"
+    },
+    "heading2": {
+      "title": "標題 2",
+      "desc": "中型章節標題"
+    },
+    "heading3": {
+      "title": "標題 3",
+      "desc": "小型章節標題"
+    },
+    "bullet": {
+      "title": "項目符號清單",
+      "desc": "無序清單"
+    },
+    "numbered": {
+      "title": "編號清單",
+      "desc": "有序清單"
+    },
+    "quote": {
+      "title": "引言",
+      "desc": "區塊引用"
+    },
+    "image": {
+      "title": "圖片",
+      "desc": "上傳、貼上或 AI 生成"
+    },
+    "video": {
+      "title": "影片",
+      "desc": "上傳影片檔案"
+    },
+    "audio": {
+      "title": "音訊",
+      "desc": "上傳音訊檔案"
+    },
+    "code": {
+      "title": "程式碼區塊",
+      "desc": "語法高亮的程式碼"
+    },
+    "callout": {
+      "title": "標註",
+      "desc": "作者註記或提示"
+    },
+    "divider": {
+      "title": "分隔線",
+      "desc": "水平線"
+    }
+  },
+  "code": {
+    "language_label": "程式碼語言",
+    "copy": "複製程式碼",
+    "delete": "刪除程式碼區塊"
+  },
+  "media": {
+    "ai_prompt": "AI 提示",
+    "saved": "已儲存",
+    "empty": "空",
+    "placeholder": "描述此媒體以供 AI 情境與生成...",
+    "stored_note": "與媒體一起儲存，用於 AI 情境與重新生成。",
+    "copied": "已複製",
+    "copy_prompt": "複製提示",
+    "regenerate": "重新生成",
+    "generating": "生成中..."
+  },
+  "image": {
+    "err_type": "不支援的類型：{{type}}。請使用 PNG、JPG、GIF 或 WebP。",
+    "err_size": "檔案太大：{{size}} MB。最大 10 MB。",
+    "upload_unavailable": "無法上傳 — 請先儲存章節。",
+    "upload_failed": "上傳失敗",
+    "regen_save_first": "請先儲存章節以啟用 AI 生成。",
+    "regen_no_model": "未設定 AI 模型。請在設定中新增供應商。",
+    "regen_no_provider": "沒有啟用的 AI 供應商。請在設定 → 供應商中設定。",
+    "regen_failed": "生成失敗",
+    "default_title": "圖片",
+    "version_history": "版本歷史",
+    "copy_filename": "複製檔名",
+    "copy": "複製",
+    "ai_mode": "AI 模式",
+    "replace": "取代",
+    "replace_title": "取代圖片",
+    "delete_block": "刪除區塊",
+    "delete_image_block": "刪除圖片區塊",
+    "uploading": "上傳中... {{pct}}%",
+    "drop_here": "將圖片拖放到此",
+    "drop_hint": "拖放圖片、點擊瀏覽，或 Ctrl+V",
+    "formats": "PNG、JPG、GIF、WebP — 最大 10 MB",
+    "width_title": "寬度：{{width}}%",
+    "caption_placeholder": "新增說明...",
+    "caption_aria": "圖片說明",
+    "alt_text": "替代文字",
+    "alt_set": "已設定",
+    "alt_placeholder": "描述此圖片以供螢幕閱讀器與 EPUB 匯出...",
+    "alt_aria": "圖片替代文字",
+    "alt_note": "供螢幕閱讀器、搜尋與 EPUB 匯出使用。與說明不同。"
+  },
+  "video": {
+    "err_type": "不支援的類型：{{type}}。請使用 MP4 或 WebM。",
+    "err_size": "檔案太大：{{size}} MB。最大 100 MB。",
+    "upload_unavailable": "無法上傳 — 請先儲存章節。",
+    "upload_failed": "上傳失敗",
+    "gen_save_first": "請先儲存章節。",
+    "gen_no_model": "未設定影片生成模型。請在設定 > 供應商中新增。",
+    "gen_failed": "生成失敗",
+    "default_title": "影片",
+    "version_history": "版本歷史",
+    "copy_filename": "複製檔名",
+    "copy": "複製",
+    "ai_mode": "AI 模式",
+    "replace": "取代",
+    "replace_title": "取代影片",
+    "delete_block": "刪除區塊",
+    "delete_video_block": "刪除影片區塊",
+    "uploading": "上傳中... {{pct}}%",
+    "drop_here": "將影片拖放到此",
+    "drop_hint": "拖放影片或點擊瀏覽",
+    "formats": "MP4、WebM — 最大 100 MB",
+    "width_title": "寬度：{{width}}%",
+    "caption_placeholder": "新增說明...",
+    "caption_aria": "影片說明",
+    "alt_text": "替代文字",
+    "alt_set": "已設定",
+    "alt_placeholder": "描述此影片以供螢幕閱讀器與 EPUB 匯出...",
+    "alt_aria": "影片替代文字",
+    "alt_note": "供螢幕閱讀器、搜尋與 EPUB 匯出使用。與說明不同。",
+    "generate": "生成"
+  },
+  "audio": {
+    "err_type": "不支援的類型：{{type}}。請使用 MP3、WAV、OGG、WebM 或 M4A。",
+    "err_size": "檔案太大：{{size}} MB。最大 20 MB。",
+    "upload_unavailable": "無法上傳 — 請先儲存章節。",
+    "upload_failed": "上傳失敗",
+    "default_title": "音訊",
+    "ai_mode": "AI 模式",
+    "play": "播放",
+    "pause": "暫停",
+    "replace_title": "取代音訊",
+    "delete_audio_block": "刪除音訊區塊",
+    "uploading": "上傳中... {{pct}}%",
+    "drop_here": "將音訊拖放到此",
+    "drop_hint": "拖放音訊檔案或點擊瀏覽",
+    "formats": "MP3、WAV、OGG、WebM、M4A — 最大 20 MB",
+    "subtitle_placeholder": "新增字幕...",
+    "subtitle_aria": "音訊字幕"
+  },
+  "callout": {
+    "type": {
+      "note": "備註",
+      "warning": "警告",
+      "tip": "提示",
+      "danger": "危險"
+    },
+    "title": "{{type}} — 點擊變更類型"
+  },
+  "revision": {
+    "restored": "已還原修訂版本",
+    "header": "修訂歷史 · {{count}}",
+    "empty": "尚無修訂版本。儲存以建立一個。",
+    "current": "目前",
+    "view": "檢視",
+    "restore": "還原",
+    "confirm_title": "還原此修訂版本？",
+    "confirm_desc": "這將以此較舊版本覆蓋您目前的草稿，並建立新的修訂項目。此操作無法復原。",
+    "close_preview": "關閉預覽",
+    "preview": "修訂預覽",
+    "restore_version": "還原此版本",
+    "empty_revision": "空白修訂。"
+  },
+  "source": {
+    "header": "Block JSON — 章節結構唯讀檢視",
+    "copied": "已複製",
+    "copy": "複製 JSON"
+  },
+  "version": {
+    "loading": "正在載入版本歷史...",
+    "close": "關閉",
+    "title": "版本歷史",
+    "block_crumb": "區塊",
+    "comparing": "比較 v{{old}} → v{{new}}",
+    "previous": "先前",
+    "old": "舊",
+    "no_media": "無媒體",
+    "current": "目前",
+    "selected": "已選取",
+    "current_tag": "目前",
+    "no_media_version": "此版本沒有媒體",
+    "no_versions": "尚無版本",
+    "version_count": "{{count}} 個版本",
+    "version_count_other": "{{count}} 個版本",
+    "total": "共 {{size}}",
+    "delete_confirm": "刪除版本 {{version}}？此操作無法復原。",
+    "versions": "版本",
+    "restore_version": "還原 v{{version}}",
+    "timeago": {
+      "just_now": "剛剛",
+      "mins": "{{n}} 分鐘前",
+      "hours": "{{n}} 小時前",
+      "yesterday": "昨天",
+      "days": "{{n}} 天前"
+    },
+    "action": {
+      "upload": "已上傳媒體",
+      "regenerate": "使用精修提示重新生成",
+      "caption_edit": "已更新說明",
+      "prompt_edit": "已更新提示"
+    },
+    "diff_identical": "提示相同",
+    "diff_title": "AI 提示差異 ({{old}} → {{new}})",
+    "diff_previous": "先前",
+    "diff_current": "目前"
+  },
+  "media_guard": {
+    "protected": "媒體區塊在經典模式下受保護。切換至 AI 模式以編輯或刪除。"
+  },
+  "publish": {
+    "publish": "發佈",
+    "republish": "重新發佈",
+    "unpublish": "取消發佈",
+    "draft_badge": "草稿",
+    "published_badge": "已發佈",
+    "confirm_title": "取消發佈此章節？",
+    "confirm_body": "這會將章節從正典中移除——其擷取的知識與段落將被撤回，直到您重新發佈。",
+    "published_toast": "章節已發佈",
+    "unpublished_toast": "章節已取消發佈",
+    "conflict_toast": "自您開啟後草稿已變更——請先重新載入再發佈。",
+    "empty_toast": "本章沒有可發佈的內容——請先寫點東西。",
+    "save_first": "發佈前請先儲存",
+    "gate_pending": "{{total}} 個場景中有 {{pending}} 個尚未完成",
+    "gate_no_scenes": "建立並完成至少一個場景才能發佈",
+    "gate_canon_blocked": "{{count}} 個場景存在未解決的正典矛盾",
+    "gate_unchecked": "{{count}} 個場景的正典未驗證",
+    "gate_unchecked_hint": "這些場景有需要檢查的角色，但無法解析閱讀順序位置，因此未驗證正典。仍可發佈——如有可能請檢查。"
+  },
+  "compare": {
+    "open": "比較",
+    "title": "比較修訂版本",
+    "back": "返回編輯器",
+    "left": "左側版本",
+    "right": "右側版本",
+    "side_by_side": "並排",
+    "inline": "行內",
+    "no_revisions": "沒有版本",
+    "need_two": "此章節需要至少兩個已儲存的版本才能比較。",
+    "loading": "載入中…",
+    "diffing": "正在計算差異…",
+    "error": "無法載入比較。",
+    "truncated": "這些版本太大——顯示整體替換而非細粒度差異。",
+    "same": "兩側為同一版本——沒有差異。",
+    "load_more": "載入更多 ({{loaded}}/{{total}})",
+    "load_more_hint": "將較舊的版本載入選單"
+  }
+}

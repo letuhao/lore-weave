@@ -42,6 +42,9 @@ from pydantic import BaseModel, Field
 
 from app.db.neo4j_helpers import CypherSession, run_read, run_write
 from app.db.neo4j_repos.entities import delete_entities_with_zero_evidence
+from app.db.neo4j_repos.entity_status import (
+    delete_entity_status_with_zero_evidence,
+)
 from app.db.neo4j_repos.events import delete_events_with_zero_evidence
 from app.db.neo4j_repos.facts import delete_facts_with_zero_evidence
 
@@ -58,6 +61,7 @@ __all__ = [
     "get_extraction_source",
     "add_evidence",
     "remove_evidence_for_source",
+    "remove_evidence_for_natural_key",
     "delete_source_cascade",
     "cleanup_zero_evidence_nodes",
 ]
@@ -77,8 +81,13 @@ SOURCE_TYPES: tuple[str, ...] = (
 # three writeable node types. Relations carry their own evidence
 # via source_event_ids on the edge — they do NOT receive
 # EVIDENCED_BY edges directly.
-TargetLabel = Literal["Entity", "Event", "Fact"]
-TARGET_LABELS: tuple[str, ...] = ("Entity", "Event", "Fact")
+#
+# A2-S1b — `EntityStatus` is the fourth evidence-backed label. It uses the
+# same EVIDENCED_BY machinery so retract-before-reextract (CM3b) decrements
+# its evidence on re-publish and zero-evidence cleanup sweeps moved/removed
+# status transitions, preserving the canon=published invariant.
+TargetLabel = Literal["Entity", "Event", "Fact", "EntityStatus"]
+TARGET_LABELS: tuple[str, ...] = ("Entity", "Event", "Fact", "EntityStatus")
 
 
 def extraction_source_id(
@@ -455,6 +464,47 @@ async def remove_evidence_for_source(
     return int(record["removed"])
 
 
+# ── remove_evidence_for_natural_key ───────────────────────────────────
+
+
+async def remove_evidence_for_natural_key(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str | None,
+    source_type: str,
+    source_id: str,
+) -> int:
+    """Retract evidence for a source identified by its **natural key**.
+
+    `remove_evidence_for_source` matches the `:ExtractionSource` node on its
+    **hashed** `id`, NOT the raw `source_id` (which is stored as a property).
+    Callers that hold only the natural key (a chapter UUID, etc.) — the
+    re-publish persist path and the chapter.unpublished handler — were passing
+    the raw `source_id` straight through, so the MATCH found nothing and ZERO
+    edges were removed: the CM3b retract-before-reextract was a silent no-op,
+    leaving stale canon on every re-publish and a non-retracting unpublish.
+
+    This helper computes the same hashed id `upsert_extraction_source` used at
+    write time (`extraction_source_id(user, project, source_type, source_id)`)
+    and delegates, so the retract actually targets the right source. Callers
+    MUST pass the same `(user_id, project_id, source_type, source_id)` tuple
+    the extraction wrote with (e.g. `project_id` stringified the same way).
+
+    Returns the number of EVIDENCED_BY edges removed (0 when the source has
+    never been extracted — first-time extraction).
+    """
+    src_id = extraction_source_id(
+        user_id=user_id,
+        project_id=project_id,
+        source_type=source_type,
+        source_id=source_id,
+    )
+    return await remove_evidence_for_source(
+        session, user_id=user_id, source_id=src_id,
+    )
+
+
 # ── delete_source_cascade ─────────────────────────────────────────────
 
 
@@ -551,10 +601,12 @@ class CleanupResult(BaseModel):
     entities: int = 0
     events: int = 0
     facts: int = 0
+    # A2-S1b — :EntityStatus orphans (moved/removed status transitions).
+    entity_statuses: int = 0
 
     @property
     def total(self) -> int:
-        return self.entities + self.events + self.facts
+        return self.entities + self.events + self.facts + self.entity_statuses
 
 
 async def cleanup_zero_evidence_nodes(
@@ -587,13 +639,26 @@ async def cleanup_zero_evidence_nodes(
     facts = await delete_facts_with_zero_evidence(
         session, user_id=user_id, project_id=project_id
     )
+    # A2-S1b — sweep moved/removed :EntityStatus transitions whose evidence
+    # the retract dropped to zero. Reads already gate on evidence_count >= 1
+    # so this is GC, not correctness — but it keeps the graph from accruing
+    # orphaned status nodes across re-publishes.
+    entity_statuses = await delete_entity_status_with_zero_evidence(
+        session, user_id=user_id, project_id=project_id
+    )
     logger.info(
         "K11.8: cleanup_zero_evidence_nodes user=%s project=%s "
-        "entities=%d events=%d facts=%d",
+        "entities=%d events=%d facts=%d entity_statuses=%d",
         user_id,
         project_id,
         entities,
         events,
         facts,
+        entity_statuses,
     )
-    return CleanupResult(entities=entities, events=events, facts=facts)
+    return CleanupResult(
+        entities=entities,
+        events=events,
+        facts=facts,
+        entity_statuses=entity_statuses,
+    )

@@ -139,6 +139,10 @@ async def test_memory_search_happy_path(monkeypatch):
     ctx = _search_ctx(monkeypatch, [_hit("Kai duels Zhao"), _hit("the bridge")])
     res = await execute_tool(ctx, "memory_search", {"query": "who is Kai", "limit": 5})
     assert res.success
+    # FIX #9/#12 — anchor the MCP success-key invariant to REAL handler output:
+    # no handler success payload may carry a top-level "success" key (the chat
+    # MCP client discriminates failure by that key's presence).
+    assert "success" not in res.result
     assert res.result["count"] == 2
     assert res.result["hits"][0]["source_type"] == "chapter"
 
@@ -243,6 +247,7 @@ async def test_memory_recall_entity_happy(monkeypatch):
                         AsyncMock(return_value=detail))
     res = await execute_tool(_ctx(), "memory_recall_entity", {"entity_name": "Kai"})
     assert res.success
+    assert "success" not in res.result  # FIX #9/#12 — MCP success-key invariant
     assert res.result["found"] is True
     assert res.result["entity"]["name"] == "Kai"
     assert res.result["relations"][0]["predicate"] == "duels"
@@ -270,6 +275,7 @@ async def test_memory_timeline_happy(monkeypatch):
                         AsyncMock(return_value=([event], 1)))
     res = await execute_tool(_ctx(), "memory_timeline", {"limit": 10})
     assert res.success
+    assert "success" not in res.result  # FIX #9/#12 — MCP success-key invariant
     assert res.result["count"] == 1
     assert res.result["events"][0]["title"] == "The Duel"
 
@@ -326,6 +332,7 @@ async def test_memory_remember_writes_guardrailed_fact(monkeypatch):
         {"fact_text": "Kai prefers fire magic", "fact_type": "preference"},
     )
     assert res.success and res.result["remembered"] is True
+    assert "success" not in res.result  # FIX #9/#12 — MCP success-key invariant
     kwargs = merge.await_args.kwargs
     assert kwargs["confidence"] == TOOL_FACT_CONFIDENCE == 0.7
     assert kwargs["source_type"] == TOOL_FACT_SOURCE_TYPE == "llm_tool_call"
@@ -415,6 +422,7 @@ async def test_memory_remember_queues_when_confirm_setting_on(monkeypatch):
         {"fact_text": "Kai prefers fire magic", "fact_type": "preference"},
     )
     assert res.success
+    assert "success" not in res.result  # FIX #9/#12 — MCP success-key invariant
     assert res.result["queued"] is True
     assert res.result["fact_type"] == "preference"
     assert res.result["fact_text"] == "Kai prefers fire magic"
@@ -533,6 +541,7 @@ async def test_memory_forget_happy(monkeypatch):
                         AsyncMock(return_value=SimpleNamespace(id="f1")))
     res = await execute_tool(_ctx(), "memory_forget", {"fact_id": "f1"})
     assert res.success
+    assert "success" not in res.result  # FIX #9/#12 — MCP success-key invariant
     assert res.result["invalidated"] is True
 
 

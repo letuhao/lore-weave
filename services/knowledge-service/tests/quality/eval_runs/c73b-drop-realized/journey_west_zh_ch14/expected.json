@@ -1,0 +1,169 @@
+{
+  "entities": [
+    {
+      "name": "孫悟空",
+      "kind": "person",
+      "aliases": [
+        "那猴",
+        "猴王",
+        "齊天大聖",
+        "行者",
+        "孫行者",
+        "悟空",
+        "神猴"
+      ]
+    },
+    {
+      "name": "三藏",
+      "kind": "person",
+      "aliases": [
+        "陳玄奘",
+        "師父",
+        "弟子"
+      ]
+    },
+    {
+      "name": "伯欽",
+      "kind": "person",
+      "aliases": []
+    },
+    {
+      "name": "觀音菩薩",
+      "kind": "person",
+      "aliases": [
+        "菩薩"
+      ]
+    },
+    {
+      "name": "佛祖",
+      "kind": "person",
+      "aliases": [
+        "我佛如來",
+        "如來"
+      ]
+    },
+    {
+      "name": "靈山",
+      "kind": "place",
+      "aliases": []
+    },
+    {
+      "name": "東土",
+      "kind": "place",
+      "aliases": []
+    },
+    {
+      "name": "西方",
+      "kind": "place",
+      "aliases": [
+        "西天"
+      ]
+    },
+    {
+      "name": "唵嘛呢叭𠺗吽",
+      "kind": "artifact",
+      "aliases": [
+        "六個金字",
+        "金字壓帖"
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "subject": "孫悟空",
+      "predicate": "disciple_of",
+      "object": "三藏",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "三藏",
+      "predicate": "mentor_of",
+      "object": "孫悟空",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "孫悟空",
+      "predicate": "imprisoned_by",
+      "object": "佛祖",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "觀音菩薩",
+      "predicate": "instructs",
+      "object": "孫悟空",
+      "polarity": "affirm"
+    }
+  ],
+  "events": [
+    {
+      "summary": "孫悟空向三藏自述身份為齊天大聖，請求做徒弟保護取經",
+      "participants": [
+        "孫悟空",
+        "三藏"
+      ]
+    },
+    {
+      "summary": "三藏揭起金字壓帖救出孫悟空",
+      "participants": [
+        "三藏",
+        "孫悟空"
+      ]
+    },
+    {
+      "summary": "孫悟空告知三藏自己原有法名孫悟空",
+      "participants": [
+        "孫悟空",
+        "三藏"
+      ]
+    },
+    {
+      "summary": "三藏為孫悟空起混名稱為行者",
+      "participants": [
+        "三藏",
+        "孫悟空"
+      ]
+    }
+  ],
+  "traps": [
+    {
+      "kind": "entity",
+      "name": "家僮",
+      "reason": "Generic 'servant boy' reference, not a named individual"
+    },
+    {
+      "kind": "entity",
+      "name": "馬匹",
+      "reason": "Generic 'horses', not the named White Dragon Horse (which appears later in the novel)"
+    },
+    {
+      "kind": "entity",
+      "name": "五百年前",
+      "reason": "Temporal phrase '500 years ago', not a named entity"
+    },
+    {
+      "kind": "entity",
+      "name": "沙門",
+      "reason": "Buddhist sangha generic reference, not an organization-as-entity here"
+    },
+    {
+      "kind": "event",
+      "summary": "大鬧天宮",
+      "reason": "Past event referenced in Wukong's speech, not happening in this chapter"
+    },
+    {
+      "kind": "event",
+      "summary": "三藏 用 斧鑿 救 孫悟空",
+      "reason": "Sanzang explicitly says he has NO chisel — counterfactual, not an event"
+    },
+    {
+      "kind": "entity",
+      "name": "小頭陀",
+      "reason": "Comparison/simile reference ('like a young wandering monk'), not a named entity"
+    },
+    {
+      "kind": "entity",
+      "name": "求經",
+      "reason": "Verb phrase / activity ('seeking scriptures'), not an entity"
+    }
+  ]
+}

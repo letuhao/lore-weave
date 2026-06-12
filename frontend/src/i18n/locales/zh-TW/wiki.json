@@ -1,11 +1,14 @@
 {
   "title": "Wiki",
   "search": "搜尋 Wiki...",
+  "searchEntities": "依名稱搜尋實體...",
   "noArticles": "尚無 Wiki 文章",
   "noArticlesDesc": "從詞彙表實體建立 Wiki 文章，為您的書籍打造知識庫。",
   "noMatch": "沒有符合篩選條件的文章",
   "articles": "{{count}} 篇文章",
   "articles_other": "{{count}} 篇文章",
+  "aiSplit": "{{count}} 篇 AI 生成",
+  "aiSplit_other": "{{count}} 篇 AI 生成",
   "revisions": "{{count}} 個版本",
   "revisions_other": "{{count}} 個版本",
   "allKinds": "全部",
@@ -35,5 +38,193 @@
   "selectEntity": "選擇實體以建立 Wiki 文章",
   "deleteArticle": "刪除文章",
   "deleteConfirm": "此操作將永久刪除此 Wiki 文章及所有版本。",
-  "deleted": "文章已刪除"
+  "deleted": "文章已刪除",
+  "restored": "已還原至版本 {{version}}",
+  "suggestionAccepted": "已接受建議",
+  "suggestionRejected": "已拒絕建議",
+  "unpublished": "已取消發佈",
+  "saved": "已儲存",
+  "saveFailed": "儲存失敗",
+  "restoreFailed": "還原修訂版失敗",
+  "reviewFailed": "審閱建議失敗",
+  "statusFailed": "更新狀態失敗",
+  "deleteFailed": "刪除失敗",
+  "createFailed": "建立文章失敗",
+  "generateFailed": "生成失敗",
+  "gen": {
+    "title": "生成 Wiki 文章",
+    "description": "生成確定式骨架，或選擇模型以 AI 生成完整文章。",
+    "mode": {
+      "label": "模式",
+      "stub": "確定式",
+      "llm": "AI 生成"
+    },
+    "cancel": "取消",
+    "starting": "啟動中…",
+    "confirmStub": "生成骨架",
+    "confirmLlm": "以 AI 生成",
+    "model": {
+      "label": "模型",
+      "deterministic": "確定式骨架（不使用 LLM）",
+      "deterministicHint": "依詞彙表屬性建立文章骨架 — 無 AI、無費用。",
+      "llmHint": "以所選模型生成附引用的文章。",
+      "pickRequired": "選擇模型…"
+    },
+    "reviseModel": {
+      "label": "修訂模型（選填）",
+      "same": "與生成模型相同",
+      "hint": "僅用於對 canon 標記文章的修正重新生成。"
+    },
+    "context": {
+      "language": "生成語言：{{lang}}",
+      "indexed": "已建立知識圖譜",
+      "notIndexed": "尚未建立知識圖譜 — AI 將略過缺乏依據的實體",
+      "budget": "本月已用：{{used}} / {{limit}}"
+    },
+    "kinds": {
+      "label": "限定類別（選填）",
+      "hint": "留空則生成所有實體類別。"
+    },
+    "maxSpend": {
+      "label": "費用上限（USD，選填）",
+      "hint": "在超過此預估費用前暫停作業。",
+      "invalid": "請輸入有效金額（例如 1.50）。"
+    },
+    "estimate": {
+      "loading": "正在估算費用…",
+      "forN": "預估費用：~{{count}} × {{perArticle}} ≈ {{total}}",
+      "perArticle": "預估費用：每篇約 ~{{perArticle}}"
+    },
+    "started": "已開始生成",
+    "noEntities": "沒有符合的實體可生成",
+    "alreadyRunning": "此書已有生成作業正在執行",
+    "notIndexed": "請先為此書建立知識圖譜",
+    "resumed": "已恢復生成",
+    "resumeFailed": "恢復失敗",
+    "cancelled": "已取消生成",
+    "cancelFailed": "取消失敗",
+    "resume": "恢復",
+    "progress": "{{done}} / {{total}}",
+    "pausedBudget": "已暫停 — 已達費用上限。按恢復以繼續。",
+    "status": {
+      "pending": "排隊中…",
+      "running": "正在生成文章…",
+      "paused": "已暫停",
+      "failed": "生成失敗",
+      "complete": "生成完成",
+      "cancelled": "已取消"
+    },
+    "regenerate": "重新生成",
+    "regenTitle": "重新生成「{{name}}」",
+    "regenDescription": "以 AI 重新生成此文章。經人工編輯的文章將轉為建議而非被覆寫。",
+    "regenHint": "選擇模型以重新生成此文章。",
+    "confirmRegen": "重新生成",
+    "results": {
+      "title": "生成結果",
+      "dismiss": "關閉結果",
+      "cites": "引用",
+      "flags": "驗證標記",
+      "queued": "{{count}} 個等待中",
+      "queued_other": "{{count}} 個等待中"
+    },
+    "outcome": {
+      "written": "已建立",
+      "suggestion": "建議",
+      "skipped": "略過",
+      "writeback_failed": "失敗",
+      "error": "錯誤",
+      "processing": "處理中"
+    },
+    "pass": {
+      "context": "檢索",
+      "generate": "撰寫",
+      "verify": "驗證",
+      "revise": "修訂",
+      "writeback": "儲存"
+    },
+    "badge": {
+      "generated": "AI",
+      "generatedHint": "AI 生成，已通過驗證。",
+      "needs_review": "待審",
+      "needs_reviewHint": "AI 生成 — 已標記待審。",
+      "blocked": "已封鎖",
+      "blockedHint": "AI 生成 — 經驗證封鎖發佈。"
+    },
+    "flags": {
+      "reviewTitle": "已標記待審",
+      "blockedTitle": "已封鎖發佈",
+      "blockedNoDetail": "驗證封鎖了此文章，但未記錄具體標記。",
+      "kind": {
+        "injection": "注入",
+        "anachronism": "時代錯置",
+        "contradiction": "矛盾",
+        "regurgitation": "原文照搬"
+      }
+    }
+  },
+  "staleness": {
+    "banner": "知識更新 — {{count}} 篇文章可能已過時",
+    "banner_other": "知識更新 — {{count}} 篇文章可能已過時",
+    "title": "知識更新",
+    "subtitle": "因來源變更，{{count}} 篇被標記。在你選擇前不會重新生成。",
+    "subtitle_other": "因來源變更，{{count}} 篇被標記。在你選擇前不會重新生成。",
+    "close": "關閉",
+    "empty": "沒有過時文章 — 全部與來源一致。",
+    "outdated": "過時",
+    "dismiss": "忽略",
+    "dismissed": "已標記為最新",
+    "dismissFailed": "忽略失敗",
+    "viewSource": "檢視來源",
+    "viewDiff": "檢視差異",
+    "diffLoading": "正在載入差異…",
+    "noDiff": "此文章沒有來源快照 — 請改為檢視來源。",
+    "diffApproximate": "近似 — 章節段落可能與生成時不同。",
+    "select": "選擇 {{name}}",
+    "selectedCount": "已選 {{count}}",
+    "nArticles": "{{count}} 篇文章",
+    "nArticles_other": "{{count}} 篇文章",
+    "regenerateSelected": "重新生成",
+    "regenerateSelected_other": "重新生成（{{count}}）",
+    "dismissSelected": "忽略已選",
+    "dismissedN": "已忽略 {{count}} 筆",
+    "dismissedN_other": "已忽略 {{count}} 筆",
+    "estimateLabel": "預估",
+    "rescan": "重新掃描",
+    "rescanning": "掃描中…",
+    "rescanDone": "掃描完成 — {{count}} 筆新變更",
+    "rescanDone_other": "掃描完成 — {{count}} 筆新變更",
+    "rescanPartial": "掃描完成（略過 recipe — knowledge 未提供版本） — {{count}} 筆新增",
+    "rescanPartial_other": "掃描完成（略過 recipe — knowledge 未提供版本） — {{count}} 筆新增",
+    "rescanFailed": "重新掃描失敗",
+    "ledgerNote": "知識變更會自動記錄於此（延遲式台帳，非即時）。旗標會翻轉但不會自動重新生成 — 只有按下「重新生成」才會消耗 token。",
+    "reason": {
+      "entity_changed": "詞彙表項目已變更",
+      "name_changed": "名稱已變更",
+      "enrichment_changed": "補充已變更",
+      "merged": "實體已合併",
+      "chapter_regrounded": "章節已重新發佈",
+      "citation_broken": "引用的章節已移除",
+      "recipe_drift": "生成配方已更新",
+      "kg_drift": "相關實體已變更"
+    },
+    "severity": {
+      "hard": "損壞",
+      "structural": "結構",
+      "content": "內容"
+    }
+  },
+  "suggestions": {
+    "aiRegen": "AI 重新生成（grounded）",
+    "community": "社群",
+    "humanEditedNote": "此文章已有人工編輯 → AI 版本將成為建議而非覆寫。",
+    "preview": "建議內容",
+    "showDiff": "顯示差異",
+    "hideDiff": "隱藏差異",
+    "accept": "接受",
+    "reject": "拒絕",
+    "pendingChip": "{{count}} 則建議",
+    "pendingChip_other": "{{count}} 則建議",
+    "pendingTitle": "待審建議（{{count}}）",
+    "pendingTitle_other": "待審建議（{{count}}）"
+  }
 }

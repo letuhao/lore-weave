@@ -1,4 +1,4 @@
-import { useEditor, EditorContent, type JSONContent } from '@tiptap/react';
+import { useEditor, EditorContent, type Editor, type JSONContent } from '@tiptap/react';
 import { SourceView } from './SourceView';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -24,6 +24,7 @@ import Superscript from '@tiptap/extension-superscript';
 import GlobalDragHandle from 'tiptap-extension-global-drag-handle';
 import { GrammarExtension, setGrammarEnabled } from './GrammarPlugin';
 import { GlossaryExtension, setGlossaryEntities, setGlossaryEnabled, getGlossaryCount } from './GlossaryPlugin';
+import { CitationMark } from './CitationMark';
 
 export interface TiptapEditorHandle {
   /** Reset editor content from Tiptap JSON (e.g. revision restore, discard) */
@@ -38,15 +39,35 @@ export interface TiptapEditorHandle {
   setGlossaryEnabled: (enabled: boolean) => void;
   /** Get current glossary match count */
   getGlossaryCount: () => number;
+  /** ARCH-1 C6 — current selection (ProseMirror positions + selected text),
+   *  or null if the editor isn't ready. `empty` = a caret with no selection. */
+  getSelection: () => { from: number; to: number; empty: boolean; text: string } | null;
+  /** ARCH-1 C6 — insert plain text at the cursor. Returns false if no editor.
+   *  Flows through onUpdate (NOT setContent) so it dirties + autosaves. */
+  insertAtCursor: (text: string) => boolean;
+  /** ARCH-1 C6 — replace the current selection with text. Returns false if
+   *  there is no (non-empty) selection. One chained transaction = one undo. */
+  replaceSelection: (text: string) => boolean;
 }
 
 interface TiptapEditorProps {
   content: any;
-  onUpdate: (json: any) => void;
+  /** Fires on every doc mutation (typing OR programmatic insert via the handle).
+   *  `text` is the editor's live plain text — lets hosts keep char/word counters
+   *  in sync without re-deriving from JSON. */
+  onUpdate: (json: any, text: string) => void;
   editable?: boolean;
   grammarEnabled?: boolean;
   editorMode?: EditorMode;
   className?: string;
+  /** T3.2: host-supplied floating menu bound to the live editor (e.g. the
+   *  composition Selection Tools). Rendered inside, only when editable, with the
+   *  editor instance. Default: nothing (other hosts unaffected). */
+  selectionMenu?: (editor: Editor) => React.ReactNode;
+  /** T3.3: host-supplied inline-AI layer (Classic⇄AI toggle + inline ghost) bound
+   *  to the live editor. Rendered inside (editable) so it can position at the caret
+   *  and commit via editor commands. Default: nothing. */
+  aiLayer?: (editor: Editor) => React.ReactNode;
 }
 
 import { extractText, addTextSnapshots } from '@/lib/tiptap-utils';
@@ -55,7 +76,7 @@ export { extractText, addTextSnapshots };
 export { setGlossaryEntities, setGlossaryEnabled, getGlossaryCount };
 
 export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
-  function TiptapEditor({ content, onUpdate, editable = true, grammarEnabled = true, editorMode = 'classic', className }, ref) {
+  function TiptapEditor({ content, onUpdate, editable = true, grammarEnabled = true, editorMode = 'classic', className, selectionMenu, aiLayer }, ref) {
     const initialContent = useRef(content);
     const prevContent = useRef(content);
     const isExternalUpdate = useRef(false);
@@ -84,6 +105,8 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
         Highlight.configure({ multicolor: false }),
         Subscript,
         Superscript,
+        CitationMark, // wiki-llm M7a — preserve AI citation provenance through edits
+
         GlobalDragHandle.configure({
           dragHandleWidth: 20,
         }),
@@ -100,7 +123,7 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
       editable,
       onUpdate: ({ editor }) => {
         if (isExternalUpdate.current) return;
-        onUpdate(addTextSnapshots(editor.getJSON()));
+        onUpdate(addTextSnapshots(editor.getJSON()), editor.getText());
       },
       editorProps: {
         attributes: {
@@ -173,6 +196,27 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
         if (editor) return getGlossaryCount(editor);
         return 0;
       },
+      // ARCH-1 C6 — editor write-back for AG-UI frontend tools. These mutate
+      // through editor.chain() (NOT setContent), so onUpdate fires and the doc
+      // dirties/autosaves exactly like typing. We deliberately do NOT set
+      // isExternalUpdate here.
+      getSelection: () => {
+        if (!editor) return null;
+        const { from, to, empty } = editor.state.selection;
+        return { from, to, empty, text: editor.state.doc.textBetween(from, to, ' ') };
+      },
+      insertAtCursor: (text: string) => {
+        if (!editor || !text) return false;
+        editor.chain().focus().insertContentAt(editor.state.selection.from, text).run();
+        return true;
+      },
+      replaceSelection: (text: string) => {
+        if (!editor) return false;
+        const { from, to, empty } = editor.state.selection;
+        if (empty) return false;  // nothing selected — caller falls back / toasts
+        editor.chain().focus().deleteRange({ from, to }).insertContentAt(from, text).run();
+        return true;
+      },
     }), [setContentHandler, editor]);
 
     if (!editor) return null;
@@ -187,6 +231,8 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
             <EditorContent editor={editor} />
             {editable && <SlashMenuPopup editor={editor} mode={editorMode} />}
             {editable && <CodeBlockToolbar editor={editor} />}
+            {editable && selectionMenu?.(editor)}
+            {editable && aiLayer?.(editor)}
           </>
         )}
       </div>

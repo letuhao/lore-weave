@@ -42,7 +42,7 @@ __all__ = [
 # consistency across read methods.
 _SELECT_COLS = """
   pending_id, user_id, project_id, event_id, event_type,
-  aggregate_type, aggregate_id, created_at, processed_at
+  aggregate_type, aggregate_id, revision_id, created_at, processed_at
 """
 
 
@@ -61,6 +61,7 @@ class ExtractionPending(BaseModel):
     event_type: str
     aggregate_type: str
     aggregate_id: UUID
+    revision_id: UUID | None = None  # Canon Model CM3b: pinned published revision (NULL for chat/legacy)
     created_at: datetime
     processed_at: datetime | None = None
 
@@ -83,6 +84,7 @@ class ExtractionPendingQueueRequest(BaseModel):
     event_type: Annotated[str, Field(min_length=1, max_length=100)]
     aggregate_type: Annotated[str, Field(min_length=1, max_length=100)]
     aggregate_id: UUID
+    revision_id: UUID | None = None  # Canon Model CM3b: pinned published revision id (chapter.published)
 
 
 # ── Repository ───────────────────────────────────────────────────────────
@@ -164,8 +166,8 @@ class ExtractionPendingRepo:
         queued AS (
           INSERT INTO extraction_pending
             (user_id, project_id, event_id, event_type,
-             aggregate_type, aggregate_id)
-          SELECT $1, $2, $3, $4, $5, $6
+             aggregate_type, aggregate_id, revision_id)
+          SELECT $1, $2, $3, $4, $5, $6, $7
           WHERE EXISTS (SELECT 1 FROM owned)
           ON CONFLICT (project_id, event_id) DO UPDATE
             SET event_id = EXCLUDED.event_id
@@ -182,6 +184,53 @@ class ExtractionPendingRepo:
                 request.event_type,
                 request.aggregate_type,
                 request.aggregate_id,
+                request.revision_id,
+            )
+        return _row_to_pending(row) if row else None
+
+    # ─── CM3b: chapter.published upsert (re-publish-correct) ──────────
+
+    async def upsert_chapter_pending(
+        self,
+        user_id: UUID,
+        project_id: UUID,
+        chapter_id: UUID,
+        revision_id: UUID,
+    ) -> ExtractionPending | None:
+        """Canon Model CM3b — queue (or re-arm) a chapter for graph
+        extraction at its PINNED published revision.
+
+        Unlike `queue_event` (idempotent keep-FIRST), this is keep-LATEST:
+        `event_id = chapter_id` gives exactly ONE pending row per chapter,
+        and ON CONFLICT it **updates `revision_id`, resets `processed_at`
+        to NULL, and bumps `created_at`** — so a RE-PUBLISH re-arms the
+        chapter to extract at the new revision (keep-first would silently
+        extract the stale first-published revision forever).
+
+        Returns None if the user does not own the project (anti-leak).
+        """
+        query = f"""
+        WITH owned AS (
+          SELECT 1 FROM knowledge_projects
+          WHERE user_id = $1 AND project_id = $2
+        ),
+        upserted AS (
+          INSERT INTO extraction_pending
+            (user_id, project_id, event_id, event_type,
+             aggregate_type, aggregate_id, revision_id)
+          SELECT $1, $2, $3, 'chapter.published', 'chapter', $3, $4
+          WHERE EXISTS (SELECT 1 FROM owned)
+          ON CONFLICT (project_id, event_id) DO UPDATE
+            SET revision_id = EXCLUDED.revision_id,
+                processed_at = NULL,
+                created_at = now()
+          RETURNING {_SELECT_COLS}
+        )
+        SELECT * FROM upserted
+        """
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                query, user_id, project_id, chapter_id, revision_id,
             )
         return _row_to_pending(row) if row else None
 
@@ -217,11 +266,17 @@ class ExtractionPendingRepo:
         project_id: UUID,
         *,
         limit: int = 100,
+        aggregate_type: str | None = None,
     ) -> list[ExtractionPending]:
         """Fetch the next batch of unprocessed events for a project,
         oldest-first (FIFO). Uses the partial index
         `idx_extraction_pending_unprocessed` for cheap reads even at
         100k+ pending rows.
+
+        `aggregate_type` (Canon Model CM3b / B7): when given, only rows of
+        that aggregate_type are returned — so the chapter drainer reads
+        only `'chapter'` rows and the chat drainer only `'chat'` rows.
+        They share the table but must never consume each other's queue.
 
         Returns empty list if the user does not own the project.
         Capped at `FETCH_HARD_CAP` rows defensively.
@@ -238,11 +293,12 @@ class ExtractionPendingRepo:
          AND p.user_id = $1
         WHERE ep.project_id = $2
           AND ep.processed_at IS NULL
+          AND ($3::text IS NULL OR ep.aggregate_type = $3)
         ORDER BY ep.created_at ASC, ep.pending_id ASC
         LIMIT {effective_limit}
         """
         async with self._pool.acquire() as conn:
-            rows = await conn.fetch(query, user_id, project_id)
+            rows = await conn.fetch(query, user_id, project_id, aggregate_type)
         return [_row_to_pending(r) for r in rows]
 
     # ─── state transitions ───────────────────────────────────────────

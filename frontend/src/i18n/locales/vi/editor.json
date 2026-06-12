@@ -1,0 +1,341 @@
+{
+  "saved": "Đã lưu chương",
+  "no_content": "Không có nội dung để dịch",
+  "translation_failed": "Dịch thất bại",
+  "translated_blocks": "Đã dịch {{count}} khối",
+  "text_translation_received": "Đã nhận bản dịch văn bản — nên dùng chế độ khối",
+  "breadcrumb": {
+    "workspace": "Không gian làm việc",
+    "book": "Sách",
+    "chapter": "Chương"
+  },
+  "prev_chapter": "Chương trước",
+  "next_chapter": "Chương sau",
+  "mode": {
+    "classic": "Cổ điển",
+    "classic_title": "Chế độ cổ điển — viết tập trung",
+    "ai": "AI",
+    "ai_title": "Chế độ trợ lý AI — đầy đủ tính năng"
+  },
+  "grammar_title": "Bật/tắt kiểm tra ngữ pháp & chính tả (LanguageTool)",
+  "translate_title": "Dịch nội dung bằng AI (chế độ khối)",
+  "translating": "Đang dịch...",
+  "translate": "Dịch",
+  "toggle_source": "Bật/tắt bảng nguồn",
+  "toggle_history": "Bật/tắt bảng lịch sử / AI",
+  "unsaved": "Chưa lưu",
+  "saved_badge": "Đã lưu",
+  "discard_title": "Hủy mọi thay đổi chưa lưu",
+  "discard": "Hủy bỏ",
+  "save": "Lưu",
+  "tabs": {
+    "chapters": "Chương",
+    "original": "Bản gốc",
+    "glossary": "Thuật ngữ",
+    "outline": "Dàn ý"
+  },
+  "chapter_count": "{{count}} chương",
+  "chapter_count_other": "{{count}} chương",
+  "original_readonly": "Văn bản gốc đã tải lên — chỉ đọc",
+  "no_original": "Không có nguồn gốc — chương này được tạo trực tiếp trong trình soạn thảo (không nhập tệp nào).",
+  "title_placeholder": "Tiêu đề chương",
+  "chars": "{{n}} ký tự",
+  "words": "{{n}} từ",
+  "paragraphs": "{{count}} đoạn",
+  "paragraphs_other": "{{count}} đoạn",
+  "save_note_placeholder": "Ghi chú lưu (tùy chọn) — vd: \"thêm cảnh hồi tưởng\"",
+  "history": "Lịch sử",
+  "ai_chat": "Trò chuyện AI",
+  "coming_soon": "Sắp ra mắt",
+  "connected": "Đã kết nối",
+  "left_panel": "Bảng trái",
+  "right_panel": "Bảng phải",
+  "discard_confirm": {
+    "title": "Hủy thay đổi?",
+    "desc": "Mọi thay đổi chưa lưu sẽ bị mất vĩnh viễn. Không thể hoàn tác.",
+    "confirm": "Hủy thay đổi",
+    "cancel": "Tiếp tục chỉnh sửa"
+  },
+  "toolbar": {
+    "paragraph": "Đoạn văn",
+    "h1": "Tiêu đề 1",
+    "h2": "Tiêu đề 2",
+    "h3": "Tiêu đề 3",
+    "bold": "Đậm (Ctrl+B)",
+    "italic": "Nghiêng (Ctrl+I)",
+    "strike": "Gạch ngang",
+    "underline": "Gạch chân (Ctrl+U)",
+    "inline_code": "Mã nội dòng",
+    "link": "Liên kết",
+    "url_prompt": "URL:",
+    "highlight": "Đánh dấu (Ctrl+Shift+H)",
+    "subscript": "Chỉ số dưới",
+    "superscript": "Chỉ số trên",
+    "bullet_list": "Danh sách dấu đầu dòng",
+    "ordered_list": "Danh sách đánh số",
+    "blockquote": "Trích dẫn",
+    "insert_image": "Chèn ảnh",
+    "insert_video": "Chèn video",
+    "insert_audio": "Chèn âm thanh",
+    "code_block": "Khối mã",
+    "horizontal_rule": "Đường kẻ ngang",
+    "undo": "Hoàn tác (Ctrl+Z)",
+    "redo": "Làm lại (Ctrl+Shift+Z)"
+  },
+  "slash": {
+    "paragraph": {
+      "title": "Đoạn văn",
+      "desc": "Khối văn bản thuần"
+    },
+    "heading1": {
+      "title": "Tiêu đề 1",
+      "desc": "Tiêu đề mục lớn"
+    },
+    "heading2": {
+      "title": "Tiêu đề 2",
+      "desc": "Tiêu đề mục vừa"
+    },
+    "heading3": {
+      "title": "Tiêu đề 3",
+      "desc": "Tiêu đề mục nhỏ"
+    },
+    "bullet": {
+      "title": "Danh sách dấu đầu dòng",
+      "desc": "Danh sách không thứ tự"
+    },
+    "numbered": {
+      "title": "Danh sách đánh số",
+      "desc": "Danh sách có thứ tự"
+    },
+    "quote": {
+      "title": "Trích dẫn",
+      "desc": "Trích dẫn khối"
+    },
+    "image": {
+      "title": "Hình ảnh",
+      "desc": "Tải lên, dán hoặc tạo bằng AI"
+    },
+    "video": {
+      "title": "Video",
+      "desc": "Tải lên tệp video"
+    },
+    "audio": {
+      "title": "Âm thanh",
+      "desc": "Tải lên tệp âm thanh"
+    },
+    "code": {
+      "title": "Khối mã",
+      "desc": "Mã được tô sáng cú pháp"
+    },
+    "callout": {
+      "title": "Ghi chú",
+      "desc": "Ghi chú hoặc mẹo của tác giả"
+    },
+    "divider": {
+      "title": "Đường kẻ",
+      "desc": "Đường kẻ ngang"
+    }
+  },
+  "code": {
+    "language_label": "Ngôn ngữ mã",
+    "copy": "Sao chép mã",
+    "delete": "Xóa khối mã"
+  },
+  "media": {
+    "ai_prompt": "Prompt AI",
+    "saved": "đã lưu",
+    "empty": "trống",
+    "placeholder": "Mô tả media này cho ngữ cảnh và tạo sinh AI...",
+    "stored_note": "Được lưu cùng media để làm ngữ cảnh AI và tạo lại.",
+    "copied": "Đã sao chép",
+    "copy_prompt": "Sao chép prompt",
+    "regenerate": "Tạo lại",
+    "generating": "Đang tạo..."
+  },
+  "image": {
+    "err_type": "Loại không hỗ trợ: {{type}}. Dùng PNG, JPG, GIF hoặc WebP.",
+    "err_size": "Tệp quá lớn: {{size}} MB. Tối đa 10 MB.",
+    "upload_unavailable": "Chưa thể tải lên — hãy lưu chương trước.",
+    "upload_failed": "Tải lên thất bại",
+    "regen_save_first": "Lưu chương trước để bật tạo sinh AI.",
+    "regen_no_model": "Chưa cấu hình mô hình AI. Thêm nhà cung cấp trong Cài đặt.",
+    "regen_no_provider": "Không có nhà cung cấp AI hoạt động. Cấu hình trong Cài đặt → Nhà cung cấp.",
+    "regen_failed": "Tạo sinh thất bại",
+    "default_title": "Hình ảnh",
+    "version_history": "Lịch sử phiên bản",
+    "copy_filename": "Sao chép tên tệp",
+    "copy": "Sao chép",
+    "ai_mode": "Chế độ AI",
+    "replace": "Thay thế",
+    "replace_title": "Thay ảnh",
+    "delete_block": "Xóa khối",
+    "delete_image_block": "Xóa khối ảnh",
+    "uploading": "Đang tải lên... {{pct}}%",
+    "drop_here": "Thả ảnh vào đây",
+    "drop_hint": "Thả ảnh, nhấp để duyệt, hoặc Ctrl+V",
+    "formats": "PNG, JPG, GIF, WebP — Tối đa 10 MB",
+    "width_title": "Chiều rộng: {{width}}%",
+    "caption_placeholder": "Thêm chú thích...",
+    "caption_aria": "Chú thích ảnh",
+    "alt_text": "Văn bản thay thế",
+    "alt_set": "đã đặt",
+    "alt_placeholder": "Mô tả ảnh này cho trình đọc màn hình và xuất EPUB...",
+    "alt_aria": "Văn bản thay thế ảnh",
+    "alt_note": "Dùng cho trình đọc màn hình, tìm kiếm và xuất EPUB. Khác với chú thích."
+  },
+  "video": {
+    "err_type": "Loại không hỗ trợ: {{type}}. Dùng MP4 hoặc WebM.",
+    "err_size": "Tệp quá lớn: {{size}} MB. Tối đa 100 MB.",
+    "upload_unavailable": "Chưa thể tải lên — hãy lưu chương trước.",
+    "upload_failed": "Tải lên thất bại",
+    "gen_save_first": "Hãy lưu chương trước.",
+    "gen_no_model": "Chưa cấu hình mô hình tạo video. Thêm một mô hình trong Cài đặt > Nhà cung cấp.",
+    "gen_failed": "Tạo sinh thất bại",
+    "default_title": "Video",
+    "version_history": "Lịch sử phiên bản",
+    "copy_filename": "Sao chép tên tệp",
+    "copy": "Sao chép",
+    "ai_mode": "Chế độ AI",
+    "replace": "Thay thế",
+    "replace_title": "Thay video",
+    "delete_block": "Xóa khối",
+    "delete_video_block": "Xóa khối video",
+    "uploading": "Đang tải lên... {{pct}}%",
+    "drop_here": "Thả video vào đây",
+    "drop_hint": "Thả video hoặc nhấp để duyệt",
+    "formats": "MP4, WebM — Tối đa 100 MB",
+    "width_title": "Chiều rộng: {{width}}%",
+    "caption_placeholder": "Thêm chú thích...",
+    "caption_aria": "Chú thích video",
+    "alt_text": "Văn bản thay thế",
+    "alt_set": "đã đặt",
+    "alt_placeholder": "Mô tả video này cho trình đọc màn hình và xuất EPUB...",
+    "alt_aria": "Văn bản thay thế video",
+    "alt_note": "Dùng cho trình đọc màn hình, tìm kiếm và xuất EPUB. Khác với chú thích.",
+    "generate": "Tạo"
+  },
+  "audio": {
+    "err_type": "Loại không hỗ trợ: {{type}}. Dùng MP3, WAV, OGG, WebM hoặc M4A.",
+    "err_size": "Tệp quá lớn: {{size}} MB. Tối đa 20 MB.",
+    "upload_unavailable": "Chưa thể tải lên — hãy lưu chương trước.",
+    "upload_failed": "Tải lên thất bại",
+    "default_title": "Âm thanh",
+    "ai_mode": "Chế độ AI",
+    "play": "Phát",
+    "pause": "Tạm dừng",
+    "replace_title": "Thay âm thanh",
+    "delete_audio_block": "Xóa khối âm thanh",
+    "uploading": "Đang tải lên... {{pct}}%",
+    "drop_here": "Thả âm thanh vào đây",
+    "drop_hint": "Thả tệp âm thanh hoặc nhấp để duyệt",
+    "formats": "MP3, WAV, OGG, WebM, M4A — Tối đa 20 MB",
+    "subtitle_placeholder": "Thêm phụ đề...",
+    "subtitle_aria": "Phụ đề âm thanh"
+  },
+  "callout": {
+    "type": {
+      "note": "Ghi chú",
+      "warning": "Cảnh báo",
+      "tip": "Mẹo",
+      "danger": "Nguy hiểm"
+    },
+    "title": "{{type}} — nhấp để đổi loại"
+  },
+  "revision": {
+    "restored": "Đã khôi phục bản sửa đổi",
+    "header": "Lịch sử sửa đổi · {{count}}",
+    "empty": "Chưa có bản sửa đổi nào. Lưu để tạo một bản.",
+    "current": "Hiện tại",
+    "view": "Xem",
+    "restore": "Khôi phục",
+    "confirm_title": "Khôi phục bản sửa đổi này?",
+    "confirm_desc": "Thao tác này sẽ ghi đè bản nháp hiện tại bằng phiên bản cũ hơn và tạo một mục sửa đổi mới. Không thể hoàn tác.",
+    "close_preview": "Đóng xem trước",
+    "preview": "Xem trước bản sửa đổi",
+    "restore_version": "Khôi phục phiên bản này",
+    "empty_revision": "Bản sửa đổi trống."
+  },
+  "source": {
+    "header": "Block JSON — chế độ xem chỉ đọc cấu trúc chương",
+    "copied": "Đã sao chép",
+    "copy": "Sao chép JSON"
+  },
+  "version": {
+    "loading": "Đang tải lịch sử phiên bản...",
+    "close": "Đóng",
+    "title": "Lịch sử phiên bản",
+    "block_crumb": "Khối",
+    "comparing": "So sánh v{{old}} → v{{new}}",
+    "previous": "Trước",
+    "old": "cũ",
+    "no_media": "Không có media",
+    "current": "Hiện tại",
+    "selected": "Đã chọn",
+    "current_tag": "hiện tại",
+    "no_media_version": "Không có media trong phiên bản này",
+    "no_versions": "Chưa có phiên bản nào",
+    "version_count": "{{count}} phiên bản",
+    "version_count_other": "{{count}} phiên bản",
+    "total": "{{size}} tổng cộng",
+    "delete_confirm": "Xóa phiên bản {{version}}? Không thể hoàn tác.",
+    "versions": "Phiên bản",
+    "restore_version": "Khôi phục v{{version}}",
+    "timeago": {
+      "just_now": "vừa xong",
+      "mins": "{{n}} phút trước",
+      "hours": "{{n}} giờ trước",
+      "yesterday": "Hôm qua",
+      "days": "{{n}} ngày trước"
+    },
+    "action": {
+      "upload": "Đã tải lên media",
+      "regenerate": "Đã tạo lại với prompt tinh chỉnh",
+      "caption_edit": "Đã cập nhật chú thích",
+      "prompt_edit": "Đã cập nhật prompt"
+    },
+    "diff_identical": "Các prompt giống nhau",
+    "diff_title": "Khác biệt Prompt AI ({{old}} → {{new}})",
+    "diff_previous": "Trước",
+    "diff_current": "Hiện tại"
+  },
+  "media_guard": {
+    "protected": "Khối media được bảo vệ ở chế độ Cổ điển. Chuyển sang chế độ AI để sửa hoặc xóa."
+  },
+  "publish": {
+    "publish": "Xuất bản",
+    "republish": "Xuất bản lại",
+    "unpublish": "Hủy xuất bản",
+    "draft_badge": "Bản nháp",
+    "published_badge": "Đã xuất bản",
+    "confirm_title": "Hủy xuất bản chương này?",
+    "confirm_body": "Thao tác này gỡ chương khỏi canon — kiến thức và đoạn văn đã trích xuất sẽ bị thu hồi cho đến khi bạn xuất bản lại.",
+    "published_toast": "Đã xuất bản chương",
+    "unpublished_toast": "Đã hủy xuất bản chương",
+    "conflict_toast": "Bản nháp đã thay đổi kể từ khi bạn mở — tải lại trước khi xuất bản.",
+    "empty_toast": "Chương này chưa có nội dung để xuất bản — hãy viết gì đó trước.",
+    "save_first": "Lưu trước khi xuất bản",
+    "gate_pending": "{{pending}} trên {{total}} cảnh chưa hoàn thành",
+    "gate_no_scenes": "Tạo và hoàn thành ít nhất một cảnh để xuất bản",
+    "gate_canon_blocked": "một mâu thuẫn canon chưa giải quyết trong {{count}} cảnh",
+    "gate_unchecked": "Canon chưa được kiểm tra trong {{count}} cảnh",
+    "gate_unchecked_hint": "Các cảnh này có nhân vật cần kiểm tra nhưng chưa xác định được vị trí theo thứ tự đọc, nên canon chưa được kiểm tra. Vẫn có thể xuất bản — hãy xem lại nếu có thể."
+  },
+  "compare": {
+    "open": "So sánh",
+    "title": "So sánh phiên bản",
+    "back": "Về trình soạn thảo",
+    "left": "Phiên bản trái",
+    "right": "Phiên bản phải",
+    "side_by_side": "Cạnh nhau",
+    "inline": "Hợp nhất",
+    "no_revisions": "Chưa có phiên bản",
+    "need_two": "Chương này cần ít nhất hai phiên bản đã lưu để so sánh.",
+    "loading": "Đang tải…",
+    "diffing": "Đang tính khác biệt…",
+    "error": "Không tải được phần so sánh.",
+    "truncated": "Hai phiên bản quá lớn — hiển thị thay thế toàn bộ thay vì khác biệt chi tiết.",
+    "same": "Hai bên là cùng một phiên bản — không có khác biệt.",
+    "load_more": "Tải thêm ({{loaded}}/{{total}})",
+    "load_more_hint": "Tải các phiên bản cũ hơn vào danh sách chọn"
+  }
+}

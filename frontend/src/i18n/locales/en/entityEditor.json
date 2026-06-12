@@ -1,0 +1,131 @@
+{
+  "modal": {
+    "untitled": "Untitled",
+    "status": {
+      "draft": "Draft",
+      "active": "Active",
+      "inactive": "Inactive"
+    },
+    "discard": "Discard",
+    "save": "Save",
+    "save_entity": "Save Entity",
+    "cancel": "Cancel",
+    "move_to_trash": "Move to Trash",
+    "meta": {
+      "chapters": "{{count}} chapters",
+      "translations": "{{count}} translations",
+      "evidences": "{{count}} evidences"
+    },
+    "tab": {
+      "attributes": "Attributes",
+      "evidences": "Evidences"
+    },
+    "translation_lang_aria": "Translation language",
+    "no_translation": "No translation",
+    "add_language": "+ Add language...",
+    "lang_placeholder": "e.g. en",
+    "system_attrs": "System Attributes",
+    "user_attrs": "User Attributes",
+    "no_attributes": "No attributes defined for this entity kind.",
+    "toast": {
+      "saved": "Entity saved",
+      "status_changed": "Status changed to {{status}}",
+      "invalid_lang": "Invalid language code (e.g. en, zh, zh-tw)"
+    }
+  },
+  "attr_card": {
+    "required": "*required",
+    "modified": "modified",
+    "has_translations": "Has translations"
+  },
+  "translation_row": {
+    "confidence": {
+      "draft": "Draft",
+      "verified": "Verified",
+      "machine": "Machine"
+    },
+    "confidence_aria": "Translation confidence",
+    "by": "by {{name}}",
+    "discard_aria": "Discard changes",
+    "save": "Save",
+    "delete_aria": "Delete translation",
+    "placeholder": "{{lang}} translation...",
+    "delete_title": "Delete translation?",
+    "delete_desc": "The {{lang}} translation for this attribute will be permanently deleted.",
+    "delete_confirm": "Delete",
+    "toast": {
+      "updated": "Translation updated",
+      "created": "Translation created",
+      "deleted": "Translation deleted"
+    }
+  },
+  "evidence": {
+    "type": {
+      "quote": "Quote",
+      "summary": "Summary",
+      "reference": "Reference"
+    },
+    "filter": {
+      "all": "All",
+      "attr_aria": "Filter by attribute",
+      "all_attributes": "All attributes",
+      "chapter_aria": "Filter by chapter",
+      "all_chapters": "All chapters",
+      "chapter_n": "Chapter {{n}}",
+      "lang_aria": "Display language",
+      "original": "Original",
+      "sort_aria": "Sort by",
+      "sort": {
+        "created": "Created",
+        "chapter": "Chapter",
+        "block_line": "Block/Line",
+        "attribute": "Attribute"
+      },
+      "ascending": "Ascending",
+      "descending": "Descending",
+      "add": "Add"
+    },
+    "create": {
+      "title": "New Evidence",
+      "attribute": "Attribute *",
+      "attr_aria": "Attribute for new evidence",
+      "type": "Type",
+      "type_aria": "Evidence type",
+      "original_text": "Original Text *",
+      "text_placeholder": "Paste the source text...",
+      "block_line": "Block / Line",
+      "block_placeholder": "e.g. p.42",
+      "note": "Note",
+      "note_placeholder": "Optional note",
+      "cancel": "Cancel",
+      "create": "Create"
+    },
+    "card": {
+      "edit_type_aria": "Edit evidence type",
+      "cancel_title": "Cancel",
+      "block_line": "Block / Line",
+      "note": "Note",
+      "cancel": "Cancel",
+      "save": "Save",
+      "edit_title": "Edit",
+      "delete_title": "Delete",
+      "translated": "Translated ({{lang}})",
+      "note_label": "Note: {{note}}"
+    },
+    "tab": {
+      "no_evidences": "No evidences found",
+      "clear_filters": "Clear filters",
+      "prev_page": "Previous page",
+      "next_page": "Next page",
+      "delete_title": "Delete evidence?",
+      "delete_desc": "This evidence from \"{{attr}}\" will be permanently deleted.",
+      "delete_confirm": "Delete"
+    },
+    "toast": {
+      "updated": "Evidence updated",
+      "deleted": "Evidence deleted",
+      "created": "Evidence created",
+      "text_required": "Original text is required"
+    }
+  }
+}

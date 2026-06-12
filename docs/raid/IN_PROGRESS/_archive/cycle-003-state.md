@@ -1,9 +1,9 @@
 ---
 cycle: 3
-title: L1.A-2 PII + Identity + Consent tables
-current_phase: SESSION
-phase_started_at: 2026-05-29T03:04:07Z
-last_checkpoint_at: 2026-05-29T03:04:07Z
+title: API contract freeze
+current_phase: COMMIT
+phase_started_at: 2026-05-30T05:34:05Z
+last_checkpoint_at: 2026-05-30T05:34:05Z
 retry_count: 0
 dps_status: []
 adversary_findings: null

@@ -1,9 +1,9 @@
 ---
 cycle: 4
-title: L1.A-3 Audit Infrastructure (5 tables)
+title: PLATFORM K14 event pipeline
 current_phase: COMMIT
-phase_started_at: 2026-05-29T03:51:36Z
-last_checkpoint_at: 2026-05-29T03:51:36Z
+phase_started_at: 2026-05-30T06:22:36Z
+last_checkpoint_at: 2026-05-30T06:22:36Z
 retry_count: 0
 dps_status: []
 adversary_findings: null

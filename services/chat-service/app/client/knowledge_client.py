@@ -30,6 +30,19 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.config import settings
 from app.middleware.trace_id import current_trace_id
 
+# ARCH-2 C2 — MCP client transport for the USE_MCP_TOOLS dual-run path.
+# Imported at module level (not lazily) so tests can patch these symbols at
+# their point of use (`app.client.knowledge_client.streamablehttp_client` /
+# `.ClientSession`). Guarded so a missing `mcp` package doesn't break module
+# import for environments that never enable USE_MCP_TOOLS — mcp_execute_tool
+# raises a clear error if the package is absent and the gate is on.
+try:
+    from mcp import ClientSession
+    from mcp.client.streamable_http import streamablehttp_client
+except ImportError:  # pragma: no cover - mcp is a hard requirement in prod
+    ClientSession = None  # type: ignore[assignment,misc]
+    streamablehttp_client = None  # type: ignore[assignment]
+
 logger = logging.getLogger(__name__)
 
 __all__ = [
@@ -94,6 +107,20 @@ def _degraded() -> KnowledgeContext:
     )
 
 
+def _normalize_tool_parameters(input_schema: dict | None) -> dict:
+    """Normalize an MCP tool's inputSchema to a valid OpenAI function-call
+    `parameters` object. OpenAI-compatible providers (e.g. LM Studio) REQUIRE a
+    `properties` object — a tool with an empty input (e.g. glossary_list_kinds,
+    whose Go input struct is empty) yields `{"type":"object"}` with no
+    `properties`, which 400s the WHOLE request. Default the missing keys so an
+    argument-less tool advertises `{"type":"object","properties":{}}`.
+    """
+    params = dict(input_schema) if isinstance(input_schema, dict) else {}
+    params.setdefault("type", "object")
+    params.setdefault("properties", {})
+    return params
+
+
 class KnowledgeClient:
     """Thin async wrapper around httpx.AsyncClient.
 
@@ -109,6 +136,7 @@ class KnowledgeClient:
         retries: int,
         *,
         tool_timeout_s: float = 30.0,
+        tools_base_url: str | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         """Construct the client.
@@ -128,6 +156,10 @@ class KnowledgeClient:
         silently break a `@patch("...httpx.AsyncClient")`.
         """
         self._base_url = base_url.rstrip("/")
+        # ai-gateway P0: tool definitions + MCP execution target the gateway;
+        # build_context (grounding) stays on _base_url (knowledge). Defaults to
+        # _base_url so tests that omit it keep their existing single-host wiring.
+        self._tools_base_url = (tools_base_url or base_url).rstrip("/")
         self._retries = max(0, retries)
         self._tool_timeout_s = tool_timeout_s
         client_kwargs: dict = {
@@ -164,9 +196,15 @@ class KnowledgeClient:
           * session_id / project_id are omitted when empty/None rather
             than sent as empty strings (which would 422 via UUID
             validation — K5-I1).
-        """
-        url = f"{self._base_url}/internal/context/build"
 
+        P6 grounding port (H2): grounding is fetched via the ai-gateway
+        (the single AI integration layer). On a GATEWAY OUTAGE (transport
+        error / 5xx) it falls back to calling knowledge-service directly,
+        so a gateway outage degrades context but never breaks the turn. A
+        STABLE knowledge signal proxied through the gateway (404 / 501 /
+        4xx) returns degraded WITHOUT the fallback (knowledge-direct would
+        answer the same). Both unreachable → degraded.
+        """
         # Truncate long messages at the client boundary.
         safe_message = message or ""
         if len(safe_message) > MESSAGE_MAX_CHARS:
@@ -191,6 +229,37 @@ class KnowledgeClient:
         tid = current_trace_id()
         call_headers = {"X-Trace-Id": tid} if tid else None
 
+        # Primary = ai-gateway grounding; fallback = knowledge direct (H2).
+        gateway_url = f"{self._tools_base_url}/internal/context/build"
+        ctx = await self._build_context_at(gateway_url, body, call_headers, project_id)
+        if ctx is not None:
+            return ctx
+
+        knowledge_url = f"{self._base_url}/internal/context/build"
+        if knowledge_url != gateway_url:
+            logger.info("grounding via gateway unavailable — falling back to knowledge direct")
+            ctx = await self._build_context_at(knowledge_url, body, call_headers, project_id)
+            if ctx is not None:
+                return ctx
+
+        # Gateway and direct both unreachable → degraded (turn proceeds tool/context-free).
+        return _degraded()
+
+    async def _build_context_at(
+        self,
+        url: str,
+        body: dict,
+        call_headers: dict | None,
+        project_id: str | None,
+    ) -> KnowledgeContext | None:
+        """POST grounding at `url`, with retries.
+
+        Returns a ``KnowledgeContext`` when the host answered — a real context on
+        200, or a degraded context on a STABLE signal (501 Mode-3 / 404
+        project-not-found / other 4xx / decode / validate failure), which the
+        caller must NOT retry elsewhere. Returns ``None`` on an OUTAGE (transport
+        error or 5xx after all retries) — the signal that the caller should try
+        the fallback host (H2)."""
         attempts = self._retries + 1
         last_err_summary: str | None = None
         for _ in range(attempts):
@@ -204,27 +273,37 @@ class KnowledgeClient:
                 continue
 
             # 501 is technically a 5xx but it's the stable "Mode 3 not
-            # implemented yet" signal from K4b/K4c — don't retry.
+            # implemented yet" signal from K4b/K4c — don't retry, don't fall back.
             if resp.status_code == 501:
-                logger.debug("knowledge build_context 501 (Mode 3 not implemented)")
+                logger.debug("build_context 501 (Mode 3 not implemented)")
                 return _degraded()
 
             if resp.status_code >= 500:
+                # Includes the gateway's 502-on-knowledge-outage → treat as OUTAGE
+                # (retry here, then None so the caller falls back).
                 last_err_summary = f"{resp.status_code}"
                 continue
 
+            if resp.status_code in (401, 403):
+                # An auth rejection is a HOST-ACCESS problem (e.g. the gateway's
+                # internal token is misconfigured), not a stable request problem —
+                # the retained direct chat→knowledge path uses the same token and
+                # may be accepted. Treat as an OUTAGE so the caller falls back
+                # (H2). No retry — the token won't change between attempts.
+                logger.warning("build_context %d (auth) at %s — falling back", resp.status_code, url)
+                return None
+
             if resp.status_code == 404:
                 # 404 = project not found (per K4b ProjectNotFound mapping).
-                # Stable request problem — don't retry.
+                # Stable request problem — degraded, no fallback.
                 logger.warning(
-                    "knowledge build_context 404 (project not found) project_id=%s",
-                    project_id,
+                    "build_context 404 (project not found) project_id=%s", project_id,
                 )
                 return _degraded()
 
             if resp.status_code >= 400:
                 logger.warning(
-                    "knowledge build_context %d (no retry) body=%s",
+                    "build_context %d (no retry) body=%s",
                     resp.status_code, resp.text[:200],
                 )
                 return _degraded()
@@ -232,59 +311,73 @@ class KnowledgeClient:
             try:
                 data = resp.json()
             except Exception as exc:
-                logger.warning("knowledge build_context decode failure: %s", exc)
+                logger.warning("build_context decode failure: %s", exc)
                 return _degraded()
 
             try:
                 return KnowledgeContext.model_validate(data)
             except Exception as exc:
-                logger.warning("knowledge build_context validate failure: %s", exc)
+                logger.warning("build_context validate failure: %s", exc)
                 return _degraded()
 
-        # All attempts exhausted — single warning summarising the failure.
+        # All attempts exhausted → OUTAGE (None ⇒ caller falls back). Keep the
+        # "unavailable" keyword the once-per-failure log guard keys on.
         logger.warning(
-            "knowledge build_context unavailable after %d attempts: %s",
-            attempts, last_err_summary or "unknown",
+            "build_context unavailable at %s after %d attempts: %s",
+            url, attempts, last_err_summary or "unknown",
         )
-        return _degraded()
+        return None
 
     async def get_tool_definitions(self) -> list[dict]:
-        """GET /internal/tools/definitions — the OpenAI tool schemas
-        (K21-B D1). Cached process-wide after the first success.
+        """Fetch the federated tool catalog from the ai-gateway via MCP
+        ``list-tools`` and convert each entry to an OpenAI function schema
+        (the shape the chat tool-loop advertises to the LLM). Cached
+        process-wide after the first success.
 
         Returns ``[]`` on any failure; the caller then runs the chat turn
         tool-free. A failure is deliberately NOT cached, so a later turn
-        retries — ``build_context`` already runs every turn, so one extra
-        GET while knowledge-service is unreachable is negligible.
+        retries.
         """
         if self._tool_definitions is not None:
             return self._tool_definitions
-
-        url = f"{self._base_url}/internal/tools/definitions"
-        tid = current_trace_id()
-        call_headers = {"X-Trace-Id": tid} if tid else None
-        try:
-            resp = await self._http.get(url, headers=call_headers)
-        except httpx.HTTPError as exc:
-            logger.warning("knowledge tool definitions fetch failed: %s", exc)
-            return []
-        if resp.status_code != 200:
+        if streamablehttp_client is None or ClientSession is None:
             logger.warning(
-                "knowledge tool definitions fetch %d", resp.status_code
+                "get_tool_definitions called but the 'mcp' package is not installed"
             )
             return []
+
+        mcp_url = f"{self._tools_base_url}/mcp"
+        headers = {"X-Internal-Token": self._http.headers["X-Internal-Token"]}
+        tid = current_trace_id()
+        if tid:
+            headers["X-Trace-Id"] = tid
         try:
-            tools = resp.json().get("tools", [])
+            async with streamablehttp_client(
+                mcp_url, headers=headers,
+                timeout=self._tool_timeout_s, sse_read_timeout=self._tool_timeout_s,
+            ) as (read, write, _):
+                async with ClientSession(read, write) as mcp_session:
+                    await mcp_session.initialize()
+                    listed = await mcp_session.list_tools()
         except Exception as exc:
-            logger.warning("knowledge tool definitions decode failed: %s", exc)
+            logger.warning("get_tool_definitions (mcp list-tools) failed: %s", exc)
             return []
-        if not isinstance(tools, list):
-            logger.warning("knowledge tool definitions: unexpected shape")
-            return []
+
+        tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": t.name,
+                    "description": t.description or "",
+                    "parameters": _normalize_tool_parameters(t.inputSchema),
+                },
+            }
+            for t in listed.tools
+        ]
         self._tool_definitions = tools
         return tools
 
-    async def execute_tool(
+    async def mcp_execute_tool(
         self,
         *,
         user_id: str,
@@ -293,53 +386,107 @@ class KnowledgeClient:
         tool_args: dict,
         project_id: str | None = None,
     ) -> dict:
-        """POST /internal/tools/execute (K21-B).
+        """ARCH-2 C2 — execute a memory tool via MCP streamable HTTP transport.
 
-        Returns the ``{success, result, error}`` envelope. On a transport
-        failure or a non-200 it returns a synthesised ``success=False``
-        envelope so the tool-calling loop can tell the LLM the tool
-        failed and carry on — this never raises.
+        Returns the same dict shape as execute_tool() for drop-in compatibility:
+          {"success": True, "result": dict, "error": None}      on success
+          {"success": False, "result": None, "error": str}      on tool or transport failure
+
+        Context headers carry user_id / project_id / session_id — they never
+        appear in tool_args (design D3). A transport or protocol failure returns
+        success=False (graceful degradation, same contract as execute_tool()).
         """
-        url = f"{self._base_url}/internal/tools/execute"
-        body: dict = {
-            "user_id": user_id,
-            "session_id": session_id,
-            "tool_name": tool_name,
-            "tool_args": tool_args,
-        }
-        # Omit project_id when empty/None — a no-project chat is valid
-        # and the executor handles a null project per Cycle A design D3.
-        if project_id:
-            body["project_id"] = project_id
+        if streamablehttp_client is None or ClientSession is None:
+            logger.warning("mcp_execute_tool called but the 'mcp' package is not installed")
+            return {
+                "success": False,
+                "result": None,
+                "error": "mcp tool backend unavailable: mcp package not installed",
+            }
 
+        mcp_url = f"{self._tools_base_url}/mcp"
+        headers = {
+            "X-Internal-Token": self._http.headers["X-Internal-Token"],
+            "X-User-Id": user_id,
+            "X-Session-Id": session_id,
+        }
+        if project_id:
+            headers["X-Project-Id"] = project_id
+        # K7e — mirror execute_tool: forward the caller's trace_id so
+        # knowledge-service stitches its logs to the originating chat turn.
+        # Omit when empty so knowledge-service mints its own.
         tid = current_trace_id()
-        call_headers = {"X-Trace-Id": tid} if tid else None
+        if tid:
+            headers["X-Trace-Id"] = tid
+
         try:
-            # Override the client-wide build_context budget — a memory
-            # tool does real work and would ReadTimeout at 500ms (D-K21B-06).
-            resp = await self._http.post(
-                url, json=body, headers=call_headers, timeout=self._tool_timeout_s
-            )
-        except httpx.HTTPError as exc:
-            logger.warning("knowledge execute_tool transport error: %s", exc)
-            return {
-                "success": False, "result": None,
-                "error": f"tool backend unavailable: {type(exc).__name__}",
-            }
-        if resp.status_code != 200:
-            logger.warning("knowledge execute_tool HTTP %d", resp.status_code)
-            return {
-                "success": False, "result": None,
-                "error": f"tool backend error (HTTP {resp.status_code})",
-            }
-        try:
-            return resp.json()
+            # Bind BOTH the connect timeout and sse_read_timeout to the same
+            # tool budget execute_tool uses. sse_read_timeout MUST be set
+            # explicitly: the tool RESULT rides the SSE read channel, so the
+            # SDK default (300s) would let a stalled backend hang ~10x the
+            # bespoke 30s ceiling. If this ever migrates to the new
+            # 'streamable_http_client' (which ignores these kwargs), the budget
+            # must move to an httpx.Timeout(read=budget) on a supplied client.
+            async with streamablehttp_client(
+                mcp_url,
+                headers=headers,
+                timeout=self._tool_timeout_s,
+                sse_read_timeout=self._tool_timeout_s,
+            ) as (read, write, _):
+                async with ClientSession(read, write) as mcp_session:
+                    await mcp_session.initialize()
+                    result = await mcp_session.call_tool(tool_name, tool_args)
         except Exception as exc:
-            logger.warning("knowledge execute_tool decode failed: %s", exc)
+            logger.warning("mcp_execute_tool transport error: %s", exc)
             return {
-                "success": False, "result": None,
-                "error": "tool backend returned an invalid response",
+                "success": False,
+                "result": None,
+                "error": f"mcp tool backend unavailable: {type(exc).__name__}",
             }
+
+        # An MCP-level tool error (e.g. an auth ValueError raised inside the
+        # server handler) surfaces as isError=True with the message in the
+        # first text content item — map it to a success=False envelope.
+        if getattr(result, "isError", False):
+            err_text = ""
+            if result.content:
+                err_text = getattr(result.content[0], "text", "") or ""
+            return {
+                "success": False,
+                "result": None,
+                "error": err_text or "mcp tool error",
+            }
+
+        # FastMCP returns content as a list of TextContent/ImageContent items.
+        # The knowledge-service handlers return JSON dicts serialised as the
+        # text content of the first item.
+        if not result.content:
+            return {"success": False, "result": None, "error": "mcp tool returned empty content"}
+
+        first = result.content[0]
+        try:
+            import json as _json  # noqa: PLC0415
+            payload = _json.loads(first.text)
+        except Exception as exc:
+            logger.warning(
+                "mcp_execute_tool decode error: %s — raw: %s",
+                exc, getattr(first, "text", "?")[:200],
+            )
+            return {"success": False, "result": None, "error": "mcp tool returned unparseable content"}
+
+        if isinstance(payload, dict) and payload.get("success") is False:
+            # Server-side tool error propagated as a structured dict.
+            return {
+                "success": False,
+                "result": None,
+                "error": payload.get("error", "tool error"),
+            }
+
+        # Canonical {} empty-success contract: keep this byte-identical to
+        # execute_tool's success path. A wire "null" yields payload=None after
+        # json.loads — coerce it to {} so an empty success is {} on BOTH
+        # transports (the MCP server's _dispatch already does the same).
+        return {"success": True, "result": payload if payload is not None else {}, "error": None}
 
 
 # ── module-level singleton managed by lifespan ─────────────────────────────
@@ -361,6 +508,8 @@ def init_knowledge_client() -> KnowledgeClient:
         timeout_s=settings.knowledge_client_timeout_s,
         retries=settings.knowledge_client_retries,
         tool_timeout_s=settings.knowledge_tool_timeout_s,
+        # ai-gateway P0: route tools (definitions + MCP execute) through the gateway.
+        tools_base_url=settings.ai_gateway_url,
     )
     return _client
 

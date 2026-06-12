@@ -39,6 +39,13 @@ __all__ = [
     "tool_call_result_size_bytes",
     "memory_remember_rate_limited_total",
     "mode3_intent_classifier_glossary_unavailable_total",
+    "knowledge_extraction_filter_decisions_total",
+    "knowledge_extraction_filter_coverage_ratio",
+    "knowledge_extraction_recovery_decisions_total",
+    "knowledge_extraction_writer_autocreate_total",
+    "knowledge_extraction_filter_reload_total",
+    "knowledge_extraction_status_effect_total",
+    "correction_emit_failure_total",
 ]
 
 registry = CollectorRegistry()
@@ -49,6 +56,23 @@ layer_timeout_total = Counter(
     ["layer"],
     registry=registry,
 )
+
+# FD-19/053 — correction outbox emit failures, split by kind. `transient`
+# (pool/conn/PG) is best-effort-OK (replay backstop applies); `permanent`
+# (non-UUID aggregate_id, malformed payload, schema drift) NEVER reached
+# outbox_events → zero replay durability → a bug to fix. A non-zero
+# `permanent` series is an alert.
+correction_emit_failure_total = Counter(
+    "knowledge_correction_emit_failure_total",
+    "Swallowed correction/config outbox emit failures by kind "
+    "(transient = retriable/replayable; permanent = lost, a bug).",
+    ["kind"],
+    registry=registry,
+)
+# Pre-seed both series so a dashboard shows `0` (not absent) before the first
+# failure — a steady 0 on `permanent` is the healthy signal we want visible.
+for _kind in ("transient", "permanent"):
+    correction_emit_failure_total.labels(kind=_kind)
 
 # D-P3-INTENT-CLASSIFIER-GLOSSARY-METRIC. Distinct from the general
 # layer_timeout_total{layer="glossary"} so a dashboard can split
@@ -262,6 +286,21 @@ knowledge_extraction_dropped_total = Counter(
 for _op in ("entity_extraction", "relation_extraction", "event_extraction"):
     for _r in ("missing_name", "missing_kind", "missing_evidence_passage_id", "validation"):
         knowledge_extraction_dropped_total.labels(operation=_op, reason=_r)
+
+# A2-S1b (Cycle 11 / DEFERRED 066) — outcome of each event status_effect the
+# Pass-2 writer consumes. `persisted` = an :EntityStatus was merged; the two
+# `skipped_*` outcomes were previously LOG-ONLY (silent on dashboards), which is
+# exactly the 066 "status unresolved silently" gap — surface them as a metric so
+# a producer regression (no event_order threaded / entity_ref never resolves) is
+# visible as a non-zero skip rate, not buried in logs.
+knowledge_extraction_status_effect_total = Counter(
+    "knowledge_extraction_status_effect_total",
+    "A2-S1b event status_effect outcomes in the Pass-2 writer",
+    ["outcome"],
+    registry=registry,
+)
+for _outcome in ("persisted", "skipped_no_event_order", "skipped_unresolved"):
+    knowledge_extraction_status_effect_total.labels(outcome=_outcome)
 
 # ── K13.0 anchor resolver ──────────────────────────────────────────
 
@@ -490,3 +529,119 @@ memory_remember_rate_limited_total = Counter(
     registry=registry,
 )
 memory_remember_rate_limited_total.inc(0)
+
+
+# ── Cycle 72 — Pass2 precision filter observability ────────────────────
+#
+# `category` cardinality is closed at 3 (entity / relation / event).
+# `verdict` cardinality is closed at 5 (supported / partial / unsupported
+# / unjudged / failed) — covers every value the filter can record.
+# Total series: 3 × 5 = 15. Coverage gauge is 1 series per category.
+knowledge_extraction_filter_decisions_total = Counter(
+    "knowledge_extraction_filter_decisions_total",
+    "Cycle 72 Pass2 precision filter — per-item verdicts emitted by "
+    "the filter LLM (or 'unjudged' when verdict missing, 'failed' on "
+    "filter degradation).",
+    ["category", "verdict"],
+    registry=registry,
+)
+for _cat in ("entity", "relation", "event"):
+    for _v in ("supported", "partial", "unsupported", "unjudged", "failed"):
+        knowledge_extraction_filter_decisions_total.labels(
+            category=_cat, verdict=_v
+        )
+
+knowledge_extraction_filter_coverage_ratio = Gauge(
+    "knowledge_extraction_filter_coverage_ratio",
+    "Cycle 72 Pass2 precision filter — last-observed coverage ratio "
+    "(verdicts returned / items submitted) per category. <0.9 suggests "
+    "the per-batch reasoning-token budget needs tuning.",
+    ["category"],
+    registry=registry,
+)
+for _cat in ("entity", "relation", "event"):
+    knowledge_extraction_filter_coverage_ratio.labels(category=_cat).set(1.0)
+
+
+# ── Cycle 73d — entity recovery (3-tier) observability ────────────────
+#
+# `source` cardinality is closed at 4 (glossary / hints / llm / unmatched).
+# `verdict` cardinality is closed at 3 (entity / abstract / unjudged).
+# Total series: 4 × 3 = 12.
+knowledge_extraction_recovery_decisions_total = Counter(
+    "knowledge_extraction_recovery_decisions_total",
+    "Cycle 73d entity recovery — per-name resolution outcomes. Source "
+    "tells which tier resolved (glossary lookup, author hints, LLM "
+    "classifier, or unjudged-due-to-LLM-failure). Verdict 'abstract' "
+    "drops referencing relations; 'entity' promotes a new :Entity.",
+    ["source", "verdict"],
+    registry=registry,
+)
+for _src in ("glossary", "hints", "llm", "unmatched"):
+    for _v in ("entity", "abstract", "unjudged"):
+        knowledge_extraction_recovery_decisions_total.labels(
+            source=_src, verdict=_v,
+        )
+
+
+# ── Cycle 73f — Pass2 precision filter runtime reload observability ──
+#
+# `source` cardinality is closed at 3 (api / pubsub / startup).
+# `outcome` cardinality is closed at 3 (applied / rejected / failed).
+# Total series: 3 × 3 = 9.
+knowledge_extraction_filter_reload_total = Counter(
+    "knowledge_extraction_filter_reload_total",
+    "Cycle 73f Pass2 precision filter reload — per-source/outcome counts. "
+    "Source: api (POST /internal/admin/precision-filter/reload), pubsub "
+    "(filter-reload signal from another service), startup (lifespan GET "
+    "from Redis on container boot). Outcome: applied (cache swap success), "
+    "rejected (validation failure / unknown schema_version), failed "
+    "(Redis I/O error / serialization error).",
+    ["source", "outcome"],
+    registry=registry,
+)
+for _src in ("api", "pubsub", "startup"):
+    for _out in ("applied", "rejected", "failed"):
+        knowledge_extraction_filter_reload_total.labels(
+            source=_src, outcome=_out,
+        )
+
+
+# ── Cycle 73e — Pass2 writer autocreate observability ────────────────
+#
+# `role` cardinality is closed at 2 (subject / object).
+# `outcome` cardinality is closed at 9:
+#   - tier_a_name_repair     : in-memory chapter map matched (Tier A.1)
+#   - tier_a_anchor_repair   : anchor index matched (Tier A.2; entity pre-existed)
+#   - tier_b_autocreated     : Neo4j MERGE minted a new :Entity (Tier B)
+#   - kind_ambiguous         : Tier A multi-kind collision; skip Tier B too
+#   - noise_skipped          : char-length OR word-count heuristic fired
+#   - cap_exhausted          : per-chapter cap reached; cascade-skip
+#   - cap_exhausted_high_conf: cap reached AND relation confidence > 0.8 (tuning signal)
+#   - invalid_name           : canonicalize_entity_name returned empty
+#   - error                  : resolve_or_merge_entity raised; cascade-skip + warn
+# Total series: 2 × 9 = 18.
+knowledge_extraction_writer_autocreate_total = Counter(
+    "knowledge_extraction_writer_autocreate_total",
+    "Cycle 73e Pass2 writer autocreate — per-endpoint resolution outcomes. "
+    "Role identifies subject vs object position in the relation; outcome "
+    "tells which tier resolved or why we skipped. Only 'tier_b_autocreated' "
+    "represents a new :Entity write to Neo4j; the rest are repairs or skips.",
+    ["role", "outcome"],
+    registry=registry,
+)
+for _role in ("subject", "object"):
+    for _out in (
+        "tier_a_name_repair",
+        "tier_a_anchor_repair",
+        "tier_b_autocreated",
+        "kind_ambiguous",
+        "noise_skipped",
+        "cap_exhausted",
+        "cap_exhausted_high_conf",
+        "invalid_name",
+        "error",
+    ):
+        knowledge_extraction_writer_autocreate_total.labels(
+            role=_role, outcome=_out,
+        )

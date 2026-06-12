@@ -88,6 +88,8 @@ class Client:
         user_id: str | None = None,
         idle_read_timeout_s: float = _DEFAULT_IDLE_READ_TIMEOUT_S,
         transport: httpx.AsyncBaseTransport | None = None,
+        event_redis_url: str | None = None,
+        event_stream: str = "loreweave:events:llm_job_terminal",
     ) -> None:
         if auth_mode == "jwt" and not bearer_token:
             raise ValueError("auth_mode='jwt' requires bearer_token")
@@ -112,10 +114,70 @@ class Client:
         timeout = httpx.Timeout(None, connect=5.0, read=idle_read_timeout_s)
         self._http = httpx.AsyncClient(timeout=timeout, transport=transport)
 
+        # LLM re-arch Phase 1 (Commit 2) — optional event-driven resume source.
+        # When event_redis_url is set, wait_terminal becomes an
+        # event-interruptible poll: it blocks on an XREAD of the terminal stream
+        # between polls (woken the instant the job's terminal event lands) and
+        # falls back to the poll on any Redis fault or a missed event. None ⇒
+        # today's pure-poll behaviour (zero caller impact; services opt in in
+        # Phase 2). The redis client is created lazily on first use so the SDK
+        # doesn't hard-require redis unless this path is exercised.
+        self._event_redis_url = event_redis_url
+        self._event_stream = event_stream
+        self._event_redis: Any | None = None
+
     async def aclose(self) -> None:
+        if self._event_redis is not None:
+            try:
+                await self._event_redis.aclose()
+            except Exception:  # noqa: BLE001 — best-effort cleanup
+                pass
         if self._http.is_closed:
             return
         await self._http.aclose()
+
+    def _ensure_event_redis(self) -> Any | None:
+        """Lazily build the terminal-event Redis client. Returns None (→ pure
+        poll) when no event source is configured or redis isn't importable."""
+        if self._event_redis_url is None:
+            return None
+        if self._event_redis is None:
+            try:
+                import redis.asyncio as _aioredis  # lazy: optional dependency
+            except Exception:  # noqa: BLE001
+                logger.warning("loreweave_llm: redis not importable — event resume disabled, polling")
+                self._event_redis_url = None
+                return None
+            self._event_redis = _aioredis.from_url(self._event_redis_url)
+        return self._event_redis
+
+    async def _wait_terminal_event(self, job_id: str, last_id: str, timeout_s: float) -> tuple[bool, str]:
+        """Block up to timeout_s on an XREAD of the terminal stream. Returns
+        (woke_for_this_job, new_last_id). Degrades to asyncio.sleep on any Redis
+        fault — a missed event is then caught by the next poll (defense in depth,
+        mirrors worker-ai wake.py). The stream is fanned out (no consumer group):
+        every waiter sees every terminal event and filters by job_id locally."""
+        r = self._ensure_event_redis()
+        if r is None:
+            await asyncio.sleep(timeout_s)
+            return False, last_id
+        try:
+            resp = await r.xread({self._event_stream: last_id}, block=max(1, int(timeout_s * 1000)), count=50)
+        except Exception:  # noqa: BLE001 — degrade to sleep on any Redis fault
+            logger.warning("loreweave_llm: terminal XREAD failed — polling", exc_info=True)
+            await asyncio.sleep(timeout_s)
+            return False, last_id
+        woke = False
+        new_last = last_id
+        for _stream, entries in resp or []:
+            for entry_id, fields in entries:
+                new_last = entry_id.decode() if isinstance(entry_id, bytes) else str(entry_id)
+                jid = fields.get(b"job_id") or fields.get("job_id")
+                if jid is not None:
+                    jid = jid.decode() if isinstance(jid, bytes) else str(jid)
+                if jid == job_id:
+                    woke = True
+        return woke, new_last
 
     # ── Streaming (P1) ────────────────────────────────────────────────
 
@@ -362,6 +424,11 @@ class Client:
         job_id_str = str(job_id)
         interval = poll_interval_s
         http_failures = 0
+        # "$" = only events that arrive AFTER we start reading; the immediate
+        # get_job below catches an already-terminal job, and the poll backstops
+        # any missed event, so there's no submit↔read gap to worry about.
+        last_id = "$"
+        event_driven = self._event_redis_url is not None
         while True:
             try:
                 job = await self.get_job(job_id_str, user_id=user_id)
@@ -388,8 +455,52 @@ class Client:
                     )
                 return job
 
-            await asyncio.sleep(interval)
-            interval = min(interval * poll_backoff, max_poll_interval_s)
+            if event_driven:
+                # Block on the terminal stream; wake the instant THIS job's event
+                # lands (poll immediately) or on timeout (fallback poll). Degrades
+                # to sleep on a Redis fault.
+                woke, last_id = await self._wait_terminal_event(job_id_str, last_id, interval)
+                if not woke:
+                    interval = min(interval * poll_backoff, max_poll_interval_s)
+            else:
+                await asyncio.sleep(interval)
+                interval = min(interval * poll_backoff, max_poll_interval_s)
+
+    async def await_job_event(
+        self,
+        job_id: str | UUID,
+        *,
+        user_id: str | None = None,
+        timeout_s: float | None = None,
+    ) -> Job:
+        """Wait for a job's terminal event, with an optional overall deadline.
+
+        Explicit event-resume API (LLM re-arch Phase 1 §5.4) for callers that
+        prefer "submit then await the event" + a wall-clock cap over the
+        unbounded ``wait_terminal``. Event-driven when ``event_redis_url`` is
+        configured (XREAD wakes the wait the instant the terminal event lands),
+        poll-fallback otherwise — so it's correct with or without a broker.
+        Raises ``asyncio.TimeoutError`` if ``timeout_s`` elapses first.
+        """
+        coro = self.wait_terminal(job_id, user_id=user_id)
+        if timeout_s is None:
+            return await coro
+        return await asyncio.wait_for(coro, timeout=timeout_s)
+
+    async def submit_and_await_event(
+        self,
+        request: SubmitJobRequest,
+        *,
+        user_id: str | None = None,
+        timeout_s: float | None = None,
+    ) -> Job:
+        """Submit a job and await its terminal event. The coroutine-releasing
+        win (submit → persist job_id → return → resume in a separate consumer)
+        is the caller's to take; this convenience binds submit + await for the
+        common in-line case while still resuming on the event, not a tight poll.
+        """
+        resp = await self.submit_job(request, user_id=user_id)
+        return await self.await_job_event(resp.job_id, user_id=user_id, timeout_s=timeout_s)
 
     async def transcribe(
         self,

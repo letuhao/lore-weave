@@ -1,0 +1,62 @@
+{
+  "browse": {
+    "title": "Khám phá truyện",
+    "subtitle": "Duyệt các tiểu thuyết công khai từ cộng đồng LoreWeave. Đọc, dịch và khám phá truyện qua nhiều ngôn ngữ.",
+    "search_placeholder": "Tìm theo tựa đề, tác giả hoặc ngôn ngữ...",
+    "search_aria": "Tìm trong danh mục",
+    "no_books": "Không tìm thấy sách. Hãy thử tìm kiếm hoặc bộ lọc khác.",
+    "load_failed": "Không thể tải danh mục"
+  },
+  "filter": {
+    "lang_all": "Tất cả",
+    "clear_genres": "Xóa thể loại",
+    "books_found": "Tìm thấy {{count}} cuốn sách",
+    "sort_aria": "Sắp xếp sách theo",
+    "sort": {
+      "recent": "Mới nhất",
+      "popular": "Phổ biến nhất",
+      "chapters": "Nhiều chương nhất",
+      "alpha": "Theo bảng chữ cái"
+    }
+  },
+  "card": {
+    "chapters_short": "{{count}} chương"
+  },
+  "detail": {
+    "breadcrumb_browse": "Duyệt",
+    "public_badge": "Công khai",
+    "unlisted_badge": "Không công khai",
+    "chapters_count": "{{count}} chương",
+    "available_languages": "Ngôn ngữ có sẵn",
+    "original": "Nguyên gốc",
+    "start_reading": "Bắt đầu đọc",
+    "no_chapters_yet": "Chưa có chương nào",
+    "share": "Chia sẻ",
+    "copy_link": "Sao chép liên kết",
+    "loading": "Đang tải...",
+    "chapters_heading": "Các chương",
+    "no_chapters_available": "Không có chương nào.",
+    "untitled": "Chưa đặt tên",
+    "words": "{{count}} từ",
+    "showing_chapters": "Hiển thị {{from}}–{{to}} trên {{total}} chương",
+    "stat_chapters": "Số chương",
+    "stat_languages": "Ngôn ngữ",
+    "stat_original": "Nguyên gốc",
+    "stat_published": "Xuất bản",
+    "na": "Không có",
+    "book_not_found": "Không tìm thấy sách",
+    "back_to_browse": "Quay lại Duyệt",
+    "link_copied": "Đã sao chép liên kết",
+    "copy_failed": "Không thể sao chép",
+    "load_chapters_failed": "Không thể tải các chương"
+  },
+  "shared": {
+    "indicator": "Bạn đang xem một liên kết được chia sẻ. Sách này không được niêm yết công khai.",
+    "invalid": "Liên kết chia sẻ này không hợp lệ hoặc đã hết hạn.",
+    "not_found": "Không tìm thấy liên kết chia sẻ hoặc đã hết hạn",
+    "browse_instead": "Duyệt sách công khai thay thế",
+    "back_to_chapters": "Quay lại các chương",
+    "ch_short": "Ch. {{n}}",
+    "load_chapter_failed": "Không thể tải chương: {{error}}"
+  }
+}

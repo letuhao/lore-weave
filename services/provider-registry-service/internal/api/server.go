@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"path"
 	"strconv"
@@ -22,12 +23,14 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/loreweave/observability"
 	"github.com/loreweave/provider-registry-service/internal/billing"
 	"github.com/loreweave/provider-registry-service/internal/config"
 	"github.com/loreweave/provider-registry-service/internal/jobs"
 	"github.com/loreweave/provider-registry-service/internal/provider"
+	"github.com/loreweave/provider-registry-service/internal/ratelimit"
 	"github.com/loreweave/provider-registry-service/internal/storage"
 )
 
@@ -57,6 +60,19 @@ type Server struct {
 	// gates on jobsRepo != nil before using them.
 	estimator billing.Estimator
 	guardrail *billing.GuardrailClient
+
+	// Phase 0 (event-driven re-arch) — per-job cancellation. jobCancels maps an
+	// in-flight async job to its worker-goroutine CancelFunc so DELETE actually
+	// aborts the provider call + frees the governor slot (not just DB state).
+	// jobWallclock (0 = disabled) is the optional runaway backstop.
+	jobCancels   jobCancelRegistry
+	jobWallclock time.Duration
+
+	// Phase 1 Commit 3 (event-driven re-arch) — durable per-kind work queue.
+	// nil ⇒ direct-goroutine dispatch (LLM_JOB_QUEUE_ENABLED off / no broker).
+	// When set, doSubmitJob enqueues instead of spawning, and a consumer pool
+	// (per-kind semaphore = governor.MaxFor) runs jobs — wait-not-fail.
+	jobQueue *jobs.JobQueue
 }
 
 // NewServer constructs the HTTP server. notifier may be nil (router-only
@@ -94,9 +110,125 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config, notifier jobs.Notifier, a
 		SystemPromptTokenEstimate: cfg.SystemPromptTokenEstimate,
 	}
 	s.guardrail = billing.NewGuardrailClient(cfg.UsageBillingServiceURL, cfg.InternalServiceToken, nil)
+	if cfg.LLMJobWallclockTimeoutS > 0 {
+		s.jobWallclock = time.Duration(cfg.LLMJobWallclockTimeoutS) * time.Second
+	}
 	if pool != nil {
 		s.jobsRepo = jobs.NewRepo(pool)
 		s.jobsWorker = jobs.NewWorker(s.jobsRepo, s.resolveJobCreds, jobsAdapterFactory(s.invokeClient), notifier, nil, audioCache, s.guardrail, cfg.JobMaxRetries)
+		// S3a (G5) — attach the per-provider governor + circuit-breaker when
+		// REDIS_URL is configured. Untyped-nil interfaces stay in place when it
+		// isn't, so Guard passes calls through (governance disabled).
+		if cfg.RedisURL != "" {
+			if opts, err := redis.ParseURL(cfg.RedisURL); err == nil {
+				rdb := redis.NewClient(opts)
+				gov := ratelimit.NewGovernor(rdb, ratelimit.GovernorConfig{
+					CloudMax:       cfg.GovernorCloudMax,
+					Lease:          time.Duration(cfg.GovernorLeaseMs) * time.Millisecond,
+					AcquireTimeout: time.Duration(cfg.GovernorAcquireTimeoutMs) * time.Millisecond,
+				})
+				brk := ratelimit.NewBreaker(rdb, ratelimit.BreakerConfig{
+					Threshold: cfg.BreakerThreshold,
+					Window:    time.Duration(cfg.BreakerWindowS) * time.Second,
+					Cooldown:  time.Duration(cfg.BreakerCooldownS) * time.Second,
+				})
+				s.jobsWorker.WithGovernance(gov, brk)
+				slog.Info("S3a governance enabled", "cloud_max", cfg.GovernorCloudMax, "breaker_threshold", cfg.BreakerThreshold)
+
+				// S4b (decision C) — start the usage outbox relay on the same
+				// Redis client. Drains usage_outbox → loreweave:events:usage (+
+				// :campaign_usage for tagged rows). context.Background(): the
+				// loop is idempotent/resumable, so process-exit stopping it is
+				// safe (graceful stop → D-S4B-RELAY-SHUTDOWN).
+				relay := jobs.NewUsageRelay(rdb, pool, jobs.RelayConfig{
+					UsageStream:         cfg.UsageStream,
+					CampaignUsageStream: cfg.CampaignUsageStream,
+					UsageMaxLen:         int64(cfg.UsageStreamMaxLen),
+					CampaignMaxLen:      int64(cfg.CampaignUsageStreamMaxLen),
+					TerminalStream:      cfg.LLMJobTerminalStream,
+					TerminalMaxLen:      int64(cfg.LLMJobTerminalStreamMaxLen),
+					PollInterval:        time.Duration(cfg.UsageRelayPollMs) * time.Millisecond,
+					BatchSize:           cfg.UsageRelayBatch,
+				}, nil)
+				go relay.Run(context.Background())
+				slog.Info("S4b usage relay enabled", "usage_stream", cfg.UsageStream, "campaign_stream", cfg.CampaignUsageStream)
+			} else {
+				slog.Warn("S3a: REDIS_URL set but unparseable — governance disabled", "err", err)
+			}
+		}
+
+		// Phase 1 §5.6 — stuck-`running` truth-sweeper. Periodically bulk-fails
+		// jobs that crashed mid-Process (left running, no progress past the
+		// timeout) + emits their terminal event so the caller resumes. Timeout 0
+		// = disabled. Independent of Redis (the DB transition stands even if the
+		// relay isn't shipping events).
+		if cfg.LLMRunningSweepTimeoutS > 0 {
+			timeout := time.Duration(cfg.LLMRunningSweepTimeoutS) * time.Second
+			interval := time.Duration(cfg.LLMRunningSweepIntervalS) * time.Second
+			repo := s.jobsRepo
+			go func() {
+				t := time.NewTicker(interval)
+				defer t.Stop()
+				for range t.C {
+					if n, serr := repo.SweepStuckRunning(context.Background(), timeout); serr != nil {
+						slog.Warn("stuck-running sweep failed", "err", serr)
+					} else if n > 0 {
+						slog.Info("stuck-running sweep", "swept", n)
+					}
+				}
+			}()
+			slog.Info("stuck-running sweeper enabled", "timeout_s", cfg.LLMRunningSweepTimeoutS, "interval_s", cfg.LLMRunningSweepIntervalS)
+		}
+
+		// Phase 1 Commit 3 — durable work queue. When enabled (+ broker set),
+		// submit enqueues and this consumer pool runs jobs behind a per-kind
+		// semaphore (= governor.MaxFor), so a slow local job DELAYS the queue
+		// instead of failing everyone behind it on acquire (the incident class).
+		if cfg.LLMJobQueueEnabled && cfg.RabbitMQURL != "" {
+			if jq, qerr := jobs.NewJobQueue(cfg.RabbitMQURL, cfg.GovernorCloudMax, slog.Default()); qerr != nil {
+				slog.Warn("LLM job queue: init failed — direct dispatch", "err", qerr)
+			} else {
+				s.jobQueue = jq
+				// resolve: job_id → provider kind (the semaphore class).
+				resolve := func(ctx context.Context, jobID uuid.UUID) (string, bool) {
+					d, lerr := s.jobsRepo.LoadForProcess(ctx, jobID)
+					if lerr != nil {
+						return "", false
+					}
+					kind, ok, rerr := s.jobsRepo.ResolveKind(ctx, d.ModelSource, d.OwnerUserID, d.ModelRef)
+					if rerr != nil || !ok {
+						return "", false
+					}
+					return kind, true
+				}
+				// run: Phase-0 cancellable ctx + jobID→cancel registration, SYNC
+				// (the consumer acks only after the job is terminal). DELETE still
+				// aborts an in-flight queued job + frees its slot.
+				run := func(ctx context.Context, jobID uuid.UUID) {
+					wctx := observability.DetachedContext(ctx)
+					var cancel context.CancelFunc
+					if s.jobWallclock > 0 {
+						wctx, cancel = context.WithTimeout(wctx, s.jobWallclock)
+					} else {
+						wctx, cancel = context.WithCancel(wctx)
+					}
+					s.jobCancels.register(jobID, cancel)
+					defer s.jobCancels.remove(jobID)
+					defer cancel()
+					s.jobsWorker.ProcessJob(wctx, jobID)
+				}
+				workers := cfg.GovernorCloudMax * 2
+				if workers < 4 {
+					workers = 4
+				}
+				if cerr := s.jobQueue.StartConsumer(context.Background(), workers, resolve, run); cerr != nil {
+					slog.Warn("LLM job queue: consumer start failed — direct dispatch", "err", cerr)
+					s.jobQueue = nil
+				} else {
+					slog.Info("LLM job queue enabled", "workers", workers, "cloud_max", cfg.GovernorCloudMax)
+				}
+			}
+		}
 	}
 	return s
 }
@@ -249,6 +381,10 @@ func (s *Server) Router() http.Handler {
 	r.Route("/internal", func(r chi.Router) {
 		r.Use(s.requireInternalToken)
 		r.Get("/credentials/{model_source}/{model_ref}", s.getInternalCredentials)
+		// FD-27 — minimal model metadata (provider_model_name + kind, NO
+		// secrets) so service callers (worker-ai extraction) can run a
+		// reasoning-model capability advisory without holding credentials.
+		r.Get("/models/{model_source}/{model_ref}/info", s.getInternalModelInfo)
 		// Phase 4d: /internal/invoke retired. Service-to-service
 		// callers use /internal/llm/jobs via the loreweave_llm SDK.
 		// Transparent proxy — forwards any content-type (multipart, binary, JSON) to provider
@@ -258,6 +394,10 @@ func (s *Server) Router() http.Handler {
 		// audio paths (transcriptions, speech) pass through.
 		r.HandleFunc("/proxy/*", s.internalProxy)
 		r.Post("/embed", s.internalEmbed)
+		r.Post("/rerank", s.internalRerank) // E5B — cross-encoder rerank (platform service)
+
+		// S5a — campaign cost-estimate pricing oracle (token-count → USD).
+		r.Post("/billing/estimate", s.internalBillingEstimate)
 
 		// Phase 1a — service-to-service streaming endpoint.
 		r.Post("/llm/stream", s.internalLlmStream)
@@ -1412,9 +1552,24 @@ SELECT user_model_id FROM user_models WHERE owner_user_id=$1
 			}
 		}
 		if valid && len(capabilityFilter) <= 30 {
-			query += fmt.Sprintf(` AND capability_flags @> $%d::jsonb`, argPos)
-			args = append(args, fmt.Sprintf(`{"%s": true}`, capabilityFilter))
-			argPos++
+			// capability_flags exists in TWO historical schemas in the data (LW-PLAN F-4):
+			//   canonical:  {"chat": true}            (boolean capability keys)
+			//   legacy:     {"_capability": "chat"}   (single string key + metadata)
+			// plus undeclared ('{}' / absent). Match BOTH schemas. Additionally, treat
+			// undeclared as chat-capable by default: most BYOK/local (lm_studio) models
+			// never self-declare and there's no UI to set flags, so requiring an explicit
+			// chat flag would hide them from every chat/LLM picker (knowledge build,
+			// regenerate-bio, change-model) even though they work in chat/translation/
+			// extraction (which don't filter by capability). Non-chat caps (embedding, …)
+			// stay strict — an undeclared model must NOT be silently offered there.
+			boolArg := fmt.Sprintf(`{"%s": true}`, capabilityFilter)
+			if capabilityFilter == "chat" {
+				query += fmt.Sprintf(` AND (capability_flags @> $%d::jsonb OR capability_flags->>'_capability' = $%d OR capability_flags = '{}'::jsonb)`, argPos, argPos+1)
+			} else {
+				query += fmt.Sprintf(` AND (capability_flags @> $%d::jsonb OR capability_flags->>'_capability' = $%d)`, argPos, argPos+1)
+			}
+			args = append(args, boolArg, capabilityFilter)
+			argPos += 2
 		}
 	}
 	query += " ORDER BY created_at DESC"
@@ -2248,6 +2403,41 @@ func (s *Server) getModelContextWindow(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"context_window": *contextLength})
 }
 
+// getInternalModelInfo resolves a model_ref to its provider_kind +
+// provider_model_name (NO credentials). FD-27: worker-ai uses this to run a
+// best-effort reasoning-model advisory before extraction (a reasoning model
+// with thinking enabled silently swallows the JSON output → 0 entities/events).
+// Mirrors getModelContextWindow's user_model / platform_model resolution.
+func (s *Server) getInternalModelInfo(w http.ResponseWriter, r *http.Request) {
+	modelRef, err := uuid.Parse(chi.URLParam(r, "model_ref"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INTERNAL_VALIDATION_ERROR", "model_ref must be a uuid")
+		return
+	}
+	modelSource := chi.URLParam(r, "model_source")
+
+	var providerKind, providerModelName string
+	if modelSource == "platform_model" {
+		err = s.pool.QueryRow(r.Context(),
+			"SELECT provider_kind, provider_model_name FROM platform_models WHERE platform_model_id=$1 AND status='active'",
+			modelRef,
+		).Scan(&providerKind, &providerModelName)
+	} else { // user_model (default)
+		err = s.pool.QueryRow(r.Context(),
+			"SELECT provider_kind, provider_model_name FROM user_models WHERE user_model_id=$1 AND is_active=true",
+			modelRef,
+		).Scan(&providerKind, &providerModelName)
+	}
+	if err != nil {
+		writeError(w, http.StatusNotFound, "MODEL_NOT_FOUND", "model not found or inactive")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"provider_kind":       providerKind,
+		"provider_model_name": providerModelName,
+	})
+}
+
 func (s *Server) recordInvocation(ctx context.Context, payload map[string]any) (uuid.UUID, string, float64, error) {
 	body, _ := json.Marshal(payload)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(s.cfg.UsageBillingServiceURL, "/")+"/internal/model-billing/record", bytes.NewReader(body))
@@ -2278,6 +2468,88 @@ func (s *Server) recordInvocation(ctx context.Context, payload map[string]any) (
 }
 
 // ── K12.1 — Embedding endpoint ──────────────────────────────────────────────
+
+// internalRerank handles POST /internal/rerank — cross-encoder reranking for
+// raw-search junk-rejection (E5B). BYOK (D-RERANK-NOT-BYOK): the rerank model is
+// resolved per-user from provider-registry credentials exactly like
+// /internal/embed — NO hardcoded model name and NO platform endpoint. The
+// knowledge caller only calls this when the project has a rerank model set, and
+// degrades to fusion order on any non-200, so rerank stays optional.
+func (s *Server) internalRerank(w http.ResponseWriter, r *http.Request) {
+	userIDStr := r.URL.Query().Get("user_id")
+	if userIDStr == "" {
+		writeError(w, http.StatusBadRequest, "RERANK_VALIDATION", "user_id query param required")
+		return
+	}
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "RERANK_VALIDATION", "invalid user_id")
+		return
+	}
+	var in struct {
+		ModelSource string   `json:"model_source"`
+		ModelRef    string   `json:"model_ref"`
+		Query       string   `json:"query"`
+		Documents   []string `json:"documents"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		writeError(w, http.StatusBadRequest, "RERANK_VALIDATION", "invalid payload")
+		return
+	}
+	if strings.TrimSpace(in.Query) == "" || len(in.Documents) == 0 {
+		writeError(w, http.StatusBadRequest, "RERANK_VALIDATION", "query and documents are required")
+		return
+	}
+	if in.ModelRef == "" {
+		writeError(w, http.StatusBadRequest, "RERANK_VALIDATION", "model_ref required")
+		return
+	}
+	modelRef, err := uuid.Parse(in.ModelRef)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "RERANK_VALIDATION", "invalid model_ref")
+		return
+	}
+
+	// Resolve the user's BYOK rerank credential — same tenant-isolated query as
+	// internalEmbed (owner_user_id=$2 guarantees a user can only use their own model).
+	var providerModelName, endpointBaseURL, secret string
+	if in.ModelSource != "user_model" {
+		writeError(w, http.StatusBadRequest, "RERANK_VALIDATION", "model_source must be user_model")
+		return
+	}
+	var secretCipher string
+	err = s.pool.QueryRow(r.Context(), `
+SELECT um.provider_model_name, COALESCE(pc.endpoint_base_url,''), COALESCE(pc.secret_ciphertext,'')
+FROM user_models um
+JOIN provider_credentials pc ON pc.provider_credential_id = um.provider_credential_id
+WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.status='active'
+`, modelRef, userID).Scan(&providerModelName, &endpointBaseURL, &secretCipher)
+	if err == pgx.ErrNoRows {
+		writeError(w, http.StatusNotFound, "RERANK_MODEL_NOT_FOUND", "rerank model not found or inactive")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "RERANK_MODEL_QUERY_FAILED", "failed to resolve model")
+		return
+	}
+	if secretCipher == "" {
+		writeError(w, http.StatusInternalServerError, "RERANK_MISSING_CREDENTIAL", "user_model has no provider credential ciphertext")
+		return
+	}
+	secret, err = s.decryptSecret(secretCipher)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "RERANK_SECRET_FAILED", "failed to decrypt secret")
+		return
+	}
+
+	results, err := provider.Rerank(r.Context(), s.invokeClient, endpointBaseURL, secret, providerModelName, in.Query, in.Documents)
+	if err != nil {
+		// Upstream rerank failure ⇒ 502 so the caller degrades (not a client bug).
+		writeError(w, http.StatusBadGateway, "RERANK_UPSTREAM_ERROR", "rerank service error")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"model": providerModelName, "results": results})
+}
 
 // internalEmbed handles POST /internal/embed.
 // Resolves the user's embedding model via BYOK credentials and

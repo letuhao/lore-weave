@@ -253,3 +253,165 @@ async def test_pass2_candidates_dataclass_shape(
     assert result.relations == [rel]
     assert result.events == [ev]
     assert result.facts == [fact]
+
+
+# ── Cycle 72 — precision filter kwarg tests ────────────────────────
+
+
+@pytest.mark.asyncio
+@patch(f"{_PASS2}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_events", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_entities", new_callable=AsyncMock)
+async def test_precision_filter_none_zero_behavior_change(
+    mock_entities, mock_relations, mock_events, mock_facts,
+):
+    """precision_filter=None (default) preserves pre-cycle-72 contract."""
+    e = _entity("Kai")
+    mock_entities.return_value = [e]
+    mock_relations.return_value = []
+    mock_events.return_value = []
+    mock_facts.return_value = []
+
+    result = await extract_pass2(
+        text="Kai exists.",
+        known_entities=[],
+        user_id=USER_ID, project_id=PROJECT_ID,
+        model_source="user_model", model_ref="test-model",
+        llm_client=_fake_llm_client(),
+        # precision_filter omitted = None (default)
+    )
+
+    # filter never ran → filter_status default
+    assert result.filter_status == "skipped"
+    assert result.filter_coverage == {}
+
+
+@pytest.mark.asyncio
+@patch(f"{_PASS2}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_events", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_entities", new_callable=AsyncMock)
+async def test_precision_filter_set_chains_filter_call(
+    mock_entities, mock_relations, mock_events, mock_facts,
+):
+    """precision_filter=<config> invokes apply_precision_filter once."""
+    from loreweave_extraction.pass2_filter import PrecisionFilterConfig
+
+    e = _entity("Kai")
+    mock_entities.return_value = [e]
+    mock_relations.return_value = []
+    mock_events.return_value = []
+    mock_facts.return_value = []
+
+    apf_calls: list[Any] = []
+
+    async def _stub_apf(candidates, **kwargs):
+        apf_calls.append(kwargs)
+        # Return a new candidates with applied status (mimics filter result)
+        from loreweave_extraction.pass2 import Pass2Candidates
+        return Pass2Candidates(
+            entities=candidates.entities,
+            relations=candidates.relations,
+            events=candidates.events,
+            facts=candidates.facts,
+            filter_status="applied",
+            filter_coverage={"entity": 1.0, "relation": 1.0, "event": 1.0},
+        )
+
+    config = PrecisionFilterConfig(
+        model_ref="test-filter", categories=("entity",),
+    )
+
+    with patch(
+        "loreweave_extraction.pass2_filter.apply_precision_filter",
+        new=_stub_apf,
+    ):
+        result = await extract_pass2(
+            text="Kai exists.",
+            known_entities=[],
+            user_id=USER_ID, project_id=PROJECT_ID,
+            model_source="user_model", model_ref="test-model",
+            llm_client=_fake_llm_client(),
+            precision_filter=config,
+        )
+
+    assert len(apf_calls) == 1
+    assert apf_calls[0]["config"] is config
+    assert result.filter_status == "applied"
+
+
+@pytest.mark.asyncio
+@patch(f"{_PASS2}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_events", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_entities", new_callable=AsyncMock)
+async def test_filter_status_field_populated_correctly_per_status(
+    mock_entities, mock_relations, mock_events, mock_facts,
+):
+    """When extract_pass2 short-circuits (no entities), filter_status
+    is still 'skipped' regardless of precision_filter."""
+    from loreweave_extraction.pass2_filter import PrecisionFilterConfig
+
+    mock_entities.return_value = []  # gate -> empty Pass2Candidates
+    config = PrecisionFilterConfig(model_ref="test-filter")
+
+    result = await extract_pass2(
+        text="empty result",
+        known_entities=[],
+        user_id=USER_ID, project_id=PROJECT_ID,
+        model_source="user_model", model_ref="test-model",
+        llm_client=_fake_llm_client(),
+        precision_filter=config,
+    )
+
+    # No entities → gated; filter never invoked
+    assert result.filter_status == "skipped"
+    mock_relations.assert_not_called()
+
+
+@pytest.mark.asyncio
+@patch(f"{_PASS2}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_events", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_entities", new_callable=AsyncMock)
+async def test_filter_coverage_populated_per_category(
+    mock_entities, mock_relations, mock_events, mock_facts,
+):
+    """When filter runs, coverage is preserved on the returned candidates."""
+    from loreweave_extraction.pass2_filter import PrecisionFilterConfig
+
+    e = _entity("Kai")
+    mock_entities.return_value = [e]
+    mock_relations.return_value = []
+    mock_events.return_value = []
+    mock_facts.return_value = []
+
+    async def _stub_apf(candidates, **kwargs):
+        from loreweave_extraction.pass2 import Pass2Candidates
+        return Pass2Candidates(
+            entities=candidates.entities,
+            relations=candidates.relations,
+            events=candidates.events,
+            facts=candidates.facts,
+            filter_status="applied",
+            filter_coverage={"entity": 0.8, "relation": 1.0, "event": 1.0},
+        )
+
+    with patch(
+        "loreweave_extraction.pass2_filter.apply_precision_filter",
+        new=_stub_apf,
+    ):
+        result = await extract_pass2(
+            text="Kai walks.",
+            known_entities=[],
+            user_id=USER_ID, project_id=PROJECT_ID,
+            model_source="user_model", model_ref="test-model",
+            llm_client=_fake_llm_client(),
+            precision_filter=PrecisionFilterConfig(
+                model_ref="test-filter",
+            ),
+        )
+
+    assert result.filter_coverage["entity"] == 0.8
+    assert result.filter_coverage["relation"] == 1.0

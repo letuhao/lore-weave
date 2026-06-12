@@ -964,6 +964,10 @@ func (s *Server) followUser(w http.ResponseWriter, r *http.Request) {
 		go s.sendNotification(followingID.String(), "social", followerName+" started following you", "", map[string]any{
 			"actor_id": followerID.String(),
 			"type":     "new_follower",
+			// Client localizes from key+params; `title` above stays as the English
+			// fallback for older clients (LW-PLAN notifications i18n Phase 2).
+			"i18n_key":    "notif.social.followed",
+			"i18n_params": map[string]any{"name": followerName},
 		})
 	}
 

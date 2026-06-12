@@ -34,8 +34,25 @@ from pydantic import BaseModel, Field
 
 from app.db.neo4j_helpers import CypherSession, run_read, run_write
 from app.db.neo4j_repos.canonical import canonicalize_text
+from app.db.repositories import VersionMismatchError
 
 logger = logging.getLogger(__name__)
+
+# CM4 — reading-order (event_order) scale. event_order = chapter sort_order ×
+# this stride + within-chapter index, so the axis is dense at chapter
+# granularity. **Single source of truth** — the write path (pass2_writer) AND
+# the backfill MUST import this (a divergence would put their event_orders on
+# different scales and corrupt the timeline). It is also the chapter→order
+# contract a future composition spoiler-cutoff uses: "canon before chapter N"
+# = before_order N × EVENT_ORDER_CHAPTER_STRIDE.
+EVENT_ORDER_CHAPTER_STRIDE = 1_000_000
+
+# Null-order sort sentinel: events with no event_order sink to the end of the
+# timeline. Must exceed any real event_order (= max chapter sort_order × stride
+# + idx). The prior INT32_MAX (2147483647) was breached by books past ~2147
+# chapters once CM4 began populating event_order — use INT64_MAX so a real
+# event_order can never reach it (web-novels run many thousands of chapters).
+_NULL_ORDER_SENTINEL = 9223372036854775807
 
 __all__ = [
     "Event",
@@ -43,6 +60,8 @@ __all__ = [
     "event_id",
     "merge_event",
     "get_event",
+    "update_event_fields",
+    "archive_event",
     "list_events_for_chapter",
     "list_events_in_order",
     "list_events_filtered",
@@ -133,6 +152,12 @@ class Event(BaseModel):
     evidence_count: int = 0
     mention_count: int = 0
     archived_at: datetime | None = None
+    # Phase B C2: optimistic-concurrency version for user edits (If-Match).
+    # ON CREATE = 1; bumped only by update_event_fields (user edit), NOT by
+    # extraction re-mention (merge_event ON MATCH leaves it) so a user's
+    # If-Match baseline stays valid across re-extractions. Pre-C2 nodes lack
+    # the property → defaults to 1 here + coalesce(e.version,1) in Cypher.
+    version: int = 1
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -167,14 +192,34 @@ ON CREATE SET
   e.participants = $participants,
   e.confidence = $confidence,
   e.source_types = [$source_type],
+  e.provenances = [$provenance],
   e.evidence_count = 0,
   e.mention_count = 0,
   e.archived_at = NULL,
+  e.version = 1,
   e.created_at = datetime(),
   e.updated_at = datetime()
 ON MATCH SET
   e.summary = coalesce($summary, e.summary),
-  e.event_order = coalesce($event_order, e.event_order),
+  // CM4: keep the MINIMUM event_order on re-merge — a monotone-earliest
+  // invariant. NOTE: event identity is keyed on chapter_id (see event_id),
+  // so the SAME title in different chapters is two distinct nodes — this
+  // ON MATCH only fires on RE-EXTRACTION of the same chapter (re-publish, or
+  // an event surviving retract-then-write via cross-source evidence). Min-keep
+  // means a re-merge never pushes an event LATER in reading order, so an event
+  // already inside a `before_chapter` spoiler-cutoff stays inside it
+  // (idempotent under re-extraction). coalesce(new,old) was last-write-wins
+  // (re-extraction could shuffle the intra-chapter index); the prior docstring
+  // already CLAIMED first-write intent — min is the stricter, stable form.
+  e.event_order = CASE
+    WHEN $event_order IS NULL THEN e.event_order
+    WHEN e.event_order IS NULL THEN $event_order
+    WHEN $event_order < e.event_order THEN $event_order
+    ELSE e.event_order
+  END,
+  // chronological_order is overwritten wholesale by rerank_chronological_order
+  // (a global date-rank pass), so the per-merge value is transient — keep the
+  // simple upgrade-from-NULL here.
   e.chronological_order = coalesce($chronological_order, e.chronological_order),
   // C18 review-impl HIGH-1: prefer MORE precise (longer ISO string)
   // when both non-null. Otherwise the same event re-mentioned in a
@@ -199,6 +244,11 @@ ON MATCH SET
   e.source_types = CASE
     WHEN $source_type IN e.source_types THEN e.source_types
     ELSE e.source_types + $source_type
+  END,
+  // CM5 provenance — accumulate deduped origins (mirrors source_types).
+  e.provenances = CASE
+    WHEN $provenance IN coalesce(e.provenances, []) THEN e.provenances
+    ELSE coalesce(e.provenances, []) + $provenance
   END,
   e.confidence = CASE
     WHEN $confidence > e.confidence THEN $confidence
@@ -226,6 +276,7 @@ async def merge_event(
     participants: list[str] | None = None,
     source_type: str = "book_content",
     confidence: float = 0.0,
+    provenance: str = "human_authored",
 ) -> Event:
     """Idempotent upsert. Same (user, project, chapter, title)
     returns the same node.
@@ -234,10 +285,11 @@ async def merge_event(
       - `source_types` accumulates distinct sources
       - `confidence` is max across calls
       - `participants` union-merges (no duplicates)
-      - `summary` / `event_order` / `chronological_order` upgrade
-        from NULL but do NOT overwrite existing values (first
-        write wins for those — extraction shouldn't second-guess
-        a confirmed timestamp)
+      - `summary` upgrades from NULL but does not overwrite.
+      - `event_order` keeps the MINIMUM across mentions (CM4
+        spoiler-safety — earliest reading position wins; see the
+        ON MATCH CASE). `chronological_order` upgrades from NULL
+        here but is authoritatively set by `rerank_chronological_order`.
 
     The participants merge uses a list-comprehension dedup
     instead of `apoc.coll.union` so the schema runner has no APOC
@@ -295,6 +347,7 @@ async def merge_event(
         participants=deduped_participants,
         source_type=source_type,
         confidence=confidence,
+        provenance=provenance,
     )
     record = await result.single()
     if record is None:
@@ -302,6 +355,63 @@ async def merge_event(
             f"merge_event returned no row for id={eid!r}"
         )
     return _node_to_event(record["e"])
+
+
+# ── rerank_chronological_order (CM4) ──────────────────────────────────
+
+# Pass 1: undated events get NULL chronological_order (reading-order is the
+# fallback axis — MED-1: CJK/relative dates are frequently unparseable).
+_CHRONO_NULL_UNDATED_CYPHER = """
+MATCH (e:Event {user_id: $user_id, project_id: $project_id})
+WHERE e.event_date_iso IS NULL AND e.archived_at IS NULL
+SET e.chronological_order = NULL
+"""
+
+# Pass 2: dated events get a sequential rank over (event_date_iso, id). Stable
+# tiebreak by id (MED-3) so concurrent reranks converge. Sequential (not dense)
+# rank is strictly monotonic → exact for the strict `< before_chronological`
+# timeline filter. Per-project event counts are book-scale (hundreds), so the
+# collect+UNWIND is cheap.
+_CHRONO_RANK_DATED_CYPHER = """
+MATCH (e:Event {user_id: $user_id, project_id: $project_id})
+WHERE e.event_date_iso IS NOT NULL AND e.archived_at IS NULL
+WITH e ORDER BY e.event_date_iso ASC, e.id ASC
+WITH collect(e) AS dated
+UNWIND range(0, size(dated) - 1) AS i
+WITH dated[i] AS e, i + 1 AS rank
+SET e.chronological_order = rank
+RETURN count(e) AS ranked
+"""
+
+
+async def rerank_chronological_order(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str,
+) -> int:
+    """CM4 — recompute `chronological_order` for all of a project's events.
+
+    Dense in-story chronology derived from `event_date_iso`: dated events are
+    sequentially ranked by `(event_date_iso, id)`; undated events are set to
+    NULL (reading-order `event_order` is the dense, always-correct fallback).
+    Returns the number of dated events ranked. Idempotent — re-running stamps
+    the same ranks. Callers debounce (only rerank when a dated event changed).
+    """
+    await run_write(
+        session,
+        _CHRONO_NULL_UNDATED_CYPHER,
+        user_id=user_id,
+        project_id=project_id,
+    )
+    result = await run_write(
+        session,
+        _CHRONO_RANK_DATED_CYPHER,
+        user_id=user_id,
+        project_id=project_id,
+    )
+    record = await result.single()
+    return int(record["ranked"]) if record else 0
 
 
 # ── get_event ─────────────────────────────────────────────────────────
@@ -334,6 +444,116 @@ async def get_event(
     return _node_to_event(record["e"])
 
 
+# ── update_event_fields (Phase B C2 — user edit, optimistic concurrency) ─
+
+# Mirrors update_entity_fields: same-Cypher pre-edit `before` capture (§6.3),
+# FOREACH-gated SET on version match, version bump. Like entities, the node id
+# (a hash of the original title) is IMMUTABLE — a title edit updates the display
+# title + canonical_title but the id is stable, so a future extraction with the
+# OLD title still dedupes onto this node (rename has no downstream consequence
+# beyond display). merge_event ON MATCH does NOT bump version, so a user's
+# If-Match baseline survives extraction re-mentions.
+_UPDATE_EVENT_FIELDS_CYPHER = """
+MATCH (e:Event {id: $id})
+WHERE e.user_id = $user_id
+WITH e, coalesce(e.version, 1) AS current_version,
+     {title: e.title, summary: e.summary, time_cue: e.time_cue,
+      event_date_iso: e.event_date_iso,
+      participants: coalesce(e.participants, [])} AS before
+FOREACH (_ IN CASE WHEN current_version = $expected_version THEN [1] ELSE [] END |
+  SET
+    e.title = CASE WHEN $title IS NULL THEN e.title ELSE $title END,
+    e.canonical_title = CASE
+      WHEN $canonical_title IS NULL THEN e.canonical_title ELSE $canonical_title END,
+    e.summary = CASE WHEN $summary IS NULL THEN e.summary ELSE $summary END,
+    e.time_cue = CASE WHEN $time_cue IS NULL THEN e.time_cue ELSE $time_cue END,
+    e.event_date_iso = CASE
+      WHEN $event_date_iso IS NULL THEN e.event_date_iso ELSE $event_date_iso END,
+    e.version = current_version + 1,
+    e.updated_at = datetime()
+)
+RETURN e, current_version = $expected_version AS applied, before
+"""
+
+
+async def update_event_fields(
+    session: CypherSession,
+    *,
+    user_id: str,
+    event_id: str,
+    title: str | None,
+    summary: str | None,
+    time_cue: str | None,
+    event_date_iso: str | None,
+    expected_version: int,
+) -> tuple[Event | None, dict | None]:
+    """User-edit an event's display fields with optimistic concurrency.
+
+    Returns ``(event, before)`` — ``before`` is the pre-edit
+    ``{title, summary, time_cue, event_date_iso, participants}`` snapshot
+    (same-Cypher, §6.3) for the correction event. Raises
+    ``VersionMismatchError`` on a stale ``expected_version``; returns
+    ``(None, None)`` when no row matches. None fields mean "leave unchanged".
+    """
+    canonical_title = canonicalize_text(title) if title is not None else None
+    result = await run_write(
+        session,
+        _UPDATE_EVENT_FIELDS_CYPHER,
+        user_id=user_id,
+        id=event_id,
+        title=title,
+        canonical_title=canonical_title,
+        summary=summary,
+        time_cue=time_cue,
+        event_date_iso=event_date_iso,
+        expected_version=expected_version,
+    )
+    record = await result.single()
+    if record is None:
+        return None, None
+    event = _node_to_event(record["e"])
+    if not record["applied"]:
+        raise VersionMismatchError(event)
+    before_raw = record["before"]
+    before = dict(before_raw) if before_raw is not None else None
+    return event, before
+
+
+# ── archive_event (Phase B C2 — user delete) ──────────────────────────
+
+_ARCHIVE_EVENT_CYPHER = """
+MATCH (e:Event {id: $id})
+WHERE e.user_id = $user_id
+SET e.archived_at = datetime(),
+    e.updated_at = datetime()
+RETURN e
+"""
+
+
+async def archive_event(
+    session: CypherSession,
+    *,
+    user_id: str,
+    event_id: str,
+) -> Event | None:
+    """Soft-archive an event (user "delete" = hide). Idempotent — re-archiving
+    just rewrites `archived_at`. Returns the event or None (router 404s). The
+    correction `before` is read separately by the handler (op=delete →
+    spurious-drop, so a lagging before is low-stakes)."""
+    if not event_id:
+        raise ValueError("event_id must be a non-empty string")
+    result = await run_write(
+        session,
+        _ARCHIVE_EVENT_CYPHER,
+        user_id=user_id,
+        id=event_id,
+    )
+    record = await result.single()
+    if record is None:
+        return None
+    return _node_to_event(record["e"])
+
+
 # ── list_events_for_chapter ───────────────────────────────────────────
 
 
@@ -346,7 +566,7 @@ WHERE e.user_id = $user_id
   AND ($project_id IS NULL OR e.project_id = $project_id)
   AND ($include_archived OR e.archived_at IS NULL)
 RETURN e
-ORDER BY coalesce(e.event_order, 2147483647), e.title ASC
+ORDER BY coalesce(e.event_order, 9223372036854775807), e.title ASC
 LIMIT $limit
 """
 
@@ -399,7 +619,7 @@ WHERE e.user_id = $user_id
   AND ($before_order IS NULL OR e.event_order < $before_order)
   AND ($include_archived OR e.archived_at IS NULL)
 RETURN e
-ORDER BY coalesce(e.event_order, 2147483647), e.title ASC
+ORDER BY coalesce(e.event_order, 9223372036854775807), e.title ASC
 LIMIT $limit
 """
 
@@ -504,8 +724,9 @@ async def delete_events_with_zero_evidence(
 #     as D-K19e-α-03.
 #
 # Null `event_order` handling:
-#   - ORDER BY `coalesce(event_order, 2147483647)` sinks null-order
-#     events to the end.
+#   - ORDER BY `coalesce(event_order, _NULL_ORDER_SENTINEL)` (INT64_MAX)
+#     sinks null-order events to the end. (CM4 bumped this from INT32_MAX,
+#     which a >2147-chapter book's real event_order would breach.)
 #   - The filter predicates `event_order > $after_order` and
 #     `event_order < $before_order` evaluate to NULL (not TRUE) when
 #     `event_order` is NULL, so a null-order event is INCLUDED only
@@ -549,7 +770,7 @@ RETURN count(e) AS total
 
 _LIST_EVENTS_PAGE_CYPHER = _LIST_EVENTS_FILTER_WHERE + """
 RETURN e
-ORDER BY coalesce(e.event_order, 2147483647) ASC, e.title ASC, e.id ASC
+ORDER BY coalesce(e.event_order, 9223372036854775807) ASC, e.title ASC, e.id ASC
 SKIP $offset LIMIT $limit
 """
 
@@ -575,7 +796,7 @@ async def list_events_filtered(
     count matching the filters *before* ``SKIP``/``LIMIT`` so the FE
     can render "page 3 of N" without a second round-trip.
 
-    Ordering: ``coalesce(event_order, 2147483647) ASC, title ASC,
+    Ordering: ``coalesce(event_order, 9223372036854775807) ASC, title ASC,
     id ASC`` — the id tiebreaker guarantees stable pagination even
     when title and event_order collide. C10 deliberately keeps
     narrative ordering even under a chronological filter; a future

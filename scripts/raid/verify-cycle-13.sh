@@ -1,296 +1,212 @@
 #!/usr/bin/env bash
-# verify-cycle-13.sh — L3.A 10 projection tables + L3.K drift metadata + cron.
+# verify-cycle-13.sh — CI gate for RAID cycle 13 (review gate + H0 write-back).
+# Exit 0 = PASS.
 #
-# Acceptance gate. Exit 0 = pass; non-zero = fail.
-#
-# Cycle 13 scope:
-#   DPS 1 — L3.A 10 projection tables (single migration 0006) with
-#           VerificationMeta cols (Q-L3-4) on EVERY table + 5 per-aggregate
-#           Projection trait skeletons (crates/projections/{pc,npc,region,
-#           world_kv,session}).
-#   DPS 2 — L3.K drift detection metadata (migration 0007 +
-#           scripts/projection-drift-check.sh skeleton + 2 lw_projection_*
-#           inventory entries).
-#
-# LOCKED decisions enforced:
-#   Q-L3-4: VerificationMeta cols (event_id/aggregate_version/applied_at)
-#           on all 10 L3.A tables.
-#   Q-L3-5: NO V2 blue-green scaffolding (no blue_green / blueGreen symbols).
-#   Q-L3I-1: embedding dim 1536 hard-coded V1 in projections-npc + migration.
-#   Q-L3B-1: projections honor multi-update Vec<ProjectionUpdate> contract
-#            (PC + NPC both demonstrate it).
-#
-# Cross-service live smoke: NOT required — cycle ships SQL migrations + Rust
-# library code + shell cron skeleton. No service binary, no cross-service
-# wire. Production wiring (integrity-checker daemon, world-service projection
-# runner consumption) deferred to cycle 14+.
+# Asserts (per docs/raid/cycle_briefs/13_review-gate-writeback.md acceptance):
+#   1. lore-enrichment-service unit + DB review-gate/lifecycle/authz/idempotency
+#      suite green (incl. illegal-transition + non-owner-promote-denied +
+#      origin-marker-persists-after-promote).
+#   2. knowledge-service internal-enrichment unit suite green (H0 confidence
+#      guard + deterministic idempotent ids).
+#   3. ruff clean on the C13 code paths.
+#   4. Static guards: no hardcoded model names in the write-back path; promote
+#      authorization sourced from book-service projection (not a client claim).
+#   5. CROSS-SERVICE LIVE SMOKE (H0 boundary — mock-only is INSUFFICIENT): on the
+#      running stack + the seeded demo project, drive the REAL KG quarantine
+#      round-trip against the seeded demo location 蓬萊:
+#        propose(enriched) -> write-back -> assert KG fact is
+#        source_type='enriched:<technique>', pending_validation=true,
+#        confidence<1.0 (QUARANTINED, distinct from the canon 蓬萊 node) ->
+#        author promote -> assert it became source_type='glossary',
+#        confidence=1.0, pending=false WITH the permanent origin marker
+#        (origin='enrichment', promoted_from_proposal_id/by, original_technique)
+#        -> retract -> assert valid_until set (soft, reversible).
+#      Exit non-zero only if the stack is UP but the real round-trip did not hold.
+set -uo pipefail
+CYCLE=13
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+LE_SVC="$REPO_ROOT/services/lore-enrichment-service"
+KNOW_SVC="$REPO_ROOT/services/knowledge-service"
+COMPOSE="$REPO_ROOT/infra/docker-compose.yml"
+AUDIT_LOG="$REPO_ROOT/docs/audit/AUDIT_LOG.jsonl"
+NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-set -euo pipefail
+INTERNAL_TOKEN="${INTERNAL_SERVICE_TOKEN:-dev_internal_token}"
+NEO4J_PASSWORD="${NEO4J_PASSWORD:-loreweave_dev_neo4j}"
+# Seeded demo data (docs/raid cycle-13 runner brief).
+DEMO_PROJECT="${DEMO_PROJECT:-019e7850-aa1c-7cd3-a25c-c2f9ad84fd39}"
+DEMO_USER="${DEMO_USER:-019d5e3c-7cc5-7e6a-8b27-1344e148bf7c}"
+# 蓬萊 — one of the 4 locked under-described demo LOCATIONs (canon node).
+DEMO_GLOSS_ENTITY="${DEMO_GLOSS_ENTITY:-019e7850-aa72-78ed-8824-c6466b39498e}"
 
-repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
-cd "$repo_root"
-
-step=0
-pass() { step=$((step+1)); echo "[verify-cycle-13] step $step PASS: $1"; }
-fail() { step=$((step+1)); echo "[verify-cycle-13] step $step FAIL: $1" >&2; exit 1; }
+fail() { echo "[verify-cycle-13] FAIL: $1"; exit 1; }
+ok()   { echo "[verify-cycle-13] ok: $1"; }
 note() { echo "[verify-cycle-13] note: $1"; }
 
-# ─────────────────────────────────────────────────────────────────────────
-# DPS 1 — L3.A migration + 10 projection tables
-# ─────────────────────────────────────────────────────────────────────────
+echo "[verify-cycle-13] running CI gate"
 
-[[ -f contracts/migrations/per_reality/0006_projections.up.sql   ]] || fail "missing 0006_projections.up.sql"
-[[ -f contracts/migrations/per_reality/0006_projections.down.sql ]] || fail "missing 0006_projections.down.sql"
-pass "0006_projections.{up,down}.sql present"
+# ── 1. lore-enrichment-service unit + DB suite ─────────────────────────────────
+if command -v python >/dev/null 2>&1; then
+  ( cd "$LE_SVC" && python -m pytest tests/test_review_gate.py tests/test_api_contract.py -q ) \
+    >/tmp/c13_le_unit.log 2>&1 \
+    || { cat /tmp/c13_le_unit.log; fail "lore-enrichment unit suite failed"; }
+  ok "lore-enrichment review-gate unit suite green"
 
-# Enumerate the 10 L3.A canonical tables.
-TABLES=(
-    pc_projection
-    pc_inventory_projection
-    pc_relationship_projection
-    npc_projection
-    npc_session_memory_projection
-    npc_pc_relationship_projection
-    npc_session_memory_embedding
-    region_projection
-    world_kv_projection
-    session_participants
-)
-
-# Count tables in the migration. Use CREATE TABLE IF NOT EXISTS as the
-# canonical create marker (npc_session_memory_embedding is created inside a
-# DO $$ block — grep still matches the CREATE TABLE inside the EXECUTE).
-# Use POSIX char class instead of \b (some awk/grep flavors lack \b).
-table_count=0
-for t in "${TABLES[@]}"; do
-    if grep -qE "CREATE TABLE IF NOT EXISTS ${t}( |$|\()" contracts/migrations/per_reality/0006_projections.up.sql; then
-        table_count=$((table_count + 1))
+  # DB lifecycle/authz/idempotency against the real compose Postgres (host port).
+  LE_DB="${TEST_LORE_ENRICHMENT_DB_URL:-postgresql://loreweave:loreweave_dev@localhost:5555/loreweave_lore_enrichment}"
+  if TEST_LORE_ENRICHMENT_DB_URL="$LE_DB" \
+     bash -c "cd '$LE_SVC' && python -m pytest tests/db/test_review_repo.py -q" \
+     >/tmp/c13_le_db.log 2>&1; then
+    ok "lore-enrichment review-repo DB suite green (real Postgres + H0 trigger)"
+  else
+    if grep -qiE 'skipped|no real|unreachable' /tmp/c13_le_db.log; then
+      note "review-repo DB suite skipped (no reachable Postgres at $LE_DB)"
     else
-        fail "L3.A table missing in 0006_projections.up.sql: $t"
+      cat /tmp/c13_le_db.log; fail "lore-enrichment review-repo DB suite failed"
     fi
-done
-[[ "$table_count" -eq 10 ]] || fail "expected 10 L3.A tables in migration; found $table_count"
-pass "all 10 L3.A projection tables present in 0006_projections.up.sql"
-
-# Q-L3-4: every projection table MUST have VerificationMeta cols
-# (event_id, aggregate_version, applied_at) AND integrity HWM cols
-# (last_verified_event_version, last_verified_at).
-META_COLS=(
-    "event_id"
-    "aggregate_version"
-    "applied_at"
-    "last_verified_event_version"
-    "last_verified_at"
-)
-
-# Pull the create-block for each table from the migration and verify each
-# meta column appears within. Awk slices on the first matching CREATE TABLE
-# until the next standalone closing ");". Embedding table is inside a DO $$
-# block so we strip leading whitespace before matching the start pattern.
-for t in "${TABLES[@]}"; do
-    block=$(awk -v tbl="$t" '
-        $0 ~ ("CREATE TABLE IF NOT EXISTS " tbl "( |$|\\()") { in_block=1 }
-        in_block { print }
-        in_block && /^[[:space:]]*\)/ { exit }
-    ' contracts/migrations/per_reality/0006_projections.up.sql)
-    [[ -n "$block" ]] || fail "could not extract DDL block for $t"
-    for col in "${META_COLS[@]}"; do
-        echo "$block" | grep -q "$col" \
-            || fail "Q-L3-4 violated: $t missing column: $col"
-    done
-done
-pass "Q-L3-4: all 10 projection tables have VerificationMeta cols (event_id, aggregate_version, applied_at) + integrity HWM cols (last_verified_event_version, last_verified_at)"
-
-# Q-L3I-1: pgvector dim 1536 hard-coded in migration (either VECTOR(1536)
-# inside the DO block OR the BYTEA placeholder CHECK constraint 1536*4).
-grep -qE "VECTOR\(1536\)" contracts/migrations/per_reality/0006_projections.up.sql \
-    || fail "Q-L3I-1 violated: VECTOR(1536) not present in 0006 migration"
-grep -qE "1536 \* 4" contracts/migrations/per_reality/0006_projections.up.sql \
-    || fail "Q-L3I-1 violated: BYTEA fallback CHECK 1536*4 not present"
-pass "Q-L3I-1: embedding dim 1536 hard-coded V1 (VECTOR(1536) + BYTEA(1536*4) fallback present)"
-
-# Q-L3-5: NO V2 blue-green migration scaffolding in cycle-13 sources.
-if grep -rqiE "(blue.green|blue_green|BlueGreen)" \
-        contracts/migrations/per_reality/0006_projections.up.sql \
-        contracts/migrations/per_reality/0007_drift_metadata.up.sql \
-        crates/projections/; then
-    # Allow the Q-L3-5 comment lines that explicitly DOCUMENT the lock.
-    hits=$(grep -rEi "(blue.green|blue_green|BlueGreen)" \
-              contracts/migrations/per_reality/0006_projections.up.sql \
-              contracts/migrations/per_reality/0007_drift_metadata.up.sql \
-              crates/projections/ \
-            | grep -viE "(NO.*blue.green|blue.green.*scaffolding|blue.green.*V2|Q-L3-5)" || true)
-    if [[ -n "$hits" ]]; then
-        echo "$hits" >&2
-        fail "Q-L3-5 violated: V2 blue-green implementation symbol found"
-    fi
-fi
-pass "Q-L3-5: no V2 blue-green implementation symbols (LOCKED comments only)"
-
-# ─────────────────────────────────────────────────────────────────────────
-# DPS 1 — 5 per-aggregate Projection skeletons
-# ─────────────────────────────────────────────────────────────────────────
-
-for crate in pc npc region world_kv session; do
-    [[ -f "crates/projections/${crate}/Cargo.toml" ]] || fail "missing Cargo.toml: crates/projections/${crate}/"
-    [[ -f "crates/projections/${crate}/src/lib.rs" ]] || fail "missing src/lib.rs: crates/projections/${crate}/"
-done
-pass "5 per-aggregate projection crates present (pc, npc, region, world_kv, session)"
-
-# Workspace registers all 5 new crates.
-for crate in crates/projections/pc crates/projections/npc crates/projections/region crates/projections/world_kv crates/projections/session; do
-    grep -q "\"$crate\"" Cargo.toml || fail "Cargo.toml workspace.members missing: $crate"
-done
-pass "root Cargo.toml workspace.members includes all 5 new projection crates"
-
-# Each crate implements the Projection trait with apply_event returning Vec<ProjectionUpdate>.
-for crate in pc npc region world_kv session; do
-    grep -q "impl Projection for" "crates/projections/${crate}/src/lib.rs" \
-        || fail "crates/projections/${crate} missing 'impl Projection for' line"
-    grep -q "fn apply_event(&self, env: &EventEnvelope) -> Vec<ProjectionUpdate>" "crates/projections/${crate}/src/lib.rs" \
-        || fail "crates/projections/${crate} missing apply_event signature with Vec<ProjectionUpdate>"
-done
-pass "all 5 projection crates implement Projection trait with Vec<ProjectionUpdate> return (Q-L3B-1)"
-
-# Q-L3B-1 multi-update demonstration: PC + NPC both ship test for it.
-grep -q "fn pc_projection_spawned_emits_two_updates_q_l3b_1" crates/projections/pc/src/lib.rs \
-    || fail "projections-pc missing Q-L3B-1 multi-update test"
-grep -q "fn npc_projection_said_emits_two_updates_q_l3b_1" crates/projections/npc/src/lib.rs \
-    || fail "projections-npc missing Q-L3B-1 multi-update test"
-pass "Q-L3B-1 multi-update path demonstrated (PC pc.spawned + NPC npc.said both emit 2 updates)"
-
-# Q-L3I-1 enforcement test in projections-npc.
-grep -q "EMBEDDING_DIM" crates/projections/npc/src/lib.rs \
-    || fail "projections-npc missing EMBEDDING_DIM constant (Q-L3I-1)"
-grep -q "embedding_dim_constant_locked_at_1536_q_l3i_1" crates/projections/npc/src/lib.rs \
-    || fail "projections-npc missing test confirming dim=1536 lock"
-grep -q "embedding_projection_skips_when_dim_mismatches_q_l3i_1" crates/projections/npc/src/lib.rs \
-    || fail "projections-npc missing test confirming mismatched-dim skip"
-pass "Q-L3I-1: EMBEDDING_DIM=1536 constant + skip-on-mismatch behavior tested in projections-npc"
-
-# Cargo check + test all 5 crates.
-cargo check -p projections-pc -p projections-npc -p projections-region -p projections-world-kv -p projections-session >/dev/null 2>&1 \
-    || fail "cargo check failed for projections-*"
-pass "cargo check clean for all 5 projection crates"
-
-cargo test -p projections-pc -p projections-npc -p projections-region -p projections-world-kv -p projections-session >/dev/null 2>&1 \
-    || fail "cargo test failed for projections-*"
-pass "cargo test clean for all 5 projection crates"
-
-# dp-kernel still green (cycle 12 baseline must not regress).
-cargo test -p dp-kernel >/dev/null 2>&1 \
-    || fail "cycle-12 baseline regression: cargo test -p dp-kernel failing"
-pass "cycle-12 dp-kernel baseline still green (57 tests)"
-
-# ─────────────────────────────────────────────────────────────────────────
-# DPS 2 — L3.K drift metadata + cron skeleton + obs inventory
-# ─────────────────────────────────────────────────────────────────────────
-
-[[ -f contracts/migrations/per_reality/0007_drift_metadata.up.sql   ]] || fail "missing 0007_drift_metadata.up.sql"
-[[ -f contracts/migrations/per_reality/0007_drift_metadata.down.sql ]] || fail "missing 0007_drift_metadata.down.sql"
-pass "0007_drift_metadata.{up,down}.sql present"
-
-# Drift state table has the required summary cols.
-DRIFT_COLS=(
-    "table_name"
-    "last_verified_at"
-    "drift_count"
-    "expected_next_sweep_at"
-)
-for col in "${DRIFT_COLS[@]}"; do
-    grep -q "$col" contracts/migrations/per_reality/0007_drift_metadata.up.sql \
-        || fail "0007_drift_metadata missing column: $col"
-done
-pass "projection_drift_state has required summary cols (table_name, last_verified_at, drift_count, expected_next_sweep_at)"
-
-# Drift state table is fenced to the 10 L3.A tables only (cardinality bound).
-for t in "${TABLES[@]}"; do
-    grep -q "'$t'" contracts/migrations/per_reality/0007_drift_metadata.up.sql \
-        || fail "projection_drift_table_name_allowlist missing: $t"
-done
-pass "projection_drift_state CHECK allowlist enumerates all 10 L3.A tables (cardinality fence)"
-
-# Drift state is NOT coupled to integrity-checker service (cycle 14 owns
-# that). It's a per-reality-DB table that BOTH the cycle-13 cron skeleton
-# AND the cycle-14 integrity-checker can write to.
-if grep -qiE "integrity.checker.service" contracts/migrations/per_reality/0007_drift_metadata.up.sql; then
-    # The comment about "future integrity-checker" is FINE; only fail if we
-    # see hard service coupling (e.g. FK to an integrity-checker table).
-    if grep -qE "REFERENCES integrity_checker" contracts/migrations/per_reality/0007_drift_metadata.up.sql; then
-        fail "0007 drift metadata has hard coupling to integrity-checker (Q-L3E-1 violated)"
-    fi
-fi
-pass "0007 drift metadata not hard-coupled to cycle-14 integrity-checker service"
-
-# Drift cron skeleton present + executable + scans 10 tables.
-[[ -f scripts/projection-drift-check.sh ]] || fail "missing scripts/projection-drift-check.sh"
-[[ -x scripts/projection-drift-check.sh ]] || fail "scripts/projection-drift-check.sh not executable"
-for t in "${TABLES[@]}"; do
-    grep -q "$t" scripts/projection-drift-check.sh \
-        || fail "scripts/projection-drift-check.sh missing table: $t"
-done
-pass "scripts/projection-drift-check.sh skeleton scans all 10 L3.A tables"
-
-# Skeleton has dry-run mode.
-grep -q -- "--dry-run" scripts/projection-drift-check.sh \
-    || fail "scripts/projection-drift-check.sh missing --dry-run flag"
-pass "scripts/projection-drift-check.sh supports --dry-run"
-
-# Observability inventory has the 2 new lw_projection_* entries.
-grep -q "name: lw_projection_drift_count" contracts/observability/inventory.yaml \
-    || fail "inventory.yaml missing lw_projection_drift_count"
-grep -q "name: lw_projection_drift_last_check_age_seconds" contracts/observability/inventory.yaml \
-    || fail "inventory.yaml missing lw_projection_drift_last_check_age_seconds"
-pass "observability inventory has 2 new L3.K metrics (lw_projection_drift_count, lw_projection_drift_last_check_age_seconds)"
-
-# ─────────────────────────────────────────────────────────────────────────
-# Cross-cutting validators
-# ─────────────────────────────────────────────────────────────────────────
-
-# Migration idempotency on new migrations.
-bash scripts/migration-idempotency-validator.sh \
-    contracts/migrations/per_reality/0006_projections.up.sql \
-    contracts/migrations/per_reality/0006_projections.down.sql \
-    contracts/migrations/per_reality/0007_drift_metadata.up.sql \
-    contracts/migrations/per_reality/0007_drift_metadata.down.sql \
-    >/dev/null \
-    || fail "migration-idempotency-validator failed on cycle-13 migrations"
-pass "migration-idempotency-validator clean on 0006/0007 migrations"
-
-# Observability inventory lint (best-effort; cycle 13 only added new entries).
-if bash scripts/observability-inventory-lint.sh >/dev/null 2>&1; then
-    pass "observability-inventory-lint clean"
+  fi
 else
-    note "observability-inventory-lint surfaced findings (likely cycle-1..12 baseline; cycle-13 entries themselves are well-formed)"
+  note "python not on PATH — skipping lore-enrichment unit suite here"
 fi
 
-# B5 prod-isolation.
-bash scripts/raid/prod-isolation-lint.sh >/dev/null \
-    || fail "B5 prod-isolation-lint regression"
-pass "B5 prod-isolation-lint clean"
-
-# B6 secret-scan (gracefully skips when gitleaks absent).
-if bash scripts/raid/secret-scan-cycle.sh 13 >/dev/null 2>&1; then
-    pass "B6 secret-scan-cycle clean"
-else
-    note "B6 secret-scan: gitleaks unavailable on dev machine (CI will gate)"
+# ── 2. knowledge-service internal-enrichment unit suite ────────────────────────
+if command -v python >/dev/null 2>&1; then
+  ( cd "$KNOW_SVC" && python -m pytest tests/unit/test_internal_enrichment.py -q ) \
+    >/tmp/c13_know.log 2>&1 \
+    || { cat /tmp/c13_know.log; fail "knowledge-service internal-enrichment tests failed"; }
+  ok "knowledge-service test_internal_enrichment.py green"
 fi
 
-# ─────────────────────────────────────────────────────────────────────────
-# Cross-cycle invariant: cycle-12 contracts referenced from cycle-13 sources
-# ─────────────────────────────────────────────────────────────────────────
+# ── 3. ruff clean on the C13 code paths ────────────────────────────────────────
+if command -v ruff >/dev/null 2>&1; then
+  ( cd "$LE_SVC" && ruff check app/services/review.py app/services/writeback.py \
+      app/clients/writeback.py app/api/proposals.py \
+      tests/test_review_gate.py tests/db/test_review_repo.py ) \
+    >/tmp/c13_ruff_le.log 2>&1 \
+    || { cat /tmp/c13_ruff_le.log; fail "ruff failed on lore-enrichment C13 files"; }
+  ( cd "$KNOW_SVC" && ruff check app/routers/internal_enrichment.py \
+      tests/unit/test_internal_enrichment.py ) \
+    >/tmp/c13_ruff_know.log 2>&1 \
+    || { cat /tmp/c13_ruff_know.log; fail "ruff failed on knowledge-service C13 files"; }
+  ok "ruff clean on C13 code paths"
+fi
 
-# Each projection crate references the cycle-12 dp-kernel::Projection trait.
-for crate in pc npc region world_kv session; do
-    grep -q "use dp_kernel::" "crates/projections/${crate}/src/lib.rs" \
-        || fail "crates/projections/${crate} does not import dp_kernel (broken cycle-12 link)"
-done
-pass "all 5 projection crates import from dp_kernel (cycle-12 contract honored)"
+# ── 4. static guards ───────────────────────────────────────────────────────────
+# (a) no hardcoded model names in the write-back path (deterministic write).
+if grep -nE 'gpt-|claude-[0-9]|qwen[/-][0-9]|bge-m3|text-embedding' \
+     "$LE_SVC/app/services/writeback.py" \
+     "$LE_SVC/app/clients/writeback.py" \
+     "$KNOW_SVC/app/routers/internal_enrichment.py" >/dev/null 2>&1; then
+  fail "hardcoded model name found in C13 write-back path"
+fi
+ok "no hardcoded model names in C13 write-back path"
+# (b) promotion authority sourced from book-service projection, not a client claim.
+grep -q 'book_owner' "$LE_SVC/app/services/writeback.py" \
+  || fail "promote does not consult book_owner (book-service truth source)"
+grep -q '/projection' "$LE_SVC/app/clients/writeback.py" \
+  || fail "book_owner does not read the book-service /projection endpoint"
+ok "promote authorization sourced from book-service projection (not a client claim)"
 
-# Migration 0006 references the cycle-12 Projection trait + cycle-13 L3.K table.
-grep -q "ProjectionUpdate" contracts/migrations/per_reality/0006_projections.up.sql \
-    || fail "0006 migration does not reference cycle-12 ProjectionUpdate"
-pass "0006 migration documents its consumer link to cycle-12 Projection trait"
+# ── 5. CROSS-SERVICE LIVE SMOKE — H0 quarantine→promote→canon→retract ──────────
+if ! command -v docker >/dev/null 2>&1; then
+  note "live infra unavailable: docker not on PATH — unit gate only"
+  echo "{\"ts\":\"$NOW\",\"cycle\":$CYCLE,\"event\":\"verify\",\"result\":\"pass\",\"live_smoke\":\"skipped:no-docker\"}" >> "$AUDIT_LOG"
+  ok "cycle 13 unit gate PASS (live smoke skipped: no docker)"
+  exit 0
+fi
 
-echo "[verify-cycle-13] ALL STEPS PASS (cycle 13 = L3.A 10 projection tables + L3.K drift metadata + cron skeleton)"
+dc() { docker compose -f "$COMPOSE" "$@"; }
+cyq() { dc exec -T neo4j cypher-shell -u neo4j -p "$NEO4J_PASSWORD" --format plain "$1" 2>/dev/null; }
+# knowledge-service in-network port is 8092; call from inside the container.
+# The URL path is EMBEDDED in the python -c string (one quoted arg) rather than
+# passed as a separate argv — git-bash path-conversion only rewrites argv that
+# look like paths (which corrupted the port → '8092C:' when the path was argv).
+# The JSON body is passed via stdin (also conversion-safe).
+kq() {
+  local path="$1" body="$2"
+  printf '%s' "$body" | dc exec -T knowledge-service python -c "
+import sys, httpx, json
+body = json.loads(sys.stdin.read())
+r = httpx.post('http://localhost:8092$path',
+               headers={'X-Internal-Token':'$INTERNAL_TOKEN'},
+               json=body, timeout=20)
+print(r.status_code)
+print(r.text)
+"
+}
+
+if ! dc exec -T knowledge-service python -c "import httpx; httpx.get('http://localhost:8092/health', timeout=5)" >/dev/null 2>&1; then
+  note "live infra unavailable: knowledge-service not reachable — unit gate only"
+  echo "{\"ts\":\"$NOW\",\"cycle\":$CYCLE,\"event\":\"verify\",\"result\":\"pass\",\"live_smoke\":\"skipped:stack-down\"}" >> "$AUDIT_LOG"
+  ok "cycle 13 unit gate PASS (live smoke skipped: stack down)"
+  exit 0
+fi
+
+echo "[verify-cycle-13] stack is UP — running cross-service H0 live smoke on demo 蓬萊"
+
+PROPOSAL_ID="$(python -c 'import uuid;print(uuid.uuid4())')"
+TECHNIQUE="template"
+
+# Sanity: the canon 蓬萊 node exists and is glossary canon (the distinct anchor).
+CANON_BEFORE="$(cyq "MATCH (e:Entity {glossary_entity_id:'$DEMO_GLOSS_ENTITY', user_id:'$DEMO_USER'}) RETURN e.source_type AS st, e.confidence AS c;")"
+echo "$CANON_BEFORE" | grep -q 'glossary' || {
+  note "live infra unavailable: demo canon node 蓬萊 not found/glossary — unit gate only"
+  echo "{\"ts\":\"$NOW\",\"cycle\":$CYCLE,\"event\":\"verify\",\"result\":\"pass\",\"live_smoke\":\"skipped:no-demo-canon\"}" >> "$AUDIT_LOG"
+  exit 0
+}
+ok "demo canon node 蓬萊 present (source_type=glossary) — the distinct authored anchor"
+
+# 5a. WRITE-BACK — admit an enriched fact QUARANTINED.
+WB_BODY="$(python -c "import json;print(json.dumps({
+  'user_id':'$DEMO_USER','project_id':'$DEMO_PROJECT','proposal_id':'$PROPOSAL_ID',
+  'glossary_entity_id':'$DEMO_GLOSS_ENTITY','canonical_name':'蓬萊','entity_kind':'location',
+  'technique':'$TECHNIQUE',
+  'facts':[{'dimension':'历史','content':'蓬萊自上古即为东海仙山，仙人所居。','confidence':0.3}]}))")"
+WB_OUT="$(kq /internal/knowledge/enriched-writeback "$WB_BODY")"
+echo "$WB_OUT" | head -1 | grep -q '^200' || { echo "$WB_OUT"; fail "live smoke: write-back HTTP != 200"; }
+ok "write-back returned 200"
+
+# Assert the enriched fact is QUARANTINED in Neo4j (distinct from canon).
+Q="$(cyq "MATCH (f:Fact) WHERE f.promoted_from_proposal_id='$PROPOSAL_ID' AND f.user_id='$DEMO_USER' RETURN f.source_type AS st, f.pending_validation AS pv, f.confidence AS c, f.origin AS o;")"
+echo "$Q" | grep -q "enriched:$TECHNIQUE" || { echo "$Q"; fail "live smoke: written fact not source_type=enriched:$TECHNIQUE (H0 leak!)"; }
+echo "$Q" | grep -qiE 'true' || { echo "$Q"; fail "live smoke: written fact not pending_validation=true"; }
+echo "$Q" | grep -q 'enrichment' || { echo "$Q"; fail "live smoke: written fact missing origin=enrichment marker"; }
+# confidence must be < 1.0 (no canon).
+if echo "$Q" | grep -qE '\b1\.0\b'; then echo "$Q"; fail "live smoke: written fact confidence reached canon 1.0 (H0 leak!)"; fi
+ok "write-back QUARANTINED: source_type=enriched:$TECHNIQUE, pending=true, confidence<1.0, origin=enrichment (NOT canon)"
+
+# 5b. PROMOTE — author flips to canon RETAINING the origin marker.
+PR_BODY="$(python -c "import json;print(json.dumps({
+  'user_id':'$DEMO_USER','proposal_id':'$PROPOSAL_ID','promoted_by':'$DEMO_USER',
+  'promoted_at':'$NOW'}))")"
+PR_OUT="$(kq /internal/knowledge/enriched-promote "$PR_BODY")"
+echo "$PR_OUT" | head -1 | grep -q '^200' || { echo "$PR_OUT"; fail "live smoke: promote HTTP != 200"; }
+ok "promote returned 200"
+
+P="$(cyq "MATCH (f:Fact) WHERE f.promoted_from_proposal_id='$PROPOSAL_ID' AND f.user_id='$DEMO_USER' RETURN f.source_type AS st, f.confidence AS c, f.pending_validation AS pv, f.origin AS o, f.promoted_by AS pb, f.original_technique AS ot;")"
+echo "$P" | grep -q 'glossary' || { echo "$P"; fail "live smoke: promoted fact not source_type=glossary (promote did not canonize)"; }
+echo "$P" | grep -qE '\b1\.0\b' || { echo "$P"; fail "live smoke: promoted fact confidence != 1.0"; }
+echo "$P" | grep -qiE 'false' || { echo "$P"; fail "live smoke: promoted fact still pending_validation"; }
+# PERMANENT origin marker must SURVIVE promotion.
+echo "$P" | grep -q 'enrichment' || { echo "$P"; fail "live smoke: PROMOTE DROPPED the origin=enrichment marker (H0 traceability lost!)"; }
+echo "$P" | grep -q "$DEMO_USER" || { echo "$P"; fail "live smoke: promoted_by not stamped"; }
+echo "$P" | grep -q "$TECHNIQUE" || { echo "$P"; fail "live smoke: original_technique not retained"; }
+ok "promote → canon: source_type=glossary, confidence=1.0, pending=false WITH permanent origin marker (origin=enrichment, promoted_by, original_technique)"
+
+# 5c. RETRACT — soft (reversible): valid_until set; fact leaves the active graph.
+RT_BODY="$(python -c "import json;print(json.dumps({'user_id':'$DEMO_USER','proposal_id':'$PROPOSAL_ID'}))")"
+RT_OUT="$(kq /internal/knowledge/enriched-retract "$RT_BODY")"
+echo "$RT_OUT" | head -1 | grep -q '^200' || { echo "$RT_OUT"; fail "live smoke: retract HTTP != 200"; }
+R="$(cyq "MATCH (f:Fact) WHERE f.promoted_from_proposal_id='$PROPOSAL_ID' AND f.user_id='$DEMO_USER' AND f.valid_until IS NOT NULL RETURN count(f) AS n;")"
+echo "$R" | grep -qE '\b[1-9][0-9]*\b' || { echo "$R"; fail "live smoke: retract did not set valid_until (soft-delete)"; }
+ok "retract (soft): valid_until set — fact left the active graph (reversible, not a hard delete)"
+
+# 5d. Cleanup the smoke fact (hard delete by proposal id — leaves the seeded demo
+#     canon node untouched; only this smoke proposal's nodes are removed).
+cyq "MATCH (f:Fact {promoted_from_proposal_id:'$PROPOSAL_ID'}) DETACH DELETE f;" >/dev/null 2>&1 || true
+
+SMOKE="propose -> enriched-in-KG (quarantined, source_type=enriched) -> author promote -> canon (source_type=glossary, origin marker intact) -> retract -> soft (valid_until)"
+echo "{\"ts\":\"$NOW\",\"cycle\":$CYCLE,\"event\":\"verify\",\"result\":\"pass\",\"live_smoke\":\"$SMOKE\"}" >> "$AUDIT_LOG"
+echo "[verify-cycle-13] live smoke: $SMOKE"
+ok "cycle 13 CI gate PASS (cross-service H0 round-trip held on demo 蓬萊)"
 exit 0

@@ -65,5 +65,10 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['./vitest.setup.ts'],
+    // Unit tests only. Playwright e2e specs live under tests/e2e and run via
+    // their own runner — excluding them keeps vitest fast and its output clean
+    // (they otherwise get swept in as "0 test" files).
+    include: ['src/**/*.test.{ts,tsx}'],
+    exclude: ['node_modules', 'dist', 'tests/e2e/**', '**/*.spec.ts'],
   },
 });

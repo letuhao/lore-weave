@@ -37,6 +37,7 @@ from app.db.neo4j_helpers import (
     ensure_summary_indexes,
     summary_index_name,
 )
+from app.clients.book_client import get_book_client
 from app.db.repositories.level_summaries import (
     Level,
     LevelSummariesRepo,
@@ -102,6 +103,26 @@ class SummaryProcessorDeps:
     llm_client: Any                  # LLMClientProtocol from SDK
     embedding_client: Any            # exposes embed(text, model_uuid) -> list[float]
     summary_enqueue: SummaryEnqueueFn  # for M4 re-enqueue
+
+
+# ── E0-3 Phase 2a-2 — BYOK billing identity for the summary provider calls ──
+# Gate on billing_user_id (the identity), never a ref alone (review-impl MED-1).
+# The STORED embedding_model_uuid tag (search filter / index / cache key) always
+# stays msg.embedding_model_uuid — only the GENERATION refs/user swap to billing.
+# The embed adapter's user is bound in the /summarize-message endpoint to the
+# SAME billing_bill_user, so the embed model_uuid passed here resolves there.
+
+
+def _bill_user(msg: "SummarizeMessage") -> str:
+    return msg.billing_user_id or msg.user_id
+
+
+def _bill_llm_ref(msg: "SummarizeMessage") -> str:
+    return msg.billing_llm_model if msg.billing_user_id else msg.model_ref
+
+
+def _bill_embed_ref(msg: "SummarizeMessage") -> str:
+    return msg.billing_embedding_model if msg.billing_user_id else msg.embedding_model_uuid
 
 
 async def process_summarize_message(
@@ -203,25 +224,27 @@ async def process_summarize_message(
             summary_id=cached.id,
         )
 
-    # 4. Call summarize_level extractor (LLM).
-    user_id_str = msg.user_id
+    # 4. Call summarize_level extractor (LLM). E0-3 2a-2: a collaborator-
+    # triggered summary resolves the LLM under the CALLER's key + LLM ref.
     project_id_str = msg.project_id or None
     summary = await summarize_level(
         level=msg.level,
         child_texts=child_texts,
         entity_names=entity_names,
-        user_id=user_id_str,
+        user_id=_bill_user(msg),
         project_id=project_id_str,
         model_source="user_model",
-        model_ref=msg.model_ref,
+        model_ref=_bill_llm_ref(msg),
         llm_client=deps.llm_client,
     )
     summary_text = summary.summary_text[:500]  # L3 fix: writer truncates
 
-    # 5. Embed the summary.
+    # 5. Embed the summary. E0-3 2a-2: generate under the caller's embedding ref
+    # (the adapter's user is bound to the same billing user in the endpoint);
+    # the STORED tag below stays msg.embedding_model_uuid (the project's).
     embedding = await deps.embedding_client.embed(
         text=summary_text,
-        model_uuid=msg.embedding_model_uuid,
+        model_uuid=_bill_embed_ref(msg),
     )
 
     # 6. Persist row + write Neo4j hierarchy-node properties.
@@ -287,8 +310,8 @@ async def _load_children_for_level(
 ) -> tuple[list[str], list[str]]:
     """Return (child_texts, entity_names) for the given level node.
 
-    - chapter: child_texts = scene leaf_texts from Neo4j; entity_names = top
-      entities mentioned in this chapter.
+    - chapter: child_texts = real scene leaf_texts from book-service (FD-3);
+      entity_names = top entities mentioned in this chapter.
     - part: child_texts = chapter summaries from Postgres summary_chapters;
       entity_names = top entities aggregated across the part's chapters.
     - book: child_texts = part summaries; entity_names = top across book.
@@ -297,8 +320,8 @@ async def _load_children_for_level(
     raise _DefensiveCheckFailed → caller re-enqueues per M4.
     """
     if level == "chapter":
-        # Load scene leaf_texts under this chapter from Neo4j.
-        scene_texts = await _load_scene_leaf_texts(neo4j_session, node_id)
+        # FD-3: load the REAL scene prose from book-service (not Neo4j path stubs).
+        scene_texts = await _load_scene_leaf_texts(book_id, node_id)
         if not scene_texts:
             # Legacy chapter w/o :Scene children: spec D6 says Mode-3
             # falls through gracefully; for summary, skip (no content
@@ -374,6 +397,11 @@ async def _reenqueue_with_backoff(
         embedding_dimension=msg.embedding_dimension,
         retry_at_epoch=now_epoch() + backoff_s,
         retried_n=msg.retried_n + 1,
+        # E0-3 2a-2: forward billing identity on retry, else a retried summary
+        # would silently fall back to the owner's key.
+        billing_user_id=msg.billing_user_id,
+        billing_llm_model=msg.billing_llm_model,
+        billing_embedding_model=msg.billing_embedding_model,
     )
     await enqueue(new_msg)
 
@@ -381,31 +409,36 @@ async def _reenqueue_with_backoff(
 # ── Neo4j helpers (stubs — wired to neo4j_repos in worker-ai task setup) ──
 
 
-async def _load_scene_leaf_texts(
-    session: CypherSession, chapter_id: UUID,
-) -> list[str]:
-    """Load leaf_text for each :Scene under this :Chapter, ordered."""
-    # NOTE: :Scene nodes have only path + scene_id today; leaf_text lives
-    # in book-service Postgres `scenes` table. Production wiring: fetch
-    # via book_client.list_scenes_by_chapter (already exists in book_client)
-    # and join texts. For now, return Neo4j-resolved text where possible.
-    rows = await session.run(
-        """
-        MATCH (c:Chapter {chapter_id: $chapter_id})-[:HAS_CHILD]->(s:Scene)
-        RETURN s.path AS path, s.scene_id AS scene_id
-        ORDER BY s.scene_index
-        """,
-        chapter_id=str(chapter_id),
-    )
-    paths = []
-    async for record in rows:
-        paths.append(record["path"])
-    if not paths:
-        return []
-    # Production: enrich via book_client.list_scenes_by_chapter — left
-    # as TODO to keep this scaffold testable without book-service.
-    # For now return paths as placeholder text (real wiring in session 66).
-    return paths
+async def _load_scene_leaf_texts(book_id: UUID, chapter_id: UUID) -> list[str]:
+    """FD-3 — load the REAL per-scene prose for this chapter from book-service
+    (was a stub that returned Neo4j `s.path` strings, so summaries were built from
+    path noise). Mirrors the proven P2 D8 contract (`pass2_orchestrator
+    ._fetch_chapter_leaf_text`):
+
+    - `list_scenes_by_chapter` → None = transport failure → raise
+      `_DefensiveCheckFailed` (transient; the caller re-enqueues — never summarize
+      on missing prose);
+    - a P1-decomposed chapter → the ordered scene `leaf_text`s (real prose);
+    - a legacy chapter (empty scenes) or scenes with no usable text → fall back to
+      the chapter draft text wrapped as ONE child (so legacy chapters still get a
+      real summary instead of being abandoned — PO decision);
+    - truly empty (no scenes, no draft) → `[]` (the caller raises → skipped).
+    """
+    client = get_book_client()
+    scenes = await client.list_scenes_by_chapter(book_id, chapter_id)
+    if scenes is None:
+        raise _DefensiveCheckFailed(
+            f"chapter {chapter_id} scenes unavailable from book-service (transient)"
+        )
+    texts = [t for s in scenes if (t := (s.get("leaf_text") or "").strip())]
+    if texts:
+        return texts
+    # Legacy chapter (NULL structural_path → empty scenes), or scenes carried no
+    # text: D8 fallback to the chapter draft (Tiptap→text) as a single unit.
+    draft = await client.get_chapter_draft_text(book_id, chapter_id)
+    if draft and draft.strip():
+        return [draft.strip()]
+    return []
 
 
 async def _load_top_entities_for_chapter(

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Loader2, Pencil, Trash2, X } from 'lucide-react';
 import type { EvidenceListItem, EvidenceType, PatchEvidencePayload } from '@/features/glossary/types';
 
@@ -24,6 +25,7 @@ export function EvidenceCard({
   item, isEditing, editForm, editSaving,
   onEdit, onCancelEdit, onSaveEdit, onEditFormChange, onDelete,
 }: EvidenceCardProps) {
+  const { t } = useTranslation('entityEditor');
   if (isEditing) {
     return (
       <div className="rounded-lg border bg-card p-3 space-y-2">
@@ -32,14 +34,14 @@ export function EvidenceCard({
             value={editForm.evidence_type ?? item.evidence_type}
             onChange={(e) => onEditFormChange({ ...editForm, evidence_type: e.target.value as EvidenceType })}
             className="rounded border bg-background px-2 py-0.5 text-[10px] focus:outline-none"
-            aria-label="Edit evidence type"
+            aria-label={t('evidence.card.edit_type_aria')}
           >
-            {EVIDENCE_TYPES.map((t) => (
-              <option key={t} value={t}>{t}</option>
+            {EVIDENCE_TYPES.map((ty) => (
+              <option key={ty} value={ty}>{t(`evidence.type.${ty}`)}</option>
             ))}
           </select>
           <span className="flex-1" />
-          <button type="button" onClick={onCancelEdit} className="p-1 text-muted-foreground hover:text-foreground" title="Cancel">
+          <button type="button" onClick={onCancelEdit} className="p-1 text-muted-foreground hover:text-foreground" title={t('evidence.card.cancel_title')}>
             <X className="h-3.5 w-3.5" />
           </button>
         </div>
@@ -51,7 +53,7 @@ export function EvidenceCard({
         />
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="text-[10px] text-muted-foreground">Block / Line</label>
+            <label className="text-[10px] text-muted-foreground">{t('evidence.card.block_line')}</label>
             <input
               value={editForm.block_or_line ?? item.block_or_line}
               onChange={(e) => onEditFormChange({ ...editForm, block_or_line: e.target.value })}
@@ -59,7 +61,7 @@ export function EvidenceCard({
             />
           </div>
           <div>
-            <label className="text-[10px] text-muted-foreground">Note</label>
+            <label className="text-[10px] text-muted-foreground">{t('evidence.card.note')}</label>
             <input
               value={editForm.note ?? item.note ?? ''}
               onChange={(e) => onEditFormChange({ ...editForm, note: e.target.value || null })}
@@ -73,7 +75,7 @@ export function EvidenceCard({
             onClick={onCancelEdit}
             className="rounded-md border px-3 py-1 text-xs text-muted-foreground hover:bg-secondary transition-colors"
           >
-            Cancel
+            {t('evidence.card.cancel')}
           </button>
           <button
             type="button"
@@ -82,7 +84,7 @@ export function EvidenceCard({
             className="inline-flex items-center gap-1 rounded-md bg-primary px-3 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
           >
             {editSaving && <Loader2 className="h-3 w-3 animate-spin" />}
-            Save
+            {t('evidence.card.save')}
           </button>
         </div>
       </div>
@@ -92,8 +94,8 @@ export function EvidenceCard({
   return (
     <div className="rounded-lg border bg-card p-3 space-y-2">
       <div className="flex items-center gap-2 text-[10px]">
-        <span className={`rounded-full px-2 py-0.5 font-medium capitalize ${TYPE_COLORS[item.evidence_type]}`}>
-          {item.evidence_type}
+        <span className={`rounded-full px-2 py-0.5 font-medium ${TYPE_COLORS[item.evidence_type]}`}>
+          {t(`evidence.type.${item.evidence_type}`)}
         </span>
         <span className="rounded bg-muted px-1.5 py-0.5 font-medium text-muted-foreground">
           {item.attribute_name}
@@ -107,10 +109,10 @@ export function EvidenceCard({
         <span className="text-muted-foreground">
           {new Date(item.created_at).toLocaleDateString()}
         </span>
-        <button type="button" onClick={onEdit} className="p-1 text-muted-foreground hover:text-foreground transition-colors" title="Edit">
+        <button type="button" onClick={onEdit} className="p-1 text-muted-foreground hover:text-foreground transition-colors" title={t('evidence.card.edit_title')}>
           <Pencil className="h-3 w-3" />
         </button>
-        <button type="button" onClick={onDelete} className="p-1 text-muted-foreground hover:text-destructive transition-colors" title="Delete">
+        <button type="button" onClick={onDelete} className="p-1 text-muted-foreground hover:text-destructive transition-colors" title={t('evidence.card.delete_title')}>
           <Trash2 className="h-3 w-3" />
         </button>
       </div>
@@ -119,12 +121,12 @@ export function EvidenceCard({
       </p>
       {item.display_language !== item.original_language && (
         <p className="text-[10px] text-muted-foreground italic">
-          Translated ({item.display_language})
+          {t('evidence.card.translated', { lang: item.display_language })}
         </p>
       )}
       {item.note && (
         <p className="text-[10px] text-muted-foreground italic">
-          Note: {item.note}
+          {t('evidence.card.note_label', { note: item.note })}
         </p>
       )}
     </div>

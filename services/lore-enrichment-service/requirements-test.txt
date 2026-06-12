@@ -1,0 +1,11 @@
+-r requirements.txt
+pytest>=8.0
+pytest-asyncio>=0.23
+respx>=0.21
+PyYAML>=6.0
+# loreweave_obs SDK (sdks/python) — app.main imports setup_tracing/current_otel_trace_id
+# from it, so test_readiness/test_health/test_metrics/test_api_contract (which import
+# app.main) need it to COLLECT locally. The Docker image installs it via
+# `pip install /sdk`; this editable path mirrors that for a local test venv. Path is
+# relative to this service dir (run pip from services/lore-enrichment-service/).
+-e ../../sdks/python

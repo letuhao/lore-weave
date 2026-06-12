@@ -69,7 +69,8 @@
     "skipped": "スキップ",
     "activityLog": "アクティビティログ",
     "cancel": "キャンセル",
-    "cancelConfirm": "抽出ジョブをキャンセルしますか？処理済みのチャプターの結果は保持されます。"
+    "cancelConfirm": "抽出ジョブをキャンセルしますか？処理済みのチャプターの結果は保持されます。",
+    "cancelRequested": "キャンセルを要求しました"
   },
   "results": {
     "title": "抽出完了",

@@ -19,6 +19,7 @@ def _coverage_row(
     latest_version_num: int | None = 1,
     active_ct_id=None,
     active_version_num: int | None = None,
+    is_glossary_stale: bool = False,
 ):
     return FakeRecord({
         "chapter_id": UUID(chapter_id),
@@ -28,6 +29,7 @@ def _coverage_row(
         "latest_version_num": latest_version_num,
         "active_ct_id": active_ct_id,
         "active_version_num": active_version_num,
+        "is_glossary_stale": is_glossary_stale,
     })
 
 
@@ -105,6 +107,26 @@ def test_coverage_latest_status_running(client, fake_pool):
     resp = client.get(f"/v1/translation/books/{BOOK_ID}/coverage")
     cell = resp.json()["coverage"][0]["languages"]["vi"]
     assert cell["latest_status"] == "running"
+
+
+# ── M6b-2: is_glossary_stale on the cell ──────────────────────────────────────
+
+def test_coverage_cell_glossary_stale_surfaced(client, fake_pool):
+    fake_pool.fetch.return_value = [
+        _coverage_row(CHAPTER_ID_1, "vi", active_ct_id=_ACTIVE_CT_ID,
+                      active_version_num=1, is_glossary_stale=True),
+    ]
+    resp = client.get(f"/v1/translation/books/{BOOK_ID}/coverage")
+    cell = resp.json()["coverage"][0]["languages"]["vi"]
+    assert cell["is_glossary_stale"] is True
+
+
+def test_coverage_cell_not_stale_by_default(client, fake_pool):
+    fake_pool.fetch.return_value = [
+        _coverage_row(CHAPTER_ID_1, "vi"),
+    ]
+    resp = client.get(f"/v1/translation/books/{BOOK_ID}/coverage")
+    assert resp.json()["coverage"][0]["languages"]["vi"]["is_glossary_stale"] is False
 
 
 # ── known_languages ───────────────────────────────────────────────────────────

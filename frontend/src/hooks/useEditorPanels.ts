@@ -7,9 +7,9 @@ const STORAGE_KEY = 'lw_editor_panels';
 function readState(): PanelState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : { left: false, right: true, leftWidth: 300, rightWidth: 320 };
+    return raw ? JSON.parse(raw) : { left: false, right: true, leftWidth: 300, rightWidth: 400 };
   } catch {
-    return { left: false, right: true, leftWidth: 300, rightWidth: 320 };
+    return { left: false, right: true, leftWidth: 300, rightWidth: 400 };
   }
 }
 
@@ -23,6 +23,10 @@ export function useEditorPanels() {
 
   const toggleLeft = useCallback(() => save({ ...state, left: !state.left }), [state]);
   const toggleRight = useCallback(() => save({ ...state, right: !state.right }), [state]);
+  // Persist a dragged panel width (per-device UI state — localStorage is the
+  // right home for this per CLAUDE.md). Call on drag END, not every frame.
+  const setLeftWidth = useCallback((w: number) => save({ ...state, leftWidth: Math.round(w) }), [state]);
+  const setRightWidth = useCallback((w: number) => save({ ...state, rightWidth: Math.round(w) }), [state]);
 
-  return { ...state, toggleLeft, toggleRight };
+  return { ...state, toggleLeft, toggleRight, setLeftWidth, setRightWidth };
 }

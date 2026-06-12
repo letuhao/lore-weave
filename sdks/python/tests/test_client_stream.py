@@ -365,6 +365,32 @@ def test_request_body_keeps_positive_max_tokens():
     assert body.get("max_tokens") == 512
 
 
+def test_request_body_forwards_reasoning_controls():
+    # Standardized reasoning knob: reasoning_effort + chat_template_kwargs must
+    # serialize onto the wire so the gateway can forward them (disable thinking).
+    req = StreamRequest(
+        model_source="user_model",
+        model_ref=MODEL_REF,
+        messages=[{"role": "user", "content": "hi"}],
+        reasoning_effort="none",
+        chat_template_kwargs={"enable_thinking": False},
+    )
+    body = req.to_request_body()
+    assert body["reasoning_effort"] == "none"
+    assert body["chat_template_kwargs"] == {"enable_thinking": False}
+
+
+def test_request_body_omits_reasoning_controls_when_unset():
+    req = StreamRequest(
+        model_source="user_model",
+        model_ref=MODEL_REF,
+        messages=[{"role": "user", "content": "hi"}],
+    )
+    body = req.to_request_body()
+    assert "reasoning_effort" not in body
+    assert "chat_template_kwargs" not in body
+
+
 def test_constructor_validates_auth_inputs():
     # Phase 4a-α Step 1 — internal auth_mode now allows user_id=None
     # at construction (multi-tenant pattern); user_id is enforced

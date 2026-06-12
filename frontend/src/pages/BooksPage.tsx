@@ -144,14 +144,14 @@ export function BooksPage() {
                 onChange={(e) => setLangFilter(e.target.value)}
                 className="appearance-none rounded-md border bg-background px-3 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-ring/40"
               >
-                <option value="">All languages</option>
+                <option value="">{t('all_languages')}</option>
                 {allLanguages.map((l) => (
                   <option key={l} value={l}>{l}</option>
                 ))}
               </select>
             )}
             <span className="text-xs text-muted-foreground">
-              {filteredBooks.length} {filteredBooks.length === 1 ? 'book' : 'books'}
+              {t('book_count', { count: filteredBooks.length })}
             </span>
           </div>
         }
@@ -247,7 +247,7 @@ export function BooksPage() {
 
               {/* Translation language dots */}
               {bookLangs[book.book_id] && bookLangs[book.book_id].length > 0 && (
-                <div className="flex items-center gap-1" title={`Translated to: ${bookLangs[book.book_id].join(', ')}`}>
+                <div className="flex items-center gap-1" title={t('translated_to', { langs: bookLangs[book.book_id].join(', ') })}>
                   {bookLangs[book.book_id].map((lang) => (
                     <span
                       key={lang}

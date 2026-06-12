@@ -13,13 +13,18 @@
 
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::sync::Arc;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
+use loreweave_llm::{GatewayClient, ModelSource};
+use tokio::runtime::{Builder as RuntimeBuilder, Runtime};
+use uuid::Uuid;
 use world_gen::{
     ClimateZone, CoastlineProfile, CreativeSeed, ErosionStrength, HemisphereOrientation,
     PrevailingWind, Projection, RenderStyle, SettlementDensity, TerrainMode, WorldArchetype,
     WorldMap, WorldScale, generate,
 };
+use world_gen::shape::GatewayTextProvider;
 
 #[derive(Parser)]
 #[command(name = "world-gen", about = "Procedural world-map generator (GEO Phases 1-4)")]
@@ -29,6 +34,10 @@ struct Cli {
 }
 
 #[derive(Subcommand)]
+// `GenerateArgs` carries many flags and dwarfs `Author`/`Name`; the enum is
+// parsed once at startup, so the size gap is irrelevant and boxing a clap args
+// struct would only add noise.
+#[allow(clippy::large_enum_variant)]
 enum Command {
     /// Generate a world map from a seed + creative direction.
     Generate(GenerateArgs),
@@ -65,6 +74,19 @@ struct GenerateArgs {
     /// clamped 0.1..=0.9). Higher = more land.
     #[arg(long, default_value_t = 0.4)]
     continental_fraction: f32,
+    /// How strongly continents spread across latitudes (`tectonic` mode;
+    /// clamped 0.0..=1.0). 0 (default) = legacy random placement; 1 = land
+    /// covers equator → both poles (tropics + boreal). Opt-in: the full
+    /// tropics→tundra gradient also needs the v2 seasonality fix.
+    #[arg(long, default_value_t = 0.0)]
+    continent_latitude_spread: f32,
+    /// Target number of geographic regions (L2) per subcontinent in the
+    /// geometric hierarchy (clamped 1..=12).
+    #[arg(long, default_value_t = 4)]
+    region_subdivision: u8,
+    /// Target number of counties per province (political tier; clamped 1..=8).
+    #[arg(long, default_value_t = 4)]
+    county_subdivision: u8,
     /// Coastline profile (only used in `--terrain-mode profile`).
     #[arg(long, value_enum, default_value_t = CoastlineArg::Coastal)]
     coastline: CoastlineArg,
@@ -119,6 +141,16 @@ struct GenerateArgs {
     /// outlines). Empty render in `--terrain-mode profile`.
     #[arg(long)]
     plate_png: Option<PathBuf>,
+    /// Optional region-hierarchy PNG path — a 3-tier choropleth: region fill +
+    /// continent (near-black) and subcontinent (grey) boundary outlines. A
+    /// land-less world renders the biome map.
+    #[arg(long)]
+    region_png: Option<PathBuf>,
+    /// Optional political-tier PNG path — a choropleth: province fill + realm
+    /// (near-black) and state (grey) boundary outlines. A land-less world
+    /// renders the biome map.
+    #[arg(long)]
+    realm_png: Option<PathBuf>,
     /// Optional political-map SVG path.
     #[arg(long)]
     svg: Option<PathBuf>,
@@ -143,12 +175,20 @@ struct AuthorArgs {
     /// Output CreativeSeed JSON path.
     #[arg(long)]
     out: PathBuf,
-    /// OpenAI-compatible LLM API base URL.
-    #[arg(long, default_value = "http://localhost:1234/v1")]
-    llm_url: String,
-    /// LLM model id.
-    #[arg(long, default_value = "ibm/granite-4-h-tiny")]
-    llm_model: String,
+    /// Model registered in provider-registry-service (UUID). The gateway
+    /// resolves this to the underlying provider server-side — per
+    /// CLAUDE.md provider gateway invariant the CLI does NOT choose a
+    /// provider.
+    #[arg(long)]
+    model_ref: Uuid,
+    /// Whether `model_ref` is a platform-shared registration or
+    /// per-user (BYOK).
+    #[arg(long, value_enum, default_value_t = ModelSourceArg::Platform)]
+    model_source: ModelSourceArg,
+    /// User the call is billed against. Required by
+    /// `/internal/llm/stream`. Generate or supply a real one.
+    #[arg(long)]
+    user_id: Uuid,
 }
 
 #[derive(Args)]
@@ -168,12 +208,57 @@ struct NameArgs {
     /// SVG width/height in pixels.
     #[arg(long, default_value_t = 1024)]
     svg_size: u32,
-    /// OpenAI-compatible LLM API base URL.
-    #[arg(long, default_value = "http://localhost:1234/v1")]
-    llm_url: String,
-    /// LLM model id.
-    #[arg(long, default_value = "ibm/granite-4-h-tiny")]
-    llm_model: String,
+    /// Model registered in provider-registry-service (UUID). See
+    /// `AuthorArgs::model_ref` — same semantics.
+    #[arg(long)]
+    model_ref: Uuid,
+    /// Whether `model_ref` is a platform-shared registration or
+    /// per-user (BYOK).
+    #[arg(long, value_enum, default_value_t = ModelSourceArg::Platform)]
+    model_source: ModelSourceArg,
+    /// User the call is billed against.
+    #[arg(long)]
+    user_id: Uuid,
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum ModelSourceArg {
+    Platform,
+    User,
+}
+
+impl From<ModelSourceArg> for ModelSource {
+    fn from(s: ModelSourceArg) -> Self {
+        match s {
+            ModelSourceArg::Platform => ModelSource::PlatformModel,
+            ModelSourceArg::User => ModelSource::UserModel,
+        }
+    }
+}
+
+/// Build the shared SDK plumbing every Author / Name subcommand needs.
+///
+/// Fails fast on missing `LOREWEAVE_INTERNAL_TOKEN` (CLAUDE.md "no
+/// hardcoded secrets / services fail to start if missing"). The runtime
+/// is `current_thread` + `enable_all` so the SDK's async streaming works
+/// inside the sync `TextProvider::complete` block-on path.
+fn build_gateway_provider(
+    model_source: ModelSource,
+    model_ref: Uuid,
+    user_id: Uuid,
+) -> Result<GatewayTextProvider, String> {
+    let client = GatewayClient::from_env().map_err(|e| format!("gateway client: {e}"))?;
+    let runtime: Runtime = RuntimeBuilder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| format!("tokio runtime: {e}"))?;
+    Ok(GatewayTextProvider::new(
+        Arc::new(client),
+        model_source,
+        model_ref,
+        user_id,
+        Arc::new(runtime),
+    ))
 }
 
 fn main() -> ExitCode {
@@ -214,6 +299,9 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
             terrain_mode: cli.terrain_mode.into(),
             plate_count: cli.plate_count,
             continental_fraction: cli.continental_fraction,
+            continent_latitude_spread: cli.continent_latitude_spread,
+            region_subdivision: cli.region_subdivision,
+            county_subdivision: cli.county_subdivision,
         }
     };
 
@@ -339,6 +427,34 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
         }
         println!("wrote {}", png.display());
     }
+    if let Some(png) = &cli.region_png {
+        let img = world_gen::render::region_image(
+            &map,
+            img_w,
+            img_h,
+            cli.style.into(),
+            proj,
+        );
+        if let Err(e) = img.save(png) {
+            eprintln!("error: save region png {}: {e}", png.display());
+            return ExitCode::FAILURE;
+        }
+        println!("wrote {}", png.display());
+    }
+    if let Some(png) = &cli.realm_png {
+        let img = world_gen::render::realm_image(
+            &map,
+            img_w,
+            img_h,
+            cli.style.into(),
+            proj,
+        );
+        if let Err(e) = img.save(png) {
+            eprintln!("error: save realm png {}: {e}", png.display());
+            return ExitCode::FAILURE;
+        }
+        println!("wrote {}", png.display());
+    }
     if let Some(svg) = &cli.svg {
         let doc = world_gen::render::political_svg(&map, img_h);
         if let Err(e) = std::fs::write(svg, doc) {
@@ -351,7 +467,15 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
 }
 
 fn run_author(cli: AuthorArgs) -> ExitCode {
-    match world_gen::author::request_creative_seed(&cli.brief, &cli.llm_url, &cli.llm_model) {
+    let provider = match build_gateway_provider(cli.model_source.into(), cli.model_ref, cli.user_id)
+    {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    match world_gen::author::request_creative_seed(&cli.brief, &provider) {
         Ok(cs) => match serde_json::to_string_pretty(&cs) {
             Ok(json) => {
                 if let Err(e) = std::fs::write(&cli.out, json) {
@@ -397,9 +521,15 @@ fn run_name(cli: NameArgs) -> ExitCode {
         );
         return ExitCode::FAILURE;
     }
-    if let Err(e) =
-        world_gen::naming::name_world(&mut map, cli.archetype.into(), &cli.llm_url, &cli.llm_model)
+    let provider = match build_gateway_provider(cli.model_source.into(), cli.model_ref, cli.user_id)
     {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    if let Err(e) = world_gen::naming::name_world(&mut map, cli.archetype.into(), &provider) {
         eprintln!("error: name: {e}");
         return ExitCode::FAILURE;
     }
@@ -415,12 +545,14 @@ fn run_name(cli: NameArgs) -> ExitCode {
         return ExitCode::FAILURE;
     }
     println!(
-        "wrote {} — named {} settlements, {} states, {} provinces, {} cultures, \
-         {} ranges, {} rivers, {} water bodies",
+        "wrote {} — named {} settlements, {} realms, {} states, {} provinces, \
+         {} counties, {} cultures, {} ranges, {} rivers, {} water bodies",
         cli.out.display(),
         map.settlements.len(),
+        map.realms.len(),
         map.states.len(),
         map.provinces.len(),
+        map.counties.len(),
         map.culture_regions.len(),
         map.mountain_ranges.len(),
         map.rivers.len(),

@@ -40,6 +40,7 @@ export function projectFixture(overrides: Partial<Project> = {}): Project {
     project_type: 'book',
     book_id: '00000000-0000-0000-0000-000000000b01',
     instructions: '',
+    genre: null,
     extraction_enabled: true,
     // K21-C (D3/D4): memory-tool toggles. Defaults match the BE
     // column defaults — tool calling on, confirm-before-save off.
@@ -48,6 +49,8 @@ export function projectFixture(overrides: Partial<Project> = {}): Project {
     extraction_status: 'ready',
     embedding_model: 'bge-m3',
     embedding_dimension: 1024,
+    rerank_model: null,
+    rerank_model_source: 'user_model',
     extraction_config: {},
     last_extracted_at: '2026-04-20T08:00:00Z',
     estimated_cost_usd: '0.00',

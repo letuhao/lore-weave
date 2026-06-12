@@ -1,7 +1,10 @@
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 
+// Language labels are native names + ISO code — not translated. "All" is the
+// only translatable entry (rendered via t() in the component).
 const LANGUAGES = [
-  { code: '', label: 'All' },
+  { code: '', label: '' },
   { code: 'ja', label: '日本語 (ja)' },
   { code: 'en', label: 'English (en)' },
   { code: 'vi', label: 'Tiếng Việt (vi)' },
@@ -9,12 +12,7 @@ const LANGUAGES = [
   { code: 'ko', label: '한국어 (ko)' },
 ];
 
-const SORTS = [
-  { value: 'recent', label: 'Most recent' },
-  { value: 'popular', label: 'Most popular' },
-  { value: 'chapters', label: 'Most chapters' },
-  { value: 'alpha', label: 'Alphabetical' },
-];
+const SORTS = ['recent', 'popular', 'chapters', 'alpha'] as const;
 
 // Deterministic color from genre name hash (no genre_groups lookup needed)
 const GENRE_COLORS = [
@@ -44,6 +42,7 @@ export function FilterBar({
   language, genres, availableGenres, sort, total,
   onLanguageChange, onGenreToggle, onGenreClear, onSortChange,
 }: Props) {
+  const { t } = useTranslation('catalog');
   return (
     <div>
       {/* Filter chips */}
@@ -60,7 +59,7 @@ export function FilterBar({
                 : 'text-muted-foreground hover:border-border/80 hover:text-foreground',
             )}
           >
-            {l.label}
+            {l.code === '' ? t('filter.lang_all') : l.label}
           </button>
         ))}
 
@@ -75,7 +74,7 @@ export function FilterBar({
                 onClick={onGenreClear}
                 className="rounded-full border border-dashed px-2.5 py-1 text-[10px] text-muted-foreground hover:border-border/80 hover:text-foreground transition-colors"
               >
-                Clear genres
+                {t('filter.clear_genres')}
               </button>
             )}
           </>
@@ -107,7 +106,7 @@ export function FilterBar({
       {/* Results count + sort */}
       <div className="mb-4 flex items-center justify-between">
         <span className="text-[13px] text-muted-foreground">
-          {total} book{total !== 1 ? 's' : ''} found
+          {t('filter.books_found', { count: total })}
           {genres.length > 0 && (
             <> &middot; {genres.map((g, i) => (
               <span key={g}>
@@ -123,11 +122,11 @@ export function FilterBar({
         <select
           value={sort}
           onChange={(e) => onSortChange(e.target.value)}
-          aria-label="Sort books by"
+          aria-label={t('filter.sort_aria')}
           className="h-8 rounded-md border bg-background px-2.5 text-xs"
         >
           {SORTS.map((s) => (
-            <option key={s.value} value={s.value}>{s.label}</option>
+            <option key={s} value={s}>{t(`filter.sort.${s}`)}</option>
           ))}
         </select>
       </div>

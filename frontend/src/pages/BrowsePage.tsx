@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { booksApi } from '@/features/books/api';
@@ -20,6 +21,7 @@ type CatalogBook = {
 };
 
 export function BrowsePage() {
+  const { t } = useTranslation('catalog');
   const [books, setBooks] = useState<CatalogBook[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -50,7 +52,7 @@ export function BrowsePage() {
       // Use the catalog API — no auth required
       const res = await fetch(`${import.meta.env.VITE_API_BASE || ''}/v1/catalog/books${qs ? `?${qs}` : ''}`);
       if (controller.signal.aborted) return;
-      if (!res.ok) throw new Error('Failed to load catalog');
+      if (!res.ok) throw new Error(t('browse.load_failed'));
       const data = await res.json();
       const items: CatalogBook[] = data.items ?? [];
       setBooks(items);
@@ -67,7 +69,7 @@ export function BrowsePage() {
       if (controller.signal.aborted) return;
       setBooks([]);
       setTotal(0);
-      toast.error('Failed to load catalog');
+      toast.error(t('browse.load_failed'));
     } finally {
       if (!controller.signal.aborted) setLoading(false);
     }
@@ -112,9 +114,9 @@ export function BrowsePage() {
     <div className="mx-auto max-w-[1100px] px-6 py-6">
       {/* Hero */}
       <div className="pb-6 pt-8 text-center">
-        <h1 className="font-serif text-2xl font-semibold">Discover Stories</h1>
+        <h1 className="font-serif text-2xl font-semibold">{t('browse.title')}</h1>
         <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
-          Browse public novels from the LoreWeave community. Read, translate, and explore stories across languages.
+          {t('browse.subtitle')}
         </p>
       </div>
 
@@ -126,8 +128,8 @@ export function BrowsePage() {
             type="text"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            placeholder="Search by title, author, or language..."
-            aria-label="Search catalog"
+            placeholder={t('browse.search_placeholder')}
+            aria-label={t('browse.search_aria')}
             className="h-[42px] w-full rounded-[10px] border bg-background pl-10 pr-4 text-sm placeholder:text-muted-foreground/40 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
           />
         </div>
@@ -155,7 +157,7 @@ export function BrowsePage() {
         </div>
       ) : books.length === 0 ? (
         <div className="py-16 text-center text-sm text-muted-foreground">
-          No books found. Try a different search or filter.
+          {t('browse.no_books')}
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">

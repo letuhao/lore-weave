@@ -29,12 +29,23 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 from collections.abc import Iterable
-from typing import Any, Literal
+from typing import Any, Literal, TypedDict
 from uuid import UUID
 
-from loreweave_extraction import ContextBudget, get_extractor_version
+from loreweave_extraction import (
+    ContextBudget,
+    EntityRecoveryConfig,
+    FilterDecision,
+    Pass2Candidates,
+    PrecisionFilterConfig,
+    RecoveryDecision,
+    apply_precision_filter,
+    get_extractor_version,
+    recover_missing_entities,
+)
 from loreweave_extraction.extractors.entity import extract_entities
 from loreweave_extraction.extractors.event import extract_events
 from loreweave_extraction.extractors.fact import extract_facts
@@ -51,7 +62,12 @@ from app.extraction.hierarchy_writer import HierarchyPaths
 from app.extraction.pass2_writer import Pass2WriteResult, write_pass2_extraction
 from app.jobs.summary_enqueue import SummaryEnqueueFn, SummarizeMessage
 from app.jobs.task_id import compute_task_id
-from app.metrics import knowledge_extraction_dropped_total
+from app.metrics import (
+    knowledge_extraction_dropped_total,
+    knowledge_extraction_filter_coverage_ratio,
+    knowledge_extraction_filter_decisions_total,
+    knowledge_extraction_recovery_decisions_total,
+)
 
 __all__ = [
     "extract_pass2_chat_turn",
@@ -59,6 +75,466 @@ __all__ = [
     "enqueue_chapter_and_maybe_book_summaries",
     "gather_relations_events_facts",
 ]
+
+
+# ── Cycle 72 — precision filter env-driven config ──────────────────────
+
+
+def _load_precision_filter_config() -> PrecisionFilterConfig | None:
+    """Read the cycle-72 precision filter env config.
+
+    Returns:
+        ``PrecisionFilterConfig`` when
+        ``KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_REF`` is set;
+        ``None`` otherwise (filter disabled — default).
+
+    Envs (all optional):
+        KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_REF: gateway
+            model_ref / UUID for the precision filter LLM. Unset = off.
+        KNOWLEDGE_EXTRACTION_PRECISION_FILTER_PARTIAL_POLICY: ``"keep"``
+            (default) or ``"drop"``.
+        KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_SOURCE: ``"user_model"``
+            (default) or ``"platform_model"``.
+        KNOWLEDGE_EXTRACTION_PRECISION_FILTER_CATEGORIES: comma-separated
+            subset of ``{"entity","relation","event"}`` (default
+            ``"entity,relation,event"`` for cycle-72 backward-compat;
+            cycle-73b ship uses ``"relation"`` for 55% latency
+            reduction at near-identical F1).
+    """
+    model_ref = os.environ.get(
+        "KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_REF", ""
+    ).strip()
+    if not model_ref:
+        return None
+    partial_policy = os.environ.get(
+        "KNOWLEDGE_EXTRACTION_PRECISION_FILTER_PARTIAL_POLICY", "keep"
+    ).strip() or "keep"
+    model_source = os.environ.get(
+        "KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_SOURCE", "user_model"
+    ).strip() or "user_model"
+    categories_env = os.environ.get(
+        "KNOWLEDGE_EXTRACTION_PRECISION_FILTER_CATEGORIES",
+        "entity,relation,event",
+    ).strip() or "entity,relation,event"
+    categories = tuple(
+        c.strip() for c in categories_env.split(",") if c.strip()
+    )
+    return PrecisionFilterConfig(
+        model_ref=model_ref,
+        model_source=model_source,  # type: ignore[arg-type]
+        partial_policy=partial_policy,  # type: ignore[arg-type]
+        categories=categories,  # type: ignore[arg-type]
+    )
+
+
+# Cached at module load. Re-read by tests via patch on this name.
+# Cycle 73f: overridable at runtime via reload_precision_filter_config_from_redis()
+# called from lifespan startup + filter-reload subscriber. Module-level rebind
+# is atomic via Python GIL; in-flight readers keep their reference per call.
+_PRECISION_FILTER_CONFIG: PrecisionFilterConfig | None = _load_precision_filter_config()
+
+
+def set_precision_filter_config(
+    new_config: PrecisionFilterConfig | None,
+) -> PrecisionFilterConfig | None:
+    """Cycle 73f — atomically replace module-level cache.
+
+    Called by:
+      - reload endpoint after writing to Redis (immediate local apply)
+      - subscriber task on pubsub receipt (catches reloads from other services)
+      - lifespan startup after reading current Redis state
+
+    Returns the now-effective config (echoed in API response)."""
+    global _PRECISION_FILTER_CONFIG
+    _PRECISION_FILTER_CONFIG = new_config
+    return _PRECISION_FILTER_CONFIG
+
+
+async def hydrate_precision_filter_config_from_redis(redis_url: str) -> None:
+    """Cycle 73f r2 H1 fold — on KS lifespan startup, GET the Redis key
+    and seed the module-level cache. Without this, container restart
+    loses ops-override until first reload-endpoint POST. Bumps
+    `knowledge_extraction_filter_reload_total{source=startup}` metric.
+    """
+    import redis.asyncio as aioredis
+
+    from app.metrics import knowledge_extraction_filter_reload_total
+    from loreweave_extraction import get_filter_config
+
+    redis_client = aioredis.from_url(redis_url, decode_responses=False)
+    try:
+        cached = await get_filter_config(redis_client)
+        if cached is not None:
+            set_precision_filter_config(cached)
+            knowledge_extraction_filter_reload_total.labels(
+                source="startup", outcome="applied",
+            ).inc()
+            logger.info(
+                "cycle 73f: hydrated filter config from Redis on startup "
+                "(model_ref=%s, categories=%s)",
+                cached.model_ref, cached.categories,
+            )
+        else:
+            logger.info(
+                "cycle 73f: Redis filter config absent — using env defaults",
+            )
+    except Exception:
+        knowledge_extraction_filter_reload_total.labels(
+            source="startup", outcome="failed",
+        ).inc()
+        logger.exception(
+            "cycle 73f: failed to hydrate filter config from Redis "
+            "(non-fatal; using env defaults)",
+        )
+    finally:
+        try:
+            await redis_client.aclose()
+        except Exception:
+            pass
+
+
+async def consume_filter_reload_signal(redis_url: str) -> None:
+    """Cycle 73f r2 H1 fold — KS subscriber task. Listens on the
+    filter-reload pubsub channel; on each signal, re-reads Redis +
+    atomically swaps module-level cache. Without this, multi-replica KS
+    deployments (the cloud default per CLAUDE.md) silently drift —
+    only the replica that received the POST gets the new config.
+
+    Resilient: SDK's subscribe_filter_reload has outer try/except with
+    backoff so this never bubbles into lifespan and breaks startup.
+    """
+    import redis.asyncio as aioredis
+
+    from app.metrics import knowledge_extraction_filter_reload_total
+    from loreweave_extraction import (
+        get_filter_config,
+        subscribe_filter_reload,
+    )
+
+    redis_client = aioredis.from_url(redis_url, decode_responses=False)
+
+    async def _on_reload() -> None:
+        try:
+            new_config = await get_filter_config(redis_client)
+            if new_config is None:
+                # Cycle 74b — key absent (e.g. after a disable=true DELETE)
+                # reverts to env config, matching startup-hydrate semantics.
+                # Without this the runtime path set None (filter OFF) while a
+                # restart reloads env config (filter ON) — a silent cross-path
+                # divergence surfaced by the cycle-73f live smoke. `_load`
+                # returns None when no filter env is set, so a genuinely
+                # no-filter deployment still ends at None.
+                new_config = _load_precision_filter_config()
+            set_precision_filter_config(new_config)
+            knowledge_extraction_filter_reload_total.labels(
+                source="pubsub", outcome="applied",
+            ).inc()
+            logger.info(
+                "cycle 73f: KS filter config reloaded from Redis "
+                "(active=%s)", new_config is not None,
+            )
+        except Exception:
+            knowledge_extraction_filter_reload_total.labels(
+                source="pubsub", outcome="failed",
+            ).inc()
+            logger.exception(
+                "cycle 73f: KS failed to re-read filter config from "
+                "Redis on pubsub signal",
+            )
+
+    try:
+        await subscribe_filter_reload(redis_client, _on_reload)
+    finally:
+        try:
+            await redis_client.aclose()
+        except Exception:
+            pass
+
+
+def _load_entity_recovery_config() -> EntityRecoveryConfig | None:
+    """Cycle 73d — read entity recovery env config.
+
+    Envs (all optional):
+        KNOWLEDGE_EXTRACTION_ENTITY_RECOVERY_MODEL_REF: gateway
+            model_ref / UUID for the LLM classifier (Tier 3). Unset = off.
+        KNOWLEDGE_EXTRACTION_ENTITY_RECOVERY_MODEL_SOURCE: default
+            "user_model".
+        KNOWLEDGE_EXTRACTION_ENTITY_RECOVERY_MAX_BATCH: int (default 5).
+    """
+    model_ref = os.environ.get(
+        "KNOWLEDGE_EXTRACTION_ENTITY_RECOVERY_MODEL_REF", ""
+    ).strip()
+    if not model_ref:
+        return None
+    model_source = os.environ.get(
+        "KNOWLEDGE_EXTRACTION_ENTITY_RECOVERY_MODEL_SOURCE", "user_model"
+    ).strip() or "user_model"
+    max_batch_env = os.environ.get(
+        "KNOWLEDGE_EXTRACTION_ENTITY_RECOVERY_MAX_BATCH", "5"
+    ).strip() or "5"
+    try:
+        max_batch = int(max_batch_env)
+    except ValueError:
+        max_batch = 5
+    return EntityRecoveryConfig(
+        model_ref=model_ref,
+        model_source=model_source,  # type: ignore[arg-type]
+        max_items_per_batch=max(1, max_batch),
+        # known_entity_kinds populated per-call from glossary anchors
+    )
+
+
+_ENTITY_RECOVERY_CONFIG: EntityRecoveryConfig | None = _load_entity_recovery_config()
+
+
+class _WriterAutocreateKwargs(TypedDict):
+    """Typed kwargs spreadable into ``write_pass2_extraction(**)``.
+
+    Cycle 73e — used by ``_load_writer_autocreate_config`` so the
+    ``**_WRITER_AUTOCREATE_CONFIG`` spread is mypy-clean. Matches the
+    new kwargs added to ``pass2_writer.write_pass2_extraction`` exactly.
+    """
+    autocreate_enabled: bool
+    autocreate_max: int | None
+
+
+def _load_writer_autocreate_config() -> _WriterAutocreateKwargs:
+    """Cycle 73e — read Pass2 writer autocreate env config.
+
+    Returns a TypedDict spreadable into ``write_pass2_extraction(**)``.
+    Default: disabled. Tier A.1/A.2 free repairs still run regardless;
+    only Tier B autocreate is gated.
+
+    Envs (all optional):
+        KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED: ``"true"`` /
+            ``"1"`` / ``"yes"`` / ``"on"`` (case-insensitive) enables
+            Tier B. Anything else (default) keeps it off.
+        KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_MAX_PER_CHAPTER: int
+            cap per chapter (default 20). Empty / non-numeric also
+            defaults to 20.
+    """
+    enabled_env = os.environ.get(
+        "KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED", "false"
+    ).strip().lower()
+    enabled = enabled_env in ("true", "1", "yes", "on")
+    max_env = os.environ.get(
+        "KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_MAX_PER_CHAPTER", "20"
+    ).strip() or "20"
+    try:
+        max_per_chapter: int | None = max(1, int(max_env))
+    except ValueError:
+        max_per_chapter = 20
+    return {
+        "autocreate_enabled": enabled,
+        "autocreate_max": max_per_chapter,
+    }
+
+
+_WRITER_AUTOCREATE_CONFIG: _WriterAutocreateKwargs = _load_writer_autocreate_config()
+
+
+def _on_recovery_decision(decision: RecoveryDecision) -> None:
+    """Bridge RecoveryDecision callbacks to Prometheus counter."""
+    knowledge_extraction_recovery_decisions_total.labels(
+        source=decision.source, verdict=decision.verdict,
+    ).inc()
+
+
+def _on_filter_decision(decision: FilterDecision) -> None:
+    """Bridge `FilterDecision` callbacks to the Prometheus counter."""
+    knowledge_extraction_filter_decisions_total.labels(
+        category=decision.category, verdict=decision.verdict
+    ).inc()
+
+
+async def _maybe_apply_entity_recovery(
+    *,
+    entities: list[Any],
+    relations: list[Any],
+    events: list[Any],
+    facts: list[Any],
+    text: str,
+    user_id: str,
+    project_id: str | None,
+    llm_client: LLMClient,
+    anchors: list[Anchor] | None,
+    job_logs_repo: JobLogsRepo | None,
+    job_id: str,
+    source_type: str,
+    source_id: str,
+) -> tuple[list[Any], list[Any], list[Any], list[Any]]:
+    """Cycle 73d — optional 3-tier entity recovery (runs BEFORE filter).
+
+    Glossary anchors are merged into the EntityRecoveryConfig's
+    known_entity_kinds map for Tier 1 lookup. Tier 3 (LLM classifier)
+    handles names not in glossary. Author hints surface is future work
+    (no API yet).
+    """
+    if _ENTITY_RECOVERY_CONFIG is None:
+        return entities, relations, events, facts
+
+    # Build name→kind from glossary anchors (name + aliases, lowercase
+    # for case-insensitive lookup downstream).
+    known_kinds: dict[str, str] = {}
+    if anchors:
+        for a in anchors:
+            known_kinds[a.name] = a.kind
+            for alias in a.aliases:
+                known_kinds.setdefault(alias, a.kind)
+
+    # Inject per-call config with merged known_entity_kinds.
+    from dataclasses import replace as dc_replace
+    config = dc_replace(
+        _ENTITY_RECOVERY_CONFIG, known_entity_kinds=known_kinds
+    )
+
+    pre_entity_count = len(entities)
+    pre_rel_count = len(relations)
+
+    recovery_started = time.perf_counter()
+    enriched = await recover_missing_entities(
+        Pass2Candidates(
+            entities=entities,
+            relations=relations,
+            events=events,
+            facts=facts,
+        ),
+        text=text,
+        config=config,
+        user_id=user_id,
+        project_id=project_id,
+        llm_client=llm_client,
+        on_decision=_on_recovery_decision,
+    )
+    recovery_elapsed = time.perf_counter() - recovery_started
+
+    post_entity_count = len(enriched.entities)
+    post_rel_count = len(enriched.relations)
+
+    await _emit_log(
+        job_logs_repo, user_id, job_id,
+        f"Pass 2 entity recovery: "
+        f"ent {pre_entity_count}->{post_entity_count} "
+        f"(+{post_entity_count - pre_entity_count} recovered), "
+        f"rel {pre_rel_count}->{post_rel_count} "
+        f"({pre_rel_count - post_rel_count} dropped as abstract) "
+        f"in {recovery_elapsed:.2f}s "
+        f"(glossary hints: {len(known_kinds)})",
+        context={
+            "event": "pass2_entity_recovery",
+            "source_type": source_type,
+            "source_id": source_id,
+            "entities_in": pre_entity_count,
+            "entities_out": post_entity_count,
+            "relations_in": pre_rel_count,
+            "relations_out": post_rel_count,
+            "glossary_hint_count": len(known_kinds),
+            "duration_ms": int(recovery_elapsed * 1000),
+        },
+    )
+
+    return (
+        enriched.entities,
+        enriched.relations,
+        enriched.events,
+        enriched.facts,
+    )
+
+
+async def _maybe_apply_precision_filter(
+    *,
+    entities: list[Any],
+    relations: list[Any],
+    events: list[Any],
+    facts: list[Any],
+    text: str,
+    user_id: str,
+    llm_client: LLMClient,
+    job_logs_repo: JobLogsRepo | None,
+    job_id: str,
+    source_type: str,
+    source_id: str,
+) -> tuple[list[Any], list[Any], list[Any], list[Any]]:
+    """Cycle 72 — optional precision filter pass between gather and write.
+
+    When ``_PRECISION_FILTER_CONFIG`` is None, returns the inputs
+    unchanged (zero-overhead pass-through).
+
+    When set, wraps the candidates into a ``Pass2Candidates``, calls
+    ``apply_precision_filter``, emits a stage log + updates the
+    coverage gauge, and returns the filtered lists. Facts are NEVER
+    filtered (per spec D2 — passed through unchanged).
+    """
+    # Cycle 73f r3 H2 fold — snapshot the module-level config to a LOCAL
+    # variable at function entry. Without this, a concurrent pubsub-driven
+    # reload could rebind `_PRECISION_FILTER_CONFIG = None` between the
+    # `is None` check below and the later `config=...` read, passing None
+    # into `apply_precision_filter` whose call sites assume non-None →
+    # AttributeError crashes the extraction job instead of gracefully
+    # falling through. Snapshot makes this function atomic w.r.t. reload.
+    cfg = _PRECISION_FILTER_CONFIG
+    if cfg is None:
+        return entities, relations, events, facts
+
+    pass2_candidates = Pass2Candidates(
+        entities=entities,
+        relations=relations,
+        events=events,
+        facts=facts,
+    )
+
+    filter_started = time.perf_counter()
+    filtered = await apply_precision_filter(
+        pass2_candidates,
+        text=text,
+        config=cfg,
+        user_id=user_id,
+        llm_client=llm_client,
+        on_decision=_on_filter_decision,
+    )
+    filter_elapsed = time.perf_counter() - filter_started
+
+    # Update coverage gauge per category.
+    for cat, cov in filtered.filter_coverage.items():
+        if cat in ("entity", "relation", "event"):
+            knowledge_extraction_filter_coverage_ratio.labels(
+                category=cat
+            ).set(cov)
+
+    # Stage log so the FE log panel can show filter progress.
+    await _emit_log(
+        job_logs_repo, user_id, job_id,
+        f"Pass 2 precision filter ({filtered.filter_status}): "
+        f"ent {len(entities)}->{len(filtered.entities)}, "
+        f"rel {len(relations)}->{len(filtered.relations)}, "
+        f"evt {len(events)}->{len(filtered.events)} "
+        f"in {filter_elapsed:.2f}s "
+        f"(coverage entity={filtered.filter_coverage.get('entity', 1.0):.0%} "
+        f"relation={filtered.filter_coverage.get('relation', 1.0):.0%} "
+        f"event={filtered.filter_coverage.get('event', 1.0):.0%})",
+        context={
+            "event": "pass2_precision_filter",
+            "source_type": source_type,
+            "source_id": source_id,
+            "filter_status": filtered.filter_status,
+            "filter_coverage": filtered.filter_coverage,
+            "entities_in": len(entities),
+            "entities_out": len(filtered.entities),
+            "relations_in": len(relations),
+            "relations_out": len(filtered.relations),
+            "events_in": len(events),
+            "events_out": len(filtered.events),
+            "duration_ms": int(filter_elapsed * 1000),
+        },
+    )
+
+    # Facts are NOT filtered per spec D2; pass through unchanged.
+    return (
+        filtered.entities,
+        filtered.relations,
+        filtered.events,
+        facts,
+    )
 
 
 # ── P2 (hierarchical extraction T3) — D3 cache integration ──────────────────
@@ -349,6 +825,7 @@ async def _run_pipeline(
             job_id=job_id,
             extraction_model=model_ref,
             anchors=anchors,
+            **_WRITER_AUTOCREATE_CONFIG,
         )
 
     started = time.perf_counter()
@@ -420,6 +897,7 @@ async def _run_pipeline(
             job_id=job_id,
             extraction_model=model_ref,
             anchors=anchors,
+            **_WRITER_AUTOCREATE_CONFIG,
         )
 
     # Steps 2-4 — relation/event/fact run concurrently. All three
@@ -476,6 +954,39 @@ async def _run_pipeline(
     )
     gather_elapsed = time.perf_counter() - gather_started
 
+    # Cycle 73d — optional entity recovery (runs BEFORE filter so the
+    # filter operates on enriched candidates). No-op when env unset.
+    entities, relation_cands, event_cands, fact_cands = await _maybe_apply_entity_recovery(
+        entities=entities,
+        relations=relation_cands,
+        events=event_cands,
+        facts=fact_cands,
+        text=text,
+        user_id=user_id,
+        project_id=project_id,
+        llm_client=llm_client,
+        anchors=anchors,
+        job_logs_repo=job_logs_repo,
+        job_id=job_id,
+        source_type=source_type,
+        source_id=source_id,
+    )
+
+    # Cycle 72 — optional precision filter (no-op when env unset).
+    entities, relation_cands, event_cands, fact_cands = await _maybe_apply_precision_filter(
+        entities=entities,
+        relations=relation_cands,
+        events=event_cands,
+        facts=fact_cands,
+        text=text,
+        user_id=user_id,
+        llm_client=llm_client,
+        job_logs_repo=job_logs_repo,
+        job_id=job_id,
+        source_type=source_type,
+        source_id=source_id,
+    )
+
     elapsed = time.perf_counter() - started
     logger.info(
         "Pass 2 extraction complete: %d entities, %d relations, "
@@ -516,6 +1027,7 @@ async def _run_pipeline(
         extraction_model=model_ref,
         anchors=anchors,
         hierarchy_paths=hierarchy_paths,   # P3 D2a — hierarchy MERGE in same Tx
+        **_WRITER_AUTOCREATE_CONFIG,
     )
     write_elapsed = time.perf_counter() - write_started
     await _emit_log(
@@ -576,6 +1088,11 @@ async def enqueue_chapter_and_maybe_book_summaries(
     embedding_dimension: int,
     is_last_chapter_of_book: bool,
     book_parts: list[tuple[str, str, str]],
+    # E0-3 Phase 2a-2 — BYOK billing identity forwarded onto every summary
+    # message so summary_processor bills the collaborator (empty ⇒ owner/legacy).
+    billing_user_id: str = "",
+    billing_llm_model: str = "",
+    billing_embedding_model: str = "",
 ) -> None:
     """Always enqueue summary.chapter for this chapter. On is_last_chapter,
     additionally enqueue summary.part per book_parts + summary.book.
@@ -596,6 +1113,9 @@ async def enqueue_chapter_and_maybe_book_summaries(
         model_ref=model_ref,
         embedding_model_uuid=embedding_model_uuid,
         embedding_dimension=embedding_dimension,
+        billing_user_id=billing_user_id,
+        billing_llm_model=billing_llm_model,
+        billing_embedding_model=billing_embedding_model,
     ))
     if not is_last_chapter_of_book:
         return
@@ -612,6 +1132,9 @@ async def enqueue_chapter_and_maybe_book_summaries(
             model_ref=model_ref,
             embedding_model_uuid=embedding_model_uuid,
             embedding_dimension=embedding_dimension,
+            billing_user_id=billing_user_id,
+            billing_llm_model=billing_llm_model,
+            billing_embedding_model=billing_embedding_model,
         ))
     # 3. Book summary — last.
     await summary_enqueue(SummarizeMessage(
@@ -625,6 +1148,9 @@ async def enqueue_chapter_and_maybe_book_summaries(
         model_ref=model_ref,
         embedding_model_uuid=embedding_model_uuid,
         embedding_dimension=embedding_dimension,
+        billing_user_id=billing_user_id,
+        billing_llm_model=billing_llm_model,
+        billing_embedding_model=billing_embedding_model,
     ))
 
 

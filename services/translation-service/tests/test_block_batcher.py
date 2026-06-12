@@ -71,6 +71,29 @@ class TestComputeInputBudget:
         # available = 29700, input = 29700 / (1 + 1.3) = 12913
         assert budget == 12913
 
+    def test_extra_system_tokens_shrink_budget(self):
+        # D-TRANSL-EXTRASYSTEM-BUDGET: injected context (romanization + knowledge
+        # brief + prev-memo) must be reserved → budget shrinks vs. no extra.
+        base = compute_input_budget(32000, "zh", "vi")
+        with_extra = compute_input_budget(32000, "zh", "vi", extra_system_tokens=900)
+        # overhead +900 → available -900 → input -900/(1+2.0) = -300
+        assert with_extra == base - 300
+
+    def test_extra_system_tokens_default_zero_is_parity(self):
+        assert (compute_input_budget(32000, "zh", "vi", extra_system_tokens=0)
+                == compute_input_budget(32000, "zh", "vi"))
+
+    def test_build_batch_plan_honors_extra_system_tokens(self):
+        # A bigger extra_system reservation yields a smaller (or equal) per-batch
+        # budget → at least as many batches for the same blocks.
+        blocks = [{"type": "paragraph", "content": [{"type": "text", "text": "x" * 400}]}
+                  for _ in range(6)]
+        few = build_batch_plan(blocks, context_window_tokens=4000,
+                               source_lang="zh", target_lang="vi")
+        many = build_batch_plan(blocks, context_window_tokens=4000,
+                                source_lang="zh", target_lang="vi", extra_system_tokens=1500)
+        assert len(many.batches) >= len(few.batches)
+
 
 # ── build_batch_plan ─────────────────────────────────────────────────────────
 

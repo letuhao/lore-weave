@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="vi" class="dark">
+<head>
+<meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>LoreWeave — Enrichment: Gaps & Sources (mockup)</title>
+<!-- DESIGN DRAFT — the TRIGGER side of enrichment: Gaps (detect → auto-enrich) and
+     Sources (license-tagged corpus). Same dark warm theme + idioms as enrichment-review.html. -->
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{--background:25 8% 8%;--foreground:40 30% 95%;--card:25 7% 11%;--primary:35 85% 55%;--primary-foreground:25 30% 10%;--secondary:25 6% 20%;--muted-foreground:25 10% 60%;--border:25 6% 18%;--success:120 40% 50%;--warning:35 85% 55%;--info:200 60% 50%;--destructive:0 84% 60%;}
+  body{font-family:Inter,system-ui,sans-serif;background:hsl(var(--background));color:hsl(var(--foreground))}
+  .font-serif{font-family:Lora,serif}.font-mono{font-family:'JetBrains Mono',monospace}
+  .bg-card{background:hsl(var(--card))}.bg-secondary{background:hsl(var(--secondary))}.bg-background{background:hsl(var(--background))}
+  .text-muted-foreground{color:hsl(var(--muted-foreground))}.text-primary{color:hsl(var(--primary))}.bg-primary{background:hsl(var(--primary))}.text-primary-foreground{color:hsl(var(--primary-foreground))}
+  .border-c{border-color:hsl(var(--border))}.text-success{color:hsl(var(--success))}.text-warning{color:hsl(var(--warning))}.text-info{color:hsl(var(--info))}.text-destructive{color:hsl(var(--destructive))}
+  .bg-success\/10{background:hsl(var(--success)/.12)}.bg-warning\/12{background:hsl(var(--warning)/.14)}.bg-info\/10{background:hsl(var(--info)/.12)}.bg-destructive\/10{background:hsl(var(--destructive)/.12)}.bg-primary\/10{background:hsl(var(--primary)/.12)}
+</style>
+</head>
+<body>
+<div class="px-8 py-6 max-w-5xl mx-auto space-y-8">
+
+  <!-- ───────── GAPS TAB ───────── -->
+  <section>
+    <div class="flex items-center justify-between mb-1">
+      <h1 class="font-serif text-xl font-semibold">Gaps — entity thiếu mô tả</h1>
+      <div class="flex gap-2">
+        <button class="rounded-md border border-c px-3 py-1.5 text-xs font-medium hover:bg-secondary">⟳ Detect gaps</button>
+        <button class="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground">✨ Auto-enrich top 3 ▾</button>
+      </div>
+    </div>
+    <p class="text-xs text-muted-foreground mb-3">Phát hiện 5/11 entity dưới-mô-tả, xếp hạng theo độ quan trọng. Chọn → bồi đắp (chạy nền, có cost-cap + eval-gate).</p>
+
+    <div class="rounded-lg border border-c bg-card overflow-hidden">
+      <table class="w-full text-sm">
+        <thead class="text-[11px] uppercase tracking-wider text-muted-foreground" style="background:rgba(24,20,18,.4)">
+          <tr><th class="text-left px-4 py-2 font-medium">Entity</th><th class="text-left px-4 py-2 font-medium">Kind</th><th class="text-left px-4 py-2 font-medium">Dimensions thiếu</th><th class="text-left px-4 py-2 font-medium">Rank</th><th class="px-4 py-2"></th></tr>
+        </thead>
+        <tbody class="divide-y divide-[hsl(25_6%_15%)]">
+          <tr class="hover:bg-secondary/40">
+            <td class="px-4 py-2.5 font-serif font-medium">昆侖山 <input type="checkbox" checked class="ml-2 align-middle accent-amber-500"/></td>
+            <td class="px-4 py-2.5 text-muted-foreground">location</td>
+            <td class="px-4 py-2.5"><span class="font-mono text-[11px] text-warning">历史·地理·文化·features·inhabitants</span></td>
+            <td class="px-4 py-2.5"><span class="rounded bg-warning/12 px-1.5 py-0.5 text-[11px] text-warning font-mono">0.92</span></td>
+            <td class="px-4 py-2.5 text-right"><button class="text-xs text-primary hover:underline">enrich →</button></td>
+          </tr>
+          <tr class="hover:bg-secondary/40">
+            <td class="px-4 py-2.5 font-serif font-medium">陳塘關 <input type="checkbox" checked class="ml-2 align-middle accent-amber-500"/></td>
+            <td class="px-4 py-2.5 text-muted-foreground">location</td>
+            <td class="px-4 py-2.5"><span class="font-mono text-[11px] text-warning">历史·地理·文化</span></td>
+            <td class="px-4 py-2.5"><span class="rounded bg-warning/12 px-1.5 py-0.5 text-[11px] text-warning font-mono">0.81</span></td>
+            <td class="px-4 py-2.5 text-right"><button class="text-xs text-primary hover:underline">enrich →</button></td>
+          </tr>
+          <tr class="hover:bg-secondary/40">
+            <td class="px-4 py-2.5 font-serif font-medium">蓬萊 <input type="checkbox" class="ml-2 align-middle accent-amber-500"/></td>
+            <td class="px-4 py-2.5 text-muted-foreground">location</td>
+            <td class="px-4 py-2.5"><span class="font-mono text-[11px] text-success">✓ đã bồi đắp (5/5)</span></td>
+            <td class="px-4 py-2.5"><span class="rounded bg-secondary px-1.5 py-0.5 text-[11px] text-muted-foreground font-mono">0.40</span></td>
+            <td class="px-4 py-2.5 text-right"><button class="text-xs text-muted-foreground">re-enrich</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- auto-enrich config popover (inline preview) -->
+    <div class="mt-3 rounded-lg border border-c bg-card px-4 py-3 flex flex-wrap items-center gap-4 text-xs">
+      <div><span class="text-muted-foreground">Technique</span> <select class="ml-1 rounded border border-c bg-background px-2 py-1"><option>P1 retrieval</option><option>P2 fabrication</option><option selected>P3 recook</option></select></div>
+      <div><span class="text-muted-foreground">Gen model</span> <span class="ml-1 font-mono">qwen3.6-35b ▾</span></div>
+      <div><span class="text-muted-foreground">Embed</span> <span class="ml-1 font-mono">bge-m3 ▾</span></div>
+      <div><span class="text-muted-foreground">Cost-cap</span> <span class="ml-1 font-mono">50,000 tok</span></div>
+      <div class="ml-auto text-muted-foreground">⚠ P2/P3 cần eval-gate pass (judge đa dạng)</div>
+    </div>
+  </section>
+
+  <!-- ───────── SOURCES TAB ───────── -->
+  <section>
+    <div class="flex items-center justify-between mb-1">
+      <h1 class="font-serif text-xl font-semibold">Sources — corpus gắn nhãn license</h1>
+      <button class="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground">+ Register source</button>
+    </div>
+    <p class="text-xs text-muted-foreground mb-3">Chất liệu nguồn cho retrieval / recook. <strong class="text-warning">Default-deny</strong>: chỉ <em>public-domain / licensed</em> mới được recook (tầng ①). Bạn chịu trách nhiệm license nguồn mình nạp.</p>
+
+    <div class="grid grid-cols-2 gap-3">
+      <div class="rounded-lg border border-c bg-card px-4 py-3">
+        <div class="flex items-center justify-between"><span class="font-serif font-medium">史料-c17-demo-pd</span>
+          <span class="rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-medium text-success">public-domain ✓</span></div>
+        <p class="mt-1 font-mono text-[11px] text-muted-foreground">kind=history · 1 chunk · embedded ✓ · recook-OK</p>
+      </div>
+      <div class="rounded-lg border border-c bg-card px-4 py-3">
+        <div class="flex items-center justify-between"><span class="font-serif font-medium">山海经-c16-demo</span>
+          <span class="rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-medium text-success">public-domain ✓</span></div>
+        <p class="mt-1 font-mono text-[11px] text-muted-foreground">kind=shanhaijing · 1 chunk · embedded ✓ · recook-OK</p>
+      </div>
+      <div class="rounded-lg border border-c bg-card px-4 py-3 opacity-80">
+        <div class="flex items-center justify-between"><span class="font-serif font-medium">某版权新闻</span>
+          <span class="rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-medium text-destructive">copyrighted ⛔</span></div>
+        <p class="mt-1 font-mono text-[11px] text-destructive">kind=other · recook REFUSED (default-deny) — chỉ retrieval, không recook</p>
+      </div>
+      <div class="rounded-lg border border-dashed border-c bg-card/50 px-4 py-3 flex items-center justify-center text-muted-foreground text-xs cursor-pointer hover:bg-secondary/30">
+        + Register &amp; ingest a new corpus
+      </div>
+    </div>
+  </section>
+
+  <p class="text-center text-[11px] text-muted-foreground pt-4">Mockup · Jobs tab (trạng thái job + resume) tương tự bảng Gaps — sẽ làm khi build.</p>
+</div>
+</body>
+</html>

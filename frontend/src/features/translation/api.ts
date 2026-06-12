@@ -28,6 +28,12 @@ export type ChapterTranslation = {
   started_at: string | null;
   finished_at: string | null;
   created_at: string;
+  // V3 quality rollup (M5a). null/0 for V2 chapters.
+  quality_score: number | null;
+  unresolved_high_count: number;
+  qa_rounds_used: number;
+  // M5c: true when a glossary change post-dates this translation.
+  is_glossary_stale: boolean;
 };
 
 export type TranslationJob = {
@@ -73,6 +79,9 @@ export type CoverageCell = {
   latest_version_num: number | null;
   latest_status: ChapterTranslationStatus | 'running' | null;
   version_count: number;
+  // M6b-2: active version's glossary-staleness (fallback latest). Legacy rows
+  // default false (additive — old servers omit it).
+  is_glossary_stale?: boolean;
 };
 
 export type ChapterCoverage = {
@@ -129,10 +138,33 @@ export const versionsApi = {
     return apiJson(`/v1/translation/chapters/${chapterId}/versions/${versionId}`, { token });
   },
 
-  setActiveVersion(token: string, chapterId: string, versionId: string): Promise<ActiveVersionResponse> {
-    return apiJson(`/v1/translation/chapters/${chapterId}/versions/${versionId}/active`, {
+  setActiveVersion(
+    token: string, chapterId: string, versionId: string, acknowledgeIssues = false,
+  ): Promise<ActiveVersionResponse> {
+    const q = acknowledgeIssues ? '?acknowledge_issues=true' : '';
+    return apiJson(`/v1/translation/chapters/${chapterId}/versions/${versionId}/active${q}`, {
       method: 'PUT',
       token,
+    });
+  },
+
+  // M7c: save a human-edited translation as a new version. The LLM→human diff is
+  // captured as learning gold server-side (translation.corrected).
+  saveEditedVersion(
+    token: string,
+    chapterId: string,
+    payload: {
+      target_language: string;
+      edited_from_version_id: string;
+      translated_body?: string;
+      translated_body_json?: unknown[];
+      translated_body_format: 'text' | 'json';
+    },
+  ): Promise<ChapterTranslation> {
+    return apiJson(`/v1/translation/chapters/${chapterId}/versions/edit`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload),
     });
   },
 };
@@ -144,7 +176,18 @@ export const translationApi = {
     return apiJson(`/v1/translation/books/${bookId}/coverage`, { token });
   },
 
-  createJob(token: string, bookId: string, payload: { chapter_ids: string[] }): Promise<TranslationJob> {
+  createJob(
+    token: string,
+    bookId: string,
+    payload: {
+      chapter_ids: string[];
+      // Per-job overrides (T1 Fix-C): when set, the job uses these directly and does
+      // not depend on book translation settings having been persisted first.
+      target_language?: string;
+      model_source?: string;
+      model_ref?: string;
+    },
+  ): Promise<TranslationJob> {
     return apiJson(`/v1/translation/books/${bookId}/jobs`, {
       method: 'POST',
       body: JSON.stringify(payload),

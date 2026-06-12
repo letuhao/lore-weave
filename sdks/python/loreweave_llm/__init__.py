@@ -60,6 +60,7 @@ from loreweave_llm.models import (
     ErrorEvent,
     ImageGenDataItem,
     ImageGenResult,
+    ReasoningEffort,
     ReasoningEvent,
     SttInput,
     SttResult,
@@ -73,11 +74,27 @@ from loreweave_llm.models import (
     VideoGenDataItem,
     VideoGenResult,
 )
+from .reasoning import (
+    ReasoningControl,
+    ReasoningDirective,
+    UserReasoningPref,
+    bucket_effort,
+    infer_reasoning_control,
+    resolve_reasoning,
+)
 
 __all__ = [
     "Client",
     # Models
     "StreamRequest",
+    "ReasoningEffort",
+    # Reasoning policy (auto-thinking) — reusable across services
+    "ReasoningControl",
+    "UserReasoningPref",
+    "ReasoningDirective",
+    "infer_reasoning_control",
+    "bucket_effort",
+    "resolve_reasoning",
     "StreamEvent",
     "TokenEvent",
     "ReasoningEvent",

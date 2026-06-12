@@ -1,0 +1,579 @@
+{
+  "entities": [
+    {
+      "name": "三藏",
+      "kind": "person",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "三藏",
+      "canonical_id": "eid-loaded-0"
+    },
+    {
+      "name": "伯欽",
+      "kind": "person",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "伯欽",
+      "canonical_id": "eid-loaded-1"
+    },
+    {
+      "name": "唵嘛呢叭𠺗吽",
+      "kind": "concept",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "唵嘛呢叭𠺗吽",
+      "canonical_id": "eid-loaded-2"
+    },
+    {
+      "name": "如來",
+      "kind": "person",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "如來",
+      "canonical_id": "eid-loaded-3"
+    },
+    {
+      "name": "孫悟空",
+      "kind": "person",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "孫悟空",
+      "canonical_id": "eid-loaded-4"
+    },
+    {
+      "name": "孫行者",
+      "kind": "person",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "孫行者",
+      "canonical_id": "eid-loaded-5"
+    },
+    {
+      "name": "觀音菩薩",
+      "kind": "person",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "觀音菩薩",
+      "canonical_id": "eid-loaded-6"
+    },
+    {
+      "name": "陳玄奘",
+      "kind": "person",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "陳玄奘",
+      "canonical_id": "eid-loaded-7"
+    },
+    {
+      "name": "齊天大聖",
+      "kind": "person",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "齊天大聖",
+      "canonical_id": "eid-loaded-8"
+    },
+    {
+      "name": "佛祖",
+      "kind": "person",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "佛祖",
+      "canonical_id": "eid-loaded-9"
+    },
+    {
+      "name": "金字壓帖",
+      "kind": "artifact",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "金字壓帖",
+      "canonical_id": "eid-loaded-10"
+    },
+    {
+      "name": "靈山",
+      "kind": "place",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "靈山",
+      "canonical_id": "eid-loaded-11"
+    },
+    {
+      "name": "山頂上",
+      "kind": "place",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "山頂上",
+      "canonical_id": "eid-loaded-12"
+    },
+    {
+      "name": "東土",
+      "kind": "place",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "東土",
+      "canonical_id": "eid-loaded-13"
+    },
+    {
+      "name": "神猴",
+      "kind": "person",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "神猴",
+      "canonical_id": "eid-loaded-14"
+    },
+    {
+      "name": "行者",
+      "kind": "concept",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "行者",
+      "canonical_id": "eid-loaded-15"
+    },
+    {
+      "name": "取經人",
+      "kind": "concept",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "取經人",
+      "canonical_id": "eid-loaded-16"
+    },
+    {
+      "name": "家僮",
+      "kind": "person",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "家僮",
+      "canonical_id": "eid-loaded-17"
+    },
+    {
+      "name": "小頭陀",
+      "kind": "concept",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "小頭陀",
+      "canonical_id": "eid-loaded-18"
+    },
+    {
+      "name": "師父",
+      "kind": "person",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "師父",
+      "canonical_id": "eid-loaded-19"
+    }
+  ],
+  "relations": [
+    {
+      "subject": "三藏",
+      "predicate": "knows",
+      "object": "齊天大聖",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-0"
+    },
+    {
+      "subject": "三藏",
+      "predicate": "mentor_of",
+      "object": "齊天大聖",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-1"
+    },
+    {
+      "subject": "齊天大聖",
+      "predicate": "born_from",
+      "object": "大鬧天宮",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-2"
+    },
+    {
+      "subject": "齊天大聖",
+      "predicate": "imprisoned_by",
+      "object": "佛祖",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-3"
+    },
+    {
+      "subject": "齊天大聖",
+      "predicate": "works_for",
+      "object": "取經人",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-4"
+    },
+    {
+      "subject": "齊天大聖",
+      "predicate": "helps",
+      "object": "取經人",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-5"
+    },
+    {
+      "subject": "齊天大聖",
+      "predicate": "located_on",
+      "object": "山頂上",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-6"
+    },
+    {
+      "subject": "三藏",
+      "predicate": "owns",
+      "object": "金字壓帖",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-7"
+    },
+    {
+      "subject": "伯欽",
+      "predicate": "serves",
+      "object": "家僮",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-8"
+    },
+    {
+      "subject": "觀音菩薩",
+      "predicate": "commands",
+      "object": "取經人",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-9"
+    },
+    {
+      "subject": "齊天大聖",
+      "predicate": "lives_in",
+      "object": "山頂上",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-10"
+    },
+    {
+      "subject": "齊天大聖",
+      "predicate": "trusts",
+      "object": "觀音菩薩",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-11"
+    },
+    {
+      "subject": "三藏",
+      "predicate": "follows",
+      "object": "齊天大聖",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-12"
+    },
+    {
+      "subject": "三藏",
+      "predicate": "courts",
+      "object": "齊天大聖",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-13"
+    },
+    {
+      "subject": "三藏",
+      "predicate": "knows",
+      "object": "伯欽",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-14"
+    },
+    {
+      "subject": "觀音菩薩",
+      "predicate": "serves",
+      "object": "東土",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-15"
+    },
+    {
+      "subject": "齊天大聖",
+      "predicate": "instructs",
+      "object": "觀音菩薩",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-16"
+    },
+    {
+      "subject": "齊天大聖",
+      "predicate": "disciple_of",
+      "object": "觀音菩薩",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-17"
+    },
+    {
+      "subject": "齊天大聖",
+      "predicate": "lives_with",
+      "object": "佛祖",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-18"
+    },
+    {
+      "subject": "齊天大聖",
+      "predicate": "enjoys",
+      "object": "金字壓帖",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-19"
+    }
+  ],
+  "events": [
+    {
+      "name": "三藏在山頂的四方大石前，跪拜禱祝後，將刻有「唵嘛呢叭𠺗吽」六個金字的壓帖輕輕揭下",
+      "kind": "action",
+      "participants": [
+        "陳玄奘"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "三藏在山頂的四方大石前，跪拜禱祝後，將刻有「唵嘛呢叭𠺗吽」六個金字的壓帖輕輕揭下。",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-0"
+    },
+    {
+      "name": "三藏揭起金字壓帖後，孫悟空自石中現身而出。",
+      "kind": "action",
+      "participants": [
+        "孫悟空"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "三藏揭起金字壓帖後，孫悟空自石中現身而出。",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-1"
+    },
+    {
+      "name": "孫悟空向三藏敘述自己五百年前大鬧天宮的經歷，並表達願意保護取經人、歸依佛法、與師",
+      "kind": "action",
+      "participants": [
+        "孫悟空",
+        "陳玄奘"
+      ],
+      "participant_ids": [
+        null,
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "孫悟空向三藏敘述自己五百年前大鬧天宮的經歷，並表達願意保護取經人、歸依佛法、與師父一同前往西方拜佛。",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-2"
+    },
+    {
+      "name": "三藏問孫悟空姓氏，得知其名為孫，並起法名孫悟空。",
+      "kind": "action",
+      "participants": [
+        "陳玄奘",
+        "孫悟空"
+      ],
+      "participant_ids": [
+        null,
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "三藏問孫悟空姓氏，得知其名為孫，並起法名孫悟空。",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-3"
+    },
+    {
+      "name": "三藏見孫悟空形貌如小頭陀，遂為其起混名「行者」。",
+      "kind": "action",
+      "participants": [
+        "陳玄奘",
+        "孫悟空"
+      ],
+      "participant_ids": [
+        null,
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "三藏見孫悟空形貌如小頭陀，遂為其起混名「行者」。",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-4"
+    },
+    {
+      "name": "伯欽扶著三藏，攀藤附葛，一同登上高山。",
+      "kind": "action",
+      "participants": [
+        "伯欽",
+        "陳玄奘"
+      ],
+      "participant_ids": [
+        null,
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "伯欽扶著三藏，攀藤附葛，一同登上高山。",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-5"
+    },
+    {
+      "name": "三藏問孫悟空如何能從山中救出他，孫悟空答以金字壓帖之法。",
+      "kind": "action",
+      "participants": [
+        "陳玄奘",
+        "孫悟空"
+      ],
+      "participant_ids": [
+        null,
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "三藏問孫悟空如何能從山中救出他，孫悟空答以金字壓帖之法。",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-6"
+    },
+    {
+      "name": "觀音菩薩勸導孫悟空不再行兇，歸依佛法，並教他殷勤保護取經人。",
+      "kind": "action",
+      "participants": [
+        "觀音菩薩",
+        "孫悟空"
+      ],
+      "participant_ids": [
+        null,
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "觀音菩薩勸導孫悟空不再行兇，歸依佛法，並教他殷勤保護取經人。",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-7"
+    },
+    {
+      "name": "自此時起，孫悟空被稱為孫行者。",
+      "kind": "action",
+      "participants": [
+        "孫悟空"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "自此時起，孫悟空被稱為孫行者。",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-8"
+    },
+    {
+      "name": "觀音菩薩奉佛旨意，前往東土尋找取經人。",
+      "kind": "action",
+      "participants": [
+        "觀音菩薩"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "觀音菩薩奉佛旨意，前往東土尋找取經人。",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-9"
+    },
+    {
+      "name": "伯欽呼叫家僮，並牽來馬匹。",
+      "kind": "action",
+      "participants": [
+        "伯欽",
+        "家僮"
+      ],
+      "participant_ids": [
+        null,
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "伯欽呼叫家僮，並牽來馬匹。",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-10"
+    }
+  ],
+  "facts": []
+}

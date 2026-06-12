@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { ArrowRight, BookOpen, ChevronRight, Heart, Share2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { booksApi } from '@/features/books/api';
@@ -52,6 +53,7 @@ function hashGradient(id: string): string {
 // ── Page ────────────────────────────────────────────────────────────────────
 
 export function PublicBookDetailPage() {
+  const { t } = useTranslation('catalog');
   const { bookId = '' } = useParams();
   useBookViewTracker(bookId); // anonymous — no accessToken
   const [book, setBook] = useState<CatalogBook | null>(null);
@@ -70,7 +72,7 @@ export function PublicBookDetailPage() {
     let mounted = true;
     booksApi.getCatalogBook(bookId)
       .then((data) => { if (mounted) setBook(data as CatalogBook); })
-      .catch((e) => { if (mounted) setError((e as Error).message || 'Book not found'); })
+      .catch((e) => { if (mounted) setError((e as Error).message || t('detail.book_not_found')); })
       .finally(() => { if (mounted) setLoading(false); });
     return () => { mounted = false; };
   }, [bookId]);
@@ -83,7 +85,7 @@ export function PublicBookDetailPage() {
       .then((res) => {
         if (mounted) { setChapters(res.items ?? []); setTotal(res.total ?? 0); }
       })
-      .catch(() => { if (mounted) { setChapters([]); toast.error('Failed to load chapters'); } });
+      .catch(() => { if (mounted) { setChapters([]); toast.error(t('detail.load_chapters_failed')); } });
     return () => { mounted = false; };
   }, [bookId, limit, offset]);
 
@@ -109,9 +111,9 @@ export function PublicBookDetailPage() {
   if (error || !book) {
     return (
       <div className="mx-auto max-w-[1000px] px-8 py-16 text-center">
-        <p className="text-sm text-destructive">{error || 'Book not found'}</p>
+        <p className="text-sm text-destructive">{error || t('detail.book_not_found')}</p>
         <Link to="/browse" className="mt-4 inline-block text-sm text-accent hover:underline">
-          Back to Browse
+          {t('detail.back_to_browse')}
         </Link>
       </div>
     );
@@ -125,7 +127,7 @@ export function PublicBookDetailPage() {
 
       {/* Breadcrumb */}
       <nav className="mb-6 flex items-center gap-1.5 text-xs text-muted-foreground">
-        <Link to="/browse" className="text-accent hover:underline">Browse</Link>
+        <Link to="/browse" className="text-accent hover:underline">{t('detail.breadcrumb_browse')}</Link>
         <ChevronRight className="h-3 w-3" />
         <span className="text-foreground">{book.title}</span>
       </nav>
@@ -146,7 +148,7 @@ export function PublicBookDetailPage() {
         <div className="min-w-0 flex-1">
           {/* Badges */}
           <div className="mb-2 flex flex-wrap items-center gap-2">
-            <span className="rounded-full bg-[#3dba6a] px-2 py-0.5 text-[10px] font-medium text-white">Public</span>
+            <span className="rounded-full bg-[#3dba6a] px-2 py-0.5 text-[10px] font-medium text-white">{t('detail.public_badge')}</span>
             {book.genre_tags && book.genre_tags.length > 0 && book.genre_tags.map((g) => (
               <span key={g} className="rounded-full border border-border bg-secondary px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
                 {g}
@@ -157,7 +159,7 @@ export function PublicBookDetailPage() {
           <h1 className="font-serif text-2xl font-semibold leading-tight">{book.title}</h1>
 
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-muted-foreground">
-            <span>{book.chapter_count} chapters</span>
+            <span>{t('detail.chapters_count', { count: book.chapter_count })}</span>
             {book.original_language && (
               <>
                 <span>&middot;</span>
@@ -182,11 +184,11 @@ export function PublicBookDetailPage() {
           {/* Available languages */}
           {book.available_languages && book.available_languages.length > 0 && (
             <div className="mt-4">
-              <p className="mb-1.5 text-[11px] font-medium text-muted-foreground">Available languages</p>
+              <p className="mb-1.5 text-[11px] font-medium text-muted-foreground">{t('detail.available_languages')}</p>
               <div className="flex flex-wrap gap-1.5">
                 {book.original_language && (
                   <span className="rounded border border-accent/20 bg-accent/5 px-2 py-0.5 font-mono text-[10px] font-medium text-accent">
-                    {book.original_language} &middot; Original
+                    {book.original_language} &middot; {t('detail.original')}
                   </span>
                 )}
                 {book.available_languages.map((l) => (
@@ -206,20 +208,20 @@ export function PublicBookDetailPage() {
                 className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:brightness-110"
               >
                 <BookOpen className="h-4 w-4" />
-                Start Reading
+                {t('detail.start_reading')}
               </Link>
             ) : (
               <button disabled className="inline-flex items-center gap-1.5 rounded-lg bg-accent/50 px-4 py-2 text-sm font-medium text-white/60 cursor-not-allowed">
                 <BookOpen className="h-4 w-4" />
-                No chapters yet
+                {t('detail.no_chapters_yet')}
               </button>
             )}
             <button
-              onClick={() => { navigator.clipboard.writeText(window.location.href).then(() => toast.success('Link copied')).catch(() => toast.error('Failed to copy')); }}
+              onClick={() => { navigator.clipboard.writeText(window.location.href).then(() => toast.success(t('detail.link_copied'))).catch(() => toast.error(t('detail.copy_failed'))); }}
               className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm text-foreground transition-colors hover:bg-secondary"
             >
               <Share2 className="h-3.5 w-3.5" />
-              Share
+              {t('detail.share')}
             </button>
           </div>
         </div>
@@ -227,11 +229,11 @@ export function PublicBookDetailPage() {
 
       {/* Chapter List */}
       <div className="mt-8">
-        <h2 className="mb-4 text-base font-semibold">Chapters</h2>
+        <h2 className="mb-4 text-base font-semibold">{t('detail.chapters_heading')}</h2>
 
         {chapters.length === 0 ? (
           <div className="rounded-lg border border-border bg-card p-8 text-center text-sm text-muted-foreground">
-            No chapters available.
+            {t('detail.no_chapters_available')}
           </div>
         ) : (
           <div className="overflow-hidden rounded-lg border border-border bg-card">
@@ -245,10 +247,10 @@ export function PublicBookDetailPage() {
                   {ch.sort_order}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[13px] font-medium">{ch.title || 'Untitled'}</p>
+                  <p className="truncate text-[13px] font-medium">{ch.title || t('detail.untitled')}</p>
                   {ch.word_count_estimate != null && ch.word_count_estimate > 0 && (
                     <p className="mt-0.5 text-[11px] text-muted-foreground">
-                      {ch.word_count_estimate.toLocaleString()} words
+                      {t('detail.words', { count: ch.word_count_estimate.toLocaleString() })}
                     </p>
                   )}
                 </div>
@@ -260,7 +262,7 @@ export function PublicBookDetailPage() {
             {total > limit && (
               <div className="border-t border-border px-4 py-3">
                 <p className="mb-2 text-center text-[11px] text-muted-foreground">
-                  Showing {offset + 1}–{Math.min(offset + limit, total)} of {total} chapters
+                  {t('detail.showing_chapters', { from: offset + 1, to: Math.min(offset + limit, total), total })}
                 </p>
                 <div className="flex justify-center">
                   <Pagination total={total} limit={limit} offset={offset} onChange={setOffset} />
@@ -274,21 +276,21 @@ export function PublicBookDetailPage() {
       {/* Stats footer */}
       <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4">
         <div className="rounded-lg border border-border bg-card p-3">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Chapters</p>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{t('detail.stat_chapters')}</p>
           <p className="mt-1 font-mono text-lg font-semibold">{book.chapter_count}</p>
         </div>
         <div className="rounded-lg border border-border bg-card p-3">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Languages</p>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{t('detail.stat_languages')}</p>
           <p className="mt-1 font-mono text-lg font-semibold">{(book.available_languages?.length ?? 0) + 1}</p>
         </div>
         <div className="rounded-lg border border-border bg-card p-3">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Original</p>
-          <p className="mt-1 text-sm font-medium">{book.original_language || 'N/A'}</p>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{t('detail.stat_original')}</p>
+          <p className="mt-1 text-sm font-medium">{book.original_language || t('detail.na')}</p>
         </div>
         <div className="rounded-lg border border-border bg-card p-3">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Published</p>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{t('detail.stat_published')}</p>
           <p className="mt-1 text-sm font-medium">
-            {book.created_at ? new Date(book.created_at).toLocaleDateString() : 'N/A'}
+            {book.created_at ? new Date(book.created_at).toLocaleDateString() : t('detail.na')}
           </p>
         </div>
       </div>

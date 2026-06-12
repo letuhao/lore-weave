@@ -6,12 +6,18 @@ import (
 )
 
 type Config struct {
-	HTTPAddr        string
-	DatabaseURL     string
-	JWTSecret       string
+	HTTPAddr             string
+	DatabaseURL          string
+	JWTSecret            string
 	AuthServiceURL       string
 	BookServiceURL       string
+	KnowledgeServiceURL  string
 	InternalServiceToken string
+	// RedisURL is optional. When set, glossary-service runs the revision-projection
+	// consumer (VG-1) that materializes entity_revisions off the
+	// loreweave:events:glossary stream. Unset → the consumer is disabled (dev/test
+	// / no-broker run still boots; history is simply not captured).
+	RedisURL string
 }
 
 func Load() (*Config, error) {
@@ -21,7 +27,13 @@ func Load() (*Config, error) {
 		JWTSecret:      os.Getenv("JWT_SECRET"),
 		AuthServiceURL: os.Getenv("AUTH_SERVICE_URL"),
 		BookServiceURL: os.Getenv("BOOK_SERVICE_URL"),
+		// C5 (D4-03): optional. The wiki-from-KG renderer reads an
+		// entity's 1-hop neighborhood from knowledge-service. When unset
+		// the renderer degrades gracefully to a minimal (attribute-only)
+		// body — wiki generation never hard-depends on the KG being up.
+		KnowledgeServiceURL:  os.Getenv("KNOWLEDGE_SERVICE_URL"),
 		InternalServiceToken: os.Getenv("INTERNAL_SERVICE_TOKEN"),
+		RedisURL:             os.Getenv("REDIS_URL"),
 	}
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")

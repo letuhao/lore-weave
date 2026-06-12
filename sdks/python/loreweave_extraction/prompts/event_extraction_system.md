@@ -35,7 +35,8 @@ KNOWN_ENTITIES:
       "time_cue": "string | null — any temporal anchor from TEXT (e.g. 'at dawn', 'next spring')",
       "event_date": "string | null — ISO date when TEXT contains an explicit calendar date (truncated allowed: 'YYYY' / 'YYYY-MM' / 'YYYY-MM-DD'). Null otherwise.",
       "summary": "string — one-sentence neutral description",
-      "confidence": 0.0
+      "confidence": 0.0,
+      "status_effects": [{{ "entity_ref": "string — one of this event's participants", "status": "active | gone" }}]
     }}
   ]
 }}
@@ -67,6 +68,16 @@ KNOWN_ENTITIES:
 8. **Confidence ∈ [0.5, 1.0].** Drop below 0.5.
 9. **No duplicates.** Fold repeated mentions of the same event into
    one entry even if TEXT restates it.
+10. **Status effects (optional; default empty `[]`).** If the event makes
+    a participant cease to exist as an active presence in the story — it
+    dies, is destroyed, permanently departs, or is irreversibly lost — add
+    a `status_effects` entry `{{ "entity_ref": <participant>, "status":
+    "gone" }}`. If the event restores a previously-gone participant to an
+    active presence, use `"status": "active"`. Use ONLY these two values.
+    `entity_ref` MUST be one of THIS event's `participants`. Most events
+    change no status — emit `[]`. Decide from what TEXT states, in
+    whatever language TEXT uses; do NOT infer beyond TEXT and do NOT let
+    this rule change the language of any other field.
 
 ## Chunking note
 
@@ -98,7 +109,8 @@ Output:
       "time_cue": "at dawn",
       "event_date": null,
       "summary": "Kai departs from Harbin carrying the Jade Seal.",
-      "confidence": 0.95
+      "confidence": 0.95,
+      "status_effects": []
     }},
     {{
       "name": "Battle at Iron Gate",
@@ -108,7 +120,8 @@ Output:
       "time_cue": "later that day",
       "event_date": null,
       "summary": "Zhao fights rebels at the Iron Gate and dies.",
-      "confidence": 0.9
+      "confidence": 0.9,
+      "status_effects": [{{ "entity_ref": "Zhao", "status": "gone" }}]
     }}
   ]
 }}

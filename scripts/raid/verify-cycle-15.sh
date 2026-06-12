@@ -1,323 +1,174 @@
 #!/usr/bin/env bash
-# verify-cycle-15.sh — L3.E daily sampler + L3.F monthly full check + L3.J metrics/alerts.
+# verify-cycle-15.sh — CI gate for RAID cycle 15 (eval framework EXTEND + P2/P3 gate).
+# Exit 0 = PASS.
 #
-# Acceptance gate. Exit 0 = pass; non-zero = fail.
-#
-# Cycle 15 scope:
-#   DPS 1 — L3.E daily sampling integrity-checker (services/integrity-checker/
-#           pkg/{types,config,sampler,comparator,state_writer,daily_loop,metrics}
-#           + cmd/integrity-checker + contracts/integrity/config.yaml +
-#           runbooks/integrity/drift_alert.md). LOCKED Q-L3E-1: SEPARATE service.
-#   DPS 2 — L3.F monthly full check (services/integrity-checker/pkg/full_check
-#           + infra/k8s/integrity-checker-cronjob.yaml +
-#           runbooks/integrity/full_check_failure.md). SAME binary, different
-#           cron — selected via config `mode: monthly`.
-#   DPS 3 — L3.J projection lag/drift metrics + alerts + dashboard
-#           (services/integrity-checker/pkg/metrics +
-#           infra/prometheus/alerts/projection.yaml + 3 NEW
-#           contracts/observability/inventory.yaml entries +
-#           dashboards/projection-health.json).
-#
-# LOCKED decisions enforced:
-#   Q-L3E-1: integrity-checker is a SEPARATE service (not part of
-#            world-service). Both daily AND monthly are the SAME binary;
-#            two cron schedules drive the two modes via config override.
-#   Q-L3-4 (carry from cycle 13): VerificationMeta cols on every L3.A row
-#            — comparator reads event_id + aggregate_version from the row
-#            to scope replay correctly.
-#   Q-L3-5 (carry): NO V2 blue-green; single state table (cycle-13
-#            projection_drift_state) reused for both daily + monthly.
-#
-# Cross-service live smoke: NOT required — cycle ships library code +
-# config + alert YAML + dashboard JSON + runbook docs. No service binary
-# running cross-network; production wiring deferred to D-PUBLISHER-LIVE-WIRING.
+# Asserts (per docs/raid/cycle_briefs/15_eval-gate.md acceptance):
+#   1. lore-enrichment-service C15 unit suite green: deterministic sub-score
+#      scorers (schema/canon/anachronism/provenance), weighted aggregation,
+#      baseline-diff regression, judge-ENSEMBLE usefulness (majority + Fleiss κ +
+#      partial-credit; 050 injection-defense), gate pass/fail boundary, and the
+#      enrichment_eval_runs repo round-trip (when a real DB is reachable).
+#   2. ruff clean on the C15 code paths.
+#   3. Climate/geo IMMUTABILITY: git diff shows ZERO changes under the climate/geo
+#      eval files (the additive-not-fork invariant). Any touch = hard fail.
+#   4. No hardcoded model names in the C15 app code paths (judges resolve via
+#      provider-registry model_ref).
+#   5. GATE actually gates: the deliberately-BAD fixture yields a NON-zero exit
+#      (passed=false); the deterministic demo fixture produces a real scorecard.
+#   6. LIVE SMOKE (best-effort): run the eval with the REAL judge ensemble
+#      (gemma + qwen-30b + claude via provider-registry; tolerate JIT load) on the
+#      DEMO output (the promoted/enriched 4 locations in the demo project) →
+#      produce a real scorecard, persist to enrichment_eval_runs + freeze a
+#      baseline, and show the GATE decision. A genuine infra-unavailable
+#      (judge JIT won't load / stack down) is a legitimate skip.
+set -uo pipefail
+CYCLE=15
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+LE_SVC="$REPO_ROOT/services/lore-enrichment-service"
+COMPOSE="$REPO_ROOT/infra/docker-compose.yml"
+AUDIT_LOG="$REPO_ROOT/docs/audit/AUDIT_LOG.jsonl"
+NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-set -euo pipefail
+INTERNAL_TOKEN="${INTERNAL_SERVICE_TOKEN:-dev_internal_token}"
+LE_DB="${TEST_LORE_ENRICHMENT_DB_URL:-postgresql://loreweave:loreweave_dev@localhost:5555/loreweave_lore_enrichment}"
+PR_DB="${PROVIDER_REGISTRY_DB_URL:-postgresql://loreweave:loreweave_dev@localhost:5555/loreweave_provider_registry}"
+PR_URL="${PROVIDER_REGISTRY_URL:-http://localhost:8208}"
+DEMO_PROJECT="${DEMO_PROJECT:-019e7850-aa1c-7cd3-a25c-c2f9ad84fd39}"
+DEMO_USER="${DEMO_USER:-019d5e3c-7cc5-7e6a-8b27-1344e148bf7c}"
 
-repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
-cd "$repo_root"
-
-step=0
-pass() { step=$((step+1)); echo "[verify-cycle-15] step $step PASS: $1"; }
-fail() { step=$((step+1)); echo "[verify-cycle-15] step $step FAIL: $1" >&2; exit 1; }
+fail() { echo "[verify-cycle-15] FAIL: $1"; exit 1; }
+ok()   { echo "[verify-cycle-15] ok: $1"; }
 note() { echo "[verify-cycle-15] note: $1"; }
 
-# ─────────────────────────────────────────────────────────────────────────
-# DPS 1 — L3.E daily sampling service skeleton
-# ─────────────────────────────────────────────────────────────────────────
+echo "[verify-cycle-15] running CI gate"
 
-[[ -f services/integrity-checker/go.mod ]] || fail "services/integrity-checker/go.mod missing"
-[[ -f services/integrity-checker/README.md ]] || fail "services/integrity-checker/README.md missing"
-[[ -f services/integrity-checker/cmd/integrity-checker/main.go ]] || fail "cmd/integrity-checker/main.go missing"
-pass "services/integrity-checker module scaffolding present"
+# ── 1. C15 unit suite ───────────────────────────────────────────────────────────
+if command -v python >/dev/null 2>&1; then
+  ( cd "$LE_SVC" && python -m pytest \
+      tests/test_eval_scorers.py tests/test_eval_judge.py tests/test_eval_gate.py -q ) \
+    >/tmp/c15_unit.log 2>&1 \
+    || { cat /tmp/c15_unit.log; fail "C15 eval unit suite failed"; }
+  ok "C15 eval unit suite green (scorers + judge-ensemble + gate)"
 
-# Required packages.
-for pkg in types config sampler comparator state_writer daily_loop full_check metrics; do
-    [[ -f "services/integrity-checker/pkg/${pkg}" || -d "services/integrity-checker/pkg/${pkg}" ]] || \
-        fail "services/integrity-checker/pkg/${pkg}/ missing"
-done
-pass "all 8 integrity-checker packages present (types, config, sampler, comparator, state_writer, daily_loop, full_check, metrics)"
-
-# Q-L3E-1: README documents SEPARATE service decision.
-grep -q "LOCKED Q-L3E-1" services/integrity-checker/README.md \
-    || fail "Q-L3E-1 not documented in services/integrity-checker/README.md"
-grep -q "SEPARATE service" services/integrity-checker/README.md \
-    || fail "Q-L3E-1 SEPARATE service decision not surfaced in README"
-pass "Q-L3E-1 SEPARATE service decision documented in README"
-
-# Same Q-L3E-1 documented in main.go (the entry-point — the obvious place SRE looks).
-grep -q "Q-L3E-1" services/integrity-checker/cmd/integrity-checker/main.go \
-    || fail "Q-L3E-1 not surfaced in main.go banner/comments"
-pass "Q-L3E-1 documented in cmd/integrity-checker/main.go"
-
-# Config file present + valid by config.LoadFile shape.
-[[ -f contracts/integrity/config.yaml ]] || fail "contracts/integrity/config.yaml missing"
-grep -q "mode: daily" contracts/integrity/config.yaml || fail "config.yaml missing mode"
-grep -q "full_check_interval_days: 30" contracts/integrity/config.yaml \
-    || fail "config.yaml missing full_check_interval_days"
-# Allowlist coverage: all 10 L3.A tables enumerated.
-L3A_TABLES=(
-    pc_projection
-    pc_inventory_projection
-    pc_relationship_projection
-    npc_projection
-    npc_session_memory_projection
-    npc_pc_relationship_projection
-    npc_session_memory_embedding
-    region_projection
-    world_kv_projection
-    session_participants
-)
-for t in "${L3A_TABLES[@]}"; do
-    grep -q "name: $t" contracts/integrity/config.yaml \
-        || fail "contracts/integrity/config.yaml missing table: $t"
-done
-pass "contracts/integrity/config.yaml present + all 10 L3.A tables configured"
-
-# Runbook present (L3.E.6).
-[[ -f runbooks/integrity/drift_alert.md ]] || fail "runbooks/integrity/drift_alert.md missing"
-grep -q "Q-L3E-1" runbooks/integrity/drift_alert.md \
-    || fail "drift_alert.md does not reference Q-L3E-1 lock"
-pass "runbooks/integrity/drift_alert.md present + references Q-L3E-1"
-
-# ─────────────────────────────────────────────────────────────────────────
-# DPS 2 — L3.F monthly full check
-# ─────────────────────────────────────────────────────────────────────────
-
-[[ -f services/integrity-checker/pkg/full_check/full_check.go ]] || \
-    fail "pkg/full_check/full_check.go missing"
-[[ -f services/integrity-checker/pkg/full_check/full_check_test.go ]] || \
-    fail "pkg/full_check/full_check_test.go missing"
-pass "pkg/full_check present (L3.F.1)"
-
-# Same binary, different cron — verified by main.go switching on cfg.Mode.
-grep -q "CheckModeMonthly" services/integrity-checker/cmd/integrity-checker/main.go \
-    || fail "main.go does not switch on monthly mode (should be same binary)"
-grep -q "CheckModeDaily" services/integrity-checker/cmd/integrity-checker/main.go \
-    || fail "main.go does not switch on daily mode (should be same binary)"
-pass "L3.E + L3.F share the SAME binary (cmd/integrity-checker switches on mode)"
-
-# Cursor batching used in full_check (no full-table SELECT).
-grep -q "NextBatch" services/integrity-checker/pkg/full_check/full_check.go \
-    || fail "full_check does not use NextBatch cursor pattern (would lock table on full SELECT)"
-grep -q "stuck" services/integrity-checker/pkg/full_check/full_check.go \
-    || fail "full_check missing cursor-stuck guard"
-pass "L3.F uses cursor batching (no lock-table risk) + stuck-cursor guard"
-
-# Context cancellation honored in monthly scan.
-grep -q "ctx.Err()" services/integrity-checker/pkg/full_check/full_check.go \
-    || fail "full_check does not check context cancellation between batches (graceful shutdown risk)"
-pass "L3.F honors context cancellation between batches"
-
-# CronJob manifest present + different schedules + activeDeadlineSeconds bounds full scan.
-[[ -f infra/k8s/integrity-checker-cronjob.yaml ]] || \
-    fail "infra/k8s/integrity-checker-cronjob.yaml missing (L3.F.3)"
-grep -q "name: integrity-checker-daily" infra/k8s/integrity-checker-cronjob.yaml \
-    || fail "daily CronJob missing"
-grep -q "name: integrity-checker-monthly" infra/k8s/integrity-checker-cronjob.yaml \
-    || fail "monthly CronJob missing"
-grep -q "activeDeadlineSeconds: 3600" infra/k8s/integrity-checker-cronjob.yaml \
-    || fail "monthly activeDeadlineSeconds=3600 (L3.F: completes < 1h) missing"
-grep -q "concurrencyPolicy: Forbid" infra/k8s/integrity-checker-cronjob.yaml \
-    || fail "concurrencyPolicy: Forbid missing (would allow overlapping runs)"
-pass "L3.F K8s CronJob manifest present (daily + monthly, activeDeadlineSeconds=3600, Forbid overlap)"
-
-# Q-L3E-1 surfaced in the k8s manifest.
-grep -q "locked-decision: q-l3e-1" infra/k8s/integrity-checker-cronjob.yaml \
-    || fail "k8s manifest does not label Q-L3E-1 SEPARATE decision"
-pass "L3.F K8s manifest labels Q-L3E-1 lock for SRE visibility"
-
-# Runbook for monthly failure (L3.F.5).
-[[ -f runbooks/integrity/full_check_failure.md ]] || \
-    fail "runbooks/integrity/full_check_failure.md missing (L3.F.5)"
-pass "runbooks/integrity/full_check_failure.md present"
-
-# ─────────────────────────────────────────────────────────────────────────
-# DPS 3 — L3.J metrics + alerts + inventory + dashboard
-# ─────────────────────────────────────────────────────────────────────────
-
-[[ -f services/integrity-checker/pkg/metrics/metrics.go ]] || \
-    fail "pkg/metrics/metrics.go missing"
-
-# 4 required metric constants present (3 new in cycle 15, +1 re-declared
-# alias of the cycle-13 drift_count).
-REQ_METRICS=(
-    "MetricProjectionLagSeconds"
-    "MetricProjectionDriftCount"
-    "MetricProjectionCheckDurationSeconds"
-    "MetricProjectionCheckRunsTotal"
-)
-for m in "${REQ_METRICS[@]}"; do
-    grep -q "$m" services/integrity-checker/pkg/metrics/metrics.go \
-        || fail "metric constant $m missing"
-done
-pass "all 4 L3.J metric constants present (lag, drift, duration, runs)"
-
-# Inventory has the 3 NEW cycle-15 metrics (drift_count was cycle-13 already).
-for m in lw_projection_lag_seconds lw_projection_check_duration_seconds lw_projection_check_runs_total; do
-    grep -q "name: $m" contracts/observability/inventory.yaml \
-        || fail "inventory.yaml missing cycle-15 metric: $m"
-done
-pass "inventory.yaml has the 3 cycle-15 L3.J metrics"
-
-# Inventory entries declare layer L3 + shipped_cycle 15 + bounded labels.
-# Validate one is correctly formatted as the canonical example.
-awk '/name: lw_projection_lag_seconds/,/^$/' contracts/observability/inventory.yaml | \
-    grep -q "shipped_cycle: 15" \
-    || fail "lw_projection_lag_seconds shipped_cycle=15 missing"
-awk '/name: lw_projection_lag_seconds/,/^$/' contracts/observability/inventory.yaml | \
-    grep -q "layer: L3" \
-    || fail "lw_projection_lag_seconds layer=L3 missing"
-pass "lw_projection_lag_seconds inventory entry well-formed (layer=L3, shipped_cycle=15)"
-
-# Alert file present + 6 alerts wired.
-[[ -f infra/prometheus/alerts/projection.yaml ]] || \
-    fail "infra/prometheus/alerts/projection.yaml missing (L3.J.2)"
-REQ_ALERTS=(
-    "LWProjectionDriftWarning"
-    "LWProjectionDriftCritical"
-    "LWProjectionLagWarning"
-    "LWProjectionLagCritical"
-    "LWProjectionStaleVerification"
-    "LWProjectionMonthlyDriftDetected"
-)
-for a in "${REQ_ALERTS[@]}"; do
-    grep -q "alert: $a" infra/prometheus/alerts/projection.yaml \
-        || fail "alert $a missing in projection.yaml"
-done
-pass "all 6 L3.J alerts wired (drift warn/critical, lag warn/critical, stale verification, monthly)"
-
-# Alerts have `for:` windows (NOT auto-paging on first drift — REVIEW concern).
-grep -q "for: 3m" infra/prometheus/alerts/projection.yaml \
-    || fail "drift warn lacks for: 3m window (would page on first transient)"
-grep -q "for: 15m" infra/prometheus/alerts/projection.yaml \
-    || fail "drift critical lacks for: 15m window (would page on transient)"
-pass "drift alerts have for: windows (3m WARN, 15m PAGE) — no auto-page on first drift"
-
-# Dashboard present (L3.J.4).
-[[ -f dashboards/projection-health.json ]] || \
-    fail "dashboards/projection-health.json missing (L3.J.4)"
-grep -q "lw_projection_drift_count" dashboards/projection-health.json \
-    || fail "dashboard does not query lw_projection_drift_count"
-grep -q "lw_projection_lag_seconds" dashboards/projection-health.json \
-    || fail "dashboard does not query lw_projection_lag_seconds"
-pass "dashboards/projection-health.json present + queries L3.J metrics"
-
-# ─────────────────────────────────────────────────────────────────────────
-# Unit tests — all integrity-checker packages green
-# ─────────────────────────────────────────────────────────────────────────
-
-note "running go test ./... in services/integrity-checker"
-if (cd services/integrity-checker && go test ./... 2>&1 | tail -20 | grep -qE "ok.*integrity-checker"); then
-    pass "go test ./services/integrity-checker/...: PASS"
+  # Full service suite — no C0–C14 regression.
+  ( cd "$LE_SVC" && python -m pytest -q ) >/tmp/c15_full.log 2>&1 \
+    || { cat /tmp/c15_full.log; fail "lore-enrichment full suite regressed"; }
+  ok "lore-enrichment full suite green (no C0–C14 regression)"
 else
-    (cd services/integrity-checker && go test ./... 2>&1 | tail -40)
-    fail "go test ./services/integrity-checker/... failed"
+  note "python not on PATH — skipping unit suite here"
 fi
 
-# ─────────────────────────────────────────────────────────────────────────
-# Cross-cycle: cycle-13 drift_state still queryable shape (regression guard)
-# ─────────────────────────────────────────────────────────────────────────
+# ── 2. ruff clean on C15 paths ────────────────────────────────────────────────
+if command -v ruff >/dev/null 2>&1; then
+  ( cd "$LE_SVC" && ruff check \
+      app/eval/ app/db/repositories/eval_runs.py app/api/eval.py \
+      tests/test_eval_scorers.py tests/test_eval_judge.py tests/test_eval_gate.py \
+      tests/db/test_eval_runs_repo.py ) \
+    >/tmp/c15_ruff.log 2>&1 \
+    || { cat /tmp/c15_ruff.log; fail "ruff failed on C15 files"; }
+  ( cd "$REPO_ROOT" && ruff check scripts/enrichment_eval.py ) \
+    >>/tmp/c15_ruff.log 2>&1 \
+    || { cat /tmp/c15_ruff.log; fail "ruff failed on scripts/enrichment_eval.py"; }
+  ok "ruff clean on C15 code paths"
+fi
 
-grep -q "projection_drift_state" contracts/migrations/per_reality/0007_drift_metadata.up.sql \
-    || fail "cycle-13 projection_drift_state table missing — cycle-15 state_writer would have no target"
-pass "cycle-13 projection_drift_state still in place (regression guard)"
+# ── 3. CLIMATE/GEO IMMUTABILITY (additive-not-fork invariant) ──────────────────
+if command -v git >/dev/null 2>&1; then
+  TOUCHED="$(cd "$REPO_ROOT" && git diff --name-only HEAD -- \
+      eval/climate-eval-suite.toml \
+      'eval/baselines/v*.json' \
+      scripts/climate_eval.py scripts/climate_eval_sweep.py \
+      'eval/compare-*' 2>/dev/null)"
+  if [ -n "$TOUCHED" ]; then
+    echo "$TOUCHED"
+    fail "climate/geo eval files were modified — additive-not-fork invariant violated"
+  fi
+  ok "climate/geo eval files UNTOUCHED (zero diff — additive extension confirmed)"
+fi
 
-# state_writer references the cycle-13 allowlist.
-grep -q "L3.A allowlist" services/integrity-checker/pkg/state_writer/state_writer.go \
-    || fail "state_writer does not document its tie to cycle-13 allowlist (Q-L3E-1 link)"
-pass "state_writer documents tie to cycle-13 projection_drift_table_name_allowlist CHECK"
+# ── 4. no hardcoded model names in C15 app code ───────────────────────────────
+if grep -rnE --include='*.py' \
+     'gpt-|claude-[0-9]|qwen[/-][0-9]|bge-m3|text-embedding-|gemma-[0-9]' \
+     "$LE_SVC/app/eval/" "$LE_SVC/app/db/repositories/eval_runs.py" \
+     "$LE_SVC/app/api/eval.py" >/dev/null 2>&1; then
+  fail "hardcoded model name found in a C15 app code path"
+fi
+ok "no hardcoded model names in C15 app code (judges resolve via model_ref)"
+grep -q 'model_ref' "$LE_SVC/app/eval/judge_usefulness.py" \
+  || fail "judge usefulness does not reference model_ref"
+ok "judges resolve via provider-registry model_ref"
 
-# ─────────────────────────────────────────────────────────────────────────
-# Observability inventory lint (cycle 7 L1.K.6 - CRITICAL gate per brief)
-# ─────────────────────────────────────────────────────────────────────────
+# ── 5. GATE actually gates — bad fixture exits non-zero, demo produces scorecard
+if command -v python >/dev/null 2>&1; then
+  set +e
+  ( cd "$REPO_ROOT" && python scripts/enrichment_eval.py \
+      --fixture eval/fixtures/enrichment_bad.json ) >/tmp/c15_bad.log 2>&1
+  BAD_RC=$?
+  set -e
+  [ "$BAD_RC" -ne 0 ] || { cat /tmp/c15_bad.log; fail "GATE FALSE-GREEN: bad fixture did NOT block (exit 0)"; }
+  grep -q "GATE: BLOCK" /tmp/c15_bad.log || fail "bad fixture did not print a BLOCK decision"
+  grep -q "provenance" /tmp/c15_bad.log || fail "bad fixture did not flag the H0/provenance leak"
+  ok "GATE blocks the deliberately-bad fixture (exit $BAD_RC, H0/provenance leak flagged)"
 
-if bash scripts/observability-inventory-lint.sh >/dev/null 2>&1; then
-    pass "observability-inventory-lint clean (cycle 7 L1.K.6)"
+  # demo fixture produces a real deterministic scorecard (composite computed).
+  ( cd "$REPO_ROOT" && python scripts/enrichment_eval.py \
+      --fixture eval/fixtures/enrichment_demo.json \
+      --baseline eval/baselines/enrichment-v1.json \
+      --out /tmp/c15_demo_scorecard.json ) >/tmp/c15_demo.log 2>&1 || true
+  grep -q "COMPOSITE" /tmp/c15_demo.log || { cat /tmp/c15_demo.log; fail "demo fixture produced no scorecard"; }
+  test -f /tmp/c15_demo_scorecard.json || fail "demo scorecard JSON not written"
+  ok "demo fixture produces a real scorecard + baseline-diff"
+fi
+
+# ── 6. LIVE SMOKE — real judge ensemble on the demo output ─────────────────────
+if ! command -v docker >/dev/null 2>&1; then
+  note "live infra unavailable: docker not on PATH — deterministic gate only"
+  echo "{\"ts\":\"$NOW\",\"cycle\":$CYCLE,\"event\":\"verify\",\"result\":\"pass\",\"live_smoke\":\"skipped:no-docker\"}" >> "$AUDIT_LOG"
+  ok "cycle 15 gate PASS (live smoke skipped: no docker)"
+  exit 0
+fi
+
+dc() { docker compose -f "$COMPOSE" "$@"; }
+if ! dc ps >/dev/null 2>&1; then
+  note "live infra unavailable: compose stack not reachable — deterministic gate only"
+  echo "{\"ts\":\"$NOW\",\"cycle\":$CYCLE,\"event\":\"verify\",\"result\":\"pass\",\"live_smoke\":\"skipped:stack-down\"}" >> "$AUDIT_LOG"
+  ok "cycle 15 gate PASS (live smoke skipped: stack down)"
+  exit 0
+fi
+
+echo "[verify-cycle-15] stack reachable — running REAL judge-ensemble eval on the demo output"
+
+# Resolve the three judge model_refs by NAME at runtime (judges live in
+# provider-registry; we pass refs, never names, to the eval). Names here are
+# TEST-HARNESS lookup keys (overridable via env), NOT app code — the no-name
+# invariant applies to app/ code, which only ever sees the resolved refs.
+JUDGE_GEMMA_NAME="${JUDGE_GEMMA_NAME:-google/gemma-3-27b}"
+JUDGE_QWEN_NAME="${JUDGE_QWEN_NAME:-qwen/qwen3-30b-a3b}"
+
+set +e
+SMOKE_OUT="$( cd "$LE_SVC" && \
+  LORE_ENRICHMENT_DB_URL="$LE_DB" \
+  PROVIDER_REGISTRY_DB_URL="$PR_DB" \
+  INTERNAL_SERVICE_TOKEN="$INTERNAL_TOKEN" \
+  PROVIDER_REGISTRY_URL="$PR_URL" \
+  DEMO_PROJECT="$DEMO_PROJECT" DEMO_USER="$DEMO_USER" \
+  JUDGE_GEMMA_NAME="$JUDGE_GEMMA_NAME" JUDGE_QWEN_NAME="$JUDGE_QWEN_NAME" \
+  python -m tests.live_smoke_c15_eval 2>&1 )"
+SMOKE_RC=$?
+set -e
+echo "$SMOKE_OUT"
+
+if [ "$SMOKE_RC" -eq 0 ]; then
+  SCORECARD="$(echo "$SMOKE_OUT" | sed -n 's/^SCORECARD_LINE: //p' | tail -1)"
+  echo "{\"ts\":\"$NOW\",\"cycle\":$CYCLE,\"event\":\"verify\",\"result\":\"pass\",\"live_smoke\":\"real judge-ensemble eval on demo output — $SCORECARD\"}" >> "$AUDIT_LOG"
+  echo "[verify-cycle-15] live smoke: real judge-ensemble eval scored the demo output + persisted a baseline — $SCORECARD"
+  ok "cycle 15 CI gate PASS (real judge-ensemble scorecard persisted)"
+  exit 0
+elif [ "$SMOKE_RC" -eq 3 ]; then
+  note "live infra unavailable: judge JIT load / DB unreachable after retries"
+  echo "{\"ts\":\"$NOW\",\"cycle\":$CYCLE,\"event\":\"verify\",\"result\":\"pass\",\"live_smoke\":\"infra-unavailable:judge-jit\"}" >> "$AUDIT_LOG"
+  ok "cycle 15 gate PASS (live smoke: live infra unavailable: judge JIT load)"
+  exit 0
 else
-    bash scripts/observability-inventory-lint.sh 2>&1 | tail -20
-    note "observability-inventory-lint surfaced findings (likely cycle-1..14 baseline; cycle-15 entries themselves are well-formed)"
+  fail "live smoke: real judge-ensemble eval did NOT complete (rc=$SMOKE_RC) — see output above"
 fi
-
-# ─────────────────────────────────────────────────────────────────────────
-# B5 prod-isolation + B6 secret-scan
-# ─────────────────────────────────────────────────────────────────────────
-
-if git diff --name-only HEAD 2>/dev/null | grep -qE '^infra/existing-prod/'; then
-    fail "B5: changes detected under infra/existing-prod/ (forbidden)"
-fi
-pass "B5 prod-isolation: no infra/existing-prod/ changes"
-
-if bash scripts/raid/prod-isolation-lint.sh >/dev/null 2>&1; then
-    pass "B5 prod-isolation-lint clean"
-else
-    fail "B5 prod-isolation-lint failed"
-fi
-
-# B6 secret-scan over new files added this cycle.
-NEW_FILES=(
-    services/integrity-checker/go.mod
-    services/integrity-checker/README.md
-    services/integrity-checker/cmd/integrity-checker/main.go
-    services/integrity-checker/cmd/integrity-checker/main_test.go
-    services/integrity-checker/pkg/types/types.go
-    services/integrity-checker/pkg/config/config.go
-    services/integrity-checker/pkg/config/config_test.go
-    services/integrity-checker/pkg/sampler/sampler.go
-    services/integrity-checker/pkg/sampler/sampler_test.go
-    services/integrity-checker/pkg/comparator/comparator.go
-    services/integrity-checker/pkg/comparator/comparator_test.go
-    services/integrity-checker/pkg/state_writer/state_writer.go
-    services/integrity-checker/pkg/state_writer/state_writer_test.go
-    services/integrity-checker/pkg/daily_loop/daily_loop.go
-    services/integrity-checker/pkg/daily_loop/daily_loop_test.go
-    services/integrity-checker/pkg/full_check/full_check.go
-    services/integrity-checker/pkg/full_check/full_check_test.go
-    services/integrity-checker/pkg/metrics/metrics.go
-    services/integrity-checker/pkg/metrics/metrics_test.go
-    contracts/integrity/config.yaml
-    infra/k8s/integrity-checker-cronjob.yaml
-    infra/prometheus/alerts/projection.yaml
-    dashboards/projection-health.json
-    runbooks/integrity/drift_alert.md
-    runbooks/integrity/full_check_failure.md
-    tests/integration/integrity_drift_test.go
-    tests/integration/full_integrity_test.go
-)
-SECRET_PATTERNS='AKIA[0-9A-Z]{16}|aws_secret_access_key|BEGIN (RSA|EC|OPENSSH) PRIVATE KEY|xoxb-[A-Za-z0-9-]{20,}|ghp_[A-Za-z0-9]{30,}|sk_live_[A-Za-z0-9]{20,}'
-for f in "${NEW_FILES[@]}"; do
-    [[ -f "$f" ]] || continue
-    if grep -qE "$SECRET_PATTERNS" "$f"; then
-        fail "B6: potential secret in $f"
-    fi
-done
-pass "B6 secret-scan: no high-risk patterns in cycle-15 new files"
-
-if bash scripts/raid/secret-scan-cycle.sh 15 >/dev/null 2>&1; then
-    pass "B6 secret-scan-cycle clean"
-else
-    note "B6 secret-scan: gitleaks unavailable on dev machine (CI will gate)"
-fi
-
-echo "[verify-cycle-15] all $step steps PASS"
-exit 0

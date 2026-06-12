@@ -1,0 +1,160 @@
+{
+  "entities": [
+    {
+      "name": "Alice",
+      "kind": "person"
+    },
+    {
+      "name": "White Rabbit",
+      "kind": "person"
+    },
+    {
+      "name": "rabbit-hole",
+      "kind": "place"
+    },
+    {
+      "name": "watch",
+      "kind": "artifact"
+    },
+    {
+      "name": "book",
+      "kind": "artifact"
+    },
+    {
+      "name": "daisy-chain",
+      "kind": "concept"
+    },
+    {
+      "name": "hedge",
+      "kind": "place"
+    },
+    {
+      "name": "field",
+      "kind": "place"
+    },
+    {
+      "name": "pink eyes",
+      "kind": "concept"
+    },
+    {
+      "name": "sister",
+      "kind": "person"
+    },
+    {
+      "name": "waistcoat-pocket",
+      "kind": "concept"
+    }
+  ],
+  "relations": [
+    {
+      "subject": "Alice",
+      "predicate": "lives_with",
+      "object": "sister",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Alice",
+      "predicate": "follows",
+      "object": "White Rabbit",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "White Rabbit",
+      "predicate": "has",
+      "object": "watch",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Alice",
+      "predicate": "reads",
+      "object": "book",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "White Rabbit",
+      "predicate": "located_in",
+      "object": "field",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "White Rabbit",
+      "predicate": "located_in",
+      "object": "waistcoat-pocket",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "White Rabbit",
+      "predicate": "located_on",
+      "object": "hedge",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "sister",
+      "predicate": "reading",
+      "object": "book",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Alice",
+      "predicate": "considers",
+      "object": "daisy-chain",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Alice",
+      "predicate": "lives_in",
+      "object": "field",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Alice",
+      "predicate": "owns",
+      "object": "daisy-chain",
+      "polarity": "affirm"
+    }
+  ],
+  "events": [
+    {
+      "summary": "Alice contemplates whether making a daisy-chain is worth the effort of getting up and picking daisies.",
+      "participants": [
+        "Alice"
+      ]
+    },
+    {
+      "summary": "Alice descends into the rabbit-hole after the White Rabbit, without considering how she would get out.",
+      "participants": [
+        "Alice"
+      ]
+    },
+    {
+      "summary": "The White Rabbit takes a watch from its waistcoat-pocket, looks at it, and then hurriedly continues running.",
+      "participants": [
+        "White Rabbit"
+      ]
+    },
+    {
+      "summary": "The White Rabbit disappears into a large rabbit-hole located beneath the hedge.",
+      "participants": [
+        "White Rabbit"
+      ]
+    },
+    {
+      "summary": "Alice becomes aware that she has never seen a rabbit with both a waistcoat-pocket and a watch before.",
+      "participants": [
+        "Alice"
+      ]
+    },
+    {
+      "summary": "Alice runs across the field to follow the White Rabbit.",
+      "participants": [
+        "Alice"
+      ]
+    },
+    {
+      "summary": "A White Rabbit with pink eyes runs close to Alice on the bank.",
+      "participants": [
+        "White Rabbit"
+      ]
+    }
+  ]
+}

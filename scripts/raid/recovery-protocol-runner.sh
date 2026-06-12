@@ -50,30 +50,11 @@ echo "[recovery] cycle $CYCLE — executing P5 8-step protocol"
 # Step 3 — Re-read IN_PROGRESS state
 IP_STATE="$RAID_DIR/IN_PROGRESS/cycle-${CYCLE_PADDED}-state.md"
 if [ ! -f "$IP_STATE" ]; then
-  # PRR-10: a MISSING live state file is NOT automatically a crash. On normal
-  # COMMIT the live state is MOVED to IN_PROGRESS/_archive/cycle-NNN-state.md
-  # and the cycle is marked DONE in CYCLE_LOG.md. Treating "missing" as
-  # INCONSISTENT produced 23 false-positive p5_recovery_inconsistent
-  # escalations for completed cycles. Only a missing-AND-not-completed state
-  # is a genuine crash.
-  ARCHIVED_STATE="$RAID_DIR/IN_PROGRESS/_archive/cycle-${CYCLE_PADDED}-state.md"
-  CYCLE_LOG="$RAID_DIR/CYCLE_LOG.md"
-  CYCLE_DONE=0
-  if [ -f "$CYCLE_LOG" ] && \
-     grep -Eq "^\|[[:space:]]*${CYCLE}[[:space:]]*\|.*\|[[:space:]]*DONE[[:space:]]*\|" "$CYCLE_LOG"; then
-    CYCLE_DONE=1
-  fi
-  if [ -f "$ARCHIVED_STATE" ] || [ "$CYCLE_DONE" = "1" ]; then
-    echo "[recovery] step 3: live state missing but cycle $CYCLE already completed" \
-         "(archived=$([ -f "$ARCHIVED_STATE" ] && echo yes || echo no), done=$CYCLE_DONE) — CONSISTENT, no recovery needed"
-    audit "recovery_consistent" "\"reason\":\"cycle_completed_state_archived\",\"archived\":$([ -f "$ARCHIVED_STATE" ] && echo true || echo false),\"cycle_log_done\":$([ "$CYCLE_DONE" = "1" ] && echo true || echo false)"
-    exit 0
-  fi
-  echo "[recovery] step 3 FAIL: no IN_PROGRESS state for cycle $CYCLE (and not completed/archived) — genuine crash" >&2
+  echo "[recovery] step 3 FAIL: no IN_PROGRESS state for cycle $CYCLE" >&2
   audit "recovery_halted" "\"reason\":\"in_progress_missing\""
   python3 "$REPO_ROOT/scripts/raid/escalation-writer.py" \
     --type p5_recovery_inconsistent --cycle "$CYCLE" --phase recovery \
-    --mismatch "IN_PROGRESS state file missing for cycle $CYCLE and cycle not completed/archived; cannot reconstruct phase" || true
+    --mismatch "IN_PROGRESS state file missing for cycle $CYCLE; cannot reconstruct phase" || true
   exit 10
 fi
 echo "[recovery] step 3 ok: read $IP_STATE"

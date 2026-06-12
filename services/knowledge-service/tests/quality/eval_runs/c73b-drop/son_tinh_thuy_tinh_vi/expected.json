@@ -1,0 +1,149 @@
+{
+  "entities": [
+    {
+      "name": "Sơn Tinh",
+      "kind": "person",
+      "aliases": []
+    },
+    {
+      "name": "Thủy Tinh",
+      "kind": "person",
+      "aliases": []
+    },
+    {
+      "name": "Mỵ Nương",
+      "kind": "person",
+      "aliases": []
+    },
+    {
+      "name": "Hùng Vương",
+      "kind": "person",
+      "aliases": [
+        "Vua Hùng",
+        "vua cha",
+        "vua",
+        "Hùng Vương thứ mười tám"
+      ]
+    },
+    {
+      "name": "núi Tản Viên",
+      "kind": "place",
+      "aliases": [
+        "Tản Viên"
+      ]
+    },
+    {
+      "name": "đồng bằng Bắc Bộ",
+      "kind": "place",
+      "aliases": []
+    }
+  ],
+  "relations": [
+    {
+      "subject": "Mỵ Nương",
+      "predicate": "child_of",
+      "object": "Hùng Vương",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Sơn Tinh",
+      "predicate": "courts",
+      "object": "Mỵ Nương",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Thủy Tinh",
+      "predicate": "courts",
+      "object": "Mỵ Nương",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Sơn Tinh",
+      "predicate": "resides_at",
+      "object": "núi Tản Viên",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Sơn Tinh",
+      "predicate": "married_to",
+      "object": "Mỵ Nương",
+      "polarity": "affirm"
+    }
+  ],
+  "events": [
+    {
+      "summary": "Hùng Vương ra điều kiện sính lễ để chọn rể giữa Sơn Tinh và Thủy Tinh",
+      "participants": [
+        "Hùng Vương",
+        "Sơn Tinh",
+        "Thủy Tinh",
+        "Mỵ Nương"
+      ]
+    },
+    {
+      "summary": "Sơn Tinh mang sính lễ đến trước và đón Mỵ Nương về núi Tản Viên",
+      "participants": [
+        "Sơn Tinh",
+        "Mỵ Nương"
+      ]
+    },
+    {
+      "summary": "Thủy Tinh nổi giận dâng nước đuổi đánh Sơn Tinh",
+      "participants": [
+        "Thủy Tinh",
+        "Sơn Tinh"
+      ]
+    },
+    {
+      "summary": "Sơn Tinh hóa phép cho núi Tản Viên cao lên chống lại nước lũ",
+      "participants": [
+        "Sơn Tinh",
+        "núi Tản Viên"
+      ]
+    },
+    {
+      "summary": "Thủy Tinh hằng năm dâng nước đánh Sơn Tinh nhưng đều thua",
+      "participants": [
+        "Thủy Tinh",
+        "Sơn Tinh"
+      ]
+    }
+  ],
+  "traps": [
+    {
+      "kind": "entity",
+      "name": "voi chín ngà",
+      "reason": "Wedding gift item, not a named entity"
+    },
+    {
+      "kind": "entity",
+      "name": "gà chín cựa",
+      "reason": "Wedding gift item, not a named entity"
+    },
+    {
+      "kind": "entity",
+      "name": "ngựa chín hồng mao",
+      "reason": "Wedding gift item, not a named entity"
+    },
+    {
+      "kind": "entity",
+      "name": "bánh chưng",
+      "reason": "Cultural food item, not a named entity"
+    },
+    {
+      "kind": "entity",
+      "name": "cơm nếp",
+      "reason": "Wedding gift food item, not a named entity"
+    },
+    {
+      "kind": "entity",
+      "name": "Người dân",
+      "reason": "Narrative framing reference ('the people say...'), not a named entity"
+    },
+    {
+      "kind": "event",
+      "summary": "Sơn Tinh và Thủy Tinh hòa giải",
+      "reason": "The story ends with eternal conflict; reconciliation is the OPPOSITE of what happens"
+    }
+  ]
+}

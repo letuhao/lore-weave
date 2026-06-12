@@ -10,6 +10,10 @@ class Settings(BaseSettings):
 
     # Optional with defaults.
     redis_url: str = "redis://redis:6379"
+    # FD-22 — emit a Redis wake signal when an extraction job starts so worker-ai
+    # picks it up immediately instead of waiting for its next poll. Kill-switch;
+    # disabling (or an empty redis_url) cleanly reverts to pure polling.
+    extraction_wake_enabled: bool = True
     log_level: str = "INFO"
     port: int = 8092
 
@@ -62,6 +66,48 @@ class Settings(BaseSettings):
     book_service_url: str = "http://book-service:8082"
     book_client_timeout_s: float = 5.0
 
+    # wiki-llm M1 (option A) — lore-enrichment hosts the authored de-bias
+    # BookProfile (worldview/voice/era/language/anachronism). The wiki
+    # generator reads it over the internal token to shape its prompt. The
+    # client caches per book for `book_profile_cache_ttl_s` so a wiki-gen job
+    # over N entities makes ONE call per book, while an edited profile is
+    # still picked up within the TTL (a failed read is NOT cached → retries).
+    lore_enrichment_service_url: str = "http://lore-enrichment-service:8093"
+    lore_enrichment_client_timeout_s: float = 5.0
+    book_profile_cache_ttl_s: float = 60.0
+
+    # wiki-llm M6 — batch wiki-generation orchestrator. `wiki_gen_enabled` gates
+    # the stream consumer (OFF by default: generation costs tokens, so a deploy
+    # never auto-starts generating). cost_per_article is the per-article ESTIMATE
+    # charged against a job's max_spend_usd (the LLMClient meters real tokens via
+    # provider-registry; precise per-job metering is a follow-up). prompt/pipeline
+    # version stamp the C7 build_inputs fingerprint (Phase-2 staleness).
+    wiki_gen_enabled: bool = False
+    wiki_gen_cost_per_article_usd: float = 0.05
+    wiki_gen_passage_limit: int = 8
+    wiki_prompt_version: str = "wiki-v1"
+    wiki_pipeline_version: str = "wiki-m6"
+
+    # D-WIKI-M8-EVAL-PLUS Phase 2 — automatic-sampled groundedness judge. After a wiki
+    # article generates, with probability `sample_rate` it is judged via the learning
+    # service's on-demand judge endpoint (the SAME Phase-1 endpoint, reusing the fresh
+    # article + FULL context sources). OFF by default + rate 0.0 = zero cost; both an
+    # enable flag AND a positive rate AND a model are required to sample. Best-effort:
+    # a judge call never blocks or fails generation.
+    wiki_llm_judge_enabled: bool = False
+    wiki_llm_judge_sample_rate: float = 0.0          # P(judge) per generated article, [0,1]
+    wiki_llm_judge_model_ref: str = ""               # judge model UUID (BYOK user_model)
+    wiki_llm_judge_model_source: str = "user_model"
+    learning_internal_url: str = "http://learning-service:8094"
+
+    # D-WIKI-M8-FEWSHOT — inject gold AI-draft→human-edit pairs as few-shot exemplars
+    # into wiki generation (the model learns the editorial style humans apply). OFF by
+    # default (adds tokens to every prompt). max_examples bounds the count fetched once
+    # per job; the glossary gold-pairs endpoint truncates each body server-side AND
+    # hard-caps the count at 5 (goldPairsMaxLimit) — a value above 5 here is clamped.
+    wiki_fewshot_enabled: bool = False
+    wiki_fewshot_max_examples: int = 3
+
     # P1 (2026-05-23) — /internal/parse body size cap. Default 200 MiB
     # matches book-service's maxImportSize at services/book-service/internal/api/import.go.
     # H3 fix: explicit ceiling — without this, a misconfigured caller could
@@ -78,6 +124,24 @@ class Settings(BaseSettings):
     # LLMs are slow. 60s is the plan-row budget; extractors that need
     # longer should split their work rather than raise this.
     provider_client_timeout_s: float = 60.0
+
+    # E5B — cross-encoder rerank (raw-search junk-rejection). Routes through
+    # provider-registry /internal/rerank. `rerank_enabled` is a kill-switch
+    # (off ⇒ pure E5 behavior). `min_rerank_score` 0.30 is data-calibrated on
+    # the eval corpus (negatives < 0.30 < real positives). top_n bounds the
+    # cross-encoder passes; timeout is load-tolerant for cold-start.
+    # D-RERANK-NOT-BYOK: the rerank MODEL is no longer a hardcoded env name —
+    # it is the per-project `knowledge_projects.rerank_model` (BYOK user_model),
+    # resolved per-user by provider-registry. NULL project model ⇒ rerank skipped.
+    rerank_enabled: bool = True
+    rerank_top_n: int = 30
+    min_rerank_score: float = 0.30
+    # Measured 2026-06-08 (bge-reranker-v2-m3, 30 CJK passages): warm p50 44ms /
+    # p95 60ms (GPU-class); cold-reload (after TTL idle-unload) ~1.7s. 5s covers
+    # cold with margin yet degrades fast on a real hang. PROD: scale the rerank
+    # service's TTL to demand (high TTL ⇒ stays warm under traffic, only the
+    # first-after-long-idle pays cold) — see rerank guide §6.6 (D-RAWSEARCH-RERANK-LATENCY).
+    rerank_timeout_s: float = 5.0
 
     # K11.2 — Neo4j connection (Track 2 extraction graph). Empty
     # `neo4j_uri` means "skip Neo4j init at startup" — Track 1 dev
@@ -97,6 +161,43 @@ class Settings(BaseSettings):
     # memory-pollution guard, not a security boundary: the limiter
     # fails open if Redis is unavailable.
     tool_remember_limit_per_session: int = 10
+
+    # Q4b-feed — retention window for extraction_run_samples (the transient
+    # items+source buffer feeding the online LLM judge). Pruned on startup.
+    # 7 days is long enough for the sampled eval-runner to consume a run;
+    # past that the row is dead novel-text weight.
+    extraction_run_sample_ttl_days: int = 7
+
+    # mui #1c K-detect — coreference detection (proposes merge candidates to
+    # glossary). PO-locked 2026-06-07: on-demand endpoint + opt-in auto-hook
+    # (default OFF); LLM-verify config-gated on-by-default with score-only
+    # fallback when no judge model is configured. Signals = name + KG-structural
+    # (no embeddings). Only glossary-anchored entities are candidates.
+    coref_enabled: bool = True
+    # Auto-run a detect pass at end-of-book extraction. OFF by default — LLM
+    # verify costs tokens and L1 locks human-confirm-every-merge, so detection
+    # cadence is a deliberate choice, not every extraction run.
+    coref_auto_on_extraction: bool = False
+    # A pair must blend to >= this to be a candidate (name·w_name + struct·w_struct).
+    coref_score_floor: float = 0.5
+    coref_name_weight: float = 0.6
+    coref_struct_weight: float = 0.4
+    # Ignore long-tail entities with very few mentions (noise).
+    coref_min_mentions: int = 2
+    # Hard cap on scored pairs taken forward to LLM-verify+propose per pass —
+    # bounds LLM cost on a dense graph.
+    coref_max_pairs: int = 200
+    # Per-kind ceiling on entities loaded from Neo4j for one pass.
+    coref_max_candidates_per_kind: int = 500
+    # Blocking: drop name char-bigram buckets larger than this (common-char
+    # explosion guard — keeps blocking sub-quadratic).
+    coref_max_bucket: int = 50
+    # Config-gate for the LLM verify step. Effective ONLY when coref_judge_model
+    # is set; otherwise the pass degrades to score-only (propose all above floor).
+    coref_llm_verify: bool = True
+    coref_judge_model: str = ""
+    coref_judge_user: str = ""
+    coref_judge_model_source: str = "platform_model"
 
 
 settings = Settings()

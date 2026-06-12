@@ -255,6 +255,21 @@ func embeddingCost(tokIn int, p Pricing) (float64, error) {
 	return roundUpUSD(float64(tokIn) / 1e6 * (*p.InputPerMTok)), nil
 }
 
+// PriceText prices an EXPLICIT input/output token pair — the S5a estimate path,
+// where the caller (campaign-service) supplies a token heuristic derived from
+// chapter sizes rather than the raw job text. Same pricing + ErrUnpriced +
+// round-up semantics as the live textCost guardrail path, so an estimate and the
+// real reconcile can never disagree on the pricing math.
+func PriceText(inputTokens, outputTokens int, p Pricing) (float64, error) {
+	return textCost(inputTokens, outputTokens, p)
+}
+
+// PriceEmbedding prices an explicit input-only token count (the S5a estimate
+// path for the embedding stage). Mirrors PriceText.
+func PriceEmbedding(inputTokens int, p Pricing) (float64, error) {
+	return embeddingCost(inputTokens, p)
+}
+
 // perUnitCost prices a job with a single per-unit dimension (per_image,
 // per_second, per_kchar). A nil rate is unpriced → fail closed.
 func perUnitCost(units float64, rate *float64) (float64, error) {

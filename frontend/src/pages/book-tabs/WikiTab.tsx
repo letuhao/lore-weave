@@ -2,14 +2,24 @@ import { useState, useMemo, useDeferredValue } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Search, BookOpen, Clock, Pencil, Plus, Sparkles } from 'lucide-react';
+import { Search, BookOpen, Clock, Pencil, Plus, Sparkles, RefreshCw, MessageSquare } from 'lucide-react';
 import { toast } from 'sonner';
 import type { JSONContent } from '@tiptap/react';
 import { useAuth } from '@/auth';
 import { wikiApi } from '@/features/wiki/api';
 import { glossaryApi } from '@/features/glossary/api';
 import type { WikiArticleListItem, WikiInfoboxAttr } from '@/features/wiki/types';
+import { useWikiGenJob } from '@/features/wiki/hooks/useWikiGenJob';
+import { GenerateWikiDialog } from '@/features/wiki/components/GenerateWikiDialog';
+import { WikiGenJobBanner } from '@/features/wiki/components/WikiGenJobBanner';
+import { WikiGenJobDetail } from '@/features/wiki/components/WikiGenJobDetail';
+import { WikiGenBadge } from '@/features/wiki/components/WikiGenBadge';
+import { VerifyFlagsPanel } from '@/features/wiki/components/VerifyFlagsPanel';
+import { WikiSuggestionReview } from '@/features/wiki/components/WikiSuggestionReview';
+import { KnowledgeUpdatesPanel } from '@/features/wiki/components/KnowledgeUpdatesPanel';
+import { useWikiStaleness } from '@/features/wiki/hooks/useWikiStaleness';
 import { ContentRenderer } from '@/components/reader/ContentRenderer';
+import { CitationProvider } from '@/components/reader/CitationContext';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { EmptyState } from '@/components/shared';
 import { cn } from '@/lib/utils';
@@ -93,7 +103,7 @@ function WikiToC({ headings }: { headings: { text: string; level: number; id: st
 
 /* ── Sidebar article list ────────────────────────────────────────────────── */
 
-function WikiSidebar({ articles, selectedId, onSelect, kinds, kindFilter, onKindFilter, search, onSearch, total, t, onGenerate, generating, onCreateOpen }: {
+export function WikiSidebar({ articles, selectedId, onSelect, kinds, kindFilter, onKindFilter, search, onSearch, t, onGenerate, generating, onCreateOpen }: {
   articles: WikiArticleListItem[];
   selectedId: string | null;
   onSelect: (id: string) => void;
@@ -102,7 +112,6 @@ function WikiSidebar({ articles, selectedId, onSelect, kinds, kindFilter, onKind
   onKindFilter: (k: string) => void;
   search: string;
   onSearch: (s: string) => void;
-  total: number;
   t: (key: string, opts?: Record<string, unknown>) => string;
   onGenerate?: () => void;
   generating?: boolean;
@@ -117,6 +126,13 @@ function WikiSidebar({ articles, selectedId, onSelect, kinds, kindFilter, onKind
     }
     return groups;
   }, [articles]);
+
+  // W3 — "N articles · M by AI" split. M counts AI-authored articles
+  // (generation_status set) within the loaded list, so it is always ≤ N.
+  const aiCount = useMemo(
+    () => articles.filter(a => a.generation_status != null).length,
+    [articles],
+  );
 
   return (
     <div className="flex h-full flex-col rounded-l-lg border-r bg-card">
@@ -149,7 +165,8 @@ function WikiSidebar({ articles, selectedId, onSelect, kinds, kindFilter, onKind
           </div>
         </div>
         <span className="text-[10px] text-muted-foreground">
-          {t('articles', { count: total })}
+          {t('articles', { count: articles.length })}
+          {aiCount > 0 && <> &middot; {t('aiSplit', { count: aiCount })}</>}
         </span>
         <div className="relative mt-2">
           <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
@@ -216,11 +233,19 @@ function WikiSidebar({ articles, selectedId, onSelect, kinds, kindFilter, onKind
                 <span className={cn('truncate', selectedId === a.article_id && 'font-medium')}>
                   {a.display_name || 'Untitled'}
                 </span>
-                {a.status === 'draft' && (
-                  <span className="ml-auto shrink-0 rounded-full bg-amber-400/12 px-1.5 py-0.5 text-[9px] font-medium text-amber-400">
-                    {t('draft')}
-                  </span>
-                )}
+                <span className="ml-auto flex shrink-0 items-center gap-1">
+                  {a.is_knowledge_stale && (
+                    <span className="rounded-full bg-amber-400/15 px-1.5 py-0.5 text-[9px] font-medium text-amber-500">
+                      {t('staleness.outdated')}
+                    </span>
+                  )}
+                  <WikiGenBadge status={a.generation_status} subtle />
+                  {a.status === 'draft' && (
+                    <span className="shrink-0 rounded-full bg-amber-400/12 px-1.5 py-0.5 text-[9px] font-medium text-amber-400">
+                      {t('draft')}
+                    </span>
+                  )}
+                </span>
               </button>
             ))}
           </div>
@@ -237,16 +262,50 @@ function WikiSidebar({ articles, selectedId, onSelect, kinds, kindFilter, onKind
 
 /* ── Article view ────────────────────────────────────────────────────────── */
 
-function WikiArticleView({ bookId, articleId }: { bookId: string; articleId: string }) {
+function WikiArticleView({ bookId, articleId, onRegenerate }: {
+  bookId: string;
+  articleId: string;
+  onRegenerate: (entityId: string, displayName: string) => void;
+}) {
   const { accessToken } = useAuth();
   const { t } = useTranslation('wiki');
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [showSugs, setShowSugs] = useState(false);
 
   const { data: article, isLoading } = useQuery({
     queryKey: ['wiki-article', bookId, articleId],
     queryFn: () => wikiApi.getArticle(bookId, articleId, accessToken!),
     enabled: !!accessToken && !!articleId,
   });
+
+  // W1 — pending suggestions for THIS article (the AI-regen clobber-guard files them).
+  const { data: sugData } = useQuery({
+    queryKey: ['wiki-suggestions', bookId, 'pending'],
+    queryFn: () => wikiApi.listSuggestions(bookId, { status: 'pending', limit: 50 }, accessToken!),
+    enabled: !!accessToken,
+  });
+  const articleSugs = (sugData?.items ?? []).filter((s) => s.article_id === articleId);
+
+  const handleReviewSug = async (sugId: string, sugArticleId: string, action: 'accept' | 'reject') => {
+    if (!accessToken) return;
+    try {
+      await wikiApi.reviewSuggestion(bookId, sugArticleId, sugId, { action }, accessToken);
+      toast.success(action === 'accept' ? t('suggestionAccepted') : t('suggestionRejected'));
+      queryClient.invalidateQueries({ queryKey: ['wiki-suggestions', bookId] });
+      if (action === 'accept') {
+        queryClient.invalidateQueries({ queryKey: ['wiki-article', bookId, sugArticleId] });
+        queryClient.invalidateQueries({ queryKey: ['wiki-revisions', bookId, sugArticleId] });
+        // /review-impl F1: accepting an AI-regen resolves staleness server-side
+        // (status→regenerated + clears is_knowledge_stale) and changes the article's
+        // generation_status — refresh the feed + sidebar badges so they don't go stale.
+        queryClient.invalidateQueries({ queryKey: ['wiki-staleness', bookId] });
+        queryClient.invalidateQueries({ queryKey: ['wiki-articles', bookId] });
+      }
+    } catch {
+      toast.error(t('reviewFailed'));
+    }
+  };
 
   if (isLoading) {
     return (
@@ -283,8 +342,33 @@ function WikiArticleView({ bookId, articleId }: { bookId: string; articleId: str
               >
                 {article.kind.name}
               </span>
+              <WikiGenBadge status={article.generation_status} />
+              {article.is_knowledge_stale && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-400/15 px-2 py-0.5 text-[10px] font-medium text-amber-500">
+                  {t('staleness.outdated')}
+                </span>
+              )}
+              {articleSugs.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowSugs((v) => !v)}
+                  className="inline-flex items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-medium text-primary hover:brightness-110"
+                >
+                  <MessageSquare className="h-3 w-3" />
+                  {t('suggestions.pendingChip', { count: articleSugs.length })}
+                </button>
+              )}
             </div>
             <div className="flex gap-1">
+              <button
+                onClick={() => onRegenerate(article.entity_id, article.display_name)}
+                title={t('gen.regenerate')}
+                data-testid="wiki-regenerate"
+                className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium hover:bg-secondary"
+              >
+                <RefreshCw className="h-3 w-3" />
+                {t('gen.regenerate')}
+              </button>
               <button
                 onClick={() => navigate(`/books/${bookId}/wiki/${articleId}/edit`)}
                 className="inline-flex items-center gap-1 rounded-md bg-primary px-2 py-1 text-[11px] font-medium text-primary-foreground hover:brightness-110"
@@ -301,10 +385,32 @@ function WikiArticleView({ bookId, articleId }: { bookId: string; articleId: str
           <p className="mb-4 text-[11px] text-muted-foreground">
             {t('lastEdited')} {updatedDate} &middot; {t('revisions', { count: article.revision_count })}
           </p>
+
+          {showSugs && articleSugs.length > 0 && (
+            <div className="mb-4 rounded-lg border">
+              <div className="border-b px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                {t('suggestions.pendingTitle', { count: articleSugs.length })}
+              </div>
+              {articleSugs.map((sug) => (
+                <WikiSuggestionReview
+                  key={sug.suggestion_id}
+                  suggestion={sug}
+                  currentBodyJson={article.body_json}
+                  bookId={bookId}
+                  onAccept={() => handleReviewSug(sug.suggestion_id, sug.article_id, 'accept')}
+                  onReject={() => handleReviewSug(sug.suggestion_id, sug.article_id, 'reject')}
+                />
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Body */}
         <div className="px-6 pb-6">
+          <VerifyFlagsPanel
+            provenance={article.generation_provenance}
+            blocked={article.generation_status === 'blocked'}
+          />
           {article.infobox.length > 0 && (
             <WikiInfobox
               attrs={article.infobox}
@@ -315,7 +421,9 @@ function WikiArticleView({ bookId, articleId }: { bookId: string; articleId: str
 
           {hasContent ? (
             <div className="wiki-article-body">
-              <ContentRenderer blocks={blocks} mode="full" />
+              <CitationProvider bookId={bookId}>
+                <ContentRenderer blocks={blocks} mode="full" />
+              </CitationProvider>
             </div>
           ) : (
             <p className="text-sm text-muted-foreground italic">{t('noContent')}</p>
@@ -394,7 +502,7 @@ function CreateArticleDialog({ bookId, open, onClose }: {
       }, accessToken);
       onClose(article.article_id);
     } catch {
-      toast.error('Failed to create article');
+      toast.error(t('createFailed'));
     } finally {
       setCreating(false);
     }
@@ -416,7 +524,7 @@ function CreateArticleDialog({ bookId, open, onClose }: {
             <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <input
               className="h-9 w-full rounded-md border bg-background pl-8 pr-3 text-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
-              placeholder="Search entities by name..."
+              placeholder={t('searchEntities')}
               value={entitySearch}
               onChange={e => { setEntitySearch(e.target.value); setOffset(0); }}
               autoFocus
@@ -540,7 +648,26 @@ export function WikiTab({ bookId }: { bookId: string }) {
   const [kindFilter, setKindFilter] = useState('');
   const [selectedArticleId, setSelectedArticleId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
-  const [generating, setGenerating] = useState(false);
+  const [genOpen, setGenOpen] = useState(false);
+  // wiki-llm M7b-2b/Phase-2b — set when the dialog is opened to REGENERATE
+  // specific entities (single article OR a batch from the change-feed); null =
+  // batch generate-by-kind via the Sparkles button.
+  const [regenTarget, setRegenTarget] = useState<{ entity_ids: string[]; name: string } | null>(null);
+  const [knowledgeOpen, setKnowledgeOpen] = useState(false);
+  // wiki-llm M7b-2a — the LLM-gen job controller (poll + trigger + resume/cancel).
+  const { job, isActive, busy, trigger, resume, cancel } = useWikiGenJob(bookId);
+  // wiki-llm Phase-2b — the "Knowledge updates" change-feed count (badge).
+  const { count: staleCount } = useWikiStaleness(bookId);
+
+  const openBatchGenerate = () => { setRegenTarget(null); setGenOpen(true); };
+  const openRegenerate = (entity_id: string, name: string) => {
+    setRegenTarget({ entity_ids: [entity_id], name });
+    setGenOpen(true);
+  };
+  const openBatchRegenerate = (entity_ids: string[], name: string) => {
+    setRegenTarget({ entity_ids, name });
+    setGenOpen(true);
+  };
 
   const { data, isLoading } = useQuery({
     queryKey: ['wiki-articles', bookId, deferredSearch, kindFilter],
@@ -567,24 +694,6 @@ export function WikiTab({ bookId }: { bookId: string }) {
     ? selectedArticleId
     : articles[0]?.article_id ?? null;
 
-  const handleGenerate = async () => {
-    if (!accessToken || generating) return;
-    setGenerating(true);
-    try {
-      const result = await wikiApi.generateStubs(bookId, {}, accessToken);
-      if (result.created > 0) {
-        toast.success(t('generatedCount', { count: result.created }));
-        queryClient.invalidateQueries({ queryKey: ['wiki-articles', bookId] });
-      } else {
-        toast.info(t('generatedNone'));
-      }
-    } catch {
-      toast.error('Failed to generate');
-    } finally {
-      setGenerating(false);
-    }
-  };
-
   const handleCreateClose = (articleId?: string) => {
     setCreateOpen(false);
     if (articleId) {
@@ -607,6 +716,8 @@ export function WikiTab({ bookId }: { bookId: string }) {
   if (total === 0 && !search && !kindFilter) {
     return (
       <>
+        <WikiGenJobBanner job={job} onResume={resume} onCancel={cancel} busy={busy} />
+        <WikiGenJobDetail key={job?.job_id ?? 'none'} job={job} />
         <EmptyState
           icon={BookOpen}
           title={t('noArticles')}
@@ -614,13 +725,13 @@ export function WikiTab({ bookId }: { bookId: string }) {
           action={
             <div className="flex gap-2">
               <button
-                onClick={handleGenerate}
-                disabled={generating}
+                onClick={openBatchGenerate}
+                disabled={isActive}
                 data-testid="wiki-generate-empty"
                 className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:brightness-110 disabled:opacity-50"
               >
                 <Sparkles className="h-3.5 w-3.5" />
-                {generating ? 'Generating...' : t('generateFromGlossary')}
+                {t('generateFromGlossary')}
               </button>
               <button
                 onClick={() => setCreateOpen(true)}
@@ -633,12 +744,34 @@ export function WikiTab({ bookId }: { bookId: string }) {
           }
         />
         <CreateArticleDialog bookId={bookId} open={createOpen} onClose={handleCreateClose} />
+        <GenerateWikiDialog
+          open={genOpen}
+          onClose={() => setGenOpen(false)}
+          onTrigger={trigger}
+          busy={busy}
+          bookId={bookId}
+          entityIds={regenTarget?.entity_ids}
+          regenName={regenTarget?.name}
+        />
       </>
     );
   }
 
   return (
     <>
+      {staleCount > 0 && (
+        <button
+          onClick={() => setKnowledgeOpen(true)}
+          data-testid="wiki-knowledge-updates"
+          className="mb-3 flex w-full items-center gap-2 rounded-lg border border-amber-400/40 bg-amber-400/8 px-4 py-2 text-left text-xs font-medium text-amber-500 hover:bg-amber-400/12"
+        >
+          <RefreshCw className="h-3.5 w-3.5" />
+          {t('staleness.banner', { count: staleCount })}
+          <span className="ml-auto rounded-full bg-amber-400/20 px-2 py-0.5 text-[10px]">{staleCount}</span>
+        </button>
+      )}
+      <WikiGenJobBanner job={job} onResume={resume} onCancel={cancel} busy={busy} />
+      <WikiGenJobDetail key={job?.job_id ?? 'none'} job={job} />
       <div className="flex overflow-hidden rounded-lg border" style={{ minHeight: 500 }}>
         {/* Left sidebar */}
         <div className="w-[220px] shrink-0">
@@ -651,10 +784,9 @@ export function WikiTab({ bookId }: { bookId: string }) {
             onKindFilter={setKindFilter}
             search={search}
             onSearch={setSearch}
-            total={total}
             t={t}
-            onGenerate={handleGenerate}
-            generating={generating}
+            onGenerate={openBatchGenerate}
+            generating={isActive}
             onCreateOpen={() => setCreateOpen(true)}
           />
         </div>
@@ -662,7 +794,7 @@ export function WikiTab({ bookId }: { bookId: string }) {
         {/* Article view */}
         <div className="min-w-0 flex-1">
           {effectiveSelected ? (
-            <WikiArticleView bookId={bookId} articleId={effectiveSelected} />
+            <WikiArticleView bookId={bookId} articleId={effectiveSelected} onRegenerate={openRegenerate} />
           ) : (
             <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
               {t('noMatch')}
@@ -671,6 +803,21 @@ export function WikiTab({ bookId }: { bookId: string }) {
         </div>
       </div>
       <CreateArticleDialog bookId={bookId} open={createOpen} onClose={handleCreateClose} />
+      <GenerateWikiDialog
+        open={genOpen}
+        onClose={() => setGenOpen(false)}
+        onTrigger={trigger}
+        busy={busy}
+        bookId={bookId}
+        entityIds={regenTarget?.entity_ids}
+        regenName={regenTarget?.name}
+      />
+      <KnowledgeUpdatesPanel
+        bookId={bookId}
+        open={knowledgeOpen}
+        onClose={() => setKnowledgeOpen(false)}
+        onRegenerate={openBatchRegenerate}
+      />
     </>
   );
 }

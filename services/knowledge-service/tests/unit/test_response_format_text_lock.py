@@ -66,16 +66,11 @@ def _sdk_source(module_path: str) -> tuple[str, Path]:
 
 
 def _judge_source() -> tuple[str, Path]:
-    """Locate llm_judge.py relative to this test file.
-
-    Layout assumption: this file at services/knowledge-service/tests/unit/
-    and llm_judge.py at services/knowledge-service/tests/quality/. Inside
-    the Docker test container the same relative structure holds because
-    the Dockerfile COPYs the full tests/ tree.
+    """Locate llm_judge.py — lifted to the `loreweave_eval` SDK (track phase
+    Q0), so locate it via module ``__file__`` exactly like the extractor
+    sources (works in-monorepo and in the pip-installed Docker container).
     """
-    here = Path(__file__).resolve().parent
-    judge_path = here.parent / "quality" / "llm_judge.py"
-    return judge_path.read_text(encoding="utf-8"), judge_path
+    return _sdk_source("loreweave_eval.llm_judge")
 
 
 _SITES = (

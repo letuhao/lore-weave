@@ -39,10 +39,14 @@ def test_p3_summary_books_table_present():
         assert line in migrate.DDL, f"missing summary_books DDL fragment: {line!r}"
 
 
-def test_p3_extraction_jobs_status_extended_with_summarizing():
-    """M1: 'summarizing' is the NEW transitional state."""
+def test_p3_extraction_jobs_status_full_vocabulary():
+    """M1 (Cycle 10 reconcile): the M1 ALTER carries the FULL status vocabulary
+    the code emits — 'summarizing' (the M1 transitional state) AND
+    'complete'/'paused'/'cancelled' (state machine + repo + worker-ai + FE). The
+    original M1 silently renamed complete->completed and dropped paused/cancelled,
+    so every finished/paused/cancelled extraction CheckViolated (DEFERRED 065)."""
     assert (
-        "CHECK (status IN ('pending','running','summarizing','completed','failed'))"
+        "CHECK (status IN ('pending','running','paused','summarizing','complete','failed','cancelled'))"
         in migrate.DDL
     )
 

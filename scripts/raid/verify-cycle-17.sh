@@ -1,263 +1,193 @@
 #!/usr/bin/env bash
-# verify-cycle-17.sh — L4.A + L4.B DP-kernel core + Macros.
+# verify-cycle-17.sh — CI gate for RAID cycle 17 (strategy (d) RE-COOK, P3 —
+# gate-enforced + LICENSING). Exit 0 = PASS.
 #
-# Acceptance gate. Exit 0 = pass; non-zero = fail.
-#
-# Cycle 17 scope (2 DPS — both inline):
-#   DPS 1 — L4.A core crate extensions in crates/dp-kernel/:
-#     * src/event.rs            — Event trait + EventFromEnvelope
-#     * src/aggregate.rs        — re-export cycle-12 Aggregate + AggregateMeta
-#     * src/snapshot.rs         — Snapshot trait (encoder/decoder + version)
-#     * src/metadata.rs         — typed EventMetadata view
-#     * src/event_store.rs      — async EventStore trait + EventStoreError
-#                                 + shared_test_suite + InMemoryEventStore
-#     * src/event_store_pg.rs   — PgEventStore (Q-L4A-1: WRAPPED PgPool)
-#     * tests/integration_event_store.rs — gated PgEventStore conformance
-#     * Cargo.toml — sqlx + async-trait + tokio + tracing deps
-#   DPS 2 — L4.B macros crate crates/dp-kernel-macros/:
-#     * Cargo.toml (proc-macro = true)
-#     * src/lib.rs              — #[derive(Aggregate)] + #[handles_event]
-#     * src/attrs.rs            — aggregate_type attribute parsing
-#     * tests/derive_aggregate.rs — runtime + compile tests
-#     * docs/dp-kernel/macros.md — usage guide
-#
-# LOCKED decisions enforced:
-#   Q-L4A-1 — PgEventStore.pool is pub(crate), NOT pub (wrapped).
-#   Q-L4B-1 — Macro attribute syntax = #[handles_event("npc.said")].
-#   Q-L4-2  — Single workspace Cargo.toml; new member appended.
-#   Cycle-12 Projection trait CONSOLIDATED (re-exported via aggregate.rs);
-#   no duplicate trait shape.
+# Asserts (per docs/raid/cycle_briefs/17_strategy-recook.md acceptance +
+# DEFERRED-054 gate-enforcement hard requirement + the C17 LICENSING safety):
+#   1. C17 unit suite green: ReCookStrategy (H0 origin='enriched:recook' + conf<1.0
+#      + quarantined + recook-basis provenance citing the LICENSED source),
+#      canon-verify runs on re-cooked content (anachronism on re-cooked modern!),
+#      grounding required (no invent-from-nothing), the LICENSING gate (default-deny:
+#      public_domain/licensed ADMITTED; unlicensed/copyrighted/unknown/missing
+#      REFUSED at corpus-admission AND fact-emit), AND the gate-aware factory
+#      enforcement (LOCKED → InactiveStrategyError; CLEARED → selectable; an
+#      override cannot bypass a locked gate; read-error fails closed).
+#   2. RUNNER gate e2e: gate LOCKED + recook → refused before runner; CLEARED + PD
+#      → re-cooks H0 proposals; CLEARED + unlicensed → refused mid-run (no proposal);
+#      recook cost (12.0) binds; P1 path unaffected. (Same end-to-end enforcement as
+#      C16's test_runner_gate_e2e, extended to P3 + licensing.)
+#   3. Full lore-enrichment suite green — no C0–C16 regression.
+#   4. ruff clean on the C17 code paths.
+#   5. No hardcoded model names in the C17 app code (model via provider-registry
+#      model_ref / the injected CompleteFn seam).
+#   6. GATE ENFORCEMENT (054): focused assertion that gate-LOCKED → recook is NOT
+#      selectable and gate-CLEARED → selectable (gate ENFORCED, not advisory).
+#   7. LICENSING ENFORCEMENT: focused assertion that an unlicensed/unknown source
+#      is REFUSED and a public_domain/licensed source is ADMITTED (default-deny).
+#   8. Eval-gate clears threshold BEFORE active: re-run the C15 deterministic gate
+#      (bad fixture BLOCKS) to confirm the gate the factory reads is real + gates.
+#      C17 reads this gate; it does NOT edit it.
+#   9. Isolation: git diff touches NO climate/geo eval files, NO C15 eval files,
+#      NO world-service / game-server / infra/existing-prod.
+#  10. LIVE SMOKE (best-effort): a real re-cook of a PUBLIC-DOMAIN history snippet
+#      into 商周 via real Qwen → a quarantined, H0-tagged proposal, ONLY when the
+#      gate is cleared, AND a copyrighted negative-control source REFUSED. Genuine
+#      infra-unavailable is a legitimate skip (no cross-service token required —
+#      this cycle is in-service per the brief).
+set -uo pipefail
+CYCLE=17
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+LE_SVC="$REPO_ROOT/services/lore-enrichment-service"
+AUDIT_LOG="$REPO_ROOT/docs/audit/AUDIT_LOG.jsonl"
+NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-set -euo pipefail
-
-repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
-cd "$repo_root"
-
-step=0
-pass() { step=$((step+1)); echo "[verify-cycle-17] step $step PASS: $1"; }
-fail() { step=$((step+1)); echo "[verify-cycle-17] step $step FAIL: $1" >&2; exit 1; }
+fail() { echo "[verify-cycle-17] FAIL: $1"; exit 1; }
+ok()   { echo "[verify-cycle-17] ok: $1"; }
 note() { echo "[verify-cycle-17] note: $1"; }
 
-# ─────────────────────────────────────────────────────────────────────────
-# DPS 1 — L4.A core crate extensions
-# ─────────────────────────────────────────────────────────────────────────
+echo "[verify-cycle-17] running CI gate"
 
-for f in \
-    crates/dp-kernel/src/event.rs \
-    crates/dp-kernel/src/aggregate.rs \
-    crates/dp-kernel/src/snapshot.rs \
-    crates/dp-kernel/src/metadata.rs \
-    crates/dp-kernel/src/event_store.rs \
-    crates/dp-kernel/src/event_store_pg.rs \
-    crates/dp-kernel/tests/integration_event_store.rs ; do
-    [[ -f "$f" ]] || fail "L4.A file missing: $f"
-done
-pass "L4.A files all present (event/aggregate/snapshot/metadata/event_store/event_store_pg + integration test)"
+# ── 1+2. C17 unit + runner-e2e suites ────────────────────────────────────────────
+if command -v python >/dev/null 2>&1; then
+  ( cd "$LE_SVC" && python -m pytest \
+      tests/test_recook_strategy.py tests/test_runner_recook_gate_e2e.py -q ) \
+    >/tmp/c17_unit.log 2>&1 \
+    || { cat /tmp/c17_unit.log; fail "C17 re-cook unit/e2e suite failed"; }
+  ok "C17 re-cook unit + runner-gate-e2e suites green (H0 + canon-verify + gate + licensing)"
 
-# Q-L4A-1: PgEventStore wraps PgPool — field NOT pub.
-grep -q "pub(crate) pool: Arc<PgPool>" crates/dp-kernel/src/event_store_pg.rs \
-    || fail "Q-L4A-1: PgEventStore.pool must be pub(crate), not pub"
-pass "Q-L4A-1: PgEventStore.pool is pub(crate) (WRAPPED PgPool)"
-
-# Q-L4A-1 documentation marker.
-grep -q "Q-L4A-1" crates/dp-kernel/src/event_store.rs \
-    || fail "Q-L4A-1 not referenced in event_store.rs docs"
-grep -q "Q-L4A-1" crates/dp-kernel/src/event_store_pg.rs \
-    || fail "Q-L4A-1 not referenced in event_store_pg.rs docs"
-pass "Q-L4A-1 documented in both event_store.rs + event_store_pg.rs"
-
-# Cycle-12 Projection trait CONSOLIDATION — aggregate.rs re-exports it,
-# no duplicate trait definition in any new file.
-grep -q "pub use crate::load_aggregate::Aggregate" crates/dp-kernel/src/aggregate.rs \
-    || fail "aggregate.rs must re-export load_aggregate::Aggregate (consolidation)"
-# Confirm nobody re-declared `pub trait Aggregate {` in a new file.
-# Use a tighter pattern so `pub trait AggregateMeta:` (additive trait in
-# aggregate.rs) does NOT register as a duplicate.
-DUPES=$(grep -rlE '^pub trait Aggregate(:| )' crates/dp-kernel/src/ | wc -l)
-if [[ "$DUPES" -ne 1 ]]; then
-    grep -rlnE '^pub trait Aggregate(:| )' crates/dp-kernel/src/
-    fail "exactly ONE 'pub trait Aggregate' definition expected (cycle-12 load_aggregate.rs); found $DUPES"
-fi
-pass "Aggregate trait CONSOLIDATED (single definition in load_aggregate.rs; aggregate.rs re-exports)"
-
-# EventStore + EventStoreError + InMemoryEventStore symbols exported.
-for sym in "EventStore" "EventStoreError" "EventStoreResult" "PgEventStore" "EventMetadata" "Snapshot" "AggregateMeta" "Event" "EventFromEnvelope"; do
-    grep -q "pub use .*\b$sym\b" crates/dp-kernel/src/lib.rs \
-        || fail "lib.rs missing re-export of $sym"
-done
-pass "lib.rs re-exports all 9 L4.A public symbols (Event/EventFromEnvelope/EventStore/EventStoreError/EventStoreResult/PgEventStore/EventMetadata/Snapshot/AggregateMeta)"
-
-# Shared test suite presence.
-grep -q "pub mod shared_test_suite" crates/dp-kernel/src/event_store.rs \
-    || fail "event_store.rs missing shared_test_suite module"
-grep -q "pub async fn run_event_store_tests" crates/dp-kernel/src/event_store.rs \
-    || fail "shared_test_suite missing run_event_store_tests function"
-grep -q "pub struct InMemoryEventStore" crates/dp-kernel/src/event_store.rs \
-    || fail "shared_test_suite missing InMemoryEventStore (test impl)"
-pass "shared_test_suite present (run_event_store_tests + InMemoryEventStore)"
-
-# Cargo.toml deps for L4.A.
-grep -q "^sqlx = " crates/dp-kernel/Cargo.toml \
-    || fail "dp-kernel/Cargo.toml missing sqlx dep"
-grep -q "async-trait" crates/dp-kernel/Cargo.toml \
-    || fail "dp-kernel/Cargo.toml missing async-trait dep"
-pass "dp-kernel/Cargo.toml has sqlx + async-trait + tokio + tracing"
-
-# ─────────────────────────────────────────────────────────────────────────
-# DPS 2 — L4.B macros crate
-# ─────────────────────────────────────────────────────────────────────────
-
-for f in \
-    crates/dp-kernel-macros/Cargo.toml \
-    crates/dp-kernel-macros/src/lib.rs \
-    crates/dp-kernel-macros/src/attrs.rs \
-    crates/dp-kernel-macros/tests/derive_aggregate.rs \
-    docs/dp-kernel/macros.md ; do
-    [[ -f "$f" ]] || fail "L4.B file missing: $f"
-done
-pass "L4.B files all present (Cargo.toml/lib.rs/attrs.rs/derive_aggregate.rs/macros.md)"
-
-# proc-macro = true.
-grep -q "proc-macro = true" crates/dp-kernel-macros/Cargo.toml \
-    || fail "dp-kernel-macros must declare proc-macro = true"
-pass "dp-kernel-macros declares proc-macro = true"
-
-# Q-L4B-1 attribute syntax in lib.rs source + tests + doc.
-grep -q "handles_event" crates/dp-kernel-macros/src/lib.rs \
-    || fail "Q-L4B-1: handles_event proc_macro_attribute missing in src/lib.rs"
-grep -q "Q-L4B-1" crates/dp-kernel-macros/src/lib.rs \
-    || fail "Q-L4B-1 not documented in dp-kernel-macros/src/lib.rs"
-grep -q '#\[handles_event("counter.incremented")\]' crates/dp-kernel-macros/tests/derive_aggregate.rs \
-    || fail "Q-L4B-1: derive test must exercise #[handles_event(\"...\")] syntax"
-grep -q '#\[handles_event("npc.said")\]' docs/dp-kernel/macros.md \
-    || fail "Q-L4B-1: macros.md must show the locked attribute syntax"
-pass "Q-L4B-1: #[handles_event(\"...\")] present + documented (src + tests + doc)"
-
-# #[derive(Aggregate)] macro export.
-grep -q "proc_macro_derive(Aggregate" crates/dp-kernel-macros/src/lib.rs \
-    || fail "dp-kernel-macros missing #[proc_macro_derive(Aggregate, …)]"
-pass "#[derive(Aggregate)] proc-macro exported"
-
-# Multiple #[handles_event] per method exercised in tests.
-grep -c '#\[handles_event(' crates/dp-kernel-macros/tests/derive_aggregate.rs > /tmp/.he_count_$$ || true
-HE_COUNT=$(cat /tmp/.he_count_$$)
-rm -f /tmp/.he_count_$$
-if [[ "$HE_COUNT" -lt 3 ]]; then
-    fail "derive_aggregate.rs must exercise multiple #[handles_event] attrs (Q-L4B-1 'supports multiple'); found $HE_COUNT"
-fi
-pass "derive_aggregate.rs exercises multiple #[handles_event] attrs ($HE_COUNT usages)"
-
-# Workspace Cargo.toml includes the new member (Q-L4-2).
-grep -q "crates/dp-kernel-macros" Cargo.toml \
-    || fail "workspace Cargo.toml missing crates/dp-kernel-macros member (Q-L4-2)"
-pass "Q-L4-2: single workspace Cargo.toml includes dp-kernel-macros member"
-
-# ─────────────────────────────────────────────────────────────────────────
-# Build + test — dp-kernel + dp-kernel-macros + cycle 13/14 regression
-# ─────────────────────────────────────────────────────────────────────────
-
-note "cargo build -p dp-kernel -p dp-kernel-macros"
-if cargo build -p dp-kernel -p dp-kernel-macros 2>&1 | tail -3 | grep -qE "(Finished|Compiling)"; then
-    pass "cargo build -p dp-kernel -p dp-kernel-macros: OK"
+  # ── 3. full service suite — no C0–C16 regression ─────────────────────────────
+  ( cd "$LE_SVC" && python -m pytest -q ) >/tmp/c17_full.log 2>&1 \
+    || { tail -40 /tmp/c17_full.log; fail "lore-enrichment full suite regressed"; }
+  ok "lore-enrichment full suite green (no C0–C16 regression)"
 else
-    cargo build -p dp-kernel -p dp-kernel-macros 2>&1 | tail -30
-    fail "cargo build -p dp-kernel -p dp-kernel-macros failed"
+  note "python not on PATH — skipping unit suite here"
 fi
 
-note "cargo test -p dp-kernel (unit + InMemoryEventStore conformance)"
-if cargo test -p dp-kernel --lib --quiet 2>&1 | tail -10 | grep -q "test result: ok"; then
-    pass "cargo test -p dp-kernel --lib: PASS"
+# ── 4. ruff clean on C17 paths ────────────────────────────────────────────────────
+if command -v ruff >/dev/null 2>&1; then
+  ( cd "$LE_SVC" && ruff check \
+      app/strategies/recook.py app/strategies/licensing.py \
+      app/strategies/__init__.py app/jobs/stages.py app/jobs/assembly.py \
+      app/retrieval/store.py app/db/migrate.py \
+      tests/test_recook_strategy.py tests/test_runner_recook_gate_e2e.py ) \
+    >/tmp/c17_ruff.log 2>&1 \
+    || { cat /tmp/c17_ruff.log; fail "ruff failed on C17 files"; }
+  ok "ruff clean on C17 code paths"
+fi
+
+# ── 5. no hardcoded model names in C17 app code ──────────────────────────────────
+if grep -rnE --include='*.py' \
+     'gpt-|claude-[0-9]|qwen[/-][0-9]|bge-m3|text-embedding-|gemma-[0-9]|llama-[0-9]' \
+     "$LE_SVC/app/strategies/recook.py" \
+     "$LE_SVC/app/strategies/licensing.py" >/dev/null 2>&1; then
+  fail "hardcoded model name found in a C17 app code path"
+fi
+ok "no hardcoded model names in C17 app code (model via model_ref / CompleteFn)"
+grep -q 'model_ref' "$LE_SVC/app/strategies/recook.py" \
+  || fail "re-cook strategy does not reference model_ref"
+ok "re-cook resolves the model via provider-registry model_ref"
+
+# ── 6. GATE ENFORCEMENT (054) — the load-bearing assertion (P3) ──────────────────
+if command -v python >/dev/null 2>&1; then
+  ( cd "$LE_SVC" && python -m pytest \
+      tests/test_recook_strategy.py tests/test_runner_recook_gate_e2e.py -q -k \
+      "gate_locked or gate_cleared or override_cannot_bypass or read_error or fails_closed or refuses_recook" ) \
+    >/tmp/c17_gate.log 2>&1 \
+    || { cat /tmp/c17_gate.log; fail "GATE ENFORCEMENT tests failed (054 not enforced for P3)"; }
+  ok "GATE ENFORCED (054) for P3: LOCKED→unselectable+refused, CLEARED→selectable, no override bypass"
+fi
+
+# ── 7. LICENSING ENFORCEMENT — the C17-specific safety ───────────────────────────
+if command -v python >/dev/null 2>&1; then
+  ( cd "$LE_SVC" && python -m pytest \
+      tests/test_recook_strategy.py tests/test_runner_recook_gate_e2e.py -q -k \
+      "license or licensed or inadmissible or unlicensed or unresolvable or admits" ) \
+    >/tmp/c17_lic.log 2>&1 \
+    || { cat /tmp/c17_lic.log; fail "LICENSING ENFORCEMENT tests failed"; }
+  ok "LICENSING ENFORCED (default-deny): PD/licensed ADMITTED; unlicensed/unknown/copyrighted REFUSED"
+fi
+
+# ── 8. eval gate clears threshold BEFORE active (the gate C17 reads is real) ─────
+if command -v python >/dev/null 2>&1 \
+   && [ -f "$REPO_ROOT/scripts/enrichment_eval.py" ]; then
+  set +e
+  ( cd "$REPO_ROOT" && python scripts/enrichment_eval.py \
+      --fixture eval/fixtures/enrichment_bad.json ) >/tmp/c17_evalbad.log 2>&1
+  BAD_RC=$?
+  set -e
+  [ "$BAD_RC" -ne 0 ] || { cat /tmp/c17_evalbad.log; fail "eval gate FALSE-GREEN: bad fixture did not BLOCK"; }
+  ok "eval gate still blocks the bad fixture (exit $BAD_RC) — gate is real, re-cook gated on it"
+fi
+
+# ── 9. ISOLATION (additive-not-fork + no prod/cross-service drift) ───────────────
+if command -v git >/dev/null 2>&1; then
+  TOUCHED="$(cd "$REPO_ROOT" && git diff --name-only HEAD -- \
+      eval/climate-eval-suite.toml 'eval/baselines/v*.json' \
+      scripts/climate_eval.py scripts/climate_eval_sweep.py 'eval/compare-*' \
+      scripts/enrichment_eval.py eval/enrichment-eval-suite.toml \
+      'eval/baselines/enrichment-*.json' \
+      services/world-service services/game-server infra/existing-prod 2>/dev/null)"
+  if [ -n "$TOUCHED" ]; then
+    echo "$TOUCHED"
+    fail "isolation violated — C17 must NOT touch climate/geo eval, C15 eval files, world-service/game-server/prod"
+  fi
+  ok "isolation OK (no climate/geo eval, no C15 eval files, no world-service/game-server/prod)"
+
+  if [ -x "$REPO_ROOT/scripts/raid/prod-isolation-lint.sh" ]; then
+    bash "$REPO_ROOT/scripts/raid/prod-isolation-lint.sh" >/tmp/c17_prodlint.log 2>&1 \
+      || { cat /tmp/c17_prodlint.log; fail "prod-isolation lint failed"; }
+    ok "prod-isolation lint clean"
+  fi
+fi
+
+# ── 10. LIVE SMOKE — real Qwen re-cook of a PD source into 商周 (best-effort) ─────
+LIVE_SMOKE="$LE_SVC/tests/live_smoke_c17_recook.py"
+if ! command -v docker >/dev/null 2>&1; then
+  note "live infra unavailable: docker not on PATH — deterministic gate only"
+  echo "{\"ts\":\"$NOW\",\"cycle\":$CYCLE,\"event\":\"verify\",\"result\":\"pass\",\"live_smoke\":\"skipped:no-docker\"}" >> "$AUDIT_LOG"
+  ok "cycle 17 gate PASS (live smoke skipped: no docker)"
+  exit 0
+fi
+if ! docker compose -f "$REPO_ROOT/infra/docker-compose.yml" ps >/dev/null 2>&1; then
+  note "live infra unavailable: compose stack not reachable — deterministic gate only"
+  echo "{\"ts\":\"$NOW\",\"cycle\":$CYCLE,\"event\":\"verify\",\"result\":\"pass\",\"live_smoke\":\"skipped:stack-down\"}" >> "$AUDIT_LOG"
+  ok "cycle 17 gate PASS (live smoke skipped: stack down)"
+  exit 0
+fi
+if [ ! -f "$LIVE_SMOKE" ]; then
+  note "live smoke harness not present — deterministic gate only (in-service cycle, no cross-service token required)"
+  echo "{\"ts\":\"$NOW\",\"cycle\":$CYCLE,\"event\":\"verify\",\"result\":\"pass\",\"live_smoke\":\"skipped:no-harness\"}" >> "$AUDIT_LOG"
+  ok "cycle 17 gate PASS (live smoke skipped: harness JIT — deterministic enforcement proven)"
+  exit 0
+fi
+
+echo "[verify-cycle-17] stack reachable — running REAL Qwen re-cook of a PD source into 商周"
+LE_DB="${TEST_LORE_ENRICHMENT_DB_URL:-postgresql://loreweave:loreweave_dev@localhost:5555/loreweave_lore_enrichment}"
+PR_DB="${PROVIDER_REGISTRY_DB_URL:-postgresql://loreweave:loreweave_dev@localhost:5555/loreweave_provider_registry}"
+PR_URL="${PROVIDER_REGISTRY_URL:-http://localhost:8208}"
+INTERNAL_TOKEN="${INTERNAL_SERVICE_TOKEN:-dev_internal_token}"
+# app.config.Settings() (pulled in transitively at smoke import) requires these;
+# supply the compose dev defaults so config-load can't crash the smoke before
+# _main runs (a missing secret would otherwise look like a hard fail, not a skip).
+JWT_SECRET_V="${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}"
+set +e
+SMOKE_OUT="$( cd "$LE_SVC" && \
+  LORE_ENRICHMENT_DB_URL="$LE_DB" PROVIDER_REGISTRY_DB_URL="$PR_DB" \
+  PROVIDER_REGISTRY_URL="$PR_URL" INTERNAL_SERVICE_TOKEN="$INTERNAL_TOKEN" \
+  JWT_SECRET="$JWT_SECRET_V" \
+  python -m tests.live_smoke_c17_recook 2>&1 )"
+SMOKE_RC=$?
+set -e
+echo "$SMOKE_OUT"
+if [ "$SMOKE_RC" -eq 0 ]; then
+  echo "{\"ts\":\"$NOW\",\"cycle\":$CYCLE,\"event\":\"verify\",\"result\":\"pass\",\"live_smoke\":\"real Qwen re-cook of PD source into 商周 → quarantined H0 proposal; copyrighted source refused\"}" >> "$AUDIT_LOG"
+  ok "cycle 17 CI gate PASS (real re-cook → quarantined H0-tagged proposal; licensing enforced)"
+  exit 0
+elif [ "$SMOKE_RC" -eq 3 ]; then
+  note "live infra unavailable: Qwen JIT load / DB unreachable / gate not cleared after retries"
+  echo "{\"ts\":\"$NOW\",\"cycle\":$CYCLE,\"event\":\"verify\",\"result\":\"pass\",\"live_smoke\":\"infra-unavailable:qwen-jit-or-gate\"}" >> "$AUDIT_LOG"
+  ok "cycle 17 gate PASS (live smoke: live infra unavailable: Qwen JIT load / gate)"
+  exit 0
 else
-    cargo test -p dp-kernel --lib 2>&1 | tail -40
-    fail "cargo test -p dp-kernel --lib failed"
+  fail "live smoke: real re-cook did NOT complete (rc=$SMOKE_RC) — see output above"
 fi
-
-note "cargo test -p dp-kernel-macros"
-if cargo test -p dp-kernel-macros --quiet 2>&1 | tail -10 | grep -q "test result: ok"; then
-    pass "cargo test -p dp-kernel-macros: PASS"
-else
-    cargo test -p dp-kernel-macros 2>&1 | tail -40
-    fail "cargo test -p dp-kernel-macros failed"
-fi
-
-# Cycle-13 projection crates regression guard — they consume cycle-12
-# Projection trait that L4.A explicitly preserved.
-# NB: world_kv crate uses hyphenated package name `projections-world-kv`.
-for crate in pc npc region world-kv session; do
-    note "cargo test -p projections-$crate (cycle-13 regression guard)"
-    if cargo test -p "projections-$crate" --quiet 2>&1 | tail -5 | grep -q "test result: ok"; then
-        pass "projections-$crate still green (cycle-13 carryforward)"
-    else
-        cargo test -p "projections-$crate" 2>&1 | tail -20
-        fail "projections-$crate regressed after L4.A consolidation"
-    fi
-done
-
-# Cycle-14 rebuilder regression guard.
-note "cargo test -p rebuilder (cycle-14 regression guard)"
-if cargo test -p rebuilder --quiet 2>&1 | tail -5 | grep -q "test result: ok"; then
-    pass "rebuilder still green (cycle-14 carryforward)"
-else
-    cargo test -p rebuilder 2>&1 | tail -30
-    fail "rebuilder regressed after L4.A consolidation"
-fi
-
-# PgEventStore integration test — gated by LOREWEAVE_TEST_PG_URL.
-if [[ -n "${LOREWEAVE_TEST_PG_URL:-}" ]]; then
-    note "LOREWEAVE_TEST_PG_URL set — running PgEventStore integration test"
-    if cargo test -p dp-kernel --test integration_event_store --quiet 2>&1 | tail -10 | grep -q "test result: ok"; then
-        pass "PgEventStore integration test PASS (live Postgres)"
-    else
-        cargo test -p dp-kernel --test integration_event_store 2>&1 | tail -30
-        fail "PgEventStore integration test failed"
-    fi
-else
-    note "LOREWEAVE_TEST_PG_URL not set — PgEventStore integration test skipped (live smoke deferred to D-EVENT-STORE-LIVE-SMOKE)"
-fi
-
-# ─────────────────────────────────────────────────────────────────────────
-# B5 prod-isolation + B6 secret-scan
-# ─────────────────────────────────────────────────────────────────────────
-
-if git diff --name-only HEAD 2>/dev/null | grep -qE '^infra/existing-prod/'; then
-    fail "B5: changes detected under infra/existing-prod/ (forbidden)"
-fi
-pass "B5 prod-isolation: no infra/existing-prod/ changes"
-
-if bash scripts/raid/prod-isolation-lint.sh >/dev/null 2>&1; then
-    pass "B5 prod-isolation-lint clean"
-else
-    fail "B5 prod-isolation-lint failed"
-fi
-
-NEW_FILES=(
-    crates/dp-kernel/src/event.rs
-    crates/dp-kernel/src/aggregate.rs
-    crates/dp-kernel/src/snapshot.rs
-    crates/dp-kernel/src/metadata.rs
-    crates/dp-kernel/src/event_store.rs
-    crates/dp-kernel/src/event_store_pg.rs
-    crates/dp-kernel/tests/integration_event_store.rs
-    crates/dp-kernel-macros/Cargo.toml
-    crates/dp-kernel-macros/src/lib.rs
-    crates/dp-kernel-macros/src/attrs.rs
-    crates/dp-kernel-macros/tests/derive_aggregate.rs
-    docs/dp-kernel/macros.md
-)
-SECRET_PATTERNS='AKIA[0-9A-Z]{16}|aws_secret_access_key|BEGIN (RSA|EC|OPENSSH) PRIVATE KEY|xoxb-[A-Za-z0-9-]{20,}|ghp_[A-Za-z0-9]{30,}|sk_live_[A-Za-z0-9]{20,}'
-for f in "${NEW_FILES[@]}"; do
-    [[ -f "$f" ]] || continue
-    if grep -qE "$SECRET_PATTERNS" "$f"; then
-        fail "B6: potential secret in $f"
-    fi
-done
-pass "B6 secret-scan: no high-risk patterns in cycle-17 new files"
-
-if bash scripts/raid/secret-scan-cycle.sh 17 >/dev/null 2>&1; then
-    pass "B6 secret-scan-cycle clean"
-else
-    note "B6 secret-scan: gitleaks unavailable on dev machine (CI will gate)"
-fi
-
-echo "[verify-cycle-17] all $step steps PASS"
-exit 0

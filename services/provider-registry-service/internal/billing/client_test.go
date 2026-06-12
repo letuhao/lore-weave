@@ -239,4 +239,27 @@ func TestGuardrailClient_RecordUsage(t *testing.T) {
 	if stub.lastBody["model_source"] != "platform_model" {
 		t.Fatalf("model_source: got %v", stub.lastBody["model_source"])
 	}
+	// TotalCostUSD nil → total_cost_usd ABSENT (usage-billing flat-fallbacks).
+	if _, present := stub.lastBody["total_cost_usd"]; present {
+		t.Fatalf("total_cost_usd must be absent when TotalCostUSD is nil: %v", stub.lastBody["total_cost_usd"])
+	}
+}
+
+func TestGuardrailClient_RecordUsage_SendsCost(t *testing.T) {
+	stub := newGuardrailStub(t)
+	c := NewGuardrailClient(stub.server.URL, "tok", nil)
+	cost := 0.3515
+	err := c.RecordUsage(context.Background(), UsageRecord{
+		RequestID: uuid.New(), OwnerUserID: uuid.New(), ModelSource: "user_model",
+		ModelRef: uuid.New(), Operation: "chat", InputTokens: 58777, OutputTokens: 20457,
+		TotalCostUSD: &cost,
+	})
+	if err != nil {
+		t.Fatalf("RecordUsage: %v", err)
+	}
+	// The authoritative per-model cost is forwarded so usage-billing bills it
+	// verbatim instead of its flat per-token placeholder.
+	if stub.lastBody["total_cost_usd"] != 0.3515 {
+		t.Fatalf("total_cost_usd: got %v want 0.3515", stub.lastBody["total_cost_usd"])
+	}
 }

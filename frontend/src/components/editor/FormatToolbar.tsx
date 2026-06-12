@@ -1,4 +1,5 @@
 import type { Editor } from '@tiptap/react';
+import { useTranslation } from 'react-i18next';
 import {
   Bold, Italic, Strikethrough, Underline, Code, Code2, List, ListOrdered,
   Heading1, Heading2, Heading3, Minus, Undo2, Redo2, Quote, Pilcrow,
@@ -49,34 +50,35 @@ function Divider() {
 }
 
 export function FormatToolbar({ editor, mode = 'classic' }: FormatToolbarProps) {
+  const { t } = useTranslation('editor');
   return (
     <div className="sticky top-0 z-10 flex flex-shrink-0 flex-wrap items-center gap-0.5 border-b bg-card px-3 py-1">
       {/* Block type */}
       <ToolbarButton
         active={editor.isActive('paragraph')}
         onClick={() => editor.chain().focus().setParagraph().run()}
-        title="Paragraph"
+        title={t('toolbar.paragraph')}
       >
         <Pilcrow className="h-3.5 w-3.5" />
       </ToolbarButton>
       <ToolbarButton
         active={editor.isActive('heading', { level: 1 })}
         onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
-        title="Heading 1"
+        title={t('toolbar.h1')}
       >
         <Heading1 className="h-3.5 w-3.5" />
       </ToolbarButton>
       <ToolbarButton
         active={editor.isActive('heading', { level: 2 })}
         onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-        title="Heading 2"
+        title={t('toolbar.h2')}
       >
         <Heading2 className="h-3.5 w-3.5" />
       </ToolbarButton>
       <ToolbarButton
         active={editor.isActive('heading', { level: 3 })}
         onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
-        title="Heading 3"
+        title={t('toolbar.h3')}
       >
         <Heading3 className="h-3.5 w-3.5" />
       </ToolbarButton>
@@ -87,35 +89,35 @@ export function FormatToolbar({ editor, mode = 'classic' }: FormatToolbarProps) 
       <ToolbarButton
         active={editor.isActive('bold')}
         onClick={() => editor.chain().focus().toggleBold().run()}
-        title="Bold (Ctrl+B)"
+        title={t('toolbar.bold')}
       >
         <Bold className="h-3.5 w-3.5" />
       </ToolbarButton>
       <ToolbarButton
         active={editor.isActive('italic')}
         onClick={() => editor.chain().focus().toggleItalic().run()}
-        title="Italic (Ctrl+I)"
+        title={t('toolbar.italic')}
       >
         <Italic className="h-3.5 w-3.5" />
       </ToolbarButton>
       <ToolbarButton
         active={editor.isActive('strike')}
         onClick={() => editor.chain().focus().toggleStrike().run()}
-        title="Strikethrough"
+        title={t('toolbar.strike')}
       >
         <Strikethrough className="h-3.5 w-3.5" />
       </ToolbarButton>
       <ToolbarButton
         active={editor.isActive('underline')}
         onClick={() => editor.chain().focus().toggleUnderline().run()}
-        title="Underline (Ctrl+U)"
+        title={t('toolbar.underline')}
       >
         <Underline className="h-3.5 w-3.5" />
       </ToolbarButton>
       <ToolbarButton
         active={editor.isActive('code')}
         onClick={() => editor.chain().focus().toggleCode().run()}
-        title="Inline code"
+        title={t('toolbar.inline_code')}
       >
         <Code className="h-3.5 w-3.5" />
       </ToolbarButton>
@@ -129,32 +131,32 @@ export function FormatToolbar({ editor, mode = 'classic' }: FormatToolbarProps) 
           if (editor.isActive('link')) {
             editor.chain().focus().unsetLink().run();
           } else {
-            const url = window.prompt('URL:');
+            const url = window.prompt(t('toolbar.url_prompt'));
             if (url) editor.chain().focus().setLink({ href: url }).run();
           }
         }}
-        title="Link"
+        title={t('toolbar.link')}
       >
         <Link2 className="h-3.5 w-3.5" />
       </ToolbarButton>
       <ToolbarButton
         active={editor.isActive('highlight')}
         onClick={() => editor.chain().focus().toggleHighlight().run()}
-        title="Highlight (Ctrl+Shift+H)"
+        title={t('toolbar.highlight')}
       >
         <Highlighter className="h-3.5 w-3.5" />
       </ToolbarButton>
       <ToolbarButton
         active={editor.isActive('subscript')}
         onClick={() => editor.chain().focus().toggleSubscript().run()}
-        title="Subscript"
+        title={t('toolbar.subscript')}
       >
         <Subscript className="h-3.5 w-3.5" />
       </ToolbarButton>
       <ToolbarButton
         active={editor.isActive('superscript')}
         onClick={() => editor.chain().focus().toggleSuperscript().run()}
-        title="Superscript"
+        title={t('toolbar.superscript')}
       >
         <Superscript className="h-3.5 w-3.5" />
       </ToolbarButton>
@@ -165,21 +167,21 @@ export function FormatToolbar({ editor, mode = 'classic' }: FormatToolbarProps) 
       <ToolbarButton
         active={editor.isActive('bulletList')}
         onClick={() => editor.chain().focus().toggleBulletList().run()}
-        title="Bullet list"
+        title={t('toolbar.bullet_list')}
       >
         <List className="h-3.5 w-3.5" />
       </ToolbarButton>
       <ToolbarButton
         active={editor.isActive('orderedList')}
         onClick={() => editor.chain().focus().toggleOrderedList().run()}
-        title="Ordered list"
+        title={t('toolbar.ordered_list')}
       >
         <ListOrdered className="h-3.5 w-3.5" />
       </ToolbarButton>
       <ToolbarButton
         active={editor.isActive('blockquote')}
         onClick={() => editor.chain().focus().toggleBlockquote().run()}
-        title="Block quote"
+        title={t('toolbar.blockquote')}
       >
         <Quote className="h-3.5 w-3.5" />
       </ToolbarButton>
@@ -187,19 +189,19 @@ export function FormatToolbar({ editor, mode = 'classic' }: FormatToolbarProps) 
         <>
           <ToolbarButton
             onClick={() => editor.chain().focus().insertContent({ type: 'imageBlock', attrs: { blockId: crypto.randomUUID().slice(0, 8) } }).run()}
-            title="Insert image"
+            title={t('toolbar.insert_image')}
           >
             <ImageIcon className="h-3.5 w-3.5" />
           </ToolbarButton>
           <ToolbarButton
             onClick={() => editor.chain().focus().insertContent({ type: 'videoBlock', attrs: { blockId: crypto.randomUUID().slice(0, 8) } }).run()}
-            title="Insert video"
+            title={t('toolbar.insert_video')}
           >
             <Video className="h-3.5 w-3.5" />
           </ToolbarButton>
           <ToolbarButton
             onClick={() => editor.chain().focus().insertContent({ type: 'audioBlock', attrs: { blockId: crypto.randomUUID().slice(0, 8) } }).run()}
-            title="Insert audio"
+            title={t('toolbar.insert_audio')}
           >
             <Music className="h-3.5 w-3.5" />
           </ToolbarButton>
@@ -208,13 +210,13 @@ export function FormatToolbar({ editor, mode = 'classic' }: FormatToolbarProps) 
       <ToolbarButton
         active={editor.isActive('codeBlock')}
         onClick={() => editor.chain().focus().toggleCodeBlock().run()}
-        title="Code block"
+        title={t('toolbar.code_block')}
       >
         <Code2 className="h-3.5 w-3.5" />
       </ToolbarButton>
       <ToolbarButton
         onClick={() => editor.chain().focus().setHorizontalRule().run()}
-        title="Horizontal rule"
+        title={t('toolbar.horizontal_rule')}
       >
         <Minus className="h-3.5 w-3.5" />
       </ToolbarButton>
@@ -225,14 +227,14 @@ export function FormatToolbar({ editor, mode = 'classic' }: FormatToolbarProps) 
       <ToolbarButton
         disabled={!editor.can().undo()}
         onClick={() => editor.chain().focus().undo().run()}
-        title="Undo (Ctrl+Z)"
+        title={t('toolbar.undo')}
       >
         <Undo2 className="h-3.5 w-3.5" />
       </ToolbarButton>
       <ToolbarButton
         disabled={!editor.can().redo()}
         onClick={() => editor.chain().focus().redo().run()}
-        title="Redo (Ctrl+Shift+Z)"
+        title={t('toolbar.redo')}
       >
         <Redo2 className="h-3.5 w-3.5" />
       </ToolbarButton>

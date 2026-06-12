@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/loreweave/glossary-service/internal/shortdesc"
+	"github.com/loreweave/grantclient"
 )
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -99,7 +100,7 @@ func (s *Server) patchAttributeValue(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantEdit) {
 		return
 	}
 	if !s.verifyEntityInBook(w, r.Context(), entityID, bookID) {
@@ -114,6 +115,12 @@ func (s *Server) patchAttributeValue(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY", "invalid JSON")
 		return
 	}
+
+	// H5 optimistic concurrency (opt-in): an attribute edit bumps the parent
+	// entity's `updated_at`, so the entity version is the single token covering
+	// both entity-level and attribute edits. When the assistant-edit Apply sends
+	// If-Match, gate on it (412 on drift). Absent ⇒ unchanged behavior.
+	ifMatch := strings.TrimSpace(r.Header.Get("If-Match"))
 
 	setClauses := []string{}
 	args := []any{}
@@ -144,16 +151,109 @@ func (s *Server) patchAttributeValue(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	if len(setClauses) > 0 {
+		// Transactional (parity with patchEntity): the attr UPDATE, the K3.3b
+		// short_description regen, and the glossary.entity_updated event commit
+		// atomically — and the before/after snapshot is captured consistently
+		// with the write (no TOCTOU). Without this event, a manual attribute edit
+		// (the UI's primary edit path) never reaches the staleness consumer,
+		// glossary_sync→Neo4j, or learning-service (D-WIKI-W2-ATTR-EMIT).
+		tx, err := s.pool.Begin(ctx)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "begin tx failed")
+			return
+		}
+		defer tx.Rollback(ctx)
+
+		// BEFORE snapshot (pre-edit; the subsequent UPDATE locks the row).
+		beforeName, beforeKind, beforeAliases, beforeShortDesc, beforeOK :=
+			loadEntityEventFields(ctx, tx, entityID)
+
 		args = append(args, attrValueID, entityID)
-		// Single CTE keeps both writes atomic — no partial-update window.
-		updateSQL := fmt.Sprintf(`
-			WITH _upd AS (
-				UPDATE entity_attribute_values SET %s WHERE attr_value_id = $%d
-			)
-			UPDATE glossary_entities SET updated_at = now() WHERE entity_id = $%d`,
-			strings.Join(setClauses, ", "), argN, argN+1)
-		if _, err := s.pool.Exec(ctx, updateSQL, args...); err != nil {
-			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "update failed")
+		if ifMatch != "" {
+			// H5: gate both writes on the entity version in-SQL (no TOCTOU). The
+			// attr UPDATE and the entity bump only fire when updated_at still
+			// equals the read version; otherwise 0 rows ⇒ 412 (existence already
+			// confirmed by verifyAttrValueInEntity above, so it can only be drift).
+			args = append(args, ifMatch)
+			updateSQL := fmt.Sprintf(`
+				WITH guard AS (
+					SELECT updated_at FROM glossary_entities WHERE entity_id = $%d
+				),
+				_upd AS (
+					UPDATE entity_attribute_values SET %s
+					WHERE attr_value_id = $%d AND (SELECT updated_at FROM guard) = $%d::timestamptz
+				)
+				UPDATE glossary_entities SET updated_at = now()
+				WHERE entity_id = $%d AND updated_at = $%d::timestamptz`,
+				argN+1, strings.Join(setClauses, ", "), argN, argN+2, argN+1, argN+2)
+			tag, err := tx.Exec(ctx, updateSQL, args...)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "update failed")
+				return
+			}
+			if tag.RowsAffected() == 0 {
+				writeError(w, http.StatusPreconditionFailed, "GLOSS_VERSION_CONFLICT",
+					"entity changed since it was read; re-open and try again")
+				return
+			}
+		} else {
+			// Single CTE keeps both writes atomic — no partial-update window.
+			updateSQL := fmt.Sprintf(`
+				WITH _upd AS (
+					UPDATE entity_attribute_values SET %s WHERE attr_value_id = $%d
+				)
+				UPDATE glossary_entities SET updated_at = now() WHERE entity_id = $%d`,
+				strings.Join(setClauses, ", "), argN, argN+1)
+			if _, err := tx.Exec(ctx, updateSQL, args...); err != nil {
+				writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "update failed")
+				return
+			}
+		}
+
+		// K3.3b auto-regen IN-TX: when the description attribute is the one being
+		// patched AND short_description is still auto-generated, rebuild it from
+		// the new text — so the AFTER snapshot + the event reflect it. Best-effort:
+		// a regen failure is logged, never rolls back the edit.
+		var attrCode string
+		if err := tx.QueryRow(ctx, `
+			SELECT ad.code FROM entity_attribute_values eav
+			JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+			WHERE eav.attr_value_id = $1`, attrValueID).Scan(&attrCode); err != nil {
+			slog.Warn("patch-attr: attr code lookup failed (non-fatal)",
+				"attr_value_id", attrValueID.String(), "error", err.Error())
+		}
+		if attrCode == "description" {
+			if err := s.regenerateAutoShortDescription(ctx, tx, entityID); err != nil {
+				slog.Warn("regenerate short_description failed",
+					"entity_id", entityID.String(), "error", err.Error())
+			}
+		}
+
+		// AFTER snapshot + ONE transactional user-correction event (parity with
+		// patchEntity). A book-owner PATCH is a user correction by construction
+		// (verifyBookOwner above → actor = owner).
+		afterName, afterKind, afterAliases, afterShortDesc, _ :=
+			loadEntityEventFields(ctx, tx, entityID)
+		var before *EntitySnapshot
+		if beforeOK {
+			before = &EntitySnapshot{
+				Name:             beforeName,
+				Kind:             beforeKind,
+				Aliases:          beforeAliases,
+				ShortDescription: beforeShortDesc,
+			}
+		}
+		payload := buildEntityEventPayload(
+			bookID.String(), entityID.String(),
+			afterName, afterKind, afterAliases, afterShortDesc, "updated",
+			"user", userID.String(), before,
+		)
+		if err := emitEntityUpdatedTx(ctx, tx, entityID, payload); err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "outbox emit failed")
+			return
+		}
+		if err := tx.Commit(ctx); err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "commit failed")
 			return
 		}
 	}
@@ -164,34 +264,33 @@ func (s *Server) patchAttributeValue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// K3.3b auto-regen: when the description attribute is the one being
-	// patched AND the entity's short_description is still auto-generated
-	// (not user-overridden), rebuild short_description from the new text.
-	// Failures are logged but don't fail the PATCH — regeneration is
-	// best-effort.
-	if av.AttributeDef.Code == "description" {
-		if err := s.regenerateAutoShortDescription(ctx, entityID); err != nil {
-			slog.Warn("regenerate short_description failed",
-				"entity_id", entityID.String(), "error", err.Error())
-		}
-	}
-
 	writeJSON(w, http.StatusOK, av)
+}
+
+// pgxExecQuerier is the read+write interface shared by *pgxpool.Pool and
+// pgx.Tx, so a helper can run either standalone (post-commit, on the pool) or
+// enlisted in an open transaction (so its writes commit atomically with the
+// caller's edit).
+type pgxExecQuerier interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 }
 
 // regenerateAutoShortDescription recomputes short_description from the
 // current name/description/kind and writes it back — but only if the
 // entity's short_description_auto flag is still true. Used by the
 // patchAttributeValue hook so editing a description keeps the auto
-// summary in sync.
-func (s *Server) regenerateAutoShortDescription(ctx context.Context, entityID uuid.UUID) error {
+// summary in sync. `q` is the pool (post-commit callers) or the open tx
+// (patchAttributeValue, so the regenerated summary lands in the SAME tx as the
+// edit and is captured by the entity_updated before/after snapshot).
+func (s *Server) regenerateAutoShortDescription(ctx context.Context, q pgxExecQuerier, entityID uuid.UUID) error {
 	var (
 		name     string
 		desc     string
 		kindName string
 		auto     bool
 	)
-	err := s.pool.QueryRow(ctx, `
+	err := q.QueryRow(ctx, `
 		SELECT
 		  COALESCE(e.cached_name, ''),
 		  COALESCE((
@@ -226,7 +325,7 @@ func (s *Server) regenerateAutoShortDescription(ctx context.Context, entityID uu
 	// on top of the eav-trigger's one. Reduces the common description-PATCH
 	// path from 3 recalcs down to 1 (when short_description is unchanged)
 	// or 2 (when it legitimately changed).
-	_, err = s.pool.Exec(ctx, `
+	_, err = q.Exec(ctx, `
 		UPDATE glossary_entities
 		SET short_description = $1
 		WHERE entity_id = $2
@@ -256,7 +355,7 @@ func (s *Server) createTranslation(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantEdit) {
 		return
 	}
 	if !s.verifyEntityInBook(w, r.Context(), entityID, bookID) {
@@ -306,6 +405,12 @@ func (s *Server) createTranslation(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "insert failed")
 		return
 	}
+	// M6b: propagate target-language-specific staleness to translation-service.
+	s.emitTranslationChanged(r.Context(), bookID, entityID, tr.LanguageCode)
+	// M7c-3: a user-verified name is a human-canonical rendering → learning gold.
+	if tr.Confidence == "verified" {
+		s.emitNameConfirmed(r.Context(), bookID, entityID, tr.LanguageCode, tr.Value, userID.String())
+	}
 	writeJSON(w, http.StatusCreated, tr)
 }
 
@@ -333,7 +438,7 @@ func (s *Server) updateTranslation(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantEdit) {
 		return
 	}
 	if !s.verifyEntityInBook(w, r.Context(), entityID, bookID) {
@@ -418,6 +523,13 @@ func (s *Server) updateTranslation(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	// M6b: propagate target-language-specific staleness to translation-service.
+	s.emitTranslationChanged(ctx, bookID, entityID, tr.LanguageCode)
+	// M7c-3: capture the verify ACTION (confidence set to 'verified' in this patch)
+	// as a human-canonical name confirmation → learning gold.
+	if _, hadConf := in["confidence"]; hadConf && tr.Confidence == "verified" {
+		s.emitNameConfirmed(ctx, bookID, entityID, tr.LanguageCode, tr.Value, userID.String())
+	}
 	writeJSON(w, http.StatusOK, tr)
 }
 
@@ -445,7 +557,7 @@ func (s *Server) deleteTranslation(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantEdit) {
 		return
 	}
 	if !s.verifyEntityInBook(w, r.Context(), entityID, bookID) {
@@ -455,16 +567,22 @@ func (s *Server) deleteTranslation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tag, err := s.pool.Exec(r.Context(),
-		`DELETE FROM attribute_translations WHERE translation_id=$1 AND attr_value_id=$2`,
-		translationID, attrValueID)
+	// RETURNING language_code so M6b can emit a per-language staleness event
+	// AFTER the row is gone (ErrNoRows ⇒ nothing deleted ⇒ 404, no emit).
+	var deletedLang string
+	err := s.pool.QueryRow(r.Context(),
+		`DELETE FROM attribute_translations WHERE translation_id=$1 AND attr_value_id=$2
+		 RETURNING language_code`,
+		translationID, attrValueID).Scan(&deletedLang)
 	if err != nil {
+		if err == pgx.ErrNoRows {
+			writeError(w, http.StatusNotFound, "GLOSS_NOT_FOUND", "translation not found")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "delete failed")
 		return
 	}
-	if tag.RowsAffected() == 0 {
-		writeError(w, http.StatusNotFound, "GLOSS_NOT_FOUND", "translation not found")
-		return
-	}
+	// M6b: propagate target-language-specific staleness to translation-service.
+	s.emitTranslationChanged(r.Context(), bookID, entityID, deletedLang)
 	w.WriteHeader(http.StatusNoContent)
 }

@@ -1,0 +1,2088 @@
+openapi: 3.1.0
+info:
+  title: LoreWeave Lore-Enrichment API
+  version: 0.1.0
+  description: |
+    lore-enrichment-service — generates culturally-grounded "makeup" lore for
+    under-described canon (demo: 封神演义 locations) and routes it through an
+    author-gated review queue. CONTRACT FREEZE (RAID C3): shapes are
+    load-bearing; behaviour is implemented in later cycles (C6+). Stub handlers
+    return spec-valid placeholder bodies (200) or 501 Not Implemented.
+
+    H0 CORE INVARIANT — enriched lore != authored canon. Every EnrichmentProposal
+    is structurally distinguishable from canon: a permanent `origin` marker, a
+    `review_status` lifecycle (proposed → author_reviewing → approved →
+    promoted | rejected), and `confidence < 1.0` (canon is 1.0). Enriched content
+    NEVER becomes canon by default. The ONLY path to canon is the dedicated
+    author-only `POST .../proposals/{proposal_id}/promote` endpoint — there is no
+    review_status PATCH that reaches canon. After promotion the proposal RETAINS
+    its origin markers (`promoted_from_proposal_id`, `original_technique`,
+    `promoted_by`, `promoted_at`) for lifetime "was-makeup" traceability.
+
+    Scope (Q3): every resource is per-user/per-project. The acting principal
+    (user_id) is derived from the bearer JWT, never from the request body; the
+    project scope travels as `project_id`. Promotion authority is the
+    book/project owner (the "author") only.
+
+    No model names appear in this contract. The application LLM and embedding
+    model are resolved at runtime via provider-registry (BYOK) — never hardcoded.
+
+servers:
+  - url: http://localhost:3000
+    description: API Gateway (BFF)
+
+tags:
+  - name: jobs
+    description: Enrichment runs (create/estimate + lifecycle).
+  - name: proposals
+    description: Makeup-lore units in the author-gated review queue (H0 carrier).
+  - name: sources
+    description: Owned/licensed grounding corpora (registration metadata only).
+  - name: templates
+    description: Schema-governed enrichment scaffolds per entity-kind.
+
+paths:
+  # ─────────────────────────────── jobs ────────────────────────────────
+  /v1/lore-enrichment/jobs:
+    post:
+      tags: [jobs]
+      summary: Create (and estimate) an enrichment job for a project
+      description: >
+        Stub (C3): returns 501 until the job orchestrator (C8/C14) is built.
+        The acting user is taken from the bearer token; project scope is in the
+        request body (Q3).
+      operationId: createEnrichmentJob
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateJobRequest'
+      responses:
+        '202':
+          description: Accepted — job created and queued for estimation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnrichmentJob'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '501':
+          $ref: '#/components/responses/ErrorResponse'
+    get:
+      tags: [jobs]
+      summary: List enrichment jobs for the current user in a project
+      operationId: listEnrichmentJobs
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProjectIdQuery'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobListResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/lore-enrichment/jobs/{job_id}:
+    get:
+      tags: [jobs]
+      summary: Get one enrichment job (owner-scoped)
+      operationId: getEnrichmentJob
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnrichmentJob'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/lore-enrichment/jobs/{job_id}/start:
+    post:
+      tags: [jobs]
+      summary: Start a pending enrichment job
+      description: 'Stub (C3): returns 501 until job orchestration (C14).'
+      operationId: startEnrichmentJob
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnrichmentJob'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/ErrorResponse'
+        '501':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/lore-enrichment/jobs/{job_id}/pause:
+    post:
+      tags: [jobs]
+      summary: Pause a running enrichment job
+      description: 'Stub (C3): returns 501 until job orchestration (C14).'
+      operationId: pauseEnrichmentJob
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnrichmentJob'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/ErrorResponse'
+        '501':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/lore-enrichment/jobs/{job_id}/resume:
+    post:
+      tags: [jobs]
+      summary: Resume a paused enrichment job
+      description: 'Stub (C3): returns 501 until job orchestration (C14).'
+      operationId: resumeEnrichmentJob
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnrichmentJob'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/ErrorResponse'
+        '501':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/lore-enrichment/jobs/{job_id}/cancel:
+    post:
+      tags: [jobs]
+      summary: Cancel an enrichment job
+      description: 'Stub (C3): returns 501 until job orchestration (C14).'
+      operationId: cancelEnrichmentJob
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnrichmentJob'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/ErrorResponse'
+        '501':
+          $ref: '#/components/responses/ErrorResponse'
+
+  # ───────────────────────────── proposals ─────────────────────────────
+  /v1/lore-enrichment/proposals:
+    get:
+      tags: [proposals]
+      summary: List enrichment proposals (review queue) for the current user
+      description: >
+        Per-user/per-project review queue (Q3). Optional filters by `job_id` and
+        `review_status`. Every item is structurally non-canon (H0): it carries an
+        `origin` marker, a lifecycle `review_status`, and `confidence < 1.0`.
+      operationId: listEnrichmentProposals
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProjectIdQuery'
+        - name: job_id
+          in: query
+          required: false
+          description: Restrict to one job's proposals.
+          schema:
+            type: string
+            format: uuid
+        - name: review_status
+          in: query
+          required: false
+          description: Filter by lifecycle state.
+          schema:
+            $ref: '#/components/schemas/ReviewStatus'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProposalListResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/lore-enrichment/proposals/{proposal_id}:
+    get:
+      tags: [proposals]
+      summary: Get one proposal (owner-scoped)
+      operationId: getEnrichmentProposal
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProposalId'
+        - $ref: '#/components/parameters/ProjectIdQuery'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnrichmentProposal'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/lore-enrichment/proposals/{proposal_id}/approve:
+    post:
+      tags: [proposals]
+      summary: Approve a proposal (mirrors pending_facts confirm) — NOT canonization
+      description: >
+        Q1: mirrors knowledge-service `pending_facts` confirm. Moves the proposal
+        to `approved`. This does NOT make it canon — it remains enriched, with
+        `confidence < 1.0`, until the author calls the dedicated promote endpoint.
+        Stub (C3): returns 501 until the review gate (C13).
+      operationId: approveEnrichmentProposal
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProposalId'
+        - $ref: '#/components/parameters/ProjectIdQuery'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnrichmentProposal'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/ErrorResponse'
+        '501':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/lore-enrichment/proposals/{proposal_id}/reject:
+    post:
+      tags: [proposals]
+      summary: Reject a proposal (mirrors pending_facts reject)
+      description: >
+        Q1: mirrors knowledge-service `pending_facts` reject. Terminal state.
+        Stub (C3): returns 501 until the review gate (C13).
+      operationId: rejectEnrichmentProposal
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProposalId'
+        - $ref: '#/components/parameters/ProjectIdQuery'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RejectProposalRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnrichmentProposal'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/ErrorResponse'
+        '501':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/lore-enrichment/proposals/{proposal_id}/edit:
+    post:
+      tags: [proposals]
+      summary: Edit a proposal's generated content before approval/promotion
+      description: >
+        Q1: author may correct the makeup content (still enriched, still
+        non-canon). Editing never changes `origin`, `confidence` ceiling, or the
+        lifecycle distinction. Stub (C3): returns 501 until the review gate (C13).
+      operationId: editEnrichmentProposal
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProposalId'
+        - $ref: '#/components/parameters/ProjectIdQuery'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EditProposalRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnrichmentProposal'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/ErrorResponse'
+        '501':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/lore-enrichment/proposals/{proposal_id}/promote:
+    post:
+      tags: [proposals]
+      summary: Promote an approved proposal to authored canon (AUTHOR-ONLY, H0 gate)
+      description: >
+        H0: the ONE AND ONLY path that turns enriched lore into canon. AUTHORIZED
+        FOR THE BOOK/PROJECT OWNER (the "author") ONLY — a non-owner principal
+        gets 403. Promotion writes the entity through the glossary SSOT (C13) and
+        stamps the PERMANENT origin markers on the result
+        (`promoted_from_proposal_id`, `original_technique`, `promoted_by`,
+        `promoted_at`) so the canon entity remains traceable as originally
+        makeup. Requires `review_status = approved` (else 409). Stub (C3):
+        returns 501 until the write-back path (C13).
+      operationId: promoteEnrichmentProposal
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProposalId'
+        - $ref: '#/components/parameters/ProjectIdQuery'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WriteBackRequest'
+      responses:
+        '200':
+          description: OK — proposal promoted to canon; returns the promotion record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromoteResult'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          description: >
+            Forbidden — only the book/project owner (author) may promote
+            enriched lore to canon.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          description: Proposal is not in the `approved` state required to promote.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+        '501':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/lore-enrichment/proposals/{proposal_id}/write-back:
+    post:
+      tags: [proposals]
+      summary: Write an approved proposal's facts into the KG QUARANTINED (NOT canon)
+      description: >
+        H0: admits an `approved` proposal's enriched dimension facts into the
+        knowledge graph QUARANTINED — `source_type='enriched:<technique>'`,
+        `pending_validation=true`, `confidence < 1.0` — visibly distinct from the
+        glossary-authored canon entity. The entity anchor is written through the
+        glossary SSOT (Q2). This is NOT canonization: only the author `promote`
+        endpoint flips it to canon. Requires `review_status = approved` (else 409).
+      operationId: writeBackEnrichmentProposal
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProposalId'
+        - $ref: '#/components/parameters/ProjectIdQuery'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WriteBackRequest'
+      responses:
+        '200':
+          description: OK — facts admitted to the KG (quarantined, non-canon).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WriteBackResult'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/ErrorResponse'
+        '502':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/lore-enrichment/proposals/{proposal_id}/retract:
+    post:
+      tags: [proposals]
+      summary: Retract a promoted/quarantined proposal (M6 recycle-bin, reversible)
+      description: >
+        AUTHOR-ONLY. Routes the glossary entity to the recycle-bin (soft-delete,
+        reversible) and soft-retracts the KG facts (`valid_until`) so they leave
+        the active graph. Reversible — not a hard delete of canon.
+      operationId: retractEnrichmentProposal
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProposalId'
+        - $ref: '#/components/parameters/ProjectIdQuery'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WriteBackRequest'
+      responses:
+        '200':
+          description: OK — entity recycled + KG facts soft-retracted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetractResult'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '502':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ErrorResponse'
+
+  # ────────────────────────────── gaps (D1) ─────────────────────────────
+  /v1/lore-enrichment/projects/{project_id}/dimensions:
+    get:
+      tags: [gaps]
+      summary: List an entity kind's dimensions (compose dimension picker, read-only)
+      description: >
+        Returns the profile-localized dimension set for an entity KIND so the
+        compose UI can render choosable dimension chips (the author may enrich a
+        SUBSET via the target's requested_dimensions). GENERIC fallback for an
+        unmodeled kind (never 400). READ-ONLY.
+      operationId: listEnrichmentDimensions
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: book_id
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+        - name: kind
+          in: query
+          required: true
+          schema: { type: string }
+        - name: base
+          in: query
+          required: false
+          description: >
+            false (default) → the effective set with profile overrides applied
+            (compose picker); true → the base un-overridden set (override editor).
+          schema: { type: boolean, default: false }
+      responses:
+        '200':
+          description: OK — the kind's dimensions.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  kind: { type: string }
+                  dimensions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        label: { type: string }
+                        required: { type: boolean }
+                        weight: { type: number }
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/lore-enrichment/projects/{project_id}/detect-gaps:
+    post:
+      tags: [gaps]
+      summary: Detect + rank under-described entities (gap auto-detection, read-only)
+      description: >
+        Reads the book's per-entity enrichment coverage from the glossary SSOT,
+        runs the C7 gap-detection engine, and returns RANKED candidate gaps
+        (descending score) for the author to triage. READ-ONLY — it surfaces
+        under-described entities; it does not start enrichment (use the jobs
+        endpoint with chosen targets for that).
+      operationId: detectEnrichmentGaps
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [book_id]
+              properties:
+                book_id:
+                  type: string
+                  format: uuid
+                limit:
+                  type: integer
+                  minimum: 1
+                  maximum: 1000
+                  default: 200
+      responses:
+        '200':
+          description: OK — ranked candidate gaps for the project.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  project_id: { type: string, format: uuid }
+                  book_id: { type: string, format: uuid }
+                  entities_scanned: { type: integer }
+                  gap_count: { type: integer }
+                  gaps:
+                    type: array
+                    items:
+                      type: object
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '502':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/lore-enrichment/projects/{project_id}/auto-enrich:
+    post:
+      tags: [gaps]
+      summary: Auto-detect under-described entities and enqueue an enrichment job
+      description: >
+        Composes detect-gaps + the job runner: detects under-described entities
+        from the glossary coverage, takes the top `max_gaps` ranked, creates an
+        enrichment job whose targets are those gaps, persists the request, and
+        ENQUEUES it to the background worker (the same consumer as resume).
+        Non-blocking — returns 202 with the job_id. H0: the job only ever produces
+        QUARANTINED proposals; spend is bounded by max_gaps + the per-job cost-cap.
+      operationId: autoEnrichProject
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [book_id, embedding_model_ref, generation_model_ref]
+              properties:
+                book_id: { type: string, format: uuid }
+                embedding_model_ref: { type: string, format: uuid }
+                generation_model_ref: { type: string, format: uuid }
+                technique: { type: string, default: retrieval }
+                max_gaps: { type: integer, minimum: 1, maximum: 100, default: 10 }
+                coverage_limit: { type: integer, minimum: 1, maximum: 1000, default: 200 }
+                max_spend_usd: { type: number, minimum: 0 }
+                eval_reserve_fraction: { type: number, minimum: 0, default: 0.15 }
+                top_k: { type: integer, minimum: 1, maximum: 20, default: 5 }
+                targets:
+                  type: array
+                  description: >
+                    LE-064 — when set, enrich exactly these gaps (the per-row
+                    "enrich →") instead of detecting + ranking. Each is a gap the
+                    client already received from detect-gaps; max_gaps/coverage_limit
+                    are ignored. Same async worker path.
+                  items:
+                    $ref: '#/components/schemas/JobGapTarget'
+      responses:
+        '202':
+          description: Detected + enqueued (or nothing to enrich).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  project_id: { type: string, format: uuid }
+                  job_id: { type: string, format: uuid }
+                  entities_scanned: { type: integer }
+                  detected: { type: integer }
+                  enqueued_gaps: { type: integer }
+                  enqueued: { type: boolean }
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '502':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/lore-enrichment/projects/{project_id}/compose:
+    post:
+      tags: [compose]
+      summary: Compose — start an enrichment job from a chosen input mode (async)
+      description: >
+        The unified async entry for the enrichment input modes (spec
+        2026-06-03-enrichment-compose). Supports `input_source` = `draft`
+        (mode D — expand the author's own draft for an existing OR new entity via
+        the `compose_draft` technique), `gap` (mode A reuse — enrich specific
+        gap targets), and `context` (mode C — paste reference text, ingested as a
+        grounding corpus, then a retrieval/recook job grounds on it; license
+        default-deny). Creates the job + persists the request (additive JSONB:
+        input_source/seed_text/expand_mode/context_corpus_ids) + enqueues the
+        resume trigger → 202 + job_id. Modes `files`/`intent` are reserved for
+        slices 3–4 and return 400. H0: only QUARANTINED proposals are produced; a
+        NEW target writes NOTHING to glossary at compose time — its anchor is minted
+        only at the author's promote (writeback resolve-or-create).
+      operationId: composeEnrichment
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [book_id, input_source, generation_model_ref]
+              properties:
+                book_id: { type: string, format: uuid }
+                input_source:
+                  type: string
+                  enum: [gap, draft, context, files, intent]
+                  description: gap | draft | context | files | intent (all five modes).
+                embedding_model_ref:
+                  type: string
+                  format: uuid
+                  description: >
+                    Required for `gap`; OPTIONAL for `draft` (mode D does no
+                    retrieval/embed). Ignored by the runner regardless.
+                generation_model_ref: { type: string, format: uuid }
+                target:
+                  $ref: '#/components/schemas/ComposeTarget'
+                  description: The target for a draft input (existing or new).
+                draft_text:
+                  type: string
+                  maxLength: 50000
+                  description: The author's draft prose (mode D — required; capped at ~50 KB).
+                expand_mode:
+                  type: string
+                  enum: [add_only, rewrite]
+                  default: rewrite
+                  description: add_only keeps the draft verbatim; rewrite voice-syncs it.
+                context_text:
+                  type: string
+                  maxLength: 50000
+                  description: >
+                    The author's pasted reference text (mode C — required; capped at
+                    ~50 KB). Ingested as a grounding corpus; larger material → mode F.
+                context_license:
+                  type: string
+                  enum: [public_domain, licensed, owned, copyrighted]
+                  description: >
+                    Author's license assertion (mode C — required). Default-deny:
+                    `copyrighted` (and anything unrecognised) is refused (403);
+                    `owned` is stored as `licensed` (re-cook-admissible).
+                persist_corpus:
+                  type: boolean
+                  default: false
+                  description: >
+                    Mode C/F: keep the ingested corpus as a CURATED source (surfaces
+                    under /sources) instead of an ephemeral paste the reaper GCs by TTL.
+                upload_ids:
+                  type: array
+                  description: >
+                    Uploaded file ids from POST /uploads (mode F — required for files).
+                    Each file's extracted text is ingested as a grounding corpus.
+                  items: { type: string, format: uuid }
+                intent_text:
+                  type: string
+                  description: >
+                    Mode B audit only — the original free-text intent. The run uses the
+                    confirmed `target` (resolved via /compose/resolve-intent first).
+                gap_targets:
+                  type: array
+                  description: The specific gap targets to enrich (mode A — required for gap).
+                  items:
+                    $ref: '#/components/schemas/ComposeTarget'
+                technique:
+                  type: string
+                  description: >
+                    Output technique for gap input (retrieval|fabrication|recook,
+                    gate-enforced). Ignored for draft (forced to compose_draft).
+                max_spend_usd: { type: number, minimum: 0 }
+                eval_reserve_fraction: { type: number, minimum: 0, default: 0.15 }
+                top_k: { type: integer, minimum: 1, maximum: 20, default: 5 }
+      responses:
+        '202':
+          description: Job created + enqueued.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  project_id: { type: string, format: uuid }
+                  job_id: { type: string, format: uuid }
+                  input_source: { type: string }
+                  technique: { type: string }
+                  enqueued_targets: { type: integer }
+                  enqueued: { type: boolean }
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '413':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/lore-enrichment/projects/{project_id}/compose/resolve-intent:
+    post:
+      tags: [compose]
+      summary: Mode B step 1 — resolve a free-text intent into a proposed target (no job)
+      description: >
+        Compose slice 4 (mode B). ONE LLM call: given the intent + the book's entity
+        list + profile, propose `{target, dimensions, technique, rationale}`.
+        Synchronous, NO job is created (F5). The FE confirms/edits, then POSTs a normal
+        /compose with input_source=intent + the confirmed target.
+      operationId: composeResolveIntent
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [book_id, intent_text, generation_model_ref]
+              properties:
+                book_id: { type: string, format: uuid }
+                intent_text: { type: string }
+                generation_model_ref: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Resolved intent (proposed — not yet enriched).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  target:
+                    type: object
+                    properties:
+                      mode: { type: string, enum: [existing, new] }
+                      canonical_name: { type: string }
+                      entity_kind: { type: string }
+                  dimensions: { type: array, items: { type: string } }
+                  technique: { type: string, enum: [retrieval, fabrication] }
+                  rationale: { type: string }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '502': { $ref: '#/components/responses/ErrorResponse' }
+        '503': { $ref: '#/components/responses/ErrorResponse' }
+
+  # ────────────────────────────── uploads (mode F) ──────────────────────────────
+  /v1/lore-enrichment/uploads:
+    post:
+      tags: [uploads]
+      summary: Upload a file for mode-F enrichment (async extract + OCR)
+      description: >
+        Compose slice 3 (mode F). Accept a `.txt/.md/.pdf/.docx/.epub` file +
+        book/project scope + an author license assertion (default-deny:
+        copyrighted/unknown → 403). The raw bytes go to MinIO; the row is created
+        `status=processing` and text extraction (+OCR for scanned PDFs) runs in the
+        background (F10). Poll GET /uploads/{upload_id} until `ready`/`failed`, then
+        pass the upload_id to POST /compose with input_source=files.
+      operationId: createUpload
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, book_id, project_id, license_asserted]
+              properties:
+                file: { type: string, format: binary }
+                book_id: { type: string, format: uuid }
+                project_id: { type: string, format: uuid }
+                license_asserted:
+                  type: string
+                  enum: [public_domain, licensed, owned, copyrighted]
+      responses:
+        '202':
+          description: Accepted — extraction runs in the background.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  upload_id: { type: string, format: uuid }
+                  filename: { type: string }
+                  status: { type: string }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '413': { $ref: '#/components/responses/ErrorResponse' }
+        '415': { $ref: '#/components/responses/ErrorResponse' }
+
+  /v1/lore-enrichment/uploads/{upload_id}:
+    get:
+      tags: [uploads]
+      summary: Poll an upload's extraction status
+      operationId: getUpload
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: upload_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  upload_id: { type: string, format: uuid }
+                  filename: { type: string }
+                  mime: { type: string }
+                  pages: { type: integer }
+                  extracted_chars: { type: integer }
+                  ocr_used: { type: boolean }
+                  license_asserted: { type: string }
+                  status: { type: string, enum: [processing, ready, failed] }
+                  error: { type: string, nullable: true }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+
+  # ────────────────────────────── sources ──────────────────────────────
+  /v1/lore-enrichment/sources:
+    get:
+      tags: [sources]
+      summary: List registered grounding corpora for the current user/project
+      operationId: listSourceCorpora
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProjectIdQuery'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SourceListResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+    post:
+      tags: [sources]
+      summary: Register a grounding corpus (metadata only — ingest is a separate call)
+      description: >
+        Registers corpus metadata (name, kind, license, provenance) and returns
+        the corpus. Idempotent on (user, project, name, kind). Chunking + embedding
+        is a separate call — POST /sources/{corpus_id}/ingest. License is
+        default-deny ('unknown' → not re-cookable, C17); tag a public-domain corpus
+        explicitly.
+      operationId: createSourceCorpus
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSourceRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SourceCorpus'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/lore-enrichment/sources/{corpus_id}/ingest:
+    post:
+      tags: [sources]
+      summary: Ingest text into a registered corpus (chunk + real embed)
+      description: >
+        Chunks the supplied text (CJK-aware) and embeds each chunk via
+        provider-registry (by embedding_model_ref — NO model name). Idempotent:
+        re-ingesting identical text is a no-op (UNIQUE(corpus_id, chunk_index) +
+        content hash). The corpus must already exist (register it first).
+      operationId: ingestSourceCorpus
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: corpus_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [project_id, text, embedding_model_ref]
+              properties:
+                project_id:
+                  type: string
+                  format: uuid
+                text:
+                  type: string
+                  minLength: 1
+                embedding_model_ref:
+                  type: string
+                  format: uuid
+                target_chars:
+                  type: integer
+                  minimum: 40
+                  maximum: 4000
+                  default: 800
+      responses:
+        '202':
+          description: Ingested — chunk counts returned.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  corpus_id: { type: string, format: uuid }
+                  chunks_total: { type: integer }
+                  chunks_inserted: { type: integer }
+                  chunks_embedded: { type: integer }
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '502':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/lore-enrichment/books/{book_id}/ground:
+    post:
+      tags: [sources]
+      summary: Ingest author-SELECTED chapters of a book as a grounding corpus (de-bias C2)
+      description: >
+        Fetches the author-selected chapters (a selection LIST, never auto-bulk)
+        via book-service, chunks + embeds them into a per-book grounding corpus
+        (license public-domain — the author's own text). Adds raw-prose grounding
+        beyond what knowledge RAG (build_context) + glossary canon surface.
+        Idempotent (re-run is a no-op). Embedding resolves via provider-registry by
+        embedding_model_ref (NO model name).
+      operationId: groundFromBook
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: book_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [project_id, embedding_model_ref, chapter_ids]
+              properties:
+                project_id:
+                  type: string
+                  format: uuid
+                embedding_model_ref:
+                  type: string
+                  format: uuid
+                chapter_ids:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: string
+                    format: uuid
+                target_chars:
+                  type: integer
+                  minimum: 40
+                  maximum: 4000
+                  default: 800
+      responses:
+        '202':
+          description: Ingested — chapter + chunk counts returned.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  book_id: { type: string, format: uuid }
+                  chapters_ingested: { type: integer }
+                  chunks_total: { type: integer }
+                  chunks_inserted: { type: integer }
+                  chunks_embedded: { type: integer }
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '502':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ErrorResponse'
+
+  # ──────────────────── per-book enrichment profile (de-bias C3) ────────────────────
+  /v1/lore-enrichment/books/{book_id}/profile:
+    get:
+      tags: [profile]
+      summary: Read the book's enrichment profile (neutral default if unset)
+      description: >
+        The per-book de-bias profile (worldview / language / era_policy / voice +
+        per-kind dimension_overrides) read at runtime by the prompt builders,
+        dimension resolver, and anachronism check. An unset book returns the
+        neutral default (language=auto, anachronism OFF). Owner-only (authorized
+        against the book-service owner_user_id).
+      operationId: getBookProfile
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: book_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The book's profile.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BookProfile' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+    put:
+      tags: [profile]
+      summary: Upsert the book's enrichment profile (author edit → profile_source='manual')
+      description: >
+        Insert-or-update the book's profile. The dimension_overrides are
+        schema-validated BEFORE persist (malformed → 400). Owner-only.
+      operationId: putBookProfile
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: book_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BookProfileInput' }
+      responses:
+        '200':
+          description: The persisted profile.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BookProfile' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+
+  /v1/lore-enrichment/books/{book_id}/profile/suggest:
+    post:
+      tags: [profile]
+      summary: AI-suggest a profile DRAFT from book metadata + chapters + KG (not persisted)
+      description: >
+        One LLM call proposes worldview/language/era_policy/voice + per-kind
+        dimension_overrides from the book's metadata, sample chapters, and a
+        best-effort knowledge-graph summary. Returns a DRAFT the author edits +
+        PUTs (profile_source='ai_suggested'); it is NOT persisted here. Owner-only;
+        the model resolves via provider-registry by suggest_model_ref (NO model
+        name). KG read is best-effort (empty/down → book-only). LLM failure → 502.
+      operationId: suggestBookProfile
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: book_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [project_id, suggest_model_ref]
+              properties:
+                project_id: { type: string, format: uuid }
+                suggest_model_ref: { type: string, format: uuid }
+                sample_chapter_ids:
+                  type: array
+                  maxItems: 8
+                  items: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The suggested profile draft (not persisted).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuggestedBookProfile' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '502': { $ref: '#/components/responses/ErrorResponse' }
+        '503': { $ref: '#/components/responses/ErrorResponse' }
+
+  # ───────────────────────────── templates ─────────────────────────────
+  /v1/lore-enrichment/templates:
+    get:
+      tags: [templates]
+      summary: List enrichment templates (service-level scaffolds per entity-kind)
+      operationId: listEnrichmentTemplates
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: entity_kind
+          in: query
+          required: false
+          description: Filter to one entity-kind (e.g. `location`).
+          schema:
+            type: string
+            maxLength: 64
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateListResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+    post:
+      tags: [templates]
+      summary: Create an enrichment template (scaffold for an entity-kind)
+      description: 'Stub (C3): returns 501 until template scaffolding (C9).'
+      operationId: createEnrichmentTemplate
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTemplateRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnrichmentTemplate'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/ErrorResponse'
+        '501':
+          $ref: '#/components/responses/ErrorResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    JobId:
+      name: job_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ProposalId:
+      name: proposal_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ProjectIdQuery:
+      name: project_id
+      in: query
+      required: true
+      description: Per-project scope (Q3). The acting user is derived from the JWT.
+      schema:
+        type: string
+        format: uuid
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    Offset:
+      name: offset
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+
+  responses:
+    ErrorResponse:
+      description: Error envelope
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+
+  schemas:
+    ErrorBody:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          examples: ['NOT_IMPLEMENTED']
+        message:
+          type: string
+
+    Technique:
+      type: string
+      enum: [template, retrieval, fabrication, recook]
+      description: >
+        Enrichment strategy id. Phased rollout by effectiveness-per-cost
+        (Q-R2): P1 template+retrieval, P2 fabrication, P3 recook.
+
+    JobStatus:
+      type: string
+      enum: [pending, estimating, running, paused, completed, failed, cancelled]
+      description: Job lifecycle (C8/C14 own the transitions).
+
+    ReviewStatus:
+      type: string
+      enum: [proposed, author_reviewing, approved, promoted, rejected]
+      description: >
+        H0 proposal lifecycle. proposed → author_reviewing → approved →
+        promoted | rejected. Only `promoted` is canon; everything else is
+        enriched (non-canon) and carries `confidence < 1.0`.
+
+    Origin:
+      type: string
+      examples: ['enrichment']
+      description: >
+        Permanent provenance marker. NEVER `glossary` (that is authored canon).
+        Survives promotion — the canon entity stays traceable as originally
+        makeup (H0 lock).
+
+    CorpusKind:
+      type: string
+      enum: [fengshen, shanhaijing, history, other]
+
+    DimensionOverrides:
+      type: object
+      description: >
+        Per-kind dynamic-dimension layer (de-bias C3). Keyed by entity kind; each
+        value may add/remove/relabel/reweight dimensions. Server-validated before
+        persist. Free-form by kind (kinds are author/profile-extensible, KB3).
+      additionalProperties:
+        type: object
+        properties:
+          add:
+            type: array
+            items:
+              type: object
+              required: [id]
+              properties:
+                id: { type: string }
+                label: { type: string }
+                weight: { type: number }
+                required: { type: boolean }
+                payload_shape: { type: string }
+          remove:
+            type: array
+            items: { type: string }
+          relabel:
+            type: object
+            additionalProperties: { type: string }
+          reweight:
+            type: object
+            additionalProperties: { type: number }
+
+    AnachronismMarker:
+      type: object
+      required: [term]
+      properties:
+        term: { type: string }
+        reason: { type: string }
+
+    BookProfileInput:
+      type: object
+      description: Author-editable enrichment profile (PUT body, de-bias C3).
+      properties:
+        worldview: { type: string }
+        language: { type: string, default: auto }
+        era_policy: { type: string, nullable: true }
+        voice: { type: string, nullable: true }
+        anachronism_markers:
+          type: array
+          items: { $ref: '#/components/schemas/AnachronismMarker' }
+        dimension_overrides: { $ref: '#/components/schemas/DimensionOverrides' }
+
+    BookProfile:
+      type: object
+      description: The persisted per-book enrichment profile (de-bias C3).
+      properties:
+        book_id: { type: string, format: uuid, nullable: true }
+        worldview: { type: string }
+        language: { type: string }
+        era_policy: { type: string, nullable: true }
+        voice: { type: string, nullable: true }
+        anachronism_markers:
+          type: array
+          items: { $ref: '#/components/schemas/AnachronismMarker' }
+        anachronism_enabled: { type: boolean }
+        dimension_overrides: { $ref: '#/components/schemas/DimensionOverrides' }
+        profile_source:
+          type: string
+          enum: [seed, ai_suggested, manual]
+
+    SuggestedBookProfile:
+      type: object
+      description: An AI-suggested profile draft (not persisted; the author edits + PUTs).
+      properties:
+        worldview: { type: string }
+        language: { type: string }
+        era_policy: { type: string, nullable: true }
+        voice: { type: string, nullable: true }
+        dimension_overrides: { $ref: '#/components/schemas/DimensionOverrides' }
+        profile_source:
+          type: string
+          enum: [ai_suggested]
+
+    CreateJobRequest:
+      type: object
+      required: [project_id, embedding_model_ref, generation_model_ref, targets]
+      properties:
+        project_id:
+          type: string
+          format: uuid
+          description: Per-project scope (Q3). The user is taken from the JWT.
+        book_id:
+          type: string
+          format: uuid
+          description: >
+            Optional glossary book scope for the C12 contradiction check
+            (C3/F-C12-1). When set, the runner reads each entity's AUTHORED canon
+            and AUTO-REJECTS a generated fact that negates it. Absent → the
+            contradiction check degrades honestly (no false-green).
+        technique:
+          $ref: '#/components/schemas/Technique'
+          description: >
+            Optional. C14 runs the P1 pipeline (template + retrieval grounding →
+            schema-gov generation); proposals carry technique `retrieval`. P2/P3
+            are gated until the C15 cost/quality gate.
+        entity_kind:
+          type: string
+          maxLength: 64
+          description: Demo target is `location`.
+        embedding_model_ref:
+          type: string
+          format: uuid
+          description: >
+            Provider-registry user_model id for the EMBEDDING model (retrieval,
+            C10). Resolved via provider-registry — NEVER a hardcoded model name.
+        generation_model_ref:
+          type: string
+          format: uuid
+          description: >
+            Provider-registry user_model id for the GENERATION model (schema-gov
+            generation, C11). Resolved via provider-registry — never a name.
+        targets:
+          type: array
+          minItems: 1
+          description: >
+            The under-described canon entities to enrich. The runner derives each
+            entity's MISSING dimensions via the C7 gap engine.
+          items:
+            $ref: '#/components/schemas/JobGapTarget'
+        max_spend_usd:
+          type: number
+          minimum: 0
+          description: >
+            Cost guardrail (C8). The job PAUSES (resumable) on a working-cap
+            breach; a fraction (eval_reserve_fraction) is held back for the C15
+            eval pass (M5) and is never consumed by the pipeline.
+        eval_reserve_fraction:
+          type: number
+          minimum: 0
+          exclusiveMaximum: 1.0
+          default: 0.15
+          description: Fraction of max_spend_usd reserved for the C15 eval pass (M5).
+        top_k:
+          type: integer
+          minimum: 1
+          maximum: 20
+          default: 5
+          description: Passages retrieved per gap (C10 grounding).
+
+    JobGapTarget:
+      type: object
+      required: [canonical_name]
+      properties:
+        canonical_name:
+          type: string
+          minLength: 1
+          description: The faithful (source-language) entity name (never makeup).
+        target_ref:
+          type: string
+          description: The canon entity ref this gap enriches (when it exists).
+        entity_kind:
+          type: string
+          default: location
+        mention_count:
+          type: integer
+          minimum: 0
+          default: 1
+        present_dimensions:
+          type: array
+          items:
+            type: string
+          description: Dimensions already present in canon (default none → all missing).
+
+    ComposeTarget:
+      type: object
+      required: [canonical_name]
+      description: >
+        The entity a compose run targets. mode='existing' enriches a known glossary
+        entity; mode='new' creates from the input (target_ref MUST be null — the
+        glossary anchor is minted only at PROMOTE, H0-clean).
+      properties:
+        mode:
+          type: string
+          enum: [existing, new]
+          default: existing
+        canonical_name:
+          type: string
+          minLength: 1
+          description: The faithful entity name (never makeup).
+        entity_kind:
+          type: string
+          default: location
+          description: Any C1 kind (character|location|item|faction|event) or generic.
+        target_ref:
+          type: string
+          nullable: true
+          description: The canon entity ref (existing only; null for new).
+        present_dimensions:
+          type: array
+          items:
+            type: string
+          description: Dimensions already present (existing only; new → all missing).
+        requested_dimensions:
+          type: array
+          nullable: true
+          items:
+            type: string
+          description: >
+            Dimension picker (#1): the exact dimensions to enrich (ids or localized
+            labels). null = auto (server derives from coverage / enriches all). When
+            set, the server enriches exactly these (present = the kind's full set
+            minus requested).
+
+    EnrichmentJob:
+      type: object
+      required:
+        - job_id
+        - project_id
+        - user_id
+        - status
+        - technique
+        - estimated_cost_usd
+        - actual_cost_usd
+        - proposals_total
+        - created_at
+        - updated_at
+      properties:
+        job_id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+          description: Owner (Q3 scope); derived from the JWT at create time.
+        status:
+          $ref: '#/components/schemas/JobStatus'
+        technique:
+          $ref: '#/components/schemas/Technique'
+        entity_kind:
+          type: [string, 'null']
+        estimated_cost_usd:
+          type: number
+          minimum: 0
+        actual_cost_usd:
+          type: number
+          minimum: 0
+        max_spend_usd:
+          type: [number, 'null']
+          minimum: 0
+        proposals_total:
+          type: integer
+          minimum: 0
+        error_message:
+          type: [string, 'null']
+        started_at:
+          type: [string, 'null']
+          format: date-time
+        paused_at:
+          type: [string, 'null']
+          format: date-time
+        completed_at:
+          type: [string, 'null']
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    JobListResponse:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/EnrichmentJob'
+        total:
+          type: integer
+          minimum: 0
+        limit:
+          type: integer
+          minimum: 1
+        offset:
+          type: integer
+          minimum: 0
+
+    EnrichmentProposal:
+      type: object
+      description: >
+        H0 CARRIER. Structurally non-canon: required permanent `origin` marker,
+        lifecycle `review_status`, and `confidence` strictly below 1.0. The
+        promotion record is null until (and unless) the author promotes; the
+        permanent origin markers then persist for lifetime traceability.
+      required:
+        - proposal_id
+        - job_id
+        - project_id
+        - user_id
+        - entity_kind
+        - content
+        - origin
+        - technique
+        - confidence
+        - review_status
+        - created_at
+        - updated_at
+      properties:
+        proposal_id:
+          type: string
+          format: uuid
+        job_id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+          description: Owner (Q3 scope).
+        entity_kind:
+          type: string
+          maxLength: 64
+        target_ref:
+          type: [string, 'null']
+          description: The canon entity being enriched (e.g. a glossary entity ref).
+        content:
+          type: string
+          description: Generated makeup lore (Chinese, source-faithful).
+        origin:
+          $ref: '#/components/schemas/Origin'
+        technique:
+          $ref: '#/components/schemas/Technique'
+        provenance_json:
+          type: object
+          additionalProperties: true
+          description: Strategy/provider provenance (no model name persisted in canon).
+        confidence:
+          type: number
+          exclusiveMinimum: 0
+          exclusiveMaximum: 1.0
+          description: H0 — enriched confidence is ALWAYS < 1.0 (canon is 1.0).
+        source_refs_json:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+          description: Grounding citations into registered corpora.
+        cultural_grounding_ref_id:
+          type: [string, 'null']
+          format: uuid
+          description: Anchor into a source corpus chunk (C10).
+        cultural_grounding_ref:
+          type: [string, 'null']
+          description: Human-readable grounding citation/locator (H0 field).
+        review_status:
+          $ref: '#/components/schemas/ReviewStatus'
+        promoted_entity_id:
+          type: [string, 'null']
+          format: uuid
+          description: Glossary canon entity id; null until promoted.
+        promoted_by:
+          type: [string, 'null']
+          format: uuid
+          description: Author who promoted; null until promoted.
+        promoted_at:
+          type: [string, 'null']
+          format: date-time
+          description: When promoted; null until promoted.
+        promoted_from_proposal_id:
+          type: [string, 'null']
+          format: uuid
+          description: Permanent origin marker — survives promotion (H0).
+        original_technique:
+          oneOf:
+            - $ref: '#/components/schemas/Technique'
+            - type: 'null'
+          description: Permanent origin marker — technique at promote time (H0).
+        rejected_reason:
+          type: [string, 'null']
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ProposalListResponse:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/EnrichmentProposal'
+        total:
+          type: integer
+          minimum: 0
+        limit:
+          type: integer
+          minimum: 1
+        offset:
+          type: integer
+          minimum: 0
+
+    RejectProposalRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          maxLength: 2000
+
+    EditProposalRequest:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+          description: Corrected makeup content (still enriched, still non-canon).
+        cultural_grounding_ref:
+          type: string
+          description: Optional updated grounding citation.
+
+    PromoteResult:
+      type: object
+      description: >
+        H0 promotion record. The result is canon (confidence 1.0 in the glossary
+        SSOT) BUT retains the permanent origin markers below so it is forever
+        traceable as originally makeup.
+      required:
+        - proposal_id
+        - review_status
+        - promoted_entity_id
+        - promoted_by
+        - promoted_at
+        - origin
+        - promoted_from_proposal_id
+        - original_technique
+      properties:
+        proposal_id:
+          type: string
+          format: uuid
+        review_status:
+          $ref: '#/components/schemas/ReviewStatus'
+        promoted_entity_id:
+          type: string
+          format: uuid
+          description: The glossary canon entity created/updated by promotion.
+        promoted_by:
+          type: string
+          format: uuid
+          description: The author (book/project owner) who promoted.
+        promoted_at:
+          type: string
+          format: date-time
+        origin:
+          $ref: '#/components/schemas/Origin'
+        promoted_from_proposal_id:
+          type: string
+          format: uuid
+          description: Permanent origin marker (H0).
+        original_technique:
+          $ref: '#/components/schemas/Technique'
+
+    WriteBackRequest:
+      type: object
+      description: >
+        Canon-anchor coordinates for write-back / promote / retract. `book_id`
+        is the glossary/book scope; `glossary_entity_id` is optional (resolved
+        via the glossary SSOT write when absent).
+      required: [book_id]
+      properties:
+        book_id:
+          type: string
+          format: uuid
+          description: The book/glossary scope for the write-back.
+        glossary_entity_id:
+          type: [string, 'null']
+          format: uuid
+          description: Existing glossary entity anchor (optional).
+
+    WriteBackResult:
+      type: object
+      description: >
+        Result of admitting an approved proposal's facts to the KG QUARANTINED.
+        `canon` is ALWAYS false (H0 — write-back never canonizes); every fact
+        carries an `enriched` source_type, `pending_validation`, confidence < 1.0.
+      required: [proposal_id, glossary_entity_id, facts, canon]
+      properties:
+        proposal_id:
+          type: string
+          format: uuid
+        glossary_entity_id:
+          type: string
+          format: uuid
+        facts:
+          type: array
+          items:
+            type: object
+            properties:
+              fact_id: { type: string }
+              dimension: { type: string }
+              source_type:
+                type: string
+                description: Always `enriched:<technique>` on write-back (H0).
+              confidence:
+                type: number
+                exclusiveMaximum: 1.0
+              pending_validation:
+                type: boolean
+        canon:
+          type: boolean
+          description: H0 — always false; write-back is quarantined.
+
+    RetractResult:
+      type: object
+      required: [proposal_id, facts_retracted, glossary_recycled, review_status]
+      properties:
+        proposal_id:
+          type: string
+          format: uuid
+        facts_retracted:
+          type: integer
+          minimum: 0
+        glossary_recycled:
+          type: boolean
+        review_status:
+          $ref: '#/components/schemas/ReviewStatus'
+
+    CreateSourceRequest:
+      type: object
+      required: [project_id, name, kind]
+      properties:
+        project_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        kind:
+          $ref: '#/components/schemas/CorpusKind'
+        license:
+          type: string
+          default: public-domain
+        provenance_json:
+          type: object
+          additionalProperties: true
+
+    SourceCorpus:
+      type: object
+      required:
+        - corpus_id
+        - project_id
+        - user_id
+        - name
+        - kind
+        - license
+        - created_at
+        - updated_at
+      properties:
+        corpus_id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        kind:
+          $ref: '#/components/schemas/CorpusKind'
+        license:
+          type: string
+        provenance_json:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    SourceListResponse:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SourceCorpus'
+        total:
+          type: integer
+          minimum: 0
+        limit:
+          type: integer
+          minimum: 1
+        offset:
+          type: integer
+          minimum: 0
+
+    CreateTemplateRequest:
+      type: object
+      required: [entity_kind]
+      properties:
+        entity_kind:
+          type: string
+          minLength: 1
+          maxLength: 64
+        dimension_set:
+          type: array
+          items:
+            type: string
+          description: Dimensions to enrich (e.g. 历史/地理/文化/features/inhabitants).
+        scaffold_body:
+          type: string
+        version:
+          type: integer
+          minimum: 1
+          default: 1
+
+    EnrichmentTemplate:
+      type: object
+      required:
+        - template_id
+        - entity_kind
+        - dimension_set
+        - version
+        - created_at
+        - updated_at
+      properties:
+        template_id:
+          type: string
+          format: uuid
+        entity_kind:
+          type: string
+        dimension_set:
+          type: array
+          items:
+            type: string
+        scaffold_body:
+          type: string
+        version:
+          type: integer
+          minimum: 1
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    TemplateListResponse:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/EnrichmentTemplate'
+        total:
+          type: integer
+          minimum: 0
+        limit:
+          type: integer
+          minimum: 1
+        offset:
+          type: integer
+          minimum: 0

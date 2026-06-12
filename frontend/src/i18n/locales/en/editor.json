@@ -1,0 +1,341 @@
+{
+  "saved": "Chapter saved",
+  "no_content": "No content to translate",
+  "translation_failed": "Translation failed",
+  "translated_blocks": "Translated {{count}} blocks",
+  "text_translation_received": "Text translation received — block mode recommended",
+  "breadcrumb": {
+    "workspace": "Workspace",
+    "book": "Book",
+    "chapter": "Chapter"
+  },
+  "prev_chapter": "Previous chapter",
+  "next_chapter": "Next chapter",
+  "mode": {
+    "classic": "Classic",
+    "classic_title": "Classic mode — focused writing",
+    "ai": "AI",
+    "ai_title": "AI Assistant mode — full features"
+  },
+  "grammar_title": "Toggle grammar & spell check (LanguageTool)",
+  "translate_title": "Translate content using AI (block mode)",
+  "translating": "Translating...",
+  "translate": "Translate",
+  "toggle_source": "Toggle source panel",
+  "toggle_history": "Toggle history / AI panel",
+  "unsaved": "Unsaved",
+  "saved_badge": "Saved",
+  "discard_title": "Discard all unsaved changes",
+  "discard": "Discard",
+  "save": "Save",
+  "tabs": {
+    "chapters": "Chapters",
+    "original": "Original",
+    "glossary": "Glossary",
+    "outline": "Outline"
+  },
+  "chapter_count": "{{count}} chapter",
+  "chapter_count_other": "{{count}} chapters",
+  "original_readonly": "Original uploaded text — read only",
+  "no_original": "No original source — this chapter was created directly in the editor (no file was imported).",
+  "title_placeholder": "Chapter title",
+  "chars": "{{n}} chars",
+  "words": "{{n}} words",
+  "paragraphs": "{{count}} paragraph",
+  "paragraphs_other": "{{count}} paragraphs",
+  "save_note_placeholder": "Save note (optional) — e.g. \"added flashback scene\"",
+  "history": "History",
+  "ai_chat": "AI Chat",
+  "coming_soon": "Coming soon",
+  "connected": "Connected",
+  "left_panel": "Left panel",
+  "right_panel": "Right panel",
+  "discard_confirm": {
+    "title": "Discard changes?",
+    "desc": "All unsaved changes will be permanently lost. This cannot be undone.",
+    "confirm": "Discard changes",
+    "cancel": "Keep editing"
+  },
+  "toolbar": {
+    "paragraph": "Paragraph",
+    "h1": "Heading 1",
+    "h2": "Heading 2",
+    "h3": "Heading 3",
+    "bold": "Bold (Ctrl+B)",
+    "italic": "Italic (Ctrl+I)",
+    "strike": "Strikethrough",
+    "underline": "Underline (Ctrl+U)",
+    "inline_code": "Inline code",
+    "link": "Link",
+    "url_prompt": "URL:",
+    "highlight": "Highlight (Ctrl+Shift+H)",
+    "subscript": "Subscript",
+    "superscript": "Superscript",
+    "bullet_list": "Bullet list",
+    "ordered_list": "Ordered list",
+    "blockquote": "Block quote",
+    "insert_image": "Insert image",
+    "insert_video": "Insert video",
+    "insert_audio": "Insert audio",
+    "code_block": "Code block",
+    "horizontal_rule": "Horizontal rule",
+    "undo": "Undo (Ctrl+Z)",
+    "redo": "Redo (Ctrl+Shift+Z)"
+  },
+  "slash": {
+    "paragraph": {
+      "title": "Paragraph",
+      "desc": "Plain text block"
+    },
+    "heading1": {
+      "title": "Heading 1",
+      "desc": "Large section heading"
+    },
+    "heading2": {
+      "title": "Heading 2",
+      "desc": "Medium section heading"
+    },
+    "heading3": {
+      "title": "Heading 3",
+      "desc": "Small section heading"
+    },
+    "bullet": {
+      "title": "Bullet List",
+      "desc": "Unordered list"
+    },
+    "numbered": {
+      "title": "Numbered List",
+      "desc": "Ordered list"
+    },
+    "quote": {
+      "title": "Quote",
+      "desc": "Block quotation"
+    },
+    "image": {
+      "title": "Image",
+      "desc": "Upload, paste, or AI generate"
+    },
+    "video": {
+      "title": "Video",
+      "desc": "Upload video file"
+    },
+    "audio": {
+      "title": "Audio",
+      "desc": "Upload audio file"
+    },
+    "code": {
+      "title": "Code Block",
+      "desc": "Syntax highlighted code"
+    },
+    "callout": {
+      "title": "Callout",
+      "desc": "Author note or tip"
+    },
+    "divider": {
+      "title": "Divider",
+      "desc": "Horizontal rule"
+    }
+  },
+  "code": {
+    "language_label": "Code language",
+    "copy": "Copy code",
+    "delete": "Delete code block"
+  },
+  "media": {
+    "ai_prompt": "AI Prompt",
+    "saved": "saved",
+    "empty": "empty",
+    "placeholder": "Describe this media for AI context and generation...",
+    "stored_note": "Stored with media for AI context and re-generation.",
+    "copied": "Copied",
+    "copy_prompt": "Copy prompt",
+    "regenerate": "Re-generate",
+    "generating": "Generating..."
+  },
+  "image": {
+    "err_type": "Unsupported type: {{type}}. Use PNG, JPG, GIF, or WebP.",
+    "err_size": "File too large: {{size}} MB. Max 10 MB.",
+    "upload_unavailable": "Upload not available — save the chapter first.",
+    "upload_failed": "Upload failed",
+    "regen_save_first": "Save the chapter first to enable AI generation.",
+    "regen_no_model": "No AI model configured. Add a provider in Settings.",
+    "regen_no_provider": "No active AI provider. Configure one in Settings → Providers.",
+    "regen_failed": "Generation failed",
+    "default_title": "Image",
+    "version_history": "Version history",
+    "copy_filename": "Copy filename",
+    "copy": "Copy",
+    "ai_mode": "AI mode",
+    "replace": "Replace",
+    "replace_title": "Replace image",
+    "delete_block": "Delete block",
+    "delete_image_block": "Delete image block",
+    "uploading": "Uploading... {{pct}}%",
+    "drop_here": "Drop image here",
+    "drop_hint": "Drop an image, click to browse, or Ctrl+V",
+    "formats": "PNG, JPG, GIF, WebP — Max 10 MB",
+    "width_title": "Width: {{width}}%",
+    "caption_placeholder": "Add a caption...",
+    "caption_aria": "Image caption",
+    "alt_text": "Alt text",
+    "alt_set": "set",
+    "alt_placeholder": "Describe this image for screen readers and EPUB export...",
+    "alt_aria": "Image alt text",
+    "alt_note": "Used by screen readers, search, and EPUB export. Different from caption."
+  },
+  "video": {
+    "err_type": "Unsupported type: {{type}}. Use MP4 or WebM.",
+    "err_size": "File too large: {{size}} MB. Max 100 MB.",
+    "upload_unavailable": "Upload not available — save the chapter first.",
+    "upload_failed": "Upload failed",
+    "gen_save_first": "Save the chapter first.",
+    "gen_no_model": "No video generation model configured. Add one in Settings > Providers.",
+    "gen_failed": "Generation failed",
+    "default_title": "Video",
+    "version_history": "Version history",
+    "copy_filename": "Copy filename",
+    "copy": "Copy",
+    "ai_mode": "AI mode",
+    "replace": "Replace",
+    "replace_title": "Replace video",
+    "delete_block": "Delete block",
+    "delete_video_block": "Delete video block",
+    "uploading": "Uploading... {{pct}}%",
+    "drop_here": "Drop video here",
+    "drop_hint": "Drop a video or click to browse",
+    "formats": "MP4, WebM — Max 100 MB",
+    "width_title": "Width: {{width}}%",
+    "caption_placeholder": "Add a caption...",
+    "caption_aria": "Video caption",
+    "alt_text": "Alt text",
+    "alt_set": "set",
+    "alt_placeholder": "Describe this video for screen readers and EPUB export...",
+    "alt_aria": "Video alt text",
+    "alt_note": "Used by screen readers, search, and EPUB export. Different from caption.",
+    "generate": "Generate"
+  },
+  "audio": {
+    "err_type": "Unsupported type: {{type}}. Use MP3, WAV, OGG, WebM, or M4A.",
+    "err_size": "File too large: {{size}} MB. Max 20 MB.",
+    "upload_unavailable": "Upload not available — save the chapter first.",
+    "upload_failed": "Upload failed",
+    "default_title": "Audio",
+    "ai_mode": "AI mode",
+    "play": "Play",
+    "pause": "Pause",
+    "replace_title": "Replace audio",
+    "delete_audio_block": "Delete audio block",
+    "uploading": "Uploading... {{pct}}%",
+    "drop_here": "Drop audio here",
+    "drop_hint": "Drop an audio file or click to browse",
+    "formats": "MP3, WAV, OGG, WebM, M4A — Max 20 MB",
+    "subtitle_placeholder": "Add a subtitle...",
+    "subtitle_aria": "Audio subtitle"
+  },
+  "callout": {
+    "type": {
+      "note": "note",
+      "warning": "warning",
+      "tip": "tip",
+      "danger": "danger"
+    },
+    "title": "{{type}} — click to change type"
+  },
+  "revision": {
+    "restored": "Revision restored",
+    "header": "Revision History · {{count}}",
+    "empty": "No revisions yet. Save to create one.",
+    "current": "Current",
+    "view": "View",
+    "restore": "Restore",
+    "confirm_title": "Restore this revision?",
+    "confirm_desc": "This will overwrite your current draft with this older version and create a new revision entry. This cannot be undone.",
+    "close_preview": "Close preview",
+    "preview": "Revision preview",
+    "restore_version": "Restore this version",
+    "empty_revision": "Empty revision."
+  },
+  "source": {
+    "header": "Block JSON — read-only view of chapter structure",
+    "copied": "Copied",
+    "copy": "Copy JSON"
+  },
+  "version": {
+    "loading": "Loading version history...",
+    "close": "Close",
+    "title": "Version History",
+    "block_crumb": "Block",
+    "comparing": "Comparing v{{old}} → v{{new}}",
+    "previous": "Previous",
+    "old": "old",
+    "no_media": "No media",
+    "current": "Current",
+    "selected": "Selected",
+    "current_tag": "current",
+    "no_media_version": "No media in this version",
+    "no_versions": "No versions yet",
+    "version_count": "{{count}} version",
+    "version_count_other": "{{count}} versions",
+    "total": "{{size}} total",
+    "delete_confirm": "Delete version {{version}}? This cannot be undone.",
+    "versions": "Versions",
+    "restore_version": "Restore v{{version}}",
+    "timeago": {
+      "just_now": "just now",
+      "mins": "{{n}}m ago",
+      "hours": "{{n}}h ago",
+      "yesterday": "Yesterday",
+      "days": "{{n}} days ago"
+    },
+    "action": {
+      "upload": "Media uploaded",
+      "regenerate": "Re-generated with refined prompt",
+      "caption_edit": "Caption updated",
+      "prompt_edit": "Prompt updated"
+    },
+    "diff_identical": "Prompts are identical",
+    "diff_title": "AI Prompt Diff ({{old}} → {{new}})",
+    "diff_previous": "Previous",
+    "diff_current": "Current"
+  },
+  "media_guard": {
+    "protected": "Media blocks are protected in Classic mode. Switch to AI mode to edit or delete."
+  },
+  "publish": {
+    "publish": "Publish",
+    "republish": "Re-publish",
+    "unpublish": "Unpublish",
+    "draft_badge": "Draft",
+    "published_badge": "Published",
+    "confirm_title": "Unpublish chapter?",
+    "confirm_body": "This removes the chapter from canon — its extracted knowledge and passages will be retracted until you re-publish.",
+    "published_toast": "Chapter published",
+    "unpublished_toast": "Chapter unpublished",
+    "conflict_toast": "Draft changed since you opened it — reload before publishing.",
+    "empty_toast": "This chapter has no content to publish — write something first.",
+    "save_first": "Save before publishing",
+    "gate_pending": "{{pending}} of {{total}} scenes not yet done",
+    "gate_no_scenes": "Create and complete at least one scene to publish",
+    "gate_canon_blocked": "an unresolved canon contradiction in {{count}} scene(s)",
+    "gate_unchecked": "Canon unverified in {{count}} scene(s)",
+    "gate_unchecked_hint": "These scenes have characters to check but no resolved reading-order position, so canon was not verified. Publishing is allowed — review them if you can."
+  },
+  "compare": {
+    "open": "Compare",
+    "title": "Compare revisions",
+    "back": "Back to editor",
+    "left": "Left revision",
+    "right": "Right revision",
+    "side_by_side": "Side by side",
+    "inline": "Inline",
+    "no_revisions": "No revisions",
+    "need_two": "This chapter needs at least two saved revisions to compare.",
+    "loading": "Loading…",
+    "diffing": "Computing diff…",
+    "error": "Could not load the comparison.",
+    "truncated": "These revisions are very large — showing a full replace instead of a fine-grained diff.",
+    "same": "Both sides are the same revision — no differences.",
+    "load_more": "Load more ({{loaded}}/{{total}})",
+    "load_more_hint": "Load older revisions into the picker"
+  }
+}

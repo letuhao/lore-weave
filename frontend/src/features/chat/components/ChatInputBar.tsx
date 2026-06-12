@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ArrowUp, Brain, Square, Zap, Mic, MicOff, Loader2, Volume2, VolumeX } from 'lucide-react';
 import { loadVoicePrefs } from '../voicePrefs';
 import { useVoiceAssistMic } from '../hooks/useVoiceAssistMic';
@@ -53,6 +54,7 @@ export function ChatInputBar({
   ttsPlaying,
   onStopTTS,
 }: ChatInputBarProps) {
+  const { t } = useTranslation('chat');
   const [value, setValue] = useState('');
   const [thinkingMode, setThinkingMode] = useState(thinkingDefault ?? false);
   const [responseFormat, setResponseFormat] = useState<string>('Auto');
@@ -107,11 +109,11 @@ export function ChatInputBar({
   const hasContext = contextItems.length > 0;
 
   return (
-    <div className="shrink-0 border-t border-border bg-card px-8 py-4">
-      <div className="mx-auto max-w-full px-4 md:max-w-[720px] 2xl:max-w-[900px]">
+    <div className="shrink-0 border-t border-border bg-card px-4 py-3">
+      <div className="mx-auto min-w-0 max-w-full md:max-w-[720px] 2xl:max-w-[900px]">
         {/* Format pills */}
         <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
-          <span className="text-[10px] text-muted-foreground">Format:</span>
+          <span className="text-[10px] text-muted-foreground">{t('input.format')}</span>
           {['Auto', 'Concise', 'Detailed', 'Bullets', 'Table'].map((fmt) => (
             <button
               key={fmt}
@@ -123,7 +125,7 @@ export function ChatInputBar({
                   : 'border-border text-muted-foreground hover:border-border hover:text-foreground'
               }`}
             >
-              {fmt}
+              {t(`input.format_opt.${fmt.toLowerCase()}`)}
             </button>
           ))}
         </div>
@@ -151,7 +153,7 @@ export function ChatInputBar({
           <TextareaAutosize
             value={value}
             onChange={(e) => handleValueChange(e.target.value)}
-            placeholder="Ask about your story, characters, world-building..."
+            placeholder={t('input.placeholder')}
             minRows={3}
             maxRows={8}
             disabled={disabled || isStreaming || voiceModeActive}
@@ -175,14 +177,14 @@ export function ChatInputBar({
           />
 
           {/* Bottom row: attach + mode toggle + send */}
-          <div className="flex items-center justify-between px-2 pb-2">
-            <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-y-1.5 px-2 pb-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
               {/* Attach context button */}
               <button
                 type="button"
                 onClick={() => setAttachPickerOpen(true)}
                 className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-                title="Attach context"
+                title={t('input.attach_context')}
               >
                 <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" /></svg>
               </button>
@@ -199,13 +201,13 @@ export function ChatInputBar({
                           ? 'bg-primary/15 text-primary'
                           : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
                       }`}
-                      title={voiceAssistOn ? 'Voice Assist ON — AI responses will be spoken' : 'Enable Voice Assist — speak to type, hear AI responses'}
-                      aria-label="Toggle Voice Assist"
+                      title={voiceAssistOn ? t('input.voice_assist_on') : t('input.voice_assist_off')}
+                      aria-label={t('input.toggle_voice_assist')}
                       aria-pressed={!!voiceAssistOn}
                     >
                       {voiceAssistOn
-                        ? <><Volume2 className="mr-1 inline h-3 w-3" />Assist</>
-                        : <><VolumeX className="mr-1 inline h-3 w-3" />Assist</>}
+                        ? <><Volume2 className="mr-1 inline h-3 w-3" />{t('input.assist')}</>
+                        : <><VolumeX className="mr-1 inline h-3 w-3" />{t('input.assist')}</>}
                     </button>
                   )}
                   {/* Push-to-talk mic — VAD + backend STT (same pipeline as Voice Mode) */}
@@ -227,13 +229,13 @@ export function ChatInputBar({
                                 : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
                     }`}
                     title={
-                      micState === 'activating' ? 'Starting mic...' :
-                      micState === 'listening' ? 'Listening... (click to stop)' :
-                      micState === 'transcribing' ? 'Transcribing...' :
-                      micState === 'error' ? 'Mic error — check STT model in Voice Settings' :
-                      voiceAssistOn ? 'Speak (Voice Assist)' : 'Voice input'
+                      micState === 'activating' ? t('input.mic_starting') :
+                      micState === 'listening' ? t('input.mic_listening') :
+                      micState === 'transcribing' ? t('input.mic_transcribing') :
+                      micState === 'error' ? t('input.mic_error') :
+                      voiceAssistOn ? t('input.mic_speak') : t('input.mic_input')
                     }
-                    aria-label={micState === 'listening' ? 'Stop recording' : 'Voice input'}
+                    aria-label={micState === 'listening' ? t('input.stop_recording') : t('input.mic_input')}
                   >
                     {micState === 'listening' ? <MicOff className="h-4 w-4" /> :
                      micState === 'activating' || micState === 'transcribing' ? <Loader2 className="h-4 w-4 animate-spin" /> :
@@ -248,7 +250,7 @@ export function ChatInputBar({
                   onClick={onStopTTS}
                   className="rounded-md bg-red-500/10 px-2 py-1 text-[10px] font-medium text-red-400 hover:bg-red-500/20 transition-colors"
                 >
-                  Stop Audio
+                  {t('input.stop_audio')}
                 </button>
               )}
               {/* Think/Fast toggle */}
@@ -264,7 +266,7 @@ export function ChatInputBar({
                     }`}
                   >
                     <Brain className="h-2.5 w-2.5" />
-                    Think
+                    {t('input.think')}
                   </button>
                   <button
                     type="button"
@@ -276,7 +278,7 @@ export function ChatInputBar({
                     }`}
                   >
                     <Zap className="h-2.5 w-2.5" />
-                    Fast
+                    {t('input.fast')}
                   </button>
                 </div>
               )}
@@ -287,7 +289,7 @@ export function ChatInputBar({
               <button
                 type="button"
                 onClick={onStop}
-                title="Stop generating (Esc)"
+                title={t('input.stop_generating')}
                 className="flex h-[34px] w-[34px] items-center justify-center rounded-lg bg-destructive text-destructive-foreground transition-colors hover:bg-destructive/90"
               >
                 <Square className="h-4 w-4" />
@@ -297,7 +299,7 @@ export function ChatInputBar({
                 type="button"
                 onClick={() => handleSubmit()}
                 disabled={!value.trim() || disabled}
-                title="Send (Enter)"
+                title={t('input.send')}
                 className="flex h-[34px] w-[34px] items-center justify-center rounded-lg bg-primary text-primary-foreground transition-colors hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <ArrowUp className="h-4 w-4" />
@@ -306,9 +308,9 @@ export function ChatInputBar({
           </div>
         </div>
         <p className="mt-1.5 text-center text-[10px] text-muted-foreground">
-          {hasContext ? 'Context attached · ' : ''}
-          {modelHint ? `${modelHint} · ` : ''}Enter to send &middot; Shift+Enter for new line
-          {supportsThinking ? ' · Ctrl+Shift+Enter think · Ctrl+Enter fast' : ''}
+          {hasContext ? t('input.context_attached') : ''}
+          {modelHint ? `${modelHint} · ` : ''}{t('input.hint')}
+          {supportsThinking ? t('input.hint_thinking') : ''}
         </p>
       </div>
     </div>

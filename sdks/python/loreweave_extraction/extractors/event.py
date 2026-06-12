@@ -44,11 +44,12 @@ from loreweave_extraction.context_budget import (
 )
 from loreweave_extraction.errors import ExtractionError
 from loreweave_extraction.extractors.entity import LLMEntityCandidate
-from loreweave_extraction.prompts import load_prompt
+from loreweave_extraction.prompts import apply_prompt_override, load_prompt
 
 __all__ = [
     "LLMEventCandidate",
     "EventExtractionResponse",
+    "StatusEffect",
     "extract_events",
 ]
 
@@ -70,6 +71,29 @@ _EVENT_DATE_RE = re.compile(
 )
 
 
+class StatusEffect(BaseModel):
+    """A2-S1b — a coarse entity-status transition asserted by an event.
+
+    ``entity_ref`` is a participant display-name or known-entity name; the
+    knowledge-service persist layer resolves it to a canonical entity id
+    (chapter-local entity map → glossary anchor → skip-and-log). ``status``
+    is the coarse V1 vocabulary (``active``/``gone``); the LLM-judge (A2-S3)
+    covers the semantic residue.
+
+    **ACTIVE since A2-S1b-2** (commit fe0dae9e): the event-extraction prompt
+    (`event_extraction_system.md` Rule 10 + schema + a death example) asks the
+    model to emit these, and the knowledge persist layer writes an :EntityStatus
+    per well-formed entry. Verified live (FD-4/067): a real extraction through
+    provider-registry on a death scene emits `{gone}` for the dying participants.
+    NOTE: a *reasoning* model can emit empty output (it burns the token budget on
+    <think> before any JSON) → zero events → zero status_effects; use a
+    non-reasoning model or reasoning_effort=none for extraction.
+    """
+
+    entity_ref: str
+    status: Literal["active", "gone"]
+
+
 class _LLMEvent(BaseModel):
     """Single event from the LLM response — raw, pre-resolution."""
 
@@ -87,6 +111,11 @@ class _LLMEvent(BaseModel):
     event_date: str | None = None
     summary: str
     confidence: float = Field(ge=0.0, le=1.0)
+    # A2-S1b — coarse status transitions this event asserts (ACTIVE since
+    # A2-S1b-2 fe0dae9e; the prompt populates these). The validator TOLERATES +
+    # FILTERS malformed entries (drop, don't reject the event) per
+    # feedback_llm_schema_tolerate_filter.
+    status_effects: list[StatusEffect] = []
 
     @field_validator("event_date", mode="before")
     @classmethod
@@ -98,6 +127,23 @@ class _LLMEvent(BaseModel):
         if not _EVENT_DATE_RE.match(v):
             return None
         return v
+
+    @field_validator("status_effects", mode="before")
+    @classmethod
+    def _filter_status_effects(cls, v: object) -> list:
+        """Tolerant filter: keep only well-formed {entity_ref, status}
+        dicts; drop anything else without rejecting the whole event."""
+        if not isinstance(v, list):
+            return []
+        out: list[dict] = []
+        for item in v:
+            if not isinstance(item, dict):
+                continue
+            ref = item.get("entity_ref")
+            st = item.get("status")
+            if isinstance(ref, str) and ref.strip() and st in ("active", "gone"):
+                out.append({"entity_ref": ref.strip(), "status": st})
+        return out
 
 
 class EventExtractionResponse(BaseModel):
@@ -132,6 +178,10 @@ class LLMEventCandidate(BaseModel):
     summary: str
     confidence: float = Field(ge=0.0, le=1.0)
     event_id: str | None
+    # A2-S1b — coarse status transitions threaded from _LLMEvent (ACTIVE since
+    # A2-S1b-2 fe0dae9e). The knowledge persist layer resolves each entity_ref
+    # and writes an :EntityStatus at this event's event_order.
+    status_effects: list[StatusEffect] = Field(default_factory=list)
 
 
 # ── event_id derivation ──────────────────────────────────────────
@@ -172,6 +222,7 @@ async def extract_events(
     llm_client: LLMClientProtocol,
     on_dropped: DroppedHandler | None = None,
     context_budget: "ContextBudget | None" = None,
+    prompt_override_system: str | None = None,
 ) -> list[LLMEventCandidate]:
     """Extract narrative events from *text* via the user's BYOK LLM.
 
@@ -207,7 +258,10 @@ async def extract_events(
         known_entities, ensure_ascii=False
     ).replace("{", "{{").replace("}", "}}")
 
-    system_prompt = load_prompt("event_system", known_entities=safe_known)
+    system_prompt = apply_prompt_override(
+        load_prompt("event_system", known_entities=safe_known),
+        prompt_override_system,
+    )
     raw_events = await _extract_via_llm_client(
         llm_client=llm_client,
         user_id=user_id,
@@ -319,6 +373,7 @@ def _postprocess(
             summary=summary,
             confidence=evt.confidence,
             event_id=eid,
+            status_effects=evt.status_effects,  # A2-S1b (active since fe0dae9e)
         )
 
         # Dedup by event_id (higher confidence wins)
@@ -463,6 +518,9 @@ def _tolerant_parse_events(
                 event_date=item.get("event_date"),  # _coerce_malformed_date validator
                 summary=summary,
                 confidence=confidence,
+                # A2-S1b — _filter_status_effects validator tolerates/drops
+                # malformed entries; absent → []. Active since b2 (fe0dae9e).
+                status_effects=item.get("status_effects"),
             ))
         except ValidationError:
             if on_dropped:

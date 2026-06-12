@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -9,7 +10,7 @@ import { BudgetPanel } from '@/features/usage/BudgetPanel';
 import { BreakdownPanels } from '@/features/usage/BreakdownPanels';
 import { DailyChart } from '@/features/usage/DailyChart';
 import { RequestLogTable } from '@/features/usage/RequestLogTable';
-import type { UsageSummary, AccountBalance, UsageLog, UsageFilters, Period } from '@/features/usage/types';
+import type { UsageSummary, UsageLog, UsageFilters, Period } from '@/features/usage/types';
 
 const PERIODS: { value: Period; label: string }[] = [
   { value: 'last_24h', label: '24h' },
@@ -41,10 +42,10 @@ function escapeCSV(val: string | number): string {
 }
 
 export function UsagePage() {
+  const { t } = useTranslation('usage');
   const { accessToken } = useAuth();
   const [period, setPeriod] = useState<Period>('last_7d');
   const [summary, setSummary] = useState<UsageSummary | null>(null);
-  const [balance, setBalance] = useState<AccountBalance | null>(null);
   const [logs, setLogs] = useState<UsageLog[]>([]);
   const [total, setTotal] = useState(0);
   const [limit, setLimit] = useState(25);
@@ -56,20 +57,17 @@ export function UsagePage() {
 
   const periodLabel = PERIODS.find((p) => p.value === period)?.label ?? '7d';
 
-  // Fetch summary + balance
+  // Fetch summary. (S4c: the deprecated token account-balance is no longer shown;
+  // the USD spend guardrail + platform balance live in the BudgetPanel below.)
   useEffect(() => {
     if (!accessToken) return;
     let cancelled = false;
-    Promise.all([
-      usageApi.getSummary(accessToken, period),
-      usageApi.getBalance(accessToken),
-    ]).then(([s, b]) => {
+    usageApi.getSummary(accessToken, period).then((s) => {
       if (cancelled) return;
       setSummary(s);
-      setBalance(b);
     }).catch(() => {
       if (cancelled) return;
-      toast.error('Failed to load usage summary');
+      toast.error(t('page.load_summary_failed'));
     });
     return () => { cancelled = true; };
   }, [accessToken, period]);
@@ -154,14 +152,14 @@ export function UsagePage() {
       {/* Page header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-serif text-xl font-semibold">AI Usage Monitor</h1>
+          <h1 className="font-serif text-xl font-semibold">{t('page.title')}</h1>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Track token usage, costs, and performance across all AI operations.
+            {t('page.subtitle')}
           </p>
         </div>
         <div className="flex items-center gap-2">
           {/* Period selector */}
-          <div className="flex items-center gap-0.5 rounded-md bg-secondary p-0.5" role="group" aria-label="Time period selector">
+          <div className="flex items-center gap-0.5 rounded-md bg-secondary p-0.5" role="group" aria-label={t('page.period_aria')}>
             {PERIODS.map((p) => (
               <button
                 key={p.value}
@@ -183,13 +181,13 @@ export function UsagePage() {
             className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-secondary"
           >
             <Download className="h-3 w-3" />
-            Export CSV
+            {t('page.export_csv')}
           </button>
         </div>
       </div>
 
       {/* Stat cards */}
-      <StatCards summary={summary} balance={balance} periodLabel={periodLabel} />
+      <StatCards summary={summary} periodLabel={periodLabel} />
 
       {/* Phase 6a-γ — spend guardrail + platform balance */}
       <BudgetPanel />

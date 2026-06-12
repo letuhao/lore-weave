@@ -1,4 +1,6 @@
-from contextlib import asynccontextmanager
+import asyncio
+import logging
+from contextlib import asynccontextmanager, suppress
 from fastapi import FastAPI
 from fastapi.responses import PlainTextResponse
 
@@ -7,12 +9,17 @@ from .database import create_pool, close_pool
 from .llm_client import close_llm_client, get_llm_client
 from .migrate import run_migrations
 from .broker import connect_broker, close_broker
+from .events.glossary_consumer import GlossaryStaleConsumer
+from .grant_client import init_grant_client, close_grant_client
+
+log = logging.getLogger(__name__)
 from .routers import settings as settings_router
 from .routers import jobs as jobs_router
 from .routers import versions as versions_router
 from .routers import coverage as coverage_router
 from .routers import translate as translate_router
 from .routers import extraction as extraction_router
+from .routers import internal_dispatch as internal_dispatch_router
 
 
 @asynccontextmanager
@@ -36,9 +43,24 @@ async def lifespan(app: FastAPI):
     # workers to use this client.
     get_llm_client()
 
+    # E0-4a: the grant client (book-service /access authority). Constructed at
+    # startup so its httpx client shares the app lifecycle.
+    init_grant_client()
+
+    # M5c: consume glossary change events → flag stale translations. Best-effort
+    # background task; a Redis hiccup must never take down the API.
+    consumer = GlossaryStaleConsumer(settings.redis_url, pool)
+    consumer_task = asyncio.create_task(consumer.run())
+
     yield
 
+    await consumer.stop()
+    consumer_task.cancel()
+    with suppress(asyncio.CancelledError, Exception):
+        await consumer_task
+    await consumer.close()
     await close_llm_client()
+    await close_grant_client()
     await close_broker()
     await close_pool()
 
@@ -51,6 +73,7 @@ app.include_router(versions_router.router)
 app.include_router(coverage_router.router)
 app.include_router(translate_router.router)
 app.include_router(extraction_router.router)
+app.include_router(internal_dispatch_router.router)
 
 
 @app.get("/health", response_class=PlainTextResponse)

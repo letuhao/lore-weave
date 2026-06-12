@@ -13,6 +13,8 @@ import type {
   Evidence,
   Translation,
   Confidence,
+  EntityRevisionSummary,
+  EntityRevisionDetail,
 } from './types';
 
 const BASE = '/v1/glossary';
@@ -53,17 +55,88 @@ export const glossaryApi = {
     return apiJson<GlossaryEntity>(`${BASE}/books/${bookId}/entities/${entityId}`, { token });
   },
 
+  // Tier-S (P4): the token-gated schema-create. The assistant proposed a new
+  // kind/attribute (minting `confirmToken`); this confirms it after the human
+  // clicks Confirm. The endpoint is JWT-only — no gateway/MCP route reaches it.
+  confirmSchema(confirmToken: string, token: string): Promise<unknown> {
+    return apiJson<unknown>(`${BASE}/schema/confirm`, {
+      method: 'POST',
+      body: JSON.stringify({ confirm_token: confirmToken }),
+      token,
+    });
+  },
+
+  // EDIT-ATOMIC: the assistant diff-card Apply — multiple field changes applied
+  // in ONE transaction with ONE version check (base_version → 412 on drift).
+  applyEntityEdit(
+    bookId: string,
+    entityId: string,
+    body: {
+      base_version: string;
+      short_description?: string | null;
+      attributes?: { attr_value_id: string; original_value: string }[];
+    },
+    token: string,
+  ): Promise<unknown> {
+    return apiJson<unknown>(`${BASE}/books/${bookId}/entities/${entityId}/apply-edit`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+      token,
+    });
+  },
+
   patchEntity(
     bookId: string,
     entityId: string,
-    changes: { status?: string; tags?: string[]; alive?: boolean },
+    changes: { status?: string; tags?: string[]; alive?: boolean; short_description?: string | null },
     token: string,
+    // Glossary-assistant P3 (H5): when set, sent as `If-Match` so the PATCH is
+    // optimistic-concurrency checked — 412 if the entity changed since read.
+    opts?: { ifMatch?: string },
   ): Promise<GlossaryEntity> {
     return apiJson<GlossaryEntity>(`${BASE}/books/${bookId}/entities/${entityId}`, {
       method: 'PATCH',
       body: JSON.stringify(changes),
       token,
+      ...(opts?.ifMatch ? { headers: { 'If-Match': opts.ifMatch } } : {}),
     });
+  },
+
+  // ── VG-3: entity revision history + restore (D-GLOSSARY-VERSIONING) ─────────
+
+  listEntityRevisions(
+    bookId: string,
+    entityId: string,
+    token: string,
+  ): Promise<{ revisions: EntityRevisionSummary[] }> {
+    return apiJson<{ revisions: EntityRevisionSummary[] }>(
+      `${BASE}/books/${bookId}/entities/${entityId}/revisions`,
+      { token },
+    );
+  },
+
+  getEntityRevision(
+    bookId: string,
+    entityId: string,
+    revId: string,
+    token: string,
+  ): Promise<EntityRevisionDetail> {
+    return apiJson<EntityRevisionDetail>(
+      `${BASE}/books/${bookId}/entities/${entityId}/revisions/${revId}`,
+      { token },
+    );
+  },
+
+  restoreEntityRevision(
+    bookId: string,
+    entityId: string,
+    revId: string,
+    token: string,
+  ): Promise<{ restored: boolean; from_revision_num: number }> {
+    return apiJson<{ restored: boolean; from_revision_num: number }>(
+      `${BASE}/books/${bookId}/entities/${entityId}/revisions/${revId}/restore`,
+      { method: 'POST', token },
+    );
   },
 
   /** Lightweight names-only list for editor decoration scanning */
@@ -74,6 +147,109 @@ export const glossaryApi = {
   deleteEntity(bookId: string, entityId: string, token: string): Promise<void> {
     return apiJson<void>(`${BASE}/books/${bookId}/entities/${entityId}`, {
       method: 'DELETE',
+      token,
+    });
+  },
+
+  // ── Kind-resolution review (unknown bucket + aliases) ──────────────────────
+
+  /** Review queue: entities parked under the 'unknown' kind for this book. */
+  listUnknownEntities(
+    bookId: string,
+    token: string,
+  ): Promise<{ items: import('./types').UnknownEntity[]; total: number }> {
+    return apiJson(`${BASE}/books/${bookId}/unknown-entities`, { token });
+  },
+
+  /**
+   * Review queue: AI-suggested draft entities knowledge-service wrote back
+   * (glossary AI-pipeline v2, mui #1). Reuses the entities list filtered to
+   * status=draft + tag ai-suggested — no dedicated endpoint needed.
+   */
+  listAiSuggestions(
+    bookId: string,
+    token: string,
+  ): Promise<GlossaryEntityListResponse> {
+    return apiJson<GlossaryEntityListResponse>(
+      `${BASE}/books/${bookId}/entities?status=draft&tags=ai-suggested&limit=200`,
+      { token },
+    );
+  },
+
+  // ── Merge candidates (mui #1c — coreference merge inbox) ───────────────────
+
+  /** Proposed merge clusters for review (knowledge's coref detector wrote them). */
+  listMergeCandidates(
+    bookId: string,
+    token: string,
+  ): Promise<import('./types').MergeCandidateListResponse> {
+    return apiJson(`${BASE}/books/${bookId}/merge-candidates?status=proposed`, { token });
+  },
+
+  /** Confirm a merge: fold `loserIds` into `winnerId` (R5 destructive merge). */
+  confirmMerge(
+    bookId: string,
+    winnerId: string,
+    loserIds: string[],
+    token: string,
+  ): Promise<import('./types').MergeResult> {
+    return apiJson(`${BASE}/books/${bookId}/entities/${winnerId}/merge`, {
+      method: 'POST',
+      body: JSON.stringify({ loser_ids: loserIds }),
+      token,
+    });
+  },
+
+  /** Dismiss a proposed cluster (re-propose then suppressed). */
+  dismissMergeCandidate(
+    bookId: string,
+    candidateId: string,
+    token: string,
+  ): Promise<{ candidate_id: string; status: string }> {
+    return apiJson(`${BASE}/books/${bookId}/merge-candidates/${candidateId}/dismiss`, {
+      method: 'POST',
+      token,
+    });
+  },
+
+  /** Undo a merge by replaying its journal. */
+  revertMerge(
+    bookId: string,
+    journalId: string,
+    token: string,
+  ): Promise<{ journal_id: string; status: string }> {
+    return apiJson(`${BASE}/books/${bookId}/merge-journal/${journalId}/revert`, {
+      method: 'POST',
+      token,
+    });
+  },
+
+  /**
+   * Create an alias `alias_code → kind_id`. When `reassign` is true, also moves every
+   * unknown entity whose source_kind_code == alias_code (scoped to book_id if given)
+   * onto that kind — the "merge" action.
+   */
+  createKindAlias(
+    token: string,
+    payload: { alias_code: string; kind_id: string; reassign?: boolean; book_id?: string },
+  ): Promise<{ alias_id: string; alias_code: string; kind_id: string; reassigned: number }> {
+    return apiJson(`${BASE}/kind-aliases`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      token,
+    });
+  },
+
+  /** Move ONE entity onto a kind (ad-hoc triage; re-keys attributes by code). */
+  reassignEntityKind(
+    bookId: string,
+    entityId: string,
+    kindId: string,
+    token: string,
+  ): Promise<{ entity_id: string; kind_id: string }> {
+    return apiJson(`${BASE}/books/${bookId}/entities/${entityId}/reassign-kind`, {
+      method: 'POST',
+      body: JSON.stringify({ kind_id: kindId }),
       token,
     });
   },
@@ -150,10 +326,17 @@ export const glossaryApi = {
     attrValueId: string,
     changes: { original_language?: string; original_value?: string },
     token: string,
+    // Glossary-assistant P3 (H5): `If-Match` version guard (412 on drift).
+    opts?: { ifMatch?: string },
   ) {
     return apiJson(
       `${BASE}/books/${bookId}/entities/${entityId}/attributes/${attrValueId}`,
-      { method: 'PATCH', body: JSON.stringify(changes), token },
+      {
+        method: 'PATCH',
+        body: JSON.stringify(changes),
+        token,
+        ...(opts?.ifMatch ? { headers: { 'If-Match': opts.ifMatch } } : {}),
+      },
     );
   },
 

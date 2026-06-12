@@ -1,6 +1,11 @@
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
+import { Pencil, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { TimelineEvent } from '../api';
+import { useArchiveEvent } from '../hooks/useEventMutations';
+import { EventEditDialog } from './EventEditDialog';
 
 // K19e.1 — presentational row for a :Event. Click / Enter / Space
 // toggles expansion via the parent tab's `selectedEventId` state.
@@ -45,6 +50,22 @@ export function TimelineEventRow({
   onToggle,
 }: TimelineEventRowProps) {
   const { t } = useTranslation('knowledge');
+  const [showEdit, setShowEdit] = useState(false);
+
+  // Phase B C-FE — archive (user "delete"). Confirm + toast; the hook
+  // invalidates the timeline so the row drops out on success.
+  const archiveMutation = useArchiveEvent({
+    onSuccess: () => toast.success(t('events.archive.success')),
+    onError: (err) => toast.error(t('events.archive.failed', { error: err.message })),
+  });
+  const handleArchive = async () => {
+    if (!window.confirm(t('events.archive.confirm'))) return;
+    try {
+      await archiveMutation.archive({ eventId: event.id });
+    } catch {
+      // onError toast; swallow handled rejection.
+    }
+  };
 
   const visibleParticipants = event.participants.slice(0, VISIBLE_PARTICIPANTS);
   const hiddenCount = Math.max(
@@ -185,8 +206,33 @@ export function TimelineEventRow({
               </div>
             </div>
           )}
+
+          {/* Phase B C-FE — edit / archive this event. In the expanded detail
+              so they don't clutter the collapsed row. */}
+          <div className="mt-3 flex items-center gap-2 border-t pt-2">
+            <button
+              type="button"
+              onClick={() => setShowEdit(true)}
+              className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] transition-colors hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50"
+              data-testid="timeline-event-edit"
+            >
+              <Pencil className="h-3 w-3" />
+              {t('events.edit.cta')}
+            </button>
+            <button
+              type="button"
+              onClick={handleArchive}
+              disabled={archiveMutation.isPending}
+              className="inline-flex items-center gap-1 rounded-md border border-destructive/40 px-2 py-1 text-[11px] text-destructive transition-colors hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-50"
+              data-testid="timeline-event-archive"
+            >
+              <Trash2 className="h-3 w-3" />
+              {archiveMutation.isPending ? t('events.archive.archiving') : t('events.archive.cta')}
+            </button>
+          </div>
         </div>
       )}
+      <EventEditDialog open={showEdit} onOpenChange={setShowEdit} event={event} />
     </li>
   );
 }

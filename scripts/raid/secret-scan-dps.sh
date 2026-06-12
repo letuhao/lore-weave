@@ -10,8 +10,6 @@ if [ -z "$CYCLE" ] || [ -z "$DPS" ]; then
   echo "usage: secret-scan-dps.sh <cycle> <dps_id>" >&2
   exit 1
 fi
-# PRR-11: JSON-encode cycle — bare int if numeric, quoted otherwise (e.g. "00X").
-if [[ "$CYCLE" =~ ^[0-9]+$ ]]; then CYCLE_JSON="$CYCLE"; else CYCLE_JSON="\"$CYCLE\""; fi
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 WT="$REPO_ROOT/../foundation-worktrees/cycle-${CYCLE}-dps-${DPS}"
 CONFIG="$REPO_ROOT/.gitleaks.toml"
@@ -21,7 +19,7 @@ NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 if ! command -v gitleaks >/dev/null 2>&1; then
   echo "[secret-scan-dps] WARN: gitleaks binary not installed — skipping (non-blocking; install in CI)" >&2
   mkdir -p "$(dirname "$AUDIT_LOG")"
-  echo "{\"ts\":\"$NOW\",\"event\":\"secret_scan_skipped\",\"cycle\":$CYCLE_JSON,\"dps\":$DPS,\"reason\":\"gitleaks_not_installed\"}" >> "$AUDIT_LOG"
+  echo "{\"ts\":\"$NOW\",\"event\":\"secret_scan_skipped\",\"cycle\":$CYCLE,\"dps\":$DPS,\"reason\":\"gitleaks_not_installed\"}" >> "$AUDIT_LOG"
   exit 0
 fi
 
@@ -35,12 +33,12 @@ fi
 if gitleaks detect --source "$SCAN_PATH" --config "$CONFIG" --no-banner --no-git --redact --report-format json --report-path "/tmp/raid-c${CYCLE}-dps${DPS}-leaks.json" 2>&1; then
   echo "[secret-scan-dps] ok: no leaks (cycle=$CYCLE dps=$DPS)"
   mkdir -p "$(dirname "$AUDIT_LOG")"
-  echo "{\"ts\":\"$NOW\",\"event\":\"secret_scan_clean\",\"cycle\":$CYCLE_JSON,\"dps\":$DPS}" >> "$AUDIT_LOG"
+  echo "{\"ts\":\"$NOW\",\"event\":\"secret_scan_clean\",\"cycle\":$CYCLE,\"dps\":$DPS}" >> "$AUDIT_LOG"
   exit 0
 else
   echo "[secret-scan-dps] LEAK detected cycle=$CYCLE dps=$DPS — quarantine" >&2
   mkdir -p "$(dirname "$AUDIT_LOG")"
-  echo "{\"ts\":\"$NOW\",\"event\":\"secret_leak\",\"cycle\":$CYCLE_JSON,\"dps\":$DPS,\"report\":\"/tmp/raid-c${CYCLE}-dps${DPS}-leaks.json\"}" >> "$AUDIT_LOG"
+  echo "{\"ts\":\"$NOW\",\"event\":\"secret_leak\",\"cycle\":$CYCLE,\"dps\":$DPS,\"report\":\"/tmp/raid-c${CYCLE}-dps${DPS}-leaks.json\"}" >> "$AUDIT_LOG"
   python3 "$REPO_ROOT/scripts/raid/escalation-writer.py" \
     --type secret_leak --cycle "$CYCLE" --phase build \
     --reason "gitleaks fired on cycle $CYCLE DPS $DPS — see /tmp/raid-c${CYCLE}-dps${DPS}-leaks.json" || true

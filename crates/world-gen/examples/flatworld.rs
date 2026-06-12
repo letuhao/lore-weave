@@ -23,6 +23,11 @@ use world_gen::zonegen::{
 
 fn main() {
     let mut p = FlatParams::default();
+    // **2026-05-30**: the previous `llm_model` variable + `--llm-anthropic` /
+    // `--llm-openai` / `--llm-ollama` flag arms were deleted as direct-provider
+    // CLAUDE.md gateway-invariant violations. The flatworld experiment no
+    // longer wires LLM dispatch from the example binary; use
+    // `world-gen generate --model-ref <uuid>` for SDK-backed dispatch.
     let mut out = PathBuf::from("flatworld.png");
     // Optional second output: grayscale elevation (void dark → collisions white).
     let mut height_out: Option<PathBuf> = None;
@@ -97,6 +102,26 @@ fn main() {
                     other => panic!("unknown --force-kind {other}"),
                 };
                 p.plate_dispatch = Some(world_gen::shape::DispatchMode::Fixed(kind));
+            }
+            // **DELETED 2026-05-30** — `--llm-anthropic` / `--llm-openai` /
+            // `--llm-ollama` arms used direct-provider clients which
+            // violated the CLAUDE.md gateway invariant. Use `--llm-gateway`
+            // below (requires LOREWEAVE_INTERNAL_TOKEN env + a model_ref UUID).
+            "--llm-gateway" => {
+                // Future flag: parse `--llm-model-ref <uuid>` here and
+                // construct GatewayLlmProvider. Not wired yet — the
+                // flatworld experiment can call `world-gen generate` to
+                // exercise the SDK-backed pipeline via main.rs instead.
+                panic!(
+                    "--llm-gateway not yet wired in the flatworld example; \
+                     use `world-gen generate --model-ref <uuid>` via the main CLI \
+                     for SDK-backed LLM dispatch."
+                );
+            }
+            "--llm-model" => {
+                // Quietly accept + drop — old flag preserved for script
+                // compatibility but the direct-provider arms are gone.
+                let _ = need();
             }
             "--out" => out = PathBuf::from(need()),
             "--height-out" => height_out = Some(PathBuf::from(need())),
@@ -194,7 +219,7 @@ fn main() {
             image::ExtendedColorType::Rgb8,
         )
         .expect("failed to write zones PNG");
-        let total: usize = world.plates.iter().map(|p| p.zone_sites.len()).sum();
+        let total: usize = world.plates.iter().map(|p| p.zones.len()).sum();
         println!("wrote {} — {} zones across {} plates", zpath.display(), total, world.plates.len());
     }
 

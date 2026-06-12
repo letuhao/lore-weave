@@ -35,6 +35,20 @@ ALTER TABLE books ADD COLUMN IF NOT EXISTS genre_tags TEXT[] NOT NULL DEFAULT '{
 ALTER TABLE books ADD COLUMN IF NOT EXISTS wiki_settings JSONB NOT NULL DEFAULT '{"visibility":"off","community_mode":"off","ai_assist":false,"glossary_exposure":"names","auto_generate":false}';
 ALTER TABLE books ADD COLUMN IF NOT EXISTS extraction_profile JSONB;
 
+-- E0 (collaboration-permissions): non-owner grants on a book. The owner is
+-- implicit via books.owner_user_id and is NEVER stored here, so an empty
+-- table == today's single-owner behavior (AC6 no-regress is free).
+CREATE TABLE IF NOT EXISTS book_collaborators (
+  book_id    UUID NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+  user_id    UUID NOT NULL,
+  role       TEXT NOT NULL CHECK (role IN ('view','edit','manage')),
+  granted_by UUID NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (book_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_book_collab_user ON book_collaborators(user_id);
+
 CREATE TABLE IF NOT EXISTS chapters (
   id UUID PRIMARY KEY DEFAULT uuidv7(),
   book_id UUID NOT NULL REFERENCES books(id) ON DELETE CASCADE,
@@ -254,7 +268,38 @@ CREATE INDEX IF NOT EXISTS idx_scenes_chapter_sort_active
 CREATE INDEX IF NOT EXISTS idx_scenes_content_hash ON scenes(content_hash);
 CREATE INDEX IF NOT EXISTS idx_chapters_part ON chapters(part_id)
   WHERE part_id IS NOT NULL;
+
+-- ── Canon Model CM1 (editorial lifecycle) - 2026-06-04 ──────────────────────
+-- A chapter is canon only once PUBLISHED. editorial_status gates canonization;
+-- published_revision_id pins the immutable chapter_revisions snapshot that IS
+-- the canon (decoupled from the live draft). New chapters default 'draft';
+-- the one-time backfill (backfillSQL, marker-gated) flips pre-existing
+-- chapters with revisions to 'published'. No review-pending state (YAGNI).
+ALTER TABLE chapters ADD COLUMN IF NOT EXISTS editorial_status TEXT NOT NULL DEFAULT 'draft'
+  CHECK (editorial_status IN ('draft','published'));
+ALTER TABLE chapters ADD COLUMN IF NOT EXISTS published_revision_id UUID
+  REFERENCES chapter_revisions(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_chapters_editorial ON chapters(book_id, editorial_status);
+-- One-row-per-step marker so the data backfill (backfillSQL) runs EXACTLY once,
+-- not every startup (book-service has no migration ledger). Without this guard
+-- a post-CM1 draft chapter that gains revisions while being written would be
+-- wrongly flipped to 'published' on the next restart.
+CREATE TABLE IF NOT EXISTS canon_model_migration (
+  id         TEXT PRIMARY KEY,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 `
+
+// rawSearchExtensionSQL / rawSearchIndexSQL — lexical leg of raw-search
+// (docs/specs/2026-06-07-raw-search.md §3.2). Run as BEST-EFFORT separate Execs
+// in Up() (NOT inside schemaSQL) so a DB role lacking CREATE EXTENSION privilege
+// degrades search to 500-on-use rather than aborting the whole schema-init
+// transaction / blocking startup (review-impl MED-1; mirrors the block_count
+// pattern below). Idempotent (IF NOT EXISTS); rollback = DROP INDEX
+// idx_chapter_blocks_trgm.
+const rawSearchExtensionSQL = `CREATE EXTENSION IF NOT EXISTS pg_trgm`
+const rawSearchIndexSQL = `CREATE INDEX IF NOT EXISTS idx_chapter_blocks_trgm
+  ON chapter_blocks USING gin (text_content gin_trgm_ops)`
 
 func Up(ctx context.Context, pool *pgxpool.Pool) error {
 	if _, err := pool.Exec(ctx, schemaSQL); err != nil {
@@ -270,6 +315,17 @@ func Up(ctx context.Context, pool *pgxpool.Pool) error {
 		END $$;
 	`)
 
+	// Raw search Phase 1 (lexical leg): pg_trgm + trigram index, best-effort &
+	// separate from schemaSQL so a privilege failure can't abort schema init or
+	// block startup (review-impl MED-1). Search degrades to 500-on-use if absent.
+	_, _ = pool.Exec(ctx, rawSearchExtensionSQL)
+	_, _ = pool.Exec(ctx, rawSearchIndexSQL)
+
+	// Canon Model CM1: one-time editorial backfill (marker-gated; idempotent).
+	if _, err := pool.Exec(ctx, backfillSQL); err != nil {
+		return fmt.Errorf("migrate canon backfill: %w", err)
+	}
+
 	// D1-03: trigger function to extract chapter_blocks from Tiptap JSONB
 	if _, err := pool.Exec(ctx, triggerSQL); err != nil {
 		return fmt.Errorf("migrate trigger: %w", err)
@@ -277,6 +333,28 @@ func Up(ctx context.Context, pool *pgxpool.Pool) error {
 
 	return nil
 }
+
+// backfillSQL — Canon Model CM1 one-time data backfill. Pre-existing chapters
+// with >=1 revision are already canon, so flip them to 'published' and pin the
+// latest revision; revision-less chapters stay 'draft'. Marker-gated via
+// canon_model_migration so it runs EXACTLY ONCE — a post-CM1 draft chapter that
+// gains revisions while being written must NEVER be auto-published on restart.
+const backfillSQL = `
+DO $cm1$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM canon_model_migration WHERE id = 'cm1_editorial_backfill') THEN
+    UPDATE chapters c
+       SET editorial_status     = 'published',
+           published_revision_id = (
+             SELECT r.id FROM chapter_revisions r
+             WHERE r.chapter_id = c.id
+             ORDER BY r.created_at DESC, r.id DESC
+             LIMIT 1
+           )
+     WHERE EXISTS (SELECT 1 FROM chapter_revisions r WHERE r.chapter_id = c.id);
+    INSERT INTO canon_model_migration (id) VALUES ('cm1_editorial_backfill');
+  END IF;
+END $cm1$;
+`
 
 const triggerSQL = `
 -- ── fn_extract_chapter_blocks: UPSERT blocks from Tiptap JSON ────────────

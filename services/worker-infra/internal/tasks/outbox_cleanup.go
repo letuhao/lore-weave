@@ -44,9 +44,13 @@ func (t *OutboxCleanup) cleanup(ctx context.Context) {
 		if !ok {
 			continue
 		}
+		// make_interval(days => $1) binds RetainDays as an INT directly. The old
+		// ($1 || ' days')::interval forced $1 to TEXT, which pgx v5 refuses to
+		// encode from an int ("cannot find encode plan") — so cleanup errored on
+		// every run and never purged a row (D-OUTBOX-CLEANUP-ENCODE).
 		tag, err := pool.Exec(ctx, `
 DELETE FROM outbox_events
-WHERE published_at IS NOT NULL AND published_at < now() - ($1 || ' days')::interval
+WHERE published_at IS NOT NULL AND published_at < now() - make_interval(days => $1)
 `, t.RetainDays)
 		if err != nil {
 			slog.Error("outbox-cleanup error", "source", src.Name, "error", err)

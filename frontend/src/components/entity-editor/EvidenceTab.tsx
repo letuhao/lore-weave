@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ChevronLeft, ChevronRight, FileText, Loader2 } from 'lucide-react';
 import { ConfirmDialog } from '@/components/shared';
 import type { EvidenceListItem } from '@/features/glossary/types';
@@ -15,6 +16,7 @@ interface EvidenceTabProps {
 }
 
 export function EvidenceTab({ bookId, entityId, bookOriginalLanguage, onCountChange }: EvidenceTabProps) {
+  const { t } = useTranslation('entityEditor');
   const ev = useEvidenceList(bookId, entityId, bookOriginalLanguage);
   const [creating, setCreating] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<EvidenceListItem | null>(null);
@@ -76,10 +78,10 @@ export function EvidenceTab({ bookId, entityId, bookOriginalLanguage, onCountCha
       {!ev.loading && ev.items.length === 0 && (
         <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
           <FileText className="h-8 w-8 mb-2 opacity-40" />
-          <p className="text-xs">No evidences found</p>
+          <p className="text-xs">{t('evidence.tab.no_evidences')}</p>
           {(ev.typeFilter || ev.attrFilter || ev.chapterFilter) && (
             <button type="button" onClick={ev.clearFilters} className="mt-2 text-[10px] text-primary hover:underline">
-              Clear filters
+              {t('evidence.tab.clear_filters')}
             </button>
           )}
         </div>
@@ -117,7 +119,7 @@ export function EvidenceTab({ bookId, entityId, bookOriginalLanguage, onCountCha
               onClick={() => ev.setOffset(Math.max(0, ev.offset - ev.PAGE_SIZE))}
               disabled={ev.offset === 0}
               className="rounded p-1 text-muted-foreground hover:bg-secondary disabled:opacity-30 transition-colors"
-              title="Previous page"
+              title={t('evidence.tab.prev_page')}
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
@@ -129,7 +131,7 @@ export function EvidenceTab({ bookId, entityId, bookOriginalLanguage, onCountCha
               onClick={() => ev.setOffset(ev.offset + ev.PAGE_SIZE)}
               disabled={ev.offset + ev.PAGE_SIZE >= ev.total}
               className="rounded p-1 text-muted-foreground hover:bg-secondary disabled:opacity-30 transition-colors"
-              title="Next page"
+              title={t('evidence.tab.next_page')}
             >
               <ChevronRight className="h-4 w-4" />
             </button>
@@ -141,9 +143,9 @@ export function EvidenceTab({ bookId, entityId, bookOriginalLanguage, onCountCha
       <ConfirmDialog
         open={!!deleteTarget}
         onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
-        title="Delete evidence?"
-        description={`This evidence from "${deleteTarget?.attribute_name ?? ''}" will be permanently deleted.`}
-        confirmLabel="Delete"
+        title={t('evidence.tab.delete_title')}
+        description={t('evidence.tab.delete_desc', { attr: deleteTarget?.attribute_name ?? '' })}
+        confirmLabel={t('evidence.tab.delete_confirm')}
         variant="destructive"
         onConfirm={() => void handleDelete()}
       />

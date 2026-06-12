@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { chatApi } from '../api';
@@ -18,9 +19,14 @@ import { loadVoicePrefs, saveVoicePrefs } from '../voicePrefs';
 
 interface ChatViewProps {
   className?: string;
+  /** Optional host-supplied slot rendered between the message list and the input
+   *  bar (inside the chat providers, so it can read useChatStream/useChatSession).
+   *  T3.1 mounts the co-writer Insert/Use-as-guide bar + starter chips here. */
+  footerSlot?: React.ReactNode;
 }
 
-export function ChatView({ className }: ChatViewProps) {
+export function ChatView({ className, footerSlot }: ChatViewProps) {
+  const { t } = useTranslation('chat');
   const { accessToken } = useAuth();
   const {
     activeSession,
@@ -47,9 +53,9 @@ export function ChatView({ className }: ChatViewProps) {
     // First-time: if enabling but models not configured, open settings instead
     if (!prefs.voiceAssistEnabled && (!prefs.ttsModelRef || !prefs.sttModelRef)) {
       setVoiceSettingsOpen(true);
-      const missing = !prefs.sttModelRef && !prefs.ttsModelRef ? 'STT and TTS models'
-        : !prefs.sttModelRef ? 'an STT model' : 'a TTS model';
-      toast.info(`Configure ${missing} to enable Voice Assist`);
+      const missing = !prefs.sttModelRef && !prefs.ttsModelRef ? t('view.missing_both')
+        : !prefs.sttModelRef ? t('view.missing_stt') : t('view.missing_tts');
+      toast.info(t('view.configure_voice', { missing }));
       return;
     }
     const next = !prefs.voiceAssistEnabled;
@@ -86,7 +92,7 @@ export function ChatView({ className }: ChatViewProps) {
       <div className={`flex flex-1 flex-col items-center justify-center ${className ?? ''}`}>
         <div className="space-y-3 text-center">
           <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-accent" />
-          <p className="text-xs text-muted-foreground">Loading messages...</p>
+          <p className="text-xs text-muted-foreground">{t('view.loading_messages')}</p>
         </div>
       </div>
     );
@@ -98,22 +104,22 @@ export function ChatView({ className }: ChatViewProps) {
 
   function handleEdit(content: string, sequenceNum: number) {
     chat.edit(content, sequenceNum).catch((err) => {
-      toast.error(`Edit failed: ${(err as Error).message}`);
+      toast.error(t('view.edit_failed', { error: (err as Error).message }));
     });
   }
 
   function handleRegenerate(userContent: string, userSequenceNum: number) {
     chat.regenerate(userContent, userSequenceNum).catch((err) => {
-      toast.error(`Regenerate failed: ${(err as Error).message}`);
+      toast.error(t('view.regenerate_failed', { error: (err as Error).message }));
     });
   }
 
   function handleDeleteMessage(messageId: string) {
     if (!accessToken) return;
-    if (!confirm('Delete this message? This cannot be undone.')) return;
+    if (!confirm(t('view.delete_confirm'))) return;
     chatApi.deleteMessage(accessToken, activeSession!.session_id, messageId)
       .then(() => { chat.refresh(); })
-      .catch((err) => { toast.error(`Delete failed: ${(err as Error).message}`); });
+      .catch((err) => { toast.error(t('view.delete_failed', { error: (err as Error).message })); });
   }
 
   return (
@@ -140,6 +146,7 @@ export function ChatView({ className }: ChatViewProps) {
         streamPhase={chat.streamPhase}
         thinkingElapsed={chat.thinkingElapsed}
         isStreaming={chat.isStreaming}
+        isComposing={chat.isComposing}
         onEditMessage={!isArchived ? handleEdit : undefined}
         onRegenerateMessage={!isArchived ? handleRegenerate : undefined}
         onDeleteMessage={!isArchived ? handleDeleteMessage : undefined}
@@ -158,6 +165,8 @@ export function ChatView({ className }: ChatViewProps) {
         onConfirm={chat.pendingFacts.confirm}
         onReject={chat.pendingFacts.reject}
       />
+
+      {footerSlot}
 
       <ChatInputBar
         onSend={handleSend}
@@ -206,24 +215,22 @@ export function ChatView({ className }: ChatViewProps) {
       {voiceChat.showConsent && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="mx-4 max-w-sm rounded-lg border border-border bg-card p-6 shadow-xl">
-            <h3 className="text-sm font-semibold text-foreground">Enable Voice Mode</h3>
+            <h3 className="text-sm font-semibold text-foreground">{t('view.consent_title')}</h3>
             <p className="mt-2 text-xs text-muted-foreground leading-relaxed">
-              Voice mode will use your microphone for speech recognition.
-              Audio may be stored for up to 48 hours to enable replay.
-              You can delete all voice data anytime from Settings.
+              {t('view.consent_desc')}
             </p>
             <div className="mt-4 flex gap-2 justify-end">
               <button
                 onClick={voiceChat.dismissConsent}
                 className="rounded-md border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
               >
-                Cancel
+                {t('view.cancel')}
               </button>
               <button
                 onClick={voiceChat.acceptConsent}
                 className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-foreground hover:brightness-110"
               >
-                Continue
+                {t('view.continue')}
               </button>
             </div>
           </div>

@@ -622,6 +622,39 @@ func forwardOptionalChatFields(input, body map[string]any) {
 
 // ── OpenAI adapter ────────────────────────────────────────────────────────────
 
+// openaiIsReasoningModel reports whether an OpenAI model accepts the
+// `reasoning_effort` knob — the o-series reasoning models (o1, o3, o4, …). The
+// gpt-* chat models (gpt-4o, gpt-4.1, …) do NOT and reject it with HTTP 400.
+func openaiIsReasoningModel(model string) bool {
+	m := strings.ToLower(strings.TrimSpace(model))
+	for _, p := range []string{"o1", "o3", "o4", "o5"} {
+		if strings.HasPrefix(m, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// stripDefaultOpenAIUnsupportedFields removes request fields that REAL OpenAI
+// cloud rejects with HTTP 400 ("Unrecognized request argument supplied: …"),
+// but ONLY when targeting the default OpenAI endpoint (empty base_url). A custom
+// base_url is a local OpenAI-compatible server (LM Studio / Ollama / vLLM) that
+// uses these to suppress thinking, so it keeps them.
+//   - chat_template_kwargs — a llama.cpp/vLLM-only passthrough (TR-4); OpenAI
+//     never accepts it.
+//   - reasoning_effort — an o-series-only knob; gpt-* chat models reject it.
+//     Composition sets reasoning_effort="none" to disable local thinking models,
+//     so without this strip every OpenAI non-o-series chat model 400s.
+func stripDefaultOpenAIUnsupportedFields(body map[string]any, modelName, endpointBaseURL string) {
+	if strings.TrimRight(endpointBaseURL, "/") != "" {
+		return // custom base_url → a local OpenAI-compatible server; keep the fields
+	}
+	delete(body, "chat_template_kwargs")
+	if !openaiIsReasoningModel(modelName) {
+		delete(body, "reasoning_effort")
+	}
+}
+
 type openaiAdapter struct {
 	client          *http.Client
 	staticInventory []ModelInventory
@@ -769,6 +802,13 @@ func (a *openaiAdapter) Stream(ctx context.Context, endpointBaseURL, secret, mod
 		body["tool_choice"] = v
 	}
 	forwardOptionalChatFields(input, body)
+	// chat_template_kwargs (e.g. {enable_thinking:false}) is a llama.cpp/vLLM
+	// passthrough used by LM Studio / Ollama / local OpenAI-compatible servers
+	// to suppress reasoning-model thinking. Real OpenAI cloud rejects unknown
+	// fields with 400, so strip it when this is the DEFAULT OpenAI endpoint
+	// (no custom base_url). Custom base_url (a local OpenAI-compatible server)
+	// keeps it — that's how translation/extraction disable thinking. (TR-4)
+	stripDefaultOpenAIUnsupportedFields(body, modelName, endpointBaseURL)
 	resp, err := openCompletionStream(ctx, a.client, base+"/v1/chat/completions", headers, body)
 	if err != nil {
 		return err
