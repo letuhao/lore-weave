@@ -137,6 +137,7 @@
     "kind_count": "{{count}} 種類",
     "kind_count_other": "{{count}} 種類",
     "display_language": "顯示語言",
+    "display_language_as_authored": "依原文",
     "display_language_original": "原文（{{lang}}）",
     "fallback_to_original": "尚無譯文 — 顯示原文",
     "extract": "擷取",

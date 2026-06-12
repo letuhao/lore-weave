@@ -216,6 +216,7 @@ func (s *Server) Router() http.Handler {
 				})
 			})
 			r.Get("/entity-names", s.listEntityNames)
+			r.Get("/translation-languages", s.listBookTranslationLanguages)
 			// Kind-resolution epic: the per-book unknown-kind review queue.
 			r.Get("/unknown-entities", s.listUnknownEntities)
 			// mui #1c: revert a recorded entity merge.

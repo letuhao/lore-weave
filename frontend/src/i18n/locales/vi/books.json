@@ -137,6 +137,7 @@
     "kind_count": "{{count}} loại",
     "kind_count_other": "{{count}} loại",
     "display_language": "Hiển thị",
+    "display_language_as_authored": "Theo bản gốc entity",
     "display_language_original": "Gốc ({{lang}})",
     "fallback_to_original": "Chưa có bản dịch — hiển thị ngôn ngữ gốc",
     "extract": "Trích xuất",

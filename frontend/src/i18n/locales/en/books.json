@@ -137,6 +137,7 @@
     "kind_count": "{{count}} kind",
     "kind_count_other": "{{count}} kinds",
     "display_language": "Display",
+    "display_language_as_authored": "As authored",
     "display_language_original": "Original ({{lang}})",
     "fallback_to_original": "No translation — showing original",
     "extract": "Extract",

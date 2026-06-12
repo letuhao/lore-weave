@@ -24,6 +24,13 @@ export const glossaryApi = {
     return apiJson<EntityKind[]>(`${BASE}/kinds`, { token });
   },
 
+  listTranslationLanguages(bookId: string, token: string): Promise<{ languages: string[] }> {
+    return apiJson<{ languages: string[] }>(
+      `${BASE}/books/${bookId}/translation-languages`,
+      { token },
+    );
+  },
+
   listEntities(
     bookId: string,
     filters: FilterState & { limit?: number; offset?: number; sort?: string; displayLanguage?: string },

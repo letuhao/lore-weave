@@ -4,7 +4,7 @@ import { X, Save, Loader2, Link2, Languages, FileText, Tag, Trash2 } from 'lucid
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { glossaryApi } from '@/features/glossary/api';
-import { resolveEntityDisplayName } from '@/features/glossary/lib/resolveDisplayValue';
+import { isDisplayingTranslation, resolveEntityDisplayName } from '@/features/glossary/lib/resolveDisplayValue';
 import { type GlossaryEntity, type AttributeValue, type Translation } from '@/features/glossary/types';
 import { getLanguageName } from '@/lib/languages';
 import { Skeleton } from '@/components/shared/Skeleton';
@@ -51,9 +51,7 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
 
   useEffect(() => { void load(); }, [load]);
 
-  const viewTranslationMode = Boolean(
-    displayLanguage && bookOriginalLanguage && displayLanguage !== bookOriginalLanguage,
-  );
+  const viewTranslationMode = isDisplayingTranslation(displayLanguage, bookOriginalLanguage);
 
   useEffect(() => {
     if (viewTranslationMode && displayLanguage) {
@@ -502,6 +500,8 @@ function AttrGrid({ attrs, getValue, onChange, pendingChanges, translationLang, 
         language={activeLang}
         translation={existingTranslation}
         translationHint={def.translation_hint}
+        sourceOriginal={viewTranslationMode ? (getValue(attr) || undefined) : undefined}
+        sourceOriginalLang={viewTranslationMode ? (bookOriginalLanguage ?? attr.original_language) : undefined}
         onChanged={(updated) => {
           onTranslationChanged(attr.attr_value_id, updated, existingTranslation?.translation_id);
         }}
@@ -520,14 +520,7 @@ function AttrGrid({ attrs, getValue, onChange, pendingChanges, translationLang, 
         hasTranslations={hasTranslations}
         translationSlot={translationSlot}
       >
-        {viewTranslationMode ? (
-          <p className="text-[10px] text-muted-foreground mb-2">
-            {t('modal.viewing_original', {
-              lang: bookOriginalLanguage ? getLanguageName(bookOriginalLanguage) : '?',
-            })}
-            : {getValue(attr) || '—'}
-          </p>
-        ) : (
+        {!viewTranslationMode && (
           <CardComponent
             value={getValue(attr)}
             onChange={(v) => onChange(attr.attr_value_id, v)}

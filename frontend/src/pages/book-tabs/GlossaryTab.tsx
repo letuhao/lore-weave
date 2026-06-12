@@ -7,7 +7,7 @@ import { useAuth } from '@/auth';
 import { glossaryApi } from '@/features/glossary/api';
 import { useGlossaryDisplayLanguage } from '@/features/glossary/hooks/useGlossaryDisplayLanguage';
 import { type GlossaryEntitySummary, type EntityKind, type FilterState, defaultFilters } from '@/features/glossary/types';
-import { getLanguageName, LANGUAGE_NAMES } from '@/lib/languages';
+import { getLanguageName } from '@/lib/languages';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { EmptyState, ConfirmDialog } from '@/components/shared';
 import { cn } from '@/lib/utils';
@@ -54,10 +54,15 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
   const [extractionOpen, setExtractionOpen] = useState(false);
   const [translateOpen, setTranslateOpen] = useState(false);
 
-  const { displayLanguage, setDisplayLanguage, apiDisplayLanguage } = useGlossaryDisplayLanguage(
-    bookId,
-    bookOriginalLanguage,
-  );
+  const { displayLanguage, setDisplayLanguage, apiDisplayLanguage, loaded: displayLangLoaded } =
+    useGlossaryDisplayLanguage(bookId, bookOriginalLanguage);
+
+  const { data: translationLangsData } = useQuery({
+    queryKey: ['glossary-translation-languages', bookId],
+    queryFn: () => glossaryApi.listTranslationLanguages(bookId, accessToken!),
+    enabled: !!accessToken,
+    staleTime: 60 * 1000,
+  });
 
   const languageOptions = useMemo(() => {
     const opts: { code: string; label: string }[] = [];
@@ -66,13 +71,23 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
         code: bookOriginalLanguage,
         label: t('glossary.display_language_original', { lang: getLanguageName(bookOriginalLanguage) }),
       });
+    } else {
+      opts.push({
+        code: '',
+        label: t('glossary.display_language_as_authored'),
+      });
     }
-    for (const code of Object.keys(LANGUAGE_NAMES)) {
-      if (code === bookOriginalLanguage) continue;
+    const seen = new Set(opts.map((o) => o.code));
+    for (const code of translationLangsData?.languages ?? []) {
+      if (code === bookOriginalLanguage || seen.has(code)) continue;
+      seen.add(code);
       opts.push({ code, label: getLanguageName(code) });
     }
+    if (displayLanguage && !seen.has(displayLanguage)) {
+      opts.push({ code: displayLanguage, label: getLanguageName(displayLanguage) });
+    }
     return opts;
-  }, [bookOriginalLanguage, t]);
+  }, [bookOriginalLanguage, displayLanguage, t, translationLangsData?.languages]);
 
   const { data: entityData, isLoading: entitiesLoading, error: entitiesError } = useQuery({
     queryKey: ['glossary-entities', bookId, filters, apiDisplayLanguage],
@@ -82,7 +97,7 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
         { ...filters, limit: 100, offset: 0, displayLanguage: apiDisplayLanguage },
         accessToken!,
       ),
-    enabled: !!accessToken,
+    enabled: !!accessToken && displayLangLoaded,
   });
 
   const { data: kinds = [] } = useQuery({
@@ -127,7 +142,10 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
   const loading = entitiesLoading;
   const error = entitiesError ? (entitiesError as Error).message : '';
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['glossary-entities', bookId] });
+  const invalidate = () => {
+    void queryClient.invalidateQueries({ queryKey: ['glossary-entities', bookId] });
+    void queryClient.invalidateQueries({ queryKey: ['glossary-translation-languages', bookId] });
+  };
 
   const visibleKinds = useMemo(
     () => kinds
@@ -195,7 +213,7 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
     return <MergeCandidatePanel bookId={bookId} onClose={() => setView('entities')} />;
   }
 
-  if (loading && entities.length === 0) {
+  if (!displayLangLoaded || (loading && entities.length === 0)) {
     return (
       <div className="space-y-3 p-6">
         <Skeleton className="h-8 w-48" />

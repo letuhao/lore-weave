@@ -672,6 +672,60 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// ── GET /v1/glossary/books/{book_id}/translation-languages ────────────────────
+
+type bookTranslationLanguagesResp struct {
+	Languages []string `json:"languages"`
+}
+
+func (s *Server) listBookTranslationLanguages(w http.ResponseWriter, r *http.Request) {
+	userID, ok := s.requireUserID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "GLOSS_UNAUTHORIZED", "valid Bearer token required")
+		return
+	}
+	bookID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		return
+	}
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantView) {
+		return
+	}
+
+	rows, err := s.pool.Query(r.Context(), `
+		SELECT DISTINCT at.language_code
+		FROM attribute_translations at
+		JOIN entity_attribute_values eav ON eav.attr_value_id = at.attr_value_id
+		JOIN glossary_entities e ON e.entity_id = eav.entity_id
+		WHERE e.book_id = $1 AND e.deleted_at IS NULL
+		  AND at.value IS NOT NULL AND trim(at.value) <> ''
+		ORDER BY at.language_code`, bookID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "query failed")
+		return
+	}
+	defer rows.Close()
+
+	langs := []string{}
+	for rows.Next() {
+		var code string
+		if err := rows.Scan(&code); err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "scan failed")
+			return
+		}
+		langs = append(langs, code)
+	}
+	if err := rows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "rows error")
+		return
+	}
+	if langs == nil {
+		langs = []string{}
+	}
+
+	writeJSON(w, http.StatusOK, bookTranslationLanguagesResp{Languages: langs})
+}
+
 // ── GET /v1/glossary/books/{book_id}/entities/{entity_id} ─────────────────────
 
 func (s *Server) getEntityDetail(w http.ResponseWriter, r *http.Request) {
