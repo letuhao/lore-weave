@@ -220,6 +220,33 @@ async def test_sweep_continues_past_get_job_error():
 
 
 @pytest.mark.asyncio
+async def test_handle_bounded_retry_leaves_unacked_below_max_then_acks_poison():
+    """D-2B-SHELL-UNIT-TESTS — the consumer's bounded retry: a failing resume leaves the
+    message UNACKED below MAX_RETRIES (→ redelivered) and ACKS only the poison at MAX (→
+    no redelivery storm)."""
+    m = _msg()
+    pool = MagicMock()
+    pool.fetchrow = AsyncMock(return_value={"id": uuid4(), "resume_state": {"msg": m}})
+    sdk = AsyncMock()
+    sdk.get_job = AsyncMock(side_effect=RuntimeError("boom"))  # resume blows up
+    llm_client = MagicMock()
+    llm_client.sdk = sdk
+    consumer = c.LLMTerminalConsumer("redis://x", pool, llm_client, AsyncMock())
+
+    # below MAX (incr → 1): leave unacked for redelivery
+    r = AsyncMock()
+    r.incr = AsyncMock(return_value=1)
+    await consumer._handle(r, "1-0", {"job_id": m["job_id"], "status": "completed"})
+    r.xack.assert_not_awaited()
+
+    # at MAX (incr → MAX_RETRIES): ack the poison + clear the retry key
+    r2 = AsyncMock()
+    r2.incr = AsyncMock(return_value=c.MAX_RETRIES)
+    await consumer._handle(r2, "1-0", {"job_id": m["job_id"], "status": "completed"})
+    r2.xack.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_sweep_query_filters_on_resume_and_idle():
     captured = {}
 

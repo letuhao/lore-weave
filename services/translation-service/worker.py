@@ -87,6 +87,45 @@ async def _recover_stale_chapters(pool) -> None:
         )
 
 
+async def _assert_decouple_consumer_reachable() -> None:
+    """D-2B-DECOUPLE-FLAG-COUPLING — the worker (this process) and the resume consumer +
+    sweeper (the API container's lifespan) BOTH gate on ``translation_decouple_enabled``,
+    but they're SEPARATE containers with independent env. The dangerous mismatch is
+    worker-ON / API-OFF: this worker submits decoupled chapters that release immediately,
+    but with no consumer (and no sweeper) running, those chapters never resume → they
+    stall until the 2h stale-chapter sweep marks them failed.
+
+    Best-effort startup guard: if the decouple flag is on, check that the resume
+    consumer group exists on the terminal stream (the API consumer creates it on
+    startup). Absent ⇒ a loud WARNING naming the invariant. Never fatal — a co-start
+    race (API not up yet) is benign and self-heals, and a Redis hiccup must not block
+    the worker. The check documents + surfaces the coupling before default-on."""
+    if not settings.translation_decouple_enabled:
+        return
+    try:
+        import redis.asyncio as aioredis
+        r = aioredis.from_url(settings.redis_url, decode_responses=True, socket_timeout=5)
+        try:
+            groups = await r.xinfo_groups("loreweave:events:llm_job_terminal")
+            present = any(g.get("name") == "translation-llm-resume" for g in groups)
+        except aioredis.ResponseError:
+            present = False  # stream/group not created yet
+        finally:
+            await r.aclose()
+        if present:
+            log.info("decouple consumer group 'translation-llm-resume' present — resume path is covered")
+        else:
+            log.warning(
+                "TRANSLATION_DECOUPLE_ENABLED is ON in the worker but the 'translation-llm-resume' "
+                "consumer group was NOT found on loreweave:events:llm_job_terminal. Submitted "
+                "decoupled chapters will STALL unless the API container runs the resume consumer + "
+                "sweeper with the SAME flag. Ensure TRANSLATION_DECOUPLE_ENABLED matches across "
+                "BOTH containers. (Benign if the API is merely starting after this worker.)"
+            )
+    except Exception:  # noqa: BLE001 — a startup advisory must never block the worker
+        log.warning("could not verify decouple consumer reachability (non-fatal)", exc_info=True)
+
+
 async def main() -> None:
     pool = await create_pool(settings.database_url)
     log.info("DB pool ready")
@@ -95,6 +134,7 @@ async def main() -> None:
     log.info("Migrations applied")
 
     await _recover_stale_chapters(pool)
+    await _assert_decouple_consumer_reachable()
 
     # connect_broker() declares all exchanges, queues, and bindings
     await connect_broker()
