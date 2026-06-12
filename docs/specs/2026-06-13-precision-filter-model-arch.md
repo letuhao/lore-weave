@@ -2,7 +2,12 @@
 
 **Found:** 2026-06-13, by the D-WX decoupled-extraction live-smoke.
 **Severity:** HIGH (breaks decoupled extraction for all-but-one user) + invariant violation.
-**Status:** interim mitigation shipped (env default emptied → filter disabled); proper fix = this spec.
+**Status:** ✅ FIXED + live-proven (commit `94bba787`). Backend env-model source removed
+(worker-ai + knowledge → None), SDK `_resolve_filter` falls back to the per-user
+extraction model, compose env removed, FE `PrecisionFilterModelPicker` added. **Live-smoke
+(2026-06-13):** filter ENABLED on a project with NO explicit model → extraction ran with
+the user's OWN extraction model, **0× 404, chapter `processed 0/1 → 1/1`, campaign
+`completed`** (vs the pre-fix run that stalled at `0/1` with the cross-tenant 404).
 
 ## The bug (root cause)
 
