@@ -104,41 +104,45 @@ def _enable_judge(monkeypatch):
     monkeypatch.setattr(settings, "online_judge_user_id", "u")
 
 
+# M1 (LLM re-arch Phase 3): _maybe_judge now STARTS a decoupled judge
+# (start_extraction_judge → durable job-row + terminal-event consumer) instead of an
+# inline run_online_judge + persist. The gating logic is unchanged; the tests assert
+# whether the START is invoked. Folding/persisting is covered by the SM tests.
+
+
 async def test_judge_runs_when_opted_in(monkeypatch):
     _enable_judge(monkeypatch)
-    rj = AsyncMock(return_value={"overall_precision": 0.8})
-    pj = AsyncMock(return_value=uuid.uuid4())
-    monkeypatch.setattr("app.db.online_judge.run_online_judge", rj)
-    monkeypatch.setattr("app.db.online_judge.persist_online_judge", pj)
+    start = AsyncMock(return_value=True)
+    monkeypatch.setattr("app.judges.decoupled_judge.start_extraction_judge", start)
     runner = _runner()
-    monkeypatch.setattr(runner, "_ensure_judge_client", AsyncMock(return_value=object()))
+    monkeypatch.setattr(runner, "_ensure_judge_sdk", AsyncMock(return_value=object()))
     await runner._maybe_judge(
         {"judge_panel_id": uuid.uuid4()}, _run(),
         # inline override still requires the consent flag (/review-impl LOW#2)
         {"save_raw_extraction": True,
          "items": {"entity": [{}]}, "source_text": "Alice fell down the hole."},
     )
-    rj.assert_awaited_once()
-    pj.assert_awaited_once()
+    start.assert_awaited_once()
+    assert start.call_args.kwargs["source_text"] == "Alice fell down the hole."
+    assert start.call_args.kwargs["items_by_category"] == {"entity": [{}]}
 
 
 async def test_judge_bills_run_owner_not_operator(monkeypatch):
     # D-EVAL-JUDGE-PER-USER: the BYOK judge bills the extraction OWNER
     # (run["user_id"]), not the operator's env-configured id ("u").
     _enable_judge(monkeypatch)
-    rj = AsyncMock(return_value={"overall_precision": 0.8})
-    pj = AsyncMock(return_value=uuid.uuid4())
-    monkeypatch.setattr("app.db.online_judge.run_online_judge", rj)
-    monkeypatch.setattr("app.db.online_judge.persist_online_judge", pj)
+    start = AsyncMock(return_value=True)
+    monkeypatch.setattr("app.judges.decoupled_judge.start_extraction_judge", start)
     runner = _runner()
-    monkeypatch.setattr(runner, "_ensure_judge_client", AsyncMock(return_value=object()))
+    monkeypatch.setattr(runner, "_ensure_judge_sdk", AsyncMock(return_value=object()))
     run = _run()
     await runner._maybe_judge(
         {"judge_panel_id": uuid.uuid4()}, run,
         {"save_raw_extraction": True, "items": {"entity": [{}]}, "source_text": "x."},
     )
-    assert rj.call_args.kwargs["user_id"] == str(run["user_id"])
-    assert rj.call_args.kwargs["user_id"] != "u"
+    assert start.call_args.kwargs["billing_user_id"] == str(run["user_id"])
+    assert start.call_args.kwargs["billing_user_id"] != "u"
+    assert start.call_args.kwargs["owner_user_id"] == run["user_id"]
 
 
 async def test_judge_inline_items_skipped_without_consent_flag(monkeypatch):
@@ -146,48 +150,48 @@ async def test_judge_inline_items_skipped_without_consent_flag(monkeypatch):
     save_raw_extraction are NOT judged — consent gate governs the inline
     path too (defense-in-depth for redact-by-default)."""
     _enable_judge(monkeypatch)
-    rj = AsyncMock()
-    monkeypatch.setattr("app.db.online_judge.run_online_judge", rj)
+    start = AsyncMock()
+    monkeypatch.setattr("app.judges.decoupled_judge.start_extraction_judge", start)
     runner = _runner()
     await runner._maybe_judge(
         {"judge_panel_id": uuid.uuid4()}, _run(),
         {"items": {"entity": [{}]}, "source_text": "x"},  # no save_raw_extraction
     )
-    rj.assert_not_awaited()
+    start.assert_not_awaited()
 
 
 async def test_judge_skipped_without_items(monkeypatch):
     _enable_judge(monkeypatch)
-    rj = AsyncMock()
-    monkeypatch.setattr("app.db.online_judge.run_online_judge", rj)
+    start = AsyncMock()
+    monkeypatch.setattr("app.judges.decoupled_judge.start_extraction_judge", start)
     runner = _runner()
     await runner._maybe_judge({"judge_panel_id": uuid.uuid4()}, _run(), {"items": None, "source_text": None})
-    rj.assert_not_awaited()  # no items/source -> structural-only
+    start.assert_not_awaited()  # no items/source -> structural-only
 
 
 async def test_judge_skipped_when_disabled(monkeypatch):
     from app.config import settings
     monkeypatch.setattr(settings, "online_judge_enabled", False)
-    rj = AsyncMock()
-    monkeypatch.setattr("app.db.online_judge.run_online_judge", rj)
+    start = AsyncMock()
+    monkeypatch.setattr("app.judges.decoupled_judge.start_extraction_judge", start)
     runner = _runner()
     await runner._maybe_judge(
         {"judge_panel_id": uuid.uuid4()}, _run(),
         {"items": {"entity": [{}]}, "source_text": "x"},
     )
-    rj.assert_not_awaited()
+    start.assert_not_awaited()
 
 
 async def test_judge_skipped_without_panel(monkeypatch):
     _enable_judge(monkeypatch)
-    rj = AsyncMock()
-    monkeypatch.setattr("app.db.online_judge.run_online_judge", rj)
+    start = AsyncMock()
+    monkeypatch.setattr("app.judges.decoupled_judge.start_extraction_judge", start)
     runner = _runner()
     await runner._maybe_judge(
         {"judge_panel_id": None}, _run(),
         {"items": {"entity": [{}]}, "source_text": "x"},
     )
-    rj.assert_not_awaited()  # rule has no judge panel -> structural-only
+    start.assert_not_awaited()  # rule has no judge panel -> structural-only
 
 
 # ── Q4b-feed — fetch path (production: items+source NOT inline) ────────
@@ -197,12 +201,10 @@ async def test_judge_fetches_sample_for_opted_in_run(monkeypatch):
     """Production path: the event carries NO items (redact-by-default) but
     save_raw_extraction=true → fetch the sample from knowledge-service, judge."""
     _enable_judge(monkeypatch)
-    rj = AsyncMock(return_value={"overall_precision": 0.8})
-    pj = AsyncMock(return_value=uuid.uuid4())
-    monkeypatch.setattr("app.db.online_judge.run_online_judge", rj)
-    monkeypatch.setattr("app.db.online_judge.persist_online_judge", pj)
+    start = AsyncMock(return_value=True)
+    monkeypatch.setattr("app.judges.decoupled_judge.start_extraction_judge", start)
     runner = _runner()
-    monkeypatch.setattr(runner, "_ensure_judge_client", AsyncMock(return_value=object()))
+    monkeypatch.setattr(runner, "_ensure_judge_sdk", AsyncMock(return_value=object()))
     fake_kc = AsyncMock()
     fake_kc.fetch_run_sample = AsyncMock(return_value={
         "items": {"entity": [{"name": "Alice", "kind": "person"}]},
@@ -214,31 +216,30 @@ async def test_judge_fetches_sample_for_opted_in_run(monkeypatch):
         {"save_raw_extraction": True},  # no inline items/source
     )
     fake_kc.fetch_run_sample.assert_awaited_once()
-    rj.assert_awaited_once()
-    pj.assert_awaited_once()
+    start.assert_awaited_once()
     # judged against the FETCHED items+source
-    assert rj.await_args.kwargs["source_text"] == "Alice fell down the hole."
+    assert start.call_args.kwargs["source_text"] == "Alice fell down the hole."
 
 
 async def test_judge_skipped_when_not_opted_in_no_fetch(monkeypatch):
     """save_raw_extraction falsy + no inline → NO knowledge call at all."""
     _enable_judge(monkeypatch)
-    rj = AsyncMock()
-    monkeypatch.setattr("app.db.online_judge.run_online_judge", rj)
+    start = AsyncMock()
+    monkeypatch.setattr("app.judges.decoupled_judge.start_extraction_judge", start)
     runner = _runner()
     fake_kc = AsyncMock()
     fake_kc.fetch_run_sample = AsyncMock()
     monkeypatch.setattr(runner, "_ensure_knowledge_client", AsyncMock(return_value=fake_kc))
     await runner._maybe_judge({"judge_panel_id": uuid.uuid4()}, _run(), {})
     fake_kc.fetch_run_sample.assert_not_awaited()  # never fetched
-    rj.assert_not_awaited()
+    start.assert_not_awaited()
 
 
 async def test_judge_skipped_when_sample_404(monkeypatch):
     """Opted-in but knowledge returns None (404/pruned) → structural-only."""
     _enable_judge(monkeypatch)
-    rj = AsyncMock()
-    monkeypatch.setattr("app.db.online_judge.run_online_judge", rj)
+    start = AsyncMock()
+    monkeypatch.setattr("app.judges.decoupled_judge.start_extraction_judge", start)
     runner = _runner()
     fake_kc = AsyncMock()
     fake_kc.fetch_run_sample = AsyncMock(return_value=None)
@@ -247,4 +248,4 @@ async def test_judge_skipped_when_sample_404(monkeypatch):
         {"judge_panel_id": uuid.uuid4()}, _run(), {"save_raw_extraction": True},
     )
     fake_kc.fetch_run_sample.assert_awaited_once()
-    rj.assert_not_awaited()
+    start.assert_not_awaited()

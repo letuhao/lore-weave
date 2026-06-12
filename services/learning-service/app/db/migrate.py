@@ -323,6 +323,43 @@ CREATE TABLE IF NOT EXISTS online_eval_rule (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uq_online_eval_rule_name
   ON online_eval_rule(name);
+
+-- ── llm_judges (LLM re-arch Phase 3 M1) ───────────────────────────────
+-- Durable job row for a DECOUPLED online judge run (extraction-precision OR
+-- translation-fidelity). Replaces the inline `submit_and_wait` (which pinned the
+-- eval-runner / collector consumer coroutine for the whole judge): the call site
+-- submits the FIRST batch + persists `provider_job_id` here, then the
+-- llm-judge terminal-event consumer folds each batch result and SEQUENTIALLY
+-- dispatches the next (single `provider_job_id` column, V3-decouple shape),
+-- finalizing via persist_online_judge / persist_translation_judge.
+--
+--   resume_state — the SM cursor + tasks + accumulated verdicts + persist ctx.
+--   provider_job_id — the SINGLE in-flight LLM job; NULL once finalized.
+--   status — running | completed | failed (sweeper re-drives stale 'running').
+-- Idempotent per source signal: UNIQUE(kind, origin_dedup_key) → an at-least-once
+-- redelivery of the SAME extraction_run / translation.quality event finds the row
+-- and skips (no second judge run). Best-effort/droppable like the inline judge was.
+CREATE TABLE IF NOT EXISTS llm_judges (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  kind              TEXT NOT NULL,                  -- 'extraction' | 'translation'
+  status            TEXT NOT NULL DEFAULT 'running',-- running | completed | failed
+  provider_job_id   UUID,                           -- the single in-flight LLM job (NULL when finalized)
+  billing_user_id   TEXT NOT NULL,                  -- get_job / submit auth (BYOK owner, env fallback)
+  judge_model       TEXT NOT NULL,
+  judge_model_source TEXT NOT NULL,
+  resume_state      JSONB NOT NULL,                 -- SM: {cursor, tasks, accum, persist_ctx}
+  origin_dedup_key  TEXT NOT NULL,                  -- one judge run per source signal
+  result            JSONB,                          -- final folded result (observability)
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT llm_judges_dedup_uniq UNIQUE (kind, origin_dedup_key)
+);
+-- terminal-event lookup: the consumer maps job_id → its running judge row.
+CREATE INDEX IF NOT EXISTS idx_llm_judges_provider_job
+  ON llm_judges(provider_job_id) WHERE provider_job_id IS NOT NULL;
+-- sweeper: re-drive rows stuck 'running' past the idle timeout.
+CREATE INDEX IF NOT EXISTS idx_llm_judges_running
+  ON llm_judges(updated_at) WHERE status = 'running';
 """
 
 

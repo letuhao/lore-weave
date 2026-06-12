@@ -74,6 +74,18 @@ __all__ = [
     "judge_translation_fidelity",
     "GroundednessVerdict",
     "judge_wiki_groundedness",
+    # ── decoupled-judge seams (LLM re-arch Phase 3 M1) ──
+    # Pure build/parse functions so the durable-job + terminal-event judge
+    # (learning-service) submits byte-identical requests and scores identically
+    # to the inline submit_and_wait path below.
+    "build_judge_input",
+    "judge_content_from_result",
+    "PrecisionTask",
+    "plan_precision_tasks",
+    "parse_precision_batch",
+    "build_fidelity_user_prompt",
+    "FIDELITY_SYSTEM",
+    "parse_fidelity_content",
 ]
 
 
@@ -371,57 +383,38 @@ def _extract_json_object(raw: str) -> dict[str, Any]:
 # ── LLM call ────────────────────────────────────────────────────────
 
 
-async def _call_judge(
-    client: JudgeLLMClient,
-    *,
-    judge_model: str,
-    user_id: str,
-    model_source: str,
-    system: str,
-    user: str,
-    n_items: int,
-) -> str:
-    """One judge chat call through the gateway. Returns the content
-    string. Raises ValueError on any non-usable outcome (non-completed
-    job OR a gateway/transient LLM error) so the per-batch caller's
-    `except ValueError` marks the batch unjudged instead of aborting the
-    whole run — a single LM Studio hiccup must not kill a multi-chapter
-    judge pass (MED#1, /review-impl)."""
+def build_judge_input(*, system: str, user: str, n_items: int) -> dict[str, Any]:
+    """The provider-registry ``input`` dict for ONE judge chat call.
+
+    Shared by the inline ``submit_and_wait`` path (``_call_judge``) and the
+    decoupled durable-job submit path (learning-service's terminal-event judge)
+    so both send a byte-identical request. ``n_items`` sizes the output budget."""
+    return {
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        "response_format": {"type": "text"},
+        "temperature": 0.0,
+        "max_tokens": _output_tokens(n_items),
+        # Session-67 cont.5 — try to suppress reasoning mode for thinking-capable
+        # models (Qwen3-thinking, gemma variants finetuned with thinking). LM
+        # Studio passes through to llama.cpp; harmless when the model doesn't
+        # expose the flag. Mirrors the Qwen3 / DeepSeek-R1 LM Studio docs.
+        "chat_template_kwargs": {"thinking": False, "enable_thinking": False},
+    }
+
+
+def judge_content_from_result(result: dict[str, Any] | None, *, n_items: int = 1) -> str:
+    """Extract the judge content string from a completed job's ``result``.
+
+    Logs the same near/over-budget truncation warning ``_call_judge`` emits, so the
+    decoupled fold path surfaces budget shortages identically. ``''`` when absent."""
+    result = result or {}
     max_tokens = _output_tokens(n_items)
-    try:
-        job = await client.submit_and_wait(
-            user_id=user_id,
-            operation="chat",
-            model_source=model_source,  # type: ignore[arg-type]
-            model_ref=judge_model,
-            input={
-                "messages": [
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user},
-                ],
-                "response_format": {"type": "text"},
-                "temperature": 0.0,
-                "max_tokens": max_tokens,
-                # Session-67 cont.5 — try to suppress reasoning mode for
-                # thinking-capable models (Qwen3-thinking, gemma variants
-                # finetuned with thinking). LM Studio passes through to
-                # llama.cpp; harmless when the model doesn't expose the
-                # flag. Mirrors the `chat_template_kwargs` pattern from
-                # the Qwen3 / DeepSeek-R1 LM Studio docs.
-                "chat_template_kwargs": {"thinking": False, "enable_thinking": False},
-            },
-            chunking=None,
-            job_meta={"extractor": "llm_judge"},
-            transient_retry_budget=1,
-        )
-    except (LLMError, LLMTransientRetryNeededError) as exc:
-        raise ValueError(f"judge LLM call failed: {exc}") from exc
-    if job.status != "completed":
-        raise ValueError(f"judge job ended status={job.status}")
-    result = job.result or {}
-    # Surface the reasoning-token + finish_reason signal when content
-    # truncation looks likely — helps the eval reader diagnose budget
-    # shortages without re-querying llm_jobs by hand.
+    # Surface the reasoning-token + finish_reason signal when content truncation
+    # looks likely — helps the eval reader diagnose budget shortages without
+    # re-querying llm_jobs by hand.
     usage = result.get("usage") or {}
     finish_reason = result.get("finish_reason")
     reasoning_tokens = int(usage.get("reasoning_tokens") or 0)
@@ -430,8 +423,8 @@ async def _call_judge(
     #   1. finish_reason="length" → hard cap, JSON definitely cut
     #   2. reasoning ate >100 tokens AND content space tight (<100 tokens
     #      remaining) → likely truncated even with finish=stop (rare)
-    # Don't warn when reasoning=1 and finish=stop — that's the anti-think
-    # prompt working as designed; small content is fine for small batches.
+    # Don't warn when reasoning=1 and finish=stop — that's the anti-think prompt
+    # working as designed; small content is fine for small batches.
     if finish_reason == "length" or (
         reasoning_tokens > 100 and output_tokens - reasoning_tokens < 100
     ):
@@ -451,7 +444,128 @@ async def _call_judge(
     return ""
 
 
+async def _call_judge(
+    client: JudgeLLMClient,
+    *,
+    judge_model: str,
+    user_id: str,
+    model_source: str,
+    system: str,
+    user: str,
+    n_items: int,
+) -> str:
+    """One judge chat call through the gateway. Returns the content
+    string. Raises ValueError on any non-usable outcome (non-completed
+    job OR a gateway/transient LLM error) so the per-batch caller's
+    `except ValueError` marks the batch unjudged instead of aborting the
+    whole run — a single LM Studio hiccup must not kill a multi-chapter
+    judge pass (MED#1, /review-impl)."""
+    try:
+        job = await client.submit_and_wait(
+            user_id=user_id,
+            operation="chat",
+            model_source=model_source,  # type: ignore[arg-type]
+            model_ref=judge_model,
+            input=build_judge_input(system=system, user=user, n_items=n_items),
+            chunking=None,
+            job_meta={"extractor": "llm_judge"},
+            transient_retry_budget=1,
+        )
+    except (LLMError, LLMTransientRetryNeededError) as exc:
+        raise ValueError(f"judge LLM call failed: {exc}") from exc
+    if job.status != "completed":
+        raise ValueError(f"judge job ended status={job.status}")
+    return judge_content_from_result(job.result, n_items=n_items)
+
+
 # ── Per-category judging ────────────────────────────────────────────
+
+
+@dataclass
+class PrecisionTask:
+    """One precision-judge batch: the rendered prompt + where its verdicts map
+    back to global item indices.
+
+    ``system``/``user`` are ready to submit (``build_judge_input`` wraps them);
+    ``global_start`` + ``n_items`` map the batch-local idx ``0..n-1`` back to the
+    caller's ``extracted[global_start + i]`` so a fan-out judge can fold a batch
+    terminal without re-deriving the slice."""
+
+    category: Category
+    global_start: int
+    n_items: int
+    system: str
+    user: str
+
+
+def _plan_precision_category(
+    category: Category, source_text: str, extracted: list[Any], batch_size: int,
+) -> list[PrecisionTask]:
+    """The precision batches for ONE category (the shared planner for both the
+    inline ``judge_precision`` loop and the decoupled ``plan_precision_tasks``)."""
+    tasks: list[PrecisionTask] = []
+    for start in range(0, len(extracted), batch_size):
+        batch = extracted[start : start + batch_size]
+        lines = format_items_for_judge(category, batch)
+        user = (
+            f"SOURCE TEXT:\n{source_text}\n\n"
+            f"EXTRACTED {category.upper()} ITEMS:\n{_numbered(lines)}\n\n"
+            f"Judge each item. Return one verdict per item "
+            f"(idx 0..{len(lines) - 1})."
+        )
+        tasks.append(PrecisionTask(category, start, len(batch), _PRECISION_SYSTEM, user))
+    return tasks
+
+
+def plan_precision_tasks(
+    *,
+    source_text: str,
+    items_by_category: dict[str, list[Any]],
+    batch_size: int = _JUDGE_BATCH_SIZE,
+) -> list[PrecisionTask]:
+    """ALL precision-judge batches across entity/relation/event, in order.
+
+    The decoupled durable-job judge (learning-service) submits these one at a
+    time off terminal events; ``parse_precision_batch`` folds each result back
+    using the task's ``global_start``/``n_items``."""
+    tasks: list[PrecisionTask] = []
+    for category in ("entity", "relation", "event"):
+        extracted = items_by_category.get(category) or []
+        if extracted:
+            tasks.extend(
+                _plan_precision_category(category, source_text, extracted, batch_size)  # type: ignore[arg-type]
+            )
+    return tasks
+
+
+def parse_precision_batch(
+    raw: str, *, global_start: int, n_items: int,
+) -> list[ItemVerdict]:
+    """Parse one precision batch's content → ItemVerdicts with GLOBAL indices
+    (``global_start .. global_start + n_items - 1``).
+
+    Omitted or malformed verdicts become ``unjudged`` (excluded from the
+    precision denominator). Pure: mirrors ``judge_precision``'s per-batch parse
+    so the inline + decoupled paths score identically."""
+    try:
+        parsed = _extract_json_object(raw)
+        by_idx = _index_verdicts(parsed.get("verdicts", []), key="idx")
+    except (ValueError, KeyError, TypeError):
+        by_idx = {}
+    out: list[ItemVerdict] = []
+    for local_i in range(n_items):
+        global_i = global_start + local_i
+        v = by_idx.get(local_i)
+        if v is None:
+            out.append(ItemVerdict(global_i, "unjudged", "judge omitted this item"))
+            continue
+        verdict = str(v.get("verdict", "")).lower().strip()
+        if verdict not in ("supported", "partial", "unsupported"):
+            verdict = "unjudged"
+        out.append(
+            ItemVerdict(global_i, verdict, str(v.get("reason", ""))[:200])  # type: ignore[arg-type]
+        )
+    return out
 
 
 async def judge_precision(
@@ -472,44 +586,24 @@ async def judge_precision(
     if not extracted:
         return []
     verdicts: list[ItemVerdict] = []
-    for start in range(0, len(extracted), batch_size):
-        batch = extracted[start : start + batch_size]
-        lines = format_items_for_judge(category, batch)
-        user = (
-            f"SOURCE TEXT:\n{source_text}\n\n"
-            f"EXTRACTED {category.upper()} ITEMS:\n{_numbered(lines)}\n\n"
-            f"Judge each item. Return one verdict per item "
-            f"(idx 0..{len(lines) - 1})."
-        )
+    for task in _plan_precision_category(category, source_text, extracted, batch_size):
         try:
             raw = await _call_judge(
                 client, judge_model=judge_model, user_id=user_id,
-                model_source=model_source, system=_PRECISION_SYSTEM, user=user,
-                n_items=len(batch),
+                model_source=model_source, system=task.system, user=task.user,
+                n_items=task.n_items,
             )
-            parsed = _extract_json_object(raw)
-            by_idx = _index_verdicts(parsed.get("verdicts", []), key="idx")
-        except (ValueError, KeyError, TypeError) as exc:
+        except ValueError as exc:
             logger.warning(
                 "judge_precision parse/call failed category=%s batch@%d: %s "
-                "— batch unjudged", category, start, exc,
+                "— batch unjudged", category, task.global_start, exc,
             )
-            by_idx = {}
-
-        for local_i in range(len(batch)):
-            global_i = start + local_i
-            v = by_idx.get(local_i)
-            if v is None:
-                verdicts.append(
-                    ItemVerdict(global_i, "unjudged", "judge omitted this item")
-                )
-                continue
-            verdict = str(v.get("verdict", "")).lower().strip()
-            if verdict not in ("supported", "partial", "unsupported"):
-                verdict = "unjudged"
-            verdicts.append(
-                ItemVerdict(global_i, verdict, str(v.get("reason", ""))[:200])  # type: ignore[arg-type]
+            raw = ""  # → parse_precision_batch fills the whole batch as unjudged
+        verdicts.extend(
+            parse_precision_batch(
+                raw, global_start=task.global_start, n_items=task.n_items,
             )
+        )
     return verdicts
 
 
@@ -794,6 +888,34 @@ class FidelityVerdict:
     reason: str
 
 
+# Public alias of the fidelity system prompt — the decoupled durable-job judge
+# (learning-service) builds its submit with FIDELITY_SYSTEM + build_fidelity_user_prompt
+# so it stays byte-identical to the inline path below.
+FIDELITY_SYSTEM = _FIDELITY_SYSTEM
+
+
+def build_fidelity_user_prompt(source_text: str, translated_text: str) -> str | None:
+    """The fidelity-judge user message, or None when either side is blank (the
+    decoupled judge skips submitting in that case — same guard as the inline path)."""
+    if not source_text.strip() or not translated_text.strip():
+        return None
+    return f"SOURCE:\n{source_text}\n\nTRANSLATION:\n{translated_text}"
+
+
+def parse_fidelity_content(raw: str) -> "FidelityVerdict | None":
+    """Parse a fidelity-judge content string → FidelityVerdict, or None on any
+    non-usable outcome (unparseable / missing / out-of-range score). Pure: the
+    decoupled fold path and the inline call score identically."""
+    try:
+        parsed = _extract_json_object(raw)
+        score = float(parsed.get("score"))
+    except (ValueError, KeyError, TypeError):
+        return None
+    if not (0.0 <= score <= 1.0):
+        return None
+    return FidelityVerdict(score=score, reason=str(parsed.get("reason", "")))
+
+
 async def judge_translation_fidelity(
     client: JudgeLLMClient,
     *,
@@ -806,26 +928,22 @@ async def judge_translation_fidelity(
     """One LLM call rating translation fidelity in [0,1]. Returns None on any
     non-usable outcome (empty inputs / failed call / unparseable / out-of-range)
     so the caller treats it as 'unjudged' rather than aborting."""
-    if not source_text.strip() or not translated_text.strip():
+    user = build_fidelity_user_prompt(source_text, translated_text)
+    if user is None:
         return None
-    user = f"SOURCE:\n{source_text}\n\nTRANSLATION:\n{translated_text}"
     try:
         raw = await _call_judge(
             client,
             judge_model=judge_model,
             user_id=user_id,
             model_source=model_source,
-            system=_FIDELITY_SYSTEM,
+            system=FIDELITY_SYSTEM,
             user=user,
             n_items=1,
         )
-        parsed = _extract_json_object(raw)
-        score = float(parsed.get("score"))
-    except (ValueError, KeyError, TypeError):
+    except ValueError:
         return None
-    if not (0.0 <= score <= 1.0):
-        return None
-    return FidelityVerdict(score=score, reason=str(parsed.get("reason", "")))
+    return parse_fidelity_content(raw)
 
 
 # ── D-WIKI-M8-EVAL-PLUS: wiki-article groundedness judge ───────────────

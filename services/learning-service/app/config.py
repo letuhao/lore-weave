@@ -35,6 +35,14 @@ class Settings(BaseSettings):
     # Off by default; runs only when a translation.quality event carries the
     # source+translated text (the M7d-3 worker feed, itself off by default).
     online_translation_judge_enabled: bool = False
+
+    # LLM re-arch Phase 3 M1 — decoupled online judge (durable job-row +
+    # terminal-event consumer). The stuck-resume sweeper re-drives any judge row
+    # idle past the timeout (submit→persist gap, a lost terminal event, a consumer
+    # crash). interval<=0 disables the sweeper (the event path still works).
+    llm_judge_resume_sweep_interval_s: int = 60
+    llm_judge_resume_sweep_timeout_s: int = 600
+    llm_judge_resume_sweep_batch: int = 50
     # Q4b-feed — knowledge-service internal base URL. The eval-runner fetches
     # the run's items+source sample from here (GET /internal/extraction/runs/
     # {run_id}/sample) for opted-in runs, then feeds the online judge.

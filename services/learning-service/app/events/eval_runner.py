@@ -57,7 +57,7 @@ class EvalRunner:
         self._consumer_name = consumer_name or f"eval-runner-{platform.node()}"
         self._redis: aioredis.Redis | None = None
         self._running = False
-        self._judge_client = None  # lazily built (Q4b)
+        self._judge_sdk = None  # lazily built raw SDK for the decoupled judge (Q4b / M1)
         self._knowledge_client = None  # lazily built (Q4b-feed)
 
     async def _ensure_redis(self) -> aioredis.Redis:
@@ -149,15 +149,15 @@ class EvalRunner:
         # Q4b — LLM-as-judge, only for opted-in runs that carry items + source.
         await self._maybe_judge(rule, run, payload)
 
-    async def _ensure_judge_client(self):
-        if self._judge_client is None:
-            from app.clients.llm_client import build_judge_client
+    async def _ensure_judge_sdk(self):
+        if self._judge_sdk is None:
+            from app.clients.llm_client import build_judge_sdk
             from app.config import settings
-            self._judge_client = build_judge_client(
+            self._judge_sdk = build_judge_sdk(
                 base_url=settings.provider_registry_internal_url,
                 internal_token=settings.internal_service_token,
             )
-        return self._judge_client
+        return self._judge_sdk
 
     async def _ensure_knowledge_client(self):
         if self._knowledge_client is None:
@@ -201,13 +201,18 @@ class EvalRunner:
         return s_items, s_source
 
     async def _maybe_judge(self, rule: dict, run: dict, payload: dict) -> None:
-        """Run the online LLM judge when (a) a judge panel is configured on the
-        rule, (b) online judging is enabled + a judge model is set, and (c) the
+        """START the decoupled online LLM judge when (a) a judge panel is configured
+        on the rule, (b) online judging is enabled + a judge model is set, and (c) the
         run's extracted items + source text are resolvable — inline on the event
         (test/demo) or fetched from knowledge-service for an opted-in run
-        (Q4b-feed). Non-opted / unfetchable → structural-only."""
+        (Q4b-feed). Non-opted / unfetchable → structural-only.
+
+        M1: submits the FIRST precision batch + persists a durable ``llm_judges``
+        row, then returns — the llm-job terminal-event consumer drives the remaining
+        batches + finalizes (was an inline ``submit_and_wait`` that pinned this
+        consumer coroutine for the whole multi-batch judge)."""
         from app.config import settings
-        from app.db.online_judge import persist_online_judge, run_online_judge
+        from app.judges.decoupled_judge import start_extraction_judge
 
         if not (settings.online_judge_enabled and rule.get("judge_panel_id")):
             return
@@ -223,28 +228,23 @@ class EvalRunner:
         if not isinstance(items, dict) or not source_text:
             return  # structural-only
 
-        client = await self._ensure_judge_client()
-        result = await run_online_judge(
-            client,
-            source_text=source_text,
-            items_by_category=items,
-            judge_model=settings.online_judge_model_ref,
-            model_source=settings.online_judge_model_source,
-            user_id=judge_user_id,
-        )
-        await persist_online_judge(
+        sdk = await self._ensure_judge_sdk()
+        started = await start_extraction_judge(
             self._pool,
-            run_id=run["run_id"],
-            user_id=run["user_id"],
-            judge_model=settings.online_judge_model_ref,
-            judge_result=result,
+            sdk,
+            run_id=str(run["run_id"]),
+            owner_user_id=run["user_id"],
+            billing_user_id=judge_user_id,
             project_id=run["project_id"],
             book_id=run["book_id"],
             config_hash=run["config_hash"],
+            judge_model=settings.online_judge_model_ref,
+            judge_model_source=settings.online_judge_model_source,
+            source_text=source_text,
+            items_by_category=items,
         )
-        logger.info(
-            "online judge: run=%s precision=%s", run["run_id"], result.get("overall_precision")
-        )
+        if started:
+            logger.info("online judge: run=%s started (decoupled)", run["run_id"])
 
     async def stop(self) -> None:
         self._running = False
@@ -252,5 +252,5 @@ class EvalRunner:
     async def close(self) -> None:
         if self._redis is not None:
             await self._redis.aclose()
-        if self._judge_client is not None:
-            await self._judge_client.aclose()
+        if self._judge_sdk is not None:
+            await self._judge_sdk.aclose()
