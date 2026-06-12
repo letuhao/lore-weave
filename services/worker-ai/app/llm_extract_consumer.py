@@ -178,17 +178,42 @@ async def _resume(pool, knowledge_client, llm_client: LLMClient, owner_user_id, 
         stage = rs["stage"]
 
         if stage == dx.ENTITY:
-            rs = dx.fold_entity_job(rs, job)
-            if rs["stage"] == dx.TRIO:
-                submits = dx.assemble_trio_submits(rs)
-                trio_jobs: dict[str, str] = {}
-                for op, kwargs in submits.items():
-                    sub = await llm_client.submit_job(user_id=rs["user_id"], **kwargs)
-                    trio_jobs[op] = str(sub.job_id)
-                rs = dx.begin_trio(rs, trio_jobs)
-                await _persist_inflight(pool, ej_id, list(trio_jobs.values()), rs)
-            else:  # no entities → persist empty
-                await _persist_chunk(pool, knowledge_client, ej_id, rs)
+            # D-WX-TRIO-FANIN-RACE (entity stage) — serialise the entity fold + trio
+            # submit under the row lock, exactly like the TRIO fold, so the sweeper and
+            # the consumer (separate gather'd tasks — concurrent even single-replica) or
+            # multiple replicas can't both fold this entity terminal and double-submit the
+            # trio. submit_job is a fire-and-forget POST (fast enqueue, NOT an LLM wait),
+            # so holding the lock across the 3 submits is cheap. The claim re-verifies
+            # provider_job_ids still contains THIS entity job — a concurrent fold has
+            # already advanced it to the trio ids, so that contender skips.
+            empty_rs = None
+            async with pool.acquire() as conn:
+                async with conn.transaction():
+                    row = await conn.fetchrow(
+                        """SELECT resume_state FROM extraction_jobs
+                           WHERE job_id=$1 AND resume_state IS NOT NULL
+                             AND provider_job_ids @> to_jsonb($2::text) FOR UPDATE""",
+                        ej_id, job_id,
+                    )
+                    if row is None:
+                        return  # a concurrent driver already folded this entity terminal
+                    fresh = row["resume_state"]
+                    fresh = fresh if isinstance(fresh, dict) else json.loads(fresh)
+                    if fresh.get("stage") != dx.ENTITY:
+                        return  # already advanced past entity
+                    fresh = dx.fold_entity_job(fresh, job)
+                    if fresh["stage"] == dx.TRIO:
+                        submits = dx.assemble_trio_submits(fresh)
+                        trio_jobs: dict[str, str] = {}
+                        for op, kwargs in submits.items():
+                            sub = await llm_client.submit_job(user_id=fresh["user_id"], **kwargs)
+                            trio_jobs[op] = str(sub.job_id)
+                        fresh = dx.begin_trio(fresh, trio_jobs)
+                        await _persist_inflight(conn, ej_id, list(trio_jobs.values()), fresh)
+                    else:  # no entities → finalize empty OUTSIDE the lock (persist_chunk re-locks)
+                        empty_rs = fresh
+            if empty_rs is not None:
+                await _persist_chunk(pool, knowledge_client, ej_id, empty_rs)
 
         elif stage == dx.TRIO:
             # D-WX-TRIO-FANIN-RACE — the fold is a read-modify-write on resume_state.

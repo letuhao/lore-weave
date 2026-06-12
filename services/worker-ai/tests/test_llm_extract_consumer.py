@@ -245,6 +245,47 @@ async def test_trio_fold_skips_when_concurrent_winner_advanced(monkeypatch):
     kc.persist_pass2.assert_not_awaited()
 
 
+# ── D-WX-TRIO-FANIN-RACE (entity stage) — the entity fold is now under FOR UPDATE ──
+
+async def test_entity_fold_skips_when_superseded():
+    # The entity-stage claim: provider_job_ids no longer contains this entity job (a
+    # concurrent driver — the sweeper, or another replica — already folded + advanced
+    # it), so the FOR UPDATE claim returns None → skip, no double trio-submit.
+    conn = FakeConn([None])  # claim returns no row
+    pool = FakePool(conn)
+    kc = AsyncMock()
+    llm = AsyncMock()
+    llm.get_job.return_value = SimpleNamespace(status="completed", result={})
+
+    await _resume(pool, kc, llm, None, "entity-job", EJ, {"stage": dx.ENTITY, "user_id": USER})
+
+    assert "FOR UPDATE" in conn.fetchrow_calls[0][0]
+    assert "provider_job_ids @>" in conn.fetchrow_calls[0][0]  # the claim
+    llm.submit_job.assert_not_awaited()   # no double trio-submit
+    kc.persist_pass2.assert_not_awaited()
+    assert conn.executed == []
+
+
+async def test_entity_fold_under_lock_submits_trio(monkeypatch):
+    conn = FakeConn([{"resume_state": {"stage": dx.ENTITY, "user_id": USER}}])  # claim matches
+    pool = FakePool(conn)
+    kc = AsyncMock()
+    llm = AsyncMock()
+    llm.get_job.return_value = SimpleNamespace(status="completed", result={})
+    llm.submit_job = AsyncMock(side_effect=[SimpleNamespace(job_id=f"t{i}") for i in range(3)])
+    monkeypatch.setattr(dx, "fold_entity_job", lambda rs, job: {**rs, "stage": dx.TRIO})
+    monkeypatch.setattr(dx, "assemble_trio_submits",
+                        lambda rs: {"relation": {}, "event": {}, "fact": {}})
+    monkeypatch.setattr(dx, "begin_trio", lambda rs, tj: {**rs, "trio_jobs": tj})
+
+    await _resume(pool, kc, llm, None, "entity-job", EJ, {"stage": dx.ENTITY, "user_id": USER})
+
+    assert llm.submit_job.await_count == 3              # 3 trio jobs submitted
+    assert any("resume_state=$3" in s for s, _ in conn.executed)  # in-flight persisted
+    assert all(conn.executed_in_tx)                     # under the lock
+    kc.persist_pass2.assert_not_awaited()               # not finalized (TRIO not complete)
+
+
 # ── /review-impl finding 3 — REAL fold (not monkeypatched) → finalize boundary ───
 
 def _job(result: dict):
@@ -385,6 +426,23 @@ async def test_sweep_tries_next_id_when_get_job_errors(monkeypatch):
     n = await _sweep_once(pool, AsyncMock(), llm, timeout_s=900, batch=20)
 
     assert n == 1 and calls == ["good"]  # skipped the erroring id, re-drove the next
+
+
+async def test_sweep_redrives_persist_stage_row(monkeypatch):
+    # Poison recovery (review-impl finding 2): a row stuck at PERSIST (a finalize that
+    # poison-acked) is still swept (the WHERE filters on resume_state IS NOT NULL, not on
+    # stage) and re-driven → _resume's else-branch → persist_chunk. This is the runtime
+    # backstop the strict-tx finalize depends on.
+    row = {"job_id": EJ, "provider_job_ids": ["j1"],
+           "resume_state": {"stage": dx.PERSIST, "user_id": USER}}
+    pool = FakePool(FakeConn([]), fetch_rows=[row])
+    llm = AsyncMock()
+    llm.get_job.return_value = _sdk_job("completed")
+    calls = _spy_resume(monkeypatch)
+
+    n = await _sweep_once(pool, AsyncMock(), llm, timeout_s=900, batch=20)
+
+    assert n == 1 and calls == ["j1"]
 
 
 async def test_sweep_redrives_once_per_row_then_breaks(monkeypatch):
