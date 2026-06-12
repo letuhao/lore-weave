@@ -430,10 +430,12 @@ services:
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       # M5c: consume glossary change events (Redis Stream) to flag stale translations.
       REDIS_URL: redis://redis:6379
-      # LLM re-arch Phase 2b-T2: event-driven decouple of the v2 TEXT path. ON ⇒
-      # this API runs the llm-terminal-resume consumer + the worker takes the
-      # submit-and-release branch. Default off (synchronous path unchanged).
-      TRANSLATION_DECOUPLE_ENABLED: ${TRANSLATION_DECOUPLE_ENABLED:-false}
+      # LLM re-arch Phase 2b: event-driven decouple of translation (v2 text/block +
+      # V3 verify/correct + V3 cold-start). ON ⇒ this API runs the llm-terminal-resume
+      # consumer + sweeper and the worker takes the submit-and-release branch.
+      # Default ON (2026-06-12): review-cleared + live-smoked (block round-trip, V3
+      # loop, stuck-resume sweeper). Set to false to revert to the synchronous path.
+      TRANSLATION_DECOUPLE_ENABLED: ${TRANSLATION_DECOUPLE_ENABLED:-true}
       PORT: "8087"
     depends_on:
       postgres:
@@ -518,9 +520,9 @@ services:
       NOTIFICATION_SERVICE_INTERNAL_URL: http://notification-service:8091
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       REDIS_URL: redis://redis:6379
-      # LLM re-arch Phase 2b-T2: must match the API's flag — the worker takes the
-      # submit-and-release branch only when this is on (default off).
-      TRANSLATION_DECOUPLE_ENABLED: ${TRANSLATION_DECOUPLE_ENABLED:-false}
+      # LLM re-arch Phase 2b: must match the API's flag — the worker takes the
+      # submit-and-release branch only when this is on. Default ON (2026-06-12).
+      TRANSLATION_DECOUPLE_ENABLED: ${TRANSLATION_DECOUPLE_ENABLED:-true}
     depends_on:
       postgres:
         condition: service_healthy
@@ -984,10 +986,11 @@ services:
       # LLM re-arch Phase 2b WX-T3b — event-driven decouple of chapter extraction.
       # ON ⇒ the runner submits a chapter's entity job + releases, and the
       # llm_extract_consumer drives entity→trio→persist off the terminal events
-      # (gated to projects WITHOUT recovery/filter — those stay synchronous). Default
-      # off (synchronous extract_pass2 unchanged). Read by BOTH app.main (consumer)
-      # and runner.py (the branch) so worker + consumer stay coherent.
-      EXTRACTION_DECOUPLE_ENABLED: ${EXTRACTION_DECOUPLE_ENABLED:-false}
+      # (entity→trio→recovery→filter→persist; recovery/filter wired in Wave 4). Read by
+      # BOTH app.main (consumer + sweeper) and runner.py (the branch) so worker +
+      # consumer stay coherent. Default ON (2026-06-12): review-cleared + live-smoked
+      # (5-chapter run, recovery/filter fan-outs, 0 double-spend). false ⇒ sync path.
+      EXTRACTION_DECOUPLE_ENABLED: ${EXTRACTION_DECOUPLE_ENABLED:-true}
       # Cycle 73d — entity recovery OFF by default; eval-validate first.
       WORKER_AI_ENTITY_RECOVERY_MODEL_REF: ${WORKER_AI_ENTITY_RECOVERY_MODEL_REF:-}
       WORKER_AI_ENTITY_RECOVERY_MODEL_SOURCE: ${WORKER_AI_ENTITY_RECOVERY_MODEL_SOURCE:-user_model}
