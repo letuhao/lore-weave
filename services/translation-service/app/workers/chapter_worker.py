@@ -188,9 +188,9 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
             settings.translation_decouple_enabled
             and pipeline_version == "v3"
             # 2b-T3b — full V3 decouple: block translate → (mode-chain) verify/correct loop
-            # → defer-finalize. The 2-pass cold-start re-translate (D-V3-DECOUPLE-COLDSTART-2PASS)
-            # stays synchronous, so those jobs fall through to the sync v3 path.
-            and msg.get("cold_start_mode") != "two_pass"
+            # → defer-finalize. A two_pass cold-start (D-V3-DECOUPLE-COLDSTART-2PASS) is now
+            # decoupled too — decoupled_v3_block_start glossary-gates it internally (no
+            # glossary → pass-1 → namepair → pass-2 → verify; else normal v3_verify).
         ):
             from .v3.orchestrator import decoupled_v3_block_start
             log.info("chapter %s: using DECOUPLED V3 pipeline (decouple flag on)", chapter_id)

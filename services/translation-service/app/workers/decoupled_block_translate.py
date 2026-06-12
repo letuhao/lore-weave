@@ -217,6 +217,7 @@ async def start_chapter_blocks(
     *, pool, llm_client: LLMClient, chapter_translation_id: UUID,
     blocks: list[dict], source_lang: str, msg: dict, context_window: int,
     chapter_text: str = "", v3: dict | None = None,
+    seed_input: int = 0, seed_output: int = 0,
 ) -> bool:
     """Build the batch plan + glossary context, seed resume_state, submit batch 0.
     Returns True if a batch was submitted (chapter now in-flight → the consumer
@@ -268,11 +269,16 @@ async def start_chapter_blocks(
     rs["msg"] = msg
     rs["context_window"] = context_window
     rs["chapter_text"] = chapter_text  # quality-feed source_text at finalize (M7d parity)
+    # Token parity: a cold-start pass 2 seeds the pass-1 tokens so the chapter total is
+    # pass1+pass2 (matching the sync _maybe_two_pass_cold_start sum). 0 for a fresh start.
+    rs["total_input"] = seed_input
+    rs["total_output"] = seed_output
     if v3 is not None:
-        # V3 decouple (2b-T3b): chain the verify/correct loop after the block translate.
-        # The verifier/corrector need the VERIFIED glossary map (not the auto-correct map);
-        # stash it from the same glossary_ctx so the consumer doesn't refetch.
-        rs["post_block"] = "v3_verify"
+        # V3 decouple (2b-T3b): chain the next V3 stage after the block translate. Default
+        # 'v3_verify' (the verify/correct loop); 'v3_coldstart' for a 2-pass cold-start
+        # pass-1 (namepair → pass-2 → verify). The verifier/corrector need the VERIFIED
+        # glossary map (not the auto-correct map); stash it from the same glossary_ctx.
+        rs["post_block"] = v3.get("post_block", "v3_verify")
         rs["v3"] = {**v3, "cmap": dict(glossary_ctx.verified_map or {})}
     await _submit_next_batch(ex=pool, llm_client=llm_client,
                              chapter_translation_id=chapter_translation_id, rs=rs)
@@ -378,13 +384,17 @@ async def resume(
                 fail_reason = (
                     f"translation produced no output: 0/{rs['translatable_count']} blocks translated"
                 )
-            elif rs.get("post_block") == "v3_verify":
-                # V3 decouple (2b-T3b): instead of finalizing, chain into the verify/correct
-                # loop UNDER this lock — the transition submits the first verify/corrector and
-                # advances provider_job_id, so a redelivered last-batch terminal skips. Returns
-                # a finalize payload ONLY for the no-LLM-work case (rule_only + no HIGH rule
-                # issues); None ⇒ v3_verify is now in flight (don't finalize/clear here).
-                from .v3.decoupled_v3_verify import transition_from_block
+            elif rs.get("post_block") in ("v3_verify", "v3_coldstart"):
+                # V3 decouple (2b-T3b): instead of finalizing, chain into the next V3 stage
+                # UNDER this lock — the transition submits the first job + advances
+                # provider_job_id, so a redelivered last-batch terminal skips. v3_verify =
+                # the verify/correct loop; v3_coldstart = the 2-pass cold-start (namepair
+                # extract → pass-2 → verify). Returns a finalize payload ONLY for the
+                # no-LLM-work case; None ⇒ a V3 stage is now in flight (don't finalize/clear).
+                if rs["post_block"] == "v3_coldstart":
+                    from .v3.decoupled_v3_coldstart import transition_from_block
+                else:
+                    from .v3.decoupled_v3_verify import transition_from_block
                 finalize_payload = await transition_from_block(
                     conn, llm_client, chapter_translation_id, rs, result_blocks,
                 )

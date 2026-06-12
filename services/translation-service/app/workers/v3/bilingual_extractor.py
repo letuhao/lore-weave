@@ -98,6 +98,43 @@ def parse_name_pairs(text: str) -> list[NamePair]:
     return pairs
 
 
+# ── Decouple seams (LLM re-arch Phase 2b-T3b cold-start) ────────────────────────
+# The submit-shape + the parse are split out PURE so the decoupled v3_coldstart SM can
+# submit the bilingual name-pair extraction fire-and-forget and parse on the terminal
+# event. The sync extract_name_pairs below calls them, byte-identical.
+
+
+def build_namepair_submit_kwargs(
+    source_text: str, translated_text: str, source_lang: str, target_lang: str,
+    model: tuple[str, str],
+) -> dict:
+    """Pure: submit kwargs for the bilingual name-pair extraction (user_id +
+    transient_retry_budget stay per-call)."""
+    src_model, ref = model
+    messages = _build_messages(source_text, translated_text, source_lang, target_lang)
+    return dict(
+        operation="translation",
+        model_source=src_model,
+        model_ref=str(ref),
+        input={
+            "messages": messages,
+            "reasoning_effort": "none",
+            "chat_template_kwargs": {"enable_thinking": False},
+        },
+        chunking=None,
+        job_meta={"stage": "bilingual_extract"},
+    )
+
+
+def parse_namepair_job(job) -> list[NamePair]:
+    """Pure: validate the terminal Job + parse → NamePairs. Returns [] on any non-usable
+    outcome (a cold-start chapter must still translate)."""
+    if getattr(job, "status", None) != "completed":
+        return []
+    text, _, _ = _parse_sdk_response(job)
+    return parse_name_pairs(text)
+
+
 async def extract_name_pairs(
     source_text: str,
     translated_text: str,
@@ -116,27 +153,16 @@ async def extract_name_pairs(
     """
     if not source_text or not translated_text:
         return []
-    src_model, ref = model or (msg["model_source"], msg["model_ref"])
-    messages = _build_messages(source_text, translated_text, source_lang, target_lang)
+    model_ = model or (msg["model_source"], msg["model_ref"])
     try:
         job = await llm_client.submit_and_wait(
             user_id=msg["user_id"],
-            operation="translation",
-            model_source=src_model,
-            model_ref=str(ref),
-            input={
-                "messages": messages,
-                "reasoning_effort": "none",
-                "chat_template_kwargs": {"enable_thinking": False},
-            },
-            chunking=None,
-            job_meta={"stage": "bilingual_extract"},
             transient_retry_budget=1,
+            **build_namepair_submit_kwargs(
+                source_text, translated_text, source_lang, target_lang, model_,
+            ),
         )
-        if job.status != "completed":
-            return []
-        text, _, _ = _parse_sdk_response(job)
-        return parse_name_pairs(text)
+        return parse_namepair_job(job)
     except Exception as exc:  # best-effort — never fail the chapter on extraction
         log.warning("v3 bilingual extractor failed (non-fatal): %s", exc)
         return []

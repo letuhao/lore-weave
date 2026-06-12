@@ -171,6 +171,22 @@ async def decoupled_v3_block_start(
 
     extra, knowledge_brief = await _compute_v3_context(blocks, source_lang, msg)
     qa_depth, use_llm, max_rounds = _qa_config(msg)
+    # D-V3-DECOUPLE-COLDSTART-2PASS — a glossary-less book in two_pass mode runs the
+    # decoupled cold-start (pass-1 → namepair → pass-2 → verify). The glossary check is
+    # book-level (not pass-1-dependent), so decide it here at START: WITH a glossary there
+    # is nothing to harvest (single-pass already handles names) → normal v3_verify.
+    post_block = "v3_verify"
+    if msg.get("cold_start_mode") == "two_pass":
+        from ..glossary_client import fetch_translation_glossary
+        try:
+            has_glossary = bool(await fetch_translation_glossary(
+                book_id=msg.get("book_id", ""), target_language=msg.get("target_language", ""),
+            ))
+        except Exception as exc:  # pragma: no cover - defensive; degrade to single-pass
+            log.warning("v3 cold-start glossary probe failed (non-fatal): %s", exc)
+            has_glossary = True
+        if not has_glossary:
+            post_block = "v3_coldstart"
     return await start_chapter_blocks(
         pool=pool, llm_client=llm_client, chapter_translation_id=chapter_translation_id,
         blocks=blocks, source_lang=source_lang,
@@ -180,6 +196,7 @@ async def decoupled_v3_block_start(
             "knowledge_brief": knowledge_brief,
             "verifier_model": list(_verifier_model(msg)),
             "qa_depth": qa_depth, "use_llm": use_llm, "max_rounds": max_rounds,
+            "post_block": post_block,
         },
     )
 
