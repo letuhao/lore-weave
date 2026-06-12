@@ -351,6 +351,51 @@ def test_generate_auto_idempotent_replay_returns_existing(ctx, monkeypatch):
     assert called["n"] == 0  # short-circuited before select
 
 
+def test_generate_auto_worker_enabled_enqueues_202(ctx, monkeypatch):
+    # M4: COMPOSITION_WORKER_ENABLED → the auto path persists the resolved pack
+    # context into job.input + enqueues + 202 (the worker runs select/reflect). No
+    # inline select_draft runs. cowrite STREAM stays inline (not tested here).
+    c, _, _, _, jobs, _, _ = ctx
+    monkeypatch.setattr("app.routers.engine.settings.composition_worker_enabled", True)
+    enq = {"n": 0}
+
+    async def fake_enqueue(redis_url, *, job_id, user_id, project_id):
+        enq["n"] += 1
+        return True
+
+    async def must_not_run(llm, judge, **kw):
+        raise AssertionError("worker path must not run select_draft inline")
+
+    monkeypatch.setattr("app.routers.engine.enqueue_job", fake_enqueue)
+    monkeypatch.setattr("app.routers.engine.select_draft", must_not_run)
+    r = c.post(f"/v1/composition/works/{PROJECT}/generate", json={**_gen_body(), "mode": "auto"})
+    assert r.status_code == 202
+    body = r.json()
+    assert body["status"] == "pending" and body["mode"] == "auto" and body["enqueued"] == "ok"
+    assert enq["n"] == 1
+    # the FULLY-RESOLVED pack context + canonical worker_op landed in job.input
+    inp = jobs._last_create["input"]
+    assert inp["worker_op"] == "generate" and inp["packed_prompt"] == "GROUNDING"
+    assert inp["reinjected_promise_count"] == 2  # echoed from the pack
+    assert jobs._last_create["status"] == "pending"
+    # no terminal update happened inline (the worker will complete it)
+    assert not [s for _, s, _ in jobs.updates if s == "completed"]
+
+
+def test_generate_cowrite_stays_inline_when_worker_enabled(ctx, monkeypatch):
+    # The worker decouples ONLY auto; cowrite still streams inline even flag-on.
+    c, *_ = ctx
+    monkeypatch.setattr("app.routers.engine.settings.composition_worker_enabled", True)
+
+    async def fake_enqueue(redis_url, **kw):
+        raise AssertionError("cowrite must not enqueue")
+
+    monkeypatch.setattr("app.routers.engine.enqueue_job", fake_enqueue)
+    r = c.post(f"/v1/composition/works/{PROJECT}/generate", json={**_gen_body(), "mode": "cowrite"})
+    assert r.status_code == 200
+    assert "text/event-stream" in r.headers["content-type"]  # still an SSE stream
+
+
 # ── critique ──
 
 def test_critique_runs_with_distinct_critic_and_fresh_canon(ctx):

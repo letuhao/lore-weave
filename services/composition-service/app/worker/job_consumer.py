@@ -27,6 +27,7 @@ from app.worker.operations import (
     SUPPORTED_OPERATIONS,
     UnsupportedOperationError,
     run_decompose,
+    run_generate,
     run_stitch,
 )
 
@@ -88,18 +89,31 @@ async def run_job(
     return "completed"
 
 
+def _worker_op(job) -> str:
+    """The canonical worker-op id. For decompose/stitch it equals the job's
+    ``operation`` column; generate carries the user's free-form prose op there
+    ("draft_scene", …) so its canonical id lives in ``input['worker_op']``."""
+    return (job.input or {}).get("worker_op") or job.operation
+
+
 async def _run_operation(pool: asyncpg.Pool, llm: LLMClient, job) -> dict:
-    """Dispatch by operation. The op's bearer-authenticated context was resolved
+    """Dispatch by worker-op. The op's bearer-authenticated context was resolved
     into job.input by the endpoint; user_id/project_id come off the job row. Ops
     needing knowledge (canon-reflect) grab the internal-auth singleton lazily."""
-    if job.operation == "decompose_preview":
+    op = _worker_op(job)
+    if op == "decompose_preview":
         return await run_decompose(llm, user_id=str(job.user_id), input=job.input or {})
-    if job.operation == "stitch_chapter":
+    if op == "stitch_chapter":
         inp = dict(job.input or {})
         inp.setdefault("user_id", str(job.user_id))
         inp.setdefault("project_id", str(job.project_id))
         return await run_stitch(pool, llm, get_knowledge_client(), input=inp)
-    raise UnsupportedOperationError(job.operation)
+    if op == "generate":
+        inp = dict(job.input or {})
+        inp.setdefault("user_id", str(job.user_id))
+        inp.setdefault("project_id", str(job.project_id))
+        return await run_generate(pool, llm, get_knowledge_client(), input=inp)
+    raise UnsupportedOperationError(op)
 
 
 async def dispatch_job_message(
@@ -178,7 +192,7 @@ async def sweep_once(pool: asyncpg.Pool, *, timeout_secs: int, batch: int = 20) 
             """
             SELECT id, user_id FROM generation_job
             WHERE status = ANY($1::text[]) AND updated_at <= $2
-              AND operation = ANY($3::text[])
+              AND (operation = ANY($3::text[]) OR input->>'worker_op' = ANY($3::text[]))
             ORDER BY updated_at
             LIMIT $4
             """,

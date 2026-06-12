@@ -197,6 +197,108 @@ async def test_run_stitch_raises_when_no_drafts(monkeypatch):
         await run_stitch(object(), object(), object(), input=inp)
 
 
+async def test_run_job_dispatches_generate_via_worker_op(monkeypatch):
+    # generate's `operation` column is the free-form prose op ("draft_scene"); the
+    # canonical dispatch key is input['worker_op'] = 'generate'.
+    job = _job(operation="draft_scene", input={"worker_op": "generate", "packed_prompt": "P"})
+    repo = _FakeRepo(job)
+    monkeypatch.setattr(jc, "GenerationJobsRepo", lambda pool: repo)
+    monkeypatch.setattr(jc, "get_knowledge_client", lambda: object())
+
+    captured: dict = {}
+
+    async def _rg(pool, llm, knowledge, *, input):
+        captured.update(input)
+        return {"text": "auto winner", "persisted": False}
+
+    monkeypatch.setattr(jc, "run_generate", _rg)
+    out = await jc.run_job(object(), object(), job_id=str(job.id), user_id=str(job.user_id))
+    assert out == "completed"
+    assert repo.updates[-1][1]["text"] == "auto winner"
+    assert captured["user_id"] == str(job.user_id)
+    assert captured["project_id"] == str(job.project_id)
+    assert captured["packed_prompt"] == "P"
+
+
+async def test_run_generate_computes_winner_and_canon(monkeypatch):
+    import app.db.repositories.works as works_mod
+    import app.engine.select as select_mod
+    import app.engine.canon_reflect as reflect_mod
+    import app.packer.profile as profile_mod
+    from app.engine.select import Candidate, Selection
+    from app.engine.cowrite import DraftMetering
+    from app.worker.operations import run_generate
+
+    class _FakeWorks:
+        def __init__(self, pool): ...
+        async def get(self, uid, pid):
+            return SimpleNamespace(settings={"source_language": "en"})
+
+    seen: dict = {}
+
+    async def _fake_select(llm, judge, **kw):
+        seen.update(kw)
+        cands = [Candidate("draft A", DraftMetering(10, 5, True)),
+                 Candidate("draft B", DraftMetering(10, 6, True))]
+        return Selection(winner=cands[1], winner_index=1, candidates=cands,
+                         rerank_reason="B", rerank_measured=True)
+
+    reflect = SimpleNamespace(violations=[], resolved=True, iterations=0,
+                              status="ok", revise_finish_reason=None)
+
+    async def _fake_reflect(**kw):
+        return (kw["draft"], reflect, 3)
+
+    monkeypatch.setattr(works_mod, "WorksRepo", _FakeWorks)
+    monkeypatch.setattr(select_mod, "select_draft", _fake_select)
+    monkeypatch.setattr(reflect_mod, "run_canon_reflect", _fake_reflect)
+    monkeypatch.setattr(profile_mod, "from_settings", lambda s: SimpleNamespace(source_language="en"))
+
+    inp = {
+        "user_id": str(uuid4()), "project_id": str(uuid4()), "outline_node_id": str(uuid4()),
+        "model_source": "user_model", "model_ref": "m1", "operation": "draft_scene",
+        "packed_prompt": "GROUNDING", "prompt_estimate": 10, "max_out": 1024,
+        "present_entity_ids": ["e1"], "scene_sort_order": 4, "beat_role": None, "tension": None,
+        "reasoning": "rule_based", "reasoning_effort": "medium", "reasoning_passthrough": False,
+        "grounding_available": True, "reinjected_promise_count": 2, "assembly_mode": "per_scene",
+        "reflect_max_iters": 1, "critic_source": None, "critic_ref": None,
+    }
+    out = await run_generate(object(), object(), object(), input=inp)
+    assert out["text"] == "draft B" and out["winner_index"] == 1 and out["k"] == 2
+    assert out["candidates"] == ["draft A", "draft B"]
+    assert out["output_tokens"] == 6 + 3  # winner output + revise tokens
+    assert out["canon"]["status"] == "ok"
+    assert out["reasoning_effort"] == "medium" and out["reinjected_promise_count"] == 2
+    assert out["persisted"] is False
+    # no distinct critic → judge falls back to the drafter; passthrough False → effort passed
+    assert seen["judge_ref"] == "m1" and seen["reasoning_effort"] == "medium"
+
+
+async def test_run_generate_select_failure_is_terminal(monkeypatch):
+    import app.db.repositories.works as works_mod
+    import app.engine.select as select_mod
+    import app.packer.profile as profile_mod
+    from app.worker.operations import run_generate
+    import pytest
+
+    class _FakeWorks:
+        def __init__(self, pool): ...
+        async def get(self, uid, pid):
+            return SimpleNamespace(settings={})
+
+    async def _boom(llm, judge, **kw):
+        raise RuntimeError("diverge produced nothing")
+
+    monkeypatch.setattr(works_mod, "WorksRepo", _FakeWorks)
+    monkeypatch.setattr(select_mod, "select_draft", _boom)
+    monkeypatch.setattr(profile_mod, "from_settings", lambda s: SimpleNamespace(source_language="en"))
+    inp = {"user_id": str(uuid4()), "project_id": str(uuid4()), "model_source": "user_model",
+           "model_ref": "m1", "operation": "draft_scene", "packed_prompt": "P",
+           "prompt_estimate": 1, "max_out": 100}
+    with pytest.raises(ValueError):  # → run_job marks 'failed' + ACK (mirrors inline 502)
+        await run_generate(object(), object(), object(), input=inp)
+
+
 async def test_run_decompose_reconstructs_chapterplans_from_input(monkeypatch):
     import app.engine.plan as plan_mod
 

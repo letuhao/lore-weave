@@ -361,12 +361,41 @@ async def generate(
         auto_source=str(work.settings.get("reasoning_engine", "rule_based")),
     )
 
+    # M4 — the worker decouples ONLY the AUTO compute (diverge→converge→reflect);
+    # the cowrite STREAM path stays inline (a worker can't stream to the client).
+    worker_auto = settings.composition_worker_enabled and body.mode == "auto"
+    job_input: dict[str, Any] = {
+        "model_source": body.model_source, "model_ref": str(body.model_ref),
+        "operation": body.operation, "prompt_estimate": prompt_estimate,
+        "reasoning": reasoning.source, "reasoning_effort": reasoning.effort,
+    }
+    if worker_auto:
+        # Serialize the bearer-resolved context (the worker has no user bearer to
+        # re-run pack()) + the scene signals the auto compute needs. worker_op is
+        # the canonical dispatch key (operation is the free-form prose op).
+        sdict = work.settings or {}
+        c_src, c_ref = sdict.get("critic_model_source"), sdict.get("critic_model_ref")
+        distinct = bool(c_ref and c_src and str(c_ref) != str(body.model_ref))
+        job_input.update({
+            "worker_op": "generate",
+            "packed_prompt": pc.prompt, "scene_sort_order": pc.scene_sort_order,
+            "present_entity_ids": [str(e) for e in (node.present_entity_ids or [])],
+            "beat_role": node.beat_role, "tension": node.tension,
+            "outline_node_id": str(node.id), "guide": body.guide,
+            "max_out": body.max_output_tokens,
+            "reasoning_passthrough": reasoning.passthrough,
+            "grounding_available": pc.grounding_available,
+            "reinjected_promise_count": pc.reinjected_promise_count,
+            "assembly_mode": assembly_mode,
+            "reflect_max_iters": max(0, min(3, int(sdict.get("reflect_max_iters", 1) or 1))),
+            "critic_source": str(c_src) if distinct else None,
+            "critic_ref": str(c_ref) if distinct else None,
+        })
+
     job, created = await jobs.create(
         user_id, project_id, operation=body.operation, outline_node_id=node.id,
-        mode=body.mode, status="running",
-        input={"model_source": body.model_source, "model_ref": str(body.model_ref),
-               "operation": body.operation, "prompt_estimate": prompt_estimate,
-               "reasoning": reasoning.source, "reasoning_effort": reasoning.effort},
+        mode=body.mode, status="pending" if worker_auto else "running",
+        input=job_input,
         idempotency_key=body.idempotency_key,
     )
     # S2: cancel OTHER in-flight jobs for this node — only when we actually
@@ -376,6 +405,26 @@ async def generate(
         for active in await jobs.list_active_for_node(user_id, project_id, node.id):
             if str(active.id) != str(job.id):
                 await jobs.update_status(user_id, active.id, "cancelled")
+
+    # M4 worker auto path: the pack/cancel/reasoning all ran above (bearer); now
+    # persist-input + enqueue + 202. GET /jobs/{id} polls the result. A same-key
+    # replay returns the existing job (don't re-enqueue).
+    if worker_auto:
+        if not created:
+            r = job.result or {}
+            return JSONResponse({"job_id": str(job.id), "mode": "auto", "replay": True,
+                                 "text": r.get("text", ""), "status": job.status,
+                                 "winner_index": r.get("winner_index"), "k": r.get("k"),
+                                 "candidates": r.get("candidates", []),
+                                 "assembly_mode": assembly_mode})
+        enqueued = await enqueue_job(
+            settings.redis_url, job_id=str(job.id),
+            user_id=str(user_id), project_id=str(project_id))
+        return JSONResponse(
+            status_code=http_status.HTTP_202_ACCEPTED,
+            content={"job_id": str(job.id), "status": "pending",
+                     "mode": "auto", "assembly_mode": assembly_mode,
+                     "enqueued": "ok" if enqueued else "retriggerable"})
 
     # ── AUTO path (V1 A1): diverge→converge, NON-stream, returns the winner. The
     # co-write STREAM path is below. The rerank judge prefers the work's DISTINCT
