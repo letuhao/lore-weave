@@ -1,0 +1,8 @@
+id: meta-lifecycle-cas
+description: "S4 (I9) — lifecycle transitions go through AttemptStateTransition with transition-graph validation + CAS. The metaprobe drives the REAL contracts/meta.AttemptStateTransition against a real meta DB: a legal edge (active→pending_close) succeeds, an illegal edge (active→archived, not adjacent) returns ErrInvalidTransition before any write, and a stale CAS (replayed from=active when the row moved on) returns ErrConcurrentStateTransition. A SQL CHECK cannot model the graph/CAS, hence a Go probe (not a SQL fallback). Runs go directly (go test -C, no shell)."
+invariant: I9
+kind: go-test
+command: ["go", "test", "-C", "tests/conformance", "-count=1", "-run", "TestS4MetaLifecycleCAS", "./internal/metaprobe/..."]
+requires: ["foundation-stack"]
+skip_when: []
+fail_closed_on_setup_error: false
