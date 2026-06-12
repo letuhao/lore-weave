@@ -42,10 +42,20 @@ def _bearer(sub: str = OWNER) -> str:
 
 
 def _patch_orchestration(monkeypatch, *, row, compute_result=None, compute_raises=None):
+    """Patch the race-safe claim + _mark so run_compose_task is unit-testable without a
+    DB. The claim (D-M2-COMPOSE-TASK-RACE) replaced the old load+mark-running: it returns
+    a (verdict, row) the worker branches on. We map the test's input row → the verdict
+    the real FOR-UPDATE claim would produce: 'completed' → already_completed (skip),
+    None → not_found, anything else → 'run' (claimed; row carried forward)."""
     marks: list = []
 
-    async def _load(pool, *, task_id, user_id=None):
-        return row
+    async def _claim(pool, *, task_id, idle_window_s):
+        if row is None:
+            return "not_found", None
+        if row["status"] == "completed":
+            return "already_completed", None
+        return "run", {"task_id": row["task_id"], "kind": row["kind"],
+                       "request": row["request"]}
 
     async def _mark(pool, *, task_id, status, result=None, error=None):
         marks.append({"status": status, "result": result, "error": error})
@@ -55,7 +65,7 @@ def _patch_orchestration(monkeypatch, *, row, compute_result=None, compute_raise
             raise compute_raises
         return compute_result
 
-    monkeypatch.setattr(ct, "load_compose_task", _load)
+    monkeypatch.setattr(ct, "_claim_for_run", _claim)
     monkeypatch.setattr(ct, "_mark", _mark)
     monkeypatch.setattr(ct, "compute_profile_suggest", _compute)
     monkeypatch.setattr(ct, "compute_intent_resolve", _compute)
@@ -83,8 +93,9 @@ def test_run_dispatches_and_completes(monkeypatch):
     marks = _patch_orchestration(monkeypatch, row=row, compute_result={"worldview": "w"})
     out = asyncio.run(ct.run_compose_task(object(), task_id=row["task_id"]))
     assert out == "completed"
-    # marked running first, then completed with the compute result.
-    assert [m["status"] for m in marks] == ["running", "completed"]
+    # the claim (patched) did the running-transition atomically; _mark now only writes
+    # the terminal 'completed' with the compute result.
+    assert [m["status"] for m in marks] == ["completed"]
     assert marks[-1]["result"] == {"worldview": "w"}
 
 
@@ -94,7 +105,8 @@ def test_run_business_error_marks_failed(monkeypatch):
         monkeypatch, row=row, compute_raises=CompletionSeamError("llm down"))
     out = asyncio.run(ct.run_compose_task(object(), task_id=row["task_id"]))
     assert out == "failed"
-    assert [m["status"] for m in marks] == ["running", "failed"]
+    # the claim transitioned to running; _mark records only the terminal 'failed'.
+    assert [m["status"] for m in marks] == ["failed"]
     assert "llm down" in marks[-1]["error"]
 
 

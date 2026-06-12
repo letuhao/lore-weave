@@ -11,6 +11,7 @@ import asyncio
 import logging
 import os
 
+from app.compose.compose_task import run_compose_task_sweeper
 from app.config import settings
 from app.db.pool import close_pool, create_pool
 from app.worker.heartbeat import heartbeat_loop
@@ -49,12 +50,26 @@ async def _main() -> None:
         if settings.reaper_enabled
         else None
     )
+    # Compose-task stuck sweeper (D-M2-COMPOSE-TASK-RACE / D-M2-COMPOSE-TASK-SWEEPER):
+    # re-drives enrichment_compose_task rows stranded in ('pending','running') past the
+    # timeout (a redis-miss at submit, or a worker crash mid-compute). Runs concurrently
+    # with the resume consumer; the idempotent FOR-UPDATE claim makes the two safe.
+    # interval<=0 disables it (run_compose_task_sweeper returns immediately).
+    compose_sweeper = asyncio.create_task(
+        run_compose_task_sweeper(
+            pool,
+            interval_s=settings.compose_task_sweep_interval_s,
+            timeout_s=settings.compose_task_sweep_timeout_s,
+            batch=settings.compose_task_sweep_batch,
+        )
+    )
     try:
         await consume_resume_stream(pool=pool, redis_url=settings.redis_url)
     finally:
         heartbeat.cancel()
         if reaper is not None:
             reaper.cancel()
+        compose_sweeper.cancel()
         await close_pool()
 
 

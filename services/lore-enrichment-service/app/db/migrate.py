@@ -634,6 +634,15 @@ CREATE TABLE IF NOT EXISTS enrichment_compose_task (
 
 CREATE INDEX IF NOT EXISTS idx_enrichment_compose_task_scope
   ON enrichment_compose_task(user_id, book_id, created_at DESC);
+
+-- D-M2-COMPOSE-TASK-SWEEPER — a partial index for the stuck-task sweep: the worker
+-- periodically scans for rows still ('pending','running') idle past a timeout (a
+-- redis-miss at submit, or a crash mid-compute) and re-drives them. The partial
+-- predicate keeps the index tiny (terminal rows are excluded), ordered by updated_at
+-- so the oldest-stranded LIMITed batch is a cheap index scan. ADDITIVE + idempotent.
+CREATE INDEX IF NOT EXISTS idx_enrichment_compose_task_stuck
+  ON enrichment_compose_task(updated_at)
+  WHERE status IN ('pending','running');
 """
 
 

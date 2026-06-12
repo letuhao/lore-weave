@@ -76,6 +76,26 @@ class Settings(BaseSettings):
     # this are reaped. Generous default (30d) so a recent paste still re-grounds.
     context_corpus_ttl_s: float = Field(default=30 * 24 * 3600.0, validation_alias="LORE_ENRICHMENT_CONTEXT_CORPUS_TTL_S")
 
+    # Compose-task stuck sweeper (D-M2-COMPOSE-TASK-RACE + D-M2-COMPOSE-TASK-SWEEPER) —
+    # a periodic worker sweep that re-drives `enrichment_compose_task` rows stranded in
+    # ('pending','running') past a timeout (a redis-miss at submit, or a worker that
+    # crashed mid-compute leaving a 'running' row no event will re-deliver). Mirrors
+    # worker-ai's Wave-1b resume sweeper. The timeout DOUBLES as the active-worker idle
+    # window for the FOR-UPDATE claim: a 'running' row touched MORE recently than the
+    # timeout is assumed live (another worker is on it) and is left alone; a staler row
+    # is fair game to re-drive. So the timeout MUST exceed the worst-case single-task
+    # compute (book metadata + sample-chapter fetch + ONE LLM call) — 900s (15m) gives
+    # generous headroom. interval<=0 disables the loop.
+    compose_task_sweep_interval_s: float = Field(
+        default=60.0, validation_alias="LORE_ENRICHMENT_COMPOSE_TASK_SWEEP_INTERVAL_S"
+    )
+    compose_task_sweep_timeout_s: float = Field(
+        default=900.0, validation_alias="LORE_ENRICHMENT_COMPOSE_TASK_SWEEP_TIMEOUT_S"
+    )
+    compose_task_sweep_batch: int = Field(
+        default=20, validation_alias="LORE_ENRICHMENT_COMPOSE_TASK_SWEEP_BATCH"
+    )
+
     port: int = 8093
 
     # C18 — structured-logging level. INFO in prod; DEBUG locally via env.

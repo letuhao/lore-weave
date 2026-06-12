@@ -23,6 +23,7 @@ suggest/intent — no cost cap).
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import Any
@@ -54,6 +55,8 @@ __all__ = [
     "run_compose_task",
     "compute_profile_suggest",
     "compute_intent_resolve",
+    "sweep_stuck_compose_tasks",
+    "run_compose_task_sweeper",
 ]
 
 logger = logging.getLogger("lore_enrichment.compose_task")
@@ -184,30 +187,109 @@ async def _mark(
 
 #: business-level failures the compute raises — a bad LLM output / upstream 5xx is
 #: a TERMINAL task outcome (mark failed + ACK), NOT an infra error to redeliver.
+#:
+#: D-M2-COMPOSE-TASK-POISON: a malformed ``request_json`` (a missing key the compute
+#: indexes, or a non-string id that fails ``UUID(...)``) raises KeyError/ValueError/
+#: TypeError — NOT one of the LLM-pipeline errors above. Without this it escaped as an
+#: "infra" error and the consumer left the message un-ACKed → a poison redelivery loop
+#: that re-failed forever. These are TERMINAL malformed-input outcomes (the input can
+#: never become valid on redelivery), so they join the business-fail set: mark the task
+#: 'failed' + return normally so the consumer ACKs.
 _BUSINESS_ERRORS = (
     CompletionSeamError,
     ProfileSuggestError,
     IntentResolutionError,
+    KeyError,
+    ValueError,
+    TypeError,
 )
 
 
+async def _claim_for_run(
+    pool: asyncpg.Pool, *, task_id: str, idle_window_s: float
+) -> tuple[str, dict[str, Any] | None]:
+    """Atomically CLAIM the task for this worker (D-M2-COMPOSE-TASK-RACE).
+
+    A naïve ``status='completed'`` guard with no row lock let two workers both read a
+    'pending'/'running' row, both compute, and last-write-wins. This takes the row
+    ``FOR UPDATE`` inside a transaction and decides in ONE critical section:
+
+      * 'completed'  → already done; skip (the legitimate idempotent skip survives).
+      * 'running' touched WITHIN ``idle_window_s`` → another worker is actively on it;
+        skip (don't double-compute). The SQL excludes such a row from the lock so a
+        concurrent claimant simply finds nothing.
+      * 'pending', OR a STALE 'running' row (idle > window — a crashed worker the
+        sweeper/redelivery must re-drive) → transition to 'running', bump
+        ``updated_at`` (so idle-detection stays accurate), and return it to compute.
+
+    Returns ``(verdict, row)`` where verdict ∈ {run, completed, skipped_active,
+    not_found} and row (the claimed task, request decoded) is set only for ``run``.
+    The ``updated_at`` bump + the SELECT are one transaction, so the claim is the
+    serialization point — a SKIP-LOCKED-style race-free hand-off."""
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            # Lock ONLY a claimable row: not completed, and (not running, OR running
+            # but stale). A 'running' row touched within the window is excluded, so a
+            # concurrent worker's claim finds no row (skipped_active). FOR UPDATE on the
+            # surviving row serialises two workers that both see it claimable.
+            row = await conn.fetchrow(
+                """SELECT task_id, kind, status, request_json
+                   FROM enrichment_compose_task
+                   WHERE task_id = $1
+                     AND status <> 'completed'
+                     AND (status <> 'running'
+                          OR updated_at < now() - ($2 * interval '1 second'))
+                   FOR UPDATE""",
+                UUID(task_id), idle_window_s,
+            )
+            if row is None:
+                # Either the row doesn't exist / is completed, or it's a fresh 'running'
+                # row another worker holds. Disambiguate with a lock-free status read so
+                # the log + the return verdict are honest.
+                cur = await conn.fetchval(
+                    "SELECT status FROM enrichment_compose_task WHERE task_id=$1",
+                    UUID(task_id),
+                )
+                if cur == "completed":
+                    return "already_completed", None
+                if cur == "running":
+                    return "skipped_active", None
+                return "not_found", None
+            # Claim it: transition to running + bump updated_at in the same tx.
+            await conn.execute(
+                """UPDATE enrichment_compose_task
+                   SET status='running', updated_at=now()
+                   WHERE task_id=$1""",
+                UUID(task_id),
+            )
+    return "run", {
+        "task_id": str(row["task_id"]),
+        "kind": row["kind"],
+        "request": _jsonb(row["request_json"]) or {},
+    }
+
+
 async def run_compose_task(pool: asyncpg.Pool, *, task_id: str) -> str:
-    """Run ONE compose task to terminal. Idempotent for at-least-once redelivery:
-    a 'completed' task returns immediately (no recompute); a crash mid-compute left
-    the row 'running' → a redelivery recomputes + overwrites (a duplicate LLM call
-    that converges). Returns a short status string for the log.
+    """Run ONE compose task to terminal. Idempotent + race-safe for at-least-once
+    redelivery AND a worker that scales >1 (D-M2-COMPOSE-TASK-RACE): a FOR-UPDATE claim
+    (:func:`_claim_for_run`) decides whether THIS worker owns the compute — a 'completed'
+    task is skipped (no recompute), a 'running' row another worker is actively on is
+    skipped (no double-compute), and a STALE 'running' row (a crash) is re-claimed +
+    recomputed. Returns a short status string for the log.
 
-    A business failure (bad LLM output / upstream error) marks the task 'failed'
-    and returns normally → the consumer ACKs (terminal). An INFRA error (DB/Redis)
-    propagates → the consumer leaves the message un-ACKed → redelivery."""
-    row = await load_compose_task(pool, task_id=task_id)
-    if row is None:
-        logger.warning("compose task %s not found — dropping", task_id)
-        return "not_found"
-    if row["status"] == "completed":
-        return "already_completed"
-
-    await _mark(pool, task_id=task_id, status="running")
+    A business failure — a bad LLM output / upstream error, OR a malformed request_json
+    (D-M2-COMPOSE-TASK-POISON: KeyError/ValueError/TypeError) — marks the task 'failed'
+    and returns normally → the consumer ACKs (terminal; redelivery can't fix it). An
+    INFRA error (DB/Redis) propagates → the consumer leaves the message un-ACKed →
+    redelivery."""
+    verdict, row = await _claim_for_run(
+        pool, task_id=task_id, idle_window_s=settings.compose_task_sweep_timeout_s
+    )
+    if verdict != "run":
+        if verdict == "not_found":
+            logger.warning("compose task %s not found — dropping", task_id)
+        return verdict
+    assert row is not None  # verdict == "run" ⇒ row is set
     kind, req = row["kind"], row["request"]
     try:
         if kind == "profile_suggest":
@@ -239,6 +321,87 @@ async def run_compose_task(pool: asyncpg.Pool, *, task_id: str) -> str:
 
     await _mark(pool, task_id=task_id, status="completed", result=result)
     return "completed"
+
+
+# ── stuck-task sweeper (D-M2-COMPOSE-TASK-SWEEPER) ─────────────────────────────
+# A redis-miss at submit strands a 'pending' row with no event to re-drive it, and a
+# worker crash leaves a 'running' row no terminal event re-delivers. This periodic
+# sweep mirrors worker-ai's Wave-1b resume sweeper: find rows idle past the timeout in
+# a non-terminal status and re-drive the idempotent run_compose_task (its FOR-UPDATE
+# claim makes a concurrent consumer + sweeper safe — only ONE re-drives any row).
+
+
+async def sweep_stuck_compose_tasks(
+    pool: asyncpg.Pool, *, timeout_s: float, batch: int
+) -> int:
+    """One sweep tick. Scan for ('pending','running') rows idle longer than
+    ``timeout_s`` and re-drive the idempotent :func:`run_compose_task` on each. Returns
+    the number re-driven (claimed + run; a row another worker grabbed in the interim is
+    not counted). One re-drive that raises is swallowed so the rest of the batch still
+    runs (advisory recovery must never abort mid-batch)."""
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """SELECT task_id
+               FROM enrichment_compose_task
+               WHERE status IN ('pending','running')
+                 AND updated_at < now() - ($1 * interval '1 second')
+               ORDER BY updated_at ASC
+               LIMIT $2::int""",
+            timeout_s, batch,
+        )
+    redriven = 0
+    for r in rows:
+        task_id = str(r["task_id"])
+        try:
+            out = await run_compose_task(pool, task_id=task_id)
+        except Exception:  # noqa: BLE001 — one stuck row's infra fault: try the next
+            logger.warning("compose-sweep: re-drive failed task=%s", task_id,
+                           exc_info=True)
+            continue
+        # Only count a row this sweep actually drove (claimed + ran / failed); a row a
+        # concurrent worker already owns returns skipped_active/already_completed.
+        if out in ("completed", "failed", "unknown_kind"):
+            redriven += 1
+            logger.warning("compose-sweep: re-drove stranded task=%s → %s",
+                           task_id, out)
+    return redriven
+
+
+async def run_compose_task_sweeper(
+    pool: asyncpg.Pool,
+    *,
+    interval_s: float,
+    timeout_s: float,
+    batch: int,
+    iterations: int | None = None,
+) -> None:
+    """Long-running periodic sweeper (gather'd in the worker startup alongside the
+    resume consumer). ``interval_s <= 0`` ⇒ disabled (returns immediately). Runs forever
+    unless ``iterations`` is given (tests). Cancel-safe; one bad tick is swallowed so the
+    loop survives a transient DB blip."""
+    if interval_s <= 0:
+        logger.info("compose-task sweeper disabled (interval<=0)")
+        return
+    logger.info(
+        "compose-task sweeper started (interval=%.0fs timeout=%.0fs batch=%d)",
+        interval_s, timeout_s, batch,
+    )
+    n = 0
+    while True:
+        try:
+            redriven = await sweep_stuck_compose_tasks(
+                pool, timeout_s=timeout_s, batch=batch
+            )
+            if redriven:
+                logger.info("compose-sweep: re-drove %d stranded task(s)", redriven)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 — one bad tick must not kill the loop
+            logger.exception("compose-task sweeper tick failed")
+        n += 1
+        if iterations is not None and n >= iterations:
+            return
+        await asyncio.sleep(interval_s)
 
 
 # ── compute: profile suggest ──────────────────────────────────────────────────
