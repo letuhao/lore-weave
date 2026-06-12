@@ -29,6 +29,7 @@ from app.worker.operations import (
     run_chapter_generate,
     run_decompose,
     run_generate,
+    run_selection_edit,
     run_stitch,
 )
 
@@ -119,6 +120,11 @@ async def _run_operation(pool: asyncpg.Pool, llm: LLMClient, job) -> dict:
         inp.setdefault("user_id", str(job.user_id))
         inp.setdefault("project_id", str(job.project_id))
         return await run_chapter_generate(pool, llm, get_knowledge_client(), input=inp)
+    if op == "selection_edit":
+        # No knowledge / pool needed — the endpoint pre-built the message list.
+        inp = dict(job.input or {})
+        inp.setdefault("user_id", str(job.user_id))
+        return await run_selection_edit(llm, input=inp)
     raise UnsupportedOperationError(op)
 
 

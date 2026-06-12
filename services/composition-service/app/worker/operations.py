@@ -30,6 +30,7 @@ __all__ = [
     "run_stitch",
     "run_generate",
     "run_chapter_generate",
+    "run_selection_edit",
 ]
 
 logger = logging.getLogger("composition.worker.operations")
@@ -70,7 +71,9 @@ async def _maybe_narrative_threads(
 #: decompose/stitch this equals the job's ``operation`` column; for generate the
 #: ``operation`` is the user's free-form prose op ("draft_scene", …), so the
 #: canonical worker-op is carried in ``input['worker_op']`` and matched there too.
-SUPPORTED_OPERATIONS = ("decompose_preview", "stitch_chapter", "generate", "chapter_generate")
+SUPPORTED_OPERATIONS = (
+    "decompose_preview", "stitch_chapter", "generate", "chapter_generate", "selection_edit",
+)
 
 
 async def run_decompose(llm: LLMClient, *, user_id: str, input: dict[str, Any]) -> dict[str, Any]:
@@ -383,4 +386,44 @@ async def run_chapter_generate(
         "reasoning_source": input.get("reasoning"), "reasoning_effort": effort,
         "reinjected_promise_count": input.get("reinjected_promise_count"),
         "max_output_tokens": max_out,
+    }
+
+
+async def run_selection_edit(llm: LLMClient, *, input: dict[str, Any]) -> dict[str, Any]:
+    """Run the T3.2 selection-scoped edit (rewrite/expand/describe) as a batch job
+    — drain ``stream_draft`` to the final text + metering (a worker can't stream to
+    the client, so the FE polls GET /jobs/{id} instead). The endpoint already built
+    the full message list (selection + voice/scene grounding) into ``input``, so
+    this needs no pack / profile / knowledge. The FE replaces the Tiptap range on
+    Accept; no server persistence (``persisted=False``)."""
+    from app.engine.cowrite import stream_draft
+
+    user_id = input["user_id"]
+    messages = input["messages"]
+    prompt_estimate = input["prompt_estimate"]
+    max_out = input["max_out"]
+    effort = input.get("reasoning_effort")
+    effort_arg = None if input.get("reasoning_passthrough") else effort
+
+    final: dict[str, Any] | None = None
+    async for ev in stream_draft(
+        llm.sdk, user_id=user_id,
+        model_source=input["model_source"], model_ref=input["model_ref"],
+        messages=messages, prompt_token_estimate=prompt_estimate,
+        max_output_tokens=max_out, hard_cap_output=max_out * 2,
+        reasoning_effort=effort_arg,
+    ):
+        if ev["type"] == "usage":
+            final = ev
+    if final is None:  # no usage frame → the stream produced nothing (terminal fail)
+        raise ValueError("selection edit produced no output")
+
+    m = final["metering"]
+    return {
+        "text": final["text"], "input_tokens": m.input_tokens,
+        "output_tokens": m.output_tokens, "measured": m.measured,
+        "finish_reason": m.finish_reason, "selection_edit": True,
+        "grounding_available": input.get("grounding_available"),
+        "reasoning_source": input.get("reasoning"), "reasoning_effort": effort,
+        "persisted": False,
     }

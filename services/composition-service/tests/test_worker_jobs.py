@@ -371,6 +371,64 @@ async def test_run_chapter_generate_single_pass_no_persist(monkeypatch):
     assert seen["reasoning_effort"] is None  # passthrough → omit effort
 
 
+async def test_run_job_dispatches_selection_edit_via_worker_op(monkeypatch):
+    job = _job(operation="rewrite", input={"worker_op": "selection_edit", "messages": []})
+    repo = _FakeRepo(job)
+    monkeypatch.setattr(jc, "GenerationJobsRepo", lambda pool: repo)
+
+    captured: dict = {}
+
+    async def _rse(llm, *, input):
+        captured.update(input)
+        return {"text": "edited prose", "persisted": False, "selection_edit": True}
+
+    monkeypatch.setattr(jc, "run_selection_edit", _rse)
+    out = await jc.run_job(object(), object(), job_id=str(job.id), user_id=str(job.user_id))
+    assert out == "completed"
+    assert repo.updates[-1][1]["text"] == "edited prose"
+    assert captured["user_id"] == str(job.user_id)  # injected off the job row
+
+
+async def test_run_selection_edit_drains_stream_to_final(monkeypatch):
+    import app.engine.cowrite as cowrite_mod
+    from app.engine.cowrite import DraftMetering
+    from app.worker.operations import run_selection_edit
+
+    async def _fake_stream(sdk, **kw):
+        yield {"type": "token", "delta": "ed"}
+        yield {"type": "usage", "text": "edited replacement",
+               "metering": DraftMetering(20, 8, True, finish_reason="stop")}
+
+    monkeypatch.setattr(cowrite_mod, "stream_draft", _fake_stream)
+    inp = {
+        "user_id": str(uuid4()), "model_source": "user_model", "model_ref": "m1",
+        "messages": [{"role": "system", "content": "voice"},
+                     {"role": "user", "content": "rewrite: the gate rose"}],
+        "prompt_estimate": 5, "max_out": 512, "reasoning_passthrough": True,
+        "reasoning_effort": None, "reasoning": "rule_based", "grounding_available": True,
+    }
+    out = await run_selection_edit(SimpleNamespace(sdk=object()), input=inp)
+    assert out["text"] == "edited replacement" and out["output_tokens"] == 8
+    assert out["finish_reason"] == "stop" and out["selection_edit"] is True
+    assert out["persisted"] is False and out["grounding_available"] is True
+
+
+async def test_run_selection_edit_no_output_is_terminal(monkeypatch):
+    import app.engine.cowrite as cowrite_mod
+    from app.worker.operations import run_selection_edit
+    import pytest
+
+    async def _empty_stream(sdk, **kw):
+        if False:
+            yield  # never yields a usage frame
+
+    monkeypatch.setattr(cowrite_mod, "stream_draft", _empty_stream)
+    inp = {"user_id": str(uuid4()), "model_source": "user_model", "model_ref": "m1",
+           "messages": [], "prompt_estimate": 1, "max_out": 100}
+    with pytest.raises(ValueError):  # no usage frame → run_job marks 'failed'
+        await run_selection_edit(SimpleNamespace(sdk=object()), input=inp)
+
+
 async def test_run_decompose_reconstructs_chapterplans_from_input(monkeypatch):
     import app.engine.plan as plan_mod
 

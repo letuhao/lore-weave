@@ -684,6 +684,32 @@ async def selection_edit(
     # rewritten fragment, no canon block) would masquerade as the scene's draft and
     # corrupt the stitch / reinjection / gate. The scene id stays in `input` for
     # traceability only.
+    if settings.composition_worker_enabled:
+        # M4 — batch/poll variant: the endpoint already built the message list
+        # (selection + voice/scene grounding, bearer-resolved); persist it + enqueue
+        # → 202. The worker drains stream_draft to the final text (no streaming) and
+        # stores the result; the FE polls GET /jobs/{id} then replaces the range on
+        # Accept. outline_node_id stays None (same HIGH rationale above).
+        job, _created = await jobs.create(
+            user_id, project_id, operation=body.operation, outline_node_id=None,
+            mode="cowrite", status="pending",
+            input={"model_source": body.model_source, "model_ref": str(body.model_ref),
+                   "operation": body.operation, "worker_op": "selection_edit",
+                   "selection_edit": True,
+                   "scene_context": str(node.id) if node is not None else None,
+                   "messages": messages, "prompt_estimate": prompt_estimate,
+                   "max_out": body.max_output_tokens,
+                   "reasoning": reasoning.source, "reasoning_effort": reasoning.effort,
+                   "reasoning_passthrough": reasoning.passthrough,
+                   "grounding_available": bool(grounding)})
+        enqueued = await enqueue_job(
+            settings.redis_url, job_id=str(job.id),
+            user_id=str(user_id), project_id=str(project_id))
+        return JSONResponse(
+            status_code=http_status.HTTP_202_ACCEPTED,
+            content={"job_id": str(job.id), "status": "pending", "selection_edit": True,
+                     "enqueued": "ok" if enqueued else "retriggerable"})
+
     job, created = await jobs.create(
         user_id, project_id, operation=body.operation,
         outline_node_id=None,
