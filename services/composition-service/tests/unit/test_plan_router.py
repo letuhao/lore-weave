@@ -139,6 +139,51 @@ def test_decompose_preview_returns_tree(ctx, monkeypatch):
     assert body["chapters"][0]["scenes"][0]["suggested_k"] == 1
 
 
+def test_decompose_preview_worker_enabled_enqueues_202(ctx, monkeypatch):
+    # D-M4-DECOMPOSE-ENDPOINT-TEST: with the composition worker ON, the endpoint
+    # persists the FULLY-RESOLVED decompose args (the worker has no bearer to
+    # re-fetch book/cast) + enqueues + returns 202 — and must NOT run the inline
+    # planner. Mirrors the worker-202 tests the other M4 ops already have.
+    c, *_ = ctx
+    monkeypatch.setattr("app.routers.plan.settings.composition_worker_enabled", True)
+
+    job_id = uuid.uuid4()
+    created: dict = {}
+
+    class FakeJob:
+        id = job_id
+
+    class FakeJobsRepo:
+        async def create(self, user_id, project_id, *, operation, mode, status, input):
+            created.update(operation=operation, mode=mode, status=status, input=input)
+            return FakeJob(), True
+
+    enqueued: dict = {}
+
+    async def fake_enqueue(redis_url, *, job_id, user_id, project_id):
+        enqueued.update(job_id=job_id, user_id=user_id, project_id=project_id)
+        return True
+
+    async def fail_decompose(*a, **kw):
+        raise AssertionError("inline decompose must NOT run when the worker is enabled")
+
+    monkeypatch.setattr("app.routers.plan.get_generation_jobs_repo", lambda: FakeJobsRepo())
+    monkeypatch.setattr("app.routers.plan.enqueue_job", fake_enqueue)
+    monkeypatch.setattr("app.routers.plan.decompose", fail_decompose)
+
+    r = c.post(f"/v1/composition/works/{PROJECT}/outline/decompose", json=_decompose_body())
+    assert r.status_code == 202
+    body = r.json()
+    assert body["job_id"] == str(job_id)
+    assert body["status"] == "pending"
+    assert body["enqueued"] == "ok"
+    # persisted under the right op + carries the resolved args the bearer-less worker needs
+    assert created["operation"] == "decompose_preview" and created["status"] == "pending"
+    assert "chapters" in created["input"] and "cast" in created["input"]
+    # the enqueued job is the persisted one (so GET /jobs/{id} can poll it)
+    assert enqueued["job_id"] == str(job_id) and enqueued["project_id"] == str(PROJECT)
+
+
 def test_decompose_preview_template_not_found_404(ctx, monkeypatch):
     c, _, _, _, _, templates = ctx
     templates.template = None
