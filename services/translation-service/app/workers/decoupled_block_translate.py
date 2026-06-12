@@ -306,30 +306,58 @@ async def resume(
             rs = row["resume_state"]
             rs = rs if isinstance(rs, dict) else json.loads(rs)
 
+            # Capture the batch + attempt BEFORE the fold so we can write the per-batch
+            # observability row (D-2B-T3A-BLOCK-CHUNK-ROWS) when this batch RESOLVES.
+            prev_idx = rs["batch_idx"]
+            prev_batch = rs["batches"][prev_idx]
+            prev_attempt = rs["attempt"]
+            prev_memo = rs.get("rolling_summary")
+
             if job.status != "completed":
                 # Permanent batch failure — accept what we have so far as a failed attempt
                 # at the LAST attempt boundary (mirrors translate_batch_with_retry's break).
+                obs_parsed, obs_in, obs_out = {}, 0, 0
+                obs_errors, obs_warnings, obs_corr = [f"job status={job.status}"], [], 0
+                obs_retry = rs["max_retries"]
                 rs = apply_batch_result(
                     dict(rs, attempt=rs["max_retries"]), parsed={}, in_tok=0, out_tok=0,
-                    valid=False, errors=[f"job status={job.status}"],
+                    valid=False, errors=obs_errors,
                 )
             else:
                 response_text, in_tok, out_tok = _parse_sdk_response(job)
-                batch = rs["batches"][rs["batch_idx"]]
-                block_indices = batch["block_indices"]
-                input_texts = {int(k): v for k, v in batch["input_texts"].items()}
+                block_indices = prev_batch["block_indices"]
+                input_texts = {int(k): v for k, v in prev_batch["input_texts"].items()}
                 parsed = parse_translated_blocks(response_text, block_indices)
                 validation = validate_translation_output(parsed, block_indices, input_texts)
                 # Glossary auto-correct (only matters on an accepted batch; harmless on retry).
                 cmap = rs["glossary_correction_map"]
+                obs_corr = 0
                 if cmap and parsed:
                     for idx in list(parsed.keys()):
                         corrected, count = auto_correct_glossary(parsed[idx], cmap)
                         if count > 0:
                             parsed[idx] = corrected
+                            obs_corr += count
+                obs_parsed, obs_in, obs_out = parsed, in_tok, out_tok
+                obs_errors, obs_warnings, obs_retry = validation.errors, validation.warnings, prev_attempt
                 rs = apply_batch_result(
                     rs, parsed=parsed, in_tok=in_tok, out_tok=out_tok,
                     valid=validation.valid, errors=validation.errors,
+                )
+
+            # The batch RESOLVED (accepted, or failed at the last attempt) iff batch_idx
+            # advanced — write its chunk row + stage metric once, here (a retry keeps the
+            # same batch_idx → no row yet). Under the lock, but on the chunks table (not
+            # the locked chapter_translations row) → no self-deadlock.
+            if rs["batch_idx"] > prev_idx:
+                bi = prev_batch["block_indices"]
+                translated = "\n".join(obs_parsed.get(i, "") for i in bi) if obs_parsed else None
+                await _record_block_chunk(
+                    conn, ct_id=chapter_translation_id, batch_idx=prev_idx, blocks=len(bi),
+                    source_text=prev_batch["combined"], memo=prev_memo, translated=translated,
+                    in_tok=obs_in, out_tok=obs_out,
+                    status="completed" if obs_parsed else "failed",
+                    errors=obs_errors, warnings=obs_warnings, corrections=obs_corr, retry=obs_retry,
                 )
 
             action = decide_block_action(rs)
@@ -401,6 +429,37 @@ async def _submit_next_batch(
 async def _record_glossary_usage(pool, ct_id: UUID, used_entity_ids) -> None:
     from .session_translator import _record_glossary_usage as _impl
     await _impl(pool, ct_id, used_entity_ids)
+
+
+async def _record_block_chunk(
+    ex, *, ct_id: UUID, batch_idx: int, blocks: int, source_text: str,
+    memo: str | None, translated: str | None, in_tok: int, out_tok: int,
+    status: str, errors: list[str], warnings: list[str], corrections: int, retry: int,
+) -> None:
+    """D-2B-T3A-BLOCK-CHUNK-ROWS / -OBSERVABILITY — observability parity with the sync
+    block path: write the per-batch chapter_translation_chunks row (incl. the V6 quality
+    columns: validation errors/warnings, glossary_corrections, retry_count) + the
+    translation.batch stage metric. Reuses the sync helpers for column parity. Best-effort
+    — a telemetry failure must NEVER break the decoupled translation (resume_state is the
+    source of truth for resume; chunk rows are read-only telemetry)."""
+    from ..metrics import record_stage
+    from .session_translator import _insert_chunk_row, _update_block_chunk_row
+    try:
+        chunk_row_id = await _insert_chunk_row(ex, ct_id, batch_idx, source_text, memo or "")
+        await _update_block_chunk_row(
+            ex, chunk_row_id, translated, in_tok, out_tok, status,
+            errors, warnings, corrections, retry,
+        )
+        record_stage(
+            "translation.batch", pipeline="block", batch_idx=batch_idx,
+            blocks=blocks, in_tokens=in_tok, out_tokens=out_tok, retries=retry,
+            status=status, ct=str(ct_id),
+        )
+    except Exception:  # noqa: BLE001 — observability must not break the resume
+        log.warning(
+            "decoupled-block: chunk-row/record_stage failed (ct=%s batch=%d, non-fatal)",
+            ct_id, batch_idx, exc_info=True,
+        )
 
 
 async def _persist_inflight(ex, ct_id: UUID, provider_job_id, rs: dict) -> None:

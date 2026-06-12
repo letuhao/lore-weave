@@ -117,3 +117,32 @@ async def test_persist_inflight_bumps_updated_at(engine):
     assert "updated_at=now()" in sql
     # sanity: still a chapter_translations UPDATE keyed by id
     assert "UPDATE chapter_translations" in sql and "WHERE id=$1" in sql
+
+
+# ── D-2B-T3A-BLOCK-CHUNK-ROWS — per-batch observability row ───────────────────
+
+@pytest.mark.asyncio
+async def test_record_block_chunk_writes_row_with_quality_columns():
+    ex = AsyncMock()
+    ex.fetchrow = AsyncMock(return_value={"id": uuid4()})  # _insert_chunk_row RETURNING id
+    await block._record_block_chunk(
+        ex, ct_id=uuid4(), batch_idx=2, blocks=3, source_text="src", memo="memo",
+        translated="vi", in_tok=5, out_tok=7, status="completed",
+        errors=["e1"], warnings=["w1"], corrections=4, retry=1,
+    )
+    ex.fetchrow.assert_awaited_once()   # inserted/UPSERTed the chunk row
+    ex.execute.assert_awaited_once()    # _update_block_chunk_row (V6 quality columns)
+    upd_sql = ex.execute.call_args.args[0]
+    assert "validation_errors" in upd_sql and "glossary_corrections" in upd_sql and "retry_count" in upd_sql
+
+
+@pytest.mark.asyncio
+async def test_record_block_chunk_is_non_fatal():
+    ex = AsyncMock()
+    ex.fetchrow = AsyncMock(side_effect=RuntimeError("db down"))
+    # Observability must never break the resume — no exception propagates.
+    await block._record_block_chunk(
+        ex, ct_id=uuid4(), batch_idx=0, blocks=1, source_text="s", memo=None,
+        translated=None, in_tok=0, out_tok=0, status="failed",
+        errors=["x"], warnings=[], corrections=0, retry=3,
+    )
