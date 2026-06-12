@@ -152,7 +152,16 @@ func (w *Worker) finalizeAndNotify(
 	}
 	rows, err := w.repo.FinalizeWithUsageOutbox(ctx, jobID, ownerUserID, status, result, errorCode, errorMessage, finishReason, usage, term)
 	if err != nil {
-		w.logger.Error("finalize failed", "job_id", jobID.String(), "err", err)
+		// D-CANCEL-FINALIZE-LOG-NOISE — a cancel-race aborts this finalize via the
+		// request ctx (context.Canceled). That's harmless: the cancel handler
+		// already finalized/emitted/freed the slot. Log it at Debug, not Error, so
+		// a normal user-stop doesn't spam the error log. Genuine finalize failures
+		// (DB error, etc.) still surface at Error.
+		if errors.Is(err, context.Canceled) {
+			w.logger.Debug("finalize aborted by cancel-race", "job_id", jobID.String(), "err", err)
+		} else {
+			w.logger.Error("finalize failed", "job_id", jobID.String(), "err", err)
+		}
 		return
 	}
 	if rows == 0 {

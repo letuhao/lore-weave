@@ -224,6 +224,12 @@ async def _run_composer(
         kwargs["max_tokens"] = max_tokens
     if gen_params.get("temperature") is not None:
         kwargs["temperature"] = gen_params["temperature"]
+    # D-M3-COMPOSER-SUBSTREAM-OBSERVABILITY — mint a job id so the gateway
+    # persists a billing-neutral observability row for the composer sub-stream
+    # too (and a disconnect frees the slot via the aclose cascade), exactly like
+    # the main chat helpers. Billing-neutral: usage is still summed by the
+    # orchestrator from the composer's UsageEvents.
+    kwargs["stream_job_id"] = str(uuid4())
     req = StreamRequest(**kwargs)
     parts: list[str] = []
     used_in = 0
