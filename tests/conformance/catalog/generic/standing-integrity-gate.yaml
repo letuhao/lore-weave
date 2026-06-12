@@ -1,0 +1,13 @@
+id: standing-integrity-gate
+description: "S5 — standing integrity gate (Battery B). Seeds N shards in parallel via the workload generator (distinct seed ⇒ distinct stream + reality_id), rebuilds projections, registers them in a meta reality_registry, then runs the REAL integrity-checker (sample → replay-aggregate → `to_jsonb - meta` byte-compare). Gate = checker exit 0 ∧ SUM(drift_count)==0 ∧ per-table COVERAGE (verified ∧ sampled) over the 6 populated tables. Runs `--bite` so the pass embeds the non-vacuity proof: corrupting a whole populated table flips drift 0→>0."
+invariant: I-projection-equals-replay
+kind: live-probe
+command: ["bash", "scripts/standing-integrity-gate-smoke.sh", "--bite"]
+# foundation-stack = PG + Redis reachable. The gate only needs PG (it creates its
+# own meta + N shard DBs and runs no sibling services), but the predicate gates on
+# both; on a bare runner → notrun (no false green). The integrity-checker +
+# rebuilder + replay-aggregate + workload-gen binaries must be prebuilt (absent →
+# exit 2 → notrun, same as the pipeline smoke's rebuilder guard).
+requires: ["foundation-stack"]
+skip_when: []
+fail_closed_on_setup_error: false
