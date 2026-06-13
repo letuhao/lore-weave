@@ -1440,3 +1440,6 @@
 {"ts":"2026-06-12T23:31:18Z","event":"startup_verifier_complete","cycle":1,"steps":6}
 {"ts": "2026-06-12T23:31:28Z", "event": "in_progress_init", "cycle": 1, "title": "Rerank registration (FE)"}
 {"ts": "2026-06-12T23:31:42Z", "event": "in_progress_update", "cycle": 1, "phase": "BUILD", "retry": 0}
+{"ts": "2026-06-13T00:02:48Z", "event": "coordinator_next_cycle_emitted", "cycle": 2}
+{"ts":"2026-06-13T02:13:51Z","event":"verify_cycle_2_failed","cycle":2}
+{"ts":"2026-06-13T02:14:27Z","event":"verify_cycle_2_passed","cycle":2}

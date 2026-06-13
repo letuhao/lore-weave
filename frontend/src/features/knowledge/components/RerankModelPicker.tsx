@@ -117,6 +117,15 @@ export function RerankModelPicker({ value, onChange, disabled }: Props) {
               'No rerank-capable models configured. Register one to enable junk-rejection.',
           })}
           <AddModelCta capability={RERANK_CAPABILITY} variant="link" />
+          {/* C2 (BL-2): setup guidance for the discovery path — self-hosted rerank
+              models are auto-discovered from a local-rerank (Cohere-compatible)
+              credential on Refresh, no hand-tagging needed. */}
+          <span className="text-muted-foreground/75">
+            {t('projects.form.rerankDiscoveryHint', {
+              defaultValue:
+                'Self-hosted? Add a local-rerank (Cohere-compatible) credential in AI Models, then Refresh — rerank models are auto-discovered.',
+            })}
+          </span>
         </span>
       )}
       <span className="text-[11px] text-muted-foreground">
