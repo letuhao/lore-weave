@@ -240,6 +240,13 @@ func (OSEnvironment) Provides(req string) bool {
 		// provides it.
 		_, err := exec.LookPath("cargo")
 		return err == nil
+	case "k6", "hyperfine", "benchstat", "bencher", "node":
+		// S7 perf generators (F2–F5). Absent on the Go-only bare runner → the
+		// perf live-probes degrade to notrun instead of fail-closed; the perf
+		// CI jobs install them. benchstat also resolves from GOPATH/bin (go
+		// install) — LookPath covers that when GOPATH/bin is on PATH.
+		_, err := exec.LookPath(req)
+		return err == nil
 	case "foundation-stack":
 		// "the live stack is up" = BOTH the foundation Postgres AND Redis are
 		// reachable (publisher-smoke needs both; a PG-only check would

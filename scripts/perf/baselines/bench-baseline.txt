@@ -1,0 +1,30 @@
+goos: windows
+goarch: amd64
+pkg: github.com/loreweave/foundation/tests/perf/bench
+cpu: 13th Gen Intel(R) Core(TM) i9-13900K
+BenchmarkEventMarshal-32        	  467978	      2153 ns/op	    1428 B/op	      23 allocs/op
+BenchmarkEventMarshal-32        	  607723	      1938 ns/op	    1428 B/op	      23 allocs/op
+BenchmarkEventMarshal-32        	  630331	      2392 ns/op	    1428 B/op	      23 allocs/op
+BenchmarkEventMarshal-32        	  402087	      3170 ns/op	    1428 B/op	      23 allocs/op
+BenchmarkEventMarshal-32        	  390855	      3201 ns/op	    1428 B/op	      23 allocs/op
+BenchmarkEventMarshal-32        	  430002	      3153 ns/op	    1428 B/op	      23 allocs/op
+BenchmarkEventUnmarshal-32      	  177138	      6875 ns/op	    1888 B/op	      56 allocs/op
+BenchmarkEventUnmarshal-32      	  176619	      6866 ns/op	    1888 B/op	      56 allocs/op
+BenchmarkEventUnmarshal-32      	  175383	      7022 ns/op	    1888 B/op	      56 allocs/op
+BenchmarkEventUnmarshal-32      	  166155	      6942 ns/op	    1888 B/op	      56 allocs/op
+BenchmarkEventUnmarshal-32      	  157932	      6852 ns/op	    1888 B/op	      56 allocs/op
+BenchmarkEventUnmarshal-32      	  175473	      6992 ns/op	    1888 B/op	      56 allocs/op
+BenchmarkEnvelopeValidate-32    	383867580	         3.174 ns/op
+BenchmarkEnvelopeValidate-32    	362837241	         3.323 ns/op
+BenchmarkEnvelopeValidate-32    	353643886	         3.340 ns/op
+BenchmarkEnvelopeValidate-32    	400383165	         3.176 ns/op
+BenchmarkEnvelopeValidate-32    	366744578	         3.271 ns/op
+BenchmarkEnvelopeValidate-32    	364972272	         3.247 ns/op
+BenchmarkPerfGateBite-32        	  313009	      3200 ns/op
+BenchmarkPerfGateBite-32        	  385894	      3193 ns/op
+BenchmarkPerfGateBite-32        	  374528	      3241 ns/op
+BenchmarkPerfGateBite-32        	  365175	      3162 ns/op
+BenchmarkPerfGateBite-32        	  381854	      3187 ns/op
+BenchmarkPerfGateBite-32        	  380132	      3186 ns/op
+PASS
+ok  	github.com/loreweave/foundation/tests/perf/bench	32.009s

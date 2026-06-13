@@ -118,3 +118,91 @@ jobs:
           name: standing-integrity-results
           path: tests/conformance/results/
           if-no-files-found: warn
+
+  perf-micro-bench:
+    name: S7/F2 perf micro-bench gate (per-PR)
+    # In-toolchain (Go + benchstat), fast, no live stack → gates per-PR like
+    # loom-ci. Two checks: (1) --bite proves the benchstat gate is non-vacuous;
+    # (2) --ci-ab benches the base ref + HEAD on the SAME runner (S7 review
+    # HIGH-2) and fails on a significant sec/op regression. The committed
+    # baseline is informational-only and is NOT read here.
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # need the base ref for the same-runner A/B
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - name: install benchstat
+        run: |
+          go install golang.org/x/perf/cmd/benchstat@latest
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: gate non-vacuity (--bite must fire)
+        run: bash scripts/perf/bench-gate.sh --bite
+      - name: regression gate vs base (same-runner A/B)
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          [ -n "$base" ] || base="$(git rev-parse HEAD~1 2>/dev/null || echo HEAD)"
+          set +e
+          bash scripts/perf/bench-gate.sh --ci-ab "$base"
+          rc=$?
+          set -e
+          # exit 1 = real regression → fail the job; exit 2 = notrun (base lacks
+          # the benches on first introduction) → green.
+          [ "$rc" = 1 ] && exit 1 || exit 0
+
+  perf-nightly:
+    name: S7/F3+F4 perf battery (nightly — live, hyperfine + k6)
+    # Heavy live perf battery: builds the spine binaries + game-server, boots the
+    # stack, installs hyperfine + k6, and runs the wall-clock USL sweep (F3) + the
+    # open-loop game-server load (F4). No threshold asserted — uploads the baseline
+    # artifacts. schedule fires only on main; workflow_dispatch is the manual smoke.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - uses: grafana/setup-k6-action@v1
+      - name: install hyperfine
+        run: cargo install hyperfine --locked
+      - name: build spine binaries (no .exe on Linux)
+        run: |
+          cargo build -p world-service --bin rebuilder --bin replay-aggregate
+          go build -C tests/workload-gen -o wg ./cmd/workload-gen
+          go build -C services/integrity-checker -o ic ./cmd/integrity-checker
+      - name: discover binaries (target/debug + module dirs)
+        run: |
+          cp target/debug/rebuilder target/debug/replay-aggregate ./ 2>/dev/null || true
+      - name: boot foundation stack (PG + Redis)
+        run: |
+          docker compose -f infra/foundation-dev/docker-compose.yml up -d postgres-foundation redis-foundation
+          for _ in $(seq 1 30); do
+            if docker exec foundation-dev-postgres pg_isready -U foundation >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+      - name: F3 hyperfine USL sweep
+        env:
+          REBUILDER_BIN: target/debug/rebuilder
+        run: |
+          set +e; bash scripts/perf/hyperfine-binaries.sh; rc=$?; set -e
+          [ "$rc" = 1 ] && exit 1 || echo "F3 rc=$rc (0=pass,2=notrun)"
+      - name: F4 k6 + WS vs game-server
+        run: |
+          set +e; bash scripts/perf/k6-game-server.sh; rc=$?; set -e
+          [ "$rc" = 1 ] && exit 1 || echo "F4 rc=$rc (0=pass,2=notrun)"
+      - name: upload perf artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-results
+          path: tests/conformance/results/
+          if-no-files-found: warn

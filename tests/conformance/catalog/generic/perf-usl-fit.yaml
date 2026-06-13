@@ -1,0 +1,10 @@
+id: perf-usl-fit
+description: "S7/F1 — USL curve-fitter coefficient-recovery bite. Fits the Universal Scalability Law to synthetic throughput-vs-CONCURRENCY data generated from KNOWN (gamma,alpha,beta) and asserts recovery within tolerance, plus the beta=0 'no hallucinated knee' bite and the alpha>=1/beta<=0 degeneracy guard (Nmax=+Inf, never NaN). In-toolchain (Go) so it runs everywhere — the load-bearing perf-method non-vacuity proof."
+invariant: I-perf-usl-nonvacuous
+kind: go-test
+# go-test is ALWAYS fail-closed on a setup/build error (a fit-math regression is
+# real breakage, not "couldn't run"); needs only the Go toolchain (always present
+# on the conformance runner).
+command: ["bash", "-c", "cd tests/perf && go test ./usl/..."]
+requires: []
+skip_when: []

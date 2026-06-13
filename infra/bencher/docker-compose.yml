@@ -1,0 +1,40 @@
+# Self-hosted Bencher — S7 deliverable F5 (validate the §11 open decision:
+# "Confirm Bencher self-host" before committing it as the cross-lang perf gate).
+#
+# ISOLATED from the foundation-dev stack (own compose, own volume, own network,
+# non-conflicting ports — foundation-dev pattern). The console default :3000
+# clashes with ContextHub MCP + the api-gateway-bff container, so it is moved to
+# 63000 here; both ports are env-overridable.
+#
+#   docker compose -f infra/bencher/docker-compose.yml up -d
+#   docker compose -f infra/bencher/docker-compose.yml down        # (no -v: keep data)
+#
+# Images pinned to v0.6.6 (the stable line at S7 authoring, 2026-06-13).
+services:
+  bencher-api:
+    image: ${BENCHER_API_IMAGE:-ghcr.io/bencherdev/bencher-api:v0.6.6}
+    container_name: bencher-api
+    ports:
+      - "127.0.0.1:${BENCHER_API_PORT:-61016}:61016"
+    volumes:
+      - bencher-data:/var/lib/bencher/data
+    healthcheck:
+      # /v0/server/version is the public health/version endpoint.
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:61016/v0/server/version || exit 1"]
+      interval: 5s
+      retries: 20
+
+  bencher-console:
+    image: ${BENCHER_CONSOLE_IMAGE:-ghcr.io/bencherdev/bencher-console:v0.6.6}
+    container_name: bencher-console
+    depends_on:
+      - bencher-api
+    environment:
+      # Browser-facing API URL (host-mapped) + the in-network URL for SSR calls.
+      BENCHER_API_URL: "http://127.0.0.1:${BENCHER_API_PORT:-61016}"
+      INTERNAL_API_URL: "http://bencher-api:61016"
+    ports:
+      - "127.0.0.1:${BENCHER_CONSOLE_PORT:-63000}:3000"
+
+volumes:
+  bencher-data:

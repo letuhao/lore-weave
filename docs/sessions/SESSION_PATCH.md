@@ -333,6 +333,13 @@ See [TRACK_2_ACCEPTANCE_PACK.md](TRACK_2_ACCEPTANCE_PACK.md) for the single-page
 | D-S6-PARTITION-ROLLOVER | S6 (2026-06-13) | The fault catalog v1 ships PG-down / PG-slow / Redis-partition (all toxiproxy-injectable). The **per-reality partition-boundary rollover** fault (replay spans monthly `events` partitions; no boundary drift) is deferred — it needs a time-advancing partition harness, not a network toxic. | A partition-boundary harness |
 | D-S6-META-HA-SPLITBRAIN | S6 (2026-06-13) | The meta-HA split-brain drill (partition Patroni nodes → history checker, not just "registry consistent") needs an **HA meta cluster** (patroni-1/2/3 + etcd) the foundation-dev compose does NOT have (C1 deliverable, skeleton only). Defer until the HA meta stack exists. | When the HA meta cluster lands |
 | D-S6-SUSTAINED-WORKLOAD | S6 (2026-06-13) | The drills use a **deterministic bracket** (inject → assert a unit of work fails/stalls while the fault is active → lift → recover) rather than racing a toxic against a sub-second batch. Genuine **transient during-fault** coverage on an in-flight batch needs a loop/sustained-workload mode on the generator. | A sustained-workload generator mode |
+| D-S7-SOAK-LAG-METRIC | S7 (2026-06-13) | Soak/endurance primary signal `lw_projection_lag_seconds` is NOT emitted by the spine yet. S7 ships the perf method (USL, micro-bench gate, hyperfine sweep, k6, Bencher) but NOT a soak gate — asserting on an unemitted metric is vacuous. Ship the steady-rate driver + secondary signals (outbox depth, XLEN, RSS) when the lag metric lands. | When `lw_projection_lag_seconds` is emitted |
+| D-S7-WS-K6-PROTOCOL | S7 (2026-06-13) | WS echo round-trip uses the colyseus.js client (real protocol, closed-loop latency) not raw-k6 WS (brittle handshake). HTTP generators carry the open-loop CO-correct throughput. A raw-k6 open-loop WS generator is deferred. | If open-loop WS throughput is wanted |
+| D-S7-BENCHER-CHANGEPOINT | S7 (2026-06-13) | Bencher self-host validated PASS. Gate starts with t_test/percentage; graduate to change-point once a per-commit series exists (fixed-% is an anti-pattern). | Once a multi-commit Bencher series exists |
+| D-S7-BENCHER-CI-AUTOMATION | S7 (2026-06-13) | `perf-bencher-gate` runs manual/nightly (needs self-host + bootstrapped BENCHER_API_TOKEN). benchstat (`perf-micro-bench`) is the per-PR gate. Promote once a hosted Bencher + token secret exist in CI. | When hosted Bencher + token secret provisioned |
+| D-S7-FORTIO-WRK2 | S7 (2026-06-13) | k6 is the single open-loop generator (constant-arrival-rate = CO-correct). wrk2/fortio parity deferred — k6 covers the requirement. | If cross-generator corroboration wanted |
+| D-S7-PGVECTOR-RECALL | S7 (2026-06-13) | RETARGET of D-S4-PGVECTOR-RECALL: S7 ships a throughput/latency harness, NOT an ANN recall/quality comparator (distinct vector-quality concern). pgvector HNSW recall comparator stays deferred to a vector-quality slice. | A vector-quality slice |
+| D-S7-USL-NO-N1-COVERAGE | S7 (2026-06-13) | review-impl LOW-4: USL tests + the default hyperfine sweep all include N=1 (where the max(X/N) gamma-seed is exact). An overridden CONCURRENCY_SWEEP without N=1 exercises the underestimating-seed path untested; the refine re-fits gamma freely so it is a robustness-margin gap, not a known bug. | If a no-N=1 sweep is used |
 | D-S6-HISTORY-ORDERING | S6 /review-impl (2026-06-13) | The bash history checker (redis-partition + pg-slow drills) asserts **no-loss + no-dup + stream==events** but NOT **per-aggregate ordering** (stream XID order respects `aggregate_version` monotonicity) — a dimension the spec listed. V1 single-replica drains in outbox order so reordering is structurally unlikely, but a future multi-replica/parallel drain could reorder. Add the ordering extraction (aggregate_id+version per stream entry in XID order → assert monotonic per aggregate). | When the publish path can reorder (V2 multi-replica) |
 | D-WORKLOAD-GEN-REAL-SHARD | S3 (2026-06-04) | `multi-reality` profile currently writes N logical realities into ONE DB (reality_id-scoped). Real cross-shard emit (many per-reality DBs via the provisioner DSN resolver) is deferred until the provisioner path (S4/L1) is exercised. | S4 / L1 |
 | D-CONFORMANCE-FLEET-MIGRATION | S1 (2026-06-04) | S1 folded only **2** representative conformance cases (`projection-coverage` lint + `publisher-smoke` live-probe) to prove the wrapper's pass-path + notrun-path. Fold the remaining ~26 lints + ~4 live-smokes into `tests/conformance/catalog/` incrementally. | Rolling, post-S1 |
@@ -631,6 +638,23 @@ See [TRACK_2_ACCEPTANCE_PACK.md](TRACK_2_ACCEPTANCE_PACK.md) for the single-page
 ---
 
 ## Current Active Work
+
+### 2026-06-13 — S7 / Perf harness + USL + statistical regression gate (XL, human-in-loop, /review-impl'd on plan)
+
+**What:** built **S7** (Technique F) — the perf METHOD + first baselines (no absolute thresholds pre-baseline). Spec/plan: `docs/{specs,plans}/2026-06-13-S7-perf-harness.md`; Bencher decision: `docs/specs/2026-06-13-S7-bencher-selfhost-decision.md`.
+- **F1 USL fitter** (`tests/perf/usl`, Go+gonum): Gunther seed -> Nelder-Mead refine -> gamma/alpha/beta + Nmax. Bites: coefficient recovery, beta=0 no-knee, alpha>=1/beta<=0 degeneracy guard (no NaN). 8 tests pass.
+- **F2 micro-bench gate** (`tests/perf/bench` + `scripts/perf/bench-gate.sh`): benchstat (Mann-Whitney, `-format csv`) over real `contracts/events` wire path. SAME-RUNNER A/B (`--ci-ab`); committed baseline informational-only. `--bite` fired (+222%, p=0.000).
+- **F3 hyperfine sweep** (`scripts/perf/hyperfine-binaries.sh`): CONCURRENCY-K (not load-size) — K parallel wg-emit + rebuilder --parallel-workers K -> USL fit. notrun local / CI nightly.
+- **F4 k6 vs game-server** (`tests/perf/k6/*` + `scripts/perf/k6-game-server.sh`): constant-arrival-rate /livez + /matchmake (CO-correct) + colyseus.js WS round-trip. Verified end-to-end locally (300 round-trips, p50 0.07ms); k6 HTTP notrun local / CI.
+- **F5 Bencher self-host: VALIDATED PASS** — boots (v0.6.6), SMTP-less token bootstrap, org+project created. `infra/bencher/docker-compose.yml` + `scripts/perf/bencher-gate.sh`. Resolves test-plan section 11.
+- **F6:** 5 conformance cases + `k6/hyperfine/benchstat/bencher/node` Provides + CI (`perf-micro-bench` per-PR, `perf-nightly` battery). Runner: perf-usl-fit PASS, perf-micro-bench-gate PASS, 3 generators notrun, 0 fail.
+- **/review-impl (plan):** 7 findings — 2 HIGH (USL axis=concurrency not load-size; benchstat same-runner-A/B not cross-machine baseline) + 2 MED (CSV parse, alpha>=1 NaN guard) folded into spec+plan+code BEFORE build.
+
+**Verify:** go vet/gofmt clean; usl 8 tests; bench-gate --bite fires; k6 WS round-trip live; bencher full-loop live; conformance 6 pass/0 fail/16 notrun; provider-gate OK; language-rule N/A (tests/ out of scope).
+
+**Deferred:** `D-S7-SOAK-LAG-METRIC`, `D-S7-WS-K6-PROTOCOL`, `D-S7-BENCHER-CHANGEPOINT`, `D-S7-BENCHER-CI-AUTOMATION`, `D-S7-FORTIO-WRK2`, `D-S7-PGVECTOR-RECALL`.
+
+**Next:** per plan v2, **S8** (recovery/DR drills — kill/restart, rebuild, restore round-trip+checksum, replay determinism) -> S10/S11 (DST).
 
 ### 2026-06-13 — S6 / Fault matrix + history checker + H1-loom (XL, human-in-loop, /review-impl'd on spec+plan)
 
