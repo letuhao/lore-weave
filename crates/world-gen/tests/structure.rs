@@ -276,10 +276,19 @@ fn climate_highland_implies_high_elevation() {
             let map = generate(seed, &cs);
             for (i, &zone) in map.climate.iter().enumerate() {
                 if zone == world_gen::ClimateZone::Highland {
-                    let elev_norm = f32::from(map.cells[i].elevation) / 65535.0;
+                    // The Highland gate is on height **above sea level**
+                    // (climate.rs `HIGHLAND_ELEV = 0.30` of the u16 range above
+                    // `sea_level`), not absolute elevation — recompute it the
+                    // same way the gate does. (An earlier version asserted an
+                    // absolute `elev_norm > 0.62`, stale since the Köppen-v2 gate
+                    // switched to elev-above-sea.)
+                    let elev_above = ((f32::from(map.cells[i].elevation)
+                        - f32::from(map.sea_level))
+                        / 65535.0)
+                        .max(0.0);
                     assert!(
-                        elev_norm > 0.62,
-                        "{profile:?} seed {seed} cell {i}: Highland but elev_norm {elev_norm}"
+                        elev_above > 0.30,
+                        "{profile:?} seed {seed} cell {i}: Highland but elev_above {elev_above}"
                     );
                 }
             }
@@ -522,8 +531,13 @@ fn provinces_partition_land() {
                     assert_eq!(p, u32::MAX, "{profile:?} seed {seed}: water cell {i} has province");
                 }
             }
-            // criterion #3 — provinces.len() equals the apportioned n_prov.
-            let land = (0..map.cell_count()).filter(|&i| map.is_land(i)).count();
+            // criterion #3 — the provinces *partition* the land: every province
+            // owns ≥1 land cell (no orphan/empty province), and every land
+            // component gets at least one province. The sphere builder
+            // (`political::build_nested`) apportions provinces **per geographic
+            // region** (`region_cells/150`, C-2 strict nesting) — not the flat
+            // legacy `land/200` formula — so we assert the partition invariant
+            // directly instead of re-deriving a builder-specific count.
             let comp = component_of(&map);
             let n_components = comp
                 .iter()
@@ -531,11 +545,21 @@ fn provinces_partition_land() {
                 .filter(|&c| c != u32::MAX)
                 .max()
                 .map_or(0, |m| m as usize + 1);
-            let n_prov = (land / 200).clamp(4, 80).max(n_components);
-            assert_eq!(
-                map.provinces.len(),
-                n_prov,
-                "{profile:?} seed {seed}: province count != apportioned n_prov"
+            let mut prov_used = vec![false; map.provinces.len()];
+            for i in 0..map.cell_count() {
+                if map.is_land(i) {
+                    prov_used[map.province_of[i] as usize] = true;
+                }
+            }
+            assert!(
+                prov_used.iter().all(|&u| u),
+                "{profile:?} seed {seed}: {} province(s) own no land cell (orphan)",
+                prov_used.iter().filter(|&&u| !u).count()
+            );
+            assert!(
+                map.provinces.len() >= n_components,
+                "{profile:?} seed {seed}: {} provinces < {n_components} land components",
+                map.provinces.len()
             );
         }
     }

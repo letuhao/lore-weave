@@ -8,35 +8,39 @@
 
 ## Current status & next session (handoff)
 
-> **🆕🔬 2026-05-31 (session 100) — ELEVATION REDESIGN ARC — RESEARCH + SPEC DONE,
-> BUILD PAUSED (PO checkpoint).** The PO flagged a real defect: the sphere
-> elevation is mostly **procedural noise weakly coupled to tectonics**. Verified
-> empirically (seed-7 megaplanet): **0 % of Mountain cells lie on a convergent
-> plate boundary** (peaks = independent ridged-fBm, not tectonics); only 3 of 6
-> boundary kinds fire; raw model ocean<sea<land is correct (the "ocean rises" is a
-> render/export artifact — no real bathymetry).
-> - **Research (deep-research, 105 agents, cited):**
->   [`docs/research/2026-05-31-geological-elevation.md`](../../research/2026-05-31-geological-elevation.md)
->   — isostasy (bimodal target), boundary tectonics→topography, age-depth bathymetry
->   (GDH1 `d=2600+365√t`), stream-power erosion (`dh/dt=U−K·A^m·S^n`, m/n≈0.5),
->   Cortial 2019 / Cordonnier 2016 algorithms.
-> - **Arc spec (6 staged ships):**
->   [`docs/specs/2026-05-31-elevation-redesign.md`](../../specs/2026-05-31-elevation-redesign.md).
->   New pipeline: isostasy base → boundary uplift field → age bathymetry → coupled
->   uplift⇄erosion, calibrated to the hypsometric curve. Data model adds `crust_age`
->   + `crust_thickness`. Each stage has a metric; biome/climate threshold
->   **recalibration is a required per-stage check** (biome stays correct — it still
->   reads `elevation:u16`+`sea_level`; Mountain/Highland will then sit on tectonic
->   belts).
-> - **Defects D1-D7** mapped in the spec §0. Audit notes: `erosion.rs` is already
->   stream-power (couple it to uplift, don't rebuild); `plates.rs` already has all 6
->   boundary uplift magnitudes (amplify the relief FROM them = S1).
+> **🆕⛰ 2026-05-31 (session 100) — ELEVATION REDESIGN — S1+S2 SHIPPED (merged).**
+> Research + 6-stage spec done (`docs/research/2026-05-31-geological-elevation.md`,
+> `docs/specs/2026-05-31-elevation-redesign.md`). **BUILD finding that reshaped the
+> arc:** the spec's D1 premise ("0 % of Mountain cells near a convergent boundary")
+> was a **measurement artifact** — it counted only `Mountain`-biome cells and
+> ignored cold high belts labelled `Glacier`. Measured by *elevation* (high-relief
+> = `land_t ≥ 0.55`) the existing model **already** concentrated relief on
+> convergent belts (`conc≤2 ≈ 69 %`, arc-fill `≈ 44 %`); its altitude-gated
+> ruggedness was implicitly uplift-coupled. So **S1 alone is metric-neutral**. The
+> real, visible defect was upstream in the plate model (was scoped S2): convergence
+> was rare/weak (~78 % of boundaries mis-classified `Fault`, `FoldMountain` never
+> fired, **50 % of seeds pancake-flat**). **PO merged S1+S2**; both shipped:
+> - **S1** (`terrain.rs`): `land_relief` now scales with the local tectonic uplift
+>   field (`TECT_*`), not altitude — the correct mechanism + foundation for S3/S5.
+> - **S2** (`plates.rs` `FAULT_SHEAR_RATIO=2.0`): transform-fault only when shear
+>   *strongly dominates* the normal closing/opening rate; else the normal sign
+>   decides convergent/divergent. Result (60-seed sweep): **all 6 boundary kinds
+>   fire** (`FoldMountain` 29/60), Fault share **78 %→38 %**, pancake-flat worlds
+>   **50 %→3 %**; high-relief `conc≤2 70 %`, arc-fill 45 %, mountains a healthy 7 %
+>   of land. Acceptance: `crates/world-gen/tests/tectonic_relief.rs` (3 tests).
+> - Also **fixed 2 pre-existing red tests** (stale since the Köppen-v2 / C-2 nested
+>   builder, unrelated to this work): `structure.rs::climate_highland_implies_high_elevation`
+>   (asserted a stale absolute `0.62` → now the real `elev_above > 0.30` gate) and
+>   `provinces_partition_land` (recomputed the *flat* builder's `land/200` formula
+>   vs the sphere `build_nested` per-region apportionment → now asserts the
+>   partition invariant directly).
 >
-> **TOP NEXT: build S1** 🎯 — relief amplified from the tectonic uplift field so
-> mountains rise AT convergent/collision belts (fixes D1, the headline). Metric:
-> `%Mountain-on-convergent-boundary` 0 %→≥60 %. Then S2…S6 per the spec. Each stage
-> = full 12-phase + `/review-impl` + PO POST-REVIEW. PO paused after the spec to
-> review the research/spec files before building.
+> **TOP NEXT: build S3** — crustal-thickness isostasy + **bimodal hypsometric
+> calibration** (data model adds `crust_thickness`; calibrate the quantize so the
+> elevation histogram matches the ETOPO1 two-mode target). Then S4 (age bathymetry)
+> → S5 (coupled uplift⇄erosion) → S6 (render/export bathymetry, the "ocean rises"
+> artifact). Each = full 12-phase + `/review-impl` + PO POST-REVIEW. Plan:
+> `docs/plans/2026-05-31-elevation-s1-uplift-relief.md`.
 >
 > ---
 >

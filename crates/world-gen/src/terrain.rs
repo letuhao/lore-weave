@@ -83,13 +83,12 @@ const SALT_HILL: u32 = 0x2468_ACE0;
 
 // --- tectonic relief tuning (Phase 2 + terrain-coherence pass) --------------
 
-/// Land-relief weights, **gated by the ruggedness field** (Musgrave
-/// "statistics by altitude"): on plains (ruggedness ≈ 0) only the tiny
-/// `PLAIN` whisper survives → macro-flat; in mountains (ruggedness ≈ 1) the
-/// hills + ridged ranges come in full → jagged. This is the fix for
-/// "noisy-everywhere / no flat plains".
+/// Hill-texture weight in the land relief — applied to both the belt ranges
+/// and the interior uplands (S1): on plate interiors (relief amplitude ≈ 0)
+/// only the tiny `PLAIN` whisper survives → macro-flat lowland; on convergent
+/// belts the ridged ranges + this hill texture come in full → jagged. The
+/// relief amplitude is keyed to the tectonic uplift field, not altitude.
 const TEC_HILL_WEIGHT: f32 = 0.22;
-const TEC_MTN_WEIGHT: f32 = 0.72;
 /// Gentle low-frequency undulation that *is* allowed on plains, so they read
 /// as living lowland rather than a dead-flat sheet — kept very small.
 const TEC_PLAIN_WEIGHT: f32 = 0.022;
@@ -101,6 +100,30 @@ const PLAIN_FREQ: f32 = 2.6;
 const RUGGED_FREQ: f32 = 2.2;
 const SALT_RUGGED: u32 = 0x6F1E_2D77;
 const SALT_PLAIN: u32 = 0x3C4A_91E5;
+
+// --- S1: uplift-driven relief (elevation redesign, defect D1) ---------------
+
+/// Convergent-uplift → relief-amplitude ramp. Below `LO` (plate interior) the
+/// belt relief is off; by `HI` a convergent belt gets its full ridged ranges.
+/// The relief amplitude is now keyed to the **tectonic uplift field** (folds +
+/// arcs), not to altitude — so mountains rise AT the collision belts and trace
+/// the suture, instead of being independent ridged-fBm speckle (D1).
+const TECT_UPLIFT_LO: f32 = 0.20;
+const TECT_UPLIFT_HI: f32 = 0.45;
+/// Smooth belt floor lift, scaled by `tect`: a *continuous* rise along the
+/// whole convergent belt (so the range reads as a connected ridge, not as
+/// isolated ridged-fBm crests separated by gaps where the multifractal dips
+/// to its valleys). The ridged term adds the crest texture on top.
+const TECT_BELT_LIFT: f32 = 0.12;
+/// Ridged-range crest height stacked on a convergent belt, scaled by the local
+/// uplift (`tect`). Weighted so even a modest arc (`ARC_PEAK`) clears the
+/// Mountain band continuously across the belt and **peaks where uplift peaks**
+/// (the suture), decaying out with the uplift.
+const TECT_RANGE_WEIGHT: f32 = 0.60;
+/// Organic interior ruggedness cap (rolling uplands / plateaus away from the
+/// belts) — small enough it never alone reaches the Mountain band, so plate
+/// interiors read as living lowland/upland, not ranges.
+const INTERIOR_RUGGED_CAP: f32 = 0.28;
 
 /// Ocean bathymetry: depth (signed, sea = 0) at the coast vs the abyssal
 /// plain, and how many BFS hops from the coast it takes to reach the abyss.
@@ -168,24 +191,38 @@ pub fn build(
             // bathymetry depth curve (shelf → abyssal flat).
             let coast_dist = coast_distance(&is_land_macro, neighbors);
 
-            // Per-cell ruggedness (0 on plains/ocean, 1 in mountains) — gates
+            // Per-cell relief drivers (S1, D1): the relief amplitude is keyed to
+            // the **tectonic uplift field**, not altitude. `tect` ∈ [0,1] ramps
+            // with the local positive (convergent) uplift — 0 in plate interiors,
+            // 1 across a collision belt — so ranges rise AT the suture. `amp` is
+            // `max(tect, interior)`: the larger of the belt amplitude and a small
+            // organic interior ruggedness (uplands away from belts). `amp` gates
             // both the relief detail and the erosion incision.
+            let tect: Vec<f32> = (0..count)
+                .map(|i| {
+                    if is_land_macro[i] {
+                        smoothstep(TECT_UPLIFT_LO, TECT_UPLIFT_HI, plates.uplift[i].max(0.0))
+                    } else {
+                        0.0
+                    }
+                })
+                .collect();
             let rugged: Vec<f32> = (0..count)
                 .map(|i| {
                     if is_land_macro[i] {
-                        ruggedness(centers[i], macro_elev[i], nseed)
+                        tect[i].max(interior_ruggedness(centers[i], nseed))
                     } else {
                         0.0
                     }
                 })
                 .collect();
 
-            // Compose: land = macro + ruggedness-gated relief (flat plains,
-            // jagged mountains); ocean = depth-by-coast-distance + ridges.
+            // Compose: land = macro + uplift-gated relief (flat plains, jagged
+            // ranges on the belts); ocean = depth-by-coast-distance + ridges.
             let mut elev: Vec<f32> = (0..count)
                 .map(|i| {
                     if is_land_macro[i] {
-                        macro_elev[i] + land_relief(centers[i], rugged[i], nseed)
+                        macro_elev[i] + land_relief(centers[i], rugged[i], tect[i], nseed)
                     } else {
                         // Mid-ocean ridges / island arcs (positive uplift) raise
                         // the floor; trenches (already deep via the curve) keep
@@ -323,45 +360,49 @@ fn warp_point(p: [f32; 3], seed: u32) -> [f32; 3] {
     w
 }
 
-/// Per-cell **ruggedness** `∈ [0,1]` — Musgrave "statistics by altitude":
-/// driven by **altitude** (mountains *are* high, lifted by orogeny), **not**
-/// by mere proximity to a plate boundary. (Boundary-proximity rings every
-/// coast — a continent/ocean edge is a plate boundary — with a thin high
-/// ridge, which is geologically wrong: most coasts are low passive margins.)
-/// A low-frequency fBm adds organic interior ruggedness (rolling uplands /
-/// plateaus away from the big ranges) so interiors aren't dead-flat.
-fn ruggedness(p: [f32; 3], macro_elev: f32, seed: u32) -> f32 {
-    // Altitude factor: 0 on the coastal platform (~+0.10), 1 on high macro
-    // (orogenic belts). Coasts and plains → low; mountains → high.
-    let alt = smoothstep(0.22, 0.62, macro_elev);
+/// Small organic **interior ruggedness** `∈ [0, INTERIOR_RUGGED_CAP]` — rolling
+/// uplands / plateaus on plate interiors, away from the orogenic belts, so
+/// interiors read as living lowland/upland rather than a dead-flat slab.
+/// Low-frequency fBm only, hard-capped so it never alone reaches the Mountain
+/// band (the big ranges come from the uplift-driven belt relief, not here).
+/// Unlike the old altitude-keyed ruggedness this is independent of macro
+/// elevation, so it does not ring every coast with a spurious ridge.
+fn interior_ruggedness(p: [f32; 3], seed: u32) -> f32 {
     let fbm_r = 0.5
         + 0.5 * fbm_3d(p[0] * RUGGED_FREQ, p[1] * RUGGED_FREQ, p[2] * RUGGED_FREQ, seed ^ SALT_RUGGED, 3);
-    // Occasional organic interior ruggedness (uplands/plateaus) independent of
-    // the orogenic belts — but never at the low coastal platform.
-    let interior = 0.28 * smoothstep(0.64, 0.86, fbm_r) * smoothstep(0.16, 0.30, macro_elev);
-    (alt.max(interior) * (0.6 + 0.4 * fbm_r)).clamp(0.0, 1.0)
+    INTERIOR_RUGGED_CAP * smoothstep(0.62, 0.88, fbm_r)
 }
 
-/// Land relief layered on the macro elevation, **gated by ruggedness** `r`:
-/// - `r ≈ 0` (plains) → only a tiny low-frequency whisper survives → flat;
-/// - `r ≈ 1` (mountains) → full mid-freq hills + ridged ranges → jagged.
+/// Land relief layered on the macro elevation (S1, D1). Two stacked sources:
+/// - **belt ranges** — ridged multifractal scaled by `tect` (the convergent
+///   uplift signal): tall, sharp ridgelines that rise AT the collision belt,
+///   peak where the uplift peaks (the suture) and decay out with it;
+/// - **interior uplands** — gentle hills scaled by `amp` (= `max(tect,
+///   interior_ruggedness)`), so plate interiors get rolling relief but never a
+///   range.
 ///
-/// The domain warp is also scaled by `r`, so plains stay coherent (un-warped)
-/// while mountains get turbulent, irregular ridgelines.
-fn land_relief(p: [f32; 3], r: f32, seed: u32) -> f32 {
+/// On a plate interior (`tect ≈ 0`, small `amp`) only the uplands + the plains
+/// whisper survive → flat-to-rolling lowland. The domain warp is scaled by
+/// `amp` so plains stay coherent while belts get turbulent ridgelines.
+fn land_relief(p: [f32; 3], amp: f32, tect: f32, seed: u32) -> f32 {
     // Plains whisper — gentle, always present, very small amplitude.
     let whisper = TEC_PLAIN_WEIGHT
         * fbm_3d(p[0] * PLAIN_FREQ, p[1] * PLAIN_FREQ, p[2] * PLAIN_FREQ, seed ^ SALT_PLAIN, 2);
-    if r < 1e-3 {
+    if amp < 1e-3 && tect < 1e-3 {
         return whisper;
     }
-    // Warp masked by ruggedness (strong in mountains, ~0 on plains).
-    let w = warp_scaled(p, seed, r);
+    // Warp masked by relief amplitude (strong on belts, ~0 on plains).
+    let w = warp_scaled(p, seed, amp);
     let hills = fbm_3d(w[0] * HILL_FREQ, w[1] * HILL_FREQ, w[2] * HILL_FREQ, seed ^ SALT_HILL, HILL_OCTAVES);
     let ridges =
         ridged_fbm_3d(w[0] * MTN_FREQ, w[1] * MTN_FREQ, w[2] * MTN_FREQ, seed ^ SALT_MTN, MTN_OCTAVES);
-    let detail = TEC_HILL_WEIGHT * hills + TEC_MTN_WEIGHT * ridges;
-    r * detail + (1.0 - r) * whisper
+    // Belt ranges: a smooth continuous floor lift + ridged crests + a little
+    // hill texture, all scaled by the convergent uplift. `ridged_fbm` ∈ [0,1]
+    // so the belt only ever lifts (peaks), concentrated on the suture.
+    let belt = tect * (TECT_BELT_LIFT + TECT_RANGE_WEIGHT * ridges + TEC_HILL_WEIGHT * hills);
+    // Interior uplands: gentle hills scaled by the (capped) interior amplitude.
+    let uplands = amp * TEC_HILL_WEIGHT * hills;
+    whisper + belt.max(uplands)
 }
 
 /// Ocean depth (signed, sea = 0) from distance-to-coast: a shallow shelf at

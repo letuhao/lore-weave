@@ -48,6 +48,15 @@ const FAULT_PEAK: f32 = 0.05;
 /// boundary. Scaled mildly so larger meshes get proportionally wider belts.
 const DECAY_HOPS: f32 = 4.0;
 
+/// Shear-to-closing ratio above which a boundary is a **transform (Fault)**
+/// rather than convergent/divergent. Must be `> 1`: only motion whose
+/// tangential (shear) component *strongly dominates* the normal (closing /
+/// opening) component is a transform; otherwise the normal component decides
+/// convergent vs divergent. The old `tangential > |normal|` test (ratio 1.0)
+/// labelled ~75–80 % of boundaries Fault under random plate motion, so most
+/// worlds had no collisions and read as pancake-flat (S2 fix).
+const FAULT_SHEAR_RATIO: f32 = 2.0;
+
 /// Plate-boundary warp — a 3D fBm displacement applied to each cell before the
 /// nearest-seed (Voronoi) test, so plate boundaries are **fractal and
 /// irregular** rather than clean Voronoi arcs. This is what stops every
@@ -357,8 +366,11 @@ fn boundary_kind_for_pair(
         ka == PlateKind::Continental && kb == PlateKind::Continental;
     let both_oceanic = ka == PlateKind::Oceanic && kb == PlateKind::Oceanic;
 
-    // Transform dominates when the shear component exceeds the normal closing.
-    if tangential > normal.abs() {
+    // Transform only when the shear component *strongly dominates* the normal
+    // closing/opening rate (`FAULT_SHEAR_RATIO`); otherwise the normal sign
+    // decides convergent vs divergent. (A plain `tangential > |normal|` test
+    // mislabels most random-motion boundaries Fault → no collisions.)
+    if tangential > FAULT_SHEAR_RATIO * normal.abs() {
         return BoundaryKind::Fault;
     }
     if normal > 0.0 {

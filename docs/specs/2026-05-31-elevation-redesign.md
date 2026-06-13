@@ -66,17 +66,31 @@ hypsometric target (continental mode ~+0.1 km above sea, oceanic mode ~−4.3 km
 
 ## 3 — Staged plan (each stage is independently shippable, with a metric)
 
+> **⚠ Premise correction (S1+S2 BUILD, session 100).** The D1 premise ("mountains
+> are noise; 0 % near convergent") was a **measurement artifact** — it counted
+> only `Mountain`-biome cells and ignored cold high belts labelled `Glacier`.
+> Measured by **elevation** (high-relief = `land_t ≥ 0.55`) the pre-existing model
+> *already* concentrated relief on convergent belts (`conc≤2 ≈ 69 %`, arc-fill
+> `≈ 44 %`): its altitude-gated ruggedness was implicitly uplift-coupled
+> (`altitude = base + uplift`). So **S1 alone is metric-neutral**. The real,
+> visible defect was upstream in the plate model (was scoped S2): convergence was
+> **rare and weak** (~78 % of boundaries mis-classified `Fault`; `FoldMountain`
+> never fired; 50 % of seeds pancake-flat). **PO merged S1+S2** — both shipped
+> together (commit, session 100). See
+> `docs/plans/2026-05-31-elevation-s1-uplift-relief.md`.
+
 | Stage | Builds | Fixes | Size | Acceptance metric |
 |---|---|---|---|---|
-| **S1** 🎯 | **Relief amplified from the uplift field** — replace `land_relief`'s independent ridged-fBm with ridged detail **scaled by local tectonic uplift**, so mountains rise AT convergent/collision belts. | D1 | L | `% Mountain cells on/near a convergent boundary` rises from **0 %** to a high share (target ≥ 60 %); visible ranges trace the belts. |
-| **S2** | **All boundary kinds fire** — bias plate motion/selection so continent–continent collision, ocean ridges, island arcs actually occur; verify per-kind uplift contributes. | D3 | M | All 6 `BoundaryKind`s present across a seed sweep; `FoldMountain` belts produce the highest peaks. |
+| **S1 ✅** | **Relief amplified from the uplift field** — `land_relief` ridged detail **scaled by local tectonic uplift** (`TECT_*` in `terrain.rs`), mountains rise AT the belts. *(Metric-neutral refactor — see premise correction; foundation for S3/S5.)* | D1 | L | high-relief `conc≤2 ≥ 60 %` (achieved 70 %), continental-arc fill `≥ 40 %` (45 %); no regression vs baseline. |
+| **S2 ✅** | **The plate model collides** — `FAULT_SHEAR_RATIO` (`plates.rs`) stops ~78 % of boundaries being mis-called `Fault`; the normal-component sign then decides convergent/divergent, so continent–continent `FoldMountain`, ocean ridges, island arcs all occur. | D3 | M | All 6 `BoundaryKind`s present across a 60-seed sweep (`FoldMountain` 29/60); Fault share 78 %→38 %; pancake-flat worlds 50 %→3 %. |
 | **S3** | **Crustal-thickness isostasy + hypsometric calibration** — base height from `crust_thickness` (collision thickening), replacing the two constants; calibrate the quantize so the histogram is bimodal and matches Earth bands. | D2, D6 | L | Elevation histogram is **bimodal**; continental & oceanic modes within tolerance of the ETOPO1 targets. |
 | **S4** | **Age-based bathymetry** — assign `crust_age` (BFS from divergent ridges along spreading), set ocean depth = isostatic base + `√age` (GDH1), replacing the coast-distance curve. | D4 | L | Depth increases monotonically with age from ridges; ridge crests shallow, old abyss deep + flat. |
 | **S5** | **Coupled uplift ⇄ erosion** — feed the tectonic uplift as the `U` source into the existing stream-power `erosion.rs` and iterate uplift+incision jointly toward steady state (Cordonnier). | D5 | XL | Equilibrium river profiles concave (`S ∝ A^(−0.5)` within tolerance); dendritic drainage on the tectonic relief, not on noise. |
 | **S6** | **Render/export bathymetry fix** — `relief.rs` suppress fBm detail below sea; `export.rs` give the `.glb` real (exaggerated) ocean depth instead of a flat clamp; final hypsometry calibration pass. | D7 | M | In every render/glb, ocean surface is below the coast everywhere; bathymetry visible. |
 
-**Dependency order:** S1 → S2 → S3 → S4 → S5 → S6 (each builds on the prior; S1
-alone already fixes the headline defect). S2 can land with S1 if convenient.
+**Dependency order:** ~~S1~~ → ~~S2~~ (✅ shipped together) → S3 → S4 → S5 → S6
+(each builds on the prior). **Next: S3** (crustal-thickness isostasy + bimodal
+hypsometric calibration).
 
 ## 4 — Cross-cutting rules
 
