@@ -247,6 +247,7 @@
       "image_gen": "Image Generation",
       "video_gen": "Video Generation",
       "embedding": "Embedding",
+      "rerank": "Rerank",
       "moderation": "Moderation"
     }
   },

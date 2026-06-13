@@ -9,7 +9,7 @@
 | Cycle | Title | Status | BE/FE | Commit | Verify / notes |
 |---|---|---|---|---|---|
 | 0 | Bootstrap — shared FE foundation | DONE | FE | (this commit) | FormDialog max-h/scroll/pinned-footer + reusable AddModelCta (deep-link+return, ProvidersTab honors ?return=) + rerank/reranker reconcile (canonical RERANK_CAPABILITY, spy-injection wiring test). tsc+eslint clean; 17 vitest green; verify-cycle-0.sh exit 0. Live screenshot deferred to first consumer (C5/C6/C7/C15) — FormDialog/AddModelCta have no live surface yet (D-C0-FOUNDATION-LIVE-SMOKE). Default workflow, not /raid. |
-| 1 | Rerank registration (FE) | PENDING | FE | — | add rerank to register form; picker matches; 0-found feedback |
+| 1 | Rerank registration (FE) | DONE | FE | (this commit) | rerank added to KNOWN_FLAGS via canonical RERANK_CAPABILITY; labels in all 4 locales; RerankModelPicker empty-state offers in-flow AddModelCta register link (BL-1). tsc+eslint clean; 10 vitest green (PowerShell runner; bash-spawned vitest hangs in this env). verify-cycle-1.sh added; stale lore-enrichment verify-cycle-{1..18}.sh removed. Coordinator-rescued (sub-agent stalled pre-commit on a hung bg vitest + a never-resolving-promise test). Minor: dead capability.flag.reranker i18n key left (harmless). |
 | 2 | Rerank discovery (BE+FE) | PENDING | BE+FE | — | inventory sync parses Cohere-shape /v1/models; live smoke |
 | 3 | Rerank connection test (BE+FE) | PENDING | BE+FE | — | rerank-aware verify (real /v1/rerank); live smoke |
 | 4 | Book picker (FE) | PENDING | FE | — | reusable BookPicker replaces raw-UUID field |

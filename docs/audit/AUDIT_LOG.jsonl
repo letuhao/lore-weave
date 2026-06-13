@@ -1436,3 +1436,7 @@
 {"ts": "2026-06-12T23:01:40Z", "event": "brief_generator_drift_inconclusive", "cd": "", "rw": ""}
 {"ts": "2026-06-12T23:13:54Z", "event": "coordinator_next_cycle_emitted", "cycle": 1}
 {"ts":"2026-06-12T23:22:00Z","event":"verify_cycle_0_passed","cycle":0}
+{"ts":"2026-06-12T23:31:18Z","event":"startup_drift_check_inconclusive","cycle":1,"cd":"","rw":""}
+{"ts":"2026-06-12T23:31:18Z","event":"startup_verifier_complete","cycle":1,"steps":6}
+{"ts": "2026-06-12T23:31:28Z", "event": "in_progress_init", "cycle": 1, "title": "Rerank registration (FE)"}
+{"ts": "2026-06-12T23:31:42Z", "event": "in_progress_update", "cycle": 1, "phase": "BUILD", "retry": 0}

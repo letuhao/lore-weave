@@ -247,6 +247,7 @@
       "image_gen": "画像生成",
       "video_gen": "動画生成",
       "embedding": "埋め込み",
+      "rerank": "リランク",
       "moderation": "モデレーション"
     }
   },

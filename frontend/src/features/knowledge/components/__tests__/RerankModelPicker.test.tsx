@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 
 // D-RERANK-NOT-BYOK (S0b) — the rerank model picker: fetches the user's
 // rerank-capability BYOK models and binds the project's rerank_model
@@ -35,7 +36,11 @@ describe('RerankModelPicker (D-RERANK-NOT-BYOK S0b)', () => {
   it('fetches rerank-CAPABILITY models and binds the chosen user_model_id', async () => {
     listUserModelsMock.mockResolvedValue({ items: [RERANK_MODEL] });
     const onChange = vi.fn();
-    render(<RerankModelPicker value={null} onChange={onChange} />);
+    render(
+      <MemoryRouter>
+        <RerankModelPicker value={null} onChange={onChange} />
+      </MemoryRouter>,
+    );
     await waitFor(() => expect(listUserModelsMock).toHaveBeenCalled());
     // BYOK + capability-scoped — never a hardcoded model name.
     expect(listUserModelsMock).toHaveBeenCalledWith('tok-test', {
@@ -56,7 +61,11 @@ describe('RerankModelPicker (D-RERANK-NOT-BYOK S0b)', () => {
     // models with and what RerankModelPicker/ModelRolePicker resolve.
     expect(RERANK_CAPABILITY).toBe('rerank');
     listUserModelsMock.mockResolvedValue({ items: [] });
-    render(<RerankModelPicker value={null} onChange={vi.fn()} />);
+    render(
+      <MemoryRouter>
+        <RerankModelPicker value={null} onChange={vi.fn()} />
+      </MemoryRouter>,
+    );
     await waitFor(() => expect(listUserModelsMock).toHaveBeenCalled());
     const [, opts] = listUserModelsMock.mock.calls[0] as [string, { capability: string }];
     expect(opts.capability).toBe(RERANK_CAPABILITY);
@@ -65,7 +74,11 @@ describe('RerankModelPicker (D-RERANK-NOT-BYOK S0b)', () => {
   it('selecting None clears the model (rerank optional → onChange null)', async () => {
     listUserModelsMock.mockResolvedValue({ items: [RERANK_MODEL] });
     const onChange = vi.fn();
-    render(<RerankModelPicker value="rr1" onChange={onChange} />);
+    render(
+      <MemoryRouter>
+        <RerankModelPicker value="rr1" onChange={onChange} />
+      </MemoryRouter>,
+    );
     await waitFor(() => expect(listUserModelsMock).toHaveBeenCalled());
     fireEvent.change(screen.getByRole('combobox'), { target: { value: '' } });
     expect(onChange).toHaveBeenCalledWith(null);
@@ -73,13 +86,61 @@ describe('RerankModelPicker (D-RERANK-NOT-BYOK S0b)', () => {
 
   it('shows the empty-state when the user has no rerank-capable models', async () => {
     listUserModelsMock.mockResolvedValue({ items: [] });
-    render(<RerankModelPicker value={null} onChange={vi.fn()} />);
+    render(
+      <MemoryRouter>
+        <RerankModelPicker value={null} onChange={vi.fn()} />
+      </MemoryRouter>,
+    );
     await screen.findByText(/projects\.form\.rerankModelEmpty/);
+  });
+
+  // C1 (BL-1) — the "0 found" empty-state must point at the now-available
+  // register path (C0 AddModelCta deep-links to /settings/providers + carries a
+  // return) so a user who has no rerank model can register one in-flow, not hit
+  // a dead text. Distinguishes a genuine zero-result from loading (CTA only
+  // renders after the fetch resolves to an empty list).
+  it('renders the AddModelCta register link in the empty-state (BL-1)', async () => {
+    listUserModelsMock.mockResolvedValue({ items: [] });
+    render(
+      <MemoryRouter>
+        <RerankModelPicker value={null} onChange={vi.fn()} />
+      </MemoryRouter>,
+    );
+    const cta = await screen.findByRole('link');
+    expect(cta.getAttribute('href')).toContain('/settings/providers');
+    expect(cta.getAttribute('href')).toContain('return=');
+  });
+
+  it('does NOT show the empty-state CTA while still loading (no false empty)', async () => {
+    // Pending (unresolved) fetch → component stays in loading; the empty-state +
+    // CTA gate on models !== null, so neither should render yet. Use a CONTROLLED
+    // deferred (resolve it before the test ends) — a never-resolving promise
+    // wedges vitest teardown.
+    let resolveFetch: (v: { items: never[] }) => void = () => {};
+    listUserModelsMock.mockReturnValue(
+      new Promise<{ items: never[] }>((res) => {
+        resolveFetch = res;
+      }),
+    );
+    render(
+      <MemoryRouter>
+        <RerankModelPicker value={null} onChange={vi.fn()} />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByText(/projects\.form\.rerankModelEmpty/)).toBeNull();
+    expect(screen.queryByRole('link')).toBeNull();
+    // settle so the env can tear down cleanly
+    resolveFetch({ items: [] });
+    await waitFor(() => expect(screen.queryByRole('link')).not.toBeNull());
   });
 
   it('renders an orphan option when the saved model left the registry', async () => {
     listUserModelsMock.mockResolvedValue({ items: [] });
-    render(<RerankModelPicker value="gone-uuid" onChange={vi.fn()} />);
+    render(
+      <MemoryRouter>
+        <RerankModelPicker value="gone-uuid" onChange={vi.fn()} />
+      </MemoryRouter>,
+    );
     await screen.findByText(/projects\.form\.rerankModelOrphan/);
   });
 });

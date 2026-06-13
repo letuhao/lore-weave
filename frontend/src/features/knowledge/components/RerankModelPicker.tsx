@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/auth';
 import { aiModelsApi, type UserModel } from '../../ai-models/api';
 import { RERANK_CAPABILITY } from '../../settings/api';
+import { AddModelCta } from '@/components/shared/AddModelCta';
 
 /**
  * D-RERANK-NOT-BYOK (S0b) — Rerank model picker for knowledge projects.
@@ -106,11 +107,16 @@ export function RerankModelPicker({ value, onChange, disabled }: Props) {
         </span>
       )}
       {!loading && !error && accessToken && (models?.length ?? 0) === 0 && (
-        <span className="text-[11px] text-muted-foreground">
+        // C1 (BL-1): genuine zero-result (fetch resolved, no rerank models) — gated
+        // on `!loading` so a pending fetch never shows a false empty. Explain the
+        // empty picker AND offer the in-flow register path (C0 AddModelCta deep-links
+        // to /settings/providers + carries a return) instead of a dead end.
+        <span className="flex flex-col gap-1 text-[11px] text-muted-foreground">
           {t('projects.form.rerankModelEmpty', {
             defaultValue:
-              'No rerank-capable models configured. Add one in AI Models → Credentials to enable junk-rejection.',
+              'No rerank-capable models configured. Register one to enable junk-rejection.',
           })}
+          <AddModelCta capability={RERANK_CAPABILITY} variant="link" />
         </span>
       )}
       <span className="text-[11px] text-muted-foreground">

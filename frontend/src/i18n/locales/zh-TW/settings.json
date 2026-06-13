@@ -247,6 +247,7 @@
       "image_gen": "圖像生成",
       "video_gen": "影片生成",
       "embedding": "嵌入",
+      "rerank": "重新排序",
       "moderation": "內容審核"
     }
   },
