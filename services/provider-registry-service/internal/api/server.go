@@ -2097,6 +2097,16 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 		writeJSON(w, http.StatusOK, result)
 		return
 
+	case "rerank":
+		// C3 (BL-10): real /v1/rerank round-trip via the user's BYOK credential —
+		// proves the model actually ranks (a chat ping would not).
+		result := s.verifyRerank(ctx, endpointBaseURL, secret, providerModelName)
+		result["latency_ms"] = time.Since(start).Milliseconds()
+		result["capability"] = "rerank"
+		VerifyRequestsTotal.WithLabelValues(OutcomeOK).Inc()
+		writeJSON(w, http.StatusOK, result)
+		return
+
 	default:
 		// Chat / unknown: use existing adapter invoke with "Hi"
 	}
@@ -2155,14 +2165,59 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 // detectPrimaryCapability determines which verification strategy to use based on capability_flags.
 // Priority: stt > tts > image_gen > video_gen > chat (default)
 func detectPrimaryCapability(caps map[string]any) string {
-	for _, cap := range []string{"stt", "tts", "image_gen", "video_gen"} {
+	// C3 (BL-10): include rerank so its verify path does a real /v1/rerank
+	// round-trip instead of falling through to the chat ping.
+	for _, cap := range []string{"stt", "tts", "image_gen", "video_gen", "rerank"} {
 		if v, ok := caps[cap]; ok {
 			if b, ok := v.(bool); ok && b {
 				return cap
 			}
 		}
 	}
+	// Inventory-discovered rerank (C2) may carry the capability as the `_capability`
+	// metadata string rather than a boolean flag — recognize that form too.
+	if c, _ := caps["_capability"].(string); c == "rerank" {
+		return "rerank"
+	}
 	return "chat"
+}
+
+// verifyRerank exercises a REAL /v1/rerank round-trip with a tiny fixed
+// query+documents set and returns the ranked scores. This proves the model
+// actually ranks (a generic chat ping would not). BYOK: baseURL+secret come from
+// the user's resolved provider credential — no platform rerank config, no
+// per-service URL/token env, no hardcoded model name. The call goes through the
+// canonical provider-registry rerank path (provider.Rerank), the only place
+// rerank HTTP lives.
+func (s *Server) verifyRerank(ctx context.Context, baseURL, secret, modelName string) map[string]any {
+	query := "What is the capital of France?"
+	documents := []string{
+		"Bananas are a good source of potassium.",
+		"Paris is the capital of France.",
+		"The Eiffel Tower is a landmark in Paris.",
+	}
+	client := &http.Client{Timeout: 60 * time.Second}
+	results, err := provider.Rerank(ctx, client, baseURL, secret, modelName, query, documents)
+	if err != nil {
+		return map[string]any{"verified": false, "error": err.Error()}
+	}
+	// provider.Rerank already sorts descending by score.
+	scores := make([]map[string]any, 0, len(results))
+	for _, r := range results {
+		scores = append(scores, map[string]any{
+			"index":           r.Index,
+			"relevance_score": r.Score,
+		})
+	}
+	out := map[string]any{
+		"verified": true,
+		"scores":   scores,
+	}
+	if len(results) > 0 {
+		out["top_index"] = results[0].Index
+		out["top_score"] = results[0].Score
+	}
+	return out
 }
 
 // verifySTT sends a tiny silent WAV to the STT endpoint and checks for a text response.

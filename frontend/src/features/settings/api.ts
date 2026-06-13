@@ -186,7 +186,17 @@ export const providerApi = {
   },
 
   verifyUserModel(token: string, modelId: string) {
-    return apiJson<{ verified: boolean; latency_ms: number; error?: string }>(
+    // C3: rerank verify returns ranked scores (a real /v1/rerank round-trip) in
+    // addition to the generic verified/latency shape.
+    return apiJson<{
+      verified: boolean;
+      latency_ms: number;
+      error?: string;
+      capability?: string;
+      scores?: { index: number; relevance_score: number }[];
+      top_index?: number;
+      top_score?: number;
+    }>(
       `/v1/model-registry/user-models/${modelId}/verify`, { method: 'POST', token },
     );
   },
