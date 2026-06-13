@@ -171,6 +171,8 @@ fn belts_fill_and_concentrate() {
         "only {conc:.0}% of high-relief cells lie within ≤{NEAR_HOPS} hops of a \
          convergent boundary (target ≥ 60%).\n{report}"
     );
+    // 40% is a deliberate regression floor a few points below the measured ~45%
+    // — a material terrain change that thins the belts *should* trip this.
     assert!(
         fill >= 40.0,
         "continental-arc bands only {fill:.0}% high-relief (target ≥ 40%): collisions \
@@ -223,6 +225,55 @@ fn mountains_stay_a_land_minority() {
     assert!(
         low_pct >= 25.0,
         "lowland biomes only {low_pct:.0}% of land — continents lost their plains (target ≥ 25%)"
+    );
+}
+
+/// **Biome/climate proportion regression** (plan-required per stage) — the
+/// S1+S2 relief/collision boost must not skew the carefully-tuned land mix:
+/// `Desert` stays in a sane band (the session's origin metric — guard against
+/// monotony returning *or* collapsing), land fraction stays Earth-like (guard
+/// against rifts sinking continents or arcs welding them), and `Marsh` doesn't
+/// explode (guard against the interior-upland erosion feeding runaway wetlands).
+/// Wide tripwires, not tight pins — baseline at commit: Desert 19.7 %, land
+/// 27.6 %, Marsh small.
+#[test]
+fn terrain_proportions_stay_in_band() {
+    let seeds: [u64; 6] = [7, 13, 42, 99, 123, 2024];
+    let (mut cells, mut land, mut desert, mut marsh) = (0usize, 0usize, 0usize, 0usize);
+    for &seed in &seeds {
+        let cs = CreativeSeed { world_scale: WorldScale::Continent, ..CreativeSeed::default() };
+        let map = generate(seed, &cs);
+        cells += map.cell_count();
+        for c in 0..map.cell_count() {
+            if !map.is_land(c) {
+                continue;
+            }
+            land += 1;
+            match map.biome[c] {
+                BiomeKind::Desert => desert += 1,
+                BiomeKind::Marsh => marsh += 1,
+                _ => {}
+            }
+        }
+    }
+    let land_pct = 100.0 * land as f64 / cells.max(1) as f64;
+    let desert_pct = 100.0 * desert as f64 / land.max(1) as f64;
+    let marsh_pct = 100.0 * marsh as f64 / land.max(1) as f64;
+    eprintln!(
+        "terrain_proportions_stay_in_band: land {land_pct:.1}% of cells, \
+         Desert {desert_pct:.1}% of land, Marsh {marsh_pct:.1}% of land"
+    );
+    assert!(
+        (18.0..=42.0).contains(&land_pct),
+        "land fraction {land_pct:.1}% out of band [18,42] — continents welded or sank"
+    );
+    assert!(
+        (10.0..=35.0).contains(&desert_pct),
+        "Desert {desert_pct:.1}% of land out of band [10,35] — climate mix skewed"
+    );
+    assert!(
+        marsh_pct <= 20.0,
+        "Marsh {marsh_pct:.1}% of land > 20% — interior-upland erosion may be flooding lowland"
     );
 }
 

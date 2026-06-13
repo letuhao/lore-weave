@@ -561,6 +561,16 @@ fn provinces_partition_land() {
                 "{profile:?} seed {seed}: {} provinces < {n_components} land components",
                 map.provinces.len()
             );
+            // Upper bound: `build_nested` places ≤ 8 provinces per geographic
+            // region (`(cells/150).clamp(1,8)`), so the count can never explode
+            // past 8·regions. Catches a province over-count the orphan/lower-bound
+            // checks alone would miss (e.g. a base-offset bug duplicating seeds).
+            assert!(
+                map.provinces.len() <= map.regions.len() * 8,
+                "{profile:?} seed {seed}: {} provinces > 8×{} regions (over-count)",
+                map.provinces.len(),
+                map.regions.len()
+            );
         }
     }
 }

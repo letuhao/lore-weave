@@ -197,7 +197,9 @@ pub fn build(
             // 1 across a collision belt — so ranges rise AT the suture. `amp` is
             // `max(tect, interior)`: the larger of the belt amplitude and a small
             // organic interior ruggedness (uplands away from belts). `amp` gates
-            // both the relief detail and the erosion incision.
+            // both the relief detail and the erosion incision — so interior
+            // uplands carry *light* incision too (intentional: uplands have
+            // drainage), while belts carve hard and true plains (amp≈0) stay flat.
             let tect: Vec<f32> = (0..count)
                 .map(|i| {
                     if is_land_macro[i] {
@@ -388,7 +390,9 @@ fn land_relief(p: [f32; 3], amp: f32, tect: f32, seed: u32) -> f32 {
     // Plains whisper — gentle, always present, very small amplitude.
     let whisper = TEC_PLAIN_WEIGHT
         * fbm_3d(p[0] * PLAIN_FREQ, p[1] * PLAIN_FREQ, p[2] * PLAIN_FREQ, seed ^ SALT_PLAIN, 2);
-    if amp < 1e-3 && tect < 1e-3 {
+    // `amp = max(tect, interior)` at every call site, so `amp < 1e-3` already
+    // implies `tect < 1e-3` (belt off too) → interior + belt both negligible.
+    if amp < 1e-3 {
         return whisper;
     }
     // Warp masked by relief amplitude (strong on belts, ~0 on plains).
