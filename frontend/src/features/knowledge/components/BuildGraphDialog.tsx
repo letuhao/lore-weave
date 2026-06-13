@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { FormDialog } from '@/components/shared';
+import { AddModelCta } from '@/components/shared/AddModelCta';
 import { useAuth } from '@/auth';
 import { aiModelsApi, type UserModel } from '../../ai-models/api';
 import {
@@ -244,18 +245,39 @@ export function BuildGraphDialog({
   });
 
   const maxSpendValid = maxSpend === '' || DECIMAL_REGEX.test(maxSpend);
+  const hasEmbedding = embeddingModel !== null && embeddingModel !== '';
+  // C5: while the benchmark status is still loading for a selected embedding
+  // model, we don't yet KNOW if the gate passes — treat it as not-ok so Confirm
+  // can't enable-too-early (adversary focus), then settle to the real verdict.
+  const benchmarkLoading = hasEmbedding && benchmarkQuery.isLoading;
   const benchmarkOk =
     !benchmarkQuery.data ||
     (benchmarkQuery.data.has_run && benchmarkQuery.data.passed);
+  // C5 (KN-1/BL-16): the golden-set benchmark is a VISIBLE gate — extraction
+  // stays disabled until a passing benchmark exists (the EmbeddingModelPicker
+  // renders the status badge + Run-benchmark button for this same project/model).
+  const llmEmpty = !modelsQuery.isLoading && (modelsQuery.data?.items?.length ?? 0) === 0;
 
   const canConfirm =
     !starting &&
     llmModel !== '' &&
-    embeddingModel !== null &&
-    embeddingModel !== '' &&
+    hasEmbedding &&
     maxSpendValid &&
     chapterRangeValid &&
+    !benchmarkLoading &&
     benchmarkOk;
+
+  // C5: name the missing precondition so a disabled Confirm is never a mystery.
+  const disabledReason: string | null = (() => {
+    if (starting) return null;
+    if (llmModel === '') return t('projects.buildDialog.disabled.pickLlm', { defaultValue: 'Pick an extraction LLM model.' });
+    if (!hasEmbedding) return t('projects.buildDialog.disabled.pickEmbedding', { defaultValue: 'Pick an embedding model.' });
+    if (benchmarkLoading) return t('projects.buildDialog.disabled.checkingBenchmark', { defaultValue: 'Checking the embedding benchmark…' });
+    if (!benchmarkOk) return t('projects.buildDialog.disabled.benchmarkRequired', { defaultValue: 'Run the golden-set benchmark and pass it to enable extraction (above).' });
+    if (!maxSpendValid) return t('projects.buildDialog.disabled.fixMaxSpend', { defaultValue: 'Enter a valid spending cap.' });
+    if (!chapterRangeValid) return t('projects.buildDialog.disabled.fixRange', { defaultValue: 'Fix the chapter range.' });
+    return null;
+  })();
 
   const handleConfirm = async () => {
     if (!accessToken || !embeddingModel) return;
@@ -312,6 +334,15 @@ export function BuildGraphDialog({
       description={t('projects.buildDialog.description')}
       footer={
         <>
+          {/* C5: name the missing precondition next to a disabled Confirm. */}
+          {disabledReason && (
+            <span
+              className="mr-auto self-center text-[11px] text-muted-foreground"
+              data-testid="build-graph-disabled-reason"
+            >
+              {disabledReason}
+            </span>
+          )}
           <button
             type="button"
             onClick={() => onOpenChange(false)}
@@ -439,9 +470,12 @@ export function BuildGraphDialog({
               );
             })}
           </select>
-          {!modelsQuery.isLoading && chatModels.length === 0 && (
-            <span className="text-[11px] text-muted-foreground">
+          {llmEmpty && (
+            // C5 (KN-1/BL-16): no chat model → in-flow AddModelCta (deep-link +
+            // return), not a dead-end. Resolved from provider-registry; no literal.
+            <span className="flex flex-col gap-1 text-[11px] text-muted-foreground">
               {t('projects.buildDialog.llmModel.empty')}
+              <AddModelCta capability="chat" variant="link" />
             </span>
           )}
         </label>

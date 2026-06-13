@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
+import { AddModelCta } from '@/components/shared/AddModelCta';
 import { aiModelsApi, type UserModel } from '../../ai-models/api';
 import { knowledgeApi } from '../api';
 import {
@@ -156,11 +157,15 @@ export function EmbeddingModelPicker({ value, onChange, disabled, projectId }: P
         // with a valid token. Without this gate, an unauthed render
         // (hypothetical — route guards normally prevent it) would
         // falsely tell the user to add a model.
-        <span className="text-[11px] text-muted-foreground">
+        // C5 (KN-1/BL-16): embedding is the real build-graph precondition — when
+        // none is configured, offer the in-flow AddModelCta (deep-link + return)
+        // instead of a dead-end "go to settings" sentence.
+        <span className="flex flex-col gap-1 text-[11px] text-muted-foreground">
           {t('projects.form.embeddingModelEmpty', {
             defaultValue:
-              'No embedding-capable models configured. Add one in AI Models → Credentials.',
+              'No embedding-capable models configured — extraction needs one.',
           })}
+          <AddModelCta capability="embedding" variant="link" />
         </span>
       )}
       <span className="text-[11px] text-muted-foreground">
