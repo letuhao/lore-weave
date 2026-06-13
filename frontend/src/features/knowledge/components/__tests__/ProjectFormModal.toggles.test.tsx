@@ -19,6 +19,11 @@ vi.mock('../EmbeddingModelPicker', () => ({
 vi.mock('../RerankModelPicker', () => ({
   RerankModelPicker: () => <div data-testid="rerank-picker-stub" />,
 }));
+// C4: BookPicker fetches the user's books on mount via useAuth/booksApi — stub it
+// so this toggles test stays focused (same pattern as the model pickers above).
+vi.mock('@/components/shared/BookPicker', () => ({
+  BookPicker: () => <div data-testid="book-picker-stub" />,
+}));
 
 import { ProjectFormModal } from '../ProjectFormModal';
 
