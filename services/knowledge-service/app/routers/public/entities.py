@@ -18,6 +18,7 @@ from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Path, Query, Response, status
+from fastapi import status as status_codes  # C8: alias — the list_entities route has a `status` query param that shadows the module name
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, model_validator
 
@@ -26,10 +27,14 @@ from app.db.neo4j_helpers import run_read
 from app.db.neo4j_repos.canonical import canonicalize_entity_name
 from app.db.neo4j_repos.entities import (
     ENTITIES_MAX_LIMIT,
+    ENTITY_SORT_KEYS,
+    ENTITY_STATUSES,
+    SUPPORTED_VECTOR_DIMS,
     Entity,
     EntityDetail,
     MergeEntitiesError,
     archive_entity,
+    find_entities_by_vector,
     get_entity,
     get_entity_with_relations,
     list_entities_filtered,
@@ -43,8 +48,15 @@ from app.db.neo4j_repos.entity_status import statuses_detail_at_order
 from app.db.neo4j_repos.facts import Fact, list_facts_for_entity
 from app.db.repositories import VersionMismatchError
 from app.db.repositories.entity_alias_map import EntityAliasMapRepo
+from app.db.repositories.projects import ProjectsRepo
 from app.clients.book_client import BookClient
-from app.deps import get_book_client, get_entity_alias_map_repo
+from app.clients.embedding_client import EmbeddingClient, EmbeddingError
+from app.deps import (
+    get_book_client,
+    get_embedding_client,
+    get_entity_alias_map_repo,
+    get_projects_repo,
+)
 from app.spoiler_window import resolve_before_order
 from app.events.outbox_emit import (
     ENTITY_CORRECTED,
@@ -220,9 +232,26 @@ async def archive_user_entity(
 _SEARCH_MIN_LENGTH = 2
 
 
+# C8 — closed enums for the new status filter + sort key. Mirror the
+# repo's ENTITY_STATUSES / ENTITY_SORT_KEYS tuples; Literal is the only
+# form FastAPI introspects for 422 validation.
+EntityStatusFilter = Literal["canonical", "discovered", "archived"]
+EntitySortBy = Literal["mention_count", "anchor_score"]
+
+# C8 — semantic_query length bound. Matches the drawers-search query
+# cap shape: short enough that a single embed call is cheap, long
+# enough for a sentence-level natural-language query.
+_SEMANTIC_QUERY_MAX_LENGTH = 1000
+
+
 class EntitiesListResponse(BaseModel):
     entities: list[Entity]
     total: int
+    # C8 — null on the plain (FTS / browse) path; set on the
+    # `semantic_query` vector path so the FE can show "searched via X"
+    # and distinguish "project not indexed" (null model) from a
+    # zero-hit live search.
+    embedding_model: str | None = None
 
 
 @entities_router.get("/entities", response_model=EntitiesListResponse)
@@ -232,7 +261,8 @@ async def list_entities(
         description=(
             "Filter to a specific project. Omit (or pass no value) to "
             "browse across every project + global-scope entities the "
-            "caller owns."
+            "caller owns. REQUIRED when `semantic_query` is set "
+            "(vector search is project-scoped)."
         ),
     ),
     kind: str | None = Query(
@@ -248,21 +278,93 @@ async def list_entities(
         min_length=_SEARCH_MIN_LENGTH,
         max_length=200,
         description=(
-            "Case-insensitive substring match against name + aliases. "
-            "Minimum 2 characters to avoid whole-corpus scans."
+            "Case-insensitive substring (FTS) match against name + "
+            "aliases. Minimum 2 characters to avoid whole-corpus scans. "
+            "Mutually exclusive with `semantic_query`."
+        ),
+    ),
+    semantic_query: str | None = Query(
+        default=None,
+        min_length=_SEARCH_MIN_LENGTH,
+        max_length=_SEMANTIC_QUERY_MAX_LENGTH,
+        description=(
+            "C8: natural-language VECTOR search over entity embeddings. "
+            "Embeds the query via the project's provider-registry "
+            "embedding model, then runs two-layer (anchor-weighted) "
+            "vector retrieval. Requires `project_id`. Distinct from the "
+            "plain `search` FTS param — pass one or the other."
+        ),
+    ),
+    status: EntityStatusFilter | None = Query(
+        default=None,
+        description=(
+            "C8: filter to a single DERIVED status — `canonical` "
+            "(glossary-anchored), `discovered` (unanchored, active), or "
+            "`archived`. Omit for the default active view (canonical + "
+            "discovered). `archived` is the only way to surface archived "
+            "rows."
+        ),
+    ),
+    sort_by: EntitySortBy = Query(
+        default="mention_count",
+        description=(
+            "C8: ordering key. `mention_count` (default, browse-by-"
+            "frequency) or `anchor_score` (anchored-first curation view). "
+            "Ignored on the `semantic_query` path (vector relevance + "
+            "anchor weighting drive that ordering)."
         ),
     ),
     limit: int = Query(50, ge=1, le=ENTITIES_MAX_LIMIT),
     offset: int = Query(0, ge=0),
     user_id: UUID = Depends(get_current_user),
 ) -> EntitiesListResponse:
-    """K19d.2 — browse entities with optional filters.
+    """K19d.2 + C8 — browse / search entities.
+
+    Two retrieval modes:
+      - **plain** (default): paginated browse with `kind` / `search`
+        (FTS) / `status` filters + `sort_by`.
+      - **semantic** (`semantic_query` set): two-layer anchor-weighted
+        VECTOR search. The query is embedded server-side via the
+        project's provider-registry embedding model (no hardcoded model
+        name, no per-service embed env — same BYOK resolution as the
+        drawers-search path). `status` still filters the vector result
+        set; `sort_by` is ignored (vector relevance + anchor_score win).
 
     Multi-tenant safety: `user_id` from JWT is threaded through to
     the Cypher `$user_id` parameter; cross-user rows are filtered
     at the MATCH. The Entities tab never exposes a user_id body
     field — a caller cannot spoof another user's entities.
     """
+    if semantic_query is not None:
+        if search is not None:
+            raise HTTPException(
+                status_code=status_codes.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="pass either `search` (FTS) or `semantic_query` "
+                "(vector), not both",
+            )
+        if project_id is None:
+            raise HTTPException(
+                status_code=status_codes.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="`project_id` is required for `semantic_query` "
+                "(vector search is project-scoped)",
+            )
+        # Lazy dep resolution: the projects-repo + embedding-client are
+        # only needed on the (rarer) vector path, and `get_projects_repo`
+        # touches the knowledge pool. Resolving them as eager route-level
+        # `Depends` would force every plain browse call (and its tests) to
+        # stand up the pool. We call the same getters the drawers route
+        # uses; unit tests patch THESE module references.
+        return await _semantic_search_entities(
+            user_id=user_id,
+            project_id=project_id,
+            query=semantic_query,
+            kind=kind,
+            status=status,
+            limit=limit,
+            projects_repo=await get_projects_repo(),
+            embedding_client=await get_embedding_client(),
+        )
+
     async with neo4j_session() as session:
         rows, total = await list_entities_filtered(
             session,
@@ -270,10 +372,132 @@ async def list_entities(
             project_id=str(project_id) if project_id is not None else None,
             kind=kind,
             search=search,
+            status=status,
+            sort_by=sort_by,
             limit=limit,
             offset=offset,
         )
     return EntitiesListResponse(entities=rows, total=total)
+
+
+async def _semantic_search_entities(
+    *,
+    user_id: UUID,
+    project_id: UUID,
+    query: str,
+    kind: str | None,
+    status: str | None,
+    limit: int,
+    projects_repo: ProjectsRepo,
+    embedding_client: EmbeddingClient,
+) -> EntitiesListResponse:
+    """C8 — vector search branch of `list_entities`.
+
+    Mirrors the drawers-search contract:
+      - 404 when the project is missing / cross-user (anti-leak).
+      - 200 `{entities: [], embedding_model: null}` when the project has
+        no embedding model configured (FE: "not indexed yet").
+      - 502 `provider_error` on EmbeddingError from the BYOK provider.
+      - 502 `embedding_dim_mismatch` when the live vector length
+        disagrees with the project's stored `embedding_dimension`.
+
+    The embedding model is resolved from `project.embedding_model`
+    (a provider-registry model ref) — NEVER a literal in this code.
+    """
+    if not query.strip():
+        return EntitiesListResponse(entities=[], total=0, embedding_model=None)
+
+    project = await projects_repo.get(user_id, project_id)
+    if project is None:
+        raise HTTPException(
+            status_code=status_codes.HTTP_404_NOT_FOUND,
+            detail="project not found",
+        )
+
+    if (
+        project.embedding_model is None
+        or project.embedding_dimension is None
+        or project.embedding_dimension not in SUPPORTED_VECTOR_DIMS
+    ):
+        return EntitiesListResponse(
+            entities=[], total=0, embedding_model=project.embedding_model,
+        )
+
+    try:
+        embed_result = await embedding_client.embed(
+            user_id=user_id,
+            model_source="user_model",
+            model_ref=project.embedding_model,
+            texts=[query],
+        )
+    except EmbeddingError as exc:
+        logger.warning(
+            "C8: semantic entity search embedding failed project=%s model=%s: %s",
+            project_id, project.embedding_model, exc,
+        )
+        raise HTTPException(
+            status_code=status_codes.HTTP_502_BAD_GATEWAY,
+            detail={
+                "error_code": "provider_error",
+                "message": str(exc),
+                "retryable": bool(getattr(exc, "retryable", False)),
+            },
+        )
+
+    if not embed_result.embeddings or not embed_result.embeddings[0]:
+        return EntitiesListResponse(
+            entities=[], total=0, embedding_model=project.embedding_model,
+        )
+    query_vector = embed_result.embeddings[0]
+
+    try:
+        async with neo4j_session() as session:
+            hits = await find_entities_by_vector(
+                session,
+                user_id=str(user_id),
+                project_id=str(project_id),
+                query_vector=query_vector,
+                dim=project.embedding_dimension,
+                embedding_model=project.embedding_model,
+                # Oversample so post-filtering by kind/status doesn't
+                # starve the page: ask for limit*N candidates, then
+                # trim after the Python-side filters.
+                limit=limit * 5,
+                include_archived=(status == "archived"),
+            )
+    except ValueError as exc:
+        logger.warning(
+            "C8: semantic entity search dim mismatch project=%s stored=%s live=%s",
+            project_id, project.embedding_dimension, len(query_vector),
+        )
+        raise HTTPException(
+            status_code=status_codes.HTTP_502_BAD_GATEWAY,
+            detail={
+                "error_code": "embedding_dim_mismatch",
+                "message": str(exc),
+            },
+        )
+
+    rows = [h.entity for h in hits]
+    # Post-filter by kind + derived status (the vector index is global;
+    # these dimensions aren't expressible in the Cypher vector call). Use
+    # the model's own `status` computed field rather than re-deriving — one
+    # fewer precedence copy to drift (adversary review note).
+    if kind is not None:
+        rows = [e for e in rows if e.kind == kind]
+    if status is not None:
+        rows = [e for e in rows if e.status == status]
+    # `total` is the count of matches we retrieved (adversary review
+    # minor-1): report it BEFORE the page trim so the FE's "X of N" is
+    # honest. This is bounded by the oversample (limit*5) — a true
+    # corpus-wide count isn't available from the vector index without a
+    # second pass, and the semantic path is single-page (offset ignored),
+    # so a retrieved-set count is the meaningful figure here.
+    total = len(rows)
+    rows = rows[:limit]
+    return EntitiesListResponse(
+        entities=rows, total=total, embedding_model=project.embedding_model,
+    )
 
 
 # ── T2.1 — Cast & Codex: spoiler-windowed status + facts ──────────────

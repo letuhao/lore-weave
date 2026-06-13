@@ -178,6 +178,13 @@ export interface Entity {
   anchor_score: number;
   archived_at: string | null;
   archive_reason: string | null;
+  /** C8: DERIVED server-side from glossary_entity_id + archived_at.
+   *  `canonical` = glossary-anchored · `discovered` = unanchored active ·
+   *  `archived` = archived_at set. Precedence archived > canonical >
+   *  discovered (mirrors the BE `Entity.status` computed field). Never
+   *  a stored column. Optional in the type so pre-C8 fixtures / a
+   *  rollout-window response without the field degrade gracefully. */
+  status?: EntityStatus;
   evidence_count: number;
   mention_count: number;
   /** K19d γ-a: set to true by PATCH /entities/{id}; gates the Unlock
@@ -285,12 +292,27 @@ export interface RegenerateResponse {
 
 // ── K19d.2 / K19d.4 — entities browse + detail ────────────────────────
 
+/** C8: closed set of derived entity statuses. Source of truth for the
+ *  FE — the status filter + the row glyph map iterate this tuple. */
+export const ENTITY_STATUSES = ['canonical', 'discovered', 'archived'] as const;
+export type EntityStatus = (typeof ENTITY_STATUSES)[number];
+
+/** C8: ordering keys accepted by the entities list endpoint. */
+export type EntitySortBy = 'mention_count' | 'anchor_score';
+
 export interface EntitiesListParams {
   project_id?: string;
   kind?: string;
   /** FE enforces min length 2 (matches BE Query min_length=2) so
    *  filter-free short keystrokes don't round-trip to a 422. */
   search?: string;
+  /** C8: natural-language VECTOR search. Mutually exclusive with
+   *  `search` (BE 422s if both set); requires `project_id`. */
+  semantic_query?: string;
+  /** C8: filter to a single derived status. */
+  status?: EntityStatus;
+  /** C8: ordering key. Defaults to `mention_count` BE-side. */
+  sort_by?: EntitySortBy;
   limit?: number;
   offset?: number;
 }
@@ -298,6 +320,10 @@ export interface EntitiesListParams {
 export interface EntitiesBrowseResponse {
   entities: Entity[];
   total: number;
+  /** C8: set on the `semantic_query` vector path ("searched via X");
+   *  null on the plain FTS/browse path OR when the project isn't
+   *  indexed yet. */
+  embedding_model?: string | null;
 }
 
 /**
@@ -1160,6 +1186,10 @@ export const knowledgeApi = {
     if (params.project_id != null) qs.set('project_id', params.project_id);
     if (params.kind != null) qs.set('kind', params.kind);
     if (params.search != null) qs.set('search', params.search);
+    if (params.semantic_query != null)
+      qs.set('semantic_query', params.semantic_query);
+    if (params.status != null) qs.set('status', params.status);
+    if (params.sort_by != null) qs.set('sort_by', params.sort_by);
     if (params.limit != null) qs.set('limit', String(params.limit));
     if (params.offset != null) qs.set('offset', String(params.offset));
     const q = qs.toString();

@@ -212,10 +212,29 @@
     "filters": {
       "project": "專案",
       "kind": "類型",
+      "status": "狀態",
       "search": "搜尋",
       "searchPlaceholder": "名稱或別名（至少 2 個字元）",
+      "semantic": "語意搜尋",
+      "semanticPlaceholder": "描述你要找的內容（向量搜尋）",
       "anyProject": "任何專案",
-      "anyKind": "任何類型"
+      "anyKind": "任何類型",
+      "anyStatus": "任何狀態"
+    },
+    "status": {
+      "canonical": "正典",
+      "discovered": "已發現",
+      "archived": "已封存"
+    },
+    "legend": {
+      "title": "狀態",
+      "canonical": "已在你的詞彙表中",
+      "discovered": "已找到，尚未提升",
+      "archived": "已從檢索中隱藏"
+    },
+    "anchor": {
+      "badge": "⚓ {{pct}}",
+      "tooltip": "錨定分數 {{pct}}% — 此實體的紮根強度"
     },
     "table": {
       "ariaLabel": "實體",

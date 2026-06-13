@@ -212,10 +212,29 @@
     "filters": {
       "project": "Project",
       "kind": "Kind",
+      "status": "Status",
       "search": "Search",
       "searchPlaceholder": "Name or alias (min 2 chars)",
+      "semantic": "Semantic search",
+      "semanticPlaceholder": "Describe what you're looking for (vector search)",
       "anyProject": "Any project",
-      "anyKind": "Any kind"
+      "anyKind": "Any kind",
+      "anyStatus": "Any status"
+    },
+    "status": {
+      "canonical": "Canonical",
+      "discovered": "Discovered",
+      "archived": "Archived"
+    },
+    "legend": {
+      "title": "Status",
+      "canonical": "in your glossary",
+      "discovered": "found, not yet promoted",
+      "archived": "hidden from retrieval"
+    },
+    "anchor": {
+      "badge": "⚓ {{pct}}",
+      "tooltip": "Anchor score {{pct}}% — how strongly this entity is grounded"
     },
     "table": {
       "ariaLabel": "Entities",

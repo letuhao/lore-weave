@@ -212,10 +212,29 @@
     "filters": {
       "project": "プロジェクト",
       "kind": "種別",
+      "status": "ステータス",
       "search": "検索",
       "searchPlaceholder": "名前またはエイリアス（2文字以上）",
+      "semantic": "セマンティック検索",
+      "semanticPlaceholder": "探している内容を記述（ベクトル検索）",
       "anyProject": "すべてのプロジェクト",
-      "anyKind": "すべての種別"
+      "anyKind": "すべての種別",
+      "anyStatus": "すべてのステータス"
+    },
+    "status": {
+      "canonical": "正典",
+      "discovered": "発見済み",
+      "archived": "アーカイブ済み"
+    },
+    "legend": {
+      "title": "ステータス",
+      "canonical": "用語集に登録済み",
+      "discovered": "発見済み、未昇格",
+      "archived": "検索から非表示"
+    },
+    "anchor": {
+      "badge": "⚓ {{pct}}",
+      "tooltip": "アンカースコア {{pct}}% — このエンティティの定着度"
     },
     "table": {
       "ariaLabel": "エンティティ",

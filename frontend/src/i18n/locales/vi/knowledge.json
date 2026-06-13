@@ -212,10 +212,29 @@
     "filters": {
       "project": "Dự án",
       "kind": "Loại",
+      "status": "Trạng thái",
       "search": "Tìm kiếm",
       "searchPlaceholder": "Tên hoặc bí danh (tối thiểu 2 ký tự)",
+      "semantic": "Tìm theo ngữ nghĩa",
+      "semanticPlaceholder": "Mô tả điều bạn đang tìm (tìm bằng vector)",
       "anyProject": "Mọi dự án",
-      "anyKind": "Mọi loại"
+      "anyKind": "Mọi loại",
+      "anyStatus": "Mọi trạng thái"
+    },
+    "status": {
+      "canonical": "Chính thức",
+      "discovered": "Đã phát hiện",
+      "archived": "Đã lưu trữ"
+    },
+    "legend": {
+      "title": "Trạng thái",
+      "canonical": "đã có trong từ điển của bạn",
+      "discovered": "đã tìm thấy, chưa nâng cấp",
+      "archived": "ẩn khỏi truy xuất"
+    },
+    "anchor": {
+      "badge": "⚓ {{pct}}",
+      "tooltip": "Điểm neo {{pct}}% — mức độ gắn kết của thực thể này"
     },
     "table": {
       "ariaLabel": "Thực thể",

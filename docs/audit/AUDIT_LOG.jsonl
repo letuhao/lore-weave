@@ -1451,3 +1451,22 @@
 {"ts":"2026-06-13T03:18:00Z","event":"verify_cycle_7_failed","cycle":7}
 {"ts":"2026-06-13T03:18:22Z","event":"verify_cycle_7_passed","cycle":7}
 {"ts":"2026-06-13T03:20:32Z","event":"verify_cycle_7_passed","cycle":7}
+{"ts": "2026-06-13T06:03:31Z", "event": "coordinator_next_cycle_emitted", "cycle": 8}
+{"ts":"2026-06-13T06:08:31Z","event":"startup_drift_check_inconclusive","cycle":8,"cd":"","rw":""}
+{"ts":"2026-06-13T06:08:31Z","event":"startup_verifier_complete","cycle":8,"steps":6}
+{"ts": "2026-06-13T06:08:42Z", "event": "in_progress_init", "cycle": 8, "title": "Entities semantic layer (BE+FE)"}
+{"ts": "2026-06-13T06:10:48Z", "event": "in_progress_update", "cycle": 8, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-06-13T06:11:26Z", "event": "in_progress_update", "cycle": 8, "phase": "REVIEW1", "retry": 0}
+{"ts": "2026-06-13T06:11:28Z", "event": "in_progress_update", "cycle": 8, "phase": "PLAN", "retry": 0}
+{"ts": "2026-06-13T06:11:40Z", "event": "in_progress_update", "cycle": 8, "phase": "BUILD", "retry": 0}
+{"ts":"2026-06-13T06:27:11Z","event":"secret_scan_skipped","cycle":8,"dps":all,"reason":"gitleaks_not_installed"}
+{"ts": "2026-06-13T06:27:14Z", "event": "in_progress_update", "cycle": 8, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-06-13T06:27:56Z","event":"verify_cycle_8_failed","cycle":8}
+{"ts":"2026-06-13T06:28:29Z","event":"verify_cycle_8_passed","cycle":8}
+{"ts": "2026-06-13T06:40:12Z", "event": "in_progress_update", "cycle": 8, "phase": "REVIEW2", "retry": 0}
+{"ts":"2026-06-13T06:44:25Z","event":"verify_cycle_8_passed","cycle":8}
+{"ts": "2026-06-13T06:44:44Z", "event": "in_progress_update", "cycle": 8, "phase": "QC", "retry": 0}
+{"ts": "2026-06-13T06:46:55Z", "event": "in_progress_update", "cycle": 8, "phase": "POST_REVIEW", "retry": 0}
+{"ts": "2026-06-13T06:49:06Z", "event": "in_progress_update", "cycle": 8, "phase": "SESSION", "retry": 0}
+{"ts":"2026-06-13T06:49:53Z","cycle":8,"phase":"session","event":"cycle_complete","dps_count":3,"retry_count":0,"adversary_findings":{"blockers":0,"majors":0,"minors":2,"notes":2},"scope_guard":"CLEAR","post_review":"CLEAR","verify_exit":0,"live_smoke":"semantic_query + status filter on a built knowledge graph","tests":{"pytest":48,"vitest":12},"screenshot":"docs/raid/evidence/cycle-8/entities-semantic-layer.png"}
+{"ts": "2026-06-13T06:50:02Z", "event": "in_progress_update", "cycle": 8, "phase": "COMMIT", "retry": 0}
