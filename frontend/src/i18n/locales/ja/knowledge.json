@@ -279,7 +279,24 @@
         "anchor": "アンカースコア"
       },
       "edit": "編集",
-      "merge": "別のエンティティと結合"
+      "merge": "別のエンティティと結合",
+      "promote": "用語集へ昇格",
+      "promoteHint": "発見されたエンティティです。昇格するとレビュー用のAI提案下書きが作成されます。",
+      "promotePending": "昇格中…",
+      "promoteSuccess": "昇格しました — レビュー用の用語集下書きを作成しました。",
+      "promoteFailed": "昇格できませんでした: {{error}}",
+      "unpin": "コンテキスト固定を解除",
+      "unpinHint": "このエンティティは抽出コンテキストに固定されています。",
+      "unpinSuccess": "コンテキスト固定を解除しました。",
+      "unpinFailed": "固定を解除できませんでした: {{error}}",
+      "facts": "既知の事実 ({{count}})",
+      "factSource": "第{{chapter}}章",
+      "factType": {
+        "decision": "決定",
+        "preference": "嗜好",
+        "milestone": "節目",
+        "negation": "否定"
+      }
     },
     "edit": {
       "title": "エンティティを編集",

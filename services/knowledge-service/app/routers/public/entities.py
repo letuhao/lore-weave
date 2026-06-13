@@ -37,6 +37,7 @@ from app.db.neo4j_repos.entities import (
     find_entities_by_vector,
     get_entity,
     get_entity_with_relations,
+    link_to_glossary,
     list_entities_filtered,
     list_user_entities,
     merge_entities,
@@ -51,10 +52,14 @@ from app.db.repositories.entity_alias_map import EntityAliasMapRepo
 from app.db.repositories.projects import ProjectsRepo
 from app.clients.book_client import BookClient
 from app.clients.embedding_client import EmbeddingClient, EmbeddingError
+from app.clients.glossary_client import GlossaryClient
+from app.extraction.entity_resolver import normalize_kind_for_anchor_lookup
+from app.extraction.glossary_writeback import WRITEBACK_TAG
 from app.deps import (
     get_book_client,
     get_embedding_client,
     get_entity_alias_map_repo,
+    get_glossary_client,
     get_projects_repo,
 )
 from app.spoiler_window import resolve_before_order
@@ -862,6 +867,203 @@ async def unlock_entity(
     )
     response.headers["ETag"] = _etag(updated.version)
     return updated
+
+
+# ── C9 — POST /entities/{id}/promote ────────────────────────────────
+
+
+def _draft_glossary_id(propose_resp: dict | None) -> str | None:
+    """Extract the anchorable glossary entity_id from an ``extract-entities``
+    response. Returns None when the batch produced no usable id.
+
+    The single-entity promote yields exactly one proposal whose ``status``
+    is one of ``created`` / ``updated`` / ``skipped``:
+
+      - ``created``  — a fresh ai-suggested DRAFT (the common promote case).
+      - ``updated``  — the name already named an existing glossary entry and
+                       this write touched it; anchor to that entry.
+      - ``skipped``  — either (a) the name resolves to an EXISTING glossary
+                       entity but no new attribute was written (a no-op
+                       merge — already curated; still anchorable, the row
+                       carries its ``entity_id``), or (b) a tombstoned
+                       ``ai-rejected`` name (``skip_reason='tombstoned'`` —
+                       the user explicitly rejected it; NOT anchorable).
+
+    So we accept any non-empty ``entity_id`` EXCEPT a tombstoned skip. This
+    makes promote anchor a discovered entity to an already-existing glossary
+    entry (the "glossary entry authored that matches a discovered entity"
+    path) instead of hard-failing on the merge-no-op case.
+    """
+    if not propose_resp:
+        return None
+    items = propose_resp.get("entities") or []
+    if not items:
+        return None
+    first = items[0]
+    if first.get("skip_reason") == "tombstoned":
+        return None
+    gid = first.get("entity_id")
+    return gid or None
+
+
+@entities_router.post(
+    "/entities/{entity_id}/promote",
+    response_model=Entity,
+)
+async def promote_entity(
+    entity_id: str = Path(min_length=1, max_length=200),
+    user_id: UUID = Depends(get_current_user),
+    projects_repo: ProjectsRepo = Depends(get_projects_repo),
+    glossary_client: GlossaryClient = Depends(get_glossary_client),
+) -> Entity:
+    """C9 (C9-promote-flow LOCKED) — promote a DISCOVERED entity into the
+    glossary curation flywheel.
+
+    Two server-side steps, in order (the FE cannot reach glossary's
+    ``/internal/extract-entities`` and partial-failure handling is safest
+    in one request):
+
+      1. create a glossary **DRAFT** (``status='draft'``, tag
+         ``ai-suggested``) from the entity's name/kind/aliases via
+         ``GlossaryClient.propose_entities`` — NEVER an active entity; the
+         human reviews + promotes it in glossary's existing AI-suggestions
+         inbox (integrate, don't duplicate).
+      2. anchor the knowledge entity to that draft
+         (``glossary_entity_id`` + ``anchor_score=1.0``) via
+         ``link_to_glossary`` → its derived status flips to ``canonical``.
+
+    Guards:
+      - 404 — entity missing / cross-user (KSA §6.4 anti-existence-leak).
+      - 409 ``already_anchored`` — entity already has a ``glossary_entity_id``;
+        re-promoting would double-draft.
+      - 422 ``no_book`` — the project has no ``book_id``; nowhere to write the
+        glossary draft.
+      - 502 ``glossary_draft_failed`` — the draft-create returned nothing
+        anchorable (glossary down/4xx, or the name was tombstoned); the
+        entity is NOT anchored.
+      - 502 ``anchor_failed`` — the draft was created but the anchor write
+        missed (stale id / race). The draft persists; a retry is safe —
+        ``propose_entities`` dedups by name and ``link_to_glossary`` is
+        idempotent (no orphaned/duplicate draft).
+    """
+    user_id_str = str(user_id)
+
+    async with neo4j_session() as session:
+        entity = await get_entity(
+            session, user_id=user_id_str, canonical_id=entity_id,
+        )
+        if entity is None:
+            raise HTTPException(
+                status_code=status_codes.HTTP_404_NOT_FOUND,
+                detail="entity not found",
+            )
+        # Only a discovered entity is promotable — already-anchored ⇒ 409
+        # (no double-draft on a re-click). Archived entities carry no
+        # glossary_entity_id, so this also blocks promoting an archived one
+        # only if it was previously anchored (it never is — archive nulls
+        # the FK), which is the correct conservative behavior.
+        if entity.glossary_entity_id is not None:
+            raise HTTPException(
+                status_code=status_codes.HTTP_409_CONFLICT,
+                detail={
+                    "error_code": "already_anchored",
+                    "message": "entity is already anchored to a glossary entry",
+                },
+            )
+
+        # Resolve the project's book_id — the glossary draft must be written
+        # under a book.
+        project = None
+        if entity.project_id:
+            try:
+                project = await projects_repo.get(user_id, UUID(entity.project_id))
+            except ValueError:
+                project = None
+        book_id = getattr(project, "book_id", None) if project else None
+        if book_id is None:
+            raise HTTPException(
+                status_code=status_codes.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail={
+                    "error_code": "no_book",
+                    "message": (
+                        "project has no linked book — cannot create a glossary "
+                        "draft"
+                    ),
+                },
+            )
+
+        # Step 1 — create the ai-suggested DRAFT in glossary. Mirror the
+        # KG→glossary writeback payload shape (kind normalized to a glossary
+        # kind_code; alias variants minus the canonical name). Compare on the
+        # CANONICAL form (case/accent/whitespace-folded) so a display-cased
+        # variant of the name itself doesn't leak in as a redundant alias —
+        # `entity.canonical_name` is already folded, `aliases` carry display
+        # casing (adversary MINOR).
+        aliases = [
+            a
+            for a in entity.aliases
+            if a and canonicalize_entity_name(a) != entity.canonical_name
+        ]
+        attributes: dict = {"aliases": aliases} if aliases else {}
+        propose_resp = await glossary_client.propose_entities(
+            book_id,
+            entities=[
+                {
+                    "kind_code": normalize_kind_for_anchor_lookup(entity.kind),
+                    "name": entity.canonical_name,
+                    "attributes": attributes,
+                }
+            ],
+            default_tags=[WRITEBACK_TAG],
+            park_unknown_kinds=False,
+        )
+        glossary_entity_id = _draft_glossary_id(propose_resp)
+        if glossary_entity_id is None:
+            raise HTTPException(
+                status_code=status_codes.HTTP_502_BAD_GATEWAY,
+                detail={
+                    "error_code": "glossary_draft_failed",
+                    "message": (
+                        "could not create a glossary draft for this entity "
+                        "(glossary unavailable or the name was previously "
+                        "rejected)"
+                    ),
+                },
+            )
+
+        # Step 2 — anchor the knowledge entity to the new draft.
+        anchored = await link_to_glossary(
+            session,
+            user_id=user_id_str,
+            canonical_id=entity.id,
+            glossary_entity_id=glossary_entity_id,
+            name=entity.name,
+            kind=entity.kind,
+            aliases=entity.aliases,
+        )
+
+    if anchored is None:
+        # The draft was created but the anchor write missed (stale id /
+        # race). The draft persists; the FE may retry safely — propose
+        # dedups by name (no second draft) and link_to_glossary is
+        # idempotent.
+        raise HTTPException(
+            status_code=status_codes.HTTP_502_BAD_GATEWAY,
+            detail={
+                "error_code": "anchor_failed",
+                "message": (
+                    "glossary draft was created but anchoring the entity "
+                    "failed — retry is safe (no duplicate draft will be made)"
+                ),
+                "glossary_entity_id": glossary_entity_id,
+            },
+        )
+
+    logger.info(
+        "C9: promoted entity user_id=%s entity_id=%s → glossary_entity_id=%s",
+        user_id, entity_id, glossary_entity_id,
+    )
+    return anchored
 
 
 # ── K19d γ-b — POST /entities/{id}/merge-into/{other_id} ────────────

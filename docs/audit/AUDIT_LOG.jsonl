@@ -1470,3 +1470,28 @@
 {"ts": "2026-06-13T06:49:06Z", "event": "in_progress_update", "cycle": 8, "phase": "SESSION", "retry": 0}
 {"ts":"2026-06-13T06:49:53Z","cycle":8,"phase":"session","event":"cycle_complete","dps_count":3,"retry_count":0,"adversary_findings":{"blockers":0,"majors":0,"minors":2,"notes":2},"scope_guard":"CLEAR","post_review":"CLEAR","verify_exit":0,"live_smoke":"semantic_query + status filter on a built knowledge graph","tests":{"pytest":48,"vitest":12},"screenshot":"docs/raid/evidence/cycle-8/entities-semantic-layer.png"}
 {"ts": "2026-06-13T06:50:02Z", "event": "in_progress_update", "cycle": 8, "phase": "COMMIT", "retry": 0}
+{"ts": "2026-06-13T06:51:09Z", "event": "in_progress_archived", "cycle": 8, "archived_to": "cycle-008-state-20260613T065109.md"}
+{"ts":"2026-06-13T06:51:28Z","cycle":8,"phase":"retro","event":"retro","sha":"77c1437e279058743b756c1081d15f2b78df0b2f","note":"Most of C8 BE pre-existed (find_entities_by_vector, list_entities_filtered, anchor model) — cycle was thin endpoint-wiring + derived projection + FE, matching the Knowledge-design-parity lock's 'thin BE wiring' read. KEY: live-smoke caught a real async-await bug (get_embedding_client is async in app.deps; my sync mock lambda masked it) — the mock-vs-real drift class. Fixed the test to AsyncMock so it now guards. Also: the running FE dev server was a STALE pre-C6 bundle (404 on the shell route) — had to restart Vite to pick up committed C6/C7 routes before the Playwright shot. Seeded 3 entity embeddings via provider-registry to make the vector result non-empty (all 106 entities were discovered/unembedded)."}
+{"ts": "2026-06-13T06:52:25Z", "event": "coordinator_next_cycle_emitted", "cycle": 9}
+{"ts":"2026-06-13T06:53:52Z","event":"startup_drift_check_inconclusive","cycle":9,"cd":"","rw":""}
+{"ts":"2026-06-13T06:53:52Z","event":"startup_verifier_complete","cycle":9,"steps":6}
+{"ts": "2026-06-13T06:54:02Z", "event": "in_progress_init", "cycle": 9, "title": "Promote + entity detail (BE+FE)"}
+{"ts": "2026-06-13T06:58:48Z", "event": "in_progress_update", "cycle": 9, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-06-13T07:00:06Z", "event": "in_progress_update", "cycle": 9, "phase": "REVIEW1", "retry": 0}
+{"ts": "2026-06-13T07:00:22Z", "event": "in_progress_update", "cycle": 9, "phase": "PLAN", "retry": 0}
+{"ts": "2026-06-13T07:02:22Z", "event": "in_progress_update", "cycle": 9, "phase": "BUILD", "retry": 0}
+{"ts":"2026-06-13T07:05:27Z","event":"secret_scan_skipped","cycle":9,"dps":DPS1,"reason":"gitleaks_not_installed"}
+{"ts":"2026-06-13T07:13:58Z","event":"secret_scan_skipped","cycle":9,"dps":DPS2,"reason":"gitleaks_not_installed"}
+{"ts":"2026-06-13T07:13:59Z","event":"secret_scan_skipped","cycle":9,"dps":DPS3,"reason":"gitleaks_not_installed"}
+{"ts": "2026-06-13T07:14:07Z", "event": "in_progress_update", "cycle": 9, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-06-13T07:14:52Z","event":"verify_cycle_9_passed","cycle":9}
+{"ts":"2026-06-13T07:24:51Z","event":"verify_cycle_9_passed","cycle":9}
+{"ts": "2026-06-13T07:25:02Z", "event": "in_progress_update", "cycle": 9, "phase": "REVIEW2", "retry": 0}
+{"ts":"2026-06-13T07:28:24Z","event":"verify_cycle_9_passed","cycle":9}
+{"ts": "2026-06-13T07:28:36Z", "event": "in_progress_update", "cycle": 9, "phase": "QC", "retry": 0}
+{"ts": "2026-06-13T07:28:49Z", "event": "in_progress_update", "cycle": 9, "phase": "POST_REVIEW", "retry": 0}
+{"ts": "2026-06-13T07:29:02Z", "event": "in_progress_update", "cycle": 9, "phase": "SESSION", "retry": 0}
+{"ts": "2026-06-13T07:30:00Z", "event": "cycle_complete", "cycle": 9, "title": "Promote + entity detail (BE+FE)", "dps_count": 3, "files_changed": 17, "tests": {"pytest": 10, "vitest": 25}, "verify_exit": 0, "live_smoke": "promote discovered entity -> glossary draft created + entity anchored", "screenshots": ["docs/raid/evidence/cycle-9/entity-detail-discovered-promote.png", "docs/raid/evidence/cycle-9/entity-detail-canonical-unpin.png"], "adversary": {"blockers": 0, "majors": 0, "minors": 2, "notes": 3}, "scope_guard": "CLEAR", "post_review": "CLEAR"}
+{"ts": "2026-06-13T07:29:55Z", "event": "in_progress_update", "cycle": 9, "phase": "COMMIT", "retry": 0}
+{"ts": "2026-06-13T07:30:03Z", "event": "in_progress_archived", "cycle": 9, "archived_to": "cycle-009-state-20260613T073003.md"}
+{"ts": "2026-06-13T07:31:00Z", "event": "retro", "cycle": 9, "lesson": "Promote's 'FE orchestrates two calls' spec is contradicted by reality: FE can't reach glossary /internal/extract-entities (the only path that creates a named ai-suggested draft in one shot), so the BE owns the orchestration. Live-smoke caught a real cross-service shape bug the mocks hid: extract-entities returns status=created/updated/SKIPPED, and a discovered entity whose NAME is an alias of an existing active glossary entry comes back skipped-with-id — first impl rejected all skipped → 502. Fix: accept skipped-with-id (anchor to the existing entry), refuse only skip_reason=tombstoned. Lesson class: a value crossing the glossary boundary (entity_id+status) must reconcile glossary's name/alias dedup + draft-vs-active semantics; mock-only tests stay green while the real merge-no-op path 502s. Rebuild the touched service image before live-smoke (stale knowledge image lacked the route)."}

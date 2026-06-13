@@ -125,6 +125,106 @@ export function useUnlockEntity(options?: {
   };
 }
 
+// ── C9 (C9-promote-flow) — promote discovered → glossary draft + anchor ──
+
+export interface UsePromoteEntityResult {
+  promote: (args: { entityId: string }) => Promise<Entity>;
+  isPending: boolean;
+  error: Error | null;
+}
+
+export function usePromoteEntity(options?: {
+  onSuccess?: (entity: Entity) => void;
+  onError?: (err: Error) => void;
+}): UsePromoteEntityResult {
+  const { accessToken, user } = useAuth();
+  const userId = user?.user_id ?? 'anon';
+  const queryClient = useQueryClient();
+
+  const mutation = useMutation({
+    mutationFn: async (args: { entityId: string }) => {
+      return knowledgeApi.promoteEntity(args.entityId, accessToken!);
+    },
+    onSuccess: async (entity) => {
+      // The entity flipped discovered → canonical. Invalidate the browse
+      // list (status glyph / sort) AND the open detail (promote button now
+      // hidden, unpin now available) so both reflect the anchored state.
+      await queryClient.invalidateQueries({
+        queryKey: ['knowledge-entities', userId],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ['knowledge-entity-detail', userId, entity.id],
+      });
+      options?.onSuccess?.(entity);
+    },
+    onError: (err) => {
+      options?.onError?.(err as Error);
+    },
+  });
+
+  return {
+    promote: mutation.mutateAsync,
+    isPending: mutation.isPending,
+    error: (mutation.error as Error | null) ?? null,
+  };
+}
+
+// ── C9 — toggle glossary context-pin (is_pinned_for_context) ─────────
+
+export interface UseToggleGlossaryPinResult {
+  toggle: (args: {
+    entityId: string;
+    bookId: string;
+    glossaryEntityId: string;
+    pinned: boolean;
+  }) => Promise<boolean>;
+  isPending: boolean;
+  error: Error | null;
+}
+
+export function useToggleGlossaryPin(options?: {
+  onSuccess?: (pinned: boolean) => void;
+  onError?: (err: Error) => void;
+}): UseToggleGlossaryPinResult {
+  const { accessToken, user } = useAuth();
+  const userId = user?.user_id ?? 'anon';
+  const queryClient = useQueryClient();
+
+  const mutation = useMutation({
+    mutationFn: async (args: {
+      entityId: string;
+      bookId: string;
+      glossaryEntityId: string;
+      pinned: boolean;
+    }) => {
+      await knowledgeApi.setGlossaryEntityPinned(
+        args.bookId,
+        args.glossaryEntityId,
+        args.pinned,
+        accessToken!,
+      );
+      return args.pinned;
+    },
+    onSuccess: async (pinned, variables) => {
+      // The pin state lives on the glossary entity, not the knowledge
+      // entity, but refresh the detail so any pin-derived UI stays honest.
+      await queryClient.invalidateQueries({
+        queryKey: ['knowledge-entity-detail', userId, variables.entityId],
+      });
+      options?.onSuccess?.(pinned);
+    },
+    onError: (err) => {
+      options?.onError?.(err as Error);
+    },
+  });
+
+  return {
+    toggle: mutation.mutateAsync,
+    isPending: mutation.isPending,
+    error: (mutation.error as Error | null) ?? null,
+  };
+}
+
 // ── γ-b merge ────────────────────────────────────────────────────────
 
 export interface MergeEntityError extends Error {

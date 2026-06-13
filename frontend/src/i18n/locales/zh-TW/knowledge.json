@@ -279,7 +279,24 @@
         "anchor": "錨定分數"
       },
       "edit": "編輯",
-      "merge": "合併到其他實體"
+      "merge": "合併到其他實體",
+      "promote": "提升至詞彙表",
+      "promoteHint": "已發現的實體。提升後會建立一份待審的 AI 建議詞彙表草稿。",
+      "promotePending": "提升中…",
+      "promoteSuccess": "已提升 — 已建立一份待審的詞彙表草稿。",
+      "promoteFailed": "無法提升：{{error}}",
+      "unpin": "從情境釘選移除",
+      "unpinHint": "此實體已釘選至擷取情境中。",
+      "unpinSuccess": "已從情境取消釘選。",
+      "unpinFailed": "無法取消釘選：{{error}}",
+      "facts": "已知事實 ({{count}})",
+      "factSource": "第 {{chapter}} 章",
+      "factType": {
+        "decision": "決定",
+        "preference": "偏好",
+        "milestone": "里程碑",
+        "negation": "否定"
+      }
     },
     "edit": {
       "title": "編輯實體",

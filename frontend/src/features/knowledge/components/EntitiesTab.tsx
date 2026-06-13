@@ -82,6 +82,13 @@ export function EntitiesTab({ scopedProjectId }: EntitiesTabProps = {}) {
 
   const projectsQuery = useProjects(false);
 
+  // C9 — the scoped project's linked book, threaded to the detail panel
+  // for the glossary context-pin toggle (book-scoped). Resolved from the
+  // already-loaded projects list; null when the project has no book.
+  const scopedBookId =
+    projectsQuery.items.find((p) => p.project_id === effectiveProjectId)
+      ?.book_id ?? null;
+
   const { entities, total, isLoading, error, isFetching } = useEntities({
     project_id: effectiveProjectId || undefined,
     kind: kindFilter || undefined,
@@ -308,6 +315,7 @@ export function EntitiesTab({ scopedProjectId }: EntitiesTabProps = {}) {
           if (!o) setSelectedEntityId(null);
         }}
         entityId={selectedEntityId}
+        bookId={scopedBookId}
       />
     </div>
   );

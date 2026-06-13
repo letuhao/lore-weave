@@ -279,6 +279,23 @@
         "confidence": "Confidence",
         "mentions": "Mentions",
         "anchor": "Anchor score"
+      },
+      "promote": "Promote to glossary",
+      "promoteHint": "Discovered entity. Promote it to create an AI-suggested glossary draft for review.",
+      "promotePending": "Promoting…",
+      "promoteSuccess": "Promoted — a glossary draft was created for review.",
+      "promoteFailed": "Couldn't promote: {{error}}",
+      "unpin": "Remove from context pin",
+      "unpinHint": "This entity is pinned into extraction context.",
+      "unpinSuccess": "Unpinned from context.",
+      "unpinFailed": "Couldn't unpin: {{error}}",
+      "facts": "Known facts ({{count}})",
+      "factSource": "Chapter {{chapter}}",
+      "factType": {
+        "decision": "Decision",
+        "preference": "Preference",
+        "milestone": "Milestone",
+        "negation": "Negation"
       }
     },
     "edit": {

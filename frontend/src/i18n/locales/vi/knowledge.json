@@ -279,7 +279,24 @@
         "anchor": "Điểm neo"
       },
       "edit": "Chỉnh sửa",
-      "merge": "Hợp nhất vào thực thể khác"
+      "merge": "Hợp nhất vào thực thể khác",
+      "promote": "Đưa vào từ điển",
+      "promoteHint": "Thực thể được phát hiện. Đưa vào để tạo bản nháp từ điển do AI gợi ý để duyệt.",
+      "promotePending": "Đang đưa vào…",
+      "promoteSuccess": "Đã đưa vào — một bản nháp từ điển đã được tạo để duyệt.",
+      "promoteFailed": "Không thể đưa vào: {{error}}",
+      "unpin": "Bỏ ghim khỏi ngữ cảnh",
+      "unpinHint": "Thực thể này đang được ghim vào ngữ cảnh trích xuất.",
+      "unpinSuccess": "Đã bỏ ghim khỏi ngữ cảnh.",
+      "unpinFailed": "Không thể bỏ ghim: {{error}}",
+      "facts": "Sự kiện đã biết ({{count}})",
+      "factSource": "Chương {{chapter}}",
+      "factType": {
+        "decision": "Quyết định",
+        "preference": "Sở thích",
+        "milestone": "Cột mốc",
+        "negation": "Phủ định"
+      }
     },
     "edit": {
       "title": "Chỉnh sửa thực thể",

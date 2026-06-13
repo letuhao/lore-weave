@@ -1258,6 +1258,53 @@ export const knowledgeApi = {
     );
   },
 
+  // ── C9 (C9-promote-flow) — POST /entities/{id}/promote ───────────────
+  //
+  // Promote a DISCOVERED entity into the glossary curation flywheel. The
+  // BE orchestrates the two-call flow server-side: (1) create a glossary
+  // DRAFT (status=draft, tag `ai-suggested`) and (2) anchor the entity
+  // (glossary_entity_id + anchor_score=1.0). Returns the now-canonical
+  // Entity. Errors carry a structured `detail.error_code`:
+  //   - 404                          — entity missing / cross-user
+  //   - 409 `already_anchored`       — entity already canonical (no re-promote)
+  //   - 422 `no_book`                — project has no linked book
+  //   - 502 `glossary_draft_failed`  — draft-create failed (NOT anchored)
+  //   - 502 `anchor_failed`          — draft created but anchor missed
+  //                                    (retry is safe; no duplicate draft)
+  promoteEntity(entityId: string, token: string): Promise<Entity> {
+    return apiJson<Entity>(
+      `${BASE}/entities/${encodeURIComponent(entityId)}/promote`,
+      {
+        method: 'POST',
+        token,
+      },
+    );
+  },
+
+  // ── C9 — glossary context-pin toggle (is_pinned_for_context) ─────────
+  //
+  // POST/DELETE /v1/glossary/books/{book_id}/entities/{glossary_entity_id}/pin
+  // — idempotent toggle of the glossary entity's `is_pinned_for_context`
+  // flag (the entity-detail "unpin" control). Only meaningful for a
+  // canonical knowledge entity (it has a `glossary_entity_id`); the FE
+  // gates the control on that. 204 No Content on success.
+  setGlossaryEntityPinned(
+    bookId: string,
+    glossaryEntityId: string,
+    pinned: boolean,
+    token: string,
+  ): Promise<void> {
+    return apiJson<void>(
+      `/v1/glossary/books/${encodeURIComponent(bookId)}/entities/${encodeURIComponent(
+        glossaryEntityId,
+      )}/pin`,
+      {
+        method: pinned ? 'POST' : 'DELETE',
+        token,
+      },
+    );
+  },
+
   // ── K19d γ-b — POST /entities/{id}/merge-into/{other} ────────────────
 
   mergeEntityInto(
