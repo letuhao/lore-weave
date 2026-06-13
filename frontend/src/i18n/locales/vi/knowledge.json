@@ -14,6 +14,37 @@
       "insights": "Phân tích"
     }
   },
+  "shell": {
+    "backToProjects": "Tất cả dự án",
+    "sections": {
+      "label": "Mục dự án",
+      "overview": "Tổng quan",
+      "entities": "Thực thể",
+      "timeline": "Dòng thời gian",
+      "evidence": "Bằng chứng",
+      "proposals": "Đề xuất",
+      "gap": "Thiếu sót",
+      "insights": "Phân tích",
+      "graph": "Dựng / Khám phá đồ thị"
+    },
+    "notFound": "Không tìm thấy dự án.",
+    "loading": "Đang tải dự án…",
+    "overview": {
+      "configHeading": "Cấu hình",
+      "embeddingModel": "Mô hình embedding",
+      "rerankModel": "Mô hình rerank",
+      "extraction": "Trích xuất",
+      "extractionEnabled": "Đã bật",
+      "extractionDisabled": "Đã tắt",
+      "bookId": "Sách",
+      "none": "—"
+    },
+    "placeholder": {
+      "proposals": "Các đề xuất đang chờ sẽ hiển thị ở đây (C11).",
+      "gap": "Báo cáo thiếu sót thuật ngữ sẽ hiển thị ở đây (C10).",
+      "graph": "Dựng và khám phá đồ thị sẽ hiển thị ở đây (C5 / C19)."
+    }
+  },
   "mobile": {
     "sections": {
       "global": "Tiểu sử tổng quát",
@@ -503,7 +534,8 @@
         "extractNew": "Trích xuất chương mới",
         "ignore": "Bỏ qua",
         "confirm": "Xác nhận",
-        "confirmModelChange": "Xác nhận đổi mô hình"
+        "confirmModelChange": "Xác nhận đổi mô hình",
+        "exploreGraph": "Khám phá đồ thị"
       },
       "cards": {
         "disabled": {

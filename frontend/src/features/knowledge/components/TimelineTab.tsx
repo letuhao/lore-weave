@@ -18,9 +18,18 @@ import { TimelineFilters } from './TimelineFilters';
 
 const PAGE_SIZE = 50;
 
-export function TimelineTab() {
+interface TimelineTabProps {
+  // C6 (G6) — route-scoped project when hosted inside the project-detail
+  // shell. Seeds the filter AND hides the per-tab project `<select>`.
+  // Absent ⇒ legacy cross-project surface (dropdown rendered) unchanged.
+  scopedProjectId?: string;
+}
+
+export function TimelineTab({ scopedProjectId }: TimelineTabProps = {}) {
   const { t } = useTranslation('knowledge');
-  const [projectFilter, setProjectFilter] = useState<string>('');
+  const [projectFilter, setProjectFilter] = useState<string>(
+    scopedProjectId ?? '',
+  );
   const [offset, setOffset] = useState(0);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   // C10 (D-K19e-α-01 + D-K19e-α-03) — secondary filters. Entity is
@@ -34,6 +43,9 @@ export function TimelineTab() {
     null,
   );
 
+  const scoped = !!scopedProjectId;
+  const effectiveProjectId = scopedProjectId ?? projectFilter;
+
   const projectsQuery = useProjects(false);
 
   // C7 /review-impl [L4]: stable callback ref so useTimeline's effect
@@ -43,7 +55,7 @@ export function TimelineTab() {
 
   const { events, total, isLoading, error, isFetching } = useTimeline(
     {
-      project_id: projectFilter || undefined,
+      project_id: effectiveProjectId || undefined,
       entity_id: entityFilter?.id,
       after_chronological: afterChronological ?? undefined,
       before_chronological: beforeChronological ?? undefined,
@@ -70,45 +82,47 @@ export function TimelineTab() {
 
   return (
     <div data-testid="timeline-tab">
-      <div className="mb-4 flex flex-wrap items-end gap-2">
-        <label className="flex flex-col gap-1 text-[11px]">
-          <span className="text-muted-foreground">
-            {t('timeline.filters.project')}
-          </span>
-          <select
-            value={projectFilter}
-            onChange={(e) =>
-              handleFilterChange(() => {
-                setProjectFilter(e.target.value);
-                // C10 — reset secondary filters when project changes.
-                // An entity from project A wouldn't return anything
-                // under project B; chrono bounds tuned to one project
-                // are rarely meaningful in another. Mirrors the C8
-                // drawer-search pattern.
-                setEntityFilter(null);
-                setAfterChronological(null);
-                setBeforeChronological(null);
-              })
-            }
-            className="rounded-md border bg-input px-2 py-1.5 text-xs outline-none focus:border-ring"
-            data-testid="timeline-filter-project"
-          >
-            <option value="">{t('timeline.filters.anyProject')}</option>
-            {projectsQuery.items.map((p) => (
-              <option key={p.project_id} value={p.project_id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
+      {!scoped && (
+        <div className="mb-4 flex flex-wrap items-end gap-2">
+          <label className="flex flex-col gap-1 text-[11px]">
+            <span className="text-muted-foreground">
+              {t('timeline.filters.project')}
+            </span>
+            <select
+              value={projectFilter}
+              onChange={(e) =>
+                handleFilterChange(() => {
+                  setProjectFilter(e.target.value);
+                  // C10 — reset secondary filters when project changes.
+                  // An entity from project A wouldn't return anything
+                  // under project B; chrono bounds tuned to one project
+                  // are rarely meaningful in another. Mirrors the C8
+                  // drawer-search pattern.
+                  setEntityFilter(null);
+                  setAfterChronological(null);
+                  setBeforeChronological(null);
+                })
+              }
+              className="rounded-md border bg-input px-2 py-1.5 text-xs outline-none focus:border-ring"
+              data-testid="timeline-filter-project"
+            >
+              <option value="">{t('timeline.filters.anyProject')}</option>
+              {projectsQuery.items.map((p) => (
+                <option key={p.project_id} value={p.project_id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      )}
 
       {/* C10 — secondary filters (entity + chronological range). Row
           separate from the project select so the entity dropdown has
           enough horizontal room. */}
       <div className="mb-4">
         <TimelineFilters
-          projectId={projectFilter || undefined}
+          projectId={effectiveProjectId || undefined}
           entity={entityFilter}
           onEntityChange={(ent) =>
             handleFilterChange(() => setEntityFilter(ent))

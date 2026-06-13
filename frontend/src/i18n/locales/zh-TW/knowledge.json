@@ -14,6 +14,37 @@
       "insights": "洞察"
     }
   },
+  "shell": {
+    "backToProjects": "所有專案",
+    "sections": {
+      "label": "專案區段",
+      "overview": "總覽",
+      "entities": "實體",
+      "timeline": "時間軸",
+      "evidence": "證據",
+      "proposals": "提案",
+      "gap": "缺口",
+      "insights": "洞察",
+      "graph": "建構／探索圖譜"
+    },
+    "notFound": "找不到專案。",
+    "loading": "正在載入專案…",
+    "overview": {
+      "configHeading": "設定",
+      "embeddingModel": "嵌入模型",
+      "rerankModel": "重排模型",
+      "extraction": "擷取",
+      "extractionEnabled": "已啟用",
+      "extractionDisabled": "已停用",
+      "bookId": "書籍",
+      "none": "—"
+    },
+    "placeholder": {
+      "proposals": "待處理提案將顯示於此（C11）。",
+      "gap": "詞彙缺口報告將顯示於此（C10）。",
+      "graph": "圖譜建構與探索將顯示於此（C5 / C19）。"
+    }
+  },
   "mobile": {
     "sections": {
       "global": "全域簡介",
@@ -503,7 +534,8 @@
         "extractNew": "抽取新章節",
         "ignore": "忽略",
         "confirm": "確認",
-        "confirmModelChange": "確認變更模型"
+        "confirmModelChange": "確認變更模型",
+        "exploreGraph": "探索圖譜"
       },
       "cards": {
         "disabled": {

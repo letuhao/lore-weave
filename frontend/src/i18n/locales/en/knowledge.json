@@ -14,6 +14,37 @@
       "insights": "Insights"
     }
   },
+  "shell": {
+    "backToProjects": "All projects",
+    "sections": {
+      "label": "Project sections",
+      "overview": "Overview",
+      "entities": "Entities",
+      "timeline": "Timeline",
+      "evidence": "Evidence",
+      "proposals": "Proposals",
+      "gap": "Gap",
+      "insights": "Insights",
+      "graph": "Build / Explore graph"
+    },
+    "notFound": "Project not found.",
+    "loading": "Loading project…",
+    "overview": {
+      "configHeading": "Configuration",
+      "embeddingModel": "Embedding model",
+      "rerankModel": "Rerank model",
+      "extraction": "Extraction",
+      "extractionEnabled": "Enabled",
+      "extractionDisabled": "Disabled",
+      "bookId": "Book",
+      "none": "—"
+    },
+    "placeholder": {
+      "proposals": "Pending proposals land here (C11).",
+      "gap": "The glossary gap report lands here (C10).",
+      "graph": "Graph build & explore lands here (C5 / C19)."
+    }
+  },
   "mobile": {
     "sections": {
       "global": "Global bio",
@@ -474,7 +505,8 @@
         "extractNew": "Extract new chapters",
         "ignore": "Ignore",
         "confirm": "Confirm",
-        "confirmModelChange": "Confirm model change"
+        "confirmModelChange": "Confirm model change",
+        "exploreGraph": "Explore graph"
       },
       "cards": {
         "disabled": {

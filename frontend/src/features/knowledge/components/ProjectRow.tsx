@@ -28,9 +28,20 @@ interface Props {
   onArchive: (p: Project) => void;
   onRestore: (p: Project) => void;
   onDelete: (p: Project) => void;
+  // C6 (G6) — when the row is rendered inside the project-detail shell's
+  // Overview, this deep-links the complete-card "Explore graph" CTA into
+  // the shell. Omitted in the flat ProjectsTab list (CTA hidden there).
+  onExploreGraph?: () => void;
 }
 
-export function ProjectRow({ project, onEdit, onArchive, onRestore, onDelete }: Props) {
+export function ProjectRow({
+  project,
+  onEdit,
+  onArchive,
+  onRestore,
+  onDelete,
+  onExploreGraph,
+}: Props) {
   const { t } = useTranslation('knowledge');
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();
@@ -84,6 +95,7 @@ export function ProjectRow({ project, onEdit, onArchive, onRestore, onDelete }: 
   const actions = useMemo<ProjectStateCardActions>(
     () => ({
       ...baseActions,
+      onExploreGraph,
       onBuildGraph: () => setBuildOpen(true),
       onViewError: () => {
         if (errorPayload) setErrorViewer(errorPayload);
@@ -100,7 +112,7 @@ export function ProjectRow({ project, onEdit, onArchive, onRestore, onDelete }: 
     // errorPayloadKey captures job identity + error text — the only
     // fields the closure reads. See comment above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [baseActions, errorPayloadKey],
+    [baseActions, errorPayloadKey, onExploreGraph],
   );
 
   // K19a.6 — destructive-action invokers called from the confirm

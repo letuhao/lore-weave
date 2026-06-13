@@ -36,6 +36,7 @@ import { ResetPage } from '@/pages/auth/ResetPage';
 import { HomePage } from '@/pages/HomePage';
 import { UsagePage } from '@/pages/UsagePage';
 import { KnowledgePage } from '@/pages/KnowledgePage';
+import { ProjectDetailShell } from '@/pages/ProjectDetailShell';
 import { CampaignsPage } from '@/features/campaigns/pages/CampaignsPage';
 import { CreateCampaignWizardPage } from '@/features/campaigns/pages/CreateCampaignWizardPage';
 import { CampaignDetailPage } from '@/features/campaigns/pages/CampaignDetailPage';
@@ -132,6 +133,13 @@ export function App() {
 
             {/* Knowledge Service */}
             <Route path="/knowledge" element={<Navigate to="/knowledge/projects" replace />} />
+            {/* C6 (G6) — project-detail shell. The 4-segment nested route is
+                more specific than the 2-segment flat-tab route below, so it
+                wins; they don't conflict. */}
+            <Route
+              path="/knowledge/projects/:projectId/:section"
+              element={<ProjectDetailShell />}
+            />
             <Route path="/knowledge/:tab" element={<KnowledgePage />} />
 
             {/* Auto-Draft Factory (campaigns) */}

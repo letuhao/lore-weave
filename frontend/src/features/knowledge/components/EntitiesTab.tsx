@@ -38,9 +38,20 @@ function useDebounced<T>(value: T, delayMs: number): T {
   return debounced;
 }
 
-export function EntitiesTab() {
+interface EntitiesTabProps {
+  // C6 (G6) — when rendered inside the project-detail shell the project
+  // scope comes from the ROUTE, not a select-box. Providing this both
+  // seeds the project filter AND hides the per-tab project `<select>`
+  // (the G6 IA backbone). Absent ⇒ the legacy cross-project surface with
+  // its dropdown is unchanged.
+  scopedProjectId?: string;
+}
+
+export function EntitiesTab({ scopedProjectId }: EntitiesTabProps = {}) {
   const { t } = useTranslation('knowledge');
-  const [projectFilter, setProjectFilter] = useState<string>('');
+  const [projectFilter, setProjectFilter] = useState<string>(
+    scopedProjectId ?? '',
+  );
   const [kindFilter, setKindFilter] = useState<string>('');
   const [searchInput, setSearchInput] = useState<string>('');
   const [offset, setOffset] = useState(0);
@@ -50,10 +61,15 @@ export function EntitiesTab() {
   const effectiveSearch =
     debouncedSearch.length >= 2 ? debouncedSearch : undefined;
 
+  const scoped = !!scopedProjectId;
+  // When scoped by route, the route param is authoritative; the internal
+  // projectFilter state is only used by the cross-project (unscoped) view.
+  const effectiveProjectId = scopedProjectId ?? projectFilter;
+
   const projectsQuery = useProjects(false);
 
   const { entities, total, isLoading, error, isFetching } = useEntities({
-    project_id: projectFilter || undefined,
+    project_id: effectiveProjectId || undefined,
     kind: kindFilter || undefined,
     search: effectiveSearch,
     limit: PAGE_SIZE,
@@ -72,26 +88,28 @@ export function EntitiesTab() {
   return (
     <div data-testid="entities-tab">
       <div className="mb-4 flex flex-wrap items-end gap-2">
-        <label className="flex flex-col gap-1 text-[11px]">
-          <span className="text-muted-foreground">
-            {t('entities.filters.project')}
-          </span>
-          <select
-            value={projectFilter}
-            onChange={(e) =>
-              handleFilterChange(() => setProjectFilter(e.target.value))
-            }
-            className="rounded-md border bg-input px-2 py-1.5 text-xs outline-none focus:border-ring"
-            data-testid="entities-filter-project"
-          >
-            <option value="">{t('entities.filters.anyProject')}</option>
-            {projectsQuery.items.map((p) => (
-              <option key={p.project_id} value={p.project_id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        {!scoped && (
+          <label className="flex flex-col gap-1 text-[11px]">
+            <span className="text-muted-foreground">
+              {t('entities.filters.project')}
+            </span>
+            <select
+              value={projectFilter}
+              onChange={(e) =>
+                handleFilterChange(() => setProjectFilter(e.target.value))
+              }
+              className="rounded-md border bg-input px-2 py-1.5 text-xs outline-none focus:border-ring"
+              data-testid="entities-filter-project"
+            >
+              <option value="">{t('entities.filters.anyProject')}</option>
+              {projectsQuery.items.map((p) => (
+                <option key={p.project_id} value={p.project_id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
 
         <label className="flex flex-col gap-1 text-[11px]">
           <span className="text-muted-foreground">
