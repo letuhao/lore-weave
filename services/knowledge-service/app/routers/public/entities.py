@@ -35,6 +35,7 @@ from app.db.neo4j_repos.entities import (
     MergeEntitiesError,
     archive_entity,
     find_entities_by_vector,
+    find_gap_candidates,
     get_entity,
     get_entity_with_relations,
     link_to_glossary,
@@ -642,6 +643,76 @@ async def list_entity_facts(
             before_order=before_order,
         )
     return EntityFactsResponse(facts=facts, window_available=available)
+
+
+# ── C10 (C10-gap-report) — GET /projects/{id}/gaps ───────────────────
+#
+# ENTITY gaps: high-mention DISCOVERED (unanchored) entities with no
+# glossary entry — "we found these in your book(s) but you haven't added
+# them to the glossary yet." A THIN pass-through over the existing
+# ``find_gap_candidates()`` repo function (KSA §3.4.E); the router adds
+# NO new gap engine / scoring — `min_mentions` + `limit` flow straight
+# through.
+#
+# LOCKED — KEEP SEPARATE from lore-enrichment's attribute-dimension gap
+# feature (an entity missing a `history` field). That is a different
+# query in a different service. This endpoint is ENTITY gaps only.
+# (Two-distinct-gap-concepts lock.)
+
+
+class GapReportResponse(BaseModel):
+    """The gap-report payload. `gaps` are discovered (unanchored) entities
+    above the `min_mentions` floor; `min_mentions` is echoed so the FE can
+    label the active threshold."""
+
+    gaps: list[Entity]
+    total: int
+    min_mentions: int
+
+
+@entities_router.get(
+    "/projects/{project_id}/gaps",
+    response_model=GapReportResponse,
+)
+async def get_project_gaps(
+    project_id: UUID = Path(
+        description="The knowledge project (book) whose entity gaps to report.",
+    ),
+    min_mentions: int = Query(
+        50,
+        ge=0,
+        description=(
+            "Mention-count floor — only surface discovered entities mentioned "
+            "at least this many times (filters one-off extraction noise). "
+            "KSA §3.4.E starts at 50; the gap-report UI exposes this as a knob."
+        ),
+    ),
+    limit: int = Query(
+        100,
+        ge=1,
+        le=ENTITIES_MAX_LIMIT,
+        description="Max number of gap candidates to return.",
+    ),
+    user_id: UUID = Depends(get_current_user),
+) -> GapReportResponse:
+    """C10 — entity Gap Report. Thin wrapper over ``find_gap_candidates()``:
+    discovered (unanchored) entities with no glossary link, mentioned at
+    least ``min_mentions`` times, ranked by the repo (mention_count DESC).
+
+    Distinct from lore-enrichment's attribute-dimension gap feature.
+    Multi-tenant: ``user_id`` from JWT scopes the Cypher MATCH; the route
+    never accepts a user_id field, so a caller can't read another user's
+    gaps.
+    """
+    async with neo4j_session() as session:
+        gaps = await find_gap_candidates(
+            session,
+            user_id=str(user_id),
+            project_id=str(project_id),
+            min_mentions=min_mentions,
+            limit=limit,
+        )
+    return GapReportResponse(gaps=gaps, total=len(gaps), min_mentions=min_mentions)
 
 
 # ── K19d γ-a — PATCH /entities/{id} ──────────────────────────────────

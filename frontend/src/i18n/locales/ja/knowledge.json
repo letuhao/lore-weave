@@ -45,6 +45,40 @@
       "graph": "グラフの構築と探索はここに表示されます（C5 / C19）。"
     }
   },
+  "gap": {
+    "heading": "用語集ギャップレポート",
+    "subtitle": "本の中で多く言及されているのに、まだ用語集に登録されていないキャラクター・場所・概念です。残す価値のあるものを昇格してください。",
+    "summary": {
+      "candidates": "ギャップ候補",
+      "threshold": "最小言及数",
+      "top": "最多ギャップ",
+      "topLabel": "最多ギャップ",
+      "topMentions": "{{count}} 回言及",
+      "none": "—"
+    },
+    "controls": {
+      "minMentions": "最小言及数",
+      "limit": "最大表示数"
+    },
+    "selectAll": "すべて選択",
+    "selectRow": "{{name}} を選択",
+    "loading": "ギャップを読み込み中…",
+    "empty": "このしきい値以上のギャップはありません。最小言及数を下げるか、用語集が十分にカバーされています。",
+    "error": "ギャップレポートを読み込めませんでした。再試行してください。",
+    "mentions": "{{count}} 回言及",
+    "mentionsTitle": "本全体での言及回数",
+    "itemFailed": "失敗",
+    "bulkPromote": {
+      "cta_one": "{{count}} 件を用語集に昇格",
+      "cta_other": "{{count}} 件を用語集に昇格",
+      "cta_zero": "用語集に昇格",
+      "progress": "{{done}} / {{total}} 件昇格済み",
+      "failedCount": "（{{count}} 件失敗）",
+      "allOk": "{{count}} 件を用語集の下書きに昇格しました。",
+      "allFailed": "{{count}} 件すべての昇格に失敗しました。再試行してください。",
+      "partial": "{{ok}} 件昇格、{{failed}} 件失敗。"
+    }
+  },
   "mobile": {
     "sections": {
       "global": "グローバルプロフィール",

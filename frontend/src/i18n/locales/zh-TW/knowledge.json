@@ -45,6 +45,40 @@
       "graph": "圖譜建構與探索將顯示於此（C5 / C19）。"
     }
   },
+  "gap": {
+    "heading": "詞彙缺口報告",
+    "subtitle": "在書中被多次提及、但尚未加入詞彙表的角色、地點與概念。將值得保留的項目提升為詞彙。",
+    "summary": {
+      "candidates": "缺口候選",
+      "threshold": "最少提及數",
+      "top": "最高缺口",
+      "topLabel": "最高缺口",
+      "topMentions": "提及 {{count}} 次",
+      "none": "—"
+    },
+    "controls": {
+      "minMentions": "最少提及數",
+      "limit": "最多顯示"
+    },
+    "selectAll": "全選",
+    "selectRow": "選擇 {{name}}",
+    "loading": "正在載入缺口…",
+    "empty": "此門檻之上沒有缺口。降低最少提及數以顯示更多，或您的詞彙表已相當完整。",
+    "error": "無法載入缺口報告。請重試。",
+    "mentions": "提及 {{count}} 次",
+    "mentionsTitle": "在全書中被提及的次數",
+    "itemFailed": "失敗",
+    "bulkPromote": {
+      "cta_one": "將 {{count}} 項提升至詞彙表",
+      "cta_other": "將 {{count}} 項提升至詞彙表",
+      "cta_zero": "提升至詞彙表",
+      "progress": "已提升 {{done}} / {{total}}",
+      "failedCount": "（{{count}} 項失敗）",
+      "allOk": "已將 {{count}} 項提升為詞彙草稿。",
+      "allFailed": "全部 {{count}} 項提升皆失敗。請重試。",
+      "partial": "已提升 {{ok}} 項；{{failed}} 項失敗。"
+    }
+  },
   "mobile": {
     "sections": {
       "global": "全域簡介",

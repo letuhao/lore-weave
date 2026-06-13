@@ -326,6 +326,29 @@ export interface EntitiesBrowseResponse {
   embedding_model?: string | null;
 }
 
+// ── C10 (C10-gap-report) — entity Gap Report ─────────────────────────
+//
+// ENTITY gaps: high-mention DISCOVERED entities with no glossary entry,
+// from knowledge-service `find_gap_candidates()`. Distinct from
+// lore-enrichment's attribute-dimension `detect-gaps` (a different
+// feature in features/enrichment — do not conflate).
+export interface GapReportParams {
+  /** Mention-count floor; the FE threshold control feeds this straight
+   *  to the BE query (pass-through). */
+  min_mentions?: number;
+  limit?: number;
+}
+
+export interface GapReportResponse {
+  /** Discovered (unanchored) entities above the threshold. Each is a
+   *  full Entity (status === 'discovered'), so the same StatusGlyph /
+   *  promote machinery as the Entities tab applies. */
+  gaps: Entity[];
+  total: number;
+  /** The active threshold, echoed by the BE — labels the report. */
+  min_mentions: number;
+}
+
 /**
  * K19d.4 EntityRelation wire shape. Mirrors the Relation Pydantic
  * projection on the BE: a :RELATES_TO edge with the two endpoint
@@ -1202,6 +1225,28 @@ export const knowledgeApi = {
   getEntityDetail(entityId: string, token: string): Promise<EntityDetail> {
     return apiJson<EntityDetail>(
       `${BASE}/entities/${encodeURIComponent(entityId)}`,
+      { token },
+    );
+  },
+
+  // ── C10 (C10-gap-report) — GET /projects/{id}/gaps ──────────────────
+  //
+  // Thin pass-through to find_gap_candidates: high-mention DISCOVERED
+  // entities with no glossary entry. `min_mentions` + `limit` flow to
+  // the BE query. Project is route-scoped (G6) — passed positionally,
+  // never via a select-box.
+  getProjectGaps(
+    projectId: string,
+    params: GapReportParams,
+    token: string,
+  ): Promise<GapReportResponse> {
+    const qs = new URLSearchParams();
+    if (params.min_mentions != null)
+      qs.set('min_mentions', String(params.min_mentions));
+    if (params.limit != null) qs.set('limit', String(params.limit));
+    const q = qs.toString();
+    return apiJson<GapReportResponse>(
+      `${BASE}/projects/${encodeURIComponent(projectId)}/gaps${q ? `?${q}` : ''}`,
       { token },
     );
   },

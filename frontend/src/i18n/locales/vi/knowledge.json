@@ -45,6 +45,40 @@
       "graph": "Dựng và khám phá đồ thị sẽ hiển thị ở đây (C5 / C19)."
     }
   },
+  "gap": {
+    "heading": "Báo cáo thiếu sót thuật ngữ",
+    "subtitle": "Những nhân vật, địa điểm và khái niệm được nhắc nhiều trong sách nhưng chưa có trong thuật ngữ. Hãy thăng cấp những mục đáng giữ lại.",
+    "summary": {
+      "candidates": "Ứng viên thiếu sót",
+      "threshold": "Số lần nhắc tối thiểu",
+      "top": "Thiếu sót hàng đầu",
+      "topLabel": "Thiếu sót hàng đầu",
+      "topMentions": "{{count}} lần nhắc",
+      "none": "—"
+    },
+    "controls": {
+      "minMentions": "Số lần nhắc tối thiểu",
+      "limit": "Hiển thị tối đa"
+    },
+    "selectAll": "Chọn tất cả",
+    "selectRow": "Chọn {{name}}",
+    "loading": "Đang tải thiếu sót…",
+    "empty": "Không có thiếu sót nào trên ngưỡng này. Giảm số lần nhắc tối thiểu để hiện thêm, hoặc thuật ngữ của bạn đã đầy đủ.",
+    "error": "Không tải được báo cáo thiếu sót. Hãy thử lại.",
+    "mentions": "{{count}} lần nhắc",
+    "mentionsTitle": "Số lần được nhắc trong sách",
+    "itemFailed": "Thất bại",
+    "bulkPromote": {
+      "cta_one": "Thăng cấp {{count}} vào thuật ngữ",
+      "cta_other": "Thăng cấp {{count}} vào thuật ngữ",
+      "cta_zero": "Thăng cấp vào thuật ngữ",
+      "progress": "Đã thăng cấp {{done}} / {{total}}",
+      "failedCount": "({{count}} thất bại)",
+      "allOk": "Đã thăng cấp {{count}} mục thành bản nháp thuật ngữ.",
+      "allFailed": "Tất cả {{count}} lần thăng cấp đều thất bại. Hãy thử lại.",
+      "partial": "Đã thăng cấp {{ok}}; {{failed}} thất bại."
+    }
+  },
   "mobile": {
     "sections": {
       "global": "Tiểu sử tổng quát",

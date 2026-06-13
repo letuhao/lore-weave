@@ -1495,3 +1495,24 @@
 {"ts": "2026-06-13T07:29:55Z", "event": "in_progress_update", "cycle": 9, "phase": "COMMIT", "retry": 0}
 {"ts": "2026-06-13T07:30:03Z", "event": "in_progress_archived", "cycle": 9, "archived_to": "cycle-009-state-20260613T073003.md"}
 {"ts": "2026-06-13T07:31:00Z", "event": "retro", "cycle": 9, "lesson": "Promote's 'FE orchestrates two calls' spec is contradicted by reality: FE can't reach glossary /internal/extract-entities (the only path that creates a named ai-suggested draft in one shot), so the BE owns the orchestration. Live-smoke caught a real cross-service shape bug the mocks hid: extract-entities returns status=created/updated/SKIPPED, and a discovered entity whose NAME is an alias of an existing active glossary entry comes back skipped-with-id — first impl rejected all skipped → 502. Fix: accept skipped-with-id (anchor to the existing entry), refuse only skip_reason=tombstoned. Lesson class: a value crossing the glossary boundary (entity_id+status) must reconcile glossary's name/alias dedup + draft-vs-active semantics; mock-only tests stay green while the real merge-no-op path 502s. Rebuild the touched service image before live-smoke (stale knowledge image lacked the route)."}
+{"ts": "2026-06-13T07:33:35Z", "event": "coordinator_next_cycle_emitted", "cycle": 10}
+{"ts":"2026-06-13T07:34:55Z","event":"startup_drift_check_inconclusive","cycle":10,"cd":"","rw":""}
+{"ts":"2026-06-13T07:34:55Z","event":"startup_verifier_complete","cycle":10,"steps":6}
+{"ts": "2026-06-13T07:35:08Z", "event": "in_progress_init", "cycle": 10, "title": "Glossary Gap Report (BE-thin + FE)"}
+{"ts": "2026-06-13T07:41:17Z", "event": "in_progress_update", "cycle": 10, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-06-13T07:41:39Z", "event": "in_progress_update", "cycle": 10, "phase": "BUILD", "retry": 0}
+{"ts":"2026-06-13T07:43:12Z","event":"secret_scan_skipped","cycle":10,"dps":DPS1,"reason":"gitleaks_not_installed"}
+{"ts":"2026-06-13T07:51:41Z","event":"secret_scan_skipped","cycle":10,"dps":DPS2,"reason":"gitleaks_not_installed"}
+{"ts": "2026-06-13T07:51:53Z", "event": "in_progress_update", "cycle": 10, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-06-13T07:52:47Z","event":"verify_cycle_10_failed","cycle":10}
+{"ts":"2026-06-13T07:53:27Z","event":"verify_cycle_10_failed","cycle":10}
+{"ts":"2026-06-13T07:53:51Z","event":"verify_cycle_10_passed","cycle":10}
+{"ts": "2026-06-13T08:01:28Z", "event": "in_progress_update", "cycle": 10, "phase": "VERIFY", "retry": 0}
+{"ts": "2026-06-13T08:01:53Z", "event": "in_progress_update", "cycle": 10, "phase": "REVIEW2", "retry": 0}
+{"ts":"2026-06-13T08:08:35Z","event":"verify_cycle_10_passed","cycle":10}
+{"ts": "2026-06-13T08:08:49Z", "event": "in_progress_update", "cycle": 10, "phase": "QC", "retry": 0}
+{"ts": "2026-06-13T08:09:58Z", "event": "in_progress_update", "cycle": 10, "phase": "POST_REVIEW", "retry": 0}
+{"ts": "2026-06-13T08:10:09Z", "event": "in_progress_update", "cycle": 10, "phase": "SESSION", "retry": 0}
+{"ts": "2026-06-13T08:11:00Z", "event": "cycle_complete", "cycle": 10, "title": "Glossary Gap Report (BE-thin + FE)", "dps_count": 2, "files_changed": 11, "tests": {"pytest": 6, "vitest": 7}, "verify_exit": 0, "live_smoke": "gap report on built graph 019eb683 -> select 2 gaps -> sequential bulk-promote (reuses C9) -> 2 glossary drafts created (status=draft, tags=[ai-suggested]); count 24->22", "screenshots": ["docs/raid/evidence/cycle-10/gap-report.png", "docs/raid/evidence/cycle-10/post-bulk-promote.png"], "adversary": {"blockers": 0, "majors": 0, "minors": 5, "notes": 4}, "scope_guard": "CLEAR", "post_review": "CLEAR", "notable": "thin GET /projects/{id}/gaps over find_gap_candidates (entity gaps, NOT lore-enrichment detect-gaps); useBulkPromote sequential reuse of C9 promoteEntity (progress + partial-failure survival); G6 route-scoped GapReportTab in C6 shell; review fixes: debounced threshold, retain-failed-selection on partial fail, per-row aria-label"}
+{"ts": "2026-06-13T08:11:08Z", "event": "in_progress_update", "cycle": 10, "phase": "COMMIT", "retry": 0}
+{"ts": "2026-06-13T08:11:49Z", "event": "in_progress_archived", "cycle": 10, "archived_to": "cycle-010-state-20260613T081149.md"}

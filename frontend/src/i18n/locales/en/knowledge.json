@@ -45,6 +45,40 @@
       "graph": "Graph build & explore lands here (C5 / C19)."
     }
   },
+  "gap": {
+    "heading": "Glossary gap report",
+    "subtitle": "High-mention characters, places and concepts we found in your book that aren't in the glossary yet. Promote the ones worth keeping.",
+    "summary": {
+      "candidates": "Gap candidates",
+      "threshold": "Min mentions",
+      "top": "Top gap",
+      "topLabel": "Top gap",
+      "topMentions": "{{count}} mentions",
+      "none": "—"
+    },
+    "controls": {
+      "minMentions": "Min mentions",
+      "limit": "Show up to"
+    },
+    "selectAll": "Select all",
+    "selectRow": "Select {{name}}",
+    "loading": "Loading gaps…",
+    "empty": "No gaps above this threshold. Lower the min-mentions to surface more, or your glossary is well covered.",
+    "error": "Couldn't load the gap report. Try again.",
+    "mentions": "{{count}} mentions",
+    "mentionsTitle": "Times mentioned across the book",
+    "itemFailed": "Failed",
+    "bulkPromote": {
+      "cta_one": "Promote {{count}} to glossary",
+      "cta_other": "Promote {{count}} to glossary",
+      "cta_zero": "Promote to glossary",
+      "progress": "{{done}} / {{total}} promoted",
+      "failedCount": "({{count}} failed)",
+      "allOk": "Promoted {{count}} to glossary drafts.",
+      "allFailed": "All {{count}} promotions failed. Try again.",
+      "partial": "Promoted {{ok}}; {{failed}} failed."
+    }
+  },
   "mobile": {
     "sections": {
       "global": "Global bio",
