@@ -1,19 +1,42 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { FolderOpen, Plus, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { ConfirmDialog, EmptyState, SkeletonCard } from '@/components/shared';
 import { useProjects } from '../hooks/useProjects';
 import type { Project } from '../types';
+import {
+  narrowProjects,
+  type ProjectSort,
+  type ProjectStateFilter,
+} from '../lib/projectBrowser';
 import { ProjectFormModal } from './ProjectFormModal';
 import { ProjectRow } from './ProjectRow';
+import { ProjectsBrowserControls } from './ProjectsBrowserControls';
 
 export function ProjectsTab() {
   const { t } = useTranslation('knowledge');
+  const navigate = useNavigate();
   const [includeArchived, setIncludeArchived] = useState(false);
+
+  // C7 (G6) — HOME-browser narrowing state. Explicit handlers (no
+  // useEffect-for-events); narrowing runs client-side over the loaded
+  // (cursor-paginated) rows via `narrowProjects`.
+  const [search, setSearch] = useState('');
+  const [sort, setSort] = useState<ProjectSort>('recent');
+  const [stateFilter, setStateFilter] = useState<ProjectStateFilter>('all');
+
+  // The "archived" state filter implies we must have archived rows
+  // loaded. Either the explicit checkbox OR an archived filter pulls
+  // them in.
+  const wantArchived = includeArchived || stateFilter === 'archived';
+
   const {
     items,
     hasMore,
+    loadMore,
+    isFetchingMore,
     isLoading,
     isError,
     error,
@@ -22,7 +45,22 @@ export function ProjectsTab() {
     updateProject,
     archiveProject,
     deleteProject,
-  } = useProjects(includeArchived);
+  } = useProjects(wantArchived);
+
+  const visible = useMemo(
+    () => narrowProjects(items, { search, sort, stateFilter }),
+    [items, search, sort, stateFilter],
+  );
+
+  const openProject = (p: Project) =>
+    navigate(`/knowledge/projects/${p.project_id}/overview`);
+
+  // C7: selecting the archived filter also flips the checkbox so the
+  // "Show archived" affordance stays in sync with the active narrowing.
+  const handleStateFilterChange = (next: ProjectStateFilter) => {
+    setStateFilter(next);
+    if (next === 'archived') setIncludeArchived(true);
+  };
 
   const [modalMode, setModalMode] = useState<'create' | 'edit' | null>(null);
   const [editTarget, setEditTarget] = useState<Project | null>(null);
@@ -124,6 +162,17 @@ export function ProjectsTab() {
         </div>
       </div>
 
+      {!isLoading && !isError && (
+        <ProjectsBrowserControls
+          search={search}
+          onSearchChange={setSearch}
+          sort={sort}
+          onSortChange={setSort}
+          stateFilter={stateFilter}
+          onStateFilterChange={handleStateFilterChange}
+        />
+      )}
+
       {isLoading && (
         <div className="flex flex-col gap-2">
           <SkeletonCard />
@@ -138,6 +187,7 @@ export function ProjectsTab() {
         </div>
       )}
 
+      {/* Truly-empty (no projects at all) — offer to create the first. */}
       {!isLoading && !isError && items.length === 0 && (
         <EmptyState
           icon={FolderOpen}
@@ -155,12 +205,23 @@ export function ProjectsTab() {
         />
       )}
 
-      {!isLoading && !isError && items.length > 0 && (
+      {/* Loaded rows exist but the current search/filter hides them all. */}
+      {!isLoading && !isError && items.length > 0 && visible.length === 0 && (
+        <div
+          className="rounded-lg border border-dashed p-6 text-center text-xs text-muted-foreground"
+          data-testid="projects-no-matches"
+        >
+          {t('projects.browser.noMatches')}
+        </div>
+      )}
+
+      {!isLoading && !isError && visible.length > 0 && (
         <div className="flex flex-col gap-2">
-          {items.map((project) => (
+          {visible.map((project) => (
             <ProjectRow
               key={project.project_id}
               project={project}
+              onOpen={openProject}
               onEdit={openEdit}
               onArchive={setArchiveTarget}
               onRestore={(p) => void handleRestore(p)}
@@ -168,9 +229,17 @@ export function ProjectsTab() {
             />
           ))}
           {hasMore && (
-            <p className="mt-2 text-center text-[11px] text-muted-foreground">
-              {t('projects.paginationNote')}
-            </p>
+            <button
+              type="button"
+              onClick={() => void loadMore()}
+              disabled={isFetchingMore}
+              data-testid="projects-load-more"
+              className="mt-2 self-center rounded-md border px-4 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-60"
+            >
+              {isFetchingMore
+                ? t('projects.browser.loadingMore')
+                : t('projects.browser.loadMore')}
+            </button>
           )}
         </div>
       )}

@@ -403,9 +403,34 @@
     },
     "loadFailed": "Không tải được dự án: {{error}}",
     "paginationNote": "Hiển thị 100 dự án đầu tiên — phân trang đầy đủ sẽ có ở Track 2.",
+    "browser": {
+      "searchPlaceholder": "Tìm dự án…",
+      "searchLabel": "Tìm dự án theo tên",
+      "filterLabel": "Lọc theo trạng thái",
+      "sortLabel": "Sắp xếp dự án",
+      "noMatches": "Không có dự án nào khớp với tìm kiếm và bộ lọc hiện tại.",
+      "loadMore": "Tải thêm",
+      "loadingMore": "Đang tải…",
+      "stateFilter": {
+        "all": "Mọi trạng thái",
+        "disabled": "Bộ nhớ tĩnh",
+        "building": "Đang dựng",
+        "paused": "Tạm dừng",
+        "ready": "Sẵn sàng",
+        "failed": "Thất bại",
+        "archived": "Đã lưu trữ"
+      },
+      "sortOption": {
+        "recent": "Cập nhật gần đây",
+        "oldest": "Cũ nhất trước",
+        "name_asc": "Tên (A–Z)",
+        "name_desc": "Tên (Z–A)"
+      }
+    },
     "card": {
       "staticMemory": "Bộ nhớ tĩnh",
       "archivedBadge": "đã lưu trữ",
+      "open": "Mở",
       "edit": "Sửa",
       "archive": "Lưu trữ",
       "restore": "Khôi phục",
@@ -629,6 +654,7 @@
       "cancel": "Hủy",
       "confirm": "Xây dựng đồ thị",
       "starting": "Đang khởi động…",
+      "startSuccess": "Đã bắt đầu dựng — đang trích xuất đồ thị tri thức.",
       "startFailed": "Khởi động thất bại: {{error}}"
     },
     "errorViewer": {

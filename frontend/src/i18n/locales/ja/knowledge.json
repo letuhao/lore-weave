@@ -403,9 +403,34 @@
     },
     "loadFailed": "プロジェクトの読み込みに失敗しました: {{error}}",
     "paginationNote": "最初の 100 件を表示 — フルページネーションは Track 2 で対応予定。",
+    "browser": {
+      "searchPlaceholder": "プロジェクトを検索…",
+      "searchLabel": "名前でプロジェクトを検索",
+      "filterLabel": "状態で絞り込む",
+      "sortLabel": "プロジェクトを並べ替え",
+      "noMatches": "現在の検索とフィルターに一致するプロジェクトはありません。",
+      "loadMore": "さらに読み込む",
+      "loadingMore": "読み込み中…",
+      "stateFilter": {
+        "all": "すべての状態",
+        "disabled": "静的メモリ",
+        "building": "構築中",
+        "paused": "一時停止",
+        "ready": "準備完了",
+        "failed": "失敗",
+        "archived": "アーカイブ済み"
+      },
+      "sortOption": {
+        "recent": "最近更新",
+        "oldest": "古い順",
+        "name_asc": "名前 (A–Z)",
+        "name_desc": "名前 (Z–A)"
+      }
+    },
     "card": {
       "staticMemory": "静的メモリ",
       "archivedBadge": "アーカイブ済み",
+      "open": "開く",
       "edit": "編集",
       "archive": "アーカイブ",
       "restore": "復元",
@@ -629,6 +654,7 @@
       "cancel": "キャンセル",
       "confirm": "グラフを構築",
       "starting": "開始中…",
+      "startSuccess": "構築を開始しました — ナレッジグラフを抽出しています。",
       "startFailed": "開始失敗: {{error}}"
     },
     "errorViewer": {

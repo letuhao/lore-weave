@@ -1,16 +1,27 @@
-import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
+import {
+  useInfiniteQuery,
+  useQueryClient,
+  useMutation,
+} from '@tanstack/react-query';
+import { useMemo } from 'react';
 import { useAuth } from '@/auth';
 import { knowledgeApi } from '../api';
 import type {
   Project,
   ProjectCreatePayload,
+  ProjectListResponse,
   ProjectUpdatePayload,
 } from '../types';
 
-// Track 1 keeps pagination simple: single page of up to 100 projects.
-// The backend supports cursor pagination, but no-one has that many
-// projects in practice. When next_cursor is non-null the list footer
-// tells the user, and proper pagination lands with K8+ / Track 2.
+// C7 (G6) — the projects browser is the knowledge-service HOME. The BE
+// list endpoint already supports cursor pagination (`?cursor=` →
+// `next_cursor`), so the FE no longer caps at one 100-row page: it
+// accumulates pages via useInfiniteQuery and exposes `fetchNextPage` to
+// the browser's "Load more". `items` is the flattened union of every
+// loaded page. Search / sort / filter-by-state run client-side over
+// these loaded rows (the BE list endpoint has no search/sort/status
+// params — see api.ts ProjectListParams — and adding them is out of
+// scope for C7: "wire the cursor, don't build a new endpoint").
 const PAGE_LIMIT = 100;
 
 export function useProjects(includeArchived: boolean) {
@@ -19,16 +30,32 @@ export function useProjects(includeArchived: boolean) {
 
   const queryKey = ['knowledge-projects', { includeArchived }] as const;
 
-  const query = useQuery({
+  const query = useInfiniteQuery({
     queryKey,
-    queryFn: () =>
+    queryFn: ({ pageParam }) =>
       knowledgeApi.listProjects(
-        { limit: PAGE_LIMIT, include_archived: includeArchived },
+        {
+          limit: PAGE_LIMIT,
+          include_archived: includeArchived,
+          cursor: pageParam,
+        },
         accessToken!,
       ),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage: ProjectListResponse) =>
+      lastPage.next_cursor ?? undefined,
     enabled: !!accessToken,
   });
 
+  // Flatten every loaded page into a single list. `pages` is undefined
+  // until the first fetch resolves; the `?? []` keeps `items` an array
+  // for the whole loading window.
+  const items = useMemo<Project[]>(
+    () => (query.data?.pages ?? []).flatMap((p) => p.items) as Project[],
+    [query.data],
+  );
+
+  // Invalidate the whole family (both archived/non-archived variants).
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: ['knowledge-projects'] });
 
@@ -70,8 +97,12 @@ export function useProjects(includeArchived: boolean) {
   });
 
   return {
-    items: (query.data?.items ?? []) as Project[],
-    hasMore: !!query.data?.next_cursor,
+    items,
+    // C7: real cursor pagination. `hasMore` reflects whether another
+    // page exists on the BE; `loadMore` advances to it (accumulating).
+    hasMore: !!query.hasNextPage,
+    loadMore: query.fetchNextPage,
+    isFetchingMore: query.isFetchingNextPage,
     isLoading: query.isLoading,
     isError: query.isError,
     error: query.error,

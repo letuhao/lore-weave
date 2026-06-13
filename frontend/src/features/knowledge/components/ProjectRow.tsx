@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Archive, ArchiveRestore, Pencil, SlidersHorizontal, Trash2 } from 'lucide-react';
+import { Archive, ArchiveRestore, ArrowRight, Pencil, SlidersHorizontal, Trash2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
@@ -28,6 +28,11 @@ interface Props {
   onArchive: (p: Project) => void;
   onRestore: (p: Project) => void;
   onDelete: (p: Project) => void;
+  // C7 (G6) — when supplied (the HOME browser), clicking the project name
+  // or the Open affordance routes INTO the C6 project-detail shell
+  // (`/knowledge/projects/:projectId/overview`). Omitted when the row is
+  // already rendered inside the shell's Overview (no self-navigation).
+  onOpen?: (p: Project) => void;
   // C6 (G6) — when the row is rendered inside the project-detail shell's
   // Overview, this deep-links the complete-card "Explore graph" CTA into
   // the shell. Omitted in the flat ProjectsTab list (CTA hidden there).
@@ -40,6 +45,7 @@ export function ProjectRow({
   onArchive,
   onRestore,
   onDelete,
+  onOpen,
   onExploreGraph,
 }: Props) {
   const { t } = useTranslation('knowledge');
@@ -211,7 +217,19 @@ export function ProjectRow({
       <div className="mb-3 flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="mb-1 flex flex-wrap items-center gap-2">
-            <h3 className="truncate font-serif text-[15px] font-semibold">{project.name}</h3>
+            {onOpen ? (
+              <button
+                type="button"
+                onClick={() => onOpen(project)}
+                title={t('projects.card.open')}
+                data-testid={`project-open-${project.project_id}`}
+                className="truncate rounded-sm font-serif text-[15px] font-semibold text-left transition-colors hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {project.name}
+              </button>
+            ) : (
+              <h3 className="truncate font-serif text-[15px] font-semibold">{project.name}</h3>
+            )}
             {isArchived && (
               <span className="rounded-md bg-warning/10 px-2 py-0.5 text-[11px] font-medium text-warning">
                 {t('projects.card.archivedBadge')}
@@ -230,6 +248,17 @@ export function ProjectRow({
         </div>
 
         <div className="flex flex-shrink-0 gap-1">
+          {onOpen && (
+            <button
+              onClick={() => onOpen(project)}
+              title={t('projects.card.open')}
+              data-testid={`project-open-cta-${project.project_id}`}
+              className="flex items-center gap-1 rounded-md border px-2 py-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            >
+              {t('projects.card.open')}
+              <ArrowRight className="h-3.5 w-3.5" />
+            </button>
+          )}
           <button
             onClick={() => onEdit(project)}
             title={t('projects.card.edit')}

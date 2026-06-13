@@ -152,6 +152,18 @@ describe('ProjectStateCard dispatcher', () => {
     expect(actions.onCancel).toHaveBeenCalledTimes(1);
   });
 
+  it('BuildingRunningCard renders an elapsed line from started_at (KN-9)', () => {
+    render(
+      <ProjectStateCard
+        state={{ kind: 'building_running', job: sampleJob }}
+        actions={noopActions()}
+      />,
+    );
+    // started_at is well in the past, so formatElapsed returns a value
+    // and the elapsed line renders.
+    expect(screen.getByTestId('building-running-elapsed')).toBeDefined();
+  });
+
   it('BuildingRunningCard renders a progress bar with role=progressbar', () => {
     const { getByRole } = render(
       <ProjectStateCard

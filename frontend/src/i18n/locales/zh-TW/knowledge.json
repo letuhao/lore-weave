@@ -403,9 +403,34 @@
     },
     "loadFailed": "載入專案失敗: {{error}}",
     "paginationNote": "顯示前 100 個專案 — 完整分頁將於 Track 2 推出。",
+    "browser": {
+      "searchPlaceholder": "搜尋專案…",
+      "searchLabel": "依名稱搜尋專案",
+      "filterLabel": "依狀態篩選",
+      "sortLabel": "排序專案",
+      "noMatches": "沒有符合目前搜尋與篩選條件的專案。",
+      "loadMore": "載入更多",
+      "loadingMore": "載入中…",
+      "stateFilter": {
+        "all": "所有狀態",
+        "disabled": "靜態記憶",
+        "building": "建構中",
+        "paused": "已暫停",
+        "ready": "就緒",
+        "failed": "失敗",
+        "archived": "已封存"
+      },
+      "sortOption": {
+        "recent": "最近更新",
+        "oldest": "最舊優先",
+        "name_asc": "名稱 (A–Z)",
+        "name_desc": "名稱 (Z–A)"
+      }
+    },
     "card": {
       "staticMemory": "靜態記憶",
       "archivedBadge": "已封存",
+      "open": "開啟",
       "edit": "編輯",
       "archive": "封存",
       "restore": "還原",
@@ -629,6 +654,7 @@
       "cancel": "取消",
       "confirm": "建立圖譜",
       "starting": "正在啟動…",
+      "startSuccess": "已開始建構 — 正在抽取知識圖譜。",
       "startFailed": "啟動失敗: {{error}}"
     },
     "errorViewer": {

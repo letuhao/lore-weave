@@ -403,9 +403,34 @@
     },
     "loadFailed": "Failed to load projects: {{error}}",
     "paginationNote": "Showing first 100 projects — full pagination lands with Track 2.",
+    "browser": {
+      "searchPlaceholder": "Search projects…",
+      "searchLabel": "Search projects by name",
+      "filterLabel": "Filter by state",
+      "sortLabel": "Sort projects",
+      "noMatches": "No projects match the current search and filters.",
+      "loadMore": "Load more",
+      "loadingMore": "Loading…",
+      "stateFilter": {
+        "all": "All states",
+        "disabled": "Static memory",
+        "building": "Building",
+        "paused": "Paused",
+        "ready": "Ready",
+        "failed": "Failed",
+        "archived": "Archived"
+      },
+      "sortOption": {
+        "recent": "Recently updated",
+        "oldest": "Oldest first",
+        "name_asc": "Name (A–Z)",
+        "name_desc": "Name (Z–A)"
+      }
+    },
     "card": {
       "staticMemory": "Static memory",
       "archivedBadge": "archived",
+      "open": "Open",
       "edit": "Edit",
       "archive": "Archive",
       "restore": "Restore",
@@ -600,6 +625,7 @@
       "cancel": "Cancel",
       "confirm": "Build graph",
       "starting": "Starting…",
+      "startSuccess": "Build started — extracting the knowledge graph now.",
       "startFailed": "Start failed: {{error}}"
     },
     "errorViewer": {

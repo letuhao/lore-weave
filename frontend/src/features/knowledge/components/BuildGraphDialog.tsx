@@ -298,6 +298,11 @@ export function BuildGraphDialog({
           : {}),
       };
       await knowledgeApi.startExtraction(project.project_id, payload, accessToken);
+      // KN-5 (C7) — post-submit feedback: confirm the build actually
+      // started. The state card also flips to "Building…" via the
+      // onStarted() jobs-query invalidation, but a toast removes any
+      // doubt that the click registered (the prior flow was silent).
+      toast.success(t('projects.buildDialog.startSuccess'));
       onStarted();
       onOpenChange(false);
     } catch (err) {

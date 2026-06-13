@@ -53,8 +53,13 @@ vi.mock('../EmbeddingModelPicker', () => ({
 }));
 
 const toastErrorMock = vi.fn();
+const toastSuccessMock = vi.fn();
 vi.mock('sonner', () => ({
-  toast: { error: (...args: unknown[]) => toastErrorMock(...args) },
+  toast: {
+    error: (...args: unknown[]) => toastErrorMock(...args),
+    // C7 (KN-5): the dialog now fires a success toast on start.
+    success: (...args: unknown[]) => toastSuccessMock(...args),
+  },
 }));
 
 // K19b.6 (D-K19a.5-03): the dialog now reads user-wide costs to show
