@@ -180,12 +180,10 @@ func (s *Server) getWorldByID(w http.ResponseWriter, ctx context.Context, worldI
 	var desc *string
 	var createdAt, updatedAt *time.Time
 	var bookCount int
-	err := s.pool.QueryRow(ctx, `
-SELECT w.id, w.owner_user_id, w.name, w.description, w.created_at, w.updated_at,
-  COALESCE((SELECT COUNT(*) FROM books b WHERE b.world_id=w.id AND b.is_bible=false AND b.lifecycle_state!='purge_pending'),0) AS book_count
-FROM worlds w
+	var bibleBookID, bibleChapterID *uuid.UUID
+	err := s.pool.QueryRow(ctx, worldSelectSQL+`
 WHERE w.id=$1 AND w.owner_user_id=$2
-`, worldID, ownerID).Scan(&id, &owner, &name, &desc, &createdAt, &updatedAt, &bookCount)
+`, worldID, ownerID).Scan(&id, &owner, &name, &desc, &createdAt, &updatedAt, &bookCount, &bibleBookID, &bibleChapterID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "WORLD_NOT_FOUND", "world not found")
 		return
@@ -194,18 +192,37 @@ WHERE w.id=$1 AND w.owner_user_id=$2
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to get world")
 		return
 	}
-	writeJSON(w, status, worldResponse(id, owner, name, desc, bookCount, createdAt, updatedAt))
+	writeJSON(w, status, worldResponse(id, owner, name, desc, bookCount, bibleBookID, bibleChapterID, createdAt, updatedAt))
 }
 
-func worldResponse(id, owner uuid.UUID, name string, desc *string, bookCount int, createdAt, updatedAt *time.Time) map[string]any {
+// worldSelectSQL is the shared projection for get/list. The two correlated
+// subqueries resolve the world's hidden bible handle: bibleBook = the world's
+// is_bible book; bibleChapter = that book's active sort_order-0 chapter. Both
+// are LEFT-correlated (scalar subselect), so a legacy world with no bible book
+// yields NULL → null in the FE contract rather than dropping the row. The
+// chapter subselect re-derives the book id inline (not via the alias) so the
+// projection stays a single self-contained SELECT list.
+const worldSelectSQL = `
+SELECT w.id, w.owner_user_id, w.name, w.description, w.created_at, w.updated_at,
+  COALESCE((SELECT COUNT(*) FROM books b WHERE b.world_id=w.id AND b.is_bible=false AND b.lifecycle_state!='purge_pending'),0) AS book_count,
+  (SELECT bb.id FROM books bb WHERE bb.world_id=w.id AND bb.is_bible=true ORDER BY bb.created_at ASC LIMIT 1) AS bible_book_id,
+  (SELECT c.id FROM chapters c
+     WHERE c.book_id=(SELECT bb.id FROM books bb WHERE bb.world_id=w.id AND bb.is_bible=true ORDER BY bb.created_at ASC LIMIT 1)
+       AND c.sort_order=0 AND c.is_bible=true AND c.lifecycle_state='active'
+     ORDER BY c.created_at ASC LIMIT 1) AS bible_chapter_id
+FROM worlds w`
+
+func worldResponse(id, owner uuid.UUID, name string, desc *string, bookCount int, bibleBookID, bibleChapterID *uuid.UUID, createdAt, updatedAt *time.Time) map[string]any {
 	return map[string]any{
-		"world_id":      id,
-		"owner_user_id": owner,
-		"name":          name,
-		"description":   desc,
-		"book_count":    bookCount,
-		"created_at":    createdAt,
-		"updated_at":    updatedAt,
+		"world_id":         id,
+		"owner_user_id":    owner,
+		"name":             name,
+		"description":      desc,
+		"book_count":       bookCount,
+		"bible_book_id":    bibleBookID,
+		"bible_chapter_id": bibleChapterID,
+		"created_at":       createdAt,
+		"updated_at":       updatedAt,
 	}
 }
 
@@ -231,10 +248,7 @@ func (s *Server) listWorlds(w http.ResponseWriter, r *http.Request) {
 	}
 	limit, offset := parseLimitOffset(r)
 	ctx := r.Context()
-	rows, err := s.pool.Query(ctx, `
-SELECT w.id, w.owner_user_id, w.name, w.description, w.created_at, w.updated_at,
-  COALESCE((SELECT COUNT(*) FROM books b WHERE b.world_id=w.id AND b.is_bible=false AND b.lifecycle_state!='purge_pending'),0) AS book_count
-FROM worlds w
+	rows, err := s.pool.Query(ctx, worldSelectSQL+`
 WHERE w.owner_user_id=$1
 ORDER BY w.created_at DESC
 LIMIT $2 OFFSET $3
@@ -251,8 +265,9 @@ LIMIT $2 OFFSET $3
 		var desc *string
 		var createdAt, updatedAt *time.Time
 		var bookCount int
-		if err := rows.Scan(&id, &owner, &name, &desc, &createdAt, &updatedAt, &bookCount); err == nil {
-			items = append(items, worldResponse(id, owner, name, desc, bookCount, createdAt, updatedAt))
+		var bibleBookID, bibleChapterID *uuid.UUID
+		if err := rows.Scan(&id, &owner, &name, &desc, &createdAt, &updatedAt, &bookCount, &bibleBookID, &bibleChapterID); err == nil {
+			items = append(items, worldResponse(id, owner, name, desc, bookCount, bibleBookID, bibleChapterID, createdAt, updatedAt))
 		}
 	}
 	var total int

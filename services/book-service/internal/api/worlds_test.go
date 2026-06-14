@@ -216,7 +216,9 @@ func TestWorldResponseShape(t *testing.T) {
 	owner := uuid.New()
 	desc := "d"
 	now := time.Now()
-	out := worldResponse(id, owner, "Cradle", &desc, 3, &now, &now)
+	bibleBook := uuid.New()
+	bibleChap := uuid.New()
+	out := worldResponse(id, owner, "Cradle", &desc, 3, &bibleBook, &bibleChap, &now, &now)
 	if out["world_id"] != id {
 		t.Fatal("world_id key missing/mismatch")
 	}
@@ -225,5 +227,39 @@ func TestWorldResponseShape(t *testing.T) {
 	}
 	if out["name"] != "Cradle" {
 		t.Fatalf("name=%v", out["name"])
+	}
+	// C20 follow-up: the bible handle (book + sort_order-0 chapter) is now exposed
+	// so the FE can anchor lore against the world without learning a chapter id
+	// out-of-band (unblocks C21).
+	if out["bible_book_id"] != &bibleBook {
+		t.Fatalf("bible_book_id=%v want %v", out["bible_book_id"], &bibleBook)
+	}
+	if out["bible_chapter_id"] != &bibleChap {
+		t.Fatalf("bible_chapter_id=%v want %v", out["bible_chapter_id"], &bibleChap)
+	}
+}
+
+// ── worldResponse: legacy world with no bible book/chapter → null handles ────
+// A world predating C20 (or one whose bible provisioning is absent) must still
+// serialize gracefully — the bible_* keys are present but null, never a 500.
+func TestWorldResponseNullBibleHandles(t *testing.T) {
+	t.Parallel()
+	id := uuid.New()
+	owner := uuid.New()
+	now := time.Now()
+	out := worldResponse(id, owner, "Legacy", nil, 0, nil, nil, &now, &now)
+	v, ok := out["bible_book_id"]
+	if !ok {
+		t.Fatal("bible_book_id key must be present even when null")
+	}
+	if bid, isPtr := v.(*uuid.UUID); !isPtr || bid != nil {
+		t.Fatalf("bible_book_id should be a nil *uuid.UUID, got %v", v)
+	}
+	c, ok := out["bible_chapter_id"]
+	if !ok {
+		t.Fatal("bible_chapter_id key must be present even when null")
+	}
+	if cid, isPtr := c.(*uuid.UUID); !isPtr || cid != nil {
+		t.Fatalf("bible_chapter_id should be a nil *uuid.UUID, got %v", c)
 	}
 }
