@@ -22,11 +22,14 @@ from pydantic import BaseModel, field_validator
 from app.clients.book_client import BookClient, BookClientError
 from app.engine.assembly import ASSEMBLY_MODES
 from app.clients.knowledge_client import KnowledgeClient, KnowledgeContractError
-from app.db.models import WorkStatus
+from app.db.models import DivergenceSpec, DivergenceTaxonomy, EntityOverride, WorkStatus
+from app.db.pool import get_pool
 from app.db.repositories import VersionMismatchError
+from app.db.repositories.derivatives import DerivativesRepo
 from app.db.repositories.works import WorksRepo
 from app.deps import (
     get_book_client_dep,
+    get_derivatives_repo,
     get_grant_client_dep,
     get_knowledge_client_dep,
     get_works_repo,
@@ -247,6 +250,119 @@ async def create_work_for_book(
         if racey is None:
             raise HTTPException(status_code=409, detail={"code": "WORK_CREATE_CONFLICT"})
         return racey.model_dump(mode="json")
+    return work.model_dump(mode="json")
+
+
+class DivergenceSpecBody(BaseModel):
+    """C23 (dị bản M0): the delta declaration for the derivative. M0 override scope =
+    entity fields + added canon rules — `canon_rule` here; entity-field overrides are
+    `entity_overrides` below. NO relationship/event overrides (deferred)."""
+
+    taxonomy: DivergenceTaxonomy = "au"
+    pov_anchor: UUID | None = None
+    canon_rule: list[str] = []
+
+
+class EntityOverrideBody(BaseModel):
+    target_entity_id: UUID
+    overridden_fields: dict[str, Any] = {}
+
+
+class DeriveBody(BaseModel):
+    branch_point: int | None = None
+    divergence: DivergenceSpecBody = DivergenceSpecBody()
+    entity_overrides: list[EntityOverrideBody] = []
+
+
+@router.post("/works/{project_id}/derive", status_code=201)
+async def derive_work(
+    project_id: UUID,
+    body: DeriveBody | None = None,
+    user_id: UUID = Depends(get_current_user),
+    bearer: str = Depends(get_bearer_token),
+    works: WorksRepo = Depends(get_works_repo),
+    derivatives: DerivativesRepo = Depends(get_derivatives_repo),
+    knowledge: KnowledgeClient = Depends(get_knowledge_client_dep),
+    book: BookClient = Depends(get_book_client_dep),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """C23 (dị bản M0): create a DERIVATIVE Work that diverges from a SOURCE Work.
+
+    COW (LOCKED): SPEC ONLY — no chapter/scene clone; the source reference spine
+    stays read-only and the writer adapts manually. The derivative:
+      • links to the source (`source_work_id`) at a chapter-level `branch_point` (G3);
+      • gets its OWN freshly-minted knowledge project_id (G2 — its own Neo4j delta
+        partition), NEVER the source's;
+      • persists its `divergence_spec` + any `entity_override[]` (M0 scope = entity
+        fields + added canon rules; relationship/event overrides DEFERRED) — these are
+        PERSISTED here and APPLIED at retrieval in C25.
+
+    ARCH-REVIEW GUARD (LOCKED, reconciled with C16's nullable column): a derivative
+    MUST carry a NOT-NULL project_id. If knowledge-service can't mint a fresh project
+    (outage/None or a 4xx contract error), we REJECT (4xx) rather than degrade to a
+    null project — a null project_id widens the knowledge timeline to ALL of a user's
+    projects (cross-project grounding leak). The DB CHECK is the belt; this is the
+    suspenders.
+    """
+    body = body or DeriveBody()
+    # Source Work must exist + be owned by the caller (per-user predicate). 404 (not
+    # 403) on a miss — no cross-user oracle.
+    source = await works.get(user_id, project_id)
+    if source is None:
+        raise HTTPException(status_code=404, detail="source work not found")
+    if source.id is None:  # a pending/lazy source has no surrogate id to link to
+        raise HTTPException(status_code=409, detail={"code": "SOURCE_WORK_NOT_BACKED"})
+    book_id = source.book_id
+
+    # E0-4c: deriving is an authoring (write) action on the source's book → EDIT grant
+    # (LOCKED: a derivative of a shared work follows the source's per-book grant).
+    await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
+    try:
+        book_obj = await book.get_book(book_id, bearer)
+    except BookClientError:
+        raise HTTPException(status_code=502, detail={"code": "BOOK_SERVICE_UNAVAILABLE"})
+    if book_obj is None:
+        raise HTTPException(status_code=404, detail="book not found")
+
+    # GUARD: ALWAYS provision a FRESH knowledge project for the derivative (G2). A 4xx
+    # is a contract bug → surface; an outage (None) → REJECT (never a null project on a
+    # derivative). The derivative NEVER reuses the source's project_id.
+    name = f"{book_obj.get('title') or 'Work'} — dị bản"
+    try:
+        created = await knowledge.create_project(book_id, name, bearer)
+    except KnowledgeContractError:
+        raise HTTPException(status_code=502, detail={"code": "PROJECT_CREATE_FAILED"})
+    if created is None or not created.get("project_id"):
+        raise HTTPException(status_code=503, detail={"code": "PROJECT_CREATE_UNAVAILABLE"})
+    derivative_project_id = UUID(str(created["project_id"]))
+
+    # Persist the derivative Work + its divergence_spec + entity_override[] in one
+    # transaction (txn-local — partial state never leaks if a later insert fails). The
+    # NOT-NULL project_id is enforced both here (provisioned above) and by the DB CHECK.
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            work = await works.create_derivative(
+                user_id, derivative_project_id, book_id, source.id,
+                branch_point=body.branch_point, conn=conn,
+            )
+            await derivatives.create_spec(
+                DivergenceSpec(
+                    user_id=user_id, project_id=derivative_project_id, work_id=work.id,
+                    taxonomy=body.divergence.taxonomy, pov_anchor=body.divergence.pov_anchor,
+                    canon_rule=list(body.divergence.canon_rule),
+                ),
+                conn=conn,
+            )
+            for ov in body.entity_overrides:
+                await derivatives.create_override(
+                    EntityOverride(
+                        user_id=user_id, project_id=derivative_project_id, work_id=work.id,
+                        target_entity_id=ov.target_entity_id,
+                        overridden_fields=ov.overridden_fields,
+                    ),
+                    conn=conn,
+                )
     return work.model_dump(mode="json")
 
 

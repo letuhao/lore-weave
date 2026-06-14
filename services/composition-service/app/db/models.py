@@ -44,12 +44,52 @@ class CompositionWork(BaseModel):
     book_id: UUID
     id: UUID | None = None
     pending_project_backfill: bool = False
+    # C23 (dị bản M0): a DERIVATIVE Work points at the SOURCE Work it diverges from
+    # (in-DB self-ref on the surrogate id) at a chapter-level `branch_point` (G3).
+    # Both are NULL for a non-derivative (greenfield) Work. A derivative keeps
+    # project_id NOT NULL (G2 — its own delta partition; DB CHECK enforces it).
+    source_work_id: UUID | None = None
+    branch_point: int | None = None
     active_template_id: UUID | None = None
     status: WorkStatus = "active"
     settings: dict[str, Any] = Field(default_factory=dict)
     version: int = 1
     created_at: datetime | None = None
     updated_at: datetime | None = None
+
+
+DivergenceTaxonomy = Literal["pov_shift", "character_transform", "au"]
+
+
+class DivergenceSpec(BaseModel):
+    """C23 (dị bản M0): the delta declaration for a derivative Work. The taxonomy
+    (POV shift · character transform · AU — UX §7.1) reduces to `taxonomy` +
+    optional `pov_anchor` + added `canon_rule[]` (M0 override scope = entity fields
+    + added canon rules). `project_id` = the derivative's own project."""
+
+    id: UUID | None = None
+    user_id: UUID
+    project_id: UUID
+    work_id: UUID
+    taxonomy: DivergenceTaxonomy = "au"
+    pov_anchor: UUID | None = None
+    canon_rule: list[_Long] = Field(default_factory=list)
+    created_at: datetime | None = None
+
+
+class EntityOverride(BaseModel):
+    """C23 (dị bản M0): a per-derivative entity-FIELD override (relationship/event
+    overrides DEFERRED). `target_entity_id` = the overridden entity (cross-DB id);
+    `overridden_fields` = the field→value JSON delta. PERSISTED here; the packer
+    applies it at retrieval in C25 (this cycle persists only)."""
+
+    id: UUID | None = None
+    user_id: UUID
+    project_id: UUID
+    work_id: UUID
+    target_entity_id: UUID
+    overridden_fields: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime | None = None
 
 
 class StructureTemplate(BaseModel):

@@ -23,6 +23,7 @@ from app.db.repositories import VersionMismatchError
 
 _SELECT_COLS = """
   project_id, user_id, book_id, id, pending_project_backfill,
+  source_work_id, branch_point,
   active_template_id, status, settings,
   version, created_at, updated_at
 """
@@ -102,6 +103,41 @@ class WorksRepo:
         args = (user_id, book_id, active_template_id, json.dumps(settings or {}))
         async with self._pool.acquire() as c:
             row = await c.fetchrow(query, *args)
+        return _row_to_work(row)
+
+    async def create_derivative(
+        self,
+        user_id: UUID,
+        project_id: UUID,
+        book_id: UUID,
+        source_work_id: UUID,
+        *,
+        branch_point: int | None = None,
+        settings: dict[str, Any] | None = None,
+        conn: asyncpg.Connection | None = None,
+    ) -> CompositionWork:
+        """C23 (dị bản M0): insert a DERIVATIVE Work linked to its source.
+
+        `project_id` MUST be a freshly-minted knowledge project (G2 — the
+        derivative's own delta partition; NEVER the source's) and is NOT NULL: the
+        `chk_derivative_project_required` DB CHECK rejects a null project on a row
+        with `source_work_id` set, the same guard the router enforces before this
+        call. Accepts an optional `conn` so the derive flow can write the Work +
+        its divergence_spec + entity_override[] in one transaction.
+        """
+        query = f"""
+        INSERT INTO composition_work
+          (project_id, user_id, book_id, source_work_id, branch_point, settings)
+        VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+        RETURNING {_SELECT_COLS}
+        """
+        args = (project_id, user_id, book_id, source_work_id, branch_point,
+                json.dumps(settings or {}))
+        if conn is not None:
+            row = await conn.fetchrow(query, *args)
+        else:
+            async with self._pool.acquire() as c:
+                row = await c.fetchrow(query, *args)
         return _row_to_work(row)
 
     async def get_pending_for_book(

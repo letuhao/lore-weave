@@ -76,6 +76,71 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_composition_work_project
 CREATE UNIQUE INDEX IF NOT EXISTS uq_composition_work_pending
   ON composition_work(user_id, book_id) WHERE pending_project_backfill;
 
+-- ── C23 (dị bản M0): derivative copy-on-write substrate. A DERIVATIVE Work points
+-- at the SOURCE Work it diverges from (`source_work_id`, in-DB self-ref FK on the
+-- surrogate `id`) at a chapter-level `branch_point` (G3). The derivative gets its
+-- OWN new knowledge project_id (G2 = its own Neo4j delta partition), NEVER the
+-- source's. Spec-only COW: NO chapter clone — the source reference spine stays
+-- read-only and the writer adapts manually (LOCKED).
+ALTER TABLE composition_work ADD COLUMN IF NOT EXISTS source_work_id UUID
+  REFERENCES composition_work(id) ON DELETE SET NULL;
+ALTER TABLE composition_work ADD COLUMN IF NOT EXISTS branch_point INT;
+CREATE INDEX IF NOT EXISTS idx_composition_work_source
+  ON composition_work(source_work_id) WHERE source_work_id IS NOT NULL;
+-- ARCH-REVIEW GUARD (C23, reconciled with C16): a DERIVATIVE Work MUST carry a
+-- NOT-NULL project_id — a null project_id widens the knowledge timeline endpoint to
+-- ALL of a user's projects (cross-project grounding leak). This is a CONDITIONAL
+-- constraint, NOT a blanket `SET NOT NULL`: a GREENFIELD Work (source_work_id NULL)
+-- MAY still have a null project_id (C16's lazy/backfill path), so the 165 existing
+-- null-project rows pass. Idempotent: the DO-block no-ops once the constraint exists.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'chk_derivative_project_required'
+      AND conrelid = 'composition_work'::regclass
+  ) THEN
+    ALTER TABLE composition_work ADD CONSTRAINT chk_derivative_project_required
+      CHECK (source_work_id IS NULL OR project_id IS NOT NULL);
+  END IF;
+END $$;
+
+-- ── divergence_spec: the dị bản delta declaration (one per derivative Work). The
+-- divergence taxonomy (POV shift · character transform · AU — UX §7.1) reduces to
+-- `taxonomy` + optional `pov_anchor` (the POV entity for a POV-shift derivative) +
+-- added `canon_rule[]` (M0 override scope = entity fields + added canon rules ONLY).
+-- `project_id` is the DERIVATIVE's project (cross-DB, no FK); `work_id` is the
+-- derivative Work (in-DB FK on the surrogate id).
+CREATE TABLE IF NOT EXISTS divergence_spec (
+  id          UUID PRIMARY KEY DEFAULT uuidv7(),
+  user_id     UUID NOT NULL,
+  project_id  UUID NOT NULL,
+  work_id     UUID NOT NULL REFERENCES composition_work(id) ON DELETE CASCADE,
+  taxonomy    TEXT NOT NULL DEFAULT 'au' CHECK (taxonomy IN ('pov_shift','character_transform','au')),
+  pov_anchor  UUID,
+  canon_rule  TEXT[] NOT NULL DEFAULT '{}',
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_divergence_spec_work ON divergence_spec(work_id);
+
+-- ── entity_override: per-derivative entity-field overrides (M0 scope = entity
+-- FIELDS only; relationship/event overrides are DEFERRED). `target_entity_id` is the
+-- overridden entity (cross-DB glossary/knowledge id, no FK); `overridden_fields` is
+-- the field→value JSON delta. PERSISTED here; the packer applies it at retrieval in
+-- C25 (this cycle does NOT apply overrides — COW persist-only).
+CREATE TABLE IF NOT EXISTS entity_override (
+  id                UUID PRIMARY KEY DEFAULT uuidv7(),
+  user_id           UUID NOT NULL,
+  project_id        UUID NOT NULL,
+  work_id           UUID NOT NULL REFERENCES composition_work(id) ON DELETE CASCADE,
+  target_entity_id  UUID NOT NULL,
+  overridden_fields JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_entity_override_work ON entity_override(work_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_entity_override_work_target
+  ON entity_override(work_id, target_entity_id);
+
 -- ── structure_template: pluggable story-structure library (global built-ins + user-custom)
 CREATE TABLE IF NOT EXISTS structure_template (
   id            UUID PRIMARY KEY DEFAULT uuidv7(),
@@ -297,6 +362,20 @@ CREATE TABLE IF NOT EXISTS decompose_commit (
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_decompose_commit_idem ON decompose_commit(user_id, project_id, idempotency_key);
+"""
+
+# C23 down-migration (round-trip proof only — the live schema is idempotent-forward
+# like knowledge-service, applied on every boot). Drops the dị bản substrate in
+# dependency order: the two child tables first, then the GUARD constraint, then the
+# two columns + their index. Leaves the C16 re-key + the rest of the schema intact so
+# up→down→up restores exactly (no residue). Mirrors book-service C20's WorldsDownSQL.
+C23_DOWN_SQL = """
+DROP TABLE IF EXISTS entity_override;
+DROP TABLE IF EXISTS divergence_spec;
+ALTER TABLE composition_work DROP CONSTRAINT IF EXISTS chk_derivative_project_required;
+DROP INDEX IF EXISTS idx_composition_work_source;
+ALTER TABLE composition_work DROP COLUMN IF EXISTS branch_point;
+ALTER TABLE composition_work DROP COLUMN IF EXISTS source_work_id;
 """
 
 # Built-in structure templates (owner_user_id NULL = global). Deterministic ids
