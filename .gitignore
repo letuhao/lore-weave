@@ -292,6 +292,7 @@ services/meta-worker/reloc
 services/meta-worker/rsssoak
 services/meta-worker/connpool
 services/meta-worker/dlprobe
+services/meta-worker/closure-drill
 services/migration-orchestrator/cdrill
 services/migration-orchestrator/migrate
 services/migration-orchestrator/migrate-drill
