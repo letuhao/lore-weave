@@ -35,12 +35,23 @@
 >   vs the sphere `build_nested` per-region apportionment → now asserts the
 >   partition invariant directly).
 >
-> **TOP NEXT: build S3** — crustal-thickness isostasy + **bimodal hypsometric
-> calibration** (data model adds `crust_thickness`; calibrate the quantize so the
-> elevation histogram matches the ETOPO1 two-mode target). Then S4 (age bathymetry)
-> → S5 (coupled uplift⇄erosion) → S6 (render/export bathymetry, the "ocean rises"
-> artifact). Each = full 12-phase + `/review-impl` + PO POST-REVIEW. Plan:
-> `docs/plans/2026-05-31-elevation-s1-uplift-relief.md`.
+> **⛰ S3 SHIPPED** — crustal-thickness isostasy: `plates.crust_thickness` (km;
+> oceanic 7, continental 35 + broad collision thickening → 70 km Tibet) now drives
+> the isostatic base (Airy), **replacing the two-constant base** (D2). Collision
+> zones get a broad isostatic shoulder → the high-relief belt broadens from ~2→~4
+> hops (high-relief `conc≤4` 99 %, arc-fill 58 %, mountains 10 % of land — all
+> guards green). Bimodality verified + **locked** (`elevation_histogram_is_bimodal`,
+> D6). The dramatic Tibet-plateau *magnitude* left modest (the mechanism is the win;
+> a deeper uplift⇄isostasy reconciliation over-broadens the Mountain band — tunable
+> later). Plan: `docs/plans/2026-05-31-elevation-s3-isostasy.md`.
+>
+> **TOP NEXT: build S4** — age-based oceanic bathymetry. Add `crust_age` (BFS hops
+> from divergent ridges along spreading), set ocean depth = isostatic base +
+> `√age` (GDH1 `d=2600+365√t`, flatten ≳80 Myr), replacing the coast-distance depth
+> curve. Also addresses the deep-abyss clamp that currently spikes the ocean mode
+> (37 % of cells in the bottom bin). Then S5 (coupled uplift⇄erosion) → S6
+> (render/export bathymetry, the "ocean rises" artifact). Each = full 12-phase +
+> `/review-impl` + PO POST-REVIEW.
 >
 > ---
 >

@@ -83,14 +83,15 @@ hypsometric target (continental mode ~+0.1 km above sea, oceanic mode ~−4.3 km
 |---|---|---|---|---|
 | **S1 ✅** | **Relief amplified from the uplift field** — `land_relief` ridged detail **scaled by local tectonic uplift** (`TECT_*` in `terrain.rs`), mountains rise AT the belts. *(Metric-neutral refactor — see premise correction; foundation for S3/S5.)* | D1 | L | high-relief `conc≤2 ≥ 60 %` (achieved 70 %), continental-arc fill `≥ 40 %` (45 %); no regression vs baseline. |
 | **S2 ✅** | **The plate model collides** — `FAULT_SHEAR_RATIO` (`plates.rs`) stops ~78 % of boundaries being mis-called `Fault`; the normal-component sign then decides convergent/divergent, so continent–continent `FoldMountain`, ocean ridges, island arcs all occur. | D3 | M | All 6 `BoundaryKind`s present across a 60-seed sweep (`FoldMountain` 29/60); Fault share 78 %→38 %; pancake-flat worlds 50 %→3 %. |
-| **S3** | **Crustal-thickness isostasy + hypsometric calibration** — base height from `crust_thickness` (collision thickening), replacing the two constants; calibrate the quantize so the histogram is bimodal and matches Earth bands. | D2, D6 | L | Elevation histogram is **bimodal**; continental & oceanic modes within tolerance of the ETOPO1 targets. |
+| **S3 ✅** | **Crustal-thickness isostasy** — the base is now `crust_thickness`-driven (Airy: oceanic 7 km → `OCEAN_BASE`, continental 35 km → `CONT_BASE`, collision thickening to 70 km → broad isostatic shoulder), replacing the two constants. Bimodality verified + locked. | D2, D6 | L | Histogram **bimodal** (ocean mode < sea < land mode, antimode dip between — locked by `elevation_histogram_is_bimodal`). Collision highland belt broadens from ~2→~4 hops: high-relief `conc≤4` **99 %** (vs the old `conc≤2`), arc-fill 58 %; mountains 10 % of land. **Note:** the dramatic Tibet-plateau *magnitude* is left modest (a deeper uplift⇄isostasy reconciliation would over-broaden the Mountain band / fight the relief tuning) — the thickness-driven *mechanism* is the D2 win, magnitude tunable later. |
 | **S4** | **Age-based bathymetry** — assign `crust_age` (BFS from divergent ridges along spreading), set ocean depth = isostatic base + `√age` (GDH1), replacing the coast-distance curve. | D4 | L | Depth increases monotonically with age from ridges; ridge crests shallow, old abyss deep + flat. |
 | **S5** | **Coupled uplift ⇄ erosion** — feed the tectonic uplift as the `U` source into the existing stream-power `erosion.rs` and iterate uplift+incision jointly toward steady state (Cordonnier). | D5 | XL | Equilibrium river profiles concave (`S ∝ A^(−0.5)` within tolerance); dendritic drainage on the tectonic relief, not on noise. |
 | **S6** | **Render/export bathymetry fix** — `relief.rs` suppress fBm detail below sea; `export.rs` give the `.glb` real (exaggerated) ocean depth instead of a flat clamp; final hypsometry calibration pass. | D7 | M | In every render/glb, ocean surface is below the coast everywhere; bathymetry visible. |
 
-**Dependency order:** ~~S1~~ → ~~S2~~ (✅ shipped together) → S3 → S4 → S5 → S6
-(each builds on the prior). **Next: S3** (crustal-thickness isostasy + bimodal
-hypsometric calibration).
+**Dependency order:** ~~S1~~ → ~~S2~~ (✅ together) → ~~S3~~ (✅) → S4 → S5 → S6.
+**Next: S4** (age-based oceanic bathymetry — replace the coast-distance depth
+curve with `crust_age`-driven `√age` GDH1 depth; also refines the deep-abyss
+clamp that currently spikes the ocean mode).
 
 ## 4 — Cross-cutting rules
 

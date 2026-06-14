@@ -48,6 +48,30 @@ const FAULT_PEAK: f32 = 0.05;
 /// boundary. Scaled mildly so larger meshes get proportionally wider belts.
 const DECAY_HOPS: f32 = 4.0;
 
+// --- S3: crustal-thickness isostasy (elevation redesign, defect D2) ----------
+
+/// Crustal thickness in km. Oceanic crust is thin (and dense) → floats low;
+/// continental crust is thick (and light) → floats high; collision thickens it
+/// further (research finding #2: continental crust 10→80 km, >80 at
+/// Himalaya-Tibet). Drives the isostatic base height (Airy), replacing the old
+/// two-constant base.
+const OCEAN_CRUST_KM: f32 = 7.0;
+const CONT_CRUST_KM: f32 = 35.0;
+/// Extra crust stacked at a continental collision, decaying *broadly* from the
+/// convergent boundary (a wide plateau — Tibet — not a sharp ridge). Up to
+/// 35 km → 70 km total.
+const COLLISION_THICKEN_KM: f32 = 35.0;
+/// Plateau breadth: collision thickening decays over this many BFS hops —
+/// wider than the orogeny `DECAY_HOPS` so the high ground is a broad plateau,
+/// with the (sharper) `uplift` ridges riding on top.
+const PLATEAU_HOPS: f32 = 7.0;
+/// Airy isostasy slope: signed base-height rise per km of continental crust
+/// above the neutral `CONT_CRUST_KM`. Calibrated so 35 km → `CONT_BASE` (+0.10)
+/// and 70 km → ~+0.40 (a broad isostatic shoulder at collisions, on top of which
+/// the orogeny `uplift` + ridged relief build the sharp peaks). This is the D2
+/// mechanism — the base is now crust-thickness-driven, not a flat constant.
+const CONT_ISO_SLOPE: f32 = 0.30 / 35.0;
+
 /// Shear-to-closing ratio above which a boundary is a **transform (Fault)**
 /// rather than convergent/divergent. Must be `> 1`: only motion whose
 /// tangential (shear) component *strongly dominates* the normal (closing /
@@ -77,7 +101,10 @@ pub struct Plates {
     pub plates: Vec<Plate>,
     /// Classified adjacent plate-pair boundaries, sorted by `(plate_a, plate_b)`.
     pub boundaries: Vec<PlateBoundary>,
-    /// Per-cell base elevation from the cell's plate kind.
+    /// Per-cell crustal thickness in km (S3): oceanic thin, continental thick +
+    /// collision thickening. Drives [`Plates::base`] via Airy isostasy.
+    pub crust_thickness: Vec<f32>,
+    /// Per-cell isostatic base elevation from the cell's crust thickness/type.
     pub base: Vec<f32>,
     /// Per-cell signed orogeny uplift (mountains/arcs positive, trenches/rifts
     /// negative).
@@ -169,19 +196,44 @@ pub fn build(
             .map_or(BoundaryKind::Interior, |pb| pb.kind)
     };
 
-    // 1e — per-cell base elevation + orogeny uplift.
-    let base: Vec<f32> = (0..n_cells)
-        .map(|c| match kind[plate_of[c] as usize] {
-            PlateKind::Continental => CONT_BASE,
-            PlateKind::Oceanic => OCEAN_BASE,
+    // Boundary cells: a cell with ≥1 neighbour on a different plate. Each is a
+    // BFS source carrying the boundary kind of its (own-plate, dominant
+    // other-plate) pair. (Computed before the base — the isostasy thickening
+    // reads `(boundary_kind, dist)`.)
+    let (boundary_kind, dist) = boundary_field(&plate_of, neighbors, &pair_kind);
+
+    // 1e — per-cell crust thickness (S3, D2): oceanic crust is thin; continental
+    // crust is thick and **thickens further at collisions** (broad plateau,
+    // wider than the orogeny belt). Drives the isostatic base height below.
+    let crust_thickness: Vec<f32> = (0..n_cells)
+        .map(|c| {
+            let continental = kind[plate_of[c] as usize] == PlateKind::Continental;
+            if !continental {
+                return OCEAN_CRUST_KM;
+            }
+            // Collision thickening on the continental side of a convergent
+            // boundary (continent–continent fold, or the overriding arc of a
+            // subduction). Broad `plateau_decay` → a high plateau, not a ridge.
+            let thicken = match boundary_kind[c] {
+                BoundaryKind::FoldMountain | BoundaryKind::Subduction => {
+                    COLLISION_THICKEN_KM * plateau_decay(dist[c])
+                }
+                _ => 0.0,
+            };
+            CONT_CRUST_KM + thicken
         })
         .collect();
 
-    // Boundary cells: a cell with ≥1 neighbour on a different plate. Each is a
-    // BFS source carrying the boundary kind of its (own-plate, dominant
-    // other-plate) pair.
-    let (boundary_kind, dist) = boundary_field(&plate_of, neighbors, &pair_kind);
+    // 1f — per-cell isostatic base elevation (Airy: thicker crust floats higher),
+    // replacing the old two-constant base (D2).
+    let base: Vec<f32> = (0..n_cells)
+        .map(|c| {
+            let continental = kind[plate_of[c] as usize] == PlateKind::Continental;
+            isostasy_base(crust_thickness[c], continental)
+        })
+        .collect();
 
+    // 1g — per-cell orogeny uplift (the relief signal on top of the base).
     let uplift: Vec<f32> = (0..n_cells)
         .map(|c| {
             let bk = boundary_kind[c];
@@ -223,6 +275,7 @@ pub fn build(
         plate_of,
         plates,
         boundaries,
+        crust_thickness,
         base,
         uplift,
     }
@@ -457,6 +510,27 @@ fn decay(hops: u32) -> f32 {
     (-t * t).exp()
 }
 
+/// Broad collision-plateau decay — same shape as [`decay`] but over the wider
+/// [`PLATEAU_HOPS`], so crustal thickening forms a broad high plateau rather
+/// than tracing the (narrower) orogeny ridge.
+fn plateau_decay(hops: u32) -> f32 {
+    let t = hops as f32 / PLATEAU_HOPS;
+    (-t * t).exp()
+}
+
+/// Airy isostatic base height (signed, sea = 0) for a crust column: thicker
+/// continental crust floats higher (the mechanism behind high collision
+/// plateaus with no trench). Oceanic crust is uniform here — its depth varies
+/// by lithospheric *age*, deferred to S4. Calibrated so oceanic 7 km →
+/// `OCEAN_BASE`, continental 35 km → `CONT_BASE`, 70 km → ~+0.40.
+fn isostasy_base(thickness_km: f32, continental: bool) -> f32 {
+    if continental {
+        CONT_BASE + CONT_ISO_SLOPE * (thickness_km - CONT_CRUST_KM)
+    } else {
+        OCEAN_BASE
+    }
+}
+
 // --- vector helpers ---------------------------------------------------------
 
 /// Displace a unit-sphere cell position by a 3D fBm field, re-normalized back
@@ -662,6 +736,48 @@ mod tests {
         assert_eq!(a.boundaries, b.boundaries);
         for i in 0..a.uplift.len() {
             assert_eq!(a.uplift[i].to_bits(), b.uplift[i].to_bits());
+            assert_eq!(a.crust_thickness[i].to_bits(), b.crust_thickness[i].to_bits());
         }
+    }
+
+    /// S3 — crust thickness splits ocean (thin) vs continent (thick), and
+    /// continental crust never exceeds the neutral + collision-thickening cap.
+    #[test]
+    fn crust_thickness_splits_ocean_and_continent() {
+        let (centers, neighbors) = pocket();
+        let p = build(7, 8, 0.4, 0.0, &centers, &neighbors);
+        assert_eq!(p.crust_thickness.len(), centers.len());
+        let (mut thin, mut thick) = (0u32, 0u32);
+        for (c, &t) in p.crust_thickness.iter().enumerate() {
+            assert!(t.is_finite(), "crust thickness not finite at {c}");
+            match p.plates[p.plate_of[c] as usize].kind {
+                PlateKind::Oceanic => {
+                    assert!((t - OCEAN_CRUST_KM).abs() < 1e-3, "oceanic crust {t} != {OCEAN_CRUST_KM}");
+                    thin += 1;
+                }
+                PlateKind::Continental => {
+                    assert!(
+                        (CONT_CRUST_KM - 1e-3..=CONT_CRUST_KM + COLLISION_THICKEN_KM + 1e-3)
+                            .contains(&t),
+                        "continental crust {t} out of [{CONT_CRUST_KM}, {}]",
+                        CONT_CRUST_KM + COLLISION_THICKEN_KM
+                    );
+                    thick += 1;
+                }
+            }
+        }
+        assert!(thin > 0 && thick > 0, "crust thickness not split ocean/continent");
+    }
+
+    /// S3 — isostasy: thicker continental crust floats strictly higher; oceanic
+    /// crust sits at `OCEAN_BASE`; the calibration anchors hold.
+    #[test]
+    fn isostasy_base_rises_with_thickness() {
+        assert!((isostasy_base(OCEAN_CRUST_KM, false) - OCEAN_BASE).abs() < 1e-6);
+        assert!((isostasy_base(CONT_CRUST_KM, true) - CONT_BASE).abs() < 1e-6);
+        // Tibet-thick crust floats well above the normal platform.
+        let thick = isostasy_base(CONT_CRUST_KM + COLLISION_THICKEN_KM, true);
+        assert!(thick > CONT_BASE + 0.2, "70km crust base {thick} not a plateau");
+        assert!(thick > isostasy_base(CONT_CRUST_KM + 1.0, true), "isostasy not monotonic");
     }
 }

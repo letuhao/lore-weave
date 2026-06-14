@@ -28,9 +28,12 @@ fn is_convergent(k: BoundaryKind) -> bool {
     )
 }
 
-/// How many BFS hops from a convergent boundary still counts as "near" (≤2 is
-/// "on/adjacent to the suture"; the orogeny halo reaches ~4 hops).
-const NEAR_HOPS: u32 = 2;
+/// How many BFS hops from a convergent boundary count as inside the **collision
+/// highland belt** — the orogeny ridge (~4 hops) plus the broad isostatic
+/// plateau S3 stacks on top (crustal thickening, `PLATEAU_HOPS`). Measured conc
+/// by window: ≤2 54 %, ≤3 77 %, **≤4 98 %**, ≤6 100 % — high-relief is tightly
+/// collision-driven, just broader than a bare ridge once the plateau is added.
+const NEAR_HOPS: u32 = 4;
 
 /// A cell's land-elevation tier `(elev−sea)/(65535−sea)` (only meaningful for
 /// land). `≥ 0.55` is the Mountain elevation band biome uses.
@@ -162,14 +165,15 @@ fn belts_fill_and_concentrate() {
     let report = lines.join("\n");
     let conc = 100.0 * high_near as f64 / high.max(1) as f64;
     let fill = 100.0 * arc_high as f64 / arc.max(1) as f64;
-    eprintln!("belts_fill_and_concentrate:\n{report}\n  AGG conc≤2 {conc:.0}%, arc-fill {fill:.0}%");
+    eprintln!("belts_fill_and_concentrate:\n{report}\n  AGG conc≤{NEAR_HOPS} {conc:.0}%, arc-fill {fill:.0}%");
 
     assert!(high > 0, "no high-relief cells produced across the sweep\n{report}");
     assert!(arc > 0, "no continental-arc cells across the sweep\n{report}");
     assert!(
-        conc >= 60.0,
+        conc >= 85.0,
         "only {conc:.0}% of high-relief cells lie within ≤{NEAR_HOPS} hops of a \
-         convergent boundary (target ≥ 60%).\n{report}"
+         convergent boundary (target ≥ 85% — high-relief must trace the collision \
+         highland belt, not appear as noise elsewhere).\n{report}"
     );
     // 40% is a deliberate regression floor a few points below the measured ~45%
     // — a material terrain change that thins the belts *should* trip this.
@@ -274,6 +278,43 @@ fn terrain_proportions_stay_in_band() {
     assert!(
         marsh_pct <= 20.0,
         "Marsh {marsh_pct:.1}% of land > 20% — interior-upland erosion may be flooding lowland"
+    );
+}
+
+/// **Bimodal hypsometry (S3, D6)** — the elevation distribution has two modes,
+/// an ocean mode below sea level and a continental mode at/above it, separated
+/// by an antimode (the shoreline dip) strictly lower than both. This is the
+/// realism target (NOAA ETOPO1); locked so a later stage can't collapse it.
+#[test]
+fn elevation_histogram_is_bimodal() {
+    const NB: usize = 20;
+    let seeds = [7u64, 13, 42, 99, 123, 2024];
+    let mut hist = [0u64; NB];
+    let mut sea_acc = 0usize;
+    for &s in &seeds {
+        let cs = CreativeSeed { world_scale: WorldScale::Continent, ..CreativeSeed::default() };
+        let m = generate(s, &cs);
+        sea_acc += (m.sea_level as usize) * NB / 65536;
+        for c in 0..m.cell_count() {
+            let b = ((m.cells[c].elevation as usize) * NB / 65536).min(NB - 1);
+            hist[b] += 1;
+        }
+    }
+    let sea_bin = (sea_acc / seeds.len()).clamp(1, NB - 2);
+    let ocean_mode = (0..sea_bin).max_by_key(|&b| hist[b]).unwrap();
+    let land_mode = (sea_bin..NB).max_by_key(|&b| hist[b]).unwrap();
+    let antimode = (ocean_mode + 1..land_mode).min_by_key(|&b| hist[b]).unwrap_or(sea_bin);
+    eprintln!(
+        "elevation_histogram_is_bimodal: sea≈bin {sea_bin}, ocean_mode {ocean_mode} ({}), \
+         antimode {antimode} ({}), land_mode {land_mode} ({})",
+        hist[ocean_mode], hist[antimode], hist[land_mode]
+    );
+    assert!(ocean_mode < sea_bin, "ocean mode {ocean_mode} not below sea bin {sea_bin}");
+    assert!(land_mode >= sea_bin, "land mode {land_mode} not at/above sea bin {sea_bin}");
+    assert!(
+        hist[antimode] < hist[ocean_mode] && hist[antimode] < hist[land_mode],
+        "no antimode dip between modes — not bimodal (ocean {}, antimode {}, land {})",
+        hist[ocean_mode], hist[antimode], hist[land_mode]
     );
 }
 
