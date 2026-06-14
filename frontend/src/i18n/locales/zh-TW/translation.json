@@ -109,7 +109,13 @@
     "block_saved": "已儲存區塊",
     "block_save_failed": "儲存失敗：{{error}}",
     "block_saving": "儲存中…",
-    "block_dirty": "已修正"
+    "block_dirty": "已修正",
+    "newer_machine_available": "有更新的機器翻譯 (v{{num}}) — 在你採用之前，你的修改仍為使用中版本",
+    "view_newer": "檢視",
+    "adopt_newer": "採用",
+    "adopt_confirm": "採用較新的機器翻譯作為使用中版本？你的編輯版本仍會保存，但不再是發佈版本。",
+    "adopted": "已採用較新的機器翻譯",
+    "adopt_failed": "採用失敗：{{error}}"
   },
   "matrix": {
     "cell_done": "完成",

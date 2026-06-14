@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, Eye, EyeOff, BookCheck, Pencil } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff, BookCheck, Pencil, Sparkles } from 'lucide-react';
+import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { booksApi } from '@/features/books/api';
 import { versionsApi, type ChapterTranslation } from '@/features/translation/api';
@@ -42,7 +43,7 @@ export default function TranslationReviewPage() {
   const corr = useBlockCorrection(chapterId ?? '', version, originalBlocks, onBlockPatched);
 
   // Version list for switcher
-  const [versions, setVersions] = useState<{ id: string; version_num: number; target_language: string; status: string }[]>([]);
+  const [versions, setVersions] = useState<{ id: string; version_num: number; target_language: string; status: string; authored_by: string }[]>([]);
 
   useEffect(() => {
     if (!accessToken || !bookId || !chapterId || !versionId) return;
@@ -96,6 +97,7 @@ export default function TranslationReviewPage() {
             version_num: v.version_num,
             target_language: v.target_language,
             status: v.status,
+            authored_by: v.authored_by ?? 'llm',
           })));
         }
       }
@@ -109,6 +111,27 @@ export default function TranslationReviewPage() {
   const handleVersionSwitch = useCallback((newVersionId: string) => {
     navigate(`/books/${bookId}/chapters/${chapterId}/review/${newVersionId}`, { replace: true });
   }, [navigate, bookId, chapterId]);
+
+  // AC4: a newer machine translation exists after the human-version's edits. The LLM
+  // never auto-overwrites a human-version (BE _PROMOTE_ACTIVE_SQL guard) — adopting it
+  // is an explicit human choice that discards the human edits as the active version.
+  const humanVer = versions.find((v) => v.authored_by === 'human');
+  const newerMachine = humanVer
+    ? versions.find((v) => v.authored_by === 'llm' && v.status === 'completed' && v.version_num > humanVer.version_num)
+    : undefined;
+  const showNewerBanner = !!humanVer && !!newerMachine && versionId === humanVer.id;
+
+  const adoptNewer = useCallback(async () => {
+    if (!newerMachine || !accessToken || !chapterId) return;
+    if (!window.confirm(t('review.adopt_confirm'))) return;
+    try {
+      await versionsApi.setActiveVersion(accessToken, chapterId, newerMachine.id);
+      toast.success(t('review.adopted'));
+      navigate(`/books/${bookId}/chapters/${chapterId}/review/${newerMachine.id}`, { replace: true });
+    } catch (e) {
+      toast.error(t('review.adopt_failed', { error: (e as Error).message }));
+    }
+  }, [newerMachine, accessToken, chapterId, bookId, navigate, t]);
 
   // Keyboard navigation. Disabled in correct mode — the per-block textareas need the
   // arrow keys for cursor movement (else the global handler hijacks them).
@@ -262,6 +285,30 @@ export default function TranslationReviewPage() {
           <div className="w-px bg-border/50" />
           <div className="flex-1 px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#3da692]/70">
             {t('review.pane_translation')}
+          </div>
+        </div>
+      )}
+
+      {/* AC4: newer machine translation available banner (adopt = explicit, discards human edits as active) */}
+      {showNewerBanner && (
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-amber-400/30 bg-amber-400/10 px-4 py-2">
+          <span className="flex items-center gap-1.5 text-[11px] text-amber-600 dark:text-amber-400">
+            <Sparkles className="h-3.5 w-3.5" />
+            {t('review.newer_machine_available', { num: newerMachine!.version_num })}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => handleVersionSwitch(newerMachine!.id)}
+              className="rounded px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+            >
+              {t('review.view_newer')}
+            </button>
+            <button
+              onClick={adoptNewer}
+              className="rounded border border-amber-400/40 px-2 py-1 text-[10px] font-medium text-amber-600 hover:bg-amber-400/20 dark:text-amber-400 transition-colors"
+            >
+              {t('review.adopt_newer')}
+            </button>
           </div>
         </div>
       )}

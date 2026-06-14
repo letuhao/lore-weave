@@ -109,7 +109,13 @@
     "block_saved": "Block saved",
     "block_save_failed": "Save failed: {{error}}",
     "block_saving": "Saving…",
-    "block_dirty": "Corrected"
+    "block_dirty": "Corrected",
+    "newer_machine_available": "A newer machine translation (v{{num}}) is available — your edits stay active until you adopt it",
+    "view_newer": "View",
+    "adopt_newer": "Adopt",
+    "adopt_confirm": "Adopt the newer machine translation as the active version? Your edited version stays saved but is no longer the published one.",
+    "adopted": "Adopted the newer machine translation",
+    "adopt_failed": "Adopt failed: {{error}}"
   },
   "matrix": {
     "cell_done": "Done",

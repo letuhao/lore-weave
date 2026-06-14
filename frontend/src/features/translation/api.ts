@@ -108,6 +108,7 @@ export type VersionSummary = {
   input_tokens: number | null;
   output_tokens: number | null;
   created_at: string;
+  authored_by: string;
 };
 
 export type LanguageVersionGroup = {

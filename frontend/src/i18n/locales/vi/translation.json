@@ -109,7 +109,13 @@
     "block_saved": "Đã lưu block",
     "block_save_failed": "Lưu thất bại: {{error}}",
     "block_saving": "Đang lưu…",
-    "block_dirty": "Đã sửa"
+    "block_dirty": "Đã sửa",
+    "newer_machine_available": "Có bản dịch máy mới hơn (v{{num}}) — bản sửa của bạn vẫn đang active cho tới khi bạn chọn lấy bản mới",
+    "view_newer": "Xem",
+    "adopt_newer": "Lấy bản mới",
+    "adopt_confirm": "Lấy bản dịch máy mới làm bản active? Bản bạn đã sửa vẫn được lưu nhưng không còn là bản xuất bản.",
+    "adopted": "Đã lấy bản dịch máy mới",
+    "adopt_failed": "Lấy bản mới thất bại: {{error}}"
   },
   "matrix": {
     "cell_done": "Xong",

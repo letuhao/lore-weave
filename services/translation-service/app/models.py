@@ -302,6 +302,9 @@ class VersionSummary(BaseModel):
     input_tokens: Optional[int]
     output_tokens: Optional[int]
     created_at: datetime
+    # T1 AC4: lets the FE detect "a human-version exists but a newer machine version
+    # was translated after it" → show the adopt-with-confirm banner.
+    authored_by: str = "llm"
 
 
 class LanguageVersionGroup(BaseModel):

@@ -109,7 +109,13 @@
     "block_saved": "ブロックを保存しました",
     "block_save_failed": "保存に失敗: {{error}}",
     "block_saving": "保存中…",
-    "block_dirty": "修正済み"
+    "block_dirty": "修正済み",
+    "newer_machine_available": "新しい機械翻訳 (v{{num}}) があります — 取り込むまであなたの編集が有効のままです",
+    "view_newer": "表示",
+    "adopt_newer": "取り込む",
+    "adopt_confirm": "新しい機械翻訳を有効版として取り込みますか？編集版は保存されたままですが、公開版ではなくなります。",
+    "adopted": "新しい機械翻訳を取り込みました",
+    "adopt_failed": "取り込みに失敗: {{error}}"
   },
   "matrix": {
     "cell_done": "完了",

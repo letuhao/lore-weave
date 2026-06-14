@@ -151,6 +151,20 @@ def test_list_versions_marks_is_active_false_when_no_active_set(client, fake_poo
     assert group["versions"][0]["is_active"] is False
 
 
+def test_list_versions_surfaces_authored_by(client, fake_pool):
+    # T1 AC4: the FE needs authored_by to detect a human-version + a newer machine one.
+    fake_pool.fetchval.return_value = UUID(BOOK_ID)
+    fake_pool.fetch.return_value = [
+        _list_row(id=uuid4(), version_num=2, authored_by="human", is_active=True),
+        _list_row(id=uuid4(), version_num=1, authored_by="llm", is_active=False),
+    ]
+    resp = client.get(f"/v1/translation/chapters/{CHAPTER_ID}/versions")
+    assert resp.status_code == 200
+    vers = resp.json()["languages"][0]["versions"]
+    by = {v["version_num"]: v["authored_by"] for v in vers}
+    assert by == {2: "human", 1: "llm"}
+
+
 def test_list_versions_includes_version_num(client, fake_pool):
     fake_pool.fetchval.return_value = UUID(BOOK_ID)
     fake_pool.fetch.return_value = [_list_row(version_num=3)]

@@ -113,6 +113,7 @@ async def list_chapter_versions(
                 input_tokens=row["input_tokens"],
                 output_tokens=row["output_tokens"],
                 created_at=row["created_at"],
+                authored_by=row["authored_by"] if "authored_by" in row.keys() else "llm",
             )
         )
 
