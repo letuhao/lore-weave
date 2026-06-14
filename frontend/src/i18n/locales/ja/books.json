@@ -94,6 +94,19 @@
       "cancel": "キャンセル"
     }
   },
+  "chapterBrowser": {
+    "search": "章を検索…",
+    "select_all": "すべて選択",
+    "selected": "{{count}}件選択中",
+    "select_all_matching": "一致する{{count}}件すべてを選択",
+    "select_row": "章を選択",
+    "empty": "章がありません",
+    "untitled": "無題",
+    "range": "{{total}}件中 {{start}}–{{end}}",
+    "page": "ページ",
+    "prev": "前のページ",
+    "next": "次のページ"
+  },
   "chapters": {
     "count": "{{count}}章",
     "count_other": "{{count}}章",

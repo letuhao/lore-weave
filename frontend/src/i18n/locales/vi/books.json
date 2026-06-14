@@ -94,6 +94,19 @@
       "cancel": "Hủy"
     }
   },
+  "chapterBrowser": {
+    "search": "Tìm chương…",
+    "select_all": "Chọn tất cả",
+    "selected": "Đã chọn {{count}}",
+    "select_all_matching": "Chọn tất cả {{count}}",
+    "select_row": "Chọn chương",
+    "empty": "Không có chương",
+    "untitled": "Chưa đặt tên",
+    "range": "{{start}}–{{end}} trên {{total}}",
+    "page": "Trang",
+    "prev": "Trang trước",
+    "next": "Trang sau"
+  },
   "chapters": {
     "count": "{{count}} chương",
     "count_other": "{{count}} chương",

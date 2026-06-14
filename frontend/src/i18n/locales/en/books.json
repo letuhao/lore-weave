@@ -94,6 +94,19 @@
       "cancel": "Cancel"
     }
   },
+  "chapterBrowser": {
+    "search": "Search chapters…",
+    "select_all": "Select all",
+    "selected": "{{count}} selected",
+    "select_all_matching": "Select all {{count}}",
+    "select_row": "Select chapter",
+    "empty": "No chapters",
+    "untitled": "Untitled",
+    "range": "{{start}}–{{end}} of {{total}}",
+    "page": "Page",
+    "prev": "Previous page",
+    "next": "Next page"
+  },
   "chapters": {
     "count": "{{count}} chapter",
     "count_other": "{{count}} chapters",
