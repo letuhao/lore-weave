@@ -50,6 +50,9 @@ export function useTimeline(
       params.after_chronological ?? null,
       params.before_chronological ?? null,
       params.entity_id ?? null,
+      // C14: sort axis is part of the cache key so toggling
+      // narrative↔chronological triggers a refetch.
+      params.sort_by ?? 'narrative',
       params.limit ?? 50,
       params.offset ?? 0,
     ] as const,

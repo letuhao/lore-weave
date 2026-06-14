@@ -14,9 +14,10 @@ date range, chronological_order range) — see the
 
 from __future__ import annotations
 
+from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
 from app.clients.book_client import BookClient
@@ -131,6 +132,16 @@ async def list_timeline_events(
             "an unresolvable chapter yields an empty timeline, never a leak."
         ),
     ),
+    sort_by: Literal["narrative", "chronological"] = Query(
+        default="narrative",
+        description=(
+            "C14 (C14-narrative-order-sort): timeline sort axis. "
+            "``narrative`` (default) = reading position (event_order) — "
+            "the legacy ordering, so omitting this is back-compatible. "
+            "``chronological`` = in-story chronology (chronological_order; "
+            "undated events sink last)."
+        ),
+    ),
     limit: int = Query(50, ge=1, le=EVENTS_MAX_LIMIT),
     offset: int = Query(0, ge=0),
     user_id: UUID = Depends(get_current_user),
@@ -236,6 +247,7 @@ async def list_timeline_events(
             event_date_from=event_date_from,
             event_date_to=event_date_to,
             participant_candidates=participant_candidates,
+            sort_by=sort_by,
             limit=limit,
             offset=offset,
         )

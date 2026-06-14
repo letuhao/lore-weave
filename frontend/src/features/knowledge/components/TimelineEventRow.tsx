@@ -26,6 +26,34 @@ export interface TimelineEventRowProps {
 
 const VISIBLE_PARTICIPANTS = 3;
 
+// C14 — importance badge. Renders ONLY for the non-null major/pivotal
+// events (ordinary events carry importance=null and get no badge — the
+// rail must highlight the few that matter, not paint everything). Pivotal
+// is the stronger signal so it gets the filled/primary treatment; major
+// is the lighter outline. Keyed off the closed BE enum (major|pivotal).
+function ImportanceBadge({
+  importance,
+  label,
+}: {
+  importance: 'major' | 'pivotal';
+  label: string;
+}) {
+  return (
+    <span
+      className={cn(
+        'inline-flex shrink-0 items-center rounded-full px-1.5 py-[1px] text-[10px] font-medium uppercase tracking-wide',
+        importance === 'pivotal'
+          ? 'bg-primary text-primary-foreground'
+          : 'border border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-400',
+      )}
+      data-testid="timeline-importance-badge"
+      data-importance={importance}
+    >
+      {label}
+    </span>
+  );
+}
+
 function formatConfidence(c: number): string {
   // Clamp to [0, 100] so a bad data import (e.g. confidence=-0.1 or 1.3)
   // surfaces as 0% / 100% in the UI instead of -10% / 130%. BE validation
@@ -105,8 +133,19 @@ export function TimelineEventRow({
           {event.event_order ?? t('timeline.row.noOrder')}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate font-medium" title={event.title}>
-            {event.title}
+          <span className="flex min-w-0 items-center gap-1.5">
+            {event.importance && (
+              <ImportanceBadge
+                importance={event.importance}
+                label={t(`timeline.importance.${event.importance}`)}
+              />
+            )}
+            <span
+              className="block min-w-0 truncate font-medium"
+              title={event.title}
+            >
+              {event.title}
+            </span>
           </span>
           <span className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
             {chapterLabel && (

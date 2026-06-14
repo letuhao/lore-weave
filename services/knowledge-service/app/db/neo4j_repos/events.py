@@ -30,7 +30,7 @@ import logging
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 from app.db.neo4j_helpers import CypherSession, run_read, run_write
 from app.db.neo4j_repos.canonical import canonicalize_text
@@ -57,6 +57,8 @@ _NULL_ORDER_SENTINEL = 9223372036854775807
 __all__ = [
     "Event",
     "EVENTS_MAX_LIMIT",
+    "EVENT_IMPORTANCE",
+    "TIMELINE_SORT_KEYS",
     "event_id",
     "merge_event",
     "get_event",
@@ -160,6 +162,61 @@ class Event(BaseModel):
     version: int = 1
     created_at: datetime | None = None
     updated_at: datetime | None = None
+
+    # C14 (C14-importance-major-pivotal LOCKED) — DERIVED importance,
+    # never a stored column and never an extraction pass. The :Event
+    # node already carries the salience signals (mention_count,
+    # participants, confidence, evidence_count); `importance` is a pure
+    # projection over them so the timeline rail can render major/pivotal
+    # badges without re-extracting or migrating the graph.
+    #
+    # Closed enum = major | pivotal ONLY (EVENT_IMPORTANCE). The default
+    # is None ("unset") — an ordinary event is NEVER mislabeled major.
+    # Back-compat: callers that ignore the field are unaffected; the wire
+    # gains an optional key whose value is null for the common case.
+    #
+    # Derivation (BE+FE agree the enum but only BE computes). Salience is a
+    # blend of two independent signals so the score is robust when either is
+    # degenerate (e.g. a corpus whose extraction never accumulated re-mentions
+    # leaves every mention_count == 1 — then participant-breadth + confidence
+    # carry the signal; a sparse-cast corpus leans on re-mention frequency):
+    #   - pivotal = a clear hinge: (≥3 named participants AND confidence ≥ 0.75)
+    #     OR a heavily re-referenced event (mention_count ≥ 5). The multi-party
+    #     high-confidence scene is the one a reader would mark even if it is
+    #     only mentioned once.
+    #   - major   = notable-but-not-hinge: (≥2 participants AND confidence ≥ 0.6)
+    #     OR mention_count ≥ 3. Recurs through the narrative without the full
+    #     pivotal signature.
+    #   - else None — the long tail of one-off, single-party, lightly-
+    #     referenced events stays unbadged (the *whole point* of the feature:
+    #     highlight the few that matter, don't paint everything major).
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def importance(self) -> str | None:
+        participant_count = len(self.participants)
+        if (
+            participant_count >= 3 and self.confidence >= 0.75
+        ) or self.mention_count >= 5:
+            return "pivotal"
+        if (
+            participant_count >= 2 and self.confidence >= 0.6
+        ) or self.mention_count >= 3:
+            return "major"
+        return None
+
+
+# C14 — closed set of derivable importances, exposed so the router /
+# any future filter + the FE reference ONE source of truth (mirrors
+# ENTITY_STATUSES). `major`/`pivotal` ONLY — no enum drift.
+EVENT_IMPORTANCE: tuple[str, ...] = ("major", "pivotal")
+
+# C14 — narrative-order sort keys for the timeline list endpoint.
+# `narrative` (default, back-compat) orders by reading position
+# (event_order); `chronological` orders by in-story chronology
+# (chronological_order). Closed allowlist so the sort key can be
+# interpolated into the ORDER BY clause safely (Cypher can't
+# parameterize an ORDER BY property) — mirrors C8 ENTITY_SORT_KEYS.
+TIMELINE_SORT_KEYS: tuple[str, ...] = ("narrative", "chronological")
 
 
 def _node_to_event(node: Any) -> Event:
@@ -768,11 +825,39 @@ _LIST_EVENTS_COUNT_CYPHER = _LIST_EVENTS_FILTER_WHERE + """
 RETURN count(e) AS total
 """
 
-_LIST_EVENTS_PAGE_CYPHER = _LIST_EVENTS_FILTER_WHERE + """
-RETURN e
-ORDER BY coalesce(e.event_order, 9223372036854775807) ASC, e.title ASC, e.id ASC
-SKIP $offset LIMIT $limit
-"""
+# C14 — per-sort ORDER BY fragments. The primary key differs by sort
+# axis; `title ASC, id ASC` is the stable tiebreaker in both so
+# pagination never shuffles. `narrative` is the legacy default (reading
+# position) so an unset `sort_by` reproduces the exact prior ordering
+# — back-compat. `chronological` orders by in-story chronology; undated
+# events (NULL chronological_order) sink last via the same INT64 sentinel.
+# Keyed by TIMELINE_SORT_KEYS so the interpolated fragment is from a
+# closed allowlist, never user text (mirrors C8's sort_by interpolation).
+_NULL_SORT_SENTINEL = 9223372036854775807
+_ORDER_BY_FRAGMENTS: dict[str, str] = {
+    "narrative": (
+        f"coalesce(e.event_order, {_NULL_SORT_SENTINEL}) ASC, "
+        "e.title ASC, e.id ASC"
+    ),
+    "chronological": (
+        f"coalesce(e.chronological_order, {_NULL_SORT_SENTINEL}) ASC, "
+        "e.title ASC, e.id ASC"
+    ),
+}
+
+
+def _page_cypher(sort_by: str) -> str:
+    """Build the page query for a closed-allowlist sort key.
+
+    The ORDER BY fragment is looked up from ``_ORDER_BY_FRAGMENTS`` (keys
+    == ``TIMELINE_SORT_KEYS``) — an unknown key raises before any Cypher
+    is assembled, so user-controlled text can never reach the clause.
+    """
+    fragment = _ORDER_BY_FRAGMENTS[sort_by]
+    return (
+        _LIST_EVENTS_FILTER_WHERE
+        + f"\nRETURN e\nORDER BY {fragment}\nSKIP $offset LIMIT $limit\n"
+    )
 
 
 async def list_events_filtered(
@@ -787,21 +872,25 @@ async def list_events_filtered(
     event_date_from: str | None = None,
     event_date_to: str | None = None,
     participant_candidates: list[str] | None = None,
+    sort_by: str = "narrative",
     limit: int,
     offset: int,
 ) -> tuple[list[Event], int]:
-    """K19e.2 + C10 — paginated timeline browse.
+    """K19e.2 + C10 + C14 — paginated timeline browse.
 
     Returns ``(rows, total_count)``. ``total_count`` is the server-side
     count matching the filters *before* ``SKIP``/``LIMIT`` so the FE
     can render "page 3 of N" without a second round-trip.
 
-    Ordering: ``coalesce(event_order, 9223372036854775807) ASC, title ASC,
-    id ASC`` — the id tiebreaker guarantees stable pagination even
-    when title and event_order collide. C10 deliberately keeps
-    narrative ordering even under a chronological filter; a future
-    ``sort_by`` kwarg could surface chronological sort but is
-    out of C10 scope.
+    Ordering (C14): selected by ``sort_by`` ∈ ``TIMELINE_SORT_KEYS``.
+    ``narrative`` (default) = ``coalesce(event_order, INT64_MAX) ASC,
+    title ASC, id ASC`` — the legacy ordering, so an unset ``sort_by``
+    reproduces the exact prior behaviour (back-compat). ``chronological``
+    swaps the primary key to ``coalesce(chronological_order, INT64_MAX)``
+    (in-story chronology; undated events sink last). The ``title ASC,
+    id ASC`` tiebreaker guarantees stable pagination in both axes even
+    when the primary key collides. An unknown ``sort_by`` raises before
+    any Cypher is assembled.
 
     Filter semantics:
       - ``project_id=None``      → events across every project + global.
@@ -831,6 +920,10 @@ async def list_events_filtered(
         raise ValueError(f"limit must be positive, got {limit}")
     if offset < 0:
         raise ValueError(f"offset must be >= 0, got {offset}")
+    if sort_by not in TIMELINE_SORT_KEYS:
+        raise ValueError(
+            f"unsupported sort_by {sort_by!r}; must be one of {TIMELINE_SORT_KEYS}"
+        )
     if (
         after_order is not None
         and before_order is not None
@@ -881,7 +974,7 @@ async def list_events_filtered(
         return ([], 0)
     page_result = await run_read(
         session,
-        _LIST_EVENTS_PAGE_CYPHER,
+        _page_cypher(sort_by),
         user_id=user_id,
         project_id=project_id,
         after_order=after_order,

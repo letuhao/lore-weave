@@ -1575,3 +1575,24 @@
 {"ts": "2026-06-14T10:14:06Z", "event": "in_progress_update", "cycle": 13, "phase": "SESSION", "retry": 0}
 {"ts": "2026-06-14T10:15:00Z", "event": "cycle_complete", "cycle": 13, "title": "Build wizard — glossary pinning (BE+FE)", "dps_count": 4, "result": "DONE", "verify_exit_code": 0, "live_smoke_token_present": true, "adversary": {"blockers": 0, "majors": 1, "minors": 1, "notes": 7}, "scope_guard": "CLEAR", "post_review": "CLEAR", "tests": {"knowledge_pytest": 61, "worker_ai_pytest": 106, "glossary_go": "pass", "fe_vitest": 18, "i18n_keys": 791}, "screenshot": "docs/raid/evidence/cycle-13/build-wizard-step2-pinned.png", "notable": "M1 fixed: chat-turn window omitted pinned_names while estimate charged chat_turns; infra fix worker-ai GLOSSARY_SERVICE_URL stale :8082->:8088"}
 {"ts": "2026-06-14T10:15:11Z", "event": "in_progress_update", "cycle": 13, "phase": "COMMIT", "retry": 0}
+{"ts": "2026-06-14T10:19:44Z", "event": "in_progress_update", "cycle": 13, "phase": "RETRO", "retry": 0}
+{"ts": "2026-06-14T10:19:45Z", "event": "in_progress_archived", "cycle": 13, "archived_to": "cycle-013-state-20260614T101945.md"}
+{"ts": "2026-06-14T10:21:59Z", "event": "coordinator_next_cycle_emitted", "cycle": 14}
+{"ts":"2026-06-14T10:23:20Z","event":"startup_drift_check_inconclusive","cycle":14,"cd":"","rw":""}
+{"ts":"2026-06-14T10:23:20Z","event":"startup_verifier_complete","cycle":14,"steps":6}
+{"ts": "2026-06-14T10:23:42Z", "event": "in_progress_init", "cycle": 14, "title": "Timeline narrative-order + importance (BE+FE)"}
+{"ts": "2026-06-14T10:25:14Z", "event": "in_progress_update", "cycle": 14, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-06-14T10:25:41Z", "event": "in_progress_update", "cycle": 14, "phase": "BUILD", "retry": 0}
+{"ts":"2026-06-14T10:30:33Z","event":"secret_scan_skipped","cycle":14,"dps":1,"reason":"gitleaks_not_installed"}
+{"ts": "2026-06-14T10:30:40Z", "event": "in_progress_update", "cycle": 14, "phase": "BUILD", "retry": 0}
+{"ts":"2026-06-14T10:35:50Z","event":"secret_scan_skipped","cycle":14,"dps":2,"reason":"gitleaks_not_installed"}
+{"ts": "2026-06-14T10:36:40Z", "event": "in_progress_update", "cycle": 14, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-06-14T10:36:41Z","event":"verify_cycle_14_passed","cycle":14}
+{"ts": "2026-06-14T10:45:31Z", "event": "in_progress_update", "cycle": 14, "phase": "REVIEW2", "retry": 0}
+{"ts": "2026-06-14T10:48:27Z", "event": "in_progress_update", "cycle": 14, "phase": "QC", "retry": 0}
+{"ts": "2026-06-14T10:50:35Z", "event": "in_progress_update", "cycle": 14, "phase": "POST_REVIEW", "retry": 0}
+{"ts": "2026-06-14T10:50:35Z", "event": "in_progress_update", "cycle": 14, "phase": "SESSION", "retry": 0}
+{"ts":"2026-06-14T10:50:45Z","cycle":14,"phase":"session","event":"cycle_complete","dps_count":2,"retry_count":0,"adversary_findings":{"blockers":0,"majors":0,"minors":1,"notes":8},"scope_guard":"CLEAR","post_review":"CLEAR","verify_exit_code":0,"tests":{"pytest":38,"vitest":15},"m2_milestone":true,"playwright_token":"timeline rail renders narrative order with importance badges"}
+{"ts": "2026-06-14T10:51:14Z", "event": "in_progress_update", "cycle": 14, "phase": "COMMIT", "retry": 0}
+{"ts": "2026-06-14T10:51:28Z", "event": "in_progress_archived", "cycle": 14, "archived_to": "cycle-014-state.md"}
+{"ts":"2026-06-14T10:52:55Z","cycle":14,"phase":"retro","event":"retro","note":"Live-smoke caught a calibration gap, not a code bug: the first importance derivation gated pivotal/major on mention_count>=5/3, but the real corpus has mention_count==1 for ALL 141 events (extraction never accumulated re-mentions) -> zero badges on the M2 screenshot. Fix: blend signals (>=participants+confidence OR mention_count) so the score survives a degenerate axis; recalibrated to 5 pivotal+45 major+91 unbadged. LESSON: when a derived field reads existing extracted signals, inspect the LIVE signal distribution BEFORE locking thresholds — a threshold that passes synthetic unit stubs can produce an all-None live surface. The C8 derived-status pattern (computed_field + closed enum) ported cleanly to importance + sort_by allowlist. M2 reached."}

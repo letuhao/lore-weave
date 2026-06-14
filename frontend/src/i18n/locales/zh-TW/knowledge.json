@@ -238,6 +238,15 @@
       "before": "之前",
       "chronoReversed": "「之前」必須大於「之後」。"
     },
+    "sort": {
+      "label": "排序",
+      "narrative": "敘事順序",
+      "chronological": "時間順序"
+    },
+    "importance": {
+      "major": "重要",
+      "pivotal": "關鍵"
+    },
     "row": {
       "orderLabel": "敘事順序",
       "noOrder": "—",

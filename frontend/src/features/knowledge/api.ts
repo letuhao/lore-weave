@@ -556,7 +556,25 @@ export interface TimelineEvent {
   version: number;
   created_at: string | null;
   updated_at: string | null;
+  /** C14 (C14-importance-major-pivotal) — DERIVED salience the BE computes
+   *  from existing signals (mention_count, participants, confidence); never
+   *  a stored field, never re-extracted. `null` = ordinary/unbadged event
+   *  (the common case — the long tail is NOT mislabeled). The rail badges
+   *  only the non-null `major`/`pivotal` events. */
+  importance: EventImportance | null;
 }
+
+// C14 — closed importance enum mirroring the BE EVENT_IMPORTANCE tuple
+// one-to-one. `major`/`pivotal` ONLY — no enum drift. The Event wire field
+// is `EventImportance | null` (null = unbadged).
+export const EVENT_IMPORTANCE = ['major', 'pivotal'] as const;
+export type EventImportance = (typeof EVENT_IMPORTANCE)[number];
+
+// C14 — timeline sort axis. `narrative` (default) = reading position
+// (event_order); `chronological` = in-story chronology. Mirrors the BE
+// TIMELINE_SORT_KEYS allowlist. Omitting it is back-compatible.
+export const TIMELINE_SORT_KEYS = ['narrative', 'chronological'] as const;
+export type TimelineSortBy = (typeof TIMELINE_SORT_KEYS)[number];
 
 // ── Phase B C — relation + event correction payloads ─────────────────
 
@@ -593,6 +611,10 @@ export interface TimelineListParams {
   /** T2.1: spoiler-window the timeline THROUGH this book chapter (resolved
    *  server-side to a before_order ceiling). An explicit `before_order` wins. */
   before_chapter_id?: string;
+  /** C14 (C14-narrative-order-sort): sort axis. `narrative` (default,
+   *  back-compat when omitted) = reading position; `chronological` =
+   *  in-story chronology. */
+  sort_by?: TimelineSortBy;
   limit?: number;
   offset?: number;
 }
@@ -1553,6 +1575,7 @@ export const knowledgeApi = {
     if (params.entity_id != null) qs.set('entity_id', params.entity_id);
     if (params.before_chapter_id != null)
       qs.set('before_chapter_id', params.before_chapter_id);
+    if (params.sort_by != null) qs.set('sort_by', params.sort_by);
     if (params.limit != null) qs.set('limit', String(params.limit));
     if (params.offset != null) qs.set('offset', String(params.offset));
     const q = qs.toString();

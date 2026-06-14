@@ -238,6 +238,15 @@
       "before": "Before",
       "chronoReversed": "Before must be greater than After."
     },
+    "sort": {
+      "label": "Sort",
+      "narrative": "Narrative order",
+      "chronological": "Chronological"
+    },
+    "importance": {
+      "major": "Major",
+      "pivotal": "Pivotal"
+    },
     "row": {
       "orderLabel": "Narrative order",
       "noOrder": "—",

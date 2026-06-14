@@ -263,4 +263,64 @@ describe('TimelineTab', () => {
     // Last 8 chars of the fixture's chapter_id.
     expect(row.textContent).toContain('ccc-dddd');
   });
+
+  // ── C14 — narrative-order sort + importance badges + G6 scoping ──
+
+  it('forwards sort_by=narrative by default (back-compat)', async () => {
+    render(<TimelineTab />, { wrapper: Wrapper });
+    await screen.findByTestId('timeline-list');
+    const call = listTimelineMock.mock.calls.at(-1)!;
+    expect(call[0]).toEqual(
+      expect.objectContaining({ sort_by: 'narrative' }),
+    );
+  });
+
+  it('clicking Chronological re-fetches with sort_by=chronological (true narrative-vs-chrono axis)', async () => {
+    render(<TimelineTab />, { wrapper: Wrapper });
+    await screen.findByTestId('timeline-list');
+    listTimelineMock.mockClear();
+    fireEvent.click(screen.getByTestId('timeline-sort-chronological'));
+    await waitFor(() => {
+      expect(listTimelineMock).toHaveBeenCalled();
+    });
+    const call = listTimelineMock.mock.calls.at(-1)!;
+    expect(call[0]).toEqual(
+      expect.objectContaining({ sort_by: 'chronological' }),
+    );
+  });
+
+  it('renders major/pivotal importance badges and leaves ordinary events unbadged', async () => {
+    listTimelineMock.mockResolvedValue({
+      events: [
+        { ...EVENT_DUEL, id: 'ev-piv', importance: 'pivotal' },
+        { ...EVENT_DUEL, id: 'ev-maj', importance: 'major' },
+        { ...EVENT_DUEL, id: 'ev-ord', importance: null },
+      ],
+      total: 3,
+    });
+    render(<TimelineTab />, { wrapper: Wrapper });
+    await screen.findByTestId('timeline-list');
+    const badges = screen.getAllByTestId('timeline-importance-badge');
+    // Exactly 2 badges — the null-importance ordinary event has none.
+    expect(badges).toHaveLength(2);
+    const importances = badges.map((b) => b.getAttribute('data-importance'));
+    expect(importances).toContain('pivotal');
+    expect(importances).toContain('major');
+  });
+
+  it('G6: when route-scoped, reads projectId from prop and renders NO project <select>', async () => {
+    listProjectsMock.mockResolvedValue({
+      items: [{ project_id: 'p-scoped', name: 'Scoped Book' }],
+      next_cursor: null,
+    });
+    render(<TimelineTab scopedProjectId="p-scoped" />, { wrapper: Wrapper });
+    await screen.findByTestId('timeline-list');
+    // The per-tab project dropdown must be gone in the scoped shell.
+    expect(screen.queryByTestId('timeline-filter-project')).toBeNull();
+    // And the route's projectId drives the query.
+    const call = listTimelineMock.mock.calls.at(-1)!;
+    expect(call[0]).toEqual(
+      expect.objectContaining({ project_id: 'p-scoped' }),
+    );
+  });
 });

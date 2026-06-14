@@ -238,6 +238,15 @@
       "before": "Trước",
       "chronoReversed": "\"Trước\" phải lớn hơn \"Sau\"."
     },
+    "sort": {
+      "label": "Sắp xếp",
+      "narrative": "Thứ tự kể chuyện",
+      "chronological": "Theo thời gian"
+    },
+    "importance": {
+      "major": "Quan trọng",
+      "pivotal": "Then chốt"
+    },
     "row": {
       "orderLabel": "Thứ tự kể chuyện",
       "noOrder": "—",

@@ -1,9 +1,10 @@
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { useTimeline } from '../hooks/useTimeline';
 import { useProjects } from '../hooks/useProjects';
-import type { Entity } from '../api';
+import { TIMELINE_SORT_KEYS, type Entity, type TimelineSortBy } from '../api';
 import { TimelineEventRow } from './TimelineEventRow';
 import { TimelineFilters } from './TimelineFilters';
 
@@ -42,6 +43,9 @@ export function TimelineTab({ scopedProjectId }: TimelineTabProps = {}) {
   const [beforeChronological, setBeforeChronological] = useState<number | null>(
     null,
   );
+  // C14 (C14-narrative-order-sort) — sort axis. Default 'narrative' =
+  // reading order (back-compat with the BE's unset default).
+  const [sortBy, setSortBy] = useState<TimelineSortBy>('narrative');
 
   const scoped = !!scopedProjectId;
   const effectiveProjectId = scopedProjectId ?? projectFilter;
@@ -59,6 +63,7 @@ export function TimelineTab({ scopedProjectId }: TimelineTabProps = {}) {
       entity_id: entityFilter?.id,
       after_chronological: afterChronological ?? undefined,
       before_chronological: beforeChronological ?? undefined,
+      sort_by: sortBy,
       limit: PAGE_SIZE,
       offset,
     },
@@ -116,6 +121,37 @@ export function TimelineTab({ scopedProjectId }: TimelineTabProps = {}) {
           </label>
         </div>
       )}
+
+      {/* C14 — sort axis toggle (narrative ↔ chronological). A segmented
+          control, NOT a project select — the route owns the project scope
+          (G6). Default 'narrative' matches the BE's back-compat default. */}
+      <div className="mb-3 flex items-center gap-2 text-[11px]">
+        <span className="text-muted-foreground">{t('timeline.sort.label')}</span>
+        <div
+          className="inline-flex overflow-hidden rounded-md border"
+          role="group"
+          aria-label={t('timeline.sort.label')}
+          data-testid="timeline-sort"
+        >
+          {TIMELINE_SORT_KEYS.map((key) => (
+            <button
+              key={key}
+              type="button"
+              aria-pressed={sortBy === key}
+              onClick={() => handleFilterChange(() => setSortBy(key))}
+              className={cn(
+                'px-2.5 py-1 transition-colors',
+                sortBy === key
+                  ? 'bg-primary text-primary-foreground'
+                  : 'hover:bg-secondary',
+              )}
+              data-testid={`timeline-sort-${key}`}
+            >
+              {t(`timeline.sort.${key}`)}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* C10 — secondary filters (entity + chronological range). Row
           separate from the project select so the entity dropdown has

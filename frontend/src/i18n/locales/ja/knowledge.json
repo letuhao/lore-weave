@@ -238,6 +238,15 @@
       "before": "以前",
       "chronoReversed": "「以前」は「以降」より大きい値である必要があります。"
     },
+    "sort": {
+      "label": "並び順",
+      "narrative": "物語順",
+      "chronological": "時系列順"
+    },
+    "importance": {
+      "major": "重要",
+      "pivotal": "決定的"
+    },
     "row": {
       "orderLabel": "物語順",
       "noOrder": "—",
