@@ -289,5 +289,6 @@ services/meta-worker/mwbench-linux
 services/meta-worker/lcrace
 services/meta-worker/capovr
 services/meta-worker/reloc
+services/meta-worker/rsssoak
 services/migration-orchestrator/cdrill
 tests/perf/roleplay-load/rpload
