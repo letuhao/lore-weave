@@ -45,7 +45,7 @@ func TestAttemptStateTransition_HappyPath(t *testing.T) {
 		FromState:    "active",
 		ToState:      "pending_close",
 		Reason:       "user-initiated close",
-		Actor:        Actor{Type: ActorOwner, ID: "user-1"},
+		Actor:        Actor{Type: ActorOwner, ID: fxOwnerActorID},
 		Payload: map[string]any{
 			"close_initiated_by": "user-1",
 		},
@@ -79,7 +79,7 @@ func TestAttemptStateTransition_LifecycleAuditIsSameTx(t *testing.T) {
 	_, err := AttemptStateTransition(context.Background(), cfg, TransitionRequest{
 		ResourceType: "reality", ResourceID: "11111111-1111-1111-1111-111111111111",
 		FromState: "active", ToState: "pending_close", Reason: "close",
-		Actor: Actor{Type: ActorOwner, ID: "user-1"},
+		Actor: Actor{Type: ActorOwner, ID: fxOwnerActorID},
 	})
 	if err != nil {
 		t.Fatalf("AttemptStateTransition: %v", err)
@@ -113,7 +113,7 @@ func TestAttemptStateTransition_LifecycleAuditRollsBackWithTransition(t *testing
 	_, err := AttemptStateTransition(context.Background(), cfg, TransitionRequest{
 		ResourceType: "reality", ResourceID: "11111111-1111-1111-1111-111111111111",
 		FromState: "active", ToState: "pending_close", Reason: "close",
-		Actor: Actor{Type: ActorOwner, ID: "user-1"},
+		Actor: Actor{Type: ActorOwner, ID: fxOwnerActorID},
 	})
 	if err == nil {
 		t.Fatal("expected error when the lifecycle audit insert fails")
@@ -143,7 +143,7 @@ func TestAttemptStateTransition_InvalidGraph(t *testing.T) {
 		ResourceID:   "abc",
 		FromState:    "active",
 		ToState:      "archived", // not adjacent in graph
-		Actor:        Actor{Type: ActorOwner, ID: "u"},
+		Actor:        Actor{Type: ActorOwner, ID: fxOwnerActorID},
 	})
 	if !errors.Is(err, ErrInvalidTransition) {
 		t.Fatalf("want ErrInvalidTransition, got %v", err)
@@ -160,7 +160,7 @@ func TestAttemptStateTransition_MutexBlocked(t *testing.T) {
 		ResourceID:   "abc",
 		FromState:    "migrating",
 		ToState:      "pending_close",
-		Actor:        Actor{Type: ActorSystem, ID: "world-service"},
+		Actor:        Actor{Type: ActorSystem, ID: fxSystemActorID},
 	})
 	// Note: migrating→pending_close isn't in the base graph either (only active→
 	// and migrating→{active, frozen}), so this returns ErrInvalidTransition first.
@@ -207,7 +207,7 @@ resources:
 		ResourceID:   "x",
 		FromState:    "a",
 		ToState:      "c",
-		Actor:        Actor{Type: ActorSystem, ID: "world-service"},
+		Actor:        Actor{Type: ActorSystem, ID: fxSystemActorID},
 	})
 	if !errors.Is(err, ErrMutualExclusion) {
 		t.Fatalf("want ErrMutualExclusion, got %v", err)
@@ -228,7 +228,7 @@ func TestAttemptStateTransition_CASLost(t *testing.T) {
 		ResourceID:   "abc",
 		FromState:    "active",
 		ToState:      "pending_close",
-		Actor:        Actor{Type: ActorOwner, ID: "u"},
+		Actor:        Actor{Type: ActorOwner, ID: fxOwnerActorID},
 	})
 	if !errors.Is(err, ErrConcurrentStateTransition) {
 		t.Fatalf("want ErrConcurrentStateTransition, got %v", err)
@@ -244,7 +244,7 @@ func TestAttemptStateTransition_RejectsUnknownResource(t *testing.T) {
 		ResourceID:   "x",
 		FromState:    "a",
 		ToState:      "b",
-		Actor:        Actor{Type: ActorSystem, ID: "x"},
+		Actor:        Actor{Type: ActorSystem, ID: fxSystemActorID},
 	})
 	if !errors.Is(err, ErrUnknownResource) {
 		t.Fatalf("want ErrUnknownResource, got %v", err)
