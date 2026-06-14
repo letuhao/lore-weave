@@ -3,6 +3,7 @@ import { Loader2, Info } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/auth';
 import { booksApi, type Chapter } from '@/features/books/api';
+import { ChapterListBrowser } from '@/components/shared/ChapterListBrowser';
 import type { ContextFilters } from './types';
 import { cn } from '@/lib/utils';
 
@@ -63,21 +64,6 @@ export function StepBatchConfig({
   const applyRange = (from: number, to: number) => {
     const ids = chapters.slice(from - 1, to).map((c) => c.chapter_id);
     onChapterIdsChange(ids);
-  };
-
-  const toggleChapter = (id: string) => {
-    const set = new Set(chapterIds);
-    if (set.has(id)) set.delete(id);
-    else set.add(id);
-    onChapterIdsChange([...set]);
-  };
-
-  const toggleAll = () => {
-    if (chapterIds.length === chapters.length) {
-      onChapterIdsChange([]);
-    } else {
-      onChapterIdsChange(chapters.map((c) => c.chapter_id));
-    }
   };
 
   if (loading) {
@@ -145,39 +131,18 @@ export function StepBatchConfig({
           </div>
         )}
 
-        {/* Chapter list (pick mode or show selection) */}
+        {/* Pick mode — the shared server-paged browser (multi). Replaces the old
+            in-memory list that was capped by the chapter-list limit (couldn't pick
+            past the first page on a big book). Selection persists across pages. */}
         {mode === 'pick' && (
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] text-muted-foreground">
-                {t('batch.chaptersSelected', { count: chapterIds.length })}
-              </span>
-              <button onClick={toggleAll} className="text-[10px] text-primary hover:underline">
-                {chapterIds.length === chapters.length ? 'Deselect all' : 'Select all'}
-              </button>
-            </div>
-            <div className="max-h-48 overflow-y-auto rounded-md border">
-              {chapters.map((ch, i) => (
-                <label
-                  key={ch.chapter_id}
-                  className={cn(
-                    'flex items-center gap-3 px-3 py-1.5 text-xs cursor-pointer hover:bg-card transition-colors',
-                    i < chapters.length - 1 && 'border-b',
-                  )}
-                >
-                  <input
-                    type="checkbox"
-                    checked={chapterIds.includes(ch.chapter_id)}
-                    onChange={() => toggleChapter(ch.chapter_id)}
-                    className="h-3.5 w-3.5 rounded border-border accent-primary"
-                  />
-                  <span className="w-5 text-right font-mono text-muted-foreground">{i + 1}</span>
-                  <span className="flex-1 line-clamp-1">
-                    {ch.title || ch.original_filename || 'Untitled'}
-                  </span>
-                </label>
-              ))}
-            </div>
+          <div className="mb-2">
+            <ChapterListBrowser
+              bookId={bookId}
+              selectionMode="multi"
+              selectedIds={new Set(chapterIds)}
+              onSelectionChange={(ids) => onChapterIdsChange([...ids])}
+              pageSize={50}
+            />
           </div>
         )}
 
