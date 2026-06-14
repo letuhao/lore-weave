@@ -137,6 +137,13 @@ def _decode_cursor(
 LIST_ALL_MAX_LIMIT = 200
 
 JobScope = Literal["chapters", "chat", "glossary_sync", "all", "chapters_pending"]  # CM3b: chapters_pending = worker-ai coalescing drainer
+
+# C12 — the full target set. Mirrors the extraction_jobs.targets column
+# DEFAULT exactly. Used when a caller omits `targets` (None) so the INSERT
+# stores a concrete all-five array == the column default (back-compat).
+DEFAULT_TARGETS: tuple[str, ...] = (
+    "entities", "relations", "events", "facts", "summaries",
+)
 JobStatus = Literal[
     "pending", "running", "paused", "complete", "failed", "cancelled"
 ]
@@ -149,7 +156,8 @@ _SELECT_COLS = """
   items_total, items_processed, current_cursor, cost_spent_usd,
   started_at, paused_at, completed_at, created_at, updated_at,
   error_message, campaign_id,
-  billing_user_id, billing_embedding_model, billing_llm_model
+  billing_user_id, billing_embedding_model, billing_llm_model,
+  targets, concurrency_level
 """
 
 
@@ -183,6 +191,17 @@ class ExtractionJob(BaseModel):
     billing_user_id: UUID | None = None
     billing_embedding_model: str | None = None
     billing_llm_model: str | None = None
+
+    # C12 — target-typed extraction. The subset of Pass-2 passes this job
+    # runs (entities/relations/events/facts/summaries). The DB column is
+    # NOT NULL DEFAULT all-five, so a row always carries a concrete set;
+    # the model defaults it to None only for the list-SELECT paths that
+    # omit the column from their hand-written column lists (parity with
+    # billing_* below). None ⇒ treated as "all" by the runner.
+    targets: list[str] | None = None
+    # C12 — passthrough cap on parallel LLM calls during extraction. NULL ⇒
+    # current unbounded behaviour.
+    concurrency_level: int | None = None
 
     items_total: int | None = None
     items_processed: int = 0
@@ -238,6 +257,12 @@ class ExtractionJobCreate(BaseModel):
     billing_user_id: UUID | None = None
     billing_embedding_model: Annotated[str, Field(min_length=1, max_length=200)] | None = None
     billing_llm_model: Annotated[str, Field(min_length=1, max_length=200)] | None = None
+    # C12 — target-typed extraction. None ⇒ the DB column default (all five
+    # passes) applies (back-compat); a concrete list runs only those passes.
+    # The request layer normalises (dependent auto-include) before this.
+    targets: list[str] | None = None
+    # C12 — passthrough parallel-LLM-call cap. None ⇒ unbounded (current).
+    concurrency_level: Annotated[int, Field(ge=1, le=64)] | None = None
 
 
 # ── try_spend outcome ────────────────────────────────────────────────────
@@ -298,8 +323,10 @@ class ExtractionJobsRepo:
         INSERT INTO extraction_jobs
           (user_id, project_id, scope, scope_range, llm_model,
            embedding_model, max_spend_usd, items_total, campaign_id,
-           billing_user_id, billing_embedding_model, billing_llm_model)
-        VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10, $11, $12)
+           billing_user_id, billing_embedding_model, billing_llm_model,
+           targets, concurrency_level)
+        VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10, $11, $12,
+                $13, $14)
         RETURNING {_SELECT_COLS}
         """
         async with self._pool.acquire() as conn:
@@ -317,6 +344,11 @@ class ExtractionJobsRepo:
                 data.billing_user_id,
                 data.billing_embedding_model,
                 data.billing_llm_model,
+                # C12 — None ⇒ store the explicit all-five default (== column
+                # DEFAULT) so the round-trip is concrete and the runner never
+                # sees a NULL targets array.
+                list(data.targets) if data.targets is not None else list(DEFAULT_TARGETS),
+                data.concurrency_level,
             )
         return _row_to_job(row)
 

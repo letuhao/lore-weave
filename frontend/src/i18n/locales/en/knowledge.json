@@ -718,7 +718,31 @@
       "confirm": "Build graph",
       "starting": "Starting…",
       "startSuccess": "Build started — extracting the knowledge graph now.",
-      "startFailed": "Start failed: {{error}}"
+      "startFailed": "Start failed: {{error}}",
+      "wizard": {
+        "step1": "Targets",
+        "step2": "Pinning",
+        "step3": "Budget",
+        "next": "Next",
+        "back": "Back",
+        "step2Placeholder": "Glossary pinning arrives in the next step — for now, every extraction window uses its own chapter context."
+      },
+      "targets": {
+        "label": "What to extract",
+        "hint": "Pick which passes run. Leaving all unchecked runs everything (default).",
+        "entities": "Entities",
+        "relations": "Relationships",
+        "events": "Events · timeline",
+        "facts": "Facts",
+        "summaries": "Summaries",
+        "autoIncluded": "auto-included",
+        "autoIncludedHint": "Entities are extracted automatically because relationships, events, or facts anchor to them.",
+        "recoveryDisabledHint": "Entity recovery and precision filtering are skipped because entities weren't selected as a target."
+      },
+      "concurrency": {
+        "label": "Parallel LLM calls (optional)",
+        "hint": "Cap how many extraction calls run at once. Leave blank for the default."
+      }
     },
     "errorViewer": {
       "title": "Extraction error",

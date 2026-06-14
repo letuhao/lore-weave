@@ -747,7 +747,31 @@
       "confirm": "グラフを構築",
       "starting": "開始中…",
       "startSuccess": "構築を開始しました — ナレッジグラフを抽出しています。",
-      "startFailed": "開始失敗: {{error}}"
+      "startFailed": "開始失敗: {{error}}",
+      "wizard": {
+        "step1": "対象",
+        "step2": "ピン留め",
+        "step3": "予算",
+        "next": "次へ",
+        "back": "戻る",
+        "step2Placeholder": "用語集のピン留めは次のステップで対応します — 現在は各抽出ウィンドウが各章のコンテキストを使用します。"
+      },
+      "targets": {
+        "label": "抽出する内容",
+        "hint": "実行するパスを選択します。何も選択しないとすべて実行します（既定）。",
+        "entities": "エンティティ",
+        "relations": "関係",
+        "events": "イベント・年表",
+        "facts": "事実",
+        "summaries": "要約",
+        "autoIncluded": "自動追加",
+        "autoIncludedHint": "関係・イベント・事実がエンティティに結びつくため、エンティティは自動的に抽出されます。",
+        "recoveryDisabledHint": "エンティティが対象に選択されていないため、エンティティ回復と精度フィルタはスキップされます。"
+      },
+      "concurrency": {
+        "label": "並列LLM呼び出し数（任意）",
+        "hint": "同時に実行する抽出呼び出し数の上限。既定は空欄のまま。"
+      }
     },
     "errorViewer": {
       "title": "抽出エラー",

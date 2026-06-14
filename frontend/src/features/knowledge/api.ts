@@ -117,6 +117,16 @@ export interface EstimateExtractionPayload {
 // services/knowledge-service/app/routers/public/extraction.py — BOTH
 // llm_model and embedding_model are required by the BE; omitting either
 // returns 422. Callers must have a prior job or a user-selected model.
+// C12 — target-typed extraction taxonomy (mirrors StartJobRequest's
+// ExtractionTarget Literal). `summaries` is the summary-enqueue pass;
+// the FE picker's "events·timeline" label is the `events` op.
+export type ExtractionTarget =
+  | 'entities'
+  | 'relations'
+  | 'events'
+  | 'facts'
+  | 'summaries';
+
 export interface ExtractionStartPayload {
   scope: ExtractionJobScopeWire;
   scope_range?: { chapter_range: [number, number] };
@@ -124,6 +134,11 @@ export interface ExtractionStartPayload {
   embedding_model: string;
   max_spend_usd?: string;
   items_total?: number;
+  // C12 — the subset of passes to run. Omitted ⇒ all (back-compat). The BE
+  // validator auto-includes `entities` for dependent targets.
+  targets?: ExtractionTarget[];
+  // C12 — passthrough cap on parallel LLM calls. Omitted ⇒ unbounded.
+  concurrency_level?: number;
 }
 
 // Mirrors RebuildRequest (no `scope` field — handler hard-codes scope=all).

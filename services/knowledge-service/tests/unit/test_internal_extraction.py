@@ -775,6 +775,73 @@ def test_persist_pass2_p3_enqueues_chapter_summary_when_all_deps_present(
 @patch("app.routers.internal_extraction.neo4j_session")
 @patch("app.routers.internal_extraction.write_pass2_extraction", new_callable=AsyncMock)
 @patch("app.routers.internal_extraction.settings")
+def test_persist_pass2_c12_summaries_gated_out_when_not_in_targets(
+    mock_settings, mock_write, mock_neo4j, mock_anchors, mock_get_enqueue,
+):
+    """C12 — even with all summary deps present, `summaries ∉ targets` skips
+    the enqueue entirely."""
+    mock_settings.neo4j_uri = "bolt://localhost:7687"
+    mock_settings.internal_service_token = _TEST_TOKEN
+    mock_anchors.return_value = []
+    mock_write.return_value = _MOCK_RESULT
+    mock_session = AsyncMock()
+    mock_neo4j.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_neo4j.return_value.__aexit__ = AsyncMock(return_value=False)
+    enqueue_mock = AsyncMock(return_value="msg-id-1")
+    mock_get_enqueue.return_value = enqueue_mock
+
+    body = _persist_body(
+        hierarchy_paths=_hierarchy_paths_payload(),
+        embedding_model_uuid=str(uuid4()),
+        embedding_dimension=1024,
+        is_last_chapter_of_book=False,
+        targets=["entities", "events"],  # no `summaries`
+    )
+    client = _client()
+    resp = _post_persist(client, body)
+
+    assert resp.status_code == 200, resp.text
+    assert enqueue_mock.await_count == 0
+
+
+@patch("app.routers.internal_extraction._get_summary_enqueue")
+@patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
+@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.write_pass2_extraction", new_callable=AsyncMock)
+@patch("app.routers.internal_extraction.settings")
+def test_persist_pass2_c12_summaries_enqueued_when_in_targets(
+    mock_settings, mock_write, mock_neo4j, mock_anchors, mock_get_enqueue,
+):
+    """C12 — `summaries ∈ targets` (and deps present) enqueues as normal."""
+    mock_settings.neo4j_uri = "bolt://localhost:7687"
+    mock_settings.internal_service_token = _TEST_TOKEN
+    mock_anchors.return_value = []
+    mock_write.return_value = _MOCK_RESULT
+    mock_session = AsyncMock()
+    mock_neo4j.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_neo4j.return_value.__aexit__ = AsyncMock(return_value=False)
+    enqueue_mock = AsyncMock(return_value="msg-id-1")
+    mock_get_enqueue.return_value = enqueue_mock
+
+    body = _persist_body(
+        hierarchy_paths=_hierarchy_paths_payload(),
+        embedding_model_uuid=str(uuid4()),
+        embedding_dimension=1024,
+        is_last_chapter_of_book=False,
+        targets=["entities", "events", "summaries"],
+    )
+    client = _client()
+    resp = _post_persist(client, body)
+
+    assert resp.status_code == 200, resp.text
+    assert enqueue_mock.await_count == 1
+
+
+@patch("app.routers.internal_extraction._get_summary_enqueue")
+@patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
+@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.write_pass2_extraction", new_callable=AsyncMock)
+@patch("app.routers.internal_extraction.settings")
 def test_persist_pass2_p3_last_chapter_also_enqueues_part_and_book(
     mock_settings, mock_write, mock_neo4j, mock_anchors, mock_get_enqueue,
 ):

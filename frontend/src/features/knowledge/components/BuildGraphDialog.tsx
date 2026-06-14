@@ -11,13 +11,17 @@ import {
   type EstimateExtractionPayload,
   type ExtractionJobScopeWire,
   type ExtractionStartPayload,
+  type ExtractionTarget,
 } from '../api';
 import type { BenchmarkStatus, Project } from '../types';
 import type { CostEstimate } from '../types/projectState';
 import { readBackendError } from '../lib/readBackendError';
 import { formatUSD } from '../lib/formatUSD';
+import { canonicalTargets } from '../lib/targetPicker';
 import { useUserCosts } from '../hooks/useUserCosts';
 import { EmbeddingModelPicker } from './EmbeddingModelPicker';
+import { TargetPicker } from './TargetPicker';
+import { BuildWizardSteps, type WizardStep } from './BuildWizardSteps';
 
 // K19a.5 — modal for starting an extraction job. Triggered from the
 // DisabledCard's "Build graph" button (and replaces the K19a.4 toast-stub
@@ -115,6 +119,12 @@ export function BuildGraphDialog({
   const [chapterRangeFrom, setChapterRangeFrom] = useState<string>('');
   const [chapterRangeTo, setChapterRangeTo] = useState<string>('');
   const [starting, setStarting] = useState(false);
+  // C12 — wizard step + Step-1 target picker + concurrency. Empty target
+  // selection ⇒ omit `targets` from the payload ⇒ BE runs all passes
+  // (back-compat). The picker enforces the dependent auto-include in-UI.
+  const [wizardStep, setWizardStep] = useState<WizardStep>(1);
+  const [targets, setTargets] = useState<ExtractionTarget[]>([]);
+  const [concurrency, setConcurrency] = useState<string>('');
 
   // D-K19a.5-03 (cleared in K19b.6): user-wide monthly remaining hint
   // shown near the max_spend input so the user knows how much headroom
@@ -142,6 +152,10 @@ export function BuildGraphDialog({
     setChapterRangeFrom('');
     setChapterRangeTo('');
     setStarting(false);
+    // C12 — reset wizard to Step 1 + clear target/concurrency per open.
+    setWizardStep(1);
+    setTargets([]);
+    setConcurrency('');
     setDebounced({ scope: openScope, llm: openLlm });
     // `openScope` / `openLlm` / `openEmbedding` / `openMaxSpend` already
     // fold in both `project` + `initialValues` — listing them directly
@@ -245,6 +259,13 @@ export function BuildGraphDialog({
   });
 
   const maxSpendValid = maxSpend === '' || DECIMAL_REGEX.test(maxSpend);
+  // C12 — concurrency: blank ⇒ omit (default). Else an integer in [1, 64]
+  // (matches the BE Field(ge=1, le=64)).
+  const concurrencyValid = (() => {
+    if (concurrency.trim() === '') return true;
+    const n = Number(concurrency);
+    return Number.isInteger(n) && n >= 1 && n <= 64;
+  })();
   const hasEmbedding = embeddingModel !== null && embeddingModel !== '';
   // C5: while the benchmark status is still loading for a selected embedding
   // model, we don't yet KNOW if the gate passes — treat it as not-ok so Confirm
@@ -264,6 +285,7 @@ export function BuildGraphDialog({
     hasEmbedding &&
     maxSpendValid &&
     chapterRangeValid &&
+    concurrencyValid &&
     !benchmarkLoading &&
     benchmarkOk;
 
@@ -276,6 +298,7 @@ export function BuildGraphDialog({
     if (!benchmarkOk) return t('projects.buildDialog.disabled.benchmarkRequired', { defaultValue: 'Run the golden-set benchmark and pass it to enable extraction (above).' });
     if (!maxSpendValid) return t('projects.buildDialog.disabled.fixMaxSpend', { defaultValue: 'Enter a valid spending cap.' });
     if (!chapterRangeValid) return t('projects.buildDialog.disabled.fixRange', { defaultValue: 'Fix the chapter range.' });
+    if (!concurrencyValid) return t('projects.buildDialog.disabled.fixConcurrency', { defaultValue: 'Parallel calls must be 1–64.' });
     return null;
   })();
 
@@ -283,8 +306,16 @@ export function BuildGraphDialog({
     if (!accessToken || !embeddingModel) return;
     if (!maxSpendValid) return;
     if (!chapterRangeValid) return;
+    if (!concurrencyValid) return;
     setStarting(true);
     try {
+      // C12 — post the user's RAW selection (deduped/canonical), NOT the
+      // entities-auto-included set: the BE/SDK add `entities` at runtime as a
+      // mandatory anchor pass, and they key the recovery/filter-disable LOCK
+      // off the user's EXPLICIT request. Baking `entities` in here would make a
+      // relations-only build read as "entities requested" and wrongly keep
+      // recovery/filter on. Empty ⇒ omit `targets` ⇒ all passes (back-compat).
+      const postedTargets = canonicalTargets(targets);
       const payload: ExtractionStartPayload = {
         scope,
         llm_model: llmModel,
@@ -295,6 +326,11 @@ export function BuildGraphDialog({
         // shape — runner honours the range via D-K16.2-02b gating.
         ...(scope === 'chapters' && chapterRange.range
           ? { scope_range: { chapter_range: chapterRange.range } }
+          : {}),
+        // C12 — only send when a subset was actually picked.
+        ...(postedTargets.length > 0 ? { targets: postedTargets } : {}),
+        ...(concurrency.trim() !== ''
+          ? { concurrency_level: Number(concurrency) }
           : {}),
       };
       await knowledgeApi.startExtraction(project.project_id, payload, accessToken);
@@ -369,7 +405,15 @@ export function BuildGraphDialog({
         </>
       }
     >
-      <div className="flex flex-col gap-4">
+      {/* C12 — 3-step wizard shell. Step bodies use CSS `hidden` (not
+          conditional unmount) so form/picker state survives step switches
+          per the FE no-unmount rule. */}
+      <BuildWizardSteps step={wizardStep} onStepChange={setWizardStep}>
+        {/* ── Step 1 — scope + models + targets + concurrency ── */}
+        <div
+          className={`flex flex-col gap-4 ${wizardStep === 1 ? '' : 'hidden'}`}
+          data-testid="build-wizard-body-1"
+        >
         {/* Scope selector */}
         <fieldset className="flex flex-col gap-1">
           <legend className="text-xs font-medium text-muted-foreground">
@@ -492,6 +536,47 @@ export function BuildGraphDialog({
           projectId={project.project_id}
         />
 
+        {/* C12 — Step-1 target picker. Empty selection ⇒ all passes. */}
+        <TargetPicker selected={targets} onChange={setTargets} />
+
+        {/* C12 — concurrency cap (optional). */}
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-muted-foreground">
+            {t('projects.buildDialog.concurrency.label')}
+          </span>
+          <input
+            type="number"
+            min={1}
+            max={64}
+            inputMode="numeric"
+            value={concurrency}
+            onChange={(e) => setConcurrency(e.target.value)}
+            aria-invalid={!concurrencyValid}
+            placeholder="—"
+            className="w-24 rounded-md border bg-input px-2 py-1.5 text-sm outline-none focus:border-ring aria-[invalid=true]:border-destructive"
+            data-testid="build-concurrency"
+          />
+          <span className="text-[11px] text-muted-foreground">
+            {t('projects.buildDialog.concurrency.hint')}
+          </span>
+        </label>
+        </div>
+
+        {/* ── Step 2 — pinning placeholder (C13 fills this in) ── */}
+        <div
+          className={`flex flex-col gap-3 ${wizardStep === 2 ? '' : 'hidden'}`}
+          data-testid="build-wizard-body-2"
+        >
+          <p className="rounded-md border border-dashed p-3 text-[12px] text-muted-foreground">
+            {t('projects.buildDialog.wizard.step2Placeholder')}
+          </p>
+        </div>
+
+        {/* ── Step 3 — budget + estimate ── */}
+        <div
+          className={`flex flex-col gap-4 ${wizardStep === 3 ? '' : 'hidden'}`}
+          data-testid="build-wizard-body-3"
+        >
         {/* Max spend */}
         <label className="flex flex-col gap-1">
           <span className="text-xs font-medium text-muted-foreground">
@@ -574,7 +659,8 @@ export function BuildGraphDialog({
             </div>
           )}
         </div>
-      </div>
+        </div>
+      </BuildWizardSteps>
     </FormDialog>
   );
 }

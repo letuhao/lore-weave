@@ -130,6 +130,8 @@ async def _persist_chunk(pool, knowledge_client, ej_id, rs: dict) -> None:
         billing_user_id=ctx.get("billing_user_id"),
         billing_llm_model=ctx.get("billing_llm_model"),
         billing_embedding_model=ctx.get("billing_embedding_model"),
+        # C12 — gate the summary enqueue on `summaries ∈ targets` (None ⇒ all).
+        targets=ctx.get("targets"),
     )
 
     # Fill the pre-built run_payload's metrics from the persist result.
@@ -283,6 +285,19 @@ async def _resume(pool, knowledge_client, llm_client: LLMClient, owner_user_id, 
                             trio_jobs[op] = str(sub.job_id)
                         fresh = dx.begin_trio(fresh, trio_jobs)
                         await _persist_inflight(conn, ej_id, list(trio_jobs.values()), fresh)
+                    elif fresh["stage"] in (dx.RECOVERY, dx.FILTER):
+                        # C12 — an entities-only build (no trio target) with
+                        # recovery/precision-filter enabled advances ENTITY →
+                        # RECOVERY/FILTER directly (skipping the trio). Dispatch
+                        # that fan-out UNDER the lock just like the trio path;
+                        # only the persist (PERSIST stage / no fan-out work)
+                        # finalizes outside. Without this the chunk would
+                        # persist empty, dropping recovery/filter entirely.
+                        rs2, inflight = await _dispatch_next(llm_client, fresh)
+                        if inflight is not None:
+                            await _persist_inflight(conn, ej_id, inflight, rs2)
+                        else:
+                            empty_rs = rs2  # fan-out had no work → persist now
                     else:  # no entities → finalize empty OUTSIDE the lock (persist_chunk re-locks)
                         empty_rs = fresh
             if empty_rs is not None:

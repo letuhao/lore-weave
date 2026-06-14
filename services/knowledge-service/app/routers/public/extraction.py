@@ -17,7 +17,7 @@ from uuid import UUID
 
 import asyncpg
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.clients.book_client import BookClient
 from app.clients.embedding_client import EmbeddingError, probe_embedding_dimension
@@ -33,6 +33,7 @@ from app.db.pool import get_knowledge_pool
 from app.db.repositories.benchmark_runs import BenchmarkRunsRepo
 from app.routers.internal_benchmark import BenchmarkStatusResponse
 from app.db.repositories.extraction_jobs import (
+    DEFAULT_TARGETS,
     LIST_ALL_MAX_LIMIT,
     CursorDecodeError,
     ExtractionJob,
@@ -148,6 +149,16 @@ def _extract_chapter_range(
 
 JobScope = Literal["chapters", "chat", "glossary_sync", "all", "chapters_pending"]  # CM3b: internal coalescing-drainer scope
 
+# C12 — target taxonomy. Maps 1:1 to a Pass-2 pass. `summaries` is the
+# summary enqueue (orchestrator-gated). The FE's "events·timeline" label
+# is the `events` op; "lore/wiki" is the wiki-stub path (not an SDK op,
+# handled elsewhere) — kept out of this build-target set.
+ExtractionTarget = Literal["entities", "relations", "events", "facts", "summaries"]
+# NOTE — the dependent auto-include (requesting any of {relations,events,
+# facts} ⇒ `entities`) is applied at RUNTIME (SDK normalize_targets +
+# decoupled trio resolver), NOT in the request layer. The stored array keeps
+# the user's EXPLICIT intent so the worker's recovery/filter LOCK gate works.
+
 
 class EstimateRequest(BaseModel):
     scope: JobScope
@@ -170,6 +181,38 @@ class StartJobRequest(BaseModel):
     embedding_model: str = Field(min_length=1, max_length=200)
     max_spend_usd: Annotated[Decimal, Field(ge=0)] | None = None
     items_total: Annotated[int, Field(ge=0)] | None = None
+    # C12 — target-typed extraction. None / empty ⇒ ALL passes (back-compat).
+    # A concrete list runs only those passes. Dependent targets are
+    # auto-included by the validator below (don't error — silently force
+    # `entities` in). Deduped + order-stable.
+    targets: list[ExtractionTarget] | None = None
+    # C12 — passthrough cap on parallel LLM calls. None ⇒ unbounded (current).
+    concurrency_level: Annotated[int, Field(ge=1, le=64)] | None = None
+
+    @field_validator("targets")
+    @classmethod
+    def _normalise_targets(
+        cls, v: list[str] | None,
+    ) -> list[str] | None:
+        """Dedupe + canonicalise the requested target set. None / empty pass
+        through unchanged (⇒ all passes = back-compat).
+
+        IMPORTANT — does NOT auto-include `entities` here. The dependent
+        auto-include ({relations,events,facts} ⇒ entities) is applied at
+        RUNTIME by the SDK (`normalize_targets`) + the decoupled trio
+        resolver, NOT baked into the stored array. This is load-bearing for
+        the LOCK "recovery/precision-filter auto-disable when entities ∉
+        targets": the worker keys that gate off the user's EXPLICIT request,
+        which would be lost if we stored an entities-injected array (a
+        relations-only build would then read as if entities were asked for
+        and wrongly keep recovery/filter enabled). So: validate + dedupe
+        only; entities is added downstream exactly where it's needed (as a
+        mandatory anchor pass) without polluting the stored intent."""
+        if not v:
+            return v
+        present = set(v)
+        # Canonical order = the DEFAULT_TARGETS order, filtered to present.
+        return [t for t in DEFAULT_TARGETS if t in present]
 
 
 class EstimateItemCounts(BaseModel):
@@ -298,9 +341,10 @@ async def _create_and_start_job(
                     INSERT INTO extraction_jobs
                       (user_id, project_id, scope, scope_range, llm_model,
                        embedding_model, max_spend_usd, items_total, campaign_id,
-                       billing_user_id, billing_embedding_model, billing_llm_model)
+                       billing_user_id, billing_embedding_model, billing_llm_model,
+                       targets, concurrency_level)
                     VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9,
-                            $10, $11, $12)
+                            $10, $11, $12, $13, $14)
                     RETURNING job_id
                     """,
                     user_id,
@@ -320,6 +364,12 @@ async def _create_and_start_job(
                     validated.billing_user_id,
                     validated.billing_embedding_model,
                     validated.billing_llm_model,
+                    # C12 — None ⇒ explicit all-five default (== column DEFAULT)
+                    # so the rebuild path (which omits targets) and any other
+                    # caller stores a concrete set; the runner never sees NULL.
+                    list(validated.targets) if validated.targets is not None
+                    else list(DEFAULT_TARGETS),
+                    validated.concurrency_level,
                 )
                 job_id = job_row["job_id"]
 
@@ -650,6 +700,10 @@ async def _start_extraction_job_core(
         billing_user_id=billing_user_id,
         billing_embedding_model=billing_embedding_model,
         billing_llm_model=billing_llm_model,
+        # C12 — target-typed extraction (None ⇒ all passes; the validator
+        # already auto-included `entities` for dependent targets).
+        targets=body.targets,
+        concurrency_level=body.concurrency_level,
     )
 
     job_id = await _create_and_start_job(

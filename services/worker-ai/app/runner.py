@@ -576,6 +576,13 @@ class JobRow:
     # an extraction_run_sample {run_id, items, source} for the online LLM
     # judge; when False, nothing is stored (redact-by-default).
     save_raw_extraction: bool = False
+    # C12 — target-typed extraction. The subset of Pass-2 passes this job
+    # runs (entities/relations/events/facts/summaries). None ⇒ all (the
+    # column is NOT NULL DEFAULT all-five, so a real row always carries a
+    # concrete set; None only on synthetic/test rows ⇒ treated as all).
+    targets: list[str] | None = None
+    # C12 — passthrough cap on parallel LLM calls. None ⇒ unbounded (current).
+    concurrency_level: int | None = None
 
 
 # ── E0-3 Phase 2a — BYOK dual-identity billing resolution ────────────
@@ -656,6 +663,7 @@ async def _get_running_jobs(pool: asyncpg.Pool) -> list[JobRow]:
                j.items_total, j.items_processed, j.current_cursor,
                j.cost_spent_usd, j.campaign_id,
                j.billing_user_id, j.billing_embedding_model, j.billing_llm_model,
+               j.targets, j.concurrency_level,
                p.embedding_dimension,
                p.extraction_config, p.genre, p.save_raw_extraction
         FROM extraction_jobs j
@@ -698,6 +706,9 @@ async def _get_running_jobs(pool: asyncpg.Pool) -> list[JobRow]:
             extraction_config=ec if isinstance(ec, dict) else None,
             genre=r["genre"],
             save_raw_extraction=bool(r["save_raw_extraction"]),
+            # C12 — asyncpg returns a TEXT[] as a python list already.
+            targets=list(r["targets"]) if r["targets"] is not None else None,
+            concurrency_level=r["concurrency_level"],
         ))
     return result
 
@@ -1210,6 +1221,13 @@ async def _extract_and_persist(
     billing_user_id: str | None = None,
     billing_llm_model: str | None = None,
     billing_embedding_model: str | None = None,
+    # C12 — target-typed extraction. None ⇒ all passes (chat_turn / glossary
+    # callers omit it → full extraction, unchanged). A concrete list runs only
+    # the requested SDK passes; `summaries` is stripped before the SDK (it's
+    # an orchestrator op, gated on the persist side instead).
+    targets: list[str] | None = None,
+    # C12 — cap on parallel LLM calls in the SDK R/E/F gather. None ⇒ unbounded.
+    concurrency_level: int | None = None,
 ) -> tuple[ExtractionResult, "Pass2Candidates | None"]:
     """Phase 4b-γ — replaces the legacy `knowledge_client.extract_item`.
 
@@ -1248,6 +1266,11 @@ async def _extract_and_persist(
         _ENTITY_RECOVERY_CONFIG if entity_recovery is _GLOBAL_RECOVERY_SENTINEL
         else entity_recovery
     )
+    # C12 — the SDK target set. None ⇒ None (SDK runs all). A concrete list is
+    # passed straight through; the SDK ignores `summaries` (orchestrator op) and
+    # auto-includes `entities` for dependent targets. `summaries` is honoured by
+    # persist-pass2's enqueue gate (via the `targets` field below), NOT here.
+    sdk_targets = set(targets) if targets else None
     try:
         candidates = await extract_pass2(
             text=text,
@@ -1257,6 +1280,9 @@ async def _extract_and_persist(
             model_source="user_model",
             model_ref=model_ref,
             llm_client=llm_client,
+            # C12 — gate which Pass-2 passes run (None ⇒ all) + cap parallelism.
+            targets=sdk_targets,
+            concurrency_level=concurrency_level,
             # Cycle 72 / B2-B-b1 — precision filter, now per-project-resolvable.
             # None = no filter; degraded path surfaces via
             # candidates.filter_status without raising.
@@ -1327,6 +1353,9 @@ async def _extract_and_persist(
         billing_user_id=billing_user_id,
         billing_llm_model=billing_llm_model,
         billing_embedding_model=billing_embedding_model,
+        # C12 — forward the target set so persist-pass2 gates the summary
+        # enqueue on `summaries ∈ targets` (None ⇒ all ⇒ enqueue, back-compat).
+        targets=targets,
     )
     return persist_result, candidates
 
@@ -1357,9 +1386,17 @@ async def _start_decoupled_chunk(
     # WX Wave 4 — recovery/filter are now decoupled fan-out stages (no sync fallback).
     eff_recovery = run_snapshot.entity_recovery
     eff_filter = run_snapshot.precision_filter
+    # C12 LOCK — recovery/precision-filter auto-disable when `entities` was not
+    # explicitly requested (they refine the canonical entity set; pointless on
+    # an R/E/F-only build where entities run only as anchors). None/empty
+    # targets ⇒ entities requested ⇒ enabled (back-compat).
+    entities_requested = (not job.targets) or ("entities" in job.targets)
     rs = dx.new_extract_state(
         chunk_text=text, known_entities=[],
-        has_recovery=eff_recovery is not None, has_filter=eff_filter is not None,
+        has_recovery=(eff_recovery is not None) and entities_requested,
+        has_filter=(eff_filter is not None) and entities_requested,
+        # C12 — the job's pass subset; reduced to the requested trio ops.
+        targets=job.targets,
     )
     rs.update(
         user_id=str(job.user_id), project_id=str(job.project_id),
@@ -1383,6 +1420,9 @@ async def _start_decoupled_chunk(
             "billing_user_id": (str(job.billing_user_id) if job.billing_user_id else None),
             "billing_llm_model": job.billing_llm_model,
             "billing_embedding_model": job.billing_embedding_model,
+            # C12 — the job's pass subset, forwarded so the decoupled persist
+            # gates the summary enqueue on `summaries ∈ targets` (None ⇒ all).
+            "targets": job.targets,
         },
         run_payload=_run_payload(
             job=job, book_id=book_id, chapter_ref=ch.chapter_id, snapshot=run_snapshot,
@@ -1804,6 +1844,13 @@ async def process_job(
                     ),
                     billing_llm_model=job.billing_llm_model,
                     billing_embedding_model=job.billing_embedding_model,
+                    # C12 — target-typed extraction: the job's chosen pass subset.
+                    # None ⇒ all passes (back-compat). The SDK strips `summaries`
+                    # (orchestrator-gated); persist-pass2 honours it for the
+                    # summary enqueue gate.
+                    targets=job.targets,
+                    # C12 — cap parallel R/E/F LLM calls (None ⇒ unbounded).
+                    concurrency_level=job.concurrency_level,
                 )
 
                 if result.error:

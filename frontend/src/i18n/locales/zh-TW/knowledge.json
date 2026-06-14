@@ -747,7 +747,31 @@
       "confirm": "建立圖譜",
       "starting": "正在啟動…",
       "startSuccess": "已開始建構 — 正在抽取知識圖譜。",
-      "startFailed": "啟動失敗: {{error}}"
+      "startFailed": "啟動失敗: {{error}}",
+      "wizard": {
+        "step1": "目標",
+        "step2": "釘選",
+        "step3": "預算",
+        "next": "下一步",
+        "back": "上一步",
+        "step2Placeholder": "詞彙表釘選將於下一步推出 — 目前每個抽取視窗使用各自的章節脈絡。"
+      },
+      "targets": {
+        "label": "抽取內容",
+        "hint": "選擇要執行的階段。全部不勾選則執行全部（預設）。",
+        "entities": "實體",
+        "relations": "關係",
+        "events": "事件 · 時間軸",
+        "facts": "事實",
+        "summaries": "摘要",
+        "autoIncluded": "自動納入",
+        "autoIncludedHint": "由於關係、事件或事實會錨定到實體，實體會自動抽取。",
+        "recoveryDisabledHint": "因為未將實體選為目標，實體復原與精準過濾會被略過。"
+      },
+      "concurrency": {
+        "label": "並行 LLM 呼叫數（選填）",
+        "hint": "限制同時執行的抽取呼叫數。留空則使用預設。"
+      }
     },
     "errorViewer": {
       "title": "擷取錯誤",

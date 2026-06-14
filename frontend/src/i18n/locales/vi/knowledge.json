@@ -747,7 +747,31 @@
       "confirm": "Xây dựng đồ thị",
       "starting": "Đang khởi động…",
       "startSuccess": "Đã bắt đầu dựng — đang trích xuất đồ thị tri thức.",
-      "startFailed": "Khởi động thất bại: {{error}}"
+      "startFailed": "Khởi động thất bại: {{error}}",
+      "wizard": {
+        "step1": "Mục tiêu",
+        "step2": "Ghim",
+        "step3": "Ngân sách",
+        "next": "Tiếp",
+        "back": "Quay lại",
+        "step2Placeholder": "Ghim mục lục từ điển sẽ có ở bước tiếp theo — hiện mỗi cửa sổ trích xuất dùng ngữ cảnh chương riêng."
+      },
+      "targets": {
+        "label": "Trích xuất những gì",
+        "hint": "Chọn các lượt chạy. Không chọn gì sẽ chạy tất cả (mặc định).",
+        "entities": "Thực thể",
+        "relations": "Quan hệ",
+        "events": "Sự kiện · dòng thời gian",
+        "facts": "Dữ kiện",
+        "summaries": "Tóm tắt",
+        "autoIncluded": "tự động thêm",
+        "autoIncludedHint": "Thực thể được trích xuất tự động vì quan hệ, sự kiện hoặc dữ kiện neo vào chúng.",
+        "recoveryDisabledHint": "Khôi phục thực thể và lọc chính xác bị bỏ qua vì thực thể không được chọn làm mục tiêu."
+      },
+      "concurrency": {
+        "label": "Số lệnh LLM song song (tùy chọn)",
+        "hint": "Giới hạn số lệnh trích xuất chạy đồng thời. Để trống dùng mặc định."
+      }
     },
     "errorViewer": {
       "title": "Lỗi trích xuất",

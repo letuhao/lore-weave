@@ -345,6 +345,19 @@ ALTER TABLE extraction_jobs
   ADD COLUMN IF NOT EXISTS resume_state     JSONB,
   ADD COLUMN IF NOT EXISTS pipeline_stage   TEXT;
 
+-- C12 — target-typed extraction. `targets` selects which Pass-2 passes a
+-- build runs (entities/relations/events/facts/summaries). NOT NULL with a
+-- DEFAULT of ALL passes ⇒ every pre-C12 job + every caller that omits the
+-- field gets the original behaviour unchanged (the SDK + orchestrator
+-- treat the full set as "run all"). Requesting any of {relations,events,
+-- facts} auto-includes `entities` (enforced in the request layer + SDK
+-- guard, not the column). `concurrency_level` is a passthrough cap on
+-- parallel LLM calls; NULL ⇒ current unbounded behaviour. Both additive.
+ALTER TABLE extraction_jobs
+  ADD COLUMN IF NOT EXISTS targets TEXT[] NOT NULL
+    DEFAULT ARRAY['entities','relations','events','facts','summaries'],
+  ADD COLUMN IF NOT EXISTS concurrency_level INT;
+
 CREATE INDEX IF NOT EXISTS idx_extraction_jobs_project
   ON extraction_jobs (project_id, created_at DESC);
 

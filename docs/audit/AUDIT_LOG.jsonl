@@ -1536,3 +1536,20 @@
 {"ts": "2026-06-14T07:40:30Z", "event": "reflection", "cycle": 11, "phase": "RETRO", "notable": "Lesson: a resumed partial run can carry a plausible-but-WRONG source contract (wiki status=stub does not exist; the real review queue is wiki_suggestions status=pending). Always re-verify each source adapter against the live API/BE filter before reusing partial files. The verify gate's read-only guard initially false-positived on prose ('accept/reject' in comments) -> tightened to match handler/call patterns, not words."}
 {"ts": "2026-06-14T07:39:03Z", "event": "in_progress_update", "cycle": 11, "phase": "COMMIT", "retry": 0}
 {"ts": "2026-06-14T07:41:32Z", "event": "in_progress_archived", "cycle": 11, "archived_to": "cycle-011-state-20260614T074132.md"}
+{"ts": "2026-06-14T07:48:20Z", "event": "coordinator_next_cycle_emitted", "cycle": 12}
+{"ts":"2026-06-14T07:49:53Z","event":"startup_drift_check_inconclusive","cycle":12,"cd":"","rw":""}
+{"ts":"2026-06-14T07:49:53Z","event":"startup_verifier_complete","cycle":12,"steps":6}
+{"ts": "2026-06-14T07:50:08Z", "event": "in_progress_init", "cycle": 12, "title": "Build wizard \u2014 target-typed extraction + concurrency (BE+FE)"}
+{"ts": "2026-06-14T07:55:48Z", "event": "in_progress_update", "cycle": 12, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-06-14T07:56:44Z", "event": "in_progress_update", "cycle": 12, "phase": "PLAN", "retry": 0}
+{"ts":"2026-06-14T08:04:57Z","event":"secret_scan_skipped","cycle":12,"dps":DPS2,"reason":"gitleaks_not_installed"}
+{"ts": "2026-06-14T08:05:12Z", "event": "in_progress_update", "cycle": 12, "phase": "BUILD", "retry": 0}
+{"ts":"2026-06-14T08:09:12Z","event":"secret_scan_skipped","cycle":12,"dps":DPS1,"reason":"gitleaks_not_installed"}
+{"ts":"2026-06-14T08:17:40Z","event":"secret_scan_skipped","cycle":12,"dps":DPS3,"reason":"gitleaks_not_installed"}
+{"ts":"2026-06-14T08:24:47Z","event":"secret_scan_skipped","cycle":12,"dps":DPS4,"reason":"gitleaks_not_installed"}
+{"ts": "2026-06-14T08:24:54Z", "event": "in_progress_update", "cycle": 12, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-06-14T08:26:17Z","event":"verify_cycle_12_passed","cycle":12}
+{"ts": "2026-06-14T08:39:41Z", "event": "in_progress_update", "cycle": 12, "phase": "QC", "retry": 0}
+{"ts":"2026-06-14T08:53:51Z","event":"verify_cycle_12_passed","cycle":12}
+{"ts": "2026-06-14T08:55:54Z", "event": "in_progress_update", "cycle": 12, "phase": "SESSION", "retry": 0}
+{"ts":"2026-06-14T08:56:55Z","event":"cycle_done","cycle":12,"title":"Build wizard — target-typed extraction + concurrency (BE+FE)","dps":4,"tests":{"sdk":21,"knowledge":99,"worker_ai_decoupled":36,"fe_vitest":52},"verify_exit":0,"live_smoke":"targets=[events] build -> only the event pass runs","adversary":{"blockers":0,"majors":3,"majors_fixed":3,"minors":2,"notes":3},"scope_guard":"CLEAR","post_review":"CLEAR","screenshot":"docs/raid/evidence/cycle-12/build-wizard-step1-target-picker.png"}

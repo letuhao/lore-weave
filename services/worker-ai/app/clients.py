@@ -236,6 +236,10 @@ class KnowledgeClient:
         billing_user_id: str | None = None,
         billing_llm_model: str | None = None,
         billing_embedding_model: str | None = None,
+        # C12 — target-typed extraction. None ⇒ all passes (the endpoint
+        # enqueues summaries as before). A concrete list gates the summary
+        # enqueue on `summaries ∈ targets`.
+        targets: list[str] | None = None,
     ) -> ExtractionResult:
         """Phase 4b-γ — POST /internal/extraction/persist-pass2.
 
@@ -294,6 +298,11 @@ class KnowledgeClient:
             body["billing_llm_model"] = billing_llm_model
         if billing_embedding_model:
             body["billing_embedding_model"] = billing_embedding_model
+        # C12 — only include when the caller resolved a concrete set (explicit
+        # None check so a default-all job omits it ⇒ endpoint enqueues summaries
+        # as before, back-compat).
+        if targets is not None:
+            body["targets"] = list(targets)
 
         try:
             resp = await self._http.post(url, json=body)

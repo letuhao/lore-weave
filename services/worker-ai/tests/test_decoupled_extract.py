@@ -368,3 +368,93 @@ def test_finalize_filter_unjudged_kept_under_keep_policy():
     rs = d.fold_filter_terminal(rs, "f:entity:0", job)
     rs = d.finalize_filter(rs)
     assert [e["name"] for e in rs["entities"]] == ["Kai", "Ghost"]
+
+
+# ── C12 — target-typed extraction (decoupled state machine) ────────────────────
+
+def _rs_targets(targets, has_recovery=False, has_filter=False):
+    return d.new_extract_state(
+        chunk_text="text", known_entities=["A"],
+        has_recovery=has_recovery, has_filter=has_filter, targets=targets,
+    )
+
+
+def test_c12_targets_none_runs_all_trio():
+    rs = _rs_targets(None)
+    assert set(rs["trio_targets"]) == set(d.TRIO_OPS)
+
+
+def test_c12_targets_events_only_trio_subset():
+    rs = _rs_targets(["entities", "events"])
+    assert rs["trio_targets"] == ["event"]
+
+
+def test_c12_entity_to_trio_completes_on_subset_only():
+    """An events-only build advances past trio after ONLY the event op folds —
+    it must NOT hang waiting for relation/fact (never submitted)."""
+    rs = d.apply_entity_result(_rs_targets(["entities", "events"]), ["e1"])
+    assert rs["stage"] == d.TRIO
+    rs = d.begin_trio(rs, {"event": "je"})
+    rs = d.fold_trio_op(rs, "event", ["ev"])
+    assert d.trio_complete(rs)
+    assert rs["stage"] == d.PERSIST
+    assert rs["events"] == ["ev"]
+    assert rs["relations"] == [] and rs["facts"] == []
+
+
+def test_c12_entities_only_skips_trio_entirely():
+    rs = d.apply_entity_result(_rs_targets(["entities"]), ["e1"])
+    assert rs["trio_targets"] == []
+    assert rs["stage"] == d.PERSIST
+
+
+def test_c12_assemble_trio_submits_only_requested_ops():
+    rs = _seed_shell_rs()
+    rs["trio_targets"] = ["event"]
+    rs = d.fold_entity_job(rs, _job({"entities": [
+        {"name": "Kai", "kind": "person", "confidence": 0.9},
+    ]}))
+    assert rs["stage"] == d.TRIO
+    ts = d.assemble_trio_submits(rs)
+    assert set(ts) == {"event"}
+
+
+def test_c12_relations_target_resolves_relation_op():
+    rs = _rs_targets(["relations"])
+    assert rs["trio_targets"] == ["relation"]
+
+
+def test_c12_entities_only_with_recovery_advances_to_recovery_not_persist():
+    """Regression (adversary MAJOR): an entities-only build (no trio target)
+    with recovery enabled must advance ENTITY → RECOVERY, NOT straight to
+    PERSIST (which would silently drop recovery)."""
+    rs = d.apply_entity_result(
+        _rs_targets(["entities"], has_recovery=True), ["e1"])
+    assert rs["trio_targets"] == []
+    assert rs["stage"] == d.RECOVERY
+
+
+def test_c12_entities_only_with_filter_only_advances_to_filter():
+    rs = d.apply_entity_result(
+        _rs_targets(["entities"], has_filter=True), ["e1"])
+    assert rs["stage"] == d.FILTER
+
+
+def test_c12_entities_only_no_recovery_no_filter_persists():
+    rs = d.apply_entity_result(_rs_targets(["entities"]), ["e1"])
+    assert rs["stage"] == d.PERSIST
+
+
+def test_c12_legacy_rs_without_trio_targets_defaults_all():
+    """A pre-C12 resume blob (no trio_targets key) ⇒ all three (back-compat)."""
+    rs = d.new_extract_state(
+        chunk_text="t", known_entities=[], has_recovery=False, has_filter=False,
+    )
+    del rs["trio_targets"]
+    rs = d.apply_entity_result(rs, ["e1"])
+    rs = d.begin_trio(rs, {"relation": "jr", "event": "je", "fact": "jf"})
+    rs = d.fold_trio_op(rs, "relation", ["re"])
+    rs = d.fold_trio_op(rs, "event", ["ev"])
+    assert not d.trio_complete(rs)  # still needs fact (legacy = all three)
+    rs = d.fold_trio_op(rs, "fact", ["fa"])
+    assert d.trio_complete(rs)

@@ -194,6 +194,12 @@ class PersistPass2Request(BaseModel):
     billing_llm_model: str = ""
     billing_embedding_model: str = ""
 
+    # C12 — target-typed extraction. The job's chosen Pass-2 pass subset,
+    # forwarded by worker-ai so this endpoint can gate the summary enqueue
+    # on `summaries ∈ targets`. None ⇒ all passes (enqueue summaries as
+    # before — back-compat for every caller that omits the field).
+    targets: list[str] | None = None
+
 
 # ── Helpers ──────────────────────────────────────────────────────────
 
@@ -571,8 +577,12 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
     # — Postgres + Neo4j writes already succeeded; an enqueue failure
     # mustn't 500 the caller (a later extraction or manual re-run can
     # re-enqueue). Logged for ops.
+    # C12 — gate the summary enqueue on `summaries ∈ targets`. None ⇒ all ⇒
+    # enqueue (back-compat). A target list WITHOUT `summaries` skips it.
+    summaries_requested = body.targets is None or "summaries" in body.targets
     if (
-        hierarchy_paths is not None
+        summaries_requested
+        and hierarchy_paths is not None
         and body.embedding_model_uuid is not None
         and body.embedding_dimension is not None
     ):

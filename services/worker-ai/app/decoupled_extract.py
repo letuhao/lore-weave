@@ -23,6 +23,20 @@ from typing import Any
 
 TRIO_OPS = ("relation", "event", "fact")
 
+# C12 — map the plural contract target names to the singular decoupled op
+# names. `entities`/`summaries` are not trio ops (entity is its own stage;
+# summaries is orchestrator-gated on the persist side).
+_PLURAL_TO_OP = {"relations": "relation", "events": "event", "facts": "fact"}
+
+
+def _resolve_trio_targets(targets: "list[str] | None") -> list[str]:
+    """C12 — the requested trio op subset (singular), in canonical order.
+    None / empty ⇒ ALL three (back-compat). Order-stable on TRIO_OPS."""
+    if not targets:
+        return list(TRIO_OPS)
+    requested = {_PLURAL_TO_OP[t] for t in targets if t in _PLURAL_TO_OP}
+    return [op for op in TRIO_OPS if op in requested]
+
 # stage values
 ENTITY = "entity"
 TRIO = "trio"
@@ -37,15 +51,25 @@ def new_extract_state(
     known_entities: list[str],
     has_recovery: bool,
     has_filter: bool,
+    targets: "list[str] | None" = None,
 ) -> dict[str, Any]:
     """Seed state for one chunk. `has_recovery`/`has_filter` reflect the project's
-    resolved config (eff_recovery / eff_filter is not None in the runner)."""
+    resolved config (eff_recovery / eff_filter is not None in the runner).
+
+    C12 — `targets` (the job's plural pass subset, None ⇒ all) is reduced to
+    the requested trio op set (`trio_targets`). When EMPTY (no R/E/F
+    requested — e.g. an entities-only build) the entity stage short-circuits
+    straight to recovery/filter/persist; the trio is skipped entirely. The
+    fan-in completes against `trio_targets`, NOT the full TRIO_OPS, so a
+    subset job advances correctly."""
     return {
         "mode": "extract",
         "chunk_text": chunk_text,
         "known_entities": list(known_entities),
         "has_recovery": has_recovery,
         "has_filter": has_filter,
+        # C12 — the requested trio ops (singular). None/empty ⇒ all three.
+        "trio_targets": _resolve_trio_targets(targets),
         "stage": ENTITY,
         # accumulators (folded as each stage completes)
         "entities": [],
@@ -61,13 +85,28 @@ def new_extract_state(
 
 # ── entity ────────────────────────────────────────────────────────────────────
 
+def _requested_trio_ops(rs: dict[str, Any]) -> list[str]:
+    """C12 — the trio op subset for this rs. Back-compat: a legacy rs without
+    `trio_targets` (pre-C12 resume blob) ⇒ all three."""
+    tt = rs.get("trio_targets")
+    return list(tt) if tt is not None else list(TRIO_OPS)
+
+
 def apply_entity_result(rs: dict[str, Any], entities: list) -> dict[str, Any]:
     """Fold the entity stage. Returns new rs with entities set + the stage advanced:
     no entities ⇒ go straight to persist (Pass2Candidates short-circuit — nothing to
-    anchor relations/events/facts to); else ⇒ trio."""
+    anchor relations/events/facts to). C12 — if NO trio op is requested (an
+    entities-only build), skip the trio and go to recovery/filter/persist
+    directly; else ⇒ trio."""
     out = dict(rs)
     out["entities"] = list(entities)
-    out["stage"] = TRIO if entities else PERSIST
+    if not entities:
+        out["stage"] = PERSIST
+    elif _requested_trio_ops(out):
+        out["stage"] = TRIO
+    else:
+        # entities-only build — no R/E/F to anchor; advance past trio.
+        out["stage"] = _after_trio(out)
     return out
 
 
@@ -99,13 +138,15 @@ def fold_trio_op(rs: dict[str, Any], op: str, items: list) -> dict[str, Any]:
     out = dict(rs)
     out[key] = list(items)
     out["trio_folded"] = [*rs["trio_folded"], op]
-    if set(out["trio_folded"]) >= set(TRIO_OPS):
+    # C12 — complete when the REQUESTED trio subset is folded (not all three),
+    # so a subset job (e.g. events-only) advances instead of hanging in trio.
+    if set(out["trio_folded"]) >= set(_requested_trio_ops(out)):
         out["stage"] = _after_trio(out)
     return out
 
 
 def trio_complete(rs: dict[str, Any]) -> bool:
-    return set(rs.get("trio_folded", [])) >= set(TRIO_OPS)
+    return set(rs.get("trio_folded", [])) >= set(_requested_trio_ops(rs))
 
 
 def _after_trio(rs: dict[str, Any]) -> str:
@@ -290,14 +331,19 @@ def assemble_trio_submits(rs: dict[str, Any]) -> dict[str, dict]:
         text=rs["chunk_text"], model_source=rs["model_source"],
         model_ref=rs["model_ref"], project_id=rs["project_id"], context_budget=None,
     )
-    return {
-        "relation": relation.build_relation_submit_kwargs(
+    # C12 — build the submit-dict CONDITIONALLY for only the requested trio
+    # ops. begin_trio records exactly these job ids, and the fan-in completes
+    # against the same subset (trio_complete uses _requested_trio_ops).
+    requested = set(_requested_trio_ops(rs))
+    builders = {
+        "relation": lambda: relation.build_relation_submit_kwargs(
             system_prompt=relation.build_relation_system(known, po.get("relation")), **common),
-        "event": event.build_event_submit_kwargs(
+        "event": lambda: event.build_event_submit_kwargs(
             system_prompt=event.build_event_system(known, po.get("event")), **common),
-        "fact": fact.build_fact_submit_kwargs(
+        "fact": lambda: fact.build_fact_submit_kwargs(
             system_prompt=fact.build_fact_system(known, po.get("fact")), **common),
     }
+    return {op: build() for op, build in builders.items() if op in requested}
 
 
 def fold_trio_job(rs: dict[str, Any], op: str, job, on_dropped=None) -> dict[str, Any]:

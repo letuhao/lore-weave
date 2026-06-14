@@ -264,6 +264,69 @@ describe('BuildGraphDialog', () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
+  // ── C12 — 3-step wizard + target picker ──
+  it('renders the 3-step wizard shell with the Step-1 target picker', () => {
+    renderDialog();
+    expect(screen.getByTestId('build-wizard')).toBeDefined();
+    expect(screen.getByTestId('build-wizard-step-1')).toBeDefined();
+    expect(screen.getByTestId('build-wizard-step-2')).toBeDefined();
+    expect(screen.getByTestId('build-wizard-step-3')).toBeDefined();
+    // Step-1 target picker is rendered with all five targets.
+    expect(screen.getByTestId('build-target-picker')).toBeDefined();
+    expect(screen.getByTestId('build-target-entities')).toBeDefined();
+    expect(screen.getByTestId('build-target-summaries')).toBeDefined();
+  });
+
+  it('toggling the events target posts the RAW selection targets=[events] (entities added at runtime)', async () => {
+    estimateMock.mockResolvedValue(sampleEstimate());
+    startMock.mockResolvedValue(sampleJob());
+    renderDialog();
+    await waitFor(() => {
+      expect(screen.getByRole('option', { name: /GPT-5/ })).toBeDefined();
+    });
+    fireEvent.change(screen.getByRole('combobox', { name: 'projects.buildDialog.llmModel.label' }), {
+      target: { value: 'm1' },
+    });
+    fireEvent.change(screen.getByTestId('embedding-picker'), {
+      target: { value: 'bge-m3' },
+    });
+    // Pick the events target — entities is auto-included by the picker.
+    fireEvent.click(screen.getByTestId('build-target-events'));
+    // entities checkbox becomes checked + disabled (auto-included).
+    const entitiesBox = screen.getByTestId('build-target-entities') as HTMLInputElement;
+    expect(entitiesBox.checked).toBe(true);
+    expect(entitiesBox.disabled).toBe(true);
+    await new Promise((r) => setTimeout(r, 350));
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'projects.buildDialog.confirm' }));
+    });
+
+    await waitFor(() => {
+      expect(startMock).toHaveBeenCalledWith(
+        'p1',
+        {
+          scope: 'chapters',
+          llm_model: 'm1',
+          embedding_model: 'bge-m3',
+          targets: ['events'],
+        },
+        'tok-test',
+      );
+    });
+  });
+
+  it('switching wizard steps preserves the target selection (no unmount)', () => {
+    renderDialog();
+    fireEvent.click(screen.getByTestId('build-target-facts'));
+    const factsBox = () => screen.getByTestId('build-target-facts') as HTMLInputElement;
+    expect(factsBox().checked).toBe(true);
+    // Jump to Step 2 then back to Step 1 — selection survives (CSS hidden).
+    fireEvent.click(screen.getByTestId('build-wizard-step-2'));
+    fireEvent.click(screen.getByTestId('build-wizard-step-1'));
+    expect(factsBox().checked).toBe(true);
+  });
+
   it('toasts on start failure and keeps dialog open', async () => {
     estimateMock.mockResolvedValue(sampleEstimate());
     startMock.mockRejectedValue(new Error('boom'));
