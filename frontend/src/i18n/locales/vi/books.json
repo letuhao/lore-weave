@@ -1,4 +1,5 @@
 {
+  "translateIntent": { "hint": "Chọn một cuốn sách để dịch — mở nó, rồi dùng tab Dịch để bắt đầu dịch." },
   "workspace": "Sách của tôi",
   "new_book": "Sách mới",
   "search_placeholder": "Tìm sách...",

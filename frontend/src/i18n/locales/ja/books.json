@@ -1,4 +1,5 @@
 {
+  "translateIntent": { "hint": "翻訳する本を選んでください — 開いてから「翻訳」タブで翻訳を開始します。" },
   "workspace": "マイブック",
   "new_book": "新しい書籍",
   "search_placeholder": "書籍を検索...",

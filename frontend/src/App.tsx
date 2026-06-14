@@ -53,6 +53,7 @@ import { LeaderboardPage } from '@/pages/LeaderboardPage';
 import { ProfilePage } from '@/pages/ProfilePage';
 import { NotificationsPage } from '@/pages/NotificationsPage';
 import { RawSearchPage } from '@/pages/RawSearchPage';
+import { OnboardingPage } from '@/features/onboarding/pages/OnboardingPage';
 
 function AuthenticatedThemeProvider({ children }: { children: React.ReactNode }) {
   const { accessToken } = useAuth();
@@ -119,6 +120,12 @@ export function App() {
 
           {/* Dashboard pages (full sidebar) */}
           <Route element={<RequireAuth><DashboardLayout /></RequireAuth>}>
+            {/* C22 — first-run intent fork. /onboarding is the gate (shows the
+                fork only on first run, else redirects to /books); /onboarding/new
+                is the re-entry "start something new" affordance (always shows). */}
+            <Route path="/onboarding" element={<OnboardingPage />} />
+            <Route path="/onboarding/new" element={<OnboardingPage forceShow />} />
+
             {/* Workspace */}
             <Route path="/books" element={<BooksPage />} />
             <Route path="/trash" element={<TrashPage />} />

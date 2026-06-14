@@ -1,4 +1,5 @@
 {
+  "translateIntent": { "hint": "選擇一本要翻譯的書 — 開啟它，然後使用「翻譯」分頁開始翻譯。" },
   "workspace": "我的書籍",
   "new_book": "新書",
   "search_placeholder": "搜尋書籍...",

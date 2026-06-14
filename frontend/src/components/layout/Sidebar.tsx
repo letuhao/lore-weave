@@ -19,6 +19,7 @@ import {
   Moon,
   Sunset,
   Monitor,
+  Sparkles,
 } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { useSidebar } from '@/providers/SidebarProvider';
@@ -31,6 +32,9 @@ type NavItem = { to: string; icon: React.ElementType; labelKey: string; auth?: b
 
 // auth: true = only show when logged in, undefined = always show
 const mainNav: NavItem[] = [
+  // C22 — re-entry into the intent fork ("start something new"); first-run is
+  // gated via /onboarding, this is the always-available door back in.
+  { to: '/onboarding/new', icon: Sparkles, labelKey: 'nav.startNew', auth: true },
   { to: '/books', icon: BookOpen, labelKey: 'nav.workspace', auth: true },
   { to: '/chat', icon: MessageCircle, labelKey: 'nav.chat', auth: true },
   // K8.1-R1: `to` is `/knowledge` (not `/knowledge/projects`) so NavLink's

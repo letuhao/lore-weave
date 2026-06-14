@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { BookOpen, Plus, ChevronRight } from 'lucide-react';
+import { BookOpen, Plus, ChevronRight, Languages } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { booksApi, type Book } from '@/features/books/api';
 import { translationApi } from '@/features/translation/api';
@@ -19,6 +19,11 @@ function hashToHue(id: string): number {
 export function BooksPage() {
   const { t } = useTranslation('books');
   const { accessToken } = useAuth();
+  // C22 — the Translate intent routes here with ?intent=translate so the
+  // workspace lands tailored to translation (a hint pointing to the per-book
+  // translation surface), NOT a generic shell. Route-only: no new translator flow.
+  const [searchParams] = useSearchParams();
+  const translateIntent = searchParams.get('intent') === 'translate';
   const [books, setBooks] = useState<Book[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -125,6 +130,21 @@ export function BooksPage() {
           </button>
         }
       />
+
+      {translateIntent && (
+        <div
+          data-testid="translate-intent-hint"
+          className="flex items-start gap-2.5 rounded-md border border-primary/30 bg-primary/5 px-3.5 py-2.5 text-sm"
+        >
+          <Languages className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary" />
+          <span className="text-muted-foreground">
+            {t('translateIntent.hint', {
+              defaultValue:
+                'Pick a book to translate — open it, then use the Translation tab to start a translation.',
+            })}
+          </span>
+        </div>
+      )}
 
       {error && (
         <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">

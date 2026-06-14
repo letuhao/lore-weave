@@ -1,5 +1,6 @@
 {
   "nav": {
+    "startNew": "Start something new",
     "workspace": "Workspace",
     "chat": "Chat",
     "knowledge": "Knowledge",

@@ -1731,3 +1731,24 @@
 {"ts": "2026-06-14T15:23:49Z", "event": "in_progress_update", "cycle": 21, "phase": "SESSION", "retry": 0}
 {"ts": "2026-06-14T15:24:30Z", "event": "cycle_done", "cycle": 21, "milestone": "M5", "files": 22, "dps": 2, "tests": {"vitest": 9}, "adversary": {"blockers": 0, "majors": 0, "minors": 1, "notes": 2}, "scope_guard": "CLEAR", "verify_exit": 0, "playwright": true, "gateway_passthrough": true, "step_a_commit": "5fe9eb33", "reflection": "Step A (book-service read field) was the real unblock: C20 provisioned the bible book+chapter but exposed no handle, so the cold-start C21 had escalated as design_gap. The fix was purely additive (two correlated subselects on get/list, create already had the ids). The FE lore-anchoring path is NOT the knowledge createEntity (project-scoped, no chapter) but the GLOSSARY create-entity-then-chapter-link pair — only the chapter-link writes the NOT-NULL chapter_entity_links.chapter_id. Confirmed book-service /internal chapters endpoint does NOT filter is_bible, so the glossary link-validation finds the bible chapter. Graph reuse was zero-cost (ProjectGraphView already takes projectId+bookId, read-only)."}
 {"ts": "2026-06-14T15:24:55Z", "event": "in_progress_update", "cycle": 21, "phase": "COMMIT", "retry": 0}
+{"ts": "2026-06-14T15:26:00Z", "event": "in_progress_archived", "cycle": 21, "archived_to": "cycle-021-state.md"}
+{"ts": "2026-06-14T15:27:11Z", "event": "coordinator_next_cycle_emitted", "cycle": 22}
+{"ts":"2026-06-14T15:28:32Z","event":"startup_drift_check_inconclusive","cycle":22,"cd":"","rw":""}
+{"ts":"2026-06-14T15:28:32Z","event":"startup_verifier_complete","cycle":22,"steps":6}
+{"ts": "2026-06-14T15:28:52Z", "event": "in_progress_init", "cycle": 22, "title": "Intent-branching onboarding (FE)"}
+{"ts": "2026-06-14T15:35:08Z", "event": "in_progress_update", "cycle": 22, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-06-14T15:35:58Z", "event": "in_progress_update", "cycle": 22, "phase": "BUILD", "retry": 0}
+{"ts":"2026-06-14T15:41:39Z","event":"secret_scan_skipped","cycle":22,"dps":DPS1,"reason":"gitleaks_not_installed"}
+{"ts":"2026-06-14T15:42:15Z","event":"secret_scan_skipped","cycle":22,"dps":DPS2,"reason":"gitleaks_not_installed"}
+{"ts": "2026-06-14T15:43:44Z", "event": "in_progress_update", "cycle": 22, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-06-14T15:44:06Z","event":"verify_cycle_22_failed","cycle":22}
+{"ts":"2026-06-14T15:44:32Z","event":"verify_cycle_22_failed","cycle":22}
+{"ts":"2026-06-14T15:44:49Z","event":"verify_cycle_22_failed","cycle":22}
+{"ts":"2026-06-14T15:45:13Z","event":"verify_cycle_22_passed","cycle":22}
+{"ts": "2026-06-14T15:49:29Z", "event": "in_progress_update", "cycle": 22, "phase": "REVIEW2", "retry": 0}
+{"ts":"2026-06-14T15:57:31Z","event":"verify_cycle_22_passed","cycle":22}
+{"ts": "2026-06-14T15:58:39Z", "event": "in_progress_update", "cycle": 22, "phase": "QC", "retry": 0}
+{"ts": "2026-06-14T15:59:01Z", "event": "in_progress_update", "cycle": 22, "phase": "POST_REVIEW", "retry": 0}
+{"ts": "2026-06-14T15:59:07Z", "event": "in_progress_update", "cycle": 22, "phase": "SESSION", "retry": 0}
+{"ts": "2026-06-14T16:00:00Z", "event": "cycle_done", "cycle": 22, "title": "Intent-branching onboarding (FE)", "files": 29, "dps": 2, "tests": {"vitest": 30}, "adversary": {"blockers": 0, "majors": 2, "minors": 2, "notes": 4}, "scope_guard": "CLEAR", "post_review": "CLEAR", "verify_exit": 0, "playwright": true, "playwright_token": "playwright smoke: each of 4 intents (Write/Build-a-world/Translate/Explore) lands in the correct surface", "reflection": "BL-15 four-intent fork. The non-obvious win was MAJOR#1: route-only Translate to /books?intent=translate is a no-op (BooksPage matches on path, drops the query) so Write and Translate landed identically on a generic shell — the 'right container, never a generic shell' lock was silently violated despite the route looking distinct. Fix stayed in-scope (BooksPage consumes the param → a translate hint pointing at the per-book Translation tab; NO new translator flow). MAJOR#2: the seen-flag used the shared fire-and-forget syncPrefsToServer whose .catch swallows failures → the multi-device guarantee could silently break; added an awaited savePrefToServer and navigate in .finally (best-effort: still navigates on write-fail, worst case the fork re-shows once). Gating entry point is HomePage (logged-in → /onboarding gate, which self-resolves to /books once seen) — re-used the existing redirect seam rather than adding a wrapper. Re-entry via forceShow on the same OnboardingPage + a sidebar door avoids forcing the fork every session."}
+{"ts": "2026-06-14T16:01:24Z", "event": "in_progress_update", "cycle": 22, "phase": "COMMIT", "retry": 0}
