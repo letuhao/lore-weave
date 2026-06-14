@@ -222,6 +222,39 @@ async def test_create_project_success_returns_dict():
 
 
 @respx.mock
+async def test_create_project_force_new_sends_flag_in_payload():
+    # C23-fix (dị bản G2): the derive path passes force_new=True so knowledge
+    # skips its per-(user,book) dedup and mints a DISTINCT is_derivative project.
+    route = respx.post(URL).mock(
+        return_value=httpx.Response(201, json={"project_id": str(PROJECT)}))
+    c = await _client()
+    try:
+        await c.create_project(BOOK, "My Book", "jwt", force_new=True)
+    finally:
+        await c.aclose()
+    import json as _json
+    sent = _json.loads(route.calls.last.request.content)
+    assert sent["force_new"] is True
+    assert sent["project_type"] == "book" and sent["book_id"] == str(BOOK)
+
+
+@respx.mock
+async def test_create_project_default_omits_force_new():
+    # Back-compat: the greenfield POST /work path does NOT send force_new
+    # (knowledge stays idempotent per (user, book)).
+    route = respx.post(URL).mock(
+        return_value=httpx.Response(201, json={"project_id": str(PROJECT)}))
+    c = await _client()
+    try:
+        await c.create_project(BOOK, "My Book", "jwt")
+    finally:
+        await c.aclose()
+    import json as _json
+    sent = _json.loads(route.calls.last.request.content)
+    assert "force_new" not in sent
+
+
+@respx.mock
 async def test_create_project_5xx_returns_none_outage():
     # 5xx = OUTAGE → degrade (None), caller may create a lazy null-project Work.
     respx.post(URL).mock(return_value=httpx.Response(503, json={"detail": "down"}))

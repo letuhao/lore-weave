@@ -136,6 +136,61 @@ async def test_create_or_get_book_without_book_id_always_inserts(pool):
     assert a.project_id != b.project_id
 
 
+def _mk_derivative(name: str, *, book_id: UUID) -> ProjectCreate:
+    return ProjectCreate(
+        name=name, project_type="book", book_id=book_id, force_new=True
+    )
+
+
+@pytest.mark.asyncio
+async def test_force_new_book_projects_get_distinct_ids(pool):
+    """C23 derivative fix: two derive-style creates for the SAME (user, book)
+    with force_new=True yield DISTINCT project_ids (each derivative gets its OWN
+    fresh partition — G2). They must NOT dedupe back to a single project."""
+    repo = ProjectsRepo(pool)
+    user, book = uuid4(), uuid4()
+    a, ca = await repo.create_or_get(user, _mk_derivative("d1", book_id=book))
+    b, cb = await repo.create_or_get(user, _mk_derivative("d2", book_id=book))
+    assert ca is True and cb is True
+    assert a.project_id != b.project_id
+    assert a.is_derivative is True and b.is_derivative is True
+
+
+@pytest.mark.asyncio
+async def test_force_new_does_not_break_back_compat_dedup(pool):
+    """A NORMAL book project create_or_get (force_new default False) still
+    dedupes per (user, book) — back-compat unchanged."""
+    repo = ProjectsRepo(pool)
+    user, book = uuid4(), uuid4()
+    first, c1 = await repo.create_or_get(user, _mk_book("a", book_id=book))
+    second, c2 = await repo.create_or_get(user, _mk_book("b", book_id=book))
+    assert c1 is True and c2 is False
+    assert second.project_id == first.project_id
+    assert first.is_derivative is False
+
+
+@pytest.mark.asyncio
+async def test_create_or_get_never_returns_a_derivative_for_source_book(pool):
+    """A derivative project for a book must NEVER be handed back by the source
+    book's create_or_get / get_by_book. First mint a derivative, THEN the source
+    book's first create_or_get must INSERT a fresh source project (created=True),
+    not return the derivative."""
+    repo = ProjectsRepo(pool)
+    user, book = uuid4(), uuid4()
+    # A derivative exists for this book (e.g. an earlier derive ran first).
+    deriv, _ = await repo.create_or_get(user, _mk_derivative("deriv", book_id=book))
+    # The source book's get-or-create must NOT return the derivative.
+    source, created = await repo.create_or_get(user, _mk_book("source", book_id=book))
+    assert created is True
+    assert source.project_id != deriv.project_id
+    assert source.is_derivative is False
+    # get_by_book (book-scoped raw-search resolution) must also skip derivatives.
+    by_book = await repo.get_by_book(book)
+    assert by_book is not None
+    assert by_book.project_id == source.project_id
+    assert by_book.is_derivative is False
+
+
 @pytest.mark.asyncio
 async def test_update_patches_fields(pool):
     repo = ProjectsRepo(pool)

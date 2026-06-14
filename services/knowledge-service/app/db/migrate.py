@@ -843,6 +843,24 @@ CREATE INDEX IF NOT EXISTS idx_outbox_pending
   ON outbox_events(created_at) WHERE published_at IS NULL;
 
 -- ═══════════════════════════════════════════════════════════════
+-- C23-fix (dị bản G2) — derivative-project flag on knowledge_projects.
+-- A DERIVATIVE work's knowledge project must get its OWN fresh partition
+-- and must NEVER be returned by the SOURCE book's per-(user,book)
+-- get-or-create dedup (create_or_get) or by get_by_book — otherwise the
+-- derivative inherits the source's project_id and composition's
+-- uq_composition_work_project (1 work : 1 project) is violated (the
+-- UniqueViolationError that 500'd POST /works/{id}/derive). Additive +
+-- backward-compatible: DEFAULT false ⇒ every existing row + every
+-- non-derivative create path behaves exactly as before. The repo's
+-- create_or_get/get_by_book SELECTs add `AND NOT is_derivative` so a
+-- derivative is excluded from the source book's dedup; the derive path
+-- sets force_new=true which both skips the dedup lock/select AND stamps
+-- is_derivative=true. ADD COLUMN IF NOT EXISTS keeps the DDL idempotent.
+-- ═══════════════════════════════════════════════════════════════
+ALTER TABLE knowledge_projects
+  ADD COLUMN IF NOT EXISTS is_derivative BOOLEAN NOT NULL DEFAULT false;
+
+-- ═══════════════════════════════════════════════════════════════
 -- Phase E2 — genre tag on knowledge_projects (2026-06-01)
 -- Free-text, user-settable (e.g. "Tiên hiệp", "trinh thám").
 -- Copied to extraction_runs at run-emit time for genre-segment

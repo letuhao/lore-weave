@@ -327,9 +327,12 @@ async def derive_work(
     # GUARD: ALWAYS provision a FRESH knowledge project for the derivative (G2). A 4xx
     # is a contract bug → surface; an outage (None) → REJECT (never a null project on a
     # derivative). The derivative NEVER reuses the source's project_id.
+    # C23-fix: force_new=True ⇒ knowledge skips its per-(user,book) dedup and mints a
+    # DISTINCT is_derivative project. Without it, a source book that already had a
+    # project got the SOURCE's project_id back → uq_composition_work_project 500.
     name = f"{book_obj.get('title') or 'Work'} — dị bản"
     try:
-        created = await knowledge.create_project(book_id, name, bearer)
+        created = await knowledge.create_project(book_id, name, bearer, force_new=True)
     except KnowledgeContractError:
         raise HTTPException(status_code=502, detail={"code": "PROJECT_CREATE_FAILED"})
     if created is None or not created.get("project_id"):

@@ -101,11 +101,18 @@ class KnowledgeClient:
             return None
 
     async def create_project(
-        self, book_id: UUID, name: str, bearer: str,
+        self, book_id: UUID, name: str, bearer: str, *, force_new: bool = False,
     ) -> dict[str, Any] | None:
         """Create a BOOK-typed knowledge project for this book (M8 POST /work).
         JWT-forward → knowledge scopes it to the user. Returns the created project
         dict (carries `project_id`).
+
+        `force_new` (C23-fix, dị bản G2): when True (the derive path) knowledge
+        ALWAYS mints a FRESH distinct project (skips its per-(user,book)
+        get-or-create dedup) and flags it is_derivative — so a derivative gets
+        its OWN partition instead of inheriting the source book's project_id
+        (which violated composition's uq_composition_work_project). Default
+        False keeps the greenfield POST /work path idempotent (unchanged).
 
         C16 (WG-3) error discrimination — the caller degrades vs surfaces by class:
           • 5xx / timeout / transport error → return None (knowledge OUTAGE → the
@@ -118,7 +125,11 @@ class KnowledgeClient:
         if not bearer:
             return None
         url = f"{self._base_url}/v1/knowledge/projects"
-        payload = {"name": name, "project_type": "book", "book_id": str(book_id)}
+        payload: dict[str, Any] = {
+            "name": name, "project_type": "book", "book_id": str(book_id),
+        }
+        if force_new:
+            payload["force_new"] = True
         try:
             resp = await self._http.post(url, json=payload, headers=self._bearer_headers(bearer))
         except httpx.HTTPError as exc:

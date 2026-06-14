@@ -26,7 +26,7 @@ _SELECT_COLS = """
   rerank_model, rerank_model_source,
   extraction_config, last_extracted_at, estimated_cost_usd, actual_cost_usd,
   is_archived, tool_calling_enabled, memory_remember_confirm, save_raw_extraction,
-  genre, version, created_at, updated_at
+  genre, is_derivative, version, created_at, updated_at
 """
 
 # Explicit allowlist for dynamic UPDATE SET. Pydantic's ProjectUpdate already
@@ -106,8 +106,9 @@ class ProjectsRepo:
     ) -> asyncpg.Record:
         query = f"""
         INSERT INTO knowledge_projects
-          (user_id, name, description, project_type, book_id, instructions, genre)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+          (user_id, name, description, project_type, book_id, instructions,
+           genre, is_derivative)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         RETURNING {_SELECT_COLS}
         """
         return await conn.fetchrow(
@@ -119,6 +120,10 @@ class ProjectsRepo:
             data.book_id,
             data.instructions,
             data.genre,
+            # C23-fix (dị bản G2): force_new ⇒ this is a derivative's own
+            # fresh partition; stamp is_derivative so the source book's
+            # create_or_get / get_by_book never hand it back.
+            data.force_new,
         )
 
     async def create_or_get(
@@ -137,8 +142,18 @@ class ProjectsRepo:
         book-typed one with no `book_id` — still always inserts (the FE general-
         project create UX is unchanged). No UNIQUE(user, book_id) constraint is
         added (legacy rows may have several projects per book; `resolve_work`
-        already tolerates that by picking the earliest)."""
-        if not (data.project_type == "book" and data.book_id is not None):
+        already tolerates that by picking the earliest).
+
+        C23-fix (dị bản G2): when ``data.force_new`` is set (the composition
+        derive path) we BYPASS the dedup entirely and ALWAYS insert a fresh
+        project — `_insert` stamps it is_derivative=true. Combined with the
+        ``AND NOT is_derivative`` predicate in the dedup SELECT below (and in
+        `get_by_book`), a derivative is never returned for the SOURCE book, so
+        the derivative gets its OWN distinct project_id (its own Neo4j delta
+        partition) and composition's uq_composition_work_project holds."""
+        if data.force_new or not (
+            data.project_type == "book" and data.book_id is not None
+        ):
             return await self.create(user_id, data), True
         async with self._pool.acquire() as conn:
             async with conn.transaction():
@@ -153,6 +168,7 @@ class ProjectsRepo:
                     SELECT {_SELECT_COLS} FROM knowledge_projects
                     WHERE user_id = $1 AND project_type = 'book'
                       AND book_id = $2 AND NOT is_archived
+                      AND NOT is_derivative
                     ORDER BY created_at ASC
                     LIMIT 1
                     """,
@@ -272,11 +288,16 @@ class ProjectsRepo:
         """E0-3 — the (single, book-owner-owned) active book project for a book,
         NOT user-scoped. Book-scoped routes (raw-search) call this AFTER a book
         grant check so a collaborator searches the owner's project. Creation is
-        book-owner-only, so there is at most one 'book' project per book."""
+        book-owner-only, so there is at most one 'book' project per book.
+
+        C23-fix (dị bản G2): `AND NOT is_derivative` so a derivative project
+        sharing the source's book_id is never mistaken for the source book's
+        canonical project (raw-search must always resolve the SOURCE partition)."""
         query = f"""
         SELECT {_SELECT_COLS}
         FROM knowledge_projects
         WHERE book_id = $1 AND project_type = 'book' AND NOT is_archived
+          AND NOT is_derivative
         ORDER BY created_at
         LIMIT 1
         """

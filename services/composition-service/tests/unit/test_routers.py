@@ -150,8 +150,9 @@ class StubKnowledge:
     async def list_projects_for_book(self, book_id, bearer):
         return self.projects
 
-    async def create_project(self, book_id, name, bearer):
+    async def create_project(self, book_id, name, bearer, *, force_new=False):
         self.create_project_name = name
+        self.create_project_force_new = force_new
         if self.create_project_raises is not None:
             raise self.create_project_raises
         return self.created_project
@@ -461,6 +462,11 @@ def test_derive_creates_linked_work_with_fresh_project(ctx):
     assert body["branch_point"] == 4
     assert body["project_id"] == str(fresh)        # fresh project provisioned
     assert body["project_id"] != str(PROJECT)      # NOT the source's project (G2)
+    # C23-fix: derive MUST request force_new=True so knowledge skips its
+    # per-(user,book) dedup and mints a DISTINCT is_derivative project — without
+    # it a source book that already had a project returned the SOURCE's
+    # project_id → uq_composition_work_project 500 (the bug this unblocks).
+    assert knowledge.create_project_force_new is True
     # the repo was asked to write a derivative bound to the source + fresh project
     assert works.derived_with["source_work_id"] == source.id
     assert works.derived_with["project_id"] == fresh
