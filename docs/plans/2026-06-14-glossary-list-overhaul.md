@@ -50,6 +50,36 @@ lands without waiting on the RAID-owned backend file.
   `location`. Query cap 256 runes (cost/injection guard). Pure `buildLexicalHit` for
   unit-testability. Spec: `docs/specs/2026-06-07-raw-search.md`.
 
+## 3.5 DESIGN REVIEW (2026-06-14) — corrections that override §4 below
+
+Code inspection found existing infrastructure the first draft missed. These
+corrections supersede the corresponding parts of §4:
+
+- **Denormalized `glossary_entities.cached_name TEXT` + `cached_aliases TEXT[]`**
+  exist (migrate.go:878-879), refreshed by the `recalculate_entity_snapshot`
+  trigger. ⇒ **Sort-by-name and raw-search target the entity ROW, not an
+  `entity_attribute_values` aggregation.** No per-entity GROUP BY/LATERAL. Sort =
+  `ORDER BY e.cached_name`; search = WHERE on `cached_name`/`cached_aliases` +
+  `similarity(cached_name, q)` ranking. This removes most of §4.C's complexity.
+- **A `search_vector tsvector` + GIN `idx_ge_search_vector` already exist**
+  (migrate.go:890-893) but use the `'simple'` config, which does NOT segment CJK
+  (no spaces → whole run = one token → substring impossible). ⇒ **Confirms
+  trigram-ILIKE (the chapter pattern) is the right matcher for CJK novels; do NOT
+  use the existing FTS for raw search.** Add `pg_trgm` + a GIN trigram index on
+  `cached_name` (+ an expression index on `array_to_string(cached_aliases,' ')`).
+  The FTS vector may complement later (whole-token search) but isn't the CJK answer.
+- **Sort-by-counts is expensive.** `chapter_link_count`/`evidence_count` are
+  correlated subqueries in the projection (entity_handler.go:628-634); sorting on
+  them forces computing counts for ALL matching rows. ⇒ **Ship name/kind/status/
+  recency/alive sort first; DEFER counts-sort** until denormalized counter columns
+  exist.
+- **Deep OFFSET at 20K** + the 3 count subqueries → high-offset pages compute
+  counts for offset+limit rows. Keep counts in the projection (page rows only) but
+  ensure `ORDER BY` uses an indexed column (`cached_name`/`updated_at`); note keyset
+  pagination as the >50K future option.
+- **Scope:** `<EntityListBrowser>` stays incremental (B1 lesson) — GlossaryTab
+  first; migrate the entity panels only if they genuinely share shape.
+
 ## 4. Design
 
 ### Feature A — Server-side pagination (FE-only; backend already supports)
