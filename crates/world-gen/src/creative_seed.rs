@@ -8,7 +8,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::climate::ClimateZone;
-use crate::params::{IntensityKnobs, ReliefParams, TectonicsParams};
+use crate::params::{ClimateParams, IntensityKnobs, ReliefParams, TectonicsParams};
 
 /// Creative direction for a generated world.
 // `Eq` dropped in Phase 2 — `continental_fraction: f32` is not `Eq`.
@@ -77,6 +77,10 @@ pub struct CreativeSeed {
     /// (parameterization P2). Default = prior `terrain.rs` consts (byte-identical).
     #[serde(default)]
     pub relief_params: ReliefParams,
+    /// Granular climate-classification tuning (parameterization P3).
+    /// Default = prior `climate.rs` consts (byte-identical).
+    #[serde(default)]
+    pub climate_params: ClimateParams,
     /// Macro "intensity" knobs (parameterization) — convenience scalers over
     /// groups of granular params; default `1.0` = no-op. See [`IntensityKnobs`].
     #[serde(default)]
@@ -123,6 +127,7 @@ impl Default for CreativeSeed {
             county_subdivision: default_county_subdivision(),
             tectonics: TectonicsParams::default(),
             relief_params: ReliefParams::default(),
+            climate_params: ClimateParams::default(),
             intensity: IntensityKnobs::default(),
         }
     }
@@ -444,13 +449,14 @@ mod tests {
         let cs = CreativeSeed {
             intensity: IntensityKnobs { orogeny: 2.5, collision_frequency: 0.5, ..IntensityKnobs::default() },
             tectonics: TectonicsParams { fold_peak: 1.2, ..TectonicsParams::default() },
+            climate_params: ClimateParams { t_eq: 31.0, ..ClimateParams::default() },
             ..CreativeSeed::default()
         };
         let back: CreativeSeed =
             serde_json::from_str(&serde_json::to_string(&cs).unwrap()).expect("round-trip");
-        assert_eq!(cs, back, "tectonics/intensity must survive a JSON round-trip");
-        // A pre-parameterization config JSON (no tectonics/intensity) loads with
-        // the byte-identical defaults — backward compatibility.
+        assert_eq!(cs, back, "tectonics/intensity/climate must survive a JSON round-trip");
+        // A pre-parameterization config JSON (no tectonics/intensity/climate) loads
+        // with the byte-identical defaults — backward compatibility.
         let json = r#"{
             "world_scale": "Continent", "world_archetype": "HighFantasy",
             "coastline_profile": "Coastal", "hemisphere_orientation": "Northern",
@@ -459,16 +465,25 @@ mod tests {
         let old: CreativeSeed = serde_json::from_str(json).expect("pre-param JSON loads");
         assert_eq!(old.tectonics, TectonicsParams::default());
         assert_eq!(old.intensity, IntensityKnobs::default());
-        // A partial override (only intensity.orogeny) keeps the other knob default.
+        assert_eq!(old.climate_params, ClimateParams::default());
+        // A partial override (intensity.orogeny + one climate cutoff) keeps every
+        // other field default — the `#[serde(default)]` per-field fill.
         let json2 = r#"{
             "world_scale": "Continent", "world_archetype": "HighFantasy",
             "coastline_profile": "Coastal", "hemisphere_orientation": "Northern",
             "climate_bias": null, "settlement_density": "Medium", "culture_count": 5,
-            "intensity": { "orogeny": 1.7 }
+            "intensity": { "orogeny": 1.7, "warmth": 1.3 },
+            "climate_params": { "t_eq": 33.0 }
         }"#;
-        let partial: CreativeSeed = serde_json::from_str(json2).expect("partial intensity loads");
+        let partial: CreativeSeed = serde_json::from_str(json2).expect("partial override loads");
         assert!((partial.intensity.orogeny - 1.7).abs() < 1e-6);
         assert!((partial.intensity.collision_frequency - 1.0).abs() < 1e-6, "absent knob defaults to 1.0");
+        assert!((partial.intensity.warmth - 1.3).abs() < 1e-6);
+        assert!((partial.climate_params.t_eq - 33.0).abs() < 1e-6, "overridden climate field loads");
+        assert!(
+            (partial.climate_params.t_pole - ClimateParams::default().t_pole).abs() < 1e-6,
+            "absent climate field keeps its default"
+        );
     }
 
     #[test]

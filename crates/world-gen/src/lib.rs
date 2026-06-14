@@ -49,7 +49,7 @@ pub use creative_seed::{
     CoastlineProfile, CreativeSeed, ErosionStrength, HemisphereOrientation, PrevailingWind,
     SettlementDensity, TerrainMode, WorldArchetype, WorldScale,
 };
-pub use params::{IntensityKnobs, ReliefParams, TectonicsParams};
+pub use params::{ClimateParams, IntensityKnobs, ReliefParams, TectonicsParams};
 pub use world_map::{
     BoundaryKind, Cell, Continent, County, CultureRegion, MountainRange, Plate, PlateBoundary,
     PlateKind, Province, Realm, Region, River, Route, RouteKind, Settlement, SettlementRole, State,
@@ -80,6 +80,7 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
         cs.hemisphere_orientation,
         cs.prevailing_wind,
         cs.climate_bias,
+        &cs.climate_params.resolved(&cs.intensity),
     );
 
     // Stage 4 — hydrology + biomes.

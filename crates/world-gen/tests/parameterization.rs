@@ -6,8 +6,8 @@
 //! Spec: `docs/specs/2026-06-14-world-gen-parameterization.md`.
 
 use world_gen::{
-    CoastlineProfile, CreativeSeed, IntensityKnobs, ReliefParams, TectonicsParams, TerrainMode,
-    WorldScale, generate,
+    ClimateParams, CoastlineProfile, CreativeSeed, IntensityKnobs, ReliefParams, TectonicsParams,
+    TerrainMode, WorldScale, generate,
 };
 
 fn hex(h: [u8; 32]) -> String {
@@ -76,6 +76,8 @@ fn explicit_default_params_equal_bare_default() {
     let bare = CreativeSeed::default();
     let explicit = CreativeSeed {
         tectonics: TectonicsParams::default(),
+        relief_params: ReliefParams::default(),
+        climate_params: ClimateParams::default(),
         intensity: IntensityKnobs::default(),
         ..CreativeSeed::default()
     };
@@ -176,6 +178,69 @@ fn granular_relief_override_changes_the_world() {
         generate(7, &shallow).content_hash,
         "shallower ocean_abyss must change the terrain"
     );
+}
+
+/// **The climate knobs change the world** (P3) — `warmth`/`rainfall`/`seasonality`.
+#[test]
+fn climate_knobs_change_the_world() {
+    let base = generate(7, &CreativeSeed::default()).content_hash;
+    for knobs in [
+        IntensityKnobs { warmth: 1.6, ..IntensityKnobs::default() },
+        IntensityKnobs { rainfall: 0.4, ..IntensityKnobs::default() },
+        IntensityKnobs { seasonality: 2.0, ..IntensityKnobs::default() },
+    ] {
+        let cs = CreativeSeed { intensity: knobs, ..CreativeSeed::default() };
+        assert_ne!(base, generate(7, &cs).content_hash, "a climate knob must change the world: {knobs:?}");
+    }
+}
+
+/// **Direction check (P3)** — `assert_ne` above proves a climate knob *changes*
+/// the world; this proves it changes it in the *physically correct direction*. A
+/// sign-flip in `resolved()` (e.g. `(1−warmth)·20`) would still differ from
+/// default and silently pass `assert_ne`, but would move the histogram the wrong
+/// way. Counts over the whole per-cell `climate` field.
+#[test]
+fn climate_knobs_move_the_histogram_the_right_way() {
+    use world_gen::ClimateZone;
+    let count = |cs: &CreativeSeed, z: ClimateZone| {
+        generate(7, cs).climate.iter().filter(|&&c| c == z).count()
+    };
+    let base = CreativeSeed::default();
+
+    // Warmer world → more Tropical, fewer Polar.
+    let hot = CreativeSeed {
+        intensity: IntensityKnobs { warmth: 1.6, ..IntensityKnobs::default() },
+        ..CreativeSeed::default()
+    };
+    assert!(
+        count(&hot, ClimateZone::Tropical) > count(&base, ClimateZone::Tropical),
+        "warmth>1 must yield more Tropical cells"
+    );
+    assert!(
+        count(&hot, ClimateZone::Polar) < count(&base, ClimateZone::Polar),
+        "warmth>1 must yield fewer Polar cells"
+    );
+
+    // Drier world → more Arid.
+    let dry = CreativeSeed {
+        intensity: IntensityKnobs { rainfall: 0.4, ..IntensityKnobs::default() },
+        ..CreativeSeed::default()
+    };
+    assert!(
+        count(&dry, ClimateZone::Arid) > count(&base, ClimateZone::Arid),
+        "rainfall<1 must yield more Arid cells"
+    );
+}
+
+/// A granular climate override changes the world (config-file path).
+#[test]
+fn granular_climate_override_changes_the_world() {
+    let base = generate(7, &CreativeSeed::default()).content_hash;
+    let cold = CreativeSeed {
+        climate_params: ClimateParams { t_eq: 10.0, t_pole: -40.0, ..ClimateParams::default() },
+        ..CreativeSeed::default()
+    };
+    assert_ne!(base, generate(7, &cold).content_hash, "a colder world must differ");
 }
 
 /// An out-of-range knob is clamped, not panicked — generation still succeeds and

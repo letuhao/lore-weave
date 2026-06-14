@@ -45,7 +45,11 @@ omit unless the brief calls for it): intensity.orogeny scales mountain-building 
 scales how often plates collide (>1 = more mountain belts, fewer flat oceans; \
 <1 = calmer), intensity.relief scales continental relief detail (>1 = more rugged/ \
 jagged land; <1 = smoother), intensity.ocean_depth scales how deep the oceans are \
-(>1 = deeper abyss; <1 = shallower seas). Choose values that fit the brief. \
+(>1 = deeper abyss; <1 = shallower seas), intensity.warmth scales global \
+temperature (>1 = hotter — more tropics/deserts; <1 = colder — more polar/boreal), \
+intensity.rainfall scales precipitation (>1 = wetter, fewer deserts; <1 = drier), \
+intensity.seasonality scales the seasonal temperature swing (>1 = harsher \
+continental winters/summers; <1 = milder). Choose values that fit the brief. \
 Output only the JSON object.";
 
 /// The JSON Schema constraining the LLM output to the `CreativeSeed` shape.
@@ -107,7 +111,10 @@ pub fn creative_seed_schema() -> Value {
                     "orogeny": { "type": "number", "minimum": 0.0, "maximum": 3.0 },
                     "collision_frequency": { "type": "number", "minimum": 0.0, "maximum": 3.0 },
                     "relief": { "type": "number", "minimum": 0.0, "maximum": 4.0 },
-                    "ocean_depth": { "type": "number", "minimum": 0.1, "maximum": 4.0 }
+                    "ocean_depth": { "type": "number", "minimum": 0.1, "maximum": 4.0 },
+                    "warmth": { "type": "number", "minimum": 0.0, "maximum": 3.0 },
+                    "rainfall": { "type": "number", "minimum": 0.0, "maximum": 5.0 },
+                    "seasonality": { "type": "number", "minimum": 0.0, "maximum": 5.0 }
                 }
             }
         }
@@ -133,6 +140,9 @@ pub fn parse_creative_seed(content: &str) -> Result<CreativeSeed, String> {
     cs.intensity.collision_frequency = cs.intensity.collision_frequency.clamp(0.0, 3.0);
     cs.intensity.relief = cs.intensity.relief.clamp(0.0, 4.0);
     cs.intensity.ocean_depth = cs.intensity.ocean_depth.clamp(0.1, 4.0);
+    cs.intensity.warmth = cs.intensity.warmth.clamp(0.0, 3.0);
+    cs.intensity.rainfall = cs.intensity.rainfall.clamp(0.0, 5.0);
+    cs.intensity.seasonality = cs.intensity.seasonality.clamp(0.0, 5.0);
     Ok(cs)
 }
 

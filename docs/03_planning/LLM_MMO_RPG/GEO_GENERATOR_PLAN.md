@@ -51,16 +51,22 @@
 > per-world (one centralized profile, 3 tiers). Spec:
 > `docs/specs/2026-06-14-world-gen-parameterization.md` (8 stages P1–P8).
 > **Invariant: byte-identical default baseline** (3 pinned hashes in
-> `tests/parameterization.rs`). **✅ P1 + P2 DONE** — `params.rs`
+> `tests/parameterization.rs`). **✅ P1 + P2 + P3 DONE** — `params.rs`
 > `TectonicsParams` (19 plates knobs) + `ReliefParams` (34 terrain knobs:
-> noise/relief/bathymetry/quantize) + `IntensityKnobs` (`orogeny`,
-> `collision_frequency`, `relief`, `ocean_depth`); threaded into `plates::build`
-> + `terrain::build`; LLM author schema/prompt/clamp wired. Byte-identical pins
-> (3 Tectonic + 5 Profile). **TOP NEXT (param arc): P3 ClimateParams**
-> (`climate.rs` temp/precip/seasonality consts + Köppen classifier cutoffs +
-> wetness-per-zone & climate-bias tables; knobs `warmth`/`rainfall`/`seasonality`).
+> noise/relief/bathymetry/quantize) + `ClimateParams` (23 climate knobs:
+> temps/precip bands/seasonality/Köppen cutoffs/Highland gate) + `IntensityKnobs`
+> (`orogeny`, `collision_frequency`, `relief`, `ocean_depth`, `warmth`, `rainfall`,
+> `seasonality`); threaded into `plates::build` + `terrain::build` +
+> `climate::build`; LLM author schema/prompt/clamp wired. Byte-identical pins
+> (3 Tectonic + 5 Profile) hold across all 3 stages. P3 `/review-impl` clean
+> (doc + test-only follow-ups folded in: seasonality `amp_eq`-floor doc,
+> clamp-not-validate / dormant-`winter_frac` cutoff doc, histogram-direction test,
+> climate serde/explicit-default parity). **TOP NEXT (param arc): P4
+> `ErosionParams` + `HydrologyParams`** (the `ErosionStrength` table, river
+> percentile, lake threshold — `terrain.rs`/`hydrology.rs`).
 > *(Deferred P2 follow-up: Profile-only inline `height_at`/`apply_falloff` gate
-> literals — legacy path.)*
+> literals — legacy path. Deferred P3 follow-up: moisture-transport consts +
+> cross-module `ClimateZone::wetness()` / `bias_delta` tables.)*
 >
 > **ELEVATION ARC (paused, resumable): build S4** — age-based oceanic bathymetry.
 > Add `crust_age` (BFS hops from divergent ridges along spreading), set ocean
