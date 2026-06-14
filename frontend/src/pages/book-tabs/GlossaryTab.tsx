@@ -1,16 +1,16 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { BookOpen, Plus, Search, Filter, Trash2, Settings2, Layers, Sparkles, Languages, HelpCircle, Lightbulb, GitMerge, CheckCircle2, CircleSlash, Zap } from 'lucide-react';
+import { BookOpen, Plus, Filter, Trash2, Settings2, Layers, Sparkles, Languages, HelpCircle, Lightbulb, GitMerge, CheckCircle2, CircleSlash } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { glossaryApi } from '@/features/glossary/api';
 import { useGlossaryDisplayLanguage } from '@/features/glossary/hooks/useGlossaryDisplayLanguage';
 import { type GlossaryEntitySummary, type EntityKind, type FilterState, type EntitySort, defaultFilters } from '@/features/glossary/types';
 import { useServerPagedList } from '@/components/pagination/useServerPagedList';
-import { Pager } from '@/components/pagination/Pager';
 import { useDebouncedValue } from '@/features/raw-search/hooks/useDebouncedValue';
 import { MatchSnippet } from '@/features/glossary/components/MatchSnippet';
+import { EntityListBrowser } from '@/features/glossary/components/EntityListBrowser';
 import { getLanguageName } from '@/lib/languages';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { EmptyState, ConfirmDialog, FloatingActionBar, FloatingActionDivider } from '@/components/shared';
@@ -346,6 +346,20 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
     return <div className="p-6 text-sm text-destructive">{error}</div>;
   }
 
+  // Sort options for the browser dropdown; "relevance" only makes sense in raw mode.
+  const sortOptions: { value: string; label: string }[] = [
+    ...(searchMode === 'raw' ? [{ value: 'relevance', label: t('glossary.sort.relevance') }] : []),
+    { value: 'links', label: t('glossary.sort.links') },
+    { value: 'evidence', label: t('glossary.sort.evidence') },
+    { value: 'updated_at', label: t('glossary.sort.updated_at') },
+    { value: 'created_at', label: t('glossary.sort.created_at') },
+    { value: 'name', label: t('glossary.sort.name') },
+    { value: 'name_desc', label: t('glossary.sort.name_desc') },
+    { value: 'kind', label: t('glossary.sort.kind') },
+    { value: 'status', label: t('glossary.sort.status') },
+    { value: 'alive', label: t('glossary.sort.alive') },
+  ];
+
   return (
     <div className="space-y-4 p-6">
       {/* Header */}
@@ -471,120 +485,83 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
         </div>
       </div>
 
-      {/* Search + Filter bar */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          <input
-            type="text"
-            value={filters.searchQuery}
-            onChange={(e) => updateFilters({ searchQuery: e.target.value })}
-            placeholder={searchMode === 'raw' ? t('glossary.search_raw_placeholder') : t('glossary.search')}
-            data-testid="glossary-search-input"
-            className="w-full rounded-md border bg-background pl-9 pr-3 py-1.5 text-xs focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
-          />
-        </div>
-        {/* Raw/exact search toggle — ILIKE-exact + trigram over names/aliases (CJK-safe). */}
-        <button
-          onClick={toggleSearchMode}
-          data-testid="glossary-raw-toggle"
-          title={t('glossary.search_raw_hint')}
-          className={cn(
-            'inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors',
-            searchMode === 'raw'
-              ? 'border-amber-400/50 bg-amber-400/10 text-amber-500 hover:bg-amber-400/20'
-              : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
-          )}
-        >
-          <Zap className="h-3.5 w-3.5" />
-          {t('glossary.search_raw')}
-        </button>
-        {/* Sort */}
-        <select
-          value={sort}
-          onChange={(e) => changeSort(e.target.value as EntitySort)}
-          data-testid="glossary-sort"
-          aria-label={t('glossary.sort_label')}
-          className="h-8 rounded-md border bg-background px-2 text-[11px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
-        >
-          {searchMode === 'raw' && <option value="relevance">{t('glossary.sort.relevance')}</option>}
-          <option value="links">{t('glossary.sort.links')}</option>
-          <option value="evidence">{t('glossary.sort.evidence')}</option>
-          <option value="updated_at">{t('glossary.sort.updated_at')}</option>
-          <option value="created_at">{t('glossary.sort.created_at')}</option>
-          <option value="name">{t('glossary.sort.name')}</option>
-          <option value="name_desc">{t('glossary.sort.name_desc')}</option>
-          <option value="kind">{t('glossary.sort.kind')}</option>
-          <option value="status">{t('glossary.sort.status')}</option>
-          <option value="alive">{t('glossary.sort.alive')}</option>
-        </select>
-        <button
-          onClick={() => setFilterOpen(!filterOpen)}
-          className={cn(
-            'inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors',
-            activeFilterCount > 0
-              ? 'border-primary/40 text-primary hover:bg-primary/10'
-              : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
-          )}
-        >
-          <Filter className="h-3.5 w-3.5" />
-          {activeFilterCount > 0 ? t('glossary.filter_count', { count: activeFilterCount }) : t('glossary.filter')}
-        </button>
-      </div>
-
-      {/* Filter panel */}
-      {filterOpen && (
-        <div className="rounded-lg border bg-card p-3 space-y-3">
-          <div className="space-y-1.5">
-            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{t('glossary.kind_label')}</span>
-            <div className="flex flex-wrap gap-1.5">
-              {visibleKinds.map((k) => {
-                const active = filters.kindCodes.includes(k.code);
-                return (
+      <EntityListBrowser
+        searchValue={filters.searchQuery}
+        onSearchChange={(v) => updateFilters({ searchQuery: v })}
+        searchMode={searchMode}
+        onToggleSearchMode={toggleSearchMode}
+        sort={sort}
+        onSortChange={(s) => changeSort(s as EntitySort)}
+        sortOptions={sortOptions}
+        total={total}
+        paged={paged}
+        pageInfo={{ pageCount, safePage, start, end }}
+        filterControl={
+          <button
+            onClick={() => setFilterOpen(!filterOpen)}
+            className={cn(
+              'inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors',
+              activeFilterCount > 0
+                ? 'border-primary/40 text-primary hover:bg-primary/10'
+                : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
+            )}
+          >
+            <Filter className="h-3.5 w-3.5" />
+            {activeFilterCount > 0 ? t('glossary.filter_count', { count: activeFilterCount }) : t('glossary.filter')}
+          </button>
+        }
+        filterPanel={filterOpen ? (
+          <div className="rounded-lg border bg-card p-3 space-y-3">
+            <div className="space-y-1.5">
+              <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{t('glossary.kind_label')}</span>
+              <div className="flex flex-wrap gap-1.5">
+                {visibleKinds.map((k) => {
+                  const active = filters.kindCodes.includes(k.code);
+                  return (
+                    <button
+                      key={k.kind_id}
+                      onClick={() => updateFilters({
+                        kindCodes: active ? filters.kindCodes.filter((c) => c !== k.code) : [...filters.kindCodes, k.code],
+                      })}
+                      className={cn(
+                        'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium border transition-colors',
+                        active ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:text-foreground',
+                      )}
+                    >
+                      <span>{k.icon}</span> {k.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{t('glossary.status_label')}</span>
+              <div className="flex gap-1.5">
+                {(['all', 'draft', 'active', 'inactive'] as const).map((s) => (
                   <button
-                    key={k.kind_id}
-                    onClick={() => updateFilters({
-                      kindCodes: active ? filters.kindCodes.filter((c) => c !== k.code) : [...filters.kindCodes, k.code],
-                    })}
+                    key={s}
+                    onClick={() => updateFilters({ status: s })}
                     className={cn(
-                      'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium border transition-colors',
-                      active ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:text-foreground',
+                      'rounded-full px-2.5 py-1 text-[11px] font-medium border transition-colors',
+                      filters.status === s ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:text-foreground',
                     )}
                   >
-                    <span>{k.icon}</span> {k.name}
+                    {s === 'all' ? t('glossary.status_all') : t(`glossary.status.${s}`)}
                   </button>
-                );
-              })}
+                ))}
+              </div>
             </div>
+            {activeFilterCount > 0 && (
+              <button
+                onClick={() => { setFilters(defaultFilters); paged.reset(); }}
+                className="text-[10px] text-primary hover:underline"
+              >
+                {t('glossary.clear_filters')}
+              </button>
+            )}
           </div>
-          <div className="space-y-1.5">
-            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{t('glossary.status_label')}</span>
-            <div className="flex gap-1.5">
-              {(['all', 'draft', 'active', 'inactive'] as const).map((s) => (
-                <button
-                  key={s}
-                  onClick={() => updateFilters({ status: s })}
-                  className={cn(
-                    'rounded-full px-2.5 py-1 text-[11px] font-medium border transition-colors',
-                    filters.status === s ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:text-foreground',
-                  )}
-                >
-                  {s === 'all' ? t('glossary.status_all') : t(`glossary.status.${s}`)}
-                </button>
-              ))}
-            </div>
-          </div>
-          {activeFilterCount > 0 && (
-            <button
-              onClick={() => { setFilters(defaultFilters); paged.reset(); }}
-              className="text-[10px] text-primary hover:underline"
-            >
-              {t('glossary.clear_filters')}
-            </button>
-          )}
-        </div>
-      )}
-
+        ) : null}
+      >
       {/* Entity list */}
       {entities.length === 0 ? (
         total > 0 ? (
@@ -703,30 +680,7 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
         </div>
       )}
 
-      {/* Pagination footer — "X–Y of N" + page-size + page-through */}
-      {total > 0 && (
-        <div className="flex items-center justify-between gap-2 flex-wrap text-[11px] text-muted-foreground">
-          <div className="flex items-center gap-2">
-            <span data-testid="glossary-range">{t('glossary.range', { start, end, total })}</span>
-            <select
-              value={paged.pageSize}
-              onChange={(e) => paged.setPageSize(Number(e.target.value))}
-              aria-label={t('glossary.page_size_label')}
-              className="h-7 rounded-md border bg-background px-1.5 text-[11px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
-            >
-              {[50, 100, 200].map((n) => (
-                <option key={n} value={n}>{t('glossary.page_size', { count: n })}</option>
-              ))}
-            </select>
-          </div>
-          <Pager
-            page={safePage}
-            pageCount={pageCount}
-            onPageChange={(p) => paged.setPage(Math.min(Math.max(0, p), pageCount - 1))}
-            labels={{ page: t('glossary.pager.page'), prev: t('glossary.pager.prev'), next: t('glossary.pager.next') }}
-          />
-        </div>
-      )}
+      </EntityListBrowser>
 
       {/* Bulk status action bar */}
       <FloatingActionBar visible={selectedIds.size > 0}>
