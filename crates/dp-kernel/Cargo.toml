@@ -57,7 +57,23 @@ sha2 = "0.10"
 # from here; the async with_timeout/retry/Bulkhead primitives stay local.
 breaker-core = { path = "../breaker-core" }
 
+# W2.5 / D-S6-BULKHEAD-SHUTTLE — `shuttle` is a custom cfg (RUSTFLAGS="--cfg
+# shuttle"), not a Cargo feature — declare it so the unexpected_cfgs lint stays
+# quiet on normal builds.
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(shuttle)'] }
+
 [dev-dependencies]
 # Test runtime for the EventStore integration test suite. Multi-thread flavor
 # matches the production runtime.
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "test-util"] }
+
+# W2.5 — only pulled under `RUSTFLAGS="--cfg shuttle"`. shuttle is a runtime
+# concurrency model-checker that reaches the async interleavings loom can't. It
+# does NOT rebuild tokio (unlike loom), so plain `--cfg shuttle` builds dp-kernel
+# cleanly; the gated test uses shuttle::sync only (it model-checks the bulkhead
+# ADMISSION algorithm — the production Bulkhead delegates the slot gate to
+# tokio::Semaphore, which shuttle can't intercept; see D-W2-BULKHEAD-SHUTTLE-LITERAL).
+# Run: `RUSTFLAGS="--cfg shuttle" cargo test -p dp-kernel bulkhead_shuttle`.
+[target.'cfg(shuttle)'.dev-dependencies]
+shuttle = "0.7"
