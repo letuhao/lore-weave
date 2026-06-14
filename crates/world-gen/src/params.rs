@@ -316,6 +316,133 @@ impl HydrologyParams {
     }
 }
 
+/// Settlement-placement tuning (was the `settlement.rs` consts: burg-score
+/// water bonuses + threshold, the target floor, the role-rank percentiles, and
+/// the per-climate habitability table). Defaults are the exact prior values
+/// (byte-identical). The `SettlementDensity` enum (cells-per-settlement,
+/// min-separation) stays settlement's high-level tier-1 knob.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SettlementParams {
+    /// Burg-score multiplier for a coastal cell (was `1.3`).
+    pub coast_bonus: f32,
+    /// Burg-score multiplier for a (non-coast) river cell (was `1.15`).
+    pub river_bonus: f32,
+    /// A cell is a placement candidate only if its burg score exceeds this
+    /// (was `0.05`).
+    pub burg_threshold: f32,
+    /// Minimum settlement target, so a tiny map isn't settlement-starved
+    /// (was `3`).
+    pub target_floor: u32,
+    // Role-by-burg-rank percentiles (ascending fraction cutoffs). CLAMP-NOT-
+    // VALIDATE: `resolved()` rails each to [0,1] but does NOT enforce the
+    // `city_frac ≤ town_frac ≤ village_frac` ordering — a non-ascending profile
+    // makes the higher roles unreachable (the if/else cascade short-circuits),
+    // which is odd-but-deterministic, never a panic. GIGO for a tuning surface.
+    pub city_frac: f32,
+    pub town_frac: f32,
+    pub village_frac: f32,
+    // Per-climate habitability multipliers (was the `climate_friendly` match).
+    pub habit_temperate: f32,
+    pub habit_mediterranean: f32,
+    pub habit_subtropical: f32,
+    pub habit_tropical: f32,
+    pub habit_boreal: f32,
+    pub habit_arid: f32,
+    pub habit_highland: f32,
+    pub habit_polar: f32,
+}
+
+impl Default for SettlementParams {
+    fn default() -> Self {
+        // Exact values that were hardcoded in `settlement.rs`.
+        SettlementParams {
+            coast_bonus: 1.3,
+            river_bonus: 1.15,
+            burg_threshold: 0.05,
+            target_floor: 3,
+            city_frac: 0.12,
+            town_frac: 0.34,
+            village_frac: 0.67,
+            habit_temperate: 1.0,
+            habit_mediterranean: 1.0,
+            habit_subtropical: 0.9,
+            habit_tropical: 0.7,
+            habit_boreal: 0.6,
+            habit_arid: 0.5,
+            habit_highland: 0.5,
+            habit_polar: 0.3,
+        }
+    }
+}
+
+impl SettlementParams {
+    /// Clamp every field to a sane rail (no panic). `k` reserved for call-shape
+    /// uniformity. Identity at default ⇒ byte-identical.
+    pub fn resolved(&self, _k: &IntensityKnobs) -> SettlementParams {
+        let mult = |v: f32| v.clamp(0.0, 100.0);
+        let frac = |v: f32| v.clamp(0.0, 1.0);
+        SettlementParams {
+            coast_bonus: mult(self.coast_bonus),
+            river_bonus: mult(self.river_bonus),
+            burg_threshold: self.burg_threshold.max(0.0),
+            target_floor: self.target_floor.max(1),
+            city_frac: frac(self.city_frac),
+            town_frac: frac(self.town_frac),
+            village_frac: frac(self.village_frac),
+            habit_temperate: mult(self.habit_temperate),
+            habit_mediterranean: mult(self.habit_mediterranean),
+            habit_subtropical: mult(self.habit_subtropical),
+            habit_tropical: mult(self.habit_tropical),
+            habit_boreal: mult(self.habit_boreal),
+            habit_arid: mult(self.habit_arid),
+            habit_highland: mult(self.habit_highland),
+            habit_polar: mult(self.habit_polar),
+        }
+    }
+}
+
+/// Route-network tuning (was the `routes.rs` consts: the MountainPass count, the
+/// road/trail population-tier gates, the navigable-river min run). Defaults are
+/// the exact prior values (byte-identical).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RouteParams {
+    /// Top-N Mountain/Hill chokepoint edges promoted to MountainPass (was `5`).
+    pub mountain_pass_target: u32,
+    /// Settlements with `population_tier ≥` this are Road-eligible (was `2`).
+    /// Filter-only ⇒ safe at any value (left unclamped). With the defaults the
+    /// road (`≥2`) and trail (`≤1`) sets partition the settlements; if a profile
+    /// sets `road_tier_min ≤ trail_tier_max` the sets *overlap* — a settlement
+    /// is then both a road node and a trail origin. `RouteSink` dedups by
+    /// `(kind, lo, hi)`, so the result is deterministic, just denser. GIGO.
+    pub road_tier_min: u32,
+    /// Settlements with `population_tier ≤` this get a Trail (was `1`).
+    pub trail_tier_max: u32,
+    /// Minimum consecutive navigable-river cells for a RiverNavigation route
+    /// (was `3`).
+    pub river_nav_min_run: u32,
+}
+
+impl Default for RouteParams {
+    fn default() -> Self {
+        RouteParams { mountain_pass_target: 5, road_tier_min: 2, trail_tier_max: 1, river_nav_min_run: 3 }
+    }
+}
+
+impl RouteParams {
+    /// Clamp to sane rails (no panic; `river_nav_min_run ≥ 2` so a run is a real
+    /// edge). `k` reserved for call-shape uniformity.
+    pub fn resolved(&self, _k: &IntensityKnobs) -> RouteParams {
+        RouteParams {
+            mountain_pass_target: self.mountain_pass_target.min(100_000),
+            road_tier_min: self.road_tier_min,
+            trail_tier_max: self.trail_tier_max,
+            river_nav_min_run: self.river_nav_min_run.max(2),
+        }
+    }
+}
+
 /// Continental relief, ocean bathymetry, quantize and heightmap-noise tuning
 /// (was the `terrain.rs` consts). Defaults are the exact prior values
 /// (byte-identical baseline). Noise *salts* and the fixed `ARCH_ISLANDS`
@@ -683,6 +810,41 @@ mod tests {
         assert_eq!(r.river_percentile, 1.0, "percentile clamps to [0,1]");
         assert_eq!(r.lake_max_divisor, 1, "divisor clamps ≥ 1 (no divide-by-zero)");
         assert_eq!(r.lake_max_floor, 1, "floor clamps ≥ 1");
+    }
+
+    #[test]
+    fn settlement_default_knobs_are_identity() {
+        let p = SettlementParams::default();
+        assert_eq!(p, p.resolved(&IntensityKnobs::default()), "default settlement must be identity");
+    }
+
+    #[test]
+    fn settlement_params_clamp_no_panic() {
+        let junk = SettlementParams {
+            city_frac: 9.0,
+            burg_threshold: -1.0,
+            target_floor: 0,
+            habit_polar: -3.0,
+            ..SettlementParams::default()
+        };
+        let r = junk.resolved(&IntensityKnobs::default());
+        assert_eq!(r.city_frac, 1.0, "frac clamps to [0,1]");
+        assert_eq!(r.burg_threshold, 0.0, "threshold clamps non-negative");
+        assert_eq!(r.target_floor, 1, "target_floor clamps ≥ 1");
+        assert_eq!(r.habit_polar, 0.0, "habitability clamps non-negative");
+    }
+
+    #[test]
+    fn route_default_knobs_are_identity() {
+        let p = RouteParams::default();
+        assert_eq!(p, p.resolved(&IntensityKnobs::default()), "default route must be identity");
+    }
+
+    #[test]
+    fn route_params_clamp_no_panic() {
+        let junk = RouteParams { river_nav_min_run: 0, ..RouteParams::default() };
+        let r = junk.resolved(&IntensityKnobs::default());
+        assert_eq!(r.river_nav_min_run, 2, "min run clamps ≥ 2 (a run is a real edge)");
     }
 
     #[test]

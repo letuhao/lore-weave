@@ -50,7 +50,8 @@ pub use creative_seed::{
     SettlementDensity, TerrainMode, WorldArchetype, WorldScale,
 };
 pub use params::{
-    ClimateParams, ErosionParams, HydrologyParams, IntensityKnobs, ReliefParams, TectonicsParams,
+    ClimateParams, ErosionParams, HydrologyParams, IntensityKnobs, ReliefParams, RouteParams,
+    SettlementParams, TectonicsParams,
 };
 pub use world_map::{
     BoundaryKind, Cell, Continent, County, CultureRegion, MountainRange, Plate, PlateBoundary,
@@ -149,7 +150,7 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
         provinces: nested.provinces,
         states: nested.states,
     };
-    let settlements = settlement::build(
+    let settlements = settlement::build_with(
         seed,
         &mesh.centers,
         &biome,
@@ -158,8 +159,9 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
         &hydro.is_coast,
         cs.settlement_density,
         &political,
+        &cs.settlement_params.resolved(&cs.intensity),
     );
-    let routes = routes::build(
+    let routes = routes::build_with(
         &mesh.centers,
         &mesh.neighbors,
         &biome,
@@ -167,6 +169,7 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
         hydro.river_threshold,
         &hydro.is_coast,
         &settlements,
+        &cs.route_params.resolved(&cs.intensity),
     );
     let culture = culture::build(seed, &mesh.centers, &mesh.neighbors, &biome, cs.culture_count);
 

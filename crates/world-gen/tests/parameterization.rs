@@ -7,8 +7,8 @@
 
 use world_gen::{
     BiomeKind, ClimateParams, CoastlineProfile, CreativeSeed, ErosionParams, ErosionStrength,
-    HydrologyParams, IntensityKnobs, ReliefParams, TectonicsParams, TerrainMode, WorldScale,
-    generate,
+    HydrologyParams, IntensityKnobs, ReliefParams, RouteParams, SettlementParams, TectonicsParams,
+    TerrainMode, WorldScale, generate,
 };
 
 fn hex(h: [u8; 32]) -> String {
@@ -81,6 +81,8 @@ fn explicit_default_params_equal_bare_default() {
         climate_params: ClimateParams::default(),
         erosion_params: ErosionParams::default(),
         hydrology_params: HydrologyParams::default(),
+        settlement_params: SettlementParams::default(),
+        route_params: RouteParams::default(),
         intensity: IntensityKnobs::default(),
         ..CreativeSeed::default()
     };
@@ -334,6 +336,69 @@ fn granular_climate_override_changes_the_world() {
         ..CreativeSeed::default()
     };
     assert_ne!(base, generate(7, &cold).content_hash, "a colder world must differ");
+}
+
+/// **A granular settlement override changes the world** (P5) — a high burg
+/// threshold suppresses placement (only force-placed Capitals survive), and the
+/// climate-habitability + role-percentile tables feed placement/role → hash.
+#[test]
+fn granular_settlement_override_changes_the_world() {
+    let base = generate(7, &CreativeSeed::default()).content_hash;
+    let sparse = CreativeSeed {
+        settlement_params: SettlementParams {
+            burg_threshold: 5.0,
+            habit_tropical: 3.0,
+            city_frac: 0.40,
+            ..SettlementParams::default()
+        },
+        ..CreativeSeed::default()
+    };
+    assert_ne!(base, generate(7, &sparse).content_hash, "settlement tuning must change the world");
+}
+
+/// **A granular route override changes the world** (P5) — a road tier gate above
+/// every settlement's tier removes the entire road/trail network.
+#[test]
+fn granular_route_override_changes_the_world() {
+    let base = generate(7, &CreativeSeed::default()).content_hash;
+    let no_roads = CreativeSeed {
+        // No settlement has tier ≥ 6 (max is 5) ⇒ no Road-eligible settlements.
+        route_params: RouteParams { road_tier_min: 6, ..RouteParams::default() },
+        ..CreativeSeed::default()
+    };
+    assert_ne!(base, generate(7, &no_roads).content_hash, "removing roads must change the world");
+}
+
+/// **Each `RouteParams` gate is wired (P5, review-impl #1)** — the override test
+/// above only exercises `road_tier_min`; this proves the other three fields are
+/// connected by zeroing out each route kind individually. (Seed-7 Continent has
+/// Trail=1, MtnPass=5, RiverNav=1 by default, so each removal is observable.)
+#[test]
+fn each_route_param_gate_is_wired() {
+    use world_gen::RouteKind;
+    let count = |rp: RouteParams, kind: RouteKind| {
+        let cs = CreativeSeed { route_params: rp, ..CreativeSeed::default() };
+        generate(7, &cs).routes.iter().filter(|r| r.kind == kind).count()
+    };
+    let def = RouteParams::default();
+    // trail_tier_max = 0 ⇒ no settlement has tier ≤ 0 ⇒ no Trails.
+    assert!(count(def, RouteKind::Trail) > 0, "seed-7 must have Trails by default");
+    assert_eq!(
+        count(RouteParams { trail_tier_max: 0, ..def }, RouteKind::Trail), 0,
+        "trail_tier_max must gate Trails"
+    );
+    // mountain_pass_target = 0 ⇒ take(0) ⇒ no MountainPass.
+    assert!(count(def, RouteKind::MountainPass) > 0, "seed-7 must have MountainPasses by default");
+    assert_eq!(
+        count(RouteParams { mountain_pass_target: 0, ..def }, RouteKind::MountainPass), 0,
+        "mountain_pass_target must gate MountainPass count"
+    );
+    // river_nav_min_run huge ⇒ no run is long enough ⇒ no RiverNavigation.
+    assert!(count(def, RouteKind::RiverNavigation) > 0, "seed-7 must have RiverNav by default");
+    assert_eq!(
+        count(RouteParams { river_nav_min_run: 100_000, ..def }, RouteKind::RiverNavigation), 0,
+        "river_nav_min_run must gate RiverNavigation"
+    );
 }
 
 /// An out-of-range knob is clamped, not panicked — generation still succeeds and

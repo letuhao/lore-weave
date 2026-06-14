@@ -3,19 +3,14 @@
 use crate::biome::BiomeKind;
 use crate::climate::ClimateZone;
 use crate::creative_seed::SettlementDensity;
+use crate::params::SettlementParams;
 use crate::pathfind;
 use crate::political::Political;
 use crate::rng::{self, Rng};
 use crate::world_map::{Settlement, SettlementRole};
 
-/// Build the settlement layer.
-// Eight pipeline inputs — each a distinct prior-stage array; bundling them
-// into a context struct would not reduce the real coupling.
-/// Build the settlement layer.
-///
-/// **Phase 1 Stage B (2026-05-20):** `centers` is now 3D unit-sphere points;
-/// the Poisson-disk spacing test uses great-circle angle in radians and the
-/// nearest-capital tie-break uses spherical distance (`1 − dot` surrogate).
+/// Build the settlement layer using the **default** tuning. Thin wrapper over
+/// [`build_with`] for callers that don't tune it (the civ adapter + tests).
 #[allow(clippy::too_many_arguments)]
 pub fn build(
     seed: u64,
@@ -26,6 +21,32 @@ pub fn build(
     is_coast: &[bool],
     density: SettlementDensity,
     political: &Political,
+) -> Vec<Settlement> {
+    build_with(
+        seed, centers, biomes, climate, river_flux, is_coast, density, political,
+        &SettlementParams::default(),
+    )
+}
+
+/// Build the settlement layer with caller-tuned [`SettlementParams`]
+/// (parameterization P5). Default params ⇒ byte-identical to the prior consts.
+// Nine pipeline inputs — each a distinct prior-stage array; bundling them
+// into a context struct would not reduce the real coupling.
+///
+/// **Phase 1 Stage B (2026-05-20):** `centers` is now 3D unit-sphere points;
+/// the Poisson-disk spacing test uses great-circle angle in radians and the
+/// nearest-capital tie-break uses spherical distance (`1 − dot` surrogate).
+#[allow(clippy::too_many_arguments)]
+pub fn build_with(
+    seed: u64,
+    centers: &[[f32; 3]],
+    biomes: &[BiomeKind],
+    climate: &[ClimateZone],
+    river_flux: &[f32],
+    is_coast: &[bool],
+    density: SettlementDensity,
+    political: &Political,
+    sp: &SettlementParams,
 ) -> Vec<Settlement> {
     let n = centers.len();
 
@@ -39,13 +60,13 @@ pub fn build(
         // `river_flux[i] > 0.0` (and the `burg > 0.05` / RNG conjuncts below)
         // are branches on identically-recomputed finite f32 ⇒ bit-stable.
         let water_bonus = if is_coast[i] {
-            1.3
+            sp.coast_bonus
         } else if river_flux[i] > 0.0 {
-            1.15
+            sp.river_bonus
         } else {
             1.0
         };
-        let b = biomes[i].population_potential() * water_bonus * climate_friendly(climate[i]);
+        let b = biomes[i].population_potential() * water_bonus * climate_friendly(climate[i], sp);
         burg[i] = b;
         max_burg = max_burg.max(b);
     }
@@ -63,7 +84,7 @@ pub fn build(
     // Floor the target so a small map (e.g. Pocket + Sparse, where the raw
     // divisor yields 0) is never settlement-starved — it would otherwise
     // carry only the force-placed Capitals.
-    let target = (land_count / density.cells_per_settlement()).max(3);
+    let target = (land_count / density.cells_per_settlement()).max(sp.target_floor as usize);
     // `density.min_separation()` is in `[0,1]²` units; scale to radians by
     // multiplying by π (the sphere's great-circle radius scale), so the
     // visual density resembles the prior look.
@@ -84,7 +105,7 @@ pub fn build(
         // is consumed only when the burg + spacing tests both pass
         // (byte-stability contract). `order` holds each land cell exactly
         // once, so a `!placed.contains(&c)` guard would be vacuous.
-        if burg[ci] > 0.05
+        if burg[ci] > sp.burg_threshold
             && pathfind::spaced_ok(c, &placed, centers, min_sep)
             && rng.next_f32() < burg[ci] / max_burg
         {
@@ -154,11 +175,11 @@ pub fn build(
     let total = ranked.len().max(1);
     for (rank, &si) in ranked.iter().enumerate() {
         let frac = rank as f32 / total as f32;
-        settlements[si].role = if frac < 0.12 {
+        settlements[si].role = if frac < sp.city_frac {
             SettlementRole::City
-        } else if frac < 0.34 {
+        } else if frac < sp.town_frac {
             SettlementRole::Town
-        } else if frac < 0.67 {
+        } else if frac < sp.village_frac {
             SettlementRole::Village
         } else {
             SettlementRole::Hamlet
@@ -186,14 +207,16 @@ pub fn build(
     settlements
 }
 
-/// Climate habitability multiplier for the burg score.
-fn climate_friendly(z: ClimateZone) -> f32 {
+/// Climate habitability multiplier for the burg score (P5: per-zone params).
+fn climate_friendly(z: ClimateZone, sp: &SettlementParams) -> f32 {
     match z {
-        ClimateZone::Temperate | ClimateZone::Mediterranean => 1.0,
-        ClimateZone::Subtropical => 0.9,
-        ClimateZone::Tropical => 0.7,
-        ClimateZone::Boreal => 0.6,
-        ClimateZone::Arid | ClimateZone::Highland => 0.5,
-        ClimateZone::Polar => 0.3,
+        ClimateZone::Temperate => sp.habit_temperate,
+        ClimateZone::Mediterranean => sp.habit_mediterranean,
+        ClimateZone::Subtropical => sp.habit_subtropical,
+        ClimateZone::Tropical => sp.habit_tropical,
+        ClimateZone::Boreal => sp.habit_boreal,
+        ClimateZone::Arid => sp.habit_arid,
+        ClimateZone::Highland => sp.habit_highland,
+        ClimateZone::Polar => sp.habit_polar,
     }
 }

@@ -67,10 +67,14 @@
 > threaded via `erosion::apply_with` + `hydrology::build_with` (config-aware
 > wrappers; old `apply`/`apply_scaled`/`build` keep default-table signatures so
 > the frozen `zonegen.rs` + `civ_adapter` are untouched). Stream-power `m`/`n`
-> stay fixed math. Byte-identical pins hold. **TOP NEXT (param arc): P5
-> `SettlementParams` + `RouteParams`** (density maps, burg scoring, role
-> percentiles, climate-habitability, pass count, tier gates —
-> `settlement.rs`/`routes.rs`).
+> stay fixed math. Byte-identical pins hold. **✅ P5 DONE** — `SettlementParams`
+> (burg water bonuses/threshold, target floor, role percentiles, 8-zone
+> habitability) + `RouteParams` (MountainPass count, road/trail tier gates,
+> river-nav min run) via `settlement::build_with` + `routes::build_with`
+> (wrappers keep `civ_adapter` on defaults). `SettlementDensity` enum stays
+> tier-1. Byte-identical pins hold. **TOP NEXT (param arc): P6
+> `PoliticalParams` + `CultureParams` + `HierarchyParams`** (count divisors,
+> spacing, subdivision targets — `political.rs`/`culture.rs`/`hierarchy.rs`).
 > *(Deferred P2 follow-up: Profile-only inline `height_at`/`apply_falloff` gate
 > literals — legacy path. Deferred P3 follow-up: moisture-transport consts +
 > cross-module `ClimateZone::wetness()` / `bias_delta` tables.)*
