@@ -286,3 +286,4 @@ services/knowledge-service/eval/rawsearch_eval_runs.jsonl
 
 # S12 scale-rig built binaries (cross-compiled bench; *.exe already covered)
 services/meta-worker/mwbench-linux
+tests/perf/roleplay-load/rpload
