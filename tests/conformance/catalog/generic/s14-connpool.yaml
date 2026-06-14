@@ -1,0 +1,7 @@
+id: s14-connpool
+description: "S14/D3 — connection-pool exhaustion at large N, LIVE. A dedicated throwaway PG with a low max_connections: a MaxConns-bounded pgxpool absorbs N>>cap callers (all complete by queueing, 0 connection-refused, pool drains after = recovery), while the bite (unbounded raw connections held at once, no pool) exhausts the server → FATAL 53300 'too many clients' → proves the bounded pool is what prevents exhaustion. Spins its own container; needs a docker host + go."
+invariant: I-s14-connpool-bounded-pool-prevents-exhaustion
+kind: live-probe
+command: ["bash", "scripts/perf/s14-connpool.sh", "smoke"]
+requires: ["scale-rig"]
+skip_when: []
