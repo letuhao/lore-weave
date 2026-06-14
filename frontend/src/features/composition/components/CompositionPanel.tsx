@@ -5,10 +5,12 @@
 // Render-only: all logic lives in the hooks.
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AddModelCta } from '@/components/shared/AddModelCta';
 import { aiModelsApi } from '../../ai-models/api';
+import { compositionApi } from '../api';
 import { useChapterScenes, useCreateScene, useCreateWork, useSetSceneStatus, useWorkResolution } from '../hooks/useWork';
+import { useGuidedFirstRun } from '../hooks/useGuidedFirstRun';
 import type { Work } from '../types';
 import { ComposeView } from './ComposeView';
 import { CoWriterChat } from './CoWriterChat';
@@ -42,6 +44,7 @@ type SubTab = 'compose' | 'cowriter' | 'assemble' | 'planner' | 'beats' | 'graph
 
 export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: sceneIdProp, onSceneChange }: Props) {
   const { t } = useTranslation('composition');
+  const qc = useQueryClient();
   const resolution = useWorkResolution(bookId, token);
   const createWork = useCreateWork(bookId, token);
   const [tab, setTab] = useState<SubTab>('compose');
@@ -77,11 +80,34 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
     select: (d) => d.items.filter((m) => m.is_active),
   });
 
+  const guidedSceneTitle = t('firstSceneTitle', { defaultValue: 'Opening scene' });
+  // C17 (WG-4) — guided first-run controller. Called BEFORE the early returns
+  // (rules-of-hooks); it no-ops until the Work resolves (workReady=!!work). Auto-pick
+  // the chat model ONLY when EXACTLY ONE is registered (hook returns undefined for
+  // 0/≥2 — never guess), derive whether a first scene is needed, and expose an
+  // explicit runGuided() that creates that one scene (no useEffect-for-events).
+  const guided = useGuidedFirstRun({
+    workReady: !!work,
+    scenes: scenes.data ?? [],
+    scenesLoading: scenes.isLoading,
+    models: models.data ?? [],
+    modelsLoading: models.isLoading,
+    createScene: (payload) => createScene.mutate(payload),
+    chapterId,
+    newSceneTitle: guidedSceneTitle,
+  });
+
   if (resolution.isLoading) return <Hint>{t('loading', { defaultValue: 'Loading co-writer…' })}</Hint>;
   if (res?.status === 'unavailable')
     return <Hint>{t('unavailable', { defaultValue: 'Grounding service unavailable.' })}</Hint>;
 
-  // No Work yet → offer to set it up (POST /work).
+  // No Work yet → offer to set it up (POST /work). C17 (WG-4) guided first-run:
+  // the SAME click chains the first scene so a fresh book reaches a primed Generate
+  // in ≤2 clicks (setup → Generate). The chain is a DIRECT side-effect of the
+  // explicit click via the mutation's onSuccess (the action origin) — NOT a
+  // useEffect reacting to the Work appearing. project_id can be null when the
+  // knowledge-service is down (C16 resilience, D-C16-NULL-WORK-ROUTE) — guard it:
+  // the writer still gets a Work, just not the auto-scene until backfill.
   if (!work) {
     return (
       <div className="flex flex-col gap-3 p-4">
@@ -90,7 +116,22 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
           data-testid="composition-setup-button"
           className="self-start rounded bg-indigo-600 px-3 py-1.5 text-sm text-white disabled:opacity-50"
           disabled={createWork.isPending}
-          onClick={() => createWork.mutate()}
+          onClick={() =>
+            createWork.mutate(undefined, {
+              onSuccess: (created) => {
+                if (!created?.project_id || !token) return;
+                // Claim the guided one-shot guard BEFORE the async scene create so
+                // the cue's "Start writing" button (briefly live until the outline
+                // refetch lands) can't create a SECOND scene — single first-scene
+                // per chapter across both origins (adversary C17 MAJOR fix).
+                guided.markFired();
+                void compositionApi
+                  .createNode(created.project_id, { kind: 'scene', chapter_id: chapterId, title: guidedSceneTitle }, token)
+                  .then(() => qc.invalidateQueries({ queryKey: ['composition', 'outline', created.project_id] }))
+                  .catch(() => { /* scene auto-create is best-effort; the writer can +Scene */ });
+              },
+            })
+          }
         >
           {t('setup', { defaultValue: 'Set up co-writer' })}
         </button>
@@ -111,7 +152,10 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
   // and no hidden stale model_ref reaches generation.
   const defaultModelRef = typeof work.settings?.default_model_ref === 'string' ? work.settings.default_model_ref : '';
   const defaultIsAvailable = !models.data || models.data.some((m) => m.user_model_id === defaultModelRef);
-  const effectiveModelRef = modelRef || (defaultIsAvailable ? defaultModelRef : '');
+  // Precedence: an explicit session pick > the persisted per-Work default (if still
+  // active) > the sole-registered model auto-pick. All DERIVED — no useEffect.
+  const effectiveModelRef =
+    modelRef || (defaultIsAvailable && defaultModelRef ? defaultModelRef : '') || (guided.soleModelId ?? '');
   // The selected model's metadata — hints for the server's auto-reasoning
   // strategy (adaptive pass-through vs our rule-based scorer).
   const selectedModel = models.data?.find((m) => m.user_model_id === effectiveModelRef);
@@ -221,6 +265,34 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
               defaultValue: 'Grounding gets richer after you build a knowledge graph, but it is optional — you can write now.',
             })}
           </span>
+        </div>
+      )}
+
+      {/* C17 (WG-4) — guided first-run cue. Once primed (a chat model is resolvable
+          and a scene exists or can be created) tell the writer exactly what to do
+          next, turning empty dropdowns into a primed Generate. When the Work has no
+          scene yet, the cue carries a prominent EXPLICIT "Start writing" action that
+          creates the first scene (direct handler → runGuided, no useEffect-for-events). */}
+      {guided.guidedCue && (
+        <div
+          data-testid="composition-guided-cue"
+          className="flex flex-wrap items-center gap-2 border-b border-neutral-200 px-2 py-1.5 text-xs text-neutral-600 dark:border-neutral-700 dark:text-neutral-300"
+        >
+          <span>
+            {guided.needsFirstScene
+              ? t('guidedCueStart', { defaultValue: 'Create your first scene, then write your opening and Generate — or Continue from your cursor in the editor.' })
+              : t('guidedCueReady', { defaultValue: 'Write your opening, then Generate — or Continue from your cursor in the editor.' })}
+          </span>
+          {guided.needsFirstScene && !guided.sceneFired && (
+            <button
+              data-testid="composition-guided-start"
+              className="rounded bg-indigo-600 px-2 py-1 text-xs text-white disabled:opacity-50"
+              disabled={createScene.isPending}
+              onClick={guided.runGuided}
+            >
+              {t('guidedStart', { defaultValue: 'Start writing' })}
+            </button>
+          )}
         </div>
       )}
 
