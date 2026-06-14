@@ -48,6 +48,12 @@ from app.db.neo4j_repos.entities import (
 )
 from app.db.neo4j_repos.entity_status import statuses_detail_at_order
 from app.db.neo4j_repos.facts import Fact, list_facts_for_entity
+from app.db.neo4j_repos.relations import (
+    SUBGRAPH_MAX_HOPS,
+    SUBGRAPH_MAX_NODE_CAP,
+    Subgraph,
+    get_project_subgraph,
+)
 from app.db.repositories import VersionMismatchError
 from app.db.repositories.entity_alias_map import EntityAliasMapRepo
 from app.db.repositories.projects import ProjectsRepo
@@ -713,6 +719,88 @@ async def get_project_gaps(
             limit=limit,
         )
     return GapReportResponse(gaps=gaps, total=len(gaps), min_mentions=min_mentions)
+
+
+# ── C18 (G5) — GET /projects/{id}/subgraph ───────────────────────────
+#
+# The project-wide read-only subgraph for the C19 graph canvas. Today
+# only a per-entity 1-hop read exists (`GET /entities/{id}`); the canvas
+# needs a project-level n-hop, node-capped view. This generalises the
+# 1-hop pattern into ``get_project_subgraph`` (relations repo) — a
+# two-stage Cypher (deterministic top-N seed nodes IN the query, then
+# only the edges between them) so a hub entity can never explode the
+# result. Returns RAW `{nodes, edges}` — NO server-side layout (the
+# canvas hand-rolls force/radial in C19). Read-only; partition-scoped
+# (the Cypher binds BOTH user_id AND project_id — no cross-project /
+# cross-user bleed).
+
+
+@entities_router.get(
+    "/projects/{project_id}/subgraph",
+    response_model=Subgraph,
+)
+async def get_project_subgraph_endpoint(
+    project_id: UUID = Path(
+        description="The knowledge project (book) whose subgraph to render.",
+    ),
+    hops: int = Query(
+        1,
+        ge=1,
+        le=SUBGRAPH_MAX_HOPS,
+        description=(
+            "Traversal depth for ego-expansion (only applies when `center` "
+            f"is set). 1–{SUBGRAPH_MAX_HOPS}. Ignored for the project-wide "
+            "view (no center)."
+        ),
+    ),
+    limit: int = Query(
+        200,
+        ge=1,
+        le=SUBGRAPH_MAX_NODE_CAP,
+        description=(
+            "Hard node cap. The endpoint returns at most this many nodes, "
+            "selected deterministically (anchor_score DESC, mention_count "
+            "DESC, id ASC) so the same query is stable across calls (powers "
+            "the canvas expand / load-more). Edges are only those between "
+            f"returned nodes. Max {SUBGRAPH_MAX_NODE_CAP}."
+        ),
+    ),
+    center: str | None = Query(
+        default=None,
+        min_length=1,
+        max_length=200,
+        description=(
+            "Optional entity id to ego-expand from — returns the `hops`-"
+            "bounded neighbourhood of this entity instead of the project-"
+            "wide top-N. Powers the canvas click-to-expand. A center that "
+            "doesn't exist / is cross-partition yields an empty subgraph."
+        ),
+    ),
+    user_id: UUID = Depends(get_current_user),
+) -> Subgraph:
+    """C18 (G5) — read-only project subgraph for the C19 canvas.
+
+    Returns `{nodes, edges}` for the `(user_id, project_id)` partition.
+    Multi-tenant + multi-project safety: `user_id` from JWT + the route
+    `project_id` are BOTH bound in the Cypher; the route never accepts a
+    user_id field, so a caller can't read another user's — or another
+    project's — graph. The node cap is enforced IN the query
+    (deterministic ORDER + LIMIT on the seed-node collection), never
+    post-filtered, so a hub entity can't OOM Neo4j.
+
+    Read-only: returns raw nodes + edges, no server-side layout. Editing
+    reuses the existing entity/relation dialogs (C19).
+    """
+    async with neo4j_session() as session:
+        subgraph = await get_project_subgraph(
+            session,
+            user_id=str(user_id),
+            project_id=str(project_id),
+            hops=hops,
+            limit=limit,
+            center=center,
+        )
+    return subgraph
 
 
 # ── C13 — GET /projects/{id}/glossary-entity-stats ───────────────────

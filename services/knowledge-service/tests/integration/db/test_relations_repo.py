@@ -28,6 +28,7 @@ from app.db.neo4j_repos.relations import (
     create_relation,
     find_relations_2hop,
     find_relations_for_entity,
+    get_project_subgraph,
     get_relation,
     invalidate_relation,
     relation_id,
@@ -47,11 +48,14 @@ async def test_user(neo4j_driver):
             )
 
 
-async def _entity(session, *, user_id: str, name: str, kind: str = "character"):
+async def _entity(
+    session, *, user_id: str, name: str, kind: str = "character",
+    project_id: str = "p-1",
+):
     return await merge_entity(
         session,
         user_id=user_id,
-        project_id="p-1",
+        project_id=project_id,
         name=name,
         kind=kind,
         source_type="book_content",
@@ -1009,3 +1013,132 @@ async def test_k11_6_r1_find_2hop_project_id_filter(neo4j_driver, test_user):
         )
         targets = {h.hop2.object_name for h in unscoped}
         assert targets == {"Crown", "Rogue"}
+
+
+# ── C18 — get_project_subgraph (live Neo4j) ───────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_c18_subgraph_partition_isolation(neo4j_driver, test_user):
+    """Project-wide subgraph returns ONLY the (user, project) partition —
+    no cross-project, no cross-user bleed (adversary F2, executed for
+    real against Neo4j, not a string assertion)."""
+    other_user = f"u-other-{uuid.uuid4().hex[:12]}"
+    try:
+        async with neo4j_driver.session() as session:
+            # project A (target)
+            a1 = await _entity(session, user_id=test_user, name="A1", project_id="pA")
+            a2 = await _entity(session, user_id=test_user, name="A2", project_id="pA")
+            await create_relation(
+                session, user_id=test_user, subject_id=a1.id,
+                predicate="ally_of", object_id=a2.id, confidence=0.9,
+            )
+            # project B (same user, different project) — must NOT appear
+            b1 = await _entity(session, user_id=test_user, name="B1", project_id="pB")
+            b2 = await _entity(session, user_id=test_user, name="B2", project_id="pB")
+            await create_relation(
+                session, user_id=test_user, subject_id=b1.id,
+                predicate="ally_of", object_id=b2.id, confidence=0.9,
+            )
+            # other user, project A name collision — must NOT appear
+            o1 = await _entity(session, user_id=other_user, name="A1", project_id="pA")
+            o2 = await _entity(session, user_id=other_user, name="A2", project_id="pA")
+            await create_relation(
+                session, user_id=other_user, subject_id=o1.id,
+                predicate="ally_of", object_id=o2.id, confidence=0.9,
+            )
+
+            sg = await get_project_subgraph(
+                session, user_id=test_user, project_id="pA",
+            )
+        ids = {n.id for n in sg.nodes}
+        assert ids == {a1.id, a2.id}, "only project-A nodes for this user"
+        assert b1.id not in ids and b2.id not in ids, "cross-project bleed"
+        assert o1.id not in ids and o2.id not in ids, "cross-user bleed"
+        # the single in-partition edge is present, no foreign edges
+        assert len(sg.edges) == 1
+        edge_endpoints = {sg.edges[0].source, sg.edges[0].target}
+        assert edge_endpoints == {a1.id, a2.id}
+    finally:
+        async with neo4j_driver.session() as session:
+            await session.run(
+                "MATCH (e:Entity {user_id: $u}) DETACH DELETE e", u=other_user,
+            )
+
+
+@pytest.mark.asyncio
+async def test_c18_subgraph_node_cap_and_determinism(neo4j_driver, test_user):
+    """The node cap is honoured AND the same query returns the same
+    capped node set across calls (deterministic order — C19 stability)."""
+    async with neo4j_driver.session() as session:
+        ents = []
+        for i in range(8):
+            ents.append(
+                await _entity(
+                    session, user_id=test_user, name=f"N{i:02d}", project_id="pC",
+                )
+            )
+        sg1 = await get_project_subgraph(
+            session, user_id=test_user, project_id="pC", limit=5,
+        )
+        sg2 = await get_project_subgraph(
+            session, user_id=test_user, project_id="pC", limit=5,
+        )
+    assert len(sg1.nodes) == 5, "node cap honoured"
+    assert sg1.node_cap_hit is True
+    assert [n.id for n in sg1.nodes] == [n.id for n in sg2.nodes], "deterministic"
+
+
+@pytest.mark.asyncio
+async def test_c18_subgraph_ego_expansion_bounded(neo4j_driver, test_user):
+    """Ego-expansion from a center returns the hop-bounded neighbourhood,
+    partition-scoped, with the center included. 1 hop reaches direct
+    neighbours only; a 2-hop-away node is excluded at hops=1."""
+    async with neo4j_driver.session() as session:
+        center = await _entity(session, user_id=test_user, name="Center", project_id="pE")
+        near = await _entity(session, user_id=test_user, name="Near", project_id="pE")
+        far = await _entity(session, user_id=test_user, name="Far", project_id="pE")
+        await create_relation(
+            session, user_id=test_user, subject_id=center.id,
+            predicate="ally_of", object_id=near.id, confidence=0.9,
+        )
+        await create_relation(
+            session, user_id=test_user, subject_id=near.id,
+            predicate="ally_of", object_id=far.id, confidence=0.9,
+        )
+        sg1 = await get_project_subgraph(
+            session, user_id=test_user, project_id="pE", center=center.id, hops=1,
+        )
+        sg2 = await get_project_subgraph(
+            session, user_id=test_user, project_id="pE", center=center.id, hops=2,
+        )
+    ids1 = {n.id for n in sg1.nodes}
+    assert center.id in ids1 and near.id in ids1
+    assert far.id not in ids1, "2-hop node must not appear at hops=1"
+    ids2 = {n.id for n in sg2.nodes}
+    assert far.id in ids2, "2-hop node reachable at hops=2"
+
+
+@pytest.mark.asyncio
+async def test_c18_subgraph_excludes_inactive_edges(neo4j_driver, test_user):
+    """Low-confidence / invalidated edges are excluded; a node reachable
+    only via a quarantined edge does not appear as an orphan (F3)."""
+    async with neo4j_driver.session() as session:
+        c = await _entity(session, user_id=test_user, name="C", project_id="pF")
+        good = await _entity(session, user_id=test_user, name="Good", project_id="pF")
+        quarantined = await _entity(session, user_id=test_user, name="Quar", project_id="pF")
+        await create_relation(
+            session, user_id=test_user, subject_id=c.id,
+            predicate="ally_of", object_id=good.id, confidence=0.9,
+        )
+        # below the default 0.8 min_confidence → must be excluded
+        await create_relation(
+            session, user_id=test_user, subject_id=c.id,
+            predicate="ally_of", object_id=quarantined.id, confidence=0.3,
+        )
+        sg = await get_project_subgraph(
+            session, user_id=test_user, project_id="pF", center=c.id, hops=1,
+        )
+    ids = {n.id for n in sg.nodes}
+    assert good.id in ids
+    assert quarantined.id not in ids, "node reachable only via a low-conf edge is excluded"
