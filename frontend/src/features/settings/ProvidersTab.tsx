@@ -9,6 +9,7 @@ import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { providerApi, type ProviderCredential, type UserModel, type APIStandard } from './api';
 import { AddModelModal } from './AddModelModal';
 import { EditModelModal } from './EditModelModal';
+import { DefaultModelsCard } from './DefaultModelsCard';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -253,6 +254,10 @@ export function ProvidersTab() {
           {t('providers.add_provider')}
         </button>
       </div>
+
+      {/* Per-user default models (rerank/embedding) — restores the default-model
+          UX (BYOK) consumed by raw search. */}
+      <DefaultModelsCard />
 
       <div className="space-y-3">
         {/* Configured providers */}

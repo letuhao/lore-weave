@@ -92,6 +92,23 @@ export type InventoryModel = {
 // rename can't silently re-introduce drift (the wiring test asserts the picker
 // filters on exactly this token).
 export const RERANK_CAPABILITY = 'rerank' as const;
+export const EMBEDDING_CAPABILITY = 'embedding' as const;
+
+// Per-user DEFAULT model per capability (rerank/embedding). The default is the
+// user's own BYOK user_model, resolved server-side by provider-registry — it
+// restores the default-model UX the removed RERANK_URL/_MODEL .env config gave,
+// the BYOK way. Consumers (raw search) fall back to it when no scope model is set.
+export const defaultModelsApi = {
+  get(token: string) {
+    return apiJson<{ defaults: Record<string, string> }>('/v1/model-registry/default-models', { token });
+  },
+  set(token: string, capability: string, userModelId: string | null) {
+    return apiJson<{ capability: string; user_model_id: string | null }>(
+      `/v1/model-registry/default-models/${capability}`,
+      { method: 'PUT', token, body: JSON.stringify({ user_model_id: userModelId }) },
+    );
+  },
+};
 
 export type CapabilityType = 'chat' | 'embedding' | 'tts' | 'stt' | 'image_gen' | 'moderation' | 'rerank';
 

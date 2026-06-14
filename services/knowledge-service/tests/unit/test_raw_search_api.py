@@ -111,6 +111,7 @@ def _make_client(project=_SENT, lexical=_SENT):
                 for i in range(len(documents))]
     reranker = MagicMock()
     reranker.rerank = AsyncMock(side_effect=_passthrough)
+    reranker.get_default_rerank = AsyncMock(return_value=None)
 
     app.dependency_overrides[get_current_user] = lambda: _USER
     app.dependency_overrides[get_projects_repo] = lambda: projects_repo
@@ -358,6 +359,8 @@ def _override_reranker(return_value=None, side_effect=None):
     from app.deps import get_reranker_client
     rr = MagicMock()
     rr.rerank = AsyncMock(return_value=return_value, side_effect=side_effect)
+    # No user-level default by default; the rerank gate resolves project model first.
+    rr.get_default_rerank = AsyncMock(return_value=None)
     app.dependency_overrides[get_reranker_client] = lambda: rr
     return rr
 

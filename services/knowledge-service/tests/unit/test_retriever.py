@@ -82,6 +82,9 @@ def _clients(lex_hits=None, passage_hits=None, rerank_passthrough=True):
         rr.rerank = AsyncMock(side_effect=_pass)
     else:
         rr.rerank = AsyncMock(return_value=None)
+    # No user-level default rerank model by default; tests override to exercise the
+    # project-unset → user-default fallback.
+    rr.get_default_rerank = AsyncMock(return_value=None)
     return book, embed, rr
 
 
@@ -155,3 +158,42 @@ async def test_lexical_mode_skips_rerank(embed, find):
     rr.rerank.assert_not_awaited()  # lexical is clean → no rerank
     embed.assert_not_awaited()      # semantic leg skipped
     assert [h["surface"] for h in out.hits] == ["draft"]
+
+
+@pytest.mark.asyncio
+@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
+async def test_no_project_rerank_falls_back_to_user_default(embed, find):
+    # Project has NO per-project rerank model, but the user has a DEFAULT rerank
+    # model (provider-registry user_default_models) → rerank runs with it.
+    embed.return_value = [0.1] * 1024
+    find.return_value = [_passage_hit()]
+    book, emb, rr = _clients(lex_hits=[_lex_hit()])
+    rr.get_default_rerank = AsyncMock(return_value="44444444-4444-4444-4444-444444444444")
+    out = await run_hybrid_search(
+        user_id=_USER, book_id=_BOOK, query="姜子牙", project=_project(rerank_model=None),
+        book_client=book, embedding_client=emb, reranker_client=rr,
+    )
+    rr.get_default_rerank.assert_awaited_once()
+    rr.rerank.assert_awaited()  # ran via the user-default model
+    # the resolved default model_ref is passed through to the rerank call
+    assert rr.rerank.await_args.kwargs["model_ref"] == "44444444-4444-4444-4444-444444444444"
+    assert "rerank" not in out.degraded
+
+
+@pytest.mark.asyncio
+@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
+async def test_no_rerank_anywhere_marks_not_configured(embed, find):
+    # No per-project model AND no user default → skip rerank, mark degraded.
+    embed.return_value = [0.1] * 1024
+    find.return_value = [_passage_hit()]
+    book, emb, rr = _clients(lex_hits=[_lex_hit()])  # get_default_rerank → None
+    out = await run_hybrid_search(
+        user_id=_USER, book_id=_BOOK, query="姜子牙", project=_project(rerank_model=None),
+        book_client=book, embedding_client=emb, reranker_client=rr,
+    )
+    rr.rerank.assert_not_awaited()
+    assert out.degraded.get("rerank") == "not_configured"

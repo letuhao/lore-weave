@@ -262,6 +262,19 @@ CREATE TABLE IF NOT EXISTS job_event_outbox (
 );
 CREATE INDEX IF NOT EXISTS idx_job_event_outbox_unpublished
   ON job_event_outbox(id) WHERE published_at IS NULL;
+
+-- Per-user DEFAULT model for a capability (rerank/embedding/...). Restores the
+-- BYOK default-model UX that the removed RERANK_URL/_MODEL .env config provided
+-- (D-RERANK-NOT-BYOK): the default is the user's own user_model, never platform
+-- config. One row per (user, capability); the user_model FK cascades a clear when
+-- the model is deleted. Consumers resolve via GET /internal/default-models/{cap}.
+CREATE TABLE IF NOT EXISTS user_default_models (
+  owner_user_id  UUID NOT NULL,
+  capability     TEXT NOT NULL,
+  user_model_id  UUID NOT NULL REFERENCES user_models(user_model_id) ON DELETE CASCADE,
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (owner_user_id, capability)
+);
 `
 
 func Up(ctx context.Context, pool *pgxpool.Pool) error {

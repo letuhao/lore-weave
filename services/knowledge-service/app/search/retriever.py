@@ -227,15 +227,19 @@ async def run_hybrid_search(
     fused = rrf_fuse([lexical_hits, semantic_hits])
     # E5B: cross-encoder rerank for semantic/hybrid (where junk leaks). Lexical
     # mode is already clean (exact substring) so it skips rerank + stays fast.
-    # D-RERANK-NOT-BYOK: rerank is OPTIONAL — only when the project has a BYOK
-    # rerank model; no model ⇒ skip the step (keep fusion order, mark degraded).
-    if (
-        rerank
-        and settings.rerank_enabled
-        and mode != "lexical"
-        and fused
-        and project.rerank_model
-    ):
+    # D-RERANK-NOT-BYOK: rerank is OPTIONAL and BYOK. Resolve the effective model =
+    # the project's per-project rerank model, else the user's DEFAULT rerank model
+    # (provider-registry user_default_models) — the default restores the UX the
+    # removed RERANK_URL/_MODEL .env config gave. No model anywhere ⇒ skip (keep
+    # fusion order, mark degraded).
+    want_rerank = rerank and settings.rerank_enabled and mode != "lexical" and bool(fused)
+    effective_ref = project.rerank_model
+    effective_source = project.rerank_model_source
+    if want_rerank and not effective_ref:
+        default_ref = await reranker_client.get_default_rerank(str(user_id))
+        if default_ref:
+            effective_ref, effective_source = default_ref, "user_model"
+    if want_rerank and effective_ref:
         floor = settings.min_rerank_score if min_rerank_score is None else min_rerank_score
         fused = await apply_rerank(
             q, fused, reranker_client,
@@ -245,10 +249,10 @@ async def run_hybrid_search(
             min_rerank_score=floor,
             degraded=degraded,
             user_id=str(user_id),
-            model_source=project.rerank_model_source,
-            model_ref=project.rerank_model,
+            model_source=effective_source,
+            model_ref=effective_ref,
         )
-    elif rerank and settings.rerank_enabled and mode != "lexical" and fused and not project.rerank_model:
+    elif want_rerank and not effective_ref:
         degraded["rerank"] = "not_configured"
     fused = apply_relevance_floor(fused, min_relevance)
     # chapter mode (cap=1) = one best row per chapter (navigate); block mode

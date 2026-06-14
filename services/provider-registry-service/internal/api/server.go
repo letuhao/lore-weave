@@ -353,6 +353,11 @@ func (s *Server) Router() http.Handler {
 		r.Put("/user-models/{user_model_id}/tags", s.putUserModelTags)
 		r.Post("/user-models/{user_model_id}/verify", s.verifyUserModel)
 
+		// Per-user default model per capability (rerank/embedding). Restores the
+		// default-model UX (BYOK) — consumers resolve via /internal/default-models.
+		r.Get("/default-models", s.getDefaultModels)
+		r.Put("/default-models/{capability}", s.putDefaultModel)
+
 		r.Get("/platform-models", s.listPlatformModels)
 		r.Post("/platform-models", s.createPlatformModel)
 		r.Patch("/platform-models/{platform_model_id}", s.patchPlatformModel)
@@ -395,6 +400,7 @@ func (s *Server) Router() http.Handler {
 		r.HandleFunc("/proxy/*", s.internalProxy)
 		r.Post("/embed", s.internalEmbed)
 		r.Post("/rerank", s.internalRerank) // E5B — cross-encoder rerank (platform service)
+		r.Get("/default-models/{capability}", s.internalGetDefaultModel) // per-user default model fallback
 
 		// S5a — campaign cost-estimate pricing oracle (token-count → USD).
 		r.Post("/billing/estimate", s.internalBillingEstimate)
