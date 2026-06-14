@@ -99,6 +99,7 @@
     "estimated": "估算：{{tokens}}",
     "draftNote": "所有新實體以草稿狀態建立 — 在詞彙表分頁中審核",
     "viewGlossary": "在詞彙表中審核",
+    "runAgain": "再次擷取",
     "close": "關閉"
   },
   "button": {

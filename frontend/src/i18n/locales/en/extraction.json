@@ -99,6 +99,7 @@
     "estimated": "Estimated: {{tokens}}",
     "draftNote": "All new entities created as draft — review in Glossary tab",
     "viewGlossary": "Review in Glossary",
+    "runAgain": "Extract again",
     "close": "Close"
   },
   "button": {

@@ -99,6 +99,7 @@
     "estimated": "見積もり: {{tokens}}",
     "draftNote": "新規エンティティはすべて下書きとして作成 — 用語集タブで確認",
     "viewGlossary": "用語集で確認",
+    "runAgain": "再度抽出",
     "close": "閉じる"
   },
   "button": {

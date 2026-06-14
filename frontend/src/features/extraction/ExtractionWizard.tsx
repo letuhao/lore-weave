@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X } from 'lucide-react';
 import { useExtractionState, type WizardMode, type WizardStep } from './useExtractionState';
@@ -37,6 +38,7 @@ export function ExtractionWizard({
   const { t } = useTranslation('extraction');
   const {
     state,
+    reset,
     goNext,
     goBack,
     goToStep,
@@ -52,6 +54,14 @@ export function ExtractionWizard({
     setFinalJobStatus,
     canClose,
   } = useExtractionState(mode, preselectedChapterIds);
+
+  // Re-seed on reopen so a finished run doesn't leave the wizard stuck on the
+  // stale results step (previously required an F5). Mirrors GlossaryTranslateWizard.
+  const wasOpenRef = useRef(false);
+  useEffect(() => {
+    if (open && !wasOpenRef.current) reset();
+    wasOpenRef.current = open;
+  }, [open, reset]);
 
   if (!open) return null;
 
@@ -129,6 +139,7 @@ export function ExtractionWizard({
             costEstimate={state.costEstimate}
             onClose={handleClose}
             onViewGlossary={handleClose}
+            onRestart={reset}
           />
         ) : null;
     }

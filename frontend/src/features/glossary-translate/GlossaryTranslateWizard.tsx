@@ -121,6 +121,7 @@ export function GlossaryTranslateWizard({
             costEstimate={state.costEstimate}
             onClose={handleClose}
             onViewGlossary={handleClose}
+            onRestart={reset}
           />
         ) : null;
     }

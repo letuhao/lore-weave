@@ -76,6 +76,7 @@
     "noEntities": "所有屬性在此語言已有翻譯，或沒有原文文字。",
     "machineNote": "翻譯以機器信心度儲存 — 請在實體編輯器中檢視並驗證。",
     "viewGlossary": "在詞彙中檢視",
+    "runAgain": "再次翻譯",
     "close": "關閉"
   },
   "button": {

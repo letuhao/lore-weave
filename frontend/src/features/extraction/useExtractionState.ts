@@ -26,10 +26,9 @@ export type WizardState = {
   finalJobStatus: ExtractionJobStatus | null;
 };
 
-export function useExtractionState(mode: WizardMode, preselectedChapterIds?: string[]) {
+function initialState(mode: WizardMode, preselectedChapterIds?: string[]): WizardState {
   const steps = mode === 'single' ? SINGLE_STEPS : BATCH_STEPS;
-
-  const [state, setState] = useState<WizardState>({
+  return {
     mode,
     step: steps[0],
     stepIndex: 0,
@@ -45,7 +44,17 @@ export function useExtractionState(mode: WizardMode, preselectedChapterIds?: str
     selectedModelName: '',
     thinkingEnabled: false,
     finalJobStatus: null,
-  });
+  };
+}
+
+export function useExtractionState(mode: WizardMode, preselectedChapterIds?: string[]) {
+  const [state, setState] = useState<WizardState>(() => initialState(mode, preselectedChapterIds));
+
+  /** Re-seed the whole wizard back to step 0 — used to start a fresh run from the
+   *  results screen (or on reopen) without a full page reload. */
+  const reset = useCallback(() => {
+    setState(initialState(mode, preselectedChapterIds));
+  }, [mode, preselectedChapterIds]);
 
   const goNext = useCallback(() => {
     setState((prev) => {
@@ -114,6 +123,7 @@ export function useExtractionState(mode: WizardMode, preselectedChapterIds?: str
 
   return {
     state,
+    reset,
     goNext,
     goBack,
     goToStep,

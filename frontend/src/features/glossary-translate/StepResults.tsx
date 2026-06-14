@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { CheckCircle2, XCircle, AlertTriangle, BookOpen } from 'lucide-react';
+import { CheckCircle2, XCircle, AlertTriangle, BookOpen, RotateCcw } from 'lucide-react';
 import type { GlossaryTranslateJobStatus, GlossaryTranslateCostEstimate } from './types';
 import { cn } from '@/lib/utils';
 
@@ -8,6 +8,8 @@ interface StepResultsProps {
   costEstimate: GlossaryTranslateCostEstimate | null;
   onClose: () => void;
   onViewGlossary: () => void;
+  /** Re-seed the wizard to step 0 to run another translation without reopening. */
+  onRestart: () => void;
 }
 
 function formatTokens(n: number): string {
@@ -26,7 +28,7 @@ function formatDuration(startedAt: string | null, finishedAt: string | null): st
   return `${mins}m ${remSecs}s`;
 }
 
-export function StepResults({ jobStatus, costEstimate, onClose, onViewGlossary }: StepResultsProps) {
+export function StepResults({ jobStatus, costEstimate, onClose, onViewGlossary, onRestart }: StepResultsProps) {
   const { t } = useTranslation('glossaryTranslate');
 
   const s = jobStatus;
@@ -133,20 +135,29 @@ export function StepResults({ jobStatus, costEstimate, onClose, onViewGlossary }
         <p className="text-[10px] text-muted-foreground">{t('results.machineNote')}</p>
       )}
 
-      <div className="flex items-center justify-end gap-2 pt-1">
+      <div className="flex items-center justify-between gap-2 pt-1">
         <button
-          onClick={onClose}
-          className="rounded-md border px-4 py-1.5 text-xs font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+          onClick={onRestart}
+          className="inline-flex items-center gap-1.5 rounded-md border px-4 py-1.5 text-xs font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
         >
-          {t('results.close')}
+          <RotateCcw className="h-3.5 w-3.5" />
+          {t('results.runAgain')}
         </button>
-        <button
-          onClick={onViewGlossary}
-          className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-        >
-          <BookOpen className="h-3.5 w-3.5" />
-          {t('results.viewGlossary')}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onClose}
+            className="rounded-md border px-4 py-1.5 text-xs font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+          >
+            {t('results.close')}
+          </button>
+          <button
+            onClick={onViewGlossary}
+            className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+          >
+            <BookOpen className="h-3.5 w-3.5" />
+            {t('results.viewGlossary')}
+          </button>
+        </div>
       </div>
     </div>
   );

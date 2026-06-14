@@ -76,6 +76,7 @@
     "noEntities": "All entity attributes already have translations in this language, or no attributes have source text.",
     "machineNote": "Translations are saved as machine confidence — review and verify in the entity editor.",
     "viewGlossary": "Review in Glossary",
+    "runAgain": "Translate again",
     "close": "Close"
   },
   "button": {
