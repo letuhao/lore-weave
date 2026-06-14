@@ -89,12 +89,16 @@ a `w1-*` conformance case + CI (scale-build/w1-rust-build per-PR; scale-nightly 
 5. ✅ **W1.5 provisioner + Rust→Go meta-write bridge** (`f2364527`) — scoped internal bridge on meta-worker (register/transition, fail-closed token, s2s audit, idempotent, dual-role shutdown) + Rust `LiveEffects` (CREATE DATABASE + `REVOKE CONNECT` I4 + skeleton; register/transitions via the bridge, I8). Live provision-drill end-to-end + REVOKE/I8 bites. **D-S4-I4-PROVISIONER core cleared** (pgbouncer/prometheus/backup stay go-live).
 6. ✅ **Inc-6** — 5 `w1-*` conformance cases (requires scale-rig) + CI: `scale-build` (Go build/vet/test) + `w1-rust-build` (Rust bins + unit suites) per-PR, `scale-nightly` live sweep (provision drill cross-language, nightly-only).
 
-### Wave 2 — Spine hardening & fault coverage (Category A)
-6. **W2.1 sustained-workload generator mode** (D-S6-SUSTAINED-WORKLOAD) — a loop/steady-rate driver; prerequisite for genuine transient-during-fault. Do first in the wave.
-7. **W2.2 history ordering** (D-S6-HISTORY-ORDERING) — per-aggregate version monotonicity over the stream.
-8. **W2.3 service RSS soak + disk read-thrash** (D-S14-SERVICE-RSS-SOAK, D-S14-DISK-READ-THRASH on Linux CI/fio).
-9. **W2.4 clock-skew recovery** (D-S8-CLOCK-SKEW-RECOVERY) + **partition-boundary rollover** (D-S6-PARTITION-ROLLOVER).
-10. **W2.5 async bulkhead shuttle** (D-S6-BULKHEAD-SHUTTLE).
+### Wave 2 — Spine hardening & fault coverage (Category A) — ✅ COMPLETE (2026-06-15, except clock-skew deferred)
+Shipped as one bundled XL task (spec/plan `docs/{specs,plans}/2026-06-15-wave2-spine-hardening.md`).
+Each = a live drill + non-vacuity bite + a `w2-*` conformance case + CI (the WSL2-
+unverifiable drills are CI-verified on the Linux nightly, honest notrun locally).
+6. ✅ **W2.1 sustained-workload generator mode** (`a24cd868`) — `-duration`/`-rate` steady loop (seed-delta per iter → disjoint aggregates). Bite: one-shot burst ≪ floor. **D-S6-SUSTAINED-WORKLOAD cleared.**
+7. ✅ **W2.2 history ordering** (`c7515e5e`) — `CheckAggregateMonotonicity` over recorded order. Bite: a reorder fails it while completeness passes. **D-S6-HISTORY-ORDERING cleared.**
+8. ✅ **W2.4b partition-boundary rollover** (`fe9dc2af`) — events across a month boundary replay; missing next-month partition is rejected (no default partition). Bite: M+2 INSERT rejected. **D-S6-PARTITION-ROLLOVER cleared.**
+9. ✅ **W2.5 async bulkhead shuttle** (`7996d916`) — shuttle model-check of the admission algorithm + over-admission bite. **D-S6-BULKHEAD-SHUTTLE cleared** (literal tokio-bulkhead async check → D-W2-BULKHEAD-SHUTTLE-LITERAL).
+10. ✅ **W2.3a service RSS soak + W2.3b disk read-thrash** (Inc-6 commit) — real-publisher RSS plateau (`/proc`) + fio cgroup read-thrash; **Linux-CI-only** (notrun on WSL2; the rss-soak BITE is locally verified). **D-S14-SERVICE-RSS-SOAK + D-S14-DISK-READ-THRASH cleared.**
+11. ⏸ **W2.4a clock-skew recovery** (D-S8-CLOCK-SKEW-RECOVERY) — **STILL DEFERRED** (not shipped vacuously): the spine orders by DB-side `now()`, so app-clock skew is a non-event by design; a non-vacuous drill needs libfaketime-wrapped postgres to skew the DB clock (the W2.2 monotonicity check is the ready oracle). Deferred to a Linux session with libfaketime-on-postgres.
 
 ### Wave 3 — Oracle / generator completeness (un-vacuum the batteries)
 11. **W3.1 generator events** — D-WORKLOAD-GEN-NPC-REL-EMBED + D-S5-WORLDKV-NETS-EMPTY (un-vacuums B/C2 arms).

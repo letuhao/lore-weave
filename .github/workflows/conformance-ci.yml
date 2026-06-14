@@ -71,6 +71,24 @@ jobs:
           RUSTFLAGS: "--cfg loom"
         run: cargo test -p breaker-core loom_tests
 
+  bulkhead-shuttle:
+    name: W2.5 bulkhead shuttle race-check (per-PR)
+    # W2.5 / D-S6-BULKHEAD-SHUTTLE. shuttle model-checks the bulkhead ADMISSION
+    # algorithm (the literal tokio Bulkhead delegates its slot gate to
+    # tokio::Semaphore, which shuttle can't intercept — see the test's SCOPE note
+    # + D-W2-BULKHEAD-SHUTTLE-LITERAL). CPU-only + fast → gates per-PR like
+    # loom-ci. The bite (should_panic) proves shuttle explores interleavings.
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: shuttle model-check (bulkhead admission)
+        env:
+          RUSTFLAGS: "--cfg shuttle"
+        run: cargo test -p dp-kernel --test bulkhead_shuttle
+
   standing-integrity-nightly:
     name: Standing integrity + S6 fault drills (nightly — live battery)
     # S5 (Battery B). Unlike the bare-runner job above, this boots the foundation
@@ -395,12 +413,20 @@ jobs:
           go build -C services/meta-worker ./cmd/closure-drill ./cmd/bridge-server ./pkg/closure ./pkg/bridge
           go vet  -C services/meta-worker ./cmd/closure-drill ./cmd/bridge-server ./pkg/closure ./pkg/bridge
           go test -C services/meta-worker ./pkg/closure/... ./pkg/bridge/...
-      - name: shellcheck the scale + L1 + S14 + W1 scripts (smoke)
+      - name: build + vet + test the W2 spine-hardening Go tooling
+        run: |
+          # W2.1 sustained-workload mode + W2.2 history-ordering live in the
+          # workload-gen module; go test covers paceSleep + the monotonicity checker.
+          go build -C tests/workload-gen ./...
+          go vet  -C tests/workload-gen ./...
+          go test -C tests/workload-gen ./cmd/... ./internal/ledger/...
+      - name: shellcheck the scale + L1 + S14 + W1 + W2 scripts (smoke)
         run: |
           for s in scale-rig shared-path roleplay-load soak multishard-dr \
                    l1-lifecycle l1-capacity l1-migration l1-relocate \
                    s14-disk s14-memory s14-connpool s14-deadlock \
-                   w1-capacity w1-migrate w1-freeze w1-closure w1-provision; do
+                   w1-capacity w1-migrate w1-freeze w1-closure w1-provision \
+                   w2-sustained w2-history w2-partition w2-rss-soak w2-disk-read; do
             bash -n "scripts/perf/${s}.sh"
           done
 
@@ -538,3 +564,26 @@ jobs:
         run: |
           set +e; bash scripts/perf/w1-provision.sh smoke; rc=$?; set -e
           echo "w1-provision rc=$rc"; [ "$rc" = 1 ] && exit 1 || exit 0
+      # ── W2 spine-hardening live sweep (rides the booted scale rig). The
+      #    Linux-only drills (rss-soak service half, disk-read) actually RUN here
+      #    (they notrun on the WSL2 dev box). Each self-migrates / self-detects.
+      - name: W2.1 sustained-workload mode + bite
+        run: |
+          set +e; bash scripts/perf/w2-sustained.sh smoke; rc=$?; set -e
+          echo "w2-sustained rc=$rc (0=pass,2=notrun)"; [ "$rc" = 1 ] && exit 1 || exit 0
+      - name: W2.2 history-ordering monotonicity + bite
+        run: |
+          set +e; bash scripts/perf/w2-history.sh smoke; rc=$?; set -e
+          echo "w2-history rc=$rc"; [ "$rc" = 1 ] && exit 1 || exit 0
+      - name: W2.4b partition-boundary rollover + bite
+        run: |
+          set +e; bash scripts/perf/w2-partition.sh smoke; rc=$?; set -e
+          echo "w2-partition rc=$rc"; [ "$rc" = 1 ] && exit 1 || exit 0
+      - name: W2.3a real-service RSS soak + bite (Linux /proc)
+        run: |
+          set +e; bash scripts/perf/w2-rss-soak.sh smoke; rc=$?; set -e
+          echo "w2-rss-soak rc=$rc"; [ "$rc" = 1 ] && exit 1 || exit 0
+      - name: W2.3b disk read-thrash (Linux cgroup + fio)
+        run: |
+          set +e; bash scripts/perf/w2-disk-read.sh smoke; rc=$?; set -e
+          echo "w2-disk-read rc=$rc"; [ "$rc" = 1 ] && exit 1 || exit 0
