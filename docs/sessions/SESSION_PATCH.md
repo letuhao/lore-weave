@@ -340,6 +340,9 @@ See [TRACK_2_ACCEPTANCE_PACK.md](TRACK_2_ACCEPTANCE_PACK.md) for the single-page
 | D-S7-FORTIO-WRK2 | S7 (2026-06-13) | k6 is the single open-loop generator (constant-arrival-rate = CO-correct). wrk2/fortio parity deferred — k6 covers the requirement. | If cross-generator corroboration wanted |
 | D-S7-PGVECTOR-RECALL | S7 (2026-06-13) | RETARGET of D-S4-PGVECTOR-RECALL: S7 ships a throughput/latency harness, NOT an ANN recall/quality comparator (distinct vector-quality concern). pgvector HNSW recall comparator stays deferred to a vector-quality slice. | A vector-quality slice |
 | D-S7-USL-NO-N1-COVERAGE | S7 (2026-06-13) | review-impl LOW-4: USL tests + the default hyperfine sweep all include N=1 (where the max(X/N) gamma-seed is exact). An overridden CONCURRENCY_SWEEP without N=1 exercises the underestimating-seed path untested; the refine re-fits gamma freely so it is a robustness-margin gap, not a known bug. | If a no-N=1 sweep is used |
+| D-S8-CLOCK-SKEW-RECOVERY | S8 (2026-06-14) | Recovery under clock skew (NTP step mid-drain) — needs a clock-control harness, out of Technique G's network/process-fault scope. | A clock-control harness |
+| D-S8-MULTI-SHARD-DR | S8 (2026-06-14) | Whole-system quarterly DR (N shards restored together) is runbook-driven + manual; S8 automates the per-drill event-sourcing path (G1–G4), not the full-system orchestration. | Quarterly full-system DR automation |
+| D-PUBLISHER-SMOKE-DAILY-LOOP | S8 (2026-06-14) | PRE-EXISTING (surfaced by S8's full-suite run, NOT introduced by S8): the `publisher-smoke` conformance case fails — `scripts/publisher-live-smoke.sh` references `services/integrity-checker/pkg/daily_loop` which no longer exists (likely dropped/renamed by the 51-conflict main-merge 6aa7cd83). 1 fail in the suite, unrelated to S8. | Investigate the daily_loop rename/removal + fix or retire publisher-smoke |
 | D-S6-HISTORY-ORDERING | S6 /review-impl (2026-06-13) | The bash history checker (redis-partition + pg-slow drills) asserts **no-loss + no-dup + stream==events** but NOT **per-aggregate ordering** (stream XID order respects `aggregate_version` monotonicity) — a dimension the spec listed. V1 single-replica drains in outbox order so reordering is structurally unlikely, but a future multi-replica/parallel drain could reorder. Add the ordering extraction (aggregate_id+version per stream entry in XID order → assert monotonic per aggregate). | When the publish path can reorder (V2 multi-replica) |
 | D-WORKLOAD-GEN-REAL-SHARD | S3 (2026-06-04) | `multi-reality` profile currently writes N logical realities into ONE DB (reality_id-scoped). Real cross-shard emit (many per-reality DBs via the provisioner DSN resolver) is deferred until the provisioner path (S4/L1) is exercised. | S4 / L1 |
 | D-CONFORMANCE-FLEET-MIGRATION | S1 (2026-06-04) | S1 folded only **2** representative conformance cases (`projection-coverage` lint + `publisher-smoke` live-probe) to prove the wrapper's pass-path + notrun-path. Fold the remaining ~26 lints + ~4 live-smokes into `tests/conformance/catalog/` incrementally. | Rolling, post-S1 |
@@ -638,6 +641,22 @@ See [TRACK_2_ACCEPTANCE_PACK.md](TRACK_2_ACCEPTANCE_PACK.md) for the single-page
 ---
 
 ## Current Active Work
+
+### 2026-06-14 — S8 / Recovery + DR drills (Technique G) (L, human-in-loop, /review-impl'd on plan)
+
+**What:** built **S8** — the 4 event-sourcing recovery/DR drills, all LIVE-verified on the foundation-dev stack with their bites. Spec/plan: `docs/{specs,plans}/2026-06-13-S8-recovery-dr-drills.md`. Drill #5 (catastrophic-rebuild) EXPUNGED per DEFERRED 149.
+- **G1 recover-kill-restart.sh:** SIGKILL the publisher mid-drain → restart same binary → converge. Oracle reframed to AT-LEAST-ONCE (review HIGH-1): no-loss (distinct(event_id)==events) + dedup-able (XLEN>=events, dups OK — auto-id XADD + separate mark). Bite XDEL→loss. LIVE: killed 15/67, converged, 3 realities clean; bite fired.
+- **G2 recover-rebuild.sh:** TRUNCATE projections → rebuild-from-events → B (integrity-checker drift==0) ∧ C (no-orphan) ∧ C2 (6 tables non-empty). Bite corrupt row → drift=3. LIVE PASS.
+- **G3 recover-archive-restore.sh:** create events_p_2026_01 (wg baseEpoch month — review MED-2; NOT now-relative) → archive-worker (ARCHIVE_CUTOFF=0) Parquet→MinIO→DROP → archive-restore → events_restore_202601 → C3 SQL-md5 digest byte-match (review MED-4). Bite mutate→diverge. LIVE PASS (digest 08be8b75 both sides).
+- **G4 recover-replay-determinism.sh:** rebuild twice → byte-identical over DETERMINISTIC cols (strip applied_at/last_verified_at — review MED-3 was a real catch). Bite different-seed differs. LIVE PASS.
+- **Inc 5:** 4 live-probe conformance cases (requires:[foundation-stack], each embeds --bite) + `recovery-nightly` CI job (build rebuilder/replay/wg/ic/pub/aw/arx, boot PG+Redis+MinIO). Runner: 4/4 recover cases PASS live; suite 21 pass / 1 fail / 4 notrun — the 1 fail is the PRE-EXISTING publisher-smoke (D-PUBLISHER-SMOKE-DAILY-LOOP), not S8.
+- **/review-impl (plan):** 6 findings — 1 HIGH (G1 at-least-once, not no-dup) + 3 MED (partition routing, determinism cols, SQL digest) folded into spec+plan+code BEFORE build.
+
+**Verify:** all 4 drills + bites LIVE PASS on foundation-dev (PG+Redis+MinIO); 4/4 recover conformance cases pass through the runner; bash -n clean; provider-gate OK; language-rule N/A. Cross-component live-smoke: real publisher SIGKILL+restart, rebuilder, integrity-checker, archive-worker→MinIO→archive-restore.
+
+**Deferred:** D-S8-CLOCK-SKEW-RECOVERY, D-S8-MULTI-SHARD-DR, D-PUBLISHER-SMOKE-DAILY-LOOP (pre-existing).
+
+**Next:** per plan v2, **S10** (Rust kernel sim DST — madsim) → **S11** (whole-stack DST). The correctness/fault/perf/recovery battery (S1–S9 + S5–S8) is COMPLETE.
 
 ### 2026-06-13 — S7 / Perf harness + USL + statistical regression gate (XL, human-in-loop, /review-impl'd on plan)
 

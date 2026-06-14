@@ -206,3 +206,58 @@ jobs:
           name: perf-results
           path: tests/conformance/results/
           if-no-files-found: warn
+
+  recovery-nightly:
+    name: S8 recovery/DR drills (nightly — live, G1–G4)
+    # Technique G live battery: builds the spine binaries + archive-worker/restore,
+    # boots PG+Redis+MinIO, and runs the 4 recovery drills (each embeds its --bite
+    # non-vacuity proof). exit 1 → fail; exit 2 → notrun (green). schedule fires
+    # only on main; workflow_dispatch is the manual smoke. Dormant until merged.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - name: build binaries (no .exe on Linux)
+        run: |
+          cargo build -p world-service --bin rebuilder --bin replay-aggregate
+          cp target/debug/rebuilder target/debug/replay-aggregate ./ 2>/dev/null || true
+          go build -C tests/workload-gen -o wg ./cmd/workload-gen
+          go build -C services/integrity-checker -o ic ./cmd/integrity-checker
+          go build -C services/publisher -o pub ./cmd/publisher
+          go build -C services/archive-worker -o aw ./cmd/archive-worker
+          go build -C services/archive-worker -o arx ./cmd/archive-restore
+      - name: boot foundation stack (PG + Redis + MinIO)
+        run: |
+          docker compose -f infra/foundation-dev/docker-compose.yml up -d postgres-foundation redis-foundation minio-foundation
+          for _ in $(seq 1 30); do
+            if docker exec foundation-dev-postgres pg_isready -U foundation >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+      - name: run recovery drills (G1–G4, each with --bite)
+        env:
+          REBUILDER_BIN: target/debug/rebuilder
+          REPLAY_BIN: target/debug/replay-aggregate
+        run: |
+          rc_any=0
+          for d in recover-kill-restart recover-rebuild recover-archive-restore recover-replay-determinism; do
+            echo "=== $d ==="
+            set +e; bash "scripts/chaos/$d.sh" --bite; rc=$?; set -e
+            echo "$d rc=$rc (0=pass,2=notrun)"
+            [ "$rc" = 1 ] && rc_any=1
+          done
+          [ "$rc_any" = 0 ] || { echo "a recovery drill FAILED"; exit 1; }
+      # The drills log their evidence to stdout (captured in the job log); they
+      # do not write results JSON (review LOW-5), so this upload is best-effort
+      # for any artifacts a drill happens to leave (e.g. a future digest dump).
+      - name: upload recovery artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: recovery-results
+          path: tests/conformance/results/
+          if-no-files-found: ignore

@@ -1,0 +1,7 @@
+id: recover-replay-determinism
+description: "S8/G4 — replay determinism: rebuild a projection from the SAME events twice and assert byte-identical results over the DETERMINISTIC columns (strips applied_at/last_verified_at VerificationMeta timestamps). The deterministic-replay facet of C (run-to-run, same engine) — NOT double-counted with H0 (cross-language). Embeds --bite (a different seed's rebuild must differ)."
+invariant: I-recover-replay-deterministic
+kind: live-probe
+command: ["bash", "scripts/chaos/recover-replay-determinism.sh", "--bite"]
+requires: ["foundation-stack"]
+skip_when: []
