@@ -116,11 +116,21 @@ export const booksApi = {
   listChapters(
     token: string,
     bookId: string,
-    params?: { lifecycle_state?: string; original_language?: string; sort_order?: number; limit?: number; offset?: number },
+    params?: {
+      lifecycle_state?: string;
+      original_language?: string;
+      editorial_status?: string;
+      q?: string;
+      sort_order?: number;
+      limit?: number;
+      offset?: number;
+    },
   ) {
     const qs = new URLSearchParams();
     if (params?.lifecycle_state) qs.set('lifecycle_state', params.lifecycle_state);
     if (params?.original_language) qs.set('original_language', params.original_language);
+    if (params?.editorial_status) qs.set('editorial_status', params.editorial_status);
+    if (params?.q) qs.set('q', params.q);
     if (params?.sort_order !== undefined) qs.set('sort_order', String(params.sort_order));
     if (params?.limit !== undefined) qs.set('limit', String(params.limit));
     if (params?.offset !== undefined) qs.set('offset', String(params.offset));

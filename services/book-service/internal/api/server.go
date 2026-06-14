@@ -1000,6 +1000,31 @@ func (s *Server) listChapters(w http.ResponseWriter, r *http.Request) {
 			where += fmt.Sprintf(" AND sort_order=$%d", len(args))
 		}
 	}
+	// editorial_status filter (B1 ChapterListBrowser / campaign published-only). Mirrors
+	// getInternalBookChapters: "published" additionally requires a pinned revision.
+	switch es := r.URL.Query().Get("editorial_status"); es {
+	case "", "all":
+		// no filter
+	case "draft", "published":
+		args = append(args, es)
+		where += fmt.Sprintf(" AND editorial_status=$%d", len(args))
+		if es == "published" {
+			where += " AND published_revision_id IS NOT NULL"
+		}
+	default:
+		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "invalid editorial_status")
+		return
+	}
+	// q — case-insensitive substring over title + original_filename (B1 browser search).
+	// Bounded by the 256-rune cap; a small per-book table makes the seq ILIKE cheap.
+	if q := strings.TrimSpace(r.URL.Query().Get("q")); q != "" {
+		if len([]rune(q)) > maxSearchQueryRunes {
+			writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "query too long")
+			return
+		}
+		args = append(args, escapeLikePattern(q))
+		where += fmt.Sprintf(" AND (title ILIKE $%d OR original_filename ILIKE $%d)", len(args), len(args))
+	}
 	countArgs := append([]any{}, args...)
 	var total int
 	_ = s.pool.QueryRow(r.Context(), `SELECT COUNT(*) FROM chapters WHERE `+where, countArgs...).Scan(&total)
@@ -1221,22 +1246,22 @@ WHERE c.id=$1 AND c.book_id=$2
 		return
 	}
 	writeJSON(w, status, map[string]any{
-		"chapter_id":           id,
-		"book_id":              bid,
-		"title":                nullableString(title),
-		"original_filename":    fn,
-		"original_language":    lang,
-		"content_type":         ctype,
-		"byte_size":            size,
-		"sort_order":           order,
-		"draft_updated_at":     draftUpdated,
-		"draft_revision_count": revCount,
-		"lifecycle_state":      state,
-		"trashed_at":           trashedAt,
-		"purge_eligible_at":    purgeAt,
-		"created_at":           createdAt,
-		"updated_at":           updatedAt,
-		"editorial_status":     editorialStatus,
+		"chapter_id":            id,
+		"book_id":               bid,
+		"title":                 nullableString(title),
+		"original_filename":     fn,
+		"original_language":     lang,
+		"content_type":          ctype,
+		"byte_size":             size,
+		"sort_order":            order,
+		"draft_updated_at":      draftUpdated,
+		"draft_revision_count":  revCount,
+		"lifecycle_state":       state,
+		"trashed_at":            trashedAt,
+		"purge_eligible_at":     purgeAt,
+		"created_at":            createdAt,
+		"updated_at":            updatedAt,
+		"editorial_status":      editorialStatus,
 		"published_revision_id": publishedRevID,
 	})
 }
@@ -2244,16 +2269,16 @@ FROM chapter_blocks WHERE chapter_id=$1
 `, chapterID).Scan(&textContent, &blockIndices)
 	ChapterFetchTotal.WithLabelValues(OutcomeOK).Inc()
 	writeJSON(w, http.StatusOK, map[string]any{
-		"chapter_id":        chapterID,
-		"title":             nullableString(title),
-		"sort_order":        sortOrder,
-		"original_language": lang,
-		"draft_updated_at":  draftUpdated,
-		"body":              body,
-		"body_format":       "json",
-		"text_content":      textContent,
-		"block_indices":     blockIndices,
-		"editorial_status":  editorialStatus,
+		"chapter_id":            chapterID,
+		"title":                 nullableString(title),
+		"sort_order":            sortOrder,
+		"original_language":     lang,
+		"draft_updated_at":      draftUpdated,
+		"body":                  body,
+		"body_format":           "json",
+		"text_content":          textContent,
+		"block_indices":         blockIndices,
+		"editorial_status":      editorialStatus,
 		"published_revision_id": publishedRevID,
 	})
 }
