@@ -41,11 +41,22 @@ schema-derived sweep + W3.4's checksum check run over. Then W3.2 → W3.3 →
 - `gen.Validate` + `schema` registry: register the two new event types so Validate
   doesn't reject them (add validation rules: relationship needs npc+pc created;
   memory needs npc + a started session).
-- **Drill + bite** (`scripts/perf/w3-generator.sh`, reuses the rig PG): emit →
-  `wg -check-projections` (no-orphan) + assert `npc_pc_relationship_projection`,
-  `npc_session_memory_embedding`, `world_kv_projection` each have ≥1 row. **Bite:**
-  a `-no-new-arms` env (or the old generator) → those tables have 0 rows → the
-  arms were vacuous. Unit-test the new builders + Validate rules.
+- **Registry confirm (review #6):** the Rust projections dispatch on the event-type
+  STRING, not `contracts/events/_registry.yaml`, so the drill works without registry
+  edits — but confirm at build that `npc.relationship_changed` + `npc.memory_embedded`
+  are already in `_registry.yaml` (they should be, since the projections consume
+  them); add them if absent, for consistency.
+- **Drill + bite (review #3 — make it non-tautological)** (`scripts/perf/w3-generator.sh`,
+  reuses the rig PG): emit → `wg -check-projections` (no-orphan) + assert
+  `npc_pc_relationship_projection`, `npc_session_memory_embedding`,
+  `world_kv_projection` each have ≥1 row (the arms now carry data). **Bite:** the
+  real non-vacuity is that an ORACLE now COVERS these arms — corrupt one row in each
+  new table (e.g. set a relationship's `other_entity_id` to an event_id that doesn't
+  exist / NULL the embedding) and show the existing oracle CATCHES it
+  (`wg -check-projections` no-orphan flags the dangling row, or the C3 ledger /
+  rebuild differential flags the corruption). Before W3.1 those tables were EMPTY so
+  the oracle ran vacuously over them; now a fault in the arm is caught. Unit-test the
+  new builders + Validate rules.
 
 ## Increment 2 — W3.2 schema-derived projection-table list `[BE/Go]`
 - `tests/workload-gen/internal/projcheck/load.go`: replace the hardcoded
@@ -55,7 +66,12 @@ schema-derived sweep + W3.4's checksum check run over. Then W3.2 → W3.3 →
   `npc_session_memory_embedding`); likely use an explicit "projection table"
   marker (a comment-tag, a naming set, or a curated `LIKE` + allowlist). If no
   clean schema signal exists, derive from the known suffix set + document the
-  residual. Keep a fallback to the curated list if the query returns empty (safety).
+  residual.
+- **No silent fallback (review #4):** an empty derivation result is a HARD ERROR
+  (a per-reality projection DB must contain projection tables; empty = a
+  misconfigured/un-migrated DB), NOT a silent revert to the curated hardcoded list —
+  that would re-introduce the exact drift this increment removes. Fail loudly so a
+  broken predicate is caught, not masked.
 - **D-S4-VERIFMETA-TABLE-SYNC:** grep for a second hardcoded copy (S4 verifmeta /
   verification-meta checker). If none exists → close the row N/A with the grep
   evidence. If one exists → apply the same derivation.
@@ -67,40 +83,54 @@ schema-derived sweep + W3.4's checksum check run over. Then W3.2 → W3.3 →
 - `contracts/meta/*_test.go`: replace non-UUID actor_id literals (`"user-1"`,
   `"world-service"`, `"op"`, …) with deterministic UUIDs (a small set of named
   consts, or `fakeUUIDGen`). Keep ActorType strings (those are enums, not UUIDs).
-- **Bite/guard:** this is a fixture-correctness regression guard (the live I9 probe
-  is the real catcher). Add a tiny assertion/test that the fixture actor_ids parse
-  as UUIDs so a future string literal trips CI. Run the full `contracts/meta` suite
-  to confirm green.
+- **Honest framing (review #5):** this is **mock-fidelity cleanup**, not a new
+  oracle — the live I9 probe already catches the real-schema UUID type; the fixtures
+  just shouldn't lie about it. The fixtures are inline literals across many `_test.go`
+  files, so a runtime "all actor_ids are UUIDs" assertion can't enumerate them. The
+  realistic guard against a future string literal is a **CI grep** (e.g. a
+  `scripts/lint` check that flags `Actor{...ID: "<non-uuid>"}` in `contracts/meta`),
+  added in W3.6 — not a unit test. Run the full `contracts/meta` suite green after
+  the swap.
 
 ## Increment 4 — W3.4 ledger stored checksum `[FS]` (LOAD-BEARING)
-- **Migration** `contracts/migrations/per_reality/0002b_events_payload_sha256.up.sql`
-  (NEW, additive): `ALTER TABLE events ADD COLUMN payload_sha256 CHAR(64)` (nullable
-  → existing rows unaffected; partitioned-table ALTER ADD is metadata-only). Down
-  migration drops it. (A new migration, NOT editing 0002 — 0002 is `breaking` +
-  already applied everywhere.)
-- **Canonicalization (the crux, review hard):** the hash MUST match between the Go
-  emit path and the Rust kernel append. Define ONE canonical byte form — the
-  payload's RAW stored JSONB bytes are NOT stable cross-language. Use SHA-256 over
-  the **compact/sorted-key JSON serialization** computed identically on both sides
-  (Go `json.Marshal` of a canonicalized map vs Rust `serde_json` to_vec with sorted
-  keys) — OR hash the bytes the writer already has before they hit JSONB. Pin the
-  canonical form + add a cross-language equality test (a fixed payload → the same
-  64-hex on both). If a stable cross-lang canonical JSON is too fragile, scope the
-  write to ONE writer first (the kernel append) + document the emit-path follow-up.
+- **Migration (review #1 — fix numbering + register it):** add the NEXT sequential
+  per-reality migration — `contracts/migrations/per_reality/0013_events_payload_sha256.up.sql`
+  (NOT `0002b` — the manifest requires strictly-increasing integer versions + the id
+  to match the filename stem; the chain runs 0001–0012). `ALTER TABLE events ADD
+  COLUMN payload_sha256 CHAR(64)` (nullable → existing rows unaffected; on a
+  partitioned table ADD COLUMN is a metadata-only catalog change that propagates to
+  all partitions). Down migration drops it. **Register it in
+  `contracts/migrations/manifest.yaml`** as `id: "0013_events_payload_sha256",
+  version: 13, breaking: false, dependencies: ["0002_events_table"]` — confirm the
+  exact next version at build (recon: chain currently ends at 0012).
+- **Verification-language decision (review #2 — no silent under-coverage).** The
+  hash must match whoever WROTE it. Decide ONE explicitly, not a fallback:
+  - **Preferred:** a single CROSS-LANGUAGE canonical form — SHA-256 over compact
+    JSON with **lexicographically sorted keys + no insignificant whitespace**,
+    computed identically in Go (`json.Marshal` of a recursively key-sorted value —
+    Go sorts map keys, but nested ordering + number formatting must be pinned) and
+    Rust (`serde_json` with a canonical serializer). **Gate this with a pinned
+    cross-language equality test** (a fixed payload → the SAME 64-hex from both
+    `emit.go` and `event_store_pg.rs`) BEFORE wiring the writes — if that test can't
+    be made green cheaply, do NOT proceed with the cross-lang form.
+  - **Fallback (explicit, not silent):** if a stable cross-lang canonical JSON is
+    too fragile, the checksum is **writer-scoped** and the VERIFIER must run in the
+    writer's language — i.e. the Go ledger only verifies Go-`emit`-written rows, and
+    a **Rust-side** checker (the `replay-aggregate` bin) verifies kernel-written rows.
+    Whichever path: state which writer's rows which checker covers; the Go ledger
+    silently "passing" on Rust rows it can't actually verify is the failure to avoid.
 - **Write path:** `event_store_pg.rs` append computes + writes `payload_sha256`;
-  `emit.go` `writeEvent` does the same.
+  `emit.go` `writeEvent` does the same (using the chosen canonical form).
 - **Check:** `ledger` gains `CheckStoredChecksum(log)` — rehash each event's payload
-  (canonical form) and compare to the stored `payload_sha256` (skip NULL = pre-
-  migration rows). New `-check-checksum` CLI (or fold into `-verify`).
+  (canonical form) and compare to the stored `payload_sha256`. **NULL = pre-migration
+  rows are SKIPPED (review #7):** they have no baseline, so byte-rot on a pre-0013
+  row is undetectable — document this coverage boundary (the protection covers rows
+  written after the migration only). New `-check-checksum` CLI (or fold into `-verify`).
 - **Drill + bite** (`scripts/perf/w3-checksum.sh`): emit (rows now carry
   payload_sha256) → `-check-checksum` PASS. **Bite:** `UPDATE events SET
   payload = payload || '{"rot":1}'` on one row (leaving payload_sha256 stale) →
-  `-check-checksum` FAILS (rehash ≠ stored). NULL-checksum rows don't false-fail.
-- **R-checksum:** if the Go/Rust canonical forms can't be made identical cheaply,
-  the honest fallback is: store the checksum from the WRITER's own canonical bytes
-  + verify with the SAME language's rehash (the seeded drill uses emit.go's form;
-  the production kernel uses Rust's form; the check rehashes per-writer). Document
-  whichever path is taken.
+  `-check-checksum` FAILS (rehash ≠ stored). A NULL-checksum row + a checksum-aligned
+  row both pass (the bite isolates the rot).
 
 ## Increment 5 — W3.5 ledger published-recon `[BE/Go]` (conditional)
 - **Locate-first** the publisher high-water source: `publisher_heartbeats`
@@ -111,6 +141,11 @@ schema-derived sweep + W3.4's checksum check run over. Then W3.2 → W3.3 →
   flagged. If NO crisp source exists → **DEFER** with the rationale (the
   count-recon + W3.4 already cover outbox↔events; recon needs the publisher in the
   standing gate) and record the row as remaining-open. Decide at build, don't pad.
+- **Expectation (review #8):** recon noted this was already retargeted to "when the
+  publisher is wired into the standing gate," so the LIKELY outcome is the documented
+  defer — a crisp per-reality high-water source (a delivered-cursor row) may not
+  exist yet. Build it only if locate-first finds one; otherwise the honest defer is
+  the right close.
 
 ## Increment 6 — W3.6 conformance hygiene + CI + SESSION `[FS]`
 - **Audit** the deferred ledger for the REAL count of un-folded lints/live-smokes
@@ -119,6 +154,10 @@ schema-derived sweep + W3.4's checksum check run over. Then W3.2 → W3.3 →
   the real number as evidence.
 - **Container-churn:** add the assume-up + notrun helper convention to any sibling
   live-probe that `compose up`s (confirm which at build); else close N/A.
+- **actor_id UUID lint (review #5):** the regression guard for W3.3 lives here — a
+  cheap CI/lint check that flags a non-UUID `actor_id` literal in `contracts/meta`
+  test fixtures, so a future string literal trips CI (the unit fixtures can't
+  self-enumerate inline literals).
 - New `w3-*` conformance cases (generator-arms, schema-derived-sweep,
   stored-checksum, + recon if built) `requires:`-gated; CI `scale-build` build/vet/
   `bash -n` + `scale-nightly` live sweep. SESSION + memory + prune. Close the Wave-3
