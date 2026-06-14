@@ -28,6 +28,11 @@
   "reopenSceneHint": "Reopen this scene (back to drafting)",
   "model": "Model",
   "pickModel": "Pick a model…",
+  "addChatModel": "Add a model to start writing",
+  "readyToDraft": "Ready to draft",
+  "readyToDraftHint": "Grounding gets richer after you build a knowledge graph, but it is optional — you can write now.",
+  "cowriteBridge": "Co-write with AI",
+  "cowriteBridgeHint": "Hand this draft to the AI co-writer — needs only a chat model; knowledge is optional.",
   "compose": "Compose",
   "cowriter": "Co-writer",
   "cw": {

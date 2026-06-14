@@ -32,6 +32,7 @@ import { Chat } from '@/features/chat/Chat';
 import { fireSendToChat } from '@/features/chat/context/sendToChat';
 import { registerEditorTarget } from '@/features/chat/context/editorBridge';
 import { CompositionPanel } from '@/features/composition/components/CompositionPanel';
+import { CowriteBridgeButton } from '@/features/composition/components/CowriteBridgeButton';
 import { SelectionToolbar } from '@/features/composition/components/SelectionToolbar';
 import { InlineAiLayer } from '@/features/composition/components/InlineAiLayer';
 import { useWorkResolution } from '@/features/composition/hooks/useWork';
@@ -558,6 +559,21 @@ export function ChapterEditorPage() {
               {t('mode.ai')}
             </button>
           </div>
+
+          <div className="mx-1 h-4 w-px bg-border" />
+
+          {/* C15 (WG-6) — plain-editor → AI bridge. A visible, inline hand-off from
+              plain prose into the AI co-writer: open the (always-mounted) Compose
+              panel. Direct handler (no useEffect-for-events). Ensures the right panel
+              is open AND selects the compose tab. Writing needs only a chat model;
+              the Compose panel surfaces the register CTA + ready-to-draft cue (C15). */}
+          <CowriteBridgeButton
+            active={panels.right && rightTab === 'compose'}
+            onActivate={() => {
+              setRightTab('compose');
+              if (!panels.right) panels.toggleRight();
+            }}
+          />
 
           <div className="mx-1 h-4 w-px bg-border" />
 

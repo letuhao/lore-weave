@@ -6,6 +6,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
+import { AddModelCta } from '@/components/shared/AddModelCta';
 import { aiModelsApi } from '../../ai-models/api';
 import { useChapterScenes, useCreateScene, useCreateWork, useSetSceneStatus, useWorkResolution } from '../hooks/useWork';
 import type { Work } from '../types';
@@ -118,6 +119,14 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
   // the book has narrative-thread tracking on (same gate as the producer).
   const threadsEnabled = work.settings?.narrative_thread_enabled === true;
 
+  // C15 (WG-1/WG-2) — writer readiness. A chat model is the writer's ONE true
+  // prerequisite; knowledge/grounding is OPTIONAL and degrades gracefully. Derive
+  // (no useEffect): once the list resolves empty → offer an in-flow register CTA;
+  // once a chat model exists → surface a positive "Ready to draft" cue that frames
+  // knowledge as optional, never a precondition wall.
+  const hasChatModel = !!models.data?.length;
+  const noChatModel = !models.isLoading && !hasChatModel;
+
   return (
     <div className="flex h-full flex-col">
       {/* scene + model selectors */}
@@ -168,19 +177,52 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
               : t('markDone', { defaultValue: 'Mark done' })}
           </button>
         )}
-        <select
-          data-testid="composition-model-select"
-          className="rounded border border-neutral-300 bg-transparent px-2 py-1 dark:border-neutral-600"
-          value={effectiveModelRef}
-          onChange={(e) => setModelRef(e.target.value)}
-          aria-label={t('model', { defaultValue: 'Model' })}
-        >
-          <option value="">{t('pickModel', { defaultValue: 'Pick a model…' })}</option>
-          {(models.data ?? []).map((m) => (
-            <option key={m.user_model_id} value={m.user_model_id}>{m.alias || m.provider_model_name}</option>
-          ))}
-        </select>
+        {/* C15 (WG-1) — when there's no active chat model, the picker is a dead end
+            (empty select + disabled Generate). Replace it with an in-flow register
+            CTA that deep-links to model registration AND returns here. The chat model
+            is the writer's ONE hard need; this is the only setup the writer must do. */}
+        {noChatModel ? (
+          <span data-testid="composition-add-chat-model" className="self-center">
+            <AddModelCta
+              capability="chat"
+              label={t('addChatModel', { defaultValue: 'Add a model to start writing' })}
+              variant="link"
+            />
+          </span>
+        ) : (
+          <select
+            data-testid="composition-model-select"
+            className="rounded border border-neutral-300 bg-transparent px-2 py-1 dark:border-neutral-600"
+            value={effectiveModelRef}
+            onChange={(e) => setModelRef(e.target.value)}
+            aria-label={t('model', { defaultValue: 'Model' })}
+          >
+            <option value="">{t('pickModel', { defaultValue: 'Pick a model…' })}</option>
+            {(models.data ?? []).map((m) => (
+              <option key={m.user_model_id} value={m.user_model_id}>{m.alias || m.provider_model_name}</option>
+            ))}
+          </select>
+        )}
       </div>
+
+      {/* C15 (WG-2) — positive readiness cue. Nothing in the writer flow told the
+          author that writing is READY once a chat model exists; they wrongly believed
+          they had to build a knowledge graph first. Surface it here, framing knowledge
+          as OPTIONAL enrichment — never present embedding/extraction as a writing gate. */}
+      {hasChatModel && (
+        <div
+          data-testid="composition-ready-to-draft"
+          className="flex items-center gap-1.5 border-b border-neutral-200 bg-emerald-50/60 px-2 py-1 text-xs text-emerald-800 dark:border-neutral-700 dark:bg-emerald-950/30 dark:text-emerald-300"
+        >
+          <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+          <span className="font-medium">{t('readyToDraft', { defaultValue: 'Ready to draft' })}</span>
+          <span className="text-emerald-700/80 dark:text-emerald-400/80">
+            {t('readyToDraftHint', {
+              defaultValue: 'Grounding gets richer after you build a knowledge graph, but it is optional — you can write now.',
+            })}
+          </span>
+        </div>
+      )}
 
       {/* sub-tabs */}
       <div className="flex gap-1 border-b border-neutral-200 px-2 pt-1 text-sm dark:border-neutral-700">

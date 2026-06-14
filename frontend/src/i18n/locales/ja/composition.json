@@ -28,6 +28,11 @@
   "reopenSceneHint": "このシーンを再開します（下書きに戻す）",
   "model": "モデル",
   "pickModel": "モデルを選択…",
+  "addChatModel": "執筆を始めるにはモデルを追加",
+  "readyToDraft": "下書きの準備完了",
+  "readyToDraftHint": "ナレッジグラフを構築するとグラウンディングが充実しますが、任意です — 今すぐ執筆できます。",
+  "cowriteBridge": "AIと共同執筆",
+  "cowriteBridgeHint": "この下書きをAI共筆に渡します — チャットモデルだけが必要で、ナレッジは任意です。",
   "compose": "執筆",
   "cowriter": "共筆",
   "cw": {

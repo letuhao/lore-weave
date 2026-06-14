@@ -28,6 +28,11 @@
   "reopenSceneHint": "重新開啟此場景（回到草稿）",
   "model": "模型",
   "pickModel": "選擇模型…",
+  "addChatModel": "新增模型以開始寫作",
+  "readyToDraft": "可以開始撰寫",
+  "readyToDraftHint": "建立知識圖譜後接地會更豐富，但這是選用的 — 你現在就可以寫作。",
+  "cowriteBridge": "與 AI 共同創作",
+  "cowriteBridgeHint": "將這份草稿交給 AI 共筆 — 只需要一個聊天模型；知識是選用的。",
   "compose": "撰寫",
   "cowriter": "共筆",
   "cw": {

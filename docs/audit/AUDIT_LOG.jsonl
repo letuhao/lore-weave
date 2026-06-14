@@ -1596,3 +1596,21 @@
 {"ts": "2026-06-14T10:51:14Z", "event": "in_progress_update", "cycle": 14, "phase": "COMMIT", "retry": 0}
 {"ts": "2026-06-14T10:51:28Z", "event": "in_progress_archived", "cycle": 14, "archived_to": "cycle-014-state.md"}
 {"ts":"2026-06-14T10:52:55Z","cycle":14,"phase":"retro","event":"retro","note":"Live-smoke caught a calibration gap, not a code bug: the first importance derivation gated pivotal/major on mention_count>=5/3, but the real corpus has mention_count==1 for ALL 141 events (extraction never accumulated re-mentions) -> zero badges on the M2 screenshot. Fix: blend signals (>=participants+confidence OR mention_count) so the score survives a degenerate axis; recalibrated to 5 pivotal+45 major+91 unbadged. LESSON: when a derived field reads existing extracted signals, inspect the LIVE signal distribution BEFORE locking thresholds — a threshold that passes synthetic unit stubs can produce an all-None live surface. The C8 derived-status pattern (computed_field + closed enum) ported cleanly to importance + sort_by allowlist. M2 reached."}
+{"ts": "2026-06-14T10:53:55Z", "event": "coordinator_next_cycle_emitted", "cycle": 15}
+{"ts":"2026-06-14T10:55:07Z","event":"startup_drift_check_inconclusive","cycle":15,"cd":"","rw":""}
+{"ts":"2026-06-14T10:55:07Z","event":"startup_verifier_complete","cycle":15,"steps":6}
+{"ts": "2026-06-14T10:55:18Z", "event": "in_progress_init", "cycle": 15, "title": "Writer unblock (FE)"}
+{"ts": "2026-06-14T10:56:40Z", "event": "in_progress_update", "cycle": 15, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-06-14T10:57:35Z", "event": "in_progress_update", "cycle": 15, "phase": "BUILD", "retry": 0}
+{"ts":"2026-06-14T11:01:18Z","event":"secret_scan_skipped","cycle":15,"dps":DPS1,"reason":"gitleaks_not_installed"}
+{"ts":"2026-06-14T11:01:21Z","event":"secret_scan_skipped","cycle":15,"dps":DPS2,"reason":"gitleaks_not_installed"}
+{"ts": "2026-06-14T11:02:14Z", "event": "in_progress_update", "cycle": 15, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-06-14T11:03:54Z","event":"verify_cycle_15_failed","cycle":15}
+{"ts":"2026-06-14T11:04:34Z","event":"verify_cycle_15_passed","cycle":15}
+{"ts": "2026-06-14T11:10:18Z", "event": "in_progress_update", "cycle": 15, "phase": "REVIEW2", "retry": 0}
+{"ts":"2026-06-14T11:12:27Z","event":"verify_cycle_15_passed","cycle":15}
+{"ts": "2026-06-14T11:12:59Z", "event": "in_progress_update", "cycle": 15, "phase": "QC", "retry": 0}
+{"ts": "2026-06-14T11:13:02Z", "event": "in_progress_update", "cycle": 15, "phase": "POST_REVIEW", "retry": 0}
+{"ts": "2026-06-14T11:13:09Z", "event": "in_progress_update", "cycle": 15, "phase": "SESSION", "retry": 0}
+{"ts":"2026-06-14T11:14:00Z","event":"cycle_done","cycle":15,"title":"Writer unblock (FE)","dps":2,"files":4,"tests":{"vitest":8,"regression":2},"verify_exit":0,"adversary":{"blockers":0,"majors":0,"minors":1,"notes":4},"scope_guard":"CLEAR","post_review":"CLEAR","screenshot":"docs/raid/evidence/cycle-15/generate-empty-grounding.png","live_smoke":"Generate with empty grounding returned prose (writer-not-blocked + grounding-optional)"}
+{"ts": "2026-06-14T11:13:47Z", "event": "in_progress_update", "cycle": 15, "phase": "COMMIT", "retry": 0}

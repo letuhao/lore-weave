@@ -28,6 +28,11 @@
   "reopenSceneHint": "Mở lại cảnh này (quay về soạn thảo)",
   "model": "Mô hình",
   "pickModel": "Chọn một mô hình…",
+  "addChatModel": "Thêm mô hình để bắt đầu viết",
+  "readyToDraft": "Sẵn sàng soạn thảo",
+  "readyToDraftHint": "Ngữ cảnh sẽ phong phú hơn sau khi bạn xây dựng đồ thị tri thức, nhưng điều đó là tùy chọn — bạn có thể viết ngay bây giờ.",
+  "cowriteBridge": "Đồng sáng tác với AI",
+  "cowriteBridgeHint": "Chuyển bản nháp này cho đồng tác giả AI — chỉ cần một mô hình trò chuyện; tri thức là tùy chọn.",
   "compose": "Soạn",
   "cowriter": "Đồng tác giả",
   "cw": {
