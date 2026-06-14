@@ -82,14 +82,16 @@ migrate() {
     -c "CREATE TABLE IF NOT EXISTS events_p_default PARTITION OF events DEFAULT" >/dev/null
 }
 
-# load sync_commit(on|off) conc → prints tps
+# load sync_commit(on|off) conc → prints "tps failed_txns"
 load() {
-  local sc="$1" conc="$2" out tps
+  local sc="$1" conc="$2" out tps failed
   out="$(docker exec -e PGOPTIONS="-c synchronous_commit=${sc}" "$PG" \
         pgbench -n -f /tmp/s14.sql -c "$conc" -j "$conc" -T "$SECS" -U "$PGUSER" "$PGDB" 2>&1)" \
-        || { echo 0; return 0; }
+        || { echo "0 0"; return 0; }
   tps="$(printf '%s\n' "$out" | sed -n 's/^tps = \([0-9.]*\).*/\1/p' | head -1)"
-  echo "${tps:-0}"
+  # pg16 prints "number of failed transactions: N (..%)"; absent ⇒ 0.
+  failed="$(printf '%s\n' "$out" | sed -n 's/^number of failed transactions: \([0-9]*\).*/\1/p' | head -1)"
+  echo "${tps:-0} ${failed:-0}"
 }
 
 count() { docker exec "$PG" psql -tA -U "$PGUSER" -d "$PGDB" -c "SELECT count(*) FROM events" 2>/dev/null | tr -d '[:space:]'; }
@@ -101,16 +103,16 @@ cmd_drill() {
   docker exec -i "$PG" sh -c "cat > /tmp/s14.sql" < "$SQL"
 
   log "durable baseline: 1 writer, synchronous_commit=ON (single-writer disk fsync rate) ..."
-  local tps_d1; tps_d1="$(load on 1)"
+  local tps_d1 _f1; read -r tps_d1 _f1 < <(load on 1)
   log "  durable(1): tps=${tps_d1}"
 
   log "durable load: ${CONC} concurrent writers, synchronous_commit=ON (disk fsync under concurrency) ..."
-  local tps_dN; tps_dN="$(load on "$CONC")"
+  local tps_dN failed_dN; read -r tps_dN failed_dN < <(load on "$CONC")
   local cnt_durable; cnt_durable="$(count)"
-  log "  durable(${CONC}): tps=${tps_dN} committed=${cnt_durable}"
+  log "  durable(${CONC}): tps=${tps_dN} failed_txns=${failed_dN} committed=${cnt_durable}"
 
   log "BITE: ${CONC} writers, synchronous_commit=OFF (fsync wait removed from the commit path) ..."
-  local tps_async; tps_async="$(load off "$CONC")"
+  local tps_async _fa; read -r tps_async _fa < <(load off "$CONC")
   log "  async(${CONC}): tps=${tps_async}"
 
   # recovery: durable PG still accepts a write after the load.
@@ -121,8 +123,8 @@ cmd_drill() {
   local sat_need grace_need
   sat_need="$(awk "BEGIN{printf \"%.2f\", ${tps_dN}*${SAT}/100}")"
   grace_need="$(awk "BEGIN{printf \"%.2f\", ${tps_d1}*${GRACE}/100}")"
-  printf '{"phase":"disk","tps_durable_1":%s,"tps_durable_N":%s,"tps_async":%s,"committed":%s,"sat_need":%s,"grace_need":%s,"recovered":%q}\n' \
-    "${tps_d1:-0}" "${tps_dN:-0}" "${tps_async:-0}" "${cnt_durable:-0}" "$sat_need" "$grace_need" "$rec"
+  printf '{"phase":"disk","tps_durable_1":%s,"tps_durable_N":%s,"tps_async":%s,"committed":%s,"failed_txns":%s,"sat_need":%s,"grace_need":%s,"recovered":%q}\n' \
+    "${tps_d1:-0}" "${tps_dN:-0}" "${tps_async:-0}" "${cnt_durable:-0}" "${failed_dN:-0}" "$sat_need" "$grace_need" "$rec"
 
   # self-saturation / BITE: removing the fsync wait must speed it up meaningfully —
   # else the box wasn't disk/fsync-bound (mem-backed disk / absurd NVMe) → NOTRUN.
@@ -131,6 +133,8 @@ cmd_drill() {
     return 2
   fi
   [ "${cnt_durable:-0}" -gt 0 ] || fail "durable run committed 0 events — write path did not stay alive under disk pressure"
+  # graceful also means commits did not ERROR under disk pressure (not just decent tps).
+  [ "${failed_dN:-0}" -eq 0 ] || fail "durable run had ${failed_dN} FAILED transactions under disk pressure — not graceful (commit errors, not just slower)"
   [ "$rec" = "yes" ] || fail "PG did not accept a write after the load — no recovery"
   # graceful: under many concurrent fsyncing writers the disk path HELD (group commit) —
   # concurrent tps did not collapse below the single-writer rate (contention pathology).

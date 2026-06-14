@@ -55,7 +55,11 @@ func run(dsn, mode string, rounds int) int {
 	for range rounds {
 		var lockFirst1, lockSecond1, lockFirst2, lockSecond2 int
 		if mode == "ordered" {
-			lockFirst1, lockSecond1 = 1, 2 // both lock A(1) then B(2) — consistent order
+			// both lock A(1) then B(2) — consistent order. NOTE: the PROOF is the
+			// ordered-vs-bite CONTRAST on the SAME rows (consistent → 0, opposing → 40P01);
+			// in isolation an ordered round may serialize with little contention, but the
+			// contrast is what shows consistent ordering is what prevents the deadlock.
+			lockFirst1, lockSecond1 = 1, 2
 			lockFirst2, lockSecond2 = 1, 2
 		} else {
 			lockFirst1, lockSecond1 = 1, 2 // opposing: T1 A->B, T2 B->A
