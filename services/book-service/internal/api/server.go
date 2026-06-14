@@ -254,6 +254,22 @@ func (s *Server) Router() http.Handler {
 			r.Get("/stats", s.getBookStats)
 		})
 	})
+
+	// C20 — world container. Owner-scoped grouping of books (no collaborators
+	// on worlds; per-book grants are unchanged). World creation auto-provisions
+	// a hidden sort_order-0 bible chapter (ARCH-REVIEW LOCK).
+	r.Route("/v1/worlds", func(r chi.Router) {
+		r.Post("/", s.createWorld)
+		r.Get("/", s.listWorlds)
+		r.Route("/{world_id}", func(r chi.Router) {
+			r.Get("/", s.getWorld)
+			r.Patch("/", s.patchWorld)
+			r.Delete("/", s.deleteWorld)
+			r.Get("/books", s.listWorldBooks)
+			r.Post("/books", s.moveBookIntoWorld)
+			r.Delete("/books/{book_id}", s.removeBookFromWorld)
+		})
+	})
 	return r
 }
 
@@ -561,9 +577,11 @@ func (s *Server) listBooksByLifecycle(w http.ResponseWriter, r *http.Request, li
 	ctx := r.Context()
 	// accessFilter selects owned rows, plus collaborated rows when includeShared.
 	// access_level is computed per row so the FE can distinguish owned vs shared.
-	accessFilter := "b.owner_user_id=$1"
+	// is_bible=false excludes the auto-created hidden world-bible container books
+	// (C20) — they anchor lore but must never appear in the user's library.
+	accessFilter := "b.owner_user_id=$1 AND b.is_bible=false"
 	if includeShared {
-		accessFilter = "(b.owner_user_id=$1 OR EXISTS(SELECT 1 FROM book_collaborators bc WHERE bc.book_id=b.id AND bc.user_id=$1))"
+		accessFilter = "(b.owner_user_id=$1 OR EXISTS(SELECT 1 FROM book_collaborators bc WHERE bc.book_id=b.id AND bc.user_id=$1)) AND b.is_bible=false"
 	}
 	rows, err := s.pool.Query(ctx, `
 SELECT b.id,b.owner_user_id,b.title,b.description,b.original_language,b.summary,b.lifecycle_state,b.trashed_at,b.purge_eligible_at,b.created_at,b.updated_at,

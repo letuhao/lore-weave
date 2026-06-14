@@ -1689,3 +1689,22 @@
 {"ts": "2026-06-14T13:50:33Z", "event": "in_progress_update", "cycle": 19, "phase": "SESSION", "retry": 0}
 {"ts":"2026-06-14T13:51:04Z","event":"cycle_19_complete","cycle":19,"milestone":"M4","dps_count":2,"files_count":12,"adversary":{"blockers":0,"majors":1,"minors":2,"notes":1},"scope_guard":"CLEAR","post_review":"CLEAR","verify_exit":0,"tests":"29 vitest green","live_smoke":"55 nodes/146 relations rendered + click-detail + expand-hop center re-query + zoom 1.0->1.36"}
 {"ts": "2026-06-14T13:51:11Z", "event": "in_progress_update", "cycle": 19, "phase": "COMMIT", "retry": 0}
+{"ts": "2026-06-14T13:52:15Z", "event": "in_progress_archived", "cycle": 19, "archived_to": "cycle-019-state.md"}
+{"ts": "2026-06-14T13:52:50Z", "event": "coordinator_next_cycle_emitted", "cycle": 20}
+{"ts":"2026-06-14T13:54:11Z","event":"startup_drift_check_inconclusive","cycle":20,"cd":"","rw":""}
+{"ts":"2026-06-14T13:54:11Z","event":"startup_verifier_complete","cycle":20,"steps":6}
+{"ts": "2026-06-14T13:54:21Z", "event": "in_progress_init", "cycle": 20, "title": "World container \u2014 model + API (book-service)"}
+{"ts": "2026-06-14T13:56:11Z", "event": "in_progress_update", "cycle": 20, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-06-14T13:56:41Z", "event": "in_progress_update", "cycle": 20, "phase": "BUILD", "retry": 0}
+{"ts":"2026-06-14T13:58:00Z","event":"secret_scan_skipped","cycle":20,"dps":DPS1,"reason":"gitleaks_not_installed"}
+{"ts":"2026-06-14T14:03:46Z","event":"secret_scan_skipped","cycle":20,"dps":DPS2,"reason":"gitleaks_not_installed"}
+{"ts":"2026-06-14T14:03:49Z","event":"secret_scan_skipped","cycle":20,"dps":DPS3,"reason":"gitleaks_not_installed"}
+{"ts": "2026-06-14T14:03:59Z", "event": "in_progress_update", "cycle": 20, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-06-14T14:04:34Z","event":"verify_cycle_20_passed","cycle":20}
+{"ts": "2026-06-14T14:09:43Z", "event": "in_progress_update", "cycle": 20, "phase": "REVIEW2", "retry": 0}
+{"ts":"2026-06-14T14:14:10Z","event":"verify_cycle_20_passed","cycle":20}
+{"ts": "2026-06-14T14:15:47Z", "event": "in_progress_update", "cycle": 20, "phase": "QC", "retry": 0}
+{"ts": "2026-06-14T14:15:57Z", "event": "in_progress_update", "cycle": 20, "phase": "POST_REVIEW", "retry": 0}
+{"ts": "2026-06-14T14:16:06Z", "event": "in_progress_update", "cycle": 20, "phase": "SESSION", "retry": 0}
+{"ts": "2026-06-14T14:17:44Z", "event": "cycle_complete", "cycle": 20, "result": "DONE", "dps": 3, "adversary": {"blockers": 0, "majors": 1, "minors": 3, "notes": 3}, "scope_guard": "CLEAR", "verify_exit": 0, "migration_roundtrip": true, "live_smoke": "create world -> bible chapter sort_order 0 -> attach book -> world lists books; null-world books unaffected"}
+{"ts": "2026-06-14T14:17:44Z", "event": "in_progress_update", "cycle": 20, "phase": "COMMIT", "retry": 0}
