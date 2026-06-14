@@ -17,11 +17,18 @@ use crate::params::{
 // `Eq` dropped in Phase 2 — `continental_fraction: f32` is not `Eq`.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct CreativeSeed {
+    /// `#[serde(default)]` so a `dump-config` template can be trimmed to only
+    /// the fields you change — every field falls back to the byte-identical
+    /// default (P8: the centralized profile is fully partial-friendly).
+    #[serde(default = "default_world_scale")]
     pub world_scale: WorldScale,
     /// World genre. **Currently inert** — see [`WorldArchetype`].
+    #[serde(default = "default_world_archetype")]
     pub world_archetype: WorldArchetype,
+    #[serde(default = "default_coastline_profile")]
     pub coastline_profile: CoastlineProfile,
     /// Which way the continent faces the poles — drives latitude → climate.
+    #[serde(default = "default_hemisphere_orientation")]
     pub hemisphere_orientation: HemisphereOrientation,
     /// Direction the prevailing wind blows *from* — drives the orographic rain
     /// shadow. `#[serde(default)]` (`West`) so a pre-wind config JSON loads.
@@ -33,10 +40,13 @@ pub struct CreativeSeed {
     #[serde(default)]
     pub erosion: ErosionStrength,
     /// Optional nudge toward a climate zone (`None` = unbiased).
+    #[serde(default)]
     pub climate_bias: Option<ClimateZone>,
     /// How densely settlements are placed (Phase 3).
+    #[serde(default = "default_settlement_density")]
     pub settlement_density: SettlementDensity,
-    /// Number of culture regions (Phase 3); clamped to `1..=16` at use.
+    /// Number of culture regions (Phase 3); clamped to `1..=count_max` at use.
+    #[serde(default = "default_culture_count")]
     pub culture_count: u8,
     /// How the macro landform is generated (Phase 2). `#[serde(default)]`
     /// (`Tectonic`) so a pre-Phase-2 config JSON loads — and gets the new
@@ -123,6 +133,30 @@ pub struct CreativeSeed {
     /// groups of granular params; default `1.0` = no-op. See [`IntensityKnobs`].
     #[serde(default)]
     pub intensity: IntensityKnobs,
+}
+
+fn default_world_scale() -> WorldScale {
+    WorldScale::Continent
+}
+
+fn default_world_archetype() -> WorldArchetype {
+    WorldArchetype::HighFantasy
+}
+
+fn default_coastline_profile() -> CoastlineProfile {
+    CoastlineProfile::Coastal
+}
+
+fn default_hemisphere_orientation() -> HemisphereOrientation {
+    HemisphereOrientation::Northern
+}
+
+fn default_settlement_density() -> SettlementDensity {
+    SettlementDensity::Medium
+}
+
+fn default_culture_count() -> u8 {
+    5
 }
 
 fn default_plate_count() -> u8 {

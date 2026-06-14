@@ -82,11 +82,19 @@
 > arrays**, Copy preserved per the P1 finding); threaded into
 > `biome::build_with`/`derive_biome` + build_nested/settlement/routes/culture
 > `build_with`; `BiomeKind` methods stay canonical default (drift-guard test).
-> Byte-identical pins hold. **TOP NEXT (param arc): P8** — `RenderTheme`
-> (render/relief colors, palettes, supersample) + CLI macro-knob flags +
-> **`dump-config`** (emit the full default profile as an annotated template) +
-> a worked example config. The capstone: makes `CreativeSeed` the editable
-> centralized profile for human + LLM.
+> Byte-identical pins hold. **✅ P8a DONE** — the editability capstone: CLI
+> macro-knob flags (`--orogeny`/`--warmth`/… → `intensity`) + `dump-config`
+> subcommand (emit full default profile JSON) + 7 core fields made
+> `#[serde(default)]` (configs are now fully partial/trim-friendly) + worked
+> example (`examples/cold-rugged-archipelago.json` + README). `dump-config` →
+> `--config` round-trips to the exact default hash. **TOP NEXT (param arc): P8b
+> RenderTheme** — render/relief colours, palettes, supersample (per-style
+> hypsometric ramps in `render::water_color`/`land_color` + biome/culture/
+> boundary/plate/border palettes + `SS`/`BACKGROUND`, threaded through ~8 render
+> fns). Sphere render is NOT content-hashed + has no pins → **add render-hash
+> pins first** (seed-7 relief/biome/political PNG hashes) as the byte-identical
+> net, then parameterize. Render *math* (`relief.rs` hillshade/warp/detail +
+> per-style `StyleParams`) stays fixed. That's the final param-arc stage.
 > *(Deferred P2 follow-up: Profile-only inline `height_at`/`apply_falloff` gate
 > literals — legacy path. Deferred P3 follow-up: moisture-transport consts +
 > cross-module `ClimateZone::wetness()` / `bias_delta` tables.)*

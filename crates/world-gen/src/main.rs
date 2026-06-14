@@ -21,8 +21,8 @@ use tokio::runtime::{Builder as RuntimeBuilder, Runtime};
 use uuid::Uuid;
 use world_gen::{
     ClimateZone, CoastlineProfile, CreativeSeed, ErosionStrength, HemisphereOrientation,
-    PrevailingWind, Projection, RenderStyle, SettlementDensity, TerrainMode, WorldArchetype,
-    WorldMap, WorldScale, generate,
+    IntensityKnobs, PrevailingWind, Projection, RenderStyle, SettlementDensity, TerrainMode,
+    WorldArchetype, WorldMap, WorldScale, generate,
 };
 use world_gen::shape::GatewayTextProvider;
 
@@ -45,6 +45,11 @@ enum Command {
     Author(AuthorArgs),
     /// Name an existing world map's features via an LLM.
     Name(NameArgs),
+    /// Emit the full default `CreativeSeed` profile as a JSON template — every
+    /// tunable param at its byte-identical default. Edit the values, then feed
+    /// it back via `generate --config`. The single centralized profile a human
+    /// or an LLM can dial.
+    DumpConfig(DumpConfigArgs),
 }
 
 #[derive(Args)]
@@ -109,6 +114,30 @@ struct GenerateArgs {
     /// Number of culture regions (clamped 1..=16).
     #[arg(long, default_value_t = 5)]
     culture_count: u8,
+    // --- Macro "intensity" knobs (multiply groups of granular params; 1.0 =
+    // no-op, byte-identical). Clamped at use. For finer control, edit a
+    // `--config` JSON (see `dump-config`). ---
+    /// Mountain-building intensity (fold/arc peaks, collision thickening).
+    #[arg(long, default_value_t = 1.0)]
+    orogeny: f32,
+    /// How often plates collide (>1 = more belts, fewer flat oceans).
+    #[arg(long, default_value_t = 1.0)]
+    collision_frequency: f32,
+    /// Continental relief detail (>1 = more rugged/jagged land).
+    #[arg(long, default_value_t = 1.0)]
+    relief: f32,
+    /// Ocean depth (>1 = deeper abyss).
+    #[arg(long, default_value_t = 1.0)]
+    ocean_depth: f32,
+    /// Global warmth (>1 = hotter — more tropics/desert; <1 = colder).
+    #[arg(long, default_value_t = 1.0)]
+    warmth: f32,
+    /// Rainfall (>1 = wetter, fewer deserts; <1 = drier).
+    #[arg(long, default_value_t = 1.0)]
+    rainfall: f32,
+    /// Seasonal swing (>1 = harsher continental winters/summers).
+    #[arg(long, default_value_t = 1.0)]
+    seasonality: f32,
     /// Output JSON path.
     #[arg(long)]
     out: PathBuf,
@@ -246,6 +275,13 @@ struct NameArgs {
     user_id: Uuid,
 }
 
+#[derive(Args)]
+struct DumpConfigArgs {
+    /// Output path for the JSON template. Omit to write to stdout.
+    #[arg(long)]
+    out: Option<PathBuf>,
+}
+
 #[derive(Clone, Copy, ValueEnum)]
 enum ModelSourceArg {
     Platform,
@@ -291,7 +327,31 @@ fn main() -> ExitCode {
         Command::Generate(args) => run_generate(args),
         Command::Author(args) => run_author(args),
         Command::Name(args) => run_name(args),
+        Command::DumpConfig(args) => run_dump_config(args),
     }
+}
+
+/// Emit the default `CreativeSeed` profile as a JSON template (every tunable at
+/// its byte-identical default). Stdout if `--out` is omitted.
+fn run_dump_config(cli: DumpConfigArgs) -> ExitCode {
+    let json = match serde_json::to_string_pretty(&CreativeSeed::default()) {
+        Ok(j) => j,
+        Err(e) => {
+            eprintln!("error: serialize default profile: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    match cli.out {
+        Some(path) => {
+            if let Err(e) = std::fs::write(&path, format!("{json}\n")) {
+                eprintln!("error: write {}: {e}", path.display());
+                return ExitCode::FAILURE;
+            }
+            eprintln!("wrote default profile template → {}", path.display());
+        }
+        None => println!("{json}"),
+    }
+    ExitCode::SUCCESS
 }
 
 fn run_generate(cli: GenerateArgs) -> ExitCode {
@@ -327,8 +387,18 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
             continent_latitude_spread: cli.continent_latitude_spread,
             region_subdivision: cli.region_subdivision,
             county_subdivision: cli.county_subdivision,
-            // Granular tuning + macro knobs default here (set via --config JSON;
-            // macro-knob CLI flags land in P8). Defaults = byte-identical.
+            // Macro "intensity" knobs from the CLI (1.0 default = byte-identical).
+            intensity: IntensityKnobs {
+                orogeny: cli.orogeny,
+                collision_frequency: cli.collision_frequency,
+                relief: cli.relief,
+                ocean_depth: cli.ocean_depth,
+                warmth: cli.warmth,
+                rainfall: cli.rainfall,
+                seasonality: cli.seasonality,
+            },
+            // Granular per-stage tuning defaults here; set it via a `--config`
+            // JSON (see the `dump-config` subcommand). Defaults = byte-identical.
             ..CreativeSeed::default()
         }
     };
