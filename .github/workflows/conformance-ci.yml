@@ -303,3 +303,52 @@ jobs:
         env:
           SIM_SEEDS: "256"
         run: cargo test
+
+  whole-stack-dst-nightly:
+    name: S11/H2 whole-stack chaos-convergence (nightly — live, concurrent faults)
+    # S11 local half: boots the foundation spine + toxiproxy, builds wg+publisher,
+    # and runs the whole-stack drill — CONCURRENT pg-slow || redis-partition under
+    # a multi-reality drain → delivery-convergence (no-loss/dedup-able) + C3, with
+    # the embedded --bite. exit 1 → fail; exit 2 → notrun (green). schedule fires
+    # only on main; workflow_dispatch is the manual smoke. Dormant until merged.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - name: build wg + publisher (no .exe on Linux)
+        run: |
+          go build -C tests/workload-gen -o wg ./cmd/workload-gen
+          go build -C services/publisher -o pub ./cmd/publisher
+      - name: boot foundation stack (PG + Redis + MinIO + toxiproxy)
+        run: |
+          docker compose -f infra/foundation-dev/docker-compose.yml up -d \
+            postgres-foundation redis-foundation minio-foundation toxiproxy-foundation
+          for _ in $(seq 1 30); do
+            if docker exec foundation-dev-postgres pg_isready -U foundation >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+      - name: whole-stack chaos drill (--bite)
+        run: |
+          set +e; bash scripts/chaos/whole-stack-chaos.sh --bite; rc=$?; set -e
+          echo "whole-stack rc=$rc (0=pass,2=notrun)"
+          [ "$rc" = 1 ] && exit 1 || exit 0
+
+  antithesis-build:
+    name: S11/H2 Antithesis driver build (per-PR — anti-bit-rot)
+    # The paid Antithesis run is deferred (D-S11-ANTITHESIS-RUN), but the
+    # readiness driver must keep compiling (review LOW-3). Cheap go build/vet.
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - name: build + vet the antithesis driver
+        working-directory: tests/antithesis/driver
+        run: |
+          go build ./...
+          go vet ./...
