@@ -178,7 +178,7 @@ cmd_registry_bite() {
 # proves the sharding KEY matters; Redis being single-threaded, XADD rate alone
 # would not reveal it).
 cmd_redis_fanout() {
-  local R="${1:-200}" E="${2:-200}"
+  local R="${1:-200}" E="${2:-200}" i
   require_rig
   log "redis-fanout: building ${R} sharded streams x ${E} + 1 mega-stream of ${R}x${E}=$((R*E)) entries ..."
   redis DEL fanout.mega >/dev/null
@@ -215,8 +215,12 @@ cmd_redis_fanout() {
   log "  ${K}x read one reality's history: sharded(${shardlen} entries)=${t_shard}ms | un-sharded(scan ${megalen})=${t_mega}ms"
   redis DEL fanout.mega >/dev/null; for i in $(seq 1 "$R"); do redis DEL "fanout.shard.${i}" >/dev/null; done
   # bite: un-sharding MUST inflate the per-reality read (R x more data scanned).
+  # This measures per-reality HISTORY-read amplification (full XRANGE) as a proxy
+  # for the DP-A7 fan-out benefit; the live pub/sub benefit (each consumer sees
+  # only its stream's NEW entries) is the same sharding-key sensitivity in a
+  # different read mode.
   awk -v sh="$t_shard" -v mg="$t_mega" 'BEGIN{exit !(mg > sh*2)}' \
-    && log "PASS(bite): un-sharding inflated the per-reality read >2x — the reality-sharding key (DP-A7) genuinely bounds read amplification" \
+    && log "PASS(bite): un-sharding inflated the per-reality history read >2x — the reality-sharding key (DP-A7) genuinely bounds read amplification" \
     || fail "un-sharding did NOT inflate the read (${t_shard}ms->${t_mega}ms) — measurement insensitive to the sharding key (vacuous)"
 }
 

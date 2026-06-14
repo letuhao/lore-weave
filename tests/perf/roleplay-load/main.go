@@ -80,9 +80,11 @@ func run(dsn string, sessions, events int, rate, targetMs float64, bite bool) in
 	var (
 		mu   sync.Mutex
 		lats []time.Duration
+		errs int
 		wg   sync.WaitGroup
 	)
 	record := func(d time.Duration) { mu.Lock(); lats = append(lats, d); mu.Unlock() }
+	recordErr := func() { mu.Lock(); errs++; mu.Unlock() }
 
 	var pace time.Duration
 	if rate > 0 {
@@ -94,18 +96,30 @@ func run(dsn string, sessions, events int, rate, targetMs float64, bite bool) in
 		wg.Add(1)
 		go func(sid string) {
 			defer wg.Done()
-			appendSerial(db, reality, sid, events, pace, record)
+			appendSerial(db, reality, sid, events, pace, record, recordErr)
 		}(sid)
 		// The bite: the FIRST session gets a SECOND, uncoordinated processor.
 		if bite && i == 0 {
 			wg.Add(1)
 			go func(sid string) {
 				defer wg.Done()
-				appendSerial(db, reality, sid, events, pace, record)
+				appendSerial(db, reality, sid, events, pace, record, recordErr)
 			}(sid)
 		}
 	}
 	wg.Wait()
+
+	// An append error (pool/timeout hiccup) drops a write, which would look exactly
+	// like a serial-FIFO break on the NON-bite path — so a clean I6 verdict is only
+	// trustworthy with zero append errors. Report inconclusive (NOTRUN) instead of
+	// mis-attributing infra flakiness to an I6 violation. (The bite detects a fork
+	// via n!=M regardless, so it is robust to a few dropped writes.)
+	if !bite && errs > 0 {
+		fmt.Printf(`{"sessions":%d,"events_per_session":%d,"appends":%d,"append_errors":%d,"verdict":"inconclusive"}`+"\n",
+			sessions, events, len(lats), errs)
+		fmt.Fprintf(os.Stderr, "NOTRUN: %d append error(s) — cannot distinguish a dropped write from an I6 fork; re-run on a quiet stack\n", errs)
+		return 2
+	}
 
 	// Verify serial FIFO per session: n == distinct == max == events (contiguous).
 	bad := 0
@@ -138,7 +152,9 @@ func run(dsn string, sessions, events int, rate, targetMs float64, bite bool) in
 		fmt.Fprintf(os.Stderr, "FAIL: %d/%d sessions broke serial-FIFO under single-processor routing (I6 violated without a bite!)\n", bad, sessions)
 		return 1
 	}
-	verdict := "p99 within DP-T3 target"
+	// p99 is INFORMATIONAL (report-only): the gate is serial-FIFO; p99 is reported
+	// against DP-T3 without a pre-baseline hard-fail (S7 "ship a method" discipline).
+	verdict := "p99 within DP-T3 target (informational)"
 	if ms(p99) > targetMs {
 		verdict = fmt.Sprintf("p99 %.2fms EXCEEDS DP-T3 target %.1fms (data-plane ack; report, no pre-baseline hard-fail)", ms(p99), targetMs)
 	}
@@ -150,7 +166,7 @@ func run(dsn string, sessions, events int, rate, targetMs float64, bite bool) in
 // SELECT max(version)+1 then INSERT are SEPARATE statements (autocommit) — so
 // two processors on one session genuinely race (the I6 failure mode), and one
 // processor is genuinely serial.
-func appendSerial(db *sql.DB, reality, sid string, events int, pace time.Duration, record func(time.Duration)) {
+func appendSerial(db *sql.DB, reality, sid string, events int, pace time.Duration, record func(time.Duration), recordErr func()) {
 	types := []string{"turn.taken", "npc.acted", "pc.moved"}
 	for i := 0; i < events; i++ {
 		var next int64
@@ -158,6 +174,7 @@ func appendSerial(db *sql.DB, reality, sid string, events int, pace time.Duratio
 			`SELECT COALESCE(max(aggregate_version),0)+1 FROM events
 			   WHERE reality_id=$1 AND aggregate_type='pc_session' AND aggregate_id=$2`,
 			reality, sid).Scan(&next); err != nil {
+			recordErr()
 			continue
 		}
 		start := time.Now()
@@ -168,6 +185,7 @@ func appendSerial(db *sql.DB, reality, sid string, events int, pace time.Duratio
 			 VALUES ($1,$2,'pc_session',$3,$4,$5,1,'{"t":1}'::jsonb, now(), now())`,
 			uuid.New().String(), reality, sid, next, types[i%len(types)])
 		if err != nil {
+			recordErr()
 			continue
 		}
 		record(time.Since(start))

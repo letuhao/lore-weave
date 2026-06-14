@@ -19,7 +19,7 @@
 
 **Recently cleared (S12):** D-WORKLOAD-GEN-REAL-SHARD (Inc-1) · D-S7-SOAK-LAG-METRIC (Inc-4) · D-S8-MULTI-SHARD-DR (Inc-5). (Rows remain in the Deferred table below — prune after a few sessions.)
 
-**NEXT:** (a) push the S12 commits (needs explicit approval — Phase 11 guardrail); (b) act on the #1 refactor-risk: **batch the meta-worker XACK** then re-measure via `shared-path.sh metaworker`; (c) S13 = L1/core coverage (lifecycle R9 / capacity / migration 6-phase). Phase-2 cluster cert deferred → D-S12-MULTI-HOST. New deferred: D-S12-MULTI-HOST, D-S12-LLM-LATENCY-AT-SCALE, D-S12-T0T1-MICRO, D-S12-METAWORKER-XACK-BATCH (the fix).
+**NEXT:** (a) push the S12 commits (needs explicit approval — Phase 11 guardrail); (b) act on the #1 refactor-risk: **batch the meta-worker XACK** then re-measure via `shared-path.sh metaworker`; (c) S13 = L1/core coverage (lifecycle R9 / capacity / migration 6-phase). Phase-2 cluster cert deferred → D-S12-MULTI-HOST. New deferred: D-S12-MULTI-HOST, D-S12-LLM-LATENCY-AT-SCALE, D-S12-T0T1-MICRO, D-S12-METAWORKER-XACK-BATCH (the fix), D-S12-RSS-MEMORY-SOAK (memory-leak watch — Phase-1 soak proves no backlog growth, not no RSS leak).
 
 ---
 

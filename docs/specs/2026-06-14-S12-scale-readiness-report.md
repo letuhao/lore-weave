@@ -117,14 +117,18 @@ sessions on one shard (a hot reality), each one processor:
 
 - **Lag metric** `lw_projection_lag_seconds` (= age of the oldest un-published
   outbox row) emitted as a Prometheus textfile. Under steady 200/s emit the
-  publisher kept up: depth bounded (2–32), lag < 0.2 s — **no backlog growth / no
-  leak signal**. Soak cannot be time-compressed: a CI leak-smoke + a manual
-  wall-clock-hours run (`soak.sh manual`). **Bite:** throttling the publisher drove
-  lag 0.07 s → 20.8 s monotonic. Closes `D-S7-SOAK-LAG-METRIC`.
+  publisher kept up: depth bounded (2–32), lag < 0.2 s — **no BACKLOG growth**.
+  Note this is a backlog signal (outbox depth + delivery lag), **NOT a memory-leak
+  signal** — the publisher runs here as a host process so RSS is not sampled; the
+  RSS/memory-leak watch is the manual containerized soak (`D-S12-RSS-MEMORY-SOAK`).
+  Soak cannot be time-compressed: a CI leak-smoke + a manual wall-clock-hours run
+  (`soak.sh manual`). **Bite:** throttling the publisher drove lag 0.07 s → 20.8 s
+  monotonic. Closes `D-S7-SOAK-LAG-METRIC`.
 - **Multi-shard DR:** 3 real Postgres shards dumped, dropped TOGETHER (disaster),
-  restored together, every shard verified **byte-identical** (ordered event-id
-  digest). **Bite:** a tampered dump restored non-identical and the checksum caught
-  it. Closes `D-S8-MULTI-SHARD-DR`.
+  restored together, every shard verified **content-identical** (ordered digest
+  over `event_id || aggregate_version || payload` — not the id set alone, so a
+  payload/version corruption is also caught). **Bite:** a tampered dump restored
+  non-identical and the checksum caught it. Closes `D-S8-MULTI-SHARD-DR`.
 
 ## 5. Verdict, residual unknowns, and Phase 2
 
@@ -142,6 +146,9 @@ path scale on the cheap axes (shards, cores). The one architectural ceiling foun
   a **lower bound**; only a multi-node cluster certifies the absolute.
 - True physical-core isolation (WSL2 cpuset is logical-vCPU isolation).
 - The meta-worker ceiling AFTER the XACK-batching fix (re-measure post-fix).
+- **Memory-leak (RSS) soak** — Phase-1 soak proves no *backlog* growth, not no
+  *memory* leak (publisher ran as a host process). `D-S12-RSS-MEMORY-SOAK`:
+  containerized publisher + RSS watch over a long manual soak.
 
 **Ranked refactor-risk list:**
 1. **HIGH — I7 meta-worker single-consumer XACK** (~22k < 50k/s target). Fix: batch

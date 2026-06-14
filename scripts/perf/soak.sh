@@ -153,7 +153,8 @@ cmd_leak_smoke() {
     || fail "max outbox depth ${maxd} >= ${bound} (~5s of emit) — publisher NOT keeping up / backlog growing"
   awk -v m="$maxl" 'BEGIN{exit !(m < 5)}' \
     || fail "max lag ${maxl}s >= 5s under keep-up — delivery falling behind"
-  log "PASS(leak-smoke): depth + lag bounded under steady ${rate}/s emit — no backlog growth, publisher keeps up"
+  log "PASS(leak-smoke): depth + lag bounded under steady ${rate}/s emit — no BACKLOG growth, publisher keeps up"
+  log "NOTE: this is a BACKLOG signal (outbox depth + delivery lag), NOT a memory-leak signal — the publisher runs here as a host process so RSS is not sampled; the RSS/memory-leak watch is the manual containerized soak (D-S12-RSS-MEMORY-SOAK)."
 }
 
 cmd_bite() {

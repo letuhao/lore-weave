@@ -35,9 +35,11 @@ psqlA()  { docker exec -i "$1" psql -tA -U "$PG_USER" -d "$2" -c "$3"; }
 bin() { for c in "$@"; do [ -x "$c" ] && { echo "$c"; return 0; }; done; return 1; }
 WG="${WG_BIN:-$(bin tests/workload-gen/wg.exe tests/workload-gen/wg)}" || notrun "workload-gen not built"
 
-# Content checksum = ordered event_id digest + count (the bytes that must survive).
+# FULL-CONTENT checksum: count + a digest over event_id||aggregate_version||payload
+# (ordered). Digesting the id ALONE would miss a payload/version corruption that
+# kept the id — so "byte-identical" needs the content, not just the id set.
 checksum() { # container
-  psqlA "$1" "$SHARD_DB" "SELECT count(*)||':'||COALESCE(md5(string_agg(event_id::text, ',' ORDER BY event_id::text)),'empty') FROM events"
+  psqlA "$1" "$SHARD_DB" "SELECT count(*)||':'||COALESCE(md5(string_agg(event_id::text||'|'||aggregate_version::text||'|'||payload::text, ',' ORDER BY event_id::text)),'empty') FROM events"
 }
 
 seed_shard() { # k
@@ -74,6 +76,8 @@ run_drill() { # bite_flag
     # Delete the FIRST data row inside the events partition COPY block specifically
     # (pg_dump writes partitioned event data under events_p_default; a UUID-prefixed
     # line elsewhere — e.g. events_outbox — would not change the events checksum).
+    local before after
+    before="$(docker exec "$c" sh -c "wc -l < /tmp/dr_shard.sql" | tr -d '[:space:]')"
     docker exec "$c" sh -c "awk '
         /^COPY .*events_p_default / {inblk=1; print; next}
         inblk && /^\\\\\\.\$/ {inblk=0; print; next}
@@ -81,8 +85,12 @@ run_drill() { # bite_flag
         {print}
       ' /tmp/dr_shard.sql > /tmp/dr_shard.sql.t && mv /tmp/dr_shard.sql.t /tmp/dr_shard.sql" \
       || notrun "could not tamper dump"
-    local dropped; dropped="$(docker exec "$c" sh -c "grep -c '^COPY .*events_p_default ' /tmp/dr_shard.sql" 2>/dev/null || echo 0)"
-    log "BITE: tampered shard 0's dump (deleted one event row from the events_p_default COPY block; blocks=${dropped})"
+    after="$(docker exec "$c" sh -c "wc -l < /tmp/dr_shard.sql" | tr -d '[:space:]')"
+    # Fail LOUD (notrun) if the tamper was a no-op — e.g. the partition naming
+    # changed and the awk matched nothing — rather than letting a vacuous bite
+    # masquerade as a real one.
+    [ "${after:-0}" -lt "${before:-0}" ] || notrun "tamper was a no-op (${before}->${after} lines) — events_p_default COPY block not found? partition scheme changed"
+    log "BITE: tampered shard 0's dump (deleted one events_p_default data row; ${before}->${after} lines)"
   fi
 
   log "DISASTER: dropping all ${SHARDS} shard DBs together ..."

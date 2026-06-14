@@ -130,6 +130,7 @@ pin_isolated_shard() {
 shard_own_cpu() { docker stats --no-stream --format '{{.CPUPerc}}|{{.BlockIO}}|{{.MemUsage}}' "$ISO_C" 2>/dev/null || echo "n/a|n/a|n/a"; }
 
 wait_healthy() { # container...
+  local c  # local — bash dynamic scope would otherwise leak this into a caller's `c`
   for c in "$@"; do
     for _ in $(seq 1 60); do
       docker exec "$c" pg_isready -U "$PG_USER" >/dev/null 2>&1 && break
@@ -141,7 +142,7 @@ wait_healthy() { # container...
 
 # ── subcommands ──────────────────────────────────────────────────────────────
 cmd_up() {
-  local n="${1:-$SHARDS}"
+  local n="${1:-$SHARDS}" k
   local svcs=(meta-pg redis toxiproxy)
   for k in $(seq 0 $((n - 1))); do svcs+=("pg-shard-$k"); done
   log "bringing up meta + redis + toxiproxy + ${n} shard(s): ${svcs[*]}"
@@ -157,7 +158,7 @@ cmd_up() {
 cmd_down() { log "tearing down rig (-v)"; dc down -v >/dev/null 2>&1 || true; }
 
 cmd_migrate() {
-  local n="${1:-$SHARDS}"
+  local n="${1:-$SHARDS}" k
   log "migrating meta + ${n} shard schemas ..."
   migrate_meta
   for k in $(seq 0 $((n - 1))); do migrate_one_shard "$(shard_container "$k")"; done
@@ -169,7 +170,7 @@ cmd_migrate() {
 # >=2 distinct PG INSTANCES (not >=2 DBs on one instance). This is the artifact
 # that closes D-WORKLOAD-GEN-REAL-SHARD.
 cmd_crossshard() {
-  local n="${1:-$SHARDS}" seed="${2:-100}"
+  local n="${1:-$SHARDS}" seed="${2:-100}" k
   [ "$n" -ge 2 ] || notrun "cross-shard needs N>=2 (got ${n})"
   log "seeding ${n} shards (one reality each) via the real spine emit path ..."
   local instances_with_events=0
@@ -234,7 +235,7 @@ cmd_pgbench() {
 # txn = 1 event + 1 outbox row (the spine T2 write shape), so tps ~= events/s.
 # Emits a USL-ready JSON series {n,throughput} + the OWN-CPU per rung.
 cmd_pack() {
-  local rungs="${1:-$PACK_RUNGS}" secs="${2:-$PACK_SECS}"
+  local rungs="${1:-$PACK_RUNGS}" secs="${2:-$PACK_SECS}" n
   assert_production_durability
   pin_isolated_shard
   log "packing sweep on ${ISO_C}: rungs=[${rungs}] secs=${secs} (raw-PG write ceiling)"
