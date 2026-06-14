@@ -1,6 +1,6 @@
 # Translation Panel Overhaul — Design Spec
 
-> Status: **DESIGN PARKED (design-reviewed + revised; build deferred by user)** · 2026-06-15 · branch `feat/auto-draft-factory-gaps`
+> Status: **DESIGN COMPLETE — PARKED (3 review rounds; no open questions; build deferred by user)** · 2026-06-15 · branch `feat/auto-draft-factory-gaps`
 > Scope: two deferred "big features" for the translation panel + two QoL folds. Design-only; BUILD is RAID-safe (translation code is **not** RAID-owned — §7) and can follow when prioritized.
 >
 > **Deferred tasks (tracked):**
@@ -64,6 +64,7 @@ User flagged two deferred big-features around the "split translation panel" set 
 - A correction edits block *i* of `h.translated_body_json` directly → reader/`TranslationViewer` read `h` normally (no compose layer; B3 resolved).
 - **Per-block gold record** appended on each save: `{ chapter_id, target_language, source_block_content_hash, llm_text (from base version block i), human_text }` → feeds the learning loop at block granularity (B2). The learning loop diffs human vs the LLM base block, not the whole version (avoids over-crediting).
 - **Multi-device (B4):** patches are per-block → concurrent edits to *different* blocks merge; only same-block edits last-write-wins. (Whole-version save would clobber — another reason for (a).)
+- **LLM never overwrites a human-version (locked).** A new full LLM (re-)translation **always lands as a new non-active version**; it must NOT auto-promote over an active human-version. This already matches the shipped auto-promote guard (`_PROMOTE_ACTIVE_SQL` skips `authored_by='human'`). When a newer LLM base exists, the panel surfaces a **"newer machine translation available"** affordance; adopting it (which discards the human edits, or re-applies them per-block onto the new base) requires an **explicit human confirm** — never automatic.
 - Endpoint (translation-service): `PATCH /v1/chapters/{id}/translations/{lang}/blocks/{blockRef}` (or batch) — updates the human-version block + writes gold. `blockRef` keyed by `source_block_content_hash` (+ ordinal tiebreak for duplicate paragraphs), not `block_index` (A2).
 
 ### 3.4 Optional FE-only stopgap
@@ -77,7 +78,7 @@ Only build if per-part **status tracking** + **dirty-only re-translation** prove
 
 ### 4.1 Segment model
 - `chapter_translation_segments` (translation-service): a **contiguous block-range** of a chapter: `{ id, chapter_id, target_language, start_block_index, end_block_index, block_hashes TEXT[] (content_hash of each member block, ordered), status, version_ref, source_block_hashes_at_translate TEXT[], created_at, updated_at }`.
-- Segmentation = heuristic group of adjacent `chapter_blocks` up to ~N tokens, respecting heading boundaries. Deterministic, no LLM.
+- Segmentation = heuristic group of adjacent `chapter_blocks` up to a **~2000-token target** (aligns with the V3 chunk default), respecting heading boundaries (never split mid-heading-section if it fits). Deterministic, no LLM.
 - **Dirty detection (A2):** compare current `chapter_blocks[start..end]` content_hashes vs `source_block_hashes_at_translate`. A draft edit to one paragraph → only the segment containing that block is dirty (local, no downstream cascade — H2 resolved). Re-translate re-does dirty segments only.
 
 ### 4.2 Pipeline
@@ -88,8 +89,13 @@ Only build if per-part **status tracking** + **dirty-only re-translation** prove
 - Denormalized **chapter-level** translation status counts (e.g. `segments_total`, `segments_done`, `is_stale`) maintained by trigger on segment writes (the glossary-counts pattern) → matrix cell renders "12/15" cheaply without aggregating tens of thousands of rows live.
 - Matrix QoL (folds the old #2): expand a chapter row → segment rows w/ status + click-through to the panel; **fix `listChapters(limit:200)`→100 clamp** via loop-fetch (same fix as campaign/extraction).
 
-### 4.4 Migration / rollback
-- Additive: new `chapter_translation_segments` table + trigger-maintained rollup counts. No change to `chapter_translations` (stays the published/active rollup). Rollback = stop writing segments, fall back to whole-chapter path. DB migration is L+ → run via /amaw + rollback note at BUILD start.
+### 4.4 Glossary-staleness — per-segment (L1, locked)
+- When a glossary entity changes, mark **only the segments whose member blocks mention the changed term(s)** stale (match against `chapter_blocks.text_content`), not the whole chapter. Re-translate then touches just those segments → far cheaper on large books. The chapter-level `is_stale` rollup is the OR of its segments.
+
+### 4.5 Migration / rollback / backfill
+- Additive: new `chapter_translation_segments` table + trigger-maintained rollup counts. No change to `chapter_translations` (stays the published/active rollup).
+- **Backfill = full, up front:** a one-time job segments every existing chapter from its `chapter_blocks` (the ~2000-token heuristic). Idempotent + resumable (skip chapters already segmented at the current heuristic version). Runs without LLM so the 4232-chapter corpus is cheap.
+- Rollback = stop writing segments, fall back to whole-chapter path. DB migration is L+ → run via /amaw + rollback note at BUILD start.
 
 ---
 
@@ -119,8 +125,10 @@ Only build if per-part **status tracking** + **dirty-only re-translation** prove
 - ~~B3 serving / B4 concurrency~~ → resolved by (a) (in-place patch into a real version; per-block merge).
 - ~~Scope/order~~ → T1 first; T2 optional.
 
-**Still open — decide when T2 build starts:**
-1. **Segment granularity**: target segment size (tokens) — align with the V3 chunk default (~2000) or heading-driven (variable)?
-2. **Backfill vs lazy**: segment all chapters up front, or lazily on first open/translate?
-3. **Glossary-staleness granularity (L1)**: mark only segments whose blocks mention a changed entity stale (cheaper re-translate) vs whole-chapter stale — opportunity, not required for v1.
-4. **New-base reconciliation**: when a *newer* full LLM translation arrives after a human-version `h` exists, do we re-seed `h` from the new base (losing manual edits) or keep `h` and flag "newer base available"? (Recommend: keep `h`, flag.)
+**Resolved (design review round 3, 2026-06-15):**
+- ~~Segment granularity~~ → **~2000-token target**, heading-aware (§4.1).
+- ~~Backfill vs lazy~~ → **full backfill up front**, idempotent/resumable, no LLM (§4.5).
+- ~~Glossary-staleness granularity~~ → **per-segment** — only segments mentioning the changed term go stale (§4.4).
+- ~~New-base reconciliation~~ → **LLM never overwrites a human-version**; new LLM translation lands non-active; adopting it requires **explicit human confirm** (§3.3).
+
+**No open questions remain — design is complete for both T1 and T2.**
