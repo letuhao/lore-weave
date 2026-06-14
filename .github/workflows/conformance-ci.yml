@@ -370,9 +370,18 @@ jobs:
           go vet  -C services/meta-worker ./cmd/metaworker-bench
           go build -C tests/perf/roleplay-load ./...
           go vet  -C tests/perf/roleplay-load ./...
-      - name: shellcheck the scale scripts (smoke)
+      - name: build + vet the S13 L1 tooling
         run: |
-          for s in scale-rig shared-path roleplay-load soak multishard-dr; do
+          # L1 lifecycle/capacity/relocation harnesses live in the meta-worker module.
+          go build -C services/meta-worker ./cmd/lifecycle-race ./cmd/capacity-override ./cmd/relocate-drill
+          go vet  -C services/meta-worker ./cmd/lifecycle-race ./cmd/capacity-override ./cmd/relocate-drill
+          # The migration canary drill lives in the migration-orchestrator module.
+          go build -C services/migration-orchestrator ./cmd/canary-drill
+          go vet  -C services/migration-orchestrator ./cmd/canary-drill
+      - name: shellcheck the scale + L1 scripts (smoke)
+        run: |
+          for s in scale-rig shared-path roleplay-load soak multishard-dr \
+                   l1-lifecycle l1-capacity l1-migration l1-relocate; do
             bash -n "scripts/perf/${s}.sh"
           done
 
@@ -423,3 +432,23 @@ jobs:
         run: |
           set +e; SCALE_SHARDS=3 bash scripts/perf/multishard-dr.sh drill; a=$?; SCALE_SHARDS=3 bash scripts/perf/multishard-dr.sh bite; b=$?; set -e
           echo "DR drill=$a bite=$b"; { [ "$a" = 1 ] || [ "$b" = 1 ]; } && exit 1 || exit 0
+      # ── S13 L1/core coverage live sweep (rides the booted scale rig). Each path
+      #    self-migrates its own meta/per-reality DBs and embeds its bite(s). The
+      #    canary drill builds in the migration-orchestrator module first.
+      - name: L1 lifecycle CAS race + bite (S13/Inc-1)
+        run: |
+          set +e; bash scripts/perf/l1-lifecycle.sh smoke; rc=$?; set -e
+          echo "l1-lifecycle rc=$rc (0=pass,2=notrun)"; [ "$rc" = 1 ] && exit 1 || exit 0
+      - name: L1 capacity enforcement + bites (S13/Inc-2)
+        run: |
+          set +e; bash scripts/perf/l1-capacity.sh smoke; rc=$?; set -e
+          echo "l1-capacity rc=$rc"; [ "$rc" = 1 ] && exit 1 || exit 0
+      - name: L1 migration canary rollout + bites (S13/Inc-3)
+        run: |
+          go build -C services/migration-orchestrator -o cdrill ./cmd/canary-drill
+          set +e; bash scripts/perf/l1-migration.sh smoke; rc=$?; set -e
+          echo "l1-migration rc=$rc"; [ "$rc" = 1 ] && exit 1 || exit 0
+      - name: L1 cross-shard relocation + fault + bite (S13/Inc-4)
+        run: |
+          set +e; bash scripts/perf/l1-relocate.sh smoke; rc=$?; set -e
+          echo "l1-relocate rc=$rc"; [ "$rc" = 1 ] && exit 1 || exit 0

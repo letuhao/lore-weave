@@ -1,0 +1,7 @@
+id: l1-capacity
+description: "S13/Inc-2 — L1 capacity/provisioning enforcement, LIVE. shard_utilization snapshot-validity CHECKs reject malformed snapshots (capacity<=0, negative counters, cpu out of range, bad host); capacity-override→scaling_events via MetaWrite lands an I8 meta_write_audit row in the SAME TX and the 24h window is DB-CHECK-enforced. Two bites: drop the shard_utilization CHECK ⇒ the bad row lands; a raw INSERT bypassing MetaWrite ⇒ 0 audit rows (I8 non-vacuous). Records D-S13-CAPACITY-ROUTING-GLUE (DB has no over-subscription CHECK; the app-level planner is unwired). Requires the scale rig meta-pg up."
+invariant: I-l1-capacity-enforced
+kind: live-probe
+command: ["bash", "scripts/perf/l1-capacity.sh", "smoke"]
+requires: ["scale-rig"]
+skip_when: []
