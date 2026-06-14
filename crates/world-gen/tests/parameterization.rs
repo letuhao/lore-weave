@@ -6,9 +6,9 @@
 //! Spec: `docs/specs/2026-06-14-world-gen-parameterization.md`.
 
 use world_gen::{
-    BiomeKind, ClimateParams, CoastlineProfile, CreativeSeed, ErosionParams, ErosionStrength,
-    HydrologyParams, IntensityKnobs, ReliefParams, RouteParams, SettlementParams, TectonicsParams,
-    TerrainMode, WorldScale, generate,
+    BiomeKind, ClimateParams, CoastlineProfile, CreativeSeed, CultureParams, ErosionParams,
+    ErosionStrength, HierarchyParams, HydrologyParams, IntensityKnobs, PoliticalParams,
+    ReliefParams, RouteParams, SettlementParams, TectonicsParams, TerrainMode, WorldScale, generate,
 };
 
 fn hex(h: [u8; 32]) -> String {
@@ -83,6 +83,9 @@ fn explicit_default_params_equal_bare_default() {
         hydrology_params: HydrologyParams::default(),
         settlement_params: SettlementParams::default(),
         route_params: RouteParams::default(),
+        political_params: PoliticalParams::default(),
+        culture_params: CultureParams::default(),
+        hierarchy_params: HierarchyParams::default(),
         intensity: IntensityKnobs::default(),
         ..CreativeSeed::default()
     };
@@ -399,6 +402,92 @@ fn each_route_param_gate_is_wired() {
         count(RouteParams { river_nav_min_run: 100_000, ..def }, RouteKind::RiverNavigation), 0,
         "river_nav_min_run must gate RiverNavigation"
     );
+}
+
+/// **A granular political override changes the world** (P6) — a tighter county
+/// clamp yields fewer counties (`county_subdivision=4` default ⇒ 4/province; cap
+/// at 2 halves them).
+#[test]
+fn granular_political_override_changes_the_world() {
+    let base = generate(7, &CreativeSeed::default());
+    let cs = CreativeSeed {
+        political_params: PoliticalParams { county_max: 2, ..PoliticalParams::default() },
+        ..CreativeSeed::default()
+    };
+    let m = generate(7, &cs);
+    assert_ne!(base.content_hash, m.content_hash, "county_max must change the world");
+    assert!(m.counties.len() < base.counties.len(), "a tighter county_max yields fewer counties");
+}
+
+/// **Each political quota divisor is wired in the right direction** (P6) — a
+/// smaller `*_per_seed` divisor means more seeds per parent ⇒ strictly more
+/// provinces / states / realms. Counts (not just hashes) guard a divisor swap.
+#[test]
+fn political_divisors_increase_tier_counts() {
+    let base = generate(7, &CreativeSeed::default());
+    let mk = |pp: PoliticalParams| {
+        generate(7, &CreativeSeed { political_params: pp, ..CreativeSeed::default() })
+    };
+    let more_prov = mk(PoliticalParams { prov_cells_per_seed: 10, ..PoliticalParams::default() });
+    assert!(more_prov.provinces.len() > base.provinces.len(), "smaller prov divisor ⇒ more provinces");
+    let more_states = mk(PoliticalParams { state_provs_per_seed: 1, ..PoliticalParams::default() });
+    assert!(more_states.states.len() > base.states.len(), "smaller state divisor ⇒ more states");
+    let more_realms = mk(PoliticalParams { realm_states_per_seed: 1, ..PoliticalParams::default() });
+    assert!(more_realms.realms.len() > base.realms.len(), "smaller realm divisor ⇒ more realms");
+}
+
+/// **Each political tier max is wired** (P6) — with a small divisor (so the max
+/// is the binding constraint), a larger `*_max` admits more seeds. Catches a
+/// prov/state/realm max field mis-map.
+#[test]
+fn political_maxes_are_wired() {
+    let mk = |pp: PoliticalParams| {
+        generate(7, &CreativeSeed { political_params: pp, ..CreativeSeed::default() })
+    };
+    // provinces: tiny divisor ⇒ prov_max binds.
+    let p_lo = mk(PoliticalParams { prov_cells_per_seed: 1, prov_max: 2, ..PoliticalParams::default() });
+    let p_hi = mk(PoliticalParams { prov_cells_per_seed: 1, prov_max: 8, ..PoliticalParams::default() });
+    assert!(p_hi.provinces.len() > p_lo.provinces.len(), "higher prov_max ⇒ more provinces");
+    // states: tiny divisor ⇒ state_max binds.
+    let s_lo = mk(PoliticalParams { state_provs_per_seed: 1, state_max: 2, ..PoliticalParams::default() });
+    let s_hi = mk(PoliticalParams { state_provs_per_seed: 1, state_max: 6, ..PoliticalParams::default() });
+    assert!(s_hi.states.len() > s_lo.states.len(), "higher state_max ⇒ more states");
+    // realms: tiny divisor ⇒ realm_max binds.
+    let r_lo = mk(PoliticalParams { realm_states_per_seed: 1, realm_max: 1, ..PoliticalParams::default() });
+    let r_hi = mk(PoliticalParams { realm_states_per_seed: 1, realm_max: 4, ..PoliticalParams::default() });
+    assert!(r_hi.realms.len() > r_lo.realms.len(), "higher realm_max ⇒ more realms");
+}
+
+/// **A granular culture override changes the world** (P6) — `count_max` caps the
+/// `culture_count` input (5 ⇒ 2 here), and the hearth spacing coeff drives
+/// placement.
+#[test]
+fn granular_culture_override_changes_the_world() {
+    let base = generate(7, &CreativeSeed::default());
+    let capped = generate(7, &CreativeSeed {
+        culture_params: CultureParams { count_max: 2, ..CultureParams::default() },
+        ..CreativeSeed::default()
+    });
+    assert!(capped.culture_regions.len() < base.culture_regions.len(), "count_max caps cultures");
+    let spaced = generate(7, &CreativeSeed {
+        culture_params: CultureParams { hearth_spacing_coeff: 3.0, ..CultureParams::default() },
+        ..CreativeSeed::default()
+    });
+    assert_ne!(base.content_hash, spaced.content_hash, "hearth spacing must change placement");
+}
+
+/// **A granular hierarchy override changes the world** (P6) — capping the
+/// region-subdivision ceiling below the `region_subdivision=4` input yields
+/// fewer regions, which cascades into the political nesting.
+#[test]
+fn granular_hierarchy_override_changes_the_world() {
+    let base = generate(7, &CreativeSeed::default());
+    let m = generate(7, &CreativeSeed {
+        hierarchy_params: HierarchyParams { region_subdivision_max: 2 },
+        ..CreativeSeed::default()
+    });
+    assert_ne!(base.content_hash, m.content_hash, "region_subdivision_max must change the world");
+    assert!(m.regions.len() < base.regions.len(), "a tighter region ceiling yields fewer regions");
 }
 
 /// An out-of-range knob is clamped, not panicked — generation still succeeds and

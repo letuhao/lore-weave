@@ -50,8 +50,8 @@ pub use creative_seed::{
     SettlementDensity, TerrainMode, WorldArchetype, WorldScale,
 };
 pub use params::{
-    ClimateParams, ErosionParams, HydrologyParams, IntensityKnobs, ReliefParams, RouteParams,
-    SettlementParams, TectonicsParams,
+    ClimateParams, CultureParams, ErosionParams, HierarchyParams, HydrologyParams, IntensityKnobs,
+    PoliticalParams, ReliefParams, RouteParams, SettlementParams, TectonicsParams,
 };
 pub use world_map::{
     BoundaryKind, Cell, Continent, County, CultureRegion, MountainRange, Plate, PlateBoundary,
@@ -122,6 +122,7 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
         &biome,
         &plate_of,
         cs.region_subdivision,
+        &cs.hierarchy_params.resolved(&cs.intensity),
     );
 
     // Stage 5–8 — political (5-tier strict-nested INSIDE the hierarchy, C-2:
@@ -138,6 +139,7 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
         region_tree.subcontinents.len(),
         region_tree.continents.len(),
         cs.county_subdivision,
+        &cs.political_params.resolved(&cs.intensity),
     );
     let county_of = nested.county_of;
     let counties = nested.counties;
@@ -171,7 +173,14 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
         &settlements,
         &cs.route_params.resolved(&cs.intensity),
     );
-    let culture = culture::build(seed, &mesh.centers, &mesh.neighbors, &biome, cs.culture_count);
+    let culture = culture::build_with(
+        seed,
+        &mesh.centers,
+        &mesh.neighbors,
+        &biome,
+        cs.culture_count,
+        &cs.culture_params.resolved(&cs.intensity),
+    );
 
     // Stage 9b — geographic feature extraction (deterministic; names added
     // later by the separate `naming` step).

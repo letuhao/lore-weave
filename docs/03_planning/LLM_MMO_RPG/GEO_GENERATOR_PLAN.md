@@ -72,9 +72,15 @@
 > habitability) + `RouteParams` (MountainPass count, road/trail tier gates,
 > river-nav min run) via `settlement::build_with` + `routes::build_with`
 > (wrappers keep `civ_adapter` on defaults). `SettlementDensity` enum stays
-> tier-1. Byte-identical pins hold. **TOP NEXT (param arc): P6
-> `PoliticalParams` + `CultureParams` + `HierarchyParams`** (count divisors,
-> spacing, subdivision targets — `political.rs`/`culture.rs`/`hierarchy.rs`).
+> tier-1. Byte-identical pins hold. **✅ P6 DONE** — `PoliticalParams` (live
+> `build_nested` quota divisors + maxes for province/state/realm + county clamp)
+> + `CultureParams` (hearth spacing + count clamp) + `HierarchyParams` (region
+> clamp); threaded into `build_nested`/`hierarchy::build` directly +
+> `culture::build_with` wrapper (legacy `political::build` + `civ_adapter` stay
+> default). Byte-identical pins hold. **TOP NEXT (param arc): P7 `BiomeParams`**
+> (elevation tiers + the `terrain_cost`/`culture_barrier`/`population_potential`
+> derivation tables — **fixed-size arrays** to keep `CreativeSeed: Copy`, per the
+> P1 review-impl finding — `biome.rs`).
 > *(Deferred P2 follow-up: Profile-only inline `height_at`/`apply_falloff` gate
 > literals — legacy path. Deferred P3 follow-up: moisture-transport consts +
 > cross-module `ClimateZone::wetness()` / `bias_delta` tables.)*

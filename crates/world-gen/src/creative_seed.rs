@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::climate::ClimateZone;
 use crate::params::{
-    ClimateParams, ErosionParams, HydrologyParams, IntensityKnobs, ReliefParams, RouteParams,
-    SettlementParams, TectonicsParams,
+    ClimateParams, CultureParams, ErosionParams, HierarchyParams, HydrologyParams, IntensityKnobs,
+    PoliticalParams, ReliefParams, RouteParams, SettlementParams, TectonicsParams,
 };
 
 /// Creative direction for a generated world.
@@ -63,12 +63,14 @@ pub struct CreativeSeed {
     pub continent_latitude_spread: f32,
     /// Target number of geographic **regions** (L2) per subcontinent in the
     /// geometric hierarchy (C3 arc). `#[serde(default)]` = 4; clamped to
-    /// `1..=12` at use. A subcontinent with fewer cells than this gets one
+    /// `1..=hierarchy_params.region_subdivision_max` (default ceiling 12) at use
+    /// (parameterization P6). A subcontinent with fewer cells than this gets one
     /// region per cell.
     #[serde(default = "default_region_subdivision")]
     pub region_subdivision: u8,
     /// Target number of **counties** per province (political tier, C-2).
-    /// `#[serde(default)]` = 4; clamped to `1..=8` at use.
+    /// `#[serde(default)]` = 4; clamped to `1..=political_params.county_max`
+    /// (default ceiling 8) at use (parameterization P6).
     #[serde(default = "default_county_subdivision")]
     pub county_subdivision: u8,
     /// Granular tectonics / isostasy tuning (parameterization P1). All fields
@@ -100,6 +102,18 @@ pub struct CreativeSeed {
     /// Default = prior `routes.rs` consts (byte-identical).
     #[serde(default)]
     pub route_params: RouteParams,
+    /// Granular political-tier quota tuning (parameterization P6).
+    /// Default = prior `political::build_nested` consts (byte-identical).
+    #[serde(default)]
+    pub political_params: PoliticalParams,
+    /// Granular culture-layer tuning (parameterization P6).
+    /// Default = prior `culture.rs` consts (byte-identical).
+    #[serde(default)]
+    pub culture_params: CultureParams,
+    /// Granular geometric-hierarchy tuning (parameterization P6).
+    /// Default = prior `hierarchy.rs` consts (byte-identical).
+    #[serde(default)]
+    pub hierarchy_params: HierarchyParams,
     /// Macro "intensity" knobs (parameterization) — convenience scalers over
     /// groups of granular params; default `1.0` = no-op. See [`IntensityKnobs`].
     #[serde(default)]
@@ -151,6 +165,9 @@ impl Default for CreativeSeed {
             hydrology_params: HydrologyParams::default(),
             settlement_params: SettlementParams::default(),
             route_params: RouteParams::default(),
+            political_params: PoliticalParams::default(),
+            culture_params: CultureParams::default(),
+            hierarchy_params: HierarchyParams::default(),
             intensity: IntensityKnobs::default(),
         }
     }
@@ -477,6 +494,9 @@ mod tests {
             hydrology_params: HydrologyParams { river_percentile: 0.9, ..HydrologyParams::default() },
             settlement_params: SettlementParams { coast_bonus: 1.5, ..SettlementParams::default() },
             route_params: RouteParams { mountain_pass_target: 9, ..RouteParams::default() },
+            political_params: PoliticalParams { prov_max: 5, ..PoliticalParams::default() },
+            culture_params: CultureParams { hearth_spacing_coeff: 1.2, ..CultureParams::default() },
+            hierarchy_params: HierarchyParams { region_subdivision_max: 7 },
             ..CreativeSeed::default()
         };
         let back: CreativeSeed =
@@ -497,6 +517,9 @@ mod tests {
         assert_eq!(old.hydrology_params, HydrologyParams::default());
         assert_eq!(old.settlement_params, SettlementParams::default());
         assert_eq!(old.route_params, RouteParams::default());
+        assert_eq!(old.political_params, PoliticalParams::default());
+        assert_eq!(old.culture_params, CultureParams::default());
+        assert_eq!(old.hierarchy_params, HierarchyParams::default());
         // A partial override (intensity.orogeny + one climate cutoff) keeps every
         // other field default — the `#[serde(default)]` per-field fill.
         let json2 = r#"{

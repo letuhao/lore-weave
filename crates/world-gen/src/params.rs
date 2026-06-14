@@ -443,6 +443,117 @@ impl RouteParams {
     }
 }
 
+/// Political-tier quota tuning for the live 5-tier `political::build_nested`
+/// (was the inline divisors + quota clamps). Each tier's seed count is
+/// `(parent_size / *_per_seed).clamp(1, *_max)`. Defaults are the exact prior
+/// values (byte-identical). The legacy `political::build` (civ adapter) keeps
+/// its own consts. `county` subdivision count is a `CreativeSeed` tier-1 input;
+/// only its upper clamp (`county_max`) is a param.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PoliticalParams {
+    /// Cells per province seed, within a region (was `150`).
+    pub prov_cells_per_seed: u32,
+    /// Max provinces per region (was `8`).
+    pub prov_max: u32,
+    /// Provinces per state seed, within a subcontinent (was `4`).
+    pub state_provs_per_seed: u32,
+    /// Max states per subcontinent (was `6`).
+    pub state_max: u32,
+    /// States per realm seed, within a continent (was `3`).
+    pub realm_states_per_seed: u32,
+    /// Max realms per continent (was `4`).
+    pub realm_max: u32,
+    /// Upper clamp on the `county_subdivision` input (counties per province,
+    /// was `8`). The min stays the structural `1`.
+    pub county_max: u32,
+}
+
+impl Default for PoliticalParams {
+    fn default() -> Self {
+        PoliticalParams {
+            prov_cells_per_seed: 150,
+            prov_max: 8,
+            state_provs_per_seed: 4,
+            state_max: 6,
+            realm_states_per_seed: 3,
+            realm_max: 4,
+            county_max: 8,
+        }
+    }
+}
+
+impl PoliticalParams {
+    /// Clamp to sane rails (no panic; divisors ≥ 1 so the integer divide never
+    /// degenerates; maxes ≥ 1 so a tier always has ≥ 1 seed).
+    pub fn resolved(&self, _k: &IntensityKnobs) -> PoliticalParams {
+        PoliticalParams {
+            prov_cells_per_seed: self.prov_cells_per_seed.max(1),
+            prov_max: self.prov_max.max(1),
+            state_provs_per_seed: self.state_provs_per_seed.max(1),
+            state_max: self.state_max.max(1),
+            realm_states_per_seed: self.realm_states_per_seed.max(1),
+            realm_max: self.realm_max.max(1),
+            county_max: self.county_max.clamp(1, 255),
+        }
+    }
+}
+
+/// Culture-layer tuning (was the `culture.rs` consts). Defaults are the exact
+/// prior values (byte-identical). `culture_count` is a `CreativeSeed` tier-1
+/// input; only its upper clamp (`count_max`) is a param.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CultureParams {
+    /// Hearth great-circle spacing coefficient: `min_sep = coeff / √k · π`
+    /// (was `0.85`). Higher = cultures spread farther apart.
+    pub hearth_spacing_coeff: f32,
+    /// Upper clamp on the `culture_count` input (was `16`). Min stays `1`.
+    pub count_max: u32,
+}
+
+impl Default for CultureParams {
+    fn default() -> Self {
+        CultureParams { hearth_spacing_coeff: 0.85, count_max: 16 }
+    }
+}
+
+impl CultureParams {
+    /// Clamp to sane rails (no panic). `k` reserved for call-shape uniformity.
+    pub fn resolved(&self, _k: &IntensityKnobs) -> CultureParams {
+        CultureParams {
+            hearth_spacing_coeff: self.hearth_spacing_coeff.clamp(0.0, 10.0),
+            count_max: self.count_max.clamp(1, 255),
+        }
+    }
+}
+
+/// Geometric-hierarchy tuning (was the `hierarchy.rs` consts). Defaults are the
+/// exact prior values (byte-identical). Continents (= land components) and
+/// subcontinents (= plates) are structural, not param-driven; only the L2-region
+/// subdivision ceiling is exposed (`region_subdivision` is a `CreativeSeed`
+/// tier-1 input, clamped to `[1, region_subdivision_max]`).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct HierarchyParams {
+    /// Upper clamp on the `region_subdivision` input (L2 regions per
+    /// subcontinent, was `12`). Min stays `1`.
+    pub region_subdivision_max: u32,
+}
+
+impl Default for HierarchyParams {
+    fn default() -> Self {
+        HierarchyParams { region_subdivision_max: 12 }
+    }
+}
+
+impl HierarchyParams {
+    /// Clamp to a sane rail (no panic). `k` reserved for call-shape uniformity.
+    pub fn resolved(&self, _k: &IntensityKnobs) -> HierarchyParams {
+        HierarchyParams { region_subdivision_max: self.region_subdivision_max.clamp(1, 255) }
+    }
+}
+
 /// Continental relief, ocean bathymetry, quantize and heightmap-noise tuning
 /// (was the `terrain.rs` consts). Defaults are the exact prior values
 /// (byte-identical baseline). Noise *salts* and the fixed `ARCH_ISLANDS`
@@ -845,6 +956,33 @@ mod tests {
         let junk = RouteParams { river_nav_min_run: 0, ..RouteParams::default() };
         let r = junk.resolved(&IntensityKnobs::default());
         assert_eq!(r.river_nav_min_run, 2, "min run clamps ≥ 2 (a run is a real edge)");
+    }
+
+    #[test]
+    fn political_culture_hierarchy_defaults_are_identity() {
+        let pp = PoliticalParams::default();
+        assert_eq!(pp, pp.resolved(&IntensityKnobs::default()));
+        let cp = CultureParams::default();
+        assert_eq!(cp, cp.resolved(&IntensityKnobs::default()));
+        let hp = HierarchyParams::default();
+        assert_eq!(hp, hp.resolved(&IntensityKnobs::default()));
+    }
+
+    #[test]
+    fn political_culture_hierarchy_clamp_no_panic() {
+        let pp = PoliticalParams {
+            prov_cells_per_seed: 0, prov_max: 0, county_max: 9999, ..PoliticalParams::default()
+        }
+        .resolved(&IntensityKnobs::default());
+        assert_eq!(pp.prov_cells_per_seed, 1, "divisor clamps ≥ 1 (no div-by-zero)");
+        assert_eq!(pp.prov_max, 1, "max clamps ≥ 1");
+        assert_eq!(pp.county_max, 255, "county_max clamps ≤ 255 (fits u8)");
+        let cp = CultureParams { hearth_spacing_coeff: -1.0, count_max: 0 }
+            .resolved(&IntensityKnobs::default());
+        assert_eq!(cp.hearth_spacing_coeff, 0.0, "spacing clamps non-negative");
+        assert_eq!(cp.count_max, 1, "count_max clamps ≥ 1");
+        let hp = HierarchyParams { region_subdivision_max: 0 }.resolved(&IntensityKnobs::default());
+        assert_eq!(hp.region_subdivision_max, 1, "region max clamps ≥ 1");
     }
 
     #[test]
