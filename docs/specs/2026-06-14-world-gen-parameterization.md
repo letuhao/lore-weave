@@ -106,6 +106,41 @@ add ~120 granular flags (config-file territory).
   out-of-range config clamps, never panics). Widen a rail only if a param's
   intended exposed range exceeds it.
 
+### 1g — One centralized profile (human **and** LLM authorable) — the end-state
+
+**Yes: `CreativeSeed` *is* the single centralized profile.** It is the one input
+to `generate(seed, &cs)` (the `u64` seed is just the dice; the profile is the
+creative direction). After the arc it carries **every** tunable, in three tiers —
+all `#[serde(default)]`, so any author sets only what they care about and defaults
+fill the rest:
+
+- **Tier 1 — high-level enums** (`world_scale`, `coastline_profile`,
+  `settlement_density`, …) — already present; the quick "what kind of world".
+- **Tier 2 — macro intensity knobs** (`orogeny`, `relief`, `warmth`, `rainfall`,
+  `collision_frequency`, …, default `1.0`) — the **LLM-friendly dials**: a few
+  numbers that swing whole behaviours.
+- **Tier 3 — granular params + override tables** (the ~120 values) — precise
+  human/advanced control.
+
+**Two authoring paths, one profile:**
+- **Human** → hand-edit the profile JSON, run `--config profile.json`. To make
+  this ergonomic, add a CLI **`dump-config`** that emits the *full default*
+  profile as annotated JSON — a ready template showing every knob.
+- **LLM** → `author --brief "…"` returns the profile JSON, constrained by
+  `creative_seed_schema()` and validated/clamped by `parse_creative_seed`. The LLM
+  mostly sets Tier 1 + Tier 2 (the macro knobs are exactly what a prose brief maps
+  to); Tier 3 stays available but rarely needed.
+
+**Safety for both:** clamp-on-parse **and** clamp-on-use — a human typo or an LLM
+hallucination is clamped to the valid band, never panics.
+
+**Cross-cutting requirement (every stage):** when a stage adds params it MUST also
+extend (a) `creative_seed_schema()` (the LLM JSON Schema — guarded by the
+`schema_enums_match_rust_enums`-style test), (b) the `author` `SYSTEM_PROMPT`
+field descriptions, and (c) `parse_creative_seed` clamps — otherwise the LLM
+can't author the new knob. The macro knobs are the priority surface for the LLM;
+granular tables can be schema-optional.
+
 ## 2 — Staged plan (each stage byte-identical-baseline + tests + commit)
 
 The deep audit ~2×'d the surface, so the arc grows to **8 stages** (grouped by
@@ -120,7 +155,7 @@ subsystem; each independently shippable):
 | **P5** | `SettlementParams` + `RouteParams` (density maps, burg scoring, role percentiles, climate-habitability, pass count, tier gates). | M |
 | **P6** | `PoliticalParams` + `CultureParams` + `HierarchyParams` (count divisors, spacing, subdivision targets). | M |
 | **P7** | `BiomeParams` (elevation tiers + the `terrain_cost`/`culture_barrier`/`population_potential` derivation tables). | M |
-| **P8** | `RenderTheme` (render/relief colors, palettes, supersample) + CLI macro flags + a worked example config. | M |
+| **P8** | `RenderTheme` (render/relief colors, palettes, supersample) + CLI macro-knob flags + **`dump-config`** (emit the full default profile as an annotated template) + a worked example config. | M |
 
 **Order:** P1 → … → P8 (independent; can reorder if a subsystem is urgent). Each
 stage: move its consts/inline-literals/tables into a `Default`, thread params, add
@@ -138,6 +173,9 @@ clamps, no panic). Full 12-phase + `/review-impl` + PO POST-REVIEW per stage.
 - **No new provider/SDK/secret surface** — pure local compute.
 - Backward-compat: every existing `CreativeSeed` JSON + every `author` LLM output
   keeps working (serde default).
+- **One profile, dual authoring (§1g)**: every stage keeps the LLM `author`
+  schema/prompt/clamps in sync with its new params, so the single `CreativeSeed`
+  profile stays both human- and LLM-authorable end-to-end.
 
 ## 4 — Out of scope (this arc)
 
