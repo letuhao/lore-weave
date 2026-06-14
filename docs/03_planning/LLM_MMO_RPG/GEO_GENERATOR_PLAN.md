@@ -158,14 +158,30 @@
 > `interior_rugged_cap`, `rugged_freq`, `tec_hill_weight`) in a cleanup pass
 > (kept now as serde fields to avoid a param-surface break).
 >
-> **ELEVATION ARC (paused, resumable): build S6** — render/export bathymetry fix
-> (the LAST stage). `relief.rs`: suppress the fBm `detail` below sea so it stops
-> bumping the flat ocean floor; `export.rs`: give the `.glb` real (exaggerated)
-> ocean depth instead of the flat sea-clamp so bathymetry is visible; a final
-> hypsometry calibration pass. Fixes D7 (the "ocean rises above land" visual).
-> **Note:** S6 is render/export only (NOT content_hash) → re-pin the 8 render
-> hashes, content pins unchanged. Each stage = full 12-phase + `/review-impl` +
-> PO POST-REVIEW.
+> **⛰ S6 SHIPPED (2026-06-14) — render/export bathymetry (arc finale).** Fixes
+> D7 (the "ocean rises above land" visual), render/export only — **`content_hash`
+> unchanged** (model bathymetry was already correct after S4). `relief.rs`: the
+> sub-sea detail gate `smoothstep(-0.15, 0.02, land_t)` (≈0.97 *at* sea → it
+> bumped the ocean floor) retuned to `smoothstep(0.0, 0.04, land_t)` → detail 0 at/
+> below sea, so the `water_color`/heightmap depth ramp reads the clean S4
+> bathymetry. `export.rs`: the `.glb` ocean floor now displaces to its **real
+> exaggerated depth** (`h = water ? e.min(sea) : e.max(sea)`) instead of a flat
+> sea clamp (ridges shallow, abyss deep, land above, coastline at sea); pole rows
+> use a uniform (row-mean) radius. 8 render pins re-captured; content pins
+> unchanged. `/review-impl` 1 LOW (ocean-pole needle cluster → uniform pole radius
+> + `glb_poles_have_a_uniform_radius` test) fixed, 3 accepted. Plan:
+> `docs/plans/2026-06-14-elevation-s6-render-export-bathymetry.md`. Acceptance:
+> `export.rs::ocean_sinks_below_sea_and_land_rises` + `relief.rs::sub_sea_detail_is_suppressed`;
+> lib 442 + all integration green.
+>
+> **🏔 ELEVATION-REDESIGN ARC COMPLETE (S1–S6).** Elevation is now physically
+> grounded end-to-end: tectonic uplift (S1) on a colliding plate model (S2),
+> crustal-thickness isostasy → bimodal hypsometry (S3), age-based oceanic
+> bathymetry (S4), coupled uplift⇄erosion shaping concave drainage (S5), and
+> real bathymetry in every render/export (S6) — all of D1–D7 closed. **TOP NEXT:**
+> a new track (elevation arc done; param arc done). Candidate: the
+> `D-S5-DEAD-RELIEF-PARAMS` cleanup (remove the 7 inert `ReliefParams` fields), or
+> a frontend three.js globe viewer, or whatever the PO picks next.
 >
 > ---
 >

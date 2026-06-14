@@ -98,8 +98,9 @@ fn encode_png(img: DynamicImage) -> Vec<u8> {
 ///
 /// - A lat/lon UV-sphere vertex grid `(grid_w+1) × (grid_h+1)` (the `u=1` seam
 ///   column is duplicated so the texture wraps without a gap; the poles collapse).
-/// - Each vertex is displaced radially by `BASE + max(elev, sea) · exaggeration`,
-///   so the ocean is a smooth sphere at sea level and continents rise above it.
+/// - Each vertex is displaced radially by `BASE + elev · exaggeration` (clamped
+///   so ocean never rises above sea nor land below it), so the ocean floor shows
+///   real bathymetry below sea (S6) and continents rise above it.
 /// - Smooth per-vertex normals (accumulated face normals) for terrain shading;
 ///   `TEXCOORD_0 = (u, v)` indexes the embedded biome PNG.
 #[allow(clippy::too_many_arguments)]
@@ -134,6 +135,18 @@ pub fn glb_globe(
         // Wrap/clamp the sample pixel: the seam column (i==grid_w) reuses column
         // 0; the bottom row (j==grid_h) reuses the last pixel row.
         let py = (j.min(grid_h - 1)) as usize;
+        // At a pole (top/bottom row) every column collapses to a single
+        // direction, so per-column radii would form a ragged needle cluster.
+        // Use one uniform radius — the row-mean elevation (S6 bathymetry made
+        // ocean poles vary too; this also cleans the pre-existing land-pole
+        // needles). `min(sea)`/`max(sea)` both reduce to the mean at a pole.
+        let pole_h = if j == 0 || j == grid_h {
+            let row = py * grid_w as usize;
+            let sum: f32 = (0..grid_w as usize).map(|px| relief.elev[row + px]).sum();
+            Some(sum / grid_w as f32)
+        } else {
+            None
+        };
         for i in 0..cols {
             let u = i as f32 / grid_w as f32;
             let dir = Projection::Equirectangular
@@ -141,12 +154,18 @@ pub fn glb_globe(
                 .unwrap_or([0.0, 0.0, 1.0]);
             let px = (i % grid_w) as usize;
             let ridx = py * grid_w as usize + px;
-            let e = relief.elev[ridx];
-            let h = if relief.water[ridx] {
-                relief.sea
-            } else {
-                e.max(relief.sea)
-            };
+            // S6 (D7): the ocean floor displaces to its **real** (exaggerated)
+            // depth below sea — ridges shallow, abyss deep — instead of being
+            // clamped flat to the sea sphere; land rises above. Coastline sits at
+            // sea. (`min`/`max` keep ocean never above sea and land never below.)
+            let h = pole_h.unwrap_or_else(|| {
+                let e = relief.elev[ridx];
+                if relief.water[ridx] {
+                    e.min(relief.sea)
+                } else {
+                    e.max(relief.sea)
+                }
+            });
             let r = BASE_RADIUS + h * exaggeration;
             positions.push([dir[0] * r, dir[1] * r, dir[2] * r]);
             texcoords.push([u, v]);
@@ -555,8 +574,10 @@ mod tests {
     }
 
     #[test]
-    fn ocean_is_clamped_to_sea_radius_and_land_rises() {
-        // A Continent world at a finer grid so land is clearly present.
+    fn ocean_sinks_below_sea_and_land_rises() {
+        // S6 (D7): the ocean floor must displace BELOW the sea radius (real
+        // bathymetry), land ABOVE it, and the ocean must span a depth range (not
+        // a flat clamp). A Continent world at a finer grid so land is present.
         let cs = CreativeSeed {
             world_scale: WorldScale::Continent,
             ..CreativeSeed::default()
@@ -567,26 +588,63 @@ mod tests {
             ReliefField::build(&map, gw, gh, RenderStyle::Realistic, Projection::Equirectangular);
         let sea_r = BASE_RADIUS + relief.sea * exag;
         let glb = glb_globe(&map, gw, gh, exag, 64, ColorMode::Biome);
-        // Pull POSITION bytes back and verify every vertex radius ≥ sea radius
-        // (ocean clamped to sea, land above) and at least one rises above it.
         let json_len = read_u32(&glb, 12) as usize;
         let v: serde_json::Value = serde_json::from_slice(&glb[20..20 + json_len]).unwrap();
         let bin_off = 20 + json_len + 8;
         let pos_bv = v["accessors"][0]["bufferView"].as_u64().unwrap() as usize;
         let off = bin_off + v["bufferViews"][pos_bv]["byteOffset"].as_u64().unwrap() as usize;
         let count = v["accessors"][0]["count"].as_u64().unwrap() as usize;
-        let mut any_above = false;
+        let (mut min_r, mut max_r) = (f32::INFINITY, f32::NEG_INFINITY);
         for k in 0..count {
             let base = off + k * 12;
             let x = f32::from_le_bytes([glb[base], glb[base + 1], glb[base + 2], glb[base + 3]]);
             let y = f32::from_le_bytes([glb[base + 4], glb[base + 5], glb[base + 6], glb[base + 7]]);
             let z = f32::from_le_bytes([glb[base + 8], glb[base + 9], glb[base + 10], glb[base + 11]]);
             let r = (x * x + y * y + z * z).sqrt();
-            assert!(r >= sea_r - 1e-4, "vertex radius {r} below sea radius {sea_r}");
-            if r > sea_r + 1e-4 {
-                any_above = true;
-            }
+            min_r = min_r.min(r);
+            max_r = max_r.max(r);
         }
-        assert!(any_above, "no land rose above sea level");
+        // Ocean floor sinks below sea; land rises above it.
+        assert!(min_r < sea_r - 1e-3, "ocean floor {min_r} not below sea radius {sea_r}");
+        assert!(max_r > sea_r + 1e-3, "no land rose above sea radius {sea_r}");
+        // Bathymetry is visible (a real depth range below sea), not a flat clamp.
+        assert!(
+            sea_r - min_r > 0.01,
+            "ocean depth range {} too shallow — bathymetry not visible",
+            sea_r - min_r
+        );
+    }
+
+    #[test]
+    fn glb_poles_have_a_uniform_radius() {
+        // S6 review-impl: at a pole every column collapses to one direction, so
+        // the per-column radii must be uniform (one averaged radius) — no ragged
+        // needle cluster, for ocean or land poles alike.
+        let map = tiny_world();
+        let (gw, gh) = (32u32, 16u32);
+        let glb = glb_globe(&map, gw, gh, 0.06, 64, ColorMode::Biome);
+        let json_len = read_u32(&glb, 12) as usize;
+        let v: serde_json::Value = serde_json::from_slice(&glb[20..20 + json_len]).unwrap();
+        let bin_off = 20 + json_len + 8;
+        let pos_bv = v["accessors"][0]["bufferView"].as_u64().unwrap() as usize;
+        let off = bin_off + v["bufferViews"][pos_bv]["byteOffset"].as_u64().unwrap() as usize;
+        let count = v["accessors"][0]["count"].as_u64().unwrap() as usize;
+        let radius = |k: usize| {
+            let b = off + k * 12;
+            let x = f32::from_le_bytes([glb[b], glb[b + 1], glb[b + 2], glb[b + 3]]);
+            let y = f32::from_le_bytes([glb[b + 4], glb[b + 5], glb[b + 6], glb[b + 7]]);
+            let z = f32::from_le_bytes([glb[b + 8], glb[b + 9], glb[b + 10], glb[b + 11]]);
+            (x * x + y * y + z * z).sqrt()
+        };
+        let cols = (gw + 1) as usize;
+        // North pole = the first row of vertices; south pole = the last row.
+        let north0 = radius(0);
+        for k in 1..cols {
+            assert!((radius(k) - north0).abs() < 1e-5, "north pole vertex {k} radius not uniform");
+        }
+        let south0 = radius(count - cols);
+        for k in (count - cols + 1)..count {
+            assert!((radius(k) - south0).abs() < 1e-5, "south pole vertex {k} radius not uniform");
+        }
     }
 }

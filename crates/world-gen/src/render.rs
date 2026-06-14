@@ -1101,8 +1101,9 @@ mod tests {
     /// silently shift a colour. This pins the blake3 of seed-7 renders (every
     /// map mode, both styles where they differ) at a fixed 80×40 — a default
     /// `RenderTheme` must reproduce them byte-for-byte. Re-captured at **elevation
-    /// S5** (coupled uplift⇄erosion, 2026-06-14): S5 changed default land
-    /// elevation, so every relief-derived render shifts (expected).
+    /// S6** (render/export bathymetry, 2026-06-14): S6 suppresses sub-sea fBm
+    /// detail in `relief.rs`, so every relief-derived render shifts (render-only —
+    /// the content_hash is unchanged from S5).
     #[test]
     fn render_output_is_byte_identical_baseline() {
         let m = generate(7, &CreativeSeed::default());
@@ -1111,14 +1112,14 @@ mod tests {
         let r = RenderStyle::Realistic;
         let a = RenderStyle::Atlas;
         let cases: [(&str, RgbImage, &str); 8] = [
-            ("relief/realistic", relief_image(&m, 80, 40, r, p), "dc650c17012997fd492734ab9b8a7c3a4e5a98b76b3241e299806f7abab7e4d2"),
-            ("relief/atlas", relief_image(&m, 80, 40, a, p), "33188d32aa79dac60fc625cf2340d530f8e9a7111824c1f13bb85df8b9e212e3"),
-            ("biome", biome_image(&m, 80, 40, r, p), "2c208a98b9aa880b18264d3127b0e22df30a9b2372bdd667de849f1ee534dc0f"),
-            ("culture", culture_image(&m, 80, 40, r, p), "37173cea3e02e0c5656c6e17d3bfae7d58c6bdae096109ccbd4b2c36b29814b8"),
-            ("plate", plate_image(&m, 80, 40, r, p), "cca4c24940919ed89b886b4caf26e5092230da58679092d581bc613725542aac"),
-            ("region", region_image(&m, 80, 40, r, p), "dcff6323ae495070261148770cf43a80512fd5c48c829d9ae1cedce02e47c8c7"),
-            ("realm", realm_image(&m, 80, 40, r, p), "dcff6323ae495070261148770cf43a80512fd5c48c829d9ae1cedce02e47c8c7"),
-            ("political", political_image(&m, 80, 40, r, p), "a1c1b01528d03c929d929ac577674c80bb5369e9a474adb0fd4aaec7fdc4772b"),
+            ("relief/realistic", relief_image(&m, 80, 40, r, p), "60351d27797240b1b69b60fdcc8fb8e88cdbd0af49d100d7acda6ce83f22568e"),
+            ("relief/atlas", relief_image(&m, 80, 40, a, p), "2f18290c2ab0940f72fdff015ab52f51f3c67b03f20ff18fa2421189d7cae000"),
+            ("biome", biome_image(&m, 80, 40, r, p), "820d85a24f0999973c42b1d57bf09e61af6b04b8de160393ba0e61bfcccced66"),
+            ("culture", culture_image(&m, 80, 40, r, p), "a377d57e4e67d974f1f5526d2e48a9851b12ffc61c01ac1f30f0c18ad18c24d1"),
+            ("plate", plate_image(&m, 80, 40, r, p), "485169a1e936b0956647fb377f916ee309affd4ddaab06fcc43ab7ff6c131bf6"),
+            ("region", region_image(&m, 80, 40, r, p), "8d5c7f22fc88fce5213f0c7ca6ca59d64442717d6fa182004ac0106455461066"),
+            ("realm", realm_image(&m, 80, 40, r, p), "8d5c7f22fc88fce5213f0c7ca6ca59d64442717d6fa182004ac0106455461066"),
+            ("political", political_image(&m, 80, 40, r, p), "7d64185588db0f7586e2a5f269a0f3b1b5f4d01a6d226ebf6b928cb63c8174f4"),
         ];
         for (name, img, want) in &cases {
             assert_eq!(&hh(img), want, "render output drifted for {name}");
