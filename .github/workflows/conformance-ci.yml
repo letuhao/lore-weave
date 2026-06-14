@@ -261,3 +261,45 @@ jobs:
           name: recovery-results
           path: tests/conformance/results/
           if-no-files-found: ignore
+
+  kernel-sim:
+    name: S10/H1 kernel sim DST (per-PR)
+    # CPU-only deterministic-simulation DST (no live stack), fast → gates per-PR
+    # like loom-ci. Runs the tests/sim oracles — projection-convergence,
+    # append-batch atomicity, version-CAS, tilemap determinism — over the DEFAULT
+    # (shallow) seed sweep; each embeds its --bite non-vacuity proof, and the
+    # skeleton gate proves the simulator itself is reproducible + non-vacuous
+    # before any oracle rides on it. tests/sim is an isolated workspace (madsim
+    # is unusable here — Windows + sqlx walls, see tests/sim/README.md), so this
+    # uses its own Cargo manifest. The deep seed sweep runs nightly below.
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tests/sim
+      - name: sim oracles (shallow sweep + bites)
+        working-directory: tests/sim
+        run: cargo test
+
+  kernel-sim-nightly:
+    name: S10/H1 kernel sim DST (nightly — deep seed sweep)
+    # The same oracles over a DEEP seed sweep (SIM_SEEDS=256) — the VOPR payoff
+    # is breadth of fault schedules. A counterexample prints its seed for replay
+    # (SIM_SEEDS=1 + the printed seed). schedule fires only on main;
+    # workflow_dispatch is the manual smoke. Dormant on a feature branch.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tests/sim
+      - name: sim oracles (deep sweep)
+        working-directory: tests/sim
+        env:
+          SIM_SEEDS: "256"
+        run: cargo test

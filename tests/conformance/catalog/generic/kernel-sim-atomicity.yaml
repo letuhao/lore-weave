@@ -1,0 +1,7 @@
+id: kernel-sim-atomicity
+description: "S10/H1 — append-batch atomicity under crash: a crash mid-append (SimEventStore) leaves the store all-or-none — a failed append never tears a batch, and every stream stays a contiguous 1..=k prefix, across 64 interleavings. (At-least-once DELIVERY is the Go publisher's property, S8 G1 — not asserted here.) Runs clean THEN --bite (a torn-batch store must trip the oracle). CPU-only, no stack."
+invariant: I-append-atomic
+kind: rust-test
+command: ["bash", "-c", "cargo run -q --manifest-path tests/sim/Cargo.toml --bin sim atomicity && cargo run -q --manifest-path tests/sim/Cargo.toml --bin sim atomicity --bite"]
+requires: ["cargo"]
+skip_when: []

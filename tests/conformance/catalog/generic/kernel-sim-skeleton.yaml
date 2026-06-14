@@ -1,0 +1,8 @@
+id: kernel-sim-skeleton
+description: "S10/H1 — simulation harness self-non-vacuity gate: the deterministic Path-B executor (no madsim — sqlx + Windows walls, see tests/sim/README.md) is reproducible (same seed ⇒ identical trace) AND non-vacuous (yield points produce TRUE interleaving across a 64-seed sweep). Proves the sim itself is sound before any oracle rides on it. CPU-only, no stack."
+invariant: I-sim-harness-sound
+kind: rust-test
+command: ["bash", "-c", "cargo run -q --manifest-path tests/sim/Cargo.toml --bin sim skeleton"]
+# cargo (Rust toolchain) absent on the Go-only bare runner → notrun, not fail.
+requires: ["cargo"]
+skip_when: []
