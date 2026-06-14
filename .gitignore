@@ -288,4 +288,5 @@ services/knowledge-service/eval/rawsearch_eval_runs.jsonl
 services/meta-worker/mwbench-linux
 services/meta-worker/lcrace
 services/meta-worker/capovr
+services/migration-orchestrator/cdrill
 tests/perf/roleplay-load/rpload
