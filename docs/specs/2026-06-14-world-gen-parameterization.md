@@ -13,15 +13,25 @@
 > the *output*. (Mirrors the dispatcher-refactor pattern: architecture change,
 > zero baseline drift.)
 
-## 0 — Audit (this session, full `const` sweep of `crates/world-gen/src`)
+## 0 — Audit (this session — `const` sweep **+ deep inline/enum/table sweep**)
+
+> **Completeness note (spec review):** the first pass swept only `const`
+> declarations (~55). A second deep sweep (function bodies, `impl` enum→number
+> maps, clamp ranges) found the real tunable surface is **~120–150 values** —
+> roughly **2×** — spanning more subsystems (erosion, settlement, hydrology,
+> political, culture, routes, hierarchy, and the biome *derivation tables*). Full
+> catalog below.
 
 | Group | Examples | Disposition |
 |---|---|---|
-| **A. Generation tuning (sphere)** ~55 | `plates.rs` (16): `CONT_BASE`, `OCEAN_BASE`, `FOLD_PEAK`, `ARC_PEAK`, `TRENCH_DEPTH`, `ISLAND_ARC_PEAK`, `RIDGE_PEAK`, `RIFT_DEPTH`, `FAULT_PEAK`, `DECAY_HOPS`, `OCEAN_CRUST_KM`, `CONT_CRUST_KM`, `COLLISION_THICKEN_KM`, `PLATEAU_HOPS`, `CONT_ISO_SLOPE`, `FAULT_SHEAR_RATIO`, `PLATE_WARP_{FREQ,AMP,OCTAVES}` · `terrain.rs` (~27): `TECT_UPLIFT_{LO,HI}`, `TECT_BELT_LIFT`, `TECT_RANGE_WEIGHT`, `INTERIOR_RUGGED_CAP`, `TEC_{HILL,PLAIN}_WEIGHT`, `OCEAN_{SHELF,ABYSS,ABYSS_HOPS,RIPPLE_*,ARC_GATE_*}`, `SEA_FRAC`, `LAND_FULL`, `OCEAN_FULL`, `ARCH_RADIUS`, noise `*_FREQ`/`*_OCTAVES`/`*_WEIGHT` · `climate.rs` (12): `T_EQ`, `T_POLE`, `LAPSE_C`, `PRECIP_{EQ,SUBTROPIC,MIDLAT,POLAR}`, `AMP_{EQ,MARITIME,CONT_GAIN}`, `WINTER_FRAC_V1`, `HIGHLAND_ELEV`, `OROGRAPHIC`, `LAND_LEAK_BASE` | **EXPOSE** (granular + macro) |
-| **B. Internal / determinism** ~20 | `SALT_*` (×13 noise decorrelation), `GOLDEN_ANGLE`, fBm `OFFSET`/`GAIN`, `FRAC_1_SQRT_2`, `CLIPPER_SCALE`, `ARCH_ISLANDS` (fixed geometry), array sizes, `NONE` sentinels | **KEEP internal** (exposing salts/math is meaningless and would muddy determinism) |
-| **C. Render-only** ~25 | `render.rs` colors/palettes, `BACKGROUND`, `SS` supersample, `relief.rs` render (`WARP/DETAIL/RELIEF_*/OCC_*`) | **EXPOSE as `RenderTheme`** (not in `content_hash`; P4) |
-| **D. Frozen flat track** | `flatworld.rs`, `flat_climate.rs`, `zonegen.rs` | **DO NOT TOUCH** (CLAUDE.md frozen-track rule) |
-| **E. Authoring (LLM)** | `author.rs`/`naming.rs` prompts, `civ_adapter.rs` name lists | **Out of scope** (not generation tuning) |
+| **A. Macro/terrain tuning** ~55 const | `plates.rs` (16): orogeny peaks, crust/isostasy, `FAULT_SHEAR_RATIO`, plate-warp · `terrain.rs` const (~27): `TECT_*`, `OCEAN_*`, `SEA_FRAC`/`LAND_FULL`/`OCEAN_FULL`, noise freq/weight, `ARCH_RADIUS` · `climate.rs` const (12): `T_EQ/T_POLE`, `LAPSE_C`, `PRECIP_*`, `AMP_*`, `HIGHLAND_ELEV`, `OROGRAPHIC`, `LAND_LEAK_BASE` | **EXPOSE** (granular + macro) |
+| **A2. Inline tuning literals (NOT const)** ~25 | `terrain.rs` smoothstep gates (belt `0.46/0.72`, landness `0.32/0.52`, coastline-profile params), sea-level band `8192/57344` · `climate.rs` **Köppen cutoffs** (`10/18/−3/22 °C`, Med `0.65`, aridity slope `20.0` + offsets) · `hydrology.rs` (river pct `0.96`, lake `150/24`) | **EXPOSE** (these *are* world-shaping knobs) |
+| **A3. Enum→number maps + derivation tables** ~60 | `creative_seed.rs`: `SettlementDensity` (cells `800/400/200`, sep `0.08/0.05/0.03`), `CoastlineProfile` (`land_fraction`, dome `0.75`) · `erosion.rs` `ErosionStrength`→{carve/settle iters, erodibility, transport, settle_rate, diffusion} · `biome.rs` elevation tiers (`0.06/0.22/0.55`) + **`terrain_cost`/`culture_barrier`/`population_potential`** tables · `climate.rs` wetness-per-zone + climate-bias deltas · `settlement.rs` burg scoring + role pct + climate-habitability · `political.rs`/`culture.rs` count divisors + spacing · `routes.rs` pass count + tier gates · `hierarchy.rs` subdivision | **EXPOSE as override tables** (see §1f) — incl. the **gameplay/derivation** weights |
+| **B. Internal / determinism** ~20 | `SALT_*` (×13), `GOLDEN_ANGLE`, fBm `OFFSET`/`GAIN`, `FRAC_1_SQRT_2`, `CLIPPER_SCALE`, `ARCH_ISLANDS`, array sizes, `NONE` | **KEEP internal** |
+| **B2. Clamp ranges / safety rails** | `.clamp(3,24)`, `.clamp(0.1,0.9)`, `.clamp(4,80)`, `8192..=57344` | **KEEP internal** — these are the *guards* on the new params, not params themselves (widened only if a param's exposed range needs it) |
+| **C. Render-only** ~25 | `render.rs` colors/palettes, `BACKGROUND`, `SS`, `relief.rs` render | **EXPOSE as `RenderTheme`** (not in `content_hash`) |
+| **D. Frozen flat track** | `flatworld.rs`, `flat_climate.rs`, `zonegen.rs` | **DO NOT TOUCH** (CLAUDE.md) |
+| **E. Authoring (LLM)** | `author.rs`/`naming.rs` prompts, `civ_adapter.rs` name lists | **Out of scope** |
 
 ## 1 — Architecture
 
@@ -73,23 +83,51 @@ functions take `&RenderTheme`. The `const`s become the `Default` impls.
 `--config <json>` (a full `CreativeSeed`) is the primary path for granular control.
 Keep the existing high-level flags. Add a small set of macro-knob flags
 (`--orogeny`, `--relief`, `--ocean-depth`, …) for quick CLI dialing. Do **not**
-add ~55 granular flags (config-file territory).
+add ~120 granular flags (config-file territory).
+
+### 1f — Enum→number maps, derivation tables, clamp rails (the A3 group)
+
+- **Enum→number maps** (`SettlementDensity`, `CoastlineProfile`, `ErosionStrength`,
+  `WorldScale`): keep the enum as the high-level pick; the params struct holds the
+  underlying **table** (e.g. `SettlementParams { cells_per_settlement: { sparse,
+  medium, dense }, min_separation: {…} }`) defaulting to today's values. The enum
+  selects a row; the table is overridable. (Lets a creator keep "Dense" but
+  redefine what dense means, or set a fully custom number.)
+- **Derivation / gameplay tables** (`biome.rs` `terrain_cost` / `culture_barrier`
+  / `population_potential`, `settlement` climate-habitability, `climate` wetness-
+  per-zone + bias deltas): exposed as `Vec`/per-enum tables in the relevant params
+  struct. These are *gameplay weights* (movement cost, habitability, culture
+  spread) — distinct from geometry, but the PO chose "expose everything", so they
+  are in scope (a creator can retune how terrain → cost / population).
+- **Köppen classifier cutoffs** (`climate.rs` `10/18/−3/22 °C`, Med `0.65`, aridity
+  slope): exposed in `ClimateParams` — a creator can redefine the climate-zone
+  boundaries themselves.
+- **Clamp rails** (B2): stay internal — they *guard* the new params (an
+  out-of-range config clamps, never panics). Widen a rail only if a param's
+  intended exposed range exceeds it.
 
 ## 2 — Staged plan (each stage byte-identical-baseline + tests + commit)
 
+The deep audit ~2×'d the surface, so the arc grows to **8 stages** (grouped by
+subsystem; each independently shippable):
+
 | Stage | Builds | Size |
 |---|---|---|
-| **P1** | `TectonicsParams` (the 16 `plates.rs` consts) + `IntensityKnobs` scaffold (`orogeny`, `collision_frequency`) threaded into `plates::build`. | L |
-| **P2** | `ReliefParams` (the ~27 `terrain.rs` consts: relief, bathymetry, quantize, noise) + `relief`/`ocean_depth` knobs into `terrain::build`. | L |
-| **P3** | `ClimateParams` (the 12 `climate.rs` consts) + `warmth`/`rainfall`/`seasonality` knobs into `climate::build`. | L |
-| **P4** | `RenderTheme` (render/relief colors, palettes, supersample) + CLI macro flags + a worked example config. | M |
+| **P1** | `TectonicsParams` (16 `plates.rs` consts) + `IntensityKnobs` scaffold (`orogeny`, `collision_frequency`) → `plates::build`. | L |
+| **P2** | `ReliefParams` (`terrain.rs` consts **+ inline smoothstep gates + coastline-profile maps + sea-level band**) + `relief`/`ocean_depth` knobs → `terrain::build`. | L |
+| **P3** | `ClimateParams` (`climate.rs` consts **+ Köppen cutoffs + wetness/bias tables + moisture**) + `warmth`/`rainfall`/`seasonality` knobs → `climate::build`. | L |
+| **P4** | `ErosionParams` + `HydrologyParams` (the `ErosionStrength` table, river percentile, lake threshold). | M |
+| **P5** | `SettlementParams` + `RouteParams` (density maps, burg scoring, role percentiles, climate-habitability, pass count, tier gates). | M |
+| **P6** | `PoliticalParams` + `CultureParams` + `HierarchyParams` (count divisors, spacing, subdivision targets). | M |
+| **P7** | `BiomeParams` (elevation tiers + the `terrain_cost`/`culture_barrier`/`population_potential` derivation tables). | M |
+| **P8** | `RenderTheme` (render/relief colors, palettes, supersample) + CLI macro flags + a worked example config. | M |
 
-**Order:** P1 → P2 → P3 → P4. Each stage: move its consts into a `Default`,
-thread params, add (a) a **byte-identical-baseline test** (default config → same
-`content_hash` as a pinned pre-refactor digest *or* the determinism cross-check),
-(b) a **knob-does-something test** (a non-default value changes the output), (c)
-a **clamp test** (out-of-range input is clamped, no panic). Full 12-phase +
-`/review-impl` + PO POST-REVIEW per stage.
+**Order:** P1 → … → P8 (independent; can reorder if a subsystem is urgent). Each
+stage: move its consts/inline-literals/tables into a `Default`, thread params, add
+(a) a **byte-identical-baseline test** (default config → same `content_hash` as a
+pinned pre-refactor digest / determinism cross-check), (b) a **knob-does-something
+test** (a non-default value changes the output), (c) a **clamp test** (out-of-range
+clamps, no panic). Full 12-phase + `/review-impl` + PO POST-REVIEW per stage.
 
 ## 3 — Cross-cutting rules
 
