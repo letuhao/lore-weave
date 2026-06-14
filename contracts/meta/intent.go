@@ -53,6 +53,13 @@ type MetaWriteIntent struct {
 	// (the generic CDC default's unscrubbed-NewValues caveat — 114 — does not
 	// apply; this is exactly what the caller put here).
 	OutboxPayload map[string]any
+	// LifecycleAudit, when non-nil, inserts ONE lifecycle_transition_audit row in
+	// the SAME TX as this write (S13: makes the I9 transition + its lifecycle audit
+	// atomic — a crash can no longer leave the status changed but the lifecycle
+	// audit missing). Set by AttemptStateTransition on the SUCCESS path only; the
+	// failed-attempt audit still writes in its own TX by design (it must survive the
+	// data-write rollback).
+	LifecycleAudit *LifecycleTransitionAuditRow
 }
 
 // Validate checks the intent against fail-fast rules:
