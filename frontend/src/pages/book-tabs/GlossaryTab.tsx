@@ -59,9 +59,11 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
   const [translateOpen, setTranslateOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
-  const [sort, setSort] = useState<EntitySort>('updated_at');
+  // Default sort = appearance (chapter-link count) DESC, so the most-present
+  // entities (main characters etc.) surface first instead of sinking by recency.
+  const [sort, setSort] = useState<EntitySort>('links');
   const [searchMode, setSearchMode] = useState<'simple' | 'raw'>('simple');
-  const paged = useServerPagedList(50);
+  const paged = useServerPagedList(10);
   // Debounce the search box so we hit the BE once the user pauses, not per keystroke.
   const debouncedSearch = useDebouncedValue(filters.searchQuery, 300);
 
@@ -181,8 +183,9 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
   const toggleSearchMode = () => {
     const next = searchMode === 'raw' ? 'simple' : 'raw';
     setSearchMode(next);
-    // Raw search defaults to relevance ranking; leaving raw drops back to recency.
-    setSort((s) => (next === 'raw' ? 'relevance' : s === 'relevance' ? 'updated_at' : s));
+    // Raw search defaults to relevance ranking; leaving raw drops back to the
+    // default appearance sort (only if still on relevance — keep any manual pick).
+    setSort((s) => (next === 'raw' ? 'relevance' : s === 'relevance' ? 'links' : s));
     paged.reset();
   };
 

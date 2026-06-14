@@ -115,7 +115,7 @@ export function EntityListBrowser({
               aria-label={t('glossary.page_size_label')}
               className="h-7 rounded-md border bg-background px-1.5 text-[11px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
             >
-              {[50, 100, 200].map((n) => (
+              {[10, 20, 50, 100, 200].map((n) => (
                 <option key={n} value={n}>{t('glossary.page_size', { count: n })}</option>
               ))}
             </select>
