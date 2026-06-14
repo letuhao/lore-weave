@@ -36,13 +36,18 @@ services:
     build:
       context: ../..
       dockerfile: tests/antithesis/config/Dockerfile.init
+    # MUST match the driver's WG_SEED/WG_PROFILE (single source) — the driver's
+    # C3 (`wg -verify`) checks the store against this exact seed (review LOW-1).
+    environment:
+      WG_SEED: "7"
+      WG_PROFILE: multi-reality
     depends_on: [postgres, redis]
 
   # The real publisher service — drains outbox -> Redis. Antithesis faults hit it.
   publisher:
     build:
       context: ../..
-      dockerfile: services/publisher/Dockerfile
+      dockerfile: tests/antithesis/config/Dockerfile.publisher
     environment:
       PUBLISHER_ID: antithesis-pub
       META_DB_URL: postgres://foundation:foundation@postgres:5432/wholestack_antithesis_meta?sslmode=disable

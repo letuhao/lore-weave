@@ -162,14 +162,20 @@ log "under fault: pending=${pending} max_attempts=${maxatt} dead=${dead} pg_prox
 [ "$rtt" -ge $((PG_LATENCY_MS / 2)) ] || notrun "pg_proxy RTT ${rtt}ms < half the injected ${PG_LATENCY_MS}ms — the pg-slow toxic did not land"
 log "both faults concurrently active: delivery blocked (pending/retries) AND shard reads slow (rtt≥${PG_LATENCY_MS}/2)"
 
-# ── HEAL both + quiesce ──────────────────────────────────────────────────────
-log "HEAL (reset: latency off + redis up); waiting for full drain (quiesce) ..."
-$TOXIC reset
+# ── HEAL redis FIRST, pg STILL slow → drain THROUGH the slow PG (review MED-1) ─
+# Healing both at once would let the publisher drain through a FAST pg, making the
+# pg-slow decorative. Instead bring redis up while pg_proxy stays +latency, so the
+# backed-up outbox drains via the publisher's SLOW shard reads — pg-slow is now on
+# the convergence path, not just co-present.
+log "HEAL redis (pg_proxy STILL +${PG_LATENCY_MS}ms); draining THROUGH the slow PG ..."
+$TOXIC up redis_proxy
 quiesced=0
-for _ in $(seq 1 40); do
+for _ in $(seq 1 60); do   # wider window: draining via a slow PG is slower
   left="$(outbox_pending)"; [ "$left" = "0" ] && { quiesced=1; break; }; sleep 1
 done
-[ "$quiesced" = 1 ] || { cat /tmp/wholestack_pub.log; notrun "outbox did not drain within timeout (left=${left})"; }
+[ "$quiesced" = 1 ] || { cat /tmp/wholestack_pub.log; notrun "outbox did not drain through the slow PG within timeout (left=${left})"; }
+$TOXIC reset   # drain completed THROUGH the slow PG; now remove the latency
+log "drained through the slow PG; pg latency removed"
 dead="$(psql_db "$SHARD_DB" -tA -c "SELECT count(*) FROM events_outbox WHERE dead_lettered_at IS NOT NULL")"
 [ "$dead" -eq 0 ] || fail "${dead} row(s) dead-lettered across a survivable fault — delivery broken"
 log "quiesced: all outbox rows published, no dead-letter"
