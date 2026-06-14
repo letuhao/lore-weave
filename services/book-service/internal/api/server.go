@@ -348,7 +348,13 @@ func parseLimitOffset(r *http.Request) (limit, offset int) {
 	limit = 20
 	offset = 0
 	if v := r.URL.Query().Get("limit"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 100 {
+		// Clamp to the 100 max instead of falling back to the default 20: a
+		// consumer asking for >100 (e.g. the translate wizard) wants "as many as
+		// allowed", not a silent drop to 20. (chapter-list-limit100-fallback-20-bug)
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			if n > 100 {
+				n = 100
+			}
 			limit = n
 		}
 	}
