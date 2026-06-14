@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { usePagedList } from '@/components/pagination/usePagedList';
+import { Pager } from '@/components/pagination/Pager';
 import type { ParsedChapter } from './parseChapters';
 
 interface Props {
@@ -23,16 +23,10 @@ export function ChapterImportReview({
   onSetAllIncluded,
   pageSize = 50,
 }: Props) {
-  const [page, setPage] = useState(0);
   const total = chapters.length;
-  const pages = Math.max(1, Math.ceil(total / pageSize));
-  const safePage = Math.min(page, pages - 1);
-  const start = safePage * pageSize;
-  const slice = chapters.slice(start, start + pageSize);
+  const { page, setPage, pageCount, start, pageItems: slice } = usePagedList(chapters, pageSize);
   const includedCount = chapters.reduce((n, c) => n + (c.included ? 1 : 0), 0);
   const allIncluded = total > 0 && includedCount === total;
-
-  const go = (p: number) => setPage(Math.min(pages - 1, Math.max(0, p)));
 
   return (
     <div className="space-y-2">
@@ -51,38 +45,7 @@ export function ChapterImportReview({
             </span>
           </label>
         </div>
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => go(safePage - 1)}
-            disabled={safePage === 0}
-            className="rounded border p-1 disabled:opacity-40 hover:bg-secondary"
-            aria-label="Previous page"
-          >
-            <ChevronLeft className="h-3.5 w-3.5" />
-          </button>
-          <span className="text-muted-foreground">
-            Page{' '}
-            <input
-              type="number"
-              min={1}
-              max={pages}
-              value={safePage + 1}
-              onChange={(e) => go((Number(e.target.value) || 1) - 1)}
-              className="w-12 rounded border bg-background px-1 py-0.5 text-center text-[11px]"
-            />{' '}
-            / {pages}
-          </span>
-          <button
-            type="button"
-            onClick={() => go(safePage + 1)}
-            disabled={safePage >= pages - 1}
-            className="rounded border p-1 disabled:opacity-40 hover:bg-secondary"
-            aria-label="Next page"
-          >
-            <ChevronRight className="h-3.5 w-3.5" />
-          </button>
-        </div>
+        <Pager page={page} pageCount={pageCount} onPageChange={setPage} />
       </div>
 
       {/* Rows */}

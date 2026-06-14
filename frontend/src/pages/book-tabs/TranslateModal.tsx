@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { Loader2, AlertTriangle, ChevronDown, ChevronRight, ShieldCheck, ChevronLeft } from 'lucide-react';
+import { Loader2, AlertTriangle, ChevronDown, ChevronRight, ShieldCheck } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/auth';
 import { booksApi, type Chapter } from '@/features/books/api';
@@ -9,6 +9,8 @@ import { translationApi, type BookTranslationSettings, type BookCoverageResponse
 import { aiModelsApi, type UserModel } from '@/features/ai-models/api';
 import { LANGUAGE_NAMES } from '@/lib/languages';
 import { cn } from '@/lib/utils';
+import { usePagedList } from '@/components/pagination/usePagedList';
+import { Pager } from '@/components/pagination/Pager';
 import {
   classifyChapters,
   coverageMapFor,
@@ -71,7 +73,6 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated, preselecte
   const [selectedLang, setSelectedLang] = useState('');
   const [selectedModelRef, setSelectedModelRef] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [page, setPage] = useState(0);
 
   // Quality verification (V3) + re-translate controls
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -82,6 +83,13 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated, preselecte
   const [forceRetranslate, setForceRetranslate] = useState(false);
 
   const presetKey = (preselectedChapterIds ?? []).join(',');
+
+  // Chapters in stable reading order + shared page-through pagination.
+  const sortedChapters = useMemo(
+    () => [...chapters].sort((a, b) => a.sort_order - b.sort_order),
+    [chapters],
+  );
+  const { page, setPage, pageCount, start, pageItems: pageChapters } = usePagedList(sortedChapters, PAGE_SIZE);
 
   useEffect(() => {
     if (!open || !accessToken) return;
@@ -128,12 +136,6 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated, preselecte
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, accessToken, bookId, presetKey]);
 
-  // Chapters in stable reading order.
-  const sortedChapters = useMemo(
-    () => [...chapters].sort((a, b) => a.sort_order - b.sort_order),
-    [chapters],
-  );
-
   // Per-chapter status + aggregate counts for the selected language.
   const { byId: statusById, counts } = useMemo(() => {
     const cells = coverageMapFor(coverage, selectedLang);
@@ -152,10 +154,6 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated, preselecte
     }
     return map;
   }, [userModels]);
-
-  const pageCount = Math.max(1, Math.ceil(sortedChapters.length / PAGE_SIZE));
-  const safePage = Math.min(page, pageCount - 1);
-  const pageChapters = sortedChapters.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
 
   const toggleChapter = (id: string) => {
     setSelectedChapters((prev) => {
@@ -527,7 +525,7 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated, preselecte
                           className="h-3.5 w-3.5 rounded border-border accent-primary"
                         />
                         <span className="w-8 text-right font-mono text-muted-foreground">
-                          {safePage * PAGE_SIZE + i + 1}
+                          {start + i + 1}
                         </span>
                         <span className="flex-1 line-clamp-1">
                           {ch.title || ch.original_filename || t('translate.untitled')}
@@ -539,41 +537,13 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated, preselecte
                     );
                   })}
                 </div>
-                {/* Pagination */}
-                {pageCount > 1 && (
-                  <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground">
-                    <button
-                      onClick={() => setPage((p) => Math.max(0, p - 1))}
-                      disabled={safePage === 0}
-                      className="inline-flex items-center gap-1 rounded-md border px-2 py-1 hover:bg-secondary disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                      <ChevronLeft className="h-3 w-3" /> {t('translate.prev')}
-                    </button>
-                    <span className="inline-flex items-center gap-1">
-                      {t('translate.page')}
-                      <input
-                        type="number"
-                        min={1}
-                        max={pageCount}
-                        value={safePage + 1}
-                        onChange={(e) => {
-                          const n = Number(e.target.value);
-                          if (Number.isFinite(n)) setPage(Math.min(pageCount - 1, Math.max(0, n - 1)));
-                        }}
-                        className="h-6 w-12 rounded-md border bg-background px-1 text-center text-[11px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
-                        aria-label={t('translate.page')}
-                      />
-                      / {pageCount}
-                    </span>
-                    <button
-                      onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
-                      disabled={safePage >= pageCount - 1}
-                      className="inline-flex items-center gap-1 rounded-md border px-2 py-1 hover:bg-secondary disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                      {t('translate.next')} <ChevronRight className="h-3 w-3" />
-                    </button>
-                  </div>
-                )}
+                <Pager
+                  page={page}
+                  pageCount={pageCount}
+                  onPageChange={setPage}
+                  className="mt-2 justify-center"
+                  labels={{ page: t('translate.page'), prev: t('translate.prev'), next: t('translate.next') }}
+                />
               </div>
             </div>
           )}

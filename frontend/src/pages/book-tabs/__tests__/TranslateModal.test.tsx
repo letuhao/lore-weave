@@ -130,4 +130,21 @@ describe('TranslateModal — smart selection', () => {
     expect([...payload.chapter_ids].sort()).toEqual(['ch2', 'ch3']);
     expect(payload.force_retranslate).toBe(false); // gate skips the fresh ch1
   });
+
+  it('paginates a large book (100/pg) — next page reveals the next slice', async () => {
+    listChapters.mockResolvedValue({
+      items: Array.from({ length: 150 }, (_, i) => ({ chapter_id: `c${i + 1}`, title: `Ch${i + 1}`, sort_order: i + 1 })),
+      total: 150,
+    });
+
+    render(<TranslateModal {...baseProps} />);
+    // Page 1 = chapters 1..100; chapter 101 lives on page 2.
+    expect(await screen.findByText('Ch1')).toBeInTheDocument();
+    expect(screen.queryByText('Ch101')).toBeNull();
+
+    fireEvent.click(screen.getByLabelText('translate.next'));
+
+    expect(await screen.findByText('Ch101')).toBeInTheDocument();
+    expect(screen.queryByText('Ch1')).toBeNull();
+  });
 });
