@@ -14,8 +14,11 @@
 //
 // Security (review #5): fail-closed service token (the server REFUSES to start
 // without one), constant-time compare, and one service_to_service_audit row per
-// call (ok|deny|error). The listener is internal — bound to a private address +
-// network-policy-restricted in prod; it is NEVER exposed through the gateway.
+// call (ok|deny|error). The TOKEN is the code-enforced control. The listener is
+// internal — it DEFAULTS to a loopback bind, but "internal-only" is not itself
+// code-enforced (an operator can set any METAWORKER_BRIDGE_ADDR); prod relies on
+// the private-address default + network policy (review #8). It is NEVER exposed
+// through the gateway.
 //
 // Collaborators (Registrar, AuditSink) are interfaces so the HTTP/auth/idempotency
 // logic is unit-tested without a DB; the production impls wrap contracts/meta.
@@ -40,6 +43,13 @@ import (
 // ErrAlreadyRegistered is returned by Registrar.Register when the reality_id
 // already exists — the bridge treats it as idempotent SUCCESS (a retried
 // register after a network blip must not 500).
+//
+// Idempotency assumes IDENTICAL retries (review #9): a retry carrying a
+// DIFFERENT db_host/db_name for an already-registered reality_id still returns
+// 200 — the existing row stands and is NOT diffed against the new payload. The
+// single V1 caller (the provisioner) always retries the same intent, so this is
+// safe; a future multi-caller surface that needs conflict detection must add an
+// existing-row equality check.
 var ErrAlreadyRegistered = errors.New("bridge: reality already registered")
 
 // Registrar performs the two scoped meta writes.

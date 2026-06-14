@@ -138,6 +138,24 @@ async fn snapshot_on(
         .collect()
 }
 
+/// Recount a single shard under the advisory lock and decide eligibility using
+/// the SAME threshold `pick_shard` uses (review #7): a shard is eligible when
+/// its utilization is strictly below `full`. Using the planner threshold (not a
+/// bare `used < cap`) means contention can't fill a shard past the soft policy
+/// the planner enforces at pick time — the lock enforces exactly what pick does.
+async fn recount_eligible(
+    conn: &mut sqlx::PgConnection,
+    host: &str,
+    full: f32,
+) -> Result<bool, ProvisionerError> {
+    let used = count_used(conn, host).await?;
+    let cap = shard_cap(conn, host).await?;
+    if cap == 0 {
+        return Ok(false); // an uninitialized/zero-cap shard never accepts a placement
+    }
+    Ok((used as f32 / cap as f32) < full)
+}
+
 /// Fresh occupancy count for a single shard host (recount under the lock).
 async fn count_used(
     conn: &mut sqlx::PgConnection,
@@ -261,9 +279,19 @@ where
         }
 
         advisory_lock(conn, picked.as_str()).await?;
-        let used = count_used(conn, picked.as_str()).await?;
-        let cap = shard_cap(conn, picked.as_str()).await?;
-        if used < cap {
+        // Recount under the lock. CRITICAL (review #1): unlock on EVERY exit —
+        // a transient error here must NOT return while the session advisory lock
+        // is held, or the pooled connection goes back to the pool still holding
+        // it (session locks release only on connection close), wedging every
+        // future placement on this shard. So an error path unlocks before `?`.
+        let eligible = match recount_eligible(conn, picked.as_str(), planner.thresholds.full).await {
+            Ok(v) => v,
+            Err(e) => {
+                advisory_unlock(conn, picked.as_str()).await;
+                return Err(e);
+            }
+        };
+        if eligible {
             held = Some(picked.clone());
             break picked;
         }

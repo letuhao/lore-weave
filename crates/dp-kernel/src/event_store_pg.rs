@@ -63,10 +63,20 @@ pub fn status_accepts_append(status: &str) -> bool {
 /// actor (the relocation / closure orchestrator), not the reality's own command
 /// processor, so a per-reality status CACHE would not be synchronously
 /// invalidated by the flip — leaving a TTL window where an append still sees
-/// "active" and lands after the flip. An uncached read closes that window
-/// entirely: every append observes the authoritative status. The cost is one
-/// indexed PK lookup on the meta DB per append (measured negligible; the meta
-/// row is hot in cache). Fail-closed: a missing reality row → frozen.
+/// "active" and lands after the flip. An uncached read narrows that window to a
+/// single statement.
+///
+/// SCOPE (review #3 — do NOT overclaim): this rejects every append that BEGINS
+/// after the flip commits. It does NOT make a freeze atomic with the append —
+/// the status read and the `events` INSERT are in DIFFERENT databases (meta vs
+/// per-reality), so an append already in-flight at the flip (read `active`, then
+/// flip, then commit) can still land post-flip. Closing that residual in-flight
+/// window is the ORCHESTRATOR's job: the closure drain (W1.3) re-polls the outbox
+/// to 0 after a settle so a straggler's same-TX outbox row is caught; the
+/// relocation copy (Inc-4) must likewise settle/re-checksum after the flip. See
+/// D-W1-INFLIGHT-FREEZE-WINDOW. The cost is one indexed PK lookup on the meta DB
+/// per append (hot-path overhead unmeasured — D-W1-FREEZE-HOTPATH-COST).
+/// Fail-closed: a missing reality row → frozen.
 #[derive(Clone)]
 pub struct MetaFreezeGuard {
     meta_pool: Arc<PgPool>,

@@ -201,28 +201,30 @@ impl Effects for LiveEffects {
         let pool = self.shard_admin.clone();
         let name = db_name.to_string();
         self.handle.clone().block_on(async move {
-            // Idempotent: skip if the DB already exists.
             let exists: Option<i32> =
                 sqlx::query_scalar("SELECT 1 FROM pg_database WHERE datname = $1")
                     .bind(&name)
                     .fetch_optional(&pool)
                     .await
                     .map_err(|e| ProvisionerError::ShardEffect(format!("db exists check: {e}")))?;
-            if exists.is_some() {
-                return Ok(false);
+            if exists.is_none() {
+                // Simple query protocol (&str) — CREATE DATABASE can't run
+                // prepared/in a tx.
+                sqlx::raw_sql(&format!("CREATE DATABASE {name}"))
+                    .execute(&pool)
+                    .await
+                    .map_err(|e| ProvisionerError::ShardEffect(format!("create database: {e}")))?;
             }
-            // CREATE DATABASE + I4 isolation: REVOKE CONNECT FROM PUBLIC so only
-            // the owner (and explicitly-granted roles) can connect. Simple query
-            // protocol (&str) — CREATE DATABASE can't run prepared/in a tx.
-            sqlx::raw_sql(&format!("CREATE DATABASE {name}"))
-                .execute(&pool)
-                .await
-                .map_err(|e| ProvisionerError::ShardEffect(format!("create database: {e}")))?;
+            // I4 isolation: ALWAYS (re)apply REVOKE CONNECT FROM PUBLIC, even on
+            // the idempotent re-entry where the DB already existed (review #2).
+            // A crash BETWEEN create and revoke would otherwise leave the DB
+            // un-isolated forever — the re-run skips create but must still close
+            // the isolation. REVOKE is idempotent, so re-applying is a no-op.
             sqlx::raw_sql(&format!("REVOKE CONNECT ON DATABASE {name} FROM PUBLIC"))
                 .execute(&pool)
                 .await
                 .map_err(|e| ProvisionerError::ShardEffect(format!("revoke connect: {e}")))?;
-            Ok(true)
+            Ok(exists.is_none())
         })
     }
 
