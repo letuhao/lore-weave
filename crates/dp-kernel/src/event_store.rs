@@ -93,6 +93,16 @@ pub enum EventStoreError {
     #[error("schema violation: {0}")]
     SchemaViolation(String),
 
+    /// The reality is in a lifecycle state that does NOT accept new event
+    /// appends (W1.4 write-freeze): `migrating` (relocation copy), `pending_close`
+    /// (closure drain), `frozen`, or any archived/terminal state. The
+    /// relocation flip (Inc-4) and the closure drain (W1.3) rely on the source
+    /// being quiesced — an append that slipped through after the flip would be
+    /// silently lost. The guard reads the AUTHORITATIVE (uncached) status so
+    /// there is no settle-window race (see [`crate::event_store_pg::MetaFreezeGuard`]).
+    #[error("reality {reality_id} is frozen for appends (status={status})")]
+    RealityFrozen { reality_id: Uuid, status: String },
+
     /// The underlying transport (sqlx, Redis client, NATS, …) raised an
     /// error. Stringified to keep the trait dependency-free.
     #[error("transport error: {0}")]

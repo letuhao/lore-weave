@@ -145,6 +145,6 @@ pub use upcaster::{Upcaster, UpcasterChain, UpcasterRegistry};
 pub use aggregate::AggregateMeta;
 pub use event::{Event, EventFromEnvelope};
 pub use event_store::{EventStore, EventStoreError, EventStoreResult};
-pub use event_store_pg::PgEventStore;
+pub use event_store_pg::{status_accepts_append, AppendGuard, MetaFreezeGuard, PgEventStore};
 pub use metadata::EventMetadata;
 pub use snapshot::Snapshot;

@@ -40,6 +40,14 @@ path = "src/bin/embedding_worker.rs"
 name = "rebuilder"
 path = "src/bin/rebuilder.rs"
 
+# W1.4 (production wiring) — freeze-drill live drill. Exercises the dp-kernel
+# write-freeze guard (PgEventStore + MetaFreezeGuard) against real Postgres:
+# guard-on rejects appends in migrating/pending_close/frozen; guard-off bite
+# lands them. Closes D-S13-RELOCATE-FREEZE.
+[[bin]]
+name = "freeze-drill"
+path = "src/bin/freeze_drill.rs"
+
 # W1.1 (production wiring) — capacity-place live drill. Exercises capacity_glue
 # (live_snapshot + place_reality TOCTOU) against real Postgres: lock-on → exactly
 # M placements, lock-off bite → over-subscription. Closes D-S13-CAPACITY-ROUTING-GLUE.
