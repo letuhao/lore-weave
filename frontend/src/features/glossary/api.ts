@@ -33,13 +33,20 @@ export const glossaryApi = {
 
   listEntities(
     bookId: string,
-    filters: FilterState & { limit?: number; offset?: number; sort?: string; displayLanguage?: string },
+    filters: FilterState & {
+      limit?: number;
+      offset?: number;
+      sort?: string;
+      displayLanguage?: string;
+      searchMode?: 'simple' | 'raw';
+    },
     token: string,
   ): Promise<GlossaryEntityListResponse> {
     const params = new URLSearchParams();
     if (filters.kindCodes.length > 0) params.set('kind_codes', filters.kindCodes.join(','));
     if (filters.status !== 'all') params.set('status', filters.status);
     if (filters.searchQuery) params.set('search', filters.searchQuery);
+    if (filters.searchMode === 'raw') params.set('search_mode', 'raw');
     if (filters.displayLanguage) params.set('display_language', filters.displayLanguage);
     if (filters.limit) params.set('limit', String(filters.limit));
     if (filters.offset) params.set('offset', String(filters.offset));

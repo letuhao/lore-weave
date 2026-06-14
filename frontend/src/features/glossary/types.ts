@@ -83,6 +83,15 @@ export type AttributeValue = {
   evidences: Evidence[];
 };
 
+// Raw-search "why it matched" payload (search_mode=raw). Highlights are
+// Unicode CODE-POINT (rune) offset pairs within `snippet` — render via
+// Array.from() slicing (UTF-16 indexing would mis-slice astral/CJK).
+export type EntityMatch = {
+  field_code: string; // name | alias | translation
+  snippet: string;
+  highlights: number[][];
+};
+
 export type GlossaryEntitySummary = {
   entity_id: string;
   book_id: string;
@@ -98,7 +107,21 @@ export type GlossaryEntitySummary = {
   evidence_count: number;
   created_at: string;
   updated_at: string;
+  match?: EntityMatch | null; // present only on raw-search results
 };
+
+// Whitelisted server sort keys (must match glossary-service entityOrderBy).
+export type EntitySort =
+  | 'updated_at'
+  | 'updated_at_asc'
+  | 'name'
+  | 'name_desc'
+  | 'created_at'
+  | 'created_at_asc'
+  | 'kind'
+  | 'status'
+  | 'alive'
+  | 'relevance';
 
 export type GlossaryEntity = GlossaryEntitySummary & {
   chapter_links: ChapterLink[];

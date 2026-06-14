@@ -1,12 +1,16 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { BookOpen, Plus, Search, Filter, Trash2, Settings2, Layers, Sparkles, Languages, HelpCircle, Lightbulb, GitMerge, CheckCircle2, CircleSlash } from 'lucide-react';
+import { BookOpen, Plus, Search, Filter, Trash2, Settings2, Layers, Sparkles, Languages, HelpCircle, Lightbulb, GitMerge, CheckCircle2, CircleSlash, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { glossaryApi } from '@/features/glossary/api';
 import { useGlossaryDisplayLanguage } from '@/features/glossary/hooks/useGlossaryDisplayLanguage';
-import { type GlossaryEntitySummary, type EntityKind, type FilterState, defaultFilters } from '@/features/glossary/types';
+import { type GlossaryEntitySummary, type EntityKind, type FilterState, type EntitySort, defaultFilters } from '@/features/glossary/types';
+import { useServerPagedList } from '@/components/pagination/useServerPagedList';
+import { Pager } from '@/components/pagination/Pager';
+import { useDebouncedValue } from '@/features/raw-search/hooks/useDebouncedValue';
+import { MatchSnippet } from '@/features/glossary/components/MatchSnippet';
 import { getLanguageName } from '@/lib/languages';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { EmptyState, ConfirmDialog, FloatingActionBar, FloatingActionDivider } from '@/components/shared';
@@ -55,6 +59,11 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
   const [translateOpen, setTranslateOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [sort, setSort] = useState<EntitySort>('updated_at');
+  const [searchMode, setSearchMode] = useState<'simple' | 'raw'>('simple');
+  const paged = useServerPagedList(50);
+  // Debounce the search box so we hit the BE once the user pauses, not per keystroke.
+  const debouncedSearch = useDebouncedValue(filters.searchQuery, 300);
 
   const { displayLanguage, setDisplayLanguage, apiDisplayLanguage, loaded: displayLangLoaded } =
     useGlossaryDisplayLanguage(bookId, bookOriginalLanguage);
@@ -92,14 +101,27 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
   }, [bookOriginalLanguage, displayLanguage, t, translationLangsData?.languages]);
 
   const { data: entityData, isLoading: entitiesLoading, error: entitiesError } = useQuery({
-    queryKey: ['glossary-entities', bookId, filters, apiDisplayLanguage],
+    queryKey: [
+      'glossary-entities', bookId,
+      filters.kindCodes, filters.status, debouncedSearch, searchMode, sort,
+      paged.offset, paged.limit, apiDisplayLanguage,
+    ],
     queryFn: () =>
       glossaryApi.listEntities(
         bookId,
-        { ...filters, limit: 100, offset: 0, displayLanguage: apiDisplayLanguage },
+        {
+          ...filters,
+          searchQuery: debouncedSearch,
+          searchMode,
+          sort,
+          limit: paged.limit,
+          offset: paged.offset,
+          displayLanguage: apiDisplayLanguage,
+        },
         accessToken!,
       ),
     enabled: !!accessToken && displayLangLoaded,
+    placeholderData: (prev) => prev, // keep the current page visible while the next loads
   });
 
   const { data: kinds = [] } = useQuery({
@@ -141,8 +163,28 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
 
   const entities = entityData?.items ?? [];
   const total = entityData?.total ?? 0;
+  const { pageCount, safePage, start, end } = paged.pageInfo(total);
   const loading = entitiesLoading;
   const error = entitiesError ? (entitiesError as Error).message : '';
+
+  // Filter/sort/search changes reset to page 0 (the old offset is meaningless on a
+  // new result set). Done in handlers, not an effect — page-reset is an event
+  // reaction (FE rule). debouncedSearch is reset via the search box's onChange.
+  const updateFilters = (next: Partial<FilterState>) => {
+    setFilters((f) => ({ ...f, ...next }));
+    paged.reset();
+  };
+  const changeSort = (s: EntitySort) => {
+    setSort(s);
+    paged.reset();
+  };
+  const toggleSearchMode = () => {
+    const next = searchMode === 'raw' ? 'simple' : 'raw';
+    setSearchMode(next);
+    // Raw search defaults to relevance ranking; leaving raw drops back to recency.
+    setSort((s) => (next === 'raw' ? 'relevance' : s === 'relevance' ? 'updated_at' : s));
+    paged.reset();
+  };
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ['glossary-entities', bookId] });
@@ -217,17 +259,20 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
   };
   const clearSelection = () => setSelectedIds(new Set());
 
-  // Gmail-style "select all N matching the current filter" — paginates listEntities
-  // (the tab itself shows only the first 100) and selects every matching id.
+  // Gmail-style "select all N matching the current filter/search" — loop-fetches
+  // EVERY matching id across all pages (the visible list is one page), so a bulk
+  // action isn't capped at the current page. Honors the active search/sort.
   const selectAllMatching = async () => {
     if (!accessToken) return;
     setBulkBusy(true);
     try {
-      const ids = new Set(entities.map((e) => e.entity_id));
-      const pageSize = 100;
-      for (let offset = entities.length; offset < total && ids.size < _BULK_CAP; offset += pageSize) {
+      const ids = new Set<string>();
+      const fetchSize = 200;
+      for (let offset = 0; offset < total && ids.size < _BULK_CAP; offset += fetchSize) {
         const page = await glossaryApi.listEntities(
-          bookId, { ...filters, limit: pageSize, offset, displayLanguage: apiDisplayLanguage }, accessToken,
+          bookId,
+          { ...filters, searchQuery: debouncedSearch, searchMode, sort, limit: fetchSize, offset, displayLanguage: apiDisplayLanguage },
+          accessToken,
         );
         if (page.items.length === 0) break;
         for (const e of page.items) {
@@ -321,7 +366,7 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
               id="glossary-display-lang"
               data-testid="glossary-display-language"
               value={displayLanguage}
-              onChange={(e) => setDisplayLanguage(e.target.value)}
+              onChange={(e) => { setDisplayLanguage(e.target.value); paged.reset(); }}
               className="h-8 rounded-md border bg-background px-2 text-[11px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
             >
               {languageOptions.map((opt) => (
@@ -427,18 +472,50 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
       </div>
 
       {/* Search + Filter bar */}
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1">
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <input
             type="text"
             value={filters.searchQuery}
-            onChange={(e) => setFilters((f) => ({ ...f, searchQuery: e.target.value }))}
-            placeholder={t('glossary.search')}
+            onChange={(e) => updateFilters({ searchQuery: e.target.value })}
+            placeholder={searchMode === 'raw' ? t('glossary.search_raw_placeholder') : t('glossary.search')}
             data-testid="glossary-search-input"
             className="w-full rounded-md border bg-background pl-9 pr-3 py-1.5 text-xs focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
           />
         </div>
+        {/* Raw/exact search toggle — ILIKE-exact + trigram over names/aliases (CJK-safe). */}
+        <button
+          onClick={toggleSearchMode}
+          data-testid="glossary-raw-toggle"
+          title={t('glossary.search_raw_hint')}
+          className={cn(
+            'inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors',
+            searchMode === 'raw'
+              ? 'border-amber-400/50 bg-amber-400/10 text-amber-500 hover:bg-amber-400/20'
+              : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
+          )}
+        >
+          <Zap className="h-3.5 w-3.5" />
+          {t('glossary.search_raw')}
+        </button>
+        {/* Sort */}
+        <select
+          value={sort}
+          onChange={(e) => changeSort(e.target.value as EntitySort)}
+          data-testid="glossary-sort"
+          aria-label={t('glossary.sort_label')}
+          className="h-8 rounded-md border bg-background px-2 text-[11px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
+        >
+          {searchMode === 'raw' && <option value="relevance">{t('glossary.sort.relevance')}</option>}
+          <option value="updated_at">{t('glossary.sort.updated_at')}</option>
+          <option value="created_at">{t('glossary.sort.created_at')}</option>
+          <option value="name">{t('glossary.sort.name')}</option>
+          <option value="name_desc">{t('glossary.sort.name_desc')}</option>
+          <option value="kind">{t('glossary.sort.kind')}</option>
+          <option value="status">{t('glossary.sort.status')}</option>
+          <option value="alive">{t('glossary.sort.alive')}</option>
+        </select>
         <button
           onClick={() => setFilterOpen(!filterOpen)}
           className={cn(
@@ -464,10 +541,9 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
                 return (
                   <button
                     key={k.kind_id}
-                    onClick={() => setFilters((f) => ({
-                      ...f,
-                      kindCodes: active ? f.kindCodes.filter((c) => c !== k.code) : [...f.kindCodes, k.code],
-                    }))}
+                    onClick={() => updateFilters({
+                      kindCodes: active ? filters.kindCodes.filter((c) => c !== k.code) : [...filters.kindCodes, k.code],
+                    })}
                     className={cn(
                       'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium border transition-colors',
                       active ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:text-foreground',
@@ -485,7 +561,7 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
               {(['all', 'draft', 'active', 'inactive'] as const).map((s) => (
                 <button
                   key={s}
-                  onClick={() => setFilters((f) => ({ ...f, status: s }))}
+                  onClick={() => updateFilters({ status: s })}
                   className={cn(
                     'rounded-full px-2.5 py-1 text-[11px] font-medium border transition-colors',
                     filters.status === s ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:text-foreground',
@@ -498,7 +574,7 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
           </div>
           {activeFilterCount > 0 && (
             <button
-              onClick={() => setFilters(defaultFilters)}
+              onClick={() => { setFilters(defaultFilters); paged.reset(); }}
               className="text-[10px] text-primary hover:underline"
             >
               {t('glossary.clear_filters')}
@@ -509,11 +585,22 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
 
       {/* Entity list */}
       {entities.length === 0 ? (
-        <EmptyState
-          icon={BookOpen}
-          title={t('glossary.empty.title')}
-          description={t('glossary.empty.description')}
-        />
+        total > 0 ? (
+          // An out-of-range page (e.g. rows deleted while paged deep) — total>0 but
+          // this offset is empty. Offer a jump back rather than a false "empty".
+          <div className="rounded-lg border p-8 text-center text-sm text-muted-foreground">
+            {t('glossary.page_empty')}{' '}
+            <button onClick={() => paged.setPage(0)} className="text-primary hover:underline">
+              {t('glossary.page_empty_first')}
+            </button>
+          </div>
+        ) : (
+          <EmptyState
+            icon={BookOpen}
+            title={t('glossary.empty.title')}
+            description={t('glossary.empty.description')}
+          />
+        )
       ) : (
         <div className="rounded-lg border divide-y">
           {/* Select-all bar — drives the bulk status actions on the filtered list */}
@@ -597,6 +684,10 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
                   {e.evidence_count > 0 && <span>{t('glossary.evidence_count', { count: e.evidence_count })}</span>}
                   {e.tags.length > 0 && <span>{e.tags.join(', ')}</span>}
                 </div>
+                {/* Raw-search: show which field matched + a highlighted snippet. */}
+                {searchMode === 'raw' && e.match && (
+                  <div className="mt-1"><MatchSnippet match={e.match} /></div>
+                )}
               </div>
               <button
                 onClick={() => setDeleteTarget(e)}
@@ -607,6 +698,31 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
               </button>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Pagination footer — "X–Y of N" + page-size + page-through */}
+      {total > 0 && (
+        <div className="flex items-center justify-between gap-2 flex-wrap text-[11px] text-muted-foreground">
+          <div className="flex items-center gap-2">
+            <span data-testid="glossary-range">{t('glossary.range', { start, end, total })}</span>
+            <select
+              value={paged.pageSize}
+              onChange={(e) => paged.setPageSize(Number(e.target.value))}
+              aria-label={t('glossary.page_size_label')}
+              className="h-7 rounded-md border bg-background px-1.5 text-[11px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
+            >
+              {[50, 100, 200].map((n) => (
+                <option key={n} value={n}>{t('glossary.page_size', { count: n })}</option>
+              ))}
+            </select>
+          </div>
+          <Pager
+            page={safePage}
+            pageCount={pageCount}
+            onPageChange={(p) => paged.setPage(Math.min(Math.max(0, p), pageCount - 1))}
+            labels={{ page: t('glossary.pager.page'), prev: t('glossary.pager.prev'), next: t('glossary.pager.next') }}
+          />
         </div>
       )}
 
