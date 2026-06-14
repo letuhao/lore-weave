@@ -161,6 +161,17 @@
       "active": "Active",
       "inactive": "Inactive"
     },
+    "bulk": {
+      "select_row": "Select entity",
+      "select_all": "Select all",
+      "selected": "{{count}} selected",
+      "activate": "Activate",
+      "deactivate": "Deactivate",
+      "clear": "Clear",
+      "done": "{{count}} entities set to {{status}}",
+      "select_all_matching": "Select all {{count}} matching",
+      "cap_note": "Selection capped at {{cap}} entities"
+    },
     "clear_filters": "Clear all filters",
     "created": "Entity created",
     "deleted": "Entity deleted",

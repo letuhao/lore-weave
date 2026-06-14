@@ -161,6 +161,17 @@
       "active": "Hoạt động",
       "inactive": "Không hoạt động"
     },
+    "bulk": {
+      "select_row": "Chọn thực thể",
+      "select_all": "Chọn tất cả",
+      "selected": "Đã chọn {{count}}",
+      "activate": "Kích hoạt",
+      "deactivate": "Hủy kích hoạt",
+      "clear": "Bỏ chọn",
+      "done": "Đã đặt {{count}} thực thể sang {{status}}",
+      "select_all_matching": "Chọn tất cả {{count}} mục khớp",
+      "cap_note": "Chỉ chọn tối đa {{cap}} thực thể"
+    },
     "clear_filters": "Xóa tất cả bộ lọc",
     "created": "Đã tạo thực thể",
     "deleted": "Đã xóa thực thể",

@@ -231,6 +231,10 @@ func (s *Server) Router() http.Handler {
 			r.Route("/entities", func(r chi.Router) {
 				r.Get("/", s.listEntities)
 				r.Post("/", s.createEntity)
+				// Bulk status flip (e.g. activate freshly-extracted drafts so they
+				// feed the translation glossary). Static path — registered before
+				// /{entity_id} so chi matches it first.
+				r.Post("/bulk-status", s.bulkSetEntityStatus)
 				r.Route("/{entity_id}", func(r chi.Router) {
 					r.Get("/", s.getEntityDetail)
 					r.Patch("/", s.patchEntity)

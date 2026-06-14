@@ -161,6 +161,17 @@
       "active": "アクティブ",
       "inactive": "非アクティブ"
     },
+    "bulk": {
+      "select_row": "エンティティを選択",
+      "select_all": "すべて選択",
+      "selected": "{{count}} 件選択中",
+      "activate": "有効化",
+      "deactivate": "無効化",
+      "clear": "選択解除",
+      "done": "{{count}} 件のエンティティを {{status}} にしました",
+      "select_all_matching": "一致する {{count}} 件すべてを選択",
+      "cap_note": "選択は最大 {{cap}} 件までです"
+    },
     "clear_filters": "すべてのフィルターをクリア",
     "created": "エンティティを作成しました",
     "deleted": "エンティティを削除しました",

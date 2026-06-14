@@ -161,6 +161,17 @@
       "active": "啟用",
       "inactive": "停用"
     },
+    "bulk": {
+      "select_row": "選擇實體",
+      "select_all": "全選",
+      "selected": "已選 {{count}} 個",
+      "activate": "啟用",
+      "deactivate": "停用",
+      "clear": "清除選取",
+      "done": "已將 {{count}} 個實體設為 {{status}}",
+      "select_all_matching": "選擇全部 {{count}} 個相符項目",
+      "cap_note": "選取上限為 {{cap}} 個實體"
+    },
     "clear_filters": "清除所有篩選",
     "created": "已建立實體",
     "deleted": "已刪除實體",

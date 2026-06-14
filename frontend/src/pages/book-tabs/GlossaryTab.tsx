@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { BookOpen, Plus, Search, Filter, Trash2, Settings2, Layers, Sparkles, Languages, HelpCircle, Lightbulb, GitMerge } from 'lucide-react';
+import { BookOpen, Plus, Search, Filter, Trash2, Settings2, Layers, Sparkles, Languages, HelpCircle, Lightbulb, GitMerge, CheckCircle2, CircleSlash } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { glossaryApi } from '@/features/glossary/api';
@@ -9,7 +9,7 @@ import { useGlossaryDisplayLanguage } from '@/features/glossary/hooks/useGlossar
 import { type GlossaryEntitySummary, type EntityKind, type FilterState, defaultFilters } from '@/features/glossary/types';
 import { getLanguageName } from '@/lib/languages';
 import { Skeleton } from '@/components/shared/Skeleton';
-import { EmptyState, ConfirmDialog } from '@/components/shared';
+import { EmptyState, ConfirmDialog, FloatingActionBar, FloatingActionDivider } from '@/components/shared';
 import { cn } from '@/lib/utils';
 import { KindEditor } from './KindEditor';
 import { GenreGroupsPanel } from '@/features/glossary/components/GenreGroupsPanel';
@@ -53,6 +53,8 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const [extractionOpen, setExtractionOpen] = useState(false);
   const [translateOpen, setTranslateOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const { displayLanguage, setDisplayLanguage, apiDisplayLanguage, loaded: displayLangLoaded } =
     useGlossaryDisplayLanguage(bookId, bookOriginalLanguage);
@@ -182,6 +184,79 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
       invalidate();
     } catch (e) {
       toast.error((e as Error).message);
+    }
+  };
+
+  // ── Multi-select (bulk status) ─────────────────────────────────────────────
+  // Selection acts on what's visible: select-all/clear + the bulk action all
+  // operate on the currently-filtered `entities`, so "filter draft → select all
+  // → activate" does exactly what the user sees.
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  // The bulk action targets ALL selected ids — including ones not on the loaded
+  // page (the "select all N" button below loop-fetches them) — so activation isn't
+  // silently capped at the first 100 rows on a large book.
+  const allLoadedSelected = entities.length > 0 && entities.every((e) => selectedIds.has(e.entity_id));
+  const hasMoreThanLoaded = total > entities.length;
+  const _BULK_CAP = 1000; // matches the server's entity_ids cap
+  const toggleSelectAll = () => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allLoadedSelected) {
+        entities.forEach((e) => next.delete(e.entity_id));
+      } else {
+        entities.forEach((e) => next.add(e.entity_id));
+      }
+      return next;
+    });
+  };
+  const clearSelection = () => setSelectedIds(new Set());
+
+  // Gmail-style "select all N matching the current filter" — paginates listEntities
+  // (the tab itself shows only the first 100) and selects every matching id.
+  const selectAllMatching = async () => {
+    if (!accessToken) return;
+    setBulkBusy(true);
+    try {
+      const ids = new Set(entities.map((e) => e.entity_id));
+      const pageSize = 100;
+      for (let offset = entities.length; offset < total && ids.size < _BULK_CAP; offset += pageSize) {
+        const page = await glossaryApi.listEntities(
+          bookId, { ...filters, limit: pageSize, offset, displayLanguage: apiDisplayLanguage }, accessToken,
+        );
+        if (page.items.length === 0) break;
+        for (const e of page.items) {
+          if (ids.size >= _BULK_CAP) break;
+          ids.add(e.entity_id);
+        }
+      }
+      setSelectedIds(ids);
+      if (total > _BULK_CAP) toast.info(t('glossary.bulk.cap_note', { cap: _BULK_CAP }));
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const handleBulkStatus = async (status: 'active' | 'inactive') => {
+    const ids = [...selectedIds];
+    if (!accessToken || ids.length === 0) return;
+    setBulkBusy(true);
+    try {
+      const { updated } = await glossaryApi.bulkSetStatus(bookId, status, ids, accessToken);
+      toast.success(t('glossary.bulk.done', { count: updated, status: t(`glossary.status.${status}`) }));
+      clearSelection();
+      invalidate();
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBulkBusy(false);
     }
   };
 
@@ -441,6 +516,32 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
         />
       ) : (
         <div className="rounded-lg border divide-y">
+          {/* Select-all bar — drives the bulk status actions on the filtered list */}
+          <div className="flex items-center gap-2 px-4 py-2 bg-card/30">
+            <input
+              type="checkbox"
+              checked={allLoadedSelected}
+              onChange={toggleSelectAll}
+              aria-label={t('glossary.bulk.select_all')}
+              className="h-3.5 w-3.5 rounded border-border accent-primary cursor-pointer"
+            />
+            <span className="text-[11px] text-muted-foreground">
+              {selectedIds.size > 0
+                ? t('glossary.bulk.selected', { count: selectedIds.size })
+                : t('glossary.bulk.select_all')}
+            </span>
+            {/* When the list is capped at the loaded page, offer to select every
+                matching entity (loop-fetch) so activation isn't silently limited. */}
+            {hasMoreThanLoaded && allLoadedSelected && selectedIds.size < total && (
+              <button
+                onClick={() => void selectAllMatching()}
+                disabled={bulkBusy}
+                className="text-[11px] text-primary hover:underline disabled:opacity-50"
+              >
+                {t('glossary.bulk.select_all_matching', { count: total })}
+              </button>
+            )}
+          </div>
           {entities.map((e) => (
             <div
               key={e.entity_id}
@@ -451,6 +552,14 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
                 selectedEntityId === e.entity_id && 'bg-primary/5 border-l-2 border-l-primary',
               )}
             >
+              <input
+                type="checkbox"
+                checked={selectedIds.has(e.entity_id)}
+                onClick={(ev) => ev.stopPropagation()}
+                onChange={() => toggleSelect(e.entity_id)}
+                aria-label={t('glossary.bulk.select_row')}
+                className="h-3.5 w-3.5 shrink-0 rounded border-border accent-primary cursor-pointer"
+              />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span
@@ -500,6 +609,31 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
           ))}
         </div>
       )}
+
+      {/* Bulk status action bar */}
+      <FloatingActionBar visible={selectedIds.size > 0}>
+        <span className="text-sm font-medium">{t('glossary.bulk.selected', { count: selectedIds.size })}</span>
+        <FloatingActionDivider />
+        <button
+          onClick={() => void handleBulkStatus('active')}
+          disabled={bulkBusy}
+          className="inline-flex items-center gap-1.5 rounded-full bg-green-500/90 px-4 py-1.5 text-xs font-medium text-white hover:bg-green-500 disabled:opacity-50 transition-colors"
+        >
+          <CheckCircle2 className="h-3.5 w-3.5" />
+          {t('glossary.bulk.activate')}
+        </button>
+        <button
+          onClick={() => void handleBulkStatus('inactive')}
+          disabled={bulkBusy}
+          className="inline-flex items-center gap-1.5 rounded-full border border-border px-4 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary disabled:opacity-50 transition-colors"
+        >
+          <CircleSlash className="h-3.5 w-3.5" />
+          {t('glossary.bulk.deactivate')}
+        </button>
+        <button onClick={clearSelection} className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+          {t('glossary.bulk.clear')}
+        </button>
+      </FloatingActionBar>
 
       <ConfirmDialog
         open={!!deleteTarget}

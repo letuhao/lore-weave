@@ -996,6 +996,78 @@ func (s *Server) patchEntity(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, detail)
 }
 
+// ── POST /v1/glossary/books/{book_id}/entities/bulk-status ───────────────────
+
+// bulkSetEntityStatus flips status (active|inactive|draft) for many entities in
+// one transaction-free UPDATE. Primary use: bulk-activate freshly-extracted draft
+// entities so they feed the translation glossary (the translation-glossary query
+// only returns status='active'). Book-scoped + edit-grant gated.
+//
+// No outbox event is emitted: the glossary.entity_updated payload carries
+// name/kind/aliases/short_description (the wiki-staleness inputs), none of which a
+// status flip changes — emitting "updated" here would mark wikis stale for nothing.
+func (s *Server) bulkSetEntityStatus(w http.ResponseWriter, r *http.Request) {
+	userID, ok := s.requireUserID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "GLOSS_UNAUTHORIZED", "valid Bearer token required")
+		return
+	}
+	bookID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		return
+	}
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantEdit) {
+		return
+	}
+
+	var in struct {
+		Status    string   `json:"status"`
+		EntityIDs []string `json:"entity_ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY", "invalid JSON")
+		return
+	}
+	switch in.Status {
+	case "active", "inactive", "draft":
+	default:
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_STATUS",
+			"status must be active, inactive, or draft")
+		return
+	}
+	if len(in.EntityIDs) == 0 {
+		writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY", "entity_ids must not be empty")
+		return
+	}
+	if len(in.EntityIDs) > 1000 {
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_TOO_MANY",
+			"entity_ids must be at most 1000")
+		return
+	}
+	// Drop malformed ids (mirrors entities/by-ids) — a bad id never matches the
+	// book-scoped WHERE anyway, so coerce to a clean uuid slice.
+	ids := make([]uuid.UUID, 0, len(in.EntityIDs))
+	for _, raw := range in.EntityIDs {
+		if id, err := uuid.Parse(strings.TrimSpace(raw)); err == nil {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		writeJSON(w, http.StatusOK, map[string]int{"updated": 0})
+		return
+	}
+
+	tag, err := s.pool.Exec(r.Context(),
+		`UPDATE glossary_entities SET status = $1, updated_at = now()
+		 WHERE book_id = $2 AND entity_id = ANY($3::uuid[]) AND deleted_at IS NULL`,
+		in.Status, bookID, ids)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "bulk status update failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"updated": int(tag.RowsAffected())})
+}
+
 // ── POST/DELETE /v1/glossary/books/{book_id}/entities/{entity_id}/pin ────────
 //
 // Idempotent toggle of the is_pinned_for_context flag used by the

@@ -110,6 +110,22 @@ export const glossaryApi = {
     });
   },
 
+  /** Bulk-flip status for many entities in one request (e.g. activate freshly
+   *  extracted drafts so they feed the translation glossary). Returns the count
+   *  actually updated (book-scoped; absent/foreign ids are ignored). */
+  bulkSetStatus(
+    bookId: string,
+    status: 'active' | 'inactive' | 'draft',
+    entityIds: string[],
+    token: string,
+  ): Promise<{ updated: number }> {
+    return apiJson<{ updated: number }>(`${BASE}/books/${bookId}/entities/bulk-status`, {
+      method: 'POST',
+      body: JSON.stringify({ status, entity_ids: entityIds }),
+      token,
+    });
+  },
+
   // ── VG-3: entity revision history + restore (D-GLOSSARY-VERSIONING) ─────────
 
   listEntityRevisions(
