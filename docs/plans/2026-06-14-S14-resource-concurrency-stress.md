@@ -35,27 +35,39 @@ a real baseline exists.
   runtime-settable (needs a server restart), so D1 spins its OWN PG container(s) with
   the target `shared_buffers` rather than mutating/restarting a rig shard other tests
   depend on. (Same throwaway-instance approach the tmpfs bite needs — R6.)
-- `scripts/perf/s14-disk.sh`: baseline event-insert burst (large `shared_buffers`)
-  capturing committed-events/s + p99 commit latency; then a CONSTRAINED run (tiny
-  `shared_buffers`, e.g. 8MB, + a dataset sized > buffers, e.g. ≥10× shared_buffers →
-  cache thrash) + multi-instance concurrent writes (WAL fsync contention). Assert
-  graceful: commits keep landing, 0 write errors, throughput ≥ degrade floor, p99 ≤
-  recovery ceiling; recovers after.
+- **CRITICAL (review #1): `shared_buffers` alone does NOT reach disk on a 96GB box** —
+  the OS page cache absorbs the whole dataset, so small `shared_buffers` only causes
+  PG-*buffer* thrash, not *disk* thrash (latency never rises → vacuously green). D1
+  MUST also cap the **container `--memory`** (cgroup v2 limits the page cache too) so
+  the dataset genuinely exceeds available RAM and reads hit the 980 PRO. Size:
+  container mem cap ≪ dataset (e.g. cap 256MB, dataset ≥ 1GB).
+- `scripts/perf/s14-disk.sh`: baseline event-insert burst (generous `shared_buffers`
+  + mem, warm cache) capturing committed-events/s + p99 commit latency; then a
+  CONSTRAINED run (tiny `shared_buffers` + tight container `--memory` + a dataset >
+  RAM → real disk thrash) + multi-instance concurrent writes (device-level fsync
+  contention — N PGs each fsync their OWN WAL onto the SHARED disk). Assert graceful:
+  commits keep landing, 0 write errors, throughput ≥ degrade floor, p99 ≤ recovery
+  ceiling; recovers after.
 - **Unconstrained capture:** `fio` raw-device IOPS/throughput if available (else
   skip-capture); express the PG write path as a fraction of raw.
-- **Self-saturation proof:** assert the thrashed run's buffer-hit ratio dropped /
-  disk reads rose (pg_stat) — else NOTRUN (didn't actually thrash).
-- **Bite:** point the shard data dir at **tmpfs** → throughput jumps sharply vs the
-  on-disk run → proves disk was the real bound (drill measures the durable path).
+- **Self-saturation proof — at the DISK level, not PG buffers** (review #1): PG
+  buffer-hit ratio drops AND a disk-level signal confirms real I/O — the **tmpfs-bite
+  throughput delta** (below) being large is the primary disk-bound proof; `iostat
+  %util`/`blks_read`-rate as corroboration. If the constrained run is NOT meaningfully
+  slower than tmpfs → NOTRUN (RAM absorbed it; the mem cap was too loose).
+- **Bite:** run the SAME load on a PG whose data dir is on **tmpfs (RAM)** → throughput
+  jumps sharply vs the on-disk constrained run → proves disk was the real bound (the
+  drill measures the durable path, and the constrained run really hit the disk).
 
 ## Increment 2 — D2 Memory: RSS leak soak + Redis eviction `[FS]`
 - `scripts/perf/s14-memory.sh`.
 - **RSS soak:** run a long-lived service under sustained load in a `docker --memory`-
   capped container; sample RSS (`docker stats`) over a soak window; assert RSS slope ≈
-  0 (no monotonic growth) + no OOM-kill. **Absorbs D-S12-RSS-MEMORY-SOAK.** Reuse the
-  S12 `metaworker-bench` container (already builds + runs sustained load) as the
-  capped subject rather than building a new publisher-soak image; if a publisher soak
-  is wanted later, add a `Dockerfile` then.
+  0 (no monotonic growth) + no OOM-kill. **Absorbs D-S12-RSS-MEMORY-SOAK.**
+  - **LOCATE FIRST (review #4):** confirm a subject that runs a SUSTAINED load for the
+    soak window. `metaworker-bench` may be a one-shot drain — if so, loop it (re-fill →
+    drain in a loop) or pick a genuinely long-lived subject (e.g. the publisher tailing
+    the outbox). Do NOT assume sustained; verify, then cap its container `--memory`.
   - **Bite:** lower `--memory` below the steady working set (or run a leaky probe) →
     OOM-kill / slope alarm fires → the detector has teeth. (R5: if WSL2 hides the
     OOM-kill, fall back to the in-process RSS-slope assertion + record the
@@ -67,8 +79,11 @@ a real baseline exists.
   and the drill instead asserts at the Redis layer (a raw XADD past `maxmemory
   noeviction` returns an OOM error = no silent accept) so the no-loss property is still
   proven without faking publisher behavior.
-  - `CONFIG SET maxmemory` + `noeviction`; fill `xreality.*` past maxmemory → XADD
-    REJECTED (OOM error) — assert NO silent loss.
+  - `CONFIG SET maxmemory` very low (e.g. 1–2MB so a modest XADD burst fills it) +
+    `noeviction`; fill `xreality.*` past maxmemory → XADD REJECTED (OOM error). **No
+    silent loss = assert the source event is still RECOVERABLE** (review #5): the
+    outbox row stays UNpublished / un-acked (so it redelivers later), NOT just that
+    XADD returned an error. Verify the outbox/source state, not only the XADD return.
   - **Bite:** `maxmemory-policy allkeys-lru` → entries silently evicted → undelivered
     events lost → the no-loss check catches it (proves `noeviction` is the correct
     event-stream config). **R4: snapshot the rig redis's original maxmemory +
@@ -80,9 +95,11 @@ a real baseline exists.
   there is for D1/D3.
 
 ## Increment 3 — D3 Connection-pool exhaustion at large N `[FS]`
+- **Dedicated throwaway PG (review #2):** `max_connections` is not runtime-settable
+  (needs a restart), so D3 spins its OWN PG container with a low `max_connections`
+  (e.g. 20) rather than restarting the shared rig shard. (Same pattern as D1.)
 - `services/meta-worker/cmd/connpool-stress` (Go, reuses metapg/pgx deps) + 
-  `scripts/perf/s14-connpool.sh`. Cap a shard's `max_connections` low; drive N ≫ cap
-  concurrent workers.
+  `scripts/perf/s14-connpool.sh`. Drive N ≫ `max_connections` concurrent workers.
   - **Graceful mechanism (drill):** a BOUNDED `pgxpool` (MaxConns ≤ max_connections)
     → all N units of work complete by queueing on the pool; 0 `too many clients`;
     pool recovers (in-use drains) when load drops.
@@ -108,9 +125,13 @@ a real baseline exists.
   the classic deadlock recipe is OPPOSING orders (T1: A→B, T2: B→A).
   - **Consistent-order path (the I6 principle — drill):** all txns lock in the SAME
     order → 0 `deadlock detected`, all commit, lock-wait p99 bounded; no stuck locks.
-  - **Bite:** fire the OPPOSING-order txns concurrently with NO serialization → real
-    PG `deadlock detected` (≥1 txn aborted with SQLSTATE 40P01) → proves I6's ordering
-    is what prevents the deadlock.
+  - **Bite (review #3 — needs an interleaving BARRIER):** PG's deadlock detector only
+    fires when both txns are in hold-and-wait, so the bite must orchestrate it: T1
+    `SELECT … FOR UPDATE` on A, T2 on B, **both rendezvous at a barrier** (each confirms
+    it holds its first lock), THEN T1 grabs B and T2 grabs A concurrently → real PG
+    `deadlock detected` (≥1 txn aborted, SQLSTATE 40P01) after `deadlock_timeout`. A
+    naive "fire both and hope" is racy (one may finish first → no deadlock → flaky
+    NOTRUN); the barrier makes it deterministic.
 - **Relative gate:** 0 deadlocks under the consistent-order path vs ≥1 under the bite;
   lock-wait p99 ≤ recovery ceiling × the uncontended baseline. **Self-proof:** the bite
   MUST produce a real 40P01 (else NOTRUN — the recipe didn't actually race).
@@ -122,6 +143,9 @@ a real baseline exists.
   live-probe, → notrun in a bare runner like s12/l1).
 - CI: extend `scale-build` (build/vet the 2 new Go harnesses + `bash -n` the 4
   s14-* scripts) + add an S14 live sweep to `scale-nightly` (each drill + its bite).
+  **Short CI windows (review #7):** scale-nightly already runs S12 + S13-L1; S14 drills
+  (esp. the RSS soak) MUST use SHORT windows in CI (e.g. soak 60s, small N/dataset) to
+  avoid a nightly timeout — the long soak / large-N capture is `workflow_dispatch`/manual.
 - SESSION + memory + remember; coverage note. **Close D-S12-RSS-MEMORY-SOAK.**
 
 ## Risks
