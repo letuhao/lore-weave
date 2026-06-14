@@ -715,6 +715,71 @@ async def get_project_gaps(
     return GapReportResponse(gaps=gaps, total=len(gaps), min_mentions=min_mentions)
 
 
+# ── C13 — GET /projects/{id}/glossary-entity-stats ───────────────────
+#
+# THIN pass-through to glossary-service's new `/internal/books/{id}/entities/
+# stats` (the FE cannot reach glossary `/internal` directly — same reason the
+# C9 promote flow proxies through here). Powers the build-wizard Step-2 auto-pin
+# suggestion banner: per-entity mention-span + coverage so the FE can suggest
+# pinning the sparse-but-long-reaching entities. Read-only; user-scoped via JWT;
+# resolves the project's book_id server-side (the FE never sees glossary ids
+# until this returns them). No new gap/scoring engine — pure proxy.
+
+
+class GlossaryEntityStat(BaseModel):
+    entity_id: str
+    name: str
+    kind: str
+    mention_count: int
+    first_chapter_index: int | None = None
+    last_chapter_index: int | None = None
+    coverage_pct: float
+
+
+class GlossaryEntityStatsResponse(BaseModel):
+    items: list[GlossaryEntityStat]
+    chapter_count: int
+
+
+@entities_router.get(
+    "/projects/{project_id}/glossary-entity-stats",
+    response_model=GlossaryEntityStatsResponse,
+)
+async def get_glossary_entity_stats(
+    project_id: UUID = Path(
+        description="The knowledge project whose glossary entity stats to report.",
+    ),
+    user_id: UUID = Depends(get_current_user),
+    projects_repo: ProjectsRepo = Depends(get_projects_repo),
+    glossary_client: GlossaryClient = Depends(get_glossary_client),
+) -> GlossaryEntityStatsResponse:
+    """C13 — proxy the glossary mention-span/coverage stats for the build
+    wizard's auto-pin banner. 404 if the project doesn't exist for this user;
+    422 ``no_book`` if the project has no linked book; on a glossary outage,
+    returns an empty list (the FE degrades to manual pinning, never blocks)."""
+    project = await projects_repo.get(user_id, project_id)
+    if project is None:
+        raise HTTPException(
+            status_code=status_codes.HTTP_404_NOT_FOUND,
+            detail="project not found",
+        )
+    if project.book_id is None:
+        raise HTTPException(
+            status_code=status_codes.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={
+                "error_code": "no_book",
+                "message": "the project has no linked book; pinning needs a book",
+            },
+        )
+    raw = await glossary_client.get_entity_stats(project.book_id)
+    if raw is None:
+        return GlossaryEntityStatsResponse(items=[], chapter_count=0)
+    return GlossaryEntityStatsResponse(
+        items=[GlossaryEntityStat.model_validate(it) for it in raw.get("items", [])],
+        chapter_count=int(raw.get("chapter_count", 0)),
+    )
+
+
 # ── K19d γ-a — PATCH /entities/{id} ──────────────────────────────────
 
 

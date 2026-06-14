@@ -101,6 +101,9 @@ func (s *Server) Router() http.Handler {
 		r.Get("/books/{book_id}/entities", s.internalListEntities)
 		// mui #4 — batch fetch by id for the knowledge semantic selector.
 		r.Post("/books/{book_id}/entities/by-ids", s.internalEntitiesByIDs)
+		// C13 — per-entity mention-span + coverage for the build-wizard auto-pin
+		// suggestion banner (bounded GROUP-BY over chapter_entity_links).
+		r.Get("/books/{book_id}/entities/stats", s.internalEntityStats)
 		// mui #1c G-cand — knowledge's coref detector proposes merge clusters here.
 		r.Post("/books/{book_id}/merge-candidates", s.internalProposeMergeCandidates)
 		// Set canonical content (short_description) on an existing entity.

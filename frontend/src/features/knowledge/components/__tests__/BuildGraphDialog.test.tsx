@@ -26,6 +26,10 @@ vi.mock('../../api', async () => {
       estimateExtraction: (...args: unknown[]) => estimateMock(...args),
       startExtraction: (...args: unknown[]) => startMock(...args),
       getBenchmarkStatus: (...args: unknown[]) => benchmarkMock(...args),
+      // C13 — usePinning fetches auto-pin stats; stub to an empty payload so the
+      // existing target/budget tests don't hit a real call.
+      getGlossaryEntityStats: () =>
+        Promise.resolve({ items: [], chapter_count: 0 }),
     },
   };
 });

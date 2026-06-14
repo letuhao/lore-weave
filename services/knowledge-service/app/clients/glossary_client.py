@@ -294,6 +294,28 @@ class GlossaryClient:
             logger.warning("glossary entity-count failed: %s", exc)
             return None
 
+    async def get_entity_stats(self, book_id: UUID) -> dict | None:
+        """GET /internal/books/{book_id}/entities/stats (C13).
+
+        Per-entity mention-span + coverage aggregate over chapter_entity_links,
+        for the build-wizard auto-pin suggestion banner. Returns the raw
+        ``{"items": [...], "chapter_count": int}`` payload, or None on failure
+        (the FE degrades to manual pinning — never blocks the wizard).
+        """
+        url = f"{self._base_url}/internal/books/{book_id}/entities/stats"
+        tid = trace_id_var.get()
+        try:
+            resp = await self._http.get(
+                url, headers={"X-Trace-Id": tid} if tid else None,
+            )
+            if resp.status_code != 200:
+                logger.warning("glossary entities/stats %d", resp.status_code)
+                return None
+            return resp.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            logger.warning("glossary entities/stats failed: %s", exc)
+            return None
+
     # ── K11.10 — HTTP methods for extraction pipeline ────────────────
 
     async def list_entities(

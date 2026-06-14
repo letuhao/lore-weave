@@ -741,7 +741,8 @@
         "failed": "見積もり失敗: {{error}}",
         "cost": "推定コスト: ${{low}} – ${{high}}",
         "items": "{{chapters}} 章 · {{turns}} チャットターン · 約 {{tokens}} トークン",
-        "duration": "約 {{seconds}} 秒"
+        "duration": "約 {{seconds}} 秒",
+        "pinned": "ピン留めコンテキスト: +{{tokens}} トークン (全ウィンドウで{{count}}件ピン留め)"
       },
       "cancel": "キャンセル",
       "confirm": "グラフを構築",
@@ -771,6 +772,24 @@
       "concurrency": {
         "label": "並列LLM呼び出し数（任意）",
         "hint": "同時に実行する抽出呼び出し数の上限。既定は空欄のまま。"
+      },
+      "pinning": {
+        "intro": "用語集エンティティをピン留めすると、すべての抽出ウィンドウに強制注入されます。まれだが重要なエンティティが、言及のない章でも常にアンカーされます。",
+        "autopin": "出現はまばらだが範囲が広いエンティティが{{count}}件、ピン留めの価値があります。",
+        "autopinApply": "{{count}}件の提案をピン留め",
+        "loading": "エンティティ統計を読み込み中…",
+        "unavailable": "エンティティ統計を取得できません。下から手動でピン留めできます。",
+        "searchPlaceholder": "名前で検索…",
+        "kindAll": "すべての種類",
+        "minMentions": "最小 ×",
+        "available": "利用可能 ({{count}})",
+        "availableEmpty": "フィルターに一致するエンティティはありません。",
+        "pinned": "ピン留め済み ({{count}})",
+        "pinnedEmpty": "まだピン留めされていません。",
+        "pin": "ピン留め",
+        "unpin": "ピン解除",
+        "budget": "ウィンドウごとに +{{tokens}} トークン ({{count}} 件ピン留め × 約50)。",
+        "noBook": "ピン留めにはリンクされた書籍が必要です。まずこのプロジェクトに書籍を紐付けてください。"
       }
     },
     "errorViewer": {

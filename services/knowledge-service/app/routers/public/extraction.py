@@ -79,6 +79,12 @@ router = APIRouter(
 _TOKENS_PER_CHAPTER = 2000
 _TOKENS_PER_CHAT_TURN = 800
 _TOKENS_PER_GLOSSARY_ENTITY = 300
+# C13 — pinned-injection cost. Each pinned glossary entity adds ~50 prompt
+# tokens (name + a short canon hint) to EVERY extraction window. With one
+# window per chapter, the dominant pinned cost is
+# `pinned_count × 50 × num_windows` — surfaced as its own estimate line so a
+# user sees that pinning 30 entities across a 5000-chapter book is expensive.
+_TOKENS_PER_PINNED_ENTITY = 50
 
 # Per-token cost lookup now lives in `app.pricing` (T2-close-5 /
 # D-K16.2-01 cleared). Unknown models still fall back to the legacy
@@ -169,6 +175,10 @@ class EstimateRequest(BaseModel):
     # preview only until the event-driven runner honours it too.
     scope_range: dict | None = None
     llm_model: str = Field(min_length=1, max_length=200)
+    # C13 — how many glossary entities the user intends to pin. Drives the
+    # pinned-injection cost line (pinned_count × ~50 tokens × num_windows). 0 ⇒
+    # no pinned-injection cost (default — back-compat with pre-C13 callers).
+    pinned_count: Annotated[int, Field(ge=0)] = 0
 
 
 class StartJobRequest(BaseModel):
@@ -188,6 +198,11 @@ class StartJobRequest(BaseModel):
     targets: list[ExtractionTarget] | None = None
     # C12 — passthrough cap on parallel LLM calls. None ⇒ unbounded (current).
     concurrency_level: Annotated[int, Field(ge=1, le=64)] | None = None
+    # C13 — glossary pinning. The glossary entity ids to force-inject into
+    # EVERY extraction window's known_entities (name-prefix injection) so
+    # sparse-but-critical entities are anchored regardless of chapter content.
+    # None / empty ⇒ no pins (back-compat). Stored as pinned_entity_ids JSONB.
+    pinned_glossary_entity_ids: list[str] | None = None
 
     @field_validator("targets")
     @classmethod
@@ -225,6 +240,11 @@ class EstimateResponse(BaseModel):
     items_total: int
     items: EstimateItemCounts
     estimated_tokens: int
+    # C13 — the pinned-injection slice of `estimated_tokens`, surfaced on its
+    # own so the FE can show "pinned context: N tokens" as a distinct line. It
+    # is `pinned_count × _TOKENS_PER_PINNED_ENTITY × num_windows` and is already
+    # folded into `estimated_tokens` (and thus the cost). 0 when nothing pinned.
+    estimated_pinned_tokens: int = 0
     estimated_cost_usd_low: Decimal
     estimated_cost_usd_high: Decimal
     estimated_duration_seconds: int
@@ -290,10 +310,20 @@ async def estimate_extraction_cost(
         glossary_entities = count if count is not None else 0
 
     items_total = chapters + chat_turns + glossary_entities
+    # C13 — pinned-injection cost. The pinned names are prepended to EVERY
+    # extraction window's known_entities, and there is one window per chapter +
+    # one per chat turn (the two LLM-extraction item types; glossary_sync is a
+    # pure Neo4j MERGE with no window). So num_windows = chapters + chat_turns.
+    # This is the dominant driver for a large book — surfaced as its own line.
+    num_windows = chapters + chat_turns
+    estimated_pinned_tokens = (
+        body.pinned_count * _TOKENS_PER_PINNED_ENTITY * num_windows
+    )
     estimated_tokens = (
         chapters * _TOKENS_PER_CHAPTER
         + chat_turns * _TOKENS_PER_CHAT_TURN
         + glossary_entities * _TOKENS_PER_GLOSSARY_ENTITY
+        + estimated_pinned_tokens
     )
 
     base_cost = Decimal(estimated_tokens) * cost_per_token(body.llm_model)
@@ -310,6 +340,7 @@ async def estimate_extraction_cost(
             glossary_entities=glossary_entities,
         ),
         estimated_tokens=estimated_tokens,
+        estimated_pinned_tokens=estimated_pinned_tokens,
         estimated_cost_usd_low=cost_low,
         estimated_cost_usd_high=cost_high,
         estimated_duration_seconds=duration,
@@ -342,9 +373,9 @@ async def _create_and_start_job(
                       (user_id, project_id, scope, scope_range, llm_model,
                        embedding_model, max_spend_usd, items_total, campaign_id,
                        billing_user_id, billing_embedding_model, billing_llm_model,
-                       targets, concurrency_level)
+                       targets, concurrency_level, pinned_entity_ids)
                     VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9,
-                            $10, $11, $12, $13, $14)
+                            $10, $11, $12, $13, $14, $15::jsonb)
                     RETURNING job_id
                     """,
                     user_id,
@@ -370,6 +401,11 @@ async def _create_and_start_job(
                     list(validated.targets) if validated.targets is not None
                     else list(DEFAULT_TARGETS),
                     validated.concurrency_level,
+                    # C13 — pinned glossary entity ids as a JSONB array (NULL ⇒
+                    # no pins, back-compat). The worker reads this to fetch the
+                    # pinned names and prepend them into every window.
+                    json.dumps(validated.pinned_entity_ids)
+                    if validated.pinned_entity_ids else None,
                 )
                 job_id = job_row["job_id"]
 
@@ -704,6 +740,8 @@ async def _start_extraction_job_core(
         # already auto-included `entities` for dependent targets).
         targets=body.targets,
         concurrency_level=body.concurrency_level,
+        # C13 — pinned glossary entity ids → stored as pinned_entity_ids JSONB.
+        pinned_entity_ids=body.pinned_glossary_entity_ids,
     )
 
     job_id = await _create_and_start_job(

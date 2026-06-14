@@ -1560,6 +1560,10 @@ async def test_get_running_jobs_pulls_embedding_dimension(monkeypatch):
         "extraction_config": {},
         "genre": "Tiên hiệp",
         "save_raw_extraction": True,
+        # C12 + C13 — columns added to the running-jobs SELECT.
+        "targets": None,
+        "concurrency_level": None,
+        "pinned_entity_ids": None,
     }
     pool = AsyncMock()
     pool.fetch = AsyncMock(return_value=[fake_row])
@@ -1590,6 +1594,10 @@ async def test_get_running_jobs_handles_null_embedding_dimension():
         "extraction_config": None,
         "genre": None,
         "save_raw_extraction": False,
+        # C12 + C13 — columns added to the running-jobs SELECT.
+        "targets": None,
+        "concurrency_level": None,
+        "pinned_entity_ids": None,
     }
     pool = AsyncMock()
     pool.fetch = AsyncMock(return_value=[fake_row])
@@ -1619,6 +1627,10 @@ async def test_get_running_jobs_threads_billing_identity():
         "extraction_config": None,
         "genre": None,
         "save_raw_extraction": False,
+        # C12 + C13 — columns added to the running-jobs SELECT.
+        "targets": None,
+        "concurrency_level": None,
+        "pinned_entity_ids": None,
     }
     pool = AsyncMock()
     pool.fetch = AsyncMock(return_value=[fake_row])
@@ -1626,6 +1638,39 @@ async def test_get_running_jobs_threads_billing_identity():
     assert jobs[0].billing_user_id == collab
     assert jobs[0].billing_embedding_model == "collab-emb"
     assert jobs[0].billing_llm_model == "collab-llm"
+
+
+@pytest.mark.asyncio
+async def test_get_running_jobs_threads_pinned_entity_ids():
+    """C13: pinned_entity_ids (JSONB) is read from the SELECT onto JobRow so
+    process_job can fetch the pinned names + inject them into every window.
+    asyncpg may hand JSONB back as a raw JSON string — _decode_pinned normalises
+    it to a list."""
+    from app.runner import _get_running_jobs
+    fake_row = {
+        "job_id": uuid4(), "user_id": uuid4(), "project_id": uuid4(),
+        "scope": "chapters", "scope_range": None, "status": "running",
+        "llm_model": "qwen", "embedding_model": "emb",
+        "max_spend_usd": None, "items_total": None,
+        "items_processed": 0, "current_cursor": None,
+        "cost_spent_usd": Decimal("0"),
+        "campaign_id": None,
+        "billing_user_id": None,
+        "billing_embedding_model": None,
+        "billing_llm_model": None,
+        "embedding_dimension": 1024,
+        "extraction_config": None,
+        "genre": None,
+        "save_raw_extraction": False,
+        "targets": None,
+        "concurrency_level": None,
+        # JSONB returned as a raw JSON string (the asyncpg default codec).
+        "pinned_entity_ids": '["g-1", "g-2"]',
+    }
+    pool = AsyncMock()
+    pool.fetch = AsyncMock(return_value=[fake_row])
+    jobs = await _get_running_jobs(pool)
+    assert jobs[0].pinned_entity_ids == ["g-1", "g-2"]
 
 
 # ── D-PHASE6C-WORKERAI-JOB-SPAN: parent span per process_job call ───

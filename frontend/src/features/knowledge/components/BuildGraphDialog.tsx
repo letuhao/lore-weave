@@ -22,6 +22,8 @@ import { useUserCosts } from '../hooks/useUserCosts';
 import { EmbeddingModelPicker } from './EmbeddingModelPicker';
 import { TargetPicker } from './TargetPicker';
 import { BuildWizardSteps, type WizardStep } from './BuildWizardSteps';
+import { PinningStep } from './PinningStep';
+import { usePinning } from '../hooks/usePinning';
 
 // K19a.5 — modal for starting an extraction job. Triggered from the
 // DisabledCard's "Build graph" button (and replaces the K19a.4 toast-stub
@@ -125,6 +127,10 @@ export function BuildGraphDialog({
   const [wizardStep, setWizardStep] = useState<WizardStep>(1);
   const [targets, setTargets] = useState<ExtractionTarget[]>([]);
   const [concurrency, setConcurrency] = useState<string>('');
+  // C13 — glossary pinning controller (owns the pinned-set + stats query).
+  // Stats fetch is gated on the dialog being open AND a linked book existing
+  // (the BE 422s no_book otherwise; pinning has no meaning without a book).
+  const pinning = usePinning(project.project_id, open && !!project.book_id);
 
   // D-K19a.5-03 (cleared in K19b.6): user-wide monthly remaining hint
   // shown near the max_spend input so the user knows how much headroom
@@ -156,6 +162,8 @@ export function BuildGraphDialog({
     setWizardStep(1);
     setTargets([]);
     setConcurrency('');
+    // C13 — clear the pinned-set + filters per open.
+    pinning.reset();
     setDebounced({ scope: openScope, llm: openLlm });
     // `openScope` / `openLlm` / `openEmbedding` / `openMaxSpend` already
     // fold in both `project` + `initialValues` — listing them directly
@@ -214,6 +222,9 @@ export function BuildGraphDialog({
     debounced.scope === 'chapters' && chapterRange.range
       ? chapterRange.range.join('-')
       : 'none';
+  // C13 — pinned count drives the pinned-injection cost line; include it in the
+  // estimate key so the preview refreshes as the user pins/unpins.
+  const pinnedCount = pinning.pinnedIdList.length;
   const estimateQuery = useQuery<CostEstimate>({
     queryKey: [
       'knowledge',
@@ -222,6 +233,7 @@ export function BuildGraphDialog({
       debounced.scope,
       debounced.llm,
       estimateRangeKey,
+      pinnedCount,
     ],
     queryFn: () => {
       const payload: EstimateExtractionPayload = {
@@ -230,6 +242,7 @@ export function BuildGraphDialog({
         ...(debounced.scope === 'chapters' && chapterRange.range
           ? { scope_range: { chapter_range: chapterRange.range } }
           : {}),
+        ...(pinnedCount > 0 ? { pinned_count: pinnedCount } : {}),
       };
       return knowledgeApi.estimateExtraction(project.project_id, payload, accessToken!);
     },
@@ -331,6 +344,11 @@ export function BuildGraphDialog({
         ...(postedTargets.length > 0 ? { targets: postedTargets } : {}),
         ...(concurrency.trim() !== ''
           ? { concurrency_level: Number(concurrency) }
+          : {}),
+        // C13 — pinned glossary entity ids (force-injected into every window's
+        // known_entities). Only send when the user pinned at least one.
+        ...(pinning.pinnedIdList.length > 0
+          ? { pinned_glossary_entity_ids: pinning.pinnedIdList }
           : {}),
       };
       await knowledgeApi.startExtraction(project.project_id, payload, accessToken);
@@ -562,14 +580,18 @@ export function BuildGraphDialog({
         </label>
         </div>
 
-        {/* ── Step 2 — pinning placeholder (C13 fills this in) ── */}
+        {/* ── Step 2 — glossary pinning dual-list (C13) ── */}
         <div
           className={`flex flex-col gap-3 ${wizardStep === 2 ? '' : 'hidden'}`}
           data-testid="build-wizard-body-2"
         >
-          <p className="rounded-md border border-dashed p-3 text-[12px] text-muted-foreground">
-            {t('projects.buildDialog.wizard.step2Placeholder')}
-          </p>
+          {project.book_id ? (
+            <PinningStep pinning={pinning} />
+          ) : (
+            <p className="rounded-md border border-dashed p-3 text-[12px] text-muted-foreground">
+              {t('projects.buildDialog.pinning.noBook')}
+            </p>
+          )}
         </div>
 
         {/* ── Step 3 — budget + estimate ── */}
@@ -651,6 +673,17 @@ export function BuildGraphDialog({
                   tokens: estimateQuery.data.estimated_tokens,
                 })}
               </span>
+              {/* C13 — pinned-injection cost as its OWN line (the dominant
+                  driver — pinned_count × ~50 × num_windows). Shown only when
+                  the user pinned something. */}
+              {(estimateQuery.data.estimated_pinned_tokens ?? 0) > 0 && (
+                <span data-testid="estimate-pinned-line">
+                  {t('projects.buildDialog.estimate.pinned', {
+                    tokens: estimateQuery.data.estimated_pinned_tokens,
+                    count: pinnedCount,
+                  })}
+                </span>
+              )}
               <span className="text-muted-foreground">
                 {t('projects.buildDialog.estimate.duration', {
                   seconds: estimateQuery.data.estimated_duration_seconds,

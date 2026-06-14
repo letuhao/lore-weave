@@ -358,6 +358,16 @@ ALTER TABLE extraction_jobs
     DEFAULT ARRAY['entities','relations','events','facts','summaries'],
   ADD COLUMN IF NOT EXISTS concurrency_level INT;
 
+-- C13 — glossary pinning. `pinned_entity_ids` is the set of glossary entity
+-- ids the user chose to force-inject into EVERY extraction window's
+-- known_entities context (so sparse-but-critical entities stay anchored even
+-- in chapters that never mention them). JSONB array of id strings; NULL ⇒ no
+-- pins (back-compat — pre-C13 jobs + any caller that omits the field). The
+-- worker reads it, batch-fetches the names from glossary-service, and prepends
+-- them to known_entities. Additive.
+ALTER TABLE extraction_jobs
+  ADD COLUMN IF NOT EXISTS pinned_entity_ids JSONB;
+
 CREATE INDEX IF NOT EXISTS idx_extraction_jobs_project
   ON extraction_jobs (project_id, created_at DESC);
 

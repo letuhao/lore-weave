@@ -1553,3 +1553,25 @@
 {"ts":"2026-06-14T08:53:51Z","event":"verify_cycle_12_passed","cycle":12}
 {"ts": "2026-06-14T08:55:54Z", "event": "in_progress_update", "cycle": 12, "phase": "SESSION", "retry": 0}
 {"ts":"2026-06-14T08:56:55Z","event":"cycle_done","cycle":12,"title":"Build wizard — target-typed extraction + concurrency (BE+FE)","dps":4,"tests":{"sdk":21,"knowledge":99,"worker_ai_decoupled":36,"fe_vitest":52},"verify_exit":0,"live_smoke":"targets=[events] build -> only the event pass runs","adversary":{"blockers":0,"majors":3,"majors_fixed":3,"minors":2,"notes":3},"scope_guard":"CLEAR","post_review":"CLEAR","screenshot":"docs/raid/evidence/cycle-12/build-wizard-step1-target-picker.png"}
+{"ts": "2026-06-14T08:58:16Z", "event": "in_progress_archived", "cycle": 12, "archived_to": "cycle-012-state-20260614T085816.md"}
+{"ts":"2026-06-14T08:58:37Z","event":"cycle_retro","cycle":12,"reflection":"De-risked design (DESIGN_C12_C13 enumerated ~4 sites) held — no XL surprises. KEY LESSON: an auto-include applied at the REQUEST layer (baking entities into the stored array) silently defeats a downstream gate (recovery/filter disable when entities not explicitly requested) that keys off the same array — the adversary caught this; fix = apply dependent auto-include at RUNTIME (SDK normalize_targets + decoupled resolver) and store the user RAW intent. Second lesson: a new stage-advance edge (entities-only build → recovery/filter, skipping trio) hit a consumer else-branch written for the old binary entity→trio|persist split — adding a 3rd outcome to a state machine needs every consumer switch re-examined. Live-smoke via decoupled resume_state.trio_targets + provider llm_jobs.operation count is a clean, deterministic assertion for target-typed extraction (no need to wait for full graph build).","defer":"D-C12-CONCURRENCY-DECOUPLED: concurrency_level caps the SDK sync gather Semaphore; decoupled trio is fire-and-forget submit (no gather) — not capped there."}
+{"ts": "2026-06-14T08:59:34Z", "event": "coordinator_next_cycle_emitted", "cycle": 13}
+{"ts":"2026-06-14T09:02:26Z","event":"startup_drift_check_inconclusive","cycle":13,"cd":"","rw":""}
+{"ts":"2026-06-14T09:02:26Z","event":"startup_verifier_complete","cycle":13,"steps":6}
+{"ts": "2026-06-14T09:02:42Z", "event": "in_progress_init", "cycle": 13, "title": "Build wizard \u2014 glossary pinning (BE+FE)"}
+{"ts": "2026-06-14T09:08:48Z", "event": "in_progress_update", "cycle": 13, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-06-14T09:11:13Z", "event": "in_progress_update", "cycle": 13, "phase": "BUILD", "retry": 0}
+{"ts":"2026-06-14T09:18:06Z","event":"secret_scan_skipped","cycle":13,"dps":DPS1,"reason":"gitleaks_not_installed"}
+{"ts":"2026-06-14T09:24:14Z","event":"secret_scan_skipped","cycle":13,"dps":DPS2,"reason":"gitleaks_not_installed"}
+{"ts":"2026-06-14T09:28:24Z","event":"secret_scan_skipped","cycle":13,"dps":DPS3,"reason":"gitleaks_not_installed"}
+{"ts":"2026-06-14T09:38:53Z","event":"secret_scan_skipped","cycle":13,"dps":DPS4,"reason":"gitleaks_not_installed"}
+{"ts": "2026-06-14T09:40:20Z", "event": "in_progress_update", "cycle": 13, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-06-14T09:41:30Z","event":"verify_cycle_13_failed","cycle":13}
+{"ts":"2026-06-14T09:41:53Z","event":"verify_cycle_13_passed","cycle":13}
+{"ts": "2026-06-14T10:08:00Z", "event": "in_progress_update", "cycle": 13, "phase": "REVIEW2", "retry": 0}
+{"ts":"2026-06-14T10:11:47Z","event":"verify_cycle_13_passed","cycle":13}
+{"ts": "2026-06-14T10:12:10Z", "event": "in_progress_update", "cycle": 13, "phase": "QC", "retry": 0}
+{"ts": "2026-06-14T10:13:56Z", "event": "in_progress_update", "cycle": 13, "phase": "POST_REVIEW", "retry": 0}
+{"ts": "2026-06-14T10:14:06Z", "event": "in_progress_update", "cycle": 13, "phase": "SESSION", "retry": 0}
+{"ts": "2026-06-14T10:15:00Z", "event": "cycle_complete", "cycle": 13, "title": "Build wizard — glossary pinning (BE+FE)", "dps_count": 4, "result": "DONE", "verify_exit_code": 0, "live_smoke_token_present": true, "adversary": {"blockers": 0, "majors": 1, "minors": 1, "notes": 7}, "scope_guard": "CLEAR", "post_review": "CLEAR", "tests": {"knowledge_pytest": 61, "worker_ai_pytest": 106, "glossary_go": "pass", "fe_vitest": 18, "i18n_keys": 791}, "screenshot": "docs/raid/evidence/cycle-13/build-wizard-step2-pinned.png", "notable": "M1 fixed: chat-turn window omitted pinned_names while estimate charged chat_turns; infra fix worker-ai GLOSSARY_SERVICE_URL stale :8082->:8088"}
+{"ts": "2026-06-14T10:15:11Z", "event": "in_progress_update", "cycle": 13, "phase": "COMMIT", "retry": 0}

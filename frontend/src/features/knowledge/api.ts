@@ -111,6 +111,9 @@ export interface EstimateExtractionPayload {
   scope: ExtractionJobScopeWire;
   scope_range?: { chapter_range: [number, number] };
   llm_model: string;
+  // C13 — number of glossary entities the user intends to pin. Drives the
+  // pinned-injection cost line (pinned_count × ~50 × num_windows). Omit ⇒ 0.
+  pinned_count?: number;
 }
 
 // Mirrors StartJobRequest in
@@ -139,6 +142,28 @@ export interface ExtractionStartPayload {
   targets?: ExtractionTarget[];
   // C12 — passthrough cap on parallel LLM calls. Omitted ⇒ unbounded.
   concurrency_level?: number;
+  // C13 — glossary entity ids to pin (force-inject into every extraction
+  // window's known_entities). Omitted / empty ⇒ no pins (back-compat).
+  pinned_glossary_entity_ids?: string[];
+}
+
+// C13 — one entity in the build-wizard auto-pin suggestion data. Mirrors
+// GlossaryEntityStat in services/knowledge-service/.../entities.py (which
+// proxies glossary-service's /internal/books/{id}/entities/stats).
+export interface GlossaryEntityStat {
+  entity_id: string;
+  name: string;
+  kind: string;
+  mention_count: number;
+  first_chapter_index: number | null;
+  last_chapter_index: number | null;
+  // distinct linked chapters / total book chapters, in [0,1].
+  coverage_pct: number;
+}
+
+export interface GlossaryEntityStatsResponse {
+  items: GlossaryEntityStat[];
+  chapter_count: number;
 }
 
 // Mirrors RebuildRequest (no `scope` field — handler hard-codes scope=all).
@@ -1062,6 +1087,17 @@ export const knowledgeApi = {
     return apiJson<ExtractionJobWire>(
       `${BASE}/projects/${projectId}/extraction/start`,
       { method: 'POST', body: JSON.stringify(payload), token },
+    );
+  },
+
+  // C13 — auto-pin suggestion data for the build-wizard Step-2 banner.
+  getGlossaryEntityStats(
+    projectId: string,
+    token: string,
+  ): Promise<GlossaryEntityStatsResponse> {
+    return apiJson<GlossaryEntityStatsResponse>(
+      `${BASE}/projects/${encodeURIComponent(projectId)}/glossary-entity-stats`,
+      { method: 'GET', token },
     );
   },
 

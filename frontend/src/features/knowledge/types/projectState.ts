@@ -56,6 +56,9 @@ export interface CostEstimate {
     glossary_entities: number;
   };
   estimated_tokens: number;
+  // C13 — the pinned-injection slice of estimated_tokens (pinned_count × ~50 ×
+  // num_windows), already folded into estimated_tokens. 0 when nothing pinned.
+  estimated_pinned_tokens?: number;
   estimated_cost_usd_low: string;
   estimated_cost_usd_high: string;
   estimated_duration_seconds: number;

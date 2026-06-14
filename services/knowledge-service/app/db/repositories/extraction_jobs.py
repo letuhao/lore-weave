@@ -157,7 +157,7 @@ _SELECT_COLS = """
   started_at, paused_at, completed_at, created_at, updated_at,
   error_message, campaign_id,
   billing_user_id, billing_embedding_model, billing_llm_model,
-  targets, concurrency_level
+  targets, concurrency_level, pinned_entity_ids
 """
 
 
@@ -202,6 +202,10 @@ class ExtractionJob(BaseModel):
     # C12 — passthrough cap on parallel LLM calls during extraction. NULL ⇒
     # current unbounded behaviour.
     concurrency_level: int | None = None
+    # C13 — glossary pinning. The glossary entity ids force-injected into every
+    # extraction window's known_entities. NULL/None ⇒ no pins (back-compat).
+    # Stored as a JSONB array; the worker fetches the names + prepends them.
+    pinned_entity_ids: list[str] | None = None
 
     items_total: int | None = None
     items_processed: int = 0
@@ -263,6 +267,8 @@ class ExtractionJobCreate(BaseModel):
     targets: list[str] | None = None
     # C12 — passthrough parallel-LLM-call cap. None ⇒ unbounded (current).
     concurrency_level: Annotated[int, Field(ge=1, le=64)] | None = None
+    # C13 — pinned glossary entity ids. None / empty ⇒ no pins (back-compat).
+    pinned_entity_ids: list[str] | None = None
 
 
 # ── try_spend outcome ────────────────────────────────────────────────────
@@ -300,7 +306,8 @@ class TrySpendResult:
 def _row_to_job(row: asyncpg.Record) -> ExtractionJob:
     data = dict(row)
     # asyncpg returns JSONB as str or dict depending on codec; normalise.
-    for k in ("scope_range", "current_cursor"):
+    # C13 — pinned_entity_ids is JSONB (list); same str-or-decoded handling.
+    for k in ("scope_range", "current_cursor", "pinned_entity_ids"):
         v = data.get(k)
         if isinstance(v, str):
             data[k] = json.loads(v)
@@ -324,9 +331,9 @@ class ExtractionJobsRepo:
           (user_id, project_id, scope, scope_range, llm_model,
            embedding_model, max_spend_usd, items_total, campaign_id,
            billing_user_id, billing_embedding_model, billing_llm_model,
-           targets, concurrency_level)
+           targets, concurrency_level, pinned_entity_ids)
         VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10, $11, $12,
-                $13, $14)
+                $13, $14, $15::jsonb)
         RETURNING {_SELECT_COLS}
         """
         async with self._pool.acquire() as conn:
@@ -349,6 +356,9 @@ class ExtractionJobsRepo:
                 # sees a NULL targets array.
                 list(data.targets) if data.targets is not None else list(DEFAULT_TARGETS),
                 data.concurrency_level,
+                # C13 — pinned glossary entity ids as a JSONB array (NULL ⇒ no
+                # pins, back-compat).
+                json.dumps(data.pinned_entity_ids) if data.pinned_entity_ids else None,
             )
         return _row_to_job(row)
 

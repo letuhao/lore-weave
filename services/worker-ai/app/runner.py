@@ -583,6 +583,11 @@ class JobRow:
     targets: list[str] | None = None
     # C12 — passthrough cap on parallel LLM calls. None ⇒ unbounded (current).
     concurrency_level: int | None = None
+    # C13 — glossary pinning. The glossary entity ids the user pinned; the
+    # runner batch-fetches their names and force-injects them into EVERY
+    # extraction window's known_entities. None/empty ⇒ no pins (back-compat —
+    # the column is JSONB NULL by default).
+    pinned_entity_ids: list[str] | None = None
 
 
 # ── E0-3 Phase 2a — BYOK dual-identity billing resolution ────────────
@@ -649,6 +654,23 @@ def assert_billing_complete(job: JobRow) -> None:
 # ── DB helpers ───────────────────────────────────────────────────────
 
 
+def _decode_pinned(raw: object) -> list[str] | None:
+    """C13 — normalise extraction_jobs.pinned_entity_ids (JSONB). asyncpg may
+    hand back a raw JSON str or an already-decoded list. NULL ⇒ None (no pins).
+    A non-list / malformed value degrades to None (the job runs un-pinned rather
+    than crashing the poll loop)."""
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except ValueError:
+            return None
+    if isinstance(raw, list):
+        return [str(x) for x in raw]
+    return None
+
+
 async def _get_running_jobs(pool: asyncpg.Pool) -> list[JobRow]:
     """Fetch all jobs in 'running' status.
 
@@ -663,7 +685,7 @@ async def _get_running_jobs(pool: asyncpg.Pool) -> list[JobRow]:
                j.items_total, j.items_processed, j.current_cursor,
                j.cost_spent_usd, j.campaign_id,
                j.billing_user_id, j.billing_embedding_model, j.billing_llm_model,
-               j.targets, j.concurrency_level,
+               j.targets, j.concurrency_level, j.pinned_entity_ids,
                p.embedding_dimension,
                p.extraction_config, p.genre, p.save_raw_extraction
         FROM extraction_jobs j
@@ -709,6 +731,9 @@ async def _get_running_jobs(pool: asyncpg.Pool) -> list[JobRow]:
             # C12 — asyncpg returns a TEXT[] as a python list already.
             targets=list(r["targets"]) if r["targets"] is not None else None,
             concurrency_level=r["concurrency_level"],
+            # C13 — pinned_entity_ids is JSONB; asyncpg returns it as a str (raw
+            # JSON) or a decoded list depending on the codec. Normalise both.
+            pinned_entity_ids=_decode_pinned(r["pinned_entity_ids"]),
         ))
     return result
 
@@ -1228,6 +1253,10 @@ async def _extract_and_persist(
     targets: list[str] | None = None,
     # C12 — cap on parallel LLM calls in the SDK R/E/F gather. None ⇒ unbounded.
     concurrency_level: int | None = None,
+    # C13 — pinned glossary names force-injected into THIS window's
+    # known_entities (replaces the legacy hardcoded []). None ⇒ [] (back-compat:
+    # chat_turn / glossary callers leave it unset → no pins).
+    pinned_names: list[str] | None = None,
 ) -> tuple[ExtractionResult, "Pass2Candidates | None"]:
     """Phase 4b-γ — replaces the legacy `knowledge_client.extract_item`.
 
@@ -1274,7 +1303,9 @@ async def _extract_and_persist(
     try:
         candidates = await extract_pass2(
             text=text,
-            known_entities=[],
+            # C13 — force-inject the pinned glossary names. Replaces the legacy
+            # hardcoded [] ("worker-ai has no glossary access"). None ⇒ [].
+            known_entities=list(pinned_names or []),
             user_id=str(user_id),
             project_id=str(project_id) if project_id else None,
             model_source="user_model",
@@ -1372,6 +1403,9 @@ async def _start_decoupled_chunk(
     job: "JobRow", ch, text: str, book_id, run_snapshot, run_cfg_hash: str,
     run_base_version: str, p3_hierarchy_paths, p3_chapter_index,
     p3_book_parts, p3_is_last: bool,
+    # C13 — pinned glossary names to force-inject into this chunk's
+    # known_entities. [] ⇒ no pins (back-compat).
+    pinned_names: list[str] | None = None,
 ) -> None:
     """WX-T3b — seed resume_state for one chapter + submit its entity job, then
     return (released). The llm_extract_consumer folds the terminal events through
@@ -1392,12 +1426,23 @@ async def _start_decoupled_chunk(
     # targets ⇒ entities requested ⇒ enabled (back-compat).
     entities_requested = (not job.targets) or ("entities" in job.targets)
     rs = dx.new_extract_state(
-        chunk_text=text, known_entities=[],
+        # C13 — force-inject the pinned glossary names into THIS chunk's
+        # known_entities (the decoupled consumer threads it into the entity +
+        # R/E/F extractor calls). Replaces the legacy hardcoded []. None ⇒ [].
+        chunk_text=text, known_entities=list(pinned_names or []),
         has_recovery=(eff_recovery is not None) and entities_requested,
         has_filter=(eff_filter is not None) and entities_requested,
         # C12 — the job's pass subset; reduced to the requested trio ops.
         targets=job.targets,
     )
+    # C13 — per-window proof that the pinned names reach THIS chapter's
+    # known_entities even when the chapter text never mentions them. Silent when
+    # nothing is pinned (the common case). Load-bearing for the live-smoke.
+    if pinned_names:
+        logger.info(
+            "C13 pinned-injection: chapter %s (idx=%s) known_entities <- %s",
+            ch.chapter_id, p3_chapter_index, pinned_names,
+        )
     rs.update(
         user_id=str(job.user_id), project_id=str(job.project_id),
         model_source="user_model", model_ref=str(eff_model_ref),
@@ -1580,6 +1625,24 @@ async def process_job(
 
         # Resolve book_id from project (project_id ≠ book_id)
         book_id = await _get_project_book_id(pool, job.user_id, job.project_id)
+
+        # C13 — glossary pinning. Resolve the pinned glossary entity NAMES ONCE
+        # per job (not per chapter) and force-inject them into EVERY extraction
+        # window's known_entities below, so sparse-but-critical entities stay
+        # anchored even in chapters that never mention them. Reuses the existing
+        # X-Internal-Token GlossaryClient (no new secret). Best-effort: a
+        # glossary outage / no book_id → [] → the job runs un-pinned, never
+        # blocks. THE GAP this cycle closes: the runner previously passed an
+        # empty known_entities ("worker-ai has no glossary access").
+        pinned_names: list[str] = []
+        if job.pinned_entity_ids and book_id is not None:
+            pinned_names = await glossary_client.fetch_entities_by_ids(
+                book_id, job.pinned_entity_ids,
+            )
+            logger.info(
+                "Job %s: C13 pinning — %d pinned id(s) resolved to %d name(s)",
+                job.job_id, len(job.pinned_entity_ids), len(pinned_names),
+            )
 
         # B2-A — pin the effective config snapshot ONCE per job (a mid-job
         # filter reload won't change this job's config_hash). Used for the
@@ -1789,6 +1852,8 @@ async def process_job(
                         p3_hierarchy_paths=p3_hierarchy_paths,
                         p3_chapter_index=p3_chapter_index,
                         p3_book_parts=p3_book_parts, p3_is_last=p3_is_last,
+                        # C13 — pinned names resolved once per job above.
+                        pinned_names=pinned_names,
                     )
                     logger.info(
                         "Job %s: chapter %s submitted via DECOUPLED extraction (released)",
@@ -1851,6 +1916,9 @@ async def process_job(
                     targets=job.targets,
                     # C12 — cap parallel R/E/F LLM calls (None ⇒ unbounded).
                     concurrency_level=job.concurrency_level,
+                    # C13 — pinned names resolved once per job above; injected
+                    # into this window's known_entities.
+                    pinned_names=pinned_names,
                 )
 
                 if result.error:
@@ -2046,6 +2114,10 @@ async def process_job(
                     # collaborator path; job.llm_model (owner's) when billing NULL.
                     model_ref=eff_llm_ref(job),
                     text=turn_text,
+                    # C13 — pins reach EVERY extraction window, chat turns
+                    # included (the cost estimate's num_windows counts chat turns,
+                    # so the injection must too). Resolved once per job above.
+                    pinned_names=pinned_names,
                 )
 
                 if result.error and not result.retryable:

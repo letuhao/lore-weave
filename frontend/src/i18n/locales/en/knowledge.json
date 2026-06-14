@@ -712,7 +712,8 @@
         "failed": "Estimate failed: {{error}}",
         "cost": "Estimated cost: ${{low}} – ${{high}}",
         "items": "{{chapters}} chapters · {{turns}} chat turns · ~{{tokens}} tokens",
-        "duration": "~{{seconds}}s estimated"
+        "duration": "~{{seconds}}s estimated",
+        "pinned": "Pinned context: +{{tokens}} tokens ({{count}} pinned across all windows)"
       },
       "cancel": "Cancel",
       "confirm": "Build graph",
@@ -742,6 +743,24 @@
       "concurrency": {
         "label": "Parallel LLM calls (optional)",
         "hint": "Cap how many extraction calls run at once. Leave blank for the default."
+      },
+      "pinning": {
+        "intro": "Pin glossary entities to force-inject them into every extraction window — so sparse-but-critical entities stay anchored even in chapters that never mention them.",
+        "autopin": "{{count}} sparse-but-long-reaching entities look worth pinning.",
+        "autopinApply": "Pin {{count}} suggestions",
+        "loading": "Loading entity stats…",
+        "unavailable": "Entity stats unavailable — you can still pin manually below.",
+        "searchPlaceholder": "Search by name…",
+        "kindAll": "All kinds",
+        "minMentions": "Min ×",
+        "available": "Available ({{count}})",
+        "availableEmpty": "No entities match the filters.",
+        "pinned": "Pinned ({{count}})",
+        "pinnedEmpty": "Nothing pinned yet.",
+        "pin": "Pin",
+        "unpin": "Unpin",
+        "budget": "+{{tokens}} tokens per window ({{count}} pinned × ~50).",
+        "noBook": "Pinning needs a linked book. Attach a book to this project first."
       }
     },
     "errorViewer": {

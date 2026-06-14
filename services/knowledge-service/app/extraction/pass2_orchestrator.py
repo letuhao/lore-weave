@@ -679,6 +679,31 @@ async def _emit_log(
         )
 
 
+def _merge_pinned(
+    pinned_names: list[str] | None,
+    known_entities: Iterable[str] | None,
+) -> list[str]:
+    """C13 — prepend pinned glossary entity names ahead of the window's own
+    known_entities. Pinned names come FIRST (anchor priority), order-stable,
+    de-duplicated (case-sensitive exact match; blank/whitespace dropped). The
+    union is what reaches extract_entities + the R/E/F gather for THIS window,
+    so a pinned entity is in the prompt context even when the chapter text
+    never mentions it. None/empty pinned ⇒ identical to the legacy behaviour."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for name in (pinned_names or ()):
+        n = (name or "").strip()
+        if n and n not in seen:
+            seen.add(n)
+            out.append(n)
+    for name in (known_entities or ()):
+        n = (name or "").strip()
+        if n and n not in seen:
+            seen.add(n)
+            out.append(n)
+    return out
+
+
 async def gather_relations_events_facts(
     *,
     text: str,
@@ -1183,6 +1208,11 @@ async def extract_pass2_chat_turn(
     user_message: str | None = None,
     assistant_message: str | None = None,
     known_entities: Iterable[str] | None = None,
+    # C13 — glossary pinning. Names of pinned glossary entities, force-injected
+    # into EVERY window's known_entities so sparse-but-critical entities (a god
+    # in ch1 & ch5000) are always anchored regardless of chapter content. Reuses
+    # the proven known_entities seam (name-prefix injection, not a new block).
+    pinned_names: list[str] | None = None,
     model_source: Literal["user_model", "platform_model"],
     model_ref: str,
     llm_client: LLMClient,
@@ -1215,7 +1245,9 @@ async def extract_pass2_chat_turn(
         source_type=source_type,
         source_id=source_id,
         job_id=job_id,
-        known_entities=list(known_entities or ()),
+        # C13 — prepend pinned names so they reach this window's extract_entities
+        # call + every R/E/F extractor (deduped downstream in _run_pipeline).
+        known_entities=_merge_pinned(pinned_names, known_entities),
         model_source=model_source,
         model_ref=model_ref,
         llm_client=llm_client,
@@ -1234,6 +1266,10 @@ async def extract_pass2_chapter(
     job_id: str,
     chapter_text: str,
     known_entities: Iterable[str] | None = None,
+    # C13 — glossary pinning: see extract_pass2_chat_turn. Force-injected into
+    # this window's known_entities so pinned entities are anchored even when the
+    # chapter text never mentions them.
+    pinned_names: list[str] | None = None,
     model_source: Literal["user_model", "platform_model"],
     model_ref: str,
     llm_client: LLMClient,
@@ -1281,7 +1317,8 @@ async def extract_pass2_chapter(
         source_type=source_type,
         source_id=source_id,
         job_id=job_id,
-        known_entities=list(known_entities or ()),
+        # C13 — prepend pinned names into every chapter window.
+        known_entities=_merge_pinned(pinned_names, known_entities),
         model_source=model_source,
         model_ref=model_ref,
         llm_client=llm_client,

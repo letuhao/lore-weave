@@ -741,7 +741,8 @@
         "failed": "Ước tính thất bại: {{error}}",
         "cost": "Chi phí ước tính: ${{low}} – ${{high}}",
         "items": "{{chapters}} chương · {{turns}} lượt chat · ~{{tokens}} token",
-        "duration": "~{{seconds}} giây"
+        "duration": "~{{seconds}} giây",
+        "pinned": "Ngữ cảnh ghim: +{{tokens}} token ({{count}} đã ghim trên mọi cửa sổ)"
       },
       "cancel": "Hủy",
       "confirm": "Xây dựng đồ thị",
@@ -771,6 +772,24 @@
       "concurrency": {
         "label": "Số lệnh LLM song song (tùy chọn)",
         "hint": "Giới hạn số lệnh trích xuất chạy đồng thời. Để trống dùng mặc định."
+      },
+      "pinning": {
+        "intro": "Ghim các thực thể từ điển để chèn chúng vào mọi cửa sổ trích xuất — giúp các thực thể hiếm nhưng quan trọng luôn được neo, kể cả ở chương không nhắc tới chúng.",
+        "autopin": "{{count}} thực thể thưa nhưng trải dài đáng để ghim.",
+        "autopinApply": "Ghim {{count}} gợi ý",
+        "loading": "Đang tải thống kê thực thể…",
+        "unavailable": "Không có thống kê thực thể — bạn vẫn có thể ghim thủ công bên dưới.",
+        "searchPlaceholder": "Tìm theo tên…",
+        "kindAll": "Tất cả loại",
+        "minMentions": "Tối thiểu ×",
+        "available": "Có sẵn ({{count}})",
+        "availableEmpty": "Không có thực thể nào khớp bộ lọc.",
+        "pinned": "Đã ghim ({{count}})",
+        "pinnedEmpty": "Chưa ghim gì.",
+        "pin": "Ghim",
+        "unpin": "Bỏ ghim",
+        "budget": "+{{tokens}} token mỗi cửa sổ ({{count}} đã ghim × ~50).",
+        "noBook": "Việc ghim cần một sách liên kết. Hãy gắn sách cho dự án này trước."
       }
     },
     "errorViewer": {

@@ -184,6 +184,75 @@ async def test_run_pipeline_happy_path_writes_all_four_lists(
     assert write_kwargs["facts"] == ["fact"]
 
 
+# ── C13 — glossary pinning: pinned names reach EVERY window ─────────
+
+
+@pytest.mark.asyncio
+@patch(f"{_ORCH}.write_pass2_extraction", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_events", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_entities", new_callable=AsyncMock)
+async def test_pinned_names_injected_into_known_entities_when_absent_from_text(
+    mock_entities, mock_relations, mock_events, mock_facts, mock_write,
+):
+    """C13 acceptance: pinned glossary names appear in known_entities for a
+    window whose chapter text NEVER mentions them. This is the whole point of
+    pinning — a sparse-but-critical entity (a god in ch1 & ch5000) must be in
+    the prompt context of every chapter, even ones it doesn't appear in."""
+    from app.extraction.pass2_orchestrator import extract_pass2_chapter
+
+    mock_entities.return_value = [_entity("Kai")]
+    mock_relations.return_value = []
+    mock_events.return_value = []
+    mock_facts.return_value = []
+    mock_write.return_value = _write_result(entities=1)
+
+    await extract_pass2_chapter(
+        session=MagicMock(),
+        user_id=_USER_ID, project_id=_PROJECT_ID,
+        source_type="chapter", source_id="ch-42", job_id=_JOB_ID,
+        # The text mentions only Kai — NOT the pinned god "PanGu".
+        chapter_text="Kai walks alone through the empty hall.",
+        known_entities=["Zhao"],          # caller-supplied known
+        pinned_names=["PanGu", "Nuwa"],   # C13 pinned glossary entities
+        model_source="user_model", model_ref="test-model",
+        llm_client=MagicMock(),
+    )
+
+    # entity extractor's known_entities = pinned (first, priority) + caller
+    # known, even though neither pinned name appears in the chapter text.
+    entity_known = mock_entities.call_args.kwargs["known_entities"]
+    assert "PanGu" in entity_known
+    assert "Nuwa" in entity_known
+    assert "Zhao" in entity_known
+    # Pinned names come FIRST (anchor priority).
+    assert entity_known[:2] == ["PanGu", "Nuwa"]
+
+    # R/E/F gather also carries the pinned names (merged with extracted Kai).
+    for mock in (mock_relations, mock_events, mock_facts):
+        rkn = mock.call_args.kwargs["known_entities"]
+        assert "PanGu" in rkn
+        assert "Nuwa" in rkn
+
+
+def test_merge_pinned_dedupes_and_prepends_order_stable():
+    """C13 _merge_pinned: pinned first, dedup (exact), blanks dropped,
+    None pinned ⇒ legacy known_entities unchanged."""
+    from app.extraction.pass2_orchestrator import _merge_pinned
+
+    # pinned ahead of known; duplicate "Kai" collapses to the pinned slot.
+    assert _merge_pinned(["PanGu", "Kai"], ["Kai", "Zhao"]) == [
+        "PanGu", "Kai", "Zhao",
+    ]
+    # blank / whitespace pinned dropped.
+    assert _merge_pinned(["  ", "PanGu", ""], ["Zhao"]) == ["PanGu", "Zhao"]
+    # None pinned ⇒ identical to known list (back-compat).
+    assert _merge_pinned(None, ["A", "B"]) == ["A", "B"]
+    # None known + None pinned ⇒ empty.
+    assert _merge_pinned(None, None) == []
+
+
 # ── _emit_log job_logs telemetry hooks fire at expected stages ─────
 
 

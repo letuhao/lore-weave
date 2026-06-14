@@ -741,7 +741,8 @@
         "failed": "估算失敗: {{error}}",
         "cost": "預估成本: ${{low}} – ${{high}}",
         "items": "{{chapters}} 章 · {{turns}} 聊天輪 · 約 {{tokens}} tokens",
-        "duration": "約 {{seconds}} 秒"
+        "duration": "約 {{seconds}} 秒",
+        "pinned": "釘選情境：+{{tokens}} 個 token（所有視窗共釘選 {{count}} 個）"
       },
       "cancel": "取消",
       "confirm": "建立圖譜",
@@ -771,6 +772,24 @@
       "concurrency": {
         "label": "並行 LLM 呼叫數（選填）",
         "hint": "限制同時執行的抽取呼叫數。留空則使用預設。"
+      },
+      "pinning": {
+        "intro": "釘選詞彙表實體，將其強制注入每個抽取視窗——讓稀疏但關鍵的實體即使在未提及的章節也始終被錨定。",
+        "autopin": "有 {{count}} 個稀疏但跨度大的實體值得釘選。",
+        "autopinApply": "釘選 {{count}} 個建議",
+        "loading": "正在載入實體統計…",
+        "unavailable": "無法取得實體統計——你仍可在下方手動釘選。",
+        "searchPlaceholder": "依名稱搜尋…",
+        "kindAll": "所有類型",
+        "minMentions": "最少 ×",
+        "available": "可用 ({{count}})",
+        "availableEmpty": "沒有符合篩選的實體。",
+        "pinned": "已釘選 ({{count}})",
+        "pinnedEmpty": "尚未釘選任何項目。",
+        "pin": "釘選",
+        "unpin": "取消釘選",
+        "budget": "每個視窗 +{{tokens}} 個 token（已釘選 {{count}} 個 × 約50）。",
+        "noBook": "釘選需要連結的書籍。請先為此專案附加一本書。"
       }
     },
     "errorViewer": {
