@@ -15,7 +15,7 @@
 use std::collections::BTreeMap;
 
 use crate::biome::BiomeKind;
-use crate::params::RouteParams;
+use crate::params::{BiomeParams, RouteParams};
 use crate::pathfind::{self, UnionFind};
 use crate::world_map::{Route, RouteKind, Settlement};
 
@@ -32,7 +32,7 @@ pub fn build(
 ) -> Vec<Route> {
     build_with(
         centers, neighbors, biomes, river_flux, river_threshold, is_coast, settlements,
-        &RouteParams::default(),
+        &RouteParams::default(), &BiomeParams::default(),
     )
 }
 
@@ -53,8 +53,9 @@ pub fn build_with(
     is_coast: &[bool],
     settlements: &[Settlement],
     rp: &RouteParams,
+    bp: &BiomeParams,
 ) -> Vec<Route> {
-    let cost = |c: usize| biomes[c].terrain_cost();
+    let cost = |c: usize| bp.terrain_cost(biomes[c]);
     let mut sink = RouteSink::new();
     // Road + Trail cell paths — scanned by RiverNavigation (7e).
     let mut land_paths: Vec<Vec<u32>> = Vec::new();

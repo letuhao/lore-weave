@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::climate::ClimateZone;
 use crate::params::{
-    ClimateParams, CultureParams, ErosionParams, HierarchyParams, HydrologyParams, IntensityKnobs,
-    PoliticalParams, ReliefParams, RouteParams, SettlementParams, TectonicsParams,
+    BiomeParams, ClimateParams, CultureParams, ErosionParams, HierarchyParams, HydrologyParams,
+    IntensityKnobs, PoliticalParams, ReliefParams, RouteParams, SettlementParams, TectonicsParams,
 };
 
 /// Creative direction for a generated world.
@@ -114,6 +114,11 @@ pub struct CreativeSeed {
     /// Default = prior `hierarchy.rs` consts (byte-identical).
     #[serde(default)]
     pub hierarchy_params: HierarchyParams,
+    /// Granular biome-derivation tuning (parameterization P7): the elevation
+    /// tiers plus the terrain-cost / culture-barrier / habitability tables.
+    /// Default = prior `biome.rs` literals + methods (byte-identical).
+    #[serde(default)]
+    pub biome_params: BiomeParams,
     /// Macro "intensity" knobs (parameterization) — convenience scalers over
     /// groups of granular params; default `1.0` = no-op. See [`IntensityKnobs`].
     #[serde(default)]
@@ -168,6 +173,7 @@ impl Default for CreativeSeed {
             political_params: PoliticalParams::default(),
             culture_params: CultureParams::default(),
             hierarchy_params: HierarchyParams::default(),
+            biome_params: BiomeParams::default(),
             intensity: IntensityKnobs::default(),
         }
     }
@@ -497,6 +503,7 @@ mod tests {
             political_params: PoliticalParams { prov_max: 5, ..PoliticalParams::default() },
             culture_params: CultureParams { hearth_spacing_coeff: 1.2, ..CultureParams::default() },
             hierarchy_params: HierarchyParams { region_subdivision_max: 7 },
+            biome_params: BiomeParams { high_t: 0.6, ..BiomeParams::default() },
             ..CreativeSeed::default()
         };
         let back: CreativeSeed =
@@ -520,6 +527,7 @@ mod tests {
         assert_eq!(old.political_params, PoliticalParams::default());
         assert_eq!(old.culture_params, CultureParams::default());
         assert_eq!(old.hierarchy_params, HierarchyParams::default());
+        assert_eq!(old.biome_params, BiomeParams::default());
         // A partial override (intensity.orogeny + one climate cutoff) keeps every
         // other field default — the `#[serde(default)]` per-field fill.
         let json2 = r#"{

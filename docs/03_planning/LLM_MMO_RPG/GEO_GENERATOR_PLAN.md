@@ -77,10 +77,16 @@
 > + `CultureParams` (hearth spacing + count clamp) + `HierarchyParams` (region
 > clamp); threaded into `build_nested`/`hierarchy::build` directly +
 > `culture::build_with` wrapper (legacy `political::build` + `civ_adapter` stay
-> default). Byte-identical pins hold. **TOP NEXT (param arc): P7 `BiomeParams`**
-> (elevation tiers + the `terrain_cost`/`culture_barrier`/`population_potential`
-> derivation tables — **fixed-size arrays** to keep `CreativeSeed: Copy`, per the
-> P1 review-impl finding — `biome.rs`).
+> default). Byte-identical pins hold. **✅ P7 DONE** — `BiomeParams` (elevation
+> tiers + terrain_cost/culture_barrier/population_potential as **fixed `[_;14]`
+> arrays**, Copy preserved per the P1 finding); threaded into
+> `biome::build_with`/`derive_biome` + build_nested/settlement/routes/culture
+> `build_with`; `BiomeKind` methods stay canonical default (drift-guard test).
+> Byte-identical pins hold. **TOP NEXT (param arc): P8** — `RenderTheme`
+> (render/relief colors, palettes, supersample) + CLI macro-knob flags +
+> **`dump-config`** (emit the full default profile as an annotated template) +
+> a worked example config. The capstone: makes `CreativeSeed` the editable
+> centralized profile for human + LLM.
 > *(Deferred P2 follow-up: Profile-only inline `height_at`/`apply_falloff` gate
 > literals — legacy path. Deferred P3 follow-up: moisture-transport consts +
 > cross-module `ClimateZone::wetness()` / `bias_delta` tables.)*

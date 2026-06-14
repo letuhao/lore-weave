@@ -6,9 +6,10 @@
 //! Spec: `docs/specs/2026-06-14-world-gen-parameterization.md`.
 
 use world_gen::{
-    BiomeKind, ClimateParams, CoastlineProfile, CreativeSeed, CultureParams, ErosionParams,
-    ErosionStrength, HierarchyParams, HydrologyParams, IntensityKnobs, PoliticalParams,
-    ReliefParams, RouteParams, SettlementParams, TectonicsParams, TerrainMode, WorldScale, generate,
+    BiomeKind, BiomeParams, ClimateParams, CoastlineProfile, CreativeSeed, CultureParams,
+    ErosionParams, ErosionStrength, HierarchyParams, HydrologyParams, IntensityKnobs,
+    PoliticalParams, ReliefParams, RouteParams, SettlementParams, TectonicsParams, TerrainMode,
+    WorldScale, generate,
 };
 
 fn hex(h: [u8; 32]) -> String {
@@ -86,6 +87,7 @@ fn explicit_default_params_equal_bare_default() {
         political_params: PoliticalParams::default(),
         culture_params: CultureParams::default(),
         hierarchy_params: HierarchyParams::default(),
+        biome_params: BiomeParams::default(),
         intensity: IntensityKnobs::default(),
         ..CreativeSeed::default()
     };
@@ -488,6 +490,79 @@ fn granular_hierarchy_override_changes_the_world() {
     });
     assert_ne!(base.content_hash, m.content_hash, "region_subdivision_max must change the world");
     assert!(m.regions.len() < base.regions.len(), "a tighter region ceiling yields fewer regions");
+}
+
+/// **Biome elevation tiers change the world** (P7) — each tier threshold is
+/// wired into `derive_biome`, in the right direction. Counts (not just hashes)
+/// guard a tier-field mis-map.
+#[test]
+fn granular_biome_tiers_change_the_world() {
+    let base = generate(7, &CreativeSeed::default());
+    let count = |m: &world_gen::WorldMap, k: BiomeKind| m.biome.iter().filter(|&&b| b == k).count();
+    let world = |bp: BiomeParams| generate(7, &CreativeSeed { biome_params: bp, ..CreativeSeed::default() });
+
+    // high_t ↓ ⇒ more Mountain (more land clears the "high" bar).
+    let peaky = world(BiomeParams { high_t: 0.30, ..BiomeParams::default() });
+    assert_ne!(base.content_hash, peaky.content_hash, "a lower high_t must change biomes");
+    assert!(count(&peaky, BiomeKind::Mountain) > count(&base, BiomeKind::Mountain),
+        "a lower high_t must yield more Mountain cells");
+
+    // beach_t ↑ ⇒ more Beach (more coast cells fall under the beach bar).
+    let beachy = world(BiomeParams { beach_t: 0.6, ..BiomeParams::default() });
+    assert!(count(&beachy, BiomeKind::Beach) > count(&base, BiomeKind::Beach),
+        "a higher beach_t must yield more Beach cells");
+
+    // mid_t ↓ ⇒ more Hill (more land clears the "mid" bar but not "high").
+    let hilly = world(BiomeParams { mid_t: 0.10, ..BiomeParams::default() });
+    assert!(count(&hilly, BiomeKind::Hill) > count(&base, BiomeKind::Hill),
+        "a lower mid_t must yield more Hill cells");
+
+    // wet_low_flux_frac ↓ ⇒ more Marsh (more low cells count as "wet").
+    let marshy = world(BiomeParams { wet_low_flux_frac: 0.05, ..BiomeParams::default() });
+    assert!(count(&marshy, BiomeKind::Marsh) > count(&base, BiomeKind::Marsh),
+        "a lower wet_low_flux_frac must yield more Marsh cells");
+}
+
+/// **An absurd biome cost generates without panicking** (P7, review-impl #1) —
+/// a `u32::MAX` terrain/culture cost is clamped to the rail, so the Dijkstra
+/// accumulator (`c + step`) never overflows.
+#[test]
+fn absurd_biome_cost_clamps_and_generates() {
+    let mut bp = BiomeParams::default();
+    for c in bp.terrain_cost.iter_mut().chain(bp.culture_barrier.iter_mut()) {
+        if c.is_some() {
+            *c = Some(u32::MAX);
+        }
+    }
+    // Must not panic (overflow) — clamped to the cost ceiling at resolve.
+    let _ = generate(7, &CreativeSeed { biome_params: bp, ..CreativeSeed::default() });
+}
+
+/// **Each biome derivation table is wired** (P7) — `terrain_cost` feeds routes,
+/// `population_potential` feeds settlements, `culture_barrier` feeds culture.
+/// Changing one table in isolation must change the world (proves all three
+/// `[_;14]` arrays are connected, not just one).
+#[test]
+fn biome_tables_are_each_wired() {
+    let base = generate(7, &CreativeSeed::default()).content_hash;
+    let world = |bp: BiomeParams| {
+        generate(7, &CreativeSeed { biome_params: bp, ..CreativeSeed::default() }).content_hash
+    };
+    // terrain_cost: make Mountain (tag 9) cheap ⇒ road routing changes.
+    let mut cost = BiomeParams::default();
+    cost.terrain_cost[9] = Some(1);
+    assert_ne!(base, world(cost), "terrain_cost table must drive routes");
+    // population_potential: zero the whole table ⇒ no burg-driven placement, only
+    // force-placed Capitals survive ⇒ a different settlement set.
+    let pot = BiomeParams { population_potential: [0.0; 14], ..BiomeParams::default() };
+    assert_ne!(base, world(pot), "population_potential table must drive settlements");
+    // culture_barrier: make Jungle (tag 7, the dominant land biome on seed-7) a
+    // hard barrier (None) ⇒ jungle cells become unreachable in the flood-fill, so
+    // the culture map changes wholesale. (A uniform *scale* would be a no-op —
+    // Dijkstra's argmin is scale-invariant — so we change reachability.)
+    let mut bar = BiomeParams::default();
+    bar.culture_barrier[7] = None;
+    assert_ne!(base, world(bar), "culture_barrier table must drive culture");
 }
 
 /// An out-of-range knob is clamped, not panicked — generation still succeeds and

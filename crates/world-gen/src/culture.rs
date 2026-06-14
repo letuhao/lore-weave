@@ -1,7 +1,7 @@
 //! Stage 8 — culture regions: barrier-cost flood-fill from cultural hearths.
 
 use crate::biome::BiomeKind;
-use crate::params::CultureParams;
+use crate::params::{BiomeParams, CultureParams};
 use crate::pathfind::{self, NONE};
 use crate::rng::{self, Rng};
 use crate::world_map::CultureRegion;
@@ -22,7 +22,10 @@ pub fn build(
     biomes: &[BiomeKind],
     culture_count: u8,
 ) -> Culture {
-    build_with(seed, centers, neighbors, biomes, culture_count, &CultureParams::default())
+    build_with(
+        seed, centers, neighbors, biomes, culture_count,
+        &CultureParams::default(), &BiomeParams::default(),
+    )
 }
 
 /// Build the culture layer with caller-tuned [`CultureParams`]
@@ -39,6 +42,7 @@ pub fn build_with(
     biomes: &[BiomeKind],
     culture_count: u8,
     cp: &CultureParams,
+    bp: &BiomeParams,
 ) -> Culture {
     let n = centers.len();
     let is_land: Vec<bool> = biomes.iter().map(|b| !b.is_water()).collect();
@@ -99,7 +103,7 @@ pub fn build_with(
     }
 
     // --- culture flood-fill (barrier cost) ---
-    let owner = pathfind::multi_source_assign(&hearths, |c| biomes[c].culture_barrier(), neighbors);
+    let owner = pathfind::multi_source_assign(&hearths, |c| bp.culture_barrier(biomes[c]), neighbors);
     // A land cell unreachable from any hearth (a hearthless component, or a
     // Glacier cell — Glacier has no culture_barrier) falls back to culture 0.
     let mut culture_of = vec![NONE; n];

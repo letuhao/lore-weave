@@ -50,8 +50,8 @@ pub use creative_seed::{
     SettlementDensity, TerrainMode, WorldArchetype, WorldScale,
 };
 pub use params::{
-    ClimateParams, CultureParams, ErosionParams, HierarchyParams, HydrologyParams, IntensityKnobs,
-    PoliticalParams, ReliefParams, RouteParams, SettlementParams, TectonicsParams,
+    BiomeParams, ClimateParams, CultureParams, ErosionParams, HierarchyParams, HydrologyParams,
+    IntensityKnobs, PoliticalParams, ReliefParams, RouteParams, SettlementParams, TectonicsParams,
 };
 pub use world_map::{
     BoundaryKind, Cell, Continent, County, CultureRegion, MountainRange, Plate, PlateBoundary,
@@ -95,7 +95,11 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
         &climate,
         &cs.hydrology_params.resolved(&cs.intensity),
     );
-    let biome = biome::build(
+    // Resolve the biome params once — shared by biome derivation and every
+    // downstream consumer of the terrain-cost / culture-barrier / habitability
+    // tables (political, settlement, route, culture).
+    let biome_params = cs.biome_params.resolved(&cs.intensity);
+    let biome = biome::build_with(
         &terrain.elevation,
         terrain.sea_level,
         &climate,
@@ -103,6 +107,7 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
         hydro.river_threshold,
         &hydro.is_in_ocean,
         &hydro.is_coast,
+        &biome_params,
     );
 
     // Plate layer (Phase 2) — present in Tectonic mode, empty in Profile mode.
@@ -140,6 +145,7 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
         region_tree.continents.len(),
         cs.county_subdivision,
         &cs.political_params.resolved(&cs.intensity),
+        &biome_params,
     );
     let county_of = nested.county_of;
     let counties = nested.counties;
@@ -162,6 +168,7 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
         cs.settlement_density,
         &political,
         &cs.settlement_params.resolved(&cs.intensity),
+        &biome_params,
     );
     let routes = routes::build_with(
         &mesh.centers,
@@ -172,6 +179,7 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
         &hydro.is_coast,
         &settlements,
         &cs.route_params.resolved(&cs.intensity),
+        &biome_params,
     );
     let culture = culture::build_with(
         seed,
@@ -180,6 +188,7 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
         &biome,
         cs.culture_count,
         &cs.culture_params.resolved(&cs.intensity),
+        &biome_params,
     );
 
     // Stage 9b — geographic feature extraction (deterministic; names added

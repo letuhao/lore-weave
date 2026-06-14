@@ -1,7 +1,7 @@
 //! Stage 5 — political layer: provinces (terrain-cost flood-fill) + states.
 
 use crate::biome::BiomeKind;
-use crate::params::PoliticalParams;
+use crate::params::{BiomeParams, PoliticalParams};
 use crate::pathfind::{self, NONE};
 use crate::rng::{self, Rng};
 use crate::world_map::{County, Province, Realm, State, World};
@@ -264,6 +264,7 @@ pub fn build_nested(
     n_continents: usize,
     county_subdivision: u8,
     pp: &PoliticalParams,
+    bp: &BiomeParams,
 ) -> PoliticalNested {
     let n = centers.len();
 
@@ -281,7 +282,7 @@ pub fn build_nested(
         let base = prov_capital.len() as u32;
         let assign = pathfind::multi_source_assign(
             &seeds,
-            |c| (region_of[c] == r as u32).then(|| biomes[c].terrain_cost()).flatten(),
+            |c| (region_of[c] == r as u32).then(|| bp.terrain_cost(biomes[c])).flatten(),
             neighbors,
         );
         for &c in cells {
@@ -315,7 +316,7 @@ pub fn build_nested(
         let base = counties.len() as u32;
         let assign = pathfind::multi_source_assign(
             &seeds,
-            |c| (province_of[c] == p as u32).then(|| biomes[c].terrain_cost()).flatten(),
+            |c| (province_of[c] == p as u32).then(|| bp.terrain_cost(biomes[c])).flatten(),
             neighbors,
         );
         for &c in cells {
@@ -358,7 +359,7 @@ pub fn build_nested(
         let assign = pathfind::multi_source_assign(
             &seed_cells,
             |c| (subcontinent_of[c] == sub as u32)
-                .then(|| biomes[c].terrain_cost())
+                .then(|| bp.terrain_cost(biomes[c]))
                 .flatten(),
             neighbors,
         );

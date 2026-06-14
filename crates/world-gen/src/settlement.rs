@@ -3,7 +3,7 @@
 use crate::biome::BiomeKind;
 use crate::climate::ClimateZone;
 use crate::creative_seed::SettlementDensity;
-use crate::params::SettlementParams;
+use crate::params::{BiomeParams, SettlementParams};
 use crate::pathfind;
 use crate::political::Political;
 use crate::rng::{self, Rng};
@@ -24,7 +24,7 @@ pub fn build(
 ) -> Vec<Settlement> {
     build_with(
         seed, centers, biomes, climate, river_flux, is_coast, density, political,
-        &SettlementParams::default(),
+        &SettlementParams::default(), &BiomeParams::default(),
     )
 }
 
@@ -47,6 +47,7 @@ pub fn build_with(
     density: SettlementDensity,
     political: &Political,
     sp: &SettlementParams,
+    bp: &BiomeParams,
 ) -> Vec<Settlement> {
     let n = centers.len();
 
@@ -66,7 +67,7 @@ pub fn build_with(
         } else {
             1.0
         };
-        let b = biomes[i].population_potential() * water_bonus * climate_friendly(climate[i], sp);
+        let b = bp.population_potential(biomes[i]) * water_bonus * climate_friendly(climate[i], sp);
         burg[i] = b;
         max_burg = max_burg.max(b);
     }

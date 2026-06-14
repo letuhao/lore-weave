@@ -13,6 +13,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::biome::BiomeKind;
+
 /// Macro "intensity" knobs — convenience scalers that multiply *groups* of
 /// granular params (`effective = granular · knob`). Default `1.0` = no-op (the
 /// byte-identical baseline). Grows per stage (new fields are `serde`-defaulted).
@@ -554,6 +556,100 @@ impl HierarchyParams {
     }
 }
 
+/// Biome-derivation tuning (was the `derive_biome` elevation-tier literals + the
+/// `BiomeKind::{terrain_cost, culture_barrier, population_potential}` method
+/// tables). The three tables are **fixed-size `[_; 14]` arrays** indexed by
+/// [`BiomeKind::tag`] — fixed-size, not `Vec`, so `CreativeSeed` stays `Copy`
+/// (the P1 `/review-impl` finding). Defaults are the exact prior values
+/// (byte-identical); the `BiomeKind` methods remain as the canonical default
+/// (still used by the legacy `political::build` + civ adapter + tests), guarded
+/// against drift by a unit test.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct BiomeParams {
+    /// Land-tier below which a coast cell is Beach, not Coast (was `0.06`).
+    pub beach_t: f32,
+    /// Land-tier at/above which a cell is "mid" → Hill (was `0.22`).
+    pub mid_t: f32,
+    /// Land-tier at/above which a cell is "high" → Mountain/Glacier (was `0.55`).
+    pub high_t: f32,
+    /// A low cell is "wet" (→ Marsh, warm-humid) if `river_flux` exceeds this
+    /// fraction of the river threshold (was `0.5`).
+    pub wet_low_flux_frac: f32,
+    /// Movement cost per biome (`None` = impassable); indexed by `BiomeKind::tag`.
+    pub terrain_cost: [Option<u32>; 14],
+    /// Culture-spread cost per biome (`None` = hard barrier); by `tag`.
+    pub culture_barrier: [Option<u32>; 14],
+    /// Base habitability per biome (burg score); by `tag`.
+    pub population_potential: [f32; 14],
+}
+
+impl Default for BiomeParams {
+    fn default() -> Self {
+        // Tables in `BiomeKind::tag` order (0=Ocean … 13=Glacier); these mirror
+        // the `BiomeKind` methods exactly (drift-guarded by a unit test).
+        BiomeParams {
+            beach_t: 0.06,
+            mid_t: 0.22,
+            high_t: 0.55,
+            wet_low_flux_frac: 0.5,
+            terrain_cost: [
+                None, None, Some(2), Some(1), Some(1), Some(1), Some(2), Some(4), Some(4),
+                Some(8), Some(3), Some(3), Some(3), Some(20),
+            ],
+            culture_barrier: [
+                None, None, Some(1), Some(1), Some(1), Some(1), Some(1), Some(2), Some(2),
+                Some(3), Some(2), Some(3), Some(2), Some(8),
+            ],
+            population_potential: [
+                0.0, 0.0, 0.9, 0.9, 0.5, 1.0, 0.7, 0.4, 0.3, 0.15, 0.6, 0.2, 0.2, 0.0,
+            ],
+        }
+    }
+}
+
+impl BiomeParams {
+    /// Movement cost to enter a cell of biome `b` (`None` = impassable).
+    pub fn terrain_cost(&self, b: BiomeKind) -> Option<u32> {
+        self.terrain_cost[b.tag() as usize]
+    }
+    /// Culture-spread cost across biome `b` (`None` = hard barrier).
+    pub fn culture_barrier(&self, b: BiomeKind) -> Option<u32> {
+        self.culture_barrier[b.tag() as usize]
+    }
+    /// Base habitability of biome `b` for the burg score.
+    pub fn population_potential(&self, b: BiomeKind) -> f32 {
+        self.population_potential[b.tag() as usize]
+    }
+
+    /// Clamp the elevation tiers to `[0,1]`, habitability ≥ 0, and every
+    /// movement / culture cost to `≤ COST_CEILING` (no panic). The cost ceiling
+    /// matters: these costs feed the Dijkstra accumulator `c + step`, so a
+    /// pathological `Some(u32::MAX)` (a human typo / LLM hallucination — exactly
+    /// what the arc promises to bound) would overflow `u32`. `COST_CEILING`
+    /// (10 000 — 500× the highest default of 20) keeps `n_cells × ceiling` far
+    /// under `u32::MAX`. `k` reserved for call-shape uniformity.
+    pub fn resolved(&self, _k: &IntensityKnobs) -> BiomeParams {
+        const COST_CEILING: u32 = 10_000;
+        let cap = |c: Option<u32>| c.map(|v| v.min(COST_CEILING));
+        let mut r = *self;
+        r.beach_t = self.beach_t.clamp(0.0, 1.0);
+        r.mid_t = self.mid_t.clamp(0.0, 1.0);
+        r.high_t = self.high_t.clamp(0.0, 1.0);
+        r.wet_low_flux_frac = self.wet_low_flux_frac.max(0.0);
+        for p in &mut r.population_potential {
+            *p = p.max(0.0);
+        }
+        for c in &mut r.terrain_cost {
+            *c = cap(*c);
+        }
+        for c in &mut r.culture_barrier {
+            *c = cap(*c);
+        }
+        r
+    }
+}
+
 /// Continental relief, ocean bathymetry, quantize and heightmap-noise tuning
 /// (was the `terrain.rs` consts). Defaults are the exact prior values
 /// (byte-identical baseline). Noise *salts* and the fixed `ARCH_ISLANDS`
@@ -983,6 +1079,47 @@ mod tests {
         assert_eq!(cp.count_max, 1, "count_max clamps ≥ 1");
         let hp = HierarchyParams { region_subdivision_max: 0 }.resolved(&IntensityKnobs::default());
         assert_eq!(hp.region_subdivision_max, 1, "region max clamps ≥ 1");
+    }
+
+    #[test]
+    fn biome_default_knobs_are_identity() {
+        let p = BiomeParams::default();
+        assert_eq!(p, p.resolved(&IntensityKnobs::default()), "default biome must be identity");
+    }
+
+    #[test]
+    fn biome_default_tables_match_the_methods() {
+        // Drift guard: the BiomeParams default tables must mirror the canonical
+        // `BiomeKind` methods (still used by the legacy political::build + civ
+        // adapter). If a method changes, this trips until the table is updated.
+        let bp = BiomeParams::default();
+        for b in [
+            BiomeKind::Ocean, BiomeKind::Lake, BiomeKind::River, BiomeKind::Coast,
+            BiomeKind::Beach, BiomeKind::Plain, BiomeKind::Forest, BiomeKind::Jungle,
+            BiomeKind::Marsh, BiomeKind::Mountain, BiomeKind::Hill, BiomeKind::Desert,
+            BiomeKind::Tundra, BiomeKind::Glacier,
+        ] {
+            assert_eq!(bp.terrain_cost(b), b.terrain_cost(), "terrain_cost drift: {b:?}");
+            assert_eq!(bp.culture_barrier(b), b.culture_barrier(), "culture_barrier drift: {b:?}");
+            assert_eq!(
+                bp.population_potential(b), b.population_potential(),
+                "population_potential drift: {b:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn biome_params_clamp_no_panic() {
+        let mut junk = BiomeParams { high_t: 9.0, wet_low_flux_frac: -2.0, ..BiomeParams::default() };
+        junk.population_potential[5] = -3.0;
+        junk.terrain_cost[9] = Some(u32::MAX);
+        junk.culture_barrier[9] = Some(u32::MAX);
+        let r = junk.resolved(&IntensityKnobs::default());
+        assert_eq!(r.high_t, 1.0, "tier clamps to [0,1]");
+        assert_eq!(r.wet_low_flux_frac, 0.0, "wet fraction clamps non-negative");
+        assert_eq!(r.population_potential[5], 0.0, "habitability clamps non-negative");
+        assert_eq!(r.terrain_cost[9], Some(10_000), "terrain cost clamps to ceiling (no Dijkstra overflow)");
+        assert_eq!(r.culture_barrier[9], Some(10_000), "culture barrier clamps to ceiling");
     }
 
     #[test]
