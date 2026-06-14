@@ -5,6 +5,21 @@
 > consolidates it into ordered, independently-shippable cleanup items. Each is a
 > full 12-phase cycle + `/review-impl` + PO POST-REVIEW (sizes are small).
 
+> **STATUS (2026-06-14):**
+> - **C1 ✅ DONE** (commit `3fb143d7`) — 7 dead `ReliefParams` removed + 3 stale
+>   comments fixed; byte-identical (content+render pins held).
+> - **C2 ✅ DONE** — PO chose the **tolerance-compare redesign** over quantize-
+>   before-hash, after empirically finding the coords are `f32` trig-derived
+>   (~1 ULP ≈1e-4 px MSVC↔glibc), which makes a hard hash grid non-portable. The
+>   `#[ignore]`d `blake3` golden was replaced by `flatworld_geometry_is_stable_*`:
+>   exact discrete counts + `per_plate_verts` fingerprint + epsilon-banded float
+>   aggregates; runs in CI on every platform. `/review-impl` raised the sum
+>   blind-spot (order/redistribution) → fixed via `per_plate_verts`. **Linux CI is
+>   the real cross-platform validator** (captured on Windows). See §C2 below.
+> - **C3 ⏳ SCHEDULED as its own task** — PO chose to keep the orphan
+>   `world-service`/`travel-service` delete out of the world-gen git history (it's
+>   a monorepo-config change). Tracked, not yet executed. See §C3 below.
+
 ## Inventory recap (where the debt lives)
 
 The central `docs/deferred/DEFERRED.md` has **nothing for the world-gen crate** (it

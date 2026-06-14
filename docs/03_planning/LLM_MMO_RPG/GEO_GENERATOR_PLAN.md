@@ -182,9 +182,11 @@
 > bathymetry (S4), coupled uplift⇄erosion shaping concave drainage (S5), and
 > real bathymetry in every render/export (S6) — all of D1–D7 closed. **TOP NEXT:**
 > a new track (elevation arc done; param arc done). The 3D globe viewer is BUILT
-> (frontend-game `/world-preview`) and the C1 dead-param cleanup is DONE; remaining
-> debt is C2 (xplatform golden — frozen-track, PO-decision) and C3 (orphan
-> world/travel-service delete — cross-cutting, PO-decision). See
+> (frontend-game `/world-preview`); debt cleanup C1 (dead params) + C2
+> (`D-WORLDGEN-XPLATFORM-GOLDEN` — replaced the non-portable f32 hash with a
+> tolerance/aggregate test that now runs in CI) are DONE. **Only remaining debt:**
+> C3 — delete the orphan `world-service`/`travel-service` scaffolds (scheduled as
+> its own monorepo-config task, not yet executed). See
 > `docs/plans/2026-06-14-world-gen-debt-cleanup.md`.
 >
 > ---
