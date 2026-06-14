@@ -113,12 +113,18 @@ EOF
     sleep 3
   done
   local end; end="$(vmrss_kb "$PUB_PID")"
+  # A plateau is only meaningful if the publisher actually SOAKED (drained). A
+  # stalled publisher (e.g. Redis unreachable) shows flat RSS → would false-PASS.
+  # Assert it published a non-trivial number of rows before trusting the plateau.
+  local published; published="$(psqlA "$ISO_C" "$SHARD_DB" "SELECT count(*) FROM events_outbox WHERE published=TRUE" | tr -d '[:space:]')"
   cleanup
-  log "service soak: base=${base}KB end=${end}KB peak=${peak}KB"
+  log "service soak: base=${base}KB end=${end}KB peak=${peak}KB published=${published}"
+  awk -v p="${published:-0}" 'BEGIN{exit !(p+0 >= 100)}' \
+    || fail "publisher published only ${published} rows in ${SECS}s — it STALLED, so the RSS plateau is meaningless (not a real soak)"
   # Plateau: end within 1.5x of the post-warmup base (steady-state, no leak).
   awk -v e="$end" -v b="$base" 'BEGIN{exit !(e <= b*1.5)}' \
     || fail "publisher RSS did NOT plateau: end=${end}KB > 1.5x base=${base}KB — possible steady-state leak"
-  log "PASS(service-soak): publisher RSS plateaued (end=${end}KB <= 1.5x base=${base}KB) under ${RATE}/s drain"
+  log "PASS(service-soak): publisher RSS plateaued (end=${end}KB <= 1.5x base=${base}KB) while draining ${published} rows under ${RATE}/s"
 }
 
 main() {

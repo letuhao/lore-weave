@@ -234,6 +234,11 @@ func runSustained(out io.Writer, baseSeed int64, p gen.Profile, dsn string, dura
 // paceSleep returns how long to sleep so cumulative `emitted` tracks `rate`
 // events/sec given `elapsed` so far. Zero rate = no pacing (as fast as possible);
 // already-behind = no sleep. Pure (no clock) so it is unit-testable.
+//
+// Pacing is BATCH-granular: a whole profile batch is emitted, THEN we sleep — so
+// for `rate` < events-per-batch the output is bursty (one batch, long sleep), not
+// smooth. Fine for the intended use (rate ≫ batch size); a future smooth-rate
+// caller would need per-event pacing inside the batch.
 func paceSleep(emitted int, rate float64, elapsed time.Duration) time.Duration {
 	if rate <= 0 {
 		return 0

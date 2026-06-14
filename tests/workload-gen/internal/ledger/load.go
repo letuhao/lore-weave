@@ -25,7 +25,7 @@ func LoadLog(ctx context.Context, db *sql.DB) (Log, error) {
 
 	rows, err := db.QueryContext(ctx, `
 		SELECT event_id, reality_id, aggregate_type, aggregate_id,
-		       aggregate_version, event_type, payload
+		       aggregate_version, event_type, recorded_at, payload
 		FROM events
 		ORDER BY recorded_at, event_id`)
 	if err != nil {
@@ -38,7 +38,7 @@ func LoadLog(ctx context.Context, db *sql.DB) (Log, error) {
 			version int64
 			payload []byte
 		)
-		if err := rows.Scan(&e.EventID, &e.RealityID, &e.AggType, &e.AggID, &version, &e.EventType, &payload); err != nil {
+		if err := rows.Scan(&e.EventID, &e.RealityID, &e.AggType, &e.AggID, &version, &e.EventType, &e.RecordedAt, &payload); err != nil {
 			return Log{}, fmt.Errorf("ledger: scan event: %w", err)
 		}
 		e.Version = uint64(version)

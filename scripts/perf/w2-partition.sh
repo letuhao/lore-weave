@@ -92,8 +92,11 @@ main() {
   out="$(ins 3 "2026-05-01 00:00:00+00" 2>&1)" && {
     fail "bite VACUOUS: a 2026-05 INSERT SUCCEEDED with no 2026-05 partition — a default/overflow partition exists, so missing-partition is NOT a loud failure"
   }
+  # Match ONLY the specific missing-partition error (no broad "partition" catch-all
+  # that an unrelated partition-mentioning error could satisfy). PG14+ phrasing:
+  #   no partition of relation "events" found for row
   case "$out" in
-    *"no partition of relation"*|*"would be inserted in"*|*"partition"*)
+    *"no partition of relation"*"found for row"*)
       log "PASS(bite): the M+2 INSERT was REJECTED (no 2026-05 partition) — rollover is load-bearing, no silent loss" ;;
     *)
       fail "bite: M+2 INSERT failed but NOT on a missing-partition error — got: ${out}" ;;

@@ -32,7 +32,9 @@ fail()   { log "FAIL: $*"; exit 1; }
 
 linux_ok() { [ "$(uname -s 2>/dev/null)" = "Linux" ]; }
 
-# Run fio random-read of a <sizeMB> file inside a --memory=<MEM> container; print IOPS.
+# Run fio random-read of a <sizeMB> file inside a --memory=<MEM> container; print
+# read IOPS. Uses fio's JSON output (robust) instead of the terse field index,
+# which varies by terse version — grep the read.iops number out of the JSON.
 fio_iops() { # sizeMB
   local size="$1"
   docker run --rm --memory="$MEM" --memory-swap="$MEM" "$IMG" sh -c "
@@ -42,7 +44,8 @@ fio_iops() { # sizeMB
     fio --name=prep --rw=write --bs=1m --size=${size}m --filename=ds --end_fsync=1 >/dev/null 2>&1
     # Random-read the dataset; with --memory=${MEM} a >cap file can't be cached.
     fio --name=randread --rw=randread --bs=4k --size=${size}m --filename=ds \
-        --runtime=8 --time_based --direct=0 --minimal 2>/dev/null | awk -F';' '{print \$8}'
+        --runtime=8 --time_based --direct=0 --output-format=json 2>/dev/null \
+      | tr -d ' ' | grep -m1 '\"iops\":' | sed 's/.*\"iops\":\([0-9.]*\).*/\1/'
   "
 }
 

@@ -29,19 +29,21 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 )
 
 // EventRow is the subset of a stored event C3 reasons about.
 type EventRow struct {
-	EventID   uuid.UUID
-	RealityID uuid.UUID
-	AggType   string
-	AggID     string
-	EventType string
-	Version   uint64
-	Payload   map[string]any
+	EventID    uuid.UUID
+	RealityID  uuid.UUID
+	AggType    string
+	AggID      string
+	EventType  string
+	Version    uint64
+	RecordedAt time.Time // for W2.2 monotonicity; tie-aware so same-ts events don't false-flag
+	Payload    map[string]any
 }
 
 // Log is an in-memory snapshot of the event store + outbox.
@@ -121,32 +123,69 @@ func CheckSelfConsistency(log Log) Report {
 	return r
 }
 
-// CheckAggregateMonotonicity (W2.2 — closes D-S6-HISTORY-ORDERING) asserts that,
-// walking the log in its LOADED order (LoadLog returns recorded_at, event_id —
-// a non-version tiebreak, so this is not circular), each aggregate's version is
-// strictly previous+1 — no reorder, no gap, no duplicate.
+// CheckAggregateMonotonicity (W2.2 — closes D-S6-HISTORY-ORDERING) asserts that
+// for each aggregate, recorded-time order is consistent with version order: an
+// event written at a STRICTLY-LATER recorded_at must carry a strictly-higher
+// version. A reorder (e.g. v3 recorded before v2) violates this; a gap or a
+// backward version at a later time does too.
 //
 // This is the coverage version-completeness MISSES: completeness checks the
-// SORTED set is 1..N (position-independent), so a REORDER (e.g. v3 recorded
-// before v2) passes it; this check, which respects the stream order, catches it.
-// It is the per-aggregate complement to the S6 global/cross-aggregate history
-// checker.
+// SORTED set is 1..N (position-independent), so a reorder passes it; this check
+// respects recorded order.
+//
+// TIE-AWARE (review #1): two events of one aggregate sharing a recorded_at are
+// CONCURRENT — their relative (recorded_at, event_id) order is arbitrary, so we
+// do NOT flag a version inversion WITHIN a same-timestamp cluster (that would be
+// a false positive on real data where two appends can land in the same µs). We
+// only compare across STRICTLY-LATER timestamps, carrying the max version seen
+// at any earlier time. (LoadLog already orders by recorded_at, event_id.)
 func CheckAggregateMonotonicity(log Log) Report {
 	var r Report
-	last := map[aggKey]uint64{}
-	reported := map[aggKey]bool{} // one violation per aggregate is enough
+	// Per aggregate: the max version among events at recorded_at STRICTLY before
+	// the current event's timestamp, and the timestamp of the current cluster.
+	type cursor struct {
+		maxBefore   uint64    // max version at any strictly-earlier recorded_at
+		clusterMax  uint64    // max version at clusterTime
+		clusterTime time.Time // recorded_at of the current same-ts cluster
+		started     bool
+	}
+	st := map[aggKey]*cursor{}
+	reported := map[aggKey]bool{}
 	for _, e := range log.Events {
 		k := aggKey{e.RealityID.String(), e.AggType, e.AggID}
-		want := uint64(1)
-		if prev, ok := last[k]; ok {
-			want = prev + 1
+		c := st[k]
+		if c == nil {
+			c = &cursor{}
+			st[k] = c
 		}
-		if e.Version != want && !reported[k] {
-			r.add(KindVersionReorder, fmt.Sprintf(
-				"aggregate %s: version %d out of order (expected %d) in recorded sequence", k, e.Version, want))
-			reported[k] = true
+		if !c.started {
+			c.started = true
+			c.clusterTime = e.RecordedAt
+			c.clusterMax = e.Version
+			continue
 		}
-		last[k] = e.Version
+		if e.RecordedAt.After(c.clusterTime) {
+			// New, strictly-later cluster: everything in the prior cluster is now
+			// "strictly before". Fold the prior cluster's max into maxBefore.
+			if c.clusterMax > c.maxBefore {
+				c.maxBefore = c.clusterMax
+			}
+			c.clusterTime = e.RecordedAt
+			c.clusterMax = e.Version
+			// A strictly-later event must out-rank everything seen earlier.
+			if e.Version <= c.maxBefore && !reported[k] {
+				r.add(KindVersionReorder, fmt.Sprintf(
+					"aggregate %s: version %d at a later recorded_at is <= an earlier version %d (reorder/dup)",
+					k, e.Version, c.maxBefore))
+				reported[k] = true
+			}
+		} else {
+			// Same timestamp (tie) — or, defensively, an out-of-sort row: treat
+			// as part of the current concurrent cluster; do not flag.
+			if e.Version > c.clusterMax {
+				c.clusterMax = e.Version
+			}
+		}
 	}
 	return r
 }
