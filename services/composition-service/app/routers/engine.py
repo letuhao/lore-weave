@@ -56,6 +56,7 @@ from app.engine.cowrite import (
     estimate_prompt_tokens, stream_draft,
 )
 from app.engine.critic import judge_prose
+from app.engine.critic_override import critique_overrides
 from app.engine.select import diverge, select_draft
 from app.reasoning import ReasoningSignals, score_effort
 from loreweave_llm import infer_reasoning_control, resolve_reasoning
@@ -1322,10 +1323,15 @@ async def persist_job(
 async def critique(
     job_id: UUID, body: CritiqueBody,
     user_id: UUID = Depends(get_current_user),
+    bearer: str = Depends(get_bearer_token),
     jobs: GenerationJobsRepo = Depends(get_generation_jobs_repo),
     works: WorksRepo = Depends(get_works_repo),
+    derivatives: DerivativesRepo = Depends(get_derivatives_repo),
     canon: CanonRulesRepo = Depends(get_canon_rules_repo),
     llm: LLMClient = Depends(get_llm_client_dep),
+    glossary: GlossaryClient = Depends(get_glossary_client_dep),
+    knowledge: KnowledgeClient = Depends(get_knowledge_client_dep),
+    book: BookClient = Depends(get_book_client_dep),
 ) -> dict[str, Any]:
     job = await jobs.get(user_id, job_id)
     if job is None:
@@ -1335,15 +1341,34 @@ async def critique(
         raise HTTPException(status_code=404, detail="work not found")
 
     settings_dict = work.settings or {}
+    passage = body.passage if body.passage is not None else (job.result or {}).get("text", "")
+
+    # C26 (dị bản M3) — the DERIVATIVE critic dimension. Fires ONLY for a derivative
+    # Work (source_work_id set, surfaced via C25's build_derivative_context); enforces
+    # the active entity_override[] against the passage (override slip + delta internal
+    # consistency). Deterministic + AI-free — so it runs INDEPENDENTLY of the LLM
+    # critic-model gate below (a derivative with no distinct critic model still gets
+    # override enforcement). Degrade-safe (returns [] on any failure — advisory).
+    derivative_findings = await critique_overrides(
+        work=work, user_id=user_id, passage=passage, bearer=bearer,
+        works_repo=works, derivatives_repo=derivatives,
+        glossary=glossary, knowledge=knowledge, book=book,
+    )
+
     critic_src = settings_dict.get("critic_model_source")
     critic_ref = settings_dict.get("critic_model_ref")
     drafter_ref = (job.input or {}).get("model_ref")
     # Anti-self-reinforcement: the critic MUST be a distinct model. No critic
-    # configured, or same as the drafter → skip the critique (advisory) + warn.
+    # configured, or same as the drafter → skip the LLM critique (advisory) + warn,
+    # but STILL surface + persist the deterministic derivative findings.
     if not critic_ref or not critic_src or str(critic_ref) == str(drafter_ref):
-        return {"critic": None, "warning": "critique skipped: no distinct critic model configured"}
+        critic = ({"derivative_findings": derivative_findings} if derivative_findings else None)
+        if critic is not None:
+            await jobs.update_status(user_id, job_id, job.status, critic=critic,
+                                     target_revision_id=body.target_revision_id)
+        return {"critic": critic,
+                "warning": "critique skipped: no distinct critic model configured"}
 
-    passage = body.passage if body.passage is not None else (job.result or {}).get("text", "")
     # CC2: re-resolve the ACTIVE canon at critique time — a deleted/archived rule
     # is never enforced.
     rules = await canon.list_active(user_id, job.project_id)
@@ -1354,6 +1379,10 @@ async def critique(
         passage=passage, active_rules=active_rules, present_facts=[],
         profile=from_settings(settings_dict),
     )
+    # Fold the deterministic derivative findings into the critic contract (alongside
+    # the LLM dims/violations) so the regeneration loop sees both.
+    if derivative_findings:
+        critic = {**critic, "derivative_findings": derivative_findings}
     await jobs.update_status(user_id, job_id, job.status, critic=critic,
                              target_revision_id=body.target_revision_id)
     return {"critic": critic}

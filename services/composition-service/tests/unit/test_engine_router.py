@@ -40,8 +40,9 @@ def _job(**kw):
 
 
 class StubWorks:
-    def __init__(self): self.work = _work()
+    def __init__(self): self.work = _work(); self.source = None
     async def get(self, u, p): return self.work
+    async def get_by_id(self, u, wid): return self.source
 
 
 class StubOutline:
@@ -458,6 +459,56 @@ def test_critique_skipped_when_no_critic_configured(ctx):
     r = c.post(f"/v1/composition/jobs/{JOB}/critique", json={"target_revision_id": str(uuid.uuid4())})
     assert r.json()["critic"] is None
     judge.assert_not_called()
+
+
+def test_critique_derivative_dimension_FIRES_at_call_site(ctx, monkeypatch):
+    """C26 WIRING (anti-no-op) — the derivative critic dimension actually FIRES at
+    the real /critique handler for a DERIVATIVE Work: the override slip surfaces as
+    `critic.derivative_findings`, persisted, WITHOUT a distinct critic LLM model. A
+    wired-but-uninvoked dimension would leave critic=None (the nil-tolerant-decorator
+    bug class)."""
+    c, works, _, _, jobs, judge, _ = ctx
+    src_proj, deriv_proj = uuid.uuid4(), uuid.uuid4()
+    tid = uuid.uuid4()
+    # A derivative Work: source_work_id set + its OWN delta project. NO critic model.
+    deriv = CompositionWork(project_id=deriv_proj, user_id=USER, book_id=BOOK,
+                            id=uuid.uuid4(), source_work_id=uuid.uuid4(),
+                            branch_point=3, settings={})
+    works.work = deriv
+    works.source = CompositionWork(project_id=src_proj, user_id=USER, book_id=BOOK,
+                                   id=deriv.source_work_id)
+
+    # derivatives repo returns the active override (the genderbend slip).
+    from app.deps import get_derivatives_repo
+    from app.main import app
+
+    async def _list_overrides(u, wid):
+        return [SimpleNamespace(target_entity_id=tid,
+                                overridden_fields={"description": "now a woman (genderbend)"})]
+    app.dependency_overrides[get_derivatives_repo] = lambda: SimpleNamespace(
+        list_overrides_for_work=_list_overrides)
+
+    # the BASE present lens (source project) surfaces the entity at its canon value.
+    async def fake_base_present(*, glossary, knowledge, book, book_id, user_id, project_id, bearer):
+        assert project_id == src_proj  # base lens hit the SOURCE project
+        return [{"entity_id": str(tid), "name": "张若尘", "summary": "a young man, the male lead"}]
+    monkeypatch.setattr("app.engine.critic_override._gather_base_present", fake_base_present)
+    # no anchor resolve round-trip in this unit (target already == base key)
+    async def _no_anchors(knowledge, bearer, overrides): return {}
+    monkeypatch.setattr("app.engine.critic_override._resolve_override_anchors", _no_anchors)
+
+    # the drafted passage REVERTS 张若尘 to the canon/base value → override slip.
+    jobs.job = _job(result={"text": "张若尘 stood there, a young man, the male lead."})
+
+    r = c.post(f"/v1/composition/jobs/{JOB}/critique", json={"target_revision_id": str(uuid.uuid4())})
+    body = r.json()
+    assert r.status_code == 200
+    crit = body["critic"]
+    assert crit is not None and "derivative_findings" in crit
+    slips = [f for f in crit["derivative_findings"] if f["kind"] == "override_slip"]
+    assert slips and slips[0]["entity_id"] == str(tid) and slips[0]["field"] == "description"
+    # PERSISTED (the regeneration loop reads it back off the job).
+    assert any("derivative_findings" in upd[2].get("critic", {}) for upd in jobs.updates)
 
 
 # ── dismiss-violation + get_job + suggest-cast ──

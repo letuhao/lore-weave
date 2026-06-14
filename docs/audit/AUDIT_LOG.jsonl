@@ -1821,3 +1821,21 @@
 {"ts": "2026-06-14T18:28:54Z", "event": "in_progress_update", "cycle": 25, "phase": "COMMIT", "retry": 0}
 {"ts": "2026-06-14T18:29:53Z", "event": "in_progress_archived", "cycle": 25, "archived_to": "cycle-025-state.md"}
 {"ts": "2026-06-14T18:30:10Z", "event": "retro", "cycle": 25, "commit": "d864cfc5ff1049d7de27c6baca7ceeb8cdf9c0f3", "lesson": "A derivative Work surrogate id is NOT its project_id (live data id=019ec5f4 != project=019eb683) — resolve the base project via get_by_id, never reuse source_work_id as a project_id. Glossary present lens is BOOK-scoped not project-scoped, so base+delta return identical bios and the override must apply AFTER the base/delta merge (the derivative truth wins over both). Override target_entity_id may be in the KNOWLEDGE-node-id space while present keys on the GLOSSARY anchor — reconcile cross-space. The mock unit suite passed before all three were caught by the cross-service live-smoke (the recurring lesson: rebuild + real-stack smoke catches contract/id-space bugs mocks hide)."}
+{"ts": "2026-06-14T18:31:51Z", "event": "coordinator_next_cycle_emitted", "cycle": 26}
+{"ts":"2026-06-14T18:33:19Z","event":"startup_drift_check_inconclusive","cycle":26,"cd":"","rw":""}
+{"ts":"2026-06-14T18:33:19Z","event":"startup_verifier_complete","cycle":26,"steps":6}
+{"ts": "2026-06-14T18:33:29Z", "event": "in_progress_init", "cycle": 26, "title": "Critic override enforcement (composition)"}
+{"ts": "2026-06-14T18:35:19Z", "event": "in_progress_update", "cycle": 26, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-06-14T18:36:09Z", "event": "in_progress_update", "cycle": 26, "phase": "REVIEW1", "retry": 0}
+{"ts": "2026-06-14T18:36:25Z", "event": "in_progress_update", "cycle": 26, "phase": "PLAN", "retry": 0}
+{"ts": "2026-06-14T18:37:25Z", "event": "in_progress_update", "cycle": 26, "phase": "BUILD", "retry": 0}
+{"ts":"2026-06-14T18:42:18Z","event":"secret_scan_skipped","cycle":26,"dps":1,"reason":"gitleaks_not_installed"}
+{"ts": "2026-06-14T18:43:17Z", "event": "in_progress_update", "cycle": 26, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-06-14T18:43:23Z","event":"verify_cycle_26_passed","cycle":26}
+{"ts": "2026-06-14T18:44:00Z", "event": "in_progress_update", "cycle": 26, "phase": "REVIEW2", "retry": 0}
+{"ts":"2026-06-14T18:47:28Z","event":"verify_cycle_26_passed","cycle":26}
+{"ts": "2026-06-14T18:47:41Z", "event": "in_progress_update", "cycle": 26, "phase": "QC", "retry": 0}
+{"ts": "2026-06-14T18:48:01Z", "event": "in_progress_update", "cycle": 26, "phase": "POST_REVIEW", "retry": 0}
+{"ts": "2026-06-14T18:48:09Z", "event": "in_progress_update", "cycle": 26, "phase": "SESSION", "retry": 0}
+{"ts":"2026-06-15T00:55:00Z","event":"cycle_done","cycle":26,"result":"DONE","layer":"BE","dps_count":1,"files":6,"adversary":{"blockers":0,"majors":1,"minors":3,"notes":3},"scope_guard":"CLEAR","post_review":"CLEAR","verify_exit_code":0,"wiring_test_present":true,"tests":{"critic_override":11,"engine_router":40,"critic":15,"full_unit":478},"evidence_token":"unit: derivative critic flags override slip + passes compliant scene","notable":"dị bản M3 derivative critic dimension (AI-free deterministic): activates only for derivatives, REUSES C25 build_derivative_context+_resolve_override_anchors (no re-merge), flags override slip+delta-inconsistency, WIRED at /critique with unit-spy + router end-to-end wiring proof. MAJOR fixed: bio-field precedence inverted C25 (description vs summary-wins) -> two-sources-of-truth drift, unified to mirror apply_entity_overrides"}
+{"ts": "2026-06-14T18:49:02Z", "event": "in_progress_update", "cycle": 26, "phase": "COMMIT", "retry": 0}
