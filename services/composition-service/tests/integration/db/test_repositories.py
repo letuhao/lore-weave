@@ -75,6 +75,66 @@ async def test_works_create_get_roundtrip(pool):
     assert await repo.get(uuid.uuid4(), project) is None
 
 
+async def test_works_create_pending_null_project_and_backfill(pool):
+    # C16 (WG-3): a lazy greenfield Work persists with a NULL project_id + the
+    # backfill marker, is addressable by its surrogate id, and a later backfill
+    # stamps the real project + clears the marker. Exercises the re-keyed schema
+    # (surrogate id PK, nullable project_id, partial-unique pending index) on real PG.
+    repo = WorksRepo(pool)
+    user, _, book = _ids()
+    pend = await repo.create_pending(user, book, settings={"voice": "dry"})
+    assert pend.project_id is None
+    assert pend.pending_project_backfill is True
+    assert pend.id is not None and pend.settings == {"voice": "dry"}
+    # findable via the backfill-seam read
+    found = await repo.get_pending_for_book(user, book)
+    assert found is not None and found.id == pend.id
+    # cross-user isolation
+    assert await repo.get_pending_for_book(uuid.uuid4(), book) is None
+    # at most one pending per (user,book) — the partial-unique index rejects a 2nd
+    with pytest.raises(asyncpg.exceptions.UniqueViolationError):
+        await repo.create_pending(user, book)
+    # backfill: stamp the project, clear the marker (idempotent — only still-pending)
+    new_pid = uuid.uuid4()
+    bf = await repo.backfill_project(user, pend.id, new_pid)
+    assert bf is not None and bf.project_id == new_pid
+    assert bf.pending_project_backfill is False
+    assert await repo.get_pending_for_book(user, book) is None  # no longer pending
+    # second backfill no-ops (row no longer pending)
+    assert await repo.backfill_project(user, pend.id, uuid.uuid4()) is None
+    # the backfilled row is now a normal project-keyed Work
+    got = await repo.get(user, new_pid)
+    assert got is not None and got.id == pend.id
+
+
+async def test_works_resolve_excludes_pending_until_backfilled(pool):
+    # C16: a lazy null-project Work must NOT resolve as a finished `found` marked
+    # Work — else a retry (knowledge recovered) returns the placeholder and never
+    # backfills. resolve_by_book excludes pending rows; after backfill it appears.
+    repo = WorksRepo(pool)
+    user, _, book = _ids()
+    pend = await repo.create_pending(user, book)
+    assert await repo.resolve_by_book(user, book) == []  # excluded while pending
+    new_pid = uuid.uuid4()
+    await repo.backfill_project(user, pend.id, new_pid)
+    marked = await repo.resolve_by_book(user, book)
+    assert len(marked) == 1 and marked[0].project_id == new_pid  # now a real marked Work
+
+
+async def test_works_backed_and_null_coexist_unique_only_on_backed(pool):
+    # The 1:1 work⇄project invariant is enforced ONLY for backed rows (partial-unique
+    # WHERE project_id IS NOT NULL); a null-project Work is exempt and coexists.
+    repo = WorksRepo(pool)
+    user, project, book = _ids()
+    await repo.create(user, project, book)  # backed
+    other_book = uuid.uuid4()
+    pend = await repo.create_pending(user, other_book)  # null-project, different book
+    assert pend.project_id is None
+    # a duplicate BACKED project still violates the partial-unique index
+    with pytest.raises(asyncpg.exceptions.UniqueViolationError):
+        await repo.create(user, project, uuid.uuid4())
+
+
 async def test_works_resolve_found_none_candidates(pool):
     repo = WorksRepo(pool)
     user, _, book = _ids()

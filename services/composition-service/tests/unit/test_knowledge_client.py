@@ -205,3 +205,77 @@ async def test_fact_for_check_no_ids_returns_none_without_call():
         assert await c.fact_for_check(project_id=PROJECT, at_order=1) is None
     finally:
         await c.aclose()
+
+
+# ── C16 (WG-3) create_project error discrimination ──
+
+@respx.mock
+async def test_create_project_success_returns_dict():
+    respx.post(URL).mock(
+        return_value=httpx.Response(201, json={"project_id": str(PROJECT)}))
+    c = await _client()
+    try:
+        out = await c.create_project(BOOK, "My Book", "jwt")
+    finally:
+        await c.aclose()
+    assert out == {"project_id": str(PROJECT)}
+
+
+@respx.mock
+async def test_create_project_5xx_returns_none_outage():
+    # 5xx = OUTAGE → degrade (None), caller may create a lazy null-project Work.
+    respx.post(URL).mock(return_value=httpx.Response(503, json={"detail": "down"}))
+    c = await _client()
+    try:
+        out = await c.create_project(BOOK, "My Book", "jwt")
+    finally:
+        await c.aclose()
+    assert out is None
+
+
+@respx.mock
+async def test_create_project_transport_error_returns_none_outage():
+    respx.post(URL).mock(side_effect=httpx.ConnectError("refused"))
+    c = await _client()
+    try:
+        out = await c.create_project(BOOK, "My Book", "jwt")
+    finally:
+        await c.aclose()
+    assert out is None
+
+
+@respx.mock
+async def test_create_project_4xx_raises_contract_error():
+    # 4xx = CONTRACT bug → raise (must surface, NOT silently degrade).
+    from app.clients.knowledge_client import KnowledgeContractError
+    import pytest
+    respx.post(URL).mock(return_value=httpx.Response(422, json={"detail": "bad"}))
+    c = await _client()
+    try:
+        with pytest.raises(KnowledgeContractError) as ei:
+            await c.create_project(BOOK, "My Book", "jwt")
+        assert ei.value.status_code == 422
+    finally:
+        await c.aclose()
+
+
+@respx.mock
+async def test_create_project_403_auth_raises_contract_error():
+    # An auth/forbidden 4xx is surfaced too — never degraded into a grounding-blind Work.
+    from app.clients.knowledge_client import KnowledgeContractError
+    import pytest
+    respx.post(URL).mock(return_value=httpx.Response(403, json={"detail": "no"}))
+    c = await _client()
+    try:
+        with pytest.raises(KnowledgeContractError):
+            await c.create_project(BOOK, "My Book", "jwt")
+    finally:
+        await c.aclose()
+
+
+async def test_create_project_empty_bearer_returns_none():
+    c = await _client()
+    try:
+        assert await c.create_project(BOOK, "My Book", "") is None
+    finally:
+        await c.aclose()

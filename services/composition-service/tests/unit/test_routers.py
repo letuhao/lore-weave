@@ -26,8 +26,17 @@ CHAPTER = uuid.uuid4()
 
 def _work(**kw) -> CompositionWork:
     return CompositionWork(project_id=kw.get("project_id", PROJECT), user_id=USER,
-                           book_id=BOOK, version=kw.get("version", 1),
+                           book_id=BOOK, id=kw.get("id", uuid.uuid4()),
+                           version=kw.get("version", 1),
                            status=kw.get("status", "active"))
+
+
+def _pending_work(**kw) -> CompositionWork:
+    """C16: a lazy greenfield Work — null project_id, backfill marker set."""
+    return CompositionWork(project_id=None, user_id=USER,
+                           book_id=kw.get("book_id", BOOK),
+                           id=kw.get("id", uuid.uuid4()),
+                           pending_project_backfill=True)
 
 
 class StubWorks:
@@ -38,6 +47,12 @@ class StubWorks:
         self.update_raises = None
         self.create_raises = None
         self.get_results = None  # if a list, pop per call (for the conflict test)
+        # C16 backfill seam
+        self.pending = None            # get_pending_for_book result
+        self.create_pending_raises = None
+        self.created_pending = False
+        self.backfilled_with = None    # (work_id, project_id) on backfill
+        self.backfill_result = None
 
     async def get(self, user_id, project_id):
         if self.get_results is not None:
@@ -58,17 +73,34 @@ class StubWorks:
         self.created_with = (project_id, book_id)
         return _work(project_id=project_id)
 
+    # C16 (WG-3) lazy null-project + backfill
+    async def create_pending(self, user_id, book_id, **kw):
+        if self.create_pending_raises:
+            raise self.create_pending_raises
+        self.created_pending = True
+        return _pending_work(book_id=book_id)
+
+    async def get_pending_for_book(self, user_id, book_id):
+        return self.pending
+
+    async def backfill_project(self, user_id, work_id, project_id):
+        self.backfilled_with = (work_id, project_id)
+        return self.backfill_result
+
 
 class StubKnowledge:
     def __init__(self, projects=None):
         self.projects = projects
         self.created_project = None  # set to a dict to simulate create_project
+        self.create_project_raises = None  # set to an exc to simulate a 4xx contract error
 
     async def list_projects_for_book(self, book_id, bearer):
         return self.projects
 
     async def create_project(self, book_id, name, bearer):
         self.create_project_name = name
+        if self.create_project_raises is not None:
+            raise self.create_project_raises
         return self.created_project
 
 
@@ -175,6 +207,125 @@ def test_post_work_creates_project_when_none(ctx):
     assert r.status_code == 201
     assert knowledge.create_project_name == "Demo Book"  # named from the book title
     assert works.created_with == (new_pid, BOOK)  # work created on the new project
+
+
+# ── C16 (WG-3) Work-setup resilience ──
+
+def test_post_work_2xx_when_create_project_down(ctx):
+    # WG-3: knowledge OUTAGE (create_project None) for a GREENFIELD work → NOT 502;
+    # a lazy null-project Work is persisted so the writer keeps drafting.
+    c, works, knowledge, _ = ctx
+    works.marked = []
+    knowledge.projects = []           # resolve → none (greenfield)
+    knowledge.created_project = None  # outage
+    works.pending = None              # no prior pending row
+    r = c.post(f"/v1/composition/books/{BOOK}/work")
+    assert r.status_code == 201
+    assert works.created_pending is True
+    body = r.json()
+    assert body["project_id"] is None                 # null project_id (greenfield)
+    assert body["pending_project_backfill"] is True   # backfill marker set
+
+
+def test_post_work_null_project_is_greenfield_only_marker(ctx):
+    # The resulting Work carries the null project_id + pending marker (the exact
+    # acceptance shape) and an addressable surrogate id.
+    c, works, knowledge, _ = ctx
+    works.marked = []
+    knowledge.projects = []
+    knowledge.created_project = None
+    works.pending = None
+    body = c.post(f"/v1/composition/books/{BOOK}/work").json()
+    assert body["project_id"] is None and body["pending_project_backfill"] is True
+    assert body["id"] is not None
+
+
+def test_post_work_derivative_rejected_on_null_project(ctx):
+    # C23 GUARD: a DERIVATIVE work (source_work_id) must NOT take the null path —
+    # a knowledge outage surfaces as 502, never a grounding-blind derivative.
+    c, works, knowledge, _ = ctx
+    works.marked = []
+    knowledge.projects = []
+    knowledge.created_project = None  # outage
+    r = c.post(f"/v1/composition/books/{BOOK}/work",
+               json={"source_work_id": str(uuid.uuid4())})
+    assert r.status_code == 502
+    assert r.json()["detail"]["code"] == "PROJECT_CREATE_FAILED"
+    assert works.created_pending is False  # never minted a null derivative
+
+
+def test_post_work_2xx_when_knowledge_down_resolve_unavailable(ctx):
+    # WG-3 live-smoke shape: knowledge-service fully DOWN → resolve returns
+    # `unavailable` (list_projects None). A GREENFIELD POST /work must still 2xx with
+    # a lazy null-project Work (was a 502 KNOWLEDGE_UNAVAILABLE before C16).
+    c, works, knowledge, _ = ctx
+    works.marked = []
+    knowledge.projects = None  # list_projects_for_book None → resolve 'unavailable'
+    works.pending = None
+    r = c.post(f"/v1/composition/books/{BOOK}/work")
+    assert r.status_code == 201
+    assert works.created_pending is True
+    body = r.json()
+    assert body["project_id"] is None and body["pending_project_backfill"] is True
+
+
+def test_post_work_derivative_502_when_knowledge_down(ctx):
+    # C23 guard on the unavailable path too: a derivative still 502s (never a null Work).
+    c, works, knowledge, _ = ctx
+    works.marked = []
+    knowledge.projects = None  # resolve 'unavailable'
+    r = c.post(f"/v1/composition/books/{BOOK}/work",
+               json={"source_work_id": str(uuid.uuid4())})
+    assert r.status_code == 502
+    assert r.json()["detail"]["code"] == "KNOWLEDGE_UNAVAILABLE"
+    assert works.created_pending is False
+
+
+def test_post_work_4xx_contract_error_surfaces(ctx):
+    # No silent swallow: a 4xx CONTRACT error from create_project still 502s
+    # (only down/timeout/5xx degrade).
+    from app.clients.knowledge_client import KnowledgeContractError
+    c, works, knowledge, _ = ctx
+    works.marked = []
+    knowledge.projects = []
+    knowledge.create_project_raises = KnowledgeContractError(422)
+    r = c.post(f"/v1/composition/books/{BOOK}/work")
+    assert r.status_code == 502
+    assert r.json()["detail"]["code"] == "PROJECT_CREATE_FAILED"
+    assert works.created_pending is False  # 4xx is NOT degraded into a lazy Work
+
+
+def test_post_work_reuses_existing_pending_on_repeat_outage(ctx):
+    # A second setup during a continuing outage re-gets the SAME lazy Work (idempotent,
+    # no duplicate) rather than spawning another.
+    c, works, knowledge, _ = ctx
+    works.marked = []
+    knowledge.projects = []
+    knowledge.created_project = None
+    works.pending = _pending_work()
+    r = c.post(f"/v1/composition/books/{BOOK}/work")
+    assert r.status_code == 201
+    assert works.created_pending is False  # reused, not re-created
+    assert r.json()["project_id"] is None
+
+
+def test_post_work_backfills_pending_when_knowledge_recovers(ctx):
+    # Backfill seam: knowledge recovered → the freshly-created project is stamped onto
+    # the prior lazy Work (marker cleared), not a second Work.
+    c, works, knowledge, _ = ctx
+    works.marked = []
+    knowledge.projects = []           # resolve → none
+    new_pid = uuid.uuid4()
+    knowledge.created_project = {"project_id": str(new_pid)}
+    pend = _pending_work()
+    works.pending = pend
+    works.backfill_result = _work(project_id=new_pid, id=pend.id)
+    r = c.post(f"/v1/composition/books/{BOOK}/work")
+    assert r.status_code == 201
+    assert works.backfilled_with == (pend.id, new_pid)
+    body = r.json()
+    assert body["project_id"] == str(new_pid)
+    assert body["pending_project_backfill"] is False
 
 
 def test_post_work_unique_violation_reresolves(ctx):

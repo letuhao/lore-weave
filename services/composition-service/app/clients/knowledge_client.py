@@ -35,6 +35,18 @@ logger = logging.getLogger(__name__)
 _client: "KnowledgeClient | None" = None
 
 
+class KnowledgeContractError(Exception):
+    """C16 (WG-3): knowledge-service rejected a request with a 4xx CONTRACT error
+    (bad/forbidden payload — our bug, not an outage). The caller MUST surface this
+    (e.g. POST /work → 502 PROJECT_CREATE_FAILED) rather than silently degrading —
+    only down/timeout/5xx are eligible for graceful (lazy-project) degradation.
+    Carries the status so the router can log/branch."""
+
+    def __init__(self, status_code: int) -> None:
+        self.status_code = status_code
+        super().__init__(f"knowledge contract error: {status_code}")
+
+
 class KnowledgeClient:
     def __init__(
         self, base_url: str, internal_token: str = "", timeout_s: float = 5.0,
@@ -92,21 +104,39 @@ class KnowledgeClient:
         self, book_id: UUID, name: str, bearer: str,
     ) -> dict[str, Any] | None:
         """Create a BOOK-typed knowledge project for this book (M8 POST /work).
-        JWT-forward → knowledge scopes it to the user. Returns the created
-        project dict (carries `project_id`) or None on failure."""
+        JWT-forward → knowledge scopes it to the user. Returns the created project
+        dict (carries `project_id`).
+
+        C16 (WG-3) error discrimination — the caller degrades vs surfaces by class:
+          • 5xx / timeout / transport error → return None (knowledge OUTAGE → the
+            POST /work caller may create a lazy null-project Work and keep writing).
+          • 4xx → raise KnowledgeContractError (a CONTRACT bug — bad/forbidden
+            payload — that must NOT be swallowed as an outage; the caller surfaces
+            it as a 502 PROJECT_CREATE_FAILED). A 401/403 (auth) is also 4xx →
+            surfaced, never silently degraded into a grounding-blind Work.
+          • empty bearer → None (can't authenticate; treat as unavailable)."""
         if not bearer:
             return None
         url = f"{self._base_url}/v1/knowledge/projects"
         payload = {"name": name, "project_type": "book", "book_id": str(book_id)}
         try:
             resp = await self._http.post(url, json=payload, headers=self._bearer_headers(bearer))
-            if resp.status_code not in (200, 201):
-                logger.warning("knowledge create_project → %d", resp.status_code)
-                return None
-            return resp.json()
-        except (httpx.HTTPError, ValueError, AttributeError) as exc:
+        except httpx.HTTPError as exc:
+            # transport / timeout / connect refused → outage → degrade.
             logger.warning("knowledge create_project unavailable: %s", exc)
             return None
+        if resp.status_code in (200, 201):
+            try:
+                return resp.json()
+            except (ValueError, AttributeError) as exc:
+                logger.warning("knowledge create_project bad JSON: %s", exc)
+                return None
+        if 400 <= resp.status_code < 500:
+            logger.warning("knowledge create_project CONTRACT %d (surfacing)", resp.status_code)
+            raise KnowledgeContractError(resp.status_code)
+        # 5xx (or any other non-2xx) → outage → degrade.
+        logger.warning("knowledge create_project → %d (degrading)", resp.status_code)
+        return None
 
     # ── M4 packer lenses ────────────────────────────────────────────────
     # All return None/[] on any failure (the packer `_safe_*` degrade, F1) so a

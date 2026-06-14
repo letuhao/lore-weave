@@ -32,6 +32,50 @@ CREATE TABLE IF NOT EXISTS composition_work (
 );
 CREATE INDEX IF NOT EXISTS idx_composition_work_user ON composition_work(user_id);
 
+-- C16 (WG-3) Work-setup resilience: when knowledge-service is down/5xx during
+-- greenfield setup, the Work is created with a LAZY (null) project_id + a backfill
+-- marker so writing/Generate is never wall-blocked by an optional dependency. This
+-- requires re-keying composition_work off project_id (a null PK is impossible):
+--   • add a surrogate `id` PK (uuidv7);
+--   • make project_id NULLABLE;
+--   • keep the 1:1 (work ⇄ knowledge project) invariant via a PARTIAL unique index
+--     over only the BACKED rows (project_id IS NOT NULL) — null rows are exempt;
+--   • `pending_project_backfill` marks a greenfield Work awaiting its knowledge
+--     project, and a partial-unique index caps it at one pending Work per (user,book)
+--     so a setup retry backfills the SAME row rather than spawning duplicates.
+-- All steps are idempotent (IF NOT EXISTS / guarded DO-blocks) so re-boot is safe.
+-- GUARD (C23): a DERIVATIVE Work keeps project_id NOT NULL — enforced in app code
+-- (routers), NOT relaxed here; this null state is greenfield-only.
+ALTER TABLE composition_work ADD COLUMN IF NOT EXISTS id UUID;
+ALTER TABLE composition_work ADD COLUMN IF NOT EXISTS pending_project_backfill BOOLEAN NOT NULL DEFAULT false;
+-- Backfill the surrogate id for any pre-C16 row, then make it the PK.
+UPDATE composition_work SET id = uuidv7() WHERE id IS NULL;
+ALTER TABLE composition_work ALTER COLUMN id SET DEFAULT uuidv7();
+ALTER TABLE composition_work ALTER COLUMN id SET NOT NULL;
+DO $$
+BEGIN
+  -- Re-point the primary key from project_id → id (only once).
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'composition_work_pkey' AND conrelid = 'composition_work'::regclass
+      AND (SELECT array_agg(attname::text ORDER BY attname)
+             FROM pg_attribute
+            WHERE attrelid = 'composition_work'::regclass
+              AND attnum = ANY(conkey)) = ARRAY['project_id']
+  ) THEN
+    ALTER TABLE composition_work DROP CONSTRAINT composition_work_pkey;
+    ALTER TABLE composition_work ADD CONSTRAINT composition_work_pkey PRIMARY KEY (id);
+  END IF;
+END $$;
+ALTER TABLE composition_work ALTER COLUMN project_id DROP NOT NULL;
+-- 1:1 work⇄project for BACKED works only (a null project_id is a lazy/greenfield Work).
+CREATE UNIQUE INDEX IF NOT EXISTS uq_composition_work_project
+  ON composition_work(project_id) WHERE project_id IS NOT NULL;
+-- At most one pending-backfill (greenfield, null-project) Work per (user,book) so a
+-- setup retry backfills the same row instead of duplicating.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_composition_work_pending
+  ON composition_work(user_id, book_id) WHERE pending_project_backfill;
+
 -- ── structure_template: pluggable story-structure library (global built-ins + user-custom)
 CREATE TABLE IF NOT EXISTS structure_template (
   id            UUID PRIMARY KEY DEFAULT uuidv7(),

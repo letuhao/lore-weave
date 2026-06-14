@@ -21,7 +21,7 @@ from pydantic import BaseModel, field_validator
 
 from app.clients.book_client import BookClient, BookClientError
 from app.engine.assembly import ASSEMBLY_MODES
-from app.clients.knowledge_client import KnowledgeClient
+from app.clients.knowledge_client import KnowledgeClient, KnowledgeContractError
 from app.db.models import WorkStatus
 from app.db.repositories import VersionMismatchError
 from app.db.repositories.works import WorksRepo
@@ -86,6 +86,24 @@ async def _gate_book(grant: GrantClient, book_id: UUID, caller: UUID, need: Gran
         raise HTTPException(status_code=403, detail="insufficient access")
 
 
+async def _ensure_pending_work(works: WorksRepo, user_id: UUID, book_id: UUID):
+    """C16 (WG-3) greenfield degrade: return the (at-most-one) lazy null-project
+    Work for this user+book, creating it if absent. Idempotent + race-safe: the
+    partial-unique `(user,book) WHERE pending_project_backfill` index caps it at one,
+    so a concurrent loser re-gets the existing row instead of 500-ing. Used by both
+    the knowledge-DOWN (resolve unavailable) and create_project-OUTAGE paths."""
+    existing = await works.get_pending_for_book(user_id, book_id)
+    if existing is not None:
+        return existing
+    try:
+        return await works.create_pending(user_id, book_id)
+    except asyncpg.UniqueViolationError:
+        racey = await works.get_pending_for_book(user_id, book_id)
+        if racey is None:
+            raise HTTPException(status_code=409, detail={"code": "WORK_CREATE_CONFLICT"})
+        return racey
+
+
 def _parse_if_match(if_match: str | None) -> int | None:
     if if_match is None:
         return None
@@ -112,9 +130,21 @@ async def get_work_for_book(
     return _serialize_resolution(res)
 
 
+class WorkCreateBody(BaseModel):
+    # C16/C23: `source_work_id` marks a DERIVATIVE (dị bản) Work. A derivative MUST
+    # bind a real (NOT NULL) knowledge project_id — it is its own delta partition
+    # (G2) and the knowledge timeline endpoint widens to ALL of a user's projects on
+    # a null project_id (cross-project grounding leak). So the WG-3 lazy/null-project
+    # degradation is GREENFIELD-ONLY; a derivative whose knowledge project can't be
+    # created surfaces the failure instead of degrading. (The derivative create flow
+    # itself is C23; this field is the forward-compatible guard hook.)
+    source_work_id: UUID | None = None
+
+
 @router.post("/books/{book_id}/work", status_code=201)
 async def create_work_for_book(
     book_id: UUID,
+    body: WorkCreateBody | None = None,
     user_id: UUID = Depends(get_current_user),
     bearer: str = Depends(get_bearer_token),
     works: WorksRepo = Depends(get_works_repo),
@@ -124,7 +154,15 @@ async def create_work_for_book(
 ) -> dict[str, Any]:
     """Confirm-create a Work (idempotent). Ensures a book-typed knowledge
     project exists (resolve, else ProjectCreate), then get-or-creates the
-    composition_work row. Returns the Work."""
+    composition_work row. Returns the Work.
+
+    C16 (WG-3) resilience: for a GREENFIELD work, a knowledge-service OUTAGE
+    (down/timeout/5xx) during project creation no longer 502s — the Work is created
+    with a lazy null `project_id` + a backfill marker so the writer can keep drafting
+    + Generate (grounding degrades to the packer's empty/FTS fallback). A 4xx CONTRACT
+    error still surfaces (no silent swallow). A DERIVATIVE work (`source_work_id`) is
+    NEVER eligible for the null path (C23 guard)."""
+    is_derivative = body is not None and body.source_work_id is not None
     # E0-4c: creating a work is an authoring (write) action → EDIT grant. Then
     # fetch the book for its title (get_book returns the row for any grantee
     # post-E0-2). composition_work itself is per-user (caller-keyed below).
@@ -140,7 +178,16 @@ async def create_work_for_book(
         user_id, book_id, bearer=bearer, works_repo=works, knowledge_client=knowledge,
     )
     if res.status == "unavailable":
-        raise HTTPException(status_code=502, detail={"code": "KNOWLEDGE_UNAVAILABLE"})
+        # C16 (WG-3): knowledge-service is DOWN, so resolve couldn't even list the
+        # book's projects. A DERIVATIVE still 502s (it needs its own real project —
+        # C23 guard). For a GREENFIELD work the writer must NOT be wall-blocked by an
+        # optional dependency: degrade to a lazy null-project Work (reuse an existing
+        # pending row if a prior outage already made one) so drafting + Generate keep
+        # working; a later setup retry (once knowledge recovers) backfills the real
+        # project. This fully decouples writing from the knowledge-service outage.
+        if is_derivative:
+            raise HTTPException(status_code=502, detail={"code": "KNOWLEDGE_UNAVAILABLE"})
+        return (await _ensure_pending_work(works, user_id, book_id)).model_dump(mode="json")
     # Already a Work → idempotent return (pick the first if several marked).
     if res.status == "found":
         return res.work.model_dump(mode="json")  # type: ignore[union-attr]
@@ -154,10 +201,34 @@ async def create_work_for_book(
         project_id = res.book_project_ids[0]
     else:  # none → create a book-typed knowledge project
         name = book_obj.get("title") or f"Book {book_id}"
-        created = await knowledge.create_project(book_id, name, bearer)
-        if created is None or not created.get("project_id"):
+        # C16 (WG-3) error discrimination: a 4xx is a CONTRACT bug → surface it
+        # (never degrade an auth/validation failure into a grounding-blind Work);
+        # only an OUTAGE (None ← down/timeout/5xx) is eligible for graceful
+        # degradation.
+        try:
+            created = await knowledge.create_project(book_id, name, bearer)
+        except KnowledgeContractError:
             raise HTTPException(status_code=502, detail={"code": "PROJECT_CREATE_FAILED"})
+
+        if created is None or not created.get("project_id"):
+            # Knowledge OUTAGE. A DERIVATIVE work MUST NOT take the null path
+            # (C23 guard — it needs its own real project partition); surface instead.
+            if is_derivative:
+                raise HTTPException(status_code=502, detail={"code": "PROJECT_CREATE_FAILED"})
+            # GREENFIELD: degrade to a lazy null-project Work so the writer keeps
+            # drafting + Generate while knowledge recovers (backfilled by a later
+            # setup retry, below).
+            return (await _ensure_pending_work(works, user_id, book_id)).model_dump(mode="json")
         project_id = UUID(str(created["project_id"]))
+
+        # C16 backfill seam: if a prior outage left a lazy pending Work for this
+        # (user,book), stamp the freshly-created project onto it (clear the marker)
+        # instead of spawning a second Work — knowledge has recovered.
+        pending = await works.get_pending_for_book(user_id, book_id)
+        if pending is not None and pending.id is not None:
+            backfilled = await works.backfill_project(user_id, pending.id, project_id)
+            if backfilled is not None:
+                return backfilled.model_dump(mode="json")
 
     # Get-or-create the composition_work row. The get-then-create is not atomic,
     # so a concurrent same-project POST can lose the PK race — catch the unique

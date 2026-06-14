@@ -33,9 +33,17 @@ CorrectionKind = Literal["edit", "pick_different", "regenerate", "reject"]
 
 
 class CompositionWork(BaseModel):
-    project_id: UUID
+    # C16 (WG-3): `id` is the surrogate PK; `project_id` is the (now nullable)
+    # knowledge-project id — null = a lazy greenfield Work whose knowledge project
+    # could not be created yet (knowledge-service down/5xx) and is awaiting backfill
+    # (`pending_project_backfill`). A DERIVATIVE Work keeps project_id NOT NULL
+    # (C23 guard — null is greenfield-only). `id` defaults to project_id for backed
+    # rows so existing project_id-keyed callers keep working unchanged.
+    project_id: UUID | None = None
     user_id: UUID
     book_id: UUID
+    id: UUID | None = None
+    pending_project_backfill: bool = False
     active_template_id: UUID | None = None
     status: WorkStatus = "active"
     settings: dict[str, Any] = Field(default_factory=dict)

@@ -1616,3 +1616,21 @@
 {"ts": "2026-06-14T11:13:47Z", "event": "in_progress_update", "cycle": 15, "phase": "COMMIT", "retry": 0}
 {"ts": "2026-06-14T11:14:55Z", "event": "in_progress_archived", "cycle": 15, "archived_to": "cycle-015-state.md"}
 {"ts":"2026-06-14T11:15:30Z","event":"retro","cycle":15,"reflection":"Writer-unblock was pure FE signposting, no BE: the platform already supported write-with-empty-grounding (canGenerate gates on scene+model only) — the gap was the absence of an in-flow chat-model CTA + a ready-to-draft cue. Key MVC discipline: empty↔ready toggles only the toolbar <select>↔AddModelCta; ComposeView/Generate stays CSS-hidden-mounted (never ternary-unmounted) so no stream/hook state is destroyed on the transition. The plain-editor→AI bridge is a direct setRightTab handler, not useEffect-for-events. Live-smoke (Generate→full Chinese scene with empty grounding) was the real proof the writer is not hard-blocked; component tests alone could not establish grounding-optional."}
+{"ts": "2026-06-14T11:16:35Z", "event": "coordinator_next_cycle_emitted", "cycle": 16}
+{"ts":"2026-06-14T11:18:00Z","event":"startup_drift_check_inconclusive","cycle":16,"cd":"","rw":""}
+{"ts":"2026-06-14T11:18:00Z","event":"startup_verifier_complete","cycle":16,"steps":6}
+{"ts": "2026-06-14T11:18:12Z", "event": "in_progress_init", "cycle": 16, "title": "Work-setup resilience (BE composition)"}
+{"ts": "2026-06-14T11:20:50Z", "event": "in_progress_update", "cycle": 16, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-06-14T11:21:31Z", "event": "in_progress_update", "cycle": 16, "phase": "PLAN", "retry": 0}
+{"ts": "2026-06-14T11:21:44Z", "event": "in_progress_update", "cycle": 16, "phase": "BUILD", "retry": 0}
+{"ts":"2026-06-14T11:28:18Z","event":"secret_scan_skipped","cycle":16,"dps":DPS1,"reason":"gitleaks_not_installed"}
+{"ts":"2026-06-14T11:28:21Z","event":"secret_scan_skipped","cycle":16,"dps":DPS2,"reason":"gitleaks_not_installed"}
+{"ts": "2026-06-14T11:45:06Z", "event": "in_progress_update", "cycle": 16, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-06-14T11:46:08Z","event":"verify_cycle_16_passed","cycle":16}
+{"ts":"2026-06-14T11:57:17Z","event":"verify_cycle_16_failed","cycle":16}
+{"ts":"2026-06-14T11:57:26Z","event":"verify_cycle_16_passed","cycle":16}
+{"ts": "2026-06-14T11:58:03Z", "event": "in_progress_update", "cycle": 16, "phase": "REVIEW2", "retry": 0}
+{"ts": "2026-06-14T12:01:35Z", "event": "in_progress_update", "cycle": 16, "phase": "QC", "retry": 0}
+{"ts": "2026-06-14T12:02:25Z", "event": "in_progress_update", "cycle": 16, "phase": "SESSION", "retry": 0}
+{"ts": "2026-06-14T12:02:56Z", "event": "cycle_done", "cycle": 16, "title": "Work-setup resilience (BE composition)", "dps_count": 2, "tests": {"unit": 441, "c16_unit": 67, "integration_pg": 7}, "verify_exit": 0, "live_smoke_token": "live smoke: knowledge down -> POST /work 2xx -> Generate returns prose", "knowledge_restored": true, "adversary": {"blockers": 1, "majors": 0, "minors": 0, "notes": 5, "blocker_disposition": "reclassified D-C16-NULL-WORK-ROUTE -> C17 (scope boundary, FE+routing)"}, "scope_guard": "CLEAR", "post_review": "CLEAR"}
+{"ts": "2026-06-14T12:03:04Z", "event": "in_progress_update", "cycle": 16, "phase": "COMMIT", "retry": 0}

@@ -108,6 +108,17 @@ async def pack(
     grant: "GrantClient | None" = None,
     need: "GrantLevel | None" = None,
 ) -> PackedContext:
+    # C16 (WG-3): a GREENFIELD Work whose knowledge project couldn't be created
+    # (knowledge-service outage at setup) carries a null project_id. The writer must
+    # still Generate — so pack tolerates it by degrading grounding to EMPTY: it skips
+    # EVERY knowledge lens (present/timeline/lore) entirely and packs only the local
+    # composition lenses (canon/structural/recent). This PRESERVES the A1/C23 guard —
+    # rather than calling a knowledge lens with project_id=None (which would widen the
+    # timeline endpoint to ALL the user's projects = cross-project grounding leak), we
+    # never call it at all. assert_project_scoped therefore still guards the NON-null
+    # path below (any knowledge read keeps a real scope).
+    if req.project_id is None:
+        return await _pack_null_project(req, grant=grant, need=need)
     # A1: never pack unscoped (knowledge timeline/entities widen cross-project).
     assemble.assert_project_scoped(req.project_id)
     # SEC2 (E0-4c): grant-aware book chokepoint BEFORE any internal (token-trust)
@@ -265,6 +276,47 @@ async def pack(
         scene_sort_order=scene_sort_order,
         reinjected_promise_count=len(open_promises),  # FD-1 S4b — S3 fired-signal
         warnings=warnings,
+    )
+
+
+async def _pack_null_project(
+    req: PackRequest, *, grant: "GrantClient | None", need: "GrantLevel | None",
+) -> PackedContext:
+    """C16 (WG-3): build an EMPTY-but-valid pack for a lazy null-project Work.
+
+    No knowledge lens is called (the project has no knowledge graph yet — and a
+    null project_id would widen the timeline endpoint cross-project, the C23 leak),
+    so grounding is empty and `grounding_available=False`. The book grant is STILL
+    enforced (a null project_id doesn't bypass authorization). The author guide is
+    sanitised and kept so the writer's instruction still reaches the prompt. Generate
+    proceeds → prose returns (the FE already signposts empty grounding, C15)."""
+    from app.grant_client import get_grant_client
+    from app.grant_deps import authorize_book
+    await authorize_book(
+        grant or get_grant_client(), req.book_id, req.user_id, need or GrantLevel.VIEW,
+    )
+
+    profile = profile_mod.from_settings(req.settings)
+    bundle = LensBundle(
+        canon=[], present=[], timeline=[], beat=[], threads=[],
+        planned=[], recent=[], lore=[], knowledge_seen=False, open_promises=[],
+    )
+    segs = assemble.build_segments(bundle, guide=req.guide)
+    bres = B.enforce_budget(segs, settings.pack_token_budget, B.default_counter())
+    blocks = assemble.segments_to_blocks(bres.kept)
+    warnings = [
+        "grounding_unavailable: this work has no knowledge project yet "
+        "(knowledge-service was unavailable at setup) — writing proceeds, grounding "
+        "will enrich once the project is created (C16/WG-3)",
+    ]
+    if bres.over_budget:
+        warnings.append("over_budget: protected context exceeds the token target")
+    return PackedContext(
+        blocks=blocks, prompt=assemble.render(blocks), profile=profile,
+        token_count=bres.total_tokens, dropped_count=bres.dropped_count,
+        l4_dropped_no_position=0, grounding_available=False,
+        over_budget=bres.over_budget, scene_sort_order=None,
+        reinjected_promise_count=0, warnings=warnings,
     )
 
 
