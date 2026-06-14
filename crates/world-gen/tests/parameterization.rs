@@ -6,8 +6,9 @@
 //! Spec: `docs/specs/2026-06-14-world-gen-parameterization.md`.
 
 use world_gen::{
-    ClimateParams, CoastlineProfile, CreativeSeed, IntensityKnobs, ReliefParams, TectonicsParams,
-    TerrainMode, WorldScale, generate,
+    BiomeKind, ClimateParams, CoastlineProfile, CreativeSeed, ErosionParams, ErosionStrength,
+    HydrologyParams, IntensityKnobs, ReliefParams, TectonicsParams, TerrainMode, WorldScale,
+    generate,
 };
 
 fn hex(h: [u8; 32]) -> String {
@@ -78,6 +79,8 @@ fn explicit_default_params_equal_bare_default() {
         tectonics: TectonicsParams::default(),
         relief_params: ReliefParams::default(),
         climate_params: ClimateParams::default(),
+        erosion_params: ErosionParams::default(),
+        hydrology_params: HydrologyParams::default(),
         intensity: IntensityKnobs::default(),
         ..CreativeSeed::default()
     };
@@ -230,6 +233,96 @@ fn climate_knobs_move_the_histogram_the_right_way() {
         count(&dry, ClimateZone::Arid) > count(&base, ClimateZone::Arid),
         "rainfall<1 must yield more Arid cells"
     );
+}
+
+/// **A granular erosion-table override changes the world** (P4) — heavier
+/// incision on the live `Moderate` row carves a different heightmap. Tectonic
+/// mode (the live erosion path that's ruggedness-gated).
+#[test]
+fn granular_erosion_override_changes_the_world() {
+    let base = generate(7, &CreativeSeed::default()).content_hash;
+    let carved = CreativeSeed {
+        erosion_params: ErosionParams {
+            moderate_erodibility: 8.0,
+            moderate_carve_iters: 30,
+            ..ErosionParams::default()
+        },
+        ..CreativeSeed::default()
+    };
+    assert_ne!(base, generate(7, &carved).content_hash, "stronger erosion must change terrain");
+}
+
+/// **A granular hydrology override changes the world** (P4) — a lower river
+/// percentile promotes more cells to River biome → different biome map.
+#[test]
+fn granular_hydrology_override_changes_the_world() {
+    let base = generate(7, &CreativeSeed::default()).content_hash;
+    let rivery = CreativeSeed {
+        hydrology_params: HydrologyParams { river_percentile: 0.50, ..HydrologyParams::default() },
+        ..CreativeSeed::default()
+    };
+    assert_ne!(base, generate(7, &rivery).content_hash, "a lower river percentile must change biomes");
+}
+
+/// **Direction (P4, review-impl #2)** — a *lower* river percentile must yield
+/// strictly *more* River cells (not just a different hash). Guards a sign error
+/// in the `(land.len() * percentile)` index that `assert_ne` would miss.
+#[test]
+fn lower_river_percentile_makes_more_rivers() {
+    let rivers = |pct: f32| {
+        let cs = CreativeSeed {
+            hydrology_params: HydrologyParams { river_percentile: pct, ..HydrologyParams::default() },
+            ..CreativeSeed::default()
+        };
+        generate(7, &cs).biome.iter().filter(|&&b| b == BiomeKind::River).count()
+    };
+    assert!(
+        rivers(0.50) > rivers(0.96),
+        "a lower river percentile must classify more cells as River"
+    );
+}
+
+/// **The `lake_max_*` fields are wired (P4, review-impl #1)** — set the floor
+/// above the cell count so *no* water component qualifies as ocean; with no
+/// ocean the coast/biome map must change. Proves the lake-threshold path is
+/// connected end-to-end (a mis-mapped field would pass every other test).
+#[test]
+fn lake_max_floor_changes_the_world() {
+    let base = generate(7, &CreativeSeed::default()).content_hash;
+    let no_ocean = CreativeSeed {
+        hydrology_params: HydrologyParams { lake_max_floor: 100_000_000, ..HydrologyParams::default() },
+        ..CreativeSeed::default()
+    };
+    assert_ne!(
+        base,
+        generate(7, &no_ocean).content_hash,
+        "an absurd lake_max_floor (no water body is ocean) must change the world"
+    );
+}
+
+/// **The Light/Heavy erosion rows are wired (P4, review-impl #3)** — the
+/// `moderate_*` override test exercises only the default strength; this hits the
+/// other two `row()` branches so a Light↔Heavy field mis-map is caught.
+#[test]
+fn erosion_light_and_heavy_rows_are_wired() {
+    let world = |strength: ErosionStrength, ep: ErosionParams| {
+        let cs = CreativeSeed { erosion: strength, erosion_params: ep, ..CreativeSeed::default() };
+        generate(7, &cs).content_hash
+    };
+    // Light: bumping light_* must change a Light world.
+    let light_base = world(ErosionStrength::Light, ErosionParams::default());
+    let light_hit = world(
+        ErosionStrength::Light,
+        ErosionParams { light_erodibility: 9.0, light_carve_iters: 35, ..ErosionParams::default() },
+    );
+    assert_ne!(light_base, light_hit, "light_* fields must drive a Light world");
+    // Heavy: bumping heavy_* must change a Heavy world.
+    let heavy_base = world(ErosionStrength::Heavy, ErosionParams::default());
+    let heavy_hit = world(
+        ErosionStrength::Heavy,
+        ErosionParams { heavy_erodibility: 12.0, heavy_carve_iters: 40, ..ErosionParams::default() },
+    );
+    assert_ne!(heavy_base, heavy_hit, "heavy_* fields must drive a Heavy world");
 }
 
 /// A granular climate override changes the world (config-file path).

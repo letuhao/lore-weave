@@ -8,7 +8,9 @@
 use serde::{Deserialize, Serialize};
 
 use crate::climate::ClimateZone;
-use crate::params::{ClimateParams, IntensityKnobs, ReliefParams, TectonicsParams};
+use crate::params::{
+    ClimateParams, ErosionParams, HydrologyParams, IntensityKnobs, ReliefParams, TectonicsParams,
+};
 
 /// Creative direction for a generated world.
 // `Eq` dropped in Phase 2 — `continental_fraction: f32` is not `Eq`.
@@ -81,6 +83,14 @@ pub struct CreativeSeed {
     /// Default = prior `climate.rs` consts (byte-identical).
     #[serde(default)]
     pub climate_params: ClimateParams,
+    /// Granular hydraulic-erosion strength table (parameterization P4).
+    /// Default = prior `erosion.rs` table (byte-identical).
+    #[serde(default)]
+    pub erosion_params: ErosionParams,
+    /// Granular hydrology thresholds (parameterization P4).
+    /// Default = prior `hydrology.rs` consts (byte-identical).
+    #[serde(default)]
+    pub hydrology_params: HydrologyParams,
     /// Macro "intensity" knobs (parameterization) — convenience scalers over
     /// groups of granular params; default `1.0` = no-op. See [`IntensityKnobs`].
     #[serde(default)]
@@ -128,6 +138,8 @@ impl Default for CreativeSeed {
             tectonics: TectonicsParams::default(),
             relief_params: ReliefParams::default(),
             climate_params: ClimateParams::default(),
+            erosion_params: ErosionParams::default(),
+            hydrology_params: HydrologyParams::default(),
             intensity: IntensityKnobs::default(),
         }
     }
@@ -450,11 +462,13 @@ mod tests {
             intensity: IntensityKnobs { orogeny: 2.5, collision_frequency: 0.5, ..IntensityKnobs::default() },
             tectonics: TectonicsParams { fold_peak: 1.2, ..TectonicsParams::default() },
             climate_params: ClimateParams { t_eq: 31.0, ..ClimateParams::default() },
+            erosion_params: ErosionParams { moderate_erodibility: 5.0, ..ErosionParams::default() },
+            hydrology_params: HydrologyParams { river_percentile: 0.9, ..HydrologyParams::default() },
             ..CreativeSeed::default()
         };
         let back: CreativeSeed =
             serde_json::from_str(&serde_json::to_string(&cs).unwrap()).expect("round-trip");
-        assert_eq!(cs, back, "tectonics/intensity/climate must survive a JSON round-trip");
+        assert_eq!(cs, back, "tectonics/intensity/climate/erosion/hydrology must survive a JSON round-trip");
         // A pre-parameterization config JSON (no tectonics/intensity/climate) loads
         // with the byte-identical defaults — backward compatibility.
         let json = r#"{
@@ -466,6 +480,8 @@ mod tests {
         assert_eq!(old.tectonics, TectonicsParams::default());
         assert_eq!(old.intensity, IntensityKnobs::default());
         assert_eq!(old.climate_params, ClimateParams::default());
+        assert_eq!(old.erosion_params, ErosionParams::default());
+        assert_eq!(old.hydrology_params, HydrologyParams::default());
         // A partial override (intensity.orogeny + one climate cutoff) keeps every
         // other field default — the `#[serde(default)]` per-field fill.
         let json2 = r#"{

@@ -61,9 +61,16 @@
 > (3 Tectonic + 5 Profile) hold across all 3 stages. P3 `/review-impl` clean
 > (doc + test-only follow-ups folded in: seasonality `amp_eq`-floor doc,
 > clamp-not-validate / dormant-`winter_frac` cutoff doc, histogram-direction test,
-> climate serde/explicit-default parity). **TOP NEXT (param arc): P4
-> `ErosionParams` + `HydrologyParams`** (the `ErosionStrength` table, river
-> percentile, lake threshold — `terrain.rs`/`hydrology.rs`).
+> climate serde/explicit-default parity). **✅ P4 DONE** — `ErosionParams`
+> (the Light/Moderate/Heavy hydraulic-erosion table, 18 flat fields) +
+> `HydrologyParams` (`river_percentile`/`lake_max_divisor`/`lake_max_floor`);
+> threaded via `erosion::apply_with` + `hydrology::build_with` (config-aware
+> wrappers; old `apply`/`apply_scaled`/`build` keep default-table signatures so
+> the frozen `zonegen.rs` + `civ_adapter` are untouched). Stream-power `m`/`n`
+> stay fixed math. Byte-identical pins hold. **TOP NEXT (param arc): P5
+> `SettlementParams` + `RouteParams`** (density maps, burg scoring, role
+> percentiles, climate-habitability, pass count, tier gates —
+> `settlement.rs`/`routes.rs`).
 > *(Deferred P2 follow-up: Profile-only inline `height_at`/`apply_falloff` gate
 > literals — legacy path. Deferred P3 follow-up: moisture-transport consts +
 > cross-module `ClimateZone::wetness()` / `bias_delta` tables.)*

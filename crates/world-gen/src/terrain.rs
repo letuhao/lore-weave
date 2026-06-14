@@ -101,6 +101,8 @@ pub fn build(
     // `ocean_depth` knobs + clamp). Default profile ⇒ default params ⇒
     // byte-identical baseline.
     let rp = cs.relief_params.resolved(&cs.intensity);
+    // Resolve the hydraulic-erosion table (clamp; default ⇒ byte-identical) (P4).
+    let erosion_cfg = cs.erosion_params.resolved(&cs.intensity);
 
     match cs.terrain_mode {
         TerrainMode::Tectonic => {
@@ -186,7 +188,7 @@ pub fn build(
             let land_fraction = cs.continental_fraction.clamp(0.1, 0.9);
             // Ruggedness-gated erosion: mountains carve dendritic valleys;
             // plains barely incise (stay flat) but still receive sediment.
-            erosion::apply(&mut elev, neighbors, land_fraction, cs.erosion, Some(&rugged));
+            erosion::apply_with(&mut elev, neighbors, land_fraction, &erosion_cfg, cs.erosion, Some(&rugged));
 
             // Quantize with a fixed scale (sea level pinned at SEA_FRAC) so
             // land keeps a generous, fixed share of the range — distinct
@@ -213,7 +215,7 @@ pub fn build(
             // strait would dissect its fixed 5-island invariant).
             if !profile.is_archipelago() {
                 // Profile mode: ungated erosion (no ruggedness field).
-                erosion::apply(&mut elev, neighbors, profile.land_fraction(), cs.erosion, None);
+                erosion::apply_with(&mut elev, neighbors, profile.land_fraction(), &erosion_cfg, cs.erosion, None);
             }
 
             let mut elevation = normalize_to_u16(&elev, count);

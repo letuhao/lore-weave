@@ -27,38 +27,13 @@ use std::cmp::{Ordering, Reverse};
 use std::collections::BinaryHeap;
 
 use crate::creative_seed::ErosionStrength;
+use crate::params::{ErosionParams, ErosionRow};
 
-/// Erosion tuning for one [`ErosionStrength`].
-///
-/// Erosion runs in two phases. The **carve** phase is pure stream-power
-/// incision — it cuts the dendritic valley network into the raw heightmap.
-/// The **settle** phase then enables sediment deposition: on the
-/// already-graded landscape incision is mild, so the modest sediment it still
-/// produces is dropped only where channel transport capacity falls away —
-/// valley floors and mountain-front fans — instead of blanketing and
-/// re-filling the freshly cut valleys.
-pub struct ErosionParams {
-    /// Pure-incision passes (phase 1 — carve the valleys).
-    carve_iters: u32,
-    /// Incision + deposition passes (phase 2 — settle sediment into fans).
-    settle_iters: u32,
-    /// `K` — stream-power erodibility per iteration.
-    erodibility: f32,
-    /// `Kc` — sediment transport-capacity coefficient. A channel carries
-    /// `Kc·area^m·slope` of sediment; load above that capacity is over-supply.
-    transport: f32,
-    /// Fraction of the over-capacity load deposited per settle pass. Below 1
-    /// so a transient over-supply flows on through rather than dumping in one
-    /// step — only a *persistent* low-capacity spot accumulates a fan.
-    settle_rate: f32,
-    /// `D` — hillslope-diffusion (creep) coefficient, `0..1`.
-    diffusion: f32,
-}
-
-/// Tuning per strength. `None` ⇒ zero iterations (a true no-op).
-fn params(strength: ErosionStrength) -> ErosionParams {
+/// Resolve one strength's [`ErosionRow`] from the [`ErosionParams`] table.
+/// `None` ⇒ an all-zero row (a true no-op), not a param.
+fn row(ep: &ErosionParams, strength: ErosionStrength) -> ErosionRow {
     match strength {
-        ErosionStrength::None => ErosionParams {
+        ErosionStrength::None => ErosionRow {
             carve_iters: 0,
             settle_iters: 0,
             erodibility: 0.0,
@@ -66,39 +41,36 @@ fn params(strength: ErosionStrength) -> ErosionParams {
             settle_rate: 0.0,
             diffusion: 0.0,
         },
-        ErosionStrength::Light => ErosionParams {
-            carve_iters: 14,
-            settle_iters: 6,
-            erodibility: 2.0,
-            transport: 4.0,
-            settle_rate: 0.15,
-            diffusion: 0.010,
+        ErosionStrength::Light => ErosionRow {
+            carve_iters: ep.light_carve_iters,
+            settle_iters: ep.light_settle_iters,
+            erodibility: ep.light_erodibility,
+            transport: ep.light_transport,
+            settle_rate: ep.light_settle_rate,
+            diffusion: ep.light_diffusion,
         },
-        ErosionStrength::Moderate => ErosionParams {
-            carve_iters: 18,
-            settle_iters: 8,
-            erodibility: 3.0,
-            transport: 4.0,
-            settle_rate: 0.18,
-            diffusion: 0.012,
+        ErosionStrength::Moderate => ErosionRow {
+            carve_iters: ep.moderate_carve_iters,
+            settle_iters: ep.moderate_settle_iters,
+            erodibility: ep.moderate_erodibility,
+            transport: ep.moderate_transport,
+            settle_rate: ep.moderate_settle_rate,
+            diffusion: ep.moderate_diffusion,
         },
-        ErosionStrength::Heavy => ErosionParams {
-            carve_iters: 22,
-            settle_iters: 10,
-            erodibility: 4.0,
-            transport: 4.0,
-            settle_rate: 0.20,
-            diffusion: 0.012,
+        ErosionStrength::Heavy => ErosionRow {
+            carve_iters: ep.heavy_carve_iters,
+            settle_iters: ep.heavy_settle_iters,
+            erodibility: ep.heavy_erodibility,
+            transport: ep.heavy_transport,
+            settle_rate: ep.heavy_settle_rate,
+            diffusion: ep.heavy_diffusion,
         },
     }
 }
 
-/// Carve the `elev` field in place with hydraulic erosion.
-///
-/// `land_fraction` sets the provisional waterline (the `(1 - land_fraction)`
-/// percentile of `elev`); cells below it are sea — fixed outlets, never
-/// eroded. Returns immediately for [`ErosionStrength::None`] or a degenerate
-/// (`< 2`-cell) mesh, leaving `elev` bit-identical.
+/// Carve the `elev` field in place with hydraulic erosion, using the **default**
+/// erosion table. Thin wrapper over [`apply_with`] for callers that don't tune
+/// the table (the frozen flat track + tests). See [`apply_with`] for the rest.
 pub fn apply(
     elev: &mut [f32],
     neighbors: &[Vec<u32>],
@@ -106,7 +78,25 @@ pub fn apply(
     strength: ErosionStrength,
     erodibility: Option<&[f32]>,
 ) {
-    apply_inner(elev, neighbors, land_fraction, params(strength), erodibility);
+    apply_with(elev, neighbors, land_fraction, &ErosionParams::default(), strength, erodibility);
+}
+
+/// Carve the `elev` field in place with hydraulic erosion, using a caller-tuned
+/// [`ErosionParams`] table (parameterization P4).
+///
+/// `land_fraction` sets the provisional waterline (the `(1 - land_fraction)`
+/// percentile of `elev`); cells below it are sea — fixed outlets, never
+/// eroded. Returns immediately for [`ErosionStrength::None`] or a degenerate
+/// (`< 2`-cell) mesh, leaving `elev` bit-identical.
+pub fn apply_with(
+    elev: &mut [f32],
+    neighbors: &[Vec<u32>],
+    land_fraction: f32,
+    ep: &ErosionParams,
+    strength: ErosionStrength,
+    erodibility: Option<&[f32]>,
+) {
+    apply_inner(elev, neighbors, land_fraction, row(ep, strength), erodibility);
 }
 
 /// Resolution-aware variant of [`apply`]: divides the carve + settle iteration
@@ -123,7 +113,7 @@ pub fn apply_scaled(
     erodibility: Option<&[f32]>,
     iter_scale: f32,
 ) {
-    let mut p = params(strength);
+    let mut p = row(&ErosionParams::default(), strength);
     let s = iter_scale.max(1.0);
     p.carve_iters = ((p.carve_iters as f32) / s).round().max(1.0) as u32;
     p.settle_iters = ((p.settle_iters as f32) / s).round() as u32;
@@ -134,7 +124,7 @@ fn apply_inner(
     elev: &mut [f32],
     neighbors: &[Vec<u32>],
     land_fraction: f32,
-    p: ErosionParams,
+    p: ErosionRow,
     erodibility: Option<&[f32]>,
 ) {
     if (p.carve_iters + p.settle_iters) == 0 || elev.len() < 2 {
@@ -281,7 +271,7 @@ fn incise(
     flow: &Flow,
     sea: &[bool],
     sea_floor: f32,
-    p: &ErosionParams,
+    p: &ErosionRow,
     settle_rate: f32,
     erodibility: Option<&[f32]>,
 ) {
@@ -537,7 +527,7 @@ mod tests {
         let nb = grid(side);
         let base = tilted_field(side);
         let (sea, floor) = provisional_sea(&base, 0.6);
-        let p = params(ErosionStrength::Heavy);
+        let p = row(&ErosionParams::default(), ErosionStrength::Heavy);
         let run = |settle_rate: f32| {
             let mut e = base.clone();
             let (receiver, order, filled) = priority_flood(&e, &sea, &nb);

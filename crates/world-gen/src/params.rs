@@ -174,6 +174,148 @@ impl ClimateParams {
     }
 }
 
+/// One resolved row of the hydraulic-erosion strength table — the tuning
+/// `erosion::apply` uses for a single [`crate::ErosionStrength`]. Internal
+/// working unit (not serde); built by [`ErosionParams::row`].
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ErosionRow {
+    /// Pure-incision passes (phase 1 — carve the valleys).
+    pub carve_iters: u32,
+    /// Incision + deposition passes (phase 2 — settle sediment into fans).
+    pub settle_iters: u32,
+    /// `K` — stream-power erodibility per iteration.
+    pub erodibility: f32,
+    /// `Kc` — sediment transport-capacity coefficient.
+    pub transport: f32,
+    /// Fraction of the over-capacity load deposited per settle pass.
+    pub settle_rate: f32,
+    /// `D` — hillslope-diffusion (creep) coefficient, `0..1`.
+    pub diffusion: f32,
+}
+
+/// Hydraulic-erosion strength table (was the per-`ErosionStrength` match in
+/// `erosion.rs`). Defaults are the exact prior Light/Moderate/Heavy values
+/// (byte-identical baseline); `None` stays a hardcoded all-zero no-op row, not a
+/// param. The stream-power exponents `m`/`n` (the `.sqrt()` and slope term in
+/// `incise`) are **structural math, kept fixed internal** — `area.powf(0.5)` is
+/// not bit-identical to `area.sqrt()`, so exposing them would break the
+/// byte-identical invariant; per the cross-cutting rule "salts/math stay fixed".
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ErosionParams {
+    // Light.
+    pub light_carve_iters: u32,
+    pub light_settle_iters: u32,
+    pub light_erodibility: f32,
+    pub light_transport: f32,
+    pub light_settle_rate: f32,
+    pub light_diffusion: f32,
+    // Moderate (the CreativeSeed default strength).
+    pub moderate_carve_iters: u32,
+    pub moderate_settle_iters: u32,
+    pub moderate_erodibility: f32,
+    pub moderate_transport: f32,
+    pub moderate_settle_rate: f32,
+    pub moderate_diffusion: f32,
+    // Heavy.
+    pub heavy_carve_iters: u32,
+    pub heavy_settle_iters: u32,
+    pub heavy_erodibility: f32,
+    pub heavy_transport: f32,
+    pub heavy_settle_rate: f32,
+    pub heavy_diffusion: f32,
+}
+
+impl Default for ErosionParams {
+    fn default() -> Self {
+        // Exact values that were the `erosion::params(strength)` table.
+        ErosionParams {
+            light_carve_iters: 14,
+            light_settle_iters: 6,
+            light_erodibility: 2.0,
+            light_transport: 4.0,
+            light_settle_rate: 0.15,
+            light_diffusion: 0.010,
+            moderate_carve_iters: 18,
+            moderate_settle_iters: 8,
+            moderate_erodibility: 3.0,
+            moderate_transport: 4.0,
+            moderate_settle_rate: 0.18,
+            moderate_diffusion: 0.012,
+            heavy_carve_iters: 22,
+            heavy_settle_iters: 10,
+            heavy_erodibility: 4.0,
+            heavy_transport: 4.0,
+            heavy_settle_rate: 0.20,
+            heavy_diffusion: 0.012,
+        }
+    }
+}
+
+impl ErosionParams {
+    /// Clamp every field to a sane rail (no panic). The macro [`IntensityKnobs`]
+    /// carry no erosion scaler today (the `ErosionStrength` enum is erosion's
+    /// high-level tier-1 knob) — `k` is accepted for call-shape uniformity and
+    /// reserved for a future erosion knob. Identity at default ⇒ byte-identical.
+    pub fn resolved(&self, _k: &IntensityKnobs) -> ErosionParams {
+        let iters = |v: u32| v.min(10_000);
+        let rate = |v: f32| v.clamp(0.0, 1.0);
+        let coef = |v: f32| v.clamp(0.0, 1000.0);
+        ErosionParams {
+            light_carve_iters: iters(self.light_carve_iters),
+            light_settle_iters: iters(self.light_settle_iters),
+            light_erodibility: coef(self.light_erodibility),
+            light_transport: coef(self.light_transport),
+            light_settle_rate: rate(self.light_settle_rate),
+            light_diffusion: rate(self.light_diffusion),
+            moderate_carve_iters: iters(self.moderate_carve_iters),
+            moderate_settle_iters: iters(self.moderate_settle_iters),
+            moderate_erodibility: coef(self.moderate_erodibility),
+            moderate_transport: coef(self.moderate_transport),
+            moderate_settle_rate: rate(self.moderate_settle_rate),
+            moderate_diffusion: rate(self.moderate_diffusion),
+            heavy_carve_iters: iters(self.heavy_carve_iters),
+            heavy_settle_iters: iters(self.heavy_settle_iters),
+            heavy_erodibility: coef(self.heavy_erodibility),
+            heavy_transport: coef(self.heavy_transport),
+            heavy_settle_rate: rate(self.heavy_settle_rate),
+            heavy_diffusion: rate(self.heavy_diffusion),
+        }
+    }
+}
+
+/// Hydrology thresholds (was the `hydrology.rs` consts). Defaults are the exact
+/// prior values (byte-identical baseline).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct HydrologyParams {
+    /// Land-flux percentile above which a cell is a `River` biome (was `0.96`).
+    pub river_percentile: f32,
+    /// A water component is ocean (vs. lake) iff its size exceeds
+    /// `(n / lake_max_divisor).max(lake_max_floor)` (was `150`).
+    pub lake_max_divisor: u32,
+    /// Floor for the ocean/lake size threshold (was `24`).
+    pub lake_max_floor: u32,
+}
+
+impl Default for HydrologyParams {
+    fn default() -> Self {
+        HydrologyParams { river_percentile: 0.96, lake_max_divisor: 150, lake_max_floor: 24 }
+    }
+}
+
+impl HydrologyParams {
+    /// Clamp to sane rails (no panic; divisor/floor ≥ 1 so the integer divide
+    /// and `.max` never degenerate). `k` reserved for call-shape uniformity.
+    pub fn resolved(&self, _k: &IntensityKnobs) -> HydrologyParams {
+        HydrologyParams {
+            river_percentile: self.river_percentile.clamp(0.0, 1.0),
+            lake_max_divisor: self.lake_max_divisor.max(1),
+            lake_max_floor: self.lake_max_floor.max(1),
+        }
+    }
+}
+
 /// Continental relief, ocean bathymetry, quantize and heightmap-noise tuning
 /// (was the `terrain.rs` consts). Defaults are the exact prior values
 /// (byte-identical baseline). Noise *salts* and the fixed `ARCH_ISLANDS`
@@ -506,6 +648,41 @@ mod tests {
         let r = junk.resolved(&IntensityKnobs { warmth: 99.0, rainfall: 99.0, ..Default::default() });
         assert!(r.t_eq.is_finite() && r.t_eq <= 80.0, "t_eq clamps to rail");
         assert!(r.precip_eq >= 0.0, "precip clamps non-negative");
+    }
+
+    #[test]
+    fn erosion_default_knobs_are_identity() {
+        let p = ErosionParams::default();
+        assert_eq!(p, p.resolved(&IntensityKnobs::default()), "default erosion must be identity");
+    }
+
+    #[test]
+    fn erosion_params_clamp_no_panic() {
+        let junk = ErosionParams {
+            moderate_carve_iters: 99_999,
+            moderate_settle_rate: 9.0,
+            moderate_erodibility: -5.0,
+            ..ErosionParams::default()
+        };
+        let r = junk.resolved(&IntensityKnobs::default());
+        assert_eq!(r.moderate_carve_iters, 10_000, "iters clamp to rail");
+        assert_eq!(r.moderate_settle_rate, 1.0, "settle_rate clamps to [0,1]");
+        assert_eq!(r.moderate_erodibility, 0.0, "erodibility clamps non-negative");
+    }
+
+    #[test]
+    fn hydrology_default_knobs_are_identity() {
+        let p = HydrologyParams::default();
+        assert_eq!(p, p.resolved(&IntensityKnobs::default()), "default hydrology must be identity");
+    }
+
+    #[test]
+    fn hydrology_params_clamp_no_panic() {
+        let junk = HydrologyParams { river_percentile: 5.0, lake_max_divisor: 0, lake_max_floor: 0 };
+        let r = junk.resolved(&IntensityKnobs::default());
+        assert_eq!(r.river_percentile, 1.0, "percentile clamps to [0,1]");
+        assert_eq!(r.lake_max_divisor, 1, "divisor clamps ≥ 1 (no divide-by-zero)");
+        assert_eq!(r.lake_max_floor, 1, "floor clamps ≥ 1");
     }
 
     #[test]
