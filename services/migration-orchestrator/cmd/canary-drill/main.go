@@ -27,7 +27,9 @@
 //	                   (transient failure → retries to exhaustion). Canary OK, gate
 //	                   Pass, fanout runs → the poison reality dead-letters
 //	                   (migration_failed, attempts==MaxAttempts) while the rest succeed;
-//	                   the runner concurrency cap is respected (peak <= cap).
+//	                   the runner concurrency cap is respected AND genuinely binds
+//	                   (peak never exceeds cap; with fanout>cap a healthy run reaches
+//	                   it — peak<2 ⇒ NOTRUN, never a false PASS).
 package main
 
 import (
@@ -172,22 +174,22 @@ func (fastSleeper) Sleep(ctx context.Context, _ time.Duration) {
 func main() {
 	mode := flag.String("mode", "apply-abort", "apply-abort | verify-abort | isolation")
 	n := flag.Int("realities", 5, "number of realities (canary = smallest)")
-	cap := flag.Int("concurrency", 2, "runner concurrency cap")
+	conc := flag.Int("concurrency", 2, "runner concurrency cap")
 	flag.Parse()
-	os.Exit(run(*mode, *n, *cap))
+	os.Exit(run(*mode, *n, *conc))
 }
 
-func run(mode string, n, cap int) int {
+func run(mode string, n, conc int) int {
 	realities := realityIDs(n)
 	canaryR := realities[0] // LexicographicSelector picks the smallest
 
 	switch mode {
 	case "apply-abort":
-		return applyAbort(realities, canaryR, cap)
+		return applyAbort(realities, canaryR, conc)
 	case "verify-abort":
-		return verifyAbort(realities, canaryR, cap)
+		return verifyAbort(realities, canaryR, conc)
 	case "isolation":
-		return isolation(realities, canaryR, cap)
+		return isolation(realities, canaryR, conc)
 	default:
 		die("unknown mode %q", mode)
 		return 2
@@ -196,24 +198,28 @@ func run(mode string, n, cap int) int {
 
 // applyAbort: broken migration everywhere. The canary apply fails → abort before the
 // gate → the rest are NEVER attempted. Bite: ignore the canary failure → fanout runs.
-func applyAbort(realities []string, canaryR string, cap int) int {
+func applyAbort(realities []string, canaryR string, conc int) int {
 	ctx := context.Background()
 	resetDBs(ctx, realities)
 
 	poison := allPoison(realities)
 	rec := &recorder{}
-	orch := buildOrch(rec, poison, false, cap, nil) // gate unused (apply fails first)
+	orch := buildOrch(rec, poison, false, conc, nil) // gate unused (apply fails first)
 
 	outcome, err := orch.Run(ctx, realities, migID)
 	if err != nil {
 		die("orchestrator: %v", err)
 	}
 	realFanout := rec.fanoutStarted()
+	// NOTE: probes is structurally 0 here (the broken migration never creates the
+	// table even IF it ran), so realFanout==0 — made non-vacuous by the bite below —
+	// is the load-bearing proof for apply-abort; probes is a belt-and-suspenders that
+	// only carries weight in verify-abort (where the migration is good).
 	probes := probeCount(ctx, exclude(realities, canaryR))
 
 	// BITE: a buggy flow that ignores CanaryResult.Succeeded and fans out anyway.
 	biteRec := &recorder{}
-	buggyIgnoreCanaryFail(ctx, realities, canaryR, biteRec, poison, cap)
+	buggyIgnoreCanaryFail(ctx, realities, canaryR, biteRec, poison, conc)
 	biteFanout := biteRec.fanoutStarted()
 
 	pass := outcome.Aborted && outcome.AbortReason == "canary_apply_failed" &&
@@ -229,14 +235,14 @@ func applyAbort(realities []string, canaryR string, cap int) int {
 
 // verifyAbort: migration applies fine, but verification fails (gate.Fail) → abort →
 // the rest are NEVER attempted. Bite: gate.Pass when it should fail → fanout runs.
-func verifyAbort(realities []string, canaryR string, cap int) int {
+func verifyAbort(realities []string, canaryR string, conc int) int {
 	ctx := context.Background()
 	resetDBs(ctx, realities)
 
 	rec := &recorder{}
 	gate := canary.NewVerificationGate()
 	gate.Fail("data_check_failed") // verification verdict: the applied migration is bad
-	orch := buildOrch(rec, map[string]bool{}, false, cap, gate)
+	orch := buildOrch(rec, map[string]bool{}, false, conc, gate)
 
 	outcome, err := orch.Run(ctx, realities, migID)
 	if err != nil {
@@ -249,7 +255,7 @@ func verifyAbort(realities []string, canaryR string, cap int) int {
 	biteRec := &recorder{}
 	biteGate := canary.NewVerificationGate()
 	biteGate.Pass()
-	biteOrch := buildOrch(biteRec, map[string]bool{}, false, cap, biteGate)
+	biteOrch := buildOrch(biteRec, map[string]bool{}, false, conc, biteGate)
 	resetDBs(ctx, realities)
 	_, _ = biteOrch.Run(ctx, realities, migID)
 	biteFanout := biteRec.fanoutStarted()
@@ -267,7 +273,7 @@ func verifyAbort(realities []string, canaryR string, cap int) int {
 
 // isolation: one poison fanout reality dead-letters (retries exhausted) while the
 // rest succeed; the runner concurrency cap is respected.
-func isolation(realities []string, canaryR string, cap int) int {
+func isolation(realities []string, canaryR string, conc int) int {
 	ctx := context.Background()
 	resetDBs(ctx, realities)
 
@@ -276,7 +282,7 @@ func isolation(realities []string, canaryR string, cap int) int {
 	poisonR := fanout[len(fanout)/2]
 	rec := &recorder{}
 	peak := &runner.PeakConcurrency{}
-	orch := buildOrchPeak(rec, map[string]bool{poisonR: true}, true, cap, mustGatePass(), peak)
+	orch := buildOrchPeak(rec, map[string]bool{poisonR: true}, true, conc, mustGatePass(), peak)
 
 	outcome, err := orch.Run(ctx, realities, migID)
 	if err != nil {
@@ -295,29 +301,43 @@ func isolation(realities []string, canaryR string, cap int) int {
 	otherProbes := probeCount(ctx, exclude(fanout, poisonR))
 	canaryProbe := probeCount(ctx, []string{canaryR})
 
-	pass := outcome.Verified && failed == 1 &&
+	isolated := outcome.Verified && failed == 1 &&
 		poisonAttempts == runner.DefaultMaxAttempts &&
 		succeededOthers == len(fanout)-1 &&
-		otherProbes == len(fanout)-1 && canaryProbe == 1 &&
-		peak.Peak() <= cap && peak.Peak() >= 1
+		otherProbes == len(fanout)-1 && canaryProbe == 1
 
 	fmt.Printf(`{"mode":"isolation","verified":%t,"poison":%q,"failed":%d,"poison_attempts":%d,"others_succeeded":%d,"other_probes":%d,"peak_concurrency":%d,"cap":%d}`+"\n",
-		outcome.Verified, poisonR, failed, poisonAttempts, succeededOthers, otherProbes, peak.Peak(), cap)
-	if !pass {
-		fmt.Fprintf(os.Stderr, "FAIL: per-reality isolation broken — expected exactly 1 dead-letter (attempts=%d), %d others succeeded, peak<=%d\n",
-			runner.DefaultMaxAttempts, len(fanout)-1, cap)
+		outcome.Verified, poisonR, failed, poisonAttempts, succeededOthers, otherProbes, peak.Peak(), conc)
+
+	// Correctness: the cap must NEVER be exceeded.
+	if peak.Peak() > conc {
+		fmt.Fprintf(os.Stderr, "FAIL: concurrency cap EXCEEDED — peak=%d > cap=%d (the runner semaphore is broken)\n", peak.Peak(), conc)
 		return 1
 	}
-	fmt.Fprintf(os.Stderr, "PASS: poison reality %s dead-lettered after %d attempts; %d others migrated; peak concurrency %d <= cap %d\n",
-		poisonR, poisonAttempts, succeededOthers, peak.Peak(), cap)
+	if !isolated {
+		fmt.Fprintf(os.Stderr, "FAIL: per-reality isolation broken — expected exactly 1 dead-letter (attempts=%d) + %d others succeeded\n",
+			runner.DefaultMaxAttempts, len(fanout)-1)
+		return 1
+	}
+	// Non-vacuity: with fanout (%d) > cap (%d) a healthy run MUST actually reach the
+	// cap. peak<2 means the host serialized the docker-exec work, so we can't prove
+	// the cap binds — NOTRUN (never a flaky FAIL). A regression that collapsed the
+	// runner to serial would land here, not in a false PASS.
+	if peak.Peak() < 2 {
+		fmt.Fprintf(os.Stderr, "NOTRUN: host serialized work (peak=%d, cap=%d, fanout=%d) — cannot confirm the cap binds; re-run\n",
+			peak.Peak(), conc, len(fanout))
+		return 2
+	}
+	fmt.Fprintf(os.Stderr, "PASS: poison reality %s dead-lettered after %d attempts; %d others migrated; concurrency genuinely binds (peak=%d, cap=%d)\n",
+		poisonR, poisonAttempts, succeededOthers, peak.Peak(), conc)
 	return 0
 }
 
 // buggyIgnoreCanaryFail models the Phase-1 bug: run the canary, then fan out to the
 // rest REGARDLESS of the canary result. Proves the real orchestrator's guard matters.
-func buggyIgnoreCanaryFail(ctx context.Context, realities []string, canaryR string, rec *recorder, poison map[string]bool, cap int) {
+func buggyIgnoreCanaryFail(ctx context.Context, realities []string, canaryR string, rec *recorder, poison map[string]bool, conc int) {
 	peak := &runner.PeakConcurrency{}
-	r := mustRunner(rec, &pgApplier{poison: poison, peak: peak}, cap)
+	r := mustRunner(rec, &pgApplier{poison: poison, peak: peak}, conc)
 	// canary (ignored)
 	_ = r.Run(ctx, []runner.Job{{RealityID: canaryR, MigrationID: migID, RunID: "canary-" + migID}})
 	// fan out anyway
@@ -330,12 +350,12 @@ func buggyIgnoreCanaryFail(ctx context.Context, realities []string, canaryR stri
 
 // ── wiring helpers ──────────────────────────────────────────────────────────────
 
-func buildOrch(rec *recorder, poison map[string]bool, transient bool, cap int, gate *canary.VerificationGate) *canary.Orchestrator {
-	return buildOrchPeak(rec, poison, transient, cap, gate, &runner.PeakConcurrency{})
+func buildOrch(rec *recorder, poison map[string]bool, transient bool, conc int, gate *canary.VerificationGate) *canary.Orchestrator {
+	return buildOrchPeak(rec, poison, transient, conc, gate, &runner.PeakConcurrency{})
 }
 
-func buildOrchPeak(rec *recorder, poison map[string]bool, transient bool, cap int, gate *canary.VerificationGate, peak *runner.PeakConcurrency) *canary.Orchestrator {
-	r := mustRunner(rec, &pgApplier{poison: poison, transient: transient, peak: peak}, cap)
+func buildOrchPeak(rec *recorder, poison map[string]bool, transient bool, conc int, gate *canary.VerificationGate, peak *runner.PeakConcurrency) *canary.Orchestrator {
+	r := mustRunner(rec, &pgApplier{poison: poison, transient: transient, peak: peak}, conc)
 	cfg := &canary.Config{
 		Dispatcher:        runnerDispatcher{r: r},
 		Selector:          canary.LexicographicSelector{},
@@ -350,9 +370,9 @@ func buildOrchPeak(rec *recorder, poison map[string]bool, transient bool, cap in
 	return orch
 }
 
-func mustRunner(rec *recorder, app runner.Applier, cap int) *runner.Runner {
+func mustRunner(rec *recorder, app runner.Applier, conc int) *runner.Runner {
 	r, err := runner.New(&runner.Config{
-		Concurrency: cap,
+		Concurrency: conc,
 		Applier:     app,
 		Auditor:     rec,
 		StateWriter: rec,

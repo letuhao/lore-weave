@@ -21,10 +21,19 @@
 #   relocate  happy path end-to-end.
 #   fault     kill BETWEEN copy and the registry flip → assert db_host still points at
 #             the SOURCE (full data, no loss) + nothing decommissioned; then RESUME →
-#             flip + decommission complete (roll-forward).
+#             re-verify checksum + flip + decommission (roll-forward).
+#   abort     after migrating+copy the operator ABORTS → db_host stays on the SOURCE
+#             (canonical), status→active, target cleaned up (roll-back).
 #   bite      flip db_host to the target BEFORE the data lands (empty target) → the
 #             content-checksum MUST catch the short target (the gate has teeth).
-#   smoke     relocate + fault + bite.
+#   smoke     relocate + fault + abort + bite.
+#
+# SCOPE CAVEAT (D-S13-RELOCATE-FREEZE): the drill assumes the reality is QUIESCED while
+# in `migrating` (no writes to the source between checksum and flip). The foundation has
+# NO write-freeze-on-migrating enforcement yet, so a late write to the source after the
+# checksum would be lost on the flip. This drill proves the registry-atomicity +
+# loss-free-COPY invariants, NOT the freeze; the freeze is tracked as a deferred gap
+# (sibling of D-S13-CLOSURE-DRAIN).
 #
 # Verdict: NOTRUN(2) setup; FAIL(1) loss/orphan/vacuous-bite; PASS(0) clean.
 # Requires scale-rig.sh up with >=2 shards. Re-runnable (drops + recreates its DBs).
@@ -65,7 +74,9 @@ require() {
 # event content checksum (count + digest over event_id||aggregate_version||payload,
 # ordered) — id ALONE would miss a payload/version corruption. 2>/dev/null so a
 # missing events table (empty target in the bite) yields an empty string (clean
-# mismatch), not a script error.
+# mismatch), not a script error. SCOPE: events only (the per-reality SSOT) — per the
+# Inc-4 spec; events_outbox is derived/regenerable and not part of the relocation
+# correctness contract, so it is intentionally NOT in the digest.
 checksum() { # container db
   psqlA "$1" "$2" "SELECT count(*)||':'||COALESCE(md5(string_agg(event_id::text||'|'||aggregate_version::text||'|'||payload::text, ',' ORDER BY event_id::text)),'empty') FROM events" 2>/dev/null || true
 }
@@ -126,8 +137,10 @@ copy_to_target() {
   rm -f "$dump"
 }
 
-to_migrating() { "$RB" -meta-dsn "$DSN" -reality "$R" -mode to-migrating; }
-to_active()    { "$RB" -meta-dsn "$DSN" -reality "$R" -mode to-active -db-host "$DST_HOST" -db-name "$DST_DB"; }
+to_migrating()  { "$RB" -meta-dsn "$DSN" -reality "$R" -mode to-migrating; }
+to_active()     { "$RB" -meta-dsn "$DSN" -reality "$R" -mode to-active -db-host "$DST_HOST" -db-name "$DST_DB"; }
+# Abort/roll-back: migrating→active staying on the SOURCE (db_host unchanged).
+to_active_src() { "$RB" -meta-dsn "$DSN" -reality "$R" -mode to-active -db-host "$SRC_HOST" -db-name "$SRC_DB"; }
 reg_host()     { psqlA "$META_C" "$META_DB" "SELECT db_host FROM reality_registry WHERE reality_id='${R}'" | tr -d '[:space:]'; }
 reg_status()   { psqlA "$META_C" "$META_DB" "SELECT status  FROM reality_registry WHERE reality_id='${R}'" | tr -d '[:space:]'; }
 src_db_exists(){ psqlA "$SRC_C" foundation "SELECT 1 FROM pg_database WHERE datname='${SRC_DB}'" | tr -d '[:space:]'; }
@@ -176,13 +189,42 @@ cmd_fault() {
   [ -n "$src_left" ] || fail "source decommissioned before the flip — data destroyed mid-relocation"
   log "  mid-fault SAFE: db_host still ${host} (source, full ${src_ev} events); nothing decommissioned"
 
-  # RESUME (roll-forward): the relocation completes from where it stopped.
-  log "resume → flip + decommission ..."; to_active
+  # RESUME (roll-forward): a faithful resume RE-VERIFIES the target (it could have
+  # drifted/been tampered during the outage) BEFORE flipping — re-run the checksum
+  # gate, then flip + decommission.
+  log "resume → re-verify checksum gate, then flip + decommission ..."
+  s="$(checksum "$SRC_C" "$SRC_DB")"; d="$(checksum "$DST_C" "$DST_DB")"
+  [ -n "$s" ] && [ "$s" = "$d" ] || fail "resume checksum mismatch — target drifted during the outage (src=${s} dst=${d})"
+  to_active
   psqlA "$SRC_C" foundation "DROP DATABASE IF EXISTS ${SRC_DB} WITH (FORCE)" >/dev/null
   host="$(reg_host)"; src_left="$(src_db_exists)"
   [ "$host" = "$DST_HOST" ] && [ -z "$src_left" ] \
     || fail "resume did not complete (host=${host} src_left=${src_left})"
-  log "PASS(fault): mid-relocation kill left db_host at the full source (no loss); resume rolled forward cleanly"
+  log "PASS(fault): mid-relocation kill left db_host at the full source (no loss); resume re-verified + rolled forward cleanly"
+}
+
+# cmd_abort — the roll-BACK half of "roll forward or back": after migrating + copy,
+# the operator ABORTS. db_host stays on the source (canonical), status returns to
+# active, and the half-built target is cleaned up. No data moved.
+cmd_abort() {
+  setup
+  log "active → migrating (CAS) ..."; to_migrating
+  log "copy events (then DECIDE TO ABORT) ..."; copy_to_target
+  log "ABORT: migrating → active staying on ${SRC_HOST} + drop the target ..."
+  to_active_src
+  psqlA "$DST_C" foundation "DROP DATABASE IF EXISTS ${DST_DB} WITH (FORCE)" >/dev/null
+
+  local host status src_ev tgt_left
+  host="$(reg_host)"; status="$(reg_status)"
+  src_ev="$(psqlA "$SRC_C" "$SRC_DB" "SELECT count(*) FROM events" | tr -d '[:space:]')"
+  tgt_left="$(psqlA "$DST_C" foundation "SELECT 1 FROM pg_database WHERE datname='${DST_DB}'" | tr -d '[:space:]')"
+  printf '{"phase":"abort","db_host":%q,"status":%q,"source_events":%s,"target_db_left":%q}\n' \
+    "$host" "$status" "${src_ev:-0}" "${tgt_left:-}"
+  [ "$host" = "$SRC_HOST" ] || fail "abort moved db_host off the source (got ${host}) — roll-back not canonical"
+  [ "$status" = "active" ]  || fail "abort did not return status to active (got ${status})"
+  [ "${src_ev:-0}" -eq "$SRC_COUNT" ] || fail "source lost events during abort (got ${src_ev})"
+  [ -z "$tgt_left" ] || fail "aborted target not cleaned up — orphan target DB left behind"
+  log "PASS(abort): relocation rolled BACK — db_host stayed on the source, source intact (${src_ev} events), target cleaned up"
 }
 
 cmd_bite() {
@@ -205,8 +247,9 @@ cmd_smoke() {
   ensure_bin; require
   cmd_relocate
   cmd_fault
+  cmd_abort
   cmd_bite
-  log "PASS(smoke): relocate (atomic flip + complete target + no orphan) · fault (no-loss + roll-forward) · bite (checksum has teeth)"
+  log "PASS(smoke): relocate (atomic flip + complete target + no orphan) · fault (no-loss + roll-forward) · abort (roll-back, source canonical) · bite (checksum has teeth)"
 }
 
 main() {
@@ -214,9 +257,10 @@ main() {
   case "$sub" in
     relocate) cmd_relocate ;;
     fault)    cmd_fault ;;
+    abort)    cmd_abort ;;
     bite)     cmd_bite ;;
     smoke)    cmd_smoke ;;
-    *) echo "usage: $0 {relocate|fault|bite|smoke}" >&2; exit 2 ;;
+    *) echo "usage: $0 {relocate|fault|abort|bite|smoke}" >&2; exit 2 ;;
   esac
 }
 main "$@"
