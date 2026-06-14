@@ -1,0 +1,7 @@
+id: w1-provision
+description: "W1.5 — provisioner + Rust→Go meta-write bridge, LIVE (cross-language). The Rust provisioner runs the real 11-step provision_reality with LiveEffects: register_pending + transitions via the internal Go bridge (reality_registry write through MetaWrite ⇒ meta_write_audit in the same TX, I8), CREATE DATABASE + REVOKE CONNECT (I4) on the shard, skeleton migration. Closes D-S4-I4-PROVISIONER (core). provision: status=active, I8 audit rows present, per-reality DB created + REVOKE-isolated, bridge calls audited in service_to_service_audit. bite A: a non-revoked DB lets a foreign role connect (REVOKE is the enforcer); bite B: a raw registry INSERT bypassing the bridge leaves 0 meta_write_audit (I8 produced BY the bridge). Boots the bridge-server + needs meta-pg + pg-shard-0 + the Rust client ⇒ nightly-only (heavier than the single-language drills)."
+invariant: I-w1-provision-i4-isolated-i8-audited
+kind: live-probe
+command: ["bash", "scripts/perf/w1-provision.sh", "smoke"]
+requires: ["scale-rig"]
+skip_when: []

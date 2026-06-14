@@ -384,13 +384,44 @@ jobs:
           # (D1 disk is pure bash + pgbench — no Go harness).
           go build -C services/meta-worker ./cmd/rss-soak ./cmd/connpool-stress ./cmd/deadlock-probe
           go vet  -C services/meta-worker ./cmd/rss-soak ./cmd/connpool-stress ./cmd/deadlock-probe
-      - name: shellcheck the scale + L1 + S14 scripts (smoke)
+      - name: build + vet the W1 production-wiring Go tooling
+        run: |
+          # W1.2 migrate CLI + drill (migration-orchestrator); W1.3 closure-drill +
+          # W1.5 bridge + bridge-server (meta-worker). go test covers pkg/live,
+          # pkg/closure, pkg/bridge unit suites.
+          go build -C services/migration-orchestrator ./cmd/migrate ./cmd/migrate-drill ./pkg/live
+          go vet  -C services/migration-orchestrator ./cmd/migrate ./cmd/migrate-drill ./pkg/live
+          go test -C services/migration-orchestrator ./pkg/live/...
+          go build -C services/meta-worker ./cmd/closure-drill ./cmd/bridge-server ./pkg/closure ./pkg/bridge
+          go vet  -C services/meta-worker ./cmd/closure-drill ./cmd/bridge-server ./pkg/closure ./pkg/bridge
+          go test -C services/meta-worker ./pkg/closure/... ./pkg/bridge/...
+      - name: shellcheck the scale + L1 + S14 + W1 scripts (smoke)
         run: |
           for s in scale-rig shared-path roleplay-load soak multishard-dr \
                    l1-lifecycle l1-capacity l1-migration l1-relocate \
-                   s14-disk s14-memory s14-connpool s14-deadlock; do
+                   s14-disk s14-memory s14-connpool s14-deadlock \
+                   w1-capacity w1-migrate w1-freeze w1-closure w1-provision; do
             bash -n "scripts/perf/${s}.sh"
           done
+
+  w1-rust-build:
+    name: W1 production-wiring Rust build (per-PR — anti-bit-rot)
+    # The W1 Rust bins (capacity-place, freeze-drill, provision-drill) + the
+    # dp-kernel freeze guard + world-service provisioner_live must keep compiling;
+    # the live drills themselves run in scale-nightly. Unit suites: the kernel
+    # freeze-set + provisioner_live safe_ident + capacity_glue lock-key.
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: build W1 Rust bins
+        run: cargo build -p world-service --bin capacity-place --bin freeze-drill --bin provision-drill
+      - name: W1 Rust unit suites
+        run: |
+          cargo test -p dp-kernel --lib event_store_pg::
+          cargo test -p world-service --lib 'capacity_glue::' 'provisioner_live::'
 
   scale-nightly:
     name: S12 scale sweep (nightly — live, real multi-shard rig)
@@ -407,6 +438,10 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25"
+      # W1 drills self-build their Go + Rust bins; the Rust toolchain is needed
+      # for capacity-place / freeze-drill / provision-drill.
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - name: build wg + publisher + bench (no .exe on Linux)
         run: |
           go build -C tests/workload-gen -o wg ./cmd/workload-gen
@@ -479,3 +514,27 @@ jobs:
         run: |
           set +e; bash scripts/perf/s14-deadlock.sh smoke; rc=$?; set -e
           echo "s14-deadlock rc=$rc"; [ "$rc" = 1 ] && exit 1 || exit 0
+      # ── W1 production-wiring live sweep (rides the booted scale rig: meta-pg +
+      #    pg-shard-0). Each script self-migrates its own meta/per-reality DBs and
+      #    embeds its bite(s). The provision drill is cross-language (boots the Go
+      #    bridge-server + the Rust client) — heavier, but still nightly-only here.
+      - name: W1.1 capacity routing glue + bite
+        run: |
+          set +e; bash scripts/perf/w1-capacity.sh smoke; rc=$?; set -e
+          echo "w1-capacity rc=$rc (0=pass,2=notrun)"; [ "$rc" = 1 ] && exit 1 || exit 0
+      - name: W1.2 migrate CLI live-wiring + bite
+        run: |
+          set +e; bash scripts/perf/w1-migrate.sh smoke; rc=$?; set -e
+          echo "w1-migrate rc=$rc"; [ "$rc" = 1 ] && exit 1 || exit 0
+      - name: W1.4 kernel write-freeze guard + bite
+        run: |
+          set +e; bash scripts/perf/w1-freeze.sh smoke; rc=$?; set -e
+          echo "w1-freeze rc=$rc"; [ "$rc" = 1 ] && exit 1 || exit 0
+      - name: W1.3 closure-drain orchestrator + bite
+        run: |
+          set +e; bash scripts/perf/w1-closure.sh smoke; rc=$?; set -e
+          echo "w1-closure rc=$rc"; [ "$rc" = 1 ] && exit 1 || exit 0
+      - name: W1.5 provisioner + Rust→Go bridge + bites (cross-language)
+        run: |
+          set +e; bash scripts/perf/w1-provision.sh smoke; rc=$?; set -e
+          echo "w1-provision rc=$rc"; [ "$rc" = 1 ] && exit 1 || exit 0

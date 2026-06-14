@@ -78,13 +78,16 @@ test coverage. The 3 real defects testing found (I7 XACK, lifecycle-audit atomic
 Each item ships the project discipline: spec/plan for L+, `/review-impl` on plan +
 impl, a **non-vacuity bite**, conformance case + CI where it's a runtime check.
 
-### Wave 1 — Production wiring (Category B) — START HERE
-Closes the "design proven but unwired" gap; makes L1 production-runnable. Highest value.
-1. **W1.1 capacity routing glue** — read `shard_utilization` → `ShardCapacity` snapshot → `pick_shard` at provision time; add `current_db_count <= capacity_max_dbs` DB CHECK. Bite: over-subscribe with the read-glue bypassed → caught.
-2. **W1.2 migrate CLI live wiring** — bind `cmd/migrate` cmdApply to a real MetaWriter (→ MetaWrite) + per-reality Applier (real migration SQL); breaking → canary, else → runner. Bite: a broken migration aborts at the canary (reuse the S13 abort-path bite live).
-3. **W1.3 closure-drain orchestrator** — on `active→pending_close`, drain the reality's outbox to the publisher high-water before allowing `→frozen`; abort restores `→active`. Bite: un-drained outbox + force `→frozen` → caught (closes D-S13-CLOSURE-DRAIN).
-4. **W1.4 relocate write-freeze** — reject event appends when `reality_registry.status='migrating'` (or `pending_close`); the relocation/closure paths rely on it. Bite: append during `migrating` succeeds with the guard off → lost-on-flip (closes D-S13-RELOCATE-FREEZE, hardens Inc-4).
-5. **W1.5 provisioner core** — real `Effects`: `CREATE DATABASE` on the picked shard + per-service role + `REVOKE CONNECT` privilege bootstrap; register_pending→MetaWrite; transition_to→AttemptStateTransition. Makes the `db-per-service-isolation` conformance case a real probe (closes D-S4-I4-PROVISIONER core; peripheral steps stay go-live).
+### Wave 1 — Production wiring (Category B) — ✅ COMPLETE (2026-06-14)
+Closed the "design proven but unwired" gap; L1 is now production-runnable. Shipped
+as one bundled XL task, 6 increments, each with a live drill + non-vacuity bite +
+a `w1-*` conformance case + CI (scale-build/w1-rust-build per-PR; scale-nightly live).
+1. ✅ **W1.1 capacity routing glue** (`33bb2e83`) — live snapshot from `shard_utilization` caps × a fresh `reality_registry` count (NOT the unbuilt `current_db_count` metric); per-shard advisory lock around count→recount→register closes the over-subscription TOCTOU. NO snapshot DB CHECK (metrics must observe over-subscription). Bite: lock-off → over-subscription reproduced. **D-S13-CAPACITY-ROUTING-GLUE cleared.**
+2. ✅ **W1.2 migrate CLI live wiring** (`6ff491f0`) — `cmd/migrate` bound to pgx SQLApplier + DSN resolver + MetaWrite audit/state (I8); breaking → canary, else → runner. Bite: ignore-canary fans out → guard non-vacuous. **D-MIGRATE-CLI-LIVE-WIRING cleared.**
+3. ✅ **W1.3 closure-drain orchestrator** (`d92d8b1b`) — `active→pending_close` (freezes appends via W1.4) → drain outbox to 0 → `→frozen`; drain-timeout aborts to `active` (never forces frozen). Bite: naive close strands events. **D-S13-CLOSURE-DRAIN cleared.**
+4. ✅ **W1.4 relocate/closure write-freeze** (`700388ab`) — dp-kernel append rejects frozen states via an UNCACHED meta status read (freeze-settle option b → no settle window). Bite: guard-off append during `migrating` lands. **D-S13-RELOCATE-FREEZE cleared.**
+5. ✅ **W1.5 provisioner + Rust→Go meta-write bridge** (`f2364527`) — scoped internal bridge on meta-worker (register/transition, fail-closed token, s2s audit, idempotent, dual-role shutdown) + Rust `LiveEffects` (CREATE DATABASE + `REVOKE CONNECT` I4 + skeleton; register/transitions via the bridge, I8). Live provision-drill end-to-end + REVOKE/I8 bites. **D-S4-I4-PROVISIONER core cleared** (pgbouncer/prometheus/backup stay go-live).
+6. ✅ **Inc-6** — 5 `w1-*` conformance cases (requires scale-rig) + CI: `scale-build` (Go build/vet/test) + `w1-rust-build` (Rust bins + unit suites) per-PR, `scale-nightly` live sweep (provision drill cross-language, nightly-only).
 
 ### Wave 2 — Spine hardening & fault coverage (Category A)
 6. **W2.1 sustained-workload generator mode** (D-S6-SUSTAINED-WORKLOAD) — a loop/steady-rate driver; prerequisite for genuine transient-during-fault. Do first in the wave.
