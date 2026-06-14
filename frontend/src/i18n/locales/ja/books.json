@@ -315,7 +315,8 @@
     "submit_selected_other": "選択した {{count}} 章を翻訳",
     "page_indicator": "ページ {{page}} / {{pages}}",
     "prev": "前へ",
-    "next": "次へ"
+    "next": "次へ",
+    "page": "ページ"
   },
   "kind_editor": {
     "modified": "変更済み",

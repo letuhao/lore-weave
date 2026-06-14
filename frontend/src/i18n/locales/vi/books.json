@@ -315,7 +315,8 @@
     "submit_selected_other": "Dịch {{count}} chương đã chọn",
     "page_indicator": "Trang {{page}} / {{pages}}",
     "prev": "Trước",
-    "next": "Sau"
+    "next": "Sau",
+    "page": "Trang"
   },
   "kind_editor": {
     "modified": "đã sửa",

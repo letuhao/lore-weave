@@ -549,7 +549,22 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated, preselecte
                     >
                       <ChevronLeft className="h-3 w-3" /> {t('translate.prev')}
                     </button>
-                    <span>{t('translate.page_indicator', { page: safePage + 1, pages: pageCount })}</span>
+                    <span className="inline-flex items-center gap-1">
+                      {t('translate.page')}
+                      <input
+                        type="number"
+                        min={1}
+                        max={pageCount}
+                        value={safePage + 1}
+                        onChange={(e) => {
+                          const n = Number(e.target.value);
+                          if (Number.isFinite(n)) setPage(Math.min(pageCount - 1, Math.max(0, n - 1)));
+                        }}
+                        className="h-6 w-12 rounded-md border bg-background px-1 text-center text-[11px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
+                        aria-label={t('translate.page')}
+                      />
+                      / {pageCount}
+                    </span>
                     <button
                       onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
                       disabled={safePage >= pageCount - 1}
