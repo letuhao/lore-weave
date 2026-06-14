@@ -64,6 +64,43 @@ describe('ChapterListBrowser', () => {
     expect(params.lifecycle_state).toBe('active');
   });
 
+  it('select-all-N loop-fetches every matching id across pages', async () => {
+    listChapters.mockImplementation((_t: unknown, _b: unknown, params: { offset?: number }) => {
+      const off = params?.offset ?? 0;
+      if (off === 0) return Promise.resolve({ items: [chap('c1', 1, 'A'), chap('c2', 2, 'B')], total: 150 });
+      if (off === 100) return Promise.resolve({ items: [chap('c3', 3, 'C'), chap('c4', 4, 'D')], total: 150 });
+      return Promise.resolve({ items: [], total: 150 });
+    });
+    const onSelectionChange = vi.fn();
+    // Pre-select the visible page so the "select all N matching" affordance shows.
+    renderBrowser({ selectionMode: 'multi', selectedIds: new Set(['c1', 'c2']), onSelectionChange, enableSelectAll: true });
+    await waitFor(() => expect(screen.getAllByTestId('chapter-browser-row').length).toBe(2));
+    fireEvent.click(await screen.findByText(/select_all_matching/));
+    await waitFor(() => {
+      expect(onSelectionChange).toHaveBeenCalled();
+      const last = onSelectionChange.mock.calls.at(-1)![0] as Set<string>;
+      expect(last.size).toBe(4);
+      expect(last.has('c4')).toBe(true);
+    });
+  });
+
+  it('changing page refetches with the new offset', async () => {
+    listChapters.mockResolvedValue({ items: [chap('c1', 1, 'A'), chap('c2', 2, 'B')], total: 150 });
+    renderBrowser({});
+    await waitFor(() => expect(screen.getAllByTestId('chapter-browser-row').length).toBe(2));
+    fireEvent.click(screen.getByLabelText('chapterBrowser.next'));
+    await waitFor(() => {
+      expect(listChapters.mock.calls.some((c) => (c[2] as { offset?: number })?.offset === 50)).toBe(true);
+    });
+  });
+
+  it('out-of-range page (total>0, empty page) offers jump-to-first', async () => {
+    // First render returns a page; then simulate an empty out-of-range page.
+    listChapters.mockResolvedValue({ items: [], total: 150 });
+    renderBrowser({});
+    await waitFor(() => expect(screen.getByText('chapterBrowser.page_empty_first')).toBeTruthy());
+  });
+
   it('debounced search reaches the query as q', async () => {
     renderBrowser({ enableSearch: true });
     await waitFor(() => expect(screen.getByTestId('chapter-browser-search')).toBeTruthy());

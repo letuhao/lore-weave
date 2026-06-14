@@ -105,7 +105,9 @@
     "range": "{{total}}件中 {{start}}–{{end}}",
     "page": "ページ",
     "prev": "前のページ",
-    "next": "次のページ"
+    "next": "次のページ",
+    "page_empty": "このページは空です。",
+    "page_empty_first": "最初のページへ"
   },
   "chapters": {
     "count": "{{count}}章",

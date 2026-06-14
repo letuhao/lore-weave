@@ -105,7 +105,9 @@
     "range": "{{start}}–{{end}} trên {{total}}",
     "page": "Trang",
     "prev": "Trang trước",
-    "next": "Trang sau"
+    "next": "Trang sau",
+    "page_empty": "Trang này trống.",
+    "page_empty_first": "Về trang đầu"
   },
   "chapters": {
     "count": "{{count}} chương",

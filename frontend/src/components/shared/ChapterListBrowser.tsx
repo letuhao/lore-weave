@@ -70,6 +70,18 @@ export function ChapterListBrowser({
   const [searchInput, setSearchInput] = useState('');
   const debouncedSearch = useDebouncedValue(searchInput, 300);
 
+  // Reset to page 0 when a filter PROP changes (lifecycle/editorialStatus) so a
+  // narrower filter doesn't strand the user on a now-out-of-range page. This is
+  // React's sanctioned "adjust state during render on prop change" pattern (a
+  // guarded set during render, NOT a useEffect-for-events). Search resets in
+  // setSearch below.
+  const filterKey = `${lifecycle}|${editorialStatus ?? ''}`;
+  const [prevFilterKey, setPrevFilterKey] = useState(filterKey);
+  if (filterKey !== prevFilterKey) {
+    setPrevFilterKey(filterKey);
+    paged.reset();
+  }
+
   const listParams = {
     lifecycle_state: lifecycle,
     editorial_status: editorialStatus,
@@ -164,9 +176,20 @@ export function ChapterListBrowser({
         {isLoading && chapters.length === 0 ? (
           <div className="p-4 space-y-2">{[1, 2, 3].map((i) => <div key={i} className="h-9 animate-pulse rounded bg-secondary" />)}</div>
         ) : chapters.length === 0 ? (
-          <div className="p-8 text-center text-xs text-muted-foreground">
-            {t('chapterBrowser.empty', { defaultValue: 'No chapters' })}
-          </div>
+          total > 0 ? (
+            // Out-of-range page (rows deleted while paged deep) — total>0 but this
+            // offset is empty. Offer a jump back rather than a false "no chapters".
+            <div className="p-6 text-center text-xs text-muted-foreground">
+              {t('chapterBrowser.page_empty', { defaultValue: 'This page is empty.' })}{' '}
+              <button onClick={() => paged.setPage(0)} className="text-primary hover:underline">
+                {t('chapterBrowser.page_empty_first', { defaultValue: 'Go to first page' })}
+              </button>
+            </div>
+          ) : (
+            <div className="p-8 text-center text-xs text-muted-foreground">
+              {t('chapterBrowser.empty', { defaultValue: 'No chapters' })}
+            </div>
+          )
         ) : (
           chapters.map((c) => {
             const selected = sel.has(c.chapter_id);

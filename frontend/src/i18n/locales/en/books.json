@@ -105,7 +105,9 @@
     "range": "{{start}}–{{end}} of {{total}}",
     "page": "Page",
     "prev": "Previous page",
-    "next": "Next page"
+    "next": "Next page",
+    "page_empty": "This page is empty.",
+    "page_empty_first": "Go to first page"
   },
   "chapters": {
     "count": "{{count}} chapter",

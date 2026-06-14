@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Loader2, Info } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/auth';
@@ -35,21 +35,39 @@ export function StepBatchConfig({
   const [mode, setMode] = useState<SelectionMode>('all');
   const [rangeFrom, setRangeFrom] = useState(1);
   const [rangeTo, setRangeTo] = useState(1);
+  // Stable Set identity for the browser's controlled selection (avoids a new Set
+  // every render).
+  const pickSelection = useMemo(() => new Set(chapterIds), [chapterIds]);
 
+  // Loop-fetch the FULL chapter list (paginate, since the BE caps a page at 100):
+  // the all/range modes enumerate ids client-side, so a single capped fetch
+  // silently truncated 'all' / 'range' to the first 100 on big books. pick mode
+  // uses the paginated <ChapterListBrowser> instead and doesn't rely on this.
   useEffect(() => {
     if (!accessToken) return;
+    let cancelled = false;
     setLoading(true);
-    booksApi
-      .listChapters(accessToken, bookId, { lifecycle_state: 'active', limit: 500, offset: 0 })
-      .then((resp) => {
-        setChapters(resp.items);
-        setRangeTo(resp.items.length);
-        // Default: select all if no chapters pre-selected
-        if (chapterIds.length === 0) {
-          onChapterIdsChange(resp.items.map((c) => c.chapter_id));
-        }
-      })
-      .finally(() => setLoading(false));
+    (async () => {
+      const all: Chapter[] = [];
+      const fetchSize = 100;
+      for (let offset = 0; ; offset += fetchSize) {
+        const resp = await booksApi.listChapters(accessToken, bookId, {
+          lifecycle_state: 'active', limit: fetchSize, offset,
+        });
+        all.push(...resp.items);
+        if (resp.items.length < fetchSize || all.length >= resp.total) break;
+      }
+      if (cancelled) return;
+      setChapters(all);
+      setRangeTo(all.length);
+      // Default: select all if no chapters pre-selected.
+      if (chapterIds.length === 0) {
+        onChapterIdsChange(all.map((c) => c.chapter_id));
+      }
+    })()
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [accessToken, bookId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleModeChange = (newMode: SelectionMode) => {
@@ -139,7 +157,7 @@ export function StepBatchConfig({
             <ChapterListBrowser
               bookId={bookId}
               selectionMode="multi"
-              selectedIds={new Set(chapterIds)}
+              selectedIds={pickSelection}
               onSelectionChange={(ids) => onChapterIdsChange([...ids])}
               pageSize={50}
             />
