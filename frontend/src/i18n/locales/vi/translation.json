@@ -102,7 +102,14 @@
     "block_mode": "Khối",
     "text_mode": "Văn bản",
     "pane_original": "Nguyên gốc",
-    "pane_translation": "Bản dịch"
+    "pane_translation": "Bản dịch",
+    "correct": "Sửa",
+    "correcting": "Đang sửa",
+    "correct_title": "Sửa từng block bản dịch tại chỗ — lưu vào bản đã sửa của bạn và feed learning",
+    "block_saved": "Đã lưu block",
+    "block_save_failed": "Lưu thất bại: {{error}}",
+    "block_saving": "Đang lưu…",
+    "block_dirty": "Đã sửa"
   },
   "matrix": {
     "cell_done": "Xong",

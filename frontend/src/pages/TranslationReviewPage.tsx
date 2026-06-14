@@ -1,13 +1,14 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, Eye, EyeOff, BookCheck } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff, BookCheck, Pencil } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { booksApi } from '@/features/books/api';
 import { versionsApi, type ChapterTranslation } from '@/features/translation/api';
 import { BlockAlignedReview, computeReviewStats } from '@/features/translation/components/BlockAlignedReview';
 import { SplitCompareView } from '@/features/translation/components/SplitCompareView';
 import { ConfirmNameDialog } from '@/features/translation/components/ConfirmNameDialog';
+import { useBlockCorrection } from '@/features/translation/hooks/useBlockCorrection';
 import { cn } from '@/lib/utils';
 import type { JSONContent } from '@tiptap/react';
 
@@ -27,6 +28,18 @@ export default function TranslationReviewPage() {
   const [showPassthrough, setShowPassthrough] = useState(true);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [confirmNameOpen, setConfirmNameOpen] = useState(false);
+  const [correctMode, setCorrectMode] = useState(false);
+
+  // T1: per-block correction — patch one block of the chapter's human-version. On
+  // success mirror the edit into local state so the pane reflects it immediately.
+  const onBlockPatched = useCallback((index: number, block: JSONContent) => {
+    setTranslatedBlocks((prev) => {
+      const next = [...prev];
+      next[index] = block;
+      return next;
+    });
+  }, []);
+  const corr = useBlockCorrection(chapterId ?? '', version, originalBlocks, onBlockPatched);
 
   // Version list for switcher
   const [versions, setVersions] = useState<{ id: string; version_num: number; target_language: string; status: string }[]>([]);
@@ -97,11 +110,14 @@ export default function TranslationReviewPage() {
     navigate(`/books/${bookId}/chapters/${chapterId}/review/${newVersionId}`, { replace: true });
   }, [navigate, bookId, chapterId]);
 
-  // Keyboard navigation
+  // Keyboard navigation. Disabled in correct mode — the per-block textareas need the
+  // arrow keys for cursor movement (else the global handler hijacks them).
   useEffect(() => {
-    if (!isBlockMode) return;
+    if (!isBlockMode || correctMode) return;
     const maxIdx = Math.max(originalBlocks.length, translatedBlocks.length) - 1;
     const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === 'TEXTAREA' || tag === 'INPUT') return;
       if (e.key === 'ArrowDown') {
         e.preventDefault();
         setActiveIndex(prev => Math.min((prev ?? -1) + 1, maxIdx));
@@ -114,7 +130,7 @@ export default function TranslationReviewPage() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [isBlockMode, originalBlocks.length, translatedBlocks.length]);
+  }, [isBlockMode, correctMode, originalBlocks.length, translatedBlocks.length]);
 
   if (loading) {
     return (
@@ -190,6 +206,21 @@ export default function TranslationReviewPage() {
             </button>
           )}
 
+          {/* T1: per-block correction toggle (block mode only) */}
+          {isBlockMode && (
+            <button
+              onClick={() => setCorrectMode((c) => !c)}
+              className={cn(
+                'flex items-center gap-1 rounded px-2 py-1 text-[10px] transition-colors',
+                correctMode ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground',
+              )}
+              title={t('review.correct_title')}
+            >
+              <Pencil className="h-3 w-3" />
+              {correctMode ? t('review.correcting') : t('review.correct')}
+            </button>
+          )}
+
           {/* Mode badge */}
           <span className={cn(
             'rounded-full px-2 py-0.5 text-[9px] font-semibold',
@@ -244,6 +275,10 @@ export default function TranslationReviewPage() {
             showPassthrough={showPassthrough}
             activeIndex={activeIndex}
             onBlockClick={setActiveIndex}
+            editable={correctMode}
+            onBlockEdit={corr.saveBlock}
+            savingIndex={corr.savingIndex}
+            dirtyIndices={corr.dirty}
           />
         ) : (
           <SplitCompareView

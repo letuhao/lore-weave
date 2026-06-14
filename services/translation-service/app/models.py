@@ -219,6 +219,21 @@ class SaveEditedTranslationRequest(BaseModel):
     translated_body_format: str = "text"
 
 
+class PatchTranslationBlockRequest(BaseModel):
+    """T1: patch a single translated block in the chapter's (one) human-version.
+
+    Per-block correction model (a): the first patch get-or-creates the human-version
+    seeded from ``base_version_id``; subsequent patches edit it in place. ``block`` is
+    the corrected Tiptap block; ``block_index`` is its position in the version's block
+    array. ``source_block_text`` (optional) anchors the per-block learning gold to the
+    source paragraph. Block (json) format only."""
+    target_language: str
+    base_version_id: UUID
+    block_index: int = Field(ge=0)
+    block: dict
+    source_block_text: Optional[str] = None
+
+
 class TranslationJob(BaseModel):
     job_id: UUID
     book_id: UUID

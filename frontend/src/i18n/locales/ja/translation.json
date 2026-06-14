@@ -102,7 +102,14 @@
     "block_mode": "ブロック",
     "text_mode": "テキスト",
     "pane_original": "原文",
-    "pane_translation": "翻訳"
+    "pane_translation": "翻訳",
+    "correct": "修正",
+    "correcting": "修正中",
+    "correct_title": "翻訳ブロックをその場で編集 — 修正はあなたの編集版に保存され、学習に反映されます",
+    "block_saved": "ブロックを保存しました",
+    "block_save_failed": "保存に失敗: {{error}}",
+    "block_saving": "保存中…",
+    "block_dirty": "修正済み"
   },
   "matrix": {
     "cell_done": "完了",

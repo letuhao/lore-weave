@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { JSONContent } from '@tiptap/react';
 import { cn } from '@/lib/utils';
@@ -65,6 +65,14 @@ interface BlockAlignedReviewProps {
   showPassthrough?: boolean;
   activeIndex?: number | null;
   onBlockClick?: (index: number) => void;
+  /** T1: when true, translatable blocks render an editable translation pane. */
+  editable?: boolean;
+  /** Commit a per-block correction: the new plain text + the block to rebuild from. */
+  onBlockEdit?: (index: number, newText: string, template: JSONContent) => void;
+  /** The block index currently being saved (shows a spinner). */
+  savingIndex?: number | null;
+  /** Block indices already corrected this session (dirty dot). */
+  dirtyIndices?: Set<number>;
 }
 
 export function BlockAlignedReview({
@@ -73,6 +81,10 @@ export function BlockAlignedReview({
   showPassthrough = true,
   activeIndex = null,
   onBlockClick,
+  editable = false,
+  onBlockEdit,
+  savingIndex = null,
+  dirtyIndices,
 }: BlockAlignedReviewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -98,6 +110,10 @@ export function BlockAlignedReview({
             action={action}
             isActive={activeIndex === i}
             onClick={() => onBlockClick?.(i)}
+            editable={editable}
+            onBlockEdit={onBlockEdit}
+            saving={savingIndex === i}
+            isDirty={!!dirtyIndices?.has(i)}
           />
         );
       })}
@@ -114,9 +130,13 @@ interface BlockRowProps {
   action: BlockAction;
   isActive: boolean;
   onClick: () => void;
+  editable?: boolean;
+  onBlockEdit?: (index: number, newText: string, template: JSONContent) => void;
+  saving?: boolean;
+  isDirty?: boolean;
 }
 
-function BlockRow({ index, original, translated, action, isActive, onClick }: BlockRowProps) {
+function BlockRow({ index, original, translated, action, isActive, onClick, editable, onBlockEdit, saving, isDirty }: BlockRowProps) {
   const { t } = useTranslation('translation');
   const block = original ?? translated!;
   const label = blockTypeLabel(block);
@@ -195,16 +215,21 @@ function BlockRow({ index, original, translated, action, isActive, onClick }: Bl
   const transText = extractText(translated?.content);
   const isEmpty = !transText;
   const isHeading = block.type === 'heading';
+  // Per-block editing supports simple inline blocks; compound blocks (lists/quotes)
+  // would lose structure if flattened to text → stay read-only even in edit mode.
+  const isCompound = COMPOUND_TYPES.has(block.type ?? '');
+  const canEdit = !!editable && !isCompound && !!onBlockEdit;
 
   return (
     <div
       className={cn(
-        'flex min-h-[48px] transition-colors cursor-pointer',
-        isActive ? 'bg-primary/5' : 'hover:bg-secondary/30',
+        'flex min-h-[48px] transition-colors',
+        editable ? '' : 'cursor-pointer',
+        isActive ? 'bg-primary/5' : editable ? '' : 'hover:bg-secondary/30',
       )}
-      onClick={onClick}
+      onClick={editable ? undefined : onClick}
     >
-      <Gutter index={index} label={label} badgeColor={badgeColor} hasWarning={isEmpty} />
+      <Gutter index={index} label={label} badgeColor={badgeColor} hasWarning={isEmpty} isDirty={isDirty} saving={saving} />
       <div className="flex flex-1">
         {/* Source pane */}
         <div className={cn(
@@ -219,9 +244,18 @@ function BlockRow({ index, original, translated, action, isActive, onClick }: Bl
         <div className={cn(
           'flex-1 px-4 py-2.5 font-serif leading-[1.7]',
           isHeading ? 'text-base font-semibold' : 'text-sm',
-          isEmpty ? 'text-muted-foreground/40 italic' : 'text-foreground/90',
+          isEmpty && !canEdit ? 'text-muted-foreground/40 italic' : 'text-foreground/90',
         )}>
-          {isEmpty ? (
+          {canEdit ? (
+            <EditableCell
+              key={transText}
+              index={index}
+              initialText={transText}
+              template={translated ?? { type: block.type, attrs: block.attrs }}
+              isHeading={isHeading}
+              onCommit={onBlockEdit!}
+            />
+          ) : isEmpty ? (
             t('block_review.not_translated')
           ) : translated ? (
             <BlockContent block={translated} />
@@ -231,6 +265,36 @@ function BlockRow({ index, original, translated, action, isActive, onClick }: Bl
         </div>
       </div>
     </div>
+  );
+}
+
+// ── Editable translation cell (T1 per-block correction) ─────────────────────
+
+function EditableCell({
+  index, initialText, template, isHeading, onCommit,
+}: {
+  index: number;
+  initialText: string;
+  template: JSONContent;
+  isHeading: boolean;
+  onCommit: (index: number, newText: string, template: JSONContent) => void;
+}) {
+  const { t } = useTranslation('translation');
+  const [val, setVal] = useState(initialText);
+  return (
+    <textarea
+      data-testid={`correction-cell-${index}`}
+      value={val}
+      placeholder={t('block_review.not_translated')}
+      onChange={(e) => setVal(e.target.value)}
+      onBlur={() => { if (val !== initialText) onCommit(index, val, template); }}
+      rows={Math.max(1, Math.ceil(val.length / 60))}
+      className={cn(
+        'w-full resize-none bg-transparent outline-none rounded px-1 -mx-1',
+        'focus:bg-secondary/40 focus:ring-1 focus:ring-ring/30',
+        isHeading ? 'text-base font-semibold' : 'text-sm',
+      )}
+    />
   );
 }
 
@@ -247,7 +311,7 @@ function BlockContent({ block }: { block: JSONContent }) {
 
 // ── Gutter ─────────────────────────────────────────────────────────────────
 
-function Gutter({ index, label, badgeColor, hasWarning }: { index: number; label: string; badgeColor: string; hasWarning?: boolean }) {
+function Gutter({ index, label, badgeColor, hasWarning, isDirty, saving }: { index: number; label: string; badgeColor: string; hasWarning?: boolean; isDirty?: boolean; saving?: boolean }) {
   const { t } = useTranslation('translation');
   return (
     <div className="w-9 shrink-0 flex flex-col items-center pt-2.5 gap-1 border-r border-border/30">
@@ -255,9 +319,13 @@ function Gutter({ index, label, badgeColor, hasWarning }: { index: number; label
       <span className={cn('text-[7px] px-1 py-px rounded font-semibold uppercase tracking-wide', badgeColor)}>
         {label}
       </span>
-      {hasWarning && (
+      {saving ? (
+        <span className="h-2 w-2 rounded-full border border-primary border-t-transparent animate-spin" title={t('review.block_saving')} />
+      ) : isDirty ? (
+        <span className="h-1.5 w-1.5 rounded-full bg-[#3da692]" title={t('review.block_dirty')} />
+      ) : hasWarning ? (
         <span className="h-1.5 w-1.5 rounded-full bg-[#e8a832]" title={t('block_review.not_translated_title')} />
-      )}
+      ) : null}
     </div>
   );
 }

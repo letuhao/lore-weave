@@ -167,6 +167,28 @@ export const versionsApi = {
       body: JSON.stringify(payload),
     });
   },
+
+  // T1: correct a single translated block in the chapter's (one) human-version.
+  // First call get-or-creates the human-version (seeded from base_version_id) + makes
+  // it active; later calls patch it in place. Per-block LLM→human gold is captured
+  // server-side. Block (json) format only.
+  patchBlock(
+    token: string,
+    chapterId: string,
+    payload: {
+      target_language: string;
+      base_version_id: string;
+      block_index: number;
+      block: Record<string, unknown>;
+      source_block_text?: string;
+    },
+  ): Promise<ChapterTranslation> {
+    return apiJson(`/v1/translation/chapters/${chapterId}/versions/blocks`, {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify(payload),
+    });
+  },
 };
 
 // ── Translation API ───────────────────────────────────────────────────────────

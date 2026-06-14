@@ -408,3 +408,183 @@ def test_set_active_version_returns_422_when_status_running(client, fake_pool):
     resp = client.put(f"/v1/translation/chapters/{CHAPTER_ID}/versions/{VERSION_ID}/active")
     assert resp.status_code == 422
     assert resp.json()["detail"]["code"] == "TRANSL_NOT_COMPLETED"
+
+
+# ── PATCH /v1/translation/chapters/{chapter_id}/versions/blocks (T1) ───────────
+
+def _blk(text):
+    return {"type": "paragraph", "content": [{"type": "text", "text": text}]}
+
+
+_BASE_BLOCKS = [_blk("Khối 0 (LLM)"), _blk("Khối 1 (LLM)")]
+NEW_BLOCK = _blk("Khối 1 (người sửa)")
+
+
+def _json_base(**over):
+    base = {
+        "owner_user_id": UUID(USER_ID),
+        "book_id": UUID(BOOK_ID),
+        "target_language": "vi",
+        "status": "completed",
+        "version_num": 1,
+        "translated_body_json": list(_BASE_BLOCKS),
+        "translated_body_format": "json",
+    }
+    base.update(over)
+    return FakeRecord(base)
+
+
+def _hv_sel(hv_id, blocks=None):
+    return FakeRecord({"id": hv_id, "translated_body_json": blocks if blocks is not None else list(_BASE_BLOCKS)})
+
+
+def _patched_full(hv_id, **over):
+    return _get_row(id=hv_id, authored_by="human", target_language="vi",
+                    translated_body_format="json", translated_body_json=list(_BASE_BLOCKS),
+                    edited_from_version_id=UUID(VERSION_ID), **over)
+
+
+def _patch_body(**over):
+    b = {"target_language": "vi", "base_version_id": VERSION_ID,
+         "block_index": 1, "block": NEW_BLOCK, "source_block_text": "Source para 1"}
+    b.update(over)
+    return b
+
+
+def _corrected_block_emits(fake_pool):
+    return [c for c in fake_pool.execute.call_args_list if "translation.corrected" in c.args[0]]
+
+
+def _jsonb_set_calls(fake_pool):
+    return [c for c in fake_pool.execute.call_args_list if "jsonb_set" in c.args[0]]
+
+
+def _ct_insert_in_fetchrow(fake_pool):
+    return any("INSERT INTO chapter_translations" in (c.args[0] if c.args else "")
+               for c in fake_pool.fetchrow.call_args_list)
+
+
+_PATCH_URL = f"/v1/translation/chapters/{CHAPTER_ID}/versions/blocks"
+
+
+def test_patch_block_creates_human_version_and_sets_active(client, fake_pool):
+    """First patch get-or-creates the single human-version, makes it active, patches."""
+    hv_id = uuid4()
+    # fetchrow order: base, hv-select(None), insert RETURNING, updated
+    fake_pool.fetchrow.side_effect = [
+        _json_base(), None, _hv_sel(hv_id), _patched_full(hv_id),
+    ]
+    resp = client.patch(_PATCH_URL, json=_patch_body())
+    assert resp.status_code == 200
+    assert resp.json()["authored_by"] == "human"
+    # human-version was INSERTed (get-or-create) + made active
+    assert _ct_insert_in_fetchrow(fake_pool)
+    assert _active_upsert_called(fake_pool)
+    # exactly one block patched via jsonb_set, at the requested index
+    sets = _jsonb_set_calls(fake_pool)
+    assert len(sets) == 1
+    assert sets[0].args[2] == "1"  # block_index passed as the path element
+    # per-block gold emitted with block_index
+    emits = _corrected_block_emits(fake_pool)
+    assert len(emits) == 1
+    payload = json.loads(emits[0].args[2])
+    assert payload["block_index"] == 1
+    assert payload["before"]["block"]["content"][0]["text"] == "Khối 1 (LLM)"
+    assert payload["after"]["block"]["content"][0]["text"] == "Khối 1 (người sửa)"
+    assert payload["source_block_text"] == "Source para 1"
+
+
+def test_patch_block_reuses_existing_human_version_no_new_version(client, fake_pool):
+    """A second patch edits the existing human-version in place — NO new version, NO active re-set."""
+    hv_id = uuid4()
+    fake_pool.fetchrow.side_effect = [
+        _json_base(), _hv_sel(hv_id), _patched_full(hv_id),
+    ]
+    resp = client.patch(_PATCH_URL, json=_patch_body(block_index=0))
+    assert resp.status_code == 200
+    # existing human-version found → NO INSERT INTO chapter_translations, NO active upsert
+    assert not _ct_insert_in_fetchrow(fake_pool)
+    assert not _active_upsert_called(fake_pool)
+    assert len(_jsonb_set_calls(fake_pool)) == 1
+    assert len(_corrected_block_emits(fake_pool)) == 1
+
+
+def test_patch_block_404_when_base_missing(client, fake_pool):
+    fake_pool.fetchrow.return_value = None
+    resp = client.patch(_PATCH_URL, json=_patch_body())
+    assert resp.status_code == 404
+    assert resp.json()["detail"]["code"] == "TRANSL_NOT_FOUND"
+    assert _corrected_block_emits(fake_pool) == []
+
+
+def test_patch_block_404_when_no_grant(client, fake_pool, grant_stub):
+    from app.grant_client import GrantLevel
+    grant_stub.level = GrantLevel.NONE
+    fake_pool.fetchrow.return_value = _json_base()
+    resp = client.patch(_PATCH_URL, json=_patch_body())
+    assert resp.status_code == 404
+
+
+def test_patch_block_403_when_view_grantee(client, fake_pool, grant_stub):
+    from app.grant_client import GrantLevel
+    grant_stub.level = GrantLevel.VIEW
+    fake_pool.fetchrow.return_value = _json_base()
+    resp = client.patch(_PATCH_URL, json=_patch_body())
+    assert resp.status_code == 403
+
+
+def test_patch_block_422_on_language_mismatch(client, fake_pool):
+    fake_pool.fetchrow.return_value = _json_base(target_language="en")
+    resp = client.patch(_PATCH_URL, json=_patch_body(target_language="vi"))
+    assert resp.status_code == 422
+    assert resp.json()["detail"]["code"] == "TRANSL_LANG_MISMATCH"
+
+
+def test_patch_block_422_on_text_format(client, fake_pool):
+    fake_pool.fetchrow.return_value = _json_base(translated_body_format="text", translated_body_json=None)
+    resp = client.patch(_PATCH_URL, json=_patch_body())
+    assert resp.status_code == 422
+    assert resp.json()["detail"]["code"] == "TRANSL_NOT_BLOCK_FORMAT"
+
+
+def test_patch_block_422_when_index_out_of_range(client, fake_pool):
+    hv_id = uuid4()
+    fake_pool.fetchrow.side_effect = [_json_base(), _hv_sel(hv_id)]
+    resp = client.patch(_PATCH_URL, json=_patch_body(block_index=9))
+    assert resp.status_code == 422
+    assert resp.json()["detail"]["code"] == "TRANSL_BLOCK_INDEX_OOR"
+
+
+# ── pure helpers (recompute / JSONB coercion) ─────────────────────────────────
+
+def test_block_text_extracts_nested_and_hardbreaks():
+    from app.routers.versions import _block_text
+    node = {"type": "paragraph", "content": [
+        {"type": "text", "text": "Xin "},
+        {"type": "hardBreak"},
+        {"type": "text", "text": "chào"},
+    ]}
+    assert _block_text(node) == "Xin \nchào"
+    assert _block_text({"type": "horizontalRule"}) == ""
+    assert _block_text("not a dict") == ""
+
+
+def test_blocks_to_text_joins_blocks_with_blank_line():
+    from app.routers.versions import _blocks_to_text
+    blocks = [
+        {"type": "paragraph", "content": [{"type": "text", "text": "Khối 0"}]},
+        {"type": "paragraph", "content": [{"type": "text", "text": "Khối 1"}]},
+    ]
+    assert _blocks_to_text(blocks) == "Khối 0\n\nKhối 1"
+    assert _blocks_to_text([]) == ""
+    assert _blocks_to_text(None) == ""
+
+
+def test_as_list_coerces_str_and_passthrough_list():
+    from app.routers.versions import _as_list
+    blocks = [{"type": "paragraph"}]
+    assert _as_list(blocks) == blocks            # already a list
+    assert _as_list(json.dumps(blocks)) == blocks  # JSONB returned as text
+    assert _as_list(None) == []
+    assert _as_list("not json{") == []           # malformed → empty, never raises
+    assert _as_list(123) == []                   # non-list/str → empty

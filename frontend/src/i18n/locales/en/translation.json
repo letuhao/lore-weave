@@ -102,7 +102,14 @@
     "block_mode": "Block",
     "text_mode": "Text",
     "pane_original": "Original",
-    "pane_translation": "Translation"
+    "pane_translation": "Translation",
+    "correct": "Correct",
+    "correcting": "Correcting",
+    "correct_title": "Edit translation blocks inline — corrections save to your edited version and feed learning",
+    "block_saved": "Block saved",
+    "block_save_failed": "Save failed: {{error}}",
+    "block_saving": "Saving…",
+    "block_dirty": "Corrected"
   },
   "matrix": {
     "cell_done": "Done",

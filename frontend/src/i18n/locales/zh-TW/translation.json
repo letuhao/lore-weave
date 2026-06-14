@@ -102,7 +102,14 @@
     "block_mode": "區塊",
     "text_mode": "文字",
     "pane_original": "原文",
-    "pane_translation": "翻譯"
+    "pane_translation": "翻譯",
+    "correct": "修正",
+    "correcting": "修正中",
+    "correct_title": "就地編輯翻譯區塊 — 修正會存入你的編輯版本並回饋學習",
+    "block_saved": "已儲存區塊",
+    "block_save_failed": "儲存失敗：{{error}}",
+    "block_saving": "儲存中…",
+    "block_dirty": "已修正"
   },
   "matrix": {
     "cell_done": "完成",
