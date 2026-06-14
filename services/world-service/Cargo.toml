@@ -40,6 +40,13 @@ path = "src/bin/embedding_worker.rs"
 name = "rebuilder"
 path = "src/bin/rebuilder.rs"
 
+# W1.5 (production wiring) — provision-drill live drill. End-to-end provision
+# through LiveEffects + the Rust→Go bridge: register (I8) + CREATE DATABASE +
+# REVOKE (I4) + transitions. Closes D-S4-I4-PROVISIONER (core).
+[[bin]]
+name = "provision-drill"
+path = "src/bin/provision_drill.rs"
+
 # W1.4 (production wiring) — freeze-drill live drill. Exercises the dp-kernel
 # write-freeze guard (PgEventStore + MetaFreezeGuard) against real Postgres:
 # guard-on rejects appends in migrating/pending_close/frozen; guard-off bite

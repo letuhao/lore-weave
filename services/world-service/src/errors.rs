@@ -53,4 +53,19 @@ pub enum ProvisionerError {
     /// (e.g., max_client_conn > 5000 virtual cap, or backend > 500 real cap).
     #[error("db_pool: invalid pool config: {0}")]
     DbPoolInvalid(String),
+
+    /// W1.5 — the Rust→Go meta-write bridge call failed (network, auth, or a
+    /// 5xx). The provisioner cannot complete the registry write without it.
+    #[error("provisioner: bridge call failed: {0}")]
+    Bridge(String),
+
+    /// W1.5 — a bridge transition returned 409 (stale FromState / concurrent
+    /// modification). The caller must reload + decide, NOT blind-retry.
+    #[error("provisioner: concurrent transition: {0}")]
+    ConcurrentTransition(String),
+
+    /// W1.5 — a shard-side effect (CREATE DATABASE, role/REVOKE, skeleton
+    /// migration) failed.
+    #[error("provisioner: shard effect failed: {0}")]
+    ShardEffect(String),
 }

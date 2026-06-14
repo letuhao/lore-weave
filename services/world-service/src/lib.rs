@@ -60,6 +60,7 @@ pub mod deprovisioner;
 pub mod embedding_queue;
 pub mod errors;
 pub mod provisioner;
+pub mod provisioner_live;
 pub mod reality_seeder;
 pub mod rebuild;
 pub mod replay_aggregate;
@@ -82,6 +83,7 @@ pub use embedding_queue::live::{
 };
 pub use errors::ProvisionerError;
 pub use provisioner::{ProvisionReport, ProvisionRequest, Provisioner};
+pub use provisioner_live::{BridgeClient, LiveEffects};
 // L5.G cycle 26 — reality seeder + supporting traits.
 pub use reality_seeder::{
     AuditEvent as SeederAuditEvent, AuditSink as SeederAuditSink, BookMetadata, BookReader,
