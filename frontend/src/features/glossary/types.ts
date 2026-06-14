@@ -121,6 +121,8 @@ export type EntitySort =
   | 'kind'
   | 'status'
   | 'alive'
+  | 'links'
+  | 'evidence'
   | 'relevance';
 
 export type GlossaryEntity = GlossaryEntitySummary & {

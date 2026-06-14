@@ -112,6 +112,8 @@ func TestEntityOrderBy_Whitelist(t *testing.T) {
 		{"kind", "ek.sort_order ASC"},
 		{"status", "e.status ASC"},
 		{"alive", "e.alive DESC"},
+		{"links", "e.cached_chapter_link_count DESC"},
+		{"evidence", "e.cached_evidence_count DESC"},
 		{"bogus-value", "e.updated_at DESC"}, // unknown → safe default
 	}
 	for _, c := range cases {

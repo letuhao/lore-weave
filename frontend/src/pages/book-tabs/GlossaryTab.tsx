@@ -508,6 +508,8 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
           className="h-8 rounded-md border bg-background px-2 text-[11px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
         >
           {searchMode === 'raw' && <option value="relevance">{t('glossary.sort.relevance')}</option>}
+          <option value="links">{t('glossary.sort.links')}</option>
+          <option value="evidence">{t('glossary.sort.evidence')}</option>
           <option value="updated_at">{t('glossary.sort.updated_at')}</option>
           <option value="created_at">{t('glossary.sort.created_at')}</option>
           <option value="name">{t('glossary.sort.name')}</option>

@@ -158,6 +158,8 @@
     "search_raw_hint": "Tìm chuỗi con chính xác + mờ theo tên & biệt danh (hỗ trợ CJK)",
     "sort_label": "Sắp xếp",
     "sort": {
+      "links": "Xuất hiện nhiều nhất",
+      "evidence": "Nhiều trích dẫn nhất",
       "relevance": "Liên quan",
       "updated_at": "Cập nhật gần đây",
       "created_at": "Tạo gần đây",

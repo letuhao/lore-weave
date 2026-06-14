@@ -47,6 +47,10 @@ func runK2aMigrations(t *testing.T, pool *pgxpool.Pool) {
 	if err := migrate.UpGlossarySearch(ctx, pool); err != nil {
 		t.Fatalf("migrate.UpGlossarySearch: %v", err)
 	}
+	// Denormalized appearance counters + triggers (sort-by-appearance).
+	if err := migrate.UpEntityCounts(ctx, pool); err != nil {
+		t.Fatalf("migrate.UpEntityCounts: %v", err)
+	}
 }
 
 // ── schema shape tests ──────────────────────────────────────────────────────
@@ -56,11 +60,11 @@ func TestK2aColumnsExist(t *testing.T) {
 	runK2aMigrations(t, pool)
 
 	wantCols := map[string]bool{
-		"short_description":      false,
-		"is_pinned_for_context":  false,
-		"cached_name":            false,
-		"cached_aliases":         false,
-		"search_vector":          false,
+		"short_description":     false,
+		"is_pinned_for_context": false,
+		"cached_name":           false,
+		"cached_aliases":        false,
+		"search_vector":         false,
 	}
 	rows, err := pool.Query(context.Background(), `
 		SELECT column_name FROM information_schema.columns

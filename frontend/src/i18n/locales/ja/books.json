@@ -158,6 +158,8 @@
     "search_raw_hint": "名前・別名の完全部分一致＋あいまい検索（CJK対応）",
     "sort_label": "並び替え",
     "sort": {
+      "links": "登場が多い順",
+      "evidence": "根拠が多い順",
       "relevance": "関連度",
       "updated_at": "更新が新しい順",
       "created_at": "作成が新しい順",

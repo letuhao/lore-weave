@@ -192,6 +192,11 @@ func entityOrderBy(sortKey string, rawMode bool, qArg, patArg int) string {
 		return "ORDER BY e.status ASC, " + byNameTiebreak
 	case "alive":
 		return "ORDER BY e.alive DESC, " + byNameTiebreak
+	case "links":
+		// Most-appearing first — denormalised count (idx_ge_book_chlink_count).
+		return "ORDER BY e.cached_chapter_link_count DESC, " + byNameTiebreak
+	case "evidence":
+		return "ORDER BY e.cached_evidence_count DESC, " + byNameTiebreak
 	default:
 		return defaultOrder
 	}

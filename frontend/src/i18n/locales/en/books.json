@@ -158,6 +158,8 @@
     "search_raw_hint": "Exact-substring + fuzzy search over names & aliases (handles CJK)",
     "sort_label": "Sort",
     "sort": {
+      "links": "Most appearances",
+      "evidence": "Most evidence",
       "relevance": "Relevance",
       "updated_at": "Recently updated",
       "created_at": "Recently created",

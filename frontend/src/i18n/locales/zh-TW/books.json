@@ -158,6 +158,8 @@
     "search_raw_hint": "對名稱與別名進行精確子字串＋模糊搜尋（支援中日韓）",
     "sort_label": "排序",
     "sort": {
+      "links": "出現最多",
+      "evidence": "佐證最多",
       "relevance": "相關度",
       "updated_at": "最近更新",
       "created_at": "最近建立",

@@ -167,6 +167,11 @@ func main() {
 		slog.Error("migrate glossary-search", "error", err)
 		os.Exit(1)
 	}
+	// D-GLOSSARY-SORT-BE (counts-sort): denormalized appearance counters + triggers.
+	if err := migrate.UpEntityCounts(ctx, pool); err != nil {
+		slog.Error("migrate entity-counts", "error", err)
+		os.Exit(1)
+	}
 
 	// Run the short-description backfill in a background goroutine so
 	// the HTTP listener + healthcheck come up immediately. For a fresh

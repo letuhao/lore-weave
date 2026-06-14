@@ -128,6 +128,58 @@ func TestListEntities_SortByName(t *testing.T) {
 	}
 }
 
+func TestListEntities_SortByAppearance(t *testing.T) {
+	pool := openTestDB(t)
+	f := newVersionFixture(t, pool)
+	kindID, nameAttr, aliasesAttr := lookupCharacterAttrs(t, f)
+	ctx := context.Background()
+
+	hero := seedNamed(t, f, kindID, nameAttr, aliasesAttr, "Hero", "")
+	side := seedNamed(t, f, kindID, nameAttr, aliasesAttr, "Sidekick", "")
+	seedNamed(t, f, kindID, nameAttr, aliasesAttr, "Extra", "") // 0 links
+
+	// Each link needs a distinct chapter_id (UNIQUE(entity_id, chapter_id)). The
+	// trig_entity_link_count trigger maintains cached_chapter_link_count.
+	addLinks := func(eid string, n int) {
+		for i := 0; i < n; i++ {
+			if _, err := f.srv.pool.Exec(ctx,
+				`INSERT INTO chapter_entity_links(entity_id, chapter_id, relevance)
+				 VALUES($1, gen_random_uuid(), 'appears')`, eid); err != nil {
+				t.Fatalf("seed link: %v", err)
+			}
+		}
+	}
+	addLinks(hero, 3)
+	addLinks(side, 1)
+
+	resp := f.listEntities(t, "sort=links")
+	pos := map[string]int{}
+	var heroCount int
+	for i, it := range resp.Items {
+		pos[it.DisplayName] = i
+		if it.DisplayName == "Hero" {
+			heroCount = it.ChapterLinkCount
+		}
+	}
+	// Most-appearing first: Hero(3) > Sidekick(1) > Extra(0).
+	if !(pos["Hero"] < pos["Sidekick"] && pos["Sidekick"] < pos["Extra"]) {
+		t.Errorf("sort=links order: Hero=%d Sidekick=%d Extra=%d", pos["Hero"], pos["Sidekick"], pos["Extra"])
+	}
+	// The denormalized counter (trigger-maintained) backs the sort; the projection
+	// count must agree.
+	if heroCount != 3 {
+		t.Errorf("Hero chapter_link_count: want 3, got %d", heroCount)
+	}
+
+	// The trigger keeps the cached column in sync with the actual links.
+	var cached int
+	f.srv.pool.QueryRow(ctx,
+		`SELECT cached_chapter_link_count FROM glossary_entities WHERE entity_id=$1`, hero).Scan(&cached)
+	if cached != 3 {
+		t.Errorf("cached_chapter_link_count: want 3, got %d", cached)
+	}
+}
+
 func TestListEntities_RawSearchCJKSubstring(t *testing.T) {
 	pool := openTestDB(t)
 	f := newVersionFixture(t, pool)
