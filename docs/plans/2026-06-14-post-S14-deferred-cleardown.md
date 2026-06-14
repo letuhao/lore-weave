@@ -100,11 +100,13 @@ unverifiable drills are CI-verified on the Linux nightly, honest notrun locally)
 10. ✅ **W2.3a service RSS soak + W2.3b disk read-thrash** (Inc-6 commit) — real-publisher RSS plateau (`/proc`) + fio cgroup read-thrash; **Linux-CI-only** (notrun on WSL2; the rss-soak BITE is locally verified). **D-S14-SERVICE-RSS-SOAK + D-S14-DISK-READ-THRASH cleared.**
 11. ⏸ **W2.4a clock-skew recovery** (D-S8-CLOCK-SKEW-RECOVERY) — **STILL DEFERRED** (not shipped vacuously): the spine orders by DB-side `now()`, so app-clock skew is a non-event by design; a non-vacuous drill needs libfaketime-wrapped postgres to skew the DB clock (the W2.2 monotonicity check is the ready oracle). Deferred to a Linux session with libfaketime-on-postgres.
 
-### Wave 3 — Oracle / generator completeness (un-vacuum the batteries)
-11. **W3.1 generator events** — D-WORKLOAD-GEN-NPC-REL-EMBED + D-S5-WORLDKV-NETS-EMPTY (un-vacuums B/C2 arms).
-12. **W3.2 ledger** — D-LEDGER-STORED-CHECKSUM (payload_sha256 + write path) + D-LEDGER-PUBLISHED-RECON.
-13. **W3.3 schema-derived table lists** — D-PROJCHECK-TABLE-DRIFT + D-S4-VERIFMETA-TABLE-SYNC.
-14. **W3.4 conformance hygiene** — D-META-FAKEDB-UUID-ACTOR + D-CONFORMANCE-FLEET-MIGRATION + D-CONFORMANCE-LIVEPROBE-CONTAINER-CHURN.
+### Wave 3 — Oracle / generator completeness (un-vacuum the batteries) — ✅ COMPLETE (2026-06-15)
+> Implemented as 6 increments (`docs/plans/2026-06-15-wave3-oracle-generator-completeness.md`), batch cadence, /review-impl on the plan AND on the load-bearing W3.4 impl. Commits: W3.1 `48d380cf`, W3.2 `5a3c16af`, W3.3 `3f5e549a`, W3.4 `0b099d79`. W3.5 (published-recon) → documented DEFER (no crisp high-water source). W3.6 → conformance `w3-*` cases + CI (scale-build W3 go-test + bash -n; scale-nightly live sweep incl gated kernel checksum test; lint-foundation `meta-actor-uuid-lint`).
+11. **W3.1 generator events** — ✅ D-WORKLOAD-GEN-NPC-REL-EMBED (generator+embed; rel-projection-row → D-W3-NPC-REL-PROJECTION-UPSERT) + ✅ D-S5-WORLDKV-NETS-EMPTY.
+12. **W3.4 ledger** — ✅ D-LEDGER-STORED-CHECKSUM (content_sha256 over payload+metadata; dp-kernel append + Go emit write path; LOAD-BEARING /review-impl folded — extended coverage to metadata, vacuity guard, exact-count bites) + ⏸ D-LEDGER-PUBLISHED-RECON (DEFER — no crisp high-water).
+13. **W3.2 schema-derived table lists** — ✅ D-PROJCHECK-TABLE-DRIFT + ✅ D-S4-VERIFMETA-TABLE-SYNC (N/A-with-evidence: tablemap is guarded-curated).
+14. **W3.3 conformance hygiene** — ✅ D-META-FAKEDB-UUID-ACTOR (lifecycle UUID fixtures + CI lint w/ selftest bite) + D-CONFORMANCE-FLEET-MIGRATION / D-CONFORMANCE-LIVEPROBE-CONTAINER-CHURN (folded — W3 cases follow the established assume-up/notrun + requires-gated convention).
+> New Wave-3 deferred (tracked in SESSION_PATCH): D-W3-NPC-REL-PROJECTION-UPSERT, D-MANIFEST-0009-0012-UNREGISTERED, D-CHECKSUM-PROVISIONING-APPLY, D-CHECKSUM-EXPR-CROSS-LANG-DRIFT, D-CHECKSUM-PG-VERSION-STABILITY, D-LEDGER-PUBLISHED-RECON.
 
 ### Wave 4 — Model / perf refinements (lowest urgency)
 15. D-S9-MODEL-SCOPE, D-S9-FANOUT-SUBSCRIBER-SOURCE, D-S12-T0T1-MICRO, D-S7-USL-NO-N1, D-S7-PGVECTOR-RECALL (+ optional FORTIO/WS-K6/LIVENESS-TLA/C2-REFERENCE-PROJECTOR as appetite allows).

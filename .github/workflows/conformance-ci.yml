@@ -420,13 +420,23 @@ jobs:
           go build -C tests/workload-gen ./...
           go vet  -C tests/workload-gen ./...
           go test -C tests/workload-gen ./cmd/... ./internal/ledger/...
-      - name: shellcheck the scale + L1 + S14 + W1 + W2 scripts (smoke)
+      - name: build + vet + test the W3 oracle/generator Go tooling
+        run: |
+          # W3.1 schema payloads + gen (new npc rel/memory + persistent kv),
+          # W3.2 projcheck schema-derived projection discovery, W3.4 ledger
+          # stored-checksum + the -check-checksum CLI all live in the workload-gen
+          # module — test the FULL module (incl ./internal/projcheck + ./internal/schema).
+          go test -C tests/workload-gen ./...
+          # W3.4 migration manifest must still validate with the new 0013 entry.
+          go test -C services/migration-orchestrator ./pkg/manifest/...
+      - name: shellcheck the scale + L1 + S14 + W1 + W2 + W3 scripts (smoke)
         run: |
           for s in scale-rig shared-path roleplay-load soak multishard-dr \
                    l1-lifecycle l1-capacity l1-migration l1-relocate \
                    s14-disk s14-memory s14-connpool s14-deadlock \
                    w1-capacity w1-migrate w1-freeze w1-closure w1-provision \
-                   w2-sustained w2-history w2-partition w2-rss-soak w2-disk-read; do
+                   w2-sustained w2-history w2-partition w2-rss-soak w2-disk-read \
+                   w3-generator w3-schema-derived w3-checksum; do
             bash -n "scripts/perf/${s}.sh"
           done
 
@@ -587,3 +597,38 @@ jobs:
         run: |
           set +e; bash scripts/perf/w2-disk-read.sh smoke; rc=$?; set -e
           echo "w2-disk-read rc=$rc"; [ "$rc" = 1 ] && exit 1 || exit 0
+      # ── W3 oracle/generator-completeness live sweep. w3-schema-derived +
+      #    w3-checksum ride the booted scale rig shard-0 (no pgvector needed).
+      #    w3-generator self-brings-up the foundation-dev PG (pgvector) + builds
+      #    the Rust rebuilder. Each embeds its bite(s).
+      - name: W3.1 generator arms (npc rel/memory + persistent kv) + bite
+        run: |
+          set +e; bash scripts/perf/w3-generator.sh; rc=$?; set -e
+          echo "w3-generator rc=$rc (0=pass,2=notrun)"; [ "$rc" = 1 ] && exit 1 || exit 0
+      - name: W3.2 schema-derived projection sweep + bite
+        run: |
+          set +e; bash scripts/perf/w3-schema-derived.sh; rc=$?; set -e
+          echo "w3-schema-derived rc=$rc"; [ "$rc" = 1 ] && exit 1 || exit 0
+      - name: W3.4 stored content checksum (payload+metadata) + bites
+        run: |
+          set +e; bash scripts/perf/w3-checksum.sh; rc=$?; set -e
+          echo "w3-checksum rc=$rc"; [ "$rc" = 1 ] && exit 1 || exit 0
+      - name: W3.4 kernel-side append checksum live test + dual bites (gated)
+        run: |
+          # Exercise the dp-kernel append write-path (event_store_pg.rs) against a
+          # real DB on scale rig shard-0: apply 0001/0002/0004/0013 + a default
+          # partition, then run the gated integration test which asserts every
+          # appended row carries a self-consistent content_sha256 and that a
+          # payload tamper AND a metadata-only tamper are each caught.
+          PG=scale-pg-shard-0
+          docker exec -i $PG psql -q -v ON_ERROR_STOP=1 -U foundation -d foundation -c "DROP DATABASE IF EXISTS dp_kernel_test WITH (FORCE)"
+          docker exec -i $PG psql -q -v ON_ERROR_STOP=1 -U foundation -d foundation -c "CREATE DATABASE dp_kernel_test"
+          for m in 0001_initial 0002_events_table 0004_aggregate_snapshots_table 0013_events_content_sha256; do
+            docker exec -i $PG psql -q -v ON_ERROR_STOP=1 -U foundation -d dp_kernel_test < contracts/migrations/per_reality/${m}.up.sql
+          done
+          docker exec -i $PG psql -q -v ON_ERROR_STOP=1 -U foundation -d dp_kernel_test -c "CREATE TABLE IF NOT EXISTS events_p_default PARTITION OF events DEFAULT"
+          set +e
+          LOREWEAVE_TEST_PG_URL="postgres://foundation:foundation@127.0.0.1:55511/dp_kernel_test?sslmode=disable" \
+            cargo test -p dp-kernel --test integration_event_store -- --nocapture
+          rc=$?; set -e
+          echo "w3-kernel-checksum rc=$rc"; [ "$rc" = 0 ] || exit 1

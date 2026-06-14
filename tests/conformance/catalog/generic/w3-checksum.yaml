@@ -1,0 +1,7 @@
+id: w3-checksum
+description: "W3.4 — stored content checksum, LIVE (closes D-LEDGER-STORED-CHECKSUM). events.content_sha256 (migration 0013) is frozen at INSERT as the PG-canonical hash of jsonb_build_object(p:payload, m:metadata) — covers payload AND metadata. Both writers (dp-kernel append + Go emit) set it with the IDENTICAL SQL expression so PG is the single canonicalizer (Go≡Rust agree, no cross-lang JSON lib). Emit → -check-checksum PASS (covered>=1); NULL-skip: a pre-0013-shaped row is skipped (coverage boundary), aligned rows not false-flagged; BITE 1 rots a payload → EXACTLY one mismatch + CLI FAILS naming stored-checksum-mismatch; heal; BITE 2 rots ONLY metadata → still caught (content checksum covers metadata, a payload-only hash would miss it). The kernel-side write path + its own dual bites are covered by the gated crates/dp-kernel/tests/integration_event_store.rs. Reuses the scale rig shard-0."
+invariant: I-w3-content-checksum-byte-rot
+kind: live-probe
+command: ["bash", "scripts/perf/w3-checksum.sh"]
+requires: ["scale-rig"]
+skip_when: []

@@ -42,6 +42,10 @@ jobs:
           - prompt-assembly-discipline-lint
           - meta-sensitive-read-bypass-lint
           - read-audit-query-type-drift-lint
+          # W3.3 — lifecycle-bound actor fixtures must use UUIDs (the
+          # lifecycle_transition_audit.actor_id column is UUID NOT NULL). The
+          # script's default mode runs its --selftest bite THEN the lint.
+          - meta-actor-uuid-lint
     steps:
       - uses: actions/checkout@v4
       - name: Run ${{ matrix.lint }}

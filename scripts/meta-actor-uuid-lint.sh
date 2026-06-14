@@ -88,8 +88,11 @@ EOF
   echo "[meta-actor-uuid] SELFTEST PASS — flags non-UUID literal, passes UUID + const (non-vacuous)"
 }
 
+# Default (and the CI invocation) runs the BITE first, then the real lint — so a
+# green CI run always proves the checker is non-vacuous before trusting its PASS.
 case "${1:-}" in
   --selftest) selftest ;;
-  "")         run_lint ;;
-  *)          echo "usage: $0 [--selftest]"; exit 2 ;;
+  --lint)     run_lint ;;
+  "")         selftest; run_lint ;;
+  *)          echo "usage: $0 [--selftest | --lint]"; exit 2 ;;
 esac
