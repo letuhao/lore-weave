@@ -21,40 +21,66 @@ type projTable struct {
 	where string
 }
 
-// projectionTables is every table LoadProjections sweeps. All exist after the
-// per_reality migrations (0006 + 0009) are applied; an empty table contributes
-// zero rows, so listing a table the current pipeline doesn't populate (e.g.
-// canon, written by the meta-worker not the world rebuilder) is harmless.
+// discoverProjectionTables derives the projection-table set from the LIVE schema
+// (W3.2 — closes D-PROJCHECK-TABLE-DRIFT) instead of a hardcoded list that goes
+// stale. The schema signal: every L3.A/canon projection table carries the
+// VerificationMeta `last_verified_event_version` column (the integrity-checker's
+// high-water; no non-projection table has it). The writing-event column is
+// `event_id` where present, else `source_event_id` (canon). The WHERE
+// `<col> IS NOT NULL` is applied to ALL tables — harmless for the NOT NULL
+// event_id tables, and it correctly excludes canon's cascade rows (nullable
+// source_event_id, which carry cascaded_from_reality_id instead).
 //
-// COVERAGE CAP — this list is MAINTAINED IN LOCKSTEP with the projection
-// migrations: 0006_projections (the L3.A canonical 10) + 0009_canon_projection
-// (the 11th). It is NOT derived from the live schema, so a NEW projection table
-// added by a future migration is SILENTLY unchecked until its row is added here.
-// When you add a projection table, add it here too (tracked: D-PROJCHECK-TABLE-DRIFT).
+// HARD ERROR on an empty result (review #4): a per-reality projection DB MUST
+// have projection tables; empty = an un-migrated/misconfigured DB, NOT a reason
+// to silently fall back to a curated list (which would re-introduce the drift).
 //
-// SCOPE — no-orphan checks the WRITING event only: the VerificationMeta event_id
-// (source_event_id for canon, the event that last upserted the row). It does NOT
-// check secondary event references such as canon_projection.overridden_by_l3_event_id
-// (a cross-reference, not the writing event) — those are a different invariant,
-// out of this guard's scope.
-var projectionTables = []projTable{
-	{name: "pc_projection", eventCol: "event_id"},
-	{name: "pc_inventory_projection", eventCol: "event_id"},
-	{name: "pc_relationship_projection", eventCol: "event_id"},
-	{name: "npc_projection", eventCol: "event_id"},
-	{name: "npc_session_memory_projection", eventCol: "event_id"},
-	{name: "npc_pc_relationship_projection", eventCol: "event_id"},
-	{name: "npc_session_memory_embedding", eventCol: "event_id"},
-	{name: "region_projection", eventCol: "event_id"},
-	{name: "world_kv_projection", eventCol: "event_id"},
-	{name: "session_participants", eventCol: "event_id"},
-	{name: "canon_projection", eventCol: "source_event_id", where: "source_event_id IS NOT NULL"},
+// SCOPE — no-orphan checks the WRITING event only (the VerificationMeta event_id);
+// secondary cross-references (e.g. canon_projection.overridden_by_l3_event_id) are
+// a different invariant, out of this guard's scope.
+func discoverProjectionTables(ctx context.Context, db *sql.DB) ([]projTable, error) {
+	rows, err := db.QueryContext(ctx, `
+		SELECT c.table_name,
+		       CASE WHEN EXISTS (
+		         SELECT 1 FROM information_schema.columns c2
+		          WHERE c2.table_schema = c.table_schema
+		            AND c2.table_name   = c.table_name
+		            AND c2.column_name  = 'event_id')
+		            THEN 'event_id' ELSE 'source_event_id' END AS event_col
+		  FROM information_schema.columns c
+		 WHERE c.table_schema = 'public'
+		   AND c.column_name  = 'last_verified_event_version'
+		 ORDER BY c.table_name`)
+	if err != nil {
+		return nil, fmt.Errorf("projcheck: discover projection tables: %w", err)
+	}
+	defer rows.Close()
+	var out []projTable
+	for rows.Next() {
+		var t projTable
+		if err := rows.Scan(&t.name, &t.eventCol); err != nil {
+			return nil, fmt.Errorf("projcheck: scan projection table: %w", err)
+		}
+		t.where = t.eventCol + " IS NOT NULL"
+		out = append(out, t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("projcheck: discover rows: %w", err)
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("projcheck: no projection tables found (no table has a last_verified_event_version column) — the DB is un-migrated/misconfigured")
+	}
+	return out, nil
 }
 
 // LoadProjections fetches (table, event_id) for every row across all projection
-// tables. A thin adapter: the check logic (CheckNoOrphan) carries the coverage;
-// the loader itself is exercised by the live pipeline smoke.
+// tables (discovered from the live schema). The check logic (CheckNoOrphan)
+// carries the coverage; the loader is exercised by the live pipeline smoke.
 func LoadProjections(ctx context.Context, db *sql.DB) ([]ProjRow, error) {
+	projectionTables, err := discoverProjectionTables(ctx, db)
+	if err != nil {
+		return nil, err
+	}
 	var out []ProjRow
 	for _, t := range projectionTables {
 		// #nosec G201 — table/column names are compile-time constants from the
