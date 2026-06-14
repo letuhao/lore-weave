@@ -157,6 +157,7 @@ func (s *Server) Router() http.Handler {
 		r.Get("/books/{book_id}/lexical-search", s.searchChapterTextInternal) // raw-search Phase 2 (lexical leg for the knowledge orchestrator)
 		r.Get("/books/{book_id}/chapters", s.getInternalBookChapters)
 		r.Get("/books/{book_id}/chapters/{chapter_id}", s.getInternalBookChapter)
+		r.Get("/books/{book_id}/chapters/{chapter_id}/blocks", s.getInternalChapterBlocks) // T2 translation segmentation — per-block rows
 		// P2 (hierarchical extraction T3) — knowledge-service consumes these
 		// for per-leaf orchestration. Spec D8 + scenes.go.
 		r.Get("/books/{book_id}/chapters/{chapter_id}/scenes", s.getInternalScenesByChapter)
@@ -2281,6 +2282,65 @@ FROM chapter_blocks WHERE chapter_id=$1
 		"editorial_status":      editorialStatus,
 		"published_revision_id": publishedRevID,
 	})
+}
+
+// getInternalChapterBlocks — T2 translation segmentation. Returns the chapter's
+// extracted blocks (one row per Tiptap block, trigger-maintained from the draft)
+// ordered by block_index, each with content_hash for the segmenter's dirty-detection.
+// Internal-token only; IDOR + lifecycle guarded (chapter ∈ book ∈ active).
+func (s *Server) getInternalChapterBlocks(w http.ResponseWriter, r *http.Request) {
+	bookID, ok := parseUUIDParam(w, r, "book_id")
+	if !ok {
+		return
+	}
+	chapterID, ok := parseUUIDParam(w, r, "chapter_id")
+	if !ok {
+		return
+	}
+	var exists bool
+	if err := s.pool.QueryRow(r.Context(),
+		`SELECT EXISTS(SELECT 1 FROM chapters WHERE id=$1 AND book_id=$2 AND lifecycle_state='active')`,
+		chapterID, bookID).Scan(&exists); err != nil {
+		writeError(w, http.StatusInternalServerError, "CHAPTER_NOT_FOUND", "failed to load chapter")
+		return
+	}
+	if !exists {
+		writeError(w, http.StatusNotFound, "CHAPTER_NOT_FOUND", "chapter not found")
+		return
+	}
+	// COALESCE text_content/content_hash: non-text blocks (image/hr/codeBlock) have no
+	// `_text` → the extraction trigger leaves them NULL; scanning NULL into a Go string
+	// would 500 the whole chapter. Empty string is the right segmenter input for them.
+	rows, err := s.pool.Query(r.Context(),
+		`SELECT block_index, COALESCE(block_type,''), COALESCE(text_content,''),
+		        COALESCE(content_hash,''), heading_context
+		 FROM chapter_blocks WHERE chapter_id=$1 ORDER BY block_index`, chapterID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "CHAPTER_NOT_FOUND", "failed to load blocks")
+		return
+	}
+	defer rows.Close()
+	type blk struct {
+		BlockIndex     int32   `json:"block_index"`
+		BlockType      string  `json:"block_type"`
+		TextContent    string  `json:"text_content"`
+		ContentHash    string  `json:"content_hash"`
+		HeadingContext *string `json:"heading_context"`
+	}
+	out := []blk{}
+	for rows.Next() {
+		var b blk
+		if err := rows.Scan(&b.BlockIndex, &b.BlockType, &b.TextContent, &b.ContentHash, &b.HeadingContext); err != nil {
+			writeError(w, http.StatusInternalServerError, "CHAPTER_NOT_FOUND", "failed to scan block")
+			return
+		}
+		out = append(out, b)
+	}
+	if err := rows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, "CHAPTER_NOT_FOUND", "failed to read blocks")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"chapter_id": chapterID, "blocks": out})
 }
 
 // getInternalChapterRevisionText — Canon Model CM3a. Returns a SPECIFIC

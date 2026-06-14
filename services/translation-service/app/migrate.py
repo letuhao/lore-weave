@@ -389,6 +389,27 @@ CREATE TABLE IF NOT EXISTS glossary_translation_jobs (
 );
 CREATE INDEX IF NOT EXISTS idx_gtj_owner ON glossary_translation_jobs(owner_user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_gtj_book  ON glossary_translation_jobs(book_id, created_at DESC);
+
+-- T2-M1: source-side translation segments (block-range division of a chapter).
+-- Language-independent ranges of chapter_blocks (~2000-token, heading-aware) — the
+-- foundation for per-part translate/status (M2) + dirty-only re-translate. block_hashes
+-- = the ordered chapter_blocks.content_hash of the range; source_content_hash = a
+-- chapter-stable digest of the whole range for cheap idempotent re-segmentation.
+CREATE TABLE IF NOT EXISTS chapter_segments (
+  id                  UUID PRIMARY KEY DEFAULT uuidv7(),
+  chapter_id          UUID NOT NULL,
+  segment_index       INT  NOT NULL,
+  start_block_index   INT  NOT NULL,
+  end_block_index     INT  NOT NULL,
+  segment_text        TEXT NOT NULL,
+  block_hashes        TEXT[] NOT NULL DEFAULT '{}',
+  token_estimate      INT  NOT NULL DEFAULT 0,
+  source_content_hash TEXT NOT NULL,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (chapter_id, segment_index)
+);
+CREATE INDEX IF NOT EXISTS idx_cseg_chapter ON chapter_segments(chapter_id);
 """
 
 

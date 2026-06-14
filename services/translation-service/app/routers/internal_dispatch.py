@@ -23,6 +23,7 @@ from ..deps import get_db
 from ..grant_deps import GrantLevel, authorize_book
 from ..grant_client import get_grant_client
 from ..models import CreateJobPayload
+from ..workers.segment_store import ensure_chapter_segments
 from .jobs import _resolve_and_create_job, _cancel_job_core
 
 router = APIRouter(prefix="/internal/translation", tags=["internal"])
@@ -131,6 +132,33 @@ async def dispatch_job(
         campaign_id=payload.campaign_id,
     )
     return DispatchResponse(job_id=job.job_id)
+
+
+class RebuildSegmentsPayload(BaseModel):
+    book_id: UUID
+
+
+class RebuildSegmentsResponse(BaseModel):
+    chapter_id: str
+    segments: int
+    changed: bool
+
+
+@router.post(
+    "/chapters/{chapter_id}/segments/rebuild",
+    response_model=RebuildSegmentsResponse,
+    dependencies=[Depends(require_internal_token)],
+)
+async def rebuild_chapter_segments(
+    chapter_id: UUID,
+    payload: RebuildSegmentsPayload,
+    db: asyncpg.Pool = Depends(get_db),
+) -> RebuildSegmentsResponse:
+    """T2-M1: (re)build a chapter's source-side segments from its current blocks.
+    Idempotent — unchanged source is a no-op. Internal-token only (the full backfill
+    loops this over every chapter at deploy)."""
+    res = await ensure_chapter_segments(db, payload.book_id, chapter_id)
+    return RebuildSegmentsResponse(**res)
 
 
 class ChapterStatusResponse(BaseModel):
