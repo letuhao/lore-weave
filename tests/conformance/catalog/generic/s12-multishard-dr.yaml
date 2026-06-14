@@ -1,0 +1,7 @@
+id: s12-multishard-dr
+description: "S12/Inc-5 — whole-system multi-shard DR: N real Postgres shards dumped, dropped TOGETHER (disaster), restored together, every shard verified byte-identical (ordered event-id digest). Bite: a tampered dump restores non-identical and the checksum catches it. Closes D-S8-MULTI-SHARD-DR. Requires the scale rig up + migrated."
+invariant: I-s12-multishard-dr-byte-identical
+kind: live-probe
+command: ["bash", "scripts/perf/multishard-dr.sh", "bite"]
+requires: ["scale-rig"]
+skip_when: []

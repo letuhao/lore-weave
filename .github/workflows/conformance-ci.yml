@@ -352,3 +352,74 @@ jobs:
         run: |
           go build ./...
           go vet ./...
+
+  scale-build:
+    name: S12 scale rig build (per-PR — anti-bit-rot)
+    # The full scale sweep is heavy (many real Postgres shards) so it runs nightly,
+    # but the new Go tooling (metaworker-bench + roleplay-load) must keep compiling.
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - name: build + vet the S12 scale tooling
+        run: |
+          go build -C services/meta-worker ./cmd/metaworker-bench
+          go vet  -C services/meta-worker ./cmd/metaworker-bench
+          go build -C tests/perf/roleplay-load ./...
+          go vet  -C tests/perf/roleplay-load ./...
+      - name: shellcheck the scale scripts (smoke)
+        run: |
+          for s in scale-rig shared-path roleplay-load soak multishard-dr; do
+            bash -n "scripts/perf/${s}.sh"
+          done
+
+  scale-nightly:
+    name: S12 scale sweep (nightly — live, real multi-shard rig)
+    # Boots the multi-shard scale rig and runs a SMALL sweep of each S12 path with
+    # its embedded bite: per-node packing + real cross-shard, the shared-path β
+    # centerpiece (meta-worker I7 / registry / redis fan-out), the I6 roleplay
+    # skeleton, the soak leak-smoke + lag bite, and the multi-shard DR drill. The
+    # FULL sweep (USL rungs, long soak, N=8) is workflow_dispatch/manual given its
+    # weight. exit 1 → fail; exit 2 → notrun (green). schedule fires only on main.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - name: build wg + publisher + bench (no .exe on Linux)
+        run: |
+          go build -C tests/workload-gen -o wg ./cmd/workload-gen
+          go build -C services/publisher -o pub ./cmd/publisher
+          go build -C tests/perf/roleplay-load -o rpload .
+      - name: boot the scale rig (3 shards) + migrate + cross-shard
+        run: |
+          SCALE_SHARDS=3 bash scripts/perf/scale-rig.sh up 3
+          SCALE_SHARDS=3 bash scripts/perf/scale-rig.sh migrate 3
+          SCALE_SHARDS=3 bash scripts/perf/scale-rig.sh crossshard 3
+      - name: per-node packing + pgbench + bite (Inc-1)
+        run: |
+          set +e; SCALE_SHARD0_CPUSET=0-1 bash scripts/perf/scale-rig.sh pack "1 2 4" 5; rc=$?
+          SCALE_SHARD0_CPUSET=0-1 bash scripts/perf/scale-rig.sh pgbench 5 8
+          SCALE_SHARD0_CPUSET=0-1 bash scripts/perf/scale-rig.sh bite 4; b=$?; set -e
+          [ "$rc" = 1 ] || [ "$b" = 1 ] && exit 1 || exit 0
+      - name: shared-path β centerpiece + bites (Inc-2)
+        run: |
+          set +e; bash scripts/perf/shared-path.sh all; rc=$?; set -e
+          echo "shared-path rc=$rc (0=pass,2=notrun)"; [ "$rc" = 1 ] && exit 1 || exit 0
+      - name: roleplay I6 serial-FIFO + bite (Inc-3)
+        run: |
+          set +e; bash scripts/perf/roleplay-load.sh smoke; rc=$?; set -e
+          echo "roleplay rc=$rc"; [ "$rc" = 1 ] && exit 1 || exit 0
+      - name: soak leak-smoke + lag bite (Inc-4)
+        run: |
+          set +e; bash scripts/perf/soak.sh leak-smoke 20 200; a=$?; bash scripts/perf/soak.sh bite 20 200; b=$?; set -e
+          echo "soak leak=$a bite=$b"; { [ "$a" = 1 ] || [ "$b" = 1 ]; } && exit 1 || exit 0
+      - name: multi-shard DR drill + bite (Inc-5)
+        run: |
+          set +e; SCALE_SHARDS=3 bash scripts/perf/multishard-dr.sh drill; a=$?; SCALE_SHARDS=3 bash scripts/perf/multishard-dr.sh bite; b=$?; set -e
+          echo "DR drill=$a bite=$b"; { [ "$a" = 1 ] || [ "$b" = 1 ]; } && exit 1 || exit 0

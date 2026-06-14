@@ -5,6 +5,24 @@
 
 ---
 
+## ▶ NEXT SESSION (2026-06-14) — S12 architecture scale-validation COMPLETE
+
+**HEAD context:** branch `mmo-rpg/foundation-mega-task`. S12 built Inc-1..Inc-5 (5 checkpoint commits) on top of the S1–S11 foundation test-plan arc. UNPUSHED pending approval.
+
+**S12 = "will scaling L4–L7 force a refactor?" → measured on one box (i9-13900K/96GB/4090/980PRO, Docker Desktop/WSL2).** Verdict: NO from-scratch refactor; ONE targeted fix indicated. Report: `docs/specs/2026-06-14-S12-scale-readiness-report.md`.
+
+- **Inc-1** `infra/scale/docker-compose.scale.yml` + `scripts/perf/scale-rig.sh` — N REAL separate-Postgres shards (production fsync), per-node packing (pgbench raw-PG ceiling, no coherency knee), real cross-shard across ≥2 PG instances. **Closes D-WORKLOAD-GEN-REAL-SHARD.**
+- **Inc-2 (centerpiece)** `scripts/perf/shared-path.sh` + `services/meta-worker/cmd/metaworker-bench` — shared-path β: **meta-worker I7 single consumer ~22k msgs/s < DP-S5 T3 50k/s ⇒ ranked #1 REFACTOR-RISK (serial-capacity; fix = batch the per-message XACK in consumer.go — cheap, not structural)**; registry ~3k ops/s; Redis fan-out sharding = 18× read-amp benefit. All cpuset-isolated + OWN-CPU + bites.
+- **Inc-3** `tests/perf/roleplay-load` (NOT services/roleplay-service — stays `missing` in language-rule; creating it would trip the lint) — I6 serial-FIFO holds, p99 ack 37.7ms < DP-T3 50ms; bite forks a dual-processor session.
+- **Inc-4** `scripts/perf/soak.sh` — emits `lw_projection_lag_seconds`; leak-smoke bounded, bite drives lag up. **Closes D-S7-SOAK-LAG-METRIC.**
+- **Inc-5** `scripts/perf/multishard-dr.sh` + report + CI (`scale-build` per-PR, `scale-nightly`) + 4 conformance cases (`s12-*`). N-shard restore-together byte-identical. **Closes D-S8-MULTI-SHARD-DR.**
+
+**Recently cleared (S12):** D-WORKLOAD-GEN-REAL-SHARD (Inc-1) · D-S7-SOAK-LAG-METRIC (Inc-4) · D-S8-MULTI-SHARD-DR (Inc-5). (Rows remain in the Deferred table below — prune after a few sessions.)
+
+**NEXT:** (a) push the S12 commits (needs explicit approval — Phase 11 guardrail); (b) act on the #1 refactor-risk: **batch the meta-worker XACK** then re-measure via `shared-path.sh metaworker`; (c) S13 = L1/core coverage (lifecycle R9 / capacity / migration 6-phase). Phase-2 cluster cert deferred → D-S12-MULTI-HOST. New deferred: D-S12-MULTI-HOST, D-S12-LLM-LATENCY-AT-SCALE, D-S12-T0T1-MICRO, D-S12-METAWORKER-XACK-BATCH (the fix).
+
+---
+
 ## Document Metadata
 
 - Last Updated: 2026-06-04 **(D-REBUILDER-MULTI-AGG FIXED — /review-impl'd, live-proven)** — Updated By: Claude (Opus 4.8). Fixed the rebuilder bug S3 surfaced: `npc_session_memory_projection` rebuild failed because (1) `npc.said`'s `interaction_count_increment` pseudo-field the generic writer couldn't apply + (2) cross-aggregate ordering. **Fix (approach B): writer increment support** (`SET col = COALESCE(t.col,0) + bound`, 0-rows fails loud) **+ global-order replay** for multi-aggregate tables (`rebuild::global` — sequential pass by `(recorded_at, event_id)`; single-aggregate tables keep the fast per-aggregate-parallel path). Kernel Rust (world-service + crates/rebuilder reuse). Human-in-loop v2.2, 5 TDD increments; `/review-impl` (5 findings, 3 fixed + 2 accept). **LIVE-PROVEN on real PG**: `npc_session_memory_projection` global rebuild `aggregates_failed=0` (was 2) + `interaction_count=3` per row (was 0, =SaysPerSession); **ALL 8 projection tables rebuild failed=0**. world-service 108 + rebuilder 7 + 16 rebuild-module tests green; cargo check/build clean. Dropped the `SOFT_FAIL_TABLES` tolerance from the S3 pipeline smoke. **D-REBUILDER-MULTI-AGG cleared.** **NEXT: S2 / C + C2** (property + from-spec oracle) to complete the spine. ⤵
