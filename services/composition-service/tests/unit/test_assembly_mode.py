@@ -285,10 +285,10 @@ def chap_ctx(monkeypatch):
     monkeypatch.setattr("app.routers.engine.stitch_chapter", fake_stitch)
 
     from app.deps import (get_book_client_dep, get_canon_rules_repo,
-                          get_generation_jobs_repo, get_glossary_client_dep,
-                          get_knowledge_client_dep, get_llm_client_dep,
-                          get_narrative_thread_repo, get_outline_repo,
-                          get_scene_links_repo, get_works_repo)
+                          get_derivatives_repo, get_generation_jobs_repo,
+                          get_glossary_client_dep, get_knowledge_client_dep,
+                          get_llm_client_dep, get_narrative_thread_repo,
+                          get_outline_repo, get_scene_links_repo, get_works_repo)
     from app.main import app
     from app.middleware.jwt_auth import get_bearer_token, get_current_user
 
@@ -302,6 +302,9 @@ def chap_ctx(monkeypatch):
     app.dependency_overrides[get_generation_jobs_repo] = lambda: jobs
     app.dependency_overrides[get_scene_links_repo] = lambda: object()
     app.dependency_overrides[get_narrative_thread_repo] = lambda: object()  # FD-1 (off in tests)
+    # C25 — derivatives repo (non-derivative works in these tests → never read).
+    app.dependency_overrides[get_derivatives_repo] = lambda: SimpleNamespace(
+        list_overrides_for_work=lambda *a, **k: [])
     app.dependency_overrides[get_book_client_dep] = lambda: book
     app.dependency_overrides[get_glossary_client_dep] = lambda: object()
     app.dependency_overrides[get_knowledge_client_dep] = lambda: object()

@@ -223,6 +223,24 @@ async def test_c23_create_derivative_links_source_and_branch_point(pool):
     assert deriv.settings == {"tone": "darker"}
 
 
+async def test_c25_get_by_id_resolves_source_work_for_base_project(pool):
+    """C25 — the packer resolves a derivative's BASE knowledge project from its
+    `source_work_id` (the source's surrogate `id`) via get_by_id, NOT by reusing
+    source_work_id as a project_id. Proves get_by_id returns the source row keyed by
+    `id` and exposes its `project_id` (which may differ from `id`)."""
+    works = WorksRepo(pool)
+    user, _, book = _ids()
+    src = await works.create(user, uuid.uuid4(), book)
+    # A derivative links to the source by id; the packer looks the source up by id.
+    deriv = await works.create_derivative(user, uuid.uuid4(), book, src.id, branch_point=2)
+    fetched = await works.get_by_id(user, deriv.source_work_id)
+    assert fetched is not None
+    assert fetched.id == src.id
+    assert fetched.project_id == src.project_id  # the BASE knowledge project
+    # cross-user isolation: another user can't read it by id.
+    assert await works.get_by_id(uuid.uuid4(), src.id) is None
+
+
 async def test_c23_divergence_spec_and_override_roundtrip(pool):
     """divergence_spec (canon_rule[] + pov_anchor) + entity_override (JSONB) persist
     and read back; the work_id FK + per-(work,target) unique hold."""

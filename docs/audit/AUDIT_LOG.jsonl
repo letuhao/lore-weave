@@ -1797,3 +1797,25 @@
 {"ts":"2026-06-14T17:41:56Z","event":"verify_cycle_24_passed","cycle":24}
 {"ts": "2026-06-14T17:43:49Z", "event": "in_progress_update", "cycle": 24, "phase": "SESSION", "retry": 0}
 {"ts":"2026-06-15T00:42:00Z","event":"cycle_done","cycle":24,"result":"DONE","step_a_commit":"f05b851d","files":18,"tests":{"vitest":19,"verify_exit":0},"playwright":"genderbend dị bản spawned + studio badges shown","adversary":{"blockers":0,"majors":0,"minors":2,"notes":3},"scope_guard":"CLEAR","note":"dị bản M1 FE on top of Step-A BE fix (force_new/is_derivative); derive 201 with fresh distinct project (G2)"}
+{"ts": "2026-06-14T17:44:57Z", "event": "in_progress_archived", "cycle": 24, "archived_to": "cycle-024-state.md"}
+{"ts":"2026-06-15T00:43:30Z","event":"retro","cycle":24,"step_a_commit":"f05b851d","commit":"b79ea0ce","reflection":"C24 FE was pre-built+green but live-smoke caught an UPSTREAM C23 cross-service dedup bug (knowledge create_or_get soft-dedupes book projects per (user,book) → derivative inherited source project_id → uq_composition_work_project 500). Mock/unit coverage hid it because the composition unit tests stubbed create_project. Fix = additive is_derivative column + force_new flag (default false ⇒ back-compat); derivative skips dedup + is excluded from it. Lesson: a 'second graph for the same book' (derivative) breaks any get-or-create that assumes 1 project per (user,book) — the dedup predicate must carve out the new flavour. Live-smoke on a book that ALREADY has a Work is the only thing that surfaces it (greenfield smoke would pass)."}
+{"ts": "2026-06-14T17:46:26Z", "event": "coordinator_next_cycle_emitted", "cycle": 25}
+{"ts":"2026-06-14T17:47:53Z","event":"startup_drift_check_inconclusive","cycle":25,"cd":"","rw":""}
+{"ts":"2026-06-14T17:47:53Z","event":"startup_verifier_complete","cycle":25,"steps":6}
+{"ts": "2026-06-14T17:48:05Z", "event": "in_progress_init", "cycle": 25, "title": "Packer override-merge (composition)"}
+{"ts": "2026-06-14T17:50:04Z", "event": "in_progress_update", "cycle": 25, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-06-14T17:51:21Z", "event": "in_progress_update", "cycle": 25, "phase": "REVIEW1", "retry": 0}
+{"ts": "2026-06-14T17:51:32Z", "event": "in_progress_update", "cycle": 25, "phase": "PLAN", "retry": 0}
+{"ts": "2026-06-14T17:52:50Z", "event": "in_progress_update", "cycle": 25, "phase": "BUILD", "retry": 0}
+{"ts":"2026-06-14T18:04:43Z","event":"secret_scan_skipped","cycle":25,"dps":DPS1,"reason":"gitleaks_not_installed"}
+{"ts":"2026-06-14T18:04:49Z","event":"secret_scan_skipped","cycle":25,"dps":DPS2,"reason":"gitleaks_not_installed"}
+{"ts": "2026-06-14T18:04:49Z", "event": "in_progress_update", "cycle": 25, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-06-14T18:05:36Z","event":"verify_cycle_25_passed","cycle":25}
+{"ts":"2026-06-14T18:21:04Z","event":"verify_cycle_25_passed","cycle":25}
+{"ts": "2026-06-14T18:22:33Z", "event": "in_progress_update", "cycle": 25, "phase": "REVIEW2", "retry": 0}
+{"ts":"2026-06-14T18:26:58Z","event":"verify_cycle_25_passed","cycle":25}
+{"ts": "2026-06-14T18:27:43Z", "event": "in_progress_update", "cycle": 25, "phase": "QC", "retry": 0}
+{"ts": "2026-06-14T18:27:55Z", "event": "in_progress_update", "cycle": 25, "phase": "POST_REVIEW", "retry": 0}
+{"ts": "2026-06-14T18:28:05Z", "event": "in_progress_update", "cycle": 25, "phase": "SESSION", "retry": 0}
+{"ts": "2026-06-14T18:28:48Z", "event": "cycle_complete", "cycle": 25, "title": "Packer override-merge (composition)", "dps": 2, "tests": "467 unit + 1 real-PG integration", "adversary": {"blockers": 0, "majors": 0, "minors": 3, "notes": 2}, "scope_guard": "CLEAR", "live_smoke": "derivative generate -> overridden entity stays overridden across chapters", "verify_exit": 0}
+{"ts": "2026-06-14T18:28:54Z", "event": "in_progress_update", "cycle": 25, "phase": "COMMIT", "retry": 0}

@@ -181,6 +181,21 @@ class WorksRepo:
             row = await c.fetchrow(query, user_id, project_id)
         return _row_to_work(row) if row else None
 
+    async def get_by_id(self, user_id: UUID, work_id: UUID) -> CompositionWork | None:
+        """Fetch a Work by its surrogate `id` (user-scoped). C25 — the packer
+        resolves a derivative's BASE knowledge project from its `source_work_id`
+        (the source Work's `id`), and the source's `id` is NOT necessarily its
+        `project_id` (the two diverge for a Work whose surrogate id was minted
+        distinct from its project), so the base project MUST be looked up here
+        rather than reusing `source_work_id` as a project_id directly."""
+        query = f"""
+        SELECT {_SELECT_COLS} FROM composition_work
+        WHERE user_id = $1 AND id = $2
+        """
+        async with self._pool.acquire() as c:
+            row = await c.fetchrow(query, user_id, work_id)
+        return _row_to_work(row) if row else None
+
     async def resolve_by_book(
         self, user_id: UUID, book_id: UUID
     ) -> list[CompositionWork]:

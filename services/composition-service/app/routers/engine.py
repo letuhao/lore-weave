@@ -36,11 +36,13 @@ from app.db.repositories.outline import OutlineRepo
 from app.db.repositories.scene_links import SceneLinksRepo
 from app.db.repositories.works import WorksRepo
 from app.deps import (
-    get_book_client_dep, get_canon_rules_repo, get_generation_corrections_repo,
-    get_generation_jobs_repo, get_glossary_client_dep, get_knowledge_client_dep,
-    get_llm_client_dep, get_narrative_thread_repo, get_outline_repo,
-    get_scene_links_repo, get_works_repo,
+    get_book_client_dep, get_canon_rules_repo, get_derivatives_repo,
+    get_generation_corrections_repo, get_generation_jobs_repo,
+    get_glossary_client_dep, get_knowledge_client_dep, get_llm_client_dep,
+    get_narrative_thread_repo, get_outline_repo, get_scene_links_repo,
+    get_works_repo,
 )
+from app.db.repositories.derivatives import DerivativesRepo
 from app.db.models import CorrectionKind
 from app.engine.adaptive_k import adaptive_k
 from app.engine.chapter_gen import build_chapter_pack_node, union_cast
@@ -61,7 +63,7 @@ from app.middleware.jwt_auth import get_bearer_token, get_current_user
 from app.packer import budget as B
 from app.grant_client import GrantLevel
 from app.grant_deps import InsufficientGrant
-from app.packer.pack import OwnershipError, PackRequest, pack
+from app.packer.pack import OwnershipError, PackRequest, build_derivative_context, pack
 from app.packer.profile import from_settings
 
 logger = logging.getLogger(__name__)
@@ -282,6 +284,7 @@ async def generate(
     knowledge: KnowledgeClient = Depends(get_knowledge_client_dep),
     llm: LLMClient = Depends(get_llm_client_dep),
     narrative_threads: NarrativeThreadRepo = Depends(get_narrative_thread_repo),
+    derivatives: DerivativesRepo = Depends(get_derivatives_repo),
 ) -> Any:  # StreamingResponse (cowrite) | JSONResponse (auto)
     work, node = await _load_work_node(works, outline, user_id, project_id, body.outline_node_id)
 
@@ -309,12 +312,18 @@ async def generate(
             max_input_chars=settings.compress_max_input_chars,
         )
 
+    # C25 — dị bản two-project merge inputs (base project + branch + fresh
+    # overrides); empty for a non-derivative Work.
+    deriv = await build_derivative_context(
+        work, user_id=user_id, works_repo=works, derivatives_repo=derivatives)
     # Retrieve (M4 packer) — raises OwnershipError (404) / BookClientError (502).
     try:
         pc = await pack(
             PackRequest(user_id=user_id, project_id=project_id, book_id=work.book_id,
                         node=node.model_dump(mode="python"), bearer=bearer, guide=body.guide,
-                        settings=work.settings),
+                        settings=work.settings,
+                        source_project_id=deriv.source_project_id,
+                        branch_point=deriv.branch_point, overrides=deriv.overrides),
             book=book, glossary=glossary, knowledge=knowledge, canon_repo=canon,
             outline_repo=outline, scene_links_repo=scene_links,
             budget_tokens=settings.pack_token_budget,
@@ -614,6 +623,7 @@ async def selection_edit(
     knowledge: KnowledgeClient = Depends(get_knowledge_client_dep),
     llm: LLMClient = Depends(get_llm_client_dep),
     narrative_threads: NarrativeThreadRepo = Depends(get_narrative_thread_repo),
+    derivatives: DerivativesRepo = Depends(get_derivatives_repo),
 ) -> Any:
     """T3.2 — selection-scoped edit (rewrite/expand/describe) over the author's
     highlighted prose. Decoupled from outline_node_id (AH-1): a selection may sit
@@ -643,10 +653,15 @@ async def selection_edit(
                     max_input_chars=settings.compress_max_input_chars)
 
             try:
+                # C25 — dị bản two-project merge inputs (best-effort, like the pack).
+                deriv = await build_derivative_context(
+                    work, user_id=user_id, works_repo=works, derivatives_repo=derivatives)
                 pc = await pack(
                     PackRequest(user_id=user_id, project_id=project_id, book_id=work.book_id,
                                 node=node.model_dump(mode="python"), bearer=bearer, guide=body.guide,
-                                settings=work.settings),
+                                settings=work.settings,
+                                source_project_id=deriv.source_project_id,
+                                branch_point=deriv.branch_point, overrides=deriv.overrides),
                     book=book, glossary=glossary, knowledge=knowledge, canon_repo=canon,
                     outline_repo=outline, scene_links_repo=scene_links,
                     budget_tokens=settings.pack_token_budget, jobs_repo=jobs,
@@ -771,6 +786,7 @@ async def generate_chapter(
     knowledge: KnowledgeClient = Depends(get_knowledge_client_dep),
     llm: LLMClient = Depends(get_llm_client_dep),
     narrative_threads: NarrativeThreadRepo = Depends(get_narrative_thread_repo),
+    derivatives: DerivativesRepo = Depends(get_derivatives_repo),
 ) -> Any:
     """B2 chapter single-pass (assembly_mode='chapter'): generate a WHOLE chapter
     in ONE drafter pass from its A3 decompose plan (scene nodes), grounded at the
@@ -811,11 +827,17 @@ async def generate_chapter(
             plan=plan, source_language=_src_lang,
             max_input_chars=settings.compress_max_input_chars)
 
+    # C25 — dị bản two-project merge inputs (base project + branch + fresh
+    # overrides); empty for a non-derivative Work.
+    deriv = await build_derivative_context(
+        work, user_id=user_id, works_repo=works, derivatives_repo=derivatives)
     try:
         pc = await pack(
             PackRequest(user_id=user_id, project_id=project_id, book_id=work.book_id,
                         node=pack_node, bearer=bearer, guide=body.guide,
-                        settings=work.settings, chapter_sort_hint=chapter_sort),
+                        settings=work.settings, chapter_sort_hint=chapter_sort,
+                        source_project_id=deriv.source_project_id,
+                        branch_point=deriv.branch_point, overrides=deriv.overrides),
             book=book, glossary=glossary, knowledge=knowledge, canon_repo=canon,
             outline_repo=outline, scene_links_repo=scene_links,
             budget_tokens=settings.pack_token_budget, jobs_repo=jobs,
