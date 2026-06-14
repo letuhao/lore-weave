@@ -405,6 +405,9 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
 
     let map = generate(cli.seed, &cs);
 
+    // Resolve the render colour theme (clamped; default = byte-identical render).
+    let theme = cs.render_theme.resolved(&cs.intensity);
+
     // Resolve the render projection from the flags.
     let proj = match cli.projection {
         ProjectionArg::Equirectangular => Projection::Equirectangular,
@@ -462,6 +465,7 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
             img_h,
             cli.style.into(),
             proj,
+            &theme,
         );
         if let Err(e) = img.save(png) {
             eprintln!("error: save relief png {}: {e}", png.display());
@@ -476,6 +480,7 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
             img_h,
             cli.style.into(),
             proj,
+            &theme,
         );
         if let Err(e) = img.save(png) {
             eprintln!("error: save png {}: {e}", png.display());
@@ -490,6 +495,7 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
             img_h,
             cli.style.into(),
             proj,
+            &theme,
         );
         if let Err(e) = img.save(png) {
             eprintln!("error: save political png {}: {e}", png.display());
@@ -504,6 +510,7 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
             img_h,
             cli.style.into(),
             proj,
+            &theme,
         );
         if let Err(e) = img.save(png) {
             eprintln!("error: save culture png {}: {e}", png.display());
@@ -518,6 +525,7 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
             img_h,
             cli.style.into(),
             proj,
+            &theme,
         );
         if let Err(e) = img.save(png) {
             eprintln!("error: save plate png {}: {e}", png.display());
@@ -532,6 +540,7 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
             img_h,
             cli.style.into(),
             proj,
+            &theme,
         );
         if let Err(e) = img.save(png) {
             eprintln!("error: save region png {}: {e}", png.display());
@@ -546,6 +555,7 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
             img_h,
             cli.style.into(),
             proj,
+            &theme,
         );
         if let Err(e) = img.save(png) {
             eprintln!("error: save realm png {}: {e}", png.display());
@@ -554,7 +564,7 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
         println!("wrote {}", png.display());
     }
     if let Some(svg) = &cli.svg {
-        let doc = world_gen::render::political_svg(&map, img_h);
+        let doc = world_gen::render::political_svg(&map, img_h, &theme);
         if let Err(e) = std::fs::write(svg, doc) {
             eprintln!("error: write svg {}: {e}", svg.display());
             return ExitCode::FAILURE;
@@ -577,6 +587,7 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
             cli.exaggeration,
             cli.glb_texture,
             cli.glb_color.into(),
+            &theme,
         );
         if let Err(e) = std::fs::write(path, bytes) {
             eprintln!("error: write glb {}: {e}", path.display());
@@ -680,7 +691,8 @@ fn run_name(cli: NameArgs) -> ExitCode {
         map.water_bodies.len(),
     );
     if let Some(svg) = &cli.svg {
-        let doc = world_gen::render::political_svg(&map, cli.svg_size);
+        // `name` loads a map without a CreativeSeed; use the default theme.
+        let doc = world_gen::render::political_svg(&map, cli.svg_size, &world_gen::RenderTheme::default());
         if let Err(e) = std::fs::write(svg, doc) {
             eprintln!("error: write svg {}: {e}", svg.display());
             return ExitCode::FAILURE;

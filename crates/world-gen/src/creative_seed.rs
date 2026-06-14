@@ -10,7 +10,8 @@ use serde::{Deserialize, Serialize};
 use crate::climate::ClimateZone;
 use crate::params::{
     BiomeParams, ClimateParams, CultureParams, ErosionParams, HierarchyParams, HydrologyParams,
-    IntensityKnobs, PoliticalParams, ReliefParams, RouteParams, SettlementParams, TectonicsParams,
+    IntensityKnobs, PoliticalParams, ReliefParams, RenderTheme, RouteParams, SettlementParams,
+    TectonicsParams,
 };
 
 /// Creative direction for a generated world.
@@ -129,6 +130,11 @@ pub struct CreativeSeed {
     /// Default = prior `biome.rs` literals + methods (byte-identical).
     #[serde(default)]
     pub biome_params: BiomeParams,
+    /// Render-time colour theme (parameterization P8b): palettes + ramps +
+    /// supersample. Cosmetic — not part of `content_hash`. Default = prior
+    /// `render.rs` literals (byte-identical render output).
+    #[serde(default)]
+    pub render_theme: RenderTheme,
     /// Macro "intensity" knobs (parameterization) — convenience scalers over
     /// groups of granular params; default `1.0` = no-op. See [`IntensityKnobs`].
     #[serde(default)]
@@ -208,6 +214,7 @@ impl Default for CreativeSeed {
             culture_params: CultureParams::default(),
             hierarchy_params: HierarchyParams::default(),
             biome_params: BiomeParams::default(),
+            render_theme: RenderTheme::default(),
             intensity: IntensityKnobs::default(),
         }
     }
@@ -538,6 +545,7 @@ mod tests {
             culture_params: CultureParams { hearth_spacing_coeff: 1.2, ..CultureParams::default() },
             hierarchy_params: HierarchyParams { region_subdivision_max: 7 },
             biome_params: BiomeParams { high_t: 0.6, ..BiomeParams::default() },
+            render_theme: RenderTheme { supersample: 3, ..RenderTheme::default() },
             ..CreativeSeed::default()
         };
         let back: CreativeSeed =
@@ -562,6 +570,7 @@ mod tests {
         assert_eq!(old.culture_params, CultureParams::default());
         assert_eq!(old.hierarchy_params, HierarchyParams::default());
         assert_eq!(old.biome_params, BiomeParams::default());
+        assert_eq!(old.render_theme, RenderTheme::default());
         // A partial override (intensity.orogeny + one climate cutoff) keeps every
         // other field default — the `#[serde(default)]` per-field fill.
         let json2 = r#"{

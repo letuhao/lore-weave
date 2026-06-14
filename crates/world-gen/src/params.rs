@@ -650,6 +650,165 @@ impl BiomeParams {
     }
 }
 
+/// Render-time colour theme (was the `render.rs` palettes + `SS`/`BACKGROUND`).
+/// Colours are stored as raw `[u8;3]` (serde/`Copy`-friendly; `render.rs` wraps
+/// them in `image::Rgb` at use). Defaults are the exact prior literals
+/// (byte-identical render output, pinned by `render::tests`). The render *math*
+/// — hillshade/warp/detail and the per-style `StyleParams` in `relief.rs` —
+/// stays fixed internal (the salts/math rule); only colours + supersample are
+/// params. (P8b.)
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RenderTheme {
+    /// Internal supersample factor (every raster renders at `SS×` then
+    /// box-downsamples). Higher = smoother edges, ~`SS²` cost.
+    pub supersample: u32,
+    /// Out-of-globe background (Orthographic disc exterior).
+    pub background: [u8; 3],
+    /// Flat water fill for the categorical maps (culture/plate/region/realm/
+    /// political). The hypsometric relief uses `water_*` ramps instead.
+    pub water_flat: [u8; 3],
+    /// Biome fill colours, indexed by [`BiomeKind::tag`].
+    pub biome: [[u8; 3]; 14],
+    /// Culture-region palette (cycled by id).
+    pub culture: [[u8; 3]; 16],
+    /// State (nation) palette (cycled by id) for the political map.
+    pub state: [[u8; 3]; 12],
+    /// Plate-boundary outline colours, indexed by `BoundaryKind` (FoldMountain,
+    /// Subduction, IslandArc, Ridge, Rift, Fault, Interior).
+    pub boundary: [[u8; 3]; 7],
+    /// Continental-plate base tint (a per-id jitter is added at render).
+    pub plate_continental: [u8; 3],
+    /// Oceanic-plate base tint.
+    pub plate_oceanic: [u8; 3],
+    /// Route colours, indexed by `RouteKind` (Road, Trail, RiverNavigation,
+    /// SeaLane, MountainPass).
+    pub route: [[u8; 3]; 5],
+    /// Settlement dot colours, indexed by `SettlementRole` (Capital, City, Town,
+    /// Village, Hamlet, Fortress).
+    pub settlement: [[u8; 3]; 6],
+    /// Outer-tier choropleth border (continent / realm).
+    pub tier1_border: [u8; 3],
+    /// Inner-tier choropleth border (subcontinent / state).
+    pub tier2_border: [u8; 3],
+    /// Atlas-style coastline ink.
+    pub coast_ink: [u8; 3],
+    /// Choropleth region/province tint saturation + value (golden-ratio hue).
+    pub choropleth_sat: f32,
+    pub choropleth_val: f32,
+    /// Hypsometric land ramps `(normalized-height-above-sea, rgb)`, ascending.
+    pub land_realistic: [(f32, [u8; 3]); 8],
+    pub land_atlas: [(f32, [u8; 3]); 5],
+    /// Hypsometric water ramps `(normalized-depth-below-sea, rgb)`, ascending.
+    pub water_realistic: [(f32, [u8; 3]); 4],
+    pub water_atlas: [(f32, [u8; 3]); 2],
+}
+
+impl Default for RenderTheme {
+    fn default() -> Self {
+        // Exact literals that were hardcoded in `render.rs`.
+        RenderTheme {
+            supersample: 2,
+            background: [12, 14, 18],
+            water_flat: [40, 70, 120],
+            biome: [
+                [30, 60, 130],   // Ocean
+                [60, 110, 190],  // Lake
+                [90, 150, 210],  // River
+                [200, 190, 130], // Coast
+                [235, 220, 160], // Beach
+                [130, 190, 90],  // Plain
+                [50, 120, 55],   // Forest
+                [25, 95, 40],    // Jungle
+                [95, 120, 70],   // Marsh
+                [140, 135, 130], // Mountain
+                [120, 140, 80],  // Hill
+                [220, 200, 130], // Desert
+                [170, 160, 150], // Tundra
+                [240, 245, 250], // Glacier
+            ],
+            culture: [
+                [210, 100, 100], [100, 160, 210], [160, 200, 100], [210, 180, 90],
+                [150, 120, 200], [100, 200, 170], [220, 140, 170], [140, 170, 110],
+                [190, 150, 210], [120, 190, 130], [210, 200, 120], [170, 130, 120],
+                [120, 140, 200], [200, 170, 140], [150, 200, 200], [180, 110, 150],
+            ],
+            state: [
+                [200, 120, 120], [120, 170, 200], [170, 200, 120], [200, 180, 110],
+                [160, 130, 190], [120, 200, 170], [210, 150, 170], [150, 160, 120],
+                [190, 160, 200], [130, 190, 140], [200, 200, 140], [170, 140, 130],
+            ],
+            boundary: [
+                [220, 60, 50],   // FoldMountain
+                [240, 140, 30],  // Subduction
+                [240, 210, 60],  // IslandArc
+                [90, 220, 200],  // Ridge
+                [200, 90, 220],  // Rift
+                [180, 180, 180], // Fault
+                [0, 0, 0],       // Interior
+            ],
+            plate_continental: [150, 120, 70],
+            plate_oceanic: [40, 70, 130],
+            route: [
+                [40, 30, 20],    // Road
+                [120, 90, 50],   // Trail
+                [90, 160, 220],  // RiverNavigation
+                [225, 225, 255], // SeaLane
+                [220, 80, 60],   // MountainPass
+            ],
+            settlement: [
+                [255, 40, 40],   // Capital
+                [255, 205, 40],  // City
+                [255, 255, 255], // Town
+                [205, 205, 205], // Village
+                [150, 150, 150], // Hamlet
+                [130, 50, 130],  // Fortress
+            ],
+            tier1_border: [15, 15, 20],
+            tier2_border: [70, 70, 78],
+            coast_ink: [66, 56, 48],
+            choropleth_sat: 0.55,
+            choropleth_val: 0.85,
+            land_realistic: [
+                (0.00, [78, 126, 68]),
+                (0.10, [100, 146, 78]),
+                (0.24, [132, 154, 90]),
+                (0.42, [160, 150, 100]),
+                (0.60, [150, 120, 84]),
+                (0.76, [126, 112, 104]),
+                (0.90, [172, 168, 162]),
+                (1.00, [255, 255, 255]),
+            ],
+            land_atlas: [
+                (0.00, [208, 202, 170]),
+                (0.30, [196, 184, 146]),
+                (0.60, [178, 160, 132]),
+                (0.85, [162, 152, 138]),
+                (1.00, [200, 199, 197]),
+            ],
+            water_realistic: [
+                (0.00, [128, 182, 200]),
+                (0.12, [86, 144, 184]),
+                (0.45, [44, 94, 148]),
+                (1.00, [16, 38, 84]),
+            ],
+            water_atlas: [(0.00, [182, 196, 202]), (1.00, [138, 160, 180])],
+        }
+    }
+}
+
+impl RenderTheme {
+    /// Clamp to sane rails (no panic): supersample ≥ 1, sat/val ∈ [0,1]. Colours
+    /// (`u8`) and ramp stops pass through. `k` reserved for call-shape uniformity.
+    pub fn resolved(&self, _k: &IntensityKnobs) -> RenderTheme {
+        let mut r = *self;
+        r.supersample = self.supersample.clamp(1, 8);
+        r.choropleth_sat = self.choropleth_sat.clamp(0.0, 1.0);
+        r.choropleth_val = self.choropleth_val.clamp(0.0, 1.0);
+        r
+    }
+}
+
 /// Continental relief, ocean bathymetry, quantize and heightmap-noise tuning
 /// (was the `terrain.rs` consts). Defaults are the exact prior values
 /// (byte-identical baseline). Noise *salts* and the fixed `ARCH_ISLANDS`
@@ -1120,6 +1279,17 @@ mod tests {
         assert_eq!(r.population_potential[5], 0.0, "habitability clamps non-negative");
         assert_eq!(r.terrain_cost[9], Some(10_000), "terrain cost clamps to ceiling (no Dijkstra overflow)");
         assert_eq!(r.culture_barrier[9], Some(10_000), "culture barrier clamps to ceiling");
+    }
+
+    #[test]
+    fn render_theme_default_is_identity_and_clamps() {
+        let t = RenderTheme::default();
+        assert_eq!(t, t.resolved(&IntensityKnobs::default()), "default theme must be identity");
+        let junk = RenderTheme { supersample: 0, choropleth_sat: 9.0, choropleth_val: -1.0, ..t };
+        let r = junk.resolved(&IntensityKnobs::default());
+        assert_eq!(r.supersample, 1, "supersample clamps ≥ 1");
+        assert_eq!(r.choropleth_sat, 1.0, "sat clamps to [0,1]");
+        assert_eq!(r.choropleth_val, 0.0, "val clamps to [0,1]");
     }
 
     #[test]

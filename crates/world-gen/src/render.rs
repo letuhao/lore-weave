@@ -9,25 +9,22 @@
 use image::{Rgb, RgbImage};
 
 use crate::biome::BiomeKind;
+use crate::params::RenderTheme;
 use crate::projection::Projection;
 use crate::relief::{ReliefField, RenderStyle};
 use crate::world_map::{RouteKind, SettlementRole, WorldMap};
 
-/// Background colour for canvas pixels outside the projected world (the
-/// Orthographic disc exterior). Neutral near-black so the globe reads as a
-/// body in space.
-const BACKGROUND: Rgb<u8> = Rgb([12, 14, 18]);
+/// Wrap an `[u8;3]` theme colour as an `image::Rgb`.
+fn rgb(c: [u8; 3]) -> Rgb<u8> {
+    Rgb(c)
+}
 
-/// Internal supersampling factor. Every raster `*_image` renders at `SS×` the
-/// requested size, then box-downsamples — anti-aliasing coastlines, the
-/// hillshade and the Voronoi cell edges, and letting the fBm detail sample
-/// finer. Rendering is an offline one-shot, so the ~`SS²` cost is fine.
-const SS: u32 = 2;
-
-/// Render `inner` at `SS×` the requested size, then box-downsample back. The
-/// public render entry points are thin wrappers over this.
-fn supersampled(width: u32, height: u32, inner: impl Fn(u32, u32) -> RgbImage) -> RgbImage {
-    downsample(&inner(width * SS, height * SS), SS)
+/// Render `inner` at `ss×` the requested size, then box-downsample back —
+/// anti-aliasing coastlines, the hillshade and the Voronoi cell edges, and
+/// letting the fBm detail sample finer. The public render entry points are thin
+/// wrappers over this. `ss` is [`RenderTheme::supersample`].
+fn supersampled(width: u32, height: u32, ss: u32, inner: impl Fn(u32, u32) -> RgbImage) -> RgbImage {
+    downsample(&inner(width * ss, height * ss), ss)
 }
 
 /// Box-downsample `src` by an integer `factor`: each output pixel is the mean
@@ -64,6 +61,7 @@ fn rasterize<F: Fn(usize) -> Rgb<u8>>(
     width: u32,
     height: u32,
     proj: Projection,
+    bg: Rgb<u8>,
     color: F,
 ) -> RgbImage {
     let index = SpatialIndex::build(map, proj);
@@ -74,7 +72,7 @@ fn rasterize<F: Fn(usize) -> Rgb<u8>>(
             let y = (py as f32 + 0.5) / height as f32;
             // Outside the projected world (Orthographic disc exterior) → bg.
             if proj.back_project((x, y)).is_none() {
-                img.put_pixel(px, py, BACKGROUND);
+                img.put_pixel(px, py, bg);
                 continue;
             }
             let cell = index.nearest(map, x, y);
@@ -93,9 +91,10 @@ pub fn relief_image(
     height: u32,
     style: RenderStyle,
     proj: Projection,
+    theme: &RenderTheme,
 ) -> RgbImage {
-    supersampled(width, height, |w, h| {
-        relief_image_inner(map, w, h, style, proj)
+    supersampled(width, height, theme.supersample, |w, h| {
+        relief_image_inner(map, w, h, style, proj, theme)
     })
 }
 
@@ -105,6 +104,7 @@ fn relief_image_inner(
     height: u32,
     style: RenderStyle,
     proj: Projection,
+    theme: &RenderTheme,
 ) -> RgbImage {
     let relief = ReliefField::build(map, width, height, style, proj);
     let mut img = RgbImage::new(width, height);
@@ -112,19 +112,19 @@ fn relief_image_inner(
         for px in 0..width {
             let i = (py * width + px) as usize;
             if !relief.visible[i] {
-                img.put_pixel(px, py, BACKGROUND);
+                img.put_pixel(px, py, rgb(theme.background));
                 continue;
             }
             let base = if relief.water[i] {
-                water_color(relief.elev[i], relief.sea, style)
+                water_color(relief.elev[i], relief.sea, style, theme)
             } else {
-                land_color(relief.elev[i], relief.sea, style)
+                land_color(relief.elev[i], relief.sea, style, theme)
             };
             img.put_pixel(px, py, shade_rgb(base, relief.shade[i]));
         }
     }
     if style == RenderStyle::Atlas {
-        draw_coast_outline(&mut img, &relief);
+        draw_coast_outline(&mut img, &relief, theme.supersample, rgb(theme.coast_ink));
     }
     img
 }
@@ -136,9 +136,10 @@ pub fn biome_image(
     height: u32,
     style: RenderStyle,
     proj: Projection,
+    theme: &RenderTheme,
 ) -> RgbImage {
-    supersampled(width, height, |w, h| {
-        biome_image_inner(map, w, h, style, proj)
+    supersampled(width, height, theme.supersample, |w, h| {
+        biome_image_inner(map, w, h, style, proj, theme)
     })
 }
 
@@ -148,31 +149,19 @@ fn biome_image_inner(
     height: u32,
     style: RenderStyle,
     proj: Projection,
+    theme: &RenderTheme,
 ) -> RgbImage {
     let relief = ReliefField::build(map, width, height, style, proj);
-    let mut img = rasterize(map, width, height, proj, |cell| biome_color(map.biome[cell]));
+    let mut img = rasterize(map, width, height, proj, rgb(theme.background), |cell| {
+        biome_color(map.biome[cell], theme)
+    });
     apply_shade(&mut img, &relief);
     img
 }
 
-/// Colour for each `BiomeKind`.
-fn biome_color(b: BiomeKind) -> Rgb<u8> {
-    match b {
-        BiomeKind::Ocean => Rgb([30, 60, 130]),
-        BiomeKind::Lake => Rgb([60, 110, 190]),
-        BiomeKind::River => Rgb([90, 150, 210]),
-        BiomeKind::Coast => Rgb([200, 190, 130]),
-        BiomeKind::Beach => Rgb([235, 220, 160]),
-        BiomeKind::Plain => Rgb([130, 190, 90]),
-        BiomeKind::Forest => Rgb([50, 120, 55]),
-        BiomeKind::Jungle => Rgb([25, 95, 40]),
-        BiomeKind::Marsh => Rgb([95, 120, 70]),
-        BiomeKind::Mountain => Rgb([140, 135, 130]),
-        BiomeKind::Hill => Rgb([120, 140, 80]),
-        BiomeKind::Desert => Rgb([220, 200, 130]),
-        BiomeKind::Tundra => Rgb([170, 160, 150]),
-        BiomeKind::Glacier => Rgb([240, 245, 250]),
-    }
+/// Colour for each `BiomeKind` (theme table, indexed by `tag`).
+fn biome_color(b: BiomeKind, theme: &RenderTheme) -> Rgb<u8> {
+    rgb(theme.biome[b.tag() as usize])
 }
 
 /// Render a culture-region image of `map` — each land cell tinted by its
@@ -183,9 +172,10 @@ pub fn culture_image(
     height: u32,
     style: RenderStyle,
     proj: Projection,
+    theme: &RenderTheme,
 ) -> RgbImage {
-    supersampled(width, height, |w, h| {
-        culture_image_inner(map, w, h, style, proj)
+    supersampled(width, height, theme.supersample, |w, h| {
+        culture_image_inner(map, w, h, style, proj, theme)
     })
 }
 
@@ -195,14 +185,15 @@ fn culture_image_inner(
     height: u32,
     style: RenderStyle,
     proj: Projection,
+    theme: &RenderTheme,
 ) -> RgbImage {
     let relief = ReliefField::build(map, width, height, style, proj);
-    let mut img = rasterize(map, width, height, proj, |cell| {
+    let mut img = rasterize(map, width, height, proj, rgb(theme.background), |cell| {
         let cid = map.culture_of[cell];
         if cid == u32::MAX {
-            Rgb([40, 70, 120]) // water
+            rgb(theme.water_flat)
         } else {
-            culture_color(cid)
+            culture_color(cid, theme)
         }
     });
     apply_shade(&mut img, &relief);
@@ -219,11 +210,14 @@ pub fn plate_image(
     height: u32,
     style: RenderStyle,
     proj: Projection,
+    theme: &RenderTheme,
 ) -> RgbImage {
     if map.plates.is_empty() {
-        return biome_image(map, width, height, style, proj);
+        return biome_image(map, width, height, style, proj, theme);
     }
-    supersampled(width, height, |w, h| plate_image_inner(map, w, h, style, proj))
+    supersampled(width, height, theme.supersample, |w, h| {
+        plate_image_inner(map, w, h, style, proj, theme)
+    })
 }
 
 fn plate_image_inner(
@@ -232,20 +226,21 @@ fn plate_image_inner(
     height: u32,
     style: RenderStyle,
     proj: Projection,
+    theme: &RenderTheme,
 ) -> RgbImage {
     let relief = ReliefField::build(map, width, height, style, proj);
     // Per-cell boundary kind: the kind of the (cell plate, lowest differing
     // neighbour plate) pair — mirrors `plates::boundary_field`'s seeding so
     // the outline matches the orogeny.
     let boundary_kind = cell_boundary_kinds(map);
-    let mut img = rasterize(map, width, height, proj, |cell| {
+    let mut img = rasterize(map, width, height, proj, rgb(theme.background), |cell| {
         let pid = map.plate_of[cell];
         if pid == u32::MAX {
-            return Rgb([40, 70, 120]);
+            return rgb(theme.water_flat);
         }
         match boundary_kind[cell] {
-            Some(bk) => boundary_color(bk),
-            None => plate_color(map.plates[pid as usize].kind, pid),
+            Some(bk) => boundary_color(bk, theme),
+            None => plate_color(map.plates[pid as usize].kind, pid, theme),
         }
     });
     apply_shade(&mut img, &relief);
@@ -284,30 +279,37 @@ fn cell_boundary_kinds(map: &WorldMap) -> Vec<Option<crate::world_map::BoundaryK
         .collect()
 }
 
-/// Warm tint for continental plates, cool for oceanic; varied per id.
-fn plate_color(kind: crate::world_map::PlateKind, id: u32) -> Rgb<u8> {
+/// Warm tint for continental plates, cool for oceanic; varied per id. The base
+/// tints are theme params; the per-id jitter (so adjacent same-kind plates read
+/// apart) is fixed render math.
+fn plate_color(kind: crate::world_map::PlateKind, id: u32, theme: &RenderTheme) -> Rgb<u8> {
     use crate::world_map::PlateKind;
-    // a small per-id jitter so adjacent same-kind plates still read apart.
     let j = ((id.wrapping_mul(2654435761)) >> 24) as i32 % 40 - 20;
     let clamp = |v: i32| v.clamp(0, 255) as u8;
+    let base = match kind {
+        PlateKind::Continental => theme.plate_continental,
+        PlateKind::Oceanic => theme.plate_oceanic,
+    };
+    let (r, g, b) = (base[0] as i32, base[1] as i32, base[2] as i32);
     match kind {
-        PlateKind::Continental => Rgb([clamp(150 + j), clamp(120 + j), clamp(70 + j / 2)]),
-        PlateKind::Oceanic => Rgb([clamp(40 + j / 2), clamp(70 + j), clamp(130 + j)]),
+        PlateKind::Continental => Rgb([clamp(r + j), clamp(g + j), clamp(b + j / 2)]),
+        PlateKind::Oceanic => Rgb([clamp(r + j / 2), clamp(g + j), clamp(b + j)]),
     }
 }
 
-/// Outline colour per boundary kind.
-fn boundary_color(k: crate::world_map::BoundaryKind) -> Rgb<u8> {
+/// Outline colour per boundary kind (theme table, by enum order).
+fn boundary_color(k: crate::world_map::BoundaryKind, theme: &RenderTheme) -> Rgb<u8> {
     use crate::world_map::BoundaryKind as B;
-    match k {
-        B::FoldMountain => Rgb([220, 60, 50]),   // red — collision belts
-        B::Subduction => Rgb([240, 140, 30]),    // orange — trench + arc
-        B::IslandArc => Rgb([240, 210, 60]),     // yellow — oceanic arc
-        B::Ridge => Rgb([90, 220, 200]),         // teal — spreading ridge
-        B::Rift => Rgb([200, 90, 220]),          // violet — continental rift
-        B::Fault => Rgb([180, 180, 180]),        // grey — transform
-        B::Interior => Rgb([0, 0, 0]),
-    }
+    let i = match k {
+        B::FoldMountain => 0,
+        B::Subduction => 1,
+        B::IslandArc => 2,
+        B::Ridge => 3,
+        B::Rift => 4,
+        B::Fault => 5,
+        B::Interior => 6,
+    };
+    rgb(theme.boundary[i])
 }
 
 /// 3-tier geometric-hierarchy choropleth (C-1b): each land cell is filled with
@@ -322,11 +324,14 @@ pub fn region_image(
     height: u32,
     style: RenderStyle,
     proj: Projection,
+    theme: &RenderTheme,
 ) -> RgbImage {
     if map.continents.is_empty() {
-        return biome_image(map, width, height, style, proj);
+        return biome_image(map, width, height, style, proj, theme);
     }
-    supersampled(width, height, |w, h| region_image_inner(map, w, h, style, proj))
+    supersampled(width, height, theme.supersample, |w, h| {
+        region_image_inner(map, w, h, style, proj, theme)
+    })
 }
 
 fn region_image_inner(
@@ -335,15 +340,16 @@ fn region_image_inner(
     height: u32,
     style: RenderStyle,
     proj: Projection,
+    theme: &RenderTheme,
 ) -> RgbImage {
     let relief = ReliefField::build(map, width, height, style, proj);
-    const WATER: Rgb<u8> = Rgb([40, 70, 120]);
-    const CONTINENT_BORDER: Rgb<u8> = Rgb([15, 15, 20]);
-    const SUBCONTINENT_BORDER: Rgb<u8> = Rgb([70, 70, 78]);
-    let mut img = rasterize(map, width, height, proj, |cell| {
+    let water = rgb(theme.water_flat);
+    let continent_border = rgb(theme.tier1_border);
+    let subcontinent_border = rgb(theme.tier2_border);
+    let mut img = rasterize(map, width, height, proj, rgb(theme.background), |cell| {
         let cont = map.continent_of[cell];
         if cont == u32::MAX {
-            return WATER;
+            return water;
         }
         let sub = map.subcontinent_of[cell];
         let mut continent_edge = false;
@@ -357,11 +363,11 @@ fn region_image_inner(
             }
         }
         if continent_edge {
-            CONTINENT_BORDER
+            continent_border
         } else if subcontinent_edge {
-            SUBCONTINENT_BORDER
+            subcontinent_border
         } else {
-            id_color(map.region_of[cell])
+            id_color(map.region_of[cell], theme)
         }
     });
     apply_shade(&mut img, &relief);
@@ -371,9 +377,9 @@ fn region_image_inner(
 /// A well-separated tint per id — a golden-ratio hue rotation at fixed
 /// saturation/value, so adjacent ids read apart. Used to colour both geometric
 /// regions (`region_image`) and political provinces (`realm_image`).
-fn id_color(id: u32) -> Rgb<u8> {
+fn id_color(id: u32, theme: &RenderTheme) -> Rgb<u8> {
     let hue = (id as f32 * 0.618_034).fract();
-    hsv_to_rgb(hue, 0.55, 0.85)
+    hsv_to_rgb(hue, theme.choropleth_sat, theme.choropleth_val)
 }
 
 /// `h, s, v` each in `[0, 1]` → 8-bit RGB.
@@ -407,11 +413,14 @@ pub fn realm_image(
     height: u32,
     style: RenderStyle,
     proj: Projection,
+    theme: &RenderTheme,
 ) -> RgbImage {
     if map.realms.is_empty() {
-        return biome_image(map, width, height, style, proj);
+        return biome_image(map, width, height, style, proj, theme);
     }
-    supersampled(width, height, |w, h| realm_image_inner(map, w, h, style, proj))
+    supersampled(width, height, theme.supersample, |w, h| {
+        realm_image_inner(map, w, h, style, proj, theme)
+    })
 }
 
 fn realm_image_inner(
@@ -420,11 +429,12 @@ fn realm_image_inner(
     height: u32,
     style: RenderStyle,
     proj: Projection,
+    theme: &RenderTheme,
 ) -> RgbImage {
     let relief = ReliefField::build(map, width, height, style, proj);
-    const WATER: Rgb<u8> = Rgb([40, 70, 120]);
-    const REALM_BORDER: Rgb<u8> = Rgb([15, 15, 20]);
-    const STATE_BORDER: Rgb<u8> = Rgb([70, 70, 78]);
+    let water = rgb(theme.water_flat);
+    let realm_border = rgb(theme.tier1_border);
+    let state_border = rgb(theme.tier2_border);
     // Map a cell to its (state, realm); `u32::MAX` for water / unassigned.
     let state_of = |c: usize| -> u32 {
         let p = map.province_of[c];
@@ -442,10 +452,10 @@ fn realm_image_inner(
             map.states[s as usize].realm
         }
     };
-    let mut img = rasterize(map, width, height, proj, |cell| {
+    let mut img = rasterize(map, width, height, proj, rgb(theme.background), |cell| {
         let prov = map.province_of[cell];
         if prov == u32::MAX {
-            return WATER;
+            return water;
         }
         let realm = realm_of(cell);
         let state = state_of(cell);
@@ -460,38 +470,20 @@ fn realm_image_inner(
             }
         }
         if realm_edge {
-            REALM_BORDER
+            realm_border
         } else if state_edge {
-            STATE_BORDER
+            state_border
         } else {
-            id_color(prov)
+            id_color(prov, theme)
         }
     });
     apply_shade(&mut img, &relief);
     img
 }
 
-/// A distinct tint per culture id (`culture_count` is clamped to 1..=16).
-fn culture_color(id: u32) -> Rgb<u8> {
-    const PALETTE: [[u8; 3]; 16] = [
-        [210, 100, 100],
-        [100, 160, 210],
-        [160, 200, 100],
-        [210, 180, 90],
-        [150, 120, 200],
-        [100, 200, 170],
-        [220, 140, 170],
-        [140, 170, 110],
-        [190, 150, 210],
-        [120, 190, 130],
-        [210, 200, 120],
-        [170, 130, 120],
-        [120, 140, 200],
-        [200, 170, 140],
-        [150, 200, 200],
-        [180, 110, 150],
-    ];
-    Rgb(PALETTE[(id as usize) % PALETTE.len()])
+/// A distinct tint per culture id (theme palette, cycled).
+fn culture_color(id: u32, theme: &RenderTheme) -> Rgb<u8> {
+    rgb(theme.culture[(id as usize) % theme.culture.len()])
 }
 
 /// A uniform bucket grid over the **projected** cell centres `(u, v) ∈ [0,1]²`
@@ -625,9 +617,13 @@ fn shade_rgb(c: Rgb<u8>, s: f32) -> Rgb<u8> {
     Rgb([ch(c.0[0]), ch(c.0[1]), ch(c.0[2])])
 }
 
-/// Linear-interpolate a colour through an ascending `(stop, rgb)` ramp.
+/// Linear-interpolate a colour through an ascending `(stop, rgb)` ramp. Stops
+/// SHOULD be ascending; a non-ascending theme yields odd-but-deterministic
+/// colours (GIGO), never a panic — the clamp below is order-tolerant
+/// (`f32::clamp` would otherwise panic when `min > max`).
 fn ramp(stops: &[(f32, [u8; 3])], t: f32) -> Rgb<u8> {
-    let t = t.clamp(stops[0].0, stops[stops.len() - 1].0);
+    let (a, b) = (stops[0].0, stops[stops.len() - 1].0);
+    let t = t.max(a.min(b)).min(a.max(b));
     for pair in stops.windows(2) {
         let (t0, c0) = pair[0];
         let (t1, c1) = pair[1];
@@ -652,57 +648,27 @@ fn lerp_u8(a: u8, b: u8, t: f32) -> u8 {
 
 /// Hypsometric land colour by normalized height above sea level. Land stops
 /// keep blue off the dominant channel so a water test can be `b > r && b > g`.
-fn land_color(elev: f32, sea: f32, style: RenderStyle) -> Rgb<u8> {
+fn land_color(elev: f32, sea: f32, style: RenderStyle, theme: &RenderTheme) -> Rgb<u8> {
     let t = ((elev - sea) / (1.0 - sea).max(1e-3)).clamp(0.0, 1.0);
     match style {
-        RenderStyle::Realistic => ramp(
-            &[
-                (0.00, [78, 126, 68]),   // coastal lowland green
-                (0.10, [100, 146, 78]),  // plains
-                (0.24, [132, 154, 90]),  // dry grassland
-                (0.42, [160, 150, 100]), // foothills / steppe
-                (0.60, [150, 120, 84]),  // upland tan
-                (0.76, [126, 112, 104]), // bare rock
-                (0.90, [172, 168, 162]), // high rock
-                (1.00, [255, 255, 255]), // snow cap
-            ],
-            t,
-        ),
-        RenderStyle::Atlas => ramp(
-            &[
-                (0.00, [208, 202, 170]),
-                (0.30, [196, 184, 146]),
-                (0.60, [178, 160, 132]),
-                (0.85, [162, 152, 138]),
-                (1.00, [200, 199, 197]),
-            ],
-            t,
-        ),
+        RenderStyle::Realistic => ramp(&theme.land_realistic, t),
+        RenderStyle::Atlas => ramp(&theme.land_atlas, t),
     }
 }
 
 /// Water colour by normalized depth below sea level.
-fn water_color(elev: f32, sea: f32, style: RenderStyle) -> Rgb<u8> {
+fn water_color(elev: f32, sea: f32, style: RenderStyle, theme: &RenderTheme) -> Rgb<u8> {
     let d = ((sea - elev) / sea.max(1e-3)).clamp(0.0, 1.0);
     match style {
-        RenderStyle::Realistic => ramp(
-            &[
-                (0.00, [128, 182, 200]), // bright coastal shallows
-                (0.12, [86, 144, 184]),  // shelf
-                (0.45, [44, 94, 148]),   // open water
-                (1.00, [16, 38, 84]),    // deep ocean
-            ],
-            d,
-        ),
-        RenderStyle::Atlas => ramp(&[(0.00, [182, 196, 202]), (1.00, [138, 160, 180])], d),
+        RenderStyle::Realistic => ramp(&theme.water_realistic, d),
+        RenderStyle::Atlas => ramp(&theme.water_atlas, d),
     }
 }
 
 /// Atlas style: stroke an ink line wherever a land pixel touches water. The
 /// line is stamped `SS` pixels thick so it survives the supersample
 /// downsample as a crisp outline rather than a faint ~quarter-strength edge.
-fn draw_coast_outline(img: &mut RgbImage, relief: &ReliefField) {
-    const INK: Rgb<u8> = Rgb([66, 56, 48]);
+fn draw_coast_outline(img: &mut RgbImage, relief: &ReliefField, ss: u32, ink: Rgb<u8>) {
     let (w, h) = (relief.width, relief.height);
     let is_water = |px: u32, py: u32| relief.water[(py * w + px) as usize];
     for py in 0..h {
@@ -715,11 +681,11 @@ fn draw_coast_outline(img: &mut RgbImage, relief: &ReliefField) {
                 || (py > 0 && is_water(px, py - 1))
                 || (py + 1 < h && is_water(px, py + 1));
             if coast {
-                for oy in 0..SS {
-                    for ox in 0..SS {
+                for oy in 0..ss {
+                    for ox in 0..ss {
                         let (sx, sy) = (px + ox, py + oy);
                         if sx < w && sy < h {
-                            img.put_pixel(sx, sy, INK);
+                            img.put_pixel(sx, sy, ink);
                         }
                     }
                 }
@@ -736,9 +702,10 @@ pub fn political_image(
     height: u32,
     style: RenderStyle,
     proj: Projection,
+    theme: &RenderTheme,
 ) -> RgbImage {
-    supersampled(width, height, |w, h| {
-        political_image_inner(map, w, h, style, proj)
+    supersampled(width, height, theme.supersample, |w, h| {
+        political_image_inner(map, w, h, style, proj, theme)
     })
 }
 
@@ -748,15 +715,18 @@ fn political_image_inner(
     height: u32,
     style: RenderStyle,
     proj: Projection,
+    theme: &RenderTheme,
 ) -> RgbImage {
     let relief = ReliefField::build(map, width, height, style, proj);
-    let mut img = rasterize(map, width, height, proj, |cell| political_cell_color(map, cell));
+    let mut img = rasterize(map, width, height, proj, rgb(theme.background), |cell| {
+        political_cell_color(map, cell, theme)
+    });
     apply_shade(&mut img, &relief);
     for r in &map.routes {
         // Trace the route's actual cell path, not a straight endpoint line.
-        let color = route_color(r.kind);
+        let color = route_color(r.kind, theme);
         for seg in r.path.windows(2) {
-            draw_line(&mut img, map, seg[0], seg[1], color, proj);
+            draw_line(&mut img, map, seg[0], seg[1], color, proj, theme.supersample);
         }
     }
     for s in &map.settlements {
@@ -765,8 +735,8 @@ fn political_image_inner(
             &mut img,
             map,
             s.cell,
-            SS * (1 + u32::from(s.population_tier)),
-            settlement_color(s.role),
+            theme.supersample * (1 + u32::from(s.population_tier)),
+            settlement_color(s.role, theme),
             proj,
         );
     }
@@ -774,52 +744,40 @@ fn political_image_inner(
 }
 
 /// Base cell colour for the political map — water blue, else tinted by state.
-fn political_cell_color(map: &WorldMap, cell: usize) -> Rgb<u8> {
+fn political_cell_color(map: &WorldMap, cell: usize, theme: &RenderTheme) -> Rgb<u8> {
     let pid = map.province_of[cell];
     if pid == u32::MAX {
-        return Rgb([40, 70, 120]); // water
+        return rgb(theme.water_flat);
     }
-    state_color(map.provinces[pid as usize].state)
+    state_color(map.provinces[pid as usize].state, theme)
 }
 
-/// A distinct tint per state id.
-fn state_color(id: u32) -> Rgb<u8> {
-    const PALETTE: [[u8; 3]; 12] = [
-        [200, 120, 120],
-        [120, 170, 200],
-        [170, 200, 120],
-        [200, 180, 110],
-        [160, 130, 190],
-        [120, 200, 170],
-        [210, 150, 170],
-        [150, 160, 120],
-        [190, 160, 200],
-        [130, 190, 140],
-        [200, 200, 140],
-        [170, 140, 130],
-    ];
-    Rgb(PALETTE[(id as usize) % PALETTE.len()])
+/// A distinct tint per state id (theme palette, cycled).
+fn state_color(id: u32, theme: &RenderTheme) -> Rgb<u8> {
+    rgb(theme.state[(id as usize) % theme.state.len()])
 }
 
-fn route_color(k: RouteKind) -> Rgb<u8> {
-    match k {
-        RouteKind::Road => Rgb([40, 30, 20]),
-        RouteKind::Trail => Rgb([120, 90, 50]),
-        RouteKind::RiverNavigation => Rgb([90, 160, 220]),
-        RouteKind::SeaLane => Rgb([225, 225, 255]),
-        RouteKind::MountainPass => Rgb([220, 80, 60]),
-    }
+fn route_color(k: RouteKind, theme: &RenderTheme) -> Rgb<u8> {
+    let i = match k {
+        RouteKind::Road => 0,
+        RouteKind::Trail => 1,
+        RouteKind::RiverNavigation => 2,
+        RouteKind::SeaLane => 3,
+        RouteKind::MountainPass => 4,
+    };
+    rgb(theme.route[i])
 }
 
-fn settlement_color(r: SettlementRole) -> Rgb<u8> {
-    match r {
-        SettlementRole::Capital => Rgb([255, 40, 40]),
-        SettlementRole::City => Rgb([255, 205, 40]),
-        SettlementRole::Town => Rgb([255, 255, 255]),
-        SettlementRole::Village => Rgb([205, 205, 205]),
-        SettlementRole::Hamlet => Rgb([150, 150, 150]),
-        SettlementRole::Fortress => Rgb([130, 50, 130]),
-    }
+fn settlement_color(r: SettlementRole, theme: &RenderTheme) -> Rgb<u8> {
+    let i = match r {
+        SettlementRole::Capital => 0,
+        SettlementRole::City => 1,
+        SettlementRole::Town => 2,
+        SettlementRole::Village => 3,
+        SettlementRole::Hamlet => 4,
+        SettlementRole::Fortress => 5,
+    };
+    rgb(theme.settlement[i])
 }
 
 /// Pixel coordinate of a cell centre under `proj`. `None` when the cell is on
@@ -837,7 +795,7 @@ fn cell_px(map: &WorldMap, cell: u32, w: i32, h: i32, proj: Projection) -> Optio
 /// is on the hidden hemisphere (Orthographic). Endpoints whose projected `u`
 /// straddle the antimeridian seam would draw a long wrong line; such segments
 /// are skipped when the pixel gap exceeds half the canvas width.
-fn draw_line(img: &mut RgbImage, map: &WorldMap, a: u32, b: u32, color: Rgb<u8>, proj: Projection) {
+fn draw_line(img: &mut RgbImage, map: &WorldMap, a: u32, b: u32, color: Rgb<u8>, proj: Projection, ss: u32) {
     let (w, h) = (img.width() as i32, img.height() as i32);
     let (Some((mut x0, mut y0)), Some((x1, y1))) =
         (cell_px(map, a, w, h, proj), cell_px(map, b, w, h, proj))
@@ -855,7 +813,7 @@ fn draw_line(img: &mut RgbImage, map: &WorldMap, a: u32, b: u32, color: Rgb<u8>,
     let sx = if x0 < x1 { 1 } else { -1 };
     let sy = if y0 < y1 { 1 } else { -1 };
     let mut err = dx + dy;
-    let t = SS as i32;
+    let t = ss as i32;
     loop {
         for oy in 0..t {
             for ox in 0..t {
@@ -901,7 +859,7 @@ fn draw_dot(img: &mut RgbImage, map: &WorldMap, cell: u32, radius: u32, color: R
 /// land cells as state-tinted `<polygon>`s, routes as `<polyline>`s,
 /// settlements as `<circle>`s. Water cells are omitted — the ocean background
 /// shows through.
-pub fn political_svg(map: &WorldMap, size: u32) -> String {
+pub fn political_svg(map: &WorldMap, size: u32, theme: &RenderTheme) -> String {
     let s = size as f32;
     let mut svg = String::with_capacity(map.cells.len() * 120);
     svg.push_str(&format!(
@@ -928,7 +886,7 @@ pub fn political_svg(map: &WorldMap, size: u32) -> String {
         svg.push_str(&format!(
             "<polygon points=\"{}\" fill=\"{}\"/>\n",
             pts.join(" "),
-            hex(state_color(map.provinces[pid as usize].state)),
+            hex(state_color(map.provinces[pid as usize].state, theme)),
         ));
     }
     for r in &map.routes {
@@ -944,7 +902,7 @@ pub fn political_svg(map: &WorldMap, size: u32) -> String {
         svg.push_str(&format!(
             "<polyline points=\"{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"1.5\"/>\n",
             pts.join(" "),
-            hex(route_color(r.kind)),
+            hex(route_color(r.kind, theme)),
         ));
     }
     for st in &map.settlements {
@@ -952,7 +910,7 @@ pub fn political_svg(map: &WorldMap, size: u32) -> String {
         svg.push_str(&format!(
             "<circle cx=\"{px:.1}\" cy=\"{py:.1}\" r=\"{:.1}\" fill=\"{}\"/>\n",
             2.0 + f32::from(st.population_tier),
-            hex(settlement_color(st.role)),
+            hex(settlement_color(st.role, theme)),
         ));
     }
     // Feature-name labels — only features the `naming` step has named emit a
@@ -1094,6 +1052,120 @@ mod tests {
     /// styles, and stable under the uniform per-pixel hillshade scaling.
     fn is_blue(p: &Rgb<u8>) -> bool {
         p.0[2] > p.0[0] && p.0[2] > p.0[1]
+    }
+
+    /// The default background, for the orthographic-corner tests (was a const).
+    const BACKGROUND: Rgb<u8> = Rgb([12, 14, 18]);
+
+    // P8b: the render fns now take a `&RenderTheme`. These default-theme
+    // wrappers shadow the `use super::*` glob (local items outrank glob imports),
+    // so the existing tests below — and the pinned-hash baseline — exercise the
+    // default theme without threading it through every call site by hand.
+    fn dt() -> RenderTheme {
+        RenderTheme::default()
+    }
+    fn relief_image(m: &WorldMap, w: u32, h: u32, s: RenderStyle, p: Projection) -> RgbImage {
+        super::relief_image(m, w, h, s, p, &dt())
+    }
+    fn biome_image(m: &WorldMap, w: u32, h: u32, s: RenderStyle, p: Projection) -> RgbImage {
+        super::biome_image(m, w, h, s, p, &dt())
+    }
+    fn culture_image(m: &WorldMap, w: u32, h: u32, s: RenderStyle, p: Projection) -> RgbImage {
+        super::culture_image(m, w, h, s, p, &dt())
+    }
+    fn plate_image(m: &WorldMap, w: u32, h: u32, s: RenderStyle, p: Projection) -> RgbImage {
+        super::plate_image(m, w, h, s, p, &dt())
+    }
+    fn region_image(m: &WorldMap, w: u32, h: u32, s: RenderStyle, p: Projection) -> RgbImage {
+        super::region_image(m, w, h, s, p, &dt())
+    }
+    fn realm_image(m: &WorldMap, w: u32, h: u32, s: RenderStyle, p: Projection) -> RgbImage {
+        super::realm_image(m, w, h, s, p, &dt())
+    }
+    fn political_image(m: &WorldMap, w: u32, h: u32, s: RenderStyle, p: Projection) -> RgbImage {
+        super::political_image(m, w, h, s, p, &dt())
+    }
+    fn political_svg(m: &WorldMap, size: u32) -> String {
+        super::political_svg(m, size, &dt())
+    }
+    fn land_color(elev: f32, sea: f32, style: RenderStyle) -> Rgb<u8> {
+        super::land_color(elev, sea, style, &dt())
+    }
+    fn water_color(elev: f32, sea: f32, style: RenderStyle) -> Rgb<u8> {
+        super::water_color(elev, sea, style, &dt())
+    }
+
+    /// **Render-palette byte-identical pin** (P8b safety net). The sphere render
+    /// is not part of `content_hash` and had no test guarding its output, so the
+    /// RenderTheme parameterization (moving palettes/ramps into params) could
+    /// silently shift a colour. This pins the blake3 of seed-7 renders (every
+    /// map mode, both styles where they differ) at a fixed 80×40 — a default
+    /// `RenderTheme` must reproduce them byte-for-byte. Captured pre-refactor.
+    #[test]
+    fn render_output_is_byte_identical_baseline() {
+        let m = generate(7, &CreativeSeed::default());
+        let p = crate::projection::Projection::Equirectangular;
+        let hh = |img: &RgbImage| blake3::hash(img.as_raw()).to_hex().to_string();
+        let r = RenderStyle::Realistic;
+        let a = RenderStyle::Atlas;
+        let cases: [(&str, RgbImage, &str); 8] = [
+            ("relief/realistic", relief_image(&m, 80, 40, r, p), "ca804f5d7942f9e09f27bae8e26d52f186dd404fa0c4e91ebcd54fb13ca9f69a"),
+            ("relief/atlas", relief_image(&m, 80, 40, a, p), "c751d031394370cb115a559909d2ceba86c4c10836cd4cba4b328daeef5564eb"),
+            ("biome", biome_image(&m, 80, 40, r, p), "5ee867e4e8cad10529f2dffae9117af098508c0cb700fd509c5dbfe07d4c04f3"),
+            ("culture", culture_image(&m, 80, 40, r, p), "04cc249ce206be7ff36ad0f0780d4cf94d24e0c5bdd3b9ccc1954e2d59a1d37d"),
+            ("plate", plate_image(&m, 80, 40, r, p), "0345c9a288bda9db2a41196f4c234c7710cf2eb69212453c39256b7e143d1f5a"),
+            ("region", region_image(&m, 80, 40, r, p), "5f549ce94e89c6b2b6bca9e6d1d83b504b38f0130b7786cf9436e4a9bff9c9bf"),
+            ("realm", realm_image(&m, 80, 40, r, p), "79a66338f75f0ed9a741cad02a104b32e888f7f46642dd552f4f1d35e6a177a6"),
+            ("political", political_image(&m, 80, 40, r, p), "b184f38f7928441301554315ca655cc27bb36a249f9bbf34b4944f582119f1df"),
+        ];
+        for (name, img, want) in &cases {
+            assert_eq!(&hh(img), want, "render output drifted for {name}");
+        }
+    }
+
+    /// **A non-default RenderTheme changes the render** (P8b) — recolour the
+    /// biome palette and the biome image must differ. Proves the theme is wired
+    /// (the byte-identical pin above proves the *default* is unchanged).
+    #[test]
+    fn render_theme_recolours_the_output() {
+        let m = generate(7, &CreativeSeed::default());
+        let p = Projection::Equirectangular;
+        let base = super::biome_image(&m, 80, 40, RenderStyle::Realistic, p, &dt());
+        let mut theme = dt();
+        theme.biome[BiomeKind::Jungle.tag() as usize] = [255, 0, 255]; // magenta jungle
+        let recolored = super::biome_image(&m, 80, 40, RenderStyle::Realistic, p, &theme);
+        assert_ne!(base.as_raw(), recolored.as_raw(), "recolouring a biome must change the render");
+    }
+
+    /// **A pathological (descending) ramp must not panic** (P8b, review-impl #1)
+    /// — `ramp`'s clamp is order-tolerant, so a config with land/water stops out
+    /// of order renders odd colours but never panics (`f32::clamp(min>max)` would).
+    #[test]
+    fn descending_ramp_does_not_panic() {
+        let m = generate(7, &CreativeSeed::default());
+        let p = Projection::Equirectangular;
+        let mut theme = dt();
+        // Reverse the stop positions so they descend (0..1 → 1..0).
+        let n = theme.land_realistic.len();
+        for k in 0..n {
+            theme.land_realistic[k].0 = 1.0 - theme.land_realistic[k].0;
+        }
+        theme.land_realistic.reverse(); // keep array form; positions now descend
+        theme.water_realistic[0].0 = 1.0;
+        theme.water_realistic[3].0 = 0.0;
+        // Must not panic.
+        let _ = super::relief_image(&m, 80, 40, RenderStyle::Realistic, p, &theme);
+    }
+
+    /// A non-default supersample changes anti-aliasing → a different render.
+    #[test]
+    fn render_theme_supersample_changes_the_output() {
+        let m = generate(7, &CreativeSeed::default());
+        let p = Projection::Equirectangular;
+        let base = super::relief_image(&m, 80, 40, RenderStyle::Realistic, p, &dt());
+        let theme = RenderTheme { supersample: 1, ..dt() };
+        let ss1 = super::relief_image(&m, 80, 40, RenderStyle::Realistic, p, &theme);
+        assert_ne!(base.as_raw(), ss1.as_raw(), "changing supersample must change the render");
     }
 
     #[test]

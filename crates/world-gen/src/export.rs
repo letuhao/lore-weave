@@ -18,6 +18,7 @@ use std::io::Cursor;
 use image::{DynamicImage, ImageBuffer, ImageFormat, Luma};
 use serde_json::json;
 
+use crate::params::RenderTheme;
 use crate::projection::Projection;
 use crate::relief::{ReliefField, RenderStyle};
 use crate::render::{biome_image, plate_image, realm_image, region_image};
@@ -46,13 +47,13 @@ pub enum ColorMode {
 
 impl ColorMode {
     /// Render the equirectangular texture for this colour mode.
-    fn texture(self, map: &WorldMap, w: u32, h: u32) -> image::RgbImage {
+    fn texture(self, map: &WorldMap, w: u32, h: u32, theme: &RenderTheme) -> image::RgbImage {
         let (st, pr) = (RenderStyle::Realistic, Projection::Equirectangular);
         match self {
-            ColorMode::Biome => biome_image(map, w, h, st, pr),
-            ColorMode::Region => region_image(map, w, h, st, pr),
-            ColorMode::Realm => realm_image(map, w, h, st, pr),
-            ColorMode::Plate => plate_image(map, w, h, st, pr),
+            ColorMode::Biome => biome_image(map, w, h, st, pr, theme),
+            ColorMode::Region => region_image(map, w, h, st, pr, theme),
+            ColorMode::Realm => realm_image(map, w, h, st, pr, theme),
+            ColorMode::Plate => plate_image(map, w, h, st, pr, theme),
         }
     }
 }
@@ -101,6 +102,7 @@ fn encode_png(img: DynamicImage) -> Vec<u8> {
 ///   so the ocean is a smooth sphere at sea level and continents rise above it.
 /// - Smooth per-vertex normals (accumulated face normals) for terrain shading;
 ///   `TEXCOORD_0 = (u, v)` indexes the embedded biome PNG.
+#[allow(clippy::too_many_arguments)]
 pub fn glb_globe(
     map: &WorldMap,
     grid_w: u32,
@@ -108,6 +110,7 @@ pub fn glb_globe(
     exaggeration: f32,
     tex_width: u32,
     color: ColorMode,
+    theme: &RenderTheme,
 ) -> Vec<u8> {
     let grid_w = grid_w.max(2);
     let grid_h = grid_h.max(2);
@@ -170,6 +173,7 @@ pub fn glb_globe(
         map,
         tex_width,
         (tex_width / 2).max(1),
+        theme,
     )));
 
     assemble_glb(&positions, &normals, &texcoords, &indices, &tex_png)
@@ -381,6 +385,19 @@ fn assemble_glb(
 mod tests {
     use super::*;
     use crate::creative_seed::{CreativeSeed, WorldScale};
+
+    // P8b: `glb_globe` now takes a `&RenderTheme`. This default-theme wrapper
+    // shadows the `use super::*` glob so the existing tests need no change.
+    fn glb_globe(
+        map: &WorldMap,
+        grid_w: u32,
+        grid_h: u32,
+        exaggeration: f32,
+        tex_width: u32,
+        color: ColorMode,
+    ) -> Vec<u8> {
+        super::glb_globe(map, grid_w, grid_h, exaggeration, tex_width, color, &RenderTheme::default())
+    }
 
     fn tiny_world() -> WorldMap {
         let cs = CreativeSeed {

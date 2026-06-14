@@ -36,7 +36,9 @@ A config with all defaults reproduces the exact same `content_hash` as a bare
 3. **Granular per-stage params** (`tectonics`, `relief_params`, `climate_params`,
    `erosion_params`, `hydrology_params`, `settlement_params`, `route_params`,
    `political_params`, `culture_params`, `hierarchy_params`, `biome_params`) — the
-   exact tuning behind each generation stage. Config-file only.
+   exact tuning behind each generation stage. Config-file only. Plus
+   `render_theme` — the PNG/SVG/glB colour palettes, hypsometric ramps and
+   supersample (cosmetic; not part of `content_hash`).
 
 Every value is **clamped at use**, so a human typo or an LLM hallucination is
 bounded — generation never panics.

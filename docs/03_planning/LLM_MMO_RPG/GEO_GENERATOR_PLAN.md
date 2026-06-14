@@ -95,6 +95,18 @@
 > pins first** (seed-7 relief/biome/political PNG hashes) as the byte-identical
 > net, then parameterize. Render *math* (`relief.rs` hillshade/warp/detail +
 > per-style `StyleParams`) stays fixed. That's the final param-arc stage.
+>
+> **✅ P8b DONE — PARAMETERIZATION ARC COMPLETE.** `RenderTheme` (all
+> `render.rs` palettes + per-style hypsometric ramps + supersample, stored as
+> `[u8;3]`, threaded through every `*_image` + `political_svg` + `glb_globe`).
+> Added 8 render-hash pins (blake3 of seed-7 renders, both styles) as the
+> byte-identical net — they hold; render output unchanged at the default theme.
+> **The full arc P1–P8b is shipped**: every generation + render tunable is now
+> an editable, clamped, serde-defaulted field on `CreativeSeed` — the single
+> centralized profile a human or LLM dials, with `dump-config` to emit the
+> template + `--config` to load it. **TOP NEXT:** param arc done — resume the
+> **elevation arc S4** (age-based oceanic bathymetry; paused block above), or a
+> new track.
 > *(Deferred P2 follow-up: Profile-only inline `height_at`/`apply_falloff` gate
 > literals — legacy path. Deferred P3 follow-up: moisture-transport consts +
 > cross-module `ClimateZone::wetness()` / `bias_delta` tables.)*

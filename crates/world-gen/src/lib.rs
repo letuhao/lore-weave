@@ -51,7 +51,8 @@ pub use creative_seed::{
 };
 pub use params::{
     BiomeParams, ClimateParams, CultureParams, ErosionParams, HierarchyParams, HydrologyParams,
-    IntensityKnobs, PoliticalParams, ReliefParams, RouteParams, SettlementParams, TectonicsParams,
+    IntensityKnobs, PoliticalParams, ReliefParams, RenderTheme, RouteParams, SettlementParams,
+    TectonicsParams,
 };
 pub use world_map::{
     BoundaryKind, Cell, Continent, County, CultureRegion, MountainRange, Plate, PlateBoundary,
