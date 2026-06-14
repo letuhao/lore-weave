@@ -210,6 +210,9 @@ func (s *Server) Router() http.Handler {
 
 			r.Get("/chapters", s.listChapters)
 			r.Post("/chapters", s.createChapter)
+			// Bulk plain-text create (folder/large import). Static path — chi matches
+			// it before /chapters/{chapter_id} so "bulk" isn't taken as a chapter_id.
+			r.Post("/chapters/bulk", s.bulkCreateChapters)
 
 			r.Route("/chapters/{chapter_id}", func(r chi.Router) {
 				r.Get("/", s.getChapter)

@@ -142,6 +142,20 @@ export const booksApi = {
   createChapter(token: string, bookId: string, payload: { file: File; original_language: string; title?: string; sort_order?: number }) {
     return this.createChapterUpload(token, bookId, payload);
   },
+  /** Bulk-create plain-text chapters in one request (folder/large import). The
+   *  caller sends naturally-sorted, exclude-filtered batches SEQUENTIALLY so the
+   *  server's monotonic sort_order preserves order. Returns the created count. */
+  bulkCreateChapters(
+    token: string,
+    bookId: string,
+    chapters: { original_filename: string; content: string; title?: string }[],
+    originalLanguage = 'auto',
+  ): Promise<{ chapters_created: number; skipped_existing: number; book_id: string }> {
+    return apiJson<{ chapters_created: number; skipped_existing: number; book_id: string }>(
+      `/v1/books/${bookId}/chapters/bulk`,
+      { method: 'POST', token, body: JSON.stringify({ chapters, original_language: originalLanguage }) },
+    );
+  },
   createChapterEditor(
     token: string,
     bookId: string,

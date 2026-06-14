@@ -8,7 +8,9 @@ import (
 	"log/slog"
 	"net/http"
 	"path/filepath"
+	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -154,6 +156,201 @@ VALUES ($1, $2, $3, 'pending', $4, $5, $6, $7)
 		"filename":   fh.Filename,
 		"file_size":  int64(len(data)),
 		"created_at": "now",
+	})
+}
+
+// ── Bulk plain-text chapter create ───────────────────────────────────────────
+
+const maxBulkChapters = 500 // per request; the FE sends naturally-sorted batches
+
+// chapterTitleRe extracts the title from a CJK chapter header line like
+// "第1章 八百年后" / "第 12 章   標題". Used only as a fallback when the client
+// did not supply a title (the FE parses + lets the user edit it before import).
+var chapterTitleRe = regexp.MustCompile(`^\s*第\s*\d+\s*[章节回卷]\s*(.+?)\s*$`)
+
+func extractChapterTitle(content string) string {
+	for _, line := range strings.SplitN(content, "\n", 6) {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if m := chapterTitleRe.FindStringSubmatch(line); m != nil {
+			return strings.TrimSpace(m[1])
+		}
+		// First non-empty line that isn't a marker — use it (capped).
+		if utf8.RuneCountInString(line) > 120 {
+			return string([]rune(line)[:120])
+		}
+		return line
+	}
+	return ""
+}
+
+type bulkChapterItem struct {
+	OriginalFilename string  `json:"original_filename"`
+	Content          string  `json:"content"`
+	Title            *string `json:"title,omitempty"`
+}
+
+type bulkChaptersReq struct {
+	Chapters         []bulkChapterItem `json:"chapters"`
+	OriginalLanguage string            `json:"original_language"`
+}
+
+// bulkCreateChapters handles POST /v1/books/{book_id}/chapters/bulk — creates many
+// plain-text chapters in one request (one chapter per item, no structural parse),
+// used by the folder/large-import flow. The FE sends naturally-sorted, exclude-
+// filtered batches SEQUENTIALLY so a monotonic sort_order (max+1) preserves order.
+// Imported chapters are published canon (parity with the single-file .txt import).
+// Scenes are intentionally skipped here (a chapter without scenes is valid; the
+// draft body is the canonical edit/translation source) — the structural decomposer
+// is the single-file path's job, not the bulk one.
+func (s *Server) bulkCreateChapters(w http.ResponseWriter, r *http.Request) {
+	bookID, ok := parseUUIDParam(w, r, "book_id")
+	if !ok {
+		return
+	}
+	caller, owner, lifecycle, ok := s.authBook(w, r, bookID, GrantEdit)
+	if !ok {
+		return
+	}
+	if lifecycle != "active" {
+		writeError(w, http.StatusConflict, "BOOK_INVALID_LIFECYCLE", "book not active")
+		return
+	}
+
+	var req bulkChaptersReq
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxImportSize)).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "invalid JSON body")
+		return
+	}
+	if len(req.Chapters) == 0 {
+		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "chapters must not be empty")
+		return
+	}
+	if len(req.Chapters) > maxBulkChapters {
+		writeError(w, http.StatusUnprocessableEntity, "BOOK_TOO_MANY",
+			fmt.Sprintf("at most %d chapters per request", maxBulkChapters))
+		return
+	}
+	lang := req.OriginalLanguage
+	if lang == "" {
+		lang = "auto"
+	}
+
+	// Quota: content bills the book owner. Check the whole batch up front.
+	var batchBytes int64
+	for _, it := range req.Chapters {
+		batchBytes += int64(len(it.Content))
+	}
+	_ = s.ensureQuotaRow(r.Context(), owner)
+	_ = s.recalcQuota(r.Context(), owner)
+	var used, quota int64
+	_ = s.pool.QueryRow(r.Context(),
+		`SELECT used_bytes, quota_bytes FROM user_storage_quota WHERE owner_user_id=$1`,
+		owner).Scan(&used, &quota)
+	if used+batchBytes > quota { // same gate as the single-file .txt import (processTxtImport)
+		writeError(w, http.StatusInsufficientStorage, "STORAGE_QUOTA_EXCEEDED", "quota exceeded")
+		return
+	}
+
+	tx, err := s.pool.Begin(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "db begin failed")
+		return
+	}
+	defer tx.Rollback(r.Context())
+
+	var maxSort int
+	_ = tx.QueryRow(r.Context(),
+		`SELECT COALESCE(MAX(sort_order),0) FROM chapters WHERE book_id=$1 AND lifecycle_state='active'`,
+		bookID).Scan(&maxSort)
+	sortOrder := maxSort + 1
+
+	// Idempotent re-import: skip items whose original_filename already exists (active)
+	// in this book. A 4000-file import that fails on a mid batch leaves the earlier
+	// batches committed; re-running then resumes (already-imported files skip) instead
+	// of duplicating every chapter. Updating an existing chapter's content is the
+	// editor's job, not import's — so a same-filename re-import is intentionally a no-op.
+	existing := map[string]struct{}{}
+	if rows, err := tx.Query(r.Context(),
+		`SELECT original_filename FROM chapters WHERE book_id=$1 AND lifecycle_state='active'`, bookID); err == nil {
+		for rows.Next() {
+			var fn string
+			if rows.Scan(&fn) == nil {
+				existing[fn] = struct{}{}
+			}
+		}
+		rows.Close()
+	}
+
+	created, skipped := 0, 0
+	for _, it := range req.Chapters {
+		title := ""
+		if it.Title != nil {
+			title = strings.TrimSpace(*it.Title)
+		}
+		if title == "" {
+			title = extractChapterTitle(it.Content)
+		}
+		filename := strings.TrimSpace(it.OriginalFilename)
+		if filename == "" {
+			filename = fmt.Sprintf("chapter-%04d.txt", sortOrder)
+		}
+		if _, dup := existing[filename]; dup {
+			skipped++
+			continue
+		}
+		existing[filename] = struct{}{} // guard against duplicate filenames within this batch too
+		jsonBody := plainTextToTiptapJSON(it.Content)
+		storageKey := fmt.Sprintf("chapters/%s/%s", bookID, uuid.New().String())
+
+		var chapterID uuid.UUID
+		if err := tx.QueryRow(r.Context(), `
+INSERT INTO chapters(book_id, title, original_filename, original_language, content_type, byte_size, sort_order, storage_key, lifecycle_state, draft_updated_at, updated_at)
+VALUES($1,$2,$3,$4,'text/plain',$5,$6,$7,'active',now(),now())
+RETURNING id
+`, bookID, nullIfEmpty(title), filename, lang, int64(len(it.Content)), sortOrder, storageKey).Scan(&chapterID); err != nil {
+			writeError(w, http.StatusConflict, "BOOK_CONFLICT", fmt.Sprintf("insert chapter %q: %v", filename, err))
+			return
+		}
+		_, _ = tx.Exec(r.Context(),
+			`INSERT INTO chapter_raw_objects(chapter_id, body_text) VALUES($1,$2)`, chapterID, it.Content)
+		_, _ = tx.Exec(r.Context(),
+			`INSERT INTO chapter_drafts(chapter_id, body, draft_format, draft_updated_at, draft_version) VALUES($1,$2,'json',now(),1)`,
+			chapterID, jsonBody)
+		var importRevID uuid.UUID
+		if err := tx.QueryRow(r.Context(),
+			`INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id) VALUES($1,$2,'json',$3,$4) RETURNING id`,
+			chapterID, jsonBody, "bulk import from "+filename, caller).Scan(&importRevID); err != nil {
+			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", fmt.Sprintf("insert revision: %v", err))
+			return
+		}
+		if _, err := tx.Exec(r.Context(),
+			`UPDATE chapters SET draft_revision_count=1, editorial_status='published', published_revision_id=$2 WHERE id=$1`,
+			chapterID, importRevID); err != nil {
+			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", fmt.Sprintf("publish chapter: %v", err))
+			return
+		}
+		if err := insertOutboxEvent(r.Context(), tx, "chapter.created", chapterID,
+			map[string]any{"book_id": bookID}); err != nil {
+			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to queue chapter event")
+			return
+		}
+		sortOrder++
+		created++
+	}
+
+	if err := tx.Commit(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", fmt.Sprintf("commit failed: %v", err))
+		return
+	}
+	_ = s.recalcQuota(r.Context(), owner)
+
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"chapters_created": created,
+		"skipped_existing": skipped,
+		"book_id":          bookID,
 	})
 }
 
