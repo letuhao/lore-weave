@@ -26,11 +26,19 @@ import (
 // insertEventsSQL mirrors the production event INSERT (the column set written by
 // dp-kernel's append + the Go services). metadata is included so npc.said's
 // session_id (read by the npc_session_memory projection) is durable.
+// content_sha256 mirrors the dp-kernel append (event_store_pg.rs): PG computes
+// the checksum over the SAME normalized jsonb the row stores — payload ($8) AND
+// metadata ($9), combined via jsonb_build_object. Both writers emit the identical
+// expression so equal content hashes identically with no cross-language JSON
+// canonicalizer (Wave-3 plan R1 dissolved). Plain column — a later UPDATE to
+// payload/metadata can't mask byte-rot.
 const insertEventsSQL = `
 INSERT INTO events (
 	event_id, reality_id, aggregate_type, aggregate_id, aggregate_version,
-	event_type, event_version, payload, metadata, occurred_at, recorded_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`
+	event_type, event_version, payload, metadata, occurred_at, recorded_at,
+	content_sha256
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
+	encode(sha256(convert_to(jsonb_build_object('p', $8::jsonb, 'm', $9::jsonb)::text, 'UTF8')), 'hex'))`
 
 // writeEvent inserts one event + its outbox row using exec (the caller's open
 // transaction). It does NOT begin/commit — atomicity is the caller's, matching

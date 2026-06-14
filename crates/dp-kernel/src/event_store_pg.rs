@@ -259,11 +259,21 @@ impl EventStore for PgEventStore {
                     payload,
                     metadata,
                     occurred_at,
-                    recorded_at
+                    recorded_at,
+                    content_sha256
                 )
                 VALUES (
                     $1, $2, $3, $4, $5, $6, $7, $8, $9,
-                    $10::timestamptz, $11::timestamptz
+                    $10::timestamptz, $11::timestamptz,
+                    -- W3.4 stored checksum over the event's JSONB CONTENT (payload
+                    -- AND metadata). PG is the single canonicalizer, so the hash is
+                    -- taken over the SAME normalized jsonb the row stores, reusing
+                    -- the $8 payload + $9 metadata binds. The Go emit path emits the
+                    -- identical expression ⇒ byte-identical hashes for equal content
+                    -- with no cross-lang JSON lib. Plain column (not generated) so a
+                    -- later UPDATE to payload/metadata can't mask byte-rot.
+                    encode(sha256(convert_to(
+                        jsonb_build_object('p', $8::jsonb, 'm', $9::jsonb)::text, 'UTF8')), 'hex')
                 )
                 "#,
             )

@@ -64,6 +64,12 @@ const (
 	KindPayloadMismatch = "payload-mismatch"
 	KindFieldMismatch   = "field-mismatch"
 	KindVersionReorder  = "version-reorder"
+	// KindStoredChecksumMismatch (W3.4): a row's frozen content_sha256 no longer
+	// matches the hash re-derived from its payload+metadata — content was mutated
+	// after write (byte-rot / tamper). Distinct from KindPayloadMismatch, which
+	// compares against the SEEDED expected stream; this needs no seed/baseline,
+	// only the row's own stored checksum.
+	KindStoredChecksumMismatch = "stored-checksum-mismatch"
 )
 
 // Violation is one integrity failure.

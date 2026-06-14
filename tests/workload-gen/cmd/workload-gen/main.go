@@ -34,6 +34,7 @@ func main() {
 	doVerify := flag.Bool("verify", false, "C3 ledger check: read -dsn and reconcile against this seed+profile (requires -dsn)")
 	doCheckProj := flag.Bool("check-projections", false, "C structural no-orphan sweep: every projection row's event_id must resolve to a real event (requires -dsn)")
 	doCheckHistory := flag.Bool("check-history", false, "W2.2 history-ordering: per-aggregate version monotonicity over the recorded stream (requires -dsn)")
+	doCheckChecksum := flag.Bool("check-checksum", false, "W3.4 stored-checksum: every event's content_sha256 must re-derive from its payload+metadata (byte-rot/tamper detection; requires -dsn + the 0013 migration)")
 	dsn := flag.String("dsn", "", "Postgres DSN for -emit / -verify / -check-projections (a per-reality DB with the events + outbox + projection migrations applied)")
 	// W2.1 sustained-workload mode: a steady-rate loop (NOT a single burst) so a
 	// fault/soak has a workload that keeps running while the fault is injected.
@@ -41,10 +42,10 @@ func main() {
 	rate := flag.Float64("rate", 0, "sustained mode: target events/sec (paced); 0 = as fast as possible")
 	flag.Parse()
 
-	os.Exit(run(os.Stdout, *seed, *profile, *doEmit, *doVerify, *doCheckProj, *doCheckHistory, *dsn, *duration, *rate))
+	os.Exit(run(os.Stdout, *seed, *profile, *doEmit, *doVerify, *doCheckProj, *doCheckHistory, *doCheckChecksum, *dsn, *duration, *rate))
 }
 
-func run(out io.Writer, seed int64, profileName string, doEmit, doVerify, doCheckProj, doCheckHistory bool, dsn string, duration time.Duration, rate float64) int {
+func run(out io.Writer, seed int64, profileName string, doEmit, doVerify, doCheckProj, doCheckHistory, doCheckChecksum bool, dsn string, duration time.Duration, rate float64) int {
 	p, ok := gen.Profiles[profileName]
 	if !ok {
 		fmt.Fprintf(os.Stderr, "workload-gen: unknown profile %q (have: micro, single-reality, multi-reality, multi-user-session)\n", profileName)
@@ -143,6 +144,38 @@ func run(out io.Writer, seed int64, profileName string, doEmit, doVerify, doChec
 			return 1
 		}
 		fmt.Fprintf(os.Stderr, "workload-gen: history monotonic — %d events, per-aggregate version strictly ordered\n", len(log.Events))
+		return 0
+	}
+
+	if doCheckChecksum {
+		if dsn == "" {
+			fmt.Fprintln(os.Stderr, "workload-gen: -check-checksum requires -dsn")
+			return 2
+		}
+		db, err := sql.Open("postgres", dsn)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "workload-gen: open db: %v\n", err)
+			return 1
+		}
+		defer db.Close()
+		covered, rep, err := ledger.CheckStoredChecksum(context.Background(), db)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "workload-gen: %v\n", err)
+			return 1
+		}
+		fmt.Fprint(out, rep.String())
+		if !rep.OK() {
+			return 1
+		}
+		// Vacuity guard (review #1): a 0-covered DB (migration not applied, or all
+		// rows pre-0013/NULL) would "pass" having verified NOTHING. Surface it
+		// loudly on stderr so a misapplied migration can't masquerade as a clean
+		// pass; a standing gate (the conformance case) asserts covered > 0.
+		if covered == 0 {
+			fmt.Fprintln(os.Stderr, "workload-gen: WARNING -check-checksum verified 0 rows — no event carries content_sha256 (migration 0013 not applied, or all rows pre-0013). NOTHING was checked.")
+			return 0
+		}
+		fmt.Fprintf(os.Stderr, "workload-gen: stored-checksum clean — %d checksum-bearing event(s) re-derive (NULL/pre-0013 rows skipped)\n", covered)
 		return 0
 	}
 
