@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { Loader2, AlertTriangle } from 'lucide-react';
+import { Loader2, AlertTriangle, ChevronDown, ChevronRight, ShieldCheck } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/auth';
 import { booksApi, type Chapter } from '@/features/books/api';
@@ -15,9 +15,12 @@ interface TranslateModalProps {
   onClose: () => void;
   bookId: string;
   onJobCreated: () => void;
+  // When provided, the chapter list defaults to exactly these chapters (used by the
+  // per-chapter version page's "re-translate" action) instead of every chapter.
+  preselectedChapterIds?: string[];
 }
 
-export function TranslateModal({ open, onClose, bookId, onJobCreated }: TranslateModalProps) {
+export function TranslateModal({ open, onClose, bookId, onJobCreated, preselectedChapterIds }: TranslateModalProps) {
   const { t } = useTranslation('books');
   const { accessToken } = useAuth();
   const [chapters, setChapters] = useState<Chapter[]>([]);
@@ -29,6 +32,14 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated }: Translat
   const [selectedLang, setSelectedLang] = useState('');
   const [selectedModelRef, setSelectedModelRef] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  // Quality verification (V3) + re-translate controls
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [verifyEnabled, setVerifyEnabled] = useState(false);
+  const [verifierModelRef, setVerifierModelRef] = useState('');
+  const [qaDepth, setQaDepth] = useState<'rule_only' | 'standard' | 'thorough'>('standard');
+  const [maxQaRounds, setMaxQaRounds] = useState(2);
+  const [forceRetranslate, setForceRetranslate] = useState(false);
 
   useEffect(() => {
     if (!open || !accessToken) return;
@@ -44,11 +55,26 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated }: Translat
         setUserModels(modelsResp.items.filter((m) => m.is_active));
         setSelectedLang(bkSettings?.target_language || '');
         setSelectedModelRef(bkSettings?.model_ref || '');
-        setSelectedChapters(new Set(chs.items.map((c) => c.chapter_id)));
+        // Default selection: the caller-scoped chapters (per-chapter re-translate)
+        // when given, else every chapter (the workspace bulk flow).
+        const preset = preselectedChapterIds?.filter((id) => chs.items.some((c) => c.chapter_id === id));
+        setSelectedChapters(new Set(preset && preset.length > 0 ? preset : chs.items.map((c) => c.chapter_id)));
+        // Reset the advanced overrides each time the modal opens — it stays mounted
+        // (rendered with an `open` prop), so without this a one-off force-retranslate
+        // or verifier choice would silently carry into the next, unrelated translate.
+        setAdvancedOpen(false);
+        setVerifyEnabled(false);
+        setVerifierModelRef('');
+        setQaDepth('standard');
+        setMaxQaRounds(2);
+        setForceRetranslate(false);
       })
       .catch((e) => toast.error((e as Error).message))
       .finally(() => setLoading(false));
-  }, [open, accessToken, bookId]);
+    // presetKey (not the array identity) gates re-runs so an inline `[chapterId]`
+    // prop doesn't trigger a refetch loop while the modal is open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, accessToken, bookId, (preselectedChapterIds ?? []).join(',')]);
 
   // Group models by provider
   const modelsByProvider = useMemo(() => {
@@ -119,6 +145,20 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated }: Translat
         target_language: selectedLang,
         model_source: 'user_model',
         model_ref: selectedModelRef,
+        // Quality verification: the verify→correct loop only runs in pipeline v3,
+        // so opting in forces v3 + carries the QA config. The verifier model is
+        // optional (falls back to the translator when omitted).
+        ...(verifyEnabled
+          ? {
+              pipeline_version: 'v3' as const,
+              qa_depth: qaDepth,
+              max_qa_rounds: maxQaRounds,
+              ...(verifierModelRef
+                ? { verifier_model_source: 'user_model', verifier_model_ref: verifierModelRef }
+                : {}),
+            }
+          : {}),
+        force_retranslate: forceRetranslate,
       });
       toast.success(t('translate.job_started', { count: selectedChapters.size }));
       onJobCreated();
@@ -229,6 +269,103 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated }: Translat
                   </p>
                 </div>
               )}
+
+              {/* Advanced: quality verification (V3) + re-translate */}
+              <div className="rounded-md border">
+                <button
+                  type="button"
+                  onClick={() => setAdvancedOpen((o) => !o)}
+                  className="flex w-full items-center gap-1.5 px-3 py-2 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {advancedOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                  {t('translate.advanced')}
+                </button>
+                {advancedOpen && (
+                  <div className="space-y-3 border-t px-3 py-3">
+                    {/* Verify toggle */}
+                    <label className="flex items-start gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={verifyEnabled}
+                        onChange={(e) => setVerifyEnabled(e.target.checked)}
+                        className="mt-0.5 h-3.5 w-3.5 rounded border-border accent-primary"
+                      />
+                      <span className="flex flex-col gap-0.5">
+                        <span className="inline-flex items-center gap-1 text-xs font-medium">
+                          <ShieldCheck className="h-3.5 w-3.5 text-primary" />
+                          {t('translate.verify_enable')}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground">{t('translate.verify_hint')}</span>
+                      </span>
+                    </label>
+
+                    {verifyEnabled && (
+                      <div className="space-y-3 border-l-2 border-border pl-3">
+                        {/* Verifier model */}
+                        <div>
+                          <label className="mb-1 block text-[11px] font-medium">{t('translate.verifier_model')}</label>
+                          <select
+                            value={verifierModelRef}
+                            onChange={(e) => setVerifierModelRef(e.target.value)}
+                            className="h-8 w-full rounded-md border bg-background px-2 text-[12px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
+                          >
+                            <option value="">{t('translate.verifier_default')}</option>
+                            {Array.from(modelsByProvider.entries()).map(([provider, models]) => (
+                              <optgroup key={provider} label={provider}>
+                                {models.map((m) => (
+                                  <option key={m.user_model_id} value={m.user_model_id}>
+                                    {m.alias || m.provider_model_name}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            ))}
+                          </select>
+                        </div>
+                        {/* QA depth + rounds */}
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="mb-1 block text-[11px] font-medium">{t('translate.qa_depth')}</label>
+                            <select
+                              value={qaDepth}
+                              onChange={(e) => setQaDepth(e.target.value as typeof qaDepth)}
+                              className="h-8 w-full rounded-md border bg-background px-2 text-[12px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
+                            >
+                              <option value="rule_only">{t('translate.qa_depth_rule_only')}</option>
+                              <option value="standard">{t('translate.qa_depth_standard')}</option>
+                              <option value="thorough">{t('translate.qa_depth_thorough')}</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="mb-1 block text-[11px] font-medium">{t('translate.qa_rounds')}</label>
+                            <input
+                              type="number"
+                              min={1}
+                              max={5}
+                              value={maxQaRounds}
+                              onChange={(e) => setMaxQaRounds(Math.min(5, Math.max(1, Number(e.target.value) || 1)))}
+                              className="h-8 w-full rounded-md border bg-background px-2 text-[12px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Force re-translate */}
+                    <label className="flex items-start gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={forceRetranslate}
+                        onChange={(e) => setForceRetranslate(e.target.checked)}
+                        className="mt-0.5 h-3.5 w-3.5 rounded border-border accent-primary"
+                      />
+                      <span className="flex flex-col gap-0.5">
+                        <span className="text-xs font-medium">{t('translate.force_retranslate')}</span>
+                        <span className="text-[10px] text-muted-foreground">{t('translate.force_retranslate_hint')}</span>
+                      </span>
+                    </label>
+                  </div>
+                )}
+              </div>
 
               {/* Chapter selection */}
               <div>

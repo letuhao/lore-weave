@@ -111,6 +111,7 @@
     "cell_pending": "Đang chờ",
     "cell_not_translated": "Chưa dịch",
     "cell_version_info": "v{{num}} · {{count}} phiên bản",
+    "cell_manage_versions": "v{{num}} · {{count}} phiên bản — bấm để quản lý / đăng bản",
     "cell_stale_title": "Đã lỗi thời — thuật ngữ thay đổi sau khi dịch bản này",
     "legend_stale": "{{count}} bị ảnh hưởng",
     "select_affected_title": "Chọn các chương bị ảnh hưởng bởi thay đổi thuật ngữ để dịch lại",

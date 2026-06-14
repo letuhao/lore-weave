@@ -473,10 +473,12 @@ async def test_block_pipeline_auto_active_gated_on_unresolved_high():
     assert auto_active, "auto-active INSERT must run at completion"
     assert "unresolved_high_count" in auto_active[0].args[0], \
         "auto-active must be gated on the quality rollup (M5b)"
-    # D-CAMPAIGN-AUTONOMOUS-PUBLISH: a NON-campaign (interactive) job keeps the
-    # first-write-wins + human-publish gate → DO NOTHING.
-    assert "DO NOTHING" in auto_active[0].args[0], \
-        "interactive job must not auto-republish over an existing active version"
+    # Promote-on-completion (2026-06-14): a clean version is published even over an
+    # existing active one (DO UPDATE), guarded so it never clobbers a human edit.
+    sql = auto_active[0].args[0]
+    assert "DO UPDATE" in sql, "completion must promote the clean version (DO UPDATE)"
+    assert "authored_by" in sql and "<> 'human'" in sql, \
+        "promote must be guarded so it never clobbers a human-edited active version"
 
 
 async def _run_completion(msg):
@@ -514,19 +516,27 @@ async def _run_completion(msg):
 
 @pytest.mark.asyncio
 async def test_campaign_job_autonomous_publish_promotes_over_existing():
-    """D-CAMPAIGN-AUTONOMOUS-PUBLISH: a campaign (no-human) job PROMOTES the clean
-    version to active even over an existing one (DO UPDATE) — still gated on
-    unresolved_high_count=0 (the SELECT WHERE, kept)."""
+    """A campaign (no-human) job PROMOTES the clean version to active even over an
+    existing one (DO UPDATE) — gated on unresolved_high_count=0 (the SELECT WHERE)
+    and on the current active not being a human edit (the DO UPDATE WHERE)."""
     sql = await _run_completion(_chapter_msg(target_language="ja", campaign_id=str(uuid4())))
     assert "DO UPDATE" in sql, "campaign job must auto-republish (promote-on-completion)"
     assert "chapter_translation_id = EXCLUDED" in sql
     assert "unresolved_high_count" in sql, "still gated on the quality rollup"
+    assert "authored_by" in sql and "<> 'human'" in sql, "must not clobber a human edit"
 
 
 @pytest.mark.asyncio
-async def test_non_campaign_job_keeps_human_publish_gate():
+async def test_non_campaign_job_auto_promotes_with_human_guard():
+    """2026-06-14: interactive single re-translation now also promotes a clean new
+    version to active (DO UPDATE), so a re-translation to a stronger model takes
+    effect without a manual publish — but never clobbers a human-edited active
+    version (authored_by guard)."""
     sql = await _run_completion(_chapter_msg(target_language="ja"))  # no campaign_id
-    assert "DO NOTHING" in sql and "DO UPDATE" not in sql
+    assert "DO UPDATE" in sql and "DO NOTHING" not in sql, \
+        "interactive job must promote-on-completion (no longer first-write-wins)"
+    assert "authored_by" in sql and "<> 'human'" in sql, \
+        "interactive promote must be guarded against clobbering a human edit"
 
 
 # ── TD1: cross-chapter memo wiring (M0) ───────────────────────────────────────

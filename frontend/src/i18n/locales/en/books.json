@@ -272,7 +272,19 @@
     "job_started": "Translation job started for {{count}} chapter",
     "job_started_other": "Translation job started for {{count}} chapters",
     "no_model_configured": "No model configured. Please select a model above.",
-    "failed": "Translation failed"
+    "failed": "Translation failed",
+    "advanced": "Advanced — quality verification & re-translate",
+    "verify_enable": "Enable quality verification (V3)",
+    "verify_hint": "Runs a verify→correct pass that catches untranslated text and wrong names. Slower but higher quality.",
+    "verifier_model": "Verifier model",
+    "verifier_default": "Use translator model (default)",
+    "qa_depth": "QA depth",
+    "qa_depth_rule_only": "Rule-only (fast)",
+    "qa_depth_standard": "Standard",
+    "qa_depth_thorough": "Thorough",
+    "qa_rounds": "Max QA rounds",
+    "force_retranslate": "Force re-translate",
+    "force_retranslate_hint": "Re-translate chapters that already have a translation (otherwise they are skipped)."
   },
   "kind_editor": {
     "modified": "modified",

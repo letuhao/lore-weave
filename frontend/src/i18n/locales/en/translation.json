@@ -111,6 +111,7 @@
     "cell_pending": "Pending",
     "cell_not_translated": "Not translated",
     "cell_version_info": "v{{num}} · {{count}} version(s)",
+    "cell_manage_versions": "v{{num}} · {{count}} version(s) — click to manage / publish",
     "cell_stale_title": "Out of date — the glossary changed since this was translated",
     "legend_stale": "{{count}} affected",
     "select_affected_title": "Select the chapters affected by glossary changes to re-translate",

@@ -108,15 +108,17 @@ async def _resolve_and_create_job(
         chapter_ids = requested_ids
     else:
         # SKIP a chapter iff a completed, non-stale translation EXISTS for this
-        # language — NOT keyed on the *active* version. The worker promotes a
-        # version to active only on the FIRST completion (`ON CONFLICT DO
-        # NOTHING`, chapter_worker.py); a stale re-translation produces a fresh
-        # v2 that never becomes active. Keying the gate on the active row would
-        # therefore re-translate a stale chapter on EVERY re-run (active stays
-        # stale forever) — a re-spend loop. "Exists a fresh completed version"
-        # is the true cost-idempotency question and is loop-free: after the
+        # language — NOT keyed on the *active* version. "Exists a fresh completed
+        # version" is the true cost-idempotency question and is loop-free: after a
         # stale chapter is re-translated once, the new non-stale row makes
         # subsequent runs skip it (until the next glossary change re-marks it).
+        # Keying on the *active* row instead would be unsafe — a re-translation
+        # whose promote is held back (e.g. the worker's human-edit guard, or an
+        # M5b verifier flag) would leave the active row stale and re-translate on
+        # EVERY run (a re-spend loop). The existence check sidesteps that entirely.
+        # (Worker promotion policy: chapter_worker.py auto-promotes a clean version
+        # over an existing active one unless the active is a human edit — but this
+        # gate does not depend on that, by design.)
         skip_rows = await db.fetch(
             """
             SELECT DISTINCT ct.chapter_id

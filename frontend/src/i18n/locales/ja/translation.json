@@ -111,6 +111,7 @@
     "cell_pending": "保留中",
     "cell_not_translated": "未翻訳",
     "cell_version_info": "v{{num}} · {{count}} 版",
+    "cell_manage_versions": "v{{num}} · {{count}} 版 — クリックで管理 / 公開",
     "cell_stale_title": "古くなっています — 翻訳後に用語集が変更されました",
     "legend_stale": "{{count}} 件影響",
     "select_affected_title": "用語集の変更で影響を受けた章を選択して再翻訳",

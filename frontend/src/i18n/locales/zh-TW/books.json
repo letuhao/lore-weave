@@ -272,7 +272,19 @@
     "job_started": "已為 {{count}} 個章節啟動翻譯工作",
     "job_started_other": "已為 {{count}} 個章節啟動翻譯工作",
     "no_model_configured": "未設定模型。請在上方選擇模型。",
-    "failed": "翻譯失敗"
+    "failed": "翻譯失敗",
+    "advanced": "進階 — 品質驗證與重新翻譯",
+    "verify_enable": "啟用品質驗證 (V3)",
+    "verify_hint": "執行驗證→修正流程，找出未翻譯的文字與錯誤的名稱。較慢但品質更高。",
+    "verifier_model": "驗證模型",
+    "verifier_default": "使用翻譯模型 (預設)",
+    "qa_depth": "QA 深度",
+    "qa_depth_rule_only": "僅規則 (快速)",
+    "qa_depth_standard": "標準",
+    "qa_depth_thorough": "徹底",
+    "qa_rounds": "QA 最大輪數",
+    "force_retranslate": "強制重新翻譯",
+    "force_retranslate_hint": "重新翻譯已有譯文的章節 (否則會被略過)。"
   },
   "kind_editor": {
     "modified": "已修改",

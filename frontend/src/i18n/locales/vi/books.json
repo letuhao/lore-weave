@@ -272,7 +272,19 @@
     "job_started": "Đã bắt đầu công việc dịch cho {{count}} chương",
     "job_started_other": "Đã bắt đầu công việc dịch cho {{count}} chương",
     "no_model_configured": "Chưa cấu hình mô hình. Vui lòng chọn mô hình ở trên.",
-    "failed": "Dịch thất bại"
+    "failed": "Dịch thất bại",
+    "advanced": "Nâng cao — kiểm định chất lượng & dịch lại",
+    "verify_enable": "Bật kiểm định chất lượng (V3)",
+    "verify_hint": "Chạy thêm bước kiểm tra→sửa, bắt lỗi sót tiếng gốc và sai tên riêng. Chậm hơn nhưng chất lượng cao hơn.",
+    "verifier_model": "Mô hình kiểm định",
+    "verifier_default": "Dùng mô hình dịch (mặc định)",
+    "qa_depth": "Độ sâu QA",
+    "qa_depth_rule_only": "Chỉ theo luật (nhanh)",
+    "qa_depth_standard": "Tiêu chuẩn",
+    "qa_depth_thorough": "Kỹ lưỡng",
+    "qa_rounds": "Số vòng QA tối đa",
+    "force_retranslate": "Bắt buộc dịch lại",
+    "force_retranslate_hint": "Dịch lại cả chương đã có bản dịch (nếu không sẽ bị bỏ qua)."
   },
   "kind_editor": {
     "modified": "đã sửa",

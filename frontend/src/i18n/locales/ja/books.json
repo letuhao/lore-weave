@@ -272,7 +272,19 @@
     "job_started": "{{count}}章の翻訳ジョブを開始しました",
     "job_started_other": "{{count}}章の翻訳ジョブを開始しました",
     "no_model_configured": "モデルが設定されていません。上でモデルを選択してください。",
-    "failed": "翻訳に失敗しました"
+    "failed": "翻訳に失敗しました",
+    "advanced": "詳細 — 品質検証と再翻訳",
+    "verify_enable": "品質検証を有効化 (V3)",
+    "verify_hint": "検証→修正パスを実行し、未翻訳テキストや誤った名前を検出します。低速ですが高品質です。",
+    "verifier_model": "検証モデル",
+    "verifier_default": "翻訳モデルを使用 (既定)",
+    "qa_depth": "QA の深さ",
+    "qa_depth_rule_only": "ルールのみ (高速)",
+    "qa_depth_standard": "標準",
+    "qa_depth_thorough": "徹底",
+    "qa_rounds": "QA 最大ラウンド数",
+    "force_retranslate": "強制再翻訳",
+    "force_retranslate_hint": "既に翻訳済みの章も再翻訳します (指定しない場合はスキップされます)。"
   },
   "kind_editor": {
     "modified": "変更済み",

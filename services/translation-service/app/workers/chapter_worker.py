@@ -14,6 +14,32 @@ log = logging.getLogger(__name__)
 # Default context window used when provider-registry cannot supply one
 _FALLBACK_CONTEXT_WINDOW = 8192
 
+# Publish-on-completion SQL (params: $1=chapter_id, $2=chapter_translation_id).
+# Promotes a freshly-completed CLEAN version (unresolved_high_count=0, the M5b gate)
+# to active even over an existing active one — for BOTH campaign and interactive
+# re-translation. The ONE guard: never clobber a HUMAN-edited active version — the
+# DO UPDATE WHERE inspects the CURRENTLY-active version's authored_by; if it is
+# 'human' (saved via the edit endpoint) the update is skipped. Worker drafts default
+# to authored_by='llm', so an llm→llm promote always proceeds. Extracted as a module
+# constant so the real-PG regression test executes the EXACT statement the worker runs.
+_PROMOTE_ACTIVE_SQL = """
+INSERT INTO active_chapter_translation_versions
+  (chapter_id, target_language, chapter_translation_id, set_by_user_id)
+SELECT $1, ct.target_language, $2, ct.owner_user_id
+FROM chapter_translations ct
+WHERE ct.id = $2
+  AND COALESCE(ct.unresolved_high_count, 0) = 0
+ON CONFLICT (chapter_id, target_language) DO UPDATE
+  SET chapter_translation_id = EXCLUDED.chapter_translation_id,
+      set_by_user_id = EXCLUDED.set_by_user_id,
+      set_at = now()
+  WHERE COALESCE(
+    (SELECT cur.authored_by FROM chapter_translations cur
+      WHERE cur.id = active_chapter_translation_versions.chapter_translation_id),
+    'llm'
+  ) <> 'human'
+"""
+
 
 async def handle_chapter_message(
     msg: dict,
@@ -343,39 +369,12 @@ async def _finalize_chapter(
                     "UPDATE translation_jobs SET completed_chapters=completed_chapters+1 WHERE job_id=$1",
                     job_id,
                 )
-                # Auto-set active: insert only if no active version exists yet for
-                # (chapter_id, target_language). M5b: do NOT auto-publish a version the
-                # verifier flagged with unresolved high-severity issues — the SELECT
-                # WHERE drops it so the slot stays empty until the user reviews and
-                # explicitly sets it active (the publish gate). V2 chapters have
-                # unresolved_high_count=0 (default) → unchanged behaviour.
-                #
-                # D-CAMPAIGN-AUTONOMOUS-PUBLISH: a CAMPAIGN job is the no-human Auto-Draft
-                # Factory — it PROMOTES the freshly-completed clean version to active even
-                # OVER an existing active one (a re-translation of a stale/failed chapter),
-                # because there is no human to confirm the M6a publish. Still gated on
-                # unresolved_high_count=0 (the SELECT WHERE), so a high-severity-flagged
-                # re-translation never auto-republishes. An interactive (non-campaign) job
-                # keeps DO NOTHING → first-write-wins + an explicit human publish.
-                _on_conflict = (
-                    """ON CONFLICT (chapter_id, target_language) DO UPDATE
-                           SET chapter_translation_id = EXCLUDED.chapter_translation_id,
-                               set_by_user_id = EXCLUDED.set_by_user_id,
-                               set_at = now()"""
-                    if msg.get("campaign_id")
-                    else "ON CONFLICT (chapter_id, target_language) DO NOTHING"
-                )
+                # Auto-set active (publish-on-completion) — see `_PROMOTE_ACTIVE_SQL`
+                # (module top) for the statement, the M5b unresolved-high gate, and the
+                # human-edit guard. Promotes a clean re-translation over an existing active
+                # version for both campaign and interactive jobs; never clobbers a human edit.
                 await db.execute(
-                    f"""
-                    INSERT INTO active_chapter_translation_versions
-                      (chapter_id, target_language, chapter_translation_id, set_by_user_id)
-                    SELECT $1, ct.target_language, $2, ct.owner_user_id
-                    FROM chapter_translations ct
-                    WHERE ct.id = $2
-                      AND COALESCE(ct.unresolved_high_count, 0) = 0
-                    {_on_conflict}
-                    """,
-                    chapter_id, chapter_translation_id,
+                    _PROMOTE_ACTIVE_SQL, chapter_id, chapter_translation_id,
                 )
                 # Emit outbox event for statistics-service
                 await _insert_outbox_event(db, "chapter.translated", chapter_id, {

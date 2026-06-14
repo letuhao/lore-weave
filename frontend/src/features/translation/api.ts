@@ -186,6 +186,18 @@ export const translationApi = {
       target_language?: string;
       model_source?: string;
       model_ref?: string;
+      // Quality verification (V3): the verifier→correct loop only runs in pipeline
+      // 'v3', so the UI sends pipeline_version='v3' when verification is enabled. The
+      // verifier model is optional (falls back to the translator). qa_depth/rounds
+      // tune the loop. Omitted → backend defaults (v2, no verify).
+      pipeline_version?: 'v2' | 'v3';
+      qa_depth?: 'rule_only' | 'standard' | 'thorough';
+      max_qa_rounds?: number;
+      verifier_model_source?: string;
+      verifier_model_ref?: string;
+      // Bypass the idempotency skip-gate so an already-translated chapter is
+      // re-translated (and a new version produced) rather than skipped.
+      force_retranslate?: boolean;
     },
   ): Promise<TranslationJob> {
     return apiJson(`/v1/translation/books/${bookId}/jobs`, {
