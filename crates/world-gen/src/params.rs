@@ -831,29 +831,15 @@ pub struct ReliefParams {
     pub cont_weight: f32,
     pub mtn_weight: f32,
     pub hill_weight: f32,
-    // Tectonic-mode relief. Only `tec_plain_weight` + `plain_freq` are still
-    // live (they drive the S5 plains whisper). The rest of this block became
-    // **inert at S5** — the coupled uplift⇄erosion rewrite retired the ridged-fBm
-    // `land_relief` (belt ranges + interior uplands) these tuned, and Profile
-    // mode's `height_at` uses the `mtn_*`/`belt_*`/`hill_*` fields above instead.
-    // Kept (serde) to avoid a param-surface break; flagged for removal in a
-    // cleanup pass (`D-S5-DEAD-RELIEF-PARAMS`).
+    // Tectonic-mode relief — `tec_plain_weight` + `plain_freq` drive the S5
+    // plains whisper (the gentle sub-relief layered over the coupled surface).
+    // S5's coupled uplift⇄erosion rewrite retired the old ridged-fBm `land_relief`
+    // (belt ranges + interior uplands), so its tuning knobs (`tect_*`, `rugged_freq`,
+    // `tec_hill_weight`, `interior_rugged_cap`) were removed in the C1 cleanup
+    // (`D-S5-DEAD-RELIEF-PARAMS`); Profile mode's `height_at` uses the
+    // `mtn_*`/`belt_*`/`hill_*` fields above instead.
     pub tec_plain_weight: f32,
     pub plain_freq: f32,
-    /// S5-inert (retired ridged-fBm relief). See the block comment above.
-    pub tec_hill_weight: f32,
-    /// S5-inert. See the block comment above.
-    pub rugged_freq: f32,
-    /// S5-inert. See the block comment above.
-    pub tect_uplift_lo: f32,
-    /// S5-inert. See the block comment above.
-    pub tect_uplift_hi: f32,
-    /// S5-inert. See the block comment above.
-    pub tect_belt_lift: f32,
-    /// S5-inert. See the block comment above.
-    pub tect_range_weight: f32,
-    /// S5-inert. See the block comment above.
-    pub interior_rugged_cap: f32,
     // Ocean bathymetry (S4 — age-based GDH1 depth + coastal shelf blend).
     pub ocean_shelf: f32,
     pub ocean_abyss: f32,
@@ -905,15 +891,8 @@ impl Default for ReliefParams {
             cont_weight: 1.00,
             mtn_weight: 1.35,
             hill_weight: 0.15,
-            tec_hill_weight: 0.22,
             tec_plain_weight: 0.022,
             plain_freq: 2.6,
-            rugged_freq: 2.2,
-            tect_uplift_lo: 0.20,
-            tect_uplift_hi: 0.45,
-            tect_belt_lift: 0.12,
-            tect_range_weight: 0.60,
-            interior_rugged_cap: 0.28,
             ocean_shelf: -0.04,
             ocean_abyss: -0.58,
             ocean_ridge: -0.26,
@@ -961,15 +940,8 @@ impl ReliefParams {
             cont_weight: self.cont_weight.clamp(0.0, 5.0),
             mtn_weight: (self.mtn_weight * r).clamp(0.0, 10.0),
             hill_weight: (self.hill_weight * r).clamp(0.0, 5.0),
-            tec_hill_weight: (self.tec_hill_weight * r).clamp(0.0, 5.0),
             tec_plain_weight: self.tec_plain_weight.clamp(0.0, 5.0),
             plain_freq: self.plain_freq.clamp(0.1, 20.0),
-            rugged_freq: self.rugged_freq.clamp(0.1, 20.0),
-            tect_uplift_lo: self.tect_uplift_lo.clamp(0.0, 1.0),
-            tect_uplift_hi: self.tect_uplift_hi.clamp(0.01, 2.0),
-            tect_belt_lift: (self.tect_belt_lift * r).clamp(0.0, 2.0),
-            tect_range_weight: (self.tect_range_weight * r).clamp(0.0, 5.0),
-            interior_rugged_cap: (self.interior_rugged_cap * r).clamp(0.0, 2.0),
             ocean_shelf: self.ocean_shelf.clamp(-2.0, 0.0),
             // `ocean_depth` scales the *physical* abyssal depth only. The
             // quantize denominator (`ocean_full`, below) stays fixed — scaling
@@ -1145,9 +1117,8 @@ mod tests {
         let p = ReliefParams::default();
         let r = p.resolved(&IntensityKnobs { relief: 2.0, ocean_depth: 1.5, ..Default::default() });
         // `relief` scales the live coupled-erosion uplift forcing (S5) — the
-        // knob that actually drives steady-state mountain height now. (It also
-        // still scales the S5-inert `tect_*`/`tec_hill_weight` fields, but those
-        // no longer affect output, so we assert the live lever.)
+        // knob that drives steady-state mountain height. (The old ridged-fBm
+        // `tect_*` knobs it used to scale were removed in the C1 cleanup.)
         assert!((r.couple_uplift_rate - p.couple_uplift_rate * 2.0).abs() < 1e-6);
         assert!((r.ocean_abyss - p.ocean_abyss * 1.5).abs() < 1e-6);
         // ocean_full (the quantize mapping) is deliberately NOT scaled.
@@ -1159,7 +1130,7 @@ mod tests {
     #[test]
     fn relief_params_clamp_no_panic() {
         let junk = ReliefParams {
-            tect_range_weight: 999.0,
+            couple_uplift_rate: 999.0,
             sea_frac: 9.0,
             mtn_octaves: 0,
             // S4 bathymetry rails — absurd values must clamp, not panic/div-by-0.
@@ -1169,7 +1140,7 @@ mod tests {
             ..ReliefParams::default()
         };
         let r = junk.resolved(&IntensityKnobs { relief: 999.0, ocean_depth: 0.0, ..Default::default() });
-        assert_eq!(r.tect_range_weight, 5.0, "range weight clamps to rail");
+        assert_eq!(r.couple_uplift_rate, 5.0, "couple_uplift_rate clamps to rail");
         assert_eq!(r.sea_frac, 0.95, "sea_frac clamps to rail");
         assert_eq!(r.mtn_octaves, 1, "octaves clamp ≥ 1");
         assert!(r.ocean_full.is_finite() && r.ocean_full >= 0.05);

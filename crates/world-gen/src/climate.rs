@@ -161,7 +161,7 @@ fn circulation_precip_mm(lat_dist: f32, cp: &ClimateParams) -> f32 {
 }
 
 /// Sea-level mean annual temperature (°C) at a given `lat_dist` — a **cosine**
-/// insolation curve (Köppen v2, DEFERRED #045). `cp().t_pole + (cp().t_eq − cp().t_pole)·cos(θ)`
+/// insolation curve (Köppen v2, #045 — shipped). `cp().t_pole + (cp().t_eq − cp().t_pole)·cos(θ)`
 /// with `θ = lat_dist·π/2`. Cosine is concave on `[0, π/2]`, so it lies *above*
 /// the old linear `lerp` chord — mid-latitudes are warmer (≈ 15 °C at 45° vs the
 /// linear 6.5 °C), which is what lets the temperate C-band exist there. Exact at

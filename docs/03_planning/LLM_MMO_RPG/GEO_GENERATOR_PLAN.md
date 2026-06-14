@@ -153,10 +153,12 @@
 > `tectonic_relief.rs::river_profiles_are_concave_at_steady_state` + the `couple`
 > unit test; lib 440 + all integration green.
 >
-> **Deferred:** `D-S5-DEAD-RELIEF-PARAMS` — remove the 7 inert `ReliefParams`
-> ridged-relief fields (`tect_belt_lift`, `tect_range_weight`, `tect_uplift_lo/hi`,
-> `interior_rugged_cap`, `rugged_freq`, `tec_hill_weight`) in a cleanup pass
-> (kept now as serde fields to avoid a param-surface break).
+> **Deferred — ✅ CLEARED (2026-06-14, C1):** `D-S5-DEAD-RELIEF-PARAMS` — the 7
+> inert `ReliefParams` ridged-relief fields (`tect_belt_lift`, `tect_range_weight`,
+> `tect_uplift_lo/hi`, `interior_rugged_cap`, `rugged_freq`, `tec_hill_weight`)
+> were removed from the struct/`Default`/`resolved` + the 2 tests retargeted to live
+> levers. Byte-identical (content + render pins held), serde back-compat (old
+> `--config` keys drop), clippy clean. Plan: `docs/plans/2026-06-14-world-gen-debt-cleanup.md`.
 >
 > **⛰ S6 SHIPPED (2026-06-14) — render/export bathymetry (arc finale).** Fixes
 > D7 (the "ocean rises above land" visual), render/export only — **`content_hash`
@@ -179,9 +181,11 @@
 > crustal-thickness isostasy → bimodal hypsometry (S3), age-based oceanic
 > bathymetry (S4), coupled uplift⇄erosion shaping concave drainage (S5), and
 > real bathymetry in every render/export (S6) — all of D1–D7 closed. **TOP NEXT:**
-> a new track (elevation arc done; param arc done). Candidate: the
-> `D-S5-DEAD-RELIEF-PARAMS` cleanup (remove the 7 inert `ReliefParams` fields), or
-> a frontend three.js globe viewer, or whatever the PO picks next.
+> a new track (elevation arc done; param arc done). The 3D globe viewer is BUILT
+> (frontend-game `/world-preview`) and the C1 dead-param cleanup is DONE; remaining
+> debt is C2 (xplatform golden — frozen-track, PO-decision) and C3 (orphan
+> world/travel-service delete — cross-cutting, PO-decision). See
+> `docs/plans/2026-06-14-world-gen-debt-cleanup.md`.
 >
 > ---
 >

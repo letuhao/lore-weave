@@ -68,8 +68,10 @@ pub struct CreativeSeed {
     /// `1.0` = farthest-point spread so land covers equator → both poles, for a
     /// full latitudinal biome gradient (tropics + boreal/polar/tundra). Clamped
     /// to `0.0..=1.0` at use. `#[serde(default)]` = **0.0** (opt-in — the
-    /// default world is byte-identical to the legacy random placement; the full
-    /// tropics→tundra gradient also needs the v2 seasonality fix, DEFERRED #045).
+    /// default world is byte-identical to the legacy random placement). The v2
+    /// seasonality fix the full tropics→tundra gradient relies on (#045) has
+    /// shipped; flipping this default on still wants a biome-proportion sweep
+    /// first (see the world-gen debt-cleanup plan).
     #[serde(default = "default_continent_latitude_spread")]
     pub continent_latitude_spread: f32,
     /// Target number of geographic **regions** (L2) per subcontinent in the

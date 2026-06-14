@@ -534,8 +534,9 @@ fn plateau_decay(hops: u32, plateau_hops: f32) -> f32 {
 
 /// Airy isostatic base height (signed, sea = 0) for a crust column: thicker
 /// continental crust floats higher (the mechanism behind high collision
-/// plateaus with no trench). Oceanic crust is uniform here — its depth varies
-/// by lithospheric *age*, deferred to S4. Calibrated (defaults) so oceanic 7 km →
+/// plateaus with no trench). Oceanic crust is uniform here — age-based depth
+/// (√age GDH1 bathymetry) is layered on later in `terrain.rs` (S4, shipped).
+/// Calibrated (defaults) so oceanic 7 km →
 /// `ocean_base`, continental 35 km → `cont_base`, 70 km → ~+0.40.
 fn isostasy_base(thickness_km: f32, continental: bool, params: &TectonicsParams) -> f32 {
     if continental {
