@@ -99,6 +99,15 @@ round-trip), not by a retrograde lock. **Mitigations, cheapest first:**
 None of these is a from-scratch refactor; #1 is a focused fix. **No structural
 re-architecture is indicated by Phase 1.**
 
+> **UPDATE — finding RESOLVED (mitigation #1 applied + re-measured).** Batched the
+> XACK in `consumer.ProcessOne` (one `XACK` per stream per batch instead of one per
+> message; `MessageSource.AckBatch`). Re-measured on the same rig: the single I7
+> consumer went **~22k → ~230k msgs/s (~10×)** — now **4.5× ABOVE** the DP-S5
+> aggregate T3 target (≤50k/s). The bite still fires (225k → 39k under a +5ms Redis
+> latency toxic). The serial-capacity diagnosis is confirmed: removing the
+> per-message round-trip lifted the ceiling without touching the I7 single-consumer
+> design. Mitigations #2/#3 are no longer needed on this box.
+
 ## 3. I6 session concurrency — correctness holds (Inc-3)
 
 The I6 command-processor-per-session is a **correctness** mechanism, not a scaling
@@ -151,8 +160,9 @@ path scale on the cheap axes (shards, cores). The one architectural ceiling foun
   containerized publisher + RSS watch over a long manual soak.
 
 **Ranked refactor-risk list:**
-1. **HIGH — I7 meta-worker single-consumer XACK** (~22k < 50k/s target). Fix: batch
-   the XACK (cheap). Re-measure; escalate to per-topic consumers only if needed.
+1. **✅ RESOLVED — I7 meta-worker single-consumer XACK** (was ~22k < 50k/s). Batched
+   the XACK → **~230k msgs/s, 4.5× above target** (bite still fires). Was HIGH; now
+   cleared on this box. Re-confirm at Phase-2 scale.
 2. **MED — meta-DB connection ceiling** at thousands of realities (Phase-2 / pooling
    like pgbouncer in front of the meta DB).
 3. **LOW — per-shard packing absolute** (re-measure on a real shard node at higher

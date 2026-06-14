@@ -9,10 +9,12 @@ import (
 )
 
 type fakeSource struct {
-	batches  [][]Message
-	acked    []string
-	readErr  error
-	ackErr   error
+	batches       [][]Message
+	acked         []string
+	ackBatchCalls int   // number of AckBatch invocations (proves batching)
+	ackBatchSizes []int // ids-per-call (proves same-stream ids collapse to one call)
+	readErr       error
+	ackErr        error
 }
 
 func (f *fakeSource) Read(_ context.Context, _ int) ([]Message, error) {
@@ -27,11 +29,13 @@ func (f *fakeSource) Read(_ context.Context, _ int) ([]Message, error) {
 	return out, nil
 }
 
-func (f *fakeSource) Ack(_ context.Context, m Message) error {
+func (f *fakeSource) AckBatch(_ context.Context, _ string, ids []string) error {
 	if f.ackErr != nil {
 		return f.ackErr
 	}
-	f.acked = append(f.acked, m.ID)
+	f.ackBatchCalls++
+	f.ackBatchSizes = append(f.ackBatchSizes, len(ids))
+	f.acked = append(f.acked, ids...)
 	return nil
 }
 
@@ -72,6 +76,56 @@ func TestProcessOne_DispatchesAndAcks(t *testing.T) {
 	}
 	if len(sink.Records()) != 2 {
 		t.Errorf("expected 2 sink records, got %d", len(sink.Records()))
+	}
+}
+
+func TestProcessOne_BatchesAckPerStream(t *testing.T) {
+	// S12 I7 fix: N messages on ONE stream must collapse to ONE AckBatch call with
+	// all N ids — the per-message XACK round-trip was the single-consumer ceiling.
+	sink := &dispatch.SkeletonSink{}
+	d := dispatch.NewWithSkeletons(sink)
+	src := &fakeSource{batches: [][]Message{
+		{
+			{Stream: "xreality.canon.promoted", ID: "1-0", Fields: map[string]any{"event_type": "xreality.canon.promoted"}},
+			{Stream: "xreality.canon.promoted", ID: "1-1", Fields: map[string]any{"event_type": "xreality.canon.promoted"}},
+			{Stream: "xreality.canon.promoted", ID: "1-2", Fields: map[string]any{"event_type": "xreality.canon.promoted"}},
+		},
+	}}
+	c, _ := New(src, d)
+	stats, err := c.ProcessOne(context.Background(), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.Acked != 3 {
+		t.Errorf("Acked=%d want 3", stats.Acked)
+	}
+	if src.ackBatchCalls != 1 {
+		t.Errorf("AckBatch calls=%d want 1 (3 same-stream ids MUST batch into one XACK)", src.ackBatchCalls)
+	}
+	if len(src.ackBatchSizes) != 1 || src.ackBatchSizes[0] != 3 {
+		t.Errorf("AckBatch sizes=%v want [3]", src.ackBatchSizes)
+	}
+}
+
+func TestProcessOne_PartialDispatchAcksOnlySuccesses(t *testing.T) {
+	// Mixed batch on ONE stream: a no-handler message in the middle must NOT be
+	// acked, while its successful neighbors ARE — the batch carries only successes.
+	d := dispatch.New()
+	d.Register("xreality.ok.event", func(_ context.Context, _ map[string]any) error { return nil })
+	src := &fakeSource{batches: [][]Message{
+		{
+			{Stream: "xreality.s", ID: "1-0", Fields: map[string]any{"event_type": "xreality.ok.event"}},
+			{Stream: "xreality.s", ID: "1-1", Fields: map[string]any{"event_type": "xreality.no.handler"}},
+			{Stream: "xreality.s", ID: "1-2", Fields: map[string]any{"event_type": "xreality.ok.event"}},
+		},
+	}}
+	c, _ := New(src, d)
+	stats, _ := c.ProcessOne(context.Background(), 10)
+	if stats.Acked != 2 || stats.NoHandler != 1 {
+		t.Errorf("Acked=%d NoHandler=%d want 2/1", stats.Acked, stats.NoHandler)
+	}
+	if len(src.acked) != 2 || src.acked[0] != "1-0" || src.acked[1] != "1-2" {
+		t.Errorf("acked=%v want [1-0 1-2] (the no-handler id 1-1 MUST re-deliver)", src.acked)
 	}
 }
 
