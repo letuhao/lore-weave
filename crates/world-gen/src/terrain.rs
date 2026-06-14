@@ -26,6 +26,7 @@
 use crate::creative_seed::{CoastlineProfile, CreativeSeed, TerrainMode};
 use crate::erosion;
 use crate::noise::{fbm_3d, ridged_fbm_3d};
+use crate::params::ReliefParams;
 use crate::plates::{self, Plates};
 use crate::rng::sub_seed;
 
@@ -41,35 +42,17 @@ const ARCH_ISLANDS: [[f32; 3]; 5] = [
     [-0.572_061_4, -0.415_626_9, 0.707_106_77],
     [0.218_508, -0.672_498_5, 0.707_106_77],
 ];
-/// Archipelago island disc radius — great-circle angle in radians (~17°).
-/// `2 * ARCH_RADIUS < min island great-circle separation`, so the radial mask
-/// is exactly 0 in the sea bands between islands.
-const ARCH_RADIUS: f32 = 0.30;
+// (The archipelago disc *radius* is now `ReliefParams::arch_radius` — default
+// 0.30 rad ~17°; `2·radius < min island great-circle separation` so the radial
+// mask is exactly 0 in the sea bands between islands.)
 
 // --- heightmap tuning (Path B) ----------------------------------------------
-
-/// Domain-warp frequency / amplitude / octaves — bends ridges and coastlines
-/// off the noise lattice so nothing reads as grid-aligned.
-const WARP_FREQ: f32 = 2.2;
-const WARP_AMP: f32 = 0.09;
-const WARP_OCTAVES: u32 = 3;
-/// Continent base — low frequency: the broad landmass.
-const CONT_FREQ: f32 = 1.7;
-const CONT_OCTAVES: u32 = 4;
-/// Mountain ranges — ridged multifractal.
-const MTN_FREQ: f32 = 4.5;
-const MTN_OCTAVES: u32 = 5;
-/// Mountain-belt mask — low frequency: *where* ranges cluster.
-const BELT_FREQ: f32 = 1.9;
-const BELT_OCTAVES: u32 = 3;
-/// Hills — mid frequency: rolling terrain between ranges.
-const HILL_FREQ: f32 = 7.5;
-const HILL_OCTAVES: u32 = 4;
-
-/// Component weights in the height sum.
-const CONT_WEIGHT: f32 = 1.00;
-const MTN_WEIGHT: f32 = 1.35;
-const HILL_WEIGHT: f32 = 0.15;
+//
+// All the numeric tuning that used to live here as `const`s is now in
+// [`crate::params::ReliefParams`] (parameterization P2) — defaults are the exact
+// prior values, so a default profile is byte-identical. Only the determinism
+// salts (fixed, never user-tunable) and the fixed `ARCH_ISLANDS` geometry remain
+// const. The functions below take `&ReliefParams` (`rp`) for the resolved knobs.
 
 /// Distinct noise-field salts so the components are decorrelated.
 const SALT_WARP_X: u32 = 0x7A1C_9E11;
@@ -81,63 +64,10 @@ const SALT_MTN: u32 = 0xC0FF_EE42;
 const SALT_BELT: u32 = 0x1357_9BDF;
 const SALT_HILL: u32 = 0x2468_ACE0;
 
-// --- tectonic relief tuning (Phase 2 + terrain-coherence pass) --------------
-
-/// Hill-texture weight in the land relief — applied to both the belt ranges
-/// and the interior uplands (S1): on plate interiors (relief amplitude ≈ 0)
-/// only the tiny `PLAIN` whisper survives → macro-flat lowland; on convergent
-/// belts the ridged ranges + this hill texture come in full → jagged. The
-/// relief amplitude is keyed to the tectonic uplift field, not altitude.
-const TEC_HILL_WEIGHT: f32 = 0.22;
-/// Gentle low-frequency undulation that *is* allowed on plains, so they read
-/// as living lowland rather than a dead-flat sheet — kept very small.
-const TEC_PLAIN_WEIGHT: f32 = 0.022;
-const PLAIN_FREQ: f32 = 2.6;
-
-/// Ruggedness field — low-frequency organic variation so ruggedness isn't a
-/// pure function of altitude/belt-proximity (some plateaus away from belts,
-/// some plains beside mountains).
-const RUGGED_FREQ: f32 = 2.2;
+/// Ruggedness / interior-upland noise salts (the *frequencies/caps* are in
+/// `ReliefParams`; these salts are fixed).
 const SALT_RUGGED: u32 = 0x6F1E_2D77;
 const SALT_PLAIN: u32 = 0x3C4A_91E5;
-
-// --- S1: uplift-driven relief (elevation redesign, defect D1) ---------------
-
-/// Convergent-uplift → relief-amplitude ramp. Below `LO` (plate interior) the
-/// belt relief is off; by `HI` a convergent belt gets its full ridged ranges.
-/// The relief amplitude is now keyed to the **tectonic uplift field** (folds +
-/// arcs), not to altitude — so mountains rise AT the collision belts and trace
-/// the suture, instead of being independent ridged-fBm speckle (D1).
-const TECT_UPLIFT_LO: f32 = 0.20;
-const TECT_UPLIFT_HI: f32 = 0.45;
-/// Smooth belt floor lift, scaled by `tect`: a *continuous* rise along the
-/// whole convergent belt (so the range reads as a connected ridge, not as
-/// isolated ridged-fBm crests separated by gaps where the multifractal dips
-/// to its valleys). The ridged term adds the crest texture on top.
-const TECT_BELT_LIFT: f32 = 0.12;
-/// Ridged-range crest height stacked on a convergent belt, scaled by the local
-/// uplift (`tect`). Weighted so even a modest arc (`ARC_PEAK`) clears the
-/// Mountain band continuously across the belt and **peaks where uplift peaks**
-/// (the suture), decaying out with the uplift.
-const TECT_RANGE_WEIGHT: f32 = 0.60;
-/// Organic interior ruggedness cap (rolling uplands / plateaus away from the
-/// belts) — small enough it never alone reaches the Mountain band, so plate
-/// interiors read as living lowland/upland, not ranges.
-const INTERIOR_RUGGED_CAP: f32 = 0.28;
-
-/// Ocean bathymetry: depth (signed, sea = 0) at the coast vs the abyssal
-/// plain, and how many BFS hops from the coast it takes to reach the abyss.
-/// A faint ripple keeps the abyss from being perfectly dead-flat.
-const OCEAN_SHELF: f32 = -0.04;
-const OCEAN_ABYSS: f32 = -0.58;
-const OCEAN_ABYSS_HOPS: f32 = 7.0;
-const OCEAN_RIPPLE_WEIGHT: f32 = 0.02;
-const OCEAN_RIPPLE_FREQ: f32 = 5.0;
-// Coast-distance gate for ocean-side uplift: suppress arc/ridge uplift on the
-// shallow shelf (≤NEAR hops from coast) and ramp it in offshore (≥FAR hops),
-// so island arcs form in deep water rather than welding continents together.
-const OCEAN_ARC_GATE_NEAR: f32 = 1.0;
-const OCEAN_ARC_GATE_FAR: f32 = 4.0;
 
 /// Per-cell elevations + the chosen sea level (+ the plate model in
 /// `Tectonic` mode).
@@ -167,6 +97,10 @@ pub fn build(
     let count = centers.len();
     let s = sub_seed(seed, b"terrain-height");
     let nseed = (s ^ (s >> 32)) as u32;
+    // Resolve relief/bathymetry/quantize params (apply the macro `relief` /
+    // `ocean_depth` knobs + clamp). Default profile ⇒ default params ⇒
+    // byte-identical baseline.
+    let rp = cs.relief_params.resolved(&cs.intensity);
 
     match cs.terrain_mode {
         TerrainMode::Tectonic => {
@@ -208,7 +142,7 @@ pub fn build(
             let tect: Vec<f32> = (0..count)
                 .map(|i| {
                     if is_land_macro[i] {
-                        smoothstep(TECT_UPLIFT_LO, TECT_UPLIFT_HI, plates.uplift[i].max(0.0))
+                        smoothstep(rp.tect_uplift_lo, rp.tect_uplift_hi, plates.uplift[i].max(0.0))
                     } else {
                         0.0
                     }
@@ -217,7 +151,7 @@ pub fn build(
             let rugged: Vec<f32> = (0..count)
                 .map(|i| {
                     if is_land_macro[i] {
-                        tect[i].max(interior_ruggedness(centers[i], nseed))
+                        tect[i].max(interior_ruggedness(centers[i], nseed, &rp))
                     } else {
                         0.0
                     }
@@ -229,7 +163,7 @@ pub fn build(
             let mut elev: Vec<f32> = (0..count)
                 .map(|i| {
                     if is_land_macro[i] {
-                        macro_elev[i] + land_relief(centers[i], rugged[i], tect[i], nseed)
+                        macro_elev[i] + land_relief(centers[i], rugged[i], tect[i], nseed, &rp)
                     } else {
                         // Mid-ocean ridges / island arcs (positive uplift) raise
                         // the floor; trenches (already deep via the curve) keep
@@ -240,11 +174,11 @@ pub fn build(
                         // neighbouring continents into one landmass.
                         let u = plates.uplift[i];
                         let gated = if u > 0.0 {
-                            u * smoothstep(OCEAN_ARC_GATE_NEAR, OCEAN_ARC_GATE_FAR, coast_dist[i] as f32)
+                            u * smoothstep(rp.ocean_arc_gate_near, rp.ocean_arc_gate_far, coast_dist[i] as f32)
                         } else {
                             u
                         };
-                        ocean_depth(coast_dist[i], centers[i], nseed) + gated
+                        ocean_depth(coast_dist[i], centers[i], nseed, &rp) + gated
                     }
                 })
                 .collect();
@@ -257,7 +191,7 @@ pub fn build(
             // Quantize with a fixed scale (sea level pinned at SEA_FRAC) so
             // land keeps a generous, fixed share of the range — distinct
             // plains/uplands/mountains, not a deep-ocean-squeezed flat slab.
-            let (elevation, sea_level) = quantize_fixed_scale(&elev, count);
+            let (elevation, sea_level) = quantize_fixed_scale(&elev, count, &rp);
 
             Terrain {
                 elevation,
@@ -269,11 +203,11 @@ pub fn build(
             let profile = cs.coastline_profile;
             let mut elev: Vec<f32> = centers
                 .iter()
-                .map(|&p| height_at(p, profile, nseed))
+                .map(|&p| height_at(p, profile, nseed, &rp))
                 .collect();
 
             // Coastline-profile radial falloff — shapes *where* land is.
-            apply_falloff(profile, centers, &mut elev);
+            apply_falloff(profile, centers, &mut elev, &rp);
 
             // Hydraulic erosion — skipped for Archipelago (incision carving a
             // strait would dissect its fixed 5-island invariant).
@@ -295,35 +229,25 @@ pub fn build(
     }
 }
 
-/// Sea level as a fraction of the `u16` range under [`quantize_fixed_scale`].
-/// Oceans get the lower `SEA_FRAC`; land gets the upper `1 − SEA_FRAC`.
-const SEA_FRAC: f32 = 0.40;
-/// Signed land elevation that maps to the **top** of the range (white peaks).
-/// A **fixed** scale: the coastal platform (~+0.10) always maps low (green),
-/// big orogenic peaks (~+0.8) map high (white) — and a *flat* world (little
-/// relief) stays all-green instead of being stretched into grey plateaus.
-const LAND_FULL: f32 = 0.78;
-/// `|signed|` ocean depth that maps to the **bottom** of the range (abyss).
-const OCEAN_FULL: f32 = 0.62;
-
 /// Quantize a **signed** elevation field (sea level = 0) to `u16` with a
-/// **fixed scale**: sea level pinned at `SEA_FRAC`, land mapped linearly by
-/// `e / LAND_FULL` into the upper band, ocean by `|e| / OCEAN_FULL` into the
-/// lower band (both clamped). The platform → green, peaks → white, abyss →
+/// **fixed scale**: sea level pinned at `rp.sea_frac`, land mapped linearly by
+/// `e / rp.land_full` into the upper band, ocean by `|e| / rp.ocean_full` into
+/// the lower band (both clamped). The platform → green, peaks → white, abyss →
 /// deep blue — *consistently*, and a flat world stays green (it has no peaks).
 ///
 /// (A min-max normalize let deep ocean squeeze land into the top 20% — the
 /// "flattened" bug; a percentile-stretch instead inflated *flat* worlds into
 /// grey plateaus by normalizing land by its own — small — 99th percentile.
 /// A fixed scale avoids both.)
-fn quantize_fixed_scale(elev: &[f32], count: usize) -> (Vec<u16>, u16) {
-    let sea_u16 = (SEA_FRAC * 65535.0).round() as u16;
+fn quantize_fixed_scale(elev: &[f32], count: usize, rp: &ReliefParams) -> (Vec<u16>, u16) {
+    let sea_frac = rp.sea_frac;
+    let sea_u16 = (sea_frac * 65535.0).round() as u16;
     let mut elevation = vec![0u16; count];
     for (i, &e) in elev.iter().enumerate() {
         let u = if e >= 0.0 {
-            SEA_FRAC + (e / LAND_FULL).min(1.0) * (1.0 - SEA_FRAC)
+            sea_frac + (e / rp.land_full).min(1.0) * (1.0 - sea_frac)
         } else {
-            SEA_FRAC - ((-e) / OCEAN_FULL).min(1.0) * SEA_FRAC
+            sea_frac - ((-e) / rp.ocean_full).min(1.0) * sea_frac
         };
         elevation[i] = (u.clamp(0.0, 1.0) * 65535.0).round() as u16;
     }
@@ -349,14 +273,15 @@ fn normalize_to_u16(elev: &[f32], count: usize) -> Vec<u16> {
 
 /// 3D domain warp of a unit-sphere point, re-normalized back onto the sphere.
 /// Shared by [`height_at`] (Profile) and [`texture_at`] (Tectonic).
-fn warp_point(p: [f32; 3], seed: u32) -> [f32; 3] {
-    let warp_x = fbm_3d(p[0] * WARP_FREQ, p[1] * WARP_FREQ, p[2] * WARP_FREQ, seed ^ SALT_WARP_X, WARP_OCTAVES);
-    let warp_y = fbm_3d(p[0] * WARP_FREQ, p[1] * WARP_FREQ, p[2] * WARP_FREQ, seed ^ SALT_WARP_Y, WARP_OCTAVES);
-    let warp_z = fbm_3d(p[0] * WARP_FREQ, p[1] * WARP_FREQ, p[2] * WARP_FREQ, seed ^ SALT_WARP_Z, WARP_OCTAVES);
+fn warp_point(p: [f32; 3], seed: u32, rp: &ReliefParams) -> [f32; 3] {
+    let (f, oct, amp) = (rp.warp_freq, rp.warp_octaves, rp.warp_amp);
+    let warp_x = fbm_3d(p[0] * f, p[1] * f, p[2] * f, seed ^ SALT_WARP_X, oct);
+    let warp_y = fbm_3d(p[0] * f, p[1] * f, p[2] * f, seed ^ SALT_WARP_Y, oct);
+    let warp_z = fbm_3d(p[0] * f, p[1] * f, p[2] * f, seed ^ SALT_WARP_Z, oct);
     let mut w = [
-        p[0] + WARP_AMP * warp_x,
-        p[1] + WARP_AMP * warp_y,
-        p[2] + WARP_AMP * warp_z,
+        p[0] + amp * warp_x,
+        p[1] + amp * warp_y,
+        p[2] + amp * warp_z,
     ];
     let wn = (w[0] * w[0] + w[1] * w[1] + w[2] * w[2]).sqrt();
     if wn > 1e-6 {
@@ -374,10 +299,10 @@ fn warp_point(p: [f32; 3], seed: u32) -> [f32; 3] {
 /// band (the big ranges come from the uplift-driven belt relief, not here).
 /// Unlike the old altitude-keyed ruggedness this is independent of macro
 /// elevation, so it does not ring every coast with a spurious ridge.
-fn interior_ruggedness(p: [f32; 3], seed: u32) -> f32 {
-    let fbm_r = 0.5
-        + 0.5 * fbm_3d(p[0] * RUGGED_FREQ, p[1] * RUGGED_FREQ, p[2] * RUGGED_FREQ, seed ^ SALT_RUGGED, 3);
-    INTERIOR_RUGGED_CAP * smoothstep(0.62, 0.88, fbm_r)
+fn interior_ruggedness(p: [f32; 3], seed: u32, rp: &ReliefParams) -> f32 {
+    let f = rp.rugged_freq;
+    let fbm_r = 0.5 + 0.5 * fbm_3d(p[0] * f, p[1] * f, p[2] * f, seed ^ SALT_RUGGED, 3);
+    rp.interior_rugged_cap * smoothstep(0.62, 0.88, fbm_r)
 }
 
 /// Land relief layered on the macro elevation (S1, D1). Two stacked sources:
@@ -391,48 +316,50 @@ fn interior_ruggedness(p: [f32; 3], seed: u32) -> f32 {
 /// On a plate interior (`tect ≈ 0`, small `amp`) only the uplands + the plains
 /// whisper survive → flat-to-rolling lowland. The domain warp is scaled by
 /// `amp` so plains stay coherent while belts get turbulent ridgelines.
-fn land_relief(p: [f32; 3], amp: f32, tect: f32, seed: u32) -> f32 {
+fn land_relief(p: [f32; 3], amp: f32, tect: f32, seed: u32, rp: &ReliefParams) -> f32 {
     // Plains whisper — gentle, always present, very small amplitude.
-    let whisper = TEC_PLAIN_WEIGHT
-        * fbm_3d(p[0] * PLAIN_FREQ, p[1] * PLAIN_FREQ, p[2] * PLAIN_FREQ, seed ^ SALT_PLAIN, 2);
+    let pf = rp.plain_freq;
+    let whisper = rp.tec_plain_weight * fbm_3d(p[0] * pf, p[1] * pf, p[2] * pf, seed ^ SALT_PLAIN, 2);
     // `amp = max(tect, interior)` at every call site, so `amp < 1e-3` already
     // implies `tect < 1e-3` (belt off too) → interior + belt both negligible.
     if amp < 1e-3 {
         return whisper;
     }
     // Warp masked by relief amplitude (strong on belts, ~0 on plains).
-    let w = warp_scaled(p, seed, amp);
-    let hills = fbm_3d(w[0] * HILL_FREQ, w[1] * HILL_FREQ, w[2] * HILL_FREQ, seed ^ SALT_HILL, HILL_OCTAVES);
+    let w = warp_scaled(p, seed, amp, rp);
+    let hills = fbm_3d(w[0] * rp.hill_freq, w[1] * rp.hill_freq, w[2] * rp.hill_freq, seed ^ SALT_HILL, rp.hill_octaves);
     let ridges =
-        ridged_fbm_3d(w[0] * MTN_FREQ, w[1] * MTN_FREQ, w[2] * MTN_FREQ, seed ^ SALT_MTN, MTN_OCTAVES);
+        ridged_fbm_3d(w[0] * rp.mtn_freq, w[1] * rp.mtn_freq, w[2] * rp.mtn_freq, seed ^ SALT_MTN, rp.mtn_octaves);
     // Belt ranges: a smooth continuous floor lift + ridged crests + a little
     // hill texture, all scaled by the convergent uplift. `ridged_fbm` ∈ [0,1]
     // so the belt only ever lifts (peaks), concentrated on the suture.
-    let belt = tect * (TECT_BELT_LIFT + TECT_RANGE_WEIGHT * ridges + TEC_HILL_WEIGHT * hills);
+    let belt = tect * (rp.tect_belt_lift + rp.tect_range_weight * ridges + rp.tec_hill_weight * hills);
     // Interior uplands: gentle hills scaled by the (capped) interior amplitude.
-    let uplands = amp * TEC_HILL_WEIGHT * hills;
+    let uplands = amp * rp.tec_hill_weight * hills;
     whisper + belt.max(uplands)
 }
 
 /// Ocean depth (signed, sea = 0) from distance-to-coast: a shallow shelf at
 /// the coast ramps down to a deep, near-flat abyssal plain. Replaces the old
 /// uniform abyssal fBm (which made the sea floor lumpy).
-fn ocean_depth(coast_dist: u32, p: [f32; 3], seed: u32) -> f32 {
-    let t = (coast_dist as f32 / OCEAN_ABYSS_HOPS).min(1.0);
-    let depth = OCEAN_SHELF + (OCEAN_ABYSS - OCEAN_SHELF) * smoothstep(0.0, 1.0, t);
+fn ocean_depth(coast_dist: u32, p: [f32; 3], seed: u32, rp: &ReliefParams) -> f32 {
+    let t = (coast_dist as f32 / rp.ocean_abyss_hops).min(1.0);
+    let depth = rp.ocean_shelf + (rp.ocean_abyss - rp.ocean_shelf) * smoothstep(0.0, 1.0, t);
     // Faint abyssal ripple so the floor isn't perfectly dead-flat.
-    let ripple = OCEAN_RIPPLE_WEIGHT
-        * fbm_3d(p[0] * OCEAN_RIPPLE_FREQ, p[1] * OCEAN_RIPPLE_FREQ, p[2] * OCEAN_RIPPLE_FREQ, seed ^ SALT_HILL, 2);
+    let rf = rp.ocean_ripple_freq;
+    let ripple = rp.ocean_ripple_weight
+        * fbm_3d(p[0] * rf, p[1] * rf, p[2] * rf, seed ^ SALT_HILL, 2);
     depth + ripple
 }
 
 /// A 3D domain warp whose amplitude is scaled by `r` (ruggedness) — full in
 /// mountains, ≈0 on plains.
-fn warp_scaled(p: [f32; 3], seed: u32, r: f32) -> [f32; 3] {
-    let wx = fbm_3d(p[0] * WARP_FREQ, p[1] * WARP_FREQ, p[2] * WARP_FREQ, seed ^ SALT_WARP_X, WARP_OCTAVES);
-    let wy = fbm_3d(p[0] * WARP_FREQ, p[1] * WARP_FREQ, p[2] * WARP_FREQ, seed ^ SALT_WARP_Y, WARP_OCTAVES);
-    let wz = fbm_3d(p[0] * WARP_FREQ, p[1] * WARP_FREQ, p[2] * WARP_FREQ, seed ^ SALT_WARP_Z, WARP_OCTAVES);
-    let a = WARP_AMP * r;
+fn warp_scaled(p: [f32; 3], seed: u32, r: f32, rp: &ReliefParams) -> [f32; 3] {
+    let (f, oct) = (rp.warp_freq, rp.warp_octaves);
+    let wx = fbm_3d(p[0] * f, p[1] * f, p[2] * f, seed ^ SALT_WARP_X, oct);
+    let wy = fbm_3d(p[0] * f, p[1] * f, p[2] * f, seed ^ SALT_WARP_Y, oct);
+    let wz = fbm_3d(p[0] * f, p[1] * f, p[2] * f, seed ^ SALT_WARP_Z, oct);
+    let a = rp.warp_amp * r;
     let mut w = [p[0] + a * wx, p[1] + a * wy, p[2] + a * wz];
     let l = (w[0] * w[0] + w[1] * w[1] + w[2] * w[2]).sqrt();
     if l > 1e-6 {
@@ -481,53 +408,32 @@ fn coast_distance(is_land: &[bool], neighbors: &[Vec<u32>]) -> Vec<u32> {
 /// `+z` pole). 3D Perlin gives **antimeridian-seamless** terrain — no edge
 /// artefacts. Always `≥ 0` (the normalize + `apply_falloff` multiply both
 /// assume a non-negative field).
-fn height_at(p: [f32; 3], profile: CoastlineProfile, seed: u32) -> f32 {
+fn height_at(p: [f32; 3], profile: CoastlineProfile, seed: u32, rp: &ReliefParams) -> f32 {
     // Domain warp — displace the sample point with low-frequency 3D fBm, then
     // re-normalize back onto the unit sphere (shared with `texture_at`).
-    let warped = warp_point(p, seed);
+    let warped = warp_point(p, seed, rp);
 
     // Continent base — the broad landmass, 3D fBm mapped to ~[0,1].
-    let continent = 0.5
-        + 0.5
-            * fbm_3d(
-                warped[0] * CONT_FREQ,
-                warped[1] * CONT_FREQ,
-                warped[2] * CONT_FREQ,
-                seed ^ SALT_CONT,
-                CONT_OCTAVES,
-            );
+    let cf = rp.cont_freq;
+    let continent =
+        0.5 + 0.5 * fbm_3d(warped[0] * cf, warped[1] * cf, warped[2] * cf, seed ^ SALT_CONT, rp.cont_octaves);
 
     // Hills — mid-frequency rolling terrain, signed (raises and lowers).
-    let hills = fbm_3d(
-        warped[0] * HILL_FREQ,
-        warped[1] * HILL_FREQ,
-        warped[2] * HILL_FREQ,
-        seed ^ SALT_HILL,
-        HILL_OCTAVES,
-    );
+    let hf = rp.hill_freq;
+    let hills = fbm_3d(warped[0] * hf, warped[1] * hf, warped[2] * hf, seed ^ SALT_HILL, rp.hill_octaves);
 
     // Mountain-belt mask — a soft low-frequency gate so ranges cluster into
     // belts rather than blanketing the whole map. Sampled at the *unwarped*
     // point so the belt structure is independent of the local domain warp.
-    let belt_raw = 0.5
-        + 0.5
-            * fbm_3d(
-                p[0] * BELT_FREQ,
-                p[1] * BELT_FREQ,
-                p[2] * BELT_FREQ,
-                seed ^ SALT_BELT,
-                BELT_OCTAVES,
-            );
+    let bf = rp.belt_freq;
+    let belt_raw =
+        0.5 + 0.5 * fbm_3d(p[0] * bf, p[1] * bf, p[2] * bf, seed ^ SALT_BELT, rp.belt_octaves);
     let belt = smoothstep(0.46, 0.72, belt_raw);
 
     // Ridged ranges — sharp linear ridgelines (the bullseye-killer).
-    let ridges = ridged_fbm_3d(
-        warped[0] * MTN_FREQ,
-        warped[1] * MTN_FREQ,
-        warped[2] * MTN_FREQ,
-        seed ^ SALT_MTN,
-        MTN_OCTAVES,
-    );
+    let mf = rp.mtn_freq;
+    let ridges =
+        ridged_fbm_3d(warped[0] * mf, warped[1] * mf, warped[2] * mf, seed ^ SALT_MTN, rp.mtn_octaves);
 
     // Landness gate — ranges rise on continental crust, fade over deep ocean.
     let landness = smoothstep(0.32, 0.52, continent);
@@ -537,9 +443,9 @@ fn height_at(p: [f32; 3], profile: CoastlineProfile, seed: u32) -> f32 {
     // 0 for the rest.
     let dome = profile.base_amplitude() * dome_bias(p);
 
-    let height = CONT_WEIGHT * continent
-        + HILL_WEIGHT * hills
-        + MTN_WEIGHT * belt * ridges * landness
+    let height = rp.cont_weight * continent
+        + rp.hill_weight * hills
+        + rp.mtn_weight * belt * ridges * landness
         + dome;
     height.max(0.0)
 }
@@ -568,7 +474,7 @@ fn smoothstep(e0: f32, e1: f32, x: f32) -> f32 {
 /// All masks are anchored at the `+z` pole — the canonical "centre" of the
 /// world. Future plate-tectonic Phase 2 will replace this single-anchor
 /// scheme with multiple continent seeds.
-fn apply_falloff(profile: CoastlineProfile, centers: &[[f32; 3]], elev: &mut [f32]) {
+fn apply_falloff(profile: CoastlineProfile, centers: &[[f32; 3]], elev: &mut [f32], rp: &ReliefParams) {
     /// Canonical centre point for radial masks: the `+z` pole.
     const POLE: [f32; 3] = [0.0, 0.0, 1.0];
 
@@ -607,7 +513,7 @@ fn apply_falloff(profile: CoastlineProfile, centers: &[[f32; 3]], elev: &mut [f3
                 let mut best = 0.0f32;
                 for centre in &ARCH_ISLANDS {
                     let d = great_circle(p, *centre);
-                    let r = d / ARCH_RADIUS;
+                    let r = d / rp.arch_radius;
                     let m = 1.0 - r * r;
                     best = best.max(m.max(0.0));
                 }
@@ -786,12 +692,17 @@ mod tests {
         [x / n, y / n, z / n]
     }
 
+    /// Default relief params (= the prior hardcoded consts).
+    fn rp() -> ReliefParams {
+        ReliefParams::default()
+    }
+
     #[test]
     fn height_at_is_deterministic() {
         for i in 0..500 {
             let p = unit(i as f32 * 0.0017 + 1.0, 1.0 - i as f32 * 0.0019, 0.3);
-            let a = height_at(p, CoastlineProfile::Coastal, 12345);
-            let b = height_at(p, CoastlineProfile::Coastal, 12345);
+            let a = height_at(p, CoastlineProfile::Coastal, 12345, &rp());
+            let b = height_at(p, CoastlineProfile::Coastal, 12345, &rp());
             assert_eq!(a.to_bits(), b.to_bits(), "height_at not reproducible");
         }
     }
@@ -805,7 +716,7 @@ mod tests {
                     let lat = -std::f32::consts::FRAC_PI_2 + i as f32 * (std::f32::consts::PI / 40.0);
                     let lon = -std::f32::consts::PI + j as f32 * (std::f32::consts::TAU / 40.0);
                     let p = [lat.cos() * lon.cos(), lat.cos() * lon.sin(), lat.sin()];
-                    let h = height_at(p, profile, 99);
+                    let h = height_at(p, profile, 99, &rp());
                     assert!(h.is_finite() && h >= 0.0, "height_at({profile:?}) = {h}");
                 }
             }
@@ -814,11 +725,11 @@ mod tests {
 
     #[test]
     fn height_at_varies_across_space() {
-        let first = height_at(unit(1.0, 0.0, 0.0), CoastlineProfile::Coastal, 7);
+        let first = height_at(unit(1.0, 0.0, 0.0), CoastlineProfile::Coastal, 7, &rp());
         let differs = (1..400).any(|i| {
             let theta = i as f32 * 0.0157;
             let p = unit(theta.cos(), theta.sin(), 0.2);
-            (height_at(p, CoastlineProfile::Coastal, 7) - first).abs() > 1e-3
+            (height_at(p, CoastlineProfile::Coastal, 7, &rp()) - first).abs() > 1e-3
         });
         assert!(differs, "height_at produced a constant field");
     }
@@ -841,8 +752,8 @@ mod tests {
                 lat.cos() * (-std::f32::consts::PI + eps).sin(),
                 lat.sin(),
             );
-            let ha = height_at(pa, CoastlineProfile::Coastal, 7);
-            let hb = height_at(pb, CoastlineProfile::Coastal, 7);
+            let ha = height_at(pa, CoastlineProfile::Coastal, 7, &rp());
+            let hb = height_at(pb, CoastlineProfile::Coastal, 7, &rp());
             assert!(
                 (ha - hb).abs() < 0.05,
                 "antimeridian discontinuity at lat={lat}: {ha} vs {hb}"

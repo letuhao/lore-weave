@@ -8,7 +8,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::climate::ClimateZone;
-use crate::params::{IntensityKnobs, TectonicsParams};
+use crate::params::{IntensityKnobs, ReliefParams, TectonicsParams};
 
 /// Creative direction for a generated world.
 // `Eq` dropped in Phase 2 — `continental_fraction: f32` is not `Eq`.
@@ -73,6 +73,10 @@ pub struct CreativeSeed {
     /// byte-identical. See [`TectonicsParams`].
     #[serde(default)]
     pub tectonics: TectonicsParams,
+    /// Granular relief / bathymetry / quantize / heightmap-noise tuning
+    /// (parameterization P2). Default = prior `terrain.rs` consts (byte-identical).
+    #[serde(default)]
+    pub relief_params: ReliefParams,
     /// Macro "intensity" knobs (parameterization) — convenience scalers over
     /// groups of granular params; default `1.0` = no-op. See [`IntensityKnobs`].
     #[serde(default)]
@@ -118,6 +122,7 @@ impl Default for CreativeSeed {
             region_subdivision: default_region_subdivision(),
             county_subdivision: default_county_subdivision(),
             tectonics: TectonicsParams::default(),
+            relief_params: ReliefParams::default(),
             intensity: IntensityKnobs::default(),
         }
     }
@@ -437,7 +442,7 @@ mod tests {
         // The centralized-profile authoring path (human config + LLM author)
         // depends on these nested params (de)serializing under their field names.
         let cs = CreativeSeed {
-            intensity: IntensityKnobs { orogeny: 2.5, collision_frequency: 0.5 },
+            intensity: IntensityKnobs { orogeny: 2.5, collision_frequency: 0.5, ..IntensityKnobs::default() },
             tectonics: TectonicsParams { fold_peak: 1.2, ..TectonicsParams::default() },
             ..CreativeSeed::default()
         };

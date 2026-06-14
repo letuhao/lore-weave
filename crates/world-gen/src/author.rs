@@ -43,7 +43,10 @@ intensity = optional macro tuning knobs (each defaults to 1.0 = Earth-like; \
 omit unless the brief calls for it): intensity.orogeny scales mountain-building \
 (>1 = taller, more dramatic ranges/plateaus; <1 = gentler), intensity.collision_frequency \
 scales how often plates collide (>1 = more mountain belts, fewer flat oceans; \
-<1 = calmer). Choose values that fit the brief. Output only the JSON object.";
+<1 = calmer), intensity.relief scales continental relief detail (>1 = more rugged/ \
+jagged land; <1 = smoother), intensity.ocean_depth scales how deep the oceans are \
+(>1 = deeper abyss; <1 = shallower seas). Choose values that fit the brief. \
+Output only the JSON object.";
 
 /// The JSON Schema constraining the LLM output to the `CreativeSeed` shape.
 ///
@@ -102,7 +105,9 @@ pub fn creative_seed_schema() -> Value {
                 "additionalProperties": false,
                 "properties": {
                     "orogeny": { "type": "number", "minimum": 0.0, "maximum": 3.0 },
-                    "collision_frequency": { "type": "number", "minimum": 0.0, "maximum": 3.0 }
+                    "collision_frequency": { "type": "number", "minimum": 0.0, "maximum": 3.0 },
+                    "relief": { "type": "number", "minimum": 0.0, "maximum": 4.0 },
+                    "ocean_depth": { "type": "number", "minimum": 0.1, "maximum": 4.0 }
                 }
             }
         }
@@ -126,6 +131,8 @@ pub fn parse_creative_seed(content: &str) -> Result<CreativeSeed, String> {
     // are clamped at use by `resolved`.
     cs.intensity.orogeny = cs.intensity.orogeny.clamp(0.0, 3.0);
     cs.intensity.collision_frequency = cs.intensity.collision_frequency.clamp(0.0, 3.0);
+    cs.intensity.relief = cs.intensity.relief.clamp(0.0, 4.0);
+    cs.intensity.ocean_depth = cs.intensity.ocean_depth.clamp(0.1, 4.0);
     Ok(cs)
 }
 

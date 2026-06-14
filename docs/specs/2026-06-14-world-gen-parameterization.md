@@ -152,7 +152,7 @@ subsystem; each independently shippable):
 | Stage | Builds | Size |
 |---|---|---|
 | **P1 ✅** | `TectonicsParams` (19 `plates.rs` consts) + `IntensityKnobs` (`orogeny`, `collision_frequency`) in new `params.rs`; threaded into `plates::build`; LLM `author` schema/prompt/clamp wired. **Byte-identical baseline verified** (3 pinned hashes match pre-refactor). | L |
-| **P2** | `ReliefParams` (`terrain.rs` consts **+ inline smoothstep gates + coastline-profile maps + sea-level band**) + `relief`/`ocean_depth` knobs → `terrain::build`. | L |
+| **P2 ✅** | `ReliefParams` (34 `terrain.rs` consts: noise freq/octaves/weights, tectonic relief, bathymetry, quantize, archipelago radius) + `relief`/`ocean_depth` knobs → `terrain::build` + helpers; LLM author wired. Byte-identical baseline holds. *(Deferred: the Profile-mode-only inline `height_at` smoothstep gates + `apply_falloff` coastline literals — legacy single-continent path — tracked as a small P2 follow-up.)* | L |
 | **P3** | `ClimateParams` (`climate.rs` consts **+ Köppen cutoffs + wetness/bias tables + moisture**) + `warmth`/`rainfall`/`seasonality` knobs → `climate::build`. | L |
 | **P4** | `ErosionParams` + `HydrologyParams` (the `ErosionStrength` table, river percentile, lake threshold). | M |
 | **P5** | `SettlementParams` + `RouteParams` (density maps, burg scoring, role percentiles, climate-habitability, pass count, tier gates). | M |
