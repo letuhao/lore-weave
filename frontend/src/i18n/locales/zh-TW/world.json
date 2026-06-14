@@ -42,5 +42,22 @@
   "graph": {
     "title": "世界圖譜",
     "subtitle": "以唯讀方式檢視世界設定之間的連結。"
+  },
+  "living": {
+    "heading": "活世界",
+    "subtitle": "以可瀏覽的時間軸呈現世界的正典與其異版分支。點選作品即可開啟。",
+    "title": "活世界",
+    "counts": "正典 {{canon}} · 異版分支 {{branches}}",
+    "hint": "滾動縮放 · 拖曳空白處平移 · 點選作品開啟",
+    "loading": "正在載入活世界…",
+    "loadFailed": "載入活世界失敗：{{error}}",
+    "empty": "此世界尚無作品 — 開始一本書或一個異版以擴展其時間軸。",
+    "canonBadge": "正典",
+    "branchBadge": "異版",
+    "canonAria": "正典：{{title}}",
+    "branchAria": "於第 {{ch}} 章分支的異版：{{title}}",
+    "branchAt": "於第 {{ch}} 章分支",
+    "orphan": "· 來源在此世界之外",
+    "edgeLabel": "第 {{ch}} 章"
   }
 }

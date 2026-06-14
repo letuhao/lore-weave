@@ -4,6 +4,7 @@
 // drafter model, then switches between Compose / Grounding / Canon sub-views.
 // Render-only: all logic lives in the hooks.
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AddModelCta } from '@/components/shared/AddModelCta';
@@ -83,10 +84,26 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
   // per-book so it must persist across chapter navigation within the same book.
   const [activeWorkOverride, setActiveWorkOverride] = useState<Work | null>(null);
   const res = resolution.data;
+  // C28 (dị bản M6) — the living-world tree deep-links into a SPECIFIC Work via
+  // `?work=<surrogate id>` (a canon + its dị bản share one book_id under COW, so
+  // the param disambiguates which one to open). DERIVED inline from the
+  // resolution (no useEffect-for-events): match the param against the resolved
+  // work/candidates by surrogate id. The wizard's just-spawned override still
+  // wins; an absent/stale param falls back to the default selection.
+  const [searchParams] = useSearchParams();
+  const deepLinkWorkId = searchParams.get('work');
+  const allResolved: Work[] = res
+    ? [...(res.work ? [res.work] : []), ...(res.candidates ?? [])]
+    : [];
+  const deepLinkWork = deepLinkWorkId
+    ? allResolved.find((w) => (w.id ?? w.project_id) === deepLinkWorkId) ?? null
+    : null;
   // 'found' → the marked Work; 'candidates' (rare multi-marked) → the first,
-  // so the panel doesn't loop on "set up" forever. A just-spawned dị bản overrides.
+  // so the panel doesn't loop on "set up" forever. A just-spawned dị bản overrides;
+  // a `?work=` deep-link selects the named Work next.
   const work: Work | null =
     activeWorkOverride ??
+    deepLinkWork ??
     (res?.status === 'found' ? res.work : res?.status === 'candidates' ? (res.candidates[0] ?? null) : null);
   const projectId = work?.project_id;
 

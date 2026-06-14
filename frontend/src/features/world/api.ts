@@ -4,6 +4,7 @@ import type {
   ChapterLink,
   CreateWorldPayload,
   World,
+  WorldBookListResponse,
   WorldKind,
   WorldListResponse,
 } from './types';
@@ -26,6 +27,24 @@ export const worldsApi = {
 
   getWorld(token: string, worldId: string): Promise<World> {
     return apiJson<World>(`${WORLDS}/${encodeURIComponent(worldId)}`, { token });
+  },
+
+  /** C28 — the world's member books (C20 `GET /v1/worlds/{id}/books`). The
+   *  living-world tree enumerates these to collect their canon + dị bản Works.
+   *  Bible books are excluded by the endpoint. No new BE. */
+  listWorldBooks(
+    token: string,
+    worldId: string,
+    params?: { limit?: number; offset?: number },
+  ): Promise<WorldBookListResponse> {
+    const qs = new URLSearchParams();
+    if (params?.limit != null) qs.set('limit', String(params.limit));
+    if (params?.offset != null) qs.set('offset', String(params.offset));
+    const q = qs.toString();
+    return apiJson<WorldBookListResponse>(
+      `${WORLDS}/${encodeURIComponent(worldId)}/books${q ? `?${q}` : ''}`,
+      { token },
+    );
   },
 
   createWorld(token: string, payload: CreateWorldPayload): Promise<World> {

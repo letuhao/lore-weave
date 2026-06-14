@@ -58,3 +58,18 @@ export interface ChapterLink {
   chapter_id: string;
   relevance: string;
 }
+
+/** A book grouped into a world (C20 `GET /v1/worlds/{id}/books`). C28 enumerates
+ *  these to collect the world's canon + dị bản Works for the living-world tree.
+ *  Bible books are excluded by the endpoint. */
+export interface WorldBook {
+  book_id: string;
+  title: string;
+  description: string | null;
+  chapter_count: number;
+}
+
+export interface WorldBookListResponse {
+  items: WorldBook[];
+  total: number;
+}

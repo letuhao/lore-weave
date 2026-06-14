@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CompositionPanel } from '../CompositionPanel';
 
@@ -53,11 +54,13 @@ beforeEach(() => {
   mounts.compose = mounts.cowriter = mounts.assemble = mounts.planner = mounts.beats = mounts.graph = mounts.cast = mounts.relmap = mounts.timeline = mounts.arc = mounts.worldmap = mounts.grounding = mounts.canon = mounts.quality = mounts.settings = 0;
 });
 
-function renderPanel() {
+function renderPanel(initialEntries: string[] = ['/books/b']) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <CompositionPanel bookId="b" chapterId="c" token="tok" onAccept={vi.fn()} />
+      <MemoryRouter initialEntries={initialEntries}>
+        <CompositionPanel bookId="b" chapterId="c" token="tok" onAccept={vi.fn()} />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }

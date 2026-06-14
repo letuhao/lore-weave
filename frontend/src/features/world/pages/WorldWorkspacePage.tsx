@@ -4,6 +4,7 @@ import { ArrowLeft, Globe2 } from 'lucide-react';
 import { useWorld } from '../hooks/useWorld';
 import { WorldLorePanel } from '../components/WorldLorePanel';
 import { WorldGraphSection } from '../components/WorldGraphSection';
+import { LivingWorldTree } from '../components/LivingWorldTree';
 
 // C21 — the world WORKSPACE. A prose-less worldbuilding surface: it resolves the
 // world's bible chapter (the lore anchor) and presents lore authoring + a
@@ -43,6 +44,18 @@ export function WorldWorkspacePage() {
 
           {/* Lore authoring against the bible chapter. */}
           <WorldLorePanel bibleBookId={bibleBookId} bibleChapterId={bibleChapterId} />
+
+          {/* C28 (M6) — the living-world timeline tree: canon trunk + dị bản
+              branches as a navigable what-if map (read-only; reuses GraphCanvas). */}
+          <section className="space-y-2" data-testid="living-world-section">
+            <h2 className="font-medium">{t('living.heading', { defaultValue: 'Living world' })}</h2>
+            <p className="text-xs text-muted-foreground">
+              {t('living.subtitle', {
+                defaultValue: 'Your world’s canon and its dị bản branches as a navigable timeline. Click a work to open it.',
+              })}
+            </p>
+            <LivingWorldTree worldId={worldId} />
+          </section>
 
           {/* Read-only world graph (C19 reuse). */}
           <WorldGraphSection bibleBookId={bibleBookId} />

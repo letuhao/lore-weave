@@ -42,5 +42,22 @@
   "graph": {
     "title": "Đồ thị thế giới",
     "subtitle": "Xem chỉ-đọc cách tri thức trong thế giới của bạn kết nối."
+  },
+  "living": {
+    "heading": "Thế giới sống",
+    "subtitle": "Bản chính (canon) và các nhánh dị bản của thế giới dưới dạng dòng thời gian có thể duyệt. Nhấp vào một tác phẩm để mở.",
+    "title": "Thế giới sống",
+    "counts": "{{canon}} bản chính · {{branches}} nhánh dị bản",
+    "hint": "Cuộn để thu phóng · kéo vùng trống để di chuyển · nhấp một tác phẩm để mở",
+    "loading": "Đang tải thế giới sống…",
+    "loadFailed": "Không tải được thế giới sống: {{error}}",
+    "empty": "Thế giới này chưa có tác phẩm nào — hãy bắt đầu một cuốn sách hoặc một dị bản để mở rộng dòng thời gian.",
+    "canonBadge": "Bản chính",
+    "branchBadge": "Dị bản",
+    "canonAria": "Bản chính: {{title}}",
+    "branchAria": "Dị bản rẽ nhánh tại chương {{ch}}: {{title}}",
+    "branchAt": "rẽ nhánh tại ch. {{ch}}",
+    "orphan": "· nguồn nằm ngoài thế giới này",
+    "edgeLabel": "ch. {{ch}}"
   }
 }

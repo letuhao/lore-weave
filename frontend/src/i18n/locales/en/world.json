@@ -42,5 +42,22 @@
   "graph": {
     "title": "World graph",
     "subtitle": "A read-only view of how your world’s lore connects."
+  },
+  "living": {
+    "heading": "Living world",
+    "subtitle": "Your world’s canon and its dị bản branches as a navigable timeline. Click a work to open it.",
+    "title": "Living world",
+    "counts": "{{canon}} canon · {{branches}} dị bản branches",
+    "hint": "Scroll to zoom · drag empty space to pan · click a work to open it",
+    "loading": "Loading the living world…",
+    "loadFailed": "Failed to load the living world: {{error}}",
+    "empty": "No works in this world yet — start a book or a dị bản to grow its timeline.",
+    "canonBadge": "Canon",
+    "branchBadge": "Dị bản",
+    "canonAria": "Canon: {{title}}",
+    "branchAria": "Dị bản branching at chapter {{ch}}: {{title}}",
+    "branchAt": "branches at ch. {{ch}}",
+    "orphan": "· source outside this world",
+    "edgeLabel": "ch. {{ch}}"
   }
 }
