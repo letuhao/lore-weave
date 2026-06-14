@@ -92,21 +92,22 @@ type attrValueResp struct {
 }
 
 type entityListItem struct {
-	EntityID               string      `json:"entity_id"`
-	BookID                 string      `json:"book_id"`
-	KindID                 string      `json:"kind_id"`
-	Kind                   kindSummary `json:"kind"`
-	DisplayName            string      `json:"display_name"`
-	DisplayNameTranslation *string     `json:"display_name_translation"`
-	Status                 string      `json:"status"`
-	Tags                   []string    `json:"tags"`
-	ShortDescription       *string     `json:"short_description"`
-	IsPinnedForContext     bool        `json:"is_pinned_for_context"`
-	ChapterLinkCount       int         `json:"chapter_link_count"`
-	TranslationCount       int         `json:"translation_count"`
-	EvidenceCount          int         `json:"evidence_count"`
-	CreatedAt              time.Time   `json:"created_at"`
-	UpdatedAt              time.Time   `json:"updated_at"`
+	EntityID               string       `json:"entity_id"`
+	BookID                 string       `json:"book_id"`
+	KindID                 string       `json:"kind_id"`
+	Kind                   kindSummary  `json:"kind"`
+	DisplayName            string       `json:"display_name"`
+	DisplayNameTranslation *string      `json:"display_name_translation"`
+	Status                 string       `json:"status"`
+	Tags                   []string     `json:"tags"`
+	ShortDescription       *string      `json:"short_description"`
+	IsPinnedForContext     bool         `json:"is_pinned_for_context"`
+	ChapterLinkCount       int          `json:"chapter_link_count"`
+	TranslationCount       int          `json:"translation_count"`
+	EvidenceCount          int          `json:"evidence_count"`
+	CreatedAt              time.Time    `json:"created_at"`
+	UpdatedAt              time.Time    `json:"updated_at"`
+	Match                  *entityMatch `json:"match,omitempty"` // raw-search only: why this entity matched
 }
 
 type entityListResp struct {
@@ -514,8 +515,49 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Filter: search (ILIKE on name/term original_value; also translation when display_language set)
-	if searchVal := q.Get("search"); searchVal != "" {
+	// Filter: search. Two modes:
+	//   simple (default)        — ILIKE '%q%' on the name/term original_value
+	//                             (+ the display-language translation when set).
+	//   raw (search_mode=raw)   — the entity-side mirror of the chapter raw
+	//                             search: ILIKE exact-substring PRIMARY + pg_trgm
+	//                             similarity ranking over the denormalised
+	//                             cached_name / cached_aliases (+ display-language
+	//                             translated name), accelerated by the GIN trigram
+	//                             indexes. CJK-safe (search_vector's 'simple' FTS
+	//                             config can't segment CJK — see migrate notes).
+	searchVal := strings.TrimSpace(q.Get("search"))
+	rawMode := q.Get("search_mode") == "raw"
+	var rawQArg, rawPatArg int // bound positions of the raw query + escaped pattern (0 = unbound)
+	if searchVal != "" {
+		if utf8.RuneCountInString(searchVal) > maxEntitySearchRunes {
+			writeError(w, http.StatusBadRequest, "GLOSS_INVALID_QUERY", "search query too long")
+			return
+		}
+	}
+	if searchVal != "" && rawMode {
+		n++
+		rawQArg = n
+		args = append(args, searchVal)
+		n++
+		rawPatArg = n
+		args = append(args, escapeLikePattern(searchVal))
+		leg := fmt.Sprintf(
+			"(e.cached_name ILIKE $%d OR glossary_aliases_text(e.cached_aliases) ILIKE $%d "+
+				"OR e.cached_name %% $%d OR glossary_aliases_text(e.cached_aliases) %% $%d)",
+			rawPatArg, rawPatArg, rawQArg, rawQArg)
+		if displayLang != "" {
+			bindDisplayLang()
+			leg = "(" + leg + fmt.Sprintf(` OR EXISTS (
+				SELECT 1 FROM entity_attribute_values eav
+				JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+				JOIN attribute_translations at ON at.attr_value_id = eav.attr_value_id
+				WHERE eav.entity_id = e.entity_id
+				  AND ad.code IN ('name','term')
+				  AND at.language_code = $%d
+				  AND at.value ILIKE $%d))`, displayLangArg, rawPatArg)
+		}
+		where = append(where, leg)
+	} else if searchVal != "" {
 		n++
 		searchArg := n
 		args = append(args, "%"+searchVal+"%")
@@ -568,11 +610,12 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Sort
-	sortClause := "ORDER BY e.updated_at DESC"
-	if q.Get("sort") == "updated_at_asc" {
-		sortClause = "ORDER BY e.updated_at ASC"
-	}
+	// Sort — whitelist-mapped to fixed ORDER BY clauses (no user input is ever
+	// interpolated). Raw mode defaults to relevance (exact-first, then trigram
+	// similarity). Counts-sort is intentionally deferred (DESIGN REVIEW §3.5:
+	// chapter_link_count/evidence_count are correlated subqueries — sorting on
+	// them computes counts for ALL matching rows; needs denormalised counters).
+	sortClause := entityOrderBy(q.Get("sort"), rawMode, rawQArg, rawPatArg)
 
 	// Pagination
 	limit := 50
@@ -631,7 +674,8 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 				WHERE eav2.entity_id = e.entity_id) AS translation_count,
 			(SELECT COUNT(*) FROM evidences ev
 				JOIN entity_attribute_values eav3 ON eav3.attr_value_id = ev.attr_value_id
-				WHERE eav3.entity_id = e.entity_id) AS evidence_count
+				WHERE eav3.entity_id = e.entity_id) AS evidence_count,
+			e.cached_name, e.cached_aliases
 		FROM glossary_entities e
 		JOIN entity_kinds ek ON ek.kind_id = e.kind_id
 		%s
@@ -649,6 +693,8 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 	items := []entityListItem{}
 	for rows.Next() {
 		var item entityListItem
+		var cachedName *string
+		var cachedAliases []string
 		if err := rows.Scan(
 			&item.EntityID, &item.BookID, &item.KindID, &item.Status, &item.Tags,
 			&item.CreatedAt, &item.UpdatedAt,
@@ -657,12 +703,23 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 			&item.DisplayNameTranslation,
 			&item.ShortDescription, &item.IsPinnedForContext,
 			&item.ChapterLinkCount, &item.TranslationCount, &item.EvidenceCount,
+			&cachedName, &cachedAliases,
 		); err != nil {
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "scan failed")
 			return
 		}
 		if item.Tags == nil {
 			item.Tags = []string{}
+		}
+		// Raw mode: attach the per-row "why it matched" payload (field + verbatim
+		// snippet + rune offsets) so the UI can show the match at 20K scale.
+		if rawMode && searchVal != "" {
+			name := ""
+			if cachedName != nil {
+				name = *cachedName
+			}
+			m := buildEntityMatch(name, cachedAliases, item.DisplayNameTranslation, searchVal)
+			item.Match = &m
 		}
 		items = append(items, item)
 	}

@@ -162,6 +162,11 @@ func main() {
 		slog.Error("migrate entity-revisions", "error", err)
 		os.Exit(1)
 	}
+	// D-GLOSSARY-RAW-SEARCH-BE: pg_trgm + GIN trigram indexes for raw entity search.
+	if err := migrate.UpGlossarySearch(ctx, pool); err != nil {
+		slog.Error("migrate glossary-search", "error", err)
+		os.Exit(1)
+	}
 
 	// Run the short-description backfill in a background goroutine so
 	// the HTTP listener + healthcheck come up immediately. For a fresh

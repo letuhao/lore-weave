@@ -42,6 +42,11 @@ func runK2aMigrations(t *testing.T, pool *pgxpool.Pool) {
 	if err := migrate.UpKnowledgeMemory(ctx, pool); err != nil {
 		t.Fatalf("migrate.UpKnowledgeMemory: %v", err)
 	}
+	// pg_trgm + GIN trigram indexes + glossary_aliases_text — required for the
+	// raw entity search (similarity()/% operators) and sort-by-name on cached_name.
+	if err := migrate.UpGlossarySearch(ctx, pool); err != nil {
+		t.Fatalf("migrate.UpGlossarySearch: %v", err)
+	}
 }
 
 // ── schema shape tests ──────────────────────────────────────────────────────
