@@ -26,6 +26,7 @@ pub mod hydrology;
 pub mod mesh;
 pub mod naming;
 pub mod noise;
+pub mod params;
 pub mod pathfind;
 pub mod plates;
 pub mod political;
@@ -48,6 +49,7 @@ pub use creative_seed::{
     CoastlineProfile, CreativeSeed, ErosionStrength, HemisphereOrientation, PrevailingWind,
     SettlementDensity, TerrainMode, WorldArchetype, WorldScale,
 };
+pub use params::{IntensityKnobs, TectonicsParams};
 pub use world_map::{
     BoundaryKind, Cell, Continent, County, CultureRegion, MountainRange, Plate, PlateBoundary,
     PlateKind, Province, Realm, Region, River, Route, RouteKind, Settlement, SettlementRole, State,

@@ -45,13 +45,27 @@
 > a deeper uplift⇄isostasy reconciliation over-broadens the Mountain band — tunable
 > later). Plan: `docs/plans/2026-05-31-elevation-s3-isostasy.md`.
 >
-> **TOP NEXT: build S4** — age-based oceanic bathymetry. Add `crust_age` (BFS hops
-> from divergent ridges along spreading), set ocean depth = isostatic base +
-> `√age` (GDH1 `d=2600+365√t`, flatten ≳80 Myr), replacing the coast-distance depth
-> curve. Also addresses the deep-abyss clamp that currently spikes the ocean mode
-> (37 % of cells in the bottom bin). Then S5 (coupled uplift⇄erosion) → S6
-> (render/export bathymetry, the "ocean rises" artifact). Each = full 12-phase +
-> `/review-impl` + PO POST-REVIEW.
+> **⚙ PARAMETERIZATION ARC IN FLIGHT (2026-06-14)** — expose the ~120–150
+> hardcoded tuning values as runtime `CreativeSeed` params (granular + macro
+> "intensity" knobs) so a human OR the LLM `author` can dial any world property
+> per-world (one centralized profile, 3 tiers). Spec:
+> `docs/specs/2026-06-14-world-gen-parameterization.md` (8 stages P1–P8).
+> **Invariant: byte-identical default baseline** (3 pinned hashes in
+> `tests/parameterization.rs`). **✅ P1 DONE** — `params.rs` `TectonicsParams`
+> (19 plates knobs) + `IntensityKnobs` (`orogeny`, `collision_frequency`);
+> threaded into `plates::build`; LLM author schema/prompt/clamp wired. **TOP NEXT
+> (param arc): P2 ReliefParams** (terrain consts + inline smoothstep gates +
+> coastline-profile maps + sea-level band; knobs `relief`/`ocean_depth`).
+>
+> **ELEVATION ARC (paused, resumable): build S4** — age-based oceanic bathymetry.
+> Add `crust_age` (BFS hops from divergent ridges along spreading), set ocean
+> depth = isostatic base + `√age` (GDH1 `d=2600+365√t`, flatten ≳80 Myr),
+> replacing the coast-distance depth curve. Also addresses the deep-abyss clamp
+> that spikes the ocean mode (37 % of cells in the bottom bin). Then S5 (coupled
+> uplift⇄erosion) → S6 (render/export bathymetry, the "ocean rises" artifact).
+> **Note:** S4 changes default ocean elevation → it will re-pin the
+> parameterization byte-identical hashes (expected; see the test's note). Each
+> stage = full 12-phase + `/review-impl` + PO POST-REVIEW.
 >
 > ---
 >

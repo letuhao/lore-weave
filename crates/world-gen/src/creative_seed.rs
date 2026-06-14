@@ -8,6 +8,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::climate::ClimateZone;
+use crate::params::{IntensityKnobs, TectonicsParams};
 
 /// Creative direction for a generated world.
 // `Eq` dropped in Phase 2 — `continental_fraction: f32` is not `Eq`.
@@ -67,6 +68,15 @@ pub struct CreativeSeed {
     /// `#[serde(default)]` = 4; clamped to `1..=8` at use.
     #[serde(default = "default_county_subdivision")]
     pub county_subdivision: u8,
+    /// Granular tectonics / isostasy tuning (parameterization P1). All fields
+    /// `#[serde(default)]` to the prior hardcoded values → a default profile is
+    /// byte-identical. See [`TectonicsParams`].
+    #[serde(default)]
+    pub tectonics: TectonicsParams,
+    /// Macro "intensity" knobs (parameterization) — convenience scalers over
+    /// groups of granular params; default `1.0` = no-op. See [`IntensityKnobs`].
+    #[serde(default)]
+    pub intensity: IntensityKnobs,
 }
 
 fn default_plate_count() -> u8 {
@@ -107,6 +117,8 @@ impl Default for CreativeSeed {
             continent_latitude_spread: default_continent_latitude_spread(),
             region_subdivision: default_region_subdivision(),
             county_subdivision: default_county_subdivision(),
+            tectonics: TectonicsParams::default(),
+            intensity: IntensityKnobs::default(),
         }
     }
 }
@@ -418,6 +430,40 @@ mod tests {
             let back: CreativeSeed = serde_json::from_str(&json).expect("deserialize");
             assert_eq!(back.erosion, e);
         }
+    }
+
+    #[test]
+    fn tectonics_and_intensity_round_trip_and_default_when_absent() {
+        // The centralized-profile authoring path (human config + LLM author)
+        // depends on these nested params (de)serializing under their field names.
+        let cs = CreativeSeed {
+            intensity: IntensityKnobs { orogeny: 2.5, collision_frequency: 0.5 },
+            tectonics: TectonicsParams { fold_peak: 1.2, ..TectonicsParams::default() },
+            ..CreativeSeed::default()
+        };
+        let back: CreativeSeed =
+            serde_json::from_str(&serde_json::to_string(&cs).unwrap()).expect("round-trip");
+        assert_eq!(cs, back, "tectonics/intensity must survive a JSON round-trip");
+        // A pre-parameterization config JSON (no tectonics/intensity) loads with
+        // the byte-identical defaults — backward compatibility.
+        let json = r#"{
+            "world_scale": "Continent", "world_archetype": "HighFantasy",
+            "coastline_profile": "Coastal", "hemisphere_orientation": "Northern",
+            "climate_bias": null, "settlement_density": "Medium", "culture_count": 5
+        }"#;
+        let old: CreativeSeed = serde_json::from_str(json).expect("pre-param JSON loads");
+        assert_eq!(old.tectonics, TectonicsParams::default());
+        assert_eq!(old.intensity, IntensityKnobs::default());
+        // A partial override (only intensity.orogeny) keeps the other knob default.
+        let json2 = r#"{
+            "world_scale": "Continent", "world_archetype": "HighFantasy",
+            "coastline_profile": "Coastal", "hemisphere_orientation": "Northern",
+            "climate_bias": null, "settlement_density": "Medium", "culture_count": 5,
+            "intensity": { "orogeny": 1.7 }
+        }"#;
+        let partial: CreativeSeed = serde_json::from_str(json2).expect("partial intensity loads");
+        assert!((partial.intensity.orogeny - 1.7).abs() < 1e-6);
+        assert!((partial.intensity.collision_frequency - 1.0).abs() < 1e-6, "absent knob defaults to 1.0");
     }
 
     #[test]

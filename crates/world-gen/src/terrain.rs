@@ -170,11 +170,16 @@ pub fn build(
 
     match cs.terrain_mode {
         TerrainMode::Tectonic => {
+            // Resolve the tectonics params (apply the macro intensity knobs +
+            // clamp) once, then build the plate model from them. Default profile
+            // ⇒ default params ⇒ byte-identical baseline.
+            let tect = cs.tectonics.resolved(&cs.intensity);
             let plates = plates::build(
                 seed,
                 cs.plate_count,
                 cs.continental_fraction,
                 cs.continent_latitude_spread,
+                &tect,
                 centers,
                 neighbors,
             );

@@ -95,10 +95,13 @@ add ~120 granular flags (config-file territory).
   redefine what dense means, or set a fully custom number.)
 - **Derivation / gameplay tables** (`biome.rs` `terrain_cost` / `culture_barrier`
   / `population_potential`, `settlement` climate-habitability, `climate` wetness-
-  per-zone + bias deltas): exposed as `Vec`/per-enum tables in the relevant params
-  struct. These are *gameplay weights* (movement cost, habitability, culture
-  spread) — distinct from geometry, but the PO chose "expose everything", so they
-  are in scope (a creator can retune how terrain → cost / population).
+  per-zone + bias deltas): exposed as **fixed-size per-enum arrays** (e.g.
+  `[u32; 14]` over `BiomeKind`, `[f32; 8]` over `ClimateZone`) — **NOT `Vec`**.
+  This is load-bearing: a `Vec` field would strip `CreativeSeed`'s `Copy` derive
+  and ripple through every by-value use; fixed arrays keep `CreativeSeed: Copy`
+  (review-impl P1, finding 1). These are *gameplay weights* (movement cost,
+  habitability, culture spread) — distinct from geometry, but the PO chose
+  "expose everything", so they are in scope.
 - **Köppen classifier cutoffs** (`climate.rs` `10/18/−3/22 °C`, Med `0.65`, aridity
   slope): exposed in `ClimateParams` — a creator can redefine the climate-zone
   boundaries themselves.
@@ -148,7 +151,7 @@ subsystem; each independently shippable):
 
 | Stage | Builds | Size |
 |---|---|---|
-| **P1** | `TectonicsParams` (16 `plates.rs` consts) + `IntensityKnobs` scaffold (`orogeny`, `collision_frequency`) → `plates::build`. | L |
+| **P1 ✅** | `TectonicsParams` (19 `plates.rs` consts) + `IntensityKnobs` (`orogeny`, `collision_frequency`) in new `params.rs`; threaded into `plates::build`; LLM `author` schema/prompt/clamp wired. **Byte-identical baseline verified** (3 pinned hashes match pre-refactor). | L |
 | **P2** | `ReliefParams` (`terrain.rs` consts **+ inline smoothstep gates + coastline-profile maps + sea-level band**) + `relief`/`ocean_depth` knobs → `terrain::build`. | L |
 | **P3** | `ClimateParams` (`climate.rs` consts **+ Köppen cutoffs + wetness/bias tables + moisture**) + `warmth`/`rainfall`/`seasonality` knobs → `climate::build`. | L |
 | **P4** | `ErosionParams` + `HydrologyParams` (the `ErosionStrength` table, river percentile, lake threshold). | M |

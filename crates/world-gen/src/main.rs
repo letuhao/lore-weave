@@ -327,6 +327,9 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
             continent_latitude_spread: cli.continent_latitude_spread,
             region_subdivision: cli.region_subdivision,
             county_subdivision: cli.county_subdivision,
+            // Granular tuning + macro knobs default here (set via --config JSON;
+            // macro-knob CLI flags land in P8). Defaults = byte-identical.
+            ..CreativeSeed::default()
         }
     };
 

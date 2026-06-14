@@ -16,79 +16,21 @@
 //! ascending id / `BoundaryKind` tag; BFS over the sorted neighbour lists.
 
 use crate::noise::fbm_3d;
+use crate::params::TectonicsParams;
 use crate::rng::{Rng, sub_seed};
 use crate::world_map::{BoundaryKind, Plate, PlateBoundary, PlateKind};
 
 // --- tuning -----------------------------------------------------------------
-
-/// Plate-kind base elevation in a **signed space where sea level = 0** (the
-/// terrain stage quantizes with the sea level pinned at the 0-crossing). This
-/// mirrors Earth's hypsometry directly: continental crust is a broad platform
-/// sitting *just above* sea level (vast low green plains), oceanic crust is a
-/// deep floor well below. Mountains are the high minority, built by the
-/// orogeny uplift + ridged relief — not a raised plateau.
-const CONT_BASE: f32 = 0.10;
-const OCEAN_BASE: f32 = -0.55;
-
-/// Orogeny peak magnitudes (signed deltas, sea level = 0), decaying with hop
-/// distance via [`decay`]. Continental collision (fold) belts are the big
-/// highs; subduction *coastal* arcs are modest (most of Earth's coasts are
-/// low passive margins, not the Andes); oceanic arcs/ridges mostly stay
-/// **subsea** (occasionally breaching as island chains — realistic); rifts
-/// dip a continental valley below sea (a Red-Sea-like trough).
-const FOLD_PEAK: f32 = 0.85;
-const ARC_PEAK: f32 = 0.55;
-const TRENCH_DEPTH: f32 = 0.30;
-const ISLAND_ARC_PEAK: f32 = 0.45;
-const RIDGE_PEAK: f32 = 0.20;
-const RIFT_DEPTH: f32 = 0.28;
-const FAULT_PEAK: f32 = 0.05;
-
-/// Orogeny decay length, in BFS hops — how far a belt reaches from its
-/// boundary. Scaled mildly so larger meshes get proportionally wider belts.
-const DECAY_HOPS: f32 = 4.0;
-
-// --- S3: crustal-thickness isostasy (elevation redesign, defect D2) ----------
-
-/// Crustal thickness in km. Oceanic crust is thin (and dense) → floats low;
-/// continental crust is thick (and light) → floats high; collision thickens it
-/// further (research finding #2: continental crust 10→80 km, >80 at
-/// Himalaya-Tibet). Drives the isostatic base height (Airy), replacing the old
-/// two-constant base.
-const OCEAN_CRUST_KM: f32 = 7.0;
-const CONT_CRUST_KM: f32 = 35.0;
-/// Extra crust stacked at a continental collision, decaying *broadly* from the
-/// convergent boundary (a wide plateau — Tibet — not a sharp ridge). Up to
-/// 35 km → 70 km total.
-const COLLISION_THICKEN_KM: f32 = 35.0;
-/// Plateau breadth: collision thickening decays over this many BFS hops —
-/// wider than the orogeny `DECAY_HOPS` so the high ground is a broad plateau,
-/// with the (sharper) `uplift` ridges riding on top.
-const PLATEAU_HOPS: f32 = 7.0;
-/// Airy isostasy slope: signed base-height rise per km of continental crust
-/// above the neutral `CONT_CRUST_KM`. Calibrated so 35 km → `CONT_BASE` (+0.10)
-/// and 70 km → ~+0.40 (a broad isostatic shoulder at collisions, on top of which
-/// the orogeny `uplift` + ridged relief build the sharp peaks). This is the D2
-/// mechanism — the base is now crust-thickness-driven, not a flat constant.
-const CONT_ISO_SLOPE: f32 = 0.30 / 35.0;
-
-/// Shear-to-closing ratio above which a boundary is a **transform (Fault)**
-/// rather than convergent/divergent. Must be `> 1`: only motion whose
-/// tangential (shear) component *strongly dominates* the normal (closing /
-/// opening) component is a transform; otherwise the normal component decides
-/// convergent vs divergent. The old `tangential > |normal|` test (ratio 1.0)
-/// labelled ~75–80 % of boundaries Fault under random plate motion, so most
-/// worlds had no collisions and read as pancake-flat (S2 fix).
-const FAULT_SHEAR_RATIO: f32 = 2.0;
-
-/// Plate-boundary warp — a 3D fBm displacement applied to each cell before the
-/// nearest-seed (Voronoi) test, so plate boundaries are **fractal and
-/// irregular** rather than clean Voronoi arcs. This is what stops every
-/// continent from being a uniform round blob: warped boundaries give
-/// peninsulas, embayments, isthmuses and varied continent shapes.
-const PLATE_WARP_FREQ: f32 = 1.8;
-const PLATE_WARP_AMP: f32 = 0.32;
-const PLATE_WARP_OCTAVES: u32 = 4;
+//
+// All the numeric tuning that used to live here as `const`s is now in
+// [`crate::params::TectonicsParams`] (parameterization P1) — defaults are the
+// exact prior values, so a default profile is byte-identical. Only the
+// determinism salts (fixed, never user-tunable) remain here.
+//
+// Plate-boundary warp salts — the 3D fBm displacement applied to each cell
+// before the nearest-seed (Voronoi) test so plate boundaries are fractal/
+// irregular (varied, non-blobby continents). The warp *frequency/amplitude/
+// octaves* are tunable in `TectonicsParams`; these salts are fixed.
 const SALT_PWX: u32 = 0x4B1D_77A3;
 const SALT_PWY: u32 = 0x9E2C_51FF;
 const SALT_PWZ: u32 = 0x2D8A_C40B;
@@ -113,11 +55,14 @@ pub struct Plates {
 
 /// Build the plate model. `plate_count` is clamped to `3..=24` and
 /// `continental_fraction` to `0.1..=0.9` by the caller (`creative_seed`).
+/// `params` is the **resolved** [`TectonicsParams`] (macro knobs already
+/// applied + clamped by [`TectonicsParams::resolved`]).
 pub fn build(
     seed: u64,
     plate_count: u8,
     continental_fraction: f32,
     continent_latitude_spread: f32,
+    params: &TectonicsParams,
     centers: &[[f32; 3]],
     neighbors: &[Vec<u32>],
 ) -> Plates {
@@ -136,7 +81,7 @@ pub fn build(
     let plate_of: Vec<u32> = centers
         .iter()
         .map(|c| {
-            let wc = warp_cell(*c, wseed);
+            let wc = warp_cell(*c, wseed, params);
             let mut best = 0usize;
             let mut best_dot = dot(wc, seeds[0]);
             for (p, sp) in seeds.iter().enumerate().skip(1) {
@@ -186,7 +131,8 @@ pub fn build(
         .collect();
 
     // 1d — boundary classification, one record per adjacent plate pair.
-    let boundaries = classify_boundaries(&seeds, &kind, &motion, &plate_of, neighbors);
+    let boundaries =
+        classify_boundaries(&seeds, &kind, &motion, &plate_of, neighbors, params.fault_shear_ratio);
     // Pair → kind lookup for the per-cell uplift seeding.
     let pair_kind = |a: u32, b: u32| -> BoundaryKind {
         let (lo, hi) = if a < b { (a, b) } else { (b, a) };
@@ -209,18 +155,18 @@ pub fn build(
         .map(|c| {
             let continental = kind[plate_of[c] as usize] == PlateKind::Continental;
             if !continental {
-                return OCEAN_CRUST_KM;
+                return params.ocean_crust_km;
             }
             // Collision thickening on the continental side of a convergent
             // boundary (continent–continent fold, or the overriding arc of a
             // subduction). Broad `plateau_decay` → a high plateau, not a ridge.
             let thicken = match boundary_kind[c] {
                 BoundaryKind::FoldMountain | BoundaryKind::Subduction => {
-                    COLLISION_THICKEN_KM * plateau_decay(dist[c])
+                    params.collision_thicken_km * plateau_decay(dist[c], params.plateau_hops)
                 }
                 _ => 0.0,
             };
-            CONT_CRUST_KM + thicken
+            params.cont_crust_km + thicken
         })
         .collect();
 
@@ -229,7 +175,7 @@ pub fn build(
     let base: Vec<f32> = (0..n_cells)
         .map(|c| {
             let continental = kind[plate_of[c] as usize] == PlateKind::Continental;
-            isostasy_base(crust_thickness[c], continental)
+            isostasy_base(crust_thickness[c], continental, params)
         })
         .collect();
 
@@ -240,23 +186,23 @@ pub fn build(
             if bk == BoundaryKind::Interior {
                 return 0.0;
             }
-            let f = decay(dist[c]);
+            let f = decay(dist[c], params.decay_hops);
             let cell_continental = kind[plate_of[c] as usize] == PlateKind::Continental;
             match bk {
-                BoundaryKind::FoldMountain => FOLD_PEAK * f,
+                BoundaryKind::FoldMountain => params.fold_peak * f,
                 BoundaryKind::Subduction => {
                     // arc rises on the continental (overriding) side; the
                     // oceanic (subducting) side gets a trench notch.
                     if cell_continental {
-                        ARC_PEAK * f
+                        params.arc_peak * f
                     } else {
-                        -TRENCH_DEPTH * f
+                        -params.trench_depth * f
                     }
                 }
-                BoundaryKind::IslandArc => ISLAND_ARC_PEAK * f,
-                BoundaryKind::Ridge => RIDGE_PEAK * f,
-                BoundaryKind::Rift => -RIFT_DEPTH * f,
-                BoundaryKind::Fault => FAULT_PEAK * f,
+                BoundaryKind::IslandArc => params.island_arc_peak * f,
+                BoundaryKind::Ridge => params.ridge_peak * f,
+                BoundaryKind::Rift => -params.rift_depth * f,
+                BoundaryKind::Fault => params.fault_peak * f,
                 BoundaryKind::Interior => 0.0,
             }
         })
@@ -360,6 +306,7 @@ fn classify_boundaries(
     motion: &[[f32; 3]],
     plate_of: &[u32],
     neighbors: &[Vec<u32>],
+    fault_shear_ratio: f32,
 ) -> Vec<PlateBoundary> {
     use std::collections::BTreeSet;
     // Adjacent unordered plate pairs (a < b).
@@ -384,6 +331,7 @@ fn classify_boundaries(
                 motion[b as usize],
                 kind[a as usize],
                 kind[b as usize],
+                fault_shear_ratio,
             );
             PlateBoundary {
                 plate_a: a,
@@ -403,6 +351,7 @@ fn boundary_kind_for_pair(
     mb: [f32; 3],
     ka: PlateKind,
     kb: PlateKind,
+    fault_shear_ratio: f32,
 ) -> BoundaryKind {
     // Boundary normal: tangent direction from a's seed toward b's seed.
     let n = tangent_unit(sa, sub(sb, sa));
@@ -423,7 +372,7 @@ fn boundary_kind_for_pair(
     // closing/opening rate (`FAULT_SHEAR_RATIO`); otherwise the normal sign
     // decides convergent vs divergent. (A plain `tangential > |normal|` test
     // mislabels most random-motion boundaries Fault → no collisions.)
-    if tangential > FAULT_SHEAR_RATIO * normal.abs() {
+    if tangential > fault_shear_ratio * normal.abs() {
         return BoundaryKind::Fault;
     }
     if normal > 0.0 {
@@ -504,30 +453,30 @@ fn boundary_field(
 }
 
 /// Orogeny decay with hop distance: 1 at the boundary, fading to ~0 by
-/// several hops. Smooth exponential-ish falloff.
-fn decay(hops: u32) -> f32 {
-    let t = hops as f32 / DECAY_HOPS;
+/// `decay_hops` hops. Smooth exponential-ish falloff.
+fn decay(hops: u32, decay_hops: f32) -> f32 {
+    let t = hops as f32 / decay_hops;
     (-t * t).exp()
 }
 
 /// Broad collision-plateau decay — same shape as [`decay`] but over the wider
-/// [`PLATEAU_HOPS`], so crustal thickening forms a broad high plateau rather
-/// than tracing the (narrower) orogeny ridge.
-fn plateau_decay(hops: u32) -> f32 {
-    let t = hops as f32 / PLATEAU_HOPS;
+/// `plateau_hops`, so crustal thickening forms a broad high plateau rather than
+/// tracing the (narrower) orogeny ridge.
+fn plateau_decay(hops: u32, plateau_hops: f32) -> f32 {
+    let t = hops as f32 / plateau_hops;
     (-t * t).exp()
 }
 
 /// Airy isostatic base height (signed, sea = 0) for a crust column: thicker
 /// continental crust floats higher (the mechanism behind high collision
 /// plateaus with no trench). Oceanic crust is uniform here — its depth varies
-/// by lithospheric *age*, deferred to S4. Calibrated so oceanic 7 km →
-/// `OCEAN_BASE`, continental 35 km → `CONT_BASE`, 70 km → ~+0.40.
-fn isostasy_base(thickness_km: f32, continental: bool) -> f32 {
+/// by lithospheric *age*, deferred to S4. Calibrated (defaults) so oceanic 7 km →
+/// `ocean_base`, continental 35 km → `cont_base`, 70 km → ~+0.40.
+fn isostasy_base(thickness_km: f32, continental: bool, params: &TectonicsParams) -> f32 {
     if continental {
-        CONT_BASE + CONT_ISO_SLOPE * (thickness_km - CONT_CRUST_KM)
+        params.cont_base + params.cont_iso_slope * (thickness_km - params.cont_crust_km)
     } else {
-        OCEAN_BASE
+        params.ocean_base
     }
 }
 
@@ -535,16 +484,14 @@ fn isostasy_base(thickness_km: f32, continental: bool) -> f32 {
 
 /// Displace a unit-sphere cell position by a 3D fBm field, re-normalized back
 /// onto the sphere — the plate-boundary warp (fractal, irregular continents).
-fn warp_cell(c: [f32; 3], seed: u32) -> [f32; 3] {
-    let f = PLATE_WARP_FREQ;
-    let wx = fbm_3d(c[0] * f, c[1] * f, c[2] * f, seed ^ SALT_PWX, PLATE_WARP_OCTAVES);
-    let wy = fbm_3d(c[0] * f, c[1] * f, c[2] * f, seed ^ SALT_PWY, PLATE_WARP_OCTAVES);
-    let wz = fbm_3d(c[0] * f, c[1] * f, c[2] * f, seed ^ SALT_PWZ, PLATE_WARP_OCTAVES);
-    let v = [
-        c[0] + PLATE_WARP_AMP * wx,
-        c[1] + PLATE_WARP_AMP * wy,
-        c[2] + PLATE_WARP_AMP * wz,
-    ];
+fn warp_cell(c: [f32; 3], seed: u32, params: &TectonicsParams) -> [f32; 3] {
+    let f = params.warp_freq;
+    let oct = params.warp_octaves;
+    let amp = params.warp_amp;
+    let wx = fbm_3d(c[0] * f, c[1] * f, c[2] * f, seed ^ SALT_PWX, oct);
+    let wy = fbm_3d(c[0] * f, c[1] * f, c[2] * f, seed ^ SALT_PWY, oct);
+    let wz = fbm_3d(c[0] * f, c[1] * f, c[2] * f, seed ^ SALT_PWZ, oct);
+    let v = [c[0] + amp * wx, c[1] + amp * wy, c[2] + amp * wz];
     let l = len(v).max(1e-6);
     [v[0] / l, v[1] / l, v[2] / l]
 }
@@ -604,10 +551,15 @@ mod tests {
         (m.centers, m.neighbors)
     }
 
+    /// Default tectonics params (= the prior hardcoded consts).
+    fn tp() -> TectonicsParams {
+        TectonicsParams::default()
+    }
+
     #[test]
     fn every_cell_assigned_a_valid_plate() {
         let (centers, neighbors) = pocket();
-        let p = build(42, 8, 0.4, 0.0, &centers, &neighbors);
+        let p = build(42, 8, 0.4, 0.0, &tp(), &centers, &neighbors);
         assert_eq!(p.plate_of.len(), centers.len());
         assert!(p.plate_of.iter().all(|&id| (id as usize) < p.plates.len()));
         assert_eq!(p.plates.len(), 8);
@@ -616,7 +568,7 @@ mod tests {
     #[test]
     fn continental_count_matches_fraction() {
         let (centers, neighbors) = pocket();
-        let p = build(42, 10, 0.4, 0.0, &centers, &neighbors);
+        let p = build(42, 10, 0.4, 0.0, &tp(), &centers, &neighbors);
         let cont = p
             .plates
             .iter()
@@ -628,14 +580,14 @@ mod tests {
     #[test]
     fn plate_count_is_clamped() {
         let (centers, neighbors) = pocket();
-        assert_eq!(build(1, 2, 0.4, 0.0, &centers, &neighbors).plates.len(), 3);
-        assert_eq!(build(1, 99, 0.4, 0.0, &centers, &neighbors).plates.len(), 24);
+        assert_eq!(build(1, 2, 0.4, 0.0, &tp(), &centers, &neighbors).plates.len(), 3);
+        assert_eq!(build(1, 99, 0.4, 0.0, &tp(), &centers, &neighbors).plates.len(), 24);
     }
 
     #[test]
     fn motion_vectors_are_unit_and_tangent() {
         let (centers, neighbors) = pocket();
-        let p = build(7, 8, 0.4, 0.0, &centers, &neighbors);
+        let p = build(7, 8, 0.4, 0.0, &tp(), &centers, &neighbors);
         for pl in &p.plates {
             let m = pl.motion;
             let l = (m[0] * m[0] + m[1] * m[1] + m[2] * m[2]).sqrt();
@@ -651,7 +603,7 @@ mod tests {
     #[test]
     fn boundaries_are_sorted_and_classified() {
         let (centers, neighbors) = pocket();
-        let p = build(42, 8, 0.4, 0.0, &centers, &neighbors);
+        let p = build(42, 8, 0.4, 0.0, &tp(), &centers, &neighbors);
         assert!(!p.boundaries.is_empty(), "8 plates must share boundaries");
         for w in p.boundaries.windows(2) {
             assert!(
@@ -668,7 +620,7 @@ mod tests {
     #[test]
     fn uplift_is_finite_and_zero_in_deep_interior() {
         let (centers, neighbors) = pocket();
-        let p = build(42, 8, 0.4, 0.0, &centers, &neighbors);
+        let p = build(42, 8, 0.4, 0.0, &tp(), &centers, &neighbors);
         assert!(p.uplift.iter().all(|u| u.is_finite()));
         // at least some cells get non-zero uplift (boundaries exist).
         assert!(p.uplift.iter().any(|&u| u.abs() > 0.01));
@@ -730,8 +682,8 @@ mod tests {
     #[test]
     fn deterministic() {
         let (centers, neighbors) = pocket();
-        let a = build(99, 8, 0.4, 0.0, &centers, &neighbors);
-        let b = build(99, 8, 0.4, 0.0, &centers, &neighbors);
+        let a = build(99, 8, 0.4, 0.0, &tp(), &centers, &neighbors);
+        let b = build(99, 8, 0.4, 0.0, &tp(), &centers, &neighbors);
         assert_eq!(a.plate_of, b.plate_of);
         assert_eq!(a.boundaries, b.boundaries);
         for i in 0..a.uplift.len() {
@@ -745,22 +697,24 @@ mod tests {
     #[test]
     fn crust_thickness_splits_ocean_and_continent() {
         let (centers, neighbors) = pocket();
-        let p = build(7, 8, 0.4, 0.0, &centers, &neighbors);
+        let p = build(7, 8, 0.4, 0.0, &tp(), &centers, &neighbors);
         assert_eq!(p.crust_thickness.len(), centers.len());
+        let d = tp();
         let (mut thin, mut thick) = (0u32, 0u32);
         for (c, &t) in p.crust_thickness.iter().enumerate() {
             assert!(t.is_finite(), "crust thickness not finite at {c}");
             match p.plates[p.plate_of[c] as usize].kind {
                 PlateKind::Oceanic => {
-                    assert!((t - OCEAN_CRUST_KM).abs() < 1e-3, "oceanic crust {t} != {OCEAN_CRUST_KM}");
+                    assert!((t - d.ocean_crust_km).abs() < 1e-3, "oceanic crust {t} != {}", d.ocean_crust_km);
                     thin += 1;
                 }
                 PlateKind::Continental => {
                     assert!(
-                        (CONT_CRUST_KM - 1e-3..=CONT_CRUST_KM + COLLISION_THICKEN_KM + 1e-3)
+                        (d.cont_crust_km - 1e-3..=d.cont_crust_km + d.collision_thicken_km + 1e-3)
                             .contains(&t),
-                        "continental crust {t} out of [{CONT_CRUST_KM}, {}]",
-                        CONT_CRUST_KM + COLLISION_THICKEN_KM
+                        "continental crust {t} out of [{}, {}]",
+                        d.cont_crust_km,
+                        d.cont_crust_km + d.collision_thicken_km
                     );
                     thick += 1;
                 }
@@ -773,11 +727,12 @@ mod tests {
     /// crust sits at `OCEAN_BASE`; the calibration anchors hold.
     #[test]
     fn isostasy_base_rises_with_thickness() {
-        assert!((isostasy_base(OCEAN_CRUST_KM, false) - OCEAN_BASE).abs() < 1e-6);
-        assert!((isostasy_base(CONT_CRUST_KM, true) - CONT_BASE).abs() < 1e-6);
+        let d = tp();
+        assert!((isostasy_base(d.ocean_crust_km, false, &d) - d.ocean_base).abs() < 1e-6);
+        assert!((isostasy_base(d.cont_crust_km, true, &d) - d.cont_base).abs() < 1e-6);
         // Tibet-thick crust floats well above the normal platform.
-        let thick = isostasy_base(CONT_CRUST_KM + COLLISION_THICKEN_KM, true);
-        assert!(thick > CONT_BASE + 0.2, "70km crust base {thick} not a plateau");
-        assert!(thick > isostasy_base(CONT_CRUST_KM + 1.0, true), "isostasy not monotonic");
+        let thick = isostasy_base(d.cont_crust_km + d.collision_thicken_km, true, &d);
+        assert!(thick > d.cont_base + 0.2, "70km crust base {thick} not a plateau");
+        assert!(thick > isostasy_base(d.cont_crust_km + 1.0, true, &d), "isostasy not monotonic");
     }
 }
