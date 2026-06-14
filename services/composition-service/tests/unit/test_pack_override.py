@@ -221,6 +221,50 @@ async def test_base_delta_timeline_identity_reconciled_by_normalized_title():
     assert "base duel" not in pc.prompt
 
 
+# ── C27 (dị bản M4): the delta flywheel CLOSES — the next pack reads a fact the
+#     flywheel wrote into the derivative's delta partition (reconcile-by-truth:
+#     assert via the packer's OWN delta-read path, not a parallel query) ──
+
+
+async def test_flywheel_new_delta_fact_surfaces_in_next_scene_grounding():
+    # SCENARIO: a derivative chapter was approved → the flywheel extracted a NEW fact
+    # into the derivative's OWN delta partition. Modeled here as a fresh delta
+    # timeline event present ONLY in the delta project (not the base). The NEXT
+    # scene's pack must surface that delta fact in grounding — proving the flywheel
+    # closes. Reconcile-by-truth: we read it through the SAME packer delta path C25
+    # uses (the delta project's timeline lens), not an independent query.
+    new_delta_fact = {
+        "title": "张若尘 declares herself empress",
+        "summary": "a delta-only event the dị bản established",
+        "event_order": 4 * EVENT_ORDER_CHAPTER_STRIDE,  # forward of branch 3, ≤ scene 5
+    }
+    kn = ProjectAwareKnowledge(
+        base_events=[_event("base-only event", 1 * EVENT_ORDER_CHAPTER_STRIDE)],
+        delta_events=[new_delta_fact],
+    )
+    pc = await _pack_deriv(_derivative_req(branch_point=3, story_order=5), knowledge=kn)
+    # The flywheel-written delta fact is now in the next scene's grounding.
+    assert "declares herself empress" in pc.prompt
+    # And it came from the DELTA partition's read (the derivative's own project) —
+    # the packer queried the delta project at the full scene cutoff.
+    assert kn.seen_before_order[str(DELTA_PROJECT)] == 5 * EVENT_ORDER_CHAPTER_STRIDE
+
+
+async def test_flywheel_delta_fact_after_scene_position_is_spoiler_filtered():
+    # A delta fact written FORWARD of the current scene (a later derivative chapter)
+    # must NOT leak into an earlier scene's grounding — the in-world spoiler filter
+    # still applies on the delta read, so the flywheel can't time-travel facts back.
+    kn = ProjectAwareKnowledge(
+        delta_events=[
+            {"title": "near delta fact", "summary": "at scene", "event_order": 4 * EVENT_ORDER_CHAPTER_STRIDE},
+            {"title": "future delta fact", "summary": "later chapter", "event_order": 9 * EVENT_ORDER_CHAPTER_STRIDE},
+        ],
+    )
+    pc = await _pack_deriv(_derivative_req(branch_point=3, story_order=5), knowledge=kn)
+    assert "near delta fact" in pc.prompt
+    assert "future delta fact" not in pc.prompt
+
+
 # ── DPS2: override mutation seam (self-syncing, re-applied every pack) ──
 
 

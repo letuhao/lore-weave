@@ -417,5 +417,14 @@
     "referenceSpine": "Reference spine (read-only)",
     "referenceSpineHint": "Original chapters up to your branch point — adapt them manually. They are not inserted into your draft.",
     "openReference": "Open"
+  },
+  "promote": {
+    "ephemeral": "What-if (exploring)",
+    "action": "Promote to dị bản",
+    "promoting": "Promoting…",
+    "actionHint": "Save this what-if as a persistent dị bản with its own knowledge graph",
+    "needsName": "Name the what-if to promote it.",
+    "namePlaceholder": "Name a what-if…",
+    "nameLabel": "What-if name"
   }
 }

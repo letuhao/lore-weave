@@ -25,6 +25,7 @@ import { CharacterArcView } from './CharacterArcView';
 import { WorldMap } from './WorldMap';
 import { GroundingPanel } from './GroundingPanel';
 import { DivergenceWizardButton } from './DivergenceWizardButton';
+import { PromoteWhatIfButton } from './PromoteWhatIfButton';
 import { DerivativeBanner } from './DerivativeBanner';
 import { DerivativeGroundingLayers } from './DerivativeGroundingLayers';
 import { useDerivativeContext } from '../hooks/useDerivativeContext';
@@ -56,6 +57,11 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
   const sceneId = sceneIdProp ?? localSceneId;
   const setSceneId = onSceneChange ?? setLocalSceneId;
   const [modelRef, setModelRef] = useState<string>('');
+  // C27 (dị bản M4) — ephemeral what-if draft. A lightweight in-memory exploration
+  // (just a name here; the full spec/overrides come from the C24 wizard) the writer
+  // can PROMOTE to a persistent derivative via the C23 derive path. Held transient
+  // (no localStorage) until promoted, then the derive response is the persisted truth.
+  const [whatIfName, setWhatIfName] = useState<string>('');
   // T2.4: the character whose arc is shown — lifted here so the Cast codex (T2.1)
   // can launch the arc tab with a character preselected; the arc's own picker also
   // writes back through setArcEntityId.
@@ -284,6 +290,44 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
           <DivergenceWizardButton sourceWork={work} token={token} onDerived={onDerivedWork} />
         </div>
       </div>
+
+      {/* C27 (dị bản M4) — what-if → derivative PROMOTION. Only on a CANON work
+          (promoting always creates a NEW derivative from canon). The writer names an
+          ephemeral what-if, then promotes it into a persistent dị bản through the C23
+          derive path (fresh project_id + spec + overrides carried over). The full
+          spec/overrides authoring is the C24 wizard; this is the explicit
+          ephemeral→persistent seam for a quick what-if. */}
+      {!derivativeCtx.isDerivative && (
+        <div
+          data-testid="composition-whatif-promote"
+          className="flex flex-wrap items-center gap-2 border-b border-neutral-200 px-2 py-1.5 dark:border-neutral-700"
+        >
+          <input
+            data-testid="composition-whatif-name"
+            className="rounded border border-neutral-300 px-2 py-1 text-xs dark:border-neutral-700 dark:bg-neutral-900"
+            placeholder={t('promote.namePlaceholder', { defaultValue: 'Name a what-if…' })}
+            value={whatIfName}
+            onChange={(e) => setWhatIfName(e.target.value)}
+            aria-label={t('promote.nameLabel', { defaultValue: 'What-if name' })}
+          />
+          <PromoteWhatIfButton
+            sourceWork={work}
+            token={token}
+            draft={{
+              branchPoint: null,
+              taxonomy: 'au',
+              povAnchor: null,
+              canonRules: [],
+              overrides: {},
+              name: whatIfName,
+            }}
+            onPromoted={(d) => {
+              setWhatIfName('');
+              onDerivedWork(d);
+            }}
+          />
+        </div>
+      )}
 
       {/* C15 (WG-2) — positive readiness cue. Nothing in the writer flow told the
           author that writing is READY once a chat model exists; they wrongly believed

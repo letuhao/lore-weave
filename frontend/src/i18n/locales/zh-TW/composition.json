@@ -417,5 +417,14 @@
     "referenceSpine": "參考骨幹（唯讀）",
     "referenceSpineHint": "至分支點為止的原始章節 — 請手動改編。它們不會插入你的草稿。",
     "openReference": "開啟"
+  },
+  "promote": {
+    "ephemeral": "假設（探索中）",
+    "action": "晉升為異版",
+    "promoting": "晉升中…",
+    "actionHint": "將此假設儲存為擁有自己知識圖譜的持久異版",
+    "needsName": "為假設命名以晉升。",
+    "namePlaceholder": "為一個假設命名…",
+    "nameLabel": "假設名稱"
   }
 }

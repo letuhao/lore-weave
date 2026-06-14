@@ -51,6 +51,53 @@ async def test_non_200_returns_none():
         await c.aclose()
 
 
+# ── C27 (dị bản M4) extract_item — the delta flywheel dispatch ──────────
+
+EXTRACT_URL = f"{BASE}/internal/extraction/extract-item"
+
+
+@respx.mock
+async def test_extract_item_dispatches_into_the_given_delta_project():
+    route = respx.post(EXTRACT_URL).mock(
+        return_value=httpx.Response(200, json={"entities_merged": 2, "events_merged": 1})
+    )
+    c = await _client()
+    job = uuid.uuid4()
+    try:
+        res = await c.extract_item(
+            user_id=USER, project_id=PROJECT, source_id="ch-1",
+            chapter_text="张若尘 is now a woman.", model_source="user_model",
+            model_ref="model-uuid", job_id=job,
+        )
+    finally:
+        await c.aclose()
+    assert res == {"entities_merged": 2, "events_merged": 1}
+    sent = route.calls.last.request
+    import json as _json
+    body = _json.loads(sent.content)
+    # Targets the GIVEN (delta) project, uses the internal token, item_type=chapter.
+    assert body["project_id"] == str(PROJECT)
+    assert body["item_type"] == "chapter"
+    assert body["chapter_text"] == "张若尘 is now a woman."
+    assert body["model_ref"] == "model-uuid"
+    assert sent.headers["X-Internal-Token"] == "intok"
+
+
+@respx.mock
+async def test_extract_item_returns_none_on_outage():
+    # a knowledge outage (5xx) → None so the approval doesn't 500.
+    respx.post(EXTRACT_URL).mock(return_value=httpx.Response(503, json={"detail": "down"}))
+    c = await _client()
+    try:
+        res = await c.extract_item(
+            user_id=USER, project_id=PROJECT, source_id="ch-1",
+            chapter_text="x", model_source="user_model", model_ref="m", job_id=uuid.uuid4(),
+        )
+    finally:
+        await c.aclose()
+    assert res is None
+
+
 @respx.mock
 async def test_transport_error_returns_none():
     respx.get(URL).mock(side_effect=httpx.ConnectError("down"))

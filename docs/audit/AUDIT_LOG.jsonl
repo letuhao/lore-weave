@@ -1839,3 +1839,22 @@
 {"ts": "2026-06-14T18:48:09Z", "event": "in_progress_update", "cycle": 26, "phase": "SESSION", "retry": 0}
 {"ts":"2026-06-15T00:55:00Z","event":"cycle_done","cycle":26,"result":"DONE","layer":"BE","dps_count":1,"files":6,"adversary":{"blockers":0,"majors":1,"minors":3,"notes":3},"scope_guard":"CLEAR","post_review":"CLEAR","verify_exit_code":0,"wiring_test_present":true,"tests":{"critic_override":11,"engine_router":40,"critic":15,"full_unit":478},"evidence_token":"unit: derivative critic flags override slip + passes compliant scene","notable":"dị bản M3 derivative critic dimension (AI-free deterministic): activates only for derivatives, REUSES C25 build_derivative_context+_resolve_override_anchors (no re-merge), flags override slip+delta-inconsistency, WIRED at /critique with unit-spy + router end-to-end wiring proof. MAJOR fixed: bio-field precedence inverted C25 (description vs summary-wins) -> two-sources-of-truth drift, unified to mirror apply_entity_overrides"}
 {"ts": "2026-06-14T18:49:02Z", "event": "in_progress_update", "cycle": 26, "phase": "COMMIT", "retry": 0}
+{"ts": "2026-06-14T18:49:51Z", "event": "in_progress_archived", "cycle": 26, "archived_to": "cycle-026-state.md"}
+{"ts":"2026-06-15T00:58:00Z","event":"cycle_retro","cycle":26,"lesson":"A critic that ENFORCES another component's transform (C25 override-merge) must reuse that component's EXACT precedence, not just its inputs — the adversary M1 caught the critic computing the override bio with description-wins while C25's apply_entity_overrides is summary-wins. 'Reuse the resolution' isn't enough; reuse (or factor out) the value-derivation too, else the enforcer flags against a value the producer never emitted. Extracted _override_bio mirroring merge.apply_entity_overrides. Also: the wiring test must drive the REAL handler end-to-end (router test), not just a spy on the orchestrator — both kept here (nil-tolerant-decorator bug class)."}
+{"ts": "2026-06-14T18:50:43Z", "event": "coordinator_next_cycle_emitted", "cycle": 27}
+{"ts":"2026-06-14T18:52:15Z","event":"startup_drift_check_inconclusive","cycle":27,"cd":"","rw":""}
+{"ts":"2026-06-14T18:52:15Z","event":"startup_verifier_complete","cycle":27,"steps":6}
+{"ts": "2026-06-14T18:52:23Z", "event": "in_progress_init", "cycle": 27, "title": "Flywheel on delta + what-if->derivative promotion"}
+{"ts": "2026-06-14T18:56:27Z", "event": "in_progress_update", "cycle": 27, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-06-14T18:57:23Z", "event": "in_progress_update", "cycle": 27, "phase": "PLAN", "retry": 0}
+{"ts": "2026-06-14T18:58:12Z", "event": "in_progress_update", "cycle": 27, "phase": "BUILD", "retry": 0}
+{"ts":"2026-06-14T19:04:48Z","event":"secret_scan_skipped","cycle":27,"dps":DPS1,"reason":"gitleaks_not_installed"}
+{"ts":"2026-06-14T19:11:20Z","event":"secret_scan_skipped","cycle":27,"dps":DPS2,"reason":"gitleaks_not_installed"}
+{"ts": "2026-06-14T19:11:46Z", "event": "in_progress_update", "cycle": 27, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-06-14T19:12:37Z","event":"verify_cycle_27_passed","cycle":27}
+{"ts": "2026-06-14T19:27:05Z", "event": "in_progress_update", "cycle": 27, "phase": "REVIEW2", "retry": 0}
+{"ts":"2026-06-14T19:30:59Z","event":"verify_cycle_27_passed","cycle":27}
+{"ts": "2026-06-14T19:31:15Z", "event": "in_progress_update", "cycle": 27, "phase": "QC", "retry": 0}
+{"ts": "2026-06-14T19:32:12Z", "event": "in_progress_update", "cycle": 27, "phase": "POST_REVIEW", "retry": 0}
+{"ts": "2026-06-14T19:32:25Z", "event": "in_progress_update", "cycle": 27, "phase": "SESSION", "retry": 0}
+{"ts": "2026-06-14T19:33:00Z", "event": "cycle_done", "cycle": 27, "title": "Flywheel on delta + what-if->derivative promotion", "dps": 2, "tests": {"composition_unit": 506, "fe_vitest": 12, "verify_exit": 0}, "live_smoke_token": "live smoke: approve di ban chapter -> delta enriches next-scene grounding", "playwright": "docs/raid/evidence/cycle-27/whatif-promote-action.png", "adversary": {"blockers": 0, "majors": 0, "minors": 1, "notes": 3}, "scope_guard": "CLEAR", "post_review": "CLEAR"}

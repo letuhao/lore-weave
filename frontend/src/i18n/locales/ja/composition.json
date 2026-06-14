@@ -417,5 +417,14 @@
     "referenceSpine": "参照スパイン（読み取り専用）",
     "referenceSpineHint": "分岐点までの原章 — 手動で翻案します。下書きには挿入されません。",
     "openReference": "開く"
+  },
+  "promote": {
+    "ephemeral": "What-if（試行中）",
+    "action": "ディ・バンに昇格",
+    "promoting": "昇格中…",
+    "actionHint": "この what-if を独自のナレッジグラフを持つ永続的なディ・バンとして保存",
+    "needsName": "昇格するには what-if に名前を付けてください。",
+    "namePlaceholder": "what-if に名前を付ける…",
+    "nameLabel": "what-if 名"
   }
 }

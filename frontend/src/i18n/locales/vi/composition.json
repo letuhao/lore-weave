@@ -417,5 +417,14 @@
     "referenceSpine": "Trục tham khảo (chỉ đọc)",
     "referenceSpineHint": "Các chương gốc tới điểm rẽ nhánh — phỏng tác thủ công. Chúng không được chèn vào bản nháp.",
     "openReference": "Mở"
+  },
+  "promote": {
+    "ephemeral": "Giả định (đang thử)",
+    "action": "Nâng thành dị bản",
+    "promoting": "Đang nâng…",
+    "actionHint": "Lưu giả định này thành dị bản bền vững với đồ thị tri thức riêng",
+    "needsName": "Đặt tên cho giả định để nâng cấp.",
+    "namePlaceholder": "Đặt tên một giả định…",
+    "nameLabel": "Tên giả định"
   }
 }

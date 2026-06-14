@@ -32,8 +32,8 @@ from app.worker.operations import SUPPORTED_OPERATIONS
 from app.logging_config import setup_logging, trace_id_var
 from app.middleware.trace_id import TraceIdMiddleware
 from app.routers import (
-    canon, engine, grounding, health, internal_eval, metrics, narrative_threads,
-    outline, ping, plan, prose, works,
+    approve, canon, engine, grounding, health, internal_eval, metrics,
+    narrative_threads, outline, ping, plan, prose, works,
 )
 
 logger = logging.getLogger(__name__)
@@ -137,6 +137,7 @@ app.include_router(ping.internal_router)
 app.include_router(metrics.router)
 app.include_router(works.router)
 app.include_router(prose.router)
+app.include_router(approve.router)
 app.include_router(grounding.router)
 app.include_router(engine.router)
 app.include_router(outline.router)

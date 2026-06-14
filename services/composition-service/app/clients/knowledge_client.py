@@ -50,10 +50,14 @@ class KnowledgeContractError(Exception):
 class KnowledgeClient:
     def __init__(
         self, base_url: str, internal_token: str = "", timeout_s: float = 5.0,
+        extract_timeout_s: float = 180.0,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._internal_token = internal_token
         self._http = httpx.AsyncClient(timeout=httpx.Timeout(timeout_s))
+        # C27 — extract-item runs an LLM Pass-2 extraction (slow); its per-request
+        # timeout is far longer than the read-lens default. Configurable for tests.
+        self._extract_timeout_s = extract_timeout_s
 
     async def aclose(self) -> None:
         await self._http.aclose()
@@ -148,6 +152,65 @@ class KnowledgeClient:
         # 5xx (or any other non-2xx) → outage → degrade.
         logger.warning("knowledge create_project → %d (degrading)", resp.status_code)
         return None
+
+    # ── C27 (dị bản M4) delta flywheel ──────────────────────────────────
+
+    async def extract_item(
+        self, *, user_id: UUID, project_id: UUID, source_id: str,
+        chapter_text: str, model_source: str, model_ref: str,
+        job_id: UUID, known_entities: list[str] | None = None,
+        source_type: str = "chapter",
+    ) -> dict[str, Any] | None:
+        """C27 delta flywheel — dispatch the EXISTING knowledge extraction trigger
+        (`POST /internal/extraction/extract-item`, X-Internal-Token) for ONE
+        approved derivative chapter, scoped to the derivative's OWN `project_id`
+        (its delta partition, G2). This REUSES the existing extraction engine — it
+        only points it at the delta project; no new extraction code.
+
+        `project_id` MUST be the derivative's delta project (the caller asserts the
+        project-scope GUARD first — never null, never the source). The internal
+        endpoint runs Pass-2 extraction + writes into that project's Neo4j
+        partition, so the next pack (C25) merges the new delta facts.
+
+        AI-FREE: composition supplies a caller-resolved (provider-registry) model
+        ref; the LLM call happens inside knowledge-service. No provider SDK here.
+
+        Returns the extraction result dict (entities/relations/events/facts merged)
+        or None on any transport/HTTP failure — the approval must not 500 on a
+        knowledge outage (the flywheel re-arms on the next approval; grounding just
+        stays thinner until then).
+
+        TIMEOUT: extract-item runs a FULL Pass-2 LLM extraction inside
+        knowledge-service (many seconds — far longer than the 5s read-lens default).
+        We pass an explicit long per-request timeout so the dispatch isn't a
+        false-`knowledge_unavailable` on a slow-but-healthy extraction (a live-smoke
+        catch: the read-lens 5s timeout silently aborted the LLM call)."""
+        url = f"{self._base_url}/internal/extraction/extract-item"
+        payload: dict[str, Any] = {
+            "user_id": str(user_id),
+            "project_id": str(project_id),
+            "item_type": "chapter",
+            "source_type": source_type,
+            "source_id": source_id,
+            "job_id": str(job_id),
+            "model_source": model_source,
+            "model_ref": model_ref,
+            "chapter_text": chapter_text,
+            "known_entities": list(known_entities or []),
+        }
+        try:
+            resp = await self._http.post(
+                url, json=payload, headers=self._internal_headers(),
+                # LLM extraction is slow — override the short read-lens default.
+                timeout=httpx.Timeout(self._extract_timeout_s),
+            )
+            if resp.status_code != 200:
+                logger.warning("knowledge extract-item → %d", resp.status_code)
+                return None
+            return resp.json()
+        except (httpx.HTTPError, ValueError, AttributeError) as exc:
+            logger.warning("knowledge extract-item unavailable: %r", exc)
+            return None
 
     # ── M4 packer lenses ────────────────────────────────────────────────
     # All return None/[] on any failure (the packer `_safe_*` degrade, F1) so a
