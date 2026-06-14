@@ -831,15 +831,28 @@ pub struct ReliefParams {
     pub cont_weight: f32,
     pub mtn_weight: f32,
     pub hill_weight: f32,
-    // Tectonic-mode relief.
-    pub tec_hill_weight: f32,
+    // Tectonic-mode relief. Only `tec_plain_weight` + `plain_freq` are still
+    // live (they drive the S5 plains whisper). The rest of this block became
+    // **inert at S5** — the coupled uplift⇄erosion rewrite retired the ridged-fBm
+    // `land_relief` (belt ranges + interior uplands) these tuned, and Profile
+    // mode's `height_at` uses the `mtn_*`/`belt_*`/`hill_*` fields above instead.
+    // Kept (serde) to avoid a param-surface break; flagged for removal in a
+    // cleanup pass (`D-S5-DEAD-RELIEF-PARAMS`).
     pub tec_plain_weight: f32,
     pub plain_freq: f32,
+    /// S5-inert (retired ridged-fBm relief). See the block comment above.
+    pub tec_hill_weight: f32,
+    /// S5-inert. See the block comment above.
     pub rugged_freq: f32,
+    /// S5-inert. See the block comment above.
     pub tect_uplift_lo: f32,
+    /// S5-inert. See the block comment above.
     pub tect_uplift_hi: f32,
+    /// S5-inert. See the block comment above.
     pub tect_belt_lift: f32,
+    /// S5-inert. See the block comment above.
     pub tect_range_weight: f32,
+    /// S5-inert. See the block comment above.
     pub interior_rugged_cap: f32,
     // Ocean bathymetry (S4 — age-based GDH1 depth + coastal shelf blend).
     pub ocean_shelf: f32,
@@ -862,6 +875,16 @@ pub struct ReliefParams {
     pub ocean_full: f32,
     // Archipelago disc radius (Profile mode).
     pub arch_radius: f32,
+    // Coupled uplift ⇄ erosion (S5, Tectonic mode). The land surface evolves
+    // `dh/dt = U − K·A^m·S^n + D·∇²h` toward a fluvial steady state, so relief
+    // emerges from the uplift⇄erosion balance instead of ridged-fBm noise.
+    /// Number of coupled timesteps.
+    pub couple_iters: u32,
+    /// Per-step uplift forcing (multiplies the tectonic uplift field `U`); scaled
+    /// by the `relief` macro knob. (Erodibility `K` + hillslope diffusion `D`
+    /// come from the resolved [`ErosionParams`] row, so the erosion-strength knob
+    /// still drives the coupled loop.)
+    pub couple_uplift_rate: f32,
 }
 
 impl Default for ReliefParams {
@@ -904,6 +927,9 @@ impl Default for ReliefParams {
             land_full: 0.78,
             ocean_full: 0.62,
             arch_radius: 0.30,
+            // S5 coupled uplift⇄erosion (tuned so the land mix stays in band).
+            couple_iters: 25,
+            couple_uplift_rate: 0.04,
         }
     }
 }
@@ -966,6 +992,10 @@ impl ReliefParams {
             land_full: self.land_full.clamp(0.05, 5.0),
             ocean_full: self.ocean_full.clamp(0.05, 5.0),
             arch_radius: self.arch_radius.clamp(0.01, 1.5),
+            // S5 — `couple_uplift_rate` scaled by the `relief` knob (more relief ⇒
+            // higher steady-state mountains); the rest clamped.
+            couple_iters: self.couple_iters.clamp(0, 400),
+            couple_uplift_rate: (self.couple_uplift_rate * r).clamp(0.0, 5.0),
         }
     }
 }
@@ -1114,8 +1144,11 @@ mod tests {
     fn relief_and_ocean_depth_knobs_scale() {
         let p = ReliefParams::default();
         let r = p.resolved(&IntensityKnobs { relief: 2.0, ocean_depth: 1.5, ..Default::default() });
-        assert!((r.tect_range_weight - p.tect_range_weight * 2.0).abs() < 1e-6);
-        assert!((r.tec_hill_weight - p.tec_hill_weight * 2.0).abs() < 1e-6);
+        // `relief` scales the live coupled-erosion uplift forcing (S5) — the
+        // knob that actually drives steady-state mountain height now. (It also
+        // still scales the S5-inert `tect_*`/`tec_hill_weight` fields, but those
+        // no longer affect output, so we assert the live lever.)
+        assert!((r.couple_uplift_rate - p.couple_uplift_rate * 2.0).abs() < 1e-6);
         assert!((r.ocean_abyss - p.ocean_abyss * 1.5).abs() < 1e-6);
         // ocean_full (the quantize mapping) is deliberately NOT scaled.
         assert_eq!(r.ocean_full, p.ocean_full);

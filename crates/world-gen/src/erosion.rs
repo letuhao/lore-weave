@@ -120,6 +120,60 @@ pub fn apply_scaled(
     apply_inner(elev, neighbors, land_fraction, p, erodibility);
 }
 
+/// Coupled uplift ⇄ erosion (S5) — evolve the land surface toward a fluvial
+/// steady state `dh/dt = U − K·A^m·S^n + D·∇²h` (detachment-limited, m=0.5/n=1),
+/// so relief **emerges** from the uplift⇄erosion balance instead of ridged-fBm
+/// noise (D5). Each timestep:
+/// 1. **uplift forcing** — raise every land cell by `uplift_step · U[c]` (only
+///    the positive part of the tectonic uplift field; this replenishes the
+///    convergent belts against erosion so they reach a balance instead of
+///    decaying flat);
+/// 2. **stream-power incision** — one detachment-limited pass (`incise` with
+///    `settle_rate = 0`, already clamped to the receiver drop) on the
+///    depression-filled field;
+/// 3. **hillslope diffusion** — rounds crests / smooths interfluves.
+///
+/// `K` and `D` come from the resolved [`ErosionRow`] (so the erosion-strength
+/// knob still drives the loop); an all-zero row (`ErosionStrength::None`) skips
+/// entirely — without incision the uplift forcing would grow unbounded, so "no
+/// erosion" means "leave the uplift skeleton smooth", not "uplift only". Sea
+/// cells (below the `land_fraction` waterline) are fixed outlets. Pure +
+/// deterministic (fixed mesh order, no RNG).
+#[allow(clippy::too_many_arguments)]
+pub fn couple(
+    elev: &mut [f32],
+    neighbors: &[Vec<u32>],
+    uplift: &[f32],
+    land_fraction: f32,
+    iters: u32,
+    uplift_step: f32,
+    ep: &ErosionParams,
+    strength: ErosionStrength,
+) {
+    let row = row(ep, strength);
+    // No incision (None) ⇒ skip: uplift-only would diverge. Degenerate mesh too.
+    if iters == 0 || row.erodibility <= 0.0 || elev.len() < 2 {
+        return;
+    }
+    let (sea, sea_floor) = provisional_sea(elev, land_fraction);
+    for _ in 0..iters {
+        // 1 — uplift forcing (land only; positive uplift = the belts rising).
+        for (c, &is_sea) in sea.iter().enumerate() {
+            if !is_sea {
+                elev[c] += uplift_step * uplift[c].max(0.0);
+            }
+        }
+        // 2 — flow routing on the depression-filled field, then incision.
+        let (receiver, order, filled) = priority_flood(elev, &sea, neighbors);
+        elev.copy_from_slice(&filled);
+        let drainage = flow_accumulation(&order, &receiver, elev.len());
+        let flow = Flow { receiver, order, drainage };
+        incise(elev, &flow, &sea, sea_floor, &row, 0.0, None);
+        // 3 — hillslope diffusion.
+        diffuse(elev, neighbors, &sea, row.diffusion);
+    }
+}
+
 fn apply_inner(
     elev: &mut [f32],
     neighbors: &[Vec<u32>],
@@ -546,5 +600,69 @@ mod tests {
                 .any(|(a, b)| b > a),
             "deposition did not raise any cell above the carve-only result"
         );
+    }
+
+    /// S5 — the coupled uplift⇄erosion loop: `None` is a no-op, the loop is
+    /// deterministic + finite/non-negative, uplift forcing raises the land
+    /// surface vs. no forcing (same erosion), and sea cells stay fixed outlets.
+    #[test]
+    fn couple_is_a_coupled_uplift_erosion_loop() {
+        let side = 16;
+        let nb = grid(side);
+        let base = tilted_field(side);
+        let uplift_on = vec![1.0f32; side * side];
+        let uplift_off = vec![0.0f32; side * side];
+        let ep = ErosionParams::default();
+
+        // None ⇒ no-op (bit-identical) — without incision the uplift-only loop
+        // would diverge, so "no erosion" must skip entirely.
+        let mut none = base.clone();
+        couple(&mut none, &nb, &uplift_on, 0.55, 25, 0.04, &ep, ErosionStrength::None);
+        for (a, b) in none.iter().zip(&base) {
+            assert_eq!(a.to_bits(), b.to_bits(), "None must leave elev untouched");
+        }
+
+        let run = |uplift: &[f32]| {
+            let mut e = base.clone();
+            couple(&mut e, &nb, uplift, 0.55, 25, 0.04, &ep, ErosionStrength::Moderate);
+            e
+        };
+        // Deterministic.
+        let a = run(&uplift_on);
+        let b = run(&uplift_on);
+        for (x, y) in a.iter().zip(&b) {
+            assert_eq!(x.to_bits(), y.to_bits(), "couple is not reproducible");
+        }
+        // Finite + non-negative everywhere.
+        for (c, &e) in a.iter().enumerate() {
+            assert!(e.is_finite() && e >= 0.0, "cell {c} = {e}");
+        }
+
+        // Uplift forcing raises the land surface vs. no forcing (same erosion).
+        let (sea, _floor) = provisional_sea(&base, 0.55);
+        let land_mean = |f: &[f32]| {
+            let (mut s, mut n) = (0.0f64, 0u32);
+            for (c, &is_sea) in sea.iter().enumerate() {
+                if !is_sea {
+                    s += f64::from(f[c]);
+                    n += 1;
+                }
+            }
+            s / n.max(1) as f64
+        };
+        let off = run(&uplift_off);
+        assert!(
+            land_mean(&a) > land_mean(&off),
+            "uplift forcing must raise the land surface: on {} !> off {}",
+            land_mean(&a),
+            land_mean(&off)
+        );
+
+        // Sea cells are fixed outlets — never moved by the loop.
+        for (c, &is_sea) in sea.iter().enumerate() {
+            if is_sea {
+                assert_eq!(a[c].to_bits(), base[c].to_bits(), "sea cell {c} moved");
+            }
+        }
     }
 }

@@ -51,14 +51,14 @@ fn profile_mode_is_byte_identical_baseline() {
 /// arc (P1–P8) preserves it. A *deliberate generation change* in another arc
 /// will (correctly) break this; re-capture the hashes then. A break here is "did
 /// default output change?", not "is the param wiring broken" (that's the other
-/// tests below). Pins re-captured at **elevation S4** (age-based bathymetry,
-/// 2026-06-14) — S4 deliberately changed default ocean depth.
+/// tests below). Pins re-captured at **elevation S5** (coupled uplift⇄erosion,
+/// 2026-06-14) — S5 deliberately changed default land elevation (S4 changed ocean).
 #[test]
 fn default_profile_is_byte_identical_baseline() {
     let cases: [(u64, WorldScale, &str); 3] = [
-        (7, WorldScale::Continent, "4c14fa3a62f9c897511c2f9bcf96ae347763ad7fc9b0c913ff09e4db61d9dbcb"),
-        (42, WorldScale::Continent, "73c67aff2b5fa0f88b910499d9004f760e461dff2233a635646d3be9d00e4c22"),
-        (7, WorldScale::Pocket, "75a63b4826e089be7128b61486192f72a4ed5f124919998bd378e0d0abdeb109"),
+        (7, WorldScale::Continent, "c792260fd3701f80fdef1abac4f35d7a86ccfee56525dd639ba19c47d20b8824"),
+        (42, WorldScale::Continent, "4e859bb07a7eca74aa2e9b43be463acbd4bf44727da830fe4567771947e1ff3e"),
+        (7, WorldScale::Pocket, "54ddd506600f201dab7abf56925a773e36b8dba927b44906231713581bb2a96f"),
     ];
     for (seed, scale, want) in cases {
         let cs = CreativeSeed { world_scale: scale, ..CreativeSeed::default() };

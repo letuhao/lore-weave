@@ -64,9 +64,8 @@ const SALT_MTN: u32 = 0xC0FF_EE42;
 const SALT_BELT: u32 = 0x1357_9BDF;
 const SALT_HILL: u32 = 0x2468_ACE0;
 
-/// Ruggedness / interior-upland noise salts (the *frequencies/caps* are in
-/// `ReliefParams`; these salts are fixed).
-const SALT_RUGGED: u32 = 0x6F1E_2D77;
+/// Plains-whisper noise salt (the frequency is in `ReliefParams`; this salt is
+/// fixed). (`SALT_RUGGED` was retired with the S5 coupled-relief rewrite.)
 const SALT_PLAIN: u32 = 0x3C4A_91E5;
 
 /// Per-cell elevations + the chosen sea level (+ the plate model in
@@ -132,48 +131,23 @@ pub fn build(
             // bathymetry depth curve (shelf → abyssal flat).
             let coast_dist = coast_distance(&is_land_macro, neighbors);
 
-            // Per-cell relief drivers (S1, D1): the relief amplitude is keyed to
-            // the **tectonic uplift field**, not altitude. `tect` ∈ [0,1] ramps
-            // with the local positive (convergent) uplift — 0 in plate interiors,
-            // 1 across a collision belt — so ranges rise AT the suture. `amp` is
-            // `max(tect, interior)`: the larger of the belt amplitude and a small
-            // organic interior ruggedness (uplands away from belts). `amp` gates
-            // both the relief detail and the erosion incision — so interior
-            // uplands carry *light* incision too (intentional: uplands have
-            // drainage), while belts carve hard and true plains (amp≈0) stay flat.
-            let tect: Vec<f32> = (0..count)
-                .map(|i| {
-                    if is_land_macro[i] {
-                        smoothstep(rp.tect_uplift_lo, rp.tect_uplift_hi, plates.uplift[i].max(0.0))
-                    } else {
-                        0.0
-                    }
-                })
-                .collect();
-            let rugged: Vec<f32> = (0..count)
-                .map(|i| {
-                    if is_land_macro[i] {
-                        tect[i].max(interior_ruggedness(centers[i], nseed, &rp))
-                    } else {
-                        0.0
-                    }
-                })
-                .collect();
-
-            // Compose: land = macro + uplift-gated relief (flat plains, jagged
-            // ranges on the belts); ocean = depth-by-coast-distance + ridges.
+            // S5 (D5): the initial land surface is the **isostatic base +
+            // tectonic uplift skeleton + a small plains whisper** — NO ridged-fBm
+            // "noise mountains". Relief emerges from the coupled uplift⇄erosion
+            // loop below (`dh/dt = U − K·A^m·S^n + D·∇²h`), so ridges/valleys are
+            // drainage-organised, not fractal. The whisper gives the coupled
+            // erosion sub-grid relief to seed dendritic drainage into.
             let mut elev: Vec<f32> = (0..count)
                 .map(|i| {
                     if is_land_macro[i] {
-                        macro_elev[i] + land_relief(centers[i], rugged[i], tect[i], nseed, &rp)
+                        macro_elev[i] + plains_whisper(centers[i], nseed, &rp)
                     } else {
                         // Mid-ocean ridges / island arcs (positive uplift) raise
-                        // the floor; trenches (already deep via the curve) keep
-                        // their notch via the negative uplift. Gate *positive*
-                        // uplift by coast distance: real arcs sit offshore in
-                        // deep water, so suppress uplift on the shallow shelf —
-                        // otherwise shelf+arc breaches sea level and welds
-                        // neighbouring continents into one landmass.
+                        // the floor; trenches keep their notch via the negative
+                        // uplift. Gate *positive* uplift by coast distance: real
+                        // arcs sit offshore in deep water, so suppress uplift on
+                        // the shallow shelf — otherwise shelf+arc breaches sea
+                        // level and welds neighbouring continents into one mass.
                         let u = plates.uplift[i];
                         let gated = if u > 0.0 {
                             u * smoothstep(rp.ocean_arc_gate_near, rp.ocean_arc_gate_far, coast_dist[i] as f32)
@@ -187,9 +161,22 @@ pub fn build(
                 .collect();
 
             let land_fraction = cs.continental_fraction.clamp(0.1, 0.9);
-            // Ruggedness-gated erosion: mountains carve dendritic valleys;
-            // plains barely incise (stay flat) but still receive sediment.
-            erosion::apply_with(&mut elev, neighbors, land_fraction, &erosion_cfg, cs.erosion, Some(&rugged));
+            // S5 coupled uplift⇄erosion (replaces the one-shot post-process
+            // carve): evolve the land surface toward a fluvial steady state so
+            // mountains rise from uplift and rivers carve concave dendritic
+            // valleys — relief from physics, not noise. (K + diffusion come from
+            // the resolved erosion table, so the erosion-strength knob still acts;
+            // `None` leaves the uplift skeleton smooth.)
+            erosion::couple(
+                &mut elev,
+                neighbors,
+                &plates.uplift,
+                land_fraction,
+                rp.couple_iters,
+                rp.couple_uplift_rate,
+                &erosion_cfg,
+                cs.erosion,
+            );
 
             // Quantize with a fixed scale (sea level pinned at SEA_FRAC) so
             // land keeps a generous, fixed share of the range — distinct
@@ -295,51 +282,15 @@ fn warp_point(p: [f32; 3], seed: u32, rp: &ReliefParams) -> [f32; 3] {
     w
 }
 
-/// Small organic **interior ruggedness** `∈ [0, INTERIOR_RUGGED_CAP]` — rolling
-/// uplands / plateaus on plate interiors, away from the orogenic belts, so
-/// interiors read as living lowland/upland rather than a dead-flat slab.
-/// Low-frequency fBm only, hard-capped so it never alone reaches the Mountain
-/// band (the big ranges come from the uplift-driven belt relief, not here).
-/// Unlike the old altitude-keyed ruggedness this is independent of macro
-/// elevation, so it does not ring every coast with a spurious ridge.
-fn interior_ruggedness(p: [f32; 3], seed: u32, rp: &ReliefParams) -> f32 {
-    let f = rp.rugged_freq;
-    let fbm_r = 0.5 + 0.5 * fbm_3d(p[0] * f, p[1] * f, p[2] * f, seed ^ SALT_RUGGED, 3);
-    rp.interior_rugged_cap * smoothstep(0.62, 0.88, fbm_r)
-}
-
-/// Land relief layered on the macro elevation (S1, D1). Two stacked sources:
-/// - **belt ranges** — ridged multifractal scaled by `tect` (the convergent
-///   uplift signal): tall, sharp ridgelines that rise AT the collision belt,
-///   peak where the uplift peaks (the suture) and decay out with it;
-/// - **interior uplands** — gentle hills scaled by `amp` (= `max(tect,
-///   interior_ruggedness)`), so plate interiors get rolling relief but never a
-///   range.
-///
-/// On a plate interior (`tect ≈ 0`, small `amp`) only the uplands + the plains
-/// whisper survive → flat-to-rolling lowland. The domain warp is scaled by
-/// `amp` so plains stay coherent while belts get turbulent ridgelines.
-fn land_relief(p: [f32; 3], amp: f32, tect: f32, seed: u32, rp: &ReliefParams) -> f32 {
-    // Plains whisper — gentle, always present, very small amplitude.
+/// The gentle plains-texture **whisper** (S5) — a very-small-amplitude
+/// low-frequency fBm so the coupled uplift⇄erosion loop has sub-grid relief to
+/// organise dendritic drainage into, instead of carving a dead-flat uplift
+/// skeleton. (Was the `whisper` term inside the old ridged-fBm `land_relief`,
+/// which S5 retired in favour of physics-driven relief: the belt ranges /
+/// interior uplands are now produced by uplift + fluvial incision, not noise.)
+fn plains_whisper(p: [f32; 3], seed: u32, rp: &ReliefParams) -> f32 {
     let pf = rp.plain_freq;
-    let whisper = rp.tec_plain_weight * fbm_3d(p[0] * pf, p[1] * pf, p[2] * pf, seed ^ SALT_PLAIN, 2);
-    // `amp = max(tect, interior)` at every call site, so `amp < 1e-3` already
-    // implies `tect < 1e-3` (belt off too) → interior + belt both negligible.
-    if amp < 1e-3 {
-        return whisper;
-    }
-    // Warp masked by relief amplitude (strong on belts, ~0 on plains).
-    let w = warp_scaled(p, seed, amp, rp);
-    let hills = fbm_3d(w[0] * rp.hill_freq, w[1] * rp.hill_freq, w[2] * rp.hill_freq, seed ^ SALT_HILL, rp.hill_octaves);
-    let ridges =
-        ridged_fbm_3d(w[0] * rp.mtn_freq, w[1] * rp.mtn_freq, w[2] * rp.mtn_freq, seed ^ SALT_MTN, rp.mtn_octaves);
-    // Belt ranges: a smooth continuous floor lift + ridged crests + a little
-    // hill texture, all scaled by the convergent uplift. `ridged_fbm` ∈ [0,1]
-    // so the belt only ever lifts (peaks), concentrated on the suture.
-    let belt = tect * (rp.tect_belt_lift + rp.tect_range_weight * ridges + rp.tec_hill_weight * hills);
-    // Interior uplands: gentle hills scaled by the (capped) interior amplitude.
-    let uplands = amp * rp.tec_hill_weight * hills;
-    whisper + belt.max(uplands)
+    rp.tec_plain_weight * fbm_3d(p[0] * pf, p[1] * pf, p[2] * pf, seed ^ SALT_PLAIN, 2)
 }
 
 /// Ocean depth (signed, sea = 0) from **oceanic-crust age** (S4, D4): new crust
@@ -364,24 +315,6 @@ fn ocean_depth_by_age(age: u32, coast_dist: u32, p: [f32; 3], seed: u32, rp: &Re
     let ripple = rp.ocean_ripple_weight
         * fbm_3d(p[0] * rf, p[1] * rf, p[2] * rf, seed ^ SALT_HILL, 2);
     depth + ripple
-}
-
-/// A 3D domain warp whose amplitude is scaled by `r` (ruggedness) — full in
-/// mountains, ≈0 on plains.
-fn warp_scaled(p: [f32; 3], seed: u32, r: f32, rp: &ReliefParams) -> [f32; 3] {
-    let (f, oct) = (rp.warp_freq, rp.warp_octaves);
-    let wx = fbm_3d(p[0] * f, p[1] * f, p[2] * f, seed ^ SALT_WARP_X, oct);
-    let wy = fbm_3d(p[0] * f, p[1] * f, p[2] * f, seed ^ SALT_WARP_Y, oct);
-    let wz = fbm_3d(p[0] * f, p[1] * f, p[2] * f, seed ^ SALT_WARP_Z, oct);
-    let a = rp.warp_amp * r;
-    let mut w = [p[0] + a * wx, p[1] + a * wy, p[2] + a * wz];
-    let l = (w[0] * w[0] + w[1] * w[1] + w[2] * w[2]).sqrt();
-    if l > 1e-6 {
-        w[0] /= l;
-        w[1] /= l;
-        w[2] /= l;
-    }
-    w
 }
 
 /// Distance (BFS hops) from the coast over **ocean** cells: a coast cell

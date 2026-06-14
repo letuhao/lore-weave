@@ -130,14 +130,42 @@
 > Acceptance: `tests/age_bathymetry.rs` + plates/terrain unit tests; lib 439 +
 > all integration green; bimodality + proportion guards hold.
 >
-> **ELEVATION ARC (paused, resumable): build S5** — coupled uplift ⇄ erosion.
-> Feed the tectonic uplift field as the `U` source into the stream-power
-> `erosion.rs` and iterate uplift+incision jointly toward steady state
-> (Cordonnier): equilibrium river profiles concave (`S ∝ A^(−0.5)`), dendritic
-> drainage on the tectonic relief not on noise. Then S6 (render/export
-> bathymetry, the "ocean rises" artifact). **Note:** S5 changes default land
-> elevation → it will re-pin the byte-identical hashes again (expected). Each
-> stage = full 12-phase + `/review-impl` + PO POST-REVIEW.
+> **⛰ S5 SHIPPED (2026-06-14) — coupled uplift ⇄ erosion (full rewrite).** PO
+> chose the full-coupling rewrite over augment. `erosion::couple` iterates
+> `dh/dt = U − K·A^m·S^n + D·∇²h` (detachment-limited, reuses the priority-flood/
+> incise/diffuse primitives): each step forces land up by the tectonic uplift
+> field, then runs one stream-power incision + diffusion pass. The Tectonic land
+> surface is now `base + uplift skeleton + plains whisper` carved to a fluvial
+> steady state — the ridged-fBm "noise mountains" (`land_relief`/
+> `interior_ruggedness`/`warp_scaled`/`SALT_RUGGED`) are **retired**; relief
+> emerges from physics. New `ReliefParams` `couple_iters`(25)/`couple_uplift_rate`
+> (0.04, relief-knob-scaled); K+D come from the resolved erosion-strength row
+> (knob still wired; `None`→skip). **Premise verified first:** HEAD's drainage was
+> already concave (θ≈0.81) because erosion already ran — the real D5 gap was that
+> relief was *noise*, not emergent. **Result (defaults worked first try):** slope–
+> area concavity θ **0.81→0.59** (toward the 0.5 steady state); belt concentration
+> *improved* (high-relief `conc≤4` 100 %, arc-fill 58 %→79 %); land/Desert/Marsh
+> proportions + bimodality (S3) + mountains-minority all hold. Pins re-captured
+> (3 content + 8 render; Profile-mode pins untouched). `/review-impl` 1 MED (7
+> now-inert relief params → documented + test retargeted + `D-S5-DEAD-RELIEF-PARAMS`
+> deferral) + 1 LOW-MED (added a `couple` unit test) — both fixed. Plan:
+> `docs/plans/2026-06-14-elevation-s5-coupled-uplift-erosion.md`. Acceptance:
+> `tectonic_relief.rs::river_profiles_are_concave_at_steady_state` + the `couple`
+> unit test; lib 440 + all integration green.
+>
+> **Deferred:** `D-S5-DEAD-RELIEF-PARAMS` — remove the 7 inert `ReliefParams`
+> ridged-relief fields (`tect_belt_lift`, `tect_range_weight`, `tect_uplift_lo/hi`,
+> `interior_rugged_cap`, `rugged_freq`, `tec_hill_weight`) in a cleanup pass
+> (kept now as serde fields to avoid a param-surface break).
+>
+> **ELEVATION ARC (paused, resumable): build S6** — render/export bathymetry fix
+> (the LAST stage). `relief.rs`: suppress the fBm `detail` below sea so it stops
+> bumping the flat ocean floor; `export.rs`: give the `.glb` real (exaggerated)
+> ocean depth instead of the flat sea-clamp so bathymetry is visible; a final
+> hypsometry calibration pass. Fixes D7 (the "ocean rises above land" visual).
+> **Note:** S6 is render/export only (NOT content_hash) → re-pin the 8 render
+> hashes, content pins unchanged. Each stage = full 12-phase + `/review-impl` +
+> PO POST-REVIEW.
 >
 > ---
 >

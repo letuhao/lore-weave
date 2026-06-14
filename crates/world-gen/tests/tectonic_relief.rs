@@ -318,6 +318,74 @@ fn elevation_histogram_is_bimodal() {
     );
 }
 
+/// **Coupled uplift ⇄ erosion gives fluvial-equilibrium concavity (S5, D5)** —
+/// the land surface evolves toward `U = K·A^m·S^n`, whose signature is a
+/// concave river profile `S ∝ A^(−m/n)` (Flint's law, m/n ≈ 0.5). A slope–area
+/// regression over channel cells must give a concavity index θ near the
+/// steady-state 0.5 — distinctly lower than the θ ≈ 0.81 the old post-process
+/// carve of ridged-fBm *noise* produced (so this would have failed at HEAD).
+#[test]
+fn river_profiles_are_concave_at_steady_state() {
+    let seeds = [7u64, 13, 42, 99, 123, 2024];
+    // Ordinary-least-squares of log(slope) on log(area) over channel cells.
+    let (mut sx, mut sy, mut sxx, mut sxy, mut nn) = (0f64, 0f64, 0f64, 0f64, 0f64);
+    for &s in &seeds {
+        let cs = CreativeSeed { world_scale: WorldScale::Continent, ..CreativeSeed::default() };
+        let m = generate(s, &cs);
+        let n = m.cell_count();
+        let elev: Vec<f64> = (0..n).map(|c| f64::from(m.cells[c].elevation)).collect();
+        // Steepest-descent receiver per land cell + descending-elevation order.
+        let mut recv = vec![usize::MAX; n];
+        for c in 0..n {
+            if !m.is_land(c) {
+                continue;
+            }
+            let (mut best, mut be) = (c, elev[c]);
+            for &nb in &m.neighbors[c] {
+                if elev[nb as usize] < be {
+                    be = elev[nb as usize];
+                    best = nb as usize;
+                }
+            }
+            if best != c {
+                recv[c] = best;
+            }
+        }
+        let mut ord: Vec<usize> = (0..n).filter(|&c| m.is_land(c)).collect();
+        ord.sort_by(|&a, &b| elev[b].total_cmp(&elev[a]));
+        let mut area = vec![1.0f64; n];
+        for &c in &ord {
+            if recv[c] != usize::MAX {
+                area[recv[c]] += area[c];
+            }
+        }
+        // Regress over channel cells (drainage ≥ 8, positive slope).
+        for &c in &ord {
+            if recv[c] == usize::MAX {
+                continue;
+            }
+            let slope = elev[c] - elev[recv[c]];
+            if slope <= 0.0 || area[c] < 8.0 {
+                continue;
+            }
+            let (x, y) = (area[c].ln(), slope.ln());
+            sx += x;
+            sy += y;
+            sxx += x * x;
+            sxy += x * y;
+            nn += 1.0;
+        }
+    }
+    assert!(nn > 200.0, "too few channel cells for a stable regression ({nn})");
+    let theta = -((nn * sxy - sx * sy) / (nn * sxx - sx * sx));
+    eprintln!("river_profiles_are_concave_at_steady_state: theta={theta:.3} (target ~0.5; HEAD noise was 0.81)");
+    assert!(
+        (0.40..=0.72).contains(&theta),
+        "slope–area concavity θ={theta:.3} out of the fluvial-equilibrium band [0.40, 0.72] — \
+         relief is not at uplift⇄erosion steady state (HEAD's noise carve gave θ≈0.81)"
+    );
+}
+
 /// **The plate model collides** — over a wide seed sweep all six non-interior
 /// `BoundaryKind`s fire (incl. continent–continent `FoldMountain`), `Fault` is a
 /// minority (not the ~78% the old `tangential > |normal|` test produced), and
