@@ -204,8 +204,17 @@
 > `content_hash` impact (render-side). Spec/plan:
 > [`docs/specs/2026-05-31-world-3d-export.md`](../../specs/2026-05-31-world-3d-export.md),
 > [`docs/plans/2026-05-31-world-3d-export.md`](../../plans/2026-05-31-world-3d-export.md).
-> **Remaining "see 3D in-app" option:** a built-in three.js globe viewer in the
-> frontend (not built — export-only for now).
+> **✅ "See 3D in-app" BUILT (2026-06-14)** — a reusable 3D globe viewer in
+> **`frontend-game`** (the strategy map): `components/globe/GlobeViewer.tsx`
+> (react-three-fiber + drei `useGLTF`/`OrbitControls`/`Bounds`) loads a world-gen
+> `.glb`, delivery-agnostic (static `.glb` under `public/worlds/` for now; a
+> world-gen-service render is the deferred seam in `worlds.ts`). Route
+> `/world-preview` is **lazy-loaded** (three.js off the initial bundle) +
+> error-boundaried (a failed load can't white-screen the app). The
+> `check-bundle-size` guard was updated to budget the **initial** load (AC-FG-15
+> intent) so lazy route chunks don't count. Live-smoke verified (real-browser
+> render: continents + S4 ocean bathymetry + S5 snow-peaks). Deps `three` +
+> `@react-three/fiber@8` + `@react-three/drei@9` added to the pnpm workspace.
 >
 > ---
 >
