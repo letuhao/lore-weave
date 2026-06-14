@@ -79,6 +79,28 @@
       "partial": "Promoted {{ok}}; {{failed}} failed."
     }
   },
+  "proposals": {
+    "heading": "Pending proposals",
+    "subtitle": "One inbox for everything awaiting your review — glossary AI suggestions, wiki edits, and lore-enrichment proposals. Open a row to review and accept it in its own surface.",
+    "noBook": "Link a book to this project to see its proposal queues.",
+    "loading": "Loading proposals…",
+    "error": "Couldn't load the proposals inbox. Try again.",
+    "empty": "No pending proposals. New AI suggestions will appear here as they're produced.",
+    "review": "Review",
+    "openRow": "Review {{title}}",
+    "sourceError": "Couldn't load this queue. The others are still shown.",
+    "origin": {
+      "glossary": "Glossary draft",
+      "wiki": "Wiki edit",
+      "enrichment": "Lore proposal"
+    },
+    "originLabel": {
+      "glossary": "Glossary AI drafts",
+      "wiki": "Wiki suggestions",
+      "enrichment": "Lore-enrichment proposals"
+    },
+    "count": "{{count}}"
+  },
   "mobile": {
     "sections": {
       "global": "Global bio",

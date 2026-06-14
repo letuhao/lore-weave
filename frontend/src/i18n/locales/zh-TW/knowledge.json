@@ -79,6 +79,28 @@
       "partial": "已提升 {{ok}} 項；{{failed}} 項失敗。"
     }
   },
+  "proposals": {
+    "heading": "待處理提案",
+    "subtitle": "所有待您審核的內容集中於一個收件匣 — 詞彙表 AI 建議、維基編輯與知識增補提案。開啟一列即可在其原本的介面審核與接受。",
+    "noBook": "為此專案連結一本書，即可查看其提案佇列。",
+    "loading": "正在載入提案…",
+    "error": "無法載入提案收件匣。請再試一次。",
+    "empty": "沒有待處理的提案。新的 AI 建議產生後會顯示在此。",
+    "review": "審核",
+    "openRow": "審核 {{title}}",
+    "sourceError": "無法載入此佇列。其餘佇列仍會顯示。",
+    "origin": {
+      "glossary": "詞彙表草稿",
+      "wiki": "維基編輯",
+      "enrichment": "知識提案"
+    },
+    "originLabel": {
+      "glossary": "詞彙表 AI 草稿",
+      "wiki": "維基建議",
+      "enrichment": "知識增補提案"
+    },
+    "count": "{{count}}"
+  },
   "mobile": {
     "sections": {
       "global": "全域簡介",

@@ -79,6 +79,28 @@
       "partial": "Đã thăng cấp {{ok}}; {{failed}} thất bại."
     }
   },
+  "proposals": {
+    "heading": "Đề xuất đang chờ",
+    "subtitle": "Một hộp thư duy nhất cho mọi thứ đang chờ bạn duyệt — gợi ý AI cho từ điển, chỉnh sửa wiki và đề xuất làm giàu tri thức. Mở một mục để duyệt và chấp nhận tại giao diện gốc của nó.",
+    "noBook": "Liên kết một cuốn sách với dự án này để xem các hàng đợi đề xuất.",
+    "loading": "Đang tải đề xuất…",
+    "error": "Không tải được hộp thư đề xuất. Hãy thử lại.",
+    "empty": "Không có đề xuất đang chờ. Các gợi ý AI mới sẽ xuất hiện ở đây khi được tạo.",
+    "review": "Duyệt",
+    "openRow": "Duyệt {{title}}",
+    "sourceError": "Không tải được hàng đợi này. Các hàng đợi khác vẫn hiển thị.",
+    "origin": {
+      "glossary": "Bản nháp từ điển",
+      "wiki": "Chỉnh sửa wiki",
+      "enrichment": "Đề xuất tri thức"
+    },
+    "originLabel": {
+      "glossary": "Bản nháp AI từ điển",
+      "wiki": "Gợi ý wiki",
+      "enrichment": "Đề xuất làm giàu tri thức"
+    },
+    "count": "{{count}}"
+  },
   "mobile": {
     "sections": {
       "global": "Tiểu sử tổng quát",

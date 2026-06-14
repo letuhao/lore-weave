@@ -19,6 +19,7 @@ import { TimelineTab } from '@/features/knowledge/components/TimelineTab';
 import { RawDrawersTab } from '@/features/knowledge/components/RawDrawersTab';
 import { MiningInsightsTab } from '@/features/knowledge/components/MiningInsightsTab';
 import { GapReportTab } from '@/features/knowledge/components/GapReportTab';
+import { ProposalsInboxTab } from '@/features/knowledge/components/ProposalsInboxTab';
 import { OverviewSection } from '@/features/knowledge/components/shell/OverviewSection';
 import { ShellPlaceholder } from '@/features/knowledge/components/shell/ShellPlaceholder';
 
@@ -153,7 +154,7 @@ export function ProjectDetailShell() {
       )}
       {activeSection === 'insights' && <MiningInsightsTab />}
       {activeSection === 'proposals' && (
-        <ShellPlaceholder message={t('shell.placeholder.proposals')} />
+        <ProposalsInboxTab bookId={project?.book_id ?? null} />
       )}
       {activeSection === 'gap' && projectId && (
         <GapReportTab scopedProjectId={projectId} />
