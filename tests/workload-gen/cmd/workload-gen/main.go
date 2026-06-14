@@ -33,6 +33,7 @@ func main() {
 	doEmit := flag.Bool("emit", false, "write the stream via the real outbox path (requires -dsn); default is dry-run JSONL")
 	doVerify := flag.Bool("verify", false, "C3 ledger check: read -dsn and reconcile against this seed+profile (requires -dsn)")
 	doCheckProj := flag.Bool("check-projections", false, "C structural no-orphan sweep: every projection row's event_id must resolve to a real event (requires -dsn)")
+	doCheckHistory := flag.Bool("check-history", false, "W2.2 history-ordering: per-aggregate version monotonicity over the recorded stream (requires -dsn)")
 	dsn := flag.String("dsn", "", "Postgres DSN for -emit / -verify / -check-projections (a per-reality DB with the events + outbox + projection migrations applied)")
 	// W2.1 sustained-workload mode: a steady-rate loop (NOT a single burst) so a
 	// fault/soak has a workload that keeps running while the fault is injected.
@@ -40,10 +41,10 @@ func main() {
 	rate := flag.Float64("rate", 0, "sustained mode: target events/sec (paced); 0 = as fast as possible")
 	flag.Parse()
 
-	os.Exit(run(os.Stdout, *seed, *profile, *doEmit, *doVerify, *doCheckProj, *dsn, *duration, *rate))
+	os.Exit(run(os.Stdout, *seed, *profile, *doEmit, *doVerify, *doCheckProj, *doCheckHistory, *dsn, *duration, *rate))
 }
 
-func run(out io.Writer, seed int64, profileName string, doEmit, doVerify, doCheckProj bool, dsn string, duration time.Duration, rate float64) int {
+func run(out io.Writer, seed int64, profileName string, doEmit, doVerify, doCheckProj, doCheckHistory bool, dsn string, duration time.Duration, rate float64) int {
 	p, ok := gen.Profiles[profileName]
 	if !ok {
 		fmt.Fprintf(os.Stderr, "workload-gen: unknown profile %q (have: micro, single-reality, multi-reality, multi-user-session)\n", profileName)
@@ -117,6 +118,31 @@ func run(out io.Writer, seed int64, profileName string, doEmit, doVerify, doChec
 			return 1
 		}
 		fmt.Fprintf(os.Stderr, "workload-gen: no-orphan clean — %d projection rows over %d events\n", len(rows), len(eventIDs))
+		return 0
+	}
+
+	if doCheckHistory {
+		if dsn == "" {
+			fmt.Fprintln(os.Stderr, "workload-gen: -check-history requires -dsn")
+			return 2
+		}
+		db, err := sql.Open("postgres", dsn)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "workload-gen: open db: %v\n", err)
+			return 1
+		}
+		defer db.Close()
+		log, err := ledger.LoadLog(context.Background(), db)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "workload-gen: %v\n", err)
+			return 1
+		}
+		rep := ledger.CheckAggregateMonotonicity(log)
+		fmt.Fprint(out, rep.String())
+		if !rep.OK() {
+			return 1
+		}
+		fmt.Fprintf(os.Stderr, "workload-gen: history monotonic — %d events, per-aggregate version strictly ordered\n", len(log.Events))
 		return 0
 	}
 

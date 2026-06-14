@@ -28,32 +28,32 @@ func TestPaceSleep(t *testing.T) {
 }
 
 func TestRunUnknownProfile(t *testing.T) {
-	if code := run(io.Discard, 1, "nope", false, false, false, "", 0, 0); code != 2 {
+	if code := run(io.Discard, 1, "nope", false, false, false, false, "", 0, 0); code != 2 {
 		t.Errorf("unknown profile must exit 2, got %d", code)
 	}
 }
 
 func TestRunEmitRequiresDSN(t *testing.T) {
-	if code := run(io.Discard, 1, "micro", true, false, false, "", 0, 0); code != 2 {
+	if code := run(io.Discard, 1, "micro", true, false, false, false, "", 0, 0); code != 2 {
 		t.Errorf("-emit without -dsn must exit 2, got %d", code)
 	}
 }
 
 func TestRunVerifyRequiresDSN(t *testing.T) {
-	if code := run(io.Discard, 1, "micro", false, true, false, "", 0, 0); code != 2 {
+	if code := run(io.Discard, 1, "micro", false, true, false, false, "", 0, 0); code != 2 {
 		t.Errorf("-verify without -dsn must exit 2, got %d", code)
 	}
 }
 
 func TestRunCheckProjectionsRequiresDSN(t *testing.T) {
-	if code := run(io.Discard, 1, "micro", false, false, true, "", 0, 0); code != 2 {
+	if code := run(io.Discard, 1, "micro", false, false, true, false, "", 0, 0); code != 2 {
 		t.Errorf("-check-projections without -dsn must exit 2, got %d", code)
 	}
 }
 
 func TestRunDryRunEmitsValidJSONL(t *testing.T) {
 	var buf bytes.Buffer
-	if code := run(&buf, 1, "micro", false, false, false, "", 0, 0); code != 0 {
+	if code := run(&buf, 1, "micro", false, false, false, false, "", 0, 0); code != 0 {
 		t.Fatalf("dry-run must exit 0, got %d", code)
 	}
 	var stream gen.Stream

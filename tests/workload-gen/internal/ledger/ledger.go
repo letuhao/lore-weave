@@ -61,6 +61,7 @@ const (
 	KindMissingEvent    = "missing-event"
 	KindPayloadMismatch = "payload-mismatch"
 	KindFieldMismatch   = "field-mismatch"
+	KindVersionReorder  = "version-reorder"
 )
 
 // Violation is one integrity failure.
@@ -117,6 +118,36 @@ func CheckSelfConsistency(log Log) Report {
 	var r Report
 	checkVersionCompleteness(log, &r)
 	checkCountReconciliation(log, &r)
+	return r
+}
+
+// CheckAggregateMonotonicity (W2.2 — closes D-S6-HISTORY-ORDERING) asserts that,
+// walking the log in its LOADED order (LoadLog returns recorded_at, event_id —
+// a non-version tiebreak, so this is not circular), each aggregate's version is
+// strictly previous+1 — no reorder, no gap, no duplicate.
+//
+// This is the coverage version-completeness MISSES: completeness checks the
+// SORTED set is 1..N (position-independent), so a REORDER (e.g. v3 recorded
+// before v2) passes it; this check, which respects the stream order, catches it.
+// It is the per-aggregate complement to the S6 global/cross-aggregate history
+// checker.
+func CheckAggregateMonotonicity(log Log) Report {
+	var r Report
+	last := map[aggKey]uint64{}
+	reported := map[aggKey]bool{} // one violation per aggregate is enough
+	for _, e := range log.Events {
+		k := aggKey{e.RealityID.String(), e.AggType, e.AggID}
+		want := uint64(1)
+		if prev, ok := last[k]; ok {
+			want = prev + 1
+		}
+		if e.Version != want && !reported[k] {
+			r.add(KindVersionReorder, fmt.Sprintf(
+				"aggregate %s: version %d out of order (expected %d) in recorded sequence", k, e.Version, want))
+			reported[k] = true
+		}
+		last[k] = e.Version
+	}
 	return r
 }
 
