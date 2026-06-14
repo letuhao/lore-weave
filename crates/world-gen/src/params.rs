@@ -841,10 +841,17 @@ pub struct ReliefParams {
     pub tect_belt_lift: f32,
     pub tect_range_weight: f32,
     pub interior_rugged_cap: f32,
-    // Ocean bathymetry.
+    // Ocean bathymetry (S4 — age-based GDH1 depth + coastal shelf blend).
     pub ocean_shelf: f32,
     pub ocean_abyss: f32,
-    pub ocean_abyss_hops: f32,
+    /// Ridge-crest depth (age 0) — the shallow anchor of the √age curve.
+    pub ocean_ridge: f32,
+    /// Coastal-shelf ramp width in hops: depth blends from `ocean_shelf` (coast)
+    /// to the age-driven open-ocean depth over this many hops.
+    pub ocean_shelf_hops: f32,
+    /// Crust age (BFS hops from a ridge) at which the √age depth saturates to
+    /// `ocean_abyss` (GDH1 flattens for old lithosphere).
+    pub ocean_age_flatten: f32,
     pub ocean_ripple_weight: f32,
     pub ocean_ripple_freq: f32,
     pub ocean_arc_gate_near: f32,
@@ -886,7 +893,9 @@ impl Default for ReliefParams {
             interior_rugged_cap: 0.28,
             ocean_shelf: -0.04,
             ocean_abyss: -0.58,
-            ocean_abyss_hops: 7.0,
+            ocean_ridge: -0.26,
+            ocean_shelf_hops: 3.0,
+            ocean_age_flatten: 70.0,
             ocean_ripple_weight: 0.02,
             ocean_ripple_freq: 5.0,
             ocean_arc_gate_near: 1.0,
@@ -905,6 +914,11 @@ impl ReliefParams {
     pub fn resolved(&self, k: &IntensityKnobs) -> ReliefParams {
         let r = k.relief.clamp(0.0, 4.0);
         let od = k.ocean_depth.clamp(0.1, 4.0);
+        // `ocean_depth` scales the *physical* abyssal depth only (the quantize
+        // denominator `ocean_full` stays fixed — review-impl P2 #1). Compute it up
+        // front so `ocean_ridge` can be pinned at or above it (the √age curve must
+        // always descend ridge→abyss).
+        let resolved_abyss = (self.ocean_abyss * od).clamp(-3.0, 0.0);
         ReliefParams {
             // noise / frequencies — clamped, not knob-scaled.
             warp_freq: self.warp_freq.clamp(0.0, 20.0),
@@ -935,8 +949,15 @@ impl ReliefParams {
             // quantize denominator (`ocean_full`, below) stays fixed — scaling
             // both would leave `|e|/ocean_full` invariant, so a "deeper" abyss
             // wouldn't actually lower the deep-ocean u16 (review-impl P2, #1).
-            ocean_abyss: (self.ocean_abyss * od).clamp(-3.0, 0.0),
-            ocean_abyss_hops: self.ocean_abyss_hops.clamp(0.5, 50.0),
+            ocean_abyss: resolved_abyss,
+            // `ocean_ridge` is the shallow anchor (not od-scaled — the `ocean_depth`
+            // knob deepens via `ocean_abyss`). Enforced **at or above** the resolved
+            // abyss so the √age curve always descends ridge→abyss, even for an
+            // inverted (e.g. LLM-authored) config. Default (−0.26 > −0.58) is
+            // unchanged ⇒ byte-identical.
+            ocean_ridge: self.ocean_ridge.clamp(-3.0, 0.0).max(resolved_abyss),
+            ocean_shelf_hops: self.ocean_shelf_hops.clamp(0.5, 50.0),
+            ocean_age_flatten: self.ocean_age_flatten.clamp(0.5, 200.0),
             ocean_ripple_weight: self.ocean_ripple_weight.clamp(0.0, 1.0),
             ocean_ripple_freq: self.ocean_ripple_freq.clamp(0.1, 20.0),
             ocean_arc_gate_near: self.ocean_arc_gate_near.clamp(0.0, 50.0),
@@ -1104,12 +1125,29 @@ mod tests {
 
     #[test]
     fn relief_params_clamp_no_panic() {
-        let junk = ReliefParams { tect_range_weight: 999.0, sea_frac: 9.0, mtn_octaves: 0, ..ReliefParams::default() };
+        let junk = ReliefParams {
+            tect_range_weight: 999.0,
+            sea_frac: 9.0,
+            mtn_octaves: 0,
+            // S4 bathymetry rails — absurd values must clamp, not panic/div-by-0.
+            ocean_age_flatten: 0.0,
+            ocean_shelf_hops: -5.0,
+            ocean_ridge: -9.0, // deeper than abyss → must be lifted to the abyss
+            ..ReliefParams::default()
+        };
         let r = junk.resolved(&IntensityKnobs { relief: 999.0, ocean_depth: 0.0, ..Default::default() });
         assert_eq!(r.tect_range_weight, 5.0, "range weight clamps to rail");
         assert_eq!(r.sea_frac, 0.95, "sea_frac clamps to rail");
         assert_eq!(r.mtn_octaves, 1, "octaves clamp ≥ 1");
         assert!(r.ocean_full.is_finite() && r.ocean_full >= 0.05);
+        // S4 — the age-curve rails.
+        assert!(r.ocean_age_flatten >= 0.5, "age_flatten clamps ≥ 0.5 (no div-by-0)");
+        assert!(r.ocean_shelf_hops >= 0.5, "shelf_hops clamps ≥ 0.5");
+        assert!(
+            r.ocean_ridge >= r.ocean_abyss,
+            "ocean_ridge {} must be enforced ≥ ocean_abyss {} so the √age curve descends",
+            r.ocean_ridge, r.ocean_abyss
+        );
     }
 
     #[test]

@@ -51,6 +51,12 @@ pub struct Plates {
     /// Per-cell signed orogeny uplift (mountains/arcs positive, trenches/rifts
     /// negative).
     pub uplift: Vec<f32>,
+    /// Per-cell oceanic-crust **age** as BFS hops from the nearest divergent
+    /// ocean ridge along oceanic crust (S4): `0` = a ridge cell, larger = older
+    /// (deeper) crust, `u32::MAX` = continental crust or an oceanic plate with no
+    /// ridge (treated as maximally old). Drives age-based bathymetry in
+    /// [`crate::terrain`].
+    pub crust_age: Vec<u32>,
 }
 
 /// Build the plate model. `plate_count` is clamped to `3..=24` and
@@ -208,6 +214,11 @@ pub fn build(
         })
         .collect();
 
+    // 1h — oceanic-crust age (S4, D4): BFS hops from divergent ocean ridges
+    // along oceanic crust. New crust is born at ridges (age 0) and ages as it
+    // spreads; the age drives the √age bathymetry depth curve in `terrain`.
+    let crust_age = crust_age_field(&plate_of, &kind, neighbors, &pair_kind);
+
     let plates: Vec<Plate> = (0..n)
         .map(|p| Plate {
             id: p as u32,
@@ -224,7 +235,61 @@ pub fn build(
         crust_thickness,
         base,
         uplift,
+        crust_age,
     }
+}
+
+/// Per-cell oceanic-crust age (S4): multi-source BFS over **oceanic-plate cells
+/// only**, seeded from every oceanic cell adjacent to a divergent ocean
+/// [`BoundaryKind::Ridge`] (age 0). Continental cells and oceanic plates with no
+/// ridge stay `u32::MAX` (treated as maximally old → deep, flat abyss).
+///
+/// Determinism: ascending-id source sweep + sorted neighbour lists + first-
+/// writer-wins min distance — the same discipline as [`boundary_field`].
+fn crust_age_field(
+    plate_of: &[u32],
+    kind: &[PlateKind],
+    neighbors: &[Vec<u32>],
+    pair_kind: &impl Fn(u32, u32) -> BoundaryKind,
+) -> Vec<u32> {
+    let n = plate_of.len();
+    let oceanic = |c: usize| kind[plate_of[c] as usize] == PlateKind::Oceanic;
+    let mut age = vec![u32::MAX; n];
+    let mut frontier: Vec<u32> = Vec::new();
+
+    // Sources: oceanic cells touching a Ridge boundary (new crust forms here).
+    for c in 0..n {
+        if !oceanic(c) {
+            continue;
+        }
+        let pa = plate_of[c];
+        let at_ridge = neighbors[c].iter().any(|&nb| {
+            let pb = plate_of[nb as usize];
+            pb != pa && pair_kind(pa, pb) == BoundaryKind::Ridge
+        });
+        if at_ridge {
+            age[c] = 0;
+            frontier.push(c as u32);
+        }
+    }
+
+    // BFS waves over oceanic crust only.
+    let mut d = 0u32;
+    while !frontier.is_empty() {
+        let mut next: Vec<u32> = Vec::new();
+        for &c in &frontier {
+            for &nb in &neighbors[c as usize] {
+                let nb = nb as usize;
+                if oceanic(nb) && age[nb] == u32::MAX {
+                    age[nb] = d + 1;
+                    next.push(nb as u32);
+                }
+            }
+        }
+        frontier = next;
+        d += 1;
+    }
+    age
 }
 
 /// Choose which `n_cont` plates are continental, blending the random shuffle
@@ -689,6 +754,58 @@ mod tests {
         for i in 0..a.uplift.len() {
             assert_eq!(a.uplift[i].to_bits(), b.uplift[i].to_bits());
             assert_eq!(a.crust_thickness[i].to_bits(), b.crust_thickness[i].to_bits());
+            assert_eq!(a.crust_age[i], b.crust_age[i]);
+        }
+    }
+
+    /// S4 — oceanic-crust age: ridge cells are age 0, age grows with hops away,
+    /// every reachable oceanic cell is finite, and continental cells stay the
+    /// `u32::MAX` sentinel (age is an oceanic-crust property only).
+    #[test]
+    fn crust_age_zero_at_ridges_and_grows() {
+        // Larger mesh ⇒ more boundaries ⇒ a Ridge is far more likely to appear.
+        let m = mesh::build(7, WorldScale::Continent);
+        let p = build(7, 8, 0.4, 0.0, &tp(), &m.centers, &m.neighbors);
+        assert_eq!(p.crust_age.len(), m.centers.len());
+
+        // A ridge boundary must exist for this seed (so age has sources).
+        assert!(
+            p.boundaries.iter().any(|b| b.kind == BoundaryKind::Ridge),
+            "seed-7 Continent must produce a Ridge boundary for the age field"
+        );
+
+        let mut zero = 0u32;
+        let mut max_finite = 0u32;
+        for c in 0..m.centers.len() {
+            let oceanic = p.plates[p.plate_of[c] as usize].kind == PlateKind::Oceanic;
+            let age = p.crust_age[c];
+            if !oceanic {
+                assert_eq!(age, u32::MAX, "continental cell {c} must have sentinel age");
+                continue;
+            }
+            if age == 0 {
+                zero += 1;
+            }
+            if age != u32::MAX {
+                max_finite = max_finite.max(age);
+            }
+        }
+        assert!(zero > 0, "no ridge (age-0) oceanic cells");
+        assert!(max_finite > 0, "age never grew beyond the ridge");
+
+        // A ridge (age-0) cell's oceanic neighbours are age ≤ 1 (BFS monotone),
+        // and every finite-age non-ridge cell has a strictly-younger oceanic
+        // neighbour (it was reached from one) — the spreading-away invariant.
+        for c in 0..m.centers.len() {
+            let oceanic = |x: usize| p.plates[p.plate_of[x] as usize].kind == PlateKind::Oceanic;
+            let age = p.crust_age[c];
+            if !oceanic(c) || age == 0 || age == u32::MAX {
+                continue;
+            }
+            let has_younger = m.neighbors[c]
+                .iter()
+                .any(|&nb| oceanic(nb as usize) && p.crust_age[nb as usize] == age - 1);
+            assert!(has_younger, "cell {c} (age {age}) has no age-{} oceanic neighbour", age - 1);
         }
     }
 

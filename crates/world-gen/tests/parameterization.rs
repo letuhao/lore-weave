@@ -48,17 +48,17 @@ fn profile_mode_is_byte_identical_baseline() {
 /// pre-refactor HEAD.
 ///
 /// NOTE: this pins the **whole-pipeline** default output. The parameterization
-/// arc (P1–P8) preserves it. A *deliberate generation change* in another arc —
-/// e.g. elevation **S4 age-bathymetry**, which changes default ocean depth — will
-/// (correctly) break this; re-capture the hashes then. A break here is "did
+/// arc (P1–P8) preserves it. A *deliberate generation change* in another arc
+/// will (correctly) break this; re-capture the hashes then. A break here is "did
 /// default output change?", not "is the param wiring broken" (that's the other
-/// tests below).
+/// tests below). Pins re-captured at **elevation S4** (age-based bathymetry,
+/// 2026-06-14) — S4 deliberately changed default ocean depth.
 #[test]
 fn default_profile_is_byte_identical_baseline() {
     let cases: [(u64, WorldScale, &str); 3] = [
-        (7, WorldScale::Continent, "6ecf94fa242bd8b9c464d0e2ef7f13b2c1b9859b79ceeb7c539b46f9ef513ffd"),
-        (42, WorldScale::Continent, "25fb88039516430753b6ad8cef11564db9c040401dfe1988b67e3dc6bafacbc7"),
-        (7, WorldScale::Pocket, "f938c8c3e06dfaffaa97b0201df7361ed4276d985dfa4e438708c00e393dc447"),
+        (7, WorldScale::Continent, "4c14fa3a62f9c897511c2f9bcf96ae347763ad7fc9b0c913ff09e4db61d9dbcb"),
+        (42, WorldScale::Continent, "73c67aff2b5fa0f88b910499d9004f760e461dff2233a635646d3be9d00e4c22"),
+        (7, WorldScale::Pocket, "75a63b4826e089be7128b61486192f72a4ed5f124919998bd378e0d0abdeb109"),
     ];
     for (seed, scale, want) in cases {
         let cs = CreativeSeed { world_scale: scale, ..CreativeSeed::default() };
@@ -381,28 +381,40 @@ fn granular_route_override_changes_the_world() {
 #[test]
 fn each_route_param_gate_is_wired() {
     use world_gen::RouteKind;
-    let count = |rp: RouteParams, kind: RouteKind| {
+    // Which seeds carry which route kind by default is generation-dependent (S4
+    // age-bathymetry shifted seed-7's network via the hydrology cascade), so the
+    // test searches a small seed set for one exhibiting each kind, then asserts
+    // the gate removes it on *that* seed — robust to future generation changes.
+    const SEEDS: [u64; 6] = [7, 13, 42, 99, 123, 2024];
+    let count = |seed: u64, rp: RouteParams, kind: RouteKind| {
         let cs = CreativeSeed { route_params: rp, ..CreativeSeed::default() };
-        generate(7, &cs).routes.iter().filter(|r| r.kind == kind).count()
+        generate(seed, &cs).routes.iter().filter(|r| r.kind == kind).count()
     };
     let def = RouteParams::default();
+    let seed_with = |kind: RouteKind| -> u64 {
+        SEEDS
+            .into_iter()
+            .find(|&s| count(s, def, kind) > 0)
+            .unwrap_or_else(|| panic!("no seed in {SEEDS:?} produces {kind:?} by default"))
+    };
+
     // trail_tier_max = 0 ⇒ no settlement has tier ≤ 0 ⇒ no Trails.
-    assert!(count(def, RouteKind::Trail) > 0, "seed-7 must have Trails by default");
+    let st = seed_with(RouteKind::Trail);
     assert_eq!(
-        count(RouteParams { trail_tier_max: 0, ..def }, RouteKind::Trail), 0,
-        "trail_tier_max must gate Trails"
+        count(st, RouteParams { trail_tier_max: 0, ..def }, RouteKind::Trail), 0,
+        "trail_tier_max must gate Trails (seed {st})"
     );
     // mountain_pass_target = 0 ⇒ take(0) ⇒ no MountainPass.
-    assert!(count(def, RouteKind::MountainPass) > 0, "seed-7 must have MountainPasses by default");
+    let sm = seed_with(RouteKind::MountainPass);
     assert_eq!(
-        count(RouteParams { mountain_pass_target: 0, ..def }, RouteKind::MountainPass), 0,
-        "mountain_pass_target must gate MountainPass count"
+        count(sm, RouteParams { mountain_pass_target: 0, ..def }, RouteKind::MountainPass), 0,
+        "mountain_pass_target must gate MountainPass count (seed {sm})"
     );
     // river_nav_min_run huge ⇒ no run is long enough ⇒ no RiverNavigation.
-    assert!(count(def, RouteKind::RiverNavigation) > 0, "seed-7 must have RiverNav by default");
+    let sr = seed_with(RouteKind::RiverNavigation);
     assert_eq!(
-        count(RouteParams { river_nav_min_run: 100_000, ..def }, RouteKind::RiverNavigation), 0,
-        "river_nav_min_run must gate RiverNavigation"
+        count(sr, RouteParams { river_nav_min_run: 100_000, ..def }, RouteKind::RiverNavigation), 0,
+        "river_nav_min_run must gate RiverNavigation (seed {sr})"
     );
 }
 

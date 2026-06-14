@@ -180,7 +180,8 @@ pub fn build(
                         } else {
                             u
                         };
-                        ocean_depth(coast_dist[i], centers[i], nseed, &rp) + gated
+                        ocean_depth_by_age(plates.crust_age[i], coast_dist[i], centers[i], nseed, &rp)
+                            + gated
                     }
                 })
                 .collect();
@@ -341,12 +342,23 @@ fn land_relief(p: [f32; 3], amp: f32, tect: f32, seed: u32, rp: &ReliefParams) -
     whisper + belt.max(uplands)
 }
 
-/// Ocean depth (signed, sea = 0) from distance-to-coast: a shallow shelf at
-/// the coast ramps down to a deep, near-flat abyssal plain. Replaces the old
-/// uniform abyssal fBm (which made the sea floor lumpy).
-fn ocean_depth(coast_dist: u32, p: [f32; 3], seed: u32, rp: &ReliefParams) -> f32 {
-    let t = (coast_dist as f32 / rp.ocean_abyss_hops).min(1.0);
-    let depth = rp.ocean_shelf + (rp.ocean_abyss - rp.ocean_shelf) * smoothstep(0.0, 1.0, t);
+/// Ocean depth (signed, sea = 0) from **oceanic-crust age** (S4, D4): new crust
+/// at a divergent ridge (`age = 0`) is shallow and deepens as `√age` toward the
+/// abyss, flattening for old crust (GDH1 `d = 2600 + 365·√t`, saturating at
+/// `ocean_age_flatten` hops). A **coastal shelf** is preserved: within
+/// `ocean_shelf_hops` of land the depth ramps from the shallow `ocean_shelf` up
+/// to the age-driven open-ocean depth, so coastal shallows (feeding biome /
+/// settlement / `is_coast`) survive. Replaces the old coast-distance curve,
+/// which saturated to a flat abyss (the deep-bin spike — D4).
+fn ocean_depth_by_age(age: u32, coast_dist: u32, p: [f32; 3], seed: u32, rp: &ReliefParams) -> f32 {
+    // GDH1 √age deepening, saturating at `ocean_age_flatten` hops. `u32::MAX`
+    // (continental / no-ridge oceanic) → t = 1 → the abyss. `min(1)` before the
+    // sqrt keeps the f32 finite even for the sentinel age.
+    let t = (age as f32 / rp.ocean_age_flatten).min(1.0).sqrt();
+    let age_depth = rp.ocean_ridge + (rp.ocean_abyss - rp.ocean_ridge) * t;
+    // Coastal-shelf blend: 0 at the coast (shelf depth) → 1 offshore (age depth).
+    let shelf_ramp = smoothstep(0.0, rp.ocean_shelf_hops, coast_dist as f32);
+    let depth = rp.ocean_shelf + (age_depth - rp.ocean_shelf) * shelf_ramp;
     // Faint abyssal ripple so the floor isn't perfectly dead-flat.
     let rf = rp.ocean_ripple_freq;
     let ripple = rp.ocean_ripple_weight
@@ -734,6 +746,39 @@ mod tests {
             (height_at(p, CoastlineProfile::Coastal, 7, &rp()) - first).abs() > 1e-3
         });
         assert!(differs, "height_at produced a constant field");
+    }
+
+    /// S4 — the age-based bathymetry curve: deeper with age, ridge (age 0)
+    /// strictly shallower than old crust, the `u32::MAX` sentinel is finite and
+    /// abyssal, and a coastal shelf keeps near-coast water shallow.
+    #[test]
+    fn ocean_depth_by_age_deepens_with_age() {
+        let rp = rp();
+        let p = unit(1.0, 0.0, 0.0);
+        // Offshore (coast_dist well past the shelf ramp) so we measure the pure
+        // age curve. Strictly monotone deeper with age, up to the flatten point.
+        let off = 50u32;
+        let mut prev = f32::INFINITY;
+        for age in [0u32, 2, 5, 10, 20, 40, 70] {
+            let d = ocean_depth_by_age(age, off, p, 7, &rp);
+            assert!(d.is_finite(), "depth not finite at age {age}");
+            assert!(d < prev, "depth not strictly deeper at age {age}: {d} !< {prev}");
+            prev = d;
+        }
+        // Ridge crest (age 0) is shallower than old abyss (large age).
+        let ridge = ocean_depth_by_age(0, off, p, 7, &rp);
+        let abyss = ocean_depth_by_age(200, off, p, 7, &rp);
+        assert!(ridge > abyss, "ridge {ridge} not shallower than abyss {abyss}");
+        // The `u32::MAX` sentinel (no-ridge oceanic / continental) is finite and
+        // saturates to the abyss, not NaN/inf.
+        let sentinel = ocean_depth_by_age(u32::MAX, off, p, 7, &rp);
+        assert!(sentinel.is_finite(), "sentinel-age depth not finite");
+        assert!((sentinel - abyss).abs() < 0.05, "sentinel age must reach the abyss floor");
+        // Coastal shelf: at the coast (dist 0) old crust still reads shallow
+        // (shelf), strictly shallower than the same age offshore.
+        let coast = ocean_depth_by_age(70, 0, p, 7, &rp);
+        let open = ocean_depth_by_age(70, off, p, 7, &rp);
+        assert!(coast > open, "shelf (coast) {coast} not shallower than open ocean {open}");
     }
 
     #[test]

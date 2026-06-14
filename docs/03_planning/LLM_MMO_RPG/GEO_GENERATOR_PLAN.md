@@ -111,14 +111,32 @@
 > literals — legacy path. Deferred P3 follow-up: moisture-transport consts +
 > cross-module `ClimateZone::wetness()` / `bias_delta` tables.)*
 >
-> **ELEVATION ARC (paused, resumable): build S4** — age-based oceanic bathymetry.
-> Add `crust_age` (BFS hops from divergent ridges along spreading), set ocean
-> depth = isostatic base + `√age` (GDH1 `d=2600+365√t`, flatten ≳80 Myr),
-> replacing the coast-distance depth curve. Also addresses the deep-abyss clamp
-> that spikes the ocean mode (37 % of cells in the bottom bin). Then S5 (coupled
-> uplift⇄erosion) → S6 (render/export bathymetry, the "ocean rises" artifact).
-> **Note:** S4 changes default ocean elevation → it will re-pin the
-> parameterization byte-identical hashes (expected; see the test's note). Each
+> **⛰ S4 SHIPPED (2026-06-14) — age-based oceanic bathymetry.** New
+> `Plates::crust_age` (BFS hops from divergent `Ridge` boundaries over oceanic
+> crust; `0` = ridge, `u32::MAX` = continental / no-ridge → maximally old). Ocean
+> depth is now a **GDH1 √age curve** (`ocean_ridge → ocean_abyss`, saturating at
+> `ocean_age_flatten ≈ 70` hops) blended with a **preserved coastal shelf**,
+> replacing the coast-distance curve (`ocean_abyss_hops` removed; `ocean_ridge`/
+> `ocean_shelf_hops`/`ocean_age_flatten` added to `ReliefParams`). **Premise
+> verified empirically first:** at HEAD the coast-distance curve clamped **51 %**
+> of ocean cells into the single deepest bin (spec estimated 37 %); the √age curve
+> drops that to **~20 %** and spreads depth across 8 bins (broad abyssal mode +
+> shallow ridges + shelf). `crust_age` stays on `Plates` (not `WorldMap`),
+> matching S3's `crust_thickness`; it feeds `content_hash` via elevation. Pins
+> **re-captured** (3 content + 8 render — S4 deliberately changed default ocean
+> depth; Profile-mode pins untouched). `/review-impl` 1 MED (enforce
+> `ocean_ridge ≥ ocean_abyss` so the curve always descends) + 1 LOW (clamp tests)
+> — both fixed. Plan: `docs/plans/2026-06-14-elevation-s4-age-bathymetry.md`.
+> Acceptance: `tests/age_bathymetry.rs` + plates/terrain unit tests; lib 439 +
+> all integration green; bimodality + proportion guards hold.
+>
+> **ELEVATION ARC (paused, resumable): build S5** — coupled uplift ⇄ erosion.
+> Feed the tectonic uplift field as the `U` source into the stream-power
+> `erosion.rs` and iterate uplift+incision jointly toward steady state
+> (Cordonnier): equilibrium river profiles concave (`S ∝ A^(−0.5)`), dendritic
+> drainage on the tectonic relief not on noise. Then S6 (render/export
+> bathymetry, the "ocean rises" artifact). **Note:** S5 changes default land
+> elevation → it will re-pin the byte-identical hashes again (expected). Each
 > stage = full 12-phase + `/review-impl` + PO POST-REVIEW.
 >
 > ---
