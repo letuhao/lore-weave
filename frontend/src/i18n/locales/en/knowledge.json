@@ -14,6 +14,16 @@
       "insights": "Insights"
     }
   },
+  "graph": {
+    "title": "Knowledge graph",
+    "counts": "{{nodes}} nodes · {{edges}} relations",
+    "truncated": "showing the top {{n}} — expand a node to load more",
+    "expanding": "expanding…",
+    "hint": "Scroll to zoom · drag empty space to pan · click a node for detail · ⊞ to expand",
+    "loading": "Loading graph…",
+    "loadFailed": "Failed to load graph: {{error}}",
+    "empty": "No knowledge graph yet — build this project to explore its network."
+  },
   "shell": {
     "backToProjects": "All projects",
     "sections": {

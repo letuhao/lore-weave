@@ -389,6 +389,52 @@ export interface GapReportResponse {
   min_mentions: number;
 }
 
+// ── C18/C19 (G5) — GET /projects/{id}/subgraph ────────────────────────
+//
+// The read-only project subgraph for the C19 graph canvas. Mirrors the
+// BE `Subgraph` model (relations.py): a lightweight node projection
+// (identity + kind for colour + anchor_score/mention_count for sizing,
+// NOT the full Entity — the canvas pulls full detail lazily via
+// `getEntityDetail` on click) and `:RELATES_TO` edge projection. Raw
+// nodes + edges; NO server-side layout (the canvas hand-rolls
+// force/radial). `node_cap_hit` flags that the deterministic node cap
+// trimmed the result so the canvas can offer expand / load-more.
+export interface SubgraphNode {
+  id: string;
+  name: string;
+  kind: string;
+  anchor_score: number;
+  mention_count: number;
+  glossary_entity_id: string | null;
+}
+
+export interface SubgraphEdge {
+  id: string;
+  source: string;
+  target: string;
+  predicate: string;
+  confidence: number;
+}
+
+export interface SubgraphResponse {
+  nodes: SubgraphNode[];
+  edges: SubgraphEdge[];
+  node_cap_hit: boolean;
+}
+
+export interface SubgraphParams {
+  /** Traversal depth for ego-expansion (only applies when `center` is
+   *  set). 1–3, clamped server-side. */
+  hops?: number;
+  /** Hard node cap (≤500, clamped server-side). Selected
+   *  deterministically so expand / load-more is stable. */
+  limit?: number;
+  /** Optional entity id to ego-expand from — returns the `hops`-bounded
+   *  neighbourhood instead of the project-wide top-N. Powers
+   *  click-to-expand. */
+  center?: string;
+}
+
 /**
  * K19d.4 EntityRelation wire shape. Mirrors the Relation Pydantic
  * projection on the BE: a :RELATES_TO edge with the two endpoint
@@ -1320,6 +1366,28 @@ export const knowledgeApi = {
     const q = qs.toString();
     return apiJson<GapReportResponse>(
       `${BASE}/projects/${encodeURIComponent(projectId)}/gaps${q ? `?${q}` : ''}`,
+      { token },
+    );
+  },
+
+  // ── C19 (G5) — GET /projects/{id}/subgraph ──────────────────────────
+  //
+  // Read-only project subgraph for the graph canvas. Thin client over
+  // C18's endpoint: `center` ego-expands (with `hops`), no center =
+  // project-wide top-N. `limit` is the node cap. Project route-scoped
+  // (G6). No new BE — C18 owns this endpoint.
+  getProjectSubgraph(
+    projectId: string,
+    params: SubgraphParams,
+    token: string,
+  ): Promise<SubgraphResponse> {
+    const qs = new URLSearchParams();
+    if (params.hops != null) qs.set('hops', String(params.hops));
+    if (params.limit != null) qs.set('limit', String(params.limit));
+    if (params.center != null) qs.set('center', params.center);
+    const q = qs.toString();
+    return apiJson<SubgraphResponse>(
+      `${BASE}/projects/${encodeURIComponent(projectId)}/subgraph${q ? `?${q}` : ''}`,
       { token },
     );
   },

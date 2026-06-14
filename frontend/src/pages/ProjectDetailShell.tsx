@@ -21,7 +21,7 @@ import { MiningInsightsTab } from '@/features/knowledge/components/MiningInsight
 import { GapReportTab } from '@/features/knowledge/components/GapReportTab';
 import { ProposalsInboxTab } from '@/features/knowledge/components/ProposalsInboxTab';
 import { OverviewSection } from '@/features/knowledge/components/shell/OverviewSection';
-import { ShellPlaceholder } from '@/features/knowledge/components/shell/ShellPlaceholder';
+import { ProjectGraphView } from '@/features/knowledge/components/ProjectGraphView';
 
 // C6 (G6) — Project-detail SHELL. The IA backbone for the book-workspace
 // restructure: `/knowledge/projects/:projectId/:section` is HOME for a
@@ -32,10 +32,10 @@ import { ShellPlaceholder } from '@/features/knowledge/components/shell/ShellPla
 // (Entities / Timeline / Evidence) receive `scopedProjectId` and hide
 // their own project dropdown.
 //
-// Scope (this cycle = SHELL only): Overview is real (reuses the project
-// state card + config). Entities / Timeline / Evidence render the
-// existing tabs scoped. Insights renders the mining tab. Proposals / Gap /
-// graph are stubs — their content lands in C10 / C11 / C5+C19.
+// Scope: Overview is real (reuses the project state card + config).
+// Entities / Timeline / Evidence render the existing tabs scoped.
+// Insights renders the mining tab. Proposals (C11) / Gap (C10) are real.
+// Graph (C19) renders the explorable project subgraph canvas.
 
 const SECTIONS = [
   'overview',
@@ -159,8 +159,8 @@ export function ProjectDetailShell() {
       {activeSection === 'gap' && projectId && (
         <GapReportTab scopedProjectId={projectId} />
       )}
-      {activeSection === 'graph' && (
-        <ShellPlaceholder message={t('shell.placeholder.graph')} />
+      {activeSection === 'graph' && projectId && (
+        <ProjectGraphView projectId={projectId} bookId={project?.book_id ?? null} />
       )}
     </div>
   );

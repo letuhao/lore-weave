@@ -14,6 +14,16 @@
       "insights": "洞察"
     }
   },
+  "graph": {
+    "title": "知識圖譜",
+    "counts": "{{nodes}} 個節點 · {{edges}} 個關係",
+    "truncated": "顯示前 {{n}} 個 — 展開節點以載入更多",
+    "expanding": "展開中…",
+    "hint": "滾動以縮放 · 拖曳空白處以平移 · 點擊節點查看詳情 · ⊞ 以展開",
+    "loading": "正在載入圖譜…",
+    "loadFailed": "載入圖譜失敗：{{error}}",
+    "empty": "尚無知識圖譜 — 建立此專案以探索其網路。"
+  },
   "shell": {
     "backToProjects": "所有專案",
     "sections": {
