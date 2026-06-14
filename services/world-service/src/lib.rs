@@ -53,6 +53,7 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs, rust_2018_idioms)]
 
+pub mod capacity_glue;
 pub mod capacity_planner;
 pub mod db_pool;
 pub mod deprovisioner;
@@ -63,6 +64,7 @@ pub mod reality_seeder;
 pub mod rebuild;
 pub mod replay_aggregate;
 
+pub use capacity_glue::{live_snapshot, place_reality, LIVE_STATES};
 pub use capacity_planner::{CapacityPlanner, CapacityThresholds, ShardCapacity, ShardId};
 pub use db_pool::{DbPoolKey, DbPoolRegistry, ShardHost};
 pub use deprovisioner::{DeprovisionReport, DeprovisionRequest, Deprovisioner};

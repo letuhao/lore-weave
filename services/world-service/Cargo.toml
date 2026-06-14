@@ -40,6 +40,13 @@ path = "src/bin/embedding_worker.rs"
 name = "rebuilder"
 path = "src/bin/rebuilder.rs"
 
+# W1.1 (production wiring) — capacity-place live drill. Exercises capacity_glue
+# (live_snapshot + place_reality TOCTOU) against real Postgres: lock-on → exactly
+# M placements, lock-off bite → over-subscription. Closes D-S13-CAPACITY-ROUTING-GLUE.
+[[bin]]
+name = "capacity-place"
+path = "src/bin/capacity_place.rs"
+
 # L3.E/F (integrity checker keystone) — replay-aggregate binary. The per-sampled
 # -row WORKER the Go integrity-checker invokes: replays the owning event
 # aggregate(s) up to the row's boundary event into a TEMP shadow of the target
