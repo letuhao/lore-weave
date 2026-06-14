@@ -117,7 +117,7 @@ func TestEntityOrderBy_Whitelist(t *testing.T) {
 		{"bogus-value", "e.updated_at DESC"}, // unknown → safe default
 	}
 	for _, c := range cases {
-		got := entityOrderBy(c.sort, false, 0, 0)
+		got := entityOrderBy(c.sort, false, 0, 0, "")
 		if !strings.Contains(got, c.want) {
 			t.Errorf("entityOrderBy(%q) = %q, want substring %q", c.sort, got, c.want)
 		}
@@ -125,14 +125,14 @@ func TestEntityOrderBy_Whitelist(t *testing.T) {
 	// Injection safety: an arbitrary attacker-controlled key never reaches the
 	// clause — it maps to the safe default, never appears verbatim.
 	evil := "updated_at; DROP TABLE glossary_entities;--"
-	if got := entityOrderBy(evil, false, 0, 0); got != "ORDER BY e.updated_at DESC" {
+	if got := entityOrderBy(evil, false, 0, 0, ""); got != "ORDER BY e.updated_at DESC" {
 		t.Errorf("injection: want safe default, got %q", got)
 	}
 }
 
 func TestEntityOrderBy_RawRelevance(t *testing.T) {
 	// Raw mode with bound args → relevance ordering (exact-first, then similarity).
-	got := entityOrderBy("", true, 5, 6)
+	got := entityOrderBy("", true, 5, 6, "")
 	if !strings.Contains(got, "ILIKE $6") || !strings.Contains(got, "similarity(") {
 		t.Errorf("raw relevance order missing exact/similarity legs: %q", got)
 	}
@@ -140,15 +140,19 @@ func TestEntityOrderBy_RawRelevance(t *testing.T) {
 		t.Errorf("raw relevance order missing query arg $5: %q", got)
 	}
 	// Explicit "relevance" behaves the same.
-	if g2 := entityOrderBy("relevance", true, 5, 6); g2 != got {
+	if g2 := entityOrderBy("relevance", true, 5, 6, ""); g2 != got {
 		t.Errorf("relevance != default-raw: %q vs %q", g2, got)
 	}
 	// Raw mode but unbound args (no query) → falls back to default.
-	if g3 := entityOrderBy("", true, 0, 0); !strings.Contains(g3, "e.updated_at DESC") {
+	if g3 := entityOrderBy("", true, 0, 0, ""); !strings.Contains(g3, "e.updated_at DESC") {
 		t.Errorf("raw-without-query should default: %q", g3)
 	}
 	// An explicit column sort in raw mode still wins over relevance.
-	if g4 := entityOrderBy("name", true, 5, 6); !strings.Contains(g4, "e.cached_name ASC") {
+	if g4 := entityOrderBy("name", true, 5, 6, ""); !strings.Contains(g4, "e.cached_name ASC") {
 		t.Errorf("explicit sort in raw mode should win: %q", g4)
+	}
+	// Display-language translation exact-match joins the exact tier.
+	if g5 := entityOrderBy("", true, 5, 6, "EXISTS(SELECT 1 FROM t)"); !strings.Contains(g5, "OR EXISTS(SELECT 1 FROM t)) DESC") {
+		t.Errorf("translation-exact not ORed into the exact tier: %q", g5)
 	}
 }

@@ -612,10 +612,22 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 
 	// Sort — whitelist-mapped to fixed ORDER BY clauses (no user input is ever
 	// interpolated). Raw mode defaults to relevance (exact-first, then trigram
-	// similarity). Counts-sort is intentionally deferred (DESIGN REVIEW §3.5:
-	// chapter_link_count/evidence_count are correlated subqueries — sorting on
-	// them computes counts for ALL matching rows; needs denormalised counters).
-	sortClause := entityOrderBy(q.Get("sort"), rawMode, rawQArg, rawPatArg)
+	// similarity). When raw-searching with a display language, an exact match in
+	// the translated name joins the top "exact" tier (else a pure translation hit
+	// ranks by name/alias similarity ≈0 and sinks).
+	transExactExpr := ""
+	if rawMode && displayLang != "" && rawPatArg > 0 {
+		bindDisplayLang()
+		transExactExpr = fmt.Sprintf(`EXISTS (
+			SELECT 1 FROM entity_attribute_values eav
+			JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+			JOIN attribute_translations at ON at.attr_value_id = eav.attr_value_id
+			WHERE eav.entity_id = e.entity_id
+			  AND ad.code IN ('name','term')
+			  AND at.language_code = $%d
+			  AND at.value ILIKE $%d)`, displayLangArg, rawPatArg)
+	}
+	sortClause := entityOrderBy(q.Get("sort"), rawMode, rawQArg, rawPatArg, transExactExpr)
 
 	// Pagination
 	limit := 50

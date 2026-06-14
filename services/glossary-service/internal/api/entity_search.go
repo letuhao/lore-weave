@@ -158,17 +158,26 @@ func buildEntityMatch(name string, aliases []string, translation *string, q stri
 // trigram similarity desc, then name. relevanceArgs is "$<qArg>"/"$<patArg>"
 // resolved by the caller (the bound positions of the raw query + escaped
 // pattern); if they are unset (no raw query) we fall back to the default.
-func entityOrderBy(sortKey string, rawMode bool, qArg, patArg int) string {
+// transExactExpr, when non-empty, is a SQL boolean expression (e.g. an EXISTS
+// over the display-language translation) ORed into the raw-search "exact" tier so
+// an exact match in the user's display-language translation floats to the top
+// alongside name/alias exact matches — otherwise a pure translation hit ranks by
+// name/alias similarity (≈0) and sinks (D-GLOSSARY-RAW-SEARCH-TRANSLATION-RANK).
+func entityOrderBy(sortKey string, rawMode bool, qArg, patArg int, transExactExpr string) string {
 	const aliasesExpr = "glossary_aliases_text(e.cached_aliases)"
 	const defaultOrder = "ORDER BY e.updated_at DESC"
 	const byNameTiebreak = "e.cached_name ASC NULLS LAST, e.entity_id"
 
 	if rawMode && (sortKey == "" || sortKey == "relevance") {
 		if qArg > 0 && patArg > 0 {
+			exact := fmt.Sprintf("e.cached_name ILIKE $%d OR %s ILIKE $%d", patArg, aliasesExpr, patArg)
+			if transExactExpr != "" {
+				exact += " OR " + transExactExpr
+			}
 			return fmt.Sprintf(
-				"ORDER BY (e.cached_name ILIKE $%d OR %s ILIKE $%d) DESC, "+
+				"ORDER BY (%s) DESC, "+
 					"GREATEST(similarity(coalesce(e.cached_name,''), $%d), similarity(%s, $%d)) DESC, %s",
-				patArg, aliasesExpr, patArg, qArg, aliasesExpr, qArg, byNameTiebreak)
+				exact, qArg, aliasesExpr, qArg, byNameTiebreak)
 		}
 		return defaultOrder // raw mode requested but no query bound — nothing to rank
 	}

@@ -230,6 +230,44 @@ func TestListEntities_RawSearchAliasMatch(t *testing.T) {
 	}
 }
 
+func TestListEntities_RawSearchTranslationRank(t *testing.T) {
+	pool := openTestDB(t)
+	f := newVersionFixture(t, pool)
+	kindID, nameAttr, _ := lookupCharacterAttrs(t, f)
+	ctx := context.Background()
+
+	// Entity with a CJK name + a Vietnamese translation of the name.
+	var eid, avid string
+	f.srv.pool.QueryRow(ctx,
+		`INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`,
+		f.bookID, kindID).Scan(&eid)
+	f.srv.pool.QueryRow(ctx,
+		`INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value)
+		 VALUES($1,$2,'zh','火魔') RETURNING attr_value_id`, eid, nameAttr).Scan(&avid)
+	if _, err := f.srv.pool.Exec(ctx,
+		`INSERT INTO attribute_translations(attr_value_id, language_code, value, confidence)
+		 VALUES($1,'vi','Hỏa Ma','machine')`, avid); err != nil {
+		t.Fatalf("seed translation: %v", err)
+	}
+
+	// Raw search the Vietnamese term WITH display_language=vi: the entity matches
+	// only via its translation, and must come back (top "exact" tier) + the match
+	// payload should attribute it to the translation field.
+	resp := f.listEntities(t, "search_mode=raw&display_language=vi&search=Hỏa")
+	found := false
+	for _, it := range resp.Items {
+		if it.EntityID == eid {
+			found = true
+			if it.Match == nil || it.Match.FieldCode != "translation" {
+				t.Errorf("translation match: want field=translation, got %v", it.Match)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("raw+display-lang translation search did not return the entity (total=%d)", resp.Total)
+	}
+}
+
 func TestListEntities_SimpleModeHasNoMatchPayload(t *testing.T) {
 	pool := openTestDB(t)
 	f := newVersionFixture(t, pool)
