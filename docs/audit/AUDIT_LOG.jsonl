@@ -1708,3 +1708,26 @@
 {"ts": "2026-06-14T14:16:06Z", "event": "in_progress_update", "cycle": 20, "phase": "SESSION", "retry": 0}
 {"ts": "2026-06-14T14:17:44Z", "event": "cycle_complete", "cycle": 20, "result": "DONE", "dps": 3, "adversary": {"blockers": 0, "majors": 1, "minors": 3, "notes": 3}, "scope_guard": "CLEAR", "verify_exit": 0, "migration_roundtrip": true, "live_smoke": "create world -> bible chapter sort_order 0 -> attach book -> world lists books; null-world books unaffected"}
 {"ts": "2026-06-14T14:17:44Z", "event": "in_progress_update", "cycle": 20, "phase": "COMMIT", "retry": 0}
+{"ts": "2026-06-14T14:18:32Z", "event": "in_progress_archived", "cycle": 20, "archived_to": "cycle-020-state.md"}
+{"ts": "2026-06-14T14:18:55Z", "event": "retro", "cycle": 20, "commit": "a934f458", "lesson": "hidden-anchor pattern: hiding the lore CHAPTER (is_bible) is insufficient — the auto-created CONTAINER book also needs an is_bible flag + exclusion from every book list/count, else it leaks as a visible junk book. Hide at BOTH levels."}
+{"ts": "2026-06-14T14:20:34Z", "event": "coordinator_next_cycle_emitted", "cycle": 21}
+{"ts":"2026-06-14T14:22:08Z","event":"startup_drift_check_inconclusive","cycle":21,"cd":"","rw":""}
+{"ts":"2026-06-14T14:22:08Z","event":"startup_verifier_complete","cycle":21,"steps":6}
+{"ts": "2026-06-14T14:22:27Z", "event": "in_progress_init", "cycle": 21, "title": "World container \u2014 FE"}
+{"ts": "2026-06-14T14:25:43Z", "event": "in_progress_update", "cycle": 21, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-06-14T14:30:00", "task": "creation-unblock", "cycle": 21, "phase": "design", "agent": "cycle-runner", "action": "escalated", "type": "design_gap", "evidence": "C21 (World container — FE) ESCALATED at DESIGN. C20 provisions a hidden world-bible book + sort_order-0 bible chapter but exposes NO FE-reachable handle: worldResponse (create/get/list) returns only book_count; the bible book has is_bible=true and is excluded from BOTH GET /v1/books (listBooksByLifecycle: AND b.is_bible=false) AND GET /v1/worlds/{id}/books (listWorldBooks: AND b.is_bible=false). C21's core acceptance (author lore against the world's bible chapter; glossary chapter_entity_links.chapter_id NOT NULL) needs the bible chapter_id which the FE cannot obtain. Resolving requires a forbidden book-service handler edit (brief: missing endpoint = finding, do NOT add BE). Gateway passthrough only forwards, cannot invent the field. No cycle-21 code written; clean tree. Suggested fix: one-line additive bible_book_id+bible_chapter_id on worldResponse (data already in the create txn, no schema/migration), then re-invoke /raid 21. ESCALATIONS.md + IN_PROGRESS/cycle-021-state.md updated."}
+{"ts":"2026-06-14T14:55:16Z","event":"startup_resume_detected","cycle":21,"state_file":"/d/Works/source/lore-weave-mvp/docs/raid/IN_PROGRESS/cycle-021-state.md"}
+{"ts":"2026-06-14T14:55:16Z","event":"startup_drift_check_inconclusive","cycle":21,"cd":"","rw":""}
+{"ts":"2026-06-14T14:55:16Z","event":"startup_verifier_complete","cycle":21,"steps":6}
+{"ts": "2026-06-14T14:55:28Z", "event": "in_progress_init", "cycle": 21, "title": "World container \u2014 FE"}
+{"ts": "2026-06-14T15:00:57Z", "event": "in_progress_update", "cycle": 21, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-06-14T15:01:57Z", "event": "in_progress_update", "cycle": 21, "phase": "PLAN", "retry": 0}
+{"ts": "2026-06-14T15:02:41Z", "event": "in_progress_update", "cycle": 21, "phase": "BUILD", "retry": 0}
+{"ts":"2026-06-14T15:13:59Z","event":"secret_scan_skipped","cycle":21,"dps":dps1,"reason":"gitleaks_not_installed"}
+{"ts": "2026-06-14T15:14:37Z", "event": "in_progress_update", "cycle": 21, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-06-14T15:14:47Z","event":"verify_cycle_21_failed","cycle":21}
+{"ts":"2026-06-14T15:15:23Z","event":"verify_cycle_21_passed","cycle":21}
+{"ts": "2026-06-14T15:20:21Z", "event": "in_progress_update", "cycle": 21, "phase": "REVIEW2", "retry": 0}
+{"ts": "2026-06-14T15:23:49Z", "event": "in_progress_update", "cycle": 21, "phase": "SESSION", "retry": 0}
+{"ts": "2026-06-14T15:24:30Z", "event": "cycle_done", "cycle": 21, "milestone": "M5", "files": 22, "dps": 2, "tests": {"vitest": 9}, "adversary": {"blockers": 0, "majors": 0, "minors": 1, "notes": 2}, "scope_guard": "CLEAR", "verify_exit": 0, "playwright": true, "gateway_passthrough": true, "step_a_commit": "5fe9eb33", "reflection": "Step A (book-service read field) was the real unblock: C20 provisioned the bible book+chapter but exposed no handle, so the cold-start C21 had escalated as design_gap. The fix was purely additive (two correlated subselects on get/list, create already had the ids). The FE lore-anchoring path is NOT the knowledge createEntity (project-scoped, no chapter) but the GLOSSARY create-entity-then-chapter-link pair — only the chapter-link writes the NOT-NULL chapter_entity_links.chapter_id. Confirmed book-service /internal chapters endpoint does NOT filter is_bible, so the glossary link-validation finds the bible chapter. Graph reuse was zero-cost (ProjectGraphView already takes projectId+bookId, read-only)."}
+{"ts": "2026-06-14T15:24:55Z", "event": "in_progress_update", "cycle": 21, "phase": "COMMIT", "retry": 0}

@@ -1,0 +1,46 @@
+{
+  "page": {
+    "title": "Worlds",
+    "subtitle": "Build a world from its lore — characters, places, factions — with no manuscript required.",
+    "loading": "Loading worlds…"
+  },
+  "empty": {
+    "title": "No worlds yet",
+    "description": "Create your first world to start authoring lore — no chapters needed."
+  },
+  "card": {
+    "books": "{{count}} books"
+  },
+  "create": {
+    "cta": "New world",
+    "title": "New world",
+    "description": "Name your world. You can author its lore right away.",
+    "nameLabel": "World name",
+    "namePlaceholder": "e.g. The Shattered Realms",
+    "descLabel": "Description (optional)",
+    "cancel": "Cancel",
+    "submit": "Create world",
+    "creating": "Creating…",
+    "error": "Failed to create world"
+  },
+  "workspace": {
+    "back": "All worlds",
+    "loading": "Loading world…",
+    "error": "World not found."
+  },
+  "lore": {
+    "title": "World bible",
+    "extractionOptional": "Author lore directly — characters, places, factions. No manuscript needed. Extraction from prose is optional; this world bible is the anchor.",
+    "anchorUnavailable": "This world has no bible anchor yet — lore authoring is unavailable.",
+    "kindLabel": "Kind",
+    "kindPlaceholder": "Choose a kind…",
+    "add": "Add lore",
+    "adding": "Adding…",
+    "added": "Lore added to your world bible.",
+    "error": "Failed to add lore"
+  },
+  "graph": {
+    "title": "World graph",
+    "subtitle": "A read-only view of how your world’s lore connects."
+  }
+}

@@ -70,3 +70,6 @@
 {"ts":"2026-06-14T13:22:46Z","cycle":"19","phase":"pre_cycle","event":"quota_check","recommendation":"PROCEED","estimated_remaining":2000000,"typical_cycle":450000,"recent_burn":0}
 {"ts":"2026-06-14T13:52:50Z","cycle":"20","phase":"pre_cycle","event":"quota_check","recommendation":"PROCEED","estimated_remaining":2000000,"typical_cycle":450000,"recent_burn":0}
 {"ts":"2026-06-14T13:54:23Z","cycle":"20","phase":"pre_cycle","event":"quota_check","recommendation":"PROCEED","estimated_remaining":2000000,"typical_cycle":450000,"recent_burn":0}
+{"ts":"2026-06-14T14:20:34Z","cycle":"21","phase":"pre_cycle","event":"quota_check","recommendation":"PROCEED","estimated_remaining":2000000,"typical_cycle":450000,"recent_burn":0}
+{"ts":"2026-06-14T14:22:31Z","cycle":"21","phase":"pre_cycle","event":"quota_check","recommendation":"PROCEED","estimated_remaining":2000000,"typical_cycle":450000,"recent_burn":0}
+{"ts":"2026-06-14T14:55:34Z","cycle":"21","phase":"pre_cycle","event":"quota_check","recommendation":"PROCEED","estimated_remaining":2000000,"typical_cycle":450000,"recent_burn":0}

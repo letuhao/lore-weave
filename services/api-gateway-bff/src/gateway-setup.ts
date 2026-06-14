@@ -58,6 +58,16 @@ export function configureGatewayApp(
     selfHandleResponse: false,
     pathFilter: (pathname: string) => pathname.startsWith('/v1/books'),
   });
+  // C21 — thin `/v1/worlds*` passthrough to book-service (worlds + bible
+  // provisioning live in book-service, same target as `/v1/books`). This is a
+  // gateway-invariant enabling passthrough only — NO world business logic in the
+  // gateway; it just forwards. Mirrors bookProxy exactly.
+  const worldsProxy = createProxyMiddleware({
+    target: urls.bookUrl,
+    changeOrigin: true,
+    selfHandleResponse: false,
+    pathFilter: (pathname: string) => pathname.startsWith('/v1/worlds'),
+  });
   const sharingProxy = createProxyMiddleware({
     target: urls.sharingUrl,
     changeOrigin: true,
@@ -260,6 +270,11 @@ export function configureGatewayApp(
     res: Response,
     next: NextFunction,
   ) => void;
+  const worldsProxyFn = worldsProxy as unknown as (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => void;
   const sharingProxyFn = sharingProxy as unknown as (
     req: Request,
     res: Response,
@@ -351,6 +366,9 @@ export function configureGatewayApp(
     }
     if (req.path.startsWith('/v1/books')) {
       return bookProxyFn(req, res, next);
+    }
+    if (req.path.startsWith('/v1/worlds')) {
+      return worldsProxyFn(req, res, next);
     }
     if (req.path.startsWith('/v1/sharing')) {
       return sharingProxyFn(req, res, next);

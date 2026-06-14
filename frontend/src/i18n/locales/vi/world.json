@@ -1,0 +1,46 @@
+{
+  "page": {
+    "title": "Thế giới",
+    "subtitle": "Xây dựng thế giới từ tri thức của nó — nhân vật, địa điểm, phe phái — không cần bản thảo.",
+    "loading": "Đang tải thế giới…"
+  },
+  "empty": {
+    "title": "Chưa có thế giới nào",
+    "description": "Tạo thế giới đầu tiên để bắt đầu soạn tri thức — không cần chương nào."
+  },
+  "card": {
+    "books": "{{count}} sách"
+  },
+  "create": {
+    "cta": "Thế giới mới",
+    "title": "Thế giới mới",
+    "description": "Đặt tên thế giới. Bạn có thể soạn tri thức ngay.",
+    "nameLabel": "Tên thế giới",
+    "namePlaceholder": "vd. Vương Quốc Tan Vỡ",
+    "descLabel": "Mô tả (tùy chọn)",
+    "cancel": "Hủy",
+    "submit": "Tạo thế giới",
+    "creating": "Đang tạo…",
+    "error": "Không tạo được thế giới"
+  },
+  "workspace": {
+    "back": "Tất cả thế giới",
+    "loading": "Đang tải thế giới…",
+    "error": "Không tìm thấy thế giới."
+  },
+  "lore": {
+    "title": "Cẩm nang thế giới",
+    "extractionOptional": "Soạn tri thức trực tiếp — nhân vật, địa điểm, phe phái. Không cần bản thảo. Trích xuất từ văn bản là tùy chọn; cẩm nang thế giới này là điểm neo.",
+    "anchorUnavailable": "Thế giới này chưa có điểm neo cẩm nang — chưa thể soạn tri thức.",
+    "kindLabel": "Loại",
+    "kindPlaceholder": "Chọn một loại…",
+    "add": "Thêm tri thức",
+    "adding": "Đang thêm…",
+    "added": "Đã thêm tri thức vào cẩm nang thế giới.",
+    "error": "Không thêm được tri thức"
+  },
+  "graph": {
+    "title": "Đồ thị thế giới",
+    "subtitle": "Xem chỉ-đọc cách tri thức trong thế giới của bạn kết nối."
+  }
+}

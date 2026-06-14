@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import {
   BookOpen,
   Brain,
+  Globe2,
   MessageCircle,
   Search,
   Factory,
@@ -36,6 +37,9 @@ const mainNav: NavItem[] = [
   // `startsWith(to + '/')` match keeps the entry active across all
   // tab sub-routes. The /knowledge path itself redirects to /projects.
   { to: '/knowledge', icon: Brain, labelKey: 'nav.knowledge', auth: true },
+  // C21 — prose-less worldbuilding entry. `/worlds` (workspace sub-routes keep
+  // the entry active via the startsWith match).
+  { to: '/worlds', icon: Globe2, labelKey: 'nav.worlds', auth: true },
   { to: '/campaigns', icon: Factory, labelKey: 'nav.campaigns', auth: true },
   { to: '/browse', icon: Search, labelKey: 'nav.browse' },
 ];

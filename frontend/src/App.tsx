@@ -37,6 +37,8 @@ import { HomePage } from '@/pages/HomePage';
 import { UsagePage } from '@/pages/UsagePage';
 import { KnowledgePage } from '@/pages/KnowledgePage';
 import { ProjectDetailShell } from '@/pages/ProjectDetailShell';
+import { WorldsPage } from '@/features/world/pages/WorldsPage';
+import { WorldWorkspacePage } from '@/features/world/pages/WorldWorkspacePage';
 import { CampaignsPage } from '@/features/campaigns/pages/CampaignsPage';
 import { CreateCampaignWizardPage } from '@/features/campaigns/pages/CreateCampaignWizardPage';
 import { CampaignDetailPage } from '@/features/campaigns/pages/CampaignDetailPage';
@@ -141,6 +143,11 @@ export function App() {
               element={<ProjectDetailShell />}
             />
             <Route path="/knowledge/:tab" element={<KnowledgePage />} />
+
+            {/* C21 — World container (prose-less worldbuilding). HOME browser +
+                workspace shell; no manuscript. */}
+            <Route path="/worlds" element={<WorldsPage />} />
+            <Route path="/worlds/:worldId" element={<WorldWorkspacePage />} />
 
             {/* Auto-Draft Factory (campaigns) */}
             <Route path="/campaigns" element={<CampaignsPage />} />
