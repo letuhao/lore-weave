@@ -291,5 +291,6 @@ services/meta-worker/capovr
 services/meta-worker/reloc
 services/meta-worker/rsssoak
 services/meta-worker/connpool
+services/meta-worker/dlprobe
 services/migration-orchestrator/cdrill
 tests/perf/roleplay-load/rpload
