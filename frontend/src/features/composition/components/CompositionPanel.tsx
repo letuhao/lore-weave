@@ -24,6 +24,10 @@ import { TimelineView } from './TimelineView';
 import { CharacterArcView } from './CharacterArcView';
 import { WorldMap } from './WorldMap';
 import { GroundingPanel } from './GroundingPanel';
+import { DivergenceWizardButton } from './DivergenceWizardButton';
+import { DerivativeBanner } from './DerivativeBanner';
+import { DerivativeGroundingLayers } from './DerivativeGroundingLayers';
+import { useDerivativeContext } from '../hooks/useDerivativeContext';
 import { CanonRulesPanel } from './CanonRulesPanel';
 import { ThreadsPanel } from './ThreadsPanel';
 import { QualityPanel } from './QualityPanel';
@@ -63,12 +67,34 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
   // can pre-fill it (then switch to the compose tab).
   const [composeGuide, setComposeGuide] = useState('');
 
+  // C24 (dị bản M0) — when the wizard spawns a derivative, the studio switches to
+  // edit THAT Work so the writer lands in the dị bản (banner + 2-layer badges). The
+  // derivative is a fresh candidate on the same book; rather than guess which
+  // candidate it is from the resolution, we hold the just-spawned Work explicitly.
+  // NOTE: this override is intentionally NOT reset on chapter change — it's safe
+  // because the panel is mounted with `key={bookId}` (ChapterEditorPage), so it
+  // remounts (clearing this state) whenever the book changes; a derivative is
+  // per-book so it must persist across chapter navigation within the same book.
+  const [activeWorkOverride, setActiveWorkOverride] = useState<Work | null>(null);
   const res = resolution.data;
   // 'found' → the marked Work; 'candidates' (rare multi-marked) → the first,
-  // so the panel doesn't loop on "set up" forever.
+  // so the panel doesn't loop on "set up" forever. A just-spawned dị bản overrides.
   const work: Work | null =
-    res?.status === 'found' ? res.work : res?.status === 'candidates' ? (res.candidates[0] ?? null) : null;
+    activeWorkOverride ??
+    (res?.status === 'found' ? res.work : res?.status === 'candidates' ? (res.candidates[0] ?? null) : null);
   const projectId = work?.project_id;
+
+  // C24 (dị bản M0) — derivative-context controller. Surfaces the dị bản banner +
+  // the 2-layer (INHERITED/OVERRIDDEN) grounding badges when the open Work is a
+  // derivative (source_work_id set). No-ops for a greenfield Work.
+  const derivativeCtx = useDerivativeContext(work);
+  // EXPLICIT handler from the wizard's onDerived (NOT a useEffect-for-events): switch
+  // the studio to the new derivative + refresh the resolution cache so a later
+  // re-resolve also sees it.
+  const onDerivedWork = (derivative: Work) => {
+    setActiveWorkOverride(derivative);
+    qc.invalidateQueries({ queryKey: ['composition', 'work', bookId] });
+  };
 
   const scenes = useChapterScenes(projectId, chapterId, token);
   const createScene = useCreateScene(projectId, token);
@@ -173,6 +199,9 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
 
   return (
     <div className="flex h-full flex-col">
+      {/* C24 (dị bản M0) — persistent derivative-context banner (no-ops unless this
+          Work is a derivative). Tells the writer they're adapting from read-only canon. */}
+      <DerivativeBanner ctx={derivativeCtx} />
       {/* scene + model selectors */}
       <div className="flex flex-wrap items-center gap-2 border-b border-neutral-200 p-2 text-sm dark:border-neutral-700">
         <select
@@ -247,6 +276,13 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
             ))}
           </select>
         )}
+        {/* C24 (dị bản M0) — spawn a what-if derivative branching from this canon.
+            The wizard mints a fresh Work + its own knowledge project (delta), persists
+            the divergence_spec + entity overrides, then routes the writer into the new
+            dị bản studio (re-resolved via the book's work query). */}
+        <div className="ml-auto">
+          <DivergenceWizardButton sourceWork={work} token={token} onDerived={onDerivedWork} />
+        </div>
       </div>
 
       {/* C15 (WG-2) — positive readiness cue. Nothing in the writer flow told the
@@ -398,6 +434,17 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
           />
         </div>
         <div className={tab === 'grounding' ? '' : 'hidden'}>
+          {/* C24 (dị bản M0) — on a derivative Work, decorate the grounding tab with
+              the 2-layer (INHERITED/OVERRIDDEN) canon view + read-only reference
+              spine. No-ops on a greenfield Work. */}
+          {derivativeCtx.isDerivative && derivativeCtx.sourceProjectId && (
+            <DerivativeGroundingLayers
+              ctx={derivativeCtx}
+              sourceProjectId={derivativeCtx.sourceProjectId}
+              bookId={bookId}
+              token={token}
+            />
+          )}
           <GroundingPanel projectId={work.project_id} sceneId={effectiveScene} token={token} />
         </div>
         <div className={tab === 'canon' ? '' : 'hidden'}>

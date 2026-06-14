@@ -1772,3 +1772,28 @@
 {"ts": "2026-06-14T16:26:02Z", "event": "in_progress_update", "cycle": 23, "phase": "SESSION", "retry": 0}
 {"ts":"2026-06-14T16:27:00Z","event":"cycle_done","cycle":23,"title":"Derivative schema + API (composition)","layer":"BE","dps_count":2,"adversary":{"blockers":0,"majors":0,"minors":1,"notes":3},"scope_guard":"CLEAR","post_review":"CLEAR","verify_exit_code":0,"migration_roundtrip":true,"guard_enforced":true,"c16_greenfield_intact":true,"tests":{"unit":447,"integration":66,"new_c23":11},"evidence_token":"migration round-trip clean + null project_id rejected","notable":"Conditional CHECK chk_derivative_project_required reconciles C23 GUARD with C16 nullable project_id; derivative gets fresh project_id (G2); COW spec-only no chapter clone; live round-trip on 165 rows clean"}
 {"ts": "2026-06-14T16:26:45Z", "event": "in_progress_update", "cycle": 23, "phase": "COMMIT", "retry": 0}
+{"ts": "2026-06-14T16:28:37Z", "event": "in_progress_archived", "cycle": 23, "archived_to": "cycle-023-state.md"}
+{"ts":"2026-06-14T16:30:00Z","event":"retro","cycle":23,"lesson":"Cross-cycle schema GUARD reconciliation: when a new cycle needs a NOT-NULL invariant on a column a prior cycle deliberately made NULLABLE (C16 lazy greenfield works), use a CONDITIONAL CHECK keyed on the discriminator (source_work_id IS NULL OR project_id IS NOT NULL) — NOT a blanket SET NOT NULL. The blanket form (a) regresses the prior path and (b) fails the migration on existing null rows (163 live). Prove it both ways on the LIVE DB: derivative-null rejected AND greenfield-null still accepted (insert-and-rollback so live data stays clean). The idempotent in-DDL house migration has no down file, so add a separate *_DOWN_SQL constant (cf. C20 WorldsDownSQL) purely for the up->down->up round-trip test."}
+{"ts": "2026-06-14T16:30:40Z", "event": "coordinator_next_cycle_emitted", "cycle": 24}
+{"ts":"2026-06-14T16:32:05Z","event":"startup_drift_check_inconclusive","cycle":24,"cd":"","rw":""}
+{"ts":"2026-06-14T16:32:05Z","event":"startup_verifier_complete","cycle":24,"steps":6}
+{"ts": "2026-06-14T16:32:19Z", "event": "in_progress_init", "cycle": 24, "title": "Divergence wizard + derivative studio (FE)"}
+{"ts": "2026-06-14T16:38:06Z", "event": "in_progress_update", "cycle": 24, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-06-14T16:39:38Z", "event": "in_progress_update", "cycle": 24, "phase": "REVIEW1", "retry": 0}
+{"ts": "2026-06-14T16:39:45Z", "event": "in_progress_update", "cycle": 24, "phase": "PLAN", "retry": 0}
+{"ts": "2026-06-14T16:40:45Z", "event": "in_progress_update", "cycle": 24, "phase": "BUILD", "retry": 0}
+{"ts":"2026-06-14T16:54:03Z","event":"secret_scan_skipped","cycle":24,"dps":DPS1,"reason":"gitleaks_not_installed"}
+{"ts":"2026-06-14T16:54:03Z","event":"secret_scan_skipped","cycle":24,"dps":DPS2,"reason":"gitleaks_not_installed"}
+{"ts": "2026-06-14T16:54:10Z", "event": "in_progress_update", "cycle": 24, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-06-14T16:59:49Z","event":"verify_cycle_24_failed","cycle":24}
+{"ts":"2026-06-14T17:00:10Z","event":"verify_cycle_24_failed","cycle":24}
+{"ts":"2026-06-14T17:00:32Z","event":"verify_cycle_24_failed","cycle":24}
+{"ts":"2026-06-14T17:00:55Z","event":"verify_cycle_24_passed","cycle":24}
+{"ts": "2026-06-14T17:12:04Z", "event": "in_progress_update", "cycle": 24, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-06-14T17:12:16Z","event":"cycle_escalated","cycle":24,"type":"design_gap","phase":"VERIFY","summary":"C24 FE complete+green but genderbend acceptance smoke blocked by C23 BE bug: knowledge create_or_get dedupes book project per (user,book) -> derive reuses source project_id -> uq_composition_work_project 500. Fix is upstream C23/knowledge; C24 forbidden to edit C23."}
+{"ts":"2026-06-14T17:31:46Z","event":"verify_cycle_24_passed","cycle":24}
+{"ts": "2026-06-14T17:32:43Z", "event": "in_progress_update", "cycle": 24, "phase": "VERIFY", "retry": 0}
+{"ts": "2026-06-14T17:38:14Z", "event": "in_progress_update", "cycle": 24, "phase": "REVIEW2", "retry": 0}
+{"ts":"2026-06-14T17:41:56Z","event":"verify_cycle_24_passed","cycle":24}
+{"ts": "2026-06-14T17:43:49Z", "event": "in_progress_update", "cycle": 24, "phase": "SESSION", "retry": 0}
+{"ts":"2026-06-15T00:42:00Z","event":"cycle_done","cycle":24,"result":"DONE","step_a_commit":"f05b851d","files":18,"tests":{"vitest":19,"verify_exit":0},"playwright":"genderbend dị bản spawned + studio badges shown","adversary":{"blockers":0,"majors":0,"minors":2,"notes":3},"scope_guard":"CLEAR","note":"dị bản M1 FE on top of Step-A BE fix (force_new/is_derivative); derive 201 with fresh distinct project (G2)"}

@@ -4,7 +4,7 @@
 import { apiBase, apiJson } from '../../api';
 import type {
   AutoGeneration, CanonRule, ChapterGeneration, CommitDecomposePayload, CorrectionBody, CorrectionStats,
-  DecomposePreview, GenerationJob, Grounding, NarrativeThread, OutlineNode, PublishGate, SceneLink, SceneLinkKind, StructureTemplate, Work, WorkResolution,
+  DecomposePreview, DeriveBody, GenerationJob, Grounding, NarrativeThread, OutlineNode, PublishGate, SceneLink, SceneLinkKind, StructureTemplate, Work, WorkResolution,
 } from './types';
 
 // A3 decompose preview request (cycle 13).
@@ -96,6 +96,18 @@ export const compositionApi = {
   },
   createWork(bookId: string, token: string): Promise<Work> {
     return apiJson<Work>(`${BASE}/books/${bookId}/work`, { method: 'POST', token });
+  },
+  // C24 (dị bản M0) — spawn a DERIVATIVE Work that diverges from a SOURCE Work at
+  // a chapter-level `branch_point` (G3). The BE (C23) mints the derivative its OWN
+  // fresh knowledge project_id (G2 — its own Neo4j delta partition), persists the
+  // divergence_spec + entity_override[], and returns the new (derivative) Work —
+  // which carries `source_work_id` + `branch_point` so the studio banner (DPS2)
+  // can render the dị bản context. NO chapter clone (COW; reference spine stays
+  // read-only). The path keys on the SOURCE Work's project_id (C23 route).
+  deriveWork(sourceProjectId: string, body: DeriveBody, token: string): Promise<Work> {
+    return apiJson<Work>(`${BASE}/works/${sourceProjectId}/derive`, {
+      method: 'POST', body: JSON.stringify(body), token,
+    });
   },
   getOutline(projectId: string, token: string, includeArchived = false): Promise<{ nodes: OutlineNode[]; scene_links: SceneLink[] }> {
     const qs = includeArchived ? '?include_archived=true' : '';
