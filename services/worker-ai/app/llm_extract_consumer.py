@@ -25,6 +25,7 @@ resume_state so a redelivery finds no row.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from uuid import UUID
@@ -196,12 +197,38 @@ async def _persist_chunk(pool, knowledge_client, ej_id, rs: dict) -> None:
 _INFLIGHT_KEY = {dx.TRIO: "trio_jobs", dx.RECOVERY: "recovery_jobs", dx.FILTER: "filter_jobs"}
 
 
+def _concurrency_level(rs: dict) -> int | None:
+    """C12 (D-C12-CONCURRENCY-DECOUPLED) — the job's cap on parallel in-flight LLM
+    submits for THIS chunk's fan-outs (trio / recovery / filter). Seeded onto rs by
+    `_start_decoupled_chunk` from `job.concurrency_level`. None / <1 / a legacy resume
+    blob without the key ⇒ unbounded (back-compat — the prior sequential behaviour)."""
+    cl = rs.get("concurrency_level")
+    if isinstance(cl, int) and cl >= 1:
+        return cl
+    return None
+
+
 async def _submit_map(llm_client: LLMClient, rs: dict, submits: dict[str, dict]) -> dict[str, str]:
-    jobs: dict[str, str] = {}
-    for key, kwargs in submits.items():
-        sub = await llm_client.submit_job(user_id=rs["user_id"], **kwargs)
-        jobs[key] = str(sub.job_id)
-    return jobs
+    """Submit a fan-out of provider jobs ({key: submit_kwargs}) and return
+    {key: provider_job_id}. C12 — bound the number of concurrent in-flight submits
+    to the job's `concurrency_level` (an asyncio.Semaphore over the gather), mirroring
+    the SDK sync-gather cap so the decoupled path honours the same knob. None ⇒ no cap
+    (a plain gather — every submit in flight at once, the prior unbounded behaviour)."""
+    user_id = rs["user_id"]
+    cap = _concurrency_level(rs)
+    sem = asyncio.Semaphore(cap) if cap is not None else None
+
+    async def _one(kwargs: dict) -> str:
+        if sem is not None:
+            async with sem:
+                sub = await llm_client.submit_job(user_id=user_id, **kwargs)
+        else:
+            sub = await llm_client.submit_job(user_id=user_id, **kwargs)
+        return str(sub.job_id)
+
+    keys = list(submits.keys())
+    job_ids = await asyncio.gather(*(_one(submits[k]) for k in keys))
+    return dict(zip(keys, job_ids))
 
 
 async def _dispatch_next(llm_client: LLMClient, rs: dict) -> tuple[dict, list[str] | None]:
@@ -279,10 +306,12 @@ async def _resume(pool, knowledge_client, llm_client: LLMClient, owner_user_id, 
                     fresh = dx.fold_entity_job(fresh, job)
                     if fresh["stage"] == dx.TRIO:
                         submits = dx.assemble_trio_submits(fresh)
-                        trio_jobs: dict[str, str] = {}
-                        for op, kwargs in submits.items():
-                            sub = await llm_client.submit_job(user_id=fresh["user_id"], **kwargs)
-                            trio_jobs[op] = str(sub.job_id)
+                        # C12 (D-C12-CONCURRENCY-DECOUPLED) — bound concurrent in-flight
+                        # trio submits to the job's concurrency_level (via _submit_map's
+                        # Semaphore), exactly like the recovery/filter fan-outs. None ⇒
+                        # unbounded (back-compat). The ops set is UNCHANGED — only HOW
+                        # MANY submit at once is capped; begin_trio records the same ids.
+                        trio_jobs = await _submit_map(llm_client, fresh, submits)
                         fresh = dx.begin_trio(fresh, trio_jobs)
                         await _persist_inflight(conn, ej_id, list(trio_jobs.values()), fresh)
                     elif fresh["stage"] in (dx.RECOVERY, dx.FILTER):

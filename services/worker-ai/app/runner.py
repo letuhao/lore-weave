@@ -1447,6 +1447,11 @@ async def _start_decoupled_chunk(
         user_id=str(job.user_id), project_id=str(job.project_id),
         model_source="user_model", model_ref=str(eff_model_ref),
         prompt_overrides=run_snapshot.prompts or {},
+        # C12 (D-C12-CONCURRENCY-DECOUPLED) — carry the job's cap on parallel
+        # LLM calls into the decoupled state so the consumer bounds the trio /
+        # recovery / filter submit fan-outs (an asyncio.Semaphore in
+        # _submit_map). None ⇒ unbounded (back-compat with the sync gather).
+        concurrency_level=job.concurrency_level,
         campaign_id=(str(job.campaign_id) if job.campaign_id else None),
         billing_user_id=(str(job.billing_user_id) if job.billing_user_id else None),
         # D-WX-RUN-SAMPLE-DECOUPLE — the project's raw-retention opt-in, seeded so

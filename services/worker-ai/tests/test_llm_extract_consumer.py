@@ -12,11 +12,12 @@ test_decoupled_extract; here we lock the *orchestration* the fixes introduce):
   across the knowledge HTTP call).
 """
 
+import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 from app import decoupled_extract as dx
-from app.llm_extract_consumer import _persist_chunk, _resume
+from app.llm_extract_consumer import _persist_chunk, _resume, _submit_map
 
 USER = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 PROJ = "99999999-9999-9999-9999-999999999999"
@@ -325,6 +326,109 @@ async def test_entity_fold_under_lock_submits_trio(monkeypatch):
     assert any("resume_state=$3" in s for s, _ in conn.executed)  # in-flight persisted
     assert all(conn.executed_in_tx)                     # under the lock
     kc.persist_pass2.assert_not_awaited()               # not finalized (TRIO not complete)
+
+
+# ── D-C12-CONCURRENCY-DECOUPLED — concurrency_level bounds the submit fan-out ─────
+# C12's concurrency_level capped the SDK *sync* gather Semaphore but NOT the decoupled
+# trio submit fan-out (fire-and-forget, no gather). These lock that the decoupled path
+# now honours the same knob: _submit_map gates concurrent in-flight submits to N.
+
+class _ConcurrencyRecorder:
+    """A fake submit_job that records the peak number of submits in flight at once.
+    Each call enters, bumps the live counter, yields the loop so a bounded gather can
+    interleave (proving the Semaphore actually limits overlap), then exits."""
+
+    def __init__(self):
+        self.live = 0
+        self.max_live = 0
+        self.total = 0
+        self._n = 0
+
+    async def __call__(self, *, user_id, **kwargs):
+        self.live += 1
+        self.total += 1
+        self.max_live = max(self.max_live, self.live)
+        try:
+            # yield twice so all admitted coros pile up before any releases — without
+            # a Semaphore every coro would be admitted ⇒ max_live == fan-out size.
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
+        finally:
+            self.live -= 1
+        self._n += 1
+        return SimpleNamespace(job_id=f"t{self._n}")
+
+
+async def test_submit_map_bounds_inflight_to_concurrency_level():
+    """_submit_map with concurrency_level=2 over a 5-way fan-out never runs >2 submits
+    concurrently, yet submits all 5 (a precise wiring/spy assertion on the bound)."""
+    rec = _ConcurrencyRecorder()
+    llm = AsyncMock()
+    llm.submit_job = rec
+    rs = {"user_id": USER, "concurrency_level": 2}
+    submits = {f"k{i}": {"operation": "chat"} for i in range(5)}
+
+    jobs = await _submit_map(llm, rs, submits)
+
+    assert rec.total == 5                       # all 5 submitted
+    assert len(jobs) == 5                        # all mapped key→job_id
+    assert rec.max_live <= 2                      # never more than N in flight at once
+    assert rec.max_live == 2                      # AND the cap is actually saturated
+
+
+async def test_submit_map_unbounded_when_concurrency_unset():
+    """Back-compat: no concurrency_level ⇒ unbounded — the full fan-out runs in flight
+    at once (max_live == fan-out size), exactly the prior behaviour."""
+    rec = _ConcurrencyRecorder()
+    llm = AsyncMock()
+    llm.submit_job = rec
+    rs = {"user_id": USER}  # NO concurrency_level key (legacy / synthetic resume blob)
+    submits = {f"k{i}": {"operation": "chat"} for i in range(4)}
+
+    jobs = await _submit_map(llm, rs, submits)
+
+    assert rec.total == 4 and len(jobs) == 4
+    assert rec.max_live == 4                      # all 4 concurrent — no cap applied
+
+
+async def test_submit_map_treats_zero_and_none_as_unbounded():
+    """concurrency_level of 0 / None / a negative is invalid as a cap ⇒ unbounded."""
+    for bad in (0, None, -3):
+        rec = _ConcurrencyRecorder()
+        llm = AsyncMock()
+        llm.submit_job = rec
+        rs = {"user_id": USER, "concurrency_level": bad}
+        submits = {f"k{i}": {"operation": "chat"} for i in range(3)}
+        await _submit_map(llm, rs, submits)
+        assert rec.max_live == 3, f"concurrency_level={bad!r} should be unbounded"
+
+
+async def test_entity_fold_trio_submit_respects_concurrency_level(monkeypatch):
+    """The live trio submit site (entity→trio under the row lock) routes through the
+    bounded _submit_map, so a 3-op trio with concurrency_level=1 serialises the submits
+    (max_live==1) while still submitting all three and recording all three job ids."""
+    rec = _ConcurrencyRecorder()
+    seed = {"stage": dx.ENTITY, "user_id": USER, "concurrency_level": 1}
+    conn = FakeConn([{"resume_state": dict(seed)}])  # claim matches
+    pool = FakePool(conn)
+    kc = AsyncMock()
+    llm = AsyncMock()
+    llm.get_job.return_value = SimpleNamespace(status="completed", result={})
+    llm.submit_job = rec
+    monkeypatch.setattr(dx, "fold_entity_job",
+                        lambda rs, job: {**rs, "stage": dx.TRIO})
+    monkeypatch.setattr(dx, "assemble_trio_submits",
+                        lambda rs: {"relation": {}, "event": {}, "fact": {}})
+    captured = {}
+    monkeypatch.setattr(dx, "begin_trio",
+                        lambda rs, tj: captured.update(trio_jobs=tj) or {**rs, "trio_jobs": tj})
+
+    await _resume(pool, kc, llm, None, "entity-job", EJ, dict(seed))
+
+    assert rec.total == 3                          # 3 trio jobs submitted
+    assert rec.max_live == 1                        # concurrency_level=1 → fully serial
+    assert len(captured["trio_jobs"]) == 3          # all 3 ids recorded (ops unchanged)
+    assert set(captured["trio_jobs"]) == {"relation", "event", "fact"}
 
 
 # ── /review-impl finding 3 — REAL fold (not monkeypatched) → finalize boundary ───
