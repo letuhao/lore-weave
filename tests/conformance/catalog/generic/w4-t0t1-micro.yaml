@@ -1,0 +1,7 @@
+id: w4-t0t1-micro
+description: "W4.2 / D-S12-T0T1-MICRO — kernel tick micro-bench, LIVE. The kernel append writes events ONLY; the outbox write is the Go emit path, so the two inner ticks live adjacently in one TX there. emit.MicroBench times each exec separately, REUSING the production SQL (insertEventsSQL for T0 incl the W3.4 content_sha256 hash; events.OutboxInsertSQL for T1). S7 discipline: a RELATIVE gate (T1.p50 < T0.p50 — a 2-col pointer INSERT must be cheaper than a full event append), no absolute µs. BITE: -micro-bite runs an artificially-expensive real outbox INSERT (200k generate_series rows) so T1 > T0 → the gate FIRES, proving it measures real per-call latency. scale rig shard-0."
+invariant: I-w4-t0t1-relative-gate
+kind: live-probe
+command: ["bash", "scripts/perf/w4-t0t1-micro.sh"]
+requires: ["scale-rig"]
+skip_when: []

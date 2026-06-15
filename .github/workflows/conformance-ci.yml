@@ -429,14 +429,20 @@ jobs:
           go test -C tests/workload-gen ./...
           # W3.4 migration manifest must still validate with the new 0013 entry.
           go test -C services/migration-orchestrator ./pkg/manifest/...
-      - name: shellcheck the scale + L1 + S14 + W1 + W2 + W3 scripts (smoke)
+      - name: build + vet + test the W4 perf Go tooling
+        run: |
+          # W4.1 USL no-N=1 recovery test (tests/perf/usl) + W4.2 emit MicroBench
+          # (already covered by the workload-gen `go test ./...` above).
+          go test -C tests/perf ./usl/...
+      - name: shellcheck the scale + L1 + S14 + W1 + W2 + W3 + W4 scripts (smoke)
         run: |
           for s in scale-rig shared-path roleplay-load soak multishard-dr \
                    l1-lifecycle l1-capacity l1-migration l1-relocate \
                    s14-disk s14-memory s14-connpool s14-deadlock \
                    w1-capacity w1-migrate w1-freeze w1-closure w1-provision \
                    w2-sustained w2-history w2-partition w2-rss-soak w2-disk-read \
-                   w3-generator w3-schema-derived w3-checksum; do
+                   w3-generator w3-schema-derived w3-checksum \
+                   w4-t0t1-micro w4-pgvector-recall; do
             bash -n "scripts/perf/${s}.sh"
           done
 
@@ -632,3 +638,15 @@ jobs:
             cargo test -p dp-kernel --test integration_event_store -- --nocapture
           rc=$?; set -e
           echo "w3-kernel-checksum rc=$rc"; [ "$rc" = 0 ] || exit 1
+      # ── W4 model/perf-refinement live sweep. w4-t0t1-micro rides the scale rig
+      #    shard-0; w4-pgvector-recall self-brings-up the foundation-dev PG (pgvector).
+      #    (The CPU-only W4 increments — USL no-N1, model bounds, reference projector —
+      #    run per-PR via go test / cargo test --workspace, not here.)
+      - name: W4.2 T0/T1 emit-path micro-bench + bite
+        run: |
+          set +e; bash scripts/perf/w4-t0t1-micro.sh; rc=$?; set -e
+          echo "w4-t0t1-micro rc=$rc (0=pass,2=notrun)"; [ "$rc" = 1 ] && exit 1 || exit 0
+      - name: W4.4 pgvector HNSW recall comparator + bite
+        run: |
+          set +e; bash scripts/perf/w4-pgvector-recall.sh; rc=$?; set -e
+          echo "w4-pgvector-recall rc=$rc"; [ "$rc" = 1 ] && exit 1 || exit 0

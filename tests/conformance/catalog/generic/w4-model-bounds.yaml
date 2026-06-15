@@ -1,0 +1,7 @@
+id: w4-model-bounds
+description: "W4.4 / D-S9-MODEL-SCOPE — the Stateright models at the RAISED bounds. All three use spawn_bfs() (exhaustive BFS to the bound), so raising a bound genuinely explores more (not sampling-thinned): lifecycle PENDING_CAP 2→3 + BUDGET 10→16 (19152 states), outbox N 2→3 + CRASH_BUDGET 1→2, fanout R 4→5. Non-vacuity preserved: each model's existing bite (broken_cas illegal-hop, leaky non-subscriber-leak, non_atomic/non_idempotent) still fires at the new bounds; the lifecycle coverage-sanity floor is raised 1_000→10_000 to also guard the bounds stay raised. CPU-only, CI-friendly (<1s)."
+invariant: I-w4-model-bounds-larger-space
+kind: rust-test
+command: ["bash", "-c", "cargo test -p foundation-model"]
+requires: ["cargo"]
+skip_when: []

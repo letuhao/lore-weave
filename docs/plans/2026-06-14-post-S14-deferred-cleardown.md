@@ -108,8 +108,12 @@ unverifiable drills are CI-verified on the Linux nightly, honest notrun locally)
 14. **W3.3 conformance hygiene** — ✅ D-META-FAKEDB-UUID-ACTOR (lifecycle UUID fixtures + CI lint w/ selftest bite) + D-CONFORMANCE-FLEET-MIGRATION / D-CONFORMANCE-LIVEPROBE-CONTAINER-CHURN (folded — W3 cases follow the established assume-up/notrun + requires-gated convention).
 > New Wave-3 deferred (tracked in SESSION_PATCH): D-W3-NPC-REL-PROJECTION-UPSERT, D-MANIFEST-0009-0012-UNREGISTERED, D-CHECKSUM-PROVISIONING-APPLY, D-CHECKSUM-EXPR-CROSS-LANG-DRIFT, D-CHECKSUM-PG-VERSION-STABILITY, D-LEDGER-PUBLISHED-RECON.
 
-### Wave 4 — Model / perf refinements (lowest urgency)
-15. D-S9-MODEL-SCOPE, D-S9-FANOUT-SUBSCRIBER-SOURCE, D-S12-T0T1-MICRO, D-S7-USL-NO-N1, D-S7-PGVECTOR-RECALL (+ optional FORTIO/WS-K6/LIVENESS-TLA/C2-REFERENCE-PROJECTOR as appetite allows).
+### Wave 4 — Model / perf refinements (lowest urgency) — ✅ COMPLETE (2026-06-15)
+> Max scope (user-chosen); `docs/plans/2026-06-15-wave4-model-perf-refinements.md` (plan /review-impl'd `c08dd790`). 5 build + 2 defer.
+15. ✅ D-S7-USL-NO-N1 (W4.1) · ✅ D-S12-T0T1-MICRO (W4.2) · ✅ D-S7-PGVECTOR-RECALL (W4.3) · ✅ D-S9-MODEL-SCOPE (W4.4) · ✅ **D-C2-REFERENCE-PROJECTOR** (W4.6, the optional reference projector — BUILT as a DDL+contract conformance oracle + reproduction reference, LOAD-BEARING /review-impl folded) · W4.7 conformance(`w4-*`)/CI.
+> Deferred-with-evidence: ⏸ D-S9-FANOUT-SUBSCRIBER-SOURCE (W4.5 — 026 is pure membership, already modeled parametrically) · ⏸ D-S11-LIVENESS-TLA (needs TLA+/TLC). New: D-PROJREF-COLUMN-DDL-DRIFT.
+
+> **▶ The entire post-S14 deferred-cleardown (Wave 1–4) is COMPLETE.** Wave 1 (production wiring), Wave 2 (spine hardening), Wave 3 (oracle/generator completeness + the upsert hardening), Wave 4 (model/perf refinements) all shipped with non-vacuity bites + conformance(`w1/w2/w3/w4-*`)/CI. Remaining deferred rows are go-live/infra/research items (none do-now).
 
 ---
 
