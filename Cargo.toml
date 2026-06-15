@@ -52,6 +52,13 @@ members = [
     # projection delta} per event type, asserted against the full projection
     # set's apply_one. The value-correctness oracle (regression-lock framing).
     "crates/projection-golden",
+    # W4.6 (2026-06-15) — D-C2-REFERENCE-PROJECTOR: the independent oracle the
+    # golden battery is NOT. A DDL+contract CONFORMANCE oracle (validates every
+    # production update against the schema: table/column/pk/kind/direct-field)
+    # for all 20 events, plus a from-design REPRODUCTION reference for the
+    # relationship + canon arms. Derived from the event contract + table DDL,
+    # never from crates/projections/* — so it can DISAGREE on a real bug.
+    "crates/projection-reference",
     # Cycle 27 — L5.I.3 full canon-guardrail implementation. Backwards-compat
     # with cycle-25 `dp-kernel::canon_cache::CanonGuardrail` trait (Q-L5-5
     # LOCKED). Production roleplay-service / world-service binds
