@@ -1,6 +1,7 @@
 import json
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 import asyncpg
 
 from ..deps import get_current_user, get_db
@@ -8,7 +9,10 @@ from ..config import DEFAULT_COMPACT_SYSTEM_PROMPT, DEFAULT_COMPACT_USER_PROMPT_
 from ..models import CreateJobPayload, TranslationJob, ChapterTranslation, ErrorResponse
 from ..broker import publish, publish_event
 from ..effective_settings import resolve_effective_settings
-from ..grant_deps import GrantLevel, require_book_grant, authorize_book, get_grant_client_dep
+from ..grant_deps import (
+    GrantLevel, require_book_grant, authorize_book, book_for_chapter, get_grant_client_dep,
+)
+from ..workers.segment_status import compute_segment_status
 
 router = APIRouter(prefix="/v1/translation", tags=["translation-jobs"])
 
@@ -43,6 +47,80 @@ async def create_job(
     # to tag their job to another user's campaign (which would inflate that
     # campaign's spend and trip its budget pause). Only the internal dispatch
     # endpoint (ownership pre-verified) supplies it.
+    #
+    # T2-M2 (review-impl LOW-3): block_index_filter/seed_version_id are part of the
+    # model so the dedicated retranslate-dirty endpoint can build the payload, but a
+    # general create-job must NOT smuggle a partial-retranslate scope (defense in
+    # depth beyond the worker's chapter-scoped seed load). Strip them here.
+    payload.block_index_filter = None
+    payload.seed_version_id = None
+    return await _resolve_and_create_job(db, book_id, payload, user_id)
+
+
+# ── T2-M2: dirty-only re-translate ────────────────────────────────────────────
+
+class RetranslateDirtyPayload(BaseModel):
+    target_language: str
+
+
+@router.post(
+    "/chapters/{chapter_id}/retranslate-dirty",
+    response_model=TranslationJob,
+    status_code=status.HTTP_201_CREATED,
+)
+async def retranslate_dirty(
+    chapter_id: UUID,
+    body: RetranslateDirtyPayload,
+    user_id: str = Depends(get_current_user),
+    gc=Depends(get_grant_client_dep),
+    db: asyncpg.Pool = Depends(get_db),
+):
+    """Re-translate ONLY the segments whose source changed since the last translation
+    (T2-M2). Computes the dirty block range, resolves the prior llm version as the
+    seed (its unchanged blocks are copied), and enqueues a single-chapter job scoped
+    to those blocks — the worker overlays the freshly-translated blocks onto the seed
+    and finalizes a normal new version (auto-promote never clobbers a human edit)."""
+    book_id = await book_for_chapter(db, chapter_id)
+    if book_id is None:
+        raise HTTPException(status_code=404, detail={"code": "TRANSL_NOT_FOUND", "message": "Chapter has no translations"})
+    await authorize_book(gc, book_id, UUID(user_id), GrantLevel.EDIT)
+
+    lang = body.target_language
+    items = await compute_segment_status(db, chapter_id, lang)
+    dirty = [it for it in items if it["dirty"]]
+    if not dirty:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "TRANSL_NO_DIRTY_SEGMENTS", "message": "No segments need re-translation"},
+        )
+    block_idx = sorted({
+        i for it in dirty
+        for i in range(it["start_block_index"], it["end_block_index"] + 1)
+    })
+
+    # Seed = the latest completed MACHINE version for this language (its unchanged
+    # blocks are copied). A human version is never the seed (we never re-derive over
+    # a human edit); if only a human version exists, the human can re-run a full
+    # translation or adopt explicitly.
+    seed = await db.fetchval(
+        "SELECT id FROM chapter_translations "
+        "WHERE chapter_id=$1 AND target_language=$2 AND status='completed' AND authored_by='llm' "
+        "ORDER BY version_num DESC LIMIT 1",
+        chapter_id, lang,
+    )
+    if not seed:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "TRANSL_NO_SEED_VERSION", "message": "No prior machine translation to patch; run a full translation first"},
+        )
+
+    payload = CreateJobPayload(
+        chapter_ids=[chapter_id],
+        target_language=lang,
+        force_retranslate=True,  # bypass the chapter-level skip-gate (we know it's dirty per-segment)
+        block_index_filter=block_idx,
+        seed_version_id=seed,
+    )
     return await _resolve_and_create_job(db, book_id, payload, user_id)
 
 
@@ -151,9 +229,10 @@ async def _resolve_and_create_job(
                    chapter_ids, total_chapters, pipeline_version,
                    qa_depth, max_qa_rounds, verifier_model_source, verifier_model_ref,
                    cold_start_mode, campaign_id,
-                   eval_judge_model_source, eval_judge_model_ref)
+                   eval_judge_model_source, eval_judge_model_ref,
+                   block_index_filter, seed_version_id)
                 VALUES ($1,$2,'pending',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,
-                        $17,$18,$19,$20,$21,$22,$23,$24)
+                        $17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
                 RETURNING *
                 """,
                 book_id, uid,
@@ -168,6 +247,7 @@ async def _resolve_and_create_job(
                 eff.get("verifier_model_source"), eff.get("verifier_model_ref"),
                 eff.get("cold_start_mode", "single_pass"), campaign_id,
                 eff.get("eval_judge_model_source"), eff.get("eval_judge_model_ref"),
+                payload.block_index_filter, payload.seed_version_id,
             )
 
             job_id = job_row["job_id"]
@@ -239,6 +319,9 @@ async def _resolve_and_create_job(
             "cold_start_mode":         eff.get("cold_start_mode", "single_pass"),
             # S4a: ride campaign_id through the message chain (job → chapter → job_meta).
             "campaign_id":             str(campaign_id) if campaign_id else None,
+            # T2-M2: dirty-only re-translate scope (None for whole-chapter jobs).
+            "block_index_filter":      payload.block_index_filter,
+            "seed_version_id":         str(payload.seed_version_id) if payload.seed_version_id else None,
         })
     await publish_event(user_id, {
         "event":    "job.created",

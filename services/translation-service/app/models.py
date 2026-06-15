@@ -118,6 +118,13 @@ class CreateJobPayload(BaseModel):
     # "ensure translated"). Set force_retranslate=true to re-translate regardless
     # (explicit user request — the 3rd valid re-translate trigger).
     force_retranslate: bool = False
+    # T2-M2 dirty-only re-translate: when set, the worker translates ONLY these
+    # block positions (chapter_blocks.block_index = position in the body content
+    # array) and copies every other block from `seed_version_id`, finalizing a
+    # normal new llm version. Single-chapter jobs only (the retranslate-dirty
+    # endpoint sets force_retranslate=true so the skip-gate doesn't drop the chapter).
+    block_index_filter: Optional[list[int]] = None
+    seed_version_id: Optional[UUID] = None
 
     @field_validator("pipeline_version")
     @classmethod

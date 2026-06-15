@@ -362,6 +362,15 @@ ALTER TABLE chapter_translations
 ALTER TABLE translation_jobs
   ADD COLUMN IF NOT EXISTS campaign_id UUID;
 
+-- T2-M2 dirty-only re-translate: a job scoped to specific block positions of a
+-- single chapter. block_index_filter = the dirty block positions; seed_version_id
+-- = the prior llm version whose blocks are copied for every NON-filtered position.
+-- NULL for ordinary whole-chapter jobs. Stored for queryability; the worker reads
+-- them off the per-chapter message (rides through coordinator fan-out).
+ALTER TABLE translation_jobs
+  ADD COLUMN IF NOT EXISTS block_index_filter INT[],
+  ADD COLUMN IF NOT EXISTS seed_version_id    UUID;
+
 -- GT: Glossary batch translation jobs (enhancement track)
 CREATE TABLE IF NOT EXISTS glossary_translation_jobs (
   job_id              UUID PRIMARY KEY DEFAULT uuidv7(),

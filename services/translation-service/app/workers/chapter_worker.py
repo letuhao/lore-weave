@@ -193,54 +193,74 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
             "chapter %s: using BLOCK pipeline (%d blocks, model=%s/%s)",
             chapter_id, len(blocks), msg.get("model_source"), msg.get("model_ref"),
         )
-        # LLM re-arch Phase 2b-T3a: event-driven decouple of the v2 BLOCK translate
-        # stage. Submit batch 0 + RELEASE; the llm_terminal_consumer drives every
-        # subsequent batch/retry off the terminal events and finalizes. (V3
-        # verify/correct decouple = 2b-T3b — v3 stays synchronous under this flag.)
-        if settings.translation_decouple_enabled and pipeline_version == "v2":
-            from .decoupled_block_translate import start_chapter_blocks as _decoupled_start_blocks
-            log.info("chapter %s: using DECOUPLED BLOCK pipeline (decouple flag on)", chapter_id)
-            submitted = await _decoupled_start_blocks(
+        block_filter = msg.get("block_index_filter")
+        if block_filter:
+            # T2-M2 dirty-only re-translate: translate ONLY the dirty block positions
+            # synchronously (v2 block path), then overlay onto the seed version's body.
+            # Decouple/v3 are skipped for this job kind to bound the blast radius — the
+            # whole point is a small, targeted patch, not the full multi-agent loop.
+            log.info(
+                "chapter %s: PARTIAL re-translate — %d dirty block(s), seed=%s",
+                chapter_id, len(block_filter), msg.get("seed_version_id"),
+            )
+            (translated_blocks, input_tokens, output_tokens, translated_count,
+             translatable_count, translated_texts) = await _partial_retranslate_blocks(
                 pool=pool, llm_client=llm_client,
-                chapter_translation_id=chapter_translation_id,
-                blocks=blocks, source_lang=source_lang, msg=msg,
-                context_window=context_window, chapter_text=chapter_text,
+                chapter_translation_id=chapter_translation_id, chapter_id=chapter_id,
+                blocks=blocks, block_filter=block_filter,
+                seed_version_id=msg.get("seed_version_id"),
+                source_lang=source_lang, msg=msg, context_window=context_window,
+                translate_blocks_fn=_translate_blocks,
             )
-            if submitted:
-                return  # released — the consumer finalizes on the terminal events
-            # No translatable batches → fall through to the synchronous path, which
-            # finalizes the original blocks as the empty-plan case does.
-        elif (
-            settings.translation_decouple_enabled
-            and pipeline_version == "v3"
-            # 2b-T3b — full V3 decouple: block translate → (mode-chain) verify/correct loop
-            # → defer-finalize. A two_pass cold-start (D-V3-DECOUPLE-COLDSTART-2PASS) is now
-            # decoupled too — decoupled_v3_block_start glossary-gates it internally (no
-            # glossary → pass-1 → namepair → pass-2 → verify; else normal v3_verify).
-        ):
-            from .v3.orchestrator import decoupled_v3_block_start
-            log.info("chapter %s: using DECOUPLED V3 pipeline (decouple flag on)", chapter_id)
-            submitted = await decoupled_v3_block_start(
-                pool=pool, llm_client=llm_client,
-                chapter_translation_id=chapter_translation_id,
-                blocks=blocks, source_lang=source_lang, msg=msg,
-                context_window=context_window, chapter_text=chapter_text,
+        else:
+            # LLM re-arch Phase 2b-T3a: event-driven decouple of the v2 BLOCK translate
+            # stage. Submit batch 0 + RELEASE; the llm_terminal_consumer drives every
+            # subsequent batch/retry off the terminal events and finalizes. (V3
+            # verify/correct decouple = 2b-T3b — v3 stays synchronous under this flag.)
+            if settings.translation_decouple_enabled and pipeline_version == "v2":
+                from .decoupled_block_translate import start_chapter_blocks as _decoupled_start_blocks
+                log.info("chapter %s: using DECOUPLED BLOCK pipeline (decouple flag on)", chapter_id)
+                submitted = await _decoupled_start_blocks(
+                    pool=pool, llm_client=llm_client,
+                    chapter_translation_id=chapter_translation_id,
+                    blocks=blocks, source_lang=source_lang, msg=msg,
+                    context_window=context_window, chapter_text=chapter_text,
+                )
+                if submitted:
+                    return  # released — the consumer finalizes on the terminal events
+                # No translatable batches → fall through to the synchronous path, which
+                # finalizes the original blocks as the empty-plan case does.
+            elif (
+                settings.translation_decouple_enabled
+                and pipeline_version == "v3"
+                # 2b-T3b — full V3 decouple: block translate → (mode-chain) verify/correct loop
+                # → defer-finalize. A two_pass cold-start (D-V3-DECOUPLE-COLDSTART-2PASS) is now
+                # decoupled too — decoupled_v3_block_start glossary-gates it internally (no
+                # glossary → pass-1 → namepair → pass-2 → verify; else normal v3_verify).
+            ):
+                from .v3.orchestrator import decoupled_v3_block_start
+                log.info("chapter %s: using DECOUPLED V3 pipeline (decouple flag on)", chapter_id)
+                submitted = await decoupled_v3_block_start(
+                    pool=pool, llm_client=llm_client,
+                    chapter_translation_id=chapter_translation_id,
+                    blocks=blocks, source_lang=source_lang, msg=msg,
+                    context_window=context_window, chapter_text=chapter_text,
+                )
+                if submitted:
+                    return  # released — the consumer chains block→v3_verify→finalize
+                # No translatable batches → fall through to the synchronous v3 path.
+            (translated_blocks, input_tokens, output_tokens, translated_count,
+             translatable_count, translated_texts) = (
+                await _translate_blocks(
+                    blocks=blocks,
+                    source_lang=source_lang,
+                    msg=msg,
+                    pool=pool,
+                    chapter_translation_id=chapter_translation_id,
+                    llm_client=llm_client,
+                    context_window=context_window,
+                )
             )
-            if submitted:
-                return  # released — the consumer chains block→v3_verify→finalize
-            # No translatable batches → fall through to the synchronous v3 path.
-        (translated_blocks, input_tokens, output_tokens, translated_count,
-         translatable_count, translated_texts) = (
-            await _translate_blocks(
-                blocks=blocks,
-                source_lang=source_lang,
-                msg=msg,
-                pool=pool,
-                chapter_translation_id=chapter_translation_id,
-                llm_client=llm_client,
-                context_window=context_window,
-            )
-        )
         # Total-failure guard: if the chapter HAD translatable blocks but none
         # were translated, the LLM step failed for every batch (e.g. the gateway
         # rejected the operation). The block pipeline falls each failed block
@@ -261,9 +281,19 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
         # TRANSLATED-ONLY text. `translated_texts` ({idx: text}) excludes blocks
         # that fell back to original on failure, so a failed block's source text
         # no longer pollutes the memo.
-        memo_text = "\n".join(
-            translated_texts[i] for i in sorted(translated_texts) if translated_texts[i]
-        )
+        if block_filter:
+            # T2-M2 (review-impl LOW-4): a partial re-translate only freshly translates
+            # the dirty blocks, so translated_texts covers a few blocks. The cross-chapter
+            # memo must reflect the WHOLE chapter (seed-copied + dirty), or the next
+            # chapter's context shrinks to just the edited region. Derive it from the
+            # full merged body.
+            memo_text = "\n".join(
+                t for t in (_block_plain_text(b) for b in translated_blocks) if t
+            )
+        else:
+            memo_text = "\n".join(
+                translated_texts[i] for i in sorted(translated_texts) if translated_texts[i]
+            )
         log.info(
             "chapter %s: block pipeline done — %d blocks, %d/%d translated, in=%s out=%s",
             chapter_id, len(translated_blocks), translated_count, translatable_count,
@@ -467,6 +497,111 @@ async def _record_segment_status(
                 )
     except Exception:  # noqa: BLE001 — segment status is best-effort telemetry
         log.warning("T2-M2: failed to record segment status (non-fatal)", exc_info=True)
+
+
+def _block_plain_text(node) -> str:
+    """Plain-text projection of a Tiptap block (mirrors versions._block_text) — used to
+    build the full-chapter memo from a partial re-translate's merged body."""
+    if not isinstance(node, dict):
+        return ""
+    if node.get("type") == "text":
+        return node.get("text") or ""
+    if node.get("type") == "hardBreak":
+        return "\n"
+    return "".join(_block_plain_text(c) for c in (node.get("content") or []))
+
+
+def _json_blocks(v) -> list:
+    """Parse a translated_body_json column (asyncpg may hand it back as str or list)."""
+    if v is None:
+        return []
+    if isinstance(v, str):
+        try:
+            return json.loads(v) or []
+        except (ValueError, TypeError):
+            return []
+    return v if isinstance(v, list) else []
+
+
+async def _load_seed_blocks(pool, seed_version_id, chapter_id) -> list:
+    """T2-M2: the prior llm version's translated Tiptap blocks — the body whose
+    NON-dirty blocks are copied verbatim into a partial re-translate. Returns [] if
+    the seed is missing or wasn't a block (json) translation.
+
+    review-impl HIGH: the seed is loaded SCOPED TO THIS chapter (``AND chapter_id``).
+    block_index_filter/seed_version_id are public CreateJobPayload fields, so a job
+    could carry a seed_version_id for ANOTHER chapter/book; without the scope the
+    worker would copy a foreign version's translated blocks into this chapter (a
+    cross-chapter read into the caller's own book). The chapter is in the caller's
+    EDIT-gated book, so same-chapter scoping ties the seed to that authorization."""
+    if not seed_version_id:
+        return []
+    sid = seed_version_id if isinstance(seed_version_id, UUID) else UUID(str(seed_version_id))
+    cid = chapter_id if isinstance(chapter_id, UUID) else UUID(str(chapter_id))
+    async with pool.acquire() as db:
+        row = await db.fetchrow(
+            "SELECT translated_body_json FROM chapter_translations WHERE id=$1 AND chapter_id=$2",
+            sid, cid,
+        )
+    return _json_blocks(row["translated_body_json"]) if row else []
+
+
+async def _partial_retranslate_blocks(
+    *, pool, llm_client, chapter_translation_id, chapter_id, blocks, block_filter,
+    seed_version_id, source_lang, msg, context_window, translate_blocks_fn,
+):
+    """T2-M2 dirty-only re-translate: translate ONLY the `block_filter` positions of
+    `blocks` and overlay the results onto the seed version's body, copying every
+    other block verbatim. Returns the same 6-tuple shape as translate_chapter_blocks
+    so the caller's finalize path is unchanged.
+
+    `translate_blocks_fn` is the pipeline-selected block translator (review-impl MED):
+    the caller passes the SAME v2/v3 function `_process_chapter` chose, so a v3 job's
+    dirty re-translate runs the Translator→Verifier→Corrector loop on the dirty blocks
+    (and its unresolved-high gate still governs auto-promote) instead of silently
+    falling back to a bare v2 translate.
+
+    Safety: the seed must align 1:1 with the CURRENT source blocks (same count) — a
+    structural edit (blocks added/removed) invalidates positional overlay, so we fall
+    back to a full re-translate (correct, just not cost-optimal)."""
+    _translate_blocks = translate_blocks_fn
+
+    seed_blocks = await _load_seed_blocks(pool, seed_version_id, chapter_id)
+    if not seed_blocks or len(seed_blocks) != len(blocks):
+        log.warning(
+            "chapter %s: partial re-translate seed misaligned/foreign (seed=%d src=%d) → full re-translate",
+            chapter_id, len(seed_blocks), len(blocks),
+        )
+        return await _translate_blocks(
+            blocks=blocks, source_lang=source_lang, msg=msg, pool=pool,
+            chapter_translation_id=chapter_translation_id, llm_client=llm_client,
+            context_window=context_window,
+        )
+
+    # Valid, de-duplicated dirty positions in ascending order.
+    idx_set = sorted({i for i in block_filter if 0 <= i < len(blocks)})
+    if not idx_set:
+        # Nothing actually dirty (or all out of range) → seed is already current; no LLM spend.
+        return (list(seed_blocks), 0, 0, 0, 0, {})
+
+    dirty_blocks = [blocks[i] for i in idx_set]
+    (t_blocks, in_tok, out_tok, t_count, t_able, t_texts) = await _translate_blocks(
+        blocks=dirty_blocks, source_lang=source_lang, msg=msg, pool=pool,
+        chapter_translation_id=chapter_translation_id, llm_client=llm_client,
+        context_window=context_window,
+    )
+
+    # Overlay: copy the seed body, replace each dirty position with its freshly
+    # translated block. translate_chapter_blocks returns result_blocks aligned 1:1
+    # with its INPUT list and translated_texts keyed by that same local position.
+    merged = list(seed_blocks)
+    remapped_texts: dict[int, str] = {}
+    for local_i, src_i in enumerate(idx_set):
+        if local_i < len(t_blocks):
+            merged[src_i] = t_blocks[local_i]
+        if local_i in t_texts:
+            remapped_texts[src_i] = t_texts[local_i]
+    return (merged, in_tok, out_tok, t_count, t_able, remapped_texts)
 
 
 async def _get_model_context_window(msg: dict) -> int:
