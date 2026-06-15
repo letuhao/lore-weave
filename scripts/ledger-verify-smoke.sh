@@ -43,7 +43,7 @@ psql_db foundation -c "DROP DATABASE IF EXISTS ${SMOKE_DB}" >/dev/null
 psql_db foundation -c "CREATE DATABASE ${SMOKE_DB}" >/dev/null
 
 log "applying events + outbox migrations ..."
-for m in 0001_initial 0002_events_table 0005_events_outbox_table; do
+for m in 0001_initial 0002_events_table 0005_events_outbox_table 0013_events_content_sha256; do
   docker exec -i "$PG_CONTAINER" psql -q -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$SMOKE_DB" < "contracts/migrations/per_reality/${m}.up.sql"
 done
 log "ensuring events DEFAULT partition ..."

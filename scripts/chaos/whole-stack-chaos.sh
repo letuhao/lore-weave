@@ -108,7 +108,7 @@ log "(re)creating meta + shard DBs; seeding ${PROFILE} ..."
 psql_db foundation -c "DROP DATABASE IF EXISTS ${META_DB}" >/dev/null; psql_db foundation -c "CREATE DATABASE ${META_DB}" >/dev/null
 for m in 001_reality_registry 003_publisher_heartbeats; do docker exec -i "$PG_CONTAINER" psql -q -U "$PG_USER" -d "$META_DB" < "migrations/meta/${m}.up.sql"; done
 psql_db foundation -c "DROP DATABASE IF EXISTS ${SHARD_DB}" >/dev/null; psql_db foundation -c "CREATE DATABASE ${SHARD_DB}" >/dev/null
-for m in 0001_initial 0002_events_table 0005_events_outbox_table; do docker exec -i "$PG_CONTAINER" psql -q -U "$PG_USER" -d "$SHARD_DB" < "contracts/migrations/per_reality/${m}.up.sql"; done
+for m in 0001_initial 0002_events_table 0005_events_outbox_table 0013_events_content_sha256; do docker exec -i "$PG_CONTAINER" psql -q -U "$PG_USER" -d "$SHARD_DB" < "contracts/migrations/per_reality/${m}.up.sql"; done
 psql_db "$SHARD_DB" -c "CREATE TABLE IF NOT EXISTS events_p_default PARTITION OF events DEFAULT" >/dev/null
 
 : >/tmp/wholestack_pub.log

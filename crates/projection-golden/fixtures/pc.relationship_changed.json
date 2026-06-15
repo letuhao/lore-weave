@@ -1,5 +1,5 @@
 {
-  "_spec": "pc.relationship_changed → UPDATE pc_relationship_projection fields score+labels, keyed pc_id+other_entity_type+other_entity_id (PcRelationshipProjection).",
+  "_spec": "pc.relationship_changed → UPSERT pc_relationship_projection fields score+labels, keyed pc_id+other_entity_type+other_entity_id (PcRelationshipProjection). UPSERT (not Update): the row is CREATED on the first relationship_changed (no preceding Insert) and updated thereafter; the rebuild writer emits INSERT … ON CONFLICT (pk) DO UPDATE (D-W3-NPC-REL-PROJECTION-UPSERT).",
   "envelope": {
     "event_id": "00000000-0000-0000-0000-000000000404",
     "event_type": "pc.relationship_changed",
@@ -13,7 +13,7 @@
     "payload": { "other_entity_type": "npc", "other_entity_id": "npc-7", "score": 42, "labels": ["friendly"] }
   },
   "expected_updates": [
-    { "Update": {
+    { "Upsert": {
       "table": "pc_relationship_projection",
       "pk": { "pc_id": "pc-1", "other_entity_type": "npc", "other_entity_id": "npc-7" },
       "fields": { "score": 42, "labels": ["friendly"] },

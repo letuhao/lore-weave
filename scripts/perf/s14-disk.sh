@@ -73,7 +73,7 @@ start_pg() {
 
 migrate() {
   local m
-  for m in 0001_initial 0002_events_table 0005_events_outbox_table; do
+  for m in 0001_initial 0002_events_table 0005_events_outbox_table 0013_events_content_sha256; do
     docker exec -i "$PG" psql -q -v ON_ERROR_STOP=1 -U "$PGUSER" -d "$PGDB" \
       < "contracts/migrations/per_reality/${m}.up.sql" >/dev/null 2>&1 \
       || notrun "per_reality migration ${m} failed"

@@ -171,6 +171,12 @@ func (g *Generator) Generate(p Profile) Stream {
 				if pc, okPc := g.w.PickPc(reality); okPc {
 					s = append(s, g.emit(reality, "npc", npc, "npc.relationship_changed",
 						schema.NpcRelationshipChanged(pc, 5, 1, sid, []string{"acquaintance"}), nil))
+						// The reciprocal pc→npc relationship: a pc-aggregate event whose
+						// projection (pc_relationship_projection) is ALSO an Upsert (created
+						// on the first relationship_changed), live-exercising the pc side of
+						// the upsert fix (D-W3-NPC-REL-PROJECTION-UPSERT).
+						s = append(s, g.emit(reality, "pc", pc, "pc.relationship_changed",
+							schema.PcRelationshipChanged("npc", npc, 42, []string{"friendly"}), nil))
 				}
 				s = append(s, g.emit(reality, "npc", npc, "npc.memory_embedded",
 					schema.NpcMemoryEmbedded(npc, sid, "mem-"+sid, embedding1536()), nil))
@@ -302,8 +308,16 @@ func Validate(s Stream) error {
 			if err := need("canon", e.AggregateID); err != nil {
 				return err
 			}
+		case "pc.relationship_changed":
+			// pc-aggregate event referencing another entity (npc or pc) it relates to.
+			if err := need("pc", e.AggregateID); err != nil {
+				return err
+			}
+			if err := need(str("other_entity_type"), str("other_entity_id")); err != nil {
+				return err
+			}
 		case "world.kv_set", "world.kv_unset", "region.ambient_changed",
-			"pc.item_acquired", "pc.relationship_changed":
+			"pc.item_acquired":
 			// no cross-entity reference to resolve (the unset-after-set ordering
 			// is guaranteed by construction; world is a singleton aggregate).
 		default:

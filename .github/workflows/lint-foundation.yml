@@ -46,6 +46,10 @@ jobs:
           # lifecycle_transition_audit.actor_id column is UUID NOT NULL). The
           # script's default mode runs its --selftest bite THEN the lint.
           - meta-actor-uuid-lint
+          # W3.4 follow-up — an own-baseline `wg -emit` drill must apply migration
+          # 0013 (the emit path stamps events.content_sha256). Default mode runs
+          # its --selftest bite THEN the lint.
+          - emit-migration-0013-lint
     steps:
       - uses: actions/checkout@v4
       - name: Run ${{ matrix.lint }}

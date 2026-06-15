@@ -105,6 +105,26 @@ pub enum ProjectionUpdate {
         fields: Value,
         meta: VerificationMeta,
     },
+    /// Create-or-update by `pk`. For projections whose FIRST event is a change
+    /// (no preceding `Insert`) — e.g. `npc_pc_relationship` / `pc_relationship`,
+    /// where the row is created on the first `*.relationship_changed`. Same shape
+    /// as `Update`; the rebuild writer emits `INSERT … ON CONFLICT (pk) DO UPDATE`.
+    /// Distinct from `Update` ON PURPOSE: a plain `Update` that hits 0 rows stays a
+    /// detectable missing-Insert signal for projections that DO expect a prior
+    /// `Insert`; only projections that legitimately upsert use this variant.
+    ///
+    /// CONTRACT: `pk` MUST be exactly the target table's PRIMARY KEY (or a UNIQUE
+    /// index) — `ON CONFLICT (pk)` requires a matching unique constraint, so a `pk`
+    /// that is not the table's unique key fails at runtime (the rebuild writer
+    /// validates the identifiers but cannot introspect the schema). The
+    /// integrity-checker `tablemap` PKColumns are the cross-check that the `pk`
+    /// here matches the real key.
+    Upsert {
+        table: String,
+        pk: Value,
+        fields: Value,
+        meta: VerificationMeta,
+    },
     Delete {
         table: String,
         pk: Value,
@@ -122,6 +142,7 @@ impl ProjectionUpdate {
         match self {
             ProjectionUpdate::Insert { table, .. } => table,
             ProjectionUpdate::Update { table, .. } => table,
+            ProjectionUpdate::Upsert { table, .. } => table,
             ProjectionUpdate::Delete { table, .. } => table,
             ProjectionUpdate::Tombstone { table, .. } => table,
         }

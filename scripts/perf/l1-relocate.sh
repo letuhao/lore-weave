@@ -95,7 +95,7 @@ migrate_events_db() { # container db
   psqlA "$1" foundation "DROP DATABASE IF EXISTS $2 WITH (FORCE)" >/dev/null
   psqlA "$1" foundation "CREATE DATABASE $2" >/dev/null
   local m
-  for m in 0001_initial 0002_events_table 0005_events_outbox_table; do
+  for m in 0001_initial 0002_events_table 0005_events_outbox_table 0013_events_content_sha256; do
     docker exec -i "$1" psql -q -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$2" < "contracts/migrations/per_reality/${m}.up.sql" \
       || notrun "per_reality migration ${m} failed on $2"
   done

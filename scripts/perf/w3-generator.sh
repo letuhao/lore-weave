@@ -2,18 +2,21 @@
 # scripts/perf/w3-generator.sh
 #
 # W3.1 — generator completeness, LIVE: the workload generator now emits
-# npc.relationship_changed + npc.memory_embedded + a PERSISTENT world.kv_set, so
-# three projection arms that previously got 0 coverage (npc_pc_relationship_
-# projection, npc_session_memory_embedding, world_kv_projection — the latter was
-# net-zeroed by set+unset) actually carry data. Closes D-WORKLOAD-GEN-NPC-REL-EMBED
-# + D-S5-WORLDKV-NETS-EMPTY.
+# npc.relationship_changed + pc.relationship_changed + npc.memory_embedded + a
+# PERSISTENT world.kv_set, so projection arms that previously got 0 coverage
+# (npc_pc_relationship_projection, pc_relationship_projection,
+# npc_session_memory_embedding, world_kv_projection — the latter net-zeroed by
+# set+unset) actually carry data. Closes D-WORKLOAD-GEN-NPC-REL-EMBED +
+# D-S5-WORLDKV-NETS-EMPTY; the relationship arms also live-exercise the Upsert
+# rebuild path (D-W3-NPC-REL-PROJECTION-UPSERT).
 #
-#   smoke   emit → rebuild → assert the 3 arms each have >=1 row (the rebuilder
-#           projects the new events end-to-end, incl. the pgvector embedding) →
-#           no-orphan clean. BITE: corrupt one npc_pc_relationship_projection
-#           row's event_id to a non-existent id → the no-orphan sweep CATCHES it,
-#           proving the now-populated arm is actually checked (before W3.1 these
-#           tables were EMPTY so the oracle ran vacuously over them).
+#   smoke   emit → rebuild → assert the new arms each have >=1 row (the rebuilder
+#           projects the new events end-to-end, incl. the pgvector embedding + the
+#           ON CONFLICT upserts) → no-orphan clean. BITE: corrupt one
+#           npc_session_memory_embedding row's event_id to a non-existent id → the
+#           no-orphan sweep CATCHES it, proving a now-populated arm is actually
+#           checked (before W3.1 these tables were EMPTY so the oracle ran
+#           vacuously over them).
 #
 # Verdict: NOTRUN(2) setup; FAIL(1) an arm empty after rebuild / a rebuild failed
 # / the bite not caught; PASS(0). Reuses the S12 scale rig (shard-0).
@@ -53,7 +56,7 @@ setup() {
   psql_adm -c "DROP DATABASE IF EXISTS ${DB} WITH (FORCE)" >/dev/null
   psql_adm -c "CREATE DATABASE ${DB}" >/dev/null
   local m
-  for m in 0001_initial 0002_events_table 0005_events_outbox_table 0006_projections 0008_pgvector_setup 0009_canon_projection; do
+  for m in 0001_initial 0002_events_table 0005_events_outbox_table 0013_events_content_sha256 0006_projections 0008_pgvector_setup 0009_canon_projection; do
     docker exec -i "$SHARD_C" psql -q -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$DB" \
       < "contracts/migrations/per_reality/${m}.up.sql" || notrun "migration ${m} failed"
   done
@@ -72,14 +75,13 @@ build_bins() {
   fi
 }
 
-# Arms that materialize rows end-to-end (Insert-based). npc_pc_relationship_projection
-# is NOT asserted here: its projection emits ProjectionUpdate::Update for its FIRST
-# event, and the rebuild writer does a plain UPDATE (0 rows when the row doesn't
-# exist yet) — a pre-existing latent defect this generator-completeness work
-# surfaced. The relationship EVENT is now emitted (generator side done); the
-# projection's missing upsert is tracked as D-W3-NPC-REL-PROJECTION-UPSERT.
-NEW_ARMS="npc_session_memory_embedding world_kv_projection"
-TABLES="region_projection npc_projection npc_session_memory_projection pc_projection pc_inventory_projection session_participants world_kv_projection npc_pc_relationship_projection npc_session_memory_embedding"
+# Arms that materialize rows end-to-end (now incl npc_pc_relationship_projection).
+# D-W3-NPC-REL-PROJECTION-UPSERT is FIXED: the relationship projections emit
+# ProjectionUpdate::Upsert and the rebuild writer does INSERT … ON CONFLICT (pk)
+# DO UPDATE, so the row created on the FIRST npc.relationship_changed now
+# materializes (it previously stayed 0 rows because a plain UPDATE hit no row).
+NEW_ARMS="npc_session_memory_embedding world_kv_projection npc_pc_relationship_projection pc_relationship_projection"
+TABLES="region_projection npc_projection npc_session_memory_projection pc_projection pc_inventory_projection session_participants world_kv_projection npc_pc_relationship_projection pc_relationship_projection npc_session_memory_embedding"
 
 main() {
   require; setup; build_bins
@@ -115,7 +117,7 @@ main() {
     [ "${n:-0}" -ge 1 ] || fail "arm ${arm} has ${n} rows after rebuild — generator did not populate it (still vacuous)"
     log "  ${arm}: ${n} rows"
   done
-  log "PASS(arms): npc_session_memory_embedding + world_kv_projection populated (were 0 before W3.1); npc.relationship_changed event emitted (projection-row blocked by D-W3-NPC-REL-PROJECTION-UPSERT)"
+  log "PASS(arms): npc_session_memory_embedding + world_kv_projection + npc_pc_relationship_projection all populated (were 0 before W3.1; the relationship row now materializes via the Upsert fix — D-W3-NPC-REL-PROJECTION-UPSERT)"
 
   # no-orphan clean over the freshly-rebuilt projections.
   "$WG" -check-projections -dsn "$DSN" >/dev/null 2>&1 || fail "no-orphan sweep failed on a clean rebuild"

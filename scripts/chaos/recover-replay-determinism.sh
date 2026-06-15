@@ -46,7 +46,7 @@ docker exec "$PG_CONTAINER" pg_isready -U "$PG_USER" >/dev/null 2>&1 || notrun "
 build_shard() { # $1=db $2=seed  -> emits + returns reality id on stdout
   local db="$1" seed="$2" dsn="postgres://${PG_USER}:${PG_PASS}@127.0.0.1:${PG_PORT}/$1?sslmode=disable"
   psql_db foundation -c "DROP DATABASE IF EXISTS ${db}" >/dev/null; psql_db foundation -c "CREATE DATABASE ${db}" >/dev/null
-  for m in 0001_initial 0002_events_table 0005_events_outbox_table 0006_projections 0007_drift_metadata 0008_pgvector_setup 0009_canon_projection; do
+  for m in 0001_initial 0002_events_table 0005_events_outbox_table 0013_events_content_sha256 0006_projections 0007_drift_metadata 0008_pgvector_setup 0009_canon_projection; do
     docker exec -i "$PG_CONTAINER" psql -q -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$db" < "contracts/migrations/per_reality/${m}.up.sql"
   done
   psql_db "$db" -c "CREATE TABLE IF NOT EXISTS events_p_default PARTITION OF events DEFAULT" >/dev/null

@@ -44,7 +44,7 @@ setup() {
   psql_adm -c "DROP DATABASE IF EXISTS ${DB} WITH (FORCE)" >/dev/null
   psql_adm -c "CREATE DATABASE ${DB}" >/dev/null
   local m
-  for m in 0001_initial 0002_events_table 0005_events_outbox_table; do
+  for m in 0001_initial 0002_events_table 0005_events_outbox_table 0013_events_content_sha256; do
     docker exec -i "$SHARD_C" psql -q -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$DB" \
       < "contracts/migrations/per_reality/${m}.up.sql" || notrun "migration ${m} failed"
   done

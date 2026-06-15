@@ -1,5 +1,5 @@
 {
-  "_spec": "npc.relationship_changed → UPDATE npc_pc_relationship_projection {other_entity_type, reality_id, trust_level, familiarity_count, last_session_id=payload.session_id, relationship_labels=payload.labels}, keyed npc_id(=aggregate_id)+other_entity_id (NpcPcRelationshipProjection, crates/projections/npc/src/lib.rs:164). Durable NPC↔PC trust/familiarity. NOTE: the arm reads each field via payload.get(), so an ABSENT payload key projects as NULL — this fixture supplies all six to pin the full row.",
+  "_spec": "npc.relationship_changed → UPSERT npc_pc_relationship_projection {other_entity_type, reality_id, trust_level, familiarity_count, last_session_id=payload.session_id, relationship_labels=payload.labels}, keyed npc_id(=aggregate_id)+other_entity_id (NpcPcRelationshipProjection, crates/projections/npc/src/lib.rs:164). UPSERT (not Update): the row is CREATED on the first relationship_changed — there is no preceding Insert — and updated thereafter; the rebuild writer emits INSERT … ON CONFLICT (pk) DO UPDATE (D-W3-NPC-REL-PROJECTION-UPSERT). Durable NPC↔PC trust/familiarity. NOTE: the arm reads each field via payload.get(), so an ABSENT payload key projects as NULL — this fixture supplies all six to pin the full row.",
   "envelope": {
     "event_id": "00000000-0000-0000-0000-000000000801",
     "event_type": "npc.relationship_changed",
@@ -13,7 +13,7 @@
     "payload": { "other_entity_type": "pc", "other_entity_id": "pc-1", "trust_level": 50, "familiarity_count": 3, "session_id": "sess-1", "labels": ["ally"] }
   },
   "expected_updates": [
-    { "Update": {
+    { "Upsert": {
       "table": "npc_pc_relationship_projection",
       "pk": { "npc_id": "npc-1", "other_entity_id": "pc-1" },
       "fields": { "other_entity_type": "pc", "reality_id": "22222222-2222-2222-2222-222222222222", "trust_level": 50, "familiarity_count": 3, "last_session_id": "sess-1", "relationship_labels": ["ally"] },

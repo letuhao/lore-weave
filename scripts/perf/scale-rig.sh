@@ -90,7 +90,7 @@ migrate_one_shard() { # container
   local c="$1"
   psql_c "$c" foundation -c "DROP DATABASE IF EXISTS ${SHARD_DB}" >/dev/null
   psql_c "$c" foundation -c "CREATE DATABASE ${SHARD_DB}" >/dev/null
-  for m in 0001_initial 0002_events_table 0005_events_outbox_table; do
+  for m in 0001_initial 0002_events_table 0005_events_outbox_table 0013_events_content_sha256; do
     docker exec -i "$c" psql -q -U "$PG_USER" -d "$SHARD_DB" < "contracts/migrations/per_reality/${m}.up.sql"
   done
   # A DEFAULT partition catches every recorded_at month (the rig isn't running the

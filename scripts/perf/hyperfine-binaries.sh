@@ -72,7 +72,7 @@ HF_MEAN='import json,sys;print(json.load(open(sys.argv[1]))["results"][0]["mean"
 migrate_shard() { # $1=db
   psql_db foundation -c "DROP DATABASE IF EXISTS $1" >/dev/null
   psql_db foundation -c "CREATE DATABASE $1" >/dev/null
-  for m in 0001_initial 0002_events_table 0005_events_outbox_table; do
+  for m in 0001_initial 0002_events_table 0005_events_outbox_table 0013_events_content_sha256; do
     docker exec -i "$PG_CONTAINER" psql -q -U "$PG_USER" -d "$1" < "contracts/migrations/per_reality/${m}.up.sql"
   done
   psql_db "$1" -c "CREATE TABLE IF NOT EXISTS events_p_default PARTITION OF events DEFAULT" >/dev/null
