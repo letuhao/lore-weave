@@ -407,6 +407,23 @@ class ExtractionJobsRepo:
             )
         return row["project_id"] if row else None
 
+    async def list_since(self, since: datetime, *, limit: int = 1000) -> list[ExtractionJob]:
+        """Reconcile snapshot (Unified Job Control Plane H1 backstop): jobs updated
+        at/after `since`, oldest-first, capped — ALL users (the jobs-service projection
+        mirrors every owner; user-scoping is at its read API). Used by the reconcile sweep
+        to heal outbox drift. This is the ONE read that is intentionally NOT user-scoped;
+        it is internal-token gated at the route + returns only mirror fields."""
+        query = f"""
+        SELECT {_SELECT_COLS}
+        FROM extraction_jobs
+        WHERE updated_at >= $1
+        ORDER BY updated_at ASC
+        LIMIT $2
+        """
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(query, since, limit)
+        return [_row_to_job(r) for r in rows]
+
     async def list_for_project(
         self, user_id: UUID, project_id: UUID, *, limit: int = 50
     ) -> list[ExtractionJob]:

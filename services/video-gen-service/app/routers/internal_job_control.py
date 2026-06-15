@@ -22,9 +22,10 @@ Job rows exist only in the decoupled path (the pool is brought up iff
 
 from __future__ import annotations
 
+from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from pydantic import BaseModel
 
 from ..config import settings
@@ -46,6 +47,29 @@ router = APIRouter(
     tags=["internal"],
     dependencies=[Depends(require_internal_token)],
 )
+
+
+@router.get("")
+async def reconcile_jobs(
+    since: datetime = Query(..., description="ISO-8601 — rows updated at/after this"),
+) -> dict:
+    """Reconcile SOURCE (Unified Job Control Plane H1 backstop): video-gen jobs updated
+    since `since`, in canonical `JobEvent` payload shape, for the jobs-service sweep to
+    upsert. Stateless (decouple off → no pool/rows) → an empty list, never a 500."""
+    try:
+        pool = get_pool()
+    except RuntimeError:
+        return {"jobs": []}
+    rows = await VideoGenJobsRepo(pool).list_since(since)
+    return {"jobs": [
+        {
+            "service": "video_gen", "job_id": str(j.id), "owner_user_id": str(j.user_id),
+            "kind": "video_gen", "status": j.status, "parent_job_id": None,
+            "detail_status": None, "progress": None, "title": None, "error": None,
+            "occurred_at": j.updated_at.isoformat() if j.updated_at else None,
+        }
+        for j in rows
+    ]}
 
 
 class JobControlPayload(BaseModel):

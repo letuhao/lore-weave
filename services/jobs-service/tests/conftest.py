@@ -44,6 +44,7 @@ def client(spy_pool):
         patch("app.database.get_pool", return_value=spy_pool),
         patch("app.migrate.run_migrations", new_callable=AsyncMock),
         patch("app.main.JobProjectionConsumer", return_value=_stub),
+        patch("app.main.ReconcileSweeper", return_value=_stub),
     ):
         from app.deps import get_current_user, get_db
         from app.main import app

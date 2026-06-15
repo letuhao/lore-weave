@@ -16,7 +16,9 @@ import pytest
 from fastapi import HTTPException
 
 import app.api.internal_job_control as ijc
-from app.api.internal_job_control import JobControlPayload, control_enrichment_job
+from app.api.internal_job_control import (
+    JobControlPayload, control_enrichment_job, reconcile_jobs,
+)
 
 USER = uuid4()
 JOB = uuid4()
@@ -106,3 +108,28 @@ async def test_illegal_transition_409_propagates(monkeypatch):
     with pytest.raises(HTTPException) as exc:
         await control_enrichment_job(JOB, "pause", JobControlPayload(owner_user_id=USER), _FakePool(PROJ))
     assert exc.value.status_code == 409
+
+
+class _FetchPool:
+    """acquire-less pool whose fetch returns scripted rows (reconcile uses pool.fetch)."""
+
+    def __init__(self, rows):
+        self._rows = rows
+
+    async def fetch(self, *a, **k):
+        return self._rows
+
+
+@pytest.mark.asyncio
+async def test_reconcile_maps_rows_and_skips_estimating():
+    from datetime import datetime, timezone
+    updated = datetime(2026, 6, 15, tzinfo=timezone.utc)
+    rows = [
+        {"job_id": JOB, "user_id": USER, "status": "running", "error_message": None, "updated_at": updated},
+        {"job_id": uuid4(), "user_id": USER, "status": "estimating", "error_message": None, "updated_at": updated},
+    ]
+    out = await reconcile_jobs(since=updated, pool=_FetchPool(rows))
+    assert len(out["jobs"]) == 1  # the transient 'estimating' row is skipped
+    p = out["jobs"][0]
+    assert p["service"] == "lore_enrichment" and p["kind"] == "enrichment_job"
+    assert p["status"] == "running" and p["job_id"] == str(JOB)

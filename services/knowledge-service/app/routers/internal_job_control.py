@@ -14,12 +14,13 @@ S2S only, never gateway-exposed.
 
 from __future__ import annotations
 
+from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
-from app.db.repositories.extraction_jobs import ExtractionJobsRepo
+from app.db.repositories.extraction_jobs import ExtractionJobsRepo, _canonical_job_status
 from app.db.repositories.projects import ProjectsRepo
 from app.deps import get_extraction_jobs_repo, get_projects_repo
 from app.middleware.internal_auth import require_internal_token
@@ -31,6 +32,32 @@ router = APIRouter(
     tags=["internal"],
     dependencies=[Depends(require_internal_token)],
 )
+
+
+@router.get("")
+async def reconcile_jobs(
+    since: datetime = Query(..., description="ISO-8601 — rows updated at/after this"),
+    jobs_repo: ExtractionJobsRepo = Depends(get_extraction_jobs_repo),
+) -> dict:
+    """Reconcile SOURCE (Unified Job Control Plane H1 backstop): extraction jobs updated
+    since `since`, in canonical `JobEvent` payload shape, for the jobs-service sweep to
+    upsert (heals outbox drift). Internal-token (router dep); ALL owners — the projection
+    mirrors every owner, user-scoping is at the jobs-service read API."""
+    rows = await jobs_repo.list_since(since)
+    return {"jobs": [
+        {
+            "service": "knowledge", "job_id": str(j.job_id), "owner_user_id": str(j.user_id),
+            "kind": "extraction", "status": _canonical_job_status(j.status),
+            "parent_job_id": None, "detail_status": None,
+            "progress": ({"done": j.items_processed, "total": j.items_total}
+                         if j.items_total else None),
+            "title": None,
+            "error": ({"code": "extraction_failed", "message": (j.error_message or "")[:500]}
+                      if j.status == "failed" else None),
+            "occurred_at": j.updated_at.isoformat() if j.updated_at else None,
+        }
+        for j in rows
+    ]}
 
 # action → (target canonical status, pause_reason, project extraction_status mirror,
 #           project extraction_enabled). Mirrors the K16.4 public pause/resume/cancel.

@@ -51,3 +51,23 @@ def test_pause_unsupported_400(client):
 def test_missing_internal_token_401(client):
     r = client.post(f"{PATH}/cancel", json={"owner_user_id": OWNER})
     assert r.status_code == 401
+
+
+def test_reconcile_jobs_maps_partial_to_completed(client, fake_pool):
+    from datetime import datetime, timezone
+    ts = datetime(2026, 6, 15, tzinfo=timezone.utc)
+    fake_pool.fetch.return_value = [
+        {"job_id": JOB, "owner_user_id": OWNER, "status": "partial", "error_message": None, "ts": ts},
+    ]
+    r = client.get("/internal/translation/jobs", params={"since": ts.isoformat()},
+                   headers={"X-Internal-Token": TOKEN})
+    assert r.status_code == 200
+    p = r.json()["jobs"][0]
+    assert p["service"] == "translation" and p["kind"] == "translation"
+    assert p["status"] == "completed"  # 'partial' → 'completed'
+    assert p["job_id"] == JOB and p["occurred_at"] == ts.isoformat()
+
+
+def test_reconcile_requires_internal_token(client):
+    r = client.get("/internal/translation/jobs", params={"since": "2026-06-15T00:00:00+00:00"})
+    assert r.status_code == 401

@@ -22,16 +22,18 @@ Only the C8 `enrichment_job` is controllable here; the one-shot `enrichment_comp
 
 from __future__ import annotations
 
+from datetime import datetime
 from uuid import UUID
 
 import asyncpg
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from pydantic import BaseModel
 
 from app.api.jobs import cancel_job, pause_job, resume_job
 from app.api.principal import Principal
 from app.config import settings
 from app.deps import get_db
+from app.jobs.job_events import canonical_status, job_error
 
 
 def require_internal_token(
@@ -53,6 +55,35 @@ router = APIRouter(
 # action → the public C8 handler that performs it (each reuses the state machine +
 # atomic UPDATE+emit; resume also re-arms the re-drive worker via the resume stream).
 _HANDLERS = {"cancel": cancel_job, "pause": pause_job, "resume": resume_job}
+
+
+@router.get("")
+async def reconcile_jobs(
+    since: datetime = Query(..., description="ISO-8601 — rows updated at/after this"),
+    pool: asyncpg.Pool = Depends(get_db),
+) -> dict:
+    """Reconcile SOURCE (Unified Job Control Plane H1 backstop): `enrichment_job` rows
+    updated since `since`, in canonical `JobEvent` payload shape, for the jobs-service
+    sweep to upsert. Internal-token (router dep); ALL owners. A transient `estimating`
+    row (canonical None) is skipped — it has no canonical JobStatus."""
+    rows = await pool.fetch(
+        "SELECT job_id, user_id, status, error_message, updated_at FROM enrichment_job "
+        "WHERE updated_at >= $1 ORDER BY updated_at ASC LIMIT 1000",
+        since,
+    )
+    out = []
+    for r in rows:
+        cstatus = canonical_status(r["status"])
+        if cstatus is None:  # transient (estimating) — no canonical JobStatus
+            continue
+        out.append({
+            "service": "lore_enrichment", "job_id": str(r["job_id"]),
+            "owner_user_id": str(r["user_id"]), "kind": "enrichment_job", "status": cstatus,
+            "parent_job_id": None, "detail_status": None, "progress": None, "title": None,
+            "error": job_error(r["error_message"]) if cstatus == "failed" else None,
+            "occurred_at": r["updated_at"].isoformat() if r["updated_at"] else None,
+        })
+    return {"jobs": out}
 
 
 class JobControlPayload(BaseModel):

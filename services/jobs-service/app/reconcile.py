@@ -37,12 +37,15 @@ from .projection import store
 
 log = logging.getLogger(__name__)
 
-# service (as stored in job_projection.service) → (internal base url, GET path).
-# GROWS one source per reconcile increment; a source not listed simply isn't swept
-# (its outbox emit still feeds the projection). Increment A ships composition as the
-# proof source; B adds knowledge / video_gen / lore_enrichment / translation.
+# service (as stored in job_projection.service) → (internal base url, GET path). The GET
+# returns ALL owners' rows updated since the watermark, in JobEvent.to_payload() shape.
+# A source not listed simply isn't swept (its outbox emit still feeds the projection).
 _RECONCILE: dict[str, tuple[str, str]] = {
+    "knowledge": (settings.knowledge_service_internal_url, "/internal/knowledge/jobs"),
     "composition": (settings.composition_service_internal_url, "/internal/composition/jobs"),
+    "video_gen": (settings.video_gen_service_internal_url, "/internal/video_gen/jobs"),
+    "lore_enrichment": (settings.lore_enrichment_service_internal_url, "/internal/lore_enrichment/jobs"),
+    "translation": (settings.translation_service_internal_url, "/internal/translation/jobs"),
 }
 
 _TIMEOUT = httpx.Timeout(15.0)

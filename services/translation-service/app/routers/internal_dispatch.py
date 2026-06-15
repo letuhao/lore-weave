@@ -12,6 +12,7 @@ only; the gateway proxies `/v1/*`, never `/internal/*`.
 
 from __future__ import annotations
 
+from datetime import datetime
 from uuid import UUID
 
 import asyncpg
@@ -326,6 +327,39 @@ async def dispatch_cancel(
     asserted user_id). Reuses the public cancel core — owner-scoped (404 if not
     owned), 409 if already terminal (the campaign treats both as success)."""
     await _cancel_job_core(db, job_id, str(payload.user_id))
+
+
+# translation_jobs has no `updated_at`; its mutation timestamps are created_at /
+# started_at / finished_at — GREATEST of them is the row's effective last-touch.
+_TRANSL_TS = "GREATEST(created_at, COALESCE(started_at, created_at), COALESCE(finished_at, created_at))"
+
+
+@router.get("/jobs", dependencies=[Depends(require_internal_token)])
+async def reconcile_jobs(
+    since: datetime = Query(..., description="ISO-8601 — rows updated at/after this"),
+    db: asyncpg.Pool = Depends(get_db),
+) -> dict:
+    """Reconcile SOURCE (Unified Job Control Plane H1 backstop): translation jobs whose
+    effective last-touch is at/after `since`, in canonical `JobEvent` payload shape, for
+    the jobs-service sweep to upsert. Internal-token; ALL owners. `partial` → `completed`
+    (the job finished, some chapters done — mirrors the worker's terminal emit)."""
+    rows = await db.fetch(
+        f"SELECT job_id, owner_user_id, status, error_message, {_TRANSL_TS} AS ts "
+        f"FROM translation_jobs WHERE {_TRANSL_TS} >= $1 ORDER BY ts ASC LIMIT 1000",
+        since,
+    )
+    out = []
+    for r in rows:
+        st = "completed" if r["status"] == "partial" else r["status"]
+        out.append({
+            "service": "translation", "job_id": str(r["job_id"]),
+            "owner_user_id": str(r["owner_user_id"]), "kind": "translation", "status": st,
+            "parent_job_id": None, "detail_status": None, "progress": None, "title": None,
+            "error": ({"code": "translation_failed", "message": (r["error_message"] or "")[:500]}
+                      if st == "failed" else None),
+            "occurred_at": r["ts"].isoformat() if r["ts"] else None,
+        })
+    return {"jobs": out}
 
 
 class JobControlPayload(BaseModel):

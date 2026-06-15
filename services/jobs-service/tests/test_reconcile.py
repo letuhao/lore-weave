@@ -6,12 +6,25 @@ import pytest
 
 from app import reconcile
 
+# Captured at import, BEFORE the autouse fixture pins it to one source.
+_REGISTERED_SOURCES = set(reconcile._RECONCILE)
+
 PAYLOAD = {
     "service": "composition", "job_id": "22222222-2222-2222-2222-222222222222",
     "owner_user_id": "33333333-3333-3333-3333-333333333333", "kind": "generate",
     "status": "running", "parent_job_id": None, "detail_status": None, "progress": None,
     "title": None, "error": None, "occurred_at": "2026-06-15T00:00:00+00:00",
 }
+
+
+@pytest.fixture(autouse=True)
+def _single_source(monkeypatch):
+    """Pin the registry to ONE source so the sweep-mechanics assertions are
+    deterministic regardless of how many real sources ship (B registers 5)."""
+    monkeypatch.setattr(
+        reconcile, "_RECONCILE",
+        {"composition": ("http://composition-service:8093", "/internal/composition/jobs")},
+    )
 
 
 class _Resp:
@@ -91,6 +104,13 @@ async def test_unparseable_row_skipped(monkeypatch):
     res = await reconcile.ReconcileSweeper(pool=object()).sweep_once()
     assert res == {"composition": 1}  # the good row applied, the bad one skipped
     spy.assert_awaited_once()
+
+
+def test_all_five_owning_services_are_reconcile_sources():
+    # P3-reconcile B: every owning service exposes a GET /internal/{svc}/jobs?since= source.
+    assert _REGISTERED_SOURCES == {
+        "knowledge", "composition", "video_gen", "lore_enrichment", "translation"
+    }
 
 
 @pytest.mark.asyncio

@@ -32,7 +32,10 @@ class Settings(BaseSettings):
     # (D-JOBS-P2-RECONCILE-CROSS-SVC) — the scaffold ships here, disabled until a
     # source is configured. interval<=0 disables the loop.
     reconcile_interval_s: float = 300.0
-    reconcile_enabled: bool = False
+    # Default ON as of P3-reconcile B — all 5 owning services expose the
+    # `GET /internal/{svc}/jobs?since=` source, so the sweep is the live H1 backstop
+    # behind the proven outbox. A per-source failure is tolerated (logged + skipped).
+    reconcile_enabled: bool = True
     # First-sweep lookback: on startup (or after a restart wipes the in-memory
     # watermark) the sweep re-reads each source's rows updated within this window.
     # The upsert is idempotent+monotonic, so a generous overlap is harmless.

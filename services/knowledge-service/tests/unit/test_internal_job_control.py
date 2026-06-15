@@ -14,7 +14,9 @@ from uuid import UUID
 import pytest
 from fastapi import HTTPException
 
-from app.routers.internal_job_control import JobControlPayload, control_extraction_job
+from app.routers.internal_job_control import (
+    JobControlPayload, control_extraction_job, reconcile_jobs,
+)
 
 USER = UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
 OTHER = UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
@@ -88,3 +90,20 @@ async def test_concurrent_change_409():
         await control_extraction_job(JOB, "cancel", JobControlPayload(owner_user_id=USER), jobs, projects)
     assert exc.value.status_code == 409
     projects.set_extraction_state.assert_not_awaited()
+
+
+async def test_reconcile_jobs_maps_complete_to_completed():
+    from datetime import datetime, timezone
+    updated = datetime(2026, 6, 15, tzinfo=timezone.utc)
+    row = SimpleNamespace(
+        job_id=JOB, user_id=USER, status="complete", items_processed=3, items_total=5,
+        error_message=None, updated_at=updated,
+    )
+    repo = AsyncMock()
+    repo.list_since = AsyncMock(return_value=[row])
+    out = await reconcile_jobs(since=updated, jobs_repo=repo)
+    p = out["jobs"][0]
+    assert p["service"] == "knowledge" and p["kind"] == "extraction"
+    assert p["status"] == "completed"  # 'complete' → canonical 'completed'
+    assert p["progress"] == {"done": 3, "total": 5}
+    assert p["occurred_at"] == updated.isoformat()

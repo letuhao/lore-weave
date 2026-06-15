@@ -201,6 +201,17 @@ class VideoGenJobsRepo:
                 )
                 return True
 
+    async def list_since(self, since: datetime, *, limit: int = 1000) -> list[VideoGenJob]:
+        """Reconcile snapshot (Unified Job Control Plane H1 backstop): rows updated
+        at/after `since`, oldest-first, capped — ALL owners (the jobs-service projection
+        mirrors every owner). Used by the reconcile sweep to heal outbox drift."""
+        rows = await self._pool.fetch(
+            f"SELECT {_COLS} FROM video_gen_jobs WHERE updated_at >= $1 "
+            f"ORDER BY updated_at ASC LIMIT $2",
+            since, limit,
+        )
+        return [j for j in (_row(r) for r in rows) if j is not None]
+
     async def list_stuck(self, *, timeout_secs: int, batch: int) -> list[VideoGenJob]:
         """Active rows idle past the timeout — the sweeper's re-drive set."""
         rows = await self._pool.fetch(

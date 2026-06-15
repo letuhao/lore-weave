@@ -17,7 +17,9 @@ import pytest
 from fastapi import HTTPException
 
 from app.routers import internal_job_control as ijc
-from app.routers.internal_job_control import JobControlPayload, control_video_gen_job
+from app.routers.internal_job_control import (
+    JobControlPayload, control_video_gen_job, reconcile_jobs,
+)
 
 USER = uuid4()
 OTHER = uuid4()
@@ -85,3 +87,28 @@ async def test_stateless_pool_down_is_404(monkeypatch):
     with pytest.raises(HTTPException) as exc:
         await control_video_gen_job(JOB, "cancel", JobControlPayload(owner_user_id=USER))
     assert exc.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_reconcile_jobs_maps_rows(monkeypatch):
+    from datetime import datetime, timezone
+    updated = datetime(2026, 6, 15, tzinfo=timezone.utc)
+    job = SimpleNamespace(id=JOB, user_id=USER, status="running", updated_at=updated)
+    repo = AsyncMock()
+    repo.list_since = AsyncMock(return_value=[job])
+    monkeypatch.setattr(ijc, "get_pool", lambda: object())
+    monkeypatch.setattr(ijc, "VideoGenJobsRepo", lambda _pool: repo)
+    out = await reconcile_jobs(since=updated)
+    p = out["jobs"][0]
+    assert p["service"] == "video_gen" and p["kind"] == "video_gen" and p["status"] == "running"
+    assert p["job_id"] == str(JOB) and p["occurred_at"] == updated.isoformat()
+
+
+@pytest.mark.asyncio
+async def test_reconcile_stateless_pool_down_empty(monkeypatch):
+    def _down():
+        raise RuntimeError("video-gen pool not initialised")
+    monkeypatch.setattr(ijc, "get_pool", _down)
+    from datetime import datetime, timezone
+    out = await reconcile_jobs(since=datetime(2026, 6, 15, tzinfo=timezone.utc))
+    assert out == {"jobs": []}
