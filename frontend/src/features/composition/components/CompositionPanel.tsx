@@ -221,7 +221,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
   const noChatModel = !models.isLoading && !hasChatModel;
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full min-w-0 flex-col overflow-hidden">
       {/* C24 (dị bản M0) — persistent derivative-context banner (no-ops unless this
           Work is a derivative). Tells the writer they're adapting from read-only canon. */}
       <DerivativeBanner ctx={derivativeCtx} />
@@ -393,13 +393,15 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
         </div>
       )}
 
-      {/* sub-tabs */}
-      <div className="flex gap-1 border-b border-neutral-200 px-2 pt-1 text-sm dark:border-neutral-700">
+      {/* sub-tabs — 16 tabs in a resizable (narrow-able) panel: the strip scrolls
+          horizontally rather than overflowing the panel. Tabs don't shrink (labels
+          stay readable) and the row never forces the panel wider than its width. */}
+      <div data-testid="composition-subtabs" className="flex gap-1 overflow-x-auto border-b border-neutral-200 px-2 pt-1 text-sm dark:border-neutral-700">
         {(['compose', 'cowriter', 'assemble', 'planner', 'beats', 'graph', 'cast', 'relmap', 'timeline', 'arc', 'worldmap', 'grounding', 'canon', ...(threadsEnabled ? ['threads' as const] : []), 'quality', 'settings'] as SubTab[]).map((tb) => (
           <button
             key={tb}
             data-testid={`composition-subtab-${tb}`}
-            className={`rounded-t px-2 py-1 ${tab === tb ? 'bg-neutral-100 font-medium dark:bg-neutral-800' : 'text-neutral-500'}`}
+            className={`shrink-0 whitespace-nowrap rounded-t px-2 py-1 ${tab === tb ? 'bg-neutral-100 font-medium dark:bg-neutral-800' : 'text-neutral-500'}`}
             onClick={() => setTab(tb)}
           >
             {t(tb, { defaultValue: tb })}
@@ -407,7 +409,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
         ))}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div data-testid="composition-content" className="min-h-0 min-w-0 flex-1 overflow-auto [overflow-wrap:anywhere]">
         {/* All sub-panels stay MOUNTED, toggled with CSS `hidden`, so in-progress
             generation/edit state (a co-write draft, a chapter/stitch preview)
             survives a tab switch — CLAUDE.md "never conditionally unmount stateful

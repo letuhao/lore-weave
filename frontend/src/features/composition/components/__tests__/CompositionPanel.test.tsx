@@ -109,3 +109,27 @@ describe('CompositionPanel sub-tab CSS-hidden (visibility-transition)', () => {
     expect(mounts.assemble).toBe(1);
   });
 });
+
+// Overflow-containment regression: in a narrow (resizable) right panel the 16-tab
+// strip and the tab content must stay INSIDE the panel — the strip scrolls
+// horizontally (no-shrink tabs) and content wraps/scrolls, never escaping the
+// viewport. We assert the structural classes that enforce this.
+describe('CompositionPanel overflow containment (narrow right panel)', () => {
+  it('the tab strip scrolls horizontally with non-shrinking tabs', () => {
+    renderPanel();
+    const strip = screen.getByTestId('composition-subtabs');
+    expect(strip).toHaveClass('overflow-x-auto');
+    // each tab refuses to shrink so labels stay readable; the row scrolls instead.
+    const tab = screen.getByTestId('composition-subtab-settings');
+    expect(tab).toHaveClass('shrink-0');
+    expect(tab).toHaveClass('whitespace-nowrap');
+  });
+
+  it('the content wrapper contains wide content (min-w-0 + overflow + wrap)', () => {
+    renderPanel();
+    const content = screen.getByTestId('composition-content');
+    expect(content).toHaveClass('min-w-0');
+    expect(content).toHaveClass('overflow-auto');
+    expect(content.className).toContain('[overflow-wrap:anywhere]');
+  });
+});
