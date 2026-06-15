@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import type { Project } from '../../types';
 
@@ -158,5 +158,36 @@ describe('ProjectsTab — HOME browser', () => {
     setProjects([mk({ project_id: 'a', name: 'Alpha' })], { hasMore: false });
     renderTab();
     expect(screen.queryByTestId('projects-load-more')).toBeNull();
+  });
+
+  it('debounces the search term that drives the server query', () => {
+    vi.useFakeTimers();
+    try {
+      setProjects([mk({ project_id: 'a', name: 'Alpha' })]);
+      renderTab();
+      useProjectsMock.mockClear();
+
+      const input = screen.getByTestId('projects-search');
+      // Rapid keystrokes — each fires synchronously, none should reach
+      // useProjects with a non-empty `search` until the debounce settles.
+      fireEvent.change(input, { target: { value: 'c' } });
+      fireEvent.change(input, { target: { value: 'cr' } });
+      fireEvent.change(input, { target: { value: 'cra' } });
+      fireEvent.change(input, { target: { value: 'crad' } });
+
+      // Before the debounce window elapses, every useProjects call still
+      // carries the pre-typing (empty) search term — no per-keystroke fetch.
+      const midCalls = useProjectsMock.mock.calls.map((c) => c[0].search);
+      expect(midCalls.every((s) => !s)).toBe(true);
+
+      // Advance past the debounce; the LATEST term reaches the query once.
+      act(() => {
+        vi.advanceTimersByTime(400);
+      });
+      const lastCall = useProjectsMock.mock.calls.at(-1)![0];
+      expect(lastCall.search).toBe('crad');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

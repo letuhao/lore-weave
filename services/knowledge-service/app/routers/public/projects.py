@@ -117,17 +117,73 @@ class ProjectListResponse(BaseModel):
 
 # ── cursor helpers ────────────────────────────────────────────────────────
 
-# Cursor is "<sort_by>|<sort_value>|<uuid>" base64url-encoded. The
-# sort_by token is bound into the cursor so a cursor minted under one
-# sort can't be silently mis-seeked under another (the seek predicate is
-# only valid for the sort it was issued for) — a mismatch is a 400.
+# Cursor is "<filter_sig>|<sort_value>|<uuid>" base64url-encoded, where
+# <filter_sig> is a stable hash over the FULL filter set the seek key was
+# computed for: (sort_by, sort_dir, search, status). The whole filter set
+# is bound — not just sort_by — because the seek predicate is only valid
+# for the exact (column, direction, filtered population) it was issued
+# for: flipping sort_dir flips the `<`/`>` comparison against a boundary
+# computed for the opposite direction, and changing search/status moves
+# the boundary into (or out of) a different filtered set. ANY mismatch is
+# a 400 so a stale/3rd-party cursor can't silently skip or duplicate rows.
 # base64url avoids the `+` in `+00:00` and the pipe separator colliding
 # with URL parsing. The format is opaque to clients — they round-trip
 # whatever the server returns without inspecting it.
 _CURSOR_SEP = "|"
 
 
-def _encode_cursor(sort_by: str, sort_value: object, project_id: UUID) -> str:
+def _filter_sig(
+    sort_by: str,
+    sort_dir: str,
+    search: str | None,
+    status_filter: str | None,
+    *,
+    include_archived: bool,
+    book_id: UUID | None,
+) -> str:
+    """Stable signature of the filter set a cursor's seek key is valid
+    for. A short sha256 hex over the normalized
+    (sort_by, sort_dir, search, status, include_archived, book_id) tuple
+    — replaying a cursor under any different value yields a different
+    signature and so a 400 on decode.
+
+    EVERY param that shapes the ORDER BY (sort_by/sort_dir) OR the
+    filtered population the seek boundary was computed against
+    (search/status/include_archived/book_id) is bound: a flipped
+    sort_dir mis-applies `<`/`>` against the opposite-direction
+    boundary, and any population change (search/status/include_archived/
+    book_id) moves the boundary into a different row set — either way
+    silently skips or duplicates rows. The separator is NUL (which can't
+    appear in any input: they're enum tokens / UUIDs / a user search the
+    BE never NUL-injects) so distinct field boundaries can't collide
+    (e.g. search='a|b' vs two fields).
+
+    (The status param is named ``status_filter`` rather than ``status``
+    so it does not shadow the module-level ``fastapi.status`` import.)"""
+    payload = "\x00".join(
+        (
+            sort_by,
+            sort_dir,
+            search or "",
+            status_filter or "",
+            "1" if include_archived else "0",
+            str(book_id) if book_id is not None else "",
+        )
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
+def _encode_cursor(
+    sort_by: str,
+    sort_value: object,
+    project_id: UUID,
+    *,
+    sort_dir: str,
+    search: str | None,
+    status_filter: str | None,
+    include_archived: bool,
+    book_id: UUID | None,
+) -> str:
     # The sort value is serialized via str(); a datetime becomes its
     # isoformat (round-trips through _coerce_sort_value), a name/status
     # stays the raw string. UTF-8 (not ASCII): a `name`-sorted cursor can
@@ -135,7 +191,11 @@ def _encode_cursor(sort_by: str, sort_value: object, project_id: UUID) -> str:
     # with ASCII raised UnicodeEncodeError and 500'd the list (live-smoke
     # caught this). base64url of the UTF-8 bytes keeps the wire ASCII-safe.
     sv = sort_value.isoformat() if isinstance(sort_value, datetime) else str(sort_value)
-    raw = f"{sort_by}{_CURSOR_SEP}{sv}{_CURSOR_SEP}{project_id}".encode("utf-8")
+    sig = _filter_sig(
+        sort_by, sort_dir, search, status_filter,
+        include_archived=include_archived, book_id=book_id,
+    )
+    raw = f"{sig}{_CURSOR_SEP}{sv}{_CURSOR_SEP}{project_id}".encode("utf-8")
     return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
 
 
@@ -149,11 +209,26 @@ def _coerce_sort_value(sort_by: str, raw: str) -> object:
     return datetime.fromisoformat(raw)
 
 
-def _decode_cursor(cursor: str, *, sort_by: str) -> tuple[object, UUID]:
-    """Parse a cursor string against the CURRENT sort. Raises
-    HTTPException(400) on malformed input OR a sort mismatch — clients
-    must round-trip the server-issued value verbatim AND keep the same
-    sort_by they requested it under.
+def _decode_cursor(
+    cursor: str,
+    *,
+    sort_by: str,
+    sort_dir: str,
+    search: str | None,
+    status_filter: str | None,
+    include_archived: bool,
+    book_id: UUID | None,
+) -> tuple[object, UUID]:
+    """Parse a cursor string against the CURRENT filter set. Raises
+    HTTPException(400) on malformed input OR a filter-set mismatch —
+    clients must round-trip the server-issued value verbatim AND keep the
+    same sort_by / sort_dir / search / status they requested it under.
+
+    The filter signature is recomputed from the current request and
+    compared against the one baked into the cursor; any drift (a flipped
+    sort_dir, a changed search or status, a changed sort_by) is a 400 so
+    a seek key computed for one filtered population is never mis-applied
+    to another (which would skip or duplicate rows).
 
     Catches the UnicodeError parent so BOTH encode-side (non-ASCII input
     → `.encode('ascii')` fails) and decode-side (`urlsafe_b64decode`
@@ -166,11 +241,15 @@ def _decode_cursor(cursor: str, *, sort_by: str) -> tuple[object, UUID]:
         # is still ASCII (base64url), so `.encode('ascii')` is safe.
         padded = cursor + "=" * (-len(cursor) % 4)
         raw = base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8")
-        sort_token, value_str, uid_str = raw.split(_CURSOR_SEP, 2)
-        if sort_token != sort_by:
-            # Sort changed mid-pagination — the old seek key is invalid;
-            # the FE must restart from page 1 under the new sort.
-            raise ValueError("cursor sort mismatch")
+        sig_token, value_str, uid_str = raw.split(_CURSOR_SEP, 2)
+        if sig_token != _filter_sig(
+            sort_by, sort_dir, search, status_filter,
+            include_archived=include_archived, book_id=book_id,
+        ):
+            # The filter set changed mid-pagination — the old seek key is
+            # invalid for the new population; the FE must restart from
+            # page 1 under the new filters.
+            raise ValueError("cursor filter-set mismatch")
         return _coerce_sort_value(sort_by, value_str), UUID(uid_str)
     except (ValueError, UnicodeError):
         raise HTTPException(
@@ -250,7 +329,15 @@ async def list_projects(
     cursor_value: object | None = None
     cursor_id: UUID | None = None
     if cursor:
-        cursor_value, cursor_id = _decode_cursor(cursor, sort_by=sort_by)
+        cursor_value, cursor_id = _decode_cursor(
+            cursor,
+            sort_by=sort_by,
+            sort_dir=sort_dir,
+            search=search,
+            status_filter=status_filter,
+            include_archived=include_archived,
+            book_id=book_id,
+        )
 
     rows = await repo.list(
         user_id,
@@ -276,7 +363,16 @@ async def list_projects(
             last,
             "extraction_status" if sort_by == "status" else sort_by,
         )
-        next_cursor = _encode_cursor(sort_by, sort_value, last.project_id)
+        next_cursor = _encode_cursor(
+            sort_by,
+            sort_value,
+            last.project_id,
+            sort_dir=sort_dir,
+            search=search,
+            status_filter=status_filter,
+            include_archived=include_archived,
+            book_id=book_id,
+        )
 
     return ProjectListResponse(items=items, next_cursor=next_cursor)
 

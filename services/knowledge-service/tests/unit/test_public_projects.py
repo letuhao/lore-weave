@@ -496,6 +496,114 @@ def test_list_cursor_minted_under_one_sort_rejected_under_another(
     assert resp.status_code == 400
 
 
+def test_list_cursor_minted_under_one_sort_dir_rejected_under_another(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID
+):
+    """MED fix: a cursor binds sort_DIR too. A cursor minted under
+    (name, asc) replayed under (name, desc) is a 400 — the seek
+    predicate flips `<`/`>` against a boundary computed for the
+    opposite direction, so silently accepting it skips/dups rows."""
+    for nm in ["alpha", "bravo", "charlie"]:
+        repo.seed(_make_project(auth_user_id, name=nm))
+    page1 = client.get(
+        "/v1/knowledge/projects?sort_by=name&sort_dir=asc&limit=2"
+    ).json()
+    cursor = page1["next_cursor"]
+    assert cursor is not None
+    # Same sort_by + same cursor, flipped sort_dir → 400.
+    resp = client.get(
+        f"/v1/knowledge/projects?sort_by=name&sort_dir=desc&cursor={cursor}"
+    )
+    assert resp.status_code == 400
+
+
+def test_list_cursor_minted_under_one_search_rejected_under_another(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID
+):
+    """MED fix: a cursor binds the active `search`. Replaying a cursor
+    minted under search='A' against search='B' changes the filtered set
+    the boundary was computed for → 400."""
+    for nm in ["Apple one", "Apple two", "Apple three"]:
+        repo.seed(_make_project(auth_user_id, name=nm))
+    page1 = client.get(
+        "/v1/knowledge/projects?search=Apple&sort_by=name&sort_dir=asc&limit=2"
+    ).json()
+    cursor = page1["next_cursor"]
+    assert cursor is not None
+    resp = client.get(
+        f"/v1/knowledge/projects?search=Banana&sort_by=name&sort_dir=asc"
+        f"&cursor={cursor}"
+    )
+    assert resp.status_code == 400
+
+
+def test_list_cursor_minted_under_one_status_rejected_under_another(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID
+):
+    """MED fix: a cursor binds the active `status`. Replaying a cursor
+    minted under status=ready against status=building changes the
+    filtered set the boundary was computed for → 400."""
+    for nm in ["r1", "r2", "r3"]:
+        repo.seed(
+            _make_project(auth_user_id, name=nm, extraction_status="ready")
+        )
+    page1 = client.get(
+        "/v1/knowledge/projects?status=ready&sort_by=name&sort_dir=asc&limit=2"
+    ).json()
+    cursor = page1["next_cursor"]
+    assert cursor is not None
+    resp = client.get(
+        f"/v1/knowledge/projects?status=building&sort_by=name&sort_dir=asc"
+        f"&cursor={cursor}"
+    )
+    assert resp.status_code == 400
+
+
+def test_list_cursor_minted_under_one_include_archived_rejected_under_another(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID
+):
+    """MED fix: include_archived also shapes the filtered population (it
+    widens the set to archived rows when no status filter is set), so a
+    cursor minted with include_archived=false is rejected under
+    include_archived=true."""
+    for nm in ["alpha", "bravo", "charlie"]:
+        repo.seed(_make_project(auth_user_id, name=nm))
+    page1 = client.get(
+        "/v1/knowledge/projects?sort_by=name&sort_dir=asc&limit=2"
+    ).json()
+    cursor = page1["next_cursor"]
+    assert cursor is not None
+    resp = client.get(
+        f"/v1/knowledge/projects?sort_by=name&sort_dir=asc"
+        f"&include_archived=true&cursor={cursor}"
+    )
+    assert resp.status_code == 400
+
+
+def test_list_cursor_matching_all_filters_still_pages_200(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID
+):
+    """MED fix happy path: a cursor replayed under the SAME
+    sort_by/sort_dir/search/status it was minted under still 200s and
+    pages correctly (the binding only rejects mismatches)."""
+    for nm in ["Apple alpha", "Apple bravo", "Apple charlie", "Apple delta"]:
+        repo.seed(
+            _make_project(auth_user_id, name=nm, extraction_status="ready")
+        )
+    qs = "search=Apple&status=ready&sort_by=name&sort_dir=asc&limit=2"
+    page1 = client.get(f"/v1/knowledge/projects?{qs}").json()
+    assert [p["name"] for p in page1["items"]] == ["Apple alpha", "Apple bravo"]
+    assert page1["next_cursor"] is not None
+    page2 = client.get(
+        f"/v1/knowledge/projects?{qs}&cursor={page1['next_cursor']}"
+    )
+    assert page2.status_code == 200, page2.text
+    assert [p["name"] for p in page2.json()["items"]] == [
+        "Apple charlie",
+        "Apple delta",
+    ]
+
+
 # ── create ───────────────────────────────────────────────────────────────
 
 

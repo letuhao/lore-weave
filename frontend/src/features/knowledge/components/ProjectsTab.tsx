@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { ConfirmDialog, EmptyState, SkeletonCard } from '@/components/shared';
 import { useProjects } from '../hooks/useProjects';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import type { Project } from '../types';
 import {
   narrowProjects,
@@ -35,9 +36,16 @@ export function ProjectsTab() {
   // them in.
   const wantArchived = includeArchived || stateFilter === 'archived';
 
+  // The raw `search` keeps the input controlled/responsive (and drives
+  // the presentational `narrowProjects` fallback below, so typing
+  // narrows the loaded rows instantly). Only the DEBOUNCED term feeds
+  // the server query key, so a fast typist triggers ONE network round-
+  // trip after they pause — not one per keystroke.
+  const debouncedSearch = useDebouncedValue(search, 250);
+
   const serverParams = useMemo(
-    () => toServerParams({ search, sort, stateFilter }),
-    [search, sort, stateFilter],
+    () => toServerParams({ search: debouncedSearch, sort, stateFilter }),
+    [debouncedSearch, sort, stateFilter],
   );
 
   const {
