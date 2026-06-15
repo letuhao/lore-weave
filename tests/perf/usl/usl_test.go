@@ -56,6 +56,60 @@ func TestFitRecoversKnownCoefficients(t *testing.T) {
 	}
 }
 
+// TestFitRecoversKnownCoefficients_NoN1 (W4.1 — closes D-S7-USL-NO-N1) is the
+// recovery bite WITHOUT an N=1 sample. guntherSeed seeds γ from max(X(N)/N) and
+// the OLS skips N≤1; with no N=1 anchor the seed γ is taken at N=2, which
+// UNDER-estimates the true X(1) (USL X(N)/N is strictly decreasing). This
+// exercises the underestimating-seed → Nelder-Mead-refine recovery path that the
+// default sweep (which always includes N=1, where X(1) is exact) never hits. A
+// stub/constant fitter, or a refine that can't recover from a low-γ seed, fails.
+func TestFitRecoversKnownCoefficients_NoN1(t *testing.T) {
+	const gamma, alpha, beta = 1000.0, 0.03, 1e-4
+	concurrency := []int{2, 4, 8, 16, 32, 64, 128} // NO N=1
+	rng := rand.New(rand.NewSource(42))            // deterministic jitter
+
+	var samples []Sample
+	for _, n := range concurrency {
+		x := trueUSL(n, gamma, alpha, beta)
+		x *= 1 + (rng.Float64()-0.5)*0.02 // ±1% multiplicative jitter
+		samples = append(samples, Sample{N: n, Throughput: x})
+	}
+
+	// Sanity: the seed γ (from N=2) must genuinely under-estimate the true γ — if
+	// it didn't, this test would not be exercising the underestimating-seed path.
+	gamma0, _, _ := guntherSeed(samples)
+	if gamma0 >= gamma {
+		t.Fatalf("seed γ %.2f should under-estimate true γ %.0f without an N=1 anchor", gamma0, gamma)
+	}
+
+	fit, err := FitUSL(samples)
+	if err != nil {
+		t.Fatalf("FitUSL: %v", err)
+	}
+	if fit.Degenerate {
+		t.Fatalf("no-N1 recovery fit should not be degenerate: %+v", fit)
+	}
+	// Same discriminating tolerances as the with-N1 recovery test — the refine MUST
+	// climb back from the under-estimating seed. (β slightly looser: with one fewer
+	// point and no exact anchor it is the most noise-sensitive coefficient.)
+	if rel := math.Abs(fit.Gamma-gamma) / gamma; rel > 0.05 {
+		t.Errorf("gamma: got %.2f want ~%.0f (rel %.3f > 0.05)", fit.Gamma, gamma, rel)
+	}
+	if math.Abs(fit.Alpha-alpha) > 0.02 {
+		t.Errorf("alpha: got %.4f want ~%.2f (abs > 0.02)", fit.Alpha, alpha)
+	}
+	if rel := math.Abs(fit.Beta-beta) / beta; rel > 0.50 {
+		t.Errorf("beta: got %.6f want ~%.4f (rel %.3f > 0.50)", fit.Beta, beta, rel)
+	}
+	wantNmax := math.Sqrt((1 - alpha) / beta)
+	if math.Abs(fit.Nmax-wantNmax) > 20 {
+		t.Errorf("Nmax: got %.1f want ~%.1f (±20)", fit.Nmax, wantNmax)
+	}
+	if fit.R2 < 0.98 {
+		t.Errorf("R2: got %.4f want >= 0.98", fit.R2)
+	}
+}
+
 // TestFitLinearSeriesNoHallucinatedKnee is the β=0 bite (S7 §3): a perfectly
 // linear (contention-only, no coherency) series must NOT produce a saturation
 // knee inside or near the measured range.
