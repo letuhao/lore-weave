@@ -87,14 +87,16 @@ async def retranslate_dirty(
 
     lang = body.target_language
     items = await compute_segment_status(db, chapter_id, lang)
-    dirty = [it for it in items if it["dirty"]]
-    if not dirty:
+    # "needs" = source-dirty ∪ glossary-stale (T2-M3.2) — every segment that should
+    # be re-translated, not just the source-changed ones.
+    needed = [it for it in items if it["needs"]]
+    if not needed:
         raise HTTPException(
             status_code=409,
             detail={"code": "TRANSL_NO_DIRTY_SEGMENTS", "message": "No segments need re-translation"},
         )
     block_idx = sorted({
-        i for it in dirty
+        i for it in needed
         for i in range(it["start_block_index"], it["end_block_index"] + 1)
     })
 

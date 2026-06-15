@@ -134,7 +134,27 @@ async def handle_glossary_event(pool, event_type: str, payload: dict) -> bool:
         """,
         book_uuid, entity_uuid, target_language,
     )
-    log.info("M6b: targeted stale flag for book=%s entity=%s lang=%s",
+    # T2-M3.2: per-SEGMENT precision. Flag the segment translations (in this book,
+    # matching language) whose segment's SOURCE references the changed entity
+    # (segment_glossary_usage, language-independent). Only the precise entity path
+    # propagates to segments — the coarse fallback stays chapter-level. A re-translate
+    # clears the segment flag (record resets is_glossary_stale=false).
+    await pool.execute(
+        """
+        UPDATE segment_translations st SET is_glossary_stale = true
+        WHERE COALESCE(st.is_glossary_stale, false) = false
+          AND ($3::text IS NULL OR
+               LOWER(SPLIT_PART(st.target_language, '-', 1)) = LOWER(SPLIT_PART($3, '-', 1)))
+          AND EXISTS (SELECT 1 FROM segment_glossary_usage u
+                      WHERE u.chapter_id = st.chapter_id
+                        AND u.segment_index = st.segment_index
+                        AND u.entity_id = $2)
+          AND EXISTS (SELECT 1 FROM chapter_translations ct
+                      WHERE ct.chapter_id = st.chapter_id AND ct.book_id = $1)
+        """,
+        book_uuid, entity_uuid, target_language,
+    )
+    log.info("M6b/M3.2: targeted stale flag (chapter+segment) for book=%s entity=%s lang=%s",
              book_uuid, entity_uuid, target_language or "*")
     return True
 

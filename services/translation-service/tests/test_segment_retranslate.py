@@ -12,13 +12,14 @@ from tests.conftest import FakeRecord
 
 # ── worker overlay: _partial_retranslate_blocks ───────────────────────────────
 
-def _seg_status_row(idx, start, end, dirty):
+def _seg_status_row(idx, start, end, dirty, stale=False):
     # compute_segment_status reads these columns; dirty = no translated_hash.
     return FakeRecord({
         "segment_index": idx, "start_block_index": start, "end_block_index": end,
         "token_estimate": 50, "current_hash": "cur",
         "translated_hash": None if dirty else "cur",
         "translated_at": None if dirty else datetime(2026, 6, 15, tzinfo=timezone.utc),
+        "is_glossary_stale": stale,
     })
 
 
@@ -186,6 +187,25 @@ def test_retranslate_dirty_scopes_to_dirty_blocks(client, fake_pool, monkeypatch
     assert str(p.seed_version_id) == str(seed_id)
     assert p.force_retranslate is True
     assert [str(c) for c in p.chapter_ids] and len(p.chapter_ids) == 1
+
+
+def test_retranslate_dirty_includes_glossary_stale_segments(client, fake_pool, monkeypatch):
+    holder = _capture_job_create(monkeypatch)
+    book_id, seed_id = uuid4(), uuid4()
+    fake_pool.fetchval.side_effect = [book_id, seed_id]
+    # seg 0 clean, seg 1 source-dirty (blocks 3..4), seg 2 glossary-stale only (block 6)
+    fake_pool.fetch.return_value = [
+        _seg_status_row(0, 0, 2, dirty=False),
+        _seg_status_row(1, 3, 4, dirty=True),
+        _seg_status_row(2, 6, 6, dirty=False, stale=True),
+    ]
+    resp = client.post(
+        f"/v1/translation/chapters/{uuid4()}/retranslate-dirty",
+        json={"target_language": "vi"},
+    )
+    assert resp.status_code == 201
+    # needs = dirty ∪ stale → blocks of seg 1 AND seg 2
+    assert holder["payload"].block_index_filter == [3, 4, 6]
 
 
 def test_retranslate_dirty_409_when_nothing_dirty(client, fake_pool, monkeypatch):

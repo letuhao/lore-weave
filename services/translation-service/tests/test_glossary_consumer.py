@@ -47,8 +47,9 @@ async def test_handle_targeted_uses_usage_index():
         pool, "glossary.entity_updated",
         {"book_id": BOOK_ID, "glossary_entity_id": ENTITY_ID, "target_language": "vi"})
     assert handled is True
-    pool.execute.assert_awaited_once()
-    sql, book_arg, entity_arg, lang_arg = pool.execute.await_args.args
+    # T2-M3.2: two UPDATEs now — chapter-level (M6b) then per-segment.
+    assert pool.execute.await_count == 2
+    sql, book_arg, entity_arg, lang_arg = pool.execute.await_args_list[0].args
     assert "is_glossary_stale = true" in sql
     assert "chapter_translation_glossary_usage" in sql       # precise join
     assert "NOT EXISTS" in sql                                # legacy fallback
@@ -59,6 +60,12 @@ async def test_handle_targeted_uses_usage_index():
     assert str(book_arg) == BOOK_ID
     assert str(entity_arg) == ENTITY_ID
     assert lang_arg == "vi"
+    # the per-segment UPDATE keys on segment_glossary_usage + the segment language
+    seg_sql, s_book, s_entity, s_lang = pool.execute.await_args_list[1].args
+    assert "UPDATE segment_translations" in seg_sql
+    assert "segment_glossary_usage" in seg_sql
+    assert "SPLIT_PART(st.target_language, '-', 1)" in seg_sql
+    assert str(s_book) == BOOK_ID and str(s_entity) == ENTITY_ID and s_lang == "vi"
 
 
 @pytest.mark.asyncio

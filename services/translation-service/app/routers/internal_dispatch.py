@@ -169,6 +169,8 @@ class SegmentStatusItem(BaseModel):
     token_estimate: int
     translated: bool
     dirty: bool
+    stale: bool = False
+    needs: bool = False
     translated_at: str | None = None
 
 
@@ -177,6 +179,7 @@ class SegmentStatusResponse(BaseModel):
     target_language: str
     segments: list[SegmentStatusItem]
     dirty_count: int
+    needs_count: int = 0
 
 
 @router.get(
@@ -199,6 +202,7 @@ async def internal_segment_status(
         target_language=target_language,
         segments=[SegmentStatusItem(**it) for it in items],
         dirty_count=sum(1 for it in items if it["dirty"]),
+        needs_count=sum(1 for it in items if it["needs"]),
     )
 
 

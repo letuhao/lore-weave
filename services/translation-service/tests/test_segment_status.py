@@ -12,6 +12,7 @@ from app.workers.segment_status import (
     _is_dirty,
     compute_segment_status,
     record_segment_translations,
+    scan_glossary_usage,
 )
 
 TOKEN = {"X-Internal-Token": "test_internal_token"}
@@ -29,6 +30,26 @@ def test_is_dirty_source_changed():
 
 def test_is_dirty_unchanged():
     assert _is_dirty("h0", "h0") is False
+
+
+# ── scan_glossary_usage (T2-M3.2, pure) ───────────────────────────────────────
+
+def test_scan_glossary_usage_matches_source_terms():
+    segments = [(0, "提拉米来了"), (1, "无名小卒"), (2, "")]
+    entity_terms = [
+        ("e-tira", ["提拉米", "提拉"]),   # appears in seg 0
+        ("e-other", ["龙王"]),            # appears nowhere
+        ("e-empty", []),                  # no terms → never matches
+    ]
+    usage = scan_glossary_usage(segments, entity_terms)
+    assert usage == [(0, "e-tira")]
+
+
+def test_scan_glossary_usage_multiple_entities_one_segment():
+    segments = [(5, "提拉米 and 龙王 meet")]
+    entity_terms = [("e-tira", ["提拉米"]), ("e-long", ["龙王"])]
+    usage = scan_glossary_usage(segments, entity_terms)
+    assert set(usage) == {(5, "e-tira"), (5, "e-long")}
 
 
 # ── record count parse ────────────────────────────────────────────────────────
@@ -72,22 +93,28 @@ class _FetchConn:
 async def test_compute_marks_dirty_and_translated():
     ts = datetime(2026, 6, 15, tzinfo=timezone.utc)
     rows = [
-        # seg 0: translated, source unchanged → clean
+        # seg 0: translated, source unchanged, not stale → clean
         FakeRecord({"segment_index": 0, "start_block_index": 0, "end_block_index": 2,
                     "token_estimate": 100, "current_hash": "h0", "translated_hash": "h0",
-                    "translated_at": ts}),
+                    "translated_at": ts, "is_glossary_stale": False}),
         # seg 1: translated but source changed → dirty
         FakeRecord({"segment_index": 1, "start_block_index": 3, "end_block_index": 5,
                     "token_estimate": 120, "current_hash": "h1-new", "translated_hash": "h1-old",
-                    "translated_at": ts}),
+                    "translated_at": ts, "is_glossary_stale": False}),
         # seg 2: never translated → dirty + not translated
         FakeRecord({"segment_index": 2, "start_block_index": 6, "end_block_index": 6,
                     "token_estimate": 80, "current_hash": "h2", "translated_hash": None,
-                    "translated_at": None}),
+                    "translated_at": None, "is_glossary_stale": False}),
+        # seg 3: translated, source unchanged, but glossary-stale → stale (needs)
+        FakeRecord({"segment_index": 3, "start_block_index": 7, "end_block_index": 7,
+                    "token_estimate": 60, "current_hash": "h3", "translated_hash": "h3",
+                    "translated_at": ts, "is_glossary_stale": True}),
     ]
     out = await compute_segment_status(_FetchConn(rows), uuid4(), "vi")
-    assert [s["dirty"] for s in out] == [False, True, True]
-    assert [s["translated"] for s in out] == [True, True, False]
+    assert [s["dirty"] for s in out] == [False, True, True, False]
+    assert [s["stale"] for s in out] == [False, False, False, True]
+    assert [s["needs"] for s in out] == [False, True, True, True]
+    assert [s["translated"] for s in out] == [True, True, False, True]
     assert out[0]["translated_at"] == ts.isoformat()
     assert out[2]["translated_at"] is None
     assert out[1]["start_block_index"] == 3 and out[1]["end_block_index"] == 5
@@ -95,10 +122,11 @@ async def test_compute_marks_dirty_and_translated():
 
 # ── internal endpoint ─────────────────────────────────────────────────────────
 
-def _seg_row(idx, current, translated):
+def _seg_row(idx, current, translated, stale=False):
     return FakeRecord({"segment_index": idx, "start_block_index": idx, "end_block_index": idx,
                        "token_estimate": 50, "current_hash": current,
-                       "translated_hash": translated, "translated_at": None})
+                       "translated_hash": translated, "translated_at": None,
+                       "is_glossary_stale": stale})
 
 
 def test_internal_status_endpoint(client, fake_pool):
@@ -206,4 +234,5 @@ def test_public_status_no_translations_empty(client, fake_pool):
         "target_language": "vi",
         "segments": [],
         "dirty_count": 0,
+        "needs_count": 0,
     }

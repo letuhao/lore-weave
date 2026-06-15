@@ -439,6 +439,22 @@ CREATE TABLE IF NOT EXISTS segment_translations (
 );
 CREATE INDEX IF NOT EXISTS idx_segtr_chapter_lang
   ON segment_translations(chapter_id, target_language);
+
+-- T2-M3 (D) per-segment glossary staleness:
+-- which glossary entities each SEGMENT's source text references (language-independent
+-- — source terms in source text). Populated best-effort at translate finalize.
+CREATE TABLE IF NOT EXISTS segment_glossary_usage (
+  chapter_id     UUID NOT NULL,
+  segment_index  INT  NOT NULL,
+  entity_id      UUID NOT NULL,
+  PRIMARY KEY (chapter_id, segment_index, entity_id)
+);
+CREATE INDEX IF NOT EXISTS idx_sgu_entity ON segment_glossary_usage(entity_id);
+-- Per-(chapter, language, segment) staleness flag: set true when a glossary entity the
+-- segment uses changes after it was translated; reset false on (re)record. Distinct from
+-- source-edit `dirty` (a segment can be glossary-stale with unchanged source).
+ALTER TABLE segment_translations
+  ADD COLUMN IF NOT EXISTS is_glossary_stale BOOLEAN NOT NULL DEFAULT false;
 """
 
 

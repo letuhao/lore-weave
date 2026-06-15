@@ -30,7 +30,9 @@ ON CONFLICT (chapter_id, target_language, segment_index)
 DO UPDATE SET source_content_hash    = EXCLUDED.source_content_hash,
               chapter_translation_id  = EXCLUDED.chapter_translation_id,
               translated_at           = now(),
-              updated_at              = now()
+              updated_at              = now(),
+              -- a fresh (re)translation clears glossary-staleness (T2-M3.2)
+              is_glossary_stale       = false
 """
 
 # Per-segment status: current source (chapter_segments) LEFT JOIN the recorded
@@ -42,7 +44,8 @@ SELECT cs.segment_index        AS segment_index,
        cs.token_estimate       AS token_estimate,
        cs.source_content_hash  AS current_hash,
        st.source_content_hash  AS translated_hash,
-       st.translated_at        AS translated_at
+       st.translated_at        AS translated_at,
+       COALESCE(st.is_glossary_stale, false) AS is_glossary_stale
 FROM chapter_segments cs
 LEFT JOIN segment_translations st
   ON st.chapter_id = cs.chapter_id
@@ -73,6 +76,41 @@ def _is_dirty(current_hash, translated_hash) -> bool:
     return translated_hash is None or translated_hash != current_hash
 
 
+def scan_glossary_usage(
+    segments: list[tuple[int, str]], entity_terms: list[tuple[str, list[str]]],
+) -> list[tuple[int, str]]:
+    """T2-M3.2 (pure): which glossary entities each segment's SOURCE text references.
+
+    `segments` = [(segment_index, segment_text)]; `entity_terms` = [(entity_id,
+    [source_terms])]. An entity is used by a segment if ANY of its source terms is a
+    substring of the segment text (mirrors the occurrence scoring in
+    build_glossary_context). Language-independent — source terms in source text.
+    Returns [(segment_index, entity_id)]."""
+    out: list[tuple[int, str]] = []
+    for seg_idx, text in segments:
+        if not text:
+            continue
+        for entity_id, terms in entity_terms:
+            if entity_id and any(t and t in text for t in terms):
+                out.append((seg_idx, entity_id))
+    return out
+
+
+async def record_segment_glossary_usage(
+    conn, chapter_id, usage: list[tuple[int, str]],
+) -> None:
+    """Replace the per-segment glossary-usage rows for a chapter (DELETE-all +
+    re-INSERT) so a re-translation re-derives usage from the current source. Caller
+    runs this best-effort. `usage` = [(segment_index, entity_id)]."""
+    await conn.execute("DELETE FROM segment_glossary_usage WHERE chapter_id=$1", chapter_id)
+    for seg_idx, entity_id in usage:
+        await conn.execute(
+            "INSERT INTO segment_glossary_usage (chapter_id, segment_index, entity_id) "
+            "VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+            chapter_id, seg_idx, entity_id,
+        )
+
+
 async def compute_segment_status(conn, chapter_id, target_language: str) -> list[dict]:
     """Per-segment translation status for a chapter+language, ordered by segment_index.
 
@@ -83,13 +121,19 @@ async def compute_segment_status(conn, chapter_id, target_language: str) -> list
     for r in rows:
         translated_hash = r["translated_hash"]
         ta = r["translated_at"]
+        dirty = _is_dirty(r["current_hash"], translated_hash)
+        # glossary-staleness only applies to a translated segment (an untranslated one
+        # is already dirty). `needs` = the segment should be re-translated for any reason.
+        stale = bool(translated_hash is not None and r["is_glossary_stale"])
         out.append({
             "segment_index": r["segment_index"],
             "start_block_index": r["start_block_index"],
             "end_block_index": r["end_block_index"],
             "token_estimate": r["token_estimate"],
             "translated": translated_hash is not None,
-            "dirty": _is_dirty(r["current_hash"], translated_hash),
+            "dirty": dirty,
+            "stale": stale,
+            "needs": dirty or stale,
             "translated_at": ta.isoformat() if ta is not None else None,
         })
     return out

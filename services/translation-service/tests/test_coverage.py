@@ -186,14 +186,17 @@ def test_coverage_active_and_non_active_in_same_chapter(client, fake_pool):
 
 # ── T2-M3 (A): per-segment coverage rollup ────────────────────────────────────
 
-def _seg_cov_row(chapter_id, total, translated, dirty):
+def _seg_cov_row(chapter_id, total, translated, dirty, stale=0, needs=None):
     return FakeRecord({"chapter_id": UUID(chapter_id), "segment_total": total,
-                       "translated_count": translated, "dirty_count": dirty})
+                       "translated_count": translated, "dirty_count": dirty,
+                       "stale_count": stale,
+                       "needs_count": dirty if needs is None else needs})
 
 
 def test_segment_coverage_counts(client, fake_pool):
     fake_pool.fetch.return_value = [
-        _seg_cov_row(CHAPTER_ID_1, 8, 8, 3),   # 8 segs, all translated, 3 changed since
+        # 8 segs, all translated, 3 source-changed + 2 glossary-stale → 5 need work
+        _seg_cov_row(CHAPTER_ID_1, 8, 8, 3, stale=2, needs=5),
         _seg_cov_row(CHAPTER_ID_2, 5, 0, 5),   # untranslated → all dirty
     ]
     resp = client.get(f"/v1/translation/books/{BOOK_ID}/segment-coverage?target_language=vi")
@@ -203,8 +206,8 @@ def test_segment_coverage_counts(client, fake_pool):
     assert len(d["chapters"]) == 2
     c0 = d["chapters"][0]
     assert (c0["segment_total"], c0["translated_count"], c0["dirty_count"]) == (8, 8, 3)
-    assert c0["needs_count"] == 3   # dirty ∪ stale; stale=0 until M3.2
-    assert c0["stale_count"] == 0
+    assert c0["stale_count"] == 2
+    assert c0["needs_count"] == 5   # dirty ∪ stale
     assert d["chapters"][1]["needs_count"] == 5
 
 

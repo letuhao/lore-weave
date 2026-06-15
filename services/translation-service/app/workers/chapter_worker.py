@@ -498,6 +498,39 @@ async def _record_segment_status(
     except Exception:  # noqa: BLE001 — segment status is best-effort telemetry
         log.warning("T2-M2: failed to record segment status (non-fatal)", exc_info=True)
 
+    # T2-M3.2: refresh per-segment glossary usage (independent best-effort — a
+    # glossary-fetch failure must not undo the status record above).
+    await _record_segment_glossary_usage(pool, book_id, chapter_id, target_language)
+
+
+async def _record_segment_glossary_usage(pool, book_id, chapter_id, target_language: str) -> None:
+    """T2-M3.2: record which glossary entities each segment's SOURCE references, so a
+    later change to an entity can flag only the segments that use it. Best-effort,
+    post-commit. Language-independent usage (source terms in source text); fetched per
+    `target_language` only because that's the glossary endpoint's scope."""
+    try:
+        from .glossary_client import fetch_translation_glossary
+        from .segment_status import scan_glossary_usage, record_segment_glossary_usage
+        raw = await fetch_translation_glossary(str(book_id), target_language, str(chapter_id))
+        entity_terms = [
+            (str(r["entity_id"]), [t for t in (r.get("zh") or []) if t])
+            for r in raw
+            if r.get("entity_id") and [t for t in (r.get("zh") or []) if t]
+        ]
+        if not entity_terms:
+            return
+        async with pool.acquire() as db:
+            seg_rows = await db.fetch(
+                "SELECT segment_index, segment_text FROM chapter_segments WHERE chapter_id=$1",
+                chapter_id,
+            )
+            segments = [(r["segment_index"], r["segment_text"]) for r in seg_rows]
+            usage = scan_glossary_usage(segments, entity_terms)
+            async with db.transaction():
+                await record_segment_glossary_usage(db, chapter_id, usage)
+    except Exception:  # noqa: BLE001 — best-effort glossary-usage telemetry
+        log.warning("T2-M3.2: failed to record segment glossary usage (non-fatal)", exc_info=True)
+
 
 def _block_plain_text(node) -> str:
     """Plain-text projection of a Tiptap block (mirrors versions._block_text) — used to

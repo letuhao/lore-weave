@@ -13,12 +13,12 @@ from ..models import (
 router = APIRouter(prefix="/v1/translation", tags=["translation-coverage"])
 
 
-# T2-M3 (A): per (book, language) per-chapter segment counts for the matrix badge +
+# T2-M3 (A+D): per (book, language) per-chapter segment counts for the matrix badge +
 # drill-down summary. Book chapters come from chapter_translations (chapter_segments
 # carries no book_id); each chapter's current segments LEFT JOIN the recorded
-# translation hash for this language. dirty = source changed (or never translated).
-# stale_count is 0 here — T2-M3.2 adds per-segment glossary staleness + folds it into
-# needs_count (which is dirty-only until then).
+# translation hash for this language. dirty = source changed (or never translated);
+# stale = a translated segment whose glossary entity changed (T2-M3.2);
+# needs = dirty ∪ stale.
 _SEGMENT_COVERAGE_SQL = """
 WITH book_chapters AS (
   SELECT DISTINCT chapter_id FROM chapter_translations
@@ -30,7 +30,16 @@ SELECT cs.chapter_id AS chapter_id,
        COUNT(*) FILTER (
          WHERE st.source_content_hash IS NULL
             OR st.source_content_hash <> cs.source_content_hash
-       )                                                           AS dirty_count
+       )                                                           AS dirty_count,
+       COUNT(*) FILTER (
+         WHERE st.source_content_hash IS NOT NULL
+           AND COALESCE(st.is_glossary_stale, false)
+       )                                                           AS stale_count,
+       COUNT(*) FILTER (
+         WHERE st.source_content_hash IS NULL
+            OR st.source_content_hash <> cs.source_content_hash
+            OR COALESCE(st.is_glossary_stale, false)
+       )                                                           AS needs_count
 FROM chapter_segments cs
 JOIN book_chapters bc ON bc.chapter_id = cs.chapter_id
 LEFT JOIN segment_translations st
@@ -152,8 +161,8 @@ async def get_segment_coverage(
             segment_total=r["segment_total"],
             translated_count=r["translated_count"],
             dirty_count=r["dirty_count"],
-            stale_count=0,                       # T2-M3.2 fills this
-            needs_count=r["dirty_count"],        # dirty ∪ stale; stale=0 until M3.2
+            stale_count=r["stale_count"],
+            needs_count=r["needs_count"],
         )
         for r in rows
     ]
