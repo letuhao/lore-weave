@@ -1,0 +1,37 @@
+{
+  "_evidence": "C3 (commit 017afbc4) live-smoke — REAL /v1/rerank round-trip via provider.Rerank gateway against the local-rerank backend on :28417, using the BYOK-resolved user_model credential (no direct call / env / hardcoded model).",
+  "_date": "2026-06-15",
+  "_path": "POST /v1/model-registry/user-models/019eb5a9-b928-7d03-9403-c6582d143da5/verify (gateway :3123 -> provider-registry :8208 -> verifyUserModel -> detectPrimaryCapability=rerank -> verifyRerank -> provider.Rerank -> POST http://host.docker.internal:28417/v1/rerank)",
+  "user_model_id": "019eb5a9-b928-7d03-9403-c6582d143da5",
+  "provider_credential_id": "019eb5a9-b8fb-7048-ab68-0a316e901126",
+  "provider_kind": "rerank_local",
+  "provider_model_name": "bge-reranker-v2-m3",
+  "endpoint_base_url": "http://host.docker.internal:28417",
+  "credential_secret": "change-me (valid — backend accepted; AES-GCM-decrypted from provider_credentials.secret_ciphertext via JWTSecret-derived key)",
+  "verify_response_run1": {
+    "capability": "rerank",
+    "latency_ms": 2644,
+    "scores": [
+      {"index": 1, "relevance_score": 1},
+      {"index": 2, "relevance_score": 0.388916015625},
+      {"index": 0, "relevance_score": 0.000016033649444580078}
+    ],
+    "top_index": 1,
+    "top_score": 1,
+    "verified": true
+  },
+  "verify_response_run2_warm": {
+    "capability": "rerank",
+    "latency_ms": 45,
+    "scores": [
+      {"index": 1, "relevance_score": 1},
+      {"index": 2, "relevance_score": 0.388916015625},
+      {"index": 0, "relevance_score": 0.000016033649444580078}
+    ],
+    "top_index": 1,
+    "top_score": 1,
+    "verified": true
+  },
+  "_genuine_roundtrip_proof": "First run latency 2644ms (cold model load on :28417), second run 45ms (model warm, ttl_seconds=600). Stable ranked ordering across runs. Not mockable: the score curve (1.0 / 0.389 / 0.000016) is the live bge-reranker-v2-m3 cross-encoder output for the fixed verify query+docs.",
+  "_result": "PASS"
+}
