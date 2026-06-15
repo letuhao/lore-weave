@@ -55,6 +55,17 @@ export const worldsApi = {
     });
   },
 
+  /** W5 (G1) — attach an existing book to a world (C20 `POST /v1/worlds/{id}/
+   *  books` — sets `books.world_id`). Requires world ownership AND edit grant on
+   *  the book (BE-enforced). Idempotent: re-adding a book already in the world
+   *  is a no-op. Bible books can't be moved (BE filters `is_bible=false`). */
+  moveBookIntoWorld(token: string, worldId: string, bookId: string): Promise<{ book_id: string; world_id: string }> {
+    return apiJson<{ book_id: string; world_id: string }>(
+      `${WORLDS}/${encodeURIComponent(worldId)}/books`,
+      { method: 'POST', body: JSON.stringify({ book_id: bookId }), token },
+    );
+  },
+
   // ── lore authoring (anchors to the bible chapter) ───────────────────────
 
   /** Glossary entity kinds — the world lore form's kind picker. Reuses the

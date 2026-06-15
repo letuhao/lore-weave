@@ -5,6 +5,7 @@ import { useWorld } from '../hooks/useWorld';
 import { WorldLorePanel } from '../components/WorldLorePanel';
 import { WorldGraphSection } from '../components/WorldGraphSection';
 import { LivingWorldTree } from '../components/LivingWorldTree';
+import { WorldPopulateActions } from '../components/WorldPopulateActions';
 
 // C21 — the world WORKSPACE. A prose-less worldbuilding surface: it resolves the
 // world's bible chapter (the lore anchor) and presents lore authoring + a
@@ -54,6 +55,8 @@ export function WorldWorkspacePage() {
                 defaultValue: 'Your world’s canon and its what-if branches as a navigable timeline. Click a work to open it.',
               })}
             </p>
+            {/* G1 — populate the world without leaving the workspace. */}
+            <WorldPopulateActions worldId={worldId} />
             <LivingWorldTree worldId={worldId} />
           </section>
 

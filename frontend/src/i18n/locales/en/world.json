@@ -51,6 +51,26 @@
     "loadFailed": "Failed to load the world graph: {{error}}",
     "empty": "No world knowledge yet — build the bible or extract a member book to roll its graph up here."
   },
+  "populate": {
+    "addBook": "Add a book",
+    "createWhatIf": "Create a what-if",
+    "whatIfHint": "Branch a what-if from a canon work",
+    "whatIfNeedsCanon": "Add a book with a canon work first — a what-if branches from canon.",
+    "pickCanon": "Branch from…",
+    "addBookTitle": "Add a book to this world",
+    "addBookDesc": "Attach an existing book or create a new one — it joins the world’s timeline and graph.",
+    "tabAttach": "Attach existing",
+    "tabCreate": "Create new",
+    "pickBook": "Book",
+    "bookTitle": "Title",
+    "bookTitlePlaceholder": "New book title…",
+    "bookDesc": "Description (optional)",
+    "attach": "Attach book",
+    "createAttach": "Create & add",
+    "adding": "Adding…",
+    "cancel": "Cancel",
+    "addFailed": "Couldn’t add the book: {{error}}"
+  },
   "living": {
     "heading": "Living world",
     "subtitle": "Your world’s canon and its what-if branches as a navigable timeline. Click a work to open it.",
