@@ -458,11 +458,21 @@ async def resolve_work_project(
         raise HTTPException(status_code=409, detail={"code": "STILL_PENDING"})
 
     project_id = UUID(str(created["project_id"]))
-    backfilled = await works.backfill_project(user_id, work.id, project_id)
+    try:
+        backfilled = await works.backfill_project(user_id, work.id, project_id)
+    except asyncpg.UniqueViolationError:
+        # Defensive (review #2): the one-Work-per-book invariant makes this
+        # unreachable — a pending row exists ONLY when no backed row already
+        # holds the book's canonical project_id (the create seam backfills the
+        # pending row rather than spawning a second). But if that invariant ever
+        # drifts, a concurrent backed row already carries this project; return the
+        # resolved state via the re-read below instead of a 500.
+        backfilled = None
     if backfilled is not None:
         return backfilled.model_dump(mode="json")
-    # Race: a concurrent POST /work already backfilled (our WHERE-pending UPDATE
-    # no-op'd). Re-read and return the now-backed row.
+    # Race / collision: a concurrent POST /work already backfilled (our
+    # WHERE-pending UPDATE no-op'd, or a unique row already holds the project).
+    # Re-read and return the now-backed row.
     current = await works.get_by_id(user_id, work_id)
     return (current or work).model_dump(mode="json")
 

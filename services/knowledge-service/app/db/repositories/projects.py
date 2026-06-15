@@ -217,16 +217,19 @@ class ProjectsRepo:
                     user_id, data.book_id,
                 )
                 if existing is not None:
-                    # G4: idempotent world-binding. If the caller supplied a
-                    # world_id the existing bible-book project doesn't yet carry
+                    # G4: idempotent world-binding. Stamp world_id onto the
+                    # existing bible-book project ONLY when it is not yet bound
                     # (first world-create binding, or a re-provision after the
-                    # column landed), stamp it in-place under the same advisory
-                    # lock — never duplicates the project. Not a content edit, so
-                    # `version` is left untouched (If-Match optimistic locking is
-                    # for user PATCHes, not internal provisioning).
+                    # column landed). We deliberately do NOT rebind a project
+                    # that already carries a (different) world_id — a bible book
+                    # belongs to exactly one world and never moves, so a
+                    # differing world_id would be a caller bug, not a re-home;
+                    # refusing it keeps the binding stable. Re-provision with the
+                    # SAME world_id is a no-op. Not a content edit, so `version`
+                    # is left untouched (If-Match is for user PATCHes).
                     if (
                         data.world_id is not None
-                        and existing["world_id"] != data.world_id
+                        and existing["world_id"] is None
                     ):
                         existing = await conn.fetchrow(
                             f"""

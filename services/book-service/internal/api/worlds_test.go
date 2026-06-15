@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/loreweave/book-service/internal/config"
 )
 
 // C20 world container — unit tests for the non-pool-dependent seams (payload
@@ -210,6 +211,25 @@ func TestInternalListWorldBooksInvalidWorldID(t *testing.T) {
 	s.internalListWorldBooks(rr, req)
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for invalid world_id, got %d", rr.Code)
+	}
+}
+
+// Review #5: prove the new route is INSIDE the requireInternalToken group (a
+// future refactor that moved it out would drop the auth). Mount the real router
+// and hit the path with no X-Internal-Token → 401 (short-circuits before any
+// pool access, so a nil pool is fine).
+func TestInternalListWorldBooksRequiresInternalToken(t *testing.T) {
+	t.Parallel()
+	s := &Server{cfg: &config.Config{InternalServiceToken: "secret-internal-token"}}
+	srv := httptest.NewServer(s.Router())
+	defer srv.Close()
+	resp, err := http.Get(srv.URL + "/internal/worlds/" + uuid.New().String() + "/books?user_id=" + uuid.New().String())
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected 401 without internal token, got %d", resp.StatusCode)
 	}
 }
 

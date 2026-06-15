@@ -76,3 +76,15 @@ async def test_malformed_body_raises_unavailable():
 
     with pytest.raises(BookServiceUnavailable):
         await _client(handler).list_world_books(uuid4(), uuid4())
+
+
+@pytest.mark.asyncio
+async def test_non_list_items_raises_unavailable():
+    """Review #4: a 200 whose `items` isn't a list is a contract drift — raise
+    rather than silently drop every member book (masking a broken seam as an
+    'empty world')."""
+    def handler(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"items": "oops-not-a-list"})
+
+    with pytest.raises(BookServiceUnavailable):
+        await _client(handler).list_world_books(uuid4(), uuid4())

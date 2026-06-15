@@ -68,6 +68,22 @@ describe('usePendingWorkResolver (D-C16 self-healing backfill poll)', () => {
     expect(resolveMock).toHaveBeenCalledTimes(8);
   });
 
+  it('waits a backoff delay between attempts (not a tight 0ms loop)', async () => {
+    resolveMock.mockRejectedValue(new Error('409'));
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => usePendingWorkResolver('book-1', 'tok'), { wrapper: Wrapper });
+    act(() => result.current.start('w1'));
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); }); // attempt 1 at t=0
+    expect(resolveMock).toHaveBeenCalledTimes(1);
+    // first backoff is 500ms — advancing only 400ms must NOT fire attempt 2
+    // (a fixed-0ms regression would fire it here, failing this test).
+    await act(async () => { await vi.advanceTimersByTimeAsync(400); });
+    expect(resolveMock).toHaveBeenCalledTimes(1);
+    // crossing the 500ms boundary fires attempt 2
+    await act(async () => { await vi.advanceTimersByTimeAsync(150); });
+    expect(resolveMock).toHaveBeenCalledTimes(2);
+  });
+
   it('retry re-arms the same id after a give-up', async () => {
     resolveMock.mockRejectedValue(new Error('409'));
     const { Wrapper } = makeWrapper();

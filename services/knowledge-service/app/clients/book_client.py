@@ -153,7 +153,12 @@ class BookClient:
             items = resp.json().get("items", [])
         except ValueError as exc:
             raise BookServiceUnavailable("malformed response") from exc
-        return items if isinstance(items, list) else []
+        # A 200 whose `items` isn't a list is a contract drift — raise rather than
+        # silently degrade to an empty membership (which would mask a broken seam
+        # as an "empty world" and drop every member book from the rollup).
+        if not isinstance(items, list):
+            raise BookServiceUnavailable("malformed response: items is not a list")
+        return items
 
     async def lexical_search(
         self, book_id: UUID, q: str, *, limit: int = 20,

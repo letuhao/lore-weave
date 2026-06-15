@@ -53,10 +53,14 @@ class StubWorks:
         self.created_pending = False
         self.backfilled_with = None    # (work_id, project_id) on backfill
         self.backfill_result = None
+        self.backfill_raises = None    # set to an exc to simulate a unique race
         # D-C16: id-addressable resolve
         self.by_id_result = None
+        self.by_id_results = None      # if a list, pop per get_by_id call
 
     async def get_by_id(self, user_id, work_id):
+        if self.by_id_results is not None:
+            return self.by_id_results.pop(0) if self.by_id_results else None
         return self.by_id_result
 
     async def get(self, user_id, project_id):
@@ -100,6 +104,8 @@ class StubWorks:
 
     async def backfill_project(self, user_id, work_id, project_id):
         self.backfilled_with = (work_id, project_id)
+        if self.backfill_raises:
+            raise self.backfill_raises
         return self.backfill_result
 
 
@@ -467,6 +473,22 @@ def test_resolve_project_404_when_work_missing(ctx):
     works.by_id_result = None
     r = c.post(f"/v1/composition/works/by-id/{uuid.uuid4()}/resolve-project")
     assert r.status_code == 404
+
+
+def test_resolve_project_unique_violation_returns_resolved_not_500(ctx):
+    # Review #2: if backfill hits a unique race (a concurrent backed row already
+    # holds the canonical project), don't 500 — re-read and return the resolved
+    # state. (The one-Work-per-book invariant makes this unreachable in practice.)
+    c, works, knowledge, _, _ = ctx
+    pend = _pending_work()
+    new_pid = uuid.uuid4()
+    backed = _work(project_id=new_pid, id=pend.id)
+    works.by_id_results = [pend, backed]  # first get → pending; re-read → backed
+    knowledge.created_project = {"project_id": str(new_pid)}
+    works.backfill_raises = asyncpg.UniqueViolationError("dup project")
+    r = c.post(f"/v1/composition/works/by-id/{pend.id}/resolve-project")
+    assert r.status_code == 200
+    assert r.json()["project_id"] == str(new_pid)
 
 
 def test_post_work_unique_violation_reresolves(ctx):

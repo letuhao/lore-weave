@@ -95,6 +95,35 @@ async def test_create_or_get_stamps_world_id_idempotently(pool):
 
 
 @pytest.mark.asyncio
+async def test_create_or_get_refuses_world_id_rebind(pool):
+    """G4 (review #3): a bible book belongs to exactly one world and never moves.
+    create_or_get stamps world_id only when currently NULL — a re-provision with
+    a DIFFERENT world_id is refused (the binding stays put), and a re-provision
+    with the SAME world_id is a no-op."""
+    repo = ProjectsRepo(pool)
+    user, bible_book, world_a, world_b = uuid4(), uuid4(), uuid4(), uuid4()
+    p1, _ = await repo.create_or_get(
+        user,
+        ProjectCreate(name="wb", project_type="book", book_id=bible_book, world_id=world_a),
+    )
+    assert p1.world_id == world_a
+    # re-provision with a DIFFERENT world → binding unchanged (no silent rebind)
+    p2, created2 = await repo.create_or_get(
+        user,
+        ProjectCreate(name="wb", project_type="book", book_id=bible_book, world_id=world_b),
+    )
+    assert created2 is False
+    assert p2.project_id == p1.project_id
+    assert p2.world_id == world_a  # NOT world_b
+    # re-provision with the SAME world → no-op, still bound to world_a
+    p3, _ = await repo.create_or_get(
+        user,
+        ProjectCreate(name="wb", project_type="book", book_id=bible_book, world_id=world_a),
+    )
+    assert p3.world_id == world_a
+
+
+@pytest.mark.asyncio
 async def test_world_level_project_hidden_from_home_but_book_id_resolves(pool):
     """G4: a world-level project (world_id set) is excluded from the HOME
     browse, returned by ?world_id, and STILL resolvable by ?book_id (the
