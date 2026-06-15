@@ -15,10 +15,12 @@ increments + 1 documented defer + W4.7 (conformance/CI/SESSION). Batch cadence
 - **No padding / honest defer:** W4.5 builds only if the real subscription semantics
   are encodable; D-S11-LIVENESS-TLA stays deferred (TLA+ toolchain).
 
-## Increment order (dependency-aware)
-Independent items first (W4.1 unit, W4.4 bounds — cheap), then the live/infra ones
-(W4.2 micro-bench, W4.3 recall), then the model-source (W4.5), then the centerpiece
-(W4.6 reference projector), then W4.7.
+## Increment order (dependency-aware) — 5 build + 2 defer after plan-review
+Plan-review outcome: **W4.5 deferred** (026 is pure membership, already modeled
+parametrically — see W4.5). Build order: independent/cheap first (W4.1 unit, W4.4
+bounds), then live/infra (W4.2 micro-bench, W4.3 recall), then the load-bearing
+centerpiece (W4.6 reference projector — its own `/review-impl`), then W4.7. Deferred:
+W4.5 (D-S9-FANOUT-SUBSCRIBER-SOURCE) + D-S11-LIVENESS-TLA.
 
 ## W4.1 — USL no-N=1 recovery test `[BE/Go]`
 - `tests/perf/usl/usl_test.go`: add `TestFitRecoversKnownCoefficients_NoN1` mirroring
@@ -28,89 +30,130 @@ Independent items first (W4.1 unit, W4.4 bounds — cheap), then the live/infra 
 - **Why non-vacuous:** without N=1, `guntherSeed` must ESTIMATE X(1) (the linearization
   anchor) rather than read it exactly — a previously-untested seed path. A stub/
   constant fitter fails; a seed that silently mis-estimates X(1) fails the γ tolerance.
-- **Bite (already-provable):** flip one assertion target to a wrong value in a scratch
-  run to confirm the test bites (then revert). No new infra.
+- **Confirmed sound at plan-review (#6):** `guntherSeed` computes `gamma0 =
+  max(throughput/N)` over ALL samples and the OLS SKIPS N≤1; without N=1 the max ratio
+  is at N=2, which UNDER-estimates X(1) (USL X(N)/N is decreasing) — exactly the
+  "underestimating-seed → Nelder-Mead refine recovers" path the deferred named.
+- **Tolerance calibration:** keep tolerances tight enough that a non-recovering /
+  constant fit FAILS (the discriminating bite); loosen only as much as the missing
+  exact anchor genuinely needs. Confirm by a scratch wrong-target flip (then revert).
 
-## W4.2 — T0/T1 kernel micro-bench `[BE/Rust+bash]`
-- **Locate-first** the append + outbox-emit calls (recon: `dp_kernel::PgEventStore::
-  append_events` = T0; `events.OutboxWrite` / `crates/dp-kernel/src/outbox.rs` = T1).
-- New `scripts/perf/w4-t0t1-micro.sh` (reuses the rig shard-0, applies 0001/0002/
-  0005/0013 + default partition): drive K single-event appends through the REAL
-  kernel via a tiny bench bin (or `cargo bench`/criterion in dp-kernel if cheaper),
-  measure per-call wall-clock p50/p99 for T0 (append) and T1 (outbox row write).
-  **S7 discipline:** ship the METHOD + a captured baseline; the gate is RELATIVE
-  (T1 ≤ k·T0, since an outbox row INSERT must be cheaper than a full event append) —
-  NOT an absolute µs threshold pre-baseline.
-- **Bite:** inject artificial latency into the measured path (e.g. a `pg_sleep` in a
-  wrapper, or bench a deliberately-batched-vs-unbatched variant) → the relative gate
-  fires. The bite proves the harness measures the real path, not a constant.
-- If a clean micro-bench bin is too heavy, FALL BACK to a hyperfine wrapper over an
-  existing append-driving bin (e.g. a 1-event `wg -emit`) and document the
-  append-vs-emit attribution. Decide at build.
+## W4.2 — T0/T1 micro-bench (the emit write path) `[BE/Go+bash]`
+**Coherent T0/T1 definition (plan-review MED #2).** The kernel `append_events`
+writes EVENTS ONLY; the outbox write (T1) is the Go `events.OutboxWrite` path. So the
+two ticks live ADJACENTLY in the Go emit path (`tests/workload-gen/internal/emit`),
+in ONE TX — that is where we measure, NOT "the kernel" (which has no T1):
+  - **T0** = the `INSERT INTO events …` exec latency (now incl the W3.4
+    `content_sha256` hash work — the micro-bench captures that cost).
+  - **T1** = the `events.OutboxWrite` (`INSERT INTO events_outbox …`) exec latency.
+- New tiny Go micro-bench (a `tests/perf/` bench or a `cmd/` harness) that, against
+  the rig shard-0 (migrations 0001/0002/0005/0013 + default partition), runs K
+  single-event writes and times EACH exec separately (wrap `ExecContext` with a
+  per-call timer), reporting p50/p99 for T0 and T1.
+- **S7 discipline:** ship the METHOD + a captured baseline; the gate is RELATIVE —
+  **T1 p50 < T0 p50** (a 2-3-column outbox INSERT must be cheaper than a full
+  many-column event INSERT + jsonb + checksum) — NOT an absolute µs threshold.
+- **Bite (non-vacuous):** make T1 artificially expensive (e.g. point the outbox write
+  at a variant that also re-hashes a payload, or add a `pg_sleep` wrapper) so
+  T1 > T0 → the relative gate FIRES. Proves the harness times the real per-call path,
+  not a constant. New `scripts/perf/w4-t0t1-micro.sh` orchestrates + asserts.
 
 ## W4.3 — pgvector HNSW recall comparator `[BE/bash+SQL]`
 - New `scripts/perf/w4-pgvector-recall.sh` (foundation-dev pgvector, like w3-generator):
   seed K (e.g. 2000) random 1536-d vectors into a throwaway table with an HNSW index
   (m=16, ef_construction=64 — mirror 0008). For Q query vectors, compute the EXACT
-  top-k (brute-force `ORDER BY embedding <-> q LIMIT k`, no index / `SET enable_indexscan=off`)
-  vs the APPROX top-k (HNSW, index on). **recall@k = |approx ∩ exact| / k**, averaged
-  over Q; assert mean recall ≥ a threshold (e.g. 0.90 at ef_search default).
-- **Bite (non-vacuous):** drop `ef_search` (e.g. `SET hnsw.ef_search = 1`) → recall
-  collapses well below the threshold → the comparator CATCHES the quality regression.
-  A vacuous comparator (e.g. comparing the index to itself) would not move. Restore
-  ef_search → recall recovers.
+  top-k vs the APPROX top-k (HNSW, index on). **recall@k = |approx ∩ exact| / k**,
+  averaged over Q; assert mean recall ≥ a threshold (e.g. 0.90 at ef_search default).
+- **Exact-pass must genuinely bypass HNSW (plan-review LOW #5).** Force a true
+  brute-force for the EXACT set — `SET LOCAL enable_indexscan=off; SET LOCAL
+  enable_bitmapscan=off;` (or run the exact pass against a no-index copy) — else the
+  "exact" query silently rides the HNSW index and recall reads ~1.0 VACUOUSLY. Confirm
+  via `EXPLAIN` the exact pass is a Seq Scan and the approx pass is an Index Scan.
+- **Opclass/operator match.** Mirror `0008`'s opclass + the matching distance operator
+  (`vector_l2_ops` ↔ `<->`); a mismatched operator silently disables the index.
+- **Bite (non-vacuous):** lower `hnsw.ef_search` to a small-but-VALID value (≥ k but
+  small, NOT below k — pgvector needs ef_search ≥ k) to degrade recall well below the
+  threshold → the comparator CATCHES the quality regression. A vacuous comparator
+  (index-vs-itself) would not move. Restore ef_search → recall recovers.
+- **Flakiness margin (R3):** average over Q ≥ 20 queries + a comfortable threshold
+  margin so a clean run is not borderline; the bite's recall gap is large.
 - **Verdict:** NOTRUN if pgvector absent; FAIL if clean recall < threshold OR the
-  low-ef bite does NOT drop recall; PASS otherwise.
+  low-ef bite does NOT drop recall OR EXPLAIN shows the exact pass used the index;
+  PASS otherwise.
 
 ## W4.4 — raise Stateright model bounds `[BE/Rust]`
 - `crates/foundation-model/src/{lifecycle,outbox,fanout}.rs`: raise the bounding
   consts (lifecycle `BUDGET` 10→higher + `PENDING_CAP`; outbox `CRASH_BUDGET` 1→2;
-  fanout `R` realities / a larger `SUBSCRIBERS` universe) to enlarge the verified
-  state space. Keep the runtime bounded (use `check_random(_, N)` where the DFS space
-  would explode — mirror W2.5's lesson; never `check_dfs(None)` on a now-larger model).
-- **Why non-vacuous:** the existing should-fail / property-violation variants (each
-  model already ships a bite that a broken transition would trip) MUST still fire at
-  the higher bounds, and the safety/liveness properties MUST still hold over the
-  larger space — a real counterexample surfaced here is a genuine finding, not a pad.
-- **Bite:** confirm each model's existing negative test (the intentional violation)
-  still FAILS the property at the new bounds (proves the larger model is still
-  discriminating, not vacuously passing). Measure check time stays sane (CI-friendly).
+  fanout `R` realities / a larger subscriber universe) to enlarge the verified space.
+  Each model already ships a discriminating bite (confirmed at recon:
+  `lifecycle.rs:208 bite_broken_cas_violates_legal_hop` + `broken_cas()`; fanout +
+  outbox negative tests), so the non-vacuity scaffold exists.
+- **Coverage-vs-sampling (plan-review MED #3 — the real correctness condition).**
+  Raising a bound only INCREASES coverage if the checker actually explores the new
+  states. **Confirm the checker mode at build:** if it is bounded `check_dfs` (BFS/DFS
+  exhaustive up to the bound), raising the bound genuinely explores more — done. If it
+  is `check_random(_, N)` (sampled), raising the bound with a FIXED N just THINS
+  coverage (bigger space, same samples) — so ALSO raise N proportionally, OR switch
+  that model to bounded DFS at the new (still-finite) bound. Never `check_dfs(None)`
+  on the enlarged model (W2.5 hang lesson). Record the chosen mode + counts.
+- **Bite (must still discriminate at the new bounds):** each model's existing negative
+  test (the intentional violation) MUST still FAIL the property at the raised bounds —
+  proving the larger model is still discriminating, not vacuously passing. A real
+  counterexample surfaced by the larger space is a genuine finding, not a pad.
+- Keep CI check-time bounded (measure + cap); a model whose enlarged space is too big
+  for per-PR time runs nightly instead.
 
-## W4.5 — fan-out subscriber-source from the real table `[BE/Rust]`
-- **Locate-first** `migrations/meta/026_book_reality_subscription.up.sql` semantics
-  (which realities subscribe to which book → which get the fan-out). The lifecycle
-  model already loads `transitions.yaml`; analogously, derive the fan-out subscriber
-  set from the real subscription RULE rather than the hand-coded `SUBSCRIBERS=0b0111`.
-- **Build-or-defer:** if the 026 semantics are a clean, encodable rule (a reality is a
-  subscriber iff it has a row for the book), encode that as the model's subscriber
-  source (a small fixture derived from the schema, or the rule itself) + assert the
-  model now checks fan-out against the production rule. If the real semantics need a
-  live DB / book-service surface not present in the model's scope, DEFER with the
-  rationale (don't fake a "real" source). Decide at build.
-- **Bite:** a subscriber-set that DISAGREES with the production rule must make the
-  fan-out coverage property fail — prove the model is sensitive to the source.
+## W4.5 — fan-out subscriber-source `[BE/Rust]` — **DEFERRED (plan-review MED #4)**
+Recon settled this at PLAN time: `migrations/meta/026_book_reality_subscription.up.sql`
+is a PURE membership table — `PRIMARY KEY (book_id, reality_id)`, the canon_writer's
+`SubscribersForBook(book_id)` returns "the reality_ids with a row." There is NO
+structural rule beyond set membership. The fan-out model ALREADY captures that
+parametrically: `SUBSCRIBERS` is a membership bitmask and the model verifies
+"non-subscribers never receive delivery" / "all subscribers eventually do" for that
+set — i.e. it is already correct for ANY subscriber set. Loading the SAME membership
+set from a fixture instead of a literal adds **no new verified structure** (there is
+no rule that could drift). Building it would be padding.
+- **Verdict: DEFER** as `D-S9-FANOUT-SUBSCRIBER-SOURCE` with this evidence. Re-open
+  only if `book_reality_subscription` gains non-membership semantics (e.g. visibility-
+  or cascade-conditioned delivery) that the parametric model does not already cover —
+  THEN deriving the rule from the schema would verify something new.
 
 ## W4.6 — from-scratch C2 reference projector (differential oracle) `[BE/Rust]` (LOAD-BEARING)
-- New `crates/projection-reference/` (or `tests/projectors/`): an INDEPENDENT
-  reimplementation of the projection logic, written from the L3 DESIGN docs / event
-  contracts — NOT copied from `crates/projections/*`. It maps an `EventEnvelope` to
-  the expected `ProjectionUpdate`s for each L3.A arm.
-- **Differential harness** (`crates/projection-reference/tests/diff.rs`): for every C2
-  golden fixture's envelope (and/or generated envelopes), run BOTH the production
-  `apply_one` (the 11 projections) and the reference projector; assert they agree.
-  Because the two are independently authored, a real impl divergence from the design
-  intent is CAUGHT (the same-author golden fixtures cannot catch it).
-- **Non-vacuity is the whole point (review #1 of this plan):** the oracle MUST be able
-  to DISAGREE. Ship a `#[ignore]`d or cfg-gated **injected-divergence bite**: a test
-  that perturbs ONE production arm's output (e.g. via a wrapper that drops a field)
-  and shows the differential harness FLAGS it — proving the reference projector is a
-  real second opinion, not a transcription of the same contracts.
-- **Scope honesty:** the reference projector must derive from the design, so for any
-  arm where the "design" IS the arm contract (no independent spec exists), state that
-  explicitly — that arm's differential is a consistency check, not an independent
-  oracle. Cover the arms with a genuine independent design source; document the rest.
-- Keep it from drifting: a test asserts the reference projector covers the same event
-  set as the golden fixtures (no silent arm gap).
+**Independence basis (plan-review HIGH #1 — the whole value hinges on this).** The
+reference projector MUST be derived from a DIFFERENT representation than the
+production arms, or it is a transcription that agrees by construction (reproducing
+exactly the bounded-independence limitation C2 already has). The two independent
+sources it derives from — NEVER reading `crates/projections/*`:
+  1. the **event contract** — the payload field schema in `contracts/events/`
+     (+ `tests/workload-gen/internal/schema` Specs) — what fields an event CARRIES.
+  2. the **table DDL** — the projection columns in `0006_projections.up.sql` — what
+     a row HOLDS.
+It maps payload-field → projection-column by NAME/intent ("`trust_level` payload →
+`trust_level` column"), independently of HOW the arm reads it. So an arm that reads
+the WRONG payload key, writes the WRONG column, or emits the wrong update KIND
+diverges from the contract-derived reference.
+- New `crates/projection-reference/` + a **differential harness**
+  (`crates/projection-reference/tests/diff.rs`): for every C2 golden fixture's
+  envelope (+ generator-produced envelopes), run BOTH the production `apply_one`
+  (the 11 projections) and the reference projector; assert agreement on
+  (table, pk, fields, kind).
+- **Honest framing (plan-review HIGH #1b):** first-run agreement on all fixtures =
+  a REGRESSION-LOCK, the SAME class of assurance as C2 — NOT proof of bug-finding.
+  The independent VALUE is realized when (a) a future arm change diverges from the
+  contract, or (b) a present arm/contract mismatch exists. State this in the harness
+  doc; do NOT over-claim "true independent oracle" if it agrees first-run.
+- **Strengthened bite (plan-review HIGH #1c — proves independence, not just wiring):**
+  the bite is NOT merely "perturb prod, harness flags it" (a transcription passes
+  that too). Instead, a cfg/`#[ignore]`-gated test wraps a production arm to read a
+  WRONG payload key (the exact class of real bug C2 can't catch) and shows the
+  contract-derived reference — reading the RIGHT key — DISAGREES. This demonstrates
+  the reference is a genuine second opinion grounded in the contract, not the arm.
+- **Scope honesty:** for any arm whose only spec IS the arm code (no independent
+  contract/DDL basis for a field — e.g. a derived/computed field), mark that field's
+  differential as a CONSISTENCY check, not an independent oracle; cover the
+  contract-derivable fields genuinely and document the residue. No silent over-claim.
+- Anti-drift: a test asserts the reference projector covers the same event set as the
+  golden fixtures (no silent arm gap).
 
 ## W4.7 — conformance + CI + SESSION `[FS]`
 - New `w4-*` conformance cases (`w4-pgvector-recall`, `w4-t0t1-micro`, +

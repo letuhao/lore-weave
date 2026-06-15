@@ -12,7 +12,11 @@ fidelity. Each increment must be **non-vacuous** (every check ships a bite that
 can fail) and **honest** (no padding — if an item is genuinely blocked, defer with
 rationale, don't ship a vacuous check).
 
-## Scope (6 build + 1 defer)
+## Scope (5 build + 2 defer after plan /review-impl)
+> Plan-review deferred **W4.5** (D-S9-FANOUT-SUBSCRIBER-SOURCE): migration 026 is a
+> pure `(book_id, reality_id)` membership table with no structural rule — the fan-out
+> model already captures membership parametrically, so loading the set from the table
+> adds no new verified structure. Build the other 5; defer W4.5 + liveness-TLA.
 - **W4.1 D-S7-USL-NO-N1** — the USL fitter's Gunther seed is only unit-covered WITH
   an exact N=1 anchor; add a no-N=1 recovery test (seed must estimate X(1)).
 - **W4.2 D-S12-T0T1-MICRO** — micro-bench the kernel T0 (event append) + T1 (outbox
