@@ -46,7 +46,8 @@
       "extraction": "Extraction",
       "extractionEnabled": "Enabled",
       "extractionDisabled": "Disabled",
-      "bookId": "Book",
+      "book": "Book",
+      "world": "World",
       "none": "—"
     },
     "placeholder": {

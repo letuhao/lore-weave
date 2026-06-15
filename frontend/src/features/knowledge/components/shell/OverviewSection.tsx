@@ -1,5 +1,8 @@
+import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { BookOpen, Globe2 } from 'lucide-react';
 import type { Project } from '../../types';
+import { useProjectBacklinks } from '../../hooks/useProjectBacklinks';
 import { ProjectRow } from '../ProjectRow';
 
 interface Props {
@@ -17,6 +20,9 @@ interface Props {
 // (no new BE, no scope creep into C7).
 export function OverviewSection({ project, onExploreGraph }: Props) {
   const { t } = useTranslation('knowledge');
+  // D-WORLD-PROJECT-BACKLINK (G3) — resolve the project's book + world so the
+  // overview cross-links out instead of showing a raw book UUID.
+  const backlinks = useProjectBacklinks(project?.book_id);
 
   if (!project) {
     return (
@@ -79,9 +85,36 @@ export function OverviewSection({ project, onExploreGraph }: Props) {
           {project.book_id && (
             <>
               <dt className="text-muted-foreground">
-                {t('shell.overview.bookId')}
+                {t('shell.overview.book', { defaultValue: 'Book' })}
               </dt>
-              <dd className="font-mono text-[12px]">{project.book_id}</dd>
+              <dd>
+                <Link
+                  to={`/books/${project.book_id}`}
+                  data-testid="overview-book-link"
+                  className="inline-flex items-center gap-1.5 text-primary hover:underline"
+                >
+                  <BookOpen className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">{backlinks.bookTitle ?? project.book_id}</span>
+                </Link>
+              </dd>
+
+              {backlinks.worldId && (
+                <>
+                  <dt className="text-muted-foreground">
+                    {t('shell.overview.world', { defaultValue: 'World' })}
+                  </dt>
+                  <dd>
+                    <Link
+                      to={`/worlds/${backlinks.worldId}`}
+                      data-testid="overview-world-link"
+                      className="inline-flex items-center gap-1.5 text-primary hover:underline"
+                    >
+                      <Globe2 className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">{backlinks.worldName ?? backlinks.worldId}</span>
+                    </Link>
+                  </dd>
+                </>
+              )}
             </>
           )}
         </dl>
