@@ -20,16 +20,15 @@ extraction-job poll loop via `asyncio.gather` in `app.main`. A
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import TYPE_CHECKING
 
-import redis.asyncio as aioredis
+from loreweave_jobs import BaseTerminalConsumer
 
 if TYPE_CHECKING:
     from app.clients import KnowledgeClient
 
-__all__ = ["consume_summary_stream", "SUMMARY_STREAM_NAME"]
+__all__ = ["SummaryConsumer", "SUMMARY_STREAM_NAME"]
 
 logger = logging.getLogger(__name__)
 
@@ -60,22 +59,9 @@ def _get_field(fields: dict, key: str):
     return fields.get(key.encode("utf-8"))
 
 
-async def _ensure_consumer_group(
-    client: aioredis.Redis, stream: str, group: str,
-) -> None:
-    """Idempotently create the consumer group (MKSTREAM bootstraps the
-    stream if no producer has XADDed yet)."""
-    try:
-        await client.xgroup_create(
-            name=stream, groupname=group, id="0", mkstream=True,
-        )
-        logger.info("Created consumer group %s on %s", group, stream)
-    except aioredis.ResponseError as exc:
-        # BUSYGROUP = already exists — expected on every restart.
-        if "BUSYGROUP" in str(exc):
-            logger.debug("Consumer group %s exists on %s", group, stream)
-            return
-        raise
+class _SummaryRetryable(Exception):
+    """Internal — a retryable summary dispatch outcome. Raised from ``handle`` so the base
+    consumer leaves the message un-acked for redelivery (then bounded-retry → poison-ack)."""
 
 
 async def _dispatch_one_message(
@@ -152,93 +138,39 @@ async def _dispatch_one_message(
     return True
 
 
-async def consume_summary_stream(
-    knowledge_client: "KnowledgeClient",
-    *,
-    redis_url: str,
-    consumer_group: str,
-    consumer_name: str,
-    block_ms: int = 5000,
-    stream: str = SUMMARY_STREAM_NAME,
-) -> None:
-    """Long-running consumer task.
+class SummaryConsumer(BaseTerminalConsumer):
+    """extraction.summarize consumer on the shared transport scaffold. ``start_id="0"``
+    (process the backlog). The business fold ``_dispatch_one_message`` returns whether to
+    ack (success / malformed-poison-drop / non-retryable error) → ``handle`` returns → the
+    base acks; a RETRYABLE error → ``handle`` raises ``_SummaryRetryable`` → the base leaves
+    it un-acked for redelivery (bounded retry then poison-ack).
 
-    Cancel-safe: shutdown raises `CancelledError` from `xreadgroup`;
-    the finally-block closes the Redis client.
-    """
-    client = aioredis.from_url(redis_url)
-    try:
-        await _ensure_consumer_group(client, stream, consumer_group)
-        logger.info(
-            "summary consumer started group=%s name=%s stream=%s",
-            consumer_group, consumer_name, stream,
+    Behaviour note: summaries are re-derivable, so a bounded drop after ``max_retries`` on a
+    persistently-failing message is acceptable — and the base adds the startup PEL drain
+    this hand-rolled consumer lacked (it previously never re-drove un-acked messages)."""
+
+    stream = SUMMARY_STREAM_NAME
+    start_id = "0"
+    consumer_name_prefix = "summary"
+    retry_prefix = "worker-ai:summary:retry"
+
+    def __init__(
+        self,
+        redis_url: str,
+        knowledge_client: "KnowledgeClient",
+        *,
+        consumer_group: str,
+        consumer_name: str | None = None,
+        block_ms: int = 5000,
+    ) -> None:
+        self.group = consumer_group   # runtime group — set before the base validates it
+        self.block_ms = block_ms
+        super().__init__(redis_url, consumer_name=consumer_name)
+        self._kc = knowledge_client
+
+    async def handle(self, fields: dict) -> None:
+        should_ack = await _dispatch_one_message(
+            knowledge_client=self._kc, fields=fields, message_id="(summary)",
         )
-        while True:
-            try:
-                # Read new (>) messages first; the PEL handler below
-                # picks up anything we left un-ACKed last cycle.
-                resp = await client.xreadgroup(
-                    groupname=consumer_group,
-                    consumername=consumer_name,
-                    streams={stream: ">"},
-                    count=10,
-                    block=block_ms,
-                )
-            except asyncio.CancelledError:
-                raise
-            except aioredis.TimeoutError:
-                # redis-py 8: a blocking XREADGROUP(block=) with no data within
-                # `block` raises TimeoutError (5.x returned empty). Normal idle —
-                # re-block immediately. TimeoutError IS a RedisError subclass, so
-                # without this it hit the handler below and logged a WARNING +
-                # slept 1s on every idle tick (noise + throughput drag).
-                continue
-            except aioredis.RedisError as exc:
-                logger.warning(
-                    "summary consumer XREADGROUP failed (will retry): %s", exc,
-                )
-                # Backoff so a flapping Redis doesn't spin the loop.
-                await asyncio.sleep(1.0)
-                continue
-
-            if not resp:
-                continue
-
-            for _stream_name, messages in resp:
-                for message_id, fields in messages:
-                    message_id_str = (
-                        message_id.decode("utf-8")
-                        if isinstance(message_id, bytes)
-                        else str(message_id)
-                    )
-                    try:
-                        should_ack = await _dispatch_one_message(
-                            knowledge_client=knowledge_client,
-                            fields=fields,
-                            message_id=message_id_str,
-                        )
-                    except asyncio.CancelledError:
-                        raise
-                    except Exception:
-                        # Unhandled error — leave un-ACKed for retry,
-                        # log + continue to next message.
-                        logger.exception(
-                            "summary consumer dispatch crashed on msg %s",
-                            message_id_str,
-                        )
-                        should_ack = False
-
-                    if should_ack:
-                        try:
-                            await client.xack(stream, consumer_group, message_id)
-                        except aioredis.RedisError as exc:
-                            logger.warning(
-                                "summary consumer XACK failed for %s: %s",
-                                message_id_str, exc,
-                            )
-
-    except asyncio.CancelledError:
-        logger.info("summary consumer cancelled, shutting down")
-        raise
-    finally:
-        await client.aclose()
+        if not should_ack:
+            raise _SummaryRetryable()  # retryable → leave un-acked (base redelivery)

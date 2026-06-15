@@ -178,13 +178,15 @@ def test_build_run_config_returns_hash_and_base_version():
 
 
 def test_malformed_extraction_config_falls_back_to_globals_no_raise():
-    """/review-impl MED-3 — a malformed per-project override (filter enabled
-    with no model_ref, and no global filter in this test env) must NOT raise
-    from the telemetry path; it degrades to global defaults."""
+    """/review-impl MED-3 — a per-project override that enables the filter with no
+    model_ref must NOT raise from the telemetry path. Since D-WX-PRECISION-FILTER-MODEL-ARCH
+    (94bba787) the env is no longer a model source, so the fallback for an enabled filter
+    with no model is the per-user EXTRACTION model — NOT None."""
     job = _job(extraction_config={"precision_filter": {"enabled": True}})
     snapshot, cfg_hash, base_version = _build_run_config(job)  # must not raise
-    # global env has no precision filter in tests → fallback yields None filter
-    assert snapshot.precision_filter is None
+    # enabled-without-model → reuse the extraction model (env is no longer a model source).
+    assert snapshot.precision_filter is not None
+    assert snapshot.precision_filter.model_ref == "extractor-model"
     assert len(cfg_hash) == 64
 
 

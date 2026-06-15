@@ -29,7 +29,7 @@ from app.runner import (
     hydrate_precision_filter_config_from_redis,
     poll_and_run,
 )
-from app.summary_consumer import consume_summary_stream
+from app.summary_consumer import SummaryConsumer
 from app.wake import WakeWaiter
 
 logger = logging.getLogger("worker-ai")
@@ -140,13 +140,14 @@ async def main() -> None:
     # half-running state).
     coroutines = [_job_poll_loop()]
     if settings.summary_consumer_enabled:
-        coroutines.append(consume_summary_stream(
+        _summary_consumer = SummaryConsumer(
+            settings.redis_url,
             knowledge_client,
-            redis_url=settings.redis_url,
             consumer_group=settings.summary_consumer_group,
             consumer_name=settings.summary_consumer_name,
             block_ms=settings.summary_consumer_block_ms,
-        ))
+        )
+        coroutines.append(_summary_consumer.run())
     else:
         logger.info("summary consumer disabled via config")
 
