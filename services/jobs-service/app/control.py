@@ -33,7 +33,9 @@ _CONTROL: dict[str, tuple[str, str]] = {
     "composition": (settings.composition_service_internal_url, "/internal/composition/jobs"),
     "video_gen": (settings.video_gen_service_internal_url, "/internal/video_gen/jobs"),
     "lore_enrichment": (settings.lore_enrichment_service_internal_url, "/internal/lore_enrichment/jobs"),
-    # P3-3+: translation as it ships.
+    # translation uses a DISTINCT control prefix (its /internal/translation/jobs/{id}/cancel
+    # is the campaign cancel with a different body) — cancel-only (P3-4).
+    "translation": (settings.translation_service_internal_url, "/internal/translation/job-control"),
 }
 
 _TIMEOUT = httpx.Timeout(10.0)

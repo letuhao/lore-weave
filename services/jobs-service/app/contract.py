@@ -16,15 +16,18 @@ from __future__ import annotations
 
 from loreweave_jobs import ControlCap, JobStatus, TERMINAL
 
-# Kinds that run as multiple dispatched units → support pause/resume. Conservative
-# allowlist; anything else is cancel-only. Single-call kinds (composition's `generate`/
-# `compose_draft`, `video_gen`, lore-enrichment's one-shot `profile_suggest`/
-# `intent_resolve` compose tasks) are NOT listed. `enrichment_job` IS multi-unit — its
-# C8 runner dispatches many gap-fill units and exposes a real manual pause/resume
-# (re-arms the re-drive worker), so it gets pause (P3-3).
-_MULTI_UNIT_KINDS: frozenset[str] = frozenset(
-    {"extraction", "translation", "campaign", "enrichment_job"}
-)
+# Kinds that run as multiple dispatched units AND expose a REAL pause/resume → offer it.
+# Conservative allowlist gated on what the owning service actually HONORS, not just on
+# whether the job is multi-unit: a kind here must have a working pause endpoint (offering
+# an un-honored pause button is worse than not offering it). Honored today:
+#   - extraction      — knowledge K16.4 pause/resume
+#   - campaign        — campaign saga pause/resume + monitor
+#   - enrichment_job  — lore-enrichment C8 manual pause/resume (re-arms the re-drive worker, P3-3)
+# Cancel-only (NOT listed): composition `generate`/`compose_draft`, `video_gen`,
+# lore-enrichment one-shot compose tasks, and `translation` — translation IS multi-chapter
+# but has no pause impl yet (its workers honor only cancel); real stop-dispatch pause/resume
+# is tracked as D-JOBS-P3-TRANSLATION-PAUSE (re-add here when it ships, P3-4).
+_MULTI_UNIT_KINDS: frozenset[str] = frozenset({"extraction", "campaign", "enrichment_job"})
 
 
 def _is_multi_unit(kind: str) -> bool:

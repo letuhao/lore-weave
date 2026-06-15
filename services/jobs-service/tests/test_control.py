@@ -78,15 +78,13 @@ async def test_forward_unknown_service_501():
 
 
 @pytest.mark.asyncio
-async def test_forward_unsupported_known_service_501():
-    # translation has no P3 endpoint yet → 501 (honest, not silent); composition +
-    # video_gen shipped in P3-2 → supported.
-    assert control.is_supported("knowledge") is True
-    assert control.is_supported("composition") is True
-    assert control.is_supported("video_gen") is True
-    assert control.is_supported("lore_enrichment") is True
-    assert control.is_supported("translation") is False
-    res = await control.forward_control("translation", JID, "cancel", TEST_USER)
+async def test_supported_services_registered_unregistered_501():
+    # P3-1..P3-4: all five owning services wired. campaign is deliberately NOT on this
+    # plane (it keeps its own monitor + control) → an unregistered service stays 501 (honest).
+    for svc in ("knowledge", "composition", "video_gen", "lore_enrichment", "translation"):
+        assert control.is_supported(svc) is True
+    assert control.is_supported("campaign") is False
+    res = await control.forward_control("campaign", JID, "cancel", TEST_USER)
     assert res.status_code == 501
 
 
@@ -114,6 +112,9 @@ async def test_forward_builds_per_service_url(monkeypatch):
     assert seen["url"].endswith(f"/internal/video_gen/jobs/{JID}/cancel")
     await control.forward_control("lore_enrichment", JID, "pause", TEST_USER)
     assert seen["url"].endswith(f"/internal/lore_enrichment/jobs/{JID}/pause")
+    # translation uses a distinct control prefix (avoids the campaign-cancel route collision)
+    await control.forward_control("translation", JID, "cancel", TEST_USER)
+    assert seen["url"].endswith(f"/internal/translation/job-control/{JID}/cancel")
 
 
 @pytest.mark.asyncio

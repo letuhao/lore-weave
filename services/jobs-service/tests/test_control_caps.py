@@ -35,6 +35,12 @@ def test_running_single_call_kind_is_cancel_only():
     assert _vals(derive_control_caps(JobStatus.RUNNING, "video_gen")) == ["cancel"]
 
 
+def test_translation_is_cancel_only_until_pause_ships():
+    # translation IS multi-chapter but has no pause impl yet (D-JOBS-P3-TRANSLATION-PAUSE);
+    # caps must not offer an un-honored pause button.
+    assert _vals(derive_control_caps(JobStatus.RUNNING, "translation")) == ["cancel"]
+
+
 def test_enrichment_job_is_multi_unit_offers_pause():
     # lore-enrichment's C8 gap-fill runner dispatches many units → real pause/resume.
     assert _vals(derive_control_caps(JobStatus.RUNNING, "enrichment_job")) == ["pause", "cancel"]
@@ -46,5 +52,5 @@ def test_unknown_kind_defaults_to_cancel_only_when_running():
 
 
 def test_accepts_string_status():
-    assert _vals(derive_control_caps("running", "translation")) == ["pause", "cancel"]
+    assert _vals(derive_control_caps("running", "extraction")) == ["pause", "cancel"]
     assert ControlCap.PAUSE in derive_control_caps("running", "campaign")

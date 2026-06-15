@@ -326,3 +326,38 @@ async def dispatch_cancel(
     asserted user_id). Reuses the public cancel core — owner-scoped (404 if not
     owned), 409 if already terminal (the campaign treats both as success)."""
     await _cancel_job_core(db, job_id, str(payload.user_id))
+
+
+class JobControlPayload(BaseModel):
+    # The asserted OWNER (jobs-service forwards the verified JWT sub). Re-verified
+    # against the row by the owner-scoped _cancel_job_core — M4.
+    owner_user_id: UUID
+
+
+@router.post("/job-control/{job_id}/{action}", dependencies=[Depends(require_internal_token)])
+async def control_job(
+    job_id: UUID,
+    action: str,
+    payload: JobControlPayload,
+    db: asyncpg.Pool = Depends(get_db),
+) -> dict:
+    """Unified Job Control Plane P3 — the `job_id`-keyed control surface the central
+    jobs-service forwards user actions to. A translation job is multi-chapter, but
+    its workers honor only CANCEL today (each chapter skips a `cancelled` job); real
+    pause/resume = stop-dispatch + drain is a separate money-path feature
+    (D-JOBS-P3-TRANSLATION-PAUSE) → this is **cancel-only**, and translation is
+    therefore NOT in jobs-service `_MULTI_UNIT_KINDS` (the caps-gate won't offer
+    pause/resume, so they never reach here; we 400 defensively).
+
+    A DISTINCT prefix from the campaign cancel (`/internal/translation/jobs/{job_id}/
+    cancel`, which takes a `user_id` body) so the control-plane contract (an
+    `owner_user_id` body) doesn't collide on the route. Reuses the owner-scoped
+    `_cancel_job_core` — M4 re-check (404 if not owned), 409 if already terminal."""
+    if action != "cancel":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "TRANSL_UNSUPPORTED_ACTION",
+                    "message": f"translation jobs support only 'cancel', not '{action}'"},
+        )
+    await _cancel_job_core(db, job_id, str(payload.owner_user_id))
+    return {"job_id": str(job_id), "status": "cancelled"}
