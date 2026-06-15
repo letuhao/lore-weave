@@ -47,10 +47,13 @@ const TRANSITIONS_YAML: &[u8] = include_bytes!("../../../contracts/meta/transiti
 /// Max concurrent in-flight attempts (racers). MUST be >= 2: the broken-CAS bite
 /// only produces an illegal hop via the RACE (a lone attempt commits legally even
 /// without CAS, since `status == from` holds naturally). With CAP=1 there is no
-/// race and the bite would stop firing.
-const PENDING_CAP: usize = 2;
+/// race and the bite would stop firing. W4.4 (D-S9-MODEL-SCOPE) raised it 2→3 to
+/// verify 3-way races (a wider concurrency than the original 2-attempt bound).
+const PENDING_CAP: usize = 3;
 /// Total reads allowed across a run (bounds the otherwise-cyclic-infinite space).
-const BUDGET: u8 = 10;
+/// W4.4 raised it 10→16 to deepen the explored read-interleaving space (exhaustive
+/// BFS, so a higher budget genuinely explores more states, not just samples more).
+const BUDGET: u8 = 16;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct LState {
@@ -198,9 +201,12 @@ mod tests {
         let checker = LifecycleModel::correct().checker().spawn_bfs().join();
         checker.assert_properties();
         // Coverage sanity: non-trivial state space (D-S9-MODEL-SCOPE — not a toy).
+        // W4.4 raised the bounds (PENDING_CAP 2→3, BUDGET 10→16) → 19152 states; the
+        // floor is raised 1_000→10_000 so it ALSO guards that the bounds stay raised
+        // (a future reduction back toward the old bounds would trip this).
         assert!(
-            checker.unique_state_count() > 1_000,
-            "state space too small ({}); model may be degenerate",
+            checker.unique_state_count() > 10_000,
+            "state space too small ({}); bounds may have been reduced (D-S9-MODEL-SCOPE)",
             checker.unique_state_count()
         );
     }
