@@ -24,6 +24,11 @@ dependencies = [
   "opentelemetry-exporter-otlp-proto-http>=1.27",
   "opentelemetry-instrumentation-fastapi>=0.48b0",
   "opentelemetry-instrumentation-httpx>=0.48b0",
+  # Unified Job Control Plane P1 — loreweave_jobs.BaseTerminalConsumer is a Redis-Streams
+  # consumer-group transport scaffold. Every consuming Python service already runs redis;
+  # the SDK declares it so its own unit tests + the import resolve. (emit.py is duck-typed
+  # — no asyncpg dep.)
+  "redis>=5",
 ]
 
 [project.optional-dependencies]
@@ -58,6 +63,11 @@ include = [
   # no HTTP/LLM hard dep. Consumed by lore-enrichment (migrate), knowledge, and
   # composition in later adoption phases.
   "loreweave_grounding*",
+  # Unified Job Control Plane P1 (2026-06-15) — `loreweave_jobs` added (canonical job
+  # contract + BaseTerminalConsumer transport scaffold + emit_job_event outbox writer).
+  # Depends on redis (consumer); contract/emit are pure-Python (emit is duck-typed, no
+  # asyncpg). Consumed by every Python worker service migrating off its hand-rolled consumer.
+  "loreweave_jobs*",
 ]
 exclude = ["tests*"]
 
