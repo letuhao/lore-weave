@@ -53,6 +53,11 @@ class StubWorks:
         self.created_pending = False
         self.backfilled_with = None    # (work_id, project_id) on backfill
         self.backfill_result = None
+        # D-C16: id-addressable resolve
+        self.by_id_result = None
+
+    async def get_by_id(self, user_id, work_id):
+        return self.by_id_result
 
     async def get(self, user_id, project_id):
         if self.get_results is not None:
@@ -387,6 +392,81 @@ def test_post_work_backfills_pending_when_knowledge_recovers(ctx):
     body = r.json()
     assert body["project_id"] == str(new_pid)
     assert body["pending_project_backfill"] is False
+
+
+# ── D-C16: id-addressable resolve + self-healing backfill ──
+
+
+def test_get_work_by_id_returns_pending_work(ctx):
+    c, works, _, _, _ = ctx
+    pend = _pending_work()
+    works.by_id_result = pend
+    r = c.get(f"/v1/composition/works/by-id/{pend.id}")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["project_id"] is None
+    assert body["pending_project_backfill"] is True
+
+
+def test_get_work_by_id_404_when_missing(ctx):
+    c, works, _, _, _ = ctx
+    works.by_id_result = None
+    r = c.get(f"/v1/composition/works/by-id/{uuid.uuid4()}")
+    assert r.status_code == 404
+
+
+def test_resolve_project_backfills_when_knowledge_recovers(ctx):
+    c, works, knowledge, book, _ = ctx
+    pend = _pending_work()
+    works.by_id_result = pend
+    new_pid = uuid.uuid4()
+    knowledge.created_project = {"project_id": str(new_pid)}
+    works.backfill_result = _work(project_id=new_pid, id=pend.id)
+    r = c.post(f"/v1/composition/works/by-id/{pend.id}/resolve-project")
+    assert r.status_code == 200
+    assert works.backfilled_with == (pend.id, new_pid)
+    body = r.json()
+    assert body["project_id"] == str(new_pid)
+    assert body["pending_project_backfill"] is False
+
+
+def test_resolve_project_still_pending_when_knowledge_down(ctx):
+    c, works, knowledge, _, _ = ctx
+    pend = _pending_work()
+    works.by_id_result = pend
+    knowledge.created_project = None  # still down
+    r = c.post(f"/v1/composition/works/by-id/{pend.id}/resolve-project")
+    assert r.status_code == 409
+    assert r.json()["detail"]["code"] == "STILL_PENDING"
+    assert works.backfilled_with is None  # never stamped a project
+
+
+def test_resolve_project_idempotent_when_already_backed(ctx):
+    c, works, knowledge, _, _ = ctx
+    backed = _work(project_id=uuid.uuid4(), id=uuid.uuid4())  # has project_id
+    works.by_id_result = backed
+    r = c.post(f"/v1/composition/works/by-id/{backed.id}/resolve-project")
+    assert r.status_code == 200
+    assert works.backfilled_with is None  # short-circuits before create/backfill
+
+
+def test_resolve_project_contract_error_surfaces_502(ctx):
+    c, works, knowledge, _, _ = ctx
+    from app.clients.knowledge_client import KnowledgeContractError
+    pend = _pending_work()
+    works.by_id_result = pend
+    knowledge.create_project_raises = KnowledgeContractError(422)
+    r = c.post(f"/v1/composition/works/by-id/{pend.id}/resolve-project")
+    assert r.status_code == 502
+    assert r.json()["detail"]["code"] == "PROJECT_CREATE_FAILED"
+    assert works.backfilled_with is None
+
+
+def test_resolve_project_404_when_work_missing(ctx):
+    c, works, _, _, _ = ctx
+    works.by_id_result = None
+    r = c.post(f"/v1/composition/works/by-id/{uuid.uuid4()}/resolve-project")
+    assert r.status_code == 404
 
 
 def test_post_work_unique_violation_reresolves(ctx):

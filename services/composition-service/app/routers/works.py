@@ -385,6 +385,88 @@ async def get_work(
     return work.model_dump(mode="json")
 
 
+# ── D-C16: id-addressable + self-healing backfill for a pending null-project ──
+# Work. A GREENFIELD Work created during a knowledge-service outage has a null
+# project_id, so the /works/{project_id} routes can't address it — its only
+# handle is the surrogate `id`. These two routes let the FE hold work.id after
+# POST /work, poll for backfill, and proceed once a real project is stamped —
+# WITHOUT churning the outline/scene model to allow null project_ids.
+
+
+@router.get("/works/by-id/{work_id}")
+async def get_work_by_id(
+    work_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """D-C16: address a Work by its surrogate `id` — the ONLY handle a freshly-
+    created GREENFIELD null-project Work has (no project_id yet to key the
+    /works/{project_id} routes on). Lets the FE hold work.id after POST /work and
+    read its backfill status. VIEW grant on the Work's book."""
+    work = await works.get_by_id(user_id, work_id)
+    if work is None:
+        raise HTTPException(status_code=404, detail="work not found")
+    await _gate_book(grant, work.book_id, user_id, GrantLevel.VIEW)
+    return work.model_dump(mode="json")
+
+
+@router.post("/works/by-id/{work_id}/resolve-project")
+async def resolve_work_project(
+    work_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    bearer: str = Depends(get_bearer_token),
+    works: WorksRepo = Depends(get_works_repo),
+    knowledge: KnowledgeClient = Depends(get_knowledge_client_dep),
+    book: BookClient = Depends(get_book_client_dep),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """D-C16: self-healing backfill — turn a pending null-project Work into a
+    normal project-backed one WITHOUT a second POST /work. If knowledge has
+    recovered, (idempotently) create-or-get the book's project and stamp it onto
+    THIS row (clearing the marker); the FE then proceeds on the project_id routes.
+
+    Idempotent: a Work that already carries a project_id (or was backfilled by a
+    concurrent POST /work) returns as-is (200). If knowledge is STILL down, 409
+    STILL_PENDING so the FE keeps polling. A 4xx contract error surfaces as 502
+    (never silently swallowed). EDIT grant — backfilling binds a real grounding
+    project, an authoring action."""
+    work = await works.get_by_id(user_id, work_id)
+    if work is None:
+        raise HTTPException(status_code=404, detail="work not found")
+    if work.project_id is not None or not work.pending_project_backfill:
+        return work.model_dump(mode="json")
+
+    book_id = work.book_id
+    await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
+    try:
+        book_obj = await book.get_book(book_id, bearer)
+    except BookClientError:
+        raise HTTPException(status_code=502, detail={"code": "BOOK_SERVICE_UNAVAILABLE"})
+    if book_obj is None:
+        raise HTTPException(status_code=404, detail="book not found")
+
+    name = book_obj.get("title") or f"Book {book_id}"
+    # Idempotent on the knowledge side (create_or_get dedupes per (user, book)),
+    # so a repeat resolve resolves to the SAME project.
+    try:
+        created = await knowledge.create_project(book_id, name, bearer)
+    except KnowledgeContractError:
+        raise HTTPException(status_code=502, detail={"code": "PROJECT_CREATE_FAILED"})
+    if created is None or not created.get("project_id"):
+        # Knowledge still unavailable — stay pending; the FE keeps polling.
+        raise HTTPException(status_code=409, detail={"code": "STILL_PENDING"})
+
+    project_id = UUID(str(created["project_id"]))
+    backfilled = await works.backfill_project(user_id, work.id, project_id)
+    if backfilled is not None:
+        return backfilled.model_dump(mode="json")
+    # Race: a concurrent POST /work already backfilled (our WHERE-pending UPDATE
+    # no-op'd). Re-read and return the now-backed row.
+    current = await works.get_by_id(user_id, work_id)
+    return (current or work).model_dump(mode="json")
+
+
 @router.patch("/works/{project_id}")
 async def patch_work(
     project_id: UUID,

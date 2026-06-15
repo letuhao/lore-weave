@@ -50,6 +50,7 @@ vi.mock('../../hooks/useWork', () => ({
   useChapterScenes: () => ({ data: [] }),
   useCreateScene: () => ({ mutate: vi.fn(), isPending: false }),
   useSetSceneStatus: () => ({ mutate: vi.fn(), isPending: false }),
+  usePendingWorkResolver: () => ({ state: 'idle', start: vi.fn(), retry: vi.fn() }),
 }));
 vi.mock('../../../ai-models/api', () => ({
   aiModelsApi: { listUserModels: vi.fn().mockResolvedValue({ items: [] }) },

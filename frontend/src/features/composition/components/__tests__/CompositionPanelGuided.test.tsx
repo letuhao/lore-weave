@@ -40,6 +40,7 @@ vi.mock('../../hooks/useWork', () => ({
   useChapterScenes: () => scenesState,
   useCreateScene: () => ({ mutate: createSceneMutate, isPending: false }),
   useSetSceneStatus: () => ({ mutate: vi.fn(), isPending: false }),
+  usePendingWorkResolver: () => ({ state: 'idle', start: vi.fn(), retry: vi.fn() }),
 }));
 
 const listUserModels = vi.fn();

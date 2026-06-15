@@ -97,6 +97,21 @@ export const compositionApi = {
   createWork(bookId: string, token: string): Promise<Work> {
     return apiJson<Work>(`${BASE}/books/${bookId}/work`, { method: 'POST', token });
   },
+  // D-C16: address a Work by its surrogate id — the ONLY handle a pending
+  // null-project Work has (the resolveWork query excludes pending works, so a
+  // freshly-created greenfield Work created during a knowledge outage is
+  // otherwise unreachable until backfill).
+  getWorkById(workId: string, token: string): Promise<Work> {
+    return apiJson<Work>(`${BASE}/works/by-id/${workId}`, { token });
+  },
+  // D-C16: self-healing backfill — retry binding the knowledge project onto a
+  // pending Work. 200 → the (now project-backed) Work; throws on 409
+  // STILL_PENDING (knowledge still down) so the caller keeps polling.
+  resolveWorkProject(workId: string, token: string): Promise<Work> {
+    return apiJson<Work>(`${BASE}/works/by-id/${workId}/resolve-project`, {
+      method: 'POST', token,
+    });
+  },
   // C24 (dị bản M0) — spawn a DERIVATIVE Work that diverges from a SOURCE Work at
   // a chapter-level `branch_point` (G3). The BE (C23) mints the derivative its OWN
   // fresh knowledge project_id (G2 — its own Neo4j delta partition), persists the

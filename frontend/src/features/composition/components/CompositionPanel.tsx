@@ -10,7 +10,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AddModelCta } from '@/components/shared/AddModelCta';
 import { aiModelsApi } from '../../ai-models/api';
 import { compositionApi } from '../api';
-import { useChapterScenes, useCreateScene, useCreateWork, useSetSceneStatus, useWorkResolution } from '../hooks/useWork';
+import { useChapterScenes, useCreateScene, useCreateWork, usePendingWorkResolver, useSetSceneStatus, useWorkResolution } from '../hooks/useWork';
 import { useGuidedFirstRun } from '../hooks/useGuidedFirstRun';
 import type { Work } from '../types';
 import { ComposeView } from './ComposeView';
@@ -53,6 +53,10 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
   const qc = useQueryClient();
   const resolution = useWorkResolution(bookId, token);
   const createWork = useCreateWork(bookId, token);
+  // D-C16: a Work created during a knowledge-service outage comes back pending
+  // (null project_id) and is invisible to the resolution query; this resolver
+  // polls resolve-project on its surrogate id until it's backfilled.
+  const pendingResolver = usePendingWorkResolver(bookId, token);
   const [tab, setTab] = useState<SubTab>('compose');
   const [localSceneId, setLocalSceneId] = useState<string>('');
   const sceneId = sceneIdProp ?? localSceneId;
@@ -158,6 +162,30 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
   // knowledge-service is down (C16 resilience, D-C16-NULL-WORK-ROUTE) — guard it:
   // the writer still gets a Work, just not the auto-scene until backfill.
   if (!work) {
+    // D-C16: a pending null-project Work is backfilling — surface a transient
+    // "finishing setup" state (and a retry if knowledge stays down) instead of
+    // looping back to the setup button (the resolution query can't see it yet).
+    if (pendingResolver.state === 'resolving') {
+      return (
+        <div className="flex flex-col gap-3 p-4">
+          <Hint>{t('resolvingWork', { defaultValue: 'Finishing setup… the knowledge service was briefly unavailable.' })}</Hint>
+        </div>
+      );
+    }
+    if (pendingResolver.state === 'failed') {
+      return (
+        <div className="flex flex-col gap-3 p-4">
+          <Hint>{t('resolveWorkFailed', { defaultValue: 'Knowledge service unavailable — couldn’t finish setting up grounding.' })}</Hint>
+          <button
+            data-testid="composition-resolve-retry"
+            className="self-start rounded bg-indigo-600 px-3 py-1.5 text-sm text-white"
+            onClick={() => pendingResolver.retry()}
+          >
+            {t('retry', { defaultValue: 'Retry' })}
+          </button>
+        </div>
+      );
+    }
     return (
       <div className="flex flex-col gap-3 p-4">
         <Hint>{t('noWork', { defaultValue: 'No co-writer Work for this book yet.' })}</Hint>
@@ -168,7 +196,15 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
           onClick={() =>
             createWork.mutate(undefined, {
               onSuccess: (created) => {
-                if (!created?.project_id || !token) return;
+                if (!created) return;
+                // C16: knowledge was down → a pending null-project Work. Hand its
+                // surrogate id to the resolver to poll for backfill (the resolution
+                // query excludes pending works, so we can't rely on a refetch).
+                if (!created.project_id) {
+                  if (created.id) pendingResolver.start(created.id);
+                  return;
+                }
+                if (!token) return;
                 // Claim the guided one-shot guard BEFORE the async scene create so
                 // the cue's "Start writing" button (briefly live until the outline
                 // refetch lands) can't create a SECOND scene — single first-scene
