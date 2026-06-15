@@ -14,6 +14,7 @@ import { useChapterScenes, useCreateScene, useCreateWork, usePendingWorkResolver
 import { useGuidedFirstRun } from '../hooks/useGuidedFirstRun';
 import type { Work } from '../types';
 import { ComposeView } from './ComposeView';
+import { TabScrollStrip } from './TabScrollStrip';
 import { CoWriterChat } from './CoWriterChat';
 import { ChapterAssembleView } from './ChapterAssembleView';
 import { PlannerView } from './PlannerView';
@@ -431,8 +432,12 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
 
       {/* sub-tabs — 16 tabs in a resizable (narrow-able) panel: the strip scrolls
           horizontally rather than overflowing the panel. Tabs don't shrink (labels
-          stay readable) and the row never forces the panel wider than its width. */}
-      <div data-testid="composition-subtabs" className="flex gap-1 overflow-x-auto border-b border-neutral-200 px-2 pt-1 text-sm dark:border-neutral-700">
+          stay readable) and the row never forces the panel wider than its width.
+          D-080: TabScrollStrip adds the scroll-aware edge fade affordance. */}
+      <TabScrollStrip
+        testid="composition-subtabs"
+        className="flex gap-1 overflow-x-auto border-b border-neutral-200 px-2 pt-1 text-sm dark:border-neutral-700"
+      >
         {(['compose', 'cowriter', 'assemble', 'planner', 'beats', 'graph', 'cast', 'relmap', 'timeline', 'arc', 'worldmap', 'grounding', 'canon', ...(threadsEnabled ? ['threads' as const] : []), 'quality', 'settings'] as SubTab[]).map((tb) => (
           <button
             key={tb}
@@ -443,7 +448,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
             {t(tb, { defaultValue: tb })}
           </button>
         ))}
-      </div>
+      </TabScrollStrip>
 
       <div data-testid="composition-content" className="min-h-0 min-w-0 flex-1 overflow-auto [overflow-wrap:anywhere]">
         {/* All sub-panels stay MOUNTED, toggled with CSS `hidden`, so in-progress
