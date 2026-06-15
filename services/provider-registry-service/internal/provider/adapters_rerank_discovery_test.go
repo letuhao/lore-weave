@@ -136,3 +136,75 @@ func TestOpenAIAdapter_ListModels_CohereShape(t *testing.T) {
 		t.Fatalf("Cohere-shape rerank not discovered: %+v", got)
 	}
 }
+
+// parseLMStudioNativeIDModels parses the LM-Studio-native id-keyed /v1/models
+// shape `{"models":[{"id":...,"state":...}]}` — entries carry `id`/`state`, no
+// `name`/`endpoints`. Each id is classified via classifyOpenAIModel so a
+// `*rerank*` id (bge-reranker-v2-m3) is canonically tagged rerank while a chat
+// id (qwen2.5-7b) stays chat.
+func TestParseLMStudioNativeIDModels_TagsRerankOnlyForReranker(t *testing.T) {
+	models := []any{
+		map[string]any{"id": "bge-reranker-v2-m3", "state": "loaded"},
+		map[string]any{"id": "qwen2.5-7b", "state": "not-loaded"},
+	}
+	got := parseLMStudioNativeIDModels(models)
+	if len(got) != 2 {
+		t.Fatalf("want 2 models, got %d", len(got))
+	}
+	if got[0].ProviderModelName != "bge-reranker-v2-m3" {
+		t.Errorf("first id mis-parsed: %+v", got[0])
+	}
+	if !isRerank(got[0]) {
+		t.Errorf("reranker id not tagged rerank: %+v", got[0].CapabilityFlags)
+	}
+	if v, _ := got[0].CapabilityFlags["rerank"].(bool); !v {
+		t.Errorf("reranker boolean flag missing: %+v", got[0].CapabilityFlags)
+	}
+	if isRerank(got[1]) {
+		t.Errorf("non-rerank id (qwen2.5-7b) mis-tagged rerank: %+v", got[1].CapabilityFlags)
+	}
+}
+
+// ListModels routes the LM-Studio-native id-keyed /v1/models shape (the REAL
+// :28417 local-rerank backend response — `models` array whose entries carry
+// `id`/`state`, no `name`/`endpoints`) to the id parser so the reranker is
+// discovered + tagged. This is the C2 live-smoke-found bug: previously this
+// shape fell through parseCohereModels (which keys on `name`) → 0 models.
+func TestOpenAIAdapter_ListModels_LMStudioNativeIDShape(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// Verbatim shape captured from the real backend on :28417.
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"models": []any{
+				map[string]any{
+					"id": "bge-reranker-v2-m3", "state": "loaded",
+					"vram_mb": 1, "ttl_seconds": 600, "keep_warm": false,
+				},
+				map[string]any{"id": "qwen2.5-7b", "state": "not-loaded"},
+			},
+		})
+	}))
+	defer srv.Close()
+	a := &openaiAdapter{client: srv.Client(), staticInventory: []ModelInventory{}}
+	got, err := a.ListModels(context.Background(), srv.URL, "")
+	if err != nil {
+		t.Fatalf("ListModels: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("want 2 models from id-keyed shape, got %d: %+v", len(got), got)
+	}
+	var reranker *ModelInventory
+	for i := range got {
+		if got[i].ProviderModelName == "bge-reranker-v2-m3" {
+			reranker = &got[i]
+		} else if isRerank(got[i]) {
+			t.Errorf("non-rerank id mis-tagged rerank: %+v", got[i])
+		}
+	}
+	if reranker == nil {
+		t.Fatalf("bge-reranker-v2-m3 NOT discovered from id-keyed shape: %+v", got)
+	}
+	if !isRerank(*reranker) {
+		t.Errorf("discovered reranker not tagged rerank: %+v", reranker.CapabilityFlags)
+	}
+}

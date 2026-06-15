@@ -680,13 +680,72 @@ func (a *openaiAdapter) ListModels(ctx context.Context, endpointBaseURL, secret 
 	if data, ok := out["data"].([]any); ok && len(data) > 0 {
 		return parseOpenAIModels(data), nil
 	}
-	// C2 (BL-2): Cohere-shape: {"models":[{"name":...,"endpoints":["rerank"|"embed"|"chat"]}]}.
-	// Local-rerank backends (rerank_local kind) resolve to this OpenAI-compatible
-	// adapter; a Cohere-compatible /v1/models lists rerank models we must discover.
+	// A `models`-keyed payload (no top-level `data`) is one of two shapes. The
+	// local-rerank backend on :28417 (and other LM-Studio-native servers) returns
+	// the id-keyed shape `{"models":[{"id":...,"state":...}]}` — entries carry
+	// `id`/`state`, NO `name`, NO `endpoints`. Cohere-compatible servers return
+	// `{"models":[{"name":...,"endpoints":[...]}]}`. Disambiguate by the entry
+	// keys (NOT by guessing the backend): an entry that has `id` but no `name`
+	// routes to the id parser, which classifies each id via classifyOpenAIModel
+	// (mapping a `*rerank*` id → rerank). This is the C2 live-smoke fix: the real
+	// :28417 response was previously dropped by parseCohereModels (keys on `name`).
 	if models, ok := out["models"].([]any); ok && len(models) > 0 {
+		if isLMStudioNativeIDShape(models) {
+			return parseLMStudioNativeIDModels(models), nil
+		}
+		// C2 (BL-2): Cohere-shape: {"models":[{"name":...,"endpoints":["rerank"|"embed"|"chat"]}]}.
 		return parseCohereModels(models), nil
 	}
 	return a.staticInventory, nil
+}
+
+// isLMStudioNativeIDShape reports whether a `models` array is the LM-Studio-
+// native id-keyed shape rather than the Cohere `name`+`endpoints` shape. The
+// discriminator is the entry keys: the id shape carries `id` and lacks `name`.
+// We inspect the first map-typed entry (the array is homogeneous in practice).
+func isLMStudioNativeIDShape(models []any) bool {
+	for _, item := range models {
+		m, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		_, hasName := m["name"].(string)
+		id, hasID := m["id"].(string)
+		return hasID && id != "" && !hasName
+	}
+	return false
+}
+
+// parseLMStudioNativeIDModels parses the LM-Studio-native id-keyed /v1/models
+// payload `{"models":[{"id":...,"state":...}]}`. Each `id` is classified via
+// classifyOpenAIModel (mapping a `*rerank*` id → rerank, `*embed*` → embedding,
+// etc.) and rerank gets the canonical boolean flag so the RerankModelPicker
+// filter (capability_flags @> {"rerank":true} OR _capability='rerank') finds it.
+func parseLMStudioNativeIDModels(models []any) []ModelInventory {
+	var out []ModelInventory
+	for _, item := range models {
+		m, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		id, _ := m["id"].(string)
+		if id == "" {
+			continue
+		}
+		cap := classifyOpenAIModel(id)
+		flags := map[string]any{
+			"_capability":   cap,
+			"_display_name": id,
+		}
+		if cap == "rerank" {
+			flags["rerank"] = true
+		}
+		out = append(out, ModelInventory{
+			ProviderModelName: id,
+			CapabilityFlags:   flags,
+		})
+	}
+	return out
 }
 
 // parseCohereModels parses a Cohere-shape /v1/models payload. Cohere advertises a

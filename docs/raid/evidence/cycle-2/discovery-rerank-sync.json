@@ -1,13 +1,23 @@
 {
-  "_evidence": "C2 (commit 646c4e9a) live-smoke — provider-registry inventory sync / model-discovery against the local-rerank backend on :28417, using the BYOK-resolved user_model credential.",
+  "_evidence": "C2 (commit 646c4e9a + fix) live-smoke — provider-registry inventory sync / model-discovery against the local-rerank backend on :28417, using the BYOK-resolved user_model credential. RE-RUN after the LM-Studio-native id-shape discovery fix.",
   "_date": "2026-06-15",
-  "_path": "GET /v1/model-registry/providers/019eb5a9-b8fb-7048-ab68-0a316e901126/models (gateway :3123 -> provider-registry :8208 -> listProviderInventory -> syncInventory -> adapter.ListModels(rerank_local => openaiAdapter) -> GET http://host.docker.internal:28417/v1/models)",
+  "_path": "GET /v1/model-registry/providers/019eb5a9-b8fb-7048-ab68-0a316e901126/models?refresh=true (gateway :3123 -> provider-registry :8208 -> listProviderInventory -> syncInventory -> adapter.ListModels(rerank_local => openaiAdapter) -> GET http://host.docker.internal:28417/v1/models)",
   "provider_credential_id": "019eb5a9-b8fb-7048-ab68-0a316e901126",
   "provider_kind": "rerank_local",
   "endpoint_base_url": "http://host.docker.internal:28417",
   "discovery_response": {
-    "items": [],
-    "synced_at": null
+    "items": [
+      {
+        "provider_model_name": "bge-reranker-v2-m3",
+        "context_length": null,
+        "capability_flags": {
+          "_capability": "rerank",
+          "_display_name": "bge-reranker-v2-m3",
+          "rerank": true
+        }
+      }
+    ],
+    "synced_at": "2026-06-15T07:04:46.189724Z"
   },
   "raw_backend_v1_models_response": {
     "models": [
@@ -22,8 +32,8 @@
       }
     ]
   },
-  "_result": "FAIL — discovery returned 0 items; the rerank model was NOT discovered/tagged.",
-  "_root_cause": "Live local-rerank backend /v1/models shape is {\"models\":[{\"id\":\"bge-reranker-v2-m3\", \"state\":..., ...}]} — the model is keyed by `id` (no `name`, no `endpoints`). provider-registry's discovery routes the `models` key to parseCohereModels (adapters.go:686), but parseCohereModels reads m[\"name\"] (adapters.go:707-710) and SKIPS any entry where name==\"\". The OpenAI parser only fires on a top-level `data` key, which this backend does not return. Net: no parser matches this real backend's id-keyed `models` array, so 0 models are discovered. openaiAdapter.ListModels swallows the mismatch (returns empty staticInventory), so the route 200s with an empty list rather than erroring.",
-  "_blocker_class": "feature-code parser gap (NOT a missing credential / invalid key / unreachable endpoint — those are all valid; C3 verify proved a real round-trip with the same credential). The C2 parser was written against an assumed Cohere shape (name + endpoints) that this real backend does not emit. This is exactly the kind of contract drift a live-smoke surfaces vs unit/httptest fixtures.",
-  "_fix_direction_for_followup": "Make parseCohereModels (or a new local-rerank-shape parser) accept `id` as a fallback when `name` is absent, OR add an id-keyed `{\"models\":[{\"id\":...}]}` branch to openaiAdapter.ListModels that classifies via classifyOpenAIModel(id) (which already maps a `*rerank*` id -> rerank). NOTE: this task is verification-only — feature code was NOT modified; tracked as a follow-up defect."
+  "_result": "PASS — discovery returned 1 item; bge-reranker-v2-m3 discovered AND tagged canonical rerank (capability_flags.rerank=true + _capability='rerank'). Was 0 items before the fix.",
+  "_root_cause_fixed": "The live local-rerank backend /v1/models shape is the LM-Studio-native id-keyed shape {\"models\":[{\"id\":\"bge-reranker-v2-m3\", \"state\":..., ...}]} — entries keyed by `id` (no `name`, no `endpoints`). Previously openaiAdapter.ListModels routed any `models` array to parseCohereModels, which keys on `name` and SKIPS id-only entries → 0 models. The OpenAI parser only fires on a top-level `data` key, absent here.",
+  "_fix": "openaiAdapter.ListModels now disambiguates the `models`-keyed payload by ENTRY KEYS (isLMStudioNativeIDShape: first entry has `id` and no `name`): the id-keyed shape routes to the new parseLMStudioNativeIDModels (classifies each id via classifyOpenAIModel, mapping *rerank* -> rerank + sets the canonical boolean flag), the Cohere `name`+`endpoints` shape still routes to parseCohereModels. OpenAI `data` and LM Studio native `/api/v1/models` shapes unchanged.",
+  "_live_smoke": "live smoke: rerank model discovered + tagged from :28417 backend (LM-Studio-native id shape)"
 }
