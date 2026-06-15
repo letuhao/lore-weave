@@ -56,7 +56,10 @@ from app.engine.cowrite import (
     estimate_prompt_tokens, stream_draft,
 )
 from app.engine.critic import judge_prose
-from app.engine.critic_override import critique_overrides
+from app.engine.critic_override import (
+    critique_overrides,
+    evaluate_override_gate as co_evaluate_override_gate,
+)
 from app.engine.select import diverge, select_draft
 from app.reasoning import ReasoningSignals, score_effort
 from loreweave_llm import infer_reasoning_control, resolve_reasoning
@@ -1354,15 +1357,27 @@ async def critique(
         works_repo=works, derivatives_repo=derivatives,
         glossary=glossary, knowledge=knowledge, book=book,
     )
+    # C26 GATE — turn the (formerly advisory) derivative findings into an
+    # accept/regenerate VERDICT with a bounded attempt cap. `prior_attempts` is read
+    # back off the job's existing critic (each slipped critique burns one attempt via
+    # the existing regenerate→re-critique loop; the cap fails OPEN to the human so a
+    # stubborn / false-positive slip can't loop forever). Only computed for a
+    # derivative that actually produced findings.
+    prior_attempts = int((job.critic or {}).get("regen_attempts", 0) or 0)
+    gate = (
+        co_evaluate_override_gate(derivative_findings, prior_attempts=prior_attempts)
+        if derivative_findings else None
+    )
 
     critic_src = settings_dict.get("critic_model_source")
     critic_ref = settings_dict.get("critic_model_ref")
     drafter_ref = (job.input or {}).get("model_ref")
     # Anti-self-reinforcement: the critic MUST be a distinct model. No critic
     # configured, or same as the drafter → skip the LLM critique (advisory) + warn,
-    # but STILL surface + persist the deterministic derivative findings.
+    # but STILL surface + persist the deterministic derivative findings + the GATE.
     if not critic_ref or not critic_src or str(critic_ref) == str(drafter_ref):
-        critic = ({"derivative_findings": derivative_findings} if derivative_findings else None)
+        critic = ({"derivative_findings": derivative_findings, **gate}
+                  if derivative_findings else None)
         if critic is not None:
             await jobs.update_status(user_id, job_id, job.status, critic=critic,
                                      target_revision_id=body.target_revision_id)
@@ -1379,10 +1394,10 @@ async def critique(
         passage=passage, active_rules=active_rules, present_facts=[],
         profile=from_settings(settings_dict),
     )
-    # Fold the deterministic derivative findings into the critic contract (alongside
-    # the LLM dims/violations) so the regeneration loop sees both.
+    # Fold the deterministic derivative findings + the GATE verdict into the critic
+    # contract (alongside the LLM dims/violations) so the regeneration loop sees both.
     if derivative_findings:
-        critic = {**critic, "derivative_findings": derivative_findings}
+        critic = {**critic, "derivative_findings": derivative_findings, **(gate or {})}
     await jobs.update_status(user_id, job_id, job.status, critic=critic,
                              target_revision_id=body.target_revision_id)
     return {"critic": critic}

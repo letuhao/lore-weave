@@ -28,6 +28,7 @@ event overrides are deferred.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 from uuid import UUID
 
@@ -35,6 +36,14 @@ from app.packer.merge import OVERRIDE_CANON_FIELD, _norm_name, _present_key
 from app.packer.pack import build_derivative_context, _resolve_override_anchors
 
 logger = logging.getLogger(__name__)
+
+# C26 GATE — how many forced regenerations a stubborn override slip may trigger
+# before the gate fails OPEN to the human (surfaces the finding + stops blocking
+# accept). Bounds a false-positive (a slip the detector wrongly flags can't loop
+# forever) AND a genuinely-stubborn model (after N tries the human decides). The
+# count is tracked per-job across `/critique` calls (the existing regenerate→
+# re-critique loop is the producer of each attempt).
+REGEN_ATTEMPT_CAP = 3
 
 # The present-item bio field is `summary` (glossary short_description). An override
 # may author the bio as `summary` OR `description` (the C24 wizard writes
@@ -58,10 +67,32 @@ def _override_bio(fields: dict[str, Any]) -> str | None:
     return bio
 
 
-def _passage_contains(passage_fold: str, value: Any) -> bool:
-    """Whether the (case/whitespace-folded) passage contains a non-empty value."""
+def _phrase_occurs(passage_fold: str, value: Any) -> bool:
+    """Whether the folded `value` occurs in `passage_fold` as a WORD-BOUNDED phrase
+    (D-C26-CRITIC-FN edge 2). A bare `in` substring test fires on incidental
+    overlaps ("king" inside "kingdom"); a boundary match only counts the value as a
+    standalone phrase. Empty value → False."""
     v = _norm_name(value)
-    return bool(v) and v in passage_fold
+    if not v:
+        return False
+    return re.search(rf"(?<!\w){re.escape(v)}(?!\w)", passage_fold) is not None
+
+
+def _override_honoured(passage_fold: str, override_bio: str, base_bio: str) -> bool:
+    """Whether the OVERRIDE value is genuinely asserted in the passage — NOT merely
+    present as a substring of the BASE value the scene reverted to (D-C26-CRITIC-FN
+    edge 2). When the override is a substring of the base ("young" ⊂ "a young man"),
+    a naive `override in passage` is True whenever the base value appears, hiding the
+    slip. We strip every base-value occurrence out FIRST, then test whether the
+    override still occurs standalone — so the override only counts as honoured when it
+    appears OUTSIDE the reverted base phrase."""
+    if not _norm_name(override_bio):
+        return False
+    base_v = _norm_name(base_bio)
+    residual = passage_fold
+    if base_v:
+        residual = re.sub(rf"(?<!\w){re.escape(base_v)}(?!\w)", " ", passage_fold)
+    return _phrase_occurs(residual, override_bio)
 
 
 def detect_override_findings(
@@ -117,14 +148,15 @@ def detect_override_findings(
         # SAME precedence C25 applies — summary wins if both; adversary M1).
         override_bio = _override_bio(fields)
 
-        slipped = False
+        # Does the canon/base value revert into the passage? (word-bounded — edge 2).
+        # Computed once: it is the shared signal for BOTH the bio slip and the
+        # (decoupled) delta-rule contradiction below.
+        base_reverted = bool(base_bio) and _phrase_occurs(passage_fold, base_bio)
+
         if override_bio is not None and base_bio:
-            base_in = _passage_contains(passage_fold, base_bio)
-            override_in = _passage_contains(passage_fold, override_bio)
-            # Slip: the canon/base value reverted into the passage and the override
-            # value is absent.
-            if base_in and not override_in:
-                slipped = True
+            # Slip: the base value reverted AND the override value is NOT genuinely
+            # asserted (not merely a substring of the reverted base phrase — edge 2).
+            if base_reverted and not _override_honoured(passage_fold, override_bio, base_bio):
                 findings.append({
                     "kind": "override_slip",
                     "entity_id": entity_id,
@@ -134,10 +166,13 @@ def detect_override_findings(
                     "found": str(base_bio),
                 })
 
-        # Delta internal consistency: an overridden field that declared a canon_rule
-        # but reverted to its base value contradicts the established delta fact.
+        # Delta internal consistency (D-C26-CRITIC-FN edge 3) — DECOUPLED from the
+        # bio slip: an override that declared a `canon_rule` (the derivative's stated
+        # delta truth) is contradicted whenever the entity's BASE value reverts into
+        # the scene, EVEN when the override carried no bio field to slip (canon-rule-
+        # only override). It fires on `base_reverted` alone, not on a bio slip.
         rule = fields.get(OVERRIDE_CANON_FIELD)
-        if rule and slipped:
+        if rule and base_reverted:
             findings.append({
                 "kind": "delta_inconsistency",
                 "entity_id": entity_id,
@@ -148,6 +183,40 @@ def detect_override_findings(
             })
 
     return findings
+
+
+def evaluate_override_gate(
+    findings: list[dict[str, Any]], *, prior_attempts: int,
+) -> dict[str, Any]:
+    """C26 GATE decision over the derivative critic findings — turn the (previously
+    advisory) findings into an accept/regenerate verdict with a bounded attempt cap.
+
+    A slip OR a delta_inconsistency is a FAIL (`needs_regeneration`) that blocks
+    accept and feeds the existing regenerate→re-critique loop. `prior_attempts` is
+    the count of earlier slipped critiques on this job; THIS critique counts as one
+    more. Once the cap is reached the gate fails OPEN to the human (`regen_exhausted`
+    — surface the finding, stop forcing regeneration) so a stubborn or false-positive
+    slip can never loop forever. A clean scene neither gates nor advances the counter
+    (only failing critiques burn an attempt).
+    """
+    has_fail = any(
+        f.get("kind") in ("override_slip", "delta_inconsistency") for f in findings
+    )
+    if not has_fail:
+        return {
+            "needs_regeneration": False,
+            "regen_exhausted": False,
+            "regen_attempts": prior_attempts,
+            "regen_cap": REGEN_ATTEMPT_CAP,
+        }
+    attempts = prior_attempts + 1
+    exhausted = prior_attempts >= REGEN_ATTEMPT_CAP
+    return {
+        "needs_regeneration": not exhausted,
+        "regen_exhausted": exhausted,
+        "regen_attempts": attempts,
+        "regen_cap": REGEN_ATTEMPT_CAP,
+    }
 
 
 async def critique_overrides(
@@ -192,12 +261,25 @@ async def critique_overrides(
     if deriv.source_project_id is None or not deriv.overrides:
         return []
 
+    # D-C26-CRITIC-FN edge 1 — scope the BASE lens to the packer's actually-grounded
+    # set, not a broad project-wide query: pass the OVERRIDE TARGET ids as the
+    # present-entity scope (these are exactly the entities the dimension enforces, and
+    # the same ids C25's packer pins into the present window). gather_present resolves
+    # each id → its present item, so the base bio we compare against is the one the
+    # drafter was actually grounded on (a broad query=`""` could surface a DIFFERENT
+    # present row for the same entity, hiding/falsely flagging a slip).
+    target_ids = [
+        getattr(ov, "target_entity_id", None) for ov in deriv.overrides
+        if getattr(ov, "target_entity_id", None) is not None
+    ]
+
     base_fn = _base_present_fn or _gather_base_present
     try:
         base_present = await base_fn(
             glossary=glossary, knowledge=knowledge, book=book,
             book_id=getattr(work, "book_id", None), user_id=user_id,
             project_id=deriv.source_project_id, bearer=bearer,
+            present_entity_ids=target_ids, query="",
         )
     except Exception:  # noqa: BLE001 — base lens failure degrades the dimension
         logger.warning("critique_overrides: base present lens failed", exc_info=True)
@@ -216,14 +298,19 @@ async def critique_overrides(
 async def _gather_base_present(
     *, glossary: Any, knowledge: Any, book: Any,
     book_id: Any, user_id: UUID, project_id: UUID, bearer: str,
+    present_entity_ids: list[Any] | None = None, query: str = "",
 ) -> list[dict[str, Any]]:
-    """Read the inherited BASE `present` entities from the source project — the same
-    lens C25's packer merges (reuse). A broad query (empty) surfaces the project's
-    cast bios; the detector then enforces only the overridden entities among them."""
+    """Read the inherited BASE `present` entities from the source project — the SAME
+    lens (and the same SCOPE) C25's packer merges (reuse). D-C26-CRITIC-FN edge 1:
+    the caller forwards the override TARGET ids as `present_entity_ids` so the base
+    set mirrors the packer's actually-grounded cast (pinned present items) rather than
+    a broad project-wide query that could surface a different row for the same entity.
+    `present_entity_ids=[]` falls back to the broad gather (the lens default)."""
     from app.packer.lenses import gather_present
 
     present, _seen = await gather_present(
         glossary, knowledge, book_id=book_id, user_id=user_id,
-        project_id=project_id, bearer=bearer, query="", present_entity_ids=[],
+        project_id=project_id, bearer=bearer, query=query,
+        present_entity_ids=present_entity_ids or [],
     )
     return present

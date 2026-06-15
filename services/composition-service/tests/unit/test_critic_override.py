@@ -137,6 +137,146 @@ def test_empty_overrides_no_findings():
     assert findings == []
 
 
+# ── D-C26-CRITIC-FN edge (2): substring no longer hides a slip ──
+
+def test_substring_override_no_longer_hides_slip():
+    """CFN edge: the override value is a SUBSTRING of the base value. A naive
+    `override in passage` is True whenever the BASE value is present (the override
+    text is contained inside it) → the slip is hidden. The precise check must NOT
+    treat the override as 'present' when its only occurrence is inside the base
+    value the scene reverted to."""
+    tid = uuid4()
+    base_present = [{"entity_id": str(tid), "name": "X", "summary": "a young man"}]
+    # override "young" is a substring of the base "a young man".
+    overrides = [_ov(tid, {"description": "young"})]
+    # the passage reverts to the BASE value; "young" appears ONLY inside it.
+    passage = "X stood there, a young man of the era."
+    findings = co.detect_override_findings(
+        passage, overrides, base_present, target_anchor={})
+    assert any(f["kind"] == "override_slip" for f in findings), (
+        "the base value reverted and the override only appears as a substring of it "
+        "→ this IS a slip and must be flagged"
+    )
+
+
+def test_substring_override_honoured_when_standalone():
+    """Counter-case to the above: the override value DOES appear standalone (outside
+    any base occurrence) → it was honoured → NO slip (guards against a false-positive
+    from the substring fix)."""
+    tid = uuid4()
+    base_present = [{"entity_id": str(tid), "name": "X", "summary": "a young man"}]
+    overrides = [_ov(tid, {"description": "young"})]
+    # "young" stands on its own here; the base phrase "a young man" is absent.
+    passage = "X, young and fierce, drew the blade."
+    findings = co.detect_override_findings(
+        passage, overrides, base_present, target_anchor={})
+    assert not any(f["kind"] == "override_slip" for f in findings)
+
+
+# ── D-C26-CRITIC-FN edge (3): delta_inconsistency fires INDEPENDENTLY ──
+
+def test_delta_inconsistency_fires_without_bio_override():
+    """CFN edge: an override that adds a canon_rule but NO bio field (description/
+    summary). The base value still surfaces in the passage, contradicting the
+    declared delta rule. delta_inconsistency must fire EVEN THOUGH the bio-slip
+    path can't (there is no override bio to compare) — it is decoupled."""
+    tid = uuid4()
+    base_present = [{"entity_id": str(tid), "name": "Z", "summary": "a loyal knight"}]
+    # canon_rule ONLY — no description/summary override.
+    overrides = [_ov(tid, {"canon_rule": "Z betrayed the crown in this dị bản"})]
+    passage = "Z, a loyal knight, knelt before the crown he served."
+    findings = co.detect_override_findings(
+        passage, overrides, base_present, target_anchor={})
+    assert any(f["kind"] == "delta_inconsistency" for f in findings)
+    # and NO override_slip (there is no bio override to slip).
+    assert not any(f["kind"] == "override_slip" for f in findings)
+
+
+def test_delta_inconsistency_silent_when_base_absent():
+    """No false-positive: a canon_rule override whose base value does NOT appear in
+    the passage is not a delta contradiction (the rule simply wasn't touched)."""
+    tid = uuid4()
+    base_present = [{"entity_id": str(tid), "name": "Z", "summary": "a loyal knight"}]
+    overrides = [_ov(tid, {"canon_rule": "Z betrayed the crown in this dị bản"})]
+    passage = "The banners snapped in the cold wind over the empty field."
+    findings = co.detect_override_findings(
+        passage, overrides, base_present, target_anchor={})
+    assert not any(f["kind"] == "delta_inconsistency" for f in findings)
+
+
+# ── D-C26-CRITIC-FN edge (1): base set scoped to the packer's grounded cast ──
+
+async def test_gather_base_present_scopes_to_grounded_cast(monkeypatch):
+    """CFN edge: the base lens must mirror the packer's ACTUALLY-grounded set
+    (scene cast + scene query), not a broad independent project-wide query — else
+    the critic compares against a present item the packer never grounded the drafter
+    on. _gather_base_present forwards the scene's present_entity_ids + query through
+    to gather_present (reusing C25's resolution scope)."""
+    captured = {}
+
+    async def fake_gather_present(glossary, knowledge, *, book_id, user_id,
+                                  project_id, bearer, query, present_entity_ids):
+        captured["query"] = query
+        captured["present_entity_ids"] = present_entity_ids
+        return [], set()
+
+    import app.packer.lenses as lenses
+    monkeypatch.setattr(lenses, "gather_present", fake_gather_present)
+
+    cast = [uuid4(), uuid4()]
+    await co._gather_base_present(
+        glossary=object(), knowledge=object(), book=object(),
+        book_id=uuid4(), user_id=uuid4(), project_id=uuid4(), bearer="t",
+        present_entity_ids=cast, query="the duel at dawn",
+    )
+    assert captured["present_entity_ids"] == cast    # scene cast forwarded
+    assert captured["query"] == "the duel at dawn"   # scene query forwarded
+
+
+# ── GATE decision + regeneration attempt cap ──
+
+def _slip():
+    return {"kind": "override_slip", "entity_id": "e", "name": "X",
+            "field": "description", "expected": "a woman", "found": "a young man"}
+
+
+def test_gate_blocks_accept_on_slip_first_attempt():
+    """A slipped scene → the gate marks needs_regeneration (blocks accept / feeds the
+    regenerate loop). attempt 0 (no prior critique) is under the cap."""
+    gate = co.evaluate_override_gate([_slip()], prior_attempts=0)
+    assert gate["needs_regeneration"] is True
+    assert gate["regen_exhausted"] is False
+    assert gate["regen_attempts"] == 1          # this critique counts as attempt 1
+    assert gate["regen_cap"] == co.REGEN_ATTEMPT_CAP
+
+
+def test_gate_passes_compliant_scene():
+    """No findings → no gating (accept allowed); the attempt counter does NOT advance
+    on a clean scene."""
+    gate = co.evaluate_override_gate([], prior_attempts=2)
+    assert gate["needs_regeneration"] is False
+    assert gate["regen_exhausted"] is False
+    assert gate["regen_attempts"] == 2          # unchanged — only slips advance it
+
+
+def test_gate_caps_runaway_loop_and_surfaces_to_human():
+    """After REGEN_ATTEMPT_CAP slipped critiques the gate STOPS blocking (fail-open to
+    the human) so a stubborn / false-positive slip can't loop forever. The findings
+    are still surfaced; needs_regeneration flips to False + regen_exhausted True."""
+    gate = co.evaluate_override_gate([_slip()], prior_attempts=co.REGEN_ATTEMPT_CAP)
+    assert gate["needs_regeneration"] is False   # no more forced regen
+    assert gate["regen_exhausted"] is True       # surfaced to the human instead
+    assert gate["regen_attempts"] == co.REGEN_ATTEMPT_CAP + 1
+
+
+def test_gate_delta_inconsistency_also_gates():
+    """A delta_inconsistency finding (even without a bio slip) is a fail too."""
+    dc = {"kind": "delta_inconsistency", "entity_id": "e", "name": "Z",
+          "rule": "Z betrayed the crown", "why": "..."}
+    gate = co.evaluate_override_gate([dc], prior_attempts=0)
+    assert gate["needs_regeneration"] is True
+
+
 def test_bio_precedence_matches_c25_summary_wins(monkeypatch):
     """Adversary M1 — when an override carries BOTH `description` and `summary`, the
     EXPECTED value MUST be `summary` (the value C25's apply_entity_overrides grounds

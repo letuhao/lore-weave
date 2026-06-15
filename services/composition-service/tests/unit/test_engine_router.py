@@ -489,7 +489,8 @@ def test_critique_derivative_dimension_FIRES_at_call_site(ctx, monkeypatch):
         list_overrides_for_work=_list_overrides)
 
     # the BASE present lens (source project) surfaces the entity at its canon value.
-    async def fake_base_present(*, glossary, knowledge, book, book_id, user_id, project_id, bearer):
+    async def fake_base_present(*, glossary, knowledge, book, book_id, user_id, project_id,
+                                bearer, present_entity_ids=None, query=""):
         assert project_id == src_proj  # base lens hit the SOURCE project
         return [{"entity_id": str(tid), "name": "张若尘", "summary": "a young man, the male lead"}]
     monkeypatch.setattr("app.engine.critic_override._gather_base_present", fake_base_present)
@@ -509,6 +510,101 @@ def test_critique_derivative_dimension_FIRES_at_call_site(ctx, monkeypatch):
     assert slips and slips[0]["entity_id"] == str(tid) and slips[0]["field"] == "description"
     # PERSISTED (the regeneration loop reads it back off the job).
     assert any("derivative_findings" in upd[2].get("critic", {}) for upd in jobs.updates)
+
+
+def _derivative_ctx(c, works, jobs, monkeypatch, *, passage, override_fields,
+                    base_summary="a young man, the male lead", prior_attempts=0):
+    """Wire a derivative Work + base lens + override for the gate tests. Returns the
+    override target id."""
+    src_proj = uuid.uuid4()
+    tid = uuid.uuid4()
+    deriv = CompositionWork(project_id=uuid.uuid4(), user_id=USER, book_id=BOOK,
+                            id=uuid.uuid4(), source_work_id=uuid.uuid4(),
+                            branch_point=3, settings={})
+    works.work = deriv
+    works.source = CompositionWork(project_id=src_proj, user_id=USER, book_id=BOOK,
+                                   id=deriv.source_work_id)
+    from app.deps import get_derivatives_repo
+    from app.main import app
+
+    async def _list_overrides(u, wid):
+        return [SimpleNamespace(target_entity_id=tid, overridden_fields=override_fields)]
+    app.dependency_overrides[get_derivatives_repo] = lambda: SimpleNamespace(
+        list_overrides_for_work=_list_overrides)
+
+    async def fake_base_present(*, glossary, knowledge, book, book_id, user_id,
+                                project_id, bearer, present_entity_ids=None, query=""):
+        return [{"entity_id": str(tid), "name": "张若尘", "summary": base_summary}]
+    monkeypatch.setattr("app.engine.critic_override._gather_base_present", fake_base_present)
+
+    async def _no_anchors(knowledge, bearer, overrides): return {}
+    monkeypatch.setattr("app.engine.critic_override._resolve_override_anchors", _no_anchors)
+
+    crit = {"derivative_findings": [], "regen_attempts": prior_attempts} if prior_attempts else None
+    jobs.job = _job(result={"text": passage}, critic=crit)
+    return tid
+
+
+def test_critique_derivative_slip_GATES_needs_regeneration(ctx, monkeypatch):
+    """C26 GATE — a slipped derivative scene marks the critique needs_regeneration
+    (blocks accept / feeds the existing regenerate loop), not merely advisory."""
+    c, works, _, _, jobs, _, _ = ctx
+    _derivative_ctx(c, works, jobs, monkeypatch,
+                    passage="张若尘 stood there, a young man, the male lead.",
+                    override_fields={"description": "now a woman (genderbend)"})
+    r = c.post(f"/v1/composition/jobs/{JOB}/critique", json={})
+    body = r.json()
+    assert r.status_code == 200
+    crit = body["critic"]
+    assert crit["needs_regeneration"] is True
+    assert crit["regen_exhausted"] is False
+    assert crit["regen_attempts"] == 1
+    # persisted so the regenerate loop + a later critique read the attempt count back.
+    assert any(upd[2].get("critic", {}).get("needs_regeneration") is True for upd in jobs.updates)
+
+
+def test_critique_derivative_compliant_NOT_gated(ctx, monkeypatch):
+    """False-positive guard — a correctly-overridden scene (override honoured) is NOT
+    flagged: no slip, no needs_regeneration (no spurious regen loop)."""
+    c, works, _, _, jobs, _, _ = ctx
+    _derivative_ctx(c, works, jobs, monkeypatch,
+                    passage="张若尘, now a woman, the heroine, raised her hand.",
+                    override_fields={"description": "now a woman (genderbend)"})
+    r = c.post(f"/v1/composition/jobs/{JOB}/critique", json={})
+    crit = r.json()["critic"]
+    # no derivative findings at all → critic stays the plain (skipped) contract / None.
+    if crit is not None:
+        assert not crit.get("derivative_findings")
+        assert crit.get("needs_regeneration") in (None, False)
+
+
+def test_critique_derivative_regen_cap_surfaces_to_human(ctx, monkeypatch):
+    """The regeneration attempt cap stops a forced loop: once prior_attempts reaches
+    the cap, a still-slipping scene flips to regen_exhausted (surface to human) and
+    needs_regeneration False — no infinite loop."""
+    from app.engine import critic_override as co
+    c, works, _, _, jobs, _, _ = ctx
+    _derivative_ctx(c, works, jobs, monkeypatch,
+                    passage="张若尘 stood there, a young man, the male lead.",
+                    override_fields={"description": "now a woman (genderbend)"},
+                    prior_attempts=co.REGEN_ATTEMPT_CAP)
+    r = c.post(f"/v1/composition/jobs/{JOB}/critique", json={})
+    crit = r.json()["critic"]
+    assert crit["needs_regeneration"] is False
+    assert crit["regen_exhausted"] is True
+    assert crit["regen_attempts"] == co.REGEN_ATTEMPT_CAP + 1
+
+
+def test_critique_canon_work_not_gated(ctx, monkeypatch):
+    """Anti-no-op / canon untouched — a NON-derivative (canon) Work never gets the
+    derivative gate even with a distinct critic model."""
+    c, works, _, canon, jobs, judge, _ = ctx
+    works.work = _work({"critic_model_source": "user_model", "critic_model_ref": str(CRITIC)})
+    r = c.post(f"/v1/composition/jobs/{JOB}/critique", json={})
+    crit = r.json()["critic"]
+    # the LLM critic ran (canon path) but NO derivative gate fields.
+    assert "needs_regeneration" not in crit
+    assert "derivative_findings" not in crit
 
 
 # ── dismiss-violation + get_job + suggest-cast ──
