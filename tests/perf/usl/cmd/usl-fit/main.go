@@ -27,6 +27,8 @@ import (
 
 func main() {
 	inPath := flag.String("in", "", "input file (default stdin)")
+	exponent := flag.Bool("exponent", false,
+		"G2 mode: read (N,time) points and print the fitted log-log complexity exponent (SlopeFit) instead of the USL throughput fit")
 	flag.Parse()
 
 	var r io.Reader = os.Stdin
@@ -43,6 +45,22 @@ func main() {
 	if err != nil {
 		fatal("read input: %v", err)
 	}
+
+	// G2 complexity-exponent mode: the second column is per-op TIME, not
+	// throughput, and we fit the log-log slope (usl.FitComplexityExponent).
+	if *exponent {
+		pts, err := parsePoints(raw)
+		if err != nil {
+			fatal("parse: %v", err)
+		}
+		fit, err := usl.FitComplexityExponent(pts)
+		if err != nil {
+			fatal("exponent fit: %v", err)
+		}
+		printJSON(fit)
+		return
+	}
+
 	samples, err := parse(raw)
 	if err != nil {
 		fatal("parse: %v", err)
@@ -52,12 +70,37 @@ func main() {
 	if err != nil {
 		fatal("fit: %v", err)
 	}
+	printJSON(fit)
+}
 
-	out, err := json.MarshalIndent(fit, "", "  ")
+func printJSON(v any) {
+	out, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		fatal("marshal: %v", err)
 	}
 	fmt.Println(string(out))
+}
+
+// parsePoints reuses the throughput parser and reinterprets the second column as
+// time, so the same CSV/JSON ("N,time" or [{"n","time"}]) feeds the exponent fit.
+func parsePoints(raw []byte) ([]usl.LoadTimePoint, error) {
+	trimmed := strings.TrimSpace(string(raw))
+	if strings.HasPrefix(trimmed, "[") {
+		var pts []usl.LoadTimePoint
+		if err := json.Unmarshal([]byte(trimmed), &pts); err != nil {
+			return nil, fmt.Errorf("json: %w", err)
+		}
+		return pts, nil
+	}
+	samples, err := parseCSV(trimmed)
+	if err != nil {
+		return nil, err
+	}
+	pts := make([]usl.LoadTimePoint, len(samples))
+	for i, s := range samples {
+		pts[i] = usl.LoadTimePoint{N: s.N, Time: s.Throughput}
+	}
+	return pts, nil
 }
 
 // parse auto-detects JSON (input starts with '[') vs CSV.

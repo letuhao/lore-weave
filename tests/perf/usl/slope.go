@@ -86,11 +86,17 @@ func FitComplexityExponent(points []LoadTimePoint) (SlopeFit, error) {
 }
 
 // WithinBand reports whether the fitted exponent is within the allowed band
-// p ≤ 1 + eps. eps is the CALIBRATED tolerance (F7): set it from the observed
-// run-to-run slope variance on the real rig. Until that calibration is measured,
-// the LIVE gate stays NOTRUN (see scripts/perf/w5-usl-exponent-band.sh and the
-// D-G2-USL-BAND-CALIBRATE deferred row); the unit-level bite test still proves
-// the band check is non-vacuous now.
+// p ≤ 1 + eps. This is the GENERIC band form used by the unit proof
+// (`slope_test.go`, eps=0.20 → a 1.20 ceiling, against which a clean p≈0.80 sits
+// in-band and a realistic super-linear bite p≈1.30 exits).
+//
+// The LIVE gate (`scripts/perf/w5-usl-exponent-band.sh --live`) uses a CALIBRATED
+// absolute ceiling instead of 1+eps: D-G2-USL-BAND-CALIBRATE was cleared
+// 2026-06-15 by a pgbench append-latency-vs-concurrency sweep that measured a
+// healthy baseline exponent ≈0.15 (run-to-run stdev ≈0.01); the live ceiling is
+// committed at 0.50 (≈3× baseline, well below linear) to absorb cross-rig
+// baseline drift while still firing on an O(1)→O(n) creep. See that script's
+// header for the full calibration provenance + the --calibrate reproduction mode.
 func (s SlopeFit) WithinBand(eps float64) bool {
 	return s.Exponent <= 1.0+eps
 }

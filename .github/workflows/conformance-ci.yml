@@ -250,11 +250,17 @@ jobs:
           set -e
           echo "G1 clean=$a bite=$b (0=pass,2=notrun)"
           { [ "$a" = 1 ] || [ "$b" = 1 ]; } && exit 1 || exit 0
-      - name: G2 USL exponent-band live gate (DEFERRED — NOTRUN pending ε calibration)
+      - name: G2 USL exponent-band live gate + live-pipeline bite (calibrated, ceiling 0.50)
+        # D-G2-USL-BAND-CALIBRATE cleared 2026-06-15: ceiling 0.50 from a pgbench
+        # latency-vs-concurrency sweep (baseline ≈0.15). Asserts the real sweep is
+        # sub-linear AND the synthetic super-linear bite exceeds the ceiling.
         run: |
-          set +e; bash scripts/perf/w5-usl-exponent-band.sh --live; rc=$?; set -e
-          echo "G2 live rc=$rc (2=notrun: D-G2-USL-BAND-CALIBRATE; the unit band+bite runs per-PR)"
-          [ "$rc" = 1 ] && exit 1 || exit 0
+          set +e
+          bash scripts/perf/w5-usl-exponent-band.sh --live; a=$?
+          LW_G2_BITE=1 bash scripts/perf/w5-usl-exponent-band.sh --live; b=$?
+          set -e
+          echo "G2 live=$a bite=$b (0=pass,2=notrun)"
+          { [ "$a" = 1 ] || [ "$b" = 1 ]; } && exit 1 || exit 0
       - name: F3 hyperfine USL sweep
         env:
           REBUILDER_BIN: target/debug/rebuilder
