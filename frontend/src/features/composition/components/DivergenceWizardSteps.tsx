@@ -9,6 +9,15 @@ import { knowledgeApi } from '../../knowledge/api';
 import type { DivergenceTaxonomy } from '../types';
 import type { OverrideDraft } from '../hooks/useDivergenceWizard';
 
+// D-079 /review-impl LOW — the promote endpoint's actionable reason lives in
+// `body.detail.message` / `detail.error_code` (FastAPI shape), so apiJson's thrown
+// `.message` is just the bare HTTP statusText. Prefer the structured detail so the
+// inline error reads "…glossary draft failed" not "…Bad Gateway".
+function anchorErrorMessage(err: unknown): string {
+  const e = err as { body?: { detail?: { message?: string; error_code?: string } }; message?: string };
+  return e?.body?.detail?.message ?? e?.body?.detail?.error_code ?? e?.message ?? 'unknown error';
+}
+
 const TAXONOMIES: { value: DivergenceTaxonomy; emoji: string; key: string; def: string }[] = [
   { value: 'pov_shift', emoji: '👁️', key: 'typePovShift', def: 'POV shift' },
   { value: 'character_transform', emoji: '🔁', key: 'typeCharacterTransform', def: 'Character transform' },
@@ -169,7 +178,7 @@ export function Step3Overrides({
                   </button>
                   {promote.isError && promote.variables === e.id && (
                     <p data-testid={`divergence-anchor-error-${e.id}`} className="text-xs text-red-600 dark:text-red-400">
-                      {t('derive.anchorFailed', { defaultValue: 'Couldn’t anchor: {{error}}', error: (promote.error as Error).message })}
+                      {t('derive.anchorFailed', { defaultValue: 'Couldn’t anchor: {{error}}', error: anchorErrorMessage(promote.error) })}
                     </p>
                   )}
                 </div>

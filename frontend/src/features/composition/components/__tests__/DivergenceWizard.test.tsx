@@ -3,6 +3,20 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { PropsWithChildren } from 'react';
 
+// Interpolating i18n stub so assertions can read real rendered copy (the bare
+// react-i18next `t` returns '' until i18n is ready, which hid the anchor-error text).
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (k: string, o?: Record<string, unknown>) => {
+      let s = (o?.defaultValue as string) ?? k;
+      if (o) for (const [key, val] of Object.entries(o)) {
+        if (key !== 'defaultValue') s = s.replace(`{{${key}}}`, String(val));
+      }
+      return s;
+    },
+  }),
+}));
+
 const deriveWorkMock = vi.fn();
 vi.mock('../../api', () => ({
   compositionApi: { deriveWork: (...a: unknown[]) => deriveWorkMock(...a) },
@@ -125,15 +139,21 @@ describe('DivergenceWizard — override id-space (C24 fix)', () => {
     expect(await screen.findByTestId('divergence-override-input-gloss-x')).toBeTruthy();
   });
 
-  it('D-079 — a failed anchor surfaces an inline error and leaves the row unanchored', async () => {
+  it('D-079 — a failed anchor surfaces the structured reason inline and leaves the row unanchored', async () => {
     const discovered = entity({ id: 'kn-y', name: 'Wisp', glossary_entity_id: null, status: 'discovered' });
     listEntitiesMock.mockResolvedValue({ entities: [discovered], total: 1 });
-    promoteEntityMock.mockRejectedValue(new Error('no_book'));
+    // apiJson shape: human reason in body.detail.message, bare HTTP text in message
+    // (/review-impl LOW — the inline error must prefer the detail, not "Bad Gateway").
+    promoteEntityMock.mockRejectedValue(
+      Object.assign(new Error('Bad Gateway'), { status: 502, body: { detail: { error_code: 'glossary_draft_failed', message: 'glossary draft failed' } } }),
+    );
     renderWizard();
     fireEvent.click(screen.getByTestId('divergence-next')); // →2
     fireEvent.click(screen.getByTestId('divergence-next')); // →3
     fireEvent.click(await screen.findByTestId('divergence-anchor-kn-y'));
-    expect(await screen.findByTestId('divergence-anchor-error-kn-y')).toBeTruthy();
+    const errEl = await screen.findByTestId('divergence-anchor-error-kn-y');
+    expect(errEl).toHaveTextContent('glossary draft failed'); // structured detail, not "Bad Gateway"
+    expect(errEl).not.toHaveTextContent('Bad Gateway');
     // still no override input — the entity stayed unanchored.
     expect(screen.queryByTestId('divergence-override-input-kn-y')).toBeNull();
   });
