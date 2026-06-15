@@ -1,0 +1,7 @@
+id: w5-projection-shape-bench
+description: "G3 / structural perf-shape gate — the per-PR Rust projection-hotpath regression gate (scripts/perf/rust-bench-gate.sh), the criterion analogue of the S7/F2 benchstat gate for the hot path the Go harness can't reach: ProjectionRunner::apply_one over the FULL 11-projection set + the REAL build_stmt SQL builder (via a bench-only pub shim, NOT a drifting copy). Same-runner A/B (--ci-ab), never an absolute-µs threshold. This conformance case runs the FAST --selftest: it proves the criterion regression-verdict PARSER is non-vacuous (fires on a 'regressed' sample, silent on 'improved') so a criterion output-format drift can't silently disarm the gate. The heavyweight proof (full --bite that injects a ~50% regression and asserts criterion flags it, + --ci-ab vs the PR base) runs in the dedicated perf-rust-bench CI job, not in the per-PR conformance suite. CPU-only, no toolchain needed for --selftest."
+invariant: I-w5-projection-shape-gate
+kind: live-probe
+command: ["bash", "scripts/perf/rust-bench-gate.sh", "--selftest"]
+requires: []
+skip_when: []

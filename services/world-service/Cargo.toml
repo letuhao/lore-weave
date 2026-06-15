@@ -128,3 +128,16 @@ tokio = { workspace = true }
 # server without needing provider-registry up (the real round-trip is the deferred
 # live-smoke). Workspace-pinned.
 wiremock = { workspace = true }
+# G3 (structural perf-shape gate) — criterion statistical micro-bench over the
+# REAL projection hot loop (`ProjectionRunner::apply_one` over the full 11-set)
+# and the REAL `build_stmt` SQL builder (via `build_stmt_sql_for_bench`). Same
+# version as crates/world-gen so the workspace stays on one criterion; the perf
+# gate's parser self-test (scripts/perf/rust-bench-gate.sh --selftest) guards
+# against output-format drift across versions (F11).
+criterion = "0.5"
+
+# G3 — same-runner A/B + bite gate runs this via scripts/perf/rust-bench-gate.sh.
+[[bench]]
+name = "projection_hotpath"
+path = "benches/projection_hotpath.rs"
+harness = false

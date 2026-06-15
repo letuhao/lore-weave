@@ -76,6 +76,23 @@ impl Stmt {
     }
 }
 
+/// BENCH-ONLY public shim over the private [`build_stmt`] (G3 / structural
+/// perf-shape gate). Returns ONLY the rendered SQL string so a `cargo bench`
+/// compilation unit (which sees just the public API) can exercise the builder
+/// without exposing the private [`Stmt`] type.
+///
+/// Deliberately a thin call-through to the REAL [`build_stmt`], NOT a copy of
+/// its logic: the perf gate must measure the production builder so a future
+/// regression cannot hide behind a drifting duplicate (`/review-impl` plan
+/// finding F3). Not for production code paths — the apply path uses
+/// [`build_stmt`] directly inside [`SqlxProjectionWriter`].
+pub fn build_stmt_sql_for_bench(
+    target_table: &str,
+    update: &ProjectionUpdate,
+) -> Result<String, String> {
+    build_stmt(target_table, update).map(|s| s.sql)
+}
+
 /// Build the statement for one update targeting `target_table`. Pure — no DB
 /// access — so a malformed update aborts the batch before any statement runs,
 /// and the SQL shape is unit-testable without a pool. `target_table` is assumed

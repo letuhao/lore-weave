@@ -25,6 +25,13 @@ services:
     # installed per-database by 0008_pgvector_setup.up.sql.
     image: pgvector/pgvector:pg16
     container_name: foundation-dev-postgres
+    # Preload pg_stat_statements so the G1 structural perf gate
+    # (scripts/perf/w5-append-stmt-shape.sh) can read per-statement `calls` to
+    # assert the event-append high-water SELECT does NOT scale with batch size
+    # (an N+1 a higher layer could introduce). The module ships in the image; it
+    # only needs the preload + a per-DB `CREATE EXTENSION` (the harness does the
+    # latter in a throwaway schema). Harmless to the rest of the dev stack.
+    command: ["postgres", "-c", "shared_preload_libraries=pg_stat_statements"]
     environment:
       POSTGRES_USER: foundation
       POSTGRES_PASSWORD: foundation

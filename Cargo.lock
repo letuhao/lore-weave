@@ -4056,6 +4056,7 @@ version = "0.1.0-cycle26"
 dependencies = [
  "async-trait",
  "axum",
+ "criterion",
  "dp-kernel",
  "meta-rs",
  "pgvector",

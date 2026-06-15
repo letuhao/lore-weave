@@ -171,6 +171,39 @@ jobs:
           # the benches on first introduction) → green.
           [ "$rc" = 1 ] && exit 1 || exit 0
 
+  perf-rust-bench:
+    name: G3 projection-hotpath perf gate (per-PR)
+    # The Rust analogue of perf-micro-bench (S7/F2) for the projection HOT PATH the
+    # Go benchstat harness can't reach: ProjectionRunner::apply_one over the full
+    # 11-projection set + the REAL build_stmt SQL builder (via a bench-only pub
+    # shim, not a copy). Same-runner A/B (--ci-ab), never an absolute-µs threshold.
+    # (1) --selftest guards criterion output-format drift; (2) --bite proves the
+    # gate is non-vacuous (a ~50% injected regression must be flagged); (3) --ci-ab
+    # benches the PR base + HEAD on the SAME runner and fails on a flagged regression.
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # base ref for the same-runner A/B
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: parser selftest (criterion drift guard)
+        run: bash scripts/perf/rust-bench-gate.sh --selftest
+      - name: gate non-vacuity (--bite must fire)
+        run: bash scripts/perf/rust-bench-gate.sh --bite
+      - name: regression gate vs base (same-runner A/B)
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          [ -n "$base" ] || base="$(git rev-parse HEAD~1 2>/dev/null || echo HEAD)"
+          set +e
+          bash scripts/perf/rust-bench-gate.sh --ci-ab "$base"
+          rc=$?
+          set -e
+          # exit 1 = real regression → fail; exit 2 = notrun (base lacks the bench
+          # on first introduction) → green.
+          [ "$rc" = 1 ] && exit 1 || exit 0
+
   perf-nightly:
     name: S7/F3+F4 perf battery (nightly — live, hyperfine + k6)
     # Heavy live perf battery: builds the spine binaries + game-server, boots the
@@ -207,6 +240,21 @@ jobs:
             if docker exec foundation-dev-postgres pg_isready -U foundation >/dev/null 2>&1; then break; fi
             sleep 2
           done
+      - name: G1 append statement-shape invariant + bite (live, pg_stat_statements)
+        # The foundation PG above boots with shared_preload_libraries=pg_stat_statements
+        # (compose `command:`), so the high-water-SELECT-count invariant is measurable.
+        run: |
+          set +e
+          bash scripts/perf/w5-append-stmt-shape.sh; a=$?
+          bash scripts/perf/w5-append-stmt-shape.sh --bite; b=$?
+          set -e
+          echo "G1 clean=$a bite=$b (0=pass,2=notrun)"
+          { [ "$a" = 1 ] || [ "$b" = 1 ]; } && exit 1 || exit 0
+      - name: G2 USL exponent-band live gate (DEFERRED — NOTRUN pending ε calibration)
+        run: |
+          set +e; bash scripts/perf/w5-usl-exponent-band.sh --live; rc=$?; set -e
+          echo "G2 live rc=$rc (2=notrun: D-G2-USL-BAND-CALIBRATE; the unit band+bite runs per-PR)"
+          [ "$rc" = 1 ] && exit 1 || exit 0
       - name: F3 hyperfine USL sweep
         env:
           REBUILDER_BIN: target/debug/rebuilder
@@ -434,7 +482,7 @@ jobs:
           # W4.1 USL no-N=1 recovery test (tests/perf/usl) + W4.2 emit MicroBench
           # (already covered by the workload-gen `go test ./...` above).
           go test -C tests/perf ./usl/...
-      - name: shellcheck the scale + L1 + S14 + W1 + W2 + W3 + W4 scripts (smoke)
+      - name: shellcheck the scale + L1 + S14 + W1 + W2 + W3 + W4 + G1-G3 scripts (smoke)
         run: |
           for s in scale-rig shared-path roleplay-load soak multishard-dr \
                    l1-lifecycle l1-capacity l1-migration l1-relocate \
@@ -442,9 +490,12 @@ jobs:
                    w1-capacity w1-migrate w1-freeze w1-closure w1-provision \
                    w2-sustained w2-history w2-partition w2-rss-soak w2-disk-read \
                    w3-generator w3-schema-derived w3-checksum \
-                   w4-t0t1-micro w4-pgvector-recall; do
+                   w4-t0t1-micro w4-pgvector-recall \
+                   rust-bench-gate w5-append-stmt-shape w5-usl-exponent-band; do
             bash -n "scripts/perf/${s}.sh"
           done
+      - name: G3 rust-bench-gate parser selftest (toolchain-free)
+        run: bash scripts/perf/rust-bench-gate.sh --selftest
 
   w1-rust-build:
     name: W1 production-wiring Rust build (per-PR — anti-bit-rot)
