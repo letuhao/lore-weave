@@ -21,6 +21,11 @@ knowledge extraction) with **no way to see, cancel, pause, or resume** them. Job
   routes control. Scalable, searchable, live.
 - **Build order = the shared consumer SDK FIRST** (L2), then projection (L3), control
   endpoints, then GUI (L4).
+- **Projection host = a NEW `jobs-service`** (2026-06-15) — not reused into statistics/
+  notification. Clean ownership of the projection table, the `/v1/jobs` API, SSE, and
+  control routing in one deployable.
+- **No P0 thin-cancel slice** (2026-06-15) — strict SDK-first. Interim relief for a stuck
+  job stays the existing per-service endpoint (e.g. knowledge `extraction/cancel`).
 
 ## Current state (survey 2026-06-15)
 
@@ -109,10 +114,10 @@ Pieces:
   extraction LAST**, with extra scrutiny (a regression there double-spends or strands jobs).
 - Wire `emit_job_event` on each migrated consumer's status transitions (feeds L3).
 
-### L3 — Job projection + API (req 2 backend) — PHASE 2  *(revised: M3, M4)*
-- **Host (M3):** evaluate reusing **statistics-service** (already event→projection) or
-  **notification-service** (already the SSE bridge) BEFORE standing up a new `jobs-service` —
-  prefer reuse to avoid a new deployable. Decision at P2 DESIGN.
+### L3 — `jobs-service` projection + API (req 2 backend) — PHASE 2  *(revised: M4; host = new service)*
+- **Host:** a NEW **`jobs-service`** (PO decision 2026-06-15) — owns the projection table,
+  the `/v1/jobs` API, SSE, and control routing. (May still borrow the notification-service
+  SSE-bridge *pattern* for `/v1/jobs/stream`.)
 - Consumes `loreweave:events:jobs` (via `BaseTerminalConsumer`) → upserts `job_projection`
   (`PK (service, job_id)`, `owner_user_id` + `parent_job_id` indexed) + runs the reconcile sweep.
 - **API:** `GET /v1/jobs?owner=me&status=&kind=&parent=&q=&cursor=` (paged, searchable,
@@ -150,9 +155,8 @@ panels. `kind=campaign` deep-links to the existing campaign monitor (kept as-is)
 
 | Phase | Deliverable | Size |
 |---|---|---|
-| **P0 (optional, M1)** | Thin "every job kind has a cancel endpoint" slice — so any job is cancellable via API/curl **before** the GUI lands (addresses the user's acute pain sooner). PO call. | S-M |
 | **P1** | `loreweave_jobs` SDK (contract + `BaseTerminalConsumer` template + `emit` via outbox) + **incremental flagged + live-smoked** migration of the 5 consumers (video-gen first, worker-ai last) | L |
-| **P2** | Job projection (reuse statistics/notification if possible) — consume job events → table → list/detail/SSE + reconcile sweep | L |
+| **P2** | New **`jobs-service`** — consume job events → projection table → list/detail/SSE API + reconcile sweep | L |
 | **P3** | Per-service cancel/pause/resume control endpoints + ownership backfill + control routing w/ owner re-check | M-L |
 | **P4** | Unified Jobs GUI (dashboard + grouped list + state-aware controls, generalize `CampaignMonitor`) | M-L |
 
@@ -181,9 +185,9 @@ unified list as `kind=campaign` (parent of their child jobs) and deep-link to th
   live-smoked); no bug-copy surface.
 - Projection stays consistent with the SSOT job rows (outbox + reconcile); zero cross-tenant leak.
 
-## Open questions for PO
+## Open questions for PO — RESOLVED (2026-06-15)
 
-1. **P0 thin-cancel slice (M1)** — pull a "cancel endpoint for every kind" slice ahead of the
-   SDK so you get relief sooner, or stay strict SDK-first?
-2. **Projection host (M3)** — reuse statistics-service / notification-service, or a new
-   `jobs-service`? (Decide at P2 DESIGN; bias to reuse.)
+1. ~~P0 thin-cancel slice~~ → **declined; strict SDK-first.**
+2. ~~Projection host~~ → **a new `jobs-service`.**
+
+All design decisions locked. Build-ready: next is **P1** (`loreweave_jobs` SDK).
