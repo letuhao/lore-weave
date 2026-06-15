@@ -154,7 +154,11 @@ export function TranslationTab({ bookId }: { bookId: string }) {
   const loading = coverageLoading;
   const error = coverageError ? (coverageError as Error).message : '';
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['translation-coverage', bookId] });
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ['translation-coverage', bookId] });
+    // T2-M3: keep the per-cell "N changed" badges (segment-coverage) in sync too.
+    queryClient.invalidateQueries({ queryKey: ['segment-coverage', bookId] });
+  };
 
   const allLanguages = coverage?.known_languages ?? [];
   const autoLangs = useMemo(() => coverage ? languagesWithData(coverage) : new Set<string>(), [coverage]);

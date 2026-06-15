@@ -103,12 +103,15 @@ async def record_segment_glossary_usage(
     re-INSERT) so a re-translation re-derives usage from the current source. Caller
     runs this best-effort. `usage` = [(segment_index, entity_id)]."""
     await conn.execute("DELETE FROM segment_glossary_usage WHERE chapter_id=$1", chapter_id)
-    for seg_idx, entity_id in usage:
-        await conn.execute(
-            "INSERT INTO segment_glossary_usage (chapter_id, segment_index, entity_id) "
-            "VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
-            chapter_id, seg_idx, entity_id,
-        )
+    if not usage:
+        return
+    # One round-trip instead of one-INSERT-per-row (a glossary-dense chapter can have
+    # many segment×entity pairs). ON CONFLICT DO NOTHING tolerates a (seg, entity) dup.
+    await conn.executemany(
+        "INSERT INTO segment_glossary_usage (chapter_id, segment_index, entity_id) "
+        "VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+        [(chapter_id, seg_idx, entity_id) for seg_idx, entity_id in usage],
+    )
 
 
 async def compute_segment_status(conn, chapter_id, target_language: str) -> list[dict]:

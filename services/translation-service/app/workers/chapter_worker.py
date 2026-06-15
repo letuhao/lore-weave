@@ -506,12 +506,18 @@ async def _record_segment_status(
 async def _record_segment_glossary_usage(pool, book_id, chapter_id, target_language: str) -> None:
     """T2-M3.2: record which glossary entities each segment's SOURCE references, so a
     later change to an entity can flag only the segments that use it. Best-effort,
-    post-commit. Language-independent usage (source terms in source text); fetched per
-    `target_language` only because that's the glossary endpoint's scope."""
+    post-commit.
+
+    Usage is language-INDEPENDENT (source terms in source text). The translation-glossary
+    endpoint returns the same entity SET for any target_language (it LEFT-JOINs the target
+    translation, so an entity with no translation in this language is still returned) — the
+    only language input is which we pass. We request the server max (200) so staleness
+    covers more than the translate-time top-50, mirroring the entity cap the endpoint
+    itself enforces."""
     try:
         from .glossary_client import fetch_translation_glossary
         from .segment_status import scan_glossary_usage, record_segment_glossary_usage
-        raw = await fetch_translation_glossary(str(book_id), target_language, str(chapter_id))
+        raw = await fetch_translation_glossary(str(book_id), target_language, str(chapter_id), max_entries=200)
         entity_terms = [
             (str(r["entity_id"]), [t for t in (r.get("zh") or []) if t])
             for r in raw
