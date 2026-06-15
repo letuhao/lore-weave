@@ -16,7 +16,7 @@ from app.config import settings
 from app.db.pool import close_pool, create_pool
 from app.worker.heartbeat import heartbeat_loop
 from app.worker.reaper import reaper_loop
-from app.worker.resume_consumer import consume_resume_stream
+from app.worker.resume_consumer import LoreEnrichmentResumeConsumer
 
 logging.basicConfig(
     level=os.environ.get("LOG_LEVEL", "INFO"),
@@ -63,13 +63,16 @@ async def _main() -> None:
             batch=settings.compose_task_sweep_batch,
         )
     )
+    # consumer_name="resume-1" preserves the prior PEL consumer identity (was a literal).
+    consumer = LoreEnrichmentResumeConsumer(settings.redis_url, pool, consumer_name="resume-1")
     try:
-        await consume_resume_stream(pool=pool, redis_url=settings.redis_url)
+        await consumer.run()
     finally:
         heartbeat.cancel()
         if reaper is not None:
             reaper.cancel()
         compose_sweeper.cancel()
+        await consumer.close()
         await close_pool()
 
 

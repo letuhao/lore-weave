@@ -13,7 +13,7 @@ import logging
 
 from app.config import settings
 from app.db.pool import close_pool, create_pool, get_pool
-from app.worker.job_consumer import consume_jobs_stream, run_sweeper
+from app.worker.job_consumer import CompositionJobConsumer
 
 logging.basicConfig(
     level=settings.log_level,
@@ -31,17 +31,21 @@ async def _main() -> None:
     await create_pool(settings.composition_db_url)
     pool = get_pool()
     logger.info("composition worker: pool up, starting consumer + sweeper")
+    # consumer_name="worker-1" preserves the prior PEL consumer identity (was a literal,
+    # not hostname-based) so a redeploy doesn't orphan in-flight pending entries.
+    consumer = CompositionJobConsumer(settings.redis_url, pool, consumer_name="worker-1")
     sweeper = asyncio.create_task(
-        run_sweeper(
-            pool,
-            interval_secs=settings.composition_job_sweep_secs,
-            timeout_secs=settings.composition_job_sweep_timeout_secs,
+        consumer.run_sweeper(
+            interval_s=settings.composition_job_sweep_secs,
+            timeout_s=settings.composition_job_sweep_timeout_secs,
+            batch=20,
         )
     )
     try:
-        await consume_jobs_stream(pool=pool, redis_url=settings.redis_url)
+        await consumer.run()
     finally:
         sweeper.cancel()
+        await consumer.close()
         await close_pool()
 
 

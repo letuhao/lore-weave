@@ -11,13 +11,13 @@ consumer crash) — the runtime backstop since a Redis stream gives no post-ACK 
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 import asyncpg
-import redis.asyncio as aioredis
+
+from loreweave_jobs import BaseTerminalConsumer
 
 from app.clients.knowledge_client import get_knowledge_client
 from app.clients.llm_client import LLMClient, get_llm_client
@@ -36,8 +36,8 @@ from app.worker.operations import (
 __all__ = [
     "run_job",
     "dispatch_job_message",
-    "consume_jobs_stream",
     "sweep_once",
+    "CompositionJobConsumer",
 ]
 
 logger = logging.getLogger("composition.worker.job_consumer")
@@ -47,15 +47,6 @@ logger = logging.getLogger("composition.worker.job_consumer")
 _BUSINESS_ERRORS = (UnsupportedOperationError, ValueError, KeyError)
 
 _ACTIVE = ("pending", "running")
-
-
-async def _ensure_group(client: aioredis.Redis, stream: str, group: str) -> None:
-    try:
-        await client.xgroup_create(name=stream, groupname=group, id="0", mkstream=True)
-        logger.info("created consumer group %s on %s", group, stream)
-    except aioredis.ResponseError as exc:
-        if "BUSYGROUP" not in str(exc):
-            raise
 
 
 async def run_job(
@@ -140,56 +131,32 @@ async def dispatch_job_message(
     )
 
 
-async def consume_jobs_stream(
-    *,
-    pool: asyncpg.Pool,
-    redis_url: str,
-    consumer_name: str = "worker-1",
-    block_ms: int = 5000,
-) -> None:
-    """Long-running consumer. Cancel-safe: shutdown raises CancelledError from
-    xreadgroup; the finally closes the Redis client."""
-    client = aioredis.from_url(redis_url, decode_responses=True)
-    llm = get_llm_client()
+class CompositionJobConsumer(BaseTerminalConsumer):
+    """composition batch-job consumer on the shared transport scaffold. Single
+    job-request stream at ``start_id="0"`` (process the backlog). Business fold = the
+    module-level ``run_job`` (idempotent; a business failure is marked 'failed' + acked
+    INSIDE run_job → ``handle`` returns → ack; only an infra error raises → the base leaves
+    it un-acked for redelivery). The DB-row ``sweep_once`` is the runtime backstop a Redis
+    stream's no-post-ACK-redelivery needs."""
+
     stream = COMPOSITION_JOBS_STREAM
-    try:
-        await _ensure_group(client, stream, COMPOSITION_WORKER_GROUP)
-        logger.info(
-            "composition worker started group=%s name=%s stream=%s",
-            COMPOSITION_WORKER_GROUP, consumer_name, stream,
-        )
-        while True:
-            try:
-                resp = await client.xreadgroup(
-                    groupname=COMPOSITION_WORKER_GROUP,
-                    consumername=consumer_name,
-                    streams={stream: ">"},
-                    count=1,
-                    block=block_ms,
-                )
-            except asyncio.CancelledError:
-                raise
-            except aioredis.RedisError as exc:
-                logger.debug("composition worker XREADGROUP retry: %s", exc)
-                await asyncio.sleep(1.0)
-                continue
-            if not resp:
-                continue
-            for _stream, messages in resp:
-                for message_id, fields in messages:
-                    ack = True
-                    try:
-                        await dispatch_job_message(pool, llm, fields=fields)
-                    except Exception:  # noqa: BLE001 — transient infra → redeliver
-                        logger.warning(
-                            "composition job msg %s failed; leaving un-ACKed for redelivery",
-                            message_id, exc_info=True,
-                        )
-                        ack = False
-                    if ack:
-                        await client.xack(stream, COMPOSITION_WORKER_GROUP, message_id)
-    finally:
-        await client.aclose()
+    group = COMPOSITION_WORKER_GROUP
+    start_id = "0"
+    consumer_name_prefix = "composition-worker"
+    retry_prefix = "composition:job:retry"
+
+    def __init__(self, redis_url: str, pool: asyncpg.Pool, *, consumer_name: str | None = None) -> None:
+        super().__init__(redis_url, consumer_name=consumer_name)
+        self._pool = pool
+        self._llm = get_llm_client()
+
+    async def handle(self, fields: dict) -> None:
+        await dispatch_job_message(self._pool, self._llm, fields=fields)
+
+    async def sweep_once(self, *, timeout_s: int, batch: int) -> int:
+        # NOTE: the bare name `sweep_once` resolves (LEGB) to the module-level function
+        # below, NOT this method — so this is delegation, not recursion.
+        return await sweep_once(self._pool, timeout_secs=timeout_s, batch=batch)
 
 
 async def sweep_once(pool: asyncpg.Pool, *, timeout_secs: int, batch: int = 20) -> int:
@@ -216,19 +183,3 @@ async def sweep_once(pool: asyncpg.Pool, *, timeout_secs: int, batch: int = 20) 
         except Exception:  # noqa: BLE001 — a sweep failure must not kill the loop
             logger.warning("composition sweep re-drive failed for %s", r["id"], exc_info=True)
     return len(rows)
-
-
-async def run_sweeper(pool: asyncpg.Pool, *, interval_secs: int, timeout_secs: int) -> None:
-    """Periodic stuck-job sweep. interval_secs <= 0 disables it."""
-    if interval_secs <= 0:
-        return
-    while True:
-        try:
-            n = await sweep_once(pool, timeout_secs=timeout_secs)
-            if n:
-                logger.info("composition sweeper re-drove %d stuck job(s)", n)
-        except asyncio.CancelledError:
-            raise
-        except Exception:  # noqa: BLE001
-            logger.warning("composition sweeper iteration failed", exc_info=True)
-        await asyncio.sleep(interval_secs)

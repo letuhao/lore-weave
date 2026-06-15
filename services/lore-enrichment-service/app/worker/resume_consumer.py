@@ -15,12 +15,12 @@ at-least-once redelivery is safe.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from uuid import UUID
 
 import asyncpg
-import redis.asyncio as aioredis
+
+from loreweave_jobs import BaseTerminalConsumer
 
 from app.api.jobs import GapTarget, _gap_from_target, load_spent_so_far
 from app.compose.compose_task import run_compose_task
@@ -32,22 +32,12 @@ from app.strategies.base import StrategyContext
 from app.strategies.registry import InactiveStrategyError, UnknownStrategyError
 
 __all__ = [
-    "consume_resume_stream", "redrive_one", "dispatch_resume_message", "RESUME_GROUP",
+    "LoreEnrichmentResumeConsumer", "redrive_one", "dispatch_resume_message", "RESUME_GROUP",
 ]
 
 logger = logging.getLogger("lore_enrichment.resume_worker")
 
 RESUME_GROUP = "lore-enrichment-resume"
-
-
-async def _ensure_group(client: aioredis.Redis, stream: str, group: str) -> None:
-    """Idempotently create the consumer group (MKSTREAM bootstraps the stream)."""
-    try:
-        await client.xgroup_create(name=stream, groupname=group, id="0", mkstream=True)
-        logger.info("created consumer group %s on %s", group, stream)
-    except aioredis.ResponseError as exc:
-        if "BUSYGROUP" not in str(exc):
-            raise
 
 
 async def redrive_one(
@@ -160,54 +150,22 @@ async def dispatch_resume_message(*, pool: asyncpg.Pool, fields: dict) -> None:
     )
 
 
-async def consume_resume_stream(
-    *,
-    pool: asyncpg.Pool,
-    redis_url: str,
-    consumer_name: str = "resume-1",
-    block_ms: int = 5000,
-) -> None:
-    """Long-running consumer. Cancel-safe: shutdown raises CancelledError from
-    xreadgroup; the finally-block closes the Redis client."""
-    client = aioredis.from_url(redis_url, decode_responses=True)
+class LoreEnrichmentResumeConsumer(BaseTerminalConsumer):
+    """Resume worker on the shared transport scaffold. Single resume-trigger stream at
+    ``start_id="0"``. Business fold = ``dispatch_resume_message`` (idempotent; a business
+    failure is handled INSIDE the callee → ``handle`` returns → ack; only an infra error
+    raises → the base leaves it un-acked for redelivery). No sweeper here — the compose-task
+    sweeper runs separately in the worker entrypoint."""
+
     stream = LORE_ENRICHMENT_RESUME_STREAM
-    try:
-        await _ensure_group(client, stream, RESUME_GROUP)
-        logger.info(
-            "resume consumer started group=%s name=%s stream=%s",
-            RESUME_GROUP, consumer_name, stream,
-        )
-        while True:
-            try:
-                resp = await client.xreadgroup(
-                    groupname=RESUME_GROUP,
-                    consumername=consumer_name,
-                    streams={stream: ">"},
-                    count=1,
-                    block=block_ms,
-                )
-            except asyncio.CancelledError:
-                raise
-            except aioredis.RedisError as exc:
-                # A blocking-read timeout / transient Redis error: back off and
-                # retry (NOT a crash — the worker must survive an idle block).
-                logger.debug("resume consumer XREADGROUP retry: %s", exc)
-                await asyncio.sleep(1.0)
-                continue
-            if not resp:
-                continue
-            for _stream, messages in resp:
-                for message_id, fields in messages:
-                    ack = True
-                    try:
-                        await dispatch_resume_message(pool=pool, fields=fields)
-                    except Exception:  # noqa: BLE001 — transient infra → redeliver
-                        logger.warning(
-                            "resume msg %s failed; leaving un-ACKed for redelivery",
-                            message_id, exc_info=True,
-                        )
-                        ack = False
-                    if ack:
-                        await client.xack(stream, RESUME_GROUP, message_id)
-    finally:
-        await client.aclose()
+    group = RESUME_GROUP
+    start_id = "0"
+    consumer_name_prefix = "resume"
+    retry_prefix = "lore-enrichment:resume:retry"
+
+    def __init__(self, redis_url: str, pool: asyncpg.Pool, *, consumer_name: str | None = None) -> None:
+        super().__init__(redis_url, consumer_name=consumer_name)
+        self._pool = pool
+
+    async def handle(self, fields: dict) -> None:
+        await dispatch_resume_message(pool=self._pool, fields=fields)
