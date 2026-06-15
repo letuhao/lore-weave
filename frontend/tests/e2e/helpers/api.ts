@@ -133,6 +133,35 @@ export async function deleteKnowledgeProject(
   await request.delete(`/v1/knowledge/projects/${projectId}`, auth(token));
 }
 
+/** Create a user-authored (DISCOVERED / unanchored) knowledge entity — the input
+ *  to the D-079 anchor-and-override flow (a discovered entity the wizard offers to
+ *  anchor inline). Idempotent on (name, kind) within the project. */
+export async function createKnowledgeEntity(
+  request: APIRequestContext, token: string, projectId: string, name: string, kind: string,
+): Promise<{ id: string; glossary_entity_id: string | null }> {
+  return ok(request.post('/v1/knowledge/entities', {
+    ...auth(token), data: { project_id: projectId, name, kind },
+  }));
+}
+
+// ── chat (creation-unblock — ProjectPicker lives in the session settings) ────
+
+/** Create a chat session (needs a model). Returns its id so the test can open the
+ *  session settings panel where the ProjectPicker replaced the raw <select>. */
+export async function createChatSession(
+  request: APIRequestContext, token: string, modelRef: string, title: string,
+): Promise<{ session_id: string }> {
+  return ok(request.post('/v1/chat/sessions', {
+    ...auth(token), data: { model_source: 'user_model', model_ref: modelRef, title },
+  }));
+}
+
+export async function deleteChatSession(
+  request: APIRequestContext, token: string, sessionId: string,
+): Promise<void> {
+  await request.delete(`/v1/chat/sessions/${sessionId}`, auth(token));
+}
+
 /** Create a chapter and save `text` as its draft body (one revision) — a content-
  * rich chapter the extractor can pull entities from. Returns the chapter id. */
 export async function seedRichChapter(

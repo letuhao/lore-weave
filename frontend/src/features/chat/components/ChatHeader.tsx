@@ -120,6 +120,7 @@ export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOp
           <button
             type="button"
             onClick={onOpenSettings}
+            data-testid="chat-session-settings-button"
             title={t('header.session_settings')}
             className="rounded-md p-2 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
           >

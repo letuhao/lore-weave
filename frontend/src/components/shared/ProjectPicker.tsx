@@ -164,6 +164,7 @@ export function ProjectPicker({ value, onChange, disabled, placeholder, limit = 
         <input
           type="text"
           role="combobox"
+          data-testid="project-picker-input"
           aria-expanded={open}
           aria-controls="project-picker-list"
           value={query}
