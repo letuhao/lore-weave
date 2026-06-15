@@ -57,8 +57,8 @@ export function WorldWorkspacePage() {
             <LivingWorldTree worldId={worldId} />
           </section>
 
-          {/* Read-only world graph (C19 reuse). */}
-          <WorldGraphSection bibleBookId={bibleBookId} />
+          {/* Read-only world graph — the W2 rollup union (G4). */}
+          <WorldGraphSection worldId={worldId} />
         </>
       )}
     </div>

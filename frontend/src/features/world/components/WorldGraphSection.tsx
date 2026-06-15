@@ -1,29 +1,29 @@
 import { useTranslation } from 'react-i18next';
-import { ProjectGraphView } from '@/features/knowledge/components/ProjectGraphView';
-import { useWorldProject } from '../hooks/useWorldProject';
+import { WorldRollupGraph } from './WorldRollupGraph';
 
 interface WorldGraphSectionProps {
-  /** The world's bible book — used to resolve its knowledge project. */
-  bibleBookId: string | null;
+  /** The world whose member books roll up into one canon graph. */
+  worldId: string | undefined;
 }
 
-// C21 — embeds the C19 read-only ProjectGraphView, scoped to the world's
-// knowledge project (resolved by bible book). Read-only (graph editing is out of
-// scope — G5); when the world has no project yet, ProjectGraphView renders its
-// own empty state. No new graph code — pure reuse.
-export function WorldGraphSection({ bibleBookId }: WorldGraphSectionProps) {
+// W5 (G4, decision ⑤) — the world graph is now the ROLLUP: a union of every
+// member book's canon subgraph + the world-level (bible) project, read from
+// W2's `GET /worlds/{id}/subgraph`. This REPLACES the old bible-only embed
+// (which only ever showed the bible book's own project). Read-only; when the
+// world has no knowledge yet, WorldRollupGraph renders its own empty state.
+export function WorldGraphSection({ worldId }: WorldGraphSectionProps) {
   const { t } = useTranslation('world');
-  const { projectId } = useWorldProject(bibleBookId);
 
   return (
     <section className="space-y-2" data-testid="world-graph-section">
       <h2 className="font-medium">{t('graph.title', { defaultValue: 'World graph' })}</h2>
       <p className="text-xs text-muted-foreground">
-        {t('graph.subtitle', { defaultValue: 'A read-only view of how your world’s lore connects.' })}
+        {t('graph.rollupSubtitle', {
+          defaultValue:
+            'A read-only roll-up of every member book’s canon graph, rendered together as per-book islands.',
+        })}
       </p>
-      {/* Read-only reuse of the C19 canvas. bookId threads the bible book for the
-          detail panel's pin control; the canvas itself never mutates. */}
-      <ProjectGraphView projectId={projectId ?? undefined} bookId={bibleBookId} />
+      <WorldRollupGraph worldId={worldId} />
     </section>
   );
 }

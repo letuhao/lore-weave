@@ -414,6 +414,10 @@ export interface SubgraphNode {
   anchor_score: number;
   mention_count: number;
   glossary_entity_id: string | null;
+  /** W2 (G4) — set ONLY by the world rollup (`getWorldSubgraph`): the member
+   *  project this node came from, so the FE can legend the per-book islands.
+   *  `undefined`/`null` on the single-project subgraph (it never tags source). */
+  source_project_id?: string | null;
 }
 
 export interface SubgraphEdge {
@@ -1421,6 +1425,30 @@ export const knowledgeApi = {
     const q = qs.toString();
     return apiJson<SubgraphResponse>(
       `${BASE}/projects/${encodeURIComponent(projectId)}/subgraph${q ? `?${q}` : ''}`,
+      { token },
+    );
+  },
+
+  // ── W2 (G4) — GET /worlds/{id}/subgraph (world rollup) ────────────────
+  //
+  // The world's canon rollup: a UNION of each member book's C18 subgraph +
+  // the world-level (bible) project, merged server-side into one
+  // `{nodes, edges, node_cap_hit}` payload (same Subgraph wire as the
+  // per-project view). Nodes carry `source_project_id` so the FE can legend
+  // the per-book islands. Owner-scoped server-side (a world the caller
+  // doesn't own → 404). No `center`/expand — the union is flat (the per-book
+  // graphs are disconnected components by design). 503 if book-service (the
+  // membership source) is unavailable.
+  getWorldSubgraph(
+    worldId: string,
+    params: { limit?: number },
+    token: string,
+  ): Promise<SubgraphResponse> {
+    const qs = new URLSearchParams();
+    if (params.limit != null) qs.set('limit', String(params.limit));
+    const q = qs.toString();
+    return apiJson<SubgraphResponse>(
+      `${BASE}/worlds/${encodeURIComponent(worldId)}/subgraph${q ? `?${q}` : ''}`,
       { token },
     );
   },

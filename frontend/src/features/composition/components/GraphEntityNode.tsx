@@ -22,7 +22,9 @@ export function GraphEntityNode({
   expanded: boolean;
   onPointerDown: (e: React.PointerEvent) => void;
   onActivate: () => void;
-  onExpand: () => void;
+  /** Omit to hide the ⊞ expand affordance — e.g. the world rollup is a flat
+   *  union of per-book islands with no per-node ego-expansion. */
+  onExpand?: () => void;
 }) {
   const { t } = useTranslation('composition');
   return (
@@ -43,16 +45,18 @@ export function GraphEntityNode({
         >
           <span className={'h-2 w-2 shrink-0 rounded-full ' + (KIND_DOT[node.kind] ?? 'bg-slate-400')} aria-hidden />
           <span className="min-w-0 flex-1 truncate font-medium">{node.name}</span>
-          <button
-            type="button"
-            data-testid="relmap-expand"
-            aria-label={expanded ? t('relations.collapse', { defaultValue: 'Collapse' }) : t('relations.expand', { defaultValue: 'Expand' })}
-            className="shrink-0 rounded px-1 text-muted-foreground hover:text-primary"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => { e.stopPropagation(); onExpand(); }}
-          >
-            {expanded ? '⊟' : '⊞'}
-          </button>
+          {onExpand && (
+            <button
+              type="button"
+              data-testid="relmap-expand"
+              aria-label={expanded ? t('relations.collapse', { defaultValue: 'Collapse' }) : t('relations.expand', { defaultValue: 'Expand' })}
+              className="shrink-0 rounded px-1 text-muted-foreground hover:text-primary"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => { e.stopPropagation(); onExpand(); }}
+            >
+              {expanded ? '⊟' : '⊞'}
+            </button>
+          )}
         </div>
       </foreignObject>
     </g>

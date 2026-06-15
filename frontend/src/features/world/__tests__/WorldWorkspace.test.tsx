@@ -40,8 +40,14 @@ vi.mock('../hooks/useWorldLore', () => ({
     error: null,
   }),
 }));
-vi.mock('../hooks/useWorldProject', () => ({
-  useWorldProject: () => ({ projectId: null, isLoading: false }),
+// The world graph is now the W2 rollup (WorldRollupGraph → useWorldSubgraph);
+// stub it to an empty union so the section renders a stable state here (its own
+// states are covered in WorldRollupGraph.test.tsx).
+vi.mock('../hooks/useWorldSubgraph', () => ({
+  useWorldSubgraph: () => ({
+    nodes: [], edges: [], sources: [], truncated: false,
+    isLoading: false, isFetching: false, error: null, refetch: vi.fn(),
+  }),
 }));
 
 function renderWorkspace() {

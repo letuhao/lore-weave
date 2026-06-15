@@ -41,7 +41,15 @@
   },
   "graph": {
     "title": "World graph",
-    "subtitle": "A read-only view of how your world’s lore connects."
+    "subtitle": "A read-only view of how your world’s lore connects.",
+    "rollupSubtitle": "A read-only roll-up of every member book’s canon graph, rendered together as per-book islands.",
+    "counts": "{{nodes}} nodes · {{edges}} relations",
+    "sources": "rolled up from {{count}} book(s)",
+    "truncated": "showing the top {{n}} — a large book can crowd a smaller one",
+    "hint": "Scroll to zoom · drag empty space to pan · click a node for detail",
+    "loading": "Loading world graph…",
+    "loadFailed": "Failed to load the world graph: {{error}}",
+    "empty": "No world knowledge yet — build the bible or extract a member book to roll its graph up here."
   },
   "living": {
     "heading": "Living world",
