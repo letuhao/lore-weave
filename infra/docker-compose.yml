@@ -1071,6 +1071,13 @@ services:
       # consumer stay coherent. Default ON (2026-06-12): review-cleared + live-smoked
       # (5-chapter run, recovery/filter fan-outs, 0 double-spend). false ⇒ sync path.
       EXTRACTION_DECOUPLE_ENABLED: ${EXTRACTION_DECOUPLE_ENABLED:-true}
+      # Unified Job Control Plane P1 — the decoupled-extraction terminal consumer runs
+      # on the shared loreweave_jobs.BaseTerminalConsumer (ExtractTerminalConsumer).
+      # Default ON (2026-06-15): live extraction E2E confirmed entity→trio→persist on
+      # the SDK consumer (real chapter, 23 entities/27 relations, items_processed 0→1
+      # bill-once, group/consumer-name continuity `worker-ai-extract-resume`). Set false
+      # to fall back to the legacy functional consume_llm_terminal_stream if needed.
+      EXTRACTION_CONSUMER_USE_SDK: ${EXTRACTION_CONSUMER_USE_SDK:-true}
       # Cycle 73d — entity recovery OFF by default; eval-validate first.
       WORKER_AI_ENTITY_RECOVERY_MODEL_REF: ${WORKER_AI_ENTITY_RECOVERY_MODEL_REF:-}
       WORKER_AI_ENTITY_RECOVERY_MODEL_SOURCE: ${WORKER_AI_ENTITY_RECOVERY_MODEL_SOURCE:-user_model}
