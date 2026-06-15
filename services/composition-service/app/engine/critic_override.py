@@ -67,31 +67,116 @@ def _override_bio(fields: dict[str, Any]) -> str | None:
     return bio
 
 
+# An ASCII word char (Python's `\w` is Unicode-aware and ALSO matches CJK
+# ideographs — that is exactly the FIX 1 bug: a `(?<!\w)…(?!\w)` boundary against
+# a CJK value flanked by CJK chars NEVER matched, so the gate could not fire for
+# Chinese prose). We restrict the word-boundary notion to ASCII so the English
+# precision (don't match "king" inside "kingdom") is kept, while a CJK value — a
+# script with NO word separators — is matched by containment.
+_ASCII_WORD = re.compile(r"[A-Za-z0-9_]")
+# A bio value lifted from the glossary often carries trailing/leading sentence
+# punctuation (e.g. `前世…重生复仇。`) that the generated prose won't replicate
+# verbatim (it ends the clause with `，` or nothing). Trim word-irrelevant edge
+# punctuation/whitespace from the VALUE before matching so a `。`-terminated bio
+# still matches the same phrase mid-sentence (FIX 1 — "tolerant of surrounding
+# punctuation"). We only strip non-word, non-CJK chars so an entity's actual name
+# characters are never eaten.
+_CJK = (
+    "一-鿿㐀-䶿豈-﫿"  # CJK Unified + Ext-A + Compat
+    "぀-ヿ"                              # Hiragana + Katakana
+    "가-힯"                              # Hangul
+)
+_EDGE_PUNCT = re.compile(rf"^[^\w{_CJK}]+|[^\w{_CJK}]+$")
+
+
+def _ascii_word_char(ch: str) -> bool:
+    return bool(ch) and _ASCII_WORD.match(ch) is not None
+
+
+def _trim_edges(v: str) -> str:
+    """Strip leading/trailing punctuation/whitespace that is neither an ASCII word
+    char nor a CJK/kana/hangul char — so a bio's trailing `。`/`，` doesn't defeat a
+    containment match against the same phrase in prose."""
+    return _EDGE_PUNCT.sub("", v)
+
+
 def _phrase_occurs(passage_fold: str, value: Any) -> bool:
-    """Whether the folded `value` occurs in `passage_fold` as a WORD-BOUNDED phrase
-    (D-C26-CRITIC-FN edge 2). A bare `in` substring test fires on incidental
-    overlaps ("king" inside "kingdom"); a boundary match only counts the value as a
-    standalone phrase. Empty value → False."""
-    v = _norm_name(value)
+    """Whether the folded `value` occurs in `passage_fold` as a standalone phrase,
+    correct for BOTH scripts (FIX 1 — CJK-safe):
+
+    • ASCII edges keep WORD-BOUNDARY precision — a value whose first/last char is an
+      ASCII word char must not be split out of a larger ASCII word ("king" inside
+      "kingdom" → False; D-C26-CRITIC-FN edge 2 preserved).
+    • CJK (and any non-ASCII-word) edges use CONTAINMENT — a script with no word
+      separators can't carry an ASCII boundary, so `少年天才` flanked by Chinese chars
+      now matches (the gate fires for Chinese).
+    • Edge sentence-punctuation on the VALUE is trimmed first (a `。`-terminated bio
+      matches the same phrase ending in `，`).
+
+    Implemented as a containment scan: for each occurrence, reject ONLY when the
+    boundary would split an ASCII word (value edge is ASCII-word AND the adjacent
+    passage char is ASCII-word). Empty value → False."""
+    v = _trim_edges(_norm_name(value))
     if not v:
         return False
-    return re.search(rf"(?<!\w){re.escape(v)}(?!\w)", passage_fold) is not None
+    start_ascii = _ascii_word_char(v[0])
+    end_ascii = _ascii_word_char(v[-1])
+    idx = passage_fold.find(v)
+    while idx != -1:
+        before = passage_fold[idx - 1] if idx > 0 else ""
+        after_pos = idx + len(v)
+        after = passage_fold[after_pos] if after_pos < len(passage_fold) else ""
+        # A boundary only matters where BOTH the value edge AND the neighbour are
+        # ASCII word chars (i.e. we'd be slicing a larger ASCII token). CJK edges
+        # never trip this, so containment wins for CJK.
+        left_ok = not (start_ascii and _ascii_word_char(before))
+        right_ok = not (end_ascii and _ascii_word_char(after))
+        if left_ok and right_ok:
+            return True
+        idx = passage_fold.find(v, idx + 1)
+    return False
+
+
+def _strip_phrase(passage_fold: str, value: str) -> str:
+    """Blank out every standalone occurrence of `value` in `passage_fold` (same
+    boundary rule as `_phrase_occurs`), so a residual test can detect whether the
+    override appears OUTSIDE the reverted base phrase. CJK-safe (containment),
+    edge-punctuation-tolerant (same trim as `_phrase_occurs`)."""
+    v = _trim_edges(_norm_name(value))
+    if not v:
+        return passage_fold
+    start_ascii = _ascii_word_char(v[0])
+    end_ascii = _ascii_word_char(v[-1])
+    out: list[str] = []
+    i = 0
+    n = len(passage_fold)
+    while i < n:
+        if passage_fold.startswith(v, i):
+            before = passage_fold[i - 1] if i > 0 else ""
+            after_pos = i + len(v)
+            after = passage_fold[after_pos] if after_pos < n else ""
+            left_ok = not (start_ascii and _ascii_word_char(before))
+            right_ok = not (end_ascii and _ascii_word_char(after))
+            if left_ok and right_ok:
+                out.append(" ")
+                i = after_pos
+                continue
+        out.append(passage_fold[i])
+        i += 1
+    return "".join(out)
 
 
 def _override_honoured(passage_fold: str, override_bio: str, base_bio: str) -> bool:
     """Whether the OVERRIDE value is genuinely asserted in the passage — NOT merely
     present as a substring of the BASE value the scene reverted to (D-C26-CRITIC-FN
-    edge 2). When the override is a substring of the base ("young" ⊂ "a young man"),
-    a naive `override in passage` is True whenever the base value appears, hiding the
-    slip. We strip every base-value occurrence out FIRST, then test whether the
-    override still occurs standalone — so the override only counts as honoured when it
-    appears OUTSIDE the reverted base phrase."""
+    edge 2). When the override is a substring of the base ("young" ⊂ "a young man",
+    or `少年` ⊂ `少年天才`), a naive `override in passage` is True whenever the base
+    value appears, hiding the slip. We strip every base-value occurrence out FIRST,
+    then test whether the override still occurs standalone — so the override only
+    counts as honoured when it appears OUTSIDE the reverted base phrase. CJK-safe."""
     if not _norm_name(override_bio):
         return False
-    base_v = _norm_name(base_bio)
-    residual = passage_fold
-    if base_v:
-        residual = re.sub(rf"(?<!\w){re.escape(base_v)}(?!\w)", " ", passage_fold)
+    residual = _strip_phrase(passage_fold, base_bio)
     return _phrase_occurs(residual, override_bio)
 
 
@@ -272,6 +357,13 @@ async def critique_overrides(
         getattr(ov, "target_entity_id", None) for ov in deriv.overrides
         if getattr(ov, "target_entity_id", None) is not None
     ]
+    # FIX 4 — the override TARGET anchors (glossary ids, post-C24). The base lens
+    # pins on these AND guarantees they appear in the present set even when the broad
+    # semantic read excludes them (see `_gather_base_present`). Without this the
+    # explicit pin degraded to the broad query="" path: get_entity(<anchor>) 404s on a
+    # glossary id, so the target's BIO never surfaced via the pin — leaving detection
+    # to a semantic query that returns nothing for an empty query (the live-found hole).
+    target_anchors = [str(t) for t in target_ids]
 
     base_fn = _base_present_fn or _gather_base_present
     try:
@@ -280,6 +372,7 @@ async def critique_overrides(
             book_id=getattr(work, "book_id", None), user_id=user_id,
             project_id=deriv.source_project_id, bearer=bearer,
             present_entity_ids=target_ids, query="",
+            override_target_anchors=target_anchors,
         )
     except Exception:  # noqa: BLE001 — base lens failure degrades the dimension
         logger.warning("critique_overrides: base present lens failed", exc_info=True)
@@ -299,13 +392,24 @@ async def _gather_base_present(
     *, glossary: Any, knowledge: Any, book: Any,
     book_id: Any, user_id: UUID, project_id: UUID, bearer: str,
     present_entity_ids: list[Any] | None = None, query: str = "",
+    override_target_anchors: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Read the inherited BASE `present` entities from the source project — the SAME
     lens (and the same SCOPE) C25's packer merges (reuse). D-C26-CRITIC-FN edge 1:
     the caller forwards the override TARGET ids as `present_entity_ids` so the base
     set mirrors the packer's actually-grounded cast (pinned present items) rather than
     a broad project-wide query that could surface a different row for the same entity.
-    `present_entity_ids=[]` falls back to the broad gather (the lens default)."""
+
+    FIX 4 — the override target's BIO must be present for the detector to compare it.
+    gather_present sources bios from the SEMANTIC lens (vector-ranked, project-scoped)
+    or, when that yields nothing, the book-scoped glossary FTS. But a glossary anchor
+    pinned via `present_entity_ids` only adds RELATIONS (knowledge.get_entity keys on a
+    KNOWLEDGE node id — a glossary anchor 404s there), NOT the bio. So if the broad
+    semantic read excludes an override target (an empty query returns NOTHING — the
+    live-found hole), its bio never surfaces and the slip is invisible. We GUARANTEE the
+    override targets are present by augmenting from the same book-scoped glossary FTS the
+    packer falls back to (`select_for_context`), keyed on the stable glossary `entity_id`
+    — exactly the anchor the override target and `_present_key` reconcile on."""
     from app.packer.lenses import gather_present
 
     present, _seen = await gather_present(
@@ -313,4 +417,26 @@ async def _gather_base_present(
         project_id=project_id, bearer=bearer, query=query,
         present_entity_ids=present_entity_ids or [],
     )
+
+    # Augment any MISSING override target from the book-scoped glossary (id-space-safe:
+    # both the override target and the present item reconcile on the glossary anchor).
+    want = {str(a) for a in (override_target_anchors or []) if a}
+    if want and book_id is not None:
+        have = {str(p.get("entity_id")) for p in present if p.get("entity_id")}
+        missing = want - have
+        if missing:
+            try:
+                extras = await glossary.select_for_context(book_id, user_id, "")
+            except Exception:  # noqa: BLE001 — augmentation is best-effort
+                logger.warning("base-present augment (select_for_context) failed", exc_info=True)
+                extras = []
+            for e in extras:
+                eid = str(e.get("entity_id") or "")
+                if eid in missing:
+                    present.append({
+                        "entity_id": eid,
+                        "name": e.get("cached_name") or "",
+                        "summary": e.get("short_description") or "",
+                        "relations": [],
+                    })
     return present

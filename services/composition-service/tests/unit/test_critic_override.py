@@ -173,6 +173,95 @@ def test_substring_override_honoured_when_standalone():
     assert not any(f["kind"] == "override_slip" for f in findings)
 
 
+# ── FIX 1 (HIGH) — CJK-blind slip detection (Python \w matches CJK ideographs) ──
+
+def test_phrase_occurs_cjk_value_flanked_by_cjk():
+    """A Chinese value flanked by Chinese chars: Python's \\w matches CJK, so the old
+    word-boundary regex (?<!\\w)…(?!\\w) NEVER matched a CJK value inside CJK prose —
+    the gate could not fire for Chinese. Containment is the correct match for a
+    script with no word separators."""
+    passage = co._norm_name("张若尘乃少年天才，名震天下。")
+    assert co._phrase_occurs(passage, "少年天才") is True
+
+
+def test_phrase_occurs_cjk_value_at_string_head():
+    """A CJK value at the very start of the prose (no preceding char) still matches."""
+    passage = co._norm_name("故事的主角张若尘登场了")
+    assert co._phrase_occurs(passage, "张若尘") is True
+
+
+def test_phrase_occurs_english_word_boundary_still_precise():
+    """The ASCII path KEEPS word-boundary precision: 'king' must NOT match inside
+    'kingdom' (the substring-of-base false-positive edge-2 fixed)."""
+    assert co._phrase_occurs(co._norm_name("the kingdom fell"), "king") is False
+    assert co._phrase_occurs(co._norm_name("the old king fell"), "king") is True
+
+
+def test_phrase_occurs_mixed_cjk_ascii_value():
+    """A value whose edges are CJK is matched by containment even when an ASCII char
+    is adjacent (CJK has no word boundary against ASCII)."""
+    assert co._phrase_occurs(co._norm_name("X张若尘Y"), "张若尘") is True
+
+
+def test_cjk_base_bio_reverts_inside_chinese_prose_FIRES_slip():
+    """End-to-end FIX 1: a CJK base bio that reverts INSIDE Chinese prose (flanked by
+    Chinese chars) now FIRES the slip — the old \\w boundary made this a silent
+    false-negative (the gate never fired for Chinese)."""
+    tid = uuid4()
+    base_present = [{"entity_id": str(tid), "name": "张若尘", "summary": "少年天才"}]
+    overrides = [_ov(tid, {"description": "现在是女性"})]  # now a woman
+    # the scene reverts to the canon CJK bio, flanked by Chinese chars; override absent.
+    passage = "张若尘乃少年天才，名震天下，威风凛凛。"
+    findings = co.detect_override_findings(
+        passage, overrides, base_present, target_anchor={})
+    assert any(f["kind"] == "override_slip" for f in findings)
+
+
+def test_cjk_compliant_scene_no_slip():
+    """Counter-case: a CJK override that IS honoured (override value present, base
+    value absent) → NO slip (guards against a CJK false-positive)."""
+    tid = uuid4()
+    base_present = [{"entity_id": str(tid), "name": "张若尘", "summary": "少年天才"}]
+    overrides = [_ov(tid, {"description": "现在是女性"})]
+    passage = "张若尘现在是女性，倾国倾城，名震天下。"  # honoured; canon "少年天才" absent
+    findings = co.detect_override_findings(
+        passage, overrides, base_present, target_anchor={})
+    assert not any(f["kind"] == "override_slip" for f in findings)
+
+
+def test_cjk_bio_trailing_punctuation_tolerant_FIRES_slip():
+    """FIX 1 (live-found) — the glossary bio carries trailing sentence punctuation
+    (`…重生复仇。`) that prose ends with a comma instead (`…重生复仇，`). The matcher
+    trims edge punctuation off the value so a `。`-terminated bio still matches the
+    same phrase mid-sentence → the slip FIRES (else a punctuation mismatch silently
+    hides every Chinese slip — the live-smoke surfaced this)."""
+    tid = uuid4()
+    base_present = [{"entity_id": str(tid), "name": "张若尘",
+                     "summary": "前世昆仑界明帝独子，被池瑶杀害后重生复仇。"}]
+    overrides = [_ov(tid, {"description": "现在是女性"})]
+    passage = "张若尘乃前世昆仑界明帝独子，被池瑶杀害后重生复仇，威风凛凛，名震天下。"
+    findings = co.detect_override_findings(
+        passage, overrides, base_present, target_anchor={})
+    assert any(f["kind"] == "override_slip" for f in findings)
+
+
+def test_edge_punctuation_does_not_match_empty_or_bare_punct():
+    """The edge-trim must not turn a punctuation-only / empty value into a spurious
+    universal match."""
+    assert co._phrase_occurs(co._norm_name("anything at all"), "。，！") is False
+    assert co._phrase_occurs(co._norm_name("anything at all"), "   ") is False
+
+
+def test_cjk_override_honoured_helper():
+    """_override_honoured for CJK: the override value asserted standalone (base
+    stripped first) → honoured. Containment, not \\w boundary."""
+    passage = co._norm_name("张若尘现在是女性，名震天下。")
+    assert co._override_honoured(passage, "现在是女性", "少年天才") is True
+    # and when the override only appears INSIDE the reverted base → NOT honoured.
+    passage2 = co._norm_name("张若尘乃少年天才，威风凛凛。")
+    assert co._override_honoured(passage2, "少年", "少年天才") is False
+
+
 # ── D-C26-CRITIC-FN edge (3): delta_inconsistency fires INDEPENDENTLY ──
 
 def test_delta_inconsistency_fires_without_bio_override():
@@ -231,6 +320,112 @@ async def test_gather_base_present_scopes_to_grounded_cast(monkeypatch):
     )
     assert captured["present_entity_ids"] == cast    # scene cast forwarded
     assert captured["query"] == "the duel at dawn"   # scene query forwarded
+
+
+# ── FIX 4 (MED) — base lens GUARANTEES the override target is present (bio) ──
+
+async def test_base_lens_augments_missing_override_target_from_glossary(monkeypatch):
+    """Post-C24 the override `target_entity_id` is a GLOSSARY anchor. The explicit pin
+    (present_entity_ids → knowledge.get_entity) 404s on a glossary anchor and only adds
+    RELATIONS anyway — not the BIO. If the broad semantic read excludes the target (an
+    empty query returns NOTHING — the live-found hole), its bio never surfaces and the
+    slip is invisible. _gather_base_present must AUGMENT the missing target from the
+    book-scoped glossary FTS (the same source the packer falls back to), keyed on the
+    glossary anchor — so the bio is present for the detector."""
+    anchor = uuid4()
+    captured = {}
+
+    async def fake_gather_present(glossary, knowledge, *, book_id, user_id,
+                                  project_id, bearer, query, present_entity_ids):
+        captured["present_entity_ids"] = present_entity_ids
+        return [], set()  # broad read surfaces NOTHING (empty query → semantic empty)
+
+    import app.packer.lenses as lenses
+    monkeypatch.setattr(lenses, "gather_present", fake_gather_present)
+
+    class FakeGlossary:
+        async def select_for_context(self, book_id, user_id, query, **k):
+            captured["augment_query"] = query
+            return [{"entity_id": str(anchor), "cached_name": "张若尘",
+                     "short_description": "前世昆仑界明帝独子，被池瑶杀害后重生复仇。"}]
+
+    present = await co._gather_base_present(
+        glossary=FakeGlossary(), knowledge=object(), book=object(),
+        book_id=uuid4(), user_id=uuid4(), project_id=uuid4(), bearer="t",
+        present_entity_ids=[anchor], query="",
+        override_target_anchors=[str(anchor)],
+    )
+    # the override target is now present WITH its canon bio (from the glossary augment).
+    item = next(p for p in present if str(p["entity_id"]) == str(anchor))
+    assert "重生复仇" in item["summary"]
+    assert captured["augment_query"] == ""  # book-scoped FTS (no query needed)
+
+
+async def test_base_lens_no_augment_when_target_already_present(monkeypatch):
+    """No redundant glossary round-trip when the broad read already surfaced the target
+    (the augment only fills a genuine gap)."""
+    anchor = uuid4()
+
+    async def fake_gather_present(glossary, knowledge, *, book_id, user_id,
+                                  project_id, bearer, query, present_entity_ids):
+        return [{"entity_id": str(anchor), "name": "X", "summary": "canon bio",
+                 "relations": []}], set()
+
+    import app.packer.lenses as lenses
+    monkeypatch.setattr(lenses, "gather_present", fake_gather_present)
+
+    called = {"augment": False}
+
+    class FakeGlossary:
+        async def select_for_context(self, *a, **k):
+            called["augment"] = True
+            return []
+
+    present = await co._gather_base_present(
+        glossary=FakeGlossary(), knowledge=object(), book=object(),
+        book_id=uuid4(), user_id=uuid4(), project_id=uuid4(), bearer="t",
+        present_entity_ids=[anchor], query="",
+        override_target_anchors=[str(anchor)],
+    )
+    assert called["augment"] is False             # already present → no extra fetch
+    assert any(str(p["entity_id"]) == str(anchor) for p in present)
+
+
+async def test_critique_overrides_passes_target_anchors_to_base_lens(monkeypatch):
+    """Wiring: critique_overrides forwards the override target anchors to the base lens
+    so the augment can guarantee them (end-to-end, the detector still fires the slip)."""
+    src_proj = uuid4()
+    anchor = uuid4()
+    work = SimpleNamespace(source_work_id=uuid4(), project_id=uuid4(),
+                           book_id=uuid4(), id=uuid4())
+    derivctx = _StubDerivContext(
+        source_project_id=src_proj,
+        overrides=[_ov(anchor, {"description": "现在是女性"})])
+
+    async def fake_build(*a, **k):
+        return derivctx
+    monkeypatch.setattr(co, "build_derivative_context", fake_build)
+
+    async def _no_anchors(knowledge, bearer, overrides):
+        return {}
+    monkeypatch.setattr(co, "_resolve_override_anchors", _no_anchors)
+
+    captured = {}
+
+    async def fake_base(*, glossary, knowledge, book, book_id, user_id, project_id,
+                        bearer, present_entity_ids=None, query="",
+                        override_target_anchors=None):
+        captured["override_target_anchors"] = override_target_anchors
+        return [{"entity_id": str(anchor), "name": "张若尘", "summary": "少年天才"}]
+
+    out = await co.critique_overrides(
+        work=work, user_id=uuid4(), passage="张若尘乃少年天才，名震天下。",
+        bearer="t", works_repo=object(), derivatives_repo=object(),
+        glossary=object(), knowledge=object(), book=object(),
+        _base_present_fn=fake_base,
+    )
+    assert captured["override_target_anchors"] == [str(anchor)]
+    assert any(f["kind"] == "override_slip" for f in out)
 
 
 # ── GATE decision + regeneration attempt cap ──

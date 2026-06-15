@@ -490,7 +490,8 @@ def test_critique_derivative_dimension_FIRES_at_call_site(ctx, monkeypatch):
 
     # the BASE present lens (source project) surfaces the entity at its canon value.
     async def fake_base_present(*, glossary, knowledge, book, book_id, user_id, project_id,
-                                bearer, present_entity_ids=None, query=""):
+                                bearer, present_entity_ids=None, query="",
+                                override_target_anchors=None):
         assert project_id == src_proj  # base lens hit the SOURCE project
         return [{"entity_id": str(tid), "name": "张若尘", "summary": "a young man, the male lead"}]
     monkeypatch.setattr("app.engine.critic_override._gather_base_present", fake_base_present)
@@ -533,7 +534,8 @@ def _derivative_ctx(c, works, jobs, monkeypatch, *, passage, override_fields,
         list_overrides_for_work=_list_overrides)
 
     async def fake_base_present(*, glossary, knowledge, book, book_id, user_id,
-                                project_id, bearer, present_entity_ids=None, query=""):
+                                project_id, bearer, present_entity_ids=None, query="",
+                                override_target_anchors=None):
         return [{"entity_id": str(tid), "name": "张若尘", "summary": base_summary}]
     monkeypatch.setattr("app.engine.critic_override._gather_base_present", fake_base_present)
 
@@ -605,6 +607,89 @@ def test_critique_canon_work_not_gated(ctx, monkeypatch):
     # the LLM critic ran (canon path) but NO derivative gate fields.
     assert "needs_regeneration" not in crit
     assert "derivative_findings" not in crit
+
+
+def test_critique_clean_llm_critic_carries_regen_attempts_forward(ctx, monkeypatch):
+    """FIX 3 (MED) — a clean LLM-critic run BETWEEN two slips must NOT reset the
+    regen-cap counter. The old code read prior_attempts off job.critic but the whole
+    critic was COALESCE-replaced on write, dropping regen_attempts → a later slip
+    restarted at 0 (the cap stopped bounding). A clean critique now carries the prior
+    regen_attempts forward in the persisted critic so the cap still bounds total ≤ N."""
+    c, works, _, canon, jobs, judge, _ = ctx
+    # distinct critic model → the LLM critic path runs (clean, no derivative findings).
+    works.work = _work({"critic_model_source": "user_model", "critic_model_ref": str(CRITIC)})
+    # the job already carries a non-zero attempt count from a PRIOR slip critique.
+    jobs.job = _job(critic={"regen_attempts": 2}, result={"text": "ordinary prose"})
+    r = c.post(f"/v1/composition/jobs/{JOB}/critique", json={})
+    assert r.status_code == 200
+    crit = r.json()["critic"]
+    # the clean critic ran (LLM dims present) AND carried the counter forward.
+    assert crit["regen_attempts"] == 2
+    # persisted with the carried-forward counter (so a later slip reads 2, not 0).
+    persisted = [upd[2].get("critic", {}) for upd in jobs.updates if "critic" in upd[2]]
+    assert persisted and persisted[-1].get("regen_attempts") == 2
+
+
+# ── FIX 2 (HIGH) — the gate actually BLOCKS accept (/persist 409) ──
+
+def _persistable_job(critic=None):
+    return _job(status="completed", critic=critic, result={
+        "text": "stitched chapter", "chapter_id": str(uuid.uuid4()),
+        "assembly_mode": "chapter", "persisted": False})
+
+
+def test_persist_blocked_when_needs_regeneration(ctx):
+    """A slipped critique (needs_regeneration, NOT exhausted) BLOCKS accept with a
+    409 OVERRIDE_SLIP_NEEDS_REGEN + surfaces the findings — the gate is no longer
+    advisory."""
+    c, _, _, _, jobs, _, _ = ctx
+    _use_book(_StubBook())
+    jobs.job = _persistable_job(critic={
+        "needs_regeneration": True, "regen_exhausted": False, "regen_attempts": 1,
+        "derivative_findings": [{"kind": "override_slip", "name": "张若尘",
+                                 "field": "description", "expected": "现在是女性",
+                                 "found": "少年天才"}]})
+    r = c.post(f"/v1/composition/jobs/{JOB}/persist", json={})
+    assert r.status_code == 409
+    detail = r.json()["detail"]
+    assert detail["code"] == "OVERRIDE_SLIP_NEEDS_REGEN"
+    # the findings are surfaced so the FE/user sees WHY accept is blocked.
+    assert detail["derivative_findings"]
+
+
+def test_persist_allowed_when_compliant(ctx):
+    """A compliant critique (no needs_regeneration) → accept succeeds."""
+    c, _, _, _, jobs, _, _ = ctx
+    book = _StubBook()
+    _use_book(book)
+    jobs.job = _persistable_job(critic={"needs_regeneration": False})
+    r = c.post(f"/v1/composition/jobs/{JOB}/persist", json={})
+    assert r.status_code == 200 and r.json()["persisted"] is True
+
+
+def test_persist_allowed_when_no_critic(ctx):
+    """A job with no critic at all (e.g. canon Work, critique never ran) is never
+    blocked."""
+    c, _, _, _, jobs, _, _ = ctx
+    book = _StubBook()
+    _use_book(book)
+    jobs.job = _persistable_job(critic=None)
+    r = c.post(f"/v1/composition/jobs/{JOB}/persist", json={})
+    assert r.status_code == 200 and r.json()["persisted"] is True
+
+
+def test_persist_fails_open_when_regen_exhausted(ctx):
+    """FAIL-OPEN — once the regen cap is reached (regen_exhausted) the gate STOPS
+    blocking: accept succeeds even though a slip was found (surface, don't loop
+    forever)."""
+    c, _, _, _, jobs, _, _ = ctx
+    book = _StubBook()
+    _use_book(book)
+    jobs.job = _persistable_job(critic={
+        "needs_regeneration": False, "regen_exhausted": True, "regen_attempts": 4,
+        "derivative_findings": [{"kind": "override_slip", "name": "张若尘"}]})
+    r = c.post(f"/v1/composition/jobs/{JOB}/persist", json={})
+    assert r.status_code == 200 and r.json()["persisted"] is True
 
 
 # ── dismiss-violation + get_job + suggest-cast ──

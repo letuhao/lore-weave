@@ -1305,6 +1305,24 @@ async def persist_job(
         return {"job_id": str(job.id), "persisted": True,
                 "draft_version": result.get("draft_version"), "already": True}
 
+    # C26 FIX 2 — the derivative override-critic GATE actually blocks accept here (it
+    # was set/persisted but never consumed). A latest critic that flagged a slip
+    # (needs_regeneration) refuses the accept with 409 + surfaces the findings so the
+    # user regenerates. FAIL-OPEN once the regen cap is reached (regen_exhausted): the
+    # gate stops blocking so a stubborn / false-positive slip can't lock the draft
+    # forever — the finding is surfaced, accept proceeds. A job with no critic, a
+    # compliant critic, or a canon (non-derivative) Work is never blocked.
+    critic = job.critic or {}
+    if critic.get("needs_regeneration") and not critic.get("regen_exhausted"):
+        raise HTTPException(status_code=409, detail={
+            "code": "OVERRIDE_SLIP_NEEDS_REGEN",
+            "detail": "a derivative override slipped — regenerate before accepting, "
+                      "or exhaust the regeneration cap to accept anyway",
+            "regen_attempts": critic.get("regen_attempts"),
+            "regen_cap": critic.get("regen_cap"),
+            "derivative_findings": critic.get("derivative_findings") or [],
+        })
+
     work = await works.get(user_id, job.project_id)
     if work is None:
         raise HTTPException(status_code=404, detail="work not found")
@@ -1398,6 +1416,13 @@ async def critique(
     # contract (alongside the LLM dims/violations) so the regeneration loop sees both.
     if derivative_findings:
         critic = {**critic, "derivative_findings": derivative_findings, **(gate or {})}
+    elif prior_attempts:
+        # FIX 3 (MED) — carry the regen-cap counter FORWARD on a clean LLM-critic run.
+        # `critic` is COALESCE-replaced on write (generation_jobs.update_status), so a
+        # clean critique BETWEEN two slips would otherwise DROP regen_attempts and the
+        # next slip restarts the cap at 0 (a re-spend loop). Persist the prior count so
+        # the cap keeps bounding the total ≤ REGEN_ATTEMPT_CAP across mixed critiques.
+        critic = {**critic, "regen_attempts": prior_attempts}
     await jobs.update_status(user_id, job_id, job.status, critic=critic,
                              target_revision_id=body.target_revision_id)
     return {"critic": critic}

@@ -189,6 +189,19 @@ export type Violation = {
   dismissed?: boolean;
 };
 
+// C26 — a derivative override-critic finding (override slip / delta inconsistency).
+// Deterministic, AI-free; surfaced alongside the LLM critic dims for a dị bản Work.
+export type DerivativeFinding = {
+  kind: 'override_slip' | 'delta_inconsistency';
+  entity_id?: string;
+  name?: string;
+  field?: string;
+  expected?: string;
+  found?: string;
+  rule?: string;
+  why?: string;
+};
+
 export type Critic = {
   coherence: number | null;
   voice_match: number | null;
@@ -196,6 +209,15 @@ export type Critic = {
   canon_consistency: number | null;
   violations: Violation[];
   error?: string;
+  // C26 GATE — the derivative override critic. `needs_regeneration` blocks accept
+  // (the dị bản override slipped); `regen_exhausted` means the cap was reached and
+  // the gate fails OPEN (surface the finding, allow accept). `derivative_findings`
+  // explains WHY. Absent for a canon (non-derivative) Work.
+  needs_regeneration?: boolean;
+  regen_exhausted?: boolean;
+  regen_attempts?: number;
+  regen_cap?: number;
+  derivative_findings?: DerivativeFinding[];
 } | null;
 
 export type GenerationJob = {
