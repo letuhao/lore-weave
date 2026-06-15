@@ -79,11 +79,38 @@ async def test_forward_unknown_service_501():
 
 @pytest.mark.asyncio
 async def test_forward_unsupported_known_service_501():
-    # translation has no P3 endpoint yet → 501 (honest, not silent)
+    # translation has no P3 endpoint yet → 501 (honest, not silent); composition +
+    # video_gen shipped in P3-2 → supported.
     assert control.is_supported("knowledge") is True
+    assert control.is_supported("composition") is True
+    assert control.is_supported("video_gen") is True
     assert control.is_supported("translation") is False
     res = await control.forward_control("translation", JID, "cancel", TEST_USER)
     assert res.status_code == 501
+
+
+@pytest.mark.asyncio
+async def test_forward_builds_per_service_url(monkeypatch):
+    """Each registered service forwards to its OWN internal prefix (no cross-wiring)."""
+    seen = {}
+
+    class _Resp:
+        status_code = 200
+        def json(self): return {"job_id": JID, "status": "cancelled"}
+
+    class _Client:
+        def __init__(self, *a, **k): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def post(self, url, **kw):
+            seen["url"] = url
+            return _Resp()
+
+    monkeypatch.setattr(control.httpx, "AsyncClient", _Client)
+    await control.forward_control("composition", JID, "cancel", TEST_USER)
+    assert seen["url"].endswith(f"/internal/composition/jobs/{JID}/cancel")
+    await control.forward_control("video_gen", JID, "cancel", TEST_USER)
+    assert seen["url"].endswith(f"/internal/video_gen/jobs/{JID}/cancel")
 
 
 @pytest.mark.asyncio

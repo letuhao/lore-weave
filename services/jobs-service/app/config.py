@@ -36,12 +36,16 @@ class Settings(BaseSettings):
 
     # Per-service internal URLs the reconcile sweep (P3) + control routing (P3)
     # target. Defaults match the docker-compose container DNS names.
+    # Ports = each service's IN-CONTAINER listen port (compose service DNS name),
+    # NOT its host-mapped port. Verified against infra/docker-compose.yml + live-smoke
+    # (composition PORT=8093, video-gen HTTP_PORT=8088 — the P3-2 smoke caught the
+    # earlier 8090/8200 guesses as 502-unreachable).
     knowledge_service_internal_url: str = "http://knowledge-service:8092"
     translation_service_internal_url: str = "http://translation-service:8087"
-    composition_service_internal_url: str = "http://composition-service:8090"
+    composition_service_internal_url: str = "http://composition-service:8093"
     campaign_service_internal_url: str = "http://campaign-service:8095"
     lore_enrichment_service_internal_url: str = "http://lore-enrichment-service:8093"
-    video_gen_service_internal_url: str = "http://video-gen-service:8200"
+    video_gen_service_internal_url: str = "http://video-gen-service:8088"
 
     log_level: str = "INFO"
 

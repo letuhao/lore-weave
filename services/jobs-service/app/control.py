@@ -30,7 +30,9 @@ VALID_ACTIONS = ("cancel", "pause", "resume")
 # (lore_enrichment/video_gen) map to their hyphenated URL prefixes here.
 _CONTROL: dict[str, tuple[str, str]] = {
     "knowledge": (settings.knowledge_service_internal_url, "/internal/knowledge/jobs"),
-    # P3-2+: translation / composition / video_gen / lore_enrichment as they ship.
+    "composition": (settings.composition_service_internal_url, "/internal/composition/jobs"),
+    "video_gen": (settings.video_gen_service_internal_url, "/internal/video_gen/jobs"),
+    # P3-3+: translation / lore_enrichment as they ship.
 }
 
 _TIMEOUT = httpx.Timeout(10.0)

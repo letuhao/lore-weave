@@ -32,8 +32,8 @@ from app.worker.operations import SUPPORTED_OPERATIONS
 from app.logging_config import setup_logging, trace_id_var
 from app.middleware.trace_id import TraceIdMiddleware
 from app.routers import (
-    approve, canon, engine, grounding, health, internal_eval, metrics,
-    narrative_threads, outline, ping, plan, prose, works,
+    approve, canon, engine, grounding, health, internal_eval, internal_job_control,
+    metrics, narrative_threads, outline, ping, plan, prose, works,
 )
 
 logger = logging.getLogger(__name__)
@@ -143,5 +143,6 @@ app.include_router(engine.router)
 app.include_router(outline.router)
 app.include_router(plan.router)
 app.include_router(internal_eval.router)
+app.include_router(internal_job_control.router)  # Unified Job Control Plane P3
 app.include_router(canon.router)
 app.include_router(narrative_threads.router)

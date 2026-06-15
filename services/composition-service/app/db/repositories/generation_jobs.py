@@ -442,3 +442,40 @@ class GenerationJobsRepo:
         async with self._pool.acquire() as c:
             async with c.transaction():  # UPDATE + emit_job_event atomic (H1)
                 return await _do(c)
+
+    async def cancel(
+        self, user_id: UUID, job_id: UUID, *, conn: asyncpg.Connection | None = None
+    ) -> GenerationJob | None:
+        """Race-safe cancel for the unified control plane (P3): CAS the row to
+        'cancelled' ONLY from an active state, scoped to the owner. Returns the
+        cancelled job, or None when nothing transitioned — i.e. the job is
+        missing/cross-user OR already terminal (the caller distinguishes those
+        with a prior owner-scoped ``get``: get→None ⇒ 404, get-ok+cancel→None ⇒ 409).
+
+        Unlike ``update_status`` (a plain owner-scoped UPDATE, used by the engine
+        which already knows the job is active), this guards ``status = ANY(active)``
+        so a control-plane cancel can never clobber a job that completed in the
+        TOCTOU window. Emits the terminal event on the SAME conn as the UPDATE (H1),
+        only on the winning CAS (mirrors the video-gen CAS ``fail``)."""
+        query = f"""
+        UPDATE generation_job
+           SET status = 'cancelled', updated_at = now()
+         WHERE user_id = $1 AND id = $2 AND status = ANY($3::text[])
+        RETURNING {_SELECT_COLS}
+        """
+        async def _do(c: asyncpg.Connection) -> GenerationJob | None:
+            row = await c.fetchrow(query, user_id, job_id, list(_ACTIVE_STATUSES))
+            if row is None:
+                return None
+            job = _row_to_job(row)
+            await emit_job_event(
+                c, service=_JOB_SERVICE, job_id=str(job.id),
+                owner_user_id=str(job.user_id), kind=job.operation, status="cancelled",
+            )
+            return job
+
+        if conn is not None:
+            return await _do(conn)
+        async with self._pool.acquire() as c:
+            async with c.transaction():  # UPDATE + emit_job_event atomic (H1)
+                return await _do(c)
