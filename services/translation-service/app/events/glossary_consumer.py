@@ -33,7 +33,6 @@ STREAM = "loreweave:events:glossary"
 GROUP_NAME = "translation-staleness"
 GLOSSARY_CHANGE_EVENT = "glossary.entity_updated"
 MAX_RETRIES = 3
-BLOCK_MS = 5000
 
 # M6b /review-impl MED-HIGH: the event's language_code (glossary) and the
 # chapter_translations.target_language (translation job) are independent strings
