@@ -199,11 +199,22 @@ async def _persist_chunk(pool, knowledge_client, ej_id, rs: dict) -> None:
 _INFLIGHT_KEY = {dx.TRIO: "trio_jobs", dx.RECOVERY: "recovery_jobs", dx.FILTER: "filter_jobs"}
 
 
+# D-078 (D-WORKERAI-DECOUPLED-DEFAULT-UNBOUNDED) — a legacy/unset job (no
+# `concurrency_level`) previously fanned out EVERY submit at once (an unbounded
+# gather). The submits are cheap fire-and-forget enqueue POSTs (not held LLM
+# connections), but a large recovery/filter batch could still burst N concurrent
+# enqueues at the gateway. Bound the UNSET default to a sane cap: the normal 3-op
+# trio stays fully concurrent (3 < cap), only a bigger burst is throttled. An
+# explicit user `concurrency_level` still wins (it's resolved before this default).
+DEFAULT_DECOUPLED_SUBMIT_CAP = 8
+
+
 def _concurrency_level(rs: dict) -> int | None:
-    """C12 (D-C12-CONCURRENCY-DECOUPLED) — the job's cap on parallel in-flight LLM
-    submits for THIS chunk's fan-outs (trio / recovery / filter). Seeded onto rs by
-    `_start_decoupled_chunk` from `job.concurrency_level`. None / <1 / a legacy resume
-    blob without the key ⇒ unbounded (back-compat — the prior sequential behaviour)."""
+    """C12 (D-C12-CONCURRENCY-DECOUPLED) — the job's USER-REQUESTED cap on parallel
+    in-flight LLM submits for THIS chunk's fan-outs (trio / recovery / filter).
+    Seeded onto rs by `_start_decoupled_chunk` from `job.concurrency_level`. None /
+    <1 / a legacy resume blob without the key ⇒ None here; `_submit_map` then applies
+    `DEFAULT_DECOUPLED_SUBMIT_CAP` (D-078) rather than running unbounded."""
     cl = rs.get("concurrency_level")
     if isinstance(cl, int) and cl >= 1:
         return cl
@@ -214,17 +225,15 @@ async def _submit_map(llm_client: LLMClient, rs: dict, submits: dict[str, dict])
     """Submit a fan-out of provider jobs ({key: submit_kwargs}) and return
     {key: provider_job_id}. C12 — bound the number of concurrent in-flight submits
     to the job's `concurrency_level` (an asyncio.Semaphore over the gather), mirroring
-    the SDK sync-gather cap so the decoupled path honours the same knob. None ⇒ no cap
-    (a plain gather — every submit in flight at once, the prior unbounded behaviour)."""
+    the SDK sync-gather cap so the decoupled path honours the same knob. D-078 — when
+    the user set no cap, fall back to `DEFAULT_DECOUPLED_SUBMIT_CAP` (never unbounded),
+    so a large recovery/filter batch can't burst every enqueue at once."""
     user_id = rs["user_id"]
-    cap = _concurrency_level(rs)
-    sem = asyncio.Semaphore(cap) if cap is not None else None
+    cap = _concurrency_level(rs) or DEFAULT_DECOUPLED_SUBMIT_CAP
+    sem = asyncio.Semaphore(cap)
 
     async def _one(kwargs: dict) -> str:
-        if sem is not None:
-            async with sem:
-                sub = await llm_client.submit_job(user_id=user_id, **kwargs)
-        else:
+        async with sem:
             sub = await llm_client.submit_job(user_id=user_id, **kwargs)
         return str(sub.job_id)
 

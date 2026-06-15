@@ -17,7 +17,12 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 from app import decoupled_extract as dx
-from app.llm_extract_consumer import _persist_chunk, _resume, _submit_map
+from app.llm_extract_consumer import (
+    DEFAULT_DECOUPLED_SUBMIT_CAP,
+    _persist_chunk,
+    _resume,
+    _submit_map,
+)
 
 USER = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 PROJ = "99999999-9999-9999-9999-999999999999"
@@ -376,31 +381,38 @@ async def test_submit_map_bounds_inflight_to_concurrency_level():
     assert rec.max_live == 2                      # AND the cap is actually saturated
 
 
-async def test_submit_map_unbounded_when_concurrency_unset():
-    """Back-compat: no concurrency_level ⇒ unbounded — the full fan-out runs in flight
-    at once (max_live == fan-out size), exactly the prior behaviour."""
+async def test_submit_map_applies_default_cap_when_unset():
+    """D-078: no concurrency_level ⇒ the DEFAULT cap, NOT unbounded. A fan-out larger
+    than the default never runs more than `DEFAULT_DECOUPLED_SUBMIT_CAP` in flight, yet
+    submits them all (was: every submit concurrent at once)."""
     rec = _ConcurrencyRecorder()
     llm = AsyncMock()
     llm.submit_job = rec
     rs = {"user_id": USER}  # NO concurrency_level key (legacy / synthetic resume blob)
-    submits = {f"k{i}": {"operation": "chat"} for i in range(4)}
+    fan_out = DEFAULT_DECOUPLED_SUBMIT_CAP + 3
+    submits = {f"k{i}": {"operation": "chat"} for i in range(fan_out)}
 
     jobs = await _submit_map(llm, rs, submits)
 
-    assert rec.total == 4 and len(jobs) == 4
-    assert rec.max_live == 4                      # all 4 concurrent — no cap applied
+    assert rec.total == fan_out and len(jobs) == fan_out  # all submitted
+    assert rec.max_live <= DEFAULT_DECOUPLED_SUBMIT_CAP    # never exceeds the default cap
+    assert rec.max_live == DEFAULT_DECOUPLED_SUBMIT_CAP    # AND the cap is saturated
 
 
-async def test_submit_map_treats_zero_and_none_as_unbounded():
-    """concurrency_level of 0 / None / a negative is invalid as a cap ⇒ unbounded."""
+async def test_submit_map_default_cap_for_zero_none_negative():
+    """D-078: concurrency_level of 0 / None / a negative is invalid as a cap ⇒ the
+    DEFAULT cap applies (not unbounded)."""
+    fan_out = DEFAULT_DECOUPLED_SUBMIT_CAP + 2
     for bad in (0, None, -3):
         rec = _ConcurrencyRecorder()
         llm = AsyncMock()
         llm.submit_job = rec
         rs = {"user_id": USER, "concurrency_level": bad}
-        submits = {f"k{i}": {"operation": "chat"} for i in range(3)}
+        submits = {f"k{i}": {"operation": "chat"} for i in range(fan_out)}
         await _submit_map(llm, rs, submits)
-        assert rec.max_live == 3, f"concurrency_level={bad!r} should be unbounded"
+        assert rec.max_live == DEFAULT_DECOUPLED_SUBMIT_CAP, (
+            f"concurrency_level={bad!r} should fall back to the default cap"
+        )
 
 
 async def test_entity_fold_trio_submit_respects_concurrency_level(monkeypatch):
