@@ -14,9 +14,10 @@ Internal-token + asserted `owner_user_id` in the body; S2S only, never gateway-e
 
 from __future__ import annotations
 
+from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
 from app.db.repositories.generation_jobs import GenerationJobsRepo
@@ -28,6 +29,27 @@ router = APIRouter(
     tags=["internal"],
     dependencies=[Depends(require_internal_token)],
 )
+
+
+@router.get("")
+async def reconcile_jobs(
+    since: datetime = Query(..., description="ISO-8601 — rows updated at/after this"),
+    jobs: GenerationJobsRepo = Depends(get_generation_jobs_repo),
+) -> dict:
+    """Reconcile SOURCE (Unified Job Control Plane H1 backstop): all generation jobs
+    updated since `since`, in canonical `JobEvent` payload shape, for the jobs-service
+    sweep to upsert (heals outbox drift). Internal-token (router dep); ALL owners — the
+    projection mirrors every owner, user-scoping is at the jobs-service read API."""
+    rows = await jobs.list_since(since)
+    return {"jobs": [
+        {
+            "service": "composition", "job_id": str(j.id), "owner_user_id": str(j.user_id),
+            "kind": j.operation, "status": j.status, "parent_job_id": None,
+            "detail_status": None, "progress": None, "title": None, "error": None,
+            "occurred_at": j.updated_at.isoformat() if j.updated_at else None,
+        }
+        for j in rows
+    ]}
 
 
 class JobControlPayload(BaseModel):

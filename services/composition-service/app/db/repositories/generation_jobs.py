@@ -443,6 +443,18 @@ class GenerationJobsRepo:
             async with c.transaction():  # UPDATE + emit_job_event atomic (H1)
                 return await _do(c)
 
+    async def list_since(self, since: datetime, *, limit: int = 1000) -> list[GenerationJob]:
+        """Reconcile snapshot (Unified Job Control Plane H1 backstop): generation jobs
+        updated at/after `since`, oldest-first, capped. ALL owners (the jobs-service
+        projection mirrors every owner; user-scoping is at its read API). Used by the
+        jobs-service reconcile sweep to heal any outbox drift."""
+        rows = await self._pool.fetch(
+            f"SELECT {_SELECT_COLS} FROM generation_job "
+            f"WHERE updated_at >= $1 ORDER BY updated_at ASC LIMIT $2",
+            since, limit,
+        )
+        return [_row_to_job(r) for r in rows]
+
     async def cancel(
         self, user_id: UUID, job_id: UUID, *, conn: asyncpg.Connection | None = None
     ) -> GenerationJob | None:

@@ -20,6 +20,7 @@ from .config import settings
 from .database import close_pool, create_pool
 from .migrate import run_migrations
 from .projection.consumer import JobProjectionConsumer
+from .reconcile import ReconcileSweeper
 from .sse import make_notifier
 
 logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO))
@@ -37,15 +38,24 @@ async def lifespan(app: FastAPI):
     publisher = aioredis.from_url(settings.redis_url, decode_responses=True)
     consumer = JobProjectionConsumer(settings.redis_url, pool, notify=make_notifier(publisher))
     consumer_task = asyncio.create_task(consumer.run())
+
+    # Reconcile sweep (H1 backstop) — best-effort, off by default. `run()` no-ops
+    # immediately when reconcile_enabled is false, so the task is cheap to always create.
+    sweeper = ReconcileSweeper(pool)
+    sweeper_task = asyncio.create_task(sweeper.run())
     logger.info("jobs-service started on port %d", settings.port)
 
     try:
         yield
     finally:
         await consumer.stop()
+        await sweeper.stop()
         consumer_task.cancel()
+        sweeper_task.cancel()
         with suppress(asyncio.CancelledError, Exception):
             await consumer_task
+        with suppress(asyncio.CancelledError, Exception):
+            await sweeper_task
         with suppress(Exception):
             await consumer.close()
         with suppress(Exception):

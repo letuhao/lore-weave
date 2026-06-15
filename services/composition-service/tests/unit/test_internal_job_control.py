@@ -21,7 +21,9 @@ from fastapi import HTTPException
 
 from app.db.repositories import generation_jobs
 from app.db.repositories.generation_jobs import GenerationJobsRepo
-from app.routers.internal_job_control import JobControlPayload, control_generation_job
+from app.routers.internal_job_control import (
+    JobControlPayload, control_generation_job, reconcile_jobs,
+)
 
 USER = uuid4()
 OTHER = uuid4()
@@ -123,3 +125,19 @@ async def test_unknown_action_400():
             await control_generation_job(JOB, action, JobControlPayload(owner_user_id=USER), repo)
         assert exc.value.status_code == 400
     repo.get.assert_not_awaited()
+
+
+# ── reconcile source: GET /internal/composition/jobs?since= ─────────────────────
+@pytest.mark.asyncio
+async def test_reconcile_jobs_maps_to_canonical_payload():
+    from datetime import datetime, timezone
+    updated = datetime(2026, 6, 15, tzinfo=timezone.utc)
+    job = SimpleNamespace(id=JOB, user_id=USER, operation="generate", status="running", updated_at=updated)
+    repo = AsyncMock()
+    repo.list_since = AsyncMock(return_value=[job])
+    out = await reconcile_jobs(since=updated, jobs=repo)
+    assert len(out["jobs"]) == 1
+    p = out["jobs"][0]
+    assert p["service"] == "composition" and p["kind"] == "generate" and p["status"] == "running"
+    assert p["job_id"] == str(JOB) and p["owner_user_id"] == str(USER)
+    assert p["occurred_at"] == updated.isoformat()

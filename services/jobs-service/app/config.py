@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     # source is configured. interval<=0 disables the loop.
     reconcile_interval_s: float = 300.0
     reconcile_enabled: bool = False
+    # First-sweep lookback: on startup (or after a restart wipes the in-memory
+    # watermark) the sweep re-reads each source's rows updated within this window.
+    # The upsert is idempotent+monotonic, so a generous overlap is harmless.
+    reconcile_lookback_s: float = 3600.0
 
     # Per-service internal URLs the reconcile sweep (P3) + control routing (P3)
     # target. Defaults match the docker-compose container DNS names.
