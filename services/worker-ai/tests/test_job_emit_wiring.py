@@ -41,7 +41,7 @@ def _pool(row):
 @pytest.mark.asyncio
 async def test_complete_job_emits_completed(monkeypatch):
     spy = AsyncMock()
-    monkeypatch.setattr(runner, "emit_job_event", spy)
+    monkeypatch.setattr(runner, "emit_job_event_safe", spy)
     u, j = uuid4(), uuid4()
     await runner._complete_job(_pool({"job_id": str(j)}), u, j)
     spy.assert_awaited_once()
@@ -54,7 +54,7 @@ async def test_complete_job_emits_completed(monkeypatch):
 @pytest.mark.asyncio
 async def test_complete_job_no_row_no_emit(monkeypatch):
     spy = AsyncMock()
-    monkeypatch.setattr(runner, "emit_job_event", spy)
+    monkeypatch.setattr(runner, "emit_job_event_safe", spy)
     await runner._complete_job(_pool(None), uuid4(), uuid4())
     spy.assert_not_awaited()
 
@@ -62,7 +62,7 @@ async def test_complete_job_no_row_no_emit(monkeypatch):
 @pytest.mark.asyncio
 async def test_fail_job_emits_failed_with_error(monkeypatch):
     spy = AsyncMock()
-    monkeypatch.setattr(runner, "emit_job_event", spy)
+    monkeypatch.setattr(runner, "emit_job_event_safe", spy)
     await runner._fail_job(_pool({"job_id": "x"}), uuid4(), uuid4(), "boom")
     spy.assert_awaited_once()
     kw = spy.await_args.kwargs
@@ -73,6 +73,6 @@ async def test_fail_job_emits_failed_with_error(monkeypatch):
 @pytest.mark.asyncio
 async def test_fail_job_no_row_no_emit(monkeypatch):
     spy = AsyncMock()
-    monkeypatch.setattr(runner, "emit_job_event", spy)
+    monkeypatch.setattr(runner, "emit_job_event_safe", spy)
     await runner._fail_job(_pool(None), uuid4(), uuid4(), "boom")
     spy.assert_not_awaited()

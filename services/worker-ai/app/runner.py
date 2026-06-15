@@ -29,7 +29,7 @@ from uuid import UUID, uuid4
 
 import asyncpg
 from opentelemetry import trace as _ot_trace
-from loreweave_jobs import JobStatus, emit_job_event
+from loreweave_jobs import JobStatus, emit_job_event_safe
 
 from loreweave_extraction import (
     EntityRecoveryConfig,
@@ -889,52 +889,58 @@ _JOB_KIND = "extraction"
 
 async def _complete_job(pool: asyncpg.Pool, user_id: UUID, job_id: UUID) -> None:
     """Transition job to 'complete'. The conditional UPDATE only fires once (not if
-    already terminal); we emit the canonical `completed` JobEvent in the SAME tx and
-    ONLY when the row actually transitioned (RETURNING row) — so a redelivered/duplicate
-    completion that no-ops the UPDATE can't emit a duplicate terminal event (H1)."""
+    already terminal) and the RETURNING row gates the emit, so a redelivered/duplicate
+    completion that no-ops the UPDATE can't emit a duplicate terminal event.
+
+    /review-impl MED: the JobEvent emit is **best-effort** (post-commit ``_safe``), NOT
+    in-tx. ``_complete_job`` is called inside ``process_job``'s try whose ``except`` marks
+    the job FAILED — so an in-tx emit that raised (e.g. a transient ``outbox_events``
+    INSERT blip) would roll back the completion AND derail a fully-persisted extraction
+    into a false ``failed``. A terminal status is the source of truth P2's reconcile sweep
+    re-derives, so a best-effort emit (status commits regardless; reconcile backstops a
+    lost event) is the correct trade — the completion must never be lost to an emit error."""
     async with pool.acquire() as conn:
-        async with conn.transaction():
-            row = await conn.fetchrow(
-                """
-                UPDATE extraction_jobs
-                SET status = 'complete', completed_at = now(), updated_at = now()
-                WHERE user_id = $1 AND job_id = $2
-                  AND status NOT IN ('complete', 'cancelled', 'failed')
-                RETURNING job_id
-                """,
-                user_id, job_id,
+        row = await conn.fetchrow(
+            """
+            UPDATE extraction_jobs
+            SET status = 'complete', completed_at = now(), updated_at = now()
+            WHERE user_id = $1 AND job_id = $2
+              AND status NOT IN ('complete', 'cancelled', 'failed')
+            RETURNING job_id
+            """,
+            user_id, job_id,
+        )
+        if row is not None:
+            await emit_job_event_safe(
+                conn, service=_JOB_SERVICE, job_id=str(job_id),
+                owner_user_id=str(user_id), kind=_JOB_KIND, status=JobStatus.COMPLETED,
             )
-            if row is not None:
-                await emit_job_event(
-                    conn, service=_JOB_SERVICE, job_id=str(job_id),
-                    owner_user_id=str(user_id), kind=_JOB_KIND, status=JobStatus.COMPLETED,
-                )
 
 
 async def _fail_job(
     pool: asyncpg.Pool, user_id: UUID, job_id: UUID, error: str,
 ) -> None:
-    """Transition job to 'failed' with an error message (same once-only + same-tx emit
-    semantics as ``_complete_job``)."""
+    """Transition job to 'failed' with an error message (same once-only RETURNING gate +
+    best-effort post-commit emit as ``_complete_job`` — a failed-status write must commit
+    regardless of an emit blip; reconcile backstops a lost event)."""
     async with pool.acquire() as conn:
-        async with conn.transaction():
-            row = await conn.fetchrow(
-                """
-                UPDATE extraction_jobs
-                SET status = 'failed', completed_at = now(), updated_at = now(),
-                    error_message = $3
-                WHERE user_id = $1 AND job_id = $2
-                  AND status NOT IN ('complete', 'cancelled', 'failed')
-                RETURNING job_id
-                """,
-                user_id, job_id, error[:2000],
+        row = await conn.fetchrow(
+            """
+            UPDATE extraction_jobs
+            SET status = 'failed', completed_at = now(), updated_at = now(),
+                error_message = $3
+            WHERE user_id = $1 AND job_id = $2
+              AND status NOT IN ('complete', 'cancelled', 'failed')
+            RETURNING job_id
+            """,
+            user_id, job_id, error[:2000],
+        )
+        if row is not None:
+            await emit_job_event_safe(
+                conn, service=_JOB_SERVICE, job_id=str(job_id),
+                owner_user_id=str(user_id), kind=_JOB_KIND, status=JobStatus.FAILED,
+                error={"code": "extraction_failed", "message": error[:500]},
             )
-            if row is not None:
-                await emit_job_event(
-                    conn, service=_JOB_SERVICE, job_id=str(job_id),
-                    owner_user_id=str(user_id), kind=_JOB_KIND, status=JobStatus.FAILED,
-                    error={"code": "extraction_failed", "message": error[:500]},
-                )
 
 
 async def _get_project_book_id(
