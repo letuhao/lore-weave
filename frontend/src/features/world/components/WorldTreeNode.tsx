@@ -26,7 +26,7 @@ export function WorldTreeNode({
   const isCanon = node.isCanon;
   const label = isCanon
     ? t('living.canonBadge', { defaultValue: 'Canon' })
-    : t('living.branchBadge', { defaultValue: 'Dị bản' });
+    : t('living.branchBadge', { defaultValue: 'What-if' });
 
   return (
     <g
@@ -44,7 +44,7 @@ export function WorldTreeNode({
             isCanon
               ? t('living.canonAria', { defaultValue: 'Canon: {{title}}', title: node.bookTitle })
               : t('living.branchAria', {
-                  defaultValue: 'Dị bản branching at chapter {{ch}}: {{title}}',
+                  defaultValue: 'What-if branching at chapter {{ch}}: {{title}}',
                   ch: (node.branchPoint ?? 0) + 1,
                   title: node.bookTitle,
                 })

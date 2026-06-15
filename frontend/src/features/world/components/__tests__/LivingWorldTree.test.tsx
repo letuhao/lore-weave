@@ -86,7 +86,7 @@ describe('LivingWorldTree', () => {
     expect(document.querySelectorAll('[data-canon="false"]')).toHaveLength(2);
     // counts line reflects EXACTLY 1 canon · 2 branches (full interpolated
     // string — a canon↔branch transposition would fail this).
-    expect(screen.getByTestId('living-world-counts').textContent).toBe('1 canon · 2 dị bản branches');
+    expect(screen.getByTestId('living-world-counts').textContent).toBe('1 canon · 2 what-if branches');
   });
 
   it('click a node → navigates into that Work’s book (explicit handler)', () => {

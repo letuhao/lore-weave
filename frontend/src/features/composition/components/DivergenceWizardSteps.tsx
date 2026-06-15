@@ -31,7 +31,7 @@ export function Step1Source({
   return (
     <div className="flex flex-col gap-3" data-testid="divergence-step-1">
       <p className="text-sm text-neutral-600 dark:text-neutral-300">
-        {t('derive.step1Hint', { defaultValue: 'Pick the chapter where your dị bản branches from canon. Everything up to that chapter is inherited read-only; you write forward from there.' })}
+        {t('derive.step1Hint', { defaultValue: 'Pick the chapter where your what-if branches from canon. Everything up to that chapter is inherited read-only; you write forward from there.' })}
       </p>
       <label className="text-xs font-medium uppercase tracking-wide text-neutral-500">
         {t('derive.branchPoint', { defaultValue: 'Branch point (chapter)' })}
@@ -109,7 +109,7 @@ export function Step3Overrides({
   return (
     <div className="flex flex-col gap-3" data-testid="divergence-step-3">
       <p className="text-sm text-neutral-600 dark:text-neutral-300">
-        {t('derive.step3Hint', { defaultValue: 'Override entity fields for your dị bản. Anything you do NOT override is inherited from canon.' })}
+        {t('derive.step3Hint', { defaultValue: 'Override entity fields for your what-if. Anything you do NOT override is inherited from canon.' })}
       </p>
       <div className="max-h-52 overflow-y-auto rounded border border-neutral-200 dark:border-neutral-700">
         {(entities.data ?? []).map((e) => {
@@ -172,14 +172,14 @@ export function Step4Name({
   const { t } = useTranslation('composition');
   return (
     <div className="flex flex-col gap-2" data-testid="divergence-step-4">
-      <p className="text-sm text-neutral-600 dark:text-neutral-300">{t('derive.step4Hint', { defaultValue: 'Name your dị bản.' })}</p>
+      <p className="text-sm text-neutral-600 dark:text-neutral-300">{t('derive.step4Hint', { defaultValue: 'Name your what-if.' })}</p>
       <input
         data-testid="divergence-name"
         className="rounded border border-neutral-300 bg-transparent px-2 py-1.5 text-sm dark:border-neutral-600"
         placeholder={t('derive.namePlaceholder', { defaultValue: 'e.g. Genderbend AU — 张若尘 as a woman' })}
         value={name}
         onChange={(e) => setName(e.target.value)}
-        aria-label={t('derive.name', { defaultValue: 'Dị bản name' })}
+        aria-label={t('derive.name', { defaultValue: 'What-if name' })}
       />
     </div>
   );

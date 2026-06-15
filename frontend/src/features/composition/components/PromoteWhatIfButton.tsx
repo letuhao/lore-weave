@@ -39,12 +39,12 @@ export function PromoteWhatIfButton({ sourceWork, draft, token, onPromoted }: Pr
           onClick={p.promote}
           disabled={!p.canPromote || p.isPromoting || !token}
           title={t('promote.actionHint', {
-            defaultValue: 'Save this what-if as a persistent dị bản with its own knowledge graph',
+            defaultValue: 'Save this what-if as a persistent derivative with its own knowledge graph',
           })}
         >
           {p.isPromoting
             ? t('promote.promoting', { defaultValue: 'Promoting…' })
-            : t('promote.action', { defaultValue: 'Promote to dị bản' })}
+            : t('promote.action', { defaultValue: 'Promote to what-if' })}
         </button>
       </div>
       {!p.canPromote && (

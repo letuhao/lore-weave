@@ -15,7 +15,7 @@ export function DerivativeBanner({ ctx }: { ctx: DerivativeContext }) {
       className="flex flex-wrap items-center gap-2 border-b border-purple-200 bg-purple-50/70 px-2 py-1.5 text-xs text-purple-900 dark:border-purple-800 dark:bg-purple-950/40 dark:text-purple-200"
     >
       <span aria-hidden>⑂</span>
-      <span className="font-medium">{t('derive.bannerTitle', { defaultValue: 'You are writing a dị bản (derivative)' })}</span>
+      <span className="font-medium">{t('derive.bannerTitle', { defaultValue: 'You are writing a what-if (derivative)' })}</span>
       <span data-testid="derivative-banner-source" className="text-purple-800/80 dark:text-purple-300/80">
         {t('derive.bannerSource', { defaultValue: 'Adapting from canon' })}
         {' · '}

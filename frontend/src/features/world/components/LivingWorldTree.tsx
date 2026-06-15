@@ -82,7 +82,7 @@ export function LivingWorldTree({ worldId }: LivingWorldTreeProps) {
     return (
       <Hint data-testid="living-world-empty">
         {t('living.empty', {
-          defaultValue: 'No works in this world yet — start a book or a dị bản to grow its timeline.',
+          defaultValue: 'No works in this world yet — start a book or a what-if to grow its timeline.',
         })}
       </Hint>
     );
@@ -96,7 +96,7 @@ export function LivingWorldTree({ worldId }: LivingWorldTreeProps) {
         </span>
         <span className="text-muted-foreground" data-testid="living-world-counts">
           {t('living.counts', {
-            defaultValue: '{{canon}} canon · {{branches}} dị bản branches',
+            defaultValue: '{{canon}} canon · {{branches}} what-if branches',
             canon: tree.trunkCount,
             branches: tree.branchCount,
           })}

@@ -51,7 +51,7 @@ export function WorldWorkspacePage() {
             <h2 className="font-medium">{t('living.heading', { defaultValue: 'Living world' })}</h2>
             <p className="text-xs text-muted-foreground">
               {t('living.subtitle', {
-                defaultValue: 'Your world’s canon and its dị bản branches as a navigable timeline. Click a work to open it.',
+                defaultValue: 'Your world’s canon and its what-if branches as a navigable timeline. Click a work to open it.',
               })}
             </p>
             <LivingWorldTree worldId={worldId} />

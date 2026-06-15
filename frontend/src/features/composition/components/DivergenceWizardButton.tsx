@@ -23,9 +23,9 @@ export function DivergenceWizardButton({ sourceWork, token, onDerived }: Props) 
         data-testid="divergence-launch"
         className="rounded border border-purple-300 px-2 py-1 text-xs text-purple-700 dark:border-purple-700 dark:text-purple-300"
         onClick={() => setOpen(true)}
-        title={t('derive.launchHint', { defaultValue: 'Spawn a what-if dị bản branching from this canon' })}
+        title={t('derive.launchHint', { defaultValue: 'Spawn a what-if branching from this canon' })}
       >
-        ⑂ {t('derive.launch', { defaultValue: 'Spawn dị bản' })}
+        ⑂ {t('derive.launch', { defaultValue: 'Spawn what-if' })}
       </button>
       {open && (
         <DivergenceWizard

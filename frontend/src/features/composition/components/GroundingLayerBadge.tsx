@@ -23,7 +23,7 @@ export function GroundingLayerBadge({ layer }: { layer: GroundingLayer }) {
       }
       title={
         overridden
-          ? t('derive.layerOverriddenHint', { defaultValue: 'Changed in this dị bản (delta)' })
+          ? t('derive.layerOverriddenHint', { defaultValue: 'Changed in this what-if (delta)' })
           : t('derive.layerInheritedHint', { defaultValue: 'Inherited unchanged from canon (base)' })
       }
     >
@@ -47,7 +47,7 @@ export function GroundingLayerLegend() {
       </span>
       <span className="flex items-center gap-1">
         <span className="h-2 w-2 rounded-full bg-amber-400" />
-        {t('derive.layerOverridden', { defaultValue: 'Overridden' })} — {t('derive.legendOverridden', { defaultValue: 'delta, changed in this dị bản' })}
+        {t('derive.layerOverridden', { defaultValue: 'Overridden' })} — {t('derive.legendOverridden', { defaultValue: 'delta, changed in this what-if' })}
       </span>
     </div>
   );

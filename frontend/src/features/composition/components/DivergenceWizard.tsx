@@ -69,7 +69,7 @@ export function DivergenceWizard({ open, onOpenChange, sourceWork, token, onDeri
           onClick={w.submit}
           disabled={!w.canAdvance || w.isSubmitting}
         >
-          {w.isSubmitting ? t('derive.spawning', { defaultValue: 'Spawning…' }) : t('derive.spawn', { defaultValue: 'Spawn dị bản' })}
+          {w.isSubmitting ? t('derive.spawning', { defaultValue: 'Spawning…' }) : t('derive.spawn', { defaultValue: 'Spawn what-if' })}
         </button>
       )}
     </div>
@@ -79,7 +79,7 @@ export function DivergenceWizard({ open, onOpenChange, sourceWork, token, onDeri
     <FormDialog
       open={open}
       onOpenChange={onOpenChange}
-      title={t('derive.title', { defaultValue: 'Spawn a dị bản (derivative)' })}
+      title={t('derive.title', { defaultValue: 'Spawn a what-if (derivative)' })}
       footer={footer}
     >
       <div className="flex flex-col gap-3" data-testid="divergence-wizard">
