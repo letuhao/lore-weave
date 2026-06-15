@@ -68,6 +68,7 @@ async def test_finalize_idempotent_on_duplicate_skips_counter_but_finalizes_job(
          patch.object(chapter_worker, "_emit_chapter_done", new=AsyncMock()) as done, \
          patch.object(chapter_worker, "_check_job_completion", new=AsyncMock()) as check, \
          patch.object(chapter_worker, "_save_chapter_memo", new=AsyncMock()) as memo, \
+         patch.object(chapter_worker, "_record_segment_status", new=AsyncMock()) as segstat, \
          patch.object(chapter_worker, "_emit_translation_quality", new=AsyncMock()) as quality:
         m = _msg()
         await chapter_worker._finalize_chapter(
@@ -85,6 +86,7 @@ async def test_finalize_idempotent_on_duplicate_skips_counter_but_finalizes_job(
     # per-chapter telemetry skipped on a duplicate (no double-emit)
     quality.assert_not_awaited()
     memo.assert_not_awaited()
+    segstat.assert_not_awaited()  # T2-M2: segment-status record also skipped on a dup
     # job-level finalization runs ALWAYS (idempotent) — closes the crash-stall gap
     done.assert_awaited_once()
     check.assert_awaited_once()
@@ -99,6 +101,7 @@ async def test_finalize_runs_full_path_when_update_applied():
          patch.object(chapter_worker, "_emit_chapter_done", new=AsyncMock()) as done, \
          patch.object(chapter_worker, "_check_job_completion", new=AsyncMock()) as check, \
          patch.object(chapter_worker, "_save_chapter_memo", new=AsyncMock()), \
+         patch.object(chapter_worker, "_record_segment_status", new=AsyncMock()) as segstat, \
          patch.object(chapter_worker, "_emit_translation_quality", new=AsyncMock()):
         await chapter_worker._finalize_chapter(
             pool=pool, publish_event=publish_event, msg=_msg(),
@@ -114,6 +117,7 @@ async def test_finalize_runs_full_path_when_update_applied():
     outbox.assert_awaited_once()
     done.assert_awaited_once()
     check.assert_awaited_once()
+    segstat.assert_awaited_once()  # T2-M2: segment-status recorded on the finalizing path
 
 
 @pytest.mark.asyncio

@@ -1,7 +1,8 @@
 import json
 import logging
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 import asyncpg
 
 from ..deps import get_current_user, get_db
@@ -11,6 +12,7 @@ from ..grant_deps import (
     book_for_chapter,
     get_grant_client_dep,
 )
+from ..workers.segment_status import compute_segment_status
 
 log = logging.getLogger(__name__)
 from ..models import (
@@ -121,6 +123,53 @@ async def list_chapter_versions(
         LanguageVersionGroup(**v) for v in lang_map.values()
     ]
     return ChapterVersionsResponse(chapter_id=chapter_id, languages=languages)
+
+
+# ── Per-segment translation status (T2-M2; FE matrix drill-down) ──────────────
+
+class SegmentStatusItem(BaseModel):
+    segment_index: int
+    start_block_index: int
+    end_block_index: int
+    token_estimate: int
+    translated: bool
+    dirty: bool
+    translated_at: str | None = None
+
+
+class SegmentStatusResponse(BaseModel):
+    chapter_id: UUID
+    target_language: str
+    segments: list[SegmentStatusItem]
+    dirty_count: int
+
+
+@router.get("/chapters/{chapter_id}/segments/status", response_model=SegmentStatusResponse)
+async def get_segment_status(
+    chapter_id: UUID,
+    target_language: str = Query(...),
+    user_id: str = Depends(get_current_user),
+    gc=Depends(get_grant_client_dep),
+    db: asyncpg.Pool = Depends(get_db),
+):
+    """T2-M2: per-segment translation status for a chapter+language. `dirty` flags a
+    segment whose source changed since it was last translated (or was never
+    translated). Book VIEW grant — a chapter with no translations/book resolves to
+    an empty list (leak-safe, mirrors list_chapter_versions)."""
+    book_id = await book_for_chapter(db, chapter_id)
+    if book_id is None:
+        return SegmentStatusResponse(
+            chapter_id=chapter_id, target_language=target_language,
+            segments=[], dirty_count=0,
+        )
+    await authorize_book(gc, book_id, UUID(user_id), GrantLevel.VIEW)
+    items = await compute_segment_status(db, chapter_id, target_language)
+    return SegmentStatusResponse(
+        chapter_id=chapter_id,
+        target_language=target_language,
+        segments=[SegmentStatusItem(**it) for it in items],
+        dirty_count=sum(1 for it in items if it["dirty"]),
+    )
 
 
 # ── Get single version (includes translated_body) ─────────────────────────────

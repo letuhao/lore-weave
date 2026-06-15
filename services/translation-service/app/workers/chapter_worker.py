@@ -412,6 +412,15 @@ async def _finalize_chapter(
             pool, msg["book_id"], chapter_index, target_language, memo_text,
         )
 
+        # T2-M2: record per-segment translation status. A full-chapter translation
+        # just covered EVERY segment at its current source hash → ensure segments
+        # exist, then upsert one segment_translations row each. Best-effort +
+        # post-commit (mirrors the memo/quality emits) — status bookkeeping must
+        # never roll back or fail a successful translation.
+        await _record_segment_status(
+            pool, msg["book_id"], chapter_id, target_language, chapter_translation_id,
+        )
+
         record_stage(
             "translation.chapter", pipeline=pipeline_version, status="completed",
             chapter_id=str(chapter_id), in_tokens=input_tokens or 0, out_tokens=output_tokens or 0,
@@ -426,6 +435,38 @@ async def _finalize_chapter(
     await _emit_chapter_done(publish_event, user_id, msg, "completed", None)
     log.info("chapter %s: chapter_done event emitted", chapter_id)
     await _check_job_completion(pool, job_id, user_id, msg, publish_event)
+
+
+async def _record_segment_status(
+    pool, book_id, chapter_id, target_language: str, chapter_translation_id,
+) -> None:
+    """T2-M2: ensure the chapter's source segments exist, then mark them all as
+    translated at their current source hash for `target_language`. Best-effort —
+    swallows everything (a status-bookkeeping failure must not break the worker).
+    `target_language` may be empty for a legacy text job with no segment concept;
+    skip then (nothing to key the rows on)."""
+    if not target_language:
+        return
+    try:
+        from .segment_store import ensure_chapter_segments
+        from .segment_status import record_segment_translations
+        # Record against the segments AS THEY ALREADY EXIST (built at backfill / the
+        # rebuild endpoint) — no book-service fetch on the hot path. Rebuilding here
+        # would also be wrong: a source edit landing mid-translation would be captured
+        # at finalize and falsely recorded as "translated". Only when a chapter has no
+        # segments yet (never backfilled) do we build them once, then record.
+        async with pool.acquire() as db:
+            n = await record_segment_translations(
+                db, chapter_id, target_language, chapter_translation_id,
+            )
+        if n == 0:
+            await ensure_chapter_segments(pool, book_id, chapter_id)
+            async with pool.acquire() as db:
+                await record_segment_translations(
+                    db, chapter_id, target_language, chapter_translation_id,
+                )
+    except Exception:  # noqa: BLE001 — segment status is best-effort telemetry
+        log.warning("T2-M2: failed to record segment status (non-fatal)", exc_info=True)
 
 
 async def _get_model_context_window(msg: dict) -> int:

@@ -24,6 +24,7 @@ from ..grant_deps import GrantLevel, authorize_book
 from ..grant_client import get_grant_client
 from ..models import CreateJobPayload
 from ..workers.segment_store import ensure_chapter_segments
+from ..workers.segment_status import compute_segment_status
 from .jobs import _resolve_and_create_job, _cancel_job_core
 
 router = APIRouter(prefix="/internal/translation", tags=["internal"])
@@ -159,6 +160,46 @@ async def rebuild_chapter_segments(
     loops this over every chapter at deploy)."""
     res = await ensure_chapter_segments(db, payload.book_id, chapter_id)
     return RebuildSegmentsResponse(**res)
+
+
+class SegmentStatusItem(BaseModel):
+    segment_index: int
+    start_block_index: int
+    end_block_index: int
+    token_estimate: int
+    translated: bool
+    dirty: bool
+    translated_at: str | None = None
+
+
+class SegmentStatusResponse(BaseModel):
+    chapter_id: str
+    target_language: str
+    segments: list[SegmentStatusItem]
+    dirty_count: int
+
+
+@router.get(
+    "/chapters/{chapter_id}/segments/status",
+    response_model=SegmentStatusResponse,
+    dependencies=[Depends(require_internal_token)],
+)
+async def internal_segment_status(
+    chapter_id: UUID,
+    target_language: str = Query(...),
+    db: asyncpg.Pool = Depends(get_db),
+) -> SegmentStatusResponse:
+    """T2-M2: per-segment translation status for a chapter+language (internal-token).
+    dirty = the segment's source changed since it was last translated, or it was
+    never translated for this language. Empty `segments` → the chapter has no
+    segments built yet (run the rebuild/backfill)."""
+    items = await compute_segment_status(db, chapter_id, target_language)
+    return SegmentStatusResponse(
+        chapter_id=str(chapter_id),
+        target_language=target_language,
+        segments=[SegmentStatusItem(**it) for it in items],
+        dirty_count=sum(1 for it in items if it["dirty"]),
+    )
 
 
 class ChapterStatusResponse(BaseModel):

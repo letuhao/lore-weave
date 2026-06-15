@@ -410,6 +410,26 @@ CREATE TABLE IF NOT EXISTS chapter_segments (
   UNIQUE (chapter_id, segment_index)
 );
 CREATE INDEX IF NOT EXISTS idx_cseg_chapter ON chapter_segments(chapter_id);
+
+-- T2-M2: per-(chapter, target_language, segment) translation status. Records the
+-- segment's source_content_hash AT translate time, so a later source edit (the
+-- segment's blocks changed → its chapter_segments.source_content_hash differs) reads
+-- as DIRTY (recorded hash != current hash, or no row). A full-chapter translation
+-- upserts every segment; dirty-only re-translate refreshes just the changed ones.
+CREATE TABLE IF NOT EXISTS segment_translations (
+  id                     UUID PRIMARY KEY DEFAULT uuidv7(),
+  chapter_id             UUID NOT NULL,
+  target_language        TEXT NOT NULL,
+  segment_index          INT  NOT NULL,
+  source_content_hash    TEXT NOT NULL,
+  chapter_translation_id UUID,
+  translated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (chapter_id, target_language, segment_index)
+);
+CREATE INDEX IF NOT EXISTS idx_segtr_chapter_lang
+  ON segment_translations(chapter_id, target_language);
 """
 
 
