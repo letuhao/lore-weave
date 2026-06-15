@@ -351,3 +351,20 @@ class BookCoverageResponse(BaseModel):
     book_id: UUID
     coverage: list[ChapterCoverage]
     known_languages: list[str]
+
+
+# ── T2-M3: per-segment coverage rollup (matrix badge + drill-down summary) ─────
+
+class SegmentCoverageChapter(BaseModel):
+    chapter_id: UUID
+    segment_total: int
+    translated_count: int   # segments with a recorded translation for this language
+    dirty_count: int        # source changed since last translate (or never translated)
+    stale_count: int = 0    # glossary-stale segments (T2-M3.2; 0 until then)
+    needs_count: int        # dirty ∪ stale — segments that need re-translation
+
+
+class SegmentCoverageResponse(BaseModel):
+    book_id: UUID
+    target_language: str
+    chapters: list[SegmentCoverageChapter]

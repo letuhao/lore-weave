@@ -182,3 +182,38 @@ def test_coverage_active_and_non_active_in_same_chapter(client, fake_pool):
     langs = resp.json()["coverage"][0]["languages"]
     assert langs["vi"]["has_active"] is True
     assert langs["zh"]["has_active"] is False
+
+
+# ── T2-M3 (A): per-segment coverage rollup ────────────────────────────────────
+
+def _seg_cov_row(chapter_id, total, translated, dirty):
+    return FakeRecord({"chapter_id": UUID(chapter_id), "segment_total": total,
+                       "translated_count": translated, "dirty_count": dirty})
+
+
+def test_segment_coverage_counts(client, fake_pool):
+    fake_pool.fetch.return_value = [
+        _seg_cov_row(CHAPTER_ID_1, 8, 8, 3),   # 8 segs, all translated, 3 changed since
+        _seg_cov_row(CHAPTER_ID_2, 5, 0, 5),   # untranslated → all dirty
+    ]
+    resp = client.get(f"/v1/translation/books/{BOOK_ID}/segment-coverage?target_language=vi")
+    assert resp.status_code == 200
+    d = resp.json()
+    assert d["book_id"] == BOOK_ID and d["target_language"] == "vi"
+    assert len(d["chapters"]) == 2
+    c0 = d["chapters"][0]
+    assert (c0["segment_total"], c0["translated_count"], c0["dirty_count"]) == (8, 8, 3)
+    assert c0["needs_count"] == 3   # dirty ∪ stale; stale=0 until M3.2
+    assert c0["stale_count"] == 0
+    assert d["chapters"][1]["needs_count"] == 5
+
+
+def test_segment_coverage_requires_language(client, fake_pool):
+    resp = client.get(f"/v1/translation/books/{BOOK_ID}/segment-coverage")
+    assert resp.status_code == 422  # target_language is required
+
+
+def test_segment_coverage_empty(client, fake_pool):
+    fake_pool.fetch.return_value = []
+    resp = client.get(f"/v1/translation/books/{BOOK_ID}/segment-coverage?target_language=vi")
+    assert resp.json()["chapters"] == []

@@ -1,13 +1,45 @@
 from uuid import UUID
 from typing import Optional
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 import asyncpg
 
 from ..deps import get_db
 from ..grant_deps import GrantLevel, require_book_grant
-from ..models import BookCoverageResponse, ChapterCoverage, CoverageCell
+from ..models import (
+    BookCoverageResponse, ChapterCoverage, CoverageCell,
+    SegmentCoverageChapter, SegmentCoverageResponse,
+)
 
 router = APIRouter(prefix="/v1/translation", tags=["translation-coverage"])
+
+
+# T2-M3 (A): per (book, language) per-chapter segment counts for the matrix badge +
+# drill-down summary. Book chapters come from chapter_translations (chapter_segments
+# carries no book_id); each chapter's current segments LEFT JOIN the recorded
+# translation hash for this language. dirty = source changed (or never translated).
+# stale_count is 0 here — T2-M3.2 adds per-segment glossary staleness + folds it into
+# needs_count (which is dirty-only until then).
+_SEGMENT_COVERAGE_SQL = """
+WITH book_chapters AS (
+  SELECT DISTINCT chapter_id FROM chapter_translations
+  WHERE book_id = $1 AND target_language = $2
+)
+SELECT cs.chapter_id AS chapter_id,
+       COUNT(*)                                                    AS segment_total,
+       COUNT(*) FILTER (WHERE st.source_content_hash IS NOT NULL)  AS translated_count,
+       COUNT(*) FILTER (
+         WHERE st.source_content_hash IS NULL
+            OR st.source_content_hash <> cs.source_content_hash
+       )                                                           AS dirty_count
+FROM chapter_segments cs
+JOIN book_chapters bc ON bc.chapter_id = cs.chapter_id
+LEFT JOIN segment_translations st
+  ON st.chapter_id = cs.chapter_id
+ AND st.segment_index = cs.segment_index
+ AND st.target_language = $2
+GROUP BY cs.chapter_id
+ORDER BY cs.chapter_id
+"""
 
 
 @router.get("/books/{book_id}/coverage", response_model=BookCoverageResponse)
@@ -100,4 +132,31 @@ async def get_book_coverage(
         book_id=book_id,
         coverage=coverage,
         known_languages=sorted(known_langs),
+    )
+
+
+@router.get("/books/{book_id}/segment-coverage", response_model=SegmentCoverageResponse)
+async def get_segment_coverage(
+    book_id: UUID,
+    target_language: str = Query(...),
+    _grant: UUID = Depends(require_book_grant(GrantLevel.VIEW)),
+    db: asyncpg.Pool = Depends(get_db),
+):
+    """T2-M3: per-chapter segment counts for a book+language — powers the matrix
+    "N changed" badge and the drill-down summary. A chapter with no segments built
+    yet simply doesn't appear (run the rebuild/backfill)."""
+    rows = await db.fetch(_SEGMENT_COVERAGE_SQL, book_id, target_language)
+    chapters = [
+        SegmentCoverageChapter(
+            chapter_id=r["chapter_id"],
+            segment_total=r["segment_total"],
+            translated_count=r["translated_count"],
+            dirty_count=r["dirty_count"],
+            stale_count=0,                       # T2-M3.2 fills this
+            needs_count=r["dirty_count"],        # dirty ∪ stale; stale=0 until M3.2
+        )
+        for r in rows
+    ]
+    return SegmentCoverageResponse(
+        book_id=book_id, target_language=target_language, chapters=chapters,
     )
