@@ -95,6 +95,43 @@ export type BookCoverageResponse = {
   known_languages: string[];
 };
 
+// ── T2-M3: per-segment status + coverage ──────────────────────────────────────
+
+export type SegmentStatusItem = {
+  segment_index: number;
+  start_block_index: number;
+  end_block_index: number;
+  token_estimate: number;
+  translated: boolean;
+  dirty: boolean;   // source changed since last translate (or never translated)
+  stale: boolean;   // a glossary entity this segment uses changed since translate
+  needs: boolean;   // dirty ∪ stale — should be re-translated
+  translated_at: string | null;
+};
+
+export type SegmentStatusResponse = {
+  chapter_id: string;
+  target_language: string;
+  segments: SegmentStatusItem[];
+  dirty_count: number;
+  needs_count: number;
+};
+
+export type SegmentCoverageChapter = {
+  chapter_id: string;
+  segment_total: number;
+  translated_count: number;
+  dirty_count: number;
+  stale_count: number;
+  needs_count: number;
+};
+
+export type SegmentCoverageResponse = {
+  book_id: string;
+  target_language: string;
+  chapters: SegmentCoverageChapter[];
+};
+
 // ── Version types ─────────────────────────────────────────────────────────────
 
 export type VersionSummary = {
@@ -197,6 +234,31 @@ export const versionsApi = {
 export const translationApi = {
   getBookCoverage(token: string, bookId: string): Promise<BookCoverageResponse> {
     return apiJson(`/v1/translation/books/${bookId}/coverage`, { token });
+  },
+
+  // T2-M3: per-chapter segment counts for a book+language (matrix "N changed" badge).
+  getSegmentCoverage(token: string, bookId: string, targetLanguage: string): Promise<SegmentCoverageResponse> {
+    return apiJson(
+      `/v1/translation/books/${bookId}/segment-coverage?target_language=${encodeURIComponent(targetLanguage)}`,
+      { token },
+    );
+  },
+
+  // T2-M3: per-segment status for a chapter+language (drill-down list).
+  getSegmentStatus(token: string, chapterId: string, targetLanguage: string): Promise<SegmentStatusResponse> {
+    return apiJson(
+      `/v1/translation/chapters/${chapterId}/segments/status?target_language=${encodeURIComponent(targetLanguage)}`,
+      { token },
+    );
+  },
+
+  // T2-M3: re-translate ONLY the changed (dirty ∪ stale) segments of a chapter.
+  retranslateDirty(token: string, chapterId: string, targetLanguage: string): Promise<TranslationJob> {
+    return apiJson(`/v1/translation/chapters/${chapterId}/retranslate-dirty`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ target_language: targetLanguage }),
+    });
   },
 
   createJob(

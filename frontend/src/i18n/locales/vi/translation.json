@@ -126,6 +126,7 @@
     "cell_version_info": "v{{num}} · {{count}} phiên bản",
     "cell_manage_versions": "v{{num}} · {{count}} phiên bản — bấm để quản lý / đăng bản",
     "cell_stale_title": "Đã lỗi thời — thuật ngữ thay đổi sau khi dịch bản này",
+    "cell_changed_title": "{{count}} đoạn đã thay đổi — xem lại & dịch lại",
     "legend_stale": "{{count}} bị ảnh hưởng",
     "select_affected_title": "Chọn các chương bị ảnh hưởng bởi thay đổi thuật ngữ để dịch lại",
     "no_chapters_title": "Không có chương nào để dịch",
@@ -152,5 +153,18 @@
     "translate_selected": "Dịch mục đã chọn",
     "extract_glossary": "Trích xuất lore",
     "clear": "Bỏ chọn"
+  },
+  "segments": {
+    "title": "Trạng thái đoạn",
+    "status_untranslated": "Chưa dịch",
+    "status_dirty": "Nguồn đã đổi",
+    "status_stale": "Thuật ngữ đã đổi",
+    "status_clean": "Đã cập nhật",
+    "blocks_range": "khối {{from}}–{{to}}",
+    "needs_count": "{{count}} đoạn cần dịch lại",
+    "retranslate_changed": "Dịch lại phần đã đổi ({{count}})",
+    "retranslate_started": "Đã bắt đầu dịch lại",
+    "empty": "Chưa có đoạn nào.",
+    "close": "Đóng"
   }
 }

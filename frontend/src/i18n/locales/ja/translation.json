@@ -126,6 +126,7 @@
     "cell_version_info": "v{{num}} · {{count}} 版",
     "cell_manage_versions": "v{{num}} · {{count}} 版 — クリックで管理 / 公開",
     "cell_stale_title": "古くなっています — 翻訳後に用語集が変更されました",
+    "cell_changed_title": "{{count}} 個のセグメントが変更されました — 確認して再翻訳",
     "legend_stale": "{{count}} 件影響",
     "select_affected_title": "用語集の変更で影響を受けた章を選択して再翻訳",
     "no_chapters_title": "翻訳する章がありません",
@@ -152,5 +153,18 @@
     "translate_selected": "選択した章を翻訳",
     "extract_glossary": "用語を抽出",
     "clear": "クリア"
+  },
+  "segments": {
+    "title": "セグメント状態",
+    "status_untranslated": "未翻訳",
+    "status_dirty": "原文が変更",
+    "status_stale": "用語集が変更",
+    "status_clean": "最新",
+    "blocks_range": "ブロック {{from}}–{{to}}",
+    "needs_count": "{{count}} 個のセグメントが再翻訳が必要",
+    "retranslate_changed": "変更分を再翻訳 ({{count}})",
+    "retranslate_started": "再翻訳を開始しました",
+    "empty": "セグメントがまだありません。",
+    "close": "閉じる"
   }
 }

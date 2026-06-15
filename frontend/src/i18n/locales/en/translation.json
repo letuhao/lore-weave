@@ -126,6 +126,7 @@
     "cell_version_info": "v{{num}} · {{count}} version(s)",
     "cell_manage_versions": "v{{num}} · {{count}} version(s) — click to manage / publish",
     "cell_stale_title": "Out of date — the glossary changed since this was translated",
+    "cell_changed_title": "{{count}} segment(s) changed — review & re-translate",
     "legend_stale": "{{count}} affected",
     "select_affected_title": "Select the chapters affected by glossary changes to re-translate",
     "no_chapters_title": "No chapters to translate",
@@ -152,5 +153,18 @@
     "translate_selected": "Translate Selected",
     "extract_glossary": "Extract Glossary",
     "clear": "Clear"
+  },
+  "segments": {
+    "title": "Segment status",
+    "status_untranslated": "Untranslated",
+    "status_dirty": "Source changed",
+    "status_stale": "Glossary changed",
+    "status_clean": "Up to date",
+    "blocks_range": "blocks {{from}}–{{to}}",
+    "needs_count": "{{count}} segment(s) need re-translation",
+    "retranslate_changed": "Re-translate changed ({{count}})",
+    "retranslate_started": "Re-translation started",
+    "empty": "No segments built yet.",
+    "close": "Close"
   }
 }

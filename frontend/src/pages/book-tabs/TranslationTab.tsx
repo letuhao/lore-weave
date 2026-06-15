@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Languages, Check, Clock, AlertCircle, Loader2, Plus, Filter, X, Sparkles, History } from 'lucide-react';
+import { Languages, Check, Clock, AlertCircle, Loader2, Plus, Filter, X, Sparkles, History, RefreshCw } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { booksApi, type Chapter } from '@/features/books/api';
 import { translationApi, type BookCoverageResponse, type CoverageCell } from '@/features/translation/api';
@@ -12,6 +12,7 @@ import { EmptyState, FloatingActionBar, FloatingActionDivider } from '@/componen
 import { cn } from '@/lib/utils';
 import { getLanguageName } from '@/lib/languages';
 import { TranslateModal } from './TranslateModal';
+import { SegmentDrilldownModal } from '@/features/translation/components/SegmentDrilldownModal';
 import { ExtractionWizard } from '@/features/extraction/ExtractionWizard';
 
 function cellContent(cell: CoverageCell | undefined, t: TFunction) {
@@ -120,6 +121,8 @@ export function TranslationTab({ bookId }: { bookId: string }) {
   const [translateOpen, setTranslateOpen] = useState(false);
   const [extractionOpen, setExtractionOpen] = useState(false);
   const [selectedChapters, setSelectedChapters] = useState<Set<string>>(new Set());
+  // T2-M3: per-segment drill-down target (chapter × language), null when closed.
+  const [drillTarget, setDrillTarget] = useState<{ chapterId: string; lang: string; title?: string } | null>(null);
 
   const { data: coverageData, isLoading: coverageLoading, error: coverageError } = useQuery({
     queryKey: ['translation-coverage', bookId],
@@ -127,9 +130,22 @@ export function TranslationTab({ bookId }: { bookId: string }) {
     enabled: !!accessToken,
   });
 
+  // C: loop-fetch ALL active chapters (the backend clamps a single request to 100, so
+  // a >100-chapter book would otherwise lose titles past the first page).
   const { data: chaptersData } = useQuery({
     queryKey: ['chapters', bookId, 'all'],
-    queryFn: () => booksApi.listChapters(accessToken!, bookId, { lifecycle_state: 'active', limit: 200, offset: 0 }),
+    queryFn: async () => {
+      const items: Chapter[] = [];
+      const pageSize = 100;
+      for (let offset = 0; ; offset += pageSize) {
+        const r = await booksApi.listChapters(accessToken!, bookId, {
+          lifecycle_state: 'active', limit: pageSize, offset,
+        });
+        items.push(...r.items);
+        if (r.items.length < pageSize || items.length >= (r.total ?? Infinity)) break;
+      }
+      return { items, total: items.length };
+    },
     enabled: !!accessToken,
   });
 
@@ -147,6 +163,23 @@ export function TranslationTab({ bookId }: { bookId: string }) {
     const withData = allLanguages.filter((l) => autoLangs.has(l));
     return withData.length > 0 ? withData : allLanguages;
   }, [allLanguages, selectedLangs, autoLangs]);
+
+  // T2-M3: per (chapter, language) "needs re-translation" counts (dirty ∪ glossary-
+  // stale), one fetch per visible language. Map: chapter_id → lang → needs_count.
+  const { data: needsMap } = useQuery({
+    queryKey: ['segment-coverage', bookId, visibleLangs.join(',')],
+    queryFn: async () => {
+      const map: Record<string, Record<string, number>> = {};
+      await Promise.all(visibleLangs.map(async (lang) => {
+        const r = await translationApi.getSegmentCoverage(accessToken!, bookId, lang);
+        for (const c of r.chapters) {
+          (map[c.chapter_id] ??= {})[lang] = c.needs_count;
+        }
+      }));
+      return map;
+    },
+    enabled: !!accessToken && visibleLangs.length > 0,
+  });
 
   const toggleLang = (lang: string) => {
     setSelectedLangs((prev) => {
@@ -355,6 +388,8 @@ export function TranslationTab({ bookId }: { bookId: string }) {
                         const cell = row.languages[lang];
                         const isStale = !!cell?.is_glossary_stale;
                         const hasVersions = !!cell && cell.version_count > 0;
+                        // T2-M3: segments needing re-translation (source-dirty ∪ glossary-stale).
+                        const needs = needsMap?.[row.chapter_id]?.[lang] ?? 0;
                         const inner = (
                           <span className="inline-flex items-center justify-center gap-1">
                             {cellContent(cell, t)}
@@ -375,16 +410,31 @@ export function TranslationTab({ bookId }: { bookId: string }) {
                             title={title}
                           >
                             {hasVersions ? (
-                              // Click a translated cell to manage its versions / publish a
-                              // version active (the version page was previously unreachable).
-                              <button
-                                type="button"
-                                onClick={() => navigate(`/books/${bookId}/chapters/${row.chapter_id}/translations?lang=${lang}`)}
-                                aria-label={t('matrix.cell_manage_versions', { num: cell!.latest_version_num, count: cell!.version_count })}
-                                className="inline-flex items-center justify-center gap-1 rounded px-1.5 py-0.5 cursor-pointer hover:bg-primary/10 hover:underline focus:outline-none focus:ring-1 focus:ring-ring/40"
-                              >
-                                {inner}
-                              </button>
+                              <span className="inline-flex items-center justify-center gap-1.5">
+                                {/* Click a translated cell to manage its versions / publish a
+                                    version active (the version page was previously unreachable). */}
+                                <button
+                                  type="button"
+                                  onClick={() => navigate(`/books/${bookId}/chapters/${row.chapter_id}/translations?lang=${lang}`)}
+                                  aria-label={t('matrix.cell_manage_versions', { num: cell!.latest_version_num, count: cell!.version_count })}
+                                  className="inline-flex items-center justify-center gap-1 rounded px-1.5 py-0.5 cursor-pointer hover:bg-primary/10 hover:underline focus:outline-none focus:ring-1 focus:ring-ring/40"
+                                >
+                                  {inner}
+                                </button>
+                                {/* T2-M3: "N changed" badge → per-segment drill-down + re-translate. */}
+                                {needs > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setDrillTarget({ chapterId: row.chapter_id, lang, title: ch?.title || ch?.original_filename })}
+                                    title={t('matrix.cell_changed_title', { count: needs })}
+                                    aria-label={t('matrix.cell_changed_title', { count: needs })}
+                                    className="inline-flex items-center gap-0.5 rounded-full border border-amber-500/40 px-1.5 py-0.5 text-[10px] font-medium text-amber-500 hover:bg-amber-500/10 focus:outline-none focus:ring-1 focus:ring-ring/40"
+                                  >
+                                    <RefreshCw className="h-2.5 w-2.5" />
+                                    {needs}
+                                  </button>
+                                )}
+                              </span>
                             ) : (
                               <span className="cursor-default">{inner}</span>
                             )}
@@ -473,6 +523,13 @@ export function TranslationTab({ bookId }: { bookId: string }) {
         bookId={bookId}
         mode={selectedChapters.size <= 1 ? 'single' : 'batch'}
         preselectedChapterIds={[...selectedChapters]}
+      />
+
+      {/* T2-M3: per-segment drill-down + dirty-only re-translate. */}
+      <SegmentDrilldownModal
+        bookId={bookId}
+        target={drillTarget}
+        onClose={() => { setDrillTarget(null); invalidate(); }}
       />
     </div>
   );
