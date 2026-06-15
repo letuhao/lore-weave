@@ -35,6 +35,8 @@ func main() {
 	doCheckProj := flag.Bool("check-projections", false, "C structural no-orphan sweep: every projection row's event_id must resolve to a real event (requires -dsn)")
 	doCheckHistory := flag.Bool("check-history", false, "W2.2 history-ordering: per-aggregate version monotonicity over the recorded stream (requires -dsn)")
 	doCheckChecksum := flag.Bool("check-checksum", false, "W3.4 stored-checksum: every event's content_sha256 must re-derive from its payload+metadata (byte-rot/tamper detection; requires -dsn + the 0013 migration)")
+	doMicroBench := flag.Bool("micro-bench", false, "W4.2 T0/T1 micro-bench: time the events INSERT (T0) vs the outbox INSERT (T1) per call; relative gate T1.p50 < T0.p50 (requires -dsn)")
+	doMicroBite := flag.Bool("micro-bite", false, "W4.2 bite: run -micro-bench with an artificially-expensive outbox INSERT so T1 > T0 and the gate FAILS (proves the gate measures real latency)")
 	dsn := flag.String("dsn", "", "Postgres DSN for -emit / -verify / -check-projections (a per-reality DB with the events + outbox + projection migrations applied)")
 	// W2.1 sustained-workload mode: a steady-rate loop (NOT a single burst) so a
 	// fault/soak has a workload that keeps running while the fault is injected.
@@ -42,10 +44,10 @@ func main() {
 	rate := flag.Float64("rate", 0, "sustained mode: target events/sec (paced); 0 = as fast as possible")
 	flag.Parse()
 
-	os.Exit(run(os.Stdout, *seed, *profile, *doEmit, *doVerify, *doCheckProj, *doCheckHistory, *doCheckChecksum, *dsn, *duration, *rate))
+	os.Exit(run(os.Stdout, *seed, *profile, *doEmit, *doVerify, *doCheckProj, *doCheckHistory, *doCheckChecksum, *doMicroBench, *doMicroBite, *dsn, *duration, *rate))
 }
 
-func run(out io.Writer, seed int64, profileName string, doEmit, doVerify, doCheckProj, doCheckHistory, doCheckChecksum bool, dsn string, duration time.Duration, rate float64) int {
+func run(out io.Writer, seed int64, profileName string, doEmit, doVerify, doCheckProj, doCheckHistory, doCheckChecksum, doMicroBench, doMicroBite bool, dsn string, duration time.Duration, rate float64) int {
 	p, ok := gen.Profiles[profileName]
 	if !ok {
 		fmt.Fprintf(os.Stderr, "workload-gen: unknown profile %q (have: micro, single-reality, multi-reality, multi-user-session)\n", profileName)
@@ -177,6 +179,32 @@ func run(out io.Writer, seed int64, profileName string, doEmit, doVerify, doChec
 		}
 		fmt.Fprintf(os.Stderr, "workload-gen: stored-checksum clean — %d checksum-bearing event(s) re-derive (NULL/pre-0013 rows skipped)\n", covered)
 		return 0
+	}
+
+	if doMicroBench {
+		if dsn == "" {
+			fmt.Fprintln(os.Stderr, "workload-gen: -micro-bench requires -dsn")
+			return 2
+		}
+		db, err := sql.Open("postgres", dsn)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "workload-gen: open db: %v\n", err)
+			return 1
+		}
+		defer db.Close()
+		res, err := emit.MicroBench(context.Background(), db, stream, doMicroBite)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "workload-gen: %v\n", err)
+			return 1
+		}
+		fmt.Fprintf(os.Stderr, "workload-gen: micro-bench n=%d  T0(events) p50=%v p99=%v  T1(outbox) p50=%v p99=%v\n",
+			res.N, res.T0p50, res.T0p99, res.T1p50, res.T1p99)
+		if res.GatePass() {
+			fmt.Fprintf(out, "micro-bench gate PASS: T1.p50 (%v) < T0.p50 (%v) — the outbox pointer INSERT is cheaper than the event append\n", res.T1p50, res.T0p50)
+			return 0
+		}
+		fmt.Fprintf(out, "micro-bench gate FAIL: T1.p50 (%v) >= T0.p50 (%v)\n", res.T1p50, res.T0p50)
+		return 1
 	}
 
 	if doEmit {
