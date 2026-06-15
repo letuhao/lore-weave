@@ -23,6 +23,7 @@ from uuid import UUID
 
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from loreweave_jobs import emit_job_event
 from pydantic import BaseModel, Field
 
 from app.api.principal import Principal, require_principal
@@ -32,6 +33,7 @@ from app.deps import get_db
 from app.gaps.model import Gap, resolve_dimensions
 from app.jobs.assembly import build_live_runner
 from app.jobs.events import LORE_ENRICHMENT_RESUME_STREAM, make_redis_producer
+from app.jobs.job_events import JOB_KIND, JOB_SERVICE, canonical_status, job_error
 from app.jobs.job_request import save_job_request
 from app.jobs.proposal_store import PgProposalStore
 from app.jobs.state_machine import (
@@ -434,11 +436,22 @@ async def _transition_job(
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT, detail=str(exc)
             )
-        await conn.execute(
-            "UPDATE enrichment_job SET status=$4, updated_at=now() "
-            "WHERE user_id=$1 AND project_id=$2 AND job_id=$3",
-            principal.user_id, project_id, job_id, record.state.value,
-        )
+        async with conn.transaction():  # UPDATE + emit_job_event atomic (H1)
+            await conn.execute(
+                "UPDATE enrichment_job SET status=$4, updated_at=now() "
+                "WHERE user_id=$1 AND project_id=$2 AND job_id=$3",
+                principal.user_id, project_id, job_id, record.state.value,
+            )
+            # Unified Job Control Plane P1 — emit the author lifecycle transition on the
+            # SAME conn as the UPDATE (H1). A non-canonical state (estimating) is skipped;
+            # 'start' walks pending→estimating→running and emits only the final 'running'.
+            cstatus = canonical_status(record.state.value)
+            if cstatus is not None:
+                await emit_job_event(
+                    conn, service=JOB_SERVICE, job_id=str(job_id),
+                    owner_user_id=str(principal.user_id), kind=JOB_KIND, status=cstatus,
+                    error=job_error(record.error_message) if cstatus == "failed" else None,
+                )
     return {"job_id": str(job_id), "status": record.state.value}
 
 

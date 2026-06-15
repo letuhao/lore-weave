@@ -95,12 +95,15 @@ def _full_request():
             "sample_chapter_ids": []}
 
 
-def _claim_row(task_id, *, kind="profile_suggest", status="pending", request=None):
-    """A row shaped like the claim's FOR-UPDATE SELECT returns."""
+def _claim_row(task_id, *, kind="profile_suggest", status="pending", request=None,
+               user_id=None):
+    """A row shaped like the claim's FOR-UPDATE SELECT returns (now incl. user_id, read
+    by the Unified Job Control Plane P1 'running' claim emit)."""
     return {
         "task_id": task_id,
         "kind": kind,
         "status": status,
+        "user_id": user_id if user_id is not None else uuid4(),
         "request_json": request if request is not None else _full_request(),
     }
 
@@ -183,8 +186,9 @@ def test_poison_keyerror_marks_failed_not_infra(monkeypatch):
 
     out = asyncio.run(ct.run_compose_task(_FakePool(conn), task_id=str(tid)))
     assert out == "failed"  # terminal, ACK-able — NOT a raised infra error
-    # the row was marked failed with an error.
-    assert any("failed" in str(params) for _sql, params in conn.executes)
+    # the row was marked failed with an error (the _mark UPDATE...RETURNING now goes
+    # through fetchrow so the emit can read user_id/kind/status atomically).
+    assert any("failed" in str(params) for _sql, params in conn.fetchrows + conn.executes)
 
 
 def test_poison_does_not_raise(monkeypatch):

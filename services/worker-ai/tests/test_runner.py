@@ -114,10 +114,16 @@ def _mock_pool(book_id=_TEST_BOOK_ID):
     _txn.__aenter__ = AsyncMock(return_value=None)
     _txn.__aexit__ = AsyncMock(return_value=False)
     conn.transaction = MagicMock(return_value=_txn)
+    # P1 job-emit: _complete_job/_fail_job now do `UPDATE … RETURNING` via
+    # conn.fetchrow (so the rowcount gates the emit) + emit_job_event on the same
+    # conn. Default the acquired conn's fetchrow to a truthy row (transition won) so
+    # the happy path emits; tests inspect `pool.acquired_conn.fetchrow`.
+    conn.fetchrow = AsyncMock(return_value={"job_id": "00000000-0000-0000-0000-000000000001"})
     _acq = MagicMock()
     _acq.__aenter__ = AsyncMock(return_value=conn)
     _acq.__aexit__ = AsyncMock(return_value=False)
     pool.acquire = MagicMock(return_value=_acq)
+    pool.acquired_conn = conn
     return pool
 
 
@@ -951,9 +957,10 @@ async def test_process_job_glossary_sync_empty_book_no_op(mock_extract_persist):
 
     kc.glossary_sync_entity.assert_not_called()
     mock_extract_persist.assert_not_called()
-    # Job completion sets status=complete.
+    # Job completion sets status=complete (now via conn.fetchrow … RETURNING so the
+    # rowcount gates the P1 job-event emit).
     complete_calls = [
-        c for c in pool.execute.call_args_list
+        c for c in pool.acquired_conn.fetchrow.call_args_list
         if isinstance(c.args[0], str)
         and "UPDATE extraction_jobs" in c.args[0]
         and "status = 'complete'" in c.args[0].replace('"', "'")

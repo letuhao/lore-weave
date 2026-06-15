@@ -49,7 +49,22 @@ from typing import Annotated, Any, Literal
 from uuid import UUID
 
 import asyncpg
+from loreweave_jobs import emit_job_event
 from pydantic import BaseModel, ConfigDict, Field
+
+# Unified Job Control Plane P1 — extraction job lifecycle events ride the knowledge
+# outbox (worker-infra → loreweave:events:jobs). service = the domain owner so the
+# projection sees one service for the whole lifecycle (worker-ai writes complete/failed
+# inline; this repo writes pending/running/paused/cancelled).
+_JOB_SERVICE = "knowledge"
+_JOB_KIND = "extraction"
+
+
+def _canonical_job_status(status: str) -> str:
+    """Map the extraction status enum to the canonical control-plane JobStatus value
+    (extraction uses ``'complete'``; the canonical JobStatus is ``'completed'``)."""
+    return "completed" if status == "complete" else status
+
 
 __all__ = [
     "CursorDecodeError",
@@ -337,30 +352,38 @@ class ExtractionJobsRepo:
         RETURNING {_SELECT_COLS}
         """
         async with self._pool.acquire() as conn:
-            row = await conn.fetchrow(
-                query,
-                user_id,
-                data.project_id,
-                data.scope,
-                json.dumps(data.scope_range) if data.scope_range else None,
-                data.llm_model,
-                data.embedding_model,
-                data.max_spend_usd,
-                data.items_total,
-                data.campaign_id,
-                data.billing_user_id,
-                data.billing_embedding_model,
-                data.billing_llm_model,
-                # C12 — None ⇒ store the explicit all-five default (== column
-                # DEFAULT) so the round-trip is concrete and the runner never
-                # sees a NULL targets array.
-                list(data.targets) if data.targets is not None else list(DEFAULT_TARGETS),
-                data.concurrency_level,
-                # C13 — pinned glossary entity ids as a JSONB array (NULL ⇒ no
-                # pins, back-compat).
-                json.dumps(data.pinned_entity_ids) if data.pinned_entity_ids else None,
-            )
-        return _row_to_job(row)
+            async with conn.transaction():  # INSERT + emit_job_event atomic (H1)
+                row = await conn.fetchrow(
+                    query,
+                    user_id,
+                    data.project_id,
+                    data.scope,
+                    json.dumps(data.scope_range) if data.scope_range else None,
+                    data.llm_model,
+                    data.embedding_model,
+                    data.max_spend_usd,
+                    data.items_total,
+                    data.campaign_id,
+                    data.billing_user_id,
+                    data.billing_embedding_model,
+                    data.billing_llm_model,
+                    # C12 — None ⇒ store the explicit all-five default (== column
+                    # DEFAULT) so the round-trip is concrete and the runner never
+                    # sees a NULL targets array.
+                    list(data.targets) if data.targets is not None else list(DEFAULT_TARGETS),
+                    data.concurrency_level,
+                    # C13 — pinned glossary entity ids as a JSONB array (NULL ⇒ no
+                    # pins, back-compat).
+                    json.dumps(data.pinned_entity_ids) if data.pinned_entity_ids else None,
+                )
+                job = _row_to_job(row)
+                # Unified Job Control Plane P1 — emit the initial lifecycle event.
+                await emit_job_event(
+                    conn, service=_JOB_SERVICE, job_id=str(job.job_id),
+                    owner_user_id=str(user_id), kind=_JOB_KIND,
+                    status=_canonical_job_status(job.status),
+                )
+        return job
 
     # ─── reads ───────────────────────────────────────────────────────
 
@@ -639,8 +662,23 @@ class ExtractionJobsRepo:
         RETURNING {_SELECT_COLS}
         """
         async with self._pool.acquire() as conn:
-            row = await conn.fetchrow(query, user_id, job_id, new_status, error_message)
-        return _row_to_job(row) if row else None
+            async with conn.transaction():  # UPDATE + emit_job_event atomic (H1)
+                row = await conn.fetchrow(query, user_id, job_id, new_status, error_message)
+                if row is None:
+                    return None
+                # Unified Job Control Plane P1 — emit the transition (mapped to the
+                # canonical JobStatus). The UPDATE's terminal-guard + RETURNING means
+                # this only fires on a real transition (no duplicate terminal emit).
+                await emit_job_event(
+                    conn, service=_JOB_SERVICE, job_id=str(job_id),
+                    owner_user_id=str(user_id), kind=_JOB_KIND,
+                    status=_canonical_job_status(new_status),
+                    error=(
+                        {"code": "extraction_failed", "message": (error_message or "")[:500]}
+                        if new_status == "failed" else None
+                    ),
+                )
+                return _row_to_job(row)
 
     # ─── KN-7 — in-flight concurrency-cap change ─────────────────────
 

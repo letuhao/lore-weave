@@ -49,6 +49,23 @@ CREATE INDEX IF NOT EXISTS idx_video_gen_jobs_user ON video_gen_jobs(user_id, cr
 -- the sweeper scans only non-terminal rows by updated_at.
 CREATE INDEX IF NOT EXISTS idx_video_gen_jobs_active
   ON video_gen_jobs(updated_at) WHERE status IN ('pending','running');
+
+-- ── outbox_events: standard (matches knowledge/composition); relayed by worker-infra
+-- to loreweave:events:<aggregate_type>. Unified Job Control Plane P1 — job-lifecycle
+-- JobEvents are written here with aggregate_type='jobs' (→ loreweave:events:jobs) in
+-- the SAME tx as the video_gen_jobs status change (emit_job_event). uuidv7() = PG18.
+CREATE TABLE IF NOT EXISTS outbox_events (
+  id             UUID PRIMARY KEY DEFAULT uuidv7(),
+  aggregate_type TEXT NOT NULL DEFAULT 'video_gen',
+  aggregate_id   UUID NOT NULL,
+  event_type     TEXT NOT NULL,
+  payload        JSONB NOT NULL DEFAULT '{}',
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  published_at   TIMESTAMPTZ,
+  retry_count    INT NOT NULL DEFAULT 0,
+  last_error     TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_outbox_pending ON outbox_events(created_at) WHERE published_at IS NULL;
 """
 
 

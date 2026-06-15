@@ -505,15 +505,26 @@ def test_get_chapter_translation_returns_404_when_chapter_missing(client, fake_p
 # ── POST /v1/translation/jobs/{job_id}/cancel ────────────────────────────────
 
 def test_cancel_job_sets_cancelled_status(client, fake_pool):
+    # P1: _do_cancel now runs `UPDATE ... RETURNING owner_user_id` (fetchrow) +
+    # emit_job_event in one tx, so the cancel row needs owner_user_id and the
+    # assertion is on fetchrow (not execute). The same fetchrow mock backs both
+    # the auth-check SELECT and the cancel UPDATE.
     fake_pool.fetchrow.return_value = FakeRecord({
         "book_id": UUID(BOOK_ID),
         "status": "running",
+        "owner_user_id": UUID(USER_ID),
     })
-    resp = client.post(f"/v1/translation/jobs/{JOB_ID}/cancel")
+    with patch("app.routers.jobs.emit_job_event", new_callable=AsyncMock) as emit:
+        resp = client.post(f"/v1/translation/jobs/{JOB_ID}/cancel")
     assert resp.status_code == 204
-    fake_pool.execute.assert_called_once()
-    sql = fake_pool.execute.call_args.args[0]
-    assert "cancelled" in sql
+    # The cancel UPDATE went through fetchrow with the cancelled status.
+    cancel_calls = [
+        c for c in fake_pool.fetchrow.call_args_list if "cancelled" in c.args[0]
+    ]
+    assert len(cancel_calls) == 1
+    emit.assert_awaited_once()
+    assert emit.await_args.kwargs["status"] == "cancelled"
+    assert emit.await_args.kwargs["service"] == "translation"
 
 
 def test_cancel_job_returns_409_when_already_completed(client, fake_pool):
@@ -554,6 +565,8 @@ def test_cancel_pending_job_succeeds(client, fake_pool):
     fake_pool.fetchrow.return_value = FakeRecord({
         "book_id": UUID(BOOK_ID),
         "status": "pending",
+        "owner_user_id": UUID(USER_ID),  # P1: cancel UPDATE RETURNING owner_user_id
     })
-    resp = client.post(f"/v1/translation/jobs/{JOB_ID}/cancel")
+    with patch("app.routers.jobs.emit_job_event", new_callable=AsyncMock):
+        resp = client.post(f"/v1/translation/jobs/{JOB_ID}/cancel")
     assert resp.status_code == 204

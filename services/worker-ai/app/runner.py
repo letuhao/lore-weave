@@ -29,6 +29,7 @@ from uuid import UUID, uuid4
 
 import asyncpg
 from opentelemetry import trace as _ot_trace
+from loreweave_jobs import JobStatus, emit_job_event
 
 from loreweave_extraction import (
     EntityRecoveryConfig,
@@ -878,33 +879,62 @@ async def _record_spending(
     )
 
 
+#: Unified Job Control Plane P1 — extraction jobs live in the knowledge DB + outbox
+#: (worker-ai shares it); the canonical JobEvent service is the domain owner, "knowledge",
+#: so the projection sees ONE service for the job's whole lifecycle regardless of which
+#: process (knowledge API start/cancel, worker-ai complete/fail) wrote the transition.
+_JOB_SERVICE = "knowledge"
+_JOB_KIND = "extraction"
+
+
 async def _complete_job(pool: asyncpg.Pool, user_id: UUID, job_id: UUID) -> None:
-    """Transition job to 'complete'."""
-    await pool.execute(
-        """
-        UPDATE extraction_jobs
-        SET status = 'complete', completed_at = now(), updated_at = now()
-        WHERE user_id = $1 AND job_id = $2
-          AND status NOT IN ('complete', 'cancelled', 'failed')
-        """,
-        user_id, job_id,
-    )
+    """Transition job to 'complete'. The conditional UPDATE only fires once (not if
+    already terminal); we emit the canonical `completed` JobEvent in the SAME tx and
+    ONLY when the row actually transitioned (RETURNING row) — so a redelivered/duplicate
+    completion that no-ops the UPDATE can't emit a duplicate terminal event (H1)."""
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            row = await conn.fetchrow(
+                """
+                UPDATE extraction_jobs
+                SET status = 'complete', completed_at = now(), updated_at = now()
+                WHERE user_id = $1 AND job_id = $2
+                  AND status NOT IN ('complete', 'cancelled', 'failed')
+                RETURNING job_id
+                """,
+                user_id, job_id,
+            )
+            if row is not None:
+                await emit_job_event(
+                    conn, service=_JOB_SERVICE, job_id=str(job_id),
+                    owner_user_id=str(user_id), kind=_JOB_KIND, status=JobStatus.COMPLETED,
+                )
 
 
 async def _fail_job(
     pool: asyncpg.Pool, user_id: UUID, job_id: UUID, error: str,
 ) -> None:
-    """Transition job to 'failed' with an error message."""
-    await pool.execute(
-        """
-        UPDATE extraction_jobs
-        SET status = 'failed', completed_at = now(), updated_at = now(),
-            error_message = $3
-        WHERE user_id = $1 AND job_id = $2
-          AND status NOT IN ('complete', 'cancelled', 'failed')
-        """,
-        user_id, job_id, error[:2000],
-    )
+    """Transition job to 'failed' with an error message (same once-only + same-tx emit
+    semantics as ``_complete_job``)."""
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            row = await conn.fetchrow(
+                """
+                UPDATE extraction_jobs
+                SET status = 'failed', completed_at = now(), updated_at = now(),
+                    error_message = $3
+                WHERE user_id = $1 AND job_id = $2
+                  AND status NOT IN ('complete', 'cancelled', 'failed')
+                RETURNING job_id
+                """,
+                user_id, job_id, error[:2000],
+            )
+            if row is not None:
+                await emit_job_event(
+                    conn, service=_JOB_SERVICE, job_id=str(job_id),
+                    owner_user_id=str(user_id), kind=_JOB_KIND, status=JobStatus.FAILED,
+                    error={"code": "extraction_failed", "message": error[:500]},
+                )
 
 
 async def _get_project_book_id(

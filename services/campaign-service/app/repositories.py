@@ -18,8 +18,31 @@ from typing import Optional
 from uuid import UUID
 
 import asyncpg
+from loreweave_jobs import emit_job_event
 
 from .saga.gating import ChapterState
+
+#: Unified Job Control Plane P1 — the service id stamped on every emitted JobEvent.
+_JOB_SERVICE = "campaign"
+
+# campaign-native status → canonical JobStatus. Only `created` is non-canonical
+# (maps to `pending`); every other native value is already a canonical JobStatus
+# (running/paused/cancelling/completed/failed/cancelled). The native string is
+# preserved verbatim in the event's `detail_status` whenever it differs.
+_CANONICAL_STATUS = {
+    "created": "pending",
+    "running": "running",
+    "paused": "paused",
+    "cancelling": "cancelling",
+    "cancelled": "cancelled",
+    "completed": "completed",
+    "failed": "failed",
+}
+
+
+def _canonical_status(native: str) -> str:
+    """Map a campaign-native status to the closest canonical JobStatus."""
+    return _CANONICAL_STATUS.get(native, native)
 
 # Whitelist: stage → projection column. Interpolated into SQL ONLY after this
 # membership check, so a rogue stage string can never reach the query.
@@ -79,7 +102,7 @@ async def create_campaign(
     est_usd_low: Optional[Decimal] = None,
     est_usd_high: Optional[Decimal] = None,
 ) -> asyncpg.Record:
-    return await conn.fetchrow(
+    row = await conn.fetchrow(
         f"""
         INSERT INTO campaigns (
           owner_user_id, book_id, name, gating_mode, target_language,
@@ -101,6 +124,19 @@ async def create_campaign(
         chapter_from, chapter_to, total_chapters, budget_usd,
         est_usd_low, est_usd_high,
     )
+    # Unified Job Control Plane P1 — emit the initial lifecycle event on the SAME
+    # conn as the INSERT (the router wraps both in one tx, so the event commits
+    # atomically with the new campaign row — H1). A campaign starts `created`,
+    # whose canonical JobStatus is `pending`; the native string rides detail_status.
+    native = row["status"]
+    canonical = _canonical_status(native)
+    await emit_job_event(
+        conn, service=_JOB_SERVICE, job_id=str(row["campaign_id"]),
+        owner_user_id=str(row["owner_user_id"]), kind="campaign", status=canonical,
+        detail_status=native if native != canonical else None,
+        title=row["name"],
+    )
+    return row
 
 
 async def seed_campaign_chapters(
@@ -322,18 +358,43 @@ async def set_campaign_status(
     set_started: bool = False,
     set_finished: bool = False,
 ) -> None:
-    await pool.execute(
-        """
-        UPDATE campaigns
-        SET status = $2,
-            error_message = COALESCE($3, error_message),
-            started_at = CASE WHEN $4 AND started_at IS NULL THEN now() ELSE started_at END,
-            finished_at = CASE WHEN $5 THEN now() ELSE finished_at END,
-            updated_at = now()
-        WHERE campaign_id = $1
-        """,
-        campaign_id, status, error_message, set_started, set_finished,
-    )
+    """Transition a campaign's status (the PRIMARY lifecycle chokepoint — driven by
+    the /start, /pause, /cancel, /rerun-failed routes and the saga driver's
+    complete/cancel paths). Unified Job Control Plane P1: emits the lifecycle
+    JobEvent in the SAME tx as the UPDATE (H1 — the status change and its event
+    commit atomically), only when a row actually matched. `status` is the
+    campaign-native value; it maps to the closest canonical JobStatus for the
+    event (native string preserved in detail_status when it differs)."""
+    async with pool.acquire() as conn:
+        async with conn.transaction():  # UPDATE + emit_job_event atomic (H1)
+            row = await conn.fetchrow(
+                """
+                UPDATE campaigns
+                SET status = $2,
+                    error_message = COALESCE($3, error_message),
+                    started_at = CASE WHEN $4 AND started_at IS NULL THEN now() ELSE started_at END,
+                    finished_at = CASE WHEN $5 THEN now() ELSE finished_at END,
+                    updated_at = now()
+                WHERE campaign_id = $1
+                RETURNING campaign_id, owner_user_id, status, error_message
+                """,
+                campaign_id, status, error_message, set_started, set_finished,
+            )
+            if row is None:
+                return  # campaign vanished (cross-tenant / deleted) — nothing to emit
+            native = row["status"]
+            canonical = _canonical_status(native)
+            await emit_job_event(
+                conn, service=_JOB_SERVICE, job_id=str(row["campaign_id"]),
+                owner_user_id=str(row["owner_user_id"]), kind="campaign",
+                status=canonical,
+                detail_status=native if native != canonical else None,
+                error=(
+                    {"code": "error", "message": str(row["error_message"])}
+                    if native == "failed" and row["error_message"]
+                    else None
+                ),
+            )
 
 
 # ── S4d budget cap: spend accumulation + budget update ─────────────────────

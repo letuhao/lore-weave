@@ -30,9 +30,11 @@ from typing import Any, Protocol
 from uuid import UUID, uuid4
 
 import asyncpg
+from loreweave_jobs import emit_job_event
 
 from app.gaps.model import is_zh
 from app.generation.provenance import EnrichedFact
+from app.jobs.job_events import JOB_KIND, JOB_SERVICE, canonical_status, job_error
 from app.verify.wiring import AnnotatedVerify
 
 __all__ = [
@@ -212,17 +214,24 @@ class PgProposalStore:
         estimated_cost: float,
     ) -> str:
         async with self._pool.acquire() as conn:
-            job_id = await conn.fetchval(
-                """INSERT INTO enrichment_job
-                     (project_id, user_id, book_id, technique, entity_kind, status,
-                      max_spend_usd, estimated_cost_usd)
-                   VALUES ($1,$2,$3,$4,$5,'pending',$6,$7)
-                   RETURNING job_id""",
-                UUID(project_id), UUID(user_id),
-                UUID(book_id) if book_id else None,
-                technique, entity_kind,
-                max_spend, estimated_cost,
-            )
+            async with conn.transaction():  # INSERT + emit_job_event atomic (H1)
+                job_id = await conn.fetchval(
+                    """INSERT INTO enrichment_job
+                         (project_id, user_id, book_id, technique, entity_kind, status,
+                          max_spend_usd, estimated_cost_usd)
+                       VALUES ($1,$2,$3,$4,$5,'pending',$6,$7)
+                       RETURNING job_id""",
+                    UUID(project_id), UUID(user_id),
+                    UUID(book_id) if book_id else None,
+                    technique, entity_kind,
+                    max_spend, estimated_cost,
+                )
+                # Unified Job Control Plane P1 — emit the initial 'pending' lifecycle
+                # event on the SAME conn as the INSERT (genuinely-new row only).
+                await emit_job_event(
+                    conn, service=JOB_SERVICE, job_id=str(job_id),
+                    owner_user_id=str(user_id), kind=JOB_KIND, status="pending",
+                )
         return str(job_id)
 
     async def persist_proposal(
@@ -301,10 +310,23 @@ class PgProposalStore:
             sets.append(f"error_message = ${len(params)}")
         sets.append("updated_at = now()")
         async with self._pool.acquire() as conn:
-            await conn.execute(
-                f"UPDATE enrichment_job SET {', '.join(sets)} WHERE job_id = $1",
-                *params,
-            )
+            async with conn.transaction():  # UPDATE + emit_job_event atomic (H1)
+                row = await conn.fetchrow(
+                    f"UPDATE enrichment_job SET {', '.join(sets)} "
+                    f"WHERE job_id = $1 RETURNING user_id, status, error_message",
+                    *params,
+                )
+                if row is None:
+                    return  # no such job — nothing to emit (behavior-preserving)
+                # Unified Job Control Plane P1 — emit the status transition on the SAME
+                # conn as the UPDATE (H1). Skip a status with no canonical JobStatus.
+                cstatus = canonical_status(row["status"])
+                if cstatus is not None:
+                    await emit_job_event(
+                        conn, service=JOB_SERVICE, job_id=str(job_id),
+                        owner_user_id=str(row["user_id"]), kind=JOB_KIND, status=cstatus,
+                        error=job_error(row["error_message"]) if cstatus == "failed" else None,
+                    )
 
 
 @dataclass

@@ -61,6 +61,19 @@ class _FakeConn:
         self.executed.append((query, args))
         return None
 
+    def transaction(self):
+        # No-op tx ctx so the in-tx emit_job_event wiring (H1) runs on this conn.
+        conn = self
+
+        class _Tx:
+            async def __aenter__(self):
+                return conn
+
+            async def __aexit__(self, *exc):
+                return False
+
+        return _Tx()
+
 
 class _FakeAcquire:
     def __init__(self, conn):

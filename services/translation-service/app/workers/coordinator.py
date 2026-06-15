@@ -1,7 +1,13 @@
 import logging
 from uuid import UUID
 
+from loreweave_jobs import emit_job_event
+
 log = logging.getLogger(__name__)
+
+#: Unified Job Control Plane P1 — stamped on every emitted JobEvent.
+_JOB_SERVICE = "translation"
+_JOB_KIND = "translation"
 
 
 async def handle_job_message(msg: dict, pool, publish, publish_event) -> None:
@@ -16,10 +22,21 @@ async def handle_job_message(msg: dict, pool, publish, publish_event) -> None:
     log.info("coordinator: job %s — marking running, fanning out %d chapter(s)", job_id, n)
 
     async with pool.acquire() as db:
-        await db.execute(
-            "UPDATE translation_jobs SET status='running', started_at=now() WHERE job_id=$1",
-            job_id,
-        )
+        async with db.transaction():
+            # P1 — running transition. UPDATE + emit in one tx (H1). RETURNING the
+            # owner so the event carries it (msg.user_id is the same value, but the
+            # row is authoritative). Guarded: only emit when a row actually changed.
+            row = await db.fetchrow(
+                "UPDATE translation_jobs SET status='running', started_at=now() "
+                "WHERE job_id=$1 RETURNING owner_user_id",
+                job_id,
+            )
+            if row is not None:
+                await emit_job_event(
+                    db, service=_JOB_SERVICE, job_id=str(job_id),
+                    owner_user_id=str(row["owner_user_id"]), kind=_JOB_KIND,
+                    status="running",
+                )
 
     # Routing key "translation.chapter" must match the binding in broker.connect_broker()
     for index, chapter_id in enumerate(msg["chapter_ids"]):

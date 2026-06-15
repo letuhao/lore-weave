@@ -651,12 +651,16 @@ async def test_fail_chapter_idempotent_skips_counter_when_already_failed():
 # ── _check_job_completion (atomic finalization) ───────────────────────────────
 
 @pytest.mark.asyncio
-async def test_check_job_completion_emits_event_when_winner():
+async def test_check_job_completion_emits_event_when_winner(monkeypatch):
     """Winner of the atomic UPDATE must emit job.status_changed with final status."""
+    # P1: the finalize UPDATE now also RETURNs owner_user_id + emits a JobEvent in
+    # the same tx; patch the SDK emit so this test stays focused on publish_event.
+    monkeypatch.setattr("app.workers.chapter_worker.emit_job_event", AsyncMock())
     pool, db = _make_pool(finalization_row=FakeRecord({
         "status": "completed",
         "completed_chapters": 3,
         "failed_chapters": 0,
+        "owner_user_id": uuid4(),
     }))
     publish_event = AsyncMock()
     msg = _chapter_msg()
@@ -685,12 +689,14 @@ async def test_check_job_completion_no_event_when_not_winner():
 
 
 @pytest.mark.asyncio
-async def test_check_job_completion_partial_status():
+async def test_check_job_completion_partial_status(monkeypatch):
     """partial: completed > 0 and failed > 0."""
+    monkeypatch.setattr("app.workers.chapter_worker.emit_job_event", AsyncMock())
     pool, db = _make_pool(finalization_row=FakeRecord({
         "status": "partial",
         "completed_chapters": 2,
         "failed_chapters": 1,
+        "owner_user_id": uuid4(),
     }))
     publish_event = AsyncMock()
     msg = _chapter_msg()
@@ -705,12 +711,14 @@ async def test_check_job_completion_partial_status():
 
 
 @pytest.mark.asyncio
-async def test_check_job_completion_all_failed_status():
+async def test_check_job_completion_all_failed_status(monkeypatch):
     """failed: completed = 0, all chapters failed."""
+    monkeypatch.setattr("app.workers.chapter_worker.emit_job_event", AsyncMock())
     pool, db = _make_pool(finalization_row=FakeRecord({
         "status": "failed",
         "completed_chapters": 0,
         "failed_chapters": 3,
+        "owner_user_id": uuid4(),
     }))
     publish_event = AsyncMock()
     msg = _chapter_msg()

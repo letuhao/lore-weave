@@ -16,8 +16,27 @@ from typing import Any
 from uuid import UUID
 
 import asyncpg
+from loreweave_jobs import emit_job_event
 
 _ACTIVE = ("pending", "running")
+
+#: Unified Job Control Plane P1 — the service id stamped on every emitted JobEvent.
+_JOB_SERVICE = "video_gen"
+#: every video_gen_jobs row is a video-generation job; emit a constant kind.
+_JOB_KIND = "video_gen"
+
+
+def _job_error(err_json: dict[str, Any] | None) -> dict[str, str] | None:
+    """Map a failed job's ``error_json`` ({code, message}) to the canonical
+    JobEvent error shape, or None when there is no error."""
+    if not err_json:
+        return None
+    if isinstance(err_json, dict):
+        return {
+            "code": str(err_json.get("code", "error")),
+            "message": str(err_json.get("message", err_json)),
+        }
+    return {"code": "error", "message": str(err_json)}
 
 
 @dataclass(frozen=True)
@@ -78,17 +97,25 @@ class VideoGenJobsRepo:
     ) -> VideoGenJob:
         """INSERT a pending row with the gateway job id already set (M5 submits
         first, so there is no submit→persist gap on the create path)."""
-        row = await self._pool.fetchrow(
-            f"""
-            INSERT INTO video_gen_jobs (user_id, provider_job_id, status, request_json)
-            VALUES ($1, $2, 'pending', $3::jsonb)
-            RETURNING {_COLS}
-            """,
-            user_id, provider_job_id, json.dumps(request_json),
-        )
-        job = _row(row)
-        assert job is not None
-        return job
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():  # INSERT + emit_job_event atomic (H1)
+                row = await conn.fetchrow(
+                    f"""
+                    INSERT INTO video_gen_jobs (user_id, provider_job_id, status, request_json)
+                    VALUES ($1, $2, 'pending', $3::jsonb)
+                    RETURNING {_COLS}
+                    """,
+                    user_id, provider_job_id, json.dumps(request_json),
+                )
+                job = _row(row)
+                assert job is not None
+                # Unified Job Control Plane P1 — emit the pending lifecycle event on
+                # the SAME conn as the INSERT (the row always lands on this path).
+                await emit_job_event(
+                    conn, service=_JOB_SERVICE, job_id=str(job.id),
+                    owner_user_id=str(job.user_id), kind=_JOB_KIND, status=job.status,
+                )
+                return job
 
     async def get(self, user_id: UUID, job_id: UUID) -> VideoGenJob | None:
         """The poll endpoint's read — scoped to the owner (404 cross-user)."""
@@ -124,34 +151,55 @@ class VideoGenJobsRepo:
         """CAS the row to completed (only from an active state). Returns True if
         THIS call won the transition — the caller bills only on a True so an
         at-least-once redelivery / sweeper race never double-bills."""
-        won = await self._pool.fetchval(
-            """
-            UPDATE video_gen_jobs
-               SET status = 'completed', video_url = $2, size_bytes = $3,
-                   content_type = $4, error_json = NULL, updated_at = now()
-             WHERE id = $1 AND status = ANY($5::text[])
-            RETURNING id
-            """,
-            job_id, video_url, size_bytes, content_type, list(_ACTIVE),
-        )
-        return won is not None
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():  # UPDATE + emit_job_event atomic (H1)
+                row = await conn.fetchrow(
+                    """
+                    UPDATE video_gen_jobs
+                       SET status = 'completed', video_url = $2, size_bytes = $3,
+                           content_type = $4, error_json = NULL, updated_at = now()
+                     WHERE id = $1 AND status = ANY($5::text[])
+                    RETURNING id, user_id
+                    """,
+                    job_id, video_url, size_bytes, content_type, list(_ACTIVE),
+                )
+                if row is None:
+                    return False  # CAS lost — a redelivery/race; no duplicate emit
+                # Unified Job Control Plane P1 — emit ONLY on the winning CAS so a
+                # redelivered/duplicate completion never re-emits the terminal event.
+                await emit_job_event(
+                    conn, service=_JOB_SERVICE, job_id=str(row["id"]),
+                    owner_user_id=str(row["user_id"]), kind=_JOB_KIND, status="completed",
+                )
+                return True
 
     async def fail(
         self, job_id: UUID, *, status: str, error: dict[str, Any] | None
     ) -> bool:
         """CAS the row to a terminal failed/cancelled (only from an active
         state). Returns True if THIS call won the transition."""
-        won = await self._pool.fetchval(
-            """
-            UPDATE video_gen_jobs
-               SET status = $2, error_json = $3::jsonb, updated_at = now()
-             WHERE id = $1 AND status = ANY($4::text[])
-            RETURNING id
-            """,
-            job_id, status, json.dumps(error) if error is not None else None,
-            list(_ACTIVE),
-        )
-        return won is not None
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():  # UPDATE + emit_job_event atomic (H1)
+                row = await conn.fetchrow(
+                    """
+                    UPDATE video_gen_jobs
+                       SET status = $2, error_json = $3::jsonb, updated_at = now()
+                     WHERE id = $1 AND status = ANY($4::text[])
+                    RETURNING id, user_id
+                    """,
+                    job_id, status, json.dumps(error) if error is not None else None,
+                    list(_ACTIVE),
+                )
+                if row is None:
+                    return False  # CAS lost — a redelivery/race; no duplicate emit
+                # Unified Job Control Plane P1 — emit ONLY on the winning CAS, with
+                # the canonical error shape, so a redelivered failure never re-emits.
+                await emit_job_event(
+                    conn, service=_JOB_SERVICE, job_id=str(row["id"]),
+                    owner_user_id=str(row["user_id"]), kind=_JOB_KIND, status=status,
+                    error=_job_error(error),
+                )
+                return True
 
     async def list_stuck(self, *, timeout_secs: int, batch: int) -> list[VideoGenJob]:
         """Active rows idle past the timeout — the sweeper's re-drive set."""

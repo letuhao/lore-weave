@@ -17,6 +17,7 @@ from uuid import UUID
 
 import asyncpg
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
+from loreweave_jobs import emit_job_event
 from pydantic import BaseModel, Field, field_validator
 
 from app.clients.book_client import BookClient
@@ -430,6 +431,14 @@ async def _create_and_start_job(
                     WHERE job_id = $1 AND user_id = $2
                     """,
                     job_id, user_id,
+                )
+                # Unified Job Control Plane P1 — this start path is an inline
+                # INSERT(pending)+UPDATE(running) (NOT repo.create/update_status), so
+                # emit the initial 'running' lifecycle event here in the SAME tx (else
+                # the projection never sees the job appear until its terminal event).
+                await emit_job_event(
+                    conn, service="knowledge", job_id=str(job_id),
+                    owner_user_id=str(user_id), kind="extraction", status="running",
                 )
     except asyncpg.UniqueViolationError:
         raise HTTPException(

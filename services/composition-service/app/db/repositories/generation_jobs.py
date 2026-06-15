@@ -16,9 +16,25 @@ from typing import Any
 from uuid import UUID
 
 import asyncpg
+from loreweave_jobs import emit_job_event
 
 from app.db.models import GenerationJob
 from app.db.repositories import ChapterJobInFlightError, ReferenceViolationError
+
+#: Unified Job Control Plane P1 — the service id stamped on every emitted JobEvent.
+_JOB_SERVICE = "composition"
+
+
+def _job_error(result: dict[str, Any] | None) -> dict[str, str] | None:
+    """Map a failed job's ``result`` to the canonical JobEvent error shape, or None."""
+    if not result:
+        return None
+    err = result.get("error")
+    if err is None:
+        return None
+    if isinstance(err, dict):
+        return {"code": str(err.get("code", "error")), "message": str(err.get("message", err))}
+    return {"code": "error", "message": str(err)}
 
 _SELECT_COLS = """
   id, user_id, project_id, outline_node_id, operation, mode, status, llm_job_id,
@@ -101,7 +117,14 @@ class GenerationJobsRepo:
                 json.dumps(input or {}), base_revision_id, idempotency_key,
             )
             if row is not None:
-                return _row_to_job(row), True
+                job = _row_to_job(row)
+                # Unified Job Control Plane P1 — emit the lifecycle event in the SAME
+                # tx/conn as the INSERT (only on a genuinely-new job, not a replay).
+                await emit_job_event(
+                    c, service=_JOB_SERVICE, job_id=str(job.id),
+                    owner_user_id=str(job.user_id), kind=job.operation, status=job.status,
+                )
+                return job, True
             # Conflict: the key already exists. Return the existing job (scoped
             # to this user so a cross-user key collision can't leak a row).
             existing = await c.fetchrow(
@@ -118,7 +141,8 @@ class GenerationJobsRepo:
         if conn is not None:
             return await _do(conn)
         async with self._pool.acquire() as c:
-            return await _do(c)
+            async with c.transaction():  # INSERT + emit_job_event atomic (H1)
+                return await _do(c)
 
     async def create_chapter_job_guarded(
         self,
@@ -399,9 +423,22 @@ class GenerationJobsRepo:
             user_id, job_id, status, _jsonb(result), _jsonb(critic), llm_job_id,
             target_chapter_id, target_revision_id, cost_usd,
         )
+        async def _do(c: asyncpg.Connection) -> GenerationJob | None:
+            row = await c.fetchrow(query, *args)
+            if row is None:
+                return None
+            job = _row_to_job(row)
+            # Unified Job Control Plane P1 — emit the status transition in the SAME
+            # tx/conn as the UPDATE (H1: status change + event commit atomically).
+            await emit_job_event(
+                c, service=_JOB_SERVICE, job_id=str(job.id),
+                owner_user_id=str(job.user_id), kind=job.operation, status=status,
+                error=_job_error(result) if status == "failed" else None,
+            )
+            return job
+
         if conn is not None:
-            row = await conn.fetchrow(query, *args)
-        else:
-            async with self._pool.acquire() as c:
-                row = await c.fetchrow(query, *args)
-        return _row_to_job(row) if row else None
+            return await _do(conn)
+        async with self._pool.acquire() as c:
+            async with c.transaction():  # UPDATE + emit_job_event atomic (H1)
+                return await _do(c)

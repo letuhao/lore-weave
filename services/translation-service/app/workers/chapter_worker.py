@@ -3,6 +3,7 @@ import logging
 from uuid import UUID
 
 import httpx
+from loreweave_jobs import emit_job_event
 
 from ..config import settings
 from ..llm_client import LLMClient, set_campaign_id
@@ -10,6 +11,10 @@ from ..metrics import record_stage
 from .session_translator import translate_chapter
 
 log = logging.getLogger(__name__)
+
+#: Unified Job Control Plane P1 — stamped on every emitted JobEvent.
+_JOB_SERVICE = "translation"
+_JOB_KIND = "translation"
 
 # Default context window used when provider-registry cannot supply one
 _FALLBACK_CONTEXT_WINDOW = 8192
@@ -676,20 +681,34 @@ async def _check_job_completion(pool, job_id, user_id, msg, publish_event) -> No
     Only the worker that wins the UPDATE emits the final event.
     """
     async with pool.acquire() as db:
-        row = await db.fetchrow(
-            """UPDATE translation_jobs SET
-                 status = CASE
-                   WHEN failed_chapters = 0                  THEN 'completed'
-                   WHEN completed_chapters > 0               THEN 'partial'
-                   ELSE 'failed'
-                 END,
-                 finished_at = now()
-               WHERE job_id = $1
-                 AND status = 'running'
-                 AND (completed_chapters + failed_chapters) = total_chapters
-               RETURNING status, completed_chapters, failed_chapters""",
-            job_id,
-        )
+        async with db.transaction():
+            row = await db.fetchrow(
+                """UPDATE translation_jobs SET
+                     status = CASE
+                       WHEN failed_chapters = 0                  THEN 'completed'
+                       WHEN completed_chapters > 0               THEN 'partial'
+                       ELSE 'failed'
+                     END,
+                     finished_at = now()
+                   WHERE job_id = $1
+                     AND status = 'running'
+                     AND (completed_chapters + failed_chapters) = total_chapters
+                   RETURNING status, completed_chapters, failed_chapters, owner_user_id""",
+                job_id,
+            )
+            if row is not None:
+                # Unified Job Control Plane P1 — emit the terminal transition in the
+                # SAME tx as the finalizing UPDATE (H1). Only the worker that WINS the
+                # guarded UPDATE (status='running' → terminal) reaches here, so the
+                # event fires exactly once. The local 'partial' status has no canonical
+                # JobStatus, so map it to 'completed' (the job DID finish, with some
+                # chapters done) — the per-chapter failure detail is tracked elsewhere.
+                _status = "completed" if row["status"] == "partial" else row["status"]
+                await emit_job_event(
+                    db, service=_JOB_SERVICE, job_id=str(job_id),
+                    owner_user_id=str(row["owner_user_id"]), kind=_JOB_KIND,
+                    status=_status,
+                )
 
     if row is None:
         return  # Job not done yet, or another worker already finalized it

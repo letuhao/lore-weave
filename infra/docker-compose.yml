@@ -1001,7 +1001,7 @@ services:
       # the pre-existing M9 scene_committed, aggregate_type='composition') to
       # loreweave:events:composition. Until now composition wrote outbox rows that
       # were NEVER relayed (M9 telemetry was emitted-but-unconsumed).
-      OUTBOX_SOURCES: "book:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_book,translation:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_translation,chat:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_chat,glossary:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_glossary,knowledge:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_knowledge,composition:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_composition"
+      OUTBOX_SOURCES: "book:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_book,translation:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_translation,chat:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_chat,glossary:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_glossary,knowledge:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_knowledge,composition:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_composition,campaign:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_campaign,lore_enrichment:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_lore_enrichment,video_gen:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_video_gen"
       # Phase B (§10.1): bumped 7→30 days. glossary now also feeds
       # learning-service's append-only correction log; a longer retention on the
       # source outbox rows + event_log is the replay backstop so a learning-

@@ -3,6 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 import asyncpg
+from loreweave_jobs import emit_job_event
 
 from ..deps import get_current_user, get_db
 from ..config import DEFAULT_COMPACT_SYSTEM_PROMPT, DEFAULT_COMPACT_USER_PROMPT_TPL
@@ -15,6 +16,12 @@ from ..grant_deps import (
 from ..workers.segment_status import compute_segment_status
 
 router = APIRouter(prefix="/v1/translation", tags=["translation-jobs"])
+
+#: Unified Job Control Plane P1 — the service id stamped on every emitted JobEvent.
+_JOB_SERVICE = "translation"
+#: kind stamped on translation_jobs lifecycle events (a translation_jobs row is
+#: always a whole/partial-chapter translation run; there is no per-row operation col).
+_JOB_KIND = "translation"
 
 
 def _job_row_to_model(row, chapter_rows=None) -> TranslationJob:
@@ -254,6 +261,16 @@ async def _resolve_and_create_job(
 
             job_id = job_row["job_id"]
 
+            # Unified Job Control Plane P1 — emit the initial lifecycle event in the
+            # SAME tx as the INSERT (transactional outbox H1: row + event commit
+            # atomically). Genuinely-new row only — this is an unconditional INSERT
+            # (no idempotency replay path here).
+            await emit_job_event(
+                conn, service=_JOB_SERVICE, job_id=str(job_id),
+                owner_user_id=str(job_row["owner_user_id"]), kind=_JOB_KIND,
+                status="pending",
+            )
+
             for chapter_id in chapter_ids:
                 await conn.execute(
                     """
@@ -291,6 +308,13 @@ async def _resolve_and_create_job(
                 await conn.execute(
                     "UPDATE translation_jobs SET status='completed', finished_at=now() WHERE job_id=$1",
                     job_id,
+                )
+                # P1 — terminal transition (all requested chapters already current);
+                # same tx as the UPDATE.
+                await emit_job_event(
+                    conn, service=_JOB_SERVICE, job_id=str(job_id),
+                    owner_user_id=str(job_row["owner_user_id"]), kind=_JOB_KIND,
+                    status="completed",
                 )
 
     # Publish the job only when there is work to fan out.
@@ -437,10 +461,23 @@ def _assert_cancellable(job_status: str) -> None:
 
 
 async def _do_cancel(db: asyncpg.Pool, job_id: UUID) -> None:
-    await db.execute(
-        "UPDATE translation_jobs SET status='cancelled', finished_at=now() WHERE job_id=$1",
-        job_id,
-    )
+    # P1 — terminal cancel transition. Acquire our own conn + tx so the UPDATE and
+    # the JobEvent emit commit atomically (H1). RETURNING owner_user_id so the event
+    # carries the right owner without a second read.
+    async with db.acquire() as conn:
+        async with conn.transaction():
+            row = await conn.fetchrow(
+                "UPDATE translation_jobs SET status='cancelled', finished_at=now() "
+                "WHERE job_id=$1 RETURNING owner_user_id",
+                job_id,
+            )
+            if row is None:
+                return  # already gone / nothing matched — no event for a no-op
+            await emit_job_event(
+                conn, service=_JOB_SERVICE, job_id=str(job_id),
+                owner_user_id=str(row["owner_user_id"]), kind=_JOB_KIND,
+                status="cancelled",
+            )
 
 
 @router.post("/jobs/{job_id}/cancel", status_code=status.HTTP_204_NO_CONTENT)

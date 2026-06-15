@@ -138,6 +138,22 @@ class _CreateConn:
         self.params = params
         return self._task_id
 
+    async def execute(self, *_a, **_k):
+        # absorbs the in-tx emit_job_event outbox INSERT (H1 wiring)
+        return None
+
+    def transaction(self):
+        conn = self
+
+        class _Tx:
+            async def __aenter__(self):
+                return conn
+
+            async def __aexit__(self, *exc):
+                return False
+
+        return _Tx()
+
 
 def test_create_compose_task_writes_columns():
     import json

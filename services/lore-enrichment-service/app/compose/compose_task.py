@@ -30,6 +30,7 @@ from typing import Any
 from uuid import UUID
 
 import asyncpg
+from loreweave_jobs import emit_job_event
 
 from app.clients.book import BookClient, BookProjection, BookServiceError
 from app.clients.glossary import GlossaryClient, GlossaryServiceError
@@ -40,6 +41,7 @@ from app.config import settings
 from app.db.book_profile import get_book_profile
 from app.generation.complete import CompletionSeamError, make_complete_fn
 from app.jobs.events import LORE_ENRICHMENT_RESUME_STREAM, make_redis_producer
+from app.jobs.job_events import JOB_SERVICE, canonical_status, job_error
 from app.services.profile_suggest import (
     ProfileSuggestError,
     SuggestedProfile,
@@ -84,15 +86,23 @@ async def create_compose_task(
     the worker needs to compute (model_ref UUIDs + params + acting user) — NEVER a
     secret."""
     async with pool.acquire() as conn:
-        task_id = await conn.fetchval(
-            """INSERT INTO enrichment_compose_task
-                   (kind, status, user_id, project_id, book_id, request_json)
-               VALUES ($1, 'pending', $2, $3, $4, $5::jsonb)
-               RETURNING task_id""",
-            kind, UUID(user_id), UUID(project_id),
-            UUID(book_id) if book_id else None,
-            json.dumps(request, ensure_ascii=False),
-        )
+        async with conn.transaction():  # INSERT + emit_job_event atomic (H1)
+            task_id = await conn.fetchval(
+                """INSERT INTO enrichment_compose_task
+                       (kind, status, user_id, project_id, book_id, request_json)
+                   VALUES ($1, 'pending', $2, $3, $4, $5::jsonb)
+                   RETURNING task_id""",
+                kind, UUID(user_id), UUID(project_id),
+                UUID(book_id) if book_id else None,
+                json.dumps(request, ensure_ascii=False),
+            )
+            # Unified Job Control Plane P1 — emit the initial 'pending' lifecycle event on
+            # the SAME conn as the INSERT. The compose task's row ``kind``
+            # (profile_suggest / intent_resolve) is the JobEvent kind.
+            await emit_job_event(
+                conn, service=JOB_SERVICE, job_id=str(task_id),
+                owner_user_id=str(user_id), kind=kind, status="pending",
+            )
     return str(task_id)
 
 
@@ -170,17 +180,30 @@ async def _mark(
     error: str | None = None,
 ) -> None:
     async with pool.acquire() as conn:
-        await conn.execute(
-            """UPDATE enrichment_compose_task
-               SET status=$2,
-                   result_json = COALESCE($3::jsonb, result_json),
-                   error_message = $4,
-                   updated_at = now()
-               WHERE task_id=$1""",
-            UUID(task_id), status,
-            json.dumps(result, ensure_ascii=False) if result is not None else None,
-            error,
-        )
+        async with conn.transaction():  # UPDATE + emit_job_event atomic (H1)
+            row = await conn.fetchrow(
+                """UPDATE enrichment_compose_task
+                   SET status=$2,
+                       result_json = COALESCE($3::jsonb, result_json),
+                       error_message = $4,
+                       updated_at = now()
+                   WHERE task_id=$1
+                   RETURNING user_id, kind, status, error_message""",
+                UUID(task_id), status,
+                json.dumps(result, ensure_ascii=False) if result is not None else None,
+                error,
+            )
+            if row is None:
+                return  # no such task — nothing to emit (behavior-preserving)
+            # Unified Job Control Plane P1 — emit the status transition on the SAME conn as
+            # the UPDATE (H1). The compose task's row ``kind`` is the JobEvent kind.
+            cstatus = canonical_status(row["status"])
+            if cstatus is not None:
+                await emit_job_event(
+                    conn, service=JOB_SERVICE, job_id=str(task_id),
+                    owner_user_id=str(row["user_id"]), kind=row["kind"], status=cstatus,
+                    error=job_error(row["error_message"]) if cstatus == "failed" else None,
+                )
 
 
 # ── worker entrypoint ─────────────────────────────────────────────────────────
@@ -233,7 +256,7 @@ async def _claim_for_run(
             # concurrent worker's claim finds no row (skipped_active). FOR UPDATE on the
             # surviving row serialises two workers that both see it claimable.
             row = await conn.fetchrow(
-                """SELECT task_id, kind, status, request_json
+                """SELECT task_id, kind, status, user_id, request_json
                    FROM enrichment_compose_task
                    WHERE task_id = $1
                      AND status <> 'completed'
@@ -261,6 +284,12 @@ async def _claim_for_run(
                    SET status='running', updated_at=now()
                    WHERE task_id=$1""",
                 UUID(task_id),
+            )
+            # Unified Job Control Plane P1 — emit the 'running' claim on the SAME conn as
+            # the claim UPDATE (H1). The row ``kind`` is the JobEvent kind.
+            await emit_job_event(
+                conn, service=JOB_SERVICE, job_id=str(row["task_id"]),
+                owner_user_id=str(row["user_id"]), kind=row["kind"], status="running",
             )
     return "run", {
         "task_id": str(row["task_id"]),

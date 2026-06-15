@@ -23,9 +23,22 @@ class _AcquireCM:
         pass
 
 
-def _make_pool():
+class _TxCM:
+    async def __aenter__(self):
+        return None
+
+    async def __aexit__(self, *_):
+        return False
+
+
+def _make_pool(owner_user_id="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"):
     db = AsyncMock()
     db.execute = AsyncMock()
+    # P1: the running transition is now `UPDATE ... RETURNING owner_user_id`
+    # (fetchrow) + emit_job_event inside `async with db.transaction()`.
+    from uuid import UUID
+    db.fetchrow = AsyncMock(return_value={"owner_user_id": UUID(owner_user_id)})
+    db.transaction = MagicMock(return_value=_TxCM())
     pool = MagicMock()
     pool.acquire = MagicMock(return_value=_AcquireCM(db))
     return pool, db
@@ -52,27 +65,32 @@ def _job_msg(chapter_ids=None):
 # ── Status update ─────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_coordinator_marks_job_running():
-    """Coordinator must UPDATE job status to 'running' before fanning out chapters."""
+async def test_coordinator_marks_job_running(monkeypatch):
+    """Coordinator must UPDATE job status to 'running' before fanning out chapters.
+
+    P1: the running UPDATE is now a fetchrow (RETURNING owner_user_id) inside a tx.
+    """
+    monkeypatch.setattr("app.workers.coordinator.emit_job_event", AsyncMock())
     pool, db = _make_pool()
     from app.workers.coordinator import handle_job_message
     await handle_job_message(_job_msg(), pool, AsyncMock(), AsyncMock())
 
-    db.execute.assert_called_once()
-    sql = db.execute.call_args.args[0]
+    db.fetchrow.assert_called_once()
+    sql = db.fetchrow.call_args.args[0]
     assert "running" in sql
     assert "started_at" in sql
 
 
 @pytest.mark.asyncio
-async def test_coordinator_passes_job_id_to_update():
+async def test_coordinator_passes_job_id_to_update(monkeypatch):
     """The running UPDATE must target the correct job_id."""
+    monkeypatch.setattr("app.workers.coordinator.emit_job_event", AsyncMock())
     pool, db = _make_pool()
     msg = _job_msg()
     from app.workers.coordinator import handle_job_message
     await handle_job_message(msg, pool, AsyncMock(), AsyncMock())
 
-    args = db.execute.call_args.args
+    args = db.fetchrow.call_args.args
     from uuid import UUID
     assert UUID(msg["job_id"]) in args
 
