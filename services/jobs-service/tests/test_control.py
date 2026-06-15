@@ -84,6 +84,7 @@ async def test_forward_unsupported_known_service_501():
     assert control.is_supported("knowledge") is True
     assert control.is_supported("composition") is True
     assert control.is_supported("video_gen") is True
+    assert control.is_supported("lore_enrichment") is True
     assert control.is_supported("translation") is False
     res = await control.forward_control("translation", JID, "cancel", TEST_USER)
     assert res.status_code == 501
@@ -111,6 +112,8 @@ async def test_forward_builds_per_service_url(monkeypatch):
     assert seen["url"].endswith(f"/internal/composition/jobs/{JID}/cancel")
     await control.forward_control("video_gen", JID, "cancel", TEST_USER)
     assert seen["url"].endswith(f"/internal/video_gen/jobs/{JID}/cancel")
+    await control.forward_control("lore_enrichment", JID, "pause", TEST_USER)
+    assert seen["url"].endswith(f"/internal/lore_enrichment/jobs/{JID}/pause")
 
 
 @pytest.mark.asyncio

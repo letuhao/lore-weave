@@ -35,6 +35,12 @@ def test_running_single_call_kind_is_cancel_only():
     assert _vals(derive_control_caps(JobStatus.RUNNING, "video_gen")) == ["cancel"]
 
 
+def test_enrichment_job_is_multi_unit_offers_pause():
+    # lore-enrichment's C8 gap-fill runner dispatches many units → real pause/resume.
+    assert _vals(derive_control_caps(JobStatus.RUNNING, "enrichment_job")) == ["pause", "cancel"]
+    assert _vals(derive_control_caps(JobStatus.PAUSED, "enrichment_job")) == ["resume", "cancel"]
+
+
 def test_unknown_kind_defaults_to_cancel_only_when_running():
     assert _vals(derive_control_caps(JobStatus.RUNNING, "some_new_kind")) == ["cancel"]
 

@@ -17,9 +17,14 @@ from __future__ import annotations
 from loreweave_jobs import ControlCap, JobStatus, TERMINAL
 
 # Kinds that run as multiple dispatched units → support pause/resume. Conservative
-# allowlist; anything else is cancel-only. `composition.*` single ops, `video_gen`,
-# `enrichment_job`, `composition.generate` etc. are single-call → not listed.
-_MULTI_UNIT_KINDS: frozenset[str] = frozenset({"extraction", "translation", "campaign"})
+# allowlist; anything else is cancel-only. Single-call kinds (composition's `generate`/
+# `compose_draft`, `video_gen`, lore-enrichment's one-shot `profile_suggest`/
+# `intent_resolve` compose tasks) are NOT listed. `enrichment_job` IS multi-unit — its
+# C8 runner dispatches many gap-fill units and exposes a real manual pause/resume
+# (re-arms the re-drive worker), so it gets pause (P3-3).
+_MULTI_UNIT_KINDS: frozenset[str] = frozenset(
+    {"extraction", "translation", "campaign", "enrichment_job"}
+)
 
 
 def _is_multi_unit(kind: str) -> bool:

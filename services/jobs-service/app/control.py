@@ -32,7 +32,8 @@ _CONTROL: dict[str, tuple[str, str]] = {
     "knowledge": (settings.knowledge_service_internal_url, "/internal/knowledge/jobs"),
     "composition": (settings.composition_service_internal_url, "/internal/composition/jobs"),
     "video_gen": (settings.video_gen_service_internal_url, "/internal/video_gen/jobs"),
-    # P3-3+: translation / lore_enrichment as they ship.
+    "lore_enrichment": (settings.lore_enrichment_service_internal_url, "/internal/lore_enrichment/jobs"),
+    # P3-3+: translation as it ships.
 }
 
 _TIMEOUT = httpx.Timeout(10.0)

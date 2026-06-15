@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from loreweave_obs import current_otel_trace_id, setup_tracing
 
 from app.api import eval as eval_api
-from app.api import book_profile, compose, compose_tasks, gaps, jobs, observability, proposals, sources, templates, uploads
+from app.api import book_profile, compose, compose_tasks, gaps, internal_job_control, jobs, observability, proposals, sources, templates, uploads
 from app.config import settings
 from app.db.migrate import run_migrations
 from app.db.pool import close_pool, create_pool
@@ -103,3 +103,6 @@ app.include_router(templates.router)
 
 # C15 — internal eval-gate status route (P2/P3 gate signal for C16/C17).
 app.include_router(eval_api.router)
+
+# Unified Job Control Plane P3 — S2S job_id-keyed control (cancel/pause/resume).
+app.include_router(internal_job_control.router)
