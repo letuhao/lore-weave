@@ -28,6 +28,7 @@ from .contract import (
     JobStatus,
 )
 from .consumer import BaseTerminalConsumer
+from .projection_consumer import BaseProjectionConsumer
 from .emit import emit_job_event, emit_job_event_safe
 
 __all__ = [
@@ -39,6 +40,7 @@ __all__ = [
     "JOBS_AGGREGATE_TYPE",
     "TERMINAL_STREAM",
     "BaseTerminalConsumer",
+    "BaseProjectionConsumer",
     "emit_job_event",
     "emit_job_event_safe",
 ]
