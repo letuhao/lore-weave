@@ -142,6 +142,7 @@ class CompositionJobConsumer(BaseTerminalConsumer):
     stream = COMPOSITION_JOBS_STREAM
     group = COMPOSITION_WORKER_GROUP
     start_id = "0"
+    count = 1  # heavy LLM jobs — one-at-a-time for fair multi-replica distribution
     consumer_name_prefix = "composition-worker"
     retry_prefix = "composition:job:retry"
 

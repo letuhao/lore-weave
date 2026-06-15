@@ -66,6 +66,10 @@ class BaseTerminalConsumer(abc.ABC):
     block_ms: int = 5000
     start_id: str = "$"
     dlq_stream: Optional[str] = None
+    #: messages read per blocking xreadgroup. Default 10; set 1 for heavy single-job
+    #: workers where one-at-a-time gives fair multi-replica distribution + a small
+    #: crash-strand blast radius (e.g. composition / lore-enrichment job consumers).
+    count: int = 10
 
     def __init__(
         self,
@@ -133,7 +137,7 @@ class BaseTerminalConsumer(abc.ABC):
             try:
                 results = await r.xreadgroup(
                     self.group, self._consumer_name, {self.stream: ">"},
-                    count=10, block=self.block_ms,
+                    count=self.count, block=self.block_ms,
                 )
                 for _stream, messages in results or []:
                     for msg_id, fields in messages:

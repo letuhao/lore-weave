@@ -255,6 +255,30 @@ async def test_run_dispatches_then_idle_then_cancel_clean_exit():
 
 
 @pytest.mark.asyncio
+async def test_run_uses_configured_count():
+    # MED-1 regression: count is configurable (heavy single-job workers set count=1 for
+    # fair multi-replica distribution). The main read must pass self.count, not a hardcode.
+    class CountedRedis(ScriptedRedis):
+        def __init__(self, script):
+            super().__init__(script)
+            self.read_counts = []
+
+        async def xreadgroup(self, group, consumer, streams, count=None, block=None):
+            sid = list(streams.values())[0]
+            if sid != "0":
+                self.read_counts.append(count)
+            return await super().xreadgroup(group, consumer, streams, count=count, block=block)
+
+    class C1(_Consumer):
+        count = 1
+
+    fake = CountedRedis([("timeout",)])
+    c = C1("redis://x", redis_client=fake)
+    await asyncio.wait_for(c.run(), timeout=2)
+    assert fake.read_counts and all(n == 1 for n in fake.read_counts)
+
+
+@pytest.mark.asyncio
 async def test_run_cancel_on_first_read_exits_cleanly():
     fake = ScriptedRedis([("cancel",)])
     c = _Consumer("redis://x", redis_client=fake)

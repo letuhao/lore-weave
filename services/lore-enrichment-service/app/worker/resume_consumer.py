@@ -160,6 +160,7 @@ class LoreEnrichmentResumeConsumer(BaseTerminalConsumer):
     stream = LORE_ENRICHMENT_RESUME_STREAM
     group = RESUME_GROUP
     start_id = "0"
+    count = 1  # heavy resume jobs — one-at-a-time for fair multi-replica distribution
     consumer_name_prefix = "resume"
     retry_prefix = "lore-enrichment:resume:retry"
 
