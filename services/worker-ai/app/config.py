@@ -59,6 +59,12 @@ class Settings(BaseSettings):
     # + the SDK pure-seam refactor that leave this dormant.
     extraction_decouple_enabled: bool = False
 
+    # Unified Job Control Plane P1 — flip the decoupled-extraction terminal consumer onto
+    # the shared loreweave_jobs.BaseTerminalConsumer (ExtractTerminalConsumer). Default
+    # FALSE = the proven functional consume_llm_terminal_stream (money-path fallback); set
+    # TRUE only after a live extraction E2E confirms the migrated path (no double-spend).
+    extraction_consumer_use_sdk: bool = False
+
     # WX Wave 1b — stuck-resume sweeper. The decoupled finalize is a STRICT tx (no
     # best-effort fallback) and a Redis stream gives no redelivery after ack, so a
     # consumer crash/poison or a submit→persist gap can strand an extraction_jobs row

@@ -770,3 +770,50 @@ async def test_sweep_select_uses_for_update_skip_locked(monkeypatch):
     assert "FOR UPDATE SKIP LOCKED" in sql      # disjoint per-replica claim
     # the LIMIT must precede FOR UPDATE (Postgres grammar: locking clause is last)
     assert sql.index("LIMIT") < sql.index("FOR UPDATE SKIP LOCKED")
+
+
+# ── Unified Job Control Plane P1 — ExtractTerminalConsumer wiring (flag-gated migration) ──
+# Shared transport is unit-tested in the SDK; the legacy consume_llm_terminal_stream
+# transport is covered above. These cover only the new class SEAM: handle()→_handle and
+# sweep_once()→_sweep_once + the base ack/retry path (no internal ack left in handle).
+
+
+async def test_extract_consumer_handle_delegates_to_handle(monkeypatch):
+    from app.llm_extract_consumer import ExtractTerminalConsumer
+
+    seen = {}
+
+    async def _fake_handle(pool, kc, llm, fields):
+        seen["fields"] = fields
+
+    monkeypatch.setattr("app.llm_extract_consumer._handle", _fake_handle)
+    c = ExtractTerminalConsumer("redis://x", object(), AsyncMock(), AsyncMock())
+    r = AsyncMock()
+    await c._process_msg(r, "1-0", {"job_id": "j", "owner_user_id": "u"})
+    assert seen["fields"] == {"job_id": "j", "owner_user_id": "u"}
+    r.xack.assert_awaited_once()  # _handle returned → base acks
+
+
+async def test_extract_consumer_handle_error_leaves_unacked(monkeypatch):
+    from app.llm_extract_consumer import ExtractTerminalConsumer
+
+    async def _boom(pool, kc, llm, fields):
+        raise RuntimeError("transient")
+
+    monkeypatch.setattr("app.llm_extract_consumer._handle", _boom)
+    c = ExtractTerminalConsumer("redis://x", object(), AsyncMock(), AsyncMock())
+    r = AsyncMock()
+    r.incr = AsyncMock(return_value=1)  # below max_retries → redelivered
+    await c._process_msg(r, "1-0", {"job_id": "j"})
+    r.xack.assert_not_called()
+
+
+async def test_extract_consumer_sweep_once_delegates(monkeypatch):
+    from app.llm_extract_consumer import ExtractTerminalConsumer
+
+    async def _fake_sweep(pool, kc, llm, *, timeout_s, batch):
+        return 7
+
+    monkeypatch.setattr("app.llm_extract_consumer._sweep_once", _fake_sweep)
+    c = ExtractTerminalConsumer("redis://x", object(), AsyncMock(), AsyncMock())
+    assert await c.sweep_once(timeout_s=900, batch=20) == 7

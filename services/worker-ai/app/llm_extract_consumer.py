@@ -32,6 +32,8 @@ from uuid import UUID
 
 import redis.asyncio as aioredis
 
+from loreweave_jobs import BaseTerminalConsumer
+
 from app import decoupled_extract as dx
 from app.llm_client import LLMClient, set_billing_user_id, set_campaign_id
 from app.sample_emit import persist_run_sample_best_effort
@@ -621,3 +623,45 @@ async def consume_llm_terminal_stream(
                 await asyncio.sleep(5)
     finally:
         await client.aclose()
+
+
+# ── Unified Job Control Plane P1 — money-path migration onto the shared base ──────
+# The SAME transport recipe as the other 11 consumers, but flag-gated: this class is the
+# NEW path; the functional `consume_llm_terminal_stream` + `run_resume_sweeper` above stay
+# as the proven fallback until a live extraction E2E flips the flag (a regression here
+# double-spends or strands chapters — extra scrutiny). The business state machine (`_handle`
+# → `_resume` → entity/trio/recovery/filter/persist) and the stuck-resume sweep (`_sweep_once`)
+# are reused VERBATIM; only the Redis transport (group/PEL-drain/idle/retry-poison) is the
+# shared scaffold. consumer_name / group / retry-key prefix preserved (PEL continuity).
+class ExtractTerminalConsumer(BaseTerminalConsumer):
+    """Decoupled-extraction terminal-event consumer on the shared transport scaffold.
+    ``handle`` folds one terminal event through the chunk state machine; ``sweep_once``
+    re-drives stranded resume_state rows."""
+
+    stream = TERMINAL_STREAM
+    group = GROUP
+    consumer_name_prefix = "worker-ai-extract"
+    retry_prefix = "worker-ai:extract-resume:retry"
+
+    def __init__(
+        self, redis_url, pool, knowledge_client, llm_client,
+        *, consumer_name: str | None = None, block_ms: int = 5000,
+    ) -> None:
+        self.block_ms = block_ms
+        super().__init__(redis_url, consumer_name=consumer_name)
+        self._pool = pool
+        self._knowledge_client = knowledge_client
+        self._llm_client = llm_client
+
+    async def handle(self, fields: dict) -> None:
+        # _handle returns on no-job-id / no-matching-row (→ base acks) and raises on a
+        # transient fault (→ base bounded-retry-then-poison, identical to the old
+        # _process_msg). The strict-tx finalize + FOR-UPDATE races inside _resume are
+        # unchanged, so at-least-once redelivery + the sweeper stay double-spend-safe.
+        await _handle(self._pool, self._knowledge_client, self._llm_client, fields)
+
+    async def sweep_once(self, *, timeout_s: int, batch: int) -> int:
+        return await _sweep_once(
+            self._pool, self._knowledge_client, self._llm_client,
+            timeout_s=timeout_s, batch=batch,
+        )
