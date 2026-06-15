@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.events.eval_runner import EvalRunner
+from app.events.eval_runner import EvalRunner, STREAM
 
 
 def _fields(event_type="knowledge.extraction_run_completed", payload=None, outbox_id="ob-1"):
@@ -75,7 +75,7 @@ async def test_no_active_rule_skips(monkeypatch):
 async def test_handle_always_acks_non_run_event(monkeypatch):
     runner = _runner()
     r = AsyncMock()
-    await runner._handle(r, "1-0", _fields(event_type="knowledge.entity_corrected"))
+    await runner._handle_message(r, STREAM, "1-0", _fields(event_type="knowledge.entity_corrected"))
     r.xack.assert_awaited_once()  # not a run event -> no eval, but ack
 
 
@@ -85,8 +85,8 @@ async def test_handle_acks_even_on_error(monkeypatch):
         "app.events.eval_runner.get_active_rule", AsyncMock(side_effect=RuntimeError("boom"))
     )
     r = AsyncMock()
-    await runner._handle(r, "1-0", _fields(payload=_run_payload()))
-    r.xack.assert_awaited_once()  # best-effort: ack despite the handler error
+    await runner._handle_message(r, STREAM, "1-0", _fields(payload=_run_payload()))
+    r.xack.assert_awaited_once()  # best-effort: ack-on-error policy
 
 
 # ── Q4b — judge-path gating ───────────────────────────────────────────

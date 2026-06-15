@@ -18,13 +18,12 @@ as the cost governor — plugs in here when ``save_raw_extraction`` projects exi
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
-import platform
 
 import asyncpg
-import redis.asyncio as aioredis
+
+from loreweave_jobs import BaseProjectionConsumer
 
 from app.db.online_eval import (
     extract_run_fields,
@@ -42,8 +41,20 @@ BLOCK_MS = 5000
 _RUN_COMPLETED = "knowledge.extraction_run_completed"
 
 
-class EvalRunner:
-    """Online-eval sampler. One per process; run() as a background task."""
+class EvalRunner(BaseProjectionConsumer):
+    """Online-eval sampler on the shared projection scaffold. Single forward-looking
+    stream (``start_id="$"`` — eval samples are droppable, no backlog replay); best-effort
+    ``ack_on_error`` (a sampled-out / errored event must not linger in the PEL, no retry);
+    so no DLQ and no reclaim. One per process; run() as a background task."""
+
+    streams = [STREAM]
+    group = GROUP_NAME
+    start_id = "$"
+    ack_on_error = True
+    reclaim_every_n_loops = 0
+    count = 20
+    block_ms = BLOCK_MS
+    consumer_name_prefix = "eval-runner"
 
     def __init__(
         self,
@@ -52,72 +63,22 @@ class EvalRunner:
         *,
         consumer_name: str | None = None,
     ) -> None:
-        self._redis_url = redis_url
+        super().__init__(redis_url, consumer_name=consumer_name)
         self._pool = pool
-        self._consumer_name = consumer_name or f"eval-runner-{platform.node()}"
-        self._redis: aioredis.Redis | None = None
-        self._running = False
         self._judge_sdk = None  # lazily built raw SDK for the decoupled judge (Q4b / M1)
         self._knowledge_client = None  # lazily built (Q4b-feed)
 
-    async def _ensure_redis(self) -> aioredis.Redis:
-        if self._redis is None:
-            self._redis = aioredis.from_url(self._redis_url, decode_responses=True)
-        return self._redis
+    async def handle(self, stream: str, msg_id: str, fields: dict) -> None:
+        # Only run-completed events sample; everything else is a no-op (acked). A handler
+        # error is acked by the ack_on_error policy (eval samples are droppable).
+        if fields.get("event_type") == _RUN_COMPLETED:
+            await self._maybe_eval(fields)
 
-    async def _ensure_group(self) -> None:
-        r = await self._ensure_redis()
-        try:
-            await r.xgroup_create(STREAM, GROUP_NAME, id="$", mkstream=True)
-            logger.info("Created consumer group %s on %s", GROUP_NAME, STREAM)
-        except aioredis.ResponseError as e:
-            if "BUSYGROUP" not in str(e):
-                raise
-
-    async def run(self) -> None:
-        await self._ensure_group()
-        self._running = True
-        r = await self._ensure_redis()
-        logger.info(
-            "eval-runner started (group=%s consumer=%s)", GROUP_NAME, self._consumer_name
-        )
-        while self._running:
-            try:
-                results = await r.xreadgroup(
-                    GROUP_NAME, self._consumer_name, {STREAM: ">"}, count=20, block=BLOCK_MS
-                )
-                if not results:
-                    continue
-                for _stream, messages in results:
-                    for msg_id, fields in messages:
-                        await self._handle(r, msg_id, fields)
-            except asyncio.CancelledError:
-                logger.info("eval-runner cancelled, shutting down")
-                break
-            except aioredis.TimeoutError:
-                # redis-py 8: a blocking XREADGROUP with no data within `block`
-                # raises TimeoutError (5.x returned empty). Normal idle — re-block.
-                continue
-            except aioredis.ConnectionError:
-                logger.warning("eval-runner redis lost; reconnecting in 5s")
-                self._redis = None
-                await asyncio.sleep(5)
-                r = await self._ensure_redis()
-            except Exception:
-                logger.exception("eval-runner loop error; retry in 2s")
-                await asyncio.sleep(2)
-        await self.close()
-
-    async def _handle(self, r: aioredis.Redis, msg_id: str, fields: dict[str, str]) -> None:
-        # Best-effort: ALWAYS ack (sampled-out / errored events must not linger
-        # in the PEL — eval samples are droppable, no retry).
-        try:
-            if fields.get("event_type") == _RUN_COMPLETED:
-                await self._maybe_eval(fields)
-        except Exception:
-            logger.exception("eval-runner handle error id=%s", msg_id)
-        finally:
-            await r.xack(STREAM, GROUP_NAME, msg_id)
+    async def close(self) -> None:
+        await super().close()  # closes the Redis client
+        if self._judge_sdk is not None:
+            await self._judge_sdk.aclose()
+            self._judge_sdk = None
 
     async def _maybe_eval(self, fields: dict[str, str]) -> None:
         rule = await get_active_rule(self._pool)
@@ -245,12 +206,3 @@ class EvalRunner:
         )
         if started:
             logger.info("online judge: run=%s started (decoupled)", run["run_id"])
-
-    async def stop(self) -> None:
-        self._running = False
-
-    async def close(self) -> None:
-        if self._redis is not None:
-            await self._redis.aclose()
-        if self._judge_sdk is not None:
-            await self._judge_sdk.aclose()
