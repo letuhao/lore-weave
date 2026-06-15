@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Children, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 
 // D-080 (cosmetic) — a horizontally-scrollable tab strip with edge FADE
 // indicators. The compose panel packs 16 sub-tabs into a narrow, resizable
@@ -31,16 +31,21 @@ export function TabScrollStrip({ children, className, testid }: Props) {
     });
   }, []);
 
+  // /review-impl LOW — key the effect on the tab COUNT, not `children` identity.
+  // `children` is a fresh JSX array every parent render, so depending on it tore
+  // down + rebuilt the ResizeObserver on every render of a hot panel. The count
+  // changes only when the tab set actually changes (e.g. the threads tab toggles),
+  // which is the only content change that alters scroll geometry here.
+  const tabCount = Children.count(children);
   useEffect(() => {
     update();
     const el = ref.current;
     if (!el || typeof ResizeObserver === 'undefined') return;
-    // Recompute when the panel is resized (the strip is in a resizable column)
-    // or the tab set changes (its content box resizes).
+    // Recompute when the panel is resized (the strip is in a resizable column).
     const ro = new ResizeObserver(update);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [update, children]);
+  }, [update, tabCount]);
 
   return (
     <div className="relative">

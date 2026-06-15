@@ -95,8 +95,11 @@ def test_union_merges_member_timelines_sorted_by_event_order():
         str(p1): [_ev("e20", str(p1), 20)],
     }
 
-    async def fake_list(session, *, project_id, **kw):
-        return (per_project.get(project_id, []), len(per_project.get(project_id, [])))
+    async def fake_list(session, *, project_id, limit, **kw):
+        # Honour `limit` + return the TRUE pre-cap total, exactly like the real
+        # list_events_filtered (so the truncation path is genuinely exercised).
+        rows = per_project.get(project_id, [])
+        return (rows[:limit], len(rows))
 
     try:
         with patch(
@@ -121,14 +124,20 @@ def test_union_merges_member_timelines_sorted_by_event_order():
         _teardown()
 
 
-def test_union_caps_and_flags_truncated():
+def test_single_busy_project_over_cap_flags_truncated():
+    """/review-impl MED — ONE member project with more events than the cap. The
+    per-project read returns `limit` rows but its true total exceeds them, so the
+    union stays at exactly `limit`; `len(merged) > limit` alone would read False.
+    The per-project-total signal must still flag truncated (else the FE banner
+    silently hides the overflow)."""
     wp = uuid4()
     repo = _FakeRepo(world_projs=[_P(wp, _TEST_USER)], by_book={})
     book = _FakeBook(items=[])
     events = [_ev(f"e{i}", str(wp), i) for i in range(5)]
 
-    async def fake_list(session, *, project_id, **kw):
-        return (events, len(events))
+    async def fake_list(session, *, project_id, limit, **kw):
+        # Real repo behaviour: rows capped at `limit`, total is the pre-cap count.
+        return (events[:limit], len(events))
 
     try:
         with patch(
@@ -144,7 +153,45 @@ def test_union_caps_and_flags_truncated():
         assert resp.status_code == 200, resp.json()
         body = resp.json()
         assert len(body["events"]) == 3
-        assert body["total"] == 5
+        # the union only SAW `limit` rows (the cap), so total reflects what merged…
+        assert body["total"] == 3
+        # …but the per-project overflow still flags truncated. This is the bug the
+        # fix closes — a fake that ignored `limit` would have hidden it.
+        assert body["truncated"] is True
+    finally:
+        _teardown()
+
+
+def test_multi_project_union_over_cap_flags_truncated():
+    """The other overflow shape — each project under the cap, but the MERGED union
+    exceeds it (len(merged) > limit)."""
+    wp, p1 = uuid4(), uuid4()
+    b1 = uuid4()
+    repo = _FakeRepo(world_projs=[_P(wp, _TEST_USER)], by_book={b1: _P(p1, _TEST_USER)})
+    book = _FakeBook(items=[{"book_id": str(b1)}])
+    per_project = {
+        str(wp): [_ev("a1", str(wp), 1), _ev("a2", str(wp), 2)],
+        str(p1): [_ev("b1", str(p1), 3), _ev("b2", str(p1), 4)],
+    }
+
+    async def fake_list(session, *, project_id, limit, **kw):
+        rows = per_project.get(project_id, [])
+        return (rows[:limit], len(rows))
+
+    try:
+        with patch(
+            "app.routers.public.timeline.list_events_filtered",
+            new=AsyncMock(side_effect=fake_list),
+        ), patch(
+            "app.routers.public.timeline.neo4j_session", new=lambda: _noop_session(),
+        ), patch(
+            "app.routers.public.timeline.enrich_events_with_chapter_titles",
+            new=AsyncMock(return_value=None),
+        ):
+            resp = _client(repo, book).get(f"/v1/knowledge/worlds/{_WORLD}/timeline?limit=3")
+        assert resp.status_code == 200, resp.json()
+        body = resp.json()
+        assert len(body["events"]) == 3  # 4 distinct merged, capped to 3
         assert body["truncated"] is True
     finally:
         _teardown()

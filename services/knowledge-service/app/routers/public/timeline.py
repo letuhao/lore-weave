@@ -325,9 +325,16 @@ async def list_world_timeline(
 
     merged: list[Event] = []
     seen_ids: set[str] = set()
+    # /review-impl MED — each per-project read is itself capped at `limit`, and
+    # `list_events_filtered` returns the TRUE pre-cap count. A single member book
+    # with more than `limit` events would otherwise leave the union at exactly
+    # `limit` → `len(merged) > limit` is False → the FE "showing the first N"
+    # banner never shows though more exist. Track per-project truncation so the
+    # flag is honest whether the overflow is within ONE book or ACROSS the union.
+    any_project_truncated = False
     async with neo4j_session() as session:
         for pid in project_ids:
-            rows, _total = await list_events_filtered(
+            rows, project_total = await list_events_filtered(
                 session,
                 user_id=str(user_id),
                 project_id=pid,
@@ -337,6 +344,8 @@ async def list_world_timeline(
                 limit=limit,
                 offset=0,
             )
+            if project_total > len(rows):
+                any_project_truncated = True
             for e in rows:
                 if e.id not in seen_ids:
                     seen_ids.add(e.id)
@@ -350,7 +359,7 @@ async def list_world_timeline(
         merged.sort(key=lambda e: (e.event_order is None, e.event_order or 0, e.id))
 
     total = len(merged)
-    truncated = total > limit
+    truncated = any_project_truncated or total > limit
     events = merged[:limit]
 
     await enrich_events_with_chapter_titles(events, book_client)
