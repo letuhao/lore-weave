@@ -9,11 +9,15 @@ vi.mock('../../api', () => ({
 }));
 // Step bodies fetch chapters/entities — stub the data layers so the view renders.
 const listEntitiesMock = vi.fn().mockResolvedValue({ entities: [], total: 0 });
+const promoteEntityMock = vi.fn();
 vi.mock('../../../books/api', () => ({
   booksApi: { listChapters: vi.fn().mockResolvedValue({ items: [], total: 0 }) },
 }));
 vi.mock('../../../knowledge/api', () => ({
-  knowledgeApi: { listEntities: (...a: unknown[]) => listEntitiesMock(...a) },
+  knowledgeApi: {
+    listEntities: (...a: unknown[]) => listEntitiesMock(...a),
+    promoteEntity: (...a: unknown[]) => promoteEntityMock(...a),
+  },
 }));
 
 import { DivergenceWizard } from '../DivergenceWizard';
@@ -40,6 +44,7 @@ beforeEach(() => {
   deriveWorkMock.mockReset();
   listEntitiesMock.mockReset();
   listEntitiesMock.mockResolvedValue({ entities: [], total: 0 });
+  promoteEntityMock.mockReset();
 });
 
 // C24-fix (id-space): an anchored (canonical) entity carries a glossary_entity_id;
@@ -98,6 +103,39 @@ describe('DivergenceWizard — override id-space (C24 fix)', () => {
     // No anchor → no override input keyed on the knowledge id, and a hint is shown.
     expect(screen.queryByTestId('divergence-override-input-know-node-disc')).toBeNull();
     expect(await screen.findByTestId('divergence-unanchored-hint-know-node-disc')).toBeTruthy();
+  });
+
+  it('D-079 — "anchor & override" promotes a discovered entity inline, then the override input appears', async () => {
+    const discovered = entity({ id: 'kn-x', name: 'Ghost', glossary_entity_id: null, status: 'discovered' });
+    const anchored = entity({ id: 'kn-x', name: 'Ghost', glossary_entity_id: 'gloss-x', status: 'canonical', anchor_score: 1 });
+    // First load = discovered; after promote invalidates the query the refetch
+    // returns the now-anchored entity.
+    listEntitiesMock.mockResolvedValueOnce({ entities: [discovered], total: 1 });
+    listEntitiesMock.mockResolvedValue({ entities: [anchored], total: 1 });
+    promoteEntityMock.mockResolvedValue(anchored);
+    renderWizard();
+    fireEvent.click(screen.getByTestId('divergence-next')); // →2
+    fireEvent.click(screen.getByTestId('divergence-next')); // →3
+    // Unanchored → an inline "anchor & override" button (not just a go-elsewhere hint).
+    const anchorBtn = await screen.findByTestId('divergence-anchor-kn-x');
+    fireEvent.click(anchorBtn);
+    // promotes the KNOWLEDGE node id (the C9 promote flow anchors it server-side).
+    await waitFor(() => expect(promoteEntityMock).toHaveBeenCalledWith('kn-x', 'tok'));
+    // after promote + refetch the row is anchored → the override input appears.
+    expect(await screen.findByTestId('divergence-override-input-gloss-x')).toBeTruthy();
+  });
+
+  it('D-079 — a failed anchor surfaces an inline error and leaves the row unanchored', async () => {
+    const discovered = entity({ id: 'kn-y', name: 'Wisp', glossary_entity_id: null, status: 'discovered' });
+    listEntitiesMock.mockResolvedValue({ entities: [discovered], total: 1 });
+    promoteEntityMock.mockRejectedValue(new Error('no_book'));
+    renderWizard();
+    fireEvent.click(screen.getByTestId('divergence-next')); // →2
+    fireEvent.click(screen.getByTestId('divergence-next')); // →3
+    fireEvent.click(await screen.findByTestId('divergence-anchor-kn-y'));
+    expect(await screen.findByTestId('divergence-anchor-error-kn-y')).toBeTruthy();
+    // still no override input — the entity stayed unanchored.
+    expect(screen.queryByTestId('divergence-override-input-kn-y')).toBeNull();
   });
 });
 

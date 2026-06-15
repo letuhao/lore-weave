@@ -3,7 +3,7 @@
 // INTERNAL BRANCHING in DivergenceWizard (CSS-hidden / single-active) — never a
 // ternary that UNMOUNTS the others (that would destroy in-flight draft state).
 import { useTranslation } from 'react-i18next';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { booksApi } from '../../books/api';
 import { knowledgeApi } from '../../knowledge/api';
 import type { DivergenceTaxonomy } from '../types';
@@ -100,11 +100,22 @@ export function Step3Overrides({
   token: string | null;
 }) {
   const { t } = useTranslation('composition');
+  const queryClient = useQueryClient();
   const entities = useQuery({
     queryKey: ['composition', 'derive-entities', sourceProjectId],
     queryFn: () => knowledgeApi.listEntities({ project_id: sourceProjectId, limit: 50, sort_by: 'mention_count' }, token!),
     enabled: !!sourceProjectId && !!token,
     select: (d) => d.entities,
+  });
+  // D-079 — "anchor & override" in one action: promote a discovered entity into
+  // the glossary (the existing C9 promote flow — draft + anchor), then refetch so
+  // the row re-renders ANCHORED with its `glossary_entity_id` and the override
+  // input appears. Saves the trip out to the Entities tab. Promote is per-entity;
+  // `promote.variables` identifies the in-flight row for the spinner.
+  const promote = useMutation({
+    mutationFn: (entityId: string) => knowledgeApi.promoteEntity(entityId, token!),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ['composition', 'derive-entities', sourceProjectId] }),
   });
   return (
     <div className="flex flex-col gap-3" data-testid="divergence-step-3">
@@ -140,9 +151,28 @@ export function Step3Overrides({
                   onChange={(ev) => setOverride(anchorId!, ev.target.value.trim() ? { description: ev.target.value } : null)}
                 />
               ) : (
-                <p data-testid={`divergence-unanchored-hint-${e.id}`} className="text-xs text-neutral-500 dark:text-neutral-400">
-                  {t('derive.unanchoredHint', { defaultValue: 'This entity is not yet in the glossary — promote it (Entities tab) before you can override it here.' })}
-                </p>
+                <div className="flex flex-col gap-1">
+                  <p data-testid={`divergence-unanchored-hint-${e.id}`} className="text-xs text-neutral-500 dark:text-neutral-400">
+                    {t('derive.unanchoredHint', { defaultValue: 'This entity is not yet in the glossary — anchor it to override it here.' })}
+                  </p>
+                  {/* D-079 — promote-then-override inline (no trip to the Entities tab). */}
+                  <button
+                    type="button"
+                    data-testid={`divergence-anchor-${e.id}`}
+                    disabled={promote.isPending}
+                    onClick={() => promote.mutate(e.id)}
+                    className="self-start rounded border border-amber-300 px-2 py-1 text-xs text-amber-700 hover:bg-amber-50 disabled:opacity-50 dark:border-amber-700 dark:text-amber-300 dark:hover:bg-amber-950/30"
+                  >
+                    {promote.isPending && promote.variables === e.id
+                      ? t('derive.anchoring', { defaultValue: 'Anchoring…' })
+                      : t('derive.anchorAndOverride', { defaultValue: 'Anchor & override' })}
+                  </button>
+                  {promote.isError && promote.variables === e.id && (
+                    <p data-testid={`divergence-anchor-error-${e.id}`} className="text-xs text-red-600 dark:text-red-400">
+                      {t('derive.anchorFailed', { defaultValue: 'Couldn’t anchor: {{error}}', error: (promote.error as Error).message })}
+                    </p>
+                  )}
+                </div>
               )}
             </div>
           );
