@@ -391,6 +391,7 @@
     "step3Hint": "Ghi đè các trường thực thể cho dị bản. Những gì bạn KHÔNG ghi đè sẽ kế thừa từ chính truyện.",
     "overridden": "Đã ghi đè",
     "overridePlaceholder": "Ghi đè thực thể này (vd: nay là nữ, nay là phản diện)…",
+    "unanchoredHint": "Thực thể này chưa có trong từ điển — hãy đưa nó vào (tab Thực thể) trước khi ghi đè ở đây.",
     "noEntities": "Chưa có thực thể chính truyện — ghi đè sau trong studio.",
     "canonRules": "Quy tắc chính truyện thêm (mỗi dòng một quy tắc)",
     "canonRulesPlaceholder": "vd: Phép thuật không còn tồn tại trong nhánh này.",

@@ -391,6 +391,7 @@
     "step3Hint": "為你的異本覆寫實體欄位。未覆寫的內容會從正史繼承。",
     "overridden": "已覆寫",
     "overridePlaceholder": "覆寫此實體（例：現在是女性、現在是反派）…",
+    "unanchoredHint": "此實體尚未加入詞彙表 — 請先（在實體頁籤）將其提升，才能在此覆寫。",
     "noEntities": "尚無正史實體 — 稍後在工作室覆寫。",
     "canonRules": "新增正史規則（每行一條）",
     "canonRulesPlaceholder": "例：此分支中魔法已不存在。",

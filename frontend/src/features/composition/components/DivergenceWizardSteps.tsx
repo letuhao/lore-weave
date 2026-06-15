@@ -113,21 +113,37 @@ export function Step3Overrides({
       </p>
       <div className="max-h-52 overflow-y-auto rounded border border-neutral-200 dark:border-neutral-700">
         {(entities.data ?? []).map((e) => {
-          const ov = overrides[e.id];
+          // ID-SPACE (C24 fix): the packer's present-lens keys overrides on the
+          // GLOSSARY anchor (`glossary_entity_id`), NOT the knowledge node id
+          // (`e.id`). Capture the override target as the anchor for an anchored
+          // (canonical) entity. An UNANCHORED (discovered) entity has no anchor to
+          // key on — overriding it would write the knowledge node id, which the
+          // present-lens never matches (the override would silently no-op). So we
+          // DISALLOW it with a clear hint (anchor it first via the Entities tab),
+          // rather than writing an id-space the packer can't resolve.
+          const anchorId = e.glossary_entity_id;
+          const anchored = Boolean(anchorId);
+          const ov = anchorId ? overrides[anchorId] : undefined;
           const desc = typeof ov?.description === 'string' ? (ov.description as string) : '';
           return (
             <div key={e.id} data-testid={`divergence-entity-row-${e.id}`} className="flex flex-col gap-1 border-b border-neutral-100 px-2 py-1.5 text-sm last:border-0 dark:border-neutral-800">
               <div className="flex items-center justify-between">
                 <span className="font-medium">{e.name} <span className="text-xs text-neutral-400">({e.kind})</span></span>
-                {ov && <span data-testid={`divergence-overridden-${e.id}`} className="rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800 dark:bg-amber-900 dark:text-amber-200">{t('derive.overridden', { defaultValue: 'Overridden' })}</span>}
+                {ov && <span data-testid={`divergence-overridden-${anchorId}`} className="rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800 dark:bg-amber-900 dark:text-amber-200">{t('derive.overridden', { defaultValue: 'Overridden' })}</span>}
               </div>
-              <input
-                data-testid={`divergence-override-input-${e.id}`}
-                className="rounded border border-neutral-300 bg-transparent px-2 py-1 text-xs dark:border-neutral-600"
-                placeholder={t('derive.overridePlaceholder', { defaultValue: 'Override this entity (e.g. now a woman, now a villain)…' })}
-                value={desc}
-                onChange={(ev) => setOverride(e.id, ev.target.value.trim() ? { description: ev.target.value } : null)}
-              />
+              {anchored ? (
+                <input
+                  data-testid={`divergence-override-input-${anchorId}`}
+                  className="rounded border border-neutral-300 bg-transparent px-2 py-1 text-xs dark:border-neutral-600"
+                  placeholder={t('derive.overridePlaceholder', { defaultValue: 'Override this entity (e.g. now a woman, now a villain)…' })}
+                  value={desc}
+                  onChange={(ev) => setOverride(anchorId!, ev.target.value.trim() ? { description: ev.target.value } : null)}
+                />
+              ) : (
+                <p data-testid={`divergence-unanchored-hint-${e.id}`} className="text-xs text-neutral-500 dark:text-neutral-400">
+                  {t('derive.unanchoredHint', { defaultValue: 'This entity is not yet in the glossary — promote it (Entities tab) before you can override it here.' })}
+                </p>
+              )}
             </div>
           );
         })}

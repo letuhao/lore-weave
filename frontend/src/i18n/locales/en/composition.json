@@ -391,6 +391,7 @@
     "step3Hint": "Override entity fields for your dị bản. Anything you do NOT override is inherited from canon.",
     "overridden": "Overridden",
     "overridePlaceholder": "Override this entity (e.g. now a woman, now a villain)…",
+    "unanchoredHint": "This entity is not yet in the glossary — promote it (Entities tab) before you can override it here.",
     "noEntities": "No canon entities yet — author overrides later in the studio.",
     "canonRules": "Added canon rules (one per line)",
     "canonRulesPlaceholder": "e.g. Magic no longer exists in this branch.",
