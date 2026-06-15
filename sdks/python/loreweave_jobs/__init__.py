@@ -21,6 +21,7 @@ from __future__ import annotations
 from .contract import (
     JOBS_AGGREGATE_TYPE,
     JOBS_STREAM,
+    TERMINAL,
     TERMINAL_STREAM,
     ControlCap,
     JobEvent,
@@ -33,6 +34,7 @@ from .emit import emit_job_event, emit_job_event_safe
 
 __all__ = [
     "JobStatus",
+    "TERMINAL",
     "ControlCap",
     "JobRecord",
     "JobEvent",

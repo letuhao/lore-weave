@@ -536,6 +536,35 @@ services:
     ports:
       - "8223:8095"
 
+  jobs-service:
+    # Unified Job Control Plane P2 — central job projection + read API + SSE.
+    # Consumes loreweave:events:jobs (outbox-relayed by worker-infra) into a
+    # unified job_projection table; serves /v1/jobs (list/detail/SSE). Context =
+    # repo root so the Dockerfile can COPY sdks/python (loreweave_jobs +
+    # loreweave_obs). Makes NO provider calls; control routing (P3) is S2S only.
+    build:
+      context: ..
+      dockerfile: services/jobs-service/Dockerfile
+      labels: *build-labels
+    environment:
+      DATABASE_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_jobs
+      JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # Projection consumer reads loreweave:events:jobs. Reconnect loop tolerates
+      # redis startup races, so redis is NOT a hard depends_on.
+      REDIS_URL: redis://redis:6379
+      PORT: "8096"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8096/health')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    ports:
+      - "8224:8096"
+
   translation-worker:
     # Phase 4c-α: context bumped to repo root for SDK install.
     # restart policy matches sibling background workers (worker-infra/worker-ai):
@@ -1195,6 +1224,8 @@ services:
       LEARNING_SERVICE_URL: http://learning-service:8094
       # LOOM M7 — composition-service (co-writer). Same in-cluster pattern.
       COMPOSITION_SERVICE_URL: http://composition-service:8093
+      # Unified Job Control Plane P2 — jobs-service (/v1/jobs list/detail/SSE).
+      JOBS_SERVICE_URL: http://jobs-service:8096
       RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}

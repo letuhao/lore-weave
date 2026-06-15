@@ -81,3 +81,8 @@ WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_events')\ge
 -- created by video-gen-service migrate.py, mirroring the M1 job-row pattern)
 SELECT 'CREATE DATABASE loreweave_video_gen'
 WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_video_gen')\gexec
+
+-- Unified Job Control Plane P2 — jobs-service projection (job_projection +
+-- dead_letter_events; tables created by jobs-service migrate.py)
+SELECT 'CREATE DATABASE loreweave_jobs'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_jobs')\gexec

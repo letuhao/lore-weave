@@ -27,6 +27,7 @@ export function configureGatewayApp(
     loreEnrichmentUrl: string;
     learningUrl: string;
     compositionUrl: string;
+    jobsUrl: string;
   },
 ): void {
   app.enableCors({
@@ -202,6 +203,15 @@ export function configureGatewayApp(
     pathFilter: (pathname: string) => pathname.startsWith('/v1/lore-enrichment'),
   });
 
+  // Unified Job Control Plane P2 — jobs-service (/v1/jobs list/detail + SSE
+  // stream). `selfHandleResponse:false` (default) so GET /v1/jobs/stream passes
+  // through un-buffered, the chat/composition SSE precedent.
+  const jobsProxy = createProxyMiddleware({
+    target: urls.jobsUrl,
+    changeOrigin: true,
+    pathFilter: (pathname: string) => pathname.startsWith('/v1/jobs'),
+  });
+
   // Phase B — learning-service (Axis-1 correction read API).
   const learningProxy = createProxyMiddleware({
     target: urls.learningUrl,
@@ -360,6 +370,11 @@ export function configureGatewayApp(
     res: Response,
     next: NextFunction,
   ) => void;
+  const jobsProxyFn = jobsProxy as unknown as (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => void;
   instance.use((req: Request, res: Response, next: NextFunction) => {
     if (req.path.startsWith('/v1/auth') || req.path.startsWith('/v1/account') || req.path.startsWith('/v1/me/preferences') || req.path.startsWith('/v1/users')) {
       return authProxyFn(req, res, next);
@@ -423,6 +438,9 @@ export function configureGatewayApp(
     }
     if (req.path.startsWith('/v1/lore-enrichment')) {
       return loreEnrichmentProxyFn(req, res, next);
+    }
+    if (req.path.startsWith('/v1/jobs')) {
+      return jobsProxyFn(req, res, next);
     }
     return next();
   });
