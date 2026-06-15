@@ -51,6 +51,17 @@
     "loadFailed": "Failed to load the world graph: {{error}}",
     "empty": "No world knowledge yet — build the bible or extract a member book to roll its graph up here."
   },
+  "timeline": {
+    "title": "World timeline",
+    "subtitle": "A read-only roll-up of every member book’s canon timeline, in narrative order.",
+    "counts": "{{count}} events",
+    "sources": "across {{count}} book(s)",
+    "truncated": "showing the first {{n}}",
+    "chapterLabel": "Chapter",
+    "loading": "Loading world timeline…",
+    "loadFailed": "Failed to load the world timeline: {{error}}",
+    "empty": "No timeline events yet — extract a member book to roll its timeline up here."
+  },
   "populate": {
     "addBook": "Add a book",
     "createWhatIf": "Create a what-if",

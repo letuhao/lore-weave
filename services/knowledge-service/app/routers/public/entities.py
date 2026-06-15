@@ -59,6 +59,7 @@ from app.db.repositories import VersionMismatchError
 from app.db.repositories.entity_alias_map import EntityAliasMapRepo
 from app.db.repositories.projects import ProjectsRepo
 from app.clients.book_client import BookClient, BookServiceUnavailable, WorldNotFound
+from app.world_rollup import resolve_world_project_ids
 from app.clients.embedding_client import EmbeddingClient, EmbeddingError
 from app.clients.glossary_client import GlossaryClient
 from app.extraction.entity_resolver import normalize_kind_for_anchor_lookup
@@ -843,7 +844,9 @@ async def get_world_subgraph_endpoint(
     components, tagged by ``source_project_id`` so the FE legends each book.
     """
     try:
-        member_books = await book.list_world_books(world_id, user_id)
+        project_ids = await resolve_world_project_ids(
+            world_id=world_id, user_id=user_id, repo=repo, book=book
+        )
     except WorldNotFound:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="world not found"
@@ -853,29 +856,6 @@ async def get_world_subgraph_endpoint(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="world membership unavailable",
         )
-
-    project_ids: list[str] = []
-    seen: set[str] = set()
-    # The world-level (bible) project — the world's own authored-lore partition.
-    for p in await repo.list(user_id, world_id=world_id, limit=100):
-        pid = str(p.project_id)
-        if pid not in seen:
-            seen.add(pid)
-            project_ids.append(pid)
-    # Each member book's canonical project (own-partition; is_derivative excluded
-    # by get_by_book). A book owned by someone else (shared into the world) is
-    # skipped — we can't read another user's partition, so it would contribute
-    # nothing anyway (M0: shared-book rollup is out of scope).
-    for b in member_books:
-        bid = b.get("book_id")
-        if not bid:
-            continue
-        bp = await repo.get_by_book(UUID(str(bid)))
-        if bp is not None and bp.user_id == user_id:
-            pid = str(bp.project_id)
-            if pid not in seen:
-                seen.add(pid)
-                project_ids.append(pid)
 
     async with neo4j_session() as session:
         return await get_world_subgraph(

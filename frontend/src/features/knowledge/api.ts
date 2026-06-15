@@ -682,6 +682,15 @@ export interface TimelineResponse {
   total: number;
 }
 
+// D-WORLD-TIMELINE-ROLLUP — the world timeline union (mirror of the W2 graph
+// rollup). Events carry their own `project_id` so the FE can legend per book;
+// `truncated` flags that the merged union exceeded the cap.
+export interface WorldTimelineResponse {
+  events: TimelineEvent[];
+  total: number;
+  truncated: boolean;
+}
+
 // ── K19e.5 — Drawer (passage) search ──────────────────────────────────
 
 /**
@@ -1710,6 +1719,26 @@ export const knowledgeApi = {
     const q = qs.toString();
     return apiJson<TimelineResponse>(
       `${BASE}/timeline${q ? `?${q}` : ''}`,
+      { token },
+    );
+  },
+
+  // ── D-WORLD-TIMELINE-ROLLUP — GET /worlds/{id}/timeline ──────────────
+  //
+  // The world's canon timeline rollup: a UNION of each member book's timeline +
+  // the world-level (bible) project, merged + re-sorted server-side. Same
+  // owner-scoping / 404 / 503 semantics as the world subgraph. Read-only.
+  getWorldTimeline(
+    worldId: string,
+    params: { sort_by?: TimelineSortBy; limit?: number },
+    token: string,
+  ): Promise<WorldTimelineResponse> {
+    const qs = new URLSearchParams();
+    if (params.sort_by) qs.set('sort_by', params.sort_by);
+    if (params.limit != null) qs.set('limit', String(params.limit));
+    const q = qs.toString();
+    return apiJson<WorldTimelineResponse>(
+      `${BASE}/worlds/${encodeURIComponent(worldId)}/timeline${q ? `?${q}` : ''}`,
       { token },
     );
   },

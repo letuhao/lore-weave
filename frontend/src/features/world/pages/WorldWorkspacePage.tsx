@@ -4,6 +4,7 @@ import { ArrowLeft, Globe2 } from 'lucide-react';
 import { useWorld } from '../hooks/useWorld';
 import { WorldLorePanel } from '../components/WorldLorePanel';
 import { WorldGraphSection } from '../components/WorldGraphSection';
+import { WorldTimelineSection } from '../components/WorldTimelineSection';
 import { LivingWorldTree } from '../components/LivingWorldTree';
 import { WorldPopulateActions } from '../components/WorldPopulateActions';
 
@@ -62,6 +63,9 @@ export function WorldWorkspacePage() {
 
           {/* Read-only world graph — the W2 rollup union (G4). */}
           <WorldGraphSection worldId={worldId} />
+
+          {/* Read-only world timeline — the rollup union (D-WORLD-TIMELINE-ROLLUP). */}
+          <WorldTimelineSection worldId={worldId} />
         </>
       )}
     </div>

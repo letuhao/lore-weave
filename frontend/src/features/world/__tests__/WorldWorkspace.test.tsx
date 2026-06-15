@@ -49,6 +49,11 @@ vi.mock('../hooks/useWorldSubgraph', () => ({
     isLoading: false, isFetching: false, error: null, refetch: vi.fn(),
   }),
 }));
+vi.mock('../hooks/useWorldTimeline', () => ({
+  useWorldTimeline: () => ({
+    events: [], sourceCount: 0, truncated: false, isLoading: false, error: null,
+  }),
+}));
 
 function renderWorkspace() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
