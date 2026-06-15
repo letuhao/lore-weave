@@ -203,3 +203,81 @@ async def test_list_sql_status_value_filters_extraction_status_non_archived():
     # user_id $1, status $2, fetch_limit $3
     assert "AND NOT is_archived AND extraction_status = $2" in q
     assert pool.conn.params == (user, "ready", 51)
+
+
+# ── G4 (world-level project) — world_id filter + HOME-browse exclusion ──
+
+
+@pytest.mark.asyncio
+async def test_list_sql_home_browse_hides_world_projects():
+    """No book_id AND no world_id (the HOME browse) ⇒ exclude world-level
+    projects so the bible/world project never shows as a phantom row. The
+    predicate is static (no bound param) so the placeholder math is unchanged."""
+    pool = _RecordingPool()
+    repo = ProjectsRepo(pool)
+    user = uuid4()
+    await repo.list(user, limit=50)
+    q = _norm(pool.conn.query)
+    assert "AND world_id IS NULL" in q
+    assert "world_id =" not in q
+    # static predicate adds no param — still user_id $1, fetch_limit $2
+    assert q.endswith("LIMIT $2")
+    assert pool.conn.params == (user, 51)
+
+
+@pytest.mark.asyncio
+async def test_list_sql_world_filter_returns_world_project():
+    """An explicit world_id filter returns that world's project — the
+    HOME exclusion is replaced by an equality bind."""
+    pool = _RecordingPool()
+    repo = ProjectsRepo(pool)
+    user, world = uuid4(), uuid4()
+    await repo.list(user, limit=50, world_id=world)
+    q = _norm(pool.conn.query)
+    # user_id $1, world_id $2, fetch_limit $3
+    assert "AND world_id = $2" in q
+    assert "world_id IS NULL" not in q
+    assert q.endswith("LIMIT $3")
+    assert pool.conn.params == (user, world, 51)
+
+
+@pytest.mark.asyncio
+async def test_list_sql_book_filter_exempt_from_world_exclusion():
+    """A book_id filter (editor panel / useWorldProject graph resolver) must
+    STILL resolve the bible book's world project — so the HOME world-exclusion
+    is NOT applied when book_id is given."""
+    pool = _RecordingPool()
+    repo = ProjectsRepo(pool)
+    user, book = uuid4(), uuid4()
+    await repo.list(user, limit=50, book_id=book)
+    q = _norm(pool.conn.query)
+    assert "world_id IS NULL" not in q
+    assert "world_id =" not in q
+    assert "AND book_id = $2" in q
+    assert pool.conn.params == (user, book, 51)
+
+
+@pytest.mark.asyncio
+async def test_list_sql_world_and_book_placeholder_math():
+    """world_id + book_id together: book_pred binds $2, world_pred binds $3,
+    fetch_limit $4 — the combo no other test exercises."""
+    pool = _RecordingPool()
+    repo = ProjectsRepo(pool)
+    user, book, world = uuid4(), uuid4(), uuid4()
+    await repo.list(user, limit=5, book_id=book, world_id=world)
+    q = _norm(pool.conn.query)
+    assert "AND book_id = $2" in q
+    assert "AND world_id = $3" in q
+    assert q.endswith("LIMIT $4")
+    assert pool.conn.params == (user, book, world, 6)
+
+
+@pytest.mark.asyncio
+async def test_list_sql_world_filter_is_user_scoped():
+    """The world predicate is ANDed after the unconditional user scope."""
+    pool = _RecordingPool()
+    repo = ProjectsRepo(pool)
+    user, world = uuid4(), uuid4()
+    await repo.list(user, world_id=world)
+    q = _norm(pool.conn.query)
+    assert q.index("user_id = $1") < q.index("world_id =")

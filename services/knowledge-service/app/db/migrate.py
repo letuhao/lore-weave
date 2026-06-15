@@ -870,6 +870,23 @@ ALTER TABLE knowledge_projects
   ADD COLUMN IF NOT EXISTS genre TEXT;
 
 -- ═══════════════════════════════════════════════════════════════
+-- G4 (world-level knowledge project, 2026-06-15) — world_id binding.
+-- A world's dedicated knowledge partition (bound to its hidden bible
+-- book) carries world_id so it has first-class identity independent of
+-- "the project whose book_id == the bible book". FK-by-convention to
+-- book-service worlds.id (cross-DB, no SQL FK — same as user_id/book_id).
+-- NULL for every normal per-book / general / derivative project, so the
+-- column is additive + backward-compatible (existing rows read back NULL).
+-- The partial index serves the world-rollup resolver (list WHERE world_id);
+-- the HOME projects browser excludes world_id IS NOT NULL rows in the repo.
+-- ═══════════════════════════════════════════════════════════════
+ALTER TABLE knowledge_projects
+  ADD COLUMN IF NOT EXISTS world_id UUID;
+
+CREATE INDEX IF NOT EXISTS idx_knowledge_projects_world
+  ON knowledge_projects(world_id) WHERE world_id IS NOT NULL;
+
+-- ═══════════════════════════════════════════════════════════════
 -- Q4b-feed — per-run items+source sample for the online LLM judge
 -- (2026-06-01). docs/plans/2026-06-01-q4b-feed-extraction-run-samples.md
 --

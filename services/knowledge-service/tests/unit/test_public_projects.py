@@ -38,6 +38,7 @@ def _make_project(
     extraction_status: str = "disabled",
     embedding_model: str | None = None,
     book_id: UUID | None = None,
+    world_id: UUID | None = None,
 ) -> Project:
     now = created_at or datetime.now(timezone.utc)
     return Project(
@@ -47,6 +48,7 @@ def _make_project(
         description="",
         project_type="book",
         book_id=book_id,
+        world_id=world_id,
         instructions="",
         extraction_enabled=False,
         extraction_status=extraction_status,
@@ -85,6 +87,7 @@ class FakeProjectsRepo:
         cursor_sort_value: object | None = None,
         cursor_project_id: UUID | None = None,
         book_id: UUID | None = None,
+        world_id: UUID | None = None,
         search: str | None = None,
         sort_by: str = "created_at",
         sort_dir: str = "desc",
@@ -99,11 +102,20 @@ class FakeProjectsRepo:
                 return not p.is_archived and p.extraction_status == status
             return include_archived or not p.is_archived
 
+        # G4: world-level project visibility (mirrors the real repo).
+        def _world_ok(p: Project) -> bool:
+            if world_id is not None:
+                return p.world_id == world_id
+            if book_id is None:
+                return p.world_id is None  # HOME browse hides world projects
+            return True  # a book_id filter is exempt (resolves the bible project)
+
         q = (search or "").strip().lower()
         rows = [
             p for (uid, _), p in self._rows.items()
             if uid == user_id and _status_ok(p)
             and (book_id is None or p.book_id == book_id)
+            and _world_ok(p)
             and (not q or q in p.name.lower())
         ]
 
@@ -136,6 +148,7 @@ class FakeProjectsRepo:
             "description": data.description,
             "project_type": data.project_type,
             "book_id": data.book_id,
+            "world_id": data.world_id,
             "instructions": data.instructions,
         })
         self.seed(proj)
@@ -305,6 +318,92 @@ def test_list_filters_by_book_id(
 def test_list_book_id_invalid_uuid_returns_422(client: TestClient):
     resp = client.get("/v1/knowledge/projects?book_id=not-a-uuid")
     assert resp.status_code == 422
+
+
+# ── G4 (world-level project) — world_id filter, HOME hide, cursor bind ──
+
+
+def test_list_home_browse_hides_world_level_project(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID
+):
+    """A world-level project (world_id set) must NOT appear in the HOME
+    projects browse — only normal projects do."""
+    repo.seed(_make_project(auth_user_id, name="normal"))
+    repo.seed(_make_project(auth_user_id, name="World Bible", world_id=uuid4()))
+
+    resp = client.get("/v1/knowledge/projects")
+    assert resp.status_code == 200
+    assert [p["name"] for p in resp.json()["items"]] == ["normal"]
+
+
+def test_list_world_id_returns_world_project(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID
+):
+    """?world_id= resolves a world's dedicated project; other worlds' and
+    normal projects are excluded."""
+    world = uuid4()
+    repo.seed(_make_project(auth_user_id, name="this-world", world_id=world))
+    repo.seed(_make_project(auth_user_id, name="other-world", world_id=uuid4()))
+    repo.seed(_make_project(auth_user_id, name="normal"))
+
+    resp = client.get(f"/v1/knowledge/projects?world_id={world}")
+    assert resp.status_code == 200
+    assert [p["name"] for p in resp.json()["items"]] == ["this-world"]
+
+
+def test_list_book_id_still_resolves_world_project(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID
+):
+    """useWorldProject resolves the world graph via ?book_id=<bibleBook>.
+    A book_id filter is EXEMPT from the HOME world-hide, so the bible
+    book's world-level project is still returned."""
+    bible_book, world = uuid4(), uuid4()
+    repo.seed(_make_project(
+        auth_user_id, name="World Bible", book_id=bible_book, world_id=world
+    ))
+
+    resp = client.get(f"/v1/knowledge/projects?book_id={bible_book}")
+    assert resp.status_code == 200
+    assert [p["name"] for p in resp.json()["items"]] == ["World Bible"]
+
+
+def test_list_world_id_invalid_uuid_returns_422(client: TestClient):
+    resp = client.get("/v1/knowledge/projects?world_id=not-a-uuid")
+    assert resp.status_code == 422
+
+
+def test_create_project_with_world_id_persists_binding(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID
+):
+    """POST with world_id stamps the binding (world-create provisioning)."""
+    world = uuid4()
+    resp = client.post(
+        "/v1/knowledge/projects",
+        json={"name": "World Bible", "project_type": "book", "world_id": str(world)},
+    )
+    assert resp.status_code == 201
+    assert resp.json()["world_id"] == str(world)
+
+
+def test_list_cursor_minted_under_one_world_id_rejected_under_another(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID
+):
+    """world_id shapes the filtered population (HOME hides world projects;
+    ?world_id returns one), so a cursor minted under one world_id is
+    rejected (400) when replayed under a different world scope."""
+    world = uuid4()
+    for nm in ["w1", "w2", "w3"]:
+        repo.seed(_make_project(auth_user_id, name=nm, world_id=world))
+    page1 = client.get(
+        f"/v1/knowledge/projects?world_id={world}&sort_by=name&sort_dir=asc&limit=2"
+    ).json()
+    cursor = page1["next_cursor"]
+    assert cursor is not None
+    # replay the same cursor under the HOME browse (no world_id) → 400
+    resp = client.get(
+        f"/v1/knowledge/projects?sort_by=name&sort_dir=asc&cursor={cursor}"
+    )
+    assert resp.status_code == 400
 
 
 def test_list_pagination_cursor_round_trip(

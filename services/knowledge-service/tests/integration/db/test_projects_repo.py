@@ -64,6 +64,77 @@ async def test_list_filters_by_book_id(pool):
     assert await repo.list(user, book_id=uuid4()) == []
 
 
+# ── G4 (world-level project) — real-PG world_id binding ────────────────
+
+
+@pytest.mark.asyncio
+async def test_create_or_get_stamps_world_id_idempotently(pool):
+    """G4: world-create provisions the world-level project via create_or_get
+    with world_id. A re-provision for the same (user, bible book) returns the
+    SAME project and stamps world_id if it wasn't carried yet — never dups."""
+    repo = ProjectsRepo(pool)
+    user, bible_book, world = uuid4(), uuid4(), uuid4()
+    # first provision WITHOUT world_id (a pre-existing bible-book project)
+    p1, c1 = await repo.create_or_get(
+        user, ProjectCreate(name="World Bible", project_type="book", book_id=bible_book)
+    )
+    assert c1 is True and p1.world_id is None
+    # re-provision WITH world_id → same project, now stamped (idempotent)
+    p2, c2 = await repo.create_or_get(
+        user,
+        ProjectCreate(
+            name="World Bible", project_type="book",
+            book_id=bible_book, world_id=world,
+        ),
+    )
+    assert c2 is False
+    assert p2.project_id == p1.project_id
+    assert p2.world_id == world
+    # exactly one project for the bible book
+    assert len(await repo.list(user, world_id=world)) == 1
+
+
+@pytest.mark.asyncio
+async def test_world_level_project_hidden_from_home_but_book_id_resolves(pool):
+    """G4: a world-level project (world_id set) is excluded from the HOME
+    browse, returned by ?world_id, and STILL resolvable by ?book_id (the
+    useWorldProject graph resolver)."""
+    repo = ProjectsRepo(pool)
+    user, bible_book, world = uuid4(), uuid4(), uuid4()
+    await repo.create(user, _mk("normal-1"))
+    wp, _ = await repo.create_or_get(
+        user,
+        ProjectCreate(
+            name="World Bible", project_type="book",
+            book_id=bible_book, world_id=world,
+        ),
+    )
+    # HOME browse excludes the world project, keeps the normal one
+    home = await repo.list(user)
+    assert wp.project_id not in {p.project_id for p in home}
+    assert "normal-1" in {p.name for p in home}
+    # ?world_id returns it
+    by_world = await repo.list(user, world_id=world)
+    assert [p.project_id for p in by_world] == [wp.project_id]
+    # ?book_id (the bible book) still resolves it — exempt from the HOME hide
+    by_book = await repo.list(user, book_id=bible_book)
+    assert [p.project_id for p in by_book] == [wp.project_id]
+
+
+@pytest.mark.asyncio
+async def test_patch_clears_world_id(pool):
+    """G4: PATCH world_id=None detaches a project from its world."""
+    repo = ProjectsRepo(pool)
+    user, book, world = uuid4(), uuid4(), uuid4()
+    p, _ = await repo.create_or_get(
+        user,
+        ProjectCreate(name="wb", project_type="book", book_id=book, world_id=world),
+    )
+    assert p.world_id == world
+    cleared = await repo.update(user, p.project_id, ProjectUpdate(world_id=None))
+    assert cleared is not None and cleared.world_id is None
+
+
 @pytest.mark.asyncio
 async def test_list_by_book_id_is_user_scoped(pool):
     """The book filter must not leak another user's project for the same book."""

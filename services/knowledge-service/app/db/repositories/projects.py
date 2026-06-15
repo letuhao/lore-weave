@@ -26,7 +26,7 @@ _SELECT_COLS = """
   rerank_model, rerank_model_source,
   extraction_config, last_extracted_at, estimated_cost_usd, actual_cost_usd,
   is_archived, tool_calling_enabled, memory_remember_confirm, save_raw_extraction,
-  genre, is_derivative, version, created_at, updated_at
+  genre, is_derivative, world_id, version, created_at, updated_at
 """
 
 # Explicit allowlist for dynamic UPDATE SET. Pydantic's ProjectUpdate already
@@ -57,7 +57,10 @@ _UPDATABLE_COLUMNS: frozenset[str] = frozenset(
      # source. rerank_model is nullable (clears the selection → raw-search skips
      # rerank); rerank_model_source is NOT NULL (default 'user_model') so, like
      # tool_calling_enabled, an explicit None is skipped. FE picker = S0b.
-     "rerank_model", "rerank_model_source"}
+     "rerank_model", "rerank_model_source",
+     # G4: attach/detach a project to a world. Nullable (explicit None clears
+     # the world link) — listed in _NULLABLE_UPDATE_COLUMNS below.
+     "world_id"}
 )
 
 # Columns that accept NULL. For everything else, a None value on an
@@ -72,7 +75,9 @@ _UPDATABLE_COLUMNS: frozenset[str] = frozenset(
 _NULLABLE_UPDATE_COLUMNS: frozenset[str] = frozenset(
     {"book_id", "embedding_model", "embedding_dimension", "genre",
      # D-RERANK-NOT-BYOK: None clears the rerank model selection.
-     "rerank_model"}
+     "rerank_model",
+     # G4: None clears the world link (detach a project from a world).
+     "world_id"}
 )
 
 
@@ -142,8 +147,8 @@ class ProjectsRepo:
         query = f"""
         INSERT INTO knowledge_projects
           (user_id, name, description, project_type, book_id, instructions,
-           genre, is_derivative)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+           genre, is_derivative, world_id)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         RETURNING {_SELECT_COLS}
         """
         return await conn.fetchrow(
@@ -159,6 +164,8 @@ class ProjectsRepo:
             # fresh partition; stamp is_derivative so the source book's
             # create_or_get / get_by_book never hand it back.
             data.force_new,
+            # G4: world-level project binding (NULL for normal projects).
+            data.world_id,
         )
 
     async def create_or_get(
@@ -210,6 +217,26 @@ class ProjectsRepo:
                     user_id, data.book_id,
                 )
                 if existing is not None:
+                    # G4: idempotent world-binding. If the caller supplied a
+                    # world_id the existing bible-book project doesn't yet carry
+                    # (first world-create binding, or a re-provision after the
+                    # column landed), stamp it in-place under the same advisory
+                    # lock — never duplicates the project. Not a content edit, so
+                    # `version` is left untouched (If-Match optimistic locking is
+                    # for user PATCHes, not internal provisioning).
+                    if (
+                        data.world_id is not None
+                        and existing["world_id"] != data.world_id
+                    ):
+                        existing = await conn.fetchrow(
+                            f"""
+                            UPDATE knowledge_projects
+                            SET world_id = $3, updated_at = now()
+                            WHERE user_id = $1 AND project_id = $2
+                            RETURNING {_SELECT_COLS}
+                            """,
+                            user_id, existing["project_id"], data.world_id,
+                        )
                     return _row_to_project(existing), False
                 return _row_to_project(await self._insert(conn, user_id, data)), True
 
@@ -222,6 +249,7 @@ class ProjectsRepo:
         cursor_sort_value: object | None = None,
         cursor_project_id: UUID | None = None,
         book_id: UUID | None = None,
+        world_id: UUID | None = None,
         search: str | None = None,
         sort_by: str = "created_at",
         sort_dir: str = "desc",
@@ -312,12 +340,27 @@ class ProjectsRepo:
         if book_id is not None:
             params.append(book_id)
             book_pred = f" AND book_id = ${len(params)}"
+
+        # G4: world-level project visibility.
+        # - explicit world_id filter ⇒ return that world's project(s) (the
+        #   world-rollup resolver / world workspace).
+        # - no world_id AND no book_id (the HOME projects browse) ⇒ HIDE
+        #   world-level projects (world_id IS NOT NULL) so the bible/world
+        #   project never appears as a phantom row.
+        # - a book_id filter (editor AI panel / useWorldProject graph resolver)
+        #   is EXEMPT — it must still resolve the bible book's world project.
+        world_pred = ""
+        if world_id is not None:
+            params.append(world_id)
+            world_pred = f" AND world_id = ${len(params)}"
+        elif book_id is None:
+            world_pred = " AND world_id IS NULL"
         params.append(fetch_limit)
 
         query = f"""
         SELECT {_SELECT_COLS}
         FROM knowledge_projects
-        WHERE user_id = $1{status_pred}{search_pred}{cursor_pred}{book_pred}
+        WHERE user_id = $1{status_pred}{search_pred}{cursor_pred}{book_pred}{world_pred}
         ORDER BY {col} {direction}, project_id {direction}
         LIMIT ${len(params)}
         """

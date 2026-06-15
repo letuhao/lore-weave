@@ -140,6 +140,7 @@ def _filter_sig(
     *,
     include_archived: bool,
     book_id: UUID | None,
+    world_id: UUID | None = None,
 ) -> str:
     """Stable signature of the filter set a cursor's seek key is valid
     for. A short sha256 hex over the normalized
@@ -168,6 +169,9 @@ def _filter_sig(
             status_filter or "",
             "1" if include_archived else "0",
             str(book_id) if book_id is not None else "",
+            # G4: world_id shapes the filtered population (HOME hides world
+            # projects; ?world_id returns one) so it must bind the seek key.
+            str(world_id) if world_id is not None else "",
         )
     )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
@@ -183,6 +187,7 @@ def _encode_cursor(
     status_filter: str | None,
     include_archived: bool,
     book_id: UUID | None,
+    world_id: UUID | None = None,
 ) -> str:
     # The sort value is serialized via str(); a datetime becomes its
     # isoformat (round-trips through _coerce_sort_value), a name/status
@@ -193,7 +198,7 @@ def _encode_cursor(
     sv = sort_value.isoformat() if isinstance(sort_value, datetime) else str(sort_value)
     sig = _filter_sig(
         sort_by, sort_dir, search, status_filter,
-        include_archived=include_archived, book_id=book_id,
+        include_archived=include_archived, book_id=book_id, world_id=world_id,
     )
     raw = f"{sig}{_CURSOR_SEP}{sv}{_CURSOR_SEP}{project_id}".encode("utf-8")
     return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
@@ -218,6 +223,7 @@ def _decode_cursor(
     status_filter: str | None,
     include_archived: bool,
     book_id: UUID | None,
+    world_id: UUID | None = None,
 ) -> tuple[object, UUID]:
     """Parse a cursor string against the CURRENT filter set. Raises
     HTTPException(400) on malformed input OR a filter-set mismatch —
@@ -244,7 +250,7 @@ def _decode_cursor(
         sig_token, value_str, uid_str = raw.split(_CURSOR_SEP, 2)
         if sig_token != _filter_sig(
             sort_by, sort_dir, search, status_filter,
-            include_archived=include_archived, book_id=book_id,
+            include_archived=include_archived, book_id=book_id, world_id=world_id,
         ):
             # The filter set changed mid-pagination — the old seek key is
             # invalid for the new population; the FE must restart from
@@ -293,6 +299,15 @@ async def list_projects(
             "result in practice)."
         ),
     ),
+    world_id: UUID | None = Query(
+        default=None,
+        description=(
+            "G4: filter to a world's dedicated knowledge project (0 or 1 "
+            "result). When omitted (and book_id is omitted), the HOME browse "
+            "HIDES world-level projects so the bible/world project never shows "
+            "as a phantom row."
+        ),
+    ),
     search: str | None = Query(
         default=None,
         max_length=200,
@@ -337,6 +352,7 @@ async def list_projects(
             status_filter=status_filter,
             include_archived=include_archived,
             book_id=book_id,
+            world_id=world_id,
         )
 
     rows = await repo.list(
@@ -346,6 +362,7 @@ async def list_projects(
         cursor_sort_value=cursor_value,
         cursor_project_id=cursor_id,
         book_id=book_id,
+        world_id=world_id,
         search=search,
         sort_by=sort_by,
         sort_dir=sort_dir,
@@ -372,6 +389,7 @@ async def list_projects(
             status_filter=status_filter,
             include_archived=include_archived,
             book_id=book_id,
+            world_id=world_id,
         )
 
     return ProjectListResponse(items=items, next_cursor=next_cursor)
