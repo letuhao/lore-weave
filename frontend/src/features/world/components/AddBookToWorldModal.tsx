@@ -123,6 +123,7 @@ export function AddBookToWorldModal({ open, onOpenChange, worldId }: Props) {
           </label>
           <input
             id="add-book-title"
+            data-testid="add-book-title-input"
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}

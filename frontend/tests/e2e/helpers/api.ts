@@ -74,6 +74,65 @@ export async function trashBook(request: APIRequestContext, token: string, bookI
   await request.delete(`/v1/books/${bookId}`, auth(token));
 }
 
+export async function getBookApi(
+  request: APIRequestContext, token: string, bookId: string,
+): Promise<{ book_id: string; title: string; world_id?: string | null }> {
+  return ok(request.get(`/v1/books/${bookId}`, auth(token)));
+}
+
+// ── worlds (creation-unblock RAID) ──────────────────────────────────────────
+
+/** Create a world (C20). Returns its id + the auto-provisioned bible anchors. */
+export async function createWorld(
+  request: APIRequestContext, token: string, name: string,
+): Promise<{ world_id: string; bible_book_id: string | null; bible_chapter_id: string | null }> {
+  return ok(request.post('/v1/worlds', { ...auth(token), data: { name } }));
+}
+
+/** Delete a world (owner-scoped; FK SET NULL returns member books to standalone). */
+export async function deleteWorld(request: APIRequestContext, token: string, worldId: string): Promise<void> {
+  await request.delete(`/v1/worlds/${worldId}`, auth(token));
+}
+
+/** List the caller's worlds — used to resolve a UI-created world's id for cleanup. */
+export async function listWorlds(
+  request: APIRequestContext, token: string,
+): Promise<{ items: Array<{ world_id: string; name: string }>; total: number }> {
+  return ok(request.get('/v1/worlds?limit=200', auth(token)));
+}
+
+/** The world's member books (bible excluded) — used to assert an attach landed. */
+export async function listWorldBooks(
+  request: APIRequestContext, token: string, worldId: string,
+): Promise<{ items: Array<{ book_id: string; title: string }>; total: number }> {
+  return ok(request.get(`/v1/worlds/${worldId}/books`, auth(token)));
+}
+
+/** Attach an existing book to a world (C20 move-book) — pre-seed membership. */
+export async function moveBookIntoWorld(
+  request: APIRequestContext, token: string, worldId: string, bookId: string,
+): Promise<void> {
+  await ok(request.post(`/v1/worlds/${worldId}/books`, { ...auth(token), data: { book_id: bookId } }));
+}
+
+// ── knowledge projects (creation-unblock RAID) ──────────────────────────────
+
+/** Create a knowledge project bound to a book — drives the project→book+world
+ *  Overview backlink (D-WORLD-PROJECT-BACKLINK). */
+export async function createKnowledgeProject(
+  request: APIRequestContext, token: string, name: string, bookId: string,
+): Promise<{ project_id: string }> {
+  return ok(request.post('/v1/knowledge/projects', {
+    ...auth(token), data: { name, book_id: bookId, project_type: 'book' },
+  }));
+}
+
+export async function deleteKnowledgeProject(
+  request: APIRequestContext, token: string, projectId: string,
+): Promise<void> {
+  await request.delete(`/v1/knowledge/projects/${projectId}`, auth(token));
+}
+
 /** Create a chapter and save `text` as its draft body (one revision) — a content-
  * rich chapter the extractor can pull entities from. Returns the chapter id. */
 export async function seedRichChapter(
