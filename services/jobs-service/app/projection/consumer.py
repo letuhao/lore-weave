@@ -65,8 +65,10 @@ class JobProjectionConsumer(BaseProjectionConsumer):
         event = self._parse(stream, msg_id, fields)
         if event is None:
             return  # unparseable/malformed — ack as a no-op, never poison-loop
-        await upsert_job_event(self._pool, event)
-        if self._notify is not None:
+        applied = await upsert_job_event(self._pool, event)
+        # Only notify when the upsert actually advanced the row — a monotonic
+        # no-op (stale/duplicate event) must not push a wrong-state SSE frame.
+        if applied and self._notify is not None:
             try:
                 await self._notify(event)
             except Exception:  # noqa: BLE001 — notify is best-effort; never fail the projection

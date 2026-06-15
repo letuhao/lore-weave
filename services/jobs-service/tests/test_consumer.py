@@ -29,7 +29,7 @@ def consumer(spy_pool):
 
 @pytest.mark.asyncio
 async def test_handle_parses_and_upserts(consumer, spy_pool, monkeypatch):
-    spy = AsyncMock()
+    spy = AsyncMock(return_value=True)
     monkeypatch.setattr("app.projection.consumer.upsert_job_event", spy)
     await consumer.handle("loreweave:events:jobs", "1-0", _event_fields())
     spy.assert_awaited_once()
@@ -72,8 +72,8 @@ async def test_store_error_propagates_for_retry(consumer, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_notify_hook_fired_after_upsert(spy_pool, monkeypatch):
-    monkeypatch.setattr("app.projection.consumer.upsert_job_event", AsyncMock())
+async def test_notify_hook_fired_when_upsert_applied(spy_pool, monkeypatch):
+    monkeypatch.setattr("app.projection.consumer.upsert_job_event", AsyncMock(return_value=True))
     notify = AsyncMock()
     c = JobProjectionConsumer("redis://x", spy_pool, notify=notify)
     await c.handle("loreweave:events:jobs", "1-0", _event_fields())
@@ -82,8 +82,18 @@ async def test_notify_hook_fired_after_upsert(spy_pool, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_no_notify_when_upsert_is_monotonic_noop(spy_pool, monkeypatch):
+    """A stale/duplicate event the upsert SKIPPED must not push an SSE frame."""
+    monkeypatch.setattr("app.projection.consumer.upsert_job_event", AsyncMock(return_value=False))
+    notify = AsyncMock()
+    c = JobProjectionConsumer("redis://x", spy_pool, notify=notify)
+    await c.handle("loreweave:events:jobs", "1-0", _event_fields())
+    notify.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_notify_failure_does_not_break_projection(spy_pool, monkeypatch):
-    monkeypatch.setattr("app.projection.consumer.upsert_job_event", AsyncMock())
+    monkeypatch.setattr("app.projection.consumer.upsert_job_event", AsyncMock(return_value=True))
     notify = AsyncMock(side_effect=RuntimeError("redis pub down"))
     c = JobProjectionConsumer("redis://x", spy_pool, notify=notify)
     await c.handle("loreweave:events:jobs", "1-0", _event_fields())  # must not raise

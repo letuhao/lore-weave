@@ -85,11 +85,17 @@ def _ts(value: Any) -> datetime:
     return datetime.now(timezone.utc)
 
 
-async def upsert_job_event(conn: Any, event: JobEvent) -> None:
+async def upsert_job_event(conn: Any, event: JobEvent) -> bool:
     """Apply one `JobEvent` to the projection (idempotent + monotonic). `conn` is
-    an asyncpg pool or connection (anything with `execute`)."""
+    an asyncpg pool or connection (anything with `execute`).
+
+    Returns True if the row was actually written (inserted or a monotonic-forward
+    update), False if the monotonic WHERE skipped it (a stale/older/duplicate
+    event). The consumer uses this to suppress an SSE push for a no-op — so a
+    redelivered `running` after `completed` never flips the GUI to a stale state.
+    """
     status_value = event.status.value if hasattr(event.status, "value") else str(event.status)
-    await conn.execute(
+    tag = await conn.execute(
         _UPSERT,
         event.service,
         str(event.job_id),
@@ -103,6 +109,12 @@ async def upsert_job_event(conn: Any, event: JobEvent) -> None:
         _jsonb(event.error),
         _ts(event.occurred_at),
     )
+    # asyncpg command tag: "INSERT 0 1" (applied) / "INSERT 0 0" (WHERE-skipped).
+    # A mock pool may return a non-tag (e.g. an AsyncMock) — treat that as applied.
+    try:
+        return int(str(tag).split()[-1]) > 0
+    except (ValueError, IndexError, AttributeError):
+        return True
 
 
 # ── read side (M2) ────────────────────────────────────────────────────────────
@@ -200,7 +212,9 @@ async def list_jobs(
         decoded = _decode_cursor(cursor)
         if decoded:
             ts, c_service, c_job = decoded
-            args.extend([ts, c_service, c_job])
+            # ts is the ISO str off the cursor — asyncpg rejects a str for a
+            # ::timestamptz param (same trap as upsert), so coerce to datetime.
+            args.extend([_ts(ts), c_service, c_job])
             n = len(args)
             where.append(
                 f"(j.job_updated_at, j.service, j.job_id) "

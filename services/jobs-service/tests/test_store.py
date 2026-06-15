@@ -71,6 +71,16 @@ async def test_upsert_nulls_optional_fields(spy_pool):
 
 
 @pytest.mark.asyncio
+async def test_upsert_returns_applied_from_command_tag(spy_pool):
+    ev = JobEvent(service="knowledge", job_id=J, owner_user_id=U, kind="extraction",
+                  status=JobStatus.RUNNING, occurred_at="2026-06-15T10:00:00+00:00")
+    spy_pool.execute = __import__("unittest.mock", fromlist=["AsyncMock"]).AsyncMock(return_value="INSERT 0 1")
+    assert await upsert_job_event(spy_pool, ev) is True
+    spy_pool.execute.return_value = "INSERT 0 0"  # monotonic WHERE skipped → no row
+    assert await upsert_job_event(spy_pool, ev) is False
+
+
+@pytest.mark.asyncio
 async def test_upsert_encodes_error_dict(spy_pool):
     ev = JobEvent(
         service="translation", job_id=J, owner_user_id=U, kind="translation",
