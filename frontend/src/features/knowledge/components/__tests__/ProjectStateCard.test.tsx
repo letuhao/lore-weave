@@ -24,6 +24,7 @@ function noopActions(): ProjectStateCardActions {
     onExtractNew: vi.fn(),
     onIgnoreStale: vi.fn(),
     onConfirmModelChange: vi.fn(),
+    onSetConcurrency: vi.fn(),
   };
 }
 
@@ -37,6 +38,7 @@ const sampleJob = {
   max_spend_usd: '5.00',
   started_at: '2026-04-19T12:00:00Z',
   error_message: null,
+  concurrency_level: 4,
 };
 
 const sampleStats = {

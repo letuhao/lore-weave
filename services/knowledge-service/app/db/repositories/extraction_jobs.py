@@ -642,6 +642,39 @@ class ExtractionJobsRepo:
             row = await conn.fetchrow(query, user_id, job_id, new_status, error_message)
         return _row_to_job(row) if row else None
 
+    # ─── KN-7 — in-flight concurrency-cap change ─────────────────────
+
+    async def set_concurrency_level(
+        self, user_id: UUID, job_id: UUID, concurrency_level: int,
+    ) -> ExtractionJob | None:
+        """C7 raise-cap (KN-7): change a job's parallel-LLM-call cap
+        IN-FLIGHT. The worker poll loop re-reads ``concurrency_level``
+        from the DB every cycle (``_get_running_jobs``), so the next
+        chapter window picks the new cap up — no restart needed.
+
+        Owner-scoped (``user_id = $1``): the job row's ``user_id`` is
+        the project owner, and the router resolves the owner via
+        ``require_job_grant`` before calling.
+
+        Gated to active jobs (``status IN ('running','paused')``):
+        bumping the cap on a finished / cancelled / failed job is a
+        no-op the caller should surface as a conflict, so a 0-row
+        result returns None (the router maps it to 409 after
+        disambiguating from a 404 via a follow-up get). Does NOT bump
+        the job's lifecycle or touch cost — it's a pure passthrough
+        tuning knob.
+        """
+        query = f"""
+        UPDATE extraction_jobs
+        SET concurrency_level = $3, updated_at = now()
+        WHERE user_id = $1 AND job_id = $2
+          AND status IN ('running', 'paused')
+        RETURNING {_SELECT_COLS}
+        """
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(query, user_id, job_id, concurrency_level)
+        return _row_to_job(row) if row else None
+
     async def complete(
         self, user_id: UUID, job_id: UUID
     ) -> ExtractionJob | None:

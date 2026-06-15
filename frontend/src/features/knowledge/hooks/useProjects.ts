@@ -10,25 +10,48 @@ import type {
   Project,
   ProjectCreatePayload,
   ProjectListResponse,
+  ProjectSortBy,
+  ProjectSortDir,
+  ProjectStatusFilter,
   ProjectUpdatePayload,
 } from '../types';
 
-// C7 (G6) — the projects browser is the knowledge-service HOME. The BE
-// list endpoint already supports cursor pagination (`?cursor=` →
-// `next_cursor`), so the FE no longer caps at one 100-row page: it
-// accumulates pages via useInfiniteQuery and exposes `fetchNextPage` to
-// the browser's "Load more". `items` is the flattened union of every
-// loaded page. Search / sort / filter-by-state run client-side over
-// these loaded rows (the BE list endpoint has no search/sort/status
-// params — see api.ts ProjectListParams — and adding them is out of
-// scope for C7: "wire the cursor, don't build a new endpoint").
+// C7 (G6) + C7-followup (KN-7) — the projects browser is the
+// knowledge-service HOME and now narrows SERVER-SIDE. The BE list
+// endpoint takes `search` / `sort_by` / `sort_dir` / `status` (plus
+// cursor pagination), so search / sort / filter run across ALL projects
+// rather than only the loaded cursor pages (the client-side
+// `narrowProjects` no longer gates which rows the user sees). `items` is
+// the flattened union of every loaded page for the ACTIVE narrowing.
 const PAGE_LIMIT = 100;
 
-export function useProjects(includeArchived: boolean) {
+export interface ProjectsQueryParams {
+  includeArchived: boolean;
+  search?: string;
+  sortBy?: ProjectSortBy;
+  sortDir?: ProjectSortDir;
+  status?: ProjectStatusFilter;
+}
+
+// Back-compat: callers that only care about archived visibility (the
+// editor AI panel, mobile shells, detail-shell resolvers) pass a bare
+// boolean and get the original unfiltered behaviour. The HOME browser
+// passes the full params object to drive server-side narrowing.
+export function useProjects(arg: boolean | ProjectsQueryParams) {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();
 
-  const queryKey = ['knowledge-projects', { includeArchived }] as const;
+  const params: ProjectsQueryParams =
+    typeof arg === 'boolean' ? { includeArchived: arg } : arg;
+  const { includeArchived, search, sortBy, sortDir, status } = params;
+
+  // The narrowing is part of the query identity — a changed search /
+  // sort / status starts a fresh server-side query (new first page),
+  // not a re-narrow of the previously-loaded rows.
+  const queryKey = [
+    'knowledge-projects',
+    { includeArchived, search, sortBy, sortDir, status },
+  ] as const;
 
   const query = useInfiniteQuery({
     queryKey,
@@ -38,6 +61,10 @@ export function useProjects(includeArchived: boolean) {
           limit: PAGE_LIMIT,
           include_archived: includeArchived,
           cursor: pageParam,
+          search: search || undefined,
+          sort_by: sortBy,
+          sort_dir: sortDir,
+          status,
         },
         accessToken!,
       ),

@@ -671,7 +671,8 @@
         "ignore": "忽略",
         "confirm": "確認",
         "confirmModelChange": "確認變更模型",
-        "exploreGraph": "探索圖譜"
+        "exploreGraph": "探索圖譜",
+        "setConcurrency": "設定並行數"
       },
       "cards": {
         "disabled": {
@@ -690,7 +691,9 @@
           "progress": "{{processed}} / {{total}} 項",
           "elapsed": "已過：{{elapsed}}",
           "spent": "已花費：${{spent}}",
-          "spentOfBudget": "已花費：${{spent}} / ${{budget}}"
+          "spentOfBudget": "已花費：${{spent}} / ${{budget}}",
+          "concurrencyLabel": "並行呼叫數",
+          "concurrencyApply": "套用"
         },
         "building_paused_user": {
           "body": "你已暫停此作業。準備好時恢復,或取消以保留部分圖譜。"

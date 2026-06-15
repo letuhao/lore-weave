@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { narrowProjects } from '../projectBrowser';
+import { narrowProjects, toServerParams } from '../projectBrowser';
 import type { Project } from '../../types';
 
 // Minimal Project factory — only the fields narrowProjects reads.
@@ -105,5 +105,40 @@ describe('narrowProjects', () => {
     const snapshot = list.map((p) => p.name);
     narrowProjects(list, { ...base, sort: 'name_asc' });
     expect(list.map((p) => p.name)).toEqual(snapshot);
+  });
+});
+
+describe('toServerParams — C7-followup (KN-7) UI→BE param mapping', () => {
+  it('maps name_asc / name_desc to name + direction', () => {
+    expect(toServerParams({ ...base, sort: 'name_asc' })).toMatchObject({
+      sort_by: 'name',
+      sort_dir: 'asc',
+    });
+    expect(toServerParams({ ...base, sort: 'name_desc' })).toMatchObject({
+      sort_by: 'name',
+      sort_dir: 'desc',
+    });
+  });
+
+  it('maps recent / oldest to updated_at + direction', () => {
+    expect(toServerParams({ ...base, sort: 'recent' })).toMatchObject({
+      sort_by: 'updated_at',
+      sort_dir: 'desc',
+    });
+    expect(toServerParams({ ...base, sort: 'oldest' })).toMatchObject({
+      sort_by: 'updated_at',
+      sort_dir: 'asc',
+    });
+  });
+
+  it('trims search and drops an empty box (undefined, not "")', () => {
+    expect(toServerParams({ ...base, search: '  hi  ' }).search).toBe('hi');
+    expect(toServerParams({ ...base, search: '   ' }).search).toBeUndefined();
+  });
+
+  it('maps the state filter to the BE status (all ⇒ undefined)', () => {
+    expect(toServerParams({ ...base, stateFilter: 'all' }).status).toBeUndefined();
+    expect(toServerParams({ ...base, stateFilter: 'ready' }).status).toBe('ready');
+    expect(toServerParams({ ...base, stateFilter: 'archived' }).status).toBe('archived');
   });
 });

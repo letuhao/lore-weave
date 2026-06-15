@@ -22,7 +22,7 @@ function mkProject(id: string): Project {
 
 // A tiny harness component that surfaces what the hook returns.
 function Harness() {
-  const { items, hasMore, loadMore } = useProjects(false);
+  const { items, hasMore, loadMore } = useProjects({ includeArchived: false });
   return (
     <div>
       <ul data-testid="items">

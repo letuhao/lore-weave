@@ -44,6 +44,14 @@ export interface ExtractionJobWire {
   items_total: number | null;
   cost_spent_usd: string;
   current_cursor: Record<string, unknown> | null;
+  /**
+   * C7 raise-cap (KN-7) — the job's parallel-LLM concurrency cap. `null`
+   * ⇒ unbounded (started without a cap). The running-build control reads
+   * this and PATCHes it in-flight. Optional in practice during a
+   * rollout window where an older BE response lacks the field, so
+   * consumers should treat `undefined`/`null` identically.
+   */
+  concurrency_level: number | null;
   started_at: string;
   paused_at: string | null;
   completed_at: string | null;
@@ -870,6 +878,12 @@ export const knowledgeApi = {
     if (params.cursor) qs.set('cursor', params.cursor);
     if (params.include_archived) qs.set('include_archived', 'true');
     if (params.book_id) qs.set('book_id', params.book_id);
+    // C7-followup (KN-7): server-side narrowing. Only send a non-empty
+    // search so a cleared box reverts to the unfiltered list.
+    if (params.search) qs.set('search', params.search);
+    if (params.sort_by) qs.set('sort_by', params.sort_by);
+    if (params.sort_dir) qs.set('sort_dir', params.sort_dir);
+    if (params.status) qs.set('status', params.status);
     const q = qs.toString();
     return apiJson<ProjectListResponse>(
       `${BASE}/projects${q ? `?${q}` : ''}`,
@@ -1187,6 +1201,25 @@ export const knowledgeApi = {
     return apiJson<ExtractionJobWire>(
       `${BASE}/projects/${projectId}/extraction/cancel`,
       { method: 'POST', token },
+    );
+  },
+
+  // C7 raise-cap (KN-7) — change a running/paused job's parallel-LLM
+  // concurrency cap IN-FLIGHT. The worker re-reads it each poll cycle, so
+  // the next chapter window picks up the new cap. Bounds 1–64 (BE 422s
+  // outside that); 409 if the job is terminal.
+  updateJobConcurrency(
+    jobId: string,
+    concurrencyLevel: number,
+    token: string,
+  ): Promise<ExtractionJobWire> {
+    return apiJson<ExtractionJobWire>(
+      `${BASE}/extraction/jobs/${encodeURIComponent(jobId)}/concurrency`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ concurrency_level: concurrencyLevel }),
+        token,
+      },
     );
   },
 

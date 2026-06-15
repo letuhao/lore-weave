@@ -76,6 +76,41 @@ _NULLABLE_UPDATE_COLUMNS: frozenset[str] = frozenset(
 )
 
 
+# ── C7-followup (KN-7) — server-side projects-list filtering ──────────
+# The projects browser narrows over ALL projects server-side now (was a
+# client-side filter over loaded cursor pages — didn't scale). The sort
+# is a CLOSED allowlist mapping the public `sort_by` token to a real
+# column + the cursor's seek key. `status` filters on the project's
+# derived state (extraction_status column + the `archived` pseudo-state).
+#
+# Cursor stability: the seek key is ALWAYS (sort_col, project_id) with
+# project_id as the deterministic secondary tiebreaker — created_at /
+# updated_at can tie under millisecond clocks and name / status are
+# heavily non-unique, so project_id is what makes a page boundary stable
+# under concurrent inserts. The cursor encodes the sort value (as the
+# row's first element) + project_id; see public/projects.py.
+
+# token → (column, is_text). is_text drives the cursor value (re)typing
+# in the router: a text column round-trips the raw string; a timestamp
+# column parses back to a datetime.
+_PROJECT_SORT_COLUMNS: dict[str, tuple[str, bool]] = {
+    "created_at": ("created_at", False),
+    "updated_at": ("updated_at", False),
+    "name": ("name", True),
+    # `status` sorts on the extraction lifecycle column (disabled /
+    # building / paused / ready / failed) — a stable text ordering.
+    "status": ("extraction_status", True),
+}
+
+# Project-level status the public `status` filter accepts. The five
+# extraction_status enum values plus the `archived` pseudo-state (which
+# is the is_archived flag, not an extraction_status). A closed set so an
+# unknown value 422s at the router rather than silently matching nothing.
+_PROJECT_STATUS_FILTERS: frozenset[str] = frozenset(
+    {"disabled", "building", "paused", "ready", "failed", "archived"}
+)
+
+
 def _rows_changed(status: str) -> int:
     """Parse asyncpg command tag like 'UPDATE 1' / 'DELETE 0' safely."""
     try:
@@ -184,42 +219,95 @@ class ProjectsRepo:
         *,
         include_archived: bool = False,
         limit: int = 50,
-        cursor_created_at: datetime | None = None,
+        cursor_sort_value: object | None = None,
         cursor_project_id: UUID | None = None,
         book_id: UUID | None = None,
+        search: str | None = None,
+        sort_by: str = "created_at",
+        sort_dir: str = "desc",
+        status: str | None = None,
     ) -> list[Project]:
-        """K7.2 (D-K1-03 cleanup): cursor-paginated listing.
+        """K7.2 (D-K1-03) + C7-followup (KN-7): cursor-paginated listing
+        with server-side search / sort / status narrowing.
 
-        Order: created_at DESC, project_id DESC. The pair acts as a
-        stable sort key — created_at alone is not unique under
-        millisecond-precision Postgres clocks. Cursor is "skip rows
-        ordered AT-OR-AFTER (cursor_created_at, cursor_project_id)".
-        Both cursor params must be supplied together; passing only
-        one is treated as no cursor (the router enforces both-or-none
-        before calling).
+        Order: ``<sort_col> <dir>, project_id <dir>``. project_id is the
+        deterministic secondary key that makes the page boundary stable —
+        created_at / updated_at can tie under millisecond clocks, and
+        name / status are heavily non-unique. The cursor's seek predicate
+        is the row-value comparison ``(<sort_col>, project_id) <op>
+        (cursor_sort_value, cursor_project_id)`` where ``<op>`` is ``<``
+        for descending and ``>`` for ascending, matching the ORDER BY so
+        paging is stable even with concurrent inserts. Both cursor params
+        must be supplied together (the router enforces both-or-none).
 
-        We fetch `limit + 1` rows so the router can detect "more
-        pages exist" without a second COUNT query.
+        Additive + back-compatible: no params ⇒ the original
+        ``created_at DESC, project_id DESC`` behaviour. ``sort_by`` is a
+        CLOSED allowlist (router 422s an unknown token before calling).
+
+        ``search`` is a case-insensitive substring on ``name`` (ILIKE
+        with the wildcards escaped so a user typing ``%`` / ``_`` doesn't
+        get a surprise wildcard). ``status`` filters on the project's
+        derived state: ``archived`` ⇒ ``is_archived = true``; any other
+        value ⇒ ``extraction_status = <value>``.
+
+        We fetch ``limit + 1`` rows so the router can detect "more pages
+        exist" without a second COUNT query.
         """
         # Cap the requested limit defensively — router enforces the
         # public ceiling but the repo defends in depth.
         capped = max(1, min(limit, 100))
         fetch_limit = capped + 1
 
+        # Resolve the sort column from the closed allowlist — defense in
+        # depth (the router validates, but a future internal caller might
+        # not). An unknown token is a programming error, not user input.
+        col, _is_text = _PROJECT_SORT_COLUMNS.get(sort_by, ("created_at", False))
+        direction = "ASC" if sort_dir == "asc" else "DESC"
+        seek_op = ">" if direction == "ASC" else "<"
+
         # Build query in two static halves so the planner can pick
         # idx_knowledge_projects_user (partial WHERE NOT is_archived)
         # on the common path.
-        archived_pred = "" if include_archived else " AND NOT is_archived"
         params: list[object] = [user_id]
-        cursor_pred = ""
-        if cursor_created_at is not None and cursor_project_id is not None:
-            params.extend([cursor_created_at, cursor_project_id])
-            cursor_pred = (
-                " AND (created_at, project_id) < ($2, $3)"
+
+        # status filter takes precedence over include_archived for the
+        # archived bucket: ?status=archived forces is_archived=true even
+        # when include_archived wasn't set. Other status values are
+        # implicitly non-archived (a "ready but archived" project belongs
+        # to the archived bucket, not the ready bucket).
+        if status == "archived":
+            status_pred = " AND is_archived"
+        elif status is not None:
+            params.append(status)
+            status_pred = (
+                f" AND NOT is_archived AND extraction_status = ${len(params)}"
             )
+        elif include_archived:
+            status_pred = ""
+        else:
+            status_pred = " AND NOT is_archived"
+
+        search_pred = ""
+        if search:
+            # Escape ILIKE wildcards so a literal % / _ doesn't widen the
+            # match. ESCAPE '\' pairs with the backslash-escaped wildcards.
+            escaped = (
+                search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            )
+            params.append(f"%{escaped}%")
+            search_pred = f" AND name ILIKE ${len(params)} ESCAPE '\\'"
+
+        cursor_pred = ""
+        if cursor_sort_value is not None and cursor_project_id is not None:
+            params.extend([cursor_sort_value, cursor_project_id])
+            cursor_pred = (
+                f" AND ({col}, project_id) {seek_op} "
+                f"(${len(params) - 1}, ${len(params)})"
+            )
+
         # C5 (ARCH-1): optional book filter — the editor AI panel resolves a
         # book's knowledge project by book_id. Placeholder is numbered
-        # dynamically so it composes with the optional cursor params above.
+        # dynamically so it composes with the optional params above.
         book_pred = ""
         if book_id is not None:
             params.append(book_id)
@@ -229,8 +317,8 @@ class ProjectsRepo:
         query = f"""
         SELECT {_SELECT_COLS}
         FROM knowledge_projects
-        WHERE user_id = $1{archived_pred}{cursor_pred}{book_pred}
-        ORDER BY created_at DESC, project_id DESC
+        WHERE user_id = $1{status_pred}{search_pred}{cursor_pred}{book_pred}
+        ORDER BY {col} {direction}, project_id {direction}
         LIMIT ${len(params)}
         """
         async with self._pool.acquire() as conn:

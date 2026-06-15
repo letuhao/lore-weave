@@ -1,11 +1,17 @@
-import type { ExtractionStatus, Project } from '../types';
+import type {
+  ExtractionStatus,
+  Project,
+  ProjectSortBy,
+  ProjectSortDir,
+  ProjectStatusFilter,
+} from '../types';
 
-// C7 (G6) — client-side search / sort / filter-by-state for the projects
-// HOME browser. The BE list endpoint paginates by cursor but has no
-// search/sort/status params (see api.ts ProjectListParams), so the
-// browser narrows over the rows already loaded into `useProjects`. Pure
-// functions here so ProjectsTab stays a thin view and the narrowing is
-// unit-testable in isolation.
+// C7 (G6) — search / sort / filter-by-state for the projects HOME
+// browser. C7-followup (KN-7): the narrowing now runs SERVER-SIDE (the
+// BE list endpoint takes search/sort/status), so `toServerParams` maps
+// the UI's control state to the BE query params and `narrowProjects`
+// stays only as a thin presentational safety net (the server is the
+// source of truth for which rows the user sees).
 
 export type ProjectSort = 'name_asc' | 'name_desc' | 'recent' | 'oldest';
 
@@ -58,9 +64,48 @@ function compare(a: Project, b: Project, sort: ProjectSort): number {
 }
 
 /**
+ * C7-followup (KN-7): map the UI's control state to the BE list
+ * endpoint's server-side narrowing params. The UI's combined
+ * sort+direction token splits into `sort_by` + `sort_dir`; `recent` /
+ * `oldest` order by `updated_at` (matching the prior client-side
+ * `compare`). The state filter maps straight to the BE `status`
+ * allowlist (`all` ⇒ no status param; `archived` + the five extraction
+ * states pass through 1:1).
+ */
+export function toServerParams(opts: {
+  search: string;
+  sort: ProjectSort;
+  stateFilter: ProjectStateFilter;
+}): {
+  search?: string;
+  sort_by: ProjectSortBy;
+  sort_dir: ProjectSortDir;
+  status?: ProjectStatusFilter;
+} {
+  const sortMap: Record<ProjectSort, { sort_by: ProjectSortBy; sort_dir: ProjectSortDir }> = {
+    name_asc: { sort_by: 'name', sort_dir: 'asc' },
+    name_desc: { sort_by: 'name', sort_dir: 'desc' },
+    recent: { sort_by: 'updated_at', sort_dir: 'desc' },
+    oldest: { sort_by: 'updated_at', sort_dir: 'asc' },
+  };
+  const trimmed = opts.search.trim();
+  return {
+    search: trimmed || undefined,
+    ...sortMap[opts.sort],
+    status: opts.stateFilter === 'all' ? undefined : opts.stateFilter,
+  };
+}
+
+/**
  * Narrow + order the loaded project rows. `search` is a case-insensitive
  * substring over the project name (and book_id for power users pasting a
  * UUID). Returns a NEW array (does not mutate input).
+ *
+ * C7-followup (KN-7): the SERVER now does the authoritative narrowing
+ * (see `toServerParams`); this stays as a thin presentational fallback
+ * so a brief window where loaded rows haven't refetched under a new
+ * filter doesn't flash stale rows. It must NEVER widen past what the
+ * server returned — it only filters/orders the already-returned set.
  */
 export function narrowProjects(
   projects: readonly Project[],

@@ -642,7 +642,8 @@
         "ignore": "Ignore",
         "confirm": "Confirm",
         "confirmModelChange": "Confirm model change",
-        "exploreGraph": "Explore graph"
+        "exploreGraph": "Explore graph",
+        "setConcurrency": "Set concurrency"
       },
       "cards": {
         "disabled": {
@@ -661,7 +662,9 @@
           "progress": "{{processed}} / {{total}} items",
           "elapsed": "Elapsed: {{elapsed}}",
           "spent": "Spent: ${{spent}}",
-          "spentOfBudget": "Spent: ${{spent}} / ${{budget}}"
+          "spentOfBudget": "Spent: ${{spent}} / ${{budget}}",
+          "concurrencyLabel": "Parallel calls",
+          "concurrencyApply": "Apply"
         },
         "building_paused_user": {
           "body": "You paused this job. Resume when ready, or cancel to keep the partial graph."

@@ -82,21 +82,48 @@ class FakeProjectsRepo:
         *,
         include_archived: bool = False,
         limit: int = 50,
-        cursor_created_at: datetime | None = None,
+        cursor_sort_value: object | None = None,
         cursor_project_id: UUID | None = None,
         book_id: UUID | None = None,
+        search: str | None = None,
+        sort_by: str = "created_at",
+        sort_dir: str = "desc",
+        status: str | None = None,
     ) -> list[Project]:
+        # status takes precedence over include_archived for the archived
+        # bucket (mirrors the real repo).
+        def _status_ok(p: Project) -> bool:
+            if status == "archived":
+                return p.is_archived
+            if status is not None:
+                return not p.is_archived and p.extraction_status == status
+            return include_archived or not p.is_archived
+
+        q = (search or "").strip().lower()
         rows = [
             p for (uid, _), p in self._rows.items()
-            if uid == user_id and (include_archived or not p.is_archived)
+            if uid == user_id and _status_ok(p)
             and (book_id is None or p.book_id == book_id)
+            and (not q or q in p.name.lower())
         ]
-        rows.sort(key=lambda p: (p.created_at, p.project_id), reverse=True)
-        if cursor_created_at is not None and cursor_project_id is not None:
-            rows = [
-                p for p in rows
-                if (p.created_at, p.project_id) < (cursor_created_at, cursor_project_id)
-            ]
+
+        col = "extraction_status" if sort_by == "status" else sort_by
+        rows.sort(
+            key=lambda p: (getattr(p, col), p.project_id),
+            reverse=(sort_dir != "asc"),
+        )
+        if cursor_sort_value is not None and cursor_project_id is not None:
+            key = (cursor_sort_value, cursor_project_id)
+            if sort_dir == "asc":
+                rows = [
+                    p for p in rows
+                    if (getattr(p, col), p.project_id) > key
+                ]
+            else:
+                rows = [
+                    p for p in rows
+                    if (getattr(p, col), p.project_id) < key
+                ]
         return rows[: max(1, min(limit, 100)) + 1]
 
     async def get(self, user_id: UUID, project_id: UUID) -> Project | None:
@@ -320,6 +347,153 @@ def test_list_invalid_cursor_returns_400(client: TestClient):
 def test_list_limit_validation(client: TestClient):
     assert client.get("/v1/knowledge/projects?limit=0").status_code == 422
     assert client.get("/v1/knowledge/projects?limit=101").status_code == 422
+
+
+# ── C7-followup (KN-7) — server-side search / sort / status ───────────
+
+
+def test_list_search_narrows_server_side(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID
+):
+    """The browser searches across ALL projects server-side (not just a
+    loaded page) — a name match returns even when it would page beyond
+    the first cursor page."""
+    repo.seed(_make_project(auth_user_id, name="万古神帝"))
+    repo.seed(_make_project(auth_user_id, name="Cradle"))
+    repo.seed(_make_project(auth_user_id, name="another cradle book"))
+
+    resp = client.get("/v1/knowledge/projects?search=cradle")
+    assert resp.status_code == 200
+    names = {p["name"] for p in resp.json()["items"]}
+    assert names == {"Cradle", "another cradle book"}
+
+
+def test_list_search_case_insensitive(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID
+):
+    repo.seed(_make_project(auth_user_id, name="MyEpicNovel"))
+    resp = client.get("/v1/knowledge/projects?search=epic")
+    assert [p["name"] for p in resp.json()["items"]] == ["MyEpicNovel"]
+
+
+def test_list_sort_by_name_asc(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID
+):
+    repo.seed(_make_project(auth_user_id, name="Cherry"))
+    repo.seed(_make_project(auth_user_id, name="Apple"))
+    repo.seed(_make_project(auth_user_id, name="Banana"))
+    resp = client.get("/v1/knowledge/projects?sort_by=name&sort_dir=asc")
+    assert [p["name"] for p in resp.json()["items"]] == ["Apple", "Banana", "Cherry"]
+
+
+def test_list_sort_by_status(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID
+):
+    repo.seed(_make_project(auth_user_id, name="r", extraction_status="ready"))
+    repo.seed(_make_project(auth_user_id, name="b", extraction_status="building"))
+    resp = client.get("/v1/knowledge/projects?sort_by=status&sort_dir=asc")
+    # building < ready alphabetically
+    assert [p["name"] for p in resp.json()["items"]] == ["b", "r"]
+
+
+def test_list_sort_by_rejects_unknown_key_422(client: TestClient):
+    resp = client.get("/v1/knowledge/projects?sort_by=user_id")
+    assert resp.status_code == 422
+
+
+def test_list_status_filter_ready(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID
+):
+    repo.seed(_make_project(auth_user_id, name="ready1", extraction_status="ready"))
+    repo.seed(_make_project(auth_user_id, name="build1", extraction_status="building"))
+    resp = client.get("/v1/knowledge/projects?status=ready")
+    assert [p["name"] for p in resp.json()["items"]] == ["ready1"]
+
+
+def test_list_status_archived_returns_only_archived(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID
+):
+    repo.seed(_make_project(auth_user_id, name="live"))
+    repo.seed(_make_project(auth_user_id, name="dead", is_archived=True))
+    # status=archived implies the archived bucket even without
+    # include_archived=true.
+    resp = client.get("/v1/knowledge/projects?status=archived")
+    assert [p["name"] for p in resp.json()["items"]] == ["dead"]
+
+
+def test_list_status_filter_rejects_unknown_value_422(client: TestClient):
+    resp = client.get("/v1/knowledge/projects?status=bogus")
+    assert resp.status_code == 422
+
+
+def test_list_cursor_round_trip_under_name_sort(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID
+):
+    """Cursor paging stays stable under a non-default sort."""
+    for nm in ["alpha", "bravo", "charlie", "delta", "echo"]:
+        repo.seed(_make_project(auth_user_id, name=nm))
+
+    page1 = client.get(
+        "/v1/knowledge/projects?sort_by=name&sort_dir=asc&limit=2"
+    ).json()
+    assert [p["name"] for p in page1["items"]] == ["alpha", "bravo"]
+    assert page1["next_cursor"] is not None
+
+    page2 = client.get(
+        f"/v1/knowledge/projects?sort_by=name&sort_dir=asc&limit=2"
+        f"&cursor={page1['next_cursor']}"
+    ).json()
+    assert [p["name"] for p in page2["items"]] == ["charlie", "delta"]
+
+
+def test_list_cursor_round_trips_non_ascii_name_sort(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID
+):
+    """Regression (live-smoke): a name-sorted cursor whose boundary value
+    is a non-ASCII (CJK) title must encode without a 500 and page
+    correctly. The cursor encodes the name value, so UTF-8 round-tripping
+    is load-bearing."""
+    # Three CJK-named rows + one ASCII so the boundary lands on a CJK name.
+    for nm in ["万古神帝", "斗破苍穹", "遮天", "Zenith"]:
+        repo.seed(_make_project(auth_user_id, name=nm))
+
+    page1 = client.get(
+        "/v1/knowledge/projects?sort_by=name&sort_dir=asc&limit=2"
+    )
+    assert page1.status_code == 200, page1.text
+    body1 = page1.json()
+    assert len(body1["items"]) == 2
+    assert body1["next_cursor"] is not None
+
+    page2 = client.get(
+        f"/v1/knowledge/projects?sort_by=name&sort_dir=asc&limit=2"
+        f"&cursor={body1['next_cursor']}"
+    )
+    assert page2.status_code == 200, page2.text
+    # Pages must not overlap and together cover all 4.
+    names1 = [p["name"] for p in body1["items"]]
+    names2 = [p["name"] for p in page2.json()["items"]]
+    assert set(names1).isdisjoint(names2)
+    assert set(names1) | set(names2) == {"万古神帝", "斗破苍穹", "遮天", "Zenith"}
+
+
+def test_list_cursor_minted_under_one_sort_rejected_under_another(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID
+):
+    """A cursor is bound to the sort it was issued for — replaying it
+    under a different sort is a 400 (the FE restarts from page 1)."""
+    for nm in ["alpha", "bravo", "charlie"]:
+        repo.seed(_make_project(auth_user_id, name=nm))
+    page1 = client.get(
+        "/v1/knowledge/projects?sort_by=name&sort_dir=asc&limit=2"
+    ).json()
+    cursor = page1["next_cursor"]
+    assert cursor is not None
+    # Same cursor, different sort_by → 400.
+    resp = client.get(
+        f"/v1/knowledge/projects?sort_by=created_at&cursor={cursor}"
+    )
+    assert resp.status_code == 400
 
 
 # ── create ───────────────────────────────────────────────────────────────

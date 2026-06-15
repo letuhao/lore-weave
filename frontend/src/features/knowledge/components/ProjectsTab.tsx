@@ -8,6 +8,7 @@ import { useProjects } from '../hooks/useProjects';
 import type { Project } from '../types';
 import {
   narrowProjects,
+  toServerParams,
   type ProjectSort,
   type ProjectStateFilter,
 } from '../lib/projectBrowser';
@@ -20,9 +21,11 @@ export function ProjectsTab() {
   const navigate = useNavigate();
   const [includeArchived, setIncludeArchived] = useState(false);
 
-  // C7 (G6) — HOME-browser narrowing state. Explicit handlers (no
-  // useEffect-for-events); narrowing runs client-side over the loaded
-  // (cursor-paginated) rows via `narrowProjects`.
+  // C7 (G6) + C7-followup (KN-7) — HOME-browser narrowing state. Explicit
+  // handlers (no useEffect-for-events). The narrowing now runs
+  // SERVER-SIDE: the control state maps to BE query params via
+  // `toServerParams`, so search / sort / filter span ALL projects, not
+  // just the loaded cursor pages.
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<ProjectSort>('recent');
   const [stateFilter, setStateFilter] = useState<ProjectStateFilter>('all');
@@ -31,6 +34,11 @@ export function ProjectsTab() {
   // loaded. Either the explicit checkbox OR an archived filter pulls
   // them in.
   const wantArchived = includeArchived || stateFilter === 'archived';
+
+  const serverParams = useMemo(
+    () => toServerParams({ search, sort, stateFilter }),
+    [search, sort, stateFilter],
+  );
 
   const {
     items,
@@ -45,8 +53,17 @@ export function ProjectsTab() {
     updateProject,
     archiveProject,
     deleteProject,
-  } = useProjects(wantArchived);
+  } = useProjects({
+    includeArchived: wantArchived,
+    search: serverParams.search,
+    sortBy: serverParams.sort_by,
+    sortDir: serverParams.sort_dir,
+    status: serverParams.status,
+  });
 
+  // Presentational fallback only — the server already returned the
+  // narrowed/ordered set; this re-applies the same predicate so a brief
+  // refetch window can't flash a stale row. Never widens past `items`.
   const visible = useMemo(
     () => narrowProjects(items, { search, sort, stateFilter }),
     [items, search, sort, stateFilter],

@@ -1465,6 +1465,56 @@ async def get_extraction_job(
     )
 
 
+# ── C7 raise-cap (KN-7) — PATCH job concurrency in-flight ───────────
+
+
+class UpdateConcurrencyRequest(BaseModel):
+    # Mirrors the create-time bound (StartJobRequest.concurrency_level:
+    # ge=1, le=64). The worker re-reads this every poll cycle, so a raise
+    # takes effect on the next chapter window without a job restart.
+    concurrency_level: Annotated[int, Field(ge=1, le=64)]
+
+
+@jobs_router.patch(
+    "/jobs/{job_id}/concurrency",
+    response_model=ExtractionJob,
+)
+async def update_job_concurrency(
+    job_id: UUID,
+    body: UpdateConcurrencyRequest,
+    # MANAGE mirrors pause/resume/cancel — a collaborator who can manage
+    # the project's jobs can also retune the cap. `require_job_grant`
+    # returns the project OWNER, which is the row's `user_id` scope.
+    owner_id: UUID = Depends(require_job_grant(GrantLevel.MANAGE)),
+    jobs_repo: ExtractionJobsRepo = Depends(get_extraction_jobs_repo),
+) -> ExtractionJob:
+    """C7 raise-cap (KN-7): change a running/paused job's parallel-LLM
+    concurrency cap IN-FLIGHT. Bounds are enforced by the request model
+    (1–64). 404 if the job doesn't exist / isn't accessible; 409 if it
+    exists but is in a terminal state (the cap can only be retuned while
+    the job is still active)."""
+    updated = await jobs_repo.set_concurrency_level(
+        owner_id, job_id, body.concurrency_level,
+    )
+    if updated is not None:
+        return updated
+    # 0 rows: disambiguate "not found / not accessible" (404) from
+    # "exists but terminal" (409) so the FE can message correctly.
+    existing = await jobs_repo.get(owner_id, job_id)
+    if existing is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="job not found",
+        )
+    raise HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail=(
+            f"cannot change concurrency on a {existing.status} job; "
+            "only running or paused jobs can be retuned"
+        ),
+    )
+
+
 @router.get(
     "/{project_id}/extraction/jobs",
     response_model=list[ExtractionJob],

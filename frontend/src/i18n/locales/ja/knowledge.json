@@ -671,7 +671,8 @@
         "ignore": "無視",
         "confirm": "確定",
         "confirmModelChange": "モデル変更を確定",
-        "exploreGraph": "グラフを探索"
+        "exploreGraph": "グラフを探索",
+        "setConcurrency": "並列数を設定"
       },
       "cards": {
         "disabled": {
@@ -690,7 +691,9 @@
           "progress": "{{processed}} / {{total}} 件",
           "elapsed": "経過: {{elapsed}}",
           "spent": "使用額: ${{spent}}",
-          "spentOfBudget": "使用額: ${{spent}} / ${{budget}}"
+          "spentOfBudget": "使用額: ${{spent}} / ${{budget}}",
+          "concurrencyLabel": "並列呼び出し数",
+          "concurrencyApply": "適用"
         },
         "building_paused_user": {
           "body": "ジョブを一時停止しました。準備ができたら再開するか、キャンセルして部分グラフを残せます。"

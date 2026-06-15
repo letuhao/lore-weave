@@ -671,7 +671,8 @@
         "ignore": "Bỏ qua",
         "confirm": "Xác nhận",
         "confirmModelChange": "Xác nhận đổi mô hình",
-        "exploreGraph": "Khám phá đồ thị"
+        "exploreGraph": "Khám phá đồ thị",
+        "setConcurrency": "Đặt số luồng"
       },
       "cards": {
         "disabled": {
@@ -690,7 +691,9 @@
           "progress": "{{processed}} / {{total}} mục",
           "elapsed": "Đã trôi: {{elapsed}}",
           "spent": "Đã dùng: ${{spent}}",
-          "spentOfBudget": "Đã dùng: ${{spent}} / ${{budget}}"
+          "spentOfBudget": "Đã dùng: ${{spent}} / ${{budget}}",
+          "concurrencyLabel": "Số lời gọi song song",
+          "concurrencyApply": "Áp dụng"
         },
         "building_paused_user": {
           "body": "Bạn đã tạm dừng tác vụ này. Tiếp tục khi sẵn sàng, hoặc hủy để giữ lại đồ thị một phần."

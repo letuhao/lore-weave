@@ -57,6 +57,8 @@ async def test_list_sql_no_cursor_no_book():
     # only user_id + fetch_limit → LIMIT is $2
     assert "WHERE user_id = $1 AND NOT is_archived" in q
     assert "book_id =" not in q
+    # Default order unchanged (back-compat).
+    assert "ORDER BY created_at DESC, project_id DESC" in q
     assert q.endswith("LIMIT $2")
     assert pool.conn.params == (user, 51)
 
@@ -80,7 +82,7 @@ async def test_list_sql_cursor_no_book():
     repo = ProjectsRepo(pool)
     user, cid = uuid4(), uuid4()
     cts = datetime.now(timezone.utc)
-    await repo.list(user, limit=5, cursor_created_at=cts, cursor_project_id=cid)
+    await repo.list(user, limit=5, cursor_sort_value=cts, cursor_project_id=cid)
     q = _norm(pool.conn.query)
     # user_id $1, cursor $2/$3, fetch_limit $4
     assert "(created_at, project_id) < ($2, $3)" in q
@@ -96,7 +98,7 @@ async def test_list_sql_cursor_and_book():
     user, cid, book = uuid4(), uuid4(), uuid4()
     cts = datetime.now(timezone.utc)
     await repo.list(
-        user, limit=5, cursor_created_at=cts, cursor_project_id=cid, book_id=book,
+        user, limit=5, cursor_sort_value=cts, cursor_project_id=cid, book_id=book,
     )
     q = _norm(pool.conn.query)
     # user_id $1, cursor $2/$3, book_id $4, fetch_limit $5 — the combo no
@@ -117,3 +119,87 @@ async def test_list_sql_book_filter_is_user_scoped():
     await repo.list(user, book_id=book)
     q = _norm(pool.conn.query)
     assert q.index("user_id = $1") < q.index("book_id =")
+
+
+# ── C7-followup (KN-7) — server-side search / sort / status ───────────
+
+
+@pytest.mark.asyncio
+async def test_list_sql_search_adds_escaped_ilike():
+    pool = _RecordingPool()
+    repo = ProjectsRepo(pool)
+    user = uuid4()
+    await repo.list(user, limit=50, search="万古")
+    q = _norm(pool.conn.query)
+    # user_id $1, search $2, fetch_limit $3
+    assert "name ILIKE $2 ESCAPE" in q
+    assert pool.conn.params == (user, "%万古%", 51)
+
+
+@pytest.mark.asyncio
+async def test_list_sql_search_escapes_wildcards():
+    """A literal % / _ in the search must not widen the match — they're
+    backslash-escaped so ILIKE treats them as literals."""
+    pool = _RecordingPool()
+    repo = ProjectsRepo(pool)
+    user = uuid4()
+    await repo.list(user, search="50%_off")
+    # The bound param is the wrapped, escaped pattern.
+    assert pool.conn.params[1] == "%50\\%\\_off%"
+
+
+@pytest.mark.asyncio
+async def test_list_sql_sort_by_name_asc():
+    pool = _RecordingPool()
+    repo = ProjectsRepo(pool)
+    user = uuid4()
+    await repo.list(user, sort_by="name", sort_dir="asc")
+    q = _norm(pool.conn.query)
+    assert "ORDER BY name ASC, project_id ASC" in q
+
+
+@pytest.mark.asyncio
+async def test_list_sql_sort_by_status_maps_to_extraction_status():
+    pool = _RecordingPool()
+    repo = ProjectsRepo(pool)
+    user = uuid4()
+    await repo.list(user, sort_by="status", sort_dir="desc")
+    q = _norm(pool.conn.query)
+    assert "ORDER BY extraction_status DESC, project_id DESC" in q
+
+
+@pytest.mark.asyncio
+async def test_list_sql_cursor_seek_op_flips_for_asc():
+    """Ascending sort seeks with `>` so the cursor advances forward."""
+    pool = _RecordingPool()
+    repo = ProjectsRepo(pool)
+    user, cid = uuid4(), uuid4()
+    await repo.list(
+        user, sort_by="name", sort_dir="asc",
+        cursor_sort_value="Zephyr", cursor_project_id=cid,
+    )
+    q = _norm(pool.conn.query)
+    assert "(name, project_id) > ($2, $3)" in q
+
+
+@pytest.mark.asyncio
+async def test_list_sql_status_archived_forces_is_archived():
+    pool = _RecordingPool()
+    repo = ProjectsRepo(pool)
+    user = uuid4()
+    await repo.list(user, status="archived")
+    q = _norm(pool.conn.query)
+    assert "AND is_archived" in q
+    assert "extraction_status =" not in q
+
+
+@pytest.mark.asyncio
+async def test_list_sql_status_value_filters_extraction_status_non_archived():
+    pool = _RecordingPool()
+    repo = ProjectsRepo(pool)
+    user = uuid4()
+    await repo.list(user, status="ready")
+    q = _norm(pool.conn.query)
+    # user_id $1, status $2, fetch_limit $3
+    assert "AND NOT is_archived AND extraction_status = $2" in q
+    assert pool.conn.params == (user, "ready", 51)
