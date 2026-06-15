@@ -649,6 +649,10 @@ class SubgraphNode(BaseModel):
     anchor_score: float = 0.0
     mention_count: int = 0
     glossary_entity_id: str | None = None
+    # G4 (W2): in a WORLD rollup union, the source member project this node
+    # came from — lets the C19 canvas legend nodes per book. None for the
+    # single-project C18/C19 view (which never sets it).
+    source_project_id: str | None = None
 
 
 class SubgraphEdge(BaseModel):
@@ -950,6 +954,74 @@ async def get_project_subgraph(
     # partition (or ego neighbourhood) fit under the cap.
     node_cap_hit = len(nodes) >= effective_limit
     return Subgraph(nodes=nodes, edges=edges, node_cap_hit=node_cap_hit)
+
+
+# ── get_world_subgraph (G4 / W2 — rollup union over a world's projects) ──
+
+
+async def get_world_subgraph(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_ids: list[str],
+    limit: int = 200,
+    min_confidence: float = 0.8,
+) -> Subgraph:
+    """G4 (W2) — a world's rollup graph = the UNION of each member project's
+    C18 subgraph (the world-level/bible project PLUS each member book's project).
+
+    Merged in application code: every sub-query still binds BOTH ``user_id`` AND
+    its own ``project_id``, so the union is N isolated per-partition reads
+    stitched together — it never issues a cross-partition Cypher, and there is no
+    cross-user or cross-project bleed (a project the user doesn't own yields an
+    empty subgraph, contributing nothing).
+
+    The result is a FOREST of per-book components (C18 edges are intra-project),
+    NOT a connected cross-book graph — cross-book entity unification is out of
+    scope (world-core territory). Each node is tagged with its
+    ``source_project_id`` so the FE can legend per book.
+
+    Re-cap: the merged node set is trimmed to ``limit`` by the SAME global order
+    as C18 (``anchor_score DESC, mention_count DESC, id ASC``). ``node_cap_hit``
+    is set if ANY member's own subgraph hit its cap OR the union re-cap trimmed —
+    a large book crowding out a small one is flagged, never silent. Edges are
+    kept only between nodes that survived the cap (no dangling pointers).
+    """
+    effective_limit = min(max(1, limit), SUBGRAPH_MAX_NODE_CAP)
+    nodes_by_id: dict[str, SubgraphNode] = {}
+    all_edges: list[SubgraphEdge] = []
+    any_member_capped = False
+    for pid in project_ids:
+        if not pid:
+            continue
+        sg = await get_project_subgraph(
+            session,
+            user_id=user_id,
+            project_id=pid,
+            limit=effective_limit,
+            min_confidence=min_confidence,
+        )
+        any_member_capped = any_member_capped or sg.node_cap_hit
+        for n in sg.nodes:
+            n.source_project_id = pid
+            # ids are project-scoped, so a collision is not expected; dedup
+            # defensively (first writer wins) so the union never doubles a node.
+            nodes_by_id.setdefault(n.id, n)
+        all_edges.extend(sg.edges)
+
+    merged = sorted(
+        nodes_by_id.values(),
+        key=lambda n: (-n.anchor_score, -n.mention_count, n.id),
+    )
+    capped = merged[:effective_limit]
+    union_trimmed = len(merged) > effective_limit
+    surviving = {n.id for n in capped}
+    edges = [e for e in all_edges if e.source in surviving and e.target in surviving]
+    return Subgraph(
+        nodes=capped,
+        edges=edges,
+        node_cap_hit=any_member_capped or union_trimmed,
+    )
 
 
 async def _ego_seed_ids(

@@ -195,6 +195,38 @@ func TestMoveBookInvalidWorldID(t *testing.T) {
 	}
 }
 
+// ── G4 (W2) internal membership route: parse guards before pool access ──────
+// The internal handler is behind the X-Internal-Token middleware (no JWT). Its
+// pre-pool guards are the world_id path-param parse AND the user_id query-param
+// parse — the latter is the parent-scope vector (a bad/missing user_id must NOT
+// reach the ownership query). The ownership-404 + member-list happy paths hit
+// the pool and are covered by the W2 cross-service live-smoke.
+
+func TestInternalListWorldBooksInvalidWorldID(t *testing.T) {
+	t.Parallel()
+	s := &Server{secret: []byte(worldSecret)}
+	rr := httptest.NewRecorder()
+	req := worldReq(http.MethodGet, "/internal/worlds/not-a-uuid/books?user_id="+uuid.New().String(), "", "", map[string]string{"world_id": "not-a-uuid"})
+	s.internalListWorldBooks(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid world_id, got %d", rr.Code)
+	}
+}
+
+func TestInternalListWorldBooksMissingUserID(t *testing.T) {
+	t.Parallel()
+	s := &Server{secret: []byte(worldSecret)}
+	wid := uuid.New()
+	rr := httptest.NewRecorder()
+	// valid world_id but NO user_id query param → 400 before the pool-backed
+	// ownership check (the param can't be skipped to read any world's membership).
+	req := worldReq(http.MethodGet, "/internal/worlds/"+wid.String()+"/books", "", "", map[string]string{"world_id": wid.String()})
+	s.internalListWorldBooks(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for missing user_id, got %d", rr.Code)
+	}
+}
+
 func TestRemoveBookInvalidBookID(t *testing.T) {
 	t.Parallel()
 	s := &Server{secret: []byte(worldSecret)}

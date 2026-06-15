@@ -524,3 +524,63 @@ LIMIT $2 OFFSET $3
 	_ = s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM books WHERE world_id=$1 AND is_bible=false AND lifecycle_state!='purge_pending'`, worldID).Scan(&total)
 	writeJSON(w, http.StatusOK, map[string]any{"items": items, "total": total})
 }
+
+// internalListWorldBooks — GET /internal/worlds/{world_id}/books?user_id=. The
+// service-to-service membership resolver for the knowledge-service world-rollup
+// subgraph (W2 / G4). X-Internal-Token authed (the /internal group middleware);
+// owner-scoped by the user_id QUERY PARAM (a trusted service call, not a JWT).
+//
+// The caller-supplied user_id MUST own the world or we 404 uniformly — without
+// this parent-scope check the param would be a horizontal-escalation vector
+// (read any world's membership). Returns the world's member books (is_bible
+// excluded, same population as the public listWorldBooks); the consumer only
+// needs the book ids to resolve each book's knowledge project.
+func (s *Server) internalListWorldBooks(w http.ResponseWriter, r *http.Request) {
+	worldID, ok := parseUUIDParam(w, r, "world_id")
+	if !ok {
+		return
+	}
+	userID, err := uuid.Parse(r.URL.Query().Get("user_id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "BAD_USER_ID", "invalid user_id")
+		return
+	}
+	var owned bool
+	if err := s.pool.QueryRow(r.Context(),
+		`SELECT EXISTS(SELECT 1 FROM worlds WHERE id=$1 AND owner_user_id=$2)`,
+		worldID, userID,
+	).Scan(&owned); err != nil {
+		writeError(w, http.StatusServiceUnavailable, "RESOLVE_FAILED", "world resolution failed")
+		return
+	}
+	if !owned {
+		writeError(w, http.StatusNotFound, "WORLD_NOT_FOUND", "world not found")
+		return
+	}
+	rows, err := s.pool.Query(r.Context(), `
+SELECT b.id, b.owner_user_id, b.title, b.lifecycle_state
+FROM books b
+WHERE b.world_id=$1 AND b.is_bible=false AND b.lifecycle_state!='purge_pending'
+ORDER BY b.created_at DESC
+`, worldID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to list world books")
+		return
+	}
+	defer rows.Close()
+	items := make([]map[string]any, 0)
+	for rows.Next() {
+		var id, owner uuid.UUID
+		var title, state string
+		if err := rows.Scan(&id, &owner, &title, &state); err == nil {
+			items = append(items, map[string]any{
+				"book_id":         id,
+				"owner_user_id":   owner,
+				"title":           title,
+				"lifecycle_state": state,
+				"world_id":        worldID,
+			})
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}

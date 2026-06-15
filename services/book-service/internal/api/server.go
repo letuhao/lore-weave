@@ -154,6 +154,9 @@ func (s *Server) Router() http.Handler {
 		// E0 — the single grant-resolution authority every service calls.
 		// Always 200 {grant_level}; `none` for missing/forbidden (no oracle, R4).
 		r.Get("/books/{book_id}/access", s.getBookAccess)
+		// G4 (W2) — world membership for the knowledge-service world-rollup
+		// subgraph. Owner-scoped by the ?user_id param (404 if not owned).
+		r.Get("/worlds/{world_id}/books", s.internalListWorldBooks)
 		r.Get("/books/{book_id}/lexical-search", s.searchChapterTextInternal) // raw-search Phase 2 (lexical leg for the knowledge orchestrator)
 		r.Get("/books/{book_id}/chapters", s.getInternalBookChapters)
 		r.Get("/books/{book_id}/chapters/{chapter_id}", s.getInternalBookChapter)

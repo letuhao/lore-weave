@@ -18,9 +18,27 @@ import httpx
 from app.config import settings
 from app.logging_config import trace_id_var
 
-__all__ = ["BookClient", "init_book_client", "get_book_client"]
+__all__ = [
+    "BookClient",
+    "init_book_client",
+    "get_book_client",
+    "WorldNotFound",
+    "BookServiceUnavailable",
+]
 
 logger = logging.getLogger(__name__)
+
+
+class WorldNotFound(Exception):
+    """The world does not exist or is not owned by the requesting user
+    (book-service returned 404). The world-rollup endpoint maps this to a
+    uniform 404 — no existence oracle."""
+
+
+class BookServiceUnavailable(Exception):
+    """book-service was unreachable or errored resolving world membership
+    (transport error / 5xx). The world-rollup endpoint maps this to 503 —
+    distinct from 404 so the FE can tell "no such world" from "try later"."""
 
 _client: "BookClient | None" = None
 
@@ -95,6 +113,47 @@ class BookClient:
                 exc, tid,
             )
             return None
+
+    async def list_world_books(
+        self, world_id: UUID, user_id: UUID
+    ) -> list[dict]:
+        """G4 (W2) — the member books of a world, for the world-rollup subgraph.
+
+        Calls book-service ``GET /internal/worlds/{world_id}/books?user_id=``
+        (X-Internal-Token; book-service owner-scopes by the user_id param, so a
+        world the user does not own yields 404). Returns the member-book dicts
+        (``book_id`` is the only field the rollup needs; ``is_bible`` is already
+        excluded server-side).
+
+        Unlike the cost-estimate calls this does NOT degrade-to-None: membership
+        is load-bearing for the rollup, and a silent empty list would mask "no
+        such world" as "empty graph". Raises ``WorldNotFound`` on 404 and
+        ``BookServiceUnavailable`` on transport/5xx so the endpoint maps them to
+        a uniform 404 vs a 503.
+        """
+        url = f"{self._base_url}/internal/worlds/{world_id}/books"
+        tid = trace_id_var.get()
+        try:
+            resp = await self._http.get(
+                url,
+                params={"user_id": str(user_id)},
+                headers={"X-Trace-Id": tid} if tid else None,
+            )
+        except httpx.HTTPError as exc:
+            logger.warning("book-service world-books unreachable: %s, trace_id=%s", exc, tid)
+            raise BookServiceUnavailable(str(exc)) from exc
+        if resp.status_code == 404:
+            raise WorldNotFound(str(world_id))
+        if resp.status_code != 200:
+            logger.warning(
+                "book-service %s returned %d, trace_id=%s", url, resp.status_code, tid,
+            )
+            raise BookServiceUnavailable(f"status {resp.status_code}")
+        try:
+            items = resp.json().get("items", [])
+        except ValueError as exc:
+            raise BookServiceUnavailable("malformed response") from exc
+        return items if isinstance(items, list) else []
 
     async def lexical_search(
         self, book_id: UUID, q: str, *, limit: int = 20,
