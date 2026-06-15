@@ -15,6 +15,10 @@ export type Book = {
   visibility?: Visibility;
   genre_tags: string[];
   lifecycle_state: 'active' | 'trashed' | 'purge_pending';
+  /** W6 (G3) — the world this book is grouped into, or null/undefined when
+   *  standalone. Set on the single-book read; drives the "open in world"
+   *  backlink + the SettingsTab world picker's current value. */
+  world_id?: string | null;
   created_at?: string;
   updated_at?: string;
 };

@@ -66,6 +66,16 @@ export const worldsApi = {
     );
   },
 
+  /** W6 (G3) — detach a book from a world (C20 `DELETE /v1/worlds/{id}/books/
+   *  {bookId}` — clears `books.world_id` back to standalone). Only clears when
+   *  the book is actually in THIS world. */
+  removeBookFromWorld(token: string, worldId: string, bookId: string): Promise<void> {
+    return apiJson<void>(
+      `${WORLDS}/${encodeURIComponent(worldId)}/books/${encodeURIComponent(bookId)}`,
+      { method: 'DELETE', token },
+    );
+  },
+
   // ── lore authoring (anchors to the bible chapter) ───────────────────────
 
   /** Glossary entity kinds — the world lore form's kind picker. Reuses the

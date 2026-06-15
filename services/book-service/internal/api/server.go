@@ -670,6 +670,7 @@ func (s *Server) getBookByID(w http.ResponseWriter, ctx context.Context, bookID,
 	var id, owner uuid.UUID
 	var title, state, accessLevel string
 	var desc, lang, summary *string
+	var worldID *uuid.UUID
 	var trashedAt, purgeAt, createdAt, updatedAt *time.Time
 	var chapterCount int
 	var genreTags []string
@@ -678,12 +679,12 @@ func (s *Server) getBookByID(w http.ResponseWriter, ctx context.Context, bookID,
 	err := s.pool.QueryRow(ctx, `
 SELECT b.id,b.owner_user_id,b.title,b.description,b.original_language,b.summary,b.lifecycle_state,b.trashed_at,b.purge_eligible_at,b.created_at,b.updated_at,
   COALESCE((SELECT COUNT(*) FROM chapters c WHERE c.book_id=b.id AND c.lifecycle_state='active'),0) AS chapter_count,
-  b.genre_tags, b.wiki_settings, b.extraction_profile,
+  b.genre_tags, b.wiki_settings, b.extraction_profile, b.world_id,
   CASE WHEN b.owner_user_id=$2 THEN 'owner'
        ELSE COALESCE((SELECT role FROM book_collaborators bc WHERE bc.book_id=b.id AND bc.user_id=$2),'none') END AS access_level
 FROM books b
 WHERE b.id=$1
-`, bookID, caller).Scan(&id, &owner, &title, &desc, &lang, &summary, &state, &trashedAt, &purgeAt, &createdAt, &updatedAt, &chapterCount, &genreTags, &wikiSettings, &extractionProfile, &accessLevel)
+`, bookID, caller).Scan(&id, &owner, &title, &desc, &lang, &summary, &state, &trashedAt, &purgeAt, &createdAt, &updatedAt, &chapterCount, &genreTags, &wikiSettings, &extractionProfile, &worldID, &accessLevel)
 	if errors.Is(err, pgx.ErrNoRows) || state == "purge_pending" {
 		writeError(w, http.StatusNotFound, "BOOK_NOT_FOUND", "book not found")
 		return
@@ -722,10 +723,13 @@ WHERE b.id=$1
 		"genre_tags":         genreTags,
 		"wiki_settings":      json.RawMessage(wikiSettings),
 		"extraction_profile": json.RawMessage(extractionProfile),
-		"trashed_at":         trashedAt,
-		"purge_eligible_at":  purgeAt,
-		"created_at":         createdAt,
-		"updated_at":         updatedAt,
+		// W6 (G3) — the world this book is grouped into (NULL = standalone), so the
+		// book workspace can surface an "open in world" backlink.
+		"world_id":          worldID,
+		"trashed_at":        trashedAt,
+		"purge_eligible_at": purgeAt,
+		"created_at":        createdAt,
+		"updated_at":        updatedAt,
 	})
 }
 

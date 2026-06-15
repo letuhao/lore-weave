@@ -298,7 +298,12 @@
       "public": "Visible to everyone in the catalog"
     },
     "discard": "Discard Changes",
-    "save": "Save Settings"
+    "save": "Save Settings",
+    "world": {
+      "title": "World",
+      "hint": "Group this book into a world to roll it into the world’s graph and timeline.",
+      "open": "Open in world"
+    }
   },
   "translate": {
     "title": "Translate Chapters",
