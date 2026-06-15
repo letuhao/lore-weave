@@ -138,7 +138,7 @@ async def test_handle_acks_and_skips_resume_when_no_row():
     consumer = c.LLMTerminalConsumer("redis://x", pool, MagicMock(), AsyncMock())
     r = AsyncMock()
     with patch.object(c.decoupled_translate, "resume", new=AsyncMock()) as resume:
-        await consumer._handle(r, "1-0", {"job_id": str(uuid4()), "status": "completed"})
+        await consumer._process_msg(r, "1-0", {"job_id": str(uuid4()), "status": "completed"})
     resume.assert_not_awaited()
     r.xack.assert_awaited_once()
 
@@ -161,7 +161,7 @@ async def test_handle_resumes_and_acks_for_decoupled_chapter():
     r = AsyncMock()
     with patch.object(c.decoupled_translate, "resume", new=AsyncMock()) as resume, \
          patch.object(c, "set_campaign_id") as set_camp:
-        await consumer._handle(r, "1-0", {"job_id": m["job_id"], "owner_user_id": "u", "status": "completed"})
+        await consumer._process_msg(r, "1-0", {"job_id": m["job_id"], "owner_user_id": "u", "status": "completed"})
     resume.assert_awaited_once()
     sdk.get_job.assert_awaited_once()
     r.xack.assert_awaited_once()
@@ -240,13 +240,13 @@ async def test_handle_bounded_retry_leaves_unacked_below_max_then_acks_poison():
     # below MAX (incr → 1): leave unacked for redelivery
     r = AsyncMock()
     r.incr = AsyncMock(return_value=1)
-    await consumer._handle(r, "1-0", {"job_id": m["job_id"], "status": "completed"})
+    await consumer._process_msg(r, "1-0", {"job_id": m["job_id"], "status": "completed"})
     r.xack.assert_not_awaited()
 
     # at MAX (incr → MAX_RETRIES): ack the poison + clear the retry key
     r2 = AsyncMock()
     r2.incr = AsyncMock(return_value=c.MAX_RETRIES)
-    await consumer._handle(r2, "1-0", {"job_id": m["job_id"], "status": "completed"})
+    await consumer._process_msg(r2, "1-0", {"job_id": m["job_id"], "status": "completed"})
     r2.xack.assert_awaited_once()
 
 
