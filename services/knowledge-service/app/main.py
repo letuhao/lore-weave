@@ -29,6 +29,7 @@ from app.routers import (
     internal_canon,
     internal_benchmark,
     internal_dispatch,
+    internal_job_control,
     internal_enrichment,
     internal_extraction,
     internal_parse,
@@ -683,6 +684,7 @@ app.include_router(internal_backfill.router)
 app.include_router(internal_canon.router)
 app.include_router(internal_benchmark.router)
 app.include_router(internal_dispatch.router)
+app.include_router(internal_job_control.router)
 app.include_router(internal_enrichment.router)
 app.include_router(internal_extraction.router)
 app.include_router(internal_parse.router)

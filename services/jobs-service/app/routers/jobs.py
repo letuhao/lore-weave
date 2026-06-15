@@ -13,9 +13,9 @@ from typing import Optional
 
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
-from .. import sse
+from .. import control, sse
 from ..config import settings
 from ..contract import derive_control_caps
 from ..deps import get_current_user, get_db
@@ -79,3 +79,34 @@ async def get_job(
     if job is None:
         raise HTTPException(status_code=404, detail="job not found")
     return _with_caps(job)
+
+
+@router.post("/{service}/{job_id}/{action}")
+async def control_job(
+    service: str,
+    job_id: str,
+    action: str,
+    user_id: str = Depends(get_current_user),
+    db: asyncpg.Pool = Depends(get_db),
+) -> JSONResponse:
+    """Cancel / pause / resume a job (P3). Owner-checked against the projection +
+    gated on the job's state-aware control_caps, then forwarded to the owning
+    service's internal endpoint (which RE-VERIFIES ownership on the row — M4).
+
+    404 if not found/not owned (anti-oracle); 400 unknown action; 409 if the
+    action isn't valid for the current state; 501 if the service has no P3 control
+    endpoint yet. The downstream status (incl. its own 409 on a concurrent change)
+    is relayed verbatim — the owning service is authoritative."""
+    if action not in control.VALID_ACTIONS:
+        raise HTTPException(status_code=400, detail=f"unknown action '{action}'")
+    job = await store.get_job(db, user_id, service, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="job not found")
+    caps = [c.value for c in derive_control_caps(job["status"], job["kind"])]
+    if action not in caps:
+        raise HTTPException(
+            status_code=409,
+            detail=f"action '{action}' not valid for status '{job['status']}'",
+        )
+    result = await control.forward_control(service, job_id, action, user_id)
+    return JSONResponse(status_code=result.status_code, content=result.body)
