@@ -18,7 +18,7 @@ from typing import Optional
 from uuid import UUID
 
 import asyncpg
-from loreweave_jobs import emit_job_event
+from loreweave_jobs import emit_job_event, emit_job_event_safe
 
 from .saga.gating import ChapterState
 
@@ -101,6 +101,8 @@ async def create_campaign(
     eval_judge_model_ref: Optional[UUID] = None,
     est_usd_low: Optional[Decimal] = None,
     est_usd_high: Optional[Decimal] = None,
+    knowledge_model_name: Optional[str] = None,
+    translation_model_name: Optional[str] = None,
 ) -> asyncpg.Record:
     row = await conn.fetchrow(
         f"""
@@ -131,9 +133,11 @@ async def create_campaign(
     native = row["status"]
     canonical = _canonical_status(native)
     # P4 — whitelisted params + cost (spent_usd, 0 at create; accumulates via the S4
-    # SpendConsumer). Per-stage model NAMES are deferred (resolving them here would be
-    # HTTP inside the router's tx — H1; D-JOBS-P4-CAMPAIGN-MODEL-NAMES) — the refs ride
-    # params so the info isn't lost. All fields are in _CAMPAIGN_COLS (RETURNING).
+    # SpendConsumer). D-JOBS-P4-CAMPAIGN-MODEL-NAMES: per-stage model NAMES are now resolved
+    # by the ROUTER OUT-OF-TX (resolving here would be HTTP inside the router's tx — H1) and
+    # passed in; emitted ONLY on create, where the projection's COALESCE keeps them across
+    # the later status events. The refs still ride params too. (top-level `model` carries the
+    # translation-stage name as the campaign's primary model for the GUI's model column.)
     _spent = row["spent_usd"]
     await emit_job_event(
         conn, service=_JOB_SERVICE, job_id=str(row["campaign_id"]),
@@ -141,6 +145,7 @@ async def create_campaign(
         detail_status=native if native != canonical else None,
         title=row["name"],
         cost_usd=float(_spent) if _spent is not None else None,
+        model=translation_model_name or knowledge_model_name,
         params={
             "gating_mode": row["gating_mode"],
             "target_language": row["target_language"],
@@ -151,6 +156,8 @@ async def create_campaign(
             "translation_model_ref": (
                 str(row["translation_model_ref"]) if row["translation_model_ref"] else None
             ),
+            "knowledge_model": knowledge_model_name,
+            "translation_model": translation_model_name,
         },
     )
     return row
@@ -448,7 +455,7 @@ async def accumulate_and_maybe_pause(
             )
             if fresh is None:
                 return False  # already counted — no-op
-            await conn.execute(
+            updated = await conn.fetchrow(
                 """
                 UPDATE campaigns
                 SET spent_usd = spent_usd + $2,
@@ -462,10 +469,25 @@ async def accumulate_and_maybe_pause(
                         ELSE error_message END,
                     updated_at = now()
                 WHERE campaign_id = $1
+                RETURNING owner_user_id, spent_usd, status
                 """,
                 campaign_id, cost_usd,
             )
-            return True
+    # D-JOBS-CAMPAIGN-SPEND-EMIT — surface the LIVE accumulated cost (and any auto-pause
+    # folded into the UPDATE above) to the Jobs GUI. POST-COMMIT + best-effort: telemetry
+    # must NEVER roll back the money accumulation, so a failed emit can't under-count spend;
+    # the projection's COALESCE + the next status event are the durability backstop.
+    if updated is not None:
+        native = updated["status"]
+        canonical = _canonical_status(native)
+        _spent = updated["spent_usd"]
+        await emit_job_event_safe(
+            pool, service=_JOB_SERVICE, job_id=str(campaign_id),
+            owner_user_id=str(updated["owner_user_id"]), kind="campaign", status=canonical,
+            detail_status=native if native != canonical else None,
+            cost_usd=float(_spent) if _spent is not None else None,
+        )
+    return True
 
 
 # D-FACTORY-SWITCH-MODEL-RESUME — columns a PATCH may update. A whitelist so a

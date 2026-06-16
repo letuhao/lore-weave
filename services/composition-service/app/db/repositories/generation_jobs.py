@@ -84,6 +84,7 @@ class GenerationJobsRepo:
         base_revision_id: UUID | None = None,
         idempotency_key: str | None = None,
         conn: asyncpg.Connection | None = None,
+        model_name: str | None = None,
     ) -> tuple[GenerationJob, bool]:
         """Insert a job. Returns ``(job, created)``.
 
@@ -95,16 +96,16 @@ class GenerationJobsRepo:
         # P4 usage emit — a whitelisted params dict (cheap, no I/O) + the resolved model
         # NAME on the create event; the projection's COALESCE keeps them across later
         # status events. cost_usd is not populated on this row yet → omitted.
-        # The model-NAME resolve is HTTP, so do it ONLY on the self-managed-tx path
-        # (conn is None). When a caller passes its OWN conn we are inside its transaction
-        # — and create_chapter_job_guarded holds an in-flight row lock — so a 5s resolve
-        # there would pin the tx/lock across the network call (H1). Those (auto-draft)
-        # jobs emit model=None; the ref still rides params (D-JOBS-P4-COMPOSITION-GUARDED-MODEL).
+        # The model-NAME resolve is HTTP, so it must NOT run inside a caller's tx (H1) —
+        # create_chapter_job_guarded holds an in-flight row lock, so a 5s resolve there
+        # would pin the tx/lock across the network call. D-JOBS-P4-COMPOSITION-GUARDED-MODEL:
+        # the guarded caller now resolves the name OUT-OF-TX and passes `model_name`, so the
+        # auto-draft path emits the real name too. Precedence: caller-provided name >
+        # self-resolve (only on the self-managed-tx path, conn is None) > None.
         _in = input or {}
-        _model_name = (
-            await resolve_model_name(_in.get("model_source"), _in.get("model_ref"))
-            if conn is None else None
-        )
+        _model_name = model_name
+        if _model_name is None and conn is None:
+            _model_name = await resolve_model_name(_in.get("model_source"), _in.get("model_ref"))
         _job_params = {
             "model": _model_name,
             "model_ref": _in.get("model_ref"),
@@ -181,6 +182,7 @@ class GenerationJobsRepo:
         input: dict[str, Any] | None = None,
         idempotency_key: str | None = None,
         stale_secs: int = 1800,
+        model_name: str | None = None,
     ) -> tuple[GenerationJob, bool]:
         """Create a CHAPTER-LEVEL job (``outline_node_id=None``) behind an
         in-flight guard. Returns ``(job, created)``; raises
@@ -269,11 +271,13 @@ class GenerationJobsRepo:
                 )
                 if active is not None:
                     raise ChapterJobInFlightError(str(active["id"]))
-                # 3. Create under the same conn (shares the Tx + lock).
+                # 3. Create under the same conn (shares the Tx + lock). `model_name` was
+                # resolved OUT-OF-TX by the caller (D-JOBS-P4-COMPOSITION-GUARDED-MODEL) so
+                # the create emit carries the real name without an in-lock HTTP call.
                 return await self.create(
                     user_id, project_id, operation=operation, outline_node_id=None,
                     mode=mode, status=status, input=input,
-                    idempotency_key=idempotency_key, conn=c,
+                    idempotency_key=idempotency_key, conn=c, model_name=model_name,
                 )
 
     async def reap_stale_jobs(

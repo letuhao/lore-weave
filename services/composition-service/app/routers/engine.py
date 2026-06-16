@@ -30,6 +30,7 @@ from app.db.repositories.canon_rules import CanonRulesRepo
 from app.db.repositories.generation_corrections import (
     GenerationCorrectionsRepo, count_changed_blocks,
 )
+from app.clients.model_name import resolve_model_name
 from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.db.repositories.narrative_thread import NarrativeThreadRepo
 from app.db.repositories.outline import OutlineRepo
@@ -908,7 +909,9 @@ async def generate_chapter(
                 user_id, project_id, chapter_id, operation=body.operation,
                 mode="auto", status="pending", input=job_input,
                 idempotency_key=body.idempotency_key,
-                stale_secs=settings.chapter_inflight_stale_secs)
+                stale_secs=settings.chapter_inflight_stale_secs,
+                model_name=await resolve_model_name(
+                    body.model_source, str(body.model_ref) if body.model_ref else None))
         except ChapterJobInFlightError as exc:
             raise HTTPException(status_code=409, detail={
                 "code": "CHAPTER_JOB_IN_FLIGHT", "active_job_id": exc.active_job_id})
@@ -941,7 +944,9 @@ async def generate_chapter(
                    "assembly_mode": "chapter", "chapter_id": str(chapter_id),
                    "reasoning": reasoning.source, "reasoning_effort": reasoning.effort},
             idempotency_key=body.idempotency_key,
-            stale_secs=settings.chapter_inflight_stale_secs)
+            stale_secs=settings.chapter_inflight_stale_secs,
+            model_name=await resolve_model_name(
+                body.model_source, str(body.model_ref) if body.model_ref else None))
     except ChapterJobInFlightError as exc:
         raise HTTPException(status_code=409, detail={
             "code": "CHAPTER_JOB_IN_FLIGHT", "active_job_id": exc.active_job_id})
@@ -1129,7 +1134,9 @@ async def stitch_chapter_endpoint(
                 user_id, project_id, chapter_id, operation="stitch_chapter",
                 mode="auto", status="pending", input=job_input,
                 idempotency_key=body.idempotency_key,
-                stale_secs=settings.chapter_inflight_stale_secs)
+                stale_secs=settings.chapter_inflight_stale_secs,
+                model_name=await resolve_model_name(
+                    body.model_source, str(body.model_ref) if body.model_ref else None))
         except ChapterJobInFlightError as exc:
             raise HTTPException(status_code=409, detail={
                 "code": "CHAPTER_JOB_IN_FLIGHT", "active_job_id": exc.active_job_id})
@@ -1159,7 +1166,9 @@ async def stitch_chapter_endpoint(
                    "chapter_id": str(chapter_id), "reasoning": reasoning.source,
                    "reasoning_effort": reasoning.effort},
             idempotency_key=body.idempotency_key,
-            stale_secs=settings.chapter_inflight_stale_secs)
+            stale_secs=settings.chapter_inflight_stale_secs,
+            model_name=await resolve_model_name(
+                body.model_source, str(body.model_ref) if body.model_ref else None))
     except ChapterJobInFlightError as exc:
         raise HTTPException(status_code=409, detail={
             "code": "CHAPTER_JOB_IN_FLIGHT", "active_job_id": exc.active_job_id})

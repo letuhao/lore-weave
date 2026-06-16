@@ -112,3 +112,22 @@ async def test_create_emits_pending_on_new_job(monkeypatch):
     assert kw["params"]["operation"] == "generate"
     assert kw["params"]["reasoning"] == "rule_based"
     assert kw["params"]["model_ref"] == "abc"
+
+
+@pytest.mark.asyncio
+async def test_create_emits_caller_resolved_model_name_in_tx(monkeypatch):
+    # D-JOBS-P4-COMPOSITION-GUARDED-MODEL — the guarded caller resolves the name OUT-OF-TX
+    # and passes `model_name`; the in-tx create must emit THAT name (not None) without
+    # awaiting the resolver itself (no HTTP under the in-flight lock — H1).
+    spy = AsyncMock()
+    monkeypatch.setattr(generation_jobs, "emit_job_event", spy)
+    resolve_spy = AsyncMock(return_value="should-not-be-called")
+    monkeypatch.setattr(generation_jobs, "resolve_model_name", resolve_spy)
+    repo = GenerationJobsRepo(pool=None)
+    await repo.create(
+        USER, PROJ, operation="generate",
+        input={"model_source": "user_model", "model_ref": "abc"},
+        conn=FakeConn(_row(status="pending")), model_name="claude-haiku",
+    )
+    resolve_spy.assert_not_awaited()  # caller pre-resolved → no in-lock HTTP
+    assert spy.await_args.kwargs["model"] == "claude-haiku"

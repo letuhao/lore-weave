@@ -27,6 +27,7 @@ from loreweave_jobs import emit_job_event
 from pydantic import BaseModel, Field
 
 from app.api.principal import Principal, require_principal
+from app.clients.model_name import resolve_model_name
 from app.config import settings
 from app.db.book_profile import NEUTRAL_PROFILE, BookProfile, get_book_profile
 from app.deps import get_db
@@ -187,6 +188,10 @@ async def create_job(
     # technique — a gate-refused fabrication job is then visible as a failed row
     # carrying technique='fabrication' (auditable refusal, not a silent drop).
     store = PgProposalStore(pool)
+    # P4 (D-JOBS-P4-LORE-MODEL) — resolve the generation model NAME OUT-OF-TX (network I/O;
+    # H1) so the create event carries the human name for the Jobs GUI. Best-effort: None on
+    # failure; the projection's COALESCE keeps it across the later status events.
+    _model_name = await resolve_model_name("user_model", str(body.generation_model_ref))
     db_job_id = await store.create_job(
         user_id=str(user_id),
         project_id=str(body.project_id),
@@ -195,6 +200,7 @@ async def create_job(
         entity_kind="location",
         max_spend=body.max_spend_usd,
         estimated_cost=0.0,
+        model_name=_model_name,
     )
     # Persist the request so a cost-cap-paused job can be RE-DRIVEN by the resume
     # worker (F-C14-1/051). Stores only the request shape (targets + model_ref

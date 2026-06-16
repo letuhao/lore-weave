@@ -16,14 +16,21 @@ REQ = "11111111-2222-3333-4444-555555555555"
 
 async def test_accumulate_fresh_adds_and_can_pause(fake_pool):
     fake_pool.fetchval.return_value = UUID(REQ)  # ON CONFLICT RETURNING → fresh
+    # The UPDATE now RETURNs the new state so the post-commit spend emit can carry it.
+    fake_pool.fetchrow.return_value = FakeRecord(
+        {"owner_user_id": UUID(TEST_USER), "spent_usd": Decimal("1.5"), "status": "running"})
     res = await repo.accumulate_and_maybe_pause(
         fake_pool, request_id=UUID(REQ), campaign_id=UUID(CAMP), cost_usd=Decimal("1.5"))
     assert res is True
-    fake_pool.execute.assert_awaited_once()
-    sql = fake_pool.execute.call_args.args[0]
-    # accumulate + the running->paused-at-cap CASE are one atomic UPDATE
+    # accumulate + the running->paused-at-cap CASE are one atomic UPDATE (RETURNING state)
+    fake_pool.fetchrow.assert_awaited_once()
+    sql = fake_pool.fetchrow.call_args.args[0]
     assert "spent_usd = spent_usd + $2" in sql
     assert "'paused'" in sql and "status = 'running'" in sql
+    assert "RETURNING" in sql
+    # D-JOBS-CAMPAIGN-SPEND-EMIT — a best-effort job event carries the LIVE accumulated cost
+    emit_calls = [c for c in fake_pool.execute.call_args_list if "outbox_events" in c.args[0]]
+    assert len(emit_calls) == 1
 
 
 async def test_accumulate_duplicate_is_noop(fake_pool):

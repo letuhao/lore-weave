@@ -179,6 +179,7 @@ class ProposalStore(Protocol):
         entity_kind: str | None,
         max_spend: float | None,
         estimated_cost: float,
+        model_name: str | None = None,
     ) -> str: ...
 
     async def persist_proposal(
@@ -212,6 +213,7 @@ class PgProposalStore:
         entity_kind: str | None,
         max_spend: float | None,
         estimated_cost: float,
+        model_name: str | None = None,
     ) -> str:
         async with self._pool.acquire() as conn:
             async with conn.transaction():  # INSERT + emit_job_event atomic (H1)
@@ -233,10 +235,12 @@ class PgProposalStore:
                     owner_user_id=str(user_id), kind=JOB_KIND, status="pending",
                     # P4 — NO actual spend yet at create (cost_usd is ACTUAL spend, set
                     # from actual_cost_usd on transitions); the estimate rides params so
-                    # it is still visible without masquerading as spend. The model ref
-                    # lives in a separate enrichment_job_request row (not in scope here),
-                    # so the resolved model NAME is deferred (D-JOBS-P4-LORE-MODEL).
+                    # it is still visible without masquerading as spend. D-JOBS-P4-LORE-MODEL:
+                    # the model NAME is resolved OUT-OF-TX by the caller (the ref lives in a
+                    # separate enrichment_job_request row) and passed in; emitted ONLY here
+                    # on create — the projection's COALESCE keeps it across status events.
                     cost_usd=None,
+                    model=model_name,
                     params={
                         "technique": technique,
                         "entity_kind": entity_kind,
@@ -369,6 +373,7 @@ class InMemoryProposalStore:
         entity_kind: str | None,
         max_spend: float | None,
         estimated_cost: float,
+        model_name: str | None = None,
     ) -> str:
         job_id = str(uuid4())
         self.jobs[job_id] = {

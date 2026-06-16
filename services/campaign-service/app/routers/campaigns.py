@@ -22,6 +22,7 @@ from ..clients.dispatch_clients import (
     DispatchError,
     EmbeddingConflict,
 )
+from ..clients.model_name import resolve_model_name
 from ..clients.provider_registry_client import (
     ProviderRegistryEstimateClient,
     EstimateUnavailable,
@@ -182,6 +183,18 @@ async def create_campaign(
         finally:
             await kc.aclose()
 
+    # P4 (D-JOBS-P4-CAMPAIGN-MODEL-NAMES) — resolve the per-stage model NAMES OUT-OF-TX
+    # (network I/O; H1) so the create event carries the human names for the Jobs GUI.
+    # Best-effort: None on failure; the projection's COALESCE keeps them across later events.
+    _knowledge_model_name = await resolve_model_name(
+        payload.knowledge_model_source,
+        str(payload.knowledge_model_ref) if payload.knowledge_model_ref else None,
+    )
+    _translation_model_name = await resolve_model_name(
+        payload.translation_model_source,
+        str(payload.translation_model_ref) if payload.translation_model_ref else None,
+    )
+
     async with db.acquire() as conn:
         async with conn.transaction():
             row = await repo.create_campaign(
@@ -206,6 +219,8 @@ async def create_campaign(
                 eval_judge_model_ref=payload.eval_judge_model_ref,
                 est_usd_low=payload.est_usd_low,    # G1: persist launch estimate band
                 est_usd_high=payload.est_usd_high,
+                knowledge_model_name=_knowledge_model_name,
+                translation_model_name=_translation_model_name,
             )
             await repo.seed_campaign_chapters(
                 conn, row["campaign_id"],
