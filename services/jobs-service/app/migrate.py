@@ -40,12 +40,33 @@ CREATE TABLE IF NOT EXISTS job_projection (
   job_created_at TIMESTAMPTZ,                   -- earliest event occurred_at seen for this job
   job_updated_at TIMESTAMPTZ NOT NULL,          -- latest applied event occurred_at (monotonic guard)
   projected_at   TIMESTAMPTZ NOT NULL DEFAULT now(),  -- when the projection last wrote this row
+  -- P4 usage/observability (all nullable; COALESCE-merged on each applied event so a
+  -- later event without them never wipes the accumulated value). model = resolved NAME
+  -- (not BYOK ref-UUID); cost_usd reliable; tokens best-effort; params = whitelisted
+  -- dynamic key-value (model now, effort later — no schema change), never raw prompt.
+  model          TEXT,
+  cost_usd       NUMERIC,
+  tokens_in      BIGINT,
+  tokens_out     BIGINT,
+  params         JSONB,
   PRIMARY KEY (service, job_id)
 );
+
+-- P4 additive columns for existing deployments (job_projection is a rebuildable MIRROR;
+-- ADD COLUMN IF NOT EXISTS is idempotent + a no-op on a fresh CREATE above).
+ALTER TABLE job_projection ADD COLUMN IF NOT EXISTS model     TEXT;
+ALTER TABLE job_projection ADD COLUMN IF NOT EXISTS cost_usd  NUMERIC;
+ALTER TABLE job_projection ADD COLUMN IF NOT EXISTS tokens_in  BIGINT;
+ALTER TABLE job_projection ADD COLUMN IF NOT EXISTS tokens_out BIGINT;
+ALTER TABLE job_projection ADD COLUMN IF NOT EXISTS params    JSONB;
 
 -- List query: a user's jobs, most-recently-updated first.
 CREATE INDEX IF NOT EXISTS idx_job_projection_owner_updated
   ON job_projection (owner_user_id, job_updated_at DESC);
+-- History list (P4): offset-paginated, ORDER BY created_at DESC (stable; SSE doesn't
+-- reorder it). Separate from the updated_at index the live Active list keysets on.
+CREATE INDEX IF NOT EXISTS idx_job_projection_owner_created
+  ON job_projection (owner_user_id, job_created_at DESC);
 -- Filtered list (status facet).
 CREATE INDEX IF NOT EXISTS idx_job_projection_owner_status
   ON job_projection (owner_user_id, status);

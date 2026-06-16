@@ -14,7 +14,9 @@ def _job(**over):
         "owner_user_id": TEST_USER, "kind": "extraction", "status": "running",
         "parent_job_id": None, "detail_status": "ch 3/40",
         "progress": {"done": 3, "total": 40}, "title": "extract",
-        "error": None, "created_at": "2026-06-15T10:00:00+00:00",
+        "error": None, "model": "qwen2.5-7b", "cost_usd": 2.74,
+        "tokens_in": 980142, "tokens_out": 180553, "params": {"concurrency": 4},
+        "created_at": "2026-06-15T10:00:00+00:00",
         "updated_at": "2026-06-15T10:05:00+00:00", "child_count": 0,
     }
     base.update(over)
@@ -43,6 +45,36 @@ def test_list_forwards_owner_and_filters(client):
     kw = spy.await_args.kwargs
     assert kw["status"] == "running" and kw["kind"] == "extraction"
     assert kw["q"] == "神" and kw["limit"] == 10
+
+
+def test_list_active_mode_returns_cursor_and_null_total(client):
+    with patch("app.routers.jobs.store.list_jobs", new=AsyncMock(return_value=([_job()], "CURSOR"))):
+        r = client.get("/v1/jobs?bucket=active", headers={"Authorization": "Bearer x"})
+    body = r.json()
+    assert body["next_cursor"] == "CURSOR" and body["total"] is None
+    # P4 usage fields pass through to the item
+    assert body["items"][0]["cost_usd"] == 2.74
+    assert body["items"][0]["model"] == "qwen2.5-7b"
+
+
+def test_list_offset_mode_returns_total(client):
+    spy = AsyncMock(return_value=([_job(status="completed")], 229))
+    with patch("app.routers.jobs.store.list_jobs_paged", new=spy):
+        r = client.get("/v1/jobs?bucket=history&offset=50&limit=50",
+                       headers={"Authorization": "Bearer x"})
+    body = r.json()
+    assert body["total"] == 229 and body["next_cursor"] is None
+    kw = spy.await_args.kwargs
+    assert kw["bucket"] == "history" and kw["offset"] == 50 and kw["limit"] == 50
+
+
+def test_summary_route(client):
+    counts = {"active": 3, "completed": 214, "failed": 3, "cancelled": 12}
+    spy = AsyncMock(return_value=counts)
+    with patch("app.routers.jobs.store.count_summary", new=spy):
+        r = client.get("/v1/jobs/summary", headers={"Authorization": "Bearer x"})
+    assert r.status_code == 200 and r.json() == counts
+    assert spy.await_args.args[1] == TEST_USER  # owner-scoped
 
 
 def test_list_parent_children(client):

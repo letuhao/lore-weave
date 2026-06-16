@@ -57,6 +57,30 @@ async def test_emit_writes_outbox_row_shape():
 
 
 @pytest.mark.asyncio
+async def test_emit_passes_through_p4_usage_fields():
+    conn = FakeConn()
+    await emit_job_event(
+        conn,
+        service="knowledge",
+        job_id="11111111-1111-1111-1111-111111111111",
+        owner_user_id="22222222-2222-2222-2222-222222222222",
+        kind="extraction",
+        status=JobStatus.RUNNING,
+        model="qwen2.5-7b-instruct",
+        cost_usd=1.5,
+        tokens_in=1000,
+        tokens_out=200,
+        params={"concurrency": 4, "scope": "ch 1-40"},
+    )
+    _, args = conn.calls[0]
+    ev = JobEvent.from_payload(json.loads(args[3]))
+    assert ev.model == "qwen2.5-7b-instruct"
+    assert ev.cost_usd == 1.5
+    assert ev.tokens_in == 1000 and ev.tokens_out == 200
+    assert ev.params == {"concurrency": 4, "scope": "ch 1-40"}
+
+
+@pytest.mark.asyncio
 async def test_emit_accepts_raw_status_string():
     conn = FakeConn()
     await emit_job_event(

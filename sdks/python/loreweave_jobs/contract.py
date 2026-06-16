@@ -82,6 +82,17 @@ class JobRecord:
     control_caps: list[ControlCap] = field(default_factory=list)
     title: Optional[str] = None
     error: Optional[dict[str, str]] = None
+    # P4 usage/observability fields (all nullable — older producers + single-call jobs
+    # leave them None; the GUI renders null-safe). ``model`` is the RESOLVED model NAME
+    # (not the BYOK ref-UUID); ``cost_usd`` is reliable (inline on the domain row);
+    # ``tokens_in``/``tokens_out`` are best-effort (scattered/per-unit upstream).
+    # ``params`` is a whitelisted dynamic key-value (model now, effort later — no schema
+    # change to add a key) — NEVER the raw prompt / secret blob.
+    model: Optional[str] = None
+    cost_usd: Optional[float] = None
+    tokens_in: Optional[int] = None
+    tokens_out: Optional[int] = None
+    params: Optional[dict[str, Any]] = None
     created_at: Optional[str] = None  # ISO-8601 UTC
     updated_at: Optional[str] = None  # ISO-8601 UTC
 
@@ -108,6 +119,11 @@ class JobRecord:
             control_caps=[ControlCap(c) for c in (d.get("control_caps") or [])],
             title=d.get("title"),
             error=d.get("error"),
+            model=d.get("model"),
+            cost_usd=d.get("cost_usd"),
+            tokens_in=d.get("tokens_in"),
+            tokens_out=d.get("tokens_out"),
+            params=d.get("params"),
             created_at=d.get("created_at"),
             updated_at=d.get("updated_at"),
         )
@@ -131,6 +147,15 @@ class JobEvent:
     progress: Optional[dict[str, int]] = None
     title: Optional[str] = None
     error: Optional[dict[str, str]] = None
+    # P4 usage/observability (all nullable — see JobRecord). A producer emits the
+    # cumulative cost/tokens it has so far; the projection COALESCE-merges so a later
+    # event without them never wipes the accumulated value. ``params`` = whitelisted
+    # subset only, never the raw prompt/secret blob.
+    model: Optional[str] = None
+    cost_usd: Optional[float] = None
+    tokens_in: Optional[int] = None
+    tokens_out: Optional[int] = None
+    params: Optional[dict[str, Any]] = None
     occurred_at: Optional[str] = None  # ISO-8601 UTC; set by emit if omitted
 
     def to_payload(self) -> dict[str, Any]:
@@ -146,6 +171,11 @@ class JobEvent:
             "progress": self.progress,
             "title": self.title,
             "error": self.error,
+            "model": self.model,
+            "cost_usd": self.cost_usd,
+            "tokens_in": self.tokens_in,
+            "tokens_out": self.tokens_out,
+            "params": self.params,
             "occurred_at": self.occurred_at,
         }
 
@@ -162,5 +192,10 @@ class JobEvent:
             progress=d.get("progress"),
             title=d.get("title"),
             error=d.get("error"),
+            model=d.get("model"),
+            cost_usd=d.get("cost_usd"),
+            tokens_in=d.get("tokens_in"),
+            tokens_out=d.get("tokens_out"),
+            params=d.get("params"),
             occurred_at=d.get("occurred_at"),
         )

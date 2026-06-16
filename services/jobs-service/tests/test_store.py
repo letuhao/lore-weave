@@ -81,6 +81,55 @@ async def test_upsert_returns_applied_from_command_tag(spy_pool):
 
 
 @pytest.mark.asyncio
+async def test_upsert_passes_p4_usage_params(spy_pool):
+    # P4 usage fields land at the declared positions ($12 model … $16 params); params
+    # is jsonb-encoded, cost/tokens pass through raw (NUMERIC/BIGINT bind natively).
+    ev = JobEvent(
+        service="knowledge", job_id=J, owner_user_id=U, kind="extraction",
+        status=JobStatus.RUNNING, model="qwen2.5-7b-instruct", cost_usd=2.74,
+        tokens_in=980142, tokens_out=180553, params={"concurrency": 4},
+        occurred_at="2026-06-15T10:00:00+00:00",
+    )
+    await upsert_job_event(spy_pool, ev)
+    args = spy_pool.execute.await_args.args
+    assert args[12] == "qwen2.5-7b-instruct"   # model
+    assert args[13] == 2.74                     # cost_usd
+    assert args[14] == 980142                   # tokens_in
+    assert args[15] == 180553                   # tokens_out
+    assert json.loads(args[16]) == {"concurrency": 4}  # params jsonb str
+
+
+@pytest.mark.asyncio
+async def test_upsert_coerces_float_tokens_to_int(spy_pool):
+    # A producer emitting tokens as a float (or a value that survived JSON as a float)
+    # must be coerced to int — a float bound to a BIGINT param raises in asyncpg and
+    # would poison the event into the DLQ. cost stays float; a bad value → None.
+    ev = JobEvent(
+        service="knowledge", job_id=J, owner_user_id=U, kind="extraction",
+        status=JobStatus.RUNNING, cost_usd="2.5", tokens_in=100.0, tokens_out="nope",
+        occurred_at="2026-06-15T10:00:00+00:00",
+    )
+    await upsert_job_event(spy_pool, ev)
+    args = spy_pool.execute.await_args.args
+    assert args[13] == 2.5 and isinstance(args[13], float)   # cost "2.5" → 2.5
+    assert args[14] == 100 and isinstance(args[14], int)     # tokens 100.0 → 100
+    assert args[15] is None                                   # "nope" → None (best-effort)
+
+
+@pytest.mark.asyncio
+async def test_upsert_nulls_p4_usage_when_absent(spy_pool):
+    ev = JobEvent(
+        service="video_gen", job_id=J, owner_user_id=U, kind="video_gen",
+        status=JobStatus.RUNNING, occurred_at="2026-06-15T10:00:00+00:00",
+    )
+    await upsert_job_event(spy_pool, ev)
+    args = spy_pool.execute.await_args.args
+    assert args[12] is None and args[13] is None  # model / cost_usd
+    assert args[14] is None and args[15] is None  # tokens_in / tokens_out
+    assert args[16] is None                        # params → SQL NULL
+
+
+@pytest.mark.asyncio
 async def test_upsert_encodes_error_dict(spy_pool):
     ev = JobEvent(
         service="translation", job_id=J, owner_user_id=U, kind="translation",

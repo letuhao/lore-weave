@@ -31,10 +31,12 @@ from loreweave_jobs import JobEvent
 _UPSERT = """
 INSERT INTO job_projection (
   service, job_id, owner_user_id, kind, status, parent_job_id,
-  detail_status, progress, title, error, job_created_at, job_updated_at
+  detail_status, progress, title, error, job_created_at, job_updated_at,
+  model, cost_usd, tokens_in, tokens_out, params
 ) VALUES (
   $1, $2::uuid, $3::uuid, $4, $5, $6::uuid,
-  $7, $8::jsonb, $9, $10::jsonb, $11::timestamptz, $11::timestamptz
+  $7, $8::jsonb, $9, $10::jsonb, $11::timestamptz, $11::timestamptz,
+  $12, $13, $14, $15, $16::jsonb
 )
 ON CONFLICT (service, job_id) DO UPDATE SET
   status         = EXCLUDED.status,
@@ -45,6 +47,14 @@ ON CONFLICT (service, job_id) DO UPDATE SET
   progress       = COALESCE(EXCLUDED.progress, job_projection.progress),
   title          = COALESCE(EXCLUDED.title, job_projection.title),
   error          = EXCLUDED.error,
+  -- P4 usage fields: latest non-null wins. Monotonic-safe because the WHERE below only
+  -- applies forward-in-time / terminal events, so a stale event never lands here; an
+  -- event that simply OMITS a field keeps the accumulated value (never wiped to NULL).
+  model          = COALESCE(EXCLUDED.model, job_projection.model),
+  cost_usd       = COALESCE(EXCLUDED.cost_usd, job_projection.cost_usd),
+  tokens_in      = COALESCE(EXCLUDED.tokens_in, job_projection.tokens_in),
+  tokens_out     = COALESCE(EXCLUDED.tokens_out, job_projection.tokens_out),
+  params         = COALESCE(EXCLUDED.params, job_projection.params),
   job_created_at = LEAST(job_projection.job_created_at, EXCLUDED.job_created_at),
   job_updated_at = EXCLUDED.job_updated_at,
   projected_at   = now()
@@ -68,6 +78,32 @@ def _jsonb(value: Any) -> Optional[str]:
     if value is None:
         return None
     return json.dumps(value)
+
+
+def _as_int(value: Any) -> Optional[int]:
+    """Coerce a best-effort token count to int for the BIGINT column. A producer
+    (or a provider usage dict) can emit tokens as a float (e.g. 100.0) which
+    survives JSON as a float — asyncpg then rejects it for a BIGINT param
+    ("expected an integer"), poisoning the event into the DLQ. None/unparseable →
+    None (best-effort: a bad count must never block the projection)."""
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return None
+
+
+def _as_float(value: Any) -> Optional[float]:
+    """Coerce cost to float for the NUMERIC column. float→NUMERIC is an asyncpg
+    sharp edge (version-dependent); normalizing here keeps the write robust. A
+    non-numeric value → None rather than a DLQ-poisoning DataError."""
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return None
 
 
 def _ts(value: Any) -> datetime:
@@ -108,6 +144,11 @@ async def upsert_job_event(conn: Any, event: JobEvent) -> bool:
         event.title,
         _jsonb(event.error),
         _ts(event.occurred_at),
+        event.model,
+        _as_float(event.cost_usd),
+        _as_int(event.tokens_in),
+        _as_int(event.tokens_out),
+        _jsonb(event.params),
     )
     # asyncpg command tag: "INSERT 0 1" (applied) / "INSERT 0 0" (WHERE-skipped).
     # A mock pool may return a non-tag (e.g. an AsyncMock) — treat that as applied.
@@ -124,8 +165,16 @@ MAX_LIMIT = 200
 # Columns returned to the API (control_caps are derived at the router layer).
 _COLS = (
     "service, job_id, owner_user_id, kind, status, parent_job_id, detail_status, "
-    "progress, title, error, job_created_at, job_updated_at"
+    "progress, title, error, job_created_at, job_updated_at, "
+    "model, cost_usd, tokens_in, tokens_out, params"
 )
+
+# Status buckets for the P4 GUI's two lists (Active = live/unpaginated, History =
+# offset-paginated). Literal constants — safe to inline into SQL (no user input).
+_ACTIVE_STATUSES = ("pending", "running", "paused", "cancelling")
+_TERMINAL_STATUSES = ("completed", "failed", "cancelled")
+_ACTIVE_IN = ", ".join(f"'{s}'" for s in _ACTIVE_STATUSES)
+_TERMINAL_IN = ", ".join(f"'{s}'" for s in _TERMINAL_STATUSES)
 
 
 def _row_to_dict(row: Any) -> dict[str, Any]:
@@ -141,6 +190,7 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
 
     created = row["job_created_at"]
     updated = row["job_updated_at"]
+    cost = row["cost_usd"]
     return {
         "service": row["service"],
         "job_id": str(row["job_id"]),
@@ -152,6 +202,12 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
         "progress": _json(row["progress"]),
         "title": row["title"],
         "error": _json(row["error"]),
+        # cost_usd is NUMERIC → asyncpg returns Decimal; JSON-encode as float for the FE.
+        "cost_usd": float(cost) if cost is not None else None,
+        "tokens_in": int(row["tokens_in"]) if row["tokens_in"] is not None else None,
+        "tokens_out": int(row["tokens_out"]) if row["tokens_out"] is not None else None,
+        "model": row["model"],
+        "params": _json(row["params"]),
         "created_at": created.isoformat() if created else None,
         "updated_at": updated.isoformat() if updated else None,
         "child_count": int(row["child_count"]) if "child_count" in row and row["child_count"] is not None else None,
@@ -172,25 +228,28 @@ def _decode_cursor(cursor: str) -> Optional[tuple[str, str, str]]:
         return None
 
 
-async def list_jobs(
-    conn: Any,
+# child_count: only meaningful for the top-level view; a child row's children
+# (none in practice — the tree is 1 level) still computes harmlessly.
+_CHILD_COUNT_EXPR = (
+    "(SELECT count(*) FROM job_projection c "
+    " WHERE c.parent_job_id = j.job_id AND c.owner_user_id = j.owner_user_id)"
+)
+
+
+def _build_filters(
     owner_user_id: str,
     *,
-    status: Optional[str] = None,
-    kind: Optional[str] = None,
-    parent: Optional[str] = None,
-    q: Optional[str] = None,
-    cursor: Optional[str] = None,
-    limit: int = DEFAULT_LIMIT,
-) -> tuple[list[dict[str, Any]], Optional[str]]:
-    """A user's jobs, most-recently-updated first. Owner-scoped (security).
+    status: Optional[str],
+    kind: Optional[str],
+    parent: Optional[str],
+    q: Optional[str],
+    bucket: Optional[str],
+) -> tuple[list[str], list[Any]]:
+    """Shared WHERE-clause builder for both pagination modes (keyset + offset).
 
-    Default (no `parent`): TOP-LEVEL jobs only (parent_job_id IS NULL) each with a
-    `child_count` — the GUI shows a campaign once + lazy-loads its children via
-    `?parent=<job_id>` (H3 grouping, pagination never splits a family). `?parent`
-    returns that parent's children. Keyset cursor on (job_updated_at, service,
-    job_id) DESC — stable + no offset drift. Returns (rows, next_cursor)."""
-    limit = max(1, min(limit, MAX_LIMIT))
+    `bucket` selects the GUI's status group: `active` = non-terminal, `history` =
+    terminal (None = all). `q` is the WIDENED search — one `%q%` matched across
+    title/kind/service/model and the job_id text (so a user can paste a partial id)."""
     where = ["j.owner_user_id = $1::uuid"]
     args: list[Any] = [owner_user_id]
 
@@ -199,6 +258,10 @@ async def list_jobs(
         where.append(f"j.parent_job_id = ${len(args)}::uuid")
     else:
         where.append("j.parent_job_id IS NULL")
+    if bucket == "active":
+        where.append(f"j.status IN ({_ACTIVE_IN})")
+    elif bucket == "history":
+        where.append(f"j.status IN ({_TERMINAL_IN})")
     if status:
         args.append(status)
         where.append(f"j.status = ${len(args)}")
@@ -207,7 +270,40 @@ async def list_jobs(
         where.append(f"j.kind = ${len(args)}")
     if q:
         args.append(f"%{q}%")
-        where.append(f"j.title ILIKE ${len(args)}")
+        n = len(args)
+        where.append(
+            f"(j.title ILIKE ${n} OR j.kind ILIKE ${n} OR j.service ILIKE ${n} "
+            f"OR j.model ILIKE ${n} OR j.job_id::text ILIKE ${n})"
+        )
+    return where, args
+
+
+async def list_jobs(
+    conn: Any,
+    owner_user_id: str,
+    *,
+    status: Optional[str] = None,
+    kind: Optional[str] = None,
+    parent: Optional[str] = None,
+    q: Optional[str] = None,
+    bucket: Optional[str] = None,
+    cursor: Optional[str] = None,
+    limit: int = DEFAULT_LIMIT,
+) -> tuple[list[dict[str, Any]], Optional[str]]:
+    """A user's jobs, most-recently-updated first (keyset). Owner-scoped (security).
+
+    This is the LIVE/Active mode — keyset cursor on (job_updated_at, service, job_id)
+    DESC, stable + no offset drift as SSE updates rows. The P4 GUI uses it for the
+    unpaginated Active list (`bucket="active"`); History uses `list_jobs_paged`.
+
+    Default (no `parent`): TOP-LEVEL jobs only (parent_job_id IS NULL) each with a
+    `child_count` — the GUI shows a campaign once + lazy-loads its children via
+    `?parent=<job_id>` (H3 grouping, pagination never splits a family). Returns
+    (rows, next_cursor)."""
+    limit = max(1, min(limit, MAX_LIMIT))
+    where, args = _build_filters(
+        owner_user_id, status=status, kind=kind, parent=parent, q=q, bucket=bucket,
+    )
     if cursor:
         decoded = _decode_cursor(cursor)
         if decoded:
@@ -221,16 +317,10 @@ async def list_jobs(
                 f"< (${n-2}::timestamptz, ${n-1}, ${n}::uuid)"
             )
 
-    # child_count: only meaningful for the top-level view; a child row's children
-    # (none in practice — the tree is 1 level) still computes harmlessly.
-    child_count_expr = (
-        "(SELECT count(*) FROM job_projection c "
-        " WHERE c.parent_job_id = j.job_id AND c.owner_user_id = j.owner_user_id)"
-    )
     args.append(limit + 1)  # fetch one extra to know if there's a next page
     sql = (
         f"SELECT {', '.join('j.' + c for c in _COLS.split(', '))}, "
-        f"{child_count_expr} AS child_count "
+        f"{_CHILD_COUNT_EXPR} AS child_count "
         f"FROM job_projection j WHERE {' AND '.join(where)} "
         f"ORDER BY j.job_updated_at DESC, j.service DESC, j.job_id DESC "
         f"LIMIT ${len(args)}"
@@ -242,6 +332,69 @@ async def list_jobs(
         items = items[:limit]
         next_cursor = _encode_cursor(items[-1])
     return items, next_cursor
+
+
+async def list_jobs_paged(
+    conn: Any,
+    owner_user_id: str,
+    *,
+    status: Optional[str] = None,
+    kind: Optional[str] = None,
+    parent: Optional[str] = None,
+    q: Optional[str] = None,
+    bucket: Optional[str] = None,
+    offset: int = 0,
+    limit: int = DEFAULT_LIMIT,
+) -> tuple[list[dict[str, Any]], int]:
+    """Offset-paginated list ordered by `job_created_at` DESC — the P4 GUI's HISTORY
+    mode. ORDER BY created (not updated) is STABLE: a late SSE update bumps a job's
+    updated_at but not its created_at, so the page a user is reading never reorders
+    under them (the offset-drift trap a updated_at sort would have). Returns (rows,
+    total) so the GUI can render "X–Y of N" + a pager. Owner-scoped."""
+    limit = max(1, min(limit, MAX_LIMIT))
+    offset = max(0, offset)
+    where, args = _build_filters(
+        owner_user_id, status=status, kind=kind, parent=parent, q=q, bucket=bucket,
+    )
+    where_sql = " AND ".join(where)
+    total = await conn.fetchval(
+        f"SELECT count(*) FROM job_projection j WHERE {where_sql}", *args
+    )
+    args.append(limit)
+    args.append(offset)
+    sql = (
+        f"SELECT {', '.join('j.' + c for c in _COLS.split(', '))}, "
+        f"{_CHILD_COUNT_EXPR} AS child_count "
+        f"FROM job_projection j WHERE {where_sql} "
+        f"ORDER BY j.job_created_at DESC, j.service DESC, j.job_id DESC "
+        f"LIMIT ${len(args) - 1} OFFSET ${len(args)}"
+    )
+    rows = await conn.fetch(sql, *args)
+    return [_row_to_dict(r) for r in rows], int(total or 0)
+
+
+_SUMMARY_SQL = f"""
+SELECT
+  count(*) FILTER (WHERE status IN ({_ACTIVE_IN}))     AS active,
+  count(*) FILTER (WHERE status = 'completed')         AS completed,
+  count(*) FILTER (WHERE status = 'failed')            AS failed,
+  count(*) FILTER (WHERE status = 'cancelled')         AS cancelled
+FROM job_projection
+WHERE owner_user_id = $1::uuid AND parent_job_id IS NULL
+"""
+
+
+async def count_summary(conn: Any, owner_user_id: str) -> dict[str, int]:
+    """Owner-scoped status counts for the GUI's 4 summary cards (Active / Completed
+    / Failed / Cancelled). TOP-LEVEL only (parent_job_id IS NULL) so it matches the
+    default list view — a campaign counts once, not once per child."""
+    row = await conn.fetchrow(_SUMMARY_SQL, owner_user_id)
+    return {
+        "active": int(row["active"]),
+        "completed": int(row["completed"]),
+        "failed": int(row["failed"]),
+        "cancelled": int(row["cancelled"]),
+    }
 
 
 async def get_job(conn: Any, owner_user_id: str, service: str, job_id: str) -> Optional[dict[str, Any]]:

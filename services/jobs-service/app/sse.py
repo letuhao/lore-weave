@@ -50,6 +50,15 @@ def event_to_payload(event: JobEvent) -> dict:
         "progress": event.progress,
         "title": event.title,
         "error": event.error,
+        # P4 usage fields on the live frame so the GUI updates cost/tokens without a
+        # refetch. These are per-EVENT (what the producer emitted now) — the projection
+        # COALESCE-accumulates the row, but a live frame shows the latest emitted values;
+        # the GUI's external store merges them onto the cached row.
+        "model": event.model,
+        "cost_usd": event.cost_usd,
+        "tokens_in": event.tokens_in,
+        "tokens_out": event.tokens_out,
+        "params": event.params,
         "updated_at": event.occurred_at,
         "control_caps": [c.value for c in derive_control_caps(event.status, event.kind)],
     }

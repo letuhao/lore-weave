@@ -34,18 +34,45 @@ async def list_jobs(
     status: Optional[str] = Query(default=None),
     kind: Optional[str] = Query(default=None),
     parent: Optional[str] = Query(default=None, description="parent job_id — list its children (H3)"),
-    q: Optional[str] = Query(default=None, description="title search (ILIKE)"),
-    cursor: Optional[str] = Query(default=None),
+    q: Optional[str] = Query(default=None, description="search across title/kind/service/model/job_id (ILIKE)"),
+    bucket: Optional[str] = Query(default=None, description="'active' (non-terminal) | 'history' (terminal)"),
+    cursor: Optional[str] = Query(default=None, description="keyset cursor (Active/live mode)"),
+    offset: Optional[int] = Query(default=None, ge=0, description="offset → paginated mode (History); returns total"),
     limit: int = Query(default=store.DEFAULT_LIMIT, ge=1, le=store.MAX_LIMIT),
     user_id: str = Depends(get_current_user),
     db: asyncpg.Pool = Depends(get_db),
 ) -> dict:
-    """List the caller's jobs (most-recent first). Default view = top-level jobs
-    with a `child_count`; `?parent=<job_id>` returns that parent's children."""
+    """List the caller's jobs. Two modes:
+
+    - **Active/live** (default, or `bucket=active`): keyset cursor on updated_at —
+      stable under live SSE updates, unpaginated in the GUI. Returns `next_cursor`.
+    - **History** (`offset` set, typically with `bucket=history`): offset pagination
+      ordered by created_at — returns `total` for an "X–Y of N" pager.
+
+    Default view = top-level jobs with a `child_count`; `?parent=<job_id>` returns
+    that parent's children."""
+    if offset is not None:
+        items, total = await store.list_jobs_paged(
+            db, user_id, status=status, kind=kind, parent=parent, q=q,
+            bucket=bucket, offset=offset, limit=limit,
+        )
+        return {"items": [_with_caps(j) for j in items], "next_cursor": None, "total": total}
     items, next_cursor = await store.list_jobs(
-        db, user_id, status=status, kind=kind, parent=parent, q=q, cursor=cursor, limit=limit,
+        db, user_id, status=status, kind=kind, parent=parent, q=q, bucket=bucket,
+        cursor=cursor, limit=limit,
     )
-    return {"items": [_with_caps(j) for j in items], "next_cursor": next_cursor}
+    return {"items": [_with_caps(j) for j in items], "next_cursor": next_cursor, "total": None}
+
+
+@router.get("/summary")
+async def jobs_summary(
+    user_id: str = Depends(get_current_user),
+    db: asyncpg.Pool = Depends(get_db),
+) -> dict:
+    """Owner-scoped status counts for the GUI's 4 summary cards (top-level jobs).
+    Single segment — declared before the 2-segment `/{service}/{job_id}` detail route
+    so it can never be parsed as a job id."""
+    return await store.count_summary(db, user_id)
 
 
 @router.get("/stream")

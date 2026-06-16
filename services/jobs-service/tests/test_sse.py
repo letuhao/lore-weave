@@ -28,6 +28,16 @@ def test_event_to_payload_includes_caps_and_string_status():
     assert p["job_id"] == J and p["owner_user_id"] == U
 
 
+def test_event_to_payload_carries_p4_usage_fields():
+    p = sse.event_to_payload(_event(
+        model="qwen2.5-7b", cost_usd=2.74, tokens_in=980142, tokens_out=180553,
+        params={"concurrency": 4},
+    ))
+    assert p["model"] == "qwen2.5-7b" and p["cost_usd"] == 2.74
+    assert p["tokens_in"] == 980142 and p["tokens_out"] == 180553
+    assert p["params"] == {"concurrency": 4}
+
+
 def test_channel_is_per_owner():
     assert sse._channel(U) == f"loreweave:jobs:user:{U}"
 

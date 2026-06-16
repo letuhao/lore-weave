@@ -47,6 +47,11 @@ async def emit_job_event(
     progress: Optional[dict[str, int]] = None,
     title: Optional[str] = None,
     error: Optional[dict[str, str]] = None,
+    model: Optional[str] = None,
+    cost_usd: Optional[float] = None,
+    tokens_in: Optional[int] = None,
+    tokens_out: Optional[int] = None,
+    params: Optional[dict[str, Any]] = None,
     occurred_at: Optional[str] = None,
 ) -> None:
     """Insert a job-lifecycle ``JobEvent`` into ``outbox_events`` via ``conn`` (an open
@@ -74,6 +79,11 @@ async def emit_job_event(
         progress=progress,
         title=title,
         error=error,
+        model=model,
+        cost_usd=cost_usd,
+        tokens_in=tokens_in,
+        tokens_out=tokens_out,
+        params=params,
         occurred_at=occurred_at or _now_iso(),
     )
     await conn.execute(
