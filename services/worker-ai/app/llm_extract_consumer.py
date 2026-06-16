@@ -183,6 +183,15 @@ async def _persist_chunk(pool, knowledge_client, ej_id, rs: dict) -> None:
             if project_id is not None:
                 await _record_spending(conn, owner_id, project_id, COST)
             await _clear_resume(conn, ej_id)
+    # P5 — release the chunk's WFQ slot at this success terminal (the sole per-chunk
+    # success chokepoint — every stage routes here). Only the finalize WINNER reaches this
+    # line (a concurrent duplicate returned at the resume_state-NULL recheck above), so the
+    # lease is released exactly once. After the tx commits (not inside it — a Redis call
+    # under the row lock would pin a pooled conn). Best-effort + idempotent; the lease TTL +
+    # the runner's periodic reclaim backstop a permanent-fail / poison path that never
+    # reaches here. No-op when P5 off or the chunk carried no token.
+    from app import fair_sched
+    await fair_sched.release_chunk(rs.get("user_id"), rs.get("_p5_tok"))
     logger.info(
         "decoupled extraction: chunk %s persisted via event path (entities=%d relations=%d)",
         ctx["source_id"], result.entities_merged, result.relations_created,

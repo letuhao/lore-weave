@@ -43,6 +43,7 @@ from loreweave_extraction import (
 from loreweave_extraction.errors import ExtractionError
 from loreweave_llm.errors import LLMError
 
+from app import fair_sched
 from app.clients import (
     BookClient,
     ChapterInfo,
@@ -1449,6 +1450,10 @@ async def _start_decoupled_chunk(
     # C13 — pinned glossary names to force-inject into this chunk's
     # known_entities. [] ⇒ no pins (back-compat).
     pinned_names: list[str] | None = None,
+    # P5 — the WFQ lease token acquired for this chunk (None when P5 off). Stashed in
+    # resume_state so the decoupled consumer can release the exact slot at the chunk
+    # terminal; released here on submit-failure (no chunk ends up in flight).
+    p5_token: str | None = None,
 ) -> None:
     """WX-T3b — seed resume_state for one chapter + submit its entity job, then
     return (released). The llm_extract_consumer folds the terminal events through
@@ -1529,6 +1534,10 @@ async def _start_decoupled_chunk(
         },
         cursor_to_set={"last_chapter_id": str(ch.chapter_id), "scope": "chapters"},
     )
+    # P5 — carry the WFQ lease token in resume_state so the consumer's terminal finalize
+    # (_persist_chunk) releases the exact slot this chunk leased. Absent when P5 is off.
+    if p5_token:
+        rs["_p5_tok"] = p5_token
     # WX Wave 4 — serialize the recovery/filter configs into resume_state so the consumer
     # (which only sees a job_id) can drive the Tier-3 + category×batch fan-outs over the
     # WX-T2c seams. worker-ai has no glossary access ⇒ known_entity_kinds is empty ⇒ all
@@ -1570,6 +1579,10 @@ async def _start_decoupled_chunk(
             )
             await asyncio.sleep(1.0 * (attempt + 1))
     if submit is None:
+        # P5 — the chunk never went in flight; free the slot now (the consumer will never
+        # see this chunk, so it can't release it). The job then fails via the caller's
+        # outer except. No-op when P5 off / token None.
+        await fair_sched.release_chunk(job.user_id, p5_token)
         raise last_exc if last_exc else RuntimeError("decoupled entity submit failed")
     await pool.execute(
         """UPDATE extraction_jobs
@@ -1758,15 +1771,34 @@ async def process_job(
                     logger.info("Job %s no longer running (status=%s), stopping", job.job_id, status)
                     return
 
+                # P5 WFQ — gate this owner's next in-flight decoupled chunk BEFORE reserving
+                # cost (a deferred chunk must not inflate cost_spent_usd). Only the decoupled
+                # chapters path holds a cross-poll lease (released by the consumer at the
+                # chunk terminal — that's what bounds real in-flight LLM concurrency per
+                # owner). At cap ⇒ defer the whole chunk to a later poll; the slot frees when
+                # an in-flight chunk finalizes. P5 off ⇒ (True, None) ⇒ proceeds un-capped.
+                _p5_decoupled = _decouple_enabled() and job.scope in ("chapters", "all")
+                _p5_token: str | None = None
+                if _p5_decoupled:
+                    _p5_allowed, _p5_token = await fair_sched.try_acquire_chunk(job.user_id)
+                    if not _p5_allowed:
+                        logger.info(
+                            "Job %s: owner %s at P5 cap — deferring next chunk to a later poll",
+                            job.job_id, job.user_id,
+                        )
+                        return
+
                 # Atomic cost reservation
                 outcome = await _try_spend(
                     pool, job.user_id, job.job_id, _DEFAULT_COST_PER_ITEM,
                 )
                 if outcome == "not_running":
                     logger.info("Job %s try_spend returned not_running, stopping", job.job_id)
+                    await fair_sched.release_chunk(job.user_id, _p5_token)
                     return
                 if outcome == "auto_paused":
                     logger.info("Job %s auto-paused by budget cap", job.job_id)
+                    await fair_sched.release_chunk(job.user_id, _p5_token)
                     await _append_log(
                         pool, job.user_id, job.job_id, "warning",
                         "Job auto-paused: max_spend_usd reached",
@@ -1817,6 +1849,9 @@ async def process_job(
                         {"last_chapter_id": ch.chapter_id, "scope": "chapters"},
                         unavail_payload,
                     )
+                    # P5 — this chapter did no LLM work; free its slot before the next
+                    # iteration (which re-acquires). No-op when P5 off / token None.
+                    await fair_sched.release_chunk(job.user_id, _p5_token)
                     continue
 
                 # P3 D-P3-EXTRACTION-CALLER-WIRE-UP — fetch hierarchy
@@ -1902,6 +1937,9 @@ async def process_job(
                         p3_book_parts=p3_book_parts, p3_is_last=p3_is_last,
                         # C13 — pinned names resolved once per job above.
                         pinned_names=pinned_names,
+                        # P5 — the WFQ lease for this chunk; stashed in resume_state so the
+                        # consumer releases it at the chunk terminal. None when P5 off.
+                        p5_token=_p5_token,
                     )
                     logger.info(
                         "Job %s: chapter %s submitted via DECOUPLED extraction (released)",
@@ -2496,6 +2534,18 @@ async def poll_and_run(
     jobs = await _get_running_jobs(pool)
     if not jobs:
         return 0
+
+    # P5 WFQ — when fair scheduling is on, interleave jobs across owners (round-robin)
+    # instead of strict created_at, so a new owner's job isn't stuck behind one owner's
+    # giant book. Also periodically reclaim expired leases (crash-leak backstop). Both
+    # are no-ops when P5 is off (created_at order preserved). Best-effort: a scheduler/
+    # redis blip must never block the poll cycle.
+    if fair_sched.enabled():
+        try:
+            await fair_sched.reclaim()
+            jobs = fair_sched.round_robin_by_owner(jobs)
+        except Exception:  # noqa: BLE001 — fairness must not block extraction
+            logger.warning("P5: poll-loop WFQ ordering/reclaim failed — created_at order", exc_info=True)
 
     for job in jobs:
         await process_job(

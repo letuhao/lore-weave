@@ -1133,6 +1133,14 @@ services:
       # B2 follow-up — global env knob for writer autocreate.  Mirrors the
       # knowledge-service value so both services share one .env toggle.
       KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED: ${KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED:-false}
+      # Unified Job Control Plane P5 — fair scheduling / per-tenant concurrency (the
+      # noisy-neighbor fix). The PULL substrate: the poll loop iterates owners round-robin
+      # and gates each decoupled chunk with a per-owner in-flight cap (acquire/release on
+      # the lane `knowledge:extraction`). Default OFF until live-smoked → then default on.
+      # redis_url falls back to the code default (redis://redis:6379) — no separate env.
+      P5_SCHED_ENABLED: ${P5_SCHED_ENABLED:-false}
+      P5_OWNER_CAP: ${P5_OWNER_CAP:-5}
+      P5_LEASE_TTL_MS: ${P5_LEASE_TTL_MS:-3600000}
     depends_on:
       postgres:
         condition: service_healthy

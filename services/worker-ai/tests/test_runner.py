@@ -118,7 +118,12 @@ def _mock_pool(book_id=_TEST_BOOK_ID):
     # conn.fetchrow (so the rowcount gates the emit) + emit_job_event on the same
     # conn. Default the acquired conn's fetchrow to a truthy row (transition won) so
     # the happy path emits; tests inspect `pool.acquired_conn.fetchrow`.
-    conn.fetchrow = AsyncMock(return_value={"job_id": "00000000-0000-0000-0000-000000000001"})
+    # P4 carries the final cost on the terminal event — _complete_job/_fail_job read
+    # row["cost_spent_usd"] from the RETURNING row, so the mock must supply it.
+    conn.fetchrow = AsyncMock(return_value={
+        "job_id": "00000000-0000-0000-0000-000000000001",
+        "cost_spent_usd": Decimal("0.004"),
+    })
     _acq = MagicMock()
     _acq.__aenter__ = AsyncMock(return_value=conn)
     _acq.__aexit__ = AsyncMock(return_value=False)
@@ -301,6 +306,35 @@ async def test_process_job_runs_normally_with_complete_billing(mock_extract_pers
 
 
 # ── process_job: chapters scope ──────────────────────────────────────
+
+
+@pytest.mark.asyncio
+@patch("app.runner._start_decoupled_chunk", new_callable=AsyncMock)
+@patch("app.runner.fair_sched.try_acquire_chunk", new_callable=AsyncMock)
+@patch("app.runner._extract_and_persist", new_callable=AsyncMock)
+async def test_p5_defers_chunk_and_skips_spend_when_owner_at_cap(
+    mock_extract_persist, mock_acquire, mock_decoupled, monkeypatch
+):
+    """P5 — when the owner is at the per-owner in-flight cap, the decoupled chunk is
+    deferred to a later poll: NO submit and NO cost reservation (try_spend) — so a
+    deferred chunk can't inflate cost_spent_usd. Proves the gate sits BEFORE try_spend
+    in the real path (memory: assert the wrapper fires at the call site)."""
+    monkeypatch.setenv("EXTRACTION_DECOUPLE_ENABLED", "true")
+    mock_acquire.return_value = (False, None)  # owner at cap → defer
+    job = _job(scope="chapters")
+    pool = _mock_pool()
+    # in-flight guard runs first (resume_state IS NOT NULL → False), then book_id, then
+    # _refresh_job_status → 'running'.
+    pool.fetchval = AsyncMock(side_effect=[False, _TEST_BOOK_ID, "running", *["running"] * 50])
+
+    await process_job(
+        pool, _mock_knowledge_client(), _mock_llm_client(), _mock_book_client(),
+        _mock_glossary_client(), _mock_chat_client(), _mock_provider_client(), job,
+    )
+
+    mock_acquire.assert_awaited_once()        # the gate was consulted
+    mock_decoupled.assert_not_called()        # chunk NOT submitted
+    pool.fetchrow.assert_not_called()         # _try_spend (fetchrow) NOT reached → no spend inflation
 
 
 @pytest.mark.asyncio

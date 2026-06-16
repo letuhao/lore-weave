@@ -14,7 +14,7 @@ test_decoupled_extract; here we lock the *orchestration* the fixes introduce):
 
 import asyncio
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from app import decoupled_extract as dx
 from app.llm_extract_consumer import (
@@ -158,6 +158,36 @@ async def test_persist_chunk_skips_spend_when_already_finalized():
     assert "current_month_spent_usd" not in sqls   # NO re-spend (the bug)
     assert "current_cursor" not in sqls            # NO re-advance
     assert "resume_state=NULL" not in sqls         # nothing to clear
+
+
+# ── P5 — WFQ lease release at the chunk terminal ─────────────────────────────────
+
+async def test_persist_chunk_releases_p5_lease_on_finalize_winner():
+    """P5 — the finalize WINNER releases the chunk's WFQ slot using the token stashed in
+    resume_state (`_p5_tok`), so the per-owner in-flight cap reflects real LLM completion."""
+    conn = FakeConn([{"resume_state": {"stage": dx.PERSIST}}])  # recheck → proceed (winner)
+    pool = FakePool(conn)
+    kc = AsyncMock()
+    kc.persist_pass2.return_value = _persist_result()
+    rs = _persist_rs()
+    rs["_p5_tok"] = f"{USER}:9"
+    with patch("app.fair_sched.release_chunk", new_callable=AsyncMock) as rel:
+        await _persist_chunk(pool, kc, EJ, rs)
+    rel.assert_awaited_once_with(USER, f"{USER}:9")
+
+
+async def test_persist_chunk_no_release_when_already_finalized():
+    """P5 — the LOSER (resume_state already cleared by a concurrent winner) must NOT
+    release: it returns before the clear, and the winner owns the single release."""
+    conn = FakeConn([{"resume_state": None}])  # recheck → already finalized (loser)
+    pool = FakePool(conn)
+    kc = AsyncMock()
+    kc.persist_pass2.return_value = _persist_result()
+    rs = _persist_rs()
+    rs["_p5_tok"] = f"{USER}:9"
+    with patch("app.fair_sched.release_chunk", new_callable=AsyncMock) as rel:
+        await _persist_chunk(pool, kc, EJ, rs)
+    rel.assert_not_awaited()
 
 
 async def test_persist_chunk_skips_when_row_vanished():
