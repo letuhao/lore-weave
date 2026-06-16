@@ -105,9 +105,14 @@ async def test_check_job_completion_emits_completed(monkeypatch):
     spy = AsyncMock()
     monkeypatch.setattr(worker_mod, "emit_job_event", spy)
     monkeypatch.setattr(worker_mod, "_send_translation_notification", AsyncMock())
+    # P4 — cost is DERIVED out-of-tx via the estimate oracle; mock the resolver so the
+    # test doesn't make a real HTTP call and the asserted cost is deterministic.
+    cost_spy = AsyncMock(return_value=0.42)
+    monkeypatch.setattr(worker_mod, "resolve_job_cost_usd", cost_spy)
     pool = FakeConn({
         "status": "completed", "completed_chapters": 3, "failed_chapters": 0,
-        "owner_user_id": USER, "ti": 12000, "toks_out": 9000,
+        "total_chapters": 3, "owner_user_id": USER, "ti": 12000, "toks_out": 9000,
+        "model_source": "user_model", "model_ref": uuid4(),
     })
     publish_event = AsyncMock()
     msg = {"job_id": str(JOB)}
@@ -121,8 +126,12 @@ async def test_check_job_completion_emits_completed(monkeypatch):
     assert kw["job_id"] == str(JOB)
     assert kw["owner_user_id"] == str(USER)
     # P4 — terminal carries best-effort summed tokens (FakeConn returns the same row
-    # for the SUM query, so ti/toks_out stand in for the aggregate).
+    # for the SUM query, so ti/toks_out stand in for the aggregate) + the derived cost.
     assert kw["tokens_in"] == 12000 and kw["tokens_out"] == 9000
+    assert kw["cost_usd"] == 0.42
+    # cost was priced from the SUMMED actual tokens (D-JOBS-P4-TRANSLATION-COST)
+    assert cost_spy.await_args.kwargs["input_tokens"] == 12000
+    assert cost_spy.await_args.kwargs["output_tokens"] == 9000
 
 
 @pytest.mark.asyncio
@@ -130,9 +139,11 @@ async def test_check_job_completion_maps_partial_to_completed(monkeypatch):
     spy = AsyncMock()
     monkeypatch.setattr(worker_mod, "emit_job_event", spy)
     monkeypatch.setattr(worker_mod, "_send_translation_notification", AsyncMock())
+    monkeypatch.setattr(worker_mod, "resolve_job_cost_usd", AsyncMock(return_value=None))
     pool = FakeConn({
         "status": "partial", "completed_chapters": 2, "failed_chapters": 1,
-        "owner_user_id": USER, "ti": 0, "toks_out": 0,
+        "total_chapters": 3, "owner_user_id": USER, "ti": 0, "toks_out": 0,
+        "model_source": "user_model", "model_ref": uuid4(),
     })
     msg = {"job_id": str(JOB)}
 

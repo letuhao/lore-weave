@@ -461,6 +461,14 @@ CREATE INDEX IF NOT EXISTS idx_sgu_entity ON segment_glossary_usage(entity_id);
 -- source-edit `dirty` (a segment can be glossary-stale with unchanged source).
 ALTER TABLE segment_translations
   ADD COLUMN IF NOT EXISTS is_glossary_stale BOOLEAN NOT NULL DEFAULT false;
+
+-- D-JOBS-P4-TRANSLATION-COST: job-level cost for the unified Jobs GUI. The gateway
+-- `usage` carries only tokens (no cost), so this is DERIVED at finalize from the summed
+-- per-chapter tokens × the model's pricing (provider-registry estimate oracle), out-of-tx,
+-- and rides the terminal job event. Nullable: an older/unpriced job leaves it NULL (the
+-- GUI renders cost null-safe).
+ALTER TABLE translation_jobs
+  ADD COLUMN IF NOT EXISTS cost_usd NUMERIC;
 """
 
 

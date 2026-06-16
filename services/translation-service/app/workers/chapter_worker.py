@@ -9,6 +9,7 @@ from ..config import settings
 from ..llm_client import LLMClient, set_campaign_id
 from ..metrics import record_stage
 from .. import fair_sched
+from .cost import resolve_job_cost_usd
 from .session_translator import translate_chapter
 
 log = logging.getLogger(__name__)
@@ -689,6 +690,39 @@ async def _check_job_completion(pool, job_id, user_id, msg, publish_event) -> No
     # slot even when this runs in the decoupled consumer (API container). No-op/off-safe.
     await fair_sched.release_chapter_lease(msg)
 
+    # P4 (D-JOBS-P4-TRANSLATION-COST + D-JOBS-P4-TRANSL-TOKENS-PG) — resolve the job's
+    # cumulative tokens + derived cost OUT-OF-TX, BEFORE the finalize tx. The gateway
+    # `usage` carries no cost, so price the summed tokens via the estimate oracle (H1: a
+    # network call must not run inside the finalize tx). When the job is complete every
+    # chapter row is terminal, so the token SUM is stable here; the guarded UPDATE below
+    # still decides exactly-once finalize (a non-winning worker just discards this). Cost
+    # MUST ride the FIRST terminal emit — the projection rejects a later 2nd terminal event.
+    _ti = _to = 0
+    _cost = None
+    _pre = await pool.fetchrow(
+        "SELECT completed_chapters, failed_chapters, total_chapters, owner_user_id, "
+        "model_source, model_ref FROM translation_jobs WHERE job_id=$1",
+        job_id,
+    )
+    # .get() (asyncpg.Record + dict both support it) — tolerant of a partial row.
+    _total = _pre.get("total_chapters") if _pre else None
+    if _total and (
+        (_pre.get("completed_chapters") or 0) + (_pre.get("failed_chapters") or 0)
+    ) >= _total:
+        _tok = await pool.fetchrow(
+            "SELECT COALESCE(SUM(input_tokens),0) AS ti, "
+            "COALESCE(SUM(output_tokens),0) AS toks_out "
+            "FROM chapter_translations WHERE job_id=$1",
+            job_id,
+        )
+        _ti = int(_tok["ti"]) if _tok else 0
+        _to = int(_tok["toks_out"]) if _tok else 0
+        _cost = await resolve_job_cost_usd(
+            owner_user_id=str(_pre.get("owner_user_id")),
+            model_source=_pre.get("model_source"), model_ref=_pre.get("model_ref"),
+            input_tokens=_ti, output_tokens=_to,
+        )
+
     async with pool.acquire() as db:
         async with db.transaction():
             row = await db.fetchrow(
@@ -698,12 +732,13 @@ async def _check_job_completion(pool, job_id, user_id, msg, publish_event) -> No
                        WHEN completed_chapters > 0               THEN 'partial'
                        ELSE 'failed'
                      END,
-                     finished_at = now()
+                     finished_at = now(),
+                     cost_usd = COALESCE($2, cost_usd)
                    WHERE job_id = $1
                      AND status = 'running'
                      AND (completed_chapters + failed_chapters) = total_chapters
                    RETURNING status, completed_chapters, failed_chapters, owner_user_id""",
-                job_id,
+                job_id, _cost,
             )
             if row is not None:
                 # Unified Job Control Plane P1 — emit the terminal transition in the
@@ -713,21 +748,16 @@ async def _check_job_completion(pool, job_id, user_id, msg, publish_event) -> No
                 # JobStatus, so map it to 'completed' (the job DID finish, with some
                 # chapters done) — the per-chapter failure detail is tracked elsewhere.
                 _status = "completed" if row["status"] == "partial" else row["status"]
-                # P4 — carry best-effort cumulative tokens (summed across this job's
-                # per-chapter rows) on the terminal event. model + params were set on the
-                # 'pending' create event and preserved via the projection's COALESCE merge.
-                _tok = await db.fetchrow(
-                    "SELECT COALESCE(SUM(input_tokens),0) AS ti, "
-                    "COALESCE(SUM(output_tokens),0) AS toks_out "
-                    "FROM chapter_translations WHERE job_id=$1",
-                    job_id,
-                )
+                # P4 — carry the cumulative tokens + derived cost (resolved above) on the
+                # terminal event. model + params were set on the 'pending' create event and
+                # preserved via the projection's COALESCE merge.
                 await emit_job_event(
                     db, service=_JOB_SERVICE, job_id=str(job_id),
                     owner_user_id=str(row["owner_user_id"]), kind=_JOB_KIND,
                     status=_status,
-                    tokens_in=int(_tok["ti"]) if _tok else None,
-                    tokens_out=int(_tok["toks_out"]) if _tok else None,
+                    tokens_in=_ti or None,
+                    tokens_out=_to or None,
+                    cost_usd=_cost,
                 )
 
     if row is None:
