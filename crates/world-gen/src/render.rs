@@ -1104,17 +1104,6 @@ mod tests {
     /// S6** (render/export bathymetry, 2026-06-14): S6 suppresses sub-sea fBm
     /// detail in `relief.rs`, so every relief-derived render shifts (render-only —
     /// the content_hash is unchanged from S5).
-    // The blake3 baselines below are captured on the dev platform (Windows). The
-    // sphere render does floating-point work (relief shading, ramps) that is NOT
-    // bit-identical ACROSS platforms — x86_64-windows vs x86_64-linux differ in
-    // libm/FMA rounding — so the same seed renders byte-for-byte differently on
-    // Linux CI ("render output drifted for relief/realistic"). This pin is a
-    // palette-PARAMETERIZATION safety net (a theme/ramp change shifts bytes on
-    // EVERY platform), which it still provides on the capture platform; it is NOT
-    // a cross-platform determinism guarantee. So it runs only where the baseline is
-    // valid and is skipped elsewhere. Proper fix (a Linux-captured baseline gated to
-    // Linux, or a cross-platform-deterministic render) is tracked D-WORLDGEN-RENDER-XPLAT.
-    #[cfg_attr(not(target_os = "windows"), ignore = "render baseline is captured on Windows; bytes drift on other platforms (D-WORLDGEN-RENDER-XPLAT)")]
     #[test]
     fn render_output_is_byte_identical_baseline() {
         let m = generate(7, &CreativeSeed::default());
