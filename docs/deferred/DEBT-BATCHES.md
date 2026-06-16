@@ -58,6 +58,10 @@ the other kinds are tracked deferrals (each needs its own work — see Park/belo
 (needs stored model-ref UUIDs / a request_json blob), `D-JOBS-P4-RETRY-VIDEOGEN` (map the
 submit-then-create path), `D-JOBS-P4-RETRY-LORE` (sync in-process → incompatible with the
 deferred control contract; re-arch or leave as manual re-submit). Live-smoke → `D-B1-LIVE-SMOKE` (B3).
+`D-JOBS-P4-RETRY-CAMPAIGN-GATE` (low) — a campaign-dispatched translation job's Retry button
+still renders (the cap-gate can't see `campaign_id` — not on the projection); clicking it safely
+409s (`TRANSL_CAMPAIGN_MANAGED`). Hiding the button needs the projection to carry campaign
+membership. Safe today (server refuses); cosmetic UX wart.
 
 | ID | Description | sev |
 |---|---|---|

@@ -203,6 +203,7 @@ def _failed_row(**over):
         "verifier_model_source": None, "verifier_model_ref": None,
         "eval_judge_model_source": None, "eval_judge_model_ref": None,
         "cold_start_mode": "single_pass", "block_index_filter": None, "seed_version_id": None,
+        "campaign_id": None,
     }
     base.update(over)
     return FakeRecord(base)
@@ -243,6 +244,17 @@ def test_retry_409_when_not_failed(client, fake_pool):
         f"/internal/translation/job-control/{JOB}/retry",
         json={"owner_user_id": USER}, headers={"X-Internal-Token": TOKEN})
     assert resp.status_code == 409
+
+
+def test_retry_409_when_campaign_managed(client, fake_pool):
+    # review-impl MED — a campaign-dispatched job is managed by its campaign; a standalone
+    # retry would detach + risk double-spend, so it's refused (no new job created).
+    fake_pool.fetchrow.return_value = _failed_row(campaign_id=uuid4())
+    resp = client.post(
+        f"/internal/translation/job-control/{JOB}/retry",
+        json={"owner_user_id": USER}, headers={"X-Internal-Token": TOKEN})
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["code"] == "TRANSL_CAMPAIGN_MANAGED"
 
 
 def test_retry_rejects_missing_internal_token(client):

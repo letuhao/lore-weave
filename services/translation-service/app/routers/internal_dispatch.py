@@ -426,6 +426,18 @@ async def _retry_job_core(db: asyncpg.Pool, job_id: UUID, owner_user_id: UUID) -
             detail={"code": "TRANSL_NOT_RETRYABLE",
                     "message": f"only a failed job can be retried (status='{row['status']}')"},
         )
+    # review-impl MED — a campaign-dispatched job is MANAGED BY ITS CAMPAIGN (the saga
+    # re-dispatches failed stages + owns the spend accounting). A standalone user retry
+    # would detach from the campaign AND risk double-spend if the campaign also re-runs it.
+    # Refuse here (the cap-gate can't see campaign_id — it's not on the projection — so the
+    # button may still show for a campaign job; gating it there needs the projection to carry
+    # campaign membership, tracked D-JOBS-P4-RETRY-CAMPAIGN-GATE).
+    if row["campaign_id"] is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "TRANSL_CAMPAIGN_MANAGED",
+                    "message": "this translation job is managed by its campaign — retry the campaign, not the job"},
+        )
     payload = CreateJobPayload(
         chapter_ids=list(row["chapter_ids"]),
         target_language=row["target_language"],
