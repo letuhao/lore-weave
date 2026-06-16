@@ -149,9 +149,38 @@ parent** (a campaign shown once, expandable — H3), filter by kind/status, per-
 state-aware `control_caps` (generalize `MonitorControls`). Job detail reuses `CampaignMonitor`
 panels. `kind=campaign` deep-links to the existing campaign monitor (kept as-is).
 
+### L5 — Fair scheduling & per-tenant concurrency (req: n users > m workers) — PHASE 5  *(added 2026-06-15)*
+**Problem (PO, 2026-06-15):** with more users than workers, a single huge multi-unit job
+(e.g. a 4000-chapter extraction running for *days*) monopolizes the worker fleet and starves
+every other user — the classic **"noisy neighbor" / multi-tenant fairness** problem. PO asked
+whether to add OS-scheduler-style preemption.
+
+**Research conclusion (web-grounded — AWS SQS Fair Queues, Temporal fairness keys, Inngest,
+Sidekiq-fairplay, SLURM/Kueue):** do **NOT** hard-preempt at the task level (you can't kill an
+in-flight LLM call — money already spent, state lost; almost nobody does this). The industry
+answer is three pillars, and **two are already in place** here:
+1. **Chunking / fan-out (✅ have)** — a big job is already dispatched as many small per-chapter
+   units; each unit boundary is a *cooperative yield point* (the only "preemption" that's safe).
+2. **Per-tenant concurrency cap (✗ — build first, cheapest)** — the coordinator keeps at most
+   `N` in-flight units **per `owner_user_id`**; the rest wait. A 4000-chapter job then occupies
+   ≤N workers at any instant, so the fleet always has room for other users. Single biggest win.
+3. **Fair dispatch — WFQ / round-robin by owner (✗)** — replace global-FIFO dispatch with a
+   per-owner round-robin so a new user's 10 chapters interleave with the giant job rather than
+   queueing behind all 4000 (Temporal fairness-key / SQS fair-queue model).
+
+**Not OS-preemption — cooperative.** The closest OS analogy is **MLFQ** (a long-running job is
+*demoted* so newer/shorter jobs cut in), implemented via **queue priority + concurrency cap**,
+NOT a forced context-switch. For manual "soft preempt" of a long job, reuse the **P3
+`pause`/`resume`** primitive (pause = stop dispatching new units, drain in-flight — never kills
+a running LLM call), already shipped. *(Optional, later: priority/aging auto-demote if cap+WFQ
+prove insufficient.)*
+
+Backend substrate is ready (jobs-service projection + control plane + RabbitMQ + the
+coordinators' per-chapter fan-out); L5 adds the scheduling layer on top.
+
 ---
 
-## Phasing  *(revised: M1)*
+## Phasing  *(revised: M1; P5 added 2026-06-15)*
 
 | Phase | Deliverable | Size |
 |---|---|---|
@@ -159,9 +188,13 @@ panels. `kind=campaign` deep-links to the existing campaign monitor (kept as-is)
 | **P2** | New **`jobs-service`** — consume job events → projection table → list/detail/SSE API + reconcile sweep | L |
 | **P3** | Per-service cancel/pause/resume control endpoints + ownership backfill + control routing w/ owner re-check | M-L |
 | **P4** | Unified Jobs GUI (dashboard + grouped list + state-aware controls, generalize `CampaignMonitor`) | M-L |
+| **P5** | **Fair scheduling & per-tenant concurrency** — per-`owner_user_id` in-flight cap at the coordinator(s) (do first), then WFQ/round-robin dispatch by owner; reuse P3 pause/resume for soft-preempt; (optional) priority/aging. NO OS-style hard preemption. | M-L |
 
 Campaign-service control + monitor stay as-is (already complete); campaigns appear in the
 unified list as `kind=campaign` (parent of their child jobs) and deep-link to the monitor.
+
+**P5 ordering:** do **after P4** (PO, 2026-06-15). Within P5, ship the **per-tenant concurrency
+cap first** (cheapest, stops the monopoly immediately), then fair-dispatch, then optional aging.
 
 ## Invariants / gotchas to carry
 
