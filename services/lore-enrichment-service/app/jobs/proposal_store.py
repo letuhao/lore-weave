@@ -231,14 +231,19 @@ class PgProposalStore:
                 await emit_job_event(
                     conn, service=JOB_SERVICE, job_id=str(job_id),
                     owner_user_id=str(user_id), kind=JOB_KIND, status="pending",
-                    # P4 — cost (estimated at create) + whitelisted params. The model
-                    # ref lives in a separate enrichment_job_request row (not in scope
-                    # here), so the resolved model NAME is deferred (D-JOBS-P4-LORE-MODEL).
-                    cost_usd=float(estimated_cost) if estimated_cost is not None else None,
+                    # P4 — NO actual spend yet at create (cost_usd is ACTUAL spend, set
+                    # from actual_cost_usd on transitions); the estimate rides params so
+                    # it is still visible without masquerading as spend. The model ref
+                    # lives in a separate enrichment_job_request row (not in scope here),
+                    # so the resolved model NAME is deferred (D-JOBS-P4-LORE-MODEL).
+                    cost_usd=None,
                     params={
                         "technique": technique,
                         "entity_kind": entity_kind,
                         "max_spend_usd": float(max_spend) if max_spend is not None else None,
+                        "estimated_cost_usd": (
+                            float(estimated_cost) if estimated_cost is not None else None
+                        ),
                     },
                 )
         return str(job_id)

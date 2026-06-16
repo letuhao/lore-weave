@@ -97,10 +97,12 @@ async def test_create_job_emits_pending(monkeypatch):
     assert kw["kind"] == "enrichment_job"
     assert kw["job_id"] == str(JOB)
     assert kw["owner_user_id"] == str(USER)
-    # P4 — create carries estimated cost + whitelisted params (model deferred)
-    assert kw["cost_usd"] == 0.0
+    # P4 — create has NO actual spend yet (cost_usd None); the estimate rides params
+    # (not masquerading as spend); model deferred.
+    assert kw["cost_usd"] is None
     assert kw["params"]["technique"] == "retrieval"
     assert kw["params"]["entity_kind"] == "location"
+    assert kw["params"]["estimated_cost_usd"] == 0.0
 
 
 # ── enrichment_job: PgProposalStore.mark_job_status (UPDATE → status) ─────────

@@ -92,12 +92,19 @@ class GenerationJobsRepo:
         replay-safe surface for POST /generate. The conflict target carries the
         index's partial predicate so it matches idx_generation_job_idem.
         """
-        # P4 usage emit — resolve the human model NAME (best-effort) + a whitelisted
-        # params dict from the request blob, BEFORE the tx (network I/O; H1). model +
-        # params ride the create event; the projection's COALESCE keeps them across
-        # later status events. cost_usd is not populated on this row yet → omitted.
+        # P4 usage emit — a whitelisted params dict (cheap, no I/O) + the resolved model
+        # NAME on the create event; the projection's COALESCE keeps them across later
+        # status events. cost_usd is not populated on this row yet → omitted.
+        # The model-NAME resolve is HTTP, so do it ONLY on the self-managed-tx path
+        # (conn is None). When a caller passes its OWN conn we are inside its transaction
+        # — and create_chapter_job_guarded holds an in-flight row lock — so a 5s resolve
+        # there would pin the tx/lock across the network call (H1). Those (auto-draft)
+        # jobs emit model=None; the ref still rides params (D-JOBS-P4-COMPOSITION-GUARDED-MODEL).
         _in = input or {}
-        _model_name = await resolve_model_name(_in.get("model_source"), _in.get("model_ref"))
+        _model_name = (
+            await resolve_model_name(_in.get("model_source"), _in.get("model_ref"))
+            if conn is None else None
+        )
         _job_params = {
             "model": _model_name,
             "model_ref": _in.get("model_ref"),

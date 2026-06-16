@@ -91,10 +91,11 @@ async def test_update_status_missing_row_no_emit(monkeypatch):
 async def test_create_emits_pending_on_new_job(monkeypatch):
     spy = AsyncMock()
     monkeypatch.setattr(generation_jobs, "emit_job_event", spy)
-    # P4 — create resolves the model NAME (HTTP); stub it (best-effort).
-    monkeypatch.setattr(
-        generation_jobs, "resolve_model_name", AsyncMock(return_value="claude-haiku"),
-    )
+    # P4 — resolve_model_name MUST NOT be called when a caller passes its own conn
+    # (we're inside its tx/lock — H1). This test injects a conn, so model=None and the
+    # resolver is never awaited; params still ride (cheap, no I/O).
+    resolve_spy = AsyncMock(return_value="claude-haiku")
+    monkeypatch.setattr(generation_jobs, "resolve_model_name", resolve_spy)
     repo = GenerationJobsRepo(pool=None)
     _job, created = await repo.create(
         USER, PROJ, operation="generate",
@@ -105,7 +106,9 @@ async def test_create_emits_pending_on_new_job(monkeypatch):
     spy.assert_awaited_once()
     kw = spy.await_args.kwargs
     assert kw["service"] == "composition" and kw["status"] == "pending"
-    # P4 — create carries the resolved model + a whitelisted params dict
-    assert kw["model"] == "claude-haiku"
+    # in-tx (conn-passed) path: resolver skipped → model None, but params present
+    resolve_spy.assert_not_awaited()
+    assert kw["model"] is None
     assert kw["params"]["operation"] == "generate"
     assert kw["params"]["reasoning"] == "rule_based"
+    assert kw["params"]["model_ref"] == "abc"
