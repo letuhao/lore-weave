@@ -22,6 +22,16 @@ class Settings(BaseSettings):
     # tolerates redis startup races, so redis is NOT a hard depends_on.
     redis_url: str = "redis://redis:6379"
 
+    # ── P5 fair-scheduling observability (read-only) ─────────────────────────
+    # The GUI's "N queued behind your cap" surface. The WFQ depth lives in Redis
+    # (p5:{lane}:inflight/ready:{owner}), written by the owning services' schedulers;
+    # jobs-service READS it (via the SDK FairScheduler's observability methods) for the
+    # authenticated owner. `p5_sched_enabled` MUST mirror the owning services' flag (same
+    # P5_SCHED_ENABLED env) — when off, the fairness endpoint reports disabled (nothing is
+    # queued). `p5_owner_cap` mirrors P5_OWNER_CAP so the GUI can show "running/cap".
+    p5_sched_enabled: bool = False
+    p5_owner_cap: int = 5
+
     port: int = 8096
 
     # ── Reconcile sweep (H1 backstop) ────────────────────────────────────────

@@ -5,6 +5,7 @@ import type {
   JobListResponse,
   JobControlAction,
   JobSummary,
+  JobFairness,
 } from './types';
 
 // Gateway proxies /v1/jobs/* generically to jobs-service. Relative paths ride the
@@ -29,6 +30,11 @@ export const jobsApi = {
   /** Owner-scoped status counts for the 4 summary cards. */
   summary(token: string): Promise<JobSummary> {
     return apiJson<JobSummary>('/v1/jobs/summary', { token });
+  },
+
+  /** P5 — owner-scoped fair-scheduling depth ("N queued behind your cap"). */
+  fairness(token: string): Promise<JobFairness> {
+    return apiJson<JobFairness>('/v1/jobs/fairness', { token });
   },
 
   get(service: string, jobId: string, token: string): Promise<Job> {

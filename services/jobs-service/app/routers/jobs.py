@@ -93,6 +93,56 @@ async def stream_jobs(user_id: str = Depends(get_current_user)) -> StreamingResp
     )
 
 
+# P5 fair-scheduling lanes the GUI surfaces (label → SDK lane). Only TRANSLATION (PUSH)
+# has a server-side ready queue, so `queued` is meaningful only there; KNOWLEDGE (PULL
+# poll-defer) and LORE_ENRICHMENT (acquire-or-429) have no ready list → queued is always
+# 0 (their backpressure is the poll-defer / the 429, not a server-held queue). `running` =
+# the per-owner in-flight count, meaningful for all three.
+_P5_LANES: tuple[tuple[str, str], ...] = (
+    ("translation", "translation:chapter"),
+    ("knowledge", "knowledge:extraction"),
+    ("lore_enrichment", "lore-enrichment:job"),
+)
+_p5_obs = None
+
+
+def _p5_observer():
+    """Lazy read-only FairScheduler for observability (its own redis connection).
+    Reuses the SDK's key scheme so jobs-service never hardcodes the p5:* layout."""
+    global _p5_obs
+    if _p5_obs is None:
+        from loreweave_jobs import FairScheduler
+
+        _p5_obs = FairScheduler(settings.redis_url, owner_cap=settings.p5_owner_cap)
+    return _p5_obs
+
+
+@router.get("/fairness")
+async def jobs_fairness(user_id: str = Depends(get_current_user)) -> dict:
+    """P5 — the caller's per-lane fair-scheduling depth ("N queued behind your cap").
+
+    Owner-scoped (the JWT sub is the WFQ owner key). Reports each lane with activity:
+    `running` (in-flight slots held) + `queued` (units waiting behind the per-owner cap —
+    translation only) + `cap`. When P5 is off, reports `enabled: false` (nothing is queued).
+    Best-effort: a redis blip returns the lanes computed so far (the GUI degrades to no
+    banner, never errors). Single segment — declared before `/{service}/{job_id}`."""
+    if not settings.p5_sched_enabled:
+        return {"enabled": False, "owner_cap": settings.p5_owner_cap, "lanes": []}
+    obs = _p5_observer()
+    lanes: list[dict] = []
+    try:
+        for label, lane in _P5_LANES:
+            running = await obs.inflight_count(lane, user_id)
+            queued = await obs.ready_len(lane, user_id)
+            if running or queued:  # only surface lanes the owner is actually using
+                lanes.append(
+                    {"lane": label, "running": running, "queued": queued, "cap": settings.p5_owner_cap}
+                )
+    except Exception:  # noqa: BLE001 — observability must never 500 the dashboard
+        pass
+    return {"enabled": True, "owner_cap": settings.p5_owner_cap, "lanes": lanes}
+
+
 @router.get("/{service}/{job_id}")
 async def get_job(
     service: str,

@@ -77,6 +77,23 @@ export interface JobSummary {
   cancelled: number;
 }
 
+/** P5 fair-scheduling depth for one lane the owner is using (GET /v1/jobs/fairness).
+ *  `queued` is server-held only for translation (PUSH ready queue); knowledge/lore-
+ *  enrichment back-pressure via poll-defer / 429, so their `queued` is 0. */
+export interface JobFairnessLane {
+  lane: 'translation' | 'knowledge' | 'lore_enrichment' | string;
+  running: number;
+  queued: number;
+  cap: number;
+}
+
+/** Owner-scoped P5 fair-scheduling status. `enabled:false` ⇒ P5 off (nothing queued). */
+export interface JobFairness {
+  enabled: boolean;
+  owner_cap: number;
+  lanes: JobFairnessLane[];
+}
+
 export interface JobListParams {
   status?: JobStatus | '';
   kind?: string | '';

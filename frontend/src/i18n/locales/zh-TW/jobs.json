@@ -132,5 +132,15 @@
   },
   "mobile": {
     "children": "個子工作"
+  },
+  "fairness": {
+    "title": "公平排程",
+    "running": "{{running}}/{{cap}} 執行中",
+    "queued": "· {{queued}} 等待中",
+    "lane": {
+      "translation": "翻譯",
+      "knowledge": "知識",
+      "loreEnrichment": "設定補完"
+    }
   }
 }

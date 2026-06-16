@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 
 import { JobSummaryCards } from '../JobSummaryCards';
+import { FairnessBanner } from '../FairnessBanner';
 import { JobsFilters } from '../JobsFilters';
 import { JobStatusBadge } from '../JobStatusBadge';
 import { JobProgress } from '../JobProgress';
@@ -64,6 +65,7 @@ export function JobsMobile() {
       </div>
 
       <JobSummaryCards summary={d.summary.data} selected={d.quick} onSelect={d.selectQuick} />
+      <FairnessBanner />
       <JobsFilters kind={d.kind} onKind={d.changeKind} q={d.rawQ} onQ={d.changeQ} />
 
       {d.showActive && (

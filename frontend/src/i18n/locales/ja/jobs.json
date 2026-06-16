@@ -132,5 +132,15 @@
   },
   "mobile": {
     "children": "件の子ジョブ"
+  },
+  "fairness": {
+    "title": "公平スケジューリング",
+    "running": "{{running}}/{{cap}} 実行中",
+    "queued": "· {{queued}} 待機中",
+    "lane": {
+      "translation": "翻訳",
+      "knowledge": "ナレッジ",
+      "loreEnrichment": "ロア補完"
+    }
   }
 }

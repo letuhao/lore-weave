@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 
 import { JobSummaryCards } from './JobSummaryCards';
+import { FairnessBanner } from './FairnessBanner';
 import { JobsFilters } from './JobsFilters';
 import { JobTableHeader } from './JobTableHeader';
 import { JobRow } from './JobRow';
@@ -39,6 +40,8 @@ export function JobsList() {
       </div>
 
       <JobSummaryCards summary={d.summary.data} selected={d.quick} onSelect={d.selectQuick} />
+
+      <FairnessBanner />
 
       <JobsFilters kind={d.kind} onKind={d.changeKind} q={d.rawQ} onQ={d.changeQ} />
 

@@ -132,5 +132,15 @@
   },
   "mobile": {
     "children": "tác vụ con"
+  },
+  "fairness": {
+    "title": "Lập lịch công bằng",
+    "running": "{{running}}/{{cap}} đang chạy",
+    "queued": "· {{queued}} đang chờ",
+    "lane": {
+      "translation": "Dịch thuật",
+      "knowledge": "Tri thức",
+      "loreEnrichment": "Làm giàu lore"
+    }
   }
 }

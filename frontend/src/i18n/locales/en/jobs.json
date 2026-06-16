@@ -132,5 +132,15 @@
   },
   "mobile": {
     "children": "children"
+  },
+  "fairness": {
+    "title": "Fair scheduling",
+    "running": "{{running}}/{{cap}} running",
+    "queued": "· {{queued}} queued",
+    "lane": {
+      "translation": "Translation",
+      "knowledge": "Knowledge",
+      "loreEnrichment": "Lore enrichment"
+    }
   }
 }

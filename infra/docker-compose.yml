@@ -562,6 +562,11 @@ services:
       # redis startup races, so redis is NOT a hard depends_on.
       REDIS_URL: redis://redis:6379
       PORT: "8096"
+      # P5 — read-only fair-scheduling observability for the GUI ("N queued behind your
+      # cap"). MUST mirror the owning services' P5_SCHED_ENABLED / P5_OWNER_CAP (the
+      # fairness endpoint reads the same p5:* Redis keys those services write).
+      P5_SCHED_ENABLED: ${P5_SCHED_ENABLED:-false}
+      P5_OWNER_CAP: ${P5_OWNER_CAP:-5}
     depends_on:
       postgres:
         condition: service_healthy
