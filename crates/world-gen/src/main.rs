@@ -21,8 +21,8 @@ use tokio::runtime::{Builder as RuntimeBuilder, Runtime};
 use uuid::Uuid;
 use world_gen::{
     ClimateZone, CoastlineProfile, CreativeSeed, ErosionStrength, HemisphereOrientation,
-    PrevailingWind, Projection, RenderStyle, SettlementDensity, TerrainMode, WorldArchetype,
-    WorldMap, WorldScale, generate,
+    IntensityKnobs, PrevailingWind, Projection, RenderStyle, SettlementDensity, TerrainMode,
+    WorldArchetype, WorldMap, WorldScale, generate,
 };
 use world_gen::shape::GatewayTextProvider;
 
@@ -45,6 +45,11 @@ enum Command {
     Author(AuthorArgs),
     /// Name an existing world map's features via an LLM.
     Name(NameArgs),
+    /// Emit the full default `CreativeSeed` profile as a JSON template — every
+    /// tunable param at its byte-identical default. Edit the values, then feed
+    /// it back via `generate --config`. The single centralized profile a human
+    /// or an LLM can dial.
+    DumpConfig(DumpConfigArgs),
 }
 
 #[derive(Args)]
@@ -109,6 +114,30 @@ struct GenerateArgs {
     /// Number of culture regions (clamped 1..=16).
     #[arg(long, default_value_t = 5)]
     culture_count: u8,
+    // --- Macro "intensity" knobs (multiply groups of granular params; 1.0 =
+    // no-op, byte-identical). Clamped at use. For finer control, edit a
+    // `--config` JSON (see `dump-config`). ---
+    /// Mountain-building intensity (fold/arc peaks, collision thickening).
+    #[arg(long, default_value_t = 1.0)]
+    orogeny: f32,
+    /// How often plates collide (>1 = more belts, fewer flat oceans).
+    #[arg(long, default_value_t = 1.0)]
+    collision_frequency: f32,
+    /// Continental relief detail (>1 = more rugged/jagged land).
+    #[arg(long, default_value_t = 1.0)]
+    relief: f32,
+    /// Ocean depth (>1 = deeper abyss).
+    #[arg(long, default_value_t = 1.0)]
+    ocean_depth: f32,
+    /// Global warmth (>1 = hotter — more tropics/desert; <1 = colder).
+    #[arg(long, default_value_t = 1.0)]
+    warmth: f32,
+    /// Rainfall (>1 = wetter, fewer deserts; <1 = drier).
+    #[arg(long, default_value_t = 1.0)]
+    rainfall: f32,
+    /// Seasonal swing (>1 = harsher continental winters/summers).
+    #[arg(long, default_value_t = 1.0)]
+    seasonality: f32,
     /// Output JSON path.
     #[arg(long)]
     out: PathBuf,
@@ -154,6 +183,31 @@ struct GenerateArgs {
     /// Optional political-map SVG path.
     #[arg(long)]
     svg: Option<PathBuf>,
+    /// Optional 3D export — a glTF 2.0 `.glb` displaced globe mesh with an
+    /// embedded equirectangular biome texture (open in Blender / Godot / Unity).
+    #[arg(long)]
+    glb: Option<PathBuf>,
+    /// `.glb` mesh grid resolution (longitude segments; latitude = half). Default 512.
+    #[arg(long, default_value_t = 512)]
+    glb_grid: u32,
+    /// `.glb` embedded-texture width (height = half). Default 2048.
+    #[arg(long, default_value_t = 2048)]
+    glb_texture: u32,
+    /// What paints the `.glb` surface: `biome` (climate colour, default),
+    /// `region` (continent/subcontinent/region hierarchy), `realm` (political
+    /// tiers), or `plate` (tectonic plates). `region`/`realm`/`plate` drape the
+    /// structural hierarchy over the same 3D terrain.
+    #[arg(long, value_enum, default_value_t = GlbColorArg::Biome)]
+    glb_color: GlbColorArg,
+    /// `.glb` vertical exaggeration of elevation (planets need it to read). Default 0.06.
+    #[arg(long, default_value_t = 0.06)]
+    exaggeration: f32,
+    /// Optional 16-bit equirectangular heightmap PNG path (terrain-engine input).
+    #[arg(long)]
+    heightmap_png: Option<PathBuf>,
+    /// Heightmap width (height = half). Default 2048.
+    #[arg(long, default_value_t = 2048)]
+    heightmap_width: u32,
     /// Render detail — **pixels per cell** (linear). The PNG dimensions are
     /// derived from this × the cell count × the projection aspect (2:1 for
     /// equirectangular, 1:1 for orthographic), so a bigger world renders to a
@@ -221,6 +275,13 @@ struct NameArgs {
     user_id: Uuid,
 }
 
+#[derive(Args)]
+struct DumpConfigArgs {
+    /// Output path for the JSON template. Omit to write to stdout.
+    #[arg(long)]
+    out: Option<PathBuf>,
+}
+
 #[derive(Clone, Copy, ValueEnum)]
 enum ModelSourceArg {
     Platform,
@@ -266,7 +327,31 @@ fn main() -> ExitCode {
         Command::Generate(args) => run_generate(args),
         Command::Author(args) => run_author(args),
         Command::Name(args) => run_name(args),
+        Command::DumpConfig(args) => run_dump_config(args),
     }
+}
+
+/// Emit the default `CreativeSeed` profile as a JSON template (every tunable at
+/// its byte-identical default). Stdout if `--out` is omitted.
+fn run_dump_config(cli: DumpConfigArgs) -> ExitCode {
+    let json = match serde_json::to_string_pretty(&CreativeSeed::default()) {
+        Ok(j) => j,
+        Err(e) => {
+            eprintln!("error: serialize default profile: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    match cli.out {
+        Some(path) => {
+            if let Err(e) = std::fs::write(&path, format!("{json}\n")) {
+                eprintln!("error: write {}: {e}", path.display());
+                return ExitCode::FAILURE;
+            }
+            eprintln!("wrote default profile template → {}", path.display());
+        }
+        None => println!("{json}"),
+    }
+    ExitCode::SUCCESS
 }
 
 fn run_generate(cli: GenerateArgs) -> ExitCode {
@@ -302,10 +387,26 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
             continent_latitude_spread: cli.continent_latitude_spread,
             region_subdivision: cli.region_subdivision,
             county_subdivision: cli.county_subdivision,
+            // Macro "intensity" knobs from the CLI (1.0 default = byte-identical).
+            intensity: IntensityKnobs {
+                orogeny: cli.orogeny,
+                collision_frequency: cli.collision_frequency,
+                relief: cli.relief,
+                ocean_depth: cli.ocean_depth,
+                warmth: cli.warmth,
+                rainfall: cli.rainfall,
+                seasonality: cli.seasonality,
+            },
+            // Granular per-stage tuning defaults here; set it via a `--config`
+            // JSON (see the `dump-config` subcommand). Defaults = byte-identical.
+            ..CreativeSeed::default()
         }
     };
 
     let map = generate(cli.seed, &cs);
+
+    // Resolve the render colour theme (clamped; default = byte-identical render).
+    let theme = cs.render_theme.resolved(&cs.intensity);
 
     // Resolve the render projection from the flags.
     let proj = match cli.projection {
@@ -364,6 +465,7 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
             img_h,
             cli.style.into(),
             proj,
+            &theme,
         );
         if let Err(e) = img.save(png) {
             eprintln!("error: save relief png {}: {e}", png.display());
@@ -378,6 +480,7 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
             img_h,
             cli.style.into(),
             proj,
+            &theme,
         );
         if let Err(e) = img.save(png) {
             eprintln!("error: save png {}: {e}", png.display());
@@ -392,6 +495,7 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
             img_h,
             cli.style.into(),
             proj,
+            &theme,
         );
         if let Err(e) = img.save(png) {
             eprintln!("error: save political png {}: {e}", png.display());
@@ -406,6 +510,7 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
             img_h,
             cli.style.into(),
             proj,
+            &theme,
         );
         if let Err(e) = img.save(png) {
             eprintln!("error: save culture png {}: {e}", png.display());
@@ -420,6 +525,7 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
             img_h,
             cli.style.into(),
             proj,
+            &theme,
         );
         if let Err(e) = img.save(png) {
             eprintln!("error: save plate png {}: {e}", png.display());
@@ -434,6 +540,7 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
             img_h,
             cli.style.into(),
             proj,
+            &theme,
         );
         if let Err(e) = img.save(png) {
             eprintln!("error: save region png {}: {e}", png.display());
@@ -448,6 +555,7 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
             img_h,
             cli.style.into(),
             proj,
+            &theme,
         );
         if let Err(e) = img.save(png) {
             eprintln!("error: save realm png {}: {e}", png.display());
@@ -456,12 +564,36 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
         println!("wrote {}", png.display());
     }
     if let Some(svg) = &cli.svg {
-        let doc = world_gen::render::political_svg(&map, img_h);
+        let doc = world_gen::render::political_svg(&map, img_h, &theme);
         if let Err(e) = std::fs::write(svg, doc) {
             eprintln!("error: write svg {}: {e}", svg.display());
             return ExitCode::FAILURE;
         }
         println!("wrote {}", svg.display());
+    }
+    if let Some(path) = &cli.heightmap_png {
+        let bytes = world_gen::export::heightmap_png(&map, cli.heightmap_width);
+        if let Err(e) = std::fs::write(path, bytes) {
+            eprintln!("error: write heightmap {}: {e}", path.display());
+            return ExitCode::FAILURE;
+        }
+        println!("wrote {} (16-bit equirectangular heightmap)", path.display());
+    }
+    if let Some(path) = &cli.glb {
+        let bytes = world_gen::export::glb_globe(
+            &map,
+            cli.glb_grid,
+            (cli.glb_grid / 2).max(2),
+            cli.exaggeration,
+            cli.glb_texture,
+            cli.glb_color.into(),
+            &theme,
+        );
+        if let Err(e) = std::fs::write(path, bytes) {
+            eprintln!("error: write glb {}: {e}", path.display());
+            return ExitCode::FAILURE;
+        }
+        println!("wrote {} (glTF 2.0 globe mesh)", path.display());
     }
     ExitCode::SUCCESS
 }
@@ -559,7 +691,8 @@ fn run_name(cli: NameArgs) -> ExitCode {
         map.water_bodies.len(),
     );
     if let Some(svg) = &cli.svg {
-        let doc = world_gen::render::political_svg(&map, cli.svg_size);
+        // `name` loads a map without a CreativeSeed; use the default theme.
+        let doc = world_gen::render::political_svg(&map, cli.svg_size, &world_gen::RenderTheme::default());
         if let Err(e) = std::fs::write(svg, doc) {
             eprintln!("error: write svg {}: {e}", svg.display());
             return ExitCode::FAILURE;
@@ -768,6 +901,26 @@ impl From<StyleArg> for RenderStyle {
         match s {
             StyleArg::Realistic => RenderStyle::Realistic,
             StyleArg::Atlas => RenderStyle::Atlas,
+        }
+    }
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum GlbColorArg {
+    Biome,
+    Region,
+    Realm,
+    Plate,
+}
+
+impl From<GlbColorArg> for world_gen::export::ColorMode {
+    fn from(c: GlbColorArg) -> Self {
+        use world_gen::export::ColorMode;
+        match c {
+            GlbColorArg::Biome => ColorMode::Biome,
+            GlbColorArg::Region => ColorMode::Region,
+            GlbColorArg::Realm => ColorMode::Realm,
+            GlbColorArg::Plate => ColorMode::Plate,
         }
     }
 }

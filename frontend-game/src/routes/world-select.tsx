@@ -11,7 +11,10 @@ export function WorldSelectRoute(): JSX.Element {
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-900 text-slate-100 gap-4">
       <h1 className="text-3xl font-bold">Select World (placeholder)</h1>
       <p className="text-slate-400">V0 has one shared world; Session E adds character/server selection.</p>
-      <Button onClick={() => navigate('/play')}>Enter world</Button>
+      <div className="flex gap-3">
+        <Button onClick={() => navigate('/play')}>Enter world</Button>
+        <Button onClick={() => navigate('/world-preview')}>World map (3D)</Button>
+      </div>
     </div>
   );
 }
