@@ -388,6 +388,11 @@ def test_create_job_uses_per_job_override_without_settings(client, fake_pool):
     # (used for version_num scoping + the stored target), not just the broker message.
     chapter_insert_args = fake_pool.execute.call_args.args
     assert chapter_insert_args[5] == "vi"
+    # review-impl MED-3: the per-chapter advisory lock serializing MAX(version_num)+1
+    # (D-TRANSL-VERSION-NUM-RACE) must be issued before the chapter insert — pin the
+    # wiring so removing the lock fails a test, not only live under concurrency.
+    lock_calls = [c for c in fake_pool.execute.call_args_list if "pg_advisory_xact_lock" in c.args[0]]
+    assert lock_calls and lock_calls[0].args[1] == f"{CHAPTER_ID}|vi"
 
 
 def test_create_job_override_satisfies_model_check_when_settings_have_none(client, fake_pool):

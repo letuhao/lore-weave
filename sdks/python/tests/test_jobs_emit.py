@@ -10,7 +10,13 @@ import json
 
 import pytest
 
-from loreweave_jobs import JobEvent, JobStatus, emit_job_event, emit_job_event_safe
+from loreweave_jobs import (
+    JobEvent,
+    JobStatus,
+    emit_job_event,
+    emit_job_event_safe,
+    skipped_emit_total,
+)
 from loreweave_jobs.contract import JOBS_AGGREGATE_TYPE
 
 
@@ -89,6 +95,48 @@ async def test_emit_accepts_raw_status_string():
     )
     _, args = conn.calls[0]
     assert args[2] == "job.completed"
+
+
+@pytest.mark.asyncio
+async def test_emit_maps_known_native_alias_to_canonical():
+    # A producer-native alias (e.g. "queued") maps to the canonical status instead of
+    # raising in-tx (D-JOBS-EMIT-STATUS-PASSTHROUGH-ROLLBACK).
+    conn = FakeConn()
+    await emit_job_event(
+        conn, service="campaign", job_id="88888888-8888-8888-8888-888888888888",
+        owner_user_id="u", kind="campaign", status="queued",
+    )
+    _, args = conn.calls[0]
+    assert args[2] == "job.pending"
+    ev = JobEvent.from_payload(json.loads(args[3]))
+    assert ev.status == JobStatus.PENDING
+
+
+@pytest.mark.asyncio
+async def test_emit_coerces_uppercase_canonical():
+    # Case-insensitive canonical: an uppercase "RUNNING" maps, not skips/raises.
+    conn = FakeConn()
+    await emit_job_event(
+        conn, service="s", job_id="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        owner_user_id="u", kind="k", status="RUNNING",
+    )
+    _, args = conn.calls[0]
+    assert args[2] == "job.running"
+
+
+@pytest.mark.asyncio
+async def test_emit_skips_unmappable_status_instead_of_raising():
+    # The bug: an unknown native status reached JobStatus(...) and raised INSIDE the
+    # producer's status-change tx, rolling back a legitimate transition. It must now be
+    # skipped (no emit, no raise) so the tx commits; the reconcile sweep backstops.
+    conn = FakeConn()
+    before = skipped_emit_total()
+    await emit_job_event(
+        conn, service="campaign", job_id="99999999-9999-9999-9999-999999999999",
+        owner_user_id="u", kind="campaign", status="some_native_substate",
+    )
+    assert conn.calls == []  # no outbox row written, and crucially no exception raised
+    assert skipped_emit_total() == before + 1  # the skip is counted (observability)
 
 
 @pytest.mark.asyncio

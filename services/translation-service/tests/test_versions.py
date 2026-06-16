@@ -371,6 +371,10 @@ def test_save_edited_creates_human_version_and_emits_gold(client, fake_pool):
     assert "authored_by" in insert_sql and "'human'" in insert_sql
     assert "edited_from_version_id" in insert_sql
     assert "MAX(version_num)" in insert_sql
+    # review-impl MED-3: the advisory lock that serializes MAX(version_num)+1
+    # (D-TRANSL-VERSION-NUM-RACE) must be issued — pin the wiring so a future removal of
+    # the lock line fails a test, not only live under concurrency.
+    assert any("pg_advisory_xact_lock" in c.args[0] for c in fake_pool.execute.call_args_list)
     # translation.corrected emitted with before(LLM)/after(human)
     emits = _corrected_emits(fake_pool)
     assert len(emits) == 1

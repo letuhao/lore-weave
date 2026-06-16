@@ -327,26 +327,36 @@ async def save_edited_version(
     # job_id a nullable FK). E0-4a caller-attribution: owner_user_id is the CALLER
     # ($7), NOT the source's owner — a collaborator's human edit belongs to the
     # collaborator (review-impl MED-1). authored_by='human' + the parent link.
-    new = await db.fetchrow(
-        """
-        INSERT INTO chapter_translations
-          (job_id, chapter_id, book_id, owner_user_id, status, target_language,
-           translated_body, translated_body_json, translated_body_format,
-           version_num, authored_by, edited_from_version_id, finished_at)
-        SELECT job_id, chapter_id, book_id, $7::uuid, 'completed', target_language,
-               $3, $4::jsonb, $5,
-               COALESCE((SELECT MAX(version_num) FROM chapter_translations
-                          WHERE chapter_id=$2 AND target_language=$6), 0) + 1,
-               'human', $1, now()
-        FROM chapter_translations WHERE id=$1
-        RETURNING *
-        """,
-        body.edited_from_version_id, chapter_id,
-        body.translated_body,
-        json.dumps(body.translated_body_json) if body.translated_body_json is not None else None,
-        body.translated_body_format, body.target_language,
-        UUID(user_id),
-    )
+    # Serialize concurrent same-(chapter,lang) inserts so MAX(version_num)+1 below can't
+    # collide on idx_ct_version (D-TRANSL-VERSION-NUM-RACE) — e.g. a human edit racing a
+    # re-translate. Same advisory-lock key as the block-patch path (patch_translation_block)
+    # and the create/re-translate path (jobs.py). xact lock → released at tx commit.
+    async with db.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute(
+                "SELECT pg_advisory_xact_lock(hashtext($1)::bigint)",
+                f"{chapter_id}|{body.target_language}",
+            )
+            new = await conn.fetchrow(
+                """
+                INSERT INTO chapter_translations
+                  (job_id, chapter_id, book_id, owner_user_id, status, target_language,
+                   translated_body, translated_body_json, translated_body_format,
+                   version_num, authored_by, edited_from_version_id, finished_at)
+                SELECT job_id, chapter_id, book_id, $7::uuid, 'completed', target_language,
+                       $3, $4::jsonb, $5,
+                       COALESCE((SELECT MAX(version_num) FROM chapter_translations
+                                  WHERE chapter_id=$2 AND target_language=$6), 0) + 1,
+                       'human', $1, now()
+                FROM chapter_translations WHERE id=$1
+                RETURNING *
+                """,
+                body.edited_from_version_id, chapter_id,
+                body.translated_body,
+                json.dumps(body.translated_body_json) if body.translated_body_json is not None else None,
+                body.translated_body_format, body.target_language,
+                UUID(user_id),
+            )
 
     # M7c gold: emit the LLM→human diff (best-effort post-commit; a feedback-log
     # failure must not lose the user's edit). Raw before/after bodies — PO chose

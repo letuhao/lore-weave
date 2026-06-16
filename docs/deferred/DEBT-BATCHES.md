@@ -14,7 +14,7 @@
 
 | # | Batch | Type | ~Items | Size | Status |
 |---|---|---|---:|---|---|
-| **B0** | Correctness sweep (cross-service, small + high-value) | correctness | 7 | M | ☐ |
+| **B0** | Correctness sweep (cross-service, small + high-value) | correctness | 7 | M | ✅ 2026-06-16 |
 | **B1** | Jobs GUI telemetry completeness (P4) | telemetry | 9 | L | ☐ |
 | **B2** | Jobs control completeness (P3) | feature-gap | 3 | M | ☐ |
 | **B3** | Live-smoke sweep — Job Control Plane + P5 | live-smoke | 4 | M | ☐ |
@@ -25,22 +25,26 @@
 | **B7** | Knowledge Projects FE (K19) — mobile + filters + polish | feature-gap (FE) | ~20 | L | ☐ |
 | **B8** | Search/Rawsearch + cosmetic cleanup + misc code gaps | mixed/low | ~18 | M | ☐ |
 
-Recommended order: **B0 → B1 → B2 → B3** (Job Control Plane warm + de-risk money-path), then **B4a/B5** (live-smoke confidence sweeps), then **B4b → B6 → B7 → B8**.
+Recommended order: ~~B0~~ ✅ → **B1 → B2 → B3** (Job Control Plane warm + de-risk money-path), then **B4a/B5** (live-smoke confidence sweeps), then **B4b → B6 → B7 → B8**. **Next open: B1.**
 
 ---
 
-## B0 — Correctness sweep
+## B0 — Correctness sweep — ✅ CLEARED 2026-06-16
 Small, well-defined fixes that reduce latent risk. Cross-service but each is independent.
+CLARIFY refined 7 items → **3 real fixes** + **4 no-ops** (handoff-confirmed won't-fix / confirmed-intended / already-resolved).
 
-| ID / location | Description | sev | src |
+| ID / location | Description | sev | resolution |
 |---|---|---|---|
-| `D-JOBS-EMIT-STATUS-PASSTHROUGH-ROLLBACK` | campaign/knowledge/translation pass unknown native status verbatim → `JobStatus()` raises in-tx → rolls back a legit transition. Switch to map-or-skip (return None). | high | [H] |
-| `provider-registry server.go:2712` | validate `providerModelName` is embedding-capable before dispatch (TODO) | high | [C] |
-| `D-S5B-EMBED-CREATE-ATOMICITY` | project embedding patch must precede campaign insert (ordering) | med | [H] |
-| `D-TRANSL-VERSION-NUM-RACE` | platform-wide `version_num` collision fix | med | [H] |
-| `D-REDIS8-CONSUMERS` | port the `TimeoutError` catch + pin redis across remaining consumers | med | [H] |
-| `D-S4A-MIGRATION-ORDERING` | ensure knowledge migration runs before worker-ai starts | low | [H] |
-| `worker-infra outbox_relay.go:108` | confirm the quiet-retry on a not-yet-created `outbox_events` table is intended (video-gen flag-gated) or guard it | med | [C] |
+| `D-JOBS-EMIT-STATUS-PASSTHROUGH-ROLLBACK` | `JobStatus()` raised in-tx on an unmapped native status → rolled back a legit transition | high | ✅ **FIXED** — `emit.py` tolerant `_coerce_status` (canonical/case-insensitive/alias-map) → **map-or-skip** (skip logs `[EMIT_STATUS_SKIPPED]` + `skipped_emit_total()` counter, never raises); reconcile sweep backstops |
+| `provider-registry server.go` (embed) | validate model is embedding-capable before dispatch (K12.1 TODO) | high | ✅ **FIXED** — `canEmbed()` rejects only **affirmatively-detected** non-embedding caps (rerank/stt/tts/image_gen/video_gen), fail-OPEN on empty/`chat`-default; `[]byte`+Unmarshal scan (review-impl HIGH×2) |
+| `D-TRANSL-VERSION-NUM-RACE` | `version_num = MAX+1` collided on `idx_ct_version` → 500 | med | ✅ **FIXED** — `pg_advisory_xact_lock` at the 2 unguarded insert sites (create-loop sorted for deadlock-safety + save-edited), same key as `patch_translation_block`; wiring pinned by tests (review-impl MED) |
+| `D-S5B-EMBED-CREATE-ATOMICITY` | project patch precedes campaign insert (ordering) | med | ⊘ **no-op** — handoff (SESSION_HANDOFF L408) classifies won't-fix (benign post-patch mutation) |
+| `D-REDIS8-CONSUMERS` | port `TimeoutError` catch + pin redis across consumers | med | ⊘ **no-op** — already resolved: every blocking consumer (campaign/worker-ai raw + knowledge/learning/video-gen via shared `BaseProjectionConsumer`/`BaseTerminalConsumer`) catches the redis-py-8 idle `TimeoutError`; `redis>=5.0` is version-tolerant given the catch |
+| `D-S4A-MIGRATION-ORDERING` | knowledge migration before worker-ai starts | low | ⊘ **no-op** — handoff (L408) won't-fix (inert: running jobs exist only post-migration) |
+| `worker-infra outbox_relay.go:108` | confirm quiet-retry on a missing `outbox_events` table | med | ⊘ **no-op** — confirmed intended: video-gen creates `outbox_events` unconditionally at migration → missing-table is transient cold-start, already logged once-per-transition via `noteTableState` |
+
+**Verify:** SDK emit 9/9 (+ skip-counter) · SDK jobs suite 47 passed · provider-registry `canEmbed` 13/13 + pkg compiles · translation versions+jobs 74/74 · provider-gate OK.
+**Live-smoke:** deferred to **B3** (Job-Control + P5 sweep, rebuild-stale-first) — tracked as `D-B0-LIVE-SMOKE`. Fixes are unit-proven + low-risk.
 
 ---
 

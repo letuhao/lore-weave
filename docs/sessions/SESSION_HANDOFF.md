@@ -1,4 +1,11 @@
-# Session Handoff — `feat/auto-draft-factory-gaps` · HEAD `a16b85de` · 2026-06-16
+# Session Handoff — `feat/auto-draft-factory-gaps` · post-merge `fded57e5` + B0 · 2026-06-16
+
+> **▶ NEXT SESSION — debt clearing via [`docs/deferred/DEBT-BATCHES.md`](../deferred/DEBT-BATCHES.md).**
+> - **✅ origin/main MERGED** (`fded57e5`, pushed) — divergent merge (main +277 / branch +238 from base `8c599ab2`); all 24 conflicts were RAID artifacts (23 kept-ours / `DEFERRED.md` took-theirs = main's foundation ledger). Our P5 code byte-identical; main's world-service + foundation SDKs + BFF `ws/` module landed additively (BFF rebuild verified). Backup ref `backup/pre-main-merge-f12324c3`.
+> - **✅ B0 — Correctness sweep CLEARED** (this commit). 7 items → **3 fixes** + **4 documented no-ops** (handoff won't-fix / confirmed-intended / already-resolved). Fixes: (1) `loreweave_jobs/emit.py` map-or-skip status coercion (no more in-tx rollback; `skipped_emit_total()` + `[EMIT_STATUS_SKIPPED]` marker) — `D-JOBS-EMIT-STATUS-PASSTHROUGH-ROLLBACK`; (2) provider-registry `/internal/embed` `canEmbed` capability validate (fail-open on empty/`chat`-default, `[]byte`+Unmarshal scan) — K12.1 TODO; (3) translation `version_num` advisory-lock at the 2 unguarded insert sites — `D-TRANSL-VERSION-NUM-RACE`. **/review-impl: 2 HIGH + 1 MED + 1 LOW all fixed.** Verify: provider-registry `canEmbed` 13/13 + compiles · translation versions+jobs 74/74 · SDK jobs 47 passed · provider-gate OK. **Live-smoke deferred → `D-B0-LIVE-SMOKE` (folds into B3).**
+> - **▶ NEXT OPEN BATCH: B1 — Jobs GUI telemetry completeness (P4)** (9 items, L). Then B2 → B3 (Job-Control+P5 live-smoke, picks up `D-B0-LIVE-SMOKE`).
+
+
 
 > **✅ CREATION-UNBLOCK RAID COMPLETION — ALL 6 SLICES SHIPPED (W1–W6). Gaps G1–G5 + D-C16 closed (design [`…completion-design.md`](../specs/2026-06-15-creation-unblock-completion-design.md), gap analysis [`…raid-gap-analysis.md`](../specs/2026-06-15-creation-unblock-raid-gap-analysis.md)).**
 > - **✅ W1 — knowledge `projects.world_id`** (`…`) additive+idempotent migration + index; ProjectCreate/Update/list-filter/`create_or_get` binding; world-level project hidden from HOME list. Real-PG 28.

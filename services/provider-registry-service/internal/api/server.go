@@ -2168,6 +2168,44 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 	})
 }
 
+// canEmbed reports whether a user_model's capability_flags permit an embedding dispatch
+// (K12.1). It is fail-OPEN: an empty/unknown flag set returns true (the upstream provider
+// still rejects a non-embedding model with a 4xx — see internalEmbed), so a model whose
+// flags were never populated is never wrongly blocked. It returns false ONLY when the
+// flags DEFINITIVELY classify the model as some OTHER capability, letting the caller reject
+// with a precise 400 before paying the provider round-trip. Mirrors the two historical
+// capability_flags schemas: a boolean flag ({"embedding": true}) or the `_capability`
+// metadata string ({"_capability": "embedding"}).
+func canEmbed(caps map[string]any) bool {
+	if len(caps) == 0 {
+		return true // unknown — fail open
+	}
+	// Explicit positive: a boolean embedding flag, or the canonical _capability token.
+	if b, ok := caps["embedding"].(bool); ok && b {
+		return true
+	}
+	if c, _ := caps["_capability"].(string); c == "embedding" || c == "embed" {
+		return true
+	}
+	// Reject ONLY on an AFFIRMATIVELY-detected non-embedding capability. "chat" is NOT
+	// here on purpose: it is the discovery DEFAULT/fallback (classifyOpenAIModel returns
+	// "chat" when the name matches no other heuristic), so a "chat" tag is NOT a reliable
+	// embedding-exclusion — a BYOK embedding model whose name misses the "embed" heuristic
+	// (e.g. a local "bge-m3") is tagged chat. Treat chat as fail-open so we never block a
+	// legitimate embedding call; the upstream provider still rejects a true chat model
+	// with a 4xx (mapped to EMBED_MODEL_INVALID).
+	for _, other := range []string{"rerank", "stt", "tts", "image_gen", "video_gen"} {
+		if b, ok := caps[other].(bool); ok && b {
+			return false
+		}
+	}
+	if c, _ := caps["_capability"].(string); c != "" && c != "chat" {
+		return false
+	}
+	// No affirmative non-embedding signal → fail open.
+	return true
+}
+
 // detectPrimaryCapability determines which verification strategy to use based on capability_flags.
 // Priority: stt > tts > image_gen > video_gen > chat (default)
 func detectPrimaryCapability(caps map[string]any) string {
@@ -2665,12 +2703,16 @@ func (s *Server) internalEmbed(w http.ResponseWriter, r *http.Request) {
 	var providerKind, providerModelName, endpointBaseURL, secret string
 	if in.ModelSource == "user_model" {
 		var secretCipher string
+		// Scan capability_flags as raw bytes + json.Unmarshal — the established pattern
+		// in this file (see the inventory + get-model scans). Do NOT scan jsonb directly
+		// into a map[string]any.
+		var capFlagsBytes []byte
 		err = s.pool.QueryRow(r.Context(), `
-SELECT um.user_model_id, um.provider_kind, um.provider_model_name, COALESCE(pc.endpoint_base_url,''), COALESCE(pc.secret_ciphertext,'')
+SELECT um.user_model_id, um.provider_kind, um.provider_model_name, COALESCE(pc.endpoint_base_url,''), COALESCE(pc.secret_ciphertext,''), COALESCE(um.capability_flags,'{}'::jsonb)
 FROM user_models um
 JOIN provider_credentials pc ON pc.provider_credential_id = um.provider_credential_id
 WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.status='active'
-`, modelRef, userID).Scan(new(uuid.UUID), &providerKind, &providerModelName, &endpointBaseURL, &secretCipher)
+`, modelRef, userID).Scan(new(uuid.UUID), &providerKind, &providerModelName, &endpointBaseURL, &secretCipher, &capFlagsBytes)
 		if err == pgx.ErrNoRows {
 			EmbedRequestsTotal.WithLabelValues(OutcomeModelNotFound).Inc()
 			writeError(w, http.StatusNotFound, "EMBED_MODEL_NOT_FOUND", "user model not found or inactive")
@@ -2679,6 +2721,19 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 		if err != nil {
 			EmbedRequestsTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 			writeError(w, http.StatusInternalServerError, "EMBED_MODEL_QUERY_FAILED", "failed to resolve model")
+			return
+		}
+		// K12.1 — reject a model whose capability_flags definitively classify it as a
+		// NON-embedding capability, before paying the provider round-trip. Fail-OPEN on an
+		// empty/unknown flag set (the upstream provider still rejects a non-embedding model
+		// with a 4xx → mapped to EMBED_MODEL_INVALID below), so this never breaks a model
+		// whose flags were never populated.
+		capFlags := map[string]any{}
+		_ = json.Unmarshal(capFlagsBytes, &capFlags)
+		if !canEmbed(capFlags) {
+			EmbedRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
+			writeError(w, http.StatusBadRequest, "EMBED_MODEL_NOT_EMBEDDING",
+				"model is not classified as embedding-capable")
 			return
 		}
 		// D-PROXY-01 — see doProxy comment.
@@ -2709,11 +2764,10 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 		return
 	}
 
-	// TODO(K12.1): validate that providerModelName is classified as
-	// capability="embedding" before dispatching. Currently relies on
-	// the upstream provider rejecting non-embedding models with a 4xx.
-	// Proper fix: store capability per user_model row, or query the
-	// adapter's ListModels + classify.
+	// K12.1 — capability is validated above via canEmbed(capFlags): a model whose
+	// capability_flags definitively classify it non-embedding is rejected before this
+	// dispatch; an empty/unknown flag set falls through here and relies on the upstream
+	// provider rejecting a non-embedding model with a 4xx (mapped to EMBED_MODEL_INVALID).
 
 	// Dispatch embedding call — pass invokeClient (no fixed timeout,
 	// request context controls cancellation)

@@ -287,7 +287,16 @@ async def _resolve_and_create_job(
                 status="pending", model=_model_name, params=_job_params,
             )
 
-            for chapter_id in chapter_ids:
+            # Sorted iteration → deterministic advisory-lock order, so two overlapping jobs
+            # can never deadlock on a shared chapter (global lock ordering). The lock
+            # serializes concurrent same-(chapter,lang) inserts so the MAX(version_num)+1
+            # below cannot collide on idx_ct_version (D-TRANSL-VERSION-NUM-RACE). Same lock
+            # key as the edit/patch paths in versions.py. Released at tx commit.
+            for chapter_id in sorted(chapter_ids, key=str):
+                await conn.execute(
+                    "SELECT pg_advisory_xact_lock(hashtext($1)::bigint)",
+                    f"{chapter_id}|{eff['target_language']}",
+                )
                 await conn.execute(
                     """
                     INSERT INTO chapter_translations
