@@ -22,15 +22,43 @@ Job rows exist only in the decoupled path (the pool is brought up iff
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from loreweave_llm import Client
 from pydantic import BaseModel
 
 from ..config import settings
 from ..db.pool import get_pool
 from ..db.repository import VideoGenJobsRepo
+
+log = logging.getLogger(__name__)
+
+
+async def _abort_provider_job(provider_job_id: UUID, owner_user_id: UUID) -> None:
+    """D-JOBS-P3-VIDEOGEN-PROVIDER-ABORT — best-effort: tell provider-registry to abort
+    the in-flight provider job, which cancels its upstream goroutine (frees the GPU/API
+    slot) and releases the spend reservation. The local `video_gen_jobs` row is already
+    `cancelled` (canonical) before this runs, so a failure here only forfeits slot/cost
+    reclaim — never correctness. cancel_job is idempotent (204/409 → None, 404 →
+    LLMJobNotFound); all are swallowed (the job is, by truth, no longer ours to run)."""
+    client = Client(
+        base_url=settings.provider_registry_internal_url,
+        auth_mode="internal",
+        internal_token=settings.internal_service_token,
+        user_id=str(owner_user_id),
+    )
+    try:
+        await client.cancel_job(provider_job_id, user_id=str(owner_user_id))
+    except Exception as exc:  # noqa: BLE001 — slot/cost reclaim is pure best-effort
+        # 404 (LLMJobNotFound) / transport / 5xx — AND any unexpected error: the local row
+        # is already `cancelled` (canonical), so the abort must NEVER fail the user's cancel.
+        # The lease TTL + the consumer's already-cancelled CAS are the backstops.
+        log.warning("video-gen: provider abort of %s failed (best-effort): %s", provider_job_id, exc)
+    finally:
+        await client.aclose()
 
 
 def require_internal_token(
@@ -123,4 +151,9 @@ async def control_video_gen_job(
             detail={"code": "JOBS_STATUS_CHANGED",
                     "message": f"job not cancellable from status '{job.status}'"},
         )
+    # D-JOBS-P3-VIDEOGEN-PROVIDER-ABORT: now that WE own the cancel (the CAS won), abort
+    # the in-flight provider job to reclaim its slot + spend reservation. Best-effort —
+    # the local row is already `cancelled`, so this never affects correctness.
+    if job.provider_job_id is not None:
+        await _abort_provider_job(job.provider_job_id, payload.owner_user_id)
     return JobControlResponse(job_id=job_id, status="cancelled")

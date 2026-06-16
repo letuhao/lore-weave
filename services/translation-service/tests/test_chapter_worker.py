@@ -43,11 +43,22 @@ class _AcquireCM:
         pass
 
 
-def _make_pool(job_status="running", finalization_row=None):
+def _make_pool(job_status="running", finalization_row=None, claim_row="__default__"):
     db = AsyncMock()
     db.execute = AsyncMock()
-    db.fetchval = AsyncMock(return_value=job_status)   # cancellation check
-    db.fetchrow = AsyncMock(return_value=finalization_row)
+    db.fetchval = AsyncMock(return_value=job_status)   # cancellation/pause check
+    # B2 guarded claim: the worker now claims the chapter via
+    # `UPDATE chapter_translations … RETURNING id` (returns None ⇒ claim lost). The same
+    # acquired-conn fetchrow later runs the job finalize (`UPDATE translation_jobs …`).
+    # Discriminate by query so the happy path claims a row AND finalize tests still drive
+    # `finalization_row`. A test can pass claim_row=None to exercise the claim-lost path.
+    _claim = FakeRecord({"id": uuid4()}) if claim_row == "__default__" else claim_row
+
+    async def _fetchrow(query, *a, **k):
+        if "chapter_translations" in query and "RETURNING id" in query:
+            return _claim
+        return finalization_row
+    db.fetchrow = AsyncMock(side_effect=_fetchrow)
     # `_process_chapter` persists inside `async with db.transaction():`. An
     # unconfigured AsyncMock attribute returns a coroutine (not an async CM),
     # so give transaction() a synchronous factory returning an async CM.
@@ -247,6 +258,60 @@ async def test_chapter_worker_skips_ai_call_when_job_cancelled():
 
     mock_http.get.assert_not_called()
     mock_translate.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_chapter_worker_drops_unit_when_job_paused():
+    """B2 (D-JOBS-P3-TRANSLATION-PAUSE): a paused job dispatches no new chapter work.
+    The worker must NOT call book-service/AImust NOT fail the chapter, and MUST release
+    the P5 slot (the chapter stays pending for resume)."""
+    pool, db = _make_pool(job_status="paused")
+    publish_event = AsyncMock()
+    msg = _chapter_msg()
+
+    with patch("app.workers.chapter_worker.httpx.AsyncClient") as mock_cls, \
+         patch("app.workers.chapter_worker.translate_chapter", new_callable=AsyncMock) as mock_translate, \
+         patch("app.workers.chapter_worker.fair_sched.release_chapter_lease",
+               new_callable=AsyncMock) as mock_release:
+        mock_http = MagicMock()
+        mock_http.get = AsyncMock()
+        mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_http)
+        mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        from app.workers.chapter_worker import handle_chapter_message
+        await handle_chapter_message(msg, pool, publish_event, MagicMock(), retry_count=0)
+
+    mock_http.get.assert_not_called()
+    mock_translate.assert_not_called()
+    mock_release.assert_awaited_once()  # slot freed
+    # NOT failed: no chapter-failed UPDATE ran (the chapter is left pending for resume).
+    db.execute.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_chapter_worker_skips_duplicate_when_claim_lost():
+    """B2 guarded claim: a duplicate unit (a resume re-drive racing a still-parked WFQ
+    unit) finds the chapter already running → the claim UPDATE returns no row → the worker
+    must skip (no book-service/AI) and release the slot, NOT double-translate."""
+    pool, _ = _make_pool(job_status="running", claim_row=None)  # claim returns None
+    publish_event = AsyncMock()
+    msg = _chapter_msg()
+
+    with patch("app.workers.chapter_worker.httpx.AsyncClient") as mock_cls, \
+         patch("app.workers.chapter_worker.translate_chapter", new_callable=AsyncMock) as mock_translate, \
+         patch("app.workers.chapter_worker.fair_sched.release_chapter_lease",
+               new_callable=AsyncMock) as mock_release:
+        mock_http = MagicMock()
+        mock_http.get = AsyncMock()
+        mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_http)
+        mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        from app.workers.chapter_worker import handle_chapter_message
+        await handle_chapter_message(msg, pool, publish_event, MagicMock(), retry_count=0)
+
+    mock_http.get.assert_not_called()
+    mock_translate.assert_not_called()
+    mock_release.assert_awaited_once()
 
 
 # ── Error taxonomy ────────────────────────────────────────────────────────────

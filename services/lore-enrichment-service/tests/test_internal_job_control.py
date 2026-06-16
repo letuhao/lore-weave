@@ -77,19 +77,81 @@ async def test_resume_delegates(monkeypatch):
     assert resp.status == "running"
 
 
+class _ComposePool:
+    """Pool for the compose-task branch (project_id None → not an enrichment_job).
+    acquire() yields a conn whose fetchval returns None (no enrichment_job), fetchrow
+    returns the scripted compose-cancel UPDATE result, and execute/transaction are no-ops
+    (emit_job_event runs for real against conn.execute). pool.fetchval returns the
+    scripted disambiguation status."""
+
+    def __init__(self, *, update_row, status):
+        self._update_row = update_row
+        self._status = status
+
+    async def fetchval(self, *a, **k):       # disambiguation SELECT status (direct on pool)
+        return self._status
+
+    def acquire(self):
+        outer = self
+
+        class _Conn:
+            async def fetchval(self, *a, **k):      # enrichment_job project_id lookup
+                return None
+            async def fetchrow(self, *a, **k):      # compose cancel UPDATE … RETURNING
+                return outer._update_row
+            async def execute(self, *a, **k):       # emit_job_event outbox INSERT
+                return None
+            def transaction(self):
+                conn = self
+                class _Tx:
+                    async def __aenter__(self): return conn
+                    async def __aexit__(self, *e): return False
+                return _Tx()
+
+        conn = _Conn()
+
+        class _Acq:
+            async def __aenter__(self): return conn
+            async def __aexit__(self, *exc): return False
+
+        return _Acq()
+
+
 @pytest.mark.asyncio
-async def test_not_owned_is_404_without_delegating(monkeypatch):
-    called = {"n": 0}
+async def test_cancel_compose_task_pending(monkeypatch):
+    # Not an enrichment_job (project None) → compose-task branch; the UPDATE matched a
+    # pending row → 200 cancelled (D-JOBS-P3-LORE-COMPOSE-TASK-CONTROL).
+    pool = _ComposePool(update_row={"kind": "profile_suggest", "user_id": USER}, status=None)
+    resp = await control_enrichment_job(JOB, "cancel", JobControlPayload(owner_user_id=USER), pool)
+    assert resp.status == "cancelled" and resp.job_id == JOB
 
-    async def fake_cancel(*a, **k):
-        called["n"] += 1
-        return {}
 
-    monkeypatch.setitem(ijc._HANDLERS, "cancel", fake_cancel)
+@pytest.mark.asyncio
+async def test_compose_task_404_when_unknown(monkeypatch):
+    # Neither an enrichment_job nor a compose task (UPDATE None + disambiguation None) → 404.
+    pool = _ComposePool(update_row=None, status=None)
     with pytest.raises(HTTPException) as exc:
-        await control_enrichment_job(JOB, "cancel", JobControlPayload(owner_user_id=USER), _FakePool(None))
+        await control_enrichment_job(JOB, "cancel", JobControlPayload(owner_user_id=USER), pool)
     assert exc.value.status_code == 404
-    assert called["n"] == 0  # never mutate a job we don't own
+
+
+@pytest.mark.asyncio
+async def test_compose_task_409_when_terminal(monkeypatch):
+    # Exists + owned but already terminal (UPDATE matched nothing, status='completed') → 409.
+    pool = _ComposePool(update_row=None, status="completed")
+    with pytest.raises(HTTPException) as exc:
+        await control_enrichment_job(JOB, "cancel", JobControlPayload(owner_user_id=USER), pool)
+    assert exc.value.status_code == 409
+    assert exc.value.detail["code"] == "COMPOSE_TASK_TERMINAL"
+
+
+@pytest.mark.asyncio
+async def test_compose_task_pause_is_400(monkeypatch):
+    # pause/resume are meaningless for a one-shot compose task → 400 (it exists, wrong action).
+    pool = _ComposePool(update_row=None, status="pending")
+    with pytest.raises(HTTPException) as exc:
+        await control_enrichment_job(JOB, "pause", JobControlPayload(owner_user_id=USER), pool)
+    assert exc.value.status_code == 400
 
 
 @pytest.mark.asyncio

@@ -171,6 +171,32 @@ def test_claim_not_found(monkeypatch):
     assert out in ("not_found", "skipped_active")
 
 
+# ── D-JOBS-P3-LORE-COMPOSE-TASK-CONTROL: cancel ───────────────────────────────
+
+
+def test_claim_skips_cancelled(monkeypatch):
+    """A cancelled task is excluded from the claim (status NOT IN completed/cancelled),
+    so the worker never runs it — the verdict is 'cancelled', nothing computed."""
+    tid = uuid4()
+    conn = _FakeConn(fetchrow_results=[None], fetchval_results=["cancelled"])
+    out = asyncio.run(ct.run_compose_task(_FakePool(conn), task_id=str(tid)))
+    assert out == "cancelled"
+    assert conn.executes == []  # never transitioned to running, never computed
+
+
+def test_mark_does_not_clobber_cancelled(monkeypatch):
+    """A worker that raced past the claim-skip (cancelled mid-flight) must NOT overwrite
+    the 'cancelled' terminal: _mark's UPDATE carries `AND status <> 'cancelled'`, so the
+    RETURNING is empty → no transition, no emit."""
+    tid = uuid4()
+    conn = _FakeConn(fetchrow_results=[None])  # UPDATE matched nothing (row is cancelled)
+    asyncio.run(ct._mark(_FakePool(conn), task_id=str(tid), status="completed",
+                         result={"worldview": "w"}))
+    # the guard SQL ran but matched nothing → no outbox emit
+    assert any("cancelled" in sql for sql, _ in conn.fetchrows)
+    assert conn.executes == []
+
+
 # ── D-M2-COMPOSE-TASK-POISON: malformed request_json ──────────────────────────
 
 

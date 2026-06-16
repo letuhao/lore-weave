@@ -16,7 +16,7 @@
 |---|---|---|---:|---|---|
 | **B0** | Correctness sweep (cross-service, small + high-value) | correctness | 7 | M | ✅ 2026-06-16 |
 | **B1** | Jobs GUI telemetry completeness (P4) | telemetry | 9 | L | ✅ 2026-06-17 |
-| **B2** | Jobs control completeness (P3) | feature-gap | 3 | M | ☐ |
+| **B2** | Jobs control completeness (P3) | feature-gap | 3 | M | ✅ 2026-06-17 |
 | **B3** | Live-smoke sweep — Job Control Plane + P5 | live-smoke | 4 | M | ☐ |
 | **B4a** | Live-smoke sweep — Auto-Draft Factory (S1–S6) | live-smoke | ~17 | L | ☐ |
 | **B4b** | Auto-Draft Factory functional/correctness gaps | feature/correctness | ~10 | L | ☐ |
@@ -25,7 +25,7 @@
 | **B7** | Knowledge Projects FE (K19) — mobile + filters + polish | feature-gap (FE) | ~20 | L | ☐ |
 | **B8** | Search/Rawsearch + cosmetic cleanup + misc code gaps | mixed/low | ~18 | M | ☐ |
 
-Recommended order: ~~B0~~ ✅ → ~~B1~~ ✅ → **B2 → B3** (Job Control Plane warm + de-risk money-path), then **B4a/B5** (live-smoke confidence sweeps), then **B4b → B6 → B7 → B8**. **Next open: B2.**
+Recommended order: ~~B0~~ ✅ → ~~B1~~ ✅ → ~~B2~~ ✅ → **B3** (Job Control Plane warm + de-risk money-path), then **B4a/B5** (live-smoke confidence sweeps), then **B4b → B6 → B7 → B8**. **Next open: B3** (+ a NEW finding: glossary-extract pipeline never wired into the control plane — see `D-JOBS-GLOSSARY-EXTRACT-UNWIRED` below; suspected to be one of several un-wired producers — audit needed).
 
 ---
 
@@ -77,14 +77,24 @@ membership. Safe today (server refuses); cosmetic UX wart.
 
 ---
 
-## B2 — Jobs control completeness (P3)
-Finish the control surface gaps.
+## B2 — Jobs control completeness (P3) — ✅ CLEARED 2026-06-17
+Finished the control surface gaps. Plan: `docs/plans/2026-06-17-b2-jobs-control-completeness.md`.
+All 3 closed, no new deferrals (live-smoke → B3). `/review-impl` caught 1 HIGH (resume re-driving a
+`failed` chapter over-counted completed+failed past total → stuck job; fixed: resume re-drives
+`pending` only) + 1 MED (best-effort abort broadened to `except Exception`).
 
+| ID | Description | sev | resolution |
+|---|---|---|---|
+| `D-JOBS-P3-TRANSLATION-PAUSE` | translation stop-dispatch pause/resume + re-add to `_MULTI_UNIT_KINDS` | med | ✅ contract + pause/resume cores (running↔paused, resume re-drives pending-only from stored row) + worker paused-drop + stale-aware guarded claim (dup-safety vs parked WFQ units) |
+| `D-JOBS-P3-VIDEOGEN-PROVIDER-ABORT` | video-gen cancel doesn't abort the in-flight provider job (reclaim slot/cost) | med | ✅ best-effort `Client.cancel_job(provider_job_id)` after the local CAS (reclaims slot+reservation; local row canonical) |
+| `D-JOBS-P3-LORE-COMPOSE-TASK-CONTROL` | one-shot `enrichment_compose_task` not control-wired | low | ✅ status-only cancel (option a) — endpoint + claim-skip + `_mark` guard + status-CHECK widen migration |
+
+**Verify:** jobs 67p · translation 770p · video-gen 53p · lore 773p · provider-gate OK. Live-smoke → B3.
+
+### NEW finding (2026-06-17) — suspected systematic gap
 | ID | Description | sev |
 |---|---|---|
-| `D-JOBS-P3-TRANSLATION-PAUSE` | translation stop-dispatch pause/resume + re-add to `_MULTI_UNIT_KINDS` (`jobs-service contract.py:29`) | med |
-| `D-JOBS-P3-VIDEOGEN-PROVIDER-ABORT` | video-gen cancel doesn't abort the in-flight provider job (reclaim slot/cost) | med |
-| `D-JOBS-P3-LORE-COMPOSE-TASK-CONTROL` | one-shot `enrichment_compose_task` not control-wired | low |
+| `D-JOBS-GLOSSARY-EXTRACT-UNWIRED` | glossary-extract (translation-service `extraction_jobs`, `routers/extraction.py` + `workers/extraction_worker.py`) emits NO `emit_job_event` at any transition (create/running/terminal/cancel), has NO reconcile source (the `translation` source queries `translation_jobs`, not `extraction_jobs`), and the projection's `extraction` kind federates to KNOWLEDGE not translation → job is structurally invisible to the unified Jobs screen. Also: FE pick-mode inherits the 'all' default selection (extracts all); create endpoint does per-chapter INSERT loop + 2 HTTP synchronously before 202 (wizard freeze). **Suspected to be one of several producers missed during the P1 emit-wiring — needs a full producer audit.** | high |
 
 ---
 

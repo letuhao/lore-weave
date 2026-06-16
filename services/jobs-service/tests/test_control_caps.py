@@ -53,10 +53,11 @@ def test_running_single_call_kind_is_cancel_only():
     assert _vals(derive_control_caps(JobStatus.RUNNING, "video_gen")) == ["cancel"]
 
 
-def test_translation_is_cancel_only_until_pause_ships():
-    # translation IS multi-chapter but has no pause impl yet (D-JOBS-P3-TRANSLATION-PAUSE);
-    # caps must not offer an un-honored pause button.
-    assert _vals(derive_control_caps(JobStatus.RUNNING, "translation")) == ["cancel"]
+def test_translation_offers_pause_resume():
+    # B2 (D-JOBS-P3-TRANSLATION-PAUSE): translation now honors stop-dispatch pause/resume,
+    # so a running job offers pause+cancel and a paused job offers resume+cancel.
+    assert _vals(derive_control_caps(JobStatus.RUNNING, "translation")) == ["pause", "cancel"]
+    assert _vals(derive_control_caps(JobStatus.PAUSED, "translation")) == ["resume", "cancel"]
 
 
 def test_enrichment_job_is_multi_unit_offers_pause():

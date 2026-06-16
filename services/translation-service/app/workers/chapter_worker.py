@@ -21,6 +21,15 @@ _JOB_KIND = "translation"
 # Default context window used when provider-registry cannot supply one
 _FALLBACK_CONTEXT_WINDOW = 8192
 
+# B2 (D-JOBS-P3-TRANSLATION-PAUSE) — the stale-running window for the worker's guarded
+# chapter claim. A 'running' chapter_translations row idle longer than this is treated as a
+# crashed worker's and re-claimable; within it, a duplicate unit (e.g. a resume re-drive
+# racing a still-parked WFQ unit) finds the row freshly-running and skips, preventing
+# double-translation. Reuses the P5 lease TTL (defined to EXCEED the longest single unit's
+# runtime, scheduler.py) with a generous 1h floor so a long multi-chunk chapter is never
+# falsely reclaimed. The tradeoff: crash recovery for a chapter is delayed up to this window.
+_CHAPTER_CLAIM_STALE_SECS: float = max((getattr(settings, "p5_lease_ttl_ms", 0) or 0) / 1000.0, 3600.0)
+
 # Publish-on-completion SQL (params: $1=chapter_id, $2=chapter_translation_id).
 # Promotes a freshly-completed CLEAN version (unresolved_high_count=0, the M5b gate)
 # to active even over an existing active one — for BOTH campaign and interactive
@@ -114,16 +123,44 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
         await _check_job_completion(pool, job_id, user_id, msg, publish_event)
         return
 
-    # Mark chapter running and get its id for chunk rows
+    # B2 stop-dispatch PAUSE (D-JOBS-P3-TRANSLATION-PAUSE): a paused job dispatches no NEW
+    # chapter work. Drop this unit WITHOUT failing the chapter (it stays 'pending' for
+    # resume to re-drive) — just release the P5 slot and ACK (return). NOT a terminal, so
+    # no completion check + no per-chapter done event. In-flight chapters (already past
+    # this gate) drain naturally.
+    if job_status == "paused":
+        log.info("chapter %s: job paused — dropping unit (chapter left pending)", chapter_id)
+        await fair_sched.release_chapter_lease(msg)
+        return
+
+    # Mark chapter running — a STALE-AWARE GUARDED CLAIM (mirrors compose-task _claim_for_run):
+    # claim only a chapter not already terminal AND (not running OR running-but-stale). This
+    # makes two units for the SAME (job, chapter) mutually exclusive — the load-bearing guard
+    # for resume, which re-drives un-done chapters while parked WFQ units for the same chapters
+    # may still be in flight (P5 caps in-flight, so most of a large job's units sit parked).
+    # The first claimant wins; a concurrent/duplicate unit finds a fresh 'running' row, claims
+    # nothing, releases its slot, and returns. A crashed worker's stale 'running' row is
+    # re-claimable after the window (crash recovery, just delayed); a 'failed' row re-claims
+    # (transient retry, unchanged).
     async with pool.acquire() as db:
         ct_row = await db.fetchrow(
             """UPDATE chapter_translations
                SET status='running', started_at=now()
                WHERE job_id=$1 AND chapter_id=$2
+                 AND status NOT IN ('completed', 'cancelled')
+                 AND (status <> 'running'
+                      OR started_at IS NULL
+                      OR started_at < now() - ($3 * interval '1 second'))
                RETURNING id""",
-            job_id, chapter_id,
+            job_id, chapter_id, _CHAPTER_CLAIM_STALE_SECS,
         )
-    chapter_translation_id = ct_row["id"] if ct_row else None
+    if ct_row is None:
+        # Another unit already owns this chapter (fresh 'running'), or it's already
+        # terminal — don't double-process. Release the slot and ACK.
+        log.info("chapter %s: claim lost (already running/terminal) — skipping duplicate", chapter_id)
+        await fair_sched.release_chapter_lease(msg)
+        return
+    chapter_translation_id = ct_row["id"]
     log.info("chapter %s: marked running, chapter_translation_id=%s", chapter_id, chapter_translation_id)
 
     # Fetch chapter body from book-service

@@ -24,10 +24,13 @@ from app.routers.internal_job_control import (
 USER = uuid4()
 OTHER = uuid4()
 JOB = uuid4()
+PROV = uuid4()  # the provider-registry job_id stored on the row
 
 
-def _wire(monkeypatch, *, job, won=True, pool_down=False):
-    """Point the handler's get_pool/VideoGenJobsRepo at a fake repo."""
+def _wire(monkeypatch, *, job, won=True, pool_down=False, abort_raises=None):
+    """Point the handler's get_pool/VideoGenJobsRepo at a fake repo, and stub the
+    provider-registry Client used for D-JOBS-P3-VIDEOGEN-PROVIDER-ABORT. Returns
+    (repo, client) so tests can assert the abort call."""
     repo = AsyncMock()
     repo.get = AsyncMock(return_value=job)
     repo.fail = AsyncMock(return_value=won)
@@ -39,22 +42,52 @@ def _wire(monkeypatch, *, job, won=True, pool_down=False):
 
     monkeypatch.setattr(ijc, "get_pool", _get_pool)
     monkeypatch.setattr(ijc, "VideoGenJobsRepo", lambda _pool: repo)
-    return repo
+
+    client = AsyncMock()
+    client.cancel_job = AsyncMock(side_effect=abort_raises)
+    client.aclose = AsyncMock()
+    monkeypatch.setattr(ijc, "Client", lambda **kw: client)
+    return repo, client
 
 
 @pytest.mark.asyncio
 async def test_cancel_owned_job_200(monkeypatch):
-    repo = _wire(monkeypatch, job=SimpleNamespace(id=JOB, status="running"))
+    repo, client = _wire(monkeypatch, job=SimpleNamespace(id=JOB, status="running", provider_job_id=PROV))
     resp = await control_video_gen_job(JOB, "cancel", JobControlPayload(owner_user_id=USER))
     assert resp.status == "cancelled" and resp.job_id == JOB
     repo.get.assert_awaited_once_with(USER, JOB)      # M4 owner re-check
     repo.fail.assert_awaited_once()
     assert repo.fail.await_args.kwargs["status"] == "cancelled"
+    # D-JOBS-P3-VIDEOGEN-PROVIDER-ABORT: after the local CAS wins, abort the provider job.
+    client.cancel_job.assert_awaited_once()
+    assert client.cancel_job.await_args.args[0] == PROV
+    assert client.cancel_job.await_args.kwargs["user_id"] == str(USER)
+
+
+@pytest.mark.asyncio
+async def test_cancel_no_provider_job_id_skips_abort(monkeypatch):
+    # A row with no provider_job_id (submit not yet acked) → local cancel only, no abort call.
+    repo, client = _wire(monkeypatch, job=SimpleNamespace(id=JOB, status="pending", provider_job_id=None))
+    resp = await control_video_gen_job(JOB, "cancel", JobControlPayload(owner_user_id=USER))
+    assert resp.status == "cancelled"
+    client.cancel_job.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_cancel_provider_abort_failure_still_cancels(monkeypatch):
+    # The local row is canonical: a best-effort provider-abort failure must NOT fail the cancel.
+    from loreweave_llm import LLMJobNotFound
+    repo, client = _wire(
+        monkeypatch, job=SimpleNamespace(id=JOB, status="running", provider_job_id=PROV),
+        abort_raises=LLMJobNotFound("gone", status_code=404))
+    resp = await control_video_gen_job(JOB, "cancel", JobControlPayload(owner_user_id=USER))
+    assert resp.status == "cancelled"  # swallowed
+    client.cancel_job.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 async def test_not_owned_is_404(monkeypatch):
-    repo = _wire(monkeypatch, job=None)
+    repo, _ = _wire(monkeypatch, job=None)
     with pytest.raises(HTTPException) as exc:
         await control_video_gen_job(JOB, "cancel", JobControlPayload(owner_user_id=OTHER))
     assert exc.value.status_code == 404
@@ -72,7 +105,7 @@ async def test_already_terminal_is_409(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_unknown_action_400(monkeypatch):
-    repo = _wire(monkeypatch, job=SimpleNamespace(id=JOB, status="running"))
+    repo, _ = _wire(monkeypatch, job=SimpleNamespace(id=JOB, status="running", provider_job_id=PROV))
     for action in ("pause", "resume", "explode"):
         with pytest.raises(HTTPException) as exc:
             await control_video_gen_job(JOB, action, JobControlPayload(owner_user_id=USER))

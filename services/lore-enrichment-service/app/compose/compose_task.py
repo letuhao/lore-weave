@@ -188,13 +188,17 @@ async def _mark(
                        error_message = $4,
                        updated_at = now()
                    WHERE task_id=$1
+                     AND status <> 'cancelled'
                    RETURNING user_id, kind, status, error_message""",
                 UUID(task_id), status,
                 json.dumps(result, ensure_ascii=False) if result is not None else None,
                 error,
             )
             if row is None:
-                return  # no such task — nothing to emit (behavior-preserving)
+                # No such task, OR D-JOBS-P3-LORE-COMPOSE-TASK-CONTROL — a worker that
+                # raced past the claim-skip (cancelled mid-flight) must NOT clobber the
+                # 'cancelled' terminal with completed/failed. Nothing to emit either way.
+                return
             # Unified Job Control Plane P1 — emit the status transition on the SAME conn as
             # the UPDATE (H1). The compose task's row ``kind`` is the JobEvent kind.
             cstatus = canonical_status(row["status"])
@@ -259,22 +263,26 @@ async def _claim_for_run(
                 """SELECT task_id, kind, status, user_id, request_json
                    FROM enrichment_compose_task
                    WHERE task_id = $1
-                     AND status <> 'completed'
+                     AND status NOT IN ('completed', 'cancelled')
                      AND (status <> 'running'
                           OR updated_at < now() - ($2 * interval '1 second'))
                    FOR UPDATE""",
                 UUID(task_id), idle_window_s,
             )
             if row is None:
-                # Either the row doesn't exist / is completed, or it's a fresh 'running'
-                # row another worker holds. Disambiguate with a lock-free status read so
-                # the log + the return verdict are honest.
+                # Either the row doesn't exist / is terminal (completed/cancelled), or it's
+                # a fresh 'running' row another worker holds. Disambiguate with a lock-free
+                # status read so the log + the return verdict are honest.
                 cur = await conn.fetchval(
                     "SELECT status FROM enrichment_compose_task WHERE task_id=$1",
                     UUID(task_id),
                 )
                 if cur == "completed":
                     return "already_completed", None
+                if cur == "cancelled":
+                    # D-JOBS-P3-LORE-COMPOSE-TASK-CONTROL — cancelled before this worker
+                    # claimed it; do not run (the common case: cancel of a still-queued task).
+                    return "cancelled", None
                 if cur == "running":
                     return "skipped_active", None
                 return "not_found", None

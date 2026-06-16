@@ -625,7 +625,9 @@ CREATE TABLE IF NOT EXISTS enrichment_compose_task (
   kind           TEXT NOT NULL
     CHECK (kind IN ('profile_suggest','intent_resolve')),
   status         TEXT NOT NULL DEFAULT 'pending'
-    CHECK (status IN ('pending','running','completed','failed')),
+    -- 'cancelled' added for D-JOBS-P3-LORE-COMPOSE-TASK-CONTROL (status-only cancel of a
+    -- still-queued one-shot task). Existing DBs widened by the DO $$ block below.
+    CHECK (status IN ('pending','running','completed','failed','cancelled')),
   user_id        UUID NOT NULL,                   -- scope (Q3); no FK (cross-DB)
   project_id     UUID NOT NULL,                   -- scope (Q3); no FK (cross-DB)
   book_id        UUID,                            -- GUI anchor (always set today)
@@ -635,6 +637,19 @@ CREATE TABLE IF NOT EXISTS enrichment_compose_task (
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- D-JOBS-P3-LORE-COMPOSE-TASK-CONTROL — widen the status CHECK on an already-deployed
+-- table to admit 'cancelled' (status-only cancel). DROP the auto-named inline constraint
+-- + ADD a named one (ADD CONSTRAINT has no IF NOT EXISTS) inside a DO $$ block so it is
+-- idempotent on every startup. ADDITIVE (only widens the allowed set).
+DO $$
+BEGIN
+  ALTER TABLE enrichment_compose_task DROP CONSTRAINT IF EXISTS enrichment_compose_task_status_check;
+  ALTER TABLE enrichment_compose_task DROP CONSTRAINT IF EXISTS enrichment_compose_task_status_vocab;
+  ALTER TABLE enrichment_compose_task
+    ADD CONSTRAINT enrichment_compose_task_status_vocab
+    CHECK (status IN ('pending','running','completed','failed','cancelled'));
+END $$;
 
 CREATE INDEX IF NOT EXISTS idx_enrichment_compose_task_scope
   ON enrichment_compose_task(user_id, book_id, created_at DESC);

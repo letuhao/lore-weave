@@ -23,11 +23,12 @@ from loreweave_jobs import ControlCap, JobStatus, TERMINAL
 #   - extraction      — knowledge K16.4 pause/resume
 #   - campaign        — campaign saga pause/resume + monitor
 #   - enrichment_job  — lore-enrichment C8 manual pause/resume (re-arms the re-drive worker, P3-3)
-# Cancel-only (NOT listed): composition `generate`/`compose_draft`, `video_gen`,
-# lore-enrichment one-shot compose tasks, and `translation` — translation IS multi-chapter
-# but has no pause impl yet (its workers honor only cancel); real stop-dispatch pause/resume
-# is tracked as D-JOBS-P3-TRANSLATION-PAUSE (re-add here when it ships, P3-4).
-_MULTI_UNIT_KINDS: frozenset[str] = frozenset({"extraction", "campaign", "enrichment_job"})
+#   - translation     — stop-dispatch pause/resume (B2): pause leaves new chapters undispatched
+#                       (the worker drops paused units at its start gate); resume re-drives the
+#                       un-done chapters from the stored job row (D-JOBS-P3-TRANSLATION-PAUSE).
+# Cancel-only (NOT listed): composition `generate`/`compose_draft`, `video_gen`, and the
+# lore-enrichment one-shot compose tasks — each a single LLM call with no units to pause.
+_MULTI_UNIT_KINDS: frozenset[str] = frozenset({"extraction", "campaign", "enrichment_job", "translation"})
 
 # Kinds whose owning service can RE-SUBMIT a failed job as a fresh job (D-JOBS-P4-RETRY).
 # Conservative allowlist gated on a working retry endpoint — offering a retry the owner

@@ -505,6 +505,130 @@ async def _do_cancel(db: asyncpg.Pool, job_id: UUID) -> None:
             )
 
 
+async def _pause_job_core(db: asyncpg.Pool, job_id: UUID, owner_user_id: UUID) -> dict:
+    """B2 stop-dispatch PAUSE (D-JOBS-P3-TRANSLATION-PAUSE) — owner-scoped. running→paused;
+    the chapter worker drops paused units at its start gate so no NEW chapter work begins,
+    while chapters already in-flight drain. 404 if not found/owned, 409 if not running."""
+    async with db.acquire() as conn:
+        async with conn.transaction():  # UPDATE + emit atomic (H1)
+            row = await conn.fetchrow(
+                "UPDATE translation_jobs SET status='paused' "
+                "WHERE job_id=$1 AND owner_user_id=$2 AND status='running' "
+                "RETURNING owner_user_id",
+                job_id, owner_user_id,
+            )
+            if row is not None:
+                await emit_job_event(
+                    conn, service=_JOB_SERVICE, job_id=str(job_id),
+                    owner_user_id=str(row["owner_user_id"]), kind=_JOB_KIND, status="paused",
+                )
+                return {"job_id": str(job_id), "status": "paused"}
+    # No transition — disambiguate owner-scoped (404 not owned/found vs 409 wrong state).
+    cur = await db.fetchrow(
+        "SELECT status FROM translation_jobs WHERE job_id=$1 AND owner_user_id=$2",
+        job_id, owner_user_id,
+    )
+    if cur is None:
+        raise HTTPException(status_code=404, detail={"code": "TRANSL_NOT_FOUND", "message": "Job not found"})
+    raise HTTPException(
+        status_code=409,
+        detail={"code": "TRANSL_CANNOT_PAUSE", "message": f"Job is {cur['status']}, not running"},
+    )
+
+
+def _job_message_from_row(row, chapter_ids: list) -> dict:
+    """Rebuild the `translation.job` coordinator message from a stored `translation_jobs`
+    row (every field is persisted at create) + a chapter subset. Mirrors the create-time
+    publish in `_resolve_and_create_job` so the coordinator fans out identically. All UUIDs
+    are str()'d for the JSON body; block_index_filter (INT[]) is already JSON-serializable."""
+    return {
+        "job_id":                  str(row["job_id"]),
+        "user_id":                 str(row["owner_user_id"]),
+        "book_id":                 str(row["book_id"]),
+        "chapter_ids":             [str(c) for c in chapter_ids],
+        "model_source":            row["model_source"],
+        "model_ref":               str(row["model_ref"]),
+        "system_prompt":           row["system_prompt"],
+        "user_prompt_tpl":         row["user_prompt_tpl"],
+        "target_language":         row["target_language"],
+        "compact_model_source":    row["compact_model_source"],
+        "compact_model_ref":       str(row["compact_model_ref"]) if row["compact_model_ref"] else None,
+        "compact_system_prompt":   row["compact_system_prompt"],
+        "compact_user_prompt_tpl": row["compact_user_prompt_tpl"],
+        "chunk_size_tokens":       row["chunk_size_tokens"],
+        "invoke_timeout_secs":     row["invoke_timeout_secs"],
+        "pipeline_version":        row["pipeline_version"],
+        "qa_depth":                row["qa_depth"],
+        "max_qa_rounds":           row["max_qa_rounds"],
+        "verifier_model_source":   row["verifier_model_source"],
+        "verifier_model_ref":      str(row["verifier_model_ref"]) if row["verifier_model_ref"] else None,
+        "eval_judge_model_source": row["eval_judge_model_source"],
+        "eval_judge_model_ref":    str(row["eval_judge_model_ref"]) if row["eval_judge_model_ref"] else None,
+        "cold_start_mode":         row["cold_start_mode"],
+        "campaign_id":             str(row["campaign_id"]) if row["campaign_id"] else None,
+        "block_index_filter":      row["block_index_filter"],
+        "seed_version_id":         str(row["seed_version_id"]) if row["seed_version_id"] else None,
+    }
+
+
+async def _resume_job_core(db: asyncpg.Pool, job_id: UUID, owner_user_id: UUID) -> dict:
+    """B2 stop-dispatch RESUME (D-JOBS-P3-TRANSLATION-PAUSE) — owner-scoped. paused→running,
+    then re-drive the UN-ATTEMPTED chapters (this job's `chapter_translations` rows still
+    'pending') by re-publishing `translation.job` for the SAME job_id, rebuilt from the
+    stored row.
+
+    ONLY 'pending' is re-dispatched — NOT 'running'/'completed'/'failed':
+      - 'running'  — in-flight (or the sweeper's to reclaim); re-dispatching would race a
+        live chapter (the one concurrency the stop-dispatch model must avoid).
+      - 'completed'— already done.
+      - 'failed'   — already counted in `failed_chapters`. Re-running it would increment
+        `completed_chapters` WITHOUT decrementing `failed_chapters`, pushing
+        completed+failed past total_chapters so the strict `= total_chapters` finalize guard
+        never matches → the job would hang at 'running'. Resume = CONTINUE un-attempted work,
+        so a failed chapter stays failed and the job finalizes to 'partial' — exactly the
+        non-pause semantics. (Re-attempting failures is the separate `retry` action.)
+
+    404 if not found/owned, 409 if not paused. No pending chapters → status flip only (the
+    job finalizes via its normal completion path as in-flight chapters drain)."""
+    async with db.acquire() as conn:
+        async with conn.transaction():  # UPDATE + emit atomic (H1)
+            row = await conn.fetchrow(
+                "UPDATE translation_jobs SET status='running' "
+                "WHERE job_id=$1 AND owner_user_id=$2 AND status='paused' "
+                "RETURNING *",
+                job_id, owner_user_id,
+            )
+            if row is not None:
+                await emit_job_event(
+                    conn, service=_JOB_SERVICE, job_id=str(job_id),
+                    owner_user_id=str(row["owner_user_id"]), kind=_JOB_KIND, status="running",
+                )
+    if row is None:
+        cur = await db.fetchrow(
+            "SELECT status FROM translation_jobs WHERE job_id=$1 AND owner_user_id=$2",
+            job_id, owner_user_id,
+        )
+        if cur is None:
+            raise HTTPException(status_code=404, detail={"code": "TRANSL_NOT_FOUND", "message": "Job not found"})
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "TRANSL_CANNOT_RESUME", "message": f"Job is {cur['status']}, not paused"},
+        )
+
+    # Re-drive un-attempted chapters (publish AFTER the status commit, like create).
+    # 'pending' ONLY — see the docstring for why 'running'/'completed'/'failed' are excluded
+    # (count integrity: re-running a 'failed' chapter would strand the job at 'running').
+    undone = await db.fetch(
+        "SELECT chapter_id FROM chapter_translations "
+        "WHERE job_id=$1 AND status = 'pending'",
+        job_id,
+    )
+    undone_ids = [r["chapter_id"] for r in undone]
+    if undone_ids:
+        await publish("translation.job", _job_message_from_row(row, undone_ids))
+    return {"job_id": str(job_id), "status": "running"}
+
+
 @router.post("/jobs/{job_id}/cancel", status_code=status.HTTP_204_NO_CONTENT)
 async def cancel_job(
     job_id: UUID,

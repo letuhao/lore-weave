@@ -26,7 +26,7 @@ from ..grant_client import get_grant_client
 from ..models import CreateJobPayload
 from ..workers.segment_store import ensure_chapter_segments
 from ..workers.segment_status import compute_segment_status
-from .jobs import _resolve_and_create_job, _cancel_job_core
+from .jobs import _resolve_and_create_job, _cancel_job_core, _pause_job_core, _resume_job_core
 
 router = APIRouter(prefix="/internal/translation", tags=["internal"])
 
@@ -380,24 +380,28 @@ async def control_job(
     db: asyncpg.Pool = Depends(get_db),
 ) -> dict:
     """Unified Job Control Plane P3 — the `job_id`-keyed control surface the central
-    jobs-service forwards user actions to. A translation job is multi-chapter, but
-    its workers honor only CANCEL today (each chapter skips a `cancelled` job); real
-    pause/resume = stop-dispatch + drain is a separate money-path feature
-    (D-JOBS-P3-TRANSLATION-PAUSE) → this is **cancel-only**, and translation is
-    therefore NOT in jobs-service `_MULTI_UNIT_KINDS` (the caps-gate won't offer
-    pause/resume, so they never reach here; we 400 defensively).
+    jobs-service forwards user actions to. A translation job is multi-chapter and now
+    supports stop-dispatch **pause/resume** (B2, D-JOBS-P3-TRANSLATION-PAUSE) alongside
+    cancel + retry, so translation IS in jobs-service `_MULTI_UNIT_KINDS` (the caps-gate
+    offers pause when running / resume when paused). pause = stop dispatching new chapter
+    units (the worker drops them at its start gate; in-flight chapters drain); resume =
+    re-drive the un-done chapters from the stored job row.
 
     A DISTINCT prefix from the campaign cancel (`/internal/translation/jobs/{job_id}/
     cancel`, which takes a `user_id` body) so the control-plane contract (an
-    `owner_user_id` body) doesn't collide on the route. Reuses the owner-scoped
-    `_cancel_job_core` — M4 re-check (404 if not owned), 409 if already terminal."""
+    `owner_user_id` body) doesn't collide on the route. The pause/resume/cancel cores are
+    owner-scoped — M4 re-check (404 if not owned), 409 on an illegal transition."""
     if action == "retry":
         return await _retry_job_core(db, job_id, payload.owner_user_id)
+    if action == "pause":
+        return await _pause_job_core(db, job_id, payload.owner_user_id)
+    if action == "resume":
+        return await _resume_job_core(db, job_id, payload.owner_user_id)
     if action != "cancel":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"code": "TRANSL_UNSUPPORTED_ACTION",
-                    "message": f"translation jobs support only 'cancel'/'retry', not '{action}'"},
+                    "message": f"translation jobs support 'cancel'/'pause'/'resume'/'retry', not '{action}'"},
         )
     await _cancel_job_core(db, job_id, str(payload.owner_user_id))
     return {"job_id": str(job_id), "status": "cancelled"}

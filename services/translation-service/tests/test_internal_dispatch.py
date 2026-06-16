@@ -263,6 +263,105 @@ def test_retry_rejects_missing_internal_token(client):
     assert resp.status_code == 401
 
 
+# ── D-JOBS-P3-TRANSLATION-PAUSE: stop-dispatch pause/resume (B2) ──────────────
+
+def _resume_row(**over):
+    """A full translation_jobs row (every column _job_message_from_row reads), as the
+    UPDATE … RETURNING * for a paused→running transition."""
+    base = {
+        "job_id": UUID(JOB), "book_id": UUID(BOOK), "owner_user_id": UUID(USER),
+        "status": "running", "target_language": "vi",
+        "model_source": "user_model", "model_ref": uuid4(),
+        "system_prompt": "sys", "user_prompt_tpl": "tpl",
+        "compact_model_source": None, "compact_model_ref": None,
+        "compact_system_prompt": "csys", "compact_user_prompt_tpl": "ctpl",
+        "chunk_size_tokens": 2000, "invoke_timeout_secs": 300,
+        "pipeline_version": "v3", "qa_depth": "standard", "max_qa_rounds": 2,
+        "verifier_model_source": None, "verifier_model_ref": None,
+        "eval_judge_model_source": None, "eval_judge_model_ref": None,
+        "cold_start_mode": "single_pass", "campaign_id": None,
+        "block_index_filter": None, "seed_version_id": None,
+    }
+    base.update(over)
+    return FakeRecord(base)
+
+
+def test_pause_running_job(client, fake_pool):
+    # The UPDATE running→paused matched (RETURNING owner_user_id) → 200 paused.
+    fake_pool.fetchrow.return_value = FakeRecord({"owner_user_id": UUID(USER)})
+    resp = client.post(
+        f"/internal/translation/job-control/{JOB}/pause",
+        json={"owner_user_id": USER}, headers={"X-Internal-Token": TOKEN})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "paused"
+
+
+def test_pause_409_when_not_running(client, fake_pool):
+    # UPDATE matched nothing (None), disambiguation finds the job in a non-running state.
+    fake_pool.fetchrow.side_effect = [None, FakeRecord({"status": "completed"})]
+    resp = client.post(
+        f"/internal/translation/job-control/{JOB}/pause",
+        json={"owner_user_id": USER}, headers={"X-Internal-Token": TOKEN})
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["code"] == "TRANSL_CANNOT_PAUSE"
+
+
+def test_pause_404_when_not_owned(client, fake_pool):
+    fake_pool.fetchrow.side_effect = [None, None]  # no transition + not found owner-scoped
+    resp = client.post(
+        f"/internal/translation/job-control/{JOB}/pause",
+        json={"owner_user_id": USER}, headers={"X-Internal-Token": TOKEN})
+    assert resp.status_code == 404
+
+
+def test_resume_running_redispatches_undone(client, fake_pool, mocker):
+    pub = mocker.patch("app.routers.jobs.publish", new_callable=AsyncMock)
+    fake_pool.fetchrow.return_value = _resume_row()         # paused→running matched
+    fake_pool.fetch.return_value = [FakeRecord({"chapter_id": UUID(C1)})]  # one un-done chapter
+    resp = client.post(
+        f"/internal/translation/job-control/{JOB}/resume",
+        json={"owner_user_id": USER}, headers={"X-Internal-Token": TOKEN})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "running"
+    # re-drove the un-attempted chapter on the SAME job_id via translation.job.
+    pub.assert_awaited_once()
+    rk, body = pub.call_args.args
+    assert rk == "translation.job"
+    assert body["job_id"] == JOB and body["chapter_ids"] == [C1]
+    # HIGH /review-impl — resume re-dispatches 'pending' ONLY (NOT 'failed': re-running a
+    # failed chapter would over-count completed+failed past total → stuck job).
+    undone_q = fake_pool.fetch.call_args.args[0]
+    assert "status = 'pending'" in undone_q and "failed" not in undone_q
+
+
+def test_resume_no_undone_does_not_publish(client, fake_pool, mocker):
+    pub = mocker.patch("app.routers.jobs.publish", new_callable=AsyncMock)
+    fake_pool.fetchrow.return_value = _resume_row()
+    fake_pool.fetch.return_value = []  # nothing left to do
+    resp = client.post(
+        f"/internal/translation/job-control/{JOB}/resume",
+        json={"owner_user_id": USER}, headers={"X-Internal-Token": TOKEN})
+    assert resp.status_code == 200, resp.text
+    pub.assert_not_awaited()
+
+
+def test_resume_409_when_not_paused(client, fake_pool):
+    fake_pool.fetchrow.side_effect = [None, FakeRecord({"status": "running"})]
+    resp = client.post(
+        f"/internal/translation/job-control/{JOB}/resume",
+        json={"owner_user_id": USER}, headers={"X-Internal-Token": TOKEN})
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["code"] == "TRANSL_CANNOT_RESUME"
+
+
+def test_resume_404_when_not_owned(client, fake_pool):
+    fake_pool.fetchrow.side_effect = [None, None]
+    resp = client.post(
+        f"/internal/translation/job-control/{JOB}/resume",
+        json={"owner_user_id": USER}, headers={"X-Internal-Token": TOKEN})
+    assert resp.status_code == 404
+
+
 # ── D-CAMPAIGN-BESTEFFORT-EMIT-REDIS: chapter-status truth ────────────────────
 
 def _status_url(job_id=JOB, chapter_id=C1):
