@@ -151,7 +151,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25"
-      - name: create dp_kernel_test + apply migrations 0002 + 0004
+      - name: create dp_kernel_test + apply migrations 0002 + 0004 + 0013 (+ default partition)
         shell: bash
         run: |
           set -euo pipefail
@@ -164,6 +164,13 @@ jobs:
           fi
           psql -d dp_kernel_test -v ON_ERROR_STOP=1 -f contracts/migrations/per_reality/0002_events_table.up.sql
           psql -d dp_kernel_test -v ON_ERROR_STOP=1 -f contracts/migrations/per_reality/0004_aggregate_snapshots_table.up.sql
+          # W3.4 — append now stamps events.content_sha256, so 0013 is required or
+          # the INSERT fails to bind ("column content_sha256 does not exist").
+          psql -d dp_kernel_test -v ON_ERROR_STOP=1 -f contracts/migrations/per_reality/0013_events_content_sha256.up.sql
+          # events is RANGE-partitioned with no default partition; the live suite
+          # appends arbitrary recorded_at, so add a catch-all partition (mirrors
+          # the conformance-ci W3.4 kernel-checksum step).
+          psql -d dp_kernel_test -v ON_ERROR_STOP=1 -c "CREATE TABLE IF NOT EXISTS events_p_default PARTITION OF events DEFAULT;"
       - name: cargo test PgEventStore live-smoke
         env:
           LOREWEAVE_TEST_PG_URL: postgres://foundation:foundation@localhost:5432/dp_kernel_test

@@ -193,12 +193,15 @@ func parseUsageEvent(v map[string]any) (usageLogParams, error) {
 	}
 	inTok, _ := strconv.Atoi(get("input_tokens"))
 	outTok, _ := strconv.Atoi(get("output_tokens"))
-	cost := float64(inTok+outTok) * flatCostPerToken // fallback when cost_usd absent
+	// Authoritative stream cost_usd (when present + parseable) overrides the flat
+	// fallback; recordCostUSD applies the verbatim/zero/negative-reject contract.
+	var override *float64
 	if cs := get("cost_usd"); cs != "" {
 		if f, e := strconv.ParseFloat(cs, 64); e == nil {
-			cost = f
+			override = &f
 		}
 	}
+	cost := recordCostUSD(inTok+outTok, override)
 	return usageLogParams{
 		RequestID:     reqID,
 		OwnerUserID:   owner,

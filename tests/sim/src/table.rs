@@ -40,6 +40,17 @@ impl TableStore {
                 let entry = self.rows.entry(key).or_insert_with(|| json!({}));
                 merge(entry, fields);
             }
+            ProjectionUpdate::Upsert {
+                table, pk, fields, ..
+            } => {
+                // Insert-or-update keyed by `pk` — mirrors the rebuild-writer's
+                // INSERT … ON CONFLICT (pk) DO UPDATE path. Same store semantics
+                // as Update's upsert branch: materialize the row from `fields` if
+                // absent, else merge into it.
+                let key = (table.clone(), canon(pk));
+                let entry = self.rows.entry(key).or_insert_with(|| json!({}));
+                merge(entry, fields);
+            }
             ProjectionUpdate::Delete { table, pk } => {
                 self.rows.remove(&(table.clone(), canon(pk)));
             }
