@@ -290,24 +290,30 @@ class WikiGenJobsRepo:
         )
 
     async def pause(self, job_id: UUID, *, reason: str) -> None:
+        # Guarded to active states: pausing an already-paused/terminal job is a no-op
+        # (and emits nothing) — so a stray re-pause can't emit a spurious 'paused'.
         async with self._pool.acquire() as conn:
             async with conn.transaction():  # UPDATE + emit_job_event atomic (H1)
                 row = await conn.fetchrow(
                     """UPDATE wiki_gen_jobs SET status='paused', paused_at=now(),
                        error_message=$2, current_entity_id=NULL, current_pass=NULL,
-                       updated_at=now() WHERE job_id=$1
+                       updated_at=now() WHERE job_id=$1 AND status IN ('pending','running')
                        RETURNING user_id, cost_spent_usd""",
                     job_id, reason)
                 if row is not None:
                     await self._emit(conn, job_id, row, "paused")
 
     async def complete(self, job_id: UUID) -> None:
+        # Terminal-guarded: a job already in a terminal state is NOT re-written (and
+        # emits no duplicate 'completed'). The orchestrator reaches complete() once,
+        # but the guard makes a redelivery / double-call idempotent at the source.
         async with self._pool.acquire() as conn:
             async with conn.transaction():  # UPDATE + emit_job_event atomic (H1)
                 row = await conn.fetchrow(
                     """UPDATE wiki_gen_jobs SET status='complete', completed_at=now(),
                        current_entity_id=NULL, current_pass=NULL,
-                       updated_at=now() WHERE job_id=$1
+                       updated_at=now()
+                       WHERE job_id=$1 AND status NOT IN ('complete','failed','cancelled')
                        RETURNING user_id, cost_spent_usd""",
                     job_id)
                 if row is not None:
@@ -352,12 +358,15 @@ class WikiGenJobsRepo:
         return True
 
     async def fail(self, job_id: UUID, *, error: str) -> None:
+        # Terminal-guarded: never overwrite an already-terminal job (and emit no
+        # duplicate 'failed') — a complete/cancelled job stays as it landed.
         async with self._pool.acquire() as conn:
             async with conn.transaction():  # UPDATE + emit_job_event atomic (H1)
                 row = await conn.fetchrow(
                     """UPDATE wiki_gen_jobs SET status='failed', error_message=$2,
                        current_entity_id=NULL, current_pass=NULL,
-                       updated_at=now() WHERE job_id=$1
+                       updated_at=now()
+                       WHERE job_id=$1 AND status NOT IN ('complete','failed','cancelled')
                        RETURNING user_id, cost_spent_usd""",
                     job_id, error[:2000])
                 if row is not None:

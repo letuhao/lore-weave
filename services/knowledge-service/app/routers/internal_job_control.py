@@ -56,15 +56,23 @@ async def reconcile_jobs(
 
     UNIONs two knowledge job families that both federate to service='knowledge', kept apart
     by `kind`: `extraction` (knowledge-graph build) + `wiki_gen` (batch wiki generation,
-    D-JOBS-WIKI-GEN-UNWIRED). Both are merged oldest-first and capped at `limit` so the
-    sweeper's watermark advances correctly across both."""
+    D-JOBS-WIKI-GEN-UNWIRED). EACH source independently fetches up to `limit` rows
+    (`updated_at >= since`), then both are merged oldest-first and the merged list is capped
+    at `limit`. The cap is a SOFT page bound, not a loss: a dropped (newer) row has
+    occurred_at ≥ the last returned row, and `since` is inclusive, so the next sweep re-fetches
+    it — the watermark stays monotone across both families. (Sustained extraction backlog
+    >`limit` could delay a wiki row's BACKSTOP heal, never its visibility — the live emit
+    stream is the primary path; `D-JOBS-WIKI-GEN-RECONCILE-INDEX` tracks the index.)"""
+    # Each entry is (sort_dt, payload). Sort on the real datetime (NOT the isoformat string)
+    # so a future source emitting a different tz-offset can't misorder the merge.
+    merged: list[tuple[datetime | None, dict]] = []
+
     rows = await jobs_repo.list_since(since, limit=limit)
-    out = []
     for j in rows:
         status = _canonical_job_status(j.status)
         if status not in _CANONICAL_STATUSES:  # e.g. 'summarizing' — not a JobStatus
             continue
-        out.append({
+        merged.append((j.updated_at, {
             "service": "knowledge", "job_id": str(j.job_id), "owner_user_id": str(j.user_id),
             "kind": "extraction", "status": status,
             "parent_job_id": None, "detail_status": None,
@@ -79,13 +87,13 @@ async def reconcile_jobs(
             "error": ({"code": "extraction_failed", "message": (j.error_message or "")[:500]}
                       if j.status == "failed" else None),
             "occurred_at": j.updated_at.isoformat() if j.updated_at else None,
-        })
+        }))
     # wiki-gen UNION — list_since already maps `complete`→`completed` (all wiki statuses
     # are canonical), so no skip-filter is needed here.
     wiki_repo = WikiGenJobsRepo(get_knowledge_pool())
     for w in await wiki_repo.list_since(since, limit=limit):
         cost = w["cost_spent_usd"]
-        out.append({
+        merged.append((w["updated_at"], {
             "service": "knowledge", "job_id": str(w["job_id"]),
             "owner_user_id": str(w["user_id"]), "kind": "wiki_gen", "status": w["status"],
             "parent_job_id": None, "detail_status": None, "progress": None, "title": None,
@@ -93,11 +101,10 @@ async def reconcile_jobs(
             "error": ({"code": "wiki_gen_failed", "message": (w["error_message"] or "")[:500]}
                       if w["native_status"] == "failed" else None),
             "occurred_at": w["updated_at"].isoformat() if w["updated_at"] else None,
-        })
-    # Merge both families oldest-first + cap so the sweeper's watermark is monotone across
-    # extraction + wiki_gen (occurred_at is the watermark key; None sorts first, harmless).
-    out.sort(key=lambda r: r["occurred_at"] or "")
-    return {"jobs": out[:limit]}
+        }))
+    # Merge oldest-first by datetime (None sorts first, harmless) + cap (soft page bound).
+    merged.sort(key=lambda e: (e[0] is not None, e[0]))
+    return {"jobs": [payload for _dt, payload in merged[:limit]]}
 
 # action → (target canonical status, pause_reason, project extraction_status mirror,
 #           project extraction_enabled). Mirrors the K16.4 public pause/resume/cancel.

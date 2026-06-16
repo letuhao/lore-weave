@@ -170,6 +170,28 @@ async def test_reconcile_unions_wiki_gen_and_merges_oldest_first(monkeypatch):
     assert w["cost_usd"] == 1.5 and w["progress"] is None and w["error"] is None
 
 
+async def test_reconcile_merge_caps_at_limit_keeping_oldest(monkeypatch):
+    # The merged list is capped at `limit` oldest-first — the newest row is DROPPED
+    # (re-fetched next sweep since `since` is inclusive, so no loss). Proves the soft cap.
+    from datetime import datetime, timezone
+    t1 = datetime(2026, 6, 15, tzinfo=timezone.utc)  # oldest (extraction)
+    t2 = datetime(2026, 6, 16, tzinfo=timezone.utc)  # newest (wiki) — must be dropped at limit=1
+    ext_row = SimpleNamespace(job_id=JOB, user_id=USER, status="running", items_processed=0,
+                              items_total=0, error_message=None, updated_at=t1, cost_spent_usd=0)
+    wiki_row = {
+        "job_id": UUID("33333333-3333-3333-3333-333333333333"), "user_id": USER,
+        "status": "completed", "native_status": "complete", "cost_spent_usd": 0.0,
+        "error_message": None, "updated_at": t2,
+    }
+    _patch_wiki(monkeypatch, rows=[wiki_row])
+    ext_repo = AsyncMock()
+    ext_repo.list_since = AsyncMock(return_value=[ext_row])
+    out = await reconcile_jobs(since=t1, limit=1, jobs_repo=ext_repo)
+    assert len(out["jobs"]) == 1
+    assert out["jobs"][0]["kind"] == "extraction"  # oldest kept; newer wiki row dropped
+    assert out["jobs"][0]["occurred_at"] == t1.isoformat()
+
+
 async def test_reconcile_wiki_gen_failed_carries_error(monkeypatch):
     from datetime import datetime, timezone
     t = datetime(2026, 6, 15, tzinfo=timezone.utc)

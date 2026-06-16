@@ -136,6 +136,30 @@ async def test_pause_emits_paused(_spy):
 
 
 @pytest.mark.asyncio
+async def test_complete_terminal_guard_no_row_no_emit(_spy):
+    # already-terminal job → guarded UPDATE matched nothing → no duplicate 'completed'
+    repo = WikiGenJobsRepo(_Pool(None))
+    await repo.complete(uuid4())
+    _spy.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_fail_terminal_guard_no_row_no_emit(_spy):
+    # already-terminal job → no overwrite, no duplicate 'failed'
+    repo = WikiGenJobsRepo(_Pool(None))
+    await repo.fail(uuid4(), error="boom")
+    _spy.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_pause_guard_no_row_no_emit(_spy):
+    # not in pending|running (paused/terminal) → stray re-pause emits nothing
+    repo = WikiGenJobsRepo(_Pool(None))
+    await repo.pause(uuid4(), reason="budget")
+    _spy.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_resume_emits_pending_when_flipped(_spy):
     repo = WikiGenJobsRepo(_Pool({"user_id": uuid4(), "cost_spent_usd": 0}))
     ok = await repo.resume(uuid4())
