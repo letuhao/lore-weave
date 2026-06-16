@@ -87,7 +87,7 @@ async def test_create_job_emits_pending(monkeypatch):
     out = await repo.create_job(
         user_id=str(USER), project_id=str(PROJ), book_id=str(BOOK),
         technique="retrieval", entity_kind="location",
-        max_spend=None, estimated_cost=0.0,
+        max_spend=None, estimated_cost=0.0, model_name="qwen2.5-7b-instruct",
     )
     assert out == str(JOB)
     spy.assert_awaited_once()
@@ -98,8 +98,10 @@ async def test_create_job_emits_pending(monkeypatch):
     assert kw["job_id"] == str(JOB)
     assert kw["owner_user_id"] == str(USER)
     # P4 — create has NO actual spend yet (cost_usd None); the estimate rides params
-    # (not masquerading as spend); model deferred.
+    # (not masquerading as spend). D-JOBS-P4-LORE-MODEL: the caller-resolved model NAME is
+    # emitted on create (COALESCE keeps it across the later status events that omit it).
     assert kw["cost_usd"] is None
+    assert kw["model"] == "qwen2.5-7b-instruct"
     assert kw["params"]["technique"] == "retrieval"
     assert kw["params"]["entity_kind"] == "location"
     assert kw["params"]["estimated_cost_usd"] == 0.0

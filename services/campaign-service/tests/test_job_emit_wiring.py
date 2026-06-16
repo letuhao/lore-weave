@@ -184,7 +184,31 @@ async def test_create_emits_pending_with_native_detail(monkeypatch):
     assert kw["owner_user_id"] == str(USER)
     assert kw["kind"] == "campaign"
     assert spy.await_args.args[0] is conn       # same conn as the INSERT
-    # P4 — create carries cost (spent_usd) + whitelisted params (per-stage NAMES deferred)
+    # P4 — create carries cost (spent_usd) + whitelisted params
     assert kw["cost_usd"] == 0.0
     assert kw["params"]["gating_mode"] == "phase_barrier"
     assert kw["params"]["target_language"] == "vi"
+
+
+@pytest.mark.asyncio
+async def test_create_emits_per_stage_model_names(monkeypatch):
+    # D-JOBS-P4-CAMPAIGN-MODEL-NAMES — the router resolves the per-stage NAMES out-of-tx
+    # and passes them; the create emit carries them (top-level model = translation stage,
+    # per-stage names in params). The projection's COALESCE keeps them across status events.
+    spy = AsyncMock()
+    monkeypatch.setattr(repo, "emit_job_event", spy)
+    conn = FakeConn(_create_row(status="created"))
+    await repo.create_campaign(
+        conn,
+        owner_user_id=USER, book_id=BOOK, name="My run", gating_mode="phase_barrier",
+        target_language="vi", knowledge_project_id=None,
+        knowledge_model_source="user_model", knowledge_model_ref=uuid4(),
+        translation_model_source="user_model", translation_model_ref=uuid4(),
+        chapter_from=None, chapter_to=None, total_chapters=0,
+        knowledge_model_name="qwen2.5-7b-instruct",
+        translation_model_name="gemma-2-9b",
+    )
+    kw = spy.await_args.kwargs
+    assert kw["model"] == "gemma-2-9b"  # top-level = translation stage
+    assert kw["params"]["knowledge_model"] == "qwen2.5-7b-instruct"
+    assert kw["params"]["translation_model"] == "gemma-2-9b"

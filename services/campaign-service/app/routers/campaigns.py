@@ -9,6 +9,7 @@ cost-review happens before this call — FE, S5/S6). cancel → `cancelling`
 
 from __future__ import annotations
 
+import asyncio
 from uuid import UUID
 
 import asyncpg
@@ -186,13 +187,18 @@ async def create_campaign(
     # P4 (D-JOBS-P4-CAMPAIGN-MODEL-NAMES) — resolve the per-stage model NAMES OUT-OF-TX
     # (network I/O; H1) so the create event carries the human names for the Jobs GUI.
     # Best-effort: None on failure; the projection's COALESCE keeps them across later events.
-    _knowledge_model_name = await resolve_model_name(
-        payload.knowledge_model_source,
-        str(payload.knowledge_model_ref) if payload.knowledge_model_ref else None,
-    )
-    _translation_model_name = await resolve_model_name(
-        payload.translation_model_source,
-        str(payload.translation_model_ref) if payload.translation_model_ref else None,
+    # Run the two resolves CONCURRENTLY so a slow provider-registry adds one 5s timeout to
+    # campaign-create latency, not two (review-impl MED-1). resolve_model_name returns None
+    # immediately when its ref is None (no HTTP), so a single-stage campaign pays nothing.
+    _knowledge_model_name, _translation_model_name = await asyncio.gather(
+        resolve_model_name(
+            payload.knowledge_model_source,
+            str(payload.knowledge_model_ref) if payload.knowledge_model_ref else None,
+        ),
+        resolve_model_name(
+            payload.translation_model_source,
+            str(payload.translation_model_ref) if payload.translation_model_ref else None,
+        ),
     )
 
     async with db.acquire() as conn:
