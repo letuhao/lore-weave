@@ -906,14 +906,19 @@ async def _complete_job(pool: asyncpg.Pool, user_id: UUID, job_id: UUID) -> None
             SET status = 'complete', completed_at = now(), updated_at = now()
             WHERE user_id = $1 AND job_id = $2
               AND status NOT IN ('complete', 'cancelled', 'failed')
-            RETURNING job_id
+            RETURNING job_id, cost_spent_usd
             """,
             user_id, job_id,
         )
         if row is not None:
+            # P4 — carry the final cumulative cost on the terminal event (the changing
+            # field); model + params were set on 'running' and kept via the projection's
+            # COALESCE merge.
+            _cost = row["cost_spent_usd"]
             await emit_job_event_safe(
                 conn, service=_JOB_SERVICE, job_id=str(job_id),
                 owner_user_id=str(user_id), kind=_JOB_KIND, status=JobStatus.COMPLETED,
+                cost_usd=float(_cost) if _cost is not None else None,
             )
 
 
@@ -931,14 +936,16 @@ async def _fail_job(
                 error_message = $3
             WHERE user_id = $1 AND job_id = $2
               AND status NOT IN ('complete', 'cancelled', 'failed')
-            RETURNING job_id
+            RETURNING job_id, cost_spent_usd
             """,
             user_id, job_id, error[:2000],
         )
         if row is not None:
+            _cost = row["cost_spent_usd"]
             await emit_job_event_safe(
                 conn, service=_JOB_SERVICE, job_id=str(job_id),
                 owner_user_id=str(user_id), kind=_JOB_KIND, status=JobStatus.FAILED,
+                cost_usd=float(_cost) if _cost is not None else None,
                 error={"code": "extraction_failed", "message": error[:500]},
             )
 

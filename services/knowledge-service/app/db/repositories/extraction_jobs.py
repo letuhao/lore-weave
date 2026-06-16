@@ -686,10 +686,16 @@ class ExtractionJobsRepo:
                 # Unified Job Control Plane P1 — emit the transition (mapped to the
                 # canonical JobStatus). The UPDATE's terminal-guard + RETURNING means
                 # this only fires on a real transition (no duplicate terminal emit).
+                # P4 — carry the CHANGING cost (cumulative spend) on each transition;
+                # model + params are set once on the 'running' event and preserved by the
+                # projection's COALESCE merge, so we pass only cost here (never re-emit a
+                # leaner params that would clobber the rich create-time one).
+                _cost = row["cost_spent_usd"]
                 await emit_job_event(
                     conn, service=_JOB_SERVICE, job_id=str(job_id),
                     owner_user_id=str(user_id), kind=_JOB_KIND,
                     status=_canonical_job_status(new_status),
+                    cost_usd=float(_cost) if _cost is not None else None,
                     error=(
                         {"code": "extraction_failed", "message": (error_message or "")[:500]}
                         if new_status == "failed" else None

@@ -43,12 +43,13 @@ async def test_complete_job_emits_completed(monkeypatch):
     spy = AsyncMock()
     monkeypatch.setattr(runner, "emit_job_event_safe", spy)
     u, j = uuid4(), uuid4()
-    await runner._complete_job(_pool({"job_id": str(j)}), u, j)
+    await runner._complete_job(_pool({"job_id": str(j), "cost_spent_usd": 2.74}), u, j)
     spy.assert_awaited_once()
     kw = spy.await_args.kwargs
     assert kw["service"] == "knowledge" and kw["kind"] == "extraction"
     assert _status_str(kw["status"]) == "completed"  # DB 'complete' → canonical
     assert kw["job_id"] == str(j) and kw["owner_user_id"] == str(u)
+    assert kw["cost_usd"] == 2.74  # P4 — terminal carries the final cumulative cost
 
 
 @pytest.mark.asyncio
@@ -63,11 +64,12 @@ async def test_complete_job_no_row_no_emit(monkeypatch):
 async def test_fail_job_emits_failed_with_error(monkeypatch):
     spy = AsyncMock()
     monkeypatch.setattr(runner, "emit_job_event_safe", spy)
-    await runner._fail_job(_pool({"job_id": "x"}), uuid4(), uuid4(), "boom")
+    await runner._fail_job(_pool({"job_id": "x", "cost_spent_usd": 0.5}), uuid4(), uuid4(), "boom")
     spy.assert_awaited_once()
     kw = spy.await_args.kwargs
     assert _status_str(kw["status"]) == "failed"
     assert kw["error"]["message"] == "boom"
+    assert kw["cost_usd"] == 0.5
 
 
 @pytest.mark.asyncio

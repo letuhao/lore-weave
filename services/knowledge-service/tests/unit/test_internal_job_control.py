@@ -97,7 +97,7 @@ async def test_reconcile_jobs_maps_complete_to_completed():
     updated = datetime(2026, 6, 15, tzinfo=timezone.utc)
     row = SimpleNamespace(
         job_id=JOB, user_id=USER, status="complete", items_processed=3, items_total=5,
-        error_message=None, updated_at=updated,
+        error_message=None, updated_at=updated, cost_spent_usd=2.74,
     )
     repo = AsyncMock()
     repo.list_since = AsyncMock(return_value=[row])
@@ -106,6 +106,7 @@ async def test_reconcile_jobs_maps_complete_to_completed():
     assert p["service"] == "knowledge" and p["kind"] == "extraction"
     assert p["status"] == "completed"  # 'complete' → canonical 'completed'
     assert p["progress"] == {"done": 3, "total": 5}
+    assert p["cost_usd"] == 2.74  # P4 — reconcile carries cumulative cost (backstop)
     assert p["occurred_at"] == updated.isoformat()
 
 
@@ -113,10 +114,12 @@ async def test_reconcile_skips_noncanonical_summarizing():
     from datetime import datetime, timezone
     updated = datetime(2026, 6, 15, tzinfo=timezone.utc)
     good = SimpleNamespace(job_id=JOB, user_id=USER, status="running", items_processed=0,
-                           items_total=0, error_message=None, updated_at=updated)
+                           items_total=0, error_message=None, updated_at=updated,
+                           cost_spent_usd=0)
     # 'summarizing' has no canonical JobStatus → must be skipped, not shipped unparseable.
     summ = SimpleNamespace(job_id=JOB, user_id=USER, status="summarizing", items_processed=0,
-                           items_total=0, error_message=None, updated_at=updated)
+                           items_total=0, error_message=None, updated_at=updated,
+                           cost_spent_usd=0)
     repo = AsyncMock()
     repo.list_since = AsyncMock(return_value=[good, summ])
     out = await reconcile_jobs(since=updated, jobs_repo=repo)

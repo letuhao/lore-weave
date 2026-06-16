@@ -40,6 +40,18 @@ def _clear_overrides():
     app.dependency_overrides.clear()
 
 
+@pytest.fixture(autouse=True)
+def _stub_model_name_resolve():
+    """P4 — the start path resolves the model NAME via provider-registry (HTTP) for the
+    'running' lifecycle event's `model`/`params`. Stub it so unit tests don't attempt a
+    real network call (best-effort None on failure, but a real connect attempt is slow)."""
+    with patch(
+        "app.routers.public.extraction.resolve_model_name",
+        new=AsyncMock(return_value="qwen2.5-7b-instruct"),
+    ):
+        yield
+
+
 def _project_stub(book_id: UUID | None = _TEST_BOOK):
     from app.db.models import Project
     return Project(

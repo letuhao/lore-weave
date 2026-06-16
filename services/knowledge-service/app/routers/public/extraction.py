@@ -27,6 +27,7 @@ from app.clients.chapter_title_enricher import (
     enrich_jobs_with_current_chapter_titles,
 )
 from app.clients.glossary_client import GlossaryClient
+from app.clients.model_name import resolve_model_name
 from app.config import settings as app_settings
 from app.pricing import cost_per_token
 from app.db.neo4j import neo4j_session
@@ -364,6 +365,24 @@ async def _create_and_start_job(
     Returns the new job_id. Raises 409 on concurrent start
     (unique partial index), 404 if project vanishes mid-transaction.
     """
+    # P4 usage emit — resolve the human model NAMEs (best-effort) OUTSIDE the tx
+    # (network I/O; never hold a tx open across it, H1) so the 'running' lifecycle
+    # event carries model + a whitelisted params dict for the Jobs GUI. extraction
+    # models are BYOK user_models. None on any resolve failure (GUI is null-safe).
+    model_name = await resolve_model_name("user_model", str(validated.llm_model))
+    embedding_name = await resolve_model_name("user_model", str(validated.embedding_model))
+    job_params = {
+        "model": model_name,
+        "model_ref": str(validated.llm_model),
+        "embedding_model": embedding_name,
+        "scope": validated.scope,
+        "scope_range": validated.scope_range,
+        "targets": list(validated.targets) if validated.targets is not None else None,
+        "concurrency": validated.concurrency_level,
+        "max_spend_usd": (
+            float(validated.max_spend_usd) if validated.max_spend_usd is not None else None
+        ),
+    }
     pool = get_knowledge_pool()
     try:
         async with pool.acquire() as conn:
@@ -439,6 +458,7 @@ async def _create_and_start_job(
                 await emit_job_event(
                     conn, service="knowledge", job_id=str(job_id),
                     owner_user_id=str(user_id), kind="extraction", status="running",
+                    model=model_name, cost_usd=0.0, params=job_params,
                 )
     except asyncpg.UniqueViolationError:
         raise HTTPException(

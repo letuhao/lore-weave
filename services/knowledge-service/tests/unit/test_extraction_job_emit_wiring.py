@@ -74,7 +74,7 @@ def _stub_row_to_job(monkeypatch):
 async def test_update_status_emits_transition(monkeypatch):
     spy = AsyncMock()
     monkeypatch.setattr(ej, "emit_job_event", spy)
-    repo = ExtractionJobsRepo(_Pool({"job_id": "x"}))
+    repo = ExtractionJobsRepo(_Pool({"job_id": "x", "cost_spent_usd": 1.5}))
     u, j = uuid4(), uuid4()
     await repo.update_status(u, j, "cancelled")
     spy.assert_awaited_once()
@@ -82,13 +82,14 @@ async def test_update_status_emits_transition(monkeypatch):
     assert kw["service"] == "knowledge" and kw["kind"] == "extraction"
     assert _status(kw["status"]) == "cancelled"
     assert kw["job_id"] == str(j) and kw["owner_user_id"] == str(u)
+    assert kw["cost_usd"] == 1.5  # P4 — transition carries the cumulative cost
 
 
 @pytest.mark.asyncio
 async def test_update_status_complete_maps_to_canonical(monkeypatch):
     spy = AsyncMock()
     monkeypatch.setattr(ej, "emit_job_event", spy)
-    repo = ExtractionJobsRepo(_Pool({"job_id": "x"}))
+    repo = ExtractionJobsRepo(_Pool({"job_id": "x", "cost_spent_usd": 0}))
     await repo.update_status(uuid4(), uuid4(), "complete")
     assert _status(spy.await_args.kwargs["status"]) == "completed"  # 'complete' → 'completed'
 
@@ -97,7 +98,7 @@ async def test_update_status_complete_maps_to_canonical(monkeypatch):
 async def test_update_status_failed_carries_error(monkeypatch):
     spy = AsyncMock()
     monkeypatch.setattr(ej, "emit_job_event", spy)
-    repo = ExtractionJobsRepo(_Pool({"job_id": "x"}))
+    repo = ExtractionJobsRepo(_Pool({"job_id": "x", "cost_spent_usd": 0}))
     await repo.update_status(uuid4(), uuid4(), "failed", error_message="boom")
     kw = spy.await_args.kwargs
     assert _status(kw["status"]) == "failed"

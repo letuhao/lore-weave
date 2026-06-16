@@ -65,6 +65,11 @@ async def reconcile_jobs(
             "progress": ({"done": j.items_processed, "total": j.items_total}
                          if j.items_total else None),
             "title": None,
+            # P4 — carry the cumulative cost (reliable, on the row). model + params are
+            # NOT on the row (resolved-NAME needs a per-row provider lookup the sweep
+            # can't afford), so this backstop leaves them None — the projection's
+            # COALESCE keeps whatever the live 'running' event set (best-effort heal).
+            "cost_usd": (float(j.cost_spent_usd) if j.cost_spent_usd is not None else None),
             "error": ({"code": "extraction_failed", "message": (j.error_message or "")[:500]}
                       if j.status == "failed" else None),
             "occurred_at": j.updated_at.isoformat() if j.updated_at else None,
