@@ -1,0 +1,7 @@
+id: l1-lifecycle
+description: "S13/Inc-1 — I9 reality lifecycle CAS, LIVE under concurrent racers (S9 model-checked the logic; this proves it at runtime against real Postgres). N racers attempt active→migrating on one reality via the REAL AttemptStateTransition ⇒ exactly ONE wins, N-1 get concurrent_modification, lifecycle_transition_audit has one success row. Bite: a raw no-CAS UPDATE race ⇒ many winners (proves the CAS is what holds correctness). Requires the scale rig meta-pg up."
+invariant: I-l1-lifecycle-cas-single-winner
+kind: live-probe
+command: ["bash", "scripts/perf/l1-lifecycle.sh", "smoke"]
+requires: ["scale-rig"]
+skip_when: []

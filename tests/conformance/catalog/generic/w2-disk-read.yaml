@@ -1,0 +1,7 @@
+id: w2-disk-read
+description: "W2.3b — dataset>RAM disk read-thrash, LIVE (Linux-only). Under a cgroup memory cap, fio random-reads a dataset larger than the cap → the page cache cannot hold it → cache-miss disk thrash; bite: a sub-cap dataset fits in cache → much higher IOPS → the contrast proves page-cache eviction is the read bound (complements S14 D1 write-fsync). Closes D-S14-DISK-READ-THRASH. Needs Linux + a real memory cgroup + docker (WSL2 can't cap the page cache) → notrun off-Linux; the nightly Linux runner executes it."
+invariant: I-w2-disk-read-thrash-bound
+kind: live-probe
+command: ["bash", "scripts/perf/w2-disk-read.sh", "smoke"]
+requires: ["scale-rig"]
+skip_when: []

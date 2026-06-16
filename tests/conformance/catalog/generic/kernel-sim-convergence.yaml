@@ -1,0 +1,7 @@
+id: kernel-sim-convergence
+description: "S10/H1 — projection-convergence DST: the REAL projections-pc crate applied under 64 seed-chosen cross-aggregate interleavings (per-aggregate version order preserved) converges to the canonical replay-order projection state. NOT S5's Go-vs-Rust differential — both sides are the same real Rust code. Runs clean THEN --bite (a global-order-dependent projection must diverge). CPU-only, no stack."
+invariant: I-projection-convergence
+kind: rust-test
+command: ["bash", "-c", "cargo run -q --manifest-path tests/sim/Cargo.toml --bin sim convergence && cargo run -q --manifest-path tests/sim/Cargo.toml --bin sim convergence --bite"]
+requires: ["cargo"]
+skip_when: []

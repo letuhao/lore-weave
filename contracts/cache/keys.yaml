@@ -1,0 +1,56 @@
+# contracts/cache/keys.yaml — L1.F.5 cache key registry
+#
+# Authoritative source for every cache-key namespace the platform uses.
+# The Go cache library (`contracts/meta/cache.go::KeyRegistry`) loads
+# this file at startup and rejects any Get/Set whose KIND is not present.
+#
+# Q-L5-1 reminder: invalidation is event-driven primary, 60s TTL fallback.
+# So every entry MUST set a TTL > 0 AND SHOULD set invalidation_trigger.
+#
+# Adding a new namespace:
+#   1. Add a KeyKind variant to contracts/meta/cache.go::KeyKind
+#   2. Append an entry below
+#   3. Run `go test ./contracts/meta/...` — registry tests assert no drift
+#   4. Add CODEOWNERS for owner_service + security team for sensitive_path_id
+
+version: 1
+
+entries:
+  - kind: reality_routing
+    ttl_seconds: 30
+    invalidation_trigger: reality.status.changed
+    owner_service: world-service
+    notes: |
+      Hot-path: every command resolves reality_id → RealityRouting.
+      30s TTL because reality status flips (provisioning → seeding →
+      active) happen out of band; we want stale routing window measured
+      in seconds, not minutes.
+
+  - kind: entity_status
+    ttl_seconds: 60
+    invalidation_trigger: entity.status.changed
+    owner_service: world-service
+    notes: |
+      Per-reality entity (NPC, faction) status reads. 60s TTL is the
+      Q-L5-1 fallback baseline.
+
+  - kind: sensitive_paths
+    ttl_seconds: 300
+    invalidation_trigger: ""    # global config, hand-edited; reloaded on deploy
+    owner_service: platform
+    sensitive_path_id: meta-sensitive-read-paths
+    notes: |
+      meta-sensitive-read-paths.yml is a global config; cache miss is
+      cheap (file read), so we lean on the 5-minute TTL and don't wire
+      an invalidation event. Manual reload via SIGHUP if you change the
+      file mid-deploy.
+
+  - kind: canon_projection
+    ttl_seconds: 60
+    invalidation_trigger: xreality.canon_projection.refreshed
+    owner_service: roleplay-service
+    notes: |
+      Placeholder for cycle 23 (L5.D). Per-reality canon-projection
+      cache. Foundation cycle 5 ships the registry entry so the
+      enumeration is stable; the actual read path lands when
+      canon_projection table ships in L5.

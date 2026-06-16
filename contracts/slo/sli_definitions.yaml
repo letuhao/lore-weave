@@ -1,0 +1,129 @@
+# contracts/slo/sli_definitions.yaml — L7.I.1 (RAID cycle 34)
+#
+# Authoritative registry of the 7 LoreWeave SLIs per SR1 §12AD.2.
+#
+# Each SLI is the Service Level Indicator that, multiplied with a target
+# percentage in slo_targets.yaml, produces the SLO that drives the burn-
+# rate feature-freeze policy (§12AD.4) and the per-PR reliability-review
+# gate (scripts/feature-freeze-enforcer.sh).
+#
+# Cardinality budget: each SLI declares its scoping label set. Adding a
+# new label requires updating contracts/observability/inventory.yaml.
+#
+# The slo-budget-calculator service (Q-L7-1: SEPARATE service) reads
+# this file at startup to discover which SLIs it must compute burn rates
+# for. A new SLI lands here FIRST, then a recording rule in
+# infra/prometheus/recording-rules/sli.yaml, then a target in
+# slo_targets.yaml.
+
+version: 1
+shipped_cycle: 34
+
+slis:
+  # ────────────────────────────────────────────────────────────────────
+  # SLI 1 — Session Availability (SR1 §12AD.2)
+  # ────────────────────────────────────────────────────────────────────
+  - name: sli_session_availability
+    description: 'Fraction of session-start attempts succeeding within 5s'
+    formula: 'successful_session_starts / total_session_start_attempts (5-min windows)'
+    numerator: 'sum(rate(lw_session_starts_total{outcome="success",latency_bucket="le_5s"}[5m]))'
+    denominator: 'sum(rate(lw_session_starts_total[5m]))'
+    window: '30d'
+    tier_scope: [free, paid, premium]
+    labels: [tier]
+    owner: sre
+    runbook: runbooks/slo/burn-rate-spike.md
+
+  # ────────────────────────────────────────────────────────────────────
+  # SLI 2 — Turn Completion (SR1 §12AD.2)
+  # ────────────────────────────────────────────────────────────────────
+  - name: sli_turn_completion
+    description: 'Fraction of submitted turns producing LLM response within budget (60s paid / 120s premium)'
+    formula: 'turns_completed_within_budget / turns_submitted'
+    numerator: 'sum(rate(lw_turns_total{outcome="completed",within_budget="true"}[5m]))'
+    denominator: 'sum(rate(lw_turns_total[5m]))'
+    window: '30d'
+    tier_scope: [free, paid, premium]
+    labels: [tier]
+    owner: platform
+    runbook: runbooks/slo/burn-rate-spike.md
+
+  # ────────────────────────────────────────────────────────────────────
+  # SLI 3 — Event Delivery (SR1 §12AD.2)
+  # ────────────────────────────────────────────────────────────────────
+  - name: sli_event_delivery
+    description: 'Fraction of events delivered via WS within 2s of emission'
+    formula: 'ws_events_delivered_within_2s / ws_events_emitted'
+    numerator: 'sum(rate(lw_ws_events_delivered_total{within_2s="true"}[5m]))'
+    denominator: 'sum(rate(lw_ws_events_emitted_total[5m]))'
+    window: '30d'
+    tier_scope: [free, paid, premium]
+    labels: [tier]
+    owner: sre
+    runbook: runbooks/slo/burn-rate-spike.md
+
+  # ────────────────────────────────────────────────────────────────────
+  # SLI 4 — Realtime Freshness (SR1 §12AD.2)
+  # ────────────────────────────────────────────────────────────────────
+  - name: sli_realtime_freshness
+    description: 'P99 staleness of projection reads — read_ts minus last_applied_event_ts'
+    formula: 'histogram_quantile(0.99, lw_projection_staleness_seconds) <= 3s'
+    numerator: 'sum(rate(lw_projection_reads_total{staleness_le_3s="true"}[5m]))'
+    denominator: 'sum(rate(lw_projection_reads_total[5m]))'
+    window: '30d'
+    tier_scope: [free, paid, premium]
+    labels: [tier]
+    owner: platform
+    runbook: runbooks/slo/burn-rate-spike.md
+
+  # ────────────────────────────────────────────────────────────────────
+  # SLI 5 — Auth Success (SR1 §12AD.2)
+  # ────────────────────────────────────────────────────────────────────
+  - name: sli_auth_success
+    description: 'Fraction of auth ops (login, refresh, WS ticket) under 500ms successfully'
+    formula: 'auth_success_within_500ms / auth_attempts'
+    numerator: 'sum(rate(lw_auth_ops_total{outcome="success",latency_bucket="le_500ms"}[5m]))'
+    denominator: 'sum(rate(lw_auth_ops_total[5m]))'
+    window: '7d'
+    tier_scope: [free, paid, premium]
+    labels: [tier]
+    owner: sre
+    runbook: runbooks/slo/burn-rate-spike.md
+
+  # ────────────────────────────────────────────────────────────────────
+  # SLI 6 — Admin Action Success (SR1 §12AD.2; platform-level)
+  # ────────────────────────────────────────────────────────────────────
+  - name: sli_admin_action_success
+    description: 'Fraction of admin commands succeeding within 30s'
+    formula: 'admin_command_success_within_30s / admin_command_attempts'
+    numerator: 'sum(rate(lw_admin_commands_total{outcome="success",latency_bucket="le_30s"}[5m]))'
+    denominator: 'sum(rate(lw_admin_commands_total[5m]))'
+    window: '30d'
+    tier_scope: [platform]
+    labels: []
+    owner: sre
+    runbook: runbooks/slo/burn-rate-spike.md
+
+  # ────────────────────────────────────────────────────────────────────
+  # SLI 7 — Cross-Reality Propagation (SR1 §12AD.2; platform-level)
+  # ────────────────────────────────────────────────────────────────────
+  - name: sli_cross_reality_propagation
+    description: 'Fraction of cross-reality fan-outs reaching descendants within 60s'
+    formula: 'fanouts_within_60s / fanouts_initiated (S8 erasure, §12AC canon, §12M ancestry)'
+    numerator: 'sum(rate(lw_xreality_fanout_total{within_60s="true"}[5m]))'
+    denominator: 'sum(rate(lw_xreality_fanout_total[5m]))'
+    window: '30d'
+    tier_scope: [platform]
+    labels: []
+    owner: platform
+    runbook: runbooks/slo/burn-rate-spike.md
+
+# ────────────────────────────────────────────────────────────────────
+# DRIFT GUARDS
+# ────────────────────────────────────────────────────────────────────
+expected_sli_count: 7
+locked_decisions_consumed:
+  - Q-L7-1: 'slo-budget-calculator is SEPARATE service from incident-bot + statuspage-updater'
+references:
+  - 'SR1 §12AD.2 — 7 SLIs catalog'
+  - 'L7.I.1 layer plan artifact'

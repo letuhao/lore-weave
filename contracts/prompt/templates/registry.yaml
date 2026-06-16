@@ -1,0 +1,48 @@
+# Cycle 31 L6.K.5 — prompt template registry.
+# Q-L6K-1 LOCKED: foundation ships EMPTY skeleton templates. The
+# concrete prompt copy lives in the LLM-logic sub-program.
+#
+# This registry enumerates the active + deprecated template versions
+# per the 7-intent enum (intent.go). The Composer's template loader
+# consults this file to pick the active version for a given Intent.
+#
+# Schema: one entry per intent. `active_version` MUST match a v<N>.tmpl
+# + v<N>.meta.yaml pair on disk. `deprecated_versions` lists older
+# versions that still parse (replay window) but are not picked for
+# new assemblies.
+
+intents:
+  session_turn:
+    active_version: 1
+    deprecated_versions: []
+    status: skeleton    # transitions to "active" when LLM-logic copy lands
+
+  npc_reply:
+    active_version: 1
+    deprecated_versions: []
+    status: skeleton
+
+  canon_check:
+    active_version: 1
+    deprecated_versions: []
+    status: skeleton
+
+  canon_extraction:
+    active_version: 1
+    deprecated_versions: []
+    status: skeleton
+
+  admin_triggered:
+    active_version: 1
+    deprecated_versions: []
+    status: skeleton
+
+  world_seed:
+    active_version: 1
+    deprecated_versions: []
+    status: skeleton
+
+  summary:
+    active_version: 1
+    deprecated_versions: []
+    status: skeleton

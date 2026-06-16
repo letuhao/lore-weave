@@ -1,0 +1,13 @@
+# Cycle 31 L6.K.2 — canon_extraction template metadata (v1 skeleton).
+# Q-L6K-1 LOCKED: foundation ships EMPTY templates. Feature team owns copy.
+
+intent: canon_extraction
+version: 1
+status: skeleton
+compatible_model_tiers:
+  - tier_high
+expected_token_budget: 32000   # S09 §12Y.7 cap for canon_extraction (batch ingest)
+fixture_set: v1.fixtures/
+deprecated_at: null
+replay_window_days: 90
+owner: llm-logic-subprogram

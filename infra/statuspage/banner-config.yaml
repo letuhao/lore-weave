@@ -1,0 +1,40 @@
+# infra/statuspage/banner-config.yaml — L7.L.5 (RAID cycle 37)
+#
+# Auto-banner policy. Per SR2 §12AE.2: user-visible SEV0/SEV1 incidents raise
+# a prominent banner on the public status page automatically. This config is
+# the authoritative banner policy the statuspage-updater enforces; it mirrors
+# the comms_obligation.auto_banner column of contracts/incidents/
+# severity_matrix.yaml (the matrix is the cross-DPS source of truth — this
+# file is the L7.L-side projection used to render banner copy + style).
+#
+# Q-L7L-1 LOCKED: Statuspage.io V1.
+
+version: 1
+shipped_cycle: 37
+
+# Map severity → Statuspage.io incident impact level + whether a banner fires.
+banner_policy:
+  - severity: SEV0
+    auto_banner: true
+    statuspage_impact: critical
+    requires_user_visible: true   # internal SEV0 does NOT raise a public banner
+    default_template: incident_investigating
+  - severity: SEV1
+    auto_banner: true
+    statuspage_impact: major
+    requires_user_visible: true
+    default_template: incident_investigating
+  - severity: SEV2
+    auto_banner: false
+    statuspage_impact: minor
+    requires_user_visible: true
+    default_template: incident_investigating
+  - severity: SEV3
+    auto_banner: false
+    statuspage_impact: none
+    requires_user_visible: true
+    default_template: incident_investigating
+
+# Banner auto-update cadence (SR2 comms cadence; mirrors comms_under_pressure
+# runbook): post the resolved template + clear the banner on incident close.
+clear_on_resolve: true

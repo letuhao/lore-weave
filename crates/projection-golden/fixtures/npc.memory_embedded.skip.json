@@ -1,0 +1,16 @@
+{
+  "_spec": "npc.memory_embedded with dim != 1536 → SKIPPED (empty delta). Q-L3I-1 V1 enforcement (crates/projections/npc/src/lib.rs:211): a wrong-dim embedding is dropped (NOT projected) for the integrity checker to flag downstream. Locks the negative branch so a future change that silently projects a mismatched-dim row fails this fixture. The full projection set produces NO update for this event (only the embedding projection handles npc.memory_embedded, and it returns empty here).",
+  "envelope": {
+    "event_id": "00000000-0000-0000-0000-000000000803",
+    "event_type": "npc.memory_embedded",
+    "event_version": 1,
+    "aggregate_id": "npc-1",
+    "aggregate_type": "npc",
+    "aggregate_version": 9,
+    "reality_id": "22222222-2222-2222-2222-222222222222",
+    "occurred_at": "2026-01-01T00:00:15.000000Z",
+    "recorded_at": "2026-01-01T00:00:15.000000Z",
+    "payload": { "npc_id": "npc-1", "session_id": "sess-1", "embedding": [0.0], "content_hash": "abc123", "dim": 768 }
+  },
+  "expected_updates": []
+}

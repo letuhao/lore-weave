@@ -1,0 +1,211 @@
+# events_allowlist.yaml — Q-L1B-1 resolution
+#
+# This file is the AUTHORITATIVE list of (meta_table, op) pairs that MetaWrite
+# is allowed to emit + which outbox event it produces. Two purposes:
+#   1. Defense-in-depth: MetaWrite rejects writes to tables not listed here.
+#   2. Outbox emit map: services don't decide "do I emit an event?" — the
+#      library does, from this file.
+#
+# Q-L1B-1 resolution: "Auto-derive from service map's Emits events column +
+#   cross-check with outbox_event_emit_lint (L1.K.12)."  The L1.K lint that
+#   cross-references this file with the service-map ships in cycle 11 (L1.K).
+#
+# Cycle 2 (L1.A-1 + L1.B) seeds the 7 routing+lifecycle tables + the
+# session_cost_summary rollup table. Add rows as future cycles land tables.
+#
+# Owner: platform team (per Q-L1B-2 pattern — security team has CODEOWNERS
+# approval on schema changes here).
+
+version: 1
+entries:
+  # ── L1.A-1 §1.1 — primary routing table
+  - table: reality_registry
+    owner: world-service
+    notes: "L1A §1.1 — primary routing; AttemptStateTransition wraps all UPDATEs"
+    events:
+      - op: INSERT
+        event_name: reality.created
+      - op: UPDATE
+        event_name: reality.status.changed
+
+  # ── L1.A-1 §1.2 — per-reality migration tracker (no outbox events; orchestrator owns state)
+  - table: instance_schema_migrations
+    owner: migration-orchestrator
+    notes: "L1A §1.2 — no outbox events per layer plan"
+    events: []
+
+  # ── L1.A-1 §1.3 — publisher liveness (no outbox events; direct write)
+  - table: publisher_heartbeats
+    owner: publisher
+    notes: "L1A §1.3 — heartbeats are direct writes; not outboxed"
+    events: []
+
+  # ── L1.A-1 §1.4 — lifecycle transition audit (audit-only; no outbox)
+  - table: lifecycle_transition_audit
+    owner: contracts/meta (library-internal)
+    notes: "L1A §1.4 — written by MetaWrite() via AttemptStateTransition; audit-only"
+    events: []
+
+  # ── L1.A-1 §1.5 — close-lifecycle compliance trail (events come from reality_registry transitions)
+  - table: reality_close_audit
+    owner: world-service
+    notes: "L1A §1.5 — close events emitted from reality_registry transitions; this table is the audit"
+    events:
+      - op: INSERT
+        event_name: reality.close.audit_recorded
+
+  # ── L1.A-1 §1.6 — archive verification (event on verified)
+  - table: archive_verification_log
+    owner: world-service
+    notes: "L1A §1.6 — emit archive.verified on successful row"
+    events:
+      - op: INSERT
+        event_name: archive.verified
+
+  # ── L1.A-1 §1.7 — per-reality migration audit (events on milestones)
+  - table: reality_migration_audit
+    owner: migration-orchestrator
+    notes: "L1A §1.7 — migration.applied / migration.failed milestones"
+    events:
+      - op: INSERT
+        event_name: migration.audit_recorded
+
+  # ── L1.A-1 Q-L1A-1 — session_cost_summary rollup table (no outbox events; cost dashboards pull)
+  - table: session_cost_summary
+    owner: session-cost-rollup-worker (ships later cycle)
+    notes: "Q-L1A-1 hybrid — meta-side 60s rollup; cost dashboards read directly"
+    events: []
+
+  # ── meta_write_audit — written by MetaWrite itself; never outboxed (would infinite-loop)
+  - table: meta_write_audit
+    owner: contracts/meta (library-internal)
+    notes: "S04 §12T.5 — every MetaWrite() writes 1 row here in same TX. NEVER outbox."
+    events: []
+
+  # ── meta_read_audit — written by read_audit.go; never outboxed
+  - table: meta_read_audit
+    owner: contracts/meta (library-internal)
+    notes: "S04 §12T.6 — enumerated sensitive-read audit. NEVER outbox."
+    events: []
+
+  # ── L1.A-3 §3.3 (cycle 4) — admin command audit; never outboxed (the
+  # data write the command performs has its own meta_write_audit + outbox row)
+  - table: admin_action_audit
+    owner: admin-cli (writer ships cycle 36)
+    notes: "R13 §12L.3 — admin command-level audit. error_detail scrubbed via S08 §12X.5. Never outbox."
+    events: []
+
+  # ── L1.A-3 §3.4 (cycle 4) — service-to-service RPC audit; never outboxed
+  - table: service_to_service_audit
+    owner: rpc entry middleware (ships L4 cycle 18+)
+    notes: "S11 §12AA — full audit (Q-L1A-3, no sampling). Never outbox."
+    events: []
+
+  # ── L1.A-3 §3.5 (cycle 4) — prompt assembly audit; never outboxed
+  - table: prompt_audit
+    owner: contracts/prompt (writer ships L4 cycle 21+)
+    notes: "S09 §12Y — prompt context hash only, NEVER body. Never outbox."
+    events: []
+
+  # ── L1.A-2 §2.1 (cycle 3) — PII envelope; user.created on insert, user.erased on UPDATE-with-erased_at
+  - table: pii_registry
+    owner: auth-service
+    notes: "L1A §2.1 — PII envelope. user.created on INSERT; user.erased is emitted via pii_kek destroyed_at path (single source of truth)."
+    events:
+      - op: INSERT
+        event_name: user.created
+
+  # ── L1.A-2 §2.2 (cycle 3) — KEK envelope; user.erased on UPDATE-with-destroyed_at (crypto-shred)
+  - table: pii_kek
+    owner: auth-service
+    notes: "L1A §2.2 — per-user KEK. Crypto-shred = UPDATE destroyed_at; emits user.erased so downstream caches purge. xreality_topic feeds meta-worker/user_erased_writer (071) the per-reality cascade. P2/113: piikms.DestroyKEK shreds via MetaWriteBatch (atomic total shred) with a DOMAIN OutboxPayload {user_id, erased_at} (XRealityUserErasedV1), so user.erased now emits + the relay's xreality bridge promotes user_id/erased_at to top-level fields for 071."
+    events:
+      - op: UPDATE
+        event_name: user.erased
+        xreality_topic: xreality.user.erased
+
+  # ── L1.A-2 §2.3 (cycle 3) — consent ledger
+  - table: user_consent_ledger
+    owner: auth-service
+    notes: "L1A §2.3 — GDPR consent. INSERT = granted; UPDATE = revoked (single transition guarded by ExpectedBefore revoked_at IS NULL)."
+    events:
+      - op: INSERT
+        event_name: user.consent.granted
+      - op: UPDATE
+        event_name: user.consent.revoked
+
+  # ── L1.A-2 §2.4 (cycle 3) — player character index (dashboard view)
+  - table: player_character_index
+    owner: world-service
+    notes: "L1A §2.4 — cross-reality PC index. Status transitions emit pc.index.status.changed."
+    events:
+      - op: INSERT
+        event_name: pc.index.created
+      - op: UPDATE
+        event_name: pc.index.status.changed
+
+  # ── L1.A-4 §4.1 (cycle 7) — user_cost_ledger (financial; events to billing dashboards)
+  - table: user_cost_ledger
+    owner: usage-billing-service
+    notes: "L1A §4.1 — per-user LLM cost ledger. Every INSERT emits a billing event for dashboards + budget enforcement."
+    events:
+      - op: INSERT
+        event_name: billing.charge.recorded
+
+  # ── L1.A-4 §4.3 (cycle 7) — user_daily_cost (rollup; cap events on UPDATE-with-capped_at)
+  - table: user_daily_cost
+    owner: usage-billing-service
+    notes: "L1A §4.3 — daily aggregate cap. UPDATE setting capped_at emits billing.daily.capped."
+    events:
+      - op: UPDATE
+        event_name: billing.daily.capped
+
+  # ── L1.A-4 §4.4 (cycle 7) — user_queue_metrics (counters only; no outbox)
+  - table: user_queue_metrics
+    owner: world-service
+    notes: "L1A §4.4 — NPC queue abuse counters. No outbox; metrics ship via Prometheus."
+    events: []
+
+  # ── L1.A-4 §6.1 (cycle 7) — incidents (lifecycle state machine; transitions emit events)
+  - table: incidents
+    owner: incident-bot (cycle 37); manual via admin-cli at V1
+    notes: "L1A §6.1 / SR02 — incident lifecycle. State transitions emit incident.<state>; auto-declare on SEV0 alerts."
+    events:
+      - op: INSERT
+        event_name: incident.declared
+      - op: UPDATE
+        event_name: incident.status.changed
+
+  # ── L1.A-4 §6.2 (cycle 7) — feature_flags (toggle audit)
+  - table: feature_flags
+    owner: admin-cli (cycle 36)
+    notes: "L1A §6.2 / SR05 — runtime flags. INSERT = created; UPDATE = toggled (default_enabled or targets changed)."
+    events:
+      - op: INSERT
+        event_name: feature_flag.created
+      - op: UPDATE
+        event_name: feature_flag.toggled
+
+  # ── L1.A-4 §6.3 (cycle 7) — deploy_audit (deploy + canary events)
+  - table: deploy_audit
+    owner: canary-controller (cycle 38) + deploy pipeline
+    notes: "L1A §6.3 / SR05 — per-deploy audit. INSERT = started; UPDATE drives canary stage advances + rollback."
+    events:
+      - op: INSERT
+        event_name: deploy.started
+      - op: UPDATE
+        event_name: deploy.status.changed
+
+  # ── L1.A-4 §6.4 (cycle 7) — shard_utilization (snapshots; no outbox)
+  - table: shard_utilization
+    owner: shard health agent (per-shard sidecar; cycle TBD L7)
+    notes: "L1A §6.4 / SR08 — shard utilization snapshots. Pure metrics; read by capacity_planner."
+    events: []
+
+  # ── L1.A-4 §6.5 (cycle 7) — scaling_events (capacity action audit)
+  - table: scaling_events
+    owner: capacity-planner (cycle 5 world-service module) + admin-cli capacity-override
+    notes: "L1A §6.5 / SR08 — capacity action audit. Tier-2 overrides emit scaling.override.granted."
+    events:
+      - op: INSERT
+        event_name: scaling.event.recorded

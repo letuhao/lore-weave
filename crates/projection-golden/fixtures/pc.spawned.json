@@ -1,0 +1,35 @@
+{
+  "_spec": "pc.spawned (Q-L3B-1 fan-out) → INSERT pc_projection + INSERT a placeholder pc_inventory_projection row (item_code='__sentinel_initial__', qty 0). NOTE: the sentinel inventory row is an IMPL demo of the multi-update path, not a pure-spec requirement — pinned here as a regression-lock.",
+  "envelope": {
+    "event_id": "00000000-0000-0000-0000-000000000401",
+    "event_type": "pc.spawned",
+    "event_version": 1,
+    "aggregate_id": "pc-1",
+    "aggregate_type": "pc",
+    "aggregate_version": 1,
+    "reality_id": "22222222-2222-2222-2222-222222222222",
+    "occurred_at": "2026-01-01T00:00:00.000000Z",
+    "recorded_at": "2026-01-01T00:00:00.000000Z",
+    "payload": { "user_id": "user-1", "name": "Alice", "spawn_region_id": "region-1", "stats": {} }
+  },
+  "expected_updates": [
+    { "Insert": {
+      "table": "pc_projection",
+      "row": {
+        "pc_id": "pc-1",
+        "user_id": "user-1",
+        "name": "Alice",
+        "current_region_id": "region-1",
+        "status": "active",
+        "stats": {},
+        "last_event_version": 1
+      },
+      "meta": { "event_id": "00000000-0000-0000-0000-000000000401", "aggregate_version": 1, "applied_at": "2026-01-01T00:00:00.000000Z" }
+    }},
+    { "Insert": {
+      "table": "pc_inventory_projection",
+      "row": { "pc_id": "pc-1", "item_code": "__sentinel_initial__", "quantity": 0, "metadata": {} },
+      "meta": { "event_id": "00000000-0000-0000-0000-000000000401", "aggregate_version": 1, "applied_at": "2026-01-01T00:00:00.000000Z" }
+    }}
+  ]
+}

@@ -1,0 +1,16 @@
+# S11 — Antithesis driver image (TEMPLATE).
+# Builds the singleton test driver + the wg workload binary it shells.
+# For a real Antithesis run, build this THROUGH Antithesis's instrumentation
+# (their build wrapper adds the coverage/feedback hooks) — see ../README.md.
+FROM golang:1.25 AS build
+WORKDIR /src
+COPY . .
+# wg (the workload binary the driver shells for emit/verify).
+RUN go build -C tests/workload-gen -o /out/wg ./cmd/workload-gen
+# the driver (its own module).
+RUN cd tests/antithesis/driver && go build -o /out/antithesis-driver .
+
+FROM debian:bookworm-slim
+COPY --from=build /out/wg /usr/local/bin/wg
+COPY --from=build /out/antithesis-driver /usr/local/bin/antithesis-driver
+ENTRYPOINT ["/usr/local/bin/antithesis-driver"]

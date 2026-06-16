@@ -1,0 +1,7 @@
+id: recover-rebuild
+description: "S8/G2 — DR rebuild: TRUNCATE the projection tables (total projection loss) → rebuild-from-events → assert B (projection==replay via the integrity-checker, drift==0) ∧ C (no-orphan, wg -check-projections) ∧ C2 (expected-populated tables non-empty). Embeds --bite (corrupt a rebuilt row → B drift>0)."
+invariant: I-recover-rebuild-reconstructs
+kind: live-probe
+command: ["bash", "scripts/chaos/recover-rebuild.sh", "--bite"]
+requires: ["foundation-stack"]
+skip_when: []

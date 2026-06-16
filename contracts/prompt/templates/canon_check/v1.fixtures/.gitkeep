@@ -1,0 +1,5 @@
+# Cycle 31 L6.K.3 — placeholder for session_turn v1 fixtures.
+# Per Q-L6K-1 LOCKED: feature team / LLM-logic sub-program ships the
+# concrete fixtures (basic, confidential_memory_excluded, injection_canary).
+# Foundation ships only this placeholder so the template-fixture-validator
+# sees the canonical directory shape.

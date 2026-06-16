@@ -1,0 +1,228 @@
+# contracts/capacity/budgets.yaml — L1.L.2
+#
+# Per-service capacity budgets. Consumed by:
+#   * capacity-budget-lint.sh (L1.K.7) — every services/<name>/ MUST appear
+#   * HPA/KEDA manifests (infra/k8s/) — derive min/max replicas + scale triggers
+#   * SR08 capacity-planner — reality allocation respects per-shard budget
+#
+# Schema:
+#   services:
+#     - name: <service-name>
+#       class: web|llm-gateway|worker|cron|library
+#       v1:
+#         min_replicas: <int>
+#         max_replicas: <int>
+#         cpu_per_replica: <decimal>     # CPU cores
+#         memory_per_replica: <suffix>   # e.g., 512Mi, 2Gi
+#         scale_trigger: <metric expr>   # KEDA / HPA trigger expression
+#       v3:
+#         min_replicas: <int>
+#         max_replicas: <int>
+#
+# Class semantics (per R04 §12D.6 + SR08):
+#   - web         : http/ws request-serving; HPA on req/s or queue depth
+#   - llm-gateway : provider proxy; KEDA on inflight LLM calls
+#   - worker      : background queue consumer; KEDA on queue lag
+#   - cron        : scheduled; no autoscale; fixed replicas
+#   - library     : not a deployable; manifest-less
+
+version: 1
+
+services:
+  # ── existing 12 LoreWeave novel-platform services (stub budgets for V1)
+  - name: auth-service
+    class: web
+    v1: { min_replicas: 2, max_replicas: 4, cpu_per_replica: 0.5, memory_per_replica: 512Mi, scale_trigger: "rps>200" }
+    v3: { min_replicas: 4, max_replicas: 12 }
+  - name: book-service
+    class: web
+    v1: { min_replicas: 2, max_replicas: 4, cpu_per_replica: 0.5, memory_per_replica: 512Mi, scale_trigger: "rps>200" }
+    v3: { min_replicas: 4, max_replicas: 12 }
+  - name: sharing-service
+    class: web
+    v1: { min_replicas: 1, max_replicas: 2, cpu_per_replica: 0.25, memory_per_replica: 256Mi, scale_trigger: "rps>100" }
+    v3: { min_replicas: 2, max_replicas: 8 }
+  - name: catalog-service
+    class: web
+    v1: { min_replicas: 1, max_replicas: 2, cpu_per_replica: 0.25, memory_per_replica: 256Mi, scale_trigger: "rps>100" }
+    v3: { min_replicas: 2, max_replicas: 8 }
+  - name: provider-registry-service
+    class: web
+    v1: { min_replicas: 2, max_replicas: 4, cpu_per_replica: 0.5, memory_per_replica: 512Mi, scale_trigger: "rps>200" }
+    v3: { min_replicas: 4, max_replicas: 12 }
+  - name: usage-billing-service
+    class: worker
+    v1: { min_replicas: 1, max_replicas: 2, cpu_per_replica: 0.5, memory_per_replica: 1Gi, scale_trigger: "lag>500" }
+    v3: { min_replicas: 2, max_replicas: 8 }
+  - name: translation-service
+    class: web
+    v1: { min_replicas: 1, max_replicas: 2, cpu_per_replica: 0.5, memory_per_replica: 512Mi, scale_trigger: "rps>100" }
+    v3: { min_replicas: 2, max_replicas: 8 }
+  - name: glossary-service
+    class: web
+    v1: { min_replicas: 2, max_replicas: 4, cpu_per_replica: 0.5, memory_per_replica: 512Mi, scale_trigger: "rps>200" }
+    v3: { min_replicas: 4, max_replicas: 12 }
+  - name: chat-service
+    class: llm-gateway
+    v1: { min_replicas: 2, max_replicas: 8, cpu_per_replica: 0.5, memory_per_replica: 1Gi, scale_trigger: "inflight>50" }
+    v3: { min_replicas: 4, max_replicas: 32 }
+  - name: knowledge-service
+    class: worker
+    v1: { min_replicas: 1, max_replicas: 2, cpu_per_replica: 1.0, memory_per_replica: 2Gi, scale_trigger: "lag>1000" }
+    v3: { min_replicas: 2, max_replicas: 8 }
+  - name: video-gen-service
+    class: llm-gateway
+    v1: { min_replicas: 1, max_replicas: 4, cpu_per_replica: 1.0, memory_per_replica: 2Gi, scale_trigger: "inflight>10" }
+    v3: { min_replicas: 2, max_replicas: 16 }
+  - name: api-gateway-bff
+    class: web
+    v1: { min_replicas: 2, max_replicas: 6, cpu_per_replica: 0.5, memory_per_replica: 512Mi, scale_trigger: "rps>500" }
+    v3: { min_replicas: 4, max_replicas: 20 }
+
+  # ── foundation new services
+  - name: world-service
+    class: worker
+    v1: { min_replicas: 2, max_replicas: 4, cpu_per_replica: 1.0, memory_per_replica: 2Gi, scale_trigger: "queue>200" }
+    v3: { min_replicas: 4, max_replicas: 16 }
+  - name: travel-service
+    class: worker
+    v1: { min_replicas: 1, max_replicas: 2, cpu_per_replica: 0.5, memory_per_replica: 1Gi, scale_trigger: "queue>100" }
+    v3: { min_replicas: 2, max_replicas: 8 }
+  - name: roleplay-service
+    class: web
+    v1: { min_replicas: 2, max_replicas: 4, cpu_per_replica: 1.0, memory_per_replica: 2Gi, scale_trigger: "rps>100" }
+    v3: { min_replicas: 4, max_replicas: 20 }
+  - name: publisher
+    class: worker
+    v1: { min_replicas: 1, max_replicas: 1, cpu_per_replica: 0.5, memory_per_replica: 512Mi, scale_trigger: "outbox_lag>1000" }
+    v3: { min_replicas: 2, max_replicas: 4 }
+  - name: meta-outbox-relay
+    class: worker
+    v1: { min_replicas: 1, max_replicas: 1, cpu_per_replica: 0.25, memory_per_replica: 256Mi, scale_trigger: "lw_meta_outbox_pending>1000" }
+    v3: { min_replicas: 1, max_replicas: 2 }
+  - name: breach-notifier
+    class: worker
+    v1: { min_replicas: 1, max_replicas: 1, cpu_per_replica: 0.25, memory_per_replica: 256Mi, scale_trigger: "manual (rare GDPR Art.33 breach events; single consumer)" }
+    v3: { min_replicas: 1, max_replicas: 2 }
+  - name: meta-worker
+    class: worker
+    v1: { min_replicas: 1, max_replicas: 2, cpu_per_replica: 0.5, memory_per_replica: 512Mi, scale_trigger: "xreality_lag>500" }
+    v3: { min_replicas: 2, max_replicas: 6 }
+  - name: event-handler
+    class: worker
+    v1: { min_replicas: 1, max_replicas: 2, cpu_per_replica: 0.5, memory_per_replica: 512Mi, scale_trigger: "lag>500" }
+    v3: { min_replicas: 2, max_replicas: 8 }
+  - name: migration-orchestrator
+    class: cron
+    v1: { min_replicas: 1, max_replicas: 1, cpu_per_replica: 0.5, memory_per_replica: 512Mi, scale_trigger: "none" }
+    v3: { min_replicas: 1, max_replicas: 1 }
+  - name: admin-cli
+    class: cron
+    v1: { min_replicas: 0, max_replicas: 1, cpu_per_replica: 0.25, memory_per_replica: 256Mi, scale_trigger: "none" }
+    v3: { min_replicas: 0, max_replicas: 1 }
+  - name: archive-worker
+    class: worker
+    v1: { min_replicas: 1, max_replicas: 1, cpu_per_replica: 1.0, memory_per_replica: 2Gi, scale_trigger: "archive_queue>10" }
+    v3: { min_replicas: 1, max_replicas: 4 }
+  - name: retention-worker
+    class: cron
+    v1: { min_replicas: 1, max_replicas: 1, cpu_per_replica: 0.5, memory_per_replica: 512Mi, scale_trigger: "none" }
+    v3: { min_replicas: 1, max_replicas: 2 }
+  - name: integrity-checker
+    class: cron
+    v1: { min_replicas: 1, max_replicas: 1, cpu_per_replica: 0.5, memory_per_replica: 1Gi, scale_trigger: "none" }
+    v3: { min_replicas: 1, max_replicas: 2 }
+  - name: chaos-engine
+    class: cron
+    v1: { min_replicas: 0, max_replicas: 1, cpu_per_replica: 0.25, memory_per_replica: 256Mi, scale_trigger: "none" }
+    v3: { min_replicas: 1, max_replicas: 1 }
+  - name: backup-scheduler
+    class: cron
+    v1: { min_replicas: 1, max_replicas: 1, cpu_per_replica: 0.5, memory_per_replica: 512Mi, scale_trigger: "none" }
+    v3: { min_replicas: 1, max_replicas: 2 }
+  - name: session-cost-rollup-worker
+    class: worker
+    v1: { min_replicas: 1, max_replicas: 2, cpu_per_replica: 0.5, memory_per_replica: 512Mi, scale_trigger: "rollup_lag>60" }
+    v3: { min_replicas: 2, max_replicas: 6 }
+  - name: embedding-worker
+    class: worker
+    v1: { min_replicas: 1, max_replicas: 2, cpu_per_replica: 1.0, memory_per_replica: 2Gi, scale_trigger: "embed_queue>200" }
+    v3: { min_replicas: 2, max_replicas: 8 }
+  - name: slo-budget-calculator
+    class: cron
+    v1: { min_replicas: 1, max_replicas: 1, cpu_per_replica: 0.25, memory_per_replica: 256Mi, scale_trigger: "none" }
+    v3: { min_replicas: 1, max_replicas: 1 }
+  - name: canary-controller
+    class: web
+    v1: { min_replicas: 1, max_replicas: 1, cpu_per_replica: 0.25, memory_per_replica: 256Mi, scale_trigger: "rps>10" }
+    v3: { min_replicas: 1, max_replicas: 2 }
+  - name: oncall-bot
+    class: web
+    v1: { min_replicas: 1, max_replicas: 1, cpu_per_replica: 0.25, memory_per_replica: 256Mi, scale_trigger: "rps>10" }
+    v3: { min_replicas: 1, max_replicas: 2 }
+  - name: incident-bot
+    class: web
+    v1: { min_replicas: 1, max_replicas: 1, cpu_per_replica: 0.25, memory_per_replica: 256Mi, scale_trigger: "rps>10" }
+    v3: { min_replicas: 1, max_replicas: 2 }
+  - name: postmortem-bot
+    class: cron
+    v1: { min_replicas: 1, max_replicas: 1, cpu_per_replica: 0.25, memory_per_replica: 256Mi, scale_trigger: "none" }
+    v3: { min_replicas: 1, max_replicas: 1 }
+  - name: statuspage-updater
+    class: worker
+    v1: { min_replicas: 1, max_replicas: 1, cpu_per_replica: 0.25, memory_per_replica: 256Mi, scale_trigger: "incident_count>0" }
+    v3: { min_replicas: 1, max_replicas: 2 }
+  - name: alert-recorder
+    class: web
+    v1: { min_replicas: 1, max_replicas: 1, cpu_per_replica: 0.25, memory_per_replica: 256Mi, scale_trigger: "rps>50" }
+    v3: { min_replicas: 1, max_replicas: 2 }
+
+  # ── existing services in the monorepo (game subtree + adjacent novel-platform)
+  # Cycle 7 seeds budgets so the capacity-budget-lint passes; tuning happens
+  # in their respective sub-program cycles (L7 ops).
+  - name: game-server
+    class: web
+    v1: { min_replicas: 1, max_replicas: 2, cpu_per_replica: 0.5, memory_per_replica: 512Mi, scale_trigger: "rps>200" }
+    v3: { min_replicas: 2, max_replicas: 8 }
+  - name: notification-service
+    class: worker
+    v1: { min_replicas: 1, max_replicas: 2, cpu_per_replica: 0.25, memory_per_replica: 256Mi, scale_trigger: "queue>500" }
+    v3: { min_replicas: 2, max_replicas: 4 }
+  - name: statistics-service
+    class: worker
+    v1: { min_replicas: 1, max_replicas: 1, cpu_per_replica: 0.5, memory_per_replica: 512Mi, scale_trigger: "lag>500" }
+    v3: { min_replicas: 2, max_replicas: 4 }
+  - name: tilemap-service
+    class: web
+    v1: { min_replicas: 1, max_replicas: 2, cpu_per_replica: 1.0, memory_per_replica: 1Gi, scale_trigger: "rps>50" }
+    v3: { min_replicas: 2, max_replicas: 6 }
+  - name: worker-ai
+    class: worker
+    v1: { min_replicas: 1, max_replicas: 2, cpu_per_replica: 1.0, memory_per_replica: 2Gi, scale_trigger: "queue>50" }
+    v3: { min_replicas: 2, max_replicas: 8 }
+  - name: worker-infra
+    class: worker
+    v1: { min_replicas: 1, max_replicas: 1, cpu_per_replica: 0.5, memory_per_replica: 512Mi, scale_trigger: "queue>100" }
+    v3: { min_replicas: 1, max_replicas: 4 }
+
+  # ── novel-platform services merged from main (stub budgets for V1; tuned later)
+  - name: ai-gateway
+    class: web
+    v1: { min_replicas: 1, max_replicas: 2, cpu_per_replica: 0.5, memory_per_replica: 512Mi, scale_trigger: "rps>200" }
+    v3: { min_replicas: 2, max_replicas: 6 }
+  - name: campaign-service
+    class: worker
+    v1: { min_replicas: 1, max_replicas: 2, cpu_per_replica: 0.5, memory_per_replica: 512Mi, scale_trigger: "queue>100" }
+    v3: { min_replicas: 2, max_replicas: 6 }
+  - name: composition-service
+    class: web
+    v1: { min_replicas: 1, max_replicas: 2, cpu_per_replica: 0.5, memory_per_replica: 512Mi, scale_trigger: "rps>100" }
+    v3: { min_replicas: 2, max_replicas: 6 }
+  - name: learning-service
+    class: worker
+    v1: { min_replicas: 1, max_replicas: 1, cpu_per_replica: 0.25, memory_per_replica: 256Mi, scale_trigger: "lag>500" }
+    v3: { min_replicas: 1, max_replicas: 4 }
+  - name: lore-enrichment-service
+    class: web
+    v1: { min_replicas: 1, max_replicas: 2, cpu_per_replica: 0.5, memory_per_replica: 512Mi, scale_trigger: "rps>100" }
+    v3: { min_replicas: 2, max_replicas: 6 }

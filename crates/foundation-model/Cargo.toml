@@ -1,0 +1,14 @@
+[package]
+name = "foundation-model"
+edition = "2024"
+rust-version = "1.85"
+version = "0.1.0"
+publish = false
+
+# S9 — Stateright model checking of foundation protocols (I9 lifecycle CAS,
+# I13 outbox, I7 cross-reality fan-out). Spike crate to de-risk the dep.
+[dependencies]
+stateright = "0.31"
+# The real transition graph (loaded from contracts/meta/transitions.yaml) — so
+# Model #1 checks the SAME graph production uses (no drift).
+meta-rs = { path = "../meta-rs" }

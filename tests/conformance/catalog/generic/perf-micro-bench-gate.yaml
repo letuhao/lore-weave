@@ -1,0 +1,8 @@
+id: perf-micro-bench-gate
+description: "S7/F2 — benchstat regression-gate non-vacuity bite. Runs the per-layer micro-benchmarks (real contracts/events wire path) old=clean / new=LW_PERF_BITE=1 on the SAME runner and asserts benchstat (Mann-Whitney @alpha=0.05, parsed from -format csv) FLAGS the injected regression — else the gate is vacuous (exit 1). The real CI gate is bench-gate.sh --ci-ab <ref> (same-runner A/B); the committed baseline is informational-only."
+invariant: I-perf-bench-gate-bites
+kind: lint
+# lint maps exit 0->pass, 1->fail (gate vacuous), 2->notrun (benchstat absent).
+command: ["bash", "scripts/perf/bench-gate.sh", "--bite"]
+requires: ["benchstat"]
+skip_when: []

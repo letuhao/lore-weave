@@ -38,7 +38,19 @@ of plates that are land when Tectonic (0.1-0.9, ~0.4 for an ocean-rich world); \
 continent_latitude_spread = how strongly continents spread across latitudes when \
 Tectonic (0.0-1.0; 0 = random placement (default), 1 = land covers equator to \
 both poles for a wider biome range — set ~0.6+ for a deliberately varied, \
-pole-to-pole world). Choose values that fit the brief. Output only the JSON object.";
+pole-to-pole world); \
+intensity = optional macro tuning knobs (each defaults to 1.0 = Earth-like; \
+omit unless the brief calls for it): intensity.orogeny scales mountain-building \
+(>1 = taller, more dramatic ranges/plateaus; <1 = gentler), intensity.collision_frequency \
+scales how often plates collide (>1 = more mountain belts, fewer flat oceans; \
+<1 = calmer), intensity.relief scales continental relief detail (>1 = more rugged/ \
+jagged land; <1 = smoother), intensity.ocean_depth scales how deep the oceans are \
+(>1 = deeper abyss; <1 = shallower seas), intensity.warmth scales global \
+temperature (>1 = hotter — more tropics/deserts; <1 = colder — more polar/boreal), \
+intensity.rainfall scales precipitation (>1 = wetter, fewer deserts; <1 = drier), \
+intensity.seasonality scales the seasonal temperature swing (>1 = harsher \
+continental winters/summers; <1 = milder). Choose values that fit the brief. \
+Output only the JSON object.";
 
 /// The JSON Schema constraining the LLM output to the `CreativeSeed` shape.
 ///
@@ -88,7 +100,23 @@ pub fn creative_seed_schema() -> Value {
             "terrain_mode": { "enum": ["Tectonic", "Profile"] },
             "plate_count": { "type": "integer", "minimum": 3, "maximum": 24 },
             "continental_fraction": { "type": "number", "minimum": 0.1, "maximum": 0.9 },
-            "continent_latitude_spread": { "type": "number", "minimum": 0.0, "maximum": 1.0 }
+            "continent_latitude_spread": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+            // Parameterization (P1) — optional macro intensity knobs (default 1.0).
+            // The granular `tectonics` table is config-file territory; the LLM
+            // dials behaviour through these.
+            "intensity": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "orogeny": { "type": "number", "minimum": 0.0, "maximum": 3.0 },
+                    "collision_frequency": { "type": "number", "minimum": 0.0, "maximum": 3.0 },
+                    "relief": { "type": "number", "minimum": 0.0, "maximum": 4.0 },
+                    "ocean_depth": { "type": "number", "minimum": 0.1, "maximum": 4.0 },
+                    "warmth": { "type": "number", "minimum": 0.0, "maximum": 3.0 },
+                    "rainfall": { "type": "number", "minimum": 0.0, "maximum": 5.0 },
+                    "seasonality": { "type": "number", "minimum": 0.0, "maximum": 5.0 }
+                }
+            }
         }
     })
 }
@@ -105,6 +133,16 @@ pub fn parse_creative_seed(content: &str) -> Result<CreativeSeed, String> {
     cs.plate_count = cs.plate_count.clamp(3, 24);
     cs.continental_fraction = cs.continental_fraction.clamp(0.1, 0.9);
     cs.continent_latitude_spread = cs.continent_latitude_spread.clamp(0.0, 1.0);
+    // Parameterization — clamp the macro knobs in the stored seed (defence in
+    // depth; `TectonicsParams::resolved` also clamps at use). Granular params
+    // are clamped at use by `resolved`.
+    cs.intensity.orogeny = cs.intensity.orogeny.clamp(0.0, 3.0);
+    cs.intensity.collision_frequency = cs.intensity.collision_frequency.clamp(0.0, 3.0);
+    cs.intensity.relief = cs.intensity.relief.clamp(0.0, 4.0);
+    cs.intensity.ocean_depth = cs.intensity.ocean_depth.clamp(0.1, 4.0);
+    cs.intensity.warmth = cs.intensity.warmth.clamp(0.0, 3.0);
+    cs.intensity.rainfall = cs.intensity.rainfall.clamp(0.0, 5.0);
+    cs.intensity.seasonality = cs.intensity.seasonality.clamp(0.0, 5.0);
     Ok(cs)
 }
 

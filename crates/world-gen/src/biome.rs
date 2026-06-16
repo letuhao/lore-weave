@@ -6,6 +6,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::climate::ClimateZone;
+use crate::params::BiomeParams;
 
 /// Closed biome enum (GEO_001 §4.2, 14 variants).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -103,7 +104,8 @@ impl BiomeKind {
     }
 }
 
-/// Build the per-cell biome layer.
+/// Build the per-cell biome layer using the **default** elevation tiers. Thin
+/// wrapper over [`build_with`] for callers that don't tune them (tests).
 pub fn build(
     elevation: &[u16],
     sea_level: u16,
@@ -112,6 +114,26 @@ pub fn build(
     river_threshold: f32,
     is_in_ocean: &[bool],
     is_coast: &[bool],
+) -> Vec<BiomeKind> {
+    build_with(
+        elevation, sea_level, climate, river_flux, river_threshold, is_in_ocean, is_coast,
+        &BiomeParams::default(),
+    )
+}
+
+/// Build the per-cell biome layer with caller-tuned [`BiomeParams`] elevation
+/// tiers (parameterization P7). Default params ⇒ byte-identical to the prior
+/// literals.
+#[allow(clippy::too_many_arguments)]
+pub fn build_with(
+    elevation: &[u16],
+    sea_level: u16,
+    climate: &[ClimateZone],
+    river_flux: &[f32],
+    river_threshold: f32,
+    is_in_ocean: &[bool],
+    is_coast: &[bool],
+    bp: &BiomeParams,
 ) -> Vec<BiomeKind> {
     (0..elevation.len())
         .map(|i| {
@@ -123,6 +145,7 @@ pub fn build(
                 river_threshold,
                 is_in_ocean[i],
                 is_coast[i],
+                bp,
             )
         })
         .collect()
@@ -134,6 +157,7 @@ pub fn build(
 /// `elevation < sea_level`, so the `elevation - sea_level` land-tier
 /// subtraction below is only ever reached when `elevation >= sea_level` —
 /// no caller can pass an inconsistent flag.
+#[allow(clippy::too_many_arguments)]
 pub fn derive_biome(
     climate: ClimateZone,
     elevation: u16,
@@ -142,6 +166,7 @@ pub fn derive_biome(
     river_threshold: f32,
     is_in_ocean: bool,
     is_coast: bool,
+    bp: &BiomeParams,
 ) -> BiomeKind {
     if elevation < sea_level {
         return if is_in_ocean {
@@ -156,16 +181,16 @@ pub fn derive_biome(
     // Elevation tier within the land range [sea_level, 65535].
     let land_t = f32::from(elevation - sea_level) / f32::from((65535 - sea_level).max(1));
     if is_coast {
-        return if land_t < 0.06 {
+        return if land_t < bp.beach_t {
             BiomeKind::Beach
         } else {
             BiomeKind::Coast
         };
     }
-    let high = land_t >= 0.55;
-    let mid = land_t >= 0.22;
+    let high = land_t >= bp.high_t;
+    let mid = land_t >= bp.mid_t;
     // Wet but not a river — feeds Marsh in warm-humid lowlands.
-    let wet_low = land_t < 0.22 && river_flux > 0.5 * river_threshold;
+    let wet_low = land_t < bp.mid_t && river_flux > bp.wet_low_flux_frac * river_threshold;
 
     match climate {
         ClimateZone::Highland => hill_or_mountain(high),
@@ -256,7 +281,7 @@ mod tests {
         } else {
             sea + (land_t * f32::from(65535 - sea)) as u16
         };
-        derive_biome(climate, elevation, sea, flux, threshold, ocean, coast)
+        derive_biome(climate, elevation, sea, flux, threshold, ocean, coast, &BiomeParams::default())
     }
 
     #[test]

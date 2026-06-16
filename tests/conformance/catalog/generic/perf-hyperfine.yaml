@@ -1,0 +1,9 @@
+id: perf-hyperfine
+description: "S7/F3 — wall-clock USL concurrency sweep over the spine binaries: K parallel wg-emit processes (write throughput, L2) and rebuilder --parallel-workers K (replay/rebuild, L3.G), each fed into the USL fitter → baseline coefficient artifacts. N is CONCURRENCY, not load-size. NO threshold asserted — the fitted-coefficients artifact is the deliverable (baselines-first)."
+invariant: I-perf-usl-rig
+kind: live-probe
+# live-probe: notrun when hyperfine absent or the stack is down; runs + writes
+# artifacts on the CI nightly perf job.
+command: ["bash", "scripts/perf/hyperfine-binaries.sh"]
+requires: ["hyperfine", "foundation-stack"]
+skip_when: []

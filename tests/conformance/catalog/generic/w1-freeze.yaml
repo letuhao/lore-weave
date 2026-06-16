@@ -1,0 +1,7 @@
+id: w1-freeze
+description: "W1.4 — kernel write-freeze guard, LIVE. The dp-kernel PgEventStore append path rejects events for a reality whose authoritative (uncached) reality_registry.status is frozen (migrating/pending_close/frozen/…), closing D-S13-RELOCATE-FREEZE. guarded: active append OK; each frozen state rejected; only the 2 active-state appends land; recovery after →active works. bite: the same flip with NO guard ⇒ the append LANDS (would be lost on the relocation/closure flip) ⇒ the guard is the enforcer. Uncached read ⇒ no settle-window race. Requires the scale rig (meta-pg + pg-shard-0)."
+invariant: I-w1-freeze-rejects-frozen-appends
+kind: live-probe
+command: ["bash", "scripts/perf/w1-freeze.sh", "smoke"]
+requires: ["scale-rig"]
+skip_when: []

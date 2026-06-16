@@ -1,0 +1,7 @@
+id: w2-partition
+description: "W2.4b — partition-boundary rollover, LIVE. The per-reality events table is monthly RANGE-partitioned (0002) with NO default partition. Events written across a month boundary are all stored + replay monotonically through the parent table; a missing next-month partition fails LOUDLY (no silent loss). Closes D-S6-PARTITION-ROLLOVER. Bite: a 2026-05 INSERT with no 2026-05 partition is rejected ('no partition of relation events found for row'). Requires the scale rig shard-0."
+invariant: I-w2-partition-rollover-no-loss
+kind: live-probe
+command: ["bash", "scripts/perf/w2-partition.sh", "smoke"]
+requires: ["scale-rig"]
+skip_when: []

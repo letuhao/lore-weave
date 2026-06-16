@@ -1,0 +1,7 @@
+id: whole-stack-chaos
+description: "S11/H2 (local half) — whole-stack chaos-convergence: CONCURRENT pg-slow || redis-partition under a multi-reality (3-stream) drain → DELIVERY-CONVERGENCE (the publisher drains outbox→Redis with no-loss + dedup-able = at-least-once). This is the ONE fault-sensitive property: spine projections are rebuild-only so B/C/C2 are rebuild-laundered and the transactional write path keeps C3 clean (review HIGH-1). Both faults proven concurrently active (pending+retries for redis; an RTT probe for pg). Embeds --bite (XDEL all stream copies of one event_id → no-loss MUST fail). C3 re-asserted as secondary."
+invariant: I-whole-stack-delivery-converges
+kind: live-probe
+command: ["bash", "scripts/chaos/whole-stack-chaos.sh", "--bite"]
+requires: ["foundation-stack"]
+skip_when: []

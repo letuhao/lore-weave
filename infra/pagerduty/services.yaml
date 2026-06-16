@@ -1,0 +1,77 @@
+# infra/pagerduty/services.yaml — L7.C (RAID cycle 35)
+#
+# Source of truth for the 5 PagerDuty services. Matches cycle-34
+# infra/alertmanager/channels.yaml::pagerduty.services 1:1 by name. CI gate
+# (verify-cycle-35.sh step `services-match-channels`) enforces this.
+#
+# Q-L7C-1 LOCKED: PagerDuty V1. Integration keys are env-var indirected per
+# service; verify-cycle-34 step 4 already blocks literal 32-hex keys in the
+# repo.
+
+version: 1
+shipped_cycle: 35
+locked_decisions_consumed:
+  - Q-L7C-1: PagerDuty V1 (5 services match channels.yaml)
+  - Q-L7C-2: Internal SLA only (docs/governance/oncall-sla.md)
+
+services:
+  - name: sev0
+    description: 'SLO breach (budget exhausted) — wake everyone'
+    env: PAGERDUTY_INTEGRATION_KEY_SEV0
+    escalation_policy: sev0-immediate
+    rotation_schedule: solo-dev-247
+    acknowledgement_timeout_minutes: 5
+    auto_resolve_timeout_minutes: null   # never auto-resolve sev0
+
+  - name: sev1
+    description: 'Feature freeze (>= 90% burn) — primary + secondary'
+    env: PAGERDUTY_INTEGRATION_KEY_SEV1
+    escalation_policy: sev1-15min-tta
+    rotation_schedule: solo-dev-247
+    acknowledgement_timeout_minutes: 15
+    auto_resolve_timeout_minutes: null
+
+  - name: sre
+    description: 'SR2 default — meta + ws + service alerts'
+    env: PAGERDUTY_INTEGRATION_KEY_SRE
+    escalation_policy: sre-primary-rotation
+    rotation_schedule: solo-dev-247
+    acknowledgement_timeout_minutes: 30
+    auto_resolve_timeout_minutes: 1440   # 24h auto-resolve safety net
+
+  - name: security
+    description: 'auth + canon-injection + audit-hash-mismatch'
+    env: PAGERDUTY_INTEGRATION_KEY_SECURITY
+    escalation_policy: security-oncall
+    rotation_schedule: solo-dev-247
+    acknowledgement_timeout_minutes: 5
+    auto_resolve_timeout_minutes: null
+
+  - name: data
+    description: 'meta-postgres + projection-runner + outbox alerts'
+    env: PAGERDUTY_INTEGRATION_KEY_DATA
+    escalation_policy: data-oncall
+    rotation_schedule: solo-dev-247
+    acknowledgement_timeout_minutes: 5
+    auto_resolve_timeout_minutes: null
+
+# Drift guard. The matching channels.yaml file MUST declare the same 5 services
+# by name + env-var. CI lint cross-checks.
+expected_service_count: 5
+expected_service_names:
+  - sev0
+  - sev1
+  - sre
+  - security
+  - data
+
+# Cross-reference: cycle-34 envelope shape compatibility
+envelope_alignment:
+  cycle_19_envelope_required_labels: [severity, action, team, sli_ref, pr_label]
+  alert_recorder_webhook: 'http://alert-recorder:8091/v1/alerts/inbox'
+  pagerduty_service_to_severity:
+    sev0: 0
+    sev1: 1
+    sre: 2     # default action=pagerduty severity=2
+    security: 1
+    data: 0    # data-integrity defaults to SEV0 per SR2 §12AE.2

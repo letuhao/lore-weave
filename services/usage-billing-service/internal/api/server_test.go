@@ -133,7 +133,7 @@ func TestScanUsageLogRow(t *testing.T) {
 func TestRecordCostUSD(t *testing.T) {
 	t.Parallel()
 	// nil override → flat per-token fallback (legacy / unpriced).
-	if got, want := recordCostUSD(1000, nil), float64(1000)*flatFallbackRateUSDPerToken; got != want {
+	if got, want := recordCostUSD(1000, nil), float64(1000)*flatCostPerToken; got != want {
 		t.Fatalf("nil override: got %v want %v", got, want)
 	}
 	// authoritative per-model cost (e.g. gpt-4o 2.5/10 on 58777 in + 20457 out)
@@ -149,7 +149,7 @@ func TestRecordCostUSD(t *testing.T) {
 	}
 	// a stray negative override is rejected → flat fallback (defensive).
 	neg := -1.0
-	if got, want := recordCostUSD(100, &neg), float64(100)*flatFallbackRateUSDPerToken; got != want {
+	if got, want := recordCostUSD(100, &neg), float64(100)*flatCostPerToken; got != want {
 		t.Fatalf("negative override must fall back to flat, got %v want %v", got, want)
 	}
 }

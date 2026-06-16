@@ -18,6 +18,7 @@ type Server struct {
 	cfg    *config.Config
 	secret []byte
 	rl     *ratelimit.Limiter
+	admin  *adminDeps // nil => admin-JWT issuance (074/075) disabled
 }
 
 func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
@@ -64,6 +65,22 @@ func (s *Server) Router() http.Handler {
 	// Internal (service-to-service, no JWT required)
 	r.Route("/internal", func(r chi.Router) {
 		r.Get("/users/{user_id}/profile", http.HandlerFunc(s.internalGetUserProfile))
+
+		// Admin-JWT issuance (074/075) — mounted only when enabled. Gated by the
+		// DEDICATED issuer secret (NOT InternalServiceToken) + rate-limited.
+		if s.admin != nil {
+			r.Route("/admin", func(r chi.Router) {
+				r.Use(func(next http.Handler) http.Handler {
+					return s.requireAdminIssuerToken(next)
+				})
+				r.Post("/token", func(w http.ResponseWriter, req *http.Request) {
+					ratelimit.Middleware(s.admin.rl, "admin_token", http.HandlerFunc(s.adminToken)).ServeHTTP(w, req)
+				})
+				r.Post("/break-glass-token", func(w http.ResponseWriter, req *http.Request) {
+					ratelimit.Middleware(s.admin.rl, "break_glass_token", http.HandlerFunc(s.breakGlassToken)).ServeHTTP(w, req)
+				})
+			})
+		}
 	})
 
 	r.Route("/v1", func(r chi.Router) {

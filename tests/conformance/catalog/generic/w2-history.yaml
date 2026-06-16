@@ -1,0 +1,7 @@
+id: w2-history
+description: "W2.2 — per-aggregate history-ordering monotonicity, LIVE. The ledger checker now asserts (CheckAggregateMonotonicity) that walking events in recorded order, each aggregate's version is strictly previous+1 — the coverage version-completeness (a sorted-set check) misses. Closes D-S6-HISTORY-ORDERING. Emit → -check-history PASS; bite reorders an aggregate's v2 before v1 (set stays complete) → -check-history FAILS while -verify (completeness) still PASSES (non-vacuous). Requires the scale rig shard-0."
+invariant: I-w2-history-monotonic
+kind: live-probe
+command: ["bash", "scripts/perf/w2-history.sh", "smoke"]
+requires: ["scale-rig"]
+skip_when: []

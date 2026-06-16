@@ -1,0 +1,7 @@
+id: s14-deadlock
+description: "S14/D4 — deadlock/lock-contention, LIVE. Validates the ORDERING PRINCIPLE I6 relies on (consistent global lock order ⇒ no deadlock), driven directly against real Postgres (roleplay-service is `missing` — this is the principle, not the shipped processor). ordered: two txns lock A,B in the same order → 0 deadlocks, both commit. bite: opposing order with a hold-and-wait barrier (both hold their first lock before grabbing the second) → real PG deadlock (40P01) → proves consistent ordering prevents it. Spins its own container; needs a docker host + go."
+invariant: I-s14-consistent-order-no-deadlock
+kind: live-probe
+command: ["bash", "scripts/perf/s14-deadlock.sh", "smoke"]
+requires: ["scale-rig"]
+skip_when: []

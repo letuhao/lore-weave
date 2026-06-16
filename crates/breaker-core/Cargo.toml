@@ -1,0 +1,26 @@
+[package]
+name = "breaker-core"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Tokio-free CircuitBreaker sync state machine, extracted from dp-kernel::resilience (S6/H1-loom) so it can be exhaustively race-checked with loom — loom can't build inside dp-kernel because tokio's transitive deps break under --cfg loom. dp-kernel re-exports CircuitBreaker from here; the public path dp-kernel::resilience::CircuitBreaker is unchanged."
+
+[lib]
+path = "src/lib.rs"
+
+# `loom` is a custom cfg (set via RUSTFLAGS="--cfg loom"), not a Cargo feature —
+# declare it so the unexpected_cfgs lint stays quiet on normal builds.
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(loom)'] }
+
+[dependencies]
+thiserror = { workspace = true }
+
+# S6 / H1-loom — only pulled under `RUSTFLAGS="--cfg loom"`. Because this crate
+# has NO tokio, the loom build is clean (no concurrent-queue breakage).
+# Run: `RUSTFLAGS="--cfg loom" cargo test -p breaker-core loom_tests`.
+[target.'cfg(loom)'.dev-dependencies]
+loom = "0.7"

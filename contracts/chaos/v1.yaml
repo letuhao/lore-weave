@@ -1,0 +1,76 @@
+openapi: 3.1.0
+info:
+  title: contracts/chaos — Drill request / response surface
+  version: "1.0.0-skeleton"
+  description: |
+    L4.O cycle 22 SKELETON — Q-L4-4 LOCKED V1+30d for runtime drills.
+    This OpenAPI surface documents the future chaos-engine HTTP API so
+    callers + SREs have a stable shape. NOT served by api-gateway-bff
+    (Q-L4-5 — internal documentation only).
+
+paths:
+  /internal/v1/chaos/drills/run:
+    post:
+      summary: Trigger a one-off drill (V1+30d)
+      description: |
+        SKELETON — returns 501 Not Implemented until the chaos-engine
+        sidecar lands (Q-L4-4 V1+30d).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [drill_name, target_service, environment, operator_actor_id]
+              properties:
+                drill_name: { type: string, example: meta_outage }
+                target_service: { type: string }
+                target_shard_id: { type: string, nullable: true }
+                environment:
+                  type: string
+                  enum: [dev, staging, prod]
+                operator_actor_id: { type: string }
+                notes: { type: string, nullable: true }
+      responses:
+        "501":
+          description: Not Implemented — chaos-engine ships V1+30d (Q-L4-4)
+        "200":
+          description: Drill kicked off — async outcome reported via chaos_drills audit row
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [drill_id]
+                properties:
+                  drill_id: { type: string, format: uuid }
+
+  /internal/v1/chaos/drills/{drill_id}:
+    get:
+      summary: Fetch drill outcome
+      description: SKELETON — V1+30d.
+      parameters:
+        - in: path
+          name: drill_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "501":
+          description: Not Implemented — V1+30d.
+        "200":
+          description: Drill audit row
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [drill_id, drill_name, outcome, started_at_nanos]
+                properties:
+                  drill_id: { type: string, format: uuid }
+                  drill_name: { type: string }
+                  outcome:
+                    type: string
+                    enum: [success, failure, aborted, precondition_fail]
+                  started_at_nanos: { type: integer, format: int64 }
+                  completed_at_nanos: { type: integer, format: int64 }
+                  hook_ids_triggered:
+                    type: array
+                    items: { type: string }

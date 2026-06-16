@@ -1,0 +1,8 @@
+id: w2-bulkhead-shuttle
+description: "W2.5 — shuttle model-check of the bulkhead ADMISSION algorithm ('never admit more than max concurrently') over thousands of sampled schedules, plus a should_panic bite proving shuttle catches a check->increment over-admission race. SCOPE: the production Bulkhead delegates its slot gate to tokio::Semaphore (shuttle can't intercept), so this checks the algorithm, not the literal struct — a faithful async check needs a tokio-aware checker (D-W2-BULKHEAD-SHUTTLE-LITERAL). CPU-only, no stack. Closes D-S6-BULKHEAD-SHUTTLE."
+invariant: I-bulkhead-admission-race-free
+kind: rust-test
+command: ["bash", "-c", "RUSTFLAGS='--cfg shuttle' cargo test -p dp-kernel --test bulkhead_shuttle"]
+# cargo (Rust toolchain) absent on the Go-only bare runner → notrun, not fail.
+requires: ["cargo"]
+skip_when: []

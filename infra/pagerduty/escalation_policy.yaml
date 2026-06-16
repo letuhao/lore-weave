@@ -1,0 +1,155 @@
+# infra/pagerduty/escalation_policy.yaml — L7.C.3 (RAID cycle 35)
+#
+# 5 escalation policies (one per PagerDuty service from services.yaml).
+# Each policy declares ordered layers; each layer has TTA threshold + target
+# (a schedule or user). PagerDuty pages the schedule's current on-call; if
+# no ack within TTA, advances to next layer.
+#
+# Per SR2 §12AE.4 — alert routing + fallback chain.
+# Per oncall-sla.md — TTA per severity (5min sev0 / 15min sev1 / 30min sev2).
+#
+# Q-L7C-1 LOCKED: PagerDuty V1.
+
+version: 1
+shipped_cycle: 35
+time_zone: Asia/Bangkok
+
+escalation_policies:
+
+  # ────────────────────────────────────────────────────────────────────
+  # sev0 — wake everyone in 5 min.
+  # ────────────────────────────────────────────────────────────────────
+  - id: sev0-immediate
+    name: 'SEV0 — immediate page (5 min TTA)'
+    description: 'SLO breach / data integrity / security incident. Tight TTA.'
+    num_loops: 2   # if still unacked after full chain, loop twice
+    layers:
+      - escalation_delay_in_minutes: 0
+        targets:
+          - type: schedule
+            id: solo-dev-247
+      - escalation_delay_in_minutes: 5
+        targets:
+          - type: user
+            id: tech-lead
+      - escalation_delay_in_minutes: 15
+        targets:
+          - type: user
+            id: founder-direct
+        notes: 'Founder direct (phone) — final escalation for sev0'
+
+  # ────────────────────────────────────────────────────────────────────
+  # sev1 — primary + secondary (15 min TTA).
+  # ────────────────────────────────────────────────────────────────────
+  - id: sev1-15min-tta
+    name: 'SEV1 — 15 min TTA'
+    description: 'Feature freeze, partial outage. Primary + secondary fallback.'
+    num_loops: 1
+    layers:
+      - escalation_delay_in_minutes: 0
+        targets:
+          - type: schedule
+            id: solo-dev-247
+      - escalation_delay_in_minutes: 15
+        targets:
+          - type: user
+            id: tech-lead
+      - escalation_delay_in_minutes: 30
+        targets:
+          - type: user
+            id: founder-direct
+
+  # ────────────────────────────────────────────────────────────────────
+  # sre default — SR2 §12AE.4 default routing (30 min TTA).
+  # ────────────────────────────────────────────────────────────────────
+  - id: sre-primary-rotation
+    name: 'SRE primary rotation (default — 30 min TTA)'
+    description: 'Default SRE alerts: meta + ws + service health.'
+    num_loops: 1
+    layers:
+      - escalation_delay_in_minutes: 0
+        targets:
+          - type: schedule
+            id: solo-dev-247
+      - escalation_delay_in_minutes: 30
+        targets:
+          - type: user
+            id: tech-lead
+      - escalation_delay_in_minutes: 60
+        targets:
+          - type: user
+            id: founder-direct
+
+  # ────────────────────────────────────────────────────────────────────
+  # security — sev0-equivalent timing (5 min TTA).
+  # ────────────────────────────────────────────────────────────────────
+  - id: security-oncall
+    name: 'Security on-call (5 min TTA)'
+    description: 'auth-service + canon-injection + audit-hash-mismatch.'
+    num_loops: 2
+    layers:
+      - escalation_delay_in_minutes: 0
+        targets:
+          - type: schedule
+            id: solo-dev-247
+      - escalation_delay_in_minutes: 5
+        targets:
+          - type: user
+            id: tech-lead
+      - escalation_delay_in_minutes: 15
+        targets:
+          - type: user
+            id: founder-direct
+        notes: 'Founder direct (phone) — security escalation'
+      - escalation_delay_in_minutes: 30
+        targets:
+          - type: user
+            id: dpo
+        notes: 'DPO — GDPR Art.33 72h timer starts on personal data breach'
+
+  # ────────────────────────────────────────────────────────────────────
+  # data — sev0-equivalent timing for data-integrity alerts.
+  # ────────────────────────────────────────────────────────────────────
+  - id: data-oncall
+    name: 'Data on-call (5 min TTA — data integrity)'
+    description: 'meta-postgres + projection-runner + outbox.'
+    num_loops: 2
+    layers:
+      - escalation_delay_in_minutes: 0
+        targets:
+          - type: schedule
+            id: solo-dev-247
+      - escalation_delay_in_minutes: 5
+        targets:
+          - type: user
+            id: tech-lead
+      - escalation_delay_in_minutes: 15
+        targets:
+          - type: user
+            id: founder-direct
+
+# Drift guard
+expected_policy_count: 5
+expected_policy_names:
+  - sev0-immediate
+  - sev1-15min-tta
+  - sre-primary-rotation
+  - security-oncall
+  - data-oncall
+
+# Cross-reference TTA targets (must match oncall-sla.md)
+tta_alignment:
+  source: docs/governance/oncall-sla.md
+  sev0_first_layer_minutes: 0   # acknowledge target 5min via layer 2 delay
+  sev1_first_layer_minutes: 0   # acknowledge target 15min via layer 2 delay
+  sev2_first_layer_minutes: 0   # acknowledge target 30min via layer 2 delay
+  notes: |
+    PagerDuty fires immediately to layer 1 (delay=0). The escalation_delay
+    on layer 2 represents the TTA window. SEV0 = 5min TTA -> layer 2 delay 5min.
+    SEV1 = 15min TTA -> layer 2 delay 15min. SRE default = 30min -> layer 2 30min.
+
+references:
+  rotation_schedule: infra/pagerduty/rotation_schedule.yaml
+  services: infra/pagerduty/services.yaml
+  oncall_sla: docs/governance/oncall-sla.md
+  alertmanager_channels: infra/alertmanager/channels.yaml

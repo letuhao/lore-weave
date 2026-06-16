@@ -1,0 +1,38 @@
+# infra/comms/out_of_band/channels.yaml — L7.D.8 (RAID cycle 37)
+#
+# SR2 problem 10: out-of-band comms channels — hosted EXTERNAL to platform
+# infra so they survive a full prod outage. Every channel below must declare
+# off_platform: true and an env-var-sourced credential (never a literal).
+#
+# verify-cycle-37.sh asserts:
+#   - every channel has off_platform: true
+#   - no literal credentials (only *_ENV references)
+
+version: 1
+shipped_cycle: 37
+
+channels:
+  - id: public_status_page
+    provider: statuspage_io          # Q-L7L-1 LOCKED
+    purpose: 'Public incident status + auto-banner for SEV0/SEV1.'
+    off_platform: true
+    credential_env: STATUSPAGE_API_KEY
+    page_id_env: STATUSPAGE_PAGE_ID
+
+  - id: status_page_subscribers
+    provider: statuspage_io
+    purpose: 'Email/SMS subscriber notifications driven by status-page updates.'
+    off_platform: true
+    credential_env: STATUSPAGE_API_KEY
+
+  - id: founder_direct
+    provider: pagerduty              # Q-L7C-1 LOCKED
+    purpose: 'Final escalation phone path; off-platform paging.'
+    off_platform: true
+    credential_env: PAGERDUTY_INTEGRATION_KEY_SEV0
+
+  - id: incident_slack
+    provider: slack
+    purpose: 'War-room coordination (internal). Off-platform SaaS.'
+    off_platform: true
+    credential_env: SLACK_BOT_TOKEN

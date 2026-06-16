@@ -1,0 +1,144 @@
+# infra/prometheus/recording-rules/aggregation.yaml — L7.H.2 (RAID cycle 33)
+#
+# Recording rules that aggregate raw scraped series into derived series
+# used by foundation dashboards. Pre-computing aggregations at scrape time
+# is cheaper than computing them at every dashboard render.
+#
+# LOCKED decisions consumed:
+#   - Q-L1I-1: HA pair via federation. Recording rules run independently
+#     on each replica; the prom_replica external label differentiates them.
+#     Thanos sidecar (V1+30d) deduplicates downstream.
+#
+# Rule categories:
+#   1. per_shard_health    — meta-postgres + per-reality DB health rollup
+#   2. per_status_rate     — HTTP/gRPC error rate by service
+#   3. per_deploy_cohort   — cycle-30 deploy-cohort visualization rollup
+#   4. per_tier            — free/paid/premium request volume + latency
+#
+# Drift guard: every rule references the source metric explicitly so a
+# future commit that renames the underlying metric breaks the rule and
+# is caught at promtool validation.
+
+groups:
+  # ───────────────────────────────────────────────────────────────────
+  # 1. Per-shard health rollup
+  # ───────────────────────────────────────────────────────────────────
+  - name: per_shard_health
+    interval: 30s
+    rules:
+      - record: lw:postgres_up:by_shard
+        expr: |
+          max by (shard_host, db_class) (up{job=~"meta-postgres|per-reality-postgres"})
+        labels:
+          rule_owner: platform
+          rule_cycle: "33"
+
+      - record: lw:postgres_xact_rate:by_shard
+        expr: |
+          sum by (shard_host, db_class) (
+            rate(pg_stat_database_xact_commit_total[5m])
+            + rate(pg_stat_database_xact_rollback_total[5m])
+          )
+        labels:
+          rule_owner: platform
+          rule_cycle: "33"
+
+      - record: lw:postgres_connections:by_shard
+        expr: |
+          max by (shard_host, db_class) (pg_stat_database_numbackends)
+        labels:
+          rule_owner: platform
+          rule_cycle: "33"
+
+  # ───────────────────────────────────────────────────────────────────
+  # 2. Per-status rate (HTTP/gRPC error % by service)
+  # ───────────────────────────────────────────────────────────────────
+  - name: per_status_rate
+    interval: 30s
+    rules:
+      - record: lw:http_request_rate:by_service_status
+        expr: |
+          sum by (service, status_class) (
+            rate(http_requests_total[5m])
+          )
+        labels:
+          rule_owner: platform
+          rule_cycle: "33"
+
+      - record: lw:http_error_ratio:by_service
+        # Error ratio = 5xx / total. Avoid divide-by-zero with >0 guard.
+        expr: |
+          sum by (service) (rate(http_requests_total{status_class="5xx"}[5m]))
+          /
+          (sum by (service) (rate(http_requests_total[5m])) > 0)
+        labels:
+          rule_owner: platform
+          rule_cycle: "33"
+
+  # ───────────────────────────────────────────────────────────────────
+  # 3. Per-deploy-cohort rollup (cycle 30 visualization)
+  # ───────────────────────────────────────────────────────────────────
+  - name: per_deploy_cohort
+    interval: 60s
+    rules:
+      - record: lw:deploy_cohort_health:ratio
+        # Healthy ratio per deploy cohort. cohort_id labels are emitted by
+        # services participating in the cycle-30 deploy gradient.
+        expr: |
+          sum by (cohort_id) (rate(http_requests_total{status_class!="5xx"}[5m]))
+          /
+          (sum by (cohort_id) (rate(http_requests_total[5m])) > 0)
+        labels:
+          rule_owner: platform
+          rule_cycle: "33"
+
+  # ───────────────────────────────────────────────────────────────────
+  # 4. Per-tier traffic + latency
+  # ───────────────────────────────────────────────────────────────────
+  - name: per_tier
+    interval: 30s
+    rules:
+      - record: lw:request_rate:by_tier
+        expr: |
+          sum by (tier) (rate(http_requests_total{tier=~"free|paid|premium"}[5m]))
+        labels:
+          rule_owner: platform
+          rule_cycle: "33"
+
+      - record: lw:request_latency_p95:by_tier
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (tier, le) (rate(http_request_duration_seconds_bucket[5m]))
+          )
+        labels:
+          rule_owner: platform
+          rule_cycle: "33"
+
+  # ───────────────────────────────────────────────────────────────────
+  # 5. Observability self-health (cycle 33 stack monitors itself)
+  # ───────────────────────────────────────────────────────────────────
+  - name: observability_self
+    interval: 30s
+    rules:
+      - record: lw:obs_stack_up
+        expr: |
+          min(up{job="observability-stack"}) by (instance)
+        labels:
+          rule_owner: platform
+          rule_cycle: "33"
+
+      - record: lw:vector_events_per_sec
+        expr: |
+          sum(rate(vector_events_in_total[5m]))
+        labels:
+          rule_owner: platform
+          rule_cycle: "33"
+
+      - record: lw:loki_ingestion_rate_bytes
+        # Loki self-reported ingestion rate.
+        expr: |
+          sum(rate(loki_distributor_bytes_received_total[5m]))
+        labels:
+          rule_owner: platform
+          rule_cycle: "33"

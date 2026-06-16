@@ -1,0 +1,32 @@
+{{/*
+  Cycle 31 L6.K — session_turn intent template SKELETON (v1).
+  Q-L6K-1 LOCKED: foundation ships EMPTY templates. Feature team /
+  DF3 / LLM-logic sub-program fills the per-section prompt copy.
+  Foundation provides only the 8-section structure scaffolding.
+
+  Render contract: Go text/template; LLM-logic sub-program wires the
+  per-template renderer that consumes a per-intent context struct.
+*/}}
+[SYSTEM]
+{{/* intent-specific system bytes — owned by feature team */}}
+
+[WORLD_CANON]
+{{/* canon facts filtered for the actor (R02 §12B) — owned by feature team */}}
+
+[SESSION_STATE]
+{{/* session participants, turn order, scene state — owned by feature team */}}
+
+[ACTOR_CONTEXT]
+{{/* actor PC data — owned by feature team */}}
+
+[MEMORY]
+{{/* retrieved npc_session_memory (S2-compliant) — owned by feature team */}}
+
+[HISTORY]
+{{/* recent events (S3-compliant) — owned by feature team */}}
+
+[INSTRUCTION]
+{{/* current turn instruction — owned by feature team */}}
+
+[INPUT]
+{{/* wrapped via input_wrapper.go before template fill — owned by Composer */}}

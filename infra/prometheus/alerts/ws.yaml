@@ -1,0 +1,120 @@
+# infra/prometheus/alerts/ws.yaml — L6.E.3 (RAID cycle 28)
+#
+# WebSocket server alerts per S12 §12AB (monitoring) and Q-L6-2 (cap = 10K/replica).
+#
+# Routing per SR2 — saturation + replay alerts page SRE primary; clock-skew
+# alerts page platform team; refresh-failure alerts notify only.
+#
+# Q-L6-2 enforcement: the 80% cap-saturation alert fires before HPA's scale
+# threshold (typically ~70% CPU) so the WS replica scales BEFORE we start
+# rejecting connections with code 4008. Without this alert the HPA reacts
+# late and we lose user sessions to cap-reached close codes.
+
+groups:
+  - name: lw_ws_capacity
+    rules:
+      - alert: LWWsConnectionSaturation
+        # > 80% of cap means we are within one autoscale event of refusing
+        # new connections (Q-L6-2 = 10 000 per replica).
+        expr: lw_ws_active_connections > 0.8 * 10000
+        for: 1m
+        labels:
+          severity: page
+          team: sre
+          route: pagerduty
+        annotations:
+          summary: 'WS replica > 80% of connection cap'
+          description: |
+            Replica {{ $labels.instance }} carries {{ $value }} of 10000 WS connections.
+            HPA should be scaling — if it isn't, manual replica bump required.
+          runbook: runbooks/ws/saturation.md
+
+      - alert: LWWsHandshakeFailureSpike
+        # Sustained handshake failures > 1 / sec for 2 m signal misconfigured
+        # client OR replay attack OR clock skew.
+        expr: |
+          sum by (reason) (rate(lw_ws_handshake_failures_total[2m])) > 1
+        for: 2m
+        labels:
+          severity: warn
+          team: platform
+          route: slack
+        annotations:
+          summary: 'WS handshake failures spike — reason={{ $labels.reason }}'
+          description: |
+            > 1/sec WS handshake rejections for 2 m on reason {{ $labels.reason }}.
+            Cap-reached, ticket-expired and fingerprint-mismatch each have distinct
+            runbooks; check the reason label.
+          runbook: runbooks/ws/refresh_failures.md
+
+  - name: lw_ws_security
+    rules:
+      - alert: LWWsTicketReplayAttack
+        # ticket_not_found at > 0.5 /sec sustained 5 m signals an attacker
+        # replaying already-redeemed tickets (or a buggy client retrying
+        # without re-fetching).
+        expr: |
+          rate(lw_ws_ticket_redeemed_total{outcome="not_found"}[5m]) > 0.5
+        for: 5m
+        labels:
+          severity: page
+          team: sre
+          route: pagerduty
+        annotations:
+          summary: 'WS ticket replay attack suspected'
+          description: |
+            ticket_not_found redemptions sustained > 0.5/sec for 5 m.
+            Either an attacker is replaying captured tickets OR a client is
+            retrying without re-fetching from POST /v1/ws/ticket.
+          runbook: runbooks/ws/ticket_replay_attack.md
+
+      - alert: LWWsOriginMismatchSpike
+        # Any persistent origin mismatch is a cross-site attack signal.
+        expr: |
+          rate(lw_ws_ticket_redeemed_total{outcome="origin_mismatch"}[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: page
+          team: sre
+          route: pagerduty
+        annotations:
+          summary: 'WS ticket origin mismatch sustained'
+          description: |
+            Tickets issued for one origin are being presented at another.
+            Likely cross-site (CSWSH) attack attempt or misconfigured CDN.
+          runbook: runbooks/ws/ticket_replay_attack.md
+
+      - alert: LWWsFingerprintMismatchSpike
+        expr: |
+          rate(lw_ws_ticket_redeemed_total{outcome="fingerprint_mismatch"}[5m]) > 0.5
+        for: 5m
+        labels:
+          severity: warn
+          team: platform
+          route: slack
+        annotations:
+          summary: 'WS fingerprint mismatches sustained — possible ticket theft'
+          description: |
+            > 0.5/sec fingerprint mismatches for 5 m. Could be legit (mobile
+            handoff hitting fingerprint gate) or malicious (ticket exfiltration
+            and replay from a different device).
+
+  - name: lw_ws_authz
+    rules:
+      - alert: LWWsAuthzRejectionSpike
+        # Per-message authz rejection sustained > 1/sec means an attacker
+        # is sending unauthorized frames OR a regression dropped the
+        # authz call site.
+        expr: |
+          sum by (reason) (rate(lw_ws_authz_rejections_total[5m])) > 1
+        for: 5m
+        labels:
+          severity: warn
+          team: platform
+          route: slack
+        annotations:
+          summary: 'WS per-message authz rejections spike — reason={{ $labels.reason }}'
+          description: |
+            > 1/sec authz rejections sustained for 5 m on reason {{ $labels.reason }}.
+            Investigate whether legitimate clients dropped session_participants
+            membership without disconnecting.

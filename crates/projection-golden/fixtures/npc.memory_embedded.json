@@ -1,0 +1,22 @@
+{
+  "_spec": "npc.memory_embedded (dim=1536) → INSERT npc_session_memory_embedding {npc_id, session_id, embedding, content_hash} (NpcSessionMemoryEmbeddingProjection, crates/projections/npc/src/lib.rs:200). Q-L3I-1 V1 dim LOCKED 1536. NOTE: the dim GATE reads payload.dim only — it does NOT check the embedding array length — so a short embedding here is fine as long as dim=1536 is declared; the arm copies the array verbatim. The mismatched-dim skip path is locked separately in npc.memory_embedded.skip.json.",
+  "envelope": {
+    "event_id": "00000000-0000-0000-0000-000000000802",
+    "event_type": "npc.memory_embedded",
+    "event_version": 1,
+    "aggregate_id": "npc-1",
+    "aggregate_type": "npc",
+    "aggregate_version": 8,
+    "reality_id": "22222222-2222-2222-2222-222222222222",
+    "occurred_at": "2026-01-01T00:00:14.000000Z",
+    "recorded_at": "2026-01-01T00:00:14.000000Z",
+    "payload": { "npc_id": "npc-1", "session_id": "sess-1", "embedding": [0.0, 1.0, 2.0, 3.0], "content_hash": "abc123", "dim": 1536 }
+  },
+  "expected_updates": [
+    { "Insert": {
+      "table": "npc_session_memory_embedding",
+      "row": { "npc_id": "npc-1", "session_id": "sess-1", "embedding": [0.0, 1.0, 2.0, 3.0], "content_hash": "abc123" },
+      "meta": { "event_id": "00000000-0000-0000-0000-000000000802", "aggregate_version": 8, "applied_at": "2026-01-01T00:00:14.000000Z" }
+    }}
+  ]
+}

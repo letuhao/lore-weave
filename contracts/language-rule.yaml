@@ -1,0 +1,83 @@
+# contracts/language-rule.yaml — I3 invariant amendment (LOCKED 2026-05-29)
+#
+# Maps services/<name>/ → expected language. Consumed by
+# scripts/language-rule-lint.sh (L1.K.10). The lint walks every services/<name>/
+# directory, detects its language by toolchain marker (Cargo.toml | go.mod |
+# pyproject.toml/requirements.txt | package.json) and FAILS if detected != expected.
+#
+# Source of truth for the amendment text: docs/plans/2026-05-29-foundation-mega-task/I3_INVARIANT_AMENDMENT.md §5
+# Locked Q-IDs: Q-L1K-2 ("same commit as I3 amendment")
+#
+# Convention:
+#   - Languages: rust | go | python | typescript
+#   - "missing": directory is NOT YET on disk (scheduled for a later cycle). The
+#     lint allows this ONLY while the dir is genuinely absent; once a service
+#     directory with a real toolchain marker exists it MUST be mapped to its
+#     real language (the lint FAILS on declared-missing-but-present — PRR-16).
+#
+# Enforcement (hardened 2026-05-30, PRR-16 / PRR-21):
+#   - declared lang != detected lang → FAIL
+#   - declared "missing" but present on disk → FAIL (PRR-16)
+#   - present on disk with a toolchain marker but NO row here → FAIL (PRR-21
+#     completeness: a service can no longer be added in the wrong language and
+#     slip past I3 by simply omitting its row)
+
+version: 1
+services:
+  # ── Rust kernel-derived services
+  world-service: rust
+  travel-service: rust
+  tilemap-service: rust
+
+  # ── Go: foundation + existing novel-platform services
+  admin-cli: go
+  alert-recorder: go
+  archive-worker: go
+  auth-service: go
+  backup-scheduler: go
+  book-service: go
+  breach-notifier: go
+  canary-controller: go
+  catalog-service: go
+  glossary-service: go
+  incident-bot: go
+  integrity-checker: go
+  meta-outbox-relay: go
+  meta-worker: go
+  migration-orchestrator: go
+  notification-service: go
+  postmortem-bot: go
+  provider-registry-service: go
+  publisher: go
+  retention-worker: go
+  sharing-service: go
+  slo-budget-calculator: go
+  statistics-service: go
+  statuspage-updater: go
+  usage-billing-service: go
+  worker-infra: go
+
+  # ── Python LLM/AI services
+  chat-service: python
+  knowledge-service: python
+  translation-service: python
+  video-gen-service: python
+  worker-ai: python
+  campaign-service: python        # auto-draft factory (novel-platform track)
+  composition-service: python     # composition track (PR #29)
+  learning-service: python        # learning/eval track
+  lore-enrichment-service: python # lore-enrichment track
+
+  # ── TypeScript gateway / realtime transport
+  api-gateway-bff: typescript
+  game-server: typescript
+  ai-gateway: typescript          # MCP federation gateway (MCP-first invariant)
+
+  # ── Not yet scaffolded (directory absent; lint allows while truly missing).
+  #    Promote to a real language the moment the scaffold lands.
+  roleplay-service: missing            # ships L4 cycle 17+ (per I3 §5)
+  embedding-worker: missing            # V1+30d extract (Q-L3-1)
+  event-handler: missing               # ships L4 cycle 22+
+  chaos-engine: missing                # V1+30d (Q-L4-4)
+  oncall-bot: missing                  # V1+30d
+  session-cost-rollup-worker: missing  # PRR-17: never scaffolded — empty meta sink

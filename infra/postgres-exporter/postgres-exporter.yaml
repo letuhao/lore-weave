@@ -1,0 +1,138 @@
+# infra/postgres-exporter/postgres-exporter.yaml — L1.I.5 (RAID cycle 6)
+#
+# postgres-exporter custom queries config WITH STRICT CARDINALITY CONTROLS.
+#
+# The single hard invariant of this file (asserted by
+# tests/integration/metrics_cardinality_test.go):
+#   Per-reality metrics may ONLY carry these label dimensions:
+#     - reality_id    (the per-reality identifier)
+#     - shard_host    (the physical Postgres host)
+#
+# Forbidden labels (cause unbounded cardinality explosion):
+#   - query_id, pid          → per-connection ⇒ N×realities × M-connections
+#   - relname (per-row)      → unless explicitly a known small set (e.g., audit tables)
+#   - database               → use shard_host instead (1:1 with db_host)
+#
+# Each entry below ENUMERATES its labels via the metrics[].usage = "LABEL"
+# field so a YAML lint can verify against the allowlist.
+#
+# Q-L1I-2 (LOCKED): no Thanos sidecar in V1; 30d retention native. If you
+# add a metric here whose cardinality × 30d violates retention budget,
+# REWRITE the query — don't push it to Thanos.
+
+# ── Allowed label set (enforced by metrics_cardinality_test.go) ────────
+# label_allowlist: [reality_id, shard_host, db_class, role, application_name,
+#                   relname (audit-table-only), severity, route]
+# ───────────────────────────────────────────────────────────────────────
+
+pg_database_size:
+  query: |
+    SELECT
+      datname AS reality_id,
+      current_setting('cluster_name') AS shard_host,
+      pg_database_size(datname) AS bytes
+    FROM pg_database
+    WHERE datname NOT IN ('postgres','template0','template1')
+  metrics:
+    - reality_id:
+        usage: LABEL
+        description: 'reality_id derived from per-reality database name'
+    - shard_host:
+        usage: LABEL
+        description: 'physical shard host (from cluster_name)'
+    - bytes:
+        usage: GAUGE
+        description: 'database size in bytes'
+
+pg_stat_database_summary:
+  query: |
+    SELECT
+      datname AS reality_id,
+      current_setting('cluster_name') AS shard_host,
+      numbackends,
+      xact_commit,
+      xact_rollback,
+      tup_returned,
+      tup_inserted,
+      tup_updated
+    FROM pg_stat_database
+    WHERE datname NOT IN ('postgres','template0','template1')
+  metrics:
+    - reality_id:
+        usage: LABEL
+    - shard_host:
+        usage: LABEL
+    - numbackends:
+        usage: GAUGE
+        description: 'connections currently in use'
+    - xact_commit:
+        usage: COUNTER
+        description: 'transactions committed'
+    - xact_rollback:
+        usage: COUNTER
+        description: 'transactions rolled back'
+    - tup_returned:
+        usage: COUNTER
+    - tup_inserted:
+        usage: COUNTER
+    - tup_updated:
+        usage: COUNTER
+    # Note: tup_deleted excluded V1 (cardinality budget — see contracts/observability/inventory.yaml)
+
+# pg_stat_user_tables — RESTRICTED to known-small set of audit tables.
+# Bare `pg_stat_user_tables` would explode cardinality (1 series per table
+# per reality). We name-list to bound the set.
+pg_stat_audit_tables:
+  query: |
+    SELECT
+      current_database() AS reality_id,
+      current_setting('cluster_name') AS shard_host,
+      relname,
+      n_tup_ins,
+      n_tup_upd,
+      n_tup_del,
+      n_live_tup
+    FROM pg_stat_user_tables
+    WHERE relname IN (
+      'meta_write_audit',
+      'meta_read_audit',
+      'lifecycle_transition_audit',
+      'reality_migration_audit',
+      'admin_action_audit',
+      'service_to_service_audit',
+      'prompt_audit'
+    )
+  metrics:
+    - reality_id:
+        usage: LABEL
+    - shard_host:
+        usage: LABEL
+    - relname:
+        usage: LABEL
+        description: 'restricted to 7 audit table names'
+    - n_tup_ins:
+        usage: COUNTER
+    - n_tup_upd:
+        usage: COUNTER
+    - n_tup_del:
+        usage: COUNTER
+    - n_live_tup:
+        usage: GAUGE
+
+# pg_replication_lag — only meta-postgres has replicas.
+# reality DBs are leaf (no replicas). We restrict the query to where
+# replication state is actually present.
+pg_replication_status:
+  query: |
+    SELECT
+      application_name,
+      current_setting('cluster_name') AS shard_host,
+      pg_wal_lsn_diff(sent_lsn, write_lsn) AS lag_bytes
+    FROM pg_stat_replication
+  metrics:
+    - application_name:
+        usage: LABEL
+    - shard_host:
+        usage: LABEL
+    - lag_bytes:
+        usage: GAUGE

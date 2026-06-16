@@ -1,0 +1,28 @@
+{
+  "_spec": "session.participant_joined → INSERT session_participants {session_id, participant_type, participant_id (payload), reality_id=env.reality_id, joined_at=env.occurred_at} (SessionParticipantsProjection).",
+  "envelope": {
+    "event_id": "00000000-0000-0000-0000-000000000303",
+    "event_type": "session.participant_joined",
+    "event_version": 1,
+    "aggregate_id": "sess-1",
+    "aggregate_type": "session",
+    "aggregate_version": 3,
+    "reality_id": "22222222-2222-2222-2222-222222222222",
+    "occurred_at": "2026-01-01T00:00:02.000000Z",
+    "recorded_at": "2026-01-01T00:00:02.000000Z",
+    "payload": { "session_id": "sess-1", "participant_type": "pc", "participant_id": "pc-1" }
+  },
+  "expected_updates": [
+    { "Insert": {
+      "table": "session_participants",
+      "row": {
+        "session_id": "sess-1",
+        "participant_type": "pc",
+        "participant_id": "pc-1",
+        "reality_id": "22222222-2222-2222-2222-222222222222",
+        "joined_at": "2026-01-01T00:00:02.000000Z"
+      },
+      "meta": { "event_id": "00000000-0000-0000-0000-000000000303", "aggregate_version": 3, "applied_at": "2026-01-01T00:00:02.000000Z" }
+    }}
+  ]
+}

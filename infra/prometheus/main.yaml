@@ -1,0 +1,119 @@
+# infra/prometheus/main.yaml — L7.H.1 (RAID cycle 33)
+#
+# Prometheus HA pair "main" configuration. EXTENDS cycle-6's
+# scrape-config.yaml — does NOT replace it. The HA pair runs TWO
+# Prometheus replicas (prom-a + prom-b) with IDENTICAL scrape targets;
+# only the `prom_replica` external label differs. Federation/remote-write
+# downstream (Thanos sidecar V1+30d) deduplicates by replica.
+#
+# LOCKED decisions consumed:
+#   - Q-L1I-1 (OPEN_QUESTIONS_LOCKED.md line 45): HA pair via federation
+#     for V1+. Both replicas scrape the same targets; readers federate
+#     OR query through Thanos for dedup.
+#   - Q-L1I-2 (line 46): V1 retention = 30d Prometheus native. Thanos
+#     sidecar config (infra/thanos/thanos.yaml) is STUBBED V1; activates
+#     V1+30d for 1y+ long-term retention.
+#
+# Cycle-6 carry-forward:
+#   - scrape-config.yaml — the 3 scrape jobs (meta-postgres, per-reality,
+#     infra-services) carry forward. This file adds:
+#       * federation block (HA dedup readiness)
+#       * recording rules path (cycle-33 new file)
+#       * remote_write block (commented; activates with Thanos sidecar)
+#       * Vector + observability self-scrape jobs
+#
+# This file is INCLUDED by `prom-a` and `prom-b` docker-compose services
+# via `--config.file=/etc/prometheus/main.yaml` + bind mount of cycle-6
+# scrape-config + cycle-33 recording-rules dir.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  # external_labels — prom_replica differentiates the HA pair members.
+  # cluster + env carried forward from cycle-6 scrape-config.yaml.
+  external_labels:
+    cluster: lw-meta
+    prom_replica: '${PROM_REPLICA_ID}'   # 'a' or 'b' (set per-container env)
+    env: '${LW_ENV}'                      # dev | staging | prod
+    # Thanos uplabel — when Thanos sidecar activates (V1+30d), it reads
+    # this and stores under the appropriate tenant prefix.
+    thanos_tenant: 'foundation'
+
+# Rule files — cycle-6 (scrape-config alerts) + cycle-33 (aggregation
+# recording rules per L7.H.2).
+rule_files:
+  - /etc/prometheus/recording-rules.yaml          # cycle-6 carry-forward
+  - /etc/prometheus/recording-rules/*.yaml        # cycle-33 L7.H.2 (NEW)
+  - /etc/prometheus/alerts/per-reality.yaml       # cycle-6 carry-forward
+  - /etc/prometheus/alerts/meta.yaml              # cycle-6 carry-forward
+
+# ─────────────────────────────────────────────────────────────────────
+# scrape_configs — EXTENDS cycle-6 scrape-config.yaml
+# ─────────────────────────────────────────────────────────────────────
+#
+# Docker-compose mounts both files; Prometheus merges them.
+# This file adds cycle-33-NEW jobs:
+#
+scrape_configs:
+  # ────────────────────────────────────────────────────────────────────
+  # HA federation — each replica scrapes the OTHER replica's federated
+  # endpoint as a heartbeat probe. This is NOT for dedup (Thanos handles
+  # that); it's the kill-one-replica check (verify-cycle-33.sh step).
+  # ────────────────────────────────────────────────────────────────────
+  - job_name: prom-ha-peer
+    metrics_path: /federate
+    params:
+      'match[]':
+        - '{__name__=~"up|prometheus_build_info"}'
+    static_configs:
+      - targets:
+          - prom-b.internal:9090   # prom-a scrapes prom-b; mirror file flips this
+        labels:
+          role: prom-ha-peer
+    honor_labels: true   # preserve peer's external_labels
+
+  # ────────────────────────────────────────────────────────────────────
+  # Cycle-33 NEW: observability self-scrape
+  # ────────────────────────────────────────────────────────────────────
+  - job_name: observability-stack
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - vector.internal:9598    # vector internal_metrics + prom export
+          - loki.internal:3100      # loki /metrics
+          - grafana.internal:3000   # grafana /metrics
+        labels:
+          role: observability
+          layer: L7
+
+# ─────────────────────────────────────────────────────────────────────
+# remote_write — Thanos sidecar (STUBBED V1, activates V1+30d)
+# ─────────────────────────────────────────────────────────────────────
+#
+# Q-L1I-2: V1 = 30d native retention; V1+30d = Thanos sidecar for 1y+.
+# This block is INTENTIONALLY commented out for V1 — Thanos config exists
+# (infra/thanos/thanos.yaml) but is not active in docker-compose.
+# Activation is a single uncomment + docker-compose service include flip.
+#
+# remote_write:
+#   - url: http://thanos-receive.internal:19291/api/v1/receive
+#     queue_config:
+#       capacity: 10000
+#       max_shards: 50
+#       min_shards: 1
+#       max_samples_per_send: 5000
+#       batch_send_deadline: 5s
+
+# ─────────────────────────────────────────────────────────────────────
+# alerting — Alertmanager wiring (cycle 35 L7.J)
+# ─────────────────────────────────────────────────────────────────────
+#
+# Cycle 33 V1: alertmanager is a STUB target. Cycle 35 wires the actual
+# Alertmanager (L7.J). For now, alerts fire to a no-op endpoint to
+# verify the rule engine works without committing to L7.J shape.
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager-stub.internal:9093
+      # Cycle 35 L7.J: replace with real alertmanager pair config.

@@ -162,6 +162,8 @@ Coherent FE feature batch on the knowledge-projects surface.
 
 **Perf-when-pain:** `D-S3A-GOVERNOR-FAIRNESS`, `D-S4C-CONSUMER-PEL`, `D-S4D-CONSUMER-PEL`, `D-TRANSL-M6B-USAGE-BATCH`, `frontend useJobProgressRate.ts:46` (>10k jobs), `knowledge benchmark runner.py` (distributed lock at scale).
 
+**Blocked on a larger refactor (do NOT pick up standalone):** `D-EXTRACTION-RAW-OUTPUT-CACHE` (ex-DEFERRED #077; persist+reuse raw extraction output) — PO-gated behind `world-core-foundation` → extraction-pipeline refactor; it is ONE slice of that refactor, not a standalone feature. Full spec/plan: `docs/specs|plans/2026-06-12-extraction-raw-output-cache.md`. *(Re-filed here at the 2026-06-16 origin/main merge — DEFERRED.md was reset to main's authoritative foundation ledger.)*
+
 **HA / scale (document constraint, don't build now):** `D-CAMPAIGN-DRIVER-SINGLETON` (single-replica until HA claim dispatch).
 
 **Won't-fix / superseded:** `D-RAWSEARCH-P2-COSINE-RANK` (superseded by E5B rerank), `D-JOBS-SPEND-CONSUMER-MISFIT` (money-safety micro-pattern, intentionally hand-rolled), `D-JOBS-EMIT-RECONCILE-BACKSTOP` (by-design), `D-JOBS-VIDEOGEN-OUTBOX-FLAGGATED` (flag-gated by-design).

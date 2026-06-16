@@ -1,0 +1,8 @@
+id: pgvector-schema-conformance
+description: "S4 (Q-L3I-1) — the `vector` extension is installed and npc_session_memory_embedding.embedding is VECTOR(1536) (or the documented BYTEA(6144) fallback when the ext is absent). Presence + dimension only — HNSW recall quality is S7 perf-cycle work (D-S4-PGVECTOR-RECALL). Bundles --self-test (a bogus dimension must be rejected)."
+invariant: Q-L3I-1
+kind: live-probe
+command: ["bash", "scripts/conformance/schema-conformance-smoke.sh", "--check", "pgvector", "--self-test"]
+requires: ["foundation-stack"]
+skip_when: []
+fail_closed_on_setup_error: false

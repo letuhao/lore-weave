@@ -1,0 +1,3 @@
+# Conformance run records (JSONL history). A run artifact, uploaded by CI
+# (open item O4), not committed.
+results/

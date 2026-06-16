@@ -1,3 +1,12 @@
+# PRR-12: normalize all text files to LF so Windows Git (core.autocrlf=true)
+# stops the "LF will be replaced by CRLF" churn on every `git add`. Binary
+# build artifacts are marked explicitly so Git never tries to munge them.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.exe binary
+*.parquet binary
+
 # Force LF for files that run inside Linux containers
 *.sh text eol=lf
 Dockerfile text eol=lf

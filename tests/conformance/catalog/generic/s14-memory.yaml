@@ -1,0 +1,7 @@
+id: s14-memory
+description: "S14/D2 — memory exhaustion (absorbs D-S12-RSS-MEMORY-SOAK), LIVE. Redis eviction: a dedicated throwaway redis with maxmemory+noeviction REJECTS new XADD when full (visible OOM back-pressure, 0 silent loss); bite allkeys-lru silently drops undelivered events → proves noeviction is the correct event-stream policy. RSS soak: the rss-soak harness runs the REAL meta write-path allocation loop in-process (WSL2-reliable, per R5) → live heap plateaus; bite retains every object → heap grows → detector has teeth. Needs a docker host + go."
+invariant: I-s14-memory-no-silent-loss-no-leak
+kind: live-probe
+command: ["bash", "scripts/perf/s14-memory.sh", "smoke"]
+requires: ["scale-rig"]
+skip_when: []

@@ -1,0 +1,8 @@
+id: db-per-service-isolation
+description: "S4 (I4) — DB-per-service isolation: a per-service Postgres role cannot authenticate to another service's DB. NOTROUN PLACEHOLDER: the privilege model (per-service roles + REVOKE CONNECT) lives in the platform provisioner (R4-L1), which is unbuilt — NO in-repo migration artifact exists to probe, so a self-provisioned probe would only test its own grants (a tautology). Tracked as D-S4-I4-PROVISIONER; becomes a real probe when the provisioner + role bootstrap ship. requires:[provisioner-roles] is a predicate nothing provides today, so this always reads notrun (never a fake pass)."
+invariant: I4
+kind: live-probe
+command: ["bash", "-c", "echo 'I4 requires the platform provisioner (R4-L1); see D-S4-I4-PROVISIONER' >&2; exit 2"]
+requires: ["provisioner-roles"]
+skip_when: []
+fail_closed_on_setup_error: false

@@ -1,0 +1,10 @@
+id: fault-pg-slow
+description: "S6 (Battery D) — convergence drill: Postgres SLOW on the publisher's drain path (latency toxic on pg_proxy; Redis + meta direct). Asserts the publisher stays LIVE under sustained latency (forward progress, no deadlock, no pool-exhaustion crash, no dead-letter) AND the latency genuinely slowed it, then converges fully on recovery -> C3 + history (no-loss/no-dup across all realities) clean."
+invariant: I-publish-live-under-latency
+kind: live-probe
+command: ["bash", "scripts/chaos/fault-pg-slow.sh"]
+# Needs PG + Redis + toxiproxy + the prebuilt publisher binary (exits 2 -> notrun
+# if absent). Bare runner → notrun.
+requires: ["foundation-stack"]
+skip_when: []
+fail_closed_on_setup_error: false

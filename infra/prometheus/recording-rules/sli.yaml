@@ -1,0 +1,178 @@
+# infra/prometheus/recording-rules/sli.yaml — L7.I.3 (RAID cycle 34)
+#
+# Recording rules that compute the 7 SLIs declared in
+# contracts/slo/sli_definitions.yaml. Each rule produces a
+# `lw:sli_<name>:ratio_5m` series the slo-budget-calculator reads to
+# derive the error budget per (sli, tier) tuple.
+#
+# Naming convention (Prometheus best practice + SR1 §12AD.7):
+#   - `lw:` prefix marks recording-rule-only series (not raw emissions)
+#   - `:ratio_5m` suffix marks the 5-min-window ratio computation
+#
+# Rule groups are evaluated every 30s (matches main.yaml scrape interval).
+
+groups:
+  # ────────────────────────────────────────────────────────────────────
+  # Group 1 — Tier-scoped SLIs (per user tier)
+  # ────────────────────────────────────────────────────────────────────
+  - name: lw_sli_tier_scoped
+    interval: 30s
+    rules:
+      # SLI 1 — Session availability
+      - record: lw:sli_session_availability:ratio_5m
+        expr: |
+          sum by (tier) (
+            rate(lw_session_starts_total{outcome="success",latency_bucket="le_5s"}[5m])
+          )
+          /
+          clamp_min(
+            sum by (tier) (rate(lw_session_starts_total[5m])),
+            1e-9
+          )
+
+      # SLI 2 — Turn completion
+      - record: lw:sli_turn_completion:ratio_5m
+        expr: |
+          sum by (tier) (
+            rate(lw_turns_total{outcome="completed",within_budget="true"}[5m])
+          )
+          /
+          clamp_min(
+            sum by (tier) (rate(lw_turns_total[5m])),
+            1e-9
+          )
+
+      # SLI 3 — Event delivery
+      - record: lw:sli_event_delivery:ratio_5m
+        expr: |
+          sum by (tier) (
+            rate(lw_ws_events_delivered_total{within_2s="true"}[5m])
+          )
+          /
+          clamp_min(
+            sum by (tier) (rate(lw_ws_events_emitted_total[5m])),
+            1e-9
+          )
+
+      # SLI 4 — Realtime freshness
+      - record: lw:sli_realtime_freshness:ratio_5m
+        expr: |
+          sum by (tier) (
+            rate(lw_projection_reads_total{staleness_le_3s="true"}[5m])
+          )
+          /
+          clamp_min(
+            sum by (tier) (rate(lw_projection_reads_total[5m])),
+            1e-9
+          )
+
+      # SLI 5 — Auth success
+      - record: lw:sli_auth_success:ratio_5m
+        expr: |
+          sum by (tier) (
+            rate(lw_auth_ops_total{outcome="success",latency_bucket="le_500ms"}[5m])
+          )
+          /
+          clamp_min(
+            sum by (tier) (rate(lw_auth_ops_total[5m])),
+            1e-9
+          )
+
+  # ────────────────────────────────────────────────────────────────────
+  # Group 2 — Platform-scoped SLIs (no tier label)
+  # ────────────────────────────────────────────────────────────────────
+  - name: lw_sli_platform_scoped
+    interval: 30s
+    rules:
+      # SLI 6 — Admin action success
+      - record: lw:sli_admin_action_success:ratio_5m
+        expr: |
+          sum (
+            rate(lw_admin_commands_total{outcome="success",latency_bucket="le_30s"}[5m])
+          )
+          /
+          clamp_min(
+            sum (rate(lw_admin_commands_total[5m])),
+            1e-9
+          )
+
+      # SLI 7 — Cross-reality propagation
+      - record: lw:sli_cross_reality_propagation:ratio_5m
+        expr: |
+          sum (
+            rate(lw_xreality_fanout_total{within_60s="true"}[5m])
+          )
+          /
+          clamp_min(
+            sum (rate(lw_xreality_fanout_total[5m])),
+            1e-9
+          )
+
+  # ────────────────────────────────────────────────────────────────────
+  # Group 3 — Long-window SLI ratios for burn-rate computation
+  # ────────────────────────────────────────────────────────────────────
+  # 1h + 6h windows feed the burn-rate alert ladder in slo-burn.yaml.
+  # 30d window is left to slo-budget-calculator which uses the bucketed
+  # `sum_over_time` of the 5-min ratio (Prom limits long ranges).
+  - name: lw_sli_burn_windows
+    interval: 30s
+    rules:
+      - record: lw:sli_session_availability:ratio_1h
+        expr: |
+          sum by (tier) (
+            rate(lw_session_starts_total{outcome="success",latency_bucket="le_5s"}[1h])
+          )
+          /
+          clamp_min(
+            sum by (tier) (rate(lw_session_starts_total[1h])),
+            1e-9
+          )
+
+      - record: lw:sli_session_availability:ratio_6h
+        expr: |
+          sum by (tier) (
+            rate(lw_session_starts_total{outcome="success",latency_bucket="le_5s"}[6h])
+          )
+          /
+          clamp_min(
+            sum by (tier) (rate(lw_session_starts_total[6h])),
+            1e-9
+          )
+
+      - record: lw:sli_turn_completion:ratio_1h
+        expr: |
+          sum by (tier) (
+            rate(lw_turns_total{outcome="completed",within_budget="true"}[1h])
+          )
+          /
+          clamp_min(
+            sum by (tier) (rate(lw_turns_total[1h])),
+            1e-9
+          )
+
+      - record: lw:sli_event_delivery:ratio_1h
+        expr: |
+          sum by (tier) (
+            rate(lw_ws_events_delivered_total{within_2s="true"}[1h])
+          )
+          /
+          clamp_min(
+            sum by (tier) (rate(lw_ws_events_emitted_total[1h])),
+            1e-9
+          )
+
+      - record: lw:sli_auth_success:ratio_1h
+        expr: |
+          sum by (tier) (
+            rate(lw_auth_ops_total{outcome="success",latency_bucket="le_500ms"}[1h])
+          )
+          /
+          clamp_min(
+            sum by (tier) (rate(lw_auth_ops_total[1h])),
+            1e-9
+          )
+
+# ────────────────────────────────────────────────────────────────────
+# Expected group count: 3
+# Expected record count: 12 (5 tier-scoped + 2 platform-scoped + 5 burn-window)
+# ────────────────────────────────────────────────────────────────────

@@ -1,0 +1,78 @@
+# S11 (Technique H2) — Antithesis test-composer (TEMPLATE).
+#
+# Antithesis runs the WHOLE composed stack under a deterministic hypervisor and
+# injects faults (network, disk, clock, process) with bit-perfect replay. This
+# compose is the "test template": the foundation spine + a singleton driver
+# container that drives workload and asserts (tests/antithesis/driver).
+#
+# SUBMIT-READINESS, NOT A LOCAL RUN. To actually run this on Antithesis (deferred,
+# D-S11-ANTITHESIS-RUN) the images must be built through Antithesis's
+# instrumentation pipeline and pushed to their registry — see README.md. Locally
+# the driver is verified by `go build`/`go vet` (CI: antithesis-build) and can be
+# run against the foundation-dev stack directly (assertions no-op).
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: foundation
+      POSTGRES_PASSWORD: foundation
+      POSTGRES_DB: foundation
+    # Antithesis discovers faultable services automatically; no host port maps.
+
+  redis:
+    image: redis:7
+
+  minio:
+    image: minio/minio:latest
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: foundation
+      MINIO_ROOT_PASSWORD: foundation-secret-dev-only
+
+  # Migrates the per-reality shard + meta DBs and emits the initial workload, then
+  # exits. (TEMPLATE: the migration SQL + the wg binary must be baked into this
+  # image — part of the D-S11-ANTITHESIS-RUN submit work.)
+  init:
+    build:
+      context: ../..
+      dockerfile: tests/antithesis/config/Dockerfile.init
+    # MUST match the driver's WG_SEED/WG_PROFILE (single source) — the driver's
+    # C3 (`wg -verify`) checks the store against this exact seed (review LOW-1).
+    environment:
+      WG_SEED: "7"
+      WG_PROFILE: multi-reality
+    depends_on: [postgres, redis]
+
+  # The real publisher service — drains outbox -> Redis. Antithesis faults hit it.
+  publisher:
+    build:
+      context: ../..
+      dockerfile: tests/antithesis/config/Dockerfile.publisher
+    environment:
+      PUBLISHER_ID: antithesis-pub
+      META_DB_URL: postgres://foundation:foundation@postgres:5432/wholestack_antithesis_meta?sslmode=disable
+      REDIS_URL: redis://redis:6379/0
+      SHARD_DB_USER: foundation
+      SHARD_DB_PASSWORD: foundation
+      SHARD_DB_PORT: "5432"
+      SHARD_DB_SSLMODE: disable
+      PUBLISHER_SHARD_HOST_OVERRIDE: "*=postgres:5432"
+      POLL_INTERVAL: 1s
+      BATCH_SIZE: "5"
+    depends_on: [init]
+
+  # The SINGLETON test driver — Antithesis treats this as the workload/asserter.
+  driver:
+    build:
+      context: ../..
+      dockerfile: tests/antithesis/config/Dockerfile.driver
+    environment:
+      SHARD_DSN: postgres://foundation:foundation@postgres:5432/wholestack_antithesis?sslmode=disable
+      REDIS_ADDR: redis:6379
+      WG_BIN: /usr/local/bin/wg
+      WG_PROFILE: multi-reality
+      WG_SEED: "7"
+    depends_on: [publisher]
+    # Antithesis singleton marker (its composer reads this label).
+    labels:
+      com.antithesis.singleton: "true"

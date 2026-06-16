@@ -1,0 +1,36 @@
+# infra/grafana/provisioning/dashboards/dashboards.yaml — L7.H.5 (cycle 33)
+#
+# Grafana dashboard provider. Loads JSON dashboards from the foundation
+# dashboards/ tree on startup.
+#
+# Cycle 33 ships:
+#   - dashboards/logs-explorer.json          (L7.F.5)
+#   - dashboards/_library/TEMPLATE.json      (L7.H.8 — base template)
+#   - dashboards/platform/slo-summary.json   (L7.H.9 — platform skeleton)
+#   - dashboards/platform/meta-ha.json       (L7.H.9 — Meta HA monitor)
+#
+# Cycle 6 carry-forward (already shipped):
+#   - dashboards/per-reality-health.json
+#   - dashboards/shard-health.json
+#   - dashboards/projection-health.json
+#   - dashboards/capacity-planner.json
+#   - dashboards/ws-health.json
+#   - dashboards/backup-verification.json
+#
+# Future cycles (34+) add per-service dashboards (L7.H.10).
+
+apiVersion: 1
+
+providers:
+  - name: 'lw-foundation-dashboards'
+    orgId: 1
+    folder: 'LoreWeave Foundation'
+    folderUid: lw-foundation
+    type: file
+    disableDeletion: true
+    editable: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: true
