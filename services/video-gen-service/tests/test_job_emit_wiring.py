@@ -81,8 +81,14 @@ class _FakePool:
 async def test_create_emits_pending(monkeypatch):
     spy = AsyncMock()
     monkeypatch.setattr(repo_mod, "emit_job_event", spy)
+    # P4 — create resolves the model NAME (HTTP); stub it (best-effort).
+    monkeypatch.setattr(repo_mod, "resolve_model_name", AsyncMock(return_value="wan-2.1"))
     repo = VideoGenJobsRepo(_FakePool(_record(status="pending")))
-    job = await repo.create(user_id=USER, provider_job_id=PJID, request_json={"prompt": "x"})
+    job = await repo.create(
+        user_id=USER, provider_job_id=PJID,
+        request_json={"prompt": "x", "model_source": "user_model", "model_ref": "r",
+                      "aspect_ratio": "16:9", "style": "cinematic"},
+    )
     assert job.id == JOB
     spy.assert_awaited_once()
     kw = spy.await_args.kwargs
@@ -91,6 +97,10 @@ async def test_create_emits_pending(monkeypatch):
     assert kw["status"] == "pending"
     assert kw["job_id"] == str(JOB)
     assert kw["owner_user_id"] == str(USER)
+    # P4 — create carries the resolved model + whitelisted params (NOT the prompt)
+    assert kw["model"] == "wan-2.1"
+    assert kw["params"]["aspect_ratio"] == "16:9" and kw["params"]["style"] == "cinematic"
+    assert "prompt" not in kw["params"]
 
 
 @pytest.mark.asyncio

@@ -97,6 +97,10 @@ async def test_create_job_emits_pending(monkeypatch):
     assert kw["kind"] == "enrichment_job"
     assert kw["job_id"] == str(JOB)
     assert kw["owner_user_id"] == str(USER)
+    # P4 — create carries estimated cost + whitelisted params (model deferred)
+    assert kw["cost_usd"] == 0.0
+    assert kw["params"]["technique"] == "retrieval"
+    assert kw["params"]["entity_kind"] == "location"
 
 
 # ── enrichment_job: PgProposalStore.mark_job_status (UPDATE → status) ─────────
@@ -106,7 +110,8 @@ async def test_create_job_emits_pending(monkeypatch):
 async def test_mark_job_status_emits_transition(monkeypatch):
     spy = AsyncMock()
     monkeypatch.setattr(ps, "emit_job_event", spy)
-    row = {"user_id": USER, "status": "completed", "error_message": None}
+    row = {"user_id": USER, "status": "completed", "error_message": None,
+           "actual_cost_usd": 0.21}
     repo = PgProposalStore(FakePool(FakeConn(fetchrow=row)))
     await repo.mark_job_status(job_id=str(JOB), status="completed")
     spy.assert_awaited_once()
@@ -117,13 +122,15 @@ async def test_mark_job_status_emits_transition(monkeypatch):
     assert kw["job_id"] == str(JOB)
     assert kw["owner_user_id"] == str(USER)
     assert kw["error"] is None
+    assert kw["cost_usd"] == 0.21  # P4 — actual cost on transition
 
 
 @pytest.mark.asyncio
 async def test_mark_job_status_failed_passes_error(monkeypatch):
     spy = AsyncMock()
     monkeypatch.setattr(ps, "emit_job_event", spy)
-    row = {"user_id": USER, "status": "failed", "error_message": "boom"}
+    row = {"user_id": USER, "status": "failed", "error_message": "boom",
+           "actual_cost_usd": None}
     repo = PgProposalStore(FakePool(FakeConn(fetchrow=row)))
     await repo.mark_job_status(job_id=str(JOB), status="failed", error_message="boom")
     kw = spy.await_args.kwargs

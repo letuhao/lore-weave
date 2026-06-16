@@ -69,13 +69,19 @@ class FakePool:
 def _status_row(**over):
     base = dict(
         campaign_id=CAMPAIGN, owner_user_id=USER, status="running", error_message=None,
+        spent_usd=0,  # P4 — set_campaign_status RETURNING now includes spent_usd
     )
     base.update(over)
     return base
 
 
 def _create_row(**over):
-    base = dict(campaign_id=CAMPAIGN, owner_user_id=USER, status="created", name="My run")
+    base = dict(
+        campaign_id=CAMPAIGN, owner_user_id=USER, status="created", name="My run",
+        # P4 — create_campaign emit reads these from the RETURNING row for cost+params
+        spent_usd=0, gating_mode="phase_barrier", target_language="vi",
+        total_chapters=0, knowledge_model_ref=None, translation_model_ref=None,
+    )
     base.update(over)
     return base
 
@@ -178,3 +184,7 @@ async def test_create_emits_pending_with_native_detail(monkeypatch):
     assert kw["owner_user_id"] == str(USER)
     assert kw["kind"] == "campaign"
     assert spy.await_args.args[0] is conn       # same conn as the INSERT
+    # P4 — create carries cost (spent_usd) + whitelisted params (per-stage NAMES deferred)
+    assert kw["cost_usd"] == 0.0
+    assert kw["params"]["gating_mode"] == "phase_barrier"
+    assert kw["params"]["target_language"] == "vi"

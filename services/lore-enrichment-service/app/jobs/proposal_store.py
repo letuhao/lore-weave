@@ -231,6 +231,15 @@ class PgProposalStore:
                 await emit_job_event(
                     conn, service=JOB_SERVICE, job_id=str(job_id),
                     owner_user_id=str(user_id), kind=JOB_KIND, status="pending",
+                    # P4 — cost (estimated at create) + whitelisted params. The model
+                    # ref lives in a separate enrichment_job_request row (not in scope
+                    # here), so the resolved model NAME is deferred (D-JOBS-P4-LORE-MODEL).
+                    cost_usd=float(estimated_cost) if estimated_cost is not None else None,
+                    params={
+                        "technique": technique,
+                        "entity_kind": entity_kind,
+                        "max_spend_usd": float(max_spend) if max_spend is not None else None,
+                    },
                 )
         return str(job_id)
 
@@ -313,7 +322,7 @@ class PgProposalStore:
             async with conn.transaction():  # UPDATE + emit_job_event atomic (H1)
                 row = await conn.fetchrow(
                     f"UPDATE enrichment_job SET {', '.join(sets)} "
-                    f"WHERE job_id = $1 RETURNING user_id, status, error_message",
+                    f"WHERE job_id = $1 RETURNING user_id, status, error_message, actual_cost_usd",
                     *params,
                 )
                 if row is None:
@@ -322,9 +331,12 @@ class PgProposalStore:
                 # conn as the UPDATE (H1). Skip a status with no canonical JobStatus.
                 cstatus = canonical_status(row["status"])
                 if cstatus is not None:
+                    # P4 — carry the CHANGING actual cost (params set once at create).
+                    _cost = row["actual_cost_usd"]
                     await emit_job_event(
                         conn, service=JOB_SERVICE, job_id=str(job_id),
                         owner_user_id=str(row["user_id"]), kind=JOB_KIND, status=cstatus,
+                        cost_usd=float(_cost) if _cost is not None else None,
                         error=job_error(row["error_message"]) if cstatus == "failed" else None,
                     )
 

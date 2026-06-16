@@ -91,11 +91,21 @@ async def test_update_status_missing_row_no_emit(monkeypatch):
 async def test_create_emits_pending_on_new_job(monkeypatch):
     spy = AsyncMock()
     monkeypatch.setattr(generation_jobs, "emit_job_event", spy)
+    # P4 — create resolves the model NAME (HTTP); stub it (best-effort).
+    monkeypatch.setattr(
+        generation_jobs, "resolve_model_name", AsyncMock(return_value="claude-haiku"),
+    )
     repo = GenerationJobsRepo(pool=None)
     _job, created = await repo.create(
-        USER, PROJ, operation="generate", conn=FakeConn(_row(status="pending")),
+        USER, PROJ, operation="generate",
+        input={"model_source": "user_model", "model_ref": "abc", "reasoning": "rule_based"},
+        conn=FakeConn(_row(status="pending")),
     )
     assert created is True
     spy.assert_awaited_once()
     kw = spy.await_args.kwargs
     assert kw["service"] == "composition" and kw["status"] == "pending"
+    # P4 — create carries the resolved model + a whitelisted params dict
+    assert kw["model"] == "claude-haiku"
+    assert kw["params"]["operation"] == "generate"
+    assert kw["params"]["reasoning"] == "rule_based"

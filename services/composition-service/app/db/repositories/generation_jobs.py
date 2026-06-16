@@ -18,6 +18,8 @@ from uuid import UUID
 import asyncpg
 from loreweave_jobs import emit_job_event
 
+from app.clients.model_name import resolve_model_name
+
 from app.db.models import GenerationJob
 from app.db.repositories import ChapterJobInFlightError, ReferenceViolationError
 
@@ -90,6 +92,21 @@ class GenerationJobsRepo:
         replay-safe surface for POST /generate. The conflict target carries the
         index's partial predicate so it matches idx_generation_job_idem.
         """
+        # P4 usage emit — resolve the human model NAME (best-effort) + a whitelisted
+        # params dict from the request blob, BEFORE the tx (network I/O; H1). model +
+        # params ride the create event; the projection's COALESCE keeps them across
+        # later status events. cost_usd is not populated on this row yet → omitted.
+        _in = input or {}
+        _model_name = await resolve_model_name(_in.get("model_source"), _in.get("model_ref"))
+        _job_params = {
+            "model": _model_name,
+            "model_ref": _in.get("model_ref"),
+            "operation": operation,
+            "mode": mode,
+            "reasoning": _in.get("reasoning"),
+            "reasoning_effort": _in.get("reasoning_effort"),
+        }
+
         async def _do(c: asyncpg.Connection) -> tuple[GenerationJob, bool]:
             if outline_node_id is not None:
                 # Defense-in-depth (D-COMP-M2-XREF-OWNERSHIP): the job's node must
@@ -123,6 +140,7 @@ class GenerationJobsRepo:
                 await emit_job_event(
                     c, service=_JOB_SERVICE, job_id=str(job.id),
                     owner_user_id=str(job.user_id), kind=job.operation, status=job.status,
+                    model=_model_name, params=_job_params,
                 )
                 return job, True
             # Conflict: the key already exists. Return the existing job (scoped

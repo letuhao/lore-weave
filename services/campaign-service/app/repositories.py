@@ -130,11 +130,28 @@ async def create_campaign(
     # whose canonical JobStatus is `pending`; the native string rides detail_status.
     native = row["status"]
     canonical = _canonical_status(native)
+    # P4 — whitelisted params + cost (spent_usd, 0 at create; accumulates via the S4
+    # SpendConsumer). Per-stage model NAMES are deferred (resolving them here would be
+    # HTTP inside the router's tx — H1; D-JOBS-P4-CAMPAIGN-MODEL-NAMES) — the refs ride
+    # params so the info isn't lost. All fields are in _CAMPAIGN_COLS (RETURNING).
+    _spent = row["spent_usd"]
     await emit_job_event(
         conn, service=_JOB_SERVICE, job_id=str(row["campaign_id"]),
         owner_user_id=str(row["owner_user_id"]), kind="campaign", status=canonical,
         detail_status=native if native != canonical else None,
         title=row["name"],
+        cost_usd=float(_spent) if _spent is not None else None,
+        params={
+            "gating_mode": row["gating_mode"],
+            "target_language": row["target_language"],
+            "total_chapters": row["total_chapters"],
+            "knowledge_model_ref": (
+                str(row["knowledge_model_ref"]) if row["knowledge_model_ref"] else None
+            ),
+            "translation_model_ref": (
+                str(row["translation_model_ref"]) if row["translation_model_ref"] else None
+            ),
+        },
     )
     return row
 
@@ -376,7 +393,7 @@ async def set_campaign_status(
                     finished_at = CASE WHEN $5 THEN now() ELSE finished_at END,
                     updated_at = now()
                 WHERE campaign_id = $1
-                RETURNING campaign_id, owner_user_id, status, error_message
+                RETURNING campaign_id, owner_user_id, status, error_message, spent_usd
                 """,
                 campaign_id, status, error_message, set_started, set_finished,
             )
@@ -384,11 +401,14 @@ async def set_campaign_status(
                 return  # campaign vanished (cross-tenant / deleted) — nothing to emit
             native = row["status"]
             canonical = _canonical_status(native)
+            # P4 — carry the CHANGING accumulated spend (params set once at create).
+            _spent = row["spent_usd"]
             await emit_job_event(
                 conn, service=_JOB_SERVICE, job_id=str(row["campaign_id"]),
                 owner_user_id=str(row["owner_user_id"]), kind="campaign",
                 status=canonical,
                 detail_status=native if native != canonical else None,
+                cost_usd=float(_spent) if _spent is not None else None,
                 error=(
                     {"code": "error", "message": str(row["error_message"])}
                     if native == "failed" and row["error_message"]

@@ -18,6 +18,8 @@ from uuid import UUID
 import asyncpg
 from loreweave_jobs import emit_job_event
 
+from app.model_name import resolve_model_name
+
 _ACTIVE = ("pending", "running")
 
 #: Unified Job Control Plane P1 — the service id stamped on every emitted JobEvent.
@@ -97,6 +99,19 @@ class VideoGenJobsRepo:
     ) -> VideoGenJob:
         """INSERT a pending row with the gateway job id already set (M5 submits
         first, so there is no submit→persist gap on the create path)."""
+        # P4 usage emit — resolve the human model NAME (best-effort) + a whitelisted
+        # params dict from the request blob, BEFORE the tx (network I/O; H1). video-gen
+        # is not token-metered + has no cost column → model + params only.
+        _model_name = await resolve_model_name(
+            request_json.get("model_source"), request_json.get("model_ref"),
+        )
+        _job_params = {
+            "model": _model_name,
+            "model_ref": request_json.get("model_ref"),
+            "duration_seconds": request_json.get("duration_seconds"),
+            "aspect_ratio": request_json.get("aspect_ratio"),
+            "style": request_json.get("style"),
+        }
         async with self._pool.acquire() as conn:
             async with conn.transaction():  # INSERT + emit_job_event atomic (H1)
                 row = await conn.fetchrow(
@@ -114,6 +129,7 @@ class VideoGenJobsRepo:
                 await emit_job_event(
                     conn, service=_JOB_SERVICE, job_id=str(job.id),
                     owner_user_id=str(job.user_id), kind=_JOB_KIND, status=job.status,
+                    model=_model_name, params=_job_params,
                 )
                 return job
 
