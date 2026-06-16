@@ -91,10 +91,16 @@ All 3 closed, no new deferrals (live-smoke → B3). `/review-impl` caught 1 HIGH
 
 **Verify:** jobs 67p · translation 770p · video-gen 53p · lore 773p · provider-gate OK. Live-smoke → B3.
 
-### NEW finding (2026-06-17) — suspected systematic gap
-| ID | Description | sev |
-|---|---|---|
-| `D-JOBS-GLOSSARY-EXTRACT-UNWIRED` | glossary-extract (translation-service `extraction_jobs`, `routers/extraction.py` + `workers/extraction_worker.py`) emits NO `emit_job_event` at any transition (create/running/terminal/cancel), has NO reconcile source (the `translation` source queries `translation_jobs`, not `extraction_jobs`), and the projection's `extraction` kind federates to KNOWLEDGE not translation → job is structurally invisible to the unified Jobs screen. Also: FE pick-mode inherits the 'all' default selection (extracts all); create endpoint does per-chapter INSERT loop + 2 HTTP synchronously before 202 (wizard freeze). **Suspected to be one of several producers missed during the P1 emit-wiring — needs a full producer audit.** | high |
+### Producer-emit backfill (2026-06-17) — systematic P1 gap, spec `docs/specs/2026-06-17-producer-emit-backfill.md`
+Audit confirmed **4 un-wired producers** (glossary-extract, glossary-translate, wiki-gen, book-import). Slices A→C→B→D.
+
+| ID | Description | sev | status |
+|---|---|---|---|
+| `D-JOBS-GLOSSARY-EXTRACT-UNWIRED` | glossary-extract (translation `extraction_jobs`) emitted nothing → invisible in Jobs screen; + FE pick inherited 'all'; + create sync freeze | high | ✅ **Slice A** — emit pending(create,in-tx)/running/terminal/cancelled(worker) + reconcile UNION (kind `glossary_extraction`) + FE clear-on-pick + bulk-insert/atomic create + kind label×4. Live-smoke → `D-PRODUCER-EMIT-GLOSSARY-EXTRACT-LIVE-SMOKE` (B3). |
+| `D-JOBS-GLOSSARY-TRANSLATE-UNWIRED` | `glossary_translation_jobs` (translation) emits no JobEvent → invisible | high | ☐ Slice B |
+| `D-JOBS-WIKI-GEN-UNWIRED` | `wiki_gen_jobs` (knowledge) emits no JobEvent → invisible | high | ☐ Slice C |
+| `D-JOBS-BOOK-IMPORT-UNWIRED` | `import_jobs` (book-service, Go) emits no JobEvent → invisible (needs Go emit via outbox+relay) | med | ☐ Slice D |
+| `D-PRODUCER-EMIT-GLOSSARY-EXTRACT-COST` | glossary-extract emits tokens but not actual $cost (estimate only); price summed tokens via the billing oracle (like translation B1-M2) | low | ☐ later |
 
 ---
 

@@ -76,6 +76,13 @@ export function StepBatchConfig({
       onChapterIdsChange(chapters.map((c) => c.chapter_id));
     } else if (newMode === 'range') {
       applyRange(rangeFrom, rangeTo);
+    } else if (newMode === 'pick') {
+      // Start 'pick' from an EMPTY selection. The default mode is 'all', which pre-fills
+      // chapterIds with every chapter; without this clear, entering 'pick' would seed the
+      // browser with ALL chapters checked, so a user who "picks a few" actually extracts
+      // everything (the reported "pick but extracts all" bug). The user's picks now REPLACE
+      // the selection rather than adding to an inherited all.
+      onChapterIdsChange([]);
     }
   };
 

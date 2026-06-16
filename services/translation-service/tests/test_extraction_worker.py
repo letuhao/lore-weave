@@ -52,8 +52,10 @@ async def test_cancelled_job_is_not_clobbered_and_does_no_work():
 
     known.assert_not_awaited()   # never fetched known entities → never started the run
     proc.assert_not_awaited()    # never processed a chapter → no LLM spend
-    # settled the 'cancelling' row to a terminal 'cancelled' (not re-armed to running)
-    assert any("status='cancelled'" in str(c.args[0]) for c in db.execute.await_args_list)
+    # settled the 'cancelling' row to a terminal 'cancelled' (not re-armed to running).
+    # The settle is now a guarded `fetchval … RETURNING job_id` (so the worker only emits
+    # 'cancelled' when it actually flipped a cancelling row, not for an already-terminal job).
+    assert any("status='cancelled'" in str(c.args[0]) for c in db.fetchval.await_args_list)
     # emitted a cancelled status event
     assert any(
         c.args[1].get("payload", {}).get("status") == "cancelled"
@@ -78,7 +80,8 @@ async def test_resume_skips_completed_chapters_and_finalizes():
     publish, publish_event = AsyncMock(), AsyncMock()
 
     with patch("app.workers.extraction_worker.fetch_known_entities", new=AsyncMock(return_value=[])), \
-         patch("app.workers.extraction_worker._process_extraction_chapter", new=AsyncMock()) as proc:
+         patch("app.workers.extraction_worker._process_extraction_chapter", new=AsyncMock()) as proc, \
+         patch("app.workers.extraction_worker.emit_job_event_safe", new=AsyncMock()) as emit:
         await _run_extraction_job(
             {"book_id": "b", "chapter_ids": [c1, c2]},
             jid, "u", _pool(db), publish, publish_event, MagicMock(),
@@ -88,3 +91,8 @@ async def test_resume_skips_completed_chapters_and_finalizes():
     # finalized: the terminal UPDATE ran with status='completed' (failed==0)
     finals = [c for c in db.execute.await_args_list if "SET status=$2, finished_at=now()" in str(c.args[0])]
     assert finals and finals[-1].args[2] == "completed"
+    # Unified Job Control Plane (D-JOBS-GLOSSARY-EXTRACT-UNWIRED): emitted running on claim
+    # + completed on finalize, as kind='glossary_extraction'.
+    emitted = [c.kwargs.get("status") for c in emit.await_args_list]
+    assert "running" in emitted and "completed" in emitted
+    assert all(c.kwargs.get("kind") == "glossary_extraction" for c in emit.await_args_list)

@@ -340,26 +340,36 @@ async def reconcile_jobs(
     limit: int = Query(1000, ge=1, le=5000, description="page cap — the sweeper's _PAGE_LIMIT"),
     db: asyncpg.Pool = Depends(get_db),
 ) -> dict:
-    """Reconcile SOURCE (Unified Job Control Plane H1 backstop): translation jobs whose
-    effective last-touch is at/after `since` (oldest-first, capped at `limit`), in canonical
-    `JobEvent` payload shape, for the jobs-service sweep to upsert. Internal-token; ALL
-    owners. `partial` → `completed` (the job finished, some chapters done — mirrors the
-    worker's terminal emit). The effective-ts expression is computed ONCE in a subquery."""
+    """Reconcile SOURCE (Unified Job Control Plane H1 backstop): translation-service jobs
+    whose effective last-touch is at/after `since` (oldest-first, capped at `limit`), in
+    canonical `JobEvent` payload shape, for the jobs-service sweep to upsert. Internal-token;
+    ALL owners. UNIONs every translation-service job table (one `kind` each) so each is
+    covered by the same single reconcile source: `translation_jobs` (kind `translation`) +
+    `extraction_jobs` (glossary-extract, kind `glossary_extraction`,
+    D-JOBS-GLOSSARY-EXTRACT-UNWIRED). Status normalization to canonical: `partial` /
+    `completed_with_errors` → `completed` (the job finished with some per-unit failures —
+    mirrors the workers' terminal emit). The effective-ts expression is shared (both tables
+    have created_at/started_at/finished_at). NOTE: the per-source watermark is shared across
+    the unioned kinds, so a burst in one table can delay the other's reconcile — acceptable
+    for a backstop (the live emit is primary)."""
     rows = await db.fetch(
-        "SELECT job_id, owner_user_id, status, error_message, ts FROM ("
-        f"  SELECT job_id, owner_user_id, status, error_message, {_TRANSL_TS} AS ts "
-        "   FROM translation_jobs"
+        "SELECT job_id, owner_user_id, status, error_message, kind, ts FROM ("
+        f"  SELECT job_id, owner_user_id, status, error_message, 'translation' AS kind, "
+        f"         {_TRANSL_TS} AS ts FROM translation_jobs"
+        "   UNION ALL "
+        f"  SELECT job_id, owner_user_id, status, error_message, 'glossary_extraction' AS kind, "
+        f"         {_TRANSL_TS} AS ts FROM extraction_jobs"
         ") s WHERE ts >= $1 ORDER BY ts ASC LIMIT $2",
         since, limit,
     )
     out = []
     for r in rows:
-        st = "completed" if r["status"] == "partial" else r["status"]
+        st = "completed" if r["status"] in ("partial", "completed_with_errors") else r["status"]
         out.append({
             "service": "translation", "job_id": str(r["job_id"]),
-            "owner_user_id": str(r["owner_user_id"]), "kind": "translation", "status": st,
+            "owner_user_id": str(r["owner_user_id"]), "kind": r["kind"], "status": st,
             "parent_job_id": None, "detail_status": None, "progress": None, "title": None,
-            "error": ({"code": "translation_failed", "message": (r["error_message"] or "")[:500]}
+            "error": ({"code": f"{r['kind']}_failed", "message": (r["error_message"] or "")[:500]}
                       if st == "failed" else None),
             "occurred_at": r["ts"].isoformat() if r["ts"] else None,
         })

@@ -84,8 +84,11 @@ def test_missing_internal_token_401(client):
 def test_reconcile_jobs_maps_partial_to_completed(client, fake_pool):
     from datetime import datetime, timezone
     ts = datetime(2026, 6, 15, tzinfo=timezone.utc)
+    # The reconcile now UNIONs translation_jobs + extraction_jobs, so each row carries its
+    # own `kind` (the SQL discriminator). `partial`/`completed_with_errors` → `completed`.
     fake_pool.fetch.return_value = [
-        {"job_id": JOB, "owner_user_id": OWNER, "status": "partial", "error_message": None, "ts": ts},
+        {"job_id": JOB, "owner_user_id": OWNER, "status": "partial", "error_message": None,
+         "kind": "translation", "ts": ts},
     ]
     r = client.get("/internal/translation/jobs", params={"since": ts.isoformat()},
                    headers={"X-Internal-Token": TOKEN})
@@ -94,6 +97,23 @@ def test_reconcile_jobs_maps_partial_to_completed(client, fake_pool):
     assert p["service"] == "translation" and p["kind"] == "translation"
     assert p["status"] == "completed"  # 'partial' → 'completed'
     assert p["job_id"] == JOB and p["occurred_at"] == ts.isoformat()
+
+
+def test_reconcile_includes_glossary_extraction(client, fake_pool):
+    # D-JOBS-GLOSSARY-EXTRACT-UNWIRED: the reconcile UNION now also surfaces glossary-extract
+    # jobs (kind='glossary_extraction'); 'completed_with_errors' normalizes to 'completed'.
+    from datetime import datetime, timezone
+    ts = datetime(2026, 6, 16, tzinfo=timezone.utc)
+    fake_pool.fetch.return_value = [
+        {"job_id": JOB, "owner_user_id": OWNER, "status": "completed_with_errors",
+         "error_message": None, "kind": "glossary_extraction", "ts": ts},
+    ]
+    r = client.get("/internal/translation/jobs", params={"since": ts.isoformat()},
+                   headers={"X-Internal-Token": TOKEN})
+    assert r.status_code == 200
+    p = r.json()["jobs"][0]
+    assert p["service"] == "translation" and p["kind"] == "glossary_extraction"
+    assert p["status"] == "completed"  # completed_with_errors → completed
 
 
 def test_reconcile_requires_internal_token(client):

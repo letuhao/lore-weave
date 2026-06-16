@@ -15,6 +15,7 @@ from uuid import UUID
 
 import httpx
 
+from loreweave_jobs import emit_job_event_safe
 from loreweave_llm.errors import (
     LLMAuthFailed,
     LLMDecodeError,
@@ -45,6 +46,13 @@ from .llm_thinking import thinking_llm_fields
 
 log = logging.getLogger(__name__)
 
+# Unified Job Control Plane (D-JOBS-GLOSSARY-EXTRACT-UNWIRED): glossary extraction surfaces
+# in the unified Jobs screen as service="translation", kind="glossary_extraction". The worker
+# emits the lifecycle transitions best-effort post-commit (emit_job_event_safe — a failed
+# emit must never fail the job; the reconcile UNION in internal_dispatch.py backstops).
+_JOB_SERVICE = "translation"
+_JOB_KIND = "glossary_extraction"
+
 
 async def handle_extraction_job(msg: dict, pool, publish, publish_event, llm_client: LLMClient) -> None:
     """Coordinator: receives extraction job, marks running, processes chapters sequentially.
@@ -66,6 +74,10 @@ async def handle_extraction_job(msg: dict, pool, publish, publish_event, llm_cli
                 "UPDATE extraction_jobs SET status='failed', error_message=$2, finished_at=now() WHERE job_id=$1",
                 job_id, str(exc)[:500],
             )
+        await emit_job_event_safe(
+            pool, service=_JOB_SERVICE, job_id=str(job_id), owner_user_id=str(user_id),
+            kind=_JOB_KIND, status="failed", error={"code": "extraction_failed", "message": str(exc)[:500]},
+        )
         await publish_event(user_id, {
             "event": "job.status_changed",
             "job_id": str(job_id),
@@ -106,12 +118,19 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
         )
     if claimed is None:
         async with pool.acquire() as db:
-            await db.execute(
+            settled = await db.fetchval(
                 "UPDATE extraction_jobs SET status='cancelled', finished_at=now() "
-                "WHERE job_id=$1 AND status='cancelling'",
+                "WHERE job_id=$1 AND status='cancelling' RETURNING job_id",
                 job_id,
             )
         log.info("extraction_worker: job %s not runnable (cancelled/terminal) — acking, no work", job_id)
+        # Emit 'cancelled' ONLY if we actually flipped a cancelling row — an already-terminal
+        # job (completed/failed) matched nothing and must not be re-marked cancelled.
+        if settled is not None:
+            await emit_job_event_safe(
+                pool, service=_JOB_SERVICE, job_id=str(job_id), owner_user_id=str(user_id),
+                kind=_JOB_KIND, status="cancelled",
+            )
         await publish_event(user_id, {
             "event": "job.status_changed",
             "job_id": str(job_id),
@@ -119,6 +138,12 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
             "payload": {"status": "cancelled"},
         })
         return
+
+    # P1 — claimed pending→running: emit the running transition (best-effort, post-claim).
+    await emit_job_event_safe(
+        pool, service=_JOB_SERVICE, job_id=str(job_id), owner_user_id=str(user_id),
+        kind=_JOB_KIND, status="running",
+    )
 
     # Resume from checkpoint: skip chapters already finished on a PRIOR delivery. The
     # extraction message can be redelivered (a connection drop during the long sequential
@@ -185,6 +210,10 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
                     "UPDATE extraction_jobs SET status='cancelled', finished_at=now() WHERE job_id=$1",
                     job_id,
                 )
+            await emit_job_event_safe(
+                pool, service=_JOB_SERVICE, job_id=str(job_id), owner_user_id=str(user_id),
+                kind=_JOB_KIND, status="cancelled",
+            )
             await publish_event(user_id, {
                 "event": "job.status_changed",
                 "job_id": str(job_id),
@@ -297,6 +326,15 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
             "UPDATE extraction_jobs SET status=$2, finished_at=now() WHERE job_id=$1",
             job_id, final_status,
         )
+
+    # P1 terminal emit (best-effort). 'completed_with_errors' has no canonical JobStatus →
+    # map to 'completed' (the job DID finish; per-chapter failures are tracked on the row).
+    _canon = "completed" if final_status in ("completed", "completed_with_errors") else "failed"
+    await emit_job_event_safe(
+        pool, service=_JOB_SERVICE, job_id=str(job_id), owner_user_id=str(user_id),
+        kind=_JOB_KIND, status=_canon,
+        tokens_in=total_input_tokens or None, tokens_out=total_output_tokens or None,
+    )
 
     await publish_event(user_id, {
         "event": "job.status_changed",

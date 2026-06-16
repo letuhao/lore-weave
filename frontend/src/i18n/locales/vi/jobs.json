@@ -11,6 +11,7 @@
   },
   "kind": {
     "extraction": "Trích xuất tri thức",
+    "glossary_extraction": "Trích xuất thuật ngữ",
     "translation": "Dịch thuật",
     "video_gen": "Tạo video",
     "campaign": "Chiến dịch",

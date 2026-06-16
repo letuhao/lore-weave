@@ -11,6 +11,7 @@
   },
   "kind": {
     "extraction": "Knowledge extraction",
+    "glossary_extraction": "Glossary extraction",
     "translation": "Translation",
     "video_gen": "Video generation",
     "campaign": "Campaign",
