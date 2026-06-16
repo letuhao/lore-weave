@@ -187,7 +187,33 @@ async def test_count_summary_buckets_top_level_only(pool, owner):
     await upsert_job_event(pool, _ev(owner, str(uuid.uuid4()), JobStatus.FAILED, t0))
     await upsert_job_event(pool, _ev(owner, str(uuid.uuid4()), JobStatus.CANCELLED, t0))
     s = await count_summary(pool, owner)
-    assert s == {"active": 1, "completed": 1, "failed": 1, "cancelled": 1}  # child not counted
+    # parent is itself RUNNING → active; the child is rolled into it (not its own entry).
+    assert s == {"active": 1, "completed": 1, "failed": 1, "cancelled": 1}
+
+
+@pytest.mark.asyncio
+async def test_count_summary_completed_parent_with_running_child_is_active(pool, owner):
+    """D-JOBS-P4-SUMMARY-TOPLEVEL: a top-level job whose OWN status is terminal but which
+    has a still-running child counts as ACTIVE (not completed) — the campaign is in flight."""
+    t0 = datetime(2026, 6, 15, 10, 0, tzinfo=timezone.utc)
+    parent = str(uuid.uuid4())
+    # parent reports completed, but a child stage is still running.
+    await upsert_job_event(pool, _ev(owner, parent, JobStatus.COMPLETED, t0, kind="campaign"))
+    await upsert_job_event(pool, _ev(owner, str(uuid.uuid4()), JobStatus.RUNNING, t0, parent=parent))
+    s = await count_summary(pool, owner)
+    # Was {"active": 0, "completed": 1} before the fix (the running child undercounted).
+    assert s == {"active": 1, "completed": 0, "failed": 0, "cancelled": 0}
+
+
+@pytest.mark.asyncio
+async def test_count_summary_completed_parent_all_children_done(pool, owner):
+    """A completed parent with only completed children stays in the completed bucket."""
+    t0 = datetime(2026, 6, 15, 10, 0, tzinfo=timezone.utc)
+    parent = str(uuid.uuid4())
+    await upsert_job_event(pool, _ev(owner, parent, JobStatus.COMPLETED, t0, kind="campaign"))
+    await upsert_job_event(pool, _ev(owner, str(uuid.uuid4()), JobStatus.COMPLETED, t0, parent=parent))
+    s = await count_summary(pool, owner)
+    assert s == {"active": 0, "completed": 1, "failed": 0, "cancelled": 0}
 
 
 @pytest.mark.asyncio

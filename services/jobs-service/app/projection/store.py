@@ -373,21 +373,38 @@ async def list_jobs_paged(
     return [_row_to_dict(r) for r in rows], int(total or 0)
 
 
+# Top-level (campaign-granularity) buckets, but a top-level job is counted ACTIVE when it
+# OR any of its children is active — so a completed parent with a still-running child no
+# longer undercounts the active card (D-JOBS-P4-SUMMARY-TOPLEVEL). The tree is 1 level, so a
+# single EXISTS over the children suffices. A NOT-eff_active top-level row is necessarily
+# terminal (an active own-status forces eff_active), so the terminal buckets partition the
+# remainder by own status — the four buckets still sum to the top-level job count.
 _SUMMARY_SQL = f"""
+WITH tl AS (
+  SELECT
+    j.status AS status,
+    (j.status IN ({_ACTIVE_IN}) OR EXISTS (
+       SELECT 1 FROM job_projection c
+       WHERE c.parent_job_id = j.job_id AND c.owner_user_id = j.owner_user_id
+         AND c.status IN ({_ACTIVE_IN})
+    )) AS eff_active
+  FROM job_projection j
+  WHERE j.owner_user_id = $1::uuid AND j.parent_job_id IS NULL
+)
 SELECT
-  count(*) FILTER (WHERE status IN ({_ACTIVE_IN}))     AS active,
-  count(*) FILTER (WHERE status = 'completed')         AS completed,
-  count(*) FILTER (WHERE status = 'failed')            AS failed,
-  count(*) FILTER (WHERE status = 'cancelled')         AS cancelled
-FROM job_projection
-WHERE owner_user_id = $1::uuid AND parent_job_id IS NULL
+  count(*) FILTER (WHERE eff_active)                              AS active,
+  count(*) FILTER (WHERE NOT eff_active AND status = 'completed') AS completed,
+  count(*) FILTER (WHERE NOT eff_active AND status = 'failed')    AS failed,
+  count(*) FILTER (WHERE NOT eff_active AND status = 'cancelled') AS cancelled
+FROM tl
 """
 
 
 async def count_summary(conn: Any, owner_user_id: str) -> dict[str, int]:
     """Owner-scoped status counts for the GUI's 4 summary cards (Active / Completed
-    / Failed / Cancelled). TOP-LEVEL only (parent_job_id IS NULL) so it matches the
-    default list view — a campaign counts once, not once per child."""
+    / Failed / Cancelled). TOP-LEVEL (campaign-granularity) — a campaign counts once, not
+    once per child — but a top-level job counts as ACTIVE when it OR any child is active
+    (D-JOBS-P4-SUMMARY-TOPLEVEL: a completed parent with a running child is still in flight)."""
     row = await conn.fetchrow(_SUMMARY_SQL, owner_user_id)
     return {
         "active": int(row["active"]),

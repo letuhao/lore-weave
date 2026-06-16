@@ -59,6 +59,34 @@ describe('JobsStreamProvider live overlay', () => {
     expect(screen.getByTestId('s').textContent).toBe('none');
   });
 
+  it('evicts a terminal job from the overlay after the refetch window (D-JOBS-P4-OVERLAY-EVICT)', () => {
+    vi.useFakeTimers();
+    try {
+      setup();
+      act(() => captured!(ev({ status: 'completed' })));
+      // terminal state shows immediately…
+      expect(screen.getByTestId('s').textContent).toBe('completed');
+      // …then the entry is dropped once the refetch window passes (2× throttle here),
+      // so the row falls back to the query (probe → 'none' with no overlay entry).
+      act(() => vi.advanceTimersByTime(3000));
+      expect(screen.getByTestId('s').textContent).toBe('none');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does NOT evict a non-terminal job (it stays resident for live updates)', () => {
+    vi.useFakeTimers();
+    try {
+      setup();
+      act(() => captured!(ev({ status: 'running' })));
+      act(() => vi.advanceTimersByTime(5000));
+      expect(screen.getByTestId('s').textContent).toBe('running'); // still resident
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('throttles list invalidation (coalesces a burst into one flush)', () => {
     vi.useFakeTimers();
     try {

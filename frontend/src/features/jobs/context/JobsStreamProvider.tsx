@@ -18,9 +18,14 @@ import { useQueryClient } from '@tanstack/react-query';
 
 import { useAuth } from '@/auth';
 import { useJobsStream, type ConnectionState } from '../hooks/useJobsStream';
-import { jobKey, type JobSseEvent } from '../types';
+import { isTerminal, jobKey, type JobSseEvent } from '../types';
 
 const THROTTLE_MS = 1500;
+// D-JOBS-P4-OVERLAY-EVICT — a terminal job's overlay entry is redundant once the
+// invalidate-driven list refetch carries the terminal state, so drop it shortly after
+// (≥ one throttle window) to bound the Map's growth over a long session. Until then the
+// terminal event stays in the overlay so the row shows the final state immediately.
+const EVICT_AFTER_MS = THROTTLE_MS * 2;
 
 type Store = {
   get(key: string): JobSseEvent | undefined;
@@ -37,11 +42,30 @@ export function JobsStreamProvider({ children }: { children: ReactNode }) {
   const overlay = useRef(new Map<string, JobSseEvent>());
   const listeners = useRef(new Map<string, Set<() => void>>());
   const throttleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const evictTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
   const notify = useCallback((key: string) => {
     const subs = listeners.current.get(key);
     if (subs) for (const cb of subs) cb();
   }, []);
+
+  // Drop a terminal job's overlay entry after the list refetch has settled (the query
+  // now carries the terminal state). notify() so the row re-reads from the query.
+  const scheduleEvict = useCallback(
+    (key: string) => {
+      const prior = evictTimers.current.get(key);
+      if (prior) clearTimeout(prior);
+      evictTimers.current.set(
+        key,
+        setTimeout(() => {
+          evictTimers.current.delete(key);
+          overlay.current.delete(key);
+          notify(key);
+        }, EVICT_AFTER_MS),
+      );
+    },
+    [notify],
+  );
 
   const scheduleInvalidate = useCallback(() => {
     if (throttleTimer.current) return; // trailing throttle — one pending flush
@@ -57,18 +81,23 @@ export function JobsStreamProvider({ children }: { children: ReactNode }) {
       overlay.current.set(key, ev);
       notify(key);
       scheduleInvalidate();
+      // A late non-terminal event for an already-terminal key would cancel a pending
+      // evict; isTerminal() re-arms it. Non-terminal events leave the entry resident.
+      if (isTerminal(ev.status)) scheduleEvict(key);
     },
-    [notify, scheduleInvalidate],
+    [notify, scheduleInvalidate, scheduleEvict],
   );
 
   const state = useJobsStream(accessToken, onEvent);
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    const timers = evictTimers.current;
+    return () => {
       if (throttleTimer.current) clearTimeout(throttleTimer.current);
-    },
-    [],
-  );
+      for (const t of timers.values()) clearTimeout(t);
+      timers.clear();
+    };
+  }, []);
 
   const store = useMemo<Store>(
     () => ({
