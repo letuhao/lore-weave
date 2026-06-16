@@ -67,14 +67,35 @@ async def _run_job(
     entity_ids_filter = metadata.get("entity_ids")
     thinking_enabled = bool(msg.get("thinking_enabled", metadata.get("thinking_enabled", False)))
 
+    # Cancel-safe claim (same fix as extraction_worker): only start a job that is NOT
+    # already cancelled/terminal. An unconditional "SET status='running'" here would
+    # CLOBBER a 'cancelling' status on the next redelivery, so the per-page cancel check
+    # below never sees it and the job keeps running despite being cancelled. If the guard
+    # matches nothing, settle + return so message.process() ACKs and drops the message.
+    # RETURNING owner_user_id folds in the owner lookup (NOT NULL → None ⇔ guard failed).
     async with pool.acquire() as db:
-        await db.execute(
-            "UPDATE glossary_translation_jobs SET status='running', started_at=now() WHERE job_id=$1",
+        owner_user_id = await db.fetchval(
+            "UPDATE glossary_translation_jobs SET status='running', started_at=now() "
+            "WHERE job_id=$1 AND status NOT IN "
+            "('cancelled','cancelling','completed','completed_with_errors','failed') "
+            "RETURNING owner_user_id",
             job_id,
         )
-        owner_user_id = await db.fetchval(
-            "SELECT owner_user_id FROM glossary_translation_jobs WHERE job_id=$1", job_id,
-        )
+        if owner_user_id is None:
+            await db.execute(
+                "UPDATE glossary_translation_jobs SET status='cancelled', finished_at=now() "
+                "WHERE job_id=$1 AND status='cancelling'",
+                job_id,
+            )
+    if owner_user_id is None:
+        log.info("glossary_translate: job %s not runnable (cancelled/terminal) — acking, no work", job_id)
+        await publish_event(user_id, {
+            "event": "job.status_changed",
+            "job_id": str(job_id),
+            "job_type": "translate_glossary",
+            "payload": {"status": "cancelled"},
+        })
+        return
 
     await publish_event(user_id, {
         "event": "job.status_changed",

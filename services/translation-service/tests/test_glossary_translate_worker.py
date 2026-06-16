@@ -255,3 +255,32 @@ async def test_thinking_enabled_passes_llm_kwargs():
 
     assert llm_inputs[0]["reasoning_effort"] == "medium"
     assert llm_inputs[0]["chat_template_kwargs"]["enable_thinking"] is True
+
+
+@pytest.mark.asyncio
+async def test_cancelled_glossary_job_is_not_clobbered_and_does_no_work():
+    """Cancel-safe claim (same fix as extraction): a cancelled/terminal job is NOT
+    re-armed to running; the handler settles + returns so the AMQP message is ACKed
+    instead of looping. Guard fails when the claim UPDATE matches nothing (fetchval None)."""
+    db = AsyncMock()
+    db.fetchval = AsyncMock(return_value=None)  # guarded claim matches nothing
+    db.execute = AsyncMock()
+    db.fetchrow = AsyncMock(return_value={"status": "cancelling"})
+    pool = MagicMock()
+    pool.acquire = MagicMock(return_value=_AcquireCM(db))
+    publish = AsyncMock()
+
+    with patch(
+        "app.workers.glossary_translate_worker.fetch_translation_candidates",
+        new=AsyncMock(return_value={"items": [], "total": 0}),
+    ) as fetch:
+        await _run_job(
+            {"book_id": "b", "target_language": "vi", "metadata": {}},
+            uuid4(), "u", pool, publish, MagicMock(),
+        )
+
+    fetch.assert_not_awaited()  # never fetched candidates → no work / no LLM
+    assert any("status='cancelled'" in str(c.args[0]) for c in db.execute.await_args_list)
+    assert any(c.args[1].get("payload", {}).get("status") == "cancelled" for c in publish.await_args_list)
+    claim_sql = db.fetchval.await_args_list[0].args[0]
+    assert "status NOT IN" in claim_sql and "RETURNING owner_user_id" in claim_sql
