@@ -481,7 +481,7 @@ services:
       # slot at finalize (_check_job_completion), so the per-owner cap only bounds
       # in-flight LLM concurrency when P5 is on in BOTH containers. (Same worker/API
       # coupling as TRANSLATION_DECOUPLE_ENABLED.) Default OFF.
-      P5_SCHED_ENABLED: ${P5_SCHED_ENABLED:-false}
+      P5_SCHED_ENABLED: ${P5_SCHED_ENABLED:-true}
       P5_OWNER_CAP: ${P5_OWNER_CAP:-5}
       P5_GLOBAL_BUDGET: ${P5_GLOBAL_BUDGET:-0}
       PORT: "8087"
@@ -565,7 +565,7 @@ services:
       # P5 — read-only fair-scheduling observability for the GUI ("N queued behind your
       # cap"). MUST mirror the owning services' P5_SCHED_ENABLED / P5_OWNER_CAP (the
       # fairness endpoint reads the same p5:* Redis keys those services write).
-      P5_SCHED_ENABLED: ${P5_SCHED_ENABLED:-false}
+      P5_SCHED_ENABLED: ${P5_SCHED_ENABLED:-true}
       P5_OWNER_CAP: ${P5_OWNER_CAP:-5}
     depends_on:
       postgres:
@@ -609,7 +609,7 @@ services:
       # ON ⇒ the coordinator enqueues chapter units into the per-owner WFQ and the
       # dispatcher loop releases them round-robin (≤ cap in-flight per owner), so one
       # owner's giant job can't monopolize the chapter-worker fleet.
-      P5_SCHED_ENABLED: ${P5_SCHED_ENABLED:-false}
+      P5_SCHED_ENABLED: ${P5_SCHED_ENABLED:-true}
       P5_OWNER_CAP: ${P5_OWNER_CAP:-5}
       P5_GLOBAL_BUDGET: ${P5_GLOBAL_BUDGET:-0}
     depends_on:
@@ -926,7 +926,7 @@ services:
       # Unified Job Control Plane P5 — per-owner concurrent-job cap (the enrichment runner
       # is synchronous in-process, so the lane `lore-enrichment:job` caps concurrent jobs;
       # at cap → 429). Default OFF until live-smoked → then default on.
-      P5_SCHED_ENABLED: ${P5_SCHED_ENABLED:-false}
+      P5_SCHED_ENABLED: ${P5_SCHED_ENABLED:-true}
       P5_OWNER_CAP: ${P5_OWNER_CAP:-5}
       P5_LEASE_TTL_MS: ${P5_LEASE_TTL_MS:-3600000}
       # C18 — OpenTelemetry trace export (mirrors api-gateway-bff / the other
@@ -1149,7 +1149,7 @@ services:
       # and gates each decoupled chunk with a per-owner in-flight cap (acquire/release on
       # the lane `knowledge:extraction`). Default OFF until live-smoked → then default on.
       # redis_url falls back to the code default (redis://redis:6379) — no separate env.
-      P5_SCHED_ENABLED: ${P5_SCHED_ENABLED:-false}
+      P5_SCHED_ENABLED: ${P5_SCHED_ENABLED:-true}
       P5_OWNER_CAP: ${P5_OWNER_CAP:-5}
       P5_LEASE_TTL_MS: ${P5_LEASE_TTL_MS:-3600000}
     depends_on:
