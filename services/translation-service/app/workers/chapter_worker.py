@@ -8,6 +8,7 @@ from loreweave_jobs import emit_job_event
 from ..config import settings
 from ..llm_client import LLMClient, set_campaign_id
 from ..metrics import record_stage
+from .. import fair_sched
 from .session_translator import translate_chapter
 
 log = logging.getLogger(__name__)
@@ -680,6 +681,14 @@ async def _check_job_completion(pool, job_id, user_id, msg, publish_event) -> No
     Uses a single UPDATE ... WHERE ... RETURNING to avoid TOCTOU race.
     Only the worker that wins the UPDATE emits the final event.
     """
+    # P5 — this is the per-chapter terminal chokepoint (reached once per chapter in
+    # BOTH the sync pipeline and the decoupled finalize via _finalize_chapter, plus the
+    # failure paths). Release the chapter's WFQ slot HERE — held from dispatch until the
+    # LLM work actually finished — so the per-owner cap bounds real in-flight LLM
+    # concurrency, not just submit-rate. Deterministic-token keyed → frees the exact
+    # slot even when this runs in the decoupled consumer (API container). No-op/off-safe.
+    await fair_sched.release_chapter_lease(msg)
+
     async with pool.acquire() as db:
         async with db.transaction():
             row = await db.fetchrow(

@@ -198,9 +198,10 @@ async def main() -> None:
             await handle_chapter_message(msg, get_pool(), publish_event, llm_client, retry_count)
             log.info("Chapter worker: chapter %s done", chapter_id)
             await message.ack()
-            # P5 — terminal success: free the owner's WFQ slot so the dispatcher can
-            # release another of their units (no-op when P5 is off / no token).
-            await fair_sched.release_chapter_lease(msg)
+            # P5 NOTE: the WFQ slot is released at the per-chapter TERMINAL inside
+            # _check_job_completion (sync: during this handler; decoupled: later in the
+            # llm_terminal_consumer when the LLM work actually finishes) — NOT here at
+            # submit/ack time, so the per-owner cap bounds in-flight LLM concurrency.
 
         except _TransientError as exc:
             # DB has already been updated to 'failed' by the handler before re-raising.
@@ -226,25 +227,20 @@ async def main() -> None:
                     ),
                     routing_key=retry_queue,
                 )
-                # P5 — a retry is still the SAME unit occupying the owner's slot; the
-                # republished message carries _p5_token and releases on its eventual
-                # terminal. Do NOT release here (would let the retry bypass the cap).
             else:
                 log.error(
                     "Chapter %s exceeded %d retries, abandoning: %s",
                     chapter_id, _MAX_TRANSIENT_RETRIES, exc,
                 )
-                # P5 — terminal (gave up): free the slot.
-                await fair_sched.release_chapter_lease(msg)
-            # Always ack the original — retry (if any) is a new message
+            # Always ack the original — retry (if any) is a new message. (P5 slot release
+            # happened inside handle_chapter_message's _check_job_completion call.)
             await message.ack()
 
         except Exception as exc:
-            # Permanent error — DB already marked failed. Ack and move on.
+            # Permanent error — DB already marked failed. Ack and move on. (P5 slot
+            # release happened inside handle_chapter_message's _check_job_completion.)
             log.error("Chapter %s permanent error: %s", chapter_id, exc)
             await message.ack()
-            # P5 — terminal (permanent failure): free the slot.
-            await fair_sched.release_chapter_lease(msg)
 
     async def on_extraction(message: aio_pika.IncomingMessage) -> None:
         # S4a: this consumer shares the process + llm_client with on_chapter, which

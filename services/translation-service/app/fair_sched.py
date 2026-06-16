@@ -27,6 +27,14 @@ LANE_CHAPTER = "translation:chapter"
 _sched: Optional[FairScheduler] = None
 
 
+def chapter_token(job_id, chapter_id) -> str:
+    """Deterministic per-chapter lease token. Computable from data in scope at BOTH
+    dispatch (coordinator) and finalize (sync chapter_worker OR the decoupled
+    llm_terminal_consumer) — so the slot is released by the chapter that actually
+    finished its LLM work, in whichever process finalizes it."""
+    return f"{job_id}:{chapter_id}"
+
+
 def get_scheduler() -> FairScheduler:
     global _sched
     if _sched is None:
@@ -40,27 +48,29 @@ def get_scheduler() -> FairScheduler:
 
 
 async def release_chapter_lease(msg: dict) -> None:
-    """Release a chapter unit's WFQ lease on terminal. No-op when P5 is off or the
-    message predates P5 (no token) — so a flag flip mid-flight can never crash a worker;
-    the lease TTL backstops a missed release.
+    """Release a chapter unit's WFQ slot at its per-chapter TERMINAL. Called from
+    ``_check_job_completion`` (the per-chapter terminal chokepoint — success for both
+    the sync and decoupled pipelines via ``_finalize_chapter``, plus the failure paths)
+    and from the worker's abandon branches. Uses the DETERMINISTIC token
+    (``job_id:chapter_id``) so it frees the exact slot the coordinator leased, even when
+    the finalize runs in a different process than the dispatch (the decoupled consumer
+    runs in the API container).
 
-    NOTE (decoupled-mode semantics — D-P5-DECOUPLED-LLM-CAP): in the default DECOUPLED
-    translate path the chapter worker SUBMITS the LLM job and acks in ~50ms (the real
-    translation finalizes async via the llm_terminal_consumer), so releasing here frees
-    the slot at SUBMIT time. The WFQ **dispatch fairness** still holds end-to-end (a new
-    owner's chapters round-robin-interleave instead of queueing behind a giant job, and
-    the AMQP queue is never flooded) — but the per-owner **cap** then bounds submit-
-    concurrency, not in-flight LLM concurrency. A true LLM cap needs the release moved to
-    the per-chapter finalize point (thread the lease token through resume_state → terminal
-    event → finalize). Tracked for the cap-tightening follow-up."""
+    Holding the lease from dispatch until this terminal is what makes the per-owner cap
+    bound real in-flight LLM concurrency in the decoupled path (not just submit-rate).
+
+    No-op when P5 is off or the message lacks job_id/chapter_id/owner — so a flag flip
+    mid-flight can never crash a worker. Idempotent (a double-release returns False); the
+    lease TTL backstops any terminal path that doesn't reach a release site."""
     if not settings.p5_sched_enabled:
         return
-    token = msg.get("_p5_token")
+    job_id = msg.get("job_id")
+    chapter_id = msg.get("chapter_id")
     owner = msg.get("user_id")
-    if not token or not owner:
+    if not job_id or not chapter_id or not owner:
         return
     try:
-        await get_scheduler().release(LANE_CHAPTER, str(owner), str(token))
+        await get_scheduler().release(LANE_CHAPTER, str(owner), chapter_token(job_id, chapter_id))
     except Exception:  # noqa: BLE001 — best-effort; the lease TTL is the backstop
         log.warning("P5: chapter lease release failed (lease TTL will reclaim)", exc_info=True)
 

@@ -101,8 +101,18 @@ while dispatched < max_batch do
     redis.call('SREM', ring_member, owner)
   else
     local unit = redis.call('LPOP', ready_key)
-    local seq = redis.call('INCR', seq_key)
-    local token = owner .. ':' .. seq
+    -- Deterministic lease token when the unit carries one (`_p5_tok`): lets a
+    -- DIFFERENT process release the slot by recomputing the token from its own data
+    -- (e.g. a decoupled finalize keyed by job_id:chapter_id) without threading the
+    -- dispatch-time token through an async pipeline. Falls back to an opaque owner:seq.
+    local token
+    local ok, u = pcall(cjson.decode, unit)
+    if ok and type(u) == 'table' and u['_p5_tok'] then
+      token = u['_p5_tok']
+    else
+      local seq = redis.call('INCR', seq_key)
+      token = owner .. ':' .. seq
+    end
     redis.call('ZADD', inflight_key, now + ttl, token)
     redis.call('INCR', total_key)
     redis.call('SADD', active, owner)

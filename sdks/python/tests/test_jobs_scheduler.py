@@ -131,6 +131,22 @@ async def test_release_is_idempotent(sched):
 
 
 @_skip
+async def test_deterministic_token_enables_release_from_elsewhere(sched):
+    s, lane = sched
+    # A unit carrying `_p5_tok` leases under THAT token (not an opaque owner:seq), so a
+    # different code path can release the exact slot by recomputing the token.
+    await s.enqueue(lane, "A", {"job": "j1", "chapter": "c1", "_p5_tok": "j1:c1"})
+    released = await s.dispatch(lane, cap=5, max_batch=10)
+    assert len(released) == 1
+    token, _unit = released[0]
+    assert token == "j1:c1"  # deterministic, not "A:<seq>"
+    assert await s.inflight_count(lane, "A") == 1
+    # release by the RECOMPUTED token (as a decoupled finalize would) frees the slot
+    assert await s.release(lane, "A", "j1:c1") is True
+    assert await s.inflight_count(lane, "A") == 0
+
+
+@_skip
 async def test_expired_lease_reclaimed(sched):
     s, lane = sched
     # ttl=0 ⇒ the lease is already expired by the time we look (crash-leak simulation)

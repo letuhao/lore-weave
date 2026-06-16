@@ -476,6 +476,14 @@ services:
       # Default ON (2026-06-12): review-cleared + live-smoked (block round-trip, V3
       # loop, stuck-resume sweeper). Set to false to revert to the synchronous path.
       TRANSLATION_DECOUPLE_ENABLED: ${TRANSLATION_DECOUPLE_ENABLED:-true}
+      # P5 — fair scheduling. MUST match the worker's flag: in the decoupled path the
+      # llm_terminal_consumer runs HERE (API container) and releases the chapter's WFQ
+      # slot at finalize (_check_job_completion), so the per-owner cap only bounds
+      # in-flight LLM concurrency when P5 is on in BOTH containers. (Same worker/API
+      # coupling as TRANSLATION_DECOUPLE_ENABLED.) Default OFF.
+      P5_SCHED_ENABLED: ${P5_SCHED_ENABLED:-false}
+      P5_OWNER_CAP: ${P5_OWNER_CAP:-5}
+      P5_GLOBAL_BUDGET: ${P5_GLOBAL_BUDGET:-0}
       PORT: "8087"
     depends_on:
       postgres:

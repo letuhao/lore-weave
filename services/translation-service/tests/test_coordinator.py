@@ -335,7 +335,12 @@ async def test_coordinator_enqueues_to_wfq_when_p5_enabled(monkeypatch):
     owners = {c.args[1] for c in sched.enqueue.await_args_list}
     assert lanes == {LANE_CHAPTER}
     assert owners == {USER_ID}
-    assert {c.args[2]["chapter_id"] for c in sched.enqueue.await_args_list} == set(CHAPTER_IDS)
+    units = [c.args[2] for c in sched.enqueue.await_args_list]
+    assert {u["chapter_id"] for u in units} == set(CHAPTER_IDS)
+    # each unit carries a deterministic lease token job_id:chapter_id (so the per-chapter
+    # finalize — possibly in another process — can release the exact slot)
+    job_id = units[0]["job_id"]
+    assert all(u["_p5_tok"] == f"{job_id}:{u['chapter_id']}" for u in units)
 
 
 @pytest.mark.asyncio

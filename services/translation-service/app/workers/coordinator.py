@@ -86,6 +86,11 @@ async def handle_job_message(msg: dict, pool, publish, publish_event) -> None:
         # (≤ cap in-flight per owner), so this job can't monopolize the worker fleet.
         sched = fair_sched.get_scheduler()
         for unit in units:
+            # Deterministic lease token so the per-chapter FINALIZE (which may run in a
+            # different process — the decoupled llm_terminal_consumer in the API
+            # container) can release this exact slot by recomputing job_id:chapter_id,
+            # without threading the dispatch token through the async pipeline.
+            unit["_p5_tok"] = fair_sched.chapter_token(msg["job_id"], unit["chapter_id"])
             await sched.enqueue(fair_sched.LANE_CHAPTER, str(user_id), unit)
         log.info("coordinator: job %s — %d chapter unit(s) ENQUEUED to WFQ (owner=%s)", job_id, n, user_id)
     else:
