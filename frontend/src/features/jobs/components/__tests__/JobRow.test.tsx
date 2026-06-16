@@ -12,7 +12,8 @@ const job: Job = {
   service: 'knowledge', job_id: 'j1', owner_user_id: 'u', kind: 'extraction',
   status: 'running', parent_job_id: null, detail_status: null,
   progress: { done: 2, total: 5 }, control_caps: ['pause', 'cancel'], title: 'Extract ch 1-40',
-  error: null, created_at: null, updated_at: '2026-06-16T00:00:00+00:00', child_count: 0,
+  error: null, model: null, cost_usd: null, tokens_in: null, tokens_out: null, params: null,
+  created_at: null, updated_at: '2026-06-16T00:00:00+00:00', child_count: 0,
 };
 
 function renderRow(j: Job) {
@@ -48,8 +49,9 @@ describe('JobRow deep-link + grouping', () => {
   });
 
   it('renders control buttons gated on control_caps', () => {
+    // Rows use compact (icon-only) controls — assert via the button's aria-label.
     renderRow(job);
-    expect(screen.getByText('controls.pause')).toBeInTheDocument();
-    expect(screen.queryByText('controls.resume')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'controls.pause' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'controls.resume' })).not.toBeInTheDocument();
   });
 });

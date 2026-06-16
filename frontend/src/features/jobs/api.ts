@@ -1,5 +1,11 @@
 import { apiJson, apiBase } from '../../api';
-import type { Job, JobListParams, JobListResponse, JobControlAction } from './types';
+import type {
+  Job,
+  JobListParams,
+  JobListResponse,
+  JobControlAction,
+  JobSummary,
+} from './types';
 
 // Gateway proxies /v1/jobs/* generically to jobs-service. Relative paths ride the
 // dev vite-proxy / prod nginx path (see ../../api.ts). The SSE stream is reached via
@@ -12,10 +18,17 @@ export const jobsApi = {
     if (params.kind) q.set('kind', params.kind);
     if (params.parent) q.set('parent', params.parent);
     if (params.q) q.set('q', params.q);
+    if (params.bucket) q.set('bucket', params.bucket);
     if (params.cursor) q.set('cursor', params.cursor);
+    if (params.offset != null) q.set('offset', String(params.offset));
     if (params.limit != null) q.set('limit', String(params.limit));
     const qs = q.toString();
     return apiJson<JobListResponse>(`/v1/jobs${qs ? `?${qs}` : ''}`, { token });
+  },
+
+  /** Owner-scoped status counts for the 4 summary cards. */
+  summary(token: string): Promise<JobSummary> {
+    return apiJson<JobSummary>('/v1/jobs/summary', { token });
   },
 
   get(service: string, jobId: string, token: string): Promise<Job> {

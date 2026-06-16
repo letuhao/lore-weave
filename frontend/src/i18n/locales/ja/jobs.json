@@ -17,23 +17,60 @@
     "enrichment_job": "ロア拡充",
     "composition": { "generate": "創作" }
   },
+  "summary": {
+    "active": "実行中",
+    "completed": "完了",
+    "failed": "失敗",
+    "cancelled": "キャンセル済み"
+  },
   "filters": {
     "status": "ステータス",
     "kind": "種類",
     "allStatuses": "すべてのステータス",
     "allKinds": "すべての種類",
-    "search": "タイトルで検索…"
+    "search": "タイトルで検索…",
+    "searchWide": "タイトル・種類・サービス・モデル・ジョブIDで検索…",
+    "searchHint": "タイトル · 種類 · サービス · モデル · ジョブID を検索（デバウンス）。"
+  },
+  "col": {
+    "job": "ジョブ",
+    "status": "ステータス",
+    "progress": "進捗",
+    "cost": "コスト · トークン",
+    "started": "開始",
+    "actions": "操作"
+  },
+  "section": {
+    "active": "実行中 · ライブ",
+    "activeHint": "ページ送りなし — SSEでその場更新",
+    "history": "履歴",
+    "historyHint": "作成日順 · ページ送りあり"
   },
   "list": {
     "loading": "読み込み中…",
     "error": "ジョブの読み込みに失敗しました。",
     "empty": "ジョブはまだありません。",
+    "noActive": "実行中のジョブはありません。",
     "more": "さらに読み込む",
     "toggleChildren": "子ジョブの表示切替",
     "noChildren": "子ジョブはありません。"
   },
+  "row": {
+    "ran": "{{d}} 実行",
+    "running": "{{d}} 実行中",
+    "details": "詳細 ↗"
+  },
+  "pager": {
+    "range": "{{total}} 件中 {{from}}–{{to}}",
+    "pageSize": "ページサイズ",
+    "perPage": "{{n}} 件 / ページ",
+    "page": "ページ {{n}}",
+    "prev": "前のページ",
+    "next": "次のページ"
+  },
   "live": {
     "on": "● ライブ",
+    "onShort": "ライブ",
     "reconnecting": "再接続中…",
     "off": "オフライン"
   },
@@ -53,8 +90,43 @@
   "monitor": {
     "back": "すべてのジョブ",
     "error": "ジョブの読み込みに失敗しました。",
-    "pausedBanner": "一時停止中 — 新しいユニットは送出されず、実行中のものは完了します。下で再開できます。",
+    "pausedBanner": "一時停止中 — 新しいユニットは送出されず、実行中のものは完了します。上で再開できます。",
     "children": "子ジョブ"
+  },
+  "detail": {
+    "progress": "進捗",
+    "elapsed": "経過",
+    "throughput": "スループット",
+    "throughputVal": "~{{n}} /時",
+    "eta": "残り見込み",
+    "costSoFar": "現在のコスト",
+    "tokensIn": "入力トークン",
+    "tokensOut": "出力トークン",
+    "bestEffort": "概算",
+    "models": "モデル",
+    "parameters": "パラメータ",
+    "parametersHint": "動的 — ジョブの params オブジェクトより",
+    "jobId": "ジョブID",
+    "kind": "種類",
+    "service": "サービス",
+    "parent": "親ジョブ",
+    "viewParent": "親ジョブを表示 ↗",
+    "created": "作成",
+    "lastUpdate": "最終更新",
+    "copied": "ジョブIDをコピーしました。",
+    "copyFailed": "コピーできませんでした。",
+    "activity": "アクティビティ（ライブ）",
+    "errorTitle": "エラー"
+  },
+  "activity": {
+    "created": "作成",
+    "pending": "キュー追加",
+    "running": "実行中",
+    "paused": "一時停止",
+    "cancelling": "キャンセル中",
+    "completed": "完了",
+    "failed": "失敗",
+    "cancelled": "キャンセル済み"
   },
   "mobile": {
     "children": "件の子ジョブ"

@@ -17,23 +17,60 @@
     "enrichment_job": "Làm giàu lore",
     "composition": { "generate": "Sáng tác" }
   },
+  "summary": {
+    "active": "Đang hoạt động",
+    "completed": "Hoàn tất",
+    "failed": "Thất bại",
+    "cancelled": "Đã hủy"
+  },
   "filters": {
     "status": "Trạng thái",
     "kind": "Loại",
     "allStatuses": "Tất cả trạng thái",
     "allKinds": "Tất cả loại",
-    "search": "Tìm theo tiêu đề…"
+    "search": "Tìm theo tiêu đề…",
+    "searchWide": "Tìm theo tiêu đề, loại, dịch vụ, model hoặc ID…",
+    "searchHint": "Tìm trong tiêu đề · loại · dịch vụ · model · ID tác vụ (có trễ)."
+  },
+  "col": {
+    "job": "Tác vụ",
+    "status": "Trạng thái",
+    "progress": "Tiến độ",
+    "cost": "Chi phí · token",
+    "started": "Bắt đầu",
+    "actions": "Thao tác"
+  },
+  "section": {
+    "active": "Đang hoạt động · trực tiếp",
+    "activeHint": "không phân trang — cập nhật trực tiếp qua SSE",
+    "history": "Lịch sử",
+    "historyHint": "sắp theo ngày tạo · có phân trang"
   },
   "list": {
     "loading": "Đang tải…",
     "error": "Không tải được tác vụ.",
     "empty": "Chưa có tác vụ nào.",
+    "noActive": "Không có tác vụ đang chạy.",
     "more": "Tải thêm",
     "toggleChildren": "Mở/đóng tác vụ con",
     "noChildren": "Không có tác vụ con."
   },
+  "row": {
+    "ran": "đã chạy {{d}}",
+    "running": "đang chạy {{d}}",
+    "details": "Chi tiết ↗"
+  },
+  "pager": {
+    "range": "{{from}}–{{to}} trên {{total}}",
+    "pageSize": "Số mục mỗi trang",
+    "perPage": "{{n}} / trang",
+    "page": "Trang {{n}}",
+    "prev": "Trang trước",
+    "next": "Trang sau"
+  },
   "live": {
     "on": "● trực tiếp",
+    "onShort": "trực tiếp",
     "reconnecting": "đang kết nối lại…",
     "off": "ngoại tuyến"
   },
@@ -53,8 +90,43 @@
   "monitor": {
     "back": "Tất cả tác vụ",
     "error": "Không tải được tác vụ.",
-    "pausedBanner": "Đã tạm dừng — không gửi đơn vị mới, các đơn vị đang chạy sẽ hoàn tất. Tiếp tục bên dưới.",
+    "pausedBanner": "Đã tạm dừng — không gửi đơn vị mới, các đơn vị đang chạy sẽ hoàn tất. Tiếp tục bên trên.",
     "children": "Tác vụ con"
+  },
+  "detail": {
+    "progress": "Tiến độ",
+    "elapsed": "Đã chạy",
+    "throughput": "Thông lượng",
+    "throughputVal": "~{{n}} /giờ",
+    "eta": "Dự kiến còn",
+    "costSoFar": "Chi phí đến nay",
+    "tokensIn": "Token vào",
+    "tokensOut": "Token ra",
+    "bestEffort": "ước tính",
+    "models": "Model",
+    "parameters": "Tham số",
+    "parametersHint": "động, từ đối tượng params của tác vụ",
+    "jobId": "ID tác vụ",
+    "kind": "Loại",
+    "service": "Dịch vụ",
+    "parent": "Tác vụ cha",
+    "viewParent": "Xem tác vụ cha ↗",
+    "created": "Tạo lúc",
+    "lastUpdate": "Cập nhật cuối",
+    "copied": "Đã sao chép ID.",
+    "copyFailed": "Không sao chép được.",
+    "activity": "Hoạt động (trực tiếp)",
+    "errorTitle": "Lỗi"
+  },
+  "activity": {
+    "created": "Đã tạo",
+    "pending": "Đã xếp hàng",
+    "running": "Đang chạy",
+    "paused": "Đã tạm dừng",
+    "cancelling": "Đang hủy",
+    "completed": "Hoàn tất",
+    "failed": "Thất bại",
+    "cancelled": "Đã hủy"
   },
   "mobile": {
     "children": "tác vụ con"

@@ -17,23 +17,60 @@
     "enrichment_job": "Lore enrichment",
     "composition": { "generate": "Composition" }
   },
+  "summary": {
+    "active": "Active",
+    "completed": "Completed",
+    "failed": "Failed",
+    "cancelled": "Cancelled"
+  },
   "filters": {
     "status": "Status",
     "kind": "Kind",
     "allStatuses": "All statuses",
     "allKinds": "All kinds",
-    "search": "Search title…"
+    "search": "Search title…",
+    "searchWide": "Search title, kind, service, model or job ID…",
+    "searchHint": "Search spans title · kind · service · model · job ID (debounced)."
+  },
+  "col": {
+    "job": "Job",
+    "status": "Status",
+    "progress": "Progress",
+    "cost": "Cost · tokens",
+    "started": "Started",
+    "actions": "Actions"
+  },
+  "section": {
+    "active": "Active · live",
+    "activeHint": "not paginated — updates in place via SSE",
+    "history": "History",
+    "historyHint": "sorted by created · paginated"
   },
   "list": {
     "loading": "Loading…",
     "error": "Failed to load jobs.",
     "empty": "No jobs yet.",
+    "noActive": "No active jobs.",
     "more": "Load more",
     "toggleChildren": "Toggle children",
     "noChildren": "No child jobs."
   },
+  "row": {
+    "ran": "ran {{d}}",
+    "running": "running {{d}}",
+    "details": "Details ↗"
+  },
+  "pager": {
+    "range": "{{from}}–{{to}} of {{total}}",
+    "pageSize": "Page size",
+    "perPage": "{{n}} / page",
+    "page": "Page {{n}}",
+    "prev": "Previous page",
+    "next": "Next page"
+  },
   "live": {
     "on": "● live",
+    "onShort": "live",
     "reconnecting": "reconnecting…",
     "off": "offline"
   },
@@ -53,8 +90,43 @@
   "monitor": {
     "back": "All jobs",
     "error": "Failed to load job.",
-    "pausedBanner": "Paused — no new units dispatch and in-flight ones finish. Resume below.",
+    "pausedBanner": "Paused — no new units dispatch and in-flight ones finish. Resume above.",
     "children": "Child jobs"
+  },
+  "detail": {
+    "progress": "Progress",
+    "elapsed": "Elapsed",
+    "throughput": "Throughput",
+    "throughputVal": "~{{n}} /h",
+    "eta": "ETA",
+    "costSoFar": "Cost so far",
+    "tokensIn": "Tokens in",
+    "tokensOut": "Tokens out",
+    "bestEffort": "best-effort",
+    "models": "Models",
+    "parameters": "Parameters",
+    "parametersHint": "dynamic, from the job's params object",
+    "jobId": "Job ID",
+    "kind": "Kind",
+    "service": "Service",
+    "parent": "Parent",
+    "viewParent": "View parent ↗",
+    "created": "Created",
+    "lastUpdate": "Last update",
+    "copied": "Job ID copied.",
+    "copyFailed": "Could not copy.",
+    "activity": "Activity (live)",
+    "errorTitle": "Error"
+  },
+  "activity": {
+    "created": "Created",
+    "pending": "Queued",
+    "running": "Running",
+    "paused": "Paused",
+    "cancelling": "Cancelling",
+    "completed": "Completed",
+    "failed": "Failed",
+    "cancelled": "Cancelled"
   },
   "mobile": {
     "children": "children"
