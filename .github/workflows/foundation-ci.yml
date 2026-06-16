@@ -356,3 +356,7 @@ jobs:
       - uses: gitleaks/gitleaks-action@v2
         env:
           GITLEAKS_CONFIG: .gitleaks.toml
+          # gitleaks-action@v2 requires GITHUB_TOKEN to scan pull_request events
+          # (breaking change); without it the PR run errors before scanning. The
+          # auto-provided token is sufficient (no org license — individual repo).
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
