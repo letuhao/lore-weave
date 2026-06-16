@@ -23,12 +23,27 @@ export function HistoryPager({
 }) {
   const { t } = useTranslation('jobs');
   if (total <= 0) return null;
+
+  const pg = 'inline-flex h-7 min-w-[28px] items-center justify-center rounded-md border px-2 text-xs disabled:opacity-40';
+
+  // Out-of-range page (data shrank under our offset without a filter reset) — the
+  // current page holds no rows. Offer a jump-to-first instead of an empty "151–150
+  // of 20" dead end (mirrors the glossary/chapter list recovery).
+  if (page > 0 && shown === 0) {
+    return (
+      <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
+        <span>{t('pager.outOfRange', { defaultValue: 'No rows on this page ({{total}} total).', total })}</span>
+        <button type="button" className={pg} onClick={() => onPage(0)}>
+          {t('pager.first', { defaultValue: 'Back to first page' })}
+        </button>
+      </div>
+    );
+  }
+
   const from = page * pageSize + 1;
   const to = page * pageSize + shown;
   const hasPrev = page > 0;
   const hasNext = to < total;
-
-  const pg = 'inline-flex h-7 min-w-[28px] items-center justify-center rounded-md border px-2 text-xs disabled:opacity-40';
 
   return (
     <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">

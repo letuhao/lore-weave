@@ -93,6 +93,7 @@ describe('formatTokens / formatTokenPair', () => {
   it('< 1k verbatim', () => expect(formatTokens(742)).toBe('742'));
   it('thousands → k', () => expect(formatTokens(7417)).toBe('7.4k'));
   it('millions → M', () => expect(formatTokens(1_100_000)).toBe('1.1M'));
+  it('just-under-1M does not round to "1000k"', () => expect(formatTokens(999_999)).toBe('1.0M'));
   it('pair joins with arrow, one-sided allowed', () =>
     expect(formatTokenPair(12000, 9000)).toBe('12k → 9.0k'));
   it('pair null when both absent', () => expect(formatTokenPair(null, null)).toBeNull());

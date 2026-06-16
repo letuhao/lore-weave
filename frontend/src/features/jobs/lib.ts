@@ -43,11 +43,13 @@ export function formatCost(usd: number | null | undefined): string | null {
   return `$${usd.toFixed(2)}`;
 }
 
-/** Compact token count: 1234 → "1.2k", 1_200_000 → "1.2M". null → null. */
+/** Compact token count: 1234 → "1.2k", 1_200_000 → "1.2M". null → null. The 999_500
+ *  cutoff (not 1_000_000) avoids a rounding artifact: 999_999/1000 → toFixed(0) = "1000"
+ *  would render the nonsense "1000k" instead of "1.0M". */
 export function formatTokens(n: number | null | undefined): string | null {
   if (n == null) return null;
   if (n < 1000) return String(n);
-  if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k`;
+  if (n < 999_500) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k`;
   return `${(n / 1_000_000).toFixed(1)}M`;
 }
 

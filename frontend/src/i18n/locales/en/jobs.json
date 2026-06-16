@@ -66,7 +66,9 @@
     "perPage": "{{n}} / page",
     "page": "Page {{n}}",
     "prev": "Previous page",
-    "next": "Next page"
+    "next": "Next page",
+    "outOfRange": "No rows on this page ({{total}} total).",
+    "first": "Back to first page"
   },
   "live": {
     "on": "● live",

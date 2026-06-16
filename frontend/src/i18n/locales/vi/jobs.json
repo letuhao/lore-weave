@@ -66,7 +66,9 @@
     "perPage": "{{n}} / trang",
     "page": "Trang {{n}}",
     "prev": "Trang trước",
-    "next": "Trang sau"
+    "next": "Trang sau",
+    "outOfRange": "Không có dòng nào ở trang này (tổng {{total}}).",
+    "first": "Về trang đầu"
   },
   "live": {
     "on": "● trực tiếp",
