@@ -1,0 +1,28 @@
+{
+  "_comment": "infra/statuspage/templates/en.json — L7.L.4 (RAID cycle 37). i18next EN resource bundle for status-page UI strings + incident status labels. The incident BODY copy is the pre-approved set in infra/comms/templates/ (Q-L7-2, shared with incident-bot); these are the page-chrome + status-label strings. EN + VI minimum.",
+  "page": {
+    "title": "LoreWeave Status",
+    "all_operational": "All systems operational",
+    "subscribe": "Subscribe to updates",
+    "powered_by": "Hosted externally on Statuspage.io"
+  },
+  "status": {
+    "operational": "Operational",
+    "degraded_performance": "Degraded performance",
+    "partial_outage": "Partial outage",
+    "major_outage": "Major outage",
+    "under_maintenance": "Under maintenance"
+  },
+  "incident": {
+    "investigating": "Investigating",
+    "identified": "Identified",
+    "monitoring": "Monitoring",
+    "resolved": "Resolved",
+    "posted_at": "Posted at {{time}} UTC",
+    "next_update": "Next update within {{minutes}} minutes"
+  },
+  "banner": {
+    "sev0": "We are experiencing a critical service disruption.",
+    "sev1": "We are experiencing a service disruption."
+  }
+}

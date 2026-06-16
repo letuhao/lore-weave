@@ -1,0 +1,23 @@
+{
+  "_spec": "pc.relationship_changed → UPDATE pc_relationship_projection fields score+labels, keyed pc_id+other_entity_type+other_entity_id (PcRelationshipProjection).",
+  "envelope": {
+    "event_id": "00000000-0000-0000-0000-000000000404",
+    "event_type": "pc.relationship_changed",
+    "event_version": 1,
+    "aggregate_id": "pc-1",
+    "aggregate_type": "pc",
+    "aggregate_version": 4,
+    "reality_id": "22222222-2222-2222-2222-222222222222",
+    "occurred_at": "2026-01-01T00:00:07.000000Z",
+    "recorded_at": "2026-01-01T00:00:07.000000Z",
+    "payload": { "other_entity_type": "npc", "other_entity_id": "npc-7", "score": 42, "labels": ["friendly"] }
+  },
+  "expected_updates": [
+    { "Update": {
+      "table": "pc_relationship_projection",
+      "pk": { "pc_id": "pc-1", "other_entity_type": "npc", "other_entity_id": "npc-7" },
+      "fields": { "score": 42, "labels": ["friendly"] },
+      "meta": { "event_id": "00000000-0000-0000-0000-000000000404", "aggregate_version": 4, "applied_at": "2026-01-01T00:00:07.000000Z" }
+    }}
+  ]
+}

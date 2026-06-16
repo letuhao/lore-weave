@@ -1,0 +1,469 @@
+# contracts/service_acl/matrix.yaml — service-to-DB access control matrix
+#
+# Cycle 6 (L1.D.6) seeds this file with the migration-orchestrator entry.
+# Future cycles append rows as new services are introduced.
+#
+# Schema:
+#   version: <int>
+#   services:
+#     - name: <service-name>
+#       svid_spiffe_id: <SPIFFE id>
+#       permissions:
+#         <table_name>: [<op>, ...]  # ops ∈ {SELECT, INSERT, UPDATE, DELETE}
+#       notes: <free text>
+#
+# The matrix is consumed by:
+#   1. cycle 7 L1.K admission-control lint (svid → table-set check)
+#   2. cycle 36 admin-cli for grant-management commands
+#   3. Postgres role provisioning playbooks (translated into role grants)
+#
+# Q-L1D-1 V1 corollary: migration-orchestrator does NOT need DELETE on
+# instance_schema_migrations (no auto-rollback). Append-only audit tables
+# get INSERT only.
+
+# L4.M.1 (cycle 22): the optional per-service `rpcs:` map FORMALIZES the
+# SR11 RPC-level authorization that cycle-6's table-grant `permissions:`
+# shape could not express. Entries below add `rpcs:` additively — the
+# cycle-6 lint that consumes the table-grant shape is undisturbed.
+
+version: 1
+
+services:
+  - name: migration-orchestrator
+    svid_spiffe_id: spiffe://loreweave.dev/sa/migration-orchestrator
+    notes: |
+      L1.D.6 — minimum permissions to drive schema migrations across per-reality
+      DBs and persist outcomes in the two meta tables. NO DELETE anywhere
+      (Q-L1D-1 V1 doc-only rollback; audit tables are append-only per S04 §12T.4).
+    permissions:
+      # READ: orchestrator inspects routing to know which realities exist
+      reality_registry:
+        - SELECT
+
+      # WRITE: orchestrator marks per-(reality,migration) state on success/failure
+      # No DELETE — re-running a migration uses INSERT-ON-CONFLICT UPDATE on the
+      # composite (reality_id, migration_id) PK. Rollback is doc-only (Q-L1D-1).
+      instance_schema_migrations:
+        - SELECT
+        - INSERT
+        - UPDATE
+
+      # WRITE: append-only event audit. Every attempt records start + outcome.
+      reality_migration_audit:
+        - INSERT
+        - SELECT
+
+      # WRITE: every MetaWrite() lands a meta_write_audit row in the same TX.
+      # The library does this on the orchestrator's behalf — list it here so
+      # the lint cross-check sees the dependency.
+      meta_write_audit:
+        - INSERT
+
+  # ── Cycle 7 — world-service (Rust provisioner/deprovisioner; calls MetaWrite
+  # via RPC to meta-worker per L1.B §4; full RPC binding ships L1.C live-wiring
+  # cycle).
+  - name: world-service
+    svid_spiffe_id: spiffe://loreweave.dev/sa/world-service
+    notes: |
+      Rust provisioner + deprovisioner (cycle 5) + orphan_scanner. All meta
+      writes go through MetaWrite() via the Go meta-worker RPC. Direct read
+      access on reality_registry for routing decisions.
+    permissions:
+      reality_registry:
+        - SELECT
+        - INSERT
+        - UPDATE
+      lifecycle_transition_audit:
+        - INSERT
+        - SELECT
+      reality_close_audit:
+        - INSERT
+        - SELECT
+      archive_verification_log:
+        - INSERT
+        - SELECT
+      player_character_index:
+        - INSERT
+        - UPDATE
+        - SELECT
+      user_queue_metrics:
+        - INSERT
+        - UPDATE
+        - SELECT
+      meta_write_audit:
+        - INSERT
+
+  # ── Cycle 7 (L1.H) — backup-scheduler
+  - name: backup-scheduler
+    svid_spiffe_id: spiffe://loreweave.dev/sa/backup-scheduler
+    notes: |
+      L1.H.1 — reads reality_registry.status to dispatch tiered backups,
+      writes archive_verification_log rows on every restore-drill run.
+      No DELETE anywhere (audit-table principle + reality_registry is
+      governed by lifecycle transitions).
+    permissions:
+      reality_registry:
+        - SELECT
+      archive_verification_log:
+        - INSERT
+        - SELECT
+      meta_write_audit:
+        - INSERT
+
+  # ── Cycle 10 (L2.D) — publisher
+  - name: publisher
+    svid_spiffe_id: spiffe://loreweave.dev/sa/publisher
+    notes: |
+      L2.D — drains per-reality events_outbox into Redis Streams. Reads
+      outbox rows with FOR UPDATE SKIP LOCKED (multi-replica-safe per
+      Q-L2D-1 V2; V1 single replica). Writes outbox row state
+      (published/attempts/last_error/dead_lettered_at). Reads events
+      table to assemble wire envelope. Writes publisher_heartbeats every
+      10s for L1.J degraded-mode + meta-worker monitoring.
+      NO DELETE anywhere — outbox prune is the responsibility of a future
+      cycle (D-OUTBOX-PRUNE deferred row). Reads reality_registry only
+      for shard-host routing decisions.
+    permissions:
+      # READ from per-reality DB to fetch outbox rows + assemble envelope
+      events_outbox:
+        - SELECT
+        - UPDATE
+      events:
+        - SELECT
+      # WRITE on meta for liveness + control-plane
+      publisher_heartbeats:
+        - INSERT
+        - UPDATE
+        - SELECT
+      reality_registry:
+        - SELECT
+      # WRITE: every MetaWrite() lands a meta_write_audit row in the same TX
+      meta_write_audit:
+        - INSERT
+
+  # ── Cycle 10 (L2.L) — meta-worker (SOLE consumer of xreality.* topics; I7)
+  - name: meta-worker
+    svid_spiffe_id: spiffe://loreweave.dev/sa/meta-worker
+    notes: |
+      L2.L — sole consumer of xreality.* Redis Streams per I7 invariant.
+      Dispatches xreality.canon.*, xreality.user.*, xreality.reality.*
+      to handler shims that write meta-side projections (canon_projection,
+      user_realities, reality_stats). Reads publisher_heartbeats to
+      detect dead publishers (writes status='dead' transition).
+      ACL is INTENTIONALLY narrow — adding a new meta-side projection
+      requires explicit ALLOWLIST entry here, NOT default-deny.
+    permissions:
+      publisher_heartbeats:
+        - SELECT
+        - UPDATE
+      # Per-reality canon projection writes — populated lazily as L5 lands.
+      # Empty perm set for now; meta-worker dispatch handlers in V1 ship
+      # SKELETON impls (see services/meta-worker/internal/dispatch). When
+      # L5 wires real canon_projection tables, add SELECT/INSERT/UPDATE here.
+      reality_registry:
+        - SELECT
+      meta_write_audit:
+        - INSERT
+
+  # ── Cycle 7 (L1.L) — admin-cli (capacity-override sub-command for now;
+  # full surface ships cycle 36).
+  - name: admin-cli
+    svid_spiffe_id: spiffe://loreweave.dev/sa/admin-cli
+    notes: |
+      L1.L.3 — admin capacity-override (S5-D5 Tier-2). Future cycle 36 adds
+      the full ~30 commands. Each subcommand owns a precise grant set; this
+      entry seeds the Tier-2 capacity surface.
+      Object storage is not modeled in this table matrix: `archive fetch`
+      (073) does a read-only GET on the lw-event-archive MinIO bucket
+      (mirrors archive-worker's prose-documented bucket access).
+    permissions:
+      scaling_events:
+        - INSERT
+        - SELECT
+      # read-only: `reality stats` summary query + `projection drift-check`
+      # (073) fleet enumeration of realities to read each shard's drift ledger
+      reality_registry:
+        - SELECT
+      # read-only: `migration status` (073) per-reality migration ledger
+      instance_schema_migrations:
+        - SELECT
+      # read-only: `archive list` + `archive fetch` (073) per-reality archive ledger
+      archive_state:
+        - SELECT
+      # read-only: `projection drift-check` (073) per-reality drift summary ledger
+      projection_drift_state:
+        - SELECT
+      admin_action_audit:
+        - INSERT
+      meta_write_audit:
+        - INSERT
+
+  # ── Cycle 11 (L2.J) — archive-worker
+  - name: archive-worker
+    svid_spiffe_id: spiffe://loreweave.dev/sa/archive-worker
+    notes: |
+      L2.J — per-reality archive worker. DETACHes oldest monthly partition
+      of `events`, COPYs to Parquet (lw-event-archive MinIO bucket), then
+      DROPs the partition.
+      ACL grants:
+        * SELECT on events       — reads partition row data for parquet encode
+        * DELETE on events       — DROPs the (detached) partition. Constrained
+                                   by archive_state idempotency guard.
+        * INSERT on archive_state — manifest row per archived partition
+      NEVER touches events_outbox, event_audit, aggregate_snapshots — those
+      are retention-worker's surface (Q-L2K-1 separation).
+      Heartbeats reuse publisher_heartbeats with publisher_id namespace
+      "archive-worker-<replica>" (cycle-11 single-observability-surface
+      decision).
+    permissions:
+      events:
+        - SELECT
+        - DELETE  # DROP partition is technically a DDL but ACL-wise treated as DELETE on the partitioned table
+      archive_state:
+        - SELECT
+        - INSERT
+      reality_registry:
+        - SELECT
+      publisher_heartbeats:
+        - INSERT
+        - UPDATE
+        - SELECT
+      meta_write_audit:
+        - INSERT
+
+  # ── Cycle 22 (L4.M) — RPC-level entries: meta-worker is the SOLE inbound
+  # MetaWrite() target per I7/I8. Callers are the services that perform
+  # cross-DB writes via MetaWrite RPC (we list the cycle-6/7/10 services
+  # that already declare meta_write_audit INSERT on their `permissions:`).
+  - name: meta-worker-rpcs
+    svid_spiffe_id: spiffe://loreweave.dev/sa/meta-worker
+    notes: |
+      L4.M.1 RPC declarations for meta-worker. Separate "meta-worker-rpcs"
+      entry rather than mutating the existing `meta-worker` permissions
+      entry, so the cycle-6 grant lint sees the unchanged shape. The L4.M
+      loader merges by name when CheckRPCAllowed builds its lookup index
+      (it indexes by the entry name as the callee). Production deployment
+      will consolidate the two entries once the cycle-6 lint also reads
+      the RPC map.
+    rpcs:
+      MetaWrite:
+        allowed_callers:
+          - migration-orchestrator
+          - world-service
+          - backup-scheduler
+          - publisher
+          - admin-cli
+          - archive-worker
+          - retention-worker
+        principal_mode: either
+      MetaWriteBatch:
+        allowed_callers:
+          - migration-orchestrator
+          - world-service
+        principal_mode: either
+      MetaReadSensitive:
+        allowed_callers:
+          - admin-cli
+          - publisher
+        principal_mode: requires_user
+
+  # ── Cycle 25 (L5.F) — glossary-service RPC entries (canon read + write +
+  # seed-export). Per Q-L5-4 LOCKED transport = HTTP/JSON V1.
+  - name: glossary-service-rpcs
+    svid_spiffe_id: spiffe://loreweave.dev/sa/glossary-service
+    notes: |
+      L5.F.3 RPC declarations for glossary-service canon RPCs.
+      Companion to the existing `glossary-service` service entry — this
+      "-rpcs" entry holds the RPC-level allowed_callers list per the
+      cycle-22 L4.M pattern (separate entry so the cycle-6 table-grant
+      lint sees the unchanged shape).
+
+      Q-L5-4 LOCKED: HTTP/JSON V1 (canon_read.yaml, canon_write.yaml,
+      seed_export.yaml). gRPC V2+ if perf demands.
+
+      Q-L5-5 LOCKED: WriteCanonEntry server impl MUST invoke
+      canon_guardrail (L5.I.3) pre-write. Cycle 25 ships the interface
+      only; full impl downstream.
+
+      Roleplay-service is permitted GetCanonEntry / ListCanonEntries —
+      hot prompt-assembly path. World-service additionally permitted
+      ExportCanonForSeed (cycle 26+ L5.G reality seeder).
+      Knowledge-service permitted WriteCanonEntry for the canon-extraction
+      worker (cycle 26+ canon promotion path).
+    rpcs:
+      GetCanonEntry:
+        allowed_callers:
+          - roleplay-service
+          - world-service
+          - knowledge-service
+        principal_mode: either
+      ListCanonEntries:
+        allowed_callers:
+          - roleplay-service
+          - world-service
+          - knowledge-service
+        principal_mode: either
+      WriteCanonEntry:
+        allowed_callers:
+          - knowledge-service
+          - admin-cli
+        principal_mode: requires_user
+      ExportCanonForSeed:
+        allowed_callers:
+          - world-service
+        principal_mode: system_only
+
+  # ── Cycle 26 (L5.G.8) — RPC entries used by the world-service reality
+  # seeder. The base world-service entry above (line 65) carries the
+  # per-table permissions; these "-rpcs" entries declare the cross-service
+  # call surface per the cycle-22 L4.M separate-entry pattern (keeps the
+  # cycle-6 table-grant lint clean).
+  #
+  # Q-L5-2 honored: translation-service is ACL-permitted at seed time
+  # ONLY (system_only principal). The seeder constructs the translation
+  # call ONLY when reality.locale != book.source_locale; the ACL surface
+  # being open is necessary but not sufficient — the seeder enforces the
+  # gate.
+  #
+  # Q-L5-4 honored: HTTP/JSON V1 (matches glossary_client cycle-25).
+  #
+  # book-service-rpcs + knowledge-service-rpcs are pre-declared so the
+  # seeder's RPC trait wiring lands cleanly when those service-side
+  # implementations join foundation scope (currently outside this cycle).
+  - name: translation-service-rpcs
+    svid_spiffe_id: spiffe://loreweave.dev/sa/translation-service
+    notes: |
+      L5.G.8 — RPC declarations for translation-service. The
+      `TranslateCanonValue` RPC is called by world-service's reality_seeder
+      (L5.G.5) ONLY when `reality.locale != book.source_locale` per
+      Q-L5-2 LOCKED. The seeder is the sole authorized caller in V1.
+    rpcs:
+      TranslateCanonValue:
+        allowed_callers:
+          - world-service
+        principal_mode: system_only
+
+  - name: book-service-rpcs
+    svid_spiffe_id: spiffe://loreweave.dev/sa/book-service
+    notes: |
+      L5.G.8 — RPC declarations for book-service (pre-declared, cycle 26).
+      Production book-service HTTP/JSON client lands when book-service
+      joins foundation scope. world-service consumes via the
+      `BookReader` trait (L5.G.2).
+    rpcs:
+      GetBook:
+        allowed_callers:
+          - world-service
+        principal_mode: system_only
+      ListRegions:
+        allowed_callers:
+          - world-service
+        principal_mode: system_only
+
+  - name: knowledge-service-rpcs
+    svid_spiffe_id: spiffe://loreweave.dev/sa/knowledge-service
+    notes: |
+      L5.G.8 — RPC declarations for knowledge-service (pre-declared,
+      cycle 26). Production knowledge-service HTTP/JSON client lands when
+      knowledge-service joins foundation scope. world-service consumes
+      via the `KnowledgeReader` trait (L5.G.4).
+    rpcs:
+      ListNpcProxies:
+        allowed_callers:
+          - world-service
+        principal_mode: system_only
+
+  # ── Cycle 31 (L6.J.3) — provider-registry-service RPC entries used by
+  # the roleplay-service prompt-assembly path. Per CLAUDE.md provider
+  # gateway invariant: roleplay-service MUST NOT call provider SDKs
+  # directly — it resolves model_id → ProviderConfig via this RPC, then
+  # the LLM-gateway adapter performs the actual provider call.
+  #
+  # principal_mode: requires_user — BYOK credentials are user-scoped;
+  # the call must carry the actor user identity so provider-registry
+  # selects the right BYOK key.
+  - name: provider-registry-service-rpcs
+    svid_spiffe_id: spiffe://loreweave.dev/sa/provider-registry-service
+    notes: |
+      L6.J.3 — RPC declarations for provider-registry-service. Cycle 31
+      ships the ACL surface only; the concrete HTTP/JSON client lives
+      in the LLM-gateway sub-program (foundation does NOT call provider
+      SDKs — CLAUDE.md provider gateway invariant + Q-L4D-1 LOCKED).
+
+      GetProviderConfig resolves a model_id to a ProviderConfig
+      (provider_name + model_ref + endpoint_url + training_on_input).
+      Cached client-side per L6.J acceptance criterion (5min TTL,
+      matches cycle 1 L1.B consent.go cache discipline).
+    rpcs:
+      GetProviderConfig:
+        allowed_callers:
+          - roleplay-service
+        principal_mode: requires_user
+
+  # ── Cycle 11 (L2.K) — retention-worker (SEPARATE binary from archive-worker)
+  - name: retention-worker
+    svid_spiffe_id: spiffe://loreweave.dev/sa/retention-worker
+    notes: |
+      L2.K — per-reality retention worker. SEPARATE binary from archive-worker
+      (Q-L2K-1: different ops cadence, different alert SLOs).
+      Surface:
+        * events_outbox  — DELETE published+old rows (addresses D-OUTBOX-PRUNE
+                            row 055). NEVER touches dead_lettered rows.
+        * event_audit    — wraps scripts/event-audit-retention-cron.sh (per-class
+                            retention; the script holds DELETE perms).
+        * aggregate_snapshots — placeholder V1 (L3 cycle 12+).
+      CRITICAL INVARIANT: NEVER touches the events table — that is
+      archive-worker's surface. A retention-worker DELETE on events would
+      race archive-worker. Code review rejects any PR adding `events:`
+      perms to this entry.
+      Heartbeats reuse publisher_heartbeats with publisher_id namespace
+      "retention-worker-<replica>".
+    permissions:
+      events_outbox:
+        - SELECT
+        - DELETE  # published+old prune ONLY; dead-letter rows preserved by query predicate
+      event_audit:
+        - SELECT
+        - DELETE  # per-class retention via wrapped audit script
+      reality_registry:
+        - SELECT
+      publisher_heartbeats:
+        - INSERT
+        - UPDATE
+        - SELECT
+      meta_write_audit:
+        - INSERT
+
+  # ── Cycle 37 (L7.*) — canary deploy controller
+  - name: canary-controller
+    svid_spiffe_id: spiffe://loreweave.dev/sa/canary-controller
+    notes: |
+      L7 canary deploy controller — reads deploy_audit (current stage +
+      canary_history) to drive cohort routing + stage advancement, and UPDATEs
+      deploy_audit (stage advance + appended canary_history) via contracts/meta
+      MetaWrite(). cohort_router is read-only; the controller is the sole writer.
+      NO DELETE (deploy_audit is append/advance-only).
+    permissions:
+      deploy_audit:
+        - SELECT
+        - UPDATE
+      meta_write_audit:
+        - INSERT
+
+  # ── Cycle P2/101 (slice B) — meta-outbox relay
+  - name: meta-outbox-relay
+    svid_spiffe_id: spiffe://loreweave.dev/sa/meta-outbox-relay
+    notes: |
+      P2/101 meta-DB outbox drain. SELECTs pending meta_outbox rows (FOR UPDATE
+      SKIP LOCKED) and UPDATEs their publish-state (published / attempts /
+      last_error / dead_lettered_at) as it XADDs each envelope to Redis Streams
+      (lw.meta.events + the xreality.* bridge). meta_outbox is an OUTBOX
+      TRANSPORT table (written by MetaWrite's sdks/go/metaoutbox appender;
+      drained here) — exempt from I8 meta-write-discipline, exactly as the
+      per-reality events_outbox is drained by the publisher. The relay calls NO
+      MetaWrite() (no meta_write_audit row); it never DELETEs (the pruner is a
+      separate, deferred task — D-META-OUTBOX-PRUNE).
+    permissions:
+      meta_outbox:
+        - SELECT
+        - UPDATE

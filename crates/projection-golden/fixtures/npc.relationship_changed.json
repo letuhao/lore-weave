@@ -1,0 +1,23 @@
+{
+  "_spec": "npc.relationship_changed → UPDATE npc_pc_relationship_projection {other_entity_type, reality_id, trust_level, familiarity_count, last_session_id=payload.session_id, relationship_labels=payload.labels}, keyed npc_id(=aggregate_id)+other_entity_id (NpcPcRelationshipProjection, crates/projections/npc/src/lib.rs:164). Durable NPC↔PC trust/familiarity. NOTE: the arm reads each field via payload.get(), so an ABSENT payload key projects as NULL — this fixture supplies all six to pin the full row.",
+  "envelope": {
+    "event_id": "00000000-0000-0000-0000-000000000801",
+    "event_type": "npc.relationship_changed",
+    "event_version": 1,
+    "aggregate_id": "npc-1",
+    "aggregate_type": "npc",
+    "aggregate_version": 7,
+    "reality_id": "22222222-2222-2222-2222-222222222222",
+    "occurred_at": "2026-01-01T00:00:13.000000Z",
+    "recorded_at": "2026-01-01T00:00:13.000000Z",
+    "payload": { "other_entity_type": "pc", "other_entity_id": "pc-1", "trust_level": 50, "familiarity_count": 3, "session_id": "sess-1", "labels": ["ally"] }
+  },
+  "expected_updates": [
+    { "Update": {
+      "table": "npc_pc_relationship_projection",
+      "pk": { "npc_id": "npc-1", "other_entity_id": "pc-1" },
+      "fields": { "other_entity_type": "pc", "reality_id": "22222222-2222-2222-2222-222222222222", "trust_level": 50, "familiarity_count": 3, "last_session_id": "sess-1", "relationship_labels": ["ally"] },
+      "meta": { "event_id": "00000000-0000-0000-0000-000000000801", "aggregate_version": 7, "applied_at": "2026-01-01T00:00:13.000000Z" }
+    }}
+  ]
+}

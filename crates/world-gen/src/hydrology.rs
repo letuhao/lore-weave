@@ -8,6 +8,7 @@ use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 
 use crate::climate::ClimateZone;
+use crate::params::HydrologyParams;
 
 /// Output of the hydrology stage.
 pub struct Hydrology {
@@ -34,11 +35,24 @@ pub fn build(
     neighbors: &[Vec<u32>],
     climate: &[ClimateZone],
 ) -> Hydrology {
+    build_with(centers, elevation, sea_level, neighbors, climate, &HydrologyParams::default())
+}
+
+/// [`build`] with a caller-tuned [`HydrologyParams`] (parameterization P4).
+/// Default params ⇒ byte-identical to the prior hardcoded thresholds.
+pub fn build_with(
+    centers: &[[f32; 3]],
+    elevation: &[u16],
+    sea_level: u16,
+    neighbors: &[Vec<u32>],
+    climate: &[ClimateZone],
+    hp: &HydrologyParams,
+) -> Hydrology {
     let _ = centers; // kept in signature for downstream forward-compat.
     let (receiver, pop_order) = priority_flood(elevation, sea_level, neighbors);
     let river_flux = flow_accumulation(elevation, sea_level, climate, &receiver, &pop_order);
-    let river_threshold = percentile_threshold(&river_flux, elevation, sea_level);
-    let is_in_ocean = water_network(elevation, sea_level, neighbors);
+    let river_threshold = percentile_threshold(&river_flux, elevation, sea_level, hp.river_percentile);
+    let is_in_ocean = water_network(elevation, sea_level, neighbors, hp);
     let is_coast = coast_cells(elevation, sea_level, neighbors, &is_in_ocean);
     Hydrology {
         river_flux,
@@ -112,7 +126,7 @@ fn flow_accumulation(
 
 /// River threshold = 96th percentile of land-cell flux (~4 % of land is
 /// river). Self-tuning and deterministic.
-fn percentile_threshold(flux: &[f32], elevation: &[u16], sea_level: u16) -> f32 {
+fn percentile_threshold(flux: &[f32], elevation: &[u16], sea_level: u16, percentile: f32) -> f32 {
     let mut land: Vec<f32> = elevation
         .iter()
         .zip(flux)
@@ -123,7 +137,7 @@ fn percentile_threshold(flux: &[f32], elevation: &[u16], sea_level: u16) -> f32 
         return f32::INFINITY; // ~no land ⇒ no rivers
     }
     land.sort_by(f32::total_cmp);
-    let idx = ((land.len() as f32 * 0.96) as usize).min(land.len() - 1);
+    let idx = ((land.len() as f32 * percentile) as usize).min(land.len() - 1);
     land[idx]
 }
 
@@ -140,10 +154,11 @@ fn water_network(
     elevation: &[u16],
     sea_level: u16,
     neighbors: &[Vec<u32>],
+    hp: &HydrologyParams,
 ) -> Vec<bool> {
     let n = elevation.len();
     let is_water = |i: usize| elevation[i] < sea_level;
-    let lake_max = (n / 150).max(24);
+    let lake_max = (n / (hp.lake_max_divisor as usize).max(1)).max(hp.lake_max_floor as usize);
     let mut seen = vec![false; n];
     let mut is_in_ocean = vec![false; n];
 
@@ -222,7 +237,7 @@ mod tests {
         for e in &mut elevation[18..22] {
             *e = 0;
         }
-        let ocean = water_network(&elevation, 50, &neighbors);
+        let ocean = water_network(&elevation, 50, &neighbors, &HydrologyParams::default());
         assert!(!ocean[18], "small interior basin must be a lake");
     }
 
@@ -234,7 +249,7 @@ mod tests {
         for e in &mut elevation[20..60] {
             *e = 0;
         }
-        let ocean = water_network(&elevation, 50, &neighbors);
+        let ocean = water_network(&elevation, 50, &neighbors, &HydrologyParams::default());
         assert!(
             ocean[20],
             "large interior basin must be ocean (inland sea)"

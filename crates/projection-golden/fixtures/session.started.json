@@ -1,0 +1,30 @@
+{
+  "_spec": "session.started → INSERT npc_session_memory_projection (NpcSessionMemoryProjection). row: payload.npc_id/session_id/aggregate_id, env.reality_id, session_started_at=env.occurred_at, interaction_count=0, archive_status='active'.",
+  "envelope": {
+    "event_id": "00000000-0000-0000-0000-000000000301",
+    "event_type": "session.started",
+    "event_version": 1,
+    "aggregate_id": "sess-1",
+    "aggregate_type": "session",
+    "aggregate_version": 1,
+    "reality_id": "22222222-2222-2222-2222-222222222222",
+    "occurred_at": "2026-01-01T00:00:00.000000Z",
+    "recorded_at": "2026-01-01T00:00:00.000000Z",
+    "payload": { "npc_id": "npc-1", "session_id": "sess-1", "aggregate_id": "sess-1" }
+  },
+  "expected_updates": [
+    { "Insert": {
+      "table": "npc_session_memory_projection",
+      "row": {
+        "npc_id": "npc-1",
+        "session_id": "sess-1",
+        "reality_id": "22222222-2222-2222-2222-222222222222",
+        "aggregate_id": "sess-1",
+        "session_started_at": "2026-01-01T00:00:00.000000Z",
+        "interaction_count": 0,
+        "archive_status": "active"
+      },
+      "meta": { "event_id": "00000000-0000-0000-0000-000000000301", "aggregate_version": 1, "applied_at": "2026-01-01T00:00:00.000000Z" }
+    }}
+  ]
+}

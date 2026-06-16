@@ -1,0 +1,21 @@
+{
+  "_spec": "world.kv_unset → DELETE world_kv_projection keyed {key} (WorldKvProjection). NOTE: the Delete variant carries NO VerificationMeta (by design — a delete leaves no row to stamp).",
+  "envelope": {
+    "event_id": "00000000-0000-0000-0000-000000000602",
+    "event_type": "world.kv_unset",
+    "event_version": 1,
+    "aggregate_id": "world",
+    "aggregate_type": "world",
+    "aggregate_version": 2,
+    "reality_id": "22222222-2222-2222-2222-222222222222",
+    "occurred_at": "2026-01-01T00:00:09.000000Z",
+    "recorded_at": "2026-01-01T00:00:09.000000Z",
+    "payload": { "key": "quest.flag" }
+  },
+  "expected_updates": [
+    { "Delete": {
+      "table": "world_kv_projection",
+      "pk": { "key": "quest.flag" }
+    }}
+  ]
+}

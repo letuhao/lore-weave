@@ -1,0 +1,11 @@
+id: upcaster-conformance
+description: "S4 (I14) — the upcaster registry round-trips the shipped reference upcaster (npc.said v1→v2) AND DefaultRegistry covers every multi-version hop declared in contracts/events/_registry.yaml. A new version bump without its upcaster fails the gate. Pure go-test (no stack); a build break fail-closes."
+invariant: I14
+kind: go-test
+# `go test -C <dir>` runs go directly (on the runner's PATH) with no shell — so
+# this works cross-platform, including Windows dev where a spawned WSL/Git bash
+# would not carry go.exe on PATH. -C handles the nested module (own go.mod).
+command: ["go", "test", "-C", "contracts/events/upcasters_go", "-run", "TestS4Upcaster", "./..."]
+requires: []
+skip_when: []
+fail_closed_on_setup_error: false

@@ -4,6 +4,7 @@ import cors from 'cors';
 import { Server } from 'colyseus';
 import { WebSocketTransport } from '@colyseus/ws-transport';
 import { EchoRoom } from './rooms/EchoRoom.js';
+import { assertWsAuthConfig } from './ws/auth.js';
 
 // Entry: Express HTTP (for matchmake + health) + Colyseus WS attached.
 //
@@ -35,6 +36,10 @@ const gameServer = new Server({
 });
 
 gameServer.define('echo', EchoRoom);
+
+// Fail-closed (077 review HIGH-2): refuse to start a PUBLIC listener that would
+// fall back to static dev_token auth in production (no shared Redis ticket store).
+assertWsAuthConfig();
 
 gameServer.listen(PORT).then(() => {
   // eslint-disable-next-line no-console

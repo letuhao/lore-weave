@@ -1,0 +1,37 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: api-gateway-bff
+  namespace: lw-foundation
+  labels:
+    app: api-gateway-bff
+    capacity-class: web
+    foundation-cycle: "7"
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: api-gateway-bff
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    # Primary: requests-per-second
+    - type: External
+      external:
+        metric:
+          name: lw_api_gateway_rps
+        target:
+          type: AverageValue
+          averageValue: "500"
+    # Fallback: CPU
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+    scaleUp:
+      stabilizationWindowSeconds: 30

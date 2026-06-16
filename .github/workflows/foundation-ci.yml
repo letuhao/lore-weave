@@ -1,0 +1,341 @@
+name: foundation-ci
+
+# PRR-35: the foundation's acceptance gates (build, test, vet, lints, secret
+# scan) previously ran ONLY locally — no CI executed them, so every "N/N PASS"
+# recorded in CYCLE_LOG was unverified. This workflow runs them on every push /
+# PR to the foundation branch + main so the gates are actually enforced in CI.
+#
+# Complements the existing lint-foundation.yml (static lints) by adding the
+# build + test + I3 + projection-coverage + gitleaks gates.
+
+on:
+  push:
+    branches: [main, "mmo-rpg/**"]
+  pull_request:
+    branches: [main, "mmo-rpg/**"]
+
+permissions:
+  contents: read
+
+jobs:
+  rust:
+    name: Rust workspace (build + test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --workspace
+      - run: cargo test --workspace
+
+  go:
+    name: Go modules (build + vet + test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - name: build + vet + test every go.mod module
+        shell: bash
+        run: |
+          set -uo pipefail
+          fail=0
+          while IFS= read -r mod; do
+            dir=$(dirname "$mod")
+            echo "::group::$dir"
+            if ! ( cd "$dir" && go build ./... && go vet ./... && go test ./... ); then
+              echo "::error::go module failed: $dir"
+              fail=1
+            fi
+            echo "::endgroup::"
+          done < <(find . -name go.mod -not -path '*/.git/*')
+          exit $fail
+      # 110 D-BREACH-RACE-CI: the module test loop above runs WITHOUT -race
+      # (the foundation gate is portable to cgo-less dev boxes). The breach
+      # Monitor has real concurrency — HTTP Track() vs the deadline ticker
+      # tick() — that is mutex-correct by inspection but must be verified under
+      # the race detector. ubuntu-latest has gcc, so run that one package with
+      # -race here. Extend this list if other concurrent packages need it.
+      - name: race detector — incident-bot breach monitor (110)
+        run: go -C services/incident-bot test -race -count=1 ./internal/breach
+
+  lints:
+    name: Foundation lints (I3 language-rule + projection-coverage + validators)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash scripts/language-rule-lint.sh
+      - run: bash scripts/projection-coverage-lint.sh
+      # Phase 0 (DEFERRED 078): wire the lint/validator scripts that PASS on
+      # the current tree but were previously local-only. Each was confirmed
+      # exit-0 before wiring. Scripts that need a missing tool or live infra
+      # (lint-contract → spectral ruleset, log-density-detector → /var/log,
+      # projection-drift-check → DATABASE_URL) are intentionally NOT wired —
+      # see the Phase 0 report for the follow-up debt list.
+      #
+      # I2 provider-gateway invariant (priority): no direct LLM SDK imports.
+      - run: bash scripts/lint-no-direct-llm-imports.sh
+      - run: bash scripts/dashboard-validator.sh
+      - run: bash scripts/alert-rule-validator.sh
+      - run: bash scripts/dependency-registry-lint.sh
+      - run: bash scripts/admin-command-registry-lint.sh
+      - run: bash scripts/logging-discipline-lint.sh
+      - run: bash scripts/tracing-completeness-lint.sh
+      - run: bash scripts/runbook-drift-check.sh
+      - run: bash scripts/runbook-verification-lint.sh
+      - run: bash scripts/template-fixture-validator.sh
+
+  python:
+    name: Python services (byte-compile)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # Byte-compile only — no pip install, no pytest (avoids heavy/networked
+      # installs). Catches syntax errors across the Python service trees.
+      - name: byte-compile python service apps
+        shell: bash
+        run: |
+          set -uo pipefail
+          fail=0
+          for svc in chat-service knowledge-service video-gen-service translation-service worker-ai; do
+            app="services/$svc/app"
+            if [ -d "$app" ]; then
+              echo "::group::compileall $app"
+              if ! python -m compileall -q "$app"; then
+                echo "::error::python compile failed: $app"
+                fail=1
+              fi
+              echo "::endgroup::"
+            else
+              echo "::warning::$app not found — skipping"
+            fi
+          done
+          exit $fail
+
+  db-smoke:
+    name: DB live-smoke (PgEventStore + publisher integration)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: foundation
+          POSTGRES_PASSWORD: foundation
+          POSTGRES_DB: foundation
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U foundation -d foundation"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGPASSWORD: foundation
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - name: create dp_kernel_test + apply migrations 0002 + 0004
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The actions `services:` container is reachable on localhost:5432.
+          psql() { PGPASSWORD=foundation command psql -h localhost -p 5432 -U foundation "$@"; }
+          # Idempotent create (guarded probe).
+          exists=$(psql -d foundation -tAc "SELECT 1 FROM pg_database WHERE datname='dp_kernel_test'" || true)
+          if [ "$exists" != "1" ]; then
+            psql -d foundation -v ON_ERROR_STOP=1 -c "CREATE DATABASE dp_kernel_test;"
+          fi
+          psql -d dp_kernel_test -v ON_ERROR_STOP=1 -f contracts/migrations/per_reality/0002_events_table.up.sql
+          psql -d dp_kernel_test -v ON_ERROR_STOP=1 -f contracts/migrations/per_reality/0004_aggregate_snapshots_table.up.sql
+      - name: cargo test PgEventStore live-smoke
+        env:
+          LOREWEAVE_TEST_PG_URL: postgres://foundation:foundation@localhost:5432/dp_kernel_test
+        run: cargo test -p dp-kernel --test integration_event_store
+      # DEFERRED 054 (D-PUBLISHER-LIVE-WIRING): drain outbox -> Redis Streams,
+      # asserted against the live PG + Redis services. The Go test applies the
+      # per-reality migrations (0002 + 0005) itself.
+      - name: create publisher_smoke DB
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql() { PGPASSWORD=foundation command psql -h localhost -p 5432 -U foundation "$@"; }
+          exists=$(psql -d foundation -tAc "SELECT 1 FROM pg_database WHERE datname='publisher_smoke'" || true)
+          if [ "$exists" != "1" ]; then
+            psql -d foundation -v ON_ERROR_STOP=1 -c "CREATE DATABASE publisher_smoke;"
+          fi
+      - name: go test publisher live-smoke
+        env:
+          LW_INTEGRATION_DB: postgres://foundation:foundation@localhost:5432/publisher_smoke?sslmode=disable
+          LW_INTEGRATION_REDIS: redis://localhost:6379/0
+        run: go -C tests/integration test -tags=integration -run TestPublisherLiveSmoke -count=1 ./...
+      # DEFERRED 069 (meta-worker canon path): the full fan-out spine —
+      # publisher → xreality.book.canon.updated → meta-worker → canon_projection.
+      - name: create meta-worker smoke DBs
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql() { PGPASSWORD=foundation command psql -h localhost -p 5432 -U foundation "$@"; }
+          for db in metaworker_meta metaworker_smoke; do
+            exists=$(psql -d foundation -tAc "SELECT 1 FROM pg_database WHERE datname='$db'" || true)
+            if [ "$exists" != "1" ]; then
+              psql -d foundation -v ON_ERROR_STOP=1 -c "CREATE DATABASE $db;"
+            fi
+          done
+      - name: go test meta-worker live-smoke
+        env:
+          LW_INTEGRATION_DB: postgres://foundation:foundation@localhost:5432/metaworker_smoke?sslmode=disable
+          LW_INTEGRATION_META_DB: postgres://foundation:foundation@localhost:5432/metaworker_meta?sslmode=disable
+          LW_INTEGRATION_REDIS: redis://localhost:6379/0
+        run: go -C tests/integration test -tags=integration -run TestMetaWorkerLiveSmoke -count=1 ./...
+      # DEFERRED 056+057 (archive-worker): Parquet+ZSTD → MinIO → DROP → restore.
+      # MinIO runs as a docker-run step (a service container can't set the
+      # `server /data` command); it's reachable on localhost:9000.
+      - name: start MinIO + create archive_smoke DB
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run -d --name minio-ci -p 9000:9000 \
+            -e MINIO_ROOT_USER=foundation -e MINIO_ROOT_PASSWORD=foundation-secret-dev-only \
+            minio/minio:latest server /data
+          # Wait for MinIO to accept connections.
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:9000/minio/health/live >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          psql() { PGPASSWORD=foundation command psql -h localhost -p 5432 -U foundation "$@"; }
+          exists=$(psql -d foundation -tAc "SELECT 1 FROM pg_database WHERE datname='archive_smoke'" || true)
+          if [ "$exists" != "1" ]; then
+            psql -d foundation -v ON_ERROR_STOP=1 -c "CREATE DATABASE archive_smoke;"
+          fi
+      - name: go test archive-worker live-smoke
+        env:
+          LW_INTEGRATION_DB: postgres://foundation:foundation@localhost:5432/archive_smoke?sslmode=disable
+          LW_INTEGRATION_MINIO_ENDPOINT: localhost:9000
+          LW_INTEGRATION_MINIO_ACCESS: foundation
+          LW_INTEGRATION_MINIO_SECRET: foundation-secret-dev-only
+        run: go -C tests/integration test -tags=integration -run TestArchiveWorkerLiveSmoke -count=1 ./...
+      # DEFERRED 058 (retention-worker): bounded outbox prune (pgx) + audit
+      # retention (os/exec → event-audit-retention-cron.sh → psql). The runner
+      # has psql + bash.
+      - name: create retention_smoke DB
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql() { PGPASSWORD=foundation command psql -h localhost -p 5432 -U foundation "$@"; }
+          exists=$(psql -d foundation -tAc "SELECT 1 FROM pg_database WHERE datname='retention_smoke'" || true)
+          if [ "$exists" != "1" ]; then
+            psql -d foundation -v ON_ERROR_STOP=1 -c "CREATE DATABASE retention_smoke;"
+          fi
+      - name: go test retention-worker live-smoke
+        env:
+          LW_INTEGRATION_DB: postgres://foundation:foundation@localhost:5432/retention_smoke?sslmode=disable
+          # The audit script connects via the DSN it is handed (localhost:5432).
+        run: go -C tests/integration test -tags=integration -run TestRetentionWorkerLiveSmoke -count=1 ./...
+      # DEFERRED 059 (D-EMBEDDING-QUEUE-LIVE-WIRING core): SqlxEmbeddingWriter →
+      # npc_session_memory_embedding (pgvector VECTOR(1536)) + MetaAuditWriter →
+      # service_to_service_audit. The Rust test applies the per-reality (0006 +
+      # 0008) and meta (016) migrations itself via sqlx::raw_sql, so we only
+      # create the empty DBs here. The DB MUST be the pgvector image (it is —
+      # the job's postgres service is pgvector/pgvector:pg16) so 0008 installs
+      # the `vector` extension + makes the embedding column nullable.
+      - name: create worldservice embedding smoke DBs
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql() { PGPASSWORD=foundation command psql -h localhost -p 5432 -U foundation "$@"; }
+          for db in worldservice_smoke worldservice_meta; do
+            exists=$(psql -d foundation -tAc "SELECT 1 FROM pg_database WHERE datname='$db'" || true)
+            if [ "$exists" != "1" ]; then
+              psql -d foundation -v ON_ERROR_STOP=1 -c "CREATE DATABASE $db;"
+            fi
+          done
+      - name: cargo test embedding-worker live-smoke
+        env:
+          LOREWEAVE_TEST_PG_URL: postgres://foundation:foundation@localhost:5432/worldservice_smoke?sslmode=disable
+          LOREWEAVE_TEST_META_URL: postgres://foundation:foundation@localhost:5432/worldservice_meta?sslmode=disable
+        run: cargo test -p world-service --test embedding_live
+      # 147 (D-L3EF-REPLAY-LIVE-SMOKE): the L3.E/F integrity-checker round-trip —
+      # seed events, build the live projection row in-process, run the
+      # `replay-aggregate` bin as a subprocess, byte-compare its `to_jsonb-meta`
+      # payload vs the live row (clean + drift + multi-aggregate cases). The Rust
+      # test applies the per-reality migrations (0002 + 0006) itself via
+      # sqlx::raw_sql, so we only create the empty DB here. 0002 DROPs+recreates
+      # `events`, so this MUST be a dedicated DB (not shared with the embedding
+      # smoke DB above). Unblocks the 073 rebuild gate (141).
+      - name: create replay-aggregate smoke DB
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql() { PGPASSWORD=foundation command psql -h localhost -p 5432 -U foundation "$@"; }
+          exists=$(psql -d foundation -tAc "SELECT 1 FROM pg_database WHERE datname='replay_smoke'" || true)
+          if [ "$exists" != "1" ]; then
+            psql -d foundation -v ON_ERROR_STOP=1 -c "CREATE DATABASE replay_smoke;"
+          fi
+      - name: cargo test replay-aggregate live-smoke
+        env:
+          LOREWEAVE_TEST_PG_URL: postgres://foundation:foundation@localhost:5432/replay_smoke?sslmode=disable
+        run: cargo test -p world-service --test replay_aggregate_live
+      # 142 (D-REBUILD-LIVE-SMOKE): the 073 `rebuilder` bin round-trip — TRUNCATE
+      # → seed events → run the bin → assert RebuildStats + the rebuilt rows (pc +
+      # npc_session_memory). The Rust test applies 0002+0006 itself (0002 DROPs
+      # `events` + the test TRUNCATEs projection tables), so it needs its OWN DB,
+      # separate from replay_smoke. Validates the projection-apply path that the
+      # 073 unproven-gate (141) protected.
+      - name: create rebuilder smoke DB
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql() { PGPASSWORD=foundation command psql -h localhost -p 5432 -U foundation "$@"; }
+          exists=$(psql -d foundation -tAc "SELECT 1 FROM pg_database WHERE datname='rebuild_smoke'" || true)
+          if [ "$exists" != "1" ]; then
+            psql -d foundation -v ON_ERROR_STOP=1 -c "CREATE DATABASE rebuild_smoke;"
+          fi
+      - name: cargo test rebuilder live-smoke
+        env:
+          LOREWEAVE_TEST_PG_URL: postgres://foundation:foundation@localhost:5432/rebuild_smoke?sslmode=disable
+        run: cargo test -p world-service --test rebuilder_live
+      # 152 (D-IC-PGSOURCE-SCAN-LIVE-SMOKE): the integrity-checker monthly cursor
+      # (pgsource.ScanRows) round-trip — keyset pagination visits every row once +
+      # the ErrOwnerPruned skip path. Build-tagged `integration`, applies 0002+0006
+      # itself + TRUNCATEs pc_projection, so it needs its OWN DB (scan_smoke).
+      - name: create pgsource scan smoke DB
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql() { PGPASSWORD=foundation command psql -h localhost -p 5432 -U foundation "$@"; }
+          exists=$(psql -d foundation -tAc "SELECT 1 FROM pg_database WHERE datname='scan_smoke'" || true)
+          if [ "$exists" != "1" ]; then
+            psql -d foundation -v ON_ERROR_STOP=1 -c "CREATE DATABASE scan_smoke;"
+          fi
+      - name: go test pgsource ScanRows live-smoke
+        env:
+          LOREWEAVE_TEST_PG_URL: postgres://foundation:foundation@localhost:5432/scan_smoke?sslmode=disable
+        run: go -C services/integrity-checker test -tags=integration -run TestScanRows ./pkg/pgsource/...
+
+  secrets:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITLEAKS_CONFIG: .gitleaks.toml

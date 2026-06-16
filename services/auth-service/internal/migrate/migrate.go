@@ -80,6 +80,68 @@ CREATE TABLE IF NOT EXISTS user_follows (
 );
 CREATE INDEX IF NOT EXISTS idx_follows_following ON user_follows(following_id);
 CREATE INDEX IF NOT EXISTS idx_follows_follower ON user_follows(follower_id);
+
+-- 074 (D-ADMIN-CLI-JWT): admin principals — the RBAC source of truth for who
+-- may be issued an admin JWT. ON DELETE RESTRICT (NOT CASCADE) so an admin grant
+-- must be explicitly revoked before the user row can be removed; admin status
+-- cannot be silently erased via the DELETE /account path.
+CREATE TABLE IF NOT EXISTS admin_principals (
+  user_id    UUID PRIMARY KEY REFERENCES users(id) ON DELETE RESTRICT,
+  role       TEXT NOT NULL CHECK (role IN ('admin','sre','founder')),
+  scopes     TEXT[] NOT NULL DEFAULT '{}',
+  active     BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- 074/075: append-only audit of every admin/break-glass token ISSUANCE attempt.
+-- Lives in auth-service's own DB (NOT the meta-DB admin_action_audit, whose
+-- MetaWrite path is deferred-073). Every attempt is logged via the outcome col,
+-- denies/errors, so probing the mint endpoint leaves a trail. Free-text reason
+-- is NEVER stored: only reason_len + a KEYED HMAC (not dictionary-reversible).
+-- actor_handle is denormalized so the forensic trail survives user deletion.
+CREATE TABLE IF NOT EXISTS admin_token_issuance_audit (
+  audit_id            UUID PRIMARY KEY,
+  actor_id            UUID NOT NULL,
+  actor_handle        TEXT NOT NULL,
+  second_actor_id     UUID NULL,
+  second_actor_handle TEXT NULL,
+  token_kind          TEXT NOT NULL CHECK (token_kind IN ('admin','break_glass')),
+  outcome             TEXT NOT NULL CHECK (outcome IN ('success','deny','error')),
+  deny_reason         TEXT NULL,
+  role                TEXT NULL,
+  scopes              TEXT[] NOT NULL DEFAULT '{}',
+  break_glass         BOOLEAN NOT NULL DEFAULT FALSE,
+  incident_ticket     TEXT NULL,
+  reason_len          INT NULL CHECK (reason_len IS NULL OR reason_len >= 100),
+  reason_hmac         BYTEA NULL,
+  jti                 UUID NULL,
+  issued_at_nanos     BIGINT NULL,
+  expires_at_nanos    BIGINT NULL,
+  created_at_nanos    BIGINT NOT NULL,
+  created_at          TIMESTAMPTZ GENERATED ALWAYS AS
+      (to_timestamp(created_at_nanos::double precision / 1e9)) STORED
+);
+
+-- jti is unique across SUCCESSFUL issuances (NULL on deny/error rows).
+CREATE UNIQUE INDEX IF NOT EXISTS uq_admin_issuance_jti
+  ON admin_token_issuance_audit (jti) WHERE jti IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_admin_issuance_actor_created
+  ON admin_token_issuance_audit (actor_id, created_at DESC);
+
+-- Append-only: REVOKE UPDATE/DELETE so even a compromised app role cannot
+-- rewrite history. NOTE: this only holds if auth-service connects as a
+-- NON-OWNER role (owner/superuser bypasses REVOKE). The dev stack connects as
+-- the DB owner, so the guard is a no-op there and the EXCEPTION below swallows
+-- the missing-role case; production MUST run auth-service under app_service_role.
+DO $$
+BEGIN
+    EXECUTE 'REVOKE UPDATE, DELETE ON TABLE admin_token_issuance_audit FROM app_service_role';
+EXCEPTION
+    WHEN undefined_object THEN
+        RAISE NOTICE 'role app_service_role does not exist (dev stack); skipping REVOKE';
+END $$;
 `
 
 func Up(ctx context.Context, pool *pgxpool.Pool) error {

@@ -1,0 +1,50 @@
+# scripts/archive-worker-cron.yaml — L2.J.4 archive-worker schedule.
+#
+# Cycle 11 ships this as a contract document. The actual scheduler binding
+# lands alongside D-PUBLISHER-LIVE-WIRING; until then this file is the
+# source of truth for "when does archive-worker run + against which realities".
+#
+# Schedule model:
+#   * The archive-worker daemon (services/archive-worker/cmd/archive-worker/)
+#     wakes once per reality_run_interval. Per-reality scheduling avoids
+#     global lock contention (vs one big "archive everything at midnight"
+#     batch) and spreads MinIO upload IO across the day.
+#   * Each per-reality wake checks `partition_picker.PickOldest`. If nil →
+#     no-op (cheap; ~one SELECT). If non-nil → ONE partition archived per
+#     wake. A reality with N backlogged partitions catches up over N wakes.
+
+schedule:
+  # How often the daemon polls each reality. Default 24h matches monthly
+  # partition cadence — a per-reality wake at most once per day is enough
+  # to keep up under steady state.
+  reality_run_interval: 24h
+
+  # Maximum staleness allowed before alerting on missed runs. SRE alert
+  # fires when (NOW() - max(archive_state.archived_at)) > stale_alert_threshold
+  # AND the partition_picker has eligible candidates.
+  stale_alert_threshold: 72h
+
+  # Cutoff — partitions whose UpperBound is OLDER than this become eligible
+  # for archive. Matches partition_picker.New's default.
+  archive_cutoff: 2160h  # 90 days
+
+  # MinIO bucket. Separate from `lw-db-backups` (L1.H) per Q-L1H-1 +
+  # cycle-11 DESIGN note.
+  bucket: lw-event-archive
+
+  # Per-reality concurrency. V1 = serial (one partition at a time across
+  # the entire daemon); V2+ may parallelise once we observe per-shard MinIO
+  # IO is the bottleneck.
+  v1_concurrency: 1
+  v3_concurrency: 4
+
+  # Heartbeat namespace into publisher_heartbeats (cycle-11 reuse decision —
+  # single observability surface vs introducing archive_worker_heartbeats).
+  heartbeat_namespace: archive-worker
+
+# Backfill: when a reality has months of un-archived backlog (e.g. a brand-new
+# foundation-platform deployment) the daemon catches up at one-partition-per-
+# reality-run-interval pace. For an emergency backfill, operator runs:
+#   archive-worker --reality $REALITY_ID --backfill --max-iterations 100
+# (the --backfill flag bypasses the reality_run_interval throttle; capped by
+# --max-iterations to avoid runaway).

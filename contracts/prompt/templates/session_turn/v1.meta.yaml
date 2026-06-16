@@ -1,0 +1,19 @@
+# Cycle 31 L6.K.2 — session_turn template metadata (v1 skeleton).
+# Q-L6K-1 LOCKED: foundation ships EMPTY templates. Feature team /
+# LLM-logic sub-program fills concrete prompt copy + tunes the budget
+# numbers against the actual model + tokenizer.
+#
+# Foundation V1 defaults are placeholders — the template-fixture-validator
+# checks that meta.yaml parses, not that the numbers are tuned.
+
+intent: session_turn
+version: 1
+status: skeleton  # transitions to "active" when LLM-logic sub-program ships copy
+compatible_model_tiers:
+  - tier_high
+  - tier_mid
+expected_token_budget: 16000   # S09 §12Y.7 cap for session_turn
+fixture_set: v1.fixtures/
+deprecated_at: null
+replay_window_days: 90
+owner: llm-logic-subprogram     # Q-L6K-1 LOCKED

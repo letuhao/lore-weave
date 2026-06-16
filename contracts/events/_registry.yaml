@@ -1,0 +1,213 @@
+# contracts/events/_registry.yaml — L2.F event schema registry (R03 §12C.2)
+#
+# AUTHORITATIVE list of every event_type emitted by LoreWeave services.
+# Each entry MUST declare:
+#   - name           — canonical event_type (e.g. "npc.said")
+#   - aggregate      — aggregate_type the event mutates ("npc", "reality", "world", "pc", "region")
+#   - versions       — ordered list of versions currently in use [1, 2, ...]
+#   - active_version — the version NEW events SHOULD emit (lowest acceptable read version)
+#   - go_struct      — qualified Go struct name in `contracts/events/`
+#   - description    — one-line semantics; matches @description annotation
+#   - shipped_cycle  — RAID cycle that first landed this event
+#   - owner          — service/team responsible
+# Optional:
+#   - deprecated_at  — ISO date when version[*] retirement starts (R03 §12C.5
+#                      cooldown; v1 must remain readable for 6 months after
+#                      v2 ships)
+#   - retire_after   — ISO date AFTER which the version is removed (loader
+#                      refuses to register; archive-only)
+#
+# Adding a NEW event:
+#   1. Add a struct in `contracts/events/<aggregate>.go` with @event annotation
+#   2. Add an entry here
+#   3. Run `make eventgen` to regenerate dispatch table + polyglot outputs
+#   4. CI gate `scripts/eventgen-validate.sh` fails on drift
+#
+# Bumping a version (additive field):
+#   1. Add a NEW struct (e.g. NpcSaidV2)
+#   2. Add `@upcast 1->2` on the new struct
+#   3. Add the version + upcaster to the entry here
+#   4. Implement the upcaster in `contracts/events/upcasters_go/`
+#
+# Breaking changes:
+#   - DO NOT mutate an existing version's fields. Add a new event_type
+#     (e.g. `npc.said.v2_breaking`) and deprecate the old one with cooldown.
+#
+
+version: 1
+
+events:
+  # ────────────────────────────────────────────────────────────────────
+  # reality.* — reality lifecycle (00_overview §4.2)
+  # ────────────────────────────────────────────────────────────────────
+  - name: reality.created
+    aggregate: reality
+    versions: [1]
+    active_version: 1
+    go_struct: RealityCreatedV1
+    description: A new reality (LLM MMO RPG instance) is provisioned and ready for player commands.
+    shipped_cycle: 8
+    owner: world-service
+
+  # ────────────────────────────────────────────────────────────────────
+  # npc.* — NPC behavior + utterances
+  # ────────────────────────────────────────────────────────────────────
+  - name: npc.said
+    aggregate: npc
+    versions: [1, 2]
+    active_version: 2
+    go_struct: NpcSaidV2
+    description: NPC utters a line of dialogue in-world.
+    shipped_cycle: 8
+    owner: roleplay-service
+    # v1 ships with @deprecated_at; cooldown timer starts when v2 active.
+    deprecations:
+      - version: 1
+        deprecated_at: '2026-05-29'
+        retire_after: '2026-12-31'
+        upcaster_to: 2 # v1→v2 must exist (contracts/events/upcasters_go/npc_said_v1_to_v2.go)
+
+  # ────────────────────────────────────────────────────────────────────
+  # world.* — world-tick + simulation pulse
+  # ────────────────────────────────────────────────────────────────────
+  - name: world.tick
+    aggregate: world
+    versions: [1]
+    active_version: 1
+    go_struct: WorldTickV1
+    description: Periodic in-world heartbeat. Drives scheduled NPC behaviors, weather, faction simulation.
+    shipped_cycle: 8
+    owner: world-service
+
+  # ────────────────────────────────────────────────────────────────────
+  # xreality.* — cross-reality fanout events (RAID cycle 10, L2.L)
+  # ────────────────────────────────────────────────────────────────────
+  # These events are a SUBSET of the normal event flow: they emit through
+  # the normal per-reality outbox + publisher, AND additionally fan out to
+  # the `xreality.<entity>.<verb>` Redis Stream (Q-L2-4 naming) where
+  # meta-worker (sole consumer per I7) dispatches them. The selection is
+  # made by the envelope's `metadata.cross_reality: true` flag (set by
+  # the emitting service). The L2.I validator accepts xreality events
+  # like any other registered event_type.
+  - name: xreality.canon.promoted
+    aggregate: reality
+    versions: [1]
+    active_version: 1
+    cross_reality: true
+    go_struct: XRealityCanonPromotedV1
+    description: A canon entry was promoted in one reality; meta-worker dispatches projection writes across consumer realities.
+    shipped_cycle: 10
+    owner: glossary-service
+
+  - name: xreality.user.erased
+    aggregate: reality
+    versions: [1]
+    active_version: 1
+    cross_reality: true
+    go_struct: XRealityUserErasedV1
+    description: GDPR erasure event for a user; meta-worker fans out the deletion to every reality the user touched.
+    shipped_cycle: 10
+    owner: auth-service
+
+  # ────────────────────────────────────────────────────────────────────
+  # canon.* — L5.A glossary-service canon mutation events (RAID cycle 23)
+  # ────────────────────────────────────────────────────────────────────
+  # Glossary-service emits these via its own outbox (R06 §12F). Publisher
+  # drains + also fans out as xreality.book.canon.updated (cycle 10 xreality
+  # protocol) for per-reality canon_projection writes (L5.B/D, cycle 24).
+  #
+  # Per Q-L5A-1 LOCKED: foundation owns ONLY the schema + contract test
+  # fixture; the outbox emission lives in a separate sub-program in
+  # services/glossary-service/ (NOT touched by this cycle).
+  #
+  # Per Q-L5-3 LOCKED: canon_layer enum is {L1_axiom, L2_seeded} — single
+  # column on per-reality canon_projection (L5.D cycle 23).
+  - name: canon.entry.created
+    aggregate: canon
+    versions: [1]
+    active_version: 1
+    go_struct: CanonEntryCreatedV1
+    description: A new canon entry was authored in glossary-service. Emitted via glossary-service outbox (Q-L5A-1 separate sub-program); foundation owns schema + contract test fixture only.
+    shipped_cycle: 23
+    owner: glossary-service
+
+  - name: canon.entry.updated
+    aggregate: canon
+    versions: [1]
+    active_version: 1
+    go_struct: CanonEntryUpdatedV1
+    description: Existing canon entry value/attribute changed. Carries old_value+new_value for audit and L5.J change-history.
+    shipped_cycle: 23
+    owner: glossary-service
+
+  - name: canon.entry.promoted
+    aggregate: canon
+    versions: [1]
+    active_version: 1
+    go_struct: CanonEntryPromotedV1
+    description: Canon entry promoted from L2_seeded to L1_axiom (M4 §9.7.4 harder L2→L1 gate). Distinct from cycle-10 xreality.canon.promoted (cross-reality fan-out signal).
+    shipped_cycle: 23
+    owner: glossary-service
+
+  - name: canon.entry.decanonized
+    aggregate: canon
+    versions: [1]
+    active_version: 1
+    go_struct: CanonEntryDecanonizedV1
+    description: Canon entry retracted (no longer canonical). Q-L5A-1 sub-program handles outbox-tombstone; foundation ships schema only.
+    shipped_cycle: 23
+    owner: glossary-service
+
+  # ────────────────────────────────────────────────────────────────────
+  # admin.canon.override.* — RAID cycle 27 L5.H (force-propagate
+  # compensating event mechanism, M4-D3). Q-L5H-1 24h consent timeout +
+  # default-to-consent on no-response.
+  # ────────────────────────────────────────────────────────────────────
+  - name: admin.canon.override.requested
+    aggregate: canon
+    versions: [1]
+    active_version: 1
+    go_struct: AdminCanonOverrideRequestedV1
+    description: Admin/author opt-in for force-propagate (gate 1 of 3, M4 §9.8.3). Triggers consent collector with 24h timeout per Q-L5H-1.
+    shipped_cycle: 27
+    owner: meta-worker
+
+  - name: admin.canon.override.consented
+    aggregate: canon
+    versions: [1]
+    active_version: 1
+    go_struct: AdminCanonOverrideConsentedV1
+    description: Reality owner ACKed force-propagate (gate 2 of 3, M4 §9.8.3). Either explicit or Q-L5H-1 default-to-consent on 24h timeout.
+    shipped_cycle: 27
+    owner: meta-worker
+
+  - name: admin.canon.override.vetoed
+    aggregate: canon
+    versions: [1]
+    active_version: 1
+    go_struct: AdminCanonOverrideVetoedV1
+    description: Reality owner refused force-propagate (gate 2 of 3, M4 §9.8.3). Reality SKIPPED — no compensating event emitted.
+    shipped_cycle: 27
+    owner: meta-worker
+
+  - name: admin.canon.override.compensating
+    aggregate: canon
+    versions: [1]
+    active_version: 1
+    go_struct: AdminCanonOverrideCompensatingV1
+    description: Per-reality compensating L3 event applied (force-propagate side-effect). Audit-distinguishable from canon.entry.updated; L5.J classifies as force_propagate.
+    shipped_cycle: 27
+    owner: meta-worker
+
+  # ────────────────────────────────────────────────────────────────────
+  # canon.change.* — RAID cycle 27 L5.J (per-attribute change history).
+  # APPEND-ONLY contract: NEVER edited or deleted (enforced 3 layers).
+  # ────────────────────────────────────────────────────────────────────
+  - name: canon.change.recorded
+    aggregate: canon
+    versions: [1]
+    active_version: 1
+    go_struct: CanonChangeRecordedV1
+    description: APPEND-ONLY per-attribute change history entry. Author-UI change timeline source-of-truth; emitted after canon.entry.* + admin.canon.override.compensating events. NEVER edited or deleted.
+    shipped_cycle: 27
+    owner: meta-worker

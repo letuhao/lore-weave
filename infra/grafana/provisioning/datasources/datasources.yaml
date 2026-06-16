@@ -1,0 +1,94 @@
+# infra/grafana/provisioning/datasources/datasources.yaml — L7.H.5 (cycle 33)
+#
+# Grafana datasource provisioning. Auto-loaded on Grafana startup —
+# Foundation V1 ships THREE datasources:
+#
+#   1. prom-primary — Prometheus HA pair (deduplicated via query in V1;
+#                     thanos-query in V1+30d).
+#   2. loki-primary — Loki self-hosted (Q-L7F-1).
+#   3. thanos-query — STUBBED (datasource exists but commented endpoint
+#                     until Thanos sidecar activates V1+30d per Q-L1I-2).
+#
+# Cycle 33 ships the file; cycle 36+ extends with auth-service SSO.
+
+apiVersion: 1
+
+datasources:
+  # ────────────────────────────────────────────────────────────────────
+  # 1. Prometheus HA — primary
+  # ────────────────────────────────────────────────────────────────────
+  - name: prom-primary
+    uid: prom-primary
+    type: prometheus
+    access: proxy
+    url: http://prom-a.internal:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      timeInterval: 15s
+      queryTimeout: 60s
+      httpMethod: POST
+      # When Thanos activates V1+30d, prefer the thanos-query datasource
+      # for long-term queries. Foundation V1 default is prom-primary.
+      manageAlerts: false
+      prometheusType: Prometheus
+      prometheusVersion: 2.49.0
+
+  - name: prom-secondary
+    uid: prom-secondary
+    type: prometheus
+    access: proxy
+    url: http://prom-b.internal:9090
+    isDefault: false
+    editable: false
+    jsonData:
+      timeInterval: 15s
+      queryTimeout: 60s
+      httpMethod: POST
+      manageAlerts: false
+      prometheusType: Prometheus
+      prometheusVersion: 2.49.0
+
+  # ────────────────────────────────────────────────────────────────────
+  # 2. Loki — self-hosted (Q-L7F-1)
+  # ────────────────────────────────────────────────────────────────────
+  - name: loki-primary
+    uid: loki-primary
+    type: loki
+    access: proxy
+    url: http://loki.internal:3100
+    isDefault: false
+    editable: false
+    jsonData:
+      maxLines: 1000
+      timeout: 60s
+      # Link to traces — placeholder until cycle 37 L7.G tracer Tempo wire-up.
+      derivedFields: []
+
+  # ────────────────────────────────────────────────────────────────────
+  # 3. Thanos Query — STUBBED V1 (Q-L1I-2)
+  # ────────────────────────────────────────────────────────────────────
+  # Datasource block exists with `url` pointing at the eventual Thanos
+  # query endpoint. Foundation V1: the Thanos service is NOT running, so
+  # this datasource will be a "down" indicator in Grafana datasource list
+  # until V1+30d activation.
+  #
+  # Why ship the stub now: when V1+30d activates Thanos, dashboards that
+  # already reference `thanos-query` UID continue working with zero
+  # dashboard JSON changes.
+  - name: thanos-query
+    uid: thanos-query
+    type: prometheus
+    access: proxy
+    url: http://thanos-query.internal:10902
+    isDefault: false
+    editable: false
+    jsonData:
+      timeInterval: 30s
+      queryTimeout: 120s
+      httpMethod: POST
+      manageAlerts: false
+      prometheusType: Thanos
+      # Marker so dashboards can detect "Thanos is stubbed" state
+      # via datasource health check.
+      customQueryParameters: "lw_thanos_stubbed=true"

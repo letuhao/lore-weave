@@ -8,7 +8,223 @@
 
 ## Current status & next session (handoff)
 
-> **🆕 2026-05-31 (session 100) — KÖPPEN CLIMATE ON THE SPHERE — BUILT.**
+> **🆕⛰ 2026-05-31 (session 100) — ELEVATION REDESIGN — S1+S2 SHIPPED (merged).**
+> Research + 6-stage spec done (`docs/research/2026-05-31-geological-elevation.md`,
+> `docs/specs/2026-05-31-elevation-redesign.md`). **BUILD finding that reshaped the
+> arc:** the spec's D1 premise ("0 % of Mountain cells near a convergent boundary")
+> was a **measurement artifact** — it counted only `Mountain`-biome cells and
+> ignored cold high belts labelled `Glacier`. Measured by *elevation* (high-relief
+> = `land_t ≥ 0.55`) the existing model **already** concentrated relief on
+> convergent belts (`conc≤2 ≈ 69 %`, arc-fill `≈ 44 %`); its altitude-gated
+> ruggedness was implicitly uplift-coupled. So **S1 alone is metric-neutral**. The
+> real, visible defect was upstream in the plate model (was scoped S2): convergence
+> was rare/weak (~78 % of boundaries mis-classified `Fault`, `FoldMountain` never
+> fired, **50 % of seeds pancake-flat**). **PO merged S1+S2**; both shipped:
+> - **S1** (`terrain.rs`): `land_relief` now scales with the local tectonic uplift
+>   field (`TECT_*`), not altitude — the correct mechanism + foundation for S3/S5.
+> - **S2** (`plates.rs` `FAULT_SHEAR_RATIO=2.0`): transform-fault only when shear
+>   *strongly dominates* the normal closing/opening rate; else the normal sign
+>   decides convergent/divergent. Result (60-seed sweep): **all 6 boundary kinds
+>   fire** (`FoldMountain` 29/60), Fault share **78 %→38 %**, pancake-flat worlds
+>   **50 %→3 %**; high-relief `conc≤2 70 %`, arc-fill 45 %, mountains a healthy 7 %
+>   of land. Acceptance: `crates/world-gen/tests/tectonic_relief.rs` (3 tests).
+> - Also **fixed 2 pre-existing red tests** (stale since the Köppen-v2 / C-2 nested
+>   builder, unrelated to this work): `structure.rs::climate_highland_implies_high_elevation`
+>   (asserted a stale absolute `0.62` → now the real `elev_above > 0.30` gate) and
+>   `provinces_partition_land` (recomputed the *flat* builder's `land/200` formula
+>   vs the sphere `build_nested` per-region apportionment → now asserts the
+>   partition invariant directly).
+>
+> **⛰ S3 SHIPPED** — crustal-thickness isostasy: `plates.crust_thickness` (km;
+> oceanic 7, continental 35 + broad collision thickening → 70 km Tibet) now drives
+> the isostatic base (Airy), **replacing the two-constant base** (D2). Collision
+> zones get a broad isostatic shoulder → the high-relief belt broadens from ~2→~4
+> hops (high-relief `conc≤4` 99 %, arc-fill 58 %, mountains 10 % of land — all
+> guards green). Bimodality verified + **locked** (`elevation_histogram_is_bimodal`,
+> D6). The dramatic Tibet-plateau *magnitude* left modest (the mechanism is the win;
+> a deeper uplift⇄isostasy reconciliation over-broadens the Mountain band — tunable
+> later). Plan: `docs/plans/2026-05-31-elevation-s3-isostasy.md`.
+>
+> **⚙ PARAMETERIZATION ARC IN FLIGHT (2026-06-14)** — expose the ~120–150
+> hardcoded tuning values as runtime `CreativeSeed` params (granular + macro
+> "intensity" knobs) so a human OR the LLM `author` can dial any world property
+> per-world (one centralized profile, 3 tiers). Spec:
+> `docs/specs/2026-06-14-world-gen-parameterization.md` (8 stages P1–P8).
+> **Invariant: byte-identical default baseline** (3 pinned hashes in
+> `tests/parameterization.rs`). **✅ P1 + P2 + P3 DONE** — `params.rs`
+> `TectonicsParams` (19 plates knobs) + `ReliefParams` (34 terrain knobs:
+> noise/relief/bathymetry/quantize) + `ClimateParams` (23 climate knobs:
+> temps/precip bands/seasonality/Köppen cutoffs/Highland gate) + `IntensityKnobs`
+> (`orogeny`, `collision_frequency`, `relief`, `ocean_depth`, `warmth`, `rainfall`,
+> `seasonality`); threaded into `plates::build` + `terrain::build` +
+> `climate::build`; LLM author schema/prompt/clamp wired. Byte-identical pins
+> (3 Tectonic + 5 Profile) hold across all 3 stages. P3 `/review-impl` clean
+> (doc + test-only follow-ups folded in: seasonality `amp_eq`-floor doc,
+> clamp-not-validate / dormant-`winter_frac` cutoff doc, histogram-direction test,
+> climate serde/explicit-default parity). **✅ P4 DONE** — `ErosionParams`
+> (the Light/Moderate/Heavy hydraulic-erosion table, 18 flat fields) +
+> `HydrologyParams` (`river_percentile`/`lake_max_divisor`/`lake_max_floor`);
+> threaded via `erosion::apply_with` + `hydrology::build_with` (config-aware
+> wrappers; old `apply`/`apply_scaled`/`build` keep default-table signatures so
+> the frozen `zonegen.rs` + `civ_adapter` are untouched). Stream-power `m`/`n`
+> stay fixed math. Byte-identical pins hold. **✅ P5 DONE** — `SettlementParams`
+> (burg water bonuses/threshold, target floor, role percentiles, 8-zone
+> habitability) + `RouteParams` (MountainPass count, road/trail tier gates,
+> river-nav min run) via `settlement::build_with` + `routes::build_with`
+> (wrappers keep `civ_adapter` on defaults). `SettlementDensity` enum stays
+> tier-1. Byte-identical pins hold. **✅ P6 DONE** — `PoliticalParams` (live
+> `build_nested` quota divisors + maxes for province/state/realm + county clamp)
+> + `CultureParams` (hearth spacing + count clamp) + `HierarchyParams` (region
+> clamp); threaded into `build_nested`/`hierarchy::build` directly +
+> `culture::build_with` wrapper (legacy `political::build` + `civ_adapter` stay
+> default). Byte-identical pins hold. **✅ P7 DONE** — `BiomeParams` (elevation
+> tiers + terrain_cost/culture_barrier/population_potential as **fixed `[_;14]`
+> arrays**, Copy preserved per the P1 finding); threaded into
+> `biome::build_with`/`derive_biome` + build_nested/settlement/routes/culture
+> `build_with`; `BiomeKind` methods stay canonical default (drift-guard test).
+> Byte-identical pins hold. **✅ P8a DONE** — the editability capstone: CLI
+> macro-knob flags (`--orogeny`/`--warmth`/… → `intensity`) + `dump-config`
+> subcommand (emit full default profile JSON) + 7 core fields made
+> `#[serde(default)]` (configs are now fully partial/trim-friendly) + worked
+> example (`examples/cold-rugged-archipelago.json` + README). `dump-config` →
+> `--config` round-trips to the exact default hash. **TOP NEXT (param arc): P8b
+> RenderTheme** — render/relief colours, palettes, supersample (per-style
+> hypsometric ramps in `render::water_color`/`land_color` + biome/culture/
+> boundary/plate/border palettes + `SS`/`BACKGROUND`, threaded through ~8 render
+> fns). Sphere render is NOT content-hashed + has no pins → **add render-hash
+> pins first** (seed-7 relief/biome/political PNG hashes) as the byte-identical
+> net, then parameterize. Render *math* (`relief.rs` hillshade/warp/detail +
+> per-style `StyleParams`) stays fixed. That's the final param-arc stage.
+>
+> **✅ P8b DONE — PARAMETERIZATION ARC COMPLETE.** `RenderTheme` (all
+> `render.rs` palettes + per-style hypsometric ramps + supersample, stored as
+> `[u8;3]`, threaded through every `*_image` + `political_svg` + `glb_globe`).
+> Added 8 render-hash pins (blake3 of seed-7 renders, both styles) as the
+> byte-identical net — they hold; render output unchanged at the default theme.
+> **The full arc P1–P8b is shipped**: every generation + render tunable is now
+> an editable, clamped, serde-defaulted field on `CreativeSeed` — the single
+> centralized profile a human or LLM dials, with `dump-config` to emit the
+> template + `--config` to load it. **TOP NEXT:** param arc done — resume the
+> **elevation arc S4** (age-based oceanic bathymetry; paused block above), or a
+> new track.
+> *(Deferred P2 follow-up: Profile-only inline `height_at`/`apply_falloff` gate
+> literals — legacy path. Deferred P3 follow-up: moisture-transport consts +
+> cross-module `ClimateZone::wetness()` / `bias_delta` tables.)*
+>
+> **⛰ S4 SHIPPED (2026-06-14) — age-based oceanic bathymetry.** New
+> `Plates::crust_age` (BFS hops from divergent `Ridge` boundaries over oceanic
+> crust; `0` = ridge, `u32::MAX` = continental / no-ridge → maximally old). Ocean
+> depth is now a **GDH1 √age curve** (`ocean_ridge → ocean_abyss`, saturating at
+> `ocean_age_flatten ≈ 70` hops) blended with a **preserved coastal shelf**,
+> replacing the coast-distance curve (`ocean_abyss_hops` removed; `ocean_ridge`/
+> `ocean_shelf_hops`/`ocean_age_flatten` added to `ReliefParams`). **Premise
+> verified empirically first:** at HEAD the coast-distance curve clamped **51 %**
+> of ocean cells into the single deepest bin (spec estimated 37 %); the √age curve
+> drops that to **~20 %** and spreads depth across 8 bins (broad abyssal mode +
+> shallow ridges + shelf). `crust_age` stays on `Plates` (not `WorldMap`),
+> matching S3's `crust_thickness`; it feeds `content_hash` via elevation. Pins
+> **re-captured** (3 content + 8 render — S4 deliberately changed default ocean
+> depth; Profile-mode pins untouched). `/review-impl` 1 MED (enforce
+> `ocean_ridge ≥ ocean_abyss` so the curve always descends) + 1 LOW (clamp tests)
+> — both fixed. Plan: `docs/plans/2026-06-14-elevation-s4-age-bathymetry.md`.
+> Acceptance: `tests/age_bathymetry.rs` + plates/terrain unit tests; lib 439 +
+> all integration green; bimodality + proportion guards hold.
+>
+> **⛰ S5 SHIPPED (2026-06-14) — coupled uplift ⇄ erosion (full rewrite).** PO
+> chose the full-coupling rewrite over augment. `erosion::couple` iterates
+> `dh/dt = U − K·A^m·S^n + D·∇²h` (detachment-limited, reuses the priority-flood/
+> incise/diffuse primitives): each step forces land up by the tectonic uplift
+> field, then runs one stream-power incision + diffusion pass. The Tectonic land
+> surface is now `base + uplift skeleton + plains whisper` carved to a fluvial
+> steady state — the ridged-fBm "noise mountains" (`land_relief`/
+> `interior_ruggedness`/`warp_scaled`/`SALT_RUGGED`) are **retired**; relief
+> emerges from physics. New `ReliefParams` `couple_iters`(25)/`couple_uplift_rate`
+> (0.04, relief-knob-scaled); K+D come from the resolved erosion-strength row
+> (knob still wired; `None`→skip). **Premise verified first:** HEAD's drainage was
+> already concave (θ≈0.81) because erosion already ran — the real D5 gap was that
+> relief was *noise*, not emergent. **Result (defaults worked first try):** slope–
+> area concavity θ **0.81→0.59** (toward the 0.5 steady state); belt concentration
+> *improved* (high-relief `conc≤4` 100 %, arc-fill 58 %→79 %); land/Desert/Marsh
+> proportions + bimodality (S3) + mountains-minority all hold. Pins re-captured
+> (3 content + 8 render; Profile-mode pins untouched). `/review-impl` 1 MED (7
+> now-inert relief params → documented + test retargeted + `D-S5-DEAD-RELIEF-PARAMS`
+> deferral) + 1 LOW-MED (added a `couple` unit test) — both fixed. Plan:
+> `docs/plans/2026-06-14-elevation-s5-coupled-uplift-erosion.md`. Acceptance:
+> `tectonic_relief.rs::river_profiles_are_concave_at_steady_state` + the `couple`
+> unit test; lib 440 + all integration green.
+>
+> **Deferred — ✅ CLEARED (2026-06-14, C1):** `D-S5-DEAD-RELIEF-PARAMS` — the 7
+> inert `ReliefParams` ridged-relief fields (`tect_belt_lift`, `tect_range_weight`,
+> `tect_uplift_lo/hi`, `interior_rugged_cap`, `rugged_freq`, `tec_hill_weight`)
+> were removed from the struct/`Default`/`resolved` + the 2 tests retargeted to live
+> levers. Byte-identical (content + render pins held), serde back-compat (old
+> `--config` keys drop), clippy clean. Plan: `docs/plans/2026-06-14-world-gen-debt-cleanup.md`.
+>
+> **⛰ S6 SHIPPED (2026-06-14) — render/export bathymetry (arc finale).** Fixes
+> D7 (the "ocean rises above land" visual), render/export only — **`content_hash`
+> unchanged** (model bathymetry was already correct after S4). `relief.rs`: the
+> sub-sea detail gate `smoothstep(-0.15, 0.02, land_t)` (≈0.97 *at* sea → it
+> bumped the ocean floor) retuned to `smoothstep(0.0, 0.04, land_t)` → detail 0 at/
+> below sea, so the `water_color`/heightmap depth ramp reads the clean S4
+> bathymetry. `export.rs`: the `.glb` ocean floor now displaces to its **real
+> exaggerated depth** (`h = water ? e.min(sea) : e.max(sea)`) instead of a flat
+> sea clamp (ridges shallow, abyss deep, land above, coastline at sea); pole rows
+> use a uniform (row-mean) radius. 8 render pins re-captured; content pins
+> unchanged. `/review-impl` 1 LOW (ocean-pole needle cluster → uniform pole radius
+> + `glb_poles_have_a_uniform_radius` test) fixed, 3 accepted. Plan:
+> `docs/plans/2026-06-14-elevation-s6-render-export-bathymetry.md`. Acceptance:
+> `export.rs::ocean_sinks_below_sea_and_land_rises` + `relief.rs::sub_sea_detail_is_suppressed`;
+> lib 442 + all integration green.
+>
+> **🏔 ELEVATION-REDESIGN ARC COMPLETE (S1–S6).** Elevation is now physically
+> grounded end-to-end: tectonic uplift (S1) on a colliding plate model (S2),
+> crustal-thickness isostasy → bimodal hypsometry (S3), age-based oceanic
+> bathymetry (S4), coupled uplift⇄erosion shaping concave drainage (S5), and
+> real bathymetry in every render/export (S6) — all of D1–D7 closed. **TOP NEXT:**
+> a new track (elevation arc done; param arc done). The 3D globe viewer is BUILT
+> (frontend-game `/world-preview`); debt cleanup C1 (dead params) + C2
+> (`D-WORLDGEN-XPLATFORM-GOLDEN` — replaced the non-portable f32 hash with a
+> tolerance/aggregate test that now runs in CI) are DONE. **Only remaining debt:**
+> C3 — delete the orphan `world-service`/`travel-service` scaffolds (scheduled as
+> its own monorepo-config task, not yet executed). See
+> `docs/plans/2026-06-14-world-gen-debt-cleanup.md`.
+>
+> ---
+>
+> **2026-05-31 (session 100) — 3D WORLD EXPORT — BUILT.** The world MODEL has
+> been a real 3D sphere (3D Voronoi mesh + `u16` elevation + plate tectonics + the
+> climate arc) all along, but had only ever been rendered to 2D images. Added
+> `crates/world-gen/src/export.rs` (new): two exports so the planet can be seen/used
+> in true 3D —
+> - **glTF 2.0 `.glb`** displaced globe mesh (lat/lon grid displaced by elevation,
+>   ocean clamped to a smooth sea, continents rise above), with an **embedded
+>   equirectangular biome texture** + smooth normals. CLI `--glb`/`--glb-grid`
+>   (512)/`--glb-texture` (2048)/`--exaggeration` (0.06). Open in Blender/Godot/Unity
+>   to see the 3D planet.
+> - **16-bit equirectangular heightmap PNG** for terrain pipelines. CLI
+>   `--heightmap-png`/`--heightmap-width` (2048).
+>
+> Hand-rolled GLB writer via `serde_json` (no new dep). 7 export tests + full lib 404
+> green, clippy-clean, `/review-impl` (normals-outward guard added; pole-normal
+> fallback fixed). Real seed-7 `.glb` independently validated as glTF 2.0. No
+> `content_hash` impact (render-side). Spec/plan:
+> [`docs/specs/2026-05-31-world-3d-export.md`](../../specs/2026-05-31-world-3d-export.md),
+> [`docs/plans/2026-05-31-world-3d-export.md`](../../plans/2026-05-31-world-3d-export.md).
+> **✅ "See 3D in-app" BUILT (2026-06-14)** — a reusable 3D globe viewer in
+> **`frontend-game`** (the strategy map): `components/globe/GlobeViewer.tsx`
+> (react-three-fiber + drei `useGLTF`/`OrbitControls`/`Bounds`) loads a world-gen
+> `.glb`, delivery-agnostic (static `.glb` under `public/worlds/` for now; a
+> world-gen-service render is the deferred seam in `worlds.ts`). Route
+> `/world-preview` is **lazy-loaded** (three.js off the initial bundle) +
+> error-boundaried (a failed load can't white-screen the app). The
+> `check-bundle-size` guard was updated to budget the **initial** load (AC-FG-15
+> intent) so lazy route chunks don't count. Live-smoke verified (real-browser
+> render: continents + S4 ocean bathymetry + S5 snow-peaks). Deps `three` +
+> `@react-three/fiber@8` + `@react-three/drei@9` added to the pnpm workspace.
+>
+> ---
+>
+> **2026-05-31 (session 100) — KÖPPEN CLIMATE ON THE SPHERE — BUILT.**
 > Branch `world-gen-sdk-refactor` (climate arc → new PR; PR #13 already merged).
 > Built candidate A from the session-99
 > spec: ported the **validated** `flat_climate` Köppen-Geiger classifier into the

@@ -1,0 +1,24 @@
+[package]
+name = "glossary-client"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "L5.F.4 Rust HTTP/JSON client for glossary-service canon RPCs (RAID cycle 25). Q-L5-4 LOCKED: HTTP/JSON V1."
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+thiserror = { workspace = true }
+reqwest = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "test-util"] }
+wiremock = { workspace = true }

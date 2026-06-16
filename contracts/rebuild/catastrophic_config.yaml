@@ -1,0 +1,23 @@
+# L3.H catastrophic-rebuild config (RAID cycle 14, DPS 3).
+#
+# Layer-plan L3.H.3:
+#   - `rolling_concurrency = 50`
+#   - `freeze_timeout_minutes = 30`
+#
+# Loaded by `services/admin-cli/commands/catastrophic_rebuild.go`. The
+# orchestrator (`services/admin-cli/internal/rolling_rebuild/`) enforces the
+# concurrency cap — exceeding it is a Validate() error (Q-L3-3 hard rule).
+
+catastrophic_rebuild:
+  # Hard cap per R02 §12B.5. Validate() refuses > 50.
+  rolling_concurrency: 50
+  # Per-reality timeout. If a single reality rebuild exceeds this, the
+  # orchestrator surfaces the failure and continues with the next reality.
+  freeze_timeout_minutes: 30
+  # Scope options:
+  #   "reality"        — single --reality <id>
+  #   "all-realities"  — every reality registered in meta DB
+  #   "aggregate-list" — explicit --aggregate-file <path>
+  default_scope: "reality"
+  # Tier-1 destructive command — --confirm is mandatory.
+  require_confirm: true

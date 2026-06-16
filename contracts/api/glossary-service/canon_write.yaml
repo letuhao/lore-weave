@@ -1,0 +1,216 @@
+openapi: 3.0.3
+info:
+  title: LoreWeave Glossary Service — Canon Write API (L5.F)
+  version: 1.0.0
+  description: |
+    L5.F admin canon-write contract. Per Q-L5-4 LOCKED, HTTP/JSON V1.
+
+    ## Scope (cycle 25)
+      * POST /v1/canon
+          → create or update a canon entry. The endpoint is the
+            authoring path used by glossary-service admin UI + the
+            cycle-26+ canon-extraction worker (knowledge-service).
+            BEFORE any DB write, the server MUST invoke the L5.I.3
+            canon_guardrail (Q-L5-5 integration point) — a Result with
+            reject reason cancels the write with HTTP 409 and the
+            violation payload in the body. This is the canon-guardrail
+            integration POINT for L5.F; the full guardrail impl ships
+            in L5.I (downstream cycle).
+
+    ## Guardrail integration (Q-L5-5)
+
+    The server-side flow:
+      1. Decode + validate request body
+      2. Call CanonGuardrail.CheckProposedWrite(proposal) BEFORE write
+      3. On guardrail PASS → proceed to canon write + outbox emit
+      4. On guardrail FAIL → return 409 Conflict with GuardrailViolation
+         payload; do NOT write anything
+
+    Cycle 25 ships the CONTRACT (this YAML) + the guardrail INTERFACE
+    (`contracts/prompt/canon_reader.go::CanonGuardrail` and
+    `crates/dp-kernel/src/canon_cache.rs::CanonGuardrail`). The real
+    impl ships in `crates/contracts-prompt/canon_guardrail.rs` per
+    L5.I.3 in a downstream cycle.
+
+    ## LOCKED decisions consumed
+      * **Q-L5-4**: HTTP/JSON V1
+      * **Q-L5-5**: pre-write guardrail check is mandatory in the
+        endpoint contract — server impls MUST honor this
+      * **Q-L5-3**: canon_layer enum {L1_axiom, L2_seeded}
+
+servers:
+  - url: https://glossary-service.loreweave.dev
+  - url: http://glossary-service:8080
+
+tags:
+  - name: canon-write
+
+paths:
+  /v1/canon:
+    post:
+      tags: [canon-write]
+      summary: Create or update a canon entry (admin/extraction path)
+      description: |
+        Creates or updates a single canon entry. Pre-write guardrail
+        check is mandatory (Q-L5-5).
+
+        Status codes:
+          * 201 — created
+          * 200 — updated (existing canon_entry_id)
+          * 401/403 — auth/ACL
+          * 409 — guardrail rejected (returned with GuardrailViolation
+                  payload; caller must surface to user)
+          * 422 — payload validation error
+      operationId: writeCanonEntry
+      security:
+        - svidBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CanonWriteRequest'
+      responses:
+        '200':
+          description: Canon entry updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CanonWriteResponse'
+        '201':
+          description: Canon entry created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CanonWriteResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: |
+            Guardrail rejected the write (Q-L5-5). The body carries a
+            GuardrailViolation describing the L1 axiom that was violated.
+            No DB write occurred.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GuardrailViolation'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+components:
+  securitySchemes:
+    svidBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: SVID
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid SVID
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: Caller SVID not authorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ValidationError:
+      description: Payload validation failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    CanonWriteRequest:
+      type: object
+      required:
+        - book_id
+        - attribute_path
+        - value
+        - canon_layer
+      properties:
+        # Optional — omit to create; include to update an existing entry.
+        canon_entry_id:
+          type: string
+          format: uuid
+          nullable: true
+        book_id:
+          type: string
+          format: uuid
+        attribute_path:
+          type: string
+          pattern: '^[a-z][a-z0-9_]*(\.[a-z0-9_]+)+$'
+        value:
+          description: Canonical canon value. Schema is attribute-dependent.
+        canon_layer:
+          type: string
+          enum: [L1_axiom, L2_seeded]
+        lock_level:
+          type: string
+          enum: [hard, soft, archived, experimental]
+          default: soft
+        # Optional reality scope — server uses this when constructing
+        # the GuardrailProposal so the guardrail can scope the L1 check
+        # to the right reality (forbidden combination = L1 axiom for
+        # book conflicting with proposed write).
+        reality_id:
+          type: string
+          format: uuid
+          nullable: true
+
+    CanonWriteResponse:
+      type: object
+      required: [canon_entry_id, written_at, canon_layer]
+      properties:
+        canon_entry_id:
+          type: string
+          format: uuid
+        written_at:
+          type: string
+          format: date-time
+        canon_layer:
+          type: string
+          enum: [L1_axiom, L2_seeded]
+
+    GuardrailViolation:
+      type: object
+      required: [code, axiom, proposed_value, reason]
+      properties:
+        code:
+          type: string
+          enum: [canon_guardrail_l1_conflict]
+        axiom:
+          type: object
+          required: [book_id, attribute_path, canon_layer, value]
+          properties:
+            book_id:
+              type: string
+              format: uuid
+            attribute_path:
+              type: string
+            canon_layer:
+              type: string
+              enum: [L1_axiom]
+              description: Always L1_axiom for guardrail rejections.
+            value:
+              description: The L1 axiom value the proposal violates.
+        proposed_value:
+          description: The value the caller proposed.
+        reason:
+          type: string
+          description: Human-readable description of the conflict.
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string

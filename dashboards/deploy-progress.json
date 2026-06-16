@@ -1,0 +1,215 @@
+{
+  "title": "Deploy Progress + Canary (cycle 38 L7.K)",
+  "uid": "deploy-progress",
+  "tags": ["deploy", "canary", "cycle-38", "L7.K"],
+  "timezone": "utc",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "lw_env",
+        "type": "custom",
+        "current": {"text": "dev", "value": "dev"},
+        "options": [
+          {"text": "dev", "value": "dev"},
+          {"text": "staging", "value": "staging"},
+          {"text": "prod", "value": "prod"}
+        ]
+      },
+      {
+        "name": "service",
+        "type": "custom",
+        "current": {"text": "all", "value": ".*"},
+        "options": [
+          {"text": "all", "value": ".*"},
+          {"text": "auth-service", "value": "auth-service"},
+          {"text": "world-service", "value": "world-service"},
+          {"text": "roleplay-service", "value": "roleplay-service"},
+          {"text": "realtime-service", "value": "realtime-service"}
+        ]
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Current canary stage (0=internal · 1=1% · 2=10% · 3=50% · 4=100%)",
+      "gridPos": {"h": 4, "w": 12, "x": 0, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "prom-primary"},
+      "targets": [
+        {
+          "expr": "lw_canary_stage{service=~\"${service}\"}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "blue", "value": null},
+              {"color": "green", "value": 4}
+            ]
+          }
+        }
+      },
+      "options": {"colorMode": "background"}
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Cohort SLI burn vs baseline (auto-abort > 2×)",
+      "gridPos": {"h": 4, "w": 12, "x": 12, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "prom-primary"},
+      "targets": [
+        {
+          "expr": "lw_canary_sli_cohort{service=~\"${service}\"} / clamp_min(lw_canary_sli_baseline{service=~\"${service}\"}, 0.0001)",
+          "refId": "A",
+          "legendFormat": "burn × baseline"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "orange", "value": 1.5},
+              {"color": "red", "value": 2.0}
+            ]
+          }
+        }
+      },
+      "options": {"colorMode": "background"}
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Canary stage progression over time",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+      "datasource": {"type": "prometheus", "uid": "prom-primary"},
+      "targets": [
+        {
+          "expr": "lw_canary_stage{service=~\"${service}\"}",
+          "refId": "A",
+          "legendFormat": "{{service}} stage"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "short", "min": 0, "max": 4}}
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Cohort SLI burn over time (per stage)",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+      "datasource": {"type": "prometheus", "uid": "prom-primary"},
+      "targets": [
+        {
+          "expr": "lw_canary_sli_cohort{service=~\"${service}\"}",
+          "refId": "A",
+          "legendFormat": "stage {{stage}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "red", "value": 2}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "Recent deploys (deploy_audit — class · stage · rolled_back)",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 12},
+      "datasource": {"type": "prometheus", "uid": "prom-primary"},
+      "targets": [
+        {
+          "expr": "lw_deploy_audit_info{service=~\"${service}\"}",
+          "refId": "A",
+          "instant": true,
+          "format": "table"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Auto-aborts (rollbacks) last 24h",
+      "gridPos": {"h": 4, "w": 12, "x": 0, "y": 20},
+      "datasource": {"type": "prometheus", "uid": "prom-primary"},
+      "targets": [
+        {
+          "expr": "increase(lw_canary_abort_total{service=~\"${service}\"}[24h])",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "red", "value": 1}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "Active deploy freezes (slo_burn · scheduled · incident · security)",
+      "gridPos": {"h": 4, "w": 12, "x": 12, "y": 20},
+      "datasource": {"type": "prometheus", "uid": "prom-primary"},
+      "targets": [
+        {
+          "expr": "sum(lw_deploy_freeze_active)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "orange", "value": 1}
+            ]
+          }
+        }
+      },
+      "options": {"colorMode": "background"}
+    },
+    {
+      "id": 8,
+      "type": "logs",
+      "title": "canary-controller decisions (advance/abort)",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 24},
+      "datasource": {"type": "loki", "uid": "loki-primary"},
+      "targets": [
+        {
+          "expr": "{service=\"canary-controller\"} |= \"\"",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}

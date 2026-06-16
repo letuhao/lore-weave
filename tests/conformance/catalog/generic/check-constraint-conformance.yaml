@@ -1,0 +1,8 @@
+id: check-constraint-conformance
+description: "S4 — a pinned, named set of high-value per-reality CHECK constraints exists (status enums, jsonb_typeof object/array, non-negative quantity, participant-type). A regression-lock (pins the constraints the spine relies on; not an exhaustive proof every needed CHECK exists). Bundles --self-test (a bogus constraint name must report absent)."
+invariant: schema-integrity
+kind: live-probe
+command: ["bash", "scripts/conformance/schema-conformance-smoke.sh", "--check", "check-constraints", "--self-test"]
+requires: ["foundation-stack"]
+skip_when: []
+fail_closed_on_setup_error: false

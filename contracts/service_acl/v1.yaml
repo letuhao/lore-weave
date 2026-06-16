@@ -1,0 +1,71 @@
+openapi: 3.1.0
+info:
+  title: contracts/service_acl — SVID issuance + verification surface
+  version: "1.0.0"
+  description: |
+    L4.M (cycle 22) — internal documentation only per Q-L4-5; api-gateway-bff
+    does NOT serve these endpoints. They describe the SPIFFE / SVID issuance
+    + verification semantics so the upcoming security-track sub-program ships
+    a wire-compatible surface.
+
+paths:
+  /internal/v1/svid/issue:
+    post:
+      summary: Issue an SVID for a service principal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [service_name, requested_audience]
+              properties:
+                service_name: { type: string, example: meta-worker }
+                requested_audience: { type: string, example: spiffe://loreweave.dev/sa/publisher }
+      responses:
+        "200":
+          description: SVID issued
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [svid, expires_at_nanos]
+                properties:
+                  svid: { type: string, description: "PEM-encoded X.509-SVID" }
+                  expires_at_nanos: { type: integer, format: int64 }
+        "403":
+          description: Issuance denied (service not in matrix)
+  /internal/v1/svid/verify:
+    post:
+      summary: Verify an SVID + perform RPC authorization check
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [svid, callee_service, rpc_name]
+              properties:
+                svid: { type: string }
+                callee_service: { type: string }
+                rpc_name: { type: string }
+                user_ref_id:
+                  type: string
+                  format: uuid
+                  nullable: true
+      responses:
+        "200":
+          description: Verification result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [decision, caller_service, principal_mode]
+                properties:
+                  decision:
+                    type: string
+                    enum: [allow, deny_default, deny_caller_not_allowed, deny_principal_mismatch]
+                  caller_service: { type: string }
+                  principal_mode:
+                    type: string
+                    enum: [requires_user, system_only, either]

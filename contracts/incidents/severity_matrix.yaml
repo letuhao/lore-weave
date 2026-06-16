@@ -1,0 +1,85 @@
+# contracts/incidents/severity_matrix.yaml — L7.D.6 (RAID cycle 37)
+#
+# The AUTHORITATIVE 4-severity criteria + TTA + comms obligations table per
+# SR02 §12AE.2. incident-bot's severity_classifier reads this to auto-assign
+# severity; statuspage-updater reads the comms_obligation column to decide
+# whether to raise a public status-page banner.
+#
+# TTA values match infra/pagerduty/services.yaml (cycle 35) 1:1:
+#   sev0 → 5 min, sev1 → 15 min, sev2 → 30 min. The CI gate
+#   verify-cycle-37.sh enforces this alignment so the two tables cannot drift.
+#
+# LOCKED decisions consumed:
+#   - Q-L7L-1 — Statuspage.io V1 (comms_obligation.status_page drives the
+#     statuspage-updater; no provider name leaks into this matrix).
+#   - Q-L7-1  — separate services share THIS contract, not an ad-hoc shape.
+
+version: 1
+shipped_cycle: 37
+expected_severity_count: 4
+
+severities:
+  - id: SEV0
+    name: 'Critical — wake everyone'
+    description: >-
+      Data integrity loss, audit-hash mismatch, personal-data breach, or total
+      platform outage. Highest urgency; founder-direct final escalation.
+    tta_minutes: 5
+    pagerduty_service: sev0
+    comms_obligation:
+      status_page: required        # public banner required if user_visible
+      customer_email: required     # for user-visible SEV0
+      auto_banner: true
+      gdpr_breach_check: true      # SEV0 includes the personal-data-breach class
+    auto_classify_triggers:
+      - data_integrity_loss
+      - audit_hash_mismatch
+      - personal_data_breach
+      - total_outage
+
+  - id: SEV1
+    name: 'High — primary + secondary'
+    description: >-
+      Canon injection, partial outage of a core surface, or active security
+      exposure. Primary + secondary paged.
+    tta_minutes: 15
+    pagerduty_service: sev1
+    comms_obligation:
+      status_page: required
+      customer_email: conditional  # if user-visible > 30 min
+      auto_banner: true
+      gdpr_breach_check: false
+    auto_classify_triggers:
+      - canon_injection
+      - core_surface_partial_outage
+      - security_exposure
+
+  - id: SEV2
+    name: 'Moderate — primary on-call'
+    description: >-
+      Degraded feature or elevated error rate without core-surface outage.
+    tta_minutes: 30
+    pagerduty_service: sre
+    comms_obligation:
+      status_page: conditional     # post only if customer-noticeable
+      customer_email: none
+      auto_banner: false
+      gdpr_breach_check: false
+    auto_classify_triggers:
+      - degraded_feature
+      - elevated_error_rate
+
+  - id: SEV3
+    name: 'Low — best effort'
+    description: >-
+      Cosmetic or single-user issue with no SLO impact. Tracked, not paged.
+    tta_minutes: 1440
+    pagerduty_service: sre
+    comms_obligation:
+      status_page: none
+      customer_email: none
+      auto_banner: false
+      gdpr_breach_check: false
+    auto_classify_triggers:
+      - cosmetic
+      - single_user_issue

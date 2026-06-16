@@ -1,6 +1,7 @@
 //! Stage 8 — culture regions: barrier-cost flood-fill from cultural hearths.
 
 use crate::biome::BiomeKind;
+use crate::params::{BiomeParams, CultureParams};
 use crate::pathfind::{self, NONE};
 use crate::rng::{self, Rng};
 use crate::world_map::CultureRegion;
@@ -12,17 +13,36 @@ pub struct Culture {
     pub culture_regions: Vec<CultureRegion>,
 }
 
-/// Build the culture layer. `culture_count` is clamped to `1..=16`.
-///
-/// **Phase 1 Stage B (2026-05-20):** `centers` is now 3D unit-sphere points;
-/// hearth spacing uses great-circle angle in radians. The flood-fill stays
-/// graph-based.
+/// Build the culture layer using the **default** tuning. Thin wrapper over
+/// [`build_with`] for callers that don't tune it (the civ adapter + tests).
 pub fn build(
     seed: u64,
     centers: &[[f32; 3]],
     neighbors: &[Vec<u32>],
     biomes: &[BiomeKind],
     culture_count: u8,
+) -> Culture {
+    build_with(
+        seed, centers, neighbors, biomes, culture_count,
+        &CultureParams::default(), &BiomeParams::default(),
+    )
+}
+
+/// Build the culture layer with caller-tuned [`CultureParams`]
+/// (parameterization P6). `culture_count` is clamped to `1..=count_max`. Default
+/// params ⇒ byte-identical to the prior consts.
+///
+/// **Phase 1 Stage B (2026-05-20):** `centers` is now 3D unit-sphere points;
+/// hearth spacing uses great-circle angle in radians. The flood-fill stays
+/// graph-based.
+pub fn build_with(
+    seed: u64,
+    centers: &[[f32; 3]],
+    neighbors: &[Vec<u32>],
+    biomes: &[BiomeKind],
+    culture_count: u8,
+    cp: &CultureParams,
+    bp: &BiomeParams,
 ) -> Culture {
     let n = centers.len();
     let is_land: Vec<bool> = biomes.iter().map(|b| !b.is_water()).collect();
@@ -34,7 +54,7 @@ pub fn build(
         };
     }
 
-    let k = usize::from(culture_count.clamp(1, 16));
+    let k = usize::from(culture_count.clamp(1, cp.count_max.clamp(1, 255) as u8));
     let n_components = comps.len();
 
     // hearth quota per component: if k >= n_components, largest-remainder;
@@ -53,7 +73,7 @@ pub fn build(
     };
 
     // Hearth spacing — radians of great-circle angle (sphere migration).
-    let min_sep = 0.85_f32 / (k as f32).sqrt() * std::f32::consts::PI;
+    let min_sep = cp.hearth_spacing_coeff / (k as f32).sqrt() * std::f32::consts::PI;
     let mut rng = Rng::for_stage(seed, b"culture");
     let mut hearths: Vec<u32> = Vec::with_capacity(k);
     for (ci, comp) in comps.iter().enumerate() {
@@ -83,7 +103,7 @@ pub fn build(
     }
 
     // --- culture flood-fill (barrier cost) ---
-    let owner = pathfind::multi_source_assign(&hearths, |c| biomes[c].culture_barrier(), neighbors);
+    let owner = pathfind::multi_source_assign(&hearths, |c| bp.culture_barrier(biomes[c]), neighbors);
     // A land cell unreachable from any hearth (a hearthless component, or a
     // Glacier cell — Glacier has no culture_barrier) falls back to culture 0.
     let mut culture_of = vec![NONE; n];

@@ -1,0 +1,32 @@
+{
+  "_spec": "region.created → INSERT region_projection. Columns per 0006: region_id=aggregate_id, code/display_name/parent_region_id/exits/ambient_state from payload (description def '', exits def [], ambient_state def {}), floor_items starts [], last_event_version.",
+  "envelope": {
+    "event_id": "00000000-0000-0000-0000-000000000501",
+    "event_type": "region.created",
+    "event_version": 1,
+    "aggregate_id": "region-1",
+    "aggregate_type": "region",
+    "aggregate_version": 1,
+    "reality_id": "22222222-2222-2222-2222-222222222222",
+    "occurred_at": "2026-01-01T00:00:00.000000Z",
+    "recorded_at": "2026-01-01T00:00:00.000000Z",
+    "payload": { "code": "r1", "display_name": "Forest", "description": "", "parent_region_id": null, "exits": [], "ambient_state": {} }
+  },
+  "expected_updates": [
+    { "Insert": {
+      "table": "region_projection",
+      "row": {
+        "region_id": "region-1",
+        "code": "r1",
+        "display_name": "Forest",
+        "description": "",
+        "parent_region_id": null,
+        "exits": [],
+        "floor_items": [],
+        "ambient_state": {},
+        "last_event_version": 1
+      },
+      "meta": { "event_id": "00000000-0000-0000-0000-000000000501", "aggregate_version": 1, "applied_at": "2026-01-01T00:00:00.000000Z" }
+    }}
+  ]
+}

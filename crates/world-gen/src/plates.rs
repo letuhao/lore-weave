@@ -16,46 +16,21 @@
 //! ascending id / `BoundaryKind` tag; BFS over the sorted neighbour lists.
 
 use crate::noise::fbm_3d;
+use crate::params::TectonicsParams;
 use crate::rng::{Rng, sub_seed};
 use crate::world_map::{BoundaryKind, Plate, PlateBoundary, PlateKind};
 
 // --- tuning -----------------------------------------------------------------
-
-/// Plate-kind base elevation in a **signed space where sea level = 0** (the
-/// terrain stage quantizes with the sea level pinned at the 0-crossing). This
-/// mirrors Earth's hypsometry directly: continental crust is a broad platform
-/// sitting *just above* sea level (vast low green plains), oceanic crust is a
-/// deep floor well below. Mountains are the high minority, built by the
-/// orogeny uplift + ridged relief — not a raised plateau.
-const CONT_BASE: f32 = 0.10;
-const OCEAN_BASE: f32 = -0.55;
-
-/// Orogeny peak magnitudes (signed deltas, sea level = 0), decaying with hop
-/// distance via [`decay`]. Continental collision (fold) belts are the big
-/// highs; subduction *coastal* arcs are modest (most of Earth's coasts are
-/// low passive margins, not the Andes); oceanic arcs/ridges mostly stay
-/// **subsea** (occasionally breaching as island chains — realistic); rifts
-/// dip a continental valley below sea (a Red-Sea-like trough).
-const FOLD_PEAK: f32 = 0.85;
-const ARC_PEAK: f32 = 0.55;
-const TRENCH_DEPTH: f32 = 0.30;
-const ISLAND_ARC_PEAK: f32 = 0.45;
-const RIDGE_PEAK: f32 = 0.20;
-const RIFT_DEPTH: f32 = 0.28;
-const FAULT_PEAK: f32 = 0.05;
-
-/// Orogeny decay length, in BFS hops — how far a belt reaches from its
-/// boundary. Scaled mildly so larger meshes get proportionally wider belts.
-const DECAY_HOPS: f32 = 4.0;
-
-/// Plate-boundary warp — a 3D fBm displacement applied to each cell before the
-/// nearest-seed (Voronoi) test, so plate boundaries are **fractal and
-/// irregular** rather than clean Voronoi arcs. This is what stops every
-/// continent from being a uniform round blob: warped boundaries give
-/// peninsulas, embayments, isthmuses and varied continent shapes.
-const PLATE_WARP_FREQ: f32 = 1.8;
-const PLATE_WARP_AMP: f32 = 0.32;
-const PLATE_WARP_OCTAVES: u32 = 4;
+//
+// All the numeric tuning that used to live here as `const`s is now in
+// [`crate::params::TectonicsParams`] (parameterization P1) — defaults are the
+// exact prior values, so a default profile is byte-identical. Only the
+// determinism salts (fixed, never user-tunable) remain here.
+//
+// Plate-boundary warp salts — the 3D fBm displacement applied to each cell
+// before the nearest-seed (Voronoi) test so plate boundaries are fractal/
+// irregular (varied, non-blobby continents). The warp *frequency/amplitude/
+// octaves* are tunable in `TectonicsParams`; these salts are fixed.
 const SALT_PWX: u32 = 0x4B1D_77A3;
 const SALT_PWY: u32 = 0x9E2C_51FF;
 const SALT_PWZ: u32 = 0x2D8A_C40B;
@@ -68,20 +43,32 @@ pub struct Plates {
     pub plates: Vec<Plate>,
     /// Classified adjacent plate-pair boundaries, sorted by `(plate_a, plate_b)`.
     pub boundaries: Vec<PlateBoundary>,
-    /// Per-cell base elevation from the cell's plate kind.
+    /// Per-cell crustal thickness in km (S3): oceanic thin, continental thick +
+    /// collision thickening. Drives [`Plates::base`] via Airy isostasy.
+    pub crust_thickness: Vec<f32>,
+    /// Per-cell isostatic base elevation from the cell's crust thickness/type.
     pub base: Vec<f32>,
     /// Per-cell signed orogeny uplift (mountains/arcs positive, trenches/rifts
     /// negative).
     pub uplift: Vec<f32>,
+    /// Per-cell oceanic-crust **age** as BFS hops from the nearest divergent
+    /// ocean ridge along oceanic crust (S4): `0` = a ridge cell, larger = older
+    /// (deeper) crust, `u32::MAX` = continental crust or an oceanic plate with no
+    /// ridge (treated as maximally old). Drives age-based bathymetry in
+    /// [`crate::terrain`].
+    pub crust_age: Vec<u32>,
 }
 
 /// Build the plate model. `plate_count` is clamped to `3..=24` and
 /// `continental_fraction` to `0.1..=0.9` by the caller (`creative_seed`).
+/// `params` is the **resolved** [`TectonicsParams`] (macro knobs already
+/// applied + clamped by [`TectonicsParams::resolved`]).
 pub fn build(
     seed: u64,
     plate_count: u8,
     continental_fraction: f32,
     continent_latitude_spread: f32,
+    params: &TectonicsParams,
     centers: &[[f32; 3]],
     neighbors: &[Vec<u32>],
 ) -> Plates {
@@ -100,7 +87,7 @@ pub fn build(
     let plate_of: Vec<u32> = centers
         .iter()
         .map(|c| {
-            let wc = warp_cell(*c, wseed);
+            let wc = warp_cell(*c, wseed, params);
             let mut best = 0usize;
             let mut best_dot = dot(wc, seeds[0]);
             for (p, sp) in seeds.iter().enumerate().skip(1) {
@@ -150,7 +137,8 @@ pub fn build(
         .collect();
 
     // 1d — boundary classification, one record per adjacent plate pair.
-    let boundaries = classify_boundaries(&seeds, &kind, &motion, &plate_of, neighbors);
+    let boundaries =
+        classify_boundaries(&seeds, &kind, &motion, &plate_of, neighbors, params.fault_shear_ratio);
     // Pair → kind lookup for the per-cell uplift seeding.
     let pair_kind = |a: u32, b: u32| -> BoundaryKind {
         let (lo, hi) = if a < b { (a, b) } else { (b, a) };
@@ -160,46 +148,76 @@ pub fn build(
             .map_or(BoundaryKind::Interior, |pb| pb.kind)
     };
 
-    // 1e — per-cell base elevation + orogeny uplift.
-    let base: Vec<f32> = (0..n_cells)
-        .map(|c| match kind[plate_of[c] as usize] {
-            PlateKind::Continental => CONT_BASE,
-            PlateKind::Oceanic => OCEAN_BASE,
+    // Boundary cells: a cell with ≥1 neighbour on a different plate. Each is a
+    // BFS source carrying the boundary kind of its (own-plate, dominant
+    // other-plate) pair. (Computed before the base — the isostasy thickening
+    // reads `(boundary_kind, dist)`.)
+    let (boundary_kind, dist) = boundary_field(&plate_of, neighbors, &pair_kind);
+
+    // 1e — per-cell crust thickness (S3, D2): oceanic crust is thin; continental
+    // crust is thick and **thickens further at collisions** (broad plateau,
+    // wider than the orogeny belt). Drives the isostatic base height below.
+    let crust_thickness: Vec<f32> = (0..n_cells)
+        .map(|c| {
+            let continental = kind[plate_of[c] as usize] == PlateKind::Continental;
+            if !continental {
+                return params.ocean_crust_km;
+            }
+            // Collision thickening on the continental side of a convergent
+            // boundary (continent–continent fold, or the overriding arc of a
+            // subduction). Broad `plateau_decay` → a high plateau, not a ridge.
+            let thicken = match boundary_kind[c] {
+                BoundaryKind::FoldMountain | BoundaryKind::Subduction => {
+                    params.collision_thicken_km * plateau_decay(dist[c], params.plateau_hops)
+                }
+                _ => 0.0,
+            };
+            params.cont_crust_km + thicken
         })
         .collect();
 
-    // Boundary cells: a cell with ≥1 neighbour on a different plate. Each is a
-    // BFS source carrying the boundary kind of its (own-plate, dominant
-    // other-plate) pair.
-    let (boundary_kind, dist) = boundary_field(&plate_of, neighbors, &pair_kind);
+    // 1f — per-cell isostatic base elevation (Airy: thicker crust floats higher),
+    // replacing the old two-constant base (D2).
+    let base: Vec<f32> = (0..n_cells)
+        .map(|c| {
+            let continental = kind[plate_of[c] as usize] == PlateKind::Continental;
+            isostasy_base(crust_thickness[c], continental, params)
+        })
+        .collect();
 
+    // 1g — per-cell orogeny uplift (the relief signal on top of the base).
     let uplift: Vec<f32> = (0..n_cells)
         .map(|c| {
             let bk = boundary_kind[c];
             if bk == BoundaryKind::Interior {
                 return 0.0;
             }
-            let f = decay(dist[c]);
+            let f = decay(dist[c], params.decay_hops);
             let cell_continental = kind[plate_of[c] as usize] == PlateKind::Continental;
             match bk {
-                BoundaryKind::FoldMountain => FOLD_PEAK * f,
+                BoundaryKind::FoldMountain => params.fold_peak * f,
                 BoundaryKind::Subduction => {
                     // arc rises on the continental (overriding) side; the
                     // oceanic (subducting) side gets a trench notch.
                     if cell_continental {
-                        ARC_PEAK * f
+                        params.arc_peak * f
                     } else {
-                        -TRENCH_DEPTH * f
+                        -params.trench_depth * f
                     }
                 }
-                BoundaryKind::IslandArc => ISLAND_ARC_PEAK * f,
-                BoundaryKind::Ridge => RIDGE_PEAK * f,
-                BoundaryKind::Rift => -RIFT_DEPTH * f,
-                BoundaryKind::Fault => FAULT_PEAK * f,
+                BoundaryKind::IslandArc => params.island_arc_peak * f,
+                BoundaryKind::Ridge => params.ridge_peak * f,
+                BoundaryKind::Rift => -params.rift_depth * f,
+                BoundaryKind::Fault => params.fault_peak * f,
                 BoundaryKind::Interior => 0.0,
             }
         })
         .collect();
+
+    // 1h — oceanic-crust age (S4, D4): BFS hops from divergent ocean ridges
+    // along oceanic crust. New crust is born at ridges (age 0) and ages as it
+    // spreads; the age drives the √age bathymetry depth curve in `terrain`.
+    let crust_age = crust_age_field(&plate_of, &kind, neighbors, &pair_kind);
 
     let plates: Vec<Plate> = (0..n)
         .map(|p| Plate {
@@ -214,9 +232,64 @@ pub fn build(
         plate_of,
         plates,
         boundaries,
+        crust_thickness,
         base,
         uplift,
+        crust_age,
     }
+}
+
+/// Per-cell oceanic-crust age (S4): multi-source BFS over **oceanic-plate cells
+/// only**, seeded from every oceanic cell adjacent to a divergent ocean
+/// [`BoundaryKind::Ridge`] (age 0). Continental cells and oceanic plates with no
+/// ridge stay `u32::MAX` (treated as maximally old → deep, flat abyss).
+///
+/// Determinism: ascending-id source sweep + sorted neighbour lists + first-
+/// writer-wins min distance — the same discipline as [`boundary_field`].
+fn crust_age_field(
+    plate_of: &[u32],
+    kind: &[PlateKind],
+    neighbors: &[Vec<u32>],
+    pair_kind: &impl Fn(u32, u32) -> BoundaryKind,
+) -> Vec<u32> {
+    let n = plate_of.len();
+    let oceanic = |c: usize| kind[plate_of[c] as usize] == PlateKind::Oceanic;
+    let mut age = vec![u32::MAX; n];
+    let mut frontier: Vec<u32> = Vec::new();
+
+    // Sources: oceanic cells touching a Ridge boundary (new crust forms here).
+    for c in 0..n {
+        if !oceanic(c) {
+            continue;
+        }
+        let pa = plate_of[c];
+        let at_ridge = neighbors[c].iter().any(|&nb| {
+            let pb = plate_of[nb as usize];
+            pb != pa && pair_kind(pa, pb) == BoundaryKind::Ridge
+        });
+        if at_ridge {
+            age[c] = 0;
+            frontier.push(c as u32);
+        }
+    }
+
+    // BFS waves over oceanic crust only.
+    let mut d = 0u32;
+    while !frontier.is_empty() {
+        let mut next: Vec<u32> = Vec::new();
+        for &c in &frontier {
+            for &nb in &neighbors[c as usize] {
+                let nb = nb as usize;
+                if oceanic(nb) && age[nb] == u32::MAX {
+                    age[nb] = d + 1;
+                    next.push(nb as u32);
+                }
+            }
+        }
+        frontier = next;
+        d += 1;
+    }
+    age
 }
 
 /// Choose which `n_cont` plates are continental, blending the random shuffle
@@ -298,6 +371,7 @@ fn classify_boundaries(
     motion: &[[f32; 3]],
     plate_of: &[u32],
     neighbors: &[Vec<u32>],
+    fault_shear_ratio: f32,
 ) -> Vec<PlateBoundary> {
     use std::collections::BTreeSet;
     // Adjacent unordered plate pairs (a < b).
@@ -322,6 +396,7 @@ fn classify_boundaries(
                 motion[b as usize],
                 kind[a as usize],
                 kind[b as usize],
+                fault_shear_ratio,
             );
             PlateBoundary {
                 plate_a: a,
@@ -341,6 +416,7 @@ fn boundary_kind_for_pair(
     mb: [f32; 3],
     ka: PlateKind,
     kb: PlateKind,
+    fault_shear_ratio: f32,
 ) -> BoundaryKind {
     // Boundary normal: tangent direction from a's seed toward b's seed.
     let n = tangent_unit(sa, sub(sb, sa));
@@ -357,8 +433,11 @@ fn boundary_kind_for_pair(
         ka == PlateKind::Continental && kb == PlateKind::Continental;
     let both_oceanic = ka == PlateKind::Oceanic && kb == PlateKind::Oceanic;
 
-    // Transform dominates when the shear component exceeds the normal closing.
-    if tangential > normal.abs() {
+    // Transform only when the shear component *strongly dominates* the normal
+    // closing/opening rate (`FAULT_SHEAR_RATIO`); otherwise the normal sign
+    // decides convergent vs divergent. (A plain `tangential > |normal|` test
+    // mislabels most random-motion boundaries Fault → no collisions.)
+    if tangential > fault_shear_ratio * normal.abs() {
         return BoundaryKind::Fault;
     }
     if normal > 0.0 {
@@ -439,26 +518,46 @@ fn boundary_field(
 }
 
 /// Orogeny decay with hop distance: 1 at the boundary, fading to ~0 by
-/// several hops. Smooth exponential-ish falloff.
-fn decay(hops: u32) -> f32 {
-    let t = hops as f32 / DECAY_HOPS;
+/// `decay_hops` hops. Smooth exponential-ish falloff.
+fn decay(hops: u32, decay_hops: f32) -> f32 {
+    let t = hops as f32 / decay_hops;
     (-t * t).exp()
+}
+
+/// Broad collision-plateau decay — same shape as [`decay`] but over the wider
+/// `plateau_hops`, so crustal thickening forms a broad high plateau rather than
+/// tracing the (narrower) orogeny ridge.
+fn plateau_decay(hops: u32, plateau_hops: f32) -> f32 {
+    let t = hops as f32 / plateau_hops;
+    (-t * t).exp()
+}
+
+/// Airy isostatic base height (signed, sea = 0) for a crust column: thicker
+/// continental crust floats higher (the mechanism behind high collision
+/// plateaus with no trench). Oceanic crust is uniform here — age-based depth
+/// (√age GDH1 bathymetry) is layered on later in `terrain.rs` (S4, shipped).
+/// Calibrated (defaults) so oceanic 7 km →
+/// `ocean_base`, continental 35 km → `cont_base`, 70 km → ~+0.40.
+fn isostasy_base(thickness_km: f32, continental: bool, params: &TectonicsParams) -> f32 {
+    if continental {
+        params.cont_base + params.cont_iso_slope * (thickness_km - params.cont_crust_km)
+    } else {
+        params.ocean_base
+    }
 }
 
 // --- vector helpers ---------------------------------------------------------
 
 /// Displace a unit-sphere cell position by a 3D fBm field, re-normalized back
 /// onto the sphere — the plate-boundary warp (fractal, irregular continents).
-fn warp_cell(c: [f32; 3], seed: u32) -> [f32; 3] {
-    let f = PLATE_WARP_FREQ;
-    let wx = fbm_3d(c[0] * f, c[1] * f, c[2] * f, seed ^ SALT_PWX, PLATE_WARP_OCTAVES);
-    let wy = fbm_3d(c[0] * f, c[1] * f, c[2] * f, seed ^ SALT_PWY, PLATE_WARP_OCTAVES);
-    let wz = fbm_3d(c[0] * f, c[1] * f, c[2] * f, seed ^ SALT_PWZ, PLATE_WARP_OCTAVES);
-    let v = [
-        c[0] + PLATE_WARP_AMP * wx,
-        c[1] + PLATE_WARP_AMP * wy,
-        c[2] + PLATE_WARP_AMP * wz,
-    ];
+fn warp_cell(c: [f32; 3], seed: u32, params: &TectonicsParams) -> [f32; 3] {
+    let f = params.warp_freq;
+    let oct = params.warp_octaves;
+    let amp = params.warp_amp;
+    let wx = fbm_3d(c[0] * f, c[1] * f, c[2] * f, seed ^ SALT_PWX, oct);
+    let wy = fbm_3d(c[0] * f, c[1] * f, c[2] * f, seed ^ SALT_PWY, oct);
+    let wz = fbm_3d(c[0] * f, c[1] * f, c[2] * f, seed ^ SALT_PWZ, oct);
+    let v = [c[0] + amp * wx, c[1] + amp * wy, c[2] + amp * wz];
     let l = len(v).max(1e-6);
     [v[0] / l, v[1] / l, v[2] / l]
 }
@@ -518,10 +617,15 @@ mod tests {
         (m.centers, m.neighbors)
     }
 
+    /// Default tectonics params (= the prior hardcoded consts).
+    fn tp() -> TectonicsParams {
+        TectonicsParams::default()
+    }
+
     #[test]
     fn every_cell_assigned_a_valid_plate() {
         let (centers, neighbors) = pocket();
-        let p = build(42, 8, 0.4, 0.0, &centers, &neighbors);
+        let p = build(42, 8, 0.4, 0.0, &tp(), &centers, &neighbors);
         assert_eq!(p.plate_of.len(), centers.len());
         assert!(p.plate_of.iter().all(|&id| (id as usize) < p.plates.len()));
         assert_eq!(p.plates.len(), 8);
@@ -530,7 +634,7 @@ mod tests {
     #[test]
     fn continental_count_matches_fraction() {
         let (centers, neighbors) = pocket();
-        let p = build(42, 10, 0.4, 0.0, &centers, &neighbors);
+        let p = build(42, 10, 0.4, 0.0, &tp(), &centers, &neighbors);
         let cont = p
             .plates
             .iter()
@@ -542,14 +646,14 @@ mod tests {
     #[test]
     fn plate_count_is_clamped() {
         let (centers, neighbors) = pocket();
-        assert_eq!(build(1, 2, 0.4, 0.0, &centers, &neighbors).plates.len(), 3);
-        assert_eq!(build(1, 99, 0.4, 0.0, &centers, &neighbors).plates.len(), 24);
+        assert_eq!(build(1, 2, 0.4, 0.0, &tp(), &centers, &neighbors).plates.len(), 3);
+        assert_eq!(build(1, 99, 0.4, 0.0, &tp(), &centers, &neighbors).plates.len(), 24);
     }
 
     #[test]
     fn motion_vectors_are_unit_and_tangent() {
         let (centers, neighbors) = pocket();
-        let p = build(7, 8, 0.4, 0.0, &centers, &neighbors);
+        let p = build(7, 8, 0.4, 0.0, &tp(), &centers, &neighbors);
         for pl in &p.plates {
             let m = pl.motion;
             let l = (m[0] * m[0] + m[1] * m[1] + m[2] * m[2]).sqrt();
@@ -565,7 +669,7 @@ mod tests {
     #[test]
     fn boundaries_are_sorted_and_classified() {
         let (centers, neighbors) = pocket();
-        let p = build(42, 8, 0.4, 0.0, &centers, &neighbors);
+        let p = build(42, 8, 0.4, 0.0, &tp(), &centers, &neighbors);
         assert!(!p.boundaries.is_empty(), "8 plates must share boundaries");
         for w in p.boundaries.windows(2) {
             assert!(
@@ -582,7 +686,7 @@ mod tests {
     #[test]
     fn uplift_is_finite_and_zero_in_deep_interior() {
         let (centers, neighbors) = pocket();
-        let p = build(42, 8, 0.4, 0.0, &centers, &neighbors);
+        let p = build(42, 8, 0.4, 0.0, &tp(), &centers, &neighbors);
         assert!(p.uplift.iter().all(|u| u.is_finite()));
         // at least some cells get non-zero uplift (boundaries exist).
         assert!(p.uplift.iter().any(|&u| u.abs() > 0.01));
@@ -644,12 +748,109 @@ mod tests {
     #[test]
     fn deterministic() {
         let (centers, neighbors) = pocket();
-        let a = build(99, 8, 0.4, 0.0, &centers, &neighbors);
-        let b = build(99, 8, 0.4, 0.0, &centers, &neighbors);
+        let a = build(99, 8, 0.4, 0.0, &tp(), &centers, &neighbors);
+        let b = build(99, 8, 0.4, 0.0, &tp(), &centers, &neighbors);
         assert_eq!(a.plate_of, b.plate_of);
         assert_eq!(a.boundaries, b.boundaries);
         for i in 0..a.uplift.len() {
             assert_eq!(a.uplift[i].to_bits(), b.uplift[i].to_bits());
+            assert_eq!(a.crust_thickness[i].to_bits(), b.crust_thickness[i].to_bits());
+            assert_eq!(a.crust_age[i], b.crust_age[i]);
         }
+    }
+
+    /// S4 — oceanic-crust age: ridge cells are age 0, age grows with hops away,
+    /// every reachable oceanic cell is finite, and continental cells stay the
+    /// `u32::MAX` sentinel (age is an oceanic-crust property only).
+    #[test]
+    fn crust_age_zero_at_ridges_and_grows() {
+        // Larger mesh ⇒ more boundaries ⇒ a Ridge is far more likely to appear.
+        let m = mesh::build(7, WorldScale::Continent);
+        let p = build(7, 8, 0.4, 0.0, &tp(), &m.centers, &m.neighbors);
+        assert_eq!(p.crust_age.len(), m.centers.len());
+
+        // A ridge boundary must exist for this seed (so age has sources).
+        assert!(
+            p.boundaries.iter().any(|b| b.kind == BoundaryKind::Ridge),
+            "seed-7 Continent must produce a Ridge boundary for the age field"
+        );
+
+        let mut zero = 0u32;
+        let mut max_finite = 0u32;
+        for c in 0..m.centers.len() {
+            let oceanic = p.plates[p.plate_of[c] as usize].kind == PlateKind::Oceanic;
+            let age = p.crust_age[c];
+            if !oceanic {
+                assert_eq!(age, u32::MAX, "continental cell {c} must have sentinel age");
+                continue;
+            }
+            if age == 0 {
+                zero += 1;
+            }
+            if age != u32::MAX {
+                max_finite = max_finite.max(age);
+            }
+        }
+        assert!(zero > 0, "no ridge (age-0) oceanic cells");
+        assert!(max_finite > 0, "age never grew beyond the ridge");
+
+        // A ridge (age-0) cell's oceanic neighbours are age ≤ 1 (BFS monotone),
+        // and every finite-age non-ridge cell has a strictly-younger oceanic
+        // neighbour (it was reached from one) — the spreading-away invariant.
+        for c in 0..m.centers.len() {
+            let oceanic = |x: usize| p.plates[p.plate_of[x] as usize].kind == PlateKind::Oceanic;
+            let age = p.crust_age[c];
+            if !oceanic(c) || age == 0 || age == u32::MAX {
+                continue;
+            }
+            let has_younger = m.neighbors[c]
+                .iter()
+                .any(|&nb| oceanic(nb as usize) && p.crust_age[nb as usize] == age - 1);
+            assert!(has_younger, "cell {c} (age {age}) has no age-{} oceanic neighbour", age - 1);
+        }
+    }
+
+    /// S3 — crust thickness splits ocean (thin) vs continent (thick), and
+    /// continental crust never exceeds the neutral + collision-thickening cap.
+    #[test]
+    fn crust_thickness_splits_ocean_and_continent() {
+        let (centers, neighbors) = pocket();
+        let p = build(7, 8, 0.4, 0.0, &tp(), &centers, &neighbors);
+        assert_eq!(p.crust_thickness.len(), centers.len());
+        let d = tp();
+        let (mut thin, mut thick) = (0u32, 0u32);
+        for (c, &t) in p.crust_thickness.iter().enumerate() {
+            assert!(t.is_finite(), "crust thickness not finite at {c}");
+            match p.plates[p.plate_of[c] as usize].kind {
+                PlateKind::Oceanic => {
+                    assert!((t - d.ocean_crust_km).abs() < 1e-3, "oceanic crust {t} != {}", d.ocean_crust_km);
+                    thin += 1;
+                }
+                PlateKind::Continental => {
+                    assert!(
+                        (d.cont_crust_km - 1e-3..=d.cont_crust_km + d.collision_thicken_km + 1e-3)
+                            .contains(&t),
+                        "continental crust {t} out of [{}, {}]",
+                        d.cont_crust_km,
+                        d.cont_crust_km + d.collision_thicken_km
+                    );
+                    thick += 1;
+                }
+            }
+        }
+        assert!(thin > 0 && thick > 0, "crust thickness not split ocean/continent");
+    }
+
+    /// S3 — isostasy: thicker continental crust floats strictly higher; oceanic
+    /// crust sits at `OCEAN_BASE`; the calibration anchors hold.
+    #[test]
+    fn isostasy_base_rises_with_thickness() {
+        let d = tp();
+        assert!((isostasy_base(d.ocean_crust_km, false, &d) - d.ocean_base).abs() < 1e-6);
+        assert!((isostasy_base(d.cont_crust_km, true, &d) - d.cont_base).abs() < 1e-6);
+        // Tibet-thick crust floats well above the normal platform.
+        let thick = isostasy_base(d.cont_crust_km + d.collision_thicken_km, true, &d);
+        assert!(thick > d.cont_base + 0.2, "70km crust base {thick} not a plateau");
+        assert!(thick > isostasy_base(d.cont_crust_km + 1.0, true, &d), "isostasy not monotonic");
     }
 }

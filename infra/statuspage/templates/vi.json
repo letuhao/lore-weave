@@ -1,0 +1,28 @@
+{
+  "_comment": "infra/statuspage/templates/vi.json — L7.L.4 (RAID cycle 37). i18next VI resource bundle. Mirrors en.json key-for-key (verify-cycle-37.sh asserts key parity). V1 EN+VI minimum.",
+  "page": {
+    "title": "Trạng thái LoreWeave",
+    "all_operational": "Tất cả hệ thống hoạt động bình thường",
+    "subscribe": "Đăng ký nhận cập nhật",
+    "powered_by": "Được lưu trữ bên ngoài trên Statuspage.io"
+  },
+  "status": {
+    "operational": "Hoạt động",
+    "degraded_performance": "Hiệu năng suy giảm",
+    "partial_outage": "Gián đoạn một phần",
+    "major_outage": "Gián đoạn nghiêm trọng",
+    "under_maintenance": "Đang bảo trì"
+  },
+  "incident": {
+    "investigating": "Đang điều tra",
+    "identified": "Đã xác định",
+    "monitoring": "Đang theo dõi",
+    "resolved": "Đã khắc phục",
+    "posted_at": "Đăng lúc {{time}} UTC",
+    "next_update": "Cập nhật tiếp theo trong vòng {{minutes}} phút"
+  },
+  "banner": {
+    "sev0": "Chúng tôi đang gặp sự cố dịch vụ nghiêm trọng.",
+    "sev1": "Chúng tôi đang gặp sự cố dịch vụ."
+  }
+}

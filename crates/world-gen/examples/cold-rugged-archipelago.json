@@ -1,0 +1,25 @@
+{
+  "world_scale": "Continent",
+  "world_archetype": "HighFantasy",
+  "terrain_mode": "Tectonic",
+  "hemisphere_orientation": "Northern",
+  "prevailing_wind": "West",
+  "erosion": "Heavy",
+  "climate_bias": null,
+  "settlement_density": "Medium",
+  "culture_count": 6,
+  "plate_count": 12,
+  "continental_fraction": 0.3,
+  "continent_latitude_spread": 1.0,
+  "region_subdivision": 4,
+  "county_subdivision": 4,
+  "intensity": {
+    "orogeny": 1.8,
+    "collision_frequency": 1.5,
+    "relief": 1.6,
+    "ocean_depth": 1.3,
+    "warmth": 0.7,
+    "rainfall": 0.9,
+    "seasonality": 1.4
+  }
+}

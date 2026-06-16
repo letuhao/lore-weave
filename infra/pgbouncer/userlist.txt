@@ -1,0 +1,18 @@
+# infra/pgbouncer/userlist.txt — DEV-ONLY credentials
+#
+# Format: "username" "password-or-SCRAM-secret"
+#
+# These are matched against PATRONI_SUPERUSER_PASSWORD in
+# docker-compose.meta-ha.yml. For production, this file is generated
+# from Vault secrets at deploy time; never hand-edit prod userlist.txt.
+#
+# When SVID-based mTLS lands (V1+30d alongside service mesh decision
+# Q-L7-3), this file becomes empty + Postgres uses pg_ident.conf to map
+# SVIDs to roles. Until then, scram-sha-256 hashed shared secrets is fine.
+
+# Dev superuser (matches docker-compose default).
+"postgres" "postgres"
+
+# Pgbouncer admin / stats users.
+"pgbouncer_admin" "admin"
+"pgbouncer_stats" "stats"
