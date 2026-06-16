@@ -31,6 +31,7 @@ from .contract import (
 from .consumer import BaseTerminalConsumer
 from .projection_consumer import BaseProjectionConsumer
 from .emit import emit_job_event, emit_job_event_safe
+from .scheduler import FairScheduler
 
 __all__ = [
     "JobStatus",
@@ -45,4 +46,5 @@ __all__ = [
     "BaseProjectionConsumer",
     "emit_job_event",
     "emit_job_event_safe",
+    "FairScheduler",
 ]
