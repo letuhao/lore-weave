@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { useAuth } from '@/auth';
 import { jobsApi } from '../api';
-import type { Job, JobControlAction } from '../types';
+import type { JobControlAction, JobControlResult } from '../types';
 
 export type ControlArgs = { service: string; jobId: string; action: JobControlAction };
 
@@ -10,7 +10,7 @@ export type ControlArgs = { service: string; jobId: string; action: JobControlAc
  *  ownership); a stale-state 409 / unreachable 502 surfaces to onError. On success,
  *  invalidates ['jobs'] so the list + detail reflect the new state at once. */
 export function useJobControl(opts?: {
-  onSuccess?: (job: Job, args: ControlArgs) => void;
+  onSuccess?: (result: JobControlResult, args: ControlArgs) => void;
   onError?: (err: Error, args: ControlArgs) => void;
 }) {
   const { accessToken } = useAuth();

@@ -29,6 +29,16 @@ from loreweave_jobs import ControlCap, JobStatus, TERMINAL
 # is tracked as D-JOBS-P3-TRANSLATION-PAUSE (re-add here when it ships, P3-4).
 _MULTI_UNIT_KINDS: frozenset[str] = frozenset({"extraction", "campaign", "enrichment_job"})
 
+# Kinds whose owning service can RE-SUBMIT a failed job as a fresh job (D-JOBS-P4-RETRY).
+# Conservative allowlist gated on a working retry endpoint — offering a retry the owner
+# can't honor is worse than not offering it. Honored today:
+#   - translation — re-creates from the stored translation_jobs params (standalone re-run)
+# NOT yet (tracked): composition (D-JOBS-P4-RETRY-COMPOSITION), knowledge (needs stored
+# model-ref UUIDs — D-JOBS-P4-RETRY-KNOWLEDGE), video_gen (D-JOBS-P4-RETRY-VIDEOGEN),
+# lore-enrichment (sync in-process — incompatible with the deferred control contract;
+# D-JOBS-P4-RETRY-LORE).
+_RETRYABLE_KINDS: frozenset[str] = frozenset({"translation"})
+
 
 def _is_multi_unit(kind: str) -> bool:
     return kind in _MULTI_UNIT_KINDS
@@ -37,12 +47,17 @@ def _is_multi_unit(kind: str) -> bool:
 def derive_control_caps(status: "JobStatus | str", kind: str) -> list[ControlCap]:
     """Return the control actions valid for a job in its CURRENT status.
 
-    - terminal (completed/failed/cancelled) or `cancelling` (already in-flight) → none
+    - `failed` → retry (only for a retry-supported kind), else none
+    - terminal (completed/cancelled) or `cancelling` (already in-flight) → none
     - `paused` → resume + cancel
     - `pending` → cancel
     - `running` → cancel (+ pause iff the kind is multi-unit)
     """
     s = status if isinstance(status, JobStatus) else JobStatus(status)
+    if s == JobStatus.FAILED:
+        # A failed job is terminal but RE-SUBMITTABLE for the kinds whose owner honors it
+        # (D-JOBS-P4-RETRY). Retry creates a NEW job; the failed row stays as history.
+        return [ControlCap.RETRY] if kind in _RETRYABLE_KINDS else []
     if s in TERMINAL or s == JobStatus.CANCELLING:
         return []
     if s == JobStatus.PAUSED:

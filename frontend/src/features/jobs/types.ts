@@ -19,8 +19,12 @@ export function isTerminal(status: JobStatus): boolean {
 }
 
 /** State-aware control capability (ControlCap enum). */
-export type ControlCap = 'cancel' | 'pause' | 'resume';
+export type ControlCap = 'cancel' | 'pause' | 'resume' | 'retry';
 export type JobControlAction = ControlCap;
+
+/** Control response. cancel/pause/resume act on the SAME job (job_id = the acted job);
+ *  retry RE-SUBMITS a failed job → job_id is the NEW job + retried_from = the failed one. */
+export type JobControlResult = { job_id: string; status: string; retried_from?: string };
 
 export type JobProgress = { done: number; total: number };
 export type JobError = { code: string; message: string };

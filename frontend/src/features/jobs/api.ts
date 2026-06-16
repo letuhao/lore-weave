@@ -4,6 +4,7 @@ import type {
   JobListParams,
   JobListResponse,
   JobControlAction,
+  JobControlResult,
   JobSummary,
   JobFairness,
 } from './types';
@@ -43,14 +44,15 @@ export const jobsApi = {
     });
   },
 
-  /** Cancel / pause / resume — routed to the owning service, which re-verifies ownership. */
+  /** Cancel / pause / resume / retry — routed to the owning service, which re-verifies
+   *  ownership. Returns {job_id, status} (+ retried_from on a retry → job_id is the NEW job). */
   control(
     service: string,
     jobId: string,
     action: JobControlAction,
     token: string,
-  ): Promise<Job> {
-    return apiJson<Job>(
+  ): Promise<JobControlResult> {
+    return apiJson<JobControlResult>(
       `/v1/jobs/${encodeURIComponent(service)}/${encodeURIComponent(jobId)}/${action}`,
       { token, method: 'POST' },
     );

@@ -86,6 +86,8 @@
     "cancelled": "Cancelled.",
     "paused": "Paused.",
     "resumed": "Resumed.",
+    "retry": "Retry",
+    "retried": "Re-submitted as a new job.",
     "stale": "Job state changed — refreshed.",
     "actionFailed": "Action failed: {{error}}"
   },

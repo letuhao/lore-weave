@@ -7,10 +7,12 @@ job-create path is reused.
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi import HTTPException
+
+from tests.conftest import FakeRecord
 
 TOKEN = "test_internal_token"  # matches conftest INTERNAL_SERVICE_TOKEN
 USER = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
@@ -185,6 +187,68 @@ def test_empty_chapter_ids_422(client, mocker):
         headers={"X-Internal-Token": TOKEN},
     )
     assert resp.status_code == 422
+
+
+# ── D-JOBS-P4-RETRY: re-submit a failed job (job-control retry action) ────────
+
+NEW_JOB = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"
+
+
+def _failed_row(**over):
+    base = {
+        "job_id": UUID(JOB), "book_id": UUID(BOOK), "owner_user_id": UUID(USER),
+        "status": "failed", "chapter_ids": [UUID(C1)], "target_language": "vi",
+        "model_source": "user_model", "model_ref": uuid4(), "pipeline_version": "v3",
+        "qa_depth": "standard", "max_qa_rounds": 2,
+        "verifier_model_source": None, "verifier_model_ref": None,
+        "eval_judge_model_source": None, "eval_judge_model_ref": None,
+        "cold_start_mode": "single_pass", "block_index_filter": None, "seed_version_id": None,
+    }
+    base.update(over)
+    return FakeRecord(base)
+
+
+def test_retry_resubmits_failed_job_standalone(client, fake_pool, mocker):
+    fake_pool.fetchrow.return_value = _failed_row()
+    core = mocker.patch(
+        "app.routers.internal_dispatch._resolve_and_create_job",
+        new_callable=AsyncMock,
+        return_value=SimpleNamespace(job_id=UUID(NEW_JOB), status="pending"))
+    resp = client.post(
+        f"/internal/translation/job-control/{JOB}/retry",
+        json={"owner_user_id": USER}, headers={"X-Internal-Token": TOKEN})
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["job_id"] == NEW_JOB and body["retried_from"] == JOB
+    # standalone re-run: campaign_id forced None (detached from any original campaign saga)
+    assert core.call_args.kwargs["campaign_id"] is None
+    # the rebuilt payload re-runs the stored set (force) with the stored model
+    payload = core.call_args.args[2]
+    assert payload.force_retranslate is True
+    assert payload.model_source == "user_model"
+    assert payload.pipeline_version == "v3"
+
+
+def test_retry_404_when_not_owned(client, fake_pool):
+    fake_pool.fetchrow.return_value = None  # owner-scoped SELECT matched nothing
+    resp = client.post(
+        f"/internal/translation/job-control/{JOB}/retry",
+        json={"owner_user_id": USER}, headers={"X-Internal-Token": TOKEN})
+    assert resp.status_code == 404
+
+
+def test_retry_409_when_not_failed(client, fake_pool):
+    fake_pool.fetchrow.return_value = _failed_row(status="running")  # only failed is retryable
+    resp = client.post(
+        f"/internal/translation/job-control/{JOB}/retry",
+        json={"owner_user_id": USER}, headers={"X-Internal-Token": TOKEN})
+    assert resp.status_code == 409
+
+
+def test_retry_rejects_missing_internal_token(client):
+    resp = client.post(
+        f"/internal/translation/job-control/{JOB}/retry", json={"owner_user_id": USER})
+    assert resp.status_code == 401
 
 
 # ── D-CAMPAIGN-BESTEFFORT-EMIT-REDIS: chapter-status truth ────────────────────

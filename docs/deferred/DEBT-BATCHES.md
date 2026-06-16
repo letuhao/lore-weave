@@ -15,7 +15,7 @@
 | # | Batch | Type | ~Items | Size | Status |
 |---|---|---|---:|---|---|
 | **B0** | Correctness sweep (cross-service, small + high-value) | correctness | 7 | M | ✅ 2026-06-16 |
-| **B1** | Jobs GUI telemetry completeness (P4) | telemetry | 9 | L | ☐ |
+| **B1** | Jobs GUI telemetry completeness (P4) | telemetry | 9 | L | ✅ 2026-06-17 |
 | **B2** | Jobs control completeness (P3) | feature-gap | 3 | M | ☐ |
 | **B3** | Live-smoke sweep — Job Control Plane + P5 | live-smoke | 4 | M | ☐ |
 | **B4a** | Live-smoke sweep — Auto-Draft Factory (S1–S6) | live-smoke | ~17 | L | ☐ |
@@ -25,7 +25,7 @@
 | **B7** | Knowledge Projects FE (K19) — mobile + filters + polish | feature-gap (FE) | ~20 | L | ☐ |
 | **B8** | Search/Rawsearch + cosmetic cleanup + misc code gaps | mixed/low | ~18 | M | ☐ |
 
-Recommended order: ~~B0~~ ✅ → **B1 → B2 → B3** (Job Control Plane warm + de-risk money-path), then **B4a/B5** (live-smoke confidence sweeps), then **B4b → B6 → B7 → B8**. **Next open: B1.**
+Recommended order: ~~B0~~ ✅ → ~~B1~~ ✅ → **B2 → B3** (Job Control Plane warm + de-risk money-path), then **B4a/B5** (live-smoke confidence sweeps), then **B4b → B6 → B7 → B8**. **Next open: B2.**
 
 ---
 
@@ -48,8 +48,16 @@ CLARIFY refined 7 items → **3 real fixes** + **4 no-ops** (handoff-confirmed w
 
 ---
 
-## B1 — Jobs GUI telemetry completeness (P4)
-Make the unified jobs dashboard show complete cost/model/tokens for **every** kind + wire retry. All in the jobs-projection emit path.
+## B1 — Jobs GUI telemetry completeness (P4) — ✅ CLEARED 2026-06-17
+Make the unified jobs dashboard show complete cost/model/tokens for **every** kind + wire retry.
+Shipped as 4 milestones (plan `docs/plans/2026-06-16-b1-jobs-telemetry.md`): M1 model-names+spend
+(`92850509`/`2e2c8977`) · M2 translation cost (`7354ce5b`) · M3 summary+overlay (`f3fe9430`) ·
+M4 retry=re-submit (this commit). **All 9 items done.** Retry shipped for **translation** only;
+the other kinds are tracked deferrals (each needs its own work — see Park/below):
+`D-JOBS-P4-RETRY-COMPOSITION` (clean — input JSONB; just not wired), `D-JOBS-P4-RETRY-KNOWLEDGE`
+(needs stored model-ref UUIDs / a request_json blob), `D-JOBS-P4-RETRY-VIDEOGEN` (map the
+submit-then-create path), `D-JOBS-P4-RETRY-LORE` (sync in-process → incompatible with the
+deferred control contract; re-arch or leave as manual re-submit). Live-smoke → `D-B1-LIVE-SMOKE` (B3).
 
 | ID | Description | sev |
 |---|---|---|

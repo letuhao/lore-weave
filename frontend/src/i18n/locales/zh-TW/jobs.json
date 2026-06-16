@@ -86,6 +86,8 @@
     "cancelled": "已取消。",
     "paused": "已暫停。",
     "resumed": "已繼續。",
+    "retry": "重試",
+    "retried": "已重新送出為新工作。",
     "stale": "狀態已變更 — 已重新整理。",
     "actionFailed": "操作失敗：{{error}}"
   },

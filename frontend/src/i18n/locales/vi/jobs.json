@@ -86,6 +86,8 @@
     "cancelled": "Đã hủy.",
     "paused": "Đã tạm dừng.",
     "resumed": "Đã tiếp tục.",
+    "retry": "Thử lại",
+    "retried": "Đã gửi lại thành một job mới.",
     "stale": "Trạng thái đã thay đổi — đã làm mới.",
     "actionFailed": "Thao tác thất bại: {{error}}"
   },

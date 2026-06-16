@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { Pause, Play, X } from 'lucide-react';
+import { Pause, Play, RotateCcw, X } from 'lucide-react';
 
 import { useJobControl } from '../hooks/useJobControl';
 import type { ControlCap, JobControlAction } from '../types';
@@ -20,6 +20,7 @@ const SUCCESS: Record<JobControlAction, [string, string]> = {
   cancel: ['controls.cancelled', 'Cancelled.'],
   pause: ['controls.paused', 'Paused.'],
   resume: ['controls.resumed', 'Resumed.'],
+  retry: ['controls.retried', 'Re-submitted as a new job.'],
 };
 
 /** Generalized lifecycle controls (the cross-service analog of campaigns'
@@ -58,6 +59,17 @@ export function JobControls({ service, jobId, controlCaps, compact }: Props) {
 
   return (
     <div className="flex flex-wrap items-center gap-2">
+      {has('retry') && (
+        <button
+          className={btn}
+          onClick={() => run('retry')}
+          disabled={ctl.isPending}
+          aria-label={t('controls.retry', { defaultValue: 'Retry' })}
+        >
+          <RotateCcw className="h-4 w-4" />
+          {!compact && t('controls.retry', { defaultValue: 'Retry' })}
+        </button>
+      )}
       {has('pause') && (
         <button
           className={btn}

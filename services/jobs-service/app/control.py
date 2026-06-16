@@ -23,7 +23,7 @@ from .config import settings
 
 log = logging.getLogger(__name__)
 
-VALID_ACTIONS = ("cancel", "pause", "resume")
+VALID_ACTIONS = ("cancel", "pause", "resume", "retry")
 
 # service (as stored in job_projection.service) → (internal base url, control path
 # prefix). Path = f"{base}{prefix}/{job_id}/{action}". Underscored service names

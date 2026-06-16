@@ -391,11 +391,60 @@ async def control_job(
     cancel`, which takes a `user_id` body) so the control-plane contract (an
     `owner_user_id` body) doesn't collide on the route. Reuses the owner-scoped
     `_cancel_job_core` — M4 re-check (404 if not owned), 409 if already terminal."""
+    if action == "retry":
+        return await _retry_job_core(db, job_id, payload.owner_user_id)
     if action != "cancel":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"code": "TRANSL_UNSUPPORTED_ACTION",
-                    "message": f"translation jobs support only 'cancel', not '{action}'"},
+                    "message": f"translation jobs support only 'cancel'/'retry', not '{action}'"},
         )
     await _cancel_job_core(db, job_id, str(payload.owner_user_id))
     return {"job_id": str(job_id), "status": "cancelled"}
+
+
+async def _retry_job_core(db: asyncpg.Pool, job_id: UUID, owner_user_id: UUID) -> dict:
+    """D-JOBS-P4-RETRY — re-submit a FAILED translation job as a FRESH job (new job_id),
+    reusing the failed row's model/language/pipeline/QA params. Owner-scoped (M4 re-check:
+    404 if not owned). 409 unless the job is `failed` (retry is only offered there). The
+    retried job is created STANDALONE (campaign_id=None) — a user retry is detached from any
+    original campaign saga, which orchestrates its own jobs. `force_retranslate=True` re-runs
+    the stored chapter set regardless of the skip-gate. Prompts + any unset params resolve
+    from the user's CURRENT settings (the model/language/pipeline choices are preserved)."""
+    row = await db.fetchrow(
+        "SELECT * FROM translation_jobs WHERE job_id=$1 AND owner_user_id=$2",
+        job_id, owner_user_id,
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "TRANSL_NOT_FOUND", "message": "job not found"},
+        )
+    if row["status"] != "failed":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "TRANSL_NOT_RETRYABLE",
+                    "message": f"only a failed job can be retried (status='{row['status']}')"},
+        )
+    payload = CreateJobPayload(
+        chapter_ids=list(row["chapter_ids"]),
+        target_language=row["target_language"],
+        model_source=row["model_source"],
+        model_ref=row["model_ref"],
+        pipeline_version=row["pipeline_version"],
+        qa_depth=row["qa_depth"],
+        max_qa_rounds=row["max_qa_rounds"],
+        verifier_model_source=row["verifier_model_source"],
+        verifier_model_ref=row["verifier_model_ref"],
+        eval_judge_model_source=row["eval_judge_model_source"],
+        eval_judge_model_ref=row["eval_judge_model_ref"],
+        cold_start_mode=row["cold_start_mode"],
+        block_index_filter=row["block_index_filter"],
+        seed_version_id=row["seed_version_id"],
+        force_retranslate=True,
+    )
+    new_job = await _resolve_and_create_job(
+        db, row["book_id"], payload, str(owner_user_id), campaign_id=None,
+    )
+    return {"job_id": str(new_job.job_id), "status": new_job.status,
+            "retried_from": str(job_id)}

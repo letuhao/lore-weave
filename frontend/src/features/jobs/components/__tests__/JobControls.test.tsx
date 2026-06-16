@@ -52,6 +52,18 @@ describe('JobControls — state-aware caps gating', () => {
     expect(control).not.toHaveBeenCalled();
   });
 
+  it('renders a retry button for a failed retryable job (cap = retry)', async () => {
+    control.mockResolvedValue({ job_id: 'new-job', status: 'pending', retried_from: 'j1' });
+    renderControls(['retry']);
+    const btn = screen.getByText('controls.retry');
+    expect(btn).toBeInTheDocument();
+    expect(screen.queryByText('controls.cancel')).not.toBeInTheDocument();
+    await userEvent.click(btn);
+    // retry fires immediately (no confirm — it's a fresh submit, not destructive)
+    await waitFor(() => expect(control).toHaveBeenCalledWith('knowledge', 'j1', 'retry', 'tok'));
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith('controls.retried'));
+  });
+
   it('maps a 409 to the stale-state toast (not a generic failure)', async () => {
     control.mockRejectedValue(Object.assign(new Error('conflict'), { status: 409 }));
     renderControls(['pause', 'cancel']);

@@ -60,6 +60,7 @@ class ControlCap(str, Enum):
     CANCEL = "cancel"
     PAUSE = "pause"
     RESUME = "resume"
+    RETRY = "retry"  # re-submit a FAILED job as a fresh job (new job_id) — P4
 
 
 @dataclass
