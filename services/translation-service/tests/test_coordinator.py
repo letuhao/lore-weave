@@ -308,3 +308,49 @@ async def test_coordinator_single_chapter_job():
     assert publish.call_count == 1
     assert publish.call_args.args[1]["chapter_index"] == 0
     assert publish.call_args.args[1]["total_chapters"] == 1
+
+
+# ── P5 fair scheduling: flag-on ENQUEUE path ────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_coordinator_enqueues_to_wfq_when_p5_enabled(monkeypatch):
+    """With P5 on, the coordinator ENQUEUEs one unit per chapter into the per-owner WFQ
+    (owner=user_id) and does NOT publish directly — so a giant job can't dump N messages
+    onto the queue at once. The dispatcher loop releases them under the cap."""
+    monkeypatch.setattr("app.workers.coordinator.emit_job_event", AsyncMock())
+    monkeypatch.setattr("app.workers.coordinator.settings.p5_sched_enabled", True)
+    sched = AsyncMock()
+    monkeypatch.setattr("app.workers.coordinator.fair_sched.get_scheduler", lambda: sched)
+
+    pool, _ = _make_pool()
+    publish = AsyncMock()
+    from app.workers.coordinator import handle_job_message
+    from app.fair_sched import LANE_CHAPTER
+    await handle_job_message(_job_msg(CHAPTER_IDS), pool, publish, AsyncMock())
+
+    publish.assert_not_called()  # no direct fan-out
+    assert sched.enqueue.await_count == len(CHAPTER_IDS)
+    # every enqueue is (lane, owner, unit) for the same owner; units carry chapter_id
+    lanes = {c.args[0] for c in sched.enqueue.await_args_list}
+    owners = {c.args[1] for c in sched.enqueue.await_args_list}
+    assert lanes == {LANE_CHAPTER}
+    assert owners == {USER_ID}
+    assert {c.args[2]["chapter_id"] for c in sched.enqueue.await_args_list} == set(CHAPTER_IDS)
+
+
+@pytest.mark.asyncio
+async def test_coordinator_still_emits_running_when_p5_enabled(monkeypatch):
+    """Enqueue path must not skip the running transition + emit (the projection still
+    needs the job to appear)."""
+    emit = AsyncMock()
+    monkeypatch.setattr("app.workers.coordinator.emit_job_event", emit)
+    monkeypatch.setattr("app.workers.coordinator.settings.p5_sched_enabled", True)
+    monkeypatch.setattr("app.workers.coordinator.fair_sched.get_scheduler", lambda: AsyncMock())
+    pool, db = _make_pool()
+    publish_event = AsyncMock()
+    from app.workers.coordinator import handle_job_message
+    await handle_job_message(_job_msg(), pool, AsyncMock(), publish_event)
+
+    db.fetchrow.assert_called_once()  # running UPDATE still ran
+    emit.assert_awaited_once()        # running event still emitted
+    publish_event.assert_called_once()

@@ -3,6 +3,9 @@ from uuid import UUID
 
 from loreweave_jobs import emit_job_event
 
+from ..config import settings
+from .. import fair_sched
+
 log = logging.getLogger(__name__)
 
 #: Unified Job Control Plane P1 — stamped on every emitted JobEvent.
@@ -38,10 +41,10 @@ async def handle_job_message(msg: dict, pool, publish, publish_event) -> None:
                     status="running",
                 )
 
-    # Routing key "translation.chapter" must match the binding in broker.connect_broker()
-    for index, chapter_id in enumerate(msg["chapter_ids"]):
-        log.debug("coordinator: publishing chapter %s (%d/%d)", chapter_id, index + 1, n)
-        await publish("translation.chapter", {
+    # Build the per-chapter units (the message shape the chapter worker consumes).
+    # Routing key "translation.chapter" must match the binding in broker.connect_broker().
+    units = [
+        {
             "job_id":               msg["job_id"],
             "chapter_id":           chapter_id,
             "chapter_index":        index,
@@ -73,9 +76,23 @@ async def handle_job_message(msg: dict, pool, publish, publish_event) -> None:
             # T2-M2: dirty-only re-translate scope (None for whole-chapter jobs).
             "block_index_filter":   msg.get("block_index_filter"),
             "seed_version_id":      msg.get("seed_version_id"),
-        })
+        }
+        for index, chapter_id in enumerate(msg["chapter_ids"])
+    ]
 
-    log.info("coordinator: job %s — all %d chapter messages published", job_id, n)
+    if settings.p5_sched_enabled:
+        # P5 — fair scheduling: ENQUEUE into the per-owner WFQ instead of dumping all
+        # N messages onto the queue. The dispatcher loop releases them round-robin
+        # (≤ cap in-flight per owner), so this job can't monopolize the worker fleet.
+        sched = fair_sched.get_scheduler()
+        for unit in units:
+            await sched.enqueue(fair_sched.LANE_CHAPTER, str(user_id), unit)
+        log.info("coordinator: job %s — %d chapter unit(s) ENQUEUED to WFQ (owner=%s)", job_id, n, user_id)
+    else:
+        for unit in units:
+            await publish("translation.chapter", unit)
+        log.info("coordinator: job %s — all %d chapter messages published", job_id, n)
+
     await publish_event(user_id, {
         "event":    "job.status_changed",
         "job_id":   msg["job_id"],

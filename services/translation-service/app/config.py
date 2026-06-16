@@ -71,6 +71,20 @@ class Settings(BaseSettings):
     translation_resume_sweep_timeout_s: int = 900
     translation_resume_sweep_batch: int = 20
 
+    # P5 — fair scheduling (per-tenant WFQ via loreweave_jobs.FairScheduler). OFF by
+    # default: the coordinator publishes chapter messages directly (legacy path) and no
+    # dispatcher runs. ON ⇒ the coordinator ENQUEUEs chapter units into the per-owner
+    # WFQ; the dispatcher loop releases them round-robin (≤ p5_owner_cap in-flight per
+    # owner, ≤ p5_global_budget total) → publishes translation.chapter; the chapter
+    # worker releases the lease on terminal. Stops one owner's giant job from
+    # monopolizing the fleet. Lane = "translation:chapter".
+    p5_sched_enabled: bool = False
+    p5_owner_cap: int = 5
+    p5_global_budget: int = 0  # 0 ⇒ unlimited (per-owner cap is then the only limit)
+    p5_lease_ttl_ms: int = 3_600_000  # crash-leak backstop; must exceed a chapter's runtime
+    p5_dispatch_interval_s: float = 0.5  # dispatcher tick (latency to first dispatch)
+    p5_reclaim_interval_s: int = 60  # periodic expired-lease self-heal
+
     class Config:
         env_file = ".env"
 

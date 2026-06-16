@@ -592,6 +592,13 @@ services:
       # LLM re-arch Phase 2b: must match the API's flag — the worker takes the
       # submit-and-release branch only when this is on. Default ON (2026-06-12).
       TRANSLATION_DECOUPLE_ENABLED: ${TRANSLATION_DECOUPLE_ENABLED:-true}
+      # P5 — fair scheduling (per-tenant WFQ). OFF by default → legacy direct fan-out.
+      # ON ⇒ the coordinator enqueues chapter units into the per-owner WFQ and the
+      # dispatcher loop releases them round-robin (≤ cap in-flight per owner), so one
+      # owner's giant job can't monopolize the chapter-worker fleet.
+      P5_SCHED_ENABLED: ${P5_SCHED_ENABLED:-false}
+      P5_OWNER_CAP: ${P5_OWNER_CAP:-5}
+      P5_GLOBAL_BUDGET: ${P5_GLOBAL_BUDGET:-0}
     depends_on:
       postgres:
         condition: service_healthy

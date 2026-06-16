@@ -31,6 +31,7 @@ import asyncio
 import json
 import logging
 from collections import Counter
+from contextlib import suppress
 
 import aio_pika
 
@@ -45,6 +46,7 @@ from app.broker import (
     chapter_retry_queue_for_attempt,
 )
 from app.llm_client import set_campaign_id
+from app import fair_sched
 from app.workers.coordinator import handle_job_message
 from app.workers.chapter_worker import handle_chapter_message, _TransientError
 from app.workers.extraction_worker import handle_extraction_job
@@ -196,6 +198,9 @@ async def main() -> None:
             await handle_chapter_message(msg, get_pool(), publish_event, llm_client, retry_count)
             log.info("Chapter worker: chapter %s done", chapter_id)
             await message.ack()
+            # P5 — terminal success: free the owner's WFQ slot so the dispatcher can
+            # release another of their units (no-op when P5 is off / no token).
+            await fair_sched.release_chapter_lease(msg)
 
         except _TransientError as exc:
             # DB has already been updated to 'failed' by the handler before re-raising.
@@ -221,11 +226,16 @@ async def main() -> None:
                     ),
                     routing_key=retry_queue,
                 )
+                # P5 — a retry is still the SAME unit occupying the owner's slot; the
+                # republished message carries _p5_token and releases on its eventual
+                # terminal. Do NOT release here (would let the retry bypass the cap).
             else:
                 log.error(
                     "Chapter %s exceeded %d retries, abandoning: %s",
                     chapter_id, _MAX_TRANSIENT_RETRIES, exc,
                 )
+                # P5 — terminal (gave up): free the slot.
+                await fair_sched.release_chapter_lease(msg)
             # Always ack the original — retry (if any) is a new message
             await message.ack()
 
@@ -233,6 +243,8 @@ async def main() -> None:
             # Permanent error — DB already marked failed. Ack and move on.
             log.error("Chapter %s permanent error: %s", chapter_id, exc)
             await message.ack()
+            # P5 — terminal (permanent failure): free the slot.
+            await fair_sched.release_chapter_lease(msg)
 
     async def on_extraction(message: aio_pika.IncomingMessage) -> None:
         # S4a: this consumer shares the process + llm_client with on_chapter, which
@@ -264,9 +276,20 @@ async def main() -> None:
         "extraction.jobs, glossary_translate.jobs",
     )
 
+    # P5 — fair scheduling: when enabled, the coordinator enqueues chapter units into
+    # the per-owner WFQ and THIS loop releases them round-robin → translation.chapter.
+    # (Safe across replicas — dispatch is atomic in Redis.)
+    dispatcher_task = None
+    if settings.p5_sched_enabled:
+        dispatcher_task = asyncio.create_task(fair_sched.run_dispatcher(publish))
+
     try:
         await asyncio.Future()  # run forever
     finally:
+        if dispatcher_task is not None:
+            dispatcher_task.cancel()
+            with suppress(asyncio.CancelledError, Exception):
+                await dispatcher_task
         # Phase 4c-β: best-effort SDK client teardown on shutdown
         # signal. Process-exit cleanup would handle httpx connections
         # anyway, but close_llm_client() drains them more gracefully.
