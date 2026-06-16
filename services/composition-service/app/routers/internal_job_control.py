@@ -34,13 +34,15 @@ router = APIRouter(
 @router.get("")
 async def reconcile_jobs(
     since: datetime = Query(..., description="ISO-8601 — rows updated at/after this"),
+    limit: int = Query(1000, ge=1, le=5000, description="page cap — the sweeper's _PAGE_LIMIT"),
     jobs: GenerationJobsRepo = Depends(get_generation_jobs_repo),
 ) -> dict:
     """Reconcile SOURCE (Unified Job Control Plane H1 backstop): all generation jobs
-    updated since `since`, in canonical `JobEvent` payload shape, for the jobs-service
-    sweep to upsert (heals outbox drift). Internal-token (router dep); ALL owners — the
-    projection mirrors every owner, user-scoping is at the jobs-service read API."""
-    rows = await jobs.list_since(since)
+    updated since `since` (oldest-first, capped at `limit`), in canonical `JobEvent`
+    payload shape, for the jobs-service sweep to upsert (heals outbox drift). A full page
+    signals the sweeper to continue from the last row rather than skip the overflow.
+    Internal-token (router dep); ALL owners — user-scoping is at the jobs-service read API."""
+    rows = await jobs.list_since(since, limit=limit)
     return {"jobs": [
         {
             "service": "composition", "job_id": str(j.id), "owner_user_id": str(j.user_id),

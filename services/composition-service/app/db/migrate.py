@@ -254,6 +254,9 @@ CREATE INDEX IF NOT EXISTS idx_generation_job_chapter_inflight
 -- scan as completed/failed history accumulates.
 CREATE INDEX IF NOT EXISTS idx_generation_job_active
   ON generation_job(created_at) WHERE status IN ('pending','running');
+-- Unified Job Control Plane reconcile source: GET /internal/composition/jobs?since=
+-- filters generation_job by updated_at — index it so the periodic sweep isn't a seq-scan.
+CREATE INDEX IF NOT EXISTS idx_generation_job_updated_at ON generation_job(updated_at);
 
 -- ── narrative_thread: the promise/foreshadow/MICE constraint ledger (cycle 14,
 -- reasoning-engine spec §5.2/§10.2). ADVISORY (spec D4): a flag + a re-injection

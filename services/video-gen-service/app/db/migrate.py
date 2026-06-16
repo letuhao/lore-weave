@@ -49,6 +49,9 @@ CREATE INDEX IF NOT EXISTS idx_video_gen_jobs_user ON video_gen_jobs(user_id, cr
 -- the sweeper scans only non-terminal rows by updated_at.
 CREATE INDEX IF NOT EXISTS idx_video_gen_jobs_active
   ON video_gen_jobs(updated_at) WHERE status IN ('pending','running');
+-- Unified Job Control Plane reconcile source: GET /internal/video_gen/jobs?since= filters
+-- by updated_at over ALL statuses (the partial idx above only covers active) — full index.
+CREATE INDEX IF NOT EXISTS idx_video_gen_jobs_updated_at ON video_gen_jobs(updated_at);
 
 -- ── outbox_events: standard (matches knowledge/composition); relayed by worker-infra
 -- to loreweave:events:<aggregate_type>. Unified Job Control Plane P1 — job-lifecycle

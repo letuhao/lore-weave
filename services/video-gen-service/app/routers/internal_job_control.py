@@ -52,15 +52,17 @@ router = APIRouter(
 @router.get("")
 async def reconcile_jobs(
     since: datetime = Query(..., description="ISO-8601 — rows updated at/after this"),
+    limit: int = Query(1000, ge=1, le=5000, description="page cap — the sweeper's _PAGE_LIMIT"),
 ) -> dict:
     """Reconcile SOURCE (Unified Job Control Plane H1 backstop): video-gen jobs updated
-    since `since`, in canonical `JobEvent` payload shape, for the jobs-service sweep to
-    upsert. Stateless (decouple off → no pool/rows) → an empty list, never a 500."""
+    since `since` (oldest-first, capped at `limit`), in canonical `JobEvent` payload shape,
+    for the jobs-service sweep to upsert. Stateless (decouple off → no pool/rows) → an empty
+    list, never a 500."""
     try:
         pool = get_pool()
     except RuntimeError:
         return {"jobs": []}
-    rows = await VideoGenJobsRepo(pool).list_since(since)
+    rows = await VideoGenJobsRepo(pool).list_since(since, limit=limit)
     return {"jobs": [
         {
             "service": "video_gen", "job_id": str(j.id), "owner_user_id": str(j.user_id),

@@ -337,16 +337,20 @@ _TRANSL_TS = "GREATEST(created_at, COALESCE(started_at, created_at), COALESCE(fi
 @router.get("/jobs", dependencies=[Depends(require_internal_token)])
 async def reconcile_jobs(
     since: datetime = Query(..., description="ISO-8601 — rows updated at/after this"),
+    limit: int = Query(1000, ge=1, le=5000, description="page cap — the sweeper's _PAGE_LIMIT"),
     db: asyncpg.Pool = Depends(get_db),
 ) -> dict:
     """Reconcile SOURCE (Unified Job Control Plane H1 backstop): translation jobs whose
-    effective last-touch is at/after `since`, in canonical `JobEvent` payload shape, for
-    the jobs-service sweep to upsert. Internal-token; ALL owners. `partial` → `completed`
-    (the job finished, some chapters done — mirrors the worker's terminal emit)."""
+    effective last-touch is at/after `since` (oldest-first, capped at `limit`), in canonical
+    `JobEvent` payload shape, for the jobs-service sweep to upsert. Internal-token; ALL
+    owners. `partial` → `completed` (the job finished, some chapters done — mirrors the
+    worker's terminal emit). The effective-ts expression is computed ONCE in a subquery."""
     rows = await db.fetch(
-        f"SELECT job_id, owner_user_id, status, error_message, {_TRANSL_TS} AS ts "
-        f"FROM translation_jobs WHERE {_TRANSL_TS} >= $1 ORDER BY ts ASC LIMIT 1000",
-        since,
+        "SELECT job_id, owner_user_id, status, error_message, ts FROM ("
+        f"  SELECT job_id, owner_user_id, status, error_message, {_TRANSL_TS} AS ts "
+        "   FROM translation_jobs"
+        ") s WHERE ts >= $1 ORDER BY ts ASC LIMIT $2",
+        since, limit,
     )
     out = []
     for r in rows:

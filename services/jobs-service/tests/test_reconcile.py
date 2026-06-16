@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app import reconcile
+from app.projection.store import _ts
 
 # Captured at import, BEFORE the autouse fixture pins it to one source.
 _REGISTERED_SOURCES = set(reconcile._RECONCILE)
@@ -77,14 +78,49 @@ async def test_sweep_once_upserts_and_advances_watermark(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_fetch_sends_since_and_internal_token(monkeypatch):
+async def test_fetch_sends_since_limit_and_internal_token(monkeypatch):
     cap = {}
     _patch_client(monkeypatch, body={"jobs": []}, captured=cap)
     monkeypatch.setattr(reconcile.store, "upsert_job_event", AsyncMock(return_value=True))
     await reconcile.ReconcileSweeper(pool=object()).sweep_once()
     assert cap["url"].endswith("/internal/composition/jobs")
     assert "since" in cap["params"]
+    assert cap["params"]["limit"] == reconcile._PAGE_LIMIT  # shared page-cap contract
     assert "X-Internal-Token" in cap["headers"]
+
+
+@pytest.mark.asyncio
+async def test_partial_page_advances_to_now(monkeypatch):
+    """A partial page = caught up → watermark jumps to ~now (bounds the next window)."""
+    _patch_client(monkeypatch, body={"jobs": [PAYLOAD]})  # 1 row, _PAGE_LIMIT=1000 → partial
+    monkeypatch.setattr(reconcile.store, "upsert_job_event", AsyncMock(return_value=True))
+    sweeper = reconcile.ReconcileSweeper(pool=object())
+    await sweeper.sweep_once()
+    # advanced well past the single row's old occurred_at (2026-06-15) → ~now
+    assert sweeper._watermark["composition"].year >= 2026
+    assert sweeper._watermark["composition"] > _ts(PAYLOAD["occurred_at"])
+
+
+@pytest.mark.asyncio
+async def test_full_page_advances_to_last_row_not_now(monkeypatch):
+    """A FULL page (len >= _PAGE_LIMIT) means overflow may exist → the watermark must
+    advance ONLY to the last row's timestamp, never jump to now (which would skip the
+    unfetched overflow). Regression guard for the review-impl #1 finding."""
+    monkeypatch.setattr(reconcile, "_PAGE_LIMIT", 2)
+    last_ts = "2026-06-15T12:00:00+00:00"
+    rows = [
+        {**PAYLOAD, "job_id": "11111111-1111-1111-1111-111111111111",
+         "occurred_at": "2026-06-15T11:00:00+00:00"},
+        {**PAYLOAD, "job_id": "22222222-2222-2222-2222-222222222222", "occurred_at": last_ts},
+    ]
+    _patch_client(monkeypatch, body={"jobs": rows})
+    monkeypatch.setattr(reconcile.store, "upsert_job_event", AsyncMock(return_value=True))
+    sweeper = reconcile.ReconcileSweeper(pool=object())
+    # Seed an older watermark so the page rows are genuinely newer than `since` (as a real
+    # source only returns rows >= since); the full-page branch then advances to last_ts.
+    sweeper._watermark["composition"] = _ts("2026-06-15T10:00:00+00:00")
+    await sweeper.sweep_once()
+    assert sweeper._watermark["composition"] == _ts(last_ts)  # last row, NOT now()
 
 
 @pytest.mark.asyncio

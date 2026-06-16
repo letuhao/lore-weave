@@ -44,6 +44,12 @@ CREATE TABLE IF NOT EXISTS translation_jobs (
 );
 CREATE INDEX IF NOT EXISTS idx_tj_owner ON translation_jobs(owner_user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_tj_book  ON translation_jobs(book_id, created_at DESC);
+-- Unified Job Control Plane reconcile source: GET /internal/translation/jobs?since= filters
+-- on the effective last-touch (no updated_at column). An EXPRESSION index over the EXACT
+-- same GREATEST(...) the query uses lets the periodic sweep avoid a seq-scan + sort.
+CREATE INDEX IF NOT EXISTS idx_tj_reconcile_ts ON translation_jobs (
+  GREATEST(created_at, COALESCE(started_at, created_at), COALESCE(finished_at, created_at))
+);
 
 CREATE TABLE IF NOT EXISTS chapter_translations (
   id              UUID PRIMARY KEY DEFAULT uuidv7(),

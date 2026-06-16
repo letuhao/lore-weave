@@ -60,16 +60,17 @@ _HANDLERS = {"cancel": cancel_job, "pause": pause_job, "resume": resume_job}
 @router.get("")
 async def reconcile_jobs(
     since: datetime = Query(..., description="ISO-8601 — rows updated at/after this"),
+    limit: int = Query(1000, ge=1, le=5000, description="page cap — the sweeper's _PAGE_LIMIT"),
     pool: asyncpg.Pool = Depends(get_db),
 ) -> dict:
     """Reconcile SOURCE (Unified Job Control Plane H1 backstop): `enrichment_job` rows
-    updated since `since`, in canonical `JobEvent` payload shape, for the jobs-service
-    sweep to upsert. Internal-token (router dep); ALL owners. A transient `estimating`
-    row (canonical None) is skipped — it has no canonical JobStatus."""
+    updated since `since` (oldest-first, capped at `limit`), in canonical `JobEvent` payload
+    shape, for the jobs-service sweep to upsert. Internal-token (router dep); ALL owners. A
+    transient `estimating` row (canonical None) is skipped — it has no canonical JobStatus."""
     rows = await pool.fetch(
         "SELECT job_id, user_id, status, error_message, updated_at FROM enrichment_job "
-        "WHERE updated_at >= $1 ORDER BY updated_at ASC LIMIT 1000",
-        since,
+        "WHERE updated_at >= $1 ORDER BY updated_at ASC LIMIT $2",
+        since, limit,
     )
     out = []
     for r in rows:

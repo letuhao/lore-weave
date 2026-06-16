@@ -318,6 +318,10 @@ CREATE TABLE IF NOT EXISTS extraction_jobs (
 ALTER TABLE extraction_jobs
   ADD COLUMN IF NOT EXISTS campaign_id UUID;
 
+-- Unified Job Control Plane reconcile source: GET /internal/knowledge/jobs?since=
+-- filters extraction_jobs by updated_at — index it so the periodic sweep isn't a seq-scan.
+CREATE INDEX IF NOT EXISTS idx_extraction_jobs_updated_at ON extraction_jobs(updated_at);
+
 -- E0-3 Phase 2a (D-E0-3-CALLER-PAYS-EXTRACTION): BYOK dual-identity billing.
 -- A collaborator's extraction must charge the COLLABORATOR's key, never the
 -- owner's (only a key's owner may cause it to be charged). These three columns

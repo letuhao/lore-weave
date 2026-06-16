@@ -251,6 +251,10 @@ CREATE INDEX IF NOT EXISTS idx_enrichment_job_active
   ON enrichment_job(status)
   WHERE status IN ('pending','estimating','running','paused');
 
+-- Unified Job Control Plane reconcile source: GET /internal/lore_enrichment/jobs?since=
+-- filters enrichment_job by updated_at — index it so the periodic sweep isn't a seq-scan.
+CREATE INDEX IF NOT EXISTS idx_enrichment_job_updated_at ON enrichment_job(updated_at);
+
 -- ── book scope (additive) ────────────────────────────────────────────────────
 -- Enrichment is book-bound; persist the book_id so the review GUI can list a
 -- book's jobs/proposals by their always-present book anchor (proposals join here

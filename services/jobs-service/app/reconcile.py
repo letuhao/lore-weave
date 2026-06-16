@@ -50,6 +50,12 @@ _RECONCILE: dict[str, tuple[str, str]] = {
 
 _TIMEOUT = httpx.Timeout(15.0)
 
+# Page size for one source fetch. Shared contract: the sweeper passes it as `?limit=`
+# and each source caps at it, so a FULL page (len == _PAGE_LIMIT) signals "more rows
+# may exist beyond this page" → the watermark must NOT jump to now (that would skip the
+# overflow); it advances only to the last row's timestamp so the next sweep continues.
+_PAGE_LIMIT = 1000
+
 
 class ReconcileSweeper:
     """Periodically re-reads each source's job rows and upserts the projection."""
@@ -103,9 +109,16 @@ class ReconcileSweeper:
                 continue
             if await store.upsert_job_event(self._pool, event):
                 n += 1
-        # Advance the watermark only on a clean fetch (sweep_start, not max-row-ts, so a
-        # row updated mid-fetch isn't skipped next time; the overlap re-read is idempotent).
-        self._watermark[service] = sweep_start
+        # Watermark advance — cap-aware so a paginated overflow is NEVER skipped:
+        #   - FULL page (len >= _PAGE_LIMIT): more rows may exist beyond it → advance only
+        #     to the last row's timestamp (rows are updated_at ASC, so [-1] is the max), and
+        #     the next sweep continues from there (>= re-reads the boundary, idempotent).
+        #   - PARTIAL page: caught up → jump to sweep_start (bounds the next query window,
+        #     and a row updated mid-fetch lands >= sweep_start, caught next sweep).
+        if len(rows) >= _PAGE_LIMIT and rows:
+            self._watermark[service] = max(since, store._ts(rows[-1].get("occurred_at")))
+        else:
+            self._watermark[service] = sweep_start
         if n:
             log.info("reconcile %s: %d/%d rows applied", service, n, len(rows))
         return n
@@ -113,8 +126,9 @@ class ReconcileSweeper:
     async def _fetch(self, base: str, path: str, since: datetime) -> list[dict[str, Any]]:
         url = f"{base}{path}"
         headers = {"X-Internal-Token": settings.internal_service_token}
+        params = {"since": since.isoformat(), "limit": _PAGE_LIMIT}
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-            resp = await client.get(url, params={"since": since.isoformat()}, headers=headers)
+            resp = await client.get(url, params=params, headers=headers)
         resp.raise_for_status()
         body = resp.json()
         return body.get("jobs", []) if isinstance(body, dict) else []
