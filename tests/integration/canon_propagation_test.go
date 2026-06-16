@@ -49,6 +49,7 @@ type fakeSource struct {
 	mu       sync.Mutex
 	messages []consumer.Message
 	acked    []consumer.Message
+	ackedIDs []string // S12 I7: ids acked via the batched AckBatch path
 }
 
 func (s *fakeSource) push(m consumer.Message) {
@@ -79,10 +80,20 @@ func (s *fakeSource) Ack(_ context.Context, m consumer.Message) error {
 	return nil
 }
 
+// AckBatch is the current consumer.MessageSource contract (S12 I7 — XACK many
+// ids per stream in one call). The consumer acks via this path now; Ack above is
+// retained for back-compat but no longer driven.
+func (s *fakeSource) AckBatch(_ context.Context, _ string, ids []string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ackedIDs = append(s.ackedIDs, ids...)
+	return nil
+}
+
 func (s *fakeSource) Acked() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return len(s.acked)
+	return len(s.acked) + len(s.ackedIDs)
 }
 
 // ─────────────────────────────────────────────────────────────────────────

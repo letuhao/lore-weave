@@ -73,6 +73,10 @@ func (r *inMemRedis) Read(_ context.Context, _ int) ([]consumer.Message, error) 
 // Ack — no-op (no PEL in this test).
 func (r *inMemRedis) Ack(_ context.Context, _ consumer.Message) error { return nil }
 
+// AckBatch satisfies the current consumer.MessageSource contract (S12 I7 batched
+// XACK); this in-memory fake does not track acks, so it is a no-op.
+func (r *inMemRedis) AckBatch(_ context.Context, _ string, _ []string) error { return nil }
+
 func copyFields(in map[string]any) map[string]any {
 	out := make(map[string]any, len(in))
 	for k, v := range in {
