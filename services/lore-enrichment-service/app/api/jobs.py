@@ -31,6 +31,7 @@ from app.config import settings
 from app.db.book_profile import NEUTRAL_PROFILE, BookProfile, get_book_profile
 from app.deps import get_db
 from app.gaps.model import Gap, resolve_dimensions
+from app.jobs import fair_sched
 from app.jobs.assembly import build_live_runner
 from app.jobs.events import LORE_ENRICHMENT_RESUME_STREAM, make_redis_producer
 from app.jobs.job_events import JOB_KIND, JOB_SERVICE, canonical_status, job_error
@@ -167,6 +168,20 @@ async def create_job(
             detail="no gaps to enrich (all targets fully described)",
         )
 
+    # P5 — per-owner concurrent-job cap (the noisy-neighbor fix for the synchronous
+    # in-process runner). Claimed BEFORE the job row is created so a 429 leaves no orphan
+    # row; released on every exit path below (gate-refused raises + the run's finally). At
+    # cap → 429. Off ⇒ (True, None) ⇒ no cap. Fail-open on a redis blip.
+    _p5_allowed, _p5_token = await fair_sched.try_acquire_job(user_id)
+    if not _p5_allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=(
+                f"you already have {settings.p5_owner_cap} enrichment job(s) running — "
+                "wait for one to finish, then retry"
+            ),
+        )
+
     # Persist the job row first so the runner + the event stream both key on the
     # real DB job id (event correlation). The job row records the REQUESTED
     # technique — a gate-refused fabrication job is then visible as a failed row
@@ -212,6 +227,7 @@ async def create_job(
             status="failed",
             error_message=f"refused: technique {technique.value!r} gate-locked ({exc})",
         )
+        await fair_sched.release_job(user_id, _p5_token)  # P5 — free the slot on gate-refusal
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
@@ -223,6 +239,7 @@ async def create_job(
         await store.mark_job_status(
             job_id=db_job_id, status="failed", error_message=str(exc)
         )
+        await fair_sched.release_job(user_id, _p5_token)  # P5 — free the slot on bad-strategy
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
         )
@@ -240,6 +257,9 @@ async def create_job(
         )
     finally:
         await bundle.aclose()
+        # P5 — release the per-owner job slot once the synchronous run ends (success OR
+        # exception). The lease TTL backstops a crash before this runs.
+        await fair_sched.release_job(user_id, _p5_token)
 
     return {
         "job_id": outcome.job_id,

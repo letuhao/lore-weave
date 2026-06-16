@@ -23,6 +23,17 @@ class Settings(BaseSettings):
     provider_registry_internal_url: str = "http://provider-registry-service:8085"
     redis_url: str = "redis://redis:6379"
 
+    # Unified Job Control Plane P5 — fair scheduling / per-tenant concurrency. Lore-
+    # enrichment runs each job SYNCHRONOUSLY in the API handler (no PUSH fan-out), so the
+    # fairness lever is a per-owner CONCURRENT-JOB cap: `create_job` acquires a slot
+    # (lane `lore-enrichment:job`, owner=user_id) before running and releases it after; at
+    # cap → 429. Flag-gated (default OFF) + fail-open on a redis blip. The lease TTL is the
+    # crash-leak backstop (must exceed the longest job runtime; release-in-finally is the
+    # fast path).
+    p5_sched_enabled: bool = Field(default=False, validation_alias="P5_SCHED_ENABLED")
+    p5_owner_cap: int = Field(default=5, validation_alias="P5_OWNER_CAP")
+    p5_lease_ttl_ms: int = Field(default=3_600_000, validation_alias="P5_LEASE_TTL_MS")
+
     # Max age (seconds) of a PASSING eval run before the P2/P3 gate treats it as
     # STALE → LOCKED (WARN-2 / DEFERRED-055, fail-closed on staleness). A passing
     # run older than this no longer unlocks the higher-cost tier — the eval must

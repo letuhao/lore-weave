@@ -918,6 +918,12 @@ services:
       BOOK_SERVICE_URL: http://book-service:8082
       PROVIDER_REGISTRY_INTERNAL_URL: http://provider-registry-service:8085
       REDIS_URL: redis://redis:6379
+      # Unified Job Control Plane P5 — per-owner concurrent-job cap (the enrichment runner
+      # is synchronous in-process, so the lane `lore-enrichment:job` caps concurrent jobs;
+      # at cap → 429). Default OFF until live-smoked → then default on.
+      P5_SCHED_ENABLED: ${P5_SCHED_ENABLED:-false}
+      P5_OWNER_CAP: ${P5_OWNER_CAP:-5}
+      P5_LEASE_TTL_MS: ${P5_LEASE_TTL_MS:-3600000}
       # C18 — OpenTelemetry trace export (mirrors api-gateway-bff / the other
       # FastAPI services). Empty default → setup_tracing is a no-op (dev). Set to
       # the collector endpoint to enable tracing.
