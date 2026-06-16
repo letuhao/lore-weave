@@ -7,6 +7,7 @@ import {
   MessageCircle,
   Search,
   Factory,
+  ListChecks,
   BarChart3,
   Settings,
   LogOut,
@@ -49,6 +50,7 @@ const mainNav: NavItem[] = [
 ];
 
 const manageNav: NavItem[] = [
+  { to: '/jobs', icon: ListChecks, labelKey: 'nav.jobs', auth: true },
   { to: '/trash', icon: Trash2, labelKey: 'nav.trash', auth: true },
   { to: '/usage', icon: BarChart3, labelKey: 'nav.usage', auth: true },
   { to: '/leaderboard', icon: Trophy, labelKey: 'nav.leaderboard' },

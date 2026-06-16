@@ -42,6 +42,8 @@ import { WorldWorkspacePage } from '@/features/world/pages/WorldWorkspacePage';
 import { CampaignsPage } from '@/features/campaigns/pages/CampaignsPage';
 import { CreateCampaignWizardPage } from '@/features/campaigns/pages/CreateCampaignWizardPage';
 import { CampaignDetailPage } from '@/features/campaigns/pages/CampaignDetailPage';
+import { JobsPage } from '@/features/jobs/pages/JobsPage';
+import { JobDetailPage } from '@/features/jobs/pages/JobDetailPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { BrowsePage } from '@/pages/BrowsePage';
 import { PublicBookDetailPage } from '@/pages/PublicBookDetailPage';
@@ -160,6 +162,10 @@ export function App() {
             <Route path="/campaigns" element={<CampaignsPage />} />
             <Route path="/campaigns/new" element={<CreateCampaignWizardPage />} />
             <Route path="/campaigns/:campaignId" element={<CampaignDetailPage />} />
+
+            {/* Unified Jobs control plane (P4) — every background job the user owns. */}
+            <Route path="/jobs" element={<JobsPage />} />
+            <Route path="/jobs/:service/:jobId" element={<JobDetailPage />} />
 
             {/* Manage */}
             <Route path="/usage" element={<UsagePage />} />

@@ -1,0 +1,62 @@
+{
+  "title": "工作",
+  "status": {
+    "pending": "等待中",
+    "running": "執行中",
+    "paused": "已暫停",
+    "cancelling": "取消中",
+    "completed": "已完成",
+    "failed": "失敗",
+    "cancelled": "已取消"
+  },
+  "kind": {
+    "extraction": "知識擷取",
+    "translation": "翻譯",
+    "video_gen": "影片生成",
+    "campaign": "活動",
+    "enrichment_job": "設定擴充",
+    "composition": { "generate": "創作" }
+  },
+  "filters": {
+    "status": "狀態",
+    "kind": "類型",
+    "allStatuses": "所有狀態",
+    "allKinds": "所有類型",
+    "search": "搜尋標題…"
+  },
+  "list": {
+    "loading": "載入中…",
+    "error": "載入工作失敗。",
+    "empty": "尚無工作。",
+    "more": "載入更多",
+    "toggleChildren": "切換子工作",
+    "noChildren": "沒有子工作。"
+  },
+  "live": {
+    "on": "● 即時",
+    "reconnecting": "重新連線中…",
+    "off": "離線"
+  },
+  "controls": {
+    "pause": "暫停",
+    "resume": "繼續",
+    "cancel": "取消",
+    "cancelConfirm": "取消工作？",
+    "cancelYes": "是",
+    "cancelNo": "否",
+    "cancelled": "已取消。",
+    "paused": "已暫停。",
+    "resumed": "已繼續。",
+    "stale": "狀態已變更 — 已重新整理。",
+    "actionFailed": "操作失敗：{{error}}"
+  },
+  "monitor": {
+    "back": "所有工作",
+    "error": "載入工作失敗。",
+    "pausedBanner": "已暫停 — 不再派送新單元，進行中的會完成。可於下方繼續。",
+    "children": "子工作"
+  },
+  "mobile": {
+    "children": "個子工作"
+  }
+}

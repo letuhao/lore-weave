@@ -1,0 +1,62 @@
+{
+  "title": "ジョブ",
+  "status": {
+    "pending": "待機中",
+    "running": "実行中",
+    "paused": "一時停止",
+    "cancelling": "キャンセル中",
+    "completed": "完了",
+    "failed": "失敗",
+    "cancelled": "キャンセル済み"
+  },
+  "kind": {
+    "extraction": "ナレッジ抽出",
+    "translation": "翻訳",
+    "video_gen": "動画生成",
+    "campaign": "キャンペーン",
+    "enrichment_job": "ロア拡充",
+    "composition": { "generate": "創作" }
+  },
+  "filters": {
+    "status": "ステータス",
+    "kind": "種類",
+    "allStatuses": "すべてのステータス",
+    "allKinds": "すべての種類",
+    "search": "タイトルで検索…"
+  },
+  "list": {
+    "loading": "読み込み中…",
+    "error": "ジョブの読み込みに失敗しました。",
+    "empty": "ジョブはまだありません。",
+    "more": "さらに読み込む",
+    "toggleChildren": "子ジョブの表示切替",
+    "noChildren": "子ジョブはありません。"
+  },
+  "live": {
+    "on": "● ライブ",
+    "reconnecting": "再接続中…",
+    "off": "オフライン"
+  },
+  "controls": {
+    "pause": "一時停止",
+    "resume": "再開",
+    "cancel": "キャンセル",
+    "cancelConfirm": "ジョブをキャンセルしますか？",
+    "cancelYes": "はい",
+    "cancelNo": "いいえ",
+    "cancelled": "キャンセルしました。",
+    "paused": "一時停止しました。",
+    "resumed": "再開しました。",
+    "stale": "状態が変わりました — 更新しました。",
+    "actionFailed": "操作に失敗しました: {{error}}"
+  },
+  "monitor": {
+    "back": "すべてのジョブ",
+    "error": "ジョブの読み込みに失敗しました。",
+    "pausedBanner": "一時停止中 — 新しいユニットは送出されず、実行中のものは完了します。下で再開できます。",
+    "children": "子ジョブ"
+  },
+  "mobile": {
+    "children": "件の子ジョブ"
+  }
+}

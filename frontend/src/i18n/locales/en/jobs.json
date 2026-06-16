@@ -1,0 +1,62 @@
+{
+  "title": "Jobs",
+  "status": {
+    "pending": "Pending",
+    "running": "Running",
+    "paused": "Paused",
+    "cancelling": "Cancelling",
+    "completed": "Completed",
+    "failed": "Failed",
+    "cancelled": "Cancelled"
+  },
+  "kind": {
+    "extraction": "Knowledge extraction",
+    "translation": "Translation",
+    "video_gen": "Video generation",
+    "campaign": "Campaign",
+    "enrichment_job": "Lore enrichment",
+    "composition": { "generate": "Composition" }
+  },
+  "filters": {
+    "status": "Status",
+    "kind": "Kind",
+    "allStatuses": "All statuses",
+    "allKinds": "All kinds",
+    "search": "Search title…"
+  },
+  "list": {
+    "loading": "Loading…",
+    "error": "Failed to load jobs.",
+    "empty": "No jobs yet.",
+    "more": "Load more",
+    "toggleChildren": "Toggle children",
+    "noChildren": "No child jobs."
+  },
+  "live": {
+    "on": "● live",
+    "reconnecting": "reconnecting…",
+    "off": "offline"
+  },
+  "controls": {
+    "pause": "Pause",
+    "resume": "Resume",
+    "cancel": "Cancel",
+    "cancelConfirm": "Cancel job?",
+    "cancelYes": "Yes",
+    "cancelNo": "No",
+    "cancelled": "Cancelled.",
+    "paused": "Paused.",
+    "resumed": "Resumed.",
+    "stale": "Job state changed — refreshed.",
+    "actionFailed": "Action failed: {{error}}"
+  },
+  "monitor": {
+    "back": "All jobs",
+    "error": "Failed to load job.",
+    "pausedBanner": "Paused — no new units dispatch and in-flight ones finish. Resume below.",
+    "children": "Child jobs"
+  },
+  "mobile": {
+    "children": "children"
+  }
+}

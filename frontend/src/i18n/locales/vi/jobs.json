@@ -1,0 +1,62 @@
+{
+  "title": "Tác vụ",
+  "status": {
+    "pending": "Chờ xử lý",
+    "running": "Đang chạy",
+    "paused": "Tạm dừng",
+    "cancelling": "Đang hủy",
+    "completed": "Hoàn tất",
+    "failed": "Thất bại",
+    "cancelled": "Đã hủy"
+  },
+  "kind": {
+    "extraction": "Trích xuất tri thức",
+    "translation": "Dịch thuật",
+    "video_gen": "Tạo video",
+    "campaign": "Chiến dịch",
+    "enrichment_job": "Làm giàu lore",
+    "composition": { "generate": "Sáng tác" }
+  },
+  "filters": {
+    "status": "Trạng thái",
+    "kind": "Loại",
+    "allStatuses": "Tất cả trạng thái",
+    "allKinds": "Tất cả loại",
+    "search": "Tìm theo tiêu đề…"
+  },
+  "list": {
+    "loading": "Đang tải…",
+    "error": "Không tải được tác vụ.",
+    "empty": "Chưa có tác vụ nào.",
+    "more": "Tải thêm",
+    "toggleChildren": "Mở/đóng tác vụ con",
+    "noChildren": "Không có tác vụ con."
+  },
+  "live": {
+    "on": "● trực tiếp",
+    "reconnecting": "đang kết nối lại…",
+    "off": "ngoại tuyến"
+  },
+  "controls": {
+    "pause": "Tạm dừng",
+    "resume": "Tiếp tục",
+    "cancel": "Hủy",
+    "cancelConfirm": "Hủy tác vụ?",
+    "cancelYes": "Có",
+    "cancelNo": "Không",
+    "cancelled": "Đã hủy.",
+    "paused": "Đã tạm dừng.",
+    "resumed": "Đã tiếp tục.",
+    "stale": "Trạng thái đã thay đổi — đã làm mới.",
+    "actionFailed": "Thao tác thất bại: {{error}}"
+  },
+  "monitor": {
+    "back": "Tất cả tác vụ",
+    "error": "Không tải được tác vụ.",
+    "pausedBanner": "Đã tạm dừng — không gửi đơn vị mới, các đơn vị đang chạy sẽ hoàn tất. Tiếp tục bên dưới.",
+    "children": "Tác vụ con"
+  },
+  "mobile": {
+    "children": "tác vụ con"
+  }
+}
