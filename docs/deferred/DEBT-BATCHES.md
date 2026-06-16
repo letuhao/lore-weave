@@ -97,10 +97,12 @@ Audit confirmed **4 un-wired producers** (glossary-extract, glossary-translate, 
 | ID | Description | sev | status |
 |---|---|---|---|
 | `D-JOBS-GLOSSARY-EXTRACT-UNWIRED` | glossary-extract (translation `extraction_jobs`) emitted nothing → invisible in Jobs screen; + FE pick inherited 'all'; + create sync freeze | high | ✅ **Slice A** — emit pending(create,in-tx)/running/terminal/cancelled(worker) + reconcile UNION (kind `glossary_extraction`) + FE clear-on-pick + bulk-insert/atomic create + kind label×4. Live-smoke → `D-PRODUCER-EMIT-GLOSSARY-EXTRACT-LIVE-SMOKE` (B3). |
-| `D-JOBS-GLOSSARY-TRANSLATE-UNWIRED` | `glossary_translation_jobs` (translation) emits no JobEvent → invisible | high | ☐ Slice B |
-| `D-JOBS-WIKI-GEN-UNWIRED` | `wiki_gen_jobs` (knowledge) emits no JobEvent → invisible | high | ☐ Slice C |
+| `D-JOBS-WIKI-GEN-UNWIRED` | `wiki_gen_jobs` (knowledge) emitted nothing → invisible in Jobs screen | high | ✅ **Slice C** — emit pending(create,in-tx)/running(claim)/paused/pending(resume)/cancelled/completed/failed at all 7 repo mutations (each UPDATE+emit in one tx, RETURNING user_id+cost; guarded emits only fire on a real transition) + reconcile UNION into `/internal/knowledge/jobs` (kind `wiki_gen`, `complete`→`completed`, merged oldest-first w/ extraction) + FE kind label×4. Live-smoke → `D-PRODUCER-EMIT-WIKI-GEN-LIVE-SMOKE` (B3). |
+| `D-JOBS-GLOSSARY-TRANSLATE-UNWIRED` | `glossary_translation_jobs` (translation) emits no JobEvent → invisible | high | ☐ Slice B (NEXT) |
 | `D-JOBS-BOOK-IMPORT-UNWIRED` | `import_jobs` (book-service, Go) emits no JobEvent → invisible (needs Go emit via outbox+relay) | med | ☐ Slice D |
 | `D-PRODUCER-EMIT-GLOSSARY-EXTRACT-COST` | glossary-extract emits tokens but not actual $cost (estimate only); price summed tokens via the billing oracle (like translation B1-M2) | low | ☐ later |
+| `D-JOBS-SECONDARY-KIND-CONTROL` | Slice A/C: `glossary_extraction` + `wiki_gen` are SECONDARY kinds whose service control endpoints (translation/knowledge) handle only the PRIMARY job table → unified control would 404. Gated **view-only** in `derive_control_caps` (`_VIEW_ONLY_KINDS`) so no broken buttons; users control via native panels. Wire unified control (dispatch by kind in the service's `/internal/{svc}/jobs/{id}/{action}`) to lift view-only. | med | ☐ later |
+| `D-JOBS-WIKI-GEN-RECONCILE-INDEX` | wiki-gen reconcile `list_since` filters `wiki_gen_jobs.updated_at` with no index (extraction_jobs has one). Table is tiny (1 active job/book) → seq-scan fine for now; add `idx_wiki_gen_jobs_updated_at` if the sweep shows pain. | perf | ☐ later |
 
 ---
 
@@ -113,6 +115,8 @@ Stack up with `P5_SCHED_ENABLED=true`, seed one extraction-ready project. Run al
 | `D-P5-M2-MULTI-OWNER-LIVE-SMOKE` | 2-user interleave on the stack (single-owner cap-hold already proven) | med |
 | `D-JOBS-P2-SSE-LIVE-SMOKE` | real consumer-upsert → pub/sub → connected-client push | med |
 | `D-JOBS-P3-KNOWLEDGE-CANCEL-SUCCESS-LIVE-SMOKE` | a successful cancel mutating a real running extraction row | med |
+| `D-PRODUCER-EMIT-GLOSSARY-EXTRACT-LIVE-SMOKE` | Slice A: real glossary-extract job emits pending→running→terminal that land in `job_projection` (visible on Jobs screen) | high |
+| `D-PRODUCER-EMIT-WIKI-GEN-LIVE-SMOKE` | Slice C: real wiki-gen job emits pending→running→complete/cancelled that land in `job_projection`; reconcile UNION surfaces it | high |
 
 ---
 

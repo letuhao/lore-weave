@@ -22,12 +22,13 @@ from loreweave_jobs import JobStatus
 from pydantic import BaseModel
 
 from app.db.repositories.extraction_jobs import ExtractionJobsRepo, _canonical_job_status
+from app.db.repositories.wiki_gen_jobs import WikiGenJobsRepo
 
 # Canonical JobStatus values — a reconcile row whose status isn't one of these (the
 # reserved `summarizing`) is skipped rather than shipped as an unparseable status.
 _CANONICAL_STATUSES = frozenset(s.value for s in JobStatus)
 from app.db.repositories.projects import ProjectsRepo
-from app.deps import get_extraction_jobs_repo, get_projects_repo
+from app.deps import get_extraction_jobs_repo, get_knowledge_pool, get_projects_repo
 from app.middleware.internal_auth import require_internal_token
 from app.middleware.trace_id import trace_id_var
 from app.routers.public.extraction import _validate_or_409
@@ -51,7 +52,12 @@ async def reconcile_jobs(
 
     A row whose native status has no canonical JobStatus (the reserved `summarizing`, which
     maps to itself — no writer today) is SKIPPED rather than shipped as a status the sweeper
-    can't parse (matches the live consumer's no-op-on-unparseable behavior)."""
+    can't parse (matches the live consumer's no-op-on-unparseable behavior).
+
+    UNIONs two knowledge job families that both federate to service='knowledge', kept apart
+    by `kind`: `extraction` (knowledge-graph build) + `wiki_gen` (batch wiki generation,
+    D-JOBS-WIKI-GEN-UNWIRED). Both are merged oldest-first and capped at `limit` so the
+    sweeper's watermark advances correctly across both."""
     rows = await jobs_repo.list_since(since, limit=limit)
     out = []
     for j in rows:
@@ -74,7 +80,24 @@ async def reconcile_jobs(
                       if j.status == "failed" else None),
             "occurred_at": j.updated_at.isoformat() if j.updated_at else None,
         })
-    return {"jobs": out}
+    # wiki-gen UNION — list_since already maps `complete`→`completed` (all wiki statuses
+    # are canonical), so no skip-filter is needed here.
+    wiki_repo = WikiGenJobsRepo(get_knowledge_pool())
+    for w in await wiki_repo.list_since(since, limit=limit):
+        cost = w["cost_spent_usd"]
+        out.append({
+            "service": "knowledge", "job_id": str(w["job_id"]),
+            "owner_user_id": str(w["user_id"]), "kind": "wiki_gen", "status": w["status"],
+            "parent_job_id": None, "detail_status": None, "progress": None, "title": None,
+            "cost_usd": (float(cost) if cost is not None else None),
+            "error": ({"code": "wiki_gen_failed", "message": (w["error_message"] or "")[:500]}
+                      if w["native_status"] == "failed" else None),
+            "occurred_at": w["updated_at"].isoformat() if w["updated_at"] else None,
+        })
+    # Merge both families oldest-first + cap so the sweeper's watermark is monotone across
+    # extraction + wiki_gen (occurred_at is the watermark key; None sorts first, harmless).
+    out.sort(key=lambda r: r["occurred_at"] or "")
+    return {"jobs": out[:limit]}
 
 # action → (target canonical status, pause_reason, project extraction_status mirror,
 #           project extraction_enabled). Mirrors the K16.4 public pause/resume/cancel.

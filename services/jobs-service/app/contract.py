@@ -40,6 +40,18 @@ _MULTI_UNIT_KINDS: frozenset[str] = frozenset({"extraction", "campaign", "enrich
 # D-JOBS-P4-RETRY-LORE).
 _RETRYABLE_KINDS: frozenset[str] = frozenset({"translation"})
 
+# VIEW-ONLY kinds — visible on the unified Jobs screen (their producer emits +
+# reconciles) but NOT yet control-wired in the unified plane, so we offer NO control
+# caps (a Cancel/Resume button that 404s is worse than none). These are SECONDARY kinds
+# whose owning service's P3 control endpoint handles only its PRIMARY job table:
+#   - glossary_extraction — translation control endpoint handles `translation_jobs`, not
+#                            `extraction_jobs` (Slice A — D-JOBS-GLOSSARY-EXTRACT-UNWIRED).
+#   - wiki_gen            — knowledge control endpoint handles `extraction_jobs`, not
+#                            `wiki_gen_jobs` (Slice C — D-JOBS-WIKI-GEN-UNWIRED).
+# Users control these via their native panels (extraction wizard / wiki panel) today;
+# unified-plane control wiring is tracked (D-JOBS-SECONDARY-KIND-CONTROL).
+_VIEW_ONLY_KINDS: frozenset[str] = frozenset({"glossary_extraction", "wiki_gen"})
+
 
 def _is_multi_unit(kind: str) -> bool:
     return kind in _MULTI_UNIT_KINDS
@@ -48,12 +60,15 @@ def _is_multi_unit(kind: str) -> bool:
 def derive_control_caps(status: "JobStatus | str", kind: str) -> list[ControlCap]:
     """Return the control actions valid for a job in its CURRENT status.
 
+    - a VIEW-ONLY kind (not yet control-wired in the unified plane) → none
     - `failed` → retry (only for a retry-supported kind), else none
     - terminal (completed/cancelled) or `cancelling` (already in-flight) → none
     - `paused` → resume + cancel
     - `pending` → cancel
     - `running` → cancel (+ pause iff the kind is multi-unit)
     """
+    if kind in _VIEW_ONLY_KINDS:  # visible but control routes nowhere → offer nothing
+        return []
     s = status if isinstance(status, JobStatus) else JobStatus(status)
     if s == JobStatus.FAILED:
         # A failed job is terminal but RE-SUBMITTABLE for the kinds whose owner honors it

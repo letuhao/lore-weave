@@ -12,6 +12,7 @@
   "kind": {
     "extraction": "ナレッジ抽出",
     "glossary_extraction": "用語集抽出",
+    "wiki_gen": "Wiki生成",
     "translation": "翻訳",
     "video_gen": "動画生成",
     "campaign": "キャンペーン",

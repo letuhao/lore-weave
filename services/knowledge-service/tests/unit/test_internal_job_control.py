@@ -8,12 +8,13 @@ public tests; here it's a no-op so we test the wrapper logic. Calls the handler
 directly with mocked repos (no app lifespan)."""
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID
 
 import pytest
 from fastapi import HTTPException
 
+import app.routers.internal_job_control as ijc
 from app.routers.internal_job_control import (
     JobControlPayload, control_extraction_job, reconcile_jobs,
 )
@@ -42,6 +43,23 @@ def _repos(job, updated_status="cancelled"):
 @pytest.fixture(autouse=True)
 def _noop_validate(monkeypatch):
     monkeypatch.setattr("app.routers.internal_job_control._validate_or_409", lambda *a, **k: None)
+
+
+def _patch_wiki(monkeypatch, rows=None):
+    """Patch the reconcile endpoint's inline ``WikiGenJobsRepo(get_knowledge_pool())``
+    so the wiki-gen UNION yields ``rows`` (default: none) without a live pool."""
+    repo = MagicMock()
+    repo.list_since = AsyncMock(return_value=list(rows or []))
+    monkeypatch.setattr(ijc, "WikiGenJobsRepo", MagicMock(return_value=repo))
+    monkeypatch.setattr(ijc, "get_knowledge_pool", MagicMock(return_value=MagicMock()))
+    return repo
+
+
+@pytest.fixture(autouse=True)
+def _empty_wiki(monkeypatch):
+    """Default: the wiki-gen reconcile source is empty (the extraction-only tests
+    don't care about it). A wiki-specific test re-patches with rows."""
+    _patch_wiki(monkeypatch)
 
 
 async def test_cancel_owned_job_mirrors_disabled():
@@ -101,7 +119,7 @@ async def test_reconcile_jobs_maps_complete_to_completed():
     )
     repo = AsyncMock()
     repo.list_since = AsyncMock(return_value=[row])
-    out = await reconcile_jobs(since=updated, jobs_repo=repo)
+    out = await reconcile_jobs(since=updated, limit=1000, jobs_repo=repo)
     p = out["jobs"][0]
     assert p["service"] == "knowledge" and p["kind"] == "extraction"
     assert p["status"] == "completed"  # 'complete' → canonical 'completed'
@@ -122,5 +140,48 @@ async def test_reconcile_skips_noncanonical_summarizing():
                            cost_spent_usd=0)
     repo = AsyncMock()
     repo.list_since = AsyncMock(return_value=[good, summ])
-    out = await reconcile_jobs(since=updated, jobs_repo=repo)
+    out = await reconcile_jobs(since=updated, limit=1000, jobs_repo=repo)
     assert len(out["jobs"]) == 1 and out["jobs"][0]["status"] == "running"
+
+
+async def test_reconcile_unions_wiki_gen_and_merges_oldest_first(monkeypatch):
+    # D-JOBS-WIKI-GEN-UNWIRED: the knowledge reconcile UNIONs extraction + wiki_gen,
+    # both federating to service='knowledge', kept apart by `kind`. The two families
+    # are merged oldest-first by occurred_at.
+    from datetime import datetime, timezone
+    t_ext = datetime(2026, 6, 16, tzinfo=timezone.utc)   # newer
+    t_wiki = datetime(2026, 6, 15, tzinfo=timezone.utc)  # older
+    ext_row = SimpleNamespace(job_id=JOB, user_id=USER, status="running", items_processed=1,
+                              items_total=4, error_message=None, updated_at=t_ext, cost_spent_usd=0)
+    wiki_row = {
+        "job_id": UUID("11111111-1111-1111-1111-111111111111"), "user_id": USER,
+        "status": "completed",       # list_since already mapped complete→completed
+        "native_status": "complete", "cost_spent_usd": 1.5, "error_message": None,
+        "updated_at": t_wiki,
+    }
+    _patch_wiki(monkeypatch, rows=[wiki_row])
+    ext_repo = AsyncMock()
+    ext_repo.list_since = AsyncMock(return_value=[ext_row])
+    out = await reconcile_jobs(since=t_wiki, limit=1000, jobs_repo=ext_repo)
+    jobs = out["jobs"]
+    assert [j["kind"] for j in jobs] == ["wiki_gen", "extraction"]  # oldest-first merge
+    w = jobs[0]
+    assert w["service"] == "knowledge" and w["status"] == "completed"
+    assert w["cost_usd"] == 1.5 and w["progress"] is None and w["error"] is None
+
+
+async def test_reconcile_wiki_gen_failed_carries_error(monkeypatch):
+    from datetime import datetime, timezone
+    t = datetime(2026, 6, 15, tzinfo=timezone.utc)
+    wiki_row = {
+        "job_id": UUID("22222222-2222-2222-2222-222222222222"), "user_id": USER,
+        "status": "failed", "native_status": "failed", "cost_spent_usd": 0.0,
+        "error_message": "budget exceeded", "updated_at": t,
+    }
+    _patch_wiki(monkeypatch, rows=[wiki_row])
+    ext_repo = AsyncMock()
+    ext_repo.list_since = AsyncMock(return_value=[])
+    out = await reconcile_jobs(since=t, limit=1000, jobs_repo=ext_repo)
+    p = out["jobs"][0]
+    assert p["kind"] == "wiki_gen" and p["status"] == "failed"
+    assert p["error"] == {"code": "wiki_gen_failed", "message": "budget exceeded"}
