@@ -257,6 +257,30 @@ async def test_resolve_and_create_job_threads_campaign_id(fake_pool):
 
 
 @pytest.mark.asyncio
+async def test_resolve_and_create_job_emits_model_and_params(fake_pool):
+    """P4 — the 'pending' create event carries the resolved model NAME + a whitelisted
+    params dict (model/params set once here; the projection's COALESCE keeps them across
+    later events). resolve_model_name is stubbed (autouse) → 'qwen2.5-7b-instruct'."""
+    from app.routers.jobs import _resolve_and_create_job
+    from app.models import CreateJobPayload
+    fake_pool.fetchrow.side_effect = [_BOOK_SETTINGS_ROW, FakeRecord({**_JOB_ROW})]
+    with patch("app.routers.jobs.publish", new_callable=AsyncMock), \
+         patch("app.routers.jobs.publish_event", new_callable=AsyncMock), \
+         patch("app.routers.jobs.emit_job_event", new_callable=AsyncMock) as emit:
+        await _resolve_and_create_job(
+            fake_pool, UUID(BOOK_ID),
+            CreateJobPayload(chapter_ids=[UUID(CHAPTER_ID)]), USER_ID,
+        )
+    # the 'pending' create emit (first call) carries model + params
+    pending = emit.call_args_list[0].kwargs
+    assert pending["status"] == "pending"
+    assert pending["model"] == "qwen2.5-7b-instruct"
+    assert pending["params"]["model"] == "qwen2.5-7b-instruct"
+    assert pending["params"]["target_language"]  # whitelisted key present
+    assert "pipeline_version" in pending["params"]
+
+
+@pytest.mark.asyncio
 async def test_resolve_and_create_job_attributes_owner_to_caller(fake_pool):
     """review-impl LOW-2: caller-attribution — a created job's owner_user_id is the
     CALLER (a collaborator owns the jobs they start), not a book owner. Exercised on

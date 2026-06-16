@@ -10,6 +10,7 @@ from ..config import DEFAULT_COMPACT_SYSTEM_PROMPT, DEFAULT_COMPACT_USER_PROMPT_
 from ..models import CreateJobPayload, TranslationJob, ChapterTranslation, ErrorResponse
 from ..broker import publish, publish_event
 from ..effective_settings import resolve_effective_settings
+from ..model_name import resolve_model_name
 from ..grant_deps import (
     GrantLevel, require_book_grant, authorize_book, book_for_chapter, get_grant_client_dep,
 )
@@ -182,6 +183,21 @@ async def _resolve_and_create_job(
             detail={"code": "TRANSL_NO_MODEL_CONFIGURED", "message": "No model configured. Set a model in Translation Settings before translating."},
         )
 
+    # P4 usage emit — resolve the human model NAME (best-effort, PRE-tx; H1) + assemble a
+    # whitelisted params dict for the Jobs GUI. model + params ride the 'pending' create
+    # event ONLY; the projection's COALESCE merge preserves them across later events, so
+    # the coordinator/finalize emits never need to (and never clobber them with a leaner set).
+    _model_name = await resolve_model_name(eff.get("model_source"), str(eff["model_ref"]))
+    _job_params = {
+        "model": _model_name,
+        "model_ref": str(eff["model_ref"]),
+        "target_language": eff.get("target_language"),
+        "pipeline_version": eff.get("pipeline_version", "v2"),
+        "qa_depth": eff.get("qa_depth", "standard"),
+        "verifier_enabled": bool(eff.get("verifier_model_ref")),
+        "cold_start_mode": eff.get("cold_start_mode", "single_pass"),
+    }
+
     # ── S2 idempotency gate (G3) ───────────────────────────────────────────
     # Declarative "ensure translated": reduce the requested chapters to the
     # to-do set {never-translated ∪ stale ∪ failed} before any fan-out. A
@@ -268,7 +284,7 @@ async def _resolve_and_create_job(
             await emit_job_event(
                 conn, service=_JOB_SERVICE, job_id=str(job_id),
                 owner_user_id=str(job_row["owner_user_id"]), kind=_JOB_KIND,
-                status="pending",
+                status="pending", model=_model_name, params=_job_params,
             )
 
             for chapter_id in chapter_ids:

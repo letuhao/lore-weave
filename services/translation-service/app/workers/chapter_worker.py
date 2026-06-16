@@ -704,10 +704,21 @@ async def _check_job_completion(pool, job_id, user_id, msg, publish_event) -> No
                 # JobStatus, so map it to 'completed' (the job DID finish, with some
                 # chapters done) — the per-chapter failure detail is tracked elsewhere.
                 _status = "completed" if row["status"] == "partial" else row["status"]
+                # P4 — carry best-effort cumulative tokens (summed across this job's
+                # per-chapter rows) on the terminal event. model + params were set on the
+                # 'pending' create event and preserved via the projection's COALESCE merge.
+                _tok = await db.fetchrow(
+                    "SELECT COALESCE(SUM(input_tokens),0) AS ti, "
+                    "COALESCE(SUM(output_tokens),0) AS toks_out "
+                    "FROM chapter_translations WHERE job_id=$1",
+                    job_id,
+                )
                 await emit_job_event(
                     db, service=_JOB_SERVICE, job_id=str(job_id),
                     owner_user_id=str(row["owner_user_id"]), kind=_JOB_KIND,
                     status=_status,
+                    tokens_in=int(_tok["ti"]) if _tok else None,
+                    tokens_out=int(_tok["toks_out"]) if _tok else None,
                 )
 
     if row is None:

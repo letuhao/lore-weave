@@ -107,7 +107,7 @@ async def test_check_job_completion_emits_completed(monkeypatch):
     monkeypatch.setattr(worker_mod, "_send_translation_notification", AsyncMock())
     pool = FakeConn({
         "status": "completed", "completed_chapters": 3, "failed_chapters": 0,
-        "owner_user_id": USER,
+        "owner_user_id": USER, "ti": 12000, "toks_out": 9000,
     })
     publish_event = AsyncMock()
     msg = {"job_id": str(JOB)}
@@ -120,6 +120,9 @@ async def test_check_job_completion_emits_completed(monkeypatch):
     assert kw["status"] == "completed"
     assert kw["job_id"] == str(JOB)
     assert kw["owner_user_id"] == str(USER)
+    # P4 — terminal carries best-effort summed tokens (FakeConn returns the same row
+    # for the SUM query, so ti/toks_out stand in for the aggregate).
+    assert kw["tokens_in"] == 12000 and kw["tokens_out"] == 9000
 
 
 @pytest.mark.asyncio
@@ -129,7 +132,7 @@ async def test_check_job_completion_maps_partial_to_completed(monkeypatch):
     monkeypatch.setattr(worker_mod, "_send_translation_notification", AsyncMock())
     pool = FakeConn({
         "status": "partial", "completed_chapters": 2, "failed_chapters": 1,
-        "owner_user_id": USER,
+        "owner_user_id": USER, "ti": 0, "toks_out": 0,
     })
     msg = {"job_id": str(JOB)}
 

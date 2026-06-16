@@ -16,6 +16,17 @@ os.environ.setdefault("INTERNAL_SERVICE_TOKEN", "test_internal_token")
 
 
 @pytest.fixture(autouse=True)
+def _stub_model_name_resolve(monkeypatch):
+    """P4 — the create path resolves the model NAME via provider-registry (HTTP) for the
+    'pending' lifecycle event's model/params. Stub it so the suite stays hermetic + fast
+    (best-effort None on failure, but a real connect attempt costs DNS-fail latency)."""
+    monkeypatch.setattr(
+        "app.routers.jobs.resolve_model_name",
+        AsyncMock(return_value="qwen2.5-7b-instruct"), raising=False,
+    )
+
+
+@pytest.fixture(autouse=True)
 def _hermetic_knowledge_brief(monkeypatch):
     """M4b: keep the suite hermetic + fast.
 
