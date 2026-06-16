@@ -159,7 +159,7 @@ jobs:
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - name: gate non-vacuity (--bite must fire)
         run: bash scripts/perf/bench-gate.sh --bite
-      - name: regression gate vs base (same-runner A/B)
+      - name: regression gate vs base (same-runner A/B — ADVISORY)
         run: |
           base="${{ github.event.pull_request.base.sha }}"
           [ -n "$base" ] || base="$(git rev-parse HEAD~1 2>/dev/null || echo HEAD)"
@@ -167,9 +167,17 @@ jobs:
           bash scripts/perf/bench-gate.sh --ci-ab "$base"
           rc=$?
           set -e
-          # exit 1 = real regression → fail the job; exit 2 = notrun (base lacks
-          # the benches on first introduction) → green.
-          [ "$rc" = 1 ] && exit 1 || exit 0
+          # ADVISORY, not blocking (D-G3-CIAB-NOISE, extended to benchstat): these
+          # sub-µs marshal/validate benches are noise-flaky on shared CI runners —
+          # benchstat's Mann-Whitney flagged a +0.5%/+1.1% "regression" on a commit
+          # that did NOT touch contracts/events (16e969fb, tests-only). A flagged
+          # regression is surfaced as a ::warning:: for human review; the HARD gate
+          # is --bite above. Re-arm to blocking with a less noise-prone signal
+          # (more -count, a heavier benched workload).
+          if [ "$rc" = 1 ]; then
+            echo "::warning::benchstat flagged a sec/op regression vs $base (advisory — verify locally; likely CI noise on sub-µs benches)"
+          fi
+          exit 0
 
   perf-rust-bench:
     name: G3 projection-hotpath perf gate (per-PR)
