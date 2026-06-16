@@ -1,0 +1,7 @@
+id: w2-rss-soak
+description: "W2.3a — real-service RSS soak, LIVE. Soaks the REAL publisher under sustained pgbench drain load and asserts its VmRSS plateaus (no steady-state leak), sampling /proc/<pid>/status. Closes D-S14-SERVICE-RSS-SOAK. The in-process count-bounded retain bite (S14 rss-soak) proves the plateau detector is non-vacuous and runs anywhere; the real-service soak needs Linux + /proc + a Linux-built publisher → notrun off-Linux (the nightly Linux runner executes it). Requires the scale rig."
+invariant: I-w2-service-rss-plateau
+kind: live-probe
+command: ["bash", "scripts/perf/w2-rss-soak.sh", "smoke"]
+requires: ["scale-rig"]
+skip_when: []

@@ -31,6 +31,11 @@ type Spec struct {
 var Specs = []Spec{
 	{"npc.created", "npc", []string{"glossary_entity_id", "spawn_region_id", "initial_mood"}},
 	{"npc.said", "npc", []string{}}, // npc_projection bumps version; session_id rides in metadata
+	// W3.1 — un-vacuum the two npc projection arms that got 0 coverage (the events
+	// were never emitted). Keys match crates/projections/npc NpcPcRelationship +
+	// NpcSessionMemoryEmbedding apply_event.
+	{"npc.relationship_changed", "npc", []string{"other_entity_id", "other_entity_type", "trust_level", "familiarity_count", "session_id", "labels"}},
+	{"npc.memory_embedded", "npc", []string{"npc_id", "session_id", "embedding", "content_hash", "dim"}},
 	{"session.started", "session", []string{"npc_id", "session_id", "aggregate_id"}},
 	{"session.ended", "session", []string{"npc_id", "session_id"}},
 	{"session.participant_joined", "session", []string{"session_id", "participant_type", "participant_id"}},
@@ -64,6 +69,36 @@ func NpcCreated(glossaryEntityID, spawnRegionID, mood string) Payload {
 // from the payload (it bumps the version and fans out via metadata.session_id,
 // which the generator sets on the envelope).
 func NpcSaid(text string) Payload { return Payload{"text": text} }
+
+// NpcRelationshipChanged (W3.1) — npc-aggregate event projected into
+// npc_pc_relationship_projection. `otherID` is a PC the npc relates to.
+func NpcRelationshipChanged(otherID string, trustLevel, familiarityCount int, sessionID string, labels []string) Payload {
+	return Payload{
+		"other_entity_id":   otherID,
+		"other_entity_type": "pc",
+		"trust_level":       trustLevel,
+		"familiarity_count": familiarityCount,
+		"session_id":        sessionID,
+		"labels":            labels,
+	}
+}
+
+// EmbeddingDim is the V1 embedding dimension (Q-L3I-1); the
+// NpcSessionMemoryEmbedding projection SKIPS any event whose payload dim != this.
+const EmbeddingDim = 1536
+
+// NpcMemoryEmbedded (W3.1) — npc-aggregate event projected into
+// npc_session_memory_embedding. `embedding` MUST be EmbeddingDim floats and the
+// payload MUST declare dim=EmbeddingDim or the projection arm skips it.
+func NpcMemoryEmbedded(npcID, sessionID, contentHash string, embedding []float64) Payload {
+	return Payload{
+		"npc_id":       npcID,
+		"session_id":   sessionID,
+		"embedding":    embedding,
+		"content_hash": contentHash,
+		"dim":          EmbeddingDim,
+	}
+}
 
 // --- session ---
 

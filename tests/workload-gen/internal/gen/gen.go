@@ -98,6 +98,18 @@ func (g *Generator) emit(reality uuid.UUID, aggType, aggID, eventType string, pa
 
 var moods = []string{"calm", "wary", "cheerful", "sullen"}
 
+// embedding1536 returns a deterministic EmbeddingDim-length vector. The
+// NpcSessionMemoryEmbedding projection requires dim=1536 + a 1536-element
+// embedding (the VECTOR(1536) / BYTEA fallback column), so the value content is
+// irrelevant — only the length matters. Fixed so streams stay byte-deterministic.
+func embedding1536() []float64 {
+	v := make([]float64, schema.EmbeddingDim)
+	for i := range v {
+		v[i] = 0.1
+	}
+	return v
+}
+
 // Generate produces the full deterministic stream for a profile.
 func (g *Generator) Generate(p Profile) Stream {
 	var s Stream
@@ -149,12 +161,36 @@ func (g *Generator) Generate(p Profile) Stream {
 			for k := 0; k < p.SaysPerSession; k++ {
 				s = append(s, g.emit(reality, "npc", npc, "npc.said", schema.NpcSaid(fmt.Sprintf("line %d", g.nextMisc())), map[string]any{"session_id": sid}))
 			}
+			// W3.1 — on the FIRST session, emit the two npc events that previously
+			// got 0 coverage (un-vacuums npc_pc_relationship_projection +
+			// npc_session_memory_embedding). Once per reality keeps the streams
+			// (and the 1536-float embedding) from bloating every session. The
+			// hosting npc + this session are live here; the relationship also
+			// needs a pc.
+			if i == 0 {
+				if pc, okPc := g.w.PickPc(reality); okPc {
+					s = append(s, g.emit(reality, "npc", npc, "npc.relationship_changed",
+						schema.NpcRelationshipChanged(pc, 5, 1, sid, []string{"acquaintance"}), nil))
+						// The reciprocal pc→npc relationship: a pc-aggregate event whose
+						// projection (pc_relationship_projection) is ALSO an Upsert (created
+						// on the first relationship_changed), live-exercising the pc side of
+						// the upsert fix (D-W3-NPC-REL-PROJECTION-UPSERT).
+						s = append(s, g.emit(reality, "pc", pc, "pc.relationship_changed",
+							schema.PcRelationshipChanged("npc", npc, 42, []string{"friendly"}), nil))
+				}
+				s = append(s, g.emit(reality, "npc", npc, "npc.memory_embedded",
+					schema.NpcMemoryEmbedded(npc, sid, "mem-"+sid, embedding1536()), nil))
+			}
 			s = append(s, g.emit(reality, "session", sid, "session.ended", schema.SessionEnded(npc, sid), nil))
 		}
-		// world kv — set then unset.
+		// world kv — set then unset (the DELETE arm) + a PERSISTENT set (W3.1: the
+		// row-present arm — set+unset net-zeroes, leaving world_kv_projection with
+		// no row to verify, so add a key that is set and never unset).
 		key := fmt.Sprintf("flag.%d", g.nextMisc())
 		s = append(s, g.emit(reality, "world", "world", "world.kv_set", schema.WorldKvSet(key, true), nil))
 		s = append(s, g.emit(reality, "world", "world", "world.kv_unset", schema.WorldKvUnset(key), nil))
+		pkey := fmt.Sprintf("persist.%d", g.nextMisc())
+		s = append(s, g.emit(reality, "world", "world", "world.kv_set", schema.WorldKvSet(pkey, true), nil))
 		// canon — created → updated → promoted (per entry, its own aggregate).
 		for i := 0; i < p.CanonEntries; i++ {
 			cid := g.extID("canon")
@@ -224,6 +260,22 @@ func Validate(s Stream) error {
 			if !npcSession[r.String()+"|"+e.AggregateID+"|"+sid] {
 				return fmt.Errorf("event %d npc.said: no started session %q for npc %q", i, sid, e.AggregateID)
 			}
+		case "npc.relationship_changed":
+			// npc-aggregate event referencing a pc the npc relates to.
+			if err := need("npc", e.AggregateID); err != nil {
+				return err
+			}
+			if err := need("pc", str("other_entity_id")); err != nil {
+				return err
+			}
+		case "npc.memory_embedded":
+			// npc-aggregate event for a session the npc hosted.
+			if err := need("npc", e.AggregateID); err != nil {
+				return err
+			}
+			if sid := str("session_id"); !npcSession[r.String()+"|"+e.AggregateID+"|"+sid] {
+				return fmt.Errorf("event %d npc.memory_embedded: no started session %q for npc %q", i, sid, e.AggregateID)
+			}
 		case "pc.spawned":
 			if err := need("region", str("spawn_region_id")); err != nil {
 				return err
@@ -256,8 +308,16 @@ func Validate(s Stream) error {
 			if err := need("canon", e.AggregateID); err != nil {
 				return err
 			}
+		case "pc.relationship_changed":
+			// pc-aggregate event referencing another entity (npc or pc) it relates to.
+			if err := need("pc", e.AggregateID); err != nil {
+				return err
+			}
+			if err := need(str("other_entity_type"), str("other_entity_id")); err != nil {
+				return err
+			}
 		case "world.kv_set", "world.kv_unset", "region.ambient_changed",
-			"pc.item_acquired", "pc.relationship_changed":
+			"pc.item_acquired":
 			// no cross-entity reference to resolve (the unset-after-set ordering
 			// is guaranteed by construction; world is a singleton aggregate).
 		default:

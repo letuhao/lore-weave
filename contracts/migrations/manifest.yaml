@@ -99,3 +99,21 @@ migrations:
     breaking: false
     dependencies: ["0006_projections"]
     description: "L3 cycle 16 — L3.I pgvector finalizer: CREATE EXTENSION vector + ALTER npc_session_memory_embedding.embedding to VECTOR(1536) when BYTEA placeholder still present + HNSW(m=16, ef_construction=64). Q-L3I-1 dim=1536 LOCKED. Closes L3 layer."
+
+  # ── L2.A integrity — stored payload checksum (Wave 3 — W3.4)
+  #
+  # NOTE the version gap (8 → 13): the per-reality migration FILES 0009–0012
+  # (canon_projection, its indexes, archive_state, outbox_prune_index) are NOT
+  # registered here — they are applied by the projection/test harnesses directly,
+  # not the orchestrator's manifest-driven `migrate` path. That pre-existing gap
+  # is out of W3.4 scope (tracked as D-MANIFEST-0009-0012-UNREGISTERED). This
+  # entry keeps the established `version == filename-stem number` convention
+  # (0013 → 13); the manifest's monotonic check only requires version > prev.
+  #
+  # Additive nullable column on `events` ⇒ metadata-only catalog change on the
+  # partitioned table (no rewrite); back-compat, hence breaking: false.
+  - id: "0013_events_content_sha256"
+    version: 13
+    breaking: false
+    dependencies: ["0002_events_table"]
+    description: "L2.A Wave-3 W3.4 — events.content_sha256 CHAR(64) (nullable). Stored SHA-256 of the canonical jsonb text of jsonb_build_object(p:payload, m:metadata) — covers payload AND metadata — set at INSERT by both the dp-kernel append + the Go emit path via the identical SQL expression. PG is the single canonicalizer (Go≡Rust agree, no cross-lang JSON lib). PLAIN column (not generated) so a later payload/metadata UPDATE doesn't mask byte-rot; the ledger -check-checksum re-derives + compares. NULL pre-0013 rows skipped."

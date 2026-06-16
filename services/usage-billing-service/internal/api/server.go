@@ -228,6 +228,19 @@ func decryptWithKey(key []byte, cipherText string) ([]byte, error) {
 // the usage stream (provider-registry actualUSD).
 const flatCostPerToken = 0.000002
 
+// recordCostUSD resolves the billable USD for an invocation: the authoritative
+// per-model `override` when present AND non-negative is honored verbatim (incl. a
+// free/local model's 0); otherwise a flat per-token fallback. A negative override
+// is a provider/parse bug and falls back to the flat rate (defensive). This is the
+// single source for the cost decision on BOTH the /record streaming path (no
+// override → always flat) and the usage-stream consumer (override = stream cost_usd).
+func recordCostUSD(tokens int, override *float64) float64 {
+	if override != nil && *override >= 0 {
+		return *override
+	}
+	return float64(tokens) * flatCostPerToken
+}
+
 // billingDecisionRecorded is the billing_decision for audit-only rows. The token
 // quota/credits/rejected decisions are retired (S4c) — USD enforcement is the
 // Phase-6a guardrail (pre-flight reserve), not this post-hoc path.
@@ -359,7 +372,9 @@ func recordUsageParams(in recordUsageRequest) usageLogParams {
 		ModelRef:      in.ModelRef,
 		InputTokens:   in.InputTokens,
 		OutputTokens:  in.OutputTokens,
-		CostUSD:       float64(in.InputTokens+in.OutputTokens) * flatCostPerToken,
+		// /record has no per-model cost (the comment on flatCostPerToken) → nil
+		// override → flat fallback.
+		CostUSD:       recordCostUSD(in.InputTokens+in.OutputTokens, nil),
 		RequestStatus: in.RequestStatus,
 		Purpose:       in.Purpose,
 		InputPayload:  in.InputPayload,

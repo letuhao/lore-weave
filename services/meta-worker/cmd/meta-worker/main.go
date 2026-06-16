@@ -35,6 +35,7 @@ import (
 	"github.com/loreweave/foundation/contracts/meta"
 	"github.com/loreweave/foundation/contracts/realityreg"
 	"github.com/loreweave/foundation/sdks/go/metapg"
+	"github.com/loreweave/foundation/services/meta-worker/pkg/bridge"
 	"github.com/loreweave/foundation/services/meta-worker/pkg/canon_writer"
 	"github.com/loreweave/foundation/services/meta-worker/pkg/consumer"
 	"github.com/loreweave/foundation/services/meta-worker/pkg/dispatch"
@@ -200,6 +201,22 @@ func run() error {
 		}
 	}()
 
+	// ── W1.5 Rust→Go meta-write bridge (internal, fail-closed) ───────────────
+	bridgeSrv, err := buildBridge(cfg, metaPool)
+	if err != nil {
+		return fmt.Errorf("bridge: %w", err)
+	}
+	if bridgeSrv != nil {
+		go func() {
+			if err := bridgeSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				slog.Error("[meta-worker] bridge server", "error", err)
+			}
+		}()
+		slog.Info("[meta-worker] bridge listening (internal)", "addr", cfg.BridgeAddr)
+	} else {
+		slog.Warn("[meta-worker] bridge DISABLED — set METAWORKER_BRIDGE_TOKEN + META_ALLOWLIST_PATH to enable the provisioner write surface")
+	}
+
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() { defer wg.Done(); runConsumer(ctx, cons, m, cfg.BatchSize) }()
@@ -213,10 +230,47 @@ func run() error {
 	ready.set(false)
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	// Dual-role shutdown (review #8): stop BOTH the ops HTTP server AND the
+	// internal bridge listener, then drain the consumer loop.
 	_ = httpSrv.Shutdown(shutdownCtx)
+	if bridgeSrv != nil {
+		_ = bridgeSrv.Shutdown(shutdownCtx)
+	}
 	wg.Wait()
 	slog.Info("[meta-worker] stopped")
 	return nil
+}
+
+// buildBridge constructs the W1.5 internal write-bridge server, or returns
+// (nil, nil) when it is disabled (no token). Fail-closed: a token WITHOUT the
+// allowlist is an error (the register op needs the allowlist), never a silent
+// half-configured surface.
+func buildBridge(cfg config, metaPool *pgxpool.Pool) (*http.Server, error) {
+	if cfg.BridgeToken == "" {
+		return nil, nil
+	}
+	if cfg.AllowlistPath == "" {
+		return nil, fmt.Errorf("METAWORKER_BRIDGE_TOKEN is set but META_ALLOWLIST_PATH is not (register needs the allowlist)")
+	}
+	allow, err := meta.LoadAllowlist(cfg.AllowlistPath)
+	if err != nil {
+		return nil, fmt.Errorf("load allowlist: %w", err)
+	}
+	graph, err := meta.LoadTransitions(cfg.TransitionsPath)
+	if err != nil {
+		return nil, fmt.Errorf("load transitions: %w", err)
+	}
+	mwCfg := &meta.Config{
+		DB: metapg.New(metaPool), Allowlist: allow, Transitions: graph,
+		QueryBuilder: meta.PostgresQueryBuilder{}, Clock: sysClock{}, UUIDGen: randUUID{},
+	}
+	reg := bridge.MetaRegistrar{Cfg: mwCfg, Caller: bridge.WorldServiceActorID}
+	audit := bridge.PgAuditSink{Pool: metaPool, Callee: "meta-worker"}
+	bsrv, err := bridge.New(reg, audit, cfg.BridgeToken, "world-service")
+	if err != nil {
+		return nil, err
+	}
+	return &http.Server{Addr: cfg.BridgeAddr, Handler: bsrv.Handler(), ReadHeaderTimeout: 5 * time.Second}, nil
 }
 
 // runConsumer loops ProcessOne until ctx is cancelled.
@@ -291,6 +345,12 @@ type config struct {
 	Block            time.Duration
 	BatchSize        int
 	HTTPAddr         string
+	// W1.5 Rust→Go meta-write bridge. Disabled (not exposed) unless
+	// BridgeToken is set — fail-closed: no secret, no internal write surface.
+	BridgeAddr       string
+	BridgeToken      string
+	AllowlistPath    string
+	TransitionsPath  string
 }
 
 func loadConfig() (config, error) {
@@ -355,6 +415,18 @@ func loadConfig() (config, error) {
 	c.HTTPAddr = os.Getenv("METAWORKER_HTTP_ADDR")
 	if c.HTTPAddr == "" {
 		c.HTTPAddr = ":8080"
+	}
+	// W1.5 bridge — internal bind by default (loopback), enabled only when a
+	// token is configured. Prod sets a private-network address + the secret.
+	c.BridgeAddr = os.Getenv("METAWORKER_BRIDGE_ADDR")
+	if c.BridgeAddr == "" {
+		c.BridgeAddr = "127.0.0.1:8090"
+	}
+	c.BridgeToken = os.Getenv("METAWORKER_BRIDGE_TOKEN")
+	c.AllowlistPath = os.Getenv("META_ALLOWLIST_PATH")
+	c.TransitionsPath = os.Getenv("META_TRANSITIONS_PATH")
+	if c.TransitionsPath == "" {
+		c.TransitionsPath = "contracts/meta/transitions.yaml"
 	}
 	return c, nil
 }

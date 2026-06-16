@@ -1,0 +1,7 @@
+id: w1-capacity
+description: "W1.1 — capacity routing glue, LIVE. CapacityPlanner is wired to a live snapshot (shard_utilization caps × a fresh reality_registry occupancy count) and the count→register critical section is serialized by a per-shard advisory lock, closing the provision-time over-subscription TOCTOU (D-S13-CAPACITY-ROUTING-GLUE). Lock ON ⇒ exactly M of K concurrent placements succeed (final count == M); lock OFF bite ⇒ over-subscription reproduced (final count > M). Requires the scale rig meta-pg up."
+invariant: I-w1-capacity-no-oversubscribe
+kind: live-probe
+command: ["bash", "scripts/perf/w1-capacity.sh", "smoke"]
+requires: ["scale-rig"]
+skip_when: []

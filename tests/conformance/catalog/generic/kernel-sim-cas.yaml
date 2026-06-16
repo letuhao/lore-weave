@@ -1,0 +1,7 @@
+id: kernel-sim-cas
+description: "S10/H1 — optimistic-concurrency CAS: 6 actors race single-event appends to ONE aggregate (read high-water → yield → append with expected_version), the REAL expected_version CAS serialises them to a clean 1..=K stream — no duplicate version, no lost update — across 128 interleavings (and confirms the race actually fired). Runs clean THEN --bite (a CAS-disabled store must produce a lost update). CPU-only, no stack."
+invariant: I-version-cas
+kind: rust-test
+command: ["bash", "-c", "cargo run -q --manifest-path tests/sim/Cargo.toml --bin sim cas && cargo run -q --manifest-path tests/sim/Cargo.toml --bin sim cas --bite"]
+requires: ["cargo"]
+skip_when: []

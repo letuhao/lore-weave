@@ -1,0 +1,10 @@
+{
+  "name": "loreweave-perf-ws-driver",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "S7 F4 — WS echo round-trip driver. Isolated from game-server so the perf colyseus.js client dep does not touch the service. Run via scripts/perf/k6-game-server.sh.",
+  "dependencies": {
+    "colyseus.js": "^0.16.0"
+  }
+}

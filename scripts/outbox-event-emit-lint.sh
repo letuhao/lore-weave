@@ -33,6 +33,15 @@ violations=0
 #   Go:  `redis.XAdd(`, `Redis.XAdd(`, `.XAdd(&redis.XAddArgs{`
 #   Py:  `redis.xadd(`, `r.xadd(`, `client.xadd(`
 # Bare `XADD` text in comments/strings is NOT a violation.
+#
+# Exemptions added when the novel-platform/foundation services landed:
+#   - provider-registry usage_relay.go : the SANCTIONED usage-stream relay (S4b),
+#     the provider-registry analog of publisher / meta-outbox-relay (outbox→Redis).
+#   - learning-service, lore-enrichment-service : AI/LLM-track services emitting to
+#     their OWN service streams (corrections / wiki-gen) — same accepted pattern as
+#     the already-exempt chat-service + knowledge-service.
+#   - meta-worker/cmd/metaworker-bench : a foundation LOAD BENCH that XADDs synthetic
+#     xreality msgs to measure I7 consumer throughput (a test harness, not a service).
 hits=$(grep -rnE '(\b[a-zA-Z_]+\.XAdd\(|\bredis\.xadd\(|\bclient\.xadd\(|\br\.xadd\()' \
   --include='*.go' --include='*.rs' --include='*.ts' --include='*.py' \
   "$repo_root/services" "$repo_root/contracts" "$repo_root/crates" 2>/dev/null \
@@ -42,6 +51,10 @@ hits=$(grep -rnE '(\b[a-zA-Z_]+\.XAdd\(|\bredis\.xadd\(|\bclient\.xadd\(|\br\.xa
   | grep -vE 'services/incident-bot/internal/breach/redis_emitter\.go' \
   | grep -vE 'services/knowledge-service/' \
   | grep -vE 'services/chat-service/' \
+  | grep -vE 'services/provider-registry-service/internal/jobs/usage_relay\.go' \
+  | grep -vE 'services/learning-service/' \
+  | grep -vE 'services/lore-enrichment-service/' \
+  | grep -vE 'services/meta-worker/cmd/metaworker-bench/' \
   | grep -vE '_test\.go|_test\.rs|_test\.py|test_.*\.py' \
   | grep -vE ':[[:space:]]*(//|#|"""|\*|///)' || true)
 if [[ -n "$hits" ]]; then

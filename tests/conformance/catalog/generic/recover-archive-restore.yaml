@@ -1,0 +1,7 @@
+id: recover-archive-restore
+description: "S8/G3 — cold-storage DR: archive-worker writes a past-month events partition to Parquet in MinIO + DROPs it; archive-restore pulls it back into events_restore_<YYYYMM>; assert the restored content byte-matches the pre-archive C3 digest (lossless Parquet round-trip). Self-checks MinIO (foundation-stack predicate is PG+Redis only) → notrun if absent. Embeds --bite (mutate a restored row → digest diverges)."
+invariant: I-recover-archive-roundtrip-lossless
+kind: live-probe
+command: ["bash", "scripts/chaos/recover-archive-restore.sh", "--bite"]
+requires: ["foundation-stack"]
+skip_when: []

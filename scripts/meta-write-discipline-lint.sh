@@ -46,11 +46,23 @@ declare -A sanctioned=(
   ["services/publisher/pkg/metahb/"]="publisher_heartbeats"
   ["services/world-service/src/embedding_queue/live/audit_writer.rs"]="service_to_service_audit"
   ["services/meta-worker/pkg/pgwrite/"]="meta_write_audit"
+  # W1.5 Rust→Go bridge records its OWN cross-service-call audit row — writing
+  # service_to_service_audit IS the audit (self-write, like audit_writer.rs above).
+  ["services/meta-worker/pkg/bridge/"]="service_to_service_audit"
+  # S13 capacity-override CLI logs the operator override into scaling_events —
+  # the scaling-decision EVENT LOG; writing it IS the record (no domain MetaWrite).
+  ["services/meta-worker/cmd/capacity-override/"]="scaling_events"
 )
 
 for table in $meta_tables; do
   # Match INSERT INTO <table>, UPDATE <table>, DELETE FROM <table>
   # in Go/Rust/SQL/TS files OUTSIDE contracts/meta.
+  #
+  # The two drill exclusions below cover the W1/S13 LIVE-TEST DRILL harnesses —
+  # standalone binaries that set up + tear down test realities by writing meta
+  # tables DIRECTLY on purpose (driving the raw DB: CAS races, freeze, relocation
+  # — not the audited domain path). They are functionally tests (like _test.go
+  # above), just compiled as runnable bins so they can drive a live stack.
   hits=$(grep -rniE "(INSERT[[:space:]]+INTO[[:space:]]+${table}|UPDATE[[:space:]]+${table}|DELETE[[:space:]]+FROM[[:space:]]+${table})" \
     --include='*.go' --include='*.rs' --include='*.sql' --include='*.ts' \
     "${scan_dirs[@]}" 2>/dev/null \
@@ -58,6 +70,8 @@ for table in $meta_tables; do
     | grep -vE '/crates/meta-rs/' \
     | grep -vE 'migrations/meta/' \
     | grep -vE '_test\.(go|rs|ts)' \
+    | grep -vE '/cmd/(closure-drill|lifecycle-race|migrate-drill)/' \
+    | grep -vE '/src/bin/(provision_drill|capacity_place|freeze_drill)\.rs' \
     | grep -vE ':[[:space:]]*(//|--|#|\*|///)' || true)
   # Drop sanctioned (path, table) writers for THIS table.
   for path in "${!sanctioned[@]}"; do

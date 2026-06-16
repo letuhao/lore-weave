@@ -352,15 +352,19 @@ func TestMetaWriteBatch_PartialFailureRollsBack(t *testing.T) {
 type fakeDBPrequeue struct {
 	queue  [][]txResponse
 	lastTx *fakeTx
+	txs    []*fakeTx // every TX handed out, in order (S13 atomicity assertions)
+	begins int       // number of BeginTx calls (S13 atomicity: success path must be 1)
 }
 
 func (d *fakeDBPrequeue) BeginTx(_ context.Context) (Tx, func() error, func() error, error) {
+	d.begins++
 	tx := &fakeTx{}
 	if len(d.queue) > 0 {
 		tx.responses = d.queue[0]
 		d.queue = d.queue[1:]
 	}
 	d.lastTx = tx
+	d.txs = append(d.txs, tx)
 	commit := func() error {
 		tx.mu.Lock()
 		defer tx.mu.Unlock()

@@ -161,7 +161,9 @@ impl Projection for NpcPcRelationshipProjection {
     fn apply_event(&self, env: &EventEnvelope) -> Vec<ProjectionUpdate> {
         let meta = VerificationMeta::from_envelope(env);
         match env.event_type.as_str() {
-            "npc.relationship_changed" => vec![ProjectionUpdate::Update {
+            // Upsert: the relationship row is created on the FIRST
+            // relationship_changed (no preceding Insert) and updated thereafter.
+            "npc.relationship_changed" => vec![ProjectionUpdate::Upsert {
                 table: "npc_pc_relationship_projection".into(),
                 pk: json!({
                     "npc_id":          env.aggregate_id,
@@ -309,6 +311,15 @@ mod tests {
         let updates = p.apply_event(&e);
         assert_eq!(updates.len(), 1);
         assert_eq!(updates[0].table(), "npc_pc_relationship_projection");
+        // MUST be an Upsert (create-or-update): the row is created on the first
+        // relationship_changed with no preceding Insert. A regression to Update
+        // would silently fail to materialize the row on rebuild
+        // (D-W3-NPC-REL-PROJECTION-UPSERT).
+        assert!(
+            matches!(updates[0], ProjectionUpdate::Upsert { .. }),
+            "npc.relationship_changed must Upsert, got {:?}",
+            updates[0]
+        );
     }
 
     #[test]

@@ -1,0 +1,7 @@
+id: s14-disk
+description: "S14/D1 — disk I/O saturation under the spine's durable write path, LIVE. A dedicated throwaway PG runs the REAL spine T2 write (events+outbox, synchronous_commit=on) under concurrent fsyncing writers: the durable path stays graceful (group commit holds concurrent tps >= single-writer rate, commits land, recovers). Bite: synchronous_commit=off removes the fsync wait → tps jumps (here ~30×) → proves the disk fsync was the real bound. Spins its own container; needs a docker host. (dataset>RAM read thrash is D-S14-DISK-READ-THRASH — WSL2 can't reliably constrain the page cache.)"
+invariant: I-s14-disk-write-graceful-under-fsync
+kind: live-probe
+command: ["bash", "scripts/perf/s14-disk.sh", "drill"]
+requires: ["scale-rig"]
+skip_when: []

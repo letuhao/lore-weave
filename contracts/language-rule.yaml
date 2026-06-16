@@ -63,10 +63,15 @@ services:
   translation-service: python
   video-gen-service: python
   worker-ai: python
+  campaign-service: python        # auto-draft factory (novel-platform track)
+  composition-service: python     # composition track (PR #29)
+  learning-service: python        # learning/eval track
+  lore-enrichment-service: python # lore-enrichment track
 
   # ── TypeScript gateway / realtime transport
   api-gateway-bff: typescript
   game-server: typescript
+  ai-gateway: typescript          # MCP federation gateway (MCP-first invariant)
 
   # ── Not yet scaffolded (directory absent; lint allows while truly missing).
   #    Promote to a real language the moment the scaffold lands.

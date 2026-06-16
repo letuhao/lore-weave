@@ -299,6 +299,20 @@ func writeOneInTx(ctx context.Context, cfg *Config, tx Tx, in MetaWriteIntent) (
 		return nil, fmt.Errorf("meta: exec audit: %w", err)
 	}
 
+	// Lifecycle-transition audit in the SAME TX (S13). When set (success path of
+	// AttemptStateTransition), the I9 lifecycle audit is atomic with the status
+	// change + the meta_write_audit above — a crash can no longer commit the
+	// transition while losing its lifecycle audit row.
+	if in.LifecycleAudit != nil {
+		lcQuery, lcArgs, err := cfg.QueryBuilder.BuildLifecycleAuditInsert(*in.LifecycleAudit)
+		if err != nil {
+			return nil, fmt.Errorf("meta: build lifecycle audit: %w", err)
+		}
+		if _, err := tx.Exec(ctx, lcQuery, lcArgs...); err != nil {
+			return nil, fmt.Errorf("meta: exec lifecycle audit: %w", err)
+		}
+	}
+
 	// Outbox event in same TX (if registered + appender configured)
 	if cfg.Outbox != nil {
 		if eventName, ok := cfg.Allowlist.EmitsEvent(in.Table, in.Operation); ok {

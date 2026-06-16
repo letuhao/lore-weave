@@ -21,6 +21,28 @@ func newFakeClock(start int64) *fakeClock {
 }
 func (c *fakeClock) NowUnixNano() int64 { return c.cur.Add(1) }
 
+// Deterministic actor UUIDs for meta fixtures (W3.3 — mock fidelity).
+//
+// The lifecycle_transition_audit / reality_close_audit / admin_action_audit
+// columns are `actor_id UUID NOT NULL` (migrations/meta/004,005,015), so a
+// fixture whose actor flows to those tables MUST carry a UUID — a service-name
+// string like "world-service" would FAIL the insert at runtime. That is exactly
+// the gap the live I9 metaprobe caught (D-META-FAKEDB-UUID-ACTOR). Production
+// uses a sentinel UUID for the world-service system actor
+// (00000000-0000-0000-0000-0000000000a1, Wave 1 bridge/provisioner); these
+// consts mirror it.
+//
+// NOTE the deliberate asymmetry: fixtures bound to meta_write_audit /
+// meta_read_audit (the metawrite_test / audit_l1a3_test / fallback_test paths)
+// keep their service-name strings — that column is `actor_id TEXT` and the
+// actor.go contract is "service name for system actors", so "world-service"
+// there is the FAITHFUL value, not a defect. Only UUID-column-bound fixtures
+// (lifecycle_test) use these consts.
+const (
+	fxOwnerActorID  = "11111111-1111-1111-1111-1111111111a1" // a user (ActorOwner)
+	fxSystemActorID = "00000000-0000-0000-0000-0000000000a1" // world-service sentinel (Wave 1)
+)
+
 // fakeUUIDGen returns deterministic UUIDs (v4-shaped) keyed by an internal counter.
 type fakeUUIDGen struct{ n atomic.Uint64 }
 

@@ -1,0 +1,7 @@
+id: w5-append-stmt-shape
+description: "G1 / structural perf-shape gate — the event-append statement-shape invariant, LIVE. The real PgEventStore::append_events issues ONE high-water SELECT MAX(aggregate_version) per call regardless of batch size K (the K event INSERTs scale with K by design); an N+1 a higher layer could introduce by moving the read into the per-event loop would make the SELECT scale. scripts/perf/w5-append-stmt-shape.sh drives the REAL append via the Rust harness crates/dp-kernel/examples/g1_append_stmt.rs (NOT the Go workload generator, which re-implements the INSERT and has no high-water SELECT) and counts statement CALLS via pg_stat_statements (machine-independent — counts, not µs): clean K=1 and K=64 BOTH show SELECT-MAX calls==1 while INSERT calls==1,64. BITE (--bite): a real per-event-SELECT append makes SELECT-MAX calls scale to 64 → the invariant FIRES, proving non-vacuity from a genuine capture (not a fabricated number). Needs foundation-dev PG with shared_preload_libraries=pg_stat_statements (the script NOTRUNs if absent)."
+invariant: I-w5-append-stmt-shape
+kind: live-probe
+command: ["bash", "scripts/perf/w5-append-stmt-shape.sh"]
+requires: ["foundation-stack", "cargo"]
+skip_when: []

@@ -76,6 +76,23 @@ impl Stmt {
     }
 }
 
+/// BENCH-ONLY public shim over the private [`build_stmt`] (G3 / structural
+/// perf-shape gate). Returns ONLY the rendered SQL string so a `cargo bench`
+/// compilation unit (which sees just the public API) can exercise the builder
+/// without exposing the private [`Stmt`] type.
+///
+/// Deliberately a thin call-through to the REAL [`build_stmt`], NOT a copy of
+/// its logic: the perf gate must measure the production builder so a future
+/// regression cannot hide behind a drifting duplicate (`/review-impl` plan
+/// finding F3). Not for production code paths — the apply path uses
+/// [`build_stmt`] directly inside [`SqlxProjectionWriter`].
+pub fn build_stmt_sql_for_bench(
+    target_table: &str,
+    update: &ProjectionUpdate,
+) -> Result<String, String> {
+    build_stmt(target_table, update).map(|s| s.sql)
+}
+
 /// Build the statement for one update targeting `target_table`. Pure — no DB
 /// access — so a malformed update aborts the batch before any statement runs,
 /// and the SQL shape is unit-testable without a pool. `target_table` is assumed
@@ -167,6 +184,68 @@ fn build_stmt(target_table: &str, update: &ProjectionUpdate) -> Result<Stmt, Str
                 sql,
                 payload: Value::Object(payload),
                 increments: inc_values,
+            })
+        }
+        ProjectionUpdate::Upsert {
+            pk, fields, meta, ..
+        } => {
+            // Create-or-update by pk: INSERT the full column set, and on a pk
+            // conflict UPDATE the non-pk columns to the incoming values. Fixes
+            // the latent defect where a projection whose FIRST event is a change
+            // (no preceding Insert — npc_pc_relationship / pc_relationship) never
+            // materialized a row because a plain UPDATE hit 0 rows.
+            let pk_map = as_object(pk, "Upsert.pk")?;
+            let field_map = as_object(fields, "Upsert.fields")?;
+            if pk_map.is_empty() {
+                return Err("rebuilder: Upsert.pk is empty".into());
+            }
+            // Increment pseudo-fields are unsupported on an upsert: the INSERT
+            // branch has no existing row to COALESCE from, so `col += n` is
+            // ambiguous. No projection emits them; reject loudly if one ever does.
+            for k in field_map.keys() {
+                if k.ends_with("_increment") {
+                    return Err(format!(
+                        "rebuilder: Upsert does not support increment field {k:?} (use Update for increments on an existing row)"
+                    ));
+                }
+            }
+
+            // payload = pk + fields + meta → the full INSERT column set.
+            let mut payload = pk_map.clone();
+            for (k, v) in &field_map {
+                payload.insert(k.clone(), v.clone());
+            }
+            merge_meta(&mut payload, meta);
+            let cols = build_column_list(&payload)?;
+
+            // Conflict target = the pk columns (validated identifiers).
+            let mut pk_cols: Vec<&str> = Vec::with_capacity(pk_map.len());
+            for k in pk_map.keys() {
+                ensure_ident(k)?;
+                pk_cols.push(k.as_str());
+            }
+            let conflict = pk_cols.join(", ");
+
+            // DO UPDATE SET = every NON-pk column (fields + meta) ← EXCLUDED.
+            // (pk columns are the conflict key; EXCLUDED.pk == the existing pk, so
+            // they are deliberately omitted from the SET.) last_verified_* are not
+            // in the payload, so a re-upsert preserves the integrity-checker marks.
+            let mut set_cols: Vec<&str> = field_map.keys().map(|k| k.as_str()).collect();
+            set_cols.extend(["event_id", "aggregate_version", "applied_at"]);
+            let mut set_parts: Vec<String> = Vec::with_capacity(set_cols.len());
+            for c in &set_cols {
+                ensure_ident(c)?;
+                set_parts.push(format!("{c} = EXCLUDED.{c}"));
+            }
+            let set_clause = set_parts.join(", ");
+            let sql = format!(
+                "INSERT INTO {t} ({cols}) SELECT {cols} FROM jsonb_populate_record(NULL::{t}, $1::jsonb) \
+                     ON CONFLICT ({conflict}) DO UPDATE SET {set_clause}"
+            );
+            Ok(Stmt {
+                sql,
+                payload: Value::Object(payload),
+                increments: vec![],
             })
         }
         ProjectionUpdate::Delete { pk, .. } => {
@@ -401,6 +480,86 @@ mod tests {
         assert!(sql.contains("WHERE t.pc_id = r.pc_id"), "{sql}");
         assert_eq!(payload["last_event_version"], json!(9));
         assert_eq!(payload["pc_id"], json!(Uuid::from_u128(2).to_string()));
+    }
+
+    #[test]
+    fn upsert_sql_inserts_on_conflict_do_update_non_pk_cols() {
+        // The relationship projections (D-W3-NPC-REL-PROJECTION-UPSERT) emit Upsert:
+        // the row is created on the first event and updated thereafter.
+        let u = ProjectionUpdate::Upsert {
+            table: "npc_pc_relationship_projection".into(),
+            pk: json!({
+                "npc_id":          Uuid::from_u128(10).to_string(),
+                "other_entity_id": Uuid::from_u128(20).to_string(),
+            }),
+            fields: json!({
+                "trust_level": 50,
+                "reality_id":  Uuid::from_u128(30).to_string(),
+            }),
+            meta: meta(),
+        };
+        let stmt = build_stmt("npc_pc_relationship_projection", &u).unwrap();
+        let sql = &stmt.sql;
+        assert!(
+            sql.starts_with("INSERT INTO npc_pc_relationship_projection ("),
+            "{sql}"
+        );
+        assert!(
+            sql.contains("FROM jsonb_populate_record(NULL::npc_pc_relationship_projection, $1::jsonb)"),
+            "{sql}"
+        );
+        // Conflict target = exactly the two pk columns.
+        assert!(
+            sql.contains("ON CONFLICT (npc_id, other_entity_id) DO UPDATE SET"),
+            "{sql}"
+        );
+        // Non-pk fields + the meta cols are set to EXCLUDED.
+        for c in [
+            "trust_level",
+            "reality_id",
+            "event_id",
+            "aggregate_version",
+            "applied_at",
+        ] {
+            assert!(sql.contains(&format!("{c} = EXCLUDED.{c}")), "missing {c}: {sql}");
+        }
+        // pk columns MUST NOT appear in the SET (they are the conflict key).
+        assert!(!sql.contains("npc_id = EXCLUDED.npc_id"), "pk in SET: {sql}");
+        assert!(
+            !sql.contains("other_entity_id = EXCLUDED.other_entity_id"),
+            "pk in SET: {sql}"
+        );
+        // payload carries pk + fields + meta; not an increment (no expect_row).
+        assert_eq!(stmt.payload["npc_id"], json!(Uuid::from_u128(10).to_string()));
+        assert_eq!(stmt.payload["trust_level"], json!(50));
+        assert_eq!(
+            stmt.payload["event_id"],
+            json!(Uuid::from_u128(1).to_string())
+        );
+        assert!(!stmt.expect_row());
+    }
+
+    #[test]
+    fn upsert_rejects_increment_field() {
+        // An increment has no existing row to COALESCE from in the INSERT branch.
+        let u = ProjectionUpdate::Upsert {
+            table: "npc_pc_relationship_projection".into(),
+            pk: json!({"npc_id": Uuid::from_u128(10).to_string(), "other_entity_id": Uuid::from_u128(20).to_string()}),
+            fields: json!({"familiarity_count_increment": 1}),
+            meta: meta(),
+        };
+        assert!(build_stmt("npc_pc_relationship_projection", &u).is_err());
+    }
+
+    #[test]
+    fn upsert_rejects_empty_pk() {
+        let u = ProjectionUpdate::Upsert {
+            table: "npc_pc_relationship_projection".into(),
+            pk: json!({}),
+            fields: json!({"trust_level": 1}),
+            meta: meta(),
+        };
+        assert!(build_stmt("npc_pc_relationship_projection", &u).is_err());
     }
 
     #[test]

@@ -1,0 +1,14 @@
+# S11 — Antithesis init image (TEMPLATE): migrate + seed the shard/meta DBs and
+# emit the initial workload, then exit. Bakes wg + the migration SQL + init.sh.
+FROM golang:1.25 AS build
+WORKDIR /src
+COPY . .
+RUN go build -C tests/workload-gen -o /out/wg ./cmd/workload-gen
+
+FROM postgres:18
+# psql (from the postgres image) + wg + the migrations + the init script.
+COPY --from=build /out/wg /usr/local/bin/wg
+COPY contracts/migrations/per_reality /migrations/per_reality
+COPY migrations/meta /migrations/meta
+COPY tests/antithesis/config/init.sh /usr/local/bin/init.sh
+ENTRYPOINT ["/usr/local/bin/init.sh"]

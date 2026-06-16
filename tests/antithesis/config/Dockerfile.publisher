@@ -1,0 +1,13 @@
+# S11 — Antithesis publisher image (TEMPLATE): builds the real publisher service
+# (outbox -> Redis drainer) so the composer can stand it up. Same multi-stage
+# pattern as Dockerfile.driver/.init — keeps all build defs in config/ (no edit
+# to services/). For a real Antithesis run, build THROUGH their instrumentation
+# wrapper (adds coverage/feedback hooks) — see ../README.md.
+FROM golang:1.25 AS build
+WORKDIR /src
+COPY . .
+RUN go build -C services/publisher -o /out/pub ./cmd/publisher
+
+FROM debian:bookworm-slim
+COPY --from=build /out/pub /usr/local/bin/pub
+ENTRYPOINT ["/usr/local/bin/pub"]

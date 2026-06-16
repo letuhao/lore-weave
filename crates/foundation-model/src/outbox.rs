@@ -25,12 +25,15 @@
 
 use stateright::{Model, Property};
 
-/// Number of distinct events (bit indices 0..N).
-const N: usize = 2;
+/// Number of distinct events (bit indices 0..N). W4.4 (D-S9-MODEL-SCOPE) raised it
+/// 2→3 to explore deeper outbox-drain interleavings (exhaustive BFS).
+const N: usize = 3;
 /// All-events bitmask.
 const ALL: u8 = (1 << N) - 1;
-/// Finite crash budget (fairness — crashes don't recur forever).
-const CRASH_BUDGET: u8 = 1;
+/// Finite crash budget (fairness — crashes don't recur forever). W4.4 raised it 1→2
+/// so a SECOND crash can interleave (e.g. crash mid-recovery), a strictly larger
+/// fault schedule than the original single-crash bound.
+const CRASH_BUDGET: u8 = 2;
 
 #[inline]
 fn bit(e: usize) -> u8 {

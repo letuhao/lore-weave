@@ -1,0 +1,7 @@
+id: s12-roleplay-i6
+description: "S12/Inc-3 — I6 session concurrency: a roleplay load-skeleton (one command processor per session) holds serial FIFO per session and meets p99 data-plane ack < DP-T3 50ms at the real per-session rate. Bite: two processors on one session fork the version sequence (proves I6 routing serialization holds correctness, not the kernel CAS). Requires the scale rig shard up + migrated."
+invariant: I-s12-i6-serial-fifo
+kind: live-probe
+command: ["bash", "scripts/perf/roleplay-load.sh", "smoke"]
+requires: ["scale-rig"]
+skip_when: []

@@ -32,7 +32,7 @@ use std::{
     future::Future,
     sync::{
         atomic::{AtomicUsize, Ordering},
-        Arc, Mutex,
+        Arc,
     },
     time::{Duration, Instant},
 };
@@ -42,6 +42,14 @@ use tokio::{
     sync::{Notify, Semaphore, TryAcquireError},
     time::timeout,
 };
+
+// S6 / H1-loom: the CircuitBreaker sync state machine moved to the tokio-free
+// `breaker-core` crate so it can be exhaustively race-checked with loom (loom
+// can't build inside dp-kernel — tokio's transitive deps break under --cfg loom).
+// Re-exported here so the public path `dp_kernel::resilience::CircuitBreaker`
+// and every existing consumer are UNCHANGED. The async with_timeout/retry/
+// Bulkhead primitives below stay local (they use tokio).
+pub use breaker_core::{BreakerConfig, BreakerError, BreakerMetrics, BreakerState, CircuitBreaker};
 
 // ────────────────────────────────────────────────────────────────────────
 // Timeout — SR06 I16 enforcement point.
@@ -93,282 +101,6 @@ where
         Ok(Ok(v)) => Ok(v),
         Ok(Err(e)) => Err(TimeoutError::Inner(e)),
         Err(_) => Err(TimeoutError::DeadlineExceeded(dep.to_string())),
-    }
-}
-
-// ────────────────────────────────────────────────────────────────────────
-// Circuit Breaker — 3-state per SR06 §12AI.4.
-// ────────────────────────────────────────────────────────────────────────
-
-/// 3-state breaker enum. Integer values match the Go side
-/// (`StateClosed=0, StateHalfOpen=1, StateOpen=2`) so the
-/// `lw_dependency_circuit_state` gauge is portable across languages.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub enum BreakerState {
-    /// Calls pass through; failure window is tracked.
-    #[default]
-    Closed = 0,
-    /// A single probe call is in flight.
-    HalfOpen = 1,
-    /// Calls fast-fail with [`BreakerError::Open`].
-    Open = 2,
-}
-
-impl BreakerState {
-    /// Wire string mirroring Go `BreakerState.String()`. Used in
-    /// `dependency_events.event_type` rows.
-    pub fn as_str(self) -> &'static str {
-        match self {
-            BreakerState::Closed => "closed",
-            BreakerState::HalfOpen => "half_open",
-            BreakerState::Open => "open",
-        }
-    }
-}
-
-/// Per-(caller_service, dep) breaker config. Sourced from
-/// `contracts/dependencies/matrix.yaml`.
-#[derive(Debug, Clone)]
-pub struct BreakerConfig {
-    /// Error rate in `[0, 1]` that trips Closed → Open. SR06 default 0.25.
-    pub error_rate_threshold: f64,
-    /// Minimum window size before error-rate is meaningful. SR06 default 20.
-    pub min_requests: usize,
-    /// Time Open stays before allowing a half-open probe. SR06 default 30 s.
-    pub open_duration: Duration,
-    /// Max one probe per interval while in HalfOpen. Default 1 s.
-    pub half_open_probe_interval: Duration,
-}
-
-impl Default for BreakerConfig {
-    fn default() -> Self {
-        Self {
-            error_rate_threshold: 0.25,
-            min_requests: 20,
-            open_duration: Duration::from_secs(30),
-            half_open_probe_interval: Duration::from_secs(1),
-        }
-    }
-}
-
-/// Breaker error surface. Mirrors Go `ErrCircuitOpen` + inner-error wrap.
-#[derive(Debug, Error)]
-pub enum BreakerError<E> {
-    /// Circuit is open; call fast-failed without invoking the inner fn.
-    #[error("resilience: circuit open for dep {0}")]
-    Open(String),
-    /// Inner call failed; error propagates verbatim.
-    #[error("resilience: inner call failed: {0}")]
-    Inner(#[source] E),
-}
-
-/// Read-only snapshot of breaker counters. Useful for the
-/// `lw_dependency_circuit_state` gauge.
-#[derive(Debug, Clone, Default)]
-pub struct BreakerMetrics {
-    /// Current state at snapshot time.
-    pub state: BreakerState,
-    /// Total observed calls in the current window.
-    pub windowed_total: usize,
-    /// Failed calls in the current window.
-    pub windowed_failures: usize,
-    /// Cumulative count of fast-fails since the last Open transition.
-    pub fast_failed_since_open: usize,
-    /// Cumulative count of Closed transitions across breaker lifetime.
-    pub transitions_closed: usize,
-    /// Cumulative count of HalfOpen transitions across breaker lifetime.
-    pub transitions_half_open: usize,
-    /// Cumulative count of Open transitions across breaker lifetime.
-    pub transitions_open: usize,
-}
-
-/// Thread-safe in-memory circuit breaker. Construct via [`CircuitBreaker::new`].
-pub struct CircuitBreaker {
-    dep: String,
-    cfg: BreakerConfig,
-    inner: Mutex<BreakerInner>,
-    /// Overridable time source for tests; production = `Instant::now`.
-    now: Box<dyn Fn() -> Instant + Send + Sync>,
-}
-
-struct BreakerInner {
-    state: BreakerState,
-    windowed_total: usize,
-    windowed_failures: usize,
-    opened_at: Option<Instant>,
-    last_probe_at: Option<Instant>,
-    fast_failed_since_open: usize,
-    transitions_closed: usize,
-    transitions_half_open: usize,
-    transitions_open: usize,
-}
-
-impl CircuitBreaker {
-    /// Construct with the canonical wall-clock time source.
-    pub fn new(dep: impl Into<String>, cfg: BreakerConfig) -> Self {
-        Self::with_clock(dep, cfg, Instant::now)
-    }
-
-    /// Construct with a custom clock — used by the deterministic test suite.
-    pub fn with_clock<F>(dep: impl Into<String>, cfg: BreakerConfig, now: F) -> Self
-    where
-        F: Fn() -> Instant + Send + Sync + 'static,
-    {
-        Self {
-            dep: dep.into(),
-            cfg,
-            inner: Mutex::new(BreakerInner {
-                state: BreakerState::Closed,
-                windowed_total: 0,
-                windowed_failures: 0,
-                opened_at: None,
-                last_probe_at: None,
-                fast_failed_since_open: 0,
-                transitions_closed: 0,
-                transitions_half_open: 0,
-                transitions_open: 0,
-            }),
-            now: Box::new(now),
-        }
-    }
-
-    /// Current state (cheap; safe for tight-loop reads).
-    pub fn state(&self) -> BreakerState {
-        self.inner.lock().expect("breaker mutex poisoned").state
-    }
-
-    /// Snapshot of all counters.
-    pub fn metrics(&self) -> BreakerMetrics {
-        let g = self.inner.lock().expect("breaker mutex poisoned");
-        BreakerMetrics {
-            state: g.state,
-            windowed_total: g.windowed_total,
-            windowed_failures: g.windowed_failures,
-            fast_failed_since_open: g.fast_failed_since_open,
-            transitions_closed: g.transitions_closed,
-            transitions_half_open: g.transitions_half_open,
-            transitions_open: g.transitions_open,
-        }
-    }
-
-    /// Run `fut` under breaker protection. Returns [`BreakerError::Open`]
-    /// if the breaker is in StateOpen and the probe-window has not elapsed.
-    /// The inner future is NEVER polled while the breaker is fast-failing,
-    /// so the upstream call is fully avoided (the point of a breaker).
-    pub async fn call<F, T, E>(&self, fut: F) -> Result<T, BreakerError<E>>
-    where
-        F: Future<Output = Result<T, E>>,
-    {
-        let gate = self.gate();
-        if gate.fast_fail {
-            return Err(BreakerError::Open(self.dep.clone()));
-        }
-        let result = fut.await;
-        let err_for_record = result.is_err();
-        self.record(err_for_record, gate.is_probe);
-        match result {
-            Ok(v) => Ok(v),
-            Err(e) => Err(BreakerError::Inner(e)),
-        }
-    }
-
-    fn gate(&self) -> GateDecision {
-        let mut g = self.inner.lock().expect("breaker mutex poisoned");
-        let now = (self.now)();
-        match g.state {
-            BreakerState::Closed => GateDecision::default(),
-            BreakerState::Open => {
-                let elapsed = g.opened_at.map(|t| now.duration_since(t)).unwrap_or_default();
-                if elapsed < self.cfg.open_duration {
-                    g.fast_failed_since_open += 1;
-                    GateDecision {
-                        fast_fail: true,
-                        is_probe: false,
-                    }
-                } else {
-                    transition(&mut g, BreakerState::HalfOpen);
-                    g.last_probe_at = Some(now);
-                    GateDecision {
-                        fast_fail: false,
-                        is_probe: true,
-                    }
-                }
-            }
-            BreakerState::HalfOpen => {
-                let since_probe = g
-                    .last_probe_at
-                    .map(|t| now.duration_since(t))
-                    .unwrap_or(Duration::MAX);
-                if since_probe < self.cfg.half_open_probe_interval {
-                    g.fast_failed_since_open += 1;
-                    GateDecision {
-                        fast_fail: true,
-                        is_probe: false,
-                    }
-                } else {
-                    g.last_probe_at = Some(now);
-                    GateDecision {
-                        fast_fail: false,
-                        is_probe: true,
-                    }
-                }
-            }
-        }
-    }
-
-    fn record(&self, failed: bool, is_probe: bool) {
-        let mut g = self.inner.lock().expect("breaker mutex poisoned");
-        let now = (self.now)();
-        if is_probe {
-            if failed {
-                transition(&mut g, BreakerState::Open);
-                g.opened_at = Some(now);
-            } else {
-                transition(&mut g, BreakerState::Closed);
-            }
-            return;
-        }
-        if matches!(g.state, BreakerState::Open) {
-            // Defensive: gate fast-failed; we shouldn't be here.
-            return;
-        }
-        g.windowed_total += 1;
-        if failed {
-            g.windowed_failures += 1;
-        }
-        if g.windowed_total >= self.cfg.min_requests {
-            let rate = g.windowed_failures as f64 / g.windowed_total as f64;
-            if rate >= self.cfg.error_rate_threshold {
-                transition(&mut g, BreakerState::Open);
-                g.opened_at = Some(now);
-            }
-        }
-    }
-}
-
-#[derive(Default)]
-struct GateDecision {
-    fast_fail: bool,
-    is_probe: bool,
-}
-
-fn transition(g: &mut BreakerInner, next: BreakerState) {
-    if g.state == next {
-        return;
-    }
-    g.state = next;
-    g.windowed_total = 0;
-    g.windowed_failures = 0;
-    match next {
-        BreakerState::Closed => {
-            g.transitions_closed += 1;
-            g.fast_failed_since_open = 0;
-        }
-        BreakerState::HalfOpen => g.transitions_half_open += 1,
-        BreakerState::Open => {
-            g.transitions_open += 1;
-            g.fast_failed_since_open = 0;
-        }
     }
 }
 
@@ -688,6 +420,9 @@ impl Bulkhead {
 mod tests {
     use super::*;
     use std::sync::atomic::AtomicUsize;
+    // The breaker sync core moved to breaker-core; the half-open-probe test still
+    // drives the (re-exported) CircuitBreaker with a std-Mutex-backed test clock.
+    use std::sync::Mutex;
     use tokio::time::sleep;
 
     #[tokio::test]

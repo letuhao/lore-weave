@@ -16,6 +16,8 @@ func samples() map[string]Payload {
 		"pc.moved":                   PcMoved("region-2"),
 		"pc.item_acquired":           PcItemAcquired("sword_iron", 1),
 		"pc.relationship_changed":    PcRelationshipChanged("npc", "npc-7", 42, []string{"friendly"}),
+		"npc.relationship_changed":   NpcRelationshipChanged("pc-1", 5, 1, "sess-1", []string{"acquaintance"}),
+		"npc.memory_embedded":        NpcMemoryEmbedded("npc-1", "sess-1", "mem-1", []float64{0.1}),
 		"region.created":             RegionCreated("r1", "Forest"),
 		"region.ambient_changed":     RegionAmbientChanged(Payload{"weather": "rain"}),
 		"world.kv_set":               WorldKvSet("quest.flag", true),

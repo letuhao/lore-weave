@@ -26,10 +26,13 @@
 
 use stateright::{Model, Property};
 
-/// Reality universe size (bit indices 0..R).
-const R: usize = 4;
-/// Realities subscribed to the xreality topic (0,1,2 subscribe; 3 does NOT).
-const SUBSCRIBERS: u8 = 0b0111;
+/// Reality universe size (bit indices 0..R). W4.4 (D-S9-MODEL-SCOPE) raised it 4→5
+/// to verify a larger fan-out universe (exhaustive BFS over the delivery bitmask).
+const R: usize = 5;
+/// Realities subscribed to the xreality topic. A MIXED set over 0..R (0,1,3
+/// subscribe; 2,4 do NOT) so both the all-subscribers-eventually-delivered and the
+/// non-subscriber-never-leaked properties remain non-trivial at R=5.
+const SUBSCRIBERS: u8 = 0b01011;
 /// Non-subscriber realities within 0..R (the leak surface).
 const NON_SUBSCRIBERS: u8 = ((1 << R) - 1) & !SUBSCRIBERS;
 

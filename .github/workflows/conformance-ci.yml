@@ -54,8 +54,43 @@ jobs:
           path: tests/conformance/results/
           if-no-files-found: warn
 
+  loom-ci:
+    name: H1-loom CircuitBreaker race-check (per-PR)
+    # S6 / H1-loom. loom is CPU-only (no stack) and fast (<1ms model), so it gates
+    # per-PR — unlike the heavy live fault drills which run only in the nightly
+    # job below. Runs the breaker-core loom suite under --cfg loom; the bite
+    # (should_panic) proves loom catches an unsynchronized counter.
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: loom model-check (breaker-core)
+        env:
+          RUSTFLAGS: "--cfg loom"
+        run: cargo test -p breaker-core loom_tests
+
+  bulkhead-shuttle:
+    name: W2.5 bulkhead shuttle race-check (per-PR)
+    # W2.5 / D-S6-BULKHEAD-SHUTTLE. shuttle model-checks the bulkhead ADMISSION
+    # algorithm (the literal tokio Bulkhead delegates its slot gate to
+    # tokio::Semaphore, which shuttle can't intercept — see the test's SCOPE note
+    # + D-W2-BULKHEAD-SHUTTLE-LITERAL). CPU-only + fast → gates per-PR like
+    # loom-ci. The bite (should_panic) proves shuttle explores interleavings.
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: shuttle model-check (bulkhead admission)
+        env:
+          RUSTFLAGS: "--cfg shuttle"
+        run: cargo test -p dp-kernel --test bulkhead_shuttle
+
   standing-integrity-nightly:
-    name: Standing integrity gate (nightly — live battery)
+    name: Standing integrity + S6 fault drills (nightly — live battery)
     # S5 (Battery B). Unlike the bare-runner job above, this boots the foundation
     # stack FIRST so the live-probes (incl. standing-integrity-gate, which seeds N
     # shards → rebuild → real integrity-checker differential → drift+coverage gate,
@@ -72,11 +107,13 @@ jobs:
           go-version: "1.25"
       # The gate smoke discovers binaries at target/debug/{rebuilder,replay-aggregate}
       # and {tests/workload-gen/wg, services/integrity-checker/ic} (no .exe on Linux).
+      # The S6 fault drills additionally need the publisher (services/publisher/pub).
       - name: build foundation binaries
         run: |
           cargo build -p world-service --bin rebuilder --bin replay-aggregate
           go build -C tests/workload-gen -o wg ./cmd/workload-gen
           go build -C services/integrity-checker -o ic ./cmd/integrity-checker
+          go build -C services/publisher -o pub ./cmd/publisher
       # Boot PG + Redis via the foundation-dev compose so the runner's
       # `foundation-stack` predicate is met (else every live-probe → notrun). The
       # default port 55432 is fine on Linux (the dev-box 55600 override is a
@@ -99,3 +136,593 @@ jobs:
           name: standing-integrity-results
           path: tests/conformance/results/
           if-no-files-found: warn
+
+  perf-micro-bench:
+    name: S7/F2 perf micro-bench gate (per-PR)
+    # In-toolchain (Go + benchstat), fast, no live stack → gates per-PR like
+    # loom-ci. Two checks: (1) --bite proves the benchstat gate is non-vacuous;
+    # (2) --ci-ab benches the base ref + HEAD on the SAME runner (S7 review
+    # HIGH-2) and fails on a significant sec/op regression. The committed
+    # baseline is informational-only and is NOT read here.
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # need the base ref for the same-runner A/B
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - name: install benchstat
+        run: |
+          go install golang.org/x/perf/cmd/benchstat@latest
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: gate non-vacuity (--bite must fire)
+        run: bash scripts/perf/bench-gate.sh --bite
+      - name: regression gate vs base (same-runner A/B — ADVISORY)
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          [ -n "$base" ] || base="$(git rev-parse HEAD~1 2>/dev/null || echo HEAD)"
+          set +e
+          bash scripts/perf/bench-gate.sh --ci-ab "$base"
+          rc=$?
+          set -e
+          # ADVISORY, not blocking (D-G3-CIAB-NOISE, extended to benchstat): these
+          # sub-µs marshal/validate benches are noise-flaky on shared CI runners —
+          # benchstat's Mann-Whitney flagged a +0.5%/+1.1% "regression" on a commit
+          # that did NOT touch contracts/events (16e969fb, tests-only). A flagged
+          # regression is surfaced as a ::warning:: for human review; the HARD gate
+          # is --bite above. Re-arm to blocking with a less noise-prone signal
+          # (more -count, a heavier benched workload).
+          if [ "$rc" = 1 ]; then
+            echo "::warning::benchstat flagged a sec/op regression vs $base (advisory — verify locally; likely CI noise on sub-µs benches)"
+          fi
+          exit 0
+
+  perf-rust-bench:
+    name: G3 projection-hotpath perf gate (per-PR)
+    # The Rust analogue of perf-micro-bench (S7/F2) for the projection HOT PATH the
+    # Go benchstat harness can't reach: ProjectionRunner::apply_one over the full
+    # 11-projection set + the REAL build_stmt SQL builder (via a bench-only pub
+    # shim, not a copy). Same-runner A/B (--ci-ab), never an absolute-µs threshold.
+    # (1) --selftest guards criterion output-format drift; (2) --bite proves the
+    # gate is non-vacuous (a ~50% injected regression must be flagged); (3) --ci-ab
+    # benches the PR base + HEAD on the SAME runner and fails on a flagged regression.
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # base ref for the same-runner A/B
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: parser selftest (criterion drift guard)
+        run: bash scripts/perf/rust-bench-gate.sh --selftest
+      - name: gate non-vacuity (--bite must fire)
+        run: bash scripts/perf/rust-bench-gate.sh --bite
+      - name: regression gate vs base (same-runner A/B — ADVISORY)
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          [ -n "$base" ] || base="$(git rev-parse HEAD~1 2>/dev/null || echo HEAD)"
+          set +e
+          bash scripts/perf/rust-bench-gate.sh --ci-ab "$base"
+          rc=$?
+          set -e
+          # ADVISORY, not blocking: criterion's same-runner A/B over these sub-µs
+          # projection micro-benches is noise-sensitive on shared CI runners (a
+          # no-op diff can flag a "regression" — observed on the D-G2 commit), so a
+          # flagged regression (rc=1) is surfaced as a ::warning:: for human review
+          # rather than failing the PR. The HARD per-PR gate is --bite above (the
+          # bench exists, runs, and is provably non-vacuous). Tightening this to a
+          # blocking gate needs a less noise-prone signal (longer measurement_time
+          # or a heavier benched workload) — tracked D-G3-CIAB-NOISE.
+          if [ "$rc" = 1 ]; then
+            echo "::warning::G3 --ci-ab flagged a projection-hotpath regression vs $base (advisory; verify locally — may be CI noise)"
+          fi
+          exit 0
+
+  perf-nightly:
+    name: S7/F3+F4 perf battery (nightly — live, hyperfine + k6)
+    # Heavy live perf battery: builds the spine binaries + game-server, boots the
+    # stack, installs hyperfine + k6, and runs the wall-clock USL sweep (F3) + the
+    # open-loop game-server load (F4). No threshold asserted — uploads the baseline
+    # artifacts. schedule fires only on main; workflow_dispatch is the manual smoke.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - uses: grafana/setup-k6-action@v1
+      - name: install hyperfine
+        run: cargo install hyperfine --locked
+      - name: build spine binaries (no .exe on Linux)
+        run: |
+          cargo build -p world-service --bin rebuilder --bin replay-aggregate
+          go build -C tests/workload-gen -o wg ./cmd/workload-gen
+          go build -C services/integrity-checker -o ic ./cmd/integrity-checker
+      - name: discover binaries (target/debug + module dirs)
+        run: |
+          cp target/debug/rebuilder target/debug/replay-aggregate ./ 2>/dev/null || true
+      - name: boot foundation stack (PG + Redis)
+        run: |
+          docker compose -f infra/foundation-dev/docker-compose.yml up -d postgres-foundation redis-foundation
+          for _ in $(seq 1 30); do
+            if docker exec foundation-dev-postgres pg_isready -U foundation >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+      - name: G1 append statement-shape invariant + bite (live, pg_stat_statements)
+        # The foundation PG above boots with shared_preload_libraries=pg_stat_statements
+        # (compose `command:`), so the high-water-SELECT-count invariant is measurable.
+        run: |
+          set +e
+          bash scripts/perf/w5-append-stmt-shape.sh; a=$?
+          bash scripts/perf/w5-append-stmt-shape.sh --bite; b=$?
+          set -e
+          echo "G1 clean=$a bite=$b (0=pass,2=notrun)"
+          { [ "$a" = 1 ] || [ "$b" = 1 ]; } && exit 1 || exit 0
+      - name: G2 USL exponent-band live gate + live-pipeline bite (calibrated, ceiling 0.50)
+        # D-G2-USL-BAND-CALIBRATE cleared 2026-06-15: ceiling 0.50 from a pgbench
+        # latency-vs-concurrency sweep (baseline ≈0.15). Asserts the real sweep is
+        # sub-linear AND the synthetic super-linear bite exceeds the ceiling.
+        run: |
+          set +e
+          bash scripts/perf/w5-usl-exponent-band.sh --live; a=$?
+          LW_G2_BITE=1 bash scripts/perf/w5-usl-exponent-band.sh --live; b=$?
+          set -e
+          echo "G2 live=$a bite=$b (0=pass,2=notrun)"
+          { [ "$a" = 1 ] || [ "$b" = 1 ]; } && exit 1 || exit 0
+      - name: F3 hyperfine USL sweep
+        env:
+          REBUILDER_BIN: target/debug/rebuilder
+        run: |
+          set +e; bash scripts/perf/hyperfine-binaries.sh; rc=$?; set -e
+          [ "$rc" = 1 ] && exit 1 || echo "F3 rc=$rc (0=pass,2=notrun)"
+      - name: F4 k6 + WS vs game-server
+        run: |
+          set +e; bash scripts/perf/k6-game-server.sh; rc=$?; set -e
+          [ "$rc" = 1 ] && exit 1 || echo "F4 rc=$rc (0=pass,2=notrun)"
+      - name: upload perf artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-results
+          path: tests/conformance/results/
+          if-no-files-found: warn
+
+  recovery-nightly:
+    name: S8 recovery/DR drills (nightly — live, G1–G4)
+    # Technique G live battery: builds the spine binaries + archive-worker/restore,
+    # boots PG+Redis+MinIO, and runs the 4 recovery drills (each embeds its --bite
+    # non-vacuity proof). exit 1 → fail; exit 2 → notrun (green). schedule fires
+    # only on main; workflow_dispatch is the manual smoke. Dormant until merged.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - name: build binaries (no .exe on Linux)
+        run: |
+          cargo build -p world-service --bin rebuilder --bin replay-aggregate
+          cp target/debug/rebuilder target/debug/replay-aggregate ./ 2>/dev/null || true
+          go build -C tests/workload-gen -o wg ./cmd/workload-gen
+          go build -C services/integrity-checker -o ic ./cmd/integrity-checker
+          go build -C services/publisher -o pub ./cmd/publisher
+          go build -C services/archive-worker -o aw ./cmd/archive-worker
+          go build -C services/archive-worker -o arx ./cmd/archive-restore
+      - name: boot foundation stack (PG + Redis + MinIO)
+        run: |
+          docker compose -f infra/foundation-dev/docker-compose.yml up -d postgres-foundation redis-foundation minio-foundation
+          for _ in $(seq 1 30); do
+            if docker exec foundation-dev-postgres pg_isready -U foundation >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+      - name: run recovery drills (G1–G4, each with --bite)
+        env:
+          REBUILDER_BIN: target/debug/rebuilder
+          REPLAY_BIN: target/debug/replay-aggregate
+        run: |
+          rc_any=0
+          for d in recover-kill-restart recover-rebuild recover-archive-restore recover-replay-determinism; do
+            echo "=== $d ==="
+            set +e; bash "scripts/chaos/$d.sh" --bite; rc=$?; set -e
+            echo "$d rc=$rc (0=pass,2=notrun)"
+            [ "$rc" = 1 ] && rc_any=1
+          done
+          [ "$rc_any" = 0 ] || { echo "a recovery drill FAILED"; exit 1; }
+      # The drills log their evidence to stdout (captured in the job log); they
+      # do not write results JSON (review LOW-5), so this upload is best-effort
+      # for any artifacts a drill happens to leave (e.g. a future digest dump).
+      - name: upload recovery artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: recovery-results
+          path: tests/conformance/results/
+          if-no-files-found: ignore
+
+  kernel-sim:
+    name: S10/H1 kernel sim DST (per-PR)
+    # CPU-only deterministic-simulation DST (no live stack), fast → gates per-PR
+    # like loom-ci. Runs the tests/sim oracles — projection-convergence,
+    # append-batch atomicity, version-CAS, tilemap determinism — over the DEFAULT
+    # (shallow) seed sweep; each embeds its --bite non-vacuity proof, and the
+    # skeleton gate proves the simulator itself is reproducible + non-vacuous
+    # before any oracle rides on it. tests/sim is an isolated workspace (madsim
+    # is unusable here — Windows + sqlx walls, see tests/sim/README.md), so this
+    # uses its own Cargo manifest. The deep seed sweep runs nightly below.
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tests/sim
+      - name: sim oracles (shallow sweep + bites)
+        working-directory: tests/sim
+        run: cargo test
+
+  kernel-sim-nightly:
+    name: S10/H1 kernel sim DST (nightly — deep seed sweep)
+    # The same oracles over a DEEP seed sweep (SIM_SEEDS=256) — the VOPR payoff
+    # is breadth of fault schedules. A counterexample prints its seed for replay
+    # (SIM_SEEDS=1 + the printed seed). schedule fires only on main;
+    # workflow_dispatch is the manual smoke. Dormant on a feature branch.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tests/sim
+      - name: sim oracles (deep sweep)
+        working-directory: tests/sim
+        env:
+          SIM_SEEDS: "256"
+        run: cargo test
+
+  whole-stack-dst-nightly:
+    name: S11/H2 whole-stack chaos-convergence (nightly — live, concurrent faults)
+    # S11 local half: boots the foundation spine + toxiproxy, builds wg+publisher,
+    # and runs the whole-stack drill — CONCURRENT pg-slow || redis-partition under
+    # a multi-reality drain → delivery-convergence (no-loss/dedup-able) + C3, with
+    # the embedded --bite. exit 1 → fail; exit 2 → notrun (green). schedule fires
+    # only on main; workflow_dispatch is the manual smoke. Dormant until merged.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - name: build wg + publisher (no .exe on Linux)
+        run: |
+          go build -C tests/workload-gen -o wg ./cmd/workload-gen
+          go build -C services/publisher -o pub ./cmd/publisher
+      - name: boot foundation stack (PG + Redis + MinIO + toxiproxy)
+        run: |
+          docker compose -f infra/foundation-dev/docker-compose.yml up -d \
+            postgres-foundation redis-foundation minio-foundation toxiproxy-foundation
+          for _ in $(seq 1 30); do
+            if docker exec foundation-dev-postgres pg_isready -U foundation >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+      - name: whole-stack chaos drill (--bite)
+        run: |
+          set +e; bash scripts/chaos/whole-stack-chaos.sh --bite; rc=$?; set -e
+          echo "whole-stack rc=$rc (0=pass,2=notrun)"
+          [ "$rc" = 1 ] && exit 1 || exit 0
+
+  antithesis-build:
+    name: S11/H2 Antithesis driver build (per-PR — anti-bit-rot)
+    # The paid Antithesis run is deferred (D-S11-ANTITHESIS-RUN), but the
+    # readiness driver must keep compiling (review LOW-3). Cheap go build/vet.
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - name: build + vet the antithesis driver
+        working-directory: tests/antithesis/driver
+        run: |
+          go build ./...
+          go vet ./...
+
+  scale-build:
+    name: S12 scale rig build (per-PR — anti-bit-rot)
+    # The full scale sweep is heavy (many real Postgres shards) so it runs nightly,
+    # but the new Go tooling (metaworker-bench + roleplay-load) must keep compiling.
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - name: build + vet the S12 scale tooling
+        run: |
+          go build -C services/meta-worker ./cmd/metaworker-bench
+          go vet  -C services/meta-worker ./cmd/metaworker-bench
+          go build -C tests/perf/roleplay-load ./...
+          go vet  -C tests/perf/roleplay-load ./...
+      - name: build + vet the S13 L1 tooling
+        run: |
+          # L1 lifecycle/capacity/relocation harnesses live in the meta-worker module.
+          go build -C services/meta-worker ./cmd/lifecycle-race ./cmd/capacity-override ./cmd/relocate-drill
+          go vet  -C services/meta-worker ./cmd/lifecycle-race ./cmd/capacity-override ./cmd/relocate-drill
+          # The migration canary drill lives in the migration-orchestrator module.
+          go build -C services/migration-orchestrator ./cmd/canary-drill
+          go vet  -C services/migration-orchestrator ./cmd/canary-drill
+      - name: build + vet the S14 stress tooling
+        run: |
+          # S14 memory/connpool/deadlock harnesses live in the meta-worker module
+          # (D1 disk is pure bash + pgbench — no Go harness).
+          go build -C services/meta-worker ./cmd/rss-soak ./cmd/connpool-stress ./cmd/deadlock-probe
+          go vet  -C services/meta-worker ./cmd/rss-soak ./cmd/connpool-stress ./cmd/deadlock-probe
+      - name: build + vet the W1 production-wiring Go tooling
+        run: |
+          # W1.2 migrate CLI + drill (migration-orchestrator); W1.3 closure-drill +
+          # W1.5 bridge + bridge-server (meta-worker). go test covers pkg/live,
+          # pkg/closure, pkg/bridge unit suites.
+          go build -C services/migration-orchestrator ./cmd/migrate ./cmd/migrate-drill ./pkg/live
+          go vet  -C services/migration-orchestrator ./cmd/migrate ./cmd/migrate-drill ./pkg/live
+          go test -C services/migration-orchestrator ./pkg/live/...
+          go build -C services/meta-worker ./cmd/closure-drill ./cmd/bridge-server ./pkg/closure ./pkg/bridge
+          go vet  -C services/meta-worker ./cmd/closure-drill ./cmd/bridge-server ./pkg/closure ./pkg/bridge
+          go test -C services/meta-worker ./pkg/closure/... ./pkg/bridge/...
+      - name: build + vet + test the W2 spine-hardening Go tooling
+        run: |
+          # W2.1 sustained-workload mode + W2.2 history-ordering live in the
+          # workload-gen module; go test covers paceSleep + the monotonicity checker.
+          go build -C tests/workload-gen ./...
+          go vet  -C tests/workload-gen ./...
+          go test -C tests/workload-gen ./cmd/... ./internal/ledger/...
+      - name: build + vet + test the W3 oracle/generator Go tooling
+        run: |
+          # W3.1 schema payloads + gen (new npc rel/memory + persistent kv),
+          # W3.2 projcheck schema-derived projection discovery, W3.4 ledger
+          # stored-checksum + the -check-checksum CLI all live in the workload-gen
+          # module — test the FULL module (incl ./internal/projcheck + ./internal/schema).
+          go test -C tests/workload-gen ./...
+          # W3.4 migration manifest must still validate with the new 0013 entry.
+          go test -C services/migration-orchestrator ./pkg/manifest/...
+      - name: build + vet + test the W4 perf Go tooling
+        run: |
+          # W4.1 USL no-N=1 recovery test (tests/perf/usl) + W4.2 emit MicroBench
+          # (already covered by the workload-gen `go test ./...` above).
+          go test -C tests/perf ./usl/...
+      - name: shellcheck the scale + L1 + S14 + W1 + W2 + W3 + W4 + G1-G3 scripts (smoke)
+        run: |
+          for s in scale-rig shared-path roleplay-load soak multishard-dr \
+                   l1-lifecycle l1-capacity l1-migration l1-relocate \
+                   s14-disk s14-memory s14-connpool s14-deadlock \
+                   w1-capacity w1-migrate w1-freeze w1-closure w1-provision \
+                   w2-sustained w2-history w2-partition w2-rss-soak w2-disk-read \
+                   w3-generator w3-schema-derived w3-checksum \
+                   w4-t0t1-micro w4-pgvector-recall \
+                   rust-bench-gate w5-append-stmt-shape w5-usl-exponent-band; do
+            bash -n "scripts/perf/${s}.sh"
+          done
+      - name: G3 rust-bench-gate parser selftest (toolchain-free)
+        run: bash scripts/perf/rust-bench-gate.sh --selftest
+
+  w1-rust-build:
+    name: W1 production-wiring Rust build (per-PR — anti-bit-rot)
+    # The W1 Rust bins (capacity-place, freeze-drill, provision-drill) + the
+    # dp-kernel freeze guard + world-service provisioner_live must keep compiling;
+    # the live drills themselves run in scale-nightly. Unit suites: the kernel
+    # freeze-set + provisioner_live safe_ident + capacity_glue lock-key.
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: build W1 Rust bins
+        run: cargo build -p world-service --bin capacity-place --bin freeze-drill --bin provision-drill
+      - name: W1 Rust unit suites
+        run: |
+          cargo test -p dp-kernel --lib event_store_pg::
+          # Two filter substrings must go AFTER `--` (libtest ORs them); passing
+          # them as bare cargo args makes the 2nd an "unexpected argument".
+          cargo test -p world-service --lib -- capacity_glue:: provisioner_live::
+
+  scale-nightly:
+    name: S12 scale sweep (nightly — live, real multi-shard rig)
+    # Boots the multi-shard scale rig and runs a SMALL sweep of each S12 path with
+    # its embedded bite: per-node packing + real cross-shard, the shared-path β
+    # centerpiece (meta-worker I7 / registry / redis fan-out), the I6 roleplay
+    # skeleton, the soak leak-smoke + lag bite, and the multi-shard DR drill. The
+    # FULL sweep (USL rungs, long soak, N=8) is workflow_dispatch/manual given its
+    # weight. exit 1 → fail; exit 2 → notrun (green). schedule fires only on main.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      # W1 drills self-build their Go + Rust bins; the Rust toolchain is needed
+      # for capacity-place / freeze-drill / provision-drill.
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: build wg + publisher + bench (no .exe on Linux)
+        run: |
+          go build -C tests/workload-gen -o wg ./cmd/workload-gen
+          go build -C services/publisher -o pub ./cmd/publisher
+          go build -C tests/perf/roleplay-load -o rpload .
+      - name: boot the scale rig (3 shards) + migrate + cross-shard
+        run: |
+          SCALE_SHARDS=3 bash scripts/perf/scale-rig.sh up 3
+          SCALE_SHARDS=3 bash scripts/perf/scale-rig.sh migrate 3
+          SCALE_SHARDS=3 bash scripts/perf/scale-rig.sh crossshard 3
+      - name: per-node packing + pgbench + bite (Inc-1)
+        run: |
+          set +e; SCALE_SHARD0_CPUSET=0-1 bash scripts/perf/scale-rig.sh pack "1 2 4" 5; rc=$?
+          SCALE_SHARD0_CPUSET=0-1 bash scripts/perf/scale-rig.sh pgbench 5 8
+          SCALE_SHARD0_CPUSET=0-1 bash scripts/perf/scale-rig.sh bite 4; b=$?; set -e
+          [ "$rc" = 1 ] || [ "$b" = 1 ] && exit 1 || exit 0
+      - name: shared-path β centerpiece + bites (Inc-2)
+        run: |
+          set +e; bash scripts/perf/shared-path.sh all; rc=$?; set -e
+          echo "shared-path rc=$rc (0=pass,2=notrun)"; [ "$rc" = 1 ] && exit 1 || exit 0
+      - name: roleplay I6 serial-FIFO + bite (Inc-3)
+        run: |
+          set +e; bash scripts/perf/roleplay-load.sh smoke; rc=$?; set -e
+          echo "roleplay rc=$rc"; [ "$rc" = 1 ] && exit 1 || exit 0
+      - name: soak leak-smoke + lag bite (Inc-4)
+        run: |
+          set +e; bash scripts/perf/soak.sh leak-smoke 20 200; a=$?; bash scripts/perf/soak.sh bite 20 200; b=$?; set -e
+          echo "soak leak=$a bite=$b"; { [ "$a" = 1 ] || [ "$b" = 1 ]; } && exit 1 || exit 0
+      - name: multi-shard DR drill + bite (Inc-5)
+        run: |
+          set +e; SCALE_SHARDS=3 bash scripts/perf/multishard-dr.sh drill; a=$?; SCALE_SHARDS=3 bash scripts/perf/multishard-dr.sh bite; b=$?; set -e
+          echo "DR drill=$a bite=$b"; { [ "$a" = 1 ] || [ "$b" = 1 ]; } && exit 1 || exit 0
+      # ── S13 L1/core coverage live sweep (rides the booted scale rig). Each path
+      #    self-migrates its own meta/per-reality DBs and embeds its bite(s). The
+      #    canary drill builds in the migration-orchestrator module first.
+      - name: L1 lifecycle CAS race + bite (S13/Inc-1)
+        run: |
+          set +e; bash scripts/perf/l1-lifecycle.sh smoke; rc=$?; set -e
+          echo "l1-lifecycle rc=$rc (0=pass,2=notrun)"; [ "$rc" = 1 ] && exit 1 || exit 0
+      - name: L1 capacity enforcement + bites (S13/Inc-2)
+        run: |
+          set +e; bash scripts/perf/l1-capacity.sh smoke; rc=$?; set -e
+          echo "l1-capacity rc=$rc"; [ "$rc" = 1 ] && exit 1 || exit 0
+      - name: L1 migration canary rollout + bites (S13/Inc-3)
+        run: |
+          go build -C services/migration-orchestrator -o cdrill ./cmd/canary-drill
+          set +e; bash scripts/perf/l1-migration.sh smoke; rc=$?; set -e
+          echo "l1-migration rc=$rc"; [ "$rc" = 1 ] && exit 1 || exit 0
+      - name: L1 cross-shard relocation + fault + bite (S13/Inc-4)
+        run: |
+          set +e; bash scripts/perf/l1-relocate.sh smoke; rc=$?; set -e
+          echo "l1-relocate rc=$rc"; [ "$rc" = 1 ] && exit 1 || exit 0
+      # ── S14 Resource & Concurrency Stress live sweep. Each drill spins its OWN
+      #    throwaway containers (it does NOT use the rig shards) — it only needs the
+      #    docker host + the postgres/redis images the rig already pulled. SHORT
+      #    windows in CI (review #7); long soak / large-N is workflow_dispatch/manual.
+      - name: S14 D1 disk I/O saturation + bite
+        run: |
+          set +e; SECS=4 CONC=16 bash scripts/perf/s14-disk.sh drill; rc=$?; set -e
+          echo "s14-disk rc=$rc (0=pass,2=notrun)"; [ "$rc" = 1 ] && exit 1 || exit 0
+      - name: S14 D2 memory — Redis eviction + RSS soak + bites
+        run: |
+          set +e; RSS_SECS=4 bash scripts/perf/s14-memory.sh smoke; rc=$?; set -e
+          echo "s14-memory rc=$rc"; [ "$rc" = 1 ] && exit 1 || exit 0
+      - name: S14 D3 connection-pool exhaustion + bite
+        run: |
+          set +e; bash scripts/perf/s14-connpool.sh smoke; rc=$?; set -e
+          echo "s14-connpool rc=$rc"; [ "$rc" = 1 ] && exit 1 || exit 0
+      - name: S14 D4 deadlock / lock-contention + bite
+        run: |
+          set +e; bash scripts/perf/s14-deadlock.sh smoke; rc=$?; set -e
+          echo "s14-deadlock rc=$rc"; [ "$rc" = 1 ] && exit 1 || exit 0
+      # ── W1 production-wiring live sweep (rides the booted scale rig: meta-pg +
+      #    pg-shard-0). Each script self-migrates its own meta/per-reality DBs and
+      #    embeds its bite(s). The provision drill is cross-language (boots the Go
+      #    bridge-server + the Rust client) — heavier, but still nightly-only here.
+      - name: W1.1 capacity routing glue + bite
+        run: |
+          set +e; bash scripts/perf/w1-capacity.sh smoke; rc=$?; set -e
+          echo "w1-capacity rc=$rc (0=pass,2=notrun)"; [ "$rc" = 1 ] && exit 1 || exit 0
+      - name: W1.2 migrate CLI live-wiring + bite
+        run: |
+          set +e; bash scripts/perf/w1-migrate.sh smoke; rc=$?; set -e
+          echo "w1-migrate rc=$rc"; [ "$rc" = 1 ] && exit 1 || exit 0
+      - name: W1.4 kernel write-freeze guard + bite
+        run: |
+          set +e; bash scripts/perf/w1-freeze.sh smoke; rc=$?; set -e
+          echo "w1-freeze rc=$rc"; [ "$rc" = 1 ] && exit 1 || exit 0
+      - name: W1.3 closure-drain orchestrator + bite
+        run: |
+          set +e; bash scripts/perf/w1-closure.sh smoke; rc=$?; set -e
+          echo "w1-closure rc=$rc"; [ "$rc" = 1 ] && exit 1 || exit 0
+      - name: W1.5 provisioner + Rust→Go bridge + bites (cross-language)
+        run: |
+          set +e; bash scripts/perf/w1-provision.sh smoke; rc=$?; set -e
+          echo "w1-provision rc=$rc"; [ "$rc" = 1 ] && exit 1 || exit 0
+      # ── W2 spine-hardening live sweep (rides the booted scale rig). The
+      #    Linux-only drills (rss-soak service half, disk-read) actually RUN here
+      #    (they notrun on the WSL2 dev box). Each self-migrates / self-detects.
+      - name: W2.1 sustained-workload mode + bite
+        run: |
+          set +e; bash scripts/perf/w2-sustained.sh smoke; rc=$?; set -e
+          echo "w2-sustained rc=$rc (0=pass,2=notrun)"; [ "$rc" = 1 ] && exit 1 || exit 0
+      - name: W2.2 history-ordering monotonicity + bite
+        run: |
+          set +e; bash scripts/perf/w2-history.sh smoke; rc=$?; set -e
+          echo "w2-history rc=$rc"; [ "$rc" = 1 ] && exit 1 || exit 0
+      - name: W2.4b partition-boundary rollover + bite
+        run: |
+          set +e; bash scripts/perf/w2-partition.sh smoke; rc=$?; set -e
+          echo "w2-partition rc=$rc"; [ "$rc" = 1 ] && exit 1 || exit 0
+      - name: W2.3a real-service RSS soak + bite (Linux /proc)
+        run: |
+          set +e; bash scripts/perf/w2-rss-soak.sh smoke; rc=$?; set -e
+          echo "w2-rss-soak rc=$rc"; [ "$rc" = 1 ] && exit 1 || exit 0
+      - name: W2.3b disk read-thrash (Linux cgroup + fio)
+        run: |
+          set +e; bash scripts/perf/w2-disk-read.sh smoke; rc=$?; set -e
+          echo "w2-disk-read rc=$rc"; [ "$rc" = 1 ] && exit 1 || exit 0
+      # ── W3 oracle/generator-completeness live sweep. w3-schema-derived +
+      #    w3-checksum ride the booted scale rig shard-0 (no pgvector needed).
+      #    w3-generator self-brings-up the foundation-dev PG (pgvector) + builds
+      #    the Rust rebuilder. Each embeds its bite(s).
+      - name: W3.1 generator arms (npc rel/memory + persistent kv) + bite
+        run: |
+          set +e; bash scripts/perf/w3-generator.sh; rc=$?; set -e
+          echo "w3-generator rc=$rc (0=pass,2=notrun)"; [ "$rc" = 1 ] && exit 1 || exit 0
+      - name: W3.2 schema-derived projection sweep + bite
+        run: |
+          set +e; bash scripts/perf/w3-schema-derived.sh; rc=$?; set -e
+          echo "w3-schema-derived rc=$rc"; [ "$rc" = 1 ] && exit 1 || exit 0
+      - name: W3.4 stored content checksum (payload+metadata) + bites
+        run: |
+          set +e; bash scripts/perf/w3-checksum.sh; rc=$?; set -e
+          echo "w3-checksum rc=$rc"; [ "$rc" = 1 ] && exit 1 || exit 0
+      - name: W3.4 kernel-side append checksum live test + dual bites (gated)
+        run: |
+          # Exercise the dp-kernel append write-path (event_store_pg.rs) against a
+          # real DB on scale rig shard-0: apply 0001/0002/0004/0013 + a default
+          # partition, then run the gated integration test which asserts every
+          # appended row carries a self-consistent content_sha256 and that a
+          # payload tamper AND a metadata-only tamper are each caught.
+          PG=scale-pg-shard-0
+          docker exec -i $PG psql -q -v ON_ERROR_STOP=1 -U foundation -d foundation -c "DROP DATABASE IF EXISTS dp_kernel_test WITH (FORCE)"
+          docker exec -i $PG psql -q -v ON_ERROR_STOP=1 -U foundation -d foundation -c "CREATE DATABASE dp_kernel_test"
+          for m in 0001_initial 0002_events_table 0004_aggregate_snapshots_table 0013_events_content_sha256; do
+            docker exec -i $PG psql -q -v ON_ERROR_STOP=1 -U foundation -d dp_kernel_test < contracts/migrations/per_reality/${m}.up.sql
+          done
+          docker exec -i $PG psql -q -v ON_ERROR_STOP=1 -U foundation -d dp_kernel_test -c "CREATE TABLE IF NOT EXISTS events_p_default PARTITION OF events DEFAULT"
+          set +e
+          LOREWEAVE_TEST_PG_URL="postgres://foundation:foundation@127.0.0.1:55511/dp_kernel_test?sslmode=disable" \
+            cargo test -p dp-kernel --test integration_event_store -- --nocapture
+          rc=$?; set -e
+          echo "w3-kernel-checksum rc=$rc"; [ "$rc" = 0 ] || exit 1
+      # ── W4 model/perf-refinement live sweep. w4-t0t1-micro rides the scale rig
+      #    shard-0; w4-pgvector-recall self-brings-up the foundation-dev PG (pgvector).
+      #    (The CPU-only W4 increments — USL no-N1, model bounds, reference projector —
+      #    run per-PR via go test / cargo test --workspace, not here.)
+      - name: W4.2 T0/T1 emit-path micro-bench + bite
+        run: |
+          set +e; bash scripts/perf/w4-t0t1-micro.sh; rc=$?; set -e
+          echo "w4-t0t1-micro rc=$rc (0=pass,2=notrun)"; [ "$rc" = 1 ] && exit 1 || exit 0
+      - name: W4.4 pgvector HNSW recall comparator + bite
+        run: |
+          set +e; bash scripts/perf/w4-pgvector-recall.sh; rc=$?; set -e
+          echo "w4-pgvector-recall rc=$rc"; [ "$rc" = 1 ] && exit 1 || exit 0

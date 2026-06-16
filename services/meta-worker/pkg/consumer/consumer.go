@@ -51,9 +51,14 @@ func (m Message) EventType() string {
 // Read MUST block (or return zero messages with nil error) until a new
 // message is available OR the context is cancelled. Returning an error
 // causes the consumer to back off + retry.
+//
+// AckBatch XACKs MANY ids on ONE stream in a single call. The consume loop
+// acks once per stream per batch instead of once per message — the per-message
+// XACK round-trip was the I7 single-consumer ceiling (S12: ~22k msgs/s, bound by
+// XACK RTT not CPU). A 0-length ids slice is a no-op.
 type MessageSource interface {
 	Read(ctx context.Context, batchSize int) ([]Message, error)
-	Ack(ctx context.Context, m Message) error
+	AckBatch(ctx context.Context, stream string, ids []string) error
 }
 
 // Consumer wires a MessageSource to a Dispatcher.
@@ -91,7 +96,15 @@ type ProcessStats struct {
 	HandlerErr int
 }
 
-// ProcessOne reads one batch (up to batchSize) and dispatches every msg.
+// ProcessOne reads one batch (up to batchSize), dispatches every msg, then ACKs
+// all successfully-dispatched ids in ONE XACK per stream. Batching the ack (vs
+// one round-trip per message) is the S12 I7 ceiling fix: the per-message XACK RTT
+// was the single-consumer bottleneck, not CPU.
+//
+// The re-delivery contract is preserved exactly: only ids whose dispatch returned
+// nil are acked; a dispatch error (no-handler / handler error) leaves the message
+// un-acked so Redis Streams re-delivers it. An AckBatch error leaves that stream's
+// ids un-acked (they re-deliver) and is NOT counted as dispatched/acked.
 func (c *Consumer) ProcessOne(ctx context.Context, batchSize int) (ProcessStats, error) {
 	stats := ProcessStats{}
 	msgs, err := c.source.Read(ctx, batchSize)
@@ -99,14 +112,18 @@ func (c *Consumer) ProcessOne(ctx context.Context, batchSize int) (ProcessStats,
 		return stats, fmt.Errorf("consumer: read: %w", err)
 	}
 	stats.Read = len(msgs)
+
+	// Group successfully-dispatched ids by stream, preserving first-seen order so
+	// the ack order is deterministic.
+	ackIDs := map[string][]string{}
+	var streamOrder []string
 	for _, m := range msgs {
 		derr := c.dispatcher.Dispatch(ctx, m.EventType(), m.Fields)
 		if derr == nil {
-			if ackErr := c.source.Ack(ctx, m); ackErr == nil {
-				stats.Acked++
-				stats.Dispatched++
+			if _, seen := ackIDs[m.Stream]; !seen {
+				streamOrder = append(streamOrder, m.Stream)
 			}
-			c.lastConsumedAt = time.Now()
+			ackIDs[m.Stream] = append(ackIDs[m.Stream], m.ID)
 			continue
 		}
 		if errors.Is(derr, dispatch.ErrNoHandler) {
@@ -114,6 +131,19 @@ func (c *Consumer) ProcessOne(ctx context.Context, batchSize int) (ProcessStats,
 		} else {
 			stats.HandlerErr++
 		}
+	}
+
+	for _, stream := range streamOrder {
+		ids := ackIDs[stream]
+		if ackErr := c.source.AckBatch(ctx, stream, ids); ackErr != nil {
+			// Already processed; leave un-acked so Redis re-delivers. Don't count
+			// as dispatched/acked (mirrors the old per-message ack-failure path).
+			continue
+		}
+		// Dispatched is coupled to a successful ack (unchanged semantics).
+		stats.Acked += len(ids)
+		stats.Dispatched += len(ids)
+		c.lastConsumedAt = time.Now()
 	}
 	return stats, nil
 }

@@ -34,6 +34,85 @@ use crate::envelope::EventEnvelope;
 use crate::event_store::{EventStore, EventStoreError, EventStoreResult};
 use crate::load_aggregate::SnapshotRecord;
 
+/// W1.4 — gate the append path on the reality's lifecycle status.
+///
+/// The relocation copy/flip (Inc-4) and the closure drain (W1.3) both rely on
+/// the source reality being quiesced. An append that lands AFTER the freeze
+/// flip would be silently lost (relocation copies a snapshot; the drain
+/// declares the outbox empty). This guard rejects appends to a frozen reality.
+#[async_trait]
+pub trait AppendGuard: Send + Sync {
+    /// Return `Ok(())` if `reality_id` accepts new appends, or
+    /// [`EventStoreError::RealityFrozen`] if it is frozen/terminal.
+    async fn ensure_appendable(&self, reality_id: Uuid) -> EventStoreResult<()>;
+}
+
+/// Lifecycle statuses that ACCEPT appends. Everything else (migrating,
+/// pending_close, frozen, archived, archived_verified, soft_deleted, dropped)
+/// is frozen for appends. Kept as canonical lowercase strings (the
+/// `reality_registry.status` CHECK enum) so dp-kernel stays decoupled from
+/// `meta-rs`.
+pub fn status_accepts_append(status: &str) -> bool {
+    matches!(status, "provisioning" | "seeding" | "active")
+}
+
+/// Production [`AppendGuard`] — reads `reality_registry.status` from the META
+/// DB **uncached** on every append (freeze-settle option (b), plan review #1).
+///
+/// Why uncached: the transition that freezes a reality is driven by an EXTERNAL
+/// actor (the relocation / closure orchestrator), not the reality's own command
+/// processor, so a per-reality status CACHE would not be synchronously
+/// invalidated by the flip — leaving a TTL window where an append still sees
+/// "active" and lands after the flip. An uncached read narrows that window to a
+/// single statement.
+///
+/// SCOPE (review #3 — do NOT overclaim): this rejects every append that BEGINS
+/// after the flip commits. It does NOT make a freeze atomic with the append —
+/// the status read and the `events` INSERT are in DIFFERENT databases (meta vs
+/// per-reality), so an append already in-flight at the flip (read `active`, then
+/// flip, then commit) can still land post-flip. Closing that residual in-flight
+/// window is the ORCHESTRATOR's job: the closure drain (W1.3) re-polls the outbox
+/// to 0 after a settle so a straggler's same-TX outbox row is caught; the
+/// relocation copy (Inc-4) must likewise settle/re-checksum after the flip. See
+/// D-W1-INFLIGHT-FREEZE-WINDOW. The cost is one indexed PK lookup on the meta DB
+/// per append (hot-path overhead unmeasured — D-W1-FREEZE-HOTPATH-COST).
+/// Fail-closed: a missing reality row → frozen.
+#[derive(Clone)]
+pub struct MetaFreezeGuard {
+    meta_pool: Arc<PgPool>,
+}
+
+impl MetaFreezeGuard {
+    /// Construct over the META DB pool (where `reality_registry` lives) — NOT
+    /// the per-reality pool the event store writes to.
+    pub fn new(meta_pool: Arc<PgPool>) -> Self {
+        Self { meta_pool }
+    }
+}
+
+#[async_trait]
+impl AppendGuard for MetaFreezeGuard {
+    async fn ensure_appendable(&self, reality_id: Uuid) -> EventStoreResult<()> {
+        let status: Option<String> = sqlx::query_scalar(
+            "SELECT status FROM reality_registry WHERE reality_id = $1",
+        )
+        .bind(reality_id)
+        .fetch_optional(&*self.meta_pool)
+        .await
+        .map_err(|e| EventStoreError::Transport(e.to_string()))?;
+        match status {
+            Some(s) if status_accepts_append(&s) => Ok(()),
+            // A known-but-frozen reality, OR an unknown reality (fail-closed:
+            // we cannot confirm it is appendable, so we refuse).
+            Some(s) => Err(EventStoreError::RealityFrozen { reality_id, status: s }),
+            None => Err(EventStoreError::RealityFrozen {
+                reality_id,
+                status: "unknown".to_string(),
+            }),
+        }
+    }
+}
+
 /// Postgres-backed event store. Holds a wrapped [`PgPool`] (Q-L4A-1) so
 /// callers never see `sqlx` types in the public API.
 ///
@@ -42,18 +121,29 @@ use crate::load_aggregate::SnapshotRecord;
 #[derive(Clone)]
 pub struct PgEventStore {
     pub(crate) pool: Arc<PgPool>,
+    /// Optional W1.4 write-freeze guard. `None` = no freeze check (the default
+    /// for the in-memory/integration tests, which have no meta DB). Production
+    /// wires a [`MetaFreezeGuard`] over the meta pool.
+    freeze_guard: Option<Arc<dyn AppendGuard>>,
 }
 
 impl PgEventStore {
     /// Construct from a pre-built `PgPool`. The pool is wrapped in an `Arc`
-    /// so this struct can be cloned freely.
+    /// so this struct can be cloned freely. No freeze guard (back-compat).
     pub fn new(pool: PgPool) -> Self {
-        Self { pool: Arc::new(pool) }
+        Self { pool: Arc::new(pool), freeze_guard: None }
     }
 
-    /// Construct from an already-shared pool.
+    /// Construct from an already-shared pool. No freeze guard.
     pub fn from_arc(pool: Arc<PgPool>) -> Self {
-        Self { pool }
+        Self { pool, freeze_guard: None }
+    }
+
+    /// Attach a W1.4 [`AppendGuard`] (builder-style). Production wires a
+    /// [`MetaFreezeGuard`] so appends to a frozen reality are rejected.
+    pub fn with_freeze_guard(mut self, guard: Arc<dyn AppendGuard>) -> Self {
+        self.freeze_guard = Some(guard);
+        self
     }
 }
 
@@ -67,6 +157,14 @@ impl EventStore for PgEventStore {
         expected_version: u64,
         batch: &[EventEnvelope],
     ) -> EventStoreResult<u64> {
+        // ── W1.4 write-freeze: reject appends to a quiescing reality ──────
+        // Checked FIRST (before the empty-batch read-path too) so a frozen
+        // reality cannot be appended to OR probed via the no-op idiom. Uncached
+        // authoritative read ⇒ no settle-window race (see MetaFreezeGuard).
+        if let Some(guard) = &self.freeze_guard {
+            guard.ensure_appendable(reality_id).await?;
+        }
+
         // ── Validate batch shape BEFORE any DB call ───────────────────────
         if batch.is_empty() {
             // Empty batch is allowed — returns current high-water mark
@@ -161,11 +259,21 @@ impl EventStore for PgEventStore {
                     payload,
                     metadata,
                     occurred_at,
-                    recorded_at
+                    recorded_at,
+                    content_sha256
                 )
                 VALUES (
                     $1, $2, $3, $4, $5, $6, $7, $8, $9,
-                    $10::timestamptz, $11::timestamptz
+                    $10::timestamptz, $11::timestamptz,
+                    -- W3.4 stored checksum over the event's JSONB CONTENT (payload
+                    -- AND metadata). PG is the single canonicalizer, so the hash is
+                    -- taken over the SAME normalized jsonb the row stores, reusing
+                    -- the $8 payload + $9 metadata binds. The Go emit path emits the
+                    -- identical expression ⇒ byte-identical hashes for equal content
+                    -- with no cross-lang JSON lib. Plain column (not generated) so a
+                    -- later UPDATE to payload/metadata can't mask byte-rot.
+                    encode(sha256(convert_to(
+                        jsonb_build_object('p', $8::jsonb, 'm', $9::jsonb)::text, 'UTF8')), 'hex')
                 )
                 "#,
             )
@@ -402,5 +510,26 @@ mod tests {
     fn ev_store_is_clone_and_send_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<PgEventStore>();
+    }
+
+    // W1.4 — the freeze set is the load-bearing predicate; pin it so a future
+    // status-enum change can't silently make a frozen state appendable.
+    #[test]
+    fn only_provisioning_seeding_active_accept_appends() {
+        for s in ["provisioning", "seeding", "active"] {
+            assert!(status_accepts_append(s), "{s} must accept appends");
+        }
+        for s in [
+            "migrating",
+            "pending_close",
+            "frozen",
+            "archived",
+            "archived_verified",
+            "soft_deleted",
+            "dropped",
+            "unknown",
+        ] {
+            assert!(!status_accepts_append(s), "{s} must be frozen for appends");
+        }
     }
 }

@@ -124,10 +124,15 @@ func (s *RedisSource) Read(ctx context.Context, batchSize int) ([]consumer.Messa
 	return msgs, nil
 }
 
-// Ack XACKs the message on its source stream.
-func (s *RedisSource) Ack(ctx context.Context, m consumer.Message) error {
-	if err := s.rdb.XAck(ctx, m.Stream, s.group, m.ID).Err(); err != nil {
-		return fmt.Errorf("redisconsume: XACK %s/%s: %w", m.Stream, m.ID, err)
+// AckBatch XACKs MANY ids on one stream in a single round-trip (XACK is variadic).
+// This is the S12 I7 ceiling fix: one ack per stream per batch instead of one per
+// message. A 0-length ids slice is a no-op.
+func (s *RedisSource) AckBatch(ctx context.Context, stream string, ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	if err := s.rdb.XAck(ctx, stream, s.group, ids...).Err(); err != nil {
+		return fmt.Errorf("redisconsume: XACK %s/%s (%d ids): %w", stream, s.group, len(ids), err)
 	}
 	return nil
 }

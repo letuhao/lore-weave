@@ -15,11 +15,12 @@ import (
 //      ErrMutualExclusion.
 //   4. Delegate to MetaWrite with Operation=UPDATE + ExpectedBefore set on
 //      the state column — CAS for free.
-//   5. Write a lifecycle_transition_audit row inside the SAME TX (regardless
-//      of success/failure path — failed attempts must also be auditable).
-//
-// On graph-rejection (steps 2 + 3) the library still writes a failed-attempt
-// audit row in its own TX (Q-L1A-3: FULL audit, no sampling).
+//   5. SUCCESS path: the lifecycle_transition_audit row rides in the SAME TX as
+//      the status UPDATE + meta_write_audit (passed via MetaWriteIntent.LifecycleAudit)
+//      — they commit/roll back atomically (S13 D-S13-LIFECYCLE-AUDIT-ATOMICITY).
+//   6. FAILURE path (CAS mismatch / db error / graph-rejection): the data write
+//      rolled back, so the FAILED-attempt audit is written in its OWN TX so it
+//      survives the rollback (Q-L1A-3: FULL audit, no sampling).
 func AttemptStateTransition(ctx context.Context, cfg *Config, req TransitionRequest) (*TransitionResult, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
@@ -56,6 +57,25 @@ func AttemptStateTransition(ctx context.Context, cfg *Config, req TransitionRequ
 	for k, v := range req.Payload {
 		newValues[k] = v
 	}
+
+	// Build the SUCCESS lifecycle-transition audit row UP FRONT so it rides inside
+	// MetaWrite's TX (S13 D-S13-LIFECYCLE-AUDIT-ATOMICITY): the status UPDATE, the
+	// meta_write_audit row, and this lifecycle audit row now commit/roll back as one
+	// — a crash can no longer leave the transition applied but un-audited.
+	now := cfg.Clock.NowUnixNano()
+	auditID := cfg.UUIDGen.New()
+	successAudit := &LifecycleTransitionAuditRow{
+		AuditID:          auditID,
+		ResourceID:       req.ResourceID,
+		FromStatus:       req.FromState,
+		ToStatus:         req.ToState,
+		ActorID:          req.Actor.ID,
+		ActorType:        req.Actor.Type,
+		Succeeded:        true,
+		FailureReason:    "",
+		Payload:          req.Payload,
+		AttemptedAtNanos: now,
+	}
 	intent := MetaWriteIntent{
 		Table:     resource.Table,
 		Operation: OpUpdate,
@@ -69,14 +89,13 @@ func AttemptStateTransition(ctx context.Context, cfg *Config, req TransitionRequ
 		Actor:          req.Actor,
 		Reason:         req.Reason,
 		RequestContext: RequestContext{},
+		LifecycleAudit: successAudit,
 	}
 
-	_, err := MetaWrite(ctx, cfg, intent)
-	if err != nil {
-		// On CAS mismatch we audit it as a separate failed-attempt row.
-		// (Note: the inner MetaWrite already wrote a meta_write_audit row IF
-		// the row update succeeded but the audit insert failed — that path
-		// rolls back; so we only audit FAIL here, not double-audit success.)
+	if _, err := MetaWrite(ctx, cfg, intent); err != nil {
+		// CAS mismatch / db error: nothing committed (the success lifecycle audit
+		// rolled back with the rest). Record the FAILED attempt in its OWN TX so it
+		// survives the rollback (Q-L1A-3: full audit, no sampling).
 		reason := "database_error"
 		if errors.Is(err, ErrConcurrentStateTransition) {
 			reason = "concurrent_modification"
@@ -85,25 +104,7 @@ func AttemptStateTransition(ctx context.Context, cfg *Config, req TransitionRequ
 		return nil, err
 	}
 
-	// Success path: write the lifecycle_transition_audit row.
-	now := cfg.Clock.NowUnixNano()
-	auditID := cfg.UUIDGen.New()
-	auditRow := LifecycleTransitionAuditRow{
-		AuditID:          auditID,
-		ResourceID:       req.ResourceID,
-		FromStatus:       req.FromState,
-		ToStatus:         req.ToState,
-		ActorID:          req.Actor.ID,
-		ActorType:        req.Actor.Type,
-		Succeeded:        true,
-		FailureReason:    "",
-		Payload:          req.Payload,
-		AttemptedAtNanos: now,
-	}
-	if err := writeLifecycleAudit(ctx, cfg, auditRow); err != nil {
-		// Audit failure on success path is a system bug; surface it.
-		return nil, fmt.Errorf("meta: lifecycle audit write: %w", err)
-	}
+	// Success — the lifecycle audit already landed atomically inside MetaWrite's TX.
 	return &TransitionResult{
 		AuditID:      auditID,
 		NewState:     req.ToState,

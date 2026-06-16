@@ -1,0 +1,152 @@
+# infra/scale/docker-compose.scale.yml
+#
+# S12 (Inc-1) — multi-shard SCALE rig. The first time the foundation runs on
+# REAL separate Postgres instances (one PG process per shard), not many DBs on
+# one cluster — this is what closes D-WORKLOAD-GEN-REAL-SHARD and lets the
+# packing sweep measure a single ISOLATED shard without the other shards sharing
+# its buffer cache / WAL.
+#
+# Layout: 1 meta PG (reality_registry + publisher_heartbeats) + N shard PGs
+# (pg-shard-0 .. pg-shard-7) + Redis + toxiproxy. The scripts pick the first N
+# shards via SCALE_SHARDS (default uses a subset; full sweep = 8).
+#
+# DURABILITY IS PRODUCTION-SHAPED ON PURPOSE (spec §3 / plan honesty rail):
+# fsync=on, synchronous_commit=on (the Postgres defaults — we do NOT pass
+# `-c fsync=off`). Turning them off would inflate the packing ceiling into a
+# fiction. The only tuning is buffer/conn sizing, recorded here so the report
+# can quote the exact config.
+#
+# CPU isolation for the "single-box trap" (spec §2 HIGH-1) is applied at
+# RUN TIME by the scripts via `docker update --cpuset-cpus=<set> <container>`
+# (NOT a compose key) so the isolated shard / shared writer can be pinned to a
+# dedicated vCPU subset and measured for its OWN CPU. On Docker Desktop/WSL2
+# this isolates LOGICAL vCPUs, not guaranteed physical P-cores — enough for the
+# headroom guarantee, documented as a caveat in the readiness report.
+#
+# Use:
+#   docker compose -p scale -f infra/scale/docker-compose.scale.yml up -d
+#   docker compose -p scale -f infra/scale/docker-compose.scale.yml down -v
+# (the scripts drive this with -p scale; container names are fixed below.)
+
+x-shard-pg: &shard-pg
+  # Plain postgres:16 — the shard DBs only need events + outbox (migrations
+  # 0001/0002/0005); no pgvector extension is required for the write/drain path
+  # the packing sweep exercises, so the lighter official image is used.
+  image: postgres:16
+  environment:
+    POSTGRES_USER: foundation
+    POSTGRES_PASSWORD: foundation
+    POSTGRES_DB: foundation
+  # Production-shaped durability (see header). Only sizing is tuned.
+  command:
+    - postgres
+    - -c
+    - max_connections=300
+    - -c
+    - shared_buffers=512MB
+    - -c
+    - max_wal_size=4GB
+  healthcheck:
+    test: ["CMD-SHELL", "pg_isready -U foundation"]
+    interval: 5s
+    retries: 15
+  networks: [scale-net]
+
+services:
+  meta-pg:
+    <<: *shard-pg
+    container_name: scale-meta-pg
+    ports:
+      - "127.0.0.1:${SCALE_META_PORT:-55510}:5432"
+    volumes: [scale-meta-data:/var/lib/postgresql/data]
+
+  pg-shard-0:
+    <<: *shard-pg
+    container_name: scale-pg-shard-0
+    ports:
+      - "127.0.0.1:${SCALE_SHARD0_PORT:-55511}:5432"
+    volumes: [scale-shard0-data:/var/lib/postgresql/data]
+
+  pg-shard-1:
+    <<: *shard-pg
+    container_name: scale-pg-shard-1
+    ports:
+      - "127.0.0.1:${SCALE_SHARD1_PORT:-55512}:5432"
+    volumes: [scale-shard1-data:/var/lib/postgresql/data]
+
+  pg-shard-2:
+    <<: *shard-pg
+    container_name: scale-pg-shard-2
+    ports:
+      - "127.0.0.1:${SCALE_SHARD2_PORT:-55513}:5432"
+    volumes: [scale-shard2-data:/var/lib/postgresql/data]
+
+  pg-shard-3:
+    <<: *shard-pg
+    container_name: scale-pg-shard-3
+    ports:
+      - "127.0.0.1:${SCALE_SHARD3_PORT:-55514}:5432"
+    volumes: [scale-shard3-data:/var/lib/postgresql/data]
+
+  pg-shard-4:
+    <<: *shard-pg
+    container_name: scale-pg-shard-4
+    ports:
+      - "127.0.0.1:${SCALE_SHARD4_PORT:-55515}:5432"
+    volumes: [scale-shard4-data:/var/lib/postgresql/data]
+
+  pg-shard-5:
+    <<: *shard-pg
+    container_name: scale-pg-shard-5
+    ports:
+      - "127.0.0.1:${SCALE_SHARD5_PORT:-55516}:5432"
+    volumes: [scale-shard5-data:/var/lib/postgresql/data]
+
+  pg-shard-6:
+    <<: *shard-pg
+    container_name: scale-pg-shard-6
+    ports:
+      - "127.0.0.1:${SCALE_SHARD6_PORT:-55517}:5432"
+    volumes: [scale-shard6-data:/var/lib/postgresql/data]
+
+  pg-shard-7:
+    <<: *shard-pg
+    container_name: scale-pg-shard-7
+    ports:
+      - "127.0.0.1:${SCALE_SHARD7_PORT:-55518}:5432"
+    volumes: [scale-shard7-data:/var/lib/postgresql/data]
+
+  redis:
+    image: redis:7-alpine
+    container_name: scale-redis
+    ports:
+      - "127.0.0.1:${SCALE_REDIS_PORT:-56510}:6379"
+    networks: [scale-net]
+
+  # toxiproxy sits between the publisher / packing driver and a shard so the
+  # bite (latency toxic on the isolated shard) can prove the measurement rides
+  # the real path. `-host=0.0.0.0` so the admin API + dynamic proxy listens are
+  # reachable from the host (same reasoning as foundation-dev).
+  toxiproxy:
+    image: ${SCALE_TOXIPROXY_IMAGE:-ghcr.io/shopify/toxiproxy:2.11.0}
+    container_name: scale-toxiproxy
+    command: ["-host=0.0.0.0"]
+    ports:
+      - "127.0.0.1:${SCALE_TOXIPROXY_PORT:-8475}:8474"
+      - "127.0.0.1:${SCALE_SHARD0_PROXY_PORT:-55520}:${SCALE_SHARD0_PROXY_PORT:-55520}"
+    networks: [scale-net]
+
+networks:
+  scale-net:
+    name: scale-net
+
+volumes:
+  scale-meta-data:
+  scale-shard0-data:
+  scale-shard1-data:
+  scale-shard2-data:
+  scale-shard3-data:
+  scale-shard4-data:
+  scale-shard5-data:
+  scale-shard6-data:
+  scale-shard7-data:

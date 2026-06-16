@@ -25,6 +25,12 @@ members = [
     "services/travel-service",
     "crates/world-gen",
     "crates/meta-rs",
+    # S6 / H1-loom — tokio-free CircuitBreaker sync core extracted from
+    # dp-kernel::resilience so it can be exhaustively race-checked with loom
+    # (loom can't build inside dp-kernel: tokio's transitive deps break under
+    # --cfg loom). dp-kernel re-exports CircuitBreaker from here; public path
+    # dp_kernel::resilience::CircuitBreaker is unchanged.
+    "crates/breaker-core",
     "crates/dp-kernel",
     # Cycle 13 — L3.B per-aggregate projection skeletons (consume
     # `crates/dp-kernel::Projection` trait shipped cycle 12; write to the
@@ -46,6 +52,13 @@ members = [
     # projection delta} per event type, asserted against the full projection
     # set's apply_one. The value-correctness oracle (regression-lock framing).
     "crates/projection-golden",
+    # W4.6 (2026-06-15) — D-C2-REFERENCE-PROJECTOR: the independent oracle the
+    # golden battery is NOT. A DDL+contract CONFORMANCE oracle (validates every
+    # production update against the schema: table/column/pk/kind/direct-field)
+    # for all 20 events, plus a from-design REPRODUCTION reference for the
+    # relationship + canon arms. Derived from the event contract + table DDL,
+    # never from crates/projections/* — so it can DISAGREE on a real bug.
+    "crates/projection-reference",
     # Cycle 27 — L5.I.3 full canon-guardrail implementation. Backwards-compat
     # with cycle-25 `dp-kernel::canon_cache::CanonGuardrail` trait (Q-L5-5
     # LOCKED). Production roleplay-service / world-service binds
