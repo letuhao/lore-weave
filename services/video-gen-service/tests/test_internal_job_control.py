@@ -50,6 +50,21 @@ def _wire(monkeypatch, *, job, won=True, pool_down=False, abort_raises=None):
     return repo, client
 
 
+# ── D-JOBS-P4-RETRY-VIDEOGEN — re-submit a failed job from its stored request_json ──
+NEW = uuid4()
+_REQ = {"prompt": "a cat", "model_source": "user_model", "model_ref": str(uuid4()),
+        "duration_seconds": 5, "aspect_ratio": "16:9", "style": None}
+
+
+def _patch_submit(monkeypatch, *, job_id=NEW, status="pending"):
+    """Stub the lazy-imported `_submit_decoupled` on its SOURCE module (the retry path does
+    `from .generate import _submit_decoupled` at call time → reads the patched attr)."""
+    from types import SimpleNamespace as _SN
+    sub = AsyncMock(return_value=_SN(job_id=str(job_id), status=status))
+    monkeypatch.setattr("app.routers.generate._submit_decoupled", sub)
+    return sub
+
+
 @pytest.mark.asyncio
 async def test_cancel_owned_job_200(monkeypatch):
     repo, client = _wire(monkeypatch, job=SimpleNamespace(id=JOB, status="running", provider_job_id=PROV))
@@ -120,6 +135,59 @@ async def test_stateless_pool_down_is_404(monkeypatch):
     with pytest.raises(HTTPException) as exc:
         await control_video_gen_job(JOB, "cancel", JobControlPayload(owner_user_id=USER))
     assert exc.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_retry_failed_resubmits_fresh_job(monkeypatch):
+    _wire(monkeypatch, job=SimpleNamespace(id=JOB, status="failed", request_json=_REQ, provider_job_id=PROV))
+    sub = _patch_submit(monkeypatch)
+    resp = await control_video_gen_job(JOB, "retry", JobControlPayload(owner_user_id=USER))
+    assert resp.job_id == NEW and resp.status == "pending"
+    sub.assert_awaited_once()
+    # reconstructed GenerateRequest carries the failed row's prompt + model_ref
+    body = sub.await_args.args[0]
+    assert body.prompt == "a cat" and body.model_ref == _REQ["model_ref"]
+
+
+@pytest.mark.asyncio
+async def test_retry_not_owned_404(monkeypatch):
+    _wire(monkeypatch, job=None)
+    sub = _patch_submit(monkeypatch)
+    with pytest.raises(HTTPException) as exc:
+        await control_video_gen_job(JOB, "retry", JobControlPayload(owner_user_id=OTHER))
+    assert exc.value.status_code == 404
+    sub.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_retry_non_failed_409(monkeypatch):
+    _wire(monkeypatch, job=SimpleNamespace(id=JOB, status="running", request_json=_REQ, provider_job_id=PROV))
+    sub = _patch_submit(monkeypatch)
+    with pytest.raises(HTTPException) as exc:
+        await control_video_gen_job(JOB, "retry", JobControlPayload(owner_user_id=USER))
+    assert exc.value.status_code == 409
+    sub.assert_not_awaited()  # never re-submits a non-failed job
+
+
+@pytest.mark.asyncio
+async def test_retry_missing_params_409(monkeypatch):
+    # a pre-emit row with an empty request_json can't be reconstructed → graceful 409, not 500
+    _wire(monkeypatch, job=SimpleNamespace(id=JOB, status="failed", request_json={}, provider_job_id=PROV))
+    sub = _patch_submit(monkeypatch)
+    with pytest.raises(HTTPException) as exc:
+        await control_video_gen_job(JOB, "retry", JobControlPayload(owner_user_id=USER))
+    assert exc.value.status_code == 409
+    sub.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_retry_stateless_pool_down_404(monkeypatch):
+    _wire(monkeypatch, job=None, pool_down=True)
+    sub = _patch_submit(monkeypatch)
+    with pytest.raises(HTTPException) as exc:
+        await control_video_gen_job(JOB, "retry", JobControlPayload(owner_user_id=USER))
+    assert exc.value.status_code == 404
+    sub.assert_not_awaited()
 
 
 @pytest.mark.asyncio

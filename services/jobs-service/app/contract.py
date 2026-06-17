@@ -37,11 +37,14 @@ _MULTI_UNIT_KINDS: frozenset[str] = frozenset({"extraction", "campaign", "enrich
 #   - extraction  — knowledge re-runs the failed extraction_jobs row through the full start
 #                   core (re-validates the K17.9 benchmark + budget gates, emits 'running');
 #                   the row carries every StartJobRequest field (D-JOBS-P4-RETRY-KNOWLEDGE)
+#   - video_gen   — video-gen reconstructs the GenerateRequest from the row's request_json
+#                   JSONB (which already persists prompt/model/duration/aspect/style) and
+#                   re-runs the decoupled submit → new row + 'running' (D-JOBS-P4-RETRY-VIDEOGEN;
+#                   NO migration — the params were on the row all along)
 # NOT yet (tracked): composition (D-JOBS-P4-RETRY-COMPOSITION — params live in an opaque
-# generation_job.input JSONB), video_gen (D-JOBS-P4-RETRY-VIDEOGEN — input params NOT
-# persisted on the row → needs a schema migration), lore-enrichment (sync in-process —
-# incompatible with the deferred control contract; D-JOBS-P4-RETRY-LORE).
-_RETRYABLE_KINDS: frozenset[str] = frozenset({"translation", "extraction"})
+# generation_job.input JSONB), lore-enrichment (sync in-process — incompatible with the
+# deferred control contract; D-JOBS-P4-RETRY-LORE).
+_RETRYABLE_KINDS: frozenset[str] = frozenset({"translation", "extraction", "video_gen"})
 
 # VIEW-ONLY kinds — visible on the unified Jobs screen but with NO unified control surface,
 # so we offer no caps. book_import is fire-and-forget (book-service has no control endpoint;

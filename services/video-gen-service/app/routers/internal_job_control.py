@@ -33,6 +33,7 @@ from pydantic import BaseModel
 from ..config import settings
 from ..db.pool import get_pool
 from ..db.repository import VideoGenJobsRepo
+from ..models import GenerateRequest  # D-JOBS-P4-RETRY-VIDEOGEN — reconstruct from request_json
 
 log = logging.getLogger(__name__)
 
@@ -119,11 +120,14 @@ async def control_video_gen_job(
     action: str,
     payload: JobControlPayload,
 ) -> JobControlResponse:
+    # D-JOBS-P4-RETRY-VIDEOGEN — re-submit a failed job from its stored request_json.
+    if action == "retry":
+        return await _retry_video_gen_job(job_id, payload.owner_user_id)
     if action != "cancel":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"code": "JOBS_UNSUPPORTED_ACTION",
-                    "message": f"video-gen jobs support only 'cancel', not '{action}'"},
+                    "message": f"video-gen jobs support 'cancel' | 'retry', not '{action}'"},
         )
     try:
         pool = get_pool()
@@ -157,3 +161,56 @@ async def control_video_gen_job(
     if job.provider_job_id is not None:
         await _abort_provider_job(job.provider_job_id, payload.owner_user_id)
     return JobControlResponse(job_id=job_id, status="cancelled")
+
+
+async def _retry_video_gen_job(job_id: UUID, owner_user_id: UUID) -> JobControlResponse:
+    """D-JOBS-P4-RETRY-VIDEOGEN — re-submit a FAILED video-gen job as a FRESH job, reusing
+    the failed row's stored `request_json` (prompt/model/duration/aspect/style — persisted
+    since the producer-emit backfill, so NO migration needed). Mirrors the translation /
+    knowledge retry contract: owner-scoped (404 if not owned), 409 unless `failed`, 404 when
+    stateless (decouple off → no rows). A pre-emit row with an empty request_json can't be
+    reconstructed → 409 (graceful, not a 500). The reconstructed GenerateRequest re-runs the
+    existing `_submit_decoupled` (submit gateway job → new pending row → emits 'running'), so
+    there is zero duplication of the submit/create/emit logic. Video-gen jobs are never
+    campaign-dispatched (the row has no campaign_id), so no campaign-managed guard applies."""
+    try:
+        pool = get_pool()
+    except RuntimeError:
+        # Stateless (decouple off) — no job rows exist to retry.
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "JOBS_NOT_FOUND", "message": "job not found"},
+        )
+    repo = VideoGenJobsRepo(pool)
+    job = await repo.get(owner_user_id, job_id)  # M4 owner re-check (owner-scoped → 404)
+    if job is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "JOBS_NOT_FOUND", "message": "job not found"},
+        )
+    if job.status != "failed":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "JOBS_NOT_RETRYABLE",
+                    "message": f"only a failed job can be retried (status='{job.status}')"},
+        )
+    req = job.request_json or {}
+    if not req.get("model_ref") or not req.get("prompt"):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "JOBS_MISSING_PARAMS",
+                    "message": "job has no stored request params to retry"},
+        )
+    # Reconstruct the original GenerateRequest from request_json (same field names). Pass
+    # only present optional fields so the model's defaults apply for any the row omitted.
+    kwargs: dict = {"prompt": req["prompt"], "model_ref": req["model_ref"]}
+    for k in ("model_source", "duration_seconds", "aspect_ratio", "style"):
+        v = req.get(k)
+        if v is not None:
+            kwargs[k] = v
+    # Lazy imports — keep the router-import graph acyclic + avoid loading the submit path
+    # (and its heavy deps) unless a retry actually fires.
+    from fastapi import Response
+    from .generate import _submit_decoupled
+    new = await _submit_decoupled(GenerateRequest(**kwargs), str(owner_user_id), Response())
+    return JobControlResponse(job_id=UUID(str(new.job_id)), status=new.status)

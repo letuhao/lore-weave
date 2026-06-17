@@ -17,14 +17,14 @@ def test_terminal_statuses_offer_nothing():
 
 def test_failed_retryable_kinds_offer_retry():
     # D-JOBS-P4-RETRY: a failed job of a retry-supported kind offers retry (re-submit).
-    # translation (B1) + extraction (D-JOBS-P4-RETRY-KNOWLEDGE) honor it.
-    assert _vals(derive_control_caps(JobStatus.FAILED, "translation")) == ["retry"]
-    assert _vals(derive_control_caps(JobStatus.FAILED, "extraction")) == ["retry"]
+    # translation (B1) + extraction (RETRY-KNOWLEDGE) + video_gen (RETRY-VIDEOGEN) honor it.
+    for kind in ("translation", "extraction", "video_gen"):
+        assert _vals(derive_control_caps(JobStatus.FAILED, kind)) == ["retry"]
 
 
 def test_failed_non_retryable_kind_offers_nothing():
-    # composition/video_gen/enrichment/lore retry not wired yet → no retry button.
-    for kind in ("campaign", "video_gen", "enrichment_job", "generate"):
+    # composition/enrichment/lore retry not wired yet → no retry button.
+    for kind in ("campaign", "enrichment_job", "generate"):
         assert derive_control_caps(JobStatus.FAILED, kind) == []
 
 
