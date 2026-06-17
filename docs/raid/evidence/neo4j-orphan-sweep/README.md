@@ -30,3 +30,14 @@ name-validated helpers; the shared indexes were never eligible.
 
 `2026-06-18-orphan-audit.txt` — raw `project_id, node_count` for all 106 swept orphans
 (captured immediately before deletion), descending by node count.
+
+## Assumptions / caveats (from /review-impl)
+
+- **"Live" = `loreweave_knowledge.knowledge_projects` only.** If any project in
+  `loreweave_knowledge_test` (or another consumer) had ever built a graph in this *same*
+  `infra-neo4j-1` instance with a `project_id` not in the prod table, the sweep would have
+  deleted it as an orphan. Low risk — such a graph is an orphan by the same no-prod-SSOT
+  definition, and test graphs are disposable — but the assumption is noted here.
+- **Re-orphan window on delete-during-extraction** (`purge_project` is best-effort, runs
+  AFTER the Postgres delete): an extraction job in-flight at delete time can write Neo4j
+  nodes *after* the purge → a fresh orphan. Re-sweepable by re-running this same procedure.
