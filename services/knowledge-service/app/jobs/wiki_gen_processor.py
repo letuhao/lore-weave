@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import socket
 from decimal import Decimal
 
@@ -50,8 +49,23 @@ __all__ = ["run_wiki_gen_consumer", "process_wiki_gen_job"]
 
 
 def _consumer_name() -> str:
-    """Per-process consumer identity so replicas don't share a PEL slot."""
-    return f"wiki-gen-{socket.gethostname()}-{os.getpid()}"
+    """STABLE per-replica consumer identity (hostname only — matches the staleness
+    consumer convention). A stable name across restarts means a restarted replica
+    keeps its identity rather than orphaning its prior PEL entries under a dead
+    (pid-suffixed) name; crash-recovery of the WORK is the row-based startup drain."""
+    return f"wiki-gen-{socket.gethostname() or 'unknown'}"
+
+
+async def _ensure_group(client) -> None:
+    """Idempotent, BUSYGROUP-safe create of the consumer group. Called at startup
+    AND on a NOGROUP read error so the consumer self-heals if the create failed
+    transiently at boot or the group was deleted (the bare-XREAD path had no such
+    dependency — D-WIKI-M6-CONSUMER-GROUP /review-impl)."""
+    try:
+        await client.xgroup_create(WIKI_GEN_STREAM, WIKI_GEN_GROUP, id="$", mkstream=True)
+    except aioredis.ResponseError as exc:
+        if "BUSYGROUP" not in str(exc):  # already exists is the happy case
+            logger.warning("wiki-gen group create failed: %s", exc)
 
 
 def _retrieval_params() -> dict:
@@ -150,13 +164,9 @@ async def run_wiki_gen_consumer() -> None:
     await drain_resumable_jobs()
     client = aioredis.from_url(settings.redis_url)
     consumer = _consumer_name()
-    # Idempotent group create (MKSTREAM so the stream need not exist yet; id='$' =
-    # only messages added after creation — pre-existing ones are the drain's job).
-    try:
-        await client.xgroup_create(WIKI_GEN_STREAM, WIKI_GEN_GROUP, id="$", mkstream=True)
-    except aioredis.ResponseError as exc:
-        if "BUSYGROUP" not in str(exc):  # already exists is fine; anything else is real
-            logger.warning("wiki-gen group create failed: %s", exc)
+    # MKSTREAM so the stream need not exist yet; id='$' = only messages added after
+    # creation — pre-existing ones are the drain's job. Self-healed on NOGROUP below.
+    await _ensure_group(client)
     logger.info(
         "wiki-gen consumer started (stream=%s group=%s consumer=%s)",
         WIKI_GEN_STREAM, WIKI_GEN_GROUP, consumer,
@@ -167,6 +177,15 @@ async def run_wiki_gen_consumer() -> None:
                 await _consume_batch(client, WIKI_GEN_GROUP, consumer)
             except asyncio.CancelledError:
                 raise  # shutdown — let it propagate to the finally
+            except aioredis.ResponseError as exc:
+                # NOGROUP = the group never got created (transient boot failure) or was
+                # deleted → recreate and retry, instead of spinning on the read forever.
+                if "NOGROUP" in str(exc):
+                    logger.warning("wiki-gen read hit NOGROUP — recreating group")
+                    await _ensure_group(client)
+                else:
+                    logger.warning("wiki-gen consume failed: %s", exc)
+                await asyncio.sleep(1.0)
             except Exception as exc:  # noqa: BLE001 — transient redis blip; back off + retry
                 logger.warning("wiki-gen consume failed: %s", exc)
                 await asyncio.sleep(1.0)

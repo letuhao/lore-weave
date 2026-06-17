@@ -111,3 +111,24 @@ async def test_consumer_creates_group_busygroup_safe_and_closes():
         WIKI_GEN_STREAM, wiki_gen_processor.WIKI_GEN_GROUP, id="$", mkstream=True
     )
     client.aclose.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_consumer_recreates_group_on_nogroup():
+    # A NOGROUP read (group never created / deleted) must trigger a recreate, not an
+    # endless read-spin (/review-impl MED-1).
+    client = MagicMock()
+    client.xgroup_create = AsyncMock()  # startup create + the recreate
+    client.xreadgroup = AsyncMock(side_effect=[
+        wiki_gen_processor.aioredis.ResponseError("NOGROUP No such key/group"),
+        asyncio.CancelledError(),  # break the loop after the recreate path
+    ])
+    client.aclose = AsyncMock()
+    with patch.object(wiki_gen_processor, "drain_resumable_jobs", new=AsyncMock()), \
+         patch.object(wiki_gen_processor, "_ensure_group", new=AsyncMock()) as ensure, \
+         patch.object(wiki_gen_processor.asyncio, "sleep", new=AsyncMock()), \
+         patch.object(wiki_gen_processor.aioredis, "from_url", return_value=client):
+        with pytest.raises(asyncio.CancelledError):
+            await wiki_gen_processor.run_wiki_gen_consumer()
+    # _ensure_group called at startup AND again to self-heal the NOGROUP.
+    assert ensure.await_count == 2
