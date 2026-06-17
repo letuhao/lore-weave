@@ -17,15 +17,15 @@
 | **B0** | Correctness sweep (cross-service, small + high-value) | correctness | 7 | M | ✅ 2026-06-16 |
 | **B1** | Jobs GUI telemetry completeness (P4) | telemetry | 9 | L | ✅ 2026-06-17 |
 | **B2** | Jobs control completeness (P3) | feature-gap | 3 | M | ✅ 2026-06-17 |
-| **B3** | Live-smoke sweep — Job Control Plane + P5 | live-smoke | 4 | M | ☐ |
-| **B4a** | Live-smoke sweep — Auto-Draft Factory (S1–S6) | live-smoke | ~17 | L | ☐ |
-| **B4b** | Auto-Draft Factory functional/correctness gaps | feature/correctness | ~10 | L | ☐ |
-| **B5** | Live-smoke sweep — Wiki + Glossary + E0 | live-smoke | ~9 | L | ☐ |
-| **B6** | Translation V3 functional gaps | feature/correctness | ~13 | L | ☐ |
-| **B7** | Knowledge Projects FE (K19) — mobile + filters + polish | feature-gap (FE) | ~20 | L | ☐ |
-| **B8** | Search/Rawsearch + cosmetic cleanup + misc code gaps | mixed/low | ~18 | M | ☐ |
+| **B3** | Live-smoke sweep — Job Control Plane + P5 | live-smoke | 7 | M | ✅ 2026-06-17 (all 7 proven; FULL-E2E belt-suspenders remains low) |
+| **B4a** | Live-smoke sweep — Auto-Draft Factory (S1–S6) | live-smoke | ~17 | L | ☐ (needs 4-svc campaign stack + browser) |
+| **B4b** | Auto-Draft Factory functional/correctness gaps | feature/correctness | ~10 | L | ☐ (not yet scoped) |
+| **B5** | Live-smoke sweep — Wiki + Glossary + E0 | live-smoke | ~9 | L | ☐ (needs stack + browser) |
+| **B6** | Translation V3 functional gaps | feature/correctness | ~13 | L | ✅ 2026-06-17 (3 fixed + 5 verified-resolved; rest low) |
+| **B7** | Knowledge Projects FE (K19) — mobile + filters + polish | feature-gap (FE) | ~20 | L | ◑ reconciled — ~5 already-shipped; rest need design/backend/browser |
+| **B8** | Search/Rawsearch + cosmetic cleanup + misc code gaps | mixed/low | ~18 | M | ◑ partial — D-RERANK-I18N fixed + 3 resolved; rest open |
 
-Recommended order: ~~B0~~ ✅ → ~~B1~~ ✅ → ~~B2~~ ✅ → **B3** (Job Control Plane warm + de-risk money-path), then **B4a/B5** (live-smoke confidence sweeps), then **B4b → B6 → B7 → B8**. **Next open: B3** (+ a NEW finding: glossary-extract pipeline never wired into the control plane — see `D-JOBS-GLOSSARY-EXTRACT-UNWIRED` below; suspected to be one of several un-wired producers — audit needed).
+Recommended order: ~~B0~~ ✅ → ~~B1~~ ✅ → ~~B2~~ ✅ → ~~B3~~ ✅ → ~~B6~~ ✅ → (B7/B8 reconciled). **Remaining open batches: B4a, B4b, B5 (campaign/wiki live-smokes — need the multi-service stack + browser), plus the residual low rows in B7/B8 and the B6 perf-when-pain items.** Per the 2026-06-17 reconciliation, ~40-50% of "open" rows in B6/B7/B8 were already-shipped-but-unticked → the genuine remaining backlog is much smaller than the ~item counts suggest.
 
 ---
 
