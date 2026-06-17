@@ -34,11 +34,14 @@ _MULTI_UNIT_KINDS: frozenset[str] = frozenset({"extraction", "campaign", "enrich
 # Conservative allowlist gated on a working retry endpoint — offering a retry the owner
 # can't honor is worse than not offering it. Honored today:
 #   - translation — re-creates from the stored translation_jobs params (standalone re-run)
-# NOT yet (tracked): composition (D-JOBS-P4-RETRY-COMPOSITION), knowledge (needs stored
-# model-ref UUIDs — D-JOBS-P4-RETRY-KNOWLEDGE), video_gen (D-JOBS-P4-RETRY-VIDEOGEN),
-# lore-enrichment (sync in-process — incompatible with the deferred control contract;
-# D-JOBS-P4-RETRY-LORE).
-_RETRYABLE_KINDS: frozenset[str] = frozenset({"translation"})
+#   - extraction  — knowledge re-runs the failed extraction_jobs row through the full start
+#                   core (re-validates the K17.9 benchmark + budget gates, emits 'running');
+#                   the row carries every StartJobRequest field (D-JOBS-P4-RETRY-KNOWLEDGE)
+# NOT yet (tracked): composition (D-JOBS-P4-RETRY-COMPOSITION — params live in an opaque
+# generation_job.input JSONB), video_gen (D-JOBS-P4-RETRY-VIDEOGEN — input params NOT
+# persisted on the row → needs a schema migration), lore-enrichment (sync in-process —
+# incompatible with the deferred control contract; D-JOBS-P4-RETRY-LORE).
+_RETRYABLE_KINDS: frozenset[str] = frozenset({"translation", "extraction"})
 
 # VIEW-ONLY kinds — visible on the unified Jobs screen but with NO unified control surface,
 # so we offer no caps. book_import is fire-and-forget (book-service has no control endpoint;

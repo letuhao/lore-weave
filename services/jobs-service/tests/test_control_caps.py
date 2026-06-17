@@ -9,19 +9,22 @@ def _vals(caps):
 
 
 def test_terminal_statuses_offer_nothing():
-    # completed/cancelled never offer a cap; failed offers nothing for a NON-retryable kind.
+    # completed/cancelled never offer a cap; failed offers nothing for a NON-retryable kind
+    # (campaign — the saga re-dispatches its own stages, no per-job retry).
     for s in (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED):
-        assert derive_control_caps(s, "extraction") == []
+        assert derive_control_caps(s, "campaign") == []
 
 
-def test_failed_translation_offers_retry():
+def test_failed_retryable_kinds_offer_retry():
     # D-JOBS-P4-RETRY: a failed job of a retry-supported kind offers retry (re-submit).
+    # translation (B1) + extraction (D-JOBS-P4-RETRY-KNOWLEDGE) honor it.
     assert _vals(derive_control_caps(JobStatus.FAILED, "translation")) == ["retry"]
+    assert _vals(derive_control_caps(JobStatus.FAILED, "extraction")) == ["retry"]
 
 
 def test_failed_non_retryable_kind_offers_nothing():
-    # composition/knowledge/video_gen/enrichment retry not wired yet → no retry button.
-    for kind in ("extraction", "campaign", "video_gen", "enrichment_job", "generate"):
+    # composition/video_gen/enrichment/lore retry not wired yet → no retry button.
+    for kind in ("campaign", "video_gen", "enrichment_job", "generate"):
         assert derive_control_caps(JobStatus.FAILED, kind) == []
 
 

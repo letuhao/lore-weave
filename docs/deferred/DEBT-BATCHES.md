@@ -53,11 +53,11 @@ Make the unified jobs dashboard show complete cost/model/tokens for **every** ki
 Shipped as 4 milestones (plan `docs/plans/2026-06-16-b1-jobs-telemetry.md`): M1 model-names+spend
 (`92850509`/`2e2c8977`) · M2 translation cost (`7354ce5b`) · M3 summary+overlay (`f3fe9430`) ·
 M4 retry=re-submit (this commit). **All 9 items done.** Retry shipped for **translation** only;
-the other kinds are tracked deferrals (each needs its own work — see Park/below):
-`D-JOBS-P4-RETRY-COMPOSITION` (clean — input JSONB; just not wired), `D-JOBS-P4-RETRY-KNOWLEDGE`
-(needs stored model-ref UUIDs / a request_json blob), `D-JOBS-P4-RETRY-VIDEOGEN` (map the
-submit-then-create path), `D-JOBS-P4-RETRY-LORE` (sync in-process → incompatible with the
-deferred control contract; re-arch or leave as manual re-submit). Live-smoke → `D-B1-LIVE-SMOKE` (B3).
+the other kinds were tracked deferrals; status after the 2026-06-17 retry-extension run:
+- `D-JOBS-P4-RETRY-KNOWLEDGE` — ✅ **DONE 2026-06-17**. `extraction` ∈ `_RETRYABLE_KINDS`; knowledge `control_extraction_job` routes `retry` → `_retry_extraction_job_core` (owner-scoped 404, 409 unless `failed`, 409 if campaign-managed) which reconstructs `StartJobRequest` from the failed row (carries every field) and re-runs `_start_extraction_job_core` — RE-VALIDATES the K17.9 benchmark + budget gates, emits `running`, wakes worker. Tests: jobs-service caps + knowledge 4 (happy/404/409-not-failed/409-campaign). Live-smoke → `D-B1-LIVE-SMOKE` (B3; the forward path was proven by `D-SECONDARY-KIND-CONTROL`, the start core by the P5 smokes).
+- `D-JOBS-P4-RETRY-COMPOSITION` (clean — `generation_job.input` JSONB carries params; same pattern, just not yet wired) — **next clean candidate.**
+- `D-JOBS-P4-RETRY-VIDEOGEN` — 🔴 **BLOCKED**: `video_gen_jobs` persists NO input params on the row → needs a schema migration + backfill (→ /amaw) before a retry can reconstruct.
+- `D-JOBS-P4-RETRY-LORE` — 🔴 **BLOCKED**: lore-enrichment runs synchronously in-process → incompatible with the deferred-control contract; needs the async-decouple refactor (XL).
 `D-JOBS-P4-RETRY-CAMPAIGN-GATE` (low) — a campaign-dispatched translation job's Retry button
 still renders (the cap-gate can't see `campaign_id` — not on the projection); clicking it safely
 409s (`TRANSL_CAMPAIGN_MANAGED`). Hiding the button needs the projection to carry campaign
@@ -131,13 +131,15 @@ The campaign 4-service stack: bring up once, run the chain. The single biggest l
 
 ## B4b — Auto-Draft Factory functional / correctness gaps
 
+**Reconciliation 2026-06-17 (verified vs code):** 3 of the top rows are ALREADY DONE; the 2 remaining mediums are low-value/migration-gated.
+
 | ID | Description | sev |
 |---|---|---|
-| `D-CAMPAIGN-CANCEL-PROP` | propagate campaign cancel to in-flight jobs | med |
-| `D-CAMPAIGN-BREAKER-PAUSE` | auto-pause campaign on provider circuit-open | med |
-| `D-S4-SUMMARY-ATTRIBUTION` / `D-S4A-SUMMARY-COST` | thread summary-generation LLM spend attribution | med |
-| `D-S5BEVAL-LEARNING-OUTBOX` | transactional outbox for `eval_judged` emit | med |
-| `D-CAMPAIGN-KPROJECT-OWNERSHIP` | pre-validate campaign user owns the knowledge project | low |
+| `D-CAMPAIGN-CANCEL-PROP` | ✅ **DONE (verified 2026-06-17)** — `saga/driver.py` `_propagate_cancel` posts cancel to the stamped translation + knowledge child jobs on `cancelling` (best-effort, idempotent). | med |
+| `D-CAMPAIGN-BREAKER-PAUSE` | ✅ **DONE (verified 2026-06-17)** — campaign consumer watches worker `*.failed` events carrying a circuit-open error_code → auto-pauses the campaign. | med |
+| `D-S4-SUMMARY-ATTRIBUTION` / `D-S4A-SUMMARY-COST` | thread summary-generation LLM spend attribution — **OPEN but perf-later**: knowledge summary-gen runs in its own llm_client without the campaign contextvar → spend is UNDER-counted (not mis-attributed), inert until S4d cost accounting matters. S, no migration. | med |
+| `D-S5BEVAL-LEARNING-OUTBOX` | transactional outbox for `eval_judged` emit — **OPEN, best-effort-OK**: current emit is a non-transactional XADD; a lost emit drops a fidelity score (telemetry only). Making it durable needs an **outbox table migration** (→ /amaw). Implement only if the score becomes a health/audit metric. | med |
+| `D-CAMPAIGN-KPROJECT-OWNERSHIP` | ✅ **DONE (verified 2026-06-17)** — campaign `create` re-checks `ProjectsRepo.get(user_id, project_id)` → fail-closed if not owned. | low |
 | `D-CAMPAIGN-CONSUMER-NO-DLQ` | projection consumer drops on error, no DLQ | low |
 | `D-S3A-INTERACTIVE-GOVERNANCE` | wrap interactive stream + media workers in the governor | low |
 | `D-RERANK-COHERE-SHAPE` / `D-RERANK-LOCAL-NOKEY` | non-Cohere rerank adapter shapes + local empty-secret parity | low |

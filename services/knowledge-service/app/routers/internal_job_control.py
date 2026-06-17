@@ -27,13 +27,25 @@ from app.db.repositories.wiki_gen_jobs import WikiGenJobsRepo
 # Canonical JobStatus values — a reconcile row whose status isn't one of these (the
 # reserved `summarizing`) is skipped rather than shipped as an unparseable status.
 _CANONICAL_STATUSES = frozenset(s.value for s in JobStatus)
+from app.db.repositories.benchmark_runs import BenchmarkRunsRepo
 from app.db.repositories.projects import ProjectsRepo
-from app.deps import get_extraction_jobs_repo, get_knowledge_pool, get_projects_repo
+from app.deps import (
+    get_benchmark_runs_repo,
+    get_extraction_jobs_repo,
+    get_extraction_wake,
+    get_knowledge_pool,
+    get_projects_repo,
+)
+from app.jobs.extraction_wake import ExtractionWakeFn
 from app.jobs.wiki_gen_enqueue import enqueue_wiki_gen  # wiki resume re-enqueue (parity w/ native)
 from app.routers.internal_wiki import _redis  # shared lazy redis client for the wiki-gen XADD
 from app.middleware.internal_auth import require_internal_token
 from app.middleware.trace_id import trace_id_var
-from app.routers.public.extraction import _validate_or_409
+from app.routers.public.extraction import (
+    StartJobRequest,
+    _start_extraction_job_core,
+    _validate_or_409,
+)
 
 router = APIRouter(
     prefix="/internal/knowledge/jobs",
@@ -139,6 +151,8 @@ async def control_extraction_job(
     payload: JobControlPayload,
     jobs_repo: ExtractionJobsRepo = Depends(get_extraction_jobs_repo),
     projects_repo: ProjectsRepo = Depends(get_projects_repo),
+    benchmark_repo: BenchmarkRunsRepo = Depends(get_benchmark_runs_repo),
+    extraction_wake: ExtractionWakeFn = Depends(get_extraction_wake),
 ) -> JobControlResponse:
     # wiki_gen dispatch (D-JOBS-SECONDARY-KIND-CONTROL) — knowledge's batch wiki-gen producer.
     # Native control: cancel a not-yet-running job (pending|paused) + resume (paused). A
@@ -146,6 +160,12 @@ async def control_extraction_job(
     # D-WIKI-M7B-RUNNING-CANCEL). The repo methods are owner-blind, so re-verify owner here (M4).
     if payload.kind == "wiki_gen":
         return await _control_wiki_gen_job(job_id, action, payload.owner_user_id)
+    # D-JOBS-P4-RETRY-KNOWLEDGE — re-submit a failed extraction job as a fresh one.
+    if action == "retry":
+        return await _retry_extraction_job_core(
+            job_id, payload.owner_user_id,
+            jobs_repo, projects_repo, benchmark_repo, extraction_wake,
+        )
     if action not in _ACTIONS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -211,3 +231,61 @@ async def _control_wiki_gen_job(job_id: UUID, action: str, owner_user_id: UUID) 
         # (skip-done handles partial progress).
         await enqueue_wiki_gen(_redis(), str(job_id))
     return JobControlResponse(job_id=job_id, status="cancelled" if action == "cancel" else "pending")
+
+
+async def _retry_extraction_job_core(
+    job_id: UUID,
+    owner_user_id: UUID,
+    jobs_repo: ExtractionJobsRepo,
+    projects_repo: ProjectsRepo,
+    benchmark_repo: BenchmarkRunsRepo,
+    extraction_wake: ExtractionWakeFn,
+) -> JobControlResponse:
+    """D-JOBS-P4-RETRY-KNOWLEDGE — re-submit a FAILED extraction job as a FRESH job (new
+    job_id), reusing the failed row's scope/models/range/targets. Mirrors translation's
+    `_retry_job_core`: owner-scoped (404 if not owned — `get` is owner-scoped), 409 unless
+    `failed` (retry is only offered there), 409 if campaign-managed (the campaign saga
+    re-dispatches its own failed stages + owns the spend — a standalone user retry would
+    detach + risk double-spend).
+
+    The failed row carries EVERY `StartJobRequest` field, so we reconstruct it and run the
+    full `_start_extraction_job_core` — which RE-VALIDATES the K17.9 benchmark + monthly-budget
+    gates (a retry that can no longer pass them 409s, exactly like a fresh start), creates +
+    starts the job, emits the 'running' lifecycle event, and best-effort wakes worker-ai. The
+    failed row stays as history. campaign_id is NOT carried (standalone re-run)."""
+    job = await jobs_repo.get(owner_user_id, job_id)
+    if job is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "JOBS_NOT_FOUND", "message": "job not found"},
+        )
+    if job.status != "failed":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "JOBS_NOT_RETRYABLE",
+                    "message": f"only a failed job can be retried (status='{job.status}')"},
+        )
+    if job.campaign_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "JOBS_CAMPAIGN_MANAGED",
+                    "message": "this extraction job is managed by its campaign — "
+                               "retry the campaign, not the job"},
+        )
+    body = StartJobRequest(
+        scope=job.scope,
+        scope_range=job.scope_range,
+        llm_model=job.llm_model,
+        embedding_model=job.embedding_model,
+        max_spend_usd=job.max_spend_usd,
+        items_total=job.items_total,
+        targets=job.targets,
+        concurrency_level=job.concurrency_level,
+        pinned_glossary_entity_ids=job.pinned_entity_ids,
+    )
+    new_job = await _start_extraction_job_core(
+        job.project_id, body, owner_user_id,
+        projects_repo, jobs_repo, benchmark_repo,
+        extraction_wake=extraction_wake,
+    )
+    return JobControlResponse(job_id=new_job.job_id, status=new_job.status)

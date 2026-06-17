@@ -177,6 +177,76 @@ async def test_wiki_gen_bad_action_400(monkeypatch):
     repo.get.assert_not_awaited()  # bad action rejected before any lookup
 
 
+# ── D-JOBS-P4-RETRY-KNOWLEDGE — re-submit a failed extraction job ──────────────
+
+NEW_JOB = UUID("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee")
+
+
+def _failed_extraction_job(*, status="failed", campaign_id=None):
+    """An ExtractionJob-shaped row carrying every StartJobRequest field."""
+    return SimpleNamespace(
+        job_id=JOB, user_id=USER, project_id=PROJ, status=status,
+        scope="chapters", scope_range=None, llm_model="llm-ref", embedding_model="emb-ref",
+        max_spend_usd=None, items_total=None, targets=None, concurrency_level=None,
+        pinned_entity_ids=None, campaign_id=campaign_id,
+    )
+
+
+def _patch_start_core(monkeypatch):
+    start = AsyncMock(return_value=SimpleNamespace(job_id=NEW_JOB, status="running"))
+    monkeypatch.setattr(ijc, "_start_extraction_job_core", start)
+    return start
+
+
+async def test_retry_failed_resubmits_fresh_job(monkeypatch):
+    start = _patch_start_core(monkeypatch)
+    jobs = AsyncMock()
+    jobs.get = AsyncMock(return_value=_failed_extraction_job())
+    resp = await control_extraction_job(
+        JOB, "retry", JobControlPayload(owner_user_id=USER),
+        jobs, AsyncMock(), AsyncMock(), AsyncMock())
+    assert resp.job_id == NEW_JOB and resp.status == "running"
+    start.assert_awaited_once()
+    # the reconstructed body reuses the failed row's scope + model refs
+    body = start.call_args.args[1]
+    assert body.scope == "chapters" and body.llm_model == "llm-ref"
+
+
+async def test_retry_not_owned_404(monkeypatch):
+    _patch_start_core(monkeypatch)
+    jobs = AsyncMock()
+    jobs.get = AsyncMock(return_value=None)  # owner-scoped get → not found
+    with pytest.raises(HTTPException) as exc:
+        await control_extraction_job(
+            JOB, "retry", JobControlPayload(owner_user_id=OTHER),
+            jobs, AsyncMock(), AsyncMock(), AsyncMock())
+    assert exc.value.status_code == 404
+
+
+async def test_retry_non_failed_409(monkeypatch):
+    start = _patch_start_core(monkeypatch)
+    jobs = AsyncMock()
+    jobs.get = AsyncMock(return_value=_failed_extraction_job(status="running"))
+    with pytest.raises(HTTPException) as exc:
+        await control_extraction_job(
+            JOB, "retry", JobControlPayload(owner_user_id=USER),
+            jobs, AsyncMock(), AsyncMock(), AsyncMock())
+    assert exc.value.status_code == 409
+    start.assert_not_awaited()  # never reaches the create core
+
+
+async def test_retry_campaign_managed_409(monkeypatch):
+    start = _patch_start_core(monkeypatch)
+    jobs = AsyncMock()
+    jobs.get = AsyncMock(return_value=_failed_extraction_job(campaign_id=PROJ))
+    with pytest.raises(HTTPException) as exc:
+        await control_extraction_job(
+            JOB, "retry", JobControlPayload(owner_user_id=USER),
+            jobs, AsyncMock(), AsyncMock(), AsyncMock())
+    assert exc.value.status_code == 409
+    start.assert_not_awaited()
+
+
 async def test_concurrent_change_409():
     jobs, projects = _repos(_job())
     jobs.update_status = AsyncMock(return_value=None)  # CAS lost
