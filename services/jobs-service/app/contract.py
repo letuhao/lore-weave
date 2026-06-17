@@ -44,13 +44,16 @@ _RETRYABLE_KINDS: frozenset[str] = frozenset({"translation"})
 # reconciles) but NOT yet control-wired in the unified plane, so we offer NO control
 # caps (a Cancel/Resume button that 404s is worse than none). These are SECONDARY kinds
 # whose owning service's P3 control endpoint handles only its PRIMARY job table:
-#   - glossary_extraction — translation control endpoint handles `translation_jobs`, not
-#                            `extraction_jobs` (Slice A — D-JOBS-GLOSSARY-EXTRACT-UNWIRED).
-#   - wiki_gen            — knowledge control endpoint handles `extraction_jobs`, not
-#                            `wiki_gen_jobs` (Slice C — D-JOBS-WIKI-GEN-UNWIRED).
-# Users control these via their native panels (extraction wizard / wiki panel) today;
-# unified-plane control wiring is tracked (D-JOBS-SECONDARY-KIND-CONTROL).
-_VIEW_ONLY_KINDS: frozenset[str] = frozenset({"glossary_extraction", "wiki_gen"})
+#   - glossary_extraction  — translation control endpoint handles `translation_jobs`, not
+#                             `extraction_jobs` (Slice A — D-JOBS-GLOSSARY-EXTRACT-UNWIRED).
+#   - glossary_translation — translation control endpoint handles `translation_jobs`, not
+#                             `glossary_translation_jobs` (Slice B — D-JOBS-GLOSSARY-TRANSLATE-UNWIRED).
+#   - wiki_gen             — knowledge control endpoint handles `extraction_jobs`, not
+#                             `wiki_gen_jobs` (Slice C — D-JOBS-WIKI-GEN-UNWIRED).
+# Users control these via their native panels (extraction/translate wizard / wiki panel)
+# today; unified-plane control wiring is tracked (D-JOBS-SECONDARY-KIND-CONTROL).
+_VIEW_ONLY_KINDS: frozenset[str] = frozenset(
+    {"glossary_extraction", "glossary_translation", "wiki_gen"})
 
 
 def _is_multi_unit(kind: str) -> bool:

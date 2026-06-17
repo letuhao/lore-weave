@@ -6,7 +6,17 @@ from uuid import uuid4
 
 import pytest
 
+import app.workers.glossary_translate_worker as gtw
 from app.workers.glossary_translate_worker import _run_job
+
+
+@pytest.fixture(autouse=True)
+def _stub_emit(monkeypatch):
+    """Patch the best-effort emit so it doesn't touch the mock pool; tests that care
+    about the lifecycle emits assert against this spy."""
+    spy = AsyncMock()
+    monkeypatch.setattr(gtw, "emit_job_event_safe", spy)
+    return spy
 
 
 class _AcquireCM:
@@ -258,12 +268,15 @@ async def test_thinking_enabled_passes_llm_kwargs():
 
 
 @pytest.mark.asyncio
-async def test_cancelled_glossary_job_is_not_clobbered_and_does_no_work():
+async def test_cancelled_glossary_job_is_not_clobbered_and_does_no_work(_stub_emit):
     """Cancel-safe claim (same fix as extraction): a cancelled/terminal job is NOT
     re-armed to running; the handler settles + returns so the AMQP message is ACKed
-    instead of looping. Guard fails when the claim UPDATE matches nothing (fetchval None)."""
+    instead of looping. The settle is now a guarded `fetchval … RETURNING job_id`, so the
+    worker emits 'cancelled' ONLY when it actually flipped a cancelling row."""
+    job_id = uuid4()
     db = AsyncMock()
-    db.fetchval = AsyncMock(return_value=None)  # guarded claim matches nothing
+    # claim matches nothing (None); settle flips a 'cancelling' row → RETURNING job_id.
+    db.fetchval = AsyncMock(side_effect=[None, job_id])
     db.execute = AsyncMock()
     db.fetchrow = AsyncMock(return_value={"status": "cancelling"})
     pool = MagicMock()
@@ -276,11 +289,81 @@ async def test_cancelled_glossary_job_is_not_clobbered_and_does_no_work():
     ) as fetch:
         await _run_job(
             {"book_id": "b", "target_language": "vi", "metadata": {}},
-            uuid4(), "u", pool, publish, MagicMock(),
+            job_id, "u", pool, publish, MagicMock(),
         )
 
     fetch.assert_not_awaited()  # never fetched candidates → no work / no LLM
-    assert any("status='cancelled'" in str(c.args[0]) for c in db.execute.await_args_list)
-    assert any(c.args[1].get("payload", {}).get("status") == "cancelled" for c in publish.await_args_list)
+    # the settle ran as a guarded RETURNING fetchval (claim sql first, settle sql second)
     claim_sql = db.fetchval.await_args_list[0].args[0]
     assert "status NOT IN" in claim_sql and "RETURNING owner_user_id" in claim_sql
+    settle_sql = db.fetchval.await_args_list[1].args[0]
+    assert "status='cancelled'" in settle_sql and "RETURNING job_id" in settle_sql
+    # emitted 'cancelled' (settle flipped a real cancelling row) + published it
+    assert any(c.kwargs.get("status") == "cancelled" for c in _stub_emit.await_args_list)
+    assert all(c.kwargs.get("kind") == "glossary_translation" for c in _stub_emit.await_args_list)
+    assert any(c.args[1].get("payload", {}).get("status") == "cancelled" for c in publish.await_args_list)
+
+
+@pytest.mark.asyncio
+async def test_already_terminal_job_emits_no_cancelled(_stub_emit):
+    """Claim None AND settle None (already completed/failed, not 'cancelling') → the worker
+    must NOT emit a spurious 'cancelled' (mirrors extraction_worker's guarded settle)."""
+    db = AsyncMock()
+    db.fetchval = AsyncMock(side_effect=[None, None])  # claim None, settle None
+    db.execute = AsyncMock()
+    db.fetchrow = AsyncMock(return_value={"status": "completed"})
+    pool = MagicMock()
+    pool.acquire = MagicMock(return_value=_AcquireCM(db))
+    publish = AsyncMock()
+
+    with patch(
+        "app.workers.glossary_translate_worker.fetch_translation_candidates",
+        new=AsyncMock(return_value={"items": [], "total": 0}),
+    ):
+        await _run_job(
+            {"book_id": "b", "target_language": "vi", "metadata": {}},
+            uuid4(), "u", pool, publish, MagicMock(),
+        )
+
+    _stub_emit.assert_not_awaited()  # nothing flipped → no terminal emit
+
+
+@pytest.mark.asyncio
+async def test_running_and_terminal_emitted_for_glossary_translation(_stub_emit):
+    """Happy path emits running (on claim) + completed (on finalize), kind=glossary_translation,
+    with the summed tokens on the terminal."""
+    job_id = uuid4()
+    book_id = str(uuid4())
+    e1 = str(uuid4())
+
+    async def fake_fetch(*_a, **_kw):
+        # one page with one entity, then empty so the loop terminates
+        if not getattr(fake_fetch, "called", False):
+            fake_fetch.called = True
+            return {"total": 1, "items": [_entity(e1)]}
+        return {"total": 0, "items": []}
+
+    pool, _ = _make_pool()
+    llm = AsyncMock()
+    llm.submit_and_wait = AsyncMock(return_value=_llm_ok())
+    publish = AsyncMock()
+    msg = {
+        "book_id": book_id, "target_language": "vi", "source_language": "zh",
+        "model_source": "user_model", "model_ref": str(uuid4()),
+        "overwrite_mode": "missing_only", "metadata": {},
+    }
+    with (
+        patch("app.workers.glossary_translate_worker.fetch_translation_candidates",
+              new=AsyncMock(side_effect=fake_fetch)),
+        patch("app.workers.glossary_translate_worker.post_apply_translations",
+              new=AsyncMock(return_value={"translated": 1, "skipped_verified": 0,
+                                          "skipped_empty": 0, "failed": []})),
+    ):
+        await _run_job(msg, job_id, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", pool, publish, llm)
+
+    emitted = [c.kwargs.get("status") for c in _stub_emit.await_args_list]
+    assert "running" in emitted and "completed" in emitted
+    assert all(c.kwargs.get("kind") == "glossary_translation" for c in _stub_emit.await_args_list)
+    # terminal carried summed tokens (10 in / 5 out from _llm_ok)
+    term = [c for c in _stub_emit.await_args_list if c.kwargs.get("status") == "completed"][-1]
+    assert term.kwargs.get("tokens_in") == 10 and term.kwargs.get("tokens_out") == 5

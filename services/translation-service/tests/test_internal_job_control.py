@@ -116,6 +116,24 @@ def test_reconcile_includes_glossary_extraction(client, fake_pool):
     assert p["status"] == "completed"  # completed_with_errors → completed
 
 
+def test_reconcile_includes_glossary_translation(client, fake_pool):
+    # D-JOBS-GLOSSARY-TRANSLATE-UNWIRED: the reconcile UNION also surfaces glossary batch
+    # translation jobs (kind='glossary_translation'); 'failed' carries a kind-scoped error.
+    from datetime import datetime, timezone
+    ts = datetime(2026, 6, 17, tzinfo=timezone.utc)
+    fake_pool.fetch.return_value = [
+        {"job_id": JOB, "owner_user_id": OWNER, "status": "failed",
+         "error_message": "boom", "kind": "glossary_translation", "ts": ts},
+    ]
+    r = client.get("/internal/translation/jobs", params={"since": ts.isoformat()},
+                   headers={"X-Internal-Token": TOKEN})
+    assert r.status_code == 200
+    p = r.json()["jobs"][0]
+    assert p["service"] == "translation" and p["kind"] == "glossary_translation"
+    assert p["status"] == "failed"
+    assert p["error"] == {"code": "glossary_translation_failed", "message": "boom"}
+
+
 def test_reconcile_requires_internal_token(client):
     r = client.get("/internal/translation/jobs", params={"since": "2026-06-15T00:00:00+00:00"})
     assert r.status_code == 401

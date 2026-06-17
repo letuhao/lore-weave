@@ -14,6 +14,7 @@
     "glossary_extraction": "Glossary extraction",
     "wiki_gen": "Wiki generation",
     "translation": "Translation",
+    "glossary_translation": "Glossary translation",
     "video_gen": "Video generation",
     "campaign": "Campaign",
     "enrichment_job": "Lore enrichment",

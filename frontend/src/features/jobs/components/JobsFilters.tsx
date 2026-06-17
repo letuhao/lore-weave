@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next';
 
 // Known kinds across services (open-ended; the list still shows any kind). Values
 // match the projection's `kind` column so the BE filter is exact.
-const KINDS = ['extraction', 'glossary_extraction', 'wiki_gen', 'translation', 'composition.generate', 'video_gen', 'campaign', 'enrichment_job'];
+const KINDS = ['extraction', 'glossary_extraction', 'wiki_gen', 'translation', 'glossary_translation', 'composition.generate', 'video_gen', 'campaign', 'enrichment_job'];
 
 /** Filter bar (view): a kind select + a WIDENED search box (title · kind · service ·
  *  model · job ID — debounced upstream). Status is owned by the summary-card

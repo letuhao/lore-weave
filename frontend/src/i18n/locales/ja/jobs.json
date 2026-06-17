@@ -14,6 +14,7 @@
     "glossary_extraction": "用語集抽出",
     "wiki_gen": "Wiki生成",
     "translation": "翻訳",
+    "glossary_translation": "用語集翻訳",
     "video_gen": "動画生成",
     "campaign": "キャンペーン",
     "enrichment_job": "ロア拡充",

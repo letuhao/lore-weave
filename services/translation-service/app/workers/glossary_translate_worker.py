@@ -16,6 +16,8 @@ from loreweave_llm.errors import (
     LLMTransientRetryNeededError,
 )
 
+from loreweave_jobs import emit_job_event_safe
+
 from ..llm_client import LLMClient
 from .glossary_client import fetch_translation_candidates, post_apply_translations
 from .glossary_translate_prompt import (
@@ -28,6 +30,16 @@ from .llm_thinking import thinking_llm_fields
 log = logging.getLogger(__name__)
 
 _PAGE_SIZE = 25
+
+# Unified Job Control Plane (producer-emit backfill, D-JOBS-GLOSSARY-TRANSLATE-UNWIRED).
+# Glossary batch translation is hosted in translation-service; it surfaces in the unified
+# Jobs screen as service="translation", kind="glossary_translation" (DISTINCT from the
+# "translation" chapter pipeline + "glossary_extraction"). The create endpoint emits
+# 'pending' in-tx; this worker emits running/terminal/cancelled best-effort post-commit
+# (emit_job_event_safe — a failed emit must not crash the run; the reconcile UNION in
+# internal_dispatch.py is the H1 backstop).
+_JOB_SERVICE = "translation"
+_JOB_KIND = "glossary_translation"
 
 
 async def handle_glossary_translate_job(
@@ -46,6 +58,11 @@ async def handle_glossary_translate_job(
                    WHERE job_id=$1""",
                 job_id, str(exc)[:500],
             )
+        await emit_job_event_safe(
+            pool, service=_JOB_SERVICE, job_id=str(job_id), owner_user_id=str(user_id),
+            kind=_JOB_KIND, status="failed",
+            error={"code": "glossary_translation_failed", "message": str(exc)[:500]},
+        )
         await publish_event(user_id, {
             "event": "job.status_changed",
             "job_id": str(job_id),
@@ -81,14 +98,22 @@ async def _run_job(
             "RETURNING owner_user_id",
             job_id,
         )
+        settled = None
         if owner_user_id is None:
-            await db.execute(
+            settled = await db.fetchval(
                 "UPDATE glossary_translation_jobs SET status='cancelled', finished_at=now() "
-                "WHERE job_id=$1 AND status='cancelling'",
+                "WHERE job_id=$1 AND status='cancelling' RETURNING job_id",
                 job_id,
             )
     if owner_user_id is None:
         log.info("glossary_translate: job %s not runnable (cancelled/terminal) — acking, no work", job_id)
+        # Emit 'cancelled' ONLY if we actually flipped a cancelling row — an already-terminal
+        # job matched nothing and must not be re-marked cancelled (mirrors extraction_worker).
+        if settled is not None:
+            await emit_job_event_safe(
+                pool, service=_JOB_SERVICE, job_id=str(job_id), owner_user_id=str(user_id),
+                kind=_JOB_KIND, status="cancelled",
+            )
         await publish_event(user_id, {
             "event": "job.status_changed",
             "job_id": str(job_id),
@@ -97,6 +122,11 @@ async def _run_job(
         })
         return
 
+    # claimed → running: emit the running transition (best-effort, post-claim).
+    await emit_job_event_safe(
+        pool, service=_JOB_SERVICE, job_id=str(job_id), owner_user_id=str(user_id),
+        kind=_JOB_KIND, status="running",
+    )
     await publish_event(user_id, {
         "event": "job.status_changed",
         "job_id": str(job_id),
@@ -125,6 +155,10 @@ async def _run_job(
                     "UPDATE glossary_translation_jobs SET status='cancelled', finished_at=now() WHERE job_id=$1",
                     job_id,
                 )
+            await emit_job_event_safe(
+                pool, service=_JOB_SERVICE, job_id=str(job_id), owner_user_id=str(user_id),
+                kind=_JOB_KIND, status="cancelled",
+            )
             await publish_event(user_id, {
                 "event": "job.status_changed",
                 "job_id": str(job_id),
@@ -289,6 +323,13 @@ async def _run_job(
             attrs_translated, attrs_skipped, total_in, total_out,
         )
 
+    # Terminal emit — both natives map to the canonical 'completed' (completed_with_errors
+    # is still a finished run); carry the summed tokens. The projection rejects a 2nd terminal.
+    await emit_job_event_safe(
+        pool, service=_JOB_SERVICE, job_id=str(job_id), owner_user_id=str(user_id),
+        kind=_JOB_KIND, status="completed",
+        tokens_in=total_in or None, tokens_out=total_out or None,
+    )
     await publish_event(user_id, {
         "event": "job.status_changed",
         "job_id": str(job_id),

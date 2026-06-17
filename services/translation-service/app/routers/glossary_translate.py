@@ -7,16 +7,24 @@ from uuid import UUID
 import asyncpg
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
+from loreweave_jobs import emit_job_event
 from pydantic import BaseModel, Field
 
 from ..broker import publish
 from ..config import settings as app_settings
 from ..deps import get_current_user, get_db
 from ..grant_deps import GrantLevel, authorize_book, get_grant_client_dep, require_book_grant
+from ..model_name import resolve_model_name
 from ..workers.glossary_client import fetch_translation_candidates
 from ..workers.glossary_translate_prompt import estimate_glossary_translate_cost
 
 router = APIRouter(prefix="/v1/glossary-translate", tags=["glossary-translate-jobs"])
+
+# Unified Job Control Plane (producer-emit backfill, D-JOBS-GLOSSARY-TRANSLATE-UNWIRED).
+# Surfaces as service="translation", kind="glossary_translation". The create endpoint emits
+# 'pending'/'cancelling' in-tx (H1); the worker emits running/terminal/cancelled.
+_JOB_SERVICE = "translation"
+_JOB_KIND = "glossary_translation"
 
 
 class CreateGlossaryTranslatePayload(BaseModel):
@@ -122,19 +130,40 @@ async def create_glossary_translate_job(
         "thinking_enabled": payload.thinking_enabled,
     }
 
-    job_row = await db.fetchrow(
-        """
-        INSERT INTO glossary_translation_jobs
-          (book_id, owner_user_id, status, source_language, target_language,
-           model_source, model_ref, overwrite_mode, metadata, total_entities, cost_estimate)
-        VALUES ($1,$2,'pending',$3,$4,$5,$6,$7,$8,$9,$10)
-        RETURNING job_id
-        """,
-        book_id, uid, source_language, payload.target_language,
-        model_source, model_ref, payload.overwrite_mode,
-        json.dumps(metadata), entity_count, json.dumps(cost_estimate),
-    )
-    job_id = job_row["job_id"]
+    # P4 — resolve the human model NAME (best-effort) for the 'pending' event + a
+    # whitelisted params dict for the Jobs GUI. None on any failure (GUI is null-safe).
+    model_name = await resolve_model_name(model_source, str(model_ref))
+    job_params = {
+        "model": model_name,
+        "model_ref": str(model_ref),
+        "source_language": source_language,
+        "target_language": payload.target_language,
+        "overwrite_mode": payload.overwrite_mode,
+        "thinking_enabled": payload.thinking_enabled,
+    }
+
+    # INSERT + emit the 'pending' lifecycle event in ONE tx (H1: the JobEvent commits
+    # atomically with the row) so the job is visible on the unified Jobs screen from creation.
+    async with db.acquire() as conn:
+        async with conn.transaction():
+            job_row = await conn.fetchrow(
+                """
+                INSERT INTO glossary_translation_jobs
+                  (book_id, owner_user_id, status, source_language, target_language,
+                   model_source, model_ref, overwrite_mode, metadata, total_entities, cost_estimate)
+                VALUES ($1,$2,'pending',$3,$4,$5,$6,$7,$8,$9,$10)
+                RETURNING job_id
+                """,
+                book_id, uid, source_language, payload.target_language,
+                model_source, model_ref, payload.overwrite_mode,
+                json.dumps(metadata), entity_count, json.dumps(cost_estimate),
+            )
+            job_id = job_row["job_id"]
+            await emit_job_event(
+                conn, service=_JOB_SERVICE, job_id=str(job_id),
+                owner_user_id=str(uid), kind=_JOB_KIND, status="pending",
+                model=model_name, params=job_params,
+            )
 
     await publish("glossary_translate.job", {
         "job_id": str(job_id),
@@ -166,7 +195,7 @@ async def cancel_glossary_translate_job(
     db: asyncpg.Pool = Depends(get_db),
 ):
     row = await db.fetchrow(
-        "SELECT status, book_id FROM glossary_translation_jobs WHERE job_id=$1", job_id,
+        "SELECT status, book_id, owner_user_id FROM glossary_translation_jobs WHERE job_id=$1", job_id,
     )
     if not row:
         raise HTTPException(status_code=404, detail={"code": "GT_JOB_NOT_FOUND", "message": "Job not found"})
@@ -178,9 +207,17 @@ async def cancel_glossary_translate_job(
             detail={"code": "GT_JOB_NOT_CANCELLABLE", "message": f"Job is {row['status']}"},
         )
 
-    await db.execute(
-        "UPDATE glossary_translation_jobs SET status='cancelling' WHERE job_id=$1", job_id,
-    )
+    # UPDATE → 'cancelling' + emit the transition in one tx (H1). The worker settles it to
+    # 'cancelled' (claim-time or mid-loop) and emits the terminal. Owner from the row.
+    async with db.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute(
+                "UPDATE glossary_translation_jobs SET status='cancelling' WHERE job_id=$1", job_id,
+            )
+            await emit_job_event(
+                conn, service=_JOB_SERVICE, job_id=str(job_id),
+                owner_user_id=str(row["owner_user_id"]), kind=_JOB_KIND, status="cancelling",
+            )
     return CancelJobResponse(job_id=str(job_id), status="cancelling")
 
 

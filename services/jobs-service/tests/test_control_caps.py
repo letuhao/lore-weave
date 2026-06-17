@@ -73,7 +73,7 @@ def test_unknown_kind_defaults_to_cancel_only_when_running():
 def test_view_only_kinds_offer_no_control_in_any_state():
     # Slice A/C (D-JOBS-{GLOSSARY-EXTRACT,WIKI-GEN}-UNWIRED): visible but not control-wired
     # in the unified plane → NO caps in ANY state (a Cancel that 404s is worse than none).
-    for kind in ("glossary_extraction", "wiki_gen"):
+    for kind in ("glossary_extraction", "glossary_translation", "wiki_gen"):
         for s in (JobStatus.PENDING, JobStatus.RUNNING, JobStatus.PAUSED,
                   JobStatus.FAILED, JobStatus.COMPLETED, JobStatus.CANCELLED):
             assert derive_control_caps(s, kind) == [], f"{kind}/{s} should be view-only"

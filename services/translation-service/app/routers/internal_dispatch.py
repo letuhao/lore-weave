@@ -346,12 +346,13 @@ async def reconcile_jobs(
     ALL owners. UNIONs every translation-service job table (one `kind` each) so each is
     covered by the same single reconcile source: `translation_jobs` (kind `translation`) +
     `extraction_jobs` (glossary-extract, kind `glossary_extraction`,
-    D-JOBS-GLOSSARY-EXTRACT-UNWIRED). Status normalization to canonical: `partial` /
-    `completed_with_errors` → `completed` (the job finished with some per-unit failures —
-    mirrors the workers' terminal emit). The effective-ts expression is shared (both tables
-    have created_at/started_at/finished_at). NOTE: the per-source watermark is shared across
-    the unioned kinds, so a burst in one table can delay the other's reconcile — acceptable
-    for a backstop (the live emit is primary)."""
+    D-JOBS-GLOSSARY-EXTRACT-UNWIRED) + `glossary_translation_jobs` (glossary batch translate,
+    kind `glossary_translation`, D-JOBS-GLOSSARY-TRANSLATE-UNWIRED). Status normalization to
+    canonical: `partial` / `completed_with_errors` → `completed` (the job finished with some
+    per-unit failures — mirrors the workers' terminal emit). The effective-ts expression is
+    shared (all three tables have created_at/started_at/finished_at). NOTE: the per-source
+    watermark is shared across the unioned kinds, so a burst in one table can delay the
+    others' reconcile — acceptable for a backstop (the live emit is primary)."""
     rows = await db.fetch(
         "SELECT job_id, owner_user_id, status, error_message, kind, ts FROM ("
         f"  SELECT job_id, owner_user_id, status, error_message, 'translation' AS kind, "
@@ -359,6 +360,9 @@ async def reconcile_jobs(
         "   UNION ALL "
         f"  SELECT job_id, owner_user_id, status, error_message, 'glossary_extraction' AS kind, "
         f"         {_TRANSL_TS} AS ts FROM extraction_jobs"
+        "   UNION ALL "
+        f"  SELECT job_id, owner_user_id, status, error_message, 'glossary_translation' AS kind, "
+        f"         {_TRANSL_TS} AS ts FROM glossary_translation_jobs"
         ") s WHERE ts >= $1 ORDER BY ts ASC LIMIT $2",
         since, limit,
     )
