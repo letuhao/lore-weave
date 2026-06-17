@@ -467,6 +467,19 @@ func (s *Server) sweepRecipeDrift(ctx context.Context, bookID uuid.UUID, promptV
 		   AND wa.generation_status IS NOT NULL
 		   AND ( COALESCE(wa.generation_provenance->'build_inputs'->>'prompt_version','')   <> $2
 		      OR COALESCE(wa.generation_provenance->'build_inputs'->>'pipeline_version','') <> $3 )
+		   -- D-WIKI-P2-SWEEP-DISMISS-RESWEEP: a dismissed drift stays dismissed while its
+		   -- SIGNATURE (the from prompt/pipeline version = source_id) is unchanged. Regen
+		   -- changes the from-version → a NEW source_id → re-surfaces. The pending-dedup is
+		   -- the ON CONFLICT below; this suppresses re-nagging a DISMISSED same-signature row.
+		   AND NOT EXISTS (
+		     SELECT 1 FROM wiki_staleness d
+		      WHERE d.article_id = wa.article_id
+		        AND d.reason_code = 'recipe_drift'
+		        AND d.status = 'dismissed'
+		        AND d.source_ref->>'source_id' =
+		            COALESCE(wa.generation_provenance->'build_inputs'->>'prompt_version','') || '/' ||
+		            COALESCE(wa.generation_provenance->'build_inputs'->>'pipeline_version','')
+		   )
 		ON CONFLICT (article_id, reason_code, (source_ref->>'source_id'))
 		  WHERE status = 'pending' DO NOTHING`,
 		bookID, promptV, pipelineV,
@@ -479,7 +492,18 @@ func (s *Server) sweepRecipeDrift(ctx context.Context, bookID uuid.UUID, promptV
 		UPDATE wiki_articles SET is_knowledge_stale = true
 		 WHERE book_id = $1 AND generation_status IS NOT NULL AND is_knowledge_stale = false
 		   AND ( COALESCE(generation_provenance->'build_inputs'->>'prompt_version','')   <> $2
-		      OR COALESCE(generation_provenance->'build_inputs'->>'pipeline_version','') <> $3 )`,
+		      OR COALESCE(generation_provenance->'build_inputs'->>'pipeline_version','') <> $3 )
+		   -- mirror the dismiss-durable guard so a dismissed same-signature article isn't
+		   -- re-flagged "outdated" with no feed row (the badge must track the dismissal).
+		   AND NOT EXISTS (
+		     SELECT 1 FROM wiki_staleness d
+		      WHERE d.article_id = wiki_articles.article_id
+		        AND d.reason_code = 'recipe_drift'
+		        AND d.status = 'dismissed'
+		        AND d.source_ref->>'source_id' =
+		            COALESCE(wiki_articles.generation_provenance->'build_inputs'->>'prompt_version','') || '/' ||
+		            COALESCE(wiki_articles.generation_provenance->'build_inputs'->>'pipeline_version','')
+		   )`,
 		bookID, promptV, pipelineV,
 	); err != nil {
 		return inserted, err
@@ -569,26 +593,40 @@ func (s *Server) sweepKgDrift(ctx context.Context, bookID, ownerID uuid.UUID) (i
 		if a.storedHash == "" || !ok || cur == a.storedHash {
 			continue
 		}
+		// D-WIKI-P2-SWEEP-DISMISS-RESWEEP: kg_drift's signature is (storedHash → cur).
+		// source_id keys only on storedHash, so fold current_hash into the dismiss guard:
+		// a dismissed row stays dismissed only while BOTH match (same baseline, same drifted-
+		// to hash); a NEW current hash (cur changed) is a genuinely new drift → re-surfaces.
 		tag, err := s.pool.Exec(ctx, `
 			INSERT INTO wiki_staleness (article_id, reason_code, source_ref, severity)
-			VALUES ($1, 'kg_drift',
-			        jsonb_build_object('source_type','kg','source_id',$2::text,'current_hash',$3::text),
-			        'content')
+			SELECT $1, 'kg_drift',
+			       jsonb_build_object('source_type','kg','source_id',$2::text,'current_hash',$3::text),
+			       'content'
+			 WHERE NOT EXISTS (
+			   SELECT 1 FROM wiki_staleness d
+			    WHERE d.article_id = $1
+			      AND d.reason_code = 'kg_drift'
+			      AND d.status = 'dismissed'
+			      AND d.source_ref->>'source_id' = $2::text
+			      AND d.source_ref->>'current_hash' = $3::text
+			 )
 			ON CONFLICT (article_id, reason_code, (source_ref->>'source_id'))
 			  WHERE status = 'pending' DO NOTHING`,
 			a.articleID, a.storedHash, cur)
 		if err != nil {
 			return flagged, err
 		}
+		// Only (re-)flag the article when a fresh pending row was actually inserted — a
+		// dismiss-suppressed or already-pending drift must not re-raise the "outdated" badge.
 		if tag.RowsAffected() == 1 {
 			flagged++
-		}
-		if _, err := s.pool.Exec(ctx,
-			`UPDATE wiki_articles SET is_knowledge_stale = true
-			  WHERE article_id = $1 AND is_knowledge_stale = false`,
-			a.articleID,
-		); err != nil {
-			return flagged, err
+			if _, err := s.pool.Exec(ctx,
+				`UPDATE wiki_articles SET is_knowledge_stale = true
+				  WHERE article_id = $1 AND is_knowledge_stale = false`,
+				a.articleID,
+			); err != nil {
+				return flagged, err
+			}
 		}
 	}
 	return flagged, nil

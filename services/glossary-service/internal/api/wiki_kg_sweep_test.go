@@ -74,6 +74,82 @@ func TestSweepKgDrift_FlagsChangedNeighbourhoodAndIsIdempotent(t *testing.T) {
 	}
 }
 
+// D-WIKI-P2-SWEEP-DISMISS-RESWEEP: a dismissed kg_drift stays dismissed while its
+// signature (storedHash → current_hash) is unchanged. kg_drift keys source_id on
+// storedHash only, so current_hash is folded into the dismiss guard.
+func TestSweepKgDrift_DismissedSameHashNotResurrected(t *testing.T) {
+	f := newMergeFixture(t, "00000000e0a6")
+	cleanupWikiArticles(t, f)
+	entity := f.mkEntity(t, "Seward", nil)
+	art := mkWikiArticle(t, f.pool, f.ctx, f.bookID, entity)
+	setKgHash(t, f, art, "OLD")
+
+	stub := kgStub(t, map[string]string{entity.String(): "NEW"}, http.StatusOK)
+	defer stub.Close()
+	f.srv.cfg.KnowledgeServiceURL = stub.URL
+	f.srv.cfg.InternalServiceToken = "tok"
+	owner := uuid.New()
+
+	if n, err := f.srv.sweepKgDrift(f.ctx, f.bookID, owner); err != nil || n != 1 {
+		t.Fatalf("initial sweep: n=%d err=%v (want 1)", n, err)
+	}
+	dismissStaleness(t, f, art, "kg_drift")
+	if isStale(t, f, art) {
+		t.Fatal("badge should be cleared after dismiss")
+	}
+
+	// Same current hash (still OLD→NEW) → suppressed, badge stays down.
+	n2, err := f.srv.sweepKgDrift(f.ctx, f.bookID, owner)
+	if err != nil {
+		t.Fatalf("re-sweep: %v", err)
+	}
+	if n2 != 0 {
+		t.Fatalf("dismissed same-hash must not re-insert, got %d", n2)
+	}
+	if got := pendingStaleness(t, f, art, "kg_drift"); got != 0 {
+		t.Fatalf("want 0 pending (stays dismissed), got %d", got)
+	}
+	if isStale(t, f, art) {
+		t.Fatal("dismissed same-hash must NOT re-raise is_knowledge_stale")
+	}
+}
+
+// A genuinely NEW current hash (the neighbourhood drifted further) is a new drift →
+// re-surfaces despite the earlier dismissal (current_hash differs from the dismissed row).
+func TestSweepKgDrift_DismissedNewHashResurfaces(t *testing.T) {
+	f := newMergeFixture(t, "00000000e0a7")
+	cleanupWikiArticles(t, f)
+	entity := f.mkEntity(t, "Westenra", nil)
+	art := mkWikiArticle(t, f.pool, f.ctx, f.bookID, entity)
+	setKgHash(t, f, art, "OLD")
+	f.srv.cfg.InternalServiceToken = "tok"
+	owner := uuid.New()
+
+	stub1 := kgStub(t, map[string]string{entity.String(): "NEW"}, http.StatusOK)
+	f.srv.cfg.KnowledgeServiceURL = stub1.URL
+	if n, err := f.srv.sweepKgDrift(f.ctx, f.bookID, owner); err != nil || n != 1 {
+		stub1.Close()
+		t.Fatalf("initial sweep: n=%d err=%v (want 1)", n, err)
+	}
+	stub1.Close()
+	dismissStaleness(t, f, art, "kg_drift")
+
+	// Neighbourhood drifts further: current hash is now NEWER (≠ the dismissed NEW).
+	stub2 := kgStub(t, map[string]string{entity.String(): "NEWER"}, http.StatusOK)
+	defer stub2.Close()
+	f.srv.cfg.KnowledgeServiceURL = stub2.URL
+	n2, err := f.srv.sweepKgDrift(f.ctx, f.bookID, owner)
+	if err != nil {
+		t.Fatalf("re-sweep: %v", err)
+	}
+	if n2 != 1 {
+		t.Fatalf("new current hash must re-surface, got %d", n2)
+	}
+	if got := pendingStaleness(t, f, art, "kg_drift"); got != 1 {
+		t.Fatalf("want 1 pending (new hash), got %d", got)
+	}
+}
+
 func TestSweepKgDrift_NoChangeNoRow(t *testing.T) {
 	f := newMergeFixture(t, "00000000e0a2")
 	cleanupWikiArticles(t, f)
