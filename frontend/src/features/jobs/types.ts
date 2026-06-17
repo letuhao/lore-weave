@@ -26,7 +26,9 @@ export type JobControlAction = ControlCap;
  *  retry RE-SUBMITS a failed job → job_id is the NEW job + retried_from = the failed one. */
 export type JobControlResult = { job_id: string; status: string; retried_from?: string };
 
-export type JobProgress = { done: number; total: number };
+// `total` is optional: some producers (book_import) emit a running `done` count without
+// knowing the total upfront. progressPct() returns null when total is absent (no bar).
+export type JobProgress = { done: number; total?: number };
 export type JobError = { code: string; message: string };
 
 /** Dynamic, whitelisted parameters the producer attached to the job (P4 `params`

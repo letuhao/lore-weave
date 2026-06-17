@@ -28,9 +28,12 @@ export function effectiveJob(base: Job, live: JobSseEvent | undefined): Job {
   return base;
 }
 
-/** Percent complete for a progress bar, or null when there's nothing to show. */
+/** Percent complete for a progress bar, or null when there's nothing to show.
+ *  Guards a MISSING `total` (book_import emits {done} with no total — it doesn't know the
+ *  chapter count upfront): `undefined <= 0` is false, so without the `!progress.total` check
+ *  this would compute done/undefined = NaN and render a `width: NaN%` bar + "N/undefined". */
 export function progressPct(progress: Job['progress']): number | null {
-  if (!progress || progress.total <= 0) return null;
+  if (!progress || !progress.total || progress.total <= 0) return null;
   return Math.min(100, Math.round((progress.done / progress.total) * 100));
 }
 

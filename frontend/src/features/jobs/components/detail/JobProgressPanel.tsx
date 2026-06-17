@@ -15,15 +15,17 @@ export function JobProgressPanel({ job }: { job: Job }) {
   const nowIso = new Date(Date.now()).toISOString();
   const elapsed = formatDuration(job.created_at, terminal ? job.updated_at : nowIso);
 
-  // Throughput / ETA from done-per-elapsed (live, with progress only).
+  // Throughput / ETA from done-per-elapsed (live, with progress only). `total` may be absent
+  // (book_import emits done without a total) → no ETA, but throughput still works off `done`.
   let throughput: string | null = null;
   let eta: string | null = null;
-  if (!terminal && job.progress && job.progress.total > 0 && job.created_at) {
+  const total = job.progress?.total ?? 0;
+  if (!terminal && job.progress && total > 0 && job.created_at) {
     const elapsedH = (Date.now() - Date.parse(job.created_at)) / 3_600_000;
     const rate = elapsedH > 0 ? job.progress.done / elapsedH : 0;
     if (rate > 0) {
       throughput = t('detail.throughputVal', { defaultValue: '~{{n}} /h', n: Math.round(rate) });
-      const remaining = job.progress.total - job.progress.done;
+      const remaining = total - job.progress.done;
       if (remaining > 0) {
         const etaMs = (remaining / rate) * 3_600_000;
         eta = formatDuration(nowIso, new Date(Date.now() + etaMs).toISOString());

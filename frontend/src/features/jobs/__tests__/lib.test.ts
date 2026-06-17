@@ -76,6 +76,8 @@ describe('progressPct', () => {
   it('is null when progress is null', () => expect(progressPct(null)).toBeNull());
   it('is null when total is 0 (avoids divide-by-zero)', () =>
     expect(progressPct({ done: 0, total: 0 })).toBeNull());
+  it('is null when total is absent (book_import emits done without total → no NaN bar)', () =>
+    expect(progressPct({ done: 5 })).toBeNull());
   it('rounds the percentage', () => expect(progressPct({ done: 3, total: 10 })).toBe(30));
   it('caps at 100', () => expect(progressPct({ done: 11, total: 10 })).toBe(100));
 });
