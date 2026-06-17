@@ -18,6 +18,7 @@
     "video_gen": "Tạo video",
     "campaign": "Chiến dịch",
     "enrichment_job": "Làm giàu lore",
+    "book_import": "Nhập sách",
     "composition": { "generate": "Sáng tác" }
   },
   "summary": {

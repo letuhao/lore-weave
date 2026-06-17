@@ -18,6 +18,7 @@
     "video_gen": "Video generation",
     "campaign": "Campaign",
     "enrichment_job": "Lore enrichment",
+    "book_import": "Book import",
     "composition": { "generate": "Composition" }
   },
   "summary": {

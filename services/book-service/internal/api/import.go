@@ -9,7 +9,9 @@ import (
 	"net/http"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
@@ -139,6 +141,17 @@ VALUES ($1, $2, $3, 'pending', $4, $5, $6, $7)
 		"file_format":       fileFormat,
 		"file_storage_key":  storageKey,
 		"original_language": r.FormValue("original_language"),
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, "IMPORT_ERROR", "failed to queue import")
+		return
+	}
+
+	// Unified Job Control Plane (D-JOBS-BOOK-IMPORT-UNWIRED) — emit the 'pending' lifecycle
+	// event in the SAME tx (H1) so the import is visible on the unified Jobs screen from
+	// creation. Distinct from the `import.requested` (chapter-aggregate) worker trigger above.
+	if err := emitJobEvent(r.Context(), tx, jobID, caller, "book_import", "pending", map[string]any{
+		"title":  fh.Filename,
+		"params": map[string]any{"file_format": fileFormat, "filename": fh.Filename},
 	}); err != nil {
 		writeError(w, http.StatusInternalServerError, "IMPORT_ERROR", "failed to queue import")
 		return
@@ -478,13 +491,100 @@ func (s *Server) updateImportJobStatus(w http.ResponseWriter, r *http.Request) {
 		completedSQL = ", completed_at=now()"
 	}
 
-	_, err = s.pool.Exec(r.Context(), fmt.Sprintf(`
-UPDATE import_jobs SET status=$1, chapters_created=$2, error=$3, updated_at=now()%s WHERE id=$4
-`, completedSQL), body.Status, body.ChaptersCreated, body.Error, importID)
+	// UPDATE + emit the JobEvent in one tx (H1). RETURNING user_id folds in the owner lookup
+	// (the emit's owner); a missing job → no row → 404 (was a silent 204 before).
+	tx, err := s.pool.Begin(r.Context())
 	if err != nil {
+		writeError(w, http.StatusInternalServerError, "IMPORT_ERROR", "internal error")
+		return
+	}
+	defer tx.Rollback(r.Context())
+
+	var ownerUserID uuid.UUID
+	err = tx.QueryRow(r.Context(), fmt.Sprintf(`
+UPDATE import_jobs SET status=$1, chapters_created=$2, error=$3, updated_at=now()%s WHERE id=$4
+RETURNING user_id
+`, completedSQL), body.Status, body.ChaptersCreated, body.Error, importID).Scan(&ownerUserID)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			writeError(w, http.StatusNotFound, "IMPORT_NOT_FOUND", "import job not found")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "IMPORT_ERROR", "update failed")
 		return
 	}
 
+	// Unified Job Control Plane — emit the transition (D-JOBS-BOOK-IMPORT-UNWIRED). The native
+	// 'processing' canonicalizes to 'running'; carry chapters as progress + the error on failed.
+	extra := map[string]any{"progress": map[string]any{"done": body.ChaptersCreated}}
+	if body.Status == "failed" && body.Error != nil {
+		extra["error"] = map[string]any{"code": "book_import_failed", "message": *body.Error}
+	}
+	if err := emitJobEvent(r.Context(), tx, importID, ownerUserID, "book_import", body.Status, extra); err != nil {
+		writeError(w, http.StatusInternalServerError, "IMPORT_ERROR", "emit failed")
+		return
+	}
+
+	if err := tx.Commit(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "IMPORT_ERROR", "failed to commit")
+		return
+	}
+
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// reconcileImportJobs is the Unified Job Control Plane reconcile SOURCE (H1 backstop) for
+// book-import jobs: rows whose effective last-touch is at/after `since` (oldest-first, capped
+// at `limit`), in canonical JobEvent payload shape, for the jobs-service sweep to upsert.
+// Internal-token (mounted under /internal); ALL owners. A row whose native status has no
+// canonical JobStatus is SKIPPED (matches the live emit's skip-don't-poison behavior).
+// GET /internal/book/jobs?since=<iso>&limit=<n>  (D-JOBS-BOOK-IMPORT-UNWIRED)
+func (s *Server) reconcileImportJobs(w http.ResponseWriter, r *http.Request) {
+	since, err := time.Parse(time.RFC3339, r.URL.Query().Get("since"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_SINCE", "since must be RFC3339")
+		return
+	}
+	limit := 1000
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, e := strconv.Atoi(v); e == nil && n > 0 && n <= 5000 {
+			limit = n
+		}
+	}
+	// Effective last-touch (all three columns present on import_jobs).
+	rows, err := s.pool.Query(r.Context(), `
+SELECT id, user_id, status, chapters_created, error,
+       GREATEST(created_at, updated_at, COALESCE(completed_at, created_at)) AS ts
+FROM import_jobs
+WHERE GREATEST(created_at, updated_at, COALESCE(completed_at, created_at)) >= $1
+ORDER BY ts ASC LIMIT $2
+`, since, limit)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "IMPORT_ERROR", "query failed")
+		return
+	}
+	defer rows.Close()
+
+	jobs := []map[string]any{}
+	for rows.Next() {
+		var id, userID uuid.UUID
+		var nativeStatus string
+		var chapters int
+		var errMsg *string
+		var ts time.Time
+		if err := rows.Scan(&id, &userID, &nativeStatus, &chapters, &errMsg, &ts); err != nil {
+			writeError(w, http.StatusInternalServerError, "IMPORT_ERROR", "scan failed")
+			return
+		}
+		job, ok := importJobEventPayload(id, userID, nativeStatus, chapters, errMsg, ts)
+		if !ok {
+			continue // unmappable status → skip (don't ship one the projection can't parse)
+		}
+		jobs = append(jobs, job)
+	}
+	if err := rows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, "IMPORT_ERROR", "iteration failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"jobs": jobs})
 }

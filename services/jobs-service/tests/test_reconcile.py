@@ -142,10 +142,11 @@ async def test_unparseable_row_skipped(monkeypatch):
     spy.assert_awaited_once()
 
 
-def test_all_five_owning_services_are_reconcile_sources():
+def test_all_owning_services_are_reconcile_sources():
     # P3-reconcile B: every owning service exposes a GET /internal/{svc}/jobs?since= source.
+    # `book` added by the producer-emit backfill (Slice D — D-JOBS-BOOK-IMPORT-UNWIRED).
     assert _REGISTERED_SOURCES == {
-        "knowledge", "composition", "video_gen", "lore_enrichment", "translation"
+        "knowledge", "composition", "video_gen", "lore_enrichment", "translation", "book"
     }
 
 

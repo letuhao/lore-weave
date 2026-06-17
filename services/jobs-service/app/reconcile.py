@@ -46,6 +46,7 @@ _RECONCILE: dict[str, tuple[str, str]] = {
     "video_gen": (settings.video_gen_service_internal_url, "/internal/video_gen/jobs"),
     "lore_enrichment": (settings.lore_enrichment_service_internal_url, "/internal/lore_enrichment/jobs"),
     "translation": (settings.translation_service_internal_url, "/internal/translation/jobs"),
+    "book": (settings.book_service_internal_url, "/internal/book/jobs"),
 }
 
 _TIMEOUT = httpx.Timeout(15.0)

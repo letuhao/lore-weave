@@ -50,10 +50,12 @@ _RETRYABLE_KINDS: frozenset[str] = frozenset({"translation"})
 #                             `glossary_translation_jobs` (Slice B — D-JOBS-GLOSSARY-TRANSLATE-UNWIRED).
 #   - wiki_gen             — knowledge control endpoint handles `extraction_jobs`, not
 #                             `wiki_gen_jobs` (Slice C — D-JOBS-WIKI-GEN-UNWIRED).
+#   - book_import          — book-service has NO unified control endpoint at all (the worker
+#                             import is fire-and-forget; Slice D — D-JOBS-BOOK-IMPORT-UNWIRED).
 # Users control these via their native panels (extraction/translate wizard / wiki panel)
 # today; unified-plane control wiring is tracked (D-JOBS-SECONDARY-KIND-CONTROL).
 _VIEW_ONLY_KINDS: frozenset[str] = frozenset(
-    {"glossary_extraction", "glossary_translation", "wiki_gen"})
+    {"glossary_extraction", "glossary_translation", "wiki_gen", "book_import"})
 
 
 def _is_multi_unit(kind: str) -> bool:

@@ -157,6 +157,7 @@ func (s *Server) Router() http.Handler {
 		// G4 (W2) — world membership for the knowledge-service world-rollup
 		// subgraph. Owner-scoped by the ?user_id param (404 if not owned).
 		r.Get("/worlds/{world_id}/books", s.internalListWorldBooks)
+		r.Get("/book/jobs", s.reconcileImportJobs)                            // Unified Job Control Plane reconcile source (book-import, D-JOBS-BOOK-IMPORT-UNWIRED)
 		r.Get("/books/{book_id}/lexical-search", s.searchChapterTextInternal) // raw-search Phase 2 (lexical leg for the knowledge orchestrator)
 		r.Get("/books/{book_id}/chapters", s.getInternalBookChapters)
 		r.Get("/books/{book_id}/chapters/{chapter_id}", s.getInternalBookChapter)

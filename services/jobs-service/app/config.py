@@ -63,6 +63,7 @@ class Settings(BaseSettings):
     campaign_service_internal_url: str = "http://campaign-service:8095"
     lore_enrichment_service_internal_url: str = "http://lore-enrichment-service:8093"
     video_gen_service_internal_url: str = "http://video-gen-service:8088"
+    book_service_internal_url: str = "http://book-service:8082"
 
     log_level: str = "INFO"
 
