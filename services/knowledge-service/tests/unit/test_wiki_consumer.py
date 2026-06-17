@@ -6,11 +6,13 @@ than holding the per-book lock forever with no re-trigger path.
 """
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from app.jobs import wiki_gen_processor
+from app.jobs.wiki_gen_enqueue import WIKI_GEN_STREAM
 
 
 def _ctx(repo):
@@ -52,3 +54,60 @@ async def test_drain_swallows_query_failure():
     with p1, p2, p3 as proc:
         await wiki_gen_processor.drain_resumable_jobs()  # must not raise
     proc.assert_not_awaited()
+
+
+# ── consumer-group delivery (D-WIKI-M6-CONSUMER-GROUP) ────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_consume_batch_processes_then_acks():
+    client = MagicMock()
+    client.xreadgroup = AsyncMock(return_value=[(WIKI_GEN_STREAM, [("5-0", {"job_id": "j7"})])])
+    client.xack = AsyncMock()
+    with patch.object(wiki_gen_processor, "process_wiki_gen_job", new=AsyncMock()) as proc:
+        await wiki_gen_processor._consume_batch(client, "g", "c")
+    proc.assert_awaited_once_with("j7")
+    # ack happens AFTER processing, on the exact message id, for the group.
+    client.xack.assert_awaited_once_with(WIKI_GEN_STREAM, "g", "5-0")
+
+
+@pytest.mark.asyncio
+async def test_consume_batch_empty_is_noop():
+    client = MagicMock()
+    client.xreadgroup = AsyncMock(return_value=[])
+    client.xack = AsyncMock()
+    with patch.object(wiki_gen_processor, "process_wiki_gen_job", new=AsyncMock()) as proc:
+        await wiki_gen_processor._consume_batch(client, "g", "c")
+    proc.assert_not_awaited()
+    client.xack.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_consume_batch_acks_malformed_without_processing():
+    # A message with no job_id is still ACKed (don't redeliver a poison wake-up).
+    client = MagicMock()
+    client.xreadgroup = AsyncMock(return_value=[(WIKI_GEN_STREAM, [("6-0", {})])])
+    client.xack = AsyncMock()
+    with patch.object(wiki_gen_processor, "process_wiki_gen_job", new=AsyncMock()) as proc:
+        await wiki_gen_processor._consume_batch(client, "g", "c")
+    proc.assert_not_awaited()
+    client.xack.assert_awaited_once_with(WIKI_GEN_STREAM, "g", "6-0")
+
+
+@pytest.mark.asyncio
+async def test_consumer_creates_group_busygroup_safe_and_closes():
+    client = MagicMock()
+    client.xgroup_create = AsyncMock(
+        side_effect=wiki_gen_processor.aioredis.ResponseError("BUSYGROUP Consumer Group name already exists")
+    )
+    client.xreadgroup = AsyncMock(side_effect=asyncio.CancelledError())  # break the loop at once
+    client.aclose = AsyncMock()
+    with patch.object(wiki_gen_processor, "drain_resumable_jobs", new=AsyncMock()), \
+         patch.object(wiki_gen_processor.aioredis, "from_url", return_value=client):
+        with pytest.raises(asyncio.CancelledError):
+            await wiki_gen_processor.run_wiki_gen_consumer()
+    # group create attempted with MKSTREAM; BUSYGROUP swallowed (no raise); client closed.
+    client.xgroup_create.assert_awaited_once_with(
+        WIKI_GEN_STREAM, wiki_gen_processor.WIKI_GEN_GROUP, id="$", mkstream=True
+    )
+    client.aclose.assert_awaited_once()

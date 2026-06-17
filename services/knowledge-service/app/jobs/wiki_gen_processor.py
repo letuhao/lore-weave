@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import socket
 from decimal import Decimal
 
 import redis.asyncio as aioredis
@@ -35,7 +37,21 @@ from app.wiki.orchestrator import OrchestratorClients, run_wiki_gen_job
 
 logger = logging.getLogger(__name__)
 
+# D-WIKI-M6-CONSUMER-GROUP — a Redis Streams consumer GROUP (not a bare XREAD) so
+# that with ≥2 knowledge replicas each job message is delivered to exactly ONE
+# replica. A bare XREAD broadcasts to every reader → every replica would run the
+# generation (double LLM spend; the writeback clobber-guard dedups the WRITE, not
+# the cost). Per-replica consumer name → distinct PEL entries. Crash durability is
+# still carried by drain_resumable_jobs() (the job ROW, not the stream PEL), so no
+# DLQ/reclaim scaffold is needed here.
+WIKI_GEN_GROUP = "wiki-gen-workers"
+
 __all__ = ["run_wiki_gen_consumer", "process_wiki_gen_job"]
+
+
+def _consumer_name() -> str:
+    """Per-process consumer identity so replicas don't share a PEL slot."""
+    return f"wiki-gen-{socket.gethostname()}-{os.getpid()}"
 
 
 def _retrieval_params() -> dict:
@@ -104,32 +120,56 @@ async def drain_resumable_jobs() -> None:
         await process_wiki_gen_job(str(job.job_id))
 
 
+async def _consume_batch(client, group: str, consumer: str) -> None:
+    """One XREADGROUP → process → XACK cycle (factored out for testability).
+
+    Acks AFTER processing: process_wiki_gen_job swallows its own errors (never
+    raises), so a delivered message is always acked; a crash before the ack leaves
+    the message in the PEL, but the orphaned job is recovered by row on the next
+    startup drain — so the stream PEL is not the durability mechanism here.
+    """
+    resp = await client.xreadgroup(group, consumer, {WIKI_GEN_STREAM: ">"}, count=1, block=2000)
+    if not resp:
+        return
+    for _stream, messages in resp:
+        for msg_id, fields in messages:
+            raw = fields.get(b"job_id") or fields.get("job_id")
+            job_id = raw.decode() if isinstance(raw, bytes) else raw
+            if job_id:
+                await process_wiki_gen_job(job_id)
+            mid = msg_id.decode() if isinstance(msg_id, bytes) else msg_id
+            await client.xack(WIKI_GEN_STREAM, group, mid)
+
+
 async def run_wiki_gen_consumer() -> None:
-    """Blocking-XREAD loop over the wiki-gen stream (runs until cancelled on
-    shutdown — the 2s block makes cancellation responsive). On start it first
-    drains orphaned pending/running jobs (a message XADD'd while the consumer was
-    down is otherwise missed by the '$' read), then tails new messages."""
+    """XREADGROUP loop over the wiki-gen stream (runs until cancelled on shutdown —
+    the 2s block makes cancellation responsive). On start it first drains orphaned
+    pending/running jobs (the row-based durability backstop), then joins the
+    consumer group and tails NEW messages ('>'). The group gives exclusive
+    per-replica delivery (D-WIKI-M6-CONSUMER-GROUP)."""
     await drain_resumable_jobs()
     client = aioredis.from_url(settings.redis_url)
-    last_id = "$"
-    logger.info("wiki-gen consumer started (stream=%s)", WIKI_GEN_STREAM)
+    consumer = _consumer_name()
+    # Idempotent group create (MKSTREAM so the stream need not exist yet; id='$' =
+    # only messages added after creation — pre-existing ones are the drain's job).
+    try:
+        await client.xgroup_create(WIKI_GEN_STREAM, WIKI_GEN_GROUP, id="$", mkstream=True)
+    except aioredis.ResponseError as exc:
+        if "BUSYGROUP" not in str(exc):  # already exists is fine; anything else is real
+            logger.warning("wiki-gen group create failed: %s", exc)
+    logger.info(
+        "wiki-gen consumer started (stream=%s group=%s consumer=%s)",
+        WIKI_GEN_STREAM, WIKI_GEN_GROUP, consumer,
+    )
     try:
         while True:
             try:
-                resp = await client.xread({WIKI_GEN_STREAM: last_id}, count=1, block=2000)
+                await _consume_batch(client, WIKI_GEN_GROUP, consumer)
+            except asyncio.CancelledError:
+                raise  # shutdown — let it propagate to the finally
             except Exception as exc:  # noqa: BLE001 — transient redis blip; back off + retry
-                logger.warning("wiki-gen xread failed: %s", exc)
+                logger.warning("wiki-gen consume failed: %s", exc)
                 await asyncio.sleep(1.0)
-                continue
-            if not resp:
-                continue
-            for _stream, messages in resp:
-                for msg_id, fields in messages:
-                    last_id = msg_id.decode() if isinstance(msg_id, bytes) else msg_id
-                    raw = fields.get(b"job_id") or fields.get("job_id")
-                    job_id = raw.decode() if isinstance(raw, bytes) else raw
-                    if job_id:
-                        await process_wiki_gen_job(job_id)
     finally:
         await client.aclose()
         logger.info("wiki-gen consumer stopped")
