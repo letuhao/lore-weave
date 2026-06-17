@@ -126,12 +126,28 @@ async def test_wiki_gen_cancel_owned_pending(monkeypatch):
     repo.cancel.assert_awaited_once_with(JOB)
 
 
-async def test_wiki_gen_resume_owned_paused(monkeypatch):
+async def test_wiki_gen_resume_owned_paused_re_enqueues(monkeypatch):
     repo = _wiki_repo(monkeypatch, job=_wiki_job("paused"), resume=True)
+    # resume MUST re-enqueue (the consumer is event-driven; flipping the row isn't enough) —
+    # mirror the native resume_wiki_gen_job. Patch the enqueue + lazy redis client.
+    enq = AsyncMock()
+    monkeypatch.setattr(ijc, "enqueue_wiki_gen", enq)
+    monkeypatch.setattr(ijc, "_redis", MagicMock())
     resp = await control_extraction_job(
         JOB, "resume", JobControlPayload(owner_user_id=USER, kind="wiki_gen"), AsyncMock(), AsyncMock())
     assert resp.status == "pending"
     repo.resume.assert_awaited_once_with(JOB)
+    enq.assert_awaited_once()  # re-driven so the consumer picks it up now, not on next restart
+
+
+async def test_wiki_gen_cancel_does_not_enqueue(monkeypatch):
+    repo = _wiki_repo(monkeypatch, job=_wiki_job("pending"), cancel=True)
+    enq = AsyncMock()
+    monkeypatch.setattr(ijc, "enqueue_wiki_gen", enq)
+    monkeypatch.setattr(ijc, "_redis", MagicMock())
+    await control_extraction_job(
+        JOB, "cancel", JobControlPayload(owner_user_id=USER, kind="wiki_gen"), AsyncMock(), AsyncMock())
+    enq.assert_not_awaited()  # cancel is terminal — nothing to re-drive
 
 
 async def test_wiki_gen_not_owned_404(monkeypatch):

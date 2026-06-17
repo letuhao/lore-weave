@@ -29,6 +29,8 @@ from app.db.repositories.wiki_gen_jobs import WikiGenJobsRepo
 _CANONICAL_STATUSES = frozenset(s.value for s in JobStatus)
 from app.db.repositories.projects import ProjectsRepo
 from app.deps import get_extraction_jobs_repo, get_knowledge_pool, get_projects_repo
+from app.jobs.wiki_gen_enqueue import enqueue_wiki_gen  # wiki resume re-enqueue (parity w/ native)
+from app.routers.internal_wiki import _redis  # shared lazy redis client for the wiki-gen XADD
 from app.middleware.internal_auth import require_internal_token
 from app.middleware.trace_id import trace_id_var
 from app.routers.public.extraction import _validate_or_409
@@ -202,4 +204,10 @@ async def _control_wiki_gen_job(job_id: UUID, action: str, owner_user_id: UUID) 
             detail={"code": "JOBS_STATUS_CHANGED",
                     "message": f"wiki_gen job not {action}able in status '{job.status}'"},
         )
+    if action == "resume":
+        # CRITICAL: mirror the native resume_wiki_gen_job — flipping paused→pending is NOT
+        # enough; the consumer is event-driven, so without re-enqueuing the job sits in
+        # pending until a process-restart drain picks it up. Re-enqueue so it re-drives now
+        # (skip-done handles partial progress).
+        await enqueue_wiki_gen(_redis(), str(job_id))
     return JobControlResponse(job_id=job_id, status="cancelled" if action == "cancel" else "pending")
