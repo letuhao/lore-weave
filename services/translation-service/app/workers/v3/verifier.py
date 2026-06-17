@@ -50,6 +50,30 @@ def _has_cjk(text: str) -> bool:
     return any(_is_cjk(c) for c in text)
 
 
+def _name_present(name: str, text: str) -> bool:
+    """Whole-word-ish presence of a glossary SOURCE name in the source text.
+
+    D-TRANSL-VERIFY-WHOLEWORD (design §10 C.7): a plain ``name in text`` substring
+    test made the rule-1 name-compliance check fire spuriously — e.g. "King" inside
+    "Kingdom" — which then churned the corrector on a name that was never actually
+    present. Non-CJK names now require unicode word boundaries (the match may not be
+    flanked by a letter/digit), which kills that class of false positive without any
+    new false negatives (a real standalone name still matches).
+
+    CJK names have no whitespace word delimiter, so they keep substring matching
+    (paired with the call-site ``len>=2`` guard). Proper CJK morpheme segmentation
+    needs a tokenizer this service doesn't run — a documented, narrower limitation
+    than the previous all-scripts substring match.
+    """
+    if not name or not text:
+        return False
+    if _has_cjk(name):
+        return name in text
+    # Non-CJK: `[^\W_]` is a unicode letter/digit; the lookarounds forbid the match
+    # being part of a longer alphanumeric token (whole-word match, underscore-safe).
+    return re.search(rf"(?<![^\W_]){re.escape(name)}(?![^\W_])", text) is not None
+
+
 def _numbers(text: str) -> list[str]:
     """ASCII digit-runs only (CJK numerals like 三 are intentionally ignored — they
     are routinely rewritten, not dropped)."""
@@ -104,10 +128,14 @@ def verify_rules(
             # len>=2 guard (review-impl MED-1): a single-char source name (e.g. 王)
             # is too often a substring of an unrelated word (国王) → a spurious
             # high-severity flag that M1b would then re-translate on (churn).
-            # Whole-word / conditional CJK matching is the proper fix (deferred —
-            # ties to the V2 auto_correct substring issue, design §10 C.7).
+            # D-TRANSL-VERIFY-WHOLEWORD: `_name_present` adds unicode word-boundary
+            # matching for non-CJK names (the "King" ⊂ "Kingdom" class); CJK keeps
+            # substring (no word delimiter) behind the len>=2 guard. `tgt_name not in
+            # draft` stays substring on purpose — a whole-word target check would
+            # only ADD flags (more churn), and missing a present target is the safe
+            # direction here.
             if (src_name and tgt_name and len(src_name) >= 2
-                    and src_name in src and tgt_name not in draft):
+                    and _name_present(src_name, src) and tgt_name not in draft):
                 issues.append(Issue(
                     idx, "wrong_name", "high",
                     f"'{src_name}' should render as '{tgt_name}'", expected=tgt_name,

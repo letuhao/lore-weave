@@ -9,14 +9,28 @@ from __future__ import annotations
 
 import logging
 
-from ..session_translator import _parse_sdk_response, _lang_name, _SafeFormatMap
+from ..chunk_splitter import estimate_tokens
+from ..session_translator import (
+    _parse_sdk_response, _lang_name, _SafeFormatMap, _TRANSLATION_MAX_OUTPUT_TOKENS,
+)
 
 log = logging.getLogger(__name__)
+
+# D-TRANSL-CORRECTOR-LIMITS: cap the corrector's output. Without a max_tokens the
+# corrector could loop/over-generate on one block, burning the whole budget — the
+# exact failure (`repetition`) the rule-tier flags. Scale the cap to the source
+# length (×_CORRECTOR_OUT_FACTOR, generous headroom for CJK→Latin expansion) with a
+# 2048 floor so a short block isn't starved, capped at the global output ceiling so
+# it can never exceed the translator's own bound. Generous by design — it bounds
+# runaway generation, it must never truncate a legitimate one-block correction.
+_CORRECTOR_OUT_FACTOR = 3
+_CORRECTOR_OUT_FLOOR = 2048
 
 _CORRECTION_SYSTEM = (
     "You are a professional {source_lang} to {target_lang} translator fixing a flawed "
     "translation of ONE text block. Output ONLY the corrected {target_lang} translation "
-    "of the source — no labels, no markers, no commentary."
+    "of the source — no labels, no markers, no commentary. Preserve the source's "
+    "structure: keep line breaks, list items and any numbering as they appear."
 )
 
 
@@ -56,10 +70,16 @@ def build_corrector_submit_kwargs(
     messages = _build_messages(
         source_text, draft_text, issues, source_lang, target_lang, glossary_block,
     )
+    out_max = min(
+        _TRANSLATION_MAX_OUTPUT_TOKENS,
+        max(_CORRECTOR_OUT_FLOOR, estimate_tokens(source_text) * _CORRECTOR_OUT_FACTOR),
+    )
     return dict(
         operation="translation",
         input={
             "messages": messages,
+            # D-TRANSL-CORRECTOR-LIMITS — bound the single-block correction output.
+            "max_tokens": out_max,
             # Suppress hidden thinking on reasoning models (parity with the V2
             # translator) so reasoning tokens don't burn the output budget.
             "reasoning_effort": "none",

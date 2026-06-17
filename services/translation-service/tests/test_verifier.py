@@ -93,6 +93,34 @@ def test_single_char_glossary_name_no_substring_false_positive():
     assert "wrong_name" not in _types(r)
 
 
+# ── D-TRANSL-VERIFY-WHOLEWORD: non-CJK names match whole-word, not substring ────
+
+def test_non_cjk_name_substring_no_false_positive():
+    """A non-CJK source name present only INSIDE a larger word ('King' ⊂ 'Kingdom')
+    must NOT demand its target rendering — that substring match churned the corrector.
+    Whole-word matching (the fix) leaves it clean."""
+    r = verify_rules(
+        {0: "The Kingdom fell."}, {0: "Vương quốc sụp đổ."}, {"King": "Vua"}, "vi",
+    )
+    assert "wrong_name" not in _types(r)
+
+
+def test_non_cjk_name_wholeword_still_flagged_when_target_absent():
+    """A standalone non-CJK source name still fires when its expected target is absent —
+    the fix removes false positives without introducing false negatives."""
+    r = verify_rules(
+        {0: "King Arthur spoke."}, {0: "Arthur đã nói."}, {"King": "Vua"}, "vi",
+    )
+    assert "wrong_name" in _types(r)
+
+
+def test_non_cjk_name_wholeword_passes_when_target_present():
+    r = verify_rules(
+        {0: "King Arthur spoke."}, {0: "Vua Arthur đã nói."}, {"King": "Vua"}, "vi",
+    )
+    assert "wrong_name" not in _types(r)
+
+
 # ── D-V3-TRANSLATION-PROMPT-ECHO: verbatim source echo ────────────────────────
 
 def test_echo_verbatim_copy_flagged_high():

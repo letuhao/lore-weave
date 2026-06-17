@@ -155,20 +155,22 @@ Wiki + glossary + collaborator (E0) cross-service round-trips on a real stack.
 
 ## B6 — Translation V3 functional gaps
 
+**Sweep 2026-06-17 (one /loom, S):** 3 genuinely-open items FIXED + 5 found ALREADY-RESOLVED by recent T1/T2 work (verified, not trusted). translation 790 pytest (+11). Remaining rows are low polish.
+
 | ID | Description | sev |
 |---|---|---|
-| `D-TRANSL-M7D-INLINE-JUDGE` | move inline fidelity judge out-of-band/sampled (latency) | high |
-| `D-TRANSL-RESUME` | skip-completed batch logic | med |
-| `D-TRANSL-VERIFY-WHOLEWORD` | whole-word matching for name compliance | med |
-| `D-TRANSL-M4B-RESIDUALS` | multi-fetch abort + injection neutralization | med |
+| `D-TRANSL-M7D-INLINE-JUDGE` | ✅ **ALREADY DONE (verified 2026-06-17)** — the fidelity judge is NOT inline: `chapter_worker._emit_chapter_done` emits a post-commit `translation.quality` transactional-outbox event (the actual judge runs downstream in learning-service M7d-2), and the text feed is already **capped + fraction-sampled** (`translation_judge_feed_max_chars`, [chapter_worker.py:964-973](../../services/translation-service/app/workers/chapter_worker.py)). Out-of-band AND sampled = the deferral's ask. No latency on the translate path. | high |
+| `D-TRANSL-RESUME` | ✅ **ALREADY DONE (verified 2026-06-17)** — `jobs.py` skip-gate skips a chapter iff `status='completed' AND NOT is_glossary_stale` (fresh-completed-version EXISTS, not the active version — the correct idempotency scope), and emits `chapter.translation_skipped` so resumed campaigns converge. Covered by `test_idempotency.py`. | med |
+| `D-TRANSL-VERIFY-WHOLEWORD` | ✅ **DONE 2026-06-17** — `verifier._name_present`: non-CJK glossary source names now require unicode word boundaries (kills the "King" ⊂ "Kingdom" false positive that churned the corrector); CJK keeps substring behind the `len>=2` guard (no in-service segmenter). `tgt_name not in draft` stays substring on purpose (safe direction). +3 tests. | med |
+| `D-TRANSL-M4B-RESIDUALS` | ✅ **DONE 2026-06-17** — `knowledge_context._fetch_all_neighborhoods`: each entity fetch is now `asyncio.wait_for`-bounded (`_FETCH_TIMEOUT_S=5s`) + failure-isolated (`except Exception` → `WikiNeighborhood.empty()`, entity keeps its bio line) so one slow/failing entity can't abort the whole brief; `CancelledError` (BaseException) still propagates = the "abort" half. Injection neutralization was already complete (`_sanitize`). +2 tests. | med |
 | `D-TRANSL-M2-VERIFY-BATCHING` | batch LLM verifier (40-block cap) | low |
-| `D-TRANSL-M2-LLM-ADVISORY` | surface LLM issues vs auto-correct | low |
-| `D-TRANSL-M3-DIALOGUE-HEURISTIC` | balanced-quote dialogue detection | low |
+| `D-TRANSL-M2-LLM-ADVISORY` | ✅ **ALREADY DONE (verified 2026-06-17)** — advisory-by-design: LLM-flagged issues are capped high→med (`decoupled_v3_verify._cap_llm_issues` + `orchestrator.py:290`), so an LLM flag never ALONE triggers the destructive corrector re-translate (only rule-tier high does). | low |
+| `D-TRANSL-M3-DIALOGUE-HEURISTIC` | ✅ **ALREADY DONE (verified 2026-06-17)** — `semantic_chunker._has_dialogue` groups on any CJK bracket / smart-quote / em-dash lead; grouping is pre-batch so unbalanced quotes are harmless (no validation gate). Pragmatic + fit-for-purpose. | low |
 | `D-TRANSL-M4B-FANOUT-CACHE` | per-book/project TTL cache for entity fetches | low |
 | `D-TRANSL-M4C-HARVEST-LATIN` | false-positive guard for name harvesting | low |
-| `D-TRANSL-CORRECTOR-LIMITS` | corrector max_tokens + list-structure preservation | low |
+| `D-TRANSL-CORRECTOR-LIMITS` | ✅ **DONE 2026-06-17** — `corrector.build_corrector_submit_kwargs` now sets `max_tokens = min(16384, max(2048, est_tokens(src)×3))` (source-scaled, generous — bounds runaway/looping generation, never truncates a legit one-block correction) + a system-prompt line to preserve list/line structure. +5 tests. | low |
 | `D-TRANSL-M7C2-DIRTY` | Tiptap dirty-check + onSaved + unsaved warning | low |
-| `D-TRANSL-VERIFY-COARSE` / `D-TRANSL-VERIFY-2ND-FETCH` | refined number/CJK-leak detection; share one glossary fetch | low |
+| `D-TRANSL-VERIFY-COARSE` (`D-TRANSL-VERIFY-2ND-FETCH` ✅ done — glossary fetched ONCE at `orchestrator.py:320`, reused across verify/correct rounds) | refined number/CJK-leak detection (COARSE still open; number/CJK rules are intentionally conservative — low value) | low |
 | `D-TRANSL-M6B2-PERLANG-JOB` | one-click per-language re-translate UI | low |
 
 ---

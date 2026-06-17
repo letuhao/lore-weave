@@ -201,6 +201,54 @@ async def test_build_brief_degrades_when_clients_empty(monkeypatch):
     assert "Solo" in brief and "lone wolf" in brief
 
 
+# ── D-TRANSL-M4B-RESIDUALS: per-fetch timeout + failure isolation ─────────────
+
+@pytest.mark.asyncio
+async def test_build_brief_isolates_a_failing_neighborhood_fetch(monkeypatch):
+    """One entity's neighbourhood fetch raising must NOT drop the whole brief — it
+    degrades to a bio-only line for that entity while others keep their relations."""
+    ents = [_entity("e1", "Tirami", desc="paladin"),
+            _entity("e2", "Boomer", desc="lone wolf")]
+
+    async def fake_entities(book_id, user_id, query, max_entities=20, max_tokens=1000):
+        return ents
+
+    async def fake_nb(user_id, glossary_entity_id, rel_cap=200):
+        if glossary_entity_id == "e2":
+            raise RuntimeError("knowledge-service down")
+        return _nb("e1", _rel("leader_of", "Paladins"))
+
+    monkeypatch.setattr(kctx, "fetch_context_entities", fake_entities)
+    monkeypatch.setattr(kctx, "fetch_wiki_neighborhood", fake_nb)
+
+    brief = await build_context_brief("b1", "u1", "text")
+    assert "Tirami" in brief and "leader_of Paladins" in brief   # healthy entity intact
+    assert "Boomer" in brief and "lone wolf" in brief            # failed → bio-only, kept
+
+
+@pytest.mark.asyncio
+async def test_build_brief_neighborhood_fetch_timeout_degrades(monkeypatch):
+    """A neighbourhood fetch slower than the per-fetch timeout degrades to an empty
+    neighbourhood (bio-only line) instead of stalling the whole chapter's brief."""
+    import asyncio
+    monkeypatch.setattr(kctx, "_FETCH_TIMEOUT_S", 0.01)
+    ents = [_entity("e1", "Slowpoke", desc="takes forever")]
+
+    async def fake_entities(book_id, user_id, query, max_entities=20, max_tokens=1000):
+        return ents
+
+    async def slow_nb(user_id, glossary_entity_id, rel_cap=200):
+        await asyncio.sleep(0.2)
+        return _nb("e1", _rel("leader_of", "TooLate"))
+
+    monkeypatch.setattr(kctx, "fetch_context_entities", fake_entities)
+    monkeypatch.setattr(kctx, "fetch_wiki_neighborhood", slow_nb)
+
+    brief = await build_context_brief("b1", "u1", "text")
+    assert "Slowpoke" in brief and "takes forever" in brief  # built despite the timeout
+    assert "TooLate" not in brief                            # the slow relations dropped
+
+
 @pytest.mark.asyncio
 async def test_orchestrator_threads_brief_to_translator_and_verifier(monkeypatch):
     """Integration: the orchestrator feeds the SAME brief to the Translator
