@@ -502,17 +502,16 @@ func UpSoftDelete(ctx context.Context, pool *pgxpool.Pool) error {
 	return execGuarded(ctx, pool, "soft-delete", softDeleteSQL)
 }
 
-// Seed inserts the 12 default entity kinds and their attribute definitions if the
-// entity_kinds table is empty. Safe to call on every startup (idempotent).
+// Seed inserts the 12 default entity kinds and their attribute definitions. Safe to
+// call on every startup — PER-KIND idempotent (D-WIKI-SEED-ROBUSTNESS).
+//
+// The old `count > 0 → skip` guard conflated "any kind exists" with "defaults
+// seeded": the system `unknown` kind is inserted in Up() BEFORE Seed runs, so on a
+// fresh-but-Up'd DB (and on a shared test DB) count was already 1 → the 12 defaults
+// (incl. `character`) never seeded. Per-kind `ON CONFLICT (code) DO NOTHING` reconciles
+// any missing default without clobbering an author-customized one (name/icon/color are
+// left untouched on conflict) and self-heals a partially-seeded catalogue.
 func Seed(ctx context.Context, pool *pgxpool.Pool) error {
-	var count int
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM entity_kinds`).Scan(&count); err != nil {
-		return fmt.Errorf("seed check: %w", err)
-	}
-	if count > 0 {
-		return nil // already seeded
-	}
-
 	tx, err := pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("seed tx: %w", err)
@@ -520,21 +519,28 @@ func Seed(ctx context.Context, pool *pgxpool.Pool) error {
 	defer tx.Rollback(ctx)
 
 	for _, k := range domain.DefaultKinds {
-		var kindID string
-		err := tx.QueryRow(ctx, `
+		// DO NOTHING (not DO UPDATE) so an author's customized default kind is never
+		// clobbered; then read the id (whether just-inserted or pre-existing) for attrs.
+		if _, err := tx.Exec(ctx, `
 			INSERT INTO entity_kinds(code, name, icon, color, is_default, is_hidden, sort_order, genre_tags)
 			VALUES ($1,$2,$3,$4,true,false,$5,$6)
-			RETURNING kind_id`,
+			ON CONFLICT (code) DO NOTHING`,
 			k.Code, k.Name, k.Icon, k.Color, k.SortOrder, k.GenreTags,
-		).Scan(&kindID)
-		if err != nil {
+		); err != nil {
 			return fmt.Errorf("seed kind %s: %w", k.Code, err)
+		}
+		var kindID string
+		if err := tx.QueryRow(ctx,
+			`SELECT kind_id FROM entity_kinds WHERE code=$1`, k.Code,
+		).Scan(&kindID); err != nil {
+			return fmt.Errorf("seed kind id %s: %w", k.Code, err)
 		}
 
 		for _, a := range k.Attrs {
 			if _, err := tx.Exec(ctx, `
 				INSERT INTO attribute_definitions(kind_id, code, name, field_type, is_required, is_system, sort_order)
-				VALUES ($1,$2,$3,$4,$5,true,$6)`,
+				VALUES ($1,$2,$3,$4,$5,true,$6)
+				ON CONFLICT (kind_id, code) DO NOTHING`,
 				kindID, a.Code, a.Name, a.FieldType, a.IsRequired, a.SortOrder,
 			); err != nil {
 				return fmt.Errorf("seed attr %s.%s: %w", k.Code, a.Code, err)
