@@ -43,7 +43,16 @@
     "unset": "unset",
     "advanced": "Advanced models (optional)",
     "embeddingWarnTitle": "This deletes the project’s existing knowledge graph",
-    "embeddingWarnBody": "Changing the embedding model re-embeds from scratch. Confirm to proceed, or pick an empty project."
+    "embeddingWarnBody": "Changing the embedding model re-embeds from scratch. Confirm to proceed, or pick an empty project.",
+    "projectEmbedding": "Project embedding: {{model}} · reranker: {{rerank}}",
+    "role": {
+      "extractor": "Extractor (knowledge) — required",
+      "translator": "Translator — required",
+      "verifier": "Verifier (V3) — falls back to translator",
+      "eval_judge": "Eval judge (fidelity) — optional",
+      "embedding": "Embedding override — applied to the project",
+      "reranker": "Reranker override — applied to the project"
+    }
   },
   "review": {
     "estimateFailed": "Estimate failed: {{error}}",

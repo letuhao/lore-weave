@@ -43,7 +43,16 @@
     "unset": "未設定",
     "advanced": "詳細モデル（任意）",
     "embeddingWarnTitle": "これによりプロジェクトの既存ナレッジグラフが削除されます",
-    "embeddingWarnBody": "埋め込みモデルを変更すると最初から再埋め込みします。続行するには確認するか、空のプロジェクトを選択してください。"
+    "embeddingWarnBody": "埋め込みモデルを変更すると最初から再埋め込みします。続行するには確認するか、空のプロジェクトを選択してください。",
+    "projectEmbedding": "プロジェクトの埋め込み: {{model}} · リランカー: {{rerank}}",
+    "role": {
+      "extractor": "抽出器（ナレッジ）— 必須",
+      "translator": "翻訳器 — 必須",
+      "verifier": "検証器（V3）— 翻訳器にフォールバック",
+      "eval_judge": "評価ジャッジ（忠実度）— 任意",
+      "embedding": "埋め込みの上書き — プロジェクトに適用",
+      "reranker": "リランカーの上書き — プロジェクトに適用"
+    }
   },
   "review": {
     "estimateFailed": "見積りに失敗しました: {{error}}",

@@ -43,7 +43,16 @@
     "unset": "未設定",
     "advanced": "進階模型（選填）",
     "embeddingWarnTitle": "此操作會刪除專案現有的知識圖譜",
-    "embeddingWarnBody": "變更嵌入模型會從頭重新嵌入。確認以繼續，或選擇空的專案。"
+    "embeddingWarnBody": "變更嵌入模型會從頭重新嵌入。確認以繼續，或選擇空的專案。",
+    "projectEmbedding": "專案嵌入：{{model}} · 重排器：{{rerank}}",
+    "role": {
+      "extractor": "擷取器（知識）— 必填",
+      "translator": "翻譯器 — 必填",
+      "verifier": "驗證器（V3）— 回退至翻譯器",
+      "eval_judge": "評估評審（保真度）— 選填",
+      "embedding": "嵌入覆寫 — 套用至專案",
+      "reranker": "重排器覆寫 — 套用至專案"
+    }
   },
   "review": {
     "estimateFailed": "估算失敗：{{error}}",

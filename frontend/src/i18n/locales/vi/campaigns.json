@@ -43,7 +43,16 @@
     "unset": "chưa đặt",
     "advanced": "Mô hình nâng cao (tùy chọn)",
     "embeddingWarnTitle": "Thao tác này sẽ xóa đồ thị tri thức hiện có của dự án",
-    "embeddingWarnBody": "Đổi mô hình embedding sẽ embedding lại từ đầu. Xác nhận để tiếp tục, hoặc chọn một dự án trống."
+    "embeddingWarnBody": "Đổi mô hình embedding sẽ embedding lại từ đầu. Xác nhận để tiếp tục, hoặc chọn một dự án trống.",
+    "projectEmbedding": "Embedding dự án: {{model}} · reranker: {{rerank}}",
+    "role": {
+      "extractor": "Bộ trích xuất (tri thức) — bắt buộc",
+      "translator": "Bộ dịch — bắt buộc",
+      "verifier": "Bộ kiểm định (V3) — quay lại bộ dịch nếu thiếu",
+      "eval_judge": "Giám định chất lượng (độ trung thực) — tùy chọn",
+      "embedding": "Ghi đè embedding — áp dụng cho dự án",
+      "reranker": "Ghi đè reranker — áp dụng cho dự án"
+    }
   },
   "review": {
     "estimateFailed": "Ước tính thất bại: {{error}}",
