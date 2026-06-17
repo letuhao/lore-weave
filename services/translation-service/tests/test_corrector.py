@@ -81,6 +81,22 @@ def test_corrector_max_tokens_capped_at_global_ceiling():
     assert _kwargs("字" * 40000)["input"]["max_tokens"] == _TRANSLATION_MAX_OUTPUT_TOKENS
 
 
+def test_corrector_max_tokens_budgets_off_larger_of_source_and_draft():
+    """/review-impl MED: a dense source + a verbose prior draft (e.g. CJK→Latin) must
+    budget off the DRAFT (the output-language proxy), not under-budget off the source
+    and truncate the correction."""
+    src = "字" * 100              # tiny source token estimate
+    draft = "word " * 2000        # large prior draft (output language)
+    kw = build_corrector_submit_kwargs(src, draft, _ISSUE, "zh", "en", "", block_idx=0)
+    expected = min(
+        _TRANSLATION_MAX_OUTPUT_TOKENS,
+        max(_CORRECTOR_OUT_FLOOR, estimate_tokens(draft) * _CORRECTOR_OUT_FACTOR),
+    )
+    assert kw["input"]["max_tokens"] == expected
+    # Strictly larger than budgeting off the (denser) source alone.
+    assert kw["input"]["max_tokens"] > estimate_tokens(src) * _CORRECTOR_OUT_FACTOR
+
+
 def test_corrector_system_prompt_preserves_structure():
     msgs = _kwargs("提拉米来了。")["input"]["messages"]
     system = next(m["content"] for m in msgs if m["role"] == "system")

@@ -121,6 +121,15 @@ def test_non_cjk_name_wholeword_passes_when_target_present():
     assert "wrong_name" not in _types(r)
 
 
+def test_non_cjk_name_leading_substring_no_false_positive():
+    """The leading-boundary half of whole-word matching: a name that appears only as a
+    word SUFFIX ('ron' inside 'Aaron', preceded by a letter) must NOT fire."""
+    r = verify_rules(
+        {0: "Aaron left."}, {0: "Aaron rời đi."}, {"ron": "Rông"}, "vi",
+    )
+    assert "wrong_name" not in _types(r)
+
+
 # ── D-V3-TRANSLATION-PROMPT-ECHO: verbatim source echo ────────────────────────
 
 def test_echo_verbatim_copy_flagged_high():

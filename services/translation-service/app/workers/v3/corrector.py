@@ -18,11 +18,14 @@ log = logging.getLogger(__name__)
 
 # D-TRANSL-CORRECTOR-LIMITS: cap the corrector's output. Without a max_tokens the
 # corrector could loop/over-generate on one block, burning the whole budget — the
-# exact failure (`repetition`) the rule-tier flags. Scale the cap to the source
-# length (×_CORRECTOR_OUT_FACTOR, generous headroom for CJK→Latin expansion) with a
-# 2048 floor so a short block isn't starved, capped at the global output ceiling so
-# it can never exceed the translator's own bound. Generous by design — it bounds
-# runaway generation, it must never truncate a legitimate one-block correction.
+# exact failure (`repetition`) the rule-tier flags. The budget scales off the LARGER
+# of the source and the PRIOR DRAFT (×_CORRECTOR_OUT_FACTOR), with a 2048 floor and
+# the global output ceiling. /review-impl MED: the draft is already in the OUTPUT
+# language, so it's the right size proxy for the corrected output — budgeting off the
+# source alone under-estimates for a dense source→verbose target (CJK→Latin) and could
+# truncate a legitimate correction (which `parse_corrector_job` would then accept,
+# silently replacing the complete prior draft with a truncated one). Generous by
+# design — it bounds runaway generation, never truncates a legit one-block correction.
 _CORRECTOR_OUT_FACTOR = 3
 _CORRECTOR_OUT_FLOOR = 2048
 
@@ -72,7 +75,11 @@ def build_corrector_submit_kwargs(
     )
     out_max = min(
         _TRANSLATION_MAX_OUTPUT_TOKENS,
-        max(_CORRECTOR_OUT_FLOOR, estimate_tokens(source_text) * _CORRECTOR_OUT_FACTOR),
+        max(
+            _CORRECTOR_OUT_FLOOR,
+            max(estimate_tokens(source_text), estimate_tokens(draft_text))
+            * _CORRECTOR_OUT_FACTOR,
+        ),
     )
     return dict(
         operation="translation",

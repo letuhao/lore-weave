@@ -250,6 +250,27 @@ async def test_build_brief_neighborhood_fetch_timeout_degrades(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_build_brief_neighborhood_fetch_cancellation_propagates(monkeypatch):
+    """The 'abort' half of M4B (/review-impl LOW): a CancelledError (job cancel) must
+    NOT be swallowed by the failure-isolation `except Exception` — it propagates so the
+    fan-out aborts. Locks the invariant against a future `except BaseException` drift."""
+    import asyncio
+    ents = [_entity("e1", "X", desc="d")]
+
+    async def fake_entities(book_id, user_id, query, max_entities=20, max_tokens=1000):
+        return ents
+
+    async def cancel_nb(user_id, glossary_entity_id, rel_cap=200):
+        raise asyncio.CancelledError()
+
+    monkeypatch.setattr(kctx, "fetch_context_entities", fake_entities)
+    monkeypatch.setattr(kctx, "fetch_wiki_neighborhood", cancel_nb)
+
+    with pytest.raises(asyncio.CancelledError):
+        await build_context_brief("b1", "u1", "text")
+
+
+@pytest.mark.asyncio
 async def test_orchestrator_threads_brief_to_translator_and_verifier(monkeypatch):
     """Integration: the orchestrator feeds the SAME brief to the Translator
     (extra_system) and the Verifier (knowledge_brief). Guards both wiring legs —
