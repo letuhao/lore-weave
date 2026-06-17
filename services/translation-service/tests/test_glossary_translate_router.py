@@ -113,3 +113,33 @@ def test_glossary_translate_get_job(client, fake_pool, grant_stub):
     resp = client.get(f"/v1/glossary-translate/jobs/{job_id}")
     assert resp.status_code == 200
     assert resp.json()["job_type"] == "translate_glossary"
+
+
+def test_glossary_translate_cancel_emits_cancelling(client, fake_pool, grant_stub):
+    # D-JOBS-GLOSSARY-TRANSLATE-UNWIRED: cancel UPDATE→cancelling + emit the transition in
+    # one tx (H1). The SELECT now carries owner_user_id (the emit's owner).
+    grant_stub.level = GrantLevel.EDIT
+    job_id = uuid4()
+    owner = uuid4()
+    fake_pool.fetchrow.return_value = FakeRecord(
+        {"status": "running", "book_id": UUID(BOOK_ID), "owner_user_id": owner})
+    with patch("app.routers.glossary_translate.emit_job_event", new_callable=AsyncMock) as emit:
+        resp = client.post(f"/v1/glossary-translate/jobs/{job_id}/cancel")
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "cancelling"
+    emit.assert_awaited_once()
+    kw = emit.await_args.kwargs
+    assert kw["service"] == "translation" and kw["kind"] == "glossary_translation"
+    assert kw["status"] == "cancelling" and kw["owner_user_id"] == str(owner)
+
+
+def test_glossary_translate_cancel_409_when_terminal(client, fake_pool, grant_stub):
+    # A completed/failed job can't be cancelled → 409, and NO emit fires.
+    grant_stub.level = GrantLevel.EDIT
+    job_id = uuid4()
+    fake_pool.fetchrow.return_value = FakeRecord(
+        {"status": "completed", "book_id": UUID(BOOK_ID), "owner_user_id": uuid4()})
+    with patch("app.routers.glossary_translate.emit_job_event", new_callable=AsyncMock) as emit:
+        resp = client.post(f"/v1/glossary-translate/jobs/{job_id}/cancel")
+    assert resp.status_code == 409
+    emit.assert_not_awaited()
