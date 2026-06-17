@@ -19,8 +19,11 @@ from uuid import uuid4
 import pytest
 from fastapi import HTTPException
 
-from app.db.repositories import generation_jobs
+from app.db.repositories import (
+    ChapterJobInFlightError, ReferenceViolationError, generation_jobs,
+)
 from app.db.repositories.generation_jobs import GenerationJobsRepo
+from app.routers import internal_job_control as ijc
 from app.routers.internal_job_control import (
     JobControlPayload, control_generation_job, reconcile_jobs,
 )
@@ -28,6 +31,9 @@ from app.routers.internal_job_control import (
 USER = uuid4()
 OTHER = uuid4()
 JOB = uuid4()
+NEW = uuid4()
+NODE = uuid4()
+CHAP = uuid4()
 PROJ = uuid4()
 
 
@@ -125,6 +131,154 @@ async def test_unknown_action_400():
             await control_generation_job(JOB, action, JobControlPayload(owner_user_id=USER), repo)
         assert exc.value.status_code == 400
     repo.get.assert_not_awaited()
+
+
+# ── router: retry (D-JOBS-P4-RETRY-COMPOSITION) ─────────────────────────────────
+def _failed_job(**over):
+    base = dict(
+        id=JOB, user_id=USER, project_id=PROJ, outline_node_id=NODE,
+        operation="draft_scene", mode="auto", status="failed",
+        # worker-drivable: input carries the canonical worker_op + the resolved context.
+        input={"worker_op": "generate", "packed_prompt": "…", "model_source": "user_model",
+               "model_ref": str(uuid4())},
+    )
+    base.update(over)
+    return SimpleNamespace(**base)
+
+
+def _retry_repo(job, *, create_ret=None, guarded_ret=None, guarded_exc=None):
+    repo = AsyncMock()
+    repo.get = AsyncMock(return_value=job)
+    repo.create = AsyncMock(return_value=create_ret or (SimpleNamespace(id=NEW, status="pending"), True))
+    if guarded_exc is not None:
+        repo.create_chapter_job_guarded = AsyncMock(side_effect=guarded_exc)
+    else:
+        repo.create_chapter_job_guarded = AsyncMock(
+            return_value=guarded_ret or (SimpleNamespace(id=NEW, status="pending"), True))
+    return repo
+
+
+@pytest.fixture
+def _retry_env(monkeypatch):
+    """Worker enabled + stub enqueue/model-name so the retry core is unit-isolated."""
+    monkeypatch.setattr(ijc, "settings", SimpleNamespace(
+        composition_worker_enabled=True, redis_url="redis://x", chapter_inflight_stale_secs=1800))
+    enq = AsyncMock(return_value=True)
+    monkeypatch.setattr(ijc, "enqueue_job", enq)
+    monkeypatch.setattr(ijc, "resolve_model_name", AsyncMock(return_value="some-model"))
+    return enq
+
+
+@pytest.mark.asyncio
+async def test_retry_worker_drivable_resubmits_new_job(_retry_env):
+    repo = _retry_repo(_failed_job())
+    resp = await control_generation_job(JOB, "retry", JobControlPayload(owner_user_id=USER), repo)
+    assert resp.job_id == NEW and resp.status == "pending"
+    # re-submitted as a NEW job from the failed row; idempotency_key NOT copied (else ON
+    # CONFLICT would replay→return the same failed row).
+    repo.create.assert_awaited_once()
+    kw = repo.create.await_args.kwargs
+    assert kw["idempotency_key"] is None and kw["status"] == "pending"
+    assert kw["operation"] == "draft_scene" and kw["outline_node_id"] == NODE
+    assert kw["input"]["worker_op"] == "generate"
+    _retry_env.assert_awaited_once()  # enqueued
+
+
+@pytest.mark.asyncio
+async def test_retry_not_owned_404(_retry_env):
+    repo = _retry_repo(None)
+    with pytest.raises(HTTPException) as exc:
+        await control_generation_job(JOB, "retry", JobControlPayload(owner_user_id=OTHER), repo)
+    assert exc.value.status_code == 404
+    repo.create.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_retry_not_failed_409(_retry_env):
+    repo = _retry_repo(_failed_job(status="completed"))
+    with pytest.raises(HTTPException) as exc:
+        await control_generation_job(JOB, "retry", JobControlPayload(owner_user_id=USER), repo)
+    assert exc.value.status_code == 409
+    assert exc.value.detail["code"] == "JOBS_STATUS_NOT_FAILED"
+    repo.create.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_retry_inline_streamed_not_retryable_409(_retry_env):
+    # inline cowrite job: no worker_op in input → not worker-drivable → 409, not re-submitted.
+    repo = _retry_repo(_failed_job(input={"model_source": "user_model"}))
+    with pytest.raises(HTTPException) as exc:
+        await control_generation_job(JOB, "retry", JobControlPayload(owner_user_id=USER), repo)
+    assert exc.value.status_code == 409
+    assert exc.value.detail["code"] == "JOBS_NOT_RETRYABLE"
+    repo.create.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_retry_worker_disabled_409(monkeypatch):
+    monkeypatch.setattr(ijc, "settings", SimpleNamespace(
+        composition_worker_enabled=False, redis_url="redis://x", chapter_inflight_stale_secs=1800))
+    monkeypatch.setattr(ijc, "enqueue_job", AsyncMock())
+    repo = _retry_repo(_failed_job())
+    with pytest.raises(HTTPException) as exc:
+        await control_generation_job(JOB, "retry", JobControlPayload(owner_user_id=USER), repo)
+    assert exc.value.status_code == 409
+    assert exc.value.detail["code"] == "JOBS_WORKER_DISABLED"
+    repo.create.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_retry_node_deleted_409(_retry_env):
+    # the failed job's outline node was deleted since → create re-validates ownership and
+    # raises ReferenceViolationError → 409 (not a 500).
+    repo = _retry_repo(_failed_job())
+    repo.create = AsyncMock(side_effect=ReferenceViolationError("node gone"))
+    with pytest.raises(HTTPException) as exc:
+        await control_generation_job(JOB, "retry", JobControlPayload(owner_user_id=USER), repo)
+    assert exc.value.status_code == 409
+    assert exc.value.detail["code"] == "JOBS_NOT_RETRYABLE"
+
+
+@pytest.mark.asyncio
+async def test_retry_chapter_uses_guarded_create(_retry_env):
+    # chapter_generate writes the book draft → must go through the in-flight guard, not plain create.
+    job = _failed_job(operation="draft_chapter",
+                      input={"worker_op": "chapter_generate", "chapter_id": str(CHAP),
+                             "packed_prompt": "…", "model_source": "user_model"})
+    repo = _retry_repo(job)
+    resp = await control_generation_job(JOB, "retry", JobControlPayload(owner_user_id=USER), repo)
+    assert resp.job_id == NEW
+    repo.create_chapter_job_guarded.assert_awaited_once()
+    repo.create.assert_not_awaited()  # NOT the plain path
+    kw = repo.create_chapter_job_guarded.await_args.kwargs
+    assert kw["idempotency_key"] is None and kw["status"] == "pending"
+
+
+@pytest.mark.asyncio
+async def test_retry_stitch_uses_guarded_create(_retry_env):
+    # /review-impl MED-2: stitch_chapter also writes the chapter draft → must go through
+    # the in-flight guard on retry too, not plain create.
+    job = _failed_job(operation="stitch_chapter",
+                      input={"worker_op": "stitch_chapter", "chapter_id": str(CHAP),
+                             "chapter_intent": "…", "max_out": 2048, "model_source": "user_model"})
+    repo = _retry_repo(job)
+    resp = await control_generation_job(JOB, "retry", JobControlPayload(owner_user_id=USER), repo)
+    assert resp.job_id == NEW
+    repo.create_chapter_job_guarded.assert_awaited_once()
+    repo.create.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_retry_chapter_in_flight_409(_retry_env):
+    job = _failed_job(operation="draft_chapter",
+                      input={"worker_op": "chapter_generate", "chapter_id": str(CHAP),
+                             "model_source": "user_model"})
+    repo = _retry_repo(job, guarded_exc=ChapterJobInFlightError("active-123"))
+    with pytest.raises(HTTPException) as exc:
+        await control_generation_job(JOB, "retry", JobControlPayload(owner_user_id=USER), repo)
+    assert exc.value.status_code == 409
+    assert exc.value.detail["code"] == "CHAPTER_JOB_IN_FLIGHT"
+    assert exc.value.detail["active_job_id"] == "active-123"
 
 
 # ── reconcile source: GET /internal/composition/jobs?since= ─────────────────────

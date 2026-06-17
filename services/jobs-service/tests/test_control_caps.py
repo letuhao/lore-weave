@@ -23,9 +23,32 @@ def test_failed_retryable_kinds_offer_retry():
 
 
 def test_failed_non_retryable_kind_offers_nothing():
-    # composition/enrichment/lore retry not wired yet → no retry button.
+    # campaign saga re-dispatches its own stages; lore-enrichment is sync in-process. Neither
+    # is kind-retryable, and with NO per-job flag a composition op ("generate") offers nothing.
     for kind in ("campaign", "enrichment_job", "generate"):
         assert derive_control_caps(JobStatus.FAILED, kind) == []
+
+
+def test_failed_composition_per_job_retryable_flag_offers_retry():
+    # D-JOBS-P4-RETRY-COMPOSITION: composition retryability is PER-JOB (the worker path is
+    # reconstructable, the inline/streamed path is not — SAME free-form `kind` for both). The
+    # producer emits params.retryable; the read API passes it through. retryable=True → retry.
+    for kind in ("draft_scene", "rewrite", "draft_chapter", "stitch_chapter", "decompose_preview"):
+        assert _vals(derive_control_caps(JobStatus.FAILED, kind, retryable=True)) == ["retry"]
+
+
+def test_failed_composition_not_worker_drivable_offers_nothing():
+    # An inline/streamed composition job (no persisted prompt) emits retryable=False → no retry.
+    # And an absent flag (None — old rows / kinds that don't emit it) also offers nothing.
+    assert derive_control_caps(JobStatus.FAILED, "draft_scene", retryable=False) == []
+    assert derive_control_caps(JobStatus.FAILED, "draft_scene", retryable=None) == []
+
+
+def test_per_job_retryable_flag_only_applies_when_failed():
+    # The per-job flag must not leak retry into a non-failed state, and a kind-retryable job
+    # is unaffected by the flag (translation still retries on failed regardless).
+    assert _vals(derive_control_caps(JobStatus.RUNNING, "draft_scene", retryable=True)) == ["cancel"]
+    assert _vals(derive_control_caps(JobStatus.FAILED, "translation", retryable=False)) == ["retry"]
 
 
 def test_retry_only_from_failed_not_other_terminal():

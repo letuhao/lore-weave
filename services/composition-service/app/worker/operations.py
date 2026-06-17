@@ -22,6 +22,7 @@ import asyncpg
 
 from app.clients.llm_client import LLMClient
 from app.config import settings
+from app.worker.constants import SUPPORTED_OPERATIONS
 
 __all__ = [
     "UnsupportedOperationError",
@@ -65,15 +66,6 @@ async def _maybe_narrative_threads(
         )
     except Exception:  # noqa: BLE001 — advisory; must not fail the generate
         logger.warning("narrative_thread S2 producer failed (advisory)", exc_info=True)
-
-
-#: worker-op identifiers the worker can run (the sweeper re-drive whitelist). For
-#: decompose/stitch this equals the job's ``operation`` column; for generate the
-#: ``operation`` is the user's free-form prose op ("draft_scene", …), so the
-#: canonical worker-op is carried in ``input['worker_op']`` and matched there too.
-SUPPORTED_OPERATIONS = (
-    "decompose_preview", "stitch_chapter", "generate", "chapter_generate", "selection_edit",
-)
 
 
 async def run_decompose(llm: LLMClient, *, user_id: str, input: dict[str, Any]) -> dict[str, Any]:

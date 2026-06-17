@@ -60,7 +60,16 @@ def event_to_payload(event: JobEvent) -> dict:
         "tokens_out": event.tokens_out,
         "params": event.params,
         "updated_at": event.occurred_at,
-        "control_caps": [c.value for c in derive_control_caps(event.status, event.kind)],
+        # Uniform with the read API: pass the per-job `retryable` flag (composition's
+        # per-job retry signal) when the event carries params. NOTE the residual gap
+        # (D-JOBS-P4-RETRY-COMPOSITION-SSE-CAPS): composition's FAILED transition emits
+        # params=None (only the create emit carries retryable), so a freshly-failed
+        # composition job's LIVE frame won't include the retry cap — the read API (which
+        # reads the COALESCE-preserved projection params) is authoritative and a refetch/
+        # reconnect recovers it (this file's SSOT contract). Kind-retryable siblings
+        # (translation/extraction/video_gen) are unaffected (their retry is kind-based).
+        "control_caps": [c.value for c in derive_control_caps(
+            event.status, event.kind, retryable=(event.params or {}).get("retryable"))],
     }
 
 

@@ -1119,7 +1119,8 @@ async def stitch_chapter_endpoint(
         distinct = bool(c_ref and c_src and str(c_ref) != str(body.model_ref))
         job_input = {
             "model_source": body.model_source, "model_ref": str(body.model_ref),
-            "operation": "stitch_chapter", "assembly_mode": "per_scene_stitch",
+            "operation": "stitch_chapter", "worker_op": "stitch_chapter",
+            "assembly_mode": "per_scene_stitch",
             "chapter_id": str(chapter_id), "chapter_intent": chapter_intent,
             "cast_glossary_ids": [str(e) for e in union_cast(scenes)],
             "chapter_sort": chapter_sort, "max_out": max_out,

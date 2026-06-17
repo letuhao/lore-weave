@@ -22,6 +22,7 @@ from app.clients.model_name import resolve_model_name
 
 from app.db.models import GenerationJob
 from app.db.repositories import ChapterJobInFlightError, ReferenceViolationError
+from app.worker.constants import is_worker_drivable
 
 #: Unified Job Control Plane P1 — the service id stamped on every emitted JobEvent.
 _JOB_SERVICE = "composition"
@@ -113,6 +114,16 @@ class GenerationJobsRepo:
             "mode": mode,
             "reasoning": _in.get("reasoning"),
             "reasoning_effort": _in.get("reasoning_effort"),
+            # D-JOBS-P4-RETRY-COMPOSITION — per-job retryability signal for the unified
+            # control plane. A composition job is server-reconstructable iff it is
+            # worker-drivable (its input carries the full bearer-resolved context the
+            # worker re-runs from). The inline/streamed cowrite path packs its prompt
+            # live and never persists it → retryable=False (the FE re-generate is its
+            # retry surface). jobs-service `derive_control_caps` reads this off the
+            # projection's params to gate the Retry button per-job (kind alone can't
+            # tell the worker path from the inline path — both emit the same free-form
+            # operation as `kind`).
+            "retryable": is_worker_drivable(operation, _in),
         }
 
         async def _do(c: asyncpg.Connection) -> tuple[GenerationJob, bool]:

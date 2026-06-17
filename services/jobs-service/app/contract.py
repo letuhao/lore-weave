@@ -41,8 +41,12 @@ _MULTI_UNIT_KINDS: frozenset[str] = frozenset({"extraction", "campaign", "enrich
 #                   JSONB (which already persists prompt/model/duration/aspect/style) and
 #                   re-runs the decoupled submit → new row + 'running' (D-JOBS-P4-RETRY-VIDEOGEN;
 #                   NO migration — the params were on the row all along)
-# NOT yet (tracked): composition (D-JOBS-P4-RETRY-COMPOSITION — params live in an opaque
-# generation_job.input JSONB), lore-enrichment (sync in-process — incompatible with the
+# NOT a kind-based entry: composition retry is PER-JOB, not per-kind — a composition job's
+# `kind` is its free-form operation ("draft_scene", "rewrite", …), IDENTICAL for the
+# server-reconstructable worker path and the non-reconstructable inline/streamed path. So
+# composition is gated on the per-job `retryable` flag (params.retryable, emitted by the
+# producer) passed to derive_control_caps, NOT this allowlist (D-JOBS-P4-RETRY-COMPOSITION).
+# Still NOT retryable at all: lore-enrichment (sync in-process — incompatible with the
 # deferred control contract; D-JOBS-P4-RETRY-LORE).
 _RETRYABLE_KINDS: frozenset[str] = frozenset({"translation", "extraction", "video_gen"})
 
@@ -66,17 +70,24 @@ def _is_multi_unit(kind: str) -> bool:
     return kind in _MULTI_UNIT_KINDS
 
 
-def derive_control_caps(status: "JobStatus | str", kind: str) -> list[ControlCap]:
+def derive_control_caps(
+    status: "JobStatus | str", kind: str, *, retryable: bool | None = None
+) -> list[ControlCap]:
     """Return the control actions valid for a job in its CURRENT status.
 
     - a VIEW-ONLY kind (no unified control surface) → none
     - a CANCEL-ONLY secondary kind → cancel when pending|running, else none
     - `wiki_gen` → resume+cancel when paused, cancel when pending, else none (no running-cancel)
-    - `failed` → retry (only for a retry-supported kind), else none
+    - `failed` → retry (kind in _RETRYABLE_KINDS OR the PER-JOB `retryable` flag is True), else none
     - terminal (completed/cancelled) or `cancelling` (already in-flight) → none
     - `paused` → resume + cancel
     - `pending` → cancel
     - `running` → cancel (+ pause iff the kind is multi-unit)
+
+    `retryable` is the producer-emitted per-job signal (projection params.retryable),
+    used for kinds whose retryability is per-job not per-kind (composition: the worker
+    path is reconstructable, the inline/streamed path is not — same `kind` for both).
+    None (most callers / most kinds) ⇒ kind-based decision only.
     """
     if kind in _VIEW_ONLY_KINDS:  # no control endpoint → offer nothing
         return []
@@ -91,9 +102,11 @@ def derive_control_caps(status: "JobStatus | str", kind: str) -> list[ControlCap
             return [ControlCap.CANCEL]
         return []  # running can't be cancelled (D-WIKI-M7B); terminal/cancelling → none
     if s == JobStatus.FAILED:
-        # A failed job is terminal but RE-SUBMITTABLE for the kinds whose owner honors it
-        # (D-JOBS-P4-RETRY). Retry creates a NEW job; the failed row stays as history.
-        return [ControlCap.RETRY] if kind in _RETRYABLE_KINDS else []
+        # A failed job is terminal but RE-SUBMITTABLE when the owner honors it
+        # (D-JOBS-P4-RETRY): either the kind is unconditionally retryable, or this
+        # specific job carries the per-job `retryable` flag (composition). Retry
+        # creates a NEW job; the failed row stays as history.
+        return [ControlCap.RETRY] if (kind in _RETRYABLE_KINDS or retryable is True) else []
     if s in TERMINAL or s == JobStatus.CANCELLING:
         return []
     if s == JobStatus.PAUSED:

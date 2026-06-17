@@ -97,9 +97,11 @@ async def test_create_emits_pending_on_new_job(monkeypatch):
     resolve_spy = AsyncMock(return_value="claude-haiku")
     monkeypatch.setattr(generation_jobs, "resolve_model_name", resolve_spy)
     repo = GenerationJobsRepo(pool=None)
+    # A real worker job: the server stamps the canonical worker_op into input.
     _job, created = await repo.create(
-        USER, PROJ, operation="generate",
-        input={"model_source": "user_model", "model_ref": "abc", "reasoning": "rule_based"},
+        USER, PROJ, operation="draft_scene",
+        input={"model_source": "user_model", "model_ref": "abc", "reasoning": "rule_based",
+               "worker_op": "generate"},
         conn=FakeConn(_row(status="pending")),
     )
     assert created is True
@@ -109,9 +111,55 @@ async def test_create_emits_pending_on_new_job(monkeypatch):
     # in-tx (conn-passed) path: resolver skipped → model None, but params present
     resolve_spy.assert_not_awaited()
     assert kw["model"] is None
-    assert kw["params"]["operation"] == "generate"
+    assert kw["params"]["operation"] == "draft_scene"
     assert kw["params"]["reasoning"] == "rule_based"
     assert kw["params"]["model_ref"] == "abc"
+    # D-JOBS-P4-RETRY-COMPOSITION — worker_op stamped → worker-drivable → retryable.
+    assert kw["params"]["retryable"] is True
+
+
+@pytest.mark.asyncio
+async def test_create_emits_retryable_false_for_inline_op(monkeypatch):
+    # An inline/streamed cowrite job: a free-form prose `operation` with NO worker_op in
+    # input is NOT worker-drivable → retryable=False (its prompt was never persisted, so the
+    # unified plane must not offer a server-side retry; the FE re-generate is that surface).
+    spy = AsyncMock()
+    monkeypatch.setattr(generation_jobs, "emit_job_event", spy)
+    monkeypatch.setattr(generation_jobs, "resolve_model_name", AsyncMock(return_value=None))
+    repo = GenerationJobsRepo(pool=None)
+    await repo.create(
+        USER, PROJ, operation="draft_scene",
+        input={"model_source": "user_model", "model_ref": "abc"},  # no worker_op
+        conn=FakeConn(_row(status="running", operation="draft_scene")),
+    )
+    assert spy.await_args.kwargs["params"]["retryable"] is False
+
+
+@pytest.mark.asyncio
+async def test_create_emits_retryable_strict_on_worker_op_not_operation(monkeypatch):
+    # /review-impl MED-1: stitch/decompose key on the SERVER-set worker_op, NOT the
+    # operation column — an INLINE stitch (operation='stitch_chapter' but NO worker_op,
+    # only partial input) must be retryable=False, while the worker stitch (worker_op set)
+    # is retryable=True. An operation-based predicate would falsely flag the inline one.
+    spy = AsyncMock()
+    monkeypatch.setattr(generation_jobs, "emit_job_event", spy)
+    monkeypatch.setattr(generation_jobs, "resolve_model_name", AsyncMock(return_value=None))
+    repo = GenerationJobsRepo(pool=None)
+    # inline stitch — operation matches a worker-op NAME but no worker_op stamped.
+    await repo.create(
+        USER, PROJ, operation="stitch_chapter",
+        input={"model_source": "user_model", "operation": "stitch_chapter"},
+        conn=FakeConn(_row(status="running", operation="stitch_chapter")),
+    )
+    assert spy.await_args.kwargs["params"]["retryable"] is False
+    # worker stitch — worker_op stamped → retryable.
+    spy.reset_mock()
+    await repo.create(
+        USER, PROJ, operation="stitch_chapter",
+        input={"model_source": "user_model", "worker_op": "stitch_chapter", "chapter_id": "c1"},
+        conn=FakeConn(_row(status="pending", operation="stitch_chapter")),
+    )
+    assert spy.await_args.kwargs["params"]["retryable"] is True
 
 
 @pytest.mark.asyncio

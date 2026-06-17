@@ -166,6 +166,7 @@ async def decompose_preview(
         job_input = {
             "model_source": str(body.model_source),
             "model_ref": str(body.model_ref),
+            "worker_op": "decompose_preview",
             "premise": body.premise,
             "arc_title": tmpl.name,
             "beats": tmpl.beats,

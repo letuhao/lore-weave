@@ -24,8 +24,18 @@ from ..projection import store
 router = APIRouter(prefix="/v1/jobs", tags=["jobs"])
 
 
+def _retryable_flag(job: dict) -> bool | None:
+    """The producer-emitted per-job retryability signal off the projection params
+    (composition gates its Retry button on it — kind alone can't tell its worker
+    path from its inline path). None when absent (old rows / kinds that don't emit it)."""
+    return (job.get("params") or {}).get("retryable")
+
+
 def _with_caps(job: dict) -> dict:
-    job["control_caps"] = [c.value for c in derive_control_caps(job["status"], job["kind"])]
+    job["control_caps"] = [
+        c.value for c in derive_control_caps(
+            job["status"], job["kind"], retryable=_retryable_flag(job))
+    ]
     return job
 
 
@@ -179,7 +189,8 @@ async def control_job(
     job = await store.get_job(db, user_id, service, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="job not found")
-    caps = [c.value for c in derive_control_caps(job["status"], job["kind"])]
+    caps = [c.value for c in derive_control_caps(
+        job["status"], job["kind"], retryable=_retryable_flag(job))]
     if action not in caps:
         raise HTTPException(
             status_code=409,
