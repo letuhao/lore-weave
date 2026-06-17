@@ -55,10 +55,17 @@ func TestSchemaToken_TamperedSignatureRejected(t *testing.T) {
 	secret := "test_jwt_secret_at_least_32_characters_long"
 	now := time.Unix(1_900_000_000, 0)
 	tok := mintSchemaToken(secret, uuid.New(), uuid.New(), schemaOpKind, json.RawMessage(`{}`), now)
-	// flip the last char of the signature segment
-	bad := tok[:len(tok)-1] + map[bool]string{true: "A", false: "B"}[tok[len(tok)-1] != 'A']
+	// D-GLOSSARY-SCHEMA-TOKEN-TAMPER-TEST-FLAKY: tamper the PAYLOAD, not the last
+	// signature char. The trailing base64url char carries "don't-care" low bits, so
+	// flipping it can decode to the SAME signature bytes → the old test flakily passed
+	// a "tampered" token. Corrupting the payload always invalidates: the signature was
+	// computed over header.payload, so any payload change breaks verification deterministically.
+	parts := strings.SplitN(tok, ".", 3)
+	flip := map[bool]byte{true: 'B', false: 'A'}[parts[1][0] == 'A']
+	parts[1] = string(flip) + parts[1][1:]
+	bad := strings.Join(parts, ".")
 	if _, err := verifySchemaToken(secret, bad, now.Add(time.Minute)); !errors.Is(err, ErrSchemaTokenInvalid) {
-		t.Fatalf("tampered sig must be invalid, got %v", err)
+		t.Fatalf("tampered payload must be invalid, got %v", err)
 	}
 	// a different secret must also reject (key binding)
 	if _, err := verifySchemaToken("another_secret_at_least_32_characters_xx", tok, now.Add(time.Minute)); !errors.Is(err, ErrSchemaTokenInvalid) {
