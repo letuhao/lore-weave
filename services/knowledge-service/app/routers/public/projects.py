@@ -17,6 +17,7 @@ returns None which we map to 404.
 
 import base64
 import hashlib
+import logging
 import re
 from datetime import datetime
 from typing import Literal
@@ -34,6 +35,8 @@ from app.db.models import (
     ProjectExtractionConfigUpdate,
     ProjectUpdate,
 )
+from app.db.neo4j import neo4j_session
+from app.db.neo4j_helpers import purge_project
 from app.db.neo4j_repos.passages import SUPPORTED_PASSAGE_DIMS
 from app.db.repositories import VersionMismatchError
 from app.db.repositories.projects import (
@@ -93,6 +96,8 @@ def _etag(version: int) -> str:
     return f'W/"{version}"'
 
 __all__ = ["router"]
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/v1/knowledge/projects",
@@ -695,3 +700,20 @@ async def delete_project(
     deleted = await repo.delete(user_id, project_id)
     if not deleted:
         raise _not_found()
+    # D-KNOWLEDGE-PROJECT-DELETE-NEO4J-ORPHAN: the Postgres delete above is the
+    # authoritative owner-gated op; now best-effort purge the project's Neo4j graph
+    # (all nodes carry project_id) + its per-project summary vector indexes so a
+    # delete no longer orphans the graph. A Neo4j fault must NOT fail the delete —
+    # the row is already gone (re-sweep can reclaim a stray orphan); log + move on.
+    try:
+        async with neo4j_session() as session:
+            purged = await purge_project(session, str(project_id))
+        logger.info(
+            "purged neo4j for deleted project %s: %s nodes, %s indexes",
+            project_id, purged["nodes_deleted"], purged["indexes_dropped"],
+        )
+    except Exception:  # noqa: BLE001 — best-effort; the Postgres delete is authoritative
+        logger.warning(
+            "neo4j purge for deleted project %s failed — graph orphaned, re-sweep owed",
+            project_id, exc_info=True,
+        )
