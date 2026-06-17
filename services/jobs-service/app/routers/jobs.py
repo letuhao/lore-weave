@@ -185,5 +185,5 @@ async def control_job(
             status_code=409,
             detail=f"action '{action}' not valid for status '{job['status']}'",
         )
-    result = await control.forward_control(service, job_id, action, user_id)
+    result = await control.forward_control(service, job_id, action, user_id, job["kind"])
     return JSONResponse(status_code=result.status_code, content=result.body)

@@ -55,9 +55,9 @@ def test_control_forwards_and_relays(client):
     ):
         r = client.post(f"/v1/jobs/knowledge/{JID}/cancel", headers={"Authorization": "Bearer x"})
     assert r.status_code == 200 and r.json()["status"] == "cancelled"
-    # owner (verified sub) + service/job/action forwarded
+    # owner (verified sub) + service/job/action/kind forwarded (kind drives by-table dispatch)
     args = fwd.await_args.args
-    assert args == ("knowledge", JID, "cancel", TEST_USER)
+    assert args == ("knowledge", JID, "cancel", TEST_USER, "extraction")
 
 
 def test_control_relays_downstream_409(client):
@@ -129,12 +129,12 @@ async def test_forward_relays_downstream(monkeypatch):
         async def __aexit__(self, *a): return False
         async def post(self, url, **kw):
             assert url.endswith(f"/internal/knowledge/jobs/{JID}/pause")
-            assert kw["json"] == {"owner_user_id": TEST_USER}
+            assert kw["json"] == {"owner_user_id": TEST_USER, "kind": "extraction"}
             assert "X-Internal-Token" in kw["headers"]
             return _Resp()
 
     monkeypatch.setattr(control.httpx, "AsyncClient", _Client)
-    res = await control.forward_control("knowledge", JID, "pause", TEST_USER)
+    res = await control.forward_control("knowledge", JID, "pause", TEST_USER, "extraction")
     assert res.status_code == 200 and res.body["status"] == "paused"
 
 

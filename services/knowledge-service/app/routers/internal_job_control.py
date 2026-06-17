@@ -119,6 +119,10 @@ class JobControlPayload(BaseModel):
     # The asserted OWNER (jobs-service forwards the verified JWT sub). Re-checked
     # against the row here — M4.
     owner_user_id: UUID
+    # The job KIND (D-JOBS-SECONDARY-KIND-CONTROL) — knowledge hosts BOTH `extraction`
+    # (extraction_jobs) and `wiki_gen` (wiki_gen_jobs). None ⇒ extraction (back-compat for an
+    # older jobs-service). control_extraction_job dispatches wiki_gen to the wiki repo.
+    kind: str | None = None
 
 
 class JobControlResponse(BaseModel):
@@ -134,6 +138,12 @@ async def control_extraction_job(
     jobs_repo: ExtractionJobsRepo = Depends(get_extraction_jobs_repo),
     projects_repo: ProjectsRepo = Depends(get_projects_repo),
 ) -> JobControlResponse:
+    # wiki_gen dispatch (D-JOBS-SECONDARY-KIND-CONTROL) — knowledge's batch wiki-gen producer.
+    # Native control: cancel a not-yet-running job (pending|paused) + resume (paused). A
+    # running wiki job is NOT cancellable (the orchestrator doesn't poll mid-loop —
+    # D-WIKI-M7B-RUNNING-CANCEL). The repo methods are owner-blind, so re-verify owner here (M4).
+    if payload.kind == "wiki_gen":
+        return await _control_wiki_gen_job(job_id, action, payload.owner_user_id)
     if action not in _ACTIONS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -165,3 +175,31 @@ async def control_extraction_job(
         extraction_enabled=proj_enabled, extraction_status=proj_status,
     )
     return JobControlResponse(job_id=updated.job_id, status=updated.status)
+
+
+async def _control_wiki_gen_job(job_id: UUID, action: str, owner_user_id: UUID) -> JobControlResponse:
+    """Cancel|resume a wiki-gen job via the WikiGenJobsRepo (which emits the transition,
+    Slice C). The repo cancel/resume are owner-BLIND + status-guarded (cancel: pending|paused
+    → cancelled; resume: paused → pending), so re-verify ownership on the row first (M4 — a
+    job not owned by the asserted user → 404, never a cross-tenant act). A guarded mutation
+    that flips nothing (e.g. cancel on a running/terminal job) → 409."""
+    if action not in ("cancel", "resume"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "JOBS_UNKNOWN_ACTION", "message": f"wiki_gen supports cancel|resume, not {action}"},
+        )
+    repo = WikiGenJobsRepo(get_knowledge_pool())
+    job = await repo.get(job_id)
+    if job is None or job.user_id != owner_user_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "JOBS_NOT_FOUND", "message": "job not found"},
+        )
+    ok = await (repo.cancel(job_id) if action == "cancel" else repo.resume(job_id))
+    if not ok:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "JOBS_STATUS_CHANGED",
+                    "message": f"wiki_gen job not {action}able in status '{job.status}'"},
+        )
+    return JobControlResponse(job_id=job_id, status="cancelled" if action == "cancel" else "pending")

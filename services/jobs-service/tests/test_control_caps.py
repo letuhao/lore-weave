@@ -70,13 +70,35 @@ def test_unknown_kind_defaults_to_cancel_only_when_running():
     assert _vals(derive_control_caps(JobStatus.RUNNING, "some_new_kind")) == ["cancel"]
 
 
-def test_view_only_kinds_offer_no_control_in_any_state():
-    # Slice A/C (D-JOBS-{GLOSSARY-EXTRACT,WIKI-GEN}-UNWIRED): visible but not control-wired
-    # in the unified plane → NO caps in ANY state (a Cancel that 404s is worse than none).
-    for kind in ("glossary_extraction", "glossary_translation", "wiki_gen", "book_import"):
-        for s in (JobStatus.PENDING, JobStatus.RUNNING, JobStatus.PAUSED,
-                  JobStatus.FAILED, JobStatus.COMPLETED, JobStatus.CANCELLED):
-            assert derive_control_caps(s, kind) == [], f"{kind}/{s} should be view-only"
+def test_book_import_is_view_only_in_any_state():
+    # book_import has NO unified control surface (fire-and-forget; a running import can't be
+    # stopped) → NO caps in ANY state (D-JOBS-BOOK-IMPORT-UNWIRED).
+    for s in (JobStatus.PENDING, JobStatus.RUNNING, JobStatus.PAUSED,
+              JobStatus.FAILED, JobStatus.COMPLETED, JobStatus.CANCELLED):
+        assert derive_control_caps(s, "book_import") == [], f"book_import/{s} should be view-only"
+
+
+def test_glossary_secondary_kinds_are_cancel_only():
+    # D-JOBS-SECONDARY-KIND-CONTROL: glossary-extract/translate native endpoints only CANCEL
+    # (pending|running). No pause/resume/retry even though they're multi-unit.
+    for kind in ("glossary_extraction", "glossary_translation"):
+        assert _vals(derive_control_caps(JobStatus.PENDING, kind)) == ["cancel"]
+        assert _vals(derive_control_caps(JobStatus.RUNNING, kind)) == ["cancel"]
+        assert derive_control_caps(JobStatus.PAUSED, kind) == []   # no paused state / no resume
+        assert derive_control_caps(JobStatus.FAILED, kind) == []   # not retryable
+        assert derive_control_caps(JobStatus.COMPLETED, kind) == []
+        assert derive_control_caps(JobStatus.CANCELLING, kind) == []
+
+
+def test_wiki_gen_caps_match_native():
+    # D-JOBS-SECONDARY-KIND-CONTROL: wiki cancel works pending|paused, resume works paused;
+    # a RUNNING wiki job is NOT cancellable (D-WIKI-M7B-RUNNING-CANCEL) → no caps.
+    assert _vals(derive_control_caps(JobStatus.PENDING, "wiki_gen")) == ["cancel"]
+    assert _vals(derive_control_caps(JobStatus.PAUSED, "wiki_gen")) == ["resume", "cancel"]
+    assert derive_control_caps(JobStatus.RUNNING, "wiki_gen") == []  # can't cancel a running wiki job
+    assert derive_control_caps(JobStatus.FAILED, "wiki_gen") == []
+    assert derive_control_caps(JobStatus.COMPLETED, "wiki_gen") == []
+    assert derive_control_caps(JobStatus.CANCELLING, "wiki_gen") == []
 
 
 def test_accepts_string_status():

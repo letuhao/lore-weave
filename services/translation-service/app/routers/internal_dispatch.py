@@ -17,6 +17,7 @@ from uuid import UUID
 
 import asyncpg
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from loreweave_jobs import emit_job_event
 from pydantic import BaseModel
 
 from ..config import settings as app_settings
@@ -382,8 +383,13 @@ async def reconcile_jobs(
 
 class JobControlPayload(BaseModel):
     # The asserted OWNER (jobs-service forwards the verified JWT sub). Re-verified
-    # against the row by the owner-scoped _cancel_job_core — M4.
+    # against the row by the owner-scoped cancel cores — M4.
     owner_user_id: UUID
+    # The job KIND (D-JOBS-SECONDARY-KIND-CONTROL) — translation-service hosts THREE job
+    # tables, so control_job dispatches by kind: translation (default) / glossary_extraction
+    # (extraction_jobs) / glossary_translation (glossary_translation_jobs). None ⇒ translation
+    # (back-compat for an older jobs-service that doesn't send kind).
+    kind: str | None = None
 
 
 @router.post("/job-control/{job_id}/{action}", dependencies=[Depends(require_internal_token)])
@@ -404,7 +410,21 @@ async def control_job(
     A DISTINCT prefix from the campaign cancel (`/internal/translation/jobs/{job_id}/
     cancel`, which takes a `user_id` body) so the control-plane contract (an
     `owner_user_id` body) doesn't collide on the route. The pause/resume/cancel cores are
-    owner-scoped — M4 re-check (404 if not owned), 409 on an illegal transition."""
+    owner-scoped — M4 re-check (404 if not owned), 409 on an illegal transition.
+
+    Dispatches by `kind` (D-JOBS-SECONDARY-KIND-CONTROL): translation-service also hosts the
+    glossary-extract (`extraction_jobs`) + glossary-translate (`glossary_translation_jobs`)
+    producers; both are CANCEL-ONLY (their native endpoints only cancel)."""
+    secondary = _SECONDARY_CANCEL.get(payload.kind or "")
+    if secondary is not None:
+        if action != "cancel":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"code": "TRANSL_UNSUPPORTED_ACTION",
+                        "message": f"{payload.kind} jobs support only 'cancel', not '{action}'"},
+            )
+        table, kind = secondary
+        return await _cancel_secondary_core(db, job_id, payload.owner_user_id, table, kind)
     if action == "retry":
         return await _retry_job_core(db, job_id, payload.owner_user_id)
     if action == "pause":
@@ -419,6 +439,41 @@ async def control_job(
         )
     await _cancel_job_core(db, job_id, str(payload.owner_user_id))
     return {"job_id": str(job_id), "status": "cancelled"}
+
+
+# kind → (job table, canonical emit kind). The table is a FIXED literal (never user input),
+# so the f-string interpolation below is injection-safe.
+_SECONDARY_CANCEL: dict[str, tuple[str, str]] = {
+    "glossary_extraction": ("extraction_jobs", "glossary_extraction"),
+    "glossary_translation": ("glossary_translation_jobs", "glossary_translation"),
+}
+
+
+async def _cancel_secondary_core(
+    db: asyncpg.Pool, job_id: UUID, owner_user_id: UUID, table: str, kind: str,
+) -> dict:
+    """Owner-scoped cancel for a translation-hosted SECONDARY producer (glossary-extract /
+    glossary-translate). Mirrors the native cancel endpoints: 404 if not found/owned (M4),
+    409 unless pending|running, else UPDATE→cancelling + emit the transition in one tx (H1).
+    The worker settles it to 'cancelled' + emits the terminal."""
+    async with db.acquire() as conn:
+        async with conn.transaction():
+            row = await conn.fetchrow(
+                f"SELECT owner_user_id, status FROM {table} WHERE job_id=$1", job_id)
+            if row is None or str(row["owner_user_id"]) != str(owner_user_id):
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={"code": "TRANSL_NOT_FOUND", "message": "Job not found"})
+            if row["status"] not in ("pending", "running"):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={"code": "TRANSL_JOB_NOT_CANCELLABLE", "message": f"Job is {row['status']}"})
+            await conn.execute(
+                f"UPDATE {table} SET status='cancelling' WHERE job_id=$1", job_id)
+            await emit_job_event(
+                conn, service="translation", job_id=str(job_id),
+                owner_user_id=str(owner_user_id), kind=kind, status="cancelling")
+    return {"job_id": str(job_id), "status": "cancelling"}
 
 
 async def _retry_job_core(db: asyncpg.Pool, job_id: UUID, owner_user_id: UUID) -> dict:

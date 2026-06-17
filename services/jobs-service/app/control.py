@@ -53,21 +53,28 @@ def is_supported(service: str) -> bool:
     return service in _CONTROL
 
 
-async def forward_control(service: str, job_id: str, action: str, owner_user_id: str) -> ControlResult:
+async def forward_control(service: str, job_id: str, action: str, owner_user_id: str,
+                          kind: str | None = None) -> ControlResult:
     """Forward a control action to the owning service's internal endpoint.
 
     Returns a ControlResult mirroring the downstream status (the owning service is
     authoritative — it re-checks owner + validates the transition). A downstream
-    network failure → 502 so the caller can retry; an unknown service → 501."""
+    network failure → 502 so the caller can retry; an unknown service → 501.
+
+    `kind` rides in the body so a service hosting MULTIPLE job kinds dispatches to the
+    right table (D-JOBS-SECONDARY-KIND-CONTROL): translation owns translation/
+    glossary_extraction/glossary_translation; knowledge owns extraction/wiki_gen. Services
+    with a single kind ignore it (Pydantic extra='ignore')."""
     entry = _CONTROL.get(service)
     if entry is None:
         return ControlResult(501, {"detail": f"control not yet supported for service '{service}'"})
     base, prefix = entry
     url = f"{base}{prefix}/{job_id}/{action}"
     headers = {"X-Internal-Token": settings.internal_service_token}
+    body = {"owner_user_id": owner_user_id, "kind": kind}
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-            resp = await client.post(url, json={"owner_user_id": owner_user_id}, headers=headers)
+            resp = await client.post(url, json=body, headers=headers)
     except httpx.HTTPError as exc:
         log.warning("control forward to %s failed: %s", url, exc)
         return ControlResult(502, {"detail": f"owning service '{service}' unreachable"})

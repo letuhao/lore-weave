@@ -101,6 +101,66 @@ async def test_unknown_action_400():
     jobs.get.assert_not_awaited()
 
 
+# ── D-JOBS-SECONDARY-KIND-CONTROL — wiki_gen cancel|resume dispatch ──────────────
+
+def _wiki_repo(monkeypatch, *, job, cancel=True, resume=True):
+    """Patch the wiki dispatch's inline WikiGenJobsRepo(get_knowledge_pool())."""
+    repo = MagicMock()
+    repo.get = AsyncMock(return_value=job)
+    repo.cancel = AsyncMock(return_value=cancel)
+    repo.resume = AsyncMock(return_value=resume)
+    monkeypatch.setattr(ijc, "WikiGenJobsRepo", MagicMock(return_value=repo))
+    monkeypatch.setattr(ijc, "get_knowledge_pool", MagicMock(return_value=MagicMock()))
+    return repo
+
+
+def _wiki_job(status="pending", user=USER):
+    return SimpleNamespace(job_id=JOB, user_id=user, status=status)
+
+
+async def test_wiki_gen_cancel_owned_pending(monkeypatch):
+    repo = _wiki_repo(monkeypatch, job=_wiki_job("pending"), cancel=True)
+    resp = await control_extraction_job(
+        JOB, "cancel", JobControlPayload(owner_user_id=USER, kind="wiki_gen"), AsyncMock(), AsyncMock())
+    assert resp.status == "cancelled"
+    repo.cancel.assert_awaited_once_with(JOB)
+
+
+async def test_wiki_gen_resume_owned_paused(monkeypatch):
+    repo = _wiki_repo(monkeypatch, job=_wiki_job("paused"), resume=True)
+    resp = await control_extraction_job(
+        JOB, "resume", JobControlPayload(owner_user_id=USER, kind="wiki_gen"), AsyncMock(), AsyncMock())
+    assert resp.status == "pending"
+    repo.resume.assert_awaited_once_with(JOB)
+
+
+async def test_wiki_gen_not_owned_404(monkeypatch):
+    repo = _wiki_repo(monkeypatch, job=_wiki_job("pending", user=OTHER))
+    with pytest.raises(HTTPException) as exc:
+        await control_extraction_job(
+            JOB, "cancel", JobControlPayload(owner_user_id=USER, kind="wiki_gen"), AsyncMock(), AsyncMock())
+    assert exc.value.status_code == 404
+    repo.cancel.assert_not_awaited()  # ownership checked before any mutation
+
+
+async def test_wiki_gen_cancel_running_409(monkeypatch):
+    # a running wiki job isn't cancellable → repo.cancel guards to 0 rows → False → 409
+    repo = _wiki_repo(monkeypatch, job=_wiki_job("running"), cancel=False)
+    with pytest.raises(HTTPException) as exc:
+        await control_extraction_job(
+            JOB, "cancel", JobControlPayload(owner_user_id=USER, kind="wiki_gen"), AsyncMock(), AsyncMock())
+    assert exc.value.status_code == 409
+
+
+async def test_wiki_gen_bad_action_400(monkeypatch):
+    repo = _wiki_repo(monkeypatch, job=_wiki_job("running"))
+    with pytest.raises(HTTPException) as exc:
+        await control_extraction_job(
+            JOB, "pause", JobControlPayload(owner_user_id=USER, kind="wiki_gen"), AsyncMock(), AsyncMock())
+    assert exc.value.status_code == 400
+    repo.get.assert_not_awaited()  # bad action rejected before any lookup
+
+
 async def test_concurrent_change_409():
     jobs, projects = _repos(_job())
     jobs.update_status = AsyncMock(return_value=None)  # CAS lost

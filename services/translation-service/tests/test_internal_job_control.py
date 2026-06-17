@@ -76,6 +76,45 @@ def test_unknown_action_400(client):
     assert r.status_code == 400
 
 
+# ── D-JOBS-SECONDARY-KIND-CONTROL — glossary-extract / glossary-translate cancel dispatch ──
+
+def test_glossary_extraction_cancel_dispatches_to_extraction_jobs(client, fake_pool):
+    from unittest.mock import AsyncMock, patch
+    # kind=glossary_extraction → _cancel_secondary_core on extraction_jobs: owned + running →
+    # UPDATE cancelling + emit (kind=glossary_extraction). Mocked pool/conn via conftest acquire.
+    fake_pool.fetchrow.return_value = {"owner_user_id": OWNER, "status": "running"}
+    with patch("app.routers.internal_dispatch.emit_job_event", new_callable=AsyncMock) as emit:
+        r = client.post(f"{PATH}/cancel", json={"owner_user_id": OWNER, "kind": "glossary_extraction"},
+                        headers={"X-Internal-Token": TOKEN})
+    assert r.status_code == 200 and r.json()["status"] == "cancelling"
+    kw = emit.await_args.kwargs
+    assert kw["kind"] == "glossary_extraction" and kw["status"] == "cancelling"
+    # the cancelling UPDATE targeted extraction_jobs, not translation_jobs
+    assert any("extraction_jobs" in str(c.args[0]) for c in fake_pool.execute.await_args_list)
+
+
+def test_glossary_translation_cancel_terminal_409(client, fake_pool):
+    fake_pool.fetchrow.return_value = {"owner_user_id": OWNER, "status": "completed"}
+    r = client.post(f"{PATH}/cancel", json={"owner_user_id": OWNER, "kind": "glossary_translation"},
+                    headers={"X-Internal-Token": TOKEN})
+    assert r.status_code == 409
+
+
+def test_glossary_secondary_not_owned_404(client, fake_pool):
+    from uuid import uuid4
+    fake_pool.fetchrow.return_value = {"owner_user_id": str(uuid4()), "status": "running"}
+    r = client.post(f"{PATH}/cancel", json={"owner_user_id": OWNER, "kind": "glossary_extraction"},
+                    headers={"X-Internal-Token": TOKEN})
+    assert r.status_code == 404
+
+
+def test_glossary_secondary_pause_unsupported_400(client, fake_pool):
+    # secondary kinds are cancel-only — a pause/resume must 400 (never touch the row)
+    r = client.post(f"{PATH}/pause", json={"owner_user_id": OWNER, "kind": "glossary_translation"},
+                    headers={"X-Internal-Token": TOKEN})
+    assert r.status_code == 400
+
+
 def test_missing_internal_token_401(client):
     r = client.post(f"{PATH}/cancel", json={"owner_user_id": OWNER})
     assert r.status_code == 401

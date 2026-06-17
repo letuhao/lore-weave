@@ -40,22 +40,20 @@ _MULTI_UNIT_KINDS: frozenset[str] = frozenset({"extraction", "campaign", "enrich
 # D-JOBS-P4-RETRY-LORE).
 _RETRYABLE_KINDS: frozenset[str] = frozenset({"translation"})
 
-# VIEW-ONLY kinds — visible on the unified Jobs screen (their producer emits +
-# reconciles) but NOT yet control-wired in the unified plane, so we offer NO control
-# caps (a Cancel/Resume button that 404s is worse than none). These are SECONDARY kinds
-# whose owning service's P3 control endpoint handles only its PRIMARY job table:
-#   - glossary_extraction  — translation control endpoint handles `translation_jobs`, not
-#                             `extraction_jobs` (Slice A — D-JOBS-GLOSSARY-EXTRACT-UNWIRED).
-#   - glossary_translation — translation control endpoint handles `translation_jobs`, not
-#                             `glossary_translation_jobs` (Slice B — D-JOBS-GLOSSARY-TRANSLATE-UNWIRED).
-#   - wiki_gen             — knowledge control endpoint handles `extraction_jobs`, not
-#                             `wiki_gen_jobs` (Slice C — D-JOBS-WIKI-GEN-UNWIRED).
-#   - book_import          — book-service has NO unified control endpoint at all (the worker
-#                             import is fire-and-forget; Slice D — D-JOBS-BOOK-IMPORT-UNWIRED).
-# Users control these via their native panels (extraction/translate wizard / wiki panel)
-# today; unified-plane control wiring is tracked (D-JOBS-SECONDARY-KIND-CONTROL).
-_VIEW_ONLY_KINDS: frozenset[str] = frozenset(
-    {"glossary_extraction", "glossary_translation", "wiki_gen", "book_import"})
+# VIEW-ONLY kinds — visible on the unified Jobs screen but with NO unified control surface,
+# so we offer no caps. book_import is fire-and-forget (book-service has no control endpoint;
+# a running import can't be stopped) — D-JOBS-BOOK-IMPORT-UNWIRED.
+_VIEW_ONLY_KINDS: frozenset[str] = frozenset({"book_import"})
+
+# SECONDARY kinds now control-wired in the unified plane (D-JOBS-SECONDARY-KIND-CONTROL) —
+# the owning service's control endpoint dispatches BY KIND to the right job table. Caps match
+# each producer's NATIVE control exactly (offering more would 404/409 downstream):
+#   - glossary_extraction / glossary_translation — translation cancel core (pending|running).
+#     Multi-unit but the native endpoints only CANCEL (no pause/resume) → cancel-only.
+#   - wiki_gen — knowledge: cancel a NOT-yet-running job (pending|paused) + resume (paused).
+#     A *running* wiki job is NOT cancellable (the orchestrator doesn't poll mid-loop;
+#     D-WIKI-M7B-RUNNING-CANCEL) → running offers nothing.
+_CANCEL_ONLY_KINDS: frozenset[str] = frozenset({"glossary_extraction", "glossary_translation"})
 
 
 def _is_multi_unit(kind: str) -> bool:
@@ -65,16 +63,27 @@ def _is_multi_unit(kind: str) -> bool:
 def derive_control_caps(status: "JobStatus | str", kind: str) -> list[ControlCap]:
     """Return the control actions valid for a job in its CURRENT status.
 
-    - a VIEW-ONLY kind (not yet control-wired in the unified plane) → none
+    - a VIEW-ONLY kind (no unified control surface) → none
+    - a CANCEL-ONLY secondary kind → cancel when pending|running, else none
+    - `wiki_gen` → resume+cancel when paused, cancel when pending, else none (no running-cancel)
     - `failed` → retry (only for a retry-supported kind), else none
     - terminal (completed/cancelled) or `cancelling` (already in-flight) → none
     - `paused` → resume + cancel
     - `pending` → cancel
     - `running` → cancel (+ pause iff the kind is multi-unit)
     """
-    if kind in _VIEW_ONLY_KINDS:  # visible but control routes nowhere → offer nothing
+    if kind in _VIEW_ONLY_KINDS:  # no control endpoint → offer nothing
         return []
     s = status if isinstance(status, JobStatus) else JobStatus(status)
+    # Secondary kinds with restricted native control (match the producer exactly).
+    if kind in _CANCEL_ONLY_KINDS:
+        return [ControlCap.CANCEL] if s in (JobStatus.PENDING, JobStatus.RUNNING) else []
+    if kind == "wiki_gen":
+        if s == JobStatus.PAUSED:
+            return [ControlCap.RESUME, ControlCap.CANCEL]
+        if s == JobStatus.PENDING:
+            return [ControlCap.CANCEL]
+        return []  # running can't be cancelled (D-WIKI-M7B); terminal/cancelling → none
     if s == JobStatus.FAILED:
         # A failed job is terminal but RE-SUBMITTABLE for the kinds whose owner honors it
         # (D-JOBS-P4-RETRY). Retry creates a NEW job; the failed row stays as history.
