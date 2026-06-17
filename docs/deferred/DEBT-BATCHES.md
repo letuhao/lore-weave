@@ -125,13 +125,25 @@ Stack up with `P5_SCHED_ENABLED=true`, seed one extraction-ready project. Run al
 ## B4a — Live-smoke sweep — Auto-Draft Factory (S1–S6)
 The campaign 4-service stack: bring up once, run the chain. The single biggest live-smoke cluster.
 
-`D-CAMPAIGN-S1-LIVE-SMOKE` (high) · `D-S2-IDEMPOTENCY-LIVE-SMOKE` · `D-CAMPAIGN-CLAIM-LIVE-SMOKE` · `D-CAMPAIGN-CANCEL-LIVE-SMOKE` · `D-CAMPAIGN-BREAKER-PAUSE-LIVE-SMOKE` · `D-S3A-GOVERNOR-LIVE-SMOKE` · `D-S3B-BACKOFF-LIVE-SMOKE` · `D-S4A-THREADING-LIVE-SMOKE` · `D-S4B-RELAY-LIVE-SMOKE` · `D-S4C-CONSUMER-LIVE-SMOKE` · `D-S4D-LIVE-SMOKE` · `D-S5A-ESTIMATE-LIVE-SMOKE` · `D-S5B-LIVE-SMOKE` · `D-S5BEVAL-LIVE-SMOKE` · `D-S5C-LIVE-SMOKE` (high, browser) · `D-S6-LIVE-SMOKE` · `D-RERANK-BYOK-LIVE-SMOKE` (high). *(~17 — may split a1 backend / a2 S5–S6+browser.)*
+**◑ PARTIAL — retroactive harvest from completed campaigns (2026-06-17, stack up).** The test account has **already run campaigns to `completed`** on the current stack (`019ebe09` "D-WX ch3" stages `{knowledge,translation,eval}`; `019eb684` 5ch full) with **local BYOK models (lm_studio/bge-m3/local-rerank → $0 spend)**, so several smokes are evidenced by real artifacts without a fresh run:
+- ✅ `D-CAMPAIGN-S1-LIVE-SMOKE` (dispatch) — `campaign_activity` shows `knowledge dispatched→done` + `translation dispatched→done` on `019ebe09`.
+- ✅ `D-CAMPAIGN-CLAIM-LIVE-SMOKE` — those dispatched stages reached `done` (jobs were claimed + ran).
+- ✅ `D-S4A-THREADING-LIVE-SMOKE` (the high-value structural one) — `provider_registry.llm_jobs.job_meta->>'campaign_id'` is populated on the campaign's child jobs (386 jobs tagged for `019eb684`, 26 for `019ebe09`, …). The campaign_id contextvar→job_meta threading works live e2e ([[contextvar-attribution-merge-pattern]]).
+- ✅ `D-S5BEVAL-LIVE-SMOKE` (eval) — `eval done` in `019ebe09`'s activity (stages included `eval`).
+- ◑ `D-S4B-RELAY-LIVE-SMOKE` / `D-S4C-CONSUMER-LIVE-SMOKE` — the spend consumer ran (`campaigns.spent_usd` updated) but local models → `$0`, so cost-landing is trivially observable only; the mechanism is the same projection-emit proven in B3.
+
+**Fresh live run (2026-06-17) — created a throwaway 1-ch campaign (book `019eb60e`, local models, eval+verifier+rerank configured), started + cancelled it, then fully cleaned up (8 rows + the throwaway project deleted; 0 tagged jobs, 0 Neo4j nodes since knowledge never passed the gate):**
+- ✅ `D-S3B-BACKOFF-LIVE-SMOKE` — the knowledge stage failed (`benchmark_missing` 409 — the K17.9 gate, expected without a benchmark fixture) and the saga **re-dispatched at exactly 5s intervals** (16:07:55 → :08:00 → :08:05, `knowledge_attempts=3`): the retry-with-backoff dispatch loop + error propagation (dispatch 409 → stage failed → re-dispatch) is live-proven.
+- ✅ `D-CAMPAIGN-CANCEL-LIVE-SMOKE` — `POST /v1/campaigns/{id}/cancel` on the running campaign → `cancelling` (the driver finalizes; `mark_dispatched_stages_cancelled` is the documented next tick).
+- ✅ `D-CAMPAIGN-S1-LIVE-SMOKE` re-confirmed live (fresh `dispatched` events).
+
+**Still genuinely open (each needs a benchmark-FIXTURED extraction run [Neo4j build + cleanup] or is non-deterministic / browser — NOT autonomous-clean):** `D-CAMPAIGN-CANCEL-PROP` cancel-prop **to a running child** (this run's knowledge 409'd at the benchmark gate BEFORE any child job → `knowledge_job_id` NULL → nothing to propagate to; needs the K17.9 fixture so a real extraction job runs, then cancel mid-extraction) · `D-RERANK-BYOK-LIVE-SMOKE` (needs extraction retrieval to actually run) · `D-S2-IDEMPOTENCY-LIVE-SMOKE` + `D-S3A-GOVERNOR-LIVE-SMOKE` (need a real multi-chapter dispatch) · `D-S5A-ESTIMATE-LIVE-SMOKE` (`est_usd_low/high` NULL on completed runs — confirm whether it's not-recorded-for-local-$0 or a gap) · `D-CAMPAIGN-BREAKER-PAUSE-LIVE-SMOKE` (must induce a provider circuit-open — non-deterministic, risks the real model's breaker state) · `D-S5C-LIVE-SMOKE` + `D-S6-LIVE-SMOKE` (**browser**). *(Net: of the ~17, **7 now evidenced** [dispatch, claim, S4a threading, eval, relay/consumer-partial, S3b backoff, cancel]; ~7 need a fixtured extraction run / browser; breaker is non-deterministic.)*
 
 ---
 
 ## B4b — Auto-Draft Factory functional / correctness gaps
 
-**Reconciliation 2026-06-17 (verified vs code):** 3 of the top rows are ALREADY DONE; the 2 remaining mediums are low-value/migration-gated.
+**Reconciliation 2026-06-17 (verified vs code):** 3 of the top rows are ALREADY DONE; the 2 remaining mediums are **deferred-by-design** (re-confirmed 2026-06-17): `D-S4-SUMMARY-ATTRIBUTION` is NOT the "S, no migration" one-liner it reads as — `SummarizeMessage` carries no `campaign_id`, so attributing summary-gen spend needs message-schema plumbing for a metric that is inert until S4d cost accounting matters; `D-S5BEVAL-LEARNING-OUTBOX` needs an outbox-table migration (→ /amaw + approval) for a telemetry-only durability gain. The lows are genuinely low. **No clean autonomous build remains in B4b** — its high-value rows already shipped.
 
 | ID | Description | sev |
 |---|---|---|
