@@ -115,10 +115,9 @@ Stack up with `P5_SCHED_ENABLED=true`, seed one extraction-ready project. Run al
 | `D-P5-M2-MULTI-OWNER-LIVE-SMOKE` | 2-user interleave on the stack (single-owner cap-hold already proven) | med |
 | `D-JOBS-P2-SSE-LIVE-SMOKE` | real consumer-upsert → pub/sub → connected-client push | med |
 | `D-JOBS-P3-KNOWLEDGE-CANCEL-SUCCESS-LIVE-SMOKE` | a successful cancel mutating a real running extraction row | med |
-| `D-PRODUCER-EMIT-GLOSSARY-EXTRACT-LIVE-SMOKE` | Slice A: real glossary-extract job emits pending→running→terminal that land in `job_projection` (visible on Jobs screen) | high |
-| `D-PRODUCER-EMIT-WIKI-GEN-LIVE-SMOKE` | Slice C: real wiki-gen job emits pending→running→complete/cancelled that land in `job_projection`; reconcile UNION surfaces it | high |
-| `D-PRODUCER-EMIT-GLOSSARY-TRANSLATE-LIVE-SMOKE` | Slice B: real glossary batch-translate job emits pending→running→completed that land in `job_projection`; reconcile UNION surfaces it | high |
-| `D-PRODUCER-EMIT-BOOK-IMPORT-LIVE-SMOKE` | Slice D: real book-import emits pending→running(processing)→completed via the Go outbox→relay→`loreweave:events:jobs`; reconcile `GET /internal/book/jobs` surfaces it (cross-language path — Go producer, Python consumer) | high |
+| `D-PRODUCER-EMIT-BOOK-IMPORT-LIVE-SMOKE` | ✅ **DONE 2026-06-17** — Slice D cross-language path PROVEN on the running stack: (1) a `book_import` `jobs` outbox event inserted into `loreweave_book` → worker-infra relay → landed in `loreweave_jobs.job_projection` (service=book, kind=book_import, status=pending, title); (2) `GET /internal/book/jobs` returns the canonical JobEvent with native `processing`→`running` mapping + `progress.done=7`. Synthetic data cleaned. | high |
+| `D-PRODUCER-EMIT-RECONCILE-UNIONS-LIVE-SMOKE` | ✅ **DONE 2026-06-17** — the reconcile UNION SQL added in A/B/C validated live (200 + valid JobEvent JSON, not 500): translation 3-way UNION (translation + glossary_extraction + glossary_translation) returns rows; knowledge UNION (extraction + wiki_gen) returns valid `{"jobs":[]}`. Confirms the new tables' columns resolve against the real schema. | high |
+| `D-PRODUCER-EMIT-{GLOSSARY-EXTRACT,WIKI-GEN,GLOSSARY-TRANSLATE}-FULL-E2E` | Remaining: trigger a REAL job of each kind via the gateway (JWT + real book/project + LLM) and observe pending→running→terminal land in `job_projection`. LOWER priority — the Python emit lib is proven (B1), the relay `jobs` routing is established + re-proven (book), and each worker's emit wiring is unit-tested; this is the belt-and-suspenders full path. | med |
 
 ---
 
