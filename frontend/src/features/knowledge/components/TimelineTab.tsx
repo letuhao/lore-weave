@@ -4,7 +4,13 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useTimeline } from '../hooks/useTimeline';
 import { useProjects } from '../hooks/useProjects';
-import { TIMELINE_SORT_KEYS, type Entity, type TimelineSortBy } from '../api';
+import {
+  TIMELINE_SORT_DIRECTIONS,
+  TIMELINE_SORT_KEYS,
+  type Entity,
+  type TimelineSortBy,
+  type TimelineSortDir,
+} from '../api';
 import { TimelineEventRow } from './TimelineEventRow';
 import { TimelineFilters } from './TimelineFilters';
 
@@ -46,6 +52,11 @@ export function TimelineTab({ scopedProjectId }: TimelineTabProps = {}) {
   // C14 (C14-narrative-order-sort) — sort axis. Default 'narrative' =
   // reading order (back-compat with the BE's unset default).
   const [sortBy, setSortBy] = useState<TimelineSortBy>('narrative');
+  // D-K19e-α-03 — sort direction. Default 'asc' = earliest-first (back-compat).
+  const [sortDir, setSortDir] = useState<TimelineSortDir>('asc');
+  // D-K19e-α-02 — in-story ISO date-range filter (null = unbounded).
+  const [eventDateFrom, setEventDateFrom] = useState<string | null>(null);
+  const [eventDateTo, setEventDateTo] = useState<string | null>(null);
 
   const scoped = !!scopedProjectId;
   const effectiveProjectId = scopedProjectId ?? projectFilter;
@@ -63,7 +74,10 @@ export function TimelineTab({ scopedProjectId }: TimelineTabProps = {}) {
       entity_id: entityFilter?.id,
       after_chronological: afterChronological ?? undefined,
       before_chronological: beforeChronological ?? undefined,
+      event_date_from: eventDateFrom ?? undefined,
+      event_date_to: eventDateTo ?? undefined,
       sort_by: sortBy,
+      sort_dir: sortDir,
       limit: PAGE_SIZE,
       offset,
     },
@@ -106,6 +120,8 @@ export function TimelineTab({ scopedProjectId }: TimelineTabProps = {}) {
                   setEntityFilter(null);
                   setAfterChronological(null);
                   setBeforeChronological(null);
+                  setEventDateFrom(null);
+                  setEventDateTo(null);
                 })
               }
               className="rounded-md border bg-input px-2 py-1.5 text-xs outline-none focus:border-ring"
@@ -151,6 +167,32 @@ export function TimelineTab({ scopedProjectId }: TimelineTabProps = {}) {
             </button>
           ))}
         </div>
+        {/* D-K19e-α-03 — direction toggle (asc ↔ desc), applies to the chosen
+            axis. Default 'asc' matches the BE back-compat default. */}
+        <div
+          className="inline-flex overflow-hidden rounded-md border"
+          role="group"
+          aria-label={t('timeline.sort.direction')}
+          data-testid="timeline-sort-dir"
+        >
+          {TIMELINE_SORT_DIRECTIONS.map((dir) => (
+            <button
+              key={dir}
+              type="button"
+              aria-pressed={sortDir === dir}
+              onClick={() => handleFilterChange(() => setSortDir(dir))}
+              className={cn(
+                'px-2.5 py-1 transition-colors',
+                sortDir === dir
+                  ? 'bg-primary text-primary-foreground'
+                  : 'hover:bg-secondary',
+              )}
+              data-testid={`timeline-sort-dir-${dir}`}
+            >
+              {t(`timeline.sort.${dir}`)}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* C10 — secondary filters (entity + chronological range). Row
@@ -169,6 +211,14 @@ export function TimelineTab({ scopedProjectId }: TimelineTabProps = {}) {
             handleFilterChange(() => {
               setAfterChronological(after);
               setBeforeChronological(before);
+            })
+          }
+          eventDateFrom={eventDateFrom}
+          eventDateTo={eventDateTo}
+          onDateRangeChange={(from, to) =>
+            handleFilterChange(() => {
+              setEventDateFrom(from);
+              setEventDateTo(to);
             })
           }
         />

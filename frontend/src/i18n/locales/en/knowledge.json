@@ -247,12 +247,20 @@
       "chronologicalRange": "Chronological range",
       "after": "After",
       "before": "Before",
-      "chronoReversed": "Before must be greater than After."
+      "chronoReversed": "Before must be greater than After.",
+      "dateRange": "Date range",
+      "dateFrom": "From",
+      "dateTo": "To",
+      "dateInvalid": "Use YYYY, YYYY-MM, or YYYY-MM-DD.",
+      "dateReversed": "\"To\" must be on or after \"From\"."
     },
     "sort": {
       "label": "Sort",
       "narrative": "Narrative order",
-      "chronological": "Chronological"
+      "chronological": "Chronological",
+      "direction": "Direction",
+      "asc": "Oldest first",
+      "desc": "Newest first"
     },
     "importance": {
       "major": "Major",

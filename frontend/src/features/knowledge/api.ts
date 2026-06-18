@@ -634,6 +634,11 @@ export type EventImportance = (typeof EVENT_IMPORTANCE)[number];
 export const TIMELINE_SORT_KEYS = ['narrative', 'chronological'] as const;
 export type TimelineSortBy = (typeof TIMELINE_SORT_KEYS)[number];
 
+// D-K19e-α-03 — sort direction for the chosen axis. `asc` (default, back-compat)
+// = earliest-first; `desc` = latest-first. Mirrors the BE TIMELINE_SORT_DIRECTIONS.
+export const TIMELINE_SORT_DIRECTIONS = ['asc', 'desc'] as const;
+export type TimelineSortDir = (typeof TIMELINE_SORT_DIRECTIONS)[number];
+
 // ── Phase B C — relation + event correction payloads ─────────────────
 
 export interface RelationCorrectPayload {
@@ -673,6 +678,13 @@ export interface TimelineListParams {
    *  back-compat when omitted) = reading position; `chronological` =
    *  in-story chronology. */
   sort_by?: TimelineSortBy;
+  /** D-K19e-α-03: sort direction for the chosen `sort_by` axis. `asc` (default,
+   *  back-compat) = earliest-first; `desc` = latest-first. */
+  sort_dir?: TimelineSortDir;
+  /** D-K19e-α-02: inclusive ISO date-range bounds (YYYY / YYYY-MM / YYYY-MM-DD)
+   *  on `event_date_iso`. Events with NULL date are excluded when either is set. */
+  event_date_from?: string;
+  event_date_to?: string;
   limit?: number;
   offset?: number;
 }
@@ -1714,6 +1726,11 @@ export const knowledgeApi = {
     if (params.before_chapter_id != null)
       qs.set('before_chapter_id', params.before_chapter_id);
     if (params.sort_by != null) qs.set('sort_by', params.sort_by);
+    if (params.sort_dir != null) qs.set('sort_dir', params.sort_dir);
+    if (params.event_date_from != null)
+      qs.set('event_date_from', params.event_date_from);
+    if (params.event_date_to != null)
+      qs.set('event_date_to', params.event_date_to);
     if (params.limit != null) qs.set('limit', String(params.limit));
     if (params.offset != null) qs.set('offset', String(params.offset));
     const q = qs.toString();

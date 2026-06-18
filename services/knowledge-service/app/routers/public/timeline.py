@@ -158,6 +158,15 @@ async def list_timeline_events(
             "undated events sink last)."
         ),
     ),
+    sort_dir: Literal["asc", "desc"] = Query(
+        default="asc",
+        description=(
+            "D-K19e-α-03: sort direction, applied to the selected ``sort_by`` "
+            "axis. ``asc`` (default) = earliest-first (legacy, back-compatible); "
+            "``desc`` = latest-first. Undated/unordered events sink last in BOTH "
+            "directions."
+        ),
+    ),
     limit: int = Query(50, ge=1, le=EVENTS_MAX_LIMIT),
     offset: int = Query(0, ge=0),
     user_id: UUID = Depends(get_current_user),
@@ -264,6 +273,7 @@ async def list_timeline_events(
             event_date_to=event_date_to,
             participant_candidates=participant_candidates,
             sort_by=sort_by,
+            sort_dir=sort_dir,
             limit=limit,
             offset=offset,
         )

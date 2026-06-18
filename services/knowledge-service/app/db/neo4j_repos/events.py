@@ -59,6 +59,7 @@ __all__ = [
     "EVENTS_MAX_LIMIT",
     "EVENT_IMPORTANCE",
     "TIMELINE_SORT_KEYS",
+    "TIMELINE_SORT_DIRECTIONS",
     "event_id",
     "merge_event",
     "get_event",
@@ -834,26 +835,43 @@ RETURN count(e) AS total
 # Keyed by TIMELINE_SORT_KEYS so the interpolated fragment is from a
 # closed allowlist, never user text (mirrors C8's sort_by interpolation).
 _NULL_SORT_SENTINEL = 9223372036854775807
-_ORDER_BY_FRAGMENTS: dict[str, str] = {
-    "narrative": (
-        f"coalesce(e.event_order, {_NULL_SORT_SENTINEL}) ASC, "
-        "e.title ASC, e.id ASC"
-    ),
-    "chronological": (
-        f"coalesce(e.chronological_order, {_NULL_SORT_SENTINEL}) ASC, "
-        "e.title ASC, e.id ASC"
-    ),
+# D-K19e-α-03: event_order / chronological_order are always >= 0, so for a DESC
+# sort the null sentinel must be BELOW any real value (a high sentinel would float
+# undated/unordered events to the TOP under DESC). -1 keeps them sinking LAST in
+# both directions, preserving the "undated events sink last" invariant.
+_NULL_SORT_SENTINEL_DESC = -1
+
+# D-K19e-α-03 — sort axis → its order column. Closed map so the interpolated column
+# is never user text (mirrors TIMELINE_SORT_KEYS).
+_SORT_COLUMN: dict[str, str] = {
+    "narrative": "event_order",
+    "chronological": "chronological_order",
 }
+# Closed allowlist of sort directions (asc = legacy default, back-compat).
+TIMELINE_SORT_DIRECTIONS: tuple[str, ...] = ("asc", "desc")
 
 
-def _page_cypher(sort_by: str) -> str:
-    """Build the page query for a closed-allowlist sort key.
+def _order_fragment(sort_by: str, sort_dir: str) -> str:
+    """The ORDER BY fragment for a (sort_by, sort_dir) pair, both from closed
+    allowlists (KeyError on anything else — never user text). The primary key
+    flips with ``sort_dir``; ``title ASC, id ASC`` stays the stable tiebreaker so
+    pagination never shuffles. The null sentinel flips so undated/unordered events
+    sink LAST in both directions."""
+    col = _SORT_COLUMN[sort_by]
+    if sort_dir == "asc":
+        return f"coalesce(e.{col}, {_NULL_SORT_SENTINEL}) ASC, e.title ASC, e.id ASC"
+    if sort_dir == "desc":
+        return f"coalesce(e.{col}, {_NULL_SORT_SENTINEL_DESC}) DESC, e.title ASC, e.id ASC"
+    raise KeyError(sort_dir)
 
-    The ORDER BY fragment is looked up from ``_ORDER_BY_FRAGMENTS`` (keys
-    == ``TIMELINE_SORT_KEYS``) — an unknown key raises before any Cypher
-    is assembled, so user-controlled text can never reach the clause.
+
+def _page_cypher(sort_by: str, sort_dir: str) -> str:
+    """Build the page query for a closed-allowlist (sort key, direction).
+
+    An unknown key/direction raises before any Cypher is assembled, so
+    user-controlled text can never reach the clause.
     """
-    fragment = _ORDER_BY_FRAGMENTS[sort_by]
+    fragment = _order_fragment(sort_by, sort_dir)
     return (
         _LIST_EVENTS_FILTER_WHERE
         + f"\nRETURN e\nORDER BY {fragment}\nSKIP $offset LIMIT $limit\n"
@@ -873,6 +891,7 @@ async def list_events_filtered(
     event_date_to: str | None = None,
     participant_candidates: list[str] | None = None,
     sort_by: str = "narrative",
+    sort_dir: str = "asc",
     limit: int,
     offset: int,
 ) -> tuple[list[Event], int]:
@@ -924,6 +943,10 @@ async def list_events_filtered(
         raise ValueError(
             f"unsupported sort_by {sort_by!r}; must be one of {TIMELINE_SORT_KEYS}"
         )
+    if sort_dir not in TIMELINE_SORT_DIRECTIONS:
+        raise ValueError(
+            f"unsupported sort_dir {sort_dir!r}; must be one of {TIMELINE_SORT_DIRECTIONS}"
+        )
     if (
         after_order is not None
         and before_order is not None
@@ -974,7 +997,7 @@ async def list_events_filtered(
         return ([], 0)
     page_result = await run_read(
         session,
-        _page_cypher(sort_by),
+        _page_cypher(sort_by, sort_dir),
         user_id=user_id,
         project_id=project_id,
         after_order=after_order,

@@ -246,12 +246,20 @@
       "chronologicalRange": "Khoảng thời gian cốt truyện",
       "after": "Sau",
       "before": "Trước",
-      "chronoReversed": "\"Trước\" phải lớn hơn \"Sau\"."
+      "chronoReversed": "\"Trước\" phải lớn hơn \"Sau\".",
+      "dateRange": "Khoảng ngày",
+      "dateFrom": "Từ",
+      "dateTo": "Đến",
+      "dateInvalid": "Dùng định dạng YYYY, YYYY-MM hoặc YYYY-MM-DD.",
+      "dateReversed": "\"Đến\" phải bằng hoặc sau \"Từ\"."
     },
     "sort": {
       "label": "Sắp xếp",
       "narrative": "Thứ tự kể chuyện",
-      "chronological": "Theo thời gian"
+      "chronological": "Theo thời gian",
+      "direction": "Hướng",
+      "asc": "Cũ nhất trước",
+      "desc": "Mới nhất trước"
     },
     "importance": {
       "major": "Quan trọng",

@@ -246,12 +246,20 @@
       "chronologicalRange": "時系列範囲",
       "after": "以降",
       "before": "以前",
-      "chronoReversed": "「以前」は「以降」より大きい値である必要があります。"
+      "chronoReversed": "「以前」は「以降」より大きい値である必要があります。",
+      "dateRange": "日付範囲",
+      "dateFrom": "開始",
+      "dateTo": "終了",
+      "dateInvalid": "YYYY、YYYY-MM、または YYYY-MM-DD を使用してください。",
+      "dateReversed": "「終了」は「開始」以降である必要があります。"
     },
     "sort": {
       "label": "並び順",
       "narrative": "物語順",
-      "chronological": "時系列順"
+      "chronological": "時系列順",
+      "direction": "方向",
+      "asc": "古い順",
+      "desc": "新しい順"
     },
     "importance": {
       "major": "重要",

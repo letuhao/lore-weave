@@ -464,6 +464,56 @@ def test_timeline_entity_id_rejected_when_empty_string():
 @patch(
     "app.routers.public.timeline.list_events_filtered", new_callable=AsyncMock
 )
+@patch("app.routers.public.timeline.neo4j_session", new=lambda: _noop_session())
+def test_timeline_sort_dir_forwarded(mock_list):
+    """D-K19e-α-03: sort_dir defaults to 'asc' (back-compat) and an explicit
+    'desc' is forwarded to the repo (alongside the chosen sort_by axis)."""
+    mock_list.return_value = ([], 0)
+    client = _make_client()
+    resp = client.get("/v1/knowledge/timeline")
+    assert resp.status_code == 200
+    assert mock_list.await_args.kwargs["sort_dir"] == "asc"  # legacy default
+    resp = client.get("/v1/knowledge/timeline?sort_dir=desc&sort_by=chronological")
+    assert resp.status_code == 200
+    assert mock_list.await_args.kwargs["sort_dir"] == "desc"
+    assert mock_list.await_args.kwargs["sort_by"] == "chronological"
+
+
+def test_timeline_bad_sort_dir_422():
+    """sort_dir is a closed Literal — a bogus direction is rejected, not silently
+    coerced (the ORDER BY direction is interpolated from this allowlist)."""
+    client = _make_client()
+    resp = client.get("/v1/knowledge/timeline?sort_dir=upward")
+    assert resp.status_code == 422
+
+
+def test_order_fragment_directions_both_axes():
+    """D-K19e-α-03: the ORDER BY fragment flips the primary key direction for both
+    axes, keeps the title/id tiebreaker stable, and flips the null sentinel so
+    undated/unordered events sink LAST in BOTH directions. Closed allowlist."""
+    from app.db.neo4j_repos.events import _order_fragment
+
+    assert _order_fragment("narrative", "asc") == (
+        "coalesce(e.event_order, 9223372036854775807) ASC, e.title ASC, e.id ASC"
+    )
+    assert _order_fragment("chronological", "asc") == (
+        "coalesce(e.chronological_order, 9223372036854775807) ASC, e.title ASC, e.id ASC"
+    )
+    assert _order_fragment("narrative", "desc") == (
+        "coalesce(e.event_order, -1) DESC, e.title ASC, e.id ASC"
+    )
+    assert _order_fragment("chronological", "desc") == (
+        "coalesce(e.chronological_order, -1) DESC, e.title ASC, e.id ASC"
+    )
+    with pytest.raises(KeyError):
+        _order_fragment("narrative", "sideways")  # not an allowlisted direction
+    with pytest.raises(KeyError):
+        _order_fragment("bogus", "asc")  # not an allowlisted axis
+
+
+@patch(
+    "app.routers.public.timeline.list_events_filtered", new_callable=AsyncMock
+)
 @patch("app.routers.public.timeline.get_entity", new_callable=AsyncMock)
 @patch("app.routers.public.timeline.neo4j_session", new=lambda: _noop_session())
 def test_timeline_all_three_filters_combined(mock_get_entity, mock_list):
