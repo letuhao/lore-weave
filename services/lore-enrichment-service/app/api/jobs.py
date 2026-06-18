@@ -564,3 +564,79 @@ async def cancel_job(
         action="cancel", job_id=job_id, project_id=project_id,
         principal=principal, pool=pool,
     )
+
+
+@router.post("/{job_id}/retry", status_code=status.HTTP_202_ACCEPTED)
+async def retry_job(
+    job_id: UUID,
+    project_id: UUID = Query(...),
+    principal: Principal = Depends(require_principal),
+    pool: asyncpg.Pool = Depends(get_db),
+) -> dict:
+    """Retry a FAILED enrichment job (D-JOBS-P4-RETRY-LORE).
+
+    Re-drives the SAME job_id over the live async path (resume stream → the
+    re-drive worker), which SKIPS already-done gaps (UNIQUE(job_id,gap_ref) +
+    skip_gap_refs → no re-spend) and re-runs the rest. Flips failed→running +
+    emits the transition for immediate feedback (mirroring resume), then enqueues.
+
+    Idempotent + concurrency-safe: the failed→running CAS makes a double-retry a
+    no-op (only a genuinely failed, owner-scoped row transitions); the M1 per-job
+    advisory claim makes a retry-while-already-running a safe worker no-op. An
+    illegal retry (not failed) → 409; not owned/found → 404 (never a cross-tenant
+    oracle). Unlike the C8 manual transitions this is NOT a state-machine move
+    (failed is terminal there) — retry RESURRECTS via a re-run, exactly like the
+    knowledge/video-gen retries (D-JOBS-P4-RETRY)."""
+    if principal.user_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="auth required"
+        )
+    async with pool.acquire() as conn:
+        async with conn.transaction():  # CAS UPDATE + emit_job_event atomic (H1)
+            row = await conn.fetchrow(
+                """UPDATE enrichment_job SET status='running', updated_at=now()
+                   WHERE user_id=$1 AND project_id=$2 AND job_id=$3 AND status='failed'
+                   RETURNING user_id""",
+                principal.user_id, project_id, job_id,
+            )
+            if row is not None:
+                await emit_job_event(
+                    conn, service=JOB_SERVICE, job_id=str(job_id),
+                    owner_user_id=str(principal.user_id), kind=JOB_KIND, status="running",
+                )
+    if row is None:
+        # The CAS didn't match: disambiguate owner-scoped (404 unknown/not-owned vs
+        # 409 not-failed) — never leak existence across tenants.
+        cur = await pool.fetchval(
+            "SELECT status FROM enrichment_job WHERE user_id=$1 AND project_id=$2 AND job_id=$3",
+            principal.user_id, project_id, job_id,
+        )
+        if cur is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="job not found"
+            )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"job not retryable from status '{cur}' (only 'failed')",
+        )
+    # Enqueue the re-drive (best-effort: status is already 'running'; a transient
+    # Redis hiccup leaves the job re-triggerable by a repeat retry).
+    result = {"job_id": str(job_id), "status": "running"}
+    producer = make_redis_producer(settings.redis_url)
+    try:
+        await producer.xadd(
+            LORE_ENRICHMENT_RESUME_STREAM,
+            {
+                "job_id": str(job_id),
+                "project_id": str(project_id),
+                "user_id": str(principal.user_id),
+            },
+            maxlen=10000,
+        )
+        result["retry"] = "enqueued"
+    except Exception:  # noqa: BLE001 — enqueue failure must not 500 a flipped job
+        logger.warning("retry enqueue failed for job %s (re-triggerable)", job_id, exc_info=True)
+        result["retry"] = "enqueue_failed"
+    finally:
+        await producer.aclose()
+    return result

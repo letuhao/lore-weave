@@ -41,14 +41,20 @@ _MULTI_UNIT_KINDS: frozenset[str] = frozenset({"extraction", "campaign", "enrich
 #                   JSONB (which already persists prompt/model/duration/aspect/style) and
 #                   re-runs the decoupled submit → new row + 'running' (D-JOBS-P4-RETRY-VIDEOGEN;
 #                   NO migration — the params were on the row all along)
+#   - enrichment_job — lore re-drives the SAME failed job over the live async path (resume
+#                   stream → redrive_one), skipping already-done gaps (UNIQUE(job_id,gap_ref)
+#                   + skip_gap_refs = no re-spend) and re-running the rest; flips failed→running
+#                   + emits 'running'. Safe under concurrency via the M1 per-job advisory claim
+#                   (a retry-while-running is a no-op) (D-JOBS-P4-RETRY-LORE; NO migration —
+#                   the job request row already persists every re-drive field).
 # NOT a kind-based entry: composition retry is PER-JOB, not per-kind — a composition job's
 # `kind` is its free-form operation ("draft_scene", "rewrite", …), IDENTICAL for the
 # server-reconstructable worker path and the non-reconstructable inline/streamed path. So
 # composition is gated on the per-job `retryable` flag (params.retryable, emitted by the
 # producer) passed to derive_control_caps, NOT this allowlist (D-JOBS-P4-RETRY-COMPOSITION).
-# Still NOT retryable at all: lore-enrichment (sync in-process — incompatible with the
-# deferred control contract; D-JOBS-P4-RETRY-LORE).
-_RETRYABLE_KINDS: frozenset[str] = frozenset({"translation", "extraction", "video_gen"})
+_RETRYABLE_KINDS: frozenset[str] = frozenset(
+    {"translation", "extraction", "video_gen", "enrichment_job"}
+)
 
 # VIEW-ONLY kinds — visible on the unified Jobs screen but with NO unified control surface,
 # so we offer no caps. book_import is fire-and-forget (book-service has no control endpoint;

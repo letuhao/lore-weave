@@ -77,6 +77,24 @@ async def test_resume_delegates(monkeypatch):
     assert resp.status == "running"
 
 
+@pytest.mark.asyncio
+async def test_retry_delegates(monkeypatch):
+    # D-JOBS-P4-RETRY-LORE: the wrapper routes 'retry' to the retry handler, which
+    # re-drives the failed job (the handler is mocked here; its CAS/enqueue logic is
+    # covered in test_jobs_api). Proves 'retry' is wired into _HANDLERS.
+    captured = {}
+
+    async def fake_retry(job_id, *, project_id, principal, pool):
+        captured.update(project_id=project_id, principal=principal)
+        return {"job_id": str(job_id), "status": "running", "retry": "enqueued"}
+
+    monkeypatch.setitem(ijc._HANDLERS, "retry", fake_retry)
+    resp = await control_enrichment_job(JOB, "retry", JobControlPayload(owner_user_id=USER), _FakePool(PROJ))
+    assert resp.status == "running" and resp.job_id == JOB
+    assert captured["project_id"] == PROJ
+    assert captured["principal"].user_id == USER
+
+
 class _ComposePool:
     """Pool for the compose-task branch (project_id None → not an enrichment_job).
     acquire() yields a conn whose fetchval returns None (no enrichment_job), fetchrow

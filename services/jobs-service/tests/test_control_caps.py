@@ -17,15 +17,16 @@ def test_terminal_statuses_offer_nothing():
 
 def test_failed_retryable_kinds_offer_retry():
     # D-JOBS-P4-RETRY: a failed job of a retry-supported kind offers retry (re-submit).
-    # translation (B1) + extraction (RETRY-KNOWLEDGE) + video_gen (RETRY-VIDEOGEN) honor it.
-    for kind in ("translation", "extraction", "video_gen"):
+    # translation (B1) + extraction (RETRY-KNOWLEDGE) + video_gen (RETRY-VIDEOGEN) +
+    # enrichment_job (RETRY-LORE — re-drives the failed job, skipping done gaps) honor it.
+    for kind in ("translation", "extraction", "video_gen", "enrichment_job"):
         assert _vals(derive_control_caps(JobStatus.FAILED, kind)) == ["retry"]
 
 
 def test_failed_non_retryable_kind_offers_nothing():
-    # campaign saga re-dispatches its own stages; lore-enrichment is sync in-process. Neither
-    # is kind-retryable, and with NO per-job flag a composition op ("generate") offers nothing.
-    for kind in ("campaign", "enrichment_job", "generate"):
+    # campaign saga re-dispatches its own stages → not kind-retryable; with NO per-job flag a
+    # composition op ("generate") offers nothing.
+    for kind in ("campaign", "generate"):
         assert derive_control_caps(JobStatus.FAILED, kind) == []
 
 

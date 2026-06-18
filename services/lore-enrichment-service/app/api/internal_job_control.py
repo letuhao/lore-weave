@@ -32,7 +32,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from loreweave_jobs import emit_job_event
 from pydantic import BaseModel
 
-from app.api.jobs import cancel_job, pause_job, resume_job
+from app.api.jobs import cancel_job, pause_job, resume_job, retry_job
 from app.api.principal import Principal
 from app.config import settings
 from app.deps import get_db
@@ -56,8 +56,11 @@ router = APIRouter(
 )
 
 # action → the public C8 handler that performs it (each reuses the state machine +
-# atomic UPDATE+emit; resume also re-arms the re-drive worker via the resume stream).
-_HANDLERS = {"cancel": cancel_job, "pause": pause_job, "resume": resume_job}
+# atomic UPDATE+emit; resume/retry also re-arm the re-drive worker via the resume
+# stream). retry (D-JOBS-P4-RETRY-LORE) re-drives a FAILED job, skipping done gaps.
+_HANDLERS = {
+    "cancel": cancel_job, "pause": pause_job, "resume": resume_job, "retry": retry_job,
+}
 
 
 @router.get("")

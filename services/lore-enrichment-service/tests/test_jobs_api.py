@@ -88,13 +88,18 @@ class _FakeAcquire:
 
 class _FakePool:
     """Pool that always hands out the same seeded connection (so a test can read
-    back what the handler executed)."""
+    back what the handler executed). ``disambig_status`` scripts the direct
+    ``pool.fetchval`` retry uses to disambiguate 404-vs-409 when its CAS misses."""
 
-    def __init__(self, row):
+    def __init__(self, row, *, disambig_status: str | None = None):
         self.conn = _FakeConn(row)
+        self._disambig_status = disambig_status
 
     def acquire(self):
         return _FakeAcquire(self.conn)
+
+    async def fetchval(self, *args, **kwargs):
+        return self._disambig_status
 
 
 class _RecordingProducer:
@@ -289,6 +294,89 @@ def test_resume_illegal_transition_is_409_before_enqueue(monkeypatch):
     )
     assert resp.status_code == 409, resp.text
     assert prod.calls == [], "no enqueue on an illegal transition"
+
+
+# ── (2b) retry (D-JOBS-P4-RETRY-LORE): failed→running CAS + re-drive enqueue ──
+
+
+def test_retry_failed_job_is_202_and_enqueues_one_trigger(monkeypatch):
+    """retry a failed job → 202; flips failed→running (the CAS matched the seeded
+    row) AND enqueues exactly one re-drive trigger carrying job_id/project_id/user_id."""
+    prod = _RecordingProducer()
+    monkeypatch.setattr(jobs_api, "make_redis_producer", lambda url: prod)
+    pool = _FakePool(_job_row(status="failed"))  # fetchrow returns it → CAS hit
+    resp = _client(pool).post(
+        f"/v1/lore-enrichment/jobs/{JOB_ID}/retry",
+        params={"project_id": PROJECT},
+        headers={"Authorization": f"Bearer {_bearer()}"},
+    )
+    assert resp.status_code == 202, resp.text
+    body = resp.json()
+    assert body["status"] == "running"
+    assert body["retry"] == "enqueued"
+    assert len(prod.calls) == 1
+    stream, fields, _maxlen = prod.calls[0]
+    assert stream == jobs_api.LORE_ENRICHMENT_RESUME_STREAM
+    assert fields == {"job_id": JOB_ID, "project_id": PROJECT, "user_id": OWNER}
+    assert prod.closed is True
+
+
+def test_retry_enqueue_failure_still_202_status_not_unwound(monkeypatch):
+    """A transient Redis hiccup on the re-drive xadd must NOT 500 nor unwind the
+    already-flipped status: still 202, 'running', retry 'enqueue_failed'."""
+    prod = _RecordingProducer(raise_on_xadd=RuntimeError("redis down"))
+    monkeypatch.setattr(jobs_api, "make_redis_producer", lambda url: prod)
+    pool = _FakePool(_job_row(status="failed"))
+    resp = _client(pool).post(
+        f"/v1/lore-enrichment/jobs/{JOB_ID}/retry",
+        params={"project_id": PROJECT},
+        headers={"Authorization": f"Bearer {_bearer()}"},
+    )
+    assert resp.status_code == 202, resp.text
+    body = resp.json()
+    assert body["status"] == "running"
+    assert body["retry"] == "enqueue_failed"
+    assert prod.closed is True
+
+
+def test_retry_not_failed_is_409(monkeypatch):
+    """retry a NON-failed job → the CAS misses (fetchrow None); the owner-scoped
+    disambiguation finds the row 'running' → 409 (not retryable), no enqueue."""
+    prod = _RecordingProducer()
+    monkeypatch.setattr(jobs_api, "make_redis_producer", lambda url: prod)
+    pool = _FakePool(None, disambig_status="running")  # CAS miss, row exists
+    resp = _client(pool).post(
+        f"/v1/lore-enrichment/jobs/{JOB_ID}/retry",
+        params={"project_id": PROJECT},
+        headers={"Authorization": f"Bearer {_bearer()}"},
+    )
+    assert resp.status_code == 409, resp.text
+    assert prod.calls == [], "no enqueue when not retryable"
+
+
+def test_retry_unknown_or_unowned_is_404(monkeypatch):
+    """retry where the CAS misses AND the disambiguation finds nothing (unknown id
+    or cross-tenant) → 404 (no existence oracle), no enqueue."""
+    prod = _RecordingProducer()
+    monkeypatch.setattr(jobs_api, "make_redis_producer", lambda url: prod)
+    pool = _FakePool(None, disambig_status=None)  # CAS miss + no such owned row
+    resp = _client(pool).post(
+        f"/v1/lore-enrichment/jobs/{JOB_ID}/retry",
+        params={"project_id": PROJECT},
+        headers={"Authorization": f"Bearer {_bearer()}"},
+    )
+    assert resp.status_code == 404, resp.text
+    assert prod.calls == []
+
+
+def test_retry_anonymous_is_401():
+    """No bearer → 401 before any DB read."""
+    pool = _FakePool(_job_row(status="failed"))
+    resp = _client(pool).post(
+        f"/v1/lore-enrichment/jobs/{JOB_ID}/retry",
+        params={"project_id": PROJECT},
+    )
+    assert resp.status_code == 401, resp.text
 
 
 # ── (3) GET /jobs/{id}: 404 cross-scope, 200 owned shape, 401 anonymous ───────
