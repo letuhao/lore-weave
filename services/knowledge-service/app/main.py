@@ -108,6 +108,10 @@ async def lifespan(app: FastAPI):
         get_book_client()
         # E0-3 — long-lived httpx client for the book-service grant authority.
         get_grant_client()
+        # D-GRANT-INSTANT-REVOKE — tail book-service grant revokes (Redis) → drop the
+        # cached grant on the spot (vs the 45s TTL). Best-effort; no redis → TTL only.
+        if settings.redis_url:
+            get_grant_client().start_revoke_consumer(settings.redis_url)
         # K12.2 — long-lived httpx client for embedding calls.
         get_embedding_client()
         # loreweave_llm SDK wrapper for unified-gateway LLM calls. Touched

@@ -218,6 +218,17 @@ func main() {
 	}
 
 	srv := api.NewServer(pool, cfg)
+
+	// D-GRANT-INSTANT-REVOKE — tail book-service grant revokes (Redis) → drop the
+	// matching cached grant from this process's grant client at once (vs the TTL).
+	if cfg.RedisURL != "" {
+		if rc, err := events.NewGrantRevokeConsumer(cfg.RedisURL, srv.GrantClient()); err != nil {
+			slog.Warn("grant-revoke-consumer init failed (instant revoke disabled; TTL still applies)", "error", err)
+		} else if rc != nil {
+			go rc.Run(ctx)
+		}
+	}
+
 	httpSrv := &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           srv.Router(),

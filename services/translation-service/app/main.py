@@ -49,6 +49,10 @@ async def lifespan(app: FastAPI):
     # E0-4a: the grant client (book-service /access authority). Constructed at
     # startup so its httpx client shares the app lifecycle.
     init_grant_client()
+    # D-GRANT-INSTANT-REVOKE — tail book-service grant revokes (Redis) → drop the
+    # cached grant on the spot (vs the 45s TTL). Best-effort; no redis → TTL only.
+    if settings.redis_url:
+        init_grant_client().start_revoke_consumer(settings.redis_url)
 
     # M5c: consume glossary change events → flag stale translations. Best-effort
     # background task; a Redis hiccup must never take down the API.

@@ -29,6 +29,8 @@ every service without per-copy drift.
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 import time
 from collections.abc import Callable
@@ -42,12 +44,16 @@ __all__ = [
     "parse_grant_level",
     "GrantClient",
     "DEFAULT_CACHE_TTL_S",
+    "REVOKE_STREAM",
 ]
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_CACHE_TTL_S = 45.0  # mirrors Go grantclient.DefaultCacheTTL
 DEFAULT_TIMEOUT_S = 10.0
+# book-service publishes grant cache-invalidations here via the outbox→relay
+# (aggregate_type='grant_revoke' → loreweave:events:grant_revoke). D-GRANT-INSTANT-REVOKE.
+REVOKE_STREAM = "loreweave:events:grant_revoke"
 
 
 class GrantLevel(IntEnum):
@@ -102,8 +108,10 @@ class GrantClient:
         # key "user_id:book_id" -> (GrantLevel, lifecycle, expiry_monotonic)
         self._cache: dict[str, tuple[GrantLevel, str, float]] = {}
         self._now = time.monotonic  # injectable for tests
+        self._revoke_task: asyncio.Task | None = None
 
     async def aclose(self) -> None:
+        await self.stop_revoke_consumer()
         await self._http.aclose()
 
     async def resolve_access(self, book_id: UUID, user_id: UUID) -> tuple[GrantLevel, str]:
@@ -135,6 +143,74 @@ class GrantClient:
     def invalidate_all(self) -> None:
         """Drop the whole cache (defensive — e.g. a resync signal)."""
         self._cache.clear()
+
+    # ── instant revoke (D-GRANT-INSTANT-REVOKE) ──────────────────────────────
+    def start_revoke_consumer(self, redis_url: str, stream: str = REVOKE_STREAM) -> None:
+        """Start a background task that tails the grant-revoke stream and drops the
+        cached grant for each ``{user_id, book_id}`` it sees — so a book-service revoke
+        takes effect at once instead of after the 45s TTL. Call once from the service
+        lifespan (a running loop is required); idempotent (a 2nd call no-ops).
+
+        NO consumer group: every client instance must observe every revoke (fan-out),
+        so each tails from ``$`` independently. A missed event degrades to the TTL
+        (fail-safe). redis is lazy-imported so the base package stays httpx-only."""
+        if self._revoke_task is not None and not self._revoke_task.done():
+            return
+        self._revoke_task = asyncio.create_task(self._revoke_loop(redis_url, stream))
+
+    async def stop_revoke_consumer(self) -> None:
+        task = self._revoke_task
+        self._revoke_task = None
+        if task is not None and not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            except Exception:  # noqa: BLE001 — best-effort shutdown
+                logger.warning("grant-revoke consumer shutdown error", exc_info=True)
+
+    async def _revoke_loop(self, redis_url: str, stream: str) -> None:
+        import redis.asyncio as aioredis  # lazy — only services that start the consumer need redis
+
+        r = aioredis.from_url(redis_url, decode_responses=True)
+        last_id = "$"  # tail only NEW events; pre-existing entries are stale for a cache
+        logger.info("grant-revoke consumer started (stream=%s)", stream)
+        try:
+            while True:
+                try:
+                    resp = await r.xread({stream: last_id}, block=5000, count=100)
+                except asyncio.CancelledError:
+                    raise
+                except Exception:  # noqa: BLE001 — transient redis blip: back off + retry
+                    logger.warning("grant-revoke consumer read failed; retrying", exc_info=True)
+                    await asyncio.sleep(1.0)
+                    continue
+                for _stream, entries in resp or []:
+                    for msg_id, fields in entries:
+                        last_id = msg_id
+                        self._apply_revoke(fields)
+        except asyncio.CancelledError:
+            pass
+        finally:
+            await r.aclose()
+            logger.info("grant-revoke consumer stopped")
+
+    def _apply_revoke(self, fields: dict) -> None:
+        """Invalidate the cached grant named by one stream entry's payload. Tolerant:
+        a malformed/foreign entry is logged + skipped (never crashes the loop)."""
+        raw = fields.get("payload")
+        if not raw:
+            return
+        try:
+            body = json.loads(raw)
+            book_id = UUID(str(body["book_id"]))
+            user_id = UUID(str(body["user_id"]))
+        except (ValueError, KeyError, TypeError):
+            logger.warning("grant-revoke: malformed payload, ignoring")
+            return
+        if self.invalidate(book_id, user_id):
+            logger.debug("grant-revoke: invalidated grant user=%s book=%s", user_id, book_id)
 
     async def _fetch(self, book_id: UUID, user_id: UUID) -> tuple[GrantLevel, str]:
         url = f"{self._base_url}/internal/books/{book_id}/access"

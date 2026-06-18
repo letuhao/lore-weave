@@ -37,6 +37,10 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
 	}
 }
 
+// GrantClient exposes the process's grant client so main can wire the
+// grant-revoke stream consumer to its cache (D-GRANT-INSTANT-REVOKE). May be nil.
+func (s *Server) GrantClient() *grantclient.Client { return s.grantClient }
+
 func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)

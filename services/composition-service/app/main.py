@@ -23,7 +23,7 @@ from app.clients.book_client import close_book_client
 from app.clients.glossary_client import close_glossary_client
 from app.clients.knowledge_client import close_knowledge_client
 from app.clients.llm_client import close_llm_client
-from app.grant_client import close_grant_client
+from app.grant_client import close_grant_client, get_grant_client
 from app.config import settings
 from app.db.migrate import run_migrations
 from app.db.pool import close_pool, create_pool, get_pool
@@ -85,6 +85,10 @@ async def lifespan(app: FastAPI):
         if settings.job_reaper_sweep_secs > 0
         else None
     )
+    # D-GRANT-INSTANT-REVOKE — tail book-service grant revokes (Redis) → drop the
+    # cached grant on the spot (vs the 45s TTL). Best-effort; close_grant_client stops it.
+    if settings.redis_url:
+        get_grant_client().start_revoke_consumer(settings.redis_url)
     try:
         yield
     finally:

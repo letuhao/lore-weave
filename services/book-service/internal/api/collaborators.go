@@ -295,6 +295,12 @@ func (s *Server) putCollaborator(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "DB_ERROR", "audit failed")
 		return
 	}
+	// D-GRANT-INSTANT-REVOKE: a role change must drop the target's cached grant so a
+	// downgrade takes effect at once (not after the 45s TTL). Same tx (transactional).
+	if err := insertGrantRevokeOutbox(r.Context(), tx, bookID, targetID); err != nil {
+		writeError(w, http.StatusInternalServerError, "DB_ERROR", "audit failed")
+		return
+	}
 	if err := tx.Commit(r.Context()); err != nil {
 		writeError(w, http.StatusInternalServerError, "DB_ERROR", "commit failed")
 		return
@@ -338,6 +344,11 @@ func (s *Server) deleteCollaborator(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, "DB_ERROR", "audit failed")
 			return
 		}
+		// D-GRANT-INSTANT-REVOKE: drop the revoked user's cached grant immediately.
+		if err := insertGrantRevokeOutbox(r.Context(), tx, bookID, targetID); err != nil {
+			writeError(w, http.StatusInternalServerError, "DB_ERROR", "audit failed")
+			return
+		}
 	}
 	if err := tx.Commit(r.Context()); err != nil {
 		writeError(w, http.StatusInternalServerError, "DB_ERROR", "commit failed")
@@ -359,6 +370,27 @@ func insertBookOutbox(ctx context.Context, tx pgx.Tx, eventType string, aggregat
 		VALUES ('book', $1, $2, $3)
 	`, aggregateID, eventType, payloadJSON); err != nil {
 		return fmt.Errorf("outbox insert: %w", err)
+	}
+	return nil
+}
+
+// insertGrantRevokeOutbox writes a grant cache-invalidation event in the given tx
+// (D-GRANT-INSTANT-REVOKE). aggregate_type='grant_revoke' → the worker-infra relay
+// ships it to loreweave:events:grant_revoke, which every grant client tails to drop
+// its cached (user,book) grant immediately rather than waiting out the 45s TTL.
+// Transactional with the collaborator change; a lost relay delivery degrades to the
+// TTL (fail-safe). Emitted on BOTH a downgrade (role change) and a revoke (delete) —
+// over-emitting on an upgrade is harmless (just an extra re-fetch).
+func insertGrantRevokeOutbox(ctx context.Context, tx pgx.Tx, bookID, userID uuid.UUID) error {
+	payloadJSON, err := json.Marshal(map[string]any{"user_id": userID, "book_id": bookID})
+	if err != nil {
+		return fmt.Errorf("grant-revoke outbox marshal: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO outbox_events (aggregate_type, aggregate_id, event_type, payload)
+		VALUES ('grant_revoke', $1, 'grant.revoked', $2)
+	`, bookID, payloadJSON); err != nil {
+		return fmt.Errorf("grant-revoke outbox insert: %w", err)
 	}
 	return nil
 }

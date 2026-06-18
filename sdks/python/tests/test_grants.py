@@ -6,6 +6,7 @@ trace-id propagation.
 """
 from __future__ import annotations
 
+import asyncio
 import uuid
 
 import httpx
@@ -110,6 +111,67 @@ async def test_invalidate_drops_cached_grant():
     await c.resolve_access(book, user)             # re-fetches after invalidate
     assert calls["n"] == 2
     await c.aclose()
+
+
+@pytest.mark.asyncio
+async def test_apply_revoke_invalidates_cached_grant():
+    """The stream consumer's per-entry handler drops the named cached grant
+    (D-GRANT-INSTANT-REVOKE) and tolerates malformed/foreign entries."""
+    calls = {"n": 0}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        return httpx.Response(200, json={"grant_level": "owner", "lifecycle_state": "active"})
+
+    c = _client(handler)
+    book, user = uuid.uuid4(), uuid.uuid4()
+    await c.resolve_access(book, user)                      # cached
+    # A relay-shaped stream entry → invalidates the (user, book) grant.
+    import json as _json
+    c._apply_revoke({"payload": _json.dumps({"user_id": str(user), "book_id": str(book)})})
+    await c.resolve_access(book, user)                      # re-fetches after invalidation
+    assert calls["n"] == 2
+    # Malformed / missing / foreign entries are no-ops (never raise).
+    c._apply_revoke({"payload": "not-json"})
+    c._apply_revoke({})                                    # no payload field
+    c._apply_revoke({"payload": _json.dumps({"book_id": str(uuid.uuid4())})})  # missing user_id
+    await c.aclose()
+
+
+@pytest.mark.asyncio
+async def test_start_revoke_consumer_idempotent():
+    """A 2nd start is a no-op (one tail task); stop cancels cleanly even if never
+    started. Uses a fake xread that blocks so the task stays alive."""
+    def handler(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"grant_level": "view", "lifecycle_state": "active"})
+
+    c = _client(handler)
+    await c.stop_revoke_consumer()                          # never-started → safe no-op
+
+    import sys
+    import types
+
+    class _FakeRedis:
+        async def xread(self, *a, **k):
+            await asyncio.sleep(3600)                       # block; cancelled on stop
+            return []
+        async def aclose(self):
+            pass
+
+    fake_mod = types.ModuleType("redis.asyncio")
+    fake_mod.from_url = lambda *a, **k: _FakeRedis()
+    sys.modules["redis.asyncio"] = fake_mod
+    try:
+        c.start_revoke_consumer("redis://x")
+        t1 = c._revoke_task
+        c.start_revoke_consumer("redis://x")               # idempotent
+        assert c._revoke_task is t1
+        await asyncio.sleep(0)                              # let the task start
+        await c.stop_revoke_consumer()
+        assert c._revoke_task is None
+    finally:
+        del sys.modules["redis.asyncio"]
+        await c.aclose()
 
 
 @pytest.mark.asyncio
