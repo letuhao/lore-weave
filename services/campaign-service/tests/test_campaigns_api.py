@@ -110,11 +110,93 @@ def test_create_requires_knowledge_project(client, mocker):
     assert resp.json()["detail"]["code"] == "CAMPAIGN_NO_KNOWLEDGE_PROJECT"
 
 
-def test_create_forbidden_when_not_owner(client, mocker):
-    _book_stub(mocker, owner="ffffffff-ffff-ffff-ffff-ffffffffffff")
+def test_create_denied_without_grant_404(client, mocker, fake_grant):
+    # E0-4b: access is grant-based, not owner-compare. No grant → 404 (anti-oracle,
+    # uniform with a missing book), BEFORE any book existence is revealed.
+    from app.grant_client import GrantLevel
+    fake_grant.resolve_grant.return_value = GrantLevel.NONE
+    _book_stub(mocker)
+    resp = client.post("/v1/campaigns", json=_payload())
+    assert resp.status_code == 404
+    assert resp.json()["detail"]["code"] == "CAMPAIGN_NOT_FOUND"
+
+
+def test_create_under_tier_403(client, mocker, fake_grant):
+    # E0-4b: create needs `manage`; a view/edit grantee is forbidden (403).
+    from app.grant_client import GrantLevel
+    fake_grant.resolve_grant.return_value = GrantLevel.EDIT
+    _book_stub(mocker)
     resp = client.post("/v1/campaigns", json=_payload())
     assert resp.status_code == 403
     assert resp.json()["detail"]["code"] == "CAMPAIGN_FORBIDDEN"
+
+
+OTHER_OWNER = "ffffffff-ffff-ffff-ffff-ffffffffffff"
+EMB = "44444444-4444-4444-4444-444444444444"
+
+
+def test_collaborator_create_persists_dual_identity_and_skips_project_mutation(client, mocker, fake_grant):
+    # E0-4b: a manage-collaborator (book owned by OTHER) running a campaign on a
+    # shared book must (a) persist book_owner_user_id = the BOOK OWNER (graph
+    # partition, NOT the caller), (b) persist their own embedding_model_ref (billing
+    # ref), (c) verify the project against the BOOK OWNER, and (d) NOT mutate the
+    # owner's project models (set_campaign_models skipped — R-project-corruption guard).
+    from app.grant_client import GrantLevel
+    fake_grant.resolve_grant.return_value = GrantLevel.MANAGE
+    book = _book_stub(mocker, owner=OTHER_OWNER)  # also stubs the KnowledgeDispatchClient
+    create = mocker.patch("app.repositories.create_campaign",
+                          new_callable=AsyncMock, return_value=_campaign_row())
+    mocker.patch("app.repositories.seed_campaign_chapters", new_callable=AsyncMock)
+    resp = client.post("/v1/campaigns", json=_payload(
+        embedding_model_source="user_model", embedding_model_ref=EMB))
+    assert resp.status_code == 201, resp.text
+    # (a) book owner is the graph partition, (b) caller's embedding ref persisted.
+    assert str(create.call_args.kwargs["book_owner_user_id"]) == OTHER_OWNER
+    assert str(create.call_args.kwargs["embedding_model_ref"]) == EMB
+    # owner_user_id stays the caller (billed).
+    assert str(create.call_args.kwargs["owner_user_id"]) == TEST_USER
+
+
+def test_collaborator_create_verifies_project_against_book_owner(client, mocker, fake_grant):
+    from app.grant_client import GrantLevel
+    fake_grant.resolve_grant.return_value = GrantLevel.MANAGE
+    _book_stub(mocker, owner=OTHER_OWNER)
+    kn = _knowledge_stub(mocker)  # re-patch to capture verify_project_owner args
+    mocker.patch("app.repositories.create_campaign", new_callable=AsyncMock,
+                 return_value=_campaign_row())
+    mocker.patch("app.repositories.seed_campaign_chapters", new_callable=AsyncMock)
+    resp = client.post("/v1/campaigns", json=_payload(
+        embedding_model_source="user_model", embedding_model_ref=EMB))
+    assert resp.status_code == 201, resp.text
+    # (c) project verified against the BOOK OWNER (the project is owner-owned, the
+    # caller won't own it); (d) the owner's project models are NOT mutated.
+    assert kn.verify_project_owner.call_args.kwargs["user_id"] == OTHER_OWNER
+    kn.set_campaign_models.assert_not_called()
+
+
+def test_collaborator_create_without_embedding_ref_400(client, mocker, fake_grant):
+    # E0-4b: a collaborator's knowledge stage caller-pays needs their own embedding
+    # ref (the knowledge dispatch 422s without it) → blocked at create.
+    from app.grant_client import GrantLevel
+    fake_grant.resolve_grant.return_value = GrantLevel.MANAGE
+    _book_stub(mocker, owner=OTHER_OWNER)
+    create = mocker.patch("app.repositories.create_campaign", new_callable=AsyncMock)
+    resp = client.post("/v1/campaigns", json=_payload())  # no embedding_model_ref
+    assert resp.status_code == 400
+    assert resp.json()["detail"]["code"] == "CAMPAIGN_NO_BILLING_EMBEDDING"
+    create.assert_not_called()  # blocked before the write
+
+
+def test_owner_run_create_persists_book_owner_equal_to_owner(client, mocker):
+    # The common case: owner runs their own campaign → book_owner_user_id == owner.
+    _book_stub(mocker)  # owner defaults to TEST_USER
+    create = mocker.patch("app.repositories.create_campaign",
+                          new_callable=AsyncMock, return_value=_campaign_row())
+    mocker.patch("app.repositories.seed_campaign_chapters", new_callable=AsyncMock)
+    resp = client.post("/v1/campaigns", json=_payload())
+    assert resp.status_code == 201, resp.text
+    assert str(create.call_args.kwargs["book_owner_user_id"]) == TEST_USER
+    assert str(create.call_args.kwargs["owner_user_id"]) == TEST_USER
 
 
 def test_create_book_not_found(client, mocker):
@@ -272,6 +354,9 @@ def _report_row(**over):
 
 def test_report_summary_and_error_groups(client, mocker):
     # G1: report returns outcome + spent-vs-estimate + error groups bucketed by cause.
+    # E0-4b: the report route grant-gates via get_campaign first → mock it so the gate passes.
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock,
+                 return_value=_campaign_row())
     mocker.patch("app.repositories.get_report_row", new_callable=AsyncMock,
                  return_value=_report_row())
     mocker.patch("app.repositories.get_campaign_progress", new_callable=AsyncMock,
@@ -354,8 +439,9 @@ def test_patch_budget_only_still_works(client, mocker):
                        return_value=_campaign_row(status="running", budget_usd=Decimal("5")))
     resp = client.patch(f"/v1/campaigns/{CAMP}", json={"budget_usd": "5"})
     assert resp.status_code == 200, resp.text
-    # only budget_usd forwarded (no model keys)
-    assert set(upd.call_args.args[3].keys()) == {"budget_usd"}
+    # only budget_usd forwarded (no model keys). E0-4b: update_campaign_fields dropped
+    # the owner_user_id arg, so fields is now args[2] (was args[3]).
+    assert set(upd.call_args.args[2].keys()) == {"budget_usd"}
 
 
 def test_patch_switch_model_on_paused(client, mocker):
@@ -368,7 +454,7 @@ def test_patch_switch_model_on_paused(client, mocker):
     resp = client.patch(f"/v1/campaigns/{CAMP}",
                         json={"translation_model_source": "user_model", "translation_model_ref": new_ref})
     assert resp.status_code == 200, resp.text
-    fields = upd.call_args.args[3]
+    fields = upd.call_args.args[2]
     assert fields["translation_model_source"] == "user_model"
     assert str(fields["translation_model_ref"]) == new_ref
 

@@ -16,6 +16,7 @@ from fastapi.responses import PlainTextResponse
 
 from .config import settings
 from .database import create_pool, close_pool
+from .grant_client import init_grant_client, close_grant_client
 from .migrate import run_migrations
 from .events.consumer import ProjectionConsumer
 from .events.spend_consumer import SpendConsumer
@@ -33,6 +34,13 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     pool = await create_pool(settings.database_url)
     await run_migrations(pool)
+
+    # E0-4b — grant client (book-service is the grant authority). Tail the revoke
+    # stream so a collaborator's removal takes effect at once (else within the 45s
+    # positive-cache TTL). Best-effort: a redis blip degrades to the TTL.
+    grant_client = init_grant_client()
+    with suppress(Exception):
+        grant_client.start_revoke_consumer(settings.redis_url)
 
     # On restart, any campaign left mid-dispatch self-heals: the stateless driver
     # re-derives "what's next" from campaign_chapters (decision D). No pending-job
@@ -87,6 +95,8 @@ async def lifespan(app: FastAPI):
             await clients.translation.aclose()
         with suppress(Exception):
             await clients.knowledge.aclose()
+        with suppress(Exception):
+            await close_grant_client()
         await close_pool()
 
 

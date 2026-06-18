@@ -70,7 +70,10 @@ async def _reconcile_knowledge(
     stuck: list[asyncpg.Record],
 ) -> None:
     campaign_id: UUID = campaign["campaign_id"]
-    owner_user_id: UUID = campaign["owner_user_id"]
+    # E0-4b: the knowledge project + graph belong to the BOOK OWNER. Probe extraction
+    # truth under that identity, and mark-done under it too — the knowledge-stage
+    # consumer correlation now matches `book_owner_user_id` (= the event's user_id).
+    book_owner: UUID = campaign["book_owner_user_id"] or campaign["owner_user_id"]
     book_id: UUID = campaign["book_id"]
     project_id = campaign["knowledge_project_id"]
 
@@ -86,7 +89,7 @@ async def _reconcile_knowledge(
 
     try:
         status = await clients.knowledge.extraction_status(
-            user_id=str(owner_user_id), project_id=str(project_id),
+            user_id=str(book_owner), project_id=str(project_id),
         )
     except DispatchError as exc:
         logger.warning(
@@ -110,7 +113,7 @@ async def _reconcile_knowledge(
         chapter_id = str(row["chapter_id"])
         if outcome == "complete":
             await repo.mark_stage_done_by_chapter(
-                pool, owner_user_id=owner_user_id, book_id=book_id,
+                pool, owner_user_id=book_owner, book_id=book_id,
                 chapter_id=UUID(chapter_id), stage="knowledge", target_language=None,
             )
             logger.info(

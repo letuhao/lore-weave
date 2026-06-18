@@ -45,13 +45,17 @@ async def test_accumulate_duplicate_is_noop(fake_pool):
     fake_pool.execute.assert_not_awaited()  # no double-count
 
 
-async def test_update_budget_is_owner_scoped(fake_pool):
+async def test_update_budget_is_campaign_scoped(fake_pool):
+    # E0-4b: update_campaign_fields is scoped by campaign_id (PK) — the router
+    # grant-gates `manage` on the book before calling; the owner predicate is gone.
     fake_pool.fetchrow.return_value = FakeRecord({"campaign_id": UUID(CAMP)})
     row = await repo.update_campaign_fields(
-        fake_pool, UUID(CAMP), UUID(TEST_USER), {"budget_usd": Decimal("9")})
+        fake_pool, UUID(CAMP), {"budget_usd": Decimal("9")})
     assert row is not None
     sql = fake_pool.fetchrow.call_args.args[0]
-    assert "owner_user_id = $2" in sql and "budget_usd = $3" in sql
+    assert "WHERE campaign_id = $1" in sql and "budget_usd = $2" in sql
+    # the owner predicate is gone (owner_user_id still appears as a RETURNING column).
+    assert "owner_user_id = $" not in sql
 
 
 # ── SpendConsumer._process (flat-field parse + permanent/transient) ──────────

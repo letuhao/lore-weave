@@ -155,6 +155,8 @@ class KnowledgeDispatchClient:
         model_source: str | None,
         model_ref: str | None,
         campaign_id: str | None = None,
+        billing_user_id: str | None = None,
+        billing_embedding_model: str | None = None,
     ) -> str:
         """POST /internal/knowledge/projects/{project_id}/dispatch-extraction →
         returns the new extraction job_id.
@@ -163,7 +165,15 @@ class KnowledgeDispatchClient:
         range (S2, D-K16.2-02b); in S1 the endpoint passes them through but the
         runner still processes the whole project and the projection tracks
         per-chapter completion via events. The endpoint owns the knowledge-side
-        `scope_range` shape — this client stays agnostic of it."""
+        `scope_range` shape — this client stays agnostic of it.
+
+        E0-4b dual identity: `user_id` is the GRAPH partition (the book owner who
+        owns the project). When a manage-collaborator runs the campaign,
+        `billing_user_id` (the caller) + `billing_embedding_model` (the caller's own
+        ref for the SAME embedding model) make the knowledge stage bill the CALLER
+        on their key while writing into the owner's graph — the endpoint's 2b
+        dual-identity branch (dimension-guarded). Owner-self → both None (legacy
+        owner-paid)."""
         url = f"{self._base_url}/internal/knowledge/projects/{project_id}/dispatch-extraction"
         body: dict = {
             "user_id": user_id,
@@ -173,6 +183,8 @@ class KnowledgeDispatchClient:
             "model_source": model_source,
             "model_ref": model_ref,
             "campaign_id": campaign_id,
+            "billing_user_id": billing_user_id,
+            "billing_embedding_model": billing_embedding_model,
         }
         try:
             resp = await self._http.post(url, json=body)
