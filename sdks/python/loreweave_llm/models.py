@@ -404,6 +404,11 @@ class ImageGenResult(BaseModel):
 
     created: int
     data: list[ImageGenDataItem] = Field(min_length=1, max_length=4)
+    # D-PHASE5E — gateway-resolved provider identity for the served generation.
+    # Additive/optional (None when the gateway predates the fields); mirrors the
+    # Go SDK + openapi ImageGenResult so the SSOT mirror stays honest.
+    provider_kind: str | None = None
+    provider_model_name: str | None = None
 
 
 # ── Phase 5d — video-gen models ─────────────────────────────────────

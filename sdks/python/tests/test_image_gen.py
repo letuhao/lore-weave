@@ -410,6 +410,27 @@ def test_image_gen_result_model_round_trip():
     assert result.data[1].url is None
 
 
+def test_image_gen_result_provider_identity_fields():
+    """D-PHASE5E — provider_kind + provider_model_name decode when present, and
+    default to None for a gateway result that predates them (backward-compat)."""
+    with_fields = ImageGenResult.model_validate(
+        {
+            "created": 1700000000,
+            "data": [{"url": "https://cdn.example/img.png"}],
+            "provider_kind": "lm_studio",
+            "provider_model_name": "sdxl",
+        }
+    )
+    assert with_fields.provider_kind == "lm_studio"
+    assert with_fields.provider_model_name == "sdxl"
+
+    without = ImageGenResult.model_validate(
+        {"created": 1, "data": [{"url": "https://cdn.example/x.png"}]}
+    )
+    assert without.provider_kind is None
+    assert without.provider_model_name is None
+
+
 def test_image_gen_data_item_allows_all_fields_none():
     """ImageGenDataItem with no fields populated is technically valid
     (though useless) — pydantic shouldn't reject. Real validation
