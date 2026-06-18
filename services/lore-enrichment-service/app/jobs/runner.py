@@ -188,7 +188,7 @@ class JobRunner:
         pre = await self._store.read_job_status(job_id=job_id)
         if pre in _EXTERNAL_STOP_STATUSES:
             logger.info("run %s: already %s before start — yield (no work)", job_id, pre)
-            return self._finalize_interrupted(outcome, pre, None)
+            return await self._finalize_interrupted(outcome, pre, None)
 
         # ── estimate (pending → estimating) ─────────────────────────────────────
         await machine.estimate()
@@ -209,7 +209,7 @@ class JobRunner:
         if not started_ok:
             current = await self._store.read_job_status(job_id=job_id)
             logger.info("run %s: %s during estimate — yield before start", job_id, current)
-            return self._finalize_interrupted(outcome, current, None)
+            return await self._finalize_interrupted(outcome, current, None)
         await self._emitter.emit(
             JobEventType.STARTED,
             data={
@@ -243,7 +243,7 @@ class JobRunner:
                         "run %s: external status %s mid-run — yield before %s",
                         job_id, current, gap_ref,
                     )
-                    return self._finalize_interrupted(outcome, current, gap_ref)
+                    return await self._finalize_interrupted(outcome, current, gap_ref)
                 # Per-gap cost: the strategy's estimate for a one-gap batch.
                 unit_cost = self._cost_strategy.estimate_cost([gap]).cost
                 # ── cost-cap BEFORE the gap (breach → PAUSE, resumable) ──────────
@@ -262,7 +262,7 @@ class JobRunner:
                     )
                     if not paused_ok:
                         current = await self._store.read_job_status(job_id=job_id)
-                        return self._finalize_interrupted(outcome, current, gap_ref)
+                        return await self._finalize_interrupted(outcome, current, gap_ref)
                     await self._emitter.emit(
                         JobEventType.PAUSED,
                         gap_ref=gap_ref,
@@ -441,7 +441,7 @@ class JobRunner:
                 logger.info(
                     "run %s: external status %s won vs complete — yield", job_id, current
                 )
-                return self._finalize_interrupted(outcome, current, None)
+                return await self._finalize_interrupted(outcome, current, None)
             await machine.complete()
             await self._emitter.emit(
                 JobEventType.COMPLETED,
@@ -471,7 +471,7 @@ class JobRunner:
             )
             if not failed_ok:
                 current = await self._store.read_job_status(job_id=job_id)
-                return self._finalize_interrupted(outcome, current, None, error=err)
+                return await self._finalize_interrupted(outcome, current, None, error=err)
             if not machine.is_terminal():
                 await machine.fail(error_message=err)
             await self._emitter.emit(
@@ -482,7 +482,7 @@ class JobRunner:
             outcome.spent = self._budget.spent
             return outcome
 
-    def _finalize_interrupted(
+    async def _finalize_interrupted(
         self,
         outcome: JobOutcome,
         status: str | None,
@@ -491,10 +491,13 @@ class JobRunner:
         error: str | None = None,
     ) -> JobOutcome:
         """M2: stop the run because an EXTERNAL control action (cancel/manual pause)
-        or a terminal status now owns the row. The runner writes NOTHING and emits
-        NOTHING here — the control endpoint already persisted + emitted the
-        transition atomically (H1); a second write/emit would clobber or duplicate.
-        Just reflect the persisted state in the outcome and return."""
+        or a terminal status now owns the row. The runner does NOT write the STATUS
+        and emits NOTHING here — the control endpoint already persisted + emitted the
+        transition atomically (H1); a second status write/emit would clobber or
+        duplicate. It DOES persist the spend done before the interrupt (review-impl
+        LOW-3) via a status-preserving, no-emit cost write, GUARDED on the row still
+        being in ``status`` (so a further transition is never clobbered) — else a
+        cancelled job under-reports its real cost in the GUI."""
         outcome.final_state = status or outcome.final_state
         outcome.spent = self._budget.spent
         if status == "paused":
@@ -502,6 +505,11 @@ class JobRunner:
             outcome.paused_at_gap = gap_ref
         if error is not None:
             outcome.error = error
+        if status is not None and self._budget.spent > 0:
+            await self._store.record_actual_cost(
+                job_id=outcome.job_id, actual_cost=self._budget.spent,
+                only_if_status=(status,),
+            )
         return outcome
 
     def _reconcile_gap(self, pre_estimate: float, before_tokens: int) -> None:

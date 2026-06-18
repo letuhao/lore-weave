@@ -514,6 +514,30 @@ async def test_preflight_already_cancelled_does_no_work():
     assert store.jobs["job-1"]["status"] == "cancelled"  # untouched
 
 
+async def test_cancel_mid_run_records_spend_done_so_far():
+    """LOW-3: a cancel mid-run persists actual_cost for the gaps ALREADY done (so the
+    GUI doesn't show $0 for a cancelled job that really spent) WITHOUT changing the
+    control-owned status. flip_after=2 → gap 1 runs (spend > 0), then cancel."""
+    from app.jobs.cost import PER_GAP_WORKING_COST
+
+    store = _FlipStatusAtReadStore(flip_to="cancelled", flip_after=2)
+    runner = _real_runner(  # GapCostModel → real non-zero per-gap cost
+        store=store, pipeline=_pipeline(),
+        # ample cap (≥ all gaps) so the cost-cap never pauses — the CANCEL is what stops it.
+        budget=JobCostBudget(100.0 * PER_GAP_WORKING_COST, eval_reserve=0.0), emitter=_emitter(),
+    )
+    gaps = [_gap(n) for n in _LOCATIONS]
+    outcome = await runner.run_job(job_id="job-1", gaps=gaps, context=_ctx())
+
+    assert outcome.final_state == "cancelled"
+    assert len(outcome.proposals) == 1  # gap 1 done before the cancel
+    assert outcome.spent == pytest.approx(PER_GAP_WORKING_COST)
+    # the spend is persisted (status-preserving write) — NOT left at 0.
+    assert store.jobs["job-1"]["actual_cost"] == pytest.approx(outcome.spent)
+    # the cost write did NOT touch the control-owned status.
+    assert store.jobs["job-1"]["status"] == "cancelled"
+
+
 # ── WARN-1: resume/re-run is SAFE — no double-charge, no duplicate proposals ───
 
 

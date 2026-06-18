@@ -260,9 +260,11 @@ def test_resume_paused_job_is_202_and_enqueues_one_trigger(monkeypatch):
     assert prod.closed is True  # producer is closed in the finally
 
 
-def test_resume_enqueue_failure_still_202_status_not_unwound(monkeypatch):
-    """A transient Redis hiccup on xadd must NOT 500 nor unwind the already-flipped
-    status: still 202, status 'running', resume marked 'enqueue_failed'."""
+def test_resume_enqueue_failure_rolls_back_to_paused(monkeypatch):
+    """A transient Redis hiccup on xadd must NOT 500 — and must ROLL the paused→running
+    flip BACK to 'paused' (MED-1), else the job is stuck 'running' with no worker trigger
+    and a repeat resume 409s. Still 202, status 'paused', resume 'enqueue_failed', so the
+    job stays re-triggerable."""
     prod = _RecordingProducer(raise_on_xadd=RuntimeError("redis down"))
     monkeypatch.setattr(jobs_api, "make_redis_producer", lambda url: prod)
     pool = _FakePool(_job_row(status="paused"))
@@ -273,10 +275,9 @@ def test_resume_enqueue_failure_still_202_status_not_unwound(monkeypatch):
     )
     assert resp.status_code == 202, resp.text
     body = resp.json()
-    # the flipped status is NOT unwound — the job is left re-triggerable.
-    assert body["status"] == "running"
+    assert body["status"] == "paused"  # rolled back — re-triggerable
     assert body["resume"] == "enqueue_failed"
-    # the UPDATE to 'running' still persisted (the flip stands).
+    # the resume flip to 'running' still ran first (the rollback then restored paused).
     assert pool.conn.executed and pool.conn.executed[0][1][-1] == "running"
     assert prod.closed is True
 
@@ -321,9 +322,11 @@ def test_retry_failed_job_is_202_and_enqueues_one_trigger(monkeypatch):
     assert prod.closed is True
 
 
-def test_retry_enqueue_failure_still_202_status_not_unwound(monkeypatch):
-    """A transient Redis hiccup on the re-drive xadd must NOT 500 nor unwind the
-    already-flipped status: still 202, 'running', retry 'enqueue_failed'."""
+def test_retry_enqueue_failure_rolls_back_to_failed(monkeypatch):
+    """A transient Redis hiccup on the re-drive xadd must NOT 500 — and must ROLL the
+    failed→running flip BACK to 'failed' (MED-1), else the job is stuck 'running' with
+    no worker trigger and a repeat retry 409s. Still 202, status 'failed', retry
+    'enqueue_failed', so the job stays retryable."""
     prod = _RecordingProducer(raise_on_xadd=RuntimeError("redis down"))
     monkeypatch.setattr(jobs_api, "make_redis_producer", lambda url: prod)
     pool = _FakePool(_job_row(status="failed"))
@@ -334,7 +337,7 @@ def test_retry_enqueue_failure_still_202_status_not_unwound(monkeypatch):
     )
     assert resp.status_code == 202, resp.text
     body = resp.json()
-    assert body["status"] == "running"
+    assert body["status"] == "failed"  # rolled back — re-triggerable
     assert body["retry"] == "enqueue_failed"
     assert prod.closed is True
 

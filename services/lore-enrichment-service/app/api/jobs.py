@@ -524,6 +524,48 @@ async def pause_job(
     )
 
 
+async def _compensate_stuck_running(
+    pool: asyncpg.Pool, *, job_id: UUID, owner_user_id, project_id: UUID, to_status: str
+) -> str:
+    """Roll a control flip back when its re-drive enqueue FAILED (/review-impl MED-1).
+
+    resume/retry flip the row to 'running' BEFORE the XADD (the worker's run_job
+    pre-flight bails on a still-'paused' row, so the flip must precede the trigger).
+    If the XADD then fails there is no worker trigger AND no stranded-running sweeper
+    for enrichment_job → the job would be stuck 'running' and NOT re-triggerable
+    (resume 409s unless paused, retry 409s unless failed). So roll the flip back to
+    its prior state (``to_status`` = 'paused' for resume / 'failed' for retry),
+    GUARDED on the row still being 'running' (a racing worker that already advanced
+    it is never clobbered) + emit, so the action stays available. Best-effort: if
+    THIS also fails the row is left 'running' (operator-recoverable). Returns the
+    resulting status string."""
+    try:
+        async with pool.acquire() as conn:
+            async with conn.transaction():  # rollback UPDATE + emit atomic (H1)
+                row = await conn.fetchrow(
+                    "UPDATE enrichment_job SET status=$4, updated_at=now() "
+                    "WHERE user_id=$1 AND project_id=$2 AND job_id=$3 AND status='running' "
+                    "RETURNING error_message",
+                    owner_user_id, project_id, job_id, to_status,
+                )
+                if row is None:
+                    return "running"  # a worker already advanced it — leave it be
+                cstatus = canonical_status(to_status)
+                if cstatus is not None:
+                    await emit_job_event(
+                        conn, service=JOB_SERVICE, job_id=str(job_id),
+                        owner_user_id=str(owner_user_id), kind=JOB_KIND, status=cstatus,
+                        error=job_error(row["error_message"]) if cstatus == "failed" else None,
+                    )
+        return to_status
+    except Exception:  # noqa: BLE001 — best-effort rollback; leave running if it fails
+        logger.warning(
+            "enqueue-failure rollback for job %s failed (left running — operator-recoverable)",
+            job_id, exc_info=True,
+        )
+        return "running"
+
+
 @router.post("/{job_id}/resume", status_code=status.HTTP_202_ACCEPTED)
 async def resume_job(
     job_id: UUID,
@@ -541,8 +583,9 @@ async def resume_job(
         action="resume", job_id=job_id, project_id=project_id,
         principal=principal, pool=pool,
     )
-    # Enqueue the re-drive trigger (best-effort: the status is already 'running';
-    # a transient Redis hiccup leaves the job re-triggerable by a repeat resume).
+    # Enqueue the re-drive trigger. On failure, roll the paused→running flip BACK to
+    # 'paused' so the job stays re-triggerable (a flipped-but-un-enqueued job is stuck
+    # 'running' with no worker trigger + no sweeper, and a repeat resume 409s — MED-1).
     producer = make_redis_producer(settings.redis_url)
     try:
         await producer.xadd(
@@ -556,7 +599,11 @@ async def resume_job(
         )
         result["resume"] = "enqueued"
     except Exception:  # noqa: BLE001 — enqueue failure must not 500 a flipped job
-        logger.warning("resume enqueue failed for job %s (re-triggerable)", job_id, exc_info=True)
+        logger.warning("resume enqueue failed for job %s — rolling back to paused", job_id, exc_info=True)
+        result["status"] = await _compensate_stuck_running(
+            pool, job_id=job_id, owner_user_id=principal.user_id,
+            project_id=project_id, to_status="paused",
+        )
         result["resume"] = "enqueue_failed"
     finally:
         await producer.aclose()
@@ -629,8 +676,9 @@ async def retry_job(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"job not retryable from status '{cur}' (only 'failed')",
         )
-    # Enqueue the re-drive (best-effort: status is already 'running'; a transient
-    # Redis hiccup leaves the job re-triggerable by a repeat retry).
+    # Enqueue the re-drive. On failure, roll the failed→running flip BACK to 'failed'
+    # so the job stays retryable (a flipped-but-un-enqueued job is stuck 'running' with
+    # no worker trigger + no sweeper, and a repeat retry 409s — MED-1).
     result = {"job_id": str(job_id), "status": "running"}
     producer = make_redis_producer(settings.redis_url)
     try:
@@ -645,7 +693,11 @@ async def retry_job(
         )
         result["retry"] = "enqueued"
     except Exception:  # noqa: BLE001 — enqueue failure must not 500 a flipped job
-        logger.warning("retry enqueue failed for job %s (re-triggerable)", job_id, exc_info=True)
+        logger.warning("retry enqueue failed for job %s — rolling back to failed", job_id, exc_info=True)
+        result["status"] = await _compensate_stuck_running(
+            pool, job_id=job_id, owner_user_id=principal.user_id,
+            project_id=project_id, to_status="failed",
+        )
         result["retry"] = "enqueue_failed"
     finally:
         await producer.aclose()

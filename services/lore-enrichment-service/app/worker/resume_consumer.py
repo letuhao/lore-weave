@@ -78,11 +78,16 @@ async def redrive_one(
                 pool=pool, job_id=job_id, project_id=project_id, user_id=user_id
             )
         finally:
-            # Release the claim (best-effort; a session lock is also freed if the conn drops).
+            # Release the claim explicitly — a session advisory lock is NOT freed when
+            # the conn returns to the pool (pooled conns are recycled, not closed); only
+            # an explicit unlock OR an actual connection close (e.g. process death) frees
+            # it. This finally always runs on the normal path, so the lock is released.
             try:
                 await lock_conn.fetchval("SELECT pg_advisory_unlock($1)", lock_key)
-            except Exception:  # noqa: BLE001 — conn-close frees the session lock anyway
-                logger.warning("redrive %s: advisory unlock failed (conn-close frees it)", job_id)
+            except Exception:  # noqa: BLE001 — only reachable if the conn itself broke
+                # A broken conn is discarded by the pool (not recycled) → its session
+                # ends → Postgres frees the lock. So this is safe to swallow.
+                logger.warning("redrive %s: advisory unlock failed (broken conn → session-end frees it)", job_id)
 
 
 async def _redrive_locked(

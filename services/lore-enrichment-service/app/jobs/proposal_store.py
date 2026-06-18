@@ -199,6 +199,10 @@ class ProposalStore(Protocol):
 
     async def read_job_status(self, *, job_id: str) -> str | None: ...
 
+    async def record_actual_cost(
+        self, *, job_id: str, actual_cost: float, only_if_status: tuple[str, ...]
+    ) -> None: ...
+
 
 class PgProposalStore:
     """asyncpg-backed :class:`ProposalStore` writing the real C2 tables."""
@@ -377,6 +381,22 @@ class PgProposalStore:
                 "SELECT status FROM enrichment_job WHERE job_id = $1", UUID(job_id)
             )
 
+    async def record_actual_cost(
+        self, *, job_id: str, actual_cost: float, only_if_status: tuple[str, ...]
+    ) -> None:
+        """Persist actual_cost_usd WITHOUT changing status and WITHOUT emitting a
+        lifecycle event (review-impl LOW-3). Used on the M2 interrupt path so a job
+        the control endpoint moved to cancelled/paused still reflects the spend done
+        before the interrupt — the control endpoint owns the status + already emitted
+        the transition (H1), so re-emitting here would duplicate. Guarded on
+        ``only_if_status`` so it only writes while the row is still in that state."""
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE enrichment_job SET actual_cost_usd = $2, updated_at = now() "
+                "WHERE job_id = $1 AND status = ANY($3::text[])",
+                UUID(job_id), actual_cost, list(only_if_status),
+            )
+
 
 @dataclass
 class InMemoryProposalStore:
@@ -483,3 +503,10 @@ class InMemoryProposalStore:
     async def read_job_status(self, *, job_id: str) -> str | None:
         job = self.jobs.get(job_id)
         return job.get("status") if job is not None else None
+
+    async def record_actual_cost(
+        self, *, job_id: str, actual_cost: float, only_if_status: tuple[str, ...]
+    ) -> None:
+        job = self.jobs.get(job_id)
+        if job is not None and job.get("status") in only_if_status:
+            job["actual_cost"] = actual_cost
