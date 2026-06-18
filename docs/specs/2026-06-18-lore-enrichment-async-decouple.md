@@ -4,8 +4,16 @@
 > **Origin:** the architecture-debt sweep — lore-enrichment is the LAST LLM-job service still running
 > synchronously in-process; every other (translation, extraction, knowledge, video_gen, composition,
 > campaign) is on the decoupled/async model. Root of `D-JOBS-P4-RETRY-LORE` (🔴 BLOCKED in DEBT-BATCHES B1).
-> **Size:** L (NOT XL — see §6; the async worker infra already exists, so this is "route the primary create
-> path through the path compose+resume already use", not a green-field decouple).
+> **Size:** M (revised down from L after the 2026-06-18 RISK INVESTIGATION — see §1.1: the FE's real
+> create path is ALREADY async/worker-driven; only a vestigial no-caller demo endpoint is synchronous, so
+> there is no public contract to change. The remaining real work is cancel/pause-mid-run honoring + retry
+> wiring + a per-job claim).
+
+> **⚠ SCOPE REVISED 2026-06-18 (risk investigation, §1.1).** The original framing ("flip the synchronous
+> create path to async") was largely MOOT: `auto-enrich` + `compose` (the FE's actual entrypoints) already
+> create → `save_job_request` → XADD → worker → `redrive_one`. The synchronous `POST /v1/lore-enrichment/jobs`
+> is a **vestigial demo endpoint with no production caller**. So `D-JOBS-P4-RETRY-LORE`'s "runs synchronously
+> in-process" premise is STALE — the real path is already worker-driven. Refocused scope: §7.
 
 ---
 
@@ -29,7 +37,25 @@ What this costs us:
 - **Control-plane gap** — lore is invisible to the unified Jobs control plane's action gating
   (`derive_control_caps`) for retry/cancel because there's no durable async job to act on.
 
-**The async infrastructure ALREADY EXISTS in this service** — the primary create path just bypasses it:
+### 1.1 RISK INVESTIGATION (2026-06-18) — the real create path is ALREADY async
+
+Before flipping `POST /jobs`, a blast-radius investigation traced every caller. Result — the synchronous
+endpoint is NOT the path that matters:
+
+- **`POST /v1/lore-enrichment/jobs/projects/{id}/auto-enrich`** ([gaps.py:309-347](../../services/lore-enrichment-service/app/api/gaps.py#L309)) — the FE's primary "enrich" entry — does `create_job` → `save_job_request` (targets + model refs + book scope) → **XADD** `{job_id,…}` to `LORE_ENRICHMENT_RESUME_STREAM` → worker → `redrive_one`. **Already async, worker-driven, on the compose precedent.**
+- **`POST …/projects/{id}/compose`** — the other FE entry — already returns 202 + enqueues (§ above).
+- **`POST /v1/lore-enrichment/jobs` (`create_job`, [jobs.py:132](../../services/lore-enrichment-service/app/api/jobs.py#L132))** — the synchronous in-request run — has **NO production caller**: the FE (`features/enrichment/api.ts`) calls auto-enrich + compose, never this; the only references are the gateway's GET proxy-smoke + lore's own unit tests/demo scripts. Its docstring literally says "Synchronous for the demo".
+
+**Conclusion:** the async worker-driven create path is already live for the FE's real entrypoints. The
+"synchronous in-process" blocker behind `D-JOBS-P4-RETRY-LORE` describes a vestigial endpoint, not the
+production path. The remaining REAL gaps are **(a)** a per-job claim so concurrent triggers can't double-run
+(HIGH-2 — benefits the already-live async paths), **(b)** honoring an external cancel/pause MID-run
+(HIGH-1), and **(c)** wiring retry into the control plane (the actual retry blocker — a small wiring task,
+NOT an async refactor). The vestigial sync endpoint is a low-priority cleanup (align-to-202 or remove; no
+caller either way).
+
+### 1.2 Pre-existing async building blocks
+**The async infrastructure ALREADY EXISTS in this service** — and the FE create path already uses it:
 - `LoreEnrichmentResumeConsumer` ([worker/resume_consumer.py:153](../../services/lore-enrichment-service/app/worker/resume_consumer.py#L153)) — a `loreweave_jobs.BaseTerminalConsumer` on `LORE_ENRICHMENT_RESUME_STREAM`.
 - `redrive_one` ([worker/resume_consumer.py:43](../../services/lore-enrichment-service/app/worker/resume_consumer.py#L43)) — rebuilds the runner + runs `run_job` **off the HTTP request**, with `skip_gap_refs` (idempotent re-drive).
 - **Compose mode is already async** — `POST …/compose` returns `202 + job_id` and a background worker re-drives `run_job` ([api/compose.py:28](../../services/lore-enrichment-service/app/api/compose.py#L28)). The same consumer dispatches both compose tasks and resume re-drives ([worker/resume_consumer.py:131](../../services/lore-enrichment-service/app/worker/resume_consumer.py#L131)).
@@ -40,8 +66,10 @@ So the gap is narrow: **the initial run is the one path that runs inline instead
 
 ## 2. Goal / acceptance criteria
 
-1. `POST /v1/lore/jobs` returns **`202 + job_id`** immediately (job row `pending`/`queued`); the run
-   happens on the worker, not in the request.
+1. **(Already met for the real path)** the FE create entrypoints (`auto-enrich` + `compose`) run on the
+   worker, not in-request. NEW: a **per-job claim** so concurrent triggers (create / resume / retry /
+   stranded-sweeper) for the same job can never run two LLM-spending runners (HIGH-2). The vestigial
+   synchronous `POST /jobs` is aligned-to-202 or removed (no caller — low priority, no contract risk).
 2. **Cancel** interrupts an in-flight job between gaps (graceful: finish/abort the current gap, mark
    `cancelled`, emit) — not just a DB flag.
 3. **Retry** a `failed` lore job via the unified Jobs control plane re-enqueues it (reuses
@@ -68,7 +96,7 @@ job-bearing service — and lore is ALREADY conformant on both except for one by
 | Concern | Mechanism | Why this one | Lore today |
 |---|---|---|---|
 | **Job lifecycle EVENTS** (pending/running/terminal → unified `job_projection` / Jobs GUI) | **Transactional outbox** — `emit_job_event` inserts a `JobEvent` into `outbox_events` (aggregate_type=`jobs`) in the **SAME tx** as the status write → worker-infra relay → `loreweave:events:jobs` → projection | A dropped event leaves a job stuck "running" forever in the GUI → emission must be atomic with the status change (H1). Standardized by the producer-emit backfill across ALL services. | ✅ **conformant** — `job_events.py` + `internal_job_control.py` already emit via `emit_job_event`; reconcile-sweep endpoint present. |
-| **Work DISPATCH** (create → the worker that runs it) | **Direct Redis `XADD`** to a service stream (`LORE_ENRICHMENT_RESUME_STREAM`), consumed by a `loreweave_jobs.BaseTerminalConsumer`, **backed by** (a) the durable `save_job_request` row and (b) a **stranded-job sweeper** that re-drives any non-terminal job whose trigger was lost | The durable state is the job row + persisted request; a lost XADD is recovered by the sweeper (at-least-once). NOT a transactional outbox — dispatch intent is reconstructable from the row, so it doesn't need exactly-once relay. compose explicitly does this ("the job + request persist; re-triggerable", [compose.py:332](../../services/lore-enrichment-service/app/api/compose.py#L332)). | ◐ compose + resume conformant; **the primary `POST /jobs` create path BYPASSES it** (runs inline). |
+| **Work DISPATCH** (create → the worker that runs it) | **Direct Redis `XADD`** to a service stream (`LORE_ENRICHMENT_RESUME_STREAM`), consumed by a `loreweave_jobs.BaseTerminalConsumer`, **backed by** (a) the durable `save_job_request` row and (b) a **stranded-job sweeper** that re-drives any non-terminal job whose trigger was lost | The durable state is the job row + persisted request; a lost XADD is recovered by the sweeper (at-least-once). NOT a transactional outbox — dispatch intent is reconstructable from the row, so it doesn't need exactly-once relay. compose explicitly does this ("the job + request persist; re-triggerable", [compose.py:332](../../services/lore-enrichment-service/app/api/compose.py#L332)). | ✅ **auto-enrich + compose + resume conformant** (the FE's real entries already XADD→worker). Only the vestigial no-caller `POST /jobs` runs inline. |
 
 **Conclusion for the design:** lore does NOT diverge from the outbox pattern. Event emission already uses
 the transactional outbox; work dispatch uses the direct-XADD-+-durable-row-+-sweeper pattern that compose
@@ -120,71 +148,61 @@ plane), reuses infrastructure already built and proven in this service, and pres
 invariant — so it carries far less risk than Option B for the same user-visible outcome. Option B is
 recorded as a *future* "if per-call resumability ever matters" item, not part of this effort.
 
-## 6. Size — L, not XL
+## 6. Size — M (was L; risk investigation shrank it)
 
-The debt row tags this XL because it assumed Option B (green-field per-unit decouple). With the worker,
-resume consumer, state machine, request persistence, fair-sched, and emit wiring **already present**,
-Option A is **L**: the work is (a) flip the create path from inline-run to enqueue+202, (b) add a "run"
-message kind to the existing dispatch, (c) add the between-gap cancel/pause checkpoint, (d) wire lore
-into the unified control plane. No new service, no new transport, **no migration** (the job row, request
-table, and status vocabulary already exist).
+The debt row tags this XL (assumed Option B green-field per-unit decouple). The risk investigation (§1.1)
+then showed the FE create path is ALREADY async/worker-driven — so the create-flip + the FE create rework
+(the bulk of the old L) are MOOT. What remains is **M**: (a) a per-job claim (HIGH-2, DONE), (b) the
+between-gap cancel/pause checkpoint with a guarded transition (HIGH-1), (c) retry control-plane wiring,
+(d) a low-priority vestigial-endpoint cleanup. No new service, no new transport, **no migration** (job
+row, request table, status vocab, control endpoint, outbox emission all already exist).
 
-## 7. Slices (Option A)
+## 7. Milestones (REVISED post-risk-investigation)
 
-- **S1 — async create** (reuses the compose precedent verbatim). `POST /jobs` → pre-checks (preserve
-  429/409/400) → create row + `save_job_request` → **XADD** a "run" trigger to `LORE_ENRICHMENT_RESUME_STREAM`
-  → `202 {job_id, status:"pending"}`. Worker `dispatch_resume_message` gains the "run" kind (a fresh run
-  = `redrive_one` with `skip_gap_refs=∅` — already noted at [gaps.py:227](../../services/lore-enrichment-service/app/api/gaps.py#L227)). Move the P5 acquire/release into the worker (lease the slot where the work
-  runs; the create pre-check still rejects at cap). Emit `pending`→`running`→terminal via the existing
-  transactional-outbox `emit_job_event` (unchanged). **Durability:** confirm/extend the **stranded-job
-  sweeper** so a create-enqueued `enrichment_job` left non-terminal (lost XADD) is re-driven — symmetric
-  with the existing compose-task sweeper (the lost-XADD backstop; matches the §3.1 dispatch pattern).
-  - **HIGH-2 (per-job claim — MUST):** before a worker runs a job it MUST atomically CLAIM it (CAS
-    `pending`→`running` on the row, OR a `pg_advisory_xact_lock(hashtext(job_id))`), and a delivery that
-    fails to claim (job already `running`/terminal) NO-OPs + acks. Without it, create-XADD +
-    stranded-sweeper-XADD + resume-XADD can drive the SAME job concurrently — P5's lease is per-OWNER not
-    per-job, and `redrive_one` dedups proposals only at PERSIST (after the LLM spend), so two concurrent
-    runners double-spend real tokens. The claim is the serialization point.
-  - **MED-3 (gap-rebuild parity — VERIFY):** the in-request path computes `gaps` then passes them to
-    `run_job`; `redrive_one` rebuilds gaps from `request["targets"]` via `_gap_from_target`. CLARIFY-S1
-    must confirm the persisted targets reconstruct the IDENTICAL gap set the sync path computed (else the
-    async run diverges). If the sync path does richer detection than the targets carry, persist the
-    detected gap refs too.
-  - **MED-5 (P5 acquire semantics — DECIDE):** when the POST pre-check passes but the worker can't acquire
-    (cap full at run-time), the worker **acquire-or-requeue** (leave the job `pending`, re-trigger later)
-    rather than fail — preserves "no work runs over cap" while keeping the pre-check as the fast 429.
-  - **Contract change to flag:** the handler no longer returns the synchronous outcome (proposals list) —
-    FE must poll/stream the job. (See §9.)
-- **S2 — cancel/pause checkpoint (with the HIGH-1 guard).** `run_job` re-reads the job's persisted status
-  before each gap; `cancelling`→graceful stop + emit; manual `paused`→stop resumable. Generalize the
-  existing cost-cap-pause shape.
-  - **HIGH-1 (guarded transition — MUST):** the runner and the external control endpoint
+The old S1 (flip the create path) + S4 (FE create rework) are MOOT — the FE create path is already async
+(§1.1). The effort refocuses on the per-job claim + the cancel/pause-mid-run gap + retry wiring.
+
+- **M1 — per-job claim (HIGH-2) ✅ DONE.** A status-agnostic Postgres **session advisory lock** on a 64-bit
+  key derived from `job_id`, held for the run on a dedicated connection in `redrive_one`
+  ([resume_consumer.py](../../services/lore-enrichment-service/app/worker/resume_consumer.py)); a 2nd
+  concurrent trigger no-ops. Placed at the SHARED chokepoint, so it protects the already-live async paths
+  (auto-enrich / compose / resume) + the future retry. **REFINED during build:** a `pending→running` CAS
+  would WRONGLY reject a resume (the resume endpoint pre-flips `paused→running` before its XADD), so the
+  claim is the lock, not a status CAS. Remaining for M1: the fake-pool unit tests must answer the
+  advisory-lock queries (a build detail). NO migration.
+- **M2 — cancel/pause MID-run honoring (HIGH-1) — the real cancel-parity gap.** `run_job` re-reads the
+  job's persisted status before each gap; `cancelling`→graceful stop + emit; manual `paused`→stop
+  resumable. Generalize the existing cost-cap-pause early-return shape.
+  - **HIGH-1 (guarded transition — MUST):** the runner and the control endpoint
     ([_transition_job](../../services/lore-enrichment-service/app/api/jobs.py#L438)) are TWO independent
-    writers to `enrichment_job.status` with no CAS today — so an external `cancel`/`pause` mid-run is
-    silently CLOBBERED when the runner's `machine.complete()` (trusting its in-memory `running`) writes
-    `completed` over it. Every runner status write MUST become a **guarded** transition: re-read the DB
-    status (under the same tx / row lock) and only advance if the DB hasn't been externally moved to a
-    terminal/paused state — i.e. the runner YIELDS to a concurrent control action instead of overwriting
-    it. The between-gap checkpoint is the read half; the conditional terminal write is the write half.
-- **S3 — control-plane wiring + retry.** jobs-service `derive_control_caps`: lore kind →
-  cancel(running|paused) + resume(paused) + retry(failed). lore `internal_job_control` (new, mirrors
-  knowledge/translation) routes cancel→status-CAS, resume/retry→enqueue (skip-done). Add lore to
-  `_RETRYABLE_KINDS`. → closes `D-JOBS-P4-RETRY-LORE`.
-- **S4 — FE/SDK.** Retry/Cancel/Resume are data-driven off `control_caps` (likely zero FE change beyond a
-  kind label + i18n×4). The FE create flow switches to 202+poll (the S1 contract change).
-  - **MED-4 (FE create UX — VERIFY):** check whether the FE create flow renders the proposals INLINE from
-    the synchronous POST response. If so, 202+poll is a UX redesign (submit → loading → poll job →
-    show proposals from the list endpoint), not just a wire-contract swap — scope S4 accordingly.
+    writers to `enrichment_job.status` with no CAS — so an external `cancel`/`pause` mid-run is silently
+    CLOBBERED when the runner's `machine.complete()` (trusting in-memory `running`) writes `completed` over
+    it (**latent today even on the live async path**). Every runner status write MUST be a **guarded**
+    transition: re-read the DB status (under row lock) and only advance if the DB wasn't externally moved
+    to terminal/paused — the runner YIELDS to a concurrent control action. The between-gap checkpoint is
+    the read half; the conditional terminal write is the write half.
+- **M3 — retry control-plane wiring (closes `D-JOBS-P4-RETRY-LORE`).** This is the ACTUAL retry blocker —
+  a small wiring task, NOT an async refactor (the row was mis-tagged "blocked on async"). jobs-service
+  `derive_control_caps`: lore `enrichment_job` → retry(failed) [cancel/pause/resume already wired]. Add
+  the kind to `_RETRYABLE_KINDS`. Extend lore's EXISTING [internal_job_control.py](../../services/lore-enrichment-service/app/api/internal_job_control.py) `_HANDLERS` with `retry` → re-enqueue a `{job_id,…}` trigger on a `failed`
+  row (owner-scoped 404 / 409-unless-failed); `redrive_one` skip-done = no re-spend. The M1 claim makes a
+  retry-while-still-running a safe no-op.
+- **M4 — vestigial endpoint + FE control caps (LOW).**
+  - Vestigial `POST /jobs` (no caller): **align to enqueue+202** (reuse the auto-enrich body) for internal
+    consistency, OR mark demo-only / remove. No contract risk (no production caller). Decide cheaply.
+  - FE: create flow needs NO change (already async via auto-enrich/compose). Retry/Cancel/Pause/Resume
+    render off `control_caps` (data-driven; likely just an `enrichment_job` kind label + i18n×4 if
+    missing). **MED-4 is largely resolved** — the FE never consumed the synchronous proposals.
 
 ## 8. Invariants & risks
 
-- **Synchronous-rejection contract** (P5 cap 429 / eval-gate 409 / bad-strategy 400): keep these as fast
-  pre-checks on `POST` BEFORE enqueue, so callers still get the immediate rejection (don't move them into
-  the worker where they'd only surface as a failed row).
-- **API contract change (biggest consumer impact):** `POST /jobs` currently returns the full outcome;
-  after S1 it returns `202 + job_id`. Every caller (FE create flow, any SDK/test) must switch to polling
-  the job + reading proposals from the list endpoint. **PO must confirm** this contract change; consider
-  a deprecation note. *(Enumerate callers in CLARIFY of S1.)*
+- **Synchronous-rejection contract** (P5 cap 429 / eval-gate 409 / bad-strategy 400): the live async
+  entries (auto-enrich/compose) already pre-check before enqueue. If M4 aligns the vestigial `POST /jobs`
+  to 202, keep these as fast pre-checks there too.
+- **~~API contract change~~ (RESOLVED by risk investigation — §1.1):** the FE create path is `auto-enrich`
+  + `compose`, already async — it never consumed the synchronous outcome. The only synchronous endpoint
+  (`POST /jobs`) has NO production caller, so aligning it to 202 (M4) is NOT a breaking contract change.
+  The original "biggest consumer impact" concern does not apply.
 - **Cancel granularity:** between-gap, not mid-gap (a gap in flight finishes or is abandoned). Acceptable
   (gaps are bounded units); document it.
 - **Idempotent at-least-once:** the run stream is at-least-once; `redrive_one` is already idempotent
@@ -196,14 +214,16 @@ table, and status vocabulary already exist).
 
 ## 8a. Design-review findings (REVIEW-design, 2026-06-18 — folded in above)
 
-Adversarial self-review against the code surfaced 6 findings, all folded into the slices:
-- **HIGH-1** concurrent status-writer clobber (runner vs control endpoint, no CAS) → S2 guarded transition. *Latent today.*
-- **HIGH-2** per-job double-run wastes LLM spend (per-owner lease ≠ per-job) → S1 per-job claim.
-- **MED-3** gap-rebuild parity (sync `gaps` vs worker rebuild-from-targets) → S1 verify.
-- **MED-4** FE create UX (inline proposals vs poll) → S4 verify.
-- **MED-5** P5 acquire semantics on the worker → S1 acquire-or-requeue.
-- **LOW-6** double `build_live_runner` → S1 decide.
-HIGH-1 + HIGH-2 are correctness/money-path requirements, NOT polish — they gate BUILD acceptance.
+Adversarial self-review against the code surfaced 6 findings; the 2026-06-18 risk investigation then
+resolved/rescoped several:
+- **HIGH-1** concurrent status-writer clobber (runner vs control endpoint, no CAS) → **M2** guarded transition. *Latent today on the live async path.* OPEN.
+- **HIGH-2** per-job double-run wastes LLM spend (per-owner lease ≠ per-job) → **M1 per-job claim ✅ DONE** (advisory lock, refined from the naive CAS).
+- **MED-3** gap-rebuild parity → **VERIFIED ✅** — both paths use the identical `_gap_from_target(targets)`; no extra persistence needed.
+- **MED-4** FE create UX → **RESOLVED ✅** — the FE create path (auto-enrich/compose) is already async and never consumed the synchronous proposals.
+- **MED-5** P5 acquire semantics → only relevant if M4 aligns the vestigial endpoint; the live paths already pre-check. Deferred to M4.
+- **LOW-6** double `build_live_runner` → only relevant to the vestigial endpoint (M4). Deferred.
+**Net after risk investigation:** the only OPEN load-bearing item is **HIGH-1 (M2)**; HIGH-2 is done. The
+effort is M2 (cancel/pause-mid-run) + M3 (retry wiring) + M4 (low cleanup).
 
 ## 9. Test plan
 
