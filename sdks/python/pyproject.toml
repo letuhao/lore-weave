@@ -68,6 +68,10 @@ include = [
   # Depends on redis (consumer); contract/emit are pure-Python (emit is duck-typed, no
   # asyncpg). Consumed by every Python worker service migrating off its hand-rolled consumer.
   "loreweave_jobs*",
+  # D-E0-4 (2026-06-18) — `loreweave_grants` added (the shared E0 grant client,
+  # extracted from 3 byte-identical service copies: composition/knowledge/
+  # translation). Pure httpx + stdlib; per-service knobs passed at construction.
+  "loreweave_grants*",
 ]
 exclude = ["tests*"]
 
