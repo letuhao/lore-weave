@@ -11,11 +11,12 @@ import asyncio
 import logging
 import os
 
+from app.compose.compose_task import run_compose_task_sweeper
 from app.config import settings
 from app.db.pool import close_pool, create_pool
 from app.worker.heartbeat import heartbeat_loop
 from app.worker.reaper import reaper_loop
-from app.worker.resume_consumer import consume_resume_stream
+from app.worker.resume_consumer import LoreEnrichmentResumeConsumer
 
 logging.basicConfig(
     level=os.environ.get("LOG_LEVEL", "INFO"),
@@ -49,12 +50,29 @@ async def _main() -> None:
         if settings.reaper_enabled
         else None
     )
+    # Compose-task stuck sweeper (D-M2-COMPOSE-TASK-RACE / D-M2-COMPOSE-TASK-SWEEPER):
+    # re-drives enrichment_compose_task rows stranded in ('pending','running') past the
+    # timeout (a redis-miss at submit, or a worker crash mid-compute). Runs concurrently
+    # with the resume consumer; the idempotent FOR-UPDATE claim makes the two safe.
+    # interval<=0 disables it (run_compose_task_sweeper returns immediately).
+    compose_sweeper = asyncio.create_task(
+        run_compose_task_sweeper(
+            pool,
+            interval_s=settings.compose_task_sweep_interval_s,
+            timeout_s=settings.compose_task_sweep_timeout_s,
+            batch=settings.compose_task_sweep_batch,
+        )
+    )
+    # consumer_name="resume-1" preserves the prior PEL consumer identity (was a literal).
+    consumer = LoreEnrichmentResumeConsumer(settings.redis_url, pool, consumer_name="resume-1")
     try:
-        await consume_resume_stream(pool=pool, redis_url=settings.redis_url)
+        await consumer.run()
     finally:
         heartbeat.cancel()
         if reaper is not None:
             reaper.cancel()
+        compose_sweeper.cancel()
+        await consumer.close()
         await close_pool()
 
 

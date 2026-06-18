@@ -15,6 +15,7 @@ from uuid import UUID
 import asyncpg
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
+from loreweave_jobs import emit_job_event
 from pydantic import BaseModel
 
 from ..broker import publish, publish_event
@@ -26,10 +27,19 @@ from ..grant_deps import (
     get_grant_client_dep,
     require_book_grant,
 )
+from ..model_name import resolve_model_name
 from ..workers.extraction_prompt import estimate_extraction_cost
 from ..workers.glossary_client import fetch_extraction_profile
 
 router = APIRouter(prefix="/v1/extraction", tags=["extraction-jobs"])
+
+# Unified Job Control Plane (producer-emit backfill, D-JOBS-GLOSSARY-EXTRACT-UNWIRED).
+# Glossary extraction is hosted in translation-service; it surfaces in the unified Jobs
+# screen as service="translation", kind="glossary_extraction" (DISTINCT from knowledge's
+# "extraction"). The worker emits running/terminal/cancelled; the reconcile UNION in
+# internal_dispatch.py is the H1 backstop.
+_JOB_SERVICE = "translation"
+_JOB_KIND = "glossary_extraction"
 
 
 class CreateExtractionJobPayload(BaseModel):
@@ -39,6 +49,7 @@ class CreateExtractionJobPayload(BaseModel):
     model_ref: UUID | None = None
     context_filters: dict | None = None
     max_entities_per_kind: int = 30
+    thinking_enabled: bool = False
 
 
 class CancelJobResponse(BaseModel):
@@ -95,9 +106,17 @@ async def create_extraction_job(
                 detail={"code": "EXTRACT_NO_MODEL", "message": "No model configured. Set a model in Translation Settings first."},
             )
 
-    # Fetch kinds metadata for cost estimation
+    # Fetch kinds metadata for cost estimation + worker batching (must succeed).
     profile_data = await fetch_extraction_profile(str(book_id))
-    kinds_metadata = profile_data.get("kinds", []) if profile_data else []
+    if not profile_data or not profile_data.get("kinds"):
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "code": "EXTRACT_PROFILE_UNAVAILABLE",
+                "message": "Could not load extraction profile from glossary-service.",
+            },
+        )
+    kinds_metadata = profile_data["kinds"]
 
     # Compute cost estimate
     # Rough estimate: assumes ~8K chars per chapter. Actual sizes would require fetching
@@ -109,30 +128,52 @@ async def create_extraction_job(
 
     context_filters = payload.context_filters or {}
 
-    # Insert job + chapter result rows
-    job_row = await db.fetchrow(
-        """
-        INSERT INTO extraction_jobs
-          (book_id, owner_user_id, status, source_language, model_source, model_ref,
-           extraction_profile, context_filters, chapter_ids, total_chapters, cost_estimate)
-        VALUES ($1,$2,'pending',$3,$4,$5,$6,$7,$8,$9,$10)
-        RETURNING *
-        """,
-        book_id, uid, source_language, model_source, model_ref,
-        json.dumps(payload.extraction_profile),
-        json.dumps(context_filters),
-        payload.chapter_ids,
-        len(payload.chapter_ids),
-        json.dumps(cost_estimate),
-    )
-    job_id = job_row["job_id"]
+    # P4 — resolve the human model NAME (best-effort) for the 'pending' lifecycle event +
+    # a whitelisted params dict for the Jobs GUI. None on any failure (GUI is null-safe).
+    model_name = await resolve_model_name(model_source, str(model_ref))
+    job_params = {
+        "model": model_name,
+        "model_ref": str(model_ref),
+        "source_language": source_language,
+        "max_entities_per_kind": payload.max_entities_per_kind,
+        "thinking_enabled": payload.thinking_enabled,
+    }
 
-    for chapter_id in payload.chapter_ids:
-        await db.execute(
-            """INSERT INTO extraction_chapter_results (job_id, chapter_id, book_id, status)
-               VALUES ($1, $2, $3, 'pending')""",
-            job_id, chapter_id, book_id,
-        )
+    # Insert job + chapter result rows + emit the 'pending' lifecycle event in ONE tx
+    # (H1: the JobEvent commits atomically with the row). The chapter-results are a SINGLE
+    # bulk INSERT (was an O(N) per-chapter await loop — the create-path latency that froze
+    # the wizard, D-JOBS-GLOSSARY-EXTRACT bug #2) and the whole create is now atomic (was
+    # non-transactional → a mid-loop failure left a half-created job).
+    async with db.acquire() as conn:
+        async with conn.transaction():
+            job_row = await conn.fetchrow(
+                """
+                INSERT INTO extraction_jobs
+                  (book_id, owner_user_id, status, source_language, model_source, model_ref,
+                   extraction_profile, context_filters, chapter_ids, total_chapters, cost_estimate)
+                VALUES ($1,$2,'pending',$3,$4,$5,$6,$7,$8,$9,$10)
+                RETURNING *
+                """,
+                book_id, uid, source_language, model_source, model_ref,
+                json.dumps(payload.extraction_profile),
+                json.dumps(context_filters),
+                payload.chapter_ids,
+                len(payload.chapter_ids),
+                json.dumps(cost_estimate),
+            )
+            job_id = job_row["job_id"]
+
+            await conn.execute(
+                """INSERT INTO extraction_chapter_results (job_id, chapter_id, book_id, status)
+                   SELECT $1, c, $2, 'pending' FROM unnest($3::uuid[]) AS c""",
+                job_id, book_id, payload.chapter_ids,
+            )
+
+            await emit_job_event(
+                conn, service=_JOB_SERVICE, job_id=str(job_id),
+                owner_user_id=str(uid), kind=_JOB_KIND, status="pending",
+                model=model_name, params=job_params,
+            )
 
     # Publish job to broker
     await publish("extraction.job", {
@@ -147,6 +188,7 @@ async def create_extraction_job(
         "model_source": model_source,
         "model_ref": str(model_ref),
         "max_entities_per_kind": payload.max_entities_per_kind,
+        "thinking_enabled": payload.thinking_enabled,
     })
 
     return {
@@ -167,7 +209,7 @@ async def cancel_extraction_job(
 ):
     """Cancel a running extraction job. E0-4a edit gate (job→book grant)."""
     row = await db.fetchrow(
-        "SELECT status, book_id FROM extraction_jobs WHERE job_id=$1", job_id
+        "SELECT status, book_id, owner_user_id FROM extraction_jobs WHERE job_id=$1", job_id
     )
     if not row:
         raise HTTPException(status_code=404, detail={"code": "EXTRACT_JOB_NOT_FOUND", "message": "Job not found"})
@@ -177,9 +219,17 @@ async def cancel_extraction_job(
     if row["status"] not in ("pending", "running"):
         raise HTTPException(status_code=409, detail={"code": "EXTRACT_JOB_NOT_CANCELLABLE", "message": f"Job is {row['status']}"})
 
-    await db.execute(
-        "UPDATE extraction_jobs SET status='cancelling' WHERE job_id=$1", job_id
-    )
+    # UPDATE → 'cancelling' + emit the transition in one tx (H1). The worker settles it to
+    # 'cancelled' (claim-time or mid-loop) and emits the terminal. Owner from the row.
+    async with db.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute(
+                "UPDATE extraction_jobs SET status='cancelling' WHERE job_id=$1", job_id
+            )
+            await emit_job_event(
+                conn, service=_JOB_SERVICE, job_id=str(job_id),
+                owner_user_id=str(row["owner_user_id"]), kind=_JOB_KIND, status="cancelling",
+            )
 
     return CancelJobResponse(job_id=str(job_id), status="cancelling")
 

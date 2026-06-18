@@ -681,74 +681,52 @@ async def _maybe_judge_translation(
     if not source_text or not translated_text:
         return
     try:
-        from app.clients.llm_client import build_judge_client
-        from app.db.online_translation_judge import (
-            persist_translation_judge,
-            run_translation_judge,
-        )
+        from app.clients.llm_client import build_judge_sdk
+        from app.judges.decoupled_judge import start_translation_judge
 
-        client = build_judge_client(
-            base_url=settings.provider_registry_internal_url,
-            internal_token=settings.internal_service_token,
-        )
         # D-EVAL-JUDGE-PER-USER: bill the BYOK judge to the CONTENT OWNER (the
         # event's user_id) rather than the operator's env-configured id, so a
         # multi-tenant batch attributes judge cost to whoever owns the translation.
         # Fall back to the env id only when the event lacks an owner.
         user_id = _uuid_or_none(payload.get("user_id"))
         judge_user_id = str(user_id) if user_id is not None else settings.online_judge_user_id
-        verdict = await run_translation_judge(
-            client,
-            source_text=source_text,
-            translated_text=translated_text,
-            judge_model=judge_model,
-            model_source=judge_model_source,
-            user_id=judge_user_id,
+        if not judge_user_id:
+            return  # no owner and no env fallback → cannot resolve a BYOK model
+        # M1: submit the fidelity batch + persist a durable `llm_judges` row, then
+        # return — the llm-job terminal-event consumer folds the verdict, persists,
+        # and (campaign judge only) emits `translation.eval_judged`. Was an inline
+        # `submit_and_wait` that pinned the collector consumer for the whole judge.
+        sdk = build_judge_sdk(
+            base_url=settings.provider_registry_internal_url,
+            internal_token=settings.internal_service_token,
         )
-        if verdict is not None and user_id is not None:
-            await persist_translation_judge(
+        try:
+            await start_translation_judge(
                 pool,
+                sdk,
                 ct_id=str(ct_id),
-                user_id=user_id,
+                owner_user_id=user_id,
+                billing_user_id=judge_user_id,
                 book_id=_uuid_or_none(payload.get("book_id")),
-                verdict=verdict,
-                judge_model=judge_model,
                 origin_event_id=event.outbox_id,
+                judge_model=judge_model,
+                judge_model_source=judge_model_source,
+                source_text=source_text,
+                translated_text=translated_text,
+                # S5b-eval: only a campaign-chosen judge surfaces the verdict to the
+                # campaign projection; the global-config judge stays telemetry-only.
+                emit_eval_judged=bool(campaign_judge_ref),
+                eval_payload={
+                    "user_id": payload.get("user_id"),
+                    "book_id": payload.get("book_id"),
+                    "chapter_id": payload.get("chapter_id"),
+                    "target_language": payload.get("target_language"),
+                },
             )
-            # S5b-eval: surface the verdict to the campaign projection (best-effort —
-            # only for a campaign-chosen judge; the global-config judge stays telemetry-only).
-            if campaign_judge_ref:
-                await _emit_eval_judged(payload, verdict)
+        finally:
+            await sdk.aclose()
     except Exception:  # noqa: BLE001 — the judge is best-effort telemetry
         logger.warning("M7d: online translation judge failed (non-fatal)", exc_info=True)
-
-
-async def _emit_eval_judged(payload: dict, verdict) -> None:
-    """S5b-eval: best-effort XADD `translation.eval_judged` to a dedicated stream the
-    campaign projection consumer reads. learning-service has no transactional outbox
-    (D-S5BEVAL-LEARNING-OUTBOX) — a lost emit just leaves eval_fidelity_score null, which
-    is acceptable for best-effort telemetry. Never raises (caught by the caller)."""
-    import json
-
-    import redis.asyncio as aioredis
-
-    from app.config import settings
-
-    body = {
-        "user_id": payload.get("user_id"),
-        "book_id": payload.get("book_id"),
-        "chapter_id": payload.get("chapter_id"),
-        "target_language": payload.get("target_language"),
-        "score": float(verdict.score),
-    }
-    r = aioredis.from_url(settings.redis_url, decode_responses=True)
-    try:
-        await r.xadd(
-            "loreweave:events:translation_eval",
-            {"event_type": "translation.eval_judged", "payload": json.dumps(body)},
-        )
-    finally:
-        await r.aclose()
 
 
 async def handle_translation_reviewed(event: EventData, *, pool: asyncpg.Pool) -> None:

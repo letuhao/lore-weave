@@ -1186,6 +1186,20 @@ components:
           maxItems: 4
           items:
             $ref: '#/components/schemas/ImageGenDataItem'
+        provider_kind:
+          type: string
+          description: |
+            Phase 5e (D-PHASE5E). The resolved provider kind that served this
+            generation (e.g. `openai`, `lm_studio`). Additive/optional — present
+            on completed jobs; consumers that ignore it are unaffected. Used by
+            book-service for application-level usage analytics.
+        provider_model_name:
+          type: string
+          description: |
+            Phase 5e (D-PHASE5E). The human-readable upstream model name
+            (e.g. `dall-e-3`, `sdxl`) the gateway resolved from the caller's
+            `model_ref`/`model_source`. Additive/optional. book-service persists
+            this as `block_media_versions.ai_model` for display.
 
     ImageGenDataItem:
       type: object

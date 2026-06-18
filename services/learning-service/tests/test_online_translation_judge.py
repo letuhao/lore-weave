@@ -135,27 +135,36 @@ async def test_hook_noop_when_no_texts(monkeypatch):
     await _maybe_judge_translation(ev, ev.payload, "ct", pool=None)
 
 
+# M1 (LLM re-arch Phase 3): the hook now STARTS a decoupled judge (durable job-row
+# + terminal-event consumer) instead of inline submit_and_wait. The tests assert the
+# hook submits the first batch with the right owner/billing/emit args; the fold +
+# persist is covered by the decoupled_judge SM tests.
+
+class _FakeSdk:
+    async def aclose(self):
+        pass
+
+
 async def test_hook_runs_judge_when_enabled_and_fed(monkeypatch):
     import app.config as cfg
     monkeypatch.setattr(cfg.settings, "online_translation_judge_enabled", True)
     monkeypatch.setattr(cfg.settings, "online_judge_model_ref", "gemma-judge")
-    monkeypatch.setattr("app.clients.llm_client.build_judge_client", lambda **k: object())
+    monkeypatch.setattr("app.clients.llm_client.build_judge_sdk", lambda **k: _FakeSdk())
 
     ran = {}
-    async def _fake_run(client, **k):
-        ran["run"] = k
-        return FidelityVerdict(score=0.75, reason="ok")
-    async def _fake_persist(pool, **k):
-        ran["persist"] = k
+    async def _fake_start(pool, sdk, **k):
+        ran["start"] = k
         return True
-    monkeypatch.setattr("app.db.online_translation_judge.run_translation_judge", _fake_run)
-    monkeypatch.setattr("app.db.online_translation_judge.persist_translation_judge", _fake_persist)
+    monkeypatch.setattr("app.judges.decoupled_judge.start_translation_judge", _fake_start)
 
     ev = _quality_event(source_text="他来了。", translated_text="Anh ấy đã đến.")
     await _maybe_judge_translation(ev, ev.payload, ev.payload["chapter_translation_id"], pool=object())
-    assert ran["run"]["source_text"] == "他来了。"
-    assert ran["persist"]["origin_event_id"] == "ob-1"
-    assert ran["persist"]["verdict"].score == 0.75
+    assert ran["start"]["source_text"] == "他来了。"
+    assert ran["start"]["translated_text"] == "Anh ấy đã đến."
+    assert ran["start"]["origin_event_id"] == "ob-1"
+    assert ran["start"]["judge_model"] == "gemma-judge"
+    # global-config judge (no campaign ref) → no campaign eval_judged emit
+    assert ran["start"]["emit_eval_judged"] is False
 
 
 async def test_hook_bills_content_owner_not_operator(monkeypatch):
@@ -165,19 +174,42 @@ async def test_hook_bills_content_owner_not_operator(monkeypatch):
     monkeypatch.setattr(cfg.settings, "online_translation_judge_enabled", True)
     monkeypatch.setattr(cfg.settings, "online_judge_model_ref", "gemma-judge")
     monkeypatch.setattr(cfg.settings, "online_judge_user_id", "operator-env-id")
-    monkeypatch.setattr("app.clients.llm_client.build_judge_client", lambda **k: object())
+    monkeypatch.setattr("app.clients.llm_client.build_judge_sdk", lambda **k: _FakeSdk())
 
     ran = {}
-    async def _fake_run(client, **k):
-        ran["run"] = k
-        return FidelityVerdict(score=0.8, reason="ok")
-    async def _fake_persist(pool, **k):
+    async def _fake_start(pool, sdk, **k):
+        ran["start"] = k
         return True
-    monkeypatch.setattr("app.db.online_translation_judge.run_translation_judge", _fake_run)
-    monkeypatch.setattr("app.db.online_translation_judge.persist_translation_judge", _fake_persist)
+    monkeypatch.setattr("app.judges.decoupled_judge.start_translation_judge", _fake_start)
 
     owner = str(uuid.uuid4())
     ev = _quality_event(user_id=owner, source_text="他来了。", translated_text="Anh.")
     await _maybe_judge_translation(ev, ev.payload, ev.payload["chapter_translation_id"], pool=object())
-    assert ran["run"]["user_id"] == owner
-    assert ran["run"]["user_id"] != "operator-env-id"
+    # billing_user_id (submit/get_job identity) is the content owner, not the env id
+    assert ran["start"]["billing_user_id"] == owner
+    assert ran["start"]["billing_user_id"] != "operator-env-id"
+    # owner_user_id (persist target) matches too
+    assert str(ran["start"]["owner_user_id"]) == owner
+
+
+async def test_hook_campaign_judge_sets_emit_flag(monkeypatch):
+    # A campaign-chosen judge (eval_judge_model_ref on the event) runs even with the
+    # global flags off, and sets emit_eval_judged so the campaign projection records it.
+    import app.config as cfg
+    monkeypatch.setattr(cfg.settings, "online_translation_judge_enabled", False)
+    monkeypatch.setattr(cfg.settings, "online_judge_model_ref", "")
+    monkeypatch.setattr("app.clients.llm_client.build_judge_sdk", lambda **k: _FakeSdk())
+
+    ran = {}
+    async def _fake_start(pool, sdk, **k):
+        ran["start"] = k
+        return True
+    monkeypatch.setattr("app.judges.decoupled_judge.start_translation_judge", _fake_start)
+
+    ev = _quality_event(
+        source_text="他来了。", translated_text="Anh.",
+        eval_judge_model_ref="campaign-judge", eval_judge_model_source="user_model",
+    )
+    await _maybe_judge_translation(ev, ev.payload, ev.payload["chapter_translation_id"], pool=object())
+    assert ran["start"]["judge_model"] == "campaign-judge"
+    assert ran["start"]["emit_eval_judged"] is True

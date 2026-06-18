@@ -75,6 +75,18 @@ class Project(BaseModel):
     save_raw_extraction: bool = False
     # E2 — user-set genre tag for per-genre config-quality mining.
     genre: str | None = None
+    # C23-fix (dị bản G2): True ⇒ this project is a DERIVATIVE's own fresh
+    # partition. Excluded from the source book's per-(user,book) get-or-create
+    # dedup + get_by_book so a derivative never inherits / is never handed back
+    # for the source book. Default False so a row that predates the column
+    # reads back as a normal (non-derivative) project (mirrors DB DEFAULT false).
+    is_derivative: bool = False
+    # G4 (world-level project): when set, this project IS a world's dedicated
+    # knowledge partition (bound to the world's hidden bible book). FK-by-
+    # convention to book-service worlds.id (cross-DB, no SQL FK). NULL for every
+    # normal per-book / general project. Hidden from the HOME projects browser;
+    # surfaced only through the world workspace + the world rollup subgraph.
+    world_id: UUID | None = None
     version: int  # D-K8-03: bumped on every non-empty PATCH.
     created_at: datetime
     updated_at: datetime
@@ -87,6 +99,18 @@ class ProjectCreate(BaseModel):
     book_id: UUID | None = None
     instructions: ProjectInstructions = ""
     genre: str | None = None
+    # G4 (world-level project): set by the world-create / lazy-provision path so
+    # the project is stamped as the world's dedicated partition (bound to the
+    # world's bible book). Idempotent: create_or_get stamps it onto the existing
+    # bible-book project if newly supplied. NULL for normal projects.
+    world_id: UUID | None = None
+    # C23-fix (dị bản G2): set True by the composition derive path so the
+    # derivative's project ALWAYS inserts as a fresh distinct project
+    # (skips the per-(user,book) get-or-create dedup) AND is stamped
+    # is_derivative=true (so the source book's future create_or_get /
+    # get_by_book never returns it). Default False ⇒ the normal book-binding
+    # path is unchanged (still idempotent per (user, book)).
+    force_new: bool = False
 
 
 class ProjectUpdate(BaseModel):
@@ -146,6 +170,10 @@ class ProjectUpdate(BaseModel):
     # E2: None = "skip" (unchanged); explicitly set to None via PATCH uses
     # _NULLABLE_UPDATE_COLUMNS so it clears (sets to SQL NULL).
     genre: str | None = None
+    # G4: attach/detach a project to a world. Omit = unchanged; explicit None
+    # CLEARS the world link (uses _NULLABLE_UPDATE_COLUMNS). Set to a UUID to
+    # bind. Normal flows never touch this — world provisioning does.
+    world_id: UUID | None = None
 
 
 # ── B2-B-b1 — per-project extraction-config tuning (structural subset) ──

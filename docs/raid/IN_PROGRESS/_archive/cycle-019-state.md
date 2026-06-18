@@ -1,9 +1,9 @@
 ---
 cycle: 19
-title: L4 Obs + Cap + Supply Chain admission (H+I+J)
-current_phase: BUILD
-phase_started_at: 2026-05-29T10:09:40Z
-last_checkpoint_at: 2026-05-29T10:09:40Z
+title: Graph canvas (FE)
+current_phase: COMMIT
+phase_started_at: 2026-06-14T13:51:11Z
+last_checkpoint_at: 2026-06-14T13:51:11Z
 retry_count: 0
 dps_status: []
 adversary_findings: null

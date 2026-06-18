@@ -15,6 +15,10 @@ export type Book = {
   visibility?: Visibility;
   genre_tags: string[];
   lifecycle_state: 'active' | 'trashed' | 'purge_pending';
+  /** W6 (G3) — the world this book is grouped into, or null/undefined when
+   *  standalone. Set on the single-book read; drives the "open in world"
+   *  backlink + the SettingsTab world picker's current value. */
+  world_id?: string | null;
   created_at?: string;
   updated_at?: string;
 };
@@ -116,11 +120,21 @@ export const booksApi = {
   listChapters(
     token: string,
     bookId: string,
-    params?: { lifecycle_state?: string; original_language?: string; sort_order?: number; limit?: number; offset?: number },
+    params?: {
+      lifecycle_state?: string;
+      original_language?: string;
+      editorial_status?: string;
+      q?: string;
+      sort_order?: number;
+      limit?: number;
+      offset?: number;
+    },
   ) {
     const qs = new URLSearchParams();
     if (params?.lifecycle_state) qs.set('lifecycle_state', params.lifecycle_state);
     if (params?.original_language) qs.set('original_language', params.original_language);
+    if (params?.editorial_status) qs.set('editorial_status', params.editorial_status);
+    if (params?.q) qs.set('q', params.q);
     if (params?.sort_order !== undefined) qs.set('sort_order', String(params.sort_order));
     if (params?.limit !== undefined) qs.set('limit', String(params.limit));
     if (params?.offset !== undefined) qs.set('offset', String(params.offset));
@@ -141,6 +155,20 @@ export const booksApi = {
   },
   createChapter(token: string, bookId: string, payload: { file: File; original_language: string; title?: string; sort_order?: number }) {
     return this.createChapterUpload(token, bookId, payload);
+  },
+  /** Bulk-create plain-text chapters in one request (folder/large import). The
+   *  caller sends naturally-sorted, exclude-filtered batches SEQUENTIALLY so the
+   *  server's monotonic sort_order preserves order. Returns the created count. */
+  bulkCreateChapters(
+    token: string,
+    bookId: string,
+    chapters: { original_filename: string; content: string; title?: string }[],
+    originalLanguage = 'auto',
+  ): Promise<{ chapters_created: number; skipped_existing: number; book_id: string }> {
+    return apiJson<{ chapters_created: number; skipped_existing: number; book_id: string }>(
+      `/v1/books/${bookId}/chapters/bulk`,
+      { method: 'POST', token, body: JSON.stringify({ chapters, original_language: originalLanguage }) },
+    );
   },
   createChapterEditor(
     token: string,

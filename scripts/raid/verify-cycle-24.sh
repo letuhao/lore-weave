@@ -1,181 +1,117 @@
 #!/usr/bin/env bash
-# verify-cycle-24.sh — L5.B + L5.C meta-worker consumers (2 DPS).
-#
-# Acceptance gate. Exit 0 = pass; non-zero = fail.
-#
-# Cycle 24 scope (2 DPS — INLINE serial):
-#   DPS 1 — L5.B canon-update consumer:
-#     * services/meta-worker/pkg/canon_writer/writer.go
-#     * services/meta-worker/pkg/canon_writer/writer_test.go
-#
-#   DPS 2 — L5.C user-erased consumer:
-#     * services/meta-worker/pkg/user_erased_writer/writer.go
-#     * services/meta-worker/pkg/user_erased_writer/writer_test.go
-#
-#   Plus:
-#     * tests/integration/canon_propagation_test.go (end-to-end via
-#       dispatch + consumer fake source)
-#     * services/meta-worker/pkg/dispatch/dispatch.go (extended allowlist
-#       to permit canon.entry.* inner event types)
-#
-# LOCKED decisions enforced:
-#   Q-L5H-1 (INVERTED for erasure)  — user_erased writer defaults to
-#                                     scrub on any uncertainty.
-#   Q-L1A-3 (full audit, no sample) — both writers emit per-write audit;
-#                                     audit failure NACKs.
-#   Q-L5-3                          — canon_layer enum {L1_axiom, L2_seeded}
-#                                     enforced by canon_writer.
-#   Q-L1A-2                         — canon SSOT in glossary DB; this
-#                                     cycle does NOT modify
-#                                     services/glossary-service/.
-#   Q-L5A-1                         — glossary-service outbox is SEPARATE
-#                                     sub-program; we do not touch it.
-#   I7                              — meta-worker remains sole writer of
-#                                     canon_projection; dispatch allowlist
-#                                     extended only for canon.entry.*
-#                                     inner event types (xreality-only
-#                                     ingress preserved).
-
+# verify-cycle-24 — C24 Divergence wizard + derivative studio (FE) ▶ dị bản M1
+# acceptance gate. Per RAID_WORKFLOW.md §13 (exit 0 = pass). FE-only cycle
+# (features/composition/) consuming C23's POST /works/{id}/derive. Static asserts
+# + targeted vitest (PowerShell proves vitest separately at VERIFY; bash-spawned
+# vitest can hang in this env so the list is small).
 set -euo pipefail
+CYCLE=24
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+FE="$REPO_ROOT/frontend"
+AUDIT_LOG="$REPO_ROOT/docs/audit/AUDIT_LOG.jsonl"
+NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
-cd "$repo_root"
+audit() { mkdir -p "$(dirname "$AUDIT_LOG")"; echo "{\"ts\":\"$NOW\",\"event\":\"$1\",\"cycle\":$CYCLE}" >> "$AUDIT_LOG"; }
+fail() { echo "[verify-cycle-24] FAIL: $1" >&2; audit "verify_cycle_24_failed"; exit 1; }
+have() { grep -Fq "$2" "$1" || fail "$3"; }
 
-step=0
-pass() { step=$((step+1)); echo "[verify-cycle-24] step $step PASS: $1"; }
-fail() { step=$((step+1)); echo "[verify-cycle-24] step $step FAIL: $1" >&2; exit 1; }
-note() { echo "[verify-cycle-24] note: $1"; }
+echo "[verify-cycle-24] running CI gate"
 
-# ─────────────────────────────────────────────────────────────────────────
-# DPS 1 + 2 — files present.
-# ─────────────────────────────────────────────────────────────────────────
-for f in \
-    services/meta-worker/pkg/canon_writer/writer.go \
-    services/meta-worker/pkg/canon_writer/writer_test.go \
-    services/meta-worker/pkg/user_erased_writer/writer.go \
-    services/meta-worker/pkg/user_erased_writer/writer_test.go \
-    tests/integration/canon_propagation_test.go ; do
-    [[ -f "$f" ]] || fail "cycle-24 file missing: $f"
-done
-pass "cycle-24 files present (canon_writer + user_erased_writer + integration)"
+API="$FE/src/features/composition/api.ts"
+TYPES="$FE/src/features/composition/types.ts"
+WIZHOOK="$FE/src/features/composition/hooks/useDivergenceWizard.ts"
+CTXHOOK="$FE/src/features/composition/hooks/useDerivativeContext.ts"
+WIZARD="$FE/src/features/composition/components/DivergenceWizard.tsx"
+STEPS="$FE/src/features/composition/components/DivergenceWizardSteps.tsx"
+LAUNCH="$FE/src/features/composition/components/DivergenceWizardButton.tsx"
+BANNER="$FE/src/features/composition/components/DerivativeBanner.tsx"
+BADGE="$FE/src/features/composition/components/GroundingLayerBadge.tsx"
+LAYERS="$FE/src/features/composition/components/DerivativeGroundingLayers.tsx"
+PANEL="$FE/src/features/composition/components/CompositionPanel.tsx"
 
-# Q-L5A-1 / Q-L1A-2: glossary-service MUST NOT be modified this cycle.
-if git diff --name-only HEAD 2>/dev/null | grep -qE '^services/glossary-service/'; then
-    fail "Q-L5A-1/Q-L1A-2 violation: services/glossary-service/ modified (separate sub-program)"
-fi
-pass "Q-L5A-1/Q-L1A-2: services/glossary-service/ untouched"
+# ── 1. api.deriveWork → POST /works/{id}/derive (consumes C23, no new BE) ──
+[ -f "$API" ] || fail "composition api.ts not found"
+have "$API" "deriveWork" "api missing deriveWork"
+have "$API" "/derive" "deriveWork does not POST to the /derive route"
+have "$TYPES" "DeriveBody" "types missing DeriveBody"
+have "$TYPES" "DivergenceTaxonomy" "types missing DivergenceTaxonomy"
+have "$TYPES" "source_work_id" "Work type missing source_work_id (banner needs it)"
 
-# I7: canon_projection migration MUST stay per-reality (cycle 23 invariant).
-if git diff --name-only HEAD 2>/dev/null | grep -qE '^contracts/migrations/meta/.*canon_projection'; then
-    fail "I7 violation: canon_projection migration found under meta/"
-fi
-pass "I7: canon_projection migration stays per-reality"
+# ── 2. 4-step wizard ending in the derive submit ──
+[ -f "$WIZHOOK" ] || fail "useDivergenceWizard not found"
+have "$WIZHOOK" "deriveWork" "wizard controller does not submit deriveWork"
+have "$WIZHOOK" "goNext" "wizard controller missing explicit goNext callback"
+have "$WIZHOOK" "goBack" "wizard controller missing explicit goBack callback"
+# Step transitions MUST be explicit callbacks — NO useEffect-for-events. There must
+# be no useEffect at all in the wizard controller. Strip comments first so the
+# explanatory "no useEffect-for-events" prose doesn't trip the gate.
+WIZHOOK_CODE="$(sed -E 's#//.*$##; s#/\*.*\*/##' "$WIZHOOK")"
+echo "$WIZHOOK_CODE" | grep -q "useEffect" && fail "wizard controller uses useEffect (must transition via explicit callbacks)" || true
+[ -f "$STEPS" ] || fail "DivergenceWizardSteps not found"
+have "$STEPS" "Step1Source" "step 1 (source/branch) missing"
+have "$STEPS" "Step2Type" "step 2 (divergence type) missing"
+have "$STEPS" "Step3Overrides" "step 3 (overrides preview) missing"
+have "$STEPS" "Step4Name" "step 4 (name) missing"
+have "$STEPS" "branchPoint" "step 1 missing the chapter-level branch point control (G3)"
+have "$WIZHOOK" "branch_point" "wizard body omits branch_point (G3) from the derive submit"
+have "$STEPS" "character_transform" "type selector missing character_transform (genderbend) taxonomy"
+have "$STEPS" "pov_shift" "type selector missing pov_shift taxonomy"
 
-# ─────────────────────────────────────────────────────────────────────────
-# Q-L5-3 enforcement check — canon_writer references the LOCKED enum
-# values verbatim.
-# ─────────────────────────────────────────────────────────────────────────
-grep -q '"L1_axiom"' services/meta-worker/pkg/canon_writer/writer.go \
-    || fail "Q-L5-3: L1_axiom constant missing from canon_writer"
-grep -q '"L2_seeded"' services/meta-worker/pkg/canon_writer/writer.go \
-    || fail "Q-L5-3: L2_seeded constant missing from canon_writer"
-pass "Q-L5-3: canon_writer references LOCKED enum values"
+# ── 3. wizard step state NOT conditionally unmounted (internal branching) ──
+[ -f "$WIZARD" ] || fail "DivergenceWizard not found"
+# All four step bodies must stay MOUNTED (CSS hidden), not ternary-unmounted.
+have "$WIZARD" "Step1Source" "wizard does not mount Step1Source"
+have "$WIZARD" "Step4Name" "wizard does not mount Step4Name"
+have "$WIZARD" "hidden" "wizard does not use CSS-hidden internal branching for steps"
+# A `{w.step === N ? <A/> : <B/>}` ternary across step bodies would unmount state.
+WIZ_CODE="$(sed -E 's#//.*$##; s#/\*.*\*/##' "$WIZARD")"
+echo "$WIZ_CODE" | grep -Eq '\?\s*<Step[0-9]' && fail "wizard ternary-unmounts a step body (destroys hook state)" || true
 
-# ─────────────────────────────────────────────────────────────────────────
-# Q-L5H-1 (INVERTED) — user_erased_writer documents default-to-erase.
-# ─────────────────────────────────────────────────────────────────────────
-grep -qE 'Q-L5H-1' services/meta-worker/pkg/user_erased_writer/writer.go \
-    || fail "Q-L5H-1: rationale citation missing from user_erased_writer"
-grep -qiE 'default[- ]to[- ]erase|inverted' services/meta-worker/pkg/user_erased_writer/writer.go \
-    || fail "Q-L5H-1: inverted semantics not documented"
-pass "Q-L5H-1 (INVERTED): default-to-erase rationale documented"
+# ── 4. derivative studio banner (source + branch_point) ──
+[ -f "$BANNER" ] || fail "DerivativeBanner not found"
+have "$BANNER" "derivative-banner" "banner missing its testid"
+have "$BANNER" "branchPoint" "banner does not surface the branch_point"
+have "$PANEL" "DerivativeBanner" "studio panel does not render the derivative banner"
 
-# ─────────────────────────────────────────────────────────────────────────
-# Q-L1A-3 — both writers have an AuditSink dependency surface.
-# ─────────────────────────────────────────────────────────────────────────
-grep -q 'AuditSink' services/meta-worker/pkg/canon_writer/writer.go \
-    || fail "Q-L1A-3: canon_writer missing AuditSink"
-grep -q 'AuditSink' services/meta-worker/pkg/user_erased_writer/writer.go \
-    || fail "Q-L1A-3: user_erased_writer missing AuditSink"
-pass "Q-L1A-3: both writers expose AuditSink dependency (full audit V1)"
+# ── 5. 2-layer INHERITED/OVERRIDDEN badges + legend (G2, real state) ──
+[ -f "$BADGE" ] || fail "GroundingLayerBadge not found"
+have "$BADGE" "GroundingLayerLegend" "badge file missing the legend"
+have "$BADGE" "data-layer" "badge does not expose its layer (data-layer)"
+have "$BADGE" "GroundingLayer" "badge missing the GroundingLayer type"
+[ -f "$CTXHOOK" ] || fail "useDerivativeContext not found"
+have "$CTXHOOK" "classifyGroundingLayer" "context missing the layer classifier"
+have "$CTXHOOK" "'inherited'" "context missing the INHERITED (base) layer literal"
+have "$CTXHOOK" "'overridden'" "context missing the OVERRIDDEN (delta) layer literal"
+have "$CTXHOOK" "overrideIds" "context does not key the layer off the REAL override set"
+[ -f "$LAYERS" ] || fail "DerivativeGroundingLayers not found"
+have "$LAYERS" "GroundingLayerBadge" "grounding layers does not render the badge"
+have "$LAYERS" "classify" "grounding layers does not classify entities by real override state"
 
-# ─────────────────────────────────────────────────────────────────────────
-# Cycle 7 L1.J — degraded-mode handling: tests cover NACK on per-reality
-# DB failure.
-# ─────────────────────────────────────────────────────────────────────────
-grep -q 'PerRealityDB_Failure_NACKs' services/meta-worker/pkg/canon_writer/writer_test.go \
-    || fail "Cycle 7 L1.J: canon_writer missing per-reality-DB failure NACK test"
-grep -q 'PerRealityDB_Failure_NACKs' services/meta-worker/pkg/user_erased_writer/writer_test.go \
-    || fail "Cycle 7 L1.J: user_erased_writer missing per-reality-DB failure NACK test"
-pass "Cycle 7 L1.J: NACK-on-degraded-mode coverage in both writers"
+# ── 6. reference spine READ-ONLY, NOT auto-inserted (LOCKED) ──
+have "$LAYERS" "reference-spine" "reference spine surfacing missing"
+LAYERS_CODE="$(sed -E 's#//.*$##; s#/\*.*\*/##' "$LAYERS")"
+echo "$LAYERS_CODE" | grep -Eiq 'insertIntoDraft|onAccept|paste|appendToDraft|insert\(' && fail "reference spine auto-inserts source prose (LOCKED no-auto-insert)" || true
 
-# ─────────────────────────────────────────────────────────────────────────
-# go test — canon_writer + user_erased_writer + dispatch (regression).
-# ─────────────────────────────────────────────────────────────────────────
-note "go test services/meta-worker/pkg/canon_writer/..."
-( cd services/meta-worker && go test ./pkg/canon_writer/... -count=1 >/dev/null ) \
-    || fail "canon_writer Go tests FAILED"
-pass "canon_writer Go tests PASS"
+# ── 7. launch entry point in the studio ──
+[ -f "$LAUNCH" ] || fail "DivergenceWizardButton not found"
+have "$PANEL" "DivergenceWizardButton" "studio panel does not offer the divergence wizard launch"
 
-note "go test services/meta-worker/pkg/user_erased_writer/..."
-( cd services/meta-worker && go test ./pkg/user_erased_writer/... -count=1 >/dev/null ) \
-    || fail "user_erased_writer Go tests FAILED"
-pass "user_erased_writer Go tests PASS"
-
-note "go test services/meta-worker/pkg/dispatch/... (regression for extended allowlist)"
-( cd services/meta-worker && go test ./pkg/dispatch/... -count=1 >/dev/null ) \
-    || fail "dispatch Go tests FAILED after allowlist extension"
-pass "dispatch Go tests PASS (cycle 10 regression)"
-
-# ─────────────────────────────────────────────────────────────────────────
-# Integration tests (tags=integration) — canon propagation + user erasure.
-# ─────────────────────────────────────────────────────────────────────────
-note "integration tests: canon_propagation_test (tags=integration)"
-( cd tests/integration && go test -tags=integration -count=1 -run 'TestCanonPropagation_CycleC24' ./... >/dev/null ) \
-    || fail "canon_propagation integration test FAILED"
-pass "canon_propagation integration tests PASS (canon fan-out + user-erased cascade + I7 allowlist)"
-
-# Regression: cycle-10 xreality propagation integration still passes.
-note "regression: cycle-10 xreality_propagation_test"
-( cd tests/integration && go test -tags=integration -count=1 -run 'TestXRealityPropagation' ./... >/dev/null ) \
-    || fail "cycle-10 xreality_propagation regression FAILED"
-pass "cycle-10 xreality_propagation regression PASS"
-
-# ─────────────────────────────────────────────────────────────────────────
-# B5 prod-isolation + B6 secret-scan.
-# ─────────────────────────────────────────────────────────────────────────
-if git diff --name-only HEAD 2>/dev/null | grep -qE '^infra/existing-prod/'; then
-    fail "B5: changes detected under infra/existing-prod/ (forbidden)"
-fi
-pass "B5 prod-isolation: no infra/existing-prod/ changes"
-
-if bash scripts/raid/prod-isolation-lint.sh >/dev/null 2>&1; then
-    pass "B5 prod-isolation-lint clean"
-else
-    fail "B5 prod-isolation-lint failed"
+# ── 8. NO BE schema/API change (C23 owns derive + tables) ──
+if git -C "$REPO_ROOT" diff --name-only HEAD 2>/dev/null | grep -E 'services/composition-service/.*(migrat|schema|routers/works\.py|models\.py)' ; then
+  fail "C24 must not touch composition-service derive schema/API (C23 owns BE)"
 fi
 
-NEW_FILES=(
-    services/meta-worker/pkg/canon_writer/writer.go
-    services/meta-worker/pkg/canon_writer/writer_test.go
-    services/meta-worker/pkg/user_erased_writer/writer.go
-    services/meta-worker/pkg/user_erased_writer/writer_test.go
-    tests/integration/canon_propagation_test.go
-)
-SECRET_PATTERNS='AKIA[0-9A-Z]{16}|aws_secret_access_key|BEGIN (RSA|EC|OPENSSH) PRIVATE KEY|xoxb-[A-Za-z0-9-]{20,}|ghp_[A-Za-z0-9]{30,}|sk_live_[A-Za-z0-9]{20,}'
-for f in "${NEW_FILES[@]}"; do
-    [[ -f "$f" ]] || continue
-    if grep -qE "$SECRET_PATTERNS" "$f"; then
-        fail "B6: potential secret in $f"
-    fi
-done
-pass "B6 secret-scan: no high-risk patterns in cycle-24 new files"
+# ── 9. targeted vitest green ──
+cd "$FE"
+echo "[verify-cycle-24] vitest (wizard + context + banner + badges)"
+npx vitest run \
+  src/features/composition/hooks/__tests__/useDivergenceWizard.test.tsx \
+  src/features/composition/hooks/__tests__/useDerivativeContext.test.tsx \
+  src/features/composition/components/__tests__/DivergenceWizard.test.tsx \
+  src/features/composition/components/__tests__/DerivativeBanner.test.tsx \
+  src/features/composition/components/__tests__/DerivativeGroundingLayers.test.tsx \
+  --reporter=dot --testTimeout=10000 2>&1 | tail -12
 
-if bash scripts/raid/secret-scan-cycle.sh 24 >/dev/null 2>&1; then
-    pass "B6 secret-scan-cycle clean"
-else
-    note "B6 secret-scan: gitleaks unavailable on dev machine (CI will gate)"
-fi
-
-echo "[verify-cycle-24] all $step steps PASS"
+audit "verify_cycle_24_passed"
+echo "[verify-cycle-24] PASS"
 exit 0

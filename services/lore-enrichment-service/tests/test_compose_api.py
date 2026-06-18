@@ -760,29 +760,27 @@ def test_intent_compose_draft_technique_400(monkeypatch):
     assert _post(_intent_base(technique="compose_draft")).status_code == 400
 
 
-# ── mode B — resolve-intent endpoint (step 1: LLM → proposed target, NO job) ──
-def _patch_resolver(monkeypatch, *, complete_text=None, complete_raises=None, entities=None):
-    class _FakeGlossary:
-        def __init__(self, **_kw):
-            ...
-        async def list_entities(self, *, book_id, limit):
-            return entities or []
-        async def aclose(self):
-            ...
+# ── mode B — resolve-intent endpoint (Phase 3 M2 — async) ─────────────────────
+# The endpoint now creates a 'pending' compose task + enqueues a resume-stream
+# trigger → 202 + task_id; the resolver LLM call runs in the worker
+# (compute_intent_resolve, covered in test_compose_task.py).
 
-    async def _neutral(_pool, _book_id):
-        return NEUTRAL_PROFILE
+def _patch_intent_task(monkeypatch, *, task_id="22222222-2222-7222-8222-222222222222",
+                       enqueued=True):
+    created: dict = {}
 
-    def _make(**_kw):
-        async def _complete(prompt, ctx):
-            if complete_raises is not None:
-                raise complete_raises
-            return complete_text
-        return _complete
+    async def _create(pool, *, kind, user_id, project_id, book_id, request):
+        created.update(kind=kind, user_id=user_id, project_id=project_id,
+                       book_id=book_id, request=request)
+        return task_id
 
-    monkeypatch.setattr(compose_api, "GlossaryClient", _FakeGlossary)
-    monkeypatch.setattr(compose_api, "get_book_profile", _neutral)
-    monkeypatch.setattr(compose_api, "make_complete_fn", _make)
+    async def _enqueue(*, task_id, kind, user_id, project_id):
+        created["enqueued_kind"] = kind
+        return enqueued
+
+    monkeypatch.setattr(compose_api, "create_compose_task", _create)
+    monkeypatch.setattr(compose_api, "enqueue_compose_task", _enqueue)
+    return created
 
 
 def _post_resolve(body: dict, *, project=None, auth=True):
@@ -793,65 +791,28 @@ def _post_resolve(body: dict, *, project=None, auth=True):
     )
 
 
-def test_resolve_intent_200(monkeypatch):
-    _patch_resolver(
-        monkeypatch,
-        complete_text='{"target":{"mode":"existing","canonical_name":"姜子牙","entity_kind":"character"},'
-                      '"dimensions":["历史"],"technique":"retrieval","rationale":"in list"}',
-        entities=[SimpleNamespace(name="姜子牙", kind="character")],
+def test_resolve_intent_202_creates_task(monkeypatch):
+    created = _patch_intent_task(monkeypatch)
+    book, proj = uuid4(), uuid4()
+    r = _post_resolve(
+        {"book_id": str(book), "intent_text": "the king's advisor",
+         "generation_model_ref": str(uuid4())},
+        project=proj,
     )
-    r = _post_resolve({"book_id": str(uuid4()), "intent_text": "the king's advisor",
-                       "generation_model_ref": str(uuid4())})
-    assert r.status_code == 200, r.text
+    assert r.status_code == 202, r.text
     body = r.json()
-    assert body["target"] == {"mode": "existing", "canonical_name": "姜子牙", "entity_kind": "character"}
-    assert body["dimensions"] == ["历史"] and body["technique"] == "retrieval"
-
-
-def test_resolve_intent_llm_error_502(monkeypatch):
-    from app.generation.complete import CompletionSeamError
-    _patch_resolver(monkeypatch, complete_raises=CompletionSeamError("llm down", retryable=False))
-    r = _post_resolve({"book_id": str(uuid4()), "intent_text": "x", "generation_model_ref": str(uuid4())})
-    assert r.status_code == 502
-
-
-def test_resolve_intent_unusable_output_502(monkeypatch):
-    _patch_resolver(monkeypatch, complete_text="only prose, no json object")
-    r = _post_resolve({"book_id": str(uuid4()), "intent_text": "x", "generation_model_ref": str(uuid4())})
-    assert r.status_code == 502
+    assert body["task_id"] == "22222222-2222-7222-8222-222222222222"
+    assert body["status"] == "pending"
+    assert created["kind"] == "intent_resolve"
+    assert created["project_id"] == str(proj)
+    assert created["book_id"] == str(book)
+    assert created["request"]["intent_text"] == "the king's advisor"
+    assert created["enqueued_kind"] == "intent_resolve"
 
 
 def test_resolve_intent_requires_auth():
     assert _post_resolve({"book_id": str(uuid4()), "intent_text": "x",
                           "generation_model_ref": str(uuid4())}, auth=False).status_code == 401
-
-
-def test_resolve_intent_degrades_when_glossary_down(monkeypatch):
-    # review-impl #5: a glossary outage must NOT fail resolve-intent — the entity
-    # list degrades to [] and the resolver still proposes (here, a new entity).
-    class _BadGlossary:
-        def __init__(self, **_kw):
-            ...
-        async def list_entities(self, *, book_id, limit):
-            raise RuntimeError("glossary down")
-        async def aclose(self):
-            ...
-
-    async def _neutral(_pool, _book_id):
-        return NEUTRAL_PROFILE
-
-    def _make(**_kw):
-        async def _complete(prompt, ctx):
-            return '{"target":{"mode":"new","canonical_name":"新仙","entity_kind":"character"},"technique":"fabrication"}'
-        return _complete
-
-    monkeypatch.setattr(compose_api, "GlossaryClient", _BadGlossary)
-    monkeypatch.setattr(compose_api, "get_book_profile", _neutral)
-    monkeypatch.setattr(compose_api, "make_complete_fn", _make)
-    r = _post_resolve({"book_id": str(uuid4()), "intent_text": "a new immortal",
-                       "generation_model_ref": str(uuid4())})
-    assert r.status_code == 200, r.text
-    assert r.json()["target"]["canonical_name"] == "新仙"
 
 
 # ── unknown source + auth ─────────────────────────────────────────────────────

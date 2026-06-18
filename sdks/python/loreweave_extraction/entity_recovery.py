@@ -199,32 +199,54 @@ async def _call_classifier_llm(
 ) -> str:
     """One classifier chat call. Returns content string; raises ValueError
     on any non-usable outcome (mirrors pass2_filter._call_filter_llm)."""
-    max_tokens = 1024 + 200 * max(1, n_items)
     try:
         job = await llm_client.submit_and_wait(
             user_id=user_id,
-            operation="chat",
-            model_source=config.model_source,
-            model_ref=config.model_ref,
-            input={
-                "messages": [
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user},
-                ],
-                "response_format": {"type": "text"},
-                "temperature": 0.0,
-                "max_tokens": max_tokens,
-                "chat_template_kwargs": {
-                    "thinking": False,
-                    "enable_thinking": False,
-                },
-            },
-            chunking=None,
-            job_meta={"extractor": "entity_recovery"},
             transient_retry_budget=config.transient_retry_budget,
+            **build_recovery_submit_kwargs(
+                config=config, system=system, user=user, n_items=n_items,
+            ),
         )
     except Exception as exc:  # noqa: BLE001
         raise ValueError(f"recovery LLM call failed: {exc}") from exc
+    return parse_recovery_job(job)
+
+
+# ── Decouple seams (LLM re-arch Phase 2b WX-T2b) — see extractors/entity.py ──
+
+
+def build_recovery_submit_kwargs(
+    *, config: "EntityRecoveryConfig", system: str, user: str, n_items: int,
+) -> dict:
+    """Pure: submit_and_wait / submit_job kwargs for the recovery classifier chat
+    (user_id + transient_retry_budget stay per-call)."""
+    max_tokens = 1024 + 200 * max(1, n_items)
+    return dict(
+        operation="chat",
+        model_source=config.model_source,
+        model_ref=config.model_ref,
+        input={
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "response_format": {"type": "text"},
+            "temperature": 0.0,
+            "max_tokens": max_tokens,
+            "chat_template_kwargs": {
+                "thinking": False,
+                "enable_thinking": False,
+            },
+        },
+        chunking=None,
+        job_meta={"extractor": "entity_recovery"},
+    )
+
+
+def parse_recovery_job(job) -> str:
+    """Pure: validate the terminal Job + extract the classifier content. Raises
+    ValueError on any non-usable outcome (so the per-batch caller marks the batch
+    unjudged instead of aborting the recovery pass)."""
     if getattr(job, "status", None) != "completed":
         raise ValueError(
             f"recovery job ended status={getattr(job, 'status', '?')}"
@@ -295,50 +317,13 @@ async def recover_missing_entities(
           - events / facts / filter_status / filter_coverage: passed
             through unchanged
     """
-    # MED-1: case-insensitive lookup map.
-    known_lower = {k.lower(): v for k, v in config.known_entity_kinds.items()}
-
-    entity_name_set = {e.name for e in candidates.entities}
-    relations = candidates.relations
-
-    # Collect unique unmatched names from relations.
-    unmatched_names: list[str] = []
-    seen: set[str] = set()
-    for r in relations:
-        for n in (r.subject, r.object):
-            if n and n not in entity_name_set and n not in seen:
-                unmatched_names.append(n)
-                seen.add(n)
-
-    # LOW-2: short-circuit if everything resolves.
+    promoted, name_verdict, still_unmatched, unmatched_names = prepare_recovery(
+        candidates, config=config, user_id=user_id, project_id=project_id,
+        on_decision=on_decision,
+    )
+    # LOW-2: short-circuit if nothing was unmatched (candidates unchanged).
     if not unmatched_names:
         return candidates
-
-    promoted: list[LLMEntityCandidate] = []
-    # MED-2: name→verdict so we apply consistently across all references.
-    name_verdict: dict[str, VerdictLabel] = {}
-
-    # Tier 1+2 — glossary/hints lookup.
-    still_unmatched: list[str] = []
-    for name in unmatched_names:
-        kind = known_lower.get(name.lower())
-        if kind:
-            promoted.append(_build_entity(
-                name, kind, len(promoted),
-                user_id=user_id, project_id=project_id,
-            ))
-            name_verdict[name] = "entity"
-            if on_decision is not None:
-                try:
-                    on_decision(RecoveryDecision(
-                        name=name, verdict="entity",
-                        source="glossary" if name.lower() in {k.lower() for k in config.known_entity_kinds} else "hints",
-                        kind=kind,
-                    ))
-                except Exception:  # noqa: BLE001
-                    logger.exception("on_decision callback raised")
-        else:
-            still_unmatched.append(name)
 
     # Tier 3 — LLM classifier for the rest.
     if still_unmatched:
@@ -368,17 +353,69 @@ async def recover_missing_entities(
                     except Exception:  # noqa: BLE001
                         logger.exception("on_decision callback raised")
 
-    # Apply MED-2: drop relations referencing abstract names.
+    return finalize_recovery(candidates, promoted, name_verdict)
+
+
+def prepare_recovery(
+    candidates: Pass2Candidates, *, config: EntityRecoveryConfig,
+    user_id: str, project_id: str | None,
+    on_decision: "RecoveryDecisionHandler | None",
+) -> tuple[list, dict, list[str], list[str]]:
+    """Tier 1+2 (glossary/hints lookup — NO LLM). Returns
+    (promoted, name_verdict, still_unmatched, unmatched_names): the Tier-1+2
+    accumulators + the names the orchestrator must Tier-3 classify (via
+    build_recovery_batches) + the full unmatched set (empty ⇒ caller returns
+    candidates unchanged). Byte-identical to the prior inline Tier-1+2."""
+    known_lower = {k.lower(): v for k, v in config.known_entity_kinds.items()}
+    entity_name_set = {e.name for e in candidates.entities}
+    unmatched_names: list[str] = []
+    seen: set[str] = set()
+    for r in candidates.relations:
+        for n in (r.subject, r.object):
+            if n and n not in entity_name_set and n not in seen:
+                unmatched_names.append(n)
+                seen.add(n)
+    promoted: list[LLMEntityCandidate] = []
+    name_verdict: dict[str, VerdictLabel] = {}
+    if not unmatched_names:
+        return promoted, name_verdict, [], []
+    still_unmatched: list[str] = []
+    for name in unmatched_names:
+        kind = known_lower.get(name.lower())
+        if kind:
+            promoted.append(_build_entity(
+                name, kind, len(promoted),
+                user_id=user_id, project_id=project_id,
+            ))
+            name_verdict[name] = "entity"
+            if on_decision is not None:
+                try:
+                    on_decision(RecoveryDecision(
+                        name=name, verdict="entity",
+                        source="glossary" if name.lower() in {k.lower() for k in config.known_entity_kinds} else "hints",
+                        kind=kind,
+                    ))
+                except Exception:  # noqa: BLE001
+                    logger.exception("on_decision callback raised")
+        else:
+            still_unmatched.append(name)
+    return promoted, name_verdict, still_unmatched, unmatched_names
+
+
+def finalize_recovery(
+    candidates: Pass2Candidates, promoted: list, name_verdict: dict,
+) -> Pass2Candidates:
+    """Pure: add promoted entities + drop relations referencing abstract-verdict
+    names (MED-2). Byte-identical to the prior inline tail."""
     abstract_names = {n for n, v in name_verdict.items() if v == "abstract"}
     if abstract_names:
         kept_relations = [
-            r for r in relations
+            r for r in candidates.relations
             if r.subject not in abstract_names
             and r.object not in abstract_names
         ]
     else:
-        kept_relations = list(relations)
-
+        kept_relations = list(candidates.relations)
     return replace(
         candidates,
         entities=list(candidates.entities) + promoted,
@@ -403,7 +440,43 @@ async def _classify_remaining(
     Mutates `promoted_out` (adds new entities) and `name_verdict_out`
     (records verdict per name).
     """
+    _system, batches = build_recovery_batches(names, text, config)
+    for _user_msg, n_batch, batch_start in batches:
+        batch = names[batch_start : batch_start + n_batch]
+        try:
+            content = await _call_classifier_llm(
+                user_id=user_id, config=config, llm_client=llm_client,
+                system=_system, user=_user_msg, n_items=n_batch,
+            )
+            decisions = _parse_decisions(content)
+        except ValueError as exc:
+            logger.warning(
+                "recovery batch failed batch=[%d,%d): %s",
+                batch_start, batch_start + n_batch, exc,
+            )
+            decisions = {}
+        apply_recovery_batch(
+            batch, decisions, promoted_out=promoted_out,
+            name_verdict_out=name_verdict_out, user_id=user_id,
+            project_id=project_id, on_decision=on_decision,
+        )
+
+
+# ── Decouple seams (LLM re-arch Phase 2b WX-T2c) ────────────────────────
+# The Tier-3 per-batch prompt build (prepare) + verdict apply are split out so the
+# decoupled WX-T3 orchestrator can submit each recovery batch fire-and-forget and
+# apply on the terminal event. Tier-1+2 (glossary, no LLM) + the abstract-relation
+# drop are pure → the orchestrator runs them inline via prepare_recovery /
+# finalize_recovery. The synchronous path calls all four, so it's byte-identical.
+
+
+def build_recovery_batches(
+    names: list[str], text: str, config: "EntityRecoveryConfig",
+) -> tuple[str, list[tuple[str, int, int]]]:
+    """Pure: (classifier_system, [(user_msg, n_items, batch_start), ...]) for the
+    Tier-3 LLM classifier. Local numbering 0..n-1; map back via batch_start."""
     batch_size = config.max_items_per_batch
+    out: list[tuple[str, int, int]] = []
     for batch_start in range(0, len(names), batch_size):
         batch = names[batch_start : batch_start + batch_size]
         numbered = "\n".join(f"[{i}] {n}" for i, n in enumerate(batch))
@@ -411,43 +484,42 @@ async def _classify_remaining(
             f"SOURCE TEXT:\n{text}\n\n"
             f"NAMES (classify each):\n{numbered}\n"
         )
-        try:
-            content = await _call_classifier_llm(
-                user_id=user_id, config=config, llm_client=llm_client,
-                system=_CLASSIFIER_SYSTEM, user=user_msg, n_items=len(batch),
-            )
-            decisions = _parse_decisions(content)
-        except ValueError as exc:
-            logger.warning(
-                "recovery batch failed batch=[%d,%d): %s",
-                batch_start, batch_start + len(batch), exc,
-            )
-            decisions = {}
+        out.append((user_msg, len(batch), batch_start))
+    return _CLASSIFIER_SYSTEM, out
 
-        for local_idx, name in enumerate(batch):
-            decision = decisions.get(local_idx)
-            if decision is None:
-                name_verdict_out[name] = "unjudged"
-                if on_decision is not None:
-                    try:
-                        on_decision(RecoveryDecision(
-                            name=name, verdict="unjudged", source="llm",
-                        ))
-                    except Exception:  # noqa: BLE001
-                        logger.exception("on_decision callback raised")
-                continue
-            verdict, kind = decision
-            name_verdict_out[name] = verdict
-            if verdict == "entity":
-                promoted_out.append(_build_entity(
-                    name, kind, len(promoted_out),
-                    user_id=user_id, project_id=project_id,
-                ))
+
+def apply_recovery_batch(
+    batch: list[str], decisions: dict, *,
+    promoted_out: list, name_verdict_out: dict, user_id: str,
+    project_id: str | None, on_decision: "RecoveryDecisionHandler | None",
+) -> None:
+    """Apply one Tier-3 batch's verdicts: promote entities, record per-name verdicts,
+    emit decisions. Mutates promoted_out / name_verdict_out (identical to the prior
+    inline loop)."""
+    for local_idx, name in enumerate(batch):
+        decision = decisions.get(local_idx)
+        if decision is None:
+            name_verdict_out[name] = "unjudged"
             if on_decision is not None:
                 try:
                     on_decision(RecoveryDecision(
-                        name=name, verdict=verdict,
-                        source="llm", kind=kind if verdict == "entity" else None,
+                        name=name, verdict="unjudged", source="llm",
                     ))
                 except Exception:  # noqa: BLE001
                     logger.exception("on_decision callback raised")
+            continue
+        verdict, kind = decision
+        name_verdict_out[name] = verdict
+        if verdict == "entity":
+            promoted_out.append(_build_entity(
+                name, kind, len(promoted_out),
+                user_id=user_id, project_id=project_id,
+            ))
+        if on_decision is not None:
+            try:
+                on_decision(RecoveryDecision(
+                    name=name, verdict=verdict,
+                    source="llm", kind=kind if verdict == "entity" else None,
+                ))
+            except Exception:  # noqa: BLE001
+                logger.exception("on_decision callback raised")

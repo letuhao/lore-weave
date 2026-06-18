@@ -70,4 +70,33 @@ describe('FormDialog', () => {
     render(<FormDialog {...defaultProps}><div>content</div></FormDialog>);
     expect(screen.getByLabelText('Close')).toBeInTheDocument();
   });
+
+  // ── C0 (BL-4/KN-3): scroll + pinned footer ──
+  // The dialog caps its height and scrolls the BODY only; the footer is pinned
+  // and a SIBLING of the scroll region (adversary: must not be nested inside it,
+  // else the action scrolls away or overlaps content on tall forms).
+  it('caps height and makes the body scrollable (C0)', () => {
+    render(
+      <FormDialog {...defaultProps}>
+        <div data-testid="body">tall content</div>
+      </FormDialog>,
+    );
+    expect(screen.getByRole('dialog').className).toContain('max-h-[85vh]');
+    const scrollRegion = screen.getByTestId('body').parentElement!;
+    expect(scrollRegion.className).toContain('overflow-y-auto');
+    expect(scrollRegion.className).toContain('flex-1');
+  });
+
+  it('pins the footer as a sibling of the scroll body (C0)', () => {
+    render(
+      <FormDialog {...defaultProps} footer={<button data-testid="submit">Save</button>}>
+        <div data-testid="body">content</div>
+      </FormDialog>,
+    );
+    const scrollRegion = screen.getByTestId('body').parentElement!;
+    const footerWrap = screen.getByTestId('submit').parentElement!;
+    expect(footerWrap.className).toContain('flex-shrink-0');
+    expect(scrollRegion.contains(footerWrap)).toBe(false);
+    expect(scrollRegion.parentElement).toBe(footerWrap.parentElement);
+  });
 });

@@ -49,7 +49,22 @@ from typing import Annotated, Any, Literal
 from uuid import UUID
 
 import asyncpg
+from loreweave_jobs import emit_job_event
 from pydantic import BaseModel, ConfigDict, Field
+
+# Unified Job Control Plane P1 — extraction job lifecycle events ride the knowledge
+# outbox (worker-infra → loreweave:events:jobs). service = the domain owner so the
+# projection sees one service for the whole lifecycle (worker-ai writes complete/failed
+# inline; this repo writes pending/running/paused/cancelled).
+_JOB_SERVICE = "knowledge"
+_JOB_KIND = "extraction"
+
+
+def _canonical_job_status(status: str) -> str:
+    """Map the extraction status enum to the canonical control-plane JobStatus value
+    (extraction uses ``'complete'``; the canonical JobStatus is ``'completed'``)."""
+    return "completed" if status == "complete" else status
+
 
 __all__ = [
     "CursorDecodeError",
@@ -137,6 +152,13 @@ def _decode_cursor(
 LIST_ALL_MAX_LIMIT = 200
 
 JobScope = Literal["chapters", "chat", "glossary_sync", "all", "chapters_pending"]  # CM3b: chapters_pending = worker-ai coalescing drainer
+
+# C12 — the full target set. Mirrors the extraction_jobs.targets column
+# DEFAULT exactly. Used when a caller omits `targets` (None) so the INSERT
+# stores a concrete all-five array == the column default (back-compat).
+DEFAULT_TARGETS: tuple[str, ...] = (
+    "entities", "relations", "events", "facts", "summaries",
+)
 JobStatus = Literal[
     "pending", "running", "paused", "complete", "failed", "cancelled"
 ]
@@ -149,7 +171,8 @@ _SELECT_COLS = """
   items_total, items_processed, current_cursor, cost_spent_usd,
   started_at, paused_at, completed_at, created_at, updated_at,
   error_message, campaign_id,
-  billing_user_id, billing_embedding_model, billing_llm_model
+  billing_user_id, billing_embedding_model, billing_llm_model,
+  targets, concurrency_level, pinned_entity_ids
 """
 
 
@@ -183,6 +206,21 @@ class ExtractionJob(BaseModel):
     billing_user_id: UUID | None = None
     billing_embedding_model: str | None = None
     billing_llm_model: str | None = None
+
+    # C12 — target-typed extraction. The subset of Pass-2 passes this job
+    # runs (entities/relations/events/facts/summaries). The DB column is
+    # NOT NULL DEFAULT all-five, so a row always carries a concrete set;
+    # the model defaults it to None only for the list-SELECT paths that
+    # omit the column from their hand-written column lists (parity with
+    # billing_* below). None ⇒ treated as "all" by the runner.
+    targets: list[str] | None = None
+    # C12 — passthrough cap on parallel LLM calls during extraction. NULL ⇒
+    # current unbounded behaviour.
+    concurrency_level: int | None = None
+    # C13 — glossary pinning. The glossary entity ids force-injected into every
+    # extraction window's known_entities. NULL/None ⇒ no pins (back-compat).
+    # Stored as a JSONB array; the worker fetches the names + prepends them.
+    pinned_entity_ids: list[str] | None = None
 
     items_total: int | None = None
     items_processed: int = 0
@@ -238,6 +276,14 @@ class ExtractionJobCreate(BaseModel):
     billing_user_id: UUID | None = None
     billing_embedding_model: Annotated[str, Field(min_length=1, max_length=200)] | None = None
     billing_llm_model: Annotated[str, Field(min_length=1, max_length=200)] | None = None
+    # C12 — target-typed extraction. None ⇒ the DB column default (all five
+    # passes) applies (back-compat); a concrete list runs only those passes.
+    # The request layer normalises (dependent auto-include) before this.
+    targets: list[str] | None = None
+    # C12 — passthrough parallel-LLM-call cap. None ⇒ unbounded (current).
+    concurrency_level: Annotated[int, Field(ge=1, le=64)] | None = None
+    # C13 — pinned glossary entity ids. None / empty ⇒ no pins (back-compat).
+    pinned_entity_ids: list[str] | None = None
 
 
 # ── try_spend outcome ────────────────────────────────────────────────────
@@ -275,7 +321,8 @@ class TrySpendResult:
 def _row_to_job(row: asyncpg.Record) -> ExtractionJob:
     data = dict(row)
     # asyncpg returns JSONB as str or dict depending on codec; normalise.
-    for k in ("scope_range", "current_cursor"):
+    # C13 — pinned_entity_ids is JSONB (list); same str-or-decoded handling.
+    for k in ("scope_range", "current_cursor", "pinned_entity_ids"):
         v = data.get(k)
         if isinstance(v, str):
             data[k] = json.loads(v)
@@ -298,27 +345,45 @@ class ExtractionJobsRepo:
         INSERT INTO extraction_jobs
           (user_id, project_id, scope, scope_range, llm_model,
            embedding_model, max_spend_usd, items_total, campaign_id,
-           billing_user_id, billing_embedding_model, billing_llm_model)
-        VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10, $11, $12)
+           billing_user_id, billing_embedding_model, billing_llm_model,
+           targets, concurrency_level, pinned_entity_ids)
+        VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10, $11, $12,
+                $13, $14, $15::jsonb)
         RETURNING {_SELECT_COLS}
         """
         async with self._pool.acquire() as conn:
-            row = await conn.fetchrow(
-                query,
-                user_id,
-                data.project_id,
-                data.scope,
-                json.dumps(data.scope_range) if data.scope_range else None,
-                data.llm_model,
-                data.embedding_model,
-                data.max_spend_usd,
-                data.items_total,
-                data.campaign_id,
-                data.billing_user_id,
-                data.billing_embedding_model,
-                data.billing_llm_model,
-            )
-        return _row_to_job(row)
+            async with conn.transaction():  # INSERT + emit_job_event atomic (H1)
+                row = await conn.fetchrow(
+                    query,
+                    user_id,
+                    data.project_id,
+                    data.scope,
+                    json.dumps(data.scope_range) if data.scope_range else None,
+                    data.llm_model,
+                    data.embedding_model,
+                    data.max_spend_usd,
+                    data.items_total,
+                    data.campaign_id,
+                    data.billing_user_id,
+                    data.billing_embedding_model,
+                    data.billing_llm_model,
+                    # C12 — None ⇒ store the explicit all-five default (== column
+                    # DEFAULT) so the round-trip is concrete and the runner never
+                    # sees a NULL targets array.
+                    list(data.targets) if data.targets is not None else list(DEFAULT_TARGETS),
+                    data.concurrency_level,
+                    # C13 — pinned glossary entity ids as a JSONB array (NULL ⇒ no
+                    # pins, back-compat).
+                    json.dumps(data.pinned_entity_ids) if data.pinned_entity_ids else None,
+                )
+                job = _row_to_job(row)
+                # Unified Job Control Plane P1 — emit the initial lifecycle event.
+                await emit_job_event(
+                    conn, service=_JOB_SERVICE, job_id=str(job.job_id),
+                    owner_user_id=str(user_id), kind=_JOB_KIND,
+                    status=_canonical_job_status(job.status),
+                )
+        return job
 
     # ─── reads ───────────────────────────────────────────────────────
 
@@ -341,6 +406,23 @@ class ExtractionJobsRepo:
                 "SELECT project_id FROM extraction_jobs WHERE job_id = $1", job_id
             )
         return row["project_id"] if row else None
+
+    async def list_since(self, since: datetime, *, limit: int = 1000) -> list[ExtractionJob]:
+        """Reconcile snapshot (Unified Job Control Plane H1 backstop): jobs updated
+        at/after `since`, oldest-first, capped — ALL users (the jobs-service projection
+        mirrors every owner; user-scoping is at its read API). Used by the reconcile sweep
+        to heal outbox drift. This is the ONE read that is intentionally NOT user-scoped;
+        it is internal-token gated at the route + returns only mirror fields."""
+        query = f"""
+        SELECT {_SELECT_COLS}
+        FROM extraction_jobs
+        WHERE updated_at >= $1
+        ORDER BY updated_at ASC
+        LIMIT $2
+        """
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(query, since, limit)
+        return [_row_to_job(r) for r in rows]
 
     async def list_for_project(
         self, user_id: UUID, project_id: UUID, *, limit: int = 50
@@ -597,7 +679,61 @@ class ExtractionJobsRepo:
         RETURNING {_SELECT_COLS}
         """
         async with self._pool.acquire() as conn:
-            row = await conn.fetchrow(query, user_id, job_id, new_status, error_message)
+            async with conn.transaction():  # UPDATE + emit_job_event atomic (H1)
+                row = await conn.fetchrow(query, user_id, job_id, new_status, error_message)
+                if row is None:
+                    return None
+                # Unified Job Control Plane P1 — emit the transition (mapped to the
+                # canonical JobStatus). The UPDATE's terminal-guard + RETURNING means
+                # this only fires on a real transition (no duplicate terminal emit).
+                # P4 — carry the CHANGING cost (cumulative spend) on each transition;
+                # model + params are set once on the 'running' event and preserved by the
+                # projection's COALESCE merge, so we pass only cost here (never re-emit a
+                # leaner params that would clobber the rich create-time one).
+                _cost = row["cost_spent_usd"]
+                await emit_job_event(
+                    conn, service=_JOB_SERVICE, job_id=str(job_id),
+                    owner_user_id=str(user_id), kind=_JOB_KIND,
+                    status=_canonical_job_status(new_status),
+                    cost_usd=float(_cost) if _cost is not None else None,
+                    error=(
+                        {"code": "extraction_failed", "message": (error_message or "")[:500]}
+                        if new_status == "failed" else None
+                    ),
+                )
+                return _row_to_job(row)
+
+    # ─── KN-7 — in-flight concurrency-cap change ─────────────────────
+
+    async def set_concurrency_level(
+        self, user_id: UUID, job_id: UUID, concurrency_level: int,
+    ) -> ExtractionJob | None:
+        """C7 raise-cap (KN-7): change a job's parallel-LLM-call cap
+        IN-FLIGHT. The worker poll loop re-reads ``concurrency_level``
+        from the DB every cycle (``_get_running_jobs``), so the next
+        chapter window picks the new cap up — no restart needed.
+
+        Owner-scoped (``user_id = $1``): the job row's ``user_id`` is
+        the project owner, and the router resolves the owner via
+        ``require_job_grant`` before calling.
+
+        Gated to active jobs (``status IN ('running','paused')``):
+        bumping the cap on a finished / cancelled / failed job is a
+        no-op the caller should surface as a conflict, so a 0-row
+        result returns None (the router maps it to 409 after
+        disambiguating from a 404 via a follow-up get). Does NOT bump
+        the job's lifecycle or touch cost — it's a pure passthrough
+        tuning knob.
+        """
+        query = f"""
+        UPDATE extraction_jobs
+        SET concurrency_level = $3, updated_at = now()
+        WHERE user_id = $1 AND job_id = $2
+          AND status IN ('running', 'paused')
+        RETURNING {_SELECT_COLS}
+        """
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(query, user_id, job_id, concurrency_level)
         return _row_to_job(row) if row else None
 
     async def complete(

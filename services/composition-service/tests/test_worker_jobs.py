@@ -1,0 +1,459 @@
+"""composition batch-job worker — foundation (Phase 3 M4).
+
+The consumer's run_job orchestration (idempotent dispatch + business-fail), the
+message branch, and run_decompose's reconstruction from the persisted input. All
+fakes — no Redis, no DB, no real LLM.
+"""
+
+from __future__ import annotations
+
+import dataclasses
+from types import SimpleNamespace
+from uuid import uuid4
+
+from app.worker import job_consumer as jc
+from app.worker.operations import run_decompose
+
+
+class _FakeRepo:
+    def __init__(self, job):
+        self._job = job
+        self.updates: list = []
+
+    async def get(self, uid, jid):
+        return self._job
+
+    async def update_status(self, uid, jid, status, *, result=None, **kw):
+        self.updates.append((status, result))
+        return self._job
+
+
+def _job(operation="decompose_preview", status="pending", input=None):
+    return SimpleNamespace(
+        id=uuid4(), user_id=uuid4(), project_id=uuid4(), operation=operation,
+        status=status, input=input if input is not None else {},
+    )
+
+
+def _patch_run_job(monkeypatch, repo, *, result=None, raises=None):
+    monkeypatch.setattr(jc, "GenerationJobsRepo", lambda pool: repo)
+
+    async def _rd(llm, *, user_id, input):
+        if raises is not None:
+            raise raises
+        return result if result is not None else {"tree": []}
+
+    monkeypatch.setattr(jc, "run_decompose", _rd)
+
+
+async def test_run_job_dispatches_decompose_and_completes(monkeypatch):
+    job = _job()
+    repo = _FakeRepo(job)
+    _patch_run_job(monkeypatch, repo, result={"tree": [1, 2]})
+    out = await jc.run_job(object(), object(), job_id=str(job.id), user_id=str(job.user_id))
+    assert out == "completed"
+    assert [u[0] for u in repo.updates] == ["running", "completed"]
+    assert repo.updates[-1][1] == {"tree": [1, 2]}
+
+
+async def test_run_job_completed_is_idempotent(monkeypatch):
+    job = _job(status="completed")
+    repo = _FakeRepo(job)
+    _patch_run_job(monkeypatch, repo)
+    out = await jc.run_job(object(), object(), job_id=str(job.id), user_id=str(job.user_id))
+    assert out == "already_completed"
+    assert repo.updates == []  # no recompute, no re-mark
+
+
+async def test_run_job_business_error_marks_failed(monkeypatch):
+    job = _job()
+    repo = _FakeRepo(job)
+    _patch_run_job(monkeypatch, repo, raises=ValueError("bad plan output"))
+    out = await jc.run_job(object(), object(), job_id=str(job.id), user_id=str(job.user_id))
+    assert out == "failed"
+    assert repo.updates[0][0] == "running"
+    assert repo.updates[-1][0] == "failed"
+    assert "bad plan output" in repo.updates[-1][1]["error"]
+
+
+async def test_run_job_unknown_operation_fails(monkeypatch):
+    job = _job(operation="totally_unknown")
+    repo = _FakeRepo(job)
+    monkeypatch.setattr(jc, "GenerationJobsRepo", lambda pool: repo)
+    out = await jc.run_job(object(), object(), job_id=str(job.id), user_id=str(job.user_id))
+    assert out == "failed"  # UnsupportedOperationError is a business error
+
+
+async def test_run_job_not_found(monkeypatch):
+    repo = _FakeRepo(None)
+    monkeypatch.setattr(jc, "GenerationJobsRepo", lambda pool: repo)
+    out = await jc.run_job(object(), object(), job_id=str(uuid4()), user_id=str(uuid4()))
+    assert out == "not_found"
+
+
+async def test_dispatch_routes_to_run_job(monkeypatch):
+    seen: dict = {}
+
+    async def _run(pool, llm, *, job_id, user_id):
+        seen.update(job_id=job_id, user_id=user_id)
+
+    monkeypatch.setattr(jc, "run_job", _run)
+    await jc.dispatch_job_message(
+        object(), object(), fields={"job_id": "j-1", "user_id": "u-1", "project_id": "p"})
+    assert seen == {"job_id": "j-1", "user_id": "u-1"}
+
+
+async def test_run_job_dispatches_stitch_and_stores_result(monkeypatch):
+    job = _job(operation="stitch_chapter", input={"chapter_id": "c1"})
+    repo = _FakeRepo(job)
+    monkeypatch.setattr(jc, "GenerationJobsRepo", lambda pool: repo)
+    monkeypatch.setattr(jc, "get_knowledge_client", lambda: object())
+
+    captured: dict = {}
+
+    async def _rs(pool, llm, knowledge, *, input):
+        captured.update(input)
+        return {"text": "stitched chapter", "persisted": False}
+
+    monkeypatch.setattr(jc, "run_stitch", _rs)
+    out = await jc.run_job(object(), object(), job_id=str(job.id), user_id=str(job.user_id))
+    assert out == "completed"
+    assert repo.updates[-1][1]["text"] == "stitched chapter"
+    # the consumer injects user_id/project_id (off the job row) into the worker input
+    assert captured["user_id"] == str(job.user_id)
+    assert captured["project_id"] == str(job.project_id)
+    assert captured["chapter_id"] == "c1"
+
+
+async def test_run_stitch_computes_and_stores_no_persist(monkeypatch):
+    import app.db.repositories.works as works_mod
+    import app.db.repositories.generation_jobs as gj_mod
+    import app.engine.stitch as stitch_mod
+    import app.engine.canon_reflect as reflect_mod
+    import app.packer.profile as profile_mod
+    from app.worker.operations import run_stitch
+
+    class _FakeWorks:
+        def __init__(self, pool): ...
+        async def get(self, uid, pid):
+            return SimpleNamespace(settings={"source_language": "en"})
+
+    class _FakeJobsRepo:
+        def __init__(self, pool): ...
+        async def chapter_scene_drafts(self, uid, pid, cid):
+            return ["scene 1 draft", "scene 2 draft"]
+
+    async def _fake_stitch(llm, **kw):
+        return ("STITCHED PROSE", "stop")
+
+    reflect = SimpleNamespace(violations=[], resolved=True, iterations=0,
+                              status="ok", revise_finish_reason=None)
+
+    async def _fake_reflect(**kw):
+        return (kw["draft"], reflect, 0)
+
+    monkeypatch.setattr(works_mod, "WorksRepo", _FakeWorks)
+    monkeypatch.setattr(gj_mod, "GenerationJobsRepo", _FakeJobsRepo)
+    monkeypatch.setattr(stitch_mod, "stitch_chapter", _fake_stitch)
+    monkeypatch.setattr(reflect_mod, "run_canon_reflect", _fake_reflect)
+    monkeypatch.setattr(profile_mod, "from_settings", lambda s: SimpleNamespace(source_language="en"))
+
+    inp = {
+        "user_id": str(uuid4()), "project_id": str(uuid4()), "chapter_id": str(uuid4()),
+        "model_source": "user_model", "model_ref": "m1", "chapter_intent": "the climax",
+        "cast_glossary_ids": ["e1"], "chapter_sort": 3, "max_out": 4000,
+        "reasoning_effort": None, "reflect_max_iters": 1,
+        "critic_source": None, "critic_ref": None,
+    }
+    out = await run_stitch(object(), object(), object(), input=inp)
+    assert out["text"] == "STITCHED PROSE"
+    assert out["stitched"] is True
+    assert out["persisted"] is False  # Option A — persist is the separate bearer step
+    assert out["canon"]["status"] == "ok"
+
+
+async def test_run_stitch_raises_when_no_drafts(monkeypatch):
+    import app.db.repositories.works as works_mod
+    import app.db.repositories.generation_jobs as gj_mod
+    import app.packer.profile as profile_mod
+    from app.worker.operations import run_stitch
+    import pytest
+
+    class _FakeWorks:
+        def __init__(self, pool): ...
+        async def get(self, uid, pid):
+            return SimpleNamespace(settings={})
+
+    class _FakeJobsRepo:
+        def __init__(self, pool): ...
+        async def chapter_scene_drafts(self, uid, pid, cid):
+            return []  # nothing to stitch
+
+    monkeypatch.setattr(works_mod, "WorksRepo", _FakeWorks)
+    monkeypatch.setattr(gj_mod, "GenerationJobsRepo", _FakeJobsRepo)
+    monkeypatch.setattr(profile_mod, "from_settings", lambda s: SimpleNamespace(source_language="en"))
+    inp = {"user_id": str(uuid4()), "project_id": str(uuid4()), "chapter_id": str(uuid4())}
+    with pytest.raises(ValueError):  # business error → run_job marks 'failed'
+        await run_stitch(object(), object(), object(), input=inp)
+
+
+async def test_run_job_dispatches_generate_via_worker_op(monkeypatch):
+    # generate's `operation` column is the free-form prose op ("draft_scene"); the
+    # canonical dispatch key is input['worker_op'] = 'generate'.
+    job = _job(operation="draft_scene", input={"worker_op": "generate", "packed_prompt": "P"})
+    repo = _FakeRepo(job)
+    monkeypatch.setattr(jc, "GenerationJobsRepo", lambda pool: repo)
+    monkeypatch.setattr(jc, "get_knowledge_client", lambda: object())
+
+    captured: dict = {}
+
+    async def _rg(pool, llm, knowledge, *, input):
+        captured.update(input)
+        return {"text": "auto winner", "persisted": False}
+
+    monkeypatch.setattr(jc, "run_generate", _rg)
+    out = await jc.run_job(object(), object(), job_id=str(job.id), user_id=str(job.user_id))
+    assert out == "completed"
+    assert repo.updates[-1][1]["text"] == "auto winner"
+    assert captured["user_id"] == str(job.user_id)
+    assert captured["project_id"] == str(job.project_id)
+    assert captured["packed_prompt"] == "P"
+
+
+async def test_run_generate_computes_winner_and_canon(monkeypatch):
+    import app.db.repositories.works as works_mod
+    import app.engine.select as select_mod
+    import app.engine.canon_reflect as reflect_mod
+    import app.packer.profile as profile_mod
+    from app.engine.select import Candidate, Selection
+    from app.engine.cowrite import DraftMetering
+    from app.worker.operations import run_generate
+
+    class _FakeWorks:
+        def __init__(self, pool): ...
+        async def get(self, uid, pid):
+            return SimpleNamespace(settings={"source_language": "en"})
+
+    seen: dict = {}
+
+    async def _fake_select(llm, judge, **kw):
+        seen.update(kw)
+        cands = [Candidate("draft A", DraftMetering(10, 5, True)),
+                 Candidate("draft B", DraftMetering(10, 6, True))]
+        return Selection(winner=cands[1], winner_index=1, candidates=cands,
+                         rerank_reason="B", rerank_measured=True)
+
+    reflect = SimpleNamespace(violations=[], resolved=True, iterations=0,
+                              status="ok", revise_finish_reason=None)
+
+    async def _fake_reflect(**kw):
+        return (kw["draft"], reflect, 3)
+
+    monkeypatch.setattr(works_mod, "WorksRepo", _FakeWorks)
+    monkeypatch.setattr(select_mod, "select_draft", _fake_select)
+    monkeypatch.setattr(reflect_mod, "run_canon_reflect", _fake_reflect)
+    monkeypatch.setattr(profile_mod, "from_settings", lambda s: SimpleNamespace(source_language="en"))
+
+    inp = {
+        "user_id": str(uuid4()), "project_id": str(uuid4()), "outline_node_id": str(uuid4()),
+        "model_source": "user_model", "model_ref": "m1", "operation": "draft_scene",
+        "packed_prompt": "GROUNDING", "prompt_estimate": 10, "max_out": 1024,
+        "present_entity_ids": ["e1"], "scene_sort_order": 4, "beat_role": None, "tension": None,
+        "reasoning": "rule_based", "reasoning_effort": "medium", "reasoning_passthrough": False,
+        "grounding_available": True, "reinjected_promise_count": 2, "assembly_mode": "per_scene",
+        "reflect_max_iters": 1, "critic_source": None, "critic_ref": None,
+    }
+    out = await run_generate(object(), object(), object(), input=inp)
+    assert out["text"] == "draft B" and out["winner_index"] == 1 and out["k"] == 2
+    assert out["candidates"] == ["draft A", "draft B"]
+    assert out["output_tokens"] == 6 + 3  # winner output + revise tokens
+    assert out["canon"]["status"] == "ok"
+    assert out["reasoning_effort"] == "medium" and out["reinjected_promise_count"] == 2
+    assert out["persisted"] is False
+    # no distinct critic → judge falls back to the drafter; passthrough False → effort passed
+    assert seen["judge_ref"] == "m1" and seen["reasoning_effort"] == "medium"
+
+
+async def test_run_generate_select_failure_is_terminal(monkeypatch):
+    import app.db.repositories.works as works_mod
+    import app.engine.select as select_mod
+    import app.packer.profile as profile_mod
+    from app.worker.operations import run_generate
+    import pytest
+
+    class _FakeWorks:
+        def __init__(self, pool): ...
+        async def get(self, uid, pid):
+            return SimpleNamespace(settings={})
+
+    async def _boom(llm, judge, **kw):
+        raise RuntimeError("diverge produced nothing")
+
+    monkeypatch.setattr(works_mod, "WorksRepo", _FakeWorks)
+    monkeypatch.setattr(select_mod, "select_draft", _boom)
+    monkeypatch.setattr(profile_mod, "from_settings", lambda s: SimpleNamespace(source_language="en"))
+    inp = {"user_id": str(uuid4()), "project_id": str(uuid4()), "model_source": "user_model",
+           "model_ref": "m1", "operation": "draft_scene", "packed_prompt": "P",
+           "prompt_estimate": 1, "max_out": 100}
+    with pytest.raises(ValueError):  # → run_job marks 'failed' + ACK (mirrors inline 502)
+        await run_generate(object(), object(), object(), input=inp)
+
+
+async def test_run_job_dispatches_chapter_generate_via_worker_op(monkeypatch):
+    job = _job(operation="draft_chapter",
+               input={"worker_op": "chapter_generate", "chapter_id": "c9"})
+    repo = _FakeRepo(job)
+    monkeypatch.setattr(jc, "GenerationJobsRepo", lambda pool: repo)
+    monkeypatch.setattr(jc, "get_knowledge_client", lambda: object())
+
+    captured: dict = {}
+
+    async def _rcg(pool, llm, knowledge, *, input):
+        captured.update(input)
+        return {"text": "chapter draft", "persisted": False, "chapter_id": "c9"}
+
+    monkeypatch.setattr(jc, "run_chapter_generate", _rcg)
+    out = await jc.run_job(object(), object(), job_id=str(job.id), user_id=str(job.user_id))
+    assert out == "completed"
+    assert repo.updates[-1][1]["text"] == "chapter draft"
+    assert captured["user_id"] == str(job.user_id)
+    assert captured["chapter_id"] == "c9"
+
+
+async def test_run_chapter_generate_single_pass_no_persist(monkeypatch):
+    import app.db.repositories.works as works_mod
+    import app.engine.select as select_mod
+    import app.engine.canon_reflect as reflect_mod
+    import app.packer.profile as profile_mod
+    from app.engine.select import Candidate
+    from app.engine.cowrite import DraftMetering
+    from app.worker.operations import run_chapter_generate
+
+    class _FakeWorks:
+        def __init__(self, pool): ...
+        async def get(self, uid, pid):
+            return SimpleNamespace(settings={})  # narrative_thread off
+
+    seen: dict = {}
+
+    async def _fake_diverge(llm, **kw):
+        seen.update(kw)
+        return [Candidate("CHAPTER PROSE", DraftMetering(40, 12, True))]
+
+    reflect = SimpleNamespace(violations=[], resolved=True, iterations=0,
+                              status="checked", revise_finish_reason=None)
+
+    async def _fake_reflect(**kw):
+        return (kw["draft"], reflect, 4)
+
+    monkeypatch.setattr(works_mod, "WorksRepo", _FakeWorks)
+    monkeypatch.setattr(select_mod, "diverge", _fake_diverge)
+    monkeypatch.setattr(reflect_mod, "run_canon_reflect", _fake_reflect)
+    monkeypatch.setattr(profile_mod, "from_settings", lambda s: SimpleNamespace(source_language="en"))
+
+    inp = {
+        "user_id": str(uuid4()), "project_id": str(uuid4()), "chapter_id": str(uuid4()),
+        "model_source": "user_model", "model_ref": "m1", "operation": "draft_chapter",
+        "packed_prompt": "GROUNDING", "prompt_estimate": 20, "max_out": 4000,
+        "present_entity_ids": ["e1", "e2"], "scene_sort_order": 3,
+        "reasoning": "rule_based", "reasoning_effort": None, "reasoning_passthrough": True,
+        "grounding_available": True, "reinjected_promise_count": 0, "reflect_max_iters": 1,
+        "critic_source": None, "critic_ref": None,
+    }
+    out = await run_chapter_generate(object(), object(), object(), input=inp)
+    assert out["text"] == "CHAPTER PROSE" and out["assembly_mode"] == "chapter"
+    assert out["output_tokens"] == 12 + 4  # winner + revise tokens
+    assert out["canon"]["status"] == "checked"
+    assert out["persisted"] is False and out["draft_version"] is None  # Option A
+    assert out["open_promise_count"] is None  # narrative_thread off
+    assert out["max_output_tokens"] == 4000
+    assert seen["k"] == 1  # single pass
+    assert seen["reasoning_effort"] is None  # passthrough → omit effort
+
+
+async def test_run_job_dispatches_selection_edit_via_worker_op(monkeypatch):
+    job = _job(operation="rewrite", input={"worker_op": "selection_edit", "messages": []})
+    repo = _FakeRepo(job)
+    monkeypatch.setattr(jc, "GenerationJobsRepo", lambda pool: repo)
+
+    captured: dict = {}
+
+    async def _rse(llm, *, input):
+        captured.update(input)
+        return {"text": "edited prose", "persisted": False, "selection_edit": True}
+
+    monkeypatch.setattr(jc, "run_selection_edit", _rse)
+    out = await jc.run_job(object(), object(), job_id=str(job.id), user_id=str(job.user_id))
+    assert out == "completed"
+    assert repo.updates[-1][1]["text"] == "edited prose"
+    assert captured["user_id"] == str(job.user_id)  # injected off the job row
+
+
+async def test_run_selection_edit_drains_stream_to_final(monkeypatch):
+    import app.engine.cowrite as cowrite_mod
+    from app.engine.cowrite import DraftMetering
+    from app.worker.operations import run_selection_edit
+
+    async def _fake_stream(sdk, **kw):
+        yield {"type": "token", "delta": "ed"}
+        yield {"type": "usage", "text": "edited replacement",
+               "metering": DraftMetering(20, 8, True, finish_reason="stop")}
+
+    monkeypatch.setattr(cowrite_mod, "stream_draft", _fake_stream)
+    inp = {
+        "user_id": str(uuid4()), "model_source": "user_model", "model_ref": "m1",
+        "messages": [{"role": "system", "content": "voice"},
+                     {"role": "user", "content": "rewrite: the gate rose"}],
+        "prompt_estimate": 5, "max_out": 512, "reasoning_passthrough": True,
+        "reasoning_effort": None, "reasoning": "rule_based", "grounding_available": True,
+    }
+    out = await run_selection_edit(SimpleNamespace(sdk=object()), input=inp)
+    assert out["text"] == "edited replacement" and out["output_tokens"] == 8
+    assert out["finish_reason"] == "stop" and out["selection_edit"] is True
+    assert out["persisted"] is False and out["grounding_available"] is True
+
+
+async def test_run_selection_edit_no_output_is_terminal(monkeypatch):
+    import app.engine.cowrite as cowrite_mod
+    from app.worker.operations import run_selection_edit
+    import pytest
+
+    async def _empty_stream(sdk, **kw):
+        if False:
+            yield  # never yields a usage frame
+
+    monkeypatch.setattr(cowrite_mod, "stream_draft", _empty_stream)
+    inp = {"user_id": str(uuid4()), "model_source": "user_model", "model_ref": "m1",
+           "messages": [], "prompt_estimate": 1, "max_out": 100}
+    with pytest.raises(ValueError):  # no usage frame → run_job marks 'failed'
+        await run_selection_edit(SimpleNamespace(sdk=object()), input=inp)
+
+
+async def test_run_decompose_reconstructs_chapterplans_from_input(monkeypatch):
+    import app.engine.plan as plan_mod
+
+    @dataclasses.dataclass
+    class _Res:
+        tree: list
+
+    captured: dict = {}
+
+    async def _fake_decompose(llm, **kw):
+        captured.update(kw)
+        return _Res(tree=[{"scene": 1}])
+
+    monkeypatch.setattr(plan_mod, "decompose", _fake_decompose)
+    inp = {
+        "model_source": "user_model", "model_ref": "m1", "premise": "a hero falls",
+        "arc_title": "Hero's Journey", "beats": [],
+        "chapters": [{"chapter_id": "c1", "title": "Ch1", "sort_order": 1,
+                      "beat_role": None, "intent": ""}],
+        "cast": [], "k_ceiling": 3, "high_threshold": 70,
+        "min_scenes": 1, "max_scenes": 6, "source_language": "en",
+    }
+    out = await run_decompose(object(), user_id="u", input=inp)
+    assert out == {"tree": [{"scene": 1}]}
+    assert captured["premise"] == "a hero falls"
+    # the chapter dict was reconstructed into a ChapterPlan dataclass
+    assert captured["chapters"][0].chapter_id == "c1"
+    assert captured["chapters"][0].title == "Ch1"

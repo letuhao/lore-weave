@@ -64,6 +64,106 @@ async def test_list_filters_by_book_id(pool):
     assert await repo.list(user, book_id=uuid4()) == []
 
 
+# ── G4 (world-level project) — real-PG world_id binding ────────────────
+
+
+@pytest.mark.asyncio
+async def test_create_or_get_stamps_world_id_idempotently(pool):
+    """G4: world-create provisions the world-level project via create_or_get
+    with world_id. A re-provision for the same (user, bible book) returns the
+    SAME project and stamps world_id if it wasn't carried yet — never dups."""
+    repo = ProjectsRepo(pool)
+    user, bible_book, world = uuid4(), uuid4(), uuid4()
+    # first provision WITHOUT world_id (a pre-existing bible-book project)
+    p1, c1 = await repo.create_or_get(
+        user, ProjectCreate(name="World Bible", project_type="book", book_id=bible_book)
+    )
+    assert c1 is True and p1.world_id is None
+    # re-provision WITH world_id → same project, now stamped (idempotent)
+    p2, c2 = await repo.create_or_get(
+        user,
+        ProjectCreate(
+            name="World Bible", project_type="book",
+            book_id=bible_book, world_id=world,
+        ),
+    )
+    assert c2 is False
+    assert p2.project_id == p1.project_id
+    assert p2.world_id == world
+    # exactly one project for the bible book
+    assert len(await repo.list(user, world_id=world)) == 1
+
+
+@pytest.mark.asyncio
+async def test_create_or_get_refuses_world_id_rebind(pool):
+    """G4 (review #3): a bible book belongs to exactly one world and never moves.
+    create_or_get stamps world_id only when currently NULL — a re-provision with
+    a DIFFERENT world_id is refused (the binding stays put), and a re-provision
+    with the SAME world_id is a no-op."""
+    repo = ProjectsRepo(pool)
+    user, bible_book, world_a, world_b = uuid4(), uuid4(), uuid4(), uuid4()
+    p1, _ = await repo.create_or_get(
+        user,
+        ProjectCreate(name="wb", project_type="book", book_id=bible_book, world_id=world_a),
+    )
+    assert p1.world_id == world_a
+    # re-provision with a DIFFERENT world → binding unchanged (no silent rebind)
+    p2, created2 = await repo.create_or_get(
+        user,
+        ProjectCreate(name="wb", project_type="book", book_id=bible_book, world_id=world_b),
+    )
+    assert created2 is False
+    assert p2.project_id == p1.project_id
+    assert p2.world_id == world_a  # NOT world_b
+    # re-provision with the SAME world → no-op, still bound to world_a
+    p3, _ = await repo.create_or_get(
+        user,
+        ProjectCreate(name="wb", project_type="book", book_id=bible_book, world_id=world_a),
+    )
+    assert p3.world_id == world_a
+
+
+@pytest.mark.asyncio
+async def test_world_level_project_hidden_from_home_but_book_id_resolves(pool):
+    """G4: a world-level project (world_id set) is excluded from the HOME
+    browse, returned by ?world_id, and STILL resolvable by ?book_id (the
+    useWorldProject graph resolver)."""
+    repo = ProjectsRepo(pool)
+    user, bible_book, world = uuid4(), uuid4(), uuid4()
+    await repo.create(user, _mk("normal-1"))
+    wp, _ = await repo.create_or_get(
+        user,
+        ProjectCreate(
+            name="World Bible", project_type="book",
+            book_id=bible_book, world_id=world,
+        ),
+    )
+    # HOME browse excludes the world project, keeps the normal one
+    home = await repo.list(user)
+    assert wp.project_id not in {p.project_id for p in home}
+    assert "normal-1" in {p.name for p in home}
+    # ?world_id returns it
+    by_world = await repo.list(user, world_id=world)
+    assert [p.project_id for p in by_world] == [wp.project_id]
+    # ?book_id (the bible book) still resolves it — exempt from the HOME hide
+    by_book = await repo.list(user, book_id=bible_book)
+    assert [p.project_id for p in by_book] == [wp.project_id]
+
+
+@pytest.mark.asyncio
+async def test_patch_clears_world_id(pool):
+    """G4: PATCH world_id=None detaches a project from its world."""
+    repo = ProjectsRepo(pool)
+    user, book, world = uuid4(), uuid4(), uuid4()
+    p, _ = await repo.create_or_get(
+        user,
+        ProjectCreate(name="wb", project_type="book", book_id=book, world_id=world),
+    )
+    assert p.world_id == world
+    cleared = await repo.update(user, p.project_id, ProjectUpdate(world_id=None))
+    assert cleared is not None and cleared.world_id is None
+
+
 @pytest.mark.asyncio
 async def test_list_by_book_id_is_user_scoped(pool):
     """The book filter must not leak another user's project for the same book."""
@@ -134,6 +234,61 @@ async def test_create_or_get_book_without_book_id_always_inserts(pool):
     b, cb = await repo.create_or_get(user, ProjectCreate(name="nb2", project_type="book"))
     assert ca is True and cb is True
     assert a.project_id != b.project_id
+
+
+def _mk_derivative(name: str, *, book_id: UUID) -> ProjectCreate:
+    return ProjectCreate(
+        name=name, project_type="book", book_id=book_id, force_new=True
+    )
+
+
+@pytest.mark.asyncio
+async def test_force_new_book_projects_get_distinct_ids(pool):
+    """C23 derivative fix: two derive-style creates for the SAME (user, book)
+    with force_new=True yield DISTINCT project_ids (each derivative gets its OWN
+    fresh partition — G2). They must NOT dedupe back to a single project."""
+    repo = ProjectsRepo(pool)
+    user, book = uuid4(), uuid4()
+    a, ca = await repo.create_or_get(user, _mk_derivative("d1", book_id=book))
+    b, cb = await repo.create_or_get(user, _mk_derivative("d2", book_id=book))
+    assert ca is True and cb is True
+    assert a.project_id != b.project_id
+    assert a.is_derivative is True and b.is_derivative is True
+
+
+@pytest.mark.asyncio
+async def test_force_new_does_not_break_back_compat_dedup(pool):
+    """A NORMAL book project create_or_get (force_new default False) still
+    dedupes per (user, book) — back-compat unchanged."""
+    repo = ProjectsRepo(pool)
+    user, book = uuid4(), uuid4()
+    first, c1 = await repo.create_or_get(user, _mk_book("a", book_id=book))
+    second, c2 = await repo.create_or_get(user, _mk_book("b", book_id=book))
+    assert c1 is True and c2 is False
+    assert second.project_id == first.project_id
+    assert first.is_derivative is False
+
+
+@pytest.mark.asyncio
+async def test_create_or_get_never_returns_a_derivative_for_source_book(pool):
+    """A derivative project for a book must NEVER be handed back by the source
+    book's create_or_get / get_by_book. First mint a derivative, THEN the source
+    book's first create_or_get must INSERT a fresh source project (created=True),
+    not return the derivative."""
+    repo = ProjectsRepo(pool)
+    user, book = uuid4(), uuid4()
+    # A derivative exists for this book (e.g. an earlier derive ran first).
+    deriv, _ = await repo.create_or_get(user, _mk_derivative("deriv", book_id=book))
+    # The source book's get-or-create must NOT return the derivative.
+    source, created = await repo.create_or_get(user, _mk_book("source", book_id=book))
+    assert created is True
+    assert source.project_id != deriv.project_id
+    assert source.is_derivative is False
+    # get_by_book (book-scoped raw-search resolution) must also skip derivatives.
+    by_book = await repo.get_by_book(book)
+    assert by_book is not None
+    assert by_book.project_id == source.project_id
+    assert by_book.is_derivative is False
 
 
 @pytest.mark.asyncio

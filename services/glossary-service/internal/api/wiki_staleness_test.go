@@ -88,6 +88,131 @@ func TestSweepRecipeDrift_NoDriftNoRow(t *testing.T) {
 	}
 }
 
+// dismissStaleness mirrors dismissWikiStaleness: pending→dismissed for (article,
+// reason) + clears is_knowledge_stale when no pending rows remain.
+func dismissStaleness(t *testing.T, f *mergeFixture, articleID uuid.UUID, reason string) {
+	t.Helper()
+	if _, err := f.pool.Exec(f.ctx,
+		`UPDATE wiki_staleness SET status='dismissed'
+		   WHERE article_id=$1 AND reason_code=$2 AND status='pending'`,
+		articleID, reason); err != nil {
+		t.Fatalf("dismiss: %v", err)
+	}
+	if _, err := f.pool.Exec(f.ctx,
+		`UPDATE wiki_articles SET is_knowledge_stale=false
+		   WHERE article_id=$1
+		     AND NOT EXISTS (SELECT 1 FROM wiki_staleness WHERE article_id=$1 AND status='pending')`,
+		articleID); err != nil {
+		t.Fatalf("clear flag: %v", err)
+	}
+}
+
+func isStale(t *testing.T, f *mergeFixture, articleID uuid.UUID) bool {
+	t.Helper()
+	var stale bool
+	f.pool.QueryRow(f.ctx, `SELECT is_knowledge_stale FROM wiki_articles WHERE article_id=$1`, articleID).Scan(&stale)
+	return stale
+}
+
+// D-WIKI-P2-SWEEP-DISMISS-RESWEEP: a dismissed recipe_drift stays dismissed while
+// its signature (the STORED from-version = source_id) is unchanged — a re-sweep
+// with the same current versions must NOT re-nag, and must NOT re-raise the badge.
+func TestSweepRecipeDrift_DismissedSameSignatureNotResurrected(t *testing.T) {
+	f := newMergeFixture(t, "00000000d0e3")
+	cleanupWikiArticles(t, f)
+	entity := f.mkEntity(t, "Jonathan", nil)
+	art := mkWikiArticle(t, f.pool, f.ctx, f.bookID, entity)
+	f.pool.Exec(f.ctx, `UPDATE wiki_articles SET generation_status='generated' WHERE article_id=$1`, art)
+	setProvenanceVersions(t, f, art, "v1", "p1")
+
+	if n, err := f.srv.sweepRecipeDrift(context.Background(), f.bookID, "v2", "p1"); err != nil || n != 1 {
+		t.Fatalf("initial sweep: n=%d err=%v (want 1)", n, err)
+	}
+	dismissStaleness(t, f, art, "recipe_drift")
+	if isStale(t, f, art) {
+		t.Fatal("badge should be cleared after dismiss")
+	}
+
+	// Same current versions (still drifted from the SAME stored v1/p1) → suppressed.
+	n2, err := f.srv.sweepRecipeDrift(context.Background(), f.bookID, "v2", "p1")
+	if err != nil {
+		t.Fatalf("re-sweep: %v", err)
+	}
+	if n2 != 0 {
+		t.Fatalf("dismissed same-signature must not re-insert, got %d", n2)
+	}
+	if got := pendingStaleness(t, f, art, "recipe_drift"); got != 0 {
+		t.Fatalf("want 0 pending (stays dismissed), got %d", got)
+	}
+	if isStale(t, f, art) {
+		t.Fatal("dismissed same-signature must NOT re-raise is_knowledge_stale")
+	}
+}
+
+// The crux of "signature = the STORED from-version, NOT the current": after a dismiss,
+// the current recipe bumping FURTHER (stored unchanged) must stay suppressed — the user
+// accepted this v1/p1 build, so each newer recipe is not a fresh nag. Guards against a
+// future refactor accidentally folding current_* into recipe's source_id (kg does that).
+func TestSweepRecipeDrift_DismissedSurvivesCurrentBump(t *testing.T) {
+	f := newMergeFixture(t, "00000000d0e5")
+	cleanupWikiArticles(t, f)
+	entity := f.mkEntity(t, "Harker", nil)
+	art := mkWikiArticle(t, f.pool, f.ctx, f.bookID, entity)
+	f.pool.Exec(f.ctx, `UPDATE wiki_articles SET generation_status='generated' WHERE article_id=$1`, art)
+	setProvenanceVersions(t, f, art, "v1", "p1")
+
+	if n, err := f.srv.sweepRecipeDrift(context.Background(), f.bookID, "v2", "p1"); err != nil || n != 1 {
+		t.Fatalf("initial sweep: n=%d err=%v (want 1)", n, err)
+	}
+	dismissStaleness(t, f, art, "recipe_drift")
+
+	// Current recipe bumps further (v3) but the article is STILL the same v1/p1 build →
+	// same signature → must stay suppressed (and the badge must not re-raise).
+	n2, err := f.srv.sweepRecipeDrift(context.Background(), f.bookID, "v3", "p1")
+	if err != nil {
+		t.Fatalf("re-sweep: %v", err)
+	}
+	if n2 != 0 {
+		t.Fatalf("a further current bump on the same stored build must stay suppressed, got %d", n2)
+	}
+	if got := pendingStaleness(t, f, art, "recipe_drift"); got != 0 {
+		t.Fatalf("want 0 pending, got %d", got)
+	}
+	if isStale(t, f, art) {
+		t.Fatal("further current bump must NOT re-raise is_knowledge_stale")
+	}
+}
+
+// After regeneration the stored from-version changes → a genuinely new signature →
+// the drift re-surfaces despite the earlier dismissal.
+func TestSweepRecipeDrift_DismissedNewSignatureResurfaces(t *testing.T) {
+	f := newMergeFixture(t, "00000000d0e4")
+	cleanupWikiArticles(t, f)
+	entity := f.mkEntity(t, "Renfield2", nil)
+	art := mkWikiArticle(t, f.pool, f.ctx, f.bookID, entity)
+	f.pool.Exec(f.ctx, `UPDATE wiki_articles SET generation_status='generated' WHERE article_id=$1`, art)
+	setProvenanceVersions(t, f, art, "v1", "p1")
+
+	if n, err := f.srv.sweepRecipeDrift(context.Background(), f.bookID, "v2", "p1"); err != nil || n != 1 {
+		t.Fatalf("initial sweep: n=%d err=%v (want 1)", n, err)
+	}
+	dismissStaleness(t, f, art, "recipe_drift")
+
+	// Regenerate: stored from-version becomes v2/p1 (a NEW signature). A later current
+	// bump to v3 drifts the v2/p1 build → must re-surface (different source_id).
+	setProvenanceVersions(t, f, art, "v2", "p1")
+	n2, err := f.srv.sweepRecipeDrift(context.Background(), f.bookID, "v3", "p1")
+	if err != nil {
+		t.Fatalf("re-sweep: %v", err)
+	}
+	if n2 != 1 {
+		t.Fatalf("new signature must re-surface, got %d", n2)
+	}
+	if got := pendingStaleness(t, f, art, "recipe_drift"); got != 1 {
+		t.Fatalf("want 1 pending (new signature), got %d", got)
+	}
+}
+
 // ── resolve-on-write (F3 fix) ─────────────────────────────────────────────────
 
 func TestWriteback_ResolvesPendingStaleness(t *testing.T) {

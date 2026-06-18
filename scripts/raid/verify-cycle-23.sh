@@ -1,312 +1,116 @@
 #!/usr/bin/env bash
-# verify-cycle-23.sh — L5.A + L5.D Canon contracts + Per-reality
-# canon_projection (2 DPS).
-#
-# Acceptance gate. Exit 0 = pass; non-zero = fail.
-#
-# Cycle 23 scope (2 DPS — all inline):
-#   DPS 1 — L5.A glossary-service outbox CONTRACT + test fixture:
-#     * contracts/events/canon.go        — 4 event types + CanonLayer enum
-#     * contracts/events/canon_test.go   — contract test fixture
-#     * contracts/events/_registry.yaml  — 4 new entries shipped_cycle: 23
-#     * docs/governance/glossary-service-outbox-contract.md
-#     * eventgen regenerated (drift-free)
-#
-#   DPS 2 — L5.D per-reality canon_projection (11th projection table):
-#     * contracts/migrations/per_reality/0009_canon_projection.up/down.sql
-#     * contracts/migrations/per_reality/0010_canon_projection_indexes.up/down.sql
-#     * crates/projections/canon/ Rust crate (Projection trait impl)
-#
-# LOCKED decisions enforced:
-#   Q-L5A-1  — glossary-service outbox emitter is SEPARATE sub-program.
-#              Foundation owns CONTRACT + test fixture; verify-cycle-23
-#              hard-fails if services/glossary-service/ was modified.
-#   Q-L5-3   — single canon_projection table with canon_layer column
-#              (enum {L1_axiom, L2_seeded}).
-#   Q-L1A-2  — canon_projection is per-reality (NOT meta); migration lives
-#              under contracts/migrations/per_reality/.
-#   Q-L3-4   — VerificationMeta cols on canon_projection (5-col block
-#              identical to cycle 13 L3.A).
-#   Q-L5-1   — canon cache invalidation = event-driven primary via
-#              last_synced_at column + (last_synced_at) index for L5.E.
-
+# verify-cycle-23 — C23 Derivative schema + API (BE composition). Per
+# RAID_WORKFLOW.md §13 (exit 0 = pass). dị bản M0 / COW substrate /
+# ARCH-REVIEW GUARD reconciled with C16. Asserts: (1) composition_work gains
+# source_work_id (self-ref FK) + chapter-level branch_point; (2) new tables
+# divergence_spec + entity_override; (3) the CONDITIONAL project_id GUARD
+# (CHECK source_work_id IS NULL OR project_id IS NOT NULL) — NOT a blanket SET
+# NOT NULL, so C16's greenfield null-path survives; (4) POST /works/{id}/derive
+# provisions a FRESH project_id (G2, never the source's), persists spec+overrides,
+# NO chapter clone, rejects a null/absent project_id (4xx); (5) the down SQL drops
+# the 2 tables + 2 columns + the constraint cleanly (round-trip). Static greps +
+# targeted pytest (routers + derivatives repo + migration round-trip) + py_compile
+# + provider-gate.
 set -euo pipefail
+CYCLE=23
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+CS="$REPO_ROOT/services/composition-service"
+AUDIT_LOG="$REPO_ROOT/docs/audit/AUDIT_LOG.jsonl"
+NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
-cd "$repo_root"
+audit() { mkdir -p "$(dirname "$AUDIT_LOG")"; echo "{\"ts\":\"$NOW\",\"event\":\"$1\",\"cycle\":$CYCLE}" >> "$AUDIT_LOG"; }
+fail() { echo "[verify-cycle-23] FAIL: $1" >&2; audit "verify_cycle_23_failed"; exit 1; }
+have() { grep -Fq "$2" "$1" || fail "$3"; }
 
-step=0
-pass() { step=$((step+1)); echo "[verify-cycle-23] step $step PASS: $1"; }
-fail() { step=$((step+1)); echo "[verify-cycle-23] step $step FAIL: $1" >&2; exit 1; }
-note() { echo "[verify-cycle-23] note: $1"; }
+echo "[verify-cycle-23] running CI gate"
 
-# ─────────────────────────────────────────────────────────────────────────
-# DPS 1 — L5.A canon event contracts + glossary outbox contract doc
-# ─────────────────────────────────────────────────────────────────────────
+ROUTER="$CS/app/routers/works.py"
+REPO="$CS/app/db/repositories/works.py"
+DREPO="$CS/app/db/repositories/derivatives.py"
+MODEL="$CS/app/db/models.py"
+MIG="$CS/app/db/migrate.py"
+DEPS="$CS/app/deps.py"
 
-for f in \
-    contracts/events/canon.go \
-    contracts/events/canon_test.go \
-    docs/governance/glossary-service-outbox-contract.md ; do
-    [[ -f "$f" ]] || fail "L5.A file missing: $f"
+for f in "$ROUTER" "$REPO" "$DREPO" "$MODEL" "$MIG" "$DEPS"; do
+  [ -f "$f" ] || fail "missing source file: $f"
 done
-pass "L5.A files present (canon.go + canon_test.go + contract doc)"
 
-# Q-L5A-1: glossary-service MUST NOT be modified this cycle.
-if git diff --name-only HEAD 2>/dev/null | grep -qE '^services/glossary-service/'; then
-    fail "Q-L5A-1 violation: services/glossary-service/ modified (must be SEPARATE sub-program)"
-fi
-pass "Q-L5A-1: services/glossary-service/ untouched (separate sub-program)"
+# ── 1. migration — columns + tables + CONDITIONAL guard + self-ref FK ──
+have "$MIG" "ADD COLUMN IF NOT EXISTS source_work_id UUID" "migration missing source_work_id column"
+grep -Fq "REFERENCES composition_work(id) ON DELETE SET NULL" "$MIG" || fail "source_work_id is not a self-ref FK"
+have "$MIG" "ADD COLUMN IF NOT EXISTS branch_point INT" "migration missing chapter-level branch_point column"
+have "$MIG" "CREATE TABLE IF NOT EXISTS divergence_spec" "migration missing divergence_spec table"
+have "$MIG" "CREATE TABLE IF NOT EXISTS entity_override" "migration missing entity_override table"
+have "$MIG" "canon_rule  TEXT[]" "divergence_spec missing canon_rule[] (M0 canon-rule overrides)"
+have "$MIG" "pov_anchor  UUID" "divergence_spec missing pov_anchor"
+have "$MIG" "overridden_fields JSONB" "entity_override missing overridden_fields JSON"
+# The CONDITIONAL guard — derivative ⟹ project_id NOT NULL, NOT a blanket SET NOT NULL.
+have "$MIG" "chk_derivative_project_required" "migration missing the conditional project_id GUARD constraint"
+grep -Fq "CHECK (source_work_id IS NULL OR project_id IS NOT NULL)" "$MIG" \
+  || fail "GUARD is not the conditional CHECK (derivative ⟹ project_id NOT NULL)"
+# Must NOT blanket-NOT-NULL project_id (would regress C16 greenfield + fail on 163 null rows).
+grep -Eq "composition_work[[:space:]]+ALTER COLUMN project_id SET NOT NULL" "$MIG" \
+  && fail "migration blanket-SETs project_id NOT NULL — regresses C16 greenfield null-path" || true
 
-# 4 canon event types present (Q-L5-3 4-event spec).
-for sym in CanonEntryCreatedV1 CanonEntryUpdatedV1 CanonEntryPromotedV1 CanonEntryDecanonizedV1 ; do
-    grep -q "type $sym struct" contracts/events/canon.go \
-        || fail "L5.A: $sym struct missing"
-done
-pass "L5.A: 4 canon.entry.* event structs present"
+# ── 2. down SQL — clean reverse (round-trip) ──
+have "$MIG" "C23_DOWN_SQL" "migration missing the C23_DOWN_SQL round-trip constant"
+have "$MIG" "DROP TABLE IF EXISTS entity_override" "down SQL does not drop entity_override"
+have "$MIG" "DROP TABLE IF EXISTS divergence_spec" "down SQL does not drop divergence_spec"
+have "$MIG" "DROP CONSTRAINT IF EXISTS chk_derivative_project_required" "down SQL does not drop the GUARD"
+have "$MIG" "DROP COLUMN IF EXISTS branch_point" "down SQL does not drop branch_point"
+have "$MIG" "DROP COLUMN IF EXISTS source_work_id" "down SQL does not drop source_work_id"
 
-# Q-L5-3: CanonLayer enum is {L1_axiom, L2_seeded} ONLY.
-grep -q 'CanonLayerL1Axiom CanonLayer = "L1_axiom"' contracts/events/canon.go \
-    || fail "Q-L5-3: CanonLayerL1Axiom constant missing or wrong value"
-grep -q 'CanonLayerL2Seeded CanonLayer = "L2_seeded"' contracts/events/canon.go \
-    || fail "Q-L5-3: CanonLayerL2Seeded constant missing or wrong value"
-pass "Q-L5-3: CanonLayer enum = {L1_axiom, L2_seeded}"
+# ── 3. model — CompositionWork derivative fields + new row models ──
+have "$MODEL" "source_work_id: UUID | None" "CompositionWork missing source_work_id"
+have "$MODEL" "branch_point: int | None" "CompositionWork missing branch_point"
+have "$MODEL" "class DivergenceSpec" "models missing DivergenceSpec"
+have "$MODEL" "class EntityOverride" "models missing EntityOverride"
 
-# Registry has 4 new canon.* entries with shipped_cycle: 23.
-for et in canon.entry.created canon.entry.updated canon.entry.promoted canon.entry.decanonized ; do
-    grep -q "name: $et" contracts/events/_registry.yaml \
-        || fail "L5.A: registry missing entry $et"
-done
-# Count shipped_cycle: 23 lines that follow canon.entry.* blocks. A simple
-# guard: ensure ALL 4 canon entries have shipped_cycle: 23. We grep the file
-# for the canon.entry.* names + verify each appears in the SAME block as a
-# shipped_cycle:23 line by counting blocks. awk-based block counter is the
-# robust option here (grep -B1/-A6 is fragile to YAML layout drift).
-canon_23_count=$(awk '
-    /^  - name: / {
-        if (in_canon && found_23) total++
-        in_canon = ($0 ~ /canon\.entry\./) ? 1 : 0
-        found_23 = 0
-        next
-    }
-    in_canon && /shipped_cycle: 23/ { found_23 = 1 }
-    END { if (in_canon && found_23) total++; print total+0 }
-' contracts/events/_registry.yaml)
-if [[ "$canon_23_count" != "4" ]]; then
-    fail "L5.A: expected 4 canon.entry.* entries with shipped_cycle:23 but found $canon_23_count"
-fi
-pass "L5.A: 4 canon.entry.* entries in registry with shipped_cycle: 23"
+# ── 4. repos — create_derivative + spec/override writers ──
+have "$REPO" "async def create_derivative" "works repo missing create_derivative"
+grep -Fq "source_work_id" "$REPO" || fail "create_derivative does not persist source_work_id"
+have "$DREPO" "async def create_spec" "derivatives repo missing create_spec"
+have "$DREPO" "async def create_override" "derivatives repo missing create_override"
+have "$DEPS" "get_derivatives_repo" "deps missing the derivatives repo factory"
 
-# Contract doc references all 4 LOCKED Q-IDs.
-for qid in Q-L5A-1 Q-L5-3 Q-L1A-2 ; do
-    grep -q "$qid" docs/governance/glossary-service-outbox-contract.md \
-        || fail "L5.A doc: $qid reference missing"
-done
-pass "L5.A doc: cites Q-L5A-1 + Q-L5-3 + Q-L1A-2"
+# ── 5. router — POST /works/{id}/derive: fresh project, GUARD, no clone ──
+have "$ROUTER" "/derive" "router missing the derive endpoint path"
+have "$ROUTER" "async def derive_work" "router missing derive_work"
+# ALWAYS provisions a FRESH project (G2) — create_project, never the source's id.
+grep -Fq "knowledge.create_project" "$ROUTER" || fail "derive does not provision a fresh knowledge project"
+have "$ROUTER" "create_derivative" "derive does not insert a derivative Work"
+# GUARD: a null/absent project (outage) is REJECTED, never degraded to a null Work.
+have "$ROUTER" "PROJECT_CREATE_UNAVAILABLE" "derive does not reject when a project can't be provisioned"
+grep -Fq "except KnowledgeContractError:" "$ROUTER" || fail "derive does not surface a 4xx contract error"
+# Persists spec + overrides.
+have "$ROUTER" "create_spec" "derive does not persist the divergence_spec"
+have "$ROUTER" "create_override" "derive does not persist entity_override[]"
+# COW: NO chapter/scene clone — the derive flow must NOT call a draft/clone write path.
+grep -Fq "patch_draft" "$ROUTER" && fail "derive appears to clone chapters (patch_draft present)" || true
 
-note "go test contracts/events (canon_test.go + existing)"
-( cd contracts/events && go test -count=1 ./... >/dev/null ) \
-    || fail "contracts/events tests FAILED"
-pass "contracts/events Go tests PASS (canon contract fixture + regression)"
+# ── 6. py_compile syntax gate (touched files) ──
+echo "[verify-cycle-23] py_compile"
+python -m py_compile "$ROUTER" "$REPO" "$DREPO" "$MODEL" "$MIG" "$DEPS" \
+  || fail "py_compile failed on a touched file"
 
-# Eventgen idempotency check — run regen twice; the second run must produce
-# the same output as the first. (We can't use git-diff vs HEAD here because
-# cycle-23 is shipping NEW generated files — the diff is expected. The real
-# invariant is determinism: regen is reproducible.)
-note "eventgen idempotency check (canon events + cycle-10 xreality)"
-(
-    cd tools/eventgen && go build -o eventgen . >/dev/null 2>&1
-) || fail "eventgen build failed"
-# Snapshot current state.
-tmp_pre="$(mktemp -d)"
-cp -r contracts/events/generated "$tmp_pre/snapshot1"
-./tools/eventgen/eventgen \
-    --registry contracts/events/_registry.yaml \
-    --events-dir contracts/events \
-    --out-dir contracts/events/generated \
-    --target all >/dev/null 2>&1 \
-    || { rm -rf "$tmp_pre"; rm -f tools/eventgen/eventgen tools/eventgen/eventgen.exe; fail "eventgen regenerate failed (run 1)"; }
-tmp_post="$(mktemp -d)"
-cp -r contracts/events/generated "$tmp_post/snapshot2"
-./tools/eventgen/eventgen \
-    --registry contracts/events/_registry.yaml \
-    --events-dir contracts/events \
-    --out-dir contracts/events/generated \
-    --target all >/dev/null 2>&1 \
-    || { rm -rf "$tmp_pre" "$tmp_post"; rm -f tools/eventgen/eventgen tools/eventgen/eventgen.exe; fail "eventgen regenerate failed (run 2)"; }
-rm -f tools/eventgen/eventgen tools/eventgen/eventgen.exe
-if diff -r "$tmp_post/snapshot2" contracts/events/generated >/dev/null 2>&1; then
-    rm -rf "$tmp_pre" "$tmp_post"
-    pass "eventgen: deterministic (regen produces identical output twice)"
+# ── 7. provider-gate (composition has no AI imports — keep it that way) ──
+echo "[verify-cycle-23] provider-gate"
+python "$REPO_ROOT/scripts/ai-provider-gate.py" >/dev/null 2>&1 || fail "ai-provider-gate failed"
+
+# ── 8. targeted pytest — router derive + works/derivatives repo (unit) ──
+echo "[verify-cycle-23] pytest (routers — derive)"
+( cd "$CS" && python -m pytest tests/unit/test_routers.py -q 2>&1 | tail -6 ) \
+  || fail "composition-service C23 router pytest failed"
+
+# ── 9. migration round-trip + derivative-guard on real PG (gated) ──
+if [ -n "${TEST_COMPOSITION_DB_URL:-}" ]; then
+  echo "[verify-cycle-23] pytest (migration round-trip + guard — real PG)"
+  ( cd "$CS" && python -m pytest tests/integration/db/test_repositories.py -q -k "c23 or works" 2>&1 | tail -6 ) \
+    || fail "composition-service C23 integration pytest failed"
 else
-    diff -r "$tmp_post/snapshot2" contracts/events/generated | head -10
-    rm -rf "$tmp_pre" "$tmp_post"
-    fail "eventgen: NON-DETERMINISTIC — back-to-back regen produced different output"
+  echo "[verify-cycle-23] NOTE: TEST_COMPOSITION_DB_URL unset — skipping real-PG round-trip (covered live at VERIFY)"
 fi
 
-# Rust generated canon files exist (Q-L4-1 polyglot parity).
-for f in \
-    contracts/events/generated/rust/canon_entry_created_v1.rs \
-    contracts/events/generated/rust/canon_entry_updated_v1.rs \
-    contracts/events/generated/rust/canon_entry_promoted_v1.rs \
-    contracts/events/generated/rust/canon_entry_decanonized_v1.rs ; do
-    [[ -f "$f" ]] || fail "eventgen: Rust mirror missing: $f"
-done
-pass "eventgen: Rust mirror present for all 4 canon events"
-
-# ─────────────────────────────────────────────────────────────────────────
-# DPS 2 — L5.D per-reality canon_projection (11th projection table)
-# ─────────────────────────────────────────────────────────────────────────
-
-for f in \
-    contracts/migrations/per_reality/0009_canon_projection.up.sql \
-    contracts/migrations/per_reality/0009_canon_projection.down.sql \
-    contracts/migrations/per_reality/0010_canon_projection_indexes.up.sql \
-    contracts/migrations/per_reality/0010_canon_projection_indexes.down.sql \
-    crates/projections/canon/Cargo.toml \
-    crates/projections/canon/src/lib.rs ; do
-    [[ -f "$f" ]] || fail "L5.D file missing: $f"
-done
-pass "L5.D files present (migrations 0009+0010 + canon projection crate)"
-
-# Q-L1A-2: canon_projection MUST be per-reality, NOT meta.
-if [[ -f contracts/migrations/meta/0009_canon_projection.up.sql ]] \
-   || [[ -f contracts/migrations/meta/0010_canon_projection_indexes.up.sql ]]; then
-    fail "Q-L1A-2 violation: canon_projection migration found under meta/ (must be per_reality/)"
-fi
-pass "Q-L1A-2: canon_projection migration is per_reality (not meta)"
-
-# Q-L5-3: single-table-with-canon_layer column (CHECK on the enum).
-grep -q "canon_layer .* TEXT NOT NULL" contracts/migrations/per_reality/0009_canon_projection.up.sql \
-    || fail "Q-L5-3: canon_layer TEXT NOT NULL column missing in 0009"
-grep -q "CHECK (canon_layer IN ('L1_axiom', 'L2_seeded'))" contracts/migrations/per_reality/0009_canon_projection.up.sql \
-    || fail "Q-L5-3: canon_layer enum CHECK constraint missing"
-pass "Q-L5-3: single table + canon_layer column + enum CHECK"
-
-# Q-L3-4: VerificationMeta cols present on canon_projection.
-for col in "event_id" "aggregate_version" "applied_at" "last_verified_event_version" "last_verified_at" ; do
-    grep -q "$col " contracts/migrations/per_reality/0009_canon_projection.up.sql \
-        || fail "Q-L3-4: VerificationMeta col missing: $col"
-done
-pass "Q-L3-4: VerificationMeta 5-col block present on canon_projection"
-
-# Cascade XOR semantics CHECK present.
-grep -q "canon_projection_origin_xor" contracts/migrations/per_reality/0009_canon_projection.up.sql \
-    || fail "L5.D: canon_projection_origin_xor CHECK missing (source_event_id XOR cascaded_from_reality_id)"
-pass "L5.D: cascade origin XOR CHECK (own-source vs cascade-source)"
-
-# Q-L5-1: last_synced_at column + index for L5.E cache invalidation.
-grep -q "last_synced_at .* TIMESTAMPTZ NOT NULL" contracts/migrations/per_reality/0009_canon_projection.up.sql \
-    || fail "Q-L5-1: last_synced_at column missing"
-grep -q "canon_projection_last_synced_idx" contracts/migrations/per_reality/0010_canon_projection_indexes.up.sql \
-    || fail "Q-L5-1: index on last_synced_at missing (cache invalidation probe)"
-pass "Q-L5-1: last_synced_at column + index for L5.E event-driven invalidation"
-
-# Composite + partial + applied_at + event_id indexes per L5.D.2 plan.
-for idx in \
-    canon_projection_book_layer_idx \
-    canon_projection_attribute_path_active_idx \
-    canon_projection_last_synced_idx \
-    canon_projection_applied_at_idx \
-    canon_projection_event_id_idx ; do
-    grep -q "$idx" contracts/migrations/per_reality/0010_canon_projection_indexes.up.sql \
-        || fail "L5.D.2: index $idx missing"
-done
-pass "L5.D.2: 5 indexes present (composite + partial + 3 conventional)"
-
-# Down migrations are idempotent (DROP IF EXISTS).
-grep -q "DROP TABLE IF EXISTS canon_projection" contracts/migrations/per_reality/0009_canon_projection.down.sql \
-    || fail "L5.D: 0009.down must DROP TABLE IF EXISTS canon_projection"
-grep -q "DROP INDEX IF EXISTS canon_projection_book_layer_idx" contracts/migrations/per_reality/0010_canon_projection_indexes.down.sql \
-    || fail "L5.D: 0010.down must DROP INDEX IF EXISTS for each idx"
-pass "L5.D: down migrations idempotent (DROP IF EXISTS)"
-
-# Migration idempotency validator (cycle 7 lint).
-if [[ -x scripts/migration-idempotency-validator.sh ]]; then
-    note "migration-idempotency-validator.sh"
-    bash scripts/migration-idempotency-validator.sh >/dev/null 2>&1 \
-        || fail "migration-idempotency-validator failed on cycle-23 migrations"
-    pass "migration-idempotency-validator clean"
-else
-    note "migration-idempotency-validator.sh not executable; skipping (cycle-7 invariant)"
-fi
-
-# crates/projections/canon Rust tests + build.
-note "cargo build -p projections-canon"
-if cargo build -p projections-canon 2>&1 | tail -3 | grep -qE "(Finished|Compiling)"; then
-    pass "cargo build -p projections-canon: OK"
-else
-    cargo build -p projections-canon 2>&1 | tail -20
-    fail "cargo build -p projections-canon failed"
-fi
-
-note "cargo test -p projections-canon"
-if cargo test -p projections-canon --lib --quiet 2>&1 | tail -5 | grep -q "test result: ok"; then
-    pass "cargo test -p projections-canon: PASS"
-else
-    cargo test -p projections-canon --lib 2>&1 | tail -30
-    fail "cargo test -p projections-canon failed"
-fi
-
-# Workspace member registered.
-grep -q '"crates/projections/canon"' Cargo.toml \
-    || fail "L5.D: crates/projections/canon not added to workspace Cargo.toml"
-pass "L5.D: workspace member crates/projections/canon registered"
-
-# Regression: cycle-13 projection crates still green (no API break).
-note "cycle-13 regression: pc/npc/region/world_kv/session projections"
-for crate in projections-pc projections-npc projections-region projections-world_kv projections-session ; do
-    if ! cargo build -p "$crate" --quiet 2>&1 | tail -2 | grep -qE "(Finished|Compiling)"; then
-        # Some builds emit nothing on success (incremental cache hits); fall back
-        # to a no-error check.
-        if ! cargo build -p "$crate" 2>&1 | grep -qE "^error"; then
-            :  # clean
-        else
-            fail "cycle-13 regression: $crate build failed"
-        fi
-    fi
-done
-pass "cycle-13 projections still build (no API regression)"
-
-# ─────────────────────────────────────────────────────────────────────────
-# B5 prod-isolation + B6 secret-scan
-# ─────────────────────────────────────────────────────────────────────────
-
-if git diff --name-only HEAD 2>/dev/null | grep -qE '^infra/existing-prod/'; then
-    fail "B5: changes detected under infra/existing-prod/ (forbidden)"
-fi
-pass "B5 prod-isolation: no infra/existing-prod/ changes"
-
-if bash scripts/raid/prod-isolation-lint.sh >/dev/null 2>&1; then
-    pass "B5 prod-isolation-lint clean"
-else
-    fail "B5 prod-isolation-lint failed"
-fi
-
-NEW_FILES=(
-    contracts/events/canon.go
-    contracts/events/canon_test.go
-    docs/governance/glossary-service-outbox-contract.md
-    contracts/migrations/per_reality/0009_canon_projection.up.sql
-    contracts/migrations/per_reality/0009_canon_projection.down.sql
-    contracts/migrations/per_reality/0010_canon_projection_indexes.up.sql
-    contracts/migrations/per_reality/0010_canon_projection_indexes.down.sql
-    crates/projections/canon/src/lib.rs
-)
-SECRET_PATTERNS='AKIA[0-9A-Z]{16}|aws_secret_access_key|BEGIN (RSA|EC|OPENSSH) PRIVATE KEY|xoxb-[A-Za-z0-9-]{20,}|ghp_[A-Za-z0-9]{30,}|sk_live_[A-Za-z0-9]{20,}'
-for f in "${NEW_FILES[@]}"; do
-    [[ -f "$f" ]] || continue
-    if grep -qE "$SECRET_PATTERNS" "$f"; then
-        fail "B6: potential secret in $f"
-    fi
-done
-pass "B6 secret-scan: no high-risk patterns in cycle-23 new files"
-
-if bash scripts/raid/secret-scan-cycle.sh 23 >/dev/null 2>&1; then
-    pass "B6 secret-scan-cycle clean"
-else
-    note "B6 secret-scan: gitleaks unavailable on dev machine (CI will gate)"
-fi
-
-echo "[verify-cycle-23] all $step steps PASS"
+audit "verify_cycle_23_passed"
+echo "[verify-cycle-23] PASS"
 exit 0

@@ -53,7 +53,7 @@ describe('useRawSearch', () => {
     await waitFor(() => expect(result.current.hits).toHaveLength(1));
     expect(hybridMock).toHaveBeenCalledWith(
       'book-1',
-      { q: '乾坤圈', mode: 'hybrid', limit: 20, granularity: 'chapter', rerank: true },
+      { q: '乾坤圈', mode: 'hybrid', limit: 20, granularity: 'chapter', rerank: true, surface: 'canon' },
       'tok',
     );
     expect(searchMock).not.toHaveBeenCalled();
@@ -67,7 +67,7 @@ describe('useRawSearch', () => {
     );
     await waitFor(() => expect(result.current.hits).toHaveLength(1));
     expect(searchMock).toHaveBeenCalledWith(
-      'book-1', { q: 'x', limit: 20, granularity: 'chapter' }, 'tok',
+      'book-1', { q: 'x', limit: 20, granularity: 'chapter', surface: 'canon' }, 'tok',
     );
     expect(hybridMock).not.toHaveBeenCalled();
   });

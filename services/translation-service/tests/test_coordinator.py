@@ -23,9 +23,22 @@ class _AcquireCM:
         pass
 
 
-def _make_pool():
+class _TxCM:
+    async def __aenter__(self):
+        return None
+
+    async def __aexit__(self, *_):
+        return False
+
+
+def _make_pool(owner_user_id="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"):
     db = AsyncMock()
     db.execute = AsyncMock()
+    # P1: the running transition is now `UPDATE ... RETURNING owner_user_id`
+    # (fetchrow) + emit_job_event inside `async with db.transaction()`.
+    from uuid import UUID
+    db.fetchrow = AsyncMock(return_value={"owner_user_id": UUID(owner_user_id)})
+    db.transaction = MagicMock(return_value=_TxCM())
     pool = MagicMock()
     pool.acquire = MagicMock(return_value=_AcquireCM(db))
     return pool, db
@@ -52,27 +65,32 @@ def _job_msg(chapter_ids=None):
 # ── Status update ─────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_coordinator_marks_job_running():
-    """Coordinator must UPDATE job status to 'running' before fanning out chapters."""
+async def test_coordinator_marks_job_running(monkeypatch):
+    """Coordinator must UPDATE job status to 'running' before fanning out chapters.
+
+    P1: the running UPDATE is now a fetchrow (RETURNING owner_user_id) inside a tx.
+    """
+    monkeypatch.setattr("app.workers.coordinator.emit_job_event", AsyncMock())
     pool, db = _make_pool()
     from app.workers.coordinator import handle_job_message
     await handle_job_message(_job_msg(), pool, AsyncMock(), AsyncMock())
 
-    db.execute.assert_called_once()
-    sql = db.execute.call_args.args[0]
+    db.fetchrow.assert_called_once()
+    sql = db.fetchrow.call_args.args[0]
     assert "running" in sql
     assert "started_at" in sql
 
 
 @pytest.mark.asyncio
-async def test_coordinator_passes_job_id_to_update():
+async def test_coordinator_passes_job_id_to_update(monkeypatch):
     """The running UPDATE must target the correct job_id."""
+    monkeypatch.setattr("app.workers.coordinator.emit_job_event", AsyncMock())
     pool, db = _make_pool()
     msg = _job_msg()
     from app.workers.coordinator import handle_job_message
     await handle_job_message(msg, pool, AsyncMock(), AsyncMock())
 
-    args = db.execute.call_args.args
+    args = db.fetchrow.call_args.args
     from uuid import UUID
     assert UUID(msg["job_id"]) in args
 
@@ -290,3 +308,54 @@ async def test_coordinator_single_chapter_job():
     assert publish.call_count == 1
     assert publish.call_args.args[1]["chapter_index"] == 0
     assert publish.call_args.args[1]["total_chapters"] == 1
+
+
+# ── P5 fair scheduling: flag-on ENQUEUE path ────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_coordinator_enqueues_to_wfq_when_p5_enabled(monkeypatch):
+    """With P5 on, the coordinator ENQUEUEs one unit per chapter into the per-owner WFQ
+    (owner=user_id) and does NOT publish directly — so a giant job can't dump N messages
+    onto the queue at once. The dispatcher loop releases them under the cap."""
+    monkeypatch.setattr("app.workers.coordinator.emit_job_event", AsyncMock())
+    monkeypatch.setattr("app.workers.coordinator.settings.p5_sched_enabled", True)
+    sched = AsyncMock()
+    monkeypatch.setattr("app.workers.coordinator.fair_sched.get_scheduler", lambda: sched)
+
+    pool, _ = _make_pool()
+    publish = AsyncMock()
+    from app.workers.coordinator import handle_job_message
+    from app.fair_sched import LANE_CHAPTER
+    await handle_job_message(_job_msg(CHAPTER_IDS), pool, publish, AsyncMock())
+
+    publish.assert_not_called()  # no direct fan-out
+    assert sched.enqueue.await_count == len(CHAPTER_IDS)
+    # every enqueue is (lane, owner, unit) for the same owner; units carry chapter_id
+    lanes = {c.args[0] for c in sched.enqueue.await_args_list}
+    owners = {c.args[1] for c in sched.enqueue.await_args_list}
+    assert lanes == {LANE_CHAPTER}
+    assert owners == {USER_ID}
+    units = [c.args[2] for c in sched.enqueue.await_args_list]
+    assert {u["chapter_id"] for u in units} == set(CHAPTER_IDS)
+    # each unit carries a deterministic lease token job_id:chapter_id (so the per-chapter
+    # finalize — possibly in another process — can release the exact slot)
+    job_id = units[0]["job_id"]
+    assert all(u["_p5_tok"] == f"{job_id}:{u['chapter_id']}" for u in units)
+
+
+@pytest.mark.asyncio
+async def test_coordinator_still_emits_running_when_p5_enabled(monkeypatch):
+    """Enqueue path must not skip the running transition + emit (the projection still
+    needs the job to appear)."""
+    emit = AsyncMock()
+    monkeypatch.setattr("app.workers.coordinator.emit_job_event", emit)
+    monkeypatch.setattr("app.workers.coordinator.settings.p5_sched_enabled", True)
+    monkeypatch.setattr("app.workers.coordinator.fair_sched.get_scheduler", lambda: AsyncMock())
+    pool, db = _make_pool()
+    publish_event = AsyncMock()
+    from app.workers.coordinator import handle_job_message
+    await handle_job_message(_job_msg(), pool, AsyncMock(), publish_event)
+
+    db.fetchrow.assert_called_once()  # running UPDATE still ran
+    emit.assert_awaited_once()        # running event still emitted
+    publish_event.assert_called_once()

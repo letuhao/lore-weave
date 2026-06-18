@@ -37,6 +37,10 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
 	}
 }
 
+// GrantClient exposes the process's grant client so main can wire the
+// grant-revoke stream consumer to its cache (D-GRANT-INSTANT-REVOKE). May be nil.
+func (s *Server) GrantClient() *grantclient.Client { return s.grantClient }
+
 func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -95,10 +99,15 @@ func (s *Server) Router() http.Handler {
 		r.Post("/books/{book_id}/select-for-context", s.internalSelectForContext)
 		r.Get("/books/{book_id}/known-entities", s.getKnownEntities)
 		r.Post("/books/{book_id}/extract-entities", s.bulkExtractEntities)
+		r.Get("/books/{book_id}/translation-candidates", s.internalTranslationCandidates)
+		r.Post("/books/{book_id}/apply-translations", s.internalApplyTranslations)
 		r.Get("/books/{book_id}/entity-count", s.internalEntityCount)
 		r.Get("/books/{book_id}/entities", s.internalListEntities)
 		// mui #4 — batch fetch by id for the knowledge semantic selector.
 		r.Post("/books/{book_id}/entities/by-ids", s.internalEntitiesByIDs)
+		// C13 — per-entity mention-span + coverage for the build-wizard auto-pin
+		// suggestion banner (bounded GROUP-BY over chapter_entity_links).
+		r.Get("/books/{book_id}/entities/stats", s.internalEntityStats)
 		// mui #1c G-cand — knowledge's coref detector proposes merge clusters here.
 		r.Post("/books/{book_id}/merge-candidates", s.internalProposeMergeCandidates)
 		// Set canonical content (short_description) on an existing entity.
@@ -214,6 +223,7 @@ func (s *Server) Router() http.Handler {
 				})
 			})
 			r.Get("/entity-names", s.listEntityNames)
+			r.Get("/translation-languages", s.listBookTranslationLanguages)
 			// Kind-resolution epic: the per-book unknown-kind review queue.
 			r.Get("/unknown-entities", s.listUnknownEntities)
 			// mui #1c: revert a recorded entity merge.
@@ -225,6 +235,10 @@ func (s *Server) Router() http.Handler {
 			r.Route("/entities", func(r chi.Router) {
 				r.Get("/", s.listEntities)
 				r.Post("/", s.createEntity)
+				// Bulk status flip (e.g. activate freshly-extracted drafts so they
+				// feed the translation glossary). Static path — registered before
+				// /{entity_id} so chi matches it first.
+				r.Post("/bulk-status", s.bulkSetEntityStatus)
 				r.Route("/{entity_id}", func(r chi.Router) {
 					r.Get("/", s.getEntityDetail)
 					r.Patch("/", s.patchEntity)

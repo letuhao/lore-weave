@@ -19,7 +19,7 @@ import (
 // (human edits always kept; pipeline/bulk pruned to a rolling last-N by the
 // consumer). See docs/specs/2026-06-07-glossary-entity-versioning.md.
 func UpEntityRevisions(ctx context.Context, pool *pgxpool.Pool) error {
-	_, err := pool.Exec(ctx, `
+	return execGuarded(ctx, pool, "entity-revisions", `
 CREATE TABLE IF NOT EXISTS entity_revisions (
   revision_id   UUID PRIMARY KEY DEFAULT uuidv7(),
   entity_id     UUID NOT NULL REFERENCES glossary_entities(entity_id) ON DELETE CASCADE,
@@ -37,7 +37,6 @@ CREATE TABLE IF NOT EXISTS entity_revisions (
 CREATE INDEX IF NOT EXISTS idx_er_entity ON entity_revisions(entity_id, revision_num DESC);
 CREATE INDEX IF NOT EXISTS idx_er_book   ON entity_revisions(book_id);
 `)
-	return err
 }
 
 // BackfillEntityRevisions seeds a baseline revision (revision_num=1, op='baseline')

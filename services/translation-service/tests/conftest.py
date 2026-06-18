@@ -16,6 +16,22 @@ os.environ.setdefault("INTERNAL_SERVICE_TOKEN", "test_internal_token")
 
 
 @pytest.fixture(autouse=True)
+def _stub_model_name_resolve(monkeypatch):
+    """P4 / producer-emit backfill — the create paths resolve the model NAME via
+    provider-registry (HTTP) for the 'pending' lifecycle event's model/params. Each router
+    does `from ..model_name import resolve_model_name`, so the binding lives in EACH router
+    module — patch all of them (raising=False if a module isn't imported). Stub keeps the
+    suite hermetic + fast (best-effort None on failure, but a real connect costs DNS latency)."""
+    stub = AsyncMock(return_value="qwen2.5-7b-instruct")
+    for target in (
+        "app.routers.jobs.resolve_model_name",
+        "app.routers.extraction.resolve_model_name",        # glossary-extract (Slice A)
+        "app.routers.glossary_translate.resolve_model_name",  # glossary-translate (Slice B)
+    ):
+        monkeypatch.setattr(target, stub, raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _hermetic_knowledge_brief(monkeypatch):
     """M4b: keep the suite hermetic + fast.
 

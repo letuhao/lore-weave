@@ -1,9 +1,9 @@
 ---
 cycle: 14
-title: L3 Rebuild (D+G+H)
-current_phase: SESSION
-phase_started_at: 2026-05-29T08:28:56Z
-last_checkpoint_at: 2026-05-29T08:28:56Z
+title: Timeline narrative-order + importance (BE+FE)
+current_phase: COMMIT
+phase_started_at: 2026-06-14T10:51:14Z
+last_checkpoint_at: 2026-06-14T10:51:14Z
 retry_count: 0
 dps_status: []
 adversary_findings: null

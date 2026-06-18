@@ -1,4 +1,5 @@
 // LOOM Composition (M8) — Work resolution/create + scene + grounding controllers.
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { compositionApi } from '../api';
 import type { OutlineNode } from '../types';
@@ -17,6 +18,66 @@ export function useCreateWork(bookId: string | undefined, token: string | null) 
     mutationFn: () => compositionApi.createWork(bookId!, token!),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['composition', 'work', bookId] }),
   });
+}
+
+/**
+ * D-C16: self-healing resolver for a PENDING null-project Work. When POST /work
+ * returns a greenfield Work created during a knowledge-service outage (project_id
+ * null + pending_project_backfill), the resolution query can't surface it — it
+ * excludes pending works — so the panel holds the Work's surrogate id and this
+ * hook polls resolve-project until the knowledge project is backfilled, then
+ * invalidates the work query so the now-backed Work flows in. Bounded backoff;
+ * gives up to a `failed` state the UI offers a retry for.
+ *
+ * The poll is a SYNCHRONIZATION effect (drive an external retry loop until a
+ * condition holds) — NOT a reaction to a user action. The user action (clicking
+ * "Set up co-writer") calls start() directly from the create handler.
+ */
+export function usePendingWorkResolver(
+  bookId: string | undefined, token: string | null,
+) {
+  const qc = useQueryClient();
+  // `round` lets retry() re-arm the SAME id (a new object → the effect re-runs).
+  const [target, setTarget] = useState<{ id: string; round: number } | null>(null);
+  const [state, setState] = useState<'idle' | 'resolving' | 'failed'>('idle');
+
+  useEffect(() => {
+    if (!target || !token) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    let attempt = 0;
+    const MAX_ATTEMPTS = 8;
+    setState('resolving');
+    const tick = async () => {
+      attempt += 1;
+      try {
+        const w = await compositionApi.resolveWorkProject(target.id, token);
+        if (cancelled) return;
+        if (w.project_id) {
+          setState('idle');
+          setTarget(null);
+          qc.invalidateQueries({ queryKey: ['composition', 'work', bookId] });
+          return;
+        }
+      } catch {
+        // 409 STILL_PENDING (knowledge still down) or a transient error → keep
+        // polling until the attempt cap, then surface a retry.
+      }
+      if (cancelled) return;
+      if (attempt >= MAX_ATTEMPTS) { setState('failed'); return; }
+      timer = setTimeout(tick, Math.min(500 * 2 ** (attempt - 1), 5000));
+    };
+    timer = setTimeout(tick, 0);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [target, token, bookId, qc]);
+
+  return {
+    state,
+    /** Begin resolving a pending Work by its surrogate id (from the create handler). */
+    start: (workId: string) => setTarget({ id: workId, round: 0 }),
+    /** Re-arm after a give-up. */
+    retry: () => setTarget((t) => (t ? { id: t.id, round: t.round + 1 } : t)),
+  };
 }
 
 /** The current chapter's scenes, derived from the project outline. */

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { FormDialog } from '@/components/shared';
+import { BookPicker } from '@/components/shared/BookPicker';
 import { isVersionConflict } from '../api';
 import type {
   Project,
@@ -293,18 +294,13 @@ export function ProjectFormModal({
           <span className="text-xs font-medium text-muted-foreground">
             {t('projects.form.bookId')}
           </span>
-          <input
-            type="text"
-            value={bookId}
-            onChange={(e) => setBookId(e.target.value)}
-            className="rounded-md border bg-input px-3 py-2 font-mono text-xs outline-none focus:border-ring"
-            placeholder={t('projects.form.bookIdPlaceholder')}
+          {/* C4 (BL-3/G6): pick a book by title — no raw UUID. Empty stays valid
+              (book optional); the stored value is the book_id. */}
+          <BookPicker
+            value={bookId === '' ? null : bookId}
+            onChange={(id) => setBookId(id ?? '')}
+            placeholder={t('projects.form.bookIdPlaceholder', { defaultValue: 'Search your books by title…' })}
           />
-          {!bookIdValid && (
-            <span className="text-[11px] text-destructive">
-              {t('projects.form.bookIdError', { defaultValue: 'Must be a valid UUID.' })}
-            </span>
-          )}
         </label>
 
         <label className="flex flex-col gap-1">

@@ -8,6 +8,40 @@ export type Work = {
   status: 'active' | 'archived';
   settings: Record<string, unknown>;
   version: number;
+  // C16 — surrogate PK (null project_id = lazy greenfield Work awaiting backfill).
+  // Optional in the FE type so pre-C16/C23 callers degrade gracefully.
+  id?: string | null;
+  // C23 (dị bản M0) — a DERIVATIVE Work points at the SOURCE Work it diverges
+  // from (in-DB self-ref on the surrogate id) at a chapter-level `branch_point`
+  // (G3). Both null for a greenfield Work. The studio banner (C24) keys off
+  // `source_work_id` to know it's editing a dị bản.
+  source_work_id?: string | null;
+  branch_point?: number | null;
+};
+
+// ── C24 (dị bản M0) — divergence wizard / derivative spawn ────────────────────
+// Mirrors composition-service DeriveBody (works.py). The 3 UX §7.1 taxonomies all
+// reduce to `branch_point` + optional `pov_anchor` + `entity_override[]` + added
+// `canon_rule[]` (LOCKED M0 override scope = entity fields + canon rules only).
+export type DivergenceTaxonomy = 'pov_shift' | 'character_transform' | 'au';
+
+// One entity-FIELD override (M0 scope — relationship/event overrides DEFERRED).
+// `overridden_fields` is the field→value JSON delta the writer authored.
+export type EntityOverride = {
+  target_entity_id: string;
+  overridden_fields: Record<string, unknown>;
+};
+
+export type DivergenceSpec = {
+  taxonomy: DivergenceTaxonomy;
+  pov_anchor: string | null;
+  canon_rule: string[];
+};
+
+export type DeriveBody = {
+  branch_point: number | null;
+  divergence: DivergenceSpec;
+  entity_overrides: EntityOverride[];
 };
 
 export type WorkResolution = {
@@ -155,6 +189,19 @@ export type Violation = {
   dismissed?: boolean;
 };
 
+// C26 — a derivative override-critic finding (override slip / delta inconsistency).
+// Deterministic, AI-free; surfaced alongside the LLM critic dims for a dị bản Work.
+export type DerivativeFinding = {
+  kind: 'override_slip' | 'delta_inconsistency';
+  entity_id?: string;
+  name?: string;
+  field?: string;
+  expected?: string;
+  found?: string;
+  rule?: string;
+  why?: string;
+};
+
 export type Critic = {
   coherence: number | null;
   voice_match: number | null;
@@ -162,6 +209,15 @@ export type Critic = {
   canon_consistency: number | null;
   violations: Violation[];
   error?: string;
+  // C26 GATE — the derivative override critic. `needs_regeneration` blocks accept
+  // (the dị bản override slipped); `regen_exhausted` means the cap was reached and
+  // the gate fails OPEN (surface the finding, allow accept). `derivative_findings`
+  // explains WHY. Absent for a canon (non-derivative) Work.
+  needs_regeneration?: boolean;
+  regen_exhausted?: boolean;
+  regen_attempts?: number;
+  regen_cap?: number;
+  derivative_findings?: DerivativeFinding[];
 } | null;
 
 export type GenerationJob = {

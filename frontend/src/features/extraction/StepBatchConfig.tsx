@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Loader2, Info } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/auth';
 import { booksApi, type Chapter } from '@/features/books/api';
+import { ChapterListBrowser } from '@/components/shared/ChapterListBrowser';
 import type { ContextFilters } from './types';
 import { cn } from '@/lib/utils';
 
@@ -34,21 +35,39 @@ export function StepBatchConfig({
   const [mode, setMode] = useState<SelectionMode>('all');
   const [rangeFrom, setRangeFrom] = useState(1);
   const [rangeTo, setRangeTo] = useState(1);
+  // Stable Set identity for the browser's controlled selection (avoids a new Set
+  // every render).
+  const pickSelection = useMemo(() => new Set(chapterIds), [chapterIds]);
 
+  // Loop-fetch the FULL chapter list (paginate, since the BE caps a page at 100):
+  // the all/range modes enumerate ids client-side, so a single capped fetch
+  // silently truncated 'all' / 'range' to the first 100 on big books. pick mode
+  // uses the paginated <ChapterListBrowser> instead and doesn't rely on this.
   useEffect(() => {
     if (!accessToken) return;
+    let cancelled = false;
     setLoading(true);
-    booksApi
-      .listChapters(accessToken, bookId, { lifecycle_state: 'active', limit: 500, offset: 0 })
-      .then((resp) => {
-        setChapters(resp.items);
-        setRangeTo(resp.items.length);
-        // Default: select all if no chapters pre-selected
-        if (chapterIds.length === 0) {
-          onChapterIdsChange(resp.items.map((c) => c.chapter_id));
-        }
-      })
-      .finally(() => setLoading(false));
+    (async () => {
+      const all: Chapter[] = [];
+      const fetchSize = 100;
+      for (let offset = 0; ; offset += fetchSize) {
+        const resp = await booksApi.listChapters(accessToken, bookId, {
+          lifecycle_state: 'active', limit: fetchSize, offset,
+        });
+        all.push(...resp.items);
+        if (resp.items.length < fetchSize || all.length >= resp.total) break;
+      }
+      if (cancelled) return;
+      setChapters(all);
+      setRangeTo(all.length);
+      // Default: select all if no chapters pre-selected.
+      if (chapterIds.length === 0) {
+        onChapterIdsChange(all.map((c) => c.chapter_id));
+      }
+    })()
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [accessToken, bookId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleModeChange = (newMode: SelectionMode) => {
@@ -57,27 +76,19 @@ export function StepBatchConfig({
       onChapterIdsChange(chapters.map((c) => c.chapter_id));
     } else if (newMode === 'range') {
       applyRange(rangeFrom, rangeTo);
+    } else if (newMode === 'pick') {
+      // Start 'pick' from an EMPTY selection. The default mode is 'all', which pre-fills
+      // chapterIds with every chapter; without this clear, entering 'pick' would seed the
+      // browser with ALL chapters checked, so a user who "picks a few" actually extracts
+      // everything (the reported "pick but extracts all" bug). The user's picks now REPLACE
+      // the selection rather than adding to an inherited all.
+      onChapterIdsChange([]);
     }
   };
 
   const applyRange = (from: number, to: number) => {
     const ids = chapters.slice(from - 1, to).map((c) => c.chapter_id);
     onChapterIdsChange(ids);
-  };
-
-  const toggleChapter = (id: string) => {
-    const set = new Set(chapterIds);
-    if (set.has(id)) set.delete(id);
-    else set.add(id);
-    onChapterIdsChange([...set]);
-  };
-
-  const toggleAll = () => {
-    if (chapterIds.length === chapters.length) {
-      onChapterIdsChange([]);
-    } else {
-      onChapterIdsChange(chapters.map((c) => c.chapter_id));
-    }
   };
 
   if (loading) {
@@ -145,39 +156,18 @@ export function StepBatchConfig({
           </div>
         )}
 
-        {/* Chapter list (pick mode or show selection) */}
+        {/* Pick mode — the shared server-paged browser (multi). Replaces the old
+            in-memory list that was capped by the chapter-list limit (couldn't pick
+            past the first page on a big book). Selection persists across pages. */}
         {mode === 'pick' && (
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] text-muted-foreground">
-                {t('batch.chaptersSelected', { count: chapterIds.length })}
-              </span>
-              <button onClick={toggleAll} className="text-[10px] text-primary hover:underline">
-                {chapterIds.length === chapters.length ? 'Deselect all' : 'Select all'}
-              </button>
-            </div>
-            <div className="max-h-48 overflow-y-auto rounded-md border">
-              {chapters.map((ch, i) => (
-                <label
-                  key={ch.chapter_id}
-                  className={cn(
-                    'flex items-center gap-3 px-3 py-1.5 text-xs cursor-pointer hover:bg-card transition-colors',
-                    i < chapters.length - 1 && 'border-b',
-                  )}
-                >
-                  <input
-                    type="checkbox"
-                    checked={chapterIds.includes(ch.chapter_id)}
-                    onChange={() => toggleChapter(ch.chapter_id)}
-                    className="h-3.5 w-3.5 rounded border-border accent-primary"
-                  />
-                  <span className="w-5 text-right font-mono text-muted-foreground">{i + 1}</span>
-                  <span className="flex-1 line-clamp-1">
-                    {ch.title || ch.original_filename || 'Untitled'}
-                  </span>
-                </label>
-              ))}
-            </div>
+          <div className="mb-2">
+            <ChapterListBrowser
+              bookId={bookId}
+              selectionMode="multi"
+              selectedIds={pickSelection}
+              onSelectionChange={(ids) => onChapterIdsChange([...ids])}
+              pageSize={50}
+            />
           </div>
         )}
 

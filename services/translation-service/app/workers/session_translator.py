@@ -748,7 +748,8 @@ CRITICAL RULES:
 3. Preserve inline formatting: **bold**, *italic*, `code`, ~~strikethrough~~, __underline__, [link text](url).
 4. Output ONLY the translated blocks. No explanations, no commentary, no extra text.
 5. You MUST output exactly {block_count} blocks.
-6. Do NOT think, reason, or deliberate. Begin the translated output immediately with [BLOCK ...]."""
+6. Do NOT think, reason, or deliberate. Begin the translated output immediately with [BLOCK ...].
+7. NEVER copy the source text. Each [BLOCK N] body MUST be the {target_lang} TRANSLATION of that block — never the original {source_lang} text. Only the [BLOCK N] labels stay identical; the content after each label must be fully translated."""
 
 # Max retries per batch when validation fails
 _MAX_BATCH_RETRIES = 2

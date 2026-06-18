@@ -216,20 +216,43 @@ CLARIFY → DESIGN → REVIEW → PLAN → BUILD → VERIFY → REVIEW → QC �
 
 ### Task Size Classification (MANDATORY — before work begins)
 
-Count: **files touched · logic changes · side effects** (API/DB/config/types).
+**Size by COMPLEXITY + RISK, not file count** (2026-06-12 redesign). The old file-count
+table over-sized wide-but-shallow changes (one param added across 12 files read as XL),
+fragmenting coherent work into needless ceremony on a large-context window. The axes:
 
-| Size | Files | Logic | Side effects | Allowed skips |
-|------|-------|-------|--------------|---------------|
-| **XS** | 1 | 0-1 | None | CLARIFY + PLAN |
-| **S** | 1-2 | 2-3 | None | PLAN only |
-| **M** | 3-5 | 4+ | Maybe | None |
-| **L** | 6+ | Any | Yes | None — write plan file |
-| **XL** | 10+ | Any | Yes | None — write spec + plan; subagent recommended |
+- **Logic** = distinct **semantic** changes (new behaviors, contracts, branches) — the **primary** axis.
+- **Side effects** = API/DB/config/migration/auth — **risk**; sets a hard **floor** (undersizing can't cross it).
+- **Files** = a **breadth** signal only. A mechanical sweep (low logic-per-file) does **NOT** escalate; breadth bumps size **one tier** only when the change is genuinely deep across it (`logic ≳ files`).
+
+| Size | Logic (primary) | Risk floor | Allowed skips |
+|------|-----------------|-----------|---------------|
+| **XS** | 0-1 | no side effects | CLARIFY + PLAN |
+| **S** | 2-3 | ≥1 side effect ⇒ min S | PLAN only |
+| **M** | 4-6 | ≥2 side effects ⇒ min M | None |
+| **L** | 7-12 | Yes | None — write plan file |
+| **XL** | 13+ | Yes | None — write spec + plan; subagent recommended |
+
+**Classify the whole EFFORT, not each sub-task.** A coherent multi-part change (e.g. a
+re-arch spanning several services) is ONE classification + ONE continuous run — not N
+small tasks each with its own size→build→review→commit cycle. Undersizing on **breadth**
+is allowed (the gate warns, you proceed); undersizing below the **risk floor** is blocked.
+
+**Budget-driven checkpoint cadence (the big unlock).** On a large-context model, let the
+**context budget** — not file count — drive when to stop. Pass current context % as the
+5th arg: `size <S> <files> <logic> <side_effects> <context_pct>`.
+- **Ample budget (<~70%):** run continuously. Checkpoint/commit at genuine **risk boundaries**
+  (a new contract, a migration, a cross-service seam, a shippable milestone), **not** at
+  arbitrary file/sub-task counts.
+- **Filling (>~80%):** checkpoint/commit + `/compact` at the next risk boundary.
+- **PO checkpoints (CLARIFY end + POST-REVIEW) are BATCHED per-milestone:** one CLARIFY for
+  the effort's scope; POST-REVIEW at each shippable risk boundary — not per sub-task.
+- **Quality gates stay, applied per-milestone:** VERIFY evidence, 2-stage REVIEW, live-smoke
+  (≥2 services), `/review-impl` for load-bearing code. These caught real bugs; keep them.
 
 **ENFORCEMENT** — state machine (`.workflow-state.json`) + pre-commit hook block phase jumps and commits without VERIFY+POST-REVIEW+SESSION evidence:
 
 ```bash
-./scripts/workflow-gate.sh size XS 1 1 0       # Classify
+./scripts/workflow-gate.sh size M 3 4 0 45      # Classify (files=3 logic=4 se=0, context=45%)
 ./scripts/workflow-gate.sh phase build          # Enter phase
 ./scripts/workflow-gate.sh complete build "tests pass"  # Mark done with evidence
 ./scripts/workflow-gate.sh status               # Check progress

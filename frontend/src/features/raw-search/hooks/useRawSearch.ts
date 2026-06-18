@@ -16,11 +16,14 @@ const DEFAULT_LIMIT = 20;
 export type RawSearchMode = 'lexical' | 'hybrid';
 /** chapter = best block per chapter (Navigate); block = every match (Mine). */
 export type RawSearchGranularity = 'chapter' | 'block';
+/** canon = published only (default); all = canon + owner's indexed drafts. */
+export type RawSearchSurface = 'canon' | 'all';
 
 export interface UseRawSearchOptions {
   mode?: RawSearchMode;
   limit?: number;
   granularity?: RawSearchGranularity;
+  surface?: RawSearchSurface;
 }
 
 export interface UseRawSearchResult {
@@ -39,7 +42,10 @@ export function useRawSearch(
   query: string,
   opts: UseRawSearchOptions = {},
 ): UseRawSearchResult {
-  const { mode = 'hybrid', limit = DEFAULT_LIMIT, granularity = 'chapter' } = opts;
+  const {
+    mode = 'hybrid', limit = DEFAULT_LIMIT, granularity = 'chapter',
+    surface = 'canon',
+  } = opts;
   const { accessToken, user } = useAuth();
   const userId = user?.user_id ?? 'anon';
   const q = query.trim();
@@ -50,12 +56,12 @@ export function useRawSearch(
   const rerank = granularity !== 'block';
 
   const result = useQuery({
-    queryKey: ['raw-search', userId, bookId, mode, q, limit, granularity] as const,
+    queryKey: ['raw-search', userId, bookId, mode, q, limit, granularity, surface] as const,
     queryFn: () =>
       mode === 'lexical'
-        ? rawSearchApi.search(bookId, { q, limit, granularity }, accessToken!)
+        ? rawSearchApi.search(bookId, { q, limit, granularity, surface }, accessToken!)
         : rawSearchApi.searchHybrid(
-            bookId, { q, mode: 'hybrid', limit, granularity, rerank }, accessToken!,
+            bookId, { q, mode: 'hybrid', limit, granularity, rerank, surface }, accessToken!,
           ),
     enabled: !!accessToken && active,
     retry: false,

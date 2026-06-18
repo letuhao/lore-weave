@@ -154,6 +154,61 @@ async def test_find_passages_by_vector_respects_tenant(neo4j_driver, test_user):
 
 
 @pytest.mark.asyncio
+async def test_find_passages_by_vector_canon_filter(neo4j_driver, test_user):
+    """D-RAWSEARCH-CANON-WIRING — the canon gate, proven against live Neo4j:
+      - include_drafts=False (default) → canon + legacy(null-canon), NOT drafts
+      - include_drafts=True → everything
+    A cypher typo (wrong coalesce / = false) would only surface here."""
+    async with neo4j_driver.session() as session:
+        # Published (canon=True).
+        await upsert_passage(
+            session, user_id=test_user, project_id="p-1",
+            source_type="chapter", source_id="chap-canon", chunk_index=0,
+            text="published canon", embedding=_vec(0.5), embedding_dim=DIM,
+            embedding_model="bge-m3", canon=True,
+        )
+        # Draft (canon=False).
+        await upsert_passage(
+            session, user_id=test_user, project_id="p-1",
+            source_type="chapter", source_id="chap-draft", chunk_index=0,
+            text="unpublished draft", embedding=_vec(0.5), embedding_dim=DIM,
+            embedding_model="bge-m3", canon=False,
+        )
+        # Legacy node with NO canon property (predates the flag) — must read as canon.
+        await session.run(
+            """
+            MATCH (p:Passage {user_id: $uid, source_id: 'chap-draft'})
+            CREATE (l:Passage)
+            SET l = properties(p),
+                l.id = 'legacy-null-canon', l.source_id = 'chap-legacy',
+                l.text = 'legacy no-flag'
+            REMOVE l.canon
+            """,
+            uid=test_user,
+        )
+
+        canon_only = await find_passages_by_vector(
+            session, user_id=test_user, project_id="p-1",
+            query_vector=_vec(0.5), dim=DIM, embedding_model="bge-m3", limit=10,
+        )
+        all_surfaces = await find_passages_by_vector(
+            session, user_id=test_user, project_id="p-1",
+            query_vector=_vec(0.5), dim=DIM, embedding_model="bge-m3", limit=10,
+            include_drafts=True,
+        )
+    canon_texts = {h.passage.text for h in canon_only}
+    all_texts = {h.passage.text for h in all_surfaces}
+    # default canon gate: published + legacy(null), NOT the draft.
+    assert "published canon" in canon_texts
+    assert "legacy no-flag" in canon_texts
+    assert "unpublished draft" not in canon_texts
+    # include_drafts → the draft also appears.
+    assert "unpublished draft" in all_texts
+    # canon flag round-trips onto the projection.
+    assert all(h.passage.canon for h in canon_only)
+
+
+@pytest.mark.asyncio
 async def test_find_passages_by_vector_default_omits_vector(
     neo4j_driver, test_user,
 ):

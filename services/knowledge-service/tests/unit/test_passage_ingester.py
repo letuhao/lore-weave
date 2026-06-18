@@ -285,6 +285,41 @@ async def test_ingest_happy_path_upserts_per_chunk(monkeypatch):
         assert call.kwargs["embedding_dim"] == 1024
         assert call.kwargs["source_type"] == "chapter"
         assert call.kwargs["is_hub"] is False
+        # D-RAWSEARCH-CANON-WIRING: default ingest stamps canon=True.
+        assert call.kwargs["canon"] is True
+
+
+@pytest.mark.asyncio
+async def test_ingest_threads_canon_false_for_draft_indexing(monkeypatch):
+    """D-RAWSEARCH-CANON-WIRING: the on-demand draft path passes canon=False
+    through to every upsert_passage so surface=all can distinguish drafts."""
+    book = _mk_book_client(text="Arthur rode toward Camelot. " * 300)
+
+    async def fake_embed(*, user_id, model_source, model_ref, texts):
+        return EmbeddingResult(
+            embeddings=[[0.1] * 1024 for _ in texts], dimension=1024, model="bge-m3",
+        )
+
+    emb = MagicMock()
+    emb.embed = fake_embed
+    upsert = AsyncMock()
+    monkeypatch.setattr("app.extraction.passage_ingester.upsert_passage", upsert)
+    monkeypatch.setattr(
+        "app.extraction.passage_ingester.delete_passages_for_source",
+        AsyncMock(return_value=0),
+    )
+
+    result = await ingest_chapter_passages(
+        MagicMock(), book, emb,
+        user_id=USER_ID, project_id=PROJECT_ID,
+        book_id=BOOK_ID, chapter_id=CHAPTER_ID, chapter_index=1,
+        embedding_model="bge-m3", embedding_dim=1024,
+        canon=False,
+    )
+    assert result.chunks_created > 0
+    assert upsert.await_count == result.chunks_created
+    for call in upsert.await_args_list:
+        assert call.kwargs["canon"] is False
 
 
 @pytest.mark.asyncio

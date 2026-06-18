@@ -1,9 +1,12 @@
 {
   "nav": {
+    "startNew": "Start something new",
     "workspace": "Workspace",
     "chat": "Chat",
     "knowledge": "Knowledge",
+    "worlds": "Worlds",
     "campaigns": "Campaigns",
+    "jobs": "Jobs",
     "browse": "Browse",
     "trash": "Trash",
     "usage": "Usage",

@@ -5,10 +5,11 @@ DELETE /v1/knowledge/me/entities/{entity_id}
 
 The GET powers the Global tab's Preferences section (K19c.4) and is
 built to generalise to `scope=project` when K19d lands. The DELETE
-is a soft archive (reuses ``archive_entity`` with reason
-``user_archived``); it preserves EVIDENCED_BY edges + relations so
-the entity can still appear in cross-reference traces even after
-being hidden from the preference list.
+is a soft archive (``user_archive_entity`` with reason
+``user_archived``); it preserves EVIDENCED_BY edges + relations AND
+the ``glossary_entity_id`` anchor (D-K19c.4-01) so the entity can
+still appear in cross-reference traces and come back anchored on a
+later restore, even after being hidden from the preference list.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Path, Query, Response, status
+from fastapi import status as status_codes  # C8: alias — the list_entities route has a `status` query param that shadows the module name
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, model_validator
 
@@ -26,12 +28,18 @@ from app.db.neo4j_helpers import run_read
 from app.db.neo4j_repos.canonical import canonicalize_entity_name
 from app.db.neo4j_repos.entities import (
     ENTITIES_MAX_LIMIT,
+    ENTITY_SORT_KEYS,
+    ENTITY_STATUSES,
+    SUPPORTED_VECTOR_DIMS,
     Entity,
     EntityDetail,
     MergeEntitiesError,
-    archive_entity,
+    user_archive_entity,
+    find_entities_by_vector,
+    find_gap_candidates,
     get_entity,
     get_entity_with_relations,
+    link_to_glossary,
     list_entities_filtered,
     list_user_entities,
     merge_entities,
@@ -41,10 +49,29 @@ from app.db.neo4j_repos.entities import (
 )
 from app.db.neo4j_repos.entity_status import statuses_detail_at_order
 from app.db.neo4j_repos.facts import Fact, list_facts_for_entity
+from app.db.neo4j_repos.relations import (
+    SUBGRAPH_MAX_HOPS,
+    SUBGRAPH_MAX_NODE_CAP,
+    Subgraph,
+    get_project_subgraph,
+    get_world_subgraph,
+)
 from app.db.repositories import VersionMismatchError
 from app.db.repositories.entity_alias_map import EntityAliasMapRepo
-from app.clients.book_client import BookClient
-from app.deps import get_book_client, get_entity_alias_map_repo
+from app.db.repositories.projects import ProjectsRepo
+from app.clients.book_client import BookClient, BookServiceUnavailable, WorldNotFound
+from app.world_rollup import resolve_world_project_ids
+from app.clients.embedding_client import EmbeddingClient, EmbeddingError
+from app.clients.glossary_client import GlossaryClient
+from app.extraction.entity_resolver import normalize_kind_for_anchor_lookup
+from app.extraction.glossary_writeback import WRITEBACK_TAG
+from app.deps import (
+    get_book_client,
+    get_embedding_client,
+    get_entity_alias_map_repo,
+    get_glossary_client,
+    get_projects_repo,
+)
 from app.spoiler_window import resolve_before_order
 from app.events.outbox_emit import (
     ENTITY_CORRECTED,
@@ -152,10 +179,12 @@ async def archive_user_entity(
 ) -> None:
     """K19c.4 — soft-archive a user entity (UI "delete" = hide it).
 
-    Reuses `archive_entity` with `reason='user_archived'`. 404 only
+    Uses `user_archive_entity` with `reason='user_archived'` — the
+    variant that PRESERVES `glossary_entity_id` (D-K19c.4-01) so a
+    later restore re-shows the entity still anchored. 404 only
     when the entity doesn't exist for this user at all (cross-user
     or typo in the id). **Idempotent** per RFC 9110: a second DELETE
-    on the same entity_id still returns 204 because `_ARCHIVE_CYPHER`
+    on the same entity_id still returns 204 because `_USER_ARCHIVE_CYPHER`
     has no `archived_at IS NULL` guard — it just rewrites
     `archived_at = now()` and the same row comes back. The only
     visible side effect of the second call is a bumped `updated_at`
@@ -171,7 +200,10 @@ async def archive_user_entity(
         before_entity = await get_entity(
             session, user_id=str(user_id), canonical_id=entity_id,
         )
-        result = await archive_entity(
+        # D-K19c.4-01 — user "delete" is hide-now-restore-later, so use the
+        # variant that PRESERVES `glossary_entity_id`; the glossary entry still
+        # exists and a later restore should bring the entity back anchored.
+        result = await user_archive_entity(
             session,
             user_id=str(user_id),
             canonical_id=entity_id,
@@ -220,9 +252,26 @@ async def archive_user_entity(
 _SEARCH_MIN_LENGTH = 2
 
 
+# C8 — closed enums for the new status filter + sort key. Mirror the
+# repo's ENTITY_STATUSES / ENTITY_SORT_KEYS tuples; Literal is the only
+# form FastAPI introspects for 422 validation.
+EntityStatusFilter = Literal["canonical", "discovered", "archived"]
+EntitySortBy = Literal["mention_count", "anchor_score"]
+
+# C8 — semantic_query length bound. Matches the drawers-search query
+# cap shape: short enough that a single embed call is cheap, long
+# enough for a sentence-level natural-language query.
+_SEMANTIC_QUERY_MAX_LENGTH = 1000
+
+
 class EntitiesListResponse(BaseModel):
     entities: list[Entity]
     total: int
+    # C8 — null on the plain (FTS / browse) path; set on the
+    # `semantic_query` vector path so the FE can show "searched via X"
+    # and distinguish "project not indexed" (null model) from a
+    # zero-hit live search.
+    embedding_model: str | None = None
 
 
 @entities_router.get("/entities", response_model=EntitiesListResponse)
@@ -232,7 +281,8 @@ async def list_entities(
         description=(
             "Filter to a specific project. Omit (or pass no value) to "
             "browse across every project + global-scope entities the "
-            "caller owns."
+            "caller owns. REQUIRED when `semantic_query` is set "
+            "(vector search is project-scoped)."
         ),
     ),
     kind: str | None = Query(
@@ -248,21 +298,93 @@ async def list_entities(
         min_length=_SEARCH_MIN_LENGTH,
         max_length=200,
         description=(
-            "Case-insensitive substring match against name + aliases. "
-            "Minimum 2 characters to avoid whole-corpus scans."
+            "Case-insensitive substring (FTS) match against name + "
+            "aliases. Minimum 2 characters to avoid whole-corpus scans. "
+            "Mutually exclusive with `semantic_query`."
+        ),
+    ),
+    semantic_query: str | None = Query(
+        default=None,
+        min_length=_SEARCH_MIN_LENGTH,
+        max_length=_SEMANTIC_QUERY_MAX_LENGTH,
+        description=(
+            "C8: natural-language VECTOR search over entity embeddings. "
+            "Embeds the query via the project's provider-registry "
+            "embedding model, then runs two-layer (anchor-weighted) "
+            "vector retrieval. Requires `project_id`. Distinct from the "
+            "plain `search` FTS param — pass one or the other."
+        ),
+    ),
+    status: EntityStatusFilter | None = Query(
+        default=None,
+        description=(
+            "C8: filter to a single DERIVED status — `canonical` "
+            "(glossary-anchored), `discovered` (unanchored, active), or "
+            "`archived`. Omit for the default active view (canonical + "
+            "discovered). `archived` is the only way to surface archived "
+            "rows."
+        ),
+    ),
+    sort_by: EntitySortBy = Query(
+        default="mention_count",
+        description=(
+            "C8: ordering key. `mention_count` (default, browse-by-"
+            "frequency) or `anchor_score` (anchored-first curation view). "
+            "Ignored on the `semantic_query` path (vector relevance + "
+            "anchor weighting drive that ordering)."
         ),
     ),
     limit: int = Query(50, ge=1, le=ENTITIES_MAX_LIMIT),
     offset: int = Query(0, ge=0),
     user_id: UUID = Depends(get_current_user),
 ) -> EntitiesListResponse:
-    """K19d.2 — browse entities with optional filters.
+    """K19d.2 + C8 — browse / search entities.
+
+    Two retrieval modes:
+      - **plain** (default): paginated browse with `kind` / `search`
+        (FTS) / `status` filters + `sort_by`.
+      - **semantic** (`semantic_query` set): two-layer anchor-weighted
+        VECTOR search. The query is embedded server-side via the
+        project's provider-registry embedding model (no hardcoded model
+        name, no per-service embed env — same BYOK resolution as the
+        drawers-search path). `status` still filters the vector result
+        set; `sort_by` is ignored (vector relevance + anchor_score win).
 
     Multi-tenant safety: `user_id` from JWT is threaded through to
     the Cypher `$user_id` parameter; cross-user rows are filtered
     at the MATCH. The Entities tab never exposes a user_id body
     field — a caller cannot spoof another user's entities.
     """
+    if semantic_query is not None:
+        if search is not None:
+            raise HTTPException(
+                status_code=status_codes.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="pass either `search` (FTS) or `semantic_query` "
+                "(vector), not both",
+            )
+        if project_id is None:
+            raise HTTPException(
+                status_code=status_codes.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="`project_id` is required for `semantic_query` "
+                "(vector search is project-scoped)",
+            )
+        # Lazy dep resolution: the projects-repo + embedding-client are
+        # only needed on the (rarer) vector path, and `get_projects_repo`
+        # touches the knowledge pool. Resolving them as eager route-level
+        # `Depends` would force every plain browse call (and its tests) to
+        # stand up the pool. We call the same getters the drawers route
+        # uses; unit tests patch THESE module references.
+        return await _semantic_search_entities(
+            user_id=user_id,
+            project_id=project_id,
+            query=semantic_query,
+            kind=kind,
+            status=status,
+            limit=limit,
+            projects_repo=await get_projects_repo(),
+            embedding_client=await get_embedding_client(),
+        )
+
     async with neo4j_session() as session:
         rows, total = await list_entities_filtered(
             session,
@@ -270,10 +392,132 @@ async def list_entities(
             project_id=str(project_id) if project_id is not None else None,
             kind=kind,
             search=search,
+            status=status,
+            sort_by=sort_by,
             limit=limit,
             offset=offset,
         )
     return EntitiesListResponse(entities=rows, total=total)
+
+
+async def _semantic_search_entities(
+    *,
+    user_id: UUID,
+    project_id: UUID,
+    query: str,
+    kind: str | None,
+    status: str | None,
+    limit: int,
+    projects_repo: ProjectsRepo,
+    embedding_client: EmbeddingClient,
+) -> EntitiesListResponse:
+    """C8 — vector search branch of `list_entities`.
+
+    Mirrors the drawers-search contract:
+      - 404 when the project is missing / cross-user (anti-leak).
+      - 200 `{entities: [], embedding_model: null}` when the project has
+        no embedding model configured (FE: "not indexed yet").
+      - 502 `provider_error` on EmbeddingError from the BYOK provider.
+      - 502 `embedding_dim_mismatch` when the live vector length
+        disagrees with the project's stored `embedding_dimension`.
+
+    The embedding model is resolved from `project.embedding_model`
+    (a provider-registry model ref) — NEVER a literal in this code.
+    """
+    if not query.strip():
+        return EntitiesListResponse(entities=[], total=0, embedding_model=None)
+
+    project = await projects_repo.get(user_id, project_id)
+    if project is None:
+        raise HTTPException(
+            status_code=status_codes.HTTP_404_NOT_FOUND,
+            detail="project not found",
+        )
+
+    if (
+        project.embedding_model is None
+        or project.embedding_dimension is None
+        or project.embedding_dimension not in SUPPORTED_VECTOR_DIMS
+    ):
+        return EntitiesListResponse(
+            entities=[], total=0, embedding_model=project.embedding_model,
+        )
+
+    try:
+        embed_result = await embedding_client.embed(
+            user_id=user_id,
+            model_source="user_model",
+            model_ref=project.embedding_model,
+            texts=[query],
+        )
+    except EmbeddingError as exc:
+        logger.warning(
+            "C8: semantic entity search embedding failed project=%s model=%s: %s",
+            project_id, project.embedding_model, exc,
+        )
+        raise HTTPException(
+            status_code=status_codes.HTTP_502_BAD_GATEWAY,
+            detail={
+                "error_code": "provider_error",
+                "message": str(exc),
+                "retryable": bool(getattr(exc, "retryable", False)),
+            },
+        )
+
+    if not embed_result.embeddings or not embed_result.embeddings[0]:
+        return EntitiesListResponse(
+            entities=[], total=0, embedding_model=project.embedding_model,
+        )
+    query_vector = embed_result.embeddings[0]
+
+    try:
+        async with neo4j_session() as session:
+            hits = await find_entities_by_vector(
+                session,
+                user_id=str(user_id),
+                project_id=str(project_id),
+                query_vector=query_vector,
+                dim=project.embedding_dimension,
+                embedding_model=project.embedding_model,
+                # Oversample so post-filtering by kind/status doesn't
+                # starve the page: ask for limit*N candidates, then
+                # trim after the Python-side filters.
+                limit=limit * 5,
+                include_archived=(status == "archived"),
+            )
+    except ValueError as exc:
+        logger.warning(
+            "C8: semantic entity search dim mismatch project=%s stored=%s live=%s",
+            project_id, project.embedding_dimension, len(query_vector),
+        )
+        raise HTTPException(
+            status_code=status_codes.HTTP_502_BAD_GATEWAY,
+            detail={
+                "error_code": "embedding_dim_mismatch",
+                "message": str(exc),
+            },
+        )
+
+    rows = [h.entity for h in hits]
+    # Post-filter by kind + derived status (the vector index is global;
+    # these dimensions aren't expressible in the Cypher vector call). Use
+    # the model's own `status` computed field rather than re-deriving — one
+    # fewer precedence copy to drift (adversary review note).
+    if kind is not None:
+        rows = [e for e in rows if e.kind == kind]
+    if status is not None:
+        rows = [e for e in rows if e.status == status]
+    # `total` is the count of matches we retrieved (adversary review
+    # minor-1): report it BEFORE the page trim so the FE's "X of N" is
+    # honest. This is bounded by the oversample (limit*5) — a true
+    # corpus-wide count isn't available from the vector index without a
+    # second pass, and the semantic path is single-page (offset ignored),
+    # so a retrieved-set count is the meaningful figure here.
+    total = len(rows)
+    rows = rows[:limit]
+    return EntitiesListResponse(
+        entities=rows, total=total, embedding_model=project.embedding_model,
+    )
 
 
 # ── T2.1 — Cast & Codex: spoiler-windowed status + facts ──────────────
@@ -413,6 +657,284 @@ async def list_entity_facts(
             before_order=before_order,
         )
     return EntityFactsResponse(facts=facts, window_available=available)
+
+
+# ── C10 (C10-gap-report) — GET /projects/{id}/gaps ───────────────────
+#
+# ENTITY gaps: high-mention DISCOVERED (unanchored) entities with no
+# glossary entry — "we found these in your book(s) but you haven't added
+# them to the glossary yet." A THIN pass-through over the existing
+# ``find_gap_candidates()`` repo function (KSA §3.4.E); the router adds
+# NO new gap engine / scoring — `min_mentions` + `limit` flow straight
+# through.
+#
+# LOCKED — KEEP SEPARATE from lore-enrichment's attribute-dimension gap
+# feature (an entity missing a `history` field). That is a different
+# query in a different service. This endpoint is ENTITY gaps only.
+# (Two-distinct-gap-concepts lock.)
+
+
+class GapReportResponse(BaseModel):
+    """The gap-report payload. `gaps` are discovered (unanchored) entities
+    above the `min_mentions` floor; `min_mentions` is echoed so the FE can
+    label the active threshold."""
+
+    gaps: list[Entity]
+    total: int
+    min_mentions: int
+
+
+@entities_router.get(
+    "/projects/{project_id}/gaps",
+    response_model=GapReportResponse,
+)
+async def get_project_gaps(
+    project_id: UUID = Path(
+        description="The knowledge project (book) whose entity gaps to report.",
+    ),
+    min_mentions: int = Query(
+        50,
+        ge=0,
+        description=(
+            "Mention-count floor — only surface discovered entities mentioned "
+            "at least this many times (filters one-off extraction noise). "
+            "KSA §3.4.E starts at 50; the gap-report UI exposes this as a knob."
+        ),
+    ),
+    limit: int = Query(
+        100,
+        ge=1,
+        le=ENTITIES_MAX_LIMIT,
+        description="Max number of gap candidates to return.",
+    ),
+    user_id: UUID = Depends(get_current_user),
+) -> GapReportResponse:
+    """C10 — entity Gap Report. Thin wrapper over ``find_gap_candidates()``:
+    discovered (unanchored) entities with no glossary link, mentioned at
+    least ``min_mentions`` times, ranked by the repo (mention_count DESC).
+
+    Distinct from lore-enrichment's attribute-dimension gap feature.
+    Multi-tenant: ``user_id`` from JWT scopes the Cypher MATCH; the route
+    never accepts a user_id field, so a caller can't read another user's
+    gaps.
+    """
+    async with neo4j_session() as session:
+        gaps = await find_gap_candidates(
+            session,
+            user_id=str(user_id),
+            project_id=str(project_id),
+            min_mentions=min_mentions,
+            limit=limit,
+        )
+    return GapReportResponse(gaps=gaps, total=len(gaps), min_mentions=min_mentions)
+
+
+# ── C18 (G5) — GET /projects/{id}/subgraph ───────────────────────────
+#
+# The project-wide read-only subgraph for the C19 graph canvas. Today
+# only a per-entity 1-hop read exists (`GET /entities/{id}`); the canvas
+# needs a project-level n-hop, node-capped view. This generalises the
+# 1-hop pattern into ``get_project_subgraph`` (relations repo) — a
+# two-stage Cypher (deterministic top-N seed nodes IN the query, then
+# only the edges between them) so a hub entity can never explode the
+# result. Returns RAW `{nodes, edges}` — NO server-side layout (the
+# canvas hand-rolls force/radial in C19). Read-only; partition-scoped
+# (the Cypher binds BOTH user_id AND project_id — no cross-project /
+# cross-user bleed).
+
+
+@entities_router.get(
+    "/projects/{project_id}/subgraph",
+    response_model=Subgraph,
+)
+async def get_project_subgraph_endpoint(
+    project_id: UUID = Path(
+        description="The knowledge project (book) whose subgraph to render.",
+    ),
+    hops: int = Query(
+        1,
+        ge=1,
+        le=SUBGRAPH_MAX_HOPS,
+        description=(
+            "Traversal depth for ego-expansion (only applies when `center` "
+            f"is set). 1–{SUBGRAPH_MAX_HOPS}. Ignored for the project-wide "
+            "view (no center)."
+        ),
+    ),
+    limit: int = Query(
+        200,
+        ge=1,
+        le=SUBGRAPH_MAX_NODE_CAP,
+        description=(
+            "Hard node cap. The endpoint returns at most this many nodes, "
+            "selected deterministically (anchor_score DESC, mention_count "
+            "DESC, id ASC) so the same query is stable across calls (powers "
+            "the canvas expand / load-more). Edges are only those between "
+            f"returned nodes. Max {SUBGRAPH_MAX_NODE_CAP}."
+        ),
+    ),
+    center: str | None = Query(
+        default=None,
+        min_length=1,
+        max_length=200,
+        description=(
+            "Optional entity id to ego-expand from — returns the `hops`-"
+            "bounded neighbourhood of this entity instead of the project-"
+            "wide top-N. Powers the canvas click-to-expand. A center that "
+            "doesn't exist / is cross-partition yields an empty subgraph."
+        ),
+    ),
+    user_id: UUID = Depends(get_current_user),
+) -> Subgraph:
+    """C18 (G5) — read-only project subgraph for the C19 canvas.
+
+    Returns `{nodes, edges}` for the `(user_id, project_id)` partition.
+    Multi-tenant + multi-project safety: `user_id` from JWT + the route
+    `project_id` are BOTH bound in the Cypher; the route never accepts a
+    user_id field, so a caller can't read another user's — or another
+    project's — graph. The node cap is enforced IN the query
+    (deterministic ORDER + LIMIT on the seed-node collection), never
+    post-filtered, so a hub entity can't OOM Neo4j.
+
+    Read-only: returns raw nodes + edges, no server-side layout. Editing
+    reuses the existing entity/relation dialogs (C19).
+    """
+    async with neo4j_session() as session:
+        subgraph = await get_project_subgraph(
+            session,
+            user_id=str(user_id),
+            project_id=str(project_id),
+            hops=hops,
+            limit=limit,
+            center=center,
+        )
+    return subgraph
+
+
+@entities_router.get(
+    "/worlds/{world_id}/subgraph",
+    response_model=Subgraph,
+)
+async def get_world_subgraph_endpoint(
+    world_id: UUID = Path(
+        description="The world whose member books' canon graphs to roll up.",
+    ),
+    limit: int = Query(
+        200,
+        ge=1,
+        le=SUBGRAPH_MAX_NODE_CAP,
+        description=(
+            "Hard node cap applied to the UNION across the world's projects. "
+            "Nodes are selected by the same global order as the per-project "
+            f"view (anchor_score DESC, mention_count DESC, id ASC). Max "
+            f"{SUBGRAPH_MAX_NODE_CAP}."
+        ),
+    ),
+    user_id: UUID = Depends(get_current_user),
+    repo: ProjectsRepo = Depends(get_projects_repo),
+    book: BookClient = Depends(get_book_client),
+) -> Subgraph:
+    """G4 (W2) — the world rollup graph: a UNION of each member book's canon
+    subgraph plus the world-level (bible) project.
+
+    Membership is resolved server-side via book-service's internal
+    ``/internal/worlds/{id}/books`` (owner-scoped by ``user_id`` → a world the
+    caller doesn't own is a uniform 404). We never trust a client-supplied book
+    or project list. Each member book's canonical project is resolved via
+    ``get_by_book`` (which excludes ``is_derivative`` — dị bản branches stay out
+    of the canon rollup and surface in the C28 living-world tree instead).
+
+    The union is N isolated per-(user_id, project_id) reads stitched in app code
+    — no cross-partition Cypher, no cross-user/cross-project bleed (a project the
+    user doesn't own contributes nothing). The result is a forest of per-book
+    components, tagged by ``source_project_id`` so the FE legends each book.
+    """
+    try:
+        project_ids = await resolve_world_project_ids(
+            world_id=world_id, user_id=user_id, repo=repo, book=book
+        )
+    except WorldNotFound:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="world not found"
+        )
+    except BookServiceUnavailable:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="world membership unavailable",
+        )
+
+    async with neo4j_session() as session:
+        return await get_world_subgraph(
+            session,
+            user_id=str(user_id),
+            project_ids=project_ids,
+            limit=limit,
+        )
+
+
+# ── C13 — GET /projects/{id}/glossary-entity-stats ───────────────────
+#
+# THIN pass-through to glossary-service's new `/internal/books/{id}/entities/
+# stats` (the FE cannot reach glossary `/internal` directly — same reason the
+# C9 promote flow proxies through here). Powers the build-wizard Step-2 auto-pin
+# suggestion banner: per-entity mention-span + coverage so the FE can suggest
+# pinning the sparse-but-long-reaching entities. Read-only; user-scoped via JWT;
+# resolves the project's book_id server-side (the FE never sees glossary ids
+# until this returns them). No new gap/scoring engine — pure proxy.
+
+
+class GlossaryEntityStat(BaseModel):
+    entity_id: str
+    name: str
+    kind: str
+    mention_count: int
+    first_chapter_index: int | None = None
+    last_chapter_index: int | None = None
+    coverage_pct: float
+
+
+class GlossaryEntityStatsResponse(BaseModel):
+    items: list[GlossaryEntityStat]
+    chapter_count: int
+
+
+@entities_router.get(
+    "/projects/{project_id}/glossary-entity-stats",
+    response_model=GlossaryEntityStatsResponse,
+)
+async def get_glossary_entity_stats(
+    project_id: UUID = Path(
+        description="The knowledge project whose glossary entity stats to report.",
+    ),
+    user_id: UUID = Depends(get_current_user),
+    projects_repo: ProjectsRepo = Depends(get_projects_repo),
+    glossary_client: GlossaryClient = Depends(get_glossary_client),
+) -> GlossaryEntityStatsResponse:
+    """C13 — proxy the glossary mention-span/coverage stats for the build
+    wizard's auto-pin banner. 404 if the project doesn't exist for this user;
+    422 ``no_book`` if the project has no linked book; on a glossary outage,
+    returns an empty list (the FE degrades to manual pinning, never blocks)."""
+    project = await projects_repo.get(user_id, project_id)
+    if project is None:
+        raise HTTPException(
+            status_code=status_codes.HTTP_404_NOT_FOUND,
+            detail="project not found",
+        )
+    if project.book_id is None:
+        raise HTTPException(
+            status_code=status_codes.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={
+                "error_code": "no_book",
+                "message": "the project has no linked book; pinning needs a book",
+            },
+        )
+    raw = await glossary_client.get_entity_stats(project.book_id)
+    if raw is None:
+        return GlossaryEntityStatsResponse(items=[], chapter_count=0)
+    return GlossaryEntityStatsResponse(
+        items=[GlossaryEntityStat.model_validate(it) for it in raw.get("items", [])],
+        chapter_count=int(raw.get("chapter_count", 0)),
+    )
 
 
 # ── K19d γ-a — PATCH /entities/{id} ──────────────────────────────────
@@ -638,6 +1160,203 @@ async def unlock_entity(
     )
     response.headers["ETag"] = _etag(updated.version)
     return updated
+
+
+# ── C9 — POST /entities/{id}/promote ────────────────────────────────
+
+
+def _draft_glossary_id(propose_resp: dict | None) -> str | None:
+    """Extract the anchorable glossary entity_id from an ``extract-entities``
+    response. Returns None when the batch produced no usable id.
+
+    The single-entity promote yields exactly one proposal whose ``status``
+    is one of ``created`` / ``updated`` / ``skipped``:
+
+      - ``created``  — a fresh ai-suggested DRAFT (the common promote case).
+      - ``updated``  — the name already named an existing glossary entry and
+                       this write touched it; anchor to that entry.
+      - ``skipped``  — either (a) the name resolves to an EXISTING glossary
+                       entity but no new attribute was written (a no-op
+                       merge — already curated; still anchorable, the row
+                       carries its ``entity_id``), or (b) a tombstoned
+                       ``ai-rejected`` name (``skip_reason='tombstoned'`` —
+                       the user explicitly rejected it; NOT anchorable).
+
+    So we accept any non-empty ``entity_id`` EXCEPT a tombstoned skip. This
+    makes promote anchor a discovered entity to an already-existing glossary
+    entry (the "glossary entry authored that matches a discovered entity"
+    path) instead of hard-failing on the merge-no-op case.
+    """
+    if not propose_resp:
+        return None
+    items = propose_resp.get("entities") or []
+    if not items:
+        return None
+    first = items[0]
+    if first.get("skip_reason") == "tombstoned":
+        return None
+    gid = first.get("entity_id")
+    return gid or None
+
+
+@entities_router.post(
+    "/entities/{entity_id}/promote",
+    response_model=Entity,
+)
+async def promote_entity(
+    entity_id: str = Path(min_length=1, max_length=200),
+    user_id: UUID = Depends(get_current_user),
+    projects_repo: ProjectsRepo = Depends(get_projects_repo),
+    glossary_client: GlossaryClient = Depends(get_glossary_client),
+) -> Entity:
+    """C9 (C9-promote-flow LOCKED) — promote a DISCOVERED entity into the
+    glossary curation flywheel.
+
+    Two server-side steps, in order (the FE cannot reach glossary's
+    ``/internal/extract-entities`` and partial-failure handling is safest
+    in one request):
+
+      1. create a glossary **DRAFT** (``status='draft'``, tag
+         ``ai-suggested``) from the entity's name/kind/aliases via
+         ``GlossaryClient.propose_entities`` — NEVER an active entity; the
+         human reviews + promotes it in glossary's existing AI-suggestions
+         inbox (integrate, don't duplicate).
+      2. anchor the knowledge entity to that draft
+         (``glossary_entity_id`` + ``anchor_score=1.0``) via
+         ``link_to_glossary`` → its derived status flips to ``canonical``.
+
+    Guards:
+      - 404 — entity missing / cross-user (KSA §6.4 anti-existence-leak).
+      - 409 ``already_anchored`` — entity already has a ``glossary_entity_id``;
+        re-promoting would double-draft.
+      - 422 ``no_book`` — the project has no ``book_id``; nowhere to write the
+        glossary draft.
+      - 502 ``glossary_draft_failed`` — the draft-create returned nothing
+        anchorable (glossary down/4xx, or the name was tombstoned); the
+        entity is NOT anchored.
+      - 502 ``anchor_failed`` — the draft was created but the anchor write
+        missed (stale id / race). The draft persists; a retry is safe —
+        ``propose_entities`` dedups by name and ``link_to_glossary`` is
+        idempotent (no orphaned/duplicate draft).
+    """
+    user_id_str = str(user_id)
+
+    async with neo4j_session() as session:
+        entity = await get_entity(
+            session, user_id=user_id_str, canonical_id=entity_id,
+        )
+        if entity is None:
+            raise HTTPException(
+                status_code=status_codes.HTTP_404_NOT_FOUND,
+                detail="entity not found",
+            )
+        # Only a discovered entity is promotable — already-anchored ⇒ 409
+        # (no double-draft on a re-click). Archived entities carry no
+        # glossary_entity_id, so this also blocks promoting an archived one
+        # only if it was previously anchored (it never is — archive nulls
+        # the FK), which is the correct conservative behavior.
+        if entity.glossary_entity_id is not None:
+            raise HTTPException(
+                status_code=status_codes.HTTP_409_CONFLICT,
+                detail={
+                    "error_code": "already_anchored",
+                    "message": "entity is already anchored to a glossary entry",
+                },
+            )
+
+        # Resolve the project's book_id — the glossary draft must be written
+        # under a book.
+        project = None
+        if entity.project_id:
+            try:
+                project = await projects_repo.get(user_id, UUID(entity.project_id))
+            except ValueError:
+                project = None
+        book_id = getattr(project, "book_id", None) if project else None
+        if book_id is None:
+            raise HTTPException(
+                status_code=status_codes.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail={
+                    "error_code": "no_book",
+                    "message": (
+                        "project has no linked book — cannot create a glossary "
+                        "draft"
+                    ),
+                },
+            )
+
+        # Step 1 — create the ai-suggested DRAFT in glossary. Mirror the
+        # KG→glossary writeback payload shape (kind normalized to a glossary
+        # kind_code; alias variants minus the canonical name). Compare on the
+        # CANONICAL form (case/accent/whitespace-folded) so a display-cased
+        # variant of the name itself doesn't leak in as a redundant alias —
+        # `entity.canonical_name` is already folded, `aliases` carry display
+        # casing (adversary MINOR).
+        aliases = [
+            a
+            for a in entity.aliases
+            if a and canonicalize_entity_name(a) != entity.canonical_name
+        ]
+        attributes: dict = {"aliases": aliases} if aliases else {}
+        propose_resp = await glossary_client.propose_entities(
+            book_id,
+            entities=[
+                {
+                    "kind_code": normalize_kind_for_anchor_lookup(entity.kind),
+                    "name": entity.canonical_name,
+                    "attributes": attributes,
+                }
+            ],
+            default_tags=[WRITEBACK_TAG],
+            park_unknown_kinds=False,
+        )
+        glossary_entity_id = _draft_glossary_id(propose_resp)
+        if glossary_entity_id is None:
+            raise HTTPException(
+                status_code=status_codes.HTTP_502_BAD_GATEWAY,
+                detail={
+                    "error_code": "glossary_draft_failed",
+                    "message": (
+                        "could not create a glossary draft for this entity "
+                        "(glossary unavailable or the name was previously "
+                        "rejected)"
+                    ),
+                },
+            )
+
+        # Step 2 — anchor the knowledge entity to the new draft.
+        anchored = await link_to_glossary(
+            session,
+            user_id=user_id_str,
+            canonical_id=entity.id,
+            glossary_entity_id=glossary_entity_id,
+            name=entity.name,
+            kind=entity.kind,
+            aliases=entity.aliases,
+        )
+
+    if anchored is None:
+        # The draft was created but the anchor write missed (stale id /
+        # race). The draft persists; the FE may retry safely — propose
+        # dedups by name (no second draft) and link_to_glossary is
+        # idempotent.
+        raise HTTPException(
+            status_code=status_codes.HTTP_502_BAD_GATEWAY,
+            detail={
+                "error_code": "anchor_failed",
+                "message": (
+                    "glossary draft was created but anchoring the entity "
+                    "failed — retry is safe (no duplicate draft will be made)"
+                ),
+                "glossary_entity_id": glossary_entity_id,
+            },
+        )
+
+    logger.info(
+        "C9: promoted entity user_id=%s entity_id=%s → glossary_entity_id=%s",
+        user_id, entity_id, glossary_entity_id,
+    )
+    return anchored
 
 
 # ── K19d γ-b — POST /entities/{id}/merge-into/{other_id} ────────────

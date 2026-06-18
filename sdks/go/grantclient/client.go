@@ -136,6 +136,18 @@ func (c *Client) RequireGrant(ctx context.Context, bookID, userID uuid.UUID, nee
 	return nil
 }
 
+// Invalidate drops the cached (user, book) grant so the next resolve re-fetches.
+// Powers instant revoke (D-GRANT-INSTANT-REVOKE): the consuming service tails the
+// book-service grant_revoke stream and calls this on each event, so a revoke takes
+// effect at once instead of after the TTL. Goroutine-safe (sync.Map). Returns true
+// if an entry was actually removed (false = nothing cached, a safe no-op). The SDK
+// stays redis-free — the stream transport lives in the consuming service.
+func (c *Client) Invalidate(bookID, userID uuid.UUID) bool {
+	key := userID.String() + ":" + bookID.String()
+	_, existed := c.cache.LoadAndDelete(key)
+	return existed
+}
+
 func (c *Client) fetch(ctx context.Context, bookID, userID uuid.UUID) (Access, error) {
 	u := fmt.Sprintf("%s/internal/books/%s/access?user_id=%s",
 		c.baseURL, bookID.String(), url.QueryEscape(userID.String()))

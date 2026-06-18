@@ -15,6 +15,7 @@ from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi import status as http_status
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field, StringConstraints
 
@@ -23,22 +24,26 @@ from app.clients.glossary_client import GlossaryClient
 from app.clients.knowledge_client import KnowledgeClient
 from app.clients.llm_client import LLMClient
 from app.config import settings
+from app.worker.events import enqueue_job
 from app.db.repositories import ChapterJobInFlightError, ReferenceViolationError
 from app.db.repositories.canon_rules import CanonRulesRepo
 from app.db.repositories.generation_corrections import (
     GenerationCorrectionsRepo, count_changed_blocks,
 )
+from app.clients.model_name import resolve_model_name
 from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.db.repositories.narrative_thread import NarrativeThreadRepo
 from app.db.repositories.outline import OutlineRepo
 from app.db.repositories.scene_links import SceneLinksRepo
 from app.db.repositories.works import WorksRepo
 from app.deps import (
-    get_book_client_dep, get_canon_rules_repo, get_generation_corrections_repo,
-    get_generation_jobs_repo, get_glossary_client_dep, get_knowledge_client_dep,
-    get_llm_client_dep, get_narrative_thread_repo, get_outline_repo,
-    get_scene_links_repo, get_works_repo,
+    get_book_client_dep, get_canon_rules_repo, get_derivatives_repo,
+    get_generation_corrections_repo, get_generation_jobs_repo,
+    get_glossary_client_dep, get_knowledge_client_dep, get_llm_client_dep,
+    get_narrative_thread_repo, get_outline_repo, get_scene_links_repo,
+    get_works_repo,
 )
+from app.db.repositories.derivatives import DerivativesRepo
 from app.db.models import CorrectionKind
 from app.engine.adaptive_k import adaptive_k
 from app.engine.chapter_gen import build_chapter_pack_node, union_cast
@@ -52,6 +57,10 @@ from app.engine.cowrite import (
     estimate_prompt_tokens, stream_draft,
 )
 from app.engine.critic import judge_prose
+from app.engine.critic_override import (
+    critique_overrides,
+    evaluate_override_gate as co_evaluate_override_gate,
+)
 from app.engine.select import diverge, select_draft
 from app.reasoning import ReasoningSignals, score_effort
 from loreweave_llm import infer_reasoning_control, resolve_reasoning
@@ -59,7 +68,7 @@ from app.middleware.jwt_auth import get_bearer_token, get_current_user
 from app.packer import budget as B
 from app.grant_client import GrantLevel
 from app.grant_deps import InsufficientGrant
-from app.packer.pack import OwnershipError, PackRequest, pack
+from app.packer.pack import OwnershipError, PackRequest, build_derivative_context, pack
 from app.packer.profile import from_settings
 
 logger = logging.getLogger(__name__)
@@ -147,6 +156,12 @@ class StitchBody(BaseModel):
     model_name: str | None = None
     idempotency_key: str | None = None
     persist: bool = True
+
+
+class PersistJobBody(BaseModel):
+    # M4 Option A accept-step. Optional override for the book-draft commit message;
+    # defaults to an "AI chapter draft (<mode>, accepted)" label.
+    commit_message: Annotated[str, StringConstraints(max_length=500)] | None = None
 
 
 class CritiqueBody(BaseModel):
@@ -274,6 +289,7 @@ async def generate(
     knowledge: KnowledgeClient = Depends(get_knowledge_client_dep),
     llm: LLMClient = Depends(get_llm_client_dep),
     narrative_threads: NarrativeThreadRepo = Depends(get_narrative_thread_repo),
+    derivatives: DerivativesRepo = Depends(get_derivatives_repo),
 ) -> Any:  # StreamingResponse (cowrite) | JSONResponse (auto)
     work, node = await _load_work_node(works, outline, user_id, project_id, body.outline_node_id)
 
@@ -301,12 +317,18 @@ async def generate(
             max_input_chars=settings.compress_max_input_chars,
         )
 
+    # C25 — dị bản two-project merge inputs (base project + branch + fresh
+    # overrides); empty for a non-derivative Work.
+    deriv = await build_derivative_context(
+        work, user_id=user_id, works_repo=works, derivatives_repo=derivatives)
     # Retrieve (M4 packer) — raises OwnershipError (404) / BookClientError (502).
     try:
         pc = await pack(
             PackRequest(user_id=user_id, project_id=project_id, book_id=work.book_id,
                         node=node.model_dump(mode="python"), bearer=bearer, guide=body.guide,
-                        settings=work.settings),
+                        settings=work.settings,
+                        source_project_id=deriv.source_project_id,
+                        branch_point=deriv.branch_point, overrides=deriv.overrides),
             book=book, glossary=glossary, knowledge=knowledge, canon_repo=canon,
             outline_repo=outline, scene_links_repo=scene_links,
             budget_tokens=settings.pack_token_budget,
@@ -353,12 +375,41 @@ async def generate(
         auto_source=str(work.settings.get("reasoning_engine", "rule_based")),
     )
 
+    # M4 — the worker decouples ONLY the AUTO compute (diverge→converge→reflect);
+    # the cowrite STREAM path stays inline (a worker can't stream to the client).
+    worker_auto = settings.composition_worker_enabled and body.mode == "auto"
+    job_input: dict[str, Any] = {
+        "model_source": body.model_source, "model_ref": str(body.model_ref),
+        "operation": body.operation, "prompt_estimate": prompt_estimate,
+        "reasoning": reasoning.source, "reasoning_effort": reasoning.effort,
+    }
+    if worker_auto:
+        # Serialize the bearer-resolved context (the worker has no user bearer to
+        # re-run pack()) + the scene signals the auto compute needs. worker_op is
+        # the canonical dispatch key (operation is the free-form prose op).
+        sdict = work.settings or {}
+        c_src, c_ref = sdict.get("critic_model_source"), sdict.get("critic_model_ref")
+        distinct = bool(c_ref and c_src and str(c_ref) != str(body.model_ref))
+        job_input.update({
+            "worker_op": "generate",
+            "packed_prompt": pc.prompt, "scene_sort_order": pc.scene_sort_order,
+            "present_entity_ids": [str(e) for e in (node.present_entity_ids or [])],
+            "beat_role": node.beat_role, "tension": node.tension,
+            "outline_node_id": str(node.id), "guide": body.guide,
+            "max_out": body.max_output_tokens,
+            "reasoning_passthrough": reasoning.passthrough,
+            "grounding_available": pc.grounding_available,
+            "reinjected_promise_count": pc.reinjected_promise_count,
+            "assembly_mode": assembly_mode,
+            "reflect_max_iters": max(0, min(3, int(sdict.get("reflect_max_iters", 1) or 1))),
+            "critic_source": str(c_src) if distinct else None,
+            "critic_ref": str(c_ref) if distinct else None,
+        })
+
     job, created = await jobs.create(
         user_id, project_id, operation=body.operation, outline_node_id=node.id,
-        mode=body.mode, status="running",
-        input={"model_source": body.model_source, "model_ref": str(body.model_ref),
-               "operation": body.operation, "prompt_estimate": prompt_estimate,
-               "reasoning": reasoning.source, "reasoning_effort": reasoning.effort},
+        mode=body.mode, status="pending" if worker_auto else "running",
+        input=job_input,
         idempotency_key=body.idempotency_key,
     )
     # S2: cancel OTHER in-flight jobs for this node — only when we actually
@@ -368,6 +419,26 @@ async def generate(
         for active in await jobs.list_active_for_node(user_id, project_id, node.id):
             if str(active.id) != str(job.id):
                 await jobs.update_status(user_id, active.id, "cancelled")
+
+    # M4 worker auto path: the pack/cancel/reasoning all ran above (bearer); now
+    # persist-input + enqueue + 202. GET /jobs/{id} polls the result. A same-key
+    # replay returns the existing job (don't re-enqueue).
+    if worker_auto:
+        if not created:
+            r = job.result or {}
+            return JSONResponse({"job_id": str(job.id), "mode": "auto", "replay": True,
+                                 "text": r.get("text", ""), "status": job.status,
+                                 "winner_index": r.get("winner_index"), "k": r.get("k"),
+                                 "candidates": r.get("candidates", []),
+                                 "assembly_mode": assembly_mode})
+        enqueued = await enqueue_job(
+            settings.redis_url, job_id=str(job.id),
+            user_id=str(user_id), project_id=str(project_id))
+        return JSONResponse(
+            status_code=http_status.HTTP_202_ACCEPTED,
+            content={"job_id": str(job.id), "status": "pending",
+                     "mode": "auto", "assembly_mode": assembly_mode,
+                     "enqueued": "ok" if enqueued else "retriggerable"})
 
     # ── AUTO path (V1 A1): diverge→converge, NON-stream, returns the winner. The
     # co-write STREAM path is below. The rerank judge prefers the work's DISTINCT
@@ -557,6 +628,7 @@ async def selection_edit(
     knowledge: KnowledgeClient = Depends(get_knowledge_client_dep),
     llm: LLMClient = Depends(get_llm_client_dep),
     narrative_threads: NarrativeThreadRepo = Depends(get_narrative_thread_repo),
+    derivatives: DerivativesRepo = Depends(get_derivatives_repo),
 ) -> Any:
     """T3.2 — selection-scoped edit (rewrite/expand/describe) over the author's
     highlighted prose. Decoupled from outline_node_id (AH-1): a selection may sit
@@ -586,10 +658,15 @@ async def selection_edit(
                     max_input_chars=settings.compress_max_input_chars)
 
             try:
+                # C25 — dị bản two-project merge inputs (best-effort, like the pack).
+                deriv = await build_derivative_context(
+                    work, user_id=user_id, works_repo=works, derivatives_repo=derivatives)
                 pc = await pack(
                     PackRequest(user_id=user_id, project_id=project_id, book_id=work.book_id,
                                 node=node.model_dump(mode="python"), bearer=bearer, guide=body.guide,
-                                settings=work.settings),
+                                settings=work.settings,
+                                source_project_id=deriv.source_project_id,
+                                branch_point=deriv.branch_point, overrides=deriv.overrides),
                     book=book, glossary=glossary, knowledge=knowledge, canon_repo=canon,
                     outline_repo=outline, scene_links_repo=scene_links,
                     budget_tokens=settings.pack_token_budget, jobs_repo=jobs,
@@ -627,6 +704,32 @@ async def selection_edit(
     # rewritten fragment, no canon block) would masquerade as the scene's draft and
     # corrupt the stitch / reinjection / gate. The scene id stays in `input` for
     # traceability only.
+    if settings.composition_worker_enabled:
+        # M4 — batch/poll variant: the endpoint already built the message list
+        # (selection + voice/scene grounding, bearer-resolved); persist it + enqueue
+        # → 202. The worker drains stream_draft to the final text (no streaming) and
+        # stores the result; the FE polls GET /jobs/{id} then replaces the range on
+        # Accept. outline_node_id stays None (same HIGH rationale above).
+        job, _created = await jobs.create(
+            user_id, project_id, operation=body.operation, outline_node_id=None,
+            mode="cowrite", status="pending",
+            input={"model_source": body.model_source, "model_ref": str(body.model_ref),
+                   "operation": body.operation, "worker_op": "selection_edit",
+                   "selection_edit": True,
+                   "scene_context": str(node.id) if node is not None else None,
+                   "messages": messages, "prompt_estimate": prompt_estimate,
+                   "max_out": body.max_output_tokens,
+                   "reasoning": reasoning.source, "reasoning_effort": reasoning.effort,
+                   "reasoning_passthrough": reasoning.passthrough,
+                   "grounding_available": bool(grounding)})
+        enqueued = await enqueue_job(
+            settings.redis_url, job_id=str(job.id),
+            user_id=str(user_id), project_id=str(project_id))
+        return JSONResponse(
+            status_code=http_status.HTTP_202_ACCEPTED,
+            content={"job_id": str(job.id), "status": "pending", "selection_edit": True,
+                     "enqueued": "ok" if enqueued else "retriggerable"})
+
     job, created = await jobs.create(
         user_id, project_id, operation=body.operation,
         outline_node_id=None,
@@ -688,6 +791,7 @@ async def generate_chapter(
     knowledge: KnowledgeClient = Depends(get_knowledge_client_dep),
     llm: LLMClient = Depends(get_llm_client_dep),
     narrative_threads: NarrativeThreadRepo = Depends(get_narrative_thread_repo),
+    derivatives: DerivativesRepo = Depends(get_derivatives_repo),
 ) -> Any:
     """B2 chapter single-pass (assembly_mode='chapter'): generate a WHOLE chapter
     in ONE drafter pass from its A3 decompose plan (scene nodes), grounded at the
@@ -728,11 +832,17 @@ async def generate_chapter(
             plan=plan, source_language=_src_lang,
             max_input_chars=settings.compress_max_input_chars)
 
+    # C25 — dị bản two-project merge inputs (base project + branch + fresh
+    # overrides); empty for a non-derivative Work.
+    deriv = await build_derivative_context(
+        work, user_id=user_id, works_repo=works, derivatives_repo=derivatives)
     try:
         pc = await pack(
             PackRequest(user_id=user_id, project_id=project_id, book_id=work.book_id,
                         node=pack_node, bearer=bearer, guide=body.guide,
-                        settings=work.settings, chapter_sort_hint=chapter_sort),
+                        settings=work.settings, chapter_sort_hint=chapter_sort,
+                        source_project_id=deriv.source_project_id,
+                        branch_point=deriv.branch_point, overrides=deriv.overrides),
             book=book, glossary=glossary, knowledge=knowledge, canon_repo=canon,
             outline_repo=outline, scene_links_repo=scene_links,
             budget_tokens=settings.pack_token_budget, jobs_repo=jobs,
@@ -770,6 +880,55 @@ async def generate_chapter(
     max_out = body.max_output_tokens or min(
         len(scenes) * settings.chapter_gen_per_scene_tokens, settings.chapter_gen_max_tokens)
 
+    if settings.composition_worker_enabled:
+        # M4 (Option A) — resolve the bearer context (pack, chapter_sort, critic)
+        # HERE, persist it in job.input behind the chapter in-flight guard, enqueue
+        # → 202. The worker runs diverge(k=1) + canon-reflect + stores the result;
+        # persistence to the book draft is the separate bearer accept-step
+        # (POST /jobs/{id}/persist). Same guard + idempotency as the inline path.
+        sdict = work.settings or {}
+        c_src, c_ref = sdict.get("critic_model_source"), sdict.get("critic_model_ref")
+        distinct = bool(c_ref and c_src and str(c_ref) != str(body.model_ref))
+        job_input = {
+            "model_source": body.model_source, "model_ref": str(body.model_ref),
+            "operation": body.operation, "worker_op": "chapter_generate",
+            "assembly_mode": "chapter", "chapter_id": str(chapter_id),
+            "packed_prompt": pc.prompt, "scene_sort_order": pc.scene_sort_order,
+            "present_entity_ids": [str(e) for e in pack_node["present_entity_ids"]],
+            "prompt_estimate": prompt_estimate, "max_out": max_out, "guide": body.guide,
+            "reasoning": reasoning.source, "reasoning_effort": reasoning.effort,
+            "reasoning_passthrough": reasoning.passthrough,
+            "grounding_available": pc.grounding_available,
+            "reinjected_promise_count": pc.reinjected_promise_count,
+            "reflect_max_iters": max(0, min(3, int(sdict.get("reflect_max_iters", 1) or 1))),
+            "critic_source": str(c_src) if distinct else None,
+            "critic_ref": str(c_ref) if distinct else None,
+        }
+        try:
+            job, created = await jobs.create_chapter_job_guarded(
+                user_id, project_id, chapter_id, operation=body.operation,
+                mode="auto", status="pending", input=job_input,
+                idempotency_key=body.idempotency_key,
+                stale_secs=settings.chapter_inflight_stale_secs,
+                model_name=await resolve_model_name(
+                    body.model_source, str(body.model_ref) if body.model_ref else None))
+        except ChapterJobInFlightError as exc:
+            raise HTTPException(status_code=409, detail={
+                "code": "CHAPTER_JOB_IN_FLIGHT", "active_job_id": exc.active_job_id})
+        if not created:  # idempotent replay
+            r = job.result or {}
+            return JSONResponse({"job_id": str(job.id), "mode": "auto", "replay": True,
+                                 "text": r.get("text", ""), "status": job.status,
+                                 "canon": r.get("canon"), "assembly_mode": "chapter"})
+        enqueued = await enqueue_job(
+            settings.redis_url, job_id=str(job.id),
+            user_id=str(user_id), project_id=str(project_id))
+        return JSONResponse(
+            status_code=http_status.HTTP_202_ACCEPTED,
+            content={"job_id": str(job.id), "status": "pending", "mode": "auto",
+                     "assembly_mode": "chapter",
+                     "enqueued": "ok" if enqueued else "retriggerable"})
+
     # Idempotency keyed on the caller's key (design LOW-1: key on chapter_id +
     # assembly_mode in the value the caller builds). Chapter jobs aren't
     # node-scoped, so the per-scene S2 cancel doesn't apply; instead an in-flight
@@ -785,7 +944,9 @@ async def generate_chapter(
                    "assembly_mode": "chapter", "chapter_id": str(chapter_id),
                    "reasoning": reasoning.source, "reasoning_effort": reasoning.effort},
             idempotency_key=body.idempotency_key,
-            stale_secs=settings.chapter_inflight_stale_secs)
+            stale_secs=settings.chapter_inflight_stale_secs,
+            model_name=await resolve_model_name(
+                body.model_source, str(body.model_ref) if body.model_ref else None))
     except ChapterJobInFlightError as exc:
         raise HTTPException(status_code=409, detail={
             "code": "CHAPTER_JOB_IN_FLIGHT", "active_job_id": exc.active_job_id})
@@ -946,6 +1107,54 @@ async def stitch_chapter_endpoint(
     max_out = body.max_output_tokens or min(
         len(drafts) * settings.chapter_gen_per_scene_tokens, settings.stitch_max_tokens)
 
+    if settings.composition_worker_enabled:
+        # M4 (Option A) — resolve the bearer-only bits (chapter_sort, critic config)
+        # HERE, persist them + the resolved context in job.input, enqueue → 202. The
+        # worker runs stitch + canon-reflect + stores the result; persistence to the
+        # book draft stays a separate bearer accept-step (GET /jobs/{id} polls). Same
+        # in-flight guard + idempotency as the inline path.
+        chapter_sort = (await book.get_chapter_sort_orders([chapter_id])).get(str(chapter_id))
+        sdict = work.settings or {}
+        c_src, c_ref = sdict.get("critic_model_source"), sdict.get("critic_model_ref")
+        distinct = bool(c_ref and c_src and str(c_ref) != str(body.model_ref))
+        job_input = {
+            "model_source": body.model_source, "model_ref": str(body.model_ref),
+            "operation": "stitch_chapter", "worker_op": "stitch_chapter",
+            "assembly_mode": "per_scene_stitch",
+            "chapter_id": str(chapter_id), "chapter_intent": chapter_intent,
+            "cast_glossary_ids": [str(e) for e in union_cast(scenes)],
+            "chapter_sort": chapter_sort, "max_out": max_out,
+            "reasoning": reasoning.source,
+            "reasoning_effort": None if reasoning.passthrough else reasoning.effort,
+            "reflect_max_iters": max(0, min(3, int(sdict.get("reflect_max_iters", 1) or 1))),
+            "critic_source": str(c_src) if distinct else None,
+            "critic_ref": str(c_ref) if distinct else None,
+        }
+        try:
+            job, created = await jobs.create_chapter_job_guarded(
+                user_id, project_id, chapter_id, operation="stitch_chapter",
+                mode="auto", status="pending", input=job_input,
+                idempotency_key=body.idempotency_key,
+                stale_secs=settings.chapter_inflight_stale_secs,
+                model_name=await resolve_model_name(
+                    body.model_source, str(body.model_ref) if body.model_ref else None))
+        except ChapterJobInFlightError as exc:
+            raise HTTPException(status_code=409, detail={
+                "code": "CHAPTER_JOB_IN_FLIGHT", "active_job_id": exc.active_job_id})
+        if not created:  # idempotent replay
+            r = job.result or {}
+            return JSONResponse({"job_id": str(job.id), "status": job.status,
+                                 "mode": "auto", "replay": True,
+                                 "text": r.get("text", ""), "canon": r.get("canon"),
+                                 "assembly_mode": "per_scene_stitch"})
+        enqueued = await enqueue_job(
+            settings.redis_url, job_id=str(job.id),
+            user_id=str(user_id), project_id=str(project_id))
+        return JSONResponse(
+            status_code=http_status.HTTP_202_ACCEPTED,
+            content={"job_id": str(job.id), "status": "pending",
+                     "enqueued": "ok" if enqueued else "retriggerable"})
+
     # In-flight guard (Cycle-2): reject a concurrent chapter-level job for this
     # chapter (a running generate or stitch) with 409 — both write this chapter's
     # draft. Same-key idempotent replay is honored before the guard.
@@ -958,7 +1167,9 @@ async def stitch_chapter_endpoint(
                    "chapter_id": str(chapter_id), "reasoning": reasoning.source,
                    "reasoning_effort": reasoning.effort},
             idempotency_key=body.idempotency_key,
-            stale_secs=settings.chapter_inflight_stale_secs)
+            stale_secs=settings.chapter_inflight_stale_secs,
+            model_name=await resolve_model_name(
+                body.model_source, str(body.model_ref) if body.model_ref else None))
     except ChapterJobInFlightError as exc:
         raise HTTPException(status_code=409, detail={
             "code": "CHAPTER_JOB_IN_FLIGHT", "active_job_id": exc.active_job_id})
@@ -1062,14 +1273,96 @@ async def get_job(
     return job.model_dump(mode="json")
 
 
+@router.post("/jobs/{job_id}/persist")
+async def persist_job(
+    job_id: UUID,
+    body: PersistJobBody,
+    user_id: UUID = Depends(get_current_user),
+    bearer: str = Depends(get_bearer_token),
+    jobs: GenerationJobsRepo = Depends(get_generation_jobs_repo),
+    works: WorksRepo = Depends(get_works_repo),
+    book: BookClient = Depends(get_book_client_dep),
+) -> dict[str, Any]:
+    """M4 Option A — the accept/persist step for a WORKER-computed chapter result.
+
+    The composition worker has only the internal-auth LLM (no user bearer), so it
+    COMPUTES the chapter (stitch / chapter generate) and stores the text in
+    ``generation_job.result`` with ``persisted: False``; this endpoint writes that
+    text into the book-service draft with the CALLER's bearer. For the inline
+    (flag-off) path the endpoint persisted directly, so this is a no-op there — it
+    exists for the worker (202) path the FE polls then accepts.
+
+    Guards: the job must be the caller's, ``completed``, and carry a
+    ``chapter_id`` + ``text`` in its result (a per-scene draft has no chapter_id →
+    422, never mis-persisted as a chapter). Idempotent: a job already
+    ``persisted`` returns success without a second write (the cross-store
+    best-effort rule — the text is durable in the job regardless)."""
+    job = await jobs.get(user_id, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="job not found")
+    if job.status != "completed":
+        raise HTTPException(status_code=409, detail={
+            "code": "JOB_NOT_COMPLETED", "status": job.status})
+    result = dict(job.result or {})
+    chapter_id = result.get("chapter_id")
+    text = result.get("text")
+    if not chapter_id or not text:
+        # A per-scene / non-chapter result is not a persistable chapter draft.
+        raise HTTPException(status_code=422, detail={
+            "code": "JOB_NOT_PERSISTABLE",
+            "detail": "job result has no chapter_id/text to persist as a chapter draft"})
+    if result.get("persisted"):  # idempotent — already written, don't double-PATCH
+        return {"job_id": str(job.id), "persisted": True,
+                "draft_version": result.get("draft_version"), "already": True}
+
+    # C26 FIX 2 — the derivative override-critic GATE actually blocks accept here (it
+    # was set/persisted but never consumed). A latest critic that flagged a slip
+    # (needs_regeneration) refuses the accept with 409 + surfaces the findings so the
+    # user regenerates. FAIL-OPEN once the regen cap is reached (regen_exhausted): the
+    # gate stops blocking so a stubborn / false-positive slip can't lock the draft
+    # forever — the finding is surfaced, accept proceeds. A job with no critic, a
+    # compliant critic, or a canon (non-derivative) Work is never blocked.
+    critic = job.critic or {}
+    if critic.get("needs_regeneration") and not critic.get("regen_exhausted"):
+        raise HTTPException(status_code=409, detail={
+            "code": "OVERRIDE_SLIP_NEEDS_REGEN",
+            "detail": "a derivative override slipped — regenerate before accepting, "
+                      "or exhaust the regeneration cap to accept anyway",
+            "regen_attempts": critic.get("regen_attempts"),
+            "regen_cap": critic.get("regen_cap"),
+            "derivative_findings": critic.get("derivative_findings") or [],
+        })
+
+    work = await works.get(user_id, job.project_id)
+    if work is None:
+        raise HTTPException(status_code=404, detail="work not found")
+
+    assembly = result.get("assembly_mode", "chapter")
+    msg = body.commit_message or f"AI chapter draft ({assembly}, accepted)"
+    persisted, draft_version, persist_error = await _persist_chapter_draft(
+        book, work.book_id, UUID(str(chapter_id)), bearer, text, msg)
+    if persisted:
+        # Stamp the result so a re-accept is idempotent + the job reflects the write.
+        await jobs.update_status(
+            user_id, job.id, job.status,
+            result={**result, "persisted": True, "draft_version": draft_version})
+    return {"job_id": str(job.id), "persisted": persisted,
+            "draft_version": draft_version, "persist_error": persist_error}
+
+
 @router.post("/jobs/{job_id}/critique")
 async def critique(
     job_id: UUID, body: CritiqueBody,
     user_id: UUID = Depends(get_current_user),
+    bearer: str = Depends(get_bearer_token),
     jobs: GenerationJobsRepo = Depends(get_generation_jobs_repo),
     works: WorksRepo = Depends(get_works_repo),
+    derivatives: DerivativesRepo = Depends(get_derivatives_repo),
     canon: CanonRulesRepo = Depends(get_canon_rules_repo),
     llm: LLMClient = Depends(get_llm_client_dep),
+    glossary: GlossaryClient = Depends(get_glossary_client_dep),
+    knowledge: KnowledgeClient = Depends(get_knowledge_client_dep),
+    book: BookClient = Depends(get_book_client_dep),
 ) -> dict[str, Any]:
     job = await jobs.get(user_id, job_id)
     if job is None:
@@ -1079,15 +1372,46 @@ async def critique(
         raise HTTPException(status_code=404, detail="work not found")
 
     settings_dict = work.settings or {}
+    passage = body.passage if body.passage is not None else (job.result or {}).get("text", "")
+
+    # C26 (dị bản M3) — the DERIVATIVE critic dimension. Fires ONLY for a derivative
+    # Work (source_work_id set, surfaced via C25's build_derivative_context); enforces
+    # the active entity_override[] against the passage (override slip + delta internal
+    # consistency). Deterministic + AI-free — so it runs INDEPENDENTLY of the LLM
+    # critic-model gate below (a derivative with no distinct critic model still gets
+    # override enforcement). Degrade-safe (returns [] on any failure — advisory).
+    derivative_findings = await critique_overrides(
+        work=work, user_id=user_id, passage=passage, bearer=bearer,
+        works_repo=works, derivatives_repo=derivatives,
+        glossary=glossary, knowledge=knowledge, book=book,
+    )
+    # C26 GATE — turn the (formerly advisory) derivative findings into an
+    # accept/regenerate VERDICT with a bounded attempt cap. `prior_attempts` is read
+    # back off the job's existing critic (each slipped critique burns one attempt via
+    # the existing regenerate→re-critique loop; the cap fails OPEN to the human so a
+    # stubborn / false-positive slip can't loop forever). Only computed for a
+    # derivative that actually produced findings.
+    prior_attempts = int((job.critic or {}).get("regen_attempts", 0) or 0)
+    gate = (
+        co_evaluate_override_gate(derivative_findings, prior_attempts=prior_attempts)
+        if derivative_findings else None
+    )
+
     critic_src = settings_dict.get("critic_model_source")
     critic_ref = settings_dict.get("critic_model_ref")
     drafter_ref = (job.input or {}).get("model_ref")
     # Anti-self-reinforcement: the critic MUST be a distinct model. No critic
-    # configured, or same as the drafter → skip the critique (advisory) + warn.
+    # configured, or same as the drafter → skip the LLM critique (advisory) + warn,
+    # but STILL surface + persist the deterministic derivative findings + the GATE.
     if not critic_ref or not critic_src or str(critic_ref) == str(drafter_ref):
-        return {"critic": None, "warning": "critique skipped: no distinct critic model configured"}
+        critic = ({"derivative_findings": derivative_findings, **gate}
+                  if derivative_findings else None)
+        if critic is not None:
+            await jobs.update_status(user_id, job_id, job.status, critic=critic,
+                                     target_revision_id=body.target_revision_id)
+        return {"critic": critic,
+                "warning": "critique skipped: no distinct critic model configured"}
 
-    passage = body.passage if body.passage is not None else (job.result or {}).get("text", "")
     # CC2: re-resolve the ACTIVE canon at critique time — a deleted/archived rule
     # is never enforced.
     rules = await canon.list_active(user_id, job.project_id)
@@ -1098,6 +1422,17 @@ async def critique(
         passage=passage, active_rules=active_rules, present_facts=[],
         profile=from_settings(settings_dict),
     )
+    # Fold the deterministic derivative findings + the GATE verdict into the critic
+    # contract (alongside the LLM dims/violations) so the regeneration loop sees both.
+    if derivative_findings:
+        critic = {**critic, "derivative_findings": derivative_findings, **(gate or {})}
+    elif prior_attempts:
+        # FIX 3 (MED) — carry the regen-cap counter FORWARD on a clean LLM-critic run.
+        # `critic` is COALESCE-replaced on write (generation_jobs.update_status), so a
+        # clean critique BETWEEN two slips would otherwise DROP regen_attempts and the
+        # next slip restarts the cap at 0 (a re-spend loop). Persist the prior count so
+        # the cap keeps bounding the total ≤ REGEN_ATTEMPT_CAP across mixed critiques.
+        critic = {**critic, "regen_attempts": prior_attempts}
     await jobs.update_status(user_id, job_id, job.status, critic=critic,
                              target_revision_id=body.target_revision_id)
     return {"critic": critic}

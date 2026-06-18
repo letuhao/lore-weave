@@ -1,9 +1,12 @@
 {
   "nav": {
+    "startNew": "新しく始める",
     "workspace": "ワークスペース",
     "chat": "チャット",
     "knowledge": "ナレッジ",
+    "worlds": "ワールド",
     "campaigns": "キャンペーン",
+    "jobs": "ジョブ",
     "browse": "閲覧",
     "usage": "使用量",
     "leaderboard": "ランキング",

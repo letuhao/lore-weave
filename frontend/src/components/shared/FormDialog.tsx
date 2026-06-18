@@ -16,8 +16,14 @@ export function FormDialog({ open, onOpenChange, title, description, children, f
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-lg border bg-background p-6 shadow-lg">
-          <div className="mb-4">
+        {/* C0 (BL-4/KN-3): the dialog is a flex column capped at 85vh.
+            The header and footer are flex-shrink-0 (always visible); only
+            the body scrolls. This keeps the primary action reachable on
+            tall forms instead of pushing it below the viewport fold. The
+            body and footer are SIBLINGS (not nested) so the pinned footer
+            never overlaps scrolled content. */}
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 flex max-h-[85vh] w-full max-w-lg -translate-x-1/2 -translate-y-1/2 flex-col rounded-lg border bg-background shadow-lg">
+          <div className="flex-shrink-0 px-6 pt-6">
             <Dialog.Title className="font-serif text-lg font-semibold">{title}</Dialog.Title>
             {/* Gate-5-I2: always render Description so Radix doesn't
                 warn about missing aria-describedby. When the caller
@@ -36,9 +42,11 @@ export function FormDialog({ open, onOpenChange, title, description, children, f
             </Dialog.Description>
           </div>
 
-          {children}
+          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">{children}</div>
 
-          {footer && <div className="mt-6 flex justify-end gap-2">{footer}</div>}
+          {footer && (
+            <div className="flex-shrink-0 flex justify-end gap-2 border-t px-6 py-4">{footer}</div>
+          )}
 
           <Dialog.Close asChild>
             <button

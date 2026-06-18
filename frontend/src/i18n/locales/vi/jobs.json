@@ -1,0 +1,152 @@
+{
+  "title": "Tác vụ",
+  "status": {
+    "pending": "Chờ xử lý",
+    "running": "Đang chạy",
+    "paused": "Tạm dừng",
+    "cancelling": "Đang hủy",
+    "completed": "Hoàn tất",
+    "failed": "Thất bại",
+    "cancelled": "Đã hủy"
+  },
+  "kind": {
+    "extraction": "Trích xuất tri thức",
+    "glossary_extraction": "Trích xuất thuật ngữ",
+    "wiki_gen": "Tạo wiki",
+    "translation": "Dịch thuật",
+    "glossary_translation": "Dịch thuật ngữ",
+    "video_gen": "Tạo video",
+    "campaign": "Chiến dịch",
+    "enrichment_job": "Làm giàu lore",
+    "book_import": "Nhập sách",
+    "composition": { "generate": "Sáng tác" }
+  },
+  "summary": {
+    "active": "Đang hoạt động",
+    "completed": "Hoàn tất",
+    "failed": "Thất bại",
+    "cancelled": "Đã hủy"
+  },
+  "filters": {
+    "status": "Trạng thái",
+    "kind": "Loại",
+    "allStatuses": "Tất cả trạng thái",
+    "allKinds": "Tất cả loại",
+    "search": "Tìm theo tiêu đề…",
+    "searchWide": "Tìm theo tiêu đề, loại, dịch vụ, model hoặc ID…",
+    "searchHint": "Tìm trong tiêu đề · loại · dịch vụ · model · ID tác vụ (có trễ)."
+  },
+  "col": {
+    "job": "Tác vụ",
+    "status": "Trạng thái",
+    "progress": "Tiến độ",
+    "cost": "Chi phí · token",
+    "started": "Bắt đầu",
+    "actions": "Thao tác"
+  },
+  "section": {
+    "active": "Đang hoạt động · trực tiếp",
+    "activeHint": "không phân trang — cập nhật trực tiếp qua SSE",
+    "history": "Lịch sử",
+    "historyHint": "sắp theo ngày tạo · có phân trang"
+  },
+  "list": {
+    "loading": "Đang tải…",
+    "error": "Không tải được tác vụ.",
+    "empty": "Chưa có tác vụ nào.",
+    "noActive": "Không có tác vụ đang chạy.",
+    "more": "Tải thêm",
+    "toggleChildren": "Mở/đóng tác vụ con",
+    "noChildren": "Không có tác vụ con."
+  },
+  "row": {
+    "ran": "đã chạy {{d}}",
+    "running": "đang chạy {{d}}",
+    "details": "Chi tiết ↗"
+  },
+  "pager": {
+    "range": "{{from}}–{{to}} trên {{total}}",
+    "pageSize": "Số mục mỗi trang",
+    "perPage": "{{n}} / trang",
+    "page": "Trang {{n}}",
+    "prev": "Trang trước",
+    "next": "Trang sau",
+    "outOfRange": "Không có dòng nào ở trang này (tổng {{total}}).",
+    "first": "Về trang đầu"
+  },
+  "live": {
+    "on": "● trực tiếp",
+    "onShort": "trực tiếp",
+    "reconnecting": "đang kết nối lại…",
+    "off": "ngoại tuyến"
+  },
+  "controls": {
+    "pause": "Tạm dừng",
+    "resume": "Tiếp tục",
+    "cancel": "Hủy",
+    "cancelConfirm": "Hủy tác vụ?",
+    "cancelYes": "Có",
+    "cancelNo": "Không",
+    "cancelled": "Đã hủy.",
+    "paused": "Đã tạm dừng.",
+    "resumed": "Đã tiếp tục.",
+    "retry": "Thử lại",
+    "retried": "Đã gửi lại thành một job mới.",
+    "stale": "Trạng thái đã thay đổi — đã làm mới.",
+    "actionFailed": "Thao tác thất bại: {{error}}"
+  },
+  "monitor": {
+    "back": "Tất cả tác vụ",
+    "error": "Không tải được tác vụ.",
+    "pausedBanner": "Đã tạm dừng — không gửi đơn vị mới, các đơn vị đang chạy sẽ hoàn tất. Tiếp tục bên trên.",
+    "children": "Tác vụ con"
+  },
+  "detail": {
+    "progress": "Tiến độ",
+    "elapsed": "Đã chạy",
+    "throughput": "Thông lượng",
+    "throughputVal": "~{{n}} /giờ",
+    "eta": "Dự kiến còn",
+    "costSoFar": "Chi phí đến nay",
+    "tokensIn": "Token vào",
+    "tokensOut": "Token ra",
+    "bestEffort": "ước tính",
+    "models": "Model",
+    "parameters": "Tham số",
+    "parametersHint": "động, từ đối tượng params của tác vụ",
+    "jobId": "ID tác vụ",
+    "kind": "Loại",
+    "service": "Dịch vụ",
+    "parent": "Tác vụ cha",
+    "viewParent": "Xem tác vụ cha ↗",
+    "created": "Tạo lúc",
+    "lastUpdate": "Cập nhật cuối",
+    "copied": "Đã sao chép ID.",
+    "copyFailed": "Không sao chép được.",
+    "activity": "Hoạt động (trực tiếp)",
+    "errorTitle": "Lỗi"
+  },
+  "activity": {
+    "created": "Đã tạo",
+    "pending": "Đã xếp hàng",
+    "running": "Đang chạy",
+    "paused": "Đã tạm dừng",
+    "cancelling": "Đang hủy",
+    "completed": "Hoàn tất",
+    "failed": "Thất bại",
+    "cancelled": "Đã hủy"
+  },
+  "mobile": {
+    "children": "tác vụ con"
+  },
+  "fairness": {
+    "title": "Lập lịch công bằng",
+    "running": "{{running}}/{{cap}} đang chạy",
+    "queued": "· {{queued}} đang chờ",
+    "lane": {
+      "translation": "Dịch thuật",
+      "knowledge": "Tri thức",
+      "loreEnrichment": "Làm giàu lore"
+    }
+  }
+}

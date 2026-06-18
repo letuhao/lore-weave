@@ -24,6 +24,7 @@ function noopActions(): ProjectStateCardActions {
     onExtractNew: vi.fn(),
     onIgnoreStale: vi.fn(),
     onConfirmModelChange: vi.fn(),
+    onSetConcurrency: vi.fn(),
   };
 }
 
@@ -37,6 +38,7 @@ const sampleJob = {
   max_spend_usd: '5.00',
   started_at: '2026-04-19T12:00:00Z',
   error_message: null,
+  concurrency_level: 4,
 };
 
 const sampleStats = {
@@ -150,6 +152,18 @@ describe('ProjectStateCard dispatcher', () => {
     getByRole('button', { name: 'projects.state.actions.cancel' }).click();
     expect(actions.onStart).toHaveBeenCalledTimes(1);
     expect(actions.onCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('BuildingRunningCard renders an elapsed line from started_at (KN-9)', () => {
+    render(
+      <ProjectStateCard
+        state={{ kind: 'building_running', job: sampleJob }}
+        actions={noopActions()}
+      />,
+    );
+    // started_at is well in the past, so formatElapsed returns a value
+    // and the elapsed line renders.
+    expect(screen.getByTestId('building-running-elapsed')).toBeDefined();
   });
 
   it('BuildingRunningCard renders a progress bar with role=progressbar', () => {

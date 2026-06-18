@@ -96,6 +96,7 @@
       "perArticle": "Estimated cost: ~{{perArticle}} per article"
     },
     "started": "Generation started",
+    "startedTruncated": "Generating {{selected}} of {{total}} entities — the rest were skipped by the limit. Raise the limit to include them.",
     "noEntities": "No matching entities to generate",
     "alreadyRunning": "A generation job is already running for this book",
     "notIndexed": "Build the knowledge graph for this book first",

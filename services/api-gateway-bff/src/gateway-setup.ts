@@ -27,6 +27,7 @@ export function configureGatewayApp(
     loreEnrichmentUrl: string;
     learningUrl: string;
     compositionUrl: string;
+    jobsUrl: string;
   },
 ): void {
   app.enableCors({
@@ -58,6 +59,16 @@ export function configureGatewayApp(
     selfHandleResponse: false,
     pathFilter: (pathname: string) => pathname.startsWith('/v1/books'),
   });
+  // C21 — thin `/v1/worlds*` passthrough to book-service (worlds + bible
+  // provisioning live in book-service, same target as `/v1/books`). This is a
+  // gateway-invariant enabling passthrough only — NO world business logic in the
+  // gateway; it just forwards. Mirrors bookProxy exactly.
+  const worldsProxy = createProxyMiddleware({
+    target: urls.bookUrl,
+    changeOrigin: true,
+    selfHandleResponse: false,
+    pathFilter: (pathname: string) => pathname.startsWith('/v1/worlds'),
+  });
   const sharingProxy = createProxyMiddleware({
     target: urls.sharingUrl,
     changeOrigin: true,
@@ -87,6 +98,11 @@ export function configureGatewayApp(
     target: urls.translationUrl,
     changeOrigin: true,
     pathFilter: (pathname: string) => pathname.startsWith('/v1/extraction'),
+  });
+  const glossaryTranslateProxy = createProxyMiddleware({
+    target: urls.translationUrl,
+    changeOrigin: true,
+    pathFilter: (pathname: string) => pathname.startsWith('/v1/glossary-translate'),
   });
   const glossaryProxy = createProxyMiddleware({
     target: urls.glossaryUrl,
@@ -187,6 +203,15 @@ export function configureGatewayApp(
     pathFilter: (pathname: string) => pathname.startsWith('/v1/lore-enrichment'),
   });
 
+  // Unified Job Control Plane P2 — jobs-service (/v1/jobs list/detail + SSE
+  // stream). `selfHandleResponse:false` (default) so GET /v1/jobs/stream passes
+  // through un-buffered, the chat/composition SSE precedent.
+  const jobsProxy = createProxyMiddleware({
+    target: urls.jobsUrl,
+    changeOrigin: true,
+    pathFilter: (pathname: string) => pathname.startsWith('/v1/jobs'),
+  });
+
   // Phase B — learning-service (Axis-1 correction read API).
   const learningProxy = createProxyMiddleware({
     target: urls.learningUrl,
@@ -255,6 +280,11 @@ export function configureGatewayApp(
     res: Response,
     next: NextFunction,
   ) => void;
+  const worldsProxyFn = worldsProxy as unknown as (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => void;
   const sharingProxyFn = sharingProxy as unknown as (
     req: Request,
     res: Response,
@@ -281,6 +311,11 @@ export function configureGatewayApp(
     next: NextFunction,
   ) => void;
   const extractionProxyFn = extractionProxy as unknown as (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => void;
+  const glossaryTranslateProxyFn = glossaryTranslateProxy as unknown as (
     req: Request,
     res: Response,
     next: NextFunction,
@@ -335,12 +370,20 @@ export function configureGatewayApp(
     res: Response,
     next: NextFunction,
   ) => void;
+  const jobsProxyFn = jobsProxy as unknown as (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => void;
   instance.use((req: Request, res: Response, next: NextFunction) => {
     if (req.path.startsWith('/v1/auth') || req.path.startsWith('/v1/account') || req.path.startsWith('/v1/me/preferences') || req.path.startsWith('/v1/users')) {
       return authProxyFn(req, res, next);
     }
     if (req.path.startsWith('/v1/books')) {
       return bookProxyFn(req, res, next);
+    }
+    if (req.path.startsWith('/v1/worlds')) {
+      return worldsProxyFn(req, res, next);
     }
     if (req.path.startsWith('/v1/sharing')) {
       return sharingProxyFn(req, res, next);
@@ -356,6 +399,9 @@ export function configureGatewayApp(
     }
     if (req.path.startsWith('/v1/extraction')) {
       return extractionProxyFn(req, res, next);
+    }
+    if (req.path.startsWith('/v1/glossary-translate')) {
+      return glossaryTranslateProxyFn(req, res, next);
     }
     if (req.path.startsWith('/v1/translation')) {
       return translationProxyFn(req, res, next);
@@ -392,6 +438,9 @@ export function configureGatewayApp(
     }
     if (req.path.startsWith('/v1/lore-enrichment')) {
       return loreEnrichmentProxyFn(req, res, next);
+    }
+    if (req.path.startsWith('/v1/jobs')) {
+      return jobsProxyFn(req, res, next);
     }
     return next();
   });

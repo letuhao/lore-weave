@@ -24,7 +24,7 @@ import (
 func TestSchemaToken_RoundTrip(t *testing.T) {
 	secret := "test_jwt_secret_at_least_32_characters_long"
 	u, b := uuid.New(), uuid.New()
-	params := json.RawMessage(`{"code":"power_system","name":"Power System"}`)
+	params := json.RawMessage(`{"code":"qa_new_kind","name":"Power System"}`)
 	now := time.Unix(1_900_000_000, 0)
 	tok := mintSchemaToken(secret, u, b, schemaOpKind, params, now)
 	if tok == "" {
@@ -55,10 +55,17 @@ func TestSchemaToken_TamperedSignatureRejected(t *testing.T) {
 	secret := "test_jwt_secret_at_least_32_characters_long"
 	now := time.Unix(1_900_000_000, 0)
 	tok := mintSchemaToken(secret, uuid.New(), uuid.New(), schemaOpKind, json.RawMessage(`{}`), now)
-	// flip the last char of the signature segment
-	bad := tok[:len(tok)-1] + map[bool]string{true: "A", false: "B"}[tok[len(tok)-1] != 'A']
+	// D-GLOSSARY-SCHEMA-TOKEN-TAMPER-TEST-FLAKY: tamper the PAYLOAD, not the last
+	// signature char. The trailing base64url char carries "don't-care" low bits, so
+	// flipping it can decode to the SAME signature bytes → the old test flakily passed
+	// a "tampered" token. Corrupting the payload always invalidates: the signature was
+	// computed over header.payload, so any payload change breaks verification deterministically.
+	parts := strings.SplitN(tok, ".", 3)
+	flip := map[bool]byte{true: 'B', false: 'A'}[parts[1][0] == 'A']
+	parts[1] = string(flip) + parts[1][1:]
+	bad := strings.Join(parts, ".")
 	if _, err := verifySchemaToken(secret, bad, now.Add(time.Minute)); !errors.Is(err, ErrSchemaTokenInvalid) {
-		t.Fatalf("tampered sig must be invalid, got %v", err)
+		t.Fatalf("tampered payload must be invalid, got %v", err)
 	}
 	// a different secret must also reject (key binding)
 	if _, err := verifySchemaToken("another_secret_at_least_32_characters_xx", tok, now.Add(time.Minute)); !errors.Is(err, ErrSchemaTokenInvalid) {
@@ -142,8 +149,8 @@ func newSchemaFixture(t *testing.T, pool *pgxpool.Pool) *schemaFixture {
 		t.Fatalf("sign jwt: %v", err)
 	}
 	t.Cleanup(func() {
-		pool.Exec(context.Background(), `DELETE FROM attribute_definitions WHERE kind_id IN (SELECT kind_id FROM entity_kinds WHERE code='power_system')`)
-		pool.Exec(context.Background(), `DELETE FROM entity_kinds WHERE code='power_system'`)
+		pool.Exec(context.Background(), `DELETE FROM attribute_definitions WHERE kind_id IN (SELECT kind_id FROM entity_kinds WHERE code='qa_new_kind')`)
+		pool.Exec(context.Background(), `DELETE FROM entity_kinds WHERE code='qa_new_kind'`)
 	})
 	return &schemaFixture{srv: srv, jwt: signed, ownerID: owner, bookID: book}
 }
@@ -163,7 +170,7 @@ func TestConfirmSchema_CreatesKindThenRejectsReplayAndBadTokens(t *testing.T) {
 	pool := openTestDB(t)
 	f := newSchemaFixture(t, pool)
 	ctx := context.Background()
-	params, _ := json.Marshal(kindCreateParams{Code: "power_system", Name: "Power System"})
+	params, _ := json.Marshal(kindCreateParams{Code: "qa_new_kind", Name: "Power System"})
 
 	// valid token → 201 + kind created
 	good := mintSchemaToken(versionTestSecret, f.ownerID, f.bookID, schemaOpKind, params, time.Now())
@@ -171,7 +178,7 @@ func TestConfirmSchema_CreatesKindThenRejectsReplayAndBadTokens(t *testing.T) {
 		t.Fatalf("valid confirm: want 201, got %d (%s)", w.Code, w.Body.String())
 	}
 	var n int
-	pool.QueryRow(ctx, `SELECT count(*) FROM entity_kinds WHERE code='power_system'`).Scan(&n)
+	pool.QueryRow(ctx, `SELECT count(*) FROM entity_kinds WHERE code='qa_new_kind'`).Scan(&n)
 	if n != 1 {
 		t.Fatalf("kind not created: count=%d", n)
 	}
@@ -205,7 +212,7 @@ func TestProposeNewKind_RoundTripToConfirm(t *testing.T) {
 	pool := openTestDB(t)
 	f := newSchemaFixture(t, pool)
 	_, out, err := f.srv.toolProposeNewKind(ctxWithUser(f.ownerID), nil,
-		proposeKindToolIn{BookID: f.bookID.String(), Code: "power_system", Name: "Power System"})
+		proposeKindToolIn{BookID: f.bookID.String(), Code: "qa_new_kind", Name: "Power System"})
 	if err != nil {
 		t.Fatalf("propose: %v", err)
 	}
@@ -216,7 +223,7 @@ func TestProposeNewKind_RoundTripToConfirm(t *testing.T) {
 		t.Fatalf("confirm of a freshly-proposed token: want 201, got %d (%s)", w.Code, w.Body.String())
 	}
 	var n int
-	pool.QueryRow(context.Background(), `SELECT count(*) FROM entity_kinds WHERE code='power_system'`).Scan(&n)
+	pool.QueryRow(context.Background(), `SELECT count(*) FROM entity_kinds WHERE code='qa_new_kind'`).Scan(&n)
 	if n != 1 {
 		t.Errorf("round-trip did not create the kind: count=%d", n)
 	}
@@ -227,7 +234,7 @@ func TestConfirmSchema_DeletedKindIsCleanError(t *testing.T) {
 	pool := openTestDB(t)
 	f := newSchemaFixture(t, pool)
 	ctx := context.Background()
-	k, err := f.srv.createKindFromParams(ctx, kindCreateParams{Code: "power_system", Name: "Power System"})
+	k, err := f.srv.createKindFromParams(ctx, kindCreateParams{Code: "qa_new_kind", Name: "Power System"})
 	if err != nil {
 		t.Fatalf("seed kind: %v", err)
 	}
@@ -247,7 +254,7 @@ func TestConfirmSchema_CreatesAttribute(t *testing.T) {
 	f := newSchemaFixture(t, pool)
 	ctx := context.Background()
 	// create the kind first (reuse the core directly)
-	k, err := f.srv.createKindFromParams(ctx, kindCreateParams{Code: "power_system", Name: "Power System"})
+	k, err := f.srv.createKindFromParams(ctx, kindCreateParams{Code: "qa_new_kind", Name: "Power System"})
 	if err != nil {
 		t.Fatalf("seed kind: %v", err)
 	}

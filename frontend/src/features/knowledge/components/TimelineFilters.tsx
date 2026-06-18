@@ -30,10 +30,20 @@ export interface TimelineFiltersProps {
     after: number | null,
     before: number | null,
   ) => void;
+  // D-K19e-α-02 — inclusive ISO date-range bounds (YYYY / YYYY-MM / YYYY-MM-DD).
+  eventDateFrom: string | null;
+  eventDateTo: string | null;
+  onDateRangeChange: (from: string | null, to: string | null) => void;
   disabled?: boolean;
 }
 
 const ENTITY_DROPDOWN_LIMIT = 8;
+
+// D-K19e-α-02 — truncated-ISO validator mirroring the BE Query pattern: a 4-digit
+// year + optional 2-digit month [01-12] + optional 2-digit day [01-31]. Lets the
+// user filter on a partial in-story date (fictional calendars often have just a
+// year), and rejects the dominant typo class client-side before the BE 422s.
+const ISO_DATE_RE = /^\d{4}(-(0[1-9]|1[0-2])(-(0[1-9]|[12]\d|3[01]))?)?$/;
 
 function useDebounced<T>(value: T, delayMs: number): T {
   const [debounced, setDebounced] = useState(value);
@@ -51,6 +61,9 @@ export function TimelineFilters({
   afterChronological,
   beforeChronological,
   onChronologicalRangeChange,
+  eventDateFrom,
+  eventDateTo,
+  onDateRangeChange,
   disabled,
 }: TimelineFiltersProps) {
   const { t } = useTranslation('knowledge');
@@ -131,6 +144,39 @@ export function TimelineFilters({
 
   const afterStr = afterInput;
   const beforeStr = beforeInput;
+
+  // D-K19e-α-02 — ISO date-range buffers (same debounced-commit pattern as the
+  // chronological range). Format-invalid input is NOT committed (waits for a valid
+  // value) so we never send a string the BE would 422; a reversed range IS
+  // committed (mirrors chrono) with a hint — the BE remains the authority.
+  const [fromInput, setFromInput] = useState(eventDateFrom ?? '');
+  const [toInput, setToInput] = useState(eventDateTo ?? '');
+  useEffect(() => {
+    setFromInput(eventDateFrom ?? '');
+  }, [eventDateFrom]);
+  useEffect(() => {
+    setToInput(eventDateTo ?? '');
+  }, [eventDateTo]);
+
+  const fromTrim = fromInput.trim();
+  const toTrim = toInput.trim();
+  const fromInvalid = fromTrim !== '' && !ISO_DATE_RE.test(fromTrim);
+  const toInvalid = toTrim !== '' && !ISO_DATE_RE.test(toTrim);
+  const reversedDate =
+    !fromInvalid && !toInvalid && fromTrim !== '' && toTrim !== '' &&
+    fromTrim > toTrim;
+
+  useEffect(() => {
+    if (fromInvalid || toInvalid) return; // hold until the format is valid
+    const nextFrom = fromTrim || null;
+    const nextTo = toTrim || null;
+    const changed =
+      nextFrom !== (eventDateFrom ?? null) || nextTo !== (eventDateTo ?? null);
+    if (!changed) return;
+    const h = setTimeout(() => onDateRangeChange(nextFrom, nextTo), 400);
+    return () => clearTimeout(h);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fromTrim, toTrim, fromInvalid, toInvalid]);
 
   return (
     <div
@@ -283,6 +329,66 @@ export function TimelineFilters({
             data-testid="timeline-filter-chrono-reversed"
           >
             {t('timeline.filters.chronoReversed')}
+          </p>
+        )}
+      </fieldset>
+
+      {/* D-K19e-α-02 — in-story ISO date range (YYYY / YYYY-MM / YYYY-MM-DD). */}
+      <fieldset
+        className={cn(
+          'flex items-end gap-2 text-[11px]',
+          disabled && 'opacity-50',
+        )}
+        data-testid="timeline-filter-date"
+        disabled={disabled}
+      >
+        <legend className="sr-only">{t('timeline.filters.dateRange')}</legend>
+        <label className="flex flex-col gap-1">
+          <span className="text-muted-foreground">
+            {t('timeline.filters.dateFrom')}
+          </span>
+          <input
+            type="text"
+            inputMode="numeric"
+            placeholder="YYYY-MM-DD"
+            value={fromInput}
+            onChange={(ev) => setFromInput(ev.target.value)}
+            aria-invalid={fromInvalid}
+            className="w-28 rounded-md border bg-input px-2 py-1.5 text-xs outline-none focus:border-ring disabled:cursor-not-allowed"
+            data-testid="timeline-filter-date-from"
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-muted-foreground">
+            {t('timeline.filters.dateTo')}
+          </span>
+          <input
+            type="text"
+            inputMode="numeric"
+            placeholder="YYYY-MM-DD"
+            value={toInput}
+            onChange={(ev) => setToInput(ev.target.value)}
+            aria-invalid={toInvalid}
+            className="w-28 rounded-md border bg-input px-2 py-1.5 text-xs outline-none focus:border-ring disabled:cursor-not-allowed"
+            data-testid="timeline-filter-date-to"
+          />
+        </label>
+        {(fromInvalid || toInvalid) && (
+          <p
+            role="alert"
+            className="text-[10px] text-destructive"
+            data-testid="timeline-filter-date-invalid"
+          >
+            {t('timeline.filters.dateInvalid')}
+          </p>
+        )}
+        {reversedDate && (
+          <p
+            role="alert"
+            className="text-[10px] text-destructive"
+            data-testid="timeline-filter-date-reversed"
+          >
+            {t('timeline.filters.dateReversed')}
           </p>
         )}
       </fieldset>

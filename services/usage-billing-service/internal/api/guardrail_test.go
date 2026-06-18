@@ -843,10 +843,12 @@ WHERE owner_user_id=$1`, owner); err != nil {
 	}
 }
 
-// TestRecordInvocation_Idempotent_NoDoubleDeduct locks the Phase 6a-β
-// /record idempotency fix: a retry with the same request_id must not deduct
-// account_balances a second time.
-func TestRecordInvocation_Idempotent_NoDoubleDeduct(t *testing.T) {
+// TestRecordInvocation_Idempotent_NoDoubleWrite locks the Phase 6a-β /record
+// idempotency: a retry with the SAME request_id must not write a second audit row.
+// (D-S4C-ACCOUNTBALANCES-DROP: the token ledger is retired — /record no longer
+// deducts a quota, so the real idempotency artifact is the usage_logs row count,
+// guarded by the request_id UNIQUE; the old account_balances quota check is gone.)
+func TestRecordInvocation_Idempotent_NoDoubleWrite(t *testing.T) {
 	pool := openGuardrailTestDB(t)
 	srv := newGuardrailServer(t, pool)
 	owner := uuid.New()
@@ -864,28 +866,29 @@ func TestRecordInvocation_Idempotent_NoDoubleDeduct(t *testing.T) {
 		srv.recordInvocation(rr, req)
 		return rr
 	}
-	readQuota := func() int {
-		var q int
+	countLogs := func() int {
+		var n int
 		if err := pool.QueryRow(context.Background(),
-			`SELECT month_quota_remaining_tokens FROM account_balances WHERE owner_user_id=$1`, owner).
-			Scan(&q); err != nil {
-			t.Fatalf("read quota: %v", err)
+			`SELECT count(*) FROM usage_logs WHERE request_id=$1`, reqID).
+			Scan(&n); err != nil {
+			t.Fatalf("count usage_logs: %v", err)
 		}
-		return q
+		return n
 	}
 
 	if rr := callRecord(); rr.Code != http.StatusCreated {
 		t.Fatalf("first record: expected 201, got %d (%s)", rr.Code, rr.Body.String())
 	}
-	afterFirst := readQuota()
+	if afterFirst := countLogs(); afterFirst != 1 {
+		t.Fatalf("first record: expected 1 usage_logs row, got %d", afterFirst)
+	}
 
-	// Retry with the SAME request_id — must be idempotent.
+	// Retry with the SAME request_id — must be idempotent (re-read, no second row).
 	if rr := callRecord(); rr.Code != http.StatusCreated {
 		t.Fatalf("retry record: expected 201, got %d (%s)", rr.Code, rr.Body.String())
 	}
-	if afterRetry := readQuota(); afterRetry != afterFirst {
-		t.Fatalf("duplicate request_id double-deducted account_balances: quota %d → %d",
-			afterFirst, afterRetry)
+	if afterRetry := countLogs(); afterRetry != 1 {
+		t.Fatalf("duplicate request_id double-wrote usage_logs: expected 1 row, got %d", afterRetry)
 	}
 }
 

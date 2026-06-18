@@ -106,7 +106,9 @@ func (s *Server) Router() http.Handler {
 		r.Get("/usage-logs", s.listUsageLogs)
 		r.Get("/usage-logs/{usage_log_id}", s.getUsageLogDetail)
 		r.Get("/usage-summary", s.getUsageSummary)
-		r.Get("/account-balance", s.getAccountBalance)
+		// D-S4C-ACCOUNTBALANCES-DROP — the token-quota `/account-balance` endpoint
+		// is removed with its inert `account_balances` table; USD enforcement lives
+		// on the guardrail + platform-balance endpoints below.
 		// Phase 6a-γ — user-facing spend guardrail + platform balance.
 		r.Get("/guardrail", s.getGuardrail)
 		r.Patch("/guardrail", s.patchGuardrail)
@@ -775,37 +777,6 @@ GROUP BY day ORDER BY day
 		"by_provider":           providerBreakdown,
 		"by_purpose":            purposeBreakdown,
 		"daily":                 dailyBreakdown,
-	})
-}
-
-func (s *Server) getAccountBalance(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
-		return
-	}
-	if _, err := s.pool.Exec(r.Context(), `INSERT INTO account_balances(owner_user_id) VALUES ($1) ON CONFLICT(owner_user_id) DO NOTHING`, userID); err != nil {
-		writeError(w, http.StatusInternalServerError, "M03_BALANCE_FAILED", "failed to initialize balance")
-		return
-	}
-	var tier string
-	var quota, quotaRemaining, credits int
-	var policyVersion string
-	err := s.pool.QueryRow(r.Context(), `
-SELECT tier_name, month_quota_tokens, month_quota_remaining_tokens, credits_balance, billing_policy_version
-FROM account_balances
-WHERE owner_user_id=$1
-`, userID).Scan(&tier, &quota, &quotaRemaining, &credits, &policyVersion)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "M03_BALANCE_FAILED", "failed to read balance")
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"tier_name":                    tier,
-		"month_quota_tokens":           quota,
-		"month_quota_remaining_tokens": quotaRemaining,
-		"credits_balance":              credits,
-		"billing_policy_version":       policyVersion,
 	})
 }
 

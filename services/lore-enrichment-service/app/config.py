@@ -23,6 +23,17 @@ class Settings(BaseSettings):
     provider_registry_internal_url: str = "http://provider-registry-service:8085"
     redis_url: str = "redis://redis:6379"
 
+    # Unified Job Control Plane P5 — fair scheduling / per-tenant concurrency. Lore-
+    # enrichment runs each job SYNCHRONOUSLY in the API handler (no PUSH fan-out), so the
+    # fairness lever is a per-owner CONCURRENT-JOB cap: `create_job` acquires a slot
+    # (lane `lore-enrichment:job`, owner=user_id) before running and releases it after; at
+    # cap → 429. Flag-gated (default OFF) + fail-open on a redis blip. The lease TTL is the
+    # crash-leak backstop (must exceed the longest job runtime; release-in-finally is the
+    # fast path).
+    p5_sched_enabled: bool = Field(default=False, validation_alias="P5_SCHED_ENABLED")
+    p5_owner_cap: int = Field(default=5, validation_alias="P5_OWNER_CAP")
+    p5_lease_ttl_ms: int = Field(default=3_600_000, validation_alias="P5_LEASE_TTL_MS")
+
     # Max age (seconds) of a PASSING eval run before the P2/P3 gate treats it as
     # STALE → LOCKED (WARN-2 / DEFERRED-055, fail-closed on staleness). A passing
     # run older than this no longer unlocks the higher-cost tier — the eval must
@@ -75,6 +86,26 @@ class Settings(BaseSettings):
     # Compose-ephemeral grounding corpora (mode-C pastes + mode-F files) older than
     # this are reaped. Generous default (30d) so a recent paste still re-grounds.
     context_corpus_ttl_s: float = Field(default=30 * 24 * 3600.0, validation_alias="LORE_ENRICHMENT_CONTEXT_CORPUS_TTL_S")
+
+    # Compose-task stuck sweeper (D-M2-COMPOSE-TASK-RACE + D-M2-COMPOSE-TASK-SWEEPER) —
+    # a periodic worker sweep that re-drives `enrichment_compose_task` rows stranded in
+    # ('pending','running') past a timeout (a redis-miss at submit, or a worker that
+    # crashed mid-compute leaving a 'running' row no event will re-deliver). Mirrors
+    # worker-ai's Wave-1b resume sweeper. The timeout DOUBLES as the active-worker idle
+    # window for the FOR-UPDATE claim: a 'running' row touched MORE recently than the
+    # timeout is assumed live (another worker is on it) and is left alone; a staler row
+    # is fair game to re-drive. So the timeout MUST exceed the worst-case single-task
+    # compute (book metadata + sample-chapter fetch + ONE LLM call) — 900s (15m) gives
+    # generous headroom. interval<=0 disables the loop.
+    compose_task_sweep_interval_s: float = Field(
+        default=60.0, validation_alias="LORE_ENRICHMENT_COMPOSE_TASK_SWEEP_INTERVAL_S"
+    )
+    compose_task_sweep_timeout_s: float = Field(
+        default=900.0, validation_alias="LORE_ENRICHMENT_COMPOSE_TASK_SWEEP_TIMEOUT_S"
+    )
+    compose_task_sweep_batch: int = Field(
+        default=20, validation_alias="LORE_ENRICHMENT_COMPOSE_TASK_SWEEP_BATCH"
+    )
 
     port: int = 8093
 

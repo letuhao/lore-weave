@@ -193,11 +193,36 @@ func SeedKindAliases(ctx context.Context, pool *pgxpool.Pool) error {
 	return nil
 }
 
-func Up(ctx context.Context, pool *pgxpool.Pool) error {
-	if _, err := pool.Exec(ctx, schemaSQL); err != nil {
-		return fmt.Errorf("migrate: %w", err)
+// migrationLockKey is a fixed application-defined key for the migration advisory
+// lock (arbitrary 64-bit constant — the ASCII bytes of "glsxmig8").
+const migrationLockKey int64 = 0x676c73786d696738
+
+// execGuarded runs an idempotent DDL batch inside a transaction that first takes
+// a transaction-scoped advisory lock. This serializes concurrent migration runs
+// — parallel `go test` package binaries sharing one dev DB, or two app instances
+// starting at once — so overlapping CREATE/ALTER on the same tables queue on a
+// single ordered lock instead of deadlocking on table locks acquired in
+// different orders (SQLSTATE 40P01). The whole batch already ran as one implicit
+// transaction via pool.Exec, so wrapping it explicitly is behaviour-preserving;
+// uncontended (normal startup) it adds one cheap lock call. The lock releases
+// automatically when the transaction commits/rolls back.
+func execGuarded(ctx context.Context, pool *pgxpool.Pool, name, sql string) error {
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("migrate %s: begin: %w", name, err)
 	}
-	return nil
+	defer tx.Rollback(ctx) //nolint:errcheck
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, migrationLockKey); err != nil {
+		return fmt.Errorf("migrate %s: lock: %w", name, err)
+	}
+	if _, err := tx.Exec(ctx, sql); err != nil {
+		return fmt.Errorf("migrate %s: %w", name, err)
+	}
+	return tx.Commit(ctx)
+}
+
+func Up(ctx context.Context, pool *pgxpool.Pool) error {
+	return execGuarded(ctx, pool, "schema", schemaSQL)
 }
 
 // snapshotSQL adds the entity_snapshot column, the recalculation function,
@@ -412,10 +437,7 @@ CREATE TRIGGER trig_entity_self_snapshot
 // UpSnapshot adds the entity_snapshot column, the PL/pgSQL recalculation
 // function, and all five triggers. Safe to call on every startup.
 func UpSnapshot(ctx context.Context, pool *pgxpool.Pool) error {
-	if _, err := pool.Exec(ctx, snapshotSQL); err != nil {
-		return fmt.Errorf("migrate snapshot: %w", err)
-	}
-	return nil
+	return execGuarded(ctx, pool, "snapshot", snapshotSQL)
 }
 
 // BackfillSnapshots populates entity_snapshot for any entity where it is NULL.
@@ -477,23 +499,19 @@ CREATE INDEX IF NOT EXISTS idx_ge_trash_book
 // UpSoftDelete adds soft-delete columns and supporting partial indexes.
 // Safe to call on every startup (idempotent).
 func UpSoftDelete(ctx context.Context, pool *pgxpool.Pool) error {
-	if _, err := pool.Exec(ctx, softDeleteSQL); err != nil {
-		return fmt.Errorf("migrate soft-delete: %w", err)
-	}
-	return nil
+	return execGuarded(ctx, pool, "soft-delete", softDeleteSQL)
 }
 
-// Seed inserts the 12 default entity kinds and their attribute definitions if the
-// entity_kinds table is empty. Safe to call on every startup (idempotent).
+// Seed inserts the 12 default entity kinds and their attribute definitions. Safe to
+// call on every startup — PER-KIND idempotent (D-WIKI-SEED-ROBUSTNESS).
+//
+// The old `count > 0 → skip` guard conflated "any kind exists" with "defaults
+// seeded": the system `unknown` kind is inserted in Up() BEFORE Seed runs, so on a
+// fresh-but-Up'd DB (and on a shared test DB) count was already 1 → the 12 defaults
+// (incl. `character`) never seeded. Per-kind `ON CONFLICT (code) DO NOTHING` reconciles
+// any missing default without clobbering an author-customized one (name/icon/color are
+// left untouched on conflict) and self-heals a partially-seeded catalogue.
 func Seed(ctx context.Context, pool *pgxpool.Pool) error {
-	var count int
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM entity_kinds`).Scan(&count); err != nil {
-		return fmt.Errorf("seed check: %w", err)
-	}
-	if count > 0 {
-		return nil // already seeded
-	}
-
 	tx, err := pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("seed tx: %w", err)
@@ -501,21 +519,28 @@ func Seed(ctx context.Context, pool *pgxpool.Pool) error {
 	defer tx.Rollback(ctx)
 
 	for _, k := range domain.DefaultKinds {
-		var kindID string
-		err := tx.QueryRow(ctx, `
+		// DO NOTHING (not DO UPDATE) so an author's customized default kind is never
+		// clobbered; then read the id (whether just-inserted or pre-existing) for attrs.
+		if _, err := tx.Exec(ctx, `
 			INSERT INTO entity_kinds(code, name, icon, color, is_default, is_hidden, sort_order, genre_tags)
 			VALUES ($1,$2,$3,$4,true,false,$5,$6)
-			RETURNING kind_id`,
+			ON CONFLICT (code) DO NOTHING`,
 			k.Code, k.Name, k.Icon, k.Color, k.SortOrder, k.GenreTags,
-		).Scan(&kindID)
-		if err != nil {
+		); err != nil {
 			return fmt.Errorf("seed kind %s: %w", k.Code, err)
+		}
+		var kindID string
+		if err := tx.QueryRow(ctx,
+			`SELECT kind_id FROM entity_kinds WHERE code=$1`, k.Code,
+		).Scan(&kindID); err != nil {
+			return fmt.Errorf("seed kind id %s: %w", k.Code, err)
 		}
 
 		for _, a := range k.Attrs {
 			if _, err := tx.Exec(ctx, `
 				INSERT INTO attribute_definitions(kind_id, code, name, field_type, is_required, is_system, sort_order)
-				VALUES ($1,$2,$3,$4,$5,true,$6)`,
+				VALUES ($1,$2,$3,$4,$5,true,$6)
+				ON CONFLICT (kind_id, code) DO NOTHING`,
 				kindID, a.Code, a.Name, a.FieldType, a.IsRequired, a.SortOrder,
 			); err != nil {
 				return fmt.Errorf("seed attr %s.%s: %w", k.Code, a.Code, err)
@@ -548,10 +573,7 @@ ALTER TABLE attribute_definitions ADD COLUMN IF NOT EXISTS translation_hint TEXT
 `
 
 func UpGenreGroups(ctx context.Context, pool *pgxpool.Pool) error {
-	if _, err := pool.Exec(ctx, genreGroupsSQL); err != nil {
-		return fmt.Errorf("migrate genre_groups: %w", err)
-	}
-	return nil
+	return execGuarded(ctx, pool, "genre_groups", genreGroupsSQL)
 }
 
 // ── wiki articles + revisions ───────────────────────────────────────────────
@@ -699,10 +721,7 @@ CREATE INDEX IF NOT EXISTS idx_wiki_staleness_pending
 `
 
 func UpWiki(ctx context.Context, pool *pgxpool.Pool) error {
-	if _, err := pool.Exec(ctx, wikiSQL); err != nil {
-		return fmt.Errorf("migrate wiki: %w", err)
-	}
-	return nil
+	return execGuarded(ctx, pool, "wiki", wikiSQL)
 }
 
 // ── wiki suggestions ────────────────────────────────────────────────────────
@@ -724,10 +743,7 @@ CREATE INDEX IF NOT EXISTS idx_ws_status  ON wiki_suggestions(article_id, status
 `
 
 func UpWikiSuggestions(ctx context.Context, pool *pgxpool.Pool) error {
-	if _, err := pool.Exec(ctx, wikiSuggestionsSQL); err != nil {
-		return fmt.Errorf("migrate wiki_suggestions: %w", err)
-	}
-	return nil
+	return execGuarded(ctx, pool, "wiki_suggestions", wikiSuggestionsSQL)
 }
 
 // ── glossary extraction pipeline ───────────────────────────────────────────
@@ -757,10 +773,7 @@ CREATE INDEX IF NOT EXISTS idx_eal_entity ON extraction_audit_log(entity_id);
 // UpExtraction adds the alive column to glossary_entities and creates
 // the extraction_audit_log table. Safe to call on every startup (idempotent).
 func UpExtraction(ctx context.Context, pool *pgxpool.Pool) error {
-	if _, err := pool.Exec(ctx, extractionSQL); err != nil {
-		return fmt.Errorf("migrate extraction: %w", err)
-	}
-	return nil
+	return execGuarded(ctx, pool, "extraction", extractionSQL)
 }
 
 // ── evidence chapter_index ──────────────────────────────────────────────────
@@ -773,10 +786,7 @@ CREATE INDEX IF NOT EXISTS idx_ev_chapter_index ON evidences(chapter_index);
 // UpEvidenceChapterIndex adds the chapter_index column to evidences.
 // Safe to call on every startup (idempotent).
 func UpEvidenceChapterIndex(ctx context.Context, pool *pgxpool.Pool) error {
-	if _, err := pool.Exec(ctx, evidenceChapterIndexSQL); err != nil {
-		return fmt.Errorf("migrate evidence_chapter_index: %w", err)
-	}
-	return nil
+	return execGuarded(ctx, pool, "evidence_chapter_index", evidenceChapterIndexSQL)
 }
 
 // ── C4 (K14) — transactional outbox for glossary.entity_updated events ──────
@@ -836,10 +846,7 @@ END $$;
 // by the C4/K14 glossary→KG event pipeline. Idempotent (IF NOT EXISTS /
 // CREATE OR REPLACE / duplicate-object guard) — safe on every startup.
 func UpOutbox(ctx context.Context, pool *pgxpool.Pool) error {
-	if _, err := pool.Exec(ctx, outboxSQL); err != nil {
-		return fmt.Errorf("migrate outbox: %w", err)
-	}
-	return nil
+	return execGuarded(ctx, pool, "outbox", outboxSQL)
 }
 
 // ── knowledge-service memory support (Track 1 K2a) ─────────────────────────
@@ -1113,10 +1120,7 @@ $$;
 // recalculate_entity_snapshot() so the existing snapshot triggers also
 // maintain the cache columns. Idempotent.
 func UpKnowledgeMemory(ctx context.Context, pool *pgxpool.Pool) error {
-	if _, err := pool.Exec(ctx, knowledgeMemorySQL); err != nil {
-		return fmt.Errorf("migrate knowledge-memory: %w", err)
-	}
-	return nil
+	return execGuarded(ctx, pool, "knowledge-memory", knowledgeMemorySQL)
 }
 
 // ── K3: short_description_auto flag ────────────────────────────────────────
@@ -1138,10 +1142,7 @@ ALTER TABLE glossary_entities
 
 // UpShortDescAuto adds the short_description_auto flag column. Idempotent.
 func UpShortDescAuto(ctx context.Context, pool *pgxpool.Pool) error {
-	if _, err := pool.Exec(ctx, shortDescAutoSQL); err != nil {
-		return fmt.Errorf("migrate short-desc-auto: %w", err)
-	}
-	return nil
+	return execGuarded(ctx, pool, "short-desc-auto", shortDescAutoSQL)
 }
 
 // ── D-K2a-01 + D-K2a-02: defense-in-depth CHECK constraints ────────────────
@@ -1209,10 +1210,7 @@ END$$;
 // Idempotent: backfills empty-string rows to NULL before adding the
 // non-empty CHECK so existing dev envs migrate cleanly.
 func UpShortDescConstraints(ctx context.Context, pool *pgxpool.Pool) error {
-	if _, err := pool.Exec(ctx, shortDescConstraintsSQL); err != nil {
-		return fmt.Errorf("migrate short-desc-constraints: %w", err)
-	}
-	return nil
+	return execGuarded(ctx, pool, "short-desc-constraints", shortDescConstraintsSQL)
 }
 
 // BackfillShortDescription iterates entities with NULL short_description,
@@ -1450,10 +1448,7 @@ END$$;
 // Idempotent. Registered in cmd/glossary-service/main.go after the
 // short-description migrations (it FKs glossary_entities, which Up() creates).
 func UpEntityEnrichments(ctx context.Context, pool *pgxpool.Pool) error {
-	if _, err := pool.Exec(ctx, entityEnrichmentsSQL); err != nil {
-		return fmt.Errorf("migrate entity-enrichments: %w", err)
-	}
-	return nil
+	return execGuarded(ctx, pool, "entity-enrichments", entityEnrichmentsSQL)
 }
 
 // entityMergeSQL backs mui #1c — entity-resolution/merge. Adds the
@@ -1496,10 +1491,7 @@ ALTER TABLE merge_journal ADD COLUMN IF NOT EXISTS superseded_wiki_article_id UU
 // UpEntityMerge creates the merge_journal table + merged_into_entity_id column
 // (mui #1c). Idempotent. Register in main.go after UpEntityEnrichments.
 func UpEntityMerge(ctx context.Context, pool *pgxpool.Pool) error {
-	if _, err := pool.Exec(ctx, entityMergeSQL); err != nil {
-		return fmt.Errorf("migrate entity-merge: %w", err)
-	}
-	return nil
+	return execGuarded(ctx, pool, "entity-merge", entityMergeSQL)
 }
 
 // mergeCandidatesSQL backs mui #1c G-cand — the merge-candidate review surface.
@@ -1535,8 +1527,5 @@ CREATE INDEX IF NOT EXISTS idx_merge_candidates_book_status
 // UpMergeCandidates creates the merge_candidates table (mui #1c G-cand).
 // Idempotent. Register in main.go after UpEntityMerge.
 func UpMergeCandidates(ctx context.Context, pool *pgxpool.Pool) error {
-	if _, err := pool.Exec(ctx, mergeCandidatesSQL); err != nil {
-		return fmt.Errorf("migrate merge-candidates: %w", err)
-	}
-	return nil
+	return execGuarded(ctx, pool, "merge-candidates", mergeCandidatesSQL)
 }

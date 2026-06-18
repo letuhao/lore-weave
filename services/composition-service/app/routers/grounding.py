@@ -19,18 +19,19 @@ from app.clients.glossary_client import GlossaryClient
 from app.clients.knowledge_client import KnowledgeClient
 from app.config import settings
 from app.db.repositories.canon_rules import CanonRulesRepo
+from app.db.repositories.derivatives import DerivativesRepo
 from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.db.repositories.outline import OutlineRepo
 from app.db.repositories.scene_links import SceneLinksRepo
 from app.db.repositories.works import WorksRepo
 from app.deps import (
-    get_book_client_dep, get_canon_rules_repo, get_generation_jobs_repo,
-    get_glossary_client_dep, get_knowledge_client_dep, get_outline_repo,
-    get_scene_links_repo, get_works_repo,
+    get_book_client_dep, get_canon_rules_repo, get_derivatives_repo,
+    get_generation_jobs_repo, get_glossary_client_dep, get_knowledge_client_dep,
+    get_outline_repo, get_scene_links_repo, get_works_repo,
 )
 from app.middleware.jwt_auth import get_bearer_token, get_current_user
 from app.grant_deps import InsufficientGrant
-from app.packer.pack import OwnershipError, PackRequest, pack
+from app.packer.pack import OwnershipError, PackRequest, build_derivative_context, pack
 
 router = APIRouter(prefix="/v1/composition")
 
@@ -50,6 +51,7 @@ async def get_grounding(
     glossary: GlossaryClient = Depends(get_glossary_client_dep),
     knowledge: KnowledgeClient = Depends(get_knowledge_client_dep),
     jobs: GenerationJobsRepo = Depends(get_generation_jobs_repo),
+    derivatives: DerivativesRepo = Depends(get_derivatives_repo),
 ) -> dict[str, Any]:
     work = await works.get(user_id, project_id)
     if work is None:
@@ -58,10 +60,16 @@ async def get_grounding(
     if node is None or str(node.project_id) != str(project_id):
         raise HTTPException(status_code=404, detail="scene not found")
 
+    # C25 — resolve the dị bản two-project merge inputs (base project + branch +
+    # fresh overrides). Empty for a non-derivative Work.
+    deriv = await build_derivative_context(
+        work, user_id=user_id, works_repo=works, derivatives_repo=derivatives)
     req = PackRequest(
         user_id=user_id, project_id=project_id, book_id=work.book_id,
         node=node.model_dump(mode="python"), bearer=bearer, guide=guide,
         settings=work.settings,
+        source_project_id=deriv.source_project_id, branch_point=deriv.branch_point,
+        overrides=deriv.overrides,
     )
     try:
         pc = await pack(

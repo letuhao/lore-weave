@@ -25,7 +25,7 @@ import logging
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 from app.db.neo4j_helpers import CypherSession, run_read, run_write
 from app.db.repositories import VersionMismatchError
@@ -43,6 +43,8 @@ __all__ = [
     "VectorSearchHit",
     "SUPPORTED_VECTOR_DIMS",
     "ENTITIES_DETAIL_REL_CAP",
+    "ENTITY_STATUSES",
+    "ENTITY_SORT_KEYS",
     "merge_entity",
     "upsert_glossary_anchor",
     "get_entity",
@@ -56,6 +58,7 @@ __all__ = [
     "recompute_anchor_score",
     "find_gap_candidates",
     "archive_entity",
+    "user_archive_entity",
     "restore_entity",
     "delete_entities_with_zero_evidence",
     "list_entities_filtered",
@@ -140,6 +143,38 @@ class Entity(BaseModel):
 
     created_at: datetime | None = None
     updated_at: datetime | None = None
+
+    # C8 (C8-entity-status LOCKED) — DERIVED status, never a stored
+    # column. The two-layer anchor model already carries the source
+    # fields (`archived_at`, `glossary_entity_id`); `status` is a pure
+    # projection over them so the FE renders ⭐/💭/📦 without inferring
+    # the precedence itself.
+    #
+    # Precedence (BE+FE MUST agree): `archived` wins over `canonical`.
+    # A soft-archive (`_ARCHIVE_CYPHER`) already nulls
+    # `glossary_entity_id`, so in practice the two are mutually
+    # exclusive — but if a future write path ever leaves both set, an
+    # archived entity must read as archived (it is out of the active
+    # retrieval set), not canonical. `discovered` = unanchored + active.
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def status(self) -> str:
+        if self.archived_at is not None:
+            return "archived"
+        if self.glossary_entity_id is not None:
+            return "canonical"
+        return "discovered"
+
+
+# C8 — closed set of derivable statuses, exposed so the router's
+# Query(enum) validation + the filter Cypher reference one source of
+# truth instead of three hardcoded literals.
+ENTITY_STATUSES: tuple[str, ...] = ("canonical", "discovered", "archived")
+
+# C8 — sort keys accepted by `list_entities_filtered`. `mention_count`
+# is the legacy default (browse-by-frequency); `anchor_score` surfaces
+# the two-layer-anchored entities first (the semantic-curation view).
+ENTITY_SORT_KEYS: tuple[str, ...] = ("mention_count", "anchor_score")
 
 
 def _node_to_entity(node: Any) -> Entity:
@@ -734,6 +769,25 @@ SET e.archived_at = NULL,
 RETURN e
 """
 
+# D-K19c.4-01 — user-archive variant: same soft-archive as `_ARCHIVE_CYPHER`
+# but PRESERVES both `glossary_entity_id` (the glossary anchor FK) AND
+# `anchor_score`. A user "delete" is a "hide now, restore later" gesture; the
+# glossary entry still exists. Unlike §3.4.F glossary-deletion (FK gone →
+# score 0 is consistent), here we keep the anchor intact so a later
+# `restore_entity` brings the entity back FULLY anchored — `restore_entity`
+# does NOT recompute the score, so zeroing it here would leave a restored,
+# FK-anchored entity ranking as unanchored (weighted_score = raw × 0) until
+# the next recompute pass. Archived rows are excluded from all queries by the
+# `archived_at IS NULL` filter, so the preserved score is inert while hidden.
+_USER_ARCHIVE_CYPHER = """
+MATCH (e:Entity {id: $id})
+WHERE e.user_id = $user_id
+SET e.archived_at = datetime(),
+    e.archive_reason = $reason,
+    e.updated_at = datetime()
+RETURN e
+"""
+
 
 async def archive_entity(
     session: CypherSession,
@@ -765,6 +819,39 @@ async def archive_entity(
     result = await run_write(
         session,
         _ARCHIVE_CYPHER,
+        user_id=user_id,
+        id=canonical_id,
+        reason=reason,
+    )
+    record = await result.single()
+    if record is None:
+        return None
+    return _node_to_entity(record["e"])
+
+
+async def user_archive_entity(
+    session: CypherSession,
+    *,
+    user_id: str,
+    canonical_id: str,
+    reason: str = "user_archived",
+) -> Entity | None:
+    """D-K19c.4-01 — soft-archive an entity for the USER "hide it" flow,
+    PRESERVING both its `glossary_entity_id` anchor AND its `anchor_score`
+    so a later `restore_entity` re-shows it FULLY anchored (the glossary
+    entry still exists). `restore_entity` does NOT recompute the score, so
+    zeroing it here would leave a restored, FK-anchored entity ranking as
+    unanchored until the next recompute pass.
+
+    Same idempotence + edge-preservation as `archive_entity` (no
+    `archived_at IS NULL` guard; EVIDENCED_BY / RELATES_TO / timeline edges
+    untouched) — the difference is that the glossary FK + score are kept.
+    Use `archive_entity` (which NULLs the FK + zeroes the score) for the
+    §3.4.F glossary-deleted path, where the glossary entry itself is gone.
+    """
+    result = await run_write(
+        session,
+        _USER_ARCHIVE_CYPHER,
         user_id=user_id,
         id=canonical_id,
         reason=reason,
@@ -1506,12 +1593,25 @@ async def find_gap_candidates(
 # pagination uses two separate queries (count + page) instead of a
 # collect-then-unwind pattern that materialized every matching row
 # into memory just to compute total.
+# C8: the status predicate is a derived filter over `archived_at` +
+# `glossary_entity_id`, matching `Entity.status`'s precedence. When
+# `$status` is NULL the legacy default holds — active (non-archived)
+# entities only, canonical + discovered mixed. A non-NULL `$status`
+# selects exactly one tier (and `status='archived'` is the ONLY way to
+# surface archived rows, which the default still hides).
 _LIST_ENTITIES_FILTER_WHERE = """
 MATCH (e:Entity)
 WHERE e.user_id = $user_id
-  AND e.archived_at IS NULL
   AND ($project_id IS NULL OR e.project_id = $project_id)
   AND ($kind IS NULL OR e.kind = $kind)
+  AND (
+    CASE $status
+      WHEN 'archived'   THEN e.archived_at IS NOT NULL
+      WHEN 'canonical'  THEN e.archived_at IS NULL AND e.glossary_entity_id IS NOT NULL
+      WHEN 'discovered' THEN e.archived_at IS NULL AND e.glossary_entity_id IS NULL
+      ELSE e.archived_at IS NULL
+    END
+  )
   AND (
     $search IS NULL
     OR toLower(e.name) CONTAINS toLower($search)
@@ -1523,9 +1623,15 @@ _LIST_ENTITIES_COUNT_CYPHER = _LIST_ENTITIES_FILTER_WHERE + """
 RETURN count(e) AS total
 """
 
-_LIST_ENTITIES_PAGE_CYPHER = _LIST_ENTITIES_FILTER_WHERE + """
+# C8: sort_by is interpolated from a CLOSED allowlist (ENTITY_SORT_KEYS),
+# never user text — Cypher can't parameterize an ORDER BY property, so
+# the value is validated against the allowlist in the function body
+# before this template is .format()-ed. mention_count + anchor_score
+# both keep the (name ASC, id ASC) stable tiebreak so pagination is
+# deterministic.
+_LIST_ENTITIES_PAGE_CYPHER_TEMPLATE = _LIST_ENTITIES_FILTER_WHERE + """
 RETURN e
-ORDER BY e.mention_count DESC, e.name ASC, e.id ASC
+ORDER BY e.{sort_key} DESC, e.name ASC, e.id ASC
 SKIP $offset LIMIT $limit
 """
 
@@ -1539,6 +1645,8 @@ async def list_entities_filtered(
     search: str | None,
     limit: int,
     offset: int,
+    status: str | None = None,
+    sort_by: str = "mention_count",
 ) -> tuple[list[Entity], int]:
     """K19d.2 — paginated browse with optional project / kind / search.
 
@@ -1568,7 +1676,26 @@ async def list_entities_filtered(
     fine at hobby scale but a real OOM risk for a power-user with
     50k+ entities. Two round-trips (~10ms overhead) buys O(limit)
     memory instead of O(total).
+
+    **C8 — `status` filter + `sort_by`.**
+      - `status=None` (default): active (non-archived) entities,
+        canonical + discovered mixed — the legacy behaviour.
+      - `status ∈ ENTITY_STATUSES`: select exactly that derived tier.
+        `status='archived'` is the only way to surface archived rows.
+      - `sort_by ∈ ENTITY_SORT_KEYS`: `mention_count` (default) or
+        `anchor_score`. Validated against the closed allowlist before
+        interpolation — a bad value raises ValueError (router 422s on
+        the enum before reaching here, so this is a defence-in-depth
+        guard against non-router callers and Cypher injection).
     """
+    if status is not None and status not in ENTITY_STATUSES:
+        raise ValueError(
+            f"unsupported status {status!r}; must be one of {ENTITY_STATUSES}"
+        )
+    if sort_by not in ENTITY_SORT_KEYS:
+        raise ValueError(
+            f"unsupported sort_by {sort_by!r}; must be one of {ENTITY_SORT_KEYS}"
+        )
     count_result = await run_read(
         session,
         _LIST_ENTITIES_COUNT_CYPHER,
@@ -1576,18 +1703,21 @@ async def list_entities_filtered(
         project_id=project_id,
         kind=kind,
         search=search,
+        status=status,
     )
     count_record = await count_result.single()
     total = int(count_record["total"]) if count_record else 0
     if total == 0:
         return ([], 0)
+    page_cypher = _LIST_ENTITIES_PAGE_CYPHER_TEMPLATE.format(sort_key=sort_by)
     page_result = await run_read(
         session,
-        _LIST_ENTITIES_PAGE_CYPHER,
+        page_cypher,
         user_id=user_id,
         project_id=project_id,
         kind=kind,
         search=search,
+        status=status,
         offset=offset,
         limit=limit,
     )

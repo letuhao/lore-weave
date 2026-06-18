@@ -439,6 +439,66 @@ func TestGenerateImage_EmptyResultData_Returns502(t *testing.T) {
 	}
 }
 
+// D-PHASE5E — the additive provider_kind + provider_model_name result fields
+// decode onto ImageGenResult so book-service can record analytics + the
+// displayed model name. omitempty means a gateway that predates the fields
+// decodes to empty strings (no error), proving backward-compatibility.
+func TestGenerateImage_ProviderIdentityFields_Decode(t *testing.T) {
+	g := newImageGateway()
+	g.terminalResult = map[string]any{
+		"created": 1.0,
+		"data": []map[string]any{
+			{"url": "https://upstream/img.png"},
+		},
+		"provider_kind":       "lm_studio",
+		"provider_model_name": "sdxl",
+	}
+	server := httptest.NewServer(g.handler(t))
+	defer server.Close()
+	c := newClientFor(t, server)
+
+	result, err := c.GenerateImage(context.Background(), GenerateImageRequest{
+		Prompt:          "a sunset",
+		ModelSource:     ModelSourceUser,
+		ModelRef:        testModelRef,
+		PollInterval:    1 * time.Millisecond,
+		MaxPollInterval: 10 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("GenerateImage: %v", err)
+	}
+	if result.ProviderKind != "lm_studio" {
+		t.Errorf("ProviderKind = %q, want %q", result.ProviderKind, "lm_studio")
+	}
+	if result.ProviderModelName != "sdxl" {
+		t.Errorf("ProviderModelName = %q, want %q", result.ProviderModelName, "sdxl")
+	}
+}
+
+// Backward-compat: a gateway result WITHOUT the new fields decodes cleanly to
+// empty strings (the pre-D-PHASE5E shape must never error).
+func TestGenerateImage_NoProviderIdentityFields_DecodesEmpty(t *testing.T) {
+	g := newImageGateway() // default terminalResult omits the new fields
+	server := httptest.NewServer(g.handler(t))
+	defer server.Close()
+	c := newClientFor(t, server)
+
+	result, err := c.GenerateImage(context.Background(), GenerateImageRequest{
+		Prompt:          "p",
+		ModelSource:     ModelSourceUser,
+		ModelRef:        testModelRef,
+		PollInterval:    1 * time.Millisecond,
+		MaxPollInterval: 10 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("GenerateImage: %v", err)
+	}
+	if result.ProviderKind != "" || result.ProviderModelName != "" {
+		t.Errorf("expected empty provider identity, got kind=%q name=%q",
+			result.ProviderKind, result.ProviderModelName)
+	}
+}
+
 // ── Phase 5e-β.2 — GenerateAudio tests ───────────────────────────────
 
 type audioGatewayMux struct {

@@ -1,12 +1,27 @@
 import { useMemo, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
-import { X, ArrowRight, ArrowLeft, Pencil, Merge, Unlock } from 'lucide-react';
+import {
+  X,
+  ArrowRight,
+  ArrowLeft,
+  Pencil,
+  Merge,
+  Unlock,
+  Sparkles,
+  Pin,
+  PinOff,
+} from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useEntityDetail } from '../hooks/useEntityDetail';
-import { useUnlockEntity } from '../hooks/useEntityMutations';
-import type { EntityRelation } from '../api';
+import { useEntityFacts } from '../hooks/useEntityFacts';
+import {
+  useUnlockEntity,
+  usePromoteEntity,
+  useToggleGlossaryPin,
+} from '../hooks/useEntityMutations';
+import type { EntityFact, EntityRelation } from '../api';
 import { TOUCH_TARGET_SQUARE_MOBILE_ONLY_CLASS } from '../lib/touchTarget';
 import { EntityEditDialog } from './EntityEditDialog';
 import { EntityMergeDialog } from './EntityMergeDialog';
@@ -27,7 +42,18 @@ export interface EntityDetailPanelProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   entityId: string | null;
+  // C9 (C9-promote-flow) — the scoped project's linked book. Required for
+  // the glossary context-pin toggle (which is book-scoped); when absent the
+  // unpin control is hidden (a project with no book can't anchor or pin).
+  bookId?: string | null;
 }
+
+const FACT_TYPE_LABEL: Record<EntityFact['type'], string> = {
+  decision: 'entities.detail.factType.decision',
+  preference: 'entities.detail.factType.preference',
+  milestone: 'entities.detail.factType.milestone',
+  negation: 'entities.detail.factType.negation',
+};
 
 function RelationRow({
   relation,
@@ -97,11 +123,14 @@ export function EntityDetailPanel({
   open,
   onOpenChange,
   entityId,
+  bookId,
 }: EntityDetailPanelProps) {
   const { t } = useTranslation('knowledge');
   const { detail, isLoading, error } = useEntityDetail(
     open ? entityId : null,
   );
+  // C9 — provenance MVP: known-facts list (+ each fact's source_chapter).
+  const { facts } = useEntityFacts(open ? entityId : null);
   const [showEdit, setShowEdit] = useState(false);
   const [showMerge, setShowMerge] = useState(false);
   // Phase B C-FE — ONE relation-edit dialog at panel scope (not one per row),
@@ -128,6 +157,46 @@ export function EntityDetailPanel({
     } catch {
       // Error toast owned by onError; swallow to keep the rejected
       // promise from triggering vitest's unhandled-rejection guard.
+    }
+  };
+
+  // C9 (C9-promote-flow) — promote a DISCOVERED entity → glossary draft
+  // (status=draft, tag ai-suggested) + anchor (anchor_score=1.0). The BE
+  // orchestrates both calls; the human reviews the draft IN glossary.
+  const promoteMutation = usePromoteEntity({
+    onSuccess: () => toast.success(t('entities.detail.promoteSuccess')),
+    onError: (err) =>
+      toast.error(t('entities.detail.promoteFailed', { error: err.message })),
+  });
+  const handlePromote = async () => {
+    if (!detail) return;
+    try {
+      await promoteMutation.promote({ entityId: detail.entity.id });
+    } catch {
+      // onError owns the toast; swallow the rejection (vitest guard).
+    }
+  };
+
+  // C9 — unpin the canonical entity's glossary context-pin
+  // (is_pinned_for_context). The pin lives on the glossary entity; we
+  // only ever UNpin from here (the detail surfaces a remove-from-context
+  // control), so the toggle is fixed to pinned=false.
+  const pinMutation = useToggleGlossaryPin({
+    onSuccess: () => toast.success(t('entities.detail.unpinSuccess')),
+    onError: (err) =>
+      toast.error(t('entities.detail.unpinFailed', { error: err.message })),
+  });
+  const handleUnpin = async () => {
+    if (!detail?.entity.glossary_entity_id || !bookId) return;
+    try {
+      await pinMutation.toggle({
+        entityId: detail.entity.id,
+        bookId,
+        glossaryEntityId: detail.entity.glossary_entity_id,
+        pinned: false,
+      });
+    } catch {
+      // onError owns the toast; swallow the rejection (vitest guard).
     }
   };
 
@@ -263,6 +332,59 @@ export function EntityDetailPanel({
                   </dl>
                 </section>
 
+                {/* C9 (C9-promote-flow) — curation actions.
+                    Promote shows ONLY for a `discovered` entity (the
+                    LOCKED gate); on success it becomes canonical and the
+                    button disappears. Unpin shows for a `canonical`
+                    entity that has a glossary anchor + a book to scope the
+                    pin toggle (is_pinned_for_context, NOT delete/archive). */}
+                {detail.entity.status === 'discovered' && (
+                  <section
+                    className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2"
+                    data-testid="entity-detail-promote-section"
+                  >
+                    <p className="text-[11px] text-muted-foreground">
+                      {t('entities.detail.promoteHint')}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handlePromote}
+                      disabled={promoteMutation.isPending}
+                      className="mt-2 inline-flex items-center gap-1 rounded-md border border-primary/40 px-2 py-1 text-[11px] text-primary transition-colors hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
+                      data-testid="entity-detail-promote"
+                    >
+                      <Sparkles className="h-3 w-3" />
+                      {promoteMutation.isPending
+                        ? t('entities.detail.promotePending')
+                        : t('entities.detail.promote')}
+                    </button>
+                  </section>
+                )}
+
+                {detail.entity.status === 'canonical' &&
+                  detail.entity.glossary_entity_id &&
+                  bookId && (
+                    <section
+                      className="rounded-md border px-3 py-2"
+                      data-testid="entity-detail-unpin-section"
+                    >
+                      <p className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                        <Pin className="h-3 w-3" />
+                        {t('entities.detail.unpinHint')}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={handleUnpin}
+                        disabled={pinMutation.isPending}
+                        className="mt-2 inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] transition-colors hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50"
+                        data-testid="entity-detail-unpin"
+                      >
+                        <PinOff className="h-3 w-3" />
+                        {t('entities.detail.unpin')}
+                      </button>
+                    </section>
+                  )}
+
                 {detail.entity.aliases.length > 1 && (
                   <section className="space-y-2">
                     <h3 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
@@ -305,6 +427,44 @@ export function EntityDetailPanel({
                       <Unlock className="h-3 w-3" />
                       {t('entities.detail.unlock')}
                     </button>
+                  </section>
+                )}
+
+                {/* C9 (C9-promote-flow) — provenance MVP: known-facts
+                    list + each fact's source_chapter. Full passage-trail
+                    is deferred (LOCKED). Hidden when the entity has no
+                    facts (keeps the panel uncluttered for thin entities). */}
+                {facts.length > 0 && (
+                  <section className="space-y-2" data-testid="entity-detail-facts">
+                    <h3 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                      {t('entities.detail.facts', { count: facts.length })}
+                    </h3>
+                    <ul className="space-y-1">
+                      {facts.map((f) => (
+                        <li
+                          key={f.id}
+                          className="rounded-md border px-3 py-2 text-[12px]"
+                          data-testid="entity-detail-fact"
+                        >
+                          <div className="flex items-start gap-2">
+                            <span className="mt-0.5 rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                              {t(FACT_TYPE_LABEL[f.type])}
+                            </span>
+                            <span className="min-w-0 flex-1">{f.content}</span>
+                          </div>
+                          {f.source_chapter && (
+                            <p
+                              className="mt-1 text-[10px] text-muted-foreground"
+                              data-testid="entity-detail-fact-source"
+                            >
+                              {t('entities.detail.factSource', {
+                                chapter: f.source_chapter,
+                              })}
+                            </p>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
                   </section>
                 )}
 

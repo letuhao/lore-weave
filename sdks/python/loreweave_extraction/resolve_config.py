@@ -88,23 +88,37 @@ def _override(project_overrides: dict, key: str) -> dict | None:
 
 def _resolve_filter(
     global_filter: PrecisionFilterConfig | None, ov: dict | None,
+    *, default_model_ref: str | None = None,
+    default_model_source: ModelSource = "user_model",
 ) -> PrecisionFilterConfig | None:
-    """Merge a per-project precision_filter override onto the global default."""
+    """Merge a per-project precision_filter override onto the global default.
+
+    D-WX-PRECISION-FILTER-MODEL-ARCH: when the override enables the filter without its
+    OWN model_ref, fall back to the EXTRACTION model (`default_model_*` = the campaign's
+    user-owned, UI-selected, DB-stored llm_model) — NEVER an env/global model, which is
+    cross-tenant (it 404'd "model not found" for every user who didn't own it and stalled
+    the decoupled fold). `global_filter` is always None now (env model source removed).
+    """
     if ov is None:
         return global_filter
     # `enabled` defaults to True when the key is present without it; an explicit
     # false disables the filter for this project regardless of the global.
     if ov.get("enabled", True) is False:
         return None
-    model_ref = ov.get("model_ref") or (global_filter.model_ref if global_filter else None)
+    model_ref = (
+        ov.get("model_ref")
+        or (global_filter.model_ref if global_filter else None)
+        or default_model_ref
+    )
     if not model_ref:
         raise ValueError(
             "precision_filter enabled but no model_ref available "
-            "(none in override and no global precision_filter configured)"
+            "(none in override, no global filter, no extraction model to fall back to)"
         )
     model_source: ModelSource = (
         ov.get("model_source")
-        or (global_filter.model_source if global_filter else "user_model")
+        or (global_filter.model_source if global_filter else None)
+        or default_model_source
     )  # type: ignore[assignment]
     # /review-impl LOW-2: an explicit empty `categories: []` is falsy here and
     # FALLS THROUGH to the global categories (PrecisionFilterConfig forbids an
@@ -192,7 +206,10 @@ def resolve_effective_config(
     )  # type: ignore[assignment]
 
     precision_filter = _resolve_filter(
-        global_defaults.get("precision_filter"), _override(po, "precision_filter")
+        global_defaults.get("precision_filter"), _override(po, "precision_filter"),
+        # fall back to the extraction model when the filter is enabled without its own
+        # model (D-WX-PRECISION-FILTER-MODEL-ARCH) — per-user, never a global/env model.
+        default_model_ref=model_ref, default_model_source=model_source,
     )
     entity_recovery = _resolve_recovery(
         global_defaults.get("entity_recovery"), _override(po, "entity_recovery")

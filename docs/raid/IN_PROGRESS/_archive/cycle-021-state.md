@@ -1,9 +1,9 @@
 ---
 cycle: 21
-title: L4 Prompt skeleton + WS skeleton (D+L)
+title: World container — FE
 current_phase: COMMIT
-phase_started_at: 2026-05-29T11:20:38Z
-last_checkpoint_at: 2026-05-29T11:20:38Z
+phase_started_at: 2026-06-14T15:24:55Z
+last_checkpoint_at: 2026-06-14T15:24:55Z
 retry_count: 0
 dps_status: []
 adversary_findings: null

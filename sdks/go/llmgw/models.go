@@ -75,6 +75,12 @@ type ImageGenDataItem struct {
 type ImageGenResult struct {
 	Created int64              `json:"created"`
 	Data    []ImageGenDataItem `json:"data"`
+	// ProviderKind + ProviderModelName (Phase 5e, D-PHASE5E) carry the gateway-
+	// resolved provider identity for the served generation. Additive/optional:
+	// empty when the gateway predates the field. Consumers (book-service) use
+	// them for usage analytics + the displayed model name.
+	ProviderKind      string `json:"provider_kind,omitempty"`
+	ProviderModelName string `json:"provider_model_name,omitempty"`
 }
 
 // ── Audio generation (Phase 5e-β.2) ──────────────────────────────────

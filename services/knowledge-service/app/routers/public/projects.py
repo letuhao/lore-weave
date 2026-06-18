@@ -17,8 +17,10 @@ returns None which we map to 404.
 
 import base64
 import hashlib
+import logging
 import re
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 import asyncpg
@@ -33,9 +35,15 @@ from app.db.models import (
     ProjectExtractionConfigUpdate,
     ProjectUpdate,
 )
+from app.db.neo4j import neo4j_session
+from app.db.neo4j_helpers import purge_project
 from app.db.neo4j_repos.passages import SUPPORTED_PASSAGE_DIMS
 from app.db.repositories import VersionMismatchError
-from app.db.repositories.projects import ProjectsRepo
+from app.db.repositories.projects import (
+    _PROJECT_SORT_COLUMNS,
+    _PROJECT_STATUS_FILTERS,
+    ProjectsRepo,
+)
 from app.auth.grant_deps import GrantLevel, require_project_grant
 from app.clients.grant_client import GrantClient
 from app.deps import get_grant_client, get_projects_repo
@@ -89,6 +97,8 @@ def _etag(version: int) -> str:
 
 __all__ = ["router"]
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(
     prefix="/v1/knowledge/projects",
     tags=["public"],
@@ -112,34 +122,146 @@ class ProjectListResponse(BaseModel):
 
 # ── cursor helpers ────────────────────────────────────────────────────────
 
-# Cursor is "<iso8601>|<uuid>" base64url-encoded so neither the `+`
-# in `+00:00` nor the pipe separator collides with URL parsing. The
-# format is opaque to clients — they should round-trip whatever the
-# server returns without inspecting it.
+# Cursor is "<filter_sig>|<sort_value>|<uuid>" base64url-encoded, where
+# <filter_sig> is a stable hash over the FULL filter set the seek key was
+# computed for: (sort_by, sort_dir, search, status). The whole filter set
+# is bound — not just sort_by — because the seek predicate is only valid
+# for the exact (column, direction, filtered population) it was issued
+# for: flipping sort_dir flips the `<`/`>` comparison against a boundary
+# computed for the opposite direction, and changing search/status moves
+# the boundary into (or out of) a different filtered set. ANY mismatch is
+# a 400 so a stale/3rd-party cursor can't silently skip or duplicate rows.
+# base64url avoids the `+` in `+00:00` and the pipe separator colliding
+# with URL parsing. The format is opaque to clients — they round-trip
+# whatever the server returns without inspecting it.
 _CURSOR_SEP = "|"
 
 
-def _encode_cursor(created_at: datetime, project_id: UUID) -> str:
-    raw = f"{created_at.isoformat()}{_CURSOR_SEP}{project_id}".encode("ascii")
+def _filter_sig(
+    sort_by: str,
+    sort_dir: str,
+    search: str | None,
+    status_filter: str | None,
+    *,
+    include_archived: bool,
+    book_id: UUID | None,
+    world_id: UUID | None = None,
+) -> str:
+    """Stable signature of the filter set a cursor's seek key is valid
+    for. A short sha256 hex over the normalized
+    (sort_by, sort_dir, search, status, include_archived, book_id) tuple
+    — replaying a cursor under any different value yields a different
+    signature and so a 400 on decode.
+
+    EVERY param that shapes the ORDER BY (sort_by/sort_dir) OR the
+    filtered population the seek boundary was computed against
+    (search/status/include_archived/book_id) is bound: a flipped
+    sort_dir mis-applies `<`/`>` against the opposite-direction
+    boundary, and any population change (search/status/include_archived/
+    book_id) moves the boundary into a different row set — either way
+    silently skips or duplicates rows. The separator is NUL (which can't
+    appear in any input: they're enum tokens / UUIDs / a user search the
+    BE never NUL-injects) so distinct field boundaries can't collide
+    (e.g. search='a|b' vs two fields).
+
+    (The status param is named ``status_filter`` rather than ``status``
+    so it does not shadow the module-level ``fastapi.status`` import.)"""
+    payload = "\x00".join(
+        (
+            sort_by,
+            sort_dir,
+            search or "",
+            status_filter or "",
+            "1" if include_archived else "0",
+            str(book_id) if book_id is not None else "",
+            # G4: world_id shapes the filtered population (HOME hides world
+            # projects; ?world_id returns one) so it must bind the seek key.
+            str(world_id) if world_id is not None else "",
+        )
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
+def _encode_cursor(
+    sort_by: str,
+    sort_value: object,
+    project_id: UUID,
+    *,
+    sort_dir: str,
+    search: str | None,
+    status_filter: str | None,
+    include_archived: bool,
+    book_id: UUID | None,
+    world_id: UUID | None = None,
+) -> str:
+    # The sort value is serialized via str(); a datetime becomes its
+    # isoformat (round-trips through _coerce_sort_value), a name/status
+    # stays the raw string. UTF-8 (not ASCII): a `name`-sorted cursor can
+    # carry non-ASCII project names (e.g. CJK titles) — encoding those
+    # with ASCII raised UnicodeEncodeError and 500'd the list (live-smoke
+    # caught this). base64url of the UTF-8 bytes keeps the wire ASCII-safe.
+    sv = sort_value.isoformat() if isinstance(sort_value, datetime) else str(sort_value)
+    sig = _filter_sig(
+        sort_by, sort_dir, search, status_filter,
+        include_archived=include_archived, book_id=book_id, world_id=world_id,
+    )
+    raw = f"{sig}{_CURSOR_SEP}{sv}{_CURSOR_SEP}{project_id}".encode("utf-8")
     return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
 
 
-def _decode_cursor(cursor: str) -> tuple[datetime, UUID]:
-    """Parse a cursor string. Raises HTTPException(400) on malformed
-    input — clients must round-trip the server-issued value verbatim.
+def _coerce_sort_value(sort_by: str, raw: str) -> object:
+    """Type the cursor's stored sort value back to what the column needs.
+    Text columns (name / extraction_status) stay strings; timestamp
+    columns parse back to a tz-aware datetime."""
+    _col, is_text = _PROJECT_SORT_COLUMNS[sort_by]
+    if is_text:
+        return raw
+    return datetime.fromisoformat(raw)
 
-    Catches the UnicodeError parent so BOTH encode-side (non-ASCII
-    input → `.encode('ascii')` fails) and decode-side (`urlsafe_b64decode`
+
+def _decode_cursor(
+    cursor: str,
+    *,
+    sort_by: str,
+    sort_dir: str,
+    search: str | None,
+    status_filter: str | None,
+    include_archived: bool,
+    book_id: UUID | None,
+    world_id: UUID | None = None,
+) -> tuple[object, UUID]:
+    """Parse a cursor string against the CURRENT filter set. Raises
+    HTTPException(400) on malformed input OR a filter-set mismatch —
+    clients must round-trip the server-issued value verbatim AND keep the
+    same sort_by / sort_dir / search / status they requested it under.
+
+    The filter signature is recomputed from the current request and
+    compared against the one baked into the cursor; any drift (a flipped
+    sort_dir, a changed search or status, a changed sort_by) is a 400 so
+    a seek key computed for one filtered population is never mis-applied
+    to another (which would skip or duplicate rows).
+
+    Catches the UnicodeError parent so BOTH encode-side (non-ASCII input
+    → `.encode('ascii')` fails) and decode-side (`urlsafe_b64decode`
     yielding non-ASCII bytes) errors land on the same 400 path.
-    Previously only UnicodeDecodeError was caught, so a cursor like
-    `?cursor=café` produced a 500 with a traceback.
     """
     try:
-        # Re-pad to a multiple of 4 for urlsafe_b64decode.
+        # Re-pad to a multiple of 4 for urlsafe_b64decode. Decode the
+        # payload as UTF-8 (paired with _encode_cursor) so a non-ASCII
+        # name value round-trips intact. The outer cursor string itself
+        # is still ASCII (base64url), so `.encode('ascii')` is safe.
         padded = cursor + "=" * (-len(cursor) % 4)
-        raw = base64.urlsafe_b64decode(padded.encode("ascii")).decode("ascii")
-        ts_str, uid_str = raw.split(_CURSOR_SEP, 1)
-        return datetime.fromisoformat(ts_str), UUID(uid_str)
+        raw = base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8")
+        sig_token, value_str, uid_str = raw.split(_CURSOR_SEP, 2)
+        if sig_token != _filter_sig(
+            sort_by, sort_dir, search, status_filter,
+            include_archived=include_archived, book_id=book_id, world_id=world_id,
+        ):
+            # The filter set changed mid-pagination — the old seek key is
+            # invalid for the new population; the FE must restart from
+            # page 1 under the new filters.
+            raise ValueError("cursor filter-set mismatch")
+        return _coerce_sort_value(sort_by, value_str), UUID(uid_str)
     except (ValueError, UnicodeError):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -158,6 +280,16 @@ def _not_found() -> HTTPException:
 # ── endpoints ─────────────────────────────────────────────────────────────
 
 
+# C7-followup (KN-7): server-side narrowing. The sort/status enums are
+# CLOSED allowlists exposed as Literals so FastAPI 422s an out-of-set
+# value at the validation boundary (the repo also defends in depth).
+ProjectSortBy = Literal["created_at", "updated_at", "name", "status"]
+ProjectSortDir = Literal["asc", "desc"]
+ProjectStatusFilter = Literal[
+    "disabled", "building", "paused", "ready", "failed", "archived"
+]
+
+
 @router.get("", response_model=ProjectListResponse)
 async def list_projects(
     user_id: UUID = Depends(get_current_user),
@@ -172,20 +304,74 @@ async def list_projects(
             "result in practice)."
         ),
     ),
+    world_id: UUID | None = Query(
+        default=None,
+        description=(
+            "G4: filter to a world's dedicated knowledge project (0 or 1 "
+            "result). When omitted (and book_id is omitted), the HOME browse "
+            "HIDES world-level projects so the bible/world project never shows "
+            "as a phantom row."
+        ),
+    ),
+    search: str | None = Query(
+        default=None,
+        max_length=200,
+        description=(
+            "C7-followup: case-insensitive substring match on project name. "
+            "Server-side so the browser narrows across ALL projects, not just "
+            "loaded cursor pages."
+        ),
+    ),
+    sort_by: ProjectSortBy = Query(
+        default="created_at",
+        description=(
+            "C7-followup: ordering key (closed allowlist). `status` sorts on "
+            "the extraction lifecycle state."
+        ),
+    ),
+    sort_dir: ProjectSortDir = Query(default="desc"),
+    status_filter: ProjectStatusFilter | None = Query(
+        default=None,
+        alias="status",
+        description=(
+            "C7-followup: filter to one project state. The five extraction "
+            "lifecycle values plus `archived` (the is_archived flag)."
+        ),
+    ),
     repo: ProjectsRepo = Depends(get_projects_repo),
 ) -> ProjectListResponse:
-    cursor_ts: datetime | None = None
+    # Defense in depth — the Literal already gates these, but assert the
+    # closed sets so an internal drift (Literal vs repo allowlist) fails
+    # loudly rather than silently SELECTing the wrong column.
+    assert sort_by in _PROJECT_SORT_COLUMNS
+    assert status_filter is None or status_filter in _PROJECT_STATUS_FILTERS
+
+    cursor_value: object | None = None
     cursor_id: UUID | None = None
     if cursor:
-        cursor_ts, cursor_id = _decode_cursor(cursor)
+        cursor_value, cursor_id = _decode_cursor(
+            cursor,
+            sort_by=sort_by,
+            sort_dir=sort_dir,
+            search=search,
+            status_filter=status_filter,
+            include_archived=include_archived,
+            book_id=book_id,
+            world_id=world_id,
+        )
 
     rows = await repo.list(
         user_id,
         include_archived=include_archived,
         limit=limit,
-        cursor_created_at=cursor_ts,
+        cursor_sort_value=cursor_value,
         cursor_project_id=cursor_id,
         book_id=book_id,
+        world_id=world_id,
+        search=search,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
+        status=status_filter,
     )
 
     has_more = len(rows) > limit
@@ -193,7 +379,23 @@ async def list_projects(
     next_cursor: str | None = None
     if has_more and items:
         last = items[-1]
-        next_cursor = _encode_cursor(last.created_at, last.project_id)
+        # The cursor's sort value is the row's value on the active sort
+        # column — created_at / updated_at / name / extraction_status.
+        sort_value = getattr(
+            last,
+            "extraction_status" if sort_by == "status" else sort_by,
+        )
+        next_cursor = _encode_cursor(
+            sort_by,
+            sort_value,
+            last.project_id,
+            sort_dir=sort_dir,
+            search=search,
+            status_filter=status_filter,
+            include_archived=include_archived,
+            book_id=book_id,
+            world_id=world_id,
+        )
 
     return ProjectListResponse(items=items, next_cursor=next_cursor)
 
@@ -498,3 +700,20 @@ async def delete_project(
     deleted = await repo.delete(user_id, project_id)
     if not deleted:
         raise _not_found()
+    # D-KNOWLEDGE-PROJECT-DELETE-NEO4J-ORPHAN: the Postgres delete above is the
+    # authoritative owner-gated op; now best-effort purge the project's Neo4j graph
+    # (all nodes carry project_id) + its per-project summary vector indexes so a
+    # delete no longer orphans the graph. A Neo4j fault must NOT fail the delete —
+    # the row is already gone (re-sweep can reclaim a stray orphan); log + move on.
+    try:
+        async with neo4j_session() as session:
+            purged = await purge_project(session, str(project_id))
+        logger.info(
+            "purged neo4j for deleted project %s: %s nodes, %s indexes",
+            project_id, purged["nodes_deleted"], purged["indexes_dropped"],
+        )
+    except Exception:  # noqa: BLE001 — best-effort; the Postgres delete is authoritative
+        logger.warning(
+            "neo4j purge for deleted project %s failed — graph orphaned, re-sweep owed",
+            project_id, exc_info=True,
+        )

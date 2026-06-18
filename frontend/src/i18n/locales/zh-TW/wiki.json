@@ -96,6 +96,7 @@
       "perArticle": "預估費用：每篇約 ~{{perArticle}}"
     },
     "started": "已開始生成",
+    "startedTruncated": "正在生成 {{total}} 個實體中的 {{selected}} 個——其餘因上限被略過。提高上限以納入它們。",
     "noEntities": "沒有符合的實體可生成",
     "alreadyRunning": "此書已有生成作業正在執行",
     "notIndexed": "請先為此書建立知識圖譜",

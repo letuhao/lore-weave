@@ -240,5 +240,8 @@ export interface WikiGenConfig {
  */
 export type WikiGenerateResult =
   | { created: number; articles: unknown[] }
-  | { job_id: string; status: string }
-  | { action: 'none'; entities: number };
+  // D-WIKI-M7B-GEN-LIMIT — `total_matched`/`selected` let the FE warn when the
+  // genLimit cap silently dropped candidates (total_matched > selected). Both
+  // are optional for back-compat with older delegate responses.
+  | { job_id: string; status: string; total_matched?: number; selected?: number }
+  | { action: 'none'; entities: number; total_matched?: number };

@@ -29,6 +29,7 @@ interface ActionButtonProps {
   variant?: ButtonVariant;
   disabled?: boolean;
   children: React.ReactNode;
+  'data-testid'?: string;
 }
 
 export function StateActionButton({
@@ -36,6 +37,7 @@ export function StateActionButton({
   variant = 'secondary',
   disabled,
   children,
+  'data-testid': dataTestId,
 }: ActionButtonProps) {
   const variantClass = {
     primary: 'bg-primary text-primary-foreground hover:bg-primary/90',
@@ -47,6 +49,7 @@ export function StateActionButton({
     <button
       onClick={onClick}
       disabled={disabled}
+      data-testid={dataTestId}
       className={cn(
         'rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed',
         variantClass,

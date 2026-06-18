@@ -630,3 +630,31 @@ async def test_on_decision_callback_exception_does_not_kill_filter() -> None:
 
     assert result.filter_status == "applied"
     assert len(result.entities) == 1
+
+
+@pytest.mark.asyncio
+async def test_multi_batch_maps_local_verdicts_to_global_indices() -> None:
+    """WX-T2c regression guard: >max_items_per_batch items split into multiple
+    batches; each batch's LLM verdicts are LOCAL-numbered (0..n-1 per batch). The
+    local→global remap (verdicts_by_idx[batch_start + local_idx]) must land each
+    verdict on the right GLOBAL item. Every other filter test is single-batch
+    (batch_start always 0), so this is the only guard on the multi-batch slicing +
+    the WX-T2c build_filter_category_batches / compute_filter_kept seams."""
+    cands = Pass2Candidates(entities=[_entity(n) for n in ("A", "B", "C", "D", "E")])
+    # max_items_per_batch=2 → 3 batches: items [0,1], [2,3], [4]. Each verdict LOCAL.
+    contents = [
+        _verdict_json(supported=(0,), unsupported=(1,)),  # global 0=keep(A), 1=drop(B)
+        _verdict_json(supported=(0,), unsupported=(1,)),  # global 2=keep(C), 3=drop(D)
+        _verdict_json(supported=(0,)),                    # global 4=keep(E)
+    ]
+    client = _make_mock_client(contents)
+    result = await apply_precision_filter(
+        cands, text="src",
+        config=_config(categories=("entity",), max_items_per_batch=2),
+        user_id="u", llm_client=client,
+    )
+    assert client.submit_and_wait.await_count == 3  # three sequential batch calls
+    # kept the even-global items (A,C,E), dropped the odd (B,D) — proves the remap
+    # didn't collapse every batch onto local idx 0/1.
+    assert [e.name for e in result.entities] == ["A", "C", "E"]
+    assert result.filter_coverage["entity"] == 1.0  # all 5 judged across the 3 batches

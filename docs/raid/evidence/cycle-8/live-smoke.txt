@@ -1,0 +1,13 @@
+live smoke: semantic_query + status filter on a built knowledge graph
+project: 019eb683-8de9-7cc4-8aec-e120166cfffd (万古神帝, extraction_status=ready, 106 entities, dim 1024)
+embedding_model resolved via provider-registry: 019e7f71-0271-722f-9c9c-3f049c0b26f4
+
+semantic_query=张若尘:
+  embedding_model= 019e7f71-0271-722f-9c9c-3f049c0b26f4 count= 3
+   rank 1 张若尘 status= discovered
+   rank 2 林妃 status= discovered
+   rank 3 神武印记 status= discovered
+
+  status=discovered -> total= 106
+  status=canonical -> total= 0
+  status=archived -> total= 0

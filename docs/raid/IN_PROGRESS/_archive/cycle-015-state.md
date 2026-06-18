@@ -1,9 +1,9 @@
 ---
 cycle: 15
-title: L3 Integrity (E+F+J)
+title: Writer unblock (FE)
 current_phase: COMMIT
-phase_started_at: 2026-05-29T08:51:37Z
-last_checkpoint_at: 2026-05-29T08:51:37Z
+phase_started_at: 2026-06-14T11:13:47Z
+last_checkpoint_at: 2026-06-14T11:13:47Z
 retry_count: 0
 dps_status: []
 adversary_findings: null

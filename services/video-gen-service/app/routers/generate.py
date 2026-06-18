@@ -37,18 +37,22 @@ import io
 import logging
 import uuid
 from typing import Optional
+from uuid import UUID
 
 import httpx
 import jwt
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Path, Response
 from minio import Minio
 from minio.error import S3Error
 
 from ..config import settings
+from ..db.pool import get_pool
+from ..db.repository import VideoGenJobsRepo
 from ..llm_errors import map_llm_error_to_http_exception
 from ..models import GenerateRequest, GenerateResponse
 
 from loreweave_llm import Client, LLMError, VideoGenResult
+from loreweave_llm.models import SubmitJobRequest
 
 router = APIRouter()
 logger = logging.getLogger("video-gen")
@@ -225,18 +229,93 @@ def _aspect_to_size(aspect: str) -> str:
     return mapping.get(aspect, "1920x1080")
 
 
+class VideoDownloadError(RuntimeError):
+    """The remote video URL could not be fetched (→ 502 on the inline path)."""
+
+
+class VideoStorageError(RuntimeError):
+    """MinIO bucket/put failed (→ 500 on the inline path)."""
+
+
+async def download_and_store(user_id: str, video_url_remote: str) -> tuple[str, int, str]:
+    """Download the gateway's remote video URL → store in MinIO → return
+    ``(local_url, size_bytes, content_type)``.
+
+    Shared by the inline 201 path AND the M5 decoupled terminal-event consumer
+    (the whole point of the decouple is to run THIS off the request path). The
+    inline path maps the two error classes to its historical 502/500 statuses;
+    the consumer treats either as a failed terminal. Streams to MinIO; bucket
+    readiness is self-healed first so we fail fast before the download.
+    """
+    try:
+        ensure_bucket_ready()
+    except Exception as e:  # noqa: BLE001 — surfaced as storage-unavailable
+        raise VideoStorageError(f"Media storage unavailable: {e}") from e
+
+    try:
+        async with httpx.AsyncClient(timeout=120) as http_client:
+            dl_resp = await http_client.get(video_url_remote)
+    except Exception as e:  # noqa: BLE001 — transport failure on the download
+        raise VideoDownloadError(f"Failed to download generated video: {e}") from e
+    if dl_resp.status_code != 200:
+        raise VideoDownloadError("Failed to download generated video")
+
+    content_type = dl_resp.headers.get("content-type", "video/mp4")
+    ext = ".mp4" if "mp4" in content_type else ".webm"
+    video_data = dl_resp.content
+    video_size = len(video_data)
+    object_key = f"video-gen/{user_id}/{uuid.uuid4()}{ext}"
+    try:
+        get_minio().put_object(
+            MINIO_BUCKET, object_key,
+            io.BytesIO(video_data), video_size,
+            content_type=content_type,
+        )
+    except Exception as e:  # noqa: BLE001 — MinIO put failed
+        raise VideoStorageError(f"Failed to store video: {e}") from e
+
+    return media_url(object_key), video_size, content_type
+
+
+def _build_video_input(body: GenerateRequest) -> dict:
+    """The ``video_gen`` job ``input`` payload — mirrors the SDK's
+    ``generate_video`` (size from aspect, optional duration/style). Used by the
+    M5 decoupled submit so the gateway sees the identical shape the inline SDK
+    call produced."""
+    payload: dict = {"prompt": body.prompt, "size": _aspect_to_size(body.aspect_ratio)}
+    if body.duration_seconds is not None:
+        payload["duration"] = body.duration_seconds
+    if body.style is not None:
+        payload["style"] = body.style
+    return payload
+
+
 @router.post("/generate", response_model=GenerateResponse, status_code=201)
 async def generate_video(
     body: GenerateRequest,
+    response: Response,
     authorization: str = Header(default=""),
 ):
-    """Generate a video from a text prompt via the unified LLM gateway."""
+    """Generate a video from a text prompt via the unified LLM gateway.
+
+    Two paths, gated by ``VIDEO_GEN_DECOUPLE_ENABLED`` (LLM re-arch Phase 3 M5):
+    - flag OFF (default): inline — submit + wait + download + store, return 201
+      ``completed`` verbatim (unchanged contract).
+    - flag ON: decoupled — submit the gateway job (don't wait), persist a
+      ``video_gen_jobs`` row, return 202 ``pending`` ``{job_id}``. The worker
+      consumes the terminal event, downloads → MinIO, marks the row done; the FE
+      polls ``GET /v1/video-gen/jobs/{job_id}``.
+    """
     # extract_user_id raises 401 on a missing/invalid token or empty sub.
     user_id = extract_user_id(authorization)
 
     if not body.model_ref:
         raise HTTPException(status_code=400, detail="model_ref is required")
 
+    if settings.video_gen_decouple_enabled:
+        return await _submit_decoupled(body, user_id, response)
+
+    # ── Inline path (flag off) — submit + wait + download + store ─────────────
     # 1+2 (merged) — call gateway via SDK. SDK handles credential
     # resolution + upstream POST + (sync) result decoding.
     client = Client(
@@ -264,40 +343,14 @@ async def generate_video(
         raise HTTPException(status_code=502, detail="Gateway returned no video URL")
     video_url_remote = result.data[0].url
 
-    # Ensure the media bucket is ready (self-heals if the startup
-    # bootstrap failed). Done before the download so we fail fast, and
-    # kept out of the download/store try-block so its error message is
-    # accurate (/review-impl(BUILD) COSMETIC#7).
+    # 3. Download and store in MinIO (shared helper — preserves the historical
+    # 502 download / 500 storage status split via the two error classes).
     try:
-        ensure_bucket_ready()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Media storage unavailable: {e}")
-
-    # 3. Download and store in MinIO (stream to avoid buffering large files).
-    try:
-        async with httpx.AsyncClient(timeout=120) as http_client:
-            dl_resp = await http_client.get(video_url_remote)
-        if dl_resp.status_code != 200:
-            raise HTTPException(status_code=502, detail="Failed to download generated video")
-
-        content_type = dl_resp.headers.get("content-type", "video/mp4")
-        ext = ".mp4" if "mp4" in content_type else ".webm"
-        video_data = dl_resp.content
-        video_size = len(video_data)
-        object_key = f"video-gen/{user_id}/{uuid.uuid4()}{ext}"
-
-        mc = get_minio()
-        mc.put_object(
-            MINIO_BUCKET, object_key,
-            io.BytesIO(video_data), video_size,
-            content_type=content_type,
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to store video: {e}")
-
-    local_url = media_url(object_key)
+        local_url, video_size, content_type = await download_and_store(user_id, video_url_remote)
+    except VideoDownloadError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    except VideoStorageError as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
     # 4. Best-effort usage billing — provider_kind=None per MED#1.
     await record_usage(user_id, None, body.model_source, body.model_ref, len(body.prompt))
@@ -314,4 +367,88 @@ async def generate_video(
         duration_seconds=body.duration_seconds,
         size_bytes=video_size,
         content_type=content_type,
+    )
+
+
+async def _submit_decoupled(
+    body: GenerateRequest, user_id: str, response: Response
+) -> GenerateResponse:
+    """M5 decoupled submit — submit the gateway job (NOT wait), persist a
+    pending ``video_gen_jobs`` row, return 202 ``{job_id, status:'pending'}``.
+    Billing + download move to the worker's terminal-event completion."""
+    client = Client(
+        base_url=settings.provider_registry_internal_url,
+        auth_mode="internal",
+        internal_token=settings.internal_service_token,
+        user_id=user_id,
+    )
+    try:
+        submitted = await client.submit_job(
+            SubmitJobRequest(
+                operation="video_gen",
+                model_source=body.model_source,  # type: ignore[arg-type]
+                model_ref=body.model_ref,
+                input=_build_video_input(body),
+            ),
+            user_id=user_id,
+        )
+    except LLMError as exc:
+        raise map_llm_error_to_http_exception(exc)
+    finally:
+        await client.aclose()
+
+    # request_json keeps prompt + model refs for the worker's billing
+    # (prompt_len) and for replay/debug.
+    repo = VideoGenJobsRepo(get_pool())
+    job = await repo.create(
+        user_id=UUID(user_id),
+        provider_job_id=UUID(str(submitted.job_id)),
+        request_json={
+            "prompt": body.prompt,
+            "model_source": body.model_source,
+            "model_ref": body.model_ref,
+            "duration_seconds": body.duration_seconds,
+            "aspect_ratio": body.aspect_ratio,
+            "style": body.style,
+        },
+    )
+    response.status_code = 202
+    return GenerateResponse(
+        status="pending",
+        job_id=str(job.id),
+        model=body.model_ref,
+        duration_seconds=body.duration_seconds,
+    )
+
+
+@router.get("/jobs/{job_id}", response_model=GenerateResponse)
+async def get_video_job(
+    job_id: UUID = Path(...),
+    authorization: str = Header(default=""),
+):
+    """Poll a decoupled video-gen job (LLM re-arch Phase 3 M5). 404 cross-user.
+
+    Returns the same ``GenerateResponse`` shape as the inline path once the job
+    completes (status='completed' + video_url), so the FE renders both paths
+    identically. Available only when the decouple flag is on (the inline path
+    never creates a row → always 404)."""
+    user_id = extract_user_id(authorization)
+    if not settings.video_gen_decouple_enabled:
+        # No job rows exist on the inline path; the pool isn't even initialised.
+        raise HTTPException(status_code=404, detail="Job not found")
+    repo = VideoGenJobsRepo(get_pool())
+    job = await repo.get(UUID(user_id), job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    req = job.request_json or {}
+    err = job.error_json or {}
+    return GenerateResponse(
+        status=job.status,
+        job_id=str(job.id),
+        video_url=job.video_url,
+        error=err.get("message") if err else None,
+        model=req.get("model_ref"),
+        duration_seconds=req.get("duration_seconds"),
+        size_bytes=job.size_bytes,
+        content_type=job.content_type,
     )

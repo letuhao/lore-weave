@@ -1,273 +1,99 @@
 #!/usr/bin/env bash
-# verify-cycle-25.sh — L5.E + L5.F canon cache + RPC contract (2 DPS).
-#
-# Acceptance gate. Exit 0 = pass; non-zero = fail.
-#
-# Cycle 25 scope (2 DPS — INLINE serial):
-#   DPS 1 — L5.E canon cache (Go + Rust):
-#     * contracts/prompt/canon_cache.go
-#     * contracts/prompt/canon_cache_codec.go
-#     * contracts/prompt/canon_reader.go
-#     * contracts/prompt/canon_cache_test.go
-#     * crates/dp-kernel/src/canon_cache.rs
-#     * crates/dp-kernel/src/lib.rs (pub mod canon_cache)
-#     * contracts/observability/inventory.yaml (3 new L5 metrics)
-#
-#   DPS 2 — L5.F RPC contract:
-#     * contracts/api/glossary-service/canon_read.yaml
-#     * contracts/api/glossary-service/canon_write.yaml
-#     * contracts/api/glossary-service/seed_export.yaml
-#     * contracts/service_acl/matrix.yaml (glossary-service-rpcs entry)
-#     * clients/go/glossary_client/{go.mod,client.go,client_test.go}
-#     * clients/rust/glossary_client/{Cargo.toml,src/lib.rs}
-#     * Cargo.toml (workspace member entry)
-#
-# LOCKED decisions enforced:
-#   Q-L5-1   — event-driven invalidation PRIMARY; 60s TTL fallback only
-#   Q-L5-3   — canon_layer enum {L1_axiom, L2_seeded}
-#   Q-L5-4   — HTTP/JSON V1 (NOT gRPC)
-#   Q-L5-5   — canon_guardrail integration interface present (full impl
-#              deferred to L5.I downstream cycle)
-#   Q-L5A-1  — services/glossary-service/ UNTOUCHED (separate sub-program)
-#   Q-L1A-2  — canon SSOT in glossary DB; cache is per-reality projection
-#   I7       — meta-worker remains sole writer of per-reality projections
-
+# verify-cycle-25 — C25 Packer override-merge (BE composition). Per
+# RAID_WORKFLOW.md §13 (exit 0 = pass). dị bản M0 two-project merge / G2 /
+# override-at-retrieve self-syncing / GUARD project-scoping. Asserts: (1) the
+# packer merges a derivative's BASE (source project ≤ branch_point) + DELTA
+# (derivative project, full) with DELTA precedence; (2) `entity_override[]` is
+# APPLIED to inherited base entities before the prompt window, re-read+re-applied
+# every pack (no cache — self-syncing); (3) the GUARD asserts derivative
+# project-scoping (refuses null/missing base or delta project_id); (4) the base
+# never leaks content after branch_point. Static greps + targeted pytest
+# (pack + override + engine + grounding) + py_compile + provider-gate.
 set -euo pipefail
+CYCLE=25
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+CS="$REPO_ROOT/services/composition-service"
+AUDIT_LOG="$REPO_ROOT/docs/audit/AUDIT_LOG.jsonl"
+NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
-cd "$repo_root"
+audit() { mkdir -p "$(dirname "$AUDIT_LOG")"; echo "{\"ts\":\"$NOW\",\"event\":\"$1\",\"cycle\":$CYCLE}" >> "$AUDIT_LOG"; }
+fail() { echo "[verify-cycle-25] FAIL: $1" >&2; audit "verify_cycle_25_failed"; exit 1; }
+have() { grep -Fq "$2" "$1" || fail "$3"; }
 
-step=0
-pass() { step=$((step+1)); echo "[verify-cycle-25] step $step PASS: $1"; }
-fail() { step=$((step+1)); echo "[verify-cycle-25] step $step FAIL: $1" >&2; exit 1; }
-note() { echo "[verify-cycle-25] note: $1"; }
+echo "[verify-cycle-25] running CI gate"
 
-# ─────────────────────────────────────────────────────────────────────────
-# DPS 1 + 2 — files present.
-# ─────────────────────────────────────────────────────────────────────────
-for f in \
-    contracts/prompt/canon_cache.go \
-    contracts/prompt/canon_cache_codec.go \
-    contracts/prompt/canon_reader.go \
-    contracts/prompt/canon_cache_test.go \
-    crates/dp-kernel/src/canon_cache.rs \
-    contracts/api/glossary-service/canon_read.yaml \
-    contracts/api/glossary-service/canon_write.yaml \
-    contracts/api/glossary-service/seed_export.yaml \
-    clients/go/glossary_client/client.go \
-    clients/go/glossary_client/client_test.go \
-    clients/go/glossary_client/go.mod \
-    clients/rust/glossary_client/Cargo.toml \
-    clients/rust/glossary_client/src/lib.rs ; do
-    [[ -f "$f" ]] || fail "cycle-25 file missing: $f"
+PACK="$CS/app/packer/pack.py"
+MERGE="$CS/app/packer/merge.py"
+ASM="$CS/app/packer/assemble.py"
+LENSES="$CS/app/packer/lenses.py"
+GROUNDING="$CS/app/routers/grounding.py"
+ENGINE="$CS/app/routers/engine.py"
+TEST="$CS/tests/unit/test_pack_override.py"
+
+for f in "$PACK" "$MERGE" "$ASM" "$LENSES" "$GROUNDING" "$ENGINE" "$TEST"; do
+  [ -f "$f" ] || fail "missing source file: $f"
 done
-pass "cycle-25 files present (DPS 1 cache + DPS 2 RPC contract + clients)"
 
-# Q-L5A-1 / Q-L1A-2: glossary-service MUST NOT be modified this cycle.
-if git diff --name-only HEAD 2>/dev/null | grep -qE '^services/glossary-service/'; then
-    fail "Q-L5A-1/Q-L1A-2 violation: services/glossary-service/ modified (separate sub-program)"
-fi
-pass "Q-L5A-1/Q-L1A-2: services/glossary-service/ untouched"
+# ── 1. merge module — two-project merge + override apply + normalization ──
+have "$MERGE" "def merge_present" "merge missing merge_present (base+delta entity merge)"
+have "$MERGE" "def merge_timeline" "merge missing merge_timeline"
+have "$MERGE" "def merge_lore" "merge missing merge_lore"
+have "$MERGE" "def apply_entity_overrides" "merge missing apply_entity_overrides (override mutation seam)"
+# DELTA precedence — delta is consumed first into `seen`, base only fills gaps.
+grep -Fq "delta wins" "$MERGE" || fail "merge does not document/implement delta precedence"
+# Normalization seam — case/whitespace-folded identity reconciliation.
+have "$MERGE" "def _norm_name" "merge missing the normalization helper (base/delta identity seam)"
+have "$MERGE" "casefold" "merge does not casefold the identity key (normalization seam)"
+have "$MERGE" "OVERRIDE_CANON_FIELD" "merge missing the added canon-rule override scope"
 
-# I7: per-reality canon_projection migrations stay in per_reality/ (cycle 23).
-if git diff --name-only HEAD 2>/dev/null | grep -qE '^contracts/migrations/meta/.*canon'; then
-    fail "I7 violation: canon migration in meta/ (must stay per_reality/)"
-fi
-pass "I7: canon migrations untouched + still per-reality"
+# ── 2. packer — two-project base+delta merge + branch filter + GUARD wiring ──
+have "$PACK" "source_project_id" "pack missing the derivative base project (source_project_id)"
+have "$PACK" "branch_point" "pack missing the branch_point cutoff"
+have "$PACK" "is_derivative" "pack missing the derivative branch"
+have "$PACK" "assert_derivative_scoped" "pack does not assert derivative project-scoping (GUARD)"
+have "$PACK" "M.merge_present" "pack does not merge base+delta present"
+have "$PACK" "M.merge_timeline" "pack does not merge base+delta timeline"
+have "$PACK" "M.merge_lore" "pack does not merge base+delta lore"
+have "$PACK" "M.apply_entity_overrides" "pack does not apply entity overrides"
+# base read capped at the branch cutoff (min of scene + branch).
+have "$PACK" "_min_cutoff" "pack does not cap the base read at the branch cutoff"
+have "$PACK" "_cap_events" "pack missing the post-branch base-event belt"
+# self-syncing: overrides re-read every pack (build_derivative_context, no cache).
+have "$PACK" "build_derivative_context" "pack missing the per-pack derivative-context builder"
+grep -Fq "no cache" "$PACK" || fail "pack does not document the self-syncing (no-cache) override re-application"
 
-# ─────────────────────────────────────────────────────────────────────────
-# Q-L5-1: event-driven primary + 60s TTL fallback.
-# ─────────────────────────────────────────────────────────────────────────
-grep -q 'Q-L5-1' contracts/prompt/canon_cache.go \
-    || fail "Q-L5-1: citation missing from canon_cache.go"
-grep -q 'event-driven' contracts/prompt/canon_cache.go \
-    || fail "Q-L5-1: event-driven semantics not documented"
-grep -q 'DefaultTTL.*= 60' contracts/prompt/canon_cache.go \
-    || fail "Q-L5-1: 60s TTL fallback constant not present"
-grep -qE 'func \(c \*Cache\) Invalidate' contracts/prompt/canon_cache.go \
-    || fail "Q-L5-1: Invalidate method (PRIMARY path) missing"
-pass "Q-L5-1: event-driven invalidation PRIMARY + 60s TTL fallback present (Go)"
+# ── 3. GUARD — assert_derivative_scoped refuses null base OR delta ──
+have "$ASM" "def assert_derivative_scoped" "assemble missing the derivative project-scoping GUARD"
+grep -Fq "source_project_id is None" "$ASM" || fail "GUARD does not refuse a null base source_project_id"
+# extra canon-rule scope renders in the <canon> block.
+have "$ASM" "bundle.extra_canon" "assemble does not render the override canon-rule scope"
+have "$LENSES" "extra_canon" "LensBundle missing the extra_canon field (override canon scope)"
 
-grep -q 'Q-L5-1' crates/dp-kernel/src/canon_cache.rs \
-    || fail "Q-L5-1: citation missing from canon_cache.rs"
-grep -q 'DEFAULT_TTL_SECS.*60' crates/dp-kernel/src/canon_cache.rs \
-    || fail "Q-L5-1: 60s TTL fallback constant missing (Rust)"
-grep -qE 'pub fn invalidate' crates/dp-kernel/src/canon_cache.rs \
-    || fail "Q-L5-1: invalidate method missing (Rust)"
-pass "Q-L5-1: event-driven invalidation PRIMARY + 60s TTL fallback present (Rust)"
+# ── 4. call-site wiring — all pack call sites thread the derivative context ──
+have "$GROUNDING" "build_derivative_context" "grounding router does not build the derivative context"
+have "$GROUNDING" "source_project_id=deriv.source_project_id" "grounding router does not thread the base project"
+grep -c "build_derivative_context" "$ENGINE" | grep -Eq "^[3-9]|^[1-9][0-9]" \
+  || fail "engine router does not thread the derivative context at all 3 pack call sites"
 
-# ─────────────────────────────────────────────────────────────────────────
-# Q-L5-3: canon_layer enum strings carried verbatim.
-# ─────────────────────────────────────────────────────────────────────────
-grep -q '"L1_axiom"' contracts/prompt/canon_cache.go \
-    || fail "Q-L5-3: L1_axiom missing from canon_cache.go"
-grep -q '"L2_seeded"' contracts/prompt/canon_cache.go \
-    || fail "Q-L5-3: L2_seeded missing from canon_cache.go"
-grep -q 'CANON_LAYER_L1_AXIOM' crates/dp-kernel/src/canon_cache.rs \
-    || fail "Q-L5-3: CANON_LAYER_L1_AXIOM missing from canon_cache.rs"
-pass "Q-L5-3: canon_layer enum strings preserved (Go + Rust)"
+# ── 5. py_compile syntax gate (touched files) ──
+echo "[verify-cycle-25] py_compile"
+python -m py_compile "$PACK" "$MERGE" "$ASM" "$LENSES" "$GROUNDING" "$ENGINE" \
+  || fail "py_compile failed on a touched file"
 
-# ─────────────────────────────────────────────────────────────────────────
-# Q-L5-4: HTTP/JSON V1 (NOT gRPC).
-# ─────────────────────────────────────────────────────────────────────────
-grep -q 'openapi: 3.0' contracts/api/glossary-service/canon_read.yaml \
-    || fail "Q-L5-4: canon_read.yaml not OpenAPI 3.0 (HTTP/JSON)"
-grep -q 'openapi: 3.0' contracts/api/glossary-service/canon_write.yaml \
-    || fail "Q-L5-4: canon_write.yaml not OpenAPI 3.0"
-grep -q 'openapi: 3.0' contracts/api/glossary-service/seed_export.yaml \
-    || fail "Q-L5-4: seed_export.yaml not OpenAPI 3.0"
-# Make sure we didn't accidentally check in a .proto for gRPC.
-if find contracts/api/glossary-service -name '*.proto' 2>/dev/null | grep -q .; then
-    fail "Q-L5-4 violation: .proto file present (V1 is HTTP/JSON, gRPC V2+)"
-fi
-grep -q 'Q-L5-4' contracts/api/glossary-service/canon_read.yaml \
-    || fail "Q-L5-4: citation missing from canon_read.yaml"
-pass "Q-L5-4: HTTP/JSON V1 OpenAPI specs present; no .proto files"
+# ── 6. provider-gate (composition has NO AI imports — keep it) ──
+echo "[verify-cycle-25] provider-gate"
+python "$REPO_ROOT/scripts/ai-provider-gate.py" >/dev/null 2>&1 || fail "ai-provider-gate failed"
 
-# ─────────────────────────────────────────────────────────────────────────
-# Q-L5-5: canon_guardrail integration interface present.
-# ─────────────────────────────────────────────────────────────────────────
-grep -q 'CanonGuardrail' contracts/prompt/canon_reader.go \
-    || fail "Q-L5-5: CanonGuardrail interface missing from canon_reader.go"
-grep -q 'NoOpGuardrail' contracts/prompt/canon_reader.go \
-    || fail "Q-L5-5: NoOpGuardrail (cycle-25 placeholder) missing"
-grep -q 'StubRejectGuardrail' contracts/prompt/canon_reader.go \
-    || fail "Q-L5-5: StubRejectGuardrail (test wiring) missing"
-grep -q 'Q-L5-5' contracts/prompt/canon_reader.go \
-    || fail "Q-L5-5: citation missing from canon_reader.go"
-grep -q 'CanonGuardrail' crates/dp-kernel/src/canon_cache.rs \
-    || fail "Q-L5-5: CanonGuardrail trait missing from canon_cache.rs"
-grep -q 'Q-L5-5' contracts/api/glossary-service/canon_write.yaml \
-    || fail "Q-L5-5: guardrail integration not cited in canon_write.yaml"
-grep -q 'GuardrailViolation' contracts/api/glossary-service/canon_write.yaml \
-    || fail "Q-L5-5: GuardrailViolation 409 response missing from canon_write.yaml"
-pass "Q-L5-5: canon_guardrail interface + 409 wire shape present"
+# ── 7. targeted pytest — pack + override + engine + grounding ──
+echo "[verify-cycle-25] pytest (pack + override-merge + engine + grounding)"
+( cd "$CS" && python -m pytest \
+    tests/unit/test_pack.py \
+    tests/unit/test_pack_override.py \
+    tests/unit/test_engine_router.py \
+    tests/unit/test_grounding_router.py \
+    tests/unit/test_assembly_mode.py \
+    -q 2>&1 | tail -6 ) || fail "composition-service C25 pytest failed"
 
-# ─────────────────────────────────────────────────────────────────────────
-# Per-reality isolation in cache key shape.
-# ─────────────────────────────────────────────────────────────────────────
-grep -q 'canon:%s:%s:%s' contracts/prompt/canon_cache.go \
-    || fail "per-reality cache key shape not present in canon_cache.go"
-grep -qE 'canon:\{reality_id\}:\{book_id\}' crates/dp-kernel/src/canon_cache.rs \
-    || fail "per-reality cache key shape not present in canon_cache.rs"
-pass "per-reality cache key isolation (reality_id PREFIX) present (Go + Rust)"
-
-# ─────────────────────────────────────────────────────────────────────────
-# Cacheable-attribute whitelist (no plaintext body cached).
-# ─────────────────────────────────────────────────────────────────────────
-grep -q 'cacheableAttributePrefixes' contracts/prompt/canon_cache.go \
-    || fail "whitelist (Go) missing"
-grep -q 'CACHEABLE_ATTRIBUTE_PREFIXES' crates/dp-kernel/src/canon_cache.rs \
-    || fail "whitelist (Rust) missing"
-grep -q '"chapter\.' contracts/prompt/canon_cache.go && \
-    note "chapter.* path present in cache file (should only appear in NEGATIVE test cases)"
-pass "cacheable attribute whitelist present (Go + Rust)"
-
-# ─────────────────────────────────────────────────────────────────────────
-# Observability inventory entries (3 new metrics, L5.E.5).
-# ─────────────────────────────────────────────────────────────────────────
-grep -q 'lw_canon_cache_hits_total' contracts/observability/inventory.yaml \
-    || fail "L5.E.5: lw_canon_cache_hits_total missing from inventory"
-grep -q 'lw_canon_cache_misses_total' contracts/observability/inventory.yaml \
-    || fail "L5.E.5: lw_canon_cache_misses_total missing from inventory"
-grep -q 'lw_canon_cache_invalidations_total' contracts/observability/inventory.yaml \
-    || fail "L5.E.5: lw_canon_cache_invalidations_total missing from inventory"
-grep -E 'shipped_cycle: 25' contracts/observability/inventory.yaml | head -3 >/dev/null \
-    || fail "no shipped_cycle: 25 entries in inventory"
-pass "L5.E.5: 3 new observability metrics registered (hits + misses + invalidations)"
-
-# ─────────────────────────────────────────────────────────────────────────
-# Service ACL matrix — glossary-service-rpcs entry present + L5.F.3.
-# ─────────────────────────────────────────────────────────────────────────
-grep -q 'glossary-service-rpcs' contracts/service_acl/matrix.yaml \
-    || fail "L5.F.3: glossary-service-rpcs entry missing from matrix.yaml"
-grep -qE 'GetCanonEntry:' contracts/service_acl/matrix.yaml \
-    || fail "L5.F.3: GetCanonEntry RPC missing from matrix"
-grep -qE 'ExportCanonForSeed:' contracts/service_acl/matrix.yaml \
-    || fail "L5.F.3: ExportCanonForSeed RPC missing from matrix"
-grep -qE 'WriteCanonEntry:' contracts/service_acl/matrix.yaml \
-    || fail "L5.F.3: WriteCanonEntry RPC missing from matrix"
-pass "L5.F.3: glossary-service-rpcs ACL entries present (4 RPCs)"
-
-# ─────────────────────────────────────────────────────────────────────────
-# Go tests — contracts/prompt + glossary_client + service_acl regression.
-# ─────────────────────────────────────────────────────────────────────────
-note "go test contracts/prompt/..."
-( cd contracts/prompt && go test ./... -count=1 >/dev/null ) \
-    || fail "contracts/prompt Go tests FAILED"
-pass "contracts/prompt Go tests PASS (cycle-21 baseline + cycle-25 cache/reader/guardrail)"
-
-note "go test clients/go/glossary_client/..."
-( cd clients/go/glossary_client && go test ./... -count=1 >/dev/null ) \
-    || fail "glossary_client Go tests FAILED"
-pass "glossary_client Go tests PASS"
-
-note "go test contracts/service_acl/... (regression for L5.F.3 entry)"
-( cd contracts/service_acl && go test ./... -count=1 >/dev/null ) \
-    || fail "service_acl Go tests FAILED (matrix.yaml entry broke schema)"
-pass "contracts/service_acl Go tests PASS (matrix.yaml regression clean)"
-
-# ─────────────────────────────────────────────────────────────────────────
-# Cargo build + test — dp-kernel (canon_cache module) + glossary-client.
-# ─────────────────────────────────────────────────────────────────────────
-note "cargo test -p dp-kernel --lib (canon_cache + full baseline)"
-cargo test -p dp-kernel --lib --quiet 2>&1 | tail -5
-cargo test -p dp-kernel --lib --quiet >/dev/null 2>&1 \
-    || fail "dp-kernel tests FAILED"
-pass "dp-kernel tests PASS (271+ including 15 new canon_cache tests)"
-
-note "cargo test -p glossary-client (Rust client)"
-cargo test -p glossary-client --quiet 2>&1 | tail -5
-cargo test -p glossary-client --quiet >/dev/null 2>&1 \
-    || fail "glossary-client Rust tests FAILED"
-pass "glossary-client Rust tests PASS (12 tests)"
-
-note "cargo build --workspace"
-cargo build --workspace --quiet >/dev/null 2>&1 \
-    || fail "cargo build --workspace FAILED"
-pass "cargo build --workspace clean"
-
-# ─────────────────────────────────────────────────────────────────────────
-# B5 prod-isolation + B6 secret-scan.
-# ─────────────────────────────────────────────────────────────────────────
-if git diff --name-only HEAD 2>/dev/null | grep -qE '^infra/existing-prod/'; then
-    fail "B5: changes detected under infra/existing-prod/ (forbidden)"
-fi
-pass "B5 prod-isolation: no infra/existing-prod/ changes"
-
-if bash scripts/raid/prod-isolation-lint.sh >/dev/null 2>&1; then
-    pass "B5 prod-isolation-lint clean"
-else
-    fail "B5 prod-isolation-lint failed"
-fi
-
-NEW_FILES=(
-    contracts/prompt/canon_cache.go
-    contracts/prompt/canon_cache_codec.go
-    contracts/prompt/canon_reader.go
-    contracts/prompt/canon_cache_test.go
-    crates/dp-kernel/src/canon_cache.rs
-    contracts/api/glossary-service/canon_read.yaml
-    contracts/api/glossary-service/canon_write.yaml
-    contracts/api/glossary-service/seed_export.yaml
-    clients/go/glossary_client/client.go
-    clients/go/glossary_client/client_test.go
-    clients/rust/glossary_client/src/lib.rs
-)
-SECRET_PATTERNS='AKIA[0-9A-Z]{16}|aws_secret_access_key|BEGIN (RSA|EC|OPENSSH) PRIVATE KEY|xoxb-[A-Za-z0-9-]{20,}|ghp_[A-Za-z0-9]{30,}|sk_live_[A-Za-z0-9]{20,}'
-for f in "${NEW_FILES[@]}"; do
-    [[ -f "$f" ]] || continue
-    if grep -qE "$SECRET_PATTERNS" "$f"; then
-        fail "B6: potential secret in $f"
-    fi
-done
-pass "B6 secret-scan: no high-risk patterns in cycle-25 new files"
-
-if bash scripts/raid/secret-scan-cycle.sh 25 >/dev/null 2>&1; then
-    pass "B6 secret-scan-cycle clean"
-else
-    note "B6 secret-scan: gitleaks unavailable on dev machine (CI will gate)"
-fi
-
-echo "[verify-cycle-25] all $step steps PASS"
+audit "verify_cycle_25_passed"
+echo "[verify-cycle-25] PASS"
 exit 0

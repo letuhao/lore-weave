@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X } from 'lucide-react';
 import { useExtractionState, type WizardMode, type WizardStep } from './useExtractionState';
@@ -37,6 +38,7 @@ export function ExtractionWizard({
   const { t } = useTranslation('extraction');
   const {
     state,
+    reset,
     goNext,
     goBack,
     goToStep,
@@ -48,9 +50,18 @@ export function ExtractionWizard({
     setJobId,
     setKinds,
     setSelectedModelName,
+    setThinkingEnabled,
     setFinalJobStatus,
     canClose,
   } = useExtractionState(mode, preselectedChapterIds);
+
+  // Re-seed on reopen so a finished run doesn't leave the wizard stuck on the
+  // stale results step (previously required an F5). Mirrors GlossaryTranslateWizard.
+  const wasOpenRef = useRef(false);
+  useEffect(() => {
+    if (open && !wasOpenRef.current) reset();
+    wasOpenRef.current = open;
+  }, [open, reset]);
 
   if (!open) return null;
 
@@ -70,8 +81,10 @@ export function ExtractionWizard({
             bookId={bookId}
             profile={state.profile}
             modelRef={state.modelRef}
+            thinkingEnabled={state.thinkingEnabled}
             onProfileChange={setProfile}
             onModelChange={setModelRef}
+            onThinkingEnabledChange={setThinkingEnabled}
             onKindsLoaded={setKinds}
             onModelNameChange={setSelectedModelName}
             onClose={handleClose}
@@ -100,6 +113,7 @@ export function ExtractionWizard({
             contextFilters={state.contextFilters}
             kinds={state.kinds}
             selectedModelName={state.selectedModelName}
+            thinkingEnabled={state.thinkingEnabled}
             onJobCreated={(jobId, costEstimate) => {
               setJobId(jobId, costEstimate);
               goNext();
@@ -125,6 +139,7 @@ export function ExtractionWizard({
             costEstimate={state.costEstimate}
             onClose={handleClose}
             onViewGlossary={handleClose}
+            onRestart={reset}
           />
         ) : null;
     }

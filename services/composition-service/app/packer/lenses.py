@@ -52,6 +52,10 @@ class LensBundle:
     # carries + pays them (F2; spec §6 ground→…+open-promises). [{kind, summary}],
     # priority-ordered + capped. Empty unless the Work opts into narrative_thread.
     open_promises: list[dict[str, Any]] = field(default_factory=list)
+    # C25 — added canon-rule text contributed by a derivative's entity overrides
+    # (the M0 "added canon rule" override scope). Rendered in the <canon> block
+    # alongside inherited canon. Empty for a non-derivative pack.
+    extra_canon: list[str] = field(default_factory=list)
 
 
 def _applies_at(rule: CanonRule, story_order: int | None) -> bool:

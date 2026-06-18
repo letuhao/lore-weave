@@ -14,6 +14,7 @@ import pytest
 from app.db.neo4j_helpers import (
     CypherSafetyError,
     assert_user_id_param,
+    purge_project,
     run_read,
     run_write,
 )
@@ -209,3 +210,79 @@ async def test_run_write_rejects_unsafe_cypher_without_running():
     with pytest.raises(CypherSafetyError):
         await run_write(session, "CREATE (e:Entity {name: $name})", user_id="u-1", name="x")
     assert session.calls == []
+
+
+# ── purge_project (D-KNOWLEDGE-PROJECT-DELETE-NEO4J-ORPHAN) ────────────
+
+
+class _FakeResult:
+    def __init__(self, rows):
+        self._rows = list(rows)
+
+    def __aiter__(self):
+        self._it = iter(self._rows)
+        return self
+
+    async def __anext__(self):
+        try:
+            return next(self._it)
+        except StopIteration:
+            raise StopAsyncIteration
+
+
+class _PurgeSession:
+    """Scripts the count + SHOW VECTOR INDEXES results; records every run()."""
+
+    def __init__(self, count: int, index_names: list[str]) -> None:
+        self.count = count
+        self.index_names = index_names
+        self.calls: list[tuple[str, dict]] = []
+
+    async def run(self, cypher: str, /, **params):
+        self.calls.append((cypher, dict(params)))
+        if "count(n)" in cypher:
+            return _FakeResult([{"n": self.count}])
+        if cypher.strip().upper().startswith("SHOW VECTOR INDEXES"):
+            return _FakeResult([{"name": n} for n in self.index_names])
+        return _FakeResult([])
+
+
+_PROJ = "019ed678-f3b3-79c7-b421-e56ba55d48d3"
+_PROJ_HEX = _PROJ.replace("-", "")  # 32 hex
+_EMB_HEX = "a" * 32
+_OTHER_HEX = "b" * 32
+
+
+@pytest.mark.asyncio
+async def test_purge_project_deletes_nodes_and_only_its_summary_indexes():
+    indexes = [
+        f"chapter_summary_emb_p{_PROJ_HEX}_e{_EMB_HEX}",   # THIS project → drop
+        f"book_summary_emb_p{_PROJ_HEX}_e{_EMB_HEX}",      # THIS project → drop
+        f"part_summary_emb_p{_OTHER_HEX}_e{_EMB_HEX}",     # OTHER project → keep
+        "entity_embeddings_1024",                          # SHARED dimension idx → keep
+        "passage_embeddings_384",                          # SHARED → keep
+    ]
+    session = _PurgeSession(count=60, index_names=indexes)
+    out = await purge_project(session, _PROJ)
+
+    assert out == {"nodes_deleted": 60, "indexes_dropped": 2}
+    # the node delete ran, project_id-scoped + bound (never interpolated)
+    delete_calls = [c for c in session.calls if "DETACH DELETE" in c[0]]
+    assert len(delete_calls) == 1
+    assert delete_calls[0][1] == {"pid": _PROJ}
+    # ONLY this project's two summary indexes were dropped — shared + other-project untouched
+    dropped = [c[0] for c in session.calls if c[0].startswith("DROP INDEX")]
+    assert any(f"p{_PROJ_HEX}_e{_EMB_HEX}" in q for q in dropped)
+    assert all(_OTHER_HEX not in q for q in dropped)
+    assert all("entity_embeddings" not in q and "passage_embeddings" not in q for q in dropped)
+    assert len(dropped) == 2
+
+
+@pytest.mark.asyncio
+async def test_purge_project_skips_delete_when_no_nodes():
+    # an empty project (0 nodes) must NOT issue a DETACH DELETE (no-op), but still
+    # reconcile indexes (none here).
+    session = _PurgeSession(count=0, index_names=[])
+    out = await purge_project(session, _PROJ)
+    assert out == {"nodes_deleted": 0, "indexes_dropped": 0}
+    assert [c for c in session.calls if "DETACH DELETE" in c[0]] == []

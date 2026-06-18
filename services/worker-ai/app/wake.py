@@ -64,6 +64,15 @@ class WakeWaiter:
                 block=max(1, int(timeout_s * 1000)),
                 count=1,
             )
+        except aioredis.TimeoutError:
+            # redis-py 8: an idle blocking XREAD raises TimeoutError instead of
+            # returning [] (the 5.x behavior this was written against). This is the
+            # NORMAL no-wake timeout — treat it like an empty resp (return False →
+            # normal poll), NOT a Redis fault. Without this the generic handler
+            # below logs a traceback EVERY idle cycle and sleeps a second
+            # timeout_s, doubling poll latency and defeating the wake interrupt.
+            # Mirrors the extract/summary terminal consumers' TimeoutError handling.
+            return False
         except Exception:  # noqa: BLE001 — degrade to sleep on any Redis fault
             logger.warning("wake: XREAD failed — sleeping instead", exc_info=True)
             await asyncio.sleep(timeout_s)

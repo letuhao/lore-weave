@@ -116,6 +116,46 @@ func TestImageJobOperations_AlsoInValidJobOperations(t *testing.T) {
 	}
 }
 
+// ── D-PHASE5E — provider identity in the result map ────────────────────
+
+// TestImageResultCarriesProviderIdentity pins that runImageGenJob's result
+// map surfaces provider_kind + provider_model_name (D-PHASE5E). The worker
+// tests have no full-job harness (all pure-helper), so this is a source-level
+// lock — matching the file's 5-place-sync grep-lock convention. It catches the
+// real regression: a refactor dropping either key from the result map, which
+// would silently re-blank book-service's ai_model + billing analytics.
+func TestImageResultCarriesProviderIdentity(t *testing.T) {
+	rootPath := findRepoRoot(t)
+	src := readFile(t, rootPath+"/services/provider-registry-service/internal/jobs/worker_image.go")
+	for _, key := range []string{`"provider_kind":`, `"provider_model_name":`} {
+		if !strings.Contains(src, key) {
+			t.Errorf("worker_image.go result map missing %s — book-service ai_model + "+
+				"billing provider_kind would re-blank (D-PHASE5E regression)", key)
+		}
+	}
+	// And the values must come from the resolved vars, not a hardcoded "".
+	// (Alignment-independent: match the key→var pairing tolerant of gofmt's
+	// map-literal spacing, which shifts if a longer key is ever added.)
+	for _, pair := range []struct{ key, val string }{
+		{`"provider_kind":`, "providerKind"},
+		{`"provider_model_name":`, "providerModelName"},
+	} {
+		idx := strings.Index(src, pair.key)
+		if idx < 0 {
+			continue // key-presence already asserted above
+		}
+		rest := src[idx+len(pair.key):]
+		nl := strings.IndexByte(rest, '\n')
+		if nl < 0 {
+			nl = len(rest)
+		}
+		if !strings.Contains(rest[:nl], pair.val) {
+			t.Errorf("worker_image.go must populate %s from the resolved %s var, not a literal",
+				pair.key, pair.val)
+		}
+	}
+}
+
 // ── classifyImageError matrix ──────────────────────────────────────────
 
 func TestClassifyImageError_Cancelled(t *testing.T) {

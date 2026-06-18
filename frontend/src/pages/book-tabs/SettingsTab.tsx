@@ -7,6 +7,7 @@ import { useAuth } from '@/auth';
 import { apiJson } from '@/api';
 import { booksApi, type Book, type Visibility } from '@/features/books/api';
 import { glossaryApi } from '@/features/glossary/api';
+import { BookWorldSection } from '@/features/world/components/BookWorldSection';
 import { cn } from '@/lib/utils';
 
 type Props = {
@@ -380,6 +381,13 @@ export function SettingsTab({ bookId, book, onReload }: Props) {
           </label>
         ))}
       </div>
+
+      <Divider />
+
+      {/* ── World (W6/G3 cross-link) ── */}
+      <BookWorldSection bookId={bookId} worldId={book.world_id} onChanged={onReload} />
+
+      <Divider />
 
       {/* ── Save bar ── */}
       <div className="flex justify-end gap-2 border-t pt-4">

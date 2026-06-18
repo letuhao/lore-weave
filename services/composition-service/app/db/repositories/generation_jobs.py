@@ -16,9 +16,28 @@ from typing import Any
 from uuid import UUID
 
 import asyncpg
+from loreweave_jobs import emit_job_event
+
+from app.clients.model_name import resolve_model_name
 
 from app.db.models import GenerationJob
 from app.db.repositories import ChapterJobInFlightError, ReferenceViolationError
+from app.worker.constants import is_worker_drivable
+
+#: Unified Job Control Plane P1 — the service id stamped on every emitted JobEvent.
+_JOB_SERVICE = "composition"
+
+
+def _job_error(result: dict[str, Any] | None) -> dict[str, str] | None:
+    """Map a failed job's ``result`` to the canonical JobEvent error shape, or None."""
+    if not result:
+        return None
+    err = result.get("error")
+    if err is None:
+        return None
+    if isinstance(err, dict):
+        return {"code": str(err.get("code", "error")), "message": str(err.get("message", err))}
+    return {"code": "error", "message": str(err)}
 
 _SELECT_COLS = """
   id, user_id, project_id, outline_node_id, operation, mode, status, llm_job_id,
@@ -66,6 +85,7 @@ class GenerationJobsRepo:
         base_revision_id: UUID | None = None,
         idempotency_key: str | None = None,
         conn: asyncpg.Connection | None = None,
+        model_name: str | None = None,
     ) -> tuple[GenerationJob, bool]:
         """Insert a job. Returns ``(job, created)``.
 
@@ -74,6 +94,38 @@ class GenerationJobsRepo:
         replay-safe surface for POST /generate. The conflict target carries the
         index's partial predicate so it matches idx_generation_job_idem.
         """
+        # P4 usage emit — a whitelisted params dict (cheap, no I/O) + the resolved model
+        # NAME on the create event; the projection's COALESCE keeps them across later
+        # status events. cost_usd is not populated on this row yet → omitted.
+        # The model-NAME resolve is HTTP, so it must NOT run inside a caller's tx (H1) —
+        # create_chapter_job_guarded holds an in-flight row lock, so a 5s resolve there
+        # would pin the tx/lock across the network call. D-JOBS-P4-COMPOSITION-GUARDED-MODEL:
+        # the guarded caller now resolves the name OUT-OF-TX and passes `model_name`, so the
+        # auto-draft path emits the real name too. Precedence: caller-provided name >
+        # self-resolve (only on the self-managed-tx path, conn is None) > None.
+        _in = input or {}
+        _model_name = model_name
+        if _model_name is None and conn is None:
+            _model_name = await resolve_model_name(_in.get("model_source"), _in.get("model_ref"))
+        _job_params = {
+            "model": _model_name,
+            "model_ref": _in.get("model_ref"),
+            "operation": operation,
+            "mode": mode,
+            "reasoning": _in.get("reasoning"),
+            "reasoning_effort": _in.get("reasoning_effort"),
+            # D-JOBS-P4-RETRY-COMPOSITION — per-job retryability signal for the unified
+            # control plane. A composition job is server-reconstructable iff it is
+            # worker-drivable (its input carries the full bearer-resolved context the
+            # worker re-runs from). The inline/streamed cowrite path packs its prompt
+            # live and never persists it → retryable=False (the FE re-generate is its
+            # retry surface). jobs-service `derive_control_caps` reads this off the
+            # projection's params to gate the Retry button per-job (kind alone can't
+            # tell the worker path from the inline path — both emit the same free-form
+            # operation as `kind`).
+            "retryable": is_worker_drivable(operation, _in),
+        }
+
         async def _do(c: asyncpg.Connection) -> tuple[GenerationJob, bool]:
             if outline_node_id is not None:
                 # Defense-in-depth (D-COMP-M2-XREF-OWNERSHIP): the job's node must
@@ -101,7 +153,15 @@ class GenerationJobsRepo:
                 json.dumps(input or {}), base_revision_id, idempotency_key,
             )
             if row is not None:
-                return _row_to_job(row), True
+                job = _row_to_job(row)
+                # Unified Job Control Plane P1 — emit the lifecycle event in the SAME
+                # tx/conn as the INSERT (only on a genuinely-new job, not a replay).
+                await emit_job_event(
+                    c, service=_JOB_SERVICE, job_id=str(job.id),
+                    owner_user_id=str(job.user_id), kind=job.operation, status=job.status,
+                    model=_model_name, params=_job_params,
+                )
+                return job, True
             # Conflict: the key already exists. Return the existing job (scoped
             # to this user so a cross-user key collision can't leak a row).
             existing = await c.fetchrow(
@@ -118,7 +178,8 @@ class GenerationJobsRepo:
         if conn is not None:
             return await _do(conn)
         async with self._pool.acquire() as c:
-            return await _do(c)
+            async with c.transaction():  # INSERT + emit_job_event atomic (H1)
+                return await _do(c)
 
     async def create_chapter_job_guarded(
         self,
@@ -132,6 +193,7 @@ class GenerationJobsRepo:
         input: dict[str, Any] | None = None,
         idempotency_key: str | None = None,
         stale_secs: int = 1800,
+        model_name: str | None = None,
     ) -> tuple[GenerationJob, bool]:
         """Create a CHAPTER-LEVEL job (``outline_node_id=None``) behind an
         in-flight guard. Returns ``(job, created)``; raises
@@ -220,14 +282,18 @@ class GenerationJobsRepo:
                 )
                 if active is not None:
                     raise ChapterJobInFlightError(str(active["id"]))
-                # 3. Create under the same conn (shares the Tx + lock).
+                # 3. Create under the same conn (shares the Tx + lock). `model_name` was
+                # resolved OUT-OF-TX by the caller (D-JOBS-P4-COMPOSITION-GUARDED-MODEL) so
+                # the create emit carries the real name without an in-lock HTTP call.
                 return await self.create(
                     user_id, project_id, operation=operation, outline_node_id=None,
                     mode=mode, status=status, input=input,
-                    idempotency_key=idempotency_key, conn=c,
+                    idempotency_key=idempotency_key, conn=c, model_name=model_name,
                 )
 
-    async def reap_stale_jobs(self, cutoff: datetime) -> int:
+    async def reap_stale_jobs(
+        self, cutoff: datetime, *, exclude_operations: list[str] | None = None
+    ) -> int:
         """Mark jobs orphaned in a non-terminal state as failed; return the count.
 
         A job still `pending`/`running` with `created_at <= cutoff` is presumed
@@ -236,7 +302,29 @@ class GenerationJobsRepo:
         Covers ALL job types (chapter-level + per-scene hygiene). Idempotent +
         multi-replica safe: a concurrent sweep just matches 0 already-reaped rows.
         The periodic backstop for D-COMP-CHAPTER-INFLIGHT-REAPER (the guard reaps
-        per-chapter opportunistically; this catches never-re-requested chapters)."""
+        per-chapter opportunistically; this catches never-re-requested chapters).
+
+        ``exclude_operations`` (D-M4-REAPER-WORKER-CONFLICT): when the composition
+        WORKER is enabled it IS a producer that resumes its own jobs (the
+        ``updated_at``-based stuck-job sweeper in ``app/worker``). This
+        ``created_at``-based reaper would otherwise spuriously fail a worker op
+        whose legitimate wall-clock exceeds the window. So the loop passes the
+        worker-op set (``SUPPORTED_OPERATIONS``): a job is worker-owned when its
+        ``operation`` is in that set OR it carries an ``input->>'worker_op'``
+        (generate/selection-edit stamp the canonical op there, not in
+        ``operation``). Those are left to the worker's sweeper. ``None`` (worker
+        off) → the original behavior verbatim (the inline producer never resumes,
+        so reaping a stale inline job is correct)."""
+        if exclude_operations:
+            query = """
+            UPDATE generation_job SET status = 'failed', updated_at = now()
+            WHERE status = ANY($1::text[]) AND created_at <= $2
+              AND NOT (operation = ANY($3::text[]) OR input->>'worker_op' IS NOT NULL)
+            RETURNING id
+            """
+            async with self._pool.acquire() as c:
+                rows = await c.fetch(query, list(_ACTIVE_STATUSES), cutoff, exclude_operations)
+            return len(rows)
         query = """
         UPDATE generation_job SET status = 'failed', updated_at = now()
         WHERE status = ANY($1::text[]) AND created_at <= $2
@@ -375,9 +463,71 @@ class GenerationJobsRepo:
             user_id, job_id, status, _jsonb(result), _jsonb(critic), llm_job_id,
             target_chapter_id, target_revision_id, cost_usd,
         )
+        async def _do(c: asyncpg.Connection) -> GenerationJob | None:
+            row = await c.fetchrow(query, *args)
+            if row is None:
+                return None
+            job = _row_to_job(row)
+            # Unified Job Control Plane P1 — emit the status transition in the SAME
+            # tx/conn as the UPDATE (H1: status change + event commit atomically).
+            await emit_job_event(
+                c, service=_JOB_SERVICE, job_id=str(job.id),
+                owner_user_id=str(job.user_id), kind=job.operation, status=status,
+                error=_job_error(result) if status == "failed" else None,
+            )
+            return job
+
         if conn is not None:
-            row = await conn.fetchrow(query, *args)
-        else:
-            async with self._pool.acquire() as c:
-                row = await c.fetchrow(query, *args)
-        return _row_to_job(row) if row else None
+            return await _do(conn)
+        async with self._pool.acquire() as c:
+            async with c.transaction():  # UPDATE + emit_job_event atomic (H1)
+                return await _do(c)
+
+    async def list_since(self, since: datetime, *, limit: int = 1000) -> list[GenerationJob]:
+        """Reconcile snapshot (Unified Job Control Plane H1 backstop): generation jobs
+        updated at/after `since`, oldest-first, capped. ALL owners (the jobs-service
+        projection mirrors every owner; user-scoping is at its read API). Used by the
+        jobs-service reconcile sweep to heal any outbox drift."""
+        rows = await self._pool.fetch(
+            f"SELECT {_SELECT_COLS} FROM generation_job "
+            f"WHERE updated_at >= $1 ORDER BY updated_at ASC LIMIT $2",
+            since, limit,
+        )
+        return [_row_to_job(r) for r in rows]
+
+    async def cancel(
+        self, user_id: UUID, job_id: UUID, *, conn: asyncpg.Connection | None = None
+    ) -> GenerationJob | None:
+        """Race-safe cancel for the unified control plane (P3): CAS the row to
+        'cancelled' ONLY from an active state, scoped to the owner. Returns the
+        cancelled job, or None when nothing transitioned — i.e. the job is
+        missing/cross-user OR already terminal (the caller distinguishes those
+        with a prior owner-scoped ``get``: get→None ⇒ 404, get-ok+cancel→None ⇒ 409).
+
+        Unlike ``update_status`` (a plain owner-scoped UPDATE, used by the engine
+        which already knows the job is active), this guards ``status = ANY(active)``
+        so a control-plane cancel can never clobber a job that completed in the
+        TOCTOU window. Emits the terminal event on the SAME conn as the UPDATE (H1),
+        only on the winning CAS (mirrors the video-gen CAS ``fail``)."""
+        query = f"""
+        UPDATE generation_job
+           SET status = 'cancelled', updated_at = now()
+         WHERE user_id = $1 AND id = $2 AND status = ANY($3::text[])
+        RETURNING {_SELECT_COLS}
+        """
+        async def _do(c: asyncpg.Connection) -> GenerationJob | None:
+            row = await c.fetchrow(query, user_id, job_id, list(_ACTIVE_STATUSES))
+            if row is None:
+                return None
+            job = _row_to_job(row)
+            await emit_job_event(
+                c, service=_JOB_SERVICE, job_id=str(job.id),
+                owner_user_id=str(job.user_id), kind=job.operation, status="cancelled",
+            )
+            return job
+
+        if conn is not None:
+            return await _do(conn)
+        async with self._pool.acquire() as c:
+            async with c.transaction():  # UPDATE + emit_job_event atomic (H1)
+                return await _do(c)

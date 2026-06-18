@@ -70,6 +70,11 @@ class Passage(BaseModel):
     embedding_model: str | None = None
     is_hub: bool = False
     chapter_index: int | None = None
+    # D-RAWSEARCH-CANON-WIRING — true once the passage's source is author-published
+    # (the `chapter.published` ingest path); false for on-demand draft indexing.
+    # Defaults true so legacy nodes (written before this flag, all canon) and any
+    # node missing the property read as canon — no backfill needed.
+    canon: bool = True
     # P3-C — chapter_blocks.block_index where this chunk's content starts, so
     # a semantic hit can jump-to-source precisely (reader scrolls to ?block=N).
     # None for chunks ingested before P3-C or from the canon/revision path.
@@ -143,6 +148,7 @@ ON CREATE SET
   p.embedding_model = $embedding_model,
   p.is_hub = $is_hub,
   p.chapter_index = $chapter_index,
+  p.canon = $canon,
   p.block_index = $block_index,
   p.{embed_prop} = $embedding,
   p.created_at = datetime(),
@@ -152,6 +158,7 @@ ON MATCH SET
   p.embedding_model = $embedding_model,
   p.is_hub = $is_hub,
   p.chapter_index = $chapter_index,
+  p.canon = $canon,
   p.block_index = $block_index,
   p.{embed_prop} = $embedding,
   p.updated_at = datetime()
@@ -174,6 +181,7 @@ async def upsert_passage(
     embedding_model: str | None = None,
     is_hub: bool = False,
     chapter_index: int | None = None,
+    canon: bool = True,
     block_index: int | None = None,
 ) -> Passage:
     """Idempotent MERGE of a `:Passage` with its per-dim embedding.
@@ -226,6 +234,7 @@ async def upsert_passage(
         embedding_model=embedding_model,
         is_hub=is_hub,
         chapter_index=chapter_index,
+        canon=canon,
         block_index=block_index,
         embedding=embedding,
     )
@@ -279,6 +288,7 @@ WHERE node.user_id = $user_id
   AND ($project_id IS NULL OR node.project_id = $project_id)
   AND ($embedding_model IS NULL OR node.embedding_model = $embedding_model)
   AND ($source_type IS NULL OR node.source_type = $source_type)
+  AND ($include_drafts OR coalesce(node.canon, true) = true)
 RETURN node AS p, score AS raw_score{vector_projection}
 ORDER BY raw_score DESC
 LIMIT $limit
@@ -350,6 +360,7 @@ async def find_passages_by_vector(
     limit: int = 40,
     oversample_factor: int = 10,
     include_vectors: bool = False,
+    include_drafts: bool = False,
 ) -> list[PassageSearchHit]:
     """Dim-routed semantic search over `:Passage` nodes.
 
@@ -364,6 +375,11 @@ async def find_passages_by_vector(
     text-only Jaccard fallback. Costs one list[float] per hit in the
     response payload — default stays False so the passage selector
     (the only current caller) opts in explicitly.
+
+    `include_drafts` (D-RAWSEARCH-CANON-WIRING) controls the canon gate:
+    default False returns only canon passages (`coalesce(canon, true) = true`,
+    so legacy null-canon nodes count as canon); True returns canon + draft
+    (the owner-only `surface=all` path). The caller owns the owner check.
     """
     if dim not in SUPPORTED_PASSAGE_DIMS:
         raise ValueError(
@@ -399,6 +415,7 @@ async def find_passages_by_vector(
         project_id=project_id,
         embedding_model=embedding_model,
         source_type=source_type,
+        include_drafts=include_drafts,
         limit=limit,
     )
     hits: list[PassageSearchHit] = []

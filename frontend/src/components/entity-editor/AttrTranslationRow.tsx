@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Check, Loader2, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
@@ -6,6 +6,7 @@ import { useAuth } from '@/auth';
 import { glossaryApi } from '@/features/glossary/api';
 import { ConfirmDialog } from '@/components/shared';
 import type { Translation, Confidence } from '@/features/glossary/types';
+import { getLanguageName } from '@/lib/languages';
 
 const CONFIDENCE_STYLES: Record<Confidence, string> = {
   verified: 'bg-green-500/15 text-green-400',
@@ -20,16 +21,22 @@ interface AttrTranslationRowProps {
   language: string;
   translation: Translation | undefined;
   translationHint?: string | null;
+  sourceOriginal?: string;
+  sourceOriginalLang?: string;
   onChanged: (updated: Translation | null) => void;
 }
 
 export function AttrTranslationRow({
   bookId, entityId, attrValueId, language,
-  translation, translationHint, onChanged,
+  translation, translationHint, sourceOriginal, sourceOriginalLang, onChanged,
 }: AttrTranslationRowProps) {
   const { t } = useTranslation('entityEditor');
   const { accessToken } = useAuth();
   const [value, setValue] = useState(translation?.value ?? '');
+
+  useEffect(() => {
+    setValue(translation?.value ?? '');
+  }, [translation?.translation_id, translation?.value]);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -160,6 +167,14 @@ export function AttrTranslationRow({
         placeholder={translationHint || t('translation_row.placeholder', { lang: language })}
         className="w-full rounded border border-blue-500/20 bg-background px-2 py-1.5 text-xs focus:border-blue-500/40 focus:outline-none focus:ring-1 focus:ring-blue-500/30 resize-y"
       />
+      {sourceOriginal != null && sourceOriginal !== '' && (
+        <p className="text-[10px] text-muted-foreground">
+          {t('modal.viewing_original', {
+            lang: sourceOriginalLang ? getLanguageName(sourceOriginalLang) : '?',
+          })}
+          : {sourceOriginal}
+        </p>
+      )}
       <ConfirmDialog
         open={confirmDelete}
         onOpenChange={setConfirmDelete}

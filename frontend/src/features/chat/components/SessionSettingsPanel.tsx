@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/auth';
 import { aiModelsApi, type UserModel } from '@/features/ai-models/api';
-import { useProjects } from '@/features/knowledge/hooks/useProjects';
+import { ProjectPicker } from '@/components/shared/ProjectPicker';
 import { chatApi } from '../api';
 import type { ChatSession, GenerationParams, PatchSessionPayload } from '../types';
 
@@ -45,13 +45,10 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
   // A2A phase-2: optional composer model (in-turn prose delegation). '' = none.
   const [selectedComposerRef, setSelectedComposerRef] = useState(session.composer_model_ref ?? '');
 
-  // K9.1: project picker — drives knowledge-service memory mode for
-  // this session. Only non-archived projects show in the dropdown so
-  // users can't link a session to something they've shelved.
-  const {
-    items: projects,
-    isLoading: projectsLoading,
-  } = useProjects(false);
+  // K9.1 / W4: project picker — drives knowledge-service memory mode for
+  // this session. The shared ProjectPicker self-loads active projects and
+  // resolves a linked-but-archived project by id, so the panel no longer
+  // owns a useProjects query or an archived-placeholder branch.
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
     session.project_id,
   );
@@ -216,10 +213,9 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
     });
   }
 
-  function handleProjectChange(value: string) {
-    // Empty string from the "No project" option clears the link.
-    // Send explicit null so chat-service's model_fields_set sees it.
-    const next = value === '' ? null : value;
+  function handleProjectChange(next: string | null) {
+    // ProjectPicker emits null on clear. Send explicit null so
+    // chat-service's model_fields_set sees the unlink.
     setSelectedProjectId(next);
     patchSession({ project_id: next });
   }
@@ -314,34 +310,11 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
           <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
             {tKnowledge('picker.label')}
           </label>
-          {projectsLoading ? (
-            <div className="h-9 animate-pulse rounded-md bg-muted" />
-          ) : (
-            <select
-              aria-label={tKnowledge('picker.label')}
-              value={selectedProjectId ?? ''}
-              onChange={(e) => handleProjectChange(e.target.value)}
-              className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-ring focus:shadow-[0_0_0_3px_rgba(212,149,42,0.2)]"
-            >
-              <option value="">{tKnowledge('picker.noProject')}</option>
-              {projects.map((p) => (
-                <option key={p.project_id} value={p.project_id}>
-                  {p.name}
-                </option>
-              ))}
-              {/* K9.1-R5: if the linked project was archived after this
-                  session was created, it won't be in the active list.
-                  Surface it as a disabled placeholder so the <select>
-                  value stays valid and the user can see why their
-                  memory link looks broken. */}
-              {selectedProjectId &&
-                !projects.some((p) => p.project_id === selectedProjectId) && (
-                  <option value={selectedProjectId} disabled>
-                    {tKnowledge('picker.archivedPlaceholder')}
-                  </option>
-                )}
-            </select>
-          )}
+          <ProjectPicker
+            value={selectedProjectId}
+            onChange={handleProjectChange}
+            placeholder={tKnowledge('picker.noProject')}
+          />
           <p className="mt-1 text-[10px] text-muted-foreground">
             {tKnowledge('picker.hint')}
           </p>

@@ -203,6 +203,7 @@ async def ingest_chapter_passages(
     model_source: str = "user_model",
     revision_id: UUID | None = None,
     delete_stale_on_missing: bool = True,
+    canon: bool = True,
 ) -> IngestResult:
     """Fetch, chunk, embed, and upsert passages for one chapter.
 
@@ -220,6 +221,13 @@ async def ingest_chapter_passages(
     Returns `IngestResult` with per-chunk counts. Does NOT raise on
     any single-chunk failure — the caller treats failures as "fewer
     passages available", not "extraction blocked".
+
+    `canon` (D-RAWSEARCH-CANON-WIRING): stamped onto every passage. The
+    `chapter.published` handler keeps the default True; the on-demand
+    owner-only draft-indexing endpoint passes False so `surface=all` can
+    surface drafts while `surface=canon` (default) excludes them. A later
+    publish re-ingests at the pinned revision (canon=True) and the
+    delete-by-source step above flips the draft passages to canon.
     """
     result = IngestResult(chunks_created=0, chunks_skipped=0)
 
@@ -353,6 +361,7 @@ async def ingest_chapter_passages(
                 embedding_model=embedding_model,
                 is_hub=False,  # chapter chunks are not hubs
                 chapter_index=chapter_index,
+                canon=canon,
                 block_index=block_index,
             )
             result.chunks_created += 1

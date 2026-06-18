@@ -20,6 +20,8 @@
       "attributes": "屬性",
       "evidences": "佐證"
     },
+    "viewing_in_language": "以 {{lang}} 檢視",
+    "viewing_original": "原文（{{lang}}）",
     "translation_lang_aria": "翻譯語言",
     "no_translation": "不翻譯",
     "add_language": "+ 新增語言...",

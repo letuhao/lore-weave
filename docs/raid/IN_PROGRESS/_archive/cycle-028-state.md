@@ -1,9 +1,9 @@
 ---
 cycle: 28
-title: L6 WS server + Ticket + Metrics (A+B+E)
-current_phase: RETRO
-phase_started_at: 2026-05-29T14:25:32Z
-last_checkpoint_at: 2026-05-29T14:25:32Z
+title: Living-world view (FE)
+current_phase: COMMIT
+phase_started_at: 2026-06-14T20:08:41Z
+last_checkpoint_at: 2026-06-14T20:08:41Z
 retry_count: 0
 dps_status: []
 adversary_findings: null

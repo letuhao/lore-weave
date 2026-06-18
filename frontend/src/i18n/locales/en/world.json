@@ -1,0 +1,102 @@
+{
+  "page": {
+    "title": "Worlds",
+    "subtitle": "Build a world from its lore — characters, places, factions — with no manuscript required.",
+    "loading": "Loading worlds…"
+  },
+  "empty": {
+    "title": "No worlds yet",
+    "description": "Create your first world to start authoring lore — no chapters needed."
+  },
+  "card": {
+    "books": "{{count}} books"
+  },
+  "create": {
+    "cta": "New world",
+    "title": "New world",
+    "description": "Name your world. You can author its lore right away.",
+    "nameLabel": "World name",
+    "namePlaceholder": "e.g. The Shattered Realms",
+    "descLabel": "Description (optional)",
+    "cancel": "Cancel",
+    "submit": "Create world",
+    "creating": "Creating…",
+    "error": "Failed to create world"
+  },
+  "workspace": {
+    "back": "All worlds",
+    "loading": "Loading world…",
+    "error": "World not found."
+  },
+  "lore": {
+    "title": "World bible",
+    "extractionOptional": "Author lore directly — characters, places, factions. No manuscript needed. Extraction from prose is optional; this world bible is the anchor.",
+    "anchorUnavailable": "This world has no bible anchor yet — lore authoring is unavailable.",
+    "kindLabel": "Kind",
+    "kindPlaceholder": "Choose a kind…",
+    "add": "Add lore",
+    "adding": "Adding…",
+    "added": "Lore added to your world bible.",
+    "error": "Failed to add lore"
+  },
+  "graph": {
+    "title": "World graph",
+    "subtitle": "A read-only view of how your world’s lore connects.",
+    "rollupSubtitle": "A read-only roll-up of every member book’s canon graph, rendered together as per-book islands.",
+    "counts": "{{nodes}} nodes · {{edges}} relations",
+    "sources": "rolled up from {{count}} book(s)",
+    "truncated": "showing the top {{n}} — a large book can crowd a smaller one",
+    "hint": "Scroll to zoom · drag empty space to pan · click a node for detail",
+    "loading": "Loading world graph…",
+    "loadFailed": "Failed to load the world graph: {{error}}",
+    "empty": "No world knowledge yet — build the bible or extract a member book to roll its graph up here."
+  },
+  "timeline": {
+    "title": "World timeline",
+    "subtitle": "A read-only roll-up of every member book’s canon timeline, in narrative order.",
+    "counts": "{{count}} events",
+    "sources": "across {{count}} book(s)",
+    "truncated": "showing the first {{n}}",
+    "chapterLabel": "Chapter",
+    "loading": "Loading world timeline…",
+    "loadFailed": "Failed to load the world timeline: {{error}}",
+    "empty": "No timeline events yet — extract a member book to roll its timeline up here."
+  },
+  "populate": {
+    "addBook": "Add a book",
+    "createWhatIf": "Create a what-if",
+    "whatIfHint": "Branch a what-if from a canon work",
+    "whatIfNeedsCanon": "Add a book with a canon work first — a what-if branches from canon.",
+    "pickCanon": "Branch from…",
+    "addBookTitle": "Add a book to this world",
+    "addBookDesc": "Attach an existing book or create a new one — it joins the world’s timeline and graph.",
+    "tabAttach": "Attach existing",
+    "tabCreate": "Create new",
+    "pickBook": "Book",
+    "bookTitle": "Title",
+    "bookTitlePlaceholder": "New book title…",
+    "bookDesc": "Description (optional)",
+    "attach": "Attach book",
+    "createAttach": "Create & add",
+    "adding": "Adding…",
+    "cancel": "Cancel",
+    "addFailed": "Couldn’t add the book: {{error}}"
+  },
+  "living": {
+    "heading": "Living world",
+    "subtitle": "Your world’s canon and its what-if branches as a navigable timeline. Click a work to open it.",
+    "title": "Living world",
+    "counts": "{{canon}} canon · {{branches}} what-if branches",
+    "hint": "Scroll to zoom · drag empty space to pan · click a work to open it",
+    "loading": "Loading the living world…",
+    "loadFailed": "Failed to load the living world: {{error}}",
+    "empty": "No works in this world yet — start a book or a what-if to grow its timeline.",
+    "canonBadge": "Canon",
+    "branchBadge": "What-if",
+    "canonAria": "Canon: {{title}}",
+    "branchAria": "What-if branching at chapter {{ch}}: {{title}}",
+    "branchAt": "branches at ch. {{ch}}",
+    "orphan": "· source outside this world",
+    "edgeLabel": "ch. {{ch}}"
+  }
+}

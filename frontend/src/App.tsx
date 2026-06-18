@@ -36,9 +36,14 @@ import { ResetPage } from '@/pages/auth/ResetPage';
 import { HomePage } from '@/pages/HomePage';
 import { UsagePage } from '@/pages/UsagePage';
 import { KnowledgePage } from '@/pages/KnowledgePage';
+import { ProjectDetailShell } from '@/pages/ProjectDetailShell';
+import { WorldsPage } from '@/features/world/pages/WorldsPage';
+import { WorldWorkspacePage } from '@/features/world/pages/WorldWorkspacePage';
 import { CampaignsPage } from '@/features/campaigns/pages/CampaignsPage';
 import { CreateCampaignWizardPage } from '@/features/campaigns/pages/CreateCampaignWizardPage';
 import { CampaignDetailPage } from '@/features/campaigns/pages/CampaignDetailPage';
+import { JobsPage } from '@/features/jobs/pages/JobsPage';
+import { JobDetailPage } from '@/features/jobs/pages/JobDetailPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { BrowsePage } from '@/pages/BrowsePage';
 import { PublicBookDetailPage } from '@/pages/PublicBookDetailPage';
@@ -50,6 +55,7 @@ import { LeaderboardPage } from '@/pages/LeaderboardPage';
 import { ProfilePage } from '@/pages/ProfilePage';
 import { NotificationsPage } from '@/pages/NotificationsPage';
 import { RawSearchPage } from '@/pages/RawSearchPage';
+import { OnboardingPage } from '@/features/onboarding/pages/OnboardingPage';
 
 function AuthenticatedThemeProvider({ children }: { children: React.ReactNode }) {
   const { accessToken } = useAuth();
@@ -116,6 +122,12 @@ export function App() {
 
           {/* Dashboard pages (full sidebar) */}
           <Route element={<RequireAuth><DashboardLayout /></RequireAuth>}>
+            {/* C22 — first-run intent fork. /onboarding is the gate (shows the
+                fork only on first run, else redirects to /books); /onboarding/new
+                is the re-entry "start something new" affordance (always shows). */}
+            <Route path="/onboarding" element={<OnboardingPage />} />
+            <Route path="/onboarding/new" element={<OnboardingPage forceShow />} />
+
             {/* Workspace */}
             <Route path="/books" element={<BooksPage />} />
             <Route path="/trash" element={<TrashPage />} />
@@ -132,12 +144,28 @@ export function App() {
 
             {/* Knowledge Service */}
             <Route path="/knowledge" element={<Navigate to="/knowledge/projects" replace />} />
+            {/* C6 (G6) — project-detail shell. The 4-segment nested route is
+                more specific than the 2-segment flat-tab route below, so it
+                wins; they don't conflict. */}
+            <Route
+              path="/knowledge/projects/:projectId/:section"
+              element={<ProjectDetailShell />}
+            />
             <Route path="/knowledge/:tab" element={<KnowledgePage />} />
+
+            {/* C21 — World container (prose-less worldbuilding). HOME browser +
+                workspace shell; no manuscript. */}
+            <Route path="/worlds" element={<WorldsPage />} />
+            <Route path="/worlds/:worldId" element={<WorldWorkspacePage />} />
 
             {/* Auto-Draft Factory (campaigns) */}
             <Route path="/campaigns" element={<CampaignsPage />} />
             <Route path="/campaigns/new" element={<CreateCampaignWizardPage />} />
             <Route path="/campaigns/:campaignId" element={<CampaignDetailPage />} />
+
+            {/* Unified Jobs control plane (P4) — every background job the user owns. */}
+            <Route path="/jobs" element={<JobsPage />} />
+            <Route path="/jobs/:service/:jobId" element={<JobDetailPage />} />
 
             {/* Manage */}
             <Route path="/usage" element={<UsagePage />} />

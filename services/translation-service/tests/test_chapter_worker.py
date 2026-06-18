@@ -43,11 +43,22 @@ class _AcquireCM:
         pass
 
 
-def _make_pool(job_status="running", finalization_row=None):
+def _make_pool(job_status="running", finalization_row=None, claim_row="__default__"):
     db = AsyncMock()
     db.execute = AsyncMock()
-    db.fetchval = AsyncMock(return_value=job_status)   # cancellation check
-    db.fetchrow = AsyncMock(return_value=finalization_row)
+    db.fetchval = AsyncMock(return_value=job_status)   # cancellation/pause check
+    # B2 guarded claim: the worker now claims the chapter via
+    # `UPDATE chapter_translations … RETURNING id` (returns None ⇒ claim lost). The same
+    # acquired-conn fetchrow later runs the job finalize (`UPDATE translation_jobs …`).
+    # Discriminate by query so the happy path claims a row AND finalize tests still drive
+    # `finalization_row`. A test can pass claim_row=None to exercise the claim-lost path.
+    _claim = FakeRecord({"id": uuid4()}) if claim_row == "__default__" else claim_row
+
+    async def _fetchrow(query, *a, **k):
+        if "chapter_translations" in query and "RETURNING id" in query:
+            return _claim
+        return finalization_row
+    db.fetchrow = AsyncMock(side_effect=_fetchrow)
     # `_process_chapter` persists inside `async with db.transaction():`. An
     # unconfigured AsyncMock attribute returns a coroutine (not an async CM),
     # so give transaction() a synchronous factory returning an async CM.
@@ -247,6 +258,60 @@ async def test_chapter_worker_skips_ai_call_when_job_cancelled():
 
     mock_http.get.assert_not_called()
     mock_translate.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_chapter_worker_drops_unit_when_job_paused():
+    """B2 (D-JOBS-P3-TRANSLATION-PAUSE): a paused job dispatches no new chapter work.
+    The worker must NOT call book-service/AImust NOT fail the chapter, and MUST release
+    the P5 slot (the chapter stays pending for resume)."""
+    pool, db = _make_pool(job_status="paused")
+    publish_event = AsyncMock()
+    msg = _chapter_msg()
+
+    with patch("app.workers.chapter_worker.httpx.AsyncClient") as mock_cls, \
+         patch("app.workers.chapter_worker.translate_chapter", new_callable=AsyncMock) as mock_translate, \
+         patch("app.workers.chapter_worker.fair_sched.release_chapter_lease",
+               new_callable=AsyncMock) as mock_release:
+        mock_http = MagicMock()
+        mock_http.get = AsyncMock()
+        mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_http)
+        mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        from app.workers.chapter_worker import handle_chapter_message
+        await handle_chapter_message(msg, pool, publish_event, MagicMock(), retry_count=0)
+
+    mock_http.get.assert_not_called()
+    mock_translate.assert_not_called()
+    mock_release.assert_awaited_once()  # slot freed
+    # NOT failed: no chapter-failed UPDATE ran (the chapter is left pending for resume).
+    db.execute.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_chapter_worker_skips_duplicate_when_claim_lost():
+    """B2 guarded claim: a duplicate unit (a resume re-drive racing a still-parked WFQ
+    unit) finds the chapter already running → the claim UPDATE returns no row → the worker
+    must skip (no book-service/AI) and release the slot, NOT double-translate."""
+    pool, _ = _make_pool(job_status="running", claim_row=None)  # claim returns None
+    publish_event = AsyncMock()
+    msg = _chapter_msg()
+
+    with patch("app.workers.chapter_worker.httpx.AsyncClient") as mock_cls, \
+         patch("app.workers.chapter_worker.translate_chapter", new_callable=AsyncMock) as mock_translate, \
+         patch("app.workers.chapter_worker.fair_sched.release_chapter_lease",
+               new_callable=AsyncMock) as mock_release:
+        mock_http = MagicMock()
+        mock_http.get = AsyncMock()
+        mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_http)
+        mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        from app.workers.chapter_worker import handle_chapter_message
+        await handle_chapter_message(msg, pool, publish_event, MagicMock(), retry_count=0)
+
+    mock_http.get.assert_not_called()
+    mock_translate.assert_not_called()
+    mock_release.assert_awaited_once()
 
 
 # ── Error taxonomy ────────────────────────────────────────────────────────────
@@ -473,10 +538,12 @@ async def test_block_pipeline_auto_active_gated_on_unresolved_high():
     assert auto_active, "auto-active INSERT must run at completion"
     assert "unresolved_high_count" in auto_active[0].args[0], \
         "auto-active must be gated on the quality rollup (M5b)"
-    # D-CAMPAIGN-AUTONOMOUS-PUBLISH: a NON-campaign (interactive) job keeps the
-    # first-write-wins + human-publish gate → DO NOTHING.
-    assert "DO NOTHING" in auto_active[0].args[0], \
-        "interactive job must not auto-republish over an existing active version"
+    # Promote-on-completion (2026-06-14): a clean version is published even over an
+    # existing active one (DO UPDATE), guarded so it never clobbers a human edit.
+    sql = auto_active[0].args[0]
+    assert "DO UPDATE" in sql, "completion must promote the clean version (DO UPDATE)"
+    assert "authored_by" in sql and "<> 'human'" in sql, \
+        "promote must be guarded so it never clobbers a human-edited active version"
 
 
 async def _run_completion(msg):
@@ -514,19 +581,27 @@ async def _run_completion(msg):
 
 @pytest.mark.asyncio
 async def test_campaign_job_autonomous_publish_promotes_over_existing():
-    """D-CAMPAIGN-AUTONOMOUS-PUBLISH: a campaign (no-human) job PROMOTES the clean
-    version to active even over an existing one (DO UPDATE) — still gated on
-    unresolved_high_count=0 (the SELECT WHERE, kept)."""
+    """A campaign (no-human) job PROMOTES the clean version to active even over an
+    existing one (DO UPDATE) — gated on unresolved_high_count=0 (the SELECT WHERE)
+    and on the current active not being a human edit (the DO UPDATE WHERE)."""
     sql = await _run_completion(_chapter_msg(target_language="ja", campaign_id=str(uuid4())))
     assert "DO UPDATE" in sql, "campaign job must auto-republish (promote-on-completion)"
     assert "chapter_translation_id = EXCLUDED" in sql
     assert "unresolved_high_count" in sql, "still gated on the quality rollup"
+    assert "authored_by" in sql and "<> 'human'" in sql, "must not clobber a human edit"
 
 
 @pytest.mark.asyncio
-async def test_non_campaign_job_keeps_human_publish_gate():
+async def test_non_campaign_job_auto_promotes_with_human_guard():
+    """2026-06-14: interactive single re-translation now also promotes a clean new
+    version to active (DO UPDATE), so a re-translation to a stronger model takes
+    effect without a manual publish — but never clobbers a human-edited active
+    version (authored_by guard)."""
     sql = await _run_completion(_chapter_msg(target_language="ja"))  # no campaign_id
-    assert "DO NOTHING" in sql and "DO UPDATE" not in sql
+    assert "DO UPDATE" in sql and "DO NOTHING" not in sql, \
+        "interactive job must promote-on-completion (no longer first-write-wins)"
+    assert "authored_by" in sql and "<> 'human'" in sql, \
+        "interactive promote must be guarded against clobbering a human edit"
 
 
 # ── TD1: cross-chapter memo wiring (M0) ───────────────────────────────────────
@@ -641,12 +716,16 @@ async def test_fail_chapter_idempotent_skips_counter_when_already_failed():
 # ── _check_job_completion (atomic finalization) ───────────────────────────────
 
 @pytest.mark.asyncio
-async def test_check_job_completion_emits_event_when_winner():
+async def test_check_job_completion_emits_event_when_winner(monkeypatch):
     """Winner of the atomic UPDATE must emit job.status_changed with final status."""
+    # P1: the finalize UPDATE now also RETURNs owner_user_id + emits a JobEvent in
+    # the same tx; patch the SDK emit so this test stays focused on publish_event.
+    monkeypatch.setattr("app.workers.chapter_worker.emit_job_event", AsyncMock())
     pool, db = _make_pool(finalization_row=FakeRecord({
         "status": "completed",
         "completed_chapters": 3,
         "failed_chapters": 0,
+        "owner_user_id": uuid4(),
     }))
     publish_event = AsyncMock()
     msg = _chapter_msg()
@@ -675,12 +754,14 @@ async def test_check_job_completion_no_event_when_not_winner():
 
 
 @pytest.mark.asyncio
-async def test_check_job_completion_partial_status():
+async def test_check_job_completion_partial_status(monkeypatch):
     """partial: completed > 0 and failed > 0."""
+    monkeypatch.setattr("app.workers.chapter_worker.emit_job_event", AsyncMock())
     pool, db = _make_pool(finalization_row=FakeRecord({
         "status": "partial",
         "completed_chapters": 2,
         "failed_chapters": 1,
+        "owner_user_id": uuid4(),
     }))
     publish_event = AsyncMock()
     msg = _chapter_msg()
@@ -695,12 +776,14 @@ async def test_check_job_completion_partial_status():
 
 
 @pytest.mark.asyncio
-async def test_check_job_completion_all_failed_status():
+async def test_check_job_completion_all_failed_status(monkeypatch):
     """failed: completed = 0, all chapters failed."""
+    monkeypatch.setattr("app.workers.chapter_worker.emit_job_event", AsyncMock())
     pool, db = _make_pool(finalization_row=FakeRecord({
         "status": "failed",
         "completed_chapters": 0,
         "failed_chapters": 3,
+        "owner_user_id": uuid4(),
     }))
     publish_event = AsyncMock()
     msg = _chapter_msg()

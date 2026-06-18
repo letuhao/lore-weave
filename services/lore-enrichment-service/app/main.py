@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from loreweave_obs import current_otel_trace_id, setup_tracing
 
 from app.api import eval as eval_api
-from app.api import book_profile, compose, gaps, jobs, observability, proposals, sources, templates, uploads
+from app.api import book_profile, compose, compose_tasks, gaps, internal_job_control, jobs, observability, proposals, sources, templates, uploads
 from app.config import settings
 from app.db.migrate import run_migrations
 from app.db.pool import close_pool, create_pool
@@ -92,6 +92,7 @@ app.include_router(observability.router)
 app.include_router(jobs.router)
 app.include_router(gaps.router)  # D1 — gap auto-detection (read-only triage)
 app.include_router(compose.router)  # Compose — unified async input modes (gap|draft|context|files)
+app.include_router(compose_tasks.router)  # Phase 3 M2 — poll one-shot compose tasks (suggest/intent)
 app.include_router(uploads.router)  # Compose slice 3 — mode F file uploads (async extract+OCR)
 app.include_router(proposals.router)
 app.include_router(sources.router)
@@ -102,3 +103,6 @@ app.include_router(templates.router)
 
 # C15 — internal eval-gate status route (P2/P3 gate signal for C16/C17).
 app.include_router(eval_api.router)
+
+# Unified Job Control Plane P3 — S2S job_id-keyed control (cancel/pause/resume).
+app.include_router(internal_job_control.router)

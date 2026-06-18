@@ -922,6 +922,26 @@ func (s *Server) restoreWikiRevision(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, detail)
 }
 
+// injectGenSelectionCounts adds `total_matched` and `selected` to a wiki-gen
+// delegate's JSON-object response body (D-WIKI-M7B-GEN-LIMIT). `selected` is
+// the number of entities actually enqueued (== job item count); `total_matched`
+// is how many matched before the genLimit cap. The FE compares them to warn
+// "generating N of M". A body that isn't a JSON object (or fails to round-trip)
+// is returned unchanged — surfacing the counts is best-effort, never fatal.
+func injectGenSelectionCounts(body []byte, totalMatched, selected int) []byte {
+	var obj map[string]any
+	if err := json.Unmarshal(body, &obj); err != nil || obj == nil {
+		return body
+	}
+	obj["total_matched"] = totalMatched
+	obj["selected"] = selected
+	merged, err := json.Marshal(obj)
+	if err != nil {
+		return body
+	}
+	return merged
+}
+
 // ── 9. generateWikiStubs ─────────────────────────────────────────────────────
 
 func (s *Server) generateWikiStubs(w http.ResponseWriter, r *http.Request) {
@@ -971,7 +991,7 @@ func (s *Server) generateWikiStubs(w http.ResponseWriter, r *http.Request) {
 	// knowledge-service; propagate its 202/409/404. The deterministic stub path
 	// below is unchanged (the fallback when no model_ref is supplied).
 	if req.ModelRef != "" {
-		entityIDs, err := s.resolveDelegateEntityIDs(r.Context(), bookID, req.EntityIDs, req.KindCodes, genLimit)
+		entityIDs, totalMatched, err := s.resolveDelegateEntityIDs(r.Context(), bookID, req.EntityIDs, req.KindCodes, genLimit)
 		if err != nil {
 			if verr, ok := err.(*badEntityIDError); ok {
 				writeError(w, http.StatusBadRequest, "WIKI_BAD_REQUEST", verr.Error())
@@ -982,7 +1002,7 @@ func (s *Server) generateWikiStubs(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if len(entityIDs) == 0 {
-			writeJSON(w, http.StatusOK, map[string]any{"action": "none", "entities": 0})
+			writeJSON(w, http.StatusOK, map[string]any{"action": "none", "entities": 0, "total_matched": totalMatched})
 			return
 		}
 		modelSource := req.ModelSource
@@ -1002,6 +1022,13 @@ func (s *Server) generateWikiStubs(w http.ResponseWriter, r *http.Request) {
 			slog.Error("generateWikiStubs delegate", "error", err)
 			writeError(w, http.StatusBadGateway, "WIKI_DELEGATE", "generation service unavailable")
 			return
+		}
+		// D-WIKI-M7B-GEN-LIMIT — additively surface the selection counts on a
+		// successful 202 so the FE can warn when the genLimit silently dropped
+		// candidates (total_matched > selected). Best-effort: a body that isn't a
+		// JSON object is forwarded unchanged.
+		if status == http.StatusAccepted {
+			body = injectGenSelectionCounts(body, totalMatched, len(entityIDs))
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(status)

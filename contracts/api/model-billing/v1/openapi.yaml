@@ -111,23 +111,9 @@ paths:
         '401':
           $ref: '#/components/responses/ErrorResponse'
 
-  /v1/model-billing/account-balance:
-    get:
-      tags: [account-balance]
-      summary: Get tier quota and credit balance for current user
-      operationId: getAccountBalance
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AccountBalance'
-        '401':
-          $ref: '#/components/responses/ErrorResponse'
-
+  # D-S4C-ACCOUNTBALANCES-DROP — the token-quota `account-balance` endpoint + its
+  # inert table were removed (USD guardrail + platform-balance below are the live
+  # wallet view). The `account-balance` tag is retained as the wallet-endpoint group.
   /v1/model-billing/guardrail:
     get:
       tags: [account-balance]
@@ -438,28 +424,6 @@ components:
         quota_consumed_tokens:
           type: integer
           minimum: 0
-
-    AccountBalance:
-      type: object
-      required:
-        - tier_name
-        - month_quota_tokens
-        - month_quota_remaining_tokens
-        - credits_balance
-      properties:
-        tier_name:
-          type: string
-        month_quota_tokens:
-          type: integer
-          minimum: 0
-        month_quota_remaining_tokens:
-          type: integer
-          minimum: 0
-        credits_balance:
-          type: integer
-          minimum: 0
-        billing_policy_version:
-          type: string
 
     Guardrail:
       type: object

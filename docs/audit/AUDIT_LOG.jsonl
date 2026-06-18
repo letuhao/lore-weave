@@ -2571,3 +2571,453 @@
 {"ts": "2026-06-06T17:58:15.725708", "task": "canon-cm1-editorial-lifecycle", "phase": "commit", "agent": "main", "action": "phase_complete", "evidence": "e6cdaba7 — 12 files, 360 ins/22 del"}
 {"ts": "2026-06-06T17:58:41.277975", "task": "canon-cm1-editorial-lifecycle", "phase": "retro", "agent": "main", "action": "phase_complete", "evidence": "MCP unavailable (local HTTP); no lesson persisted. Notable patterns: vi.hoisted+partial-module-mock for ChapterEditorPage; publishGateMessages pure-function extraction"}
 {"ts": "2026-06-06T17:58:41.277975", "task": "canon-cm1-editorial-lifecycle", "phase": "retro", "agent": "main", "action": "sprint_complete", "evidence": "MCP unavailable (local HTTP); no lesson persisted. Notable patterns: vi.hoisted+partial-module-mock for ChapterEditorPage; publishGateMessages pure-function extraction"}
+{"ts": "2026-06-12T23:00:29Z", "event": "coordinator_idle"}
+{"ts": "2026-06-12T23:01:40Z", "event": "brief_generator_drift_inconclusive", "cd": "", "rw": ""}
+{"ts": "2026-06-12T23:01:40Z", "event": "brief_generator_drift_inconclusive", "cd": "", "rw": ""}
+{"ts": "2026-06-12T23:13:54Z", "event": "coordinator_next_cycle_emitted", "cycle": 1}
+{"ts":"2026-06-12T23:22:00Z","event":"verify_cycle_0_passed","cycle":0}
+{"ts":"2026-06-12T23:31:18Z","event":"startup_drift_check_inconclusive","cycle":1,"cd":"","rw":""}
+{"ts":"2026-06-12T23:31:18Z","event":"startup_verifier_complete","cycle":1,"steps":6}
+{"ts": "2026-06-12T23:31:28Z", "event": "in_progress_init", "cycle": 1, "title": "Rerank registration (FE)"}
+{"ts": "2026-06-12T23:31:42Z", "event": "in_progress_update", "cycle": 1, "phase": "BUILD", "retry": 0}
+{"ts": "2026-06-13T00:02:48Z", "event": "coordinator_next_cycle_emitted", "cycle": 2}
+{"ts":"2026-06-13T02:13:51Z","event":"verify_cycle_2_failed","cycle":2}
+{"ts":"2026-06-13T02:14:27Z","event":"verify_cycle_2_passed","cycle":2}
+{"ts":"2026-06-13T02:23:02Z","event":"verify_cycle_3_passed","cycle":3}
+{"ts":"2026-06-13T02:32:32Z","event":"verify_cycle_4_passed","cycle":4}
+{"ts":"2026-06-13T02:47:49Z","event":"verify_cycle_5_passed","cycle":5}
+{"ts":"2026-06-13T03:00:56Z","event":"verify_cycle_6_passed","cycle":6}
+{"ts": "2026-06-13T03:05:42Z", "event": "coordinator_next_cycle_emitted", "cycle": 7}
+{"ts":"2026-06-13T03:18:00Z","event":"verify_cycle_7_failed","cycle":7}
+{"ts":"2026-06-13T03:18:22Z","event":"verify_cycle_7_passed","cycle":7}
+{"ts":"2026-06-13T03:20:32Z","event":"verify_cycle_7_passed","cycle":7}
+{"ts": "2026-06-13T06:03:31Z", "event": "coordinator_next_cycle_emitted", "cycle": 8}
+{"ts":"2026-06-13T06:08:31Z","event":"startup_drift_check_inconclusive","cycle":8,"cd":"","rw":""}
+{"ts":"2026-06-13T06:08:31Z","event":"startup_verifier_complete","cycle":8,"steps":6}
+{"ts": "2026-06-13T06:08:42Z", "event": "in_progress_init", "cycle": 8, "title": "Entities semantic layer (BE+FE)"}
+{"ts": "2026-06-13T06:10:48Z", "event": "in_progress_update", "cycle": 8, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-06-13T06:11:26Z", "event": "in_progress_update", "cycle": 8, "phase": "REVIEW1", "retry": 0}
+{"ts": "2026-06-13T06:11:28Z", "event": "in_progress_update", "cycle": 8, "phase": "PLAN", "retry": 0}
+{"ts": "2026-06-13T06:11:40Z", "event": "in_progress_update", "cycle": 8, "phase": "BUILD", "retry": 0}
+{"ts":"2026-06-13T06:27:11Z","event":"secret_scan_skipped","cycle":8,"dps":all,"reason":"gitleaks_not_installed"}
+{"ts": "2026-06-13T06:27:14Z", "event": "in_progress_update", "cycle": 8, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-06-13T06:27:56Z","event":"verify_cycle_8_failed","cycle":8}
+{"ts":"2026-06-13T06:28:29Z","event":"verify_cycle_8_passed","cycle":8}
+{"ts": "2026-06-13T06:40:12Z", "event": "in_progress_update", "cycle": 8, "phase": "REVIEW2", "retry": 0}
+{"ts":"2026-06-13T06:44:25Z","event":"verify_cycle_8_passed","cycle":8}
+{"ts": "2026-06-13T06:44:44Z", "event": "in_progress_update", "cycle": 8, "phase": "QC", "retry": 0}
+{"ts": "2026-06-13T06:46:55Z", "event": "in_progress_update", "cycle": 8, "phase": "POST_REVIEW", "retry": 0}
+{"ts": "2026-06-13T06:49:06Z", "event": "in_progress_update", "cycle": 8, "phase": "SESSION", "retry": 0}
+{"ts":"2026-06-13T06:49:53Z","cycle":8,"phase":"session","event":"cycle_complete","dps_count":3,"retry_count":0,"adversary_findings":{"blockers":0,"majors":0,"minors":2,"notes":2},"scope_guard":"CLEAR","post_review":"CLEAR","verify_exit":0,"live_smoke":"semantic_query + status filter on a built knowledge graph","tests":{"pytest":48,"vitest":12},"screenshot":"docs/raid/evidence/cycle-8/entities-semantic-layer.png"}
+{"ts": "2026-06-13T06:50:02Z", "event": "in_progress_update", "cycle": 8, "phase": "COMMIT", "retry": 0}
+{"ts": "2026-06-13T06:51:09Z", "event": "in_progress_archived", "cycle": 8, "archived_to": "cycle-008-state-20260613T065109.md"}
+{"ts":"2026-06-13T06:51:28Z","cycle":8,"phase":"retro","event":"retro","sha":"77c1437e279058743b756c1081d15f2b78df0b2f","note":"Most of C8 BE pre-existed (find_entities_by_vector, list_entities_filtered, anchor model) — cycle was thin endpoint-wiring + derived projection + FE, matching the Knowledge-design-parity lock's 'thin BE wiring' read. KEY: live-smoke caught a real async-await bug (get_embedding_client is async in app.deps; my sync mock lambda masked it) — the mock-vs-real drift class. Fixed the test to AsyncMock so it now guards. Also: the running FE dev server was a STALE pre-C6 bundle (404 on the shell route) — had to restart Vite to pick up committed C6/C7 routes before the Playwright shot. Seeded 3 entity embeddings via provider-registry to make the vector result non-empty (all 106 entities were discovered/unembedded)."}
+{"ts": "2026-06-13T06:52:25Z", "event": "coordinator_next_cycle_emitted", "cycle": 9}
+{"ts":"2026-06-13T06:53:52Z","event":"startup_drift_check_inconclusive","cycle":9,"cd":"","rw":""}
+{"ts":"2026-06-13T06:53:52Z","event":"startup_verifier_complete","cycle":9,"steps":6}
+{"ts": "2026-06-13T06:54:02Z", "event": "in_progress_init", "cycle": 9, "title": "Promote + entity detail (BE+FE)"}
+{"ts": "2026-06-13T06:58:48Z", "event": "in_progress_update", "cycle": 9, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-06-13T07:00:06Z", "event": "in_progress_update", "cycle": 9, "phase": "REVIEW1", "retry": 0}
+{"ts": "2026-06-13T07:00:22Z", "event": "in_progress_update", "cycle": 9, "phase": "PLAN", "retry": 0}
+{"ts": "2026-06-13T07:02:22Z", "event": "in_progress_update", "cycle": 9, "phase": "BUILD", "retry": 0}
+{"ts":"2026-06-13T07:05:27Z","event":"secret_scan_skipped","cycle":9,"dps":DPS1,"reason":"gitleaks_not_installed"}
+{"ts":"2026-06-13T07:13:58Z","event":"secret_scan_skipped","cycle":9,"dps":DPS2,"reason":"gitleaks_not_installed"}
+{"ts":"2026-06-13T07:13:59Z","event":"secret_scan_skipped","cycle":9,"dps":DPS3,"reason":"gitleaks_not_installed"}
+{"ts": "2026-06-13T07:14:07Z", "event": "in_progress_update", "cycle": 9, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-06-13T07:14:52Z","event":"verify_cycle_9_passed","cycle":9}
+{"ts":"2026-06-13T07:24:51Z","event":"verify_cycle_9_passed","cycle":9}
+{"ts": "2026-06-13T07:25:02Z", "event": "in_progress_update", "cycle": 9, "phase": "REVIEW2", "retry": 0}
+{"ts":"2026-06-13T07:28:24Z","event":"verify_cycle_9_passed","cycle":9}
+{"ts": "2026-06-13T07:28:36Z", "event": "in_progress_update", "cycle": 9, "phase": "QC", "retry": 0}
+{"ts": "2026-06-13T07:28:49Z", "event": "in_progress_update", "cycle": 9, "phase": "POST_REVIEW", "retry": 0}
+{"ts": "2026-06-13T07:29:02Z", "event": "in_progress_update", "cycle": 9, "phase": "SESSION", "retry": 0}
+{"ts": "2026-06-13T07:30:00Z", "event": "cycle_complete", "cycle": 9, "title": "Promote + entity detail (BE+FE)", "dps_count": 3, "files_changed": 17, "tests": {"pytest": 10, "vitest": 25}, "verify_exit": 0, "live_smoke": "promote discovered entity -> glossary draft created + entity anchored", "screenshots": ["docs/raid/evidence/cycle-9/entity-detail-discovered-promote.png", "docs/raid/evidence/cycle-9/entity-detail-canonical-unpin.png"], "adversary": {"blockers": 0, "majors": 0, "minors": 2, "notes": 3}, "scope_guard": "CLEAR", "post_review": "CLEAR"}
+{"ts": "2026-06-13T07:29:55Z", "event": "in_progress_update", "cycle": 9, "phase": "COMMIT", "retry": 0}
+{"ts": "2026-06-13T07:30:03Z", "event": "in_progress_archived", "cycle": 9, "archived_to": "cycle-009-state-20260613T073003.md"}
+{"ts": "2026-06-13T07:31:00Z", "event": "retro", "cycle": 9, "lesson": "Promote's 'FE orchestrates two calls' spec is contradicted by reality: FE can't reach glossary /internal/extract-entities (the only path that creates a named ai-suggested draft in one shot), so the BE owns the orchestration. Live-smoke caught a real cross-service shape bug the mocks hid: extract-entities returns status=created/updated/SKIPPED, and a discovered entity whose NAME is an alias of an existing active glossary entry comes back skipped-with-id — first impl rejected all skipped → 502. Fix: accept skipped-with-id (anchor to the existing entry), refuse only skip_reason=tombstoned. Lesson class: a value crossing the glossary boundary (entity_id+status) must reconcile glossary's name/alias dedup + draft-vs-active semantics; mock-only tests stay green while the real merge-no-op path 502s. Rebuild the touched service image before live-smoke (stale knowledge image lacked the route)."}
+{"ts": "2026-06-13T07:33:35Z", "event": "coordinator_next_cycle_emitted", "cycle": 10}
+{"ts":"2026-06-13T07:34:55Z","event":"startup_drift_check_inconclusive","cycle":10,"cd":"","rw":""}
+{"ts":"2026-06-13T07:34:55Z","event":"startup_verifier_complete","cycle":10,"steps":6}
+{"ts": "2026-06-13T07:35:08Z", "event": "in_progress_init", "cycle": 10, "title": "Glossary Gap Report (BE-thin + FE)"}
+{"ts": "2026-06-13T07:41:17Z", "event": "in_progress_update", "cycle": 10, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-06-13T07:41:39Z", "event": "in_progress_update", "cycle": 10, "phase": "BUILD", "retry": 0}
+{"ts":"2026-06-13T07:43:12Z","event":"secret_scan_skipped","cycle":10,"dps":DPS1,"reason":"gitleaks_not_installed"}
+{"ts":"2026-06-13T07:51:41Z","event":"secret_scan_skipped","cycle":10,"dps":DPS2,"reason":"gitleaks_not_installed"}
+{"ts": "2026-06-13T07:51:53Z", "event": "in_progress_update", "cycle": 10, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-06-13T07:52:47Z","event":"verify_cycle_10_failed","cycle":10}
+{"ts":"2026-06-13T07:53:27Z","event":"verify_cycle_10_failed","cycle":10}
+{"ts":"2026-06-13T07:53:51Z","event":"verify_cycle_10_passed","cycle":10}
+{"ts": "2026-06-13T08:01:28Z", "event": "in_progress_update", "cycle": 10, "phase": "VERIFY", "retry": 0}
+{"ts": "2026-06-13T08:01:53Z", "event": "in_progress_update", "cycle": 10, "phase": "REVIEW2", "retry": 0}
+{"ts":"2026-06-13T08:08:35Z","event":"verify_cycle_10_passed","cycle":10}
+{"ts": "2026-06-13T08:08:49Z", "event": "in_progress_update", "cycle": 10, "phase": "QC", "retry": 0}
+{"ts": "2026-06-13T08:09:58Z", "event": "in_progress_update", "cycle": 10, "phase": "POST_REVIEW", "retry": 0}
+{"ts": "2026-06-13T08:10:09Z", "event": "in_progress_update", "cycle": 10, "phase": "SESSION", "retry": 0}
+{"ts": "2026-06-13T08:11:00Z", "event": "cycle_complete", "cycle": 10, "title": "Glossary Gap Report (BE-thin + FE)", "dps_count": 2, "files_changed": 11, "tests": {"pytest": 6, "vitest": 7}, "verify_exit": 0, "live_smoke": "gap report on built graph 019eb683 -> select 2 gaps -> sequential bulk-promote (reuses C9) -> 2 glossary drafts created (status=draft, tags=[ai-suggested]); count 24->22", "screenshots": ["docs/raid/evidence/cycle-10/gap-report.png", "docs/raid/evidence/cycle-10/post-bulk-promote.png"], "adversary": {"blockers": 0, "majors": 0, "minors": 5, "notes": 4}, "scope_guard": "CLEAR", "post_review": "CLEAR", "notable": "thin GET /projects/{id}/gaps over find_gap_candidates (entity gaps, NOT lore-enrichment detect-gaps); useBulkPromote sequential reuse of C9 promoteEntity (progress + partial-failure survival); G6 route-scoped GapReportTab in C6 shell; review fixes: debounced threshold, retain-failed-selection on partial fail, per-row aria-label"}
+{"ts": "2026-06-13T08:11:08Z", "event": "in_progress_update", "cycle": 10, "phase": "COMMIT", "retry": 0}
+{"ts": "2026-06-13T08:11:49Z", "event": "in_progress_archived", "cycle": 10, "archived_to": "cycle-010-state-20260613T081149.md"}
+{"ts": "2026-06-13T08:12:30Z", "event": "retro", "cycle": 10, "lessons": ["stale-image-first: knowledge-service ran an old image → /gaps 404 on the live stack; rebuild+restart the touched service before Playwright smoke (matches live-smoke-rebuild-stale-images-first memory)", "verify-script grep guards (NOT detect-gaps / NOT Promise.all) tripped on the impl's OWN explanatory prose comments — reword lock comments to avoid the literal forbidden token, or make the guard match a call/import not a comment", "bulk-promote partial-failure UX: on a partial run, retain the FAILED ids in the selection (not clear-all) so the user can retry directly; rely on the hook's queryClient.invalidate to refetch rather than an extra refetch()", "react-query queryKey-per-keystroke needs a debounce: a number-input threshold feeding the queryKey fires one request per digit; staleTime doesn't help because the key differs"]}
+{"ts": "2026-06-13T08:13:36Z", "event": "coordinator_next_cycle_emitted", "cycle": 11}
+{"ts":"2026-06-13T08:14:54Z","event":"startup_drift_check_inconclusive","cycle":11,"cd":"","rw":""}
+{"ts":"2026-06-13T08:14:54Z","event":"startup_verifier_complete","cycle":11,"steps":6}
+{"ts": "2026-06-13T08:15:08Z", "event": "in_progress_init", "cycle": 11, "title": "Pending Proposals inbox (FE)"}
+{"ts": "2026-06-13T08:22:52Z", "event": "in_progress_update", "cycle": 11, "phase": "BUILD", "retry": 0}
+{"ts":"2026-06-14T07:20:22Z","event":"startup_resume_detected","cycle":11,"state_file":"/d/Works/source/lore-weave-mvp/docs/raid/IN_PROGRESS/cycle-011-state.md"}
+{"ts":"2026-06-14T07:20:22Z","event":"startup_drift_check_inconclusive","cycle":11,"cd":"","rw":""}
+{"ts":"2026-06-14T07:20:22Z","event":"startup_verifier_complete","cycle":11,"steps":6}
+{"ts": "2026-06-14T07:23:21Z", "event": "in_progress_update", "cycle": 11, "phase": "BUILD", "retry": 0}
+{"ts":"2026-06-14T07:30:31Z","event":"secret_scan_skipped","cycle":11,"dps":1,"reason":"gitleaks_not_installed"}
+{"ts":"2026-06-14T07:31:27Z","event":"verify_cycle_11_failed","cycle":11}
+{"ts":"2026-06-14T07:31:44Z","event":"verify_cycle_11_failed","cycle":11}
+{"ts":"2026-06-14T07:32:31Z","event":"verify_cycle_11_passed","cycle":11}
+{"ts": "2026-06-14T07:34:14Z", "event": "in_progress_update", "cycle": 11, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-06-14T07:37:37Z","event":"verify_cycle_11_passed","cycle":11}
+{"ts": "2026-06-14T07:40:00Z", "event": "cycle_complete", "cycle": 11, "title": "Pending Proposals inbox (FE)", "dps_count": 2, "files_changed": 12, "tests": {"vitest": 11}, "verify_exit": 0, "live_smoke": "DEFERRED -> D-C11-INBOX-LIVE-SMOKE: live infra unavailable (api-gateway/glossary/book/frontend Exited 255 ~15h; knowledge-service crash-looping on asyncpg DB-connect; no gateway/FE listener). FE-only; 11 vitest cover 3-source merge + exact filters + deep-links + graceful degrade + route-scoping", "screenshots": ["docs/raid/evidence/cycle-11/SMOKE_NOTE.md"], "adversary": {"blockers": 0, "majors": 0, "minors": 0, "notes": 3}, "scope_guard": "CLEAR", "post_review": "CLEAR", "notable": "resumed partial run; corrected the prior partial's WRONG wiki source (listArticles status=stub -> listSuggestions status=pending, the real wiki_suggestions review queue); 3 sources read-only + deep-link (glossary draft+ai-suggested / wiki pending / enrichment proposed+author_reviewing two exact-match calls); G6 route-scoped via project.book_id in C6 shell; review fixes: wiki-deeplink rationale comment + stale-comment dedrift"}
+{"ts": "2026-06-14T07:40:30Z", "event": "reflection", "cycle": 11, "phase": "RETRO", "notable": "Lesson: a resumed partial run can carry a plausible-but-WRONG source contract (wiki status=stub does not exist; the real review queue is wiki_suggestions status=pending). Always re-verify each source adapter against the live API/BE filter before reusing partial files. The verify gate's read-only guard initially false-positived on prose ('accept/reject' in comments) -> tightened to match handler/call patterns, not words."}
+{"ts": "2026-06-14T07:39:03Z", "event": "in_progress_update", "cycle": 11, "phase": "COMMIT", "retry": 0}
+{"ts": "2026-06-14T07:41:32Z", "event": "in_progress_archived", "cycle": 11, "archived_to": "cycle-011-state-20260614T074132.md"}
+{"ts": "2026-06-14T07:48:20Z", "event": "coordinator_next_cycle_emitted", "cycle": 12}
+{"ts":"2026-06-14T07:49:53Z","event":"startup_drift_check_inconclusive","cycle":12,"cd":"","rw":""}
+{"ts":"2026-06-14T07:49:53Z","event":"startup_verifier_complete","cycle":12,"steps":6}
+{"ts": "2026-06-14T07:50:08Z", "event": "in_progress_init", "cycle": 12, "title": "Build wizard \u2014 target-typed extraction + concurrency (BE+FE)"}
+{"ts": "2026-06-14T07:55:48Z", "event": "in_progress_update", "cycle": 12, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-06-14T07:56:44Z", "event": "in_progress_update", "cycle": 12, "phase": "PLAN", "retry": 0}
+{"ts":"2026-06-14T08:04:57Z","event":"secret_scan_skipped","cycle":12,"dps":DPS2,"reason":"gitleaks_not_installed"}
+{"ts": "2026-06-14T08:05:12Z", "event": "in_progress_update", "cycle": 12, "phase": "BUILD", "retry": 0}
+{"ts":"2026-06-14T08:09:12Z","event":"secret_scan_skipped","cycle":12,"dps":DPS1,"reason":"gitleaks_not_installed"}
+{"ts":"2026-06-14T08:17:40Z","event":"secret_scan_skipped","cycle":12,"dps":DPS3,"reason":"gitleaks_not_installed"}
+{"ts":"2026-06-14T08:24:47Z","event":"secret_scan_skipped","cycle":12,"dps":DPS4,"reason":"gitleaks_not_installed"}
+{"ts": "2026-06-14T08:24:54Z", "event": "in_progress_update", "cycle": 12, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-06-14T08:26:17Z","event":"verify_cycle_12_passed","cycle":12}
+{"ts": "2026-06-14T08:39:41Z", "event": "in_progress_update", "cycle": 12, "phase": "QC", "retry": 0}
+{"ts":"2026-06-14T08:53:51Z","event":"verify_cycle_12_passed","cycle":12}
+{"ts": "2026-06-14T08:55:54Z", "event": "in_progress_update", "cycle": 12, "phase": "SESSION", "retry": 0}
+{"ts":"2026-06-14T08:56:55Z","event":"cycle_done","cycle":12,"title":"Build wizard — target-typed extraction + concurrency (BE+FE)","dps":4,"tests":{"sdk":21,"knowledge":99,"worker_ai_decoupled":36,"fe_vitest":52},"verify_exit":0,"live_smoke":"targets=[events] build -> only the event pass runs","adversary":{"blockers":0,"majors":3,"majors_fixed":3,"minors":2,"notes":3},"scope_guard":"CLEAR","post_review":"CLEAR","screenshot":"docs/raid/evidence/cycle-12/build-wizard-step1-target-picker.png"}
+{"ts": "2026-06-14T08:58:16Z", "event": "in_progress_archived", "cycle": 12, "archived_to": "cycle-012-state-20260614T085816.md"}
+{"ts":"2026-06-14T08:58:37Z","event":"cycle_retro","cycle":12,"reflection":"De-risked design (DESIGN_C12_C13 enumerated ~4 sites) held — no XL surprises. KEY LESSON: an auto-include applied at the REQUEST layer (baking entities into the stored array) silently defeats a downstream gate (recovery/filter disable when entities not explicitly requested) that keys off the same array — the adversary caught this; fix = apply dependent auto-include at RUNTIME (SDK normalize_targets + decoupled resolver) and store the user RAW intent. Second lesson: a new stage-advance edge (entities-only build → recovery/filter, skipping trio) hit a consumer else-branch written for the old binary entity→trio|persist split — adding a 3rd outcome to a state machine needs every consumer switch re-examined. Live-smoke via decoupled resume_state.trio_targets + provider llm_jobs.operation count is a clean, deterministic assertion for target-typed extraction (no need to wait for full graph build).","defer":"D-C12-CONCURRENCY-DECOUPLED: concurrency_level caps the SDK sync gather Semaphore; decoupled trio is fire-and-forget submit (no gather) — not capped there."}
+{"ts": "2026-06-14T08:59:34Z", "event": "coordinator_next_cycle_emitted", "cycle": 13}
+{"ts":"2026-06-14T09:02:26Z","event":"startup_drift_check_inconclusive","cycle":13,"cd":"","rw":""}
+{"ts":"2026-06-14T09:02:26Z","event":"startup_verifier_complete","cycle":13,"steps":6}
+{"ts": "2026-06-14T09:02:42Z", "event": "in_progress_init", "cycle": 13, "title": "Build wizard \u2014 glossary pinning (BE+FE)"}
+{"ts": "2026-06-14T09:08:48Z", "event": "in_progress_update", "cycle": 13, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-06-14T09:11:13Z", "event": "in_progress_update", "cycle": 13, "phase": "BUILD", "retry": 0}
+{"ts":"2026-06-14T09:18:06Z","event":"secret_scan_skipped","cycle":13,"dps":DPS1,"reason":"gitleaks_not_installed"}
+{"ts":"2026-06-14T09:24:14Z","event":"secret_scan_skipped","cycle":13,"dps":DPS2,"reason":"gitleaks_not_installed"}
+{"ts":"2026-06-14T09:28:24Z","event":"secret_scan_skipped","cycle":13,"dps":DPS3,"reason":"gitleaks_not_installed"}
+{"ts":"2026-06-14T09:38:53Z","event":"secret_scan_skipped","cycle":13,"dps":DPS4,"reason":"gitleaks_not_installed"}
+{"ts": "2026-06-14T09:40:20Z", "event": "in_progress_update", "cycle": 13, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-06-14T09:41:30Z","event":"verify_cycle_13_failed","cycle":13}
+{"ts":"2026-06-14T09:41:53Z","event":"verify_cycle_13_passed","cycle":13}
+{"ts": "2026-06-14T10:08:00Z", "event": "in_progress_update", "cycle": 13, "phase": "REVIEW2", "retry": 0}
+{"ts":"2026-06-14T10:11:47Z","event":"verify_cycle_13_passed","cycle":13}
+{"ts": "2026-06-14T10:12:10Z", "event": "in_progress_update", "cycle": 13, "phase": "QC", "retry": 0}
+{"ts": "2026-06-14T10:13:56Z", "event": "in_progress_update", "cycle": 13, "phase": "POST_REVIEW", "retry": 0}
+{"ts": "2026-06-14T10:14:06Z", "event": "in_progress_update", "cycle": 13, "phase": "SESSION", "retry": 0}
+{"ts": "2026-06-14T10:15:00Z", "event": "cycle_complete", "cycle": 13, "title": "Build wizard — glossary pinning (BE+FE)", "dps_count": 4, "result": "DONE", "verify_exit_code": 0, "live_smoke_token_present": true, "adversary": {"blockers": 0, "majors": 1, "minors": 1, "notes": 7}, "scope_guard": "CLEAR", "post_review": "CLEAR", "tests": {"knowledge_pytest": 61, "worker_ai_pytest": 106, "glossary_go": "pass", "fe_vitest": 18, "i18n_keys": 791}, "screenshot": "docs/raid/evidence/cycle-13/build-wizard-step2-pinned.png", "notable": "M1 fixed: chat-turn window omitted pinned_names while estimate charged chat_turns; infra fix worker-ai GLOSSARY_SERVICE_URL stale :8082->:8088"}
+{"ts": "2026-06-14T10:15:11Z", "event": "in_progress_update", "cycle": 13, "phase": "COMMIT", "retry": 0}
+{"ts": "2026-06-14T10:19:44Z", "event": "in_progress_update", "cycle": 13, "phase": "RETRO", "retry": 0}
+{"ts": "2026-06-14T10:19:45Z", "event": "in_progress_archived", "cycle": 13, "archived_to": "cycle-013-state-20260614T101945.md"}
+{"ts": "2026-06-14T10:21:59Z", "event": "coordinator_next_cycle_emitted", "cycle": 14}
+{"ts":"2026-06-14T10:23:20Z","event":"startup_drift_check_inconclusive","cycle":14,"cd":"","rw":""}
+{"ts":"2026-06-14T10:23:20Z","event":"startup_verifier_complete","cycle":14,"steps":6}
+{"ts": "2026-06-14T10:23:42Z", "event": "in_progress_init", "cycle": 14, "title": "Timeline narrative-order + importance (BE+FE)"}
+{"ts": "2026-06-14T10:25:14Z", "event": "in_progress_update", "cycle": 14, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-06-14T10:25:41Z", "event": "in_progress_update", "cycle": 14, "phase": "BUILD", "retry": 0}
+{"ts":"2026-06-14T10:30:33Z","event":"secret_scan_skipped","cycle":14,"dps":1,"reason":"gitleaks_not_installed"}
+{"ts": "2026-06-14T10:30:40Z", "event": "in_progress_update", "cycle": 14, "phase": "BUILD", "retry": 0}
+{"ts":"2026-06-14T10:35:50Z","event":"secret_scan_skipped","cycle":14,"dps":2,"reason":"gitleaks_not_installed"}
+{"ts": "2026-06-14T10:36:40Z", "event": "in_progress_update", "cycle": 14, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-06-14T10:36:41Z","event":"verify_cycle_14_passed","cycle":14}
+{"ts": "2026-06-14T10:45:31Z", "event": "in_progress_update", "cycle": 14, "phase": "REVIEW2", "retry": 0}
+{"ts": "2026-06-14T10:48:27Z", "event": "in_progress_update", "cycle": 14, "phase": "QC", "retry": 0}
+{"ts": "2026-06-14T10:50:35Z", "event": "in_progress_update", "cycle": 14, "phase": "POST_REVIEW", "retry": 0}
+{"ts": "2026-06-14T10:50:35Z", "event": "in_progress_update", "cycle": 14, "phase": "SESSION", "retry": 0}
+{"ts":"2026-06-14T10:50:45Z","cycle":14,"phase":"session","event":"cycle_complete","dps_count":2,"retry_count":0,"adversary_findings":{"blockers":0,"majors":0,"minors":1,"notes":8},"scope_guard":"CLEAR","post_review":"CLEAR","verify_exit_code":0,"tests":{"pytest":38,"vitest":15},"m2_milestone":true,"playwright_token":"timeline rail renders narrative order with importance badges"}
+{"ts": "2026-06-14T10:51:14Z", "event": "in_progress_update", "cycle": 14, "phase": "COMMIT", "retry": 0}
+{"ts": "2026-06-14T10:51:28Z", "event": "in_progress_archived", "cycle": 14, "archived_to": "cycle-014-state.md"}
+{"ts":"2026-06-14T10:52:55Z","cycle":14,"phase":"retro","event":"retro","note":"Live-smoke caught a calibration gap, not a code bug: the first importance derivation gated pivotal/major on mention_count>=5/3, but the real corpus has mention_count==1 for ALL 141 events (extraction never accumulated re-mentions) -> zero badges on the M2 screenshot. Fix: blend signals (>=participants+confidence OR mention_count) so the score survives a degenerate axis; recalibrated to 5 pivotal+45 major+91 unbadged. LESSON: when a derived field reads existing extracted signals, inspect the LIVE signal distribution BEFORE locking thresholds — a threshold that passes synthetic unit stubs can produce an all-None live surface. The C8 derived-status pattern (computed_field + closed enum) ported cleanly to importance + sort_by allowlist. M2 reached."}
+{"ts": "2026-06-14T10:53:55Z", "event": "coordinator_next_cycle_emitted", "cycle": 15}
+{"ts":"2026-06-14T10:55:07Z","event":"startup_drift_check_inconclusive","cycle":15,"cd":"","rw":""}
+{"ts":"2026-06-14T10:55:07Z","event":"startup_verifier_complete","cycle":15,"steps":6}
+{"ts": "2026-06-14T10:55:18Z", "event": "in_progress_init", "cycle": 15, "title": "Writer unblock (FE)"}
+{"ts": "2026-06-14T10:56:40Z", "event": "in_progress_update", "cycle": 15, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-06-14T10:57:35Z", "event": "in_progress_update", "cycle": 15, "phase": "BUILD", "retry": 0}
+{"ts":"2026-06-14T11:01:18Z","event":"secret_scan_skipped","cycle":15,"dps":DPS1,"reason":"gitleaks_not_installed"}
+{"ts":"2026-06-14T11:01:21Z","event":"secret_scan_skipped","cycle":15,"dps":DPS2,"reason":"gitleaks_not_installed"}
+{"ts": "2026-06-14T11:02:14Z", "event": "in_progress_update", "cycle": 15, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-06-14T11:03:54Z","event":"verify_cycle_15_failed","cycle":15}
+{"ts":"2026-06-14T11:04:34Z","event":"verify_cycle_15_passed","cycle":15}
+{"ts": "2026-06-14T11:10:18Z", "event": "in_progress_update", "cycle": 15, "phase": "REVIEW2", "retry": 0}
+{"ts":"2026-06-14T11:12:27Z","event":"verify_cycle_15_passed","cycle":15}
+{"ts": "2026-06-14T11:12:59Z", "event": "in_progress_update", "cycle": 15, "phase": "QC", "retry": 0}
+{"ts": "2026-06-14T11:13:02Z", "event": "in_progress_update", "cycle": 15, "phase": "POST_REVIEW", "retry": 0}
+{"ts": "2026-06-14T11:13:09Z", "event": "in_progress_update", "cycle": 15, "phase": "SESSION", "retry": 0}
+{"ts":"2026-06-14T11:14:00Z","event":"cycle_done","cycle":15,"title":"Writer unblock (FE)","dps":2,"files":4,"tests":{"vitest":8,"regression":2},"verify_exit":0,"adversary":{"blockers":0,"majors":0,"minors":1,"notes":4},"scope_guard":"CLEAR","post_review":"CLEAR","screenshot":"docs/raid/evidence/cycle-15/generate-empty-grounding.png","live_smoke":"Generate with empty grounding returned prose (writer-not-blocked + grounding-optional)"}
+{"ts": "2026-06-14T11:13:47Z", "event": "in_progress_update", "cycle": 15, "phase": "COMMIT", "retry": 0}
+{"ts": "2026-06-14T11:14:55Z", "event": "in_progress_archived", "cycle": 15, "archived_to": "cycle-015-state.md"}
+{"ts":"2026-06-14T11:15:30Z","event":"retro","cycle":15,"reflection":"Writer-unblock was pure FE signposting, no BE: the platform already supported write-with-empty-grounding (canGenerate gates on scene+model only) — the gap was the absence of an in-flow chat-model CTA + a ready-to-draft cue. Key MVC discipline: empty↔ready toggles only the toolbar <select>↔AddModelCta; ComposeView/Generate stays CSS-hidden-mounted (never ternary-unmounted) so no stream/hook state is destroyed on the transition. The plain-editor→AI bridge is a direct setRightTab handler, not useEffect-for-events. Live-smoke (Generate→full Chinese scene with empty grounding) was the real proof the writer is not hard-blocked; component tests alone could not establish grounding-optional."}
+{"ts": "2026-06-14T11:16:35Z", "event": "coordinator_next_cycle_emitted", "cycle": 16}
+{"ts":"2026-06-14T11:18:00Z","event":"startup_drift_check_inconclusive","cycle":16,"cd":"","rw":""}
+{"ts":"2026-06-14T11:18:00Z","event":"startup_verifier_complete","cycle":16,"steps":6}
+{"ts": "2026-06-14T11:18:12Z", "event": "in_progress_init", "cycle": 16, "title": "Work-setup resilience (BE composition)"}
+{"ts": "2026-06-14T11:20:50Z", "event": "in_progress_update", "cycle": 16, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-06-14T11:21:31Z", "event": "in_progress_update", "cycle": 16, "phase": "PLAN", "retry": 0}
+{"ts": "2026-06-14T11:21:44Z", "event": "in_progress_update", "cycle": 16, "phase": "BUILD", "retry": 0}
+{"ts":"2026-06-14T11:28:18Z","event":"secret_scan_skipped","cycle":16,"dps":DPS1,"reason":"gitleaks_not_installed"}
+{"ts":"2026-06-14T11:28:21Z","event":"secret_scan_skipped","cycle":16,"dps":DPS2,"reason":"gitleaks_not_installed"}
+{"ts": "2026-06-14T11:45:06Z", "event": "in_progress_update", "cycle": 16, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-06-14T11:46:08Z","event":"verify_cycle_16_passed","cycle":16}
+{"ts":"2026-06-14T11:57:17Z","event":"verify_cycle_16_failed","cycle":16}
+{"ts":"2026-06-14T11:57:26Z","event":"verify_cycle_16_passed","cycle":16}
+{"ts": "2026-06-14T11:58:03Z", "event": "in_progress_update", "cycle": 16, "phase": "REVIEW2", "retry": 0}
+{"ts": "2026-06-14T12:01:35Z", "event": "in_progress_update", "cycle": 16, "phase": "QC", "retry": 0}
+{"ts": "2026-06-14T12:02:25Z", "event": "in_progress_update", "cycle": 16, "phase": "SESSION", "retry": 0}
+{"ts": "2026-06-14T12:02:56Z", "event": "cycle_done", "cycle": 16, "title": "Work-setup resilience (BE composition)", "dps_count": 2, "tests": {"unit": 441, "c16_unit": 67, "integration_pg": 7}, "verify_exit": 0, "live_smoke_token": "live smoke: knowledge down -> POST /work 2xx -> Generate returns prose", "knowledge_restored": true, "adversary": {"blockers": 1, "majors": 0, "minors": 0, "notes": 5, "blocker_disposition": "reclassified D-C16-NULL-WORK-ROUTE -> C17 (scope boundary, FE+routing)"}, "scope_guard": "CLEAR", "post_review": "CLEAR"}
+{"ts": "2026-06-14T12:03:04Z", "event": "in_progress_update", "cycle": 16, "phase": "COMMIT", "retry": 0}
+{"ts": "2026-06-14T12:04:14Z", "event": "in_progress_archived", "cycle": 16, "archived_to": "cycle-016-state-20260614T120414.md"}
+{"ts": "2026-06-14T12:06:12Z", "event": "retro", "cycle": 16, "reflections": ["composition_work was project_id-PK-keyed end-to-end (URL+repo+all sibling tables) — a true null project_id forced a surrogate-id re-key (migration); the live-smoke (knowledge fully DOWN) exposed that resolve_work fails at list_projects FIRST and 502s before the create_project resilience path — mock-unit tests had not caught it because they set marked=[] and knowledge.projects=[] (none), never simulating the DOWN→unavailable branch", "a lazy null-project Work is status=active so resolve_by_book returned it as `found` → the backfill never fired on retry; fixed by excluding pending rows from resolution — a producer-done-predicate-style reconcile (the retry must re-reach create_project to backfill)", "the headline `keeps drafting + Generate` is only true post-backfill: project_id is the URL key for the whole composition surface + outline_node.project_id is NOT NULL, so a still-pending Work is not route-addressable — that end-to-end seam is C17 (FE+routing), correctly OUT of a BE-only cycle; deferred not gold-plated"]}
+{"ts": "2026-06-14T12:07:58Z", "event": "coordinator_next_cycle_emitted", "cycle": 17}
+{"ts":"2026-06-14T12:10:15Z","event":"startup_drift_check_inconclusive","cycle":17,"cd":"","rw":""}
+{"ts":"2026-06-14T12:10:15Z","event":"startup_verifier_complete","cycle":17,"steps":6}
+{"ts": "2026-06-14T12:10:24Z", "event": "in_progress_init", "cycle": 17, "title": "Writer flow polish (FE)"}
+{"ts": "2026-06-14T12:12:18Z", "event": "in_progress_update", "cycle": 17, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-06-14T12:13:17Z", "event": "in_progress_update", "cycle": 17, "phase": "PLAN", "retry": 0}
+{"ts": "2026-06-14T12:13:41Z", "event": "in_progress_update", "cycle": 17, "phase": "BUILD", "retry": 0}
+{"ts":"2026-06-14T12:19:15Z","event":"secret_scan_skipped","cycle":17,"dps":DPS1,"reason":"gitleaks_not_installed"}
+{"ts":"2026-06-14T12:24:52Z","event":"secret_scan_skipped","cycle":17,"dps":DPS2,"reason":"gitleaks_not_installed"}
+{"ts": "2026-06-14T12:25:04Z", "event": "in_progress_update", "cycle": 17, "phase": "VERIFY", "retry": 0}
+{"ts": "2026-06-14T12:46:02Z", "event": "in_progress_update", "cycle": 17, "phase": "QC", "retry": 0}
+{"ts": "2026-06-14T12:46:28Z", "event": "in_progress_update", "cycle": 17, "phase": "SESSION", "retry": 0}
+{"ts":"2026-06-14T12:47:00Z","event":"cycle_done","cycle":17,"title":"Writer flow polish (FE)","milestone":"M3","dps":2,"files":11,"tests":{"vitest":27,"hook_unit":10},"verify_exit":0,"adversary":{"blockers":0,"majors":1,"minors":3,"notes":2},"adversary_resolution":"MAJOR (double-scene race) FIXED via shared one-shot guard across both scene-creation origins + chapter-keyed reset; 3 minors fixed/addressed by the same unification; 1 note (model-strategy hint parity) addressed, 1 note ack-intentional","scope_guard":"CLEAR","post_review":"CLEAR","screenshots":["docs/raid/evidence/cycle-17/m3-guided-first-run.png","docs/raid/evidence/cycle-17/m3-guided-generate-streamed.png","docs/raid/evidence/cycle-17/m3-continue-from-cursor.png"],"live_smoke":"M3 Playwright on a FRESH book (C17 Writer Flow M3): Co-write→Set up co-writer auto-created Opening scene + Ready-to-draft + guided cue; picked Qwen2.5-7B + Generate streamed full prose with EMPTY grounding; placed caret mid-text + first-class 'Continue from cursor' streamed a caret-anchored continuation. ≤2-click guided primed for the single-model case; with 5 models registered the sole-auto-pick correctly does NOT fire (misfire guard)","notable":"D-C16-NULL-WORK-ROUTE left tracked (FE guards null project_id, BE id-route out of scope). Pre-existing unrelated working-tree build-break in TranslateModal.tsx (duplicate pageCount) NOT staged — flagged for next session."}
+{"ts": "2026-06-14T12:47:52Z", "event": "in_progress_update", "cycle": 17, "phase": "COMMIT", "retry": 0}
+{"ts": "2026-06-14T12:50:38Z", "event": "in_progress_archived", "cycle": 17, "archived_to": "cycle-017-state-20260614T125038.md"}
+{"ts":"2026-06-14T12:51:00Z","event":"retro","cycle":17,"reflection":"M3 was mostly RE-SURFACING existing capability, not new plumbing: caret-anchored continue already existed (useInlineGhost streams operation:'continue' with all cursor edge-cases + stale-pos guarded) — the WG-5 gap was purely that the ✦ button was hidden behind an AI-mode toggle defaulting to Classic, so a writer never saw it. Un-gating it (always-visible, prominent) WAS the cycle. Two MVC lessons: (1) auto-pick-the-sole-model is best as a PURE DERIVED value (models.length===1 ? id : undefined) — zero effects, and the 'exactly one' guard is the whole correctness story (0=nothing, ≥2=ambiguous→never guess); the live account had 5 models so auto-pick correctly did NOT fire, proving the guard. (2) The adversary's MAJOR was a genuine two-origin race: a guided side-effect with TWO explicit entry points (setup-success chain + a cue button live during the refetch window) needs a SHARED one-shot guard — markFired() lets the path that can't use the bound mutation (setup onSuccess, Work not yet resolved) still claim the guard so the other path no-ops; chapter-keyed reset keeps it per-chapter. Also: a sole-model/first-scene FALLBACK had to be added in the editor (composeDefaultModel ?? soleChatModel; effectiveSceneId ?? first-outline-scene) so 'Continue from cursor' works immediately after guided setup without the writer touching the Compose panel's selectors — the inline layer reads work-settings, not the panel's session state. Pre-existing TranslateModal build-break (dup pageCount from an in-flight usePagedList refactor) surfaced via Vite overlay during smoke — correctly left untouched/unstaged (out of FE writer scope), flagged for next session."}
+{"ts": "2026-06-14T12:54:19Z", "event": "coordinator_next_cycle_emitted", "cycle": 18}
+{"ts":"2026-06-14T12:55:36Z","event":"startup_drift_check_inconclusive","cycle":18,"cd":"","rw":""}
+{"ts":"2026-06-14T12:55:36Z","event":"startup_verifier_complete","cycle":18,"steps":6}
+{"ts": "2026-06-14T12:55:48Z", "event": "in_progress_init", "cycle": 18, "title": "Graph subgraph endpoint (BE knowledge)"}
+{"ts": "2026-06-14T12:58:09Z", "event": "in_progress_update", "cycle": 18, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-06-14T12:58:39Z", "event": "in_progress_update", "cycle": 18, "phase": "BUILD", "retry": 0}
+{"ts":"2026-06-14T13:01:55Z","event":"secret_scan_skipped","cycle":18,"dps":DPS1,"reason":"gitleaks_not_installed"}
+{"ts":"2026-06-14T13:01:55Z","event":"secret_scan_skipped","cycle":18,"dps":DPS2,"reason":"gitleaks_not_installed"}
+{"ts": "2026-06-14T13:02:35Z", "event": "in_progress_update", "cycle": 18, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-06-14T13:03:12Z","event":"verify_cycle_18_passed","cycle":18}
+{"ts": "2026-06-14T13:05:51Z", "event": "in_progress_update", "cycle": 18, "phase": "REVIEW2", "retry": 0}
+{"ts":"2026-06-14T13:15:00Z","event":"verify_cycle_18_passed","cycle":18}
+{"ts": "2026-06-14T13:16:38Z", "event": "in_progress_update", "cycle": 18, "phase": "QC", "retry": 0}
+{"ts": "2026-06-14T13:16:48Z", "event": "in_progress_update", "cycle": 18, "phase": "POST_REVIEW", "retry": 0}
+{"ts": "2026-06-14T13:16:59Z", "event": "in_progress_update", "cycle": 18, "phase": "SESSION", "retry": 0}
+{"ts":"2026-06-14T00:00:00Z","event":"raid_cycle_done","cycle":18,"title":"Graph subgraph endpoint (BE knowledge)","layer":"BE knowledge-service","dps_count":2,"files_count":7,"verify_exit":0,"tests":{"unit_new":23,"integration_live_neo4j":4,"total_green":97},"live_smoke":"query built project subgraph → capped nodes+edges (proj 019eb683: cap50=50n/145e, full=55n nocap, ego hops2=38n, foreign=0n)","adversary":{"blockers":0,"majors":3,"minors":2,"notes":0,"majors_detail":["ego hub-OOM (*1..N → bounded-frontier BFS)","project_id edge belt on both endpoints","ego active-edge consistency (no orphan nodes)"],"all_fixed":true},"scope_guard":"CLEAR","locked_qids":["G5","partition(user_id,project_id)","read-only-MVP"]}
+{"ts": "2026-06-14T13:18:16Z", "event": "in_progress_update", "cycle": 18, "phase": "COMMIT", "retry": 0}
+{"ts": "2026-06-14T13:20:21Z", "event": "in_progress_archived", "cycle": 18, "archived_to": "cycle-018-state.md"}
+{"ts":"2026-06-14T00:00:00Z","event":"retro","cycle":18,"reflection":"The 1-hop GET /entities/{id} pattern (find_relations_for_entity) generalizes cleanly to a project-wide subgraph, but the ego (n-hop) generalization is the trap: the obvious Cypher (c)-[:RELATES_TO*1..3]-(m) enumerates ~degree^hops PATHS before any LIMIT/DISTINCT can apply, so a hub node OOMs Neo4j — the exact failure the node cap is supposed to prevent. The adversary caught this on a sparse-graph live-smoke that never exercised it. Fix: do NOT enumerate paths for a node-SET query. Drive a bounded-frontier BFS from Python (resolve center, then per-hop: UNWIND frontier -> MATCH 1 hop -> cap the DISTINCT neighbour set with LIMIT before the next hop). Work becomes O(hops*cap*avg_degree), hub-independent. Codebase rule reinforced: query code stays APOC-free (apoc only for vector indexes) — so apoc.path.subgraphNodes was off the table; the Python-driven multi-query BFS is the APOC-free equivalent. Second lesson: a string-presence verify-assert ('RELATES_TO*1..3' in cypher) gives false confidence — the same assert PASSED on the OOM-prone version. Real-Neo4j integration tests (the harness already exists, skips on no TEST_NEO4J_URI) are the only thing that executes the Cypher semantics; added 4 and they caught the hop-bounding + inactive-edge-orphan behavior that mocks can't. Third: when an edge stage confines by seed_ids (already partition-scoped), it FEELS safe, but re-binding project_id on both endpoints is the cheap belt that the 1-hop sibling already had — match the existing pattern, don't drop the belt."}
+{"ts": "2026-06-14T13:21:10Z", "event": "coordinator_next_cycle_emitted", "cycle": 19}
+{"ts":"2026-06-14T13:22:28Z","event":"startup_drift_check_inconclusive","cycle":19,"cd":"","rw":""}
+{"ts":"2026-06-14T13:22:28Z","event":"startup_verifier_complete","cycle":19,"steps":6}
+{"ts": "2026-06-14T13:22:43Z", "event": "in_progress_init", "cycle": 19, "title": "Graph canvas (FE)"}
+{"ts": "2026-06-14T13:26:09Z", "event": "in_progress_update", "cycle": 19, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-06-14T13:26:58Z", "event": "in_progress_update", "cycle": 19, "phase": "PLAN", "retry": 0}
+{"ts": "2026-06-14T13:27:11Z", "event": "in_progress_update", "cycle": 19, "phase": "BUILD", "retry": 0}
+{"ts":"2026-06-14T13:32:39Z","event":"secret_scan_skipped","cycle":19,"dps":DPS1,"reason":"gitleaks_not_installed"}
+{"ts":"2026-06-14T13:32:42Z","event":"secret_scan_skipped","cycle":19,"dps":DPS2,"reason":"gitleaks_not_installed"}
+{"ts": "2026-06-14T13:36:49Z", "event": "in_progress_update", "cycle": 19, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-06-14T13:37:35Z","event":"verify_cycle_19_passed","cycle":19}
+{"ts": "2026-06-14T13:42:49Z", "event": "in_progress_update", "cycle": 19, "phase": "REVIEW2", "retry": 0}
+{"ts":"2026-06-14T13:49:56Z","event":"verify_cycle_19_passed","cycle":19}
+{"ts": "2026-06-14T13:50:10Z", "event": "in_progress_update", "cycle": 19, "phase": "QC", "retry": 0}
+{"ts": "2026-06-14T13:50:23Z", "event": "in_progress_update", "cycle": 19, "phase": "POST_REVIEW", "retry": 0}
+{"ts": "2026-06-14T13:50:33Z", "event": "in_progress_update", "cycle": 19, "phase": "SESSION", "retry": 0}
+{"ts":"2026-06-14T13:51:04Z","event":"cycle_19_complete","cycle":19,"milestone":"M4","dps_count":2,"files_count":12,"adversary":{"blockers":0,"majors":1,"minors":2,"notes":1},"scope_guard":"CLEAR","post_review":"CLEAR","verify_exit":0,"tests":"29 vitest green","live_smoke":"55 nodes/146 relations rendered + click-detail + expand-hop center re-query + zoom 1.0->1.36"}
+{"ts": "2026-06-14T13:51:11Z", "event": "in_progress_update", "cycle": 19, "phase": "COMMIT", "retry": 0}
+{"ts": "2026-06-14T13:52:15Z", "event": "in_progress_archived", "cycle": 19, "archived_to": "cycle-019-state.md"}
+{"ts": "2026-06-14T13:52:50Z", "event": "coordinator_next_cycle_emitted", "cycle": 20}
+{"ts":"2026-06-14T13:54:11Z","event":"startup_drift_check_inconclusive","cycle":20,"cd":"","rw":""}
+{"ts":"2026-06-14T13:54:11Z","event":"startup_verifier_complete","cycle":20,"steps":6}
+{"ts": "2026-06-14T13:54:21Z", "event": "in_progress_init", "cycle": 20, "title": "World container \u2014 model + API (book-service)"}
+{"ts": "2026-06-14T13:56:11Z", "event": "in_progress_update", "cycle": 20, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-06-14T13:56:41Z", "event": "in_progress_update", "cycle": 20, "phase": "BUILD", "retry": 0}
+{"ts":"2026-06-14T13:58:00Z","event":"secret_scan_skipped","cycle":20,"dps":DPS1,"reason":"gitleaks_not_installed"}
+{"ts":"2026-06-14T14:03:46Z","event":"secret_scan_skipped","cycle":20,"dps":DPS2,"reason":"gitleaks_not_installed"}
+{"ts":"2026-06-14T14:03:49Z","event":"secret_scan_skipped","cycle":20,"dps":DPS3,"reason":"gitleaks_not_installed"}
+{"ts": "2026-06-14T14:03:59Z", "event": "in_progress_update", "cycle": 20, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-06-14T14:04:34Z","event":"verify_cycle_20_passed","cycle":20}
+{"ts": "2026-06-14T14:09:43Z", "event": "in_progress_update", "cycle": 20, "phase": "REVIEW2", "retry": 0}
+{"ts":"2026-06-14T14:14:10Z","event":"verify_cycle_20_passed","cycle":20}
+{"ts": "2026-06-14T14:15:47Z", "event": "in_progress_update", "cycle": 20, "phase": "QC", "retry": 0}
+{"ts": "2026-06-14T14:15:57Z", "event": "in_progress_update", "cycle": 20, "phase": "POST_REVIEW", "retry": 0}
+{"ts": "2026-06-14T14:16:06Z", "event": "in_progress_update", "cycle": 20, "phase": "SESSION", "retry": 0}
+{"ts": "2026-06-14T14:17:44Z", "event": "cycle_complete", "cycle": 20, "result": "DONE", "dps": 3, "adversary": {"blockers": 0, "majors": 1, "minors": 3, "notes": 3}, "scope_guard": "CLEAR", "verify_exit": 0, "migration_roundtrip": true, "live_smoke": "create world -> bible chapter sort_order 0 -> attach book -> world lists books; null-world books unaffected"}
+{"ts": "2026-06-14T14:17:44Z", "event": "in_progress_update", "cycle": 20, "phase": "COMMIT", "retry": 0}
+{"ts": "2026-06-14T14:18:32Z", "event": "in_progress_archived", "cycle": 20, "archived_to": "cycle-020-state.md"}
+{"ts": "2026-06-14T14:18:55Z", "event": "retro", "cycle": 20, "commit": "a934f458", "lesson": "hidden-anchor pattern: hiding the lore CHAPTER (is_bible) is insufficient — the auto-created CONTAINER book also needs an is_bible flag + exclusion from every book list/count, else it leaks as a visible junk book. Hide at BOTH levels."}
+{"ts": "2026-06-14T14:20:34Z", "event": "coordinator_next_cycle_emitted", "cycle": 21}
+{"ts":"2026-06-14T14:22:08Z","event":"startup_drift_check_inconclusive","cycle":21,"cd":"","rw":""}
+{"ts":"2026-06-14T14:22:08Z","event":"startup_verifier_complete","cycle":21,"steps":6}
+{"ts": "2026-06-14T14:22:27Z", "event": "in_progress_init", "cycle": 21, "title": "World container \u2014 FE"}
+{"ts": "2026-06-14T14:25:43Z", "event": "in_progress_update", "cycle": 21, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-06-14T14:30:00", "task": "creation-unblock", "cycle": 21, "phase": "design", "agent": "cycle-runner", "action": "escalated", "type": "design_gap", "evidence": "C21 (World container — FE) ESCALATED at DESIGN. C20 provisions a hidden world-bible book + sort_order-0 bible chapter but exposes NO FE-reachable handle: worldResponse (create/get/list) returns only book_count; the bible book has is_bible=true and is excluded from BOTH GET /v1/books (listBooksByLifecycle: AND b.is_bible=false) AND GET /v1/worlds/{id}/books (listWorldBooks: AND b.is_bible=false). C21's core acceptance (author lore against the world's bible chapter; glossary chapter_entity_links.chapter_id NOT NULL) needs the bible chapter_id which the FE cannot obtain. Resolving requires a forbidden book-service handler edit (brief: missing endpoint = finding, do NOT add BE). Gateway passthrough only forwards, cannot invent the field. No cycle-21 code written; clean tree. Suggested fix: one-line additive bible_book_id+bible_chapter_id on worldResponse (data already in the create txn, no schema/migration), then re-invoke /raid 21. ESCALATIONS.md + IN_PROGRESS/cycle-021-state.md updated."}
+{"ts":"2026-06-14T14:55:16Z","event":"startup_resume_detected","cycle":21,"state_file":"/d/Works/source/lore-weave-mvp/docs/raid/IN_PROGRESS/cycle-021-state.md"}
+{"ts":"2026-06-14T14:55:16Z","event":"startup_drift_check_inconclusive","cycle":21,"cd":"","rw":""}
+{"ts":"2026-06-14T14:55:16Z","event":"startup_verifier_complete","cycle":21,"steps":6}
+{"ts": "2026-06-14T14:55:28Z", "event": "in_progress_init", "cycle": 21, "title": "World container \u2014 FE"}
+{"ts": "2026-06-14T15:00:57Z", "event": "in_progress_update", "cycle": 21, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-06-14T15:01:57Z", "event": "in_progress_update", "cycle": 21, "phase": "PLAN", "retry": 0}
+{"ts": "2026-06-14T15:02:41Z", "event": "in_progress_update", "cycle": 21, "phase": "BUILD", "retry": 0}
+{"ts":"2026-06-14T15:13:59Z","event":"secret_scan_skipped","cycle":21,"dps":dps1,"reason":"gitleaks_not_installed"}
+{"ts": "2026-06-14T15:14:37Z", "event": "in_progress_update", "cycle": 21, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-06-14T15:14:47Z","event":"verify_cycle_21_failed","cycle":21}
+{"ts":"2026-06-14T15:15:23Z","event":"verify_cycle_21_passed","cycle":21}
+{"ts": "2026-06-14T15:20:21Z", "event": "in_progress_update", "cycle": 21, "phase": "REVIEW2", "retry": 0}
+{"ts": "2026-06-14T15:23:49Z", "event": "in_progress_update", "cycle": 21, "phase": "SESSION", "retry": 0}
+{"ts": "2026-06-14T15:24:30Z", "event": "cycle_done", "cycle": 21, "milestone": "M5", "files": 22, "dps": 2, "tests": {"vitest": 9}, "adversary": {"blockers": 0, "majors": 0, "minors": 1, "notes": 2}, "scope_guard": "CLEAR", "verify_exit": 0, "playwright": true, "gateway_passthrough": true, "step_a_commit": "5fe9eb33", "reflection": "Step A (book-service read field) was the real unblock: C20 provisioned the bible book+chapter but exposed no handle, so the cold-start C21 had escalated as design_gap. The fix was purely additive (two correlated subselects on get/list, create already had the ids). The FE lore-anchoring path is NOT the knowledge createEntity (project-scoped, no chapter) but the GLOSSARY create-entity-then-chapter-link pair — only the chapter-link writes the NOT-NULL chapter_entity_links.chapter_id. Confirmed book-service /internal chapters endpoint does NOT filter is_bible, so the glossary link-validation finds the bible chapter. Graph reuse was zero-cost (ProjectGraphView already takes projectId+bookId, read-only)."}
+{"ts": "2026-06-14T15:24:55Z", "event": "in_progress_update", "cycle": 21, "phase": "COMMIT", "retry": 0}
+{"ts": "2026-06-14T15:26:00Z", "event": "in_progress_archived", "cycle": 21, "archived_to": "cycle-021-state.md"}
+{"ts": "2026-06-14T15:27:11Z", "event": "coordinator_next_cycle_emitted", "cycle": 22}
+{"ts":"2026-06-14T15:28:32Z","event":"startup_drift_check_inconclusive","cycle":22,"cd":"","rw":""}
+{"ts":"2026-06-14T15:28:32Z","event":"startup_verifier_complete","cycle":22,"steps":6}
+{"ts": "2026-06-14T15:28:52Z", "event": "in_progress_init", "cycle": 22, "title": "Intent-branching onboarding (FE)"}
+{"ts": "2026-06-14T15:35:08Z", "event": "in_progress_update", "cycle": 22, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-06-14T15:35:58Z", "event": "in_progress_update", "cycle": 22, "phase": "BUILD", "retry": 0}
+{"ts":"2026-06-14T15:41:39Z","event":"secret_scan_skipped","cycle":22,"dps":DPS1,"reason":"gitleaks_not_installed"}
+{"ts":"2026-06-14T15:42:15Z","event":"secret_scan_skipped","cycle":22,"dps":DPS2,"reason":"gitleaks_not_installed"}
+{"ts": "2026-06-14T15:43:44Z", "event": "in_progress_update", "cycle": 22, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-06-14T15:44:06Z","event":"verify_cycle_22_failed","cycle":22}
+{"ts":"2026-06-14T15:44:32Z","event":"verify_cycle_22_failed","cycle":22}
+{"ts":"2026-06-14T15:44:49Z","event":"verify_cycle_22_failed","cycle":22}
+{"ts":"2026-06-14T15:45:13Z","event":"verify_cycle_22_passed","cycle":22}
+{"ts": "2026-06-14T15:49:29Z", "event": "in_progress_update", "cycle": 22, "phase": "REVIEW2", "retry": 0}
+{"ts":"2026-06-14T15:57:31Z","event":"verify_cycle_22_passed","cycle":22}
+{"ts": "2026-06-14T15:58:39Z", "event": "in_progress_update", "cycle": 22, "phase": "QC", "retry": 0}
+{"ts": "2026-06-14T15:59:01Z", "event": "in_progress_update", "cycle": 22, "phase": "POST_REVIEW", "retry": 0}
+{"ts": "2026-06-14T15:59:07Z", "event": "in_progress_update", "cycle": 22, "phase": "SESSION", "retry": 0}
+{"ts": "2026-06-14T16:00:00Z", "event": "cycle_done", "cycle": 22, "title": "Intent-branching onboarding (FE)", "files": 29, "dps": 2, "tests": {"vitest": 30}, "adversary": {"blockers": 0, "majors": 2, "minors": 2, "notes": 4}, "scope_guard": "CLEAR", "post_review": "CLEAR", "verify_exit": 0, "playwright": true, "playwright_token": "playwright smoke: each of 4 intents (Write/Build-a-world/Translate/Explore) lands in the correct surface", "reflection": "BL-15 four-intent fork. The non-obvious win was MAJOR#1: route-only Translate to /books?intent=translate is a no-op (BooksPage matches on path, drops the query) so Write and Translate landed identically on a generic shell — the 'right container, never a generic shell' lock was silently violated despite the route looking distinct. Fix stayed in-scope (BooksPage consumes the param → a translate hint pointing at the per-book Translation tab; NO new translator flow). MAJOR#2: the seen-flag used the shared fire-and-forget syncPrefsToServer whose .catch swallows failures → the multi-device guarantee could silently break; added an awaited savePrefToServer and navigate in .finally (best-effort: still navigates on write-fail, worst case the fork re-shows once). Gating entry point is HomePage (logged-in → /onboarding gate, which self-resolves to /books once seen) — re-used the existing redirect seam rather than adding a wrapper. Re-entry via forceShow on the same OnboardingPage + a sidebar door avoids forcing the fork every session."}
+{"ts": "2026-06-14T16:01:24Z", "event": "in_progress_update", "cycle": 22, "phase": "COMMIT", "retry": 0}
+{"ts": "2026-06-14T16:03:48Z", "event": "in_progress_archived", "cycle": 22, "archived_to": "cycle-022-state.md"}
+{"ts": "2026-06-14T16:01:30Z", "event": "retro", "cycle": 22, "lesson": "A 'route-only' intent that appends a query param (/books?intent=translate) is a silent no-op if the target page matches on path and never reads the query — the route looks distinct but lands on the same generic shell, violating a 'right container, never generic' lock. Always verify the destination CONSUMES the discriminator (or assert it in a test), don't trust the route string. Pairs with: server-synced flags written via a fire-and-forget helper (.catch swallows) don't actually guarantee multi-device persistence — use an awaited write when the next action (navigation) depends on durability."}
+{"ts":"2026-06-14T16:04:28Z","event":"verify_cycle_22_passed","cycle":22}
+{"ts": "2026-06-14T16:05:04Z", "event": "coordinator_next_cycle_emitted", "cycle": 23}
+{"ts":"2026-06-14T16:08:30Z","event":"startup_drift_check_inconclusive","cycle":23,"cd":"","rw":""}
+{"ts":"2026-06-14T16:08:30Z","event":"startup_verifier_complete","cycle":23,"steps":6}
+{"ts": "2026-06-14T16:08:44Z", "event": "in_progress_init", "cycle": 23, "title": "Derivative schema + API (composition)"}
+{"ts": "2026-06-14T16:11:01Z", "event": "in_progress_update", "cycle": 23, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-06-14T16:11:31Z", "event": "in_progress_update", "cycle": 23, "phase": "PLAN", "retry": 0}
+{"ts": "2026-06-14T16:11:47Z", "event": "in_progress_update", "cycle": 23, "phase": "BUILD", "retry": 0}
+{"ts":"2026-06-14T16:18:27Z","event":"secret_scan_skipped","cycle":23,"dps":DPS1,"reason":"gitleaks_not_installed"}
+{"ts":"2026-06-14T16:18:27Z","event":"secret_scan_skipped","cycle":23,"dps":DPS2,"reason":"gitleaks_not_installed"}
+{"ts": "2026-06-14T16:19:49Z", "event": "in_progress_update", "cycle": 23, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-06-14T16:20:43Z","event":"verify_cycle_23_passed","cycle":23}
+{"ts": "2026-06-14T16:23:17Z", "event": "in_progress_update", "cycle": 23, "phase": "REVIEW2", "retry": 0}
+{"ts": "2026-06-14T16:25:40Z", "event": "in_progress_update", "cycle": 23, "phase": "QC", "retry": 0}
+{"ts": "2026-06-14T16:25:51Z", "event": "in_progress_update", "cycle": 23, "phase": "POST_REVIEW", "retry": 0}
+{"ts": "2026-06-14T16:26:02Z", "event": "in_progress_update", "cycle": 23, "phase": "SESSION", "retry": 0}
+{"ts":"2026-06-14T16:27:00Z","event":"cycle_done","cycle":23,"title":"Derivative schema + API (composition)","layer":"BE","dps_count":2,"adversary":{"blockers":0,"majors":0,"minors":1,"notes":3},"scope_guard":"CLEAR","post_review":"CLEAR","verify_exit_code":0,"migration_roundtrip":true,"guard_enforced":true,"c16_greenfield_intact":true,"tests":{"unit":447,"integration":66,"new_c23":11},"evidence_token":"migration round-trip clean + null project_id rejected","notable":"Conditional CHECK chk_derivative_project_required reconciles C23 GUARD with C16 nullable project_id; derivative gets fresh project_id (G2); COW spec-only no chapter clone; live round-trip on 165 rows clean"}
+{"ts": "2026-06-14T16:26:45Z", "event": "in_progress_update", "cycle": 23, "phase": "COMMIT", "retry": 0}
+{"ts": "2026-06-14T16:28:37Z", "event": "in_progress_archived", "cycle": 23, "archived_to": "cycle-023-state.md"}
+{"ts":"2026-06-14T16:30:00Z","event":"retro","cycle":23,"lesson":"Cross-cycle schema GUARD reconciliation: when a new cycle needs a NOT-NULL invariant on a column a prior cycle deliberately made NULLABLE (C16 lazy greenfield works), use a CONDITIONAL CHECK keyed on the discriminator (source_work_id IS NULL OR project_id IS NOT NULL) — NOT a blanket SET NOT NULL. The blanket form (a) regresses the prior path and (b) fails the migration on existing null rows (163 live). Prove it both ways on the LIVE DB: derivative-null rejected AND greenfield-null still accepted (insert-and-rollback so live data stays clean). The idempotent in-DDL house migration has no down file, so add a separate *_DOWN_SQL constant (cf. C20 WorldsDownSQL) purely for the up->down->up round-trip test."}
+{"ts": "2026-06-14T16:30:40Z", "event": "coordinator_next_cycle_emitted", "cycle": 24}
+{"ts":"2026-06-14T16:32:05Z","event":"startup_drift_check_inconclusive","cycle":24,"cd":"","rw":""}
+{"ts":"2026-06-14T16:32:05Z","event":"startup_verifier_complete","cycle":24,"steps":6}
+{"ts": "2026-06-14T16:32:19Z", "event": "in_progress_init", "cycle": 24, "title": "Divergence wizard + derivative studio (FE)"}
+{"ts": "2026-06-14T16:38:06Z", "event": "in_progress_update", "cycle": 24, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-06-14T16:39:38Z", "event": "in_progress_update", "cycle": 24, "phase": "REVIEW1", "retry": 0}
+{"ts": "2026-06-14T16:39:45Z", "event": "in_progress_update", "cycle": 24, "phase": "PLAN", "retry": 0}
+{"ts": "2026-06-14T16:40:45Z", "event": "in_progress_update", "cycle": 24, "phase": "BUILD", "retry": 0}
+{"ts":"2026-06-14T16:54:03Z","event":"secret_scan_skipped","cycle":24,"dps":DPS1,"reason":"gitleaks_not_installed"}
+{"ts":"2026-06-14T16:54:03Z","event":"secret_scan_skipped","cycle":24,"dps":DPS2,"reason":"gitleaks_not_installed"}
+{"ts": "2026-06-14T16:54:10Z", "event": "in_progress_update", "cycle": 24, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-06-14T16:59:49Z","event":"verify_cycle_24_failed","cycle":24}
+{"ts":"2026-06-14T17:00:10Z","event":"verify_cycle_24_failed","cycle":24}
+{"ts":"2026-06-14T17:00:32Z","event":"verify_cycle_24_failed","cycle":24}
+{"ts":"2026-06-14T17:00:55Z","event":"verify_cycle_24_passed","cycle":24}
+{"ts": "2026-06-14T17:12:04Z", "event": "in_progress_update", "cycle": 24, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-06-14T17:12:16Z","event":"cycle_escalated","cycle":24,"type":"design_gap","phase":"VERIFY","summary":"C24 FE complete+green but genderbend acceptance smoke blocked by C23 BE bug: knowledge create_or_get dedupes book project per (user,book) -> derive reuses source project_id -> uq_composition_work_project 500. Fix is upstream C23/knowledge; C24 forbidden to edit C23."}
+{"ts":"2026-06-14T17:31:46Z","event":"verify_cycle_24_passed","cycle":24}
+{"ts": "2026-06-14T17:32:43Z", "event": "in_progress_update", "cycle": 24, "phase": "VERIFY", "retry": 0}
+{"ts": "2026-06-14T17:38:14Z", "event": "in_progress_update", "cycle": 24, "phase": "REVIEW2", "retry": 0}
+{"ts":"2026-06-14T17:41:56Z","event":"verify_cycle_24_passed","cycle":24}
+{"ts": "2026-06-14T17:43:49Z", "event": "in_progress_update", "cycle": 24, "phase": "SESSION", "retry": 0}
+{"ts":"2026-06-15T00:42:00Z","event":"cycle_done","cycle":24,"result":"DONE","step_a_commit":"f05b851d","files":18,"tests":{"vitest":19,"verify_exit":0},"playwright":"genderbend dị bản spawned + studio badges shown","adversary":{"blockers":0,"majors":0,"minors":2,"notes":3},"scope_guard":"CLEAR","note":"dị bản M1 FE on top of Step-A BE fix (force_new/is_derivative); derive 201 with fresh distinct project (G2)"}
+{"ts": "2026-06-14T17:44:57Z", "event": "in_progress_archived", "cycle": 24, "archived_to": "cycle-024-state.md"}
+{"ts":"2026-06-15T00:43:30Z","event":"retro","cycle":24,"step_a_commit":"f05b851d","commit":"b79ea0ce","reflection":"C24 FE was pre-built+green but live-smoke caught an UPSTREAM C23 cross-service dedup bug (knowledge create_or_get soft-dedupes book projects per (user,book) → derivative inherited source project_id → uq_composition_work_project 500). Mock/unit coverage hid it because the composition unit tests stubbed create_project. Fix = additive is_derivative column + force_new flag (default false ⇒ back-compat); derivative skips dedup + is excluded from it. Lesson: a 'second graph for the same book' (derivative) breaks any get-or-create that assumes 1 project per (user,book) — the dedup predicate must carve out the new flavour. Live-smoke on a book that ALREADY has a Work is the only thing that surfaces it (greenfield smoke would pass)."}
+{"ts": "2026-06-14T17:46:26Z", "event": "coordinator_next_cycle_emitted", "cycle": 25}
+{"ts":"2026-06-14T17:47:53Z","event":"startup_drift_check_inconclusive","cycle":25,"cd":"","rw":""}
+{"ts":"2026-06-14T17:47:53Z","event":"startup_verifier_complete","cycle":25,"steps":6}
+{"ts": "2026-06-14T17:48:05Z", "event": "in_progress_init", "cycle": 25, "title": "Packer override-merge (composition)"}
+{"ts": "2026-06-14T17:50:04Z", "event": "in_progress_update", "cycle": 25, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-06-14T17:51:21Z", "event": "in_progress_update", "cycle": 25, "phase": "REVIEW1", "retry": 0}
+{"ts": "2026-06-14T17:51:32Z", "event": "in_progress_update", "cycle": 25, "phase": "PLAN", "retry": 0}
+{"ts": "2026-06-14T17:52:50Z", "event": "in_progress_update", "cycle": 25, "phase": "BUILD", "retry": 0}
+{"ts":"2026-06-14T18:04:43Z","event":"secret_scan_skipped","cycle":25,"dps":DPS1,"reason":"gitleaks_not_installed"}
+{"ts":"2026-06-14T18:04:49Z","event":"secret_scan_skipped","cycle":25,"dps":DPS2,"reason":"gitleaks_not_installed"}
+{"ts": "2026-06-14T18:04:49Z", "event": "in_progress_update", "cycle": 25, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-06-14T18:05:36Z","event":"verify_cycle_25_passed","cycle":25}
+{"ts":"2026-06-14T18:21:04Z","event":"verify_cycle_25_passed","cycle":25}
+{"ts": "2026-06-14T18:22:33Z", "event": "in_progress_update", "cycle": 25, "phase": "REVIEW2", "retry": 0}
+{"ts":"2026-06-14T18:26:58Z","event":"verify_cycle_25_passed","cycle":25}
+{"ts": "2026-06-14T18:27:43Z", "event": "in_progress_update", "cycle": 25, "phase": "QC", "retry": 0}
+{"ts": "2026-06-14T18:27:55Z", "event": "in_progress_update", "cycle": 25, "phase": "POST_REVIEW", "retry": 0}
+{"ts": "2026-06-14T18:28:05Z", "event": "in_progress_update", "cycle": 25, "phase": "SESSION", "retry": 0}
+{"ts": "2026-06-14T18:28:48Z", "event": "cycle_complete", "cycle": 25, "title": "Packer override-merge (composition)", "dps": 2, "tests": "467 unit + 1 real-PG integration", "adversary": {"blockers": 0, "majors": 0, "minors": 3, "notes": 2}, "scope_guard": "CLEAR", "live_smoke": "derivative generate -> overridden entity stays overridden across chapters", "verify_exit": 0}
+{"ts": "2026-06-14T18:28:54Z", "event": "in_progress_update", "cycle": 25, "phase": "COMMIT", "retry": 0}
+{"ts": "2026-06-14T18:29:53Z", "event": "in_progress_archived", "cycle": 25, "archived_to": "cycle-025-state.md"}
+{"ts": "2026-06-14T18:30:10Z", "event": "retro", "cycle": 25, "commit": "d864cfc5ff1049d7de27c6baca7ceeb8cdf9c0f3", "lesson": "A derivative Work surrogate id is NOT its project_id (live data id=019ec5f4 != project=019eb683) — resolve the base project via get_by_id, never reuse source_work_id as a project_id. Glossary present lens is BOOK-scoped not project-scoped, so base+delta return identical bios and the override must apply AFTER the base/delta merge (the derivative truth wins over both). Override target_entity_id may be in the KNOWLEDGE-node-id space while present keys on the GLOSSARY anchor — reconcile cross-space. The mock unit suite passed before all three were caught by the cross-service live-smoke (the recurring lesson: rebuild + real-stack smoke catches contract/id-space bugs mocks hide)."}
+{"ts": "2026-06-14T18:31:51Z", "event": "coordinator_next_cycle_emitted", "cycle": 26}
+{"ts":"2026-06-14T18:33:19Z","event":"startup_drift_check_inconclusive","cycle":26,"cd":"","rw":""}
+{"ts":"2026-06-14T18:33:19Z","event":"startup_verifier_complete","cycle":26,"steps":6}
+{"ts": "2026-06-14T18:33:29Z", "event": "in_progress_init", "cycle": 26, "title": "Critic override enforcement (composition)"}
+{"ts": "2026-06-14T18:35:19Z", "event": "in_progress_update", "cycle": 26, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-06-14T18:36:09Z", "event": "in_progress_update", "cycle": 26, "phase": "REVIEW1", "retry": 0}
+{"ts": "2026-06-14T18:36:25Z", "event": "in_progress_update", "cycle": 26, "phase": "PLAN", "retry": 0}
+{"ts": "2026-06-14T18:37:25Z", "event": "in_progress_update", "cycle": 26, "phase": "BUILD", "retry": 0}
+{"ts":"2026-06-14T18:42:18Z","event":"secret_scan_skipped","cycle":26,"dps":1,"reason":"gitleaks_not_installed"}
+{"ts": "2026-06-14T18:43:17Z", "event": "in_progress_update", "cycle": 26, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-06-14T18:43:23Z","event":"verify_cycle_26_passed","cycle":26}
+{"ts": "2026-06-14T18:44:00Z", "event": "in_progress_update", "cycle": 26, "phase": "REVIEW2", "retry": 0}
+{"ts":"2026-06-14T18:47:28Z","event":"verify_cycle_26_passed","cycle":26}
+{"ts": "2026-06-14T18:47:41Z", "event": "in_progress_update", "cycle": 26, "phase": "QC", "retry": 0}
+{"ts": "2026-06-14T18:48:01Z", "event": "in_progress_update", "cycle": 26, "phase": "POST_REVIEW", "retry": 0}
+{"ts": "2026-06-14T18:48:09Z", "event": "in_progress_update", "cycle": 26, "phase": "SESSION", "retry": 0}
+{"ts":"2026-06-15T00:55:00Z","event":"cycle_done","cycle":26,"result":"DONE","layer":"BE","dps_count":1,"files":6,"adversary":{"blockers":0,"majors":1,"minors":3,"notes":3},"scope_guard":"CLEAR","post_review":"CLEAR","verify_exit_code":0,"wiring_test_present":true,"tests":{"critic_override":11,"engine_router":40,"critic":15,"full_unit":478},"evidence_token":"unit: derivative critic flags override slip + passes compliant scene","notable":"dị bản M3 derivative critic dimension (AI-free deterministic): activates only for derivatives, REUSES C25 build_derivative_context+_resolve_override_anchors (no re-merge), flags override slip+delta-inconsistency, WIRED at /critique with unit-spy + router end-to-end wiring proof. MAJOR fixed: bio-field precedence inverted C25 (description vs summary-wins) -> two-sources-of-truth drift, unified to mirror apply_entity_overrides"}
+{"ts": "2026-06-14T18:49:02Z", "event": "in_progress_update", "cycle": 26, "phase": "COMMIT", "retry": 0}
+{"ts": "2026-06-14T18:49:51Z", "event": "in_progress_archived", "cycle": 26, "archived_to": "cycle-026-state.md"}
+{"ts":"2026-06-15T00:58:00Z","event":"cycle_retro","cycle":26,"lesson":"A critic that ENFORCES another component's transform (C25 override-merge) must reuse that component's EXACT precedence, not just its inputs — the adversary M1 caught the critic computing the override bio with description-wins while C25's apply_entity_overrides is summary-wins. 'Reuse the resolution' isn't enough; reuse (or factor out) the value-derivation too, else the enforcer flags against a value the producer never emitted. Extracted _override_bio mirroring merge.apply_entity_overrides. Also: the wiring test must drive the REAL handler end-to-end (router test), not just a spy on the orchestrator — both kept here (nil-tolerant-decorator bug class)."}
+{"ts": "2026-06-14T18:50:43Z", "event": "coordinator_next_cycle_emitted", "cycle": 27}
+{"ts":"2026-06-14T18:52:15Z","event":"startup_drift_check_inconclusive","cycle":27,"cd":"","rw":""}
+{"ts":"2026-06-14T18:52:15Z","event":"startup_verifier_complete","cycle":27,"steps":6}
+{"ts": "2026-06-14T18:52:23Z", "event": "in_progress_init", "cycle": 27, "title": "Flywheel on delta + what-if->derivative promotion"}
+{"ts": "2026-06-14T18:56:27Z", "event": "in_progress_update", "cycle": 27, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-06-14T18:57:23Z", "event": "in_progress_update", "cycle": 27, "phase": "PLAN", "retry": 0}
+{"ts": "2026-06-14T18:58:12Z", "event": "in_progress_update", "cycle": 27, "phase": "BUILD", "retry": 0}
+{"ts":"2026-06-14T19:04:48Z","event":"secret_scan_skipped","cycle":27,"dps":DPS1,"reason":"gitleaks_not_installed"}
+{"ts":"2026-06-14T19:11:20Z","event":"secret_scan_skipped","cycle":27,"dps":DPS2,"reason":"gitleaks_not_installed"}
+{"ts": "2026-06-14T19:11:46Z", "event": "in_progress_update", "cycle": 27, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-06-14T19:12:37Z","event":"verify_cycle_27_passed","cycle":27}
+{"ts": "2026-06-14T19:27:05Z", "event": "in_progress_update", "cycle": 27, "phase": "REVIEW2", "retry": 0}
+{"ts":"2026-06-14T19:30:59Z","event":"verify_cycle_27_passed","cycle":27}
+{"ts": "2026-06-14T19:31:15Z", "event": "in_progress_update", "cycle": 27, "phase": "QC", "retry": 0}
+{"ts": "2026-06-14T19:32:12Z", "event": "in_progress_update", "cycle": 27, "phase": "POST_REVIEW", "retry": 0}
+{"ts": "2026-06-14T19:32:25Z", "event": "in_progress_update", "cycle": 27, "phase": "SESSION", "retry": 0}
+{"ts": "2026-06-14T19:33:00Z", "event": "cycle_done", "cycle": 27, "title": "Flywheel on delta + what-if->derivative promotion", "dps": 2, "tests": {"composition_unit": 506, "fe_vitest": 12, "verify_exit": 0}, "live_smoke_token": "live smoke: approve di ban chapter -> delta enriches next-scene grounding", "playwright": "docs/raid/evidence/cycle-27/whatif-promote-action.png", "adversary": {"blockers": 0, "majors": 0, "minors": 1, "notes": 3}, "scope_guard": "CLEAR", "post_review": "CLEAR"}
+{"ts": "2026-06-14T19:34:21Z", "event": "in_progress_archived", "cycle": 27, "archived_to": "cycle-027-state.md"}
+{"ts": "2026-06-14T19:35:00Z", "event": "retro", "cycle": 27, "commit": "ce2ba47c9918e711fc8f85af88a7e7caf1e75399", "lessons": ["Reusing /internal/extraction/extract-item with an explicit project_id makes the flywheel a thin dispatcher — the existing extraction engine already accepts any project_id, so 'extract into the delta' is just pointing it at the derivative's own project (no new engine, the LOCKED reuse).", "Live-smoke caught a class-of-bug the unit tests structurally cannot: the composition read-lens 5s httpx timeout silently aborted the SLOW (120s) LLM extract-item call → false knowledge_unavailable. A reused HTTP client with a short default timeout needs a per-request override for a slow op. Mock-only would have stayed green.", "Reconcile-by-truth held: the flywheel-closing proof re-used the C25 packer's OWN delta-read lens (timeline/drawers?project_id=delta), not a parallel query — both the unit test (seen_before_order[DELTA]) and the live-smoke (the actual /timeline 200 in logs) assert via the producer's read path.", "Adversary minor (asymmetric degrade): pack.py HARD-guards a derivative with an unresolvable source (raises), but the approve flywheel path degraded it to a silent not_a_derivative skip — disambiguating to source_unresolved made the silent stop observable."]}
+{"ts": "2026-06-14T19:35:15Z", "event": "coordinator_next_cycle_emitted", "cycle": 28}
+{"ts":"2026-06-14T19:37:11Z","event":"startup_drift_check_inconclusive","cycle":28,"cd":"","rw":""}
+{"ts":"2026-06-14T19:37:11Z","event":"startup_verifier_complete","cycle":28,"steps":6}
+{"ts": "2026-06-14T19:37:26Z", "event": "in_progress_init", "cycle": 28, "title": "Living-world view (FE)"}
+{"ts": "2026-06-14T19:41:57Z", "event": "in_progress_update", "cycle": 28, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-06-14T19:42:31Z", "event": "in_progress_update", "cycle": 28, "phase": "PLAN", "retry": 0}
+{"ts": "2026-06-14T19:42:43Z", "event": "in_progress_update", "cycle": 28, "phase": "BUILD", "retry": 0}
+{"ts":"2026-06-14T19:48:46Z","event":"secret_scan_skipped","cycle":28,"dps":DPS1,"reason":"gitleaks_not_installed"}
+{"ts":"2026-06-14T19:49:32Z","event":"secret_scan_skipped","cycle":28,"dps":DPS2,"reason":"gitleaks_not_installed"}
+{"ts": "2026-06-14T19:51:14Z", "event": "in_progress_update", "cycle": 28, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-06-14T19:51:21Z","event":"verify_cycle_28_failed","cycle":28}
+{"ts":"2026-06-14T19:51:41Z","event":"verify_cycle_28_passed","cycle":28}
+{"ts":"2026-06-14T20:04:11Z","event":"verify_cycle_28_passed","cycle":28}
+{"ts": "2026-06-14T20:07:08Z", "event": "in_progress_update", "cycle": 28, "phase": "QC", "retry": 0}
+{"ts": "2026-06-14T20:07:23Z", "event": "in_progress_update", "cycle": 28, "phase": "POST_REVIEW", "retry": 0}
+{"ts": "2026-06-14T20:07:35Z", "event": "in_progress_update", "cycle": 28, "phase": "SESSION", "retry": 0}
+{"ts": "2026-06-14T20:07:42Z", "event": "cycle_complete", "cycle": 28, "title": "Living-world view (FE)", "milestone": "M6", "result": "DONE", "be_change": false, "files_changed": 13, "dps_count": 2, "tests": {"vitest_new": 23, "vitest_total_run": 30}, "verify_exit": 0, "playwright_token": "world timeline tree shows canon + >=2 derivative branches + branch click navigates", "screenshots": ["docs/raid/evidence/cycle-28/m6-living-world-tree.png", "docs/raid/evidence/cycle-28/m6-branch-click-lands-in-work.png"], "adversary": {"blockers": 0, "majors": 2, "minors": 2, "notes": 11, "majors_fixed": 2, "minors_fixed": 2}, "scope_guard": "CLEAR", "post_review": "CLEAR", "notable": "FINAL cycle — creation-unblock RAID COMPLETE. Tree composed FE-side from existing endpoints (worlds/{id}/books + resolveWork), branches via source_work_id->id chain, reused GraphCanvas (no new lib). M1 fix: ?work= deep-link into specific dị bản studio (verified live: branch click -> banner 'branches at chapter 2')."}
+{"ts": "2026-06-14T20:08:41Z", "event": "in_progress_update", "cycle": 28, "phase": "COMMIT", "retry": 0}
+{"ts": "2026-06-14T20:09:52Z", "event": "in_progress_archived", "cycle": 28, "archived_to": "cycle-028-state.md"}
+{"ts": "2026-06-14T20:09:00Z", "event": "retro", "cycle": 28, "milestone": "M6", "lessons": ["Composed a 'whole-world Works' view FE-side with zero new BE by fanning resolveWork over the world's books (worlds/{id}/books) and joining on the source_work_id->id chain — the per-book candidates resolution already returns canon + all derivatives because COW keeps a derivative on the source's book_id. No world-scoped Works endpoint was needed.", "GraphCanvas is fully generic (positions/nodeIds/edges/renderNode/renderEdge) — reusing it for a 4th view (after scene-graph/relmap/project-graph) required only a hand-rolled tree layout + node/edge renderers, no canvas change, no new graph lib.", "Adversary M1 was the load-bearing catch: a tree that navigates but can't distinguish which dị bản to open is a half-feature. The fix (?work= surrogate-id selector + CompositionPanel deriving activeWorkOverride from it, inline/no-useEffect) was a 1-file composition touch justified by the acceptance criterion — verified live (branch click -> dị bản studio banner 'branches at chapter 2').", "A vi.mock-generating for-loop fails (vi.mock is hoisted above runtime statements) — write each vi.mock literally."], "creation_unblock_raid": "COMPLETE — all cycles C0..C28 DONE, M1..M6 milestones reached."}
+{"ts": "2026-06-14T20:10:56Z", "event": "coordinator_idle"}

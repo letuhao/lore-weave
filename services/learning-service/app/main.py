@@ -18,9 +18,11 @@ from app.db.eval_repo import ensure_score_configs
 from app.db.migrate import run_migrations
 from app.db.online_eval import ensure_default_online_eval_rule
 from app.db.pool import close_pool, create_pool, get_pool
+from app.clients.llm_client import build_judge_sdk
 from app.events.consumer import EventConsumer
 from app.events.eval_runner import EvalRunner
 from app.events.dispatcher import EventDispatcher
+from app.events.llm_judge_consumer import LLMJudgeConsumer
 from app.events.handlers import (
     handle_chat_feedback,
     handle_config_adjusted,
@@ -80,6 +82,25 @@ async def lifespan(app: FastAPI):
         eval_runner = EvalRunner(settings.redis_url, pool)
         eval_runner_task = asyncio.create_task(eval_runner.run())
         logger.info("online-eval sampler started (consumer group=eval-runner)")
+
+    # M1 — decoupled online-judge terminal-event consumer (+ stuck-resume sweeper).
+    # Runs unconditionally: a campaign-chosen translation judge can fire even when the
+    # service-wide judge flags are off, so the resume path must always be live. Idle
+    # when no judge rows exist (every terminal event finds no row → ack + ignore).
+    judge_sdk = build_judge_sdk(
+        base_url=settings.provider_registry_internal_url,
+        internal_token=settings.internal_service_token,
+    )
+    judge_consumer = LLMJudgeConsumer(settings.redis_url, pool, judge_sdk)
+    judge_consumer_task = asyncio.create_task(judge_consumer.run())
+    judge_sweeper_task = asyncio.create_task(
+        judge_consumer.run_sweeper(
+            interval_s=settings.llm_judge_resume_sweep_interval_s,
+            timeout_s=settings.llm_judge_resume_sweep_timeout_s,
+            batch=settings.llm_judge_resume_sweep_batch,
+        )
+    )
+    logger.info("llm-judge resume consumer started (consumer group=learning-judge-resume)")
     try:
         yield
     finally:
@@ -96,6 +117,14 @@ async def lifespan(app: FastAPI):
                 await eval_runner_task
             except asyncio.CancelledError:
                 pass
+        await judge_consumer.stop()
+        for task in (judge_consumer_task, judge_sweeper_task):
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+        await judge_sdk.aclose()
         await close_pool()
 
 

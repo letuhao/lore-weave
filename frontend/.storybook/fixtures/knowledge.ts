@@ -195,6 +195,7 @@ export function extractionJobWireFixture(
     created_at: '2026-04-24T12:00:00Z',
     updated_at: '2026-04-24T12:00:00Z',
     error_message: null,
+    concurrency_level: null,
     project_name: null,
     current_chapter_title: null,
     ...overrides,
@@ -215,6 +216,7 @@ export function jobSummaryFixture(
     max_spend_usd: '5.00',
     started_at: '2026-04-24T10:15:00Z',
     error_message: 'Provider returned 429 — rate limit exceeded',
+    concurrency_level: null,
     ...overrides,
   };
 }

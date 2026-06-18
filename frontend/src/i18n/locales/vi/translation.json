@@ -102,7 +102,20 @@
     "block_mode": "Khối",
     "text_mode": "Văn bản",
     "pane_original": "Nguyên gốc",
-    "pane_translation": "Bản dịch"
+    "pane_translation": "Bản dịch",
+    "correct": "Sửa",
+    "correcting": "Đang sửa",
+    "correct_title": "Sửa từng block bản dịch tại chỗ — lưu vào bản đã sửa của bạn và feed learning",
+    "block_saved": "Đã lưu block",
+    "block_save_failed": "Lưu thất bại: {{error}}",
+    "block_saving": "Đang lưu…",
+    "block_dirty": "Đã sửa",
+    "newer_machine_available": "Có bản dịch máy mới hơn (v{{num}}) — bản sửa của bạn vẫn đang active cho tới khi bạn chọn lấy bản mới",
+    "view_newer": "Xem",
+    "adopt_newer": "Lấy bản mới",
+    "adopt_confirm": "Lấy bản dịch máy mới làm bản active? Bản bạn đã sửa vẫn được lưu nhưng không còn là bản xuất bản.",
+    "adopted": "Đã lấy bản dịch máy mới",
+    "adopt_failed": "Lấy bản mới thất bại: {{error}}"
   },
   "matrix": {
     "cell_done": "Xong",
@@ -111,7 +124,9 @@
     "cell_pending": "Đang chờ",
     "cell_not_translated": "Chưa dịch",
     "cell_version_info": "v{{num}} · {{count}} phiên bản",
+    "cell_manage_versions": "v{{num}} · {{count}} phiên bản — bấm để quản lý / đăng bản",
     "cell_stale_title": "Đã lỗi thời — thuật ngữ thay đổi sau khi dịch bản này",
+    "cell_changed_title": "{{count}} đoạn đã thay đổi — xem lại & dịch lại",
     "legend_stale": "{{count}} bị ảnh hưởng",
     "select_affected_title": "Chọn các chương bị ảnh hưởng bởi thay đổi thuật ngữ để dịch lại",
     "no_chapters_title": "Không có chương nào để dịch",
@@ -138,5 +153,18 @@
     "translate_selected": "Dịch mục đã chọn",
     "extract_glossary": "Trích xuất lore",
     "clear": "Bỏ chọn"
+  },
+  "segments": {
+    "title": "Trạng thái đoạn",
+    "status_untranslated": "Chưa dịch",
+    "status_dirty": "Nguồn đã đổi",
+    "status_stale": "Thuật ngữ đã đổi",
+    "status_clean": "Đã cập nhật",
+    "blocks_range": "khối {{from}}–{{to}}",
+    "needs_count": "{{count}} đoạn cần dịch lại",
+    "retranslate_changed": "Dịch lại phần đã đổi ({{count}})",
+    "retranslate_started": "Đã bắt đầu dịch lại",
+    "empty": "Chưa có đoạn nào.",
+    "close": "Đóng"
   }
 }

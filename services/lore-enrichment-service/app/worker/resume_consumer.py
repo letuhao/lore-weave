@@ -15,14 +15,15 @@ at-least-once redelivery is safe.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from uuid import UUID
 
 import asyncpg
-import redis.asyncio as aioredis
+
+from loreweave_jobs import BaseTerminalConsumer
 
 from app.api.jobs import GapTarget, _gap_from_target, load_spent_so_far
+from app.compose.compose_task import run_compose_task
 from app.db.book_profile import get_book_profile
 from app.jobs.assembly import build_live_runner
 from app.jobs.events import LORE_ENRICHMENT_RESUME_STREAM
@@ -30,28 +31,70 @@ from app.jobs.job_request import existing_gap_refs, load_job_request
 from app.strategies.base import StrategyContext
 from app.strategies.registry import InactiveStrategyError, UnknownStrategyError
 
-__all__ = ["consume_resume_stream", "redrive_one", "RESUME_GROUP"]
+__all__ = [
+    "LoreEnrichmentResumeConsumer", "redrive_one", "dispatch_resume_message", "RESUME_GROUP",
+]
 
 logger = logging.getLogger("lore_enrichment.resume_worker")
 
 RESUME_GROUP = "lore-enrichment-resume"
 
 
-async def _ensure_group(client: aioredis.Redis, stream: str, group: str) -> None:
-    """Idempotently create the consumer group (MKSTREAM bootstraps the stream)."""
-    try:
-        await client.xgroup_create(name=stream, groupname=group, id="0", mkstream=True)
-        logger.info("created consumer group %s on %s", group, stream)
-    except aioredis.ResponseError as exc:
-        if "BUSYGROUP" not in str(exc):
-            raise
+# A fixed bigint advisory-lock key derived from a job_id UUID's first 64 bits. Used to
+# CLAIM a job for one runner (HIGH-2): the create / resume / retry / stranded-sweeper
+# triggers all land on the SAME resume stream and all call redrive_one, so without a claim
+# two could drive the SAME job concurrently and double-SPEND real LLM tokens (redrive_one
+# dedups proposals only at PERSIST, AFTER the LLM call). The claim is a Postgres SESSION
+# advisory lock held for the whole run on a dedicated connection. It is STATUS-AGNOSTIC by
+# design — a status CAS (pending->running) would reject a legitimate resume, because the
+# resume endpoint pre-flips paused->running BEFORE it XADDs the trigger.
+_JOB_LOCK_KEY_SQL = "SELECT ('x' || substr(replace($1, '-', ''), 1, 16))::bit(64)::bigint"
 
 
 async def redrive_one(
     *, pool: asyncpg.Pool, job_id: str, project_id: str, user_id: str
 ) -> str:
-    """Re-drive ONE paused job, skipping done gaps. Returns a short status string
-    (for the log). Idempotent — safe to call again on redelivery."""
+    """Re-drive ONE job (fresh run, resume, or retry — all are a re-drive skipping done
+    gaps), under a per-job advisory-lock CLAIM so concurrent triggers for the same job can
+    never run two LLM-spending runners (HIGH-2). A runner that can't claim no-ops. Returns
+    a short status string (for the log). Idempotent — safe to call again on redelivery."""
+    # Derive the bigint lock key once (UUID's first 64 bits → negligible collision vs
+    # bare hashtext, which matters because a false collision would skip a real job).
+    async with pool.acquire() as lock_conn:
+        try:
+            lock_key = await lock_conn.fetchval(_JOB_LOCK_KEY_SQL, job_id)
+        except Exception:  # noqa: BLE001 — a malformed job_id can't be a real job; drop
+            logger.warning("redrive %s: bad job_id for lock key — drop", job_id)
+            return "bad_job_id"
+        claimed = await lock_conn.fetchval("SELECT pg_try_advisory_lock($1)", lock_key)
+        if not claimed:
+            # Another runner holds this job's lock (a concurrent create/resume/retry/sweeper
+            # trigger) — no-op so we don't double-spend. The holder drives it to terminal;
+            # this message is ack'd by the caller (the work is in flight elsewhere).
+            logger.info("redrive %s: job already claimed by another runner — skip", job_id)
+            return "already_claimed"
+        try:
+            return await _redrive_locked(
+                pool=pool, job_id=job_id, project_id=project_id, user_id=user_id
+            )
+        finally:
+            # Release the claim explicitly — a session advisory lock is NOT freed when
+            # the conn returns to the pool (pooled conns are recycled, not closed); only
+            # an explicit unlock OR an actual connection close (e.g. process death) frees
+            # it. This finally always runs on the normal path, so the lock is released.
+            try:
+                await lock_conn.fetchval("SELECT pg_advisory_unlock($1)", lock_key)
+            except Exception:  # noqa: BLE001 — only reachable if the conn itself broke
+                # A broken conn is discarded by the pool (not recycled) → its session
+                # ends → Postgres frees the lock. So this is safe to swallow.
+                logger.warning("redrive %s: advisory unlock failed (broken conn → session-end frees it)", job_id)
+
+
+async def _redrive_locked(
+    *, pool: asyncpg.Pool, job_id: str, project_id: str, user_id: str
+) -> str:
+    """The actual re-drive, run while holding the per-job advisory claim (see redrive_one).
+    Idempotent — safe to call again on redelivery."""
     request = await load_job_request(pool=pool, job_id=UUID(job_id))
     if request is None:
         # No persisted request (a job created before this table) — can't re-drive.
@@ -135,59 +178,45 @@ async def redrive_one(
     return outcome.final_state
 
 
-async def consume_resume_stream(
-    *,
-    pool: asyncpg.Pool,
-    redis_url: str,
-    consumer_name: str = "resume-1",
-    block_ms: int = 5000,
-) -> None:
-    """Long-running consumer. Cancel-safe: shutdown raises CancelledError from
-    xreadgroup; the finally-block closes the Redis client."""
-    client = aioredis.from_url(redis_url, decode_responses=True)
+async def dispatch_resume_message(*, pool: asyncpg.Pool, fields: dict) -> None:
+    """Route ONE resume-stream message by its shape (Phase 3 M2).
+
+    The SAME stream carries two trigger kinds: a `task_id` field is a one-shot
+    compose task (profile-suggest / intent-resolve → :func:`run_compose_task`); the
+    legacy `job_id` shape is a cost-cap-paused gap-fill re-drive (:func:`redrive_one`).
+    Both are idempotent for at-least-once redelivery. A business failure is handled
+    INSIDE the callee (marks the task failed / drops a poison) and returns normally
+    → the caller ACKs; only an infra error propagates → the caller leaves it
+    un-ACKed for redelivery."""
+    task_id = fields.get("task_id", "")
+    if task_id:
+        await run_compose_task(pool, task_id=task_id)
+        return
+    await redrive_one(
+        pool=pool,
+        job_id=fields.get("job_id", ""),
+        project_id=fields.get("project_id", ""),
+        user_id=fields.get("user_id", ""),
+    )
+
+
+class LoreEnrichmentResumeConsumer(BaseTerminalConsumer):
+    """Resume worker on the shared transport scaffold. Single resume-trigger stream at
+    ``start_id="0"``. Business fold = ``dispatch_resume_message`` (idempotent; a business
+    failure is handled INSIDE the callee → ``handle`` returns → ack; only an infra error
+    raises → the base leaves it un-acked for redelivery). No sweeper here — the compose-task
+    sweeper runs separately in the worker entrypoint."""
+
     stream = LORE_ENRICHMENT_RESUME_STREAM
-    try:
-        await _ensure_group(client, stream, RESUME_GROUP)
-        logger.info(
-            "resume consumer started group=%s name=%s stream=%s",
-            RESUME_GROUP, consumer_name, stream,
-        )
-        while True:
-            try:
-                resp = await client.xreadgroup(
-                    groupname=RESUME_GROUP,
-                    consumername=consumer_name,
-                    streams={stream: ">"},
-                    count=1,
-                    block=block_ms,
-                )
-            except asyncio.CancelledError:
-                raise
-            except aioredis.RedisError as exc:
-                # A blocking-read timeout / transient Redis error: back off and
-                # retry (NOT a crash — the worker must survive an idle block).
-                logger.debug("resume consumer XREADGROUP retry: %s", exc)
-                await asyncio.sleep(1.0)
-                continue
-            if not resp:
-                continue
-            for _stream, messages in resp:
-                for message_id, fields in messages:
-                    ack = True
-                    try:
-                        await redrive_one(
-                            pool=pool,
-                            job_id=fields.get("job_id", ""),
-                            project_id=fields.get("project_id", ""),
-                            user_id=fields.get("user_id", ""),
-                        )
-                    except Exception:  # noqa: BLE001 — transient infra → redeliver
-                        logger.warning(
-                            "resume msg %s failed; leaving un-ACKed for redelivery",
-                            message_id, exc_info=True,
-                        )
-                        ack = False
-                    if ack:
-                        await client.xack(stream, RESUME_GROUP, message_id)
-    finally:
-        await client.aclose()
+    group = RESUME_GROUP
+    start_id = "0"
+    count = 1  # heavy resume jobs — one-at-a-time for fair multi-replica distribution
+    consumer_name_prefix = "resume"
+    retry_prefix = "lore-enrichment:resume:retry"
+
+    def __init__(self, redis_url: str, pool: asyncpg.Pool, *, consumer_name: str | None = None) -> None:
+        super().__init__(redis_url, consumer_name=consumer_name)
+        self._pool = pool
+
+    async def handle(self, fields: dict) -> None:
+        await dispatch_resume_message(pool=self._pool, fields=fields)

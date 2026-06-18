@@ -108,6 +108,34 @@ describe('useCompositionStream', () => {
     expect(result.current.streaming).toBe(false);
   });
 
+  it('falls back to job-poll when a batch endpoint answers 202 JSON (worker-enabled)', async () => {
+    // M4: with COMPOSITION_WORKER_ENABLED on, selection-edit returns 202
+    // application/json instead of an SSE stream. The hook must detect the
+    // content-type, poll GET /jobs/{id} to terminal, and surface result.text as
+    // the ghost (same Accept flow). First fetch = the POST 202; second = the poll.
+    const accepted = {
+      ok: true, status: 202,
+      headers: { get: () => 'application/json' },
+      json: async () => ({ job_id: 'se-1', status: 'pending', selection_edit: true }),
+    } as unknown as Response;
+    const polled = {
+      ok: true, status: 200,
+      text: async () => JSON.stringify({ id: 'se-1', status: 'completed', result: { text: 'edited replacement' } }),
+    } as unknown as Response;
+    vi.spyOn(global, 'fetch').mockResolvedValueOnce(accepted).mockResolvedValueOnce(polled);
+
+    const { result } = renderHook(() => useCompositionStream('tok'));
+    await act(async () => {
+      await result.current.start({
+        projectId: 'p', selection: 'the gate of ash rose', operation: 'rewrite',
+        modelSource: 'user_model', modelRef: 'm',
+      });
+    });
+    await waitFor(() => expect(result.current.ghost).toBe('edited replacement'));
+    expect(result.current.jobId).toBe('se-1');
+    expect(result.current.streaming).toBe(false);
+  });
+
   it('does not stream when the response is not ok', async () => {
     vi.spyOn(global, 'fetch').mockResolvedValue({ ok: false, status: 502, body: null } as unknown as Response);
     const { result } = renderHook(() => useCompositionStream('tok'));

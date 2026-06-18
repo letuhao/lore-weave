@@ -353,6 +353,11 @@ func (s *Server) Router() http.Handler {
 		r.Put("/user-models/{user_model_id}/tags", s.putUserModelTags)
 		r.Post("/user-models/{user_model_id}/verify", s.verifyUserModel)
 
+		// Per-user default model per capability (rerank/embedding). Restores the
+		// default-model UX (BYOK) — consumers resolve via /internal/default-models.
+		r.Get("/default-models", s.getDefaultModels)
+		r.Put("/default-models/{capability}", s.putDefaultModel)
+
 		r.Get("/platform-models", s.listPlatformModels)
 		r.Post("/platform-models", s.createPlatformModel)
 		r.Patch("/platform-models/{platform_model_id}", s.patchPlatformModel)
@@ -395,6 +400,7 @@ func (s *Server) Router() http.Handler {
 		r.HandleFunc("/proxy/*", s.internalProxy)
 		r.Post("/embed", s.internalEmbed)
 		r.Post("/rerank", s.internalRerank) // E5B — cross-encoder rerank (platform service)
+		r.Get("/default-models/{capability}", s.internalGetDefaultModel) // per-user default model fallback
 
 		// S5a — campaign cost-estimate pricing oracle (token-count → USD).
 		r.Post("/billing/estimate", s.internalBillingEstimate)
@@ -405,6 +411,8 @@ func (s *Server) Router() http.Handler {
 		// Phase 2b — service-to-service async LLM job lifecycle.
 		r.Post("/llm/jobs", s.internalSubmitLlmJob)
 		r.Get("/llm/jobs/{job_id}", s.internalGetLlmJob)
+		// M3 — service-to-service stream cancel (chat disconnect → abort).
+		r.Delete("/llm/jobs/{job_id}", s.internalCancelLlmJob)
 	})
 
 	return r
@@ -2095,6 +2103,16 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 		writeJSON(w, http.StatusOK, result)
 		return
 
+	case "rerank":
+		// C3 (BL-10): real /v1/rerank round-trip via the user's BYOK credential —
+		// proves the model actually ranks (a chat ping would not).
+		result := s.verifyRerank(ctx, endpointBaseURL, secret, providerModelName)
+		result["latency_ms"] = time.Since(start).Milliseconds()
+		result["capability"] = "rerank"
+		VerifyRequestsTotal.WithLabelValues(OutcomeOK).Inc()
+		writeJSON(w, http.StatusOK, result)
+		return
+
 	default:
 		// Chat / unknown: use existing adapter invoke with "Hi"
 	}
@@ -2150,17 +2168,100 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 	})
 }
 
+// canEmbed reports whether a user_model's capability_flags permit an embedding dispatch
+// (K12.1). It is fail-OPEN: an empty/unknown flag set returns true (the upstream provider
+// still rejects a non-embedding model with a 4xx — see internalEmbed), so a model whose
+// flags were never populated is never wrongly blocked. It returns false ONLY when the
+// flags DEFINITIVELY classify the model as some OTHER capability, letting the caller reject
+// with a precise 400 before paying the provider round-trip. Mirrors the two historical
+// capability_flags schemas: a boolean flag ({"embedding": true}) or the `_capability`
+// metadata string ({"_capability": "embedding"}).
+func canEmbed(caps map[string]any) bool {
+	if len(caps) == 0 {
+		return true // unknown — fail open
+	}
+	// Explicit positive: a boolean embedding flag, or the canonical _capability token.
+	if b, ok := caps["embedding"].(bool); ok && b {
+		return true
+	}
+	if c, _ := caps["_capability"].(string); c == "embedding" || c == "embed" {
+		return true
+	}
+	// Reject ONLY on an AFFIRMATIVELY-detected non-embedding capability. "chat" is NOT
+	// here on purpose: it is the discovery DEFAULT/fallback (classifyOpenAIModel returns
+	// "chat" when the name matches no other heuristic), so a "chat" tag is NOT a reliable
+	// embedding-exclusion — a BYOK embedding model whose name misses the "embed" heuristic
+	// (e.g. a local "bge-m3") is tagged chat. Treat chat as fail-open so we never block a
+	// legitimate embedding call; the upstream provider still rejects a true chat model
+	// with a 4xx (mapped to EMBED_MODEL_INVALID).
+	for _, other := range []string{"rerank", "stt", "tts", "image_gen", "video_gen"} {
+		if b, ok := caps[other].(bool); ok && b {
+			return false
+		}
+	}
+	if c, _ := caps["_capability"].(string); c != "" && c != "chat" {
+		return false
+	}
+	// No affirmative non-embedding signal → fail open.
+	return true
+}
+
 // detectPrimaryCapability determines which verification strategy to use based on capability_flags.
 // Priority: stt > tts > image_gen > video_gen > chat (default)
 func detectPrimaryCapability(caps map[string]any) string {
-	for _, cap := range []string{"stt", "tts", "image_gen", "video_gen"} {
+	// C3 (BL-10): include rerank so its verify path does a real /v1/rerank
+	// round-trip instead of falling through to the chat ping.
+	for _, cap := range []string{"stt", "tts", "image_gen", "video_gen", "rerank"} {
 		if v, ok := caps[cap]; ok {
 			if b, ok := v.(bool); ok && b {
 				return cap
 			}
 		}
 	}
+	// Inventory-discovered rerank (C2) may carry the capability as the `_capability`
+	// metadata string rather than a boolean flag — recognize that form too.
+	if c, _ := caps["_capability"].(string); c == "rerank" {
+		return "rerank"
+	}
 	return "chat"
+}
+
+// verifyRerank exercises a REAL /v1/rerank round-trip with a tiny fixed
+// query+documents set and returns the ranked scores. This proves the model
+// actually ranks (a generic chat ping would not). BYOK: baseURL+secret come from
+// the user's resolved provider credential — no platform rerank config, no
+// per-service URL/token env, no hardcoded model name. The call goes through the
+// canonical provider-registry rerank path (provider.Rerank), the only place
+// rerank HTTP lives.
+func (s *Server) verifyRerank(ctx context.Context, baseURL, secret, modelName string) map[string]any {
+	query := "What is the capital of France?"
+	documents := []string{
+		"Bananas are a good source of potassium.",
+		"Paris is the capital of France.",
+		"The Eiffel Tower is a landmark in Paris.",
+	}
+	client := &http.Client{Timeout: 60 * time.Second}
+	results, err := provider.Rerank(ctx, client, baseURL, secret, modelName, query, documents)
+	if err != nil {
+		return map[string]any{"verified": false, "error": err.Error()}
+	}
+	// provider.Rerank already sorts descending by score.
+	scores := make([]map[string]any, 0, len(results))
+	for _, r := range results {
+		scores = append(scores, map[string]any{
+			"index":           r.Index,
+			"relevance_score": r.Score,
+		})
+	}
+	out := map[string]any{
+		"verified": true,
+		"scores":   scores,
+	}
+	if len(results) > 0 {
+		out["top_index"] = results[0].Index
+		out["top_score"] = results[0].Score
+	}
+	return out
 }
 
 // verifySTT sends a tiny silent WAV to the STT endpoint and checks for a text response.
@@ -2602,12 +2703,16 @@ func (s *Server) internalEmbed(w http.ResponseWriter, r *http.Request) {
 	var providerKind, providerModelName, endpointBaseURL, secret string
 	if in.ModelSource == "user_model" {
 		var secretCipher string
+		// Scan capability_flags as raw bytes + json.Unmarshal — the established pattern
+		// in this file (see the inventory + get-model scans). Do NOT scan jsonb directly
+		// into a map[string]any.
+		var capFlagsBytes []byte
 		err = s.pool.QueryRow(r.Context(), `
-SELECT um.user_model_id, um.provider_kind, um.provider_model_name, COALESCE(pc.endpoint_base_url,''), COALESCE(pc.secret_ciphertext,'')
+SELECT um.user_model_id, um.provider_kind, um.provider_model_name, COALESCE(pc.endpoint_base_url,''), COALESCE(pc.secret_ciphertext,''), COALESCE(um.capability_flags,'{}'::jsonb)
 FROM user_models um
 JOIN provider_credentials pc ON pc.provider_credential_id = um.provider_credential_id
 WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.status='active'
-`, modelRef, userID).Scan(new(uuid.UUID), &providerKind, &providerModelName, &endpointBaseURL, &secretCipher)
+`, modelRef, userID).Scan(new(uuid.UUID), &providerKind, &providerModelName, &endpointBaseURL, &secretCipher, &capFlagsBytes)
 		if err == pgx.ErrNoRows {
 			EmbedRequestsTotal.WithLabelValues(OutcomeModelNotFound).Inc()
 			writeError(w, http.StatusNotFound, "EMBED_MODEL_NOT_FOUND", "user model not found or inactive")
@@ -2616,6 +2721,19 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 		if err != nil {
 			EmbedRequestsTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 			writeError(w, http.StatusInternalServerError, "EMBED_MODEL_QUERY_FAILED", "failed to resolve model")
+			return
+		}
+		// K12.1 — reject a model whose capability_flags definitively classify it as a
+		// NON-embedding capability, before paying the provider round-trip. Fail-OPEN on an
+		// empty/unknown flag set (the upstream provider still rejects a non-embedding model
+		// with a 4xx → mapped to EMBED_MODEL_INVALID below), so this never breaks a model
+		// whose flags were never populated.
+		capFlags := map[string]any{}
+		_ = json.Unmarshal(capFlagsBytes, &capFlags)
+		if !canEmbed(capFlags) {
+			EmbedRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
+			writeError(w, http.StatusBadRequest, "EMBED_MODEL_NOT_EMBEDDING",
+				"model is not classified as embedding-capable")
 			return
 		}
 		// D-PROXY-01 — see doProxy comment.
@@ -2646,11 +2764,10 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 		return
 	}
 
-	// TODO(K12.1): validate that providerModelName is classified as
-	// capability="embedding" before dispatching. Currently relies on
-	// the upstream provider rejecting non-embedding models with a 4xx.
-	// Proper fix: store capability per user_model row, or query the
-	// adapter's ListModels + classify.
+	// K12.1 — capability is validated above via canEmbed(capFlags): a model whose
+	// capability_flags definitively classify it non-embedding is rejected before this
+	// dispatch; an empty/unknown flag set falls through here and relies on the upstream
+	// provider rejecting a non-embedding model with a 4xx (mapped to EMBED_MODEL_INVALID).
 
 	// Dispatch embedding call — pass invokeClient (no fixed timeout,
 	// request context controls cancellation)

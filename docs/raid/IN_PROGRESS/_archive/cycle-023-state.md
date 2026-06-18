@@ -1,9 +1,9 @@
 ---
 cycle: 23
-title: L5 Contracts + Per-reality canon_projection (A+D)
+title: Derivative schema + API (composition)
 current_phase: COMMIT
-phase_started_at: 2026-05-29T12:07:35Z
-last_checkpoint_at: 2026-05-29T12:07:35Z
+phase_started_at: 2026-06-14T16:26:45Z
+last_checkpoint_at: 2026-06-14T16:26:45Z
 retry_count: 0
 dps_status: []
 adversary_findings: null

@@ -145,20 +145,25 @@ async def test_submit_and_wait_no_campaign_id_when_unset():
 
 def test_submit_job_only_invoked_via_wrapper():
     """S4a drift guard (review-impl LOW-2): the campaign_id attribution merge lives
-    ONLY in LLMClient.submit_and_wait. If a future call site invokes the SDK's
-    submit_job directly, it bypasses attribution silently and no other test would
-    catch it. Lock the invariant: `.submit_job(` appears only in llm_client.py."""
+    in LLMClient.submit_and_wait AND LLMClient.submit_job (Phase 2b's fire-and-forget
+    sibling). Both stamp campaign_id, so the safe path is the WRAPPER. The danger is
+    a site calling the RAW SDK submit_job directly (bypassing attribution). Lock the
+    invariant: the raw SDK `submit_job` (`_sdk.submit_job(` / `.sdk.submit_job(`) is
+    invoked ONLY in llm_client.py. Calling the wrapper's `llm_client.submit_job(...)`
+    from a decoupled worker is fine — it attributes."""
     import pathlib
 
     app_dir = pathlib.Path(__file__).resolve().parent.parent / "app"
     offenders = [
         str(p.relative_to(app_dir))
         for p in app_dir.rglob("*.py")
-        if p.name != "llm_client.py" and ".submit_job(" in p.read_text(encoding="utf-8")
+        if p.name != "llm_client.py"
+        and ("_sdk.submit_job(" in p.read_text(encoding="utf-8")
+             or ".sdk.submit_job(" in p.read_text(encoding="utf-8"))
     ]
     assert not offenders, (
-        f"submit_job called outside the llm_client wrapper (bypasses campaign "
-        f"attribution): {offenders}"
+        f"raw SDK submit_job called outside the llm_client wrapper (bypasses "
+        f"campaign attribution): {offenders}"
     )
 
 

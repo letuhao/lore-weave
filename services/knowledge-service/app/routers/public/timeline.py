@@ -14,12 +14,17 @@ date range, chronological_order range) — see the
 
 from __future__ import annotations
 
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from pydantic import BaseModel
 
-from app.clients.book_client import BookClient
+from app.clients.book_client import (
+    BookClient,
+    BookServiceUnavailable,
+    WorldNotFound,
+)
 from app.clients.chapter_title_enricher import enrich_events_with_chapter_titles
 from app.db.neo4j import neo4j_session
 from app.db.neo4j_repos.entities import get_entity
@@ -28,9 +33,11 @@ from app.db.neo4j_repos.events import (
     Event,
     list_events_filtered,
 )
-from app.deps import get_book_client
+from app.db.repositories.projects import ProjectsRepo
+from app.deps import get_book_client, get_projects_repo
 from app.middleware.jwt_auth import get_current_user
 from app.spoiler_window import resolve_before_order
+from app.world_rollup import resolve_world_project_ids
 
 timeline_router = APIRouter(
     prefix="/v1/knowledge",
@@ -42,6 +49,16 @@ timeline_router = APIRouter(
 class TimelineResponse(BaseModel):
     events: list[Event]
     total: int
+
+
+class WorldTimelineResponse(BaseModel):
+    """D-WORLD-TIMELINE-ROLLUP — the world timeline union. Events carry their
+    own ``project_id`` so the FE legends per book. ``truncated`` flags that the
+    merged union exceeded the cap (a busy book can crowd a quieter one)."""
+
+    events: list[Event]
+    total: int
+    truncated: bool
 
 
 @timeline_router.get("/timeline", response_model=TimelineResponse)
@@ -129,6 +146,25 @@ async def list_timeline_events(
             "(resolved server-side to a ``before_order`` ceiling). An "
             "explicit ``before_order`` wins if both are given. Fail-closed: "
             "an unresolvable chapter yields an empty timeline, never a leak."
+        ),
+    ),
+    sort_by: Literal["narrative", "chronological"] = Query(
+        default="narrative",
+        description=(
+            "C14 (C14-narrative-order-sort): timeline sort axis. "
+            "``narrative`` (default) = reading position (event_order) — "
+            "the legacy ordering, so omitting this is back-compatible. "
+            "``chronological`` = in-story chronology (chronological_order; "
+            "undated events sink last)."
+        ),
+    ),
+    sort_dir: Literal["asc", "desc"] = Query(
+        default="asc",
+        description=(
+            "D-K19e-α-03: sort direction, applied to the selected ``sort_by`` "
+            "axis. ``asc`` (default) = earliest-first (legacy, back-compatible); "
+            "``desc`` = latest-first. Undated/unordered events sink last in BOTH "
+            "directions."
         ),
     ),
     limit: int = Query(50, ge=1, le=EVENTS_MAX_LIMIT),
@@ -236,6 +272,8 @@ async def list_timeline_events(
             event_date_from=event_date_from,
             event_date_to=event_date_to,
             participant_candidates=participant_candidates,
+            sort_by=sort_by,
+            sort_dir=sort_dir,
             limit=limit,
             offset=offset,
         )
@@ -246,3 +284,93 @@ async def list_timeline_events(
     # the UUID short.
     await enrich_events_with_chapter_titles(rows, book_client)
     return TimelineResponse(events=rows, total=total)
+
+
+@timeline_router.get(
+    "/worlds/{world_id}/timeline",
+    response_model=WorldTimelineResponse,
+)
+async def list_world_timeline(
+    world_id: UUID = Path(
+        description="The world whose member books' timelines to roll up.",
+    ),
+    sort_by: Literal["narrative", "chronological"] = Query(
+        default="narrative",
+        description=(
+            "Sort axis for the merged union. ``narrative`` (default) = reading "
+            "position (event_order); ``chronological`` = in-story chronology "
+            "(undated events sink last)."
+        ),
+    ),
+    limit: int = Query(50, ge=1, le=EVENTS_MAX_LIMIT),
+    user_id: UUID = Depends(get_current_user),
+    repo: ProjectsRepo = Depends(get_projects_repo),
+    book_client: BookClient = Depends(get_book_client),
+) -> WorldTimelineResponse:
+    """D-WORLD-TIMELINE-ROLLUP — the world timeline: a UNION of each member
+    book's canon timeline + the world-level (bible) project, the timeline mirror
+    of the W2 graph rollup.
+
+    Membership + the partition set are resolved by the SAME ``resolve_world_
+    project_ids`` helper the subgraph rollup uses (owner-scoped via book-service
+    internal; a world the caller doesn't own → 404; book-service down → 503). The
+    union is N isolated per-(user_id, project_id) reads stitched in app code —
+    no cross-partition Cypher, no cross-user/cross-project bleed. Events keep
+    their ``project_id`` so the FE legends each book; the merged set is re-sorted
+    on the chosen axis and capped (``truncated`` flags an over-cap union).
+    """
+    try:
+        project_ids = await resolve_world_project_ids(
+            world_id=world_id, user_id=user_id, repo=repo, book=book_client
+        )
+    except WorldNotFound:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="world not found"
+        )
+    except BookServiceUnavailable:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="world membership unavailable",
+        )
+
+    merged: list[Event] = []
+    seen_ids: set[str] = set()
+    # /review-impl MED — each per-project read is itself capped at `limit`, and
+    # `list_events_filtered` returns the TRUE pre-cap count. A single member book
+    # with more than `limit` events would otherwise leave the union at exactly
+    # `limit` → `len(merged) > limit` is False → the FE "showing the first N"
+    # banner never shows though more exist. Track per-project truncation so the
+    # flag is honest whether the overflow is within ONE book or ACROSS the union.
+    any_project_truncated = False
+    async with neo4j_session() as session:
+        for pid in project_ids:
+            rows, project_total = await list_events_filtered(
+                session,
+                user_id=str(user_id),
+                project_id=pid,
+                after_order=None,
+                before_order=None,
+                sort_by=sort_by,
+                limit=limit,
+                offset=0,
+            )
+            if project_total > len(rows):
+                any_project_truncated = True
+            for e in rows:
+                if e.id not in seen_ids:
+                    seen_ids.add(e.id)
+                    merged.append(e)
+
+    # Re-sort the union on the global axis (each per-project read was sorted only
+    # within its own partition), then cap. NULL-order events sink last.
+    if sort_by == "chronological":
+        merged.sort(key=lambda e: (e.chronological_order is None, e.chronological_order or 0, e.id))
+    else:
+        merged.sort(key=lambda e: (e.event_order is None, e.event_order or 0, e.id))
+
+    total = len(merged)
+    truncated = any_project_truncated or total > limit
+    events = merged[:limit]
+
+    await enrich_events_with_chapter_titles(events, book_client)
+    return WorldTimelineResponse(events=events, total=total, truncated=truncated)

@@ -144,6 +144,11 @@ class StreamRequest(BaseModel):
     chat_template_kwargs: dict[str, Any] | None = None
     stream_format: StreamFormat = "openai"
     trace_id: str | None = None
+    # M3 (chat disconnect-cancel) — OPTIONAL caller-minted job id. When set, the
+    # gateway persists a billing-neutral observability llm_jobs row + registers a
+    # cancellable context under this id, so the caller can abort the in-flight
+    # stream via DELETE /internal/llm/jobs/{id}. None (default) → today's behavior.
+    stream_job_id: str | None = None
 
     def to_request_body(self) -> dict[str, Any]:
         """Serialize to the wire JSON body. Drops `max_tokens` when it's
@@ -399,6 +404,11 @@ class ImageGenResult(BaseModel):
 
     created: int
     data: list[ImageGenDataItem] = Field(min_length=1, max_length=4)
+    # D-PHASE5E — gateway-resolved provider identity for the served generation.
+    # Additive/optional (None when the gateway predates the fields); mirrors the
+    # Go SDK + openapi ImageGenResult so the SSOT mirror stays honest.
+    provider_kind: str | None = None
+    provider_model_name: str | None = None
 
 
 # ── Phase 5d — video-gen models ─────────────────────────────────────

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Plus, Pencil, Loader2, Zap, Trash2 } from 'lucide-react';
+import { Plus, Pencil, Loader2, Zap, Trash2, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/auth';
@@ -8,6 +9,7 @@ import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { providerApi, type ProviderCredential, type UserModel, type APIStandard } from './api';
 import { AddModelModal } from './AddModelModal';
 import { EditModelModal } from './EditModelModal';
+import { DefaultModelsCard } from './DefaultModelsCard';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -38,6 +40,11 @@ const API_STANDARDS: { value: APIStandard; label: string }[] = [
 export function ProvidersTab() {
   const { t } = useTranslation('settings');
   const { accessToken } = useAuth();
+  // C0: AddModelCta deep-links here with ?return=<path>. Only honor in-app
+  // (must start with a single '/') so the back-link can't become an open redirect.
+  const [searchParams] = useSearchParams();
+  const rawReturn = searchParams.get('return');
+  const returnTo = rawReturn && /^\/(?!\/)/.test(rawReturn) ? rawReturn : null;
   const [providers, setProviders] = useState<ProviderCredential[]>([]);
   const [models, setModels] = useState<UserModel[]>([]);
   const [loading, setLoading] = useState(true);
@@ -221,6 +228,18 @@ export function ProvidersTab() {
 
   return (
     <div>
+      {/* C0: round-trip banner — sends the user back to the form that sent them
+          here to register a model (e.g. BuildGraphDialog, Compose). */}
+      {returnTo && (
+        <Link
+          to={returnTo}
+          className="mb-4 inline-flex items-center gap-1.5 rounded-md border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" />
+          {t('providers.return_to_form', { defaultValue: 'Back to where you were' })}
+        </Link>
+      )}
+
       {/* Header */}
       <div className="mb-4 flex items-center justify-between">
         <div>
@@ -235,6 +254,10 @@ export function ProvidersTab() {
           {t('providers.add_provider')}
         </button>
       </div>
+
+      {/* Per-user default models (rerank/embedding) — restores the default-model
+          UX (BYOK) consumed by raw search. */}
+      <DefaultModelsCard />
 
       <div className="space-y-3">
         {/* Configured providers */}

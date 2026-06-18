@@ -19,6 +19,16 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     port: int = 8093
 
+    # Phase 3 M4 — composition batch-job worker. When True, the batch endpoints
+    # (decompose/generate/selection-edit/chapter-gen/stitch) create a job + enqueue
+    # on the composition_jobs stream + return 202 (a separate `python -m app.worker`
+    # process runs the LLM compute off the request path); GET /jobs/{id} polls.
+    # Default False → today's inline behavior verbatim (zero contract change until
+    # the FE adopts the 202 + poll). The worker consumer + its sweep run only when on.
+    composition_worker_enabled: bool = False
+    composition_job_sweep_secs: int = 60
+    composition_job_sweep_timeout_secs: int = 900
+
     # Internal service URLs — consumed by the M3 client wrappers.
     knowledge_internal_url: str = "http://knowledge-service:8092"
     glossary_internal_url: str = "http://glossary-service:8088"

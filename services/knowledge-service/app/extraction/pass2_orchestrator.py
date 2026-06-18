@@ -101,30 +101,15 @@ def _load_precision_filter_config() -> PrecisionFilterConfig | None:
             cycle-73b ship uses ``"relation"`` for 55% latency
             reduction at near-identical F1).
     """
-    model_ref = os.environ.get(
-        "KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_REF", ""
-    ).strip()
-    if not model_ref:
-        return None
-    partial_policy = os.environ.get(
-        "KNOWLEDGE_EXTRACTION_PRECISION_FILTER_PARTIAL_POLICY", "keep"
-    ).strip() or "keep"
-    model_source = os.environ.get(
-        "KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_SOURCE", "user_model"
-    ).strip() or "user_model"
-    categories_env = os.environ.get(
-        "KNOWLEDGE_EXTRACTION_PRECISION_FILTER_CATEGORIES",
-        "entity,relation,event",
-    ).strip() or "entity,relation,event"
-    categories = tuple(
-        c.strip() for c in categories_env.split(",") if c.strip()
-    )
-    return PrecisionFilterConfig(
-        model_ref=model_ref,
-        model_source=model_source,  # type: ignore[arg-type]
-        partial_policy=partial_policy,  # type: ignore[arg-type]
-        categories=categories,  # type: ignore[arg-type]
-    )
+    # D-WX-PRECISION-FILTER-MODEL-ARCH: the filter MODEL must NOT come from a platform
+    # env. A hardcoded env model_ref is cross-tenant — submitted as user_model scoped
+    # to the request's user, so provider-registry 404'd "model not found" for every
+    # user who didn't own it (decoupled extraction fold stalled — D-WX live-smoke
+    # finding). The filter is configured PER-PROJECT via
+    # extraction_config.precision_filter (PrecisionFilterOverride: enabled + model_ref
+    # + model_source + categories + partial_policy) — FE-set, DB-stored, resolved
+    # per-user, merged onto these (now model-less) global defaults. No env model source.
+    return None
 
 
 # Cached at module load. Re-read by tests via patch on this name.
@@ -694,6 +679,31 @@ async def _emit_log(
         )
 
 
+def _merge_pinned(
+    pinned_names: list[str] | None,
+    known_entities: Iterable[str] | None,
+) -> list[str]:
+    """C13 — prepend pinned glossary entity names ahead of the window's own
+    known_entities. Pinned names come FIRST (anchor priority), order-stable,
+    de-duplicated (case-sensitive exact match; blank/whitespace dropped). The
+    union is what reaches extract_entities + the R/E/F gather for THIS window,
+    so a pinned entity is in the prompt context even when the chapter text
+    never mentions it. None/empty pinned ⇒ identical to the legacy behaviour."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for name in (pinned_names or ()):
+        n = (name or "").strip()
+        if n and n not in seen:
+            seen.add(n)
+            out.append(n)
+    for name in (known_entities or ()):
+        n = (name or "").strip()
+        if n and n not in seen:
+            seen.add(n)
+            out.append(n)
+    return out
+
+
 async def gather_relations_events_facts(
     *,
     text: str,
@@ -804,6 +814,11 @@ async def _run_pipeline(
     embedding_model_uuid: str | None = None,
     embedding_dimension: int | None = None,
     summary_enqueue: SummaryEnqueueFn | None = None,
+    # C12 — target-typed extraction. None / empty ⇒ ALL passes run
+    # (back-compat). Plural contract names entities/relations/events/facts
+    # gate the R/E/F gather; `summaries` gates the summary enqueue.
+    # Requesting any of {relations,events,facts} auto-includes `entities`.
+    targets: set[str] | None = None,
 ) -> Pass2WriteResult:
     """Core pipeline shared by chat_turn and chapter entry points.
 
@@ -827,6 +842,20 @@ async def _run_pipeline(
             anchors=anchors,
             **_WRITER_AUTOCREATE_CONFIG,
         )
+
+    # C12 — resolve effective target set (None/empty ⇒ all; dependent
+    # targets auto-include entities). Reuses the SDK's single source of
+    # truth so the gate matches the worker-ai path exactly.
+    from loreweave_extraction.pass2 import normalize_targets
+    eff_targets = normalize_targets(targets)
+    want_relations = "relations" in eff_targets
+    want_events = "events" in eff_targets
+    want_facts = "facts" in eff_targets
+    # LOCK — recovery/precision-filter auto-disable when `entities` was not
+    # explicitly requested (pre-auto-include). None/empty ⇒ entities in ⇒
+    # enabled (back-compat). `summaries` gates the summary enqueue.
+    entities_requested = (not targets) or ("entities" in targets)
+    summaries_requested = (not targets) or ("summaries" in targets)
 
     started = time.perf_counter()
 
@@ -922,70 +951,81 @@ async def _run_pipeline(
         llm_client=llm_client,
         on_dropped=_on_dropped,
     )
+    # C12 — build the R/E/F gather task-list CONDITIONALLY. Only the
+    # requested trio ops run; skipped ops yield empty lists. Extractor
+    # internals + the per-op cache wrap are unchanged — only the task-list
+    # assembly is gated.
     gather_started = time.perf_counter()
-    relation_cands, event_cands, fact_cands = await asyncio.gather(
-        _p2_cache_wrap(
-            op="relation",
-            leaf_text=text,
-            extractor_callable=extract_relations,
-            extractor_kwargs=common_kwargs,
-            deserializer=LLMRelationCandidate.model_validate,
-            book_id=book_id, chapter_id=chapter_id,
-            model_ref=model_ref, save_raw=save_raw_extraction,
-        ),
-        _p2_cache_wrap(
-            op="event",
-            leaf_text=text,
-            extractor_callable=extract_events,
-            extractor_kwargs=common_kwargs,
-            deserializer=LLMEventCandidate.model_validate,
-            book_id=book_id, chapter_id=chapter_id,
-            model_ref=model_ref, save_raw=save_raw_extraction,
-        ),
-        _p2_cache_wrap(
-            op="fact",
-            leaf_text=text,
-            extractor_callable=extract_facts,
-            extractor_kwargs=common_kwargs,
-            deserializer=LLMFactCandidate.model_validate,
-            book_id=book_id, chapter_id=chapter_id,
-            model_ref=model_ref, save_raw=save_raw_extraction,
-        ),
-    )
+    _trio_specs: list[tuple[str, str, Any, Any]] = []
+    if want_relations:
+        _trio_specs.append(
+            ("relations", "relation", extract_relations, LLMRelationCandidate.model_validate))
+    if want_events:
+        _trio_specs.append(
+            ("events", "event", extract_events, LLMEventCandidate.model_validate))
+    if want_facts:
+        _trio_specs.append(
+            ("facts", "fact", extract_facts, LLMFactCandidate.model_validate))
+
+    _trio_results: dict[str, list] = {"relations": [], "events": [], "facts": []}
+    if _trio_specs:
+        gathered = await asyncio.gather(
+            *(
+                _p2_cache_wrap(
+                    op=op,
+                    leaf_text=text,
+                    extractor_callable=extractor,
+                    extractor_kwargs=common_kwargs,
+                    deserializer=deser,
+                    book_id=book_id, chapter_id=chapter_id,
+                    model_ref=model_ref, save_raw=save_raw_extraction,
+                )
+                for _key, op, extractor, deser in _trio_specs
+            )
+        )
+        for (key, _op, _ex, _ds), res in zip(_trio_specs, gathered):
+            _trio_results[key] = res
+    relation_cands = _trio_results["relations"]
+    event_cands = _trio_results["events"]
+    fact_cands = _trio_results["facts"]
     gather_elapsed = time.perf_counter() - gather_started
 
     # Cycle 73d — optional entity recovery (runs BEFORE filter so the
     # filter operates on enriched candidates). No-op when env unset.
-    entities, relation_cands, event_cands, fact_cands = await _maybe_apply_entity_recovery(
-        entities=entities,
-        relations=relation_cands,
-        events=event_cands,
-        facts=fact_cands,
-        text=text,
-        user_id=user_id,
-        project_id=project_id,
-        llm_client=llm_client,
-        anchors=anchors,
-        job_logs_repo=job_logs_repo,
-        job_id=job_id,
-        source_type=source_type,
-        source_id=source_id,
-    )
+    # C12 LOCK — also auto-disabled when entities ∉ requested targets
+    # (they refine the canonical entity set; pointless on an R/E/F-only
+    # build where entities run only as anchors).
+    if entities_requested:
+        entities, relation_cands, event_cands, fact_cands = await _maybe_apply_entity_recovery(
+            entities=entities,
+            relations=relation_cands,
+            events=event_cands,
+            facts=fact_cands,
+            text=text,
+            user_id=user_id,
+            project_id=project_id,
+            llm_client=llm_client,
+            anchors=anchors,
+            job_logs_repo=job_logs_repo,
+            job_id=job_id,
+            source_type=source_type,
+            source_id=source_id,
+        )
 
-    # Cycle 72 — optional precision filter (no-op when env unset).
-    entities, relation_cands, event_cands, fact_cands = await _maybe_apply_precision_filter(
-        entities=entities,
-        relations=relation_cands,
-        events=event_cands,
-        facts=fact_cands,
-        text=text,
-        user_id=user_id,
-        llm_client=llm_client,
-        job_logs_repo=job_logs_repo,
-        job_id=job_id,
-        source_type=source_type,
-        source_id=source_id,
-    )
+        # Cycle 72 — optional precision filter (no-op when env unset).
+        entities, relation_cands, event_cands, fact_cands = await _maybe_apply_precision_filter(
+            entities=entities,
+            relations=relation_cands,
+            events=event_cands,
+            facts=fact_cands,
+            text=text,
+            user_id=user_id,
+            llm_client=llm_client,
+            job_logs_repo=job_logs_repo,
+            job_id=job_id,
+            source_type=source_type,
+            source_id=source_id,
+        )
 
     elapsed = time.perf_counter() - started
     logger.info(
@@ -1054,8 +1094,11 @@ async def _run_pipeline(
     # P3 (D3): async summary enqueue. Only fires when caller wired all the
     # P3 dependencies (hierarchy_paths + summary_enqueue + embedding model
     # info). Chat-turn path + legacy callers don't trigger.
+    # C12 — gate the summary enqueue on `summaries ∈ targets` (default
+    # all ⇒ enqueue, back-compat).
     if (
-        hierarchy_paths is not None
+        summaries_requested
+        and hierarchy_paths is not None
         and summary_enqueue is not None
         and embedding_model_uuid is not None
         and embedding_dimension is not None
@@ -1165,6 +1208,11 @@ async def extract_pass2_chat_turn(
     user_message: str | None = None,
     assistant_message: str | None = None,
     known_entities: Iterable[str] | None = None,
+    # C13 — glossary pinning. Names of pinned glossary entities, force-injected
+    # into EVERY window's known_entities so sparse-but-critical entities (a god
+    # in ch1 & ch5000) are always anchored regardless of chapter content. Reuses
+    # the proven known_entities seam (name-prefix injection, not a new block).
+    pinned_names: list[str] | None = None,
     model_source: Literal["user_model", "platform_model"],
     model_ref: str,
     llm_client: LLMClient,
@@ -1197,7 +1245,9 @@ async def extract_pass2_chat_turn(
         source_type=source_type,
         source_id=source_id,
         job_id=job_id,
-        known_entities=list(known_entities or ()),
+        # C13 — prepend pinned names so they reach this window's extract_entities
+        # call + every R/E/F extractor (deduped downstream in _run_pipeline).
+        known_entities=_merge_pinned(pinned_names, known_entities),
         model_source=model_source,
         model_ref=model_ref,
         llm_client=llm_client,
@@ -1216,6 +1266,10 @@ async def extract_pass2_chapter(
     job_id: str,
     chapter_text: str,
     known_entities: Iterable[str] | None = None,
+    # C13 — glossary pinning: see extract_pass2_chat_turn. Force-injected into
+    # this window's known_entities so pinned entities are anchored even when the
+    # chapter text never mentions them.
+    pinned_names: list[str] | None = None,
     model_source: Literal["user_model", "platform_model"],
     model_ref: str,
     llm_client: LLMClient,
@@ -1236,6 +1290,8 @@ async def extract_pass2_chapter(
     embedding_model_uuid: str | None = None,
     embedding_dimension: int | None = None,
     summary_enqueue: SummaryEnqueueFn | None = None,
+    # C12 — target-typed extraction (None ⇒ all passes; back-compat).
+    targets: set[str] | None = None,
 ) -> Pass2WriteResult:
     """Run the Pass 2 LLM pipeline on a chapter.
 
@@ -1261,7 +1317,8 @@ async def extract_pass2_chapter(
         source_type=source_type,
         source_id=source_id,
         job_id=job_id,
-        known_entities=list(known_entities or ()),
+        # C13 — prepend pinned names into every chapter window.
+        known_entities=_merge_pinned(pinned_names, known_entities),
         model_source=model_source,
         model_ref=model_ref,
         llm_client=llm_client,
@@ -1276,4 +1333,5 @@ async def extract_pass2_chapter(
         embedding_model_uuid=embedding_model_uuid,
         embedding_dimension=embedding_dimension,
         summary_enqueue=summary_enqueue,
+        targets=targets,
     )

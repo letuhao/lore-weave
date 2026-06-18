@@ -103,6 +103,20 @@ def test_projects_alter_adds_tool_calling_enabled():
     )
 
 
+def test_projects_alter_adds_world_id():
+    """G4 (world-level project) — world_id binds a world's dedicated
+    knowledge partition to its bible book. Additive nullable column +
+    partial index; FK-by-convention to book-service worlds.id (cross-DB,
+    no SQL FK). Idempotent ADD COLUMN IF NOT EXISTS."""
+    assert "ADD COLUMN IF NOT EXISTS world_id UUID" in DDL
+    assert (
+        "idx_knowledge_projects_world\n  ON knowledge_projects(world_id) "
+        "WHERE world_id IS NOT NULL" in DDL
+    )
+    # cross-DB convention: no SQL FK to a worlds table (it lives in book-service)
+    assert "REFERENCES worlds" not in DDL
+
+
 def test_no_cross_db_fk_on_user_id():
     # The module header is explicit: user_id references a different DB,
     # so no FK. A regression that adds `REFERENCES users` would crash at

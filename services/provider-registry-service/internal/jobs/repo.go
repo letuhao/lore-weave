@@ -498,6 +498,28 @@ RETURNING operation, job_meta
 	return 1, nil
 }
 
+// FinalizeStreamStatus is the BILLING-NEUTRAL terminal write for an M3 streaming
+// observability row (the chat disconnect-cancel job-row). Unlike
+// FinalizeWithUsageOutbox it writes NO usage outbox and NO token totals — the
+// streaming path's own guard.settle / stream_billing stays the sole billing
+// authority (the row carries reservation_id = NULL), so finalizing here cannot
+// double-count. Guarded on status='running' so it never clobbers a 'cancelled'
+// already set by Cancel (an explicit DELETE that raced the stream's own exit):
+// rows==0 then means a concurrent cancel won, which is correct + idempotent.
+func (r *Repo) FinalizeStreamStatus(
+	ctx context.Context, jobID uuid.UUID, status, finishReason string,
+) (int64, error) {
+	tag, err := r.pool.Exec(ctx, `
+UPDATE llm_jobs
+SET status = $2, completed_at = now(), finish_reason = $3
+WHERE job_id = $1 AND status = 'running'
+`, jobID, status, finishReason)
+	if err != nil {
+		return 0, fmt.Errorf("finalize stream status: %w", err)
+	}
+	return tag.RowsAffected(), nil
+}
+
 // SweepStuckRunning is the §5.6 truth-sweeper backstop (D-PHASE1-RUNNING-SWEEPER):
 // a job that crashed mid-Process is left `running` and is NOT recovered by queue
 // redelivery (Process's pending-only gate). This bulk-fails any `running` job

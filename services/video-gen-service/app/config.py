@@ -43,5 +43,26 @@ class Settings(BaseSettings):
     minio_secret_key: str
     minio_external_url: str = "http://localhost:9123"
 
+    # ── LLM re-arch Phase 3 M5 — decoupled video-gen (job-row + terminal-event).
+    # When VIDEO_GEN_DECOUPLE_ENABLED, POST /generate submits the gateway job
+    # (submit_job, NOT generate_video — don't block) → persists a video_gen_jobs
+    # row → returns 202; a separate `python -m app.worker` consumes
+    # loreweave:events:llm_job_terminal, downloads the finished video → MinIO →
+    # marks the row done; GET /v1/video-gen/jobs/{id} polls. Default False →
+    # today's inline 201 path verbatim (zero contract change until the FE adopts
+    # 202 + poll). The DSN has a dev default (only used when the flag is on) so
+    # the inline path + the existing test suite start without the new env.
+    video_gen_db_url: str = (
+        "postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_video_gen"
+    )
+    redis_url: str = "redis://redis:6379"
+    video_gen_decouple_enabled: bool = False
+    # Stuck-job sweeper (the worker's runtime backstop — a Redis stream gives no
+    # post-ACK redelivery, so a lost terminal event / consumer crash needs a
+    # time-based re-drive). Timeout must exceed the worst-case video wall-clock
+    # (ComfyUI Wan/LTX 5-20 min) so a slow job isn't mistaken for stuck.
+    video_gen_job_sweep_secs: int = 120
+    video_gen_job_sweep_timeout_secs: int = 1800
+
 
 settings = Settings()

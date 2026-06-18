@@ -134,10 +134,66 @@ async def _pack(req, *, book=None, glossary=None, knowledge=None, canon=None, na
     )
 
 
-async def test_a1_chokepoint_rejects_missing_project():
-    req = _req(project_id=None)
+async def test_a1_chokepoint_still_guards_the_knowledge_lens_path():
+    # The A1 chokepoint still refuses to pack a NON-greenfield path unscoped — it
+    # guards every knowledge-lens read. (Null project_id no longer hits it because
+    # C16 short-circuits to the empty/local-only pack BEFORE the lens calls — see
+    # the null-project tests below.) Direct-assert the chokepoint itself.
+    from app.packer.assemble import assert_project_scoped
     with pytest.raises(ValueError, match="A1"):
-        await _pack(req)
+        assert_project_scoped(None)
+
+
+# ── C16 (WG-3): null-project (lazy greenfield) pack tolerance ──
+
+
+class SpyKnowledge(StubKnowledge):
+    """Records whether ANY knowledge lens was called — proves the null-project pack
+    never widens cross-project (C23 leak) by simply not calling knowledge at all."""
+    def __init__(self):
+        super().__init__()
+        self.called = False
+
+    async def glossary_semantic(self, *a, **kw):
+        self.called = True
+        return await super().glossary_semantic(*a, **kw)
+
+    async def timeline(self, *a, **kw):
+        self.called = True
+        return await super().timeline(*a, **kw)
+
+    async def search_drawers(self, *a, **kw):
+        self.called = True
+        return await super().search_drawers(*a, **kw)
+
+    async def get_entity(self, *a, **kw):
+        self.called = True
+        return await super().get_entity(*a, **kw)
+
+
+async def test_pack_null_project_returns_empty_grounding_no_exception():
+    spy = SpyKnowledge()
+    pc = await _pack(_req(project_id=None), knowledge=spy)
+    assert pc.grounding_available is False
+    assert pc.prompt is not None  # a valid (possibly empty) prompt — Generate proceeds
+    assert spy.called is False    # NO knowledge lens called → no cross-project widening
+
+
+async def test_pack_null_project_advisory_warning():
+    pc = await _pack(_req(project_id=None))
+    assert any("grounding_unavailable" in w for w in pc.warnings)
+
+
+async def test_pack_null_project_keeps_guide():
+    # The author's guide still reaches the prompt even with empty grounding.
+    pc = await _pack(_req(project_id=None, guide="write it tense and short"))
+    assert "tense" in pc.prompt
+
+
+async def test_pack_null_project_still_enforces_book_grant():
+    # A null project_id does NOT bypass authorization — a non-owner is still 404'd.
+    with pytest.raises(OwnershipError):
+        await _pack(_req(project_id=None), book=StubBook(owns=False))
 
 
 async def test_sec2_chokepoint_blocks_non_owner():

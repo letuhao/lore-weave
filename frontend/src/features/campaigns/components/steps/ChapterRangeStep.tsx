@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/auth';
-import { booksApi } from '../../../books/api';
+import { booksApi, type Chapter } from '../../../books/api';
 import type { WizardForm } from '../../hooks/useCampaignWizard';
 
 interface Props {
@@ -18,7 +18,19 @@ export function ChapterRangeStep({ form, setField }: Props) {
 
   const chapters = useQuery({
     queryKey: ['campaign-wizard', 'chapters', form.bookId],
-    queryFn: () => booksApi.listChapters(accessToken!, form.bookId!, { limit: 5000 }),
+    // The chapter-list endpoint caps a page at 100, so a single limit:5000 request
+    // silently returned only the first 100 — the in-range/published counts then
+    // under-reported on books >100 chapters. Loop-fetch every page instead.
+    queryFn: async () => {
+      const items: Chapter[] = [];
+      const pageSize = 100;
+      for (let offset = 0; ; offset += pageSize) {
+        const r = await booksApi.listChapters(accessToken!, form.bookId!, { limit: pageSize, offset });
+        items.push(...r.items);
+        if (r.items.length < pageSize || items.length >= r.total) break;
+      }
+      return { items, total: items.length };
+    },
     enabled: !!accessToken && !!form.bookId,
   });
 

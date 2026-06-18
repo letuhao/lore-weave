@@ -48,6 +48,27 @@ async def test_rerank_degrades_on_non_200(monkeypatch):
     await rc.aclose()
 
 
+async def test_get_default_rerank_returns_id_then_none(monkeypatch):
+    rc = RerankerClient(base_url="http://pr:8085", internal_token="t", timeout_s=5.0)
+    # 200 with a default → returns the user_model_id.
+    captured: dict = {}
+
+    async def _get(url, **kwargs):
+        captured["url"] = url
+        captured.update(kwargs)
+        return _Resp(200, {"user_model_id": "m-default", "model_source": "user_model"})
+
+    monkeypatch.setattr(rc._http, "get", AsyncMock(side_effect=_get))
+    assert await rc.get_default_rerank("u1") == "m-default"
+    assert captured["url"].endswith("/internal/default-models/rerank")
+    assert captured["params"] == {"user_id": "u1"}
+
+    # 404 (no default set) → None (caller skips rerank).
+    monkeypatch.setattr(rc._http, "get", AsyncMock(return_value=_Resp(404, {})))
+    assert await rc.get_default_rerank("u1") is None
+    await rc.aclose()
+
+
 async def test_rerank_empty_documents_short_circuits(monkeypatch):
     rc = RerankerClient(base_url="http://pr:8085", internal_token="t", timeout_s=5.0)
     post = AsyncMock()
