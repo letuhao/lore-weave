@@ -118,11 +118,12 @@ def test_glossary_secondary_kinds_are_cancel_only():
 
 
 def test_wiki_gen_caps_match_native():
-    # D-JOBS-SECONDARY-KIND-CONTROL: wiki cancel works pending|paused, resume works paused;
-    # a RUNNING wiki job is NOT cancellable (D-WIKI-M7B-RUNNING-CANCEL) → no caps.
+    # D-JOBS-SECONDARY-KIND-CONTROL: wiki cancel works pending|paused, resume works paused.
+    # D-WIKI-M7B: a RUNNING wiki job IS now cancellable (the orchestrator polls between
+    # entities + stops promptly) → running offers cancel (no pause: wiki pause is auto/budget).
     assert _vals(derive_control_caps(JobStatus.PENDING, "wiki_gen")) == ["cancel"]
     assert _vals(derive_control_caps(JobStatus.PAUSED, "wiki_gen")) == ["resume", "cancel"]
-    assert derive_control_caps(JobStatus.RUNNING, "wiki_gen") == []  # can't cancel a running wiki job
+    assert _vals(derive_control_caps(JobStatus.RUNNING, "wiki_gen")) == ["cancel"]
     assert derive_control_caps(JobStatus.FAILED, "wiki_gen") == []
     assert derive_control_caps(JobStatus.COMPLETED, "wiki_gen") == []
     assert derive_control_caps(JobStatus.CANCELLING, "wiki_gen") == []

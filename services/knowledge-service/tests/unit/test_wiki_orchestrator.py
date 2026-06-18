@@ -41,7 +41,7 @@ def _clients(write_action="written"):
         reranker=MagicMock(), llm=MagicMock(), book_profile=bp)
 
 
-def _repo():
+def _repo(*, status_reads=None):
     r = MagicMock()
     r.mark_running = AsyncMock()
     r.mark_entity_done = AsyncMock()
@@ -51,6 +51,13 @@ def _repo():
     # W4a — per-entity result + live-progress writes the orchestrator now drives.
     r.record_result = AsyncMock()
     r.set_progress = AsyncMock()
+    # D-WIKI-M7B — the between-entity status poll. Default: always 'running' (no
+    # external control → the loop runs to completion). A test can script a sequence
+    # via `status_reads` to simulate a mid-run cancel/pause.
+    if status_reads is not None:
+        r.read_status = AsyncMock(side_effect=status_reads)
+    else:
+        r.read_status = AsyncMock(return_value="running")
     return r
 
 
@@ -110,6 +117,48 @@ async def test_happy_multi_entity():
     assert repo.mark_entity_done.await_count == 3
     assert clients.glossary.write_wiki_article.await_count == 3
     repo.complete.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_running_cancel_stops_mid_loop():
+    """D-WIKI-M7B: an external cancel mid-run (status flips to 'cancelled' between
+    entities) stops the loop PROMPTLY — the remaining entities are not generated
+    (no wasted tokens) and the job does not complete()."""
+    # poll #1 (before e1) → running; poll #2 (before e2) → cancelled → stop.
+    job = _job(["e1", "e2", "e3"])
+    clients, repo = _clients(), _repo(status_reads=["running", "cancelled"])
+    with _patches():
+        status = await _run(job, clients, repo)
+    assert status == "cancelled"
+    assert repo.mark_entity_done.await_count == 1  # only e1 completed before the cancel
+    # only e1 was generated+written — e2/e3 never ran (the token-saving stop).
+    assert clients.glossary.write_wiki_article.await_count == 1
+    repo.complete.assert_not_awaited()  # a cancelled job must NOT be completed
+
+
+@pytest.mark.asyncio
+async def test_running_cancel_before_first_entity_does_nothing():
+    """A cancel that lands before the first entity stops with zero work done."""
+    job = _job(["e1", "e2"])
+    clients, repo = _clients(), _repo(status_reads=["cancelled"])
+    with _patches():
+        status = await _run(job, clients, repo)
+    assert status == "cancelled"
+    assert repo.mark_entity_done.await_count == 0
+    assert clients.glossary.write_wiki_article.await_count == 0  # nothing generated
+    repo.complete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_external_pause_mid_loop_is_resumable():
+    """An external manual pause mid-run stops resumable (items_done persisted)."""
+    job = _job(["e1", "e2", "e3"])
+    clients, repo = _clients(), _repo(status_reads=["running", "paused"])
+    with _patches():
+        status = await _run(job, clients, repo)
+    assert status == "paused"
+    assert repo.mark_entity_done.await_count == 1
+    repo.complete.assert_not_awaited()
 
 
 @pytest.mark.asyncio

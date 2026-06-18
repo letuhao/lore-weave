@@ -204,10 +204,25 @@ async def test_cancel_pending_job_releases_lock():
 
 
 @pytest.mark.asyncio
-async def test_cancel_409_when_running_or_terminal():
+async def test_cancel_running_job_now_cancellable():
+    # D-WIKI-M7B — a RUNNING wiki-gen job is now cancellable (repo.cancel guards on
+    # pending|paused|running; the orchestrator's between-entity poll stops it).
     book, user = uuid4(), uuid4()
     job = _job(book_id=book, user_id=user, status="running")
-    repo = _repo(get=job, cancel=False)  # repo.cancel guards on pending|paused
+    repo = _repo(get=job, cancel=True)
+    with _patch_repo(repo):
+        out = await iw.cancel_wiki_gen_job(
+            book, job.job_id, iw.WikiGenJobActionRequest(user_id=user))
+    assert out["status"] == "cancelled"
+    repo.cancel.assert_awaited_once_with(job.job_id)
+
+
+@pytest.mark.asyncio
+async def test_cancel_409_when_terminal():
+    # An already-terminal job → repo.cancel returns False (guard misses) → 409.
+    book, user = uuid4(), uuid4()
+    job = _job(book_id=book, user_id=user, status="complete")
+    repo = _repo(get=job, cancel=False)
     with _patch_repo(repo):
         with pytest.raises(HTTPException) as exc:
             await iw.cancel_wiki_gen_job(

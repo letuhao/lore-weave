@@ -106,7 +106,12 @@ def derive_control_caps(
             return [ControlCap.RESUME, ControlCap.CANCEL]
         if s == JobStatus.PENDING:
             return [ControlCap.CANCEL]
-        return []  # running can't be cancelled (D-WIKI-M7B); terminal/cancelling → none
+        if s == JobStatus.RUNNING:
+            # D-WIKI-M7B: a running wiki-gen job IS now cancellable — the orchestrator
+            # polls status between entities and stops promptly (no pause: a wiki-gen
+            # pause is budget-driven/auto, not an offered manual control).
+            return [ControlCap.CANCEL]
+        return []  # terminal/cancelling → none
     if s == JobStatus.FAILED:
         # A failed job is terminal but RE-SUBMITTABLE when the owner honors it
         # (D-JOBS-P4-RETRY): either the kind is unconditionally retryable, or this

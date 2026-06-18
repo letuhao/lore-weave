@@ -456,9 +456,10 @@ async def resume_wiki_gen_job(
 async def cancel_wiki_gen_job(
     book_id: UUID, job_id: UUID, req: WikiGenJobActionRequest
 ) -> dict:
-    """Cancel a not-yet-running job (pending|paused), releasing the per-book lock.
-    404 if not the owner's; 409 if it can't be cancelled (running/terminal —
-    running-cancel is D-WIKI-M7B-RUNNING-CANCEL)."""
+    """Cancel a non-terminal job (pending|paused|running), releasing the per-book
+    lock. A running job is cancelled too (D-WIKI-M7B): the orchestrator polls status
+    between entities and stops promptly. 404 if not the owner's; 409 only if already
+    terminal (complete/failed/cancelled)."""
     repo = WikiGenJobsRepo(get_knowledge_pool())
     await _owned_job(repo, job_id=job_id, book_id=book_id, user_id=req.user_id)
     if not await repo.cancel(job_id):

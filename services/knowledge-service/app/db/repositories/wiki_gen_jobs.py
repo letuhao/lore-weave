@@ -155,6 +155,14 @@ class WikiGenJobsRepo:
                 f"SELECT {_COLS} FROM wiki_gen_jobs WHERE job_id=$1", job_id)
         return _row_to_job(row) if row else None
 
+    async def read_status(self, job_id: UUID) -> str | None:
+        """The current persisted status only (D-WIKI-M7B). The orchestrator reads
+        this BETWEEN entities to honour an external cancel/pause mid-run without
+        loading the whole job row each iteration. None if no such job."""
+        async with self._pool.acquire() as conn:
+            return await conn.fetchval(
+                "SELECT status FROM wiki_gen_jobs WHERE job_id=$1", job_id)
+
     async def list_resumable(self, *, limit: int = 100) -> list[WikiGenJob]:
         """Jobs that should be (re)driven on a consumer startup — pending (the
         trigger XADD may have been missed while the consumer was down) or running
@@ -338,18 +346,20 @@ class WikiGenJobsRepo:
         return True
 
     async def cancel(self, job_id: UUID) -> bool:
-        """Cancel a not-yet-running job (pending|paused → cancelled), releasing the
-        per-book lock (the partial-unique index excludes 'cancelled'). A *running*
-        job is intentionally NOT cancellable here — the orchestrator doesn't poll
-        status mid-loop, so a cancelled-while-running row would be clobbered by its
-        terminal complete()/pause() write (D-WIKI-M7B-RUNNING-CANCEL). Returns True
-        iff a pending|paused job was cancelled."""
+        """Cancel a job from any non-terminal state (pending|paused|running →
+        cancelled), releasing the per-book lock (the partial-unique index excludes
+        'cancelled'). Running-cancel is honoured by the orchestrator's between-entity
+        status poll, which stops the loop promptly so no further articles are
+        generated (D-WIKI-M7B-RUNNING-CANCEL). The terminal complete()/fail()/pause()
+        writes are all guarded `WHERE status NOT IN (terminal)` / `IN ('pending',
+        'running')`, so a cancel that lands as the loop ends is never clobbered back.
+        Returns True iff a non-terminal job was cancelled."""
         async with self._pool.acquire() as conn:
             async with conn.transaction():  # UPDATE + emit_job_event atomic (H1)
                 row = await conn.fetchrow(
                     """UPDATE wiki_gen_jobs
                        SET status='cancelled', completed_at=now(), updated_at=now()
-                       WHERE job_id=$1 AND status IN ('pending','paused')
+                       WHERE job_id=$1 AND status IN ('pending','paused','running')
                        RETURNING user_id, cost_spent_usd""",
                     job_id)
                 if row is None:

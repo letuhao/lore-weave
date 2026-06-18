@@ -284,6 +284,21 @@ async def run_wiki_gen_job(
     for entity_id in entity_ids:
         if entity_id in done:
             continue
+        # D-WIKI-M7B: honour an external cancel/pause that landed mid-run. The
+        # orchestrator is the only writer that keeps the row 'running'; any other
+        # status between entities is a control action → stop PROMPTLY so no further
+        # article is generated (the token-waste running-cancel targets — before this
+        # the loop ran to the end and only the final complete() no-op'd on the
+        # 'cancelled' guard). items_done is persisted per entity, so a resume
+        # re-drives the rest. No status write here — the control endpoint already
+        # persisted + emitted the transition (H1).
+        current = await repo.read_status(job.job_id)
+        if current is not None and current != "running":
+            logger.info(
+                "wiki-gen job=%s external status %s mid-run — stopping (%d/%d done)",
+                job.job_id, current, len(done), len(entity_ids),
+            )
+            return current
         # Budget gate BEFORE the spend: pause (resumable) rather than overspend.
         if cap is not None and spent + cost_per_article_usd > cap:
             await repo.pause(job.job_id, reason="budget")
