@@ -123,6 +123,11 @@ def _setup(state: _MockState) -> TestClient:
     jobs_repo.list_active = AsyncMock(
         side_effect=lambda *a, **kw: [state.job()] if state.active else [],
     )
+    # B8: pause/resume/cancel now resolve the active job via the project-scoped
+    # query; mirror the same state so the lifecycle test is path-agnostic.
+    jobs_repo.list_active_for_project = AsyncMock(
+        side_effect=lambda *a, **kw: [state.job()] if state.active else [],
+    )
     jobs_repo.list_for_project = AsyncMock(
         side_effect=lambda *a, **kw: [state.job()],
     )

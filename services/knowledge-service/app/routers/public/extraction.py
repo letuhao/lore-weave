@@ -840,13 +840,12 @@ async def _get_active_job_for_project(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="project not found",
         )
-    # TODO: add a project-scoped active-job lookup if this becomes a
-    # performance concern. list_active fetches all active jobs across
-    # all projects; fine at hobby scale (unique index limits one per project).
-    active = await jobs_repo.list_active(user_id)
-    for j in active:
-        if j.project_id == project_id:
-            return j
+    # D-RAWSEARCH/B8: project-scoped active-job lookup (was a cross-project
+    # list_active(user_id) + in-memory filter). The unique index limits one
+    # active job per project, so the scoped query returns ≤1 row.
+    active = await jobs_repo.list_active_for_project(user_id, project_id)
+    if active:
+        return active[0]
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
         detail="no active extraction job for this project",
