@@ -1,8 +1,11 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
+
+	"github.com/google/uuid"
 )
 
 // D-WIKI-M7B-GEN-LIMIT — the delegate's 202 body is augmented with selection
@@ -41,4 +44,59 @@ func TestInjectGenSelectionCounts(t *testing.T) {
 			}
 		}
 	})
+}
+
+// D-WIKI-M7B-GEN-LIMIT (real-PG) — resolveWikiGenEntities must return the
+// limited id slice AND the UNLIMITED total-matched count, so the handler can
+// detect the silent-truncation case (the core of the honest-banner fix).
+// Skips when GLOSSARY_TEST_DB_URL is unset.
+func TestResolveWikiGenEntities_TotalMatchedVsLimit(t *testing.T) {
+	pool := openTestDB(t)
+	runK2aMigrations(t, pool)
+	ctx := context.Background()
+
+	srv, _ := newEntitiesListServer(t)
+	srv.pool = pool
+
+	bookID := uuid.MustParse("00000000-0000-0000-0002-0000000b7b01")
+	var kindID string
+	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+
+	seed := func(status string, deleted bool) {
+		pool.Exec(ctx,
+			`INSERT INTO glossary_entities(book_id,kind_id,status,tags,deleted_at)
+			 VALUES($1,$2,$3,'{}', CASE WHEN $4 THEN now() ELSE NULL END)`,
+			bookID, kindID, status, deleted)
+	}
+	// 5 eligible (active, not deleted) + 2 ineligible (deleted / inactive).
+	for i := 0; i < 5; i++ {
+		seed("active", false)
+	}
+	seed("active", true)   // soft-deleted — must NOT count
+	seed("inactive", false) // non-active — must NOT count
+
+	t.Cleanup(func() {
+		pool.Exec(ctx, `DELETE FROM glossary_entities WHERE book_id=$1`, bookID)
+	})
+
+	// Limit below the eligible count → truncation: 3 ids, total 5.
+	ids, total, err := srv.resolveWikiGenEntities(ctx, bookID, []string{"character"}, 3)
+	if err != nil {
+		t.Fatalf("resolveWikiGenEntities: %v", err)
+	}
+	if len(ids) != 3 {
+		t.Errorf("want 3 limited ids, got %d", len(ids))
+	}
+	if total != 5 {
+		t.Errorf("want total_matched=5 (eligible only, deleted/inactive excluded), got %d", total)
+	}
+
+	// Limit at/above the eligible count → no truncation: 5 ids, total 5.
+	ids2, total2, err := srv.resolveWikiGenEntities(ctx, bookID, []string{"character"}, 50)
+	if err != nil {
+		t.Fatalf("resolveWikiGenEntities (no-trunc): %v", err)
+	}
+	if len(ids2) != 5 || total2 != 5 {
+		t.Errorf("no-truncation: want 5 ids + total 5, got %d ids / total %d", len(ids2), total2)
+	}
 }

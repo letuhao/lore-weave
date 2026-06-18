@@ -12,7 +12,7 @@ vi.mock('react-i18next', () => ({
 
 // vi.hoisted — the mock factory is hoisted, so a plain top-level `toast` const
 // would be in the TDZ when `vi.mock('sonner', () => ({ toast }))` evaluates it.
-const toast = vi.hoisted(() => ({ success: vi.fn(), info: vi.fn(), error: vi.fn() }));
+const toast = vi.hoisted(() => ({ success: vi.fn(), warning: vi.fn(), info: vi.fn(), error: vi.fn() }));
 vi.mock('sonner', () => ({ toast }));
 
 const getJob = vi.fn();
@@ -76,6 +76,30 @@ describe('useWikiGenJob', () => {
       'tok',
     );
     expect(toast.success).toHaveBeenCalledWith('gen.started');
+  });
+
+  it('warns startedTruncated when the genLimit dropped candidates (D-WIKI-M7B-GEN-LIMIT)', async () => {
+    getJob.mockRejectedValue(Object.assign(new Error('no_job'), { status: 404 }));
+    generateStubs.mockResolvedValue({ job_id: 'j1', status: 'pending', total_matched: 87, selected: 50 });
+    const { Wrapper } = wrapper();
+    const { result } = renderHook(() => useWikiGenJob('b1'), { wrapper: Wrapper });
+    await act(async () => {
+      await result.current.trigger({ model_ref: 'm1', kind_codes: ['character'] });
+    });
+    expect(toast.warning).toHaveBeenCalledWith('gen.startedTruncated');
+    expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  it('shows plain started (not truncated) when total_matched == selected', async () => {
+    getJob.mockRejectedValue(Object.assign(new Error('no_job'), { status: 404 }));
+    generateStubs.mockResolvedValue({ job_id: 'j2', status: 'pending', total_matched: 50, selected: 50 });
+    const { Wrapper } = wrapper();
+    const { result } = renderHook(() => useWikiGenJob('b1'), { wrapper: Wrapper });
+    await act(async () => {
+      await result.current.trigger({ model_ref: 'm1', kind_codes: ['character'] });
+    });
+    expect(toast.success).toHaveBeenCalledWith('gen.started');
+    expect(toast.warning).not.toHaveBeenCalled();
   });
 
   it('trigger without a model runs deterministic stubs and invalidates the list', async () => {
