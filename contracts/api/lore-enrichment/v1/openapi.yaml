@@ -230,6 +230,36 @@ paths:
         '501':
           $ref: '#/components/responses/ErrorResponse'
 
+  /v1/lore-enrichment/jobs/{job_id}/retry:
+    post:
+      tags: [jobs]
+      summary: Retry a failed enrichment job
+      description: >
+        Re-drive a FAILED job over the async re-drive worker, skipping
+        already-done gaps (no re-spend) and re-running the rest. Flips
+        failed→running + enqueues the trigger; 202 once enqueued. 409 if the
+        job is not failed; 404 if not found/owned (D-JOBS-P4-RETRY-LORE).
+      operationId: retryEnrichmentJob
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '202':
+          description: Re-drive enqueued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnrichmentJob'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/ErrorResponse'
+
   # ───────────────────────────── proposals ─────────────────────────────
   /v1/lore-enrichment/proposals:
     get:

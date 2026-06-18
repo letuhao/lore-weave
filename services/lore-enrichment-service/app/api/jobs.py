@@ -136,8 +136,18 @@ async def create_job(
 ) -> dict:
     """Run a P1 enrichment job over the requested under-described LOCATIONs.
 
-    Synchronous for the demo: the full pipeline runs and the outcome (job state,
-    quarantined proposals, cost) is returned. H0: every proposal is quarantined.
+    DEMO / TEST-ONLY — NOT the production entry point. This runs the full pipeline
+    SYNCHRONOUSLY in-process and returns the outcome (job state, quarantined
+    proposals, cost), which is convenient for the e2e gate-refusal tests and the
+    c14/live-smoke scripts but holds the HTTP connection for the whole multi-gap
+    LLM run. The PRODUCTION path is asynchronous and worker-driven:
+    ``POST /v1/lore-enrichment/projects/{book_id}/auto-enrich`` (and compose)
+    create the row + persist the request + XADD a trigger, and the resume worker
+    re-drives it via ``redrive_one`` (M1 per-job claim + M2 cancel/pause parity +
+    M3 retry all apply there). No frontend or sibling service calls THIS route;
+    keep it for the demo/gate coverage, don't wire new callers to it.
+
+    H0: every proposal is quarantined regardless of path.
     """
     if principal.user_id is None:
         raise HTTPException(
