@@ -40,11 +40,56 @@ logger = logging.getLogger("lore_enrichment.resume_worker")
 RESUME_GROUP = "lore-enrichment-resume"
 
 
+# A fixed bigint advisory-lock key derived from a job_id UUID's first 64 bits. Used to
+# CLAIM a job for one runner (HIGH-2): the create / resume / retry / stranded-sweeper
+# triggers all land on the SAME resume stream and all call redrive_one, so without a claim
+# two could drive the SAME job concurrently and double-SPEND real LLM tokens (redrive_one
+# dedups proposals only at PERSIST, AFTER the LLM call). The claim is a Postgres SESSION
+# advisory lock held for the whole run on a dedicated connection. It is STATUS-AGNOSTIC by
+# design — a status CAS (pending->running) would reject a legitimate resume, because the
+# resume endpoint pre-flips paused->running BEFORE it XADDs the trigger.
+_JOB_LOCK_KEY_SQL = "SELECT ('x' || substr(replace($1, '-', ''), 1, 16))::bit(64)::bigint"
+
+
 async def redrive_one(
     *, pool: asyncpg.Pool, job_id: str, project_id: str, user_id: str
 ) -> str:
-    """Re-drive ONE paused job, skipping done gaps. Returns a short status string
-    (for the log). Idempotent — safe to call again on redelivery."""
+    """Re-drive ONE job (fresh run, resume, or retry — all are a re-drive skipping done
+    gaps), under a per-job advisory-lock CLAIM so concurrent triggers for the same job can
+    never run two LLM-spending runners (HIGH-2). A runner that can't claim no-ops. Returns
+    a short status string (for the log). Idempotent — safe to call again on redelivery."""
+    # Derive the bigint lock key once (UUID's first 64 bits → negligible collision vs
+    # bare hashtext, which matters because a false collision would skip a real job).
+    async with pool.acquire() as lock_conn:
+        try:
+            lock_key = await lock_conn.fetchval(_JOB_LOCK_KEY_SQL, job_id)
+        except Exception:  # noqa: BLE001 — a malformed job_id can't be a real job; drop
+            logger.warning("redrive %s: bad job_id for lock key — drop", job_id)
+            return "bad_job_id"
+        claimed = await lock_conn.fetchval("SELECT pg_try_advisory_lock($1)", lock_key)
+        if not claimed:
+            # Another runner holds this job's lock (a concurrent create/resume/retry/sweeper
+            # trigger) — no-op so we don't double-spend. The holder drives it to terminal;
+            # this message is ack'd by the caller (the work is in flight elsewhere).
+            logger.info("redrive %s: job already claimed by another runner — skip", job_id)
+            return "already_claimed"
+        try:
+            return await _redrive_locked(
+                pool=pool, job_id=job_id, project_id=project_id, user_id=user_id
+            )
+        finally:
+            # Release the claim (best-effort; a session lock is also freed if the conn drops).
+            try:
+                await lock_conn.fetchval("SELECT pg_advisory_unlock($1)", lock_key)
+            except Exception:  # noqa: BLE001 — conn-close frees the session lock anyway
+                logger.warning("redrive %s: advisory unlock failed (conn-close frees it)", job_id)
+
+
+async def _redrive_locked(
+    *, pool: asyncpg.Pool, job_id: str, project_id: str, user_id: str
+) -> str:
+    """The actual re-drive, run while holding the per-job advisory claim (see redrive_one).
+    Idempotent — safe to call again on redelivery."""
     request = await load_job_request(pool=pool, job_id=UUID(job_id))
     if request is None:
         # No persisted request (a job created before this table) — can't re-drive.
