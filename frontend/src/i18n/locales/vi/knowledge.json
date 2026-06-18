@@ -189,6 +189,7 @@
     "notIndexed": "Dự án này chưa được lập chỉ mục để tìm kiếm ngữ nghĩa.",
     "notIndexedHint": "Chạy trích xuất với mô hình embedding để bật tìm kiếm ngăn kéo.",
     "refreshing": "Đang làm mới…",
+    "embedCost": "Đã embed truy vấn: {{tokens}} token · ${{cost}}",
     "retry": "Thử lại",
     "fixConfig": "Kiểm tra cấu hình mô hình embedding của dự án trong Cài đặt.",
     "unknownError": "Lỗi không xác định. Vui lòng thử lại.",

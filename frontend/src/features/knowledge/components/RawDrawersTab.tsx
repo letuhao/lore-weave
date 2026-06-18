@@ -69,6 +69,8 @@ export function RawDrawersTab({ scopedProjectId }: RawDrawersTabProps = {}) {
   const {
     hits,
     embeddingModel,
+    embeddingPromptTokens,
+    embeddingCostUsd,
     sourceTypeCounts,
     disabled,
     isLoading,
@@ -288,6 +290,20 @@ export function RawDrawersTab({ scopedProjectId }: RawDrawersTabProps = {}) {
           {isFetching && (
             <p className="mt-2 text-[11px] text-muted-foreground">
               {t('drawers.refreshing')}
+            </p>
+          )}
+          {/* D-K19e-γa-02 — per-search embed cost. Shown only when the
+              provider reported token usage (null = "unknown", omit the
+              line rather than show a misleading $0). */}
+          {embeddingCostUsd != null && embeddingPromptTokens != null && (
+            <p
+              className="mt-2 text-[11px] text-muted-foreground"
+              data-testid="drawers-embed-cost"
+            >
+              {t('drawers.embedCost', {
+                tokens: embeddingPromptTokens,
+                cost: embeddingCostUsd,
+              })}
             </p>
           )}
         </>

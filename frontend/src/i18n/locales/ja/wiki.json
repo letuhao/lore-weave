@@ -96,6 +96,7 @@
       "perArticle": "見積費用: 1記事あたり ~{{perArticle}}"
     },
     "started": "生成を開始しました",
+    "startedTruncated": "{{total}} 件中 {{selected}} 件のエンティティを生成中——残りは上限によりスキップされました。上限を上げて含めてください。",
     "noEntities": "生成対象のエンティティがありません",
     "alreadyRunning": "この本の生成ジョブはすでに実行中です",
     "notIndexed": "先にこの本のナレッジグラフを構築してください",

@@ -5,10 +5,11 @@ DELETE /v1/knowledge/me/entities/{entity_id}
 
 The GET powers the Global tab's Preferences section (K19c.4) and is
 built to generalise to `scope=project` when K19d lands. The DELETE
-is a soft archive (reuses ``archive_entity`` with reason
-``user_archived``); it preserves EVIDENCED_BY edges + relations so
-the entity can still appear in cross-reference traces even after
-being hidden from the preference list.
+is a soft archive (``user_archive_entity`` with reason
+``user_archived``); it preserves EVIDENCED_BY edges + relations AND
+the ``glossary_entity_id`` anchor (D-K19c.4-01) so the entity can
+still appear in cross-reference traces and come back anchored on a
+later restore, even after being hidden from the preference list.
 """
 
 from __future__ import annotations
@@ -33,7 +34,7 @@ from app.db.neo4j_repos.entities import (
     Entity,
     EntityDetail,
     MergeEntitiesError,
-    archive_entity,
+    user_archive_entity,
     find_entities_by_vector,
     find_gap_candidates,
     get_entity,
@@ -178,10 +179,12 @@ async def archive_user_entity(
 ) -> None:
     """K19c.4 — soft-archive a user entity (UI "delete" = hide it).
 
-    Reuses `archive_entity` with `reason='user_archived'`. 404 only
+    Uses `user_archive_entity` with `reason='user_archived'` — the
+    variant that PRESERVES `glossary_entity_id` (D-K19c.4-01) so a
+    later restore re-shows the entity still anchored. 404 only
     when the entity doesn't exist for this user at all (cross-user
     or typo in the id). **Idempotent** per RFC 9110: a second DELETE
-    on the same entity_id still returns 204 because `_ARCHIVE_CYPHER`
+    on the same entity_id still returns 204 because `_USER_ARCHIVE_CYPHER`
     has no `archived_at IS NULL` guard — it just rewrites
     `archived_at = now()` and the same row comes back. The only
     visible side effect of the second call is a bumped `updated_at`
@@ -197,7 +200,10 @@ async def archive_user_entity(
         before_entity = await get_entity(
             session, user_id=str(user_id), canonical_id=entity_id,
         )
-        result = await archive_entity(
+        # D-K19c.4-01 — user "delete" is hide-now-restore-later, so use the
+        # variant that PRESERVES `glossary_entity_id`; the glossary entry still
+        # exists and a later restore should bring the entity back anchored.
+        result = await user_archive_entity(
             session,
             user_id=str(user_id),
             canonical_id=entity_id,

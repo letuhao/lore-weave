@@ -227,6 +227,89 @@ def test_drawers_limit_forwarded(mock_find):
     assert mock_find.await_args.kwargs["limit"] == 25
 
 
+# ── D-K19e-γa-02 — per-search embed cost ─────────────────────────────
+
+
+@patch(
+    "app.routers.public.drawers.find_passages_by_vector",
+    new_callable=AsyncMock,
+)
+@patch(
+    "app.routers.public.drawers.neo4j_session", new=lambda: _noop_session()
+)
+def test_drawers_embed_cost_surfaced_for_priced_model(mock_find):
+    """When the provider reports prompt_tokens AND the model has a known
+    rate, the response carries the token count + a non-zero USD cost."""
+    mock_find.return_value = [_hit_stub(0, 0.9)]
+    client, _, _ = _make_client(
+        project=_project_stub(embedding_model="text-embedding-3-small"),
+        embed_return=EmbeddingResult(
+            embeddings=[[0.1] * 1024],
+            dimension=1024,
+            model="text-embedding-3-small",  # rate 0.00000002 / token
+            prompt_tokens=1000,
+        ),
+    )
+    resp = client.get(
+        f"/v1/knowledge/drawers/search?project_id={_PROJECT_ID}&query=bridge+duel"
+    )
+    assert resp.status_code == 200, resp.json()
+    body = resp.json()
+    assert body["embedding_prompt_tokens"] == 1000
+    # 1000 × 0.00000002 = 0.00002000
+    assert Decimal(body["embedding_cost_usd"]) == Decimal("0.00002000")
+
+
+@patch(
+    "app.routers.public.drawers.find_passages_by_vector",
+    new_callable=AsyncMock,
+)
+@patch(
+    "app.routers.public.drawers.neo4j_session", new=lambda: _noop_session()
+)
+def test_drawers_embed_cost_zero_for_free_local_model(mock_find):
+    """A self-hosted model (rate 0) reports its tokens with an explicit
+    0.00 cost — distinct from 'unknown' (null)."""
+    mock_find.return_value = []
+    client, _, _ = _make_client(
+        embed_return=EmbeddingResult(
+            embeddings=[[0.1] * 1024], dimension=1024,
+            model="bge-m3", prompt_tokens=42,
+        ),
+    )
+    resp = client.get(
+        f"/v1/knowledge/drawers/search?project_id={_PROJECT_ID}&query=test"
+    )
+    body = resp.json()
+    assert body["embedding_prompt_tokens"] == 42
+    assert Decimal(body["embedding_cost_usd"]) == Decimal("0")
+
+
+@patch(
+    "app.routers.public.drawers.find_passages_by_vector",
+    new_callable=AsyncMock,
+)
+@patch(
+    "app.routers.public.drawers.neo4j_session", new=lambda: _noop_session()
+)
+def test_drawers_embed_cost_null_when_tokens_unreported(mock_find):
+    """Provider omits usage (prompt_tokens=0, e.g. Ollama) → both fields
+    null ('unknown', NOT a misleading $0)."""
+    mock_find.return_value = []
+    client, _, _ = _make_client(
+        embed_return=EmbeddingResult(
+            embeddings=[[0.1] * 1024], dimension=1024,
+            model="bge-m3", prompt_tokens=0,
+        ),
+    )
+    resp = client.get(
+        f"/v1/knowledge/drawers/search?project_id={_PROJECT_ID}&query=test"
+    )
+    body = resp.json()
+    assert body["embedding_prompt_tokens"] is None
+    assert body["embedding_cost_usd"] is None
+
+
 # ── empty-state branches ─────────────────────────────────────────────
 
 

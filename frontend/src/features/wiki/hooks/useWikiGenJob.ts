@@ -113,7 +113,24 @@ export function useWikiGenJob(bookId: string) {
           accessToken,
         );
         if ('job_id' in result) {
-          toast.success(t('gen.started'));
+          // D-WIKI-M7B-GEN-LIMIT — when the genLimit cap dropped candidates,
+          // say so explicitly ("Generating N of M …") instead of a bland
+          // "started" that reads as "all of them". Falls back to the plain
+          // toast for older responses without the counts or when none dropped.
+          if (
+            result.total_matched != null &&
+            result.selected != null &&
+            result.total_matched > result.selected
+          ) {
+            toast.warning(
+              t('gen.startedTruncated', {
+                selected: result.selected,
+                total: result.total_matched,
+              }),
+            );
+          } else {
+            toast.success(t('gen.started'));
+          }
           await refetchJob(); // begin polling the new job immediately
         } else if ('action' in result) {
           toast.info(t('gen.noEntities'));

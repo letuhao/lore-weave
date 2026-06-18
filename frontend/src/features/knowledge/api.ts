@@ -753,6 +753,12 @@ export interface DrawerSearchResponse {
    *  FE pill row stays layout-stable. Reflects project-wide totals
    *  filtered to the project's current embedding_model. */
   source_type_counts: Record<string, number>;
+  /** D-K19e-γa-02: per-search embedding cost transparency. Both null until
+   *  the query was actually embedded, AND when the provider didn't report
+   *  token usage (e.g. Ollama → "unknown", not "$0"). A genuinely-free
+   *  self-hosted model reports tokens with a "0.00000000" cost. */
+  embedding_prompt_tokens?: number | null;
+  embedding_cost_usd?: string | null;
 }
 
 export type DrawerSearchErrorCode =

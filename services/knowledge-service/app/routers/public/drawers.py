@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
+from decimal import Decimal
 from typing import Literal
 from uuid import UUID
 
@@ -25,6 +26,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
 from app.clients.embedding_client import EmbeddingClient, EmbeddingError
+from app.pricing import cost_per_token
 from app.db.neo4j import neo4j_session
 from app.db.neo4j_repos.passages import (
     KNOWN_SOURCE_TYPES,
@@ -92,6 +94,15 @@ class DrawerSearchResponse(BaseModel):
     # to the project's current embedding_model (or all passages when
     # no model is configured — useful "not indexed yet" coverage view).
     source_type_counts: dict[str, int]
+    # D-K19e-γa-02 — per-search embedding cost transparency. Both null until
+    # the query was actually embedded (the "not indexed" / empty-query early
+    # returns leave them null), AND null when the provider didn't report token
+    # usage (e.g. Ollama → prompt_tokens 0 = "unknown", not "$0"). For a
+    # genuinely-free self-hosted model the tokens are known but the rate is 0,
+    # so cost is "0.00". String-encoded like other USD fields to dodge float
+    # drift in JSON.
+    embedding_prompt_tokens: int | None = None
+    embedding_cost_usd: str | None = None
 
 
 @router.get("/drawers/search", response_model=DrawerSearchResponse)
@@ -267,7 +278,20 @@ async def search_drawers(
         )
         for h in raw_hits
     ]
+    # D-K19e-γa-02 — surface the embed cost when the provider reported token
+    # usage. `embed_result.model` is the resolved provider model NAME (what
+    # `cost_per_token` keys on), not the user_model UUID. tokens==0 → unknown.
+    prompt_tokens = embed_result.prompt_tokens
+    cost_usd: str | None = None
+    tokens_out: int | None = None
+    if prompt_tokens > 0:
+        tokens_out = prompt_tokens
+        cost = cost_per_token(embed_result.model) * Decimal(prompt_tokens)
+        # Quantize to a sane USD precision; tiny embed costs stay non-zero.
+        cost_usd = str(cost.quantize(Decimal("0.00000001")))
     return DrawerSearchResponse(
         hits=hits, embedding_model=project.embedding_model,
         source_type_counts=counts,
+        embedding_prompt_tokens=tokens_out,
+        embedding_cost_usd=cost_usd,
     )

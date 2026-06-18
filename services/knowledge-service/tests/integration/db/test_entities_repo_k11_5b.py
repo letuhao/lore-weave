@@ -31,8 +31,10 @@ from app.db.neo4j_repos.entities import (
     link_to_glossary,
     merge_entity,
     recompute_anchor_score,
+    restore_entity,
     unlink_from_glossary,
     upsert_glossary_anchor,
+    user_archive_entity,
 )
 
 
@@ -193,6 +195,69 @@ async def test_k11_5b_vector_excludes_archived_by_default(neo4j_driver, test_use
     assert len(with_archived) == 1
     # archive sets anchor_score to 0 → weighted_score is 0
     assert with_archived[0].weighted_score == pytest.approx(0.0, abs=1e-6)
+
+
+async def _read_anchor(session, entity_id):
+    """Direct read of the raw archive-related node props (unfiltered)."""
+    rec = await (
+        await session.run(
+            "MATCH (e:Entity {id: $id}) "
+            "RETURN e.glossary_entity_id AS gid, e.archived_at AS arch, "
+            "e.archive_reason AS reason, e.anchor_score AS score",
+            id=entity_id,
+        )
+    ).single()
+    return rec
+
+
+@pytest.mark.asyncio
+async def test_k19c4_user_archive_preserves_glossary_fk(neo4j_driver, test_user):
+    """D-K19c.4-01 — a USER archive (hide-now-restore-later) keeps
+    `glossary_entity_id` so a later restore re-shows the entity anchored;
+    the §3.4.F glossary-deletion `archive_entity` clears it."""
+    async with neo4j_driver.session() as session:
+        user_e = await upsert_glossary_anchor(
+            session, user_id=test_user, project_id="p-1",
+            glossary_entity_id="gloss-user-keep", name="Aria", kind="character",
+        )
+        gloss_e = await upsert_glossary_anchor(
+            session, user_id=test_user, project_id="p-1",
+            glossary_entity_id="gloss-deleted-drop", name="Borin", kind="character",
+        )
+
+        # upsert_glossary_anchor anchors at score 1.0 — capture it so we can
+        # prove user-archive preserves it (review-impl MED-1).
+        score_before = (await _read_anchor(session, user_e.id))["score"]
+        assert score_before and score_before > 0
+
+        # User archive — FK + score preserved, entity hidden (archived_at set).
+        await user_archive_entity(
+            session, user_id=test_user, canonical_id=user_e.id,
+        )
+        rec = await _read_anchor(session, user_e.id)
+        assert rec["arch"] is not None, "user archive must set archived_at"
+        assert rec["reason"] == "user_archived"
+        assert rec["gid"] == "gloss-user-keep", "user archive must KEEP the FK"
+        assert rec["score"] == score_before, "user archive must KEEP anchor_score"
+
+        # Glossary-deletion archive — FK cleared + score zeroed (entry gone).
+        await archive_entity(
+            session, user_id=test_user, canonical_id=gloss_e.id,
+            reason="glossary_deleted",
+        )
+        rec2 = await _read_anchor(session, gloss_e.id)
+        assert rec2["arch"] is not None
+        assert rec2["gid"] is None, "glossary-deletion archive must CLEAR the FK"
+        assert rec2["score"] == 0.0, "glossary-deletion archive must zero the score"
+
+        # Restore the user-archived one — comes back FULLY anchored (FK + score).
+        await restore_entity(
+            session, user_id=test_user, canonical_id=user_e.id,
+        )
+        rec3 = await _read_anchor(session, user_e.id)
+        assert rec3["arch"] is None, "restore clears archived_at"
+        assert rec3["gid"] == "gloss-user-keep", "restored entity stays anchored"
+        assert rec3["score"] == score_before, "restored entity keeps its anchor weight"
 
 
 @pytest.mark.asyncio

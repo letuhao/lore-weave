@@ -96,6 +96,7 @@
       "perArticle": "Chi phí ước tính: ~{{perArticle}} mỗi bài"
     },
     "started": "Đã bắt đầu tạo",
+    "startedTruncated": "Đang tạo {{selected}} trên {{total}} thực thể — phần còn lại bị bỏ qua do giới hạn. Tăng giới hạn để bao gồm chúng.",
     "noEntities": "Không có thực thể phù hợp để tạo",
     "alreadyRunning": "Đã có tác vụ tạo đang chạy cho sách này",
     "notIndexed": "Hãy xây dựng đồ thị tri thức cho sách này trước",

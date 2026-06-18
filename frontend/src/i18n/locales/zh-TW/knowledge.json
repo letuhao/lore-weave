@@ -189,6 +189,7 @@
     "notIndexed": "此專案尚未為語意搜尋建立索引。",
     "notIndexedHint": "使用嵌入模型執行擷取以啟用抽屜搜尋。",
     "refreshing": "重新整理中…",
+    "embedCost": "查詢嵌入：{{tokens}} 個 token · ${{cost}}",
     "retry": "重試",
     "fixConfig": "在設定中檢查專案的嵌入模型設定。",
     "unknownError": "未知錯誤。請再試一次。",

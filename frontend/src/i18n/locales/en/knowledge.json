@@ -190,6 +190,7 @@
     "notIndexed": "This project isn't indexed for semantic search yet.",
     "notIndexedHint": "Run extraction with an embedding model to enable drawer search.",
     "refreshing": "Refreshing…",
+    "embedCost": "Query embedded: {{tokens}} tokens · ${{cost}}",
     "retry": "Retry",
     "fixConfig": "Check your project's embedding model configuration in Settings.",
     "unknownError": "Unknown error. Please try again.",

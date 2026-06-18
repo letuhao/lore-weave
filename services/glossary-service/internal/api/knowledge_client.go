@@ -385,13 +385,20 @@ func parseEntityUUIDs(explicit []string) ([]string, error) {
 // too, not just the downstream writeback guard (/review-impl F1). A tampered or
 // foreign id is silently filtered out (→ empty slice → the handler's action:none),
 // not leaked as "exists / not". Otherwise it falls back to resolving by kind.
+//
+// Returns (ids, totalMatched): `totalMatched` is the count of candidate
+// entities the selection would cover WITHOUT the limit, so a caller can detect
+// silent truncation (D-WIKI-M7B-GEN-LIMIT — a book with >limit entities of a
+// kind generated only the first `limit` and the banner read "done"). For the
+// explicit-id (single-article regenerate) path there is no truncation concept,
+// so totalMatched == len(ids).
 func (s *Server) resolveDelegateEntityIDs(
 	ctx context.Context, bookID uuid.UUID, explicit []string, kindCodes []string, limit int,
-) ([]string, error) {
+) ([]string, int, error) {
 	if len(explicit) > 0 {
 		parsed, err := parseEntityUUIDs(explicit)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		rows, err := s.pool.Query(ctx,
 			`SELECT entity_id::text FROM glossary_entities
@@ -399,18 +406,21 @@ func (s *Server) resolveDelegateEntityIDs(
 			   AND deleted_at IS NULL AND status='active'`,
 			bookID, parsed)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		defer rows.Close()
 		var ids []string
 		for rows.Next() {
 			var id string
 			if err := rows.Scan(&id); err != nil {
-				return nil, err
+				return nil, 0, err
 			}
 			ids = append(ids, id)
 		}
-		return ids, rows.Err()
+		if err := rows.Err(); err != nil {
+			return nil, 0, err
+		}
+		return ids, len(ids), nil
 	}
 	return s.resolveWikiGenEntities(ctx, bookID, kindCodes, limit)
 }
@@ -420,31 +430,44 @@ func (s *Server) resolveDelegateEntityIDs(
 // kind, bounded by limit. The clobber-guard (M5) protects any human-edited
 // article downstream, so this selects ALL matching entities (not only ones
 // without an article) — the LLM may regenerate a stub.
+//
+// The second return is the total number of matching entities IGNORING the
+// limit (D-WIKI-M7B-GEN-LIMIT), computed by the same predicate so the handler
+// can tell the FE how many were dropped by the cap.
 func (s *Server) resolveWikiGenEntities(
 	ctx context.Context, bookID uuid.UUID, kindCodes []string, limit int,
-) ([]string, error) {
-	sql := `SELECT ge.entity_id::text
-		FROM glossary_entities ge
-		JOIN entity_kinds ek ON ek.kind_id = ge.kind_id
-		WHERE ge.book_id = $1 AND ge.deleted_at IS NULL AND ge.status = 'active'`
+) ([]string, int, error) {
+	where := `WHERE ge.book_id = $1 AND ge.deleted_at IS NULL AND ge.status = 'active'`
 	args := []any{bookID}
 	if len(kindCodes) > 0 {
-		sql += ` AND ek.code = ANY($2)`
+		where += ` AND ek.code = ANY($2)`
 		args = append(args, kindCodes)
 	}
-	sql += fmt.Sprintf(` ORDER BY ge.created_at LIMIT %d`, limit)
-	rows, err := s.pool.Query(ctx, sql, args...)
+	base := `FROM glossary_entities ge
+		JOIN entity_kinds ek ON ek.kind_id = ge.kind_id
+		` + where
+
+	var totalMatched int
+	if err := s.pool.QueryRow(ctx,
+		`SELECT count(*) `+base, args...,
+	).Scan(&totalMatched); err != nil {
+		return nil, 0, err
+	}
+
+	rows, err := s.pool.Query(ctx,
+		fmt.Sprintf(`SELECT ge.entity_id::text `+base+` ORDER BY ge.created_at LIMIT %d`, limit),
+		args...)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 	var ids []string
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		ids = append(ids, id)
 	}
-	return ids, rows.Err()
+	return ids, totalMatched, rows.Err()
 }

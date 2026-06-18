@@ -58,6 +58,7 @@ __all__ = [
     "recompute_anchor_score",
     "find_gap_candidates",
     "archive_entity",
+    "user_archive_entity",
     "restore_entity",
     "delete_entities_with_zero_evidence",
     "list_entities_filtered",
@@ -768,6 +769,25 @@ SET e.archived_at = NULL,
 RETURN e
 """
 
+# D-K19c.4-01 — user-archive variant: same soft-archive as `_ARCHIVE_CYPHER`
+# but PRESERVES both `glossary_entity_id` (the glossary anchor FK) AND
+# `anchor_score`. A user "delete" is a "hide now, restore later" gesture; the
+# glossary entry still exists. Unlike §3.4.F glossary-deletion (FK gone →
+# score 0 is consistent), here we keep the anchor intact so a later
+# `restore_entity` brings the entity back FULLY anchored — `restore_entity`
+# does NOT recompute the score, so zeroing it here would leave a restored,
+# FK-anchored entity ranking as unanchored (weighted_score = raw × 0) until
+# the next recompute pass. Archived rows are excluded from all queries by the
+# `archived_at IS NULL` filter, so the preserved score is inert while hidden.
+_USER_ARCHIVE_CYPHER = """
+MATCH (e:Entity {id: $id})
+WHERE e.user_id = $user_id
+SET e.archived_at = datetime(),
+    e.archive_reason = $reason,
+    e.updated_at = datetime()
+RETURN e
+"""
+
 
 async def archive_entity(
     session: CypherSession,
@@ -799,6 +819,39 @@ async def archive_entity(
     result = await run_write(
         session,
         _ARCHIVE_CYPHER,
+        user_id=user_id,
+        id=canonical_id,
+        reason=reason,
+    )
+    record = await result.single()
+    if record is None:
+        return None
+    return _node_to_entity(record["e"])
+
+
+async def user_archive_entity(
+    session: CypherSession,
+    *,
+    user_id: str,
+    canonical_id: str,
+    reason: str = "user_archived",
+) -> Entity | None:
+    """D-K19c.4-01 — soft-archive an entity for the USER "hide it" flow,
+    PRESERVING both its `glossary_entity_id` anchor AND its `anchor_score`
+    so a later `restore_entity` re-shows it FULLY anchored (the glossary
+    entry still exists). `restore_entity` does NOT recompute the score, so
+    zeroing it here would leave a restored, FK-anchored entity ranking as
+    unanchored until the next recompute pass.
+
+    Same idempotence + edge-preservation as `archive_entity` (no
+    `archived_at IS NULL` guard; EVIDENCED_BY / RELATES_TO / timeline edges
+    untouched) — the difference is that the glossary FK + score are kept.
+    Use `archive_entity` (which NULLs the FK + zeroes the score) for the
+    §3.4.F glossary-deleted path, where the glossary entry itself is gone.
+    """
+    result = await run_write(
+        session,
+        _USER_ARCHIVE_CYPHER,
         user_id=user_id,
         id=canonical_id,
         reason=reason,
