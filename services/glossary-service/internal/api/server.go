@@ -162,6 +162,30 @@ func (s *Server) Router() http.Handler {
 			})
 		})
 
+		// ── T2 per-user kind CRUD (SS-4) — owner-scoped, JWT-only ─────────────
+		r.Route("/user-kinds", func(r chi.Router) {
+			r.Get("/", s.listUserKinds)
+			r.Post("/", s.createUserKind)
+			r.Route("/{user_kind_id}", func(r chi.Router) {
+				r.Get("/", s.getUserKind)
+				r.Patch("/", s.patchUserKind)
+				r.Delete("/", s.deleteUserKind)
+				r.Route("/attributes", func(r chi.Router) {
+					r.Post("/", s.createUserKindAttr)
+					r.Route("/{attr_id}", func(r chi.Router) {
+						r.Patch("/", s.patchUserKindAttr)
+						r.Delete("/", s.deleteUserKindAttr)
+					})
+				})
+			})
+		})
+		// ── T2 user-kind recycle bin (SS-4) ──────────────────────────────────
+		r.Route("/user-kinds-trash", func(r chi.Router) {
+			r.Get("/", s.listUserKindTrash)
+			r.Post("/{user_kind_id}/restore", s.restoreUserKind)
+			r.Delete("/{user_kind_id}", s.purgeUserKind)
+		})
+
 		// Cross-book wiki contributions for a user's public profile (UI-2a).
 		// Optional auth: self sees private/draft; others see public+published only.
 		r.Get("/users/{user_id}/wiki-contributions", s.listUserWikiContributions)

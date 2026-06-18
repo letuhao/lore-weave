@@ -172,6 +172,11 @@ func main() {
 		slog.Error("migrate entity-counts", "error", err)
 		os.Exit(1)
 	}
+	// SS-4: T2 per-user kind tables (user_kinds + user_kind_attributes).
+	if err := migrate.UpUserKinds(ctx, pool); err != nil {
+		slog.Error("migrate user-kinds", "error", err)
+		os.Exit(1)
+	}
 
 	// Run the short-description backfill in a background goroutine so
 	// the HTTP listener + healthcheck come up immediately. For a fresh

@@ -1542,3 +1542,67 @@ CREATE INDEX IF NOT EXISTS idx_merge_candidates_book_status
 func UpMergeCandidates(ctx context.Context, pool *pgxpool.Pool) error {
 	return execGuarded(ctx, pool, "merge-candidates", mergeCandidatesSQL)
 }
+
+// ── SS-4: T2 per-user kinds (user_kinds + user_kind_attributes) ─────────────
+//
+// The per-user tier of the kind-tiering epic (CLAUDE.md › User Boundaries &
+// Tenancy). A user's custom kinds live HERE, scoped by owner_user_id, instead
+// of polluting the shared system_kinds catalogue (the multi-tenancy defect the
+// epic fixes). UNIQUE(owner_user_id, code) is the scope-keyed constraint that
+// replaces the old global UNIQUE(code) smell. Soft-delete + recycle-bin
+// (deleted_at / permanently_deleted_at) mirror the SS-2 glossary-entity pattern.
+//
+// cloned_from_kind_id FK → system_kinds: a T2 kind may be cloned from a T1
+// system default (copies its name/icon/color + attribute defs); ON DELETE SET
+// NULL so retiring a system kind doesn't cascade-delete a user's clone.
+//
+// Entities cannot yet be created against a T2 kind — glossary_entities.kind_id
+// stays the live system_kinds ref until SS-7 repoints it polymorphically. See
+// docs/03_planning/93_SS4_USER_KIND_CRUD_DETAILED_DESIGN.md.
+const userKindsSQL = `
+CREATE TABLE IF NOT EXISTS user_kinds (
+  user_kind_id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_user_id          UUID        NOT NULL,
+  code                   TEXT        NOT NULL,
+  name                   TEXT        NOT NULL,
+  description            TEXT,
+  icon                   TEXT        NOT NULL DEFAULT 'box',
+  color                  TEXT        NOT NULL DEFAULT '#6366f1',
+  genre_tags             TEXT[]      NOT NULL DEFAULT '{}',
+  is_active              BOOLEAN     NOT NULL DEFAULT true,
+  cloned_from_kind_id    UUID        REFERENCES system_kinds(kind_id) ON DELETE SET NULL,
+  permanently_deleted_at TIMESTAMPTZ,
+  deleted_at             TIMESTAMPTZ,
+  created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(owner_user_id, code)
+);
+CREATE INDEX IF NOT EXISTS idx_uk_owner
+  ON user_kinds(owner_user_id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_uk_trash
+  ON user_kinds(owner_user_id, deleted_at DESC)
+  WHERE deleted_at IS NOT NULL AND permanently_deleted_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS user_kind_attributes (
+  attr_id      UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_kind_id UUID        NOT NULL REFERENCES user_kinds(user_kind_id) ON DELETE CASCADE,
+  code         TEXT        NOT NULL,
+  name         TEXT        NOT NULL,
+  description  TEXT,
+  field_type   TEXT        NOT NULL DEFAULT 'text',
+  is_required  BOOLEAN     NOT NULL DEFAULT false,
+  sort_order   INT         NOT NULL DEFAULT 0,
+  options      TEXT[],
+  deleted_at   TIMESTAMPTZ,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(user_kind_id, code)
+);
+CREATE INDEX IF NOT EXISTS idx_uka_kind
+  ON user_kind_attributes(user_kind_id) WHERE deleted_at IS NULL;
+`
+
+// UpUserKinds creates the T2 per-user kind tables (SS-4). Idempotent
+// (CREATE/INDEX IF NOT EXISTS). Register in main.go after the system-kind seed.
+func UpUserKinds(ctx context.Context, pool *pgxpool.Pool) error {
+	return execGuarded(ctx, pool, "user-kinds", userKindsSQL)
+}
