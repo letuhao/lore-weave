@@ -194,7 +194,10 @@ class ProposalStore(Protocol):
         actual_cost: float | None = None,
         proposals_total: int | None = None,
         error_message: str | None = None,
-    ) -> None: ...
+        only_if_status: tuple[str, ...] | None = None,
+    ) -> bool: ...
+
+    async def read_job_status(self, *, job_id: str) -> str | None: ...
 
 
 class PgProposalStore:
@@ -314,7 +317,17 @@ class PgProposalStore:
         actual_cost: float | None = None,
         proposals_total: int | None = None,
         error_message: str | None = None,
-    ) -> None:
+        only_if_status: tuple[str, ...] | None = None,
+    ) -> bool:
+        """Write the job's status (+ optional cost/total/error) and emit the
+        transition atomically (H1). Returns True iff a row was updated.
+
+        ``only_if_status`` (M2, HIGH-1) makes the write a CAS: the UPDATE only
+        applies when the CURRENT status is one of the given values. The runner
+        uses it so its lifecycle writes (running/paused/completed/failed) can
+        NEVER clobber a status the control endpoint already moved to
+        cancelled/paused — a lost CAS (returns False) means an external action
+        won the race, and the runner yields."""
         sets = ["status = $2"]
         params: list[Any] = [UUID(job_id), status]
         if actual_cost is not None:
@@ -327,15 +340,21 @@ class PgProposalStore:
             params.append(error_message)
             sets.append(f"error_message = ${len(params)}")
         sets.append("updated_at = now()")
+        where = "WHERE job_id = $1"
+        if only_if_status is not None:
+            params.append(list(only_if_status))
+            where += f" AND status = ANY(${len(params)}::text[])"
         async with self._pool.acquire() as conn:
             async with conn.transaction():  # UPDATE + emit_job_event atomic (H1)
                 row = await conn.fetchrow(
                     f"UPDATE enrichment_job SET {', '.join(sets)} "
-                    f"WHERE job_id = $1 RETURNING user_id, status, error_message, actual_cost_usd",
+                    f"{where} RETURNING user_id, status, error_message, actual_cost_usd",
                     *params,
                 )
                 if row is None:
-                    return  # no such job — nothing to emit (behavior-preserving)
+                    # No row updated: either no such job, or the CAS guard didn't
+                    # match (an external transition won). Nothing to emit.
+                    return False
                 # Unified Job Control Plane P1 — emit the status transition on the SAME
                 # conn as the UPDATE (H1). Skip a status with no canonical JobStatus.
                 cstatus = canonical_status(row["status"])
@@ -348,6 +367,15 @@ class PgProposalStore:
                         cost_usd=float(_cost) if _cost is not None else None,
                         error=job_error(row["error_message"]) if cstatus == "failed" else None,
                     )
+        return True
+
+    async def read_job_status(self, *, job_id: str) -> str | None:
+        """The current persisted status (M2) — used by the runner to detect an
+        external cancel/pause that landed between gaps. None if no such row."""
+        async with self._pool.acquire() as conn:
+            return await conn.fetchval(
+                "SELECT status FROM enrichment_job WHERE job_id = $1", UUID(job_id)
+            )
 
 
 @dataclass
@@ -437,8 +465,12 @@ class InMemoryProposalStore:
         actual_cost: float | None = None,
         proposals_total: int | None = None,
         error_message: str | None = None,
-    ) -> None:
+        only_if_status: tuple[str, ...] | None = None,
+    ) -> bool:
         job = self.jobs.setdefault(job_id, {})
+        if only_if_status is not None and job.get("status") not in only_if_status:
+            # CAS guard lost — an external transition won (M2). No write.
+            return False
         job["status"] = status
         if actual_cost is not None:
             job["actual_cost"] = actual_cost
@@ -446,3 +478,8 @@ class InMemoryProposalStore:
             job["proposals_total"] = proposals_total
         if error_message is not None:
             job["error_message"] = error_message
+        return True
+
+    async def read_job_status(self, *, job_id: str) -> str | None:
+        job = self.jobs.get(job_id)
+        return job.get("status") if job is not None else None

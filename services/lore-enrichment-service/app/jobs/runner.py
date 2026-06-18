@@ -68,6 +68,16 @@ __all__ = [
 
 logger = logging.getLogger("lore_enrichment.job_runner")
 
+# M2 (cancel/pause parity + HIGH-1): statuses that mean an EXTERNAL actor (the
+# control endpoint) has STOPPED this job — the runner must not start/continue it.
+# Deliberately EXCLUDES completed/failed: re-driving those is the documented
+# resume / retry / idempotent re-run path (skip_gap_refs protects done gaps), not
+# an external stop. A manual 'paused' is here because resume flips paused→running
+# BEFORE re-enqueuing, so seeing 'paused' at run time means "not resumed → don't run".
+_EXTERNAL_STOP_STATUSES: frozenset[str] = frozenset(
+    {"cancelled", "cancelling", "paused"}
+)
+
 
 @dataclass
 class JobOutcome:
@@ -171,6 +181,15 @@ class JobRunner:
         machine = JobStateMachine(record, persist=self._persist_state)
         outcome = JobOutcome(job_id=job_id, final_state=record.state.value)
 
+        # ── M2 pre-flight: an external cancel/pause that landed BEFORE this run
+        # started (e.g. cancelled while queued) means there is nothing to do —
+        # do not even estimate (which would emit STARTED + re-spend). A None
+        # status (no row yet, unit tests) or a runnable status proceeds.
+        pre = await self._store.read_job_status(job_id=job_id)
+        if pre in _EXTERNAL_STOP_STATUSES:
+            logger.info("run %s: already %s before start — yield (no work)", job_id, pre)
+            return self._finalize_interrupted(outcome, pre, None)
+
         # ── estimate (pending → estimating) ─────────────────────────────────────
         await machine.estimate()
         estimate = self._cost_strategy.estimate_cost(gaps)
@@ -181,7 +200,16 @@ class JobRunner:
 
         # ── start (estimating → running) ────────────────────────────────────────
         await machine.start()
-        await self._store.mark_job_status(job_id=job_id, status="running")
+        # M2/HIGH-1: CAS the running write against 'estimating' (what we just wrote).
+        # If an external cancel/pause raced in during the estimate, the CAS loses →
+        # yield BEFORE emitting STARTED + spending (never resurrect a cancelled job).
+        started_ok = await self._store.mark_job_status(
+            job_id=job_id, status="running", only_if_status=("estimating",)
+        )
+        if not started_ok:
+            current = await self._store.read_job_status(job_id=job_id)
+            logger.info("run %s: %s during estimate — yield before start", job_id, current)
+            return self._finalize_interrupted(outcome, current, None)
         await self._emitter.emit(
             JobEventType.STARTED,
             data={
@@ -203,18 +231,38 @@ class JobRunner:
                 if gap_ref in skip_gap_refs:
                     outcome.resumed_skipped.append(gap_ref)
                     continue
+                # ── M2: honour an external cancel/pause that landed BETWEEN gaps.
+                # The runner is the only writer that keeps the row 'running'; any
+                # other status here is a control action (the "ran for days despite
+                # cancel" runaway fix). Yield WITHOUT writing/emitting — the control
+                # endpoint already persisted + emitted the transition (H1). Done gaps
+                # stay persisted, so a later resume/retry re-drives and skips them.
+                current = await self._store.read_job_status(job_id=job_id)
+                if current is not None and current != "running":
+                    logger.info(
+                        "run %s: external status %s mid-run — yield before %s",
+                        job_id, current, gap_ref,
+                    )
+                    return self._finalize_interrupted(outcome, current, gap_ref)
                 # Per-gap cost: the strategy's estimate for a one-gap batch.
                 unit_cost = self._cost_strategy.estimate_cost([gap]).cost
                 # ── cost-cap BEFORE the gap (breach → PAUSE, resumable) ──────────
                 try:
                     await self._budget.charge_or_pause(unit_cost, machine)
                 except CostCapExceeded as exc:
-                    await self._store.mark_job_status(
+                    # M2/HIGH-1: CAS the cost-cap pause against 'running' — an external
+                    # cancel that raced in just before this breach must win (don't
+                    # overwrite 'cancelled' with a cost-cap 'paused').
+                    paused_ok = await self._store.mark_job_status(
                         job_id=job_id,
                         status="paused",
                         actual_cost=self._budget.spent,
                         error_message=f"paused: cost_cap before {gap_ref}",
+                        only_if_status=("running",),
                     )
+                    if not paused_ok:
+                        current = await self._store.read_job_status(job_id=job_id)
+                        return self._finalize_interrupted(outcome, current, gap_ref)
                     await self._emitter.emit(
                         JobEventType.PAUSED,
                         gap_ref=gap_ref,
@@ -364,7 +412,6 @@ class JobRunner:
                     )
 
             # ── complete (running → completed) ──────────────────────────────────
-            await machine.complete()
             outcome.spent = self._budget.spent
             # slice B: a job that produced NO proposals purely because the corpus
             # didn't cover the targets carries an ACTIONABLE note (not an error —
@@ -377,13 +424,25 @@ class JobRunner:
                     "gap(s) had no usable corpus grounding — paste reference context "
                     "or use fabrication"
                 )
-            await self._store.mark_job_status(
+            # M2/HIGH-1: CAS the terminal write against 'running'. If an external
+            # cancel/pause won the race AFTER the last gap but before here, the CAS
+            # loses → do NOT mark completed or emit COMPLETED (the runaway-cancel
+            # clobber this milestone exists to kill). Reflect the persisted state.
+            completed_ok = await self._store.mark_job_status(
                 job_id=job_id,
                 status="completed",
                 actual_cost=self._budget.spent,
                 proposals_total=len(outcome.proposals),
                 error_message=completion_note,
+                only_if_status=("running",),
             )
+            if not completed_ok:
+                current = await self._store.read_job_status(job_id=job_id)
+                logger.info(
+                    "run %s: external status %s won vs complete — yield", job_id, current
+                )
+                return self._finalize_interrupted(outcome, current, None)
+            await machine.complete()
             await self._emitter.emit(
                 JobEventType.COMPLETED,
                 data={
@@ -399,15 +458,22 @@ class JobRunner:
             # Any unexpected error fails the job (resumable lifecycle is for
             # cost-cap pauses; a real error is terminal-failed with a message).
             err = f"{type(exc).__name__}: {exc}"
-            if not machine.is_terminal():
-                await machine.fail(error_message=err)
-            await self._store.mark_job_status(
+            # M2/HIGH-1: CAS the failed write so a real error can't clobber a status
+            # the control endpoint moved to cancelled/paused (a cancel + a concurrent
+            # error must end 'cancelled', not 'failed').
+            failed_ok = await self._store.mark_job_status(
                 job_id=job_id,
                 status="failed",
                 actual_cost=self._budget.spent,
                 proposals_total=len(outcome.proposals),
                 error_message=err,
+                only_if_status=("pending", "estimating", "running"),
             )
+            if not failed_ok:
+                current = await self._store.read_job_status(job_id=job_id)
+                return self._finalize_interrupted(outcome, current, None, error=err)
+            if not machine.is_terminal():
+                await machine.fail(error_message=err)
             await self._emitter.emit(
                 JobEventType.FAILED, data={"error": err}
             )
@@ -415,6 +481,28 @@ class JobRunner:
             outcome.error = err
             outcome.spent = self._budget.spent
             return outcome
+
+    def _finalize_interrupted(
+        self,
+        outcome: JobOutcome,
+        status: str | None,
+        gap_ref: str | None,
+        *,
+        error: str | None = None,
+    ) -> JobOutcome:
+        """M2: stop the run because an EXTERNAL control action (cancel/manual pause)
+        or a terminal status now owns the row. The runner writes NOTHING and emits
+        NOTHING here — the control endpoint already persisted + emitted the
+        transition atomically (H1); a second write/emit would clobber or duplicate.
+        Just reflect the persisted state in the outcome and return."""
+        outcome.final_state = status or outcome.final_state
+        outcome.spent = self._budget.spent
+        if status == "paused":
+            # A manual pause is resumable from this gap (done gaps stay persisted).
+            outcome.paused_at_gap = gap_ref
+        if error is not None:
+            outcome.error = error
+        return outcome
 
     def _reconcile_gap(self, pre_estimate: float, before_tokens: int) -> None:
         """Reconcile one gap's pre-charged estimate to the REAL tokens it spent

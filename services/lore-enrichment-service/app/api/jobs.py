@@ -436,33 +436,40 @@ async def _transition_job(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="auth required"
         )
     async with pool.acquire() as conn:
-        r = await conn.fetchrow(
-            """SELECT status FROM enrichment_job
-               WHERE user_id=$1 AND project_id=$2 AND job_id=$3""",
-            principal.user_id, project_id, job_id,
-        )
-        if r is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="job not found"
+        # M2/HIGH-1: read-modify-write under a row lock so the control transition is
+        # atomic vs the runner's CAS lifecycle writes. SELECT … FOR UPDATE holds the
+        # row for the txn: a concurrent runner UPDATE on the same row blocks until we
+        # commit, then re-evaluates its `WHERE status='running'` guard against the new
+        # status — so neither writer can clobber the other (e.g. a cancel landing as
+        # the runner completes ends 'cancelled', and the runner's complete no-ops).
+        async with conn.transaction():  # SELECT FOR UPDATE + UPDATE + emit atomic
+            r = await conn.fetchrow(
+                """SELECT status FROM enrichment_job
+                   WHERE user_id=$1 AND project_id=$2 AND job_id=$3
+                   FOR UPDATE""",
+                principal.user_id, project_id, job_id,
             )
-        record = JobRecord(job_id=str(job_id), state=JobState(r["status"]))
-        machine = JobStateMachine(record)
-        try:
-            if action == "pause":
-                await machine.pause(reason=PauseReason.MANUAL)
-            elif action == "cancel":
-                await machine.cancel()
-            elif action == "resume":
-                await machine.resume()
-            else:  # start: pending → estimating → running
-                if record.state is JobState.PENDING:
-                    await machine.estimate()
-                await machine.start()
-        except IllegalTransitionError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT, detail=str(exc)
-            )
-        async with conn.transaction():  # UPDATE + emit_job_event atomic (H1)
+            if r is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND, detail="job not found"
+                )
+            record = JobRecord(job_id=str(job_id), state=JobState(r["status"]))
+            machine = JobStateMachine(record)
+            try:
+                if action == "pause":
+                    await machine.pause(reason=PauseReason.MANUAL)
+                elif action == "cancel":
+                    await machine.cancel()
+                elif action == "resume":
+                    await machine.resume()
+                else:  # start: pending → estimating → running
+                    if record.state is JobState.PENDING:
+                        await machine.estimate()
+                    await machine.start()
+            except IllegalTransitionError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+                )
             await conn.execute(
                 "UPDATE enrichment_job SET status=$4, updated_at=now() "
                 "WHERE user_id=$1 AND project_id=$2 AND job_id=$3",
