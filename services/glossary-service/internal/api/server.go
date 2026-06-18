@@ -141,26 +141,21 @@ func (s *Server) Router() http.Handler {
 	})
 
 	r.Route("/v1/glossary", func(r chi.Router) {
+		// System (T1) kinds are READ-ONLY over HTTP (SS-4 Milestone C). The merged
+		// kind list (T1 system + the caller's T2 user kinds, then T3 book kinds in
+		// SS-5) stays readable; all user-facing kind WRITES moved to the per-user
+		// (/user-kinds) and per-book tiers. The old POST/PATCH/DELETE /kinds*,
+		// /kinds/reorder, /kind-aliases, and the attribute write routes were removed
+		// here — a regular user must not mutate the shared system catalogue.
 		r.Get("/kinds", s.listKinds)
-		r.Post("/kinds", s.createKind)
-		r.Patch("/kinds/reorder", s.reorderKinds)
-		// Tier-S (P4): the ONLY schema-create path for the assistant — JWT-only,
-		// gated on a server-minted confirm token (INV-9/H8). The gateway/MCP side
-		// can mint a token (propose tools) but has no route here.
+		// Tier-S (P4): the assistant's token-gated schema-create path (INV-9/H8).
+		// It still writes the system catalogue today; SS-7 rewires it to mint TIERED
+		// kinds (tracked) so the assistant stops touching shared rows.
 		r.Post("/schema/confirm", s.confirmSchema)
-		// Kind-resolution epic: alias table (alias_code → kind) for the unknown-kind review.
+		// Kind-resolution epic: alias table READ (alias_code → kind) for the
+		// unknown-kind review GUI. The write (createKindAlias + reassign) was removed
+		// in SS-4 Milestone C; it returns in SS-7 retargeted at the tiered model.
 		r.Get("/kind-aliases", s.listKindAliases)
-		r.Post("/kind-aliases", s.createKindAlias)
-		r.Route("/kinds/{kind_id}", func(r chi.Router) {
-			r.Patch("/", s.patchKind)
-			r.Delete("/", s.deleteKind)
-			r.Post("/attributes", s.createAttrDef)
-			r.Patch("/attributes/reorder", s.reorderAttrDefs)
-			r.Route("/attributes/{attr_def_id}", func(r chi.Router) {
-				r.Patch("/", s.patchAttrDef)
-				r.Delete("/", s.deleteAttrDef)
-			})
-		})
 
 		// ── T2 per-user kind CRUD (SS-4) — owner-scoped, JWT-only ─────────────
 		r.Route("/user-kinds", func(r chi.Router) {
