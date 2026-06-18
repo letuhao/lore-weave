@@ -29,6 +29,10 @@ type Config struct {
 	// decomposition on the synchronous .txt import branch. EPUB/DOCX go
 	// through worker-infra; .txt stays sync per existing UX (small files).
 	KnowledgeServiceURL string
+
+	// E0-5 — auth-service /internal/users lookup for the collaborators panel
+	// (resolve invite email → user_id; resolve user_id → display_name for the list).
+	AuthServiceInternalURL string
 }
 
 func Load() (*Config, error) {
@@ -48,6 +52,7 @@ func Load() (*Config, error) {
 		UsageBillingServiceURL: getEnv("USAGE_BILLING_SERVICE_URL", ""),
 		InternalServiceToken:   os.Getenv("INTERNAL_SERVICE_TOKEN"),
 		KnowledgeServiceURL:    getEnv("KNOWLEDGE_SERVICE_URL", "http://knowledge-service:8092"),
+		AuthServiceInternalURL: getEnv("AUTH_SERVICE_INTERNAL_URL", "http://auth-service:8081"),
 	}
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")

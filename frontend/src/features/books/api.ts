@@ -315,6 +315,31 @@ export const booksApi = {
   ) {
     return apiJson(`/v1/sharing/books/${bookId}`, { method: 'PATCH', token, body: JSON.stringify(payload) });
   },
+
+  // ── E0-5 collaborators (owner-only; book-service orchestrates email-invite) ──
+  listCollaborators(token: string, bookId: string) {
+    return apiJson<{ collaborators: Collaborator[] }>(`/v1/books/${bookId}/collaborators`, { token });
+  },
+  // Invite by EMAIL — book-service resolves it to a user via auth-service (404 if
+  // no such active user). Returns the resolved {user_id, role, display_name}.
+  inviteCollaborator(token: string, bookId: string, payload: { email: string; role: CollaboratorRole }) {
+    return apiJson<{ user_id: string; role: CollaboratorRole; display_name: string }>(
+      `/v1/books/${bookId}/collaborators`,
+      { method: 'POST', token, body: JSON.stringify(payload) },
+    );
+  },
+  changeCollaboratorRole(token: string, bookId: string, userId: string, role: CollaboratorRole) {
+    return apiJson<{ user_id: string; role: CollaboratorRole }>(
+      `/v1/books/${bookId}/collaborators/${userId}`,
+      { method: 'PUT', token, body: JSON.stringify({ role }) },
+    );
+  },
+  removeCollaborator(token: string, bookId: string, userId: string) {
+    return apiJson<{ status: string }>(`/v1/books/${bookId}/collaborators/${userId}`, {
+      method: 'DELETE',
+      token,
+    });
+  },
   listCatalog(params?: { limit?: number; offset?: number; q?: string }) {
     const qs = new URLSearchParams();
     if (params?.limit !== undefined) qs.set('limit', String(params.limit));
@@ -638,6 +663,18 @@ export const booksApi = {
   listImportJobs(token: string, bookId: string) {
     return apiJson<{ imports: ImportJob[] }>(`/v1/books/${bookId}/imports`, { token });
   },
+};
+
+// E0-5 — a book collaborator (owner grants view|edit|manage). display_name is
+// best-effort from auth-service ("" when unknown).
+export type CollaboratorRole = 'view' | 'edit' | 'manage';
+export type Collaborator = {
+  user_id: string;
+  role: CollaboratorRole;
+  granted_by: string;
+  created_at: string;
+  updated_at: string;
+  display_name: string;
 };
 
 export type ReadingProgress = {

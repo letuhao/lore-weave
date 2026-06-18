@@ -263,6 +263,21 @@
     "copied": "已複製",
     "rotate": "輪換連結（舊連結將失效）"
   },
+  "collaborators": {
+    "title": "協作者",
+    "subtitle": "透過電子郵件邀請他人檢視、編輯或管理這本書。",
+    "email_placeholder": "協作者的電子郵件",
+    "role_label": "角色",
+    "roles": { "view": "檢視者", "edit": "編輯者", "manage": "管理者" },
+    "invite": "邀請",
+    "invited": "已邀請 {{email}}",
+    "invite_failed": "無法邀請該協作者",
+    "no_such_user": "找不到該電子郵件的帳號",
+    "cannot_grant_owner": "那是你自己的帳號",
+    "empty": "尚無協作者 — 透過電子郵件邀請某人。",
+    "unnamed": "使用者 {{id}}",
+    "remove": "移除"
+  },
   "settings": {
     "saved": "已儲存設定",
     "cover_uploaded": "已上傳封面",

@@ -65,6 +65,8 @@ func (s *Server) Router() http.Handler {
 	// Internal (service-to-service, no JWT required)
 	r.Route("/internal", func(r chi.Router) {
 		r.Get("/users/{user_id}/profile", http.HandlerFunc(s.internalGetUserProfile))
+		// E0-5 collaborators email-invite: resolve an email → user (book-service calls it).
+		r.Get("/users/by-email", http.HandlerFunc(s.internalGetUserByEmail))
 
 		// Admin-JWT issuance (074/075) — mounted only when enabled. Gated by the
 		// DEDICATED issuer secret (NOT InternalServiceToken) + rate-limited.

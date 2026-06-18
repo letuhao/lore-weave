@@ -263,6 +263,21 @@
     "copied": "Copied",
     "rotate": "Rotate link (invalidates old link)"
   },
+  "collaborators": {
+    "title": "Collaborators",
+    "subtitle": "Invite people by email to view, edit, or manage this book.",
+    "email_placeholder": "Collaborator's email",
+    "role_label": "Role",
+    "roles": { "view": "Viewer", "edit": "Editor", "manage": "Manager" },
+    "invite": "Invite",
+    "invited": "Invited {{email}}",
+    "invite_failed": "Could not invite that collaborator",
+    "no_such_user": "No account found with that email",
+    "cannot_grant_owner": "That's your own account",
+    "empty": "No collaborators yet — invite someone by email.",
+    "unnamed": "User {{id}}",
+    "remove": "Remove"
+  },
   "settings": {
     "saved": "Settings saved",
     "cover_uploaded": "Cover uploaded",

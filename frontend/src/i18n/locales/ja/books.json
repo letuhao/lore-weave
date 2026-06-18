@@ -263,6 +263,21 @@
     "copied": "コピーしました",
     "rotate": "リンクを更新（古いリンクは無効になります）"
   },
+  "collaborators": {
+    "title": "共同編集者",
+    "subtitle": "メールで招待して、この本の閲覧・編集・管理を許可します。",
+    "email_placeholder": "共同編集者のメール",
+    "role_label": "権限",
+    "roles": { "view": "閲覧者", "edit": "編集者", "manage": "管理者" },
+    "invite": "招待",
+    "invited": "{{email}} を招待しました",
+    "invite_failed": "その共同編集者を招待できませんでした",
+    "no_such_user": "そのメールのアカウントが見つかりません",
+    "cannot_grant_owner": "それはあなた自身のアカウントです",
+    "empty": "共同編集者はまだいません — メールで招待してください。",
+    "unnamed": "ユーザー {{id}}",
+    "remove": "削除"
+  },
   "settings": {
     "saved": "設定を保存しました",
     "cover_uploaded": "表紙をアップロードしました",

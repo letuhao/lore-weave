@@ -210,6 +210,7 @@ func (s *Server) Router() http.Handler {
 
 			// E0 — owner-only collaborator management (grant/revoke share-access).
 			r.Get("/collaborators", s.listCollaborators)
+			r.Post("/collaborators", s.inviteCollaborator) // E0-5 email-invite
 			r.Put("/collaborators/{user_id}", s.putCollaborator)
 			r.Delete("/collaborators/{user_id}", s.deleteCollaborator)
 

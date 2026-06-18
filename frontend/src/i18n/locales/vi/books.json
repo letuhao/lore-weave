@@ -263,6 +263,21 @@
     "copied": "Đã sao chép",
     "rotate": "Xoay liên kết (vô hiệu hóa liên kết cũ)"
   },
+  "collaborators": {
+    "title": "Cộng tác viên",
+    "subtitle": "Mời người khác qua email để xem, chỉnh sửa hoặc quản lý sách này.",
+    "email_placeholder": "Email của cộng tác viên",
+    "role_label": "Vai trò",
+    "roles": { "view": "Người xem", "edit": "Người chỉnh sửa", "manage": "Người quản lý" },
+    "invite": "Mời",
+    "invited": "Đã mời {{email}}",
+    "invite_failed": "Không thể mời cộng tác viên đó",
+    "no_such_user": "Không tìm thấy tài khoản với email đó",
+    "cannot_grant_owner": "Đó là tài khoản của chính bạn",
+    "empty": "Chưa có cộng tác viên — hãy mời ai đó qua email.",
+    "unnamed": "Người dùng {{id}}",
+    "remove": "Xóa"
+  },
   "settings": {
     "saved": "Đã lưu cài đặt",
     "cover_uploaded": "Đã tải lên ảnh bìa",
