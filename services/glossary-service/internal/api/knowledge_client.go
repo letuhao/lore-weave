@@ -444,7 +444,7 @@ func (s *Server) resolveWikiGenEntities(
 		args = append(args, kindCodes)
 	}
 	base := `FROM glossary_entities ge
-		JOIN entity_kinds ek ON ek.kind_id = ge.kind_id
+		JOIN system_kinds ek ON ek.kind_id = ge.kind_id
 		` + where
 
 	var totalMatched int

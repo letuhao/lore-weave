@@ -82,14 +82,14 @@ func TestKnownEntities_ReturnsEntityID(t *testing.T) {
 	// Look up the 'character' kind + its name/aliases attribute defs.
 	var kindID, nameAttrID, aliasesAttrID string
 	pool.QueryRow(ctx,
-		`SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`,
+		`SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`,
 	).Scan(&kindID)
 	pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`,
+		`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='name' LIMIT 1`,
 		kindID,
 	).Scan(&nameAttrID)
 	pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='aliases' LIMIT 1`,
+		`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='aliases' LIMIT 1`,
 		kindID,
 	).Scan(&aliasesAttrID)
 

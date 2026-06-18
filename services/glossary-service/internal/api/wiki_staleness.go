@@ -51,10 +51,10 @@ func (s *Server) listWikiStaleness(w http.ResponseWriter, r *http.Request) {
 		  FROM wiki_staleness ws
 		  JOIN wiki_articles wa ON wa.article_id = ws.article_id
 		  JOIN glossary_entities ge ON ge.entity_id = wa.entity_id
-		  JOIN entity_kinds ek ON ek.kind_id = ge.kind_id
+		  JOIN system_kinds ek ON ek.kind_id = ge.kind_id
 		  LEFT JOIN entity_attribute_values dn ON dn.entity_id = ge.entity_id
 		    AND dn.attr_def_id = (
-		      SELECT ad.attr_def_id FROM attribute_definitions ad
+		      SELECT ad.attr_def_id FROM system_kind_attributes ad
 		      WHERE ad.kind_id = ge.kind_id AND ad.code IN ('name','term')
 		      ORDER BY ad.sort_order LIMIT 1)
 		 WHERE wa.book_id = $1 AND ws.status = 'pending'

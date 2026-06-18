@@ -42,11 +42,11 @@ func TestGlossaryTranslate_ApplyWritesMachineMultiAttr(t *testing.T) {
 	})
 
 	var kindID, nameAttrID, descAttrID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
 	pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`, kindID).Scan(&nameAttrID)
+		`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='name' LIMIT 1`, kindID).Scan(&nameAttrID)
 	pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='description' LIMIT 1`, kindID).Scan(&descAttrID)
+		`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='description' LIMIT 1`, kindID).Scan(&descAttrID)
 
 	var eid, nameAVID, descAVID string
 	pool.QueryRow(ctx,
@@ -106,9 +106,9 @@ func TestGlossaryTranslate_CandidatesMissingOnlyReturnsItems(t *testing.T) {
 	})
 
 	var kindID, nameAttrID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
 	pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`, kindID).Scan(&nameAttrID)
+		`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='name' LIMIT 1`, kindID).Scan(&nameAttrID)
 
 	var eid string
 	pool.QueryRow(ctx,
@@ -183,7 +183,7 @@ func TestGlossaryTranslate_DoesNotOverwriteVerified(t *testing.T) {
 	pool.QueryRow(ctx, `
 		SELECT eav.attr_value_id FROM entity_attribute_values eav
 		JOIN glossary_entities ge ON ge.entity_id = eav.entity_id
-		JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+		JOIN system_kind_attributes ad ON ad.attr_def_id = eav.attr_def_id
 		WHERE ge.book_id=$1 AND ad.code='name' AND eav.original_value=$2`, bookID, "阿尔德里克").Scan(&avid)
 	var eid string
 	pool.QueryRow(ctx, `SELECT entity_id FROM glossary_entities WHERE book_id=$1 LIMIT 1`, bookID).Scan(&eid)

@@ -42,7 +42,7 @@ func entityNameAndAliases(ctx context.Context, q pgxQuerier, entityID uuid.UUID)
 	}).Query(ctx, `
 		SELECT ad.code, eav.original_value
 		FROM entity_attribute_values eav
-		JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+		JOIN system_kind_attributes ad ON ad.attr_def_id = eav.attr_def_id
 		WHERE eav.entity_id = $1 AND ad.code IN ('name','aliases')`, entityID)
 	if err != nil {
 		return "", nil
@@ -264,7 +264,7 @@ func (s *Server) mergeOne(
 	var aliasDef uuid.UUID
 	var aliasDefPtr *uuid.UUID
 	if tx.QueryRow(ctx,
-		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id = $1 AND code = 'aliases' LIMIT 1`,
+		`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id = $1 AND code = 'aliases' LIMIT 1`,
 		winnerKind,
 	).Scan(&aliasDef) == nil {
 		aliasDefPtr = &aliasDef
@@ -507,7 +507,7 @@ func (s *Server) revertMergeCore(ctx context.Context, bookID, journalID uuid.UUI
 	}
 	// Restore the winner's aliases (or delete the row we inserted).
 	var aliasDef uuid.UUID
-	if e := tx.QueryRow(ctx, `SELECT ad.attr_def_id FROM attribute_definitions ad JOIN glossary_entities ge ON ge.kind_id=ad.kind_id WHERE ge.entity_id=$1 AND ad.code='aliases' LIMIT 1`, winnerID).Scan(&aliasDef); e == nil {
+	if e := tx.QueryRow(ctx, `SELECT ad.attr_def_id FROM system_kind_attributes ad JOIN glossary_entities ge ON ge.kind_id=ad.kind_id WHERE ge.entity_id=$1 AND ad.code='aliases' LIMIT 1`, winnerID).Scan(&aliasDef); e == nil {
 		if aliasesBefore != nil {
 			if _, err := tx.Exec(ctx, `UPDATE entity_attribute_values SET original_value=$1 WHERE entity_id=$2 AND attr_def_id=$3`, *aliasesBefore, winnerID, aliasDef); err != nil {
 				return "", err

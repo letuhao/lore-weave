@@ -442,10 +442,10 @@ SELECT
     ae.best_tier
 FROM all_entities ae
 JOIN glossary_entities e ON e.entity_id = ae.entity_id
-JOIN entity_kinds ek ON ek.kind_id = e.kind_id
+JOIN system_kinds ek ON ek.kind_id = e.kind_id
 LEFT JOIN entity_attribute_values eav ON eav.entity_id = e.entity_id
     AND eav.attr_def_id = (
-        SELECT attr_def_id FROM attribute_definitions
+        SELECT attr_def_id FROM system_kind_attributes
         WHERE kind_id = e.kind_id AND code = 'name' LIMIT 1
     )
 LEFT JOIN attribute_translations at ON at.attr_value_id = eav.attr_value_id
@@ -465,10 +465,10 @@ SELECT
     COALESCE(at.confidence, '') AS name_confidence,
     0 AS best_tier
 FROM glossary_entities e
-JOIN entity_kinds ek ON ek.kind_id = e.kind_id
+JOIN system_kinds ek ON ek.kind_id = e.kind_id
 LEFT JOIN entity_attribute_values eav ON eav.entity_id = e.entity_id
     AND eav.attr_def_id = (
-        SELECT attr_def_id FROM attribute_definitions
+        SELECT attr_def_id FROM system_kind_attributes
         WHERE kind_id = e.kind_id AND code = 'name' LIMIT 1
     )
 LEFT JOIN attribute_translations at ON at.attr_value_id = eav.attr_value_id

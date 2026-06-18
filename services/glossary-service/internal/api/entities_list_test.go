@@ -106,14 +106,14 @@ func TestListEntities_CursorWalk(t *testing.T) {
 	// Look up 'character' kind + its name/aliases attrs.
 	var kindID, nameAttrID, aliasesAttrID string
 	pool.QueryRow(ctx,
-		`SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`,
+		`SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`,
 	).Scan(&kindID)
 	pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`,
+		`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='name' LIMIT 1`,
 		kindID,
 	).Scan(&nameAttrID)
 	pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='aliases' LIMIT 1`,
+		`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='aliases' LIMIT 1`,
 		kindID,
 	).Scan(&aliasesAttrID)
 
@@ -281,10 +281,10 @@ func TestListEntities_NameFilterDoesNotBreakPagination(t *testing.T) {
 
 	var kindID, nameAttrID string
 	pool.QueryRow(ctx,
-		`SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`,
+		`SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`,
 	).Scan(&kindID)
 	pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`,
+		`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='name' LIMIT 1`,
 		kindID,
 	).Scan(&nameAttrID)
 
@@ -396,16 +396,16 @@ func TestListEntities_PrefersAuthoredColumnOverEAV(t *testing.T) {
 	bookID := "00000000-0000-0000-0001-0000000c12d0"
 
 	var kindID, nameAttrID, shortAttrID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
 	pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`,
+		`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='name' LIMIT 1`,
 		kindID).Scan(&nameAttrID)
 	_ = pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='short_description' LIMIT 1`,
+		`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='short_description' LIMIT 1`,
 		kindID).Scan(&shortAttrID)
 	if shortAttrID == "" {
 		pool.QueryRow(ctx,
-			`INSERT INTO attribute_definitions(kind_id,code,label,ui_type,sort_order,max_values)
+			`INSERT INTO system_kind_attributes(kind_id,code,label,ui_type,sort_order,max_values)
 			 VALUES($1,'short_description','Short description','text',99,1)
 			 RETURNING attr_def_id`, kindID).Scan(&shortAttrID)
 	}

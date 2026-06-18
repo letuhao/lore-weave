@@ -35,9 +35,9 @@ func TestReconcileEntityFromSnapshot_ExactRestoreWithPrune(t *testing.T) {
 
 	bookID := uuid.MustParse("00000000-0000-0000-0004-0000000f1001")
 	var kindID, nameAttrID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
 	pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`,
+		`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='name' LIMIT 1`,
 		kindID).Scan(&nameAttrID)
 
 	var entityID, nameAVID, tVi uuid.UUID
@@ -109,9 +109,9 @@ func TestReconcileEntityFromSnapshot_PrunesPostRevisionAttribute(t *testing.T) {
 
 	bookID := uuid.MustParse("00000000-0000-0000-0004-0000000f1002")
 	var kindID, nameAttrID, aliasAttrID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
-	pool.QueryRow(ctx, `SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`, kindID).Scan(&nameAttrID)
-	pool.QueryRow(ctx, `SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='aliases' LIMIT 1`, kindID).Scan(&aliasAttrID)
+	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	pool.QueryRow(ctx, `SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='name' LIMIT 1`, kindID).Scan(&nameAttrID)
+	pool.QueryRow(ctx, `SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='aliases' LIMIT 1`, kindID).Scan(&aliasAttrID)
 	if aliasAttrID == "" {
 		t.Skip("no aliases attr_def — skipping attribute-prune case")
 	}
@@ -177,7 +177,7 @@ func TestReconcileEntityFromSnapshot_RestoresAndPrunesChapterLinks(t *testing.T)
 
 	bookID := uuid.MustParse("00000000-0000-0000-0004-0000000f1003")
 	var kindID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
 	var entityID uuid.UUID
 	pool.QueryRow(ctx,
 		`INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`,

@@ -147,7 +147,7 @@ func (s *Server) loadEntityDetail(ctx context.Context, bookID, entityID uuid.UUI
 			ek.kind_id, ek.code, ek.name, ek.icon, ek.color,
 			COALESCE((
 				SELECT eav.original_value FROM entity_attribute_values eav
-				JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+				JOIN system_kind_attributes ad ON ad.attr_def_id = eav.attr_def_id
 				WHERE eav.entity_id = e.entity_id AND ad.code IN ('name','term')
 				ORDER BY ad.sort_order LIMIT 1
 			), '') AS display_name,
@@ -160,7 +160,7 @@ func (s *Server) loadEntityDetail(ctx context.Context, bookID, entityID uuid.UUI
 				JOIN entity_attribute_values eav3 ON eav3.attr_value_id = ev.attr_value_id
 				WHERE eav3.entity_id = e.entity_id) AS evidence_count
 		FROM glossary_entities e
-		JOIN entity_kinds ek ON ek.kind_id = e.kind_id
+		JOIN system_kinds ek ON ek.kind_id = e.kind_id
 		WHERE e.entity_id = $1 AND e.book_id = $2 AND e.deleted_at IS NULL`,
 		entityID, bookID,
 	).Scan(
@@ -212,7 +212,7 @@ func (s *Server) loadEntityDetail(ctx context.Context, bookID, entityID uuid.UUI
 		       eav.original_language, eav.original_value,
 		       ad.attr_def_id, ad.code, ad.name, ad.field_type, ad.is_required, ad.is_system, ad.sort_order
 		FROM entity_attribute_values eav
-		JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+		JOIN system_kind_attributes ad ON ad.attr_def_id = eav.attr_def_id
 		WHERE eav.entity_id = $1
 		ORDER BY ad.sort_order`, entityID)
 	if err != nil {
@@ -343,7 +343,7 @@ func (s *Server) createEntity(w http.ResponseWriter, r *http.Request) {
 	// Validate kind exists and is visible
 	var kindExists bool
 	if err := s.pool.QueryRow(ctx,
-		`SELECT EXISTS(SELECT 1 FROM entity_kinds WHERE kind_id=$1 AND is_hidden=false)`, kindID,
+		`SELECT EXISTS(SELECT 1 FROM system_kinds WHERE kind_id=$1 AND is_hidden=false)`, kindID,
 	).Scan(&kindExists); err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "db error")
 		return
@@ -373,7 +373,7 @@ func (s *Server) createEntity(w http.ResponseWriter, r *http.Request) {
 
 	// Load attribute definitions for this kind
 	attrRows, err := tx.Query(ctx,
-		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 ORDER BY sort_order`, kindID)
+		`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 ORDER BY sort_order`, kindID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "load attrs failed")
 		return
@@ -549,7 +549,7 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 			bindDisplayLang()
 			leg = "(" + leg + fmt.Sprintf(` OR EXISTS (
 				SELECT 1 FROM entity_attribute_values eav
-				JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+				JOIN system_kind_attributes ad ON ad.attr_def_id = eav.attr_def_id
 				JOIN attribute_translations at ON at.attr_value_id = eav.attr_value_id
 				WHERE eav.entity_id = e.entity_id
 				  AND ad.code IN ('name','term')
@@ -565,7 +565,7 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 			bindDisplayLang()
 			where = append(where, fmt.Sprintf(`EXISTS (
 			SELECT 1 FROM entity_attribute_values eav
-			JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+			JOIN system_kind_attributes ad ON ad.attr_def_id = eav.attr_def_id
 			WHERE eav.entity_id = e.entity_id
 			  AND ad.code IN ('name','term')
 			  AND (
@@ -580,7 +580,7 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 		} else {
 			where = append(where, fmt.Sprintf(`EXISTS (
 			SELECT 1 FROM entity_attribute_values eav
-			JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+			JOIN system_kind_attributes ad ON ad.attr_def_id = eav.attr_def_id
 			WHERE eav.entity_id = e.entity_id
 			  AND ad.code IN ('name','term')
 			  AND eav.original_value ILIKE $%d)`, searchArg))
@@ -602,7 +602,7 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 	// Total count (reuse args without limit/offset)
 	countSQL := fmt.Sprintf(`
 		SELECT COUNT(*) FROM glossary_entities e
-		JOIN entity_kinds ek ON ek.kind_id = e.kind_id
+		JOIN system_kinds ek ON ek.kind_id = e.kind_id
 		%s`, whereClause)
 	var total int
 	if err := s.pool.QueryRow(ctx, countSQL, args...).Scan(&total); err != nil {
@@ -620,7 +620,7 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 		bindDisplayLang()
 		transExactExpr = fmt.Sprintf(`EXISTS (
 			SELECT 1 FROM entity_attribute_values eav
-			JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+			JOIN system_kind_attributes ad ON ad.attr_def_id = eav.attr_def_id
 			JOIN attribute_translations at ON at.attr_value_id = eav.attr_value_id
 			WHERE eav.entity_id = e.entity_id
 			  AND ad.code IN ('name','term')
@@ -646,7 +646,7 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 
 	displayNameSQL := `COALESCE((
 				SELECT eav.original_value FROM entity_attribute_values eav
-				JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+				JOIN system_kind_attributes ad ON ad.attr_def_id = eav.attr_def_id
 				WHERE eav.entity_id = e.entity_id AND ad.code IN ('name','term')
 				ORDER BY ad.sort_order LIMIT 1
 			), '')`
@@ -656,7 +656,7 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 		displayNameSQL = fmt.Sprintf(`COALESCE((
 				SELECT COALESCE(NULLIF(at.value, ''), eav.original_value)
 				FROM entity_attribute_values eav
-				JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+				JOIN system_kind_attributes ad ON ad.attr_def_id = eav.attr_def_id
 				LEFT JOIN attribute_translations at ON at.attr_value_id = eav.attr_value_id
 					AND at.language_code = $%d
 				WHERE eav.entity_id = e.entity_id AND ad.code IN ('name','term')
@@ -665,7 +665,7 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 		displayNameTranslationSQL = fmt.Sprintf(`(
 				SELECT NULLIF(at.value, '')
 				FROM entity_attribute_values eav
-				JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+				JOIN system_kind_attributes ad ON ad.attr_def_id = eav.attr_def_id
 				LEFT JOIN attribute_translations at ON at.attr_value_id = eav.attr_value_id
 					AND at.language_code = $%d
 				WHERE eav.entity_id = e.entity_id AND ad.code IN ('name','term')
@@ -689,7 +689,7 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 				WHERE eav3.entity_id = e.entity_id) AS evidence_count,
 			e.cached_name, e.cached_aliases
 		FROM glossary_entities e
-		JOIN entity_kinds ek ON ek.kind_id = e.kind_id
+		JOIN system_kinds ek ON ek.kind_id = e.kind_id
 		%s
 		%s
 		LIMIT $%d OFFSET $%d`,
@@ -1252,9 +1252,9 @@ func (s *Server) listEntityNames(w http.ResponseWriter, r *http.Request) {
 		SELECT e.entity_id, eav.original_value AS display_name,
 			ek.code AS kind_code, ek.color AS kind_color, ek.icon AS kind_icon, ek.name AS kind_name
 		FROM glossary_entities e
-		JOIN entity_kinds ek ON ek.kind_id = e.kind_id
+		JOIN system_kinds ek ON ek.kind_id = e.kind_id
 		LEFT JOIN entity_attribute_values eav ON eav.entity_id = e.entity_id
-			AND eav.attr_def_id = (SELECT attr_def_id FROM attribute_definitions WHERE kind_id = e.kind_id AND code = 'name' LIMIT 1)
+			AND eav.attr_def_id = (SELECT attr_def_id FROM system_kind_attributes WHERE kind_id = e.kind_id AND code = 'name' LIMIT 1)
 		WHERE e.book_id = $1 AND e.deleted_at IS NULL AND e.status = 'active'
 		ORDER BY eav.original_value
 		LIMIT 500`, bookID)

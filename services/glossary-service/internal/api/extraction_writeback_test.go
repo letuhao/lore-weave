@@ -73,7 +73,7 @@ func TestBulkExtract_DefaultTagsAppliedOnCreate(t *testing.T) {
 		`SELECT ge.status, ge.tags
 		   FROM glossary_entities ge
 		   JOIN entity_attribute_values eav ON eav.entity_id = ge.entity_id
-		   JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+		   JOIN system_kind_attributes ad ON ad.attr_def_id = eav.attr_def_id
 		  WHERE ge.book_id=$1 AND ad.code='name' AND eav.original_value='哪吒'`,
 		bookID).Scan(&status, &tags)
 	if err != nil {
@@ -96,9 +96,9 @@ func TestBulkExtract_TombstoneSkipsRejectedName(t *testing.T) {
 
 	bookID := "00000000-0000-0000-0001-0000000a1002"
 	var kindID, nameAttrID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
 	pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`,
+		`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='name' LIMIT 1`,
 		kindID).Scan(&nameAttrID)
 
 	// Seed a previously-rejected entity named 李靖 (tombstoned).
@@ -175,7 +175,7 @@ func TestBulkExtract_NoDefaultTagsBackwardCompatible(t *testing.T) {
 	pool.QueryRow(ctx,
 		`SELECT ge.tags FROM glossary_entities ge
 		   JOIN entity_attribute_values eav ON eav.entity_id = ge.entity_id
-		   JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+		   JOIN system_kind_attributes ad ON ad.attr_def_id = eav.attr_def_id
 		  WHERE ge.book_id=$1 AND ad.code='name' AND eav.original_value='杨戬'`,
 		bookID).Scan(&tags)
 	if len(tags) != 0 {

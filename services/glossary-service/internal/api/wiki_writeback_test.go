@@ -94,12 +94,12 @@ func newWbFixture(t *testing.T, suffix string) *wbFixture {
 	ctx := context.Background()
 	f := &wbFixture{pool: pool, ctx: ctx, srv: newWritebackServer(pool),
 		bookID: uuid.MustParse("019e0000-0000-7000-cccc-" + suffix)}
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&f.kindID)
+	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&f.kindID)
 	if f.kindID == uuid.Nil {
-		pool.Exec(ctx, `INSERT INTO entity_kinds(code,name,icon,color,is_default,is_hidden,sort_order)
+		pool.Exec(ctx, `INSERT INTO system_kinds(code,name,icon,color,is_default,is_hidden,sort_order)
 			SELECT 'character','Character','user','#888888',true,false,0
-			WHERE NOT EXISTS (SELECT 1 FROM entity_kinds WHERE code='character')`)
-		pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&f.kindID)
+			WHERE NOT EXISTS (SELECT 1 FROM system_kinds WHERE code='character')`)
+		pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&f.kindID)
 	}
 	t.Cleanup(func() { pool.Exec(ctx, `DELETE FROM glossary_entities WHERE book_id=$1`, f.bookID) })
 	return f

@@ -84,7 +84,7 @@ func (s *Server) queryEntityStats(ctx context.Context, bookID uuid.UUID) ([]stat
 		       MIN(cel.chapter_index)                   AS first_chapter_index,
 		       MAX(cel.chapter_index)                   AS last_chapter_index
 		FROM glossary_entities e
-		JOIN entity_kinds ek ON ek.kind_id = e.kind_id
+		JOIN system_kinds ek ON ek.kind_id = e.kind_id
 		JOIN chapter_entity_links cel ON cel.entity_id = e.entity_id
 		WHERE e.book_id = $1
 		  AND e.deleted_at IS NULL

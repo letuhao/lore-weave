@@ -79,7 +79,7 @@ func (s *Server) writeExtractionProfile(w http.ResponseWriter, ctx context.Conte
 	//   - Exclude kinds where is_hidden = true
 	kindRows, err := s.pool.Query(ctx, `
 		SELECT kind_id, code, name, icon, is_default, genre_tags
-		FROM entity_kinds
+		FROM system_kinds
 		WHERE is_hidden = false
 		ORDER BY sort_order, name
 	`)
@@ -131,7 +131,7 @@ func (s *Server) writeExtractionProfile(w http.ResponseWriter, ctx context.Conte
 		attrRows, err := s.pool.Query(ctx, `
 			SELECT code, name, field_type, description, auto_fill_prompt,
 			       is_required, is_active, genre_tags
-			FROM attribute_definitions
+			FROM system_kind_attributes
 			WHERE kind_id = $1
 			ORDER BY sort_order, name
 		`, kindID)
@@ -225,7 +225,7 @@ func (s *Server) getKnownEntities(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Build the query dynamically based on filters.
-	// We join glossary_entities with entity_kinds and aggregate chapter_entity_links
+	// We join glossary_entities with system_kinds and aggregate chapter_entity_links
 	// to compute frequency and max chapter_index (recency).
 	//
 	// The entity "name" comes from entity_attribute_values where the attribute code = 'name'.
@@ -277,17 +277,17 @@ func (s *Server) getKnownEntities(w http.ResponseWriter, r *http.Request) {
 			COALESCE(alias_av.original_value, '') AS aliases_raw,
 			COUNT(cl.link_id) AS frequency
 		FROM glossary_entities e
-		JOIN entity_kinds k ON k.kind_id = e.kind_id
+		JOIN system_kinds k ON k.kind_id = e.kind_id
 		LEFT JOIN entity_attribute_values name_av
 			ON name_av.entity_id = e.entity_id
 			AND name_av.attr_def_id = (
-				SELECT attr_def_id FROM attribute_definitions
+				SELECT attr_def_id FROM system_kind_attributes
 				WHERE kind_id = e.kind_id AND code = 'name' LIMIT 1
 			)
 		LEFT JOIN entity_attribute_values alias_av
 			ON alias_av.entity_id = e.entity_id
 			AND alias_av.attr_def_id = (
-				SELECT attr_def_id FROM attribute_definitions
+				SELECT attr_def_id FROM system_kind_attributes
 				WHERE kind_id = e.kind_id AND code = 'aliases' LIMIT 1
 			)
 		LEFT JOIN chapter_entity_links cl
@@ -728,7 +728,7 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 
 // loadKindMap returns a map of kind code → kind_id.
 func (s *Server) loadKindMap(ctx context.Context) (map[string]uuid.UUID, error) {
-	rows, err := s.pool.Query(ctx, `SELECT kind_id, code FROM entity_kinds`)
+	rows, err := s.pool.Query(ctx, `SELECT kind_id, code FROM system_kinds`)
 	if err != nil {
 		return nil, err
 	}
@@ -768,7 +768,7 @@ func (s *Server) loadKindMap(ctx context.Context) (map[string]uuid.UUID, error) 
 
 // loadAttrDefMap returns a map of "kind_id:code" → attr_def_id.
 func (s *Server) loadAttrDefMap(ctx context.Context) (map[string]uuid.UUID, error) {
-	rows, err := s.pool.Query(ctx, `SELECT attr_def_id, kind_id, code FROM attribute_definitions`)
+	rows, err := s.pool.Query(ctx, `SELECT attr_def_id, kind_id, code FROM system_kind_attributes`)
 	if err != nil {
 		return nil, err
 	}
@@ -795,7 +795,7 @@ func (s *Server) findEntityByNameOrAlias(ctx context.Context, bookID, kindID uui
 		SELECT ge.entity_id, eav.original_value
 		FROM glossary_entities ge
 		JOIN entity_attribute_values eav ON eav.entity_id = ge.entity_id
-		JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+		JOIN system_kind_attributes ad ON ad.attr_def_id = eav.attr_def_id
 		WHERE ge.book_id = $1
 		  AND ge.kind_id = $2
 		  AND ad.code = 'name'
@@ -826,7 +826,7 @@ func (s *Server) findEntityByNameOrAlias(ctx context.Context, bookID, kindID uui
 		SELECT ge.entity_id, eav.original_value
 		FROM glossary_entities ge
 		JOIN entity_attribute_values eav ON eav.entity_id = ge.entity_id
-		JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+		JOIN system_kind_attributes ad ON ad.attr_def_id = eav.attr_def_id
 		WHERE ge.book_id = $1
 		  AND ge.kind_id = $2
 		  AND ad.code = 'aliases'
@@ -1286,23 +1286,23 @@ func (s *Server) internalListEntities(w http.ResponseWriter, r *http.Request) {
 			-- value when the column is null (backward-compatible).
 			COALESCE(NULLIF(e.short_description, ''), short_av.original_value) AS short_description
 		FROM glossary_entities e
-		JOIN entity_kinds k ON k.kind_id = e.kind_id
+		JOIN system_kinds k ON k.kind_id = e.kind_id
 		LEFT JOIN entity_attribute_values name_av
 			ON name_av.entity_id = e.entity_id
 			AND name_av.attr_def_id = (
-				SELECT attr_def_id FROM attribute_definitions
+				SELECT attr_def_id FROM system_kind_attributes
 				WHERE kind_id = e.kind_id AND code = 'name' LIMIT 1
 			)
 		LEFT JOIN entity_attribute_values alias_av
 			ON alias_av.entity_id = e.entity_id
 			AND alias_av.attr_def_id = (
-				SELECT attr_def_id FROM attribute_definitions
+				SELECT attr_def_id FROM system_kind_attributes
 				WHERE kind_id = e.kind_id AND code = 'aliases' LIMIT 1
 			)
 		LEFT JOIN entity_attribute_values short_av
 			ON short_av.entity_id = e.entity_id
 			AND short_av.attr_def_id = (
-				SELECT attr_def_id FROM attribute_definitions
+				SELECT attr_def_id FROM system_kind_attributes
 				WHERE kind_id = e.kind_id AND code = 'short_description' LIMIT 1
 			)
 		WHERE e.book_id = $1

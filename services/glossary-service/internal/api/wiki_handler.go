@@ -169,10 +169,10 @@ func (s *Server) listWikiArticles(w http.ResponseWriter, r *http.Request) {
 		SELECT COUNT(*)
 		FROM wiki_articles wa
 		JOIN glossary_entities ge ON ge.entity_id = wa.entity_id
-		JOIN entity_kinds ek ON ek.kind_id = ge.kind_id
+		JOIN system_kinds ek ON ek.kind_id = ge.kind_id
 		LEFT JOIN entity_attribute_values dn ON dn.entity_id = ge.entity_id
 			AND dn.attr_def_id = (
-				SELECT ad.attr_def_id FROM attribute_definitions ad
+				SELECT ad.attr_def_id FROM system_kind_attributes ad
 				WHERE ad.kind_id = ge.kind_id AND ad.code IN ('name','term')
 				ORDER BY ad.sort_order LIMIT 1
 			)
@@ -194,10 +194,10 @@ func (s *Server) listWikiArticles(w http.ResponseWriter, r *http.Request) {
 			wa.updated_at, wa.generation_status, wa.is_knowledge_stale
 		FROM wiki_articles wa
 		JOIN glossary_entities ge ON ge.entity_id = wa.entity_id
-		JOIN entity_kinds ek ON ek.kind_id = ge.kind_id
+		JOIN system_kinds ek ON ek.kind_id = ge.kind_id
 		LEFT JOIN entity_attribute_values dn ON dn.entity_id = ge.entity_id
 			AND dn.attr_def_id = (
-				SELECT ad.attr_def_id FROM attribute_definitions ad
+				SELECT ad.attr_def_id FROM system_kind_attributes ad
 				WHERE ad.kind_id = ge.kind_id AND ad.code IN ('name','term')
 				ORDER BY ad.sort_order LIMIT 1
 			)
@@ -1045,12 +1045,12 @@ func (s *Server) generateWikiStubs(w http.ResponseWriter, r *http.Request) {
 		SELECT ge.entity_id, ek.code, ek.name,
 			COALESCE((
 				SELECT eav.original_value FROM entity_attribute_values eav
-				JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+				JOIN system_kind_attributes ad ON ad.attr_def_id = eav.attr_def_id
 				WHERE eav.entity_id = ge.entity_id AND ad.code IN ('name','term')
 				ORDER BY ad.sort_order LIMIT 1
 			), '') AS display_name
 		FROM glossary_entities ge
-		JOIN entity_kinds ek ON ek.kind_id = ge.kind_id
+		JOIN system_kinds ek ON ek.kind_id = ge.kind_id
 		WHERE ge.book_id = $1
 		  AND ge.deleted_at IS NULL
 		  AND ge.status = 'active'
@@ -1207,10 +1207,10 @@ func (s *Server) generateWikiStubs(w http.ResponseWriter, r *http.Request) {
 			wa.status, wa.template_code, 1 AS revision_count, wa.updated_at
 		FROM wiki_articles wa
 		JOIN glossary_entities ge ON ge.entity_id = wa.entity_id
-		JOIN entity_kinds ek ON ek.kind_id = ge.kind_id
+		JOIN system_kinds ek ON ek.kind_id = ge.kind_id
 		LEFT JOIN entity_attribute_values dn ON dn.entity_id = ge.entity_id
 			AND dn.attr_def_id = (
-				SELECT ad.attr_def_id FROM attribute_definitions ad
+				SELECT ad.attr_def_id FROM system_kind_attributes ad
 				WHERE ad.kind_id = ge.kind_id AND ad.code IN ('name','term')
 				ORDER BY ad.sort_order LIMIT 1
 			)
@@ -1261,7 +1261,7 @@ func (s *Server) loadEntityWikiAttrs(ctx context.Context, entityID uuid.UUID) ([
 	rows, err := s.pool.Query(ctx, `
 		SELECT ad.name, eav.original_value
 		FROM entity_attribute_values eav
-		JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+		JOIN system_kind_attributes ad ON ad.attr_def_id = eav.attr_def_id
 		WHERE eav.entity_id = $1
 		  AND ad.code NOT IN ('name','term')
 		  AND eav.original_value <> ''
@@ -1330,10 +1330,10 @@ func (s *Server) loadWikiArticleDetail(r *http.Request, bookID, articleID uuid.U
 			wa.generation_status, wa.generation_provenance, wa.generated_at, wa.is_knowledge_stale
 		FROM wiki_articles wa
 		JOIN glossary_entities ge ON ge.entity_id = wa.entity_id
-		JOIN entity_kinds ek ON ek.kind_id = ge.kind_id
+		JOIN system_kinds ek ON ek.kind_id = ge.kind_id
 		LEFT JOIN entity_attribute_values dn ON dn.entity_id = ge.entity_id
 			AND dn.attr_def_id = (
-				SELECT ad.attr_def_id FROM attribute_definitions ad
+				SELECT ad.attr_def_id FROM system_kind_attributes ad
 				WHERE ad.kind_id = ge.kind_id AND ad.code IN ('name','term')
 				ORDER BY ad.sort_order LIMIT 1
 			)
@@ -1366,7 +1366,7 @@ func (s *Server) loadWikiArticleDetail(r *http.Request, bookID, articleID uuid.U
 			ad.attr_def_id, ad.code, ad.name, ad.field_type, ad.is_required, ad.is_system, ad.sort_order,
 			eav.original_language, eav.original_value
 		FROM entity_attribute_values eav
-		JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+		JOIN system_kind_attributes ad ON ad.attr_def_id = eav.attr_def_id
 		WHERE eav.entity_id = $1
 		ORDER BY ad.sort_order`, entityID)
 	if err != nil {
@@ -1503,10 +1503,10 @@ func (s *Server) publicListWikiArticles(w http.ResponseWriter, r *http.Request) 
 		SELECT COUNT(*)
 		FROM wiki_articles wa
 		JOIN glossary_entities ge ON ge.entity_id = wa.entity_id
-		JOIN entity_kinds ek ON ek.kind_id = ge.kind_id
+		JOIN system_kinds ek ON ek.kind_id = ge.kind_id
 		LEFT JOIN entity_attribute_values dn ON dn.entity_id = ge.entity_id
 			AND dn.attr_def_id = (
-				SELECT ad.attr_def_id FROM attribute_definitions ad
+				SELECT ad.attr_def_id FROM system_kind_attributes ad
 				WHERE ad.kind_id = ge.kind_id AND ad.code IN ('name','term')
 				ORDER BY ad.sort_order LIMIT 1
 			)
@@ -1526,10 +1526,10 @@ func (s *Server) publicListWikiArticles(w http.ResponseWriter, r *http.Request) 
 			wa.updated_at
 		FROM wiki_articles wa
 		JOIN glossary_entities ge ON ge.entity_id = wa.entity_id
-		JOIN entity_kinds ek ON ek.kind_id = ge.kind_id
+		JOIN system_kinds ek ON ek.kind_id = ge.kind_id
 		LEFT JOIN entity_attribute_values dn ON dn.entity_id = ge.entity_id
 			AND dn.attr_def_id = (
-				SELECT ad.attr_def_id FROM attribute_definitions ad
+				SELECT ad.attr_def_id FROM system_kind_attributes ad
 				WHERE ad.kind_id = ge.kind_id AND ad.code IN ('name','term')
 				ORDER BY ad.sort_order LIMIT 1
 			)
@@ -1832,10 +1832,10 @@ func (s *Server) listWikiSuggestions(w http.ResponseWriter, r *http.Request) {
 		FROM wiki_suggestions ws
 		JOIN wiki_articles wa ON wa.article_id = ws.article_id
 		JOIN glossary_entities ge ON ge.entity_id = wa.entity_id
-		JOIN entity_kinds ek ON ek.kind_id = ge.kind_id
+		JOIN system_kinds ek ON ek.kind_id = ge.kind_id
 		LEFT JOIN entity_attribute_values dn ON dn.entity_id = ge.entity_id
 			AND dn.attr_def_id = (
-				SELECT ad.attr_def_id FROM attribute_definitions ad
+				SELECT ad.attr_def_id FROM system_kind_attributes ad
 				WHERE ad.kind_id = ge.kind_id AND ad.code IN ('name','term')
 				ORDER BY ad.sort_order LIMIT 1
 			)

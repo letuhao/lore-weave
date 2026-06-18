@@ -21,7 +21,7 @@ func nameTranslation(t *testing.T, pool *pgxpool.Pool, bookID, name, lang string
 		SELECT at.value, at.confidence
 		FROM attribute_translations at
 		JOIN entity_attribute_values eav ON eav.attr_value_id = at.attr_value_id
-		JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+		JOIN system_kind_attributes ad ON ad.attr_def_id = eav.attr_def_id
 		JOIN glossary_entities ge ON ge.entity_id = eav.entity_id
 		WHERE ge.book_id=$1 AND ad.code='name' AND eav.original_value=$2 AND at.language_code=$3`,
 		bookID, name, lang,
@@ -39,9 +39,9 @@ func seedEntityWithTranslation(t *testing.T, pool *pgxpool.Pool, bookID, name, l
 	t.Helper()
 	ctx := context.Background()
 	var kindID, nameAttrID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
 	pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`,
+		`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='name' LIMIT 1`,
 		kindID).Scan(&nameAttrID)
 	var eid, avid string
 	pool.QueryRow(ctx,

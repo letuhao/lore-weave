@@ -42,9 +42,9 @@ func seedTranslationEntity(t *testing.T, pool *pgxpool.Pool, bookID, name, targe
 	t.Helper()
 	ctx := context.Background()
 	var kindID, nameAttrID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
 	pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`, kindID,
+		`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='name' LIMIT 1`, kindID,
 	).Scan(&nameAttrID)
 
 	var eid string
@@ -76,9 +76,9 @@ func seedNameOnlyEntity(t *testing.T, pool *pgxpool.Pool, bookID, name string) s
 	t.Helper()
 	ctx := context.Background()
 	var kindID, nameAttrID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
 	pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`, kindID,
+		`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='name' LIMIT 1`, kindID,
 	).Scan(&nameAttrID)
 
 	var eid string

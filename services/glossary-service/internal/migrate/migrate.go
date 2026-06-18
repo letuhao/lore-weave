@@ -10,8 +10,21 @@ import (
 )
 
 const schemaSQL = `
+-- ── SS-4 T1 rename: entity_kinds → system_kinds (explicit system tier) ────────
+-- The legacy kind catalogue was named entity_kinds with a global UNIQUE(code),
+-- user-mutable via /v1/glossary/kinds* — a multi-tenancy defect (one user's edit
+-- changed the kind for everyone). SS-4 makes the system tier an explicit,
+-- admin/seed-only table; T2 user_kinds + T3 book_kinds carry user/book scope.
+-- A RENAME preserves every FK (glossary_entities.kind_id, the *_attributes FK,
+-- entity_kind_aliases, merge_candidates) automatically — no data rewrite. IF
+-- EXISTS makes it idempotent + a no-op on a fresh DB (where the CREATE below
+-- builds system_kinds directly). MUST run BEFORE the CREATE so an existing DB's
+-- data-bearing table is renamed in place rather than shadowed by a new empty one.
+ALTER TABLE IF EXISTS entity_kinds         RENAME TO system_kinds;
+ALTER TABLE IF EXISTS attribute_definitions RENAME TO system_kind_attributes;
+
 -- Kind catalogue (seeded on startup, read-only in MVP)
-CREATE TABLE IF NOT EXISTS entity_kinds (
+CREATE TABLE IF NOT EXISTS system_kinds (
   kind_id     UUID PRIMARY KEY DEFAULT uuidv7(),
   code        TEXT NOT NULL UNIQUE,
   name        TEXT NOT NULL,
@@ -25,9 +38,9 @@ CREATE TABLE IF NOT EXISTS entity_kinds (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS attribute_definitions (
+CREATE TABLE IF NOT EXISTS system_kind_attributes (
   attr_def_id UUID PRIMARY KEY DEFAULT uuidv7(),
-  kind_id     UUID NOT NULL REFERENCES entity_kinds(kind_id) ON DELETE CASCADE,
+  kind_id     UUID NOT NULL REFERENCES system_kinds(kind_id) ON DELETE CASCADE,
   code        TEXT NOT NULL,
   name        TEXT NOT NULL,
   description TEXT,
@@ -38,18 +51,18 @@ CREATE TABLE IF NOT EXISTS attribute_definitions (
   options     TEXT[],
   UNIQUE(kind_id, code)
 );
-CREATE INDEX IF NOT EXISTS idx_attr_def_kind ON attribute_definitions(kind_id);
+CREATE INDEX IF NOT EXISTS idx_attr_def_kind ON system_kind_attributes(kind_id);
 -- Migration: add is_system column if missing (idempotent)
-ALTER TABLE attribute_definitions ADD COLUMN IF NOT EXISTS is_system BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE system_kind_attributes ADD COLUMN IF NOT EXISTS is_system BOOLEAN NOT NULL DEFAULT false;
 -- Mark seeded attributes on system kinds as is_system=true
-UPDATE attribute_definitions ad SET is_system = true
-FROM entity_kinds ek WHERE ek.kind_id = ad.kind_id AND ek.is_default = true AND ad.is_system = false;
+UPDATE system_kind_attributes ad SET is_system = true
+FROM system_kinds ek WHERE ek.kind_id = ad.kind_id AND ek.is_default = true AND ad.is_system = false;
 
 -- Glossary entities (book-level)
 CREATE TABLE IF NOT EXISTS glossary_entities (
   entity_id  UUID PRIMARY KEY DEFAULT uuidv7(),
   book_id    UUID NOT NULL,
-  kind_id    UUID NOT NULL REFERENCES entity_kinds(kind_id),
+  kind_id    UUID NOT NULL REFERENCES system_kinds(kind_id),
   status     TEXT NOT NULL DEFAULT 'draft',
   tags       TEXT[] NOT NULL DEFAULT '{}',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -79,7 +92,7 @@ CREATE INDEX IF NOT EXISTS idx_cel_chapter ON chapter_entity_links(chapter_id);
 CREATE TABLE IF NOT EXISTS entity_attribute_values (
   attr_value_id     UUID PRIMARY KEY DEFAULT uuidv7(),
   entity_id         UUID NOT NULL REFERENCES glossary_entities(entity_id) ON DELETE CASCADE,
-  attr_def_id       UUID NOT NULL REFERENCES attribute_definitions(attr_def_id),
+  attr_def_id       UUID NOT NULL REFERENCES system_kind_attributes(attr_def_id),
   original_language TEXT NOT NULL DEFAULT 'zh',
   original_value    TEXT NOT NULL DEFAULT '',
   UNIQUE(entity_id, attr_def_id)
@@ -135,7 +148,7 @@ CREATE INDEX IF NOT EXISTS idx_evtr_evidence ON evidence_translations(evidence_i
 CREATE TABLE IF NOT EXISTS entity_kind_aliases (
   alias_id    UUID PRIMARY KEY DEFAULT uuidv7(),
   alias_code  TEXT NOT NULL UNIQUE,
-  kind_id     UUID NOT NULL REFERENCES entity_kinds(kind_id) ON DELETE CASCADE,
+  kind_id     UUID NOT NULL REFERENCES system_kinds(kind_id) ON DELETE CASCADE,
   created_by  UUID,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -149,16 +162,16 @@ ALTER TABLE glossary_entities ADD COLUMN IF NOT EXISTS source_kind_code TEXT;
 -- The 'unknown' system kind (the review bucket). Hidden from the normal kind
 -- picker; an entity here is awaiting kind triage. Idempotent (ON CONFLICT) so it
 -- exists on already-seeded DBs too (Seed() only runs on an empty catalogue).
-INSERT INTO entity_kinds (code, name, icon, color, is_default, is_hidden, sort_order, genre_tags)
+INSERT INTO system_kinds (code, name, icon, color, is_default, is_hidden, sort_order, genre_tags)
 VALUES ('unknown', 'Unknown', '❓', '#94a3b8', true, true, 9999, '{universal}')
 ON CONFLICT (code) DO NOTHING;
 
 -- The 'unknown' kind needs at least a name attribute so a parked entity is nameable
 -- (createExtractedEntity only writes the name when the kind has a 'name' attr_def),
 -- + aliases/description so dedup + the review GUI work. Idempotent.
-INSERT INTO attribute_definitions (kind_id, code, name, field_type, is_required, is_system, sort_order)
+INSERT INTO system_kind_attributes (kind_id, code, name, field_type, is_required, is_system, sort_order)
 SELECT ek.kind_id, v.code, v.name, v.field_type, v.is_required, true, v.sort_order
-FROM entity_kinds ek
+FROM system_kinds ek
 CROSS JOIN (VALUES
   ('name', 'Name', 'text', true, 1),
   ('aliases', 'Aliases', 'tags', false, 2),
@@ -180,7 +193,7 @@ const seedKindAliasesSQL = `
 INSERT INTO entity_kind_aliases (alias_code, kind_id)
 SELECT v.alias_code, ek.kind_id
 FROM (VALUES ('faction', 'organization'), ('generic', 'terminology')) AS v(alias_code, target_code)
-JOIN entity_kinds ek ON ek.code = v.target_code
+JOIN system_kinds ek ON ek.code = v.target_code
 ON CONFLICT (alias_code) DO NOTHING;
 `
 
@@ -300,7 +313,7 @@ BEGIN
         ) ORDER BY ad.sort_order
       )
       FROM entity_attribute_values av
-      JOIN attribute_definitions ad ON ad.attr_def_id = av.attr_def_id
+      JOIN system_kind_attributes ad ON ad.attr_def_id = av.attr_def_id
       WHERE av.entity_id = p_entity_id
     ), '[]'::jsonb),
     'chapter_links', COALESCE((
@@ -322,7 +335,7 @@ BEGIN
   )
   INTO v_snapshot
   FROM glossary_entities e
-  JOIN entity_kinds k ON k.kind_id = e.kind_id
+  JOIN system_kinds k ON k.kind_id = e.kind_id
   WHERE e.entity_id = p_entity_id;
 
   IF v_snapshot IS NULL THEN
@@ -522,7 +535,7 @@ func Seed(ctx context.Context, pool *pgxpool.Pool) error {
 		// DO NOTHING (not DO UPDATE) so an author's customized default kind is never
 		// clobbered; then read the id (whether just-inserted or pre-existing) for attrs.
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO entity_kinds(code, name, icon, color, is_default, is_hidden, sort_order, genre_tags)
+			INSERT INTO system_kinds(code, name, icon, color, is_default, is_hidden, sort_order, genre_tags)
 			VALUES ($1,$2,$3,$4,true,false,$5,$6)
 			ON CONFLICT (code) DO NOTHING`,
 			k.Code, k.Name, k.Icon, k.Color, k.SortOrder, k.GenreTags,
@@ -531,14 +544,14 @@ func Seed(ctx context.Context, pool *pgxpool.Pool) error {
 		}
 		var kindID string
 		if err := tx.QueryRow(ctx,
-			`SELECT kind_id FROM entity_kinds WHERE code=$1`, k.Code,
+			`SELECT kind_id FROM system_kinds WHERE code=$1`, k.Code,
 		).Scan(&kindID); err != nil {
 			return fmt.Errorf("seed kind id %s: %w", k.Code, err)
 		}
 
 		for _, a := range k.Attrs {
 			if _, err := tx.Exec(ctx, `
-				INSERT INTO attribute_definitions(kind_id, code, name, field_type, is_required, is_system, sort_order)
+				INSERT INTO system_kind_attributes(kind_id, code, name, field_type, is_required, is_system, sort_order)
 				VALUES ($1,$2,$3,$4,$5,true,$6)
 				ON CONFLICT (kind_id, code) DO NOTHING`,
 				kindID, a.Code, a.Name, a.FieldType, a.IsRequired, a.SortOrder,
@@ -566,10 +579,10 @@ CREATE TABLE IF NOT EXISTS genre_groups (
 );
 ALTER TABLE genre_groups ALTER COLUMN id SET DEFAULT uuidv7();
 CREATE INDEX IF NOT EXISTS idx_genre_groups_book ON genre_groups(book_id);
-ALTER TABLE attribute_definitions ADD COLUMN IF NOT EXISTS genre_tags TEXT[] NOT NULL DEFAULT '{}';
-ALTER TABLE attribute_definitions ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true;
-ALTER TABLE attribute_definitions ADD COLUMN IF NOT EXISTS auto_fill_prompt TEXT;
-ALTER TABLE attribute_definitions ADD COLUMN IF NOT EXISTS translation_hint TEXT;
+ALTER TABLE system_kind_attributes ADD COLUMN IF NOT EXISTS genre_tags TEXT[] NOT NULL DEFAULT '{}';
+ALTER TABLE system_kind_attributes ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE system_kind_attributes ADD COLUMN IF NOT EXISTS auto_fill_prompt TEXT;
+ALTER TABLE system_kind_attributes ADD COLUMN IF NOT EXISTS translation_hint TEXT;
 `
 
 func UpGenreGroups(ctx context.Context, pool *pgxpool.Pool) error {
@@ -761,7 +774,7 @@ ALTER TABLE glossary_entities ADD COLUMN IF NOT EXISTS alive BOOLEAN NOT NULL DE
 CREATE TABLE IF NOT EXISTS extraction_audit_log (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   entity_id   UUID NOT NULL REFERENCES glossary_entities(entity_id) ON DELETE CASCADE,
-  attr_def_id UUID NOT NULL REFERENCES attribute_definitions(attr_def_id),
+  attr_def_id UUID NOT NULL REFERENCES system_kind_attributes(attr_def_id),
   chapter_id  UUID,
   old_value   TEXT,
   new_value   TEXT,
@@ -1029,7 +1042,7 @@ BEGIN
         ) ORDER BY ad.sort_order
       )
       FROM entity_attribute_values av
-      JOIN attribute_definitions ad ON ad.attr_def_id = av.attr_def_id
+      JOIN system_kind_attributes ad ON ad.attr_def_id = av.attr_def_id
       WHERE av.entity_id = p_entity_id
     ), '[]'::jsonb),
     'chapter_links', COALESCE((
@@ -1051,7 +1064,7 @@ BEGIN
   )
   INTO v_snapshot
   FROM glossary_entities e
-  JOIN entity_kinds k ON k.kind_id = e.kind_id
+  JOIN system_kinds k ON k.kind_id = e.kind_id
   WHERE e.entity_id = p_entity_id;
 
   IF v_snapshot IS NULL THEN
@@ -1061,7 +1074,7 @@ BEGIN
   -- ── NEW: read name + aliases from EAV for the read-cache ────────────────
   SELECT av.original_value INTO v_cached_name
   FROM entity_attribute_values av
-  JOIN attribute_definitions ad ON ad.attr_def_id = av.attr_def_id
+  JOIN system_kind_attributes ad ON ad.attr_def_id = av.attr_def_id
   WHERE av.entity_id = p_entity_id
     AND ad.code IN ('name','term')
   ORDER BY
@@ -1071,7 +1084,7 @@ BEGIN
 
   SELECT av.original_value INTO v_aliases_raw
   FROM entity_attribute_values av
-  JOIN attribute_definitions ad ON ad.attr_def_id = av.attr_def_id
+  JOIN system_kind_attributes ad ON ad.attr_def_id = av.attr_def_id
   WHERE av.entity_id = p_entity_id AND ad.code = 'aliases'
   LIMIT 1;
 
@@ -1256,7 +1269,7 @@ func BackfillShortDescription(
 			       COALESCE((
 			         SELECT av.original_value
 			         FROM entity_attribute_values av
-			         JOIN attribute_definitions ad ON ad.attr_def_id = av.attr_def_id
+			         JOIN system_kind_attributes ad ON ad.attr_def_id = av.attr_def_id
 			         WHERE av.entity_id = e.entity_id
 			           AND ad.code IN ('name','term')
 			         ORDER BY CASE ad.code WHEN 'name' THEN 0 WHEN 'term' THEN 1 ELSE 2 END
@@ -1265,13 +1278,13 @@ func BackfillShortDescription(
 			       COALESCE((
 			         SELECT av.original_value
 			         FROM entity_attribute_values av
-			         JOIN attribute_definitions ad ON ad.attr_def_id = av.attr_def_id
+			         JOIN system_kind_attributes ad ON ad.attr_def_id = av.attr_def_id
 			         WHERE av.entity_id = e.entity_id AND ad.code = 'description'
 			         LIMIT 1
 			       ), '') AS description,
 			       ek.name AS kind_name
 			FROM glossary_entities e
-			JOIN entity_kinds ek ON ek.kind_id = e.kind_id
+			JOIN system_kinds ek ON ek.kind_id = e.kind_id
 			WHERE e.short_description IS NULL
 			  AND e.short_description_auto = true
 			  AND e.deleted_at IS NULL
@@ -1506,7 +1519,7 @@ const mergeCandidatesSQL = `
 CREATE TABLE IF NOT EXISTS merge_candidates (
   candidate_id               UUID PRIMARY KEY DEFAULT uuidv7(),
   book_id                    UUID NOT NULL,
-  kind_id                    UUID NOT NULL REFERENCES entity_kinds(kind_id),
+  kind_id                    UUID NOT NULL REFERENCES system_kinds(kind_id),
   member_entity_ids          UUID[] NOT NULL,
   member_set_key             TEXT NOT NULL,
   suggested_winner_entity_id UUID,

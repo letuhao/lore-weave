@@ -25,12 +25,12 @@ func seedContextBook(t *testing.T, pool *pgxpool.Pool, bookID string, entities [
 	t.Helper()
 	ctx := context.Background()
 	var kindID, nameAttrID, aliasesAttrID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
 	pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`, kindID,
+		`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='name' LIMIT 1`, kindID,
 	).Scan(&nameAttrID)
 	pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='aliases' LIMIT 1`, kindID,
+		`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='aliases' LIMIT 1`, kindID,
 	).Scan(&aliasesAttrID)
 
 	ids := make([]string, 0, len(entities))

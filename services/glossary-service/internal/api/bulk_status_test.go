@@ -63,7 +63,7 @@ func seedBulkEntity(t *testing.T, pool *pgxpool.Pool, bookID uuid.UUID, status s
 	t.Helper()
 	ctx := context.Background()
 	var kindID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
 	var eid uuid.UUID
 	if err := pool.QueryRow(ctx,
 		`INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,$3,'{}') RETURNING entity_id`,

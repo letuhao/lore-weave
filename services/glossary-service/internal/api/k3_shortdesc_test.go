@@ -53,10 +53,10 @@ func TestK3_BackfillPopulatesShortDescription(t *testing.T) {
 
 	bookID := "00000000-0000-0000-0000-000000033001"
 	var kindID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
 	var nameAttr, descAttr string
-	pool.QueryRow(ctx, `SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`, kindID).Scan(&nameAttr)
-	pool.QueryRow(ctx, `SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='description' LIMIT 1`, kindID).Scan(&descAttr)
+	pool.QueryRow(ctx, `SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='name' LIMIT 1`, kindID).Scan(&nameAttr)
+	pool.QueryRow(ctx, `SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='description' LIMIT 1`, kindID).Scan(&descAttr)
 
 	t.Cleanup(func() { pool.Exec(ctx, `DELETE FROM glossary_entities WHERE book_id=$1`, bookID) })
 
@@ -123,9 +123,9 @@ func TestK3_BackfillCursorForwardProgress(t *testing.T) {
 
 	bookID := "00000000-0000-0000-0000-000000033099"
 	var kindID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
 	var nameAttr string
-	pool.QueryRow(ctx, `SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`, kindID).Scan(&nameAttr)
+	pool.QueryRow(ctx, `SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='name' LIMIT 1`, kindID).Scan(&nameAttr)
 	t.Cleanup(func() { pool.Exec(ctx, `DELETE FROM glossary_entities WHERE book_id=$1`, bookID) })
 
 	for i := 0; i < 5; i++ {
@@ -165,9 +165,9 @@ func TestK3_BackfillIdempotent(t *testing.T) {
 
 	bookID := "00000000-0000-0000-0000-000000033002"
 	var kindID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
 	var nameAttr string
-	pool.QueryRow(ctx, `SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`, kindID).Scan(&nameAttr)
+	pool.QueryRow(ctx, `SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='name' LIMIT 1`, kindID).Scan(&nameAttr)
 	t.Cleanup(func() { pool.Exec(ctx, `DELETE FROM glossary_entities WHERE book_id=$1`, bookID) })
 
 	var id string
@@ -193,10 +193,10 @@ func TestK3_AutoRegenOnDescriptionUpdate(t *testing.T) {
 
 	bookID := "00000000-0000-0000-0000-000000033003"
 	var kindID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
 	var nameAttr, descAttr string
-	pool.QueryRow(ctx, `SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`, kindID).Scan(&nameAttr)
-	pool.QueryRow(ctx, `SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='description' LIMIT 1`, kindID).Scan(&descAttr)
+	pool.QueryRow(ctx, `SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='name' LIMIT 1`, kindID).Scan(&nameAttr)
+	pool.QueryRow(ctx, `SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='description' LIMIT 1`, kindID).Scan(&descAttr)
 	t.Cleanup(func() { pool.Exec(ctx, `DELETE FROM glossary_entities WHERE book_id=$1`, bookID) })
 
 	// Seed entity with a name + description; backfill populates short_description.
@@ -255,10 +255,10 @@ func TestK3_AutoRegenSkippedWhenUserOverride(t *testing.T) {
 
 	bookID := "00000000-0000-0000-0000-000000033004"
 	var kindID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
 	var nameAttr, descAttr string
-	pool.QueryRow(ctx, `SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`, kindID).Scan(&nameAttr)
-	pool.QueryRow(ctx, `SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='description' LIMIT 1`, kindID).Scan(&descAttr)
+	pool.QueryRow(ctx, `SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='name' LIMIT 1`, kindID).Scan(&nameAttr)
+	pool.QueryRow(ctx, `SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='description' LIMIT 1`, kindID).Scan(&descAttr)
 	t.Cleanup(func() { pool.Exec(ctx, `DELETE FROM glossary_entities WHERE book_id=$1`, bookID) })
 
 	var id string
@@ -300,10 +300,10 @@ func TestK3_AutoRegenSkipsWhenShortDescUnchanged(t *testing.T) {
 
 	bookID := "00000000-0000-0000-0000-000000033005"
 	var kindID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
 	var nameAttr, descAttr string
-	pool.QueryRow(ctx, `SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`, kindID).Scan(&nameAttr)
-	pool.QueryRow(ctx, `SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='description' LIMIT 1`, kindID).Scan(&descAttr)
+	pool.QueryRow(ctx, `SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='name' LIMIT 1`, kindID).Scan(&nameAttr)
+	pool.QueryRow(ctx, `SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='description' LIMIT 1`, kindID).Scan(&descAttr)
 	t.Cleanup(func() { pool.Exec(ctx, `DELETE FROM glossary_entities WHERE book_id=$1`, bookID) })
 
 	var id string

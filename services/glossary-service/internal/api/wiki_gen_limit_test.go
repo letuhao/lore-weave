@@ -60,7 +60,7 @@ func TestResolveWikiGenEntities_TotalMatchedVsLimit(t *testing.T) {
 
 	bookID := uuid.MustParse("00000000-0000-0000-0002-0000000b7b01")
 	var kindID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
 
 	seed := func(status string, deleted bool) {
 		pool.Exec(ctx,

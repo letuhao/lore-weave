@@ -59,9 +59,9 @@ func (s *Server) createKindFromParams(ctx context.Context, in kindCreateParams) 
 
 	var kindID string
 	if err := tx.QueryRow(ctx, `
-		INSERT INTO entity_kinds(code, name, description, icon, color, is_default, is_hidden, sort_order, genre_tags)
+		INSERT INTO system_kinds(code, name, description, icon, color, is_default, is_hidden, sort_order, genre_tags)
 		VALUES ($1,$2,$3,$4,$5,false,false,
-			COALESCE((SELECT MAX(sort_order)+1 FROM entity_kinds),1),
+			COALESCE((SELECT MAX(sort_order)+1 FROM system_kinds),1),
 			$6)
 		RETURNING kind_id`,
 		in.Code, in.Name, in.Description, in.Icon, in.Color, in.GenreTags,
@@ -74,12 +74,12 @@ func (s *Server) createKindFromParams(ctx context.Context, in kindCreateParams) 
 	// with neither — the prior behaviour for every API/UI-created kind — leaves its
 	// entities with no display name, including entities reassigned here out of the
 	// unknown bucket (their name would be dropped in the kind re-key).
-	// Insert only base attribute_definitions columns (present since the initial
+	// Insert only base system_kind_attributes columns (present since the initial
 	// schema); is_active / genre_tags / auto_fill_prompt are added by later
 	// migrations with defaults, so omitting them is migration-order-independent.
 	nameAttr := domain.AttrDef{Code: "name", Name: "Name", FieldType: "text", IsRequired: true, IsActive: true, SortOrder: 0, GenreTags: []string{}}
 	if err := tx.QueryRow(ctx, `
-		INSERT INTO attribute_definitions(kind_id, code, name, field_type, is_required, is_system, sort_order)
+		INSERT INTO system_kind_attributes(kind_id, code, name, field_type, is_required, is_system, sort_order)
 		VALUES ($1,'name','Name','text',true,true,0)
 		RETURNING attr_def_id`,
 		kindID,
@@ -183,7 +183,7 @@ func (s *Server) patchKind(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tag, err := s.pool.Exec(r.Context(), "UPDATE entity_kinds SET "+sets+" WHERE kind_id=$1", args...)
+	tag, err := s.pool.Exec(r.Context(), "UPDATE system_kinds SET "+sets+" WHERE kind_id=$1", args...)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to update kind")
 		return
@@ -198,7 +198,7 @@ func (s *Server) patchKind(w http.ResponseWriter, r *http.Request) {
 	err = s.pool.QueryRow(r.Context(), `
 		SELECT kind_id, code, name, description, icon, color, is_default, is_hidden, sort_order, genre_tags,
 			COALESCE((SELECT count(*) FROM glossary_entities ge WHERE ge.kind_id = ek.kind_id AND ge.deleted_at IS NULL), 0)
-		FROM entity_kinds ek WHERE kind_id=$1`, kindID,
+		FROM system_kinds ek WHERE kind_id=$1`, kindID,
 	).Scan(&k.KindID, &k.Code, &k.Name, &k.Description, &k.Icon, &k.Color, &k.IsDefault, &k.IsHidden, &k.SortOrder, &k.GenreTags, &k.EntityCount)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to read kind")
@@ -218,7 +218,7 @@ func (s *Server) deleteKind(w http.ResponseWriter, r *http.Request) {
 
 	// Check: must not be a system (default) kind
 	var isDefault bool
-	err := s.pool.QueryRow(r.Context(), `SELECT is_default FROM entity_kinds WHERE kind_id=$1`, kindID).Scan(&isDefault)
+	err := s.pool.QueryRow(r.Context(), `SELECT is_default FROM system_kinds WHERE kind_id=$1`, kindID).Scan(&isDefault)
 	if err == pgx.ErrNoRows {
 		writeError(w, http.StatusNotFound, "GLOSS_NOT_FOUND", "kind not found")
 		return
@@ -310,9 +310,9 @@ func (s *Server) deleteKind(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "purge soft-deleted entities failed")
 		return
 	}
-	// entity_kinds → attribute_definitions + entity_kind_aliases both cascade.
+	// system_kinds → system_kind_attributes + entity_kind_aliases both cascade.
 	if _, err := tx.Exec(r.Context(),
-		`DELETE FROM entity_kinds WHERE kind_id=$1`, kindID,
+		`DELETE FROM system_kinds WHERE kind_id=$1`, kindID,
 	); err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "delete kind failed")
 		return
@@ -358,7 +358,7 @@ func (s *Server) createAttrDefFromParams(ctx context.Context, in attrCreateParam
 	}
 	var attrDefID string
 	err := s.pool.QueryRow(ctx, `
-		INSERT INTO attribute_definitions(kind_id, code, name, description, field_type, is_required, sort_order, options, genre_tags, auto_fill_prompt, translation_hint)
+		INSERT INTO system_kind_attributes(kind_id, code, name, description, field_type, is_required, sort_order, options, genre_tags, auto_fill_prompt, translation_hint)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
 		RETURNING attr_def_id`,
 		in.KindID, in.Code, in.Name, in.Description, in.FieldType, in.IsRequired, in.SortOrder, in.Options, in.GenreTags, in.AutoFillPrompt, in.TranslationHint,
@@ -527,7 +527,7 @@ func (s *Server) patchAttrDef(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tag, err := s.pool.Exec(r.Context(), "UPDATE attribute_definitions SET "+sets+" WHERE attr_def_id=$1 AND kind_id=$2", args...)
+	tag, err := s.pool.Exec(r.Context(), "UPDATE system_kind_attributes SET "+sets+" WHERE attr_def_id=$1 AND kind_id=$2", args...)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to update attribute")
 		return
@@ -540,7 +540,7 @@ func (s *Server) patchAttrDef(w http.ResponseWriter, r *http.Request) {
 	var a domain.AttrDef
 	err = s.pool.QueryRow(r.Context(), `
 		SELECT attr_def_id, code, name, description, field_type, is_required, is_system, is_active, sort_order, options, genre_tags, auto_fill_prompt, translation_hint
-		FROM attribute_definitions WHERE attr_def_id=$1 AND kind_id=$2`, attrDefID, kindID,
+		FROM system_kind_attributes WHERE attr_def_id=$1 AND kind_id=$2`, attrDefID, kindID,
 	).Scan(&a.AttrDefID, &a.Code, &a.Name, &a.Description, &a.FieldType, &a.IsRequired, &a.IsSystem, &a.IsActive, &a.SortOrder, &a.Options, &a.GenreTags, &a.AutoFillPrompt, &a.TranslationHint)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to re-fetch attribute")
@@ -561,7 +561,7 @@ func (s *Server) deleteAttrDef(w http.ResponseWriter, r *http.Request) {
 
 	// Check if system attribute
 	var isSystem bool
-	if err := s.pool.QueryRow(r.Context(), `SELECT is_system FROM attribute_definitions WHERE attr_def_id=$1 AND kind_id=$2`, attrDefID, kindID).Scan(&isSystem); err == pgx.ErrNoRows {
+	if err := s.pool.QueryRow(r.Context(), `SELECT is_system FROM system_kind_attributes WHERE attr_def_id=$1 AND kind_id=$2`, attrDefID, kindID).Scan(&isSystem); err == pgx.ErrNoRows {
 		writeError(w, http.StatusNotFound, "GLOSS_NOT_FOUND", "attribute not found")
 		return
 	}
@@ -570,7 +570,7 @@ func (s *Server) deleteAttrDef(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tag, err := s.pool.Exec(r.Context(), `DELETE FROM attribute_definitions WHERE attr_def_id=$1 AND kind_id=$2`, attrDefID, kindID)
+	tag, err := s.pool.Exec(r.Context(), `DELETE FROM system_kind_attributes WHERE attr_def_id=$1 AND kind_id=$2`, attrDefID, kindID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to delete attribute")
 		return
@@ -586,7 +586,7 @@ func (s *Server) deleteAttrDef(w http.ResponseWriter, r *http.Request) {
 func (s *Server) loadAttrDefs(ctx context.Context, kindID string) []domain.AttrDef {
 	rows, err := s.pool.Query(ctx, `
 		SELECT attr_def_id, code, name, description, field_type, is_required, is_system, is_active, sort_order, options, genre_tags, auto_fill_prompt, translation_hint
-		FROM attribute_definitions WHERE kind_id=$1 ORDER BY sort_order`, kindID)
+		FROM system_kind_attributes WHERE kind_id=$1 ORDER BY sort_order`, kindID)
 	if err != nil {
 		return []domain.AttrDef{}
 	}
@@ -622,7 +622,7 @@ func (s *Server) reorderKinds(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback(r.Context())
 
 	for i, id := range in.KindIDs {
-		tx.Exec(r.Context(), `UPDATE entity_kinds SET sort_order=$1 WHERE kind_id=$2`, i, id)
+		tx.Exec(r.Context(), `UPDATE system_kinds SET sort_order=$1 WHERE kind_id=$2`, i, id)
 	}
 
 	if err := tx.Commit(r.Context()); err != nil {
@@ -657,7 +657,7 @@ func (s *Server) reorderAttrDefs(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback(r.Context())
 
 	for i, id := range in.AttrDefIDs {
-		tx.Exec(r.Context(), `UPDATE attribute_definitions SET sort_order=$1 WHERE attr_def_id=$2 AND kind_id=$3`, i, id, kindID)
+		tx.Exec(r.Context(), `UPDATE system_kind_attributes SET sort_order=$1 WHERE attr_def_id=$2 AND kind_id=$3`, i, id, kindID)
 	}
 
 	if err := tx.Commit(r.Context()); err != nil {

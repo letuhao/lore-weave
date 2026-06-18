@@ -160,7 +160,7 @@ func TestProposeCandidate_Validation(t *testing.T) {
 	}
 	// cross-kind cluster
 	var otherKind uuid.UUID
-	f.pool.QueryRow(f.ctx, `SELECT kind_id FROM entity_kinds WHERE code<>'character' AND is_hidden=false LIMIT 1`).Scan(&otherKind)
+	f.pool.QueryRow(f.ctx, `SELECT kind_id FROM system_kinds WHERE code<>'character' AND is_hidden=false LIMIT 1`).Scan(&otherKind)
 	if otherKind != uuid.Nil {
 		var other uuid.UUID
 		f.pool.QueryRow(f.ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`, f.bookID, otherKind).Scan(&other)

@@ -109,7 +109,7 @@ func resetKindAliasFixture(t *testing.T, pool *pgxpool.Pool, book string, create
 		t.Fatalf("reset aliases: %v", err)
 	}
 	for _, c := range createdKindCodes {
-		if _, err := pool.Exec(ctx, `DELETE FROM entity_kinds WHERE code=$1`, c); err != nil {
+		if _, err := pool.Exec(ctx, `DELETE FROM system_kinds WHERE code=$1`, c); err != nil {
 			t.Fatalf("reset kind %s: %v", c, err)
 		}
 	}
@@ -119,7 +119,7 @@ func kindIDByCode(t *testing.T, pool *pgxpool.Pool, code string) string {
 	t.Helper()
 	var id string
 	if err := pool.QueryRow(context.Background(),
-		`SELECT kind_id FROM entity_kinds WHERE code=$1`, code).Scan(&id); err != nil {
+		`SELECT kind_id FROM system_kinds WHERE code=$1`, code).Scan(&id); err != nil {
 		t.Fatalf("kindIDByCode %s: %v", code, err)
 	}
 	return id
@@ -155,7 +155,7 @@ func TestKindResolution_ParksUnknownAndAliases(t *testing.T) {
 	var kindCode, srcCode string
 	pool.QueryRow(ctx, `
 		SELECT k.code, COALESCE(e.source_kind_code,'')
-		FROM glossary_entities e JOIN entity_kinds k ON k.kind_id=e.kind_id
+		FROM glossary_entities e JOIN system_kinds k ON k.kind_id=e.kind_id
 		WHERE e.entity_id=$1`, eid).Scan(&kindCode, &srcCode)
 	if kindCode != "unknown" {
 		t.Fatalf("unresolvable kind: want parked under 'unknown', got %q", kindCode)
@@ -167,7 +167,7 @@ func TestKindResolution_ParksUnknownAndAliases(t *testing.T) {
 	// (2) a seeded alias (generic → terminology) resolves straight through.
 	eid2 := extractOne(t, srv, book, "generic", "通用詞條")
 	pool.QueryRow(ctx, `
-		SELECT k.code FROM glossary_entities e JOIN entity_kinds k ON k.kind_id=e.kind_id
+		SELECT k.code FROM glossary_entities e JOIN system_kinds k ON k.kind_id=e.kind_id
 		WHERE e.entity_id=$1`, eid2).Scan(&kindCode)
 	if kindCode != "terminology" {
 		t.Fatalf("alias generic→terminology: want 'terminology', got %q", kindCode)
@@ -251,7 +251,7 @@ func TestKindMerge_ReassignsAndPreservesNameAcrossTermKind(t *testing.T) {
 	// Entity left 'unknown', landed on terminology, name preserved (re-key name→term).
 	var nowKind string
 	pool.QueryRow(ctx, `
-		SELECT k.code FROM glossary_entities e JOIN entity_kinds k ON k.kind_id=e.kind_id
+		SELECT k.code FROM glossary_entities e JOIN system_kinds k ON k.kind_id=e.kind_id
 		WHERE e.entity_id=$1`, eid).Scan(&nowKind)
 	if nowKind != "terminology" {
 		t.Fatalf("after merge: want 'terminology', got %q", nowKind)
@@ -263,8 +263,8 @@ func TestKindMerge_ReassignsAndPreservesNameAcrossTermKind(t *testing.T) {
 	pool.QueryRow(ctx, `
 		SELECT eav.original_value
 		FROM entity_attribute_values eav
-		JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
-		WHERE eav.entity_id=$1 AND ad.kind_id=(SELECT kind_id FROM entity_kinds WHERE code='terminology')
+		JOIN system_kind_attributes ad ON ad.attr_def_id = eav.attr_def_id
+		WHERE eav.entity_id=$1 AND ad.kind_id=(SELECT kind_id FROM system_kinds WHERE code='terminology')
 		  AND ad.code IN ('name','term')`, eid).Scan(&displayVal)
 	if displayVal != name {
 		t.Fatalf("name LOST after name→term re-key: want %q, got %q", name, displayVal)
@@ -321,7 +321,7 @@ func TestKindMerge_SelfCodeSkipsAliasButReassigns(t *testing.T) {
 	// Entity moved onto the new kind, name intact (new kind has a seeded 'name' attr).
 	var nowKind string
 	pool.QueryRow(ctx, `
-		SELECT k.code FROM glossary_entities e JOIN entity_kinds k ON k.kind_id=e.kind_id
+		SELECT k.code FROM glossary_entities e JOIN system_kinds k ON k.kind_id=e.kind_id
 		WHERE e.entity_id=$1`, eid).Scan(&nowKind)
 	if nowKind != "selfcode_smoke" {
 		t.Fatalf("after self-code merge: want 'selfcode_smoke', got %q", nowKind)
@@ -394,7 +394,7 @@ func TestDeleteKind_BlocksActiveButPurgesSoftDeleted(t *testing.T) {
 		t.Errorf("wiki article not deleted (%d remain)", nArt)
 	}
 	var kindRows, entRows int
-	pool.QueryRow(ctx, `SELECT count(*) FROM entity_kinds WHERE kind_id=$1`, ck.KindID).Scan(&kindRows)
+	pool.QueryRow(ctx, `SELECT count(*) FROM system_kinds WHERE kind_id=$1`, ck.KindID).Scan(&kindRows)
 	pool.QueryRow(ctx, `SELECT count(*) FROM glossary_entities WHERE entity_id=$1`, eid).Scan(&entRows)
 	if kindRows != 0 {
 		t.Errorf("kind not deleted (%d rows remain)", kindRows)

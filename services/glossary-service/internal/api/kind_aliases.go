@@ -57,7 +57,7 @@ func (s *Server) listUnknownEntities(w http.ResponseWriter, r *http.Request) {
 	if err := s.pool.QueryRow(r.Context(), `
 		SELECT COUNT(*)
 		FROM glossary_entities e
-		JOIN entity_kinds k ON k.kind_id = e.kind_id AND k.code = 'unknown'
+		JOIN system_kinds k ON k.kind_id = e.kind_id AND k.code = 'unknown'
 		WHERE e.book_id = $1 AND e.deleted_at IS NULL`,
 		bookID,
 	).Scan(&total); err != nil {
@@ -68,11 +68,11 @@ func (s *Server) listUnknownEntities(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.pool.Query(r.Context(), `
 		SELECT e.entity_id, COALESCE(nv.original_value, ''), e.source_kind_code, e.status, e.created_at
 		FROM glossary_entities e
-		JOIN entity_kinds k ON k.kind_id = e.kind_id AND k.code = 'unknown'
+		JOIN system_kinds k ON k.kind_id = e.kind_id AND k.code = 'unknown'
 		LEFT JOIN entity_attribute_values nv
 			ON nv.entity_id = e.entity_id
 			AND nv.attr_def_id = (
-				SELECT attr_def_id FROM attribute_definitions
+				SELECT attr_def_id FROM system_kind_attributes
 				WHERE kind_id = e.kind_id AND code = 'name' LIMIT 1
 			)
 		WHERE e.book_id = $1 AND e.deleted_at IS NULL
@@ -115,7 +115,7 @@ func (s *Server) listKindAliases(w http.ResponseWriter, r *http.Request) {
 	}
 	rows, err := s.pool.Query(r.Context(), `
 		SELECT a.alias_id, a.alias_code, a.kind_id, k.code, a.created_at
-		FROM entity_kind_aliases a JOIN entity_kinds k ON k.kind_id = a.kind_id
+		FROM entity_kind_aliases a JOIN system_kinds k ON k.kind_id = a.kind_id
 		ORDER BY a.alias_code`)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to query aliases")
@@ -164,7 +164,7 @@ func (s *Server) createKindAlias(w http.ResponseWriter, r *http.Request) {
 	skipAlias := false
 	var clashKindID string
 	err := s.pool.QueryRow(r.Context(),
-		`SELECT kind_id::text FROM entity_kinds WHERE code = $1`, in.AliasCode,
+		`SELECT kind_id::text FROM system_kinds WHERE code = $1`, in.AliasCode,
 	).Scan(&clashKindID)
 	switch {
 	case err == pgx.ErrNoRows:
@@ -261,7 +261,7 @@ func (s *Server) reassignEntityKind(w http.ResponseWriter, r *http.Request) {
 	}
 	var kindExists bool
 	if err := s.pool.QueryRow(r.Context(),
-		`SELECT EXISTS(SELECT 1 FROM entity_kinds WHERE kind_id=$1)`, in.KindID,
+		`SELECT EXISTS(SELECT 1 FROM system_kinds WHERE kind_id=$1)`, in.KindID,
 	).Scan(&kindExists); err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "kind lookup failed")
 		return
@@ -306,7 +306,7 @@ func (s *Server) reassignEntityKind(w http.ResponseWriter, r *http.Request) {
 func (s *Server) unknownEntityIDsBySourceCode(ctx context.Context, tx pgx.Tx, code string, bookID *string) ([]string, error) {
 	q := `
 		SELECT e.entity_id FROM glossary_entities e
-		JOIN entity_kinds k ON k.kind_id = e.kind_id AND k.code = 'unknown'
+		JOIN system_kinds k ON k.kind_id = e.kind_id AND k.code = 'unknown'
 		WHERE e.source_kind_code = $1 AND e.deleted_at IS NULL`
 	args := []any{code}
 	if bookID != nil {
@@ -338,7 +338,7 @@ func (s *Server) rekeyEntityToKind(ctx context.Context, tx pgx.Tx, entityID, new
 	if _, err := tx.Exec(ctx, `
 		UPDATE entity_attribute_values eav
 		SET attr_def_id = nd.attr_def_id
-		FROM attribute_definitions od, attribute_definitions nd
+		FROM system_kind_attributes od, system_kind_attributes nd
 		WHERE eav.entity_id = $1
 		  AND eav.attr_def_id = od.attr_def_id
 		  AND nd.kind_id = $2 AND nd.code = od.code
@@ -357,20 +357,20 @@ func (s *Server) rekeyEntityToKind(ctx context.Context, tx pgx.Tx, entityID, new
 	if _, err := tx.Exec(ctx, `
 		UPDATE entity_attribute_values eav
 		SET attr_def_id = (
-			SELECT attr_def_id FROM attribute_definitions
+			SELECT attr_def_id FROM system_kind_attributes
 			WHERE kind_id = $2 AND code IN ('name','term')
 			ORDER BY CASE code WHEN 'name' THEN 0 ELSE 1 END
 			LIMIT 1
 		)
-		FROM attribute_definitions od
+		FROM system_kind_attributes od
 		WHERE eav.entity_id = $1
 		  AND eav.attr_def_id = od.attr_def_id
 		  AND od.kind_id <> $2
 		  AND od.code IN ('name','term')
-		  AND EXISTS (SELECT 1 FROM attribute_definitions WHERE kind_id = $2 AND code IN ('name','term'))
+		  AND EXISTS (SELECT 1 FROM system_kind_attributes WHERE kind_id = $2 AND code IN ('name','term'))
 		  AND NOT EXISTS (
 			SELECT 1 FROM entity_attribute_values x
-			JOIN attribute_definitions xd ON xd.attr_def_id = x.attr_def_id
+			JOIN system_kind_attributes xd ON xd.attr_def_id = x.attr_def_id
 			WHERE x.entity_id = $1 AND xd.kind_id = $2 AND xd.code IN ('name','term')
 		  )`,
 		entityID, newKindID,
@@ -381,7 +381,7 @@ func (s *Server) rekeyEntityToKind(ctx context.Context, tx pgx.Tx, entityID, new
 	//    at a foreign kind's attr_def).
 	if _, err := tx.Exec(ctx, `
 		DELETE FROM entity_attribute_values eav
-		USING attribute_definitions od
+		USING system_kind_attributes od
 		WHERE eav.entity_id = $1 AND eav.attr_def_id = od.attr_def_id AND od.kind_id <> $2`,
 		entityID, newKindID,
 	); err != nil {

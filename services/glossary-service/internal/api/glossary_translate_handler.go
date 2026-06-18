@@ -84,7 +84,7 @@ func (s *Server) internalTranslationCandidates(w http.ResponseWriter, r *http.Re
 		SELECT COUNT(DISTINCT e.entity_id)
 		FROM glossary_entities e
 		JOIN entity_attribute_values eav ON eav.entity_id = e.entity_id
-		JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id AND ad.is_active = true
+		JOIN system_kind_attributes ad ON ad.attr_def_id = eav.attr_def_id AND ad.is_active = true
 		LEFT JOIN attribute_translations tr
 		  ON tr.attr_value_id = eav.attr_value_id AND tr.language_code = $2
 		WHERE e.book_id = $1 AND e.deleted_at IS NULL
@@ -106,7 +106,7 @@ func (s *Server) internalTranslationCandidates(w http.ResponseWriter, r *http.Re
 		SELECT DISTINCT e.entity_id
 		FROM glossary_entities e
 		JOIN entity_attribute_values eav ON eav.entity_id = e.entity_id
-		JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id AND ad.is_active = true
+		JOIN system_kind_attributes ad ON ad.attr_def_id = eav.attr_def_id AND ad.is_active = true
 		LEFT JOIN attribute_translations tr
 		  ON tr.attr_value_id = eav.attr_value_id AND tr.language_code = $2
 		WHERE e.book_id = $1 AND e.deleted_at IS NULL
@@ -185,12 +185,12 @@ func (s *Server) loadTranslationCandidateEntity(
 		SELECT e.status, ek.code,
 			COALESCE((
 				SELECT eav.original_value FROM entity_attribute_values eav
-				JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+				JOIN system_kind_attributes ad ON ad.attr_def_id = eav.attr_def_id
 				WHERE eav.entity_id = e.entity_id AND ad.code IN ('name','term')
 				ORDER BY ad.sort_order LIMIT 1
 			), '') AS display_name
 		FROM glossary_entities e
-		JOIN entity_kinds ek ON ek.kind_id = e.kind_id
+		JOIN system_kinds ek ON ek.kind_id = e.kind_id
 		WHERE e.entity_id = $1 AND e.book_id = $2 AND e.deleted_at IS NULL`,
 		entityID, bookID,
 	).Scan(&ent.Status, &ent.KindCode, &ent.DisplayName)
@@ -203,7 +203,7 @@ func (s *Server) loadTranslationCandidateEntity(
 		       eav.original_language, eav.original_value,
 		       tr.value, tr.confidence
 		FROM entity_attribute_values eav
-		JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id AND ad.is_active = true
+		JOIN system_kind_attributes ad ON ad.attr_def_id = eav.attr_def_id AND ad.is_active = true
 		LEFT JOIN attribute_translations tr
 		  ON tr.attr_value_id = eav.attr_value_id AND tr.language_code = $2
 		WHERE eav.entity_id = $1 AND btrim(eav.original_value) <> ''

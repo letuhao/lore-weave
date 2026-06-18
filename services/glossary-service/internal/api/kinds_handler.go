@@ -61,7 +61,7 @@ func (s *Server) loadKinds(ctx context.Context) ([]domain.EntityKind, error) {
 	kindRows, err := s.pool.Query(ctx, `
 		SELECT kind_id, code, name, description, icon, color, is_default, is_hidden, sort_order, genre_tags,
 			COALESCE((SELECT count(*) FROM glossary_entities ge WHERE ge.kind_id = ek.kind_id AND ge.deleted_at IS NULL), 0) AS entity_count
-		FROM entity_kinds ek
+		FROM system_kinds ek
 		WHERE is_hidden = false
 		ORDER BY sort_order`)
 	if err != nil {
@@ -84,8 +84,8 @@ func (s *Server) loadKinds(ctx context.Context) ([]domain.EntityKind, error) {
 
 	attrRowsQ, err := s.pool.Query(ctx, `
 		SELECT ad.attr_def_id, ad.kind_id, ad.code, ad.name, ad.description, ad.field_type, ad.is_required, ad.is_system, ad.is_active, ad.sort_order, ad.genre_tags, ad.auto_fill_prompt, ad.translation_hint
-		FROM attribute_definitions ad
-		JOIN entity_kinds ek ON ek.kind_id = ad.kind_id AND ek.is_hidden = false
+		FROM system_kind_attributes ad
+		JOIN system_kinds ek ON ek.kind_id = ad.kind_id AND ek.is_hidden = false
 		ORDER BY ad.kind_id, ad.sort_order`)
 	if err != nil {
 		return nil, fmt.Errorf("query attrs: %w", err)

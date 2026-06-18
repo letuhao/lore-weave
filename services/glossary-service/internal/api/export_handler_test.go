@@ -295,11 +295,11 @@ func TestRecalculateBuildsCorrectSnapshot(t *testing.T) {
 	bookID := "00000000-0000-0000-0000-000000000001"
 	var kindID, attrDefID string
 	if err := pool.QueryRow(ctx,
-		`SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID); err != nil {
+		`SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID); err != nil {
 		t.Fatalf("get kind: %v", err)
 	}
 	if err := pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`,
+		`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='name' LIMIT 1`,
 		kindID).Scan(&attrDefID); err != nil {
 		t.Fatalf("get attr_def: %v", err)
 	}
@@ -370,8 +370,8 @@ func TestTriggerFiresOnAttrValueUpdate(t *testing.T) {
 
 	bookID := "00000000-0000-0000-0000-000000000002"
 	var kindID, attrDefID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
-	pool.QueryRow(ctx, `SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`, kindID).Scan(&attrDefID)
+	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	pool.QueryRow(ctx, `SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='name' LIMIT 1`, kindID).Scan(&attrDefID)
 
 	var entityID string
 	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`, bookID, kindID).Scan(&entityID)
@@ -405,8 +405,8 @@ func TestTriggerFiresOnTranslationInsert(t *testing.T) {
 
 	bookID := "00000000-0000-0000-0000-000000000003"
 	var kindID, attrDefID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
-	pool.QueryRow(ctx, `SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`, kindID).Scan(&attrDefID)
+	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	pool.QueryRow(ctx, `SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='name' LIMIT 1`, kindID).Scan(&attrDefID)
 
 	var entityID string
 	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`, bookID, kindID).Scan(&entityID)
@@ -443,8 +443,8 @@ func TestTriggerFiresOnEvidenceDelete(t *testing.T) {
 
 	bookID := "00000000-0000-0000-0000-000000000004"
 	var kindID, attrDefID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
-	pool.QueryRow(ctx, `SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`, kindID).Scan(&attrDefID)
+	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	pool.QueryRow(ctx, `SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='name' LIMIT 1`, kindID).Scan(&attrDefID)
 
 	var entityID string
 	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`, bookID, kindID).Scan(&entityID)
@@ -479,7 +479,7 @@ func TestNoInfiniteLoop(t *testing.T) {
 
 	bookID := "00000000-0000-0000-0000-000000000005"
 	var kindID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
 
 	var entityID string
 	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'draft','{}') RETURNING entity_id`, bookID, kindID).Scan(&entityID)
@@ -516,7 +516,7 @@ func TestBackfillIdempotent(t *testing.T) {
 	// Insert an entity with a manually-nulled snapshot to force a backfill target.
 	bookID := "00000000-0000-0000-0000-000000000006"
 	var kindID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
 	var entityID string
 	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'draft','{}') RETURNING entity_id`, bookID, kindID).Scan(&entityID)
 	pool.Exec(ctx, `UPDATE glossary_entities SET entity_snapshot=NULL WHERE entity_id=$1`, entityID)
@@ -683,7 +683,7 @@ func TestTriggerFiresOnChapterLinkChange(t *testing.T) {
 
 	bookID := "00000000-0000-0000-0000-000000000007"
 	var kindID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
 
 	var entityID string
 	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`, bookID, kindID).Scan(&entityID)
@@ -729,7 +729,7 @@ func TestTriggerFiresOnEntityStatusUpdate(t *testing.T) {
 
 	bookID := "00000000-0000-0000-0000-000000000008"
 	var kindID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
 
 	var entityID string
 	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'draft','{}') RETURNING entity_id`, bookID, kindID).Scan(&entityID)
@@ -760,7 +760,7 @@ func TestSnapshotKindFields(t *testing.T) {
 
 	bookID := "00000000-0000-0000-0000-000000000009"
 	var kindID, kindName, kindIcon, kindColor string
-	pool.QueryRow(ctx, `SELECT kind_id, name, icon, color FROM entity_kinds WHERE code='character' LIMIT 1`).
+	pool.QueryRow(ctx, `SELECT kind_id, name, icon, color FROM system_kinds WHERE code='character' LIMIT 1`).
 		Scan(&kindID, &kindName, &kindIcon, &kindColor)
 
 	var entityID string
@@ -804,11 +804,11 @@ func TestSnapshotAttributeOrder(t *testing.T) {
 
 	bookID := "00000000-0000-0000-0000-00000000000a"
 	var kindID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
 
 	// Fetch attr_defs ordered by sort_order — we expect snapshot to match this order.
 	attrRows, err := pool.Query(ctx,
-		`SELECT attr_def_id, code FROM attribute_definitions WHERE kind_id=$1 ORDER BY sort_order LIMIT 3`,
+		`SELECT attr_def_id, code FROM system_kind_attributes WHERE kind_id=$1 ORDER BY sort_order LIMIT 3`,
 		kindID)
 	if err != nil {
 		t.Fatalf("fetch attr defs: %v", err)
@@ -863,7 +863,7 @@ func TestSnapshotChapterLinkOrder(t *testing.T) {
 
 	bookID := "00000000-0000-0000-0000-00000000000b"
 	var kindID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
 
 	var entityID string
 	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`, bookID, kindID).Scan(&entityID)
@@ -912,7 +912,7 @@ func TestExportQueryChapterFilter(t *testing.T) {
 
 	bookID := "00000000-0000-0000-0000-00000000000c"
 	var kindID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
 
 	// Create two entities
 	var entA, entB string
@@ -972,7 +972,7 @@ func TestExportQuerySnapshotIsNull(t *testing.T) {
 
 	bookID := "00000000-0000-0000-0000-00000000000d"
 	var kindID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
 
 	// Create two entities: one with snapshot, one without.
 	var entWithSnap, entNoSnap string

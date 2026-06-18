@@ -55,24 +55,24 @@ func newMergeFixture(t *testing.T, bookSuffix string) *mergeFixture {
 	srv, _ := newEntitiesListServer(t)
 	srv.pool = pool
 	f.srv = srv
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&f.kindID)
-	// migrate.Seed only seeds default kinds when entity_kinds is EMPTY; on a shared
+	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&f.kindID)
+	// migrate.Seed only seeds default kinds when system_kinds is EMPTY; on a shared
 	// test DB a prior test (e.g. the 'unknown' park kind) makes it skip, leaving
 	// 'character' absent. Seed it order-independently so the fixture is robust.
 	if f.kindID == uuid.Nil {
-		pool.Exec(ctx, `INSERT INTO entity_kinds(code,name,icon,color,is_default,is_hidden,sort_order)
+		pool.Exec(ctx, `INSERT INTO system_kinds(code,name,icon,color,is_default,is_hidden,sort_order)
 			SELECT 'character','Character','user','#888888',true,false,0
-			WHERE NOT EXISTS (SELECT 1 FROM entity_kinds WHERE code='character')`)
-		pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&f.kindID)
+			WHERE NOT EXISTS (SELECT 1 FROM system_kinds WHERE code='character')`)
+		pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&f.kindID)
 		for _, a := range []struct{ code, name string }{{"name", "Name"}, {"aliases", "Aliases"}, {"description", "Description"}} {
-			pool.Exec(ctx, `INSERT INTO attribute_definitions(kind_id,code,name,field_type,is_required,is_system,sort_order)
+			pool.Exec(ctx, `INSERT INTO system_kind_attributes(kind_id,code,name,field_type,is_required,is_system,sort_order)
 				SELECT $1,$2,$3,'text',false,true,0
-				WHERE NOT EXISTS (SELECT 1 FROM attribute_definitions WHERE kind_id=$1 AND code=$2)`, f.kindID, a.code, a.name)
+				WHERE NOT EXISTS (SELECT 1 FROM system_kind_attributes WHERE kind_id=$1 AND code=$2)`, f.kindID, a.code, a.name)
 		}
 	}
-	pool.QueryRow(ctx, `SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`, f.kindID).Scan(&f.nameAttr)
-	pool.QueryRow(ctx, `SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='aliases' LIMIT 1`, f.kindID).Scan(&f.aliasAttr)
-	pool.QueryRow(ctx, `SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='description' LIMIT 1`, f.kindID).Scan(&f.descAttr)
+	pool.QueryRow(ctx, `SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='name' LIMIT 1`, f.kindID).Scan(&f.nameAttr)
+	pool.QueryRow(ctx, `SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='aliases' LIMIT 1`, f.kindID).Scan(&f.aliasAttr)
+	pool.QueryRow(ctx, `SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='description' LIMIT 1`, f.kindID).Scan(&f.descAttr)
 	t.Cleanup(func() {
 		pool.Exec(ctx, `DELETE FROM merge_journal WHERE book_id=$1`, f.bookID)
 		pool.Exec(ctx, `DELETE FROM merge_candidates WHERE book_id=$1`, f.bookID)
@@ -208,7 +208,7 @@ func TestMergeOne_Validation(t *testing.T) {
 	}
 	// different kind: make a loser under a different kind
 	var otherKind uuid.UUID
-	f.pool.QueryRow(f.ctx, `SELECT kind_id FROM entity_kinds WHERE code<>'character' AND is_hidden=false LIMIT 1`).Scan(&otherKind)
+	f.pool.QueryRow(f.ctx, `SELECT kind_id FROM system_kinds WHERE code<>'character' AND is_hidden=false LIMIT 1`).Scan(&otherKind)
 	if otherKind != uuid.Nil {
 		var lid uuid.UUID
 		f.pool.QueryRow(f.ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`, f.bookID, otherKind).Scan(&lid)

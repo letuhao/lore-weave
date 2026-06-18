@@ -17,16 +17,16 @@ import (
 func lookupCharacterAttrs(t *testing.T, f *versionFixture) (kindID, nameAttr, aliasesAttr string) {
 	t.Helper()
 	ctx := context.Background()
-	f.srv.pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	f.srv.pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
 	f.srv.pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`,
+		`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='name' LIMIT 1`,
 		kindID).Scan(&nameAttr)
 	_ = f.srv.pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='aliases' LIMIT 1`,
+		`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='aliases' LIMIT 1`,
 		kindID).Scan(&aliasesAttr)
 	if aliasesAttr == "" {
 		f.srv.pool.QueryRow(ctx,
-			`INSERT INTO attribute_definitions(kind_id,code,name,field_type,is_required,is_system,sort_order)
+			`INSERT INTO system_kind_attributes(kind_id,code,name,field_type,is_required,is_system,sort_order)
 			 VALUES($1,'aliases','Aliases','text',false,true,2) RETURNING attr_def_id`,
 			kindID).Scan(&aliasesAttr)
 	}

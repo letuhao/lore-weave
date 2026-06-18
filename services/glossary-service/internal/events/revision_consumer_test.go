@@ -45,7 +45,7 @@ func seedEntity(t *testing.T, pool *pgxpool.Pool, bookID uuid.UUID) uuid.UUID {
 	t.Helper()
 	ctx := context.Background()
 	var kindID string
-	if err := pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).
+	if err := pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).
 		Scan(&kindID); err != nil {
 		t.Fatalf("kind lookup: %v", err)
 	}

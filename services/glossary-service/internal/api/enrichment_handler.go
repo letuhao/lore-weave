@@ -339,11 +339,11 @@ func (s *Server) internalEnrichmentCoverage(w http.ResponseWriter, r *http.Reque
 				  AND ee.review_status = 'promoted' AND ee.deleted_at IS NULL
 			), '{}') AS dimensions
 		FROM glossary_entities e
-		JOIN entity_kinds k ON k.kind_id = e.kind_id
+		JOIN system_kinds k ON k.kind_id = e.kind_id
 		LEFT JOIN entity_attribute_values name_av
 			ON name_av.entity_id = e.entity_id
 			AND name_av.attr_def_id = (
-				SELECT attr_def_id FROM attribute_definitions
+				SELECT attr_def_id FROM system_kind_attributes
 				WHERE kind_id = e.kind_id AND code = 'name' LIMIT 1
 			)
 		WHERE e.book_id = $1 AND e.deleted_at IS NULL

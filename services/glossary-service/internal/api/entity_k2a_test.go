@@ -129,7 +129,7 @@ func TestK2aCachedNamePopulatedFromEAV(t *testing.T) {
 
 	bookID := "00000000-0000-0000-0000-0000000ca100"
 	var kindID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
 
 	var entityID string
 	pool.QueryRow(ctx,
@@ -141,7 +141,7 @@ func TestK2aCachedNamePopulatedFromEAV(t *testing.T) {
 
 	var nameAttrID string
 	pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`,
+		`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='name' LIMIT 1`,
 		kindID).Scan(&nameAttrID)
 	if _, err := pool.Exec(ctx,
 		`INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value)
@@ -164,7 +164,7 @@ func TestK2aCachedAliasesParsedFromJSONString(t *testing.T) {
 
 	bookID := "00000000-0000-0000-0000-0000000ca101"
 	var kindID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
 
 	var entityID string
 	pool.QueryRow(ctx,
@@ -176,7 +176,7 @@ func TestK2aCachedAliasesParsedFromJSONString(t *testing.T) {
 
 	var aliasesAttrID string
 	pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='aliases' LIMIT 1`,
+		`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='aliases' LIMIT 1`,
 		kindID).Scan(&aliasesAttrID)
 	if aliasesAttrID == "" {
 		t.Skip("character kind has no 'aliases' attribute definition")
@@ -203,7 +203,7 @@ func TestK2aMalformedAliasesJSONFallsBackToEmpty(t *testing.T) {
 
 	bookID := "00000000-0000-0000-0000-0000000ca102"
 	var kindID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
 
 	var entityID string
 	pool.QueryRow(ctx,
@@ -215,7 +215,7 @@ func TestK2aMalformedAliasesJSONFallsBackToEmpty(t *testing.T) {
 
 	var aliasesAttrID string
 	pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='aliases' LIMIT 1`,
+		`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='aliases' LIMIT 1`,
 		kindID).Scan(&aliasesAttrID)
 	if aliasesAttrID == "" {
 		t.Skip("character kind has no 'aliases' attribute definition")
@@ -243,7 +243,7 @@ func TestK2aSearchVectorRefreshesOnDirectShortDescriptionWrite(t *testing.T) {
 
 	bookID := "00000000-0000-0000-0000-0000000ca103"
 	var kindID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
 
 	var entityID string
 	pool.QueryRow(ctx,
@@ -281,7 +281,7 @@ func TestK2aSearchVectorRefreshesOnEAVChange(t *testing.T) {
 
 	bookID := "00000000-0000-0000-0000-0000000ca104"
 	var kindID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
 
 	var entityID string
 	pool.QueryRow(ctx,
@@ -293,7 +293,7 @@ func TestK2aSearchVectorRefreshesOnEAVChange(t *testing.T) {
 
 	var nameAttrID string
 	pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`,
+		`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='name' LIMIT 1`,
 		kindID).Scan(&nameAttrID)
 	if _, err := pool.Exec(ctx,
 		`INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value)
@@ -323,7 +323,7 @@ func TestK2aPinTogglePartialIndex(t *testing.T) {
 
 	bookID := "00000000-0000-0000-0000-0000000ca105"
 	var kindID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
 
 	var entityID string
 	pool.QueryRow(ctx,
@@ -406,7 +406,7 @@ func TestTriggerSkipsRecalcOnUpdatedAtOnly(t *testing.T) {
 
 	bookID := "00000000-0000-0000-0000-00000000bbbb"
 	var kindID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
 
 	var entityID string
 	pool.QueryRow(ctx,
@@ -420,7 +420,7 @@ func TestTriggerSkipsRecalcOnUpdatedAtOnly(t *testing.T) {
 	// cached_name when we manually trigger it once below.
 	var nameAttrID string
 	pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`,
+		`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='name' LIMIT 1`,
 		kindID).Scan(&nameAttrID)
 	pool.Exec(ctx,
 		`INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value)
@@ -463,12 +463,12 @@ func TestTriggerStillFiresOnWatchedFields(t *testing.T) {
 
 	// Pre-fetch a second kind so the kind_id change has a distinct target.
 	var kindCharID, kindLocID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindCharID)
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='location' LIMIT 1`).Scan(&kindLocID)
+	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindCharID)
+	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='location' LIMIT 1`).Scan(&kindLocID)
 	if kindLocID == "" {
 		// Seed data may not include 'location'; pick any other kind.
 		pool.QueryRow(ctx,
-			`SELECT kind_id FROM entity_kinds WHERE kind_id <> $1 LIMIT 1`, kindCharID,
+			`SELECT kind_id FROM system_kinds WHERE kind_id <> $1 LIMIT 1`, kindCharID,
 		).Scan(&kindLocID)
 	}
 
@@ -502,7 +502,7 @@ func TestTriggerStillFiresOnWatchedFields(t *testing.T) {
 			if tc.needsCharOK {
 				var nameAttrID string
 				pool.QueryRow(ctx,
-					`SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`,
+					`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='name' LIMIT 1`,
 					kindCharID).Scan(&nameAttrID)
 				pool.Exec(ctx,
 					`INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value)
@@ -544,7 +544,7 @@ func TestPinSQLDoesNotBumpUpdatedAt(t *testing.T) {
 
 	bookID := "00000000-0000-0000-0000-00000000bbdd"
 	var kindID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
 
 	var entityID string
 	pool.QueryRow(ctx,
@@ -557,7 +557,7 @@ func TestPinSQLDoesNotBumpUpdatedAt(t *testing.T) {
 	// Seed a name so recalc runs once and we have a baseline snapshot_at.
 	var nameAttrID string
 	pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`,
+		`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='name' LIMIT 1`,
 		kindID).Scan(&nameAttrID)
 	pool.Exec(ctx,
 		`INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value)
