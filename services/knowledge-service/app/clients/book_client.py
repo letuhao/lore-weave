@@ -114,6 +114,71 @@ class BookClient:
             )
             return None
 
+    # book-service clamps page size to 100 (chapter-list-limit100 fix), so we
+    # paginate. The cap bounds a runaway loop / pathological book; a book at the
+    # cap is logged rather than silently truncated.
+    _LIST_CHAPTERS_PAGE = 100
+    _LIST_CHAPTERS_MAX = 5000
+
+    async def list_chapters(
+        self,
+        book_id: UUID,
+        *,
+        editorial_status: str | None = None,
+    ) -> list[dict] | None:
+        """D-RAWSEARCH-CANON-WIRING — list ALL a book's chapters (id + sort_order +
+        editorial_status) via ``GET /internal/books/{book_id}/chapters``, paging
+        past book-service's 100-row clamp so a >100-chapter book isn't silently
+        truncated. ``editorial_status='draft'`` scopes to unpublished chapters
+        (what the on-demand draft-indexing endpoint enumerates). Returns the full
+        item list, or None on any failure (caller decides)."""
+        url = f"{self._base_url}/internal/books/{book_id}/chapters"
+        tid = trace_id_var.get()
+        collected: list[dict] = []
+        offset = 0
+        try:
+            while True:
+                params: dict[str, str] = {
+                    "limit": str(self._LIST_CHAPTERS_PAGE),
+                    "offset": str(offset),
+                }
+                if editorial_status is not None:
+                    params["editorial_status"] = editorial_status
+                resp = await self._http.get(
+                    url,
+                    params=params,
+                    headers={"X-Trace-Id": tid} if tid else None,
+                )
+                if resp.status_code != 200:
+                    logger.warning(
+                        "book-service %s returned %d, trace_id=%s",
+                        url, resp.status_code, tid,
+                    )
+                    return None
+                body = resp.json()
+                items = body.get("items", [])
+                if not isinstance(items, list):
+                    return None
+                collected.extend(items)
+                total = int(body.get("total", len(collected)))
+                offset += self._LIST_CHAPTERS_PAGE
+                if len(collected) >= total or not items:
+                    break
+                if len(collected) >= self._LIST_CHAPTERS_MAX:
+                    logger.warning(
+                        "list_chapters: book=%s hit the %d-chapter cap (total=%s) "
+                        "— remaining chapters not enumerated",
+                        book_id, self._LIST_CHAPTERS_MAX, total,
+                    )
+                    break
+            return collected
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            logger.warning(
+                "book-service unavailable: %s, trace_id=%s",
+                exc, tid,
+            )
+            return None
+
     async def list_world_books(
         self, world_id: UUID, user_id: UUID
     ) -> list[dict]:
@@ -162,7 +227,7 @@ class BookClient:
 
     async def lexical_search(
         self, book_id: UUID, q: str, *, limit: int = 20,
-        granularity: str = "chapter",
+        granularity: str = "chapter", surface: str = "canon",
     ) -> list[dict] | None:
         """Raw-search Phase 2 — lexical leg. Calls book-service
         GET /internal/books/{book_id}/lexical-search and returns the list
@@ -171,13 +236,22 @@ class BookClient:
 
         E5 — `granularity` ("chapter" = best block per chapter for max
         distinct-chapter recall / navigate; "block" = every matching block
-        for exhaustive mining) is forwarded to book-service verbatim."""
+        for exhaustive mining) is forwarded to book-service verbatim.
+
+        D-RAWSEARCH-CANON-WIRING — `surface` ("canon" = published-revision
+        text only, the default; "all" = canon + live draft, merged) is
+        forwarded so the lexical leg honours the same canon gate as the
+        semantic leg. Previously unset → book-service defaulted to "draft",
+        leaking unpublished text into a nominally-canon search."""
         url = f"{self._base_url}/internal/books/{book_id}/lexical-search"
         tid = trace_id_var.get()
         try:
             resp = await self._http.get(
                 url,
-                params={"q": q, "limit": str(limit), "granularity": granularity},
+                params={
+                    "q": q, "limit": str(limit),
+                    "granularity": granularity, "surface": surface,
+                },
                 headers={"X-Trace-Id": tid} if tid else None,
             )
             if resp.status_code != 200:
