@@ -102,10 +102,14 @@ func slugify(name string) string {
 // verifyUserKindOwner confirms user_kind_id belongs to userID and is not purged.
 // Writes the 404/500 response itself; returns true only when the caller owns it.
 func (s *Server) verifyUserKindOwner(w http.ResponseWriter, ctx context.Context, userKindID, userID uuid.UUID) bool {
+	// Edit endpoints operate on LIVE kinds only: a soft-deleted (trashed) kind is
+	// not editable (restore it first) — without the deleted_at guard a patch/attr
+	// op would mutate a trashed row then 500 on the deleted_at-filtered reload.
 	var exists bool
 	if err := s.pool.QueryRow(ctx,
 		`SELECT EXISTS(SELECT 1 FROM user_kinds
 		               WHERE user_kind_id=$1 AND owner_user_id=$2
+		                 AND deleted_at IS NULL
 		                 AND permanently_deleted_at IS NULL)`,
 		userKindID, userID,
 	).Scan(&exists); err != nil {
@@ -357,6 +361,12 @@ func (s *Server) createUserKind(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if isUniqueViolation(err) {
 			writeError(w, http.StatusConflict, "GLOSS_DUPLICATE_CODE", "a user kind with this code already exists")
+			return
+		}
+		// clone_from_kind_id that isn't a real system kind trips the FK (23503) —
+		// surface a clean 422 rather than a 500.
+		if isForeignKeyViolation(err) {
+			writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "clone_from_kind_id is not a system kind")
 			return
 		}
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "insert failed")

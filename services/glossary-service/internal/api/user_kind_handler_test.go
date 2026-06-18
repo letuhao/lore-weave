@@ -181,6 +181,35 @@ func TestUserKind_CRUDLifecycle(t *testing.T) {
 	}
 }
 
+// TestUserKind_ReviewFixes covers the two /review-impl findings: a trashed kind is
+// not editable (404, not a 500), and cloning from a bogus kind id is a clean 422.
+func TestUserKind_ReviewFixes(t *testing.T) {
+	pool := openTestDB(t)
+	srv := newExportServer(t, pool)
+	runUserKindMigrations(t, pool)
+	owner := uuid.NewString()
+
+	// (1) trashed kind is not editable.
+	kind := mustCreateUserKind(t, srv, owner, `{"name":"Trash Me"}`)
+	if d := ukReq(t, srv, http.MethodDelete, "/v1/glossary/user-kinds/"+kind.UserKindID, owner, ""); d.Code != http.StatusNoContent {
+		t.Fatalf("delete: want 204, got %d", d.Code)
+	}
+	if p := ukReq(t, srv, http.MethodPatch, "/v1/glossary/user-kinds/"+kind.UserKindID, owner, `{"name":"x"}`); p.Code != http.StatusNotFound {
+		t.Fatalf("patch trashed kind: want 404, got %d (%s)", p.Code, p.Body.String())
+	}
+	if a := ukReq(t, srv, http.MethodPost, "/v1/glossary/user-kinds/"+kind.UserKindID+"/attributes", owner, `{"name":"y"}`); a.Code != http.StatusNotFound {
+		t.Fatalf("add attr to trashed kind: want 404, got %d (%s)", a.Code, a.Body.String())
+	}
+
+	// (2) clone from a non-system kind id → 422, not 500.
+	bogus := uuid.NewString()
+	w := ukReq(t, srv, http.MethodPost, "/v1/glossary/user-kinds", owner,
+		`{"name":"Bad Clone","clone_from_kind_id":"`+bogus+`"}`)
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("clone bogus kind: want 422, got %d (%s)", w.Code, w.Body.String())
+	}
+}
+
 // TestUserKind_TenantIsolation is the mandated cross-tenant deny test: user B
 // must NOT see, read, or mutate user A's kind, and B's list must exclude it.
 func TestUserKind_TenantIsolation(t *testing.T) {
