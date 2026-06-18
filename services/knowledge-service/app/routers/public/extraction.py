@@ -110,19 +110,12 @@ def _extract_chapter_range(
     — without this helper, the start path accepted garbage while
     estimate rejected it (review-impl finding MED #2).
 
-    **Runner note (D-K16.2-02b):** the knowledge-service extraction
-    path is event-driven (chapter.saved → passage_ingester), so the
-    runner does not yet honour `chapter_range` — only the preview
-    count does. A future cycle must either:
-
-      (a) apply chapter_range as a filter inside the chapter.saved
-          event handler, OR
-      (b) switch the job model from event-reactive to batch-iterative
-          and drive chapter fetch from this range.
-
-    Until then, the estimate may under-report what the job will
-    actually process. `max_spend_usd` (K10.4 atomic try_spend) remains
-    the real financial guard.
+    **Runner note (D-K16.2-02b, CLEARED S2):** the worker-ai extraction runner
+    NOW honours `chapter_range` — ``_enumerate_chapters`` filters
+    ``lo <= sort_order <= hi`` from ``job.scope_range`` (services/worker-ai/app/
+    runner.py), so the actual job processes the same chapter subset the estimate
+    previews. The start path additionally rejects a range that matches NO published
+    chapter (422, D-K19a.5-04 out-of-bounds guard) so a no-op job can't be created.
     """
     if not scope_range or "chapter_range" not in scope_range:
         return None, None
@@ -491,6 +484,7 @@ async def start_extraction_job(
     projects_repo: ProjectsRepo = Depends(get_projects_repo),
     jobs_repo: ExtractionJobsRepo = Depends(get_extraction_jobs_repo),
     benchmark_repo: BenchmarkRunsRepo = Depends(get_benchmark_runs_repo),
+    book_client: BookClient = Depends(get_book_client),
     extraction_wake: ExtractionWakeFn = Depends(get_extraction_wake),
 ) -> ExtractionJob:
     """Public route handler. Delegates to the core.
@@ -504,6 +498,7 @@ async def start_extraction_job(
     return await _start_extraction_job_core(
         project_id, body, principals.owner, projects_repo, jobs_repo, benchmark_repo,
         caller=principals.caller,
+        book_client=book_client,
         extraction_wake=extraction_wake,
     )
 
@@ -518,6 +513,7 @@ async def _start_extraction_job_core(
     *,
     campaign_id: UUID | None = None,
     caller: UUID | None = None,
+    book_client: BookClient | None = None,
     extraction_wake: ExtractionWakeFn | None = None,
 ) -> ExtractionJob:
     """Create and start an extraction job for a project.
@@ -553,7 +549,7 @@ async def _start_extraction_job_core(
     # 0. Validate scope_range.chapter_range shape (review-impl MED #2).
     # Raises 422 on malformed payloads so the DB never stores a shape
     # the estimate path would have rejected.
-    _extract_chapter_range(body.scope_range)
+    chap_from, chap_to = _extract_chapter_range(body.scope_range)
 
     # 1. Verify project exists and belongs to user
     project = await projects_repo.get(user_id, project_id)
@@ -562,6 +558,34 @@ async def _start_extraction_job_core(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="project not found",
         )
+
+    # 1b. Out-of-bounds chapter-range guard (D-K19a.5-04). The runner enforces
+    # `lo <= sort_order <= hi` (worker-ai `_enumerate_chapters`), so a range that
+    # matches NO published chapter would silently complete a 0-item job. Reject up
+    # front — using the SAME published-scoped count the estimate shows — so the
+    # caller gets explicit feedback instead of a no-op job. Only on a chapter-scoped
+    # job with a range set + a real book.
+    if (
+        chap_from is not None
+        and body.scope in ("chapters", "all")
+        and project.book_id is not None
+    ):
+        # Use the injected client (public route) or fall back to the singleton
+        # (internal dispatch / retry callers). get_book_client is async (returns
+        # the per-worker singleton).
+        bc = book_client if book_client is not None else await get_book_client()
+        in_range = await bc.count_chapters(
+            project.book_id, from_sort=chap_from, to_sort=chap_to,
+            editorial_status="published",
+        )
+        if not in_range:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=(
+                    f"scope_range.chapter_range [{chap_from}, {chap_to}] matches no "
+                    "published chapters in this book"
+                ),
+            )
 
     # 1.4. E0-3 Phase 2b — BYOK dual-identity resolution. Default = owner path
     # (single identity, billing NULL, everything resolves under user_id). On the
