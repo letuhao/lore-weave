@@ -9,6 +9,7 @@ live-smoke; ``persist_online_judge`` / ``persist_translation_judge`` are mocked 
 
 from __future__ import annotations
 
+import copy
 import json
 import uuid
 from types import SimpleNamespace
@@ -32,6 +33,8 @@ class _Store:
     def __init__(self):
         self.rows: dict = {}              # id -> row dict
         self.dedup: dict = {}             # (kind, dedup_key) -> id
+        self.outbox: list = []            # D-S5BEVAL — captured outbox_events inserts
+        self.fail_outbox: bool = False    # fault-injection: raise on the outbox INSERT
 
     def insert(self, kind, billing_user_id, judge_model, judge_model_source, rs_json, dedup):
         if (kind, dedup) in self.dedup:
@@ -53,12 +56,22 @@ class _FakeConn:
         self._s = store
 
     def transaction(self):
+        # Faithful-enough tx: snapshot the mutable store on enter and RESTORE it on
+        # an exception exit, so a failing in-tx write (e.g. the outbox INSERT) rolls
+        # back the CAS completion — the headline D-S5BEVAL invariant.
+        s = self._s
+
         class _Tx:
             async def __aenter__(self_):
+                self_._rows = copy.deepcopy(s.rows)
+                self_._outbox_len = len(s.outbox)
                 return None
 
-            async def __aexit__(self_, *a):
-                return False
+            async def __aexit__(self_, exc_type, *a):
+                if exc_type is not None:
+                    s.rows = self_._rows
+                    del s.outbox[self_._outbox_len:]
+                return False                       # propagate the exception
 
         return _Tx()
 
@@ -66,6 +79,14 @@ class _FakeConn:
         if "INSERT INTO llm_judges" in sql:
             # (kind, billing_user_id, judge_model, judge_model_source, rs_json, dedup)
             return self._s.insert(p[0], p[1], p[2], p[3], p[4], p[5])
+        if "SET status = 'completed'" in sql and "status = 'running'" in sql:  # _finalize CAS (in-tx)
+            r = self._s.rows[p[1]]
+            if r["status"] != "running":
+                return None                        # lost the completion race
+            r["status"] = "completed"
+            r["provider_job_id"] = None
+            r["result"] = json.loads(p[0]) if p[0] else None
+            return r["id"]
         raise AssertionError(f"unexpected fetchval: {sql[:60]}")
 
     async def fetchrow(self, sql, *p):
@@ -83,6 +104,11 @@ class _FakeConn:
             r["resume_state"] = json.loads(p[1])
         elif "SET resume_state = $1::jsonb" in sql:           # finalize-pending persist
             self._s.rows[p[1]]["resume_state"] = json.loads(p[0])
+        elif "INSERT INTO outbox_events" in sql:              # D-S5BEVAL eval_judged emit (in-tx)
+            if self._s.fail_outbox:
+                raise RuntimeError("simulated outbox insert failure")
+            # params: (aggregate_id, payload_json)
+            self._s.outbox.append({"aggregate_id": p[0], "payload": json.loads(p[1])})
         else:
             raise AssertionError(f"unexpected execute: {sql[:60]}")
         return "OK"
@@ -291,29 +317,25 @@ async def test_resume_superseded_job_is_noop(monkeypatch):
 
 async def test_translation_single_batch_finalizes_and_emits(monkeypatch):
     persisted = {}
-    emitted = {}
 
     async def _fake_persist_transl(pool, **k):
         persisted.update(k)
         return True
 
-    async def _fake_emit(eval_payload, verdict):
-        emitted["payload"] = eval_payload
-        emitted["score"] = verdict.score
-
     monkeypatch.setattr(dj, "persist_translation_judge", _fake_persist_transl)
-    monkeypatch.setattr(dj, "_emit_eval_judged", _fake_emit)
 
     store = _Store()
     sdk = _FakeSdk()
     owner = str(uuid.uuid4())
+    chapter_id = str(uuid.uuid4())
     ok = await dj.start_translation_judge(
         _FakePool(store), sdk,
         ct_id="ct-1", owner_user_id=owner, billing_user_id=owner,
         book_id=None, origin_event_id="ob-1",
         judge_model="cj", judge_model_source="user_model",
         source_text="他来了。", translated_text="Anh ấy đã đến.",
-        emit_eval_judged=True, eval_payload={"chapter_id": "ch-1"},
+        emit_eval_judged=True,
+        eval_payload={"chapter_id": chapter_id, "user_id": owner, "target_language": "vi"},
     )
     assert ok is True
     row_id = next(iter(store.rows))
@@ -326,8 +348,14 @@ async def test_translation_single_batch_finalizes_and_emits(monkeypatch):
     assert persisted["ct_id"] == "ct-1"
     assert persisted["origin_event_id"] == "ob-1"
     assert abs(persisted["verdict"].score - 0.8) < 1e-9
-    assert emitted["score"] == 0.8                 # campaign judge → eval_judged emitted
-    assert emitted["payload"]["chapter_id"] == "ch-1"
+    # D-S5BEVAL — campaign judge wrote ONE transactional outbox row (in the CAS tx).
+    assert len(store.outbox) == 1
+    ev = store.outbox[0]
+    assert ev["payload"]["score"] == 0.8
+    assert ev["payload"]["chapter_id"] == chapter_id
+    assert ev["payload"]["target_language"] == "vi"
+    # aggregate_id is the UUID-shaped chapter_id (relay/event_log identity).
+    assert str(ev["aggregate_id"]) == chapter_id
 
 
 async def test_translation_no_emit_when_not_campaign(monkeypatch):
@@ -335,12 +363,6 @@ async def test_translation_no_emit_when_not_campaign(monkeypatch):
         return True
 
     monkeypatch.setattr(dj, "persist_translation_judge", _noop_persist)
-    called = {"emit": False}
-
-    async def _fake_emit(*a, **k):
-        called["emit"] = True
-
-    monkeypatch.setattr(dj, "_emit_eval_judged", _fake_emit)
     store = _Store()
     sdk = _FakeSdk()
     owner = str(uuid.uuid4())
@@ -353,7 +375,69 @@ async def test_translation_no_emit_when_not_campaign(monkeypatch):
         emit_eval_judged=False, eval_payload={},
     )
     await _drive(store, sdk, next(iter(store.rows)))
-    assert called["emit"] is False                 # global-config judge stays telemetry-only
+    assert store.outbox == []                       # global-config judge stays telemetry-only
+
+
+async def test_translation_emit_aggregate_id_fallback_when_no_chapter(monkeypatch):
+    """D-S5BEVAL — aggregate_id is a NOT-NULL UUID on the relay contract. When the
+    eval_payload carries no (UUID-shaped) chapter_id, the emit must still write a row
+    with a valid random UUID rather than crash the finalize tx."""
+    async def _noop_persist(pool, **k):
+        return True
+
+    monkeypatch.setattr(dj, "persist_translation_judge", _noop_persist)
+    store = _Store()
+    sdk = _FakeSdk()
+    owner = str(uuid.uuid4())
+    await dj.start_translation_judge(
+        _FakePool(store), sdk,
+        ct_id="ct-1", owner_user_id=owner, billing_user_id=owner,
+        book_id=None, origin_event_id="ob-3",
+        judge_model="cj", judge_model_source="user_model",
+        source_text="他来了。", translated_text="Anh.",
+        emit_eval_judged=True, eval_payload={"user_id": owner},  # no chapter_id
+    )
+    await _drive(store, sdk, next(iter(store.rows)))
+    assert len(store.outbox) == 1
+    ev = store.outbox[0]
+    uuid.UUID(str(ev["aggregate_id"]))             # parses → valid UUID, no crash
+    assert ev["payload"]["chapter_id"] is None
+
+
+async def test_translation_outbox_failure_rolls_back_completion(monkeypatch):
+    """D-S5BEVAL headline invariant: the outbox INSERT is in the SAME tx as the
+    completion CAS and is NOT swallowed — so if the emit fails, the completion rolls
+    back (row stays 'running' → the sweeper re-drives) rather than silently dropping
+    the score. This is the whole point of the migration; lock it."""
+    async def _noop_persist(pool, **k):
+        return True
+
+    monkeypatch.setattr(dj, "persist_translation_judge", _noop_persist)
+    store = _Store()
+    store.fail_outbox = True                        # the in-tx outbox INSERT will raise
+    sdk = _FakeSdk()
+    owner = str(uuid.uuid4())
+    await dj.start_translation_judge(
+        _FakePool(store), sdk,
+        ct_id="ct-1", owner_user_id=owner, billing_user_id=owner,
+        book_id=None, origin_event_id="ob-4",
+        judge_model="cj", judge_model_source="user_model",
+        source_text="他来了。", translated_text="Anh.",
+        emit_eval_judged=True, eval_payload={"chapter_id": str(uuid.uuid4())},
+    )
+    row_id = next(iter(store.rows))
+    # resume() → _finalize() → the outbox INSERT raises inside the CAS tx.
+    with pytest.raises(RuntimeError, match="simulated outbox insert failure"):
+        await _drive(store, sdk, row_id)
+    # CAS rolled back: the row is STILL running (no lost score), outbox empty.
+    assert store.rows[row_id]["status"] == "running"
+    assert store.outbox == []
+    # Recovery: clear the fault → the sweeper re-drives the still-running row → emits.
+    store.fail_outbox = False
+    n = await dj.sweep_once(_FakePool(store), sdk, timeout_s=0, batch=10)
+    assert n == 1
+    assert store.rows[row_id]["status"] == "completed"
+    assert len(store.outbox) == 1
 
 
 async def test_translation_blank_text_returns_false():
@@ -440,17 +524,12 @@ async def test_sweeper_finalizes_pending_row(monkeypatch):
 
 async def test_finalize_not_re_emitted_after_completion(monkeypatch):
     """/review-impl MED#1 regression-lock: a re-drive / redelivery after the row is
-    completed must NOT re-emit translation.eval_judged (the CAS-on-completion guard)."""
+    completed must NOT write a second outbox row (the CAS-on-completion guard — the
+    outbox INSERT lives inside the CAS tx, so a lost CAS = no emit)."""
     async def _noop_persist(pool, **k):
         return True
 
     monkeypatch.setattr(dj, "persist_translation_judge", _noop_persist)
-    emits = {"n": 0}
-
-    async def _fake_emit(*a, **k):
-        emits["n"] += 1
-
-    monkeypatch.setattr(dj, "_emit_eval_judged", _fake_emit)
     store = _Store()
     sdk = _FakeSdk()
     owner = str(uuid.uuid4())
@@ -460,13 +539,13 @@ async def test_finalize_not_re_emitted_after_completion(monkeypatch):
         book_id=None, origin_event_id="ob-1",
         judge_model="cj", judge_model_source="user_model",
         source_text="他来了。", translated_text="Anh.",
-        emit_eval_judged=True, eval_payload={},
+        emit_eval_judged=True, eval_payload={"chapter_id": str(uuid.uuid4())},
     )
     row_id = next(iter(store.rows))
-    await _drive(store, sdk, row_id)        # completes + emits once
-    assert emits["n"] == 1
+    await _drive(store, sdk, row_id)        # completes + writes one outbox row
+    assert len(store.outbox) == 1
     await dj._finalize(_FakePool(store), row_id)   # re-drive on the completed row
-    assert emits["n"] == 1                  # CAS guard → no second emit
+    assert len(store.outbox) == 1          # CAS guard → no second outbox row
 
 
 async def test_sweep_redrives_terminal_job(monkeypatch):

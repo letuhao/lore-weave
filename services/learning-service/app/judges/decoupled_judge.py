@@ -29,7 +29,7 @@ from __future__ import annotations
 import json
 import logging
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import asyncpg
 
@@ -327,12 +327,15 @@ async def _finalize(pool: asyncpg.Pool, row_id: Any) -> None:
     connection); idempotent (re-read guards on ``status='running'``, persist_* dedup
     on their own keys) so the sweeper / a redelivery can safely re-run it.
 
-    Ordering matters for the (non-idempotent) ``translation.eval_judged`` emit
-    (/review-impl MED#1): persist FIRST (idempotent — the judge result must be durable
-    before the row reads done), then CAS-claim completion
-    (``UPDATE … WHERE status='running' RETURNING id``), then emit ONLY if the claim
-    won. So a concurrent finalize / crash re-drive yields at-most-once emit
-    (lost-on-crash is acceptable per ``_emit_eval_judged``), never a double-emit."""
+    Ordering matters for the ``translation.eval_judged`` emit (/review-impl MED#1):
+    persist FIRST (idempotent — the judge result must be durable before the row reads
+    done), then CAS-claim completion (``UPDATE … WHERE status='running' RETURNING id``)
+    **and write the outbox row in the SAME tx** (D-S5BEVAL-LEARNING-OUTBOX). So the
+    completion flip and the emit are atomic: a crash before commit rolls back BOTH (the
+    row stays ``running`` → the sweeper re-drives → persist is idempotent → retried),
+    and a concurrent finalize that loses the CAS writes no outbox row → never a
+    double-emit. At-least-once downstream is safe (``set_eval_fidelity_by_chapter`` is
+    idempotent), replacing the prior best-effort XADD that silently dropped the score."""
     row = await pool.fetchrow(
         "SELECT id, kind, status, judge_model, resume_state FROM llm_judges WHERE id = $1",
         row_id,
@@ -377,28 +380,34 @@ async def _finalize(pool: asyncpg.Pool, row_id: Any) -> None:
             if ctx.get("emit_eval_judged"):
                 emit_args = (ctx.get("eval_payload") or {}, verdict)
 
-    # CAS-claim: only the driver that flips running→completed proceeds to emit.
-    won = await pool.fetchval(
-        "UPDATE llm_judges SET status = 'completed', provider_job_id = NULL, "
-        "result = $1::jsonb, updated_at = now() WHERE id = $2 AND status = 'running' "
-        "RETURNING id",
-        json.dumps(result), row_id,
-    )
-    if won is None:
-        return  # another driver finalized concurrently — don't double-emit
-    if emit_args is not None:
-        await _emit_eval_judged(*emit_args)
+    # CAS-claim + outbox emit in ONE tx: only the driver that flips running→completed
+    # writes the outbox row, and both commit (or roll back) together. NOT best-effort —
+    # an outbox-insert failure rolls back the completion so the sweeper re-drives,
+    # rather than silently dropping the campaign's eval_fidelity_score.
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            won = await conn.fetchval(
+                "UPDATE llm_judges SET status = 'completed', provider_job_id = NULL, "
+                "result = $1::jsonb, updated_at = now() WHERE id = $2 AND status = 'running' "
+                "RETURNING id",
+                json.dumps(result), row_id,
+            )
+            if won is None:
+                return  # another driver finalized concurrently — empty tx commits, no emit
+            if emit_args is not None:
+                await _write_eval_outbox(conn, *emit_args)
 
 
-async def _emit_eval_judged(eval_payload: dict[str, Any], verdict: FidelityVerdict) -> None:
-    """Best-effort XADD ``translation.eval_judged`` so the campaign projection records
-    the fidelity score (mirrors handlers._emit_eval_judged). learning-service has no
-    transactional outbox (D-S5BEVAL-LEARNING-OUTBOX) — a lost emit just leaves
-    eval_fidelity_score null, acceptable for best-effort telemetry. Never raises."""
-    import redis.asyncio as aioredis
-
-    from app.config import settings
-
+async def _write_eval_outbox(
+    conn: asyncpg.Connection, eval_payload: dict[str, Any], verdict: FidelityVerdict
+) -> None:
+    """Insert the ``translation.eval_judged`` event into the Postgres outbox within the
+    caller's tx (D-S5BEVAL-LEARNING-OUTBOX). worker-infra's relay ships outbox_events
+    to ``loreweave:events:<aggregate_type>`` — ``translation_eval`` lands on the stream
+    the campaign projection consumes. Does NOT swallow: a failure must abort the
+    enclosing tx (completion is rolled back, the sweeper retries) — the durability
+    guarantee this replaces the prior best-effort XADD with. At-least-once is safe
+    (``set_eval_fidelity_by_chapter`` is idempotent)."""
     body = {
         "user_id": eval_payload.get("user_id"),
         "book_id": eval_payload.get("book_id"),
@@ -406,16 +415,20 @@ async def _emit_eval_judged(eval_payload: dict[str, Any], verdict: FidelityVerdi
         "target_language": eval_payload.get("target_language"),
         "score": float(verdict.score),
     }
-    r = aioredis.from_url(settings.redis_url, decode_responses=True)
+    # aggregate_id is a NOT-NULL UUID column on the relay's contract. Use chapter_id
+    # (the natural aggregate) when it is UUID-shaped; else a random uuid — the campaign
+    # projection correlates off the PAYLOAD (book/owner/language/chapter), not
+    # aggregate_id, so its only role here is relay/event_log identity.
+    chapter_id = eval_payload.get("chapter_id")
     try:
-        await r.xadd(
-            "loreweave:events:translation_eval",
-            {"event_type": "translation.eval_judged", "payload": json.dumps(body)},
-        )
-    except Exception:  # noqa: BLE001 — best-effort telemetry
-        logger.warning("decoupled judge: translation.eval_judged emit failed", exc_info=True)
-    finally:
-        await r.aclose()
+        aggregate_id = UUID(str(chapter_id)) if chapter_id else uuid4()
+    except (ValueError, TypeError):
+        aggregate_id = uuid4()
+    await conn.execute(
+        "INSERT INTO outbox_events (aggregate_type, aggregate_id, event_type, payload) "
+        "VALUES ('translation_eval', $1, 'translation.eval_judged', $2::jsonb)",
+        aggregate_id, json.dumps(body),
+    )
 
 
 # ── stuck-resume sweeper ──────────────────────────────────────────────────────

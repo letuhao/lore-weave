@@ -1056,7 +1056,12 @@ services:
       # the pre-existing M9 scene_committed, aggregate_type='composition') to
       # loreweave:events:composition. Until now composition wrote outbox rows that
       # were NEVER relayed (M9 telemetry was emitted-but-unconsumed).
-      OUTBOX_SOURCES: "book:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_book,translation:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_translation,chat:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_chat,glossary:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_glossary,knowledge:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_knowledge,composition:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_composition,campaign:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_campaign,lore_enrichment:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_lore_enrichment,video_gen:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_video_gen"
+      # D-S5BEVAL-LEARNING-OUTBOX: learning added so the relay ships the decoupled
+      # fidelity judge's transactional outbox (translation.eval_judged,
+      # aggregate_type='translation_eval') to loreweave:events:translation_eval for
+      # the campaign projection. Replaces the prior best-effort XADD (lost emit =
+      # dropped eval_fidelity_score).
+      OUTBOX_SOURCES: "book:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_book,translation:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_translation,chat:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_chat,glossary:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_glossary,knowledge:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_knowledge,composition:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_composition,campaign:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_campaign,lore_enrichment:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_lore_enrichment,video_gen:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_video_gen,learning:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_learning"
       # Phase B (§10.1): bumped 7→30 days. glossary now also feeds
       # learning-service's append-only correction log; a longer retention on the
       # source outbox rows + event_log is the replay backstop so a learning-

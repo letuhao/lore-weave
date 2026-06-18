@@ -360,6 +360,32 @@ CREATE INDEX IF NOT EXISTS idx_llm_judges_provider_job
 -- sweeper: re-drive rows stuck 'running' past the idle timeout.
 CREATE INDEX IF NOT EXISTS idx_llm_judges_running
   ON llm_judges(updated_at) WHERE status = 'running';
+
+-- ── outbox_events (D-S5BEVAL-LEARNING-OUTBOX) ─────────────────────────
+-- learning-service's FIRST transactional outbox. The decoupled fidelity judge
+-- writes a `translation.eval_judged` row HERE in the SAME tx that flips the
+-- llm_judges row running→completed (unlike knowledge's best-effort post-Neo4j
+-- outbox, the source of truth IS this Postgres DB, so the emit can be atomic).
+-- worker-infra's relay ships rows to loreweave:events:<aggregate_type> — so
+-- aggregate_type='translation_eval' lands on loreweave:events:translation_eval
+-- for the campaign projection (set_eval_fidelity_by_chapter, idempotent → the
+-- at-least-once relay delivery is safe). Shape matches the relay's SELECT
+-- (id,event_type,aggregate_type,aggregate_id,payload,created_at) + its
+-- published_at/retry_count/last_error writes. Previously a best-effort XADD
+-- that silently dropped the campaign's eval_fidelity_score on a lost emit.
+CREATE TABLE IF NOT EXISTS outbox_events (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  aggregate_type TEXT NOT NULL DEFAULT 'translation_eval',
+  aggregate_id   UUID NOT NULL,
+  event_type     TEXT NOT NULL,
+  payload        JSONB NOT NULL DEFAULT '{}',
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  published_at   TIMESTAMPTZ,
+  retry_count    INT NOT NULL DEFAULT 0,
+  last_error     TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_outbox_pending
+  ON outbox_events(created_at) WHERE published_at IS NULL;
 """
 
 
