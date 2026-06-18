@@ -718,12 +718,24 @@ async def write_pass2_extraction(
         if not content_clean.strip():
             continue
 
-        # NOTE: ``fact.subject`` and ``fact.subject_id`` are intentionally
-        # dropped here — K11.7 ``merge_fact`` does not yet accept a
-        # subject. Tracked for K18+. Additionally, ``fact.fact_id`` is
-        # treated as advisory: K11.7 ``merge_fact`` derives its own ID
-        # from the sanitized content hash, not the candidate's raw-
-        # content-derived ``fact_id``. See K17.9 negative assertion test.
+        # T2.1 — link the fact to its subject entity (`(:Fact)-[:ABOUT]->(:Entity)`).
+        # /review-impl HIGH-1: resolve by the subject NAME via the SAME Tier-A repair
+        # status (and relations) use — the extractor's pre-resolved `subject_id`
+        # frequently drifts from the writer's merged ids (kind drift / chapter-local
+        # resolution), so a plain `subject_id in merged_entity_ids` match silently
+        # UNDER-links most facts. Fall back to a pre-resolved id that IS already
+        # merged (covers a name the chapter map can't disambiguate). An unresolved
+        # subject keeps the fact, just unlinked. `from_order=chapter_base` spoiler-
+        # windows the fact to the chapter it was established in (None positionless).
+        # NOTE: ``fact.fact_id`` is still advisory — ``merge_fact`` derives its own
+        # content-hashed ID (see K17.9 negative assertion test).
+        fact_subject_id: str | None = None
+        if fact.subject:
+            fact_subject_id = _resolve_status_entity_id(
+                fact.subject, chapter_entity_by_canonical_name, anchor_index, project_id,
+            )
+        if fact_subject_id is None and fact.subject_id in merged_entity_ids:
+            fact_subject_id = fact.subject_id
         f = await merge_fact(
             session,
             user_id=user_id,
@@ -734,6 +746,8 @@ async def write_pass2_extraction(
             pending_validation=False,
             source_type=source_type,
             provenance=provenance,
+            subject_id=fact_subject_id,
+            from_order=chapter_base,
         )
         facts_merged += 1
 

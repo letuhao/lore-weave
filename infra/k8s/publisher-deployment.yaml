@@ -1,0 +1,82 @@
+# infra/k8s/publisher-deployment.yaml — L2.D.8
+#
+# V1 single replica per shard host (Q-L2D-1). V2+ scales beyond 1000
+# active realities → bump replicas + activate the Redis SETNX leader
+# election path in services/publisher/pkg/leader_election.
+#
+# Capacity budget: contracts/capacity/budgets.yaml → publisher class=worker
+# V1: min=1 max=1 cpu=0.5 mem=512Mi scale_trigger=outbox_lag>1000
+# V3: min=2 max=4
+#
+# SLOs:
+#   - outbox lag < 1s P50, < 10s P99 (R06 §12F.3)
+#   - heartbeat write every 10s
+#   - no duplicate XADD across replicas (FOR UPDATE SKIP LOCKED guard)
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: publisher
+  namespace: lw-foundation
+  labels:
+    app.kubernetes.io/name: publisher
+    app.kubernetes.io/component: data-platform
+    lw.shipped.cycle: "10"
+spec:
+  replicas: 1  # V1 single replica (Q-L2D-1). DO NOT bump without flipping leader_election to V2 RedisLeader.
+  strategy:
+    type: Recreate  # V1: avoid two replicas overlapping during rolling update; V2+ uses RollingUpdate with the leader-election failover path.
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: publisher
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: publisher
+        app.kubernetes.io/component: data-platform
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: publisher
+      containers:
+        - name: publisher
+          image: ghcr.io/loreweave/publisher:0.1.0
+          imagePullPolicy: IfNotPresent
+          resources:
+            requests: { cpu: "500m", memory: "512Mi" }
+            limits:   { cpu: "1",    memory: "1Gi"   }
+          env:
+            - name: LW_PUBLISHER_ID
+              valueFrom:
+                fieldRef: { fieldPath: metadata.name }
+            - name: LW_SHARD_HOST
+              valueFrom:
+                fieldRef: { fieldPath: spec.nodeName }
+            - name: LW_META_DSN
+              valueFrom:
+                secretKeyRef: { name: lw-meta-dsn, key: dsn }
+            - name: LW_REDIS_ADDR
+              valueFrom:
+                configMapKeyRef: { name: lw-redis-cfg, key: addr }
+          ports:
+            - containerPort: 9090
+              name: metrics
+          # Liveness: the publisher writes publisher_heartbeats every 10s; the
+          # readiness probe walks the most-recent heartbeat. If it lags > 30s
+          # K8s restarts the pod. (V1 single-replica = no failover concern.)
+          livenessProbe:
+            httpGet: { path: /healthz, port: 9090 }
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /readyz, port: 9090 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      # Pod anti-affinity: V1 we DO want to schedule on dedicated shard hosts;
+      # the V2+ HA story adds podAntiAffinity to spread replicas.
+      tolerations:
+        - key: "shard-host"
+          operator: "Exists"

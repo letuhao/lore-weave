@@ -30,6 +30,7 @@
 //! lowest-index tie-break) and assignment ties go to the lowest seed index.
 
 use crate::biome::BiomeKind;
+use crate::params::HierarchyParams;
 use crate::pathfind;
 use crate::world_map::{Continent, Region, Subcontinent};
 
@@ -106,6 +107,7 @@ pub fn build(
     biomes: &[BiomeKind],
     plate_of: &[u32],
     region_subdivision: u8,
+    hp: &HierarchyParams,
 ) -> Hierarchy {
     let n = centers.len();
     let is_land: Vec<bool> = biomes.iter().map(|b| !b.is_water()).collect();
@@ -118,7 +120,7 @@ pub fn build(
     let mut subcontinents: Vec<Subcontinent> = Vec::new();
     let mut regions: Vec<Region> = Vec::new();
 
-    let k = usize::from(region_subdivision.clamp(1, 12));
+    let k = usize::from(region_subdivision.clamp(1, hp.region_subdivision_max.clamp(1, 255) as u8));
     let plate_at = |c: u32| -> u32 { plate_of.get(c as usize).copied().unwrap_or(NONE) };
 
     for comp in &comps {
@@ -220,7 +222,7 @@ mod tests {
     #[test]
     fn water_cells_are_unassigned_land_cells_are_assigned() {
         let (centers, neighbors, biomes) = line_fixture();
-        let h = build(&centers, &neighbors, &biomes, &[], 4);
+        let h = build(&centers, &neighbors, &biomes, &[], 4, &HierarchyParams::default());
         // Cell 2 is ocean.
         assert_eq!(h.continent_of[2], NONE);
         assert_eq!(h.subcontinent_of[2], NONE);
@@ -235,7 +237,7 @@ mod tests {
     #[test]
     fn two_land_components_yield_two_continents() {
         let (centers, neighbors, biomes) = line_fixture();
-        let h = build(&centers, &neighbors, &biomes, &[], 4);
+        let h = build(&centers, &neighbors, &biomes, &[], 4, &HierarchyParams::default());
         assert_eq!(h.continents.len(), 2);
         // {0,1} is continent 0 (lowest start), {3} is continent 1.
         assert_eq!(h.continent_of[0], 0);
@@ -249,7 +251,7 @@ mod tests {
         // Give the two land cells of continent 0 different plate ids so it
         // splits into two subcontinents.
         let plate_of = vec![0u32, 1, 0, 2];
-        let h = build(&centers, &neighbors, &biomes, &plate_of, 4);
+        let h = build(&centers, &neighbors, &biomes, &plate_of, 4, &HierarchyParams::default());
         for c in [0usize, 1, 3] {
             let r = h.region_of[c] as usize;
             let s = h.subcontinent_of[c];
@@ -266,7 +268,7 @@ mod tests {
     fn subcontinent_cells_share_one_plate() {
         let (centers, neighbors, biomes) = line_fixture();
         let plate_of = vec![0u32, 1, 0, 2];
-        let h = build(&centers, &neighbors, &biomes, &plate_of, 4);
+        let h = build(&centers, &neighbors, &biomes, &plate_of, 4, &HierarchyParams::default());
         for (cell, &sub) in h.subcontinent_of.iter().enumerate() {
             if sub == NONE {
                 continue;
@@ -287,7 +289,7 @@ mod tests {
         ];
         let neighbors = vec![vec![1], vec![0, 2], vec![1, 3], vec![2, 4], vec![3]];
         let biomes = vec![BiomeKind::Plain; 5];
-        let h = build(&centers, &neighbors, &biomes, &[0, 0, 0, 0, 0], 3);
+        let h = build(&centers, &neighbors, &biomes, &[0, 0, 0, 0, 0], 3, &HierarchyParams::default());
         assert_eq!(h.subcontinents.len(), 1);
         assert_eq!(h.regions.len(), 3);
         // Every land cell maps to one of the 3 regions.
@@ -300,8 +302,8 @@ mod tests {
     fn is_deterministic() {
         let (centers, neighbors, biomes) = line_fixture();
         let plate_of = vec![0u32, 1, 0, 2];
-        let a = build(&centers, &neighbors, &biomes, &plate_of, 4);
-        let b = build(&centers, &neighbors, &biomes, &plate_of, 4);
+        let a = build(&centers, &neighbors, &biomes, &plate_of, 4, &HierarchyParams::default());
+        let b = build(&centers, &neighbors, &biomes, &plate_of, 4, &HierarchyParams::default());
         assert_eq!(a.continent_of, b.continent_of);
         assert_eq!(a.subcontinent_of, b.subcontinent_of);
         assert_eq!(a.region_of, b.region_of);
@@ -314,7 +316,7 @@ mod tests {
         let centers = vec![[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]];
         let neighbors = vec![vec![1u32], vec![0]];
         let biomes = vec![BiomeKind::Ocean, BiomeKind::Lake];
-        let h = build(&centers, &neighbors, &biomes, &[0, 0], 4);
+        let h = build(&centers, &neighbors, &biomes, &[0, 0], 4, &HierarchyParams::default());
         assert!(h.continents.is_empty());
         assert!(h.subcontinents.is_empty());
         assert!(h.regions.is_empty());

@@ -1,0 +1,116 @@
+# infra/alertmanager/silence_admission_policy.yaml — L7.J.4 (RAID cycle 34)
+#
+# Policy for WHO can silence WHAT alerts + auto-expiry per silence
+# category. Read by the alert-recorder service's silence admission
+# webhook (cycle 34 L7.J.5) before persisting a silence to
+# alert_silences (meta).
+#
+# Background — abusing silences is one of the most common ops anti-
+# patterns (silence everything → operator goes home → outage). This
+# policy enforces:
+#   1. Silences MUST declare a category
+#   2. Each category has a max duration
+#   3. Certain alerts CANNOT be silenced without specific role
+#   4. Silences carry an `actor` + `reason` (audited)
+#
+# See runbooks/alerts/silence_misuse.md for SRE response when a silence
+# violates policy.
+
+version: 1
+shipped_cycle: 34
+
+# ────────────────────────────────────────────────────────────────────
+# Silence categories
+# ────────────────────────────────────────────────────────────────────
+# Each silence MUST declare exactly one category. Auto-expiry applies
+# AFTER the requested duration OR the category cap, whichever is
+# shorter.
+
+categories:
+  - id: deploy
+    description: 'Silence during planned deploy — auto-expires when deploy completes'
+    max_duration: '2h'
+    allowed_roles: [sre, deployer]
+    requires_runbook: false
+
+  - id: maintenance
+    description: 'Planned maintenance window — DB failover, infra upgrade, etc.'
+    max_duration: '8h'
+    allowed_roles: [sre, tech_lead]
+    requires_runbook: true
+
+  - id: known_issue
+    description: 'Known issue with workaround — must reference ticket'
+    max_duration: '7d'
+    allowed_roles: [sre, tech_lead, eng]
+    requires_runbook: false
+    requires_ticket: true
+
+  - id: incident_in_progress
+    description: 'Suppressing downstream noise during an active incident'
+    max_duration: '24h'
+    allowed_roles: [sre, ic_on_duty]
+    requires_runbook: false
+    requires_incident_id: true
+
+  - id: false_positive
+    description: 'Confirmed false positive; alert rule will be tuned'
+    max_duration: '48h'
+    allowed_roles: [sre, tech_lead]
+    requires_runbook: true
+    requires_tuning_pr: true
+
+# ────────────────────────────────────────────────────────────────────
+# Protected alerts — cannot be silenced without tech_lead role
+# ────────────────────────────────────────────────────────────────────
+# These alerts are foundational; silencing them = silent outage. Only
+# tech_lead with explicit reason + ticket may silence.
+
+protected_alerts:
+  - name: 'LWMetaPostgresPrimaryDown'
+    rationale: 'meta-postgres primary down = platform down; silence = silent platform outage'
+    silenceable_by: [tech_lead]
+
+  - name: 'LWAuthHashMismatch'
+    rationale: 'audit-hash integrity breach; silence = potential tamper masked'
+    silenceable_by: [tech_lead, security_lead]
+
+  - name: 'LWSLOBreachSessionAvailability'
+    rationale: 'budget exhausted; silence = SLA promise breach unrecorded'
+    silenceable_by: [tech_lead]
+
+  - name: 'LWMultiTenantIsolationViolation'
+    rationale: 'cross-tenant impact; silence = silent multi-tenant breach'
+    silenceable_by: [tech_lead, sre]
+
+# ────────────────────────────────────────────────────────────────────
+# Audit fields (alert-recorder writes these to alert_silences)
+# ────────────────────────────────────────────────────────────────────
+audit_required_fields:
+  - actor          # WHO silenced (user id or service account)
+  - category       # WHICH category (see above)
+  - reason         # 1-line free text
+  - created_at     # timestamp
+  - expires_at     # computed (request_duration OR category.max_duration)
+  - alert_matcher  # WHAT was silenced (label set / regex)
+  - origin         # ui | api | auto (alertmanager auto-silence from inhibit_rules.yaml is `auto`)
+
+# ────────────────────────────────────────────────────────────────────
+# Soft-policy alerts (warn-only on violation, not blocked)
+# ────────────────────────────────────────────────────────────────────
+soft_policy:
+  - rule: 'silence covers > 5 distinct alertnames'
+    response: 'warn'
+    rationale: 'Wildcard silences are usually a panic move; alert SRE'
+
+  - rule: 'silence created during an active incident'
+    response: 'warn'
+    rationale: 'Could be legitimate noise-suppression; could mask the root cause'
+
+# ────────────────────────────────────────────────────────────────────
+# Drift guards
+# ────────────────────────────────────────────────────────────────────
+expected_category_count: 5
+expected_protected_count: 4
+locked_decisions_consumed:
+  - Q-L7C-2: 'oncall-sla.md cross-references protected alerts'

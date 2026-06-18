@@ -1,6 +1,7 @@
 //! Stage 5 — political layer: provinces (terrain-cost flood-fill) + states.
 
 use crate::biome::BiomeKind;
+use crate::params::{BiomeParams, PoliticalParams};
 use crate::pathfind::{self, NONE};
 use crate::rng::{self, Rng};
 use crate::world_map::{County, Province, Realm, State, World};
@@ -262,6 +263,8 @@ pub fn build_nested(
     n_subcontinents: usize,
     n_continents: usize,
     county_subdivision: u8,
+    pp: &PoliticalParams,
+    bp: &BiomeParams,
 ) -> PoliticalNested {
     let n = centers.len();
 
@@ -274,12 +277,12 @@ pub fn build_nested(
         if cells.is_empty() {
             continue;
         }
-        let quota = (cells.len() / 150).clamp(1, 8);
+        let quota = (cells.len() / pp.prov_cells_per_seed as usize).clamp(1, pp.prov_max as usize);
         let seeds = farthest_point_cells(cells, quota, centers);
         let base = prov_capital.len() as u32;
         let assign = pathfind::multi_source_assign(
             &seeds,
-            |c| (region_of[c] == r as u32).then(|| biomes[c].terrain_cost()).flatten(),
+            |c| (region_of[c] == r as u32).then(|| bp.terrain_cost(biomes[c])).flatten(),
             neighbors,
         );
         for &c in cells {
@@ -302,7 +305,7 @@ pub fn build_nested(
 
     // --- COUNTY ⊆ province: subdivide each province ------------------------
     let cells_by_prov = group_cells(&province_of, np);
-    let k_county = usize::from(county_subdivision.clamp(1, 8));
+    let k_county = usize::from(county_subdivision.clamp(1, pp.county_max.clamp(1, 255) as u8));
     let mut county_of = vec![NONE; n];
     let mut counties: Vec<County> = Vec::new();
     for (p, cells) in cells_by_prov.iter().enumerate() {
@@ -313,7 +316,7 @@ pub fn build_nested(
         let base = counties.len() as u32;
         let assign = pathfind::multi_source_assign(
             &seeds,
-            |c| (province_of[c] == p as u32).then(|| biomes[c].terrain_cost()).flatten(),
+            |c| (province_of[c] == p as u32).then(|| bp.terrain_cost(biomes[c])).flatten(),
             neighbors,
         );
         for &c in cells {
@@ -346,7 +349,9 @@ pub fn build_nested(
         if provs.is_empty() {
             continue;
         }
-        let quota = (provs.len() / 4).clamp(1, 6).min(provs.len());
+        let quota = (provs.len() / pp.state_provs_per_seed as usize)
+            .clamp(1, pp.state_max as usize)
+            .min(provs.len());
         let mut seed_provs = farthest_point(provs, quota, &prov_capital, centers);
         seed_provs.sort_unstable(); // ascending province id → ascending state id
         let base = states.len() as u32;
@@ -354,7 +359,7 @@ pub fn build_nested(
         let assign = pathfind::multi_source_assign(
             &seed_cells,
             |c| (subcontinent_of[c] == sub as u32)
-                .then(|| biomes[c].terrain_cost())
+                .then(|| bp.terrain_cost(biomes[c]))
                 .flatten(),
             neighbors,
         );
@@ -392,7 +397,9 @@ pub fn build_nested(
         if sts.is_empty() {
             continue;
         }
-        let quota = (sts.len() / 3).clamp(1, 4).min(sts.len());
+        let quota = (sts.len() / pp.realm_states_per_seed as usize)
+            .clamp(1, pp.realm_max as usize)
+            .min(sts.len());
         let mut seed_states = farthest_point(sts, quota, &state_cap_cell, centers);
         seed_states.sort_unstable();
         let base = realms.len() as u32;

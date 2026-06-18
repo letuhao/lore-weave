@@ -51,6 +51,31 @@ class Settings(BaseSettings):
     extraction_wake_enabled: bool = True
     extraction_wake_stream: str = "extraction.wake"
 
+    # LLM re-arch Phase 2b WX (worker-ai extraction decouple): opt-in event-driven
+    # decouple of extract_pass2 (submit→release→resume on the job's terminal event
+    # instead of pinning a worker coroutine for the whole chapter). OFF ⇒ the
+    # synchronous extract_pass2 path is unchanged. Wired by WX-T3 (the decoupled
+    # orchestrator + an llm_job_terminal consumer); WX-T1/T2 are additive scaffolding
+    # + the SDK pure-seam refactor that leave this dormant.
+    extraction_decouple_enabled: bool = False
+
+    # Unified Job Control Plane P1 — flip the decoupled-extraction terminal consumer onto
+    # the shared loreweave_jobs.BaseTerminalConsumer (ExtractTerminalConsumer). Default
+    # FALSE = the proven functional consume_llm_terminal_stream (money-path fallback); set
+    # TRUE only after a live extraction E2E confirms the migrated path (no double-spend).
+    extraction_consumer_use_sdk: bool = False
+
+    # WX Wave 1b — stuck-resume sweeper. The decoupled finalize is a STRICT tx (no
+    # best-effort fallback) and a Redis stream gives no redelivery after ack, so a
+    # consumer crash/poison or a submit→persist gap can strand an extraction_jobs row
+    # with resume_state set + no runtime recovery. This periodic loop re-drives any
+    # such row idle longer than the timeout by re-checking each in-flight
+    # provider_job_id's terminal status and replaying the consumer's idempotent
+    # `_resume`. Only runs when the decouple flag is on. interval 0 ⇒ off.
+    extraction_resume_sweep_interval_s: int = 60
+    extraction_resume_sweep_timeout_s: int = 900
+    extraction_resume_sweep_batch: int = 20
+
     # Max items to process per poll cycle before re-checking job status.
     # Lower = more responsive to pause/cancel, higher = less DB overhead.
     items_per_status_check: int = 1

@@ -4,6 +4,7 @@
 // a ghost preview — it is NOT in the editor doc and is NEVER autosaved until the
 // author clicks Accept (§13 SC4), which calls onAccept() to insert it and then
 // runs an advisory critique.
+import type { Dispatch, SetStateAction } from 'react';
 import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCompositionStream } from '../hooks/useCompositionStream';
@@ -23,11 +24,15 @@ type Props = {
   modelName?: string;
   token: string | null;
   onAccept: (text: string) => void;
+  /** T3.1: the compose guide is lifted to CompositionPanel so the co-writer chat's
+   *  "Use as guide" can pre-fill it. A SetStateAction setter so the canon-revise
+   *  append (functional updater) keeps working. */
+  guide: string;
+  onGuideChange: Dispatch<SetStateAction<string>>;
 };
 
-export function ComposeView({ projectId, sceneId, modelRef, modelKind, modelName, token, onAccept }: Props) {
+export function ComposeView({ projectId, sceneId, modelRef, modelKind, modelName, token, onAccept, guide, onGuideChange }: Props) {
   const { t } = useTranslation('composition');
-  const [guide, setGuide] = useState('');
   const guideRef = useRef<HTMLTextAreaElement>(null);
   // Reasoning preference. "auto" lets the server decide per the selected model
   // (adaptive pass-through vs our rule-based scorer); off/low/medium/high are
@@ -85,7 +90,7 @@ export function ComposeView({ projectId, sceneId, modelRef, modelKind, modelName
           'Keep canon consistent: {{name}} is gone from the story by this scene — do not portray them as present or acting.',
         name,
       }) + (v.why ? ` (${v.why})` : '');
-    setGuide((prev) => (prev.trim() ? `${prev.trim()}\n${line}` : line));
+    onGuideChange((prev) => (prev.trim() ? `${prev.trim()}\n${line}` : line));
     guideRef.current?.focus();
   };
 
@@ -110,7 +115,7 @@ export function ComposeView({ projectId, sceneId, modelRef, modelKind, modelName
         rows={2}
         placeholder={t('guidePlaceholder', { defaultValue: 'Optional guidance for the co-writer…' })}
         value={guide}
-        onChange={(e) => setGuide(e.target.value)}
+        onChange={(e) => onGuideChange(e.target.value)}
       />
       <div className="flex items-center gap-2">
         <select
@@ -204,19 +209,60 @@ export function ComposeView({ projectId, sceneId, modelRef, modelKind, modelName
         </div>
       )}
 
-      {critic && <CriticFlags critic={critic} jobId={stream.jobId} onDismiss={(ruleId) => stream.jobId && dismiss.mutate({ jobId: stream.jobId, ruleId })} />}
+      {critic && <CriticFlags critic={critic} jobId={stream.jobId} onRegenerate={cowriteRegenerate} onDismiss={(ruleId) => stream.jobId && dismiss.mutate({ jobId: stream.jobId, ruleId })} />}
     </div>
   );
 }
 
-function CriticFlags({ critic, onDismiss }: { critic: NonNullable<Critic>; jobId: string | null; onDismiss: (ruleId: string) => void }) {
+function CriticFlags({ critic, onRegenerate, onDismiss }: { critic: NonNullable<Critic>; jobId: string | null; onRegenerate: () => void; onDismiss: (ruleId: string) => void }) {
   const { t } = useTranslation('composition');
   const dims: [string, number | null][] = [
     ['coherence', critic.coherence], ['voice_match', critic.voice_match],
     ['pacing', critic.pacing], ['canon_consistency', critic.canon_consistency],
   ];
+  // C26 GATE — a derivative override slipped. `needs_regeneration` BLOCKS accept
+  // (the user must regenerate); `regen_exhausted` means the cap was hit so the gate
+  // fails OPEN (we surface the finding but no longer block). The findings explain WHY.
+  const findings = critic.derivative_findings ?? [];
+  const blocked = critic.needs_regeneration === true;
   return (
     <div data-testid="compose-critic" className="rounded border border-neutral-200 p-2 text-xs dark:border-neutral-700">
+      {(blocked || critic.regen_exhausted) && (
+        <div
+          data-testid="compose-override-gate"
+          className={`mb-2 rounded p-2 ${blocked ? 'bg-red-50 dark:bg-red-950' : 'bg-amber-50 dark:bg-amber-950'}`}
+        >
+          <div className={`font-medium ${blocked ? 'text-red-700 dark:text-red-300' : 'text-amber-800 dark:text-amber-300'}`}>
+            {blocked
+              ? t('overrideSlipBlocked', { defaultValue: 'Accept blocked: a dị bản override slipped back to the canon value. Regenerate before accepting.' })
+              : t('overrideSlipExhausted', { defaultValue: 'Override still slipping after the regeneration cap — surfaced for your review (accept is no longer blocked).' })}
+          </div>
+          <ul className="mt-1 list-disc pl-4">
+            {findings.map((f, i) => (
+              <li key={i} className="text-neutral-700 dark:text-neutral-300">
+                {f.kind === 'override_slip'
+                  ? t('overrideSlipDetail', {
+                      defaultValue: '{{name}} ({{field}}): expected “{{expected}}”, found “{{found}}”',
+                      name: f.name || f.entity_id, field: f.field, expected: f.expected, found: f.found,
+                    })
+                  : t('deltaInconsistencyDetail', {
+                      defaultValue: '{{name}}: contradicts the delta rule “{{rule}}”',
+                      name: f.name || f.entity_id, rule: f.rule,
+                    })}
+              </li>
+            ))}
+          </ul>
+          {blocked && (
+            <button
+              data-testid="compose-override-regenerate"
+              className="mt-1.5 rounded bg-red-600 px-2.5 py-1 text-xs text-white"
+              onClick={onRegenerate}
+            >
+              {t('regenerate', { defaultValue: 'Regenerate' })}
+            </button>
+          )}
+        </div>
+      )}
       <div className="mb-1 font-medium">{t('critic', { defaultValue: 'Critic (advisory)' })}</div>
       {critic.error ? (
         <div className="text-neutral-500">{t('criticUnavailable', { defaultValue: 'Critic unavailable.' })}</div>

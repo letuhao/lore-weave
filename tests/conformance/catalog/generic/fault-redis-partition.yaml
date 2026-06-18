@@ -1,0 +1,10 @@
+id: fault-redis-partition
+description: "S6 (Battery D) — convergence drill on the PUBLISH path: Redis partitioned while the live publisher drains outbox->Redis. Sub-threshold partition -> publisher retries (no dead-letter) -> delivers on heal -> end-state == seed -> C3 + the bash history checker (no-loss/no-dup, events==XLEN) clean. Runs --bite: XDEL a delivered stream entry -> the history checker flags the loss the outbox-drain/post-quiesce check misses."
+invariant: I-publish-at-least-once
+kind: live-probe
+command: ["bash", "scripts/chaos/fault-redis-partition.sh", "--bite"]
+# Needs PG + Redis + toxiproxy + the prebuilt publisher binary (script exits 2 ->
+# notrun if absent). Bare runner → notrun.
+requires: ["foundation-stack"]
+skip_when: []
+fail_closed_on_setup_error: false

@@ -1,0 +1,71 @@
+# infra/prometheus/alerts/per-reality.yaml — L1.I.3 (RAID cycle 6)
+#
+# Per-reality alerts. WARNING (Slack notify) + PAGE (PagerDuty) tiers.
+# Routing per SR02 alert-routing matrix.
+#
+# Cardinality note: alerts may fire one alert per reality_id (cardinality
+# bounded by active reality count, currently V1 = 100). The
+# `metrics_cardinality_test.go` test pins the upper bound.
+
+groups:
+  - name: lw_per_reality_warning
+    rules:
+      - alert: LWRealityDBSizeWarning
+        expr: pg_database_size_bytes{db_class!="meta-postgres"} > 80 * 1024 * 1024 * 1024  # 80 GiB
+        for: 15m
+        labels:
+          severity: warning
+          team: world-platform
+          route: slack
+        annotations:
+          summary: 'Reality DB size approaching warning threshold'
+          description: 'reality_id={{ $labels.reality_id }} on shard_host={{ $labels.shard_host }} has DB size {{ $value | humanize1024 }}B (warn=80GiB).'
+          runbook: runbooks/provisioner/orphan_resolution.md
+
+      - alert: LWRealityDBConnectionsWarning
+        expr: pg_stat_database_numbackends{db_class!="meta-postgres"} > 50
+        for: 10m
+        labels:
+          severity: warning
+          team: world-platform
+          route: slack
+        annotations:
+          summary: 'Reality DB connection count high'
+          description: 'reality_id={{ $labels.reality_id }} has {{ $value }} backends; warning threshold = 50.'
+          runbook: runbooks/pgbouncer/connection_exhaustion.md
+
+  - name: lw_per_reality_page
+    rules:
+      - alert: LWRealityDBUnreachable
+        expr: up{job="per-reality-postgres"} == 0
+        for: 5m
+        labels:
+          severity: page
+          team: world-platform
+          route: pagerduty
+        annotations:
+          summary: 'Reality DB scrape down'
+          description: 'reality_id={{ $labels.reality_id }} scrape target is down for 5m. Check shard {{ $labels.shard_host }}.'
+          runbook: runbooks/provisioner/orphan_resolution.md
+
+      - alert: LWRealityDBSizeCritical
+        expr: pg_database_size_bytes{db_class!="meta-postgres"} > 95 * 1024 * 1024 * 1024  # 95 GiB
+        for: 5m
+        labels:
+          severity: page
+          team: world-platform
+          route: pagerduty
+        annotations:
+          summary: 'Reality DB size critical — provision migration needed'
+          description: 'reality_id={{ $labels.reality_id }} DB size {{ $value | humanize1024 }}B (page=95GiB).'
+
+      - alert: LWRealityDBHighRollbackRate
+        expr: rate(pg_stat_database_xact_rollback{db_class!="meta-postgres"}[5m]) > 10
+        for: 10m
+        labels:
+          severity: page
+          team: world-platform
+          route: pagerduty
+        annotations:
+          summary: 'Reality DB high transaction rollback rate'
+          description: 'reality_id={{ $labels.reality_id }} rollback rate {{ $value }}/s — suspect data-shape problem or migration bug.'

@@ -35,10 +35,38 @@ class Settings(BaseSettings):
     # Off by default; runs only when a translation.quality event carries the
     # source+translated text (the M7d-3 worker feed, itself off by default).
     online_translation_judge_enabled: bool = False
+
+    # LLM re-arch Phase 3 M1 — decoupled online judge (durable job-row +
+    # terminal-event consumer). The stuck-resume sweeper re-drives any judge row
+    # idle past the timeout (submit→persist gap, a lost terminal event, a consumer
+    # crash). interval<=0 disables the sweeper (the event path still works).
+    llm_judge_resume_sweep_interval_s: int = 60
+    llm_judge_resume_sweep_timeout_s: int = 600
+    llm_judge_resume_sweep_batch: int = 50
     # Q4b-feed — knowledge-service internal base URL. The eval-runner fetches
     # the run's items+source sample from here (GET /internal/extraction/runs/
     # {run_id}/sample) for opted-in runs, then feeds the online judge.
     knowledge_internal_url: str = "http://knowledge-service:8092"
+
+    # D-WIKI-M8-LEARNING-CONSUMER — collect the wiki feedback flywheel signal
+    # (wiki.corrected → corrections, wiki.suggestion_reviewed → quality_scores,
+    # target='wiki_article'). ON by default: the collect is cheap (DB writes from
+    # events already on the stream). The expensive LLM-judge scoring of wiki articles
+    # is a separate, off-by-default follow-up (D-WIKI-M8-EVAL-PLUS). Flip this off to
+    # stop recording the wiki signal entirely. NOTE: this is a collect on/off, not a
+    # pause — events arriving while it is off are acked WITHOUT a row (not buffered or
+    # replayable); flipping it back on resumes collection from new events only.
+    wiki_learning_enabled: bool = True
+
+    # D-WIKI-M8-EVAL-PLUS — wiki-article groundedness LLM-judge. OFF by default (an LLM
+    # call per article = cost). When ON (+ a model), the on-demand judge endpoint
+    # (POST /internal/learning/wiki/judge, driven by `run_wiki_eval --judge`) scores
+    # groundedness via provider-registry. An explicit model in the request opts in even
+    # when the global flag is off (the human-controlled audit plan).
+    wiki_llm_judge_enabled: bool = False
+    wiki_llm_judge_model_ref: str = ""           # judge model UUID (BYOK user_model)
+    wiki_llm_judge_model_source: str = "user_model"
+    wiki_llm_judge_user_id: str = ""             # fallback owner when an article carries none
 
     class Config:
         env_file = ".env"

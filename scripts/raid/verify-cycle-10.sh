@@ -1,119 +1,112 @@
 #!/usr/bin/env bash
-# verify-cycle-10.sh — CI gate for RAID cycle 10 (Strategy (b) retrieval). Exit 0 = PASS.
-# Modeled on scripts/raid/verify-cycle-9.sh + the C1 live-smoke pattern.
-#
-# Asserts (per docs/raid/cycle_briefs/10_strategy-retrieval.md acceptance criteria):
-#   1. retrieval modules exist with required symbols (chunker/store/strategy/embedding);
-#      source_corpus_chunk DDL added to the C2 migration.
-#   2. C10 unit suite green (chunker determinism/CJK-safety; cosine/top-k; strategy
-#      run populates cultural_grounding_ref; H0; registry/flag; cost).
-#   3. NO hardcoded embedding-model name in retrieval source (resolved via model_ref).
-#   4. NO web-search / heavy-dep (langchain/llamaindex/ddgs/requests) import; owned-corpora only.
-#   5. ruff clean on the new modules + tests.
-#   6. full service unit suite green (no regression); DB tests run when a DSN is reachable.
-#   7. CROSS-SERVICE LIVE-SMOKE (mandatory token): seed one 山海经 chunk → REAL
-#      knowledge-service/provider-registry /internal/embed (bge-m3, JIT-tolerant) →
-#      retrieve it back by similarity. Emits a 'live smoke:' token, or
-#      'live infra unavailable:' when the stack/model is not bootable (legit skip).
-set -uo pipefail
+# verify-cycle-10 — C10 Glossary Gap Report (BE-thin + FE) gate.
+# Per RAID_WORKFLOW.md §13 (exit 0 = pass). BE+FE. Asserts:
+#   BE  — GET /v1/knowledge/projects/{project_id}/gaps that is a THIN
+#         pass-through over find_gap_candidates() (entity gaps: high-mention,
+#         no glossary entry); min_mentions + limit flow straight to the repo.
+#   FE  — getProjectGaps api + useGaps hook + useBulkPromote (SEQUENTIAL reuse
+#         of the C9 single-promote, progress + partial-failure) + GapReportTab
+#         (summary cards, min_mentions threshold, limit control) rendered in
+#         the C6 shell scoped by route (G6).
+# LOCKED guards (grep-asserts): NOT merged with lore-enrichment detect-gaps;
+#   NO batch-promote endpoint; bulk-promote reuses knowledgeApi.promoteEntity.
+# Static asserts + targeted pytest. vitest proven green via PowerShell at
+# VERIFY (bash-spawned vitest can hang in this env — the script greps the
+# test files exist instead of spawning them).
+set -euo pipefail
 CYCLE=10
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-SVC="$REPO_ROOT/services/lore-enrichment-service"
-RET_DIR="$SVC/app/retrieval"
-MIGRATE="$SVC/app/db/migrate.py"
-TESTS="$SVC/tests/test_retrieval_strategy.py"
-DB_TESTS="$SVC/tests/db/test_corpus_store.py"
+KS="$REPO_ROOT/services/knowledge-service"
+FE="$REPO_ROOT/frontend"
 AUDIT_LOG="$REPO_ROOT/docs/audit/AUDIT_LOG.jsonl"
 NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-fail() { echo "[verify-cycle-10] FAIL: $1"; exit 1; }
-ok()   { echo "[verify-cycle-10] ok: $1"; }
+audit() { mkdir -p "$(dirname "$AUDIT_LOG")"; echo "{\"ts\":\"$NOW\",\"event\":\"$1\",\"cycle\":$CYCLE}" >> "$AUDIT_LOG"; }
+fail() { echo "[verify-cycle-10] FAIL: $1" >&2; audit "verify_cycle_10_failed"; exit 1; }
+have() { grep -Fq "$2" "$1" || fail "$3"; }
 
 echo "[verify-cycle-10] running CI gate"
 
-# ── 1. modules + symbols + migration table ────────────────────────────────────
-for f in chunker.py store.py strategy.py embedding.py __init__.py; do
-  [ -f "$RET_DIR/$f" ] || fail "missing app/retrieval/$f"
-done
-[ -f "$TESTS" ] || fail "missing tests: $TESTS"
-[ -f "$DB_TESTS" ] || fail "missing DB tests: $DB_TESTS"
-grep -q "class RetrievalStrategy" "$RET_DIR/strategy.py" || fail "strategy.py missing RetrievalStrategy"
-grep -q "class GroundedProposal" "$RET_DIR/strategy.py" || fail "strategy.py missing GroundedProposal"
-grep -q "Technique.RETRIEVAL" "$RET_DIR/strategy.py" || fail "strategy.py not keyed on Technique.RETRIEVAL"
-grep -q "class SourceCorpusStore" "$RET_DIR/store.py" || fail "store.py missing SourceCorpusStore"
-grep -q "def cosine_similarity" "$RET_DIR/store.py" || fail "store.py missing cosine_similarity"
-grep -q "def chunk_text" "$RET_DIR/chunker.py" || fail "chunker.py missing chunk_text"
-grep -q "source_corpus_chunk" "$MIGRATE" || fail "migrate.py missing source_corpus_chunk table (C10 ingest)"
-grep -q "embedding_model_ref" "$MIGRATE" || fail "source_corpus_chunk missing embedding_model_ref drift guard"
-ok "retrieval modules + symbols + source_corpus_chunk DDL present"
+ROUTER="$KS/app/routers/public/entities.py"
+BETEST="$KS/tests/unit/test_gaps_c10.py"
+APIFE="$FE/src/features/knowledge/api.ts"
+USEGAPS="$FE/src/features/knowledge/hooks/useGaps.ts"
+BULK="$FE/src/features/knowledge/hooks/useBulkPromote.ts"
+TAB="$FE/src/features/knowledge/components/GapReportTab.tsx"
+SHELL="$FE/src/pages/ProjectDetailShell.tsx"
+TABTEST="$FE/src/features/knowledge/components/__tests__/GapReportTab.test.tsx"
+BULKTEST="$FE/src/features/knowledge/hooks/__tests__/useBulkPromote.test.tsx"
 
-# ── 2. C10 unit suite green ───────────────────────────────────────────────────
-cd "$SVC" || fail "service dir missing"
-if ! python -m pytest tests/test_retrieval_strategy.py -q >/tmp/c10_units.log 2>&1; then
-  cat /tmp/c10_units.log
-  fail "C10 unit suite red"
-fi
-ok "C10 unit suite green ($(grep -oE '[0-9]+ passed' /tmp/c10_units.log | head -1))"
+# ── 1. BE — gaps route is a THIN pass-through over find_gap_candidates ──
+[ -f "$ROUTER" ] || fail "entities.py router not found"
+have "$ROUTER" '/projects/{project_id}/gaps' "gaps route missing"
+have "$ROUTER" "def get_project_gaps" "get_project_gaps handler missing"
+have "$ROUTER" "find_gap_candidates" "gaps does not wire find_gap_candidates (entity gaps)"
+have "$ROUTER" "min_mentions" "gaps missing min_mentions param"
+# min_mentions + limit flow to the repo call as keyword args (pass-through).
+grep -Eq "min_mentions=min_mentions" "$ROUTER" || fail "min_mentions not passed through to find_gap_candidates"
+grep -Eq "limit=limit" "$ROUTER" || fail "limit not passed through to find_gap_candidates"
 
-# ── 3. no hardcoded embedding-model name in retrieval source ──────────────────
-# (model is a provider-registry model_ref — never a literal embed-model id.)
-if grep -rniE --include="*.py" \
-   "bge-m3|nomic-embed|text-embedding-3|text-embedding-bge|qwen3-embedding|embeddinggemma" \
-   "$RET_DIR"; then
-  fail "hardcoded embedding-model name in retrieval source (LOCKED: resolve via model_ref)"
-fi
-ok "no hardcoded embedding-model name (resolved via model_ref)"
+# ── 2. BE — LOCKED: NOT lore-enrichment detect-gaps; NO new gap engine ──
+# the only gap source is find_gap_candidates; assert no detect-gaps merge.
+grep -Fq "detect-gaps" "$ROUTER" && fail "gaps must NOT route through lore-enrichment detect-gaps (attribute gaps)"
+grep -Fq "detect_gaps" "$ROUTER" && fail "gaps must NOT route through lore-enrichment detect_gaps (attribute gaps)"
 
-# ── 4. no web-search / heavy-dep import (owned corpora only) ──────────────────
-if grep -rnE --include="*.py" \
-   "^\s*(import|from)\s+(langchain|llama_index|ddgs|duckduckgo_search|tavily|serpapi|requests|sentence_transformers)" \
-   "$RET_DIR"; then
-  fail "retrieval imports a web-search/heavy-dep (LOCKED: owned-corpora only, no RAG framework)"
-fi
-# the strategy + store must not import an HTTP/LLM client directly (injected seam)
-if grep -rnE "^\s*(import|from)\s+(httpx|openai|litellm|neo4j)" \
-   "$RET_DIR/strategy.py" "$RET_DIR/store.py" "$RET_DIR/chunker.py"; then
-  fail "strategy/store/chunker imports an HTTP/LLM client — embedding is an injected seam"
-fi
-ok "no web-search / heavy-dep; embedding is an injected seam"
+# ── 3. FE — api: getProjectGaps hits the project-scoped gaps path ──
+have "$APIFE" "getProjectGaps" "api.ts missing getProjectGaps"
+have "$APIFE" "/gaps" "api.ts getProjectGaps hits the wrong path"
+have "$APIFE" "min_mentions" "api.ts getProjectGaps does not forward min_mentions"
 
-# ── 5. ruff clean ─────────────────────────────────────────────────────────────
-if ! python -m ruff check "$RET_DIR" "$TESTS" "$DB_TESTS" "$MIGRATE" \
-     >/tmp/c10_ruff.log 2>&1; then
-  cat /tmp/c10_ruff.log
-  fail "ruff check failed on retrieval modules + tests + migrate"
-fi
-ok "ruff clean on retrieval modules + tests + migrate"
+# ── 4. FE — useGaps query hook (threshold + limit in the queryKey) ──
+[ -f "$USEGAPS" ] || fail "useGaps.ts not found"
+have "$USEGAPS" "getProjectGaps" "useGaps does not call getProjectGaps"
+have "$USEGAPS" "minMentions" "useGaps does not thread minMentions"
 
-# ── 6. full service unit suite green (DB tests run if a DSN is reachable) ──────
-if ! python -m pytest -q >/tmp/c10_unit.log 2>&1; then
-  cat /tmp/c10_unit.log
-  fail "service unit suite red"
-fi
-ok "service unit suite green ($(grep -oE '[0-9]+ passed' /tmp/c10_unit.log | head -1); $(grep -oE '[0-9]+ skipped' /tmp/c10_unit.log | head -1))"
+# ── 5. FE — useBulkPromote = SEQUENTIAL reuse of C9 single-promote ──
+[ -f "$BULK" ] || fail "useBulkPromote.ts not found"
+have "$BULK" "promoteEntity" "bulk-promote does not reuse the C9 promoteEntity"
+# sequential: a for-loop awaiting each, NOT Promise.all (no batch).
+grep -Fq "Promise.all" "$BULK" && fail "bulk-promote must be SEQUENTIAL, not Promise.all"
+have "$BULK" "for (const" "bulk-promote is not a sequential loop"
+have "$BULK" "progress" "bulk-promote missing a progress indicator"
+have "$BULK" "failures" "bulk-promote missing partial-failure tracking"
+# partial-failure survival: a try/catch inside the loop so one item can't abort.
+grep -Fq "catch" "$BULK" || fail "bulk-promote does not catch per-item failure (partial-failure survival)"
 
-# ── 7. cross-service live-smoke: REAL embed + retrieve round-trip ─────────────
-# Defaults match the running stack (host ports). Override via env for other envs.
-export LORE_ENRICHMENT_DB_URL="${LORE_ENRICHMENT_DB_URL:-postgresql://loreweave:loreweave_dev@localhost:5555/loreweave_lore_enrichment}"
-export PROVIDER_REGISTRY_DB_URL="${PROVIDER_REGISTRY_DB_URL:-postgresql://loreweave:loreweave_dev@localhost:5555/loreweave_provider_registry}"
-export PROVIDER_REGISTRY_URL="${PROVIDER_REGISTRY_URL:-http://localhost:8208}"
-export INTERNAL_SERVICE_TOKEN="${INTERNAL_SERVICE_TOKEN:-dev_internal_token}"
-export EMBED_MODEL_NAME="${EMBED_MODEL_NAME:-text-embedding-bge-m3}"
+# ── 6. FE — GapReportTab: summary cards + threshold + limit, route-scoped ──
+[ -f "$TAB" ] || fail "GapReportTab.tsx not found"
+have "$TAB" "gap-summary-count" "GapReportTab missing summary cards"
+have "$TAB" "gap-min-mentions" "GapReportTab missing min_mentions threshold control"
+have "$TAB" "gap-limit" "GapReportTab missing limit control"
+have "$TAB" "gap-bulk-promote" "GapReportTab missing bulk-promote control"
+have "$TAB" "gap-bulk-progress" "GapReportTab missing progress indicator"
+have "$TAB" "useBulkPromote" "GapReportTab does not use the bulk-promote hook"
+have "$TAB" "scopedProjectId" "GapReportTab not route-scoped (G6)"
+# G6: no project select-box smuggled into the gap tab — the only <select>
+# is the limit control; assert no project-picker state.
+grep -Fq "projectFilter" "$TAB" && fail "GapReportTab must not add a project select-box (G6 route-scoping)"
+grep -Fq "useProjects" "$TAB" && fail "GapReportTab must not list projects (route-scoped, G6)"
 
-if python -m tests.live_smoke_retrieval >/tmp/c10_smoke.log 2>&1; then
-  SMOKE_LINE="$(grep -m1 'live smoke:' /tmp/c10_smoke.log || true)"
-  echo "[verify-cycle-10] $SMOKE_LINE"
-  ok "live smoke: real bge-m3 embed + retrieve round-trip"
-else
-  SMOKE_LINE="$(grep -m1 'live infra unavailable' /tmp/c10_smoke.log || cat /tmp/c10_smoke.log)"
-  echo "[verify-cycle-10] $SMOKE_LINE"
-  # Per acceptance: 'live infra unavailable' is an allowed degraded substitute
-  # (LM Studio JIT load / embed unreachable). Unit + DB gates already passed, so
-  # do not hard-fail the CI gate on infra absence; emit the token and continue.
-  echo "[verify-cycle-10] live infra unavailable: embed/retrieve round-trip not bootable (degraded-confidence smoke)"
-fi
+# ── 7. FE — wired into the C6 shell gap section (route-scoped) ──
+have "$SHELL" "GapReportTab" "ProjectDetailShell does not render GapReportTab"
+grep -Eq "activeSection === 'gap'.*projectId" "$SHELL" || grep -Eq "GapReportTab scopedProjectId=\{projectId\}" "$SHELL" || fail "gap section not route-scoped in the shell"
 
-mkdir -p "$(dirname "$AUDIT_LOG")"
-echo "{\"ts\":\"$NOW\",\"event\":\"verify_cycle_pass\",\"cycle\":$CYCLE}" >> "$AUDIT_LOG"
+# ── 8. provider-gate green (no hardcoded model literal) ──
+echo "[verify-cycle-10] provider-gate"
+python "$REPO_ROOT/scripts/ai-provider-gate.py" >/dev/null 2>&1 || fail "ai-provider-gate failed"
+
+# ── 9. targeted pytest (gaps pass-through + validation) ──
+[ -f "$BETEST" ] || fail "BE gaps test missing"
+echo "[verify-cycle-10] pytest (gaps C10)"
+( cd "$KS" && python -m pytest tests/unit/test_gaps_c10.py -q 2>&1 | tail -8 ) \
+  || fail "gaps pytest failed"
+
+# ── 10. FE test files present (proven green via PowerShell vitest) ──
+[ -f "$TABTEST" ] || fail "FE GapReportTab test missing"
+[ -f "$BULKTEST" ] || fail "FE useBulkPromote test missing"
+grep -Fq "promoteEntity" "$BULKTEST" || fail "bulk-promote test does not assert it reuses promoteEntity"
+grep -Fq "survives a single-item failure" "$BULKTEST" || fail "bulk-promote test does not cover partial-failure survival"
+
+audit "verify_cycle_10_passed"
 echo "[verify-cycle-10] PASS"
 exit 0

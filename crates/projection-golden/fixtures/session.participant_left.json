@@ -1,0 +1,23 @@
+{
+  "_spec": "session.participant_left → UPDATE session_participants.left_at=env.occurred_at, keyed session_id+participant_type+participant_id (SessionParticipantsProjection).",
+  "envelope": {
+    "event_id": "00000000-0000-0000-0000-000000000304",
+    "event_type": "session.participant_left",
+    "event_version": 1,
+    "aggregate_id": "sess-1",
+    "aggregate_type": "session",
+    "aggregate_version": 4,
+    "reality_id": "22222222-2222-2222-2222-222222222222",
+    "occurred_at": "2026-01-01T00:00:06.000000Z",
+    "recorded_at": "2026-01-01T00:00:06.000000Z",
+    "payload": { "session_id": "sess-1", "participant_type": "pc", "participant_id": "pc-1" }
+  },
+  "expected_updates": [
+    { "Update": {
+      "table": "session_participants",
+      "pk": { "session_id": "sess-1", "participant_type": "pc", "participant_id": "pc-1" },
+      "fields": { "left_at": "2026-01-01T00:00:06.000000Z" },
+      "meta": { "event_id": "00000000-0000-0000-0000-000000000304", "aggregate_version": 4, "applied_at": "2026-01-01T00:00:06.000000Z" }
+    }}
+  ]
+}

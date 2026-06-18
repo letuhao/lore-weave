@@ -10,14 +10,24 @@ function LocationProbe() {
 
 const searchMock = vi.fn();
 const hybridMock = vi.fn();
+const indexDraftsMock = vi.fn();
 vi.mock('../../api', () => ({
   rawSearchApi: {
     search: (...a: unknown[]) => searchMock(...a),
     searchHybrid: (...a: unknown[]) => hybridMock(...a),
+    indexDrafts: (...a: unknown[]) => indexDraftsMock(...a),
   },
 }));
 vi.mock('@/auth', () => ({
   useAuth: () => ({ accessToken: 'tok', user: { user_id: 'u1' } }),
+}));
+// D-RAWSEARCH-CANON-WIRING — ownership drives the owner-only surface/index UI.
+// Mutable owner id so a test can simulate a collaborator (non-owner).
+let _ownerId = 'u1';
+vi.mock('@/features/books/api', () => ({
+  booksApi: {
+    getBook: () => Promise.resolve({ owner_user_id: _ownerId }),
+  },
 }));
 
 import { RawSearchPanel } from '../RawSearchPanel';
@@ -47,8 +57,11 @@ const _canon = {
 beforeEach(() => {
   searchMock.mockReset();
   hybridMock.mockReset();
+  indexDraftsMock.mockReset();
+  _ownerId = 'u1';
   searchMock.mockResolvedValue({ query: '', mode: 'lexical', results: [] });
   hybridMock.mockResolvedValue({ query: '', mode: 'hybrid', results: [] });
+  indexDraftsMock.mockResolvedValue({ indexed: 2, skipped: 0, chapters: 2 });
 });
 
 describe('RawSearchPanel', () => {
@@ -208,5 +221,45 @@ describe('RawSearchPanel', () => {
     renderPanel();
     fireEvent.change(screen.getByTestId('raw-search-input'), { target: { value: 'x' } });
     await waitFor(() => expect(screen.getByTestId('raw-search-error')).toBeInTheDocument());
+  });
+
+  // ── D-RAWSEARCH-CANON-WIRING: owner-only surface + draft indexing ──────
+
+  it('owner sees the surface toggle and "Incl. drafts" threads surface=all', async () => {
+    renderPanel();
+    // owner UI appears once the book-owner query resolves.
+    await waitFor(() => expect(screen.getByTestId('raw-search-surface-all')).toBeInTheDocument());
+    fireEvent.change(screen.getByTestId('raw-search-input'), { target: { value: 'x' } });
+    await waitFor(() => expect(hybridMock).toHaveBeenCalled());
+    fireEvent.click(screen.getByTestId('raw-search-surface-all'));
+    await waitFor(() =>
+      expect(hybridMock).toHaveBeenCalledWith(
+        'book-1', expect.objectContaining({ surface: 'all' }), 'tok',
+      ),
+    );
+  });
+
+  it('clicking "Index drafts" calls the endpoint and shows the count', async () => {
+    renderPanel();
+    await waitFor(() => expect(screen.getByTestId('raw-search-index-drafts')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('raw-search-index-drafts'));
+    await waitFor(() => expect(indexDraftsMock).toHaveBeenCalledWith('book-1', 'tok'));
+    await waitFor(() =>
+      expect(screen.getByTestId('raw-search-index-drafts-result')).toBeInTheDocument(),
+    );
+  });
+
+  it('a collaborator (non-owner) sees neither the surface toggle nor index-drafts', async () => {
+    _ownerId = 'someone-else';
+    renderPanel();
+    // Let the owner query settle, then assert the owner-only controls are absent.
+    fireEvent.change(screen.getByTestId('raw-search-input'), { target: { value: 'x' } });
+    await waitFor(() => expect(hybridMock).toHaveBeenCalled());
+    expect(screen.queryByTestId('raw-search-surface-all')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('raw-search-index-drafts')).not.toBeInTheDocument();
+    // …and a non-owner never sends surface=all.
+    expect(hybridMock).toHaveBeenCalledWith(
+      'book-1', expect.objectContaining({ surface: 'canon' }), 'tok',
+    );
   });
 });

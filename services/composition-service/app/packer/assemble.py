@@ -28,6 +28,20 @@ def assert_project_scoped(project_id: UUID | None) -> None:
         raise ValueError("A1 isolation: project_id is required on every lens call")
 
 
+def assert_derivative_scoped(project_id: UUID | None, source_project_id: UUID | None) -> None:
+    """C25 GUARD — a DERIVATIVE pack grounds on TWO partitions (G2): the delta
+    (`project_id`, the derivative's own project) and the base (`source_project_id`,
+    the source's project, read ≤ branch_point). BOTH must be present+non-null — a
+    null on either would widen the corresponding knowledge read to ALL of the
+    user's projects (the cross-project grounding leak C23's NOT-NULL guard exists
+    for). Raises ValueError when either is None (refuse to proceed)."""
+    if project_id is None or source_project_id is None:
+        raise ValueError(
+            "C25 derivative scoping: both the delta project_id and the base "
+            "source_project_id are required for a derivative pack",
+        )
+
+
 def build_segments(bundle: LensBundle, *, guide: str = "") -> list[Segment]:
     """Flatten a LensBundle (+ author guide) into prioritised, sanitised
     Segments for the budget pass."""
@@ -35,6 +49,16 @@ def build_segments(bundle: LensBundle, *, guide: str = "") -> list[Segment]:
 
     for r in bundle.canon:
         segs.append(Segment("canon", r.text, B.PRIO_CANON, protected=True))
+
+    # C25 — added canon-rule scope from entity overrides (M0 dị bản override
+    # scope = entity fields + added canon rules). These are the derivative's
+    # divergence constraints; render them in the <canon> block like inherited
+    # rules. Sanitised: the rule text is author-authored but capped/neutralised
+    # for delimiter safety, same posture as <lore>/<guide>.
+    for rule in bundle.extra_canon:
+        txt = sanitize_lore(rule)
+        if txt:
+            segs.append(Segment("canon", txt, B.PRIO_CANON, protected=True))
 
     for p in bundle.present:
         rel = ("; ".join(p.get("relations") or [])).strip()

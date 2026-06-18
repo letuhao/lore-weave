@@ -61,6 +61,88 @@ async def test_progress_counts_each_stage_by_real_status(pool):
     assert kn_in_progress == 1  # only ch5 knowledge is pending
 
 
+async def test_list_progress_done_counts_translation_settled(pool):
+    # #2 polish — list_campaigns' correlated subquery counts translation done+skipped.
+    owner = await pool.fetchval(
+        "INSERT INTO campaigns (owner_user_id, book_id, name, status) "
+        "VALUES ($1,$2,'list-test','running') RETURNING owner_user_id",
+        __import__('uuid').uuid4(), __import__('uuid').uuid4(),
+    )
+    cid = await pool.fetchval(
+        "SELECT campaign_id FROM campaigns WHERE owner_user_id=$1", owner)
+    await _chapter(pool, cid, 1, kn='done', tr='done', ev='done')      # counts
+    await _chapter(pool, cid, 2, kn='done', tr='skipped', ev='pending')  # counts (skipped)
+    await _chapter(pool, cid, 3, kn='done', tr='dispatched', ev='pending')  # not yet
+    rows = await repo.list_campaigns(pool, owner)
+    assert len(rows) == 1
+    assert rows[0]["progress_done"] == 2
+
+
+async def test_chapters_page_attention_filter_and_paging(pool):
+    # D-S6-CHAPTER-PAGING — attention filter excludes fully-settled rows; total +
+    # LIMIT/OFFSET behave.
+    cid = await _make_campaign(pool)
+    await _chapter(pool, cid, 1, kn='done', tr='done', ev='done')        # settled → excluded
+    await _chapter(pool, cid, 2, kn='done', tr='failed', ev='pending')   # attention
+    await _chapter(pool, cid, 3, kn='failed', tr='pending', ev='pending')  # attention
+    await _chapter(pool, cid, 4, kn='done', tr='dispatched', ev='pending')  # attention (in-progress)
+
+    rows, total = await repo.get_campaign_chapters_page(pool, cid, status='attention', limit=10, offset=0)
+    assert total == 3 and len(rows) == 3
+    assert [r["chapter_sort"] for r in rows] == [2, 3, 4]
+
+    # 'all' includes the settled one
+    _, total_all = await repo.get_campaign_chapters_page(pool, cid, status='all', limit=10, offset=0)
+    assert total_all == 4
+
+    # paging: limit 2 offset 1 over the attention set → chapters 3, 4
+    page2, total2 = await repo.get_campaign_chapters_page(pool, cid, status='attention', limit=2, offset=1)
+    assert total2 == 3 and [r["chapter_sort"] for r in page2] == [3, 4]
+
+
+async def test_chapters_page_inflight_filter(pool):
+    # D-FACTORY-INFLIGHT-PANEL — 'inflight' returns ONLY rows with a stage currently
+    # dispatched (knowledge OR translation); failed/pending/settled are excluded.
+    cid = await _make_campaign(pool)
+    await _chapter(pool, cid, 1, kn='done', tr='done', ev='done')          # settled
+    await _chapter(pool, cid, 2, kn='dispatched', tr='pending', ev='pending')  # in-flight (kn)
+    await _chapter(pool, cid, 3, kn='done', tr='dispatched', ev='pending')     # in-flight (tr)
+    await _chapter(pool, cid, 4, kn='failed', tr='pending', ev='pending')   # attention, NOT in-flight
+
+    rows, total = await repo.get_campaign_chapters_page(pool, cid, status='inflight', limit=10, offset=0)
+    assert total == 2 and [r["chapter_sort"] for r in rows] == [2, 3]
+    # the failed row is in 'attention' but not 'inflight'
+    att, att_total = await repo.get_campaign_chapters_page(pool, cid, status='attention', limit=10, offset=0)
+    assert att_total == 3 and 4 in [r["chapter_sort"] for r in att]
+
+
+async def test_update_campaign_fields_partial_and_scoped(pool):
+    # D-FACTORY-SWITCH-MODEL-RESUME — update_campaign_fields sets ONLY the given
+    # columns (leaves others intact) and is owner-scoped.
+    owner = uuid4()
+    cid = await pool.fetchval(
+        "INSERT INTO campaigns (owner_user_id, book_id, name, status, "
+        "translation_model_source, translation_model_ref, budget_usd) "
+        "VALUES ($1,$2,'switch-test','paused','user_model',$3,$4) RETURNING campaign_id",
+        owner, uuid4(), uuid4(), __import__('decimal').Decimal("10"),
+    )
+    new_model = uuid4()
+    # switch only the translation model — budget must be untouched
+    row = await repo.update_campaign_fields(
+        pool, cid, owner, {"translation_model_ref": new_model})
+    assert row is not None
+    assert row["translation_model_ref"] == new_model
+    assert row["budget_usd"] == __import__('decimal').Decimal("10")  # left intact
+
+    # wrong owner → None (not updated)
+    assert await repo.update_campaign_fields(pool, cid, uuid4(), {"translation_model_ref": uuid4()}) is None
+    # no valid field → None
+    assert await repo.update_campaign_fields(pool, cid, owner, {"bogus": 1}) is None
+    # the wrong-owner attempt did not change the model
+    check = await pool.fetchval("SELECT translation_model_ref FROM campaigns WHERE campaign_id=$1", cid)
+    assert check == new_model
+
+
 async def test_progress_scopes_to_the_campaign(pool):
     a = await _make_campaign(pool)
     b = await _make_campaign(pool)

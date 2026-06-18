@@ -1,0 +1,57 @@
+# transitions.yaml — per-resource state-machine graphs.
+# Validated at service startup by transitions_validator.go (fail-fast).
+#
+# Cycle 2 (L1.B) seeds the `reality` resource (10 states per L1A §1.1 + R09).
+# Additional resources (incident, deploy) are added in their respective cycles.
+
+version: 1
+resources:
+  reality:
+    table: reality_registry
+    state_column: status
+    initial_states:
+      - provisioning
+    terminal_states:
+      - dropped
+    states:
+      - provisioning
+      - seeding
+      - active
+      - pending_close
+      - frozen
+      - migrating
+      - archived
+      - archived_verified
+      - soft_deleted
+      - dropped
+    transitions:
+      # Bootstrap
+      - from: provisioning
+        to: [seeding, dropped]
+      - from: seeding
+        to: [active, dropped]
+
+      # Normal operating loop
+      - from: active
+        to: [pending_close, migrating]
+      - from: pending_close
+        to: [active, frozen]
+      - from: frozen
+        to: [archived]
+      - from: migrating
+        to: [active, frozen]
+
+      # Close + archive + drop ladder (R09)
+      - from: archived
+        to: [archived_verified]
+      - from: archived_verified
+        to: [soft_deleted]
+      - from: soft_deleted
+        to: [dropped]
+    mutual_exclusions:
+      # Per L1.B §4: "Reject if resource is in mutually-exclusive lifecycle op"
+      # Migration in flight blocks close attempt; world-service must abort
+      # the migration first.
+      - if_status: migrating
+        forbidden_transitions:
+          - pending_close

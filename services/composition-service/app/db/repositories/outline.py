@@ -19,7 +19,7 @@ from app.db.models import OutlineNode
 from app.db.repositories import (
     AlreadyPlannedError, ReferenceViolationError, VersionMismatchError, outbox,
 )
-from app.db.repositories.rank import rank_after
+from app.db.repositories.rank import rank_after, rank_between
 
 _SELECT_COLS = """
   id, user_id, project_id, parent_id, kind, rank, title, pov_entity_id,
@@ -665,3 +665,144 @@ class OutlineRepo:
             rows = await c.fetch(query, user_id, node_id)
         target = next((r for r in rows if r["id"] == node_id), None)
         return _row_to_node(target) if target else None
+
+    async def restore_node(self, user_id: UUID, node_id: UUID) -> OutlineNode | None:
+        """Un-archive a node — the inverse of `archive_node` (T1.1b restore). Two
+        recursive walks over ARCHIVED rows only:
+          - `subtree` walks parent_id DOWN → restores the node's archived
+            descendants (symmetric with the archive cascade);
+          - `ancestors` walks parent_id UP → restores the archived ancestor chain
+            so the restored node always reconnects to a visible root (else a node
+            whose parent is still archived would orphan out of the tree).
+        Sibling branches stay archived (only the direct ancestor chain is walked).
+        Returns the target (restored) or None if it doesn't exist / isn't ours /
+        wasn't archived. UNION (not UNION ALL) so a malformed parent_id cycle
+        terminates instead of hanging (same backstop as archive_node)."""
+        query = f"""
+        WITH RECURSIVE ancestors AS (
+          SELECT id, parent_id FROM outline_node
+          WHERE user_id = $1 AND id = $2 AND is_archived
+          UNION
+          SELECT p.id, p.parent_id FROM outline_node p
+          JOIN ancestors a ON p.id = a.parent_id
+          WHERE p.user_id = $1 AND p.is_archived
+        ),
+        subtree AS (
+          SELECT id FROM outline_node
+          WHERE user_id = $1 AND id = $2 AND is_archived
+          UNION
+          SELECT n.id FROM outline_node n
+          JOIN subtree s ON n.parent_id = s.id
+          WHERE n.user_id = $1 AND n.is_archived
+        )
+        UPDATE outline_node
+        SET is_archived = false, updated_at = now()
+        WHERE user_id = $1
+          AND (id IN (SELECT id FROM ancestors) OR id IN (SELECT id FROM subtree))
+        RETURNING {_SELECT_COLS}
+        """
+        async with self._pool.acquire() as c:
+            rows = await c.fetch(query, user_id, node_id)
+        target = next((r for r in rows if r["id"] == node_id), None)
+        return _row_to_node(target) if target else None
+
+    async def _renumber_scene_story_order(
+        self, c: asyncpg.Connection, user_id: UUID, parent_id: UUID | None,
+    ) -> None:
+        """Dense-renumber `story_order` (0..n-1, by fractional rank) for the
+        SCENE children of `parent_id` (T1.1c reorder). Keeps the reading axis
+        (story_order) in lockstep with the tree's `rank` order, so the FE's
+        story_order-first sort reflects a drag with no client renumber. No-op for
+        non-scene siblings (arcs/chapters have NULL story_order). NOT version-
+        bumped — story_order is a system-maintained ordinal, not a user field."""
+        await c.execute(
+            """
+            WITH ordered AS (
+              SELECT id, (row_number() OVER (ORDER BY rank COLLATE "C", id) - 1) AS so
+              FROM outline_node
+              WHERE user_id = $1 AND parent_id IS NOT DISTINCT FROM $2
+                AND kind = 'scene' AND NOT is_archived
+            )
+            UPDATE outline_node n
+            SET story_order = o.so, updated_at = now()
+            FROM ordered o
+            WHERE n.id = o.id AND n.user_id = $1 AND n.story_order IS DISTINCT FROM o.so
+            """,
+            user_id, parent_id,
+        )
+
+    async def reorder_node(
+        self,
+        user_id: UUID,
+        node_id: UUID,
+        *,
+        new_parent_id: UUID | None,
+        after_id: UUID | None,
+        expected_version: int | None = None,
+    ) -> OutlineNode | None:
+        """T1.1c drag-reorder + reparent. Places `node_id` under `new_parent_id`
+        directly AFTER `after_id` (None = first child) by computing a fractional
+        `rank` strictly between `after_id` and the next sibling — a single-row
+        rank write, never a full renumber. Reparenting a SCENE across chapters
+        also inherits the new chapter's `chapter_id` (the DB CHECK requires a
+        scene to carry one). Finally dense-renumbers `story_order` for the scene
+        siblings of the affected parent(s). All in ONE transaction so a stale
+        If-Match (412) or a cycle (400) rolls the whole move back.
+
+        Returns the moved node (re-read, reflecting rank + parent + renumbered
+        story_order), None if it doesn't exist (404). Raises VersionMismatchError
+        (412) / ReferenceViolationError (cycle/ownership/bad after_id → 400)."""
+        async with self._pool.acquire() as c:
+            async with c.transaction():
+                node = await self.get_node(user_id, node_id, conn=c)
+                if node is None:
+                    return None
+                if new_parent_id is not None:
+                    # cycle / cross-scope guard (reused from update_node's reparent)
+                    await self._validate_reparent(c, user_id, node_id, new_parent_id)
+
+                # Siblings under the destination parent, excluding the moved node,
+                # in canonical fractional-rank (byte) order.
+                siblings = await c.fetch(
+                    """
+                    SELECT id, rank FROM outline_node
+                    WHERE user_id = $1 AND parent_id IS NOT DISTINCT FROM $2
+                      AND id <> $3 AND NOT is_archived
+                    ORDER BY rank COLLATE "C", id
+                    """,
+                    user_id, new_parent_id, node_id,
+                )
+                if after_id is None:
+                    lo, hi = None, (siblings[0]["rank"] if siblings else None)
+                else:
+                    idx = next((i for i, s in enumerate(siblings) if s["id"] == after_id), None)
+                    if idx is None:
+                        raise ReferenceViolationError(
+                            f"after_id {after_id} is not a sibling under the new parent"
+                        )
+                    lo = siblings[idx]["rank"]
+                    hi = siblings[idx + 1]["rank"] if idx + 1 < len(siblings) else None
+                new_rank = rank_between(lo, hi)
+
+                patch: dict[str, Any] = {"rank": new_rank}
+                if new_parent_id != node.parent_id:
+                    patch["parent_id"] = new_parent_id
+                    if node.kind == "scene" and new_parent_id is not None:
+                        np = await c.fetchrow(
+                            "SELECT chapter_id FROM outline_node WHERE user_id = $1 AND id = $2",
+                            user_id, new_parent_id,
+                        )
+                        if np is not None and np["chapter_id"] is not None:
+                            patch["chapter_id"] = np["chapter_id"]
+
+                # update_node owns the If-Match/version discipline + the reparent
+                # revalidation; a 412 raises here → the Tx rolls back (no renumber).
+                await self.update_node(
+                    user_id, node_id, patch, expected_version=expected_version, conn=c,
+                )
+
+                await self._renumber_scene_story_order(c, user_id, new_parent_id)
+                if node.parent_id != new_parent_id:
+                    await self._renumber_scene_story_order(c, user_id, node.parent_id)
+
+                return await self.get_node(user_id, node_id, conn=c)

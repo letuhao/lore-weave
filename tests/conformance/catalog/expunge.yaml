@@ -1,0 +1,11 @@
+# Conformance known-failures list — xfstests `-E` / LTP skiplist semantics.
+#
+# Each row maps a case id to its Deferred-Items ref. A FAIL on a listed case is
+# downgraded to skip(expunged) and does NOT break the gate — but it stays
+# visible in the run summary. Every entry MUST name a ref (the loader rejects an
+# untracked expunge); this file is the audit trail, never a silent skiplist.
+#
+# No cases are expunged yet. Example rows (keep commented until needed):
+#
+#   catastrophic-rebuild: DEFERRED-149    # full-reality rebuild — build deferred
+#   monthly-l3f-rollup:   DEFERRED-L3F    # monthly projection rollup — phased

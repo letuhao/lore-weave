@@ -29,6 +29,7 @@ from app.routers import (
     internal_canon,
     internal_benchmark,
     internal_dispatch,
+    internal_job_control,
     internal_enrichment,
     internal_extraction,
     internal_parse,
@@ -107,6 +108,10 @@ async def lifespan(app: FastAPI):
         get_book_client()
         # E0-3 — long-lived httpx client for the book-service grant authority.
         get_grant_client()
+        # D-GRANT-INSTANT-REVOKE — tail book-service grant revokes (Redis) → drop the
+        # cached grant on the spot (vs the 45s TTL). Best-effort; no redis → TTL only.
+        if settings.redis_url:
+            get_grant_client().start_revoke_consumer(settings.redis_url)
         # K12.2 — long-lived httpx client for embedding calls.
         get_embedding_client()
         # loreweave_llm SDK wrapper for unified-gateway LLM calls. Touched
@@ -683,6 +688,7 @@ app.include_router(internal_backfill.router)
 app.include_router(internal_canon.router)
 app.include_router(internal_benchmark.router)
 app.include_router(internal_dispatch.router)
+app.include_router(internal_job_control.router)
 app.include_router(internal_enrichment.router)
 app.include_router(internal_extraction.router)
 app.include_router(internal_parse.router)

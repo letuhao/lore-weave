@@ -26,8 +26,17 @@ CHAPTER = uuid.uuid4()
 
 def _work(**kw) -> CompositionWork:
     return CompositionWork(project_id=kw.get("project_id", PROJECT), user_id=USER,
-                           book_id=BOOK, version=kw.get("version", 1),
+                           book_id=BOOK, id=kw.get("id", uuid.uuid4()),
+                           version=kw.get("version", 1),
                            status=kw.get("status", "active"))
+
+
+def _pending_work(**kw) -> CompositionWork:
+    """C16: a lazy greenfield Work — null project_id, backfill marker set."""
+    return CompositionWork(project_id=None, user_id=USER,
+                           book_id=kw.get("book_id", BOOK),
+                           id=kw.get("id", uuid.uuid4()),
+                           pending_project_backfill=True)
 
 
 class StubWorks:
@@ -38,6 +47,21 @@ class StubWorks:
         self.update_raises = None
         self.create_raises = None
         self.get_results = None  # if a list, pop per call (for the conflict test)
+        # C16 backfill seam
+        self.pending = None            # get_pending_for_book result
+        self.create_pending_raises = None
+        self.created_pending = False
+        self.backfilled_with = None    # (work_id, project_id) on backfill
+        self.backfill_result = None
+        self.backfill_raises = None    # set to an exc to simulate a unique race
+        # D-C16: id-addressable resolve
+        self.by_id_result = None
+        self.by_id_results = None      # if a list, pop per get_by_id call
+
+    async def get_by_id(self, user_id, work_id):
+        if self.by_id_results is not None:
+            return self.by_id_results.pop(0) if self.by_id_results else None
+        return self.by_id_result
 
     async def get(self, user_id, project_id):
         if self.get_results is not None:
@@ -58,17 +82,90 @@ class StubWorks:
         self.created_with = (project_id, book_id)
         return _work(project_id=project_id)
 
+    # C23 (dị bản) derivative create
+    async def create_derivative(self, user_id, project_id, book_id, source_work_id,
+                                *, branch_point=None, settings=None, conn=None):
+        self.derived_with = {"project_id": project_id, "book_id": book_id,
+                             "source_work_id": source_work_id, "branch_point": branch_point}
+        w = _work(project_id=project_id)
+        w.source_work_id = source_work_id
+        w.branch_point = branch_point
+        return w
+
+    # C16 (WG-3) lazy null-project + backfill
+    async def create_pending(self, user_id, book_id, **kw):
+        if self.create_pending_raises:
+            raise self.create_pending_raises
+        self.created_pending = True
+        return _pending_work(book_id=book_id)
+
+    async def get_pending_for_book(self, user_id, book_id):
+        return self.pending
+
+    async def backfill_project(self, user_id, work_id, project_id):
+        self.backfilled_with = (work_id, project_id)
+        if self.backfill_raises:
+            raise self.backfill_raises
+        return self.backfill_result
+
+
+class StubDerivatives:
+    def __init__(self):
+        self.specs = []
+        self.overrides = []
+
+    async def create_spec(self, spec, *, conn=None):
+        self.specs.append(spec)
+        return spec
+
+    async def create_override(self, override, *, conn=None):
+        self.overrides.append(override)
+        return override
+
+
+class _FakeTxn:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+
+class _FakeConn:
+    def transaction(self):
+        return _FakeTxn()
+
+
+class _FakeAcquire:
+    async def __aenter__(self):
+        return _FakeConn()
+
+    async def __aexit__(self, *a):
+        return False
+
+
+class _FakePool:
+    """A no-op pool so the derive endpoint's txn-local writes run against stub repos
+    (the repos ignore `conn` here — they just record what they were asked to write)."""
+
+    def acquire(self):
+        return _FakeAcquire()
+
 
 class StubKnowledge:
     def __init__(self, projects=None):
         self.projects = projects
         self.created_project = None  # set to a dict to simulate create_project
+        self.create_project_raises = None  # set to an exc to simulate a 4xx contract error
 
     async def list_projects_for_book(self, book_id, bearer):
         return self.projects
 
-    async def create_project(self, book_id, name, bearer):
+    async def create_project(self, book_id, name, bearer, *, force_new=False):
         self.create_project_name = name
+        self.create_project_force_new = force_new
+        if self.create_project_raises is not None:
+            raise self.create_project_raises
         return self.created_project
 
 
@@ -113,12 +210,17 @@ def ctx(monkeypatch):
     from app.main import app
     from app.deps import (
         get_book_client_dep,
+        get_derivatives_repo,
         get_grant_client_dep,
         get_knowledge_client_dep,
         get_works_repo,
     )
     from app.grant_client import GrantLevel
     from app.middleware.jwt_auth import get_bearer_token, get_current_user
+
+    # C23: the derive endpoint opens a txn via app.routers.works.get_pool — point it
+    # at a no-op fake pool so the stubbed repos record the writes without a real DB.
+    monkeypatch.setattr("app.routers.works.get_pool", lambda: _FakePool())
 
     # E0-4c: stub the book-grant authority at OWNER so the collaboration gate
     # passes; the gate's deny paths (404/403) are covered in test_grant_gate.
@@ -129,21 +231,23 @@ def ctx(monkeypatch):
             return GrantLevel.OWNER, "active"
 
     works, knowledge, book = StubWorks(), StubKnowledge(), StubBook()
+    derivatives = StubDerivatives()
     app.dependency_overrides[get_current_user] = lambda: USER
     app.dependency_overrides[get_bearer_token] = lambda: "jwt"
     app.dependency_overrides[get_works_repo] = lambda: works
+    app.dependency_overrides[get_derivatives_repo] = lambda: derivatives
     app.dependency_overrides[get_knowledge_client_dep] = lambda: knowledge
     app.dependency_overrides[get_book_client_dep] = lambda: book
     app.dependency_overrides[get_grant_client_dep] = lambda: _StubGrant()
     with TestClient(app) as c:
-        yield c, works, knowledge, book
+        yield c, works, knowledge, book, derivatives
     app.dependency_overrides.clear()
 
 
 # ── works resolve ──
 
 def test_resolve_found(ctx):
-    c, works, _, _ = ctx
+    c, works, _, _, _ = ctx
     works.marked = [_work()]
     r = c.get(f"/v1/composition/books/{BOOK}/work")
     assert r.status_code == 200
@@ -152,20 +256,20 @@ def test_resolve_found(ctx):
 
 
 def test_post_work_book_not_found_404(ctx):
-    c, _, _, book = ctx
+    c, _, _, book, _ = ctx
     book.book = None
     assert c.post(f"/v1/composition/books/{BOOK}/work").status_code == 404
 
 
 def test_post_work_idempotent_when_already_marked(ctx):
-    c, works, _, _ = ctx
+    c, works, _, _, _ = ctx
     works.marked = [_work()]  # resolve → found
     r = c.post(f"/v1/composition/books/{BOOK}/work")
     assert r.status_code == 201 and r.json()["project_id"] == str(PROJECT)
 
 
 def test_post_work_creates_project_when_none(ctx):
-    c, works, knowledge, _ = ctx
+    c, works, knowledge, _, _ = ctx
     works.marked = []
     knowledge.projects = []  # resolve → none
     new_pid = uuid.uuid4()
@@ -177,10 +281,220 @@ def test_post_work_creates_project_when_none(ctx):
     assert works.created_with == (new_pid, BOOK)  # work created on the new project
 
 
+# ── C16 (WG-3) Work-setup resilience ──
+
+def test_post_work_2xx_when_create_project_down(ctx):
+    # WG-3: knowledge OUTAGE (create_project None) for a GREENFIELD work → NOT 502;
+    # a lazy null-project Work is persisted so the writer keeps drafting.
+    c, works, knowledge, _, _ = ctx
+    works.marked = []
+    knowledge.projects = []           # resolve → none (greenfield)
+    knowledge.created_project = None  # outage
+    works.pending = None              # no prior pending row
+    r = c.post(f"/v1/composition/books/{BOOK}/work")
+    assert r.status_code == 201
+    assert works.created_pending is True
+    body = r.json()
+    assert body["project_id"] is None                 # null project_id (greenfield)
+    assert body["pending_project_backfill"] is True   # backfill marker set
+
+
+def test_post_work_null_project_is_greenfield_only_marker(ctx):
+    # The resulting Work carries the null project_id + pending marker (the exact
+    # acceptance shape) and an addressable surrogate id.
+    c, works, knowledge, _, _ = ctx
+    works.marked = []
+    knowledge.projects = []
+    knowledge.created_project = None
+    works.pending = None
+    body = c.post(f"/v1/composition/books/{BOOK}/work").json()
+    assert body["project_id"] is None and body["pending_project_backfill"] is True
+    assert body["id"] is not None
+
+
+def test_post_work_derivative_rejected_on_null_project(ctx):
+    # C23 GUARD: a DERIVATIVE work (source_work_id) must NOT take the null path —
+    # a knowledge outage surfaces as 502, never a grounding-blind derivative.
+    c, works, knowledge, _, _ = ctx
+    works.marked = []
+    knowledge.projects = []
+    knowledge.created_project = None  # outage
+    r = c.post(f"/v1/composition/books/{BOOK}/work",
+               json={"source_work_id": str(uuid.uuid4())})
+    assert r.status_code == 502
+    assert r.json()["detail"]["code"] == "PROJECT_CREATE_FAILED"
+    assert works.created_pending is False  # never minted a null derivative
+
+
+def test_post_work_2xx_when_knowledge_down_resolve_unavailable(ctx):
+    # WG-3 live-smoke shape: knowledge-service fully DOWN → resolve returns
+    # `unavailable` (list_projects None). A GREENFIELD POST /work must still 2xx with
+    # a lazy null-project Work (was a 502 KNOWLEDGE_UNAVAILABLE before C16).
+    c, works, knowledge, _, _ = ctx
+    works.marked = []
+    knowledge.projects = None  # list_projects_for_book None → resolve 'unavailable'
+    works.pending = None
+    r = c.post(f"/v1/composition/books/{BOOK}/work")
+    assert r.status_code == 201
+    assert works.created_pending is True
+    body = r.json()
+    assert body["project_id"] is None and body["pending_project_backfill"] is True
+
+
+def test_post_work_derivative_502_when_knowledge_down(ctx):
+    # C23 guard on the unavailable path too: a derivative still 502s (never a null Work).
+    c, works, knowledge, _, _ = ctx
+    works.marked = []
+    knowledge.projects = None  # resolve 'unavailable'
+    r = c.post(f"/v1/composition/books/{BOOK}/work",
+               json={"source_work_id": str(uuid.uuid4())})
+    assert r.status_code == 502
+    assert r.json()["detail"]["code"] == "KNOWLEDGE_UNAVAILABLE"
+    assert works.created_pending is False
+
+
+def test_post_work_4xx_contract_error_surfaces(ctx):
+    # No silent swallow: a 4xx CONTRACT error from create_project still 502s
+    # (only down/timeout/5xx degrade).
+    from app.clients.knowledge_client import KnowledgeContractError
+    c, works, knowledge, _, _ = ctx
+    works.marked = []
+    knowledge.projects = []
+    knowledge.create_project_raises = KnowledgeContractError(422)
+    r = c.post(f"/v1/composition/books/{BOOK}/work")
+    assert r.status_code == 502
+    assert r.json()["detail"]["code"] == "PROJECT_CREATE_FAILED"
+    assert works.created_pending is False  # 4xx is NOT degraded into a lazy Work
+
+
+def test_post_work_reuses_existing_pending_on_repeat_outage(ctx):
+    # A second setup during a continuing outage re-gets the SAME lazy Work (idempotent,
+    # no duplicate) rather than spawning another.
+    c, works, knowledge, _, _ = ctx
+    works.marked = []
+    knowledge.projects = []
+    knowledge.created_project = None
+    works.pending = _pending_work()
+    r = c.post(f"/v1/composition/books/{BOOK}/work")
+    assert r.status_code == 201
+    assert works.created_pending is False  # reused, not re-created
+    assert r.json()["project_id"] is None
+
+
+def test_post_work_backfills_pending_when_knowledge_recovers(ctx):
+    # Backfill seam: knowledge recovered → the freshly-created project is stamped onto
+    # the prior lazy Work (marker cleared), not a second Work.
+    c, works, knowledge, _, _ = ctx
+    works.marked = []
+    knowledge.projects = []           # resolve → none
+    new_pid = uuid.uuid4()
+    knowledge.created_project = {"project_id": str(new_pid)}
+    pend = _pending_work()
+    works.pending = pend
+    works.backfill_result = _work(project_id=new_pid, id=pend.id)
+    r = c.post(f"/v1/composition/books/{BOOK}/work")
+    assert r.status_code == 201
+    assert works.backfilled_with == (pend.id, new_pid)
+    body = r.json()
+    assert body["project_id"] == str(new_pid)
+    assert body["pending_project_backfill"] is False
+
+
+# ── D-C16: id-addressable resolve + self-healing backfill ──
+
+
+def test_get_work_by_id_returns_pending_work(ctx):
+    c, works, _, _, _ = ctx
+    pend = _pending_work()
+    works.by_id_result = pend
+    r = c.get(f"/v1/composition/works/by-id/{pend.id}")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["project_id"] is None
+    assert body["pending_project_backfill"] is True
+
+
+def test_get_work_by_id_404_when_missing(ctx):
+    c, works, _, _, _ = ctx
+    works.by_id_result = None
+    r = c.get(f"/v1/composition/works/by-id/{uuid.uuid4()}")
+    assert r.status_code == 404
+
+
+def test_resolve_project_backfills_when_knowledge_recovers(ctx):
+    c, works, knowledge, book, _ = ctx
+    pend = _pending_work()
+    works.by_id_result = pend
+    new_pid = uuid.uuid4()
+    knowledge.created_project = {"project_id": str(new_pid)}
+    works.backfill_result = _work(project_id=new_pid, id=pend.id)
+    r = c.post(f"/v1/composition/works/by-id/{pend.id}/resolve-project")
+    assert r.status_code == 200
+    assert works.backfilled_with == (pend.id, new_pid)
+    body = r.json()
+    assert body["project_id"] == str(new_pid)
+    assert body["pending_project_backfill"] is False
+
+
+def test_resolve_project_still_pending_when_knowledge_down(ctx):
+    c, works, knowledge, _, _ = ctx
+    pend = _pending_work()
+    works.by_id_result = pend
+    knowledge.created_project = None  # still down
+    r = c.post(f"/v1/composition/works/by-id/{pend.id}/resolve-project")
+    assert r.status_code == 409
+    assert r.json()["detail"]["code"] == "STILL_PENDING"
+    assert works.backfilled_with is None  # never stamped a project
+
+
+def test_resolve_project_idempotent_when_already_backed(ctx):
+    c, works, knowledge, _, _ = ctx
+    backed = _work(project_id=uuid.uuid4(), id=uuid.uuid4())  # has project_id
+    works.by_id_result = backed
+    r = c.post(f"/v1/composition/works/by-id/{backed.id}/resolve-project")
+    assert r.status_code == 200
+    assert works.backfilled_with is None  # short-circuits before create/backfill
+
+
+def test_resolve_project_contract_error_surfaces_502(ctx):
+    c, works, knowledge, _, _ = ctx
+    from app.clients.knowledge_client import KnowledgeContractError
+    pend = _pending_work()
+    works.by_id_result = pend
+    knowledge.create_project_raises = KnowledgeContractError(422)
+    r = c.post(f"/v1/composition/works/by-id/{pend.id}/resolve-project")
+    assert r.status_code == 502
+    assert r.json()["detail"]["code"] == "PROJECT_CREATE_FAILED"
+    assert works.backfilled_with is None
+
+
+def test_resolve_project_404_when_work_missing(ctx):
+    c, works, _, _, _ = ctx
+    works.by_id_result = None
+    r = c.post(f"/v1/composition/works/by-id/{uuid.uuid4()}/resolve-project")
+    assert r.status_code == 404
+
+
+def test_resolve_project_unique_violation_returns_resolved_not_500(ctx):
+    # Review #2: if backfill hits a unique race (a concurrent backed row already
+    # holds the canonical project), don't 500 — re-read and return the resolved
+    # state. (The one-Work-per-book invariant makes this unreachable in practice.)
+    c, works, knowledge, _, _ = ctx
+    pend = _pending_work()
+    new_pid = uuid.uuid4()
+    backed = _work(project_id=new_pid, id=pend.id)
+    works.by_id_results = [pend, backed]  # first get → pending; re-read → backed
+    knowledge.created_project = {"project_id": str(new_pid)}
+    works.backfill_raises = asyncpg.UniqueViolationError("dup project")
+    r = c.post(f"/v1/composition/works/by-id/{pend.id}/resolve-project")
+    assert r.status_code == 200
+    assert r.json()["project_id"] == str(new_pid)
+
+
 def test_post_work_unique_violation_reresolves(ctx):
     # /review-impl M8 #2: a concurrent same-project POST loses the PK race →
     # catch UniqueViolation, re-get, return the racey Work (not a 500).
-    c, works, knowledge, _ = ctx
+    c, works, knowledge, _, _ = ctx
     works.marked = []
     pid = uuid.uuid4()
     knowledge.projects = [{"project_id": str(pid), "project_type": "book", "book_id": str(BOOK), "is_archived": False}]
@@ -191,7 +505,7 @@ def test_post_work_unique_violation_reresolves(ctx):
 
 
 def test_post_work_binds_existing_unmarked_book_project(ctx):
-    c, works, knowledge, _ = ctx
+    c, works, knowledge, _, _ = ctx
     works.marked = []
     pid = uuid.uuid4()
     knowledge.projects = [{"project_id": str(pid), "project_type": "general", "book_id": str(BOOK), "is_archived": False}]
@@ -201,7 +515,7 @@ def test_post_work_binds_existing_unmarked_book_project(ctx):
 
 
 def test_resolve_unmarked_single_from_knowledge(ctx):
-    c, works, knowledge, _ = ctx
+    c, works, knowledge, _, _ = ctx
     works.marked = []
     pid = uuid.uuid4()
     knowledge.projects = [{"project_id": str(pid), "project_type": "general", "book_id": str(BOOK), "is_archived": False}]
@@ -211,7 +525,7 @@ def test_resolve_unmarked_single_from_knowledge(ctx):
 
 
 def test_resolve_candidates_serializes_marked_works(ctx):
-    c, works, _, _ = ctx
+    c, works, _, _, _ = ctx
     w1, w2 = _work(project_id=uuid.uuid4()), _work(project_id=uuid.uuid4())
     works.marked = [w1, w2]
     r = c.get(f"/v1/composition/books/{BOOK}/work")
@@ -220,16 +534,127 @@ def test_resolve_candidates_serializes_marked_works(ctx):
     assert {w["project_id"] for w in body["candidates"]} == {str(w1.project_id), str(w2.project_id)}
 
 
+# ── C23 (dị bản) derive ──
+
+def _derive_body(**kw):
+    body = {
+        "branch_point": kw.get("branch_point", 7),
+        "divergence": kw.get("divergence", {"taxonomy": "pov_shift",
+                                            "pov_anchor": str(uuid.uuid4()),
+                                            "canon_rule": ["The hero dies"]}),
+        "entity_overrides": kw.get("entity_overrides",
+                                   [{"target_entity_id": str(uuid.uuid4()),
+                                     "overridden_fields": {"role": "villain"}}]),
+    }
+    return body
+
+
+def test_derive_creates_linked_work_with_fresh_project(ctx):
+    """The derivative links to the source (source_work_id) at the branch_point and
+    gets its OWN fresh project_id (G2) — NEVER the source's."""
+    c, works, knowledge, book, _ = ctx
+    source = _work(project_id=PROJECT)
+    works.work = source  # works.get(...) returns the source
+    fresh = uuid.uuid4()
+    knowledge.created_project = {"project_id": str(fresh)}
+    r = c.post(f"/v1/composition/works/{PROJECT}/derive", json=_derive_body(branch_point=4))
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["source_work_id"] == str(source.id)
+    assert body["branch_point"] == 4
+    assert body["project_id"] == str(fresh)        # fresh project provisioned
+    assert body["project_id"] != str(PROJECT)      # NOT the source's project (G2)
+    # C23-fix: derive MUST request force_new=True so knowledge skips its
+    # per-(user,book) dedup and mints a DISTINCT is_derivative project — without
+    # it a source book that already had a project returned the SOURCE's
+    # project_id → uq_composition_work_project 500 (the bug this unblocks).
+    assert knowledge.create_project_force_new is True
+    # the repo was asked to write a derivative bound to the source + fresh project
+    assert works.derived_with["source_work_id"] == source.id
+    assert works.derived_with["project_id"] == fresh
+    # NO chapter clone (COW): the source reference spine is untouched — only get_book
+    # was read; no draft write/clone fired (StubBook records patched_with on a clone).
+    assert book.patched_with is None
+
+
+def test_derive_persists_spec_and_overrides(ctx):
+    c, works, knowledge, _, derivatives = ctx
+    works.work = _work(project_id=PROJECT)
+    knowledge.created_project = {"project_id": str(uuid.uuid4())}
+    target = uuid.uuid4()
+    body = _derive_body(
+        divergence={"taxonomy": "character_transform", "pov_anchor": None,
+                    "canon_rule": ["No magic", "Set in space"]},
+        entity_overrides=[{"target_entity_id": str(target),
+                           "overridden_fields": {"alive": False, "role": "antagonist"}}],
+    )
+    r = c.post(f"/v1/composition/works/{PROJECT}/derive", json=body)
+    assert r.status_code == 201, r.text
+    assert len(derivatives.specs) == 1
+    spec = derivatives.specs[0]
+    assert spec.taxonomy == "character_transform"
+    assert spec.canon_rule == ["No magic", "Set in space"]
+    assert len(derivatives.overrides) == 1
+    ov = derivatives.overrides[0]
+    assert ov.target_entity_id == target
+    assert ov.overridden_fields == {"alive": False, "role": "antagonist"}
+
+
+def test_derive_rejects_when_project_cannot_be_provisioned(ctx):
+    """GUARD: a derivative MUST get a NOT-NULL project_id. If knowledge can't mint one
+    (outage → None), REJECT (4xx/5xx) — NEVER degrade to a null-project derivative."""
+    c, works, knowledge, _, derivatives = ctx
+    works.work = _work(project_id=PROJECT)
+    knowledge.created_project = None  # outage
+    r = c.post(f"/v1/composition/works/{PROJECT}/derive", json=_derive_body())
+    assert r.status_code == 503
+    # NOTHING persisted on the reject path
+    assert works.__dict__.get("derived_with") is None
+    assert derivatives.specs == [] and derivatives.overrides == []
+
+
+def test_derive_rejects_on_contract_error(ctx):
+    """A 4xx contract error from knowledge → 502 PROJECT_CREATE_FAILED (no null path)."""
+    from app.clients.knowledge_client import KnowledgeContractError
+    c, works, knowledge, _, _ = ctx
+    works.work = _work(project_id=PROJECT)
+    knowledge.create_project_raises = KnowledgeContractError(422)
+    r = c.post(f"/v1/composition/works/{PROJECT}/derive", json=_derive_body())
+    assert r.status_code == 502
+    assert r.json()["detail"]["code"] == "PROJECT_CREATE_FAILED"
+
+
+def test_derive_source_not_found_404(ctx):
+    c, works, _, _, _ = ctx
+    works.work = None  # source missing / cross-user
+    r = c.post(f"/v1/composition/works/{PROJECT}/derive", json=_derive_body())
+    assert r.status_code == 404
+
+
+def test_derive_works_with_empty_body(ctx):
+    """An absent body defaults: no overrides, taxonomy 'au', null branch_point. Still
+    provisions a fresh project (GUARD holds) and writes the spec."""
+    c, works, knowledge, _, derivatives = ctx
+    works.work = _work(project_id=PROJECT)
+    fresh = uuid.uuid4()
+    knowledge.created_project = {"project_id": str(fresh)}
+    r = c.post(f"/v1/composition/works/{PROJECT}/derive")
+    assert r.status_code == 201, r.text
+    assert r.json()["project_id"] == str(fresh)
+    assert len(derivatives.specs) == 1 and derivatives.specs[0].taxonomy == "au"
+    assert derivatives.overrides == []
+
+
 # ── works CRUD ──
 
 def test_get_work_404(ctx):
-    c, works, _, _ = ctx
+    c, works, _, _, _ = ctx
     works.work = None
     assert c.get(f"/v1/composition/works/{PROJECT}").status_code == 404
 
 
 def test_patch_work_ifmatch_412(ctx):
-    c, works, _, _ = ctx
+    c, works, _, _, _ = ctx
     works.work = _work()  # E0-4c: patch_work fetches the work first to gate on its book
     works.update_raises = VersionMismatchError(_work(version=3))
     r = c.patch(f"/v1/composition/works/{PROJECT}", json={"status": "archived"}, headers={"If-Match": "1"})
@@ -238,7 +663,7 @@ def test_patch_work_ifmatch_412(ctx):
 
 
 def test_patch_work_success(ctx):
-    c, works, _, _ = ctx
+    c, works, _, _, _ = ctx
     works.work = _work()  # E0-4c: must exist for the EDIT-gate fetch
     works.update_result = _work(version=2)
     r = c.patch(f"/v1/composition/works/{PROJECT}", json={"settings": {"voice": "wry"}})
@@ -248,7 +673,7 @@ def test_patch_work_success(ctx):
 # ── prose ──
 
 def test_get_prose_combines_draft_and_base_revision(ctx):
-    c, works, _, book = ctx
+    c, works, _, book, _ = ctx
     works.work = _work()
     r = c.get(f"/v1/composition/works/{PROJECT}/chapters/{CHAPTER}/prose")
     assert r.status_code == 200
@@ -257,13 +682,13 @@ def test_get_prose_combines_draft_and_base_revision(ctx):
 
 
 def test_get_prose_404_when_work_missing(ctx):
-    c, works, _, _ = ctx
+    c, works, _, _, _ = ctx
     works.work = None
     assert c.get(f"/v1/composition/works/{PROJECT}/chapters/{CHAPTER}/prose").status_code == 404
 
 
 def test_put_prose_requires_expected_draft_version(ctx):
-    c, works, _, _ = ctx
+    c, works, _, _, _ = ctx
     works.work = _work()
     # omit expected_draft_version → 422 (mandatory field — the OI-2/PS2 guard)
     r = c.put(f"/v1/composition/works/{PROJECT}/chapters/{CHAPTER}/prose", json={"body": {"d": 1}})
@@ -273,7 +698,7 @@ def test_put_prose_requires_expected_draft_version(ctx):
 def test_put_prose_rejects_null_body(ctx):
     # /review-impl M3 MED#1: an explicit null body must NOT reach book-service
     # (would risk clobbering the draft to null). dict-typed field → 422.
-    c, works, _, _ = ctx
+    c, works, _, _, _ = ctx
     works.work = _work()
     r = c.put(f"/v1/composition/works/{PROJECT}/chapters/{CHAPTER}/prose",
               json={"body": None, "expected_draft_version": 5})
@@ -281,7 +706,7 @@ def test_put_prose_rejects_null_body(ctx):
 
 
 def test_put_prose_forwards_version_and_maps_409(ctx):
-    c, works, _, book = ctx
+    c, works, _, book, _ = ctx
     works.work = _work()
     r = c.put(f"/v1/composition/works/{PROJECT}/chapters/{CHAPTER}/prose",
               json={"body": {"d": 1}, "expected_draft_version": 5, "body_format": "json", "commit_message": "edit"})
@@ -297,7 +722,7 @@ def test_put_prose_forwards_version_and_maps_409(ctx):
 
 
 def test_get_prose_502_on_book_down(ctx):
-    c, works, _, book = ctx
+    c, works, _, book, _ = ctx
     works.work = _work()
     book.get_raises = BookClientError(502, "BOOK_SERVICE_UNAVAILABLE")
     assert c.get(f"/v1/composition/works/{PROJECT}/chapters/{CHAPTER}/prose").status_code == 502

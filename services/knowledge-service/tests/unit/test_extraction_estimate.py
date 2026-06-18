@@ -236,6 +236,46 @@ def test_estimate_zero_items_returns_zero_cost():
     assert data["estimated_duration_seconds"] == 0
 
 
+# ── C13 — pinned-injection cost line ────────────────────────────────
+
+
+def test_estimate_pinned_cost_line_scales_with_windows():
+    """C13 acceptance: the pinned-injection cost == pinned_count × 50 ×
+    num_windows, where num_windows = chapters + chat_turns (one window per
+    LLM-extraction item). It is its own line AND folded into estimated_tokens."""
+    client = _make_client(chapter_count=45, pending_count=10, entity_count=1650)
+    resp = _post_estimate(client, "all", pinned_count=3)
+    assert resp.status_code == 200
+    data = resp.json()
+
+    num_windows = 45 + 10  # chapters + chat_turns (glossary has no window)
+    expected_pinned = 3 * 50 * num_windows
+    assert data["estimated_pinned_tokens"] == expected_pinned
+    # The pinned slice is included in the headline token total (not double
+    # counted, not omitted).
+    base = 45 * 2000 + 10 * 800 + 1650 * 300
+    assert data["estimated_tokens"] == base + expected_pinned
+
+
+def test_estimate_pinned_zero_by_default_no_cost():
+    """Back-compat: omitting pinned_count ⇒ no pinned-injection cost."""
+    client = _make_client(chapter_count=10, pending_count=0, entity_count=0)
+    resp = _post_estimate(client, "chapters")
+    data = resp.json()
+    assert data["estimated_pinned_tokens"] == 0
+    assert data["estimated_tokens"] == 10 * 2000
+
+
+def test_estimate_pinned_only_counts_windowed_items():
+    """glossary_sync items are a pure Neo4j MERGE (no LLM window), so a
+    glossary_sync-only scope must add ZERO pinned cost even with pins set."""
+    client = _make_client(chapter_count=10, pending_count=5, entity_count=200)
+    resp = _post_estimate(client, "glossary_sync", pinned_count=4)
+    data = resp.json()
+    # num_windows = 0 (no chapters/chat in this scope) → no pinned cost.
+    assert data["estimated_pinned_tokens"] == 0
+
+
 def _install_capturing_book_client(chapter_count: int = 10) -> dict:
     """Install a book_client override that records kwargs of the most
     recent ``count_chapters`` call into the returned ``captured`` dict.

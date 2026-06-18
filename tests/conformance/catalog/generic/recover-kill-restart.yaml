@@ -1,0 +1,7 @@
+id: recover-kill-restart
+description: "S8/G1 — crash recovery: SIGKILL the publisher mid-drain, restart the same binary, assert convergence. Oracle = no-loss + dedup-able (distinct(event_id)==events, XLEN>=events) — at-least-once is the contract (auto-id XADD + separate mark; a kill in that window re-emits the same event_id). + C3 clean, no dead-letter. Embeds --bite (XDEL an event_id → loss caught)."
+invariant: I-recover-kill-restart-converges
+kind: live-probe
+command: ["bash", "scripts/chaos/recover-kill-restart.sh", "--bite"]
+requires: ["foundation-stack"]
+skip_when: []

@@ -8,16 +8,6 @@ import (
 )
 
 const schemaSQL = `
-CREATE TABLE IF NOT EXISTS account_balances (
-  owner_user_id UUID PRIMARY KEY,
-  tier_name TEXT NOT NULL DEFAULT 'starter',
-  month_quota_tokens INT NOT NULL DEFAULT 100000,
-  month_quota_remaining_tokens INT NOT NULL DEFAULT 100000,
-  credits_balance INT NOT NULL DEFAULT 1000,
-  billing_policy_version TEXT NOT NULL DEFAULT 'm03-v1',
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
 CREATE TABLE IF NOT EXISTS usage_logs (
   usage_log_id UUID PRIMARY KEY DEFAULT uuidv7(),
   request_id UUID NOT NULL UNIQUE,
@@ -143,6 +133,15 @@ ALTER TABLE usage_logs DROP CONSTRAINT IF EXISTS usage_logs_provider_kind_check;
 ALTER TABLE usage_logs DROP CONSTRAINT IF EXISTS usage_logs_billing_decision_check;
 ALTER TABLE usage_logs ADD CONSTRAINT usage_logs_billing_decision_check
   CHECK (billing_decision IN ('quota','credits','rejected','recorded'));
+
+-- D-S4C-ACCOUNTBALANCES-DROP (2026-06-17) — drop the inert token-quota wallet. The
+-- token ledger was retired at S4c (USD spend_guardrails + platform_balances are the
+-- live enforcement); nothing writes account_balances and its only reader (the
+-- /v1/model-billing/account-balance endpoint) is removed in the same change. No FK
+-- references it, so a plain idempotent drop is safe. ROLLBACK: re-add the CREATE TABLE
+-- IF NOT EXISTS block above (it re-creates an EMPTY table — there is no data to restore;
+-- the wallet was never populated post-retirement).
+DROP TABLE IF EXISTS account_balances;
 `
 
 func Up(ctx context.Context, pool *pgxpool.Pool) error {

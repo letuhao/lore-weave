@@ -24,6 +24,10 @@ export const DRAWER_SEARCH_MIN_QUERY_LENGTH = 3;
 export interface UseDrawerSearchResult {
   hits: DrawerSearchResponse['hits'];
   embeddingModel: string | null;
+  /** D-K19e-γa-02: per-search embed cost. null = not embedded yet OR the
+   *  provider didn't report token usage. */
+  embeddingPromptTokens: number | null;
+  embeddingCostUsd: string | null;
   /** C8: facet counts per source_type. Zero-padded when the hook is
    *  disabled (no project yet) so the filter pill row can still render
    *  a stable layout. */
@@ -73,6 +77,8 @@ export function useDrawerSearch(
   return {
     hits: query.data?.hits ?? [],
     embeddingModel: query.data?.embedding_model ?? null,
+    embeddingPromptTokens: query.data?.embedding_prompt_tokens ?? null,
+    embeddingCostUsd: query.data?.embedding_cost_usd ?? null,
     sourceTypeCounts: query.data?.source_type_counts ?? EMPTY_COUNTS,
     disabled: !queryActive,
     // react-query already keeps isLoading=false when enabled=false, so

@@ -3,9 +3,14 @@ import type {
   Campaign,
   CampaignDetail,
   CampaignProgress,
+  CampaignReport,
+  ChapterPage,
+  ChapterFilterStatus,
+  ActivityPage,
   CreateCampaignPayload,
   EstimateRequest,
   EstimateResponse,
+  UpdateCampaignPayload,
 } from './types';
 
 // Gateway proxies /v1/campaigns/* generically (no per-route config). Relative
@@ -54,9 +59,49 @@ export const campaignsApi = {
     return apiJson<CampaignProgress>(`/v1/campaigns/${campaignId}/progress`, { token });
   },
 
+  // G1 — completion / wake-up report (outcome + spend-vs-estimate + error groups).
+  report(campaignId: string, token: string): Promise<CampaignReport> {
+    return apiJson<CampaignReport>(`/v1/campaigns/${campaignId}/report`, { token });
+  },
+
+  // D-S6-CHAPTER-PAGING — one server-side page of the per-chapter projection.
+  chapters(
+    campaignId: string,
+    opts: { status: ChapterFilterStatus; limit: number; offset: number },
+    token: string,
+  ): Promise<ChapterPage> {
+    const q = `status=${opts.status}&limit=${opts.limit}&offset=${opts.offset}`;
+    return apiJson<ChapterPage>(`/v1/campaigns/${campaignId}/chapters?${q}`, { token });
+  },
+
+  // D-FACTORY-INFLIGHT-LOG — recent-first activity log (keyset-paged via beforeId).
+  activity(
+    campaignId: string,
+    opts: { limit: number; beforeId?: number | null },
+    token: string,
+  ): Promise<ActivityPage> {
+    const q = `limit=${opts.limit}${opts.beforeId != null ? `&before_id=${opts.beforeId}` : ''}`;
+    return apiJson<ActivityPage>(`/v1/campaigns/${campaignId}/activity?${q}`, { token });
+  },
+
+  // G2 — re-run failed chapters (null/empty chapterIds = all failed). Re-arms the
+  // campaign to running; the driver re-dispatches the reset stages.
+  rerunFailed(campaignId: string, chapterIds: string[] | null, token: string): Promise<Campaign> {
+    return apiJson<Campaign>(`/v1/campaigns/${campaignId}/rerun-failed`, {
+      token, method: 'POST',
+      body: JSON.stringify(chapterIds && chapterIds.length ? { chapter_ids: chapterIds } : {}),
+    });
+  },
+
   updateBudget(campaignId: string, budgetUsd: string, token: string): Promise<Campaign> {
+    return this.updateCampaign(campaignId, { budget_usd: budgetUsd }, token);
+  },
+
+  // D-FACTORY-SWITCH-MODEL-RESUME — partial PATCH (budget and/or the switchable
+  // models). Only the keys present in `patch` are sent → only those are updated.
+  updateCampaign(campaignId: string, patch: UpdateCampaignPayload, token: string): Promise<Campaign> {
     return apiJson<Campaign>(`/v1/campaigns/${campaignId}`, {
-      token, method: 'PATCH', body: JSON.stringify({ budget_usd: budgetUsd }),
+      token, method: 'PATCH', body: JSON.stringify(patch),
     });
   },
 };

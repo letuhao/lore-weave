@@ -35,6 +35,21 @@ class RerankerClient:
     async def aclose(self) -> None:
         await self._http.aclose()
 
+    async def get_default_rerank(self, user_id: str) -> str | None:
+        """Resolve the user's DEFAULT rerank model (a provider-registry user_model
+        UUID), or None. Fallback when a project has no per-project rerank model —
+        restores the default-reranker UX the removed .env config gave (BYOK). Any
+        failure (no default set → 404, service down) returns None → no rerank."""
+        url = f"{self._base_url}/internal/default-models/rerank"
+        try:
+            resp = await self._http.get(url, params={"user_id": user_id})
+            if resp.status_code != 200:
+                return None
+            return resp.json().get("user_model_id")
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            logger.warning("default-rerank resolve unavailable: %s", exc)
+            return None
+
     async def rerank(
         self,
         query: str,

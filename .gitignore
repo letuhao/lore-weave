@@ -24,7 +24,11 @@ share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-MANIFEST
+# Python sdist manifest ONLY. The bare `MANIFEST` pattern is case-insensitive
+# on Windows and matched Go/Rust source dirs named `manifest/`, silently
+# un-tracking services/migration-orchestrator/pkg/manifest/*.go and breaking
+# CI's fresh-checkout Go build. Anchor + suffix it to the real Python file.
+/MANIFEST.in
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
@@ -262,6 +266,12 @@ frontend-game/test-results/
 # Local extraction-quality eval run artifacts (dumps, judge verdicts, logs)
 .eval_dumps/
 
+# PRR-12: Go build-artifact binaries (untracked in worktree, no .exe is tracked).
+# Ignore all compiled exes plus the two known RAID/infra build outputs explicitly.
+*.exe
+infra/pg18test-go/pg18test.exe
+tools/eventgen/eventgen.exe
+
 # C15 enrichment-eval LIVE run artifact (the committed baseline is the
 # deterministic enrichment-v1.json; this live-judge variant is local-only —
 # the authoritative longitudinal record is the enrichment_eval_runs DB table).
@@ -273,3 +283,18 @@ services/**/scripts/_*.py
 
 # raw-search EVAL-CI run log (append-only, generated)
 services/knowledge-service/eval/rawsearch_eval_runs.jsonl
+
+# S12 scale-rig built binaries (cross-compiled bench; *.exe already covered)
+services/meta-worker/mwbench-linux
+services/meta-worker/lcrace
+services/meta-worker/capovr
+services/meta-worker/reloc
+services/meta-worker/rsssoak
+services/meta-worker/connpool
+services/meta-worker/dlprobe
+services/meta-worker/closure-drill
+services/meta-worker/bridge-server
+services/migration-orchestrator/cdrill
+services/migration-orchestrator/migrate
+services/migration-orchestrator/migrate-drill
+tests/perf/roleplay-load/rpload

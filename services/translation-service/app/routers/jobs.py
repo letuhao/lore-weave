@@ -1,16 +1,28 @@
 import json
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 import asyncpg
+from loreweave_jobs import emit_job_event
 
 from ..deps import get_current_user, get_db
 from ..config import DEFAULT_COMPACT_SYSTEM_PROMPT, DEFAULT_COMPACT_USER_PROMPT_TPL
 from ..models import CreateJobPayload, TranslationJob, ChapterTranslation, ErrorResponse
 from ..broker import publish, publish_event
 from ..effective_settings import resolve_effective_settings
-from ..grant_deps import GrantLevel, require_book_grant, authorize_book, get_grant_client_dep
+from ..model_name import resolve_model_name
+from ..grant_deps import (
+    GrantLevel, require_book_grant, authorize_book, book_for_chapter, get_grant_client_dep,
+)
+from ..workers.segment_status import compute_segment_status
 
 router = APIRouter(prefix="/v1/translation", tags=["translation-jobs"])
+
+#: Unified Job Control Plane P1 — the service id stamped on every emitted JobEvent.
+_JOB_SERVICE = "translation"
+#: kind stamped on translation_jobs lifecycle events (a translation_jobs row is
+#: always a whole/partial-chapter translation run; there is no per-row operation col).
+_JOB_KIND = "translation"
 
 
 def _job_row_to_model(row, chapter_rows=None) -> TranslationJob:
@@ -43,6 +55,82 @@ async def create_job(
     # to tag their job to another user's campaign (which would inflate that
     # campaign's spend and trip its budget pause). Only the internal dispatch
     # endpoint (ownership pre-verified) supplies it.
+    #
+    # T2-M2 (review-impl LOW-3): block_index_filter/seed_version_id are part of the
+    # model so the dedicated retranslate-dirty endpoint can build the payload, but a
+    # general create-job must NOT smuggle a partial-retranslate scope (defense in
+    # depth beyond the worker's chapter-scoped seed load). Strip them here.
+    payload.block_index_filter = None
+    payload.seed_version_id = None
+    return await _resolve_and_create_job(db, book_id, payload, user_id)
+
+
+# ── T2-M2: dirty-only re-translate ────────────────────────────────────────────
+
+class RetranslateDirtyPayload(BaseModel):
+    target_language: str
+
+
+@router.post(
+    "/chapters/{chapter_id}/retranslate-dirty",
+    response_model=TranslationJob,
+    status_code=status.HTTP_201_CREATED,
+)
+async def retranslate_dirty(
+    chapter_id: UUID,
+    body: RetranslateDirtyPayload,
+    user_id: str = Depends(get_current_user),
+    gc=Depends(get_grant_client_dep),
+    db: asyncpg.Pool = Depends(get_db),
+):
+    """Re-translate ONLY the segments whose source changed since the last translation
+    (T2-M2). Computes the dirty block range, resolves the prior llm version as the
+    seed (its unchanged blocks are copied), and enqueues a single-chapter job scoped
+    to those blocks — the worker overlays the freshly-translated blocks onto the seed
+    and finalizes a normal new version (auto-promote never clobbers a human edit)."""
+    book_id = await book_for_chapter(db, chapter_id)
+    if book_id is None:
+        raise HTTPException(status_code=404, detail={"code": "TRANSL_NOT_FOUND", "message": "Chapter has no translations"})
+    await authorize_book(gc, book_id, UUID(user_id), GrantLevel.EDIT)
+
+    lang = body.target_language
+    items = await compute_segment_status(db, chapter_id, lang)
+    # "needs" = source-dirty ∪ glossary-stale (T2-M3.2) — every segment that should
+    # be re-translated, not just the source-changed ones.
+    needed = [it for it in items if it["needs"]]
+    if not needed:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "TRANSL_NO_DIRTY_SEGMENTS", "message": "No segments need re-translation"},
+        )
+    block_idx = sorted({
+        i for it in needed
+        for i in range(it["start_block_index"], it["end_block_index"] + 1)
+    })
+
+    # Seed = the latest completed MACHINE version for this language (its unchanged
+    # blocks are copied). A human version is never the seed (we never re-derive over
+    # a human edit); if only a human version exists, the human can re-run a full
+    # translation or adopt explicitly.
+    seed = await db.fetchval(
+        "SELECT id FROM chapter_translations "
+        "WHERE chapter_id=$1 AND target_language=$2 AND status='completed' AND authored_by='llm' "
+        "ORDER BY version_num DESC LIMIT 1",
+        chapter_id, lang,
+    )
+    if not seed:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "TRANSL_NO_SEED_VERSION", "message": "No prior machine translation to patch; run a full translation first"},
+        )
+
+    payload = CreateJobPayload(
+        chapter_ids=[chapter_id],
+        target_language=lang,
+        force_retranslate=True,  # bypass the chapter-level skip-gate (we know it's dirty per-segment)
+        block_index_filter=block_idx,
+        seed_version_id=seed,
+    )
     return await _resolve_and_create_job(db, book_id, payload, user_id)
 
 
@@ -95,6 +183,21 @@ async def _resolve_and_create_job(
             detail={"code": "TRANSL_NO_MODEL_CONFIGURED", "message": "No model configured. Set a model in Translation Settings before translating."},
         )
 
+    # P4 usage emit — resolve the human model NAME (best-effort, PRE-tx; H1) + assemble a
+    # whitelisted params dict for the Jobs GUI. model + params ride the 'pending' create
+    # event ONLY; the projection's COALESCE merge preserves them across later events, so
+    # the coordinator/finalize emits never need to (and never clobber them with a leaner set).
+    _model_name = await resolve_model_name(eff.get("model_source"), str(eff["model_ref"]))
+    _job_params = {
+        "model": _model_name,
+        "model_ref": str(eff["model_ref"]),
+        "target_language": eff.get("target_language"),
+        "pipeline_version": eff.get("pipeline_version", "v2"),
+        "qa_depth": eff.get("qa_depth", "standard"),
+        "verifier_enabled": bool(eff.get("verifier_model_ref")),
+        "cold_start_mode": eff.get("cold_start_mode", "single_pass"),
+    }
+
     # ── S2 idempotency gate (G3) ───────────────────────────────────────────
     # Declarative "ensure translated": reduce the requested chapters to the
     # to-do set {never-translated ∪ stale ∪ failed} before any fan-out. A
@@ -108,15 +211,17 @@ async def _resolve_and_create_job(
         chapter_ids = requested_ids
     else:
         # SKIP a chapter iff a completed, non-stale translation EXISTS for this
-        # language — NOT keyed on the *active* version. The worker promotes a
-        # version to active only on the FIRST completion (`ON CONFLICT DO
-        # NOTHING`, chapter_worker.py); a stale re-translation produces a fresh
-        # v2 that never becomes active. Keying the gate on the active row would
-        # therefore re-translate a stale chapter on EVERY re-run (active stays
-        # stale forever) — a re-spend loop. "Exists a fresh completed version"
-        # is the true cost-idempotency question and is loop-free: after the
+        # language — NOT keyed on the *active* version. "Exists a fresh completed
+        # version" is the true cost-idempotency question and is loop-free: after a
         # stale chapter is re-translated once, the new non-stale row makes
         # subsequent runs skip it (until the next glossary change re-marks it).
+        # Keying on the *active* row instead would be unsafe — a re-translation
+        # whose promote is held back (e.g. the worker's human-edit guard, or an
+        # M5b verifier flag) would leave the active row stale and re-translate on
+        # EVERY run (a re-spend loop). The existence check sidesteps that entirely.
+        # (Worker promotion policy: chapter_worker.py auto-promotes a clean version
+        # over an existing active one unless the active is a human edit — but this
+        # gate does not depend on that, by design.)
         skip_rows = await db.fetch(
             """
             SELECT DISTINCT ct.chapter_id
@@ -149,9 +254,10 @@ async def _resolve_and_create_job(
                    chapter_ids, total_chapters, pipeline_version,
                    qa_depth, max_qa_rounds, verifier_model_source, verifier_model_ref,
                    cold_start_mode, campaign_id,
-                   eval_judge_model_source, eval_judge_model_ref)
+                   eval_judge_model_source, eval_judge_model_ref,
+                   block_index_filter, seed_version_id)
                 VALUES ($1,$2,'pending',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,
-                        $17,$18,$19,$20,$21,$22,$23,$24)
+                        $17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
                 RETURNING *
                 """,
                 book_id, uid,
@@ -166,11 +272,31 @@ async def _resolve_and_create_job(
                 eff.get("verifier_model_source"), eff.get("verifier_model_ref"),
                 eff.get("cold_start_mode", "single_pass"), campaign_id,
                 eff.get("eval_judge_model_source"), eff.get("eval_judge_model_ref"),
+                payload.block_index_filter, payload.seed_version_id,
             )
 
             job_id = job_row["job_id"]
 
-            for chapter_id in chapter_ids:
+            # Unified Job Control Plane P1 — emit the initial lifecycle event in the
+            # SAME tx as the INSERT (transactional outbox H1: row + event commit
+            # atomically). Genuinely-new row only — this is an unconditional INSERT
+            # (no idempotency replay path here).
+            await emit_job_event(
+                conn, service=_JOB_SERVICE, job_id=str(job_id),
+                owner_user_id=str(job_row["owner_user_id"]), kind=_JOB_KIND,
+                status="pending", model=_model_name, params=_job_params,
+            )
+
+            # Sorted iteration → deterministic advisory-lock order, so two overlapping jobs
+            # can never deadlock on a shared chapter (global lock ordering). The lock
+            # serializes concurrent same-(chapter,lang) inserts so the MAX(version_num)+1
+            # below cannot collide on idx_ct_version (D-TRANSL-VERSION-NUM-RACE). Same lock
+            # key as the edit/patch paths in versions.py. Released at tx commit.
+            for chapter_id in sorted(chapter_ids, key=str):
+                await conn.execute(
+                    "SELECT pg_advisory_xact_lock(hashtext($1)::bigint)",
+                    f"{chapter_id}|{eff['target_language']}",
+                )
                 await conn.execute(
                     """
                     INSERT INTO chapter_translations
@@ -208,6 +334,13 @@ async def _resolve_and_create_job(
                     "UPDATE translation_jobs SET status='completed', finished_at=now() WHERE job_id=$1",
                     job_id,
                 )
+                # P1 — terminal transition (all requested chapters already current);
+                # same tx as the UPDATE.
+                await emit_job_event(
+                    conn, service=_JOB_SERVICE, job_id=str(job_id),
+                    owner_user_id=str(job_row["owner_user_id"]), kind=_JOB_KIND,
+                    status="completed",
+                )
 
     # Publish the job only when there is work to fan out.
     if chapter_ids:
@@ -237,6 +370,9 @@ async def _resolve_and_create_job(
             "cold_start_mode":         eff.get("cold_start_mode", "single_pass"),
             # S4a: ride campaign_id through the message chain (job → chapter → job_meta).
             "campaign_id":             str(campaign_id) if campaign_id else None,
+            # T2-M2: dirty-only re-translate scope (None for whole-chapter jobs).
+            "block_index_filter":      payload.block_index_filter,
+            "seed_version_id":         str(payload.seed_version_id) if payload.seed_version_id else None,
         })
     await publish_event(user_id, {
         "event":    "job.created",
@@ -350,10 +486,147 @@ def _assert_cancellable(job_status: str) -> None:
 
 
 async def _do_cancel(db: asyncpg.Pool, job_id: UUID) -> None:
-    await db.execute(
-        "UPDATE translation_jobs SET status='cancelled', finished_at=now() WHERE job_id=$1",
+    # P1 — terminal cancel transition. Acquire our own conn + tx so the UPDATE and
+    # the JobEvent emit commit atomically (H1). RETURNING owner_user_id so the event
+    # carries the right owner without a second read.
+    async with db.acquire() as conn:
+        async with conn.transaction():
+            row = await conn.fetchrow(
+                "UPDATE translation_jobs SET status='cancelled', finished_at=now() "
+                "WHERE job_id=$1 RETURNING owner_user_id",
+                job_id,
+            )
+            if row is None:
+                return  # already gone / nothing matched — no event for a no-op
+            await emit_job_event(
+                conn, service=_JOB_SERVICE, job_id=str(job_id),
+                owner_user_id=str(row["owner_user_id"]), kind=_JOB_KIND,
+                status="cancelled",
+            )
+
+
+async def _pause_job_core(db: asyncpg.Pool, job_id: UUID, owner_user_id: UUID) -> dict:
+    """B2 stop-dispatch PAUSE (D-JOBS-P3-TRANSLATION-PAUSE) — owner-scoped. running→paused;
+    the chapter worker drops paused units at its start gate so no NEW chapter work begins,
+    while chapters already in-flight drain. 404 if not found/owned, 409 if not running."""
+    async with db.acquire() as conn:
+        async with conn.transaction():  # UPDATE + emit atomic (H1)
+            row = await conn.fetchrow(
+                "UPDATE translation_jobs SET status='paused' "
+                "WHERE job_id=$1 AND owner_user_id=$2 AND status='running' "
+                "RETURNING owner_user_id",
+                job_id, owner_user_id,
+            )
+            if row is not None:
+                await emit_job_event(
+                    conn, service=_JOB_SERVICE, job_id=str(job_id),
+                    owner_user_id=str(row["owner_user_id"]), kind=_JOB_KIND, status="paused",
+                )
+                return {"job_id": str(job_id), "status": "paused"}
+    # No transition — disambiguate owner-scoped (404 not owned/found vs 409 wrong state).
+    cur = await db.fetchrow(
+        "SELECT status FROM translation_jobs WHERE job_id=$1 AND owner_user_id=$2",
+        job_id, owner_user_id,
+    )
+    if cur is None:
+        raise HTTPException(status_code=404, detail={"code": "TRANSL_NOT_FOUND", "message": "Job not found"})
+    raise HTTPException(
+        status_code=409,
+        detail={"code": "TRANSL_CANNOT_PAUSE", "message": f"Job is {cur['status']}, not running"},
+    )
+
+
+def _job_message_from_row(row, chapter_ids: list) -> dict:
+    """Rebuild the `translation.job` coordinator message from a stored `translation_jobs`
+    row (every field is persisted at create) + a chapter subset. Mirrors the create-time
+    publish in `_resolve_and_create_job` so the coordinator fans out identically. All UUIDs
+    are str()'d for the JSON body; block_index_filter (INT[]) is already JSON-serializable."""
+    return {
+        "job_id":                  str(row["job_id"]),
+        "user_id":                 str(row["owner_user_id"]),
+        "book_id":                 str(row["book_id"]),
+        "chapter_ids":             [str(c) for c in chapter_ids],
+        "model_source":            row["model_source"],
+        "model_ref":               str(row["model_ref"]),
+        "system_prompt":           row["system_prompt"],
+        "user_prompt_tpl":         row["user_prompt_tpl"],
+        "target_language":         row["target_language"],
+        "compact_model_source":    row["compact_model_source"],
+        "compact_model_ref":       str(row["compact_model_ref"]) if row["compact_model_ref"] else None,
+        "compact_system_prompt":   row["compact_system_prompt"],
+        "compact_user_prompt_tpl": row["compact_user_prompt_tpl"],
+        "chunk_size_tokens":       row["chunk_size_tokens"],
+        "invoke_timeout_secs":     row["invoke_timeout_secs"],
+        "pipeline_version":        row["pipeline_version"],
+        "qa_depth":                row["qa_depth"],
+        "max_qa_rounds":           row["max_qa_rounds"],
+        "verifier_model_source":   row["verifier_model_source"],
+        "verifier_model_ref":      str(row["verifier_model_ref"]) if row["verifier_model_ref"] else None,
+        "eval_judge_model_source": row["eval_judge_model_source"],
+        "eval_judge_model_ref":    str(row["eval_judge_model_ref"]) if row["eval_judge_model_ref"] else None,
+        "cold_start_mode":         row["cold_start_mode"],
+        "campaign_id":             str(row["campaign_id"]) if row["campaign_id"] else None,
+        "block_index_filter":      row["block_index_filter"],
+        "seed_version_id":         str(row["seed_version_id"]) if row["seed_version_id"] else None,
+    }
+
+
+async def _resume_job_core(db: asyncpg.Pool, job_id: UUID, owner_user_id: UUID) -> dict:
+    """B2 stop-dispatch RESUME (D-JOBS-P3-TRANSLATION-PAUSE) — owner-scoped. paused→running,
+    then re-drive the UN-ATTEMPTED chapters (this job's `chapter_translations` rows still
+    'pending') by re-publishing `translation.job` for the SAME job_id, rebuilt from the
+    stored row.
+
+    ONLY 'pending' is re-dispatched — NOT 'running'/'completed'/'failed':
+      - 'running'  — in-flight (or the sweeper's to reclaim); re-dispatching would race a
+        live chapter (the one concurrency the stop-dispatch model must avoid).
+      - 'completed'— already done.
+      - 'failed'   — already counted in `failed_chapters`. Re-running it would increment
+        `completed_chapters` WITHOUT decrementing `failed_chapters`, pushing
+        completed+failed past total_chapters so the strict `= total_chapters` finalize guard
+        never matches → the job would hang at 'running'. Resume = CONTINUE un-attempted work,
+        so a failed chapter stays failed and the job finalizes to 'partial' — exactly the
+        non-pause semantics. (Re-attempting failures is the separate `retry` action.)
+
+    404 if not found/owned, 409 if not paused. No pending chapters → status flip only (the
+    job finalizes via its normal completion path as in-flight chapters drain)."""
+    async with db.acquire() as conn:
+        async with conn.transaction():  # UPDATE + emit atomic (H1)
+            row = await conn.fetchrow(
+                "UPDATE translation_jobs SET status='running' "
+                "WHERE job_id=$1 AND owner_user_id=$2 AND status='paused' "
+                "RETURNING *",
+                job_id, owner_user_id,
+            )
+            if row is not None:
+                await emit_job_event(
+                    conn, service=_JOB_SERVICE, job_id=str(job_id),
+                    owner_user_id=str(row["owner_user_id"]), kind=_JOB_KIND, status="running",
+                )
+    if row is None:
+        cur = await db.fetchrow(
+            "SELECT status FROM translation_jobs WHERE job_id=$1 AND owner_user_id=$2",
+            job_id, owner_user_id,
+        )
+        if cur is None:
+            raise HTTPException(status_code=404, detail={"code": "TRANSL_NOT_FOUND", "message": "Job not found"})
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "TRANSL_CANNOT_RESUME", "message": f"Job is {cur['status']}, not paused"},
+        )
+
+    # Re-drive un-attempted chapters (publish AFTER the status commit, like create).
+    # 'pending' ONLY — see the docstring for why 'running'/'completed'/'failed' are excluded
+    # (count integrity: re-running a 'failed' chapter would strand the job at 'running').
+    undone = await db.fetch(
+        "SELECT chapter_id FROM chapter_translations "
+        "WHERE job_id=$1 AND status = 'pending'",
         job_id,
     )
+    undone_ids = [r["chapter_id"] for r in undone]
+    if undone_ids:
+        await publish("translation.job", _job_message_from_row(row, undone_ids))
+    return {"job_id": str(job_id), "status": "running"}
 
 
 @router.post("/jobs/{job_id}/cancel", status_code=status.HTTP_204_NO_CONTENT)

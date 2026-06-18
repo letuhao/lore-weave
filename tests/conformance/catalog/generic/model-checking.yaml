@@ -1,0 +1,8 @@
+id: model-checking
+description: "S9 (technique E) — Stateright model-checking of three foundation protocols: I9 lifecycle CAS (exhaustive state exploration over the REAL transitions.yaml graph — every applied hop is a legal edge, completion reachable), I13 outbox under crash (no-loss + no-dup with finite-crash fairness), I7 cross-reality fan-out (no leak to non-subscribers, full coverage reachable). Each model carries a bite-test proving the check is non-vacuous (a variant with the mechanism removed produces a counterexample). Pure CPU, no stack. rust-test fail-closes on a build error."
+invariant: I9+I13+I7
+kind: rust-test
+command: ["cargo", "test", "-p", "foundation-model"]
+requires: []
+skip_when: []
+fail_closed_on_setup_error: false

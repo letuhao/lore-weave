@@ -415,3 +415,321 @@ async def test_filter_coverage_populated_per_category(
 
     assert result.filter_coverage["entity"] == 0.8
     assert result.filter_coverage["relation"] == 1.0
+
+
+# ── C12 — target-typed extraction tests ────────────────────────────
+#
+# `targets` selects which Pass-2 passes run. The taxonomy uses the
+# PLURAL contract names (entities/relations/events/facts) — `summaries`
+# is orchestrator-gated (NOT an SDK op) so the SDK ignores it.
+# Back-compat: targets=None / empty ⇒ ALL passes run (every prior caller
+# is unaffected). Dependent targets {relations,events,facts} silently
+# force `entities` in (they anchor to entity names).
+
+
+@pytest.mark.asyncio
+@patch(f"{_PASS2}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_events", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_entities", new_callable=AsyncMock)
+async def test_targets_none_runs_all_passes(
+    mock_entities, mock_relations, mock_events, mock_facts,
+):
+    """targets=None (default) ⇒ ALL four extractors run (back-compat)."""
+    mock_entities.return_value = [_entity("Kai")]
+    mock_relations.return_value = []
+    mock_events.return_value = []
+    mock_facts.return_value = []
+
+    await extract_pass2(
+        text="Kai walks.",
+        known_entities=[],
+        user_id=USER_ID, project_id=PROJECT_ID,
+        model_source="user_model", model_ref="test-model",
+        llm_client=_fake_llm_client(),
+        # targets omitted = None
+    )
+
+    mock_entities.assert_called_once()
+    mock_relations.assert_called_once()
+    mock_events.assert_called_once()
+    mock_facts.assert_called_once()
+
+
+@pytest.mark.asyncio
+@patch(f"{_PASS2}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_events", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_entities", new_callable=AsyncMock)
+async def test_targets_empty_runs_all_passes(
+    mock_entities, mock_relations, mock_events, mock_facts,
+):
+    """targets=set() (empty) ⇒ ALL four extractors run (back-compat)."""
+    mock_entities.return_value = [_entity("Kai")]
+    mock_relations.return_value = []
+    mock_events.return_value = []
+    mock_facts.return_value = []
+
+    await extract_pass2(
+        text="Kai walks.",
+        known_entities=[],
+        user_id=USER_ID, project_id=PROJECT_ID,
+        model_source="user_model", model_ref="test-model",
+        llm_client=_fake_llm_client(),
+        targets=set(),
+    )
+
+    mock_entities.assert_called_once()
+    mock_relations.assert_called_once()
+    mock_events.assert_called_once()
+    mock_facts.assert_called_once()
+
+
+@pytest.mark.asyncio
+@patch(f"{_PASS2}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_events", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_entities", new_callable=AsyncMock)
+async def test_targets_entities_only(
+    mock_entities, mock_relations, mock_events, mock_facts,
+):
+    """targets={entities} ⇒ only entity extractor runs, no R/E/F."""
+    mock_entities.return_value = [_entity("Kai")]
+
+    result = await extract_pass2(
+        text="Kai walks.",
+        known_entities=[],
+        user_id=USER_ID, project_id=PROJECT_ID,
+        model_source="user_model", model_ref="test-model",
+        llm_client=_fake_llm_client(),
+        targets={"entities"},
+    )
+
+    mock_entities.assert_called_once()
+    mock_relations.assert_not_called()
+    mock_events.assert_not_called()
+    mock_facts.assert_not_called()
+    assert len(result.entities) == 1
+    assert result.relations == []
+    assert result.events == []
+    assert result.facts == []
+
+
+@pytest.mark.asyncio
+@patch(f"{_PASS2}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_events", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_entities", new_callable=AsyncMock)
+async def test_targets_entities_and_events_only(
+    mock_entities, mock_relations, mock_events, mock_facts,
+):
+    """targets={entities,events} ⇒ entities + events, NO relations/facts."""
+    mock_entities.return_value = [_entity("Kai")]
+    mock_events.return_value = [MagicMock(), MagicMock()]
+
+    result = await extract_pass2(
+        text="Kai walks.",
+        known_entities=[],
+        user_id=USER_ID, project_id=PROJECT_ID,
+        model_source="user_model", model_ref="test-model",
+        llm_client=_fake_llm_client(),
+        targets={"entities", "events"},
+    )
+
+    mock_entities.assert_called_once()
+    mock_events.assert_called_once()
+    mock_relations.assert_not_called()
+    mock_facts.assert_not_called()
+    assert len(result.events) == 2
+    assert result.relations == []
+    assert result.facts == []
+
+
+@pytest.mark.asyncio
+@patch(f"{_PASS2}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_events", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_entities", new_callable=AsyncMock)
+async def test_targets_relations_auto_includes_entities(
+    mock_entities, mock_relations, mock_events, mock_facts,
+):
+    """targets={relations} ⇒ entities auto-included (anchor) + relations;
+    no events/facts."""
+    mock_entities.return_value = [_entity("Kai")]
+    mock_relations.return_value = [MagicMock()]
+
+    result = await extract_pass2(
+        text="Kai walks.",
+        known_entities=[],
+        user_id=USER_ID, project_id=PROJECT_ID,
+        model_source="user_model", model_ref="test-model",
+        llm_client=_fake_llm_client(),
+        targets={"relations"},
+    )
+
+    # entities run even though not explicitly requested (dependency)
+    mock_entities.assert_called_once()
+    mock_relations.assert_called_once()
+    mock_events.assert_not_called()
+    mock_facts.assert_not_called()
+    assert len(result.entities) == 1
+    assert len(result.relations) == 1
+
+
+@pytest.mark.asyncio
+@patch(f"{_PASS2}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_events", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_entities", new_callable=AsyncMock)
+async def test_targets_summaries_only_is_entities_only(
+    mock_entities, mock_relations, mock_events, mock_facts,
+):
+    """`summaries` is NOT an SDK op — targets={summaries} carries no SDK
+    op, so the SDK runs only entities (its mandatory first pass) and no
+    R/E/F. The orchestrator handles the summaries enqueue separately."""
+    mock_entities.return_value = [_entity("Kai")]
+
+    await extract_pass2(
+        text="Kai walks.",
+        known_entities=[],
+        user_id=USER_ID, project_id=PROJECT_ID,
+        model_source="user_model", model_ref="test-model",
+        llm_client=_fake_llm_client(),
+        targets={"summaries"},
+    )
+
+    mock_entities.assert_called_once()
+    mock_relations.assert_not_called()
+    mock_events.assert_not_called()
+    mock_facts.assert_not_called()
+
+
+@pytest.mark.asyncio
+@patch(f"{_PASS2}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_events", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_entities", new_callable=AsyncMock)
+async def test_targets_without_entities_disables_recovery_and_filter(
+    mock_entities, mock_relations, mock_events, mock_facts,
+):
+    """When `entities ∉ targets` (e.g. {events}), entity_recovery /
+    precision_filter are no-ops (nothing to recover/filter against an
+    intentionally non-canonical set) — they must NOT be invoked even if
+    the caller passed configs."""
+    from loreweave_extraction.pass2_filter import PrecisionFilterConfig
+
+    mock_entities.return_value = [_entity("Kai")]
+    mock_events.return_value = []
+
+    recovery_calls: list[Any] = []
+    filter_calls: list[Any] = []
+
+    async def _stub_recover(candidates, **kwargs):
+        recovery_calls.append(kwargs)
+        return candidates
+
+    async def _stub_apf(candidates, **kwargs):
+        filter_calls.append(kwargs)
+        return candidates
+
+    with patch(
+        "loreweave_extraction.entity_recovery.recover_missing_entities",
+        new=_stub_recover,
+    ), patch(
+        "loreweave_extraction.pass2_filter.apply_precision_filter",
+        new=_stub_apf,
+    ):
+        await extract_pass2(
+            text="Kai walks.",
+            known_entities=[],
+            user_id=USER_ID, project_id=PROJECT_ID,
+            model_source="user_model", model_ref="test-model",
+            llm_client=_fake_llm_client(),
+            targets={"events"},  # entities NOT requested
+            precision_filter=PrecisionFilterConfig(model_ref="f"),
+            entity_recovery=MagicMock(),
+        )
+
+    assert recovery_calls == []
+    assert filter_calls == []
+
+
+@pytest.mark.asyncio
+@patch(f"{_PASS2}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_events", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_entities", new_callable=AsyncMock)
+async def test_concurrency_level_caps_parallel_trio_calls(
+    mock_entities, mock_relations, mock_events, mock_facts,
+):
+    """concurrency_level=1 serialises the R/E/F gather — at most 1 extractor
+    runs at a time (observed via a concurrency counter)."""
+    import asyncio as _asyncio
+
+    mock_entities.return_value = [_entity("Kai")]
+
+    running = 0
+    max_seen = 0
+
+    async def _tracked(*_a, **_k):
+        nonlocal running, max_seen
+        running += 1
+        max_seen = max(max_seen, running)
+        await _asyncio.sleep(0.01)
+        running -= 1
+        return []
+
+    mock_relations.side_effect = _tracked
+    mock_events.side_effect = _tracked
+    mock_facts.side_effect = _tracked
+
+    await extract_pass2(
+        text="Kai walks.",
+        known_entities=[],
+        user_id=USER_ID, project_id=PROJECT_ID,
+        model_source="user_model", model_ref="test-model",
+        llm_client=_fake_llm_client(),
+        concurrency_level=1,
+    )
+
+    assert max_seen == 1  # serialised by the semaphore
+
+
+@pytest.mark.asyncio
+@patch(f"{_PASS2}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_events", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_entities", new_callable=AsyncMock)
+async def test_concurrency_level_none_is_unbounded(
+    mock_entities, mock_relations, mock_events, mock_facts,
+):
+    """concurrency_level=None (default) runs all three trio ops in parallel."""
+    import asyncio as _asyncio
+
+    mock_entities.return_value = [_entity("Kai")]
+
+    running = 0
+    max_seen = 0
+
+    async def _tracked(*_a, **_k):
+        nonlocal running, max_seen
+        running += 1
+        max_seen = max(max_seen, running)
+        await _asyncio.sleep(0.01)
+        running -= 1
+        return []
+
+    mock_relations.side_effect = _tracked
+    mock_events.side_effect = _tracked
+    mock_facts.side_effect = _tracked
+
+    await extract_pass2(
+        text="Kai walks.",
+        known_entities=[],
+        user_id=USER_ID, project_id=PROJECT_ID,
+        model_source="user_model", model_ref="test-model",
+        llm_client=_fake_llm_client(),
+        # concurrency_level omitted = None
+    )
+
+    assert max_seen == 3  # all three concurrent

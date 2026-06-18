@@ -406,41 +406,13 @@ async def _extract_via_llm_client(
 ) -> list[_LLMEvent]:
     """Submit event_extraction job + wait_terminal + tolerant-parse
     `result.events`. Mirrors entity extractor's SDK path."""
-    if context_budget is not None:
-        sys_tokens = estimate_text_tokens(system_prompt)
-        chunk_size = context_budget.max_paragraphs_per_chunk(
-            system_prompt_tokens=sys_tokens, lang="auto",
-        )
-    else:
-        chunk_size = 15
+    kwargs = build_event_submit_kwargs(
+        system_prompt=system_prompt, text=text, model_source=model_source,
+        model_ref=model_ref, project_id=project_id, context_budget=context_budget,
+    )
     try:
         job = await llm_client.submit_and_wait(
-            user_id=user_id,
-            operation="event_extraction",
-            model_source=model_source,
-            model_ref=model_ref,
-            input={
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": text},
-                ],
-                "response_format": {"type": "text"},
-                "temperature": 0.0,
-                # See entity.py for rationale (LM Studio KV-cache slot
-                # OOM when extractors don't cap max_tokens — server
-                # reserves full model_ctx per slot, R+E+F gather × 3
-                # slots overflows GPU VRAM).
-                "max_tokens": (
-                    context_budget.max_output_tokens
-                    if context_budget is not None else 4096
-                ),
-            },
-            chunking=ChunkingConfig(strategy="paragraphs", size=chunk_size),
-            job_meta={
-                "extractor": "event",
-                "project_id": project_id or "",
-            },
-            transient_retry_budget=1,
+            user_id=user_id, transient_retry_budget=1, **kwargs,
         )
     except LLMTransientRetryNeededError as exc:
         raise ExtractionError(
@@ -455,6 +427,58 @@ async def _extract_via_llm_client(
             last_error=exc,
         ) from exc
 
+    return parse_event_job(job, on_dropped=on_dropped)
+
+
+# ── Decouple seams (LLM re-arch Phase 2b WX-T2) — see entity.py ─────
+
+
+def build_event_submit_kwargs(
+    *,
+    system_prompt: str,
+    text: str,
+    model_source: Literal["user_model", "platform_model"],
+    model_ref: str,
+    project_id: str | None,
+    context_budget: ContextBudget | None = None,
+) -> dict[str, Any]:
+    """Pure: submit_and_wait / submit_job kwargs for an event_extraction job."""
+    if context_budget is not None:
+        sys_tokens = estimate_text_tokens(system_prompt)
+        chunk_size = context_budget.max_paragraphs_per_chunk(
+            system_prompt_tokens=sys_tokens, lang="auto",
+        )
+    else:
+        chunk_size = 15
+    return dict(
+        operation="event_extraction",
+        model_source=model_source,
+        model_ref=model_ref,
+        input={
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": text},
+            ],
+            "response_format": {"type": "text"},
+            "temperature": 0.0,
+            # See entity.py for rationale (LM Studio KV-cache slot OOM).
+            "max_tokens": (
+                context_budget.max_output_tokens
+                if context_budget is not None else 4096
+            ),
+        },
+        chunking=ChunkingConfig(strategy="paragraphs", size=chunk_size),
+        job_meta={
+            "extractor": "event",
+            "project_id": project_id or "",
+        },
+    )
+
+
+def parse_event_job(
+    job: Any, *, on_dropped: DroppedHandler | None,
+) -> list[_LLMEvent]:
+    """Pure: validate the terminal Job + tolerant-parse `result.events`."""
     if job.status == "cancelled":
         raise ExtractionError(
             f"event_extraction job cancelled (job_id={job.job_id})",
@@ -467,13 +491,33 @@ async def _extract_via_llm_client(
             f"event_extraction job ended status={job.status} code={err_code}: {err_msg}",
             stage="provider",
         )
-
     raw_items: list[Any] = []
     if job.result is not None:
         items = job.result.get("events", [])
         if isinstance(items, list):
             raw_items = items
     return _tolerant_parse_events(raw_items, on_dropped=on_dropped)
+
+
+def build_event_system(
+    known_entities: list[str], prompt_override_system: str | None = None,
+) -> str:
+    """Pure: the event system prompt (WX-T2d)."""
+    safe_known = json.dumps(known_entities, ensure_ascii=False).replace("{", "{{").replace("}", "}}")
+    return apply_prompt_override(
+        load_prompt("event_system", known_entities=safe_known), prompt_override_system,
+    )
+
+
+def apply_event_job(
+    job: Any, *, on_dropped: DroppedHandler | None,
+    entities: list, known_entities: list[str], user_id: str,
+) -> list[LLMEventCandidate]:
+    """Parse + postprocess an event terminal Job (WX-T2d)."""
+    return _postprocess(
+        parse_event_job(job, on_dropped=on_dropped),
+        entities=entities, known_entities=known_entities, user_id=user_id,
+    )
 
 
 def _tolerant_parse_events(

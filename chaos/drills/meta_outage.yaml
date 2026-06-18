@@ -1,0 +1,59 @@
+# chaos/drills/meta_outage.yaml — L1.J.5 periodic chaos drill
+#
+# Purpose: validate the degraded-mode path end-to-end:
+#   1. Kill the meta primary container.
+#   2. Verify each service flips Full → Limited within 5s
+#      (per L1.J §8 acceptance "Mode propagation reaches all services within 5s").
+#   3. Verify writes are buffered (FallbackBuffer.Len() grows) and bounded
+#      (writes past DefaultBufferCap=10000 fail with ErrBufferFull).
+#   4. Restart the meta primary.
+#   5. Verify mode flips Limited → Full and the buffer FLUSHES via MetaWrite()
+#      (Succeeded count == pre-recovery Len()).
+#
+# Triggered by:
+#   - chaos-engine cron (V1+30d) — `chaos-engine schedule meta_outage`
+#   - manual SRE drill — `chaos-engine run meta_outage --observe-only`
+#
+# Owning kernel chunks: C03 §12O.8 + SR06-D5 + SR07 §12AJ
+
+version: 1
+name: meta_outage
+description: |
+  Periodic chaos drill validating the L1.J degraded-mode buffer + mode
+  propagation. Runs against the docker-compose.meta-ha stack.
+
+schedule:
+  cron: "0 4 * * 1"           # weekly Mondays 04:00 UTC
+  enabled_in_environments:
+    - dev
+    - staging
+  not_enabled_in_production: true   # production drills go through a dedicated change window
+
+target:
+  service_name: meta-primary
+  kill_method: docker_stop      # or kubectl_delete_pod in V1+30d K8s
+
+expected_outcome:
+  mode_propagation_seconds_max: 5
+  buffer_max_entries: 10000
+  buffer_recovery_must_flush: true
+  flush_failure_modes_acceptable:
+    - cas_conflict       # OK; another writer won
+  flush_failure_modes_unacceptable:
+    - rpc_unreachable    # if still unreachable on flush, drill FAILS
+    - bounded_exhaustion # if buffer hit cap during outage, drill FAILS (size capacity)
+
+assertions:
+  - description: "all probed services entered Limited"
+    metric_query: "max_over_time(lw_service_mode{service=~'.*'}[6m]) >= 1"
+  - description: "buffer never exceeded cap"
+    metric_query: "max_over_time(lw_meta_fallback_buffer_dropped_on_full_total[6m]) == 0"
+  - description: "mode propagation under 5s"
+    metric_query: "histogram_quantile(0.99, rate(lw_lifecycle_mode_propagation_seconds_bucket[5m])) <= 5"
+  - description: "all buffered writes flushed on recovery"
+    metric_query: "increase(lw_meta_fallback_buffer_flush_succeeded_total[10m]) > 0"
+
+post_run:
+  audit_table: chaos_drills    # written by chaos-engine; ships cycle 22
+  alert_on_failure: page       # PagerDuty CRITICAL on assertion failure
+  runbook: runbooks/degraded_mode/recovery.md

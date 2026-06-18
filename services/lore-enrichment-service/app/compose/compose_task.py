@@ -1,0 +1,591 @@
+"""Compose one-shot task store + executors (LLM re-arch Phase 3 M2).
+
+The two interactive compose LLM calls — AI-suggest a book profile, and resolve a
+free-text intent — used to run their single ``/internal/llm/stream`` call INLINE in
+the request handler and return the result. M2 moves them OFF the request path: the
+endpoint creates a ``pending`` :data:`enrichment_compose_task` row, enqueues a
+trigger on the resume stream, and returns ``202 + task_id``; the resume worker runs
+the compute here and writes ``result_json``; ``GET /compose-tasks/{id}`` polls.
+
+This module owns:
+  * the task store (create / load / mark running|completed|failed),
+  * :func:`run_compose_task` — the idempotent worker entrypoint (completed → skip;
+    a crash mid-compute leaves 'running' → redelivery recomputes + overwrites, a
+    duplicate LLM call that converges — acceptable for a draft),
+  * the two compute functions, holding the LLM orchestration moved out of the
+    endpoints (incl. ``_sample_chapter_texts`` / ``_kg_summary``, moved here so the
+    worker can run them without an api↔api import cycle).
+
+NO model NAMES — the model resolves by ``model_ref`` (a user_model UUID) via
+provider-registry, exactly as the inline path did. Unmetered (matches today's
+suggest/intent — no cost cap).
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+from typing import Any
+from uuid import UUID
+
+import asyncpg
+from loreweave_jobs import emit_job_event
+
+from app.clients.book import BookClient, BookProjection, BookServiceError
+from app.clients.glossary import GlossaryClient, GlossaryServiceError
+from app.clients.knowledge import KnowledgeClient, KnowledgeServiceError
+from app.clients.sanitize import neutralize_injection
+from app.compose.intent import IntentResolutionError, resolve_intent
+from app.config import settings
+from app.db.book_profile import get_book_profile
+from app.generation.complete import CompletionSeamError, make_complete_fn
+from app.jobs.events import LORE_ENRICHMENT_RESUME_STREAM, make_redis_producer
+from app.jobs.job_events import JOB_SERVICE, canonical_status, job_error
+from app.services.profile_suggest import (
+    ProfileSuggestError,
+    SuggestedProfile,
+    suggest_profile,
+)
+from app.strategies.base import StrategyContext
+
+__all__ = [
+    "VALID_KINDS",
+    "create_compose_task",
+    "enqueue_compose_task",
+    "load_compose_task",
+    "run_compose_task",
+    "compute_profile_suggest",
+    "compute_intent_resolve",
+    "sweep_stuck_compose_tasks",
+    "run_compose_task_sweeper",
+]
+
+logger = logging.getLogger("lore_enrichment.compose_task")
+
+#: The closed task-kind vocabulary (matches the DB CHECK).
+VALID_KINDS = ("profile_suggest", "intent_resolve")
+
+#: how many chapters to auto-sample for AI-suggest when the author picks none.
+_AUTO_SAMPLE_CHAPTERS = 3
+
+
+# ── store ────────────────────────────────────────────────────────────────────
+
+
+async def create_compose_task(
+    pool: asyncpg.Pool,
+    *,
+    kind: str,
+    user_id: str,
+    project_id: str,
+    book_id: str | None,
+    request: dict[str, Any],
+) -> str:
+    """Insert a 'pending' task and return its id. ``request`` is the request shape
+    the worker needs to compute (model_ref UUIDs + params + acting user) — NEVER a
+    secret."""
+    async with pool.acquire() as conn:
+        async with conn.transaction():  # INSERT + emit_job_event atomic (H1)
+            task_id = await conn.fetchval(
+                """INSERT INTO enrichment_compose_task
+                       (kind, status, user_id, project_id, book_id, request_json)
+                   VALUES ($1, 'pending', $2, $3, $4, $5::jsonb)
+                   RETURNING task_id""",
+                kind, UUID(user_id), UUID(project_id),
+                UUID(book_id) if book_id else None,
+                json.dumps(request, ensure_ascii=False),
+            )
+            # Unified Job Control Plane P1 — emit the initial 'pending' lifecycle event on
+            # the SAME conn as the INSERT. The compose task's row ``kind``
+            # (profile_suggest / intent_resolve) is the JobEvent kind.
+            await emit_job_event(
+                conn, service=JOB_SERVICE, job_id=str(task_id),
+                owner_user_id=str(user_id), kind=kind, status="pending",
+            )
+    return str(task_id)
+
+
+async def enqueue_compose_task(
+    *, task_id: str, kind: str, user_id: str, project_id: str
+) -> bool:
+    """Best-effort XADD of a compose-task trigger on the resume stream (the worker
+    branches on the ``task_id`` field). Returns True on enqueue, False on a
+    transient Redis failure — a failed enqueue does NOT fail the create (a repeat
+    submit / the stuck-task sweeper re-triggers it)."""
+    producer = make_redis_producer(settings.redis_url)
+    try:
+        await producer.xadd(
+            LORE_ENRICHMENT_RESUME_STREAM,
+            {"task_id": task_id, "kind": kind,
+             "user_id": user_id, "project_id": project_id},
+            maxlen=10000,
+        )
+        return True
+    except Exception:  # noqa: BLE001 — enqueue failure must not fail the create
+        logger.warning("compose task %s enqueue failed (re-triggerable)",
+                       task_id, exc_info=True)
+        return False
+    finally:
+        await producer.aclose()
+
+
+async def load_compose_task(
+    pool: asyncpg.Pool, *, task_id: str, user_id: str | None = None
+) -> dict[str, Any] | None:
+    """Load a task row (optionally scoped to ``user_id`` for the poll route). The
+    JSONB columns are returned as parsed dicts. Returns None when absent (or not
+    the caller's, when ``user_id`` is given)."""
+    preds = ["task_id=$1"]
+    params: list[Any] = [UUID(task_id)]
+    if user_id is not None:
+        params.append(UUID(user_id))
+        preds.append(f"user_id=${len(params)}")
+    async with pool.acquire() as conn:
+        r = await conn.fetchrow(
+            f"""SELECT task_id, kind, status, user_id, project_id, book_id,
+                       request_json, result_json, error_message
+                FROM enrichment_compose_task WHERE {' AND '.join(preds)}""",
+            *params,
+        )
+    if r is None:
+        return None
+    return {
+        "task_id": str(r["task_id"]),
+        "kind": r["kind"],
+        "status": r["status"],
+        "user_id": str(r["user_id"]),
+        "project_id": str(r["project_id"]),
+        "book_id": str(r["book_id"]) if r["book_id"] is not None else None,
+        "request": _jsonb(r["request_json"]) or {},
+        "result": _jsonb(r["result_json"]),
+        "error": r["error_message"],
+    }
+
+
+def _jsonb(raw: Any) -> Any:
+    """Decode a JSONB column. asyncpg returns jsonb as ``str`` unless a codec is
+    registered — handle BOTH (mirrors app/jobs/job_request.py). None → None."""
+    if raw is None:
+        return None
+    return json.loads(raw) if isinstance(raw, str) else dict(raw)
+
+
+async def _mark(
+    pool: asyncpg.Pool,
+    *,
+    task_id: str,
+    status: str,
+    result: dict[str, Any] | None = None,
+    error: str | None = None,
+) -> None:
+    async with pool.acquire() as conn:
+        async with conn.transaction():  # UPDATE + emit_job_event atomic (H1)
+            row = await conn.fetchrow(
+                """UPDATE enrichment_compose_task
+                   SET status=$2,
+                       result_json = COALESCE($3::jsonb, result_json),
+                       error_message = $4,
+                       updated_at = now()
+                   WHERE task_id=$1
+                     AND status <> 'cancelled'
+                   RETURNING user_id, kind, status, error_message""",
+                UUID(task_id), status,
+                json.dumps(result, ensure_ascii=False) if result is not None else None,
+                error,
+            )
+            if row is None:
+                # No such task, OR D-JOBS-P3-LORE-COMPOSE-TASK-CONTROL — a worker that
+                # raced past the claim-skip (cancelled mid-flight) must NOT clobber the
+                # 'cancelled' terminal with completed/failed. Nothing to emit either way.
+                return
+            # Unified Job Control Plane P1 — emit the status transition on the SAME conn as
+            # the UPDATE (H1). The compose task's row ``kind`` is the JobEvent kind.
+            cstatus = canonical_status(row["status"])
+            if cstatus is not None:
+                await emit_job_event(
+                    conn, service=JOB_SERVICE, job_id=str(task_id),
+                    owner_user_id=str(row["user_id"]), kind=row["kind"], status=cstatus,
+                    error=job_error(row["error_message"]) if cstatus == "failed" else None,
+                )
+
+
+# ── worker entrypoint ─────────────────────────────────────────────────────────
+
+#: business-level failures the compute raises — a bad LLM output / upstream 5xx is
+#: a TERMINAL task outcome (mark failed + ACK), NOT an infra error to redeliver.
+#:
+#: D-M2-COMPOSE-TASK-POISON: a malformed ``request_json`` (a missing key the compute
+#: indexes, or a non-string id that fails ``UUID(...)``) raises KeyError/ValueError/
+#: TypeError — NOT one of the LLM-pipeline errors above. Without this it escaped as an
+#: "infra" error and the consumer left the message un-ACKed → a poison redelivery loop
+#: that re-failed forever. These are TERMINAL malformed-input outcomes (the input can
+#: never become valid on redelivery), so they join the business-fail set: mark the task
+#: 'failed' + return normally so the consumer ACKs.
+_BUSINESS_ERRORS = (
+    CompletionSeamError,
+    ProfileSuggestError,
+    IntentResolutionError,
+    KeyError,
+    ValueError,
+    TypeError,
+)
+
+
+async def _claim_for_run(
+    pool: asyncpg.Pool, *, task_id: str, idle_window_s: float
+) -> tuple[str, dict[str, Any] | None]:
+    """Atomically CLAIM the task for this worker (D-M2-COMPOSE-TASK-RACE).
+
+    A naïve ``status='completed'`` guard with no row lock let two workers both read a
+    'pending'/'running' row, both compute, and last-write-wins. This takes the row
+    ``FOR UPDATE`` inside a transaction and decides in ONE critical section:
+
+      * 'completed'  → already done; skip (the legitimate idempotent skip survives).
+      * 'running' touched WITHIN ``idle_window_s`` → another worker is actively on it;
+        skip (don't double-compute). The SQL excludes such a row from the lock so a
+        concurrent claimant simply finds nothing.
+      * 'pending', OR a STALE 'running' row (idle > window — a crashed worker the
+        sweeper/redelivery must re-drive) → transition to 'running', bump
+        ``updated_at`` (so idle-detection stays accurate), and return it to compute.
+
+    Returns ``(verdict, row)`` where verdict ∈ {run, completed, skipped_active,
+    not_found} and row (the claimed task, request decoded) is set only for ``run``.
+    The ``updated_at`` bump + the SELECT are one transaction, so the claim is the
+    serialization point — a SKIP-LOCKED-style race-free hand-off."""
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            # Lock ONLY a claimable row: not completed, and (not running, OR running
+            # but stale). A 'running' row touched within the window is excluded, so a
+            # concurrent worker's claim finds no row (skipped_active). FOR UPDATE on the
+            # surviving row serialises two workers that both see it claimable.
+            row = await conn.fetchrow(
+                """SELECT task_id, kind, status, user_id, request_json
+                   FROM enrichment_compose_task
+                   WHERE task_id = $1
+                     AND status NOT IN ('completed', 'cancelled')
+                     AND (status <> 'running'
+                          OR updated_at < now() - ($2 * interval '1 second'))
+                   FOR UPDATE""",
+                UUID(task_id), idle_window_s,
+            )
+            if row is None:
+                # Either the row doesn't exist / is terminal (completed/cancelled), or it's
+                # a fresh 'running' row another worker holds. Disambiguate with a lock-free
+                # status read so the log + the return verdict are honest.
+                cur = await conn.fetchval(
+                    "SELECT status FROM enrichment_compose_task WHERE task_id=$1",
+                    UUID(task_id),
+                )
+                if cur == "completed":
+                    return "already_completed", None
+                if cur == "cancelled":
+                    # D-JOBS-P3-LORE-COMPOSE-TASK-CONTROL — cancelled before this worker
+                    # claimed it; do not run (the common case: cancel of a still-queued task).
+                    return "cancelled", None
+                if cur == "running":
+                    return "skipped_active", None
+                return "not_found", None
+            # Claim it: transition to running + bump updated_at in the same tx.
+            await conn.execute(
+                """UPDATE enrichment_compose_task
+                   SET status='running', updated_at=now()
+                   WHERE task_id=$1""",
+                UUID(task_id),
+            )
+            # Unified Job Control Plane P1 — emit the 'running' claim on the SAME conn as
+            # the claim UPDATE (H1). The row ``kind`` is the JobEvent kind.
+            await emit_job_event(
+                conn, service=JOB_SERVICE, job_id=str(row["task_id"]),
+                owner_user_id=str(row["user_id"]), kind=row["kind"], status="running",
+            )
+    return "run", {
+        "task_id": str(row["task_id"]),
+        "kind": row["kind"],
+        "request": _jsonb(row["request_json"]) or {},
+    }
+
+
+async def run_compose_task(pool: asyncpg.Pool, *, task_id: str) -> str:
+    """Run ONE compose task to terminal. Idempotent + race-safe for at-least-once
+    redelivery AND a worker that scales >1 (D-M2-COMPOSE-TASK-RACE): a FOR-UPDATE claim
+    (:func:`_claim_for_run`) decides whether THIS worker owns the compute — a 'completed'
+    task is skipped (no recompute), a 'running' row another worker is actively on is
+    skipped (no double-compute), and a STALE 'running' row (a crash) is re-claimed +
+    recomputed. Returns a short status string for the log.
+
+    A business failure — a bad LLM output / upstream error, OR a malformed request_json
+    (D-M2-COMPOSE-TASK-POISON: KeyError/ValueError/TypeError) — marks the task 'failed'
+    and returns normally → the consumer ACKs (terminal; redelivery can't fix it). An
+    INFRA error (DB/Redis) propagates → the consumer leaves the message un-ACKed →
+    redelivery."""
+    verdict, row = await _claim_for_run(
+        pool, task_id=task_id, idle_window_s=settings.compose_task_sweep_timeout_s
+    )
+    if verdict != "run":
+        if verdict == "not_found":
+            logger.warning("compose task %s not found — dropping", task_id)
+        return verdict
+    assert row is not None  # verdict == "run" ⇒ row is set
+    kind, req = row["kind"], row["request"]
+    try:
+        if kind == "profile_suggest":
+            result = await compute_profile_suggest(
+                pool,
+                user_id=req["user_id"],
+                book_id=req["book_id"],
+                project_id=req["project_id"],
+                suggest_model_ref=req["suggest_model_ref"],
+                sample_chapter_ids=req.get("sample_chapter_ids") or [],
+            )
+        elif kind == "intent_resolve":
+            result = await compute_intent_resolve(
+                pool,
+                user_id=req["user_id"],
+                project_id=req["project_id"],
+                book_id=req["book_id"],
+                intent_text=req["intent_text"],
+                generation_model_ref=req["generation_model_ref"],
+            )
+        else:  # defensive — the DB CHECK already bounds kind
+            await _mark(pool, task_id=task_id, status="failed",
+                        error=f"unknown task kind {kind!r}")
+            return "unknown_kind"
+    except _BUSINESS_ERRORS as exc:
+        logger.info("compose task %s (%s) failed: %s", task_id, kind, exc)
+        await _mark(pool, task_id=task_id, status="failed", error=str(exc))
+        return "failed"
+
+    await _mark(pool, task_id=task_id, status="completed", result=result)
+    return "completed"
+
+
+# ── stuck-task sweeper (D-M2-COMPOSE-TASK-SWEEPER) ─────────────────────────────
+# A redis-miss at submit strands a 'pending' row with no event to re-drive it, and a
+# worker crash leaves a 'running' row no terminal event re-delivers. This periodic
+# sweep mirrors worker-ai's Wave-1b resume sweeper: find rows idle past the timeout in
+# a non-terminal status and re-drive the idempotent run_compose_task (its FOR-UPDATE
+# claim makes a concurrent consumer + sweeper safe — only ONE re-drives any row).
+
+
+async def sweep_stuck_compose_tasks(
+    pool: asyncpg.Pool, *, timeout_s: float, batch: int
+) -> int:
+    """One sweep tick. Scan for ('pending','running') rows idle longer than
+    ``timeout_s`` and re-drive the idempotent :func:`run_compose_task` on each. Returns
+    the number re-driven (claimed + run; a row another worker grabbed in the interim is
+    not counted). One re-drive that raises is swallowed so the rest of the batch still
+    runs (advisory recovery must never abort mid-batch)."""
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """SELECT task_id
+               FROM enrichment_compose_task
+               WHERE status IN ('pending','running')
+                 AND updated_at < now() - ($1 * interval '1 second')
+               ORDER BY updated_at ASC
+               LIMIT $2::int""",
+            timeout_s, batch,
+        )
+    redriven = 0
+    for r in rows:
+        task_id = str(r["task_id"])
+        try:
+            out = await run_compose_task(pool, task_id=task_id)
+        except Exception:  # noqa: BLE001 — one stuck row's infra fault: try the next
+            logger.warning("compose-sweep: re-drive failed task=%s", task_id,
+                           exc_info=True)
+            continue
+        # Only count a row this sweep actually drove (claimed + ran / failed); a row a
+        # concurrent worker already owns returns skipped_active/already_completed.
+        if out in ("completed", "failed", "unknown_kind"):
+            redriven += 1
+            logger.warning("compose-sweep: re-drove stranded task=%s → %s",
+                           task_id, out)
+    return redriven
+
+
+async def run_compose_task_sweeper(
+    pool: asyncpg.Pool,
+    *,
+    interval_s: float,
+    timeout_s: float,
+    batch: int,
+    iterations: int | None = None,
+) -> None:
+    """Long-running periodic sweeper (gather'd in the worker startup alongside the
+    resume consumer). ``interval_s <= 0`` ⇒ disabled (returns immediately). Runs forever
+    unless ``iterations`` is given (tests). Cancel-safe; one bad tick is swallowed so the
+    loop survives a transient DB blip."""
+    if interval_s <= 0:
+        logger.info("compose-task sweeper disabled (interval<=0)")
+        return
+    logger.info(
+        "compose-task sweeper started (interval=%.0fs timeout=%.0fs batch=%d)",
+        interval_s, timeout_s, batch,
+    )
+    n = 0
+    while True:
+        try:
+            redriven = await sweep_stuck_compose_tasks(
+                pool, timeout_s=timeout_s, batch=batch
+            )
+            if redriven:
+                logger.info("compose-sweep: re-drove %d stranded task(s)", redriven)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 — one bad tick must not kill the loop
+            logger.exception("compose-task sweeper tick failed")
+        n += 1
+        if iterations is not None and n >= iterations:
+            return
+        await asyncio.sleep(interval_s)
+
+
+# ── compute: profile suggest ──────────────────────────────────────────────────
+
+
+async def _sample_chapter_texts(
+    book_client: BookClient, *, book_id: UUID, chapter_ids: list[UUID]
+) -> list[str]:
+    """Collect the text of the chapters to feed AI-suggest. Uses the author's
+    explicit selection when given, else auto-samples the first few chapters.
+    Best-effort: a chapter that errors or is empty is skipped."""
+    if not chapter_ids:
+        try:
+            chapters, _ = await book_client.list_chapters(
+                book_id=book_id, limit=_AUTO_SAMPLE_CHAPTERS
+            )
+            chapter_ids = [c.chapter_id for c in chapters]
+        except BookServiceError:
+            return []
+    texts: list[str] = []
+    for cid in chapter_ids:
+        try:
+            t = await book_client.get_chapter_text(book_id=book_id, chapter_id=cid)
+        except BookServiceError:
+            continue
+        if t.strip():
+            texts.append(t)
+    return texts
+
+
+async def _kg_summary(*, user_id: UUID, project_id: UUID, book: BookProjection) -> str:
+    """Best-effort knowledge-graph summary for AI-suggest. A down/empty graph
+    degrades to '' (never blocks suggest). The KG blob is book-derived passage
+    text → neutralize it (symmetry with the chapter-text + projection paths) so a
+    book-origin injection can't survive extraction→KG→suggest."""
+    kc = KnowledgeClient(
+        knowledge_base_url=settings.knowledge_service_url,
+        provider_registry_base_url=settings.provider_registry_internal_url,
+        internal_token=settings.internal_service_token,
+    )
+    message = (book.title + " " + " ".join(book.genre_tags)).strip()
+    try:
+        ctx = await kc.build_context(user_id=user_id, project_id=project_id, message=message)
+        return neutralize_injection(ctx.context or "")
+    except KnowledgeServiceError:
+        return ""
+    finally:
+        await kc.aclose()
+
+
+def _suggested_view(s: SuggestedProfile) -> dict[str, Any]:
+    return {
+        "worldview": s.worldview,
+        "language": s.language,
+        "era_policy": s.era_policy,
+        "voice": s.voice,
+        "dimension_overrides": s.dimension_overrides,
+        "profile_source": s.profile_source,
+    }
+
+
+async def compute_profile_suggest(
+    pool: asyncpg.Pool,
+    *,
+    user_id: str,
+    book_id: str,
+    project_id: str,
+    suggest_model_ref: str,
+    sample_chapter_ids: list[str],
+) -> dict[str, Any]:
+    """Run the profile-suggest LLM pipeline (book metadata + sample chapters + KG
+    summary → a suggested de-bias profile draft). The submit-time owner check has
+    already authorized this user; the worker re-fetches the projection for the
+    metadata. Raises a business error (CompletionSeamError / ProfileSuggestError)
+    on a bad LLM result — :func:`run_compose_task` maps it to a 'failed' task."""
+    book_uuid = UUID(book_id)
+    book_client = BookClient(
+        base_url=settings.book_service_url, internal_token=settings.internal_service_token
+    )
+    try:
+        book = await book_client.get_projection(book_id=book_uuid)
+        sample_texts = await _sample_chapter_texts(
+            book_client, book_id=book_uuid,
+            chapter_ids=[UUID(c) for c in sample_chapter_ids],
+        )
+    finally:
+        await book_client.aclose()
+
+    kg_summary = await _kg_summary(
+        user_id=UUID(user_id), project_id=UUID(project_id), book=book
+    )
+    complete_fn = make_complete_fn(
+        provider_registry_base_url=settings.provider_registry_internal_url,
+        internal_token=settings.internal_service_token,
+    )
+    ctx = StrategyContext(
+        user_id=user_id, project_id=project_id, model_ref=suggest_model_ref,
+    )
+
+    async def _complete(prompt: str) -> str:
+        return await complete_fn(prompt, ctx)
+
+    draft = await suggest_profile(
+        book=book, sample_texts=sample_texts, kg_summary=kg_summary, complete=_complete,
+    )
+    return _suggested_view(draft)
+
+
+# ── compute: intent resolve ───────────────────────────────────────────────────
+
+
+async def compute_intent_resolve(
+    pool: asyncpg.Pool,
+    *,
+    user_id: str,
+    project_id: str,
+    book_id: str,
+    intent_text: str,
+    generation_model_ref: str,
+) -> dict[str, Any]:
+    """Resolve a free-text intent → a proposed target + dimensions + technique via
+    ONE LLM call. Best-effort glossary entities hint the resolver. Raises a business
+    error on a bad result (mapped to a 'failed' task)."""
+    profile = await get_book_profile(pool, UUID(book_id))
+    client = GlossaryClient(
+        base_url=settings.glossary_service_url,
+        internal_token=settings.internal_service_token,
+    )
+    try:
+        ents = await client.list_entities(book_id=UUID(book_id), limit=200)
+    except (GlossaryServiceError, Exception):  # noqa: BLE001 — best-effort hint
+        ents = []
+    finally:
+        await client.aclose()
+    entities = [{"name": e.name, "kind": e.kind} for e in ents]
+
+    complete = make_complete_fn(
+        provider_registry_base_url=settings.provider_registry_internal_url,
+        internal_token=settings.internal_service_token,
+    )
+    resolved = await resolve_intent(
+        complete=complete,
+        intent_text=intent_text,
+        entities=entities,
+        profile=profile,
+        user_id=user_id,
+        project_id=project_id,
+        model_ref=generation_model_ref,
+    )
+    return resolved.as_dict()

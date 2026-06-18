@@ -104,12 +104,17 @@ def _kg_fact_text(rel) -> str:
     return f"{subj} — {pred} → {obj}"
 
 
-async def _gather_kg(
+async def gather_kg_facts(
     *, entity_id: str, user_id: UUID, project: Project, kg_limit: int,
     degraded: dict[str, str],
 ) -> list[str]:
     """1-hop KG neighbour facts (best-effort). A down/empty graph → [] +
-    a degraded marker; never raises into generation."""
+    a degraded marker; never raises into generation.
+
+    Public so the D-WIKI-P2-KG-SWEEP kg-hashes endpoint can recompute the CURRENT
+    neighbourhood by the EXACT same render path as generation — hashing
+    ``stable_hash(sorted(...))`` over this output must match the stored
+    ``build_inputs.kg_neighborhood_hash`` byte-for-byte, or the sweep false-flags."""
     try:
         async with neo4j_session() as session:
             rels = await find_relations_for_entity(
@@ -181,7 +186,7 @@ async def gather_entity_context(
         ))
 
     # K1.. — 1-hop KG neighbour facts.
-    kg_facts = await _gather_kg(
+    kg_facts = await gather_kg_facts(
         entity_id=entity_id, user_id=user_id, project=project,
         kg_limit=kg_limit, degraded=degraded,
     )

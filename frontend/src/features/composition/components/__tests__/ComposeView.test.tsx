@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ComposeView } from '../ComposeView';
@@ -30,7 +31,14 @@ beforeEach(() => {
   mockAuto.isError = false;
 });
 
-const baseProps = { projectId: 'p', sceneId: 's', modelRef: 'm', token: 'tok' };
+const baseProps = { projectId: 'p', sceneId: 's', modelRef: 'm', token: 'tok', guide: '', onGuideChange: vi.fn() };
+
+// T3.1: `guide` is now a controlled prop (lifted to CompositionPanel). Tests that
+// assert guide MUTATIONS (Revise pre-fill/append) need real state behind it.
+function StatefulComposeView(props: Partial<typeof baseProps> & { onAccept: (t: string) => void }) {
+  const [guide, setGuide] = useState('');
+  return <ComposeView {...baseProps} {...props} guide={guide} onGuideChange={setGuide} />;
+}
 
 describe('ComposeView (ghost / accept — §13 SC4)', () => {
   it('does NOT surface the ghost to onAccept while streaming', () => {
@@ -195,7 +203,7 @@ describe('ComposeView (A2-S4a — canon gate panel + Revise)', () => {
 
   it('Revise pre-fills the guide textarea with the violation context + focuses it', () => {
     mockAuto.data = withCanon();
-    render(<ComposeView {...baseProps} onAccept={vi.fn()} />);
+    render(<StatefulComposeView onAccept={vi.fn()} />);
     fireEvent.click(screen.getByRole('checkbox'));
     const guide = screen.getByPlaceholderText('guidePlaceholder') as HTMLTextAreaElement;
     expect(guide.value).toBe('');
@@ -209,7 +217,7 @@ describe('ComposeView (A2-S4a — canon gate panel + Revise)', () => {
     // /review-impl #2 — the PO intent is "drop the violation context INTO the
     // guide"; author-typed guidance must survive.
     mockAuto.data = withCanon();
-    render(<ComposeView {...baseProps} onAccept={vi.fn()} />);
+    render(<StatefulComposeView onAccept={vi.fn()} />);
     fireEvent.click(screen.getByRole('checkbox'));
     const guide = screen.getByPlaceholderText('guidePlaceholder') as HTMLTextAreaElement;
     fireEvent.change(guide, { target: { value: 'my own guidance' } });
@@ -217,5 +225,46 @@ describe('ComposeView (A2-S4a — canon gate panel + Revise)', () => {
     expect(guide.value).toContain('my own guidance');
     expect(guide.value).toContain('reviseGuide');
     expect(guide.value.indexOf('my own guidance')).toBeLessThan(guide.value.indexOf('reviseGuide'));
+  });
+});
+
+describe('ComposeView (C26 — derivative override gate surfacing)', () => {
+  it('surfaces a BLOCKING override-slip banner + findings + a Regenerate when needs_regeneration', () => {
+    mockCritique.critique.data = { critic: {
+      coherence: 4, voice_match: 3, pacing: 3, canon_consistency: 5, violations: [],
+      needs_regeneration: true, regen_exhausted: false, regen_attempts: 1, regen_cap: 3,
+      derivative_findings: [{ kind: 'override_slip', name: '张若尘', field: 'description',
+        expected: '现在是女性', found: '少年天才' }],
+    } };
+    render(<ComposeView {...baseProps} onAccept={vi.fn()} />);
+    const gate = screen.getByTestId('compose-override-gate');
+    expect(gate).toBeTruthy();
+    expect(gate.textContent).toContain('overrideSlipBlocked');
+    // a per-finding detail line is rendered (the i18n mock returns the key, so we
+    // assert the slip-detail key was used — it interpolates name/expected/found live).
+    expect(gate.textContent).toContain('overrideSlipDetail');
+    // a Regenerate affordance is offered
+    expect(screen.getByTestId('compose-override-regenerate')).toBeTruthy();
+  });
+
+  it('FAIL-OPEN: regen_exhausted surfaces the finding but does NOT block (no Regenerate)', () => {
+    mockCritique.critique.data = { critic: {
+      coherence: 4, voice_match: 3, pacing: 3, canon_consistency: 5, violations: [],
+      needs_regeneration: false, regen_exhausted: true, regen_attempts: 4, regen_cap: 3,
+      derivative_findings: [{ kind: 'override_slip', name: '张若尘', field: 'description',
+        expected: '现在是女性', found: '少年天才' }],
+    } };
+    render(<ComposeView {...baseProps} onAccept={vi.fn()} />);
+    const gate = screen.getByTestId('compose-override-gate');
+    expect(gate.textContent).toContain('overrideSlipExhausted');
+    expect(screen.queryByTestId('compose-override-regenerate')).toBeNull();
+  });
+
+  it('a compliant critic (no derivative gate) renders no override banner', () => {
+    mockCritique.critique.data = { critic: {
+      coherence: 4, voice_match: 3, pacing: 3, canon_consistency: 5, violations: [],
+    } };
+    render(<ComposeView {...baseProps} onAccept={vi.fn()} />);
+    expect(screen.queryByTestId('compose-override-gate')).toBeNull();
   });
 });

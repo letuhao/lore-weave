@@ -14,7 +14,12 @@ import type {
 
 const PAGE_SIZE = 20;
 
-export function useEvidenceList(bookId: string, entityId: string, bookOriginalLanguage?: string) {
+export function useEvidenceList(
+  bookId: string,
+  entityId: string,
+  bookOriginalLanguage?: string,
+  defaultDisplayLanguage?: string,
+) {
   const { t } = useTranslation('entityEditor');
   const { accessToken } = useAuth();
 
@@ -30,7 +35,13 @@ export function useEvidenceList(bookId: string, entityId: string, bookOriginalLa
   const [typeFilter, setTypeFilter] = useState<EvidenceType | ''>('');
   const [attrFilter, setAttrFilter] = useState('');
   const [chapterFilter, setChapterFilter] = useState('');
-  const [language, setLanguage] = useState(bookOriginalLanguage ?? '');
+  const [language, setLanguage] = useState(defaultDisplayLanguage ?? bookOriginalLanguage ?? '');
+
+  useEffect(() => {
+    if (defaultDisplayLanguage) {
+      setLanguage(defaultDisplayLanguage);
+    }
+  }, [defaultDisplayLanguage]);
   const [sortBy, setSortBy] = useState<EvidenceListParams['sort_by']>('created_at');
   const [sortDir, setSortDir] = useState<EvidenceListParams['sort_dir']>('desc');
   const [offset, setOffset] = useState(0);

@@ -1,6 +1,12 @@
 import { useTranslation } from 'react-i18next';
+import { RERANK_CAPABILITY } from './api';
 
-const KNOWN_FLAGS = ['chat', 'vision', 'tool_calling', 'extended_thinking', 'json_mode', 'reasoning', 'tts', 'stt', 'image_gen', 'video_gen', 'embedding', 'moderation'] as const;
+// C1 (BL-1): `rerank` is registered via the canonical RERANK_CAPABILITY token —
+// the SAME value RerankModelPicker/ModelRolePicker filter on — so a hand-tagged
+// rerank model surfaces in those pickers. Referencing the constant (not a
+// literal) keeps the register form and the pickers from drifting apart again
+// (the C0 rerank/reranker reconcile).
+const KNOWN_FLAGS = ['chat', 'vision', 'tool_calling', 'extended_thinking', 'json_mode', 'reasoning', 'tts', 'stt', 'image_gen', 'video_gen', 'embedding', RERANK_CAPABILITY, 'moderation'] as const;
 
 type Props = {
   flags: Record<string, boolean>;

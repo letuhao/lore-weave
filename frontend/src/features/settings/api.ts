@@ -84,7 +84,33 @@ export type InventoryModel = {
   capability_flags?: Record<string, unknown>;
 };
 
-export type CapabilityType = 'chat' | 'embedding' | 'tts' | 'stt' | 'image_gen' | 'moderation' | 'reranker';
+// C0 rerank/reranker reconcile (BL-1): the canonical capability token is
+// `rerank` — the value provider-registry tags rerank models with and the value
+// RerankModelPicker/ModelRolePicker filter on. The settings display layer used
+// the divergent `reranker`, so a registered rerank model rendered with no badge.
+// Use this constant everywhere the rerank capability is referenced so a future
+// rename can't silently re-introduce drift (the wiring test asserts the picker
+// filters on exactly this token).
+export const RERANK_CAPABILITY = 'rerank' as const;
+export const EMBEDDING_CAPABILITY = 'embedding' as const;
+
+// Per-user DEFAULT model per capability (rerank/embedding). The default is the
+// user's own BYOK user_model, resolved server-side by provider-registry — it
+// restores the default-model UX the removed RERANK_URL/_MODEL .env config gave,
+// the BYOK way. Consumers (raw search) fall back to it when no scope model is set.
+export const defaultModelsApi = {
+  get(token: string) {
+    return apiJson<{ defaults: Record<string, string> }>('/v1/model-registry/default-models', { token });
+  },
+  set(token: string, capability: string, userModelId: string | null) {
+    return apiJson<{ capability: string; user_model_id: string | null }>(
+      `/v1/model-registry/default-models/${capability}`,
+      { method: 'PUT', token, body: JSON.stringify({ user_model_id: userModelId }) },
+    );
+  },
+};
+
+export type CapabilityType = 'chat' | 'embedding' | 'tts' | 'stt' | 'image_gen' | 'moderation' | 'rerank';
 
 export function getInventoryMeta(m: InventoryModel) {
   const f = m.capability_flags ?? {};
@@ -177,7 +203,17 @@ export const providerApi = {
   },
 
   verifyUserModel(token: string, modelId: string) {
-    return apiJson<{ verified: boolean; latency_ms: number; error?: string }>(
+    // C3: rerank verify returns ranked scores (a real /v1/rerank round-trip) in
+    // addition to the generic verified/latency shape.
+    return apiJson<{
+      verified: boolean;
+      latency_ms: number;
+      error?: string;
+      capability?: string;
+      scores?: { index: number; relevance_score: number }[];
+      top_index?: number;
+      top_score?: number;
+    }>(
       `/v1/model-registry/user-models/${modelId}/verify`, { method: 'POST', token },
     );
   },

@@ -236,6 +236,10 @@ class KnowledgeClient:
         billing_user_id: str | None = None,
         billing_llm_model: str | None = None,
         billing_embedding_model: str | None = None,
+        # C12 — target-typed extraction. None ⇒ all passes (the endpoint
+        # enqueues summaries as before). A concrete list gates the summary
+        # enqueue on `summaries ∈ targets`.
+        targets: list[str] | None = None,
     ) -> ExtractionResult:
         """Phase 4b-γ — POST /internal/extraction/persist-pass2.
 
@@ -294,6 +298,11 @@ class KnowledgeClient:
             body["billing_llm_model"] = billing_llm_model
         if billing_embedding_model:
             body["billing_embedding_model"] = billing_embedding_model
+        # C12 — only include when the caller resolved a concrete set (explicit
+        # None check so a default-all job omits it ⇒ endpoint enqueues summaries
+        # as before, back-compat).
+        if targets is not None:
+            body["targets"] = list(targets)
 
         try:
             resp = await self._http.post(url, json=body)
@@ -783,3 +792,42 @@ class GlossaryClient:
         except (httpx.HTTPError, ValueError, KeyError) as exc:
             logger.warning("glossary-service entities failed: %s", exc)
             return None
+
+    async def fetch_entities_by_ids(
+        self,
+        book_id: UUID,
+        entity_ids: list[str],
+    ) -> list[str]:
+        """C13 — batch-fetch glossary entity NAMES by id for pinning.
+
+        POSTs to the SAME internal endpoint the knowledge-service semantic
+        selector uses (``/internal/books/{book_id}/entities/by-ids``), reusing
+        the existing ``X-Internal-Token`` baked into this client's headers — NO
+        new secret / URL / token env. The runner force-injects the returned
+        names into every extraction window's ``known_entities`` so pinned
+        entities stay anchored even in chapters that never mention them.
+
+        Returns the entity names (``cached_name`` from the select-for-context
+        row shape). Best-effort: empty input → ``[]``; any HTTP / decode failure
+        → ``[]`` (the runner degrades to no-pins, never blocks the job).
+        """
+        if not entity_ids:
+            return []
+        url = f"{self._base_url}/internal/books/{book_id}/entities/by-ids"
+        try:
+            resp = await self._http.post(url, json={"entity_ids": entity_ids})
+            if resp.status_code != 200:
+                logger.warning(
+                    "glossary entities/by-ids %d for %s", resp.status_code, book_id,
+                )
+                return []
+            data = resp.json()
+            names: list[str] = []
+            for item in data.get("items", []):
+                name = (item.get("cached_name") or "").strip()
+                if name:
+                    names.append(name)
+            return names
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            logger.warning("glossary entities/by-ids failed: %s", exc)
+            return []

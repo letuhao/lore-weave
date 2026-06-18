@@ -35,3 +35,36 @@ def text_to_tiptap_doc(text: str) -> dict[str, Any]:
             "content": [{"type": "text", "text": p}],
         })
     return {"type": "doc", "content": nodes}
+
+
+def tiptap_doc_to_text(doc: Any) -> str:
+    """C27 — flatten a Tiptap `{type:'doc', content:[…]}` draft back to plain prose
+    for extraction. Reads the top-level `_text` snapshot per block (the same field
+    `text_to_tiptap_doc` / book-service's tiptap.go write), falling back to walking
+    `content[].text` for blocks that lack a snapshot (e.g. imported docs). Blocks
+    are joined by a blank line, mirroring the paragraph split on the way in.
+
+    Degrade-safe: a non-dict / missing-content doc → "" (the caller skips a
+    flywheel dispatch on empty text rather than 500-ing)."""
+    if not isinstance(doc, dict):
+        return ""
+    blocks = doc.get("content")
+    if not isinstance(blocks, list):
+        return ""
+    out: list[str] = []
+    for block in blocks:
+        if not isinstance(block, dict):
+            continue
+        snapshot = block.get("_text")
+        if isinstance(snapshot, str):
+            out.append(snapshot)
+            continue
+        # Fallback: concatenate inline text runs for a block with no snapshot.
+        runs = block.get("content")
+        if isinstance(runs, list):
+            parts = [
+                r.get("text", "") for r in runs
+                if isinstance(r, dict) and isinstance(r.get("text"), str)
+            ]
+            out.append("".join(parts))
+    return "\n\n".join(out).strip()

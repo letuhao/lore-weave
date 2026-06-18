@@ -111,6 +111,7 @@ def _make_client(project=_SENT, lexical=_SENT):
                 for i in range(len(documents))]
     reranker = MagicMock()
     reranker.rerank = AsyncMock(side_effect=_passthrough)
+    reranker.get_default_rerank = AsyncMock(return_value=None)
 
     app.dependency_overrides[get_current_user] = lambda: _USER
     app.dependency_overrides[get_projects_repo] = lambda: projects_repo
@@ -358,6 +359,8 @@ def _override_reranker(return_value=None, side_effect=None):
     from app.deps import get_reranker_client
     rr = MagicMock()
     rr.rerank = AsyncMock(return_value=return_value, side_effect=side_effect)
+    # No user-level default by default; the rerank gate resolves project model first.
+    rr.get_default_rerank = AsyncMock(return_value=None)
     app.dependency_overrides[get_reranker_client] = lambda: rr
     return rr
 
@@ -449,3 +452,136 @@ def test_results_carry_relevance(mock_embed, mock_find):
     body = client.get(_url("hybrid")).json()
     assert body["results"]
     assert all("relevance" in h for h in body["results"])
+
+
+# ── D-RAWSEARCH-CANON-WIRING: surface param + owner-only drafts ───────────
+
+
+@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
+def test_owner_surface_all_passes_through_to_both_legs(mock_embed, mock_find):
+    # caller (_USER) == project.user_id (owner) → surface=all honoured.
+    mock_embed.return_value = [0.1] * 1024
+    mock_find.return_value = [_passage_hit()]
+    client, _, book_client = _make_client()
+    resp = client.get(_url("hybrid") + "&surface=all")
+    assert resp.status_code == 200, resp.json()
+    assert book_client.lexical_search.await_args.kwargs["surface"] == "all"
+    assert mock_find.await_args.kwargs["include_drafts"] is True
+
+
+@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
+def test_collaborator_surface_all_downgraded_to_canon(mock_embed, mock_find):
+    # A collaborator searches the OWNER's project (resolve-to-owner) so
+    # caller != project.user_id → surface=all is silently downgraded to canon:
+    # unpublished drafts are the owner's private workspace.
+    mock_embed.return_value = [0.1] * 1024
+    mock_find.return_value = [_passage_hit()]
+    client, _, book_client = _make_client()
+    from app.main import app
+    from app.middleware.jwt_auth import get_current_user
+    app.dependency_overrides[get_current_user] = lambda: uuid4()  # not the owner
+    resp = client.get(_url("hybrid") + "&surface=all")
+    assert resp.status_code == 200, resp.json()
+    assert book_client.lexical_search.await_args.kwargs["surface"] == "canon"
+    assert mock_find.await_args.kwargs["include_drafts"] is False
+
+
+def test_bad_surface_rejected():
+    client, _, _ = _make_client()
+    assert client.get(_url("hybrid") + "&surface=secret").status_code == 422
+
+
+# ── D-RAWSEARCH-CANON-WIRING: index-drafts endpoint ──────────────────────
+
+
+def _drafts_url():
+    return f"/v1/knowledge/books/{_BOOK}/index-drafts"
+
+
+def test_index_drafts_owner_indexes_draft_chapters():
+    from app.extraction.passage_ingester import IngestResult
+    client, _, book_client = _make_client()  # default _OwnerGrant ⇒ OWNER
+    cid = uuid4()
+    book_client.list_chapters = AsyncMock(return_value=[
+        {"chapter_id": str(cid), "sort_order": 4, "editorial_status": "draft"},
+    ])
+    ingest = AsyncMock(return_value=IngestResult(chunks_created=3, chunks_skipped=0))
+    with patch("app.routers.public.raw_search.settings.neo4j_uri", "bolt://x"), \
+         patch("app.db.neo4j.neo4j_session", new=lambda: _noop_session()), \
+         patch("app.extraction.passage_ingester.ingest_chapter_passages", ingest):
+        resp = client.post(_drafts_url())
+    assert resp.status_code == 200, resp.json()
+    assert resp.json() == {"indexed": 1, "skipped": 0, "chapters": 1}
+    # enumerated drafts only, ingested as live-draft (revision_id=None) + canon=False.
+    assert book_client.list_chapters.await_args.kwargs["editorial_status"] == "draft"
+    assert ingest.await_args.kwargs["canon"] is False
+    assert ingest.await_args.kwargs["revision_id"] is None
+    assert ingest.await_args.kwargs["chapter_index"] == 4
+
+
+def test_index_drafts_zero_chunks_counts_as_skipped():
+    from app.extraction.passage_ingester import IngestResult
+    client, _, book_client = _make_client()
+    book_client.list_chapters = AsyncMock(return_value=[
+        {"chapter_id": str(uuid4()), "sort_order": 1},
+    ])
+    ingest = AsyncMock(return_value=IngestResult(chunks_created=0, chunks_skipped=0))
+    with patch("app.routers.public.raw_search.settings.neo4j_uri", "bolt://x"), \
+         patch("app.db.neo4j.neo4j_session", new=lambda: _noop_session()), \
+         patch("app.extraction.passage_ingester.ingest_chapter_passages", ingest):
+        resp = client.post(_drafts_url())
+    assert resp.json() == {"indexed": 0, "skipped": 1, "chapters": 1}
+
+
+def test_index_drafts_collaborator_forbidden():
+    client, _, _ = _make_client()
+    from app.main import app
+    from app.deps import get_grant_client
+    from app.clients.grant_client import GrantLevel
+
+    class _Edit:
+        async def resolve_grant(self, book_id, user_id):
+            return GrantLevel.EDIT
+
+    app.dependency_overrides[get_grant_client] = lambda: _Edit()
+    resp = client.post(_drafts_url())
+    assert resp.status_code == 403
+    assert resp.json()["detail"] == "owner_only"
+
+
+def test_index_drafts_non_grantee_404():
+    client, _, _ = _make_client()
+    from app.main import app
+    from app.deps import get_grant_client
+    from app.clients.grant_client import GrantLevel
+
+    class _None:
+        async def resolve_grant(self, book_id, user_id):
+            return GrantLevel.NONE
+
+    app.dependency_overrides[get_grant_client] = lambda: _None()
+    resp = client.post(_drafts_url())
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == "not_indexed"
+
+
+def test_index_drafts_unindexed_project_409():
+    client, _, _ = _make_client(
+        project=_project(embedding_model=None, embedding_dimension=None),
+    )
+    with patch("app.routers.public.raw_search.settings.neo4j_uri", "bolt://x"):
+        resp = client.post(_drafts_url())
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == "project_not_indexed"
+
+
+def test_index_drafts_book_service_unavailable_502():
+    client, _, book_client = _make_client()
+    book_client.list_chapters = AsyncMock(return_value=None)
+    with patch("app.routers.public.raw_search.settings.neo4j_uri", "bolt://x"):
+        resp = client.post(_drafts_url())
+    assert resp.status_code == 502

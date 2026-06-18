@@ -16,6 +16,7 @@ from app.clients.knowledge_client import KnowledgeClient, get_knowledge_client
 from app.clients.llm_client import LLMClient, get_llm_client
 from app.db.pool import get_pool
 from app.db.repositories.canon_rules import CanonRulesRepo
+from app.db.repositories.derivatives import DerivativesRepo
 from app.db.repositories.generation_corrections import GenerationCorrectionsRepo
 from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.db.repositories.narrative_thread import NarrativeThreadRepo
@@ -27,6 +28,12 @@ from app.db.repositories.works import WorksRepo
 
 async def get_works_repo() -> WorksRepo:
     return WorksRepo(get_pool())
+
+
+async def get_derivatives_repo() -> DerivativesRepo:
+    """C23 (dị bản M0) — the divergence_spec + entity_override writer for the
+    derive flow."""
+    return DerivativesRepo(get_pool())
 
 
 async def get_outline_repo() -> OutlineRepo:

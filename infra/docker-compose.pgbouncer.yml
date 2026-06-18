@@ -1,0 +1,47 @@
+# infra/docker-compose.pgbouncer.yml — L1.G V1 docker-compose substitute
+# for the production Terraform (deferred V1+30d per Q-L1G-1 + Q-L1C-1).
+#
+# Usage:
+#   docker compose -f infra/docker-compose.meta-ha.yml \
+#                   -f infra/docker-compose.pgbouncer.yml up -d
+#
+# Why one compose-file override (not standalone):
+#   pgbouncer needs the meta-ha network so it can reach the primary
+#   Postgres at `primary:5432`. Layering as an override avoids
+#   duplicating the meta-ha network + secrets definition.
+
+services:
+  pgbouncer:
+    image: edoburu/pgbouncer:1.23.1
+    container_name: lw-pgbouncer
+    depends_on:
+      primary:
+        condition: service_started
+    environment:
+      # The image accepts DB_HOST/USER/PASS to write a minimal databases.ini
+      # at boot — we OVERRIDE this with our mounted config because we need
+      # transaction mode + the multiplex tuning.
+      AUTH_TYPE: scram-sha-256
+      LISTEN_PORT: 6432
+      # Pgbouncer ADMIN credentials (separate from app credentials)
+      PGBOUNCER_ADMIN_USERS: pgbouncer_admin
+      PGBOUNCER_STATS_USERS: pgbouncer_stats
+    ports:
+      # Host:container — app connects via 127.0.0.1:16432
+      - "127.0.0.1:16432:6432"
+    volumes:
+      - ./pgbouncer/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
+      - ./pgbouncer/databases.ini:/etc/pgbouncer/databases.ini
+      - ./pgbouncer/userlist.txt:/etc/pgbouncer/userlist.txt:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-p", "6432", "-U", "postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - lw-meta
+
+networks:
+  lw-meta:
+    external: true
+    name: lw-meta-ha

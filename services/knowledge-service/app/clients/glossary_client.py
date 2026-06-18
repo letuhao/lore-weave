@@ -294,6 +294,28 @@ class GlossaryClient:
             logger.warning("glossary entity-count failed: %s", exc)
             return None
 
+    async def get_entity_stats(self, book_id: UUID) -> dict | None:
+        """GET /internal/books/{book_id}/entities/stats (C13).
+
+        Per-entity mention-span + coverage aggregate over chapter_entity_links,
+        for the build-wizard auto-pin suggestion banner. Returns the raw
+        ``{"items": [...], "chapter_count": int}`` payload, or None on failure
+        (the FE degrades to manual pinning — never blocks the wizard).
+        """
+        url = f"{self._base_url}/internal/books/{book_id}/entities/stats"
+        tid = trace_id_var.get()
+        try:
+            resp = await self._http.get(
+                url, headers={"X-Trace-Id": tid} if tid else None,
+            )
+            if resp.status_code != 200:
+                logger.warning("glossary entities/stats %d", resp.status_code)
+                return None
+            return resp.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            logger.warning("glossary entities/stats failed: %s", exc)
+            return None
+
     # ── K11.10 — HTTP methods for extraction pipeline ────────────────
 
     async def list_entities(
@@ -542,6 +564,32 @@ class GlossaryClient:
         except (httpx.HTTPError, ValueError) as exc:
             logger.warning("glossary wiki-writeback failed: %s", exc)
             return None
+
+    async def fetch_wiki_gold_pairs(
+        self,
+        book_id: UUID,
+        *,
+        limit: int,
+    ) -> list[dict]:
+        """D-WIKI-M8-FEWSHOT — GET /internal/books/{book_id}/wiki/gold-pairs.
+
+        Returns up to `limit` recent gold AI→human revision pairs (plaintext, truncated
+        server-side) as `[{article_id, entity_id, ai_text, human_text}]`. Best-effort:
+        returns [] on ANY failure — missing exemplars must never break generation."""
+        url = f"{self._base_url}/internal/books/{book_id}/wiki/gold-pairs"
+        tid = trace_id_var.get()
+        try:
+            resp = await self._http.get(
+                url, params={"limit": limit},
+                headers={"X-Trace-Id": tid} if tid else None,
+            )
+            if resp.status_code != 200:
+                logger.warning("glossary wiki-gold-pairs %d", resp.status_code)
+                return []
+            return resp.json().get("pairs", [])
+        except (httpx.HTTPError, ValueError) as exc:
+            logger.warning("glossary wiki-gold-pairs failed: %s", exc)
+            return []
 
     async def generate_wiki_stubs(
         self,

@@ -1,7 +1,16 @@
 import logging
 from uuid import UUID
 
+from loreweave_jobs import emit_job_event
+
+from ..config import settings
+from .. import fair_sched
+
 log = logging.getLogger(__name__)
+
+#: Unified Job Control Plane P1 — stamped on every emitted JobEvent.
+_JOB_SERVICE = "translation"
+_JOB_KIND = "translation"
 
 
 async def handle_job_message(msg: dict, pool, publish, publish_event) -> None:
@@ -16,15 +25,26 @@ async def handle_job_message(msg: dict, pool, publish, publish_event) -> None:
     log.info("coordinator: job %s — marking running, fanning out %d chapter(s)", job_id, n)
 
     async with pool.acquire() as db:
-        await db.execute(
-            "UPDATE translation_jobs SET status='running', started_at=now() WHERE job_id=$1",
-            job_id,
-        )
+        async with db.transaction():
+            # P1 — running transition. UPDATE + emit in one tx (H1). RETURNING the
+            # owner so the event carries it (msg.user_id is the same value, but the
+            # row is authoritative). Guarded: only emit when a row actually changed.
+            row = await db.fetchrow(
+                "UPDATE translation_jobs SET status='running', started_at=now() "
+                "WHERE job_id=$1 RETURNING owner_user_id",
+                job_id,
+            )
+            if row is not None:
+                await emit_job_event(
+                    db, service=_JOB_SERVICE, job_id=str(job_id),
+                    owner_user_id=str(row["owner_user_id"]), kind=_JOB_KIND,
+                    status="running",
+                )
 
-    # Routing key "translation.chapter" must match the binding in broker.connect_broker()
-    for index, chapter_id in enumerate(msg["chapter_ids"]):
-        log.debug("coordinator: publishing chapter %s (%d/%d)", chapter_id, index + 1, n)
-        await publish("translation.chapter", {
+    # Build the per-chapter units (the message shape the chapter worker consumes).
+    # Routing key "translation.chapter" must match the binding in broker.connect_broker().
+    units = [
+        {
             "job_id":               msg["job_id"],
             "chapter_id":           chapter_id,
             "chapter_index":        index,
@@ -53,9 +73,31 @@ async def handle_job_message(msg: dict, pool, publish, publish_event) -> None:
             # S4a: propagate the owning campaign to the per-chapter worker, which
             # sets it as a contextvar so every provider job_meta carries it.
             "campaign_id":          msg.get("campaign_id"),
-        })
+            # T2-M2: dirty-only re-translate scope (None for whole-chapter jobs).
+            "block_index_filter":   msg.get("block_index_filter"),
+            "seed_version_id":      msg.get("seed_version_id"),
+        }
+        for index, chapter_id in enumerate(msg["chapter_ids"])
+    ]
 
-    log.info("coordinator: job %s — all %d chapter messages published", job_id, n)
+    if settings.p5_sched_enabled:
+        # P5 — fair scheduling: ENQUEUE into the per-owner WFQ instead of dumping all
+        # N messages onto the queue. The dispatcher loop releases them round-robin
+        # (≤ cap in-flight per owner), so this job can't monopolize the worker fleet.
+        sched = fair_sched.get_scheduler()
+        for unit in units:
+            # Deterministic lease token so the per-chapter FINALIZE (which may run in a
+            # different process — the decoupled llm_terminal_consumer in the API
+            # container) can release this exact slot by recomputing job_id:chapter_id,
+            # without threading the dispatch token through the async pipeline.
+            unit["_p5_tok"] = fair_sched.chapter_token(msg["job_id"], unit["chapter_id"])
+            await sched.enqueue(fair_sched.LANE_CHAPTER, str(user_id), unit)
+        log.info("coordinator: job %s — %d chapter unit(s) ENQUEUED to WFQ (owner=%s)", job_id, n, user_id)
+    else:
+        for unit in units:
+            await publish("translation.chapter", unit)
+        log.info("coordinator: job %s — all %d chapter messages published", job_id, n)
+
     await publish_event(user_id, {
         "event":    "job.status_changed",
         "job_id":   msg["job_id"],

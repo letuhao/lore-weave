@@ -2,15 +2,25 @@
 
 from __future__ import annotations
 
+import json
 import uuid
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
 
-from loreweave_eval.llm_judge import ItemVerdict
+from loreweave_eval.llm_judge import (
+    ItemVerdict,
+    parse_precision_batch,
+    plan_precision_tasks,
+)
 
 from app.db.eval_repo import SCORE_CONFIG_SEED, ScoreValidationError
-from app.db.online_judge import persist_online_judge, run_online_judge
+from app.db.online_judge import (
+    aggregate_precision_dicts,
+    persist_online_judge,
+    run_online_judge,
+)
 
 
 def _vd(idx, verdict):
@@ -70,6 +80,69 @@ async def test_unjudged_excluded_from_denominator(monkeypatch):
     )
     assert res["per_category"]["entity"]["n_judged"] == 1  # unjudged dropped
     assert res["overall_precision"] == 1.0
+
+
+# ── M1 byte-identical-score invariant: decoupled fold == inline run_online_judge ──
+# The DRY-seam refactor (LLM re-arch Phase 3 M1) claims the decoupled judge's fold
+# (plan_precision_tasks + parse_precision_batch + aggregate_precision_dicts) scores
+# IDENTICALLY to the inline run_online_judge for the same LLM output. This drives both
+# paths off the SAME per-batch contents and asserts the judge_result agrees (/review-impl).
+
+_PATTERN = ["supported", "unsupported", "partial"]
+
+
+def _content_for(task):
+    """A deterministic 'LLM output' for one precision batch (varied verdicts)."""
+    verdicts = [
+        {"idx": i, "verdict": _PATTERN[(task.global_start + i) % 3], "reason": "r"}
+        for i in range(task.n_items)
+    ]
+    return json.dumps({"verdicts": verdicts})
+
+
+class _SeqClient:
+    """A JudgeLLMClient whose submit_and_wait replays prebuilt contents in call order
+    (run_online_judge calls _call_judge per batch in category→batch order, matching
+    plan_precision_tasks)."""
+
+    def __init__(self, contents):
+        self._q = list(contents)
+        self.calls = 0
+
+    async def submit_and_wait(self, **kw):
+        self.calls += 1
+        return SimpleNamespace(
+            status="completed", result={"messages": [{"content": self._q.pop(0)}]},
+        )
+
+
+async def test_decoupled_fold_scores_identically_to_inline():
+    items = {"entity": [{}, {}, {}, {}], "relation": [{}, {}], "event": [{}]}
+    src = "Alice fell down the hole."
+    tasks = plan_precision_tasks(source_text=src, items_by_category=items)
+    contents = [_content_for(t) for t in tasks]
+
+    # decoupled fold (the durable-judge path, no LLM client — pure seams)
+    accum: dict = {}
+    for t, c in zip(tasks, contents):
+        for v in parse_precision_batch(c, global_start=t.global_start, n_items=t.n_items):
+            accum.setdefault(t.category, []).append(
+                {"idx": v.idx, "verdict": v.verdict, "reason": v.reason}
+            )
+    decoupled = aggregate_precision_dicts(accum)
+
+    # inline run_online_judge fed the SAME contents in plan order
+    inline = await run_online_judge(
+        _SeqClient(contents), source_text=src, items_by_category=items,
+        judge_model="jm", model_source="user_model", user_id="u",
+    )
+
+    assert decoupled["overall_precision"] == inline["overall_precision"]
+    assert decoupled["n_judged"] == inline["n_judged"]
+    for cat in ("entity", "relation", "event"):
+        assert decoupled["per_category"][cat]["precision"] == inline["per_category"][cat]["precision"]
+        assert decoupled["per_category"][cat]["n_judged"] == inline["per_category"][cat]["n_judged"]
+        assert decoupled["per_category"][cat]["verdicts"] == inline["per_category"][cat]["verdicts"]
 
 
 # ── persist_online_judge (mock conn) ──────────────────────────────────

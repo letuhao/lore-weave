@@ -7,6 +7,8 @@
   "noMatch": "No articles match your filters",
   "articles": "{{count}} article",
   "articles_other": "{{count}} articles",
+  "aiSplit": "{{count}} by AI",
+  "aiSplit_other": "{{count}} by AI",
   "revisions": "{{count}} revision",
   "revisions_other": "{{count}} revisions",
   "allKinds": "All",
@@ -52,6 +54,11 @@
   "gen": {
     "title": "Generate Wiki Articles",
     "description": "Render deterministic stubs, or pick a model to generate full articles with AI.",
+    "mode": {
+      "label": "Mode",
+      "stub": "Deterministic",
+      "llm": "AI generated"
+    },
     "cancel": "Cancel",
     "starting": "Starting…",
     "confirmStub": "Generate stubs",
@@ -63,6 +70,17 @@
       "llmHint": "Generates grounded articles with citations via the selected model.",
       "pickRequired": "Select a model…"
     },
+    "reviseModel": {
+      "label": "Revise model (optional)",
+      "same": "Same as generation",
+      "hint": "Used only for the corrective re-generation of canon-flagged articles."
+    },
+    "context": {
+      "language": "Generation language: {{lang}}",
+      "indexed": "Knowledge graph built",
+      "notIndexed": "Knowledge graph not built — AI generation will skip ungrounded entities",
+      "budget": "Spent this month: {{used}} of {{limit}}"
+    },
     "kinds": {
       "label": "Limit to kinds (optional)",
       "hint": "Leave empty to generate for all entity kinds."
@@ -72,7 +90,13 @@
       "hint": "Pause the job before it exceeds this estimated cost.",
       "invalid": "Enter a valid amount (e.g. 1.50)."
     },
+    "estimate": {
+      "loading": "Estimating cost…",
+      "forN": "Estimated cost: ~{{count}} × {{perArticle}} ≈ {{total}}",
+      "perArticle": "Estimated cost: ~{{perArticle}} per article"
+    },
     "started": "Generation started",
+    "startedTruncated": "Generating {{selected}} of {{total}} entities — the rest were skipped by the limit. Raise the limit to include them.",
     "noEntities": "No matching entities to generate",
     "alreadyRunning": "A generation job is already running for this book",
     "notIndexed": "Build the knowledge graph for this book first",
@@ -96,6 +120,29 @@
     "regenDescription": "Re-generate this article with AI. A human-edited article becomes a suggestion rather than being overwritten.",
     "regenHint": "Pick a model to regenerate this article.",
     "confirmRegen": "Regenerate",
+    "results": {
+      "title": "Generation results",
+      "dismiss": "Dismiss results",
+      "cites": "Citations",
+      "flags": "Verification flags",
+      "queued": "{{count}} queued",
+      "queued_other": "{{count}} queued"
+    },
+    "outcome": {
+      "written": "Created",
+      "suggestion": "Suggestion",
+      "skipped": "Skipped",
+      "writeback_failed": "Failed",
+      "error": "Error",
+      "processing": "Processing"
+    },
+    "pass": {
+      "context": "Retrieving",
+      "generate": "Writing",
+      "verify": "Verifying",
+      "revise": "Revising",
+      "writeback": "Saving"
+    },
     "badge": {
       "generated": "AI",
       "generatedHint": "AI-generated, passed verification.",
@@ -115,5 +162,70 @@
         "regurgitation": "Regurgitation"
       }
     }
+  },
+  "staleness": {
+    "banner": "Knowledge updates — {{count}} article may be outdated",
+    "banner_other": "Knowledge updates — {{count}} articles may be outdated",
+    "title": "Knowledge updates",
+    "subtitle": "{{count}} article flagged since its sources changed. Nothing regenerates until you choose.",
+    "subtitle_other": "{{count}} articles flagged since their sources changed. Nothing regenerates until you choose.",
+    "close": "Close",
+    "empty": "No outdated articles — everything is up to date with its sources.",
+    "outdated": "Outdated",
+    "dismiss": "Dismiss",
+    "dismissed": "Marked up to date",
+    "dismissFailed": "Failed to dismiss",
+    "viewSource": "View source",
+    "viewDiff": "View diff",
+    "diffLoading": "Loading diff…",
+    "noDiff": "No snapshot for this article — view the source instead.",
+    "diffApproximate": "Approximate — chapter passages may differ from what was used.",
+    "select": "Select {{name}}",
+    "selectedCount": "{{count}} selected",
+    "nArticles": "{{count}} article",
+    "nArticles_other": "{{count}} articles",
+    "regenerateSelected": "Regenerate",
+    "regenerateSelected_other": "Regenerate ({{count}})",
+    "dismissSelected": "Dismiss selected",
+    "dismissedN": "Dismissed {{count}}",
+    "dismissedN_other": "Dismissed {{count}}",
+    "estimateLabel": "Est.",
+    "rescan": "Rescan",
+    "rescanning": "Rescanning…",
+    "rescanDone": "Rescan done — {{count}} new change",
+    "rescanDone_other": "Rescan done — {{count}} new changes",
+    "rescanPartial": "Rescan done (recipe skipped — knowledge didn't supply versions) — {{count}} new",
+    "rescanPartial_other": "Rescan done (recipe skipped — knowledge didn't supply versions) — {{count}} new",
+    "rescanFailed": "Rescan failed",
+    "ledgerNote": "Knowledge changes are recorded here automatically (a deferred ledger, not realtime). Flags flip but nothing regenerates on its own — tokens are spent only when you hit Regenerate.",
+    "reason": {
+      "entity_changed": "Glossary entry changed",
+      "name_changed": "Name changed",
+      "enrichment_changed": "Enrichment changed",
+      "merged": "Entity merged",
+      "chapter_regrounded": "Chapter re-published",
+      "citation_broken": "Cited chapter removed",
+      "recipe_drift": "Generation recipe updated",
+      "kg_drift": "Related entities changed"
+    },
+    "severity": {
+      "hard": "Broken",
+      "structural": "Structural",
+      "content": "Content"
+    }
+  },
+  "suggestions": {
+    "aiRegen": "AI regenerated (grounded)",
+    "community": "Community",
+    "humanEditedNote": "This article has human edits → the AI version becomes a suggestion instead of overwriting.",
+    "preview": "Proposed",
+    "showDiff": "Show changes",
+    "hideDiff": "Hide changes",
+    "accept": "Accept",
+    "reject": "Reject",
+    "pendingChip": "{{count}} suggestion",
+    "pendingChip_other": "{{count}} suggestions",
+    "pendingTitle": "Pending suggestions ({{count}})",
+    "pendingTitle_other": "Pending suggestions ({{count}})"
   }
 }

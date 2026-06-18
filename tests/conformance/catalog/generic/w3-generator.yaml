@@ -1,0 +1,9 @@
+id: w3-generator
+description: "W3.1 — generator completeness, LIVE. The workload generator now emits npc.relationship_changed + npc.memory_embedded + a PERSISTENT world.kv_set, so projection arms that previously got 0 coverage (npc_session_memory_embedding, world_kv_projection — net-zeroed by set+unset) actually carry data. Closes D-WORKLOAD-GEN-NPC-REL-EMBED (generator+embed) + D-S5-WORLDKV-NETS-EMPTY. Emit → rebuild (incl pgvector embedding) → assert the arms are non-empty + the new npc events emitted → no-orphan clean; BITE orphans an embedding row → the sweep CATCHES it (before W3.1 those tables were EMPTY so the oracle ran vacuously). npc_pc_relationship_projection row is blocked by the rebuild-writer upsert defect (D-W3-NPC-REL-PROJECTION-UPSERT) — the EVENT is emitted, the projection row is tracked. Uses foundation-dev PG (pgvector) + the Rust rebuilder."
+invariant: I-w3-generator-arms-covered
+kind: live-probe
+command: ["bash", "scripts/perf/w3-generator.sh"]
+# scale-rig: heavy live probe (registry entry; runs via the scale-nightly explicit
+# step). cargo: needs the Rust rebuilder → notrun on the Go-only bare runner.
+requires: ["scale-rig", "cargo"]
+skip_when: []

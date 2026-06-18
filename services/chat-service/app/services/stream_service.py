@@ -47,6 +47,19 @@ from app.services.stream_events import make_emitter
 logger = logging.getLogger(__name__)
 
 
+# M3 (chat disconnect-cancel) — DISCONNECT IS HANDLED BY THE CASCADE, NOT AN
+# EXPLICIT DELETE. When the client/browser disconnects, GeneratorExit propagates
+# into the gateway helper → its `finally: await client.aclose()` closes httpx →
+# the gateway's r.Context() cancels → adapter.Stream returns → the gateway's
+# (silent) FinalizeStreamStatus marks the observability row 'cancelled' + frees
+# the GPU slot. We deliberately do NOT issue an explicit DELETE /internal/llm/jobs
+# from here: that path (cancelLlmJob) emits a terminal event → notification-service
+# would file a spurious "Chat cancelled" notification on EVERY user stop
+# (/review-impl). The DELETE route still exists for callers that WANT that
+# (an async chat job, an explicit admin cancel). Chat only needs to MINT + SEND
+# stream_job_id so the row exists and the cascade can finalize it.
+
+
 @dataclass
 class _Usage:
     """Mirror the shape of openai's CompletionUsage so existing
@@ -96,6 +109,10 @@ async def _stream_via_gateway(
             request_kwargs["temperature"] = gen_params["temperature"]
         if max_tokens is not None:
             request_kwargs["max_tokens"] = max_tokens
+        # M3 — mint a job id so the gateway persists a billing-neutral
+        # observability row for this stream + makes it cancellable on disconnect.
+        stream_job_id = str(uuid4())
+        request_kwargs["stream_job_id"] = stream_job_id
         request = StreamRequest(**request_kwargs)
         last_usage: _Usage | None = None
         finish_reason: str | None = None
@@ -130,6 +147,9 @@ async def _stream_via_gateway(
             "usage": last_usage,
         }
     finally:
+        # M3 — on disconnect, GeneratorExit unwinds through here; client.aclose
+        # closes httpx → the gateway finalizes the observability row 'cancelled'
+        # (the silent cascade — see the module note above; no spurious notify).
         await client.aclose()
 
 
@@ -203,6 +223,12 @@ async def _run_composer(
         kwargs["max_tokens"] = max_tokens
     if gen_params.get("temperature") is not None:
         kwargs["temperature"] = gen_params["temperature"]
+    # D-M3-COMPOSER-SUBSTREAM-OBSERVABILITY — mint a job id so the gateway
+    # persists a billing-neutral observability row for the composer sub-stream
+    # too (and a disconnect frees the slot via the aclose cascade), exactly like
+    # the main chat helpers. Billing-neutral: usage is still summed by the
+    # orchestrator from the composer's UsageEvents.
+    kwargs["stream_job_id"] = str(uuid4())
     req = StreamRequest(**kwargs)
     parts: list[str] = []
     used_in = 0
@@ -281,6 +307,10 @@ async def _stream_with_tools(
             if offered_tools:
                 request_kwargs["tools"] = tools
                 request_kwargs["tool_choice"] = "auto"
+            # M3 — one observability/cancel job id PER pass (each pass is a
+            # separate gateway stream; the active pass is what a disconnect aborts).
+            stream_job_id = str(uuid4())
+            request_kwargs["stream_job_id"] = stream_job_id
             request = StreamRequest(**request_kwargs)
 
             tool_frags: dict = {}
@@ -321,6 +351,9 @@ async def _stream_with_tools(
                     tools_supported = False
                     continue
                 raise
+            # M3 — a disconnect raises GeneratorExit here; it unwinds to the
+            # function's `finally: await client.aclose()`, and the gateway finalizes
+            # this pass's row via the silent cascade (no explicit DELETE → no notify).
 
             if not tool_frags:
                 # No tool calls — this pass IS the final text response.

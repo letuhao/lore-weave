@@ -318,6 +318,10 @@ CREATE TABLE IF NOT EXISTS extraction_jobs (
 ALTER TABLE extraction_jobs
   ADD COLUMN IF NOT EXISTS campaign_id UUID;
 
+-- Unified Job Control Plane reconcile source: GET /internal/knowledge/jobs?since=
+-- filters extraction_jobs by updated_at — index it so the periodic sweep isn't a seq-scan.
+CREATE INDEX IF NOT EXISTS idx_extraction_jobs_updated_at ON extraction_jobs(updated_at);
+
 -- E0-3 Phase 2a (D-E0-3-CALLER-PAYS-EXTRACTION): BYOK dual-identity billing.
 -- A collaborator's extraction must charge the COLLABORATOR's key, never the
 -- owner's (only a key's owner may cause it to be charged). These three columns
@@ -330,6 +334,43 @@ ALTER TABLE extraction_jobs
   ADD COLUMN IF NOT EXISTS billing_user_id         UUID,
   ADD COLUMN IF NOT EXISTS billing_embedding_model TEXT,
   ADD COLUMN IF NOT EXISTS billing_llm_model       TEXT;
+
+-- LLM re-arch Phase 2b WX-T1 (worker-ai extraction decouple): event-driven resume
+-- state. extract_pass2 is a multi-stage DAG with a concurrent fan-in (entity →
+-- gather(relation,event,fact) → recovery → filter, × chunks), so the decoupled
+-- orchestrator must persist (a) the IN-FLIGHT job set — the trio puts ≥3 jobs in
+-- flight at once → fan-in on all their terminal events — and (b) an explicit
+-- partial-extraction blob (stage cursor + per-op accumulators) that can't be
+-- reconstructed from anything else. All additive; NULL ⇒ legacy synchronous path
+-- (zero behavior change until extraction_decouple_enabled flips on). See
+-- docs/plans/2026-06-11-llm-rearch-phase2b-workerai-extraction-decouple-design.md.
+ALTER TABLE extraction_jobs
+  ADD COLUMN IF NOT EXISTS provider_job_ids JSONB,
+  ADD COLUMN IF NOT EXISTS resume_state     JSONB,
+  ADD COLUMN IF NOT EXISTS pipeline_stage   TEXT;
+
+-- C12 — target-typed extraction. `targets` selects which Pass-2 passes a
+-- build runs (entities/relations/events/facts/summaries). NOT NULL with a
+-- DEFAULT of ALL passes ⇒ every pre-C12 job + every caller that omits the
+-- field gets the original behaviour unchanged (the SDK + orchestrator
+-- treat the full set as "run all"). Requesting any of {relations,events,
+-- facts} auto-includes `entities` (enforced in the request layer + SDK
+-- guard, not the column). `concurrency_level` is a passthrough cap on
+-- parallel LLM calls; NULL ⇒ current unbounded behaviour. Both additive.
+ALTER TABLE extraction_jobs
+  ADD COLUMN IF NOT EXISTS targets TEXT[] NOT NULL
+    DEFAULT ARRAY['entities','relations','events','facts','summaries'],
+  ADD COLUMN IF NOT EXISTS concurrency_level INT;
+
+-- C13 — glossary pinning. `pinned_entity_ids` is the set of glossary entity
+-- ids the user chose to force-inject into EVERY extraction window's
+-- known_entities context (so sparse-but-critical entities stay anchored even
+-- in chapters that never mention them). JSONB array of id strings; NULL ⇒ no
+-- pins (back-compat — pre-C13 jobs + any caller that omits the field). The
+-- worker reads it, batch-fetches the names from glossary-service, and prepends
+-- them to known_entities. Additive.
+ALTER TABLE extraction_jobs
+  ADD COLUMN IF NOT EXISTS pinned_entity_ids JSONB;
 
 CREATE INDEX IF NOT EXISTS idx_extraction_jobs_project
   ON extraction_jobs (project_id, created_at DESC);
@@ -806,6 +847,24 @@ CREATE INDEX IF NOT EXISTS idx_outbox_pending
   ON outbox_events(created_at) WHERE published_at IS NULL;
 
 -- ═══════════════════════════════════════════════════════════════
+-- C23-fix (dị bản G2) — derivative-project flag on knowledge_projects.
+-- A DERIVATIVE work's knowledge project must get its OWN fresh partition
+-- and must NEVER be returned by the SOURCE book's per-(user,book)
+-- get-or-create dedup (create_or_get) or by get_by_book — otherwise the
+-- derivative inherits the source's project_id and composition's
+-- uq_composition_work_project (1 work : 1 project) is violated (the
+-- UniqueViolationError that 500'd POST /works/{id}/derive). Additive +
+-- backward-compatible: DEFAULT false ⇒ every existing row + every
+-- non-derivative create path behaves exactly as before. The repo's
+-- create_or_get/get_by_book SELECTs add `AND NOT is_derivative` so a
+-- derivative is excluded from the source book's dedup; the derive path
+-- sets force_new=true which both skips the dedup lock/select AND stamps
+-- is_derivative=true. ADD COLUMN IF NOT EXISTS keeps the DDL idempotent.
+-- ═══════════════════════════════════════════════════════════════
+ALTER TABLE knowledge_projects
+  ADD COLUMN IF NOT EXISTS is_derivative BOOLEAN NOT NULL DEFAULT false;
+
+-- ═══════════════════════════════════════════════════════════════
 -- Phase E2 — genre tag on knowledge_projects (2026-06-01)
 -- Free-text, user-settable (e.g. "Tiên hiệp", "trinh thám").
 -- Copied to extraction_runs at run-emit time for genre-segment
@@ -813,6 +872,23 @@ CREATE INDEX IF NOT EXISTS idx_outbox_pending
 -- ═══════════════════════════════════════════════════════════════
 ALTER TABLE knowledge_projects
   ADD COLUMN IF NOT EXISTS genre TEXT;
+
+-- ═══════════════════════════════════════════════════════════════
+-- G4 (world-level knowledge project, 2026-06-15) — world_id binding.
+-- A world's dedicated knowledge partition (bound to its hidden bible
+-- book) carries world_id so it has first-class identity independent of
+-- "the project whose book_id == the bible book". FK-by-convention to
+-- book-service worlds.id (cross-DB, no SQL FK — same as user_id/book_id).
+-- NULL for every normal per-book / general / derivative project, so the
+-- column is additive + backward-compatible (existing rows read back NULL).
+-- The partial index serves the world-rollup resolver (list WHERE world_id);
+-- the HOME projects browser excludes world_id IS NOT NULL rows in the repo.
+-- ═══════════════════════════════════════════════════════════════
+ALTER TABLE knowledge_projects
+  ADD COLUMN IF NOT EXISTS world_id UUID;
+
+CREATE INDEX IF NOT EXISTS idx_knowledge_projects_world
+  ON knowledge_projects(world_id) WHERE world_id IS NOT NULL;
 
 -- ═══════════════════════════════════════════════════════════════
 -- Q4b-feed — per-run items+source sample for the online LLM judge
@@ -884,6 +960,26 @@ CREATE INDEX IF NOT EXISTS idx_wiki_gen_jobs_project
 CREATE UNIQUE INDEX IF NOT EXISTS idx_wiki_gen_jobs_one_active_per_book
   ON wiki_gen_jobs (book_id)
   WHERE status IN ('pending','running','paused');
+
+-- wiki-llm W4a — per-entity result detail + live sub-step progress (the FE
+-- screen-③ results table). `results` is an OBJECT keyed by entity_id →
+-- {outcome, citations, flags, name}; it carries both the in-flight ('processing')
+-- and finished rows (cheap idempotent upsert via `|| jsonb_build_object`, so a
+-- resume/retry overwrites). `current_entity_id`/`current_pass` point at the one
+-- in-flight entity + its pipeline pass (context|generate|verify|revise|writeback);
+-- both are NULL when no entity is processing (cleared at complete/pause/fail).
+ALTER TABLE wiki_gen_jobs
+  ADD COLUMN IF NOT EXISTS results            JSONB NOT NULL DEFAULT '{}',
+  ADD COLUMN IF NOT EXISTS current_entity_id  TEXT,
+  ADD COLUMN IF NOT EXISTS current_pass       TEXT;
+
+-- wiki-llm W5 (D-WIKI-PER-STEP-MODEL) — an OPTIONAL second model for the
+-- corrective revise re-gen ("write with A, fix canon-flagged articles with B").
+-- NULL ⇒ the revise reuses the prose model_ref/model_source (unchanged behavior).
+-- verify_article is rule-based (no LLM), so this only affects revise_article.
+ALTER TABLE wiki_gen_jobs
+  ADD COLUMN IF NOT EXISTS revise_model_ref    TEXT,
+  ADD COLUMN IF NOT EXISTS revise_model_source TEXT;
 """
 
 

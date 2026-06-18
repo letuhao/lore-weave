@@ -42,6 +42,10 @@ logger = logging.getLogger(__name__)
 
 SearchMode = Literal["lexical", "semantic", "hybrid"]
 Granularity = Literal["chapter", "block"]
+# D-RAWSEARCH-CANON-WIRING — which passages the semantic leg may return.
+# "canon" (default) = published content only; "all" = canon + on-demand-indexed
+# drafts (owner-only — the HTTP layer downgrades a non-owner "all" to "canon").
+Surface = Literal["canon", "all"]
 
 # E5 score-floor default — DISABLED (0.0), an evidence-based choice. Calibration
 # (2026-06-08, bge-m3) showed semantic cosine is compressed in [0.68, 0.82] with
@@ -60,13 +64,15 @@ class RetrievalResult(BaseModel):
 
 def passage_to_hit(h: PassageSearchHit) -> dict[str, Any]:
     """Map a `:Passage` search hit → the unified raw-search hit shape.
-    Passages are published canon ⇒ surface="canon"/matchType="semantic"."""
+    `surface` reflects the node's canon flag (D-RAWSEARCH-CANON-WIRING):
+    canon passages → "canon", on-demand-indexed drafts → "draft". Legacy
+    nodes (no flag) read as canon via `Passage.canon`'s default."""
     p = h.passage
     return {
         "chapterId": p.source_id,
         "chapterTitle": None,
         "sortOrder": p.chapter_index if p.chapter_index is not None else 0,
-        "surface": "canon",
+        "surface": "canon" if p.canon else "draft",
         "matchType": "semantic",
         "score": h.raw_score,
         "relevance": h.raw_score,  # E5: native cosine (0–1) for the score-floor
@@ -161,6 +167,7 @@ async def run_hybrid_search(
     min_relevance: float = MIN_RELEVANCE_DEFAULT,
     rerank: bool = True,
     min_rerank_score: float | None = None,
+    surface: Surface = "canon",
 ) -> RetrievalResult:
     """Run the hybrid lexical+semantic search for one already-resolved project.
 
@@ -177,7 +184,7 @@ async def run_hybrid_search(
         if mode == "semantic":
             return []
         hits = await book_client.lexical_search(
-            book_id, q, limit=limit, granularity=granularity,
+            book_id, q, limit=limit, granularity=granularity, surface=surface,
         )
         if hits is None:
             degraded["lexical"] = "book_service_unavailable"
@@ -215,6 +222,8 @@ async def run_hybrid_search(
                     source_type="chapter",
                     limit=limit,
                     include_vectors=False,
+                    # D-RAWSEARCH-CANON-WIRING — owner-only "all" lets drafts through.
+                    include_drafts=(surface == "all"),
                 )
         except ValueError:
             degraded["semantic"] = "embedding_dim_mismatch"
@@ -227,15 +236,19 @@ async def run_hybrid_search(
     fused = rrf_fuse([lexical_hits, semantic_hits])
     # E5B: cross-encoder rerank for semantic/hybrid (where junk leaks). Lexical
     # mode is already clean (exact substring) so it skips rerank + stays fast.
-    # D-RERANK-NOT-BYOK: rerank is OPTIONAL — only when the project has a BYOK
-    # rerank model; no model ⇒ skip the step (keep fusion order, mark degraded).
-    if (
-        rerank
-        and settings.rerank_enabled
-        and mode != "lexical"
-        and fused
-        and project.rerank_model
-    ):
+    # D-RERANK-NOT-BYOK: rerank is OPTIONAL and BYOK. Resolve the effective model =
+    # the project's per-project rerank model, else the user's DEFAULT rerank model
+    # (provider-registry user_default_models) — the default restores the UX the
+    # removed RERANK_URL/_MODEL .env config gave. No model anywhere ⇒ skip (keep
+    # fusion order, mark degraded).
+    want_rerank = rerank and settings.rerank_enabled and mode != "lexical" and bool(fused)
+    effective_ref = project.rerank_model
+    effective_source = project.rerank_model_source
+    if want_rerank and not effective_ref:
+        default_ref = await reranker_client.get_default_rerank(str(user_id))
+        if default_ref:
+            effective_ref, effective_source = default_ref, "user_model"
+    if want_rerank and effective_ref:
         floor = settings.min_rerank_score if min_rerank_score is None else min_rerank_score
         fused = await apply_rerank(
             q, fused, reranker_client,
@@ -245,10 +258,10 @@ async def run_hybrid_search(
             min_rerank_score=floor,
             degraded=degraded,
             user_id=str(user_id),
-            model_source=project.rerank_model_source,
-            model_ref=project.rerank_model,
+            model_source=effective_source,
+            model_ref=effective_ref,
         )
-    elif rerank and settings.rerank_enabled and mode != "lexical" and fused and not project.rerank_model:
+    elif want_rerank and not effective_ref:
         degraded["rerank"] = "not_configured"
     fused = apply_relevance_floor(fused, min_relevance)
     # chapter mode (cap=1) = one best row per chapter (navigate); block mode

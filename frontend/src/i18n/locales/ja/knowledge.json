@@ -14,6 +14,103 @@
       "insights": "インサイト"
     }
   },
+  "graph": {
+    "title": "ナレッジグラフ",
+    "counts": "{{nodes}} ノード · {{edges}} 関係",
+    "truncated": "上位 {{n}} 件を表示中 — ノードを展開してさらに読み込む",
+    "expanding": "展開中…",
+    "hint": "スクロールでズーム · 空白をドラッグでパン · ノードをクリックで詳細 · ⊞ で展開",
+    "loading": "グラフを読み込み中…",
+    "loadFailed": "グラフの読み込みに失敗しました: {{error}}",
+    "empty": "まだナレッジグラフがありません — このプロジェクトをビルドしてネットワークを探索しましょう。"
+  },
+  "shell": {
+    "backToProjects": "すべてのプロジェクト",
+    "sections": {
+      "label": "プロジェクトセクション",
+      "overview": "概要",
+      "entities": "エンティティ",
+      "timeline": "タイムライン",
+      "evidence": "根拠",
+      "proposals": "提案",
+      "gap": "ギャップ",
+      "insights": "インサイト",
+      "graph": "グラフの構築・探索"
+    },
+    "notFound": "プロジェクトが見つかりません。",
+    "loading": "プロジェクトを読み込み中…",
+    "overview": {
+      "configHeading": "設定",
+      "embeddingModel": "埋め込みモデル",
+      "rerankModel": "リランクモデル",
+      "extraction": "抽出",
+      "extractionEnabled": "有効",
+      "extractionDisabled": "無効",
+      "bookId": "書籍",
+      "none": "—"
+    },
+    "placeholder": {
+      "proposals": "保留中の提案はここに表示されます（C11）。",
+      "gap": "用語集のギャップレポートはここに表示されます（C10）。",
+      "graph": "グラフの構築と探索はここに表示されます（C5 / C19）。"
+    }
+  },
+  "gap": {
+    "heading": "用語集ギャップレポート",
+    "subtitle": "本の中で多く言及されているのに、まだ用語集に登録されていないキャラクター・場所・概念です。残す価値のあるものを昇格してください。",
+    "summary": {
+      "candidates": "ギャップ候補",
+      "threshold": "最小言及数",
+      "top": "最多ギャップ",
+      "topLabel": "最多ギャップ",
+      "topMentions": "{{count}} 回言及",
+      "none": "—"
+    },
+    "controls": {
+      "minMentions": "最小言及数",
+      "limit": "最大表示数"
+    },
+    "selectAll": "すべて選択",
+    "selectRow": "{{name}} を選択",
+    "loading": "ギャップを読み込み中…",
+    "empty": "このしきい値以上のギャップはありません。最小言及数を下げるか、用語集が十分にカバーされています。",
+    "error": "ギャップレポートを読み込めませんでした。再試行してください。",
+    "mentions": "{{count}} 回言及",
+    "mentionsTitle": "本全体での言及回数",
+    "itemFailed": "失敗",
+    "bulkPromote": {
+      "cta_one": "{{count}} 件を用語集に昇格",
+      "cta_other": "{{count}} 件を用語集に昇格",
+      "cta_zero": "用語集に昇格",
+      "progress": "{{done}} / {{total}} 件昇格済み",
+      "failedCount": "（{{count}} 件失敗）",
+      "allOk": "{{count}} 件を用語集の下書きに昇格しました。",
+      "allFailed": "{{count}} 件すべての昇格に失敗しました。再試行してください。",
+      "partial": "{{ok}} 件昇格、{{failed}} 件失敗。"
+    }
+  },
+  "proposals": {
+    "heading": "保留中の提案",
+    "subtitle": "レビュー待ちのすべてを一つの受信箱に — 用語集のAI提案、ウィキの編集、ロア補強の提案。行を開くと、それぞれの画面でレビューして承認できます。",
+    "noBook": "このプロジェクトに書籍をリンクすると、提案キューが表示されます。",
+    "loading": "提案を読み込み中…",
+    "error": "提案受信箱を読み込めませんでした。もう一度お試しください。",
+    "empty": "保留中の提案はありません。新しいAI提案は生成され次第ここに表示されます。",
+    "review": "レビュー",
+    "openRow": "{{title}} をレビュー",
+    "sourceError": "このキューを読み込めませんでした。他のキューは表示されています。",
+    "origin": {
+      "glossary": "用語集ドラフト",
+      "wiki": "ウィキ編集",
+      "enrichment": "ロア提案"
+    },
+    "originLabel": {
+      "glossary": "用語集AIドラフト",
+      "wiki": "ウィキ提案",
+      "enrichment": "ロア補強の提案"
+    },
+    "count": "{{count}}"
+  },
   "mobile": {
     "sections": {
       "global": "グローバルプロフィール",
@@ -92,6 +189,7 @@
     "notIndexed": "このプロジェクトはまだ意味的検索用にインデックス化されていません。",
     "notIndexedHint": "ドロワー検索を有効にするには、埋め込みモデルで抽出を実行してください。",
     "refreshing": "更新中…",
+    "embedCost": "クエリの埋め込み: {{tokens}} トークン · ${{cost}}",
     "retry": "再試行",
     "fixConfig": "設定でプロジェクトの埋め込みモデル構成を確認してください。",
     "unknownError": "不明なエラー。もう一度お試しください。",
@@ -149,7 +247,24 @@
       "chronologicalRange": "時系列範囲",
       "after": "以降",
       "before": "以前",
-      "chronoReversed": "「以前」は「以降」より大きい値である必要があります。"
+      "chronoReversed": "「以前」は「以降」より大きい値である必要があります。",
+      "dateRange": "日付範囲",
+      "dateFrom": "開始",
+      "dateTo": "終了",
+      "dateInvalid": "YYYY、YYYY-MM、または YYYY-MM-DD を使用してください。",
+      "dateReversed": "「終了」は「開始」以降である必要があります。"
+    },
+    "sort": {
+      "label": "並び順",
+      "narrative": "物語順",
+      "chronological": "時系列順",
+      "direction": "方向",
+      "asc": "古い順",
+      "desc": "新しい順"
+    },
+    "importance": {
+      "major": "重要",
+      "pivotal": "決定的"
     },
     "row": {
       "orderLabel": "物語順",
@@ -181,10 +296,29 @@
     "filters": {
       "project": "プロジェクト",
       "kind": "種別",
+      "status": "ステータス",
       "search": "検索",
       "searchPlaceholder": "名前またはエイリアス（2文字以上）",
+      "semantic": "セマンティック検索",
+      "semanticPlaceholder": "探している内容を記述（ベクトル検索）",
       "anyProject": "すべてのプロジェクト",
-      "anyKind": "すべての種別"
+      "anyKind": "すべての種別",
+      "anyStatus": "すべてのステータス"
+    },
+    "status": {
+      "canonical": "正典",
+      "discovered": "発見済み",
+      "archived": "アーカイブ済み"
+    },
+    "legend": {
+      "title": "ステータス",
+      "canonical": "用語集に登録済み",
+      "discovered": "発見済み、未昇格",
+      "archived": "検索から非表示"
+    },
+    "anchor": {
+      "badge": "⚓ {{pct}}",
+      "tooltip": "アンカースコア {{pct}}% — このエンティティの定着度"
     },
     "table": {
       "ariaLabel": "エンティティ",
@@ -229,7 +363,24 @@
         "anchor": "アンカースコア"
       },
       "edit": "編集",
-      "merge": "別のエンティティと結合"
+      "merge": "別のエンティティと結合",
+      "promote": "用語集へ昇格",
+      "promoteHint": "発見されたエンティティです。昇格するとレビュー用のAI提案下書きが作成されます。",
+      "promotePending": "昇格中…",
+      "promoteSuccess": "昇格しました — レビュー用の用語集下書きを作成しました。",
+      "promoteFailed": "昇格できませんでした: {{error}}",
+      "unpin": "コンテキスト固定を解除",
+      "unpinHint": "このエンティティは抽出コンテキストに固定されています。",
+      "unpinSuccess": "コンテキスト固定を解除しました。",
+      "unpinFailed": "固定を解除できませんでした: {{error}}",
+      "facts": "既知の事実 ({{count}})",
+      "factSource": "第{{chapter}}章",
+      "factType": {
+        "decision": "決定",
+        "preference": "嗜好",
+        "milestone": "節目",
+        "negation": "否定"
+      }
     },
     "edit": {
       "title": "エンティティを編集",
@@ -372,9 +523,34 @@
     },
     "loadFailed": "プロジェクトの読み込みに失敗しました: {{error}}",
     "paginationNote": "最初の 100 件を表示 — フルページネーションは Track 2 で対応予定。",
+    "browser": {
+      "searchPlaceholder": "プロジェクトを検索…",
+      "searchLabel": "名前でプロジェクトを検索",
+      "filterLabel": "状態で絞り込む",
+      "sortLabel": "プロジェクトを並べ替え",
+      "noMatches": "現在の検索とフィルターに一致するプロジェクトはありません。",
+      "loadMore": "さらに読み込む",
+      "loadingMore": "読み込み中…",
+      "stateFilter": {
+        "all": "すべての状態",
+        "disabled": "静的メモリ",
+        "building": "構築中",
+        "paused": "一時停止",
+        "ready": "準備完了",
+        "failed": "失敗",
+        "archived": "アーカイブ済み"
+      },
+      "sortOption": {
+        "recent": "最近更新",
+        "oldest": "古い順",
+        "name_asc": "名前 (A–Z)",
+        "name_desc": "名前 (Z–A)"
+      }
+    },
     "card": {
       "staticMemory": "静的メモリ",
       "archivedBadge": "アーカイブ済み",
+      "open": "開く",
       "edit": "編集",
       "archive": "アーカイブ",
       "restore": "復元",
@@ -503,7 +679,9 @@
         "extractNew": "新しい章を抽出",
         "ignore": "無視",
         "confirm": "確定",
-        "confirmModelChange": "モデル変更を確定"
+        "confirmModelChange": "モデル変更を確定",
+        "exploreGraph": "グラフを探索",
+        "setConcurrency": "並列数を設定"
       },
       "cards": {
         "disabled": {
@@ -522,7 +700,9 @@
           "progress": "{{processed}} / {{total}} 件",
           "elapsed": "経過: {{elapsed}}",
           "spent": "使用額: ${{spent}}",
-          "spentOfBudget": "使用額: ${{spent}} / ${{budget}}"
+          "spentOfBudget": "使用額: ${{spent}} / ${{budget}}",
+          "concurrencyLabel": "並列呼び出し数",
+          "concurrencyApply": "適用"
         },
         "building_paused_user": {
           "body": "ジョブを一時停止しました。準備ができたら再開するか、キャンセルして部分グラフを残せます。"
@@ -592,12 +772,56 @@
         "failed": "見積もり失敗: {{error}}",
         "cost": "推定コスト: ${{low}} – ${{high}}",
         "items": "{{chapters}} 章 · {{turns}} チャットターン · 約 {{tokens}} トークン",
-        "duration": "約 {{seconds}} 秒"
+        "duration": "約 {{seconds}} 秒",
+        "pinned": "ピン留めコンテキスト: +{{tokens}} トークン (全ウィンドウで{{count}}件ピン留め)"
       },
       "cancel": "キャンセル",
       "confirm": "グラフを構築",
       "starting": "開始中…",
-      "startFailed": "開始失敗: {{error}}"
+      "startSuccess": "構築を開始しました — ナレッジグラフを抽出しています。",
+      "startFailed": "開始失敗: {{error}}",
+      "wizard": {
+        "step1": "対象",
+        "step2": "ピン留め",
+        "step3": "予算",
+        "next": "次へ",
+        "back": "戻る",
+        "step2Placeholder": "用語集のピン留めは次のステップで対応します — 現在は各抽出ウィンドウが各章のコンテキストを使用します。"
+      },
+      "targets": {
+        "label": "抽出する内容",
+        "hint": "実行するパスを選択します。何も選択しないとすべて実行します（既定）。",
+        "entities": "エンティティ",
+        "relations": "関係",
+        "events": "イベント・年表",
+        "facts": "事実",
+        "summaries": "要約",
+        "autoIncluded": "自動追加",
+        "autoIncludedHint": "関係・イベント・事実がエンティティに結びつくため、エンティティは自動的に抽出されます。",
+        "recoveryDisabledHint": "エンティティが対象に選択されていないため、エンティティ回復と精度フィルタはスキップされます。"
+      },
+      "concurrency": {
+        "label": "並列LLM呼び出し数（任意）",
+        "hint": "同時に実行する抽出呼び出し数の上限。既定は空欄のまま。"
+      },
+      "pinning": {
+        "intro": "用語集エンティティをピン留めすると、すべての抽出ウィンドウに強制注入されます。まれだが重要なエンティティが、言及のない章でも常にアンカーされます。",
+        "autopin": "出現はまばらだが範囲が広いエンティティが{{count}}件、ピン留めの価値があります。",
+        "autopinApply": "{{count}}件の提案をピン留め",
+        "loading": "エンティティ統計を読み込み中…",
+        "unavailable": "エンティティ統計を取得できません。下から手動でピン留めできます。",
+        "searchPlaceholder": "名前で検索…",
+        "kindAll": "すべての種類",
+        "minMentions": "最小 ×",
+        "available": "利用可能 ({{count}})",
+        "availableEmpty": "フィルターに一致するエンティティはありません。",
+        "pinned": "ピン留め済み ({{count}})",
+        "pinnedEmpty": "まだピン留めされていません。",
+        "pin": "ピン留め",
+        "unpin": "ピン解除",
+        "budget": "ウィンドウごとに +{{tokens}} トークン ({{count}} 件ピン留め × 約50)。",
+        "noBook": "ピン留めにはリンクされた書籍が必要です。まずこのプロジェクトに書籍を紐付けてください。"
+      }
     },
     "errorViewer": {
       "title": "抽出エラー",

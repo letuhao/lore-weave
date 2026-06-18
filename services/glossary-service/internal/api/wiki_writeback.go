@@ -27,16 +27,18 @@ type wikiSourceUsage struct {
 	SourceType    string `json:"source_type"` // 'entity' | 'kg' | 'block'
 	SourceID      string `json:"source_id"`
 	SourceVersion string `json:"source_version"`
+	// W6b-2 — the source text at generation time (the "before" half of the diff).
+	SourceText string `json:"source_text"`
 }
 
 type wikiWritebackRequest struct {
-	EntityID             string          `json:"entity_id"`
-	UserID               string          `json:"user_id"` // the user who triggered the gen job
-	BodyJSON             json.RawMessage `json:"body_json"`
-	GenerationStatus     string          `json:"generation_status"` // generated | needs_review | blocked
-	GeneratedBy          string          `json:"generated_by"`      // model_ref / "ai"
-	GenerationProvenance json.RawMessage `json:"generation_provenance"`
-	SpoilerHorizon       *int            `json:"spoiler_horizon"`
+	EntityID             string            `json:"entity_id"`
+	UserID               string            `json:"user_id"` // the user who triggered the gen job
+	BodyJSON             json.RawMessage   `json:"body_json"`
+	GenerationStatus     string            `json:"generation_status"` // generated | needs_review | blocked
+	GeneratedBy          string            `json:"generated_by"`      // model_ref / "ai"
+	GenerationProvenance json.RawMessage   `json:"generation_provenance"`
+	SpoilerHorizon       *int              `json:"spoiler_horizon"`
 	SourceUsage          []wikiSourceUsage `json:"source_usage"`
 }
 
@@ -182,11 +184,29 @@ func (s *Server) internalWriteWikiArticle(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
 		return
 	}
+	// wiki-llm Phase-2b (§5.3) — a fresh AI generation supersedes any pending
+	// staleness for this article: resolve the ledger rows (the is_knowledge_stale
+	// flag is already cleared on the UPDATE path above). In-tx so the regen + the
+	// resolution are atomic. Only the WRITE path reaches here — a human-edited
+	// article routes to a suggestion (above) and keeps its staleness.
+	if _, err := tx.Exec(r.Context(),
+		`UPDATE wiki_staleness SET status='regenerated' WHERE article_id=$1 AND status='pending'`,
+		articleID,
+	); err != nil {
+		slog.Error("writeback resolve staleness", "error", err)
+		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+		return
+	}
 	s.finishWriteback(w, r, tx, bookID, articleID, entityID, "written", req.GenerationStatus)
 }
 
 // writeWikiSuggestion files the AI body as a pending suggestion (clobber-guard
 // path) — the full body + provenance live in diff_json for the human review.
+// aiRegenSuggestionReason marks a wiki_suggestion filed by the AI-writeback
+// clobber-guard (vs a human feedback suggestion). Used as the dedup scope key so
+// "latest AI suggestion wins" never touches human-filed suggestions.
+const aiRegenSuggestionReason = "AI regeneration (article has human edits)"
+
 func (s *Server) writeWikiSuggestion(
 	ctx context.Context, tx pgx.Tx, articleID, userID uuid.UUID, req *wikiWritebackRequest,
 ) (string, error) {
@@ -198,10 +218,22 @@ func (s *Server) writeWikiSuggestion(
 	if err != nil {
 		return "", err
 	}
+	// D-WIKI-M5-SUGGESTION-DEDUP: latest AI suggestion wins. Repeated AI regen over a
+	// human-edited article would otherwise pile a NEW pending suggestion each time and
+	// flood the review queue. Drop any prior PENDING ai-regen suggestion(s) for this
+	// article first (collapses to exactly one + self-heals any pre-fix pileup); scoped
+	// by `reason` so a human-filed feedback suggestion is never deleted. Same tx → atomic.
+	if _, err := tx.Exec(ctx, `
+		DELETE FROM wiki_suggestions
+		 WHERE article_id=$1 AND status='pending' AND reason=$2`,
+		articleID, aiRegenSuggestionReason,
+	); err != nil {
+		return "", err
+	}
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO wiki_suggestions (article_id, user_id, diff_json, reason, status)
-		VALUES ($1, $2, $3, 'AI regeneration (article has human edits)', 'pending')`,
-		articleID, userID, diff,
+		VALUES ($1, $2, $3, $4, 'pending')`,
+		articleID, userID, diff, aiRegenSuggestionReason,
 	); err != nil {
 		return "", err
 	}
@@ -232,10 +264,14 @@ func (s *Server) replaceSourceUsage(
 		if u.SourceVersion != "" {
 			ver = u.SourceVersion
 		}
+		var srcText any
+		if u.SourceText != "" {
+			srcText = u.SourceText
+		}
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO wiki_article_source_usage (article_id, source_type, source_id, source_version)
-			VALUES ($1, $2, $3, $4)`,
-			articleID, u.SourceType, u.SourceID, ver,
+			INSERT INTO wiki_article_source_usage (article_id, source_type, source_id, source_version, source_text)
+			VALUES ($1, $2, $3, $4, $5)`,
+			articleID, u.SourceType, u.SourceID, ver, srcText,
 		); err != nil {
 			return err
 		}

@@ -19,6 +19,8 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from pydantic import BaseModel
 
+from app.config import settings
+
 from app.clients.book_client import BookClient
 from app.clients.embedding_client import EmbeddingClient
 from app.clients.reranker_client import RerankerClient
@@ -36,6 +38,7 @@ from app.search.retriever import (
     MIN_RELEVANCE_DEFAULT,
     Granularity,
     SearchMode,
+    Surface,
     run_hybrid_search,
 )
 
@@ -69,6 +72,11 @@ async def search_book(
     min_relevance: float = Query(MIN_RELEVANCE_DEFAULT, ge=0.0, le=1.0),
     rerank: bool = Query(True),
     min_rerank_score: float | None = Query(None, ge=0.0, le=1.0),
+    surface: Surface = Query(
+        "canon",
+        description="canon = published content only; all = canon + on-demand-indexed "
+        "drafts (owner-only — a non-owner 'all' is silently treated as 'canon').",
+    ),
     caller: UUID = Depends(get_current_user),
     projects_repo: ProjectsRepo = Depends(get_projects_repo),
     grant_client: GrantClient = Depends(get_grant_client),
@@ -92,6 +100,14 @@ async def search_book(
             status_code=status.HTTP_404_NOT_FOUND, detail="not_indexed",
         )
 
+    # D-RAWSEARCH-CANON-WIRING — draft visibility is OWNER-ONLY. Search runs as
+    # project.user_id (resolve-to-owner), so a collaborator's caller != owner.
+    # A non-owner asking surface=all is silently downgraded to canon — drafts are
+    # private-until-published, never exposed to shared users.
+    effective_surface: Surface = (
+        "all" if (surface == "all" and caller == project.user_id) else "canon"
+    )
+
     result = await run_hybrid_search(
         user_id=project.user_id,
         book_id=book_id,
@@ -106,7 +122,110 @@ async def search_book(
         min_relevance=min_relevance,
         rerank=rerank,
         min_rerank_score=min_rerank_score,
+        surface=effective_surface,
     )
     return RawSearchResponse(
         query=q, mode=mode, results=result.hits, degraded=result.degraded,
+    )
+
+
+class IndexDraftsResponse(BaseModel):
+    """Result of an on-demand draft-indexing pass (D-RAWSEARCH-CANON-WIRING)."""
+
+    indexed: int  # draft chapters whose passages were (re)written
+    skipped: int  # draft chapters that produced no passages (empty/embed fail)
+    chapters: int  # total draft chapters enumerated
+
+
+@router.post("/books/{book_id}/index-drafts", response_model=IndexDraftsResponse)
+async def index_drafts(
+    book_id: UUID = Path(..., description="Book whose draft chapters to index."),
+    caller: UUID = Depends(get_current_user),
+    projects_repo: ProjectsRepo = Depends(get_projects_repo),
+    grant_client: GrantClient = Depends(get_grant_client),
+    book_client: BookClient = Depends(get_book_client),
+    embedding_client: EmbeddingClient = Depends(get_embedding_client),
+) -> IndexDraftsResponse:
+    """D-RAWSEARCH-CANON-WIRING — owner-only, on-demand semantic indexing of a
+    book's DRAFT (unpublished) chapters as `canon=false` passages, so a later
+    `surface=all` search can surface unpublished content. Bounded cost: one
+    embed pass per invoke (no per-save embedding). Re-run to refresh.
+
+    Only enumerates `editorial_status=draft` chapters, so it never clobbers
+    canon passages (canon is written only on publish); a subsequent publish
+    re-ingests at the pinned revision (`canon=true`), replacing the draft
+    passages for that chapter by source_id.
+    """
+    # Owner-only: a non-grantee gets the uniform 404 (no existence oracle); a
+    # collaborator (view/edit/manage) gets 403 — drafts are the owner's private
+    # workspace, not shared search surface.
+    grant = await grant_client.resolve_grant(book_id, caller)
+    if grant == GrantLevel.NONE:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_indexed")
+    if grant != GrantLevel.OWNER:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="owner_only",
+        )
+    project = await projects_repo.get_by_book(book_id)
+    if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_indexed")
+    if not project.embedding_model or not project.embedding_dimension:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="project_not_indexed",
+        )
+    if not settings.neo4j_uri:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="semantic_index_unavailable",
+        )
+
+    items = await book_client.list_chapters(book_id, editorial_status="draft")
+    if items is None:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY, detail="book_service_unavailable",
+        )
+
+    # Inline imports mirror the event-handler pattern (avoid circular import at
+    # module load before the Neo4j driver is wired).
+    from app.db.neo4j import neo4j_session
+    from app.extraction.passage_ingester import ingest_chapter_passages
+
+    indexed = 0
+    skipped = 0
+    async with neo4j_session() as session:
+        for item in items:
+            try:
+                chapter_id = UUID(str(item["chapter_id"]))
+            except (KeyError, ValueError, TypeError):
+                skipped += 1
+                continue
+            sort_order = item.get("sort_order")
+            chapter_index = sort_order if isinstance(sort_order, int) else None
+            try:
+                res = await ingest_chapter_passages(
+                    session,
+                    book_client,
+                    embedding_client,
+                    user_id=project.user_id,
+                    project_id=project.project_id,
+                    book_id=book_id,
+                    chapter_id=chapter_id,
+                    chapter_index=chapter_index,
+                    embedding_model=project.embedding_model,
+                    embedding_dim=project.embedding_dimension,
+                    # Live draft (chapter_blocks), NOT a pinned revision.
+                    revision_id=None,
+                    canon=False,
+                )
+                if res.chunks_created > 0:
+                    indexed += 1
+                else:
+                    skipped += 1
+            except Exception:
+                logger.warning(
+                    "index-drafts: ingest failed for chapter=%s book=%s — non-fatal",
+                    chapter_id, book_id, exc_info=True,
+                )
+                skipped += 1
+    return IndexDraftsResponse(
+        indexed=indexed, skipped=skipped, chapters=len(items),
     )

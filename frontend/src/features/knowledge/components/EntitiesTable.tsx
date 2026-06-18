@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import type { Entity } from '../api';
+import { anchorPercent, entityStatus, statusGlyph } from '../lib/entityStatus';
 
 // K19d.1 — presentational entities table. Row click + Enter/Space
 // set selectedEntityId on the parent tab. a11y: rows are focusable
@@ -38,6 +39,44 @@ function formatRelativeDate(iso: string | null): string {
     month: 'short',
     day: 'numeric',
   });
+}
+
+// C8 — status glyph (⭐/💭/📦). The visible char IS the status signal;
+// title + sr-only text carry the accessible label so screen readers
+// don't read a bare emoji. `aria-hidden` on the glyph + an sr-only
+// label is the a11y-correct icon pattern.
+function StatusGlyph({ entity }: { entity: Entity }) {
+  const { t } = useTranslation('knowledge');
+  const status = entityStatus(entity);
+  const label = t(`entities.status.${status}`);
+  return (
+    <span
+      className="shrink-0"
+      title={label}
+      data-testid="entity-status-glyph"
+      data-status={status}
+    >
+      <span aria-hidden="true">{statusGlyph(entity)}</span>
+      <span className="sr-only">{label}</span>
+    </span>
+  );
+}
+
+// C8 — anchor-score badge. Only meaningful for anchored/discovered
+// entities; rendered as a compact 0–100 chip so the curation view can
+// sort/scan by anchor strength.
+function AnchorBadge({ anchorScore }: { anchorScore: number }) {
+  const { t } = useTranslation('knowledge');
+  const pct = anchorPercent(anchorScore);
+  return (
+    <span
+      className="inline-flex items-center rounded-sm bg-secondary px-1 py-0.5 text-[10px] tabular-nums text-secondary-foreground"
+      title={t('entities.anchor.tooltip', { pct })}
+      data-testid="entity-anchor-badge"
+    >
+      {t('entities.anchor.badge', { pct })}
+    </span>
+  );
 }
 
 function rowKeyHandler(onSelect: (id: string) => void, id: string) {
@@ -102,14 +141,18 @@ export function EntitiesTable({
                   data-testid="entities-row"
                   data-entity-id={e.id}
                 >
-                  <span className="truncate font-medium" title={e.name}>
-                    {e.name}
+                  <span className="flex min-w-0 items-center gap-1.5 font-medium">
+                    <StatusGlyph entity={e} />
+                    <span className="truncate" title={e.name}>
+                      {e.name}
+                    </span>
                   </span>
                   <span className="text-muted-foreground">{e.kind}</span>
                   <span className="truncate text-muted-foreground" title={e.project_id ?? ''}>
                     {e.project_id ?? t('entities.table.global')}
                   </span>
-                  <span className="text-right tabular-nums">
+                  <span className="flex items-center justify-end gap-1.5 tabular-nums">
+                    <AnchorBadge anchorScore={e.anchor_score} />
                     {e.mention_count}
                   </span>
                   <span className="text-right tabular-nums text-muted-foreground">
@@ -150,14 +193,18 @@ export function EntitiesTable({
                 aria-label={e.name}
               >
                 <div className="flex items-baseline justify-between gap-2 text-[13px]">
-                  <span className="min-w-0 truncate font-medium" title={e.name}>
-                    {e.name}
+                  <span className="flex min-w-0 items-center gap-1.5 font-medium">
+                    <StatusGlyph entity={e} />
+                    <span className="min-w-0 truncate" title={e.name}>
+                      {e.name}
+                    </span>
                   </span>
                   <span className="shrink-0 text-[11px] uppercase tracking-wide text-muted-foreground">
                     {e.kind}
                   </span>
                 </div>
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
+                  <AnchorBadge anchorScore={e.anchor_score} />
                   <span className="tabular-nums">
                     {t('entities.table.col.mentions')}: {e.mention_count}
                   </span>

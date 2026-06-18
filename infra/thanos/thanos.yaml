@@ -1,0 +1,131 @@
+# infra/thanos/thanos.yaml — L7.H.4 (RAID cycle 33)
+#
+# ╔══════════════════════════════════════════════════════════════════════╗
+# ║  STATUS: STUBBED V1 — DO NOT ACTIVATE                                ║
+# ║  Activation date: V1+30d per Q-L1I-2 OPEN_QUESTIONS_LOCKED.md L46   ║
+# ║  See: infra/thanos/STUB_FLAG.md                                      ║
+# ╚══════════════════════════════════════════════════════════════════════╝
+#
+# Thanos sidecar configuration for 1y+ Prometheus long-term retention.
+# Foundation V1 ships THIS CONFIG FILE ONLY; the Thanos sidecar process
+# is NOT included in docker-compose.observability.yml as an active
+# service. Activation is a single docker-compose flip (uncomment the
+# thanos-sidecar service block).
+#
+# LOCKED decisions consumed:
+#   - Q-L1I-2 (OPEN_QUESTIONS_LOCKED.md line 46): V1 = 30d Prometheus
+#     native (no Thanos). V1+30d = Thanos sidecar for 1y+ retention.
+#     This file is the V1+30d-activation-ready config that ships V1.
+#
+# Why stub now (cycle 33) rather than wait V1+30d:
+#   1. Activation requires CONFIG + DOCKER-COMPOSE wiring + S3 bucket
+#      Terraform. Shipping the config + Terraform-ready file now means
+#      V1+30d activation is hours not weeks.
+#   2. The Prometheus main.yaml `remote_write` block (commented in
+#      L7.H.1) targets the Thanos receive endpoint configured here.
+#      Aligning them at the same commit prevents drift.
+#   3. The verifier asserts this file exists + carries the STUB warning
+#      banner — a future commit that activates Thanos MUST also remove
+#      the banner, ensuring intentional activation.
+#
+# Architecture (V1+30d):
+#   prom-a ──┐
+#            ├─► thanos-sidecar (uploads 2h blocks to S3)
+#   prom-b ──┘
+#                  │
+#                  ▼
+#            S3 bucket lw-thanos-blocks
+#                  │
+#                  ▼
+#   Grafana ◄─── thanos-query (deduplicates HA + reads S3 blocks)
+
+# ─────────────────────────────────────────────────────────────────────
+# thanos-sidecar (V1+30d): bundled with each Prometheus replica
+# ─────────────────────────────────────────────────────────────────────
+sidecar:
+  # When active, sidecar runs alongside prom-a and prom-b containers.
+  # It uploads completed 2h blocks from Prometheus storage to S3.
+
+  # Reading from Prometheus
+  prometheus:
+    url: http://prom-{REPLICA_ID}.internal:9090   # 'a' or 'b'
+
+  # Uploading blocks to S3 (bucket terraformed at V1+30d activation)
+  objstore:
+    type: S3
+    config:
+      bucket: lw-thanos-blocks
+      endpoint: s3.amazonaws.com
+      region: us-east-1
+      # AWS creds via IAM role on EC2/ECS task — never hardcoded.
+      # docker-compose dev: localstack as S3.
+
+  # Sidecar resource limits
+  reloader:
+    config_file: /etc/prometheus/main.yaml
+    config_envsubst_file: /etc/prometheus/main.envsubst.yaml
+
+# ─────────────────────────────────────────────────────────────────────
+# thanos-query (V1+30d): the dedup + global view component
+# ─────────────────────────────────────────────────────────────────────
+query:
+  # Listens on 10902; Grafana datasource points here for "long-term"
+  # queries (Grafana has both prom-primary [30d] AND thanos-query
+  # [1y+] datasources after activation).
+  http_address: 0.0.0.0:10902
+  grpc_address: 0.0.0.0:10901
+
+  # Dedup based on prom_replica external_label (Q-L1I-1).
+  query_replica_label: prom_replica
+
+  # Store API endpoints — the sidecars + the store gateway
+  stores:
+    - dnssrv+_grpc._tcp.thanos-sidecar.internal
+    - thanos-store.internal:10901
+
+# ─────────────────────────────────────────────────────────────────────
+# thanos-store (V1+30d): serves historical S3 blocks
+# ─────────────────────────────────────────────────────────────────────
+store:
+  objstore:
+    type: S3
+    config:
+      bucket: lw-thanos-blocks
+      endpoint: s3.amazonaws.com
+      region: us-east-1
+  grpc_address: 0.0.0.0:10901
+  http_address: 0.0.0.0:10902
+
+# ─────────────────────────────────────────────────────────────────────
+# thanos-compactor (V1+30d): merges blocks + applies retention
+# ─────────────────────────────────────────────────────────────────────
+compactor:
+  objstore:
+    type: S3
+    config:
+      bucket: lw-thanos-blocks
+      endpoint: s3.amazonaws.com
+      region: us-east-1
+  retention:
+    resolution_raw: 30d         # raw blocks retained 30d (overlap with prom native)
+    resolution_5m: 90d          # 5m downsample 90d
+    resolution_1h: 365d         # 1h downsample 1 year (Q-L1I-2 "1y+")
+
+# ─────────────────────────────────────────────────────────────────────
+# Activation checklist (V1+30d) — DO NOT DELETE
+# ─────────────────────────────────────────────────────────────────────
+activation_checklist:
+  - step: "Terraform-create S3 bucket lw-thanos-blocks with IAM role"
+  - step: "Remove STUB banner from this file"
+  - step: "Remove infra/thanos/STUB_FLAG.md"
+  - step: "Uncomment remote_write block in infra/prometheus/main.yaml"
+  - step: "Add thanos-sidecar service block to docker-compose.observability.yml"
+  - step: "Add thanos-query datasource to infra/grafana/provisioning/datasources/datasources.yaml"
+  - step: "Run cycle-NEW verify-cycle-X.sh which asserts STUB banner is gone"
+
+# Drift guard — verifier asserts this exact key is present + STUB flag set.
+guard:
+  status: STUBBED_V1
+  activates: V1_PLUS_30D
+  locked_cycle: 33
+  question_id: Q-L1I-2

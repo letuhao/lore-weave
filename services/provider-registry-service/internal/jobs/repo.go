@@ -179,6 +179,62 @@ WHERE job_id = $1 AND owner_user_id = $2
 	return job, nil
 }
 
+// JobDispatch is the minimal set of fields the queue consumer needs to (re)run
+// Process from a job_id — no owner scoping (the internal consumer trusts the row
+// the submit handler already owner-verified + persisted).
+type JobDispatch struct {
+	OwnerUserID uuid.UUID
+	Operation   string
+	ModelSource string
+	ModelRef    uuid.UUID
+	Input       json.RawMessage
+	Chunking    json.RawMessage
+	Status      string
+}
+
+// LoadForProcess reads the dispatch fields for a queued job. Used by the Commit-3
+// consumer pool: it loads by job_id (the message carries only the id) and runs
+// Process. Returns pgx.ErrNoRows if the row is gone (consumer acks + drops).
+func (r *Repo) LoadForProcess(ctx context.Context, jobID uuid.UUID) (*JobDispatch, error) {
+	d := &JobDispatch{}
+	err := r.pool.QueryRow(ctx, `
+SELECT owner_user_id, operation, model_source, model_ref, input, chunking, status
+FROM llm_jobs WHERE job_id = $1
+`, jobID).Scan(&d.OwnerUserID, &d.Operation, &d.ModelSource, &d.ModelRef,
+		&d.Input, &d.Chunking, &d.Status)
+	if err != nil {
+		return nil, err
+	}
+	return d, nil
+}
+
+// ResolveKind reads a model's provider_kind (the queue routing key + governor
+// concurrency class). found=false → model gone (caller 404s). Mirrors
+// EstimateModelInfo's lookup, kind-only (no pricing decode).
+func (r *Repo) ResolveKind(ctx context.Context, modelSource string, ownerUserID, modelRef uuid.UUID) (string, bool, error) {
+	var kind string
+	var err error
+	switch modelSource {
+	case "user_model":
+		err = r.pool.QueryRow(ctx,
+			`SELECT provider_kind FROM user_models WHERE user_model_id=$1 AND owner_user_id=$2`,
+			modelRef, ownerUserID).Scan(&kind)
+	case "platform_model":
+		err = r.pool.QueryRow(ctx,
+			`SELECT provider_kind FROM platform_models WHERE platform_model_id=$1`,
+			modelRef).Scan(&kind)
+	default:
+		return "", false, fmt.Errorf("unknown model_source %q", modelSource)
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("resolve kind: %w", err)
+	}
+	return kind, true, nil
+}
+
 // MarkRunning transitions a pending job to running and stamps started_at.
 // Returns the rows-affected count so callers can detect concurrent
 // transitions (another worker beat us to the row).
@@ -228,6 +284,51 @@ type UsageOutbox struct {
 	CostUSD      *float64 // nil → cost unresolvable (stored NULL)
 }
 
+// TerminalOutbox is the LLM re-arch Phase 1 terminal-event payload written to
+// job_event_outbox in the SAME tx as a terminal transition (completed | failed |
+// cancelled). The relay XADDs it to loreweave:events:llm_job_terminal so a caller
+// resumes on it. job_id / owner / status / campaign_id are known in the finalize
+// tx; this carries only the extra correlation + summary fields. Kind is
+// best-effort (provider kind, used by the Commit-3 queue for routing) — empty is
+// fine for Commit 1 since consumers key on job_id, not kind.
+type TerminalOutbox struct {
+	Operation     string
+	Kind          string
+	CostUSD       *float64 // nil → unresolvable / non-completed (stored NULL)
+	ErrorCode     string
+	ErrorMessage  string
+	CorrelationID string
+}
+
+// insertJobEventOutbox writes one job_event_outbox row inside the caller's tx.
+// Shared by FinalizeWithUsageOutbox (worker terminal path) and Cancel (cancel
+// handler) so both emit the same durable, per-job-correlated terminal event.
+func insertJobEventOutbox(
+	ctx context.Context, tx pgx.Tx,
+	jobID, ownerUserID uuid.UUID, operation, status, kind string,
+	costUSD *float64, errorCode, errorMessage string,
+	campaignID *uuid.UUID, correlationID string,
+) error {
+	var ec, em, corr *string
+	if errorCode != "" {
+		ec = &errorCode
+	}
+	if errorMessage != "" {
+		em = &errorMessage
+	}
+	if correlationID != "" {
+		corr = &correlationID
+	}
+	_, err := tx.Exec(ctx, `
+INSERT INTO job_event_outbox
+  (job_id, owner_user_id, operation, status, kind,
+   cost_usd, error_code, error_message, campaign_id, correlation_id)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+`, jobID, ownerUserID, operation, status, kind,
+		costUSD, ec, em, campaignID, corr)
+	return err
+}
+
 // FinalizeWithUsageOutbox is the worker's terminal-path finalize (S4b, decision
 // C). It does the same status transition as Finalize AND — only when the
 // transition actually takes effect (rows=1) on a COMPLETED job with a non-nil
@@ -245,6 +346,7 @@ func (r *Repo) FinalizeWithUsageOutbox(
 	result any,
 	errorCode, errorMessage, finishReason string,
 	usage *UsageOutbox,
+	term *TerminalOutbox,
 ) (int64, error) {
 	if status != "completed" && status != "failed" && status != "cancelled" {
 		return 0, fmt.Errorf("invalid terminal status: %q", status)
@@ -294,8 +396,10 @@ RETURNING job_meta
 		return 0, fmt.Errorf("finalize+outbox: update: %w", err)
 	}
 
+	// campaign_id (the S4a correlation tag) stamps BOTH outbox rows; parse once.
+	campaignID := parseJobMetaCampaignID(jobMeta)
+
 	if status == "completed" && usage != nil {
-		campaignID := parseJobMetaCampaignID(jobMeta)
 		if _, err := tx.Exec(ctx, `
 INSERT INTO usage_outbox
   (request_id, owner_user_id, campaign_id, model_source, model_ref,
@@ -304,6 +408,16 @@ VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
 `, jobID, ownerUserID, campaignID, usage.ModelSource, usage.ModelRef,
 			usage.Operation, usage.InputTokens, usage.OutputTokens, usage.CostUSD); err != nil {
 			return 0, fmt.Errorf("finalize+outbox: insert outbox: %w", err)
+		}
+	}
+
+	// LLM re-arch Phase 1 — durable terminal event on EVERY transition (not just
+	// completed+usage), in the same tx, so a caller resumes on it via the relay.
+	if term != nil {
+		if err := insertJobEventOutbox(ctx, tx, jobID, ownerUserID,
+			term.Operation, status, term.Kind, term.CostUSD,
+			term.ErrorCode, term.ErrorMessage, campaignID, term.CorrelationID); err != nil {
+			return 0, fmt.Errorf("finalize+outbox: insert job_event: %w", err)
 		}
 	}
 
@@ -339,17 +453,131 @@ func parseJobMetaCampaignID(jobMeta []byte) *uuid.UUID {
 // Cancel transitions a pre-terminal job to cancelled and stamps
 // completed_at. Returns rows-affected so caller can distinguish "already
 // terminal" (0) from "actually cancelled" (1).
+//
+// LLM re-arch Phase 1: on a real transition it ALSO writes the durable
+// terminal-event outbox row in the SAME tx (RETURNING operation + job_meta so
+// the event carries the operation + campaign_id), so a cancel emits the same
+// canonical llm.job_terminal event a normal finalize does. kind is left empty
+// (best-effort; consumers key on job_id).
 func (r *Repo) Cancel(ctx context.Context, jobID, ownerUserID uuid.UUID) (int64, error) {
-	tag, err := r.pool.Exec(ctx, `
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("cancel: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var operation string
+	var jobMeta []byte
+	err = tx.QueryRow(ctx, `
 UPDATE llm_jobs
 SET status = 'cancelled', completed_at = now()
 WHERE job_id = $1 AND owner_user_id = $2
   AND status IN ('pending','running')
-`, jobID, ownerUserID)
+RETURNING operation, job_meta
+`, jobID, ownerUserID).Scan(&operation, &jobMeta)
+	if errors.Is(err, pgx.ErrNoRows) {
+		// Not found OR already terminal — no transition, no event.
+		if cerr := tx.Commit(ctx); cerr != nil {
+			return 0, fmt.Errorf("cancel: commit (no-op): %w", cerr)
+		}
+		return 0, nil
+	}
 	if err != nil {
 		return 0, fmt.Errorf("cancel: %w", err)
 	}
+
+	campaignID := parseJobMetaCampaignID(jobMeta)
+	if err := insertJobEventOutbox(ctx, tx, jobID, ownerUserID,
+		operation, "cancelled", "", nil, "", "", campaignID, ""); err != nil {
+		return 0, fmt.Errorf("cancel: insert job_event: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return 0, fmt.Errorf("cancel: commit: %w", err)
+	}
+	return 1, nil
+}
+
+// FinalizeStreamStatus is the BILLING-NEUTRAL terminal write for an M3 streaming
+// observability row (the chat disconnect-cancel job-row). Unlike
+// FinalizeWithUsageOutbox it writes NO usage outbox and NO token totals — the
+// streaming path's own guard.settle / stream_billing stays the sole billing
+// authority (the row carries reservation_id = NULL), so finalizing here cannot
+// double-count. Guarded on status='running' so it never clobbers a 'cancelled'
+// already set by Cancel (an explicit DELETE that raced the stream's own exit):
+// rows==0 then means a concurrent cancel won, which is correct + idempotent.
+func (r *Repo) FinalizeStreamStatus(
+	ctx context.Context, jobID uuid.UUID, status, finishReason string,
+) (int64, error) {
+	tag, err := r.pool.Exec(ctx, `
+UPDATE llm_jobs
+SET status = $2, completed_at = now(), finish_reason = $3
+WHERE job_id = $1 AND status = 'running'
+`, jobID, status, finishReason)
+	if err != nil {
+		return 0, fmt.Errorf("finalize stream status: %w", err)
+	}
 	return tag.RowsAffected(), nil
+}
+
+// SweepStuckRunning is the §5.6 truth-sweeper backstop (D-PHASE1-RUNNING-SWEEPER):
+// a job that crashed mid-Process is left `running` and is NOT recovered by queue
+// redelivery (Process's pending-only gate). This bulk-fails any `running` job
+// whose last_progress_at is older than olderThan — a job that's actively
+// streaming bumps last_progress_at per chunk, so only a genuinely STALLED job is
+// swept (a legit long multi-chunk job keeps progressing). Each swept job gets a
+// durable terminal-event row in the SAME tx so its caller (campaign) resumes and
+// can rerun-failed. Returns the count swept.
+func (r *Repo) SweepStuckRunning(ctx context.Context, olderThan time.Duration) (int, error) {
+	cutoff := -olderThan.Seconds() // negative → "now() + (-secs) = now() - secs"
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("sweep: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	rows, err := tx.Query(ctx, `
+UPDATE llm_jobs
+SET status='failed', completed_at=now(),
+    error_code='LLM_STUCK_TIMEOUT',
+    error_message='job stalled in running with no progress past the sweep threshold'
+WHERE status='running'
+  AND COALESCE(last_progress_at, started_at) < now() + make_interval(secs => $1)
+RETURNING job_id, owner_user_id, operation, job_meta
+`, cutoff)
+	if err != nil {
+		return 0, fmt.Errorf("sweep: update: %w", err)
+	}
+	type swept struct {
+		jobID, owner uuid.UUID
+		operation    string
+		campaignID   *uuid.UUID
+	}
+	var batch []swept
+	for rows.Next() {
+		var s swept
+		var jobMeta []byte
+		if err := rows.Scan(&s.jobID, &s.owner, &s.operation, &jobMeta); err != nil {
+			rows.Close()
+			return 0, fmt.Errorf("sweep: scan: %w", err)
+		}
+		s.campaignID = parseJobMetaCampaignID(jobMeta)
+		batch = append(batch, s)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("sweep: rows: %w", err)
+	}
+	for _, s := range batch {
+		if err := insertJobEventOutbox(ctx, tx, s.jobID, s.owner, s.operation, "failed",
+			"", nil, "LLM_STUCK_TIMEOUT", "swept: stalled in running", s.campaignID, ""); err != nil {
+			return 0, fmt.Errorf("sweep: insert job_event: %w", err)
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return 0, fmt.Errorf("sweep: commit: %w", err)
+	}
+	return len(batch), nil
 }
 
 // ModelPricing reads a model's pricing JSONB. For a user_model the lookup is
@@ -384,6 +612,43 @@ func (r *Repo) ModelPricing(ctx context.Context, modelSource string, ownerUserID
 		}
 	}
 	return p, true, nil
+}
+
+// EstimateModelInfo reads a model's pricing JSONB AND its provider_kind in a
+// single row — the S5a estimate oracle needs both (price + a cloud/local badge).
+// It mirrors ModelPricing's found-vs-unpriced contract (found=false → 404 at the
+// caller, distinct from found-but-empty-pricing → unpriced). Kept separate from
+// ModelPricing so that method's two other callers (jobs_handler reserve, worker
+// reconcile) are untouched. For a user_model the lookup is owner-scoped.
+func (r *Repo) EstimateModelInfo(ctx context.Context, modelSource string, ownerUserID, modelRef uuid.UUID) (billing.Pricing, string, bool, error) {
+	var raw []byte
+	var providerKind string
+	var err error
+	switch modelSource {
+	case "user_model":
+		err = r.pool.QueryRow(ctx,
+			`SELECT pricing, provider_kind FROM user_models WHERE user_model_id=$1 AND owner_user_id=$2`,
+			modelRef, ownerUserID).Scan(&raw, &providerKind)
+	case "platform_model":
+		err = r.pool.QueryRow(ctx,
+			`SELECT pricing, provider_kind FROM platform_models WHERE platform_model_id=$1`,
+			modelRef).Scan(&raw, &providerKind)
+	default:
+		return billing.Pricing{}, "", false, fmt.Errorf("unknown model_source %q", modelSource)
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		return billing.Pricing{}, "", false, nil
+	}
+	if err != nil {
+		return billing.Pricing{}, "", false, fmt.Errorf("model estimate-info lookup: %w", err)
+	}
+	var p billing.Pricing
+	if len(raw) > 0 {
+		if err := json.Unmarshal(raw, &p); err != nil {
+			return billing.Pricing{}, providerKind, true, fmt.Errorf("decode pricing: %w", err)
+		}
+	}
+	return p, providerKind, true, nil
 }
 
 // ModelContextLength reads a model's registered context window (tokens).

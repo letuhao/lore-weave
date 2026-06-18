@@ -338,6 +338,31 @@ func TestNoLegacyLLMResolutionInMediaGo(t *testing.T) {
 			t.Errorf("media.go must contain %q after 5e-β.1 migration", r)
 		}
 	}
+
+	// D-PHASE5E — the SDK now surfaces the gateway-resolved provider identity;
+	// media.go must CONSUME it (version-row ai_model + billing provider_kind),
+	// not the old hardcoded empty strings. A refactor that re-blanks either
+	// silently regresses the analytics/display, so lock the consumption here.
+	phase5eRequired := []string{
+		"result.ProviderModelName",
+		"result.ProviderKind",
+	}
+	for _, r := range phase5eRequired {
+		if !strings.Contains(src, r) {
+			t.Errorf("media.go must consume %q (D-PHASE5E) — ai_model/provider_kind "+
+				"must not re-blank", r)
+		}
+	}
+	// The old deferred-tracking markers must be gone (the work is done).
+	forbiddenPhase5e := []string{
+		"D-PHASE5E-BILLING-PROVIDER-KIND-ANALYTICS",
+		"D-PHASE5E-BETA1-IMAGE-PROVIDER-MODEL-NAME-IN-RESULT",
+	}
+	for _, f := range forbiddenPhase5e {
+		if strings.Contains(src, f) {
+			t.Errorf("media.go still references resolved deferral %q — remove the marker", f)
+		}
+	}
 }
 
 // Phase 5e-β.2 — audio.go is now migrated. The Phase 5e-β.1 anti-bait

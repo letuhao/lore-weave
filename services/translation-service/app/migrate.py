@@ -44,6 +44,12 @@ CREATE TABLE IF NOT EXISTS translation_jobs (
 );
 CREATE INDEX IF NOT EXISTS idx_tj_owner ON translation_jobs(owner_user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_tj_book  ON translation_jobs(book_id, created_at DESC);
+-- Unified Job Control Plane reconcile source: GET /internal/translation/jobs?since= filters
+-- on the effective last-touch (no updated_at column). An EXPRESSION index over the EXACT
+-- same GREATEST(...) the query uses lets the periodic sweep avoid a seq-scan + sort.
+CREATE INDEX IF NOT EXISTS idx_tj_reconcile_ts ON translation_jobs (
+  GREATEST(created_at, COALESCE(started_at, created_at), COALESCE(finished_at, created_at))
+);
 
 CREATE TABLE IF NOT EXISTS chapter_translations (
   id              UUID PRIMARY KEY DEFAULT uuidv7(),
@@ -104,6 +110,41 @@ CREATE INDEX IF NOT EXISTS idx_ctc_ct ON chapter_translation_chunks(chapter_tran
 -- UX Wave (LW-72): version tracking
 ALTER TABLE chapter_translations
   ADD COLUMN IF NOT EXISTS version_num INT NOT NULL DEFAULT 1;
+
+-- LLM re-arch Phase 2b — event-driven decouple of the chapter pipeline.
+-- pipeline_stage tracks the V3 stage (translate | verify | correct | done) so a
+-- llm_job_terminal consumer can resume the chapter at the right step.
+-- provider_job_id is the chapter's CURRENT in-flight LLM job (the sequential
+-- chunk-translate / verify / correct call) — a terminal event for it routes the
+-- consumer back to this chapter. The per-chunk state already lives in
+-- chapter_translation_chunks (translated_text + status + compact_memo_applied),
+-- so the session history is RECONSTRUCTED from completed chunk rows rather than
+-- serialized in-memory — that's what makes the decouple tractable.
+ALTER TABLE chapter_translations
+  ADD COLUMN IF NOT EXISTS pipeline_stage  TEXT,
+  ADD COLUMN IF NOT EXISTS provider_job_id UUID,
+  -- 2b-T2: the explicit resume blob for the decoupled translate loop
+  -- {chunks, chunk_idx, session_history, compact_memo, translated_parts,
+  --  total_input, total_output, awaiting}. Persisting the running state (vs
+  --  replaying compaction, which is itself an LLM call whose memo output isn't
+  --  recoverable from chunk rows) keeps the resume correct + simple.
+  ADD COLUMN IF NOT EXISTS resume_state    JSONB;
+-- Resume index: find the chapter awaiting a given in-flight LLM job in O(1).
+CREATE INDEX IF NOT EXISTS idx_ct_provider_job
+  ON chapter_translations(provider_job_id) WHERE provider_job_id IS NOT NULL;
+-- Per-chunk in-flight job (the chunk currently being translated). The sequential
+-- chunk loop has at most one in-flight chunk per chapter at a time.
+ALTER TABLE chapter_translation_chunks
+  ADD COLUMN IF NOT EXISTS provider_job_id UUID;
+
+-- Wave 2a (D-2B-SUBMIT-PERSIST-GAP) — a stale-resume sweeper (parity with worker-ai's
+-- Wave 1b) needs a time-based idle signal; chapter_translations had no updated_at.
+-- Additive, default now(); bumped on every resume_state write (the engines' _persist_inflight).
+ALTER TABLE chapter_translations
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
+-- Partial index for the sweep scan (only rows with a live resume_state matter).
+CREATE INDEX IF NOT EXISTS idx_ct_resume_sweep
+  ON chapter_translations(updated_at) WHERE resume_state IS NOT NULL;
 
 -- Backfill: assign sequential version_num per (chapter_id, target_language)
 -- ordered by created_at so existing rows don't violate the unique index.
@@ -326,6 +367,108 @@ ALTER TABLE chapter_translations
 -- job_meta via the per-chapter message + a worker-set contextvar (see llm_client).
 ALTER TABLE translation_jobs
   ADD COLUMN IF NOT EXISTS campaign_id UUID;
+
+-- T2-M2 dirty-only re-translate: a job scoped to specific block positions of a
+-- single chapter. block_index_filter = the dirty block positions; seed_version_id
+-- = the prior llm version whose blocks are copied for every NON-filtered position.
+-- NULL for ordinary whole-chapter jobs. Stored for queryability; the worker reads
+-- them off the per-chapter message (rides through coordinator fan-out).
+ALTER TABLE translation_jobs
+  ADD COLUMN IF NOT EXISTS block_index_filter INT[],
+  ADD COLUMN IF NOT EXISTS seed_version_id    UUID;
+
+-- GT: Glossary batch translation jobs (enhancement track)
+CREATE TABLE IF NOT EXISTS glossary_translation_jobs (
+  job_id              UUID PRIMARY KEY DEFAULT uuidv7(),
+  book_id             UUID NOT NULL,
+  owner_user_id       UUID NOT NULL,
+  status              TEXT NOT NULL DEFAULT 'pending',
+  source_language     TEXT NOT NULL DEFAULT 'zh',
+  target_language     TEXT NOT NULL,
+  model_source        TEXT NOT NULL DEFAULT 'platform_model',
+  model_ref           UUID NOT NULL,
+  overwrite_mode      TEXT NOT NULL DEFAULT 'missing_only',
+  metadata            JSONB NOT NULL DEFAULT '{}',
+  total_entities      INT NOT NULL DEFAULT 0,
+  completed_entities  INT NOT NULL DEFAULT 0,
+  failed_entities     INT NOT NULL DEFAULT 0,
+  attrs_translated    INT NOT NULL DEFAULT 0,
+  attrs_skipped       INT NOT NULL DEFAULT 0,
+  total_input_tokens  BIGINT NOT NULL DEFAULT 0,
+  total_output_tokens BIGINT NOT NULL DEFAULT 0,
+  cost_estimate       JSONB,
+  error_message       TEXT,
+  started_at          TIMESTAMPTZ,
+  finished_at         TIMESTAMPTZ,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_gtj_owner ON glossary_translation_jobs(owner_user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_gtj_book  ON glossary_translation_jobs(book_id, created_at DESC);
+
+-- T2-M1: source-side translation segments (block-range division of a chapter).
+-- Language-independent ranges of chapter_blocks (~2000-token, heading-aware) — the
+-- foundation for per-part translate/status (M2) + dirty-only re-translate. block_hashes
+-- = the ordered chapter_blocks.content_hash of the range; source_content_hash = a
+-- chapter-stable digest of the whole range for cheap idempotent re-segmentation.
+CREATE TABLE IF NOT EXISTS chapter_segments (
+  id                  UUID PRIMARY KEY DEFAULT uuidv7(),
+  chapter_id          UUID NOT NULL,
+  segment_index       INT  NOT NULL,
+  start_block_index   INT  NOT NULL,
+  end_block_index     INT  NOT NULL,
+  segment_text        TEXT NOT NULL,
+  block_hashes        TEXT[] NOT NULL DEFAULT '{}',
+  token_estimate      INT  NOT NULL DEFAULT 0,
+  source_content_hash TEXT NOT NULL,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (chapter_id, segment_index)
+);
+CREATE INDEX IF NOT EXISTS idx_cseg_chapter ON chapter_segments(chapter_id);
+
+-- T2-M2: per-(chapter, target_language, segment) translation status. Records the
+-- segment's source_content_hash AT translate time, so a later source edit (the
+-- segment's blocks changed → its chapter_segments.source_content_hash differs) reads
+-- as DIRTY (recorded hash != current hash, or no row). A full-chapter translation
+-- upserts every segment; dirty-only re-translate refreshes just the changed ones.
+CREATE TABLE IF NOT EXISTS segment_translations (
+  id                     UUID PRIMARY KEY DEFAULT uuidv7(),
+  chapter_id             UUID NOT NULL,
+  target_language        TEXT NOT NULL,
+  segment_index          INT  NOT NULL,
+  source_content_hash    TEXT NOT NULL,
+  chapter_translation_id UUID,
+  translated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (chapter_id, target_language, segment_index)
+);
+CREATE INDEX IF NOT EXISTS idx_segtr_chapter_lang
+  ON segment_translations(chapter_id, target_language);
+
+-- T2-M3 (D) per-segment glossary staleness:
+-- which glossary entities each SEGMENT's source text references (language-independent
+-- — source terms in source text). Populated best-effort at translate finalize.
+CREATE TABLE IF NOT EXISTS segment_glossary_usage (
+  chapter_id     UUID NOT NULL,
+  segment_index  INT  NOT NULL,
+  entity_id      UUID NOT NULL,
+  PRIMARY KEY (chapter_id, segment_index, entity_id)
+);
+CREATE INDEX IF NOT EXISTS idx_sgu_entity ON segment_glossary_usage(entity_id);
+-- Per-(chapter, language, segment) staleness flag: set true when a glossary entity the
+-- segment uses changes after it was translated; reset false on (re)record. Distinct from
+-- source-edit `dirty` (a segment can be glossary-stale with unchanged source).
+ALTER TABLE segment_translations
+  ADD COLUMN IF NOT EXISTS is_glossary_stale BOOLEAN NOT NULL DEFAULT false;
+
+-- D-JOBS-P4-TRANSLATION-COST: job-level cost for the unified Jobs GUI. The gateway
+-- `usage` carries only tokens (no cost), so this is DERIVED at finalize from the summed
+-- per-chapter tokens × the model's pricing (provider-registry estimate oracle), out-of-tx,
+-- and rides the terminal job event. Nullable: an older/unpriced job leaves it NULL (the
+-- GUI renders cost null-safe).
+ALTER TABLE translation_jobs
+  ADD COLUMN IF NOT EXISTS cost_usd NUMERIC;
 """
 
 

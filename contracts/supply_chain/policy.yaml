@@ -1,0 +1,82 @@
+# contracts/supply_chain/policy.yaml — L4.J (RAID cycle 19) — SR10 §12AM
+#
+# Canonical supply-chain policy. Declares:
+#   * dep-pinning requirements per ecosystem (consumed by cycle-7
+#     scripts/dep-pinning-lint.sh — file-existence check stays in
+#     shell; this YAML adds the policy metadata for runtime consumers)
+#   * SBOM format + emit settings
+#   * license allowlist (top-level OSS licenses we accept)
+#   * banned packages (security CVEs, governance bans)
+#
+# Loader: contracts/supply_chain/policy.go ParseAndValidate.
+# Rust mirror: crates/dp-kernel/src/supply_chain.rs.
+
+version: 1
+
+dep_pinning:
+  # Each ecosystem entry: { lockfile, required, notes }
+  ecosystems:
+    - ecosystem: go
+      lockfile: go.sum
+      required: true
+      notes: "Required for every go.mod with external requires (per cycle-7 dep-pinning-lint.sh)."
+    - ecosystem: rust
+      lockfile: Cargo.lock
+      required: true
+      notes: "Required at workspace root."
+    - ecosystem: python
+      lockfile_options: [uv.lock, poetry.lock]
+      required: true
+      notes: "Accept either uv.lock or poetry.lock; existing sdks/python grandfathered (cycle 7)."
+    - ecosystem: js
+      lockfile_options: [package-lock.json, pnpm-lock.yaml]
+      required: true
+      notes: "Accept npm or pnpm lockfiles."
+    - ecosystem: docker
+      lockfile: ""
+      required: false
+      notes: "FROM digest-pin recommended but not required (warn-only in cycle 7-19; flip to required in cycle 22+ per cycle-18 carryforward)."
+
+sbom:
+  format: cyclonedx
+  spec_version: "1.5"
+  emit_per_build: true
+  destination:
+    type: s3
+    bucket: lw-sbom
+    prefix: "{service}/{build_id}"
+  retention_days: 365
+
+# License allowlist — packages whose top-level license is NOT in this
+# list trigger a CI warning. Hard-block (CI failure) is reserved for
+# the banned_packages list below.
+license_allowlist:
+  - MIT
+  - Apache-2.0
+  - BSD-2-Clause
+  - BSD-3-Clause
+  - ISC
+  - AGPL-3.0-only   # our own license (workspace publish=false anyway)
+  - MPL-2.0
+  - Unlicense
+  - CC0-1.0
+
+# Banned packages — security CVEs, abandonware, governance bans.
+# Match by ecosystem + name (+ optional version glob).
+banned_packages:
+  # Example governance ban: cryptocurrency-related libs not approved.
+  # No active bans at cycle 19; the list exists so future cycles can
+  # land entries without schema changes.
+  []
+
+# Provenance — signature verification policy. cycle-19 ships the
+# typed interface only; cycle 21+ wires cosign/sigstore.
+provenance:
+  enabled: false  # V1+30d flip per SR10 §12AM
+  signer: cosign  # cosign | sigstore | gpg
+  required_for:
+    - production
+    - staging
+  allow_failure_modes:
+    - dev
+    - test

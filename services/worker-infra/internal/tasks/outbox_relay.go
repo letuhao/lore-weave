@@ -29,6 +29,11 @@ var streamMaxLen = map[string]int64{
 	"chat":      50000,
 	"glossary":  200000,
 	"knowledge": 200000,
+	// Unified Job Control Plane — job-lifecycle events (loreweave:events:jobs) are
+	// frequent (every status transition across all worker services) but small + the
+	// jobs-service projection is a mirror (re-derivable via the reconcile sweep), so a
+	// moderate cap is fine.
+	"jobs": 50000,
 }
 
 const defaultStreamMaxLen int64 = 10000

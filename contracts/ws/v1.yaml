@@ -1,0 +1,144 @@
+# L4.L.1 — WebSocket SERVER-SIDE OpenAPI surface.
+#
+# Internal documentation only (Q-L4-5): api-gateway-bff WS endpoints are
+# NOT served via this OpenAPI doc directly; this file is the STABLE wire
+# contract for the WS handshake + envelope + close codes, mirrored
+# byte-for-byte by contracts/ws (Go) and crates/dp-kernel::ws (Rust).
+#
+# **Browser TS lib is NOT in scope per Q-L6-3.** This contract documents
+# the SERVER side of the WS protocol; the frontend-game team owns the
+# browser library that consumes it.
+
+openapi: 3.0.3
+info:
+  title: LoreWeave WebSocket Gateway (server contract, skeleton)
+  version: "1.0"
+  description: |
+    Cycle 21 SKELETON. Foundation owns:
+      - POST /v1/ws/ticket — issue handshake ticket (60s, one-shot).
+      - GET  /v1/ws — WebSocket upgrade endpoint (gateway-owned; the
+        protocol below is what the upgrade switches into).
+      - Message envelope (control vs data) + 11 enumerated close codes
+        per S12 §12AB.9.
+      - WSSession state shape (server-side only).
+
+paths:
+  /v1/ws/ticket:
+    post:
+      operationId: issueWSTicket
+      summary: Issue one-shot 60s WS handshake ticket.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TicketRequest'
+      responses:
+        '200':
+          description: Ticket issued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+
+  /v1/ws:
+    get:
+      operationId: upgradeWS
+      summary: |
+        WebSocket upgrade. Client MUST present the ticket via
+        Sec-WebSocket-Protocol: lw.v1, ticket.<ticket_id>
+        Server validates Origin + fingerprint + ticket atomically.
+      responses:
+        '101':
+          description: Upgraded to WS.
+        '403':
+          description: |
+            Origin not allowed / fingerprint mismatch / ticket invalid.
+            No WS upgrade.
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    TicketRequest:
+      type: object
+      required: [desired_realities, desired_scopes]
+      properties:
+        desired_realities:
+          type: array
+          items: { type: string, format: uuid }
+        desired_scopes:
+          type: array
+          items: { type: string, enum: [chat, presence, events] }
+
+    Ticket:
+      type: object
+      required:
+        - ticket_id
+        - user_ref_id
+        - allowed_realities
+        - allowed_scopes
+        - origin_hash
+        - client_fingerprint_hash
+        - exp
+        - iat
+      properties:
+        ticket_id:        { type: string, description: "Opaque issuer-supplied ID (e.g., wst_01h...)" }
+        user_ref_id:      { type: string, format: uuid }
+        allowed_realities:
+          type: array
+          items: { type: string, format: uuid }
+        allowed_scopes:
+          type: array
+          items: { type: string }
+        origin_hash:           { type: string, format: byte, description: "SHA-256(origin), 32 raw bytes base64" }
+        client_fingerprint_hash: { type: string, format: byte, description: "SHA-256(ua||ip_/24||tls_sid_prefix), 32 raw bytes base64" }
+        exp:              { type: string, format: date-time }
+        iat:              { type: string, format: date-time }
+
+    MessageKind:
+      type: string
+      enum: [control, data]
+      description: |
+        control = ws.ping/pong/refresh/close (S2/S3 bypassed).
+        data    = chat.*/session.*/presence.*/event.* (S2/S3 enforced).
+
+    Direction:
+      type: string
+      enum: [c2s, s2c]
+
+    Envelope:
+      type: object
+      required: [v, kind, type, dir]
+      properties:
+        v:    { type: integer, enum: [1] }
+        kind: { $ref: '#/components/schemas/MessageKind' }
+        type: { type: string, description: "Message type, e.g. chat.message" }
+        dir:  { $ref: '#/components/schemas/Direction' }
+        seq:  { type: integer, format: int64, minimum: 1, description: "Per-(connection, type) monotonic counter; required for data, omitted for control." }
+        nonce: { type: string, format: uuid, description: "Required for data (60s replay defense)." }
+        payload:
+          type: object
+          additionalProperties: true
+          description: "Opaque per-type payload (gateway routes by Type)."
+
+    CloseCode:
+      type: integer
+      description: |
+        Enumerated S12 §12AB.9 close codes. Foundation refuses to close
+        with any other code (defense against typos / silent V2 drift).
+      enum: [1000, 4001, 4002, 4003, 4004, 4005, 4006, 4007, 4008, 4009, 4010]
+
+    ServiceMode:
+      type: string
+      description: |
+        Cycle 7 + 18 ServiceMode. WS server uses ServiceModeGate to
+        reject data envelopes in ReadOnly / Offline modes. Mirrors
+        contracts/lifecycle.ServiceMode.String byte-for-byte.
+      enum: [full, limited, essentials, read_only, offline]

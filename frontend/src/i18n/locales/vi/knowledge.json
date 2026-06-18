@@ -14,6 +14,103 @@
       "insights": "Phân tích"
     }
   },
+  "graph": {
+    "title": "Đồ thị tri thức",
+    "counts": "{{nodes}} nút · {{edges}} quan hệ",
+    "truncated": "đang hiển thị {{n}} nút đầu — mở rộng một nút để tải thêm",
+    "expanding": "đang mở rộng…",
+    "hint": "Cuộn để thu phóng · kéo vùng trống để di chuyển · nhấp một nút để xem chi tiết · ⊞ để mở rộng",
+    "loading": "Đang tải đồ thị…",
+    "loadFailed": "Không tải được đồ thị: {{error}}",
+    "empty": "Chưa có đồ thị tri thức — hãy xây dựng dự án này để khám phá mạng lưới của nó."
+  },
+  "shell": {
+    "backToProjects": "Tất cả dự án",
+    "sections": {
+      "label": "Mục dự án",
+      "overview": "Tổng quan",
+      "entities": "Thực thể",
+      "timeline": "Dòng thời gian",
+      "evidence": "Bằng chứng",
+      "proposals": "Đề xuất",
+      "gap": "Thiếu sót",
+      "insights": "Phân tích",
+      "graph": "Dựng / Khám phá đồ thị"
+    },
+    "notFound": "Không tìm thấy dự án.",
+    "loading": "Đang tải dự án…",
+    "overview": {
+      "configHeading": "Cấu hình",
+      "embeddingModel": "Mô hình embedding",
+      "rerankModel": "Mô hình rerank",
+      "extraction": "Trích xuất",
+      "extractionEnabled": "Đã bật",
+      "extractionDisabled": "Đã tắt",
+      "bookId": "Sách",
+      "none": "—"
+    },
+    "placeholder": {
+      "proposals": "Các đề xuất đang chờ sẽ hiển thị ở đây (C11).",
+      "gap": "Báo cáo thiếu sót thuật ngữ sẽ hiển thị ở đây (C10).",
+      "graph": "Dựng và khám phá đồ thị sẽ hiển thị ở đây (C5 / C19)."
+    }
+  },
+  "gap": {
+    "heading": "Báo cáo thiếu sót thuật ngữ",
+    "subtitle": "Những nhân vật, địa điểm và khái niệm được nhắc nhiều trong sách nhưng chưa có trong thuật ngữ. Hãy thăng cấp những mục đáng giữ lại.",
+    "summary": {
+      "candidates": "Ứng viên thiếu sót",
+      "threshold": "Số lần nhắc tối thiểu",
+      "top": "Thiếu sót hàng đầu",
+      "topLabel": "Thiếu sót hàng đầu",
+      "topMentions": "{{count}} lần nhắc",
+      "none": "—"
+    },
+    "controls": {
+      "minMentions": "Số lần nhắc tối thiểu",
+      "limit": "Hiển thị tối đa"
+    },
+    "selectAll": "Chọn tất cả",
+    "selectRow": "Chọn {{name}}",
+    "loading": "Đang tải thiếu sót…",
+    "empty": "Không có thiếu sót nào trên ngưỡng này. Giảm số lần nhắc tối thiểu để hiện thêm, hoặc thuật ngữ của bạn đã đầy đủ.",
+    "error": "Không tải được báo cáo thiếu sót. Hãy thử lại.",
+    "mentions": "{{count}} lần nhắc",
+    "mentionsTitle": "Số lần được nhắc trong sách",
+    "itemFailed": "Thất bại",
+    "bulkPromote": {
+      "cta_one": "Thăng cấp {{count}} vào thuật ngữ",
+      "cta_other": "Thăng cấp {{count}} vào thuật ngữ",
+      "cta_zero": "Thăng cấp vào thuật ngữ",
+      "progress": "Đã thăng cấp {{done}} / {{total}}",
+      "failedCount": "({{count}} thất bại)",
+      "allOk": "Đã thăng cấp {{count}} mục thành bản nháp thuật ngữ.",
+      "allFailed": "Tất cả {{count}} lần thăng cấp đều thất bại. Hãy thử lại.",
+      "partial": "Đã thăng cấp {{ok}}; {{failed}} thất bại."
+    }
+  },
+  "proposals": {
+    "heading": "Đề xuất đang chờ",
+    "subtitle": "Một hộp thư duy nhất cho mọi thứ đang chờ bạn duyệt — gợi ý AI cho từ điển, chỉnh sửa wiki và đề xuất làm giàu tri thức. Mở một mục để duyệt và chấp nhận tại giao diện gốc của nó.",
+    "noBook": "Liên kết một cuốn sách với dự án này để xem các hàng đợi đề xuất.",
+    "loading": "Đang tải đề xuất…",
+    "error": "Không tải được hộp thư đề xuất. Hãy thử lại.",
+    "empty": "Không có đề xuất đang chờ. Các gợi ý AI mới sẽ xuất hiện ở đây khi được tạo.",
+    "review": "Duyệt",
+    "openRow": "Duyệt {{title}}",
+    "sourceError": "Không tải được hàng đợi này. Các hàng đợi khác vẫn hiển thị.",
+    "origin": {
+      "glossary": "Bản nháp từ điển",
+      "wiki": "Chỉnh sửa wiki",
+      "enrichment": "Đề xuất tri thức"
+    },
+    "originLabel": {
+      "glossary": "Bản nháp AI từ điển",
+      "wiki": "Gợi ý wiki",
+      "enrichment": "Đề xuất làm giàu tri thức"
+    },
+    "count": "{{count}}"
+  },
   "mobile": {
     "sections": {
       "global": "Tiểu sử tổng quát",
@@ -92,6 +189,7 @@
     "notIndexed": "Dự án này chưa được lập chỉ mục để tìm kiếm ngữ nghĩa.",
     "notIndexedHint": "Chạy trích xuất với mô hình embedding để bật tìm kiếm ngăn kéo.",
     "refreshing": "Đang làm mới…",
+    "embedCost": "Đã embed truy vấn: {{tokens}} token · ${{cost}}",
     "retry": "Thử lại",
     "fixConfig": "Kiểm tra cấu hình mô hình embedding của dự án trong Cài đặt.",
     "unknownError": "Lỗi không xác định. Vui lòng thử lại.",
@@ -149,7 +247,24 @@
       "chronologicalRange": "Khoảng thời gian cốt truyện",
       "after": "Sau",
       "before": "Trước",
-      "chronoReversed": "\"Trước\" phải lớn hơn \"Sau\"."
+      "chronoReversed": "\"Trước\" phải lớn hơn \"Sau\".",
+      "dateRange": "Khoảng ngày",
+      "dateFrom": "Từ",
+      "dateTo": "Đến",
+      "dateInvalid": "Dùng định dạng YYYY, YYYY-MM hoặc YYYY-MM-DD.",
+      "dateReversed": "\"Đến\" phải bằng hoặc sau \"Từ\"."
+    },
+    "sort": {
+      "label": "Sắp xếp",
+      "narrative": "Thứ tự kể chuyện",
+      "chronological": "Theo thời gian",
+      "direction": "Hướng",
+      "asc": "Cũ nhất trước",
+      "desc": "Mới nhất trước"
+    },
+    "importance": {
+      "major": "Quan trọng",
+      "pivotal": "Then chốt"
     },
     "row": {
       "orderLabel": "Thứ tự kể chuyện",
@@ -181,10 +296,29 @@
     "filters": {
       "project": "Dự án",
       "kind": "Loại",
+      "status": "Trạng thái",
       "search": "Tìm kiếm",
       "searchPlaceholder": "Tên hoặc bí danh (tối thiểu 2 ký tự)",
+      "semantic": "Tìm theo ngữ nghĩa",
+      "semanticPlaceholder": "Mô tả điều bạn đang tìm (tìm bằng vector)",
       "anyProject": "Mọi dự án",
-      "anyKind": "Mọi loại"
+      "anyKind": "Mọi loại",
+      "anyStatus": "Mọi trạng thái"
+    },
+    "status": {
+      "canonical": "Chính thức",
+      "discovered": "Đã phát hiện",
+      "archived": "Đã lưu trữ"
+    },
+    "legend": {
+      "title": "Trạng thái",
+      "canonical": "đã có trong từ điển của bạn",
+      "discovered": "đã tìm thấy, chưa nâng cấp",
+      "archived": "ẩn khỏi truy xuất"
+    },
+    "anchor": {
+      "badge": "⚓ {{pct}}",
+      "tooltip": "Điểm neo {{pct}}% — mức độ gắn kết của thực thể này"
     },
     "table": {
       "ariaLabel": "Thực thể",
@@ -229,7 +363,24 @@
         "anchor": "Điểm neo"
       },
       "edit": "Chỉnh sửa",
-      "merge": "Hợp nhất vào thực thể khác"
+      "merge": "Hợp nhất vào thực thể khác",
+      "promote": "Đưa vào từ điển",
+      "promoteHint": "Thực thể được phát hiện. Đưa vào để tạo bản nháp từ điển do AI gợi ý để duyệt.",
+      "promotePending": "Đang đưa vào…",
+      "promoteSuccess": "Đã đưa vào — một bản nháp từ điển đã được tạo để duyệt.",
+      "promoteFailed": "Không thể đưa vào: {{error}}",
+      "unpin": "Bỏ ghim khỏi ngữ cảnh",
+      "unpinHint": "Thực thể này đang được ghim vào ngữ cảnh trích xuất.",
+      "unpinSuccess": "Đã bỏ ghim khỏi ngữ cảnh.",
+      "unpinFailed": "Không thể bỏ ghim: {{error}}",
+      "facts": "Sự kiện đã biết ({{count}})",
+      "factSource": "Chương {{chapter}}",
+      "factType": {
+        "decision": "Quyết định",
+        "preference": "Sở thích",
+        "milestone": "Cột mốc",
+        "negation": "Phủ định"
+      }
     },
     "edit": {
       "title": "Chỉnh sửa thực thể",
@@ -372,9 +523,34 @@
     },
     "loadFailed": "Không tải được dự án: {{error}}",
     "paginationNote": "Hiển thị 100 dự án đầu tiên — phân trang đầy đủ sẽ có ở Track 2.",
+    "browser": {
+      "searchPlaceholder": "Tìm dự án…",
+      "searchLabel": "Tìm dự án theo tên",
+      "filterLabel": "Lọc theo trạng thái",
+      "sortLabel": "Sắp xếp dự án",
+      "noMatches": "Không có dự án nào khớp với tìm kiếm và bộ lọc hiện tại.",
+      "loadMore": "Tải thêm",
+      "loadingMore": "Đang tải…",
+      "stateFilter": {
+        "all": "Mọi trạng thái",
+        "disabled": "Bộ nhớ tĩnh",
+        "building": "Đang dựng",
+        "paused": "Tạm dừng",
+        "ready": "Sẵn sàng",
+        "failed": "Thất bại",
+        "archived": "Đã lưu trữ"
+      },
+      "sortOption": {
+        "recent": "Cập nhật gần đây",
+        "oldest": "Cũ nhất trước",
+        "name_asc": "Tên (A–Z)",
+        "name_desc": "Tên (Z–A)"
+      }
+    },
     "card": {
       "staticMemory": "Bộ nhớ tĩnh",
       "archivedBadge": "đã lưu trữ",
+      "open": "Mở",
       "edit": "Sửa",
       "archive": "Lưu trữ",
       "restore": "Khôi phục",
@@ -503,7 +679,9 @@
         "extractNew": "Trích xuất chương mới",
         "ignore": "Bỏ qua",
         "confirm": "Xác nhận",
-        "confirmModelChange": "Xác nhận đổi mô hình"
+        "confirmModelChange": "Xác nhận đổi mô hình",
+        "exploreGraph": "Khám phá đồ thị",
+        "setConcurrency": "Đặt số luồng"
       },
       "cards": {
         "disabled": {
@@ -522,7 +700,9 @@
           "progress": "{{processed}} / {{total}} mục",
           "elapsed": "Đã trôi: {{elapsed}}",
           "spent": "Đã dùng: ${{spent}}",
-          "spentOfBudget": "Đã dùng: ${{spent}} / ${{budget}}"
+          "spentOfBudget": "Đã dùng: ${{spent}} / ${{budget}}",
+          "concurrencyLabel": "Số lời gọi song song",
+          "concurrencyApply": "Áp dụng"
         },
         "building_paused_user": {
           "body": "Bạn đã tạm dừng tác vụ này. Tiếp tục khi sẵn sàng, hoặc hủy để giữ lại đồ thị một phần."
@@ -592,12 +772,56 @@
         "failed": "Ước tính thất bại: {{error}}",
         "cost": "Chi phí ước tính: ${{low}} – ${{high}}",
         "items": "{{chapters}} chương · {{turns}} lượt chat · ~{{tokens}} token",
-        "duration": "~{{seconds}} giây"
+        "duration": "~{{seconds}} giây",
+        "pinned": "Ngữ cảnh ghim: +{{tokens}} token ({{count}} đã ghim trên mọi cửa sổ)"
       },
       "cancel": "Hủy",
       "confirm": "Xây dựng đồ thị",
       "starting": "Đang khởi động…",
-      "startFailed": "Khởi động thất bại: {{error}}"
+      "startSuccess": "Đã bắt đầu dựng — đang trích xuất đồ thị tri thức.",
+      "startFailed": "Khởi động thất bại: {{error}}",
+      "wizard": {
+        "step1": "Mục tiêu",
+        "step2": "Ghim",
+        "step3": "Ngân sách",
+        "next": "Tiếp",
+        "back": "Quay lại",
+        "step2Placeholder": "Ghim mục lục từ điển sẽ có ở bước tiếp theo — hiện mỗi cửa sổ trích xuất dùng ngữ cảnh chương riêng."
+      },
+      "targets": {
+        "label": "Trích xuất những gì",
+        "hint": "Chọn các lượt chạy. Không chọn gì sẽ chạy tất cả (mặc định).",
+        "entities": "Thực thể",
+        "relations": "Quan hệ",
+        "events": "Sự kiện · dòng thời gian",
+        "facts": "Dữ kiện",
+        "summaries": "Tóm tắt",
+        "autoIncluded": "tự động thêm",
+        "autoIncludedHint": "Thực thể được trích xuất tự động vì quan hệ, sự kiện hoặc dữ kiện neo vào chúng.",
+        "recoveryDisabledHint": "Khôi phục thực thể và lọc chính xác bị bỏ qua vì thực thể không được chọn làm mục tiêu."
+      },
+      "concurrency": {
+        "label": "Số lệnh LLM song song (tùy chọn)",
+        "hint": "Giới hạn số lệnh trích xuất chạy đồng thời. Để trống dùng mặc định."
+      },
+      "pinning": {
+        "intro": "Ghim các thực thể từ điển để chèn chúng vào mọi cửa sổ trích xuất — giúp các thực thể hiếm nhưng quan trọng luôn được neo, kể cả ở chương không nhắc tới chúng.",
+        "autopin": "{{count}} thực thể thưa nhưng trải dài đáng để ghim.",
+        "autopinApply": "Ghim {{count}} gợi ý",
+        "loading": "Đang tải thống kê thực thể…",
+        "unavailable": "Không có thống kê thực thể — bạn vẫn có thể ghim thủ công bên dưới.",
+        "searchPlaceholder": "Tìm theo tên…",
+        "kindAll": "Tất cả loại",
+        "minMentions": "Tối thiểu ×",
+        "available": "Có sẵn ({{count}})",
+        "availableEmpty": "Không có thực thể nào khớp bộ lọc.",
+        "pinned": "Đã ghim ({{count}})",
+        "pinnedEmpty": "Chưa ghim gì.",
+        "pin": "Ghim",
+        "unpin": "Bỏ ghim",
+        "budget": "+{{tokens}} token mỗi cửa sổ ({{count}} đã ghim × ~50).",
+        "noBook": "Việc ghim cần một sách liên kết. Hãy gắn sách cho dự án này trước."
+      }
     },
     "errorViewer": {
       "title": "Lỗi trích xuất",

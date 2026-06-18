@@ -12,12 +12,13 @@ interface EvidenceTabProps {
   bookId: string;
   entityId: string;
   bookOriginalLanguage?: string;
+  defaultDisplayLanguage?: string;
   onCountChange?: (delta: number) => void;
 }
 
-export function EvidenceTab({ bookId, entityId, bookOriginalLanguage, onCountChange }: EvidenceTabProps) {
+export function EvidenceTab({ bookId, entityId, bookOriginalLanguage, defaultDisplayLanguage, onCountChange }: EvidenceTabProps) {
   const { t } = useTranslation('entityEditor');
-  const ev = useEvidenceList(bookId, entityId, bookOriginalLanguage);
+  const ev = useEvidenceList(bookId, entityId, bookOriginalLanguage, defaultDisplayLanguage);
   const [creating, setCreating] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<EvidenceListItem | null>(null);
 

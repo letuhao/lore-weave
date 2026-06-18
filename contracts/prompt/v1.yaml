@@ -1,0 +1,225 @@
+# L4.D.1 — prompt OpenAPI surface.
+#
+# Internal documentation only (Q-L4-5): api-gateway-bff does NOT serve this
+# directly. Service-to-service callers consume the prompt SDK via the
+# in-process library (Go: contracts/prompt; Rust: crates/dp-kernel::prompt).
+#
+# **SKELETON ONLY** (cycle 21 / L4.D):
+#   - 7-intent enum + 8-section structure frozen as wire contract.
+#   - PromptContext + PromptBundle types frozen.
+#   - Composer / Safety hook signatures frozen.
+#   - No template content (Q-L6K-1: foundation ships EMPTY templates).
+#   - No fail-closed safety policy (Q-L6L-1: hooks ship as no-op V1).
+#   - ProviderPayload remains OPAQUE (Q-L4D-1: cross-provider diversity).
+
+openapi: 3.0.3
+info:
+  title: LoreWeave Prompt Assembly SDK (skeleton)
+  version: "1.0"
+  description: |
+    Cycle 21 SKELETON. Single foundation entry point for LLM-bound prompts
+    — every service routes through AssemblePrompt + ResolveContext below.
+
+    Layer ownership:
+      - **Foundation (cycle 21):** contract types, Composer interface (FAIL
+        per Q-L6H-1), no-op safety stubs (Q-L6L-1), audit-writer bridge
+        to cycle-4 prompt_audit.
+      - **LLM-logic sub-program:** real template bodies (Q-L6K-1), filter
+        chain (capability + privacy + severance + consent), real
+        injection-defense canon + canary tokens, tokenizer-backed budget
+        enforcement.
+      - **Service code (cycles 23+):** ProviderEncoder impls; route
+        PromptBundle.ProviderPayload to the matching provider adapter.
+
+paths:
+  /v1/internal/prompt/assemble:
+    post:
+      operationId: assemblePrompt
+      summary: Assemble one LLM-bound prompt; returns opaque ProviderPayload.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssembleRequest'
+      responses:
+        '200':
+          description: Bundle returned. Body is NOT included (S09 §12Y).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromptBundle'
+        '422':
+          description: |
+            Composer FAILED (Q-L6H-1). One of: invalid context, missing
+            required section, safety hook denial, token budget overflow,
+            provider encoder error. Never returns a partial bundle.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComposerError'
+
+  /v1/internal/prompt/resolve_context:
+    post:
+      operationId: resolveContext
+      summary: |
+        Pre-assembly filter chain (capability + privacy + severance + consent).
+        V1 returns empty allowed sets + no rejections; LLM-logic sub-program
+        implements behavior.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PromptContext'
+      responses:
+        '200':
+          description: Filtered context.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResolvedContext'
+
+components:
+  schemas:
+    Intent:
+      type: string
+      description: 7-intent enum per S09 §12Y.2.
+      enum:
+        - session_turn
+        - npc_reply
+        - canon_check
+        - canon_extraction
+        - admin_triggered
+        - world_seed
+        - summary
+
+    Section:
+      type: string
+      description: |
+        8-section structure per S09 §12Y.4. **Order is fixed** — models
+        are tuned against this exact sequence via L9 fixtures. Reordering
+        is a wire-contract change.
+      enum:
+        - SYSTEM
+        - WORLD_CANON
+        - SESSION_STATE
+        - ACTOR_CONTEXT
+        - MEMORY
+        - HISTORY
+        - INSTRUCTION
+        - INPUT
+
+    PromptContext:
+      type: object
+      required: [reality_id, actor_user_ref_id, intent]
+      properties:
+        reality_id:        { type: string, format: uuid }
+        session_id:        { type: string, format: uuid, nullable: true }
+        actor_user_ref_id: { type: string, format: uuid }
+        actor_pc_id:       { type: string, format: uuid, nullable: true }
+        intent:            { $ref: '#/components/schemas/Intent' }
+        retrieval_hints:   { $ref: '#/components/schemas/RetrievalHints' }
+        admin_tier:        { type: string, nullable: true }
+        consent_snapshot_id: { type: string, format: uuid, nullable: true }
+        template_id:       { type: string, nullable: true }
+        template_version:  { type: integer, minimum: 1, nullable: true }
+
+    RetrievalHints:
+      type: object
+      properties:
+        max_memories:       { type: integer, minimum: 0 }
+        max_history_events: { type: integer, minimum: 0 }
+        relevance_query:    { type: string }
+
+    AssembleRequest:
+      type: object
+      required: [context, sections]
+      properties:
+        context: { $ref: '#/components/schemas/PromptContext' }
+        sections:
+          type: object
+          description: |
+            Section name → base64-encoded bytes. SectionSystem MUST be
+            present. User-controlled bytes may ONLY appear under SectionInput.
+          additionalProperties:
+            type: string
+            format: byte
+
+    PromptBundle:
+      type: object
+      required:
+        - provider_payload
+        - context_hash
+        - prompt_audit_id
+        - template_id
+        - template_version
+      properties:
+        provider_payload:
+          description: |
+            **OPAQUE** per Q-L4D-1. Provider-specific JSON shape, ALREADY
+            redacted. Route to the matching provider adapter; never inspect.
+          type: object
+        context_hash:
+          description: |
+            SHA-256 of the rendered prompt text. 32 raw bytes (base64-encoded
+            on the wire). Replaces the body — incident replay reconstructs
+            the prompt via (hash + template + version + deterministic
+            context retrieval). The bundle does NOT carry the body itself.
+          type: string
+          format: byte
+        prompt_audit_id:   { type: string, format: uuid }
+        estimated_cost_usd:
+          type: string
+          description: Decimal as string (preserves precision through JSON).
+        template_id:       { type: string }
+        template_version:  { type: integer, minimum: 1 }
+        provider_name:     { type: string }
+        model_ref:         { type: string }
+
+    ResolvedContext:
+      type: object
+      required: [allowed_events, allowed_memories, rejected_refs]
+      properties:
+        allowed_events:
+          type: array
+          items: { $ref: '#/components/schemas/ContextRef' }
+        allowed_memories:
+          type: array
+          items: { $ref: '#/components/schemas/ContextRef' }
+        rejected_refs:
+          type: array
+          items: { $ref: '#/components/schemas/RejectionRecord' }
+
+    ContextRef:
+      type: object
+      required: [entity_type, entity_id]
+      properties:
+        entity_type: { type: string, enum: [event, memory, canon_fact] }
+        entity_id:   { type: string, format: uuid }
+
+    RejectionRecord:
+      type: object
+      required: [entity_type, entity_id, reason, filter]
+      description: |
+        IDs + reasons ONLY — no content (persisting rejected content
+        would replay the privacy bug the filter just prevented).
+      properties:
+        entity_type: { type: string, enum: [event, memory, canon_fact] }
+        entity_id:   { type: string, format: uuid }
+        reason:      { type: string }
+        filter:      { type: string }
+
+    ComposerError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: |
+            Always 'composer_failed' V1 — specific cause is in the
+            inner message + structured logs. Q-L6H-1: callers retry
+            with corrected input, never with the same input
+            (Composer is deterministic).
+          enum: [composer_failed]
+        message: { type: string }

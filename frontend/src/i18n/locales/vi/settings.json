@@ -247,6 +247,7 @@
       "image_gen": "Tạo ảnh",
       "video_gen": "Tạo video",
       "embedding": "Embedding",
+      "rerank": "Xếp hạng lại",
       "moderation": "Kiểm duyệt"
     }
   },

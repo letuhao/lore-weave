@@ -30,8 +30,7 @@ from pydantic import BaseModel, Field
 from app.api.eval import require_internal_token
 from app.api.principal import Principal, require_principal
 from app.clients.book import BookClient, BookProjection, BookServiceError
-from app.clients.knowledge import KnowledgeClient, KnowledgeServiceError
-from app.clients.sanitize import neutralize_injection
+from app.compose.compose_task import create_compose_task, enqueue_compose_task
 from app.config import settings
 from app.db.book_profile import (
     BookProfile,
@@ -40,19 +39,9 @@ from app.db.book_profile import (
     validate_dimension_overrides,
 )
 from app.deps import get_db
-from app.generation.complete import CompletionSeamError, make_complete_fn
-from app.services.profile_suggest import (
-    ProfileSuggestError,
-    SuggestedProfile,
-    suggest_profile,
-)
-from app.strategies.base import StrategyContext
 
 router = APIRouter(prefix="/v1/lore-enrichment/books", tags=["profile"])
 logger = logging.getLogger("lore_enrichment.book_profile")
-
-#: how many chapters to auto-sample for AI-suggest when the author picks none.
-_AUTO_SAMPLE_CHAPTERS = 3
 
 
 class MarkerIn(BaseModel):
@@ -86,17 +75,6 @@ def _profile_view(p: BookProfile) -> dict:
         "anachronism_enabled": p.anachronism_enabled,
         "dimension_overrides": p.dimension_overrides,
         "profile_source": p.profile_source,
-    }
-
-
-def _suggested_view(s: SuggestedProfile) -> dict:
-    return {
-        "worldview": s.worldview,
-        "language": s.language,
-        "era_policy": s.era_policy,
-        "voice": s.voice,
-        "dimension_overrides": s.dimension_overrides,
-        "profile_source": s.profile_source,
     }
 
 
@@ -187,55 +165,7 @@ async def put_profile(
     return _profile_view(profile)
 
 
-async def _sample_chapter_texts(
-    book_client: BookClient, *, book_id: UUID, chapter_ids: list[UUID]
-) -> list[str]:
-    """Collect the text of the chapters to feed AI-suggest. Uses the author's
-    explicit selection when given, else auto-samples the first few chapters.
-    Best-effort: a chapter that errors or is empty is skipped."""
-    if not chapter_ids:
-        try:
-            chapters, _ = await book_client.list_chapters(
-                book_id=book_id, limit=_AUTO_SAMPLE_CHAPTERS
-            )
-            chapter_ids = [c.chapter_id for c in chapters]
-        except BookServiceError:
-            return []
-    texts: list[str] = []
-    for cid in chapter_ids:
-        try:
-            t = await book_client.get_chapter_text(book_id=book_id, chapter_id=cid)
-        except BookServiceError:
-            continue
-        if t.strip():
-            texts.append(t)
-    return texts
-
-
-async def _kg_summary(
-    *, user_id: UUID, project_id: UUID, book: BookProjection
-) -> str:
-    """Best-effort knowledge-graph summary for AI-suggest. Reuses build_context
-    (KB5: no re-ingest). A down/empty graph degrades to '' (never blocks suggest)."""
-    kc = KnowledgeClient(
-        knowledge_base_url=settings.knowledge_service_url,
-        provider_registry_base_url=settings.provider_registry_internal_url,
-        internal_token=settings.internal_service_token,
-    )
-    message = (book.title + " " + " ".join(book.genre_tags)).strip()
-    try:
-        ctx = await kc.build_context(user_id=user_id, project_id=project_id, message=message)
-        # M4: the KG blob is book-derived passage text — neutralize it (symmetry
-        # with the chapter-text + projection paths) before it reaches the suggest
-        # LLM prompt, so a book-origin injection can't survive extraction→KG→suggest.
-        return neutralize_injection(ctx.context or "")
-    except KnowledgeServiceError:
-        return ""
-    finally:
-        await kc.aclose()
-
-
-@router.post("/{book_id}/profile/suggest")
+@router.post("/{book_id}/profile/suggest", status_code=status.HTTP_202_ACCEPTED)
 async def suggest_book_profile(
     book_id: UUID,
     body: SuggestBody,
@@ -244,47 +174,43 @@ async def suggest_book_profile(
 ) -> dict:
     """AI-suggest a profile DRAFT (worldview/language/era/voice + per-kind
     dimension overrides) from the book metadata + sample chapters + KG summary.
-    Does NOT persist (the author edits + PUTs). Owner-only; model by BYOK
-    model_ref. LLM failure → 502; KG read is best-effort."""
+
+    Phase 3 M2 — OFF the request path: the owner check stays synchronous (a
+    non-owner gets 403 immediately, before any task is created), then a 'pending'
+    compose task is created + a resume-stream trigger enqueued; returns 202 +
+    task_id. The resume worker runs the LLM pipeline (model by BYOK model_ref);
+    GET /v1/lore-enrichment/compose-tasks/{task_id} polls for the draft. Does NOT
+    persist the profile (the author edits the draft + PUTs)."""
     user_id = _require_user(principal)
+    # Owner check on the request path — a non-owner never creates a task.
     book_client = BookClient(
         base_url=settings.book_service_url, internal_token=settings.internal_service_token
     )
     try:
-        book = await _projection_owned(book_client, book_id=book_id, user_id=user_id)
-        sample_texts = await _sample_chapter_texts(
-            book_client, book_id=book_id, chapter_ids=body.sample_chapter_ids
-        )
+        await _projection_owned(book_client, book_id=book_id, user_id=user_id)
     finally:
         await book_client.aclose()
 
-    kg_summary = await _kg_summary(user_id=user_id, project_id=body.project_id, book=book)
-
-    complete_fn = make_complete_fn(
-        provider_registry_base_url=settings.provider_registry_internal_url,
-        internal_token=settings.internal_service_token,
+    task_id = await create_compose_task(
+        pool,
+        kind="profile_suggest",
+        user_id=str(user_id),
+        project_id=str(body.project_id),
+        book_id=str(book_id),
+        request={
+            "user_id": str(user_id),
+            "book_id": str(book_id),
+            "project_id": str(body.project_id),
+            "suggest_model_ref": str(body.suggest_model_ref),
+            "sample_chapter_ids": [str(c) for c in body.sample_chapter_ids],
+        },
     )
-    ctx = StrategyContext(
+    enqueued = await enqueue_compose_task(
+        task_id=task_id, kind="profile_suggest",
         user_id=str(user_id), project_id=str(body.project_id),
-        model_ref=str(body.suggest_model_ref),
     )
-
-    async def _complete(prompt: str) -> str:
-        return await complete_fn(prompt, ctx)
-
-    try:
-        draft = await suggest_profile(
-            book=book, sample_texts=sample_texts, kg_summary=kg_summary, complete=_complete,
-        )
-    except CompletionSeamError as exc:
-        code = status.HTTP_503_SERVICE_UNAVAILABLE if exc.retryable else status.HTTP_502_BAD_GATEWAY
-        raise HTTPException(status_code=code, detail=f"suggest LLM call failed: {exc}")
-    except ProfileSuggestError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"suggest produced no usable profile: {exc}",
-        )
-    return _suggested_view(draft)
+    return {"task_id": task_id, "status": "pending",
+            "enqueued": "ok" if enqueued else "retriggerable"}
 
 
 # ── internal (server-to-server) read ────────────────────────────────────────────

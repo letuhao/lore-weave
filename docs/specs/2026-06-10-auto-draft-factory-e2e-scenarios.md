@@ -2,10 +2,13 @@
 
 **Date:** 2026-06-10 · **Branch:** feat/advanced-translation-pipeline
 **Purpose:** exhaustive end-to-end scenario coverage (happy path + every state transition + edge/failure phases) for the Auto-Draft Factory, to drive a live-smoke / acceptance pass and guard regressions post-merge.
-**Companion:** review `docs/reviews/2026-06-10-auto-draft-factory-draft-vs-impl-review.md`, gap plan `docs/plans/2026-06-10-auto-draft-factory-gap-implementation-plan.md`.
+**Companion:** review `docs/reviews/2026-06-10-auto-draft-factory-draft-vs-impl-review.md` + recheck `docs/reviews/2026-06-11-auto-draft-factory-draft-vs-impl-RECHECK.md` (gaps CLEARED), gap plan `docs/plans/2026-06-10-auto-draft-factory-gap-implementation-plan.md`.
+**Runnable spec:** `frontend/tests/e2e/specs/campaign-factory.spec.ts` (Playwright API-level, deterministic subset) + helper `frontend/tests/e2e/helpers/campaigns.ts`.
+
+> **Update 2026-06-11:** the gap-fix work landed (G1–G4 + polish). Scenarios previously tagged `[GAP:Gx]` are now `[NOW]` (evidence in the RECHECK). New surfaces added: L6 activity log, L7 in-flight panel, C5 switch verifier/eval model.
 
 ## Legend
-- **[NOW]** runnable against the current build. **[GAP:Gx]** needs a gap fix first. **[HARNESS]** needs load/fault injection. **[MODEL]** needs a JSON-clean judge model (LM-Studio gemma streaming bug). **[STALE]** rebuild touched images first (CLAUDE.md stale-image rule).
+- **[NOW]** runnable against the current build. **[GAP:Gx]** ~~needs a gap fix first~~ — **all cleared 2026-06-11**. **[HARNESS]** needs load/fault injection. **[MODEL]** needs a JSON-clean judge model (LM-Studio gemma streaming bug). **[STALE]** rebuild touched images first (CLAUDE.md stale-image rule).
 
 ## Prerequisites / fixtures
 - Stack up (`infra/docker-compose.yml`): campaign-service(8223), translation(+worker), knowledge(+worker-ai), provider-registry, usage-billing, learning, redis, rabbitmq, postgres, book-service, worker-infra (relay). **Rebuild any service touched since the running image** (stale-image false-greens).
@@ -30,7 +33,7 @@
 
 **A2 [NOW] Estimate-only (no launch)** — estimate returns a band; no campaign row created.
 
-**A3 [GAP:G1] Completion report** — `GET /{id}/report` after A1 → results grid (done/errors/spent-vs-estimate), error groups (empty), "Review draft" CTA resolves to the book's reader/review route.
+**A3 [NOW ✅G1] Completion report** — `GET /{id}/report` after A1 → `CampaignReport{status, started_at, finished_at, duration_seconds, total_chapters, stages{knowledge,translation,eval}, spent_usd, budget_usd, est_usd_low, est_usd_high, error_groups[]}`. With no failures `error_groups==[]`. FE "Review draft" CTA resolves to the book's reader/review route. (Evidence: campaigns.py:426 + cause.py:31 + CampaignReport.tsx.)
 
 ---
 
@@ -56,7 +59,9 @@
 
 **C3 [NOW] Over-budget resume guard (D-S4D-RESUME-GUARD).** Paused at cap, `spent ≥ budget` → `POST /start` → 409 `CAMPAIGN_OVER_BUDGET`. Raise budget via `PATCH` so `budget > spent` → `POST /start` → `running`.
 
-**C4 [GAP:polish] Switch-to-local-model resume** — re-pick a $0 model for the remaining chapters then resume (currently unsupported; workaround = new campaign).
+**C4 [NOW ✅polish] Switch-to-local-model resume.** Paused campaign → `PATCH /{id}` `{translation_model_source, translation_model_ref}` (a $0 local model) → 200 (allowed in `created/paused`) → `POST /start` → `running`. Remaining chapters use the new model; completed chapters keep their version. (campaigns.py:271 gate + SwitchModelControl.tsx.)
+
+**C5 [NOW ✅polish] Switch verifier / eval-judge model.** Same PATCH supports all 4 LLM roles (translation/knowledge/verifier/eval_judge). `PATCH` a model field on a **running/terminal** campaign → 409 `CAMPAIGN_MODELS_LOCKED` (campaigns.py:298). Empty PATCH body → 400 `CAMPAIGN_PATCH_EMPTY`.
 
 ---
 
@@ -95,7 +100,7 @@
 
 **F7 [NOW] Attempt exhaustion.** A stage failing `max_attempts` times → terminally `failed`; campaign can still `complete` with that chapter failed (gating treats exhausted-failed as settled).
 
-**F8 [GAP:G2] User re-run failed.** After exhaustion, `POST /{id}/rerun-failed {chapter_ids?}` → reset those failed stages to `pending` + attempts 0 → campaign re-arms `running` → driver re-dispatches → succeed/settle. Refuse on `cancelled`.
+**F8 [NOW ✅G2] User re-run failed.** After exhaustion, `POST /{id}/rerun-failed {chapter_ids?}` (omit body = all settled-failed) → reset those failed stages to `pending` + attempts 0 + clear `last_error` → campaign re-arms `running` → driver re-dispatches → succeed/settle. **Refuse on `cancelled`/`cancelling`**; over-budget guard applies (re-run dispatches → spends). Skip-gate prevents re-spend on already-completed stages. (campaigns.py:504 + reset_failed_stages repositories.py:789.)
 
 ---
 
@@ -132,7 +137,7 @@
 **J4 [NOW] Whole-book (blank range)** → enumerates all published chapters.
 **J5 [NOW] Invalid gating_mode → 422** (payload validation).
 **J6 [NOW] Budget ≤ 0 or ≥ 1e8 → 422** (payload validation).
-**J7 [GAP:polish] >200 chapters** → monitor table caps at 200 (tail invisible until paging — `D-S6-CHAPTER-PAGING`).
+**J7 [NOW ✅polish] >200 chapters paging.** `GET /{id}/chapters?status=all&limit=200&offset=0` → `{rows[≤200], total}`; `offset=200` → the next page; `limit` clamped 1–500. `status=attention|inflight|all` filters. Detail `GET /{id}` no longer embeds chapters. (campaigns.py:339.)
 
 ---
 
@@ -147,14 +152,17 @@
 
 **L1 [NOW] Live polling.** Running campaign → progress polls 6s, detail 15s; stops on terminal.
 **L2 [NOW] Stage progress + spent/budget bar + status badge** reflect live state; chapter table filters failed+in-progress, "Show all" toggle.
-**L3 [GAP:G3] Elapsed / ETA / throughput / in-flight stats** on the monitor.
-**L4 [GAP:G1/G4] Terminal campaign shows a report + "Review draft" CTA** (not just a frozen monitor).
-**L5 [GAP:polish] Campaigns list progress bar + ETA + inline Resume/Re-run.**
+**L3 [NOW ✅G3] Elapsed / ETA / throughput / in-flight stats** on the monitor (pure `deriveRunStats(progress, startedAt, now)` — runStats.ts:19; unit-tested runStats.test.ts).
+**L4 [NOW ✅G1/G4] Terminal campaign shows a report + "Review draft" CTA** (CampaignReport.tsx rendered on `completed|failed|cancelled`).
+**L5 [NOW ✅polish] Campaigns list progress bar + paused banner + inline actions** (CampaignsList.tsx + ingest row StageProgress.tsx:19).
+**L6 [NOW ✅polish] Recent activity log.** `GET /{id}/activity?limit&before_id` → recent-first keyset page `{rows[], next_before}`; each `campaign_chapters` stage UPDATE appends a row via the AFTER-UPDATE trigger (migrate.py:166). FE `ActivityLog` renders relative times (relTime). Paging via `before_id`.
+**L7 [NOW ✅polish] In-flight "processing" panel.** `GET /{id}/chapters?status=inflight` → only rows with a stage currently `dispatched`; FE `InFlightPanel` lists chapter+stage with "+N more" overflow (inFlightStages).
 
 ---
 
-## Coverage status summary
+## Coverage status summary (updated 2026-06-11)
 - **Verified live (2026-06-10):** A1(core pipeline, prior), C1–C3, D1–D3, F1, H1, plus all unit/integration suites.
-- **Runnable now, not yet scripted-run:** A2, B1–B5, E1–E3, F4/F5/F7, G1–G3, H3, I1–I4, J1–J6, K2, L1–L2.
-- **Blocked:** F2/F3/H2 [HARNESS], K1 [MODEL], F6 [STALE-discipline].
-- **Pending gap fixes:** A3/L4 [G1], F8 [G2], L3 [G3], C4/J7/L5 [polish].
+- **Scripted in `campaign-factory.spec.ts` (API-level, deterministic — run on a stack-up):** A2, A3, B1–B5, C3, C4/C5, F8, I1–I4, J1–J6, J7, L6, L7. These need no model (they assert route contracts, lifecycle transitions, gating/ownership errors, report/activity/paging shapes).
+- **Runnable now, not yet scripted (UI / model-coupled):** E1–E3, F4/F5/F7, G1–G3, H3, K2, L1–L5.
+- **Blocked (tracked):** F2/F3/H2 [HARNESS], K1 [MODEL], F6 [STALE-discipline].
+- **✅ All prior gap-fix dependencies cleared** — A3/L4 (G1), F8 (G2), L3 (G3), C4/C5/J7/L5/L6/L7 (polish). Evidence: `docs/reviews/2026-06-11-auto-draft-factory-draft-vs-impl-RECHECK.md`.

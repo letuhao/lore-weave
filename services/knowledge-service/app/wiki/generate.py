@@ -117,6 +117,7 @@ async def generate_article(
     temperature: float = 0.3,
     max_attempts: int = 2,
     initial_corrective: str | None = None,
+    exemplars: list[tuple[str, str]] | None = None,
 ) -> GenerateResult:
     """Generate one grounded article IR for ``context``'s entity (bounded retry).
 
@@ -133,6 +134,7 @@ async def generate_article(
     for attempt in range(1, max_attempts + 1):
         messages = build_messages(
             brief=brief, profile=profile, items=context.items, corrective=corrective,
+            exemplars=exemplars,
         )
         markdown = await _call_llm(
             llm, user_id=user_id, model_source=model_source, model_ref=model_ref,

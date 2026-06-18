@@ -1,0 +1,240 @@
+# infra/k8s/admission-webhook/deployment.yaml — L6.G.2 (RAID cycle 30)
+#
+# Q-L6G-1 LOCKED: K8s ValidatingWebhookConfiguration (matches CLAUDE.md
+# infra direction). ECS-equivalent variant is V2+ scope.
+#
+# This file ships:
+#   1. ServiceAccount + RBAC for the webhook pod
+#   2. Deployment running the cycle-30 capacity_checker.go binary
+#   3. Service exposing :443 internally (apiserver dials this)
+#   4. ValidatingWebhookConfiguration registering the webhook with K8s
+#
+# Acceptance criterion (layer plan §195): webhook latency P99 < 100ms.
+# The checker is allocation-light; the cycle-30 metrics emitter pushes
+# `lw_capacity_admission_latency_seconds` so SRE can dashboard this.
+#
+# Certificate ownership:
+#   - V1 uses K8s built-in CertificateSigningRequest path (cert-manager
+#     wires the secret `capacity-webhook-tls` from a CSR).
+#   - V2+ may move to a long-lived CA + cert rotation operator.
+# The secret name MUST be `capacity-webhook-tls` (referenced by the
+# ValidatingWebhookConfiguration `caBundle` lookup chain).
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: capacity-webhook
+  namespace: lw-foundation
+  labels:
+    app.kubernetes.io/name: capacity-webhook
+    app.kubernetes.io/component: admission
+    lw.shipped.cycle: "30"
+
+---
+# Read-only access to the cluster — webhook only needs to receive
+# AdmissionReview payloads; the budgets.yaml + override store are
+# mounted into the pod (no K8s API watch needed in V1).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: capacity-webhook
+  labels:
+    app.kubernetes.io/name: capacity-webhook
+    lw.shipped.cycle: "30"
+rules:
+  # The webhook itself does not list/watch K8s objects in V1 — K8s
+  # pushes AdmissionReview to it. The single permission below is the
+  # `TokenReview` permission used to validate apiserver-signed tokens
+  # (defense-in-depth; ValidatingWebhookConfiguration already uses
+  # mutual TLS but TokenReview catches stale CA bundles).
+  - apiGroups: ["authentication.k8s.io"]
+    resources: ["tokenreviews"]
+    verbs: ["create"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: capacity-webhook
+  labels:
+    app.kubernetes.io/name: capacity-webhook
+    lw.shipped.cycle: "30"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: capacity-webhook
+subjects:
+  - kind: ServiceAccount
+    name: capacity-webhook
+    namespace: lw-foundation
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: capacity-webhook
+  namespace: lw-foundation
+  labels:
+    app.kubernetes.io/name: capacity-webhook
+    app.kubernetes.io/component: admission
+    lw.shipped.cycle: "30"
+    lw.deployment.tier: v1
+spec:
+  # Two replicas — admission webhooks are a hard cluster dependency
+  # (apiserver requests block on the webhook); a single replica =
+  # cluster-wide deploy outage if it crashes. Two replicas + pod
+  # anti-affinity = HA story for the webhook itself.
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0  # always keep one replica serving during rollout
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: capacity-webhook
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: capacity-webhook
+        app.kubernetes.io/component: admission
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: capacity-webhook
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: capacity-webhook
+      containers:
+        - name: webhook
+          image: ghcr.io/loreweave/capacity-webhook:0.1.0
+          imagePullPolicy: IfNotPresent
+          resources:
+            requests: { cpu: "100m", memory: "128Mi" }
+            limits:   { cpu: "500m", memory: "256Mi" }
+          ports:
+            - containerPort: 8443
+              name: webhook
+            - containerPort: 9090
+              name: metrics
+          env:
+            - name: LW_BUDGETS_PATH
+              value: /etc/lw/budgets.yaml
+            - name: LW_TLS_CERT
+              value: /etc/lw/tls/tls.crt
+            - name: LW_TLS_KEY
+              value: /etc/lw/tls/tls.key
+          volumeMounts:
+            - name: budgets
+              mountPath: /etc/lw
+              readOnly: true
+            - name: tls
+              mountPath: /etc/lw/tls
+              readOnly: true
+          # Liveness + readiness — webhook MUST be reachable before
+          # apiserver routes AdmissionReview to it. We probe :8443/healthz
+          # over TLS (apiserver does the same).
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8443, scheme: HTTPS }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: { path: /readyz, port: 8443, scheme: HTTPS }
+            initialDelaySeconds: 2
+            periodSeconds: 5
+      volumes:
+        - name: budgets
+          configMap:
+            name: capacity-budgets
+            items:
+              - key: budgets.yaml
+                path: budgets.yaml
+        - name: tls
+          secret:
+            secretName: capacity-webhook-tls
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: capacity-webhook
+  namespace: lw-foundation
+  labels:
+    app.kubernetes.io/name: capacity-webhook
+    lw.shipped.cycle: "30"
+spec:
+  selector:
+    app.kubernetes.io/name: capacity-webhook
+  ports:
+    - port: 443
+      targetPort: 8443
+      name: webhook
+    - port: 9090
+      targetPort: 9090
+      name: metrics
+
+---
+# ValidatingWebhookConfiguration — the K8s registration that tells
+# apiserver to call our webhook on every Pod + Deployment CREATE/UPDATE.
+#
+# CRITICAL FIELDS:
+#   * failurePolicy: Fail — if the webhook is down, REJECT the deploy.
+#     This is the correct posture per R02 §12B: capacity invariants are
+#     load-bearing; bypassing them silently invites budget breaches.
+#   * timeoutSeconds: 5 — well under the K8s 30s hard ceiling, but
+#     leaves 25s of margin if the cluster is under load.
+#   * sideEffects: None — webhook is pure (does not mutate state).
+#   * admissionReviewVersions: ["v1"] — modern apiserver only.
+#
+# To bypass the webhook for foundation bootstrap (chicken-and-egg
+# during cluster startup), label the namespace with
+# `lw.capacity-webhook=disabled` and add a namespaceSelector ignoring
+# that label. We INTENTIONALLY do NOT include that selector — the
+# bootstrap order is `cert-manager → CSR → webhook → workloads`.
+
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: capacity.lw.foundation
+  labels:
+    lw.shipped.cycle: "30"
+webhooks:
+  - name: capacity.lw.foundation
+    clientConfig:
+      service:
+        name: capacity-webhook
+        namespace: lw-foundation
+        path: "/validate"
+        port: 443
+      # caBundle is populated by cert-manager.io/inject-ca-from
+      # annotation when production wires cert-manager — V1 ships
+      # blank + cluster-bootstrap script writes it.
+    rules:
+      - operations: ["CREATE", "UPDATE"]
+        apiGroups:   [""]
+        apiVersions: ["v1"]
+        resources:   ["pods"]
+      - operations: ["CREATE", "UPDATE"]
+        apiGroups:   ["apps"]
+        apiVersions: ["v1"]
+        resources:   ["deployments"]
+    namespaceSelector:
+      matchExpressions:
+        # Skip system namespaces — apiserver, kube-controller-manager,
+        # etc. live in `kube-system` and are not subject to LoreWeave
+        # capacity budgets.
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values: ["kube-system", "kube-public", "cert-manager"]
+    sideEffects: None
+    timeoutSeconds: 5
+    failurePolicy: Fail
+    admissionReviewVersions: ["v1"]

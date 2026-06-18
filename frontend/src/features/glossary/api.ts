@@ -24,15 +24,30 @@ export const glossaryApi = {
     return apiJson<EntityKind[]>(`${BASE}/kinds`, { token });
   },
 
+  listTranslationLanguages(bookId: string, token: string): Promise<{ languages: string[] }> {
+    return apiJson<{ languages: string[] }>(
+      `${BASE}/books/${bookId}/translation-languages`,
+      { token },
+    );
+  },
+
   listEntities(
     bookId: string,
-    filters: FilterState & { limit?: number; offset?: number; sort?: string },
+    filters: FilterState & {
+      limit?: number;
+      offset?: number;
+      sort?: string;
+      displayLanguage?: string;
+      searchMode?: 'simple' | 'raw';
+    },
     token: string,
   ): Promise<GlossaryEntityListResponse> {
     const params = new URLSearchParams();
     if (filters.kindCodes.length > 0) params.set('kind_codes', filters.kindCodes.join(','));
     if (filters.status !== 'all') params.set('status', filters.status);
     if (filters.searchQuery) params.set('search', filters.searchQuery);
+    if (filters.searchMode === 'raw') params.set('search_mode', 'raw');
+    if (filters.displayLanguage) params.set('display_language', filters.displayLanguage);
     if (filters.limit) params.set('limit', String(filters.limit));
     if (filters.offset) params.set('offset', String(filters.offset));
     if (filters.sort) params.set('sort', filters.sort);
@@ -99,6 +114,22 @@ export const glossaryApi = {
       body: JSON.stringify(changes),
       token,
       ...(opts?.ifMatch ? { headers: { 'If-Match': opts.ifMatch } } : {}),
+    });
+  },
+
+  /** Bulk-flip status for many entities in one request (e.g. activate freshly
+   *  extracted drafts so they feed the translation glossary). Returns the count
+   *  actually updated (book-scoped; absent/foreign ids are ignored). */
+  bulkSetStatus(
+    bookId: string,
+    status: 'active' | 'inactive' | 'draft',
+    entityIds: string[],
+    token: string,
+  ): Promise<{ updated: number }> {
+    return apiJson<{ updated: number }>(`${BASE}/books/${bookId}/entities/bulk-status`, {
+      method: 'POST',
+      body: JSON.stringify({ status, entity_ids: entityIds }),
+      token,
     });
   },
 

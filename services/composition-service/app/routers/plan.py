@@ -21,6 +21,7 @@ from uuid import UUID
 
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from app.clients.book_client import BookClient, BookClientError
@@ -32,13 +33,15 @@ from app.db.repositories.outline import OutlineRepo
 from app.db.repositories.structure_templates import StructureTemplatesRepo
 from app.db.repositories.works import WorksRepo
 from app.deps import (
-    get_book_client_dep, get_glossary_client_dep, get_llm_client_dep,
-    get_outline_repo, get_structure_templates_repo, get_works_repo,
+    get_book_client_dep, get_generation_jobs_repo, get_glossary_client_dep,
+    get_llm_client_dep, get_outline_repo, get_structure_templates_repo, get_works_repo,
 )
 from app.engine.chapter_gen import STORY_ORDER_CHAPTER_STRIDE
 from app.engine.plan import ChapterPlan, decompose
 from app.middleware.jwt_auth import get_bearer_token, get_current_user
 from app.packer.profile import from_settings
+from app.worker.events import enqueue_job
+from fastapi import status as http_status
 
 logger = logging.getLogger(__name__)
 
@@ -124,7 +127,12 @@ async def decompose_preview(
     llm: LLMClient = Depends(get_llm_client_dep),
     templates: StructureTemplatesRepo = Depends(get_structure_templates_repo),
 ):
-    """Run the planner; return the proposed tree (NOT persisted)."""
+    """Run the planner; return the proposed tree (NOT persisted).
+
+    Phase 3 M4 — when COMPOSITION_WORKER_ENABLED, the bearer-authenticated context
+    (book chapters, cast) is resolved HERE, persisted in the job's input, and the
+    LLM compute runs OFF the request path: returns 202 + job_id; GET /jobs/{id}
+    polls for the proposed tree. Default (flag off) → inline behavior verbatim."""
     work = await _require_work(works, user_id, project_id)
     tmpl = await templates.get(user_id, body.structure_template_id)
     if tmpl is None:
@@ -147,6 +155,43 @@ async def decompose_preview(
                     sort_order=c["sort_order"], beat_role=None, intent="")
         for c in chapters_raw
     ]
+
+    if settings.composition_worker_enabled:
+        # Persist the FULLY-RESOLVED decompose args (the worker has no bearer to
+        # re-fetch book/cast) → enqueue → 202. GET /jobs/{id} polls result.
+        # The repo is built lazily HERE (not a top-level Depends) so the default
+        # inline path never touches the pool — keeps the flag-off contract + tests
+        # unchanged.
+        jobs = await get_generation_jobs_repo()
+        job_input = {
+            "model_source": str(body.model_source),
+            "model_ref": str(body.model_ref),
+            "worker_op": "decompose_preview",
+            "premise": body.premise,
+            "arc_title": tmpl.name,
+            "beats": tmpl.beats,
+            "chapters": [dataclasses.asdict(c) for c in chapters_in],
+            "cast": cast,
+            "k_ceiling": settings.compose_diverge_k,
+            "high_threshold": settings.plan_high_tension_threshold,
+            "min_scenes": settings.plan_min_scenes_per_chapter,
+            "max_scenes": settings.plan_max_scenes_per_chapter,
+            "source_language": profile.source_language,
+        }
+        job, _created = await jobs.create(
+            user_id, project_id, operation="decompose_preview",
+            mode="auto", status="pending", input=job_input,
+        )
+        enqueued = await enqueue_job(
+            settings.redis_url, job_id=str(job.id),
+            user_id=str(user_id), project_id=str(project_id),
+        )
+        return JSONResponse(
+            status_code=http_status.HTTP_202_ACCEPTED,
+            content={"job_id": str(job.id), "status": "pending",
+                     "enqueued": "ok" if enqueued else "retriggerable"},
+        )
+
     result = await decompose(
         llm, user_id=str(user_id), model_source=body.model_source, model_ref=body.model_ref,
         premise=body.premise, arc_title=tmpl.name, beats=tmpl.beats,

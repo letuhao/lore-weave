@@ -145,34 +145,9 @@ async def test_handle_message_dlq_after_retries(pool):
     redis.xack.assert_called_once()  # ack after DLQ
 
 
-@pytest.mark.asyncio
-async def test_ensure_redis_disables_socket_read_timeout(pool):
-    """Regression: the blocking XREADGROUP loop must use a connection whose
-    socket read timeout never pre-empts the server-side BLOCK.
-
-    redis-py 8.0 changed AbstractConnection's default socket_timeout from
-    None to 5s. With BLOCK_MS=5000 the per-read socket timeout races the
-    BLOCK and wins every cycle, raising TimeoutError and wedging the
-    consumer (zero events processed on all streams). _ensure_redis MUST
-    pass socket_timeout=None so blocking reads are never pre-empted.
-
-    Invariant asserted: socket_timeout is None (unbounded) OR strictly
-    greater than BLOCK_MS/1000.
-    """
-    consumer = EventConsumer.__new__(EventConsumer)
-    consumer._redis_url = "redis://redis:6379"
-    consumer._redis = None
-
-    with patch("app.events.consumer.aioredis.from_url") as from_url:
-        from_url.return_value = AsyncMock()
-        await consumer._ensure_redis()
-
-    from_url.assert_called_once()
-    socket_timeout = from_url.call_args.kwargs.get("socket_timeout", "MISSING")
-    assert socket_timeout is None or socket_timeout > BLOCK_MS / 1000, (
-        f"socket_timeout={socket_timeout!r} must be None or > {BLOCK_MS / 1000}s "
-        "to avoid pre-empting the XREADGROUP BLOCK"
-    )
+# NOTE: the socket_timeout=None invariant is now enforced + tested centrally in the SDK
+# (loreweave_jobs BaseProjectionConsumer; sdks/python/tests/test_jobs_projection_consumer.py
+# ::test_ensure_redis_disables_socket_read_timeout). The service-level copy was redundant.
 
 
 @pytest.mark.asyncio
@@ -296,10 +271,10 @@ async def test_reclaim_tolerates_nogroup(pool):
 
 @pytest.mark.asyncio
 async def test_run_triggers_reclaim_on_schedule(monkeypatch):
-    """FD-18: the run loop fires _reclaim_stale_pending every
-    RECLAIM_EVERY_N_LOOPS cycles (set to 1 here → first loop)."""
-    monkeypatch.setattr("app.events.consumer.RECLAIM_EVERY_N_LOOPS", 1)
+    """FD-18: the run loop fires _reclaim_stale_pending every reclaim_every_n_loops cycles
+    (set to 1 here → first loop). The cadence is now an instance attr on the shared base."""
     consumer = EventConsumer("redis://x", AsyncMock(), MagicMock())
+    consumer.reclaim_every_n_loops = 1  # instance override of the base/class cadence
     fake_r = AsyncMock()
     monkeypatch.setattr(consumer, "_ensure_groups", AsyncMock())
     monkeypatch.setattr(consumer, "_process_pending", AsyncMock())

@@ -496,35 +496,32 @@ func (s *Server) generateChapterMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 5. Create version record. Phase 5e-β.1 — `ai_model` is now stored
-	// as the empty string for new rows because the SDK does not surface
-	// the human-readable upstream model name (it lives gateway-side).
-	// Legacy rows retain their human names (e.g. "dall-e-3").
-	// Frontend's `{v.ai_model && ...}` conditional render naturally
-	// hides the model-name line for empty values, so new rows display
-	// without the model annotation rather than showing a raw UUID.
-	// Tracked as deferred D-PHASE5E-BETA1-IMAGE-PROVIDER-MODEL-NAME-IN-RESULT
-	// for a future cycle that extends the SDK's ImageGenResult to expose
-	// provider_model_name from the gateway.
+	// 5. Create version record. Phase 5e (D-PHASE5E) — the SDK's
+	// ImageGenResult now surfaces the human-readable upstream model name
+	// (resolved gateway-side from model_ref/model_source), so new rows store
+	// it in `ai_model`. It is empty only when the gateway predates the field;
+	// the frontend's `{v.ai_model && ...}` conditional naturally hides the
+	// model-name line in that case (and never shows a raw UUID).
 	var versionID string
 	_ = s.pool.QueryRow(ctx, `
 		INSERT INTO block_media_versions(chapter_id, block_id, version, action, changes, media_ref, prompt_snapshot, ai_model, content_type, size_bytes)
 		VALUES($1, $2, $3, 'regenerate', ARRAY['prompt','media'], $4, $5, $6, $7, $8)
 		RETURNING id`,
-		chapterID, body.BlockID, nextVersion, objectKey, body.Prompt, "", contentType, uploadInfo.Size,
+		chapterID, body.BlockID, nextVersion, objectKey, body.Prompt, result.ProviderModelName, contentType, uploadInfo.Size,
 	).Scan(&versionID)
 
 	mediaURL := s.mediaURL(objectKey)
 
-	// 6. Best-effort usage billing. provider_kind is empty string —
-	// gateway records its own model-level usage; this call records
-	// APPLICATION-LEVEL purpose. Per Phase 5e-α QC MED#1 precedent.
+	// 6. Best-effort usage billing. This call records the APPLICATION-LEVEL
+	// purpose (the gateway separately records its own model-level usage).
+	// Phase 5e (D-PHASE5E): provider_kind is now the gateway-resolved value
+	// surfaced on ImageGenResult, so the analytics row is no longer blank.
 	if s.cfg.UsageBillingServiceURL != "" {
 		modelRefUUID, _ := uuid.Parse(body.ModelRef)
 		usagePayload, _ := json.Marshal(map[string]any{
 			"request_id":     uuid.New(),
 			"owner_user_id":  ownerID,
-			"provider_kind":  "", // tracked as D-PHASE5E-BILLING-PROVIDER-KIND-ANALYTICS
+			"provider_kind":  result.ProviderKind,
 			"model_source":   body.ModelSource,
 			"model_ref":      modelRefUUID,
 			"input_tokens":   len(body.Prompt),
@@ -549,7 +546,7 @@ func (s *Server) generateChapterMedia(w http.ResponseWriter, r *http.Request) {
 		"object_key":   objectKey,
 		"version":      nextVersion,
 		"version_id":   versionID,
-		"ai_model":     "", // Phase 5e-β.1 — empty until SDK exposes provider_model_name; FE hides line on falsy
+		"ai_model":     result.ProviderModelName, // Phase 5e (D-PHASE5E) — gateway-resolved name; empty only if gateway predates the field (FE hides line on falsy)
 		"size":         uploadInfo.Size,
 		"content_type": contentType,
 	})

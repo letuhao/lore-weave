@@ -1,0 +1,8 @@
+id: meta-invariants
+description: "S4 — meta-DB runtime invariants (bundled; output names the failing invariant). I5: reality_registry rejects an invalid db_host (CHECK) and accepts a valid row. I8: meta_write_audit append-only is enforced NON-VACUOUSLY — the role is granted UPDATE, UPDATE is proven to succeed, then the migration's REVOKE is applied and UPDATE/DELETE are proven denied while INSERT still works (the allowed→denied transition proves the REVOKE, not a missing grant, is the cause). I9 (lifecycle CAS) is added by the metaprobe binary. Bundles --self-test."
+invariant: I5+I8
+kind: live-probe
+command: ["bash", "scripts/conformance/meta-invariants-smoke.sh", "--self-test"]
+requires: ["foundation-stack"]
+skip_when: []
+fail_closed_on_setup_error: false

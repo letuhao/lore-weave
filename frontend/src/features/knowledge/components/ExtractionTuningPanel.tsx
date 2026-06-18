@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { FormDialog } from '@/components/shared';
 import { useExtractionConfig } from '../hooks/useExtractionConfig';
 import type { FilterCategory, Project } from '../types';
+import { PrecisionFilterModelPicker } from './PrecisionFilterModelPicker';
 import { RawPromptEditor } from './RawPromptEditor';
 
 // B2-C — per-novel extraction-tuning dialog (view only; logic in
@@ -107,6 +108,11 @@ export function ExtractionTuningPanel({ open, onOpenChange, project, onChanged }
                   <option value="drop">{t('projects.extractionTuning.policyDrop')}</option>
                 </select>
               </label>
+              <PrecisionFilterModelPicker
+                value={draft.filterModelRef}
+                onChange={(v) => setField('filterModelRef', v)}
+                disabled={submitting}
+              />
             </div>
           )}
         </section>

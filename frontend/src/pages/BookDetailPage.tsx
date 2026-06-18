@@ -20,8 +20,8 @@ import { EnrichmentTab } from '@/pages/book-tabs/EnrichmentTab';
 
 const tabs = [
   { key: '', labelKey: 'detail.tabs.chapters' },
-  { key: '/translation', labelKey: 'detail.tabs.translation' },
   { key: '/glossary', labelKey: 'detail.tabs.glossary' },
+  { key: '/translation', labelKey: 'detail.tabs.translation' },
   { key: '/enrichment', labelKey: 'detail.tabs.enrichment' },
   { key: '/wiki', labelKey: 'detail.tabs.wiki' },
   { key: '/sharing', labelKey: 'detail.tabs.sharing' },

@@ -95,6 +95,7 @@ describe('Gateway proxy routing', () => {
       // S1 — not asserted by these routing tests; a valid URL to satisfy the type.
       campaignUrl: urlOf(knowledgeServer),
       loreEnrichmentUrl: urlOf(loreEnrichmentServer),
+      jobsUrl: urlOf(knowledgeServer),
     });
     await app.init();
   });

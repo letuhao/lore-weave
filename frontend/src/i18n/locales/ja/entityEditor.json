@@ -20,6 +20,8 @@
       "attributes": "属性",
       "evidences": "根拠"
     },
+    "viewing_in_language": "{{lang}}で表示中",
+    "viewing_original": "原文（{{lang}}）",
     "translation_lang_aria": "翻訳言語",
     "no_translation": "翻訳なし",
     "add_language": "+ 言語を追加...",

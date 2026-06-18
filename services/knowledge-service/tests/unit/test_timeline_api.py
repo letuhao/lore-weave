@@ -464,6 +464,56 @@ def test_timeline_entity_id_rejected_when_empty_string():
 @patch(
     "app.routers.public.timeline.list_events_filtered", new_callable=AsyncMock
 )
+@patch("app.routers.public.timeline.neo4j_session", new=lambda: _noop_session())
+def test_timeline_sort_dir_forwarded(mock_list):
+    """D-K19e-α-03: sort_dir defaults to 'asc' (back-compat) and an explicit
+    'desc' is forwarded to the repo (alongside the chosen sort_by axis)."""
+    mock_list.return_value = ([], 0)
+    client = _make_client()
+    resp = client.get("/v1/knowledge/timeline")
+    assert resp.status_code == 200
+    assert mock_list.await_args.kwargs["sort_dir"] == "asc"  # legacy default
+    resp = client.get("/v1/knowledge/timeline?sort_dir=desc&sort_by=chronological")
+    assert resp.status_code == 200
+    assert mock_list.await_args.kwargs["sort_dir"] == "desc"
+    assert mock_list.await_args.kwargs["sort_by"] == "chronological"
+
+
+def test_timeline_bad_sort_dir_422():
+    """sort_dir is a closed Literal — a bogus direction is rejected, not silently
+    coerced (the ORDER BY direction is interpolated from this allowlist)."""
+    client = _make_client()
+    resp = client.get("/v1/knowledge/timeline?sort_dir=upward")
+    assert resp.status_code == 422
+
+
+def test_order_fragment_directions_both_axes():
+    """D-K19e-α-03: the ORDER BY fragment flips the primary key direction for both
+    axes, keeps the title/id tiebreaker stable, and flips the null sentinel so
+    undated/unordered events sink LAST in BOTH directions. Closed allowlist."""
+    from app.db.neo4j_repos.events import _order_fragment
+
+    assert _order_fragment("narrative", "asc") == (
+        "coalesce(e.event_order, 9223372036854775807) ASC, e.title ASC, e.id ASC"
+    )
+    assert _order_fragment("chronological", "asc") == (
+        "coalesce(e.chronological_order, 9223372036854775807) ASC, e.title ASC, e.id ASC"
+    )
+    assert _order_fragment("narrative", "desc") == (
+        "coalesce(e.event_order, -1) DESC, e.title ASC, e.id ASC"
+    )
+    assert _order_fragment("chronological", "desc") == (
+        "coalesce(e.chronological_order, -1) DESC, e.title ASC, e.id ASC"
+    )
+    with pytest.raises(KeyError):
+        _order_fragment("narrative", "sideways")  # not an allowlisted direction
+    with pytest.raises(KeyError):
+        _order_fragment("bogus", "asc")  # not an allowlisted axis
+
+
+@patch(
+    "app.routers.public.timeline.list_events_filtered", new_callable=AsyncMock
+)
 @patch("app.routers.public.timeline.get_entity", new_callable=AsyncMock)
 @patch("app.routers.public.timeline.neo4j_session", new=lambda: _noop_session())
 def test_timeline_all_three_filters_combined(mock_get_entity, mock_list):
@@ -579,3 +629,211 @@ def test_timeline_event_date_invalid_day_pattern_rejected():
     client = _make_client()
     resp = client.get("/v1/knowledge/timeline?event_date_from=1880-06-32")
     assert resp.status_code == 422
+
+
+# ── C14 — importance (major/pivotal) + narrative-order sort ──────────
+
+
+def _imp_event(
+    *,
+    title: str = "ev",
+    participants: list[str] | None = None,
+    mention_count: int = 0,
+    confidence: float = 0.0,
+) -> Event:
+    """Importance-signal stub. Defaults give an unbadged (None) event so
+    each test sets only the dimensions it exercises."""
+    return Event(
+        id=f"ev-{title}",
+        user_id=str(_TEST_USER),
+        project_id=None,
+        title=title,
+        canonical_title=title,
+        summary=None,
+        chapter_id=None,
+        event_order=1,
+        chronological_order=None,
+        participants=participants or [],
+        confidence=confidence,
+        source_types=["book_content"],
+        evidence_count=1,
+        mention_count=mention_count,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+
+
+def test_event_importance_pivotal_by_participants():
+    """≥3 participants AND confidence≥0.75 → pivotal (the multi-party hinge
+    scene — badges even when mention_count is degenerate at 1, the real-
+    corpus case)."""
+    ev = _imp_event(
+        participants=["A", "B", "C"], mention_count=1, confidence=0.8
+    )
+    assert ev.importance == "pivotal"
+
+
+def test_event_importance_pivotal_by_mention():
+    """A heavily re-referenced event (mention_count≥5) → pivotal even with
+    a single participant."""
+    ev = _imp_event(participants=["A"], mention_count=6, confidence=0.2)
+    assert ev.importance == "pivotal"
+
+
+def test_event_importance_major_multiparty():
+    """≥2 participants AND confidence≥0.6 (but below pivotal) → major."""
+    ev = _imp_event(participants=["A", "B"], mention_count=1, confidence=0.7)
+    assert ev.importance == "major"
+
+
+def test_event_importance_major_by_mention():
+    """mention_count≥3 (but <5) → major even for a solo event."""
+    ev = _imp_event(participants=["A"], mention_count=4, confidence=0.2)
+    assert ev.importance == "major"
+
+
+def test_event_importance_unset_for_ordinary_event():
+    """An ordinary one-off, single-party, lightly-referenced event stays
+    unbadged (None) — the feature must NOT mislabel the long tail. A high
+    confidence alone (no co-participants, no re-mention) is NOT enough."""
+    ev = _imp_event(participants=["A"], mention_count=1, confidence=0.98)
+    assert ev.importance is None
+
+
+def test_event_importance_enum_only_major_pivotal():
+    """No enum drift: importance is one of {major, pivotal, None}."""
+    from app.db.neo4j_repos.events import EVENT_IMPORTANCE
+
+    assert EVENT_IMPORTANCE == ("major", "pivotal")
+    for ev in (
+        _imp_event(participants=["A", "B", "C"], mention_count=9, confidence=0.9),
+        _imp_event(participants=["A", "B"], mention_count=3),
+        _imp_event(mention_count=1),
+    ):
+        assert ev.importance in (*EVENT_IMPORTANCE, None)
+
+
+@patch(
+    "app.routers.public.timeline.list_events_filtered", new_callable=AsyncMock
+)
+@patch("app.routers.public.timeline.neo4j_session", new=lambda: _noop_session())
+def test_timeline_response_carries_importance(mock_list):
+    """The wire response surfaces the derived importance field so the
+    FE rail can badge without recomputing."""
+    pivotal = _imp_event(
+        title="hinge",
+        participants=["A", "B", "C"],
+        mention_count=6,
+        confidence=0.9,
+    )
+    ordinary = _imp_event(title="filler", mention_count=1)
+    mock_list.return_value = ([pivotal, ordinary], 2)
+    client = _make_client()
+    resp = client.get("/v1/knowledge/timeline")
+    assert resp.status_code == 200, resp.json()
+    body = resp.json()
+    assert body["events"][0]["importance"] == "pivotal"
+    assert body["events"][1]["importance"] is None
+
+
+@patch(
+    "app.routers.public.timeline.list_events_filtered", new_callable=AsyncMock
+)
+@patch("app.routers.public.timeline.neo4j_session", new=lambda: _noop_session())
+def test_timeline_sort_by_defaults_to_narrative(mock_list):
+    """Back-compat: an unset sort_by forwards 'narrative' to the repo —
+    the exact prior ordering, so existing callers are unaffected."""
+    mock_list.return_value = ([], 0)
+    client = _make_client()
+    resp = client.get("/v1/knowledge/timeline")
+    assert resp.status_code == 200
+    assert mock_list.await_args.kwargs["sort_by"] == "narrative"
+
+
+@patch(
+    "app.routers.public.timeline.list_events_filtered", new_callable=AsyncMock
+)
+@patch("app.routers.public.timeline.neo4j_session", new=lambda: _noop_session())
+def test_timeline_sort_by_chronological_forwarded(mock_list):
+    """sort_by=chronological is threaded to the repo verbatim."""
+    mock_list.return_value = ([], 0)
+    client = _make_client()
+    resp = client.get("/v1/knowledge/timeline?sort_by=chronological")
+    assert resp.status_code == 200
+    assert mock_list.await_args.kwargs["sort_by"] == "chronological"
+
+
+@patch(
+    "app.routers.public.timeline.list_events_filtered", new_callable=AsyncMock
+)
+@patch("app.routers.public.timeline.neo4j_session", new=lambda: _noop_session())
+def test_timeline_sort_by_invalid_rejected(mock_list):
+    """An out-of-allowlist sort_by is a 422 (Literal validation) — the
+    repo is never reached, so no bad key can interpolate into Cypher."""
+    mock_list.return_value = ([], 0)
+    client = _make_client()
+    resp = client.get("/v1/knowledge/timeline?sort_by=insertion")
+    assert resp.status_code == 422
+    mock_list.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@patch("app.db.neo4j_repos.events.run_read", new_callable=AsyncMock)
+async def test_list_events_filtered_narrative_orders_by_event_order(mock_run_read):
+    """sort_by='narrative' (default) ORDER BY uses event_order — the
+    legacy axis. Asserts the page Cypher carries the event_order key."""
+    count_stub = _make_result_stub(single_value={"total": 1})
+    page_stub = _make_result_stub(records=[])
+    mock_run_read.side_effect = [count_stub, page_stub]
+    await list_events_filtered(
+        session=MagicMock(),
+        user_id="u-1",
+        project_id=None,
+        after_order=None,
+        before_order=None,
+        limit=25,
+        offset=0,
+    )
+    page_cypher = mock_run_read.await_args_list[1].args[1]
+    assert "ORDER BY coalesce(e.event_order" in page_cypher
+
+
+@pytest.mark.asyncio
+@patch("app.db.neo4j_repos.events.run_read", new_callable=AsyncMock)
+async def test_list_events_filtered_chronological_orders_by_chrono(mock_run_read):
+    """sort_by='chronological' swaps the primary ORDER BY key to
+    chronological_order — true in-story chronology, not insertion."""
+    count_stub = _make_result_stub(single_value={"total": 1})
+    page_stub = _make_result_stub(records=[])
+    mock_run_read.side_effect = [count_stub, page_stub]
+    await list_events_filtered(
+        session=MagicMock(),
+        user_id="u-1",
+        project_id=None,
+        after_order=None,
+        before_order=None,
+        sort_by="chronological",
+        limit=25,
+        offset=0,
+    )
+    page_cypher = mock_run_read.await_args_list[1].args[1]
+    assert "ORDER BY coalesce(e.chronological_order" in page_cypher
+
+
+@pytest.mark.asyncio
+@patch("app.db.neo4j_repos.events.run_read", new_callable=AsyncMock)
+async def test_list_events_filtered_bad_sort_by_raises(mock_run_read):
+    """Repo-layer defence: an unknown sort_by raises before any Cypher
+    is assembled (no user text can reach the ORDER BY clause)."""
+    with pytest.raises(ValueError, match="sort_by"):
+        await list_events_filtered(
+            session=MagicMock(),
+            user_id="u-1",
+            project_id=None,
+            after_order=None,
+            before_order=None,
+            sort_by="; DROP",
+            limit=25,
+            offset=0,
+        )
+    mock_run_read.assert_not_awaited()

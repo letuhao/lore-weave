@@ -8,6 +8,40 @@ export type Work = {
   status: 'active' | 'archived';
   settings: Record<string, unknown>;
   version: number;
+  // C16 — surrogate PK (null project_id = lazy greenfield Work awaiting backfill).
+  // Optional in the FE type so pre-C16/C23 callers degrade gracefully.
+  id?: string | null;
+  // C23 (dị bản M0) — a DERIVATIVE Work points at the SOURCE Work it diverges
+  // from (in-DB self-ref on the surrogate id) at a chapter-level `branch_point`
+  // (G3). Both null for a greenfield Work. The studio banner (C24) keys off
+  // `source_work_id` to know it's editing a dị bản.
+  source_work_id?: string | null;
+  branch_point?: number | null;
+};
+
+// ── C24 (dị bản M0) — divergence wizard / derivative spawn ────────────────────
+// Mirrors composition-service DeriveBody (works.py). The 3 UX §7.1 taxonomies all
+// reduce to `branch_point` + optional `pov_anchor` + `entity_override[]` + added
+// `canon_rule[]` (LOCKED M0 override scope = entity fields + canon rules only).
+export type DivergenceTaxonomy = 'pov_shift' | 'character_transform' | 'au';
+
+// One entity-FIELD override (M0 scope — relationship/event overrides DEFERRED).
+// `overridden_fields` is the field→value JSON delta the writer authored.
+export type EntityOverride = {
+  target_entity_id: string;
+  overridden_fields: Record<string, unknown>;
+};
+
+export type DivergenceSpec = {
+  taxonomy: DivergenceTaxonomy;
+  pov_anchor: string | null;
+  canon_rule: string[];
+};
+
+export type DeriveBody = {
+  branch_point: number | null;
+  divergence: DivergenceSpec;
+  entity_overrides: EntityOverride[];
 };
 
 export type WorkResolution = {
@@ -18,8 +52,29 @@ export type WorkResolution = {
   book_project_ids: string[];
 };
 
+// T0.1 — narrative-thread (promise/foreshadow) ledger row. Advisory (D4); the
+// `open` set is the author's unpaid-promise debt. Mirrors composition-service
+// NarrativeThread (app/db/models.py).
+export type ThreadKind = 'promise' | 'foreshadow' | 'question' | 'mice_thread';
+export type ThreadStatus = 'open' | 'progressing' | 'paid' | 'dropped';
+export type NarrativeThread = {
+  id: string;
+  project_id: string;
+  user_id: string;
+  kind: ThreadKind;
+  status: ThreadStatus;
+  opened_at_node: string | null;
+  payoff_node: string | null;
+  priority: number;
+  summary: string;
+  version: number;
+};
+
 // ── A3 decompose planner (cycle 13) ──────────────────────────────────────────
-export type StructureTemplate = { id: string; name: string; kind?: string; beats?: unknown[] };
+// T1.2 Beat Sheet — a template beat: a `key` (joins to node.beat_role) + its
+// structural `purpose`. Mirrors the BE StructureTemplate.beats (plan.py).
+export type Beat = { key: string; purpose: string };
+export type StructureTemplate = { id: string; name: string; kind?: string; beats: Beat[] };
 
 // Preview shape — mirrors composition-service DecomposeResult (dataclasses.asdict).
 // The chapter is nested under `chapter`; scenes carry resolved present_entity_ids
@@ -64,12 +119,29 @@ export type OutlineNode = {
   project_id: string;
   parent_id: string | null;
   kind: 'arc' | 'chapter' | 'scene' | 'beat';
+  rank: string; // lexorank — the BE's primary within-parent order (story_order NULLS LAST, then rank)
   title: string;
   chapter_id: string | null;
   story_order: number | null;
   status: 'empty' | 'outline' | 'drafting' | 'done';
   synopsis: string;
   version: number;
+  is_archived: boolean; // T1.1b — archived nodes are hidden unless the tree's "show archived" view is on
+  beat_role: string | null; // T1.2 — the structure-template beat key this node fills (or null)
+};
+
+// T1.3 Scene Graph — a non-derivable scene edge (a causal/structural dependency
+// the linear outline can't express). `setup_payoff` is the planted-payoff axis
+// (solid arrow); `custom` is a free author-defined relation (dashed). Mirrors the
+// BE SceneLink (app/db/models.py). Unique on (from,to,kind) → dup create 409s.
+export type SceneLinkKind = 'setup_payoff' | 'custom';
+export type SceneLink = {
+  id: string;
+  project_id: string;
+  from_node_id: string;
+  to_node_id: string;
+  kind: SceneLinkKind;
+  label: string;
 };
 
 // M9 chapter-gate (OI-1): can this chapter be published? can_publish is true
@@ -117,6 +189,19 @@ export type Violation = {
   dismissed?: boolean;
 };
 
+// C26 — a derivative override-critic finding (override slip / delta inconsistency).
+// Deterministic, AI-free; surfaced alongside the LLM critic dims for a dị bản Work.
+export type DerivativeFinding = {
+  kind: 'override_slip' | 'delta_inconsistency';
+  entity_id?: string;
+  name?: string;
+  field?: string;
+  expected?: string;
+  found?: string;
+  rule?: string;
+  why?: string;
+};
+
 export type Critic = {
   coherence: number | null;
   voice_match: number | null;
@@ -124,6 +209,15 @@ export type Critic = {
   canon_consistency: number | null;
   violations: Violation[];
   error?: string;
+  // C26 GATE — the derivative override critic. `needs_regeneration` blocks accept
+  // (the dị bản override slipped); `regen_exhausted` means the cap was reached and
+  // the gate fails OPEN (surface the finding, allow accept). `derivative_findings`
+  // explains WHY. Absent for a canon (non-derivative) Work.
+  needs_regeneration?: boolean;
+  regen_exhausted?: boolean;
+  regen_attempts?: number;
+  regen_cap?: number;
+  derivative_findings?: DerivativeFinding[];
 } | null;
 
 export type GenerationJob = {
@@ -245,3 +339,6 @@ export type StreamEvent =
   | { type: 'capped' }
   | { type: 'error'; error: string }
   | { type: 'done'; job_id: string; status: string; output_tokens?: number; measured?: boolean; capped?: boolean; replay?: boolean };
+
+// T3.2 — selection-scoped AI operations on highlighted prose.
+export type SelectionOperation = 'rewrite' | 'expand' | 'describe';

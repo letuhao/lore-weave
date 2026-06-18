@@ -1,0 +1,7 @@
+id: w1-closure
+description: "W1.3 — closure-drain orchestrator, LIVE. On active→pending_close the reality is frozen for appends (W1.4); the orchestrator then drains events_outbox to the publisher high-water (unpublished=0) before allowing →frozen, closing D-S13-CLOSURE-DRAIN. drain: the backlog drains to 0 over several polls, THEN →frozen, 0 stranded. timeout: no publisher ⇒ abort to active, events preserved (never forced →frozen). bite: a naive close with no drain gate freezes the reality with undrained events stranded ⇒ the gate is non-vacuous. Requires the scale rig (meta-pg + pg-shard-0)."
+invariant: I-w1-closure-drains-before-freeze
+kind: live-probe
+command: ["bash", "scripts/perf/w1-closure.sh", "smoke"]
+requires: ["scale-rig"]
+skip_when: []

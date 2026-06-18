@@ -1,0 +1,7 @@
+id: s12-packing
+description: "S12/Inc-1 — per-node packing on a REAL isolated Postgres shard (production fsync): pgbench concurrency sweep = raw-PG write ceiling, no coherency knee at the DP-S5 per-reality rate; real cross-shard across N distinct PG instances (closes D-WORKLOAD-GEN-REAL-SHARD). Embeds the latency-toxic bite (throughput drops). Self-boots the scale rig. Heavy — runner-notrun until a scale-rig capability is wired; executed by the scale-nightly CI job."
+invariant: I-s12-per-shard-scales-with-concurrency
+kind: live-probe
+command: ["bash", "scripts/perf/scale-rig.sh", "smoke", "3"]
+requires: ["scale-rig"]
+skip_when: []

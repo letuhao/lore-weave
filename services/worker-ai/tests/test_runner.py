@@ -114,10 +114,21 @@ def _mock_pool(book_id=_TEST_BOOK_ID):
     _txn.__aenter__ = AsyncMock(return_value=None)
     _txn.__aexit__ = AsyncMock(return_value=False)
     conn.transaction = MagicMock(return_value=_txn)
+    # P1 job-emit: _complete_job/_fail_job now do `UPDATE … RETURNING` via
+    # conn.fetchrow (so the rowcount gates the emit) + emit_job_event on the same
+    # conn. Default the acquired conn's fetchrow to a truthy row (transition won) so
+    # the happy path emits; tests inspect `pool.acquired_conn.fetchrow`.
+    # P4 carries the final cost on the terminal event — _complete_job/_fail_job read
+    # row["cost_spent_usd"] from the RETURNING row, so the mock must supply it.
+    conn.fetchrow = AsyncMock(return_value={
+        "job_id": "00000000-0000-0000-0000-000000000001",
+        "cost_spent_usd": Decimal("0.004"),
+    })
     _acq = MagicMock()
     _acq.__aenter__ = AsyncMock(return_value=conn)
     _acq.__aexit__ = AsyncMock(return_value=False)
     pool.acquire = MagicMock(return_value=_acq)
+    pool.acquired_conn = conn
     return pool
 
 
@@ -295,6 +306,35 @@ async def test_process_job_runs_normally_with_complete_billing(mock_extract_pers
 
 
 # ── process_job: chapters scope ──────────────────────────────────────
+
+
+@pytest.mark.asyncio
+@patch("app.runner._start_decoupled_chunk", new_callable=AsyncMock)
+@patch("app.runner.fair_sched.try_acquire_chunk", new_callable=AsyncMock)
+@patch("app.runner._extract_and_persist", new_callable=AsyncMock)
+async def test_p5_defers_chunk_and_skips_spend_when_owner_at_cap(
+    mock_extract_persist, mock_acquire, mock_decoupled, monkeypatch
+):
+    """P5 — when the owner is at the per-owner in-flight cap, the decoupled chunk is
+    deferred to a later poll: NO submit and NO cost reservation (try_spend) — so a
+    deferred chunk can't inflate cost_spent_usd. Proves the gate sits BEFORE try_spend
+    in the real path (memory: assert the wrapper fires at the call site)."""
+    monkeypatch.setenv("EXTRACTION_DECOUPLE_ENABLED", "true")
+    mock_acquire.return_value = (False, None)  # owner at cap → defer
+    job = _job(scope="chapters")
+    pool = _mock_pool()
+    # in-flight guard runs first (resume_state IS NOT NULL → False), then book_id, then
+    # _refresh_job_status → 'running'.
+    pool.fetchval = AsyncMock(side_effect=[False, _TEST_BOOK_ID, "running", *["running"] * 50])
+
+    await process_job(
+        pool, _mock_knowledge_client(), _mock_llm_client(), _mock_book_client(),
+        _mock_glossary_client(), _mock_chat_client(), _mock_provider_client(), job,
+    )
+
+    mock_acquire.assert_awaited_once()        # the gate was consulted
+    mock_decoupled.assert_not_called()        # chunk NOT submitted
+    pool.fetchrow.assert_not_called()         # _try_spend (fetchrow) NOT reached → no spend inflation
 
 
 @pytest.mark.asyncio
@@ -951,9 +991,10 @@ async def test_process_job_glossary_sync_empty_book_no_op(mock_extract_persist):
 
     kc.glossary_sync_entity.assert_not_called()
     mock_extract_persist.assert_not_called()
-    # Job completion sets status=complete.
+    # Job completion sets status=complete (now via conn.fetchrow … RETURNING so the
+    # rowcount gates the P1 job-event emit).
     complete_calls = [
-        c for c in pool.execute.call_args_list
+        c for c in pool.acquired_conn.fetchrow.call_args_list
         if isinstance(c.args[0], str)
         and "UPDATE extraction_jobs" in c.args[0]
         and "status = 'complete'" in c.args[0].replace('"', "'")
@@ -1560,6 +1601,10 @@ async def test_get_running_jobs_pulls_embedding_dimension(monkeypatch):
         "extraction_config": {},
         "genre": "Tiên hiệp",
         "save_raw_extraction": True,
+        # C12 + C13 — columns added to the running-jobs SELECT.
+        "targets": None,
+        "concurrency_level": None,
+        "pinned_entity_ids": None,
     }
     pool = AsyncMock()
     pool.fetch = AsyncMock(return_value=[fake_row])
@@ -1590,6 +1635,10 @@ async def test_get_running_jobs_handles_null_embedding_dimension():
         "extraction_config": None,
         "genre": None,
         "save_raw_extraction": False,
+        # C12 + C13 — columns added to the running-jobs SELECT.
+        "targets": None,
+        "concurrency_level": None,
+        "pinned_entity_ids": None,
     }
     pool = AsyncMock()
     pool.fetch = AsyncMock(return_value=[fake_row])
@@ -1619,6 +1668,10 @@ async def test_get_running_jobs_threads_billing_identity():
         "extraction_config": None,
         "genre": None,
         "save_raw_extraction": False,
+        # C12 + C13 — columns added to the running-jobs SELECT.
+        "targets": None,
+        "concurrency_level": None,
+        "pinned_entity_ids": None,
     }
     pool = AsyncMock()
     pool.fetch = AsyncMock(return_value=[fake_row])
@@ -1626,6 +1679,39 @@ async def test_get_running_jobs_threads_billing_identity():
     assert jobs[0].billing_user_id == collab
     assert jobs[0].billing_embedding_model == "collab-emb"
     assert jobs[0].billing_llm_model == "collab-llm"
+
+
+@pytest.mark.asyncio
+async def test_get_running_jobs_threads_pinned_entity_ids():
+    """C13: pinned_entity_ids (JSONB) is read from the SELECT onto JobRow so
+    process_job can fetch the pinned names + inject them into every window.
+    asyncpg may hand JSONB back as a raw JSON string — _decode_pinned normalises
+    it to a list."""
+    from app.runner import _get_running_jobs
+    fake_row = {
+        "job_id": uuid4(), "user_id": uuid4(), "project_id": uuid4(),
+        "scope": "chapters", "scope_range": None, "status": "running",
+        "llm_model": "qwen", "embedding_model": "emb",
+        "max_spend_usd": None, "items_total": None,
+        "items_processed": 0, "current_cursor": None,
+        "cost_spent_usd": Decimal("0"),
+        "campaign_id": None,
+        "billing_user_id": None,
+        "billing_embedding_model": None,
+        "billing_llm_model": None,
+        "embedding_dimension": 1024,
+        "extraction_config": None,
+        "genre": None,
+        "save_raw_extraction": False,
+        "targets": None,
+        "concurrency_level": None,
+        # JSONB returned as a raw JSON string (the asyncpg default codec).
+        "pinned_entity_ids": '["g-1", "g-2"]',
+    }
+    pool = AsyncMock()
+    pool.fetch = AsyncMock(return_value=[fake_row])
+    jobs = await _get_running_jobs(pool)
+    assert jobs[0].pinned_entity_ids == ["g-1", "g-2"]
 
 
 # ── D-PHASE6C-WORKERAI-JOB-SPAN: parent span per process_job call ───
@@ -1876,8 +1962,13 @@ def test_load_precision_filter_config_env_unset_returns_none() -> None:
             os.environ["WORKER_AI_PRECISION_FILTER_MODEL_REF"] = original
 
 
-def test_load_precision_filter_config_env_set_builds_config() -> None:
-    """Env set → PrecisionFilterConfig with parsed kwargs."""
+def test_load_precision_filter_config_ignores_env_model_ref() -> None:
+    """D-WX-PRECISION-FILTER-MODEL-ARCH — the env is NO LONGER a filter-model source.
+    Even with WORKER_AI_PRECISION_FILTER_MODEL_REF set, the loader returns None: a
+    global env model is cross-tenant (it 404'd for every user who didn't own it and
+    stalled the decoupled fold). The filter model now comes ONLY from the per-project
+    extraction_config.precision_filter override (resolve_effective_config), resolved
+    per-user. This regression-locks that no env can reintroduce a global filter model."""
     import os
     from app.runner import _load_precision_filter_config
 
@@ -1890,41 +1981,11 @@ def test_load_precision_filter_config_env_set_builds_config() -> None:
         )
     }
     try:
-        os.environ["WORKER_AI_PRECISION_FILTER_MODEL_REF"] = "claude-4.7-opus-uuid"
+        os.environ["WORKER_AI_PRECISION_FILTER_MODEL_REF"] = "some-cross-tenant-uuid"
         os.environ["WORKER_AI_PRECISION_FILTER_PARTIAL_POLICY"] = "drop"
-        os.environ["WORKER_AI_PRECISION_FILTER_MODEL_SOURCE"] = "platform_model"
-        config = _load_precision_filter_config()
-        assert config is not None
-        assert config.model_ref == "claude-4.7-opus-uuid"
-        assert config.partial_policy == "drop"
-        assert config.model_source == "platform_model"
-        # cycle 73b — default categories backward-compat = all 3
-        assert config.categories == ("entity", "relation", "event")
-    finally:
-        for k, v in saved.items():
-            os.environ.pop(k, None)
-            if v is not None:
-                os.environ[k] = v
-
-
-def test_load_precision_filter_config_categories_relation_only() -> None:
-    """Cycle 73b — WORKER_AI_PRECISION_FILTER_CATEGORIES=relation
-    parses to a single-category tuple."""
-    import os
-    from app.runner import _load_precision_filter_config
-
-    saved = {
-        k: os.environ.pop(k, None) for k in (
-            "WORKER_AI_PRECISION_FILTER_MODEL_REF",
-            "WORKER_AI_PRECISION_FILTER_CATEGORIES",
-        )
-    }
-    try:
-        os.environ["WORKER_AI_PRECISION_FILTER_MODEL_REF"] = "test-model"
+        os.environ["WORKER_AI_PRECISION_FILTER_MODEL_SOURCE"] = "user_model"
         os.environ["WORKER_AI_PRECISION_FILTER_CATEGORIES"] = "relation"
-        config = _load_precision_filter_config()
-        assert config is not None
-        assert config.categories == ("relation",)
+        assert _load_precision_filter_config() is None
     finally:
         for k, v in saved.items():
             os.environ.pop(k, None)
@@ -1932,28 +1993,49 @@ def test_load_precision_filter_config_categories_relation_only() -> None:
                 os.environ[k] = v
 
 
-def test_load_precision_filter_config_categories_comma_separated() -> None:
-    """Whitespace-tolerant comma split for KNOWLEDGE_C72_CATEGORIES-style env."""
-    import os
-    from app.runner import _load_precision_filter_config
+def test_resolve_filter_falls_back_to_extraction_model() -> None:
+    """D-WX-PRECISION-FILTER-MODEL-ARCH — a per-project precision_filter override that
+    ENABLES the filter WITHOUT its own model_ref resolves to the EXTRACTION model
+    (user-owned, UI-selected, DB-stored, per-user) — never an env/global model. The
+    category/policy still come from the override."""
+    from loreweave_extraction import resolve_effective_config
 
-    saved = {
-        k: os.environ.pop(k, None) for k in (
-            "WORKER_AI_PRECISION_FILTER_MODEL_REF",
-            "WORKER_AI_PRECISION_FILTER_CATEGORIES",
-        )
-    }
-    try:
-        os.environ["WORKER_AI_PRECISION_FILTER_MODEL_REF"] = "test-model"
-        os.environ["WORKER_AI_PRECISION_FILTER_CATEGORIES"] = "relation, event"
-        config = _load_precision_filter_config()
-        assert config is not None
-        assert config.categories == ("relation", "event")
-    finally:
-        for k, v in saved.items():
-            os.environ.pop(k, None)
-            if v is not None:
-                os.environ[k] = v
+    snap = resolve_effective_config(
+        global_defaults={
+            "model_ref": "user-extraction-model", "model_source": "user_model",
+            "precision_filter": None, "entity_recovery": None, "writer_autocreate": False,
+        },
+        project_overrides={
+            "precision_filter": {
+                "enabled": True, "categories": ["relation"], "partial_policy": "drop",
+            },
+        },
+    )
+    assert snap.precision_filter is not None
+    assert snap.precision_filter.model_ref == "user-extraction-model"
+    assert snap.precision_filter.model_source == "user_model"
+    assert snap.precision_filter.categories == ("relation",)
+
+
+def test_resolve_filter_honors_explicit_override_model() -> None:
+    """An explicit per-project filter model_ref (e.g. a stronger judge the user picked
+    in the UI) is honored over the extraction-model fallback — still per-user."""
+    from loreweave_extraction import resolve_effective_config
+
+    snap = resolve_effective_config(
+        global_defaults={
+            "model_ref": "extraction-model", "model_source": "user_model",
+            "precision_filter": None, "entity_recovery": None, "writer_autocreate": False,
+        },
+        project_overrides={
+            "precision_filter": {
+                "enabled": True, "model_ref": "explicit-filter-model",
+                "model_source": "user_model", "categories": ["relation"],
+            },
+        },
+    )
+    assert snap.precision_filter is not None
+    assert snap.precision_filter.model_ref == "explicit-filter-model"
 
 
 # ── Cycle 73d — entity recovery env loader ─────────────────────────────

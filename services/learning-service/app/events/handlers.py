@@ -482,6 +482,112 @@ async def handle_generation_corrected(event: EventData, *, pool: asyncpg.Pool) -
     )
 
 
+# ── wiki-llm M8 (D-WIKI-M8-LEARNING-CONSUMER) — the wiki feedback flywheel ─────
+# Collect-by-default; the LLM-judge scoring of wiki articles is a separate,
+# off-by-default follow-up (D-WIKI-M8-EVAL-PLUS). The gold AI→human PROSE is NOT
+# copied here (the corrections table is redact-by-default — structural + hashes);
+# it stays in glossary `wiki_revisions`, reachable via the correction's
+# target_id=article_id when the few-shot half (D-WIKI-M8-FEWSHOT) needs it.
+
+
+async def handle_wiki_corrected(event: EventData, *, pool: asyncpg.Pool) -> None:
+    """`wiki.corrected` → a `wiki_article` correction (the AI-draft→human-edit gold
+    POINTER). Emitted by glossary when a human edits an AI-authored article; the
+    owner (`user_id`) is the corrector. Structural-only: before = the AI state at
+    correction (author_type + prior generation_status), after = human-owned — a
+    non-None `after` so derive_diff_class reads a generic edit, not a spurious-drop.
+    Gated by `wiki_learning_enabled` (off → ack, no row); empty outbox_id / missing
+    user_id raise → DLQ (R3-W1)."""
+    from app.config import settings
+
+    if not settings.wiki_learning_enabled:
+        logger.debug("wiki.corrected — wiki learning disabled, skipping (id=%s)", event.message_id)
+        return
+    payload = event.payload
+    # target_id = article_id is the canonical gold-pair pointer (the few-shot half
+    # fetches the AI+human revisions from glossary by it); the event's entity_id is
+    # intentionally not stored — it's derivable from the article in glossary.
+    article_id = payload.get("article_id") or event.aggregate_id
+    user_id = _uuid_or_none(payload.get("user_id"))
+    await _persist_correction(
+        pool,
+        user_id=user_id,
+        project_id=None,
+        book_id=_uuid_or_none(payload.get("book_id")),
+        target_type="wiki_article",
+        target_id=str(article_id),
+        op="human_edit",
+        before_snapshot={
+            "author_type": "ai",
+            "generation_status": payload.get("prior_generation_status"),
+        },
+        after_snapshot={"author_type": "human"},
+        source_chapter=None,
+        source_span=None,
+        source_extraction_run_id=None,
+        actor_type="user",
+        actor_id=user_id,
+        origin_service="glossary",
+        origin_event_id=event.outbox_id,
+        origin_event_type=event.event_type,
+        emitted_at=_parse_ts(payload.get("emitted_at")),
+    )
+    logger.debug(
+        "wiki correction persisted: article=%s prior=%s origin=glossary:%s",
+        article_id, payload.get("prior_generation_status"), event.outbox_id,
+    )
+
+
+async def handle_wiki_suggestion_reviewed(event: EventData, *, pool: asyncpg.Pool) -> None:
+    """`wiki.suggestion_reviewed` → a `source='human'` quality_score on the AI article.
+
+    Only AI-generated articles give an AI-quality signal (`was_ai_generated`); a
+    review of a human-authored article is skipped (ack, no row). accept=1.0 /
+    reject=0.0 under `metric_name='wiki_suggestion_reviewed'` (the action +
+    suggestion_id ride in the comment). Gated by `wiki_learning_enabled`; empty
+    outbox_id / missing user_id|article_id / bad action raise → DLQ."""
+    from app.config import settings
+
+    if not settings.wiki_learning_enabled:
+        logger.debug(
+            "wiki.suggestion_reviewed — wiki learning disabled, skipping (id=%s)", event.message_id,
+        )
+        return
+    payload = event.payload
+    if not payload.get("was_ai_generated"):
+        logger.debug(
+            "wiki.suggestion_reviewed on a non-AI article — skipping (id=%s)", event.message_id,
+        )
+        return
+    if not event.outbox_id:
+        raise ValueError("wiki.suggestion_reviewed has empty outbox_id — refusing to insert")
+    article_id = payload.get("article_id") or event.aggregate_id
+    user_id = _uuid_or_none(payload.get("user_id"))
+    action = payload.get("action")
+    if user_id is None or not article_id or action not in ("accept", "reject"):
+        raise ValueError(
+            "wiki.suggestion_reviewed missing user_id/article_id or bad action "
+            f"(user_id={payload.get('user_id')!r} article={article_id!r} action={action!r}) — refusing"
+        )
+    await persist_consumed_score(
+        pool,
+        target_kind="wiki_article",
+        target_id=str(article_id),
+        user_id=user_id,
+        book_id=_uuid_or_none(payload.get("book_id")),
+        metric_name="wiki_suggestion_reviewed",
+        value_num=1.0 if action == "accept" else 0.0,
+        source="human",
+        origin_service="glossary",
+        origin_event_id=event.outbox_id,
+        comment=json.dumps({"action": action, "suggestion_id": payload.get("suggestion_id")}),
+    )
+    logger.debug(
+        "wiki suggestion-review persisted: article=%s action=%s origin=glossary:%s",
+        article_id, action, event.outbox_id,
+    )
+
+
 async def handle_translation_quality(event: EventData, *, pool: asyncpg.Pool) -> None:
     """`translation.quality` → a `source='auto'` quality_score (track M7a, Channel 2
     — the LLM-action log).
@@ -575,74 +681,52 @@ async def _maybe_judge_translation(
     if not source_text or not translated_text:
         return
     try:
-        from app.clients.llm_client import build_judge_client
-        from app.db.online_translation_judge import (
-            persist_translation_judge,
-            run_translation_judge,
-        )
+        from app.clients.llm_client import build_judge_sdk
+        from app.judges.decoupled_judge import start_translation_judge
 
-        client = build_judge_client(
-            base_url=settings.provider_registry_internal_url,
-            internal_token=settings.internal_service_token,
-        )
         # D-EVAL-JUDGE-PER-USER: bill the BYOK judge to the CONTENT OWNER (the
         # event's user_id) rather than the operator's env-configured id, so a
         # multi-tenant batch attributes judge cost to whoever owns the translation.
         # Fall back to the env id only when the event lacks an owner.
         user_id = _uuid_or_none(payload.get("user_id"))
         judge_user_id = str(user_id) if user_id is not None else settings.online_judge_user_id
-        verdict = await run_translation_judge(
-            client,
-            source_text=source_text,
-            translated_text=translated_text,
-            judge_model=judge_model,
-            model_source=judge_model_source,
-            user_id=judge_user_id,
+        if not judge_user_id:
+            return  # no owner and no env fallback → cannot resolve a BYOK model
+        # M1: submit the fidelity batch + persist a durable `llm_judges` row, then
+        # return — the llm-job terminal-event consumer folds the verdict, persists,
+        # and (campaign judge only) emits `translation.eval_judged`. Was an inline
+        # `submit_and_wait` that pinned the collector consumer for the whole judge.
+        sdk = build_judge_sdk(
+            base_url=settings.provider_registry_internal_url,
+            internal_token=settings.internal_service_token,
         )
-        if verdict is not None and user_id is not None:
-            await persist_translation_judge(
+        try:
+            await start_translation_judge(
                 pool,
+                sdk,
                 ct_id=str(ct_id),
-                user_id=user_id,
+                owner_user_id=user_id,
+                billing_user_id=judge_user_id,
                 book_id=_uuid_or_none(payload.get("book_id")),
-                verdict=verdict,
-                judge_model=judge_model,
                 origin_event_id=event.outbox_id,
+                judge_model=judge_model,
+                judge_model_source=judge_model_source,
+                source_text=source_text,
+                translated_text=translated_text,
+                # S5b-eval: only a campaign-chosen judge surfaces the verdict to the
+                # campaign projection; the global-config judge stays telemetry-only.
+                emit_eval_judged=bool(campaign_judge_ref),
+                eval_payload={
+                    "user_id": payload.get("user_id"),
+                    "book_id": payload.get("book_id"),
+                    "chapter_id": payload.get("chapter_id"),
+                    "target_language": payload.get("target_language"),
+                },
             )
-            # S5b-eval: surface the verdict to the campaign projection (best-effort —
-            # only for a campaign-chosen judge; the global-config judge stays telemetry-only).
-            if campaign_judge_ref:
-                await _emit_eval_judged(payload, verdict)
+        finally:
+            await sdk.aclose()
     except Exception:  # noqa: BLE001 — the judge is best-effort telemetry
         logger.warning("M7d: online translation judge failed (non-fatal)", exc_info=True)
-
-
-async def _emit_eval_judged(payload: dict, verdict) -> None:
-    """S5b-eval: best-effort XADD `translation.eval_judged` to a dedicated stream the
-    campaign projection consumer reads. learning-service has no transactional outbox
-    (D-S5BEVAL-LEARNING-OUTBOX) — a lost emit just leaves eval_fidelity_score null, which
-    is acceptable for best-effort telemetry. Never raises (caught by the caller)."""
-    import json
-
-    import redis.asyncio as aioredis
-
-    from app.config import settings
-
-    body = {
-        "user_id": payload.get("user_id"),
-        "book_id": payload.get("book_id"),
-        "chapter_id": payload.get("chapter_id"),
-        "target_language": payload.get("target_language"),
-        "score": float(verdict.score),
-    }
-    r = aioredis.from_url(settings.redis_url, decode_responses=True)
-    try:
-        await r.xadd(
-            "loreweave:events:translation_eval",
-            {"event_type": "translation.eval_judged", "payload": json.dumps(body)},
-        )
-    finally:
-        await r.aclose()
 
 
 async def handle_translation_reviewed(event: EventData, *, pool: asyncpg.Pool) -> None:

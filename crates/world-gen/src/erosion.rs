@@ -27,38 +27,13 @@ use std::cmp::{Ordering, Reverse};
 use std::collections::BinaryHeap;
 
 use crate::creative_seed::ErosionStrength;
+use crate::params::{ErosionParams, ErosionRow};
 
-/// Erosion tuning for one [`ErosionStrength`].
-///
-/// Erosion runs in two phases. The **carve** phase is pure stream-power
-/// incision — it cuts the dendritic valley network into the raw heightmap.
-/// The **settle** phase then enables sediment deposition: on the
-/// already-graded landscape incision is mild, so the modest sediment it still
-/// produces is dropped only where channel transport capacity falls away —
-/// valley floors and mountain-front fans — instead of blanketing and
-/// re-filling the freshly cut valleys.
-pub struct ErosionParams {
-    /// Pure-incision passes (phase 1 — carve the valleys).
-    carve_iters: u32,
-    /// Incision + deposition passes (phase 2 — settle sediment into fans).
-    settle_iters: u32,
-    /// `K` — stream-power erodibility per iteration.
-    erodibility: f32,
-    /// `Kc` — sediment transport-capacity coefficient. A channel carries
-    /// `Kc·area^m·slope` of sediment; load above that capacity is over-supply.
-    transport: f32,
-    /// Fraction of the over-capacity load deposited per settle pass. Below 1
-    /// so a transient over-supply flows on through rather than dumping in one
-    /// step — only a *persistent* low-capacity spot accumulates a fan.
-    settle_rate: f32,
-    /// `D` — hillslope-diffusion (creep) coefficient, `0..1`.
-    diffusion: f32,
-}
-
-/// Tuning per strength. `None` ⇒ zero iterations (a true no-op).
-fn params(strength: ErosionStrength) -> ErosionParams {
+/// Resolve one strength's [`ErosionRow`] from the [`ErosionParams`] table.
+/// `None` ⇒ an all-zero row (a true no-op), not a param.
+fn row(ep: &ErosionParams, strength: ErosionStrength) -> ErosionRow {
     match strength {
-        ErosionStrength::None => ErosionParams {
+        ErosionStrength::None => ErosionRow {
             carve_iters: 0,
             settle_iters: 0,
             erodibility: 0.0,
@@ -66,39 +41,36 @@ fn params(strength: ErosionStrength) -> ErosionParams {
             settle_rate: 0.0,
             diffusion: 0.0,
         },
-        ErosionStrength::Light => ErosionParams {
-            carve_iters: 14,
-            settle_iters: 6,
-            erodibility: 2.0,
-            transport: 4.0,
-            settle_rate: 0.15,
-            diffusion: 0.010,
+        ErosionStrength::Light => ErosionRow {
+            carve_iters: ep.light_carve_iters,
+            settle_iters: ep.light_settle_iters,
+            erodibility: ep.light_erodibility,
+            transport: ep.light_transport,
+            settle_rate: ep.light_settle_rate,
+            diffusion: ep.light_diffusion,
         },
-        ErosionStrength::Moderate => ErosionParams {
-            carve_iters: 18,
-            settle_iters: 8,
-            erodibility: 3.0,
-            transport: 4.0,
-            settle_rate: 0.18,
-            diffusion: 0.012,
+        ErosionStrength::Moderate => ErosionRow {
+            carve_iters: ep.moderate_carve_iters,
+            settle_iters: ep.moderate_settle_iters,
+            erodibility: ep.moderate_erodibility,
+            transport: ep.moderate_transport,
+            settle_rate: ep.moderate_settle_rate,
+            diffusion: ep.moderate_diffusion,
         },
-        ErosionStrength::Heavy => ErosionParams {
-            carve_iters: 22,
-            settle_iters: 10,
-            erodibility: 4.0,
-            transport: 4.0,
-            settle_rate: 0.20,
-            diffusion: 0.012,
+        ErosionStrength::Heavy => ErosionRow {
+            carve_iters: ep.heavy_carve_iters,
+            settle_iters: ep.heavy_settle_iters,
+            erodibility: ep.heavy_erodibility,
+            transport: ep.heavy_transport,
+            settle_rate: ep.heavy_settle_rate,
+            diffusion: ep.heavy_diffusion,
         },
     }
 }
 
-/// Carve the `elev` field in place with hydraulic erosion.
-///
-/// `land_fraction` sets the provisional waterline (the `(1 - land_fraction)`
-/// percentile of `elev`); cells below it are sea — fixed outlets, never
-/// eroded. Returns immediately for [`ErosionStrength::None`] or a degenerate
-/// (`< 2`-cell) mesh, leaving `elev` bit-identical.
+/// Carve the `elev` field in place with hydraulic erosion, using the **default**
+/// erosion table. Thin wrapper over [`apply_with`] for callers that don't tune
+/// the table (the frozen flat track + tests). See [`apply_with`] for the rest.
 pub fn apply(
     elev: &mut [f32],
     neighbors: &[Vec<u32>],
@@ -106,7 +78,25 @@ pub fn apply(
     strength: ErosionStrength,
     erodibility: Option<&[f32]>,
 ) {
-    apply_inner(elev, neighbors, land_fraction, params(strength), erodibility);
+    apply_with(elev, neighbors, land_fraction, &ErosionParams::default(), strength, erodibility);
+}
+
+/// Carve the `elev` field in place with hydraulic erosion, using a caller-tuned
+/// [`ErosionParams`] table (parameterization P4).
+///
+/// `land_fraction` sets the provisional waterline (the `(1 - land_fraction)`
+/// percentile of `elev`); cells below it are sea — fixed outlets, never
+/// eroded. Returns immediately for [`ErosionStrength::None`] or a degenerate
+/// (`< 2`-cell) mesh, leaving `elev` bit-identical.
+pub fn apply_with(
+    elev: &mut [f32],
+    neighbors: &[Vec<u32>],
+    land_fraction: f32,
+    ep: &ErosionParams,
+    strength: ErosionStrength,
+    erodibility: Option<&[f32]>,
+) {
+    apply_inner(elev, neighbors, land_fraction, row(ep, strength), erodibility);
 }
 
 /// Resolution-aware variant of [`apply`]: divides the carve + settle iteration
@@ -123,18 +113,72 @@ pub fn apply_scaled(
     erodibility: Option<&[f32]>,
     iter_scale: f32,
 ) {
-    let mut p = params(strength);
+    let mut p = row(&ErosionParams::default(), strength);
     let s = iter_scale.max(1.0);
     p.carve_iters = ((p.carve_iters as f32) / s).round().max(1.0) as u32;
     p.settle_iters = ((p.settle_iters as f32) / s).round() as u32;
     apply_inner(elev, neighbors, land_fraction, p, erodibility);
 }
 
+/// Coupled uplift ⇄ erosion (S5) — evolve the land surface toward a fluvial
+/// steady state `dh/dt = U − K·A^m·S^n + D·∇²h` (detachment-limited, m=0.5/n=1),
+/// so relief **emerges** from the uplift⇄erosion balance instead of ridged-fBm
+/// noise (D5). Each timestep:
+/// 1. **uplift forcing** — raise every land cell by `uplift_step · U[c]` (only
+///    the positive part of the tectonic uplift field; this replenishes the
+///    convergent belts against erosion so they reach a balance instead of
+///    decaying flat);
+/// 2. **stream-power incision** — one detachment-limited pass (`incise` with
+///    `settle_rate = 0`, already clamped to the receiver drop) on the
+///    depression-filled field;
+/// 3. **hillslope diffusion** — rounds crests / smooths interfluves.
+///
+/// `K` and `D` come from the resolved [`ErosionRow`] (so the erosion-strength
+/// knob still drives the loop); an all-zero row (`ErosionStrength::None`) skips
+/// entirely — without incision the uplift forcing would grow unbounded, so "no
+/// erosion" means "leave the uplift skeleton smooth", not "uplift only". Sea
+/// cells (below the `land_fraction` waterline) are fixed outlets. Pure +
+/// deterministic (fixed mesh order, no RNG).
+#[allow(clippy::too_many_arguments)]
+pub fn couple(
+    elev: &mut [f32],
+    neighbors: &[Vec<u32>],
+    uplift: &[f32],
+    land_fraction: f32,
+    iters: u32,
+    uplift_step: f32,
+    ep: &ErosionParams,
+    strength: ErosionStrength,
+) {
+    let row = row(ep, strength);
+    // No incision (None) ⇒ skip: uplift-only would diverge. Degenerate mesh too.
+    if iters == 0 || row.erodibility <= 0.0 || elev.len() < 2 {
+        return;
+    }
+    let (sea, sea_floor) = provisional_sea(elev, land_fraction);
+    for _ in 0..iters {
+        // 1 — uplift forcing (land only; positive uplift = the belts rising).
+        for (c, &is_sea) in sea.iter().enumerate() {
+            if !is_sea {
+                elev[c] += uplift_step * uplift[c].max(0.0);
+            }
+        }
+        // 2 — flow routing on the depression-filled field, then incision.
+        let (receiver, order, filled) = priority_flood(elev, &sea, neighbors);
+        elev.copy_from_slice(&filled);
+        let drainage = flow_accumulation(&order, &receiver, elev.len());
+        let flow = Flow { receiver, order, drainage };
+        incise(elev, &flow, &sea, sea_floor, &row, 0.0, None);
+        // 3 — hillslope diffusion.
+        diffuse(elev, neighbors, &sea, row.diffusion);
+    }
+}
+
 fn apply_inner(
     elev: &mut [f32],
     neighbors: &[Vec<u32>],
     land_fraction: f32,
-    p: ErosionParams,
+    p: ErosionRow,
     erodibility: Option<&[f32]>,
 ) {
     if (p.carve_iters + p.settle_iters) == 0 || elev.len() < 2 {
@@ -281,7 +325,7 @@ fn incise(
     flow: &Flow,
     sea: &[bool],
     sea_floor: f32,
-    p: &ErosionParams,
+    p: &ErosionRow,
     settle_rate: f32,
     erodibility: Option<&[f32]>,
 ) {
@@ -537,7 +581,7 @@ mod tests {
         let nb = grid(side);
         let base = tilted_field(side);
         let (sea, floor) = provisional_sea(&base, 0.6);
-        let p = params(ErosionStrength::Heavy);
+        let p = row(&ErosionParams::default(), ErosionStrength::Heavy);
         let run = |settle_rate: f32| {
             let mut e = base.clone();
             let (receiver, order, filled) = priority_flood(&e, &sea, &nb);
@@ -556,5 +600,69 @@ mod tests {
                 .any(|(a, b)| b > a),
             "deposition did not raise any cell above the carve-only result"
         );
+    }
+
+    /// S5 — the coupled uplift⇄erosion loop: `None` is a no-op, the loop is
+    /// deterministic + finite/non-negative, uplift forcing raises the land
+    /// surface vs. no forcing (same erosion), and sea cells stay fixed outlets.
+    #[test]
+    fn couple_is_a_coupled_uplift_erosion_loop() {
+        let side = 16;
+        let nb = grid(side);
+        let base = tilted_field(side);
+        let uplift_on = vec![1.0f32; side * side];
+        let uplift_off = vec![0.0f32; side * side];
+        let ep = ErosionParams::default();
+
+        // None ⇒ no-op (bit-identical) — without incision the uplift-only loop
+        // would diverge, so "no erosion" must skip entirely.
+        let mut none = base.clone();
+        couple(&mut none, &nb, &uplift_on, 0.55, 25, 0.04, &ep, ErosionStrength::None);
+        for (a, b) in none.iter().zip(&base) {
+            assert_eq!(a.to_bits(), b.to_bits(), "None must leave elev untouched");
+        }
+
+        let run = |uplift: &[f32]| {
+            let mut e = base.clone();
+            couple(&mut e, &nb, uplift, 0.55, 25, 0.04, &ep, ErosionStrength::Moderate);
+            e
+        };
+        // Deterministic.
+        let a = run(&uplift_on);
+        let b = run(&uplift_on);
+        for (x, y) in a.iter().zip(&b) {
+            assert_eq!(x.to_bits(), y.to_bits(), "couple is not reproducible");
+        }
+        // Finite + non-negative everywhere.
+        for (c, &e) in a.iter().enumerate() {
+            assert!(e.is_finite() && e >= 0.0, "cell {c} = {e}");
+        }
+
+        // Uplift forcing raises the land surface vs. no forcing (same erosion).
+        let (sea, _floor) = provisional_sea(&base, 0.55);
+        let land_mean = |f: &[f32]| {
+            let (mut s, mut n) = (0.0f64, 0u32);
+            for (c, &is_sea) in sea.iter().enumerate() {
+                if !is_sea {
+                    s += f64::from(f[c]);
+                    n += 1;
+                }
+            }
+            s / n.max(1) as f64
+        };
+        let off = run(&uplift_off);
+        assert!(
+            land_mean(&a) > land_mean(&off),
+            "uplift forcing must raise the land surface: on {} !> off {}",
+            land_mean(&a),
+            land_mean(&off)
+        );
+
+        // Sea cells are fixed outlets — never moved by the loop.
+        for (c, &is_sea) in sea.iter().enumerate() {
+            if is_sea {
+                assert_eq!(a[c].to_bits(), base[c].to_bits(), "sea cell {c} moved");
+            }
+        }
     }
 }

@@ -98,19 +98,51 @@ def _render_brief(brief: EntityBrief) -> str:
     return "\n".join(parts)
 
 
+def _render_exemplars(exemplars: list[tuple[str, str]]) -> str:
+    """D-WIKI-M8-FEWSHOT — render gold AI-draft→human-edit pairs as a STYLE lesson in
+    the system message. Framed explicitly so the model learns the editorial style
+    (tone, structure, what humans trim/fix) WITHOUT copying the example content or
+    treating their text as live sources to cite."""
+    blocks: list[str] = [
+        "EXAMPLES OF HUMAN EDITS TO PRIOR AI ARTICLES (learn the editorial STYLE — "
+        "what humans tighten, cut, or reword; do NOT copy this content and do NOT cite "
+        "from these examples):"
+    ]
+    for i, (ai_text, human_text) in enumerate(exemplars, start=1):
+        ai = ai_text.strip()
+        human = human_text.strip()
+        if not ai or not human:
+            continue
+        blocks.append(
+            f"Example {i}:\n--- AI DRAFT ---\n{ai}\n--- HUMAN-EDITED ---\n{human}"
+        )
+    # /review-impl F4: if EVERY pair was blank, `blocks` holds only the header —
+    # don't emit a dangling "EXAMPLES…" header with no examples under it.
+    if len(blocks) == 1:
+        return ""
+    return "\n\n".join(blocks)
+
+
 def build_messages(
     *,
     brief: EntityBrief,
     profile: BookProfile,
     items: list[ContextSource],
     corrective: str | None = None,
+    exemplars: list[tuple[str, str]] | None = None,
 ) -> list[dict[str, str]]:
     """Build the `messages` list for the generation LLM call.
 
     `corrective` (optional) appends a short note to the system prompt on a RETRY
     attempt — e.g. "your previous draft left claims uncited" — to nudge the model
-    toward grounding without rebuilding the whole prompt."""
+    toward grounding without rebuilding the whole prompt. `exemplars` (optional,
+    D-WIKI-M8-FEWSHOT) adds gold AI→human edit pairs as a style lesson in the system
+    message — kept OUT of the user turn so it never pollutes the cite-discipline."""
     system = _SYSTEM_BASE + "\n\n" + _profile_clauses(profile)
+    if exemplars:
+        rendered = _render_exemplars(exemplars)
+        if rendered:
+            system += "\n\n" + rendered
     if corrective:
         system += "\n\nNOTE ON YOUR PREVIOUS ATTEMPT:\n" + corrective.strip()
     user = (

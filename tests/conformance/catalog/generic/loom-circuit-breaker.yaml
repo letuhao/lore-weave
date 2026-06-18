@@ -1,0 +1,11 @@
+id: loom-circuit-breaker
+description: "S6/H1-loom — exhaustive interleaving model-check of the dp-kernel CircuitBreaker (extracted to the tokio-free breaker-core crate). loom explores ALL gate()->record() split-lock interleavings and asserts the breaker invariants hold in every one, plus a should_panic bite proving loom catches an unsynchronized counter. CPU-only, no stack."
+invariant: I-breaker-race-free
+kind: rust-test
+command: ["bash", "-c", "RUSTFLAGS='--cfg loom' cargo test -p breaker-core loom_tests"]
+# cargo (Rust toolchain) absent on the Go-only bare runner → notrun, not fail.
+requires: ["cargo"]
+skip_when: []
+# NOTE: kind rust-test is ALWAYS fail-closed on a setup error (a --cfg loom BUILD
+# failure is real breakage, not "couldn't run"), so no fail_closed flag is needed
+# — the `requires:[cargo]` gate is what yields notrun when the toolchain is absent.

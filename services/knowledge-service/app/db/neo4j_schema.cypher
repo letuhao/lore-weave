@@ -141,6 +141,16 @@ FOR (e:Event) ON (e.user_id, e.evidence_count);
 CREATE INDEX fact_user_evidence IF NOT EXISTS
 FOR (f:Fact) ON (f.user_id, f.evidence_count);
 
+// T2.1 — Cast & Codex. A fact MAY link to its subject entity via
+// (:Fact)-[:ABOUT]->(:Entity) (stamped at extraction from the candidate's
+// resolved subject_id; absent for universal claims). `from_order` is the
+// reading-axis order (chapter_sort_order × EVENT_ORDER_CHAPTER_STRIDE) so the
+// codex can spoiler-window a fact to the chapter it was established in; NULL on
+// legacy / chat-tool facts (excluded under any finite window). The index serves
+// the windowed per-entity facts read.
+CREATE INDEX fact_user_from_order IF NOT EXISTS
+FOR (f:Fact) ON (f.user_id, f.from_order);
+
 // ─────────────────────────────────────────────────────────────────
 // A2-S1 :EntityStatus — coarse entity status timeline (active|gone) for the
 // composition canon guard. One node per (entity, status, from_order) transition;

@@ -15,6 +15,7 @@ interface StepConfirmProps {
   contextFilters: ContextFilters;
   kinds: ExtractionProfileKind[];
   selectedModelName: string;
+  thinkingEnabled: boolean;
   onJobCreated: (jobId: string, costEstimate: CostEstimate) => void;
   onEditProfile: () => void;
 }
@@ -34,6 +35,7 @@ export function StepConfirm({
   contextFilters,
   kinds,
   selectedModelName,
+  thinkingEnabled,
   onJobCreated,
   onEditProfile,
 }: StepConfirmProps) {
@@ -65,6 +67,7 @@ export function StepConfirm({
           model_ref: modelRef,
           max_entities_per_kind: maxEntitiesPerKind,
           context_filters: contextFilters,
+          thinking_enabled: thinkingEnabled,
         },
         accessToken,
       );
@@ -100,6 +103,10 @@ export function StepConfirm({
           <p className="text-sm font-bold truncate">{selectedModelName}</p>
         </div>
       </div>
+
+      <p className="text-[11px] text-muted-foreground text-center">
+        {thinkingEnabled ? t('confirm.thinkingOn') : t('confirm.thinkingOff')}
+      </p>
 
       {/* Profile summary */}
       <div className="rounded-lg border p-3">

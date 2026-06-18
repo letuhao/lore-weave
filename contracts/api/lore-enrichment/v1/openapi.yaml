@@ -230,6 +230,36 @@ paths:
         '501':
           $ref: '#/components/responses/ErrorResponse'
 
+  /v1/lore-enrichment/jobs/{job_id}/retry:
+    post:
+      tags: [jobs]
+      summary: Retry a failed enrichment job
+      description: >
+        Re-drive a FAILED job over the async re-drive worker, skipping
+        already-done gaps (no re-spend) and re-running the rest. Flips
+        failed→running + enqueues the trigger; 202 once enqueued. 409 if the
+        job is not failed; 404 if not found/owned (D-JOBS-P4-RETRY-LORE).
+      operationId: retryEnrichmentJob
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '202':
+          description: Re-drive enqueued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnrichmentJob'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/ErrorResponse'
+
   # ───────────────────────────── proposals ─────────────────────────────
   /v1/lore-enrichment/proposals:
     get:
@@ -844,12 +874,14 @@ paths:
   /v1/lore-enrichment/projects/{project_id}/compose/resolve-intent:
     post:
       tags: [compose]
-      summary: Mode B step 1 — resolve a free-text intent into a proposed target (no job)
+      summary: Mode B step 1 — resolve a free-text intent into a proposed target (async)
       description: >
         Compose slice 4 (mode B). ONE LLM call: given the intent + the book's entity
         list + profile, propose `{target, dimensions, technique, rationale}`.
-        Synchronous, NO job is created (F5). The FE confirms/edits, then POSTs a normal
-        /compose with input_source=intent + the confirmed target.
+        LLM re-arch Phase 3 M2 — OFF the request path: creates a 'pending' compose
+        task and returns 202 + task_id; poll GET /compose-tasks/{task_id} until
+        `completed`/`failed` for the resolved result. The FE confirms/edits, then
+        POSTs a normal /compose with input_source=intent + the confirmed target.
       operationId: composeResolveIntent
       security:
         - bearerAuth: []
@@ -870,25 +902,12 @@ paths:
                 intent_text: { type: string }
                 generation_model_ref: { type: string, format: uuid }
       responses:
-        '200':
-          description: Resolved intent (proposed — not yet enriched).
+        '202':
+          description: Accepted — the resolver runs in the background; poll the task.
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  target:
-                    type: object
-                    properties:
-                      mode: { type: string, enum: [existing, new] }
-                      canonical_name: { type: string }
-                      entity_kind: { type: string }
-                  dimensions: { type: array, items: { type: string } }
-                  technique: { type: string, enum: [retrieval, fabrication] }
-                  rationale: { type: string }
+              schema: { $ref: '#/components/schemas/ComposeTaskAccepted' }
         '401': { $ref: '#/components/responses/ErrorResponse' }
-        '502': { $ref: '#/components/responses/ErrorResponse' }
-        '503': { $ref: '#/components/responses/ErrorResponse' }
 
   # ────────────────────────────── uploads (mode F) ──────────────────────────────
   /v1/lore-enrichment/uploads:
@@ -1212,14 +1231,17 @@ paths:
   /v1/lore-enrichment/books/{book_id}/profile/suggest:
     post:
       tags: [profile]
-      summary: AI-suggest a profile DRAFT from book metadata + chapters + KG (not persisted)
+      summary: AI-suggest a profile DRAFT from book metadata + chapters + KG (async)
       description: >
         One LLM call proposes worldview/language/era_policy/voice + per-kind
         dimension_overrides from the book's metadata, sample chapters, and a
-        best-effort knowledge-graph summary. Returns a DRAFT the author edits +
-        PUTs (profile_source='ai_suggested'); it is NOT persisted here. Owner-only;
-        the model resolves via provider-registry by suggest_model_ref (NO model
-        name). KG read is best-effort (empty/down → book-only). LLM failure → 502.
+        best-effort knowledge-graph summary. LLM re-arch Phase 3 M2 — OFF the
+        request path: the owner check runs synchronously (a non-owner gets 403
+        before any task is created), then a 'pending' compose task is created and
+        202 + task_id returned; poll GET /compose-tasks/{task_id} until
+        `completed`/`failed` for the DRAFT (profile_source='ai_suggested'), which
+        the author edits + PUTs (it is NOT persisted by suggest). Owner-only; the
+        model resolves via provider-registry by suggest_model_ref (NO model name).
       operationId: suggestBookProfile
       security:
         - bearerAuth: []
@@ -1243,16 +1265,50 @@ paths:
                   maxItems: 8
                   items: { type: string, format: uuid }
       responses:
-        '200':
-          description: The suggested profile draft (not persisted).
+        '202':
+          description: Accepted — suggest runs in the background; poll the task.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/SuggestedBookProfile' }
+              schema: { $ref: '#/components/schemas/ComposeTaskAccepted' }
         '401': { $ref: '#/components/responses/ErrorResponse' }
         '403': { $ref: '#/components/responses/ErrorResponse' }
         '404': { $ref: '#/components/responses/ErrorResponse' }
-        '502': { $ref: '#/components/responses/ErrorResponse' }
-        '503': { $ref: '#/components/responses/ErrorResponse' }
+
+  # ──────────────────────── compose tasks (poll one-shot) ───────────────────────
+  /v1/lore-enrichment/compose-tasks/{task_id}:
+    get:
+      tags: [compose]
+      summary: Poll a one-shot compose task (profile-suggest / intent-resolve)
+      description: >
+        LLM re-arch Phase 3 M2. The profile/suggest + compose/resolve-intent POSTs
+        run OFF the request path; this polls the task they created. `status` is
+        pending|running|completed|failed; `result` carries the draft output (a
+        suggested profile / a resolved intent) on `completed`, else null; `error`
+        carries the message on `failed`. User-scoped (a task that is not the
+        caller's reads as 404 — no cross-user oracle).
+      operationId: getComposeTask
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The task's current state (+ result/error when terminal).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task_id: { type: string, format: uuid }
+                  kind: { type: string, enum: [profile_suggest, intent_resolve] }
+                  status: { type: string, enum: [pending, running, completed, failed] }
+                  result: { type: object, nullable: true }
+                  error: { type: string, nullable: true }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
 
   # ───────────────────────────── templates ─────────────────────────────
   /v1/lore-enrichment/templates:
@@ -1369,6 +1425,19 @@ components:
             $ref: '#/components/schemas/ErrorBody'
 
   schemas:
+    ComposeTaskAccepted:
+      type: object
+      description: >
+        202 body for the async compose POSTs (profile/suggest, compose/resolve-intent).
+        Poll GET /compose-tasks/{task_id} with the returned id. `enqueued` is 'ok' when
+        the resume-stream trigger was published, 'retriggerable' on a transient Redis
+        miss (the task still exists; a repeat submit / sweeper re-triggers it).
+      required: [task_id, status]
+      properties:
+        task_id: { type: string, format: uuid }
+        status: { type: string, enum: [pending] }
+        enqueued: { type: string, enum: [ok, retriggerable] }
+
     ErrorBody:
       type: object
       required: [code, message]

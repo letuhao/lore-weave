@@ -39,6 +39,16 @@ export interface RawSearchResponse {
   degraded?: Record<string, string>;
 }
 
+// D-RAWSEARCH-CANON-WIRING — result of an owner-only on-demand draft-indexing pass.
+export interface IndexDraftsResponse {
+  /** Draft chapters whose passages were (re)written. */
+  indexed: number;
+  /** Draft chapters that produced no passages (empty / embed failure). */
+  skipped: number;
+  /** Total draft chapters enumerated. */
+  chapters: number;
+}
+
 export interface RawSearchParams {
   q: string;
   surface?: 'draft' | 'canon' | 'all';

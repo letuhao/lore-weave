@@ -1,0 +1,149 @@
+# contracts/slo/slo_targets.yaml — L7.I.2 (RAID cycle 34)
+#
+# 3-tier SLO targets per SR1 §12AD.3. Each row is read by the
+# slo-budget-calculator service (Q-L7-1: SEPARATE) to compute the error
+# budget for the (sli_ref, tier) tuple.
+#
+# Tier semantics (SR1 §12AD.3):
+#   - free      = self-service, user owns provider keys (BYOK)
+#   - paid      = monthly subscription, "good enough for serious play"
+#   - premium   = "best we can offer" + premium-model access
+#   - platform  = no per-user tier distinction (admin + cross-reality)
+#
+# Auth SLO is tier-flat (99.9% across all tiers) — auth is foundational
+# (SR1 §12AD.3 "Auth always strict").
+#
+# Window choice (7d vs 30d): auth runs 7d so anomalies surface quickly;
+# everything else runs 30d for budget stability across release cycles.
+
+version: 1
+shipped_cycle: 34
+
+targets:
+  # ────────────────────────────────────────────────────────────────────
+  # Session availability — 99.0 / 99.5 / 99.9 over 30d
+  # ────────────────────────────────────────────────────────────────────
+  - sli_ref: sli_session_availability
+    tier: free
+    target: 0.990
+    window: '30d'
+  - sli_ref: sli_session_availability
+    tier: paid
+    target: 0.995
+    window: '30d'
+  - sli_ref: sli_session_availability
+    tier: premium
+    target: 0.999
+    window: '30d'
+
+  # ────────────────────────────────────────────────────────────────────
+  # Turn completion — 95.0 / 99.0 / 99.0 over 30d
+  # (free at 95% accepts BYOK provider variance — SR1 §12AD.3)
+  # ────────────────────────────────────────────────────────────────────
+  - sli_ref: sli_turn_completion
+    tier: free
+    target: 0.950
+    window: '30d'
+  - sli_ref: sli_turn_completion
+    tier: paid
+    target: 0.990
+    window: '30d'
+  - sli_ref: sli_turn_completion
+    tier: premium
+    target: 0.990
+    window: '30d'
+
+  # ────────────────────────────────────────────────────────────────────
+  # Event delivery — 99.0 / 99.5 / 99.9 over 30d
+  # ────────────────────────────────────────────────────────────────────
+  - sli_ref: sli_event_delivery
+    tier: free
+    target: 0.990
+    window: '30d'
+  - sli_ref: sli_event_delivery
+    tier: paid
+    target: 0.995
+    window: '30d'
+  - sli_ref: sli_event_delivery
+    tier: premium
+    target: 0.999
+    window: '30d'
+
+  # ────────────────────────────────────────────────────────────────────
+  # Realtime freshness — 99.0 / 99.5 / 99.9 over 30d
+  # ────────────────────────────────────────────────────────────────────
+  - sli_ref: sli_realtime_freshness
+    tier: free
+    target: 0.990
+    window: '30d'
+  - sli_ref: sli_realtime_freshness
+    tier: paid
+    target: 0.995
+    window: '30d'
+  - sli_ref: sli_realtime_freshness
+    tier: premium
+    target: 0.999
+    window: '30d'
+
+  # ────────────────────────────────────────────────────────────────────
+  # Auth success — 99.9% flat across tiers, 7d window
+  # ────────────────────────────────────────────────────────────────────
+  - sli_ref: sli_auth_success
+    tier: free
+    target: 0.999
+    window: '7d'
+  - sli_ref: sli_auth_success
+    tier: paid
+    target: 0.999
+    window: '7d'
+  - sli_ref: sli_auth_success
+    tier: premium
+    target: 0.999
+    window: '7d'
+
+  # ────────────────────────────────────────────────────────────────────
+  # Admin action success — 99.5% platform-only
+  # ────────────────────────────────────────────────────────────────────
+  - sli_ref: sli_admin_action_success
+    tier: platform
+    target: 0.995
+    window: '30d'
+
+  # ────────────────────────────────────────────────────────────────────
+  # Cross-reality propagation — 99.0% platform-only
+  # ────────────────────────────────────────────────────────────────────
+  - sli_ref: sli_cross_reality_propagation
+    tier: platform
+    target: 0.990
+    window: '30d'
+
+# ────────────────────────────────────────────────────────────────────
+# BURN-RATE 4-TIER RESPONSE POLICY (SR1 §12AD.4)
+# ────────────────────────────────────────────────────────────────────
+# These thresholds drive both the slo-burn.yaml alert ladder AND the
+# scripts/feature-freeze-enforcer.sh CI gate. Mirror them when changing.
+
+burn_rate_response:
+  - threshold: 0.50      # 50% burn — warn only, no labels
+    response: 'Normal feature work continues'
+    pr_label: ''
+  - threshold: 0.75      # 75% burn — reliability-review-required label
+    response: 'Feature PRs require reliability-review-required label + perf/a11y tests'
+    pr_label: 'reliability-review-required'
+  - threshold: 0.90      # 90% burn — feature freeze, override required
+    response: 'Feature freeze; PR requires approve-reliability-override + tech-lead approval'
+    pr_label: 'approve-reliability-override'
+  - threshold: 1.00      # budget exhausted — SLO breach
+    response: 'SLO breach; postmortem + (V2+) public status page + paid-user credits'
+    pr_label: 'slo-breach-postmortem'
+
+# ────────────────────────────────────────────────────────────────────
+# DRIFT GUARDS
+# ────────────────────────────────────────────────────────────────────
+expected_target_count: 20  # 5 user-scope SLIs × 3 tiers + 2 platform SLIs × 1 + auth × 3
+locked_decisions_consumed:
+  - Q-L7-1: 'slo-budget-calculator reads this file at startup'
+references:
+  - 'SR1 §12AD.3 — initial tier targets'
+  - 'SR1 §12AD.4 — burn-rate policy'
+  - 'L7.I.2 layer plan artifact'

@@ -16,10 +16,30 @@ from ..chunk_splitter import _is_cjk, _SENTENCE_ENDS
 from .quality import Issue, IssueReport
 
 _NUM = re.compile(r"\d+")
+_LETTER = re.compile(r"[^\W\d_]", re.UNICODE)  # any unicode "letter" (excl. digits/_/punct)
 _CJK_LANGS = frozenset({"zh", "ja", "ko"})
 _REPEAT_CAP = 3              # an identical sentence repeated >= this many times = looping
 _OMISSION_MIN_SENTENCES = 3  # only judge omission once the source has some structure
 _OMISSION_RATIO = 0.6        # draft sentence count below this fraction of source = suspect
+# D-V3-TRANSLATION-PROMPT-ECHO: a weak model sometimes COPIES the source under
+# [BLOCK N] instead of translating it. Only flag a verbatim echo of a block with
+# real translatable content (≥ this many normalized chars + a CJK/letter) so a
+# legit pass-through (a number, a symbol, a short proper token) is never churned.
+_ECHO_MIN_CHARS = 6
+
+
+def _norm(text: str) -> str:
+    return " ".join((text or "").split())
+
+
+def _is_source_echo(src: str, draft: str) -> bool:
+    """The draft is a verbatim copy of the source (untranslated) — high-precision: exact
+    after whitespace-normalisation, the source is substantive (≥ _ECHO_MIN_CHARS), and it
+    carries a CJK char or a letter (a pure number/symbol block legitimately passes through)."""
+    s = _norm(src)
+    if len(s) < _ECHO_MIN_CHARS or _norm(draft) != s:
+        return False
+    return _has_cjk(s) or bool(_LETTER.search(s))
 
 
 def _lang_is_cjk(code: str) -> bool:
@@ -28,6 +48,30 @@ def _lang_is_cjk(code: str) -> bool:
 
 def _has_cjk(text: str) -> bool:
     return any(_is_cjk(c) for c in text)
+
+
+def _name_present(name: str, text: str) -> bool:
+    """Whole-word-ish presence of a glossary SOURCE name in the source text.
+
+    D-TRANSL-VERIFY-WHOLEWORD (design §10 C.7): a plain ``name in text`` substring
+    test made the rule-1 name-compliance check fire spuriously — e.g. "King" inside
+    "Kingdom" — which then churned the corrector on a name that was never actually
+    present. Non-CJK names now require unicode word boundaries (the match may not be
+    flanked by a letter/digit), which kills that class of false positive without any
+    new false negatives (a real standalone name still matches).
+
+    CJK names have no whitespace word delimiter, so they keep substring matching
+    (paired with the call-site ``len>=2`` guard). Proper CJK morpheme segmentation
+    needs a tokenizer this service doesn't run — a documented, narrower limitation
+    than the previous all-scripts substring match.
+    """
+    if not name or not text:
+        return False
+    if _has_cjk(name):
+        return name in text
+    # Non-CJK: `[^\W_]` is a unicode letter/digit; the lookarounds forbid the match
+    # being part of a longer alphanumeric token (whole-word match, underscore-safe).
+    return re.search(rf"(?<![^\W_]){re.escape(name)}(?![^\W_])", text) is not None
 
 
 def _numbers(text: str) -> list[str]:
@@ -84,10 +128,14 @@ def verify_rules(
             # len>=2 guard (review-impl MED-1): a single-char source name (e.g. 王)
             # is too often a substring of an unrelated word (国王) → a spurious
             # high-severity flag that M1b would then re-translate on (churn).
-            # Whole-word / conditional CJK matching is the proper fix (deferred —
-            # ties to the V2 auto_correct substring issue, design §10 C.7).
+            # D-TRANSL-VERIFY-WHOLEWORD: `_name_present` adds unicode word-boundary
+            # matching for non-CJK names (the "King" ⊂ "Kingdom" class); CJK keeps
+            # substring (no word delimiter) behind the len>=2 guard. `tgt_name not in
+            # draft` stays substring on purpose — a whole-word target check would
+            # only ADD flags (more churn), and missing a present target is the safe
+            # direction here.
             if (src_name and tgt_name and len(src_name) >= 2
-                    and src_name in src and tgt_name not in draft):
+                    and _name_present(src_name, src) and tgt_name not in draft):
                 issues.append(Issue(
                     idx, "wrong_name", "high",
                     f"'{src_name}' should render as '{tgt_name}'", expected=tgt_name,
@@ -122,6 +170,16 @@ def verify_rules(
             issues.append(Issue(
                 idx, "repetition", "high",
                 "excessive sentence repetition (model looping)",
+            ))
+
+        # 6. Source echo (D-V3-TRANSLATION-PROMPT-ECHO): the model copied the source
+        #    verbatim instead of translating. HIGH → the corrector re-translates this
+        #    block. Catches echo for ALL target scripts, incl. CJK→CJK where the rule-2
+        #    script-leak check can't fire.
+        if _is_source_echo(src, draft):
+            issues.append(Issue(
+                idx, "untranslated", "high",
+                "draft is a verbatim copy of the source (untranslated — model echoed)",
             ))
 
     return IssueReport(issues)

@@ -17,7 +17,8 @@ from uuid import UUID
 
 import asyncpg
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
-from pydantic import BaseModel, Field
+from loreweave_jobs import emit_job_event
+from pydantic import BaseModel, Field, field_validator
 
 from app.clients.book_client import BookClient
 from app.clients.embedding_client import EmbeddingError, probe_embedding_dimension
@@ -26,6 +27,7 @@ from app.clients.chapter_title_enricher import (
     enrich_jobs_with_current_chapter_titles,
 )
 from app.clients.glossary_client import GlossaryClient
+from app.clients.model_name import resolve_model_name
 from app.config import settings as app_settings
 from app.pricing import cost_per_token
 from app.db.neo4j import neo4j_session
@@ -33,6 +35,7 @@ from app.db.pool import get_knowledge_pool
 from app.db.repositories.benchmark_runs import BenchmarkRunsRepo
 from app.routers.internal_benchmark import BenchmarkStatusResponse
 from app.db.repositories.extraction_jobs import (
+    DEFAULT_TARGETS,
     LIST_ALL_MAX_LIMIT,
     CursorDecodeError,
     ExtractionJob,
@@ -78,6 +81,12 @@ router = APIRouter(
 _TOKENS_PER_CHAPTER = 2000
 _TOKENS_PER_CHAT_TURN = 800
 _TOKENS_PER_GLOSSARY_ENTITY = 300
+# C13 — pinned-injection cost. Each pinned glossary entity adds ~50 prompt
+# tokens (name + a short canon hint) to EVERY extraction window. With one
+# window per chapter, the dominant pinned cost is
+# `pinned_count × 50 × num_windows` — surfaced as its own estimate line so a
+# user sees that pinning 30 entities across a 5000-chapter book is expensive.
+_TOKENS_PER_PINNED_ENTITY = 50
 
 # Per-token cost lookup now lives in `app.pricing` (T2-close-5 /
 # D-K16.2-01 cleared). Unknown models still fall back to the legacy
@@ -101,19 +110,12 @@ def _extract_chapter_range(
     — without this helper, the start path accepted garbage while
     estimate rejected it (review-impl finding MED #2).
 
-    **Runner note (D-K16.2-02b):** the knowledge-service extraction
-    path is event-driven (chapter.saved → passage_ingester), so the
-    runner does not yet honour `chapter_range` — only the preview
-    count does. A future cycle must either:
-
-      (a) apply chapter_range as a filter inside the chapter.saved
-          event handler, OR
-      (b) switch the job model from event-reactive to batch-iterative
-          and drive chapter fetch from this range.
-
-    Until then, the estimate may under-report what the job will
-    actually process. `max_spend_usd` (K10.4 atomic try_spend) remains
-    the real financial guard.
+    **Runner note (D-K16.2-02b, CLEARED S2):** the worker-ai extraction runner
+    NOW honours `chapter_range` — ``_enumerate_chapters`` filters
+    ``lo <= sort_order <= hi`` from ``job.scope_range`` (services/worker-ai/app/
+    runner.py), so the actual job processes the same chapter subset the estimate
+    previews. The start path additionally rejects a range that matches NO published
+    chapter (422, D-K19a.5-04 out-of-bounds guard) so a no-op job can't be created.
     """
     if not scope_range or "chapter_range" not in scope_range:
         return None, None
@@ -148,6 +150,16 @@ def _extract_chapter_range(
 
 JobScope = Literal["chapters", "chat", "glossary_sync", "all", "chapters_pending"]  # CM3b: internal coalescing-drainer scope
 
+# C12 — target taxonomy. Maps 1:1 to a Pass-2 pass. `summaries` is the
+# summary enqueue (orchestrator-gated). The FE's "events·timeline" label
+# is the `events` op; "lore/wiki" is the wiki-stub path (not an SDK op,
+# handled elsewhere) — kept out of this build-target set.
+ExtractionTarget = Literal["entities", "relations", "events", "facts", "summaries"]
+# NOTE — the dependent auto-include (requesting any of {relations,events,
+# facts} ⇒ `entities`) is applied at RUNTIME (SDK normalize_targets +
+# decoupled trio resolver), NOT in the request layer. The stored array keeps
+# the user's EXPLICIT intent so the worker's recovery/filter LOCK gate works.
+
 
 class EstimateRequest(BaseModel):
     scope: JobScope
@@ -158,6 +170,10 @@ class EstimateRequest(BaseModel):
     # preview only until the event-driven runner honours it too.
     scope_range: dict | None = None
     llm_model: str = Field(min_length=1, max_length=200)
+    # C13 — how many glossary entities the user intends to pin. Drives the
+    # pinned-injection cost line (pinned_count × ~50 tokens × num_windows). 0 ⇒
+    # no pinned-injection cost (default — back-compat with pre-C13 callers).
+    pinned_count: Annotated[int, Field(ge=0)] = 0
 
 
 class StartJobRequest(BaseModel):
@@ -170,6 +186,43 @@ class StartJobRequest(BaseModel):
     embedding_model: str = Field(min_length=1, max_length=200)
     max_spend_usd: Annotated[Decimal, Field(ge=0)] | None = None
     items_total: Annotated[int, Field(ge=0)] | None = None
+    # C12 — target-typed extraction. None / empty ⇒ ALL passes (back-compat).
+    # A concrete list runs only those passes. Dependent targets are
+    # auto-included by the validator below (don't error — silently force
+    # `entities` in). Deduped + order-stable.
+    targets: list[ExtractionTarget] | None = None
+    # C12 — passthrough cap on parallel LLM calls. None ⇒ unbounded (current).
+    concurrency_level: Annotated[int, Field(ge=1, le=64)] | None = None
+    # C13 — glossary pinning. The glossary entity ids to force-inject into
+    # EVERY extraction window's known_entities (name-prefix injection) so
+    # sparse-but-critical entities are anchored regardless of chapter content.
+    # None / empty ⇒ no pins (back-compat). Stored as pinned_entity_ids JSONB.
+    pinned_glossary_entity_ids: list[str] | None = None
+
+    @field_validator("targets")
+    @classmethod
+    def _normalise_targets(
+        cls, v: list[str] | None,
+    ) -> list[str] | None:
+        """Dedupe + canonicalise the requested target set. None / empty pass
+        through unchanged (⇒ all passes = back-compat).
+
+        IMPORTANT — does NOT auto-include `entities` here. The dependent
+        auto-include ({relations,events,facts} ⇒ entities) is applied at
+        RUNTIME by the SDK (`normalize_targets`) + the decoupled trio
+        resolver, NOT baked into the stored array. This is load-bearing for
+        the LOCK "recovery/precision-filter auto-disable when entities ∉
+        targets": the worker keys that gate off the user's EXPLICIT request,
+        which would be lost if we stored an entities-injected array (a
+        relations-only build would then read as if entities were asked for
+        and wrongly keep recovery/filter enabled). So: validate + dedupe
+        only; entities is added downstream exactly where it's needed (as a
+        mandatory anchor pass) without polluting the stored intent."""
+        if not v:
+            return v
+        present = set(v)
+        # Canonical order = the DEFAULT_TARGETS order, filtered to present.
+        return [t for t in DEFAULT_TARGETS if t in present]
 
 
 class EstimateItemCounts(BaseModel):
@@ -182,6 +235,11 @@ class EstimateResponse(BaseModel):
     items_total: int
     items: EstimateItemCounts
     estimated_tokens: int
+    # C13 — the pinned-injection slice of `estimated_tokens`, surfaced on its
+    # own so the FE can show "pinned context: N tokens" as a distinct line. It
+    # is `pinned_count × _TOKENS_PER_PINNED_ENTITY × num_windows` and is already
+    # folded into `estimated_tokens` (and thus the cost). 0 when nothing pinned.
+    estimated_pinned_tokens: int = 0
     estimated_cost_usd_low: Decimal
     estimated_cost_usd_high: Decimal
     estimated_duration_seconds: int
@@ -247,10 +305,20 @@ async def estimate_extraction_cost(
         glossary_entities = count if count is not None else 0
 
     items_total = chapters + chat_turns + glossary_entities
+    # C13 — pinned-injection cost. The pinned names are prepended to EVERY
+    # extraction window's known_entities, and there is one window per chapter +
+    # one per chat turn (the two LLM-extraction item types; glossary_sync is a
+    # pure Neo4j MERGE with no window). So num_windows = chapters + chat_turns.
+    # This is the dominant driver for a large book — surfaced as its own line.
+    num_windows = chapters + chat_turns
+    estimated_pinned_tokens = (
+        body.pinned_count * _TOKENS_PER_PINNED_ENTITY * num_windows
+    )
     estimated_tokens = (
         chapters * _TOKENS_PER_CHAPTER
         + chat_turns * _TOKENS_PER_CHAT_TURN
         + glossary_entities * _TOKENS_PER_GLOSSARY_ENTITY
+        + estimated_pinned_tokens
     )
 
     base_cost = Decimal(estimated_tokens) * cost_per_token(body.llm_model)
@@ -267,6 +335,7 @@ async def estimate_extraction_cost(
             glossary_entities=glossary_entities,
         ),
         estimated_tokens=estimated_tokens,
+        estimated_pinned_tokens=estimated_pinned_tokens,
         estimated_cost_usd_low=cost_low,
         estimated_cost_usd_high=cost_high,
         estimated_duration_seconds=duration,
@@ -289,6 +358,24 @@ async def _create_and_start_job(
     Returns the new job_id. Raises 409 on concurrent start
     (unique partial index), 404 if project vanishes mid-transaction.
     """
+    # P4 usage emit — resolve the human model NAMEs (best-effort) OUTSIDE the tx
+    # (network I/O; never hold a tx open across it, H1) so the 'running' lifecycle
+    # event carries model + a whitelisted params dict for the Jobs GUI. extraction
+    # models are BYOK user_models. None on any resolve failure (GUI is null-safe).
+    model_name = await resolve_model_name("user_model", str(validated.llm_model))
+    embedding_name = await resolve_model_name("user_model", str(validated.embedding_model))
+    job_params = {
+        "model": model_name,
+        "model_ref": str(validated.llm_model),
+        "embedding_model": embedding_name,
+        "scope": validated.scope,
+        "scope_range": validated.scope_range,
+        "targets": list(validated.targets) if validated.targets is not None else None,
+        "concurrency": validated.concurrency_level,
+        "max_spend_usd": (
+            float(validated.max_spend_usd) if validated.max_spend_usd is not None else None
+        ),
+    }
     pool = get_knowledge_pool()
     try:
         async with pool.acquire() as conn:
@@ -298,9 +385,10 @@ async def _create_and_start_job(
                     INSERT INTO extraction_jobs
                       (user_id, project_id, scope, scope_range, llm_model,
                        embedding_model, max_spend_usd, items_total, campaign_id,
-                       billing_user_id, billing_embedding_model, billing_llm_model)
+                       billing_user_id, billing_embedding_model, billing_llm_model,
+                       targets, concurrency_level, pinned_entity_ids)
                     VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9,
-                            $10, $11, $12)
+                            $10, $11, $12, $13, $14, $15::jsonb)
                     RETURNING job_id
                     """,
                     user_id,
@@ -320,6 +408,17 @@ async def _create_and_start_job(
                     validated.billing_user_id,
                     validated.billing_embedding_model,
                     validated.billing_llm_model,
+                    # C12 — None ⇒ explicit all-five default (== column DEFAULT)
+                    # so the rebuild path (which omits targets) and any other
+                    # caller stores a concrete set; the runner never sees NULL.
+                    list(validated.targets) if validated.targets is not None
+                    else list(DEFAULT_TARGETS),
+                    validated.concurrency_level,
+                    # C13 — pinned glossary entity ids as a JSONB array (NULL ⇒
+                    # no pins, back-compat). The worker reads this to fetch the
+                    # pinned names and prepend them into every window.
+                    json.dumps(validated.pinned_entity_ids)
+                    if validated.pinned_entity_ids else None,
                 )
                 job_id = job_row["job_id"]
 
@@ -344,6 +443,15 @@ async def _create_and_start_job(
                     WHERE job_id = $1 AND user_id = $2
                     """,
                     job_id, user_id,
+                )
+                # Unified Job Control Plane P1 — this start path is an inline
+                # INSERT(pending)+UPDATE(running) (NOT repo.create/update_status), so
+                # emit the initial 'running' lifecycle event here in the SAME tx (else
+                # the projection never sees the job appear until its terminal event).
+                await emit_job_event(
+                    conn, service="knowledge", job_id=str(job_id),
+                    owner_user_id=str(user_id), kind="extraction", status="running",
+                    model=model_name, cost_usd=0.0, params=job_params,
                 )
     except asyncpg.UniqueViolationError:
         raise HTTPException(
@@ -376,6 +484,7 @@ async def start_extraction_job(
     projects_repo: ProjectsRepo = Depends(get_projects_repo),
     jobs_repo: ExtractionJobsRepo = Depends(get_extraction_jobs_repo),
     benchmark_repo: BenchmarkRunsRepo = Depends(get_benchmark_runs_repo),
+    book_client: BookClient = Depends(get_book_client),
     extraction_wake: ExtractionWakeFn = Depends(get_extraction_wake),
 ) -> ExtractionJob:
     """Public route handler. Delegates to the core.
@@ -389,6 +498,7 @@ async def start_extraction_job(
     return await _start_extraction_job_core(
         project_id, body, principals.owner, projects_repo, jobs_repo, benchmark_repo,
         caller=principals.caller,
+        book_client=book_client,
         extraction_wake=extraction_wake,
     )
 
@@ -403,6 +513,7 @@ async def _start_extraction_job_core(
     *,
     campaign_id: UUID | None = None,
     caller: UUID | None = None,
+    book_client: BookClient | None = None,
     extraction_wake: ExtractionWakeFn | None = None,
 ) -> ExtractionJob:
     """Create and start an extraction job for a project.
@@ -438,7 +549,7 @@ async def _start_extraction_job_core(
     # 0. Validate scope_range.chapter_range shape (review-impl MED #2).
     # Raises 422 on malformed payloads so the DB never stores a shape
     # the estimate path would have rejected.
-    _extract_chapter_range(body.scope_range)
+    chap_from, chap_to = _extract_chapter_range(body.scope_range)
 
     # 1. Verify project exists and belongs to user
     project = await projects_repo.get(user_id, project_id)
@@ -447,6 +558,34 @@ async def _start_extraction_job_core(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="project not found",
         )
+
+    # 1b. Out-of-bounds chapter-range guard (D-K19a.5-04). The runner enforces
+    # `lo <= sort_order <= hi` (worker-ai `_enumerate_chapters`), so a range that
+    # matches NO published chapter would silently complete a 0-item job. Reject up
+    # front — using the SAME published-scoped count the estimate shows — so the
+    # caller gets explicit feedback instead of a no-op job. Only on a chapter-scoped
+    # job with a range set + a real book.
+    if (
+        chap_from is not None
+        and body.scope in ("chapters", "all")
+        and project.book_id is not None
+    ):
+        # Use the injected client (public route) or fall back to the singleton
+        # (internal dispatch / retry callers). get_book_client is async (returns
+        # the per-worker singleton).
+        bc = book_client if book_client is not None else await get_book_client()
+        in_range = await bc.count_chapters(
+            project.book_id, from_sort=chap_from, to_sort=chap_to,
+            editorial_status="published",
+        )
+        if not in_range:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=(
+                    f"scope_range.chapter_range [{chap_from}, {chap_to}] matches no "
+                    "published chapters in this book"
+                ),
+            )
 
     # 1.4. E0-3 Phase 2b — BYOK dual-identity resolution. Default = owner path
     # (single identity, billing NULL, everything resolves under user_id). On the
@@ -650,6 +789,12 @@ async def _start_extraction_job_core(
         billing_user_id=billing_user_id,
         billing_embedding_model=billing_embedding_model,
         billing_llm_model=billing_llm_model,
+        # C12 — target-typed extraction (None ⇒ all passes; the validator
+        # already auto-included `entities` for dependent targets).
+        targets=body.targets,
+        concurrency_level=body.concurrency_level,
+        # C13 — pinned glossary entity ids → stored as pinned_entity_ids JSONB.
+        pinned_entity_ids=body.pinned_glossary_entity_ids,
     )
 
     job_id = await _create_and_start_job(
@@ -719,13 +864,12 @@ async def _get_active_job_for_project(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="project not found",
         )
-    # TODO: add a project-scoped active-job lookup if this becomes a
-    # performance concern. list_active fetches all active jobs across
-    # all projects; fine at hobby scale (unique index limits one per project).
-    active = await jobs_repo.list_active(user_id)
-    for j in active:
-        if j.project_id == project_id:
-            return j
+    # D-RAWSEARCH/B8: project-scoped active-job lookup (was a cross-project
+    # list_active(user_id) + in-memory filter). The unique index limits one
+    # active job per project, so the scoped query returns ≤1 row.
+    active = await jobs_repo.list_active_for_project(user_id, project_id)
+    if active:
+        return active[0]
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
         detail="no active extraction job for this project",
@@ -1370,6 +1514,56 @@ async def get_extraction_job(
         content=job.model_dump_json(),
         media_type="application/json",
         headers={"ETag": etag},
+    )
+
+
+# ── C7 raise-cap (KN-7) — PATCH job concurrency in-flight ───────────
+
+
+class UpdateConcurrencyRequest(BaseModel):
+    # Mirrors the create-time bound (StartJobRequest.concurrency_level:
+    # ge=1, le=64). The worker re-reads this every poll cycle, so a raise
+    # takes effect on the next chapter window without a job restart.
+    concurrency_level: Annotated[int, Field(ge=1, le=64)]
+
+
+@jobs_router.patch(
+    "/jobs/{job_id}/concurrency",
+    response_model=ExtractionJob,
+)
+async def update_job_concurrency(
+    job_id: UUID,
+    body: UpdateConcurrencyRequest,
+    # MANAGE mirrors pause/resume/cancel — a collaborator who can manage
+    # the project's jobs can also retune the cap. `require_job_grant`
+    # returns the project OWNER, which is the row's `user_id` scope.
+    owner_id: UUID = Depends(require_job_grant(GrantLevel.MANAGE)),
+    jobs_repo: ExtractionJobsRepo = Depends(get_extraction_jobs_repo),
+) -> ExtractionJob:
+    """C7 raise-cap (KN-7): change a running/paused job's parallel-LLM
+    concurrency cap IN-FLIGHT. Bounds are enforced by the request model
+    (1–64). 404 if the job doesn't exist / isn't accessible; 409 if it
+    exists but is in a terminal state (the cap can only be retuned while
+    the job is still active)."""
+    updated = await jobs_repo.set_concurrency_level(
+        owner_id, job_id, body.concurrency_level,
+    )
+    if updated is not None:
+        return updated
+    # 0 rows: disambiguate "not found / not accessible" (404) from
+    # "exists but terminal" (409) so the FE can message correctly.
+    existing = await jobs_repo.get(owner_id, job_id)
+    if existing is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="job not found",
+        )
+    raise HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail=(
+            f"cannot change concurrency on a {existing.status} job; "
+            "only running or paused jobs can be retuned"
+        ),
     )
 
 

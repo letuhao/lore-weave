@@ -1,0 +1,24 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: publisher
+  namespace: lw-foundation
+  labels:
+    app: publisher
+    capacity-class: worker
+    foundation-cycle: "7"
+spec:
+  scaleTargetRef:
+    name: publisher
+  minReplicaCount: 1
+  maxReplicaCount: 1            # V1: single replica per Q-L2D-1 (multi-replica at V2+1000 realities)
+  pollingInterval: 30
+  cooldownPeriod: 300
+  triggers:
+    # Scale on outbox lag (per-reality DB outbox table row count)
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus.lw-monitoring:9090
+        metricName: lw_publisher_outbox_lag
+        threshold: "1000"
+        query: max(lw_publisher_outbox_lag)

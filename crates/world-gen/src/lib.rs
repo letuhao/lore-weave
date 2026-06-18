@@ -17,6 +17,7 @@ pub mod climate;
 pub mod creative_seed;
 pub mod culture;
 pub mod erosion;
+pub mod export;
 pub mod feature;
 pub mod flat_climate;
 pub mod flatworld;
@@ -25,6 +26,7 @@ pub mod hydrology;
 pub mod mesh;
 pub mod naming;
 pub mod noise;
+pub mod params;
 pub mod pathfind;
 pub mod plates;
 pub mod political;
@@ -46,6 +48,11 @@ pub use relief::RenderStyle;
 pub use creative_seed::{
     CoastlineProfile, CreativeSeed, ErosionStrength, HemisphereOrientation, PrevailingWind,
     SettlementDensity, TerrainMode, WorldArchetype, WorldScale,
+};
+pub use params::{
+    BiomeParams, ClimateParams, CultureParams, ErosionParams, HierarchyParams, HydrologyParams,
+    IntensityKnobs, PoliticalParams, ReliefParams, RenderTheme, RouteParams, SettlementParams,
+    TectonicsParams,
 };
 pub use world_map::{
     BoundaryKind, Cell, Continent, County, CultureRegion, MountainRange, Plate, PlateBoundary,
@@ -77,17 +84,23 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
         cs.hemisphere_orientation,
         cs.prevailing_wind,
         cs.climate_bias,
+        &cs.climate_params.resolved(&cs.intensity),
     );
 
     // Stage 4 — hydrology + biomes.
-    let hydro = hydrology::build(
+    let hydro = hydrology::build_with(
         &mesh.centers,
         &terrain.elevation,
         terrain.sea_level,
         &mesh.neighbors,
         &climate,
+        &cs.hydrology_params.resolved(&cs.intensity),
     );
-    let biome = biome::build(
+    // Resolve the biome params once — shared by biome derivation and every
+    // downstream consumer of the terrain-cost / culture-barrier / habitability
+    // tables (political, settlement, route, culture).
+    let biome_params = cs.biome_params.resolved(&cs.intensity);
+    let biome = biome::build_with(
         &terrain.elevation,
         terrain.sea_level,
         &climate,
@@ -95,6 +108,7 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
         hydro.river_threshold,
         &hydro.is_in_ocean,
         &hydro.is_coast,
+        &biome_params,
     );
 
     // Plate layer (Phase 2) — present in Tectonic mode, empty in Profile mode.
@@ -114,6 +128,7 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
         &biome,
         &plate_of,
         cs.region_subdivision,
+        &cs.hierarchy_params.resolved(&cs.intensity),
     );
 
     // Stage 5–8 — political (5-tier strict-nested INSIDE the hierarchy, C-2:
@@ -130,6 +145,8 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
         region_tree.subcontinents.len(),
         region_tree.continents.len(),
         cs.county_subdivision,
+        &cs.political_params.resolved(&cs.intensity),
+        &biome_params,
     );
     let county_of = nested.county_of;
     let counties = nested.counties;
@@ -142,7 +159,7 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
         provinces: nested.provinces,
         states: nested.states,
     };
-    let settlements = settlement::build(
+    let settlements = settlement::build_with(
         seed,
         &mesh.centers,
         &biome,
@@ -151,8 +168,10 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
         &hydro.is_coast,
         cs.settlement_density,
         &political,
+        &cs.settlement_params.resolved(&cs.intensity),
+        &biome_params,
     );
-    let routes = routes::build(
+    let routes = routes::build_with(
         &mesh.centers,
         &mesh.neighbors,
         &biome,
@@ -160,8 +179,18 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
         hydro.river_threshold,
         &hydro.is_coast,
         &settlements,
+        &cs.route_params.resolved(&cs.intensity),
+        &biome_params,
     );
-    let culture = culture::build(seed, &mesh.centers, &mesh.neighbors, &biome, cs.culture_count);
+    let culture = culture::build_with(
+        seed,
+        &mesh.centers,
+        &mesh.neighbors,
+        &biome,
+        cs.culture_count,
+        &cs.culture_params.resolved(&cs.intensity),
+        &biome_params,
+    );
 
     // Stage 9b — geographic feature extraction (deterministic; names added
     // later by the separate `naming` step).

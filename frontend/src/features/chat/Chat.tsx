@@ -15,6 +15,10 @@ interface ChatProps {
   /** Editor "Compose" mode — when true, turns advertise no tools (prose-only;
    *  the model drafts and the user Applies manually). Best for reasoning models. */
   composeMode?: boolean;
+  /** T3.1: host-supplied slot rendered inside the chat (between messages + input).
+   *  The co-writer panel passes its Insert/Use-as-guide bar + starters here so it
+   *  can read the live chat stream via useChatStream/useChatSession. */
+  actionBar?: React.ReactNode;
   className?: string;
 }
 
@@ -27,7 +31,7 @@ interface ChatProps {
  * hook owns which session is active and binds it to the book's knowledge
  * project so the assistant has the book's lore/memory.
  */
-export function Chat({ bookId, editorContext, composeMode, className }: ChatProps) {
+export function Chat({ bookId, editorContext, composeMode, actionBar, className }: ChatProps) {
   // Glossary-assistant P3: any book-scoped chat (incl. the editor) advertises the
   // glossary edit-existing tool. The editor also passes editorContext (chapter
   // prose tool); a glossary-page/reader chat passes only bookContext.
@@ -35,13 +39,13 @@ export function Chat({ bookId, editorContext, composeMode, className }: ChatProp
   return (
     <ChatSessionProvider embedded>
       <ChatStreamProvider editorContext={editorContext} composeMode={composeMode} bookContext={bookContext}>
-        <EmbeddedChat bookId={bookId} className={className} />
+        <EmbeddedChat bookId={bookId} actionBar={actionBar} className={className} />
       </ChatStreamProvider>
     </ChatSessionProvider>
   );
 }
 
-function EmbeddedChat({ bookId, className }: ChatProps) {
+function EmbeddedChat({ bookId, actionBar, className }: ChatProps) {
   const { sessions, sessionsLoading, activeSession, selectSession, createSession, updateActiveSession } =
     useChatSession();
   // The user can dismiss the create dialog without making a session.
@@ -63,7 +67,7 @@ function EmbeddedChat({ bookId, className }: ChatProps) {
 
   return (
     <div className={`flex h-full flex-col overflow-hidden ${className ?? ''}`}>
-      <ChatView className={!activeSession ? 'hidden' : 'flex-1'} />
+      <ChatView className={!activeSession ? 'hidden' : 'flex-1'} footerSlot={actionBar} />
       {!activeSession && <ChatEmptyState className="flex-1" />}
       <NewChatDialog
         open={dialogOpen}

@@ -1,0 +1,23 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: session-cost-rollup-worker
+  namespace: lw-foundation
+  labels:
+    app: session-cost-rollup-worker
+    capacity-class: worker
+    foundation-cycle: "7"
+spec:
+  scaleTargetRef:
+    name: session-cost-rollup-worker
+  minReplicaCount: 1
+  maxReplicaCount: 2
+  pollingInterval: 60
+  cooldownPeriod: 300
+  triggers:
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus.lw-monitoring:9090
+        metricName: lw_session_cost_rollup_lag_seconds
+        threshold: "60"          # 60s = the rollup cadence per Q-L1A-1
+        query: max(lw_session_cost_rollup_lag_seconds)

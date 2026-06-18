@@ -95,6 +95,43 @@ export type BookCoverageResponse = {
   known_languages: string[];
 };
 
+// ── T2-M3: per-segment status + coverage ──────────────────────────────────────
+
+export type SegmentStatusItem = {
+  segment_index: number;
+  start_block_index: number;
+  end_block_index: number;
+  token_estimate: number;
+  translated: boolean;
+  dirty: boolean;   // source changed since last translate (or never translated)
+  stale: boolean;   // a glossary entity this segment uses changed since translate
+  needs: boolean;   // dirty ∪ stale — should be re-translated
+  translated_at: string | null;
+};
+
+export type SegmentStatusResponse = {
+  chapter_id: string;
+  target_language: string;
+  segments: SegmentStatusItem[];
+  dirty_count: number;
+  needs_count: number;
+};
+
+export type SegmentCoverageChapter = {
+  chapter_id: string;
+  segment_total: number;
+  translated_count: number;
+  dirty_count: number;
+  stale_count: number;
+  needs_count: number;
+};
+
+export type SegmentCoverageResponse = {
+  book_id: string;
+  target_language: string;
+  chapters: SegmentCoverageChapter[];
+};
+
 // ── Version types ─────────────────────────────────────────────────────────────
 
 export type VersionSummary = {
@@ -108,6 +145,7 @@ export type VersionSummary = {
   input_tokens: number | null;
   output_tokens: number | null;
   created_at: string;
+  authored_by: string;
 };
 
 export type LanguageVersionGroup = {
@@ -167,6 +205,28 @@ export const versionsApi = {
       body: JSON.stringify(payload),
     });
   },
+
+  // T1: correct a single translated block in the chapter's (one) human-version.
+  // First call get-or-creates the human-version (seeded from base_version_id) + makes
+  // it active; later calls patch it in place. Per-block LLM→human gold is captured
+  // server-side. Block (json) format only.
+  patchBlock(
+    token: string,
+    chapterId: string,
+    payload: {
+      target_language: string;
+      base_version_id: string;
+      block_index: number;
+      block: Record<string, unknown>;
+      source_block_text?: string;
+    },
+  ): Promise<ChapterTranslation> {
+    return apiJson(`/v1/translation/chapters/${chapterId}/versions/blocks`, {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify(payload),
+    });
+  },
 };
 
 // ── Translation API ───────────────────────────────────────────────────────────
@@ -174,6 +234,31 @@ export const versionsApi = {
 export const translationApi = {
   getBookCoverage(token: string, bookId: string): Promise<BookCoverageResponse> {
     return apiJson(`/v1/translation/books/${bookId}/coverage`, { token });
+  },
+
+  // T2-M3: per-chapter segment counts for a book+language (matrix "N changed" badge).
+  getSegmentCoverage(token: string, bookId: string, targetLanguage: string): Promise<SegmentCoverageResponse> {
+    return apiJson(
+      `/v1/translation/books/${bookId}/segment-coverage?target_language=${encodeURIComponent(targetLanguage)}`,
+      { token },
+    );
+  },
+
+  // T2-M3: per-segment status for a chapter+language (drill-down list).
+  getSegmentStatus(token: string, chapterId: string, targetLanguage: string): Promise<SegmentStatusResponse> {
+    return apiJson(
+      `/v1/translation/chapters/${chapterId}/segments/status?target_language=${encodeURIComponent(targetLanguage)}`,
+      { token },
+    );
+  },
+
+  // T2-M3: re-translate ONLY the changed (dirty ∪ stale) segments of a chapter.
+  retranslateDirty(token: string, chapterId: string, targetLanguage: string): Promise<TranslationJob> {
+    return apiJson(`/v1/translation/chapters/${chapterId}/retranslate-dirty`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ target_language: targetLanguage }),
+    });
   },
 
   createJob(
@@ -186,6 +271,18 @@ export const translationApi = {
       target_language?: string;
       model_source?: string;
       model_ref?: string;
+      // Quality verification (V3): the verifier→correct loop only runs in pipeline
+      // 'v3', so the UI sends pipeline_version='v3' when verification is enabled. The
+      // verifier model is optional (falls back to the translator). qa_depth/rounds
+      // tune the loop. Omitted → backend defaults (v2, no verify).
+      pipeline_version?: 'v2' | 'v3';
+      qa_depth?: 'rule_only' | 'standard' | 'thorough';
+      max_qa_rounds?: number;
+      verifier_model_source?: string;
+      verifier_model_ref?: string;
+      // Bypass the idempotency skip-gate so an already-translated chapter is
+      // re-translated (and a new version produced) rather than skipped.
+      force_retranslate?: boolean;
     },
   ): Promise<TranslationJob> {
     return apiJson(`/v1/translation/books/${bookId}/jobs`, {

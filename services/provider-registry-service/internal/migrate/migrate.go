@@ -235,6 +235,46 @@ CREATE TABLE IF NOT EXISTS usage_outbox (
 );
 CREATE INDEX IF NOT EXISTS idx_usage_outbox_unpublished
   ON usage_outbox(id) WHERE published_at IS NULL;
+
+-- LLM re-arch Phase 1 — transactional terminal-event outbox. On EVERY terminal
+-- transition (completed|failed|cancelled) the worker (and the cancel handler)
+-- writes one row HERE in the same tx as the llm_jobs finalize; a relay XADDs it
+-- to loreweave:events:llm_job_terminal and stamps published_at. This is the
+-- durable, per-job-correlated completion signal a caller resumes on (the SDK
+-- event adapter + future service consumers). Mirrors usage_outbox: at-least-once
+-- delivery, consumers dedup on job_id. result_ref = job_id (consumer fetches the
+-- full result via GET /internal/llm/jobs/{id}); the event carries only the
+-- correlation + summary so the stream stays light.
+CREATE TABLE IF NOT EXISTS job_event_outbox (
+  id             BIGSERIAL PRIMARY KEY,
+  job_id         UUID NOT NULL,
+  owner_user_id  UUID NOT NULL,
+  operation      TEXT NOT NULL,
+  status         TEXT NOT NULL,
+  kind           TEXT NOT NULL DEFAULT '',
+  cost_usd       NUMERIC(16,8),
+  error_code     TEXT,
+  error_message  TEXT,
+  campaign_id    UUID,
+  correlation_id TEXT,
+  published_at   TIMESTAMPTZ,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_job_event_outbox_unpublished
+  ON job_event_outbox(id) WHERE published_at IS NULL;
+
+-- Per-user DEFAULT model for a capability (rerank/embedding/...). Restores the
+-- BYOK default-model UX that the removed RERANK_URL/_MODEL .env config provided
+-- (D-RERANK-NOT-BYOK): the default is the user's own user_model, never platform
+-- config. One row per (user, capability); the user_model FK cascades a clear when
+-- the model is deleted. Consumers resolve via GET /internal/default-models/{cap}.
+CREATE TABLE IF NOT EXISTS user_default_models (
+  owner_user_id  UUID NOT NULL,
+  capability     TEXT NOT NULL,
+  user_model_id  UUID NOT NULL REFERENCES user_models(user_model_id) ON DELETE CASCADE,
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (owner_user_id, capability)
+);
 `
 
 func Up(ctx context.Context, pool *pgxpool.Pool) error {

@@ -162,6 +162,16 @@ func main() {
 		slog.Error("migrate entity-revisions", "error", err)
 		os.Exit(1)
 	}
+	// D-GLOSSARY-RAW-SEARCH-BE: pg_trgm + GIN trigram indexes for raw entity search.
+	if err := migrate.UpGlossarySearch(ctx, pool); err != nil {
+		slog.Error("migrate glossary-search", "error", err)
+		os.Exit(1)
+	}
+	// D-GLOSSARY-SORT-BE (counts-sort): denormalized appearance counters + triggers.
+	if err := migrate.UpEntityCounts(ctx, pool); err != nil {
+		slog.Error("migrate entity-counts", "error", err)
+		os.Exit(1)
+	}
 
 	// Run the short-description backfill in a background goroutine so
 	// the HTTP listener + healthcheck come up immediately. For a fresh
@@ -198,9 +208,27 @@ func main() {
 		} else if rc != nil {
 			go rc.Run(ctx)
 		}
+		// wiki-llm Phase-2 (§5.2) — wiki change-control capture: flags AI articles
+		// stale (ledger) when a source they were built from changes. Never regenerates.
+		if sc, err := events.NewStalenessConsumer(pool, cfg.RedisURL); err != nil {
+			slog.Warn("staleness-consumer init failed (wiki staleness capture disabled)", "error", err)
+		} else if sc != nil {
+			go sc.Run(ctx)
+		}
 	}
 
 	srv := api.NewServer(pool, cfg)
+
+	// D-GRANT-INSTANT-REVOKE — tail book-service grant revokes (Redis) → drop the
+	// matching cached grant from this process's grant client at once (vs the TTL).
+	if cfg.RedisURL != "" {
+		if rc, err := events.NewGrantRevokeConsumer(cfg.RedisURL, srv.GrantClient()); err != nil {
+			slog.Warn("grant-revoke-consumer init failed (instant revoke disabled; TTL still applies)", "error", err)
+		} else if rc != nil {
+			go rc.Run(ctx)
+		}
+	}
+
 	httpSrv := &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           srv.Router(),

@@ -1,7 +1,7 @@
 """K14.1 + K14.2 + K14.8 — Redis Streams consumer.
 
-Main event consumer loop for knowledge-service. Reads from Redis
-Streams via XREADGROUP, dispatches to handlers, handles DLQ.
+Main event consumer loop for knowledge-service. Reads from Redis Streams via XREADGROUP,
+dispatches to handlers, handles DLQ.
 
 Streams consumed:
   - loreweave:events:chapter  (chapter.saved, chapter.deleted)
@@ -9,28 +9,25 @@ Streams consumed:
   - loreweave:events:glossary (glossary.entity_updated, etc.)
 
 Consumer group: "knowledge-extractor"
-Consumer name: hostname-based for multi-instance disambiguation.
 
-K14.2: on startup, if the consumer group doesn't exist, creates it
-from "0" (beginning). If Redis has evicted old events (MAXLEN trim),
-the consumer processes what's available — the event_log fallback
-ensures no events are permanently lost.
-
-K14.8: on handler exception, retries up to MAX_RETRIES. After
-exhaustion, logs to dead_letter_events and acks (preventing infinite
-retry loops).
+Unified Job Control Plane P1 — the Redis transport (multi-stream BUSYGROUP-safe groups at
+id="0", socket_timeout=None blocking loop, redis-py-8 idle TimeoutError, startup PEL drain,
+periodic XAUTOCLAIM reclaim, bounded retry → DLQ) now lives in the shared
+``loreweave_jobs.BaseProjectionConsumer``; this module supplies only the parse + dispatch
+fold (``handle``) and the service's durable dead-letter sink (``on_dlq`` →
+``dead_letter_events``). The reclaim is the D-PLATFORM-CONSUMER-RECLAIM-KNOWLEDGE fix
+(a handler failure leaves a message pending that XREADGROUP ">" never returns, so its retry
+counter never advances toward the DLQ without a timed reclaim).
 """
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
-import platform
-from typing import Any
 
 import asyncpg
-import redis.asyncio as aioredis
+
+from loreweave_jobs import BaseProjectionConsumer
 
 from app.events.dispatcher import EventData, EventDispatcher
 
@@ -46,23 +43,23 @@ STREAMS = [
 GROUP_NAME = "knowledge-extractor"
 MAX_RETRIES = 3
 BLOCK_MS = 5000  # 5s blocking read
-# FD-18 (D-PLATFORM-CONSUMER-RECLAIM-KNOWLEDGE) — periodic PEL reclaim. A handler
-# failure leaves the message pending (not acked); XREADGROUP ">" only returns NEW
-# messages, so without an explicit reclaim a failed chapter/chat/glossary event
-# sits in the PEL until the next restart — its retry counter never advances, so
-# it never reaches the DLQ. XAUTOCLAIM on a timer re-delivers stale-pending
-# messages so the retry→DLQ path works in steady state. Ported from
-# learning-service (the F-A1 fix; knowledge had the identical cloned bug).
 RECLAIM_EVERY_N_LOOPS = 12   # ~ every 60s at BLOCK_MS=5s
 RECLAIM_MIN_IDLE_MS = 30000  # only reclaim messages idle ≥30s
 
 
-class EventConsumer:
-    """Redis Streams consumer with XREADGROUP.
+class EventConsumer(BaseProjectionConsumer):
+    """Multi-stream knowledge collector on the shared projection scaffold. Create one per
+    process; run() as a background asyncio task from the lifespan hook. Business fold =
+    ``handle`` (parse → dispatch); dead-letter sink = ``on_dlq`` (dead_letter_events)."""
 
-    Create one instance per knowledge-service process. Call `run()`
-    as a background asyncio task from the lifespan hook.
-    """
+    streams = STREAMS
+    group = GROUP_NAME
+    max_retries = MAX_RETRIES
+    block_ms = BLOCK_MS
+    reclaim_every_n_loops = RECLAIM_EVERY_N_LOOPS
+    reclaim_min_idle_ms = RECLAIM_MIN_IDLE_MS
+    consumer_name_prefix = "ks"
+    retry_prefix = "ks:retry"
 
     def __init__(
         self,
@@ -72,234 +69,37 @@ class EventConsumer:
         *,
         consumer_name: str | None = None,
     ) -> None:
-        self._redis_url = redis_url
+        super().__init__(redis_url, consumer_name=consumer_name)
         self._pool = pool
         self._dispatcher = dispatcher
-        self._consumer_name = consumer_name or f"ks-{platform.node()}"
-        self._redis: aioredis.Redis | None = None
-        self._running = False
 
-    async def _ensure_redis(self) -> aioredis.Redis:
-        if self._redis is None:
-            # socket_timeout=None is REQUIRED for the blocking XREADGROUP
-            # loop below. redis-py 8.0 defaults AbstractConnection's
-            # socket_timeout to 5s; with our BLOCK_MS=5000 the per-read
-            # socket timeout races the server-side BLOCK and wins on every
-            # cycle, raising redis.exceptions.TimeoutError ("Timeout reading
-            # from redis:6379") and wedging the consumer so it processes
-            # ZERO events on all streams. A blocking consumer must use a
-            # connection whose read timeout never pre-empts the BLOCK.
-            # Invariant: socket_timeout is None (unbounded) OR strictly
-            # greater than BLOCK_MS/1000. We choose None — the least
-            # surprising option for a long-poll consumer. Real connection
-            # failures still surface as ConnectionError (separate path);
-            # socket_connect_timeout is unaffected.
-            self._redis = aioredis.from_url(
-                self._redis_url, decode_responses=True, socket_timeout=None,
-            )
-        return self._redis
-
-    async def _ensure_groups(self) -> None:
-        """Create consumer groups if they don't exist.
-
-        MKSTREAM creates the stream if it doesn't exist yet (no events
-        published). Group starts from "0" (process all existing events).
-        """
-        r = await self._ensure_redis()
-        for stream in STREAMS:
-            try:
-                await r.xgroup_create(
-                    stream, GROUP_NAME, id="0", mkstream=True,
-                )
-                logger.info("Created consumer group %s on %s", GROUP_NAME, stream)
-            except aioredis.ResponseError as e:
-                if "BUSYGROUP" in str(e):
-                    pass  # group already exists
-                else:
-                    raise
-
-    async def run(self) -> None:
-        """Main consumer loop. Blocks until stopped."""
-        await self._ensure_groups()
-        self._running = True
-        r = await self._ensure_redis()
-
-        logger.info(
-            "K14.1: event consumer started (group=%s, consumer=%s, streams=%s)",
-            GROUP_NAME, self._consumer_name, STREAMS,
-        )
-
-        # First: process any pending (unacked) messages from previous runs
-        await self._process_pending(r)
-
-        # Then: read new messages
-        loop_count = 0
-        while self._running:
-            try:
-                # FD-18 — periodically reclaim PEL messages a prior handler
-                # failure left pending (XREADGROUP ">" never returns them).
-                loop_count += 1
-                if loop_count % RECLAIM_EVERY_N_LOOPS == 0:
-                    await self._reclaim_stale_pending(r)
-
-                streams_dict = {s: ">" for s in STREAMS}
-                results = await r.xreadgroup(
-                    GROUP_NAME,
-                    self._consumer_name,
-                    streams_dict,
-                    count=10,
-                    block=BLOCK_MS,
-                )
-                if not results:
-                    continue
-
-                for stream_name, messages in results:
-                    for msg_id, fields in messages:
-                        await self._handle_message(r, stream_name, msg_id, fields)
-
-            except asyncio.CancelledError:
-                logger.info("Consumer loop cancelled, shutting down")
-                break
-            except aioredis.TimeoutError:
-                # redis-py 8: a blocking XREADGROUP(block=) with no data within
-                # `block` raises TimeoutError (5.x returned empty). Normal idle —
-                # re-block. NOT a ConnectionError subclass, so it would otherwise
-                # fall to the generic handler below (ERROR log + 2s sleep).
-                continue
-            except aioredis.ConnectionError:
-                logger.warning("Redis connection lost, reconnecting in 5s")
-                self._redis = None
-                await asyncio.sleep(5)
-                r = await self._ensure_redis()
-            except Exception:
-                logger.exception("Consumer loop error, retrying in 2s")
-                await asyncio.sleep(2)
-
-        await self.close()
-
-    async def _process_pending(self, r: aioredis.Redis) -> None:
-        """K14.2: on startup, process any unacked messages from previous runs.
-
-        XREADGROUP with id="0" returns pending messages. This handles
-        the catch-up case where the consumer crashed mid-processing.
-        """
-        for stream in STREAMS:
-            try:
-                results = await r.xreadgroup(
-                    GROUP_NAME,
-                    self._consumer_name,
-                    {stream: "0"},
-                    count=100,
-                )
-                if not results:
-                    continue
-                for stream_name, messages in results:
-                    for msg_id, fields in messages:
-                        await self._handle_message(r, stream_name, msg_id, fields)
-            except Exception:
-                logger.exception("Error processing pending messages for %s", stream)
-
-    async def _reclaim_stale_pending(self, r: aioredis.Redis) -> None:
-        """FD-18 — re-deliver messages stuck in the PEL (a prior handler failure
-        left them pending). XREADGROUP ">" never returns these, so without this a
-        failed chapter/chat/glossary event would only retry on restart. XAUTOCLAIM
-        hands stale messages to this consumer; reprocessing advances the retry
-        counter so the retry→DLQ path works in steady state (ported from
-        learning-service's F-A1 fix)."""
-        for stream in STREAMS:
-            try:
-                start = "0-0"
-                while True:
-                    next_start, claimed, _deleted = await r.xautoclaim(
-                        stream, GROUP_NAME, self._consumer_name,
-                        min_idle_time=RECLAIM_MIN_IDLE_MS, start_id=start, count=50,
-                    )
-                    for msg_id, fields in claimed:
-                        # A tombstoned (XDEL'd) message reclaims with empty
-                        # fields — ack it to drain the PEL rather than loop.
-                        if not fields:
-                            await r.xack(stream, GROUP_NAME, msg_id)
-                            continue
-                        await self._handle_message(r, stream, msg_id, fields)
-                    if not next_start or next_start == "0-0":
-                        break
-                    start = next_start
-            except aioredis.ResponseError:
-                # NOGROUP / stream not yet created — nothing to reclaim.
-                pass
-            except Exception:
-                logger.exception("Error reclaiming pending messages for %s", stream)
-
-    async def _handle_message(
-        self, r: aioredis.Redis, stream: str, msg_id: str, fields: dict[str, str],
-    ) -> None:
-        """Process a single message: parse → dispatch → ack or DLQ."""
+    async def handle(self, stream: str, msg_id: str, fields: dict) -> None:
+        """Parse + dispatch. An unparseable event returns (ack, no retry); a handler
+        exception propagates to the base retry → DLQ policy. Ack on success happens in the
+        base regardless of whether a handler matched (parity with the prior behaviour)."""
         event = self._parse_event(stream, msg_id, fields)
         if event is None:
-            # Unparseable — ack and move on
-            await r.xack(stream, GROUP_NAME, msg_id)
-            return
+            return  # unparseable — ack and move on
+        await self._dispatcher.dispatch(event, pool=self._pool)
 
-        try:
-            handled = await self._dispatcher.dispatch(
-                event, pool=self._pool,
-            )
-            # Ack regardless of whether a handler was found
-            await r.xack(stream, GROUP_NAME, msg_id)
-
-            if handled:
-                logger.debug(
-                    "Event handled: type=%s stream=%s id=%s",
-                    event.event_type, stream, msg_id,
-                )
-        except Exception as exc:
-            # K14.8: DLQ handling
-            await self._handle_failure(r, stream, msg_id, event, exc)
-
-    async def _handle_failure(
-        self, r: aioredis.Redis, stream: str, msg_id: str,
-        event: EventData, exc: Exception,
-    ) -> None:
-        """K14.8: retry or send to DLQ.
-
-        Tracks retry count in a Redis key per message. After MAX_RETRIES,
-        inserts into dead_letter_events and acks.
-        """
-        retry_key = f"ks:retry:{stream}:{msg_id}"
-        retry_count = int(await r.incr(retry_key))
-        await r.expire(retry_key, 3600)  # TTL 1h
-
-        if retry_count < MAX_RETRIES:
-            logger.warning(
-                "Event handler failed (attempt %d/%d): type=%s id=%s error=%s",
-                retry_count, MAX_RETRIES, event.event_type, msg_id, exc,
-            )
-            # Don't ack — message stays pending for redelivery
-            return
-
-        # Exhausted retries — DLQ
-        logger.error(
-            "Event sent to DLQ after %d retries: type=%s id=%s error=%s",
-            MAX_RETRIES, event.event_type, msg_id, exc,
+    async def on_dlq(self, stream: str, msg_id: str, fields: dict, exc: Exception) -> None:
+        """K14.8 — persist the dead letter after MAX_RETRIES. Re-parses the event for its
+        type/aggregate/payload (the event is parseable here — an unparseable one would have
+        acked in ``handle``, never reaching the DLQ)."""
+        event = self._parse_event(stream, msg_id, fields)
+        event_type = event.event_type if event else fields.get("event_type", "")
+        aggregate_id = event.aggregate_id if event else fields.get("aggregate_id", "")
+        payload = event.payload if event else {}
+        await self._pool.execute(
+            """
+            INSERT INTO dead_letter_events
+              (stream, message_id, event_type, aggregate_id, payload, error, retry_count)
+            VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7)
+            ON CONFLICT DO NOTHING
+            """,
+            stream, msg_id, event_type, aggregate_id,
+            json.dumps(payload), str(exc)[:2000], self.max_retries,
         )
-
-        try:
-            await self._pool.execute(
-                """
-                INSERT INTO dead_letter_events
-                  (stream, message_id, event_type, aggregate_id, payload, error, retry_count)
-                VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7)
-                ON CONFLICT DO NOTHING
-                """,
-                stream, msg_id, event.event_type, event.aggregate_id,
-                json.dumps(event.payload), str(exc)[:2000], retry_count,
-            )
-        except Exception:
-            logger.exception("Failed to write to DLQ table")
-
-        # Ack to stop redelivery
-        await r.xack(stream, GROUP_NAME, msg_id)
-        await r.delete(retry_key)
 
     def _parse_event(self, stream: str, msg_id: str, fields: dict[str, str]) -> EventData | None:
         """Parse Redis Stream fields into EventData."""
@@ -324,13 +124,3 @@ class EventConsumer:
             source=fields.get("source", ""),
             raw=fields,
         )
-
-    async def stop(self) -> None:
-        """Signal the consumer to stop after the current cycle."""
-        self._running = False
-
-    async def close(self) -> None:
-        """Close the Redis connection."""
-        if self._redis is not None:
-            await self._redis.aclose()
-            self._redis = None

@@ -1,0 +1,63 @@
+{
+  "page": {
+    "title": "世界",
+    "subtitle": "從設定建構世界 — 角色、地點、勢力 — 無需手稿。",
+    "loading": "正在載入世界…"
+  },
+  "empty": {
+    "title": "尚無世界",
+    "description": "建立你的第一個世界，開始撰寫設定 — 不需要任何章節。"
+  },
+  "card": {
+    "books": "{{count}} 本書"
+  },
+  "create": {
+    "cta": "新世界",
+    "title": "新世界",
+    "description": "為你的世界命名。你可以立即撰寫設定。",
+    "nameLabel": "世界名稱",
+    "namePlaceholder": "例如：破碎之境",
+    "descLabel": "描述（選填）",
+    "cancel": "取消",
+    "submit": "建立世界",
+    "creating": "建立中…",
+    "error": "建立世界失敗"
+  },
+  "workspace": {
+    "back": "所有世界",
+    "loading": "正在載入世界…",
+    "error": "找不到世界。"
+  },
+  "lore": {
+    "title": "世界聖典",
+    "extractionOptional": "直接撰寫設定 — 角色、地點、勢力。無需手稿。從文稿擷取為選用；此世界聖典即是錨點。",
+    "anchorUnavailable": "此世界尚無聖典錨點 — 無法撰寫設定。",
+    "kindLabel": "類型",
+    "kindPlaceholder": "選擇一個類型…",
+    "add": "新增設定",
+    "adding": "新增中…",
+    "added": "已將設定加入你的世界聖典。",
+    "error": "新增設定失敗"
+  },
+  "graph": {
+    "title": "世界圖譜",
+    "subtitle": "以唯讀方式檢視世界設定之間的連結。"
+  },
+  "living": {
+    "heading": "活世界",
+    "subtitle": "以可瀏覽的時間軸呈現世界的正典與其異版分支。點選作品即可開啟。",
+    "title": "活世界",
+    "counts": "正典 {{canon}} · 異版分支 {{branches}}",
+    "hint": "滾動縮放 · 拖曳空白處平移 · 點選作品開啟",
+    "loading": "正在載入活世界…",
+    "loadFailed": "載入活世界失敗：{{error}}",
+    "empty": "此世界尚無作品 — 開始一本書或一個異版以擴展其時間軸。",
+    "canonBadge": "正典",
+    "branchBadge": "異版",
+    "canonAria": "正典：{{title}}",
+    "branchAria": "於第 {{ch}} 章分支的異版：{{title}}",
+    "branchAt": "於第 {{ch}} 章分支",
+    "orphan": "· 來源在此世界之外",
+    "edgeLabel": "第 {{ch}} 章"
+  }
+}

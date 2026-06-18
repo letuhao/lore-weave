@@ -1,0 +1,72 @@
+# contracts/integrity/config.yaml — L3.E + L3.F integrity-checker config.
+#
+# Consumed by services/integrity-checker/pkg/config.
+#
+# CYCLE 15 — initial cut. Two cron schedules wire two instances of the same
+# binary against this config with the `mode:` field overridden via the
+# integrity-checker-cronjob.yaml `--config-overlay` mechanism:
+#   - daily cron   → mode=daily    → pkg/daily_loop (samples N per table)
+#   - monthly cron → mode=monthly  → pkg/full_check (walks all rows)
+#
+# LOCKED decisions consumed:
+#   * Q-L3E-1 (§5): integrity-checker is a SEPARATE service. This config
+#     lives in contracts/ so cycle-13 + cycle-15 share table-name allowlist
+#     defaults; the cycle-13 cron skeleton (now obsolete) also referenced
+#     this list informally.
+#   * Q-L3-4 (§5): every table here MUST have the VerificationMeta cols
+#     (event_id, aggregate_version, applied_at, last_verified_event_version,
+#     last_verified_at). Enforced upstream in 0006_projections.up.sql.
+#   * Q-L3-5 (§5): no V2 blue-green scaffolding — single mode/cron pair.
+
+# Default mode at startup. Overridden by the cronjob manifest per schedule.
+mode: daily
+
+# Per-mode gates — let SRE roll out incrementally (set daily_enabled: true
+# first, leave monthly_enabled: false for 2 weeks of soak).
+daily_enabled: true
+monthly_enabled: true
+
+# Monthly cadence — `expected_next_sweep_at` in projection_drift_state is
+# set to NOW() + full_check_interval_days * 24h.
+full_check_interval_days: 30
+
+# Per-table budgets. Cycle-15 default: 20-row sample for daily mode,
+# 500-row cursor batch for monthly mode. SRE can scale per-table:
+#   - Hot tables (pc_projection) → larger samples / smaller batches
+#   - Cold tables (region_projection) → smaller samples acceptable
+# Allowlist enforced by services/integrity-checker/pkg/config Validate()
+# (matches projection_drift_table_name_allowlist CHECK in
+# contracts/migrations/per_reality/0007_drift_metadata.up.sql).
+tables:
+  - name: pc_projection
+    sample_size: 20
+    full_scan_batch_size: 500
+  - name: pc_inventory_projection
+    sample_size: 20
+    full_scan_batch_size: 500
+  - name: pc_relationship_projection
+    sample_size: 20
+    full_scan_batch_size: 500
+  - name: npc_projection
+    sample_size: 20
+    full_scan_batch_size: 500
+  - name: npc_session_memory_projection
+    sample_size: 20
+    full_scan_batch_size: 500
+  - name: npc_pc_relationship_projection
+    sample_size: 20
+    full_scan_batch_size: 500
+  - name: npc_session_memory_embedding
+    # Embedding table — narrower sample (vector compare is expensive) +
+    # smaller batch (vector rows can be ~6KB each at 1536 dim).
+    sample_size: 10
+    full_scan_batch_size: 100
+  - name: region_projection
+    sample_size: 20
+    full_scan_batch_size: 500
+  - name: world_kv_projection
+    sample_size: 20
+    full_scan_batch_size: 500
+  - name: session_participants
+    sample_size: 20
+    full_scan_batch_size: 500

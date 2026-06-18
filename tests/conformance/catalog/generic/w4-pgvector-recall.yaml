@@ -1,0 +1,7 @@
+id: w4-pgvector-recall
+description: "W4.4 / D-S7-PGVECTOR-RECALL — HNSW recall/quality comparator, LIVE. The S4 pgvector probe asserts presence+dim only; this seeds K=2000 distinct random 1536-d vectors + an HNSW index (m=16, ef_construction=64, vector_l2_ops) and computes recall@k = |approx ∩ exact| / k over Q=20 queries. Guards: the EXACT pass is a forced Seq Scan (enable_indexscan/bitmapscan off, EXPLAIN-asserted) so it can't ride the index; the APPROX pass is EXPLAIN-asserted to be an Index Scan; a post-seed distinctness assert guards the per-row-random idiom (an uncorrelated subquery makes all vectors identical → recall meaningless). Clean recall ≥ 0.90; BITE lowers hnsw.ef_search → recall collapses well below clean → the comparator CATCHES the quality regression. foundation-dev pgvector."
+invariant: I-w4-pgvector-recall-quality
+kind: live-probe
+command: ["bash", "scripts/perf/w4-pgvector-recall.sh"]
+requires: ["scale-rig"]
+skip_when: []

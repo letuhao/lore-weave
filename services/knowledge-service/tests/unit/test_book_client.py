@@ -86,6 +86,65 @@ async def test_lexical_search_transport_error_returns_none(bc: BookClient):
         assert await bc.lexical_search(book_id, "x") is None
 
 
+@pytest.mark.asyncio
+async def test_lexical_search_forwards_surface(bc: BookClient):
+    """D-RAWSEARCH-CANON-WIRING — surface reaches book-service (default canon)
+    so the lexical leg honours the same canon gate as the semantic leg."""
+    book_id = uuid4()
+    with respx.mock() as mock:
+        route = mock.get(_lexical_url(book_id)).mock(
+            return_value=httpx.Response(200, json={"results": []}),
+        )
+        await bc.lexical_search(book_id, "x")  # default
+        assert route.calls.last.request.url.params["surface"] == "canon"
+        await bc.lexical_search(book_id, "x", surface="all")
+        assert route.calls.last.request.url.params["surface"] == "all"
+
+
+# ── list_chapters (D-RAWSEARCH-CANON-WIRING) ─────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_list_chapters_returns_items_and_forwards_status(bc: BookClient):
+    book_id = uuid4()
+    items = [{"chapter_id": "c1", "sort_order": 1, "editorial_status": "draft"}]
+    with respx.mock() as mock:
+        route = mock.get(_count_url(book_id)).mock(
+            return_value=httpx.Response(200, json={"items": items, "total": 1}),
+        )
+        out = await bc.list_chapters(book_id, editorial_status="draft")
+    assert out == items
+    assert route.calls.last.request.url.params["editorial_status"] == "draft"
+    assert route.calls.last.request.url.params["limit"] == "100"
+
+
+@pytest.mark.asyncio
+async def test_list_chapters_paginates_past_100_cap(bc: BookClient):
+    """book-service clamps page size to 100 → list_chapters must page so a
+    >100-chapter book isn't silently truncated."""
+    book_id = uuid4()
+    page1 = [{"chapter_id": f"c{i}", "sort_order": i} for i in range(100)]
+    page2 = [{"chapter_id": f"c{i}", "sort_order": i} for i in range(100, 150)]
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        offset = int(request.url.params.get("offset", "0"))
+        items = page1 if offset == 0 else page2
+        return httpx.Response(200, json={"items": items, "total": 150})
+
+    with respx.mock() as mock:
+        mock.get(_count_url(book_id)).mock(side_effect=respond)
+        out = await bc.list_chapters(book_id)
+    assert len(out) == 150  # both pages collected, not capped at 100
+
+
+@pytest.mark.asyncio
+async def test_list_chapters_non_200_returns_none(bc: BookClient):
+    book_id = uuid4()
+    with respx.mock() as mock:
+        mock.get(_count_url(book_id)).mock(return_value=httpx.Response(503))
+        assert await bc.list_chapters(book_id) is None
+
+
 # ── count_chapters ──────────────────────────────────────────────────
 
 

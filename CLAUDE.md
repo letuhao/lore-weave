@@ -37,12 +37,13 @@ Data: Postgres (per-service DBs), RabbitMQ (job/event bus — translation & extr
 
 ### Key Rules
 - **Contract-first**: API contract frozen before frontend flow
-- **Gateway invariant**: all external traffic through `api-gateway-bff`
+- **Gateway invariant**: all external traffic through `api-gateway-bff` — with ONE sanctioned exception (PRR-20): the `game-server` real-time WebSocket transport (Colyseus) is a second public entry point that inherits the same auth/rate-limit/audit edge controls. See `docs/03_planning/LLM_MMO_RPG/00_foundation/02_invariants.md` I1 amendment.
 - **MCP-first invariant (AI agent logic)** — *any* AI **agent** capability (logic where an LLM decides actions, calls tools, or reasons multi-step over tools/data) MUST be exposed and invoked as an **MCP tool-call through `ai-gateway`** — never a bespoke HTTP endpoint driven by a raw prompt. **If the tool doesn't exist, create it** as an MCP tool on the owning domain service (domain owns its tools; `ai-gateway` only federates/routes — see `docs/specs/2026-06-10-glossary-assistant-architecture.md`). Non-agentic LLM *pipelines* (e.g. translation, enrichment) are exempt, but **new** agentic logic is not. Legacy agentic logic still on HTTP/raw-prompt is **tracked for migration in Deferred**, never silently grandfathered.
-- **Provider gateway invariant (ENFORCED)** — NO service imports a provider SDK or calls a provider API directly; every LLM/embedding/image/audio/STT call goes through **`provider-registry-service`** (the only place provider SDKs/HTTP live). Verified held across all AI services 2026-06-10. Any new direct provider SDK import is a defect, not a shortcut.
+- **Provider gateway invariant (ENFORCED)** — NO service imports a provider SDK or calls a provider API directly; every LLM/embedding/**rerank**/image/audio/STT call goes through **`provider-registry-service`** (the only place provider SDKs/HTTP live). Verified held across all AI services 2026-06-10. Any new direct provider SDK import is a defect, not a shortcut.
+  - **Local/self-hosted model backends are NOT an exception** — a sibling local service (e.g. `local-rerank-service` :28417, `local-stt-service`, `local-tts-service`, ollama/lm_studio) is reached **only** as a **BYOK provider credential through provider-registry** (`user_models` JOIN `provider_credentials`: kind + `endpoint_base_url` + secret), never via direct `*_URL`/`*_MODEL`/`*_SERVICE_TOKEN` platform config in a consuming service. This is the exact mistake `D-RERANK-NOT-BYOK` fixed: rerank was first wired as platform config in knowledge-service (RERANK_URL/MODEL/SERVICE_TOKEN) instead of resolving the user's model via provider-registry like embed. **Adding a new model capability or a new local backend → register it as a provider-registry credential + a `user_models` row (capability flag, pricing), and resolve it via an `/internal/*` provider-registry route. Do NOT add a per-service URL/token env var for a model backend.**
 - **No hardcoded model names (ENFORCED)** — model names *and pricing* resolve from `provider-registry-service`, never literal in service runtime code (exceptions: provider-registry's own preconfig/pricing, and test fixtures). On a violation: fix now if cheap, else add a Deferred migration row — never leave it untracked.
 - **Provider-rule gate** — the two ENFORCED rules above are checked programmatically by `scripts/ai-provider-gate.py` (cross-platform; provider-SDK imports for Py/TS/Go + hardcoded model literals, with an allowlist + DEFERRED tracking). Wired as a **pre-commit** hook via `git config core.hooksPath .githooks` (run once per checkout); CI/manual: `python scripts/ai-provider-gate.py`. Known-deferred drift is allowlisted (see DEFERRED 065); a genuinely new legacy case must get a DEFERRED row + an explicit allowlist entry, never an untracked bypass.
-- **Language rule**: Go for domain services, Python for AI/LLM services, TypeScript for gateway/BFF
+- **Language rule** (I3, amended & LOCKED 2026-05-29): **Rust** for kernel-derived services (world/travel/tilemap, the DP-kernel consumers), **Go** for domain + meta services, **Python** for AI/LLM services, **TypeScript** for gateway/BFF + realtime transport. The authoritative service→language map is `contracts/language-rule.yaml`, enforced by `scripts/language-rule-lint.sh` (FAILs on mismatch, on a present service mapped `missing`, and on a present service with no row). See `docs/plans/2026-05-29-foundation-mega-task/I3_INVARIANT_AMENDMENT.md` §5.
 - Each microservice owns its own Postgres database
 - **No hardcoded secrets** — all secrets via env vars, services fail to start if missing
 
@@ -215,20 +216,43 @@ CLARIFY → DESIGN → REVIEW → PLAN → BUILD → VERIFY → REVIEW → QC �
 
 ### Task Size Classification (MANDATORY — before work begins)
 
-Count: **files touched · logic changes · side effects** (API/DB/config/types).
+**Size by COMPLEXITY + RISK, not file count** (2026-06-12 redesign). The old file-count
+table over-sized wide-but-shallow changes (one param added across 12 files read as XL),
+fragmenting coherent work into needless ceremony on a large-context window. The axes:
 
-| Size | Files | Logic | Side effects | Allowed skips |
-|------|-------|-------|--------------|---------------|
-| **XS** | 1 | 0-1 | None | CLARIFY + PLAN |
-| **S** | 1-2 | 2-3 | None | PLAN only |
-| **M** | 3-5 | 4+ | Maybe | None |
-| **L** | 6+ | Any | Yes | None — write plan file |
-| **XL** | 10+ | Any | Yes | None — write spec + plan; subagent recommended |
+- **Logic** = distinct **semantic** changes (new behaviors, contracts, branches) — the **primary** axis.
+- **Side effects** = API/DB/config/migration/auth — **risk**; sets a hard **floor** (undersizing can't cross it).
+- **Files** = a **breadth** signal only. A mechanical sweep (low logic-per-file) does **NOT** escalate; breadth bumps size **one tier** only when the change is genuinely deep across it (`logic ≳ files`).
+
+| Size | Logic (primary) | Risk floor | Allowed skips |
+|------|-----------------|-----------|---------------|
+| **XS** | 0-1 | no side effects | CLARIFY + PLAN |
+| **S** | 2-3 | ≥1 side effect ⇒ min S | PLAN only |
+| **M** | 4-6 | ≥2 side effects ⇒ min M | None |
+| **L** | 7-12 | Yes | None — write plan file |
+| **XL** | 13+ | Yes | None — write spec + plan; subagent recommended |
+
+**Classify the whole EFFORT, not each sub-task.** A coherent multi-part change (e.g. a
+re-arch spanning several services) is ONE classification + ONE continuous run — not N
+small tasks each with its own size→build→review→commit cycle. Undersizing on **breadth**
+is allowed (the gate warns, you proceed); undersizing below the **risk floor** is blocked.
+
+**Budget-driven checkpoint cadence (the big unlock).** On a large-context model, let the
+**context budget** — not file count — drive when to stop. Pass current context % as the
+5th arg: `size <S> <files> <logic> <side_effects> <context_pct>`.
+- **Ample budget (<~70%):** run continuously. Checkpoint/commit at genuine **risk boundaries**
+  (a new contract, a migration, a cross-service seam, a shippable milestone), **not** at
+  arbitrary file/sub-task counts.
+- **Filling (>~80%):** checkpoint/commit + `/compact` at the next risk boundary.
+- **PO checkpoints (CLARIFY end + POST-REVIEW) are BATCHED per-milestone:** one CLARIFY for
+  the effort's scope; POST-REVIEW at each shippable risk boundary — not per sub-task.
+- **Quality gates stay, applied per-milestone:** VERIFY evidence, 2-stage REVIEW, live-smoke
+  (≥2 services), `/review-impl` for load-bearing code. These caught real bugs; keep them.
 
 **ENFORCEMENT** — state machine (`.workflow-state.json`) + pre-commit hook block phase jumps and commits without VERIFY+POST-REVIEW+SESSION evidence:
 
 ```bash
-./scripts/workflow-gate.sh size XS 1 1 0       # Classify
+./scripts/workflow-gate.sh size M 3 4 0 45      # Classify (files=3 logic=4 se=0, context=45%)
 ./scripts/workflow-gate.sh phase build          # Enter phase
 ./scripts/workflow-gate.sh complete build "tests pass"  # Mark done with evidence
 ./scripts/workflow-gate.sh status               # Check progress

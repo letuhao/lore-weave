@@ -289,109 +289,64 @@ def test_get_profile_projection_missing_owner_forbidden():
     assert resp.status_code == 403
 
 
-@respx.mock
-def test_suggest_auto_samples_when_no_chapter_ids():
-    # no sample_chapter_ids → endpoint lists chapters then fetches their text.
-    book, c1 = uuid4(), uuid4()
-    _mock_projection(book, owner=OWNER)
-    respx.get(f"{settings.book_service_url}/internal/books/{book}/chapters").respond(
-        200, json={"items": [{"chapter_id": str(c1), "title": "第一回", "sort_order": 1,
-                              "original_language": "zh", "word_count_estimate": 50}],
-                   "total": 1, "limit": 3, "offset": 0},
-    )
-    _mock_chapter_text(book, c1, "第一回 正文…")
-    respx.post(f"{settings.knowledge_service_url}/internal/context/build").respond(
-        200, json={"mode": "empty", "context": "", "token_count": 0}
-    )
-    _mock_llm_stream('{"worldview": "auto-sampled", "language": "zh"}')
-    resp = TestClient(_app(object())).post(
-        f"/v1/lore-enrichment/books/{book}/profile/suggest",
-        headers={"Authorization": f"Bearer {_bearer()}"},
-        json={"project_id": str(uuid4()), "suggest_model_ref": str(uuid4())},  # no ids
-    )
-    assert resp.status_code == 200, resp.text
-    assert resp.json()["worldview"] == "auto-sampled"
+# ── POST suggest (Phase 3 M2 — async) ─────────────────────────────────────────
+# The endpoint now: owner-check on the request path (a non-owner never creates a
+# task), then create a 'pending' compose task + enqueue a resume-stream trigger,
+# return 202 + task_id. The LLM pipeline runs in the worker (compute_profile_suggest)
+# — its respx-mocked coverage lives in test_compose_task.py.
 
+def _patch_task(monkeypatch, *, task_id="11111111-1111-7111-8111-111111111111",
+                enqueued=True):
+    created: dict = {}
 
-# ── POST suggest ────────────────────────────────────────────────────────────
+    async def _create(pool, *, kind, user_id, project_id, book_id, request):
+        created.update(kind=kind, user_id=user_id, project_id=project_id,
+                       book_id=book_id, request=request)
+        return task_id
 
-def _mock_chapter_text(book: UUID, chapter: UUID, text: str) -> None:
-    respx.get(
-        f"{settings.book_service_url}/internal/books/{book}/chapters/{chapter}/draft-text"
-    ).respond(200, json={"text": text})
+    async def _enqueue(*, task_id, kind, user_id, project_id):
+        created["enqueued_kind"] = kind
+        return enqueued
 
-
-def _mock_llm_stream(profile_json: str) -> None:
-    sse = (
-        "event: token\n"
-        f"data: {json.dumps({'delta': profile_json})}\n\n"
-        "event: done\ndata: {}\n\n"
-    )
-    respx.post(f"{settings.provider_registry_internal_url}/internal/llm/stream").respond(
-        200, text=sse
-    )
+    monkeypatch.setattr(bp_api, "create_compose_task", _create)
+    monkeypatch.setattr(bp_api, "enqueue_compose_task", _enqueue)
+    return created
 
 
 @respx.mock
-def test_suggest_returns_draft():
-    book, ch = uuid4(), uuid4()
+def test_suggest_202_creates_task(monkeypatch):
+    book, ch, proj = uuid4(), uuid4(), uuid4()
     _mock_projection(book, owner=OWNER)
-    _mock_chapter_text(book, ch, "Chương 1: thành phố neon…")
-    # KG summary best-effort
-    respx.post(f"{settings.knowledge_service_url}/internal/context/build").respond(
-        200, json={"mode": "full", "context": "<passages>…</passages>", "token_count": 3}
-    )
-    _mock_llm_stream(
-        '{"worldview": "near-future cyberpunk Saigon", "language": "vi", '
-        '"dimension_overrides": {"character": {"add": [{"id": "implants", "label": "Cyberware"}]}}}'
-    )
+    created = _patch_task(monkeypatch)
     resp = TestClient(_app(object())).post(
         f"/v1/lore-enrichment/books/{book}/profile/suggest",
         headers={"Authorization": f"Bearer {_bearer()}"},
-        json={"project_id": str(uuid4()), "suggest_model_ref": str(uuid4()),
+        json={"project_id": str(proj), "suggest_model_ref": str(uuid4()),
               "sample_chapter_ids": [str(ch)]},
     )
-    assert resp.status_code == 200, resp.text
+    assert resp.status_code == 202, resp.text
     body = resp.json()
-    assert body["worldview"] == "near-future cyberpunk Saigon"
-    assert body["language"] == "vi"
-    assert body["profile_source"] == "ai_suggested"
-    assert body["dimension_overrides"]["character"]["add"][0]["id"] == "implants"
+    assert body["task_id"] == "11111111-1111-7111-8111-111111111111"
+    assert body["status"] == "pending"
+    assert created["kind"] == "profile_suggest"
+    assert created["book_id"] == str(book)
+    assert created["request"]["sample_chapter_ids"] == [str(ch)]
+    assert created["request"]["user_id"] == str(OWNER)
+    assert created["enqueued_kind"] == "profile_suggest"
 
 
 @respx.mock
-def test_suggest_degrades_when_kg_down():
-    book, ch = uuid4(), uuid4()
-    _mock_projection(book, owner=OWNER)
-    _mock_chapter_text(book, ch, "Chương 1…")
-    respx.post(f"{settings.knowledge_service_url}/internal/context/build").respond(503)
-    _mock_llm_stream('{"worldview": "w", "language": "vi"}')
+def test_suggest_non_owner_403(monkeypatch):
+    book = uuid4()
+    _mock_projection(book, owner=uuid4())  # a DIFFERENT owner
+    created = _patch_task(monkeypatch)
     resp = TestClient(_app(object())).post(
         f"/v1/lore-enrichment/books/{book}/profile/suggest",
         headers={"Authorization": f"Bearer {_bearer()}"},
-        json={"project_id": str(uuid4()), "suggest_model_ref": str(uuid4()),
-              "sample_chapter_ids": [str(ch)]},
+        json={"project_id": str(uuid4()), "suggest_model_ref": str(uuid4())},
     )
-    assert resp.status_code == 200, resp.text  # KG down → book-only, still works
-    assert resp.json()["worldview"] == "w"
-
-
-@respx.mock
-def test_suggest_llm_failure_502():
-    book, ch = uuid4(), uuid4()
-    _mock_projection(book, owner=OWNER)
-    _mock_chapter_text(book, ch, "Chương 1…")
-    respx.post(f"{settings.knowledge_service_url}/internal/context/build").respond(
-        200, json={"mode": "empty", "context": "", "token_count": 0}
-    )
-    respx.post(f"{settings.provider_registry_internal_url}/internal/llm/stream").respond(500)
-    resp = TestClient(_app(object())).post(
-        f"/v1/lore-enrichment/books/{book}/profile/suggest",
-        headers={"Authorization": f"Bearer {_bearer()}"},
-        json={"project_id": str(uuid4()), "suggest_model_ref": str(uuid4()),
-              "sample_chapter_ids": [str(ch)]},
-    )
-    assert resp.status_code == 502, resp.text
+    assert resp.status_code == 403
+    assert created == {}  # owner-check precedes task creation → nothing created
 
 
 def test_suggest_requires_auth():

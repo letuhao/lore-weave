@@ -4,7 +4,7 @@
 import { apiBase, apiJson } from '../../api';
 import type {
   AutoGeneration, CanonRule, ChapterGeneration, CommitDecomposePayload, CorrectionBody, CorrectionStats,
-  DecomposePreview, GenerationJob, Grounding, OutlineNode, PublishGate, StructureTemplate, Work, WorkResolution,
+  DecomposePreview, DeriveBody, GenerationJob, Grounding, NarrativeThread, OutlineNode, PublishGate, SceneLink, SceneLinkKind, StructureTemplate, Work, WorkResolution,
 } from './types';
 
 // A3 decompose preview request (cycle 13).
@@ -40,6 +40,56 @@ export type AutoGenerateParams = {
 
 const BASE = '/v1/composition';
 
+// LLM re-arch Phase 3 M4 — when COMPOSITION_WORKER_ENABLED is on, the auto /
+// chapter / stitch endpoints answer 202 `{ job_id, status: 'pending' }` (the
+// worker runs the compute) instead of the inline result. The submit+poll is
+// hidden inside the api methods so the hooks/components keep their "await the
+// result" contract: flag-off (inline 200) returns directly; flag-on polls
+// GET /jobs/{id} to terminal and maps job.result to the same shape.
+const JOB_POLL_INTERVAL_MS = 2000;
+// ~10min budget — MUST exceed worst-case worker wall-clock (multi-LLM
+// diverge→converge→canon-reflect; chapter single-pass). Under the backend's
+// chapter_inflight_stale_secs (900s) sweeper window so a slow job is still
+// polled, not abandoned (the M2 #1 orphaned-result lesson).
+const JOB_POLL_MAX = 300;
+const _sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function _pollJob(jobId: string, token: string, signal?: AbortSignal): Promise<GenerationJob> {
+  let job = await compositionApi.getJob(jobId, token);
+  for (
+    let i = 0;
+    i < JOB_POLL_MAX && (job.status === 'pending' || job.status === 'running');
+    i++
+  ) {
+    if (signal?.aborted) return job; // a newer start / unmount stops the loop
+    await _sleep(JOB_POLL_INTERVAL_MS);
+    if (signal?.aborted) return job;
+    job = await compositionApi.getJob(jobId, token);
+  }
+  return job;
+}
+
+// If the POST answered with a still-active job (worker 202 / a replay of a
+// running job), poll to terminal and map job.result via `map`; else (inline 200,
+// already completed) return the response verbatim. A failed job throws with its
+// stored error; a job still active after the budget throws (never a false-green).
+async function _resolveJob<T extends { job_id: string; status: string }>(
+  resp: T, token: string, map: (job: GenerationJob) => T,
+): Promise<T> {
+  const r = resp as unknown as { job_id?: string; status?: string };
+  if (r.job_id && (r.status === 'pending' || r.status === 'running')) {
+    const job = await _pollJob(r.job_id, token);
+    if (job.status === 'failed') {
+      throw new Error((job.result as { error?: string } | null)?.error || 'generation failed');
+    }
+    if (job.status !== 'completed') {
+      throw new Error('generation did not complete in time');
+    }
+    return map(job);
+  }
+  return resp;
+}
+
 export const compositionApi = {
   resolveWork(bookId: string, token: string): Promise<WorkResolution> {
     return apiJson<WorkResolution>(`${BASE}/books/${bookId}/work`, { token });
@@ -47,16 +97,89 @@ export const compositionApi = {
   createWork(bookId: string, token: string): Promise<Work> {
     return apiJson<Work>(`${BASE}/books/${bookId}/work`, { method: 'POST', token });
   },
-  getOutline(projectId: string, token: string): Promise<{ nodes: OutlineNode[]; scene_links: unknown[] }> {
-    return apiJson(`${BASE}/works/${projectId}/outline`, { token });
+  // D-C16: address a Work by its surrogate id — the ONLY handle a pending
+  // null-project Work has (the resolveWork query excludes pending works, so a
+  // freshly-created greenfield Work created during a knowledge outage is
+  // otherwise unreachable until backfill).
+  getWorkById(workId: string, token: string): Promise<Work> {
+    return apiJson<Work>(`${BASE}/works/by-id/${workId}`, { token });
+  },
+  // D-C16: self-healing backfill — retry binding the knowledge project onto a
+  // pending Work. 200 → the (now project-backed) Work; throws on 409
+  // STILL_PENDING (knowledge still down) so the caller keeps polling.
+  resolveWorkProject(workId: string, token: string): Promise<Work> {
+    return apiJson<Work>(`${BASE}/works/by-id/${workId}/resolve-project`, {
+      method: 'POST', token,
+    });
+  },
+  // C24 (dị bản M0) — spawn a DERIVATIVE Work that diverges from a SOURCE Work at
+  // a chapter-level `branch_point` (G3). The BE (C23) mints the derivative its OWN
+  // fresh knowledge project_id (G2 — its own Neo4j delta partition), persists the
+  // divergence_spec + entity_override[], and returns the new (derivative) Work —
+  // which carries `source_work_id` + `branch_point` so the studio banner (DPS2)
+  // can render the dị bản context. NO chapter clone (COW; reference spine stays
+  // read-only). The path keys on the SOURCE Work's project_id (C23 route).
+  deriveWork(sourceProjectId: string, body: DeriveBody, token: string): Promise<Work> {
+    return apiJson<Work>(`${BASE}/works/${sourceProjectId}/derive`, {
+      method: 'POST', body: JSON.stringify(body), token,
+    });
+  },
+  getOutline(projectId: string, token: string, includeArchived = false): Promise<{ nodes: OutlineNode[]; scene_links: SceneLink[] }> {
+    const qs = includeArchived ? '?include_archived=true' : '';
+    return apiJson(`${BASE}/works/${projectId}/outline${qs}`, { token });
+  },
+  // T1.3 Scene Graph — create a typed scene edge. 201 → the new link; 409
+  // SCENE_LINK_EXISTS on a duplicate (from,to,kind); 400 BAD_REFERENCE if either
+  // endpoint isn't the caller's node in this project.
+  createSceneLink(
+    projectId: string,
+    body: { from_node_id: string; to_node_id: string; kind: SceneLinkKind; label: string },
+    token: string,
+  ): Promise<SceneLink> {
+    return apiJson(`${BASE}/works/${projectId}/scene-links`, { method: 'POST', body: JSON.stringify(body), token });
+  },
+  // T1.3 — hard-delete a scene edge (edges have no archive; 204 / 404).
+  deleteSceneLink(linkId: string, token: string): Promise<void> {
+    return apiJson(`${BASE}/scene-links/${linkId}`, { method: 'DELETE', token });
   },
   createNode(projectId: string, payload: Partial<OutlineNode> & { kind: string }, token: string): Promise<OutlineNode> {
     return apiJson(`${BASE}/works/${projectId}/outline/nodes`, { method: 'POST', body: JSON.stringify(payload), token });
   },
   // Patch an outline node (M9: set a scene's status — 'done' commits it for the
-  // chapter-gate + emits composition.scene_committed server-side).
-  patchNode(nodeId: string, patch: Partial<OutlineNode>, token: string): Promise<OutlineNode> {
-    return apiJson(`${BASE}/outline/nodes/${nodeId}`, { method: 'PATCH', body: JSON.stringify(patch), token });
+  // chapter-gate + emits composition.scene_committed server-side). T1.1b: pass
+  // `version` to send If-Match → the BE 412s with NODE_VERSION_CONFLICT (carrying
+  // .body.detail.current) on a stale edit. Omitting `version` keeps the legacy
+  // self-acquiring behaviour (M9 useSetSceneStatus) — backward-compatible.
+  patchNode(nodeId: string, patch: Partial<OutlineNode>, token: string, version?: number): Promise<OutlineNode> {
+    return apiJson(`${BASE}/outline/nodes/${nodeId}`, {
+      method: 'PATCH', body: JSON.stringify(patch), token,
+      ...(version !== undefined ? { headers: { 'If-Match': String(version) } } : {}),
+    });
+  },
+  // T1.1b — soft-archive an outline node (DELETE = archive, returns the archived
+  // node; unconditional, no If-Match). Children are archived by the BE closure.
+  archiveNode(nodeId: string, token: string): Promise<OutlineNode> {
+    return apiJson(`${BASE}/outline/nodes/${nodeId}`, { method: 'DELETE', token });
+  },
+  // T1.1b — un-archive a node (inverse of DELETE). The BE restores the archived
+  // subtree + archived ancestor chain so it reconnects to a visible root.
+  restoreNode(nodeId: string, token: string): Promise<OutlineNode> {
+    return apiJson(`${BASE}/outline/nodes/${nodeId}/restore`, { method: 'POST', token });
+  },
+  // T1.1c — drag-reorder + reparent. Places the node under `new_parent_id` after
+  // `after_id` (null = first child). The BE computes the fractional rank +
+  // renumbers scene story_order. Optional `version` → If-Match (412 on stale);
+  // 400 BAD_REFERENCE on a reparent cycle / bad parent.
+  reorderNode(
+    nodeId: string,
+    move: { new_parent_id: string | null; after_id: string | null },
+    token: string,
+    version?: number,
+  ): Promise<OutlineNode> {
+    return apiJson(`${BASE}/outline/nodes/${nodeId}/reorder`, {
+      method: 'POST', body: JSON.stringify(move), token,
+      ...(version !== undefined ? { headers: { 'If-Match': String(version) } } : {}),
+    });
   },
   // A3 decompose planner (cycle 13). listTemplates → built-in + user structure
   // templates; decomposePreview → the proposed (NOT persisted) arc→chapter→scene
@@ -66,8 +189,22 @@ export const compositionApi = {
     return apiJson<{ templates: StructureTemplate[] }>(`${BASE}/templates`, { token })
       .then((r) => r.templates);
   },
-  decomposePreview(projectId: string, body: DecomposeBody, token: string): Promise<DecomposePreview> {
-    return apiJson(`${BASE}/works/${projectId}/outline/decompose`, { method: 'POST', body: JSON.stringify(body), token });
+  async decomposePreview(projectId: string, body: DecomposeBody, token: string): Promise<DecomposePreview> {
+    const resp = await apiJson<DecomposePreview & { job_id?: string; status?: string }>(
+      `${BASE}/works/${projectId}/outline/decompose`, { method: 'POST', body: JSON.stringify(body), token });
+    // M4: flag-on → 202 pending; the worker stores the decompose tree in
+    // job.result. The whole result IS the DecomposePreview (no merge with the job
+    // envelope, unlike auto/chapter). flag-off → the inline tree verbatim.
+    const r = resp as { job_id?: string; status?: string };
+    if (r.job_id && (r.status === 'pending' || r.status === 'running')) {
+      const job = await _pollJob(r.job_id, token);
+      if (job.status === 'failed') {
+        throw new Error((job.result as { error?: string } | null)?.error || 'decompose failed');
+      }
+      if (job.status !== 'completed') throw new Error('decompose did not complete in time');
+      return job.result as unknown as DecomposePreview;
+    }
+    return resp;
   },
   commitDecompose(projectId: string, payload: CommitDecomposePayload, token: string): Promise<unknown> {
     return apiJson(`${BASE}/works/${projectId}/outline/decompose/commit`, { method: 'POST', body: JSON.stringify(payload), token });
@@ -84,10 +221,14 @@ export const compositionApi = {
   generateUrl(projectId: string): string {
     return `${apiBase()}${BASE}/works/${projectId}/generate`;
   },
+  // T3.2 — the SSE selection-edit POST (rewrite/expand/describe over a selection).
+  selectionEditUrl(projectId: string): string {
+    return `${apiBase()}${BASE}/works/${projectId}/selection-edit`;
+  },
   // V1 slice 3 — auto (diverge→converge): NON-streaming POST that returns the
   // winner + all K candidate texts (the human-gate cards).
-  generateAuto(projectId: string, params: AutoGenerateParams, token: string): Promise<AutoGeneration> {
-    return apiJson(`${BASE}/works/${projectId}/generate`, {
+  async generateAuto(projectId: string, params: AutoGenerateParams, token: string): Promise<AutoGeneration> {
+    const resp = await apiJson<AutoGeneration>(`${BASE}/works/${projectId}/generate`, {
       method: 'POST', token,
       body: JSON.stringify({
         mode: 'auto',
@@ -101,6 +242,31 @@ export const compositionApi = {
         model_name: params.modelName,
       }),
     });
+    // M4: flag-on → 202 pending; poll then shape job.result like the inline JSON.
+    return _resolveJob(resp, token, (job) => ({
+      job_id: job.id, mode: 'auto', status: job.status,
+      ...(job.result as Record<string, unknown>),
+    }) as AutoGeneration);
+  },
+  // M4 — GET /jobs/{id} poll target (the worker writes job.result on completion).
+  getJob(jobId: string, token: string): Promise<GenerationJob> {
+    return apiJson(`${BASE}/jobs/${jobId}`, { token });
+  },
+  // M4 — poll a job to terminal (used by the SSE consumer's 202 fallback when a
+  // stream endpoint answers a batch job instead). Stops early if `signal` aborts.
+  awaitJob(jobId: string, token: string, signal?: AbortSignal): Promise<GenerationJob> {
+    return _pollJob(jobId, token, signal);
+  },
+  // M4 Option A accept-step — persist a worker-computed chapter result to the book
+  // draft with the caller's bearer (the worker has none). Idempotent; 422 if the
+  // job has no chapter_id/text, 409 if not completed.
+  persistJob(
+    jobId: string, token: string, commitMessage?: string,
+  ): Promise<{ job_id: string; persisted: boolean; draft_version?: number | null; persist_error?: string | null; already?: boolean }> {
+    return apiJson(`${BASE}/jobs/${jobId}/persist`, {
+      method: 'POST', token,
+      body: JSON.stringify(commitMessage ? { commit_message: commitMessage } : {}),
+    });
   },
   // Patch the Work (LOOM chapter-assembly: set settings.assembly_mode). NOTE the
   // server REPLACES the whole settings blob — the caller MUST merge the existing
@@ -110,8 +276,8 @@ export const compositionApi = {
     return apiJson(`${BASE}/works/${projectId}`, { method: 'PATCH', body: JSON.stringify(patch), token });
   },
   // B2 chapter single-pass — generate a whole chapter from its decompose plan.
-  generateChapter(projectId: string, chapterId: string, params: ChapterAssembleParams, token: string): Promise<ChapterGeneration> {
-    return apiJson(`${BASE}/works/${projectId}/chapters/${chapterId}/generate`, {
+  async generateChapter(projectId: string, chapterId: string, params: ChapterAssembleParams, token: string): Promise<ChapterGeneration> {
+    const resp = await apiJson<ChapterGeneration>(`${BASE}/works/${projectId}/chapters/${chapterId}/generate`, {
       method: 'POST', token,
       body: JSON.stringify({
         model_source: params.modelSource ?? 'user_model', model_ref: params.modelRef,
@@ -119,10 +285,15 @@ export const compositionApi = {
         persist: params.persist ?? false,
       }),
     });
+    // M4: flag-on → 202 pending. The worker computes + stores (persisted=false,
+    // Option A); the FE accepts via persistJob. flag-off → inline result verbatim.
+    return _resolveJob(resp, token, (job) => ({
+      job_id: job.id, status: job.status, ...(job.result as Record<string, unknown>),
+    }) as ChapterGeneration);
   },
   // B3 stitch — merge a chapter's done scene drafts into one seamless chapter.
-  stitchChapter(projectId: string, chapterId: string, params: ChapterAssembleParams, token: string): Promise<ChapterGeneration> {
-    return apiJson(`${BASE}/works/${projectId}/chapters/${chapterId}/stitch`, {
+  async stitchChapter(projectId: string, chapterId: string, params: ChapterAssembleParams, token: string): Promise<ChapterGeneration> {
+    const resp = await apiJson<ChapterGeneration>(`${BASE}/works/${projectId}/chapters/${chapterId}/stitch`, {
       method: 'POST', token,
       body: JSON.stringify({
         model_source: params.modelSource ?? 'user_model', model_ref: params.modelRef,
@@ -130,6 +301,9 @@ export const compositionApi = {
         persist: params.persist ?? false,
       }),
     });
+    return _resolveJob(resp, token, (job) => ({
+      job_id: job.id, status: job.status, ...(job.result as Record<string, unknown>),
+    }) as ChapterGeneration);
   },
   // V1 slice 3 — capture a human-gate correction (edit/pick_different/regenerate/
   // reject). 'accept' is intentionally NOT a kind (H2 self-reinforcement guard).
@@ -165,5 +339,15 @@ export const compositionApi = {
   },
   deleteCanonRule(ruleId: string, token: string): Promise<CanonRule> {
     return apiJson(`${BASE}/canon-rules/${ruleId}`, { method: 'DELETE', token });
+  },
+  // T0.1 — read the narrative-thread ledger (FD-1 S4a). `open` = the unpaid-promise
+  // debt (priority-ordered); `all` = the full ledger. `open_count` is the true debt
+  // count (not capped by the list LIMIT). Read-only.
+  listNarrativeThreads(
+    projectId: string,
+    status: 'open' | 'all',
+    token: string,
+  ): Promise<{ threads: NarrativeThread[]; open_count: number }> {
+    return apiJson(`${BASE}/works/${projectId}/narrative-threads?status=${status}`, { token });
   },
 };

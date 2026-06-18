@@ -61,8 +61,9 @@ def ctx(monkeypatch):
     monkeypatch.setattr("app.main.close_pool", AsyncMock())
     monkeypatch.setattr("app.main.get_pool", lambda: object())
     from app.main import app
-    from app.deps import (get_book_client_dep, get_canon_rules_repo, get_generation_jobs_repo,
-                          get_glossary_client_dep, get_knowledge_client_dep, get_outline_repo,
+    from app.deps import (get_book_client_dep, get_canon_rules_repo, get_derivatives_repo,
+                          get_generation_jobs_repo, get_glossary_client_dep,
+                          get_knowledge_client_dep, get_outline_repo,
                           get_scene_links_repo, get_works_repo)
     from app.middleware.jwt_auth import get_bearer_token, get_current_user
 
@@ -81,6 +82,10 @@ def ctx(monkeypatch):
     app.dependency_overrides[get_glossary_client_dep] = lambda: object()
     app.dependency_overrides[get_knowledge_client_dep] = lambda: object()
     app.dependency_overrides[get_generation_jobs_repo] = lambda: object()  # S1: new pack dep
+    # C25 — derivatives repo (StubWorks non-derivative → never read; pack stubbed).
+    from types import SimpleNamespace
+    app.dependency_overrides[get_derivatives_repo] = lambda: SimpleNamespace(
+        list_overrides_for_work=lambda *a, **k: [])
     with TestClient(app) as c:
         yield c, works, outline, pack_stub
     app.dependency_overrides.clear()

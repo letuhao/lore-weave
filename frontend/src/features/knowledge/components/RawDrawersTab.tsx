@@ -41,14 +41,27 @@ function useDebounced<T>(value: T, delayMs: number): T {
   return debounced;
 }
 
-export function RawDrawersTab() {
+interface RawDrawersTabProps {
+  // C6 (G6) — route-scoped project when hosted inside the project-detail
+  // shell ("Evidence" sub-tab). Seeds the required project filter AND
+  // hides the per-tab project `<select>`. Absent ⇒ legacy cross-project
+  // surface (dropdown rendered) unchanged.
+  scopedProjectId?: string;
+}
+
+export function RawDrawersTab({ scopedProjectId }: RawDrawersTabProps = {}) {
   const { t } = useTranslation('knowledge');
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [projectFilter, setProjectFilter] = useState<string>('');
+  const [projectFilter, setProjectFilter] = useState<string>(
+    scopedProjectId ?? '',
+  );
   const [searchInput, setSearchInput] = useState<string>('');
   const [sourceType, setSourceType] = useState<DrawerSourceType | null>(null);
   const [selectedHit, setSelectedHit] = useState<DrawerSearchHit | null>(null);
+
+  const scoped = !!scopedProjectId;
+  const effectiveProjectId = scopedProjectId ?? projectFilter;
 
   const debouncedQuery = useDebounced(searchInput, SEARCH_DEBOUNCE_MS);
   const projectsQuery = useProjects(false);
@@ -56,13 +69,15 @@ export function RawDrawersTab() {
   const {
     hits,
     embeddingModel,
+    embeddingPromptTokens,
+    embeddingCostUsd,
     sourceTypeCounts,
     disabled,
     isLoading,
     isFetching,
     error,
   } = useDrawerSearch({
-    project_id: projectFilter,
+    project_id: effectiveProjectId,
     query: debouncedQuery,
     limit: LIMIT,
     source_type: sourceType ?? undefined,
@@ -80,13 +95,13 @@ export function RawDrawersTab() {
     });
   };
 
-  const showNoProject = !projectFilter;
+  const showNoProject = !effectiveProjectId;
   const showShortQuery =
-    !!projectFilter &&
+    !!effectiveProjectId &&
     debouncedQuery.length > 0 &&
     debouncedQuery.length < DRAWER_SEARCH_MIN_QUERY_LENGTH;
   const showEmptyQuery =
-    !!projectFilter && debouncedQuery.length === 0;
+    !!effectiveProjectId && debouncedQuery.length === 0;
   const showNotIndexed =
     !disabled && !error && !isLoading && embeddingModel === null;
   const showEmpty =
@@ -99,32 +114,34 @@ export function RawDrawersTab() {
   return (
     <div data-testid="raw-drawers-tab">
       <div className="mb-4 flex flex-wrap items-end gap-2">
-        <label className="flex flex-col gap-1 text-[11px]">
-          <span className="text-muted-foreground">
-            {t('drawers.filters.project')}
-          </span>
-          <select
-            value={projectFilter}
-            onChange={(e) => {
-              setProjectFilter(e.target.value);
-              // C8 /review-impl [MED#3]: reset source_type filter when
-              // project changes. Holding e.g. "Chapter" across projects
-              // hides hits from a project with only chat passages.
-              setSourceType(null);
-            }}
-            className="rounded-md border bg-input px-2 py-1.5 text-xs outline-none focus:border-ring"
-            data-testid="drawers-filter-project"
-          >
-            <option value="">
-              {t('drawers.filters.selectProject')}
-            </option>
-            {projectsQuery.items.map((p) => (
-              <option key={p.project_id} value={p.project_id}>
-                {p.name}
+        {!scoped && (
+          <label className="flex flex-col gap-1 text-[11px]">
+            <span className="text-muted-foreground">
+              {t('drawers.filters.project')}
+            </span>
+            <select
+              value={projectFilter}
+              onChange={(e) => {
+                setProjectFilter(e.target.value);
+                // C8 /review-impl [MED#3]: reset source_type filter when
+                // project changes. Holding e.g. "Chapter" across projects
+                // hides hits from a project with only chat passages.
+                setSourceType(null);
+              }}
+              className="rounded-md border bg-input px-2 py-1.5 text-xs outline-none focus:border-ring"
+              data-testid="drawers-filter-project"
+            >
+              <option value="">
+                {t('drawers.filters.selectProject')}
               </option>
-            ))}
-          </select>
-        </label>
+              {projectsQuery.items.map((p) => (
+                <option key={p.project_id} value={p.project_id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
 
         <label className="flex flex-1 flex-col gap-1 text-[11px]">
           <span className="text-muted-foreground">
@@ -137,7 +154,7 @@ export function RawDrawersTab() {
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               placeholder={t('drawers.searchInput.placeholder')}
-              disabled={!projectFilter}
+              disabled={!effectiveProjectId}
               className="w-full rounded-md border bg-input py-1.5 pl-7 pr-2 text-xs outline-none focus:border-ring disabled:cursor-not-allowed disabled:opacity-50"
               data-testid="drawers-search-input"
             />
@@ -153,7 +170,7 @@ export function RawDrawersTab() {
           value={sourceType}
           counts={sourceTypeCounts}
           onChange={setSourceType}
-          disabled={!projectFilter}
+          disabled={!effectiveProjectId}
         />
       </div>
 
@@ -273,6 +290,20 @@ export function RawDrawersTab() {
           {isFetching && (
             <p className="mt-2 text-[11px] text-muted-foreground">
               {t('drawers.refreshing')}
+            </p>
+          )}
+          {/* D-K19e-γa-02 — per-search embed cost. Shown only when the
+              provider reported token usage (null = "unknown", omit the
+              line rather than show a misleading $0). */}
+          {embeddingCostUsd != null && embeddingPromptTokens != null && (
+            <p
+              className="mt-2 text-[11px] text-muted-foreground"
+              data-testid="drawers-embed-cost"
+            >
+              {t('drawers.embedCost', {
+                tokens: embeddingPromptTokens,
+                cost: embeddingCostUsd,
+              })}
             </p>
           )}
         </>

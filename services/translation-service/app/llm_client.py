@@ -140,6 +140,40 @@ class LLMClient:
                 raise
         raise RuntimeError("submit_and_wait loop fell through")  # pragma: no cover
 
+    async def submit_job(
+        self,
+        *,
+        user_id: str,
+        operation: JobOperation,
+        model_source: str,
+        model_ref: str,
+        input: dict[str, Any],
+        chunking: ChunkingConfig | None = None,
+        trace_id: str | None = None,
+        job_meta: dict[str, Any] | None = None,
+    ):
+        """Phase 2b — fire-and-forget submit for the event-driven decouple: stamp
+        campaign attribution (the SAME chokepoint as submit_and_wait) then return
+        the SDK submit response (job_id) WITHOUT waiting. A `llm_job_terminal`
+        consumer resumes the work. Routing the decoupled path through this wrapper
+        keeps the attribution invariant — the raw SDK `submit_job` is still only
+        ever called HERE (guarded by test_submit_job_only_invoked_via_wrapper)."""
+        campaign_id = _campaign_id_ctx.get()
+        if campaign_id and (job_meta is None or "campaign_id" not in job_meta):
+            job_meta = {**(job_meta or {}), "campaign_id": campaign_id}
+        return await self._sdk.submit_job(
+            SubmitJobRequest(
+                operation=operation,
+                model_source=model_source,  # type: ignore[arg-type]
+                model_ref=model_ref,
+                input=input,
+                chunking=chunking,
+                trace_id=trace_id,
+                job_meta=job_meta,
+            ),
+            user_id=user_id,
+        )
+
 
 # ── Module-level singleton ────────────────────────────────────────────
 
@@ -160,6 +194,11 @@ def get_llm_client() -> LLMClient:
             auth_mode="internal",
             internal_token=settings.internal_service_token,
             user_id=None,  # per-call override required (multi-tenant)
+            # LLM re-arch Phase 2 — event-driven resume. wait_terminal wakes on
+            # the job's terminal event (loreweave:events:llm_job_terminal) instead
+            # of pure-polling, degrading to the poll on any Redis fault.
+            # Transparent: no call-site change; submit_and_wait stays the adapter.
+            event_redis_url=settings.redis_url,
         )
         _client = LLMClient(sdk)
     return _client

@@ -106,7 +106,9 @@ func (s *Server) Router() http.Handler {
 		r.Get("/usage-logs", s.listUsageLogs)
 		r.Get("/usage-logs/{usage_log_id}", s.getUsageLogDetail)
 		r.Get("/usage-summary", s.getUsageSummary)
-		r.Get("/account-balance", s.getAccountBalance)
+		// D-S4C-ACCOUNTBALANCES-DROP — the token-quota `/account-balance` endpoint
+		// is removed with its inert `account_balances` table; USD enforcement lives
+		// on the guardrail + platform-balance endpoints below.
 		// Phase 6a-γ — user-facing spend guardrail + platform balance.
 		r.Get("/guardrail", s.getGuardrail)
 		r.Patch("/guardrail", s.patchGuardrail)
@@ -227,6 +229,19 @@ func decryptWithKey(key []byte, cipherText string) ([]byte, error) {
 // /record path (which has no per-model cost). The real per-model cost arrives on
 // the usage stream (provider-registry actualUSD).
 const flatCostPerToken = 0.000002
+
+// recordCostUSD resolves the billable USD for an invocation: the authoritative
+// per-model `override` when present AND non-negative is honored verbatim (incl. a
+// free/local model's 0); otherwise a flat per-token fallback. A negative override
+// is a provider/parse bug and falls back to the flat rate (defensive). This is the
+// single source for the cost decision on BOTH the /record streaming path (no
+// override → always flat) and the usage-stream consumer (override = stream cost_usd).
+func recordCostUSD(tokens int, override *float64) float64 {
+	if override != nil && *override >= 0 {
+		return *override
+	}
+	return float64(tokens) * flatCostPerToken
+}
 
 // billingDecisionRecorded is the billing_decision for audit-only rows. The token
 // quota/credits/rejected decisions are retired (S4c) — USD enforcement is the
@@ -359,7 +374,9 @@ func recordUsageParams(in recordUsageRequest) usageLogParams {
 		ModelRef:      in.ModelRef,
 		InputTokens:   in.InputTokens,
 		OutputTokens:  in.OutputTokens,
-		CostUSD:       float64(in.InputTokens+in.OutputTokens) * flatCostPerToken,
+		// /record has no per-model cost (the comment on flatCostPerToken) → nil
+		// override → flat fallback.
+		CostUSD:       recordCostUSD(in.InputTokens+in.OutputTokens, nil),
 		RequestStatus: in.RequestStatus,
 		Purpose:       in.Purpose,
 		InputPayload:  in.InputPayload,
@@ -760,37 +777,6 @@ GROUP BY day ORDER BY day
 		"by_provider":           providerBreakdown,
 		"by_purpose":            purposeBreakdown,
 		"daily":                 dailyBreakdown,
-	})
-}
-
-func (s *Server) getAccountBalance(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
-		return
-	}
-	if _, err := s.pool.Exec(r.Context(), `INSERT INTO account_balances(owner_user_id) VALUES ($1) ON CONFLICT(owner_user_id) DO NOTHING`, userID); err != nil {
-		writeError(w, http.StatusInternalServerError, "M03_BALANCE_FAILED", "failed to initialize balance")
-		return
-	}
-	var tier string
-	var quota, quotaRemaining, credits int
-	var policyVersion string
-	err := s.pool.QueryRow(r.Context(), `
-SELECT tier_name, month_quota_tokens, month_quota_remaining_tokens, credits_balance, billing_policy_version
-FROM account_balances
-WHERE owner_user_id=$1
-`, userID).Scan(&tier, &quota, &quotaRemaining, &credits, &policyVersion)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "M03_BALANCE_FAILED", "failed to read balance")
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"tier_name":                    tier,
-		"month_quota_tokens":           quota,
-		"month_quota_remaining_tokens": quotaRemaining,
-		"credits_balance":              credits,
-		"billing_policy_version":       policyVersion,
 	})
 }
 

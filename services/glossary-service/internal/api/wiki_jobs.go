@@ -43,6 +43,35 @@ func (s *Server) getWikiGenJobStatus(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(body)
 }
 
+// getWikiGenConfig — GET /v1/glossary/books/{book_id}/wiki/gen-config. Proxies the
+// flat per-article wiki-gen cost estimate so the FE can show a pre-flight cost
+// estimate next to the spend cap (D-WIKI-P2B-COST-ESTIMATE). Owner-gated like the
+// sibling wiki proxies; the value itself is global config, but the route lives
+// under the book context the dialog is always opened in.
+func (s *Server) getWikiGenConfigStatus(w http.ResponseWriter, r *http.Request) {
+	userID, ok := s.requireUserID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "GLOSS_UNAUTHORIZED", "unauthorized")
+		return
+	}
+	bookID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		return
+	}
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantView) {
+		return
+	}
+	status, body, err := s.getWikiGenConfig(r.Context())
+	if err != nil {
+		slog.Error("getWikiGenConfig proxy", "error", err)
+		writeError(w, http.StatusBadGateway, "WIKI_DELEGATE", "generation service unavailable")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_, _ = w.Write(body)
+}
+
 // resumeWikiGenJob — POST /v1/glossary/books/{book_id}/wiki/job/{job_id}/resume.
 // Re-drives a budget-paused job. Propagates 202 / 404 (not owner) / 409 (not
 // paused).

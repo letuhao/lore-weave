@@ -676,11 +676,130 @@ func (a *openaiAdapter) ListModels(ctx context.Context, endpointBaseURL, secret 
 		// Fallback to static inventory if API call fails
 		return a.staticInventory, nil
 	}
-	data, ok := out["data"].([]any)
-	if !ok || len(data) == 0 {
-		return a.staticInventory, nil
+	// OpenAI-shape: {"data":[{"id":...}]}
+	if data, ok := out["data"].([]any); ok && len(data) > 0 {
+		return parseOpenAIModels(data), nil
 	}
-	return parseOpenAIModels(data), nil
+	// A `models`-keyed payload (no top-level `data`) is one of two shapes. The
+	// local-rerank backend on :28417 (and other LM-Studio-native servers) returns
+	// the id-keyed shape `{"models":[{"id":...,"state":...}]}` — entries carry
+	// `id`/`state`, NO `name`, NO `endpoints`. Cohere-compatible servers return
+	// `{"models":[{"name":...,"endpoints":[...]}]}`. Disambiguate by the entry
+	// keys (NOT by guessing the backend): an entry that has `id` but no `name`
+	// routes to the id parser, which classifies each id via classifyOpenAIModel
+	// (mapping a `*rerank*` id → rerank). This is the C2 live-smoke fix: the real
+	// :28417 response was previously dropped by parseCohereModels (keys on `name`).
+	if models, ok := out["models"].([]any); ok && len(models) > 0 {
+		if isLMStudioNativeIDShape(models) {
+			return parseLMStudioNativeIDModels(models), nil
+		}
+		// C2 (BL-2): Cohere-shape: {"models":[{"name":...,"endpoints":["rerank"|"embed"|"chat"]}]}.
+		return parseCohereModels(models), nil
+	}
+	return a.staticInventory, nil
+}
+
+// isLMStudioNativeIDShape reports whether a `models` array is the LM-Studio-
+// native id-keyed shape rather than the Cohere `name`+`endpoints` shape. The
+// discriminator is the entry keys: the id shape carries `id` and lacks `name`.
+// We inspect the first map-typed entry (the array is homogeneous in practice).
+func isLMStudioNativeIDShape(models []any) bool {
+	for _, item := range models {
+		m, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		_, hasName := m["name"].(string)
+		id, hasID := m["id"].(string)
+		return hasID && id != "" && !hasName
+	}
+	return false
+}
+
+// parseLMStudioNativeIDModels parses the LM-Studio-native id-keyed /v1/models
+// payload `{"models":[{"id":...,"state":...}]}`. Each `id` is classified via
+// classifyOpenAIModel (mapping a `*rerank*` id → rerank, `*embed*` → embedding,
+// etc.) and rerank gets the canonical boolean flag so the RerankModelPicker
+// filter (capability_flags @> {"rerank":true} OR _capability='rerank') finds it.
+func parseLMStudioNativeIDModels(models []any) []ModelInventory {
+	var out []ModelInventory
+	for _, item := range models {
+		m, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		id, _ := m["id"].(string)
+		if id == "" {
+			continue
+		}
+		cap := classifyOpenAIModel(id)
+		flags := map[string]any{
+			"_capability":   cap,
+			"_display_name": id,
+		}
+		if cap == "rerank" {
+			flags["rerank"] = true
+		}
+		out = append(out, ModelInventory{
+			ProviderModelName: id,
+			CapabilityFlags:   flags,
+		})
+	}
+	return out
+}
+
+// parseCohereModels parses a Cohere-shape /v1/models payload. Cohere advertises a
+// model's capabilities via its `endpoints` array (e.g. ["rerank"], ["embed"],
+// ["chat"]); we map that to the canonical capability token and tag the boolean
+// flag for rerank so the RerankModelPicker filter (capability_flags @> {"rerank":true}
+// OR _capability='rerank') finds discovered rerank models. Falls back to a name
+// substring when `endpoints` is absent.
+func parseCohereModels(models []any) []ModelInventory {
+	var out []ModelInventory
+	for _, item := range models {
+		m, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		name, _ := m["name"].(string)
+		if name == "" {
+			continue
+		}
+		cap := "chat"
+		if eps, ok := m["endpoints"].([]any); ok {
+			for _, e := range eps {
+				switch s, _ := e.(string); s {
+				case "rerank":
+					cap = "rerank"
+				case "embed":
+					if cap != "rerank" {
+						cap = "embedding"
+					}
+				}
+			}
+		}
+		if cap == "chat" && strings.Contains(strings.ToLower(name), "rerank") {
+			cap = "rerank"
+		}
+		flags := map[string]any{
+			"_capability":   cap,
+			"_display_name": name,
+		}
+		if cap == "rerank" {
+			flags["rerank"] = true
+		}
+		var ctxLen *int
+		if cl, ok := m["context_length"].(float64); ok && cl > 0 {
+			v := int(cl)
+			ctxLen = &v
+		}
+		out = append(out, ModelInventory{
+			ProviderModelName: name,
+			ContextLength:     ctxLen,
+			CapabilityFlags:   flags,
+		})
+	}
+	return out
 }
 
 func parseOpenAIModels(data []any) []ModelInventory {
@@ -699,6 +818,13 @@ func parseOpenAIModels(data []any) []ModelInventory {
 			"_capability":   cap,
 			"_display_name": id,
 		}
+		// C2: also set the canonical boolean flag for rerank so the picker's
+		// `capability_flags @> {"rerank":true}` filter matches (the canonical schema),
+		// in addition to the `_capability='rerank'` match. Keeps discovery aligned
+		// with C0/C1's RERANK_CAPABILITY token.
+		if cap == "rerank" {
+			flags["rerank"] = true
+		}
 		// Detect thinking models
 		if strings.HasPrefix(id, "o1") || strings.HasPrefix(id, "o3") || strings.HasPrefix(id, "o4") {
 			flags["thinking"] = true
@@ -713,6 +839,13 @@ func parseOpenAIModels(data []any) []ModelInventory {
 
 func classifyOpenAIModel(id string) string {
 	switch {
+	// C2 (BL-2): rerank discovery — a Cohere-shape `/v1/models` (or any OpenAI-
+	// compatible local-rerank backend) lists cross-encoder models whose id carries
+	// "rerank" (e.g. rerank-v3.5, rerank-english-v3.0, bge-reranker-v2-m3). Tag the
+	// canonical `rerank` capability (NOT "reranker") so the RerankModelPicker filter
+	// finds them. Checked first because a reranker id never collides with the others.
+	case strings.Contains(id, "rerank"):
+		return "rerank"
 	case strings.Contains(id, "embedding") || strings.Contains(id, "ada-002"):
 		return "embedding"
 	case strings.Contains(id, "dall-e") || strings.Contains(id, "gpt-image") || strings.Contains(id, "sora") || id == "chatgpt-image-latest":
@@ -1229,11 +1362,17 @@ func parseLMStudioNativeModels(mList []any) []ModelInventory {
 		if modelType == "embedding" || modelType == "text-embedding" {
 			cap = "embedding"
 		} else if strings.Contains(modelType, "rerank") || strings.Contains(key, "rerank") {
-			cap = "reranker"
+			// C2 (BL-2): canonical `rerank` token (was the divergent `reranker`), so a
+			// rerank model discovered via LM Studio inventory matches the picker filter.
+			cap = "rerank"
 		}
 		flags := map[string]any{
 			"_capability":   cap,
 			"_display_name": displayName,
+		}
+		if cap == "rerank" {
+			// canonical boolean flag → capability_flags @> {"rerank":true} also matches
+			flags["rerank"] = true
 		}
 		// Parse capabilities from LM Studio native format
 		if caps, ok := m["capabilities"].(map[string]any); ok {

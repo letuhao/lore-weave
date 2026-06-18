@@ -12,8 +12,14 @@ export function StageProgress({ stages }: { stages: CampaignProgress['stages'] }
     translation: t('monitor.stage.translation', { defaultValue: 'Translation' }),
     eval: t('monitor.stage.eval', { defaultValue: 'Eval' }),
   };
+  // #6 — ingest is a precondition verified at create (decision I), not a campaign
+  // stage; show it as an always-100% row for draft parity / context. total mirrors
+  // the knowledge stage's chapter count.
+  const total = stages.knowledge.total;
+  const ingest: StageCounts = { total, done: total, failed: 0, skipped: 0, in_progress: 0 };
   return (
     <div className="flex flex-col gap-3">
+      <StageRow label={t('monitor.stage.ingest', { defaultValue: 'Ingest (precondition)' })} counts={ingest} />
       {STAGES.map((s) => <StageRow key={s} label={label[s]} counts={stages[s]} />)}
     </div>
   );

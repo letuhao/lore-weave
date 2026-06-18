@@ -56,6 +56,9 @@ export interface CostEstimate {
     glossary_entities: number;
   };
   estimated_tokens: number;
+  // C13 — the pinned-injection slice of estimated_tokens (pinned_count × ~50 ×
+  // num_windows), already folded into estimated_tokens. 0 when nothing pinned.
+  estimated_pinned_tokens?: number;
   estimated_cost_usd_low: string;
   estimated_cost_usd_high: string;
   estimated_duration_seconds: number;
@@ -79,6 +82,10 @@ export interface ExtractionJobSummary {
   /** ISO-8601 UTC. */
   started_at: string;
   error_message: string | null;
+  /** C7 raise-cap (KN-7): the job's parallel-LLM concurrency cap. `null`
+   *  ⇒ unbounded (the BE default when the job was started without one);
+   *  the running-build control treats that as "unset" and offers a raise. */
+  concurrency_level: number | null;
 }
 
 // Mirrors BE JobStatus literal union.

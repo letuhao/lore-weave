@@ -2,7 +2,31 @@
 
 from __future__ import annotations
 
-from app.engine.prose_doc import text_to_tiptap_doc
+from app.engine.prose_doc import text_to_tiptap_doc, tiptap_doc_to_text
+
+
+# ── C27 — tiptap_doc_to_text (flywheel chapter-text extraction) ─────────
+
+
+def test_tiptap_doc_to_text_round_trips_via_snapshot():
+    doc = text_to_tiptap_doc("First para.\n\nSecond para.")
+    assert tiptap_doc_to_text(doc) == "First para.\n\nSecond para."
+
+
+def test_tiptap_doc_to_text_falls_back_to_inline_runs():
+    # a block with no _text snapshot (e.g. imported) → concatenate content[].text.
+    doc = {"type": "doc", "content": [
+        {"type": "paragraph", "content": [
+            {"type": "text", "text": "Hello "}, {"type": "text", "text": "world."},
+        ]},
+    ]}
+    assert tiptap_doc_to_text(doc) == "Hello world."
+
+
+def test_tiptap_doc_to_text_degrades_to_empty_on_garbage():
+    assert tiptap_doc_to_text(None) == ""
+    assert tiptap_doc_to_text({"type": "doc"}) == ""
+    assert tiptap_doc_to_text({"type": "doc", "content": []}) == ""
 
 
 def test_paragraphs_split_on_blank_line_with_text_snapshot():

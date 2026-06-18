@@ -136,3 +136,8 @@ class TestComposeProseLoop:
         reqs = _FakeClient.instances[0].requests
         assert str(reqs[1].model_ref) == "11111111-1111-1111-1111-111111111111"
         assert not getattr(reqs[1], "tools", None)  # composer offered no tools
+        # D-M3-COMPOSER-SUBSTREAM-OBSERVABILITY: the composer sub-stream mints +
+        # sends its own stream_job_id so the gateway persists a billing-neutral
+        # observability row (and a disconnect frees the slot via the cascade),
+        # exactly like the main chat helpers.
+        assert reqs[1].stream_job_id, "composer sub-stream must mint + send stream_job_id"

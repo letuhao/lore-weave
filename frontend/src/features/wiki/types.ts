@@ -21,6 +21,8 @@ export interface WikiArticleListItem {
   revision_count: number;
   updated_at: string;
   generation_status?: WikiGenerationStatus | null;
+  /** wiki-llm Phase-2 — a knowledge source changed; show an "Outdated" badge. */
+  is_knowledge_stale?: boolean;
 }
 
 export interface WikiArticleListResp {
@@ -97,6 +99,7 @@ export interface WikiArticleDetail {
   generation_status?: WikiGenerationStatus | null;
   generation_provenance?: WikiGenerationProvenance | null;
   generated_at?: string | null;
+  is_knowledge_stale?: boolean;
 }
 
 export interface WikiRevisionListItem {
@@ -140,6 +143,46 @@ export interface WikiSuggestionListResp {
   offset: number;
 }
 
+/* ── wiki-llm Phase-2 — change-control / "Knowledge updates" ──────────────── */
+
+/** One pending staleness entry in the change-feed (§5.3). */
+export interface WikiStalenessRow {
+  staleness_id: string;
+  article_id: string;
+  entity_id: string;
+  display_name: string;
+  kind: WikiKindSummary;
+  reason_code: string;
+  severity: 'hard' | 'structural' | 'content' | (string & {});
+  source_ref: Record<string, unknown>;
+  generation_status?: WikiGenerationStatus | null;
+  detected_at: string;
+}
+
+export interface WikiStalenessListResp {
+  items: WikiStalenessRow[];
+  total: number;
+}
+
+/** W2 — result of an owner-triggered rescan. `recipe_swept=false` ⇒ knowledge was
+ *  unreachable so only the kg-drift half ran. */
+export interface WikiStalenessSweepResp {
+  flagged: number;
+  kg_flagged: number;
+  recipe_swept: boolean;
+}
+
+/** W6b-2b — the source change diff for one staleness row. `available:false` when no
+ *  snapshot exists (pre-W6b-2 article) or knowledge couldn't supply the "after".
+ *  `approximate` for a block (chapter) source — its "after" re-retrieves. */
+export interface WikiStalenessDiff {
+  available: boolean;
+  source_type?: string;
+  before?: string;
+  after?: string;
+  approximate?: boolean;
+}
+
 /* ── wiki-llm M7b — LLM generation jobs ──────────────────────────────────── */
 
 export type WikiGenJobState =
@@ -149,6 +192,19 @@ export type WikiGenJobState =
   | 'complete'
   | 'failed'
   | 'cancelled';
+
+/** W4a — the per-entity pipeline pass the orchestrator emits as live progress. */
+export type WikiGenPass = 'context' | 'generate' | 'verify' | 'revise' | 'writeback';
+
+/** W4a — one entity's generation outcome + the detail the screen-③ table shows.
+ *  `outcome` is 'written' | 'suggestion' | 'skipped' | 'writeback_failed' | 'error'
+ *  | 'processing' (the transient in-flight row). */
+export interface WikiEntityResult {
+  outcome: string;
+  citations: number;
+  flags: number;
+  name: string | null;
+}
 
 /** Poll shape from GET /v1/glossary/books/{id}/wiki/job (knowledge via proxy). */
 export interface WikiGenJobStatus {
@@ -163,6 +219,17 @@ export interface WikiGenJobStatus {
   cost_spent_usd: string | number;
   max_spend_usd: string | number | null;
   error_message: string | null;
+  // W4a — per-entity results (entity_id → detail) + the live sub-step pointer.
+  // Optional for back-compat with a pre-W4a knowledge image.
+  results?: Record<string, WikiEntityResult>;
+  current_entity_id?: string | null;
+  current_pass?: WikiGenPass | string | null;
+}
+
+/** Flat per-article wiki-gen cost (D-WIKI-P2B-COST-ESTIMATE). Decimal serializes
+ *  as a string over JSON. */
+export interface WikiGenConfig {
+  cost_per_article_usd: string | number;
 }
 
 /**
@@ -173,5 +240,8 @@ export interface WikiGenJobStatus {
  */
 export type WikiGenerateResult =
   | { created: number; articles: unknown[] }
-  | { job_id: string; status: string }
-  | { action: 'none'; entities: number };
+  // D-WIKI-M7B-GEN-LIMIT — `total_matched`/`selected` let the FE warn when the
+  // genLimit cap silently dropped candidates (total_matched > selected). Both
+  // are optional for back-compat with older delegate responses.
+  | { job_id: string; status: string; total_matched?: number; selected?: number }
+  | { action: 'none'; entities: number; total_matched?: number };

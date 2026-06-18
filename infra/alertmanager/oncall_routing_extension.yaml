@@ -1,0 +1,67 @@
+# infra/alertmanager/oncall_routing_extension.yaml — L7.C.6 (RAID cycle 35)
+#
+# Routing extension that wires the cycle-35 PagerDuty escalation policies +
+# rotation schedules INTO cycle-34's infra/alertmanager/main.yaml routing tree.
+#
+# This file is DOCUMENTATION + CI cross-check, NOT a separate alertmanager
+# config file. alertmanager loads ONLY main.yaml; the active routing already
+# references the 5 service env-vars from cycle-34. This file lets the
+# cycle-35 verify step prove the routing maps to the escalation policies
+# declared in infra/pagerduty/escalation_policy.yaml.
+#
+# Q-L7C-1 LOCKED: PagerDuty V1.
+
+version: 1
+shipped_cycle: 35
+
+# Each alertmanager receiver name -> the PagerDuty escalation policy it
+# transitively reaches (via the integration key -> service -> policy chain).
+# verify-cycle-35.sh enforces:
+#   - Every receiver listed here exists in main.yaml
+#   - Every escalation_policy listed here exists in infra/pagerduty/escalation_policy.yaml
+receiver_to_escalation_policy:
+  pagerduty-sev0:     sev0-immediate
+  pagerduty-sev1:     sev1-15min-tta
+  pagerduty-sre:      sre-primary-rotation
+  pagerduty-security: security-oncall
+  pagerduty-data:     data-oncall
+
+# Every route rule in main.yaml maps to ONE of the above receivers. This
+# table makes the alert-class -> escalation timing chain explicit and CI-checkable.
+alert_class_routing:
+  - match: 'sev=0'
+    receiver: pagerduty-sev0
+    tta_target_minutes: 5
+    rationale: 'Per oncall-sla.md SEV0 TTA. Tight escalation policy sev0-immediate.'
+
+  - match: 'sev=1'
+    receiver: pagerduty-sev1
+    tta_target_minutes: 15
+    rationale: 'Per oncall-sla.md SEV1 TTA. Feature-freeze severity.'
+
+  - match: 'team=security OR alertname=~"LWAuth.*|LWCanonInjection.*|LWAuthHashMismatch"'
+    receiver: pagerduty-security
+    tta_target_minutes: 5
+    rationale: 'Security alerts get sev0-equivalent timing per security-oncall policy.'
+
+  - match: 'team=data OR alertname=~"LWMeta.*|LWProjection.*|LWOutbox.*"'
+    receiver: pagerduty-data
+    tta_target_minutes: 5
+    rationale: 'Data-integrity alerts get sev0-equivalent timing per SR2 §12AE.2.'
+
+  - match: '(default — no specific match)'
+    receiver: pagerduty-sre
+    tta_target_minutes: 30
+    rationale: 'Default SRE rotation handles everything else (sre-primary-rotation).'
+
+# Cross-reference enforcement
+references:
+  alertmanager_main: infra/alertmanager/main.yaml
+  pagerduty_escalation_policy: infra/pagerduty/escalation_policy.yaml
+  pagerduty_rotation_schedule: infra/pagerduty/rotation_schedule.yaml
+  pagerduty_services: infra/pagerduty/services.yaml
+  oncall_sla: docs/governance/oncall-sla.md
+  cycle_34_channels: infra/alertmanager/channels.yaml
+
+# Drift guard — exactly 5 receivers covered.
+expected_receiver_count: 5

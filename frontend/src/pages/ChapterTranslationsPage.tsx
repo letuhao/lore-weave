@@ -8,6 +8,7 @@ import { versionsApi, translationApi, type LanguageVersionGroup, type BookTransl
 import { VersionSidebar } from '@/features/translation/components/VersionSidebar';
 import { TranslationViewer } from '@/features/translation/components/TranslationViewer';
 import { SplitCompareView } from '@/features/translation/components/SplitCompareView';
+import { TranslateModal } from '@/pages/book-tabs/TranslateModal';
 
 export function ChapterTranslationsPage() {
   const { t } = useTranslation('translation');
@@ -144,6 +145,16 @@ export function ChapterTranslationsPage() {
         onRetranslate={() => setTranslateOpen(true)}
         onCompareToggle={() => setCompareMode(!compareMode)}
         compareMode={compareMode}
+      />
+
+      {/* Re-translate this chapter (the sidebar's action wires here). Scoped to the
+          current chapter; on completion the version list reloads to show the new draft. */}
+      <TranslateModal
+        open={translateOpen}
+        onClose={() => setTranslateOpen(false)}
+        bookId={bookId}
+        preselectedChapterIds={[chapterId]}
+        onJobCreated={() => { setTranslateOpen(false); void loadAll(); }}
       />
 
       {/* Content area */}

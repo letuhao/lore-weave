@@ -154,9 +154,14 @@ func (s *Server) Router() http.Handler {
 		// E0 — the single grant-resolution authority every service calls.
 		// Always 200 {grant_level}; `none` for missing/forbidden (no oracle, R4).
 		r.Get("/books/{book_id}/access", s.getBookAccess)
+		// G4 (W2) — world membership for the knowledge-service world-rollup
+		// subgraph. Owner-scoped by the ?user_id param (404 if not owned).
+		r.Get("/worlds/{world_id}/books", s.internalListWorldBooks)
+		r.Get("/book/jobs", s.reconcileImportJobs)                            // Unified Job Control Plane reconcile source (book-import, D-JOBS-BOOK-IMPORT-UNWIRED)
 		r.Get("/books/{book_id}/lexical-search", s.searchChapterTextInternal) // raw-search Phase 2 (lexical leg for the knowledge orchestrator)
 		r.Get("/books/{book_id}/chapters", s.getInternalBookChapters)
 		r.Get("/books/{book_id}/chapters/{chapter_id}", s.getInternalBookChapter)
+		r.Get("/books/{book_id}/chapters/{chapter_id}/blocks", s.getInternalChapterBlocks) // T2 translation segmentation — per-block rows
 		// P2 (hierarchical extraction T3) — knowledge-service consumes these
 		// for per-leaf orchestration. Spec D8 + scenes.go.
 		r.Get("/books/{book_id}/chapters/{chapter_id}/scenes", s.getInternalScenesByChapter)
@@ -210,6 +215,9 @@ func (s *Server) Router() http.Handler {
 
 			r.Get("/chapters", s.listChapters)
 			r.Post("/chapters", s.createChapter)
+			// Bulk plain-text create (folder/large import). Static path — chi matches
+			// it before /chapters/{chapter_id} so "bulk" isn't taken as a chapter_id.
+			r.Post("/chapters/bulk", s.bulkCreateChapters)
 
 			r.Route("/chapters/{chapter_id}", func(r chi.Router) {
 				r.Get("/", s.getChapter)
@@ -249,6 +257,22 @@ func (s *Server) Router() http.Handler {
 			r.Post("/view", s.recordBookView)
 			r.Get("/progress", s.listReadingProgress)
 			r.Get("/stats", s.getBookStats)
+		})
+	})
+
+	// C20 — world container. Owner-scoped grouping of books (no collaborators
+	// on worlds; per-book grants are unchanged). World creation auto-provisions
+	// a hidden sort_order-0 bible chapter (ARCH-REVIEW LOCK).
+	r.Route("/v1/worlds", func(r chi.Router) {
+		r.Post("/", s.createWorld)
+		r.Get("/", s.listWorlds)
+		r.Route("/{world_id}", func(r chi.Router) {
+			r.Get("/", s.getWorld)
+			r.Patch("/", s.patchWorld)
+			r.Delete("/", s.deleteWorld)
+			r.Get("/books", s.listWorldBooks)
+			r.Post("/books", s.moveBookIntoWorld)
+			r.Delete("/books/{book_id}", s.removeBookFromWorld)
 		})
 	})
 	return r
@@ -345,7 +369,13 @@ func parseLimitOffset(r *http.Request) (limit, offset int) {
 	limit = 20
 	offset = 0
 	if v := r.URL.Query().Get("limit"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 100 {
+		// Clamp to the 100 max instead of falling back to the default 20: a
+		// consumer asking for >100 (e.g. the translate wizard) wants "as many as
+		// allowed", not a silent drop to 20. (chapter-list-limit100-fallback-20-bug)
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			if n > 100 {
+				n = 100
+			}
 			limit = n
 		}
 	}
@@ -552,9 +582,11 @@ func (s *Server) listBooksByLifecycle(w http.ResponseWriter, r *http.Request, li
 	ctx := r.Context()
 	// accessFilter selects owned rows, plus collaborated rows when includeShared.
 	// access_level is computed per row so the FE can distinguish owned vs shared.
-	accessFilter := "b.owner_user_id=$1"
+	// is_bible=false excludes the auto-created hidden world-bible container books
+	// (C20) — they anchor lore but must never appear in the user's library.
+	accessFilter := "b.owner_user_id=$1 AND b.is_bible=false"
 	if includeShared {
-		accessFilter = "(b.owner_user_id=$1 OR EXISTS(SELECT 1 FROM book_collaborators bc WHERE bc.book_id=b.id AND bc.user_id=$1))"
+		accessFilter = "(b.owner_user_id=$1 OR EXISTS(SELECT 1 FROM book_collaborators bc WHERE bc.book_id=b.id AND bc.user_id=$1)) AND b.is_bible=false"
 	}
 	rows, err := s.pool.Query(ctx, `
 SELECT b.id,b.owner_user_id,b.title,b.description,b.original_language,b.summary,b.lifecycle_state,b.trashed_at,b.purge_eligible_at,b.created_at,b.updated_at,
@@ -639,6 +671,7 @@ func (s *Server) getBookByID(w http.ResponseWriter, ctx context.Context, bookID,
 	var id, owner uuid.UUID
 	var title, state, accessLevel string
 	var desc, lang, summary *string
+	var worldID *uuid.UUID
 	var trashedAt, purgeAt, createdAt, updatedAt *time.Time
 	var chapterCount int
 	var genreTags []string
@@ -647,12 +680,12 @@ func (s *Server) getBookByID(w http.ResponseWriter, ctx context.Context, bookID,
 	err := s.pool.QueryRow(ctx, `
 SELECT b.id,b.owner_user_id,b.title,b.description,b.original_language,b.summary,b.lifecycle_state,b.trashed_at,b.purge_eligible_at,b.created_at,b.updated_at,
   COALESCE((SELECT COUNT(*) FROM chapters c WHERE c.book_id=b.id AND c.lifecycle_state='active'),0) AS chapter_count,
-  b.genre_tags, b.wiki_settings, b.extraction_profile,
+  b.genre_tags, b.wiki_settings, b.extraction_profile, b.world_id,
   CASE WHEN b.owner_user_id=$2 THEN 'owner'
        ELSE COALESCE((SELECT role FROM book_collaborators bc WHERE bc.book_id=b.id AND bc.user_id=$2),'none') END AS access_level
 FROM books b
 WHERE b.id=$1
-`, bookID, caller).Scan(&id, &owner, &title, &desc, &lang, &summary, &state, &trashedAt, &purgeAt, &createdAt, &updatedAt, &chapterCount, &genreTags, &wikiSettings, &extractionProfile, &accessLevel)
+`, bookID, caller).Scan(&id, &owner, &title, &desc, &lang, &summary, &state, &trashedAt, &purgeAt, &createdAt, &updatedAt, &chapterCount, &genreTags, &wikiSettings, &extractionProfile, &worldID, &accessLevel)
 	if errors.Is(err, pgx.ErrNoRows) || state == "purge_pending" {
 		writeError(w, http.StatusNotFound, "BOOK_NOT_FOUND", "book not found")
 		return
@@ -691,10 +724,13 @@ WHERE b.id=$1
 		"genre_tags":         genreTags,
 		"wiki_settings":      json.RawMessage(wikiSettings),
 		"extraction_profile": json.RawMessage(extractionProfile),
-		"trashed_at":         trashedAt,
-		"purge_eligible_at":  purgeAt,
-		"created_at":         createdAt,
-		"updated_at":         updatedAt,
+		// W6 (G3) — the world this book is grouped into (NULL = standalone), so the
+		// book workspace can surface an "open in world" backlink.
+		"world_id":          worldID,
+		"trashed_at":        trashedAt,
+		"purge_eligible_at": purgeAt,
+		"created_at":        createdAt,
+		"updated_at":        updatedAt,
 	})
 }
 
@@ -973,6 +1009,31 @@ func (s *Server) listChapters(w http.ResponseWriter, r *http.Request) {
 			where += fmt.Sprintf(" AND sort_order=$%d", len(args))
 		}
 	}
+	// editorial_status filter (B1 ChapterListBrowser / campaign published-only). Mirrors
+	// getInternalBookChapters: "published" additionally requires a pinned revision.
+	switch es := r.URL.Query().Get("editorial_status"); es {
+	case "", "all":
+		// no filter
+	case "draft", "published":
+		args = append(args, es)
+		where += fmt.Sprintf(" AND editorial_status=$%d", len(args))
+		if es == "published" {
+			where += " AND published_revision_id IS NOT NULL"
+		}
+	default:
+		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "invalid editorial_status")
+		return
+	}
+	// q — case-insensitive substring over title + original_filename (B1 browser search).
+	// Bounded by the 256-rune cap; a small per-book table makes the seq ILIKE cheap.
+	if q := strings.TrimSpace(r.URL.Query().Get("q")); q != "" {
+		if len([]rune(q)) > maxSearchQueryRunes {
+			writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "query too long")
+			return
+		}
+		args = append(args, escapeLikePattern(q))
+		where += fmt.Sprintf(" AND (title ILIKE $%d OR original_filename ILIKE $%d)", len(args), len(args))
+	}
 	countArgs := append([]any{}, args...)
 	var total int
 	_ = s.pool.QueryRow(r.Context(), `SELECT COUNT(*) FROM chapters WHERE `+where, countArgs...).Scan(&total)
@@ -1194,22 +1255,22 @@ WHERE c.id=$1 AND c.book_id=$2
 		return
 	}
 	writeJSON(w, status, map[string]any{
-		"chapter_id":           id,
-		"book_id":              bid,
-		"title":                nullableString(title),
-		"original_filename":    fn,
-		"original_language":    lang,
-		"content_type":         ctype,
-		"byte_size":            size,
-		"sort_order":           order,
-		"draft_updated_at":     draftUpdated,
-		"draft_revision_count": revCount,
-		"lifecycle_state":      state,
-		"trashed_at":           trashedAt,
-		"purge_eligible_at":    purgeAt,
-		"created_at":           createdAt,
-		"updated_at":           updatedAt,
-		"editorial_status":     editorialStatus,
+		"chapter_id":            id,
+		"book_id":               bid,
+		"title":                 nullableString(title),
+		"original_filename":     fn,
+		"original_language":     lang,
+		"content_type":          ctype,
+		"byte_size":             size,
+		"sort_order":            order,
+		"draft_updated_at":      draftUpdated,
+		"draft_revision_count":  revCount,
+		"lifecycle_state":       state,
+		"trashed_at":            trashedAt,
+		"purge_eligible_at":     purgeAt,
+		"created_at":            createdAt,
+		"updated_at":            updatedAt,
+		"editorial_status":      editorialStatus,
 		"published_revision_id": publishedRevID,
 	})
 }
@@ -2217,18 +2278,77 @@ FROM chapter_blocks WHERE chapter_id=$1
 `, chapterID).Scan(&textContent, &blockIndices)
 	ChapterFetchTotal.WithLabelValues(OutcomeOK).Inc()
 	writeJSON(w, http.StatusOK, map[string]any{
-		"chapter_id":        chapterID,
-		"title":             nullableString(title),
-		"sort_order":        sortOrder,
-		"original_language": lang,
-		"draft_updated_at":  draftUpdated,
-		"body":              body,
-		"body_format":       "json",
-		"text_content":      textContent,
-		"block_indices":     blockIndices,
-		"editorial_status":  editorialStatus,
+		"chapter_id":            chapterID,
+		"title":                 nullableString(title),
+		"sort_order":            sortOrder,
+		"original_language":     lang,
+		"draft_updated_at":      draftUpdated,
+		"body":                  body,
+		"body_format":           "json",
+		"text_content":          textContent,
+		"block_indices":         blockIndices,
+		"editorial_status":      editorialStatus,
 		"published_revision_id": publishedRevID,
 	})
+}
+
+// getInternalChapterBlocks — T2 translation segmentation. Returns the chapter's
+// extracted blocks (one row per Tiptap block, trigger-maintained from the draft)
+// ordered by block_index, each with content_hash for the segmenter's dirty-detection.
+// Internal-token only; IDOR + lifecycle guarded (chapter ∈ book ∈ active).
+func (s *Server) getInternalChapterBlocks(w http.ResponseWriter, r *http.Request) {
+	bookID, ok := parseUUIDParam(w, r, "book_id")
+	if !ok {
+		return
+	}
+	chapterID, ok := parseUUIDParam(w, r, "chapter_id")
+	if !ok {
+		return
+	}
+	var exists bool
+	if err := s.pool.QueryRow(r.Context(),
+		`SELECT EXISTS(SELECT 1 FROM chapters WHERE id=$1 AND book_id=$2 AND lifecycle_state='active')`,
+		chapterID, bookID).Scan(&exists); err != nil {
+		writeError(w, http.StatusInternalServerError, "CHAPTER_NOT_FOUND", "failed to load chapter")
+		return
+	}
+	if !exists {
+		writeError(w, http.StatusNotFound, "CHAPTER_NOT_FOUND", "chapter not found")
+		return
+	}
+	// COALESCE text_content/content_hash: non-text blocks (image/hr/codeBlock) have no
+	// `_text` → the extraction trigger leaves them NULL; scanning NULL into a Go string
+	// would 500 the whole chapter. Empty string is the right segmenter input for them.
+	rows, err := s.pool.Query(r.Context(),
+		`SELECT block_index, COALESCE(block_type,''), COALESCE(text_content,''),
+		        COALESCE(content_hash,''), heading_context
+		 FROM chapter_blocks WHERE chapter_id=$1 ORDER BY block_index`, chapterID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "CHAPTER_NOT_FOUND", "failed to load blocks")
+		return
+	}
+	defer rows.Close()
+	type blk struct {
+		BlockIndex     int32   `json:"block_index"`
+		BlockType      string  `json:"block_type"`
+		TextContent    string  `json:"text_content"`
+		ContentHash    string  `json:"content_hash"`
+		HeadingContext *string `json:"heading_context"`
+	}
+	out := []blk{}
+	for rows.Next() {
+		var b blk
+		if err := rows.Scan(&b.BlockIndex, &b.BlockType, &b.TextContent, &b.ContentHash, &b.HeadingContext); err != nil {
+			writeError(w, http.StatusInternalServerError, "CHAPTER_NOT_FOUND", "failed to scan block")
+			return
+		}
+		out = append(out, b)
+	}
+	if err := rows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, "CHAPTER_NOT_FOUND", "failed to read blocks")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"chapter_id": chapterID, "blocks": out})
 }
 
 // getInternalChapterRevisionText — Canon Model CM3a. Returns a SPECIFIC
