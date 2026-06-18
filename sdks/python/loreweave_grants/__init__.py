@@ -172,6 +172,7 @@ class GrantClient:
 
     async def _revoke_loop(self, redis_url: str, stream: str) -> None:
         import redis.asyncio as aioredis  # lazy — only services that start the consumer need redis
+        from redis.exceptions import TimeoutError as RedisTimeoutError
 
         r = aioredis.from_url(redis_url, decode_responses=True)
         last_id = "$"  # tail only NEW events; pre-existing entries are stale for a cache
@@ -182,7 +183,13 @@ class GrantClient:
                     resp = await r.xread({stream: last_id}, block=5000, count=100)
                 except asyncio.CancelledError:
                     raise
-                except Exception:  # noqa: BLE001 — transient redis blip: back off + retry
+                except RedisTimeoutError:
+                    # Idle BLOCK timeout (redis-py 8 raises on a quiet stream rather
+                    # than returning empty) — the normal "no new events this window"
+                    # signal, NOT an error. Re-block silently (D-REDIS8-CONSUMERS);
+                    # a real outage surfaces as ConnectionError below.
+                    continue
+                except Exception:  # noqa: BLE001 — genuine transient redis blip: back off + retry
                     logger.warning("grant-revoke consumer read failed; retrying", exc_info=True)
                     await asyncio.sleep(1.0)
                     continue
