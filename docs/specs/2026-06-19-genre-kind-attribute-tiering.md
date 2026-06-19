@@ -29,7 +29,7 @@
 | **entity↔genre** | which genres this entity carries | `entity_genres` |
 
 **Locked terms:**
-- **"entity"** → *only* the Layer-2 glossary lore object. Never a kind/genre/attribute.
+- **"entity"** → *only* the Layer-2 glossary lore object. Never a kind/genre/attribute. **Entities live only inside a book (the sovereign instance)** — System/User standards hold no entities.
 - **kind / genre / attribute-definition** → **"definitions"** (Layer-1 tiered ontology). They are first-class objects (ER "entities") but we never call them "entities."
 - **"attribute"** → never bare; always **"attribute definition"** (schema) or **"attribute value"** (data).
 - **"glossary"** → the *container/feature*, not a single thing.
@@ -75,30 +75,39 @@ SS-4 (2026-06-19) already corrected the *kind* row: split `system_kinds` / `user
 
 ---
 
-## 3. Resolver
+## 3. Resolver — two moments (scaffold at adopt, read book-local)
 
-For entity `E` of kind `K` in book `B`:
+Under the standards→instance model (§3b), resolution happens in **two moments**, not as a live cross-tier read:
+
+**(a) At adopt — scaffold from the standards into the book.** When a book first uses a kind/genre, the adopt operation resolves the **System** and **User** *standards* by `code` (System base, then the book owner's User additions/overrides — D6 by-code, D7 owner's-user) and **copies the result into the book's own tier**. From then on, the definition is the book's — owned and frozen.
+
+**(b) At read — book-local, single-tier.** The form is read entirely from the book's own definitions; **no cross-tier merge**:
 
 ```
-activeGenres = E.genre_override (if any) else B.default_genres        # D2
-applicable   = (activeGenres ∩ kind_genres(K)) ∪ {universal}          # D4, sparse via D3
-for g in applicable:
-    attrs(K,g) = mergeByCode(                                          # System→User→Book, D1
-        system_attributes  where (kind=K, genre=g),
-        user_attributes    where (kind=K, genre=g),
-        book_attributes    where (kind=K, genre=g, book=B))           # higher tier shadows by code
-form = concat over g of namespace(attrs(K,g), g)                      # D5: code·genre on cross-genre clash
+activeGenres = E.genre_override (if any) else B.active_genres          # D2
+applicable   = (activeGenres ∩ book_kind_genres(K)) ∪ {universal}     # D4, sparse via D3
+form         = book_attributes where (book_kind = K, book_genre ∈ applicable)
+               displayed namespaced by genre on same-code clash        # D5 — free: distinct rows
 ```
 
-- **Complexity:** linear in the book's own ontology size — `O(|B.genres| × |attrs(K, ·)|)`, bounded per book; reads served from `entity_snapshot`.
-- **Reads are boundary-local (D8):** a book resolves over its **own adopted copies** of the tiers (self-contained), not live-current upstream. `mergeByCode` runs over the book's frozen layers; upstream changes arrive only via on-demand sync (§3b). This is what makes resolution boundary-bounded and a book reproducible.
-- **Cache key:** resolved definitions per `(book, kind, active-genres)`; invalidate on a sync-apply (not on upstream edits — those don't reach the book until adopted).
+- **Single-tier read** — a sovereign book reads its own ontology; reproducible, no cross-tier join. Served from `entity_snapshot`.
+- **The merge runs once, at adopt (a)** — applying D6 (identity by `code`) + D7 (owner's User tier). Each copied row keeps a `source_ref` so Sync (§3b) can later diff it against its standard.
+- **Complexity:** `O(|active genres| × |attrs(K, ·)|)` within the book — bounded, linear.
 
 ---
 
 ## 3b. Boundary independence & change propagation (D8)
 
-**Principle (the package/dependency model):** boundaries (a book, a user) are independent. You **depend by copy**, not by live link. A publisher (System) **cannot mutate or delete a consumer's data**. Consumers **adopt upgrades on demand**, never automatically. Each boundary holds its **own frozen copy** of the definitions it has adopted; nothing flows in by itself.
+**Principle (standards → sovereign instance).** System and User are **standards** (templates), not shared live data — they hold *definitions only, no entities*. A **book is a sovereign instance** scaffolded from those standards, exactly like a project generated from a starter: it copies what it needs in, then **owns and evolves it independently**. This is *instantiation, not duplication* — nobody calls a generated `pom.xml` a "duplicate" of the Spring Boot starter.
+
+| Spring Boot | LoreWeave |
+|---|---|
+| `start.spring.io` / a starter | **System** standard |
+| your team's archetype/scaffold | **User** standard (the book owner's — D7) |
+| a generated, committed project | **Book** instance |
+| bumping a starter dep later, when you choose | **Sync** (on-demand) |
+
+Consequences: a standard (System/User) **cannot mutate or delete an instance's data**; the book **adopts upgrades on demand**, never automatically; **entities belong to the book** (Layer-2 lore lives only in the instance — System/User hold no entities).
 
 **What happens on each upstream operation:**
 
@@ -114,7 +123,7 @@ form = concat over g of namespace(attrs(K,g), g)                      # D5: code
 - Adopted copies carry a **`source_ref`** (which upstream def they came from) so the sync surface can diff & offer — without ever auto-applying.
 - **No hard delete across boundaries** — a `deprecated_at` / retired state on definitions; hard-delete only of a boundary's *own* unused, un-adopted rows.
 - **Adoption is lazy** (approved): a book copies a definition on **first use**, plus an explicit "manage this book's adopted set" surface.
-- **Books are self-contained** (approved, strong isolation): a book copies everything it uses (system base included) → maximal reproducibility (the per-book KG schema), bounded duplication (dedup'd by `entity_snapshot` on reads).
+- **Books are sovereign instances** (approved): a book scaffolds everything it uses (system base included) into its own tier → maximal reproducibility (the per-book KG schema). This is **not** "duplication to minimize" — it is the architecture working as intended (a self-contained project, like a generated repo). No upstream version-pinning; the book owns its copy.
 - The resolver falls back to `entity_snapshot` for anything whose source was retired.
 
 **Edge cases this principle resolves** (from the design stress-test):
@@ -126,49 +135,41 @@ form = concat over g of namespace(attrs(K,g), g)                      # D5: code
 
 ## 4. Schema (sketch — DDL refined per build slice)
 
-Separate table per `(tier, level)` (consistent with the SS-4 explicit-system-tables decision). Polymorphic `(kind, genre)` references use **nullable per-tier columns + a CHECK that exactly one tier-ref is non-null** (the SS-7 pattern — preserves FK integrity; no soft references).
+**Each tier is self-contained — no polymorphic refs.** Because a book is a sovereign instance (§3b) and adoption copies a dependency *down* into your tier before you attach to it, every reference is **diagonal** (system→system, user→user, book→book) and is a **plain FK within the tier**. The "9 combinations" stays true *conceptually* (you may customize any kind×genre) but is always *physically* tier-local. Cross-tier relationship exists only as a nullable **`source_ref`** for Sync, never as a live FK. (This is what kills the old nullable-per-tier + CHECK polymorphism — and the SS-7 polymorphic entity repoint with it.)
 
 ```
--- GENRE level (mirror for user_/book_; book_genres adds book_id + E0 gating)
-system_genres(genre_id, code UNIQUE, name, description, icon, color, is_hidden, sort_order, ...)
-user_genres  (genre_id, owner_user_id, code, ..., UNIQUE(owner_user_id, code))
-book_genres  (genre_id, book_id,       code, ..., UNIQUE(book_id, code))
+-- GENRE — mirror per tier; every adopted (user/book) row carries source_ref for Sync
+system_genres(genre_id, code UNIQUE, name, description, icon, color, is_hidden, sort_order, deprecated_at, ...)
+user_genres  (genre_id, owner_user_id, code, ..., source_ref?, deprecated_at, UNIQUE(owner_user_id, code))
+book_genres  (genre_id, book_id,       code, ..., source_ref?, deprecated_at, UNIQUE(book_id, code))
 
--- KIND level — SS-4 shipped system_kinds + user_kinds; book_kinds is SS-5
--- (existing; unchanged except they join the kind_genres link below)
+-- KIND — mirror per tier (SS-4 shipped system_kinds + user_kinds; book_kinds is SS-5)
+--   + source_ref?, deprecated_at
 
--- KIND ↔ GENRE support link (D4). The link itself is tiered (who declared it).
-kind_genres(
-  link_id,
-  -- polymorphic kind ref (exactly one non-null + CHECK):
-  system_kind_id?, user_kind_id?, book_kind_id?,
-  -- polymorphic genre ref (exactly one non-null + CHECK):
-  system_genre_id?, user_genre_id?, book_genre_id?,
-  owner_user_id?, book_id?,          -- the tier that declared this support
-  UNIQUE(<kind ref>, <genre ref>, <declaring scope>)
-)
+-- KIND ↔ GENRE support link (D4) — per tier, plain FKs within the tier
+system_kind_genres(system_kind_id FK, system_genre_id FK, UNIQUE(system_kind_id, system_genre_id))
+user_kind_genres  (user_kind_id   FK, user_genre_id   FK, UNIQUE(user_kind_id,   user_genre_id))
+book_kind_genres  (book_kind_id   FK, book_genre_id   FK, UNIQUE(book_kind_id,   book_genre_id))
 
--- ATTRIBUTE level — keyed by (kind × genre × code), tiered. Reconciles SS-4's
--- system_kind_attributes / user_kind_attributes (which were keyed by kind only).
-system_attributes / user_attributes / book_attributes (
-  attr_id,
-  system_kind_id?/user_kind_id?/book_kind_id?,     -- polymorphic kind ref + CHECK
-  system_genre_id?/user_genre_id?/book_genre_id?,  -- polymorphic genre ref + CHECK
-  code, name, description,        -- description is GENRE-SPECIFIC
-  field_type, is_required, sort_order, options[],
-  owner_user_id?/book_id?,        -- tier ownership (per table)
-  deleted_at, ...,
-  UNIQUE(<kind ref>, <genre ref>, code, <tier scope>)
-)
+-- ATTRIBUTE — per tier, plain FKs to that tier's kind + genre
+system_attributes(attr_id, system_kind_id FK, system_genre_id FK,
+  code, name, description,                     -- description is GENRE-SPECIFIC
+  field_type, is_required, sort_order, options[], deprecated_at,
+  UNIQUE(system_kind_id, system_genre_id, code))
+user_attributes  (attr_id, user_kind_id FK, user_genre_id FK, ..., source_ref?,
+  UNIQUE(user_kind_id, user_genre_id, code))
+book_attributes  (attr_id, book_kind_id FK, book_genre_id FK, ..., source_ref?,
+  UNIQUE(book_kind_id, book_genre_id, code))
+-- D5 keep-both is FREE: same `code` in two genres = two rows (different *_genre_id).
 
--- GENRE attachment (D2)
-book_genres_active(book_id, genre_ref...)   -- the book's DEFAULT active genre set
-entity_genres(entity_id, genre_ref...)      -- per-entity override (presence ⇒ overrides book default)
+-- GENRE attachment (D2) — book-local
+book_active_genres(book_id, book_genre_id FK)   -- the book's DEFAULT active set
+entity_genres(entity_id, book_genre_id FK)      -- per-entity override (presence ⇒ replaces default)
 
--- 'universal' is a seeded system_genre that always applies (every kind supports it).
+-- 'universal' — a system genre, scaffolded into every book, mandatory/always-applied.
 ```
 
-- **Entity kind/attr-value references** (`glossary_entities.kind_id`, `entity_attribute_values.attr_def_id`) become tier-aware (nullable per-tier + discriminator) — this is the **SS-7** polymorphic repoint; until then they keep referencing `system_kinds` as today.
+- **Entity references are book-local plain FKs** — `glossary_entities.kind_id → book_kinds`, `entity_attribute_values.attr_def_id → book_attributes`. The old **SS-7 polymorphic entity repoint is no longer needed**; sovereignty makes it a plain in-book FK. (SS-4's `glossary_entities.kind_id → system_kinds` becomes `→ book_kinds` once books own their kinds.)
 
 ---
 
@@ -200,7 +201,7 @@ What SS-4 shipped is a correct slice; this expands it:
 | Table | Slice | Note |
 |---|---|---|
 | `system_genres` · `user_genres` · `book_genres` | G1 | the genre tier (fully symmetric with kind); `genre_groups` data migrates into `book_genres` |
-| `kind_genres` | G2 | explicit kind↔genre support link (D4) |
+| `system_kind_genres` · `user_kind_genres` · `book_kind_genres` | G2 | explicit kind↔genre support link (D4) — per-tier plain FKs |
 | `book_active_genres` (book default set) + `entity_genres` (per-entity override) | G2 | genre attachment (D2) |
 | `book_kinds` · `book_attributes` | SS-5 | book tier of kind + attribute |
 
@@ -210,7 +211,7 @@ What SS-4 shipped is a correct slice; this expands it:
 |---|---|---|
 | `system_kind_attributes` / `user_kind_attributes` | **add genre dimension** → keyed by `(kind, genre, code)` (become `system_attributes`/`user_attributes`); backfill onto a seeded `universal` genre | G3 |
 | all definition tables | add `source_ref` (copy-on-adopt diff) + `deprecated_at` (deprecate-not-delete) | G1–G4 |
-| `glossary_entities.kind_id`, `entity_attribute_values.attr_def_id` | tier-aware polymorphic refs (+ `entity_genres` link) | SS-7 |
+| `glossary_entities.kind_id` → `book_kinds`, `entity_attribute_values.attr_def_id` → `book_attributes` | **book-local plain FK** (sovereignty — no polymorphic repoint) + `entity_genres` link | SS-5 |
 
 **🗑 RETIRE / migrate away**
 
@@ -228,7 +229,7 @@ What SS-4 shipped is a correct slice; this expands it:
 3. **G3 — Attribute reconciliation:** add genre dimension to the attribute tables (rename/rework `*_kind_attributes` → `*_attributes` keyed by `(kind, genre, code)`); backfill onto `universal`.
 4. **G4 — Resolver + merge (keep-both-namespaced)** + cache + snapshot integration.
 5. **G5 — Frontend:** the `design-drafts/` UX (manage workspace, attribute matrix, entity form) — full rework per the approved drafts.
-6. **(later) SS-5 book_kinds · SS-7 polymorphic entity ref + restore bulk-merge/assistant tiering · KG `relation` level.**
+6. **(later) SS-5 book tier** (book_kinds/genres/attributes) **+ repoint entity refs to book-local FKs · restore bulk-merge/assistant tiering at the tiered model · KG `relation` level.** (The old "SS-7 polymorphic repoint" is dropped — sovereignty makes entity refs plain in-book FKs.)
 
 Each slice: additive + idempotent migrations, real-PG tests incl. the tenancy + merge guards, `/amaw` for the data-shape migrations (G3).
 
