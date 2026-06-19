@@ -258,6 +258,12 @@ func (s *Server) Router() http.Handler {
 					})
 				})
 			})
+			// G5: Sync — on-demand diff (View) + per-row apply (Manage) of the book's
+			// adopted standards against their upstream source (book_sync_handler.go).
+			r.Route("/sync", func(r chi.Router) {
+				r.Get("/available", s.getBookSyncAvailable)
+				r.Post("/apply", s.applyBookSync)
+			})
 			// NOTE: the legacy per-book /genres routes (genre_groups) were RETIRED in
 			// G4e — genre_groups is dropped, replaced by the tiered *_genres +
 			// book_active_genres model. Book-tier genre CRUD lives under

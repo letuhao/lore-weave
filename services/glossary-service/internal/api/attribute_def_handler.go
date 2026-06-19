@@ -27,6 +27,11 @@ import (
 // attrContentHash mirrors the seed's md5 format
 // (md5(code|name|description|field_type|is_required|options)) so the SAME content
 // yields the SAME hash across tiers — the basis for G5 Sync's change-detection.
+//
+// INVARIANT (G5): every path that mutates a standard's semantic fields MUST recompute
+// content_hash, or Sync goes blind to that edit. Wired today on user create/patch
+// (this file + user_genre_handler.go). A future system-tier admin-edit handler must
+// do the same — see D-GKA-SYNC-HASH-ON-ADMIN-EDIT.
 func attrContentHash(code, name string, desc *string, fieldType string, isRequired bool, options []string) string {
 	d := ""
 	if desc != nil {
@@ -373,6 +378,16 @@ func (s *Server) patchUserAttribute(w http.ResponseWriter, r *http.Request) {
 	}
 	if a.Options == nil {
 		a.Options = []string{}
+	}
+	// Recompute content_hash from the post-update fields so G5 Sync detects this edit
+	// (D-GKA-HASH-REFRESH). The create path already sets it; patch must keep it fresh,
+	// else a book that adopted this attr never sees "update available".
+	if _, err := s.pool.Exec(r.Context(),
+		`UPDATE user_attributes SET content_hash = $1 WHERE attr_id = $2`,
+		attrContentHash(a.Code, a.Name, a.Description, a.FieldType, a.IsRequired, a.Options), attrID,
+	); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "content-hash refresh failed")
+		return
 	}
 	writeJSON(w, http.StatusOK, a)
 }

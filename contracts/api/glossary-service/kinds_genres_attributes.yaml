@@ -56,6 +56,8 @@ tags:
     description: Kind↔genre association links (per user-kind)
   - name: book-ontology
     description: Book tier — adopt (copy-down) + book-local read + book-tier CRUD (genres/kinds/attributes/active-genres). Manage-gated writes; View-gated read.
+  - name: sync
+    description: On-demand, pull-based diff/apply of a book's adopted standards against their upstream source (content_hash change-detection). View-gated diff; Manage-gated apply.
 
 paths:
   /v1/glossary/genres:
@@ -649,6 +651,58 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /v1/glossary/books/{book_id}/sync/available:
+    parameters:
+      - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [sync]
+      summary: Diff the book's adopted standards against their upstream source (View)
+      description: |
+        For every adopted book row (`source_ref` set, not deprecated), compares the
+        `source_hash` frozen at adopt against the source's CURRENT content hash:
+        `update_available` when the live source diverges, `source_retired` when the
+        source was deleted/purged (the book copy stays frozen). Up-to-date rows are
+        omitted. Read-only — View-gated. All pull-based, never auto-pushed (D8).
+      responses:
+        '200':
+          description: Pending updates (empty when everything is in sync)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SyncAvailable' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/books/{book_id}/sync/apply:
+    parameters:
+      - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [sync]
+      summary: Apply per-row sync choices to the book ontology (Manage)
+      operationId: applyBookSync
+      description: |
+        Per-row resolution of pending updates. `take_theirs` overwrites the book row's
+        semantic fields (the hash surface: genre→name; kind→name+description;
+        attribute→name+description+field_type+is_required+options) and refreshes
+        `source_hash`. `keep_mine` bumps `source_hash` only — accepting divergence to
+        silence the prompt. A row whose source is retired (or an id that is not a
+        sourced book row) returns `source_retired` and is left untouched. Manage-gated;
+        all items validated before any mutation (no partial apply on malformed input).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SyncApplyRequest' }
+      responses:
+        '200':
+          description: Per-item apply results
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SyncApplyResult' }
+        '400': { $ref: '#/components/responses/InvalidBody' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/InvalidBody' }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -941,6 +995,70 @@ components:
           items: { type: string }
         auto_fill_prompt: { type: string, nullable: true }
         translation_hint: { type: string, nullable: true }
+    SyncVals:
+      type: object
+      description: |
+        The semantic-field snapshot used in a sync diff. Genres carry only `name`;
+        kinds add `description`; attributes add the full attribute surface.
+      required: [name]
+      properties:
+        name: { type: string }
+        description: { type: string, nullable: true }
+        field_type: { $ref: '#/components/schemas/FieldType' }
+        is_required: { type: boolean }
+        options:
+          type: array
+          items: { type: string }
+    SyncUpdateItem:
+      type: object
+      required: [entity, id, code, status, source_ref, mine]
+      properties:
+        entity: { type: string, enum: [genre, kind, attribute] }
+        id: { type: string, format: uuid, description: The BOOK row PK (genre_id | book_kind_id | attr_id) }
+        code: { type: string }
+        status: { type: string, enum: [update_available, source_retired] }
+        source_ref: { type: string, description: "'system:<id>' | 'user:<id>'" }
+        mine: { $ref: '#/components/schemas/SyncVals' }
+        theirs:
+          allOf: [{ $ref: '#/components/schemas/SyncVals' }]
+          nullable: true
+          description: The upstream values; omitted/null when status is source_retired.
+    SyncAvailable:
+      type: object
+      required: [book_id, updates]
+      properties:
+        book_id: { type: string, format: uuid }
+        updates:
+          type: array
+          items: { $ref: '#/components/schemas/SyncUpdateItem' }
+    SyncApplyRequest:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [entity, id, choice]
+            properties:
+              entity: { type: string, enum: [genre, kind, attribute] }
+              id: { type: string, format: uuid, description: The BOOK row PK }
+              choice: { type: string, enum: [keep_mine, take_theirs] }
+    SyncApplyResult:
+      type: object
+      required: [applied, results]
+      properties:
+        applied: { type: integer, description: Count of rows actually updated }
+        results:
+          type: array
+          items:
+            type: object
+            required: [entity, id, result]
+            properties:
+              entity: { type: string, enum: [genre, kind, attribute] }
+              id: { type: string, format: uuid }
+              result: { type: string, enum: [applied, source_retired] }
 
 security:
   - bearerAuth: []

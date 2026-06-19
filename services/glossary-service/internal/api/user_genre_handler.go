@@ -281,9 +281,13 @@ func (s *Server) createUserGenre(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var genreID uuid.UUID
+	// content_hash = md5(code|name) — the SAME format the seed uses for system_genres
+	// (migrate.go SeedGenreKindAttr) so the hash is comparable across tiers. This is
+	// the baseline G5 Sync captures into book_genres.source_hash at adopt; without it
+	// a user-sourced genre adopts as '' and Sync can never detect an edit (D-GKA-HASH-REFRESH).
 	err := s.pool.QueryRow(r.Context(), `
-		INSERT INTO user_genres (owner_user_id, code, name, icon, color, sort_order, cloned_from_genre_id)
-		VALUES ($1,$2,$3,$4,$5,$6,$7)
+		INSERT INTO user_genres (owner_user_id, code, name, icon, color, sort_order, cloned_from_genre_id, content_hash)
+		VALUES ($1,$2,$3,$4,$5,$6,$7, md5($2||'|'||$3))
 		RETURNING genre_id`,
 		userID, in.Code, in.Name, in.Icon, in.Color, in.SortOrder, cloneFrom,
 	).Scan(&genreID)
@@ -354,6 +358,7 @@ func (s *Server) patchUserGenre(w http.ResponseWriter, r *http.Request) {
 	setClauses := []string{}
 	args := []any{}
 	argN := 1
+	nameArgN := 0 // >0 once name is in the SET list — drives content_hash recompute below
 
 	if raw, ok := in["name"]; ok {
 		var v string
@@ -363,6 +368,7 @@ func (s *Server) patchUserGenre(w http.ResponseWriter, r *http.Request) {
 		}
 		setClauses = append(setClauses, fmt.Sprintf("name = $%d", argN))
 		args = append(args, v)
+		nameArgN = argN
 		argN++
 	}
 	for _, f := range []string{"icon", "color"} {
@@ -389,6 +395,11 @@ func (s *Server) patchUserGenre(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(setClauses) > 0 {
+		// When name changes, recompute content_hash = md5(code|name) so G5 Sync sees the
+		// edit. code is immutable here, so reference the live column + the new-name param.
+		if nameArgN > 0 {
+			setClauses = append(setClauses, fmt.Sprintf("content_hash = md5(code||'|'||$%d)", nameArgN))
+		}
 		setClauses = append(setClauses, "updated_at = now()")
 		args = append(args, genreID, userID)
 		updateSQL := fmt.Sprintf(
