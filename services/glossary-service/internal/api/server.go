@@ -227,6 +227,10 @@ func (s *Server) Router() http.Handler {
 		r.Route("/books/{book_id}", func(r chi.Router) {
 			r.Get("/extraction-profile", s.getExtractionProfile)
 			r.Get("/export", s.exportGlossary)
+			// G3: book-tier ontology — adopt (copy-down from System standards,
+			// Manage-gated) + book-local single-tier read (View-gated).
+			r.Post("/adopt", s.adoptBookOntology)
+			r.Get("/ontology", s.getBookOntology)
 			r.Route("/genres", func(r chi.Router) {
 				r.Get("/", s.listGenres)
 				r.Post("/", s.createGenre)
