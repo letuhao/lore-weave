@@ -1948,7 +1948,17 @@ func SeedGenreKindAttr(ctx context.Context, pool *pgxpool.Pool) error {
 // epic once nothing reads them. This keeps the cutover focused on the entity-layer FK.
 const glossaryCutoverG4SQL = `
 -- 1) Full reset of entity-derived data (required to repoint the FKs cleanly).
-TRUNCATE TABLE glossary_entities CASCADE;
+--    GUARDED to run EXACTLY ONCE per database: only while the OLD FK
+--    (glossary_entities_kind_id_fkey -> system_kinds) still exists, i.e. we have not
+--    cut over yet. That constraint is dropped in step 2 below, so on every subsequent
+--    startup (migrations re-run each boot; execGuarded has no applied-ledger) this
+--    block is skipped — WITHOUT this guard the cutover would TRUNCATE all entities +
+--    wiki on every restart (catastrophic data loss in production).
+DO $cutover$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'glossary_entities_kind_id_fkey') THEN
+    TRUNCATE TABLE glossary_entities CASCADE;
+  END IF;
+END $cutover$;
 
 -- 2) Repoint glossary_entities.kind_id : system_kinds -> book_kinds (book-local).
 ALTER TABLE glossary_entities DROP CONSTRAINT IF EXISTS glossary_entities_kind_id_fkey;
