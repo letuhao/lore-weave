@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Updates &amp; Sync — adopt-on-demand</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>tailwind.config={theme:{extend:{colors:{primary:'#6366f1'}}}};</script>
+<style>
+  body{font-family:ui-sans-serif,system-ui,"Segoe UI",sans-serif;}
+  .chip{display:inline-flex;align-items:center;gap:.2rem;border-radius:.375rem;padding:.02rem .4rem;font-size:10px;font-weight:700;white-space:nowrap;}
+  .tier-system{background:#64748b1a;color:#475569;border:1px solid #64748b40;}
+  .tier-user{background:#6366f11a;color:#4f46e5;border:1px solid #6366f140;}
+  .tier-book{background:#0ea5e91a;color:#0369a1;border:1px solid #0ea5e940;}
+  .ft{font-family:ui-monospace,monospace;font-size:10px;color:#64748b;background:#f1f5f9;border-radius:3px;padding:0 4px;}
+  .seg{display:inline-flex;border:1px solid #e2e8f0;border-radius:.375rem;overflow:hidden;font-size:11px;}
+  .seg button{padding:.15rem .55rem;background:#fff;color:#475569;}
+  .seg button.on-mine{background:#6366f1;color:#fff;}
+  .seg button.on-theirs{background:#0ea5e9;color:#fff;}
+  .del{background:#fef2f2;text-decoration:line-through;color:#b91c1c;}
+  .add{background:#f0fdf4;color:#15803d;}
+  .chg{background:#fffbeb;}
+</style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+
+<header class="border-b bg-white">
+  <div class="mx-auto max-w-6xl px-6 py-4">
+    <div class="flex items-center justify-between">
+      <div><h1 class="text-lg font-bold">Updates &amp; Sync</h1>
+      <p class="text-xs text-slate-500">Your data is <b>frozen in its own boundary</b>. Upstream changes never apply automatically — you adopt them here, on demand, overwriting only what you choose.</p></div>
+      <span class="chip tier-book">Book: Vạn Cổ Thần Đế</span>
+    </div>
+    <nav class="mt-3 flex gap-2 text-sm">
+      <a href="index.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Model</a>
+      <a href="01-manage.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Manage workspace</a>
+      <a href="02-attribute-matrix.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Attribute matrix</a>
+      <a href="03-entity-form.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Entity form</a>
+      <a href="04-sync.html" class="rounded-md bg-primary px-3 py-1.5 font-medium text-white">Updates &amp; Sync</a>
+    </nav>
+  </div>
+</header>
+
+<main class="mx-auto max-w-6xl px-6 py-6">
+  <div class="grid gap-4 lg:grid-cols-[300px_1fr]">
+
+    <!-- LEFT: available updates list -->
+    <aside class="rounded-lg border bg-white">
+      <div class="border-b bg-slate-50 px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">
+        Available updates <span class="ml-1 rounded-full bg-amber-100 px-1.5 text-amber-700">3</span>
+      </div>
+      <button class="flex w-full items-start gap-2 border-b border-l-2 border-l-primary bg-indigo-50/40 px-3 py-2.5 text-left">
+        <span class="mt-0.5">👤</span>
+        <div class="min-w-0 flex-1">
+          <div class="text-[13px] font-medium">character <span class="chip tier-system">system</span></div>
+          <div class="text-[11px] text-amber-700">edited · 2 changed, 1 added since you adopted</div>
+        </div>
+      </button>
+      <button class="flex w-full items-start gap-2 border-b px-3 py-2.5 text-left hover:bg-slate-50">
+        <span class="mt-0.5">⚔</span>
+        <div class="min-w-0 flex-1">
+          <div class="text-[13px] font-medium">xianxia <span class="chip tier-system">system</span></div>
+          <div class="text-[11px] text-slate-500">genre edited · 1 attribute description changed</div>
+        </div>
+      </button>
+      <button class="flex w-full items-start gap-2 border-b px-3 py-2.5 text-left hover:bg-slate-50">
+        <span class="mt-0.5">📍</span>
+        <div class="min-w-0 flex-1">
+          <div class="text-[13px] font-medium">location <span class="chip tier-system">system</span></div>
+          <div class="text-[11px] text-rose-600">retired (deprecated) upstream</div>
+        </div>
+      </button>
+      <div class="px-3 py-2 text-[10px] text-slate-400">Adopted set last synced 4 days ago · nothing changes until you apply.</div>
+    </aside>
+
+    <!-- RIGHT: the diff / overwrite-on-choice panel -->
+    <section class="rounded-lg border bg-white">
+      <div class="flex items-center justify-between border-b px-4 py-3">
+        <div>
+          <div class="text-sm font-semibold">👤 character <span class="chip tier-system">system</span> → your book copy</div>
+          <div class="text-[11px] text-slate-500">Pick per row what to keep. Your own overrides are protected by default.</div>
+        </div>
+        <div class="flex items-center gap-2 text-[11px]">
+          <button class="rounded-md border px-2 py-1">Keep all mine</button>
+          <button class="rounded-md border px-2 py-1">Take all theirs</button>
+        </div>
+      </div>
+
+      <table class="w-full text-left text-[12px]">
+        <thead class="bg-slate-100 text-[11px] uppercase tracking-wide text-slate-500">
+          <tr>
+            <th class="px-3 py-2">Attribute (× genre)</th>
+            <th class="px-3 py-2">Your copy (frozen)</th>
+            <th class="px-3 py-2">Upstream (new)</th>
+            <th class="px-3 py-2 text-right">Choice</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y">
+          <!-- unchanged -->
+          <tr class="text-slate-400">
+            <td class="px-3 py-2">name · universal</td>
+            <td class="px-3 py-2">text · "Display name"</td>
+            <td class="px-3 py-2">text · "Display name"</td>
+            <td class="px-3 py-2 text-right text-[10px]">unchanged</td>
+          </tr>
+          <!-- changed: field_type changed upstream -->
+          <tr class="chg">
+            <td class="px-3 py-2 font-medium">cultivation_realm · xianxia</td>
+            <td class="px-3 py-2"><span class="ft">text</span> "Realm"</td>
+            <td class="px-3 py-2"><span class="ft">select</span> "Realm (Qi→Core→…)"</td>
+            <td class="px-3 py-2 text-right">
+              <span class="seg"><button class="on-mine">Keep mine</button><button>Take theirs</button></span>
+            </td>
+          </tr>
+          <!-- changed description -->
+          <tr class="chg">
+            <td class="px-3 py-2 font-medium">spirit_root · xianxia</td>
+            <td class="px-3 py-2">desc: "Root type"</td>
+            <td class="px-3 py-2">desc: "Innate spiritual root affinity"</td>
+            <td class="px-3 py-2 text-right">
+              <span class="seg"><button>Keep mine</button><button class="on-theirs">Take theirs</button></span>
+            </td>
+          </tr>
+          <!-- added upstream -->
+          <tr class="add">
+            <td class="px-3 py-2 font-medium">bloodline · xianxia <span class="chip add" style="border:0">new upstream</span></td>
+            <td class="px-3 py-2 italic text-slate-400">— (not in your copy)</td>
+            <td class="px-3 py-2"><span class="ft">text</span> "Ancestral bloodline"</td>
+            <td class="px-3 py-2 text-right">
+              <span class="seg"><button class="on-mine">Skip</button><button>Adopt</button></span>
+            </td>
+          </tr>
+          <!-- YOUR override — protected -->
+          <tr>
+            <td class="px-3 py-2 font-medium">dao_heart · xianxia <span class="chip tier-user">your add</span></td>
+            <td class="px-3 py-2"><span class="ft">textarea</span> "Core conviction"</td>
+            <td class="px-3 py-2 italic text-slate-400">— (not upstream)</td>
+            <td class="px-3 py-2 text-right text-[10px] text-indigo-600">kept (yours)</td>
+          </tr>
+          <!-- removed upstream -->
+          <tr class="del">
+            <td class="px-3 py-2 font-medium">sect_token · xianxia</td>
+            <td class="px-3 py-2">text "Sect token"</td>
+            <td class="px-3 py-2 italic">retired upstream</td>
+            <td class="px-3 py-2 text-right">
+              <span class="seg"><button class="on-mine">Keep mine</button><button>Drop it</button></span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="flex items-center justify-between border-t bg-slate-50 px-4 py-3">
+        <div class="text-[11px] text-slate-500">
+          <b>Keep-both rule:</b> if upstream adds a code that collides with one of yours from another genre, both are kept (namespaced <code>code·genre</code>) — never silently overwritten.
+        </div>
+        <div class="flex gap-2">
+          <button class="rounded-md border px-3 py-1.5 text-[12px]">Dismiss (stay frozen)</button>
+          <button class="rounded-md bg-primary px-3 py-1.5 text-[12px] font-medium text-white">Apply selected → re-pin copy</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- retired-source card (shown when 'location' is selected) -->
+  <div class="mt-4 rounded-lg border border-rose-200 bg-rose-50/50 p-4 text-[12px]">
+    <div class="font-semibold text-rose-800">📍 location was retired upstream (System deprecated it)</div>
+    <p class="mt-1 text-rose-900/70">Nothing happened to your data — your book's <b>location</b> copy and its entities are <b>frozen and intact</b>. A retired source never deletes a consumer. Choose if/when:</p>
+    <div class="mt-2 flex flex-wrap gap-2">
+      <button class="rounded-md border border-rose-300 bg-white px-3 py-1.5 font-medium">Keep using my copy (default)</button>
+      <button class="rounded-md border border-rose-300 bg-white px-3 py-1.5">Migrate entities to another kind…</button>
+      <button class="rounded-md border border-rose-300 bg-white px-3 py-1.5 text-rose-700">Remove my copy (no entities use it)</button>
+    </div>
+  </div>
+
+  <p class="mt-4 text-[11px] text-slate-400">Mockup. This is the on-demand adoption surface: remove→deprecate, edit→publish, add→offer. Per-row overwrite-on-choice; your overrides protected; retired sources never destroy your copy. Supersedes the genre/attr editors in <code>screen-glossary-management.html</code> + <code>screen-genre-groups.html</code> by adding the tier + sync layer they lacked.</p>
+</main>
+</body>
+</html>

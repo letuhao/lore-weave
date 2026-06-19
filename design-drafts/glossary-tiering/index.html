@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Glossary Tiering — Design Drafts</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = { theme: { extend: { colors: {
+    primary: '#6366f1', sys: '#64748b', user: '#6366f1', book: '#0ea5e9' } } } };
+</script>
+<style>
+  body { font-family: ui-sans-serif, system-ui, "Segoe UI", sans-serif; }
+  .chip { display:inline-flex; align-items:center; gap:.25rem; border-radius:.375rem; padding:.05rem .4rem; font-size:10px; font-weight:600; }
+  .tier-system { background:#64748b1a; color:#475569; border:1px solid #64748b40; }
+  .tier-user   { background:#6366f11a; color:#4f46e5; border:1px solid #6366f140; }
+  .tier-book   { background:#0ea5e91a; color:#0369a1; border:1px solid #0ea5e940; }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+
+<header class="border-b bg-white">
+  <div class="mx-auto max-w-6xl px-6 py-4">
+    <div class="flex items-center justify-between">
+      <div>
+        <h1 class="text-lg font-bold">Glossary Tiering — Design Drafts</h1>
+        <p class="text-xs text-slate-500">genre → kind → attribute, across system · user · book. Static mockups for review — not wired.</p>
+      </div>
+      <span class="chip tier-user">DRAFT v0.1 · 2026-06-19</span>
+    </div>
+    <nav class="mt-3 flex gap-2 text-sm">
+      <a href="index.html" class="rounded-md bg-primary px-3 py-1.5 font-medium text-white">Model</a>
+      <a href="01-manage.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Manage workspace</a>
+      <a href="02-attribute-matrix.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Attribute matrix</a>
+      <a href="03-entity-form.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Entity form (merged)</a>
+      <a href="04-sync.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Updates &amp; Sync</a>
+    </nav>
+  </div>
+</header>
+
+<main class="mx-auto max-w-6xl space-y-10 px-6 py-8">
+
+  <!-- The drift note -->
+  <section class="rounded-lg border border-amber-300 bg-amber-50 p-4">
+    <h2 class="text-sm font-bold text-amber-900">⚠ The drift we're correcting</h2>
+    <p class="mt-1 text-[13px] text-amber-900/80">
+      Since March the data drifted to a flat <code class="rounded bg-amber-100 px-1">genre_tags TEXT[]</code> on a single global kind table —
+      losing the primary design: <b>genre is a first-class, tiered level</b>, and <b>attributes are scoped by (kind × genre)</b>
+      (different genres give a kind different attributes <i>and</i> different attribute descriptions). SS-4 already split kinds into
+      <span class="chip tier-system">system_kinds</span> + <span class="chip tier-user">user_kinds</span> and locked system writes —
+      that's a correct slice of the <b>Kind</b> row below, but Genre + the (kind×genre) attribute model still need building.
+    </p>
+  </section>
+
+  <!-- 3x3 grid -->
+  <section>
+    <h2 class="text-base font-bold">The 3 × 3 model — 9 combinations</h2>
+    <p class="mt-1 text-[13px] text-slate-600">Three <b>tiers</b> (who owns it) × three <b>levels</b> (what it is). Every row resolves <b>System → User → Book</b>, higher shadows lower by <code>code</code>.</p>
+
+    <div class="mt-4 overflow-hidden rounded-lg border bg-white">
+      <table class="w-full text-left text-[13px]">
+        <thead class="bg-slate-100 text-xs uppercase tracking-wide text-slate-500">
+          <tr>
+            <th class="px-4 py-2.5 font-semibold">Level ↓ · Tier →</th>
+            <th class="px-4 py-2.5 font-semibold"><span class="chip tier-system">System</span> <span class="font-normal normal-case text-slate-400">admin/seed only</span></th>
+            <th class="px-4 py-2.5 font-semibold"><span class="chip tier-user">User</span> <span class="font-normal normal-case text-slate-400">owner_user_id</span></th>
+            <th class="px-4 py-2.5 font-semibold"><span class="chip tier-book">Book</span> <span class="font-normal normal-case text-slate-400">book_id + E0 grants</span></th>
+          </tr>
+        </thead>
+        <tbody class="divide-y">
+          <tr>
+            <td class="bg-slate-50 px-4 py-3 font-semibold">Genre <div class="text-[11px] font-normal text-slate-500">thematic context; selects which attrs apply</div></td>
+            <td class="px-4 py-3"><code>system_genres</code><div class="mt-1 text-[11px] text-slate-500">universal, xianxia, romance, mystery…</div></td>
+            <td class="px-4 py-3"><code>user_genres</code><div class="mt-1 text-[11px] text-slate-500">my custom genres</div></td>
+            <td class="px-4 py-3"><code>book_genres</code><div class="mt-1 text-[11px] text-slate-500">this book's genres</div></td>
+          </tr>
+          <tr>
+            <td class="bg-slate-50 px-4 py-3 font-semibold">Kind <div class="text-[11px] font-normal text-slate-500">entity category</div></td>
+            <td class="px-4 py-3"><code>system_kinds</code> <span class="chip tier-system">SS-4 ✓</span><div class="mt-1 text-[11px] text-slate-500">character, location, item…</div></td>
+            <td class="px-4 py-3"><code>user_kinds</code> <span class="chip tier-user">SS-4 ✓</span><div class="mt-1 text-[11px] text-slate-500">my custom kinds</div></td>
+            <td class="px-4 py-3"><code>book_kinds</code> <span class="chip tier-book">SS-5</span><div class="mt-1 text-[11px] text-slate-500">this book's kinds</div></td>
+          </tr>
+          <tr>
+            <td class="bg-slate-50 px-4 py-3 font-semibold">Attribute <div class="text-[11px] font-normal text-slate-500">field on a (kind × genre) pair</div></td>
+            <td class="px-4 py-3" colspan="3">
+              <code>*_attributes</code> keyed by <b>(kind_ref, genre_ref, code)</b> — and since kind and genre each carry a tier,
+              an attribute attaches to any of the <b>3×3 = 9</b> (kind-tier × genre-tier) pairs. The attribute itself has its own tier
+              (e.g. a <span class="chip tier-user">user</span> attribute added onto a <span class="chip tier-system">system</span> kind × <span class="chip tier-system">system</span> genre pair).
+              <div class="mt-1.5 text-[11px] text-slate-500">→ see the <a class="text-primary underline" href="02-attribute-matrix.html">Attribute matrix</a> for how this looks.</div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- attribute scoping -->
+  <section class="grid gap-6 md:grid-cols-2">
+    <div class="rounded-lg border bg-white p-5">
+      <h3 class="text-sm font-bold">Attributes depend on (kind × genre)</h3>
+      <p class="mt-1 text-[12px] text-slate-600">The same kind has a different attribute set — and different descriptions — per genre.</p>
+      <div class="mt-3 space-y-2 text-[12px]">
+        <div class="rounded-md border bg-slate-50 p-2">
+          <div class="font-mono text-[11px] text-slate-500">character × <b class="text-slate-700">universal</b></div>
+          <div>name · aliases · description <span class="text-slate-400">(genre-independent base)</span></div>
+        </div>
+        <div class="rounded-md border bg-indigo-50/40 p-2">
+          <div class="font-mono text-[11px] text-slate-500">character × <b class="text-indigo-700">xianxia</b></div>
+          <div>cultivation_realm · dao_heart · spirit_root · sect</div>
+        </div>
+        <div class="rounded-md border bg-rose-50/40 p-2">
+          <div class="font-mono text-[11px] text-slate-500">character × <b class="text-rose-700">romance</b></div>
+          <div>love_language · emotional_wound · relationship_status</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="rounded-lg border bg-white p-5">
+      <h3 class="text-sm font-bold">Multi-genre merge = keep both, namespaced</h3>
+      <p class="mt-1 text-[12px] text-slate-600">A book/entity can carry several genres at once. Same attribute <code>code</code> from two genres → <b>both kept</b>, labeled by genre (no silent override).</p>
+      <div class="mt-3 rounded-md border bg-white">
+        <div class="border-b bg-slate-50 px-3 py-1.5 text-[11px] font-semibold text-slate-500">character · genres = [universal, xianxia, romance]</div>
+        <ul class="divide-y text-[12px]">
+          <li class="flex items-center justify-between px-3 py-1.5"><span>name</span><span class="chip" style="background:#64748b1a;color:#475569">universal</span></li>
+          <li class="flex items-center justify-between px-3 py-1.5"><span>cultivation_realm</span><span class="chip" style="background:#6366f11a;color:#4f46e5">xianxia</span></li>
+          <li class="flex items-center justify-between bg-amber-50 px-3 py-1.5">
+            <span>rank <span class="text-[10px] text-amber-700">· conflict, kept both</span></span>
+            <span class="flex gap-1"><span class="chip" style="background:#6366f11a;color:#4f46e5">rank·xianxia</span><span class="chip" style="background:#f43f5e1a;color:#be123c">rank·romance</span></span>
+          </li>
+          <li class="flex items-center justify-between px-3 py-1.5"><span>love_language</span><span class="chip" style="background:#f43f5e1a;color:#be123c">romance</span></li>
+        </ul>
+      </div>
+      <p class="mt-2 text-[11px] text-slate-500">Resolution within one genre still merges System→User→Book (higher tier shadows lower by code). Across genres = keep both.</p>
+    </div>
+  </section>
+
+  <!-- resolution -->
+  <section class="rounded-lg border bg-white p-5">
+    <h3 class="text-sm font-bold">Resolution order</h3>
+    <div class="mt-3 flex flex-wrap items-center gap-2 text-[12px]">
+      <span class="chip tier-system">System defaults</span>
+      <span class="text-slate-400">→ shadowed by →</span>
+      <span class="chip tier-user">User overrides/additions</span>
+      <span class="text-slate-400">→ shadowed by →</span>
+      <span class="chip tier-book">Book overrides/additions</span>
+    </div>
+    <p class="mt-2 text-[12px] text-slate-600">For a given (kind, genre, code): the highest tier that defines it wins. A regular user never edits a System row — they <b>clone</b> or <b>override</b> into their own tier. (CLAUDE.md › User Boundaries & Tenancy.)</p>
+  </section>
+
+  <!-- boundary independence -->
+  <section class="rounded-lg border border-sky-200 bg-sky-50/40 p-5">
+    <h3 class="text-sm font-bold">Boundary independence — copy-on-adopt, sync on demand (D8)</h3>
+    <p class="mt-1 text-[12px] text-slate-600">Each boundary holds its <b>own frozen copy</b> of what it adopts. Upstream changes never push or destroy downstream — you pull them on demand via <a class="text-primary underline" href="04-sync.html">Updates &amp; Sync</a>.</p>
+    <div class="mt-2 flex flex-wrap gap-2 text-[11px]">
+      <span class="rounded-md border bg-white px-2 py-1"><b>remove</b> → deprecate (never destroys a consumer)</span>
+      <span class="rounded-md border bg-white px-2 py-1"><b>edit</b> → publish (consumer pulls on demand)</span>
+      <span class="rounded-md border bg-white px-2 py-1"><b>add</b> → offer (not auto-injected)</span>
+    </div>
+    <p class="mt-2 text-[11px] text-slate-500">A book is <b>self-contained</b> (its own adopted ontology) → reproducible, and the substrate a per-book KG builds against.</p>
+  </section>
+
+  <footer class="border-t pt-4 text-[11px] text-slate-400">
+    Open the other drafts from the nav. These are throwaway HTML mockups to agree the UX + data model before any React/Go is written.
+  </footer>
+</main>
+</body>
+</html>
