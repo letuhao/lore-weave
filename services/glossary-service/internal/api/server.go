@@ -228,9 +228,36 @@ func (s *Server) Router() http.Handler {
 			r.Get("/extraction-profile", s.getExtractionProfile)
 			r.Get("/export", s.exportGlossary)
 			// G3: book-tier ontology — adopt (copy-down from System standards,
-			// Manage-gated) + book-local single-tier read (View-gated).
+			// Manage-gated) + book-local single-tier read (View-gated) + book-tier
+			// CRUD (G3b, Manage-gated). Distinct from the legacy per-book
+			// genre_groups at /genres below (which retires in G4).
 			r.Post("/adopt", s.adoptBookOntology)
-			r.Get("/ontology", s.getBookOntology)
+			r.Route("/ontology", func(r chi.Router) {
+				r.Get("/", s.getBookOntology)
+				r.Put("/active-genres", s.setBookActiveGenres)
+				r.Route("/genres", func(r chi.Router) {
+					r.Post("/", s.createBookGenre)
+					r.Route("/{genre_id}", func(r chi.Router) {
+						r.Patch("/", s.patchBookGenre)
+						r.Delete("/", s.deleteBookGenre)
+					})
+				})
+				r.Route("/kinds", func(r chi.Router) {
+					r.Post("/", s.createBookKind)
+					r.Route("/{book_kind_id}", func(r chi.Router) {
+						r.Patch("/", s.patchBookKind)
+						r.Delete("/", s.deleteBookKind)
+						r.Put("/genres", s.setBookKindGenres)
+					})
+				})
+				r.Route("/attributes", func(r chi.Router) {
+					r.Post("/", s.createBookAttribute)
+					r.Route("/{attr_id}", func(r chi.Router) {
+						r.Patch("/", s.patchBookAttribute)
+						r.Delete("/", s.deleteBookAttribute)
+					})
+				})
+			})
 			r.Route("/genres", func(r chi.Router) {
 				r.Get("/", s.listGenres)
 				r.Post("/", s.createGenre)

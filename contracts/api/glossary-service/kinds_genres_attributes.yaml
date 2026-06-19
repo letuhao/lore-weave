@@ -24,9 +24,16 @@ info:
         (parity with the SS-4 user-kinds surface).
       * Kind↔genre LINKS are managed per user-kind.
 
-    The **book tier** (adopt / ontology / book-tier CRUD) and **Sync**
-    (`/sync/available`, `/sync/apply`) extend this contract in G3/G5 and
-    are intentionally NOT frozen here yet.
+    The **book tier** adopt + book-local read (`…/adopt`, `…/ontology`,
+    G3a) and book-tier CRUD (`…/ontology/genres|kinds|attributes`,
+    `…/ontology/active-genres`, G3b) are included below. **Sync**
+    (`/sync/available`, `/sync/apply`) extends this contract in G5 and is
+    intentionally NOT frozen here yet.
+
+    Book-tier writes are **Manage-gated** (the book owner + manage-grantees
+    reshape a book's ontology; a View/Edit collaborator cannot). `…/ontology`
+    read is View-gated. `DELETE` is a soft **deprecate** (`deprecated_at`)
+    for boundary independence + Sync, never a hard row drop.
 
     ## Auth
     All routes require a Bearer JWT (the caller's user id). Reads merge
@@ -47,6 +54,8 @@ tags:
     description: Attribute tier — system read + per-user CRUD (keyed by kind × genre × code)
   - name: kind-genres
     description: Kind↔genre association links (per user-kind)
+  - name: book-ontology
+    description: Book tier — adopt (copy-down) + book-local read + book-tier CRUD (genres/kinds/attributes/active-genres). Manage-gated writes; View-gated read.
 
 paths:
   /v1/glossary/genres:
@@ -361,6 +370,285 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  # ── Book tier (G3) ──────────────────────────────────────────────────────────
+  /v1/glossary/books/{book_id}/adopt:
+    parameters:
+      - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [book-ontology]
+      summary: Adopt (copy-down) System standards into the book tier
+      description: |
+        Scaffolds the book's sovereign ontology by copying the picked
+        System genres/kinds (+ their kind↔genre links + attributes) into
+        the book tier (G0 spike Moment A). `universal` is always adopted +
+        active (O4); the `unknown` kind is always adopted (E6). Idempotent
+        (ON CONFLICT DO NOTHING under a per-book advisory lock). Manage-gated.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdoptRequest' }
+      responses:
+        '200':
+          description: The book's ontology after adopt (book-local)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BookOntology' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/books/{book_id}/ontology:
+    parameters:
+      - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [book-ontology]
+      summary: Read the book's full ontology (book-local, single-tier)
+      description: |
+        Touches only `book_*` tables — never System/User (G0 spike
+        Moment B). Returns genres (with `active`), kinds, the kind↔genre
+        matrix links, and attributes. View-gated. This is the Manage
+        workspace + entity-form source.
+      responses:
+        '200':
+          description: Book ontology
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BookOntology' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/books/{book_id}/ontology/genres:
+    parameters:
+      - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [book-ontology]
+      summary: Create a book-native genre (Manage)
+      description: A genre that exists only in this book (`source_ref` null — not adopted from a standard).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BookGenreCreate' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BookGenre' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/DuplicateCode' }
+        '422': { $ref: '#/components/responses/InvalidBody' }
+
+  /v1/glossary/books/{book_id}/ontology/genres/{genre_id}:
+    parameters:
+      - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: genre_id, in: path, required: true, schema: { type: string, format: uuid } }
+    patch:
+      tags: [book-ontology]
+      summary: Update a book genre (Manage)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BookGenrePatch' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BookGenre' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/InvalidBody' }
+    delete:
+      tags: [book-ontology]
+      summary: Deprecate a book genre + cascade (Manage)
+      description: |
+        Soft-deprecates the genre and its book attributes, and removes its
+        active-genre + kind↔genre + per-entity-genre rows (`deprecated_at`;
+        no hard delete). Removes the genre from the book's ontology read.
+      responses:
+        '204': { description: Deprecated }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/glossary/books/{book_id}/ontology/active-genres:
+    parameters:
+      - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      tags: [book-ontology]
+      summary: Replace the book's active-genre set (Manage)
+      description: |
+        Sets which of the book's adopted/native genres are active (the
+        columns of the kind×genre matrix). Each id must be a live book genre.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [genre_ids]
+              properties:
+                genre_ids:
+                  type: array
+                  items: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The book's ontology after the change (book-local)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BookOntology' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/InvalidBody' }
+
+  /v1/glossary/books/{book_id}/ontology/kinds:
+    parameters:
+      - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [book-ontology]
+      summary: Create a book-native kind (Manage)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BookKindCreate' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BookKind' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/DuplicateCode' }
+        '422': { $ref: '#/components/responses/InvalidBody' }
+
+  /v1/glossary/books/{book_id}/ontology/kinds/{book_kind_id}:
+    parameters:
+      - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: book_kind_id, in: path, required: true, schema: { type: string, format: uuid } }
+    patch:
+      tags: [book-ontology]
+      summary: Update a book kind (Manage)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BookKindPatch' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BookKind' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/InvalidBody' }
+    delete:
+      tags: [book-ontology]
+      summary: Deprecate a book kind + cascade (Manage)
+      description: Soft-deprecates the kind and its book attributes, and removes its kind↔genre links.
+      responses:
+        '204': { description: Deprecated }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/glossary/books/{book_id}/ontology/kinds/{book_kind_id}/genres:
+    parameters:
+      - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: book_kind_id, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      tags: [book-ontology]
+      summary: Replace a book kind's genre links (Manage)
+      description: The matrix row for one kind — which active genres it carries. Each id must be a live book genre.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [genre_ids]
+              properties:
+                genre_ids:
+                  type: array
+                  items: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The book's ontology after the change (book-local)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BookOntology' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/InvalidBody' }
+
+  /v1/glossary/books/{book_id}/ontology/attributes:
+    parameters:
+      - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [book-ontology]
+      summary: Create a book attribute on a (kind × genre) cell (Manage)
+      description: |
+        `kind_id` and `genre_id` must be live genres/kinds of THIS book
+        (book-local FK — no cross-book reference). Keyed by (kind × genre × code).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BookAttributeCreate' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BookAttribute' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/DuplicateCode' }
+        '422':
+          description: Invalid body, or kind_id/genre_id is not a live genre/kind of this book
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /v1/glossary/books/{book_id}/ontology/attributes/{attr_id}:
+    parameters:
+      - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: attr_id, in: path, required: true, schema: { type: string, format: uuid } }
+    patch:
+      tags: [book-ontology]
+      summary: Update a book attribute (Manage)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BookAttributePatch' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BookAttribute' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/InvalidBody' }
+    delete:
+      tags: [book-ontology]
+      summary: Deprecate a book attribute (Manage)
+      responses:
+        '204': { description: Deprecated }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -385,6 +673,11 @@ components:
           schema: { $ref: '#/components/schemas/Error' }
     DuplicateCode:
       description: A row with this code already exists in the caller's tier
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: The caller's grant on this book does not satisfy the required level
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
@@ -491,6 +784,151 @@ components:
         auto_fill_prompt: { type: string }
         translation_hint: { type: string }
     AttributePatch:
+      type: object
+      properties:
+        name: { type: string }
+        description: { type: string, nullable: true }
+        field_type: { $ref: '#/components/schemas/FieldType' }
+        is_required: { type: boolean }
+        sort_order: { type: integer }
+        options:
+          type: array
+          items: { type: string }
+        auto_fill_prompt: { type: string, nullable: true }
+        translation_hint: { type: string, nullable: true }
+
+    # ── Book tier ──────────────────────────────────────────────────────────────
+    AdoptRequest:
+      type: object
+      properties:
+        genres:
+          type: array
+          items: { type: string }
+          description: System genre CODES to adopt (`universal` is always added).
+        kinds:
+          type: array
+          items: { type: string }
+          description: System kind CODES to adopt (`unknown` is always added).
+    BookGenre:
+      type: object
+      required: [genre_id, code, name, active]
+      properties:
+        genre_id: { type: string, format: uuid }
+        code: { type: string }
+        name: { type: string }
+        icon: { type: string }
+        color: { type: string }
+        sort_order: { type: integer }
+        active: { type: boolean, description: Whether the genre is in the book's active set }
+        source_ref: { type: string, nullable: true, description: "'system:<id>' when adopted; null for book-native" }
+    BookKind:
+      type: object
+      required: [book_kind_id, code, name]
+      properties:
+        book_kind_id: { type: string, format: uuid }
+        code: { type: string }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        icon: { type: string }
+        color: { type: string }
+        sort_order: { type: integer }
+        is_hidden: { type: boolean }
+        source_ref: { type: string, nullable: true }
+    BookKindGenreLink:
+      type: object
+      required: [kind_id, genre_id]
+      properties:
+        kind_id: { type: string, format: uuid, description: book_kind_id }
+        genre_id: { type: string, format: uuid }
+    BookAttribute:
+      type: object
+      required: [attr_id, kind_id, genre_id, code, name, field_type]
+      properties:
+        attr_id: { type: string, format: uuid }
+        kind_id: { type: string, format: uuid, description: book_kind_id }
+        genre_id: { type: string, format: uuid }
+        code: { type: string }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        field_type: { $ref: '#/components/schemas/FieldType' }
+        is_required: { type: boolean }
+        sort_order: { type: integer }
+        options:
+          type: array
+          items: { type: string }
+        source_ref: { type: string, nullable: true }
+    BookOntology:
+      type: object
+      required: [book_id, genres, kinds, kind_genres, attributes]
+      properties:
+        book_id: { type: string, format: uuid }
+        genres:
+          type: array
+          items: { $ref: '#/components/schemas/BookGenre' }
+        kinds:
+          type: array
+          items: { $ref: '#/components/schemas/BookKind' }
+        kind_genres:
+          type: array
+          items: { $ref: '#/components/schemas/BookKindGenreLink' }
+        attributes:
+          type: array
+          items: { $ref: '#/components/schemas/BookAttribute' }
+    BookGenreCreate:
+      type: object
+      required: [name]
+      properties:
+        code: { type: string, description: Derived from name (slugified) when omitted }
+        name: { type: string }
+        icon: { type: string }
+        color: { type: string }
+        sort_order: { type: integer }
+        active: { type: boolean, description: Add to the active set on create (default true) }
+    BookGenrePatch:
+      type: object
+      properties:
+        name: { type: string }
+        icon: { type: string }
+        color: { type: string }
+        sort_order: { type: integer }
+    BookKindCreate:
+      type: object
+      required: [name]
+      properties:
+        code: { type: string, description: Derived from name when omitted }
+        name: { type: string }
+        description: { type: string }
+        icon: { type: string }
+        color: { type: string }
+        sort_order: { type: integer }
+        is_hidden: { type: boolean }
+    BookKindPatch:
+      type: object
+      properties:
+        name: { type: string }
+        description: { type: string, nullable: true }
+        icon: { type: string }
+        color: { type: string }
+        sort_order: { type: integer }
+        is_hidden: { type: boolean }
+    BookAttributeCreate:
+      type: object
+      required: [kind_id, genre_id, name]
+      properties:
+        kind_id: { type: string, format: uuid, description: A live book_kind_id of this book }
+        genre_id: { type: string, format: uuid, description: A live book genre_id of this book }
+        code: { type: string, description: Derived from name when omitted }
+        name: { type: string }
+        description: { type: string }
+        field_type: { $ref: '#/components/schemas/FieldType' }
+        is_required: { type: boolean }
+        sort_order: { type: integer }
+        options:
+          type: array
+          items: { type: string }
+        auto_fill_prompt: { type: string }
+        translation_hint: { type: string }
+    BookAttributePatch:
       type: object
       properties:
         name: { type: string }
