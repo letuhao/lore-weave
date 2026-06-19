@@ -270,6 +270,10 @@ Deferred (tracked, not this epic): restore bulk-merge (`createKindAlias`) retarg
 
 Per CLAUDE.md task-sizing this effort is **XL** (schema + migration + multi-service contract + FE). Each Gn milestone runs the full 12-phase cycle with its own VERIFY evidence + 2-stage REVIEW; POST-REVIEW batched per-milestone. G1 and G4 are DB/cross-service → `/review-impl` recommended at their POST-REVIEW. No `/amaw` unless the user invokes it.
 
+**Loom setup (ratified 2026-06-19):**
+- **R5 — Guardrail flow: semi-attended.** Loom runs autonomously; the user pre-authorizes the destructive G1 migration in principle and stays reachable to approve the actual guardrail prompts (DB migration, destructive DROP/TRUNCATE, push). No `down -v`, no shared/prod DB — targeted up/down migrations on the dev DB only.
+- **R6 — VERIFY infra: full local stack-up.** Bring up the glossary-service docker stack (+ translation/extraction deps) for real cross-service live-smoke at G4. Throwaway DB still used for fast G1/G3 schema+adopt smoke. Stack-up attempted up front to de-risk before the loom reaches G4.
+
 ---
 
 ## 11. Pre-build evaluation — full-reset blast radius (code-audited)
