@@ -19,6 +19,7 @@ import type {
   SyncAvailable,
   SyncApplyItem,
   SyncApplyResult,
+  EntityGenres,
   ItemsResponse,
 } from './tieringTypes';
 
@@ -231,6 +232,21 @@ export const tieringApi = {
     return apiJson<SyncApplyResult>(`${BASE}/books/${bookId}/sync/apply`, {
       method: 'POST',
       body: JSON.stringify({ items }),
+      token,
+    });
+  },
+
+  // ── Per-entity genre override (D2) ─────────────────────────────────────────
+
+  getEntityGenres(bookId: string, entityId: string, token: string): Promise<EntityGenres> {
+    return apiJson<EntityGenres>(`${BASE}/books/${bookId}/entities/${entityId}/genres`, { token });
+  },
+
+  /** Replace an entity's genre override (universal auto-included server-side). */
+  setEntityGenres(bookId: string, entityId: string, genreIds: string[], token: string): Promise<EntityGenres> {
+    return apiJson<EntityGenres>(`${BASE}/books/${bookId}/entities/${entityId}/genres`, {
+      method: 'PUT',
+      body: JSON.stringify({ genre_ids: genreIds }),
       token,
     });
   },

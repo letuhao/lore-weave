@@ -217,6 +217,13 @@ export interface SyncApplyResult {
   results: { entity: SyncEntity; id: string; result: 'applied' | 'source_retired' }[];
 }
 
+// ── Per-entity genre override (D2) ──────────────────────────────────────────
+
+export interface EntityGenres {
+  genre_ids: string[];
+  uses_book_default: boolean; // true ⇒ no override; entity follows book active genres
+}
+
 // Generic list envelope for the standards reads (`{ items: T[] }`).
 export interface ItemsResponse<T> {
   items: T[];

@@ -341,6 +341,13 @@ func (s *Server) Router() http.Handler {
 					r.Post("/reassign-kind", s.reassignEntityKind)
 					// mui #1c: merge loser entities into this (winner) entity.
 					r.Post("/merge", s.mergeEntities)
+					// G6/D2: per-entity genre override (entity_genres) — read (View) +
+					// replace (Edit). universal is always included (O4). Drives the
+					// merged entity form's which-attributes-apply decision.
+					r.Route("/genres", func(r chi.Router) {
+						r.Get("/", s.getEntityGenres)
+						r.Put("/", s.setEntityGenres)
+					})
 					r.Route("/chapter-links", func(r chi.Router) {
 						r.Get("/", s.listChapterLinks)
 						r.Post("/", s.createChapterLink)

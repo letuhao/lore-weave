@@ -672,6 +672,54 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /v1/glossary/books/{book_id}/entities/{entity_id}/genres:
+    parameters:
+      - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: entity_id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [book-ontology]
+      summary: Read an entity's genre override (View)
+      description: |
+        The per-entity genre set (D2) — overrides the book's active genres for this entity,
+        deciding which (kind × genre) attribute fields apply to it. Empty ⇒ uses_book_default
+        (the entity follows the book's active genres).
+      responses:
+        '200':
+          description: The entity's genre override
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EntityGenres' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [book-ontology]
+      summary: Replace an entity's genre override (Edit)
+      description: |
+        Replaces the entity's genre set. universal is always included (O4, never droppable);
+        every id must be a live genre of this book (422 otherwise). Edit-gated.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [genre_ids]
+              properties:
+                genre_ids:
+                  type: array
+                  items: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The resulting genre set (incl. universal)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EntityGenres' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/InvalidBody' }
+
   /v1/glossary/books/{book_id}/sync/apply:
     parameters:
       - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -1045,6 +1093,16 @@ components:
               entity: { type: string, enum: [genre, kind, attribute] }
               id: { type: string, format: uuid, description: The BOOK row PK }
               choice: { type: string, enum: [keep_mine, take_theirs] }
+    EntityGenres:
+      type: object
+      required: [genre_ids, uses_book_default]
+      properties:
+        genre_ids:
+          type: array
+          items: { type: string, format: uuid }
+        uses_book_default:
+          type: boolean
+          description: true when no per-entity override is set (the entity follows book active genres)
     SyncApplyResult:
       type: object
       required: [applied, results]
