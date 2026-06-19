@@ -34,15 +34,17 @@ CREATE TABLE IF NOT EXISTS system_kinds (
   is_default  BOOLEAN NOT NULL DEFAULT true,
   is_hidden   BOOLEAN NOT NULL DEFAULT false,
   sort_order  INT NOT NULL DEFAULT 0,
-  genre_tags  TEXT[] NOT NULL DEFAULT '{universal}',
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
--- G4e idempotency: genre_tags is dropped LAST in the chain (UpGlossaryDropLegacyG4).
--- On a re-run against an already-dropped DB the CREATE above no-ops (table exists)
--- so the column would stay missing and the seed INSERT below would fail. Re-add it
--- defensively here; the drop step removes it again at the end, so the chain's END
--- state is stable. Same pattern for user_kinds.genre_tags in userKindsSQL.
-ALTER TABLE system_kinds ADD COLUMN IF NOT EXISTS genre_tags TEXT[] NOT NULL DEFAULT '{universal}';
+-- genre_tags (the legacy flat-genre TEXT[]) is FULLY RETIRED: not created here, not
+-- re-added, and not written by any seed. Genre membership now lives in
+-- system_kind_genres (SeedGenreKindAttr derives it from DefaultKinds in Go).
+-- UpGlossaryDropLegacyG4 still DROPs the column IF EXISTS as a ONE-TIME cleanup for
+-- DBs migrated before this retire. We must NOT re-add it each run: the old
+-- ADD-then-DROP cycle on this PERSISTENT table leaked a pg_attribute slot per migration
+-- run (Postgres never reclaims dropped-column slots without a table rewrite), which
+-- exhausted system_kinds at the 1600-column ceiling and is a restart time-bomb on any
+-- long-lived DB. See D-GKA-SYSTEM-KINDS-SLOTS.
 
 CREATE TABLE IF NOT EXISTS system_kind_attributes (
   attr_def_id UUID PRIMARY KEY DEFAULT uuidv7(),
@@ -168,8 +170,8 @@ ALTER TABLE glossary_entities ADD COLUMN IF NOT EXISTS source_kind_code TEXT;
 -- The 'unknown' system kind (the review bucket). Hidden from the normal kind
 -- picker; an entity here is awaiting kind triage. Idempotent (ON CONFLICT) so it
 -- exists on already-seeded DBs too (Seed() only runs on an empty catalogue).
-INSERT INTO system_kinds (code, name, icon, color, is_default, is_hidden, sort_order, genre_tags)
-VALUES ('unknown', 'Unknown', '❓', '#94a3b8', true, true, 9999, '{universal}')
+INSERT INTO system_kinds (code, name, icon, color, is_default, is_hidden, sort_order)
+VALUES ('unknown', 'Unknown', '❓', '#94a3b8', true, true, 9999)
 ON CONFLICT (code) DO NOTHING;
 
 -- The 'unknown' kind needs at least a name attribute so a parked entity is nameable
@@ -541,10 +543,10 @@ func Seed(ctx context.Context, pool *pgxpool.Pool) error {
 		// DO NOTHING (not DO UPDATE) so an author's customized default kind is never
 		// clobbered; then read the id (whether just-inserted or pre-existing) for attrs.
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO system_kinds(code, name, icon, color, is_default, is_hidden, sort_order, genre_tags)
-			VALUES ($1,$2,$3,$4,true,false,$5,$6)
+			INSERT INTO system_kinds(code, name, icon, color, is_default, is_hidden, sort_order)
+			VALUES ($1,$2,$3,$4,true,false,$5)
 			ON CONFLICT (code) DO NOTHING`,
-			k.Code, k.Name, k.Icon, k.Color, k.SortOrder, k.GenreTags,
+			k.Code, k.Name, k.Icon, k.Color, k.SortOrder,
 		); err != nil {
 			return fmt.Errorf("seed kind %s: %w", k.Code, err)
 		}
@@ -1598,7 +1600,8 @@ CREATE TABLE IF NOT EXISTS user_kinds (
   description            TEXT,
   icon                   TEXT        NOT NULL DEFAULT 'box',
   color                  TEXT        NOT NULL DEFAULT '#6366f1',
-  genre_tags             TEXT[]      NOT NULL DEFAULT '{}',
+  -- genre_tags RETIRED (see system_kinds note); UpGlossaryDropLegacyG4 drops it once on
+  -- legacy DBs. Not created here so fresh DBs never carry the dead column.
   is_active              BOOLEAN     NOT NULL DEFAULT true,
   cloned_from_kind_id    UUID        REFERENCES system_kinds(kind_id) ON DELETE SET NULL,
   permanently_deleted_at TIMESTAMPTZ,
@@ -2266,13 +2269,16 @@ func UpGlossaryCutoverG4Cache(ctx context.Context, pool *pgxpool.Pool) error {
 //     nothing FKs this table anymore and it is droppable.
 //   - system_kinds.genre_tags / user_kinds.genre_tags — the flat-genre TEXT[] drift,
 //     replaced by the *_kind_genres link tables. SeedGenreKindAttr now derives the
-//     system standards in Go from DefaultKinds (not from these columns), so dropping
-//     them is safe across re-seeds.
+//     system standards in Go from DefaultKinds (not from these columns). These columns
+//     are FULLY RETIRED upstream (no longer created/re-added/written by Up or Seed), so
+//     the DROP here is a ONE-TIME cleanup for legacy DBs — it no longer fights a re-add.
 //
-// Idempotent: DROP / ALTER … IF EXISTS. Within a single migration chain run the
-// earlier additive steps (Up's CREATE IF NOT EXISTS, UpGenreGroups) briefly
-// re-create these objects; this step removes them again at the end, so the chain's
-// END STATE is stable on every run (the objects are absent after a full pass).
+// Idempotent: DROP / ALTER … IF EXISTS. genre_groups + system_kind_attributes are still
+// whole TABLES that Up/UpGenreGroups re-create each run and this step drops again — that
+// is safe (a DROP TABLE + CREATE TABLE recycles pg_attribute cleanly, no slot leak).
+// The genre_tags COLUMNS, by contrast, must NOT be re-added each run: ADD-then-DROP on a
+// persistent table leaks a dropped-column slot per run toward the 1600 ceiling (fixed —
+// the re-add was removed; see D-GKA-SYSTEM-KINDS-SLOTS).
 // DESTRUCTIVE — gated (execGuarded), dev DB only (rollback = git revert + re-migrate).
 const glossaryDropLegacyG4SQL = `
 -- extraction_audit_log.attr_def_id still FKs system_kind_attributes (UpExtraction
