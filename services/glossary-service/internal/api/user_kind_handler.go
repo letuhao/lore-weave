@@ -129,7 +129,7 @@ func (s *Server) loadUserKindDetail(ctx context.Context, userKindID, userID uuid
 	var d userKindDetailResp
 	err := s.pool.QueryRow(ctx, `
 		SELECT uk.user_kind_id, uk.owner_user_id, uk.code, uk.name, uk.description,
-		       uk.icon, uk.color, uk.genre_tags, uk.is_active,
+		       uk.icon, uk.color, uk.is_active,
 		       uk.cloned_from_kind_id, uk.created_at, uk.updated_at,
 		       COUNT(uka.attr_id) AS attribute_count
 		FROM user_kinds uk
@@ -143,16 +143,16 @@ func (s *Server) loadUserKindDetail(ctx context.Context, userKindID, userID uuid
 		userKindID, userID,
 	).Scan(
 		&d.UserKindID, &d.OwnerUserID, &d.Code, &d.Name, &d.Description,
-		&d.Icon, &d.Color, &d.GenreTags, &d.IsActive,
+		&d.Icon, &d.Color, &d.IsActive,
 		&d.ClonedFromKindID, &d.CreatedAt, &d.UpdatedAt,
 		&d.AttributeCount,
 	)
 	if err != nil {
 		return nil, err
 	}
-	if d.GenreTags == nil {
-		d.GenreTags = []string{}
-	}
+	// G4e: genre_tags column dropped — genre membership moved to user_kind_genres.
+	// The response field stays for back-compat, always empty here.
+	d.GenreTags = []string{}
 
 	rows, err := s.pool.Query(ctx, `
 		SELECT attr_id, user_kind_id, code, name, description,
@@ -249,7 +249,7 @@ func (s *Server) listUserKinds(w http.ResponseWriter, r *http.Request) {
 	args = append(args, limit, offset)
 	listSQL := fmt.Sprintf(`
 		SELECT uk.user_kind_id, uk.owner_user_id, uk.code, uk.name, uk.description,
-		       uk.icon, uk.color, uk.genre_tags, uk.is_active,
+		       uk.icon, uk.color, uk.is_active,
 		       uk.cloned_from_kind_id, uk.created_at, uk.updated_at,
 		       COUNT(uka.attr_id) AS attribute_count
 		FROM user_kinds uk
@@ -272,15 +272,14 @@ func (s *Server) listUserKinds(w http.ResponseWriter, r *http.Request) {
 		var uk userKindSummaryResp
 		if err := rows.Scan(
 			&uk.UserKindID, &uk.OwnerUserID, &uk.Code, &uk.Name, &uk.Description,
-			&uk.Icon, &uk.Color, &uk.GenreTags, &uk.IsActive,
+			&uk.Icon, &uk.Color, &uk.IsActive,
 			&uk.ClonedFromKindID, &uk.CreatedAt, &uk.UpdatedAt, &uk.AttributeCount,
 		); err != nil {
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "scan failed")
 			return
 		}
-		if uk.GenreTags == nil {
-			uk.GenreTags = []string{}
-		}
+		// G4e: genre_tags column dropped; response field stays empty for back-compat.
+		uk.GenreTags = []string{}
 		items = append(items, uk)
 	}
 	if err := rows.Err(); err != nil {
@@ -350,13 +349,16 @@ func (s *Server) createUserKind(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 
+	// G4e: user_kinds.genre_tags is dropped (flat-genre drift replaced by
+	// user_kind_genres). The request still ACCEPTS genre_tags for back-compat but it
+	// is no longer persisted; genre membership is set via the user-kind-genres link.
 	var ukID uuid.UUID
 	err = tx.QueryRow(ctx, `
 		INSERT INTO user_kinds
-		  (owner_user_id, code, name, description, icon, color, genre_tags, cloned_from_kind_id)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+		  (owner_user_id, code, name, description, icon, color, cloned_from_kind_id)
+		VALUES ($1,$2,$3,$4,$5,$6,$7)
 		RETURNING user_kind_id`,
-		userID, in.Code, in.Name, in.Description, in.Icon, in.Color, in.GenreTags, cloneFromKindID,
+		userID, in.Code, in.Name, in.Description, in.Icon, in.Color, cloneFromKindID,
 	).Scan(&ukID)
 	if err != nil {
 		if isUniqueViolation(err) {
@@ -373,15 +375,19 @@ func (s *Server) createUserKind(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Clone: copy the T1 system kind's attribute definitions into this user kind.
+	// Clone: copy the T1 system kind's base attribute definitions into this user
+	// kind. G4: system attrs now live in system_attributes keyed (kind,genre,code);
+	// the kind's base attrs are its `universal`-genre rows (the seed lifts every
+	// attr there). Copy only the universal set so the clone gets one row per code.
 	if cloneFromKindID != nil {
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO user_kind_attributes
 			  (user_kind_id, code, name, description, field_type, is_required, sort_order, options)
-			SELECT $1, code, name, description, field_type, is_required, sort_order, options
-			FROM system_kind_attributes
-			WHERE kind_id = $2
-			ORDER BY sort_order`,
+			SELECT $1, sa.code, sa.name, sa.description, sa.field_type, sa.is_required, sa.sort_order, sa.options
+			FROM system_attributes sa
+			JOIN system_genres g ON g.genre_id = sa.genre_id AND g.code = 'universal'
+			WHERE sa.kind_id = $2
+			ORDER BY sa.sort_order`,
 			ukID, cloneFromKindID,
 		); err != nil {
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "clone attrs failed")
@@ -490,17 +496,13 @@ func (s *Server) patchUserKind(w http.ResponseWriter, r *http.Request) {
 		argN++
 	}
 	if raw, ok := in["genre_tags"]; ok {
+		// G4e: genre_tags column dropped. Still validate the shape for back-compat
+		// but DO NOT persist — genre membership moves to user_kind_genres.
 		var v []string
 		if err := json.Unmarshal(raw, &v); err != nil {
 			writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY", "invalid genre_tags")
 			return
 		}
-		if v == nil {
-			v = []string{}
-		}
-		setClauses = append(setClauses, fmt.Sprintf("genre_tags = $%d", argN))
-		args = append(args, v)
-		argN++
 	}
 	if raw, ok := in["is_active"]; ok {
 		var v bool

@@ -191,6 +191,37 @@ func main() {
 		slog.Error("seed genre-kind-attr", "error", err)
 		os.Exit(1)
 	}
+	// G4 (genre·kind·attribute tiering, 2026-06-19): destructive cutover — repoints
+	// glossary_entities.kind_id → book_kinds and entity_attribute_values.attr_def_id →
+	// book_attributes, rewrites recalculate_entity_snapshot to the book tier. MUST run
+	// AFTER UpGenreKindAttr (FK targets) + SeedGenreKindAttr. Books must be adopted
+	// before entities can be created in them. Gated (execGuarded), idempotent.
+	if err := migrate.UpGlossaryCutoverG4(ctx, pool); err != nil {
+		slog.Error("migrate glossary-cutover-g4", "error", err)
+		os.Exit(1)
+	}
+	// G4 (cont.): merge_candidates.kind_id follows the entity layer onto the book tier
+	// (FK system_kinds -> book_kinds). MUST run AFTER the cutover (book_kinds present).
+	if err := migrate.UpMergeCandidatesG4(ctx, pool); err != nil {
+		slog.Error("migrate merge-candidates-g4", "error", err)
+		os.Exit(1)
+	}
+	// G4 (cont.): restore the cache+search-aware recalculate_entity_snapshot on the book
+	// tier (the cutover wrote the base body, dropping cached_name/aliases/search_vector
+	// maintenance). MUST run AFTER the cutover (and after UpKnowledgeMemory).
+	if err := migrate.UpGlossaryCutoverG4Cache(ctx, pool); err != nil {
+		slog.Error("migrate glossary-cutover-g4-cache", "error", err)
+		os.Exit(1)
+	}
+	// G4e (genre·kind·attribute tiering, 2026-06-19): IRREVERSIBLE destructive drop of
+	// the retired legacy objects — genre_groups, system_kind_attributes, and the
+	// genre_tags TEXT[] columns (system_kinds/user_kinds). MUST run LAST — after every
+	// reader/writer retarget (G4d) + the cutover + the cache rewrite (so the snapshot
+	// fn no longer joins system_kind_attributes). Idempotent (DROP/ALTER … IF EXISTS).
+	if err := migrate.UpGlossaryDropLegacyG4(ctx, pool); err != nil {
+		slog.Error("migrate glossary-drop-legacy-g4", "error", err)
+		os.Exit(1)
+	}
 
 	// Run the short-description backfill in a background goroutine so
 	// the HTTP listener + healthcheck come up immediately. For a fresh

@@ -64,10 +64,8 @@ func TestProposeNewEntity_CreatesDraftThenDedups(t *testing.T) {
 	ctx := context.Background()
 	runK2aMigrations(t, pool)
 	book := uuid.New()
-	var kindID uuid.UUID
-	if err := pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID); err != nil {
-		t.Fatalf("seed kind: %v", err)
-	}
+	adoptTestBook(t, pool, book)
+	kindID := bookKindID(t, pool, book, "character")
 	t.Cleanup(func() {
 		pool.Exec(ctx, `DELETE FROM entity_attribute_values WHERE entity_id IN (SELECT entity_id FROM glossary_entities WHERE book_id=$1)`, book)
 		pool.Exec(ctx, `DELETE FROM glossary_entities WHERE book_id=$1`, book)
@@ -110,9 +108,9 @@ func TestProposeNewEntity_SkipsTombstoned(t *testing.T) {
 	ctx := context.Background()
 	runK2aMigrations(t, pool)
 	book := uuid.New()
-	var kindID, nameAttrID uuid.UUID
-	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
-	pool.QueryRow(ctx, `SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='name' LIMIT 1`, kindID).Scan(&nameAttrID)
+	adoptTestBook(t, pool, book)
+	kindID := bookKindID(t, pool, book, "character")
+	nameAttrID := bookAttrID(t, pool, book, kindID, "name")
 
 	// Seed a previously-rejected (tombstoned) entity named "Rejected".
 	var rejectedID uuid.UUID

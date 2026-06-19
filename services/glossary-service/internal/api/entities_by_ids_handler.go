@@ -53,7 +53,7 @@ func (s *Server) internalEntitiesByIDs(w http.ResponseWriter, r *http.Request) {
 	query := fmt.Sprintf(`
 		SELECT %s
 		FROM glossary_entities e
-		JOIN system_kinds ek ON ek.kind_id = e.kind_id
+		JOIN book_kinds ek ON ek.book_kind_id = e.kind_id
 		WHERE e.book_id = $1
 		  AND e.deleted_at IS NULL
 		  AND e.entity_id = ANY($2::uuid[])`, selectCols)

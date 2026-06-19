@@ -229,8 +229,8 @@ func (s *Server) Router() http.Handler {
 			r.Get("/export", s.exportGlossary)
 			// G3: book-tier ontology — adopt (copy-down from System standards,
 			// Manage-gated) + book-local single-tier read (View-gated) + book-tier
-			// CRUD (G3b, Manage-gated). Distinct from the legacy per-book
-			// genre_groups at /genres below (which retires in G4).
+			// CRUD (G3b, Manage-gated). The legacy per-book genre_groups /genres
+			// routes were retired in G4e.
 			r.Post("/adopt", s.adoptBookOntology)
 			r.Route("/ontology", func(r chi.Router) {
 				r.Get("/", s.getBookOntology)
@@ -258,14 +258,10 @@ func (s *Server) Router() http.Handler {
 					})
 				})
 			})
-			r.Route("/genres", func(r chi.Router) {
-				r.Get("/", s.listGenres)
-				r.Post("/", s.createGenre)
-				r.Route("/{genre_id}", func(r chi.Router) {
-					r.Patch("/", s.patchGenre)
-					r.Delete("/", s.deleteGenre)
-				})
-			})
+			// NOTE: the legacy per-book /genres routes (genre_groups) were RETIRED in
+			// G4e — genre_groups is dropped, replaced by the tiered *_genres +
+			// book_active_genres model. Book-tier genre CRUD lives under
+			// /ontology/genres above.
 			r.Route("/recycle-bin", func(r chi.Router) {
 				r.Get("/", s.listEntityTrash)
 				r.Post("/{entity_id}/restore", s.restoreEntity)
@@ -531,11 +527,13 @@ SELECT
     ae.best_tier
 FROM all_entities ae
 JOIN glossary_entities e ON e.entity_id = ae.entity_id
-JOIN system_kinds ek ON ek.kind_id = e.kind_id
+JOIN book_kinds ek ON ek.book_kind_id = e.kind_id
 LEFT JOIN entity_attribute_values eav ON eav.entity_id = e.entity_id
     AND eav.attr_def_id = (
-        SELECT attr_def_id FROM system_kind_attributes
-        WHERE kind_id = e.kind_id AND code = 'name' LIMIT 1
+        SELECT ba.attr_id FROM book_attributes ba
+        JOIN book_genres g ON g.genre_id = ba.genre_id
+        WHERE ba.kind_id = e.kind_id AND ba.code = 'name'
+        ORDER BY (g.code = 'universal') DESC LIMIT 1
     )
 LEFT JOIN attribute_translations at ON at.attr_value_id = eav.attr_value_id
     AND at.language_code = $2
@@ -554,11 +552,13 @@ SELECT
     COALESCE(at.confidence, '') AS name_confidence,
     0 AS best_tier
 FROM glossary_entities e
-JOIN system_kinds ek ON ek.kind_id = e.kind_id
+JOIN book_kinds ek ON ek.book_kind_id = e.kind_id
 LEFT JOIN entity_attribute_values eav ON eav.entity_id = e.entity_id
     AND eav.attr_def_id = (
-        SELECT attr_def_id FROM system_kind_attributes
-        WHERE kind_id = e.kind_id AND code = 'name' LIMIT 1
+        SELECT ba.attr_id FROM book_attributes ba
+        JOIN book_genres g ON g.genre_id = ba.genre_id
+        WHERE ba.kind_id = e.kind_id AND ba.code = 'name'
+        ORDER BY (g.code = 'universal') DESC LIMIT 1
     )
 LEFT JOIN attribute_translations at ON at.attr_value_id = eav.attr_value_id
     AND at.language_code = $2

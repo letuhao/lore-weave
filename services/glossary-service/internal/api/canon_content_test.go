@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/loreweave/glossary-service/internal/migrate"
@@ -153,23 +154,19 @@ func TestCanonContent_SetsColumnAndEmitsEvent(t *testing.T) {
 
 	bookID := "00000000-0000-0000-0001-000000000053"
 
-	var kindID, nameAttrID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='location' LIMIT 1`).Scan(&kindID)
-	if kindID == "" {
-		// Fall back to character if the seed has no location kind.
-		pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
-	}
-	pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='name' LIMIT 1`,
-		kindID,
-	).Scan(&nameAttrID)
+	// G4: entities now reference the BOOK tier — adopt the book first, then resolve
+	// the kind/attr ids from book_kinds/book_attributes (universal-genre attr row).
+	bid := uuid.MustParse(bookID)
+	adoptTestBook(t, pool, bid)
+	kindID := bookKindID(t, pool, bid, "location")
+	nameAttrID := bookAttrID(t, pool, bid, kindID, "name")
 
 	// Seed an EXISTING identity-only entity: name set, short_description NULL.
 	var eid string
 	pool.QueryRow(ctx,
 		`INSERT INTO glossary_entities(book_id,kind_id,status,tags)
 		 VALUES($1,$2,'active','{}') RETURNING entity_id`,
-		bookID, kindID,
+		bid, kindID,
 	).Scan(&eid)
 	pool.Exec(ctx,
 		`INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value)
@@ -252,21 +249,18 @@ func TestCanonContent_NonexistentEntityReturns404(t *testing.T) {
 func seedIdentityOnlyEntity(t *testing.T, pool *pgxpool.Pool, bookID, name string) string {
 	t.Helper()
 	ctx := context.Background()
-	var kindID, nameAttrID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='location' LIMIT 1`).Scan(&kindID)
-	if kindID == "" {
-		pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
-	}
-	pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='name' LIMIT 1`,
-		kindID,
-	).Scan(&nameAttrID)
+	// G4: book-tier kind/attr ids — adopt the book then resolve from book_kinds/
+	// book_attributes (idempotent, so safe to call per-seed on a shared DB).
+	bid := uuid.MustParse(bookID)
+	adoptTestBook(t, pool, bid)
+	kindID := bookKindID(t, pool, bid, "location")
+	nameAttrID := bookAttrID(t, pool, bid, kindID, "name")
 
 	var eid string
 	pool.QueryRow(ctx,
 		`INSERT INTO glossary_entities(book_id,kind_id,status,tags)
 		 VALUES($1,$2,'active','{}') RETURNING entity_id`,
-		bookID, kindID,
+		bid, kindID,
 	).Scan(&eid)
 	pool.Exec(ctx,
 		`INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value)

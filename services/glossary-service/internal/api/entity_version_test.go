@@ -57,29 +57,13 @@ func newVersionFixture(t *testing.T, pool *pgxpool.Pool) *versionFixture {
 		InternalServiceToken: "tok",
 	})
 
-	// Self-seed a 'character' kind + name attr if absent. migrate.Seed skips the
-	// default kinds when system_kinds already holds the Up()-inserted 'unknown'
-	// kind (D-WIKI-SEED-ROBUSTNESS), so on a fresh local DB 'character' is missing.
-	// Seeding it here keeps this test self-sufficient (green locally and in CI).
-	var kindID, nameAttrDef uuid.UUID
-	if err := pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID); err != nil {
-		if err := pool.QueryRow(ctx,
-			`INSERT INTO system_kinds(code,name,icon,color,is_default,is_hidden,sort_order,genre_tags)
-			 VALUES('character','Character','👤','#000',true,false,1,'{universal}') RETURNING kind_id`,
-		).Scan(&kindID); err != nil {
-			t.Fatalf("seed character kind: %v", err)
-		}
-	}
-	if err := pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='name' LIMIT 1`,
-		kindID).Scan(&nameAttrDef); err != nil {
-		if err := pool.QueryRow(ctx,
-			`INSERT INTO system_kind_attributes(kind_id,code,name,field_type,is_required,is_system,sort_order)
-			 VALUES($1,'name','Name','text',true,true,1) RETURNING attr_def_id`,
-			kindID).Scan(&nameAttrDef); err != nil {
-			t.Fatalf("seed name attr def: %v", err)
-		}
-	}
+	// G4: entities reference the BOOK tier (book_kinds/book_attributes). Adopt the
+	// book's ontology from the System standards (idempotent SQL copy-down), then
+	// resolve the 'character' kind + its universal-genre 'name' attribute id. The
+	// seed guarantees 'character' exists system-side, so adopt always produces it.
+	adoptTestBook(t, pool, book)
+	kindID := bookKindID(t, pool, book, "character")
+	nameAttrDef := bookAttrID(t, pool, book, kindID, "name")
 
 	var entityID uuid.UUID
 	if err := pool.QueryRow(ctx,

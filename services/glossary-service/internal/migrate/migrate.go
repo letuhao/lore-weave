@@ -37,6 +37,12 @@ CREATE TABLE IF NOT EXISTS system_kinds (
   genre_tags  TEXT[] NOT NULL DEFAULT '{universal}',
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- G4e idempotency: genre_tags is dropped LAST in the chain (UpGlossaryDropLegacyG4).
+-- On a re-run against an already-dropped DB the CREATE above no-ops (table exists)
+-- so the column would stay missing and the seed INSERT below would fail. Re-add it
+-- defensively here; the drop step removes it again at the end, so the chain's END
+-- state is stable. Same pattern for user_kinds.genre_tags in userKindsSQL.
+ALTER TABLE system_kinds ADD COLUMN IF NOT EXISTS genre_tags TEXT[] NOT NULL DEFAULT '{universal}';
 
 CREATE TABLE IF NOT EXISTS system_kind_attributes (
   attr_def_id UUID PRIMARY KEY DEFAULT uuidv7(),
@@ -1269,7 +1275,7 @@ func BackfillShortDescription(
 			       COALESCE((
 			         SELECT av.original_value
 			         FROM entity_attribute_values av
-			         JOIN system_kind_attributes ad ON ad.attr_def_id = av.attr_def_id
+			         JOIN book_attributes ad ON ad.attr_id = av.attr_def_id
 			         WHERE av.entity_id = e.entity_id
 			           AND ad.code IN ('name','term')
 			         ORDER BY CASE ad.code WHEN 'name' THEN 0 WHEN 'term' THEN 1 ELSE 2 END
@@ -1278,13 +1284,13 @@ func BackfillShortDescription(
 			       COALESCE((
 			         SELECT av.original_value
 			         FROM entity_attribute_values av
-			         JOIN system_kind_attributes ad ON ad.attr_def_id = av.attr_def_id
+			         JOIN book_attributes ad ON ad.attr_id = av.attr_def_id
 			         WHERE av.entity_id = e.entity_id AND ad.code = 'description'
 			         LIMIT 1
 			       ), '') AS description,
 			       ek.name AS kind_name
 			FROM glossary_entities e
-			JOIN system_kinds ek ON ek.kind_id = e.kind_id
+			JOIN book_kinds ek ON ek.book_kind_id = e.kind_id
 			WHERE e.short_description IS NULL
 			  AND e.short_description_auto = true
 			  AND e.deleted_at IS NULL
@@ -1543,6 +1549,30 @@ func UpMergeCandidates(ctx context.Context, pool *pgxpool.Pool) error {
 	return execGuarded(ctx, pool, "merge-candidates", mergeCandidatesSQL)
 }
 
+// mergeCandidatesG4SQL repoints merge_candidates.kind_id : system_kinds -> book_kinds,
+// part of the G4 entity-layer cutover. A merge candidate's kind_id is derived from its
+// member glossary_entities, which after G4 carry book_kinds(book_kind_id) values — so the
+// FK must follow the entity layer onto the book tier. The merge_candidates table is created
+// (with the legacy system_kinds FK) by UpMergeCandidates, which runs BEFORE book_kinds
+// exists; this swap runs AFTER the cutover (book_kinds present, entities truncated, so no
+// stale rows to remap). Idempotent: guarded via pg_constraint.
+const mergeCandidatesG4SQL = `
+ALTER TABLE merge_candidates DROP CONSTRAINT IF EXISTS merge_candidates_kind_id_fkey;
+DO $mcg4$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'merge_candidates_kind_id_book_fkey') THEN
+    ALTER TABLE merge_candidates
+      ADD CONSTRAINT merge_candidates_kind_id_book_fkey
+      FOREIGN KEY (kind_id) REFERENCES book_kinds(book_kind_id);
+  END IF;
+END $mcg4$;
+`
+
+// UpMergeCandidatesG4 repoints merge_candidates.kind_id onto the book tier. MUST run AFTER
+// UpGlossaryCutoverG4 (book_kinds present + entities truncated). Idempotent.
+func UpMergeCandidatesG4(ctx context.Context, pool *pgxpool.Pool) error {
+	return execGuarded(ctx, pool, "merge-candidates-g4", mergeCandidatesG4SQL)
+}
+
 // ── SS-4: T2 per-user kinds (user_kinds + user_kind_attributes) ─────────────
 //
 // The per-user tier of the kind-tiering epic (CLAUDE.md › User Boundaries &
@@ -1790,66 +1820,475 @@ func UpGenreKindAttr(ctx context.Context, pool *pgxpool.Pool) error {
 	return execGuarded(ctx, pool, "genre-kind-attr", genreKindAttrSQL)
 }
 
-// seedGenreKindAttrSQL derives the SYSTEM standards in the tiered tables FROM the
-// already-seeded system_kinds + system_kind_attributes (run AFTER Seed):
-//  1. the system genres (O3 vocabulary: universal + the DefaultKinds tags + xianxia/mystery),
-//  2. system_kind_genres — every kind links to `universal` (O4: mandatory, anchors base
-//     attrs) plus each of its declared genre_tags that resolves to a seeded genre,
-//  3. system_attributes — every existing per-kind attr lifted into (kind, universal).
-//     This is faithful to current behaviour (all of a kind's attrs always apply);
-//     moving genre-specific attrs onto their genre is the O1 curate pass (deferred).
+// systemGenreVocabulary is the O3 system-genre vocabulary (the standards-tier
+// genre set seeded into system_genres). Derived directly in Go — NOT from the
+// (now-dropped) system_kinds.genre_tags column — so the seed survives G4e's
+// destructive drops. Order = sort_order (1-based). `universal` is first + O4.
+var systemGenreVocabulary = []struct {
+	Code, Name, Icon, Color string
+}{
+	{"universal", "Universal", "🌐", "#64748b"},
+	{"fantasy", "Fantasy", "🐉", "#a855f7"},
+	{"xianxia", "Xianxia", "⚔️", "#6366f1"},
+	{"romance", "Romance", "💕", "#f43f5e"},
+	{"drama", "Drama", "🎭", "#f59e0b"},
+	{"historical", "Historical", "🏛️", "#0891b2"},
+	{"mystery", "Mystery", "🔍", "#10b981"},
+}
+
+// SeedGenreKindAttr populates the SYSTEM-tier standards in the tiered tables —
+// derived DIRECTLY from domain.DefaultKinds in Go (NOT from the legacy
+// system_kinds.genre_tags column / system_kind_attributes table, which G4e
+// drops). Run AFTER Seed (needs the system_kinds rows for FK resolution) and
+// after UpGenreKindAttr. It writes:
 //
-// Idempotent (ON CONFLICT DO NOTHING) so it self-heals + never clobbers curation.
+//  1. system_genres — the O3 vocabulary (universal + fantasy + xianxia + romance
+//     + drama + historical + mystery). content_hash = md5("code|Name").
+//  2. system_kind_genres — every kind → `universal` (O4: mandatory, anchors base
+//     attrs) plus each of the kind's declared GenreTags that resolves to a seeded
+//     genre. A kind missing from DefaultKinds (e.g. the runtime `unknown` kind)
+//     still gets its `universal` link via the catch-all pass below.
+//  3. system_attributes — every DefaultKind attr lifted into (kind, universal),
+//     faithful to current behaviour (all of a kind's attrs apply); moving
+//     genre-specific attrs onto their genre is the O1 curate pass (deferred).
 //
-// Vocab assumption: only genre_tags that resolve to one of the seeded canonical
-// genres are linked; an exotic tag on a runtime-minted kind is dropped (only its
-// `universal` link survives). This is sound under R2 (full reset re-seeds every
-// kind from DefaultKinds, all in-vocab) — the drop only affects the transient
-// additive G1→G4 window, which the reset discards. content_hash is set once here
-// and NOT refreshed on re-seed; the admin-edit path (G2) owns recomputing it so
-// G5 Sync can detect system-side edits (review-impl finding 2, deferred).
-const seedGenreKindAttrSQL = `
-INSERT INTO system_genres (code, name, icon, color, sort_order, content_hash) VALUES
-  ('universal','Universal','🌐','#64748b',1, md5('universal|Universal')),
-  ('fantasy','Fantasy','🐉','#a855f7',2, md5('fantasy|Fantasy')),
-  ('xianxia','Xianxia','⚔️','#6366f1',3, md5('xianxia|Xianxia')),
-  ('romance','Romance','💕','#f43f5e',4, md5('romance|Romance')),
-  ('drama','Drama','🎭','#f59e0b',5, md5('drama|Drama')),
-  ('historical','Historical','🏛️','#0891b2',6, md5('historical|Historical')),
-  ('mystery','Mystery','🔍','#10b981',7, md5('mystery|Mystery'))
-ON CONFLICT (code) DO NOTHING;
+// Idempotent (ON CONFLICT DO NOTHING): self-heals + never clobbers curation.
+// content_hash is set once here and NOT refreshed on re-seed; the admin-edit path
+// (G2) owns recomputing it so G5 Sync can detect system-side edits.
+func SeedGenreKindAttr(ctx context.Context, pool *pgxpool.Pool) error {
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("seed genre-kind-attr: begin: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
 
--- Every kind → universal (mandatory, O4)
-INSERT INTO system_kind_genres (kind_id, genre_id)
-SELECT k.kind_id, g.genre_id
-FROM system_kinds k
-JOIN system_genres g ON g.code = 'universal'
-ON CONFLICT DO NOTHING;
+	// 1) system genres (O3 vocabulary). content_hash mirrors the prior md5("code|Name").
+	for i, g := range systemGenreVocabulary {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO system_genres (code, name, icon, color, sort_order, content_hash)
+			VALUES ($1,$2,$3,$4,$5, md5($1||'|'||$2))
+			ON CONFLICT (code) DO NOTHING`,
+			g.Code, g.Name, g.Icon, g.Color, i+1,
+		); err != nil {
+			return fmt.Errorf("seed system genre %s: %w", g.Code, err)
+		}
+	}
 
--- Each kind → its declared genre_tags (only those resolving to a seeded genre)
-INSERT INTO system_kind_genres (kind_id, genre_id)
-SELECT k.kind_id, g.genre_id
-FROM system_kinds k
-CROSS JOIN LATERAL unnest(k.genre_tags) AS t(tag)
-JOIN system_genres g ON g.code = t.tag
-ON CONFLICT DO NOTHING;
+	// 2a) every kind → universal (O4: mandatory). Catch-all so kinds NOT in
+	//     DefaultKinds (e.g. the runtime `unknown` kind) still get the link.
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO system_kind_genres (kind_id, genre_id)
+		SELECT k.kind_id, g.genre_id
+		FROM system_kinds k
+		JOIN system_genres g ON g.code = 'universal'
+		ON CONFLICT DO NOTHING`); err != nil {
+		return fmt.Errorf("seed universal kind-genres: %w", err)
+	}
 
--- Lift every per-kind attribute into (kind, universal)
-INSERT INTO system_attributes
-  (kind_id, genre_id, code, name, description, field_type, is_required, sort_order, options, content_hash)
-SELECT a.kind_id, g.genre_id, a.code, a.name, a.description, a.field_type, a.is_required, a.sort_order, a.options,
-       md5(a.code||'|'||a.name||'|'||coalesce(a.description,'')||'|'||a.field_type||'|'||a.is_required::text||'|'||coalesce(array_to_string(a.options,','),''))
-FROM system_kind_attributes a
-JOIN system_genres g ON g.code = 'universal'
-ON CONFLICT (kind_id, genre_id, code) DO NOTHING;
+	// 2b) each DefaultKind → its declared GenreTags (only those resolving to a
+	//     seeded genre) + 3) lift each kind's attrs into (kind, universal).
+	for _, k := range domain.DefaultKinds {
+		var kindID string
+		if err := tx.QueryRow(ctx,
+			`SELECT kind_id FROM system_kinds WHERE code=$1`, k.Code,
+		).Scan(&kindID); err != nil {
+			return fmt.Errorf("seed gka resolve kind %s: %w", k.Code, err)
+		}
+
+		for _, tag := range k.GenreTags {
+			// Only in-vocabulary tags link (an exotic tag is dropped — the kind
+			// still carries its mandatory universal link from 2a).
+			if _, err := tx.Exec(ctx, `
+				INSERT INTO system_kind_genres (kind_id, genre_id)
+				SELECT $1, g.genre_id FROM system_genres g WHERE g.code = $2
+				ON CONFLICT DO NOTHING`, kindID, tag,
+			); err != nil {
+				return fmt.Errorf("seed kind-genre %s/%s: %w", k.Code, tag, err)
+			}
+		}
+
+		for _, a := range k.Attrs {
+			var desc *string // DefaultKinds carry no per-attr description today
+			var opts []string
+			if len(a.Options) > 0 {
+				opts = a.Options
+			}
+			if _, err := tx.Exec(ctx, `
+				INSERT INTO system_attributes
+				  (kind_id, genre_id, code, name, description, field_type, is_required, sort_order, options, content_hash)
+				SELECT $1, g.genre_id, $2, $3, $4, $5, $6::boolean, $7, $8::text[],
+				       md5($2||'|'||$3||'|'||coalesce($4,'')||'|'||$5||'|'||($6::boolean)::text||'|'||coalesce(array_to_string($8::text[],','),''))
+				FROM system_genres g WHERE g.code = 'universal'
+				ON CONFLICT (kind_id, genre_id, code) DO NOTHING`,
+				kindID, a.Code, a.Name, desc, a.FieldType, a.IsRequired, a.SortOrder, opts,
+			); err != nil {
+				return fmt.Errorf("seed system attr %s.%s: %w", k.Code, a.Code, err)
+			}
+		}
+	}
+
+	return tx.Commit(ctx)
+}
+
+// glossaryCutoverG4SQL is the G4 destructive cutover (genre·kind·attribute epic).
+// It repoints the entity layer onto the BOOK tier (book-local plain FKs — the
+// sovereign-instance model) and rewrites the snapshot to read book_kinds /
+// book_attributes. Under R2 (full reset) this is a clean teardown, NOT a data
+// transform: TRUNCATE … CASCADE clears glossary_entities and everything FK-bound to
+// it (chapter_entity_links, entity_attribute_values, entity_genres, evidences,
+// attribute_translations, AND the wiki_* tables — CASCADE bypasses their ON DELETE
+// RESTRICT, E1). Books re-scaffold via adopt; wiki re-populates as entities return.
+//
+// DESTRUCTIVE to entity + wiki DATA — gated. Runs only where the migration chain runs
+// (the throwaway test DB during build; the dev DB at a deliberate deploy). Idempotent:
+// constraint swaps guarded via pg_constraint; CREATE OR REPLACE for the function.
+//
+// The legacy tables (system_kind_attributes, genre_groups) and the genre_tags columns
+// are NOT dropped here — their handlers retarget first; the drops land in the same
+// epic once nothing reads them. This keeps the cutover focused on the entity-layer FK.
+const glossaryCutoverG4SQL = `
+-- 1) Full reset of entity-derived data (required to repoint the FKs cleanly).
+TRUNCATE TABLE glossary_entities CASCADE;
+
+-- 2) Repoint glossary_entities.kind_id : system_kinds -> book_kinds (book-local).
+ALTER TABLE glossary_entities DROP CONSTRAINT IF EXISTS glossary_entities_kind_id_fkey;
+DO $cutover$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'glossary_entities_kind_id_book_fkey') THEN
+    ALTER TABLE glossary_entities
+      ADD CONSTRAINT glossary_entities_kind_id_book_fkey
+      FOREIGN KEY (kind_id) REFERENCES book_kinds(book_kind_id);
+  END IF;
+END $cutover$;
+
+-- 3) Repoint entity_attribute_values.attr_def_id : system_kind_attributes -> book_attributes.
+ALTER TABLE entity_attribute_values DROP CONSTRAINT IF EXISTS entity_attribute_values_attr_def_id_fkey;
+DO $cutover$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'eav_attr_def_id_book_fkey') THEN
+    ALTER TABLE entity_attribute_values
+      ADD CONSTRAINT eav_attr_def_id_book_fkey
+      FOREIGN KEY (attr_def_id) REFERENCES book_attributes(attr_id);
+  END IF;
+END $cutover$;
+
+-- 4) Rewrite the snapshot to the BOOK tier (book_kinds / book_attributes; source 'book').
+CREATE OR REPLACE FUNCTION recalculate_entity_snapshot(p_entity_id UUID)
+RETURNS void
+LANGUAGE plpgsql
+AS $snap$
+DECLARE
+  v_snapshot JSONB;
+BEGIN
+  SELECT jsonb_build_object(
+    'schema_version', '1.0',
+    'entity_id',      e.entity_id::text,
+    'book_id',        e.book_id::text,
+    'kind', jsonb_build_object(
+      'source', 'book',
+      'ref_id', k.book_kind_id::text,
+      'code',   k.code,
+      'name',   k.name,
+      'icon',   k.icon,
+      'color',  k.color
+    ),
+    'status', e.status,
+    'alive',  e.alive,
+    'tags',   to_jsonb(e.tags),
+    'attributes', COALESCE((
+      SELECT jsonb_agg(
+        jsonb_build_object(
+          'attr_def_source',   'book',
+          'attr_def_ref_id',   ad.attr_id::text,
+          'attr_value_id',     av.attr_value_id::text,
+          'code',              ad.code,
+          'name',              ad.name,
+          'field_type',        ad.field_type,
+          'is_required',       ad.is_required,
+          'is_system',         false,
+          'sort_order',        ad.sort_order,
+          'original_language', av.original_language,
+          'original_value',    COALESCE(av.original_value, ''),
+          'translations', COALESCE((
+            SELECT jsonb_agg(
+              jsonb_build_object(
+                'translation_id', t.translation_id::text,
+                'language_code',  t.language_code,
+                'value',          t.value,
+                'confidence',     t.confidence
+              ) ORDER BY t.language_code
+            )
+            FROM attribute_translations t
+            WHERE t.attr_value_id = av.attr_value_id
+          ), '[]'::jsonb),
+          'evidences', COALESCE((
+            SELECT jsonb_agg(
+              jsonb_build_object(
+                'evidence_id',       ev.evidence_id::text,
+                'evidence_type',     ev.evidence_type,
+                'original_language', ev.original_language,
+                'original_text',     ev.original_text,
+                'chapter_id',        ev.chapter_id::text,
+                'chapter_title',     ev.chapter_title,
+                'block_or_line',     ev.block_or_line,
+                'note',              ev.note
+              ) ORDER BY ev.created_at
+            )
+            FROM evidences ev
+            WHERE ev.attr_value_id = av.attr_value_id
+          ), '[]'::jsonb)
+        ) ORDER BY ad.sort_order
+      )
+      FROM entity_attribute_values av
+      JOIN book_attributes ad ON ad.attr_id = av.attr_def_id
+      WHERE av.entity_id = p_entity_id
+    ), '[]'::jsonb),
+    'chapter_links', COALESCE((
+      SELECT jsonb_agg(
+        jsonb_build_object(
+          'link_id',       cl.link_id::text,
+          'chapter_id',    cl.chapter_id::text,
+          'chapter_title', cl.chapter_title,
+          'chapter_index', cl.chapter_index,
+          'relevance',     cl.relevance,
+          'note',          cl.note
+        ) ORDER BY cl.chapter_index NULLS LAST, cl.added_at
+      )
+      FROM chapter_entity_links cl
+      WHERE cl.entity_id = p_entity_id
+    ), '[]'::jsonb),
+    'updated_at',  e.updated_at,
+    'snapshot_at', now()
+  )
+  INTO v_snapshot
+  FROM glossary_entities e
+  JOIN book_kinds k ON k.book_kind_id = e.kind_id
+  WHERE e.entity_id = p_entity_id;
+
+  IF v_snapshot IS NULL THEN
+    RETURN;
+  END IF;
+
+  UPDATE glossary_entities
+  SET entity_snapshot = v_snapshot
+  WHERE entity_id = p_entity_id
+    AND entity_snapshot IS DISTINCT FROM v_snapshot;
+END;
+$snap$;
 `
 
-// SeedGenreKindAttr populates the system-tier standards (genres, kind↔genre links,
-// attributes) from the seeded system kinds. Idempotent; call AFTER Seed (needs the
-// system_kinds + system_kind_attributes rows) and after UpGenreKindAttr.
-func SeedGenreKindAttr(ctx context.Context, pool *pgxpool.Pool) error {
-	if _, err := pool.Exec(ctx, seedGenreKindAttrSQL); err != nil {
-		return fmt.Errorf("seed genre-kind-attr: %w", err)
-	}
-	return nil
+// UpGlossaryCutoverG4 repoints the entity layer onto the book tier and rewrites the
+// snapshot (genre·kind·attribute epic, G4). DESTRUCTIVE to entity + wiki data. Run
+// LAST in the chain — after UpGenreKindAttr (needs book_kinds/book_attributes to exist
+// as FK targets) and after SeedGenreKindAttr.
+func UpGlossaryCutoverG4(ctx context.Context, pool *pgxpool.Pool) error {
+	return execGuarded(ctx, pool, "glossary-cutover-g4", glossaryCutoverG4SQL)
+}
+
+// glossaryCutoverG4CacheSQL re-applies the cache+search-aware recalculate_entity_snapshot
+// onto the BOOK tier. The cutover (glossaryCutoverG4SQL) rewrites recalculate_entity_snapshot
+// to read book_kinds/book_attributes, but using the BASE snapshot body — it drops the
+// cached_name / cached_aliases / search_vector maintenance that UpKnowledgeMemory layered on
+// (those still joined system_kind_attributes). This step restores that maintenance on the
+// book tier, so the read cache + FTS stay populated for book-tier entities. Runs AFTER the
+// cutover. Idempotent (CREATE OR REPLACE preserves trigger bindings).
+const glossaryCutoverG4CacheSQL = `
+CREATE OR REPLACE FUNCTION recalculate_entity_snapshot(p_entity_id UUID)
+RETURNS void
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_snapshot       JSONB;
+  v_cached_name    TEXT;
+  v_aliases_raw    TEXT;
+  v_cached_aliases TEXT[];
+BEGIN
+  -- ── Snapshot build (book tier) ───────────────────────────────────────────
+  SELECT jsonb_build_object(
+    'schema_version', '1.0',
+    'entity_id',      e.entity_id::text,
+    'book_id',        e.book_id::text,
+    'kind', jsonb_build_object(
+      'source', 'book',
+      'ref_id', k.book_kind_id::text,
+      'code',   k.code,
+      'name',   k.name,
+      'icon',   k.icon,
+      'color',  k.color
+    ),
+    'status', e.status,
+    'alive',  e.alive,
+    'tags',   to_jsonb(e.tags),
+    'attributes', COALESCE((
+      SELECT jsonb_agg(
+        jsonb_build_object(
+          'attr_def_source',   'book',
+          'attr_def_ref_id',   ad.attr_id::text,
+          'attr_value_id',     av.attr_value_id::text,
+          'code',              ad.code,
+          'name',              ad.name,
+          'field_type',        ad.field_type,
+          'is_required',       ad.is_required,
+          'is_system',         false,
+          'sort_order',        ad.sort_order,
+          'original_language', av.original_language,
+          'original_value',    COALESCE(av.original_value, ''),
+          'translations', COALESCE((
+            SELECT jsonb_agg(
+              jsonb_build_object(
+                'translation_id', t.translation_id::text,
+                'language_code',  t.language_code,
+                'value',          t.value,
+                'confidence',     t.confidence
+              ) ORDER BY t.language_code
+            )
+            FROM attribute_translations t
+            WHERE t.attr_value_id = av.attr_value_id
+          ), '[]'::jsonb),
+          'evidences', COALESCE((
+            SELECT jsonb_agg(
+              jsonb_build_object(
+                'evidence_id',       ev.evidence_id::text,
+                'evidence_type',     ev.evidence_type,
+                'original_language', ev.original_language,
+                'original_text',     ev.original_text,
+                'chapter_id',        ev.chapter_id::text,
+                'chapter_title',     ev.chapter_title,
+                'block_or_line',     ev.block_or_line,
+                'note',              ev.note
+              ) ORDER BY ev.created_at
+            )
+            FROM evidences ev
+            WHERE ev.attr_value_id = av.attr_value_id
+          ), '[]'::jsonb)
+        ) ORDER BY ad.sort_order
+      )
+      FROM entity_attribute_values av
+      JOIN book_attributes ad ON ad.attr_id = av.attr_def_id
+      WHERE av.entity_id = p_entity_id
+    ), '[]'::jsonb),
+    'chapter_links', COALESCE((
+      SELECT jsonb_agg(
+        jsonb_build_object(
+          'link_id',       cl.link_id::text,
+          'chapter_id',    cl.chapter_id::text,
+          'chapter_title', cl.chapter_title,
+          'chapter_index', cl.chapter_index,
+          'relevance',     cl.relevance,
+          'note',          cl.note
+        ) ORDER BY cl.chapter_index NULLS LAST, cl.added_at
+      )
+      FROM chapter_entity_links cl
+      WHERE cl.entity_id = p_entity_id
+    ), '[]'::jsonb),
+    'updated_at',  e.updated_at,
+    'snapshot_at', now()
+  )
+  INTO v_snapshot
+  FROM glossary_entities e
+  JOIN book_kinds k ON k.book_kind_id = e.kind_id
+  WHERE e.entity_id = p_entity_id;
+
+  IF v_snapshot IS NULL THEN
+    RETURN;
+  END IF;
+
+  -- ── Read name + aliases from EAV for the read-cache (book tier) ──────────
+  SELECT av.original_value INTO v_cached_name
+  FROM entity_attribute_values av
+  JOIN book_attributes ad ON ad.attr_id = av.attr_def_id
+  WHERE av.entity_id = p_entity_id
+    AND ad.code IN ('name','term')
+  ORDER BY
+    CASE ad.code WHEN 'name' THEN 0 WHEN 'term' THEN 1 ELSE 2 END,
+    ad.sort_order
+  LIMIT 1;
+
+  SELECT av.original_value INTO v_aliases_raw
+  FROM entity_attribute_values av
+  JOIN book_attributes ad ON ad.attr_id = av.attr_def_id
+  WHERE av.entity_id = p_entity_id AND ad.code = 'aliases'
+  LIMIT 1;
+
+  BEGIN
+    IF v_aliases_raw IS NULL OR v_aliases_raw = '' THEN
+      v_cached_aliases := ARRAY[]::TEXT[];
+    ELSE
+      v_cached_aliases := ARRAY(
+        SELECT jsonb_array_elements_text(v_aliases_raw::jsonb)
+      );
+    END IF;
+  EXCEPTION
+    WHEN invalid_text_representation
+      OR invalid_parameter_value
+      OR datatype_mismatch
+      OR data_exception THEN
+      v_cached_aliases := ARRAY[]::TEXT[];
+  END;
+
+  UPDATE glossary_entities
+  SET entity_snapshot = v_snapshot,
+      cached_name     = v_cached_name,
+      cached_aliases  = COALESCE(v_cached_aliases, ARRAY[]::TEXT[]),
+      search_vector   = to_tsvector('simple',
+        coalesce(v_cached_name, '') || ' ' ||
+        coalesce(array_to_string(v_cached_aliases, ' '), '') || ' ' ||
+        coalesce(short_description, ''))
+  WHERE entity_id = p_entity_id;
+END;
+$$;
+`
+
+// UpGlossaryCutoverG4Cache restores the cache+search-aware recalculate_entity_snapshot on
+// the book tier. MUST run AFTER UpGlossaryCutoverG4 (and after UpKnowledgeMemory, whose
+// system-tier version it supersedes). Idempotent.
+func UpGlossaryCutoverG4Cache(ctx context.Context, pool *pgxpool.Pool) error {
+	return execGuarded(ctx, pool, "glossary-cutover-g4-cache", glossaryCutoverG4CacheSQL)
+}
+
+// glossaryDropLegacyG4SQL is the G4e IRREVERSIBLE drop of the retired genre·kind·
+// attribute objects — the last step of the cutover, run ONLY after every reader/
+// writer has been retargeted off them (G4d):
+//
+//   - genre_groups          — legacy per-book genre buckets, replaced by the tiered
+//     *_genres + book_active_genres. Its handlers (listGenres/createGenre/…) are
+//     retired with the route.
+//   - system_kind_attributes — reshaped into system_attributes keyed (kind,genre,code).
+//     After the G4 cutover entity_attribute_values.attr_def_id → book_attributes, so
+//     nothing FKs this table anymore and it is droppable.
+//   - system_kinds.genre_tags / user_kinds.genre_tags — the flat-genre TEXT[] drift,
+//     replaced by the *_kind_genres link tables. SeedGenreKindAttr now derives the
+//     system standards in Go from DefaultKinds (not from these columns), so dropping
+//     them is safe across re-seeds.
+//
+// Idempotent: DROP / ALTER … IF EXISTS. Within a single migration chain run the
+// earlier additive steps (Up's CREATE IF NOT EXISTS, UpGenreGroups) briefly
+// re-create these objects; this step removes them again at the end, so the chain's
+// END STATE is stable on every run (the objects are absent after a full pass).
+// DESTRUCTIVE — gated (execGuarded), dev DB only (rollback = git revert + re-migrate).
+const glossaryDropLegacyG4SQL = `
+-- extraction_audit_log.attr_def_id still FKs system_kind_attributes (UpExtraction
+-- created it before the cutover). The cutover TRUNCATEd glossary_entities CASCADE so
+-- this table is empty; repoint its FK onto book_attributes (the book tier the entity
+-- layer now uses) so the legacy table can be dropped. Guarded via pg_constraint.
+ALTER TABLE extraction_audit_log DROP CONSTRAINT IF EXISTS extraction_audit_log_attr_def_id_fkey;
+DO $eal$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'eal_attr_def_id_book_fkey') THEN
+    ALTER TABLE extraction_audit_log
+      ADD CONSTRAINT eal_attr_def_id_book_fkey
+      FOREIGN KEY (attr_def_id) REFERENCES book_attributes(attr_id);
+  END IF;
+END $eal$;
+
+DROP TABLE IF EXISTS genre_groups;
+DROP TABLE IF EXISTS system_kind_attributes;
+ALTER TABLE system_kinds DROP COLUMN IF EXISTS genre_tags;
+ALTER TABLE user_kinds   DROP COLUMN IF EXISTS genre_tags;
+`
+
+// UpGlossaryDropLegacyG4 drops the retired genre·kind·attribute legacy objects
+// (genre_groups, system_kind_attributes) and the genre_tags columns (G4e). MUST run
+// LAST in the migration chain — after every consumer retarget (G4d) and after the
+// cutover + cache rewrite (so the snapshot fn no longer joins system_kind_attributes).
+// Idempotent; DESTRUCTIVE.
+func UpGlossaryDropLegacyG4(ctx context.Context, pool *pgxpool.Pool) error {
+	return execGuarded(ctx, pool, "glossary-drop-legacy-g4", glossaryDropLegacyG4SQL)
 }

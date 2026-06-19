@@ -99,7 +99,7 @@ func (s *Server) toolProposeNewAttribute(ctx context.Context, _ *mcp.CallToolReq
 	if err := s.checkGrant(ctx, bookID, userID, grantclient.GrantManage); err != nil {
 		return nil, proposeSchemaToolOut{}, uniformOwnershipError(err)
 	}
-	kindMap, err := s.loadKindMap(ctx)
+	kindMap, err := s.loadKindMap(ctx, bookID)
 	if err != nil {
 		return nil, proposeSchemaToolOut{}, errors.New("failed to resolve kinds")
 	}
@@ -188,10 +188,15 @@ func (s *Server) confirmSchema(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "bad proposal payload")
 			return
 		}
-		k, err := s.createKindFromParams(r.Context(), p)
+		k, err := s.createKindFromParams(r.Context(), claims.BookID, p)
 		if err != nil {
 			if isUniqueViolation(err) {
 				writeError(w, http.StatusConflict, "GLOSS_CONFLICT", "kind code already exists")
+				return
+			}
+			// Book ontology not scaffolded (no universal genre) → clean 422, not 500.
+			if errors.Is(err, errNotAdopted) {
+				writeError(w, http.StatusUnprocessableEntity, "GLOSS_SCHEMA_TOKEN", "the book ontology must be adopted before adding kinds")
 				return
 			}
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to create kind")
@@ -204,14 +209,15 @@ func (s *Server) confirmSchema(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "bad proposal payload")
 			return
 		}
-		a, err := s.createAttrDefFromParams(r.Context(), p)
+		a, err := s.createAttrDefFromParams(r.Context(), claims.BookID, p)
 		if err != nil {
 			if isUniqueViolation(err) {
 				writeError(w, http.StatusConflict, "GLOSS_CONFLICT", "attribute code already exists for this kind")
 				return
 			}
-			if isForeignKeyViolation(err) {
-				// The kind was deleted between propose and confirm — clean 422, not 500.
+			if isForeignKeyViolation(err) || errors.Is(err, errNotAdopted) {
+				// The kind was deleted between propose and confirm, or the book isn't
+				// adopted — clean 422, not 500.
 				writeError(w, http.StatusUnprocessableEntity, "GLOSS_SCHEMA_TOKEN", "the target kind no longer exists — propose again")
 				return
 			}

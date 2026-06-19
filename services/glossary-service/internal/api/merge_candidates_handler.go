@@ -248,7 +248,7 @@ func (s *Server) loadMergeCandidates(ctx context.Context, bookID uuid.UUID, stat
 		       mc.suggested_winner_entity_id, mc.score, mc.evidence_json,
 		       mc.rationale, mc.status, mc.created_at
 		FROM merge_candidates mc
-		JOIN system_kinds ek ON ek.kind_id = mc.kind_id
+		JOIN book_kinds ek ON ek.book_kind_id = mc.kind_id
 		WHERE mc.book_id = $1 AND mc.status = $2
 		ORDER BY mc.score DESC, mc.created_at DESC`, bookID, status)
 	if err != nil {
@@ -325,7 +325,7 @@ func (s *Server) loadMemberDetail(ctx context.Context, ids map[uuid.UUID]struct{
 	if rows, err := s.pool.Query(ctx, `
 		SELECT eav.entity_id, ad.code, eav.original_value
 		FROM entity_attribute_values eav
-		JOIN system_kind_attributes ad ON ad.attr_def_id = eav.attr_def_id
+		JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
 		WHERE eav.entity_id = ANY($1::uuid[]) AND ad.code IN ('name','aliases')`, idList); err == nil {
 		for rows.Next() {
 			var id uuid.UUID

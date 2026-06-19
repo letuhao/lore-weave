@@ -43,9 +43,9 @@ func (s *Server) scanAttrValueBasic(ctx context.Context, attrValueID uuid.UUID) 
 	err := s.pool.QueryRow(ctx, `
 		SELECT eav.attr_value_id, eav.entity_id, eav.attr_def_id,
 		       eav.original_language, eav.original_value,
-		       ad.attr_def_id, ad.code, ad.name, ad.field_type, ad.is_required, ad.sort_order
+		       ad.attr_id, ad.code, ad.name, ad.field_type, ad.is_required, ad.sort_order
 		FROM entity_attribute_values eav
-		JOIN system_kind_attributes ad ON ad.attr_def_id = eav.attr_def_id
+		JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
 		WHERE eav.attr_value_id = $1`,
 		attrValueID,
 	).Scan(
@@ -217,7 +217,7 @@ func (s *Server) patchAttributeValue(w http.ResponseWriter, r *http.Request) {
 		var attrCode string
 		if err := tx.QueryRow(ctx, `
 			SELECT ad.code FROM entity_attribute_values eav
-			JOIN system_kind_attributes ad ON ad.attr_def_id = eav.attr_def_id
+			JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
 			WHERE eav.attr_value_id = $1`, attrValueID).Scan(&attrCode); err != nil {
 			slog.Warn("patch-attr: attr code lookup failed (non-fatal)",
 				"attr_value_id", attrValueID.String(), "error", err.Error())
@@ -296,14 +296,14 @@ func (s *Server) regenerateAutoShortDescription(ctx context.Context, q pgxExecQu
 		  COALESCE((
 		    SELECT av.original_value
 		    FROM entity_attribute_values av
-		    JOIN system_kind_attributes ad ON ad.attr_def_id = av.attr_def_id
+		    JOIN book_attributes ad ON ad.attr_id = av.attr_def_id
 		    WHERE av.entity_id = e.entity_id AND ad.code = 'description'
 		    LIMIT 1
 		  ), ''),
 		  ek.name,
 		  e.short_description_auto
 		FROM glossary_entities e
-		JOIN system_kinds ek ON ek.kind_id = e.kind_id
+		JOIN book_kinds ek ON ek.book_kind_id = e.kind_id
 		WHERE e.entity_id = $1`, entityID,
 	).Scan(&name, &desc, &kindName, &auto)
 	if err != nil {

@@ -49,21 +49,22 @@ func (s *Server) listUserWikiContributions(w http.ResponseWriter, r *http.Reques
 	rows, err := s.pool.Query(r.Context(), `
 		SELECT wa.article_id, wa.entity_id, wa.book_id, wa.status,
 		       COALESCE(dn.original_value, '') AS display_name,
-		       ek.kind_id, ek.code, ek.name, ek.icon, ek.color,
+		       ek.book_kind_id, ek.code, ek.name, ek.icon, ek.color,
 		       MAX(wr.created_at) AS last_contributed_at
 		FROM wiki_revisions wr
 		JOIN wiki_articles wa ON wa.article_id = wr.article_id
 		JOIN glossary_entities ge ON ge.entity_id = wa.entity_id
-		JOIN system_kinds ek ON ek.kind_id = ge.kind_id
+		JOIN book_kinds ek ON ek.book_kind_id = ge.kind_id
 		LEFT JOIN entity_attribute_values dn ON dn.entity_id = ge.entity_id
 			AND dn.attr_def_id = (
-				SELECT ad.attr_def_id FROM system_kind_attributes ad
+				SELECT ad.attr_id FROM book_attributes ad
+				JOIN book_genres g ON g.genre_id = ad.genre_id
 				WHERE ad.kind_id = ge.kind_id AND ad.code IN ('name','term')
-				ORDER BY ad.sort_order LIMIT 1
+				ORDER BY (g.code = 'universal') DESC, ad.sort_order LIMIT 1
 			)
 		WHERE wr.author_id = $1
 		GROUP BY wa.article_id, wa.entity_id, wa.book_id, wa.status,
-		         dn.original_value, ek.kind_id, ek.code, ek.name, ek.icon, ek.color
+		         dn.original_value, ek.book_kind_id, ek.code, ek.name, ek.icon, ek.color
 		ORDER BY last_contributed_at DESC
 		LIMIT $2 OFFSET $3`, targetUser, limit, offset)
 	if err != nil {

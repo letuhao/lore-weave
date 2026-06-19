@@ -16,7 +16,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/loreweave/glossary-service/internal/config"
-	"github.com/loreweave/glossary-service/internal/migrate"
 )
 
 // ── token unit tests (no DB) — INV-9 / H8 ────────────────────────────────────
@@ -130,12 +129,10 @@ type schemaFixture struct {
 func newSchemaFixture(t *testing.T, pool *pgxpool.Pool) *schemaFixture {
 	t.Helper()
 	runK2aMigrations(t, pool)
-	// createAttrDefFromParams writes genre_tags/auto_fill_prompt/translation_hint —
-	// columns added by UpGenreGroups (idempotent ADD COLUMN IF NOT EXISTS).
-	if err := migrate.UpGenreGroups(context.Background(), pool); err != nil {
-		t.Fatalf("UpGenreGroups: %v", err)
-	}
 	owner, book := uuid.New(), uuid.New()
+	// O2 (G4): the assistant mints into the BOOK tier, so the book must be adopted
+	// (book_kinds / book_attributes / the universal genre) before confirm can write.
+	adoptTestBook(t, pool, book)
 	ts := httptest.NewServer(projection(book, owner))
 	t.Cleanup(ts.Close)
 	srv := NewServer(pool, &config.Config{
@@ -149,8 +146,8 @@ func newSchemaFixture(t *testing.T, pool *pgxpool.Pool) *schemaFixture {
 		t.Fatalf("sign jwt: %v", err)
 	}
 	t.Cleanup(func() {
-		pool.Exec(context.Background(), `DELETE FROM system_kind_attributes WHERE kind_id IN (SELECT kind_id FROM system_kinds WHERE code='qa_new_kind')`)
-		pool.Exec(context.Background(), `DELETE FROM system_kinds WHERE code='qa_new_kind'`)
+		// book_attributes cascades from book_kinds; clear the minted book kind.
+		pool.Exec(context.Background(), `DELETE FROM book_kinds WHERE book_id=$1 AND code='qa_new_kind'`, book)
 	})
 	return &schemaFixture{srv: srv, jwt: signed, ownerID: owner, bookID: book}
 }
@@ -178,7 +175,7 @@ func TestConfirmSchema_CreatesKindThenRejectsReplayAndBadTokens(t *testing.T) {
 		t.Fatalf("valid confirm: want 201, got %d (%s)", w.Code, w.Body.String())
 	}
 	var n int
-	pool.QueryRow(ctx, `SELECT count(*) FROM system_kinds WHERE code='qa_new_kind'`).Scan(&n)
+	pool.QueryRow(ctx, `SELECT count(*) FROM book_kinds WHERE book_id=$1 AND code='qa_new_kind'`, f.bookID).Scan(&n)
 	if n != 1 {
 		t.Fatalf("kind not created: count=%d", n)
 	}
@@ -223,7 +220,7 @@ func TestProposeNewKind_RoundTripToConfirm(t *testing.T) {
 		t.Fatalf("confirm of a freshly-proposed token: want 201, got %d (%s)", w.Code, w.Body.String())
 	}
 	var n int
-	pool.QueryRow(context.Background(), `SELECT count(*) FROM system_kinds WHERE code='qa_new_kind'`).Scan(&n)
+	pool.QueryRow(context.Background(), `SELECT count(*) FROM book_kinds WHERE book_id=$1 AND code='qa_new_kind'`, f.bookID).Scan(&n)
 	if n != 1 {
 		t.Errorf("round-trip did not create the kind: count=%d", n)
 	}
@@ -234,14 +231,14 @@ func TestConfirmSchema_DeletedKindIsCleanError(t *testing.T) {
 	pool := openTestDB(t)
 	f := newSchemaFixture(t, pool)
 	ctx := context.Background()
-	k, err := f.srv.createKindFromParams(ctx, kindCreateParams{Code: "qa_new_kind", Name: "Power System"})
+	k, err := f.srv.createKindFromParams(ctx, f.bookID, kindCreateParams{Code: "qa_new_kind", Name: "Power System"})
 	if err != nil {
 		t.Fatalf("seed kind: %v", err)
 	}
 	params, _ := json.Marshal(attrCreateParams{KindID: k.KindID, Code: "realm", Name: "Realm", FieldType: "text"})
 	tok := mintSchemaToken(versionTestSecret, f.ownerID, f.bookID, schemaOpAttribute, params, time.Now())
-	// kind vanishes (cascades its system_kind_attributes) before the human confirms.
-	if _, err := pool.Exec(ctx, `DELETE FROM system_kinds WHERE kind_id=$1`, k.KindID); err != nil {
+	// book kind vanishes (cascades its book_attributes) before the human confirms.
+	if _, err := pool.Exec(ctx, `DELETE FROM book_kinds WHERE book_kind_id=$1`, k.KindID); err != nil {
 		t.Fatalf("delete kind: %v", err)
 	}
 	if w := f.confirm(t, tok); w.Code != http.StatusUnprocessableEntity {
@@ -254,7 +251,7 @@ func TestConfirmSchema_CreatesAttribute(t *testing.T) {
 	f := newSchemaFixture(t, pool)
 	ctx := context.Background()
 	// create the kind first (reuse the core directly)
-	k, err := f.srv.createKindFromParams(ctx, kindCreateParams{Code: "qa_new_kind", Name: "Power System"})
+	k, err := f.srv.createKindFromParams(ctx, f.bookID, kindCreateParams{Code: "qa_new_kind", Name: "Power System"})
 	if err != nil {
 		t.Fatalf("seed kind: %v", err)
 	}
@@ -264,7 +261,7 @@ func TestConfirmSchema_CreatesAttribute(t *testing.T) {
 		t.Fatalf("attr confirm: want 201, got %d (%s)", w.Code, w.Body.String())
 	}
 	var n int
-	pool.QueryRow(ctx, `SELECT count(*) FROM system_kind_attributes WHERE kind_id=$1 AND code='realm'`, k.KindID).Scan(&n)
+	pool.QueryRow(ctx, `SELECT count(*) FROM book_attributes WHERE book_id=$1 AND kind_id=$2 AND code='realm'`, f.bookID, k.KindID).Scan(&n)
 	if n != 1 {
 		t.Errorf("attribute not created: count=%d", n)
 	}

@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/google/uuid"
 )
 
 func TestGlossaryTranslate_RequiresInternalToken(t *testing.T) {
@@ -41,17 +43,16 @@ func TestGlossaryTranslate_ApplyWritesMachineMultiAttr(t *testing.T) {
 		pool.Exec(ctx, `DELETE FROM glossary_entities WHERE book_id=$1`, bookID)
 	})
 
-	var kindID, nameAttrID, descAttrID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
-	pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='name' LIMIT 1`, kindID).Scan(&nameAttrID)
-	pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='description' LIMIT 1`, kindID).Scan(&descAttrID)
+	bid := uuid.MustParse(bookID)
+	adoptTestBook(t, pool, bid)
+	kindID := bookKindID(t, pool, bid, "character")
+	nameAttrID := bookAttrID(t, pool, bid, kindID, "name")
+	descAttrID := bookAttrID(t, pool, bid, kindID, "description")
 
 	var eid, nameAVID, descAVID string
 	pool.QueryRow(ctx,
 		`INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`,
-		bookID, kindID).Scan(&eid)
+		bid, kindID).Scan(&eid)
 	pool.QueryRow(ctx,
 		`INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value)
 		 VALUES($1,$2,'zh',$3) RETURNING attr_value_id`, eid, nameAttrID, "焰魔").Scan(&nameAVID)
@@ -105,15 +106,15 @@ func TestGlossaryTranslate_CandidatesMissingOnlyReturnsItems(t *testing.T) {
 		pool.Exec(ctx, `DELETE FROM glossary_entities WHERE book_id=$1`, bookID)
 	})
 
-	var kindID, nameAttrID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
-	pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='name' LIMIT 1`, kindID).Scan(&nameAttrID)
+	bid := uuid.MustParse(bookID)
+	adoptTestBook(t, pool, bid)
+	kindID := bookKindID(t, pool, bid, "character")
+	nameAttrID := bookAttrID(t, pool, bid, kindID, "name")
 
 	var eid string
 	pool.QueryRow(ctx,
 		`INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`,
-		bookID, kindID).Scan(&eid)
+		bid, kindID).Scan(&eid)
 	pool.Exec(ctx,
 		`INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value)
 		 VALUES($1,$2,'zh',$3)`, eid, nameAttrID, "测试名")
@@ -183,7 +184,7 @@ func TestGlossaryTranslate_DoesNotOverwriteVerified(t *testing.T) {
 	pool.QueryRow(ctx, `
 		SELECT eav.attr_value_id FROM entity_attribute_values eav
 		JOIN glossary_entities ge ON ge.entity_id = eav.entity_id
-		JOIN system_kind_attributes ad ON ad.attr_def_id = eav.attr_def_id
+		JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
 		WHERE ge.book_id=$1 AND ad.code='name' AND eav.original_value=$2`, bookID, "阿尔德里克").Scan(&avid)
 	var eid string
 	pool.QueryRow(ctx, `SELECT entity_id FROM glossary_entities WHERE book_id=$1 LIMIT 1`, bookID).Scan(&eid)

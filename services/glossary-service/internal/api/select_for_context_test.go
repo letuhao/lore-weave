@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -24,14 +25,11 @@ type seedEntity struct {
 func seedContextBook(t *testing.T, pool *pgxpool.Pool, bookID string, entities []seedEntity) []string {
 	t.Helper()
 	ctx := context.Background()
-	var kindID, nameAttrID, aliasesAttrID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
-	pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='name' LIMIT 1`, kindID,
-	).Scan(&nameAttrID)
-	pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='aliases' LIMIT 1`, kindID,
-	).Scan(&aliasesAttrID)
+	bid := uuid.MustParse(bookID)
+	adoptTestBook(t, pool, bid)
+	kindID := bookKindID(t, pool, bid, "character")
+	nameAttrID := bookAttrID(t, pool, bid, kindID, "name")
+	aliasesAttrID := bookAttrID(t, pool, bid, kindID, "aliases")
 
 	ids := make([]string, 0, len(entities))
 	for _, e := range entities {
@@ -39,7 +37,7 @@ func seedContextBook(t *testing.T, pool *pgxpool.Pool, bookID string, entities [
 		if err := pool.QueryRow(ctx,
 			`INSERT INTO glossary_entities(book_id,kind_id,status,tags,short_description,is_pinned_for_context)
 			 VALUES($1,$2,'active','{}',$3,$4) RETURNING entity_id`,
-			bookID, kindID, nullIfEmpty(e.ShortDescription), e.Pinned,
+			bid, kindID, nullIfEmpty(e.ShortDescription), e.Pinned,
 		).Scan(&eid); err != nil {
 			t.Fatalf("insert entity: %v", err)
 		}
@@ -48,7 +46,7 @@ func seedContextBook(t *testing.T, pool *pgxpool.Pool, bookID string, entities [
 				`INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value)
 				 VALUES($1,$2,'zh',$3)`, eid, nameAttrID, e.Name)
 		}
-		if e.Aliases != "" && aliasesAttrID != "" {
+		if e.Aliases != "" {
 			pool.Exec(ctx,
 				`INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value)
 				 VALUES($1,$2,'zh',$3)`, eid, aliasesAttrID, e.Aliases)

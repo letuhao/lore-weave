@@ -202,7 +202,7 @@ func (s *Server) listEntityEvidences(w http.ResponseWriter, r *http.Request) {
 			ev.note, ev.created_at
 		FROM evidences ev
 		JOIN entity_attribute_values eav ON eav.attr_value_id = ev.attr_value_id
-		JOIN system_kind_attributes ad ON ad.attr_def_id = eav.attr_def_id
+		JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
 		%s
 		%s
 		%s
@@ -249,7 +249,7 @@ func (s *Server) listEntityEvidences(w http.ResponseWriter, r *http.Request) {
 		attrRows, err := s.pool.Query(ctx, `
 			SELECT eav.attr_value_id, ad.name
 			FROM entity_attribute_values eav
-			JOIN system_kind_attributes ad ON ad.attr_def_id = eav.attr_def_id
+			JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
 			WHERE eav.entity_id = $1
 			ORDER BY ad.sort_order, ad.name`, entityID)
 		if err != nil {

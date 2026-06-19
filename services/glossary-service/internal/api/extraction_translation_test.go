@@ -9,6 +9,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -21,7 +22,7 @@ func nameTranslation(t *testing.T, pool *pgxpool.Pool, bookID, name, lang string
 		SELECT at.value, at.confidence
 		FROM attribute_translations at
 		JOIN entity_attribute_values eav ON eav.attr_value_id = at.attr_value_id
-		JOIN system_kind_attributes ad ON ad.attr_def_id = eav.attr_def_id
+		JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
 		JOIN glossary_entities ge ON ge.entity_id = eav.entity_id
 		WHERE ge.book_id=$1 AND ad.code='name' AND eav.original_value=$2 AND at.language_code=$3`,
 		bookID, name, lang,
@@ -38,15 +39,14 @@ func nameTranslation(t *testing.T, pool *pgxpool.Pool, bookID, name, lang string
 func seedEntityWithTranslation(t *testing.T, pool *pgxpool.Pool, bookID, name, lang, value, confidence string) {
 	t.Helper()
 	ctx := context.Background()
-	var kindID, nameAttrID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
-	pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='name' LIMIT 1`,
-		kindID).Scan(&nameAttrID)
+	bid := uuid.MustParse(bookID)
+	adoptTestBook(t, pool, bid)
+	kindID := bookKindID(t, pool, bid, "character")
+	nameAttrID := bookAttrID(t, pool, bid, kindID, "name")
 	var eid, avid string
 	pool.QueryRow(ctx,
 		`INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}')
-		 RETURNING entity_id`, bookID, kindID).Scan(&eid)
+		 RETURNING entity_id`, bid, kindID).Scan(&eid)
 	pool.QueryRow(ctx,
 		`INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value)
 		 VALUES($1,$2,'zh',$3) RETURNING attr_value_id`, eid, nameAttrID, name).Scan(&avid)
@@ -71,6 +71,7 @@ func TestBulkExtract_WritesMachineTranslationForNewEntity(t *testing.T) {
 	pool := openTestDB(t)
 	runK2aMigrations(t, pool)
 	bookID := "00000000-0000-0000-0005-0000000e2001"
+	adoptTestBook(t, pool, uuid.MustParse(bookID))
 	t.Cleanup(func() {
 		pool.Exec(context.Background(), `DELETE FROM glossary_entities WHERE book_id=$1`, bookID)
 	})
@@ -134,6 +135,7 @@ func TestBulkExtract_NoTranslationFieldIsBackwardCompatible(t *testing.T) {
 	pool := openTestDB(t)
 	runK2aMigrations(t, pool)
 	bookID := "00000000-0000-0000-0005-0000000e2004"
+	adoptTestBook(t, pool, uuid.MustParse(bookID))
 	t.Cleanup(func() {
 		pool.Exec(context.Background(), `DELETE FROM glossary_entities WHERE book_id=$1`, bookID)
 	})

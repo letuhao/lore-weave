@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/google/uuid"
 )
 
 // ── unit tests (no DB) ──────────────────────────────────────────────
@@ -79,19 +81,13 @@ func TestKnownEntities_ReturnsEntityID(t *testing.T) {
 
 	bookID := "00000000-0000-0000-0001-000000000001"
 
-	// Look up the 'character' kind + its name/aliases attribute defs.
-	var kindID, nameAttrID, aliasesAttrID string
-	pool.QueryRow(ctx,
-		`SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`,
-	).Scan(&kindID)
-	pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='name' LIMIT 1`,
-		kindID,
-	).Scan(&nameAttrID)
-	pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='aliases' LIMIT 1`,
-		kindID,
-	).Scan(&aliasesAttrID)
+	// G4: entities now reference the BOOK tier — adopt the book so its book_kinds /
+	// book_attributes exist, then resolve the 'character' kind + name/aliases attrs.
+	bid := uuid.MustParse(bookID)
+	adoptTestBook(t, pool, bid)
+	kindID := bookKindID(t, pool, bid, "character")
+	nameAttrID := bookAttrID(t, pool, bid, kindID, "name")
+	aliasesAttrID := bookAttrID(t, pool, bid, kindID, "aliases")
 
 	// Seed two entities.
 	seedEntity := func(name, aliasesJSON string) string {
@@ -99,14 +95,14 @@ func TestKnownEntities_ReturnsEntityID(t *testing.T) {
 		pool.QueryRow(ctx,
 			`INSERT INTO glossary_entities(book_id,kind_id,status,tags)
 			 VALUES($1,$2,'active','{}') RETURNING entity_id`,
-			bookID, kindID,
+			bid, kindID,
 		).Scan(&eid)
 		pool.Exec(ctx,
 			`INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value)
 			 VALUES($1,$2,'en',$3)`,
 			eid, nameAttrID, name,
 		)
-		if aliasesAttrID != "" && aliasesJSON != "" {
+		if aliasesJSON != "" {
 			pool.Exec(ctx,
 				`INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value)
 				 VALUES($1,$2,'en',$3)`,

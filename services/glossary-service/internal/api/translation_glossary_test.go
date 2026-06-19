@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -41,16 +42,15 @@ func callTranslationGlossary(t *testing.T, srv *Server, bookID, targetLang, toke
 func seedTranslationEntity(t *testing.T, pool *pgxpool.Pool, bookID, name, targetLang, value, confidence string) string {
 	t.Helper()
 	ctx := context.Background()
-	var kindID, nameAttrID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
-	pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='name' LIMIT 1`, kindID,
-	).Scan(&nameAttrID)
+	bid := uuid.MustParse(bookID)
+	adoptTestBook(t, pool, bid)
+	kindID := bookKindID(t, pool, bid, "character")
+	nameAttrID := bookAttrID(t, pool, bid, kindID, "name")
 
 	var eid string
 	if err := pool.QueryRow(ctx,
 		`INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}')
-		 RETURNING entity_id`, bookID, kindID,
+		 RETURNING entity_id`, bid, kindID,
 	).Scan(&eid); err != nil {
 		t.Fatalf("insert entity: %v", err)
 	}
@@ -75,16 +75,15 @@ func seedTranslationEntity(t *testing.T, pool *pgxpool.Pool, bookID, name, targe
 func seedNameOnlyEntity(t *testing.T, pool *pgxpool.Pool, bookID, name string) string {
 	t.Helper()
 	ctx := context.Background()
-	var kindID, nameAttrID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
-	pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='name' LIMIT 1`, kindID,
-	).Scan(&nameAttrID)
+	bid := uuid.MustParse(bookID)
+	adoptTestBook(t, pool, bid)
+	kindID := bookKindID(t, pool, bid, "character")
+	nameAttrID := bookAttrID(t, pool, bid, kindID, "name")
 
 	var eid string
 	if err := pool.QueryRow(ctx,
 		`INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}')
-		 RETURNING entity_id`, bookID, kindID,
+		 RETURNING entity_id`, bid, kindID,
 	).Scan(&eid); err != nil {
 		t.Fatalf("insert entity: %v", err)
 	}

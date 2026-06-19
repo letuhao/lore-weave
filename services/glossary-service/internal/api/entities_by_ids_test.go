@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/google/uuid"
 )
 
 func TestEntitiesByIDs_FetchesShapeAndDropsAbsent(t *testing.T) {
@@ -18,18 +20,17 @@ func TestEntitiesByIDs_FetchesShapeAndDropsAbsent(t *testing.T) {
 	runK2aMigrations(t, pool)
 
 	bookID := "00000000-0000-0000-0002-0000000b4001"
-	var kindID, nameAttrID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
-	pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='name' LIMIT 1`,
-		kindID).Scan(&nameAttrID)
+	bid := uuid.MustParse(bookID)
+	adoptTestBook(t, pool, bid)
+	kindID := bookKindID(t, pool, bid, "character")
+	nameAttrID := bookAttrID(t, pool, bid, kindID, "name")
 
 	seed := func(name, shortDesc, status string, deleted bool) string {
 		var eid string
 		pool.QueryRow(ctx,
 			`INSERT INTO glossary_entities(book_id,kind_id,status,tags,short_description,deleted_at)
 			 VALUES($1,$2,$3,'{}',$4, CASE WHEN $5 THEN now() ELSE NULL END) RETURNING entity_id`,
-			bookID, kindID, status, nullIfEmpty(shortDesc), deleted,
+			bid, kindID, status, nullIfEmpty(shortDesc), deleted,
 		).Scan(&eid)
 		// name attr → K2a trigger populates cached_name
 		pool.Exec(ctx,

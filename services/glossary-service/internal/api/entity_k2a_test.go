@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/loreweave/glossary-service/internal/migrate"
@@ -50,6 +51,34 @@ func runK2aMigrations(t *testing.T, pool *pgxpool.Pool) {
 	// Denormalized appearance counters + triggers (sort-by-appearance).
 	if err := migrate.UpEntityCounts(ctx, pool); err != nil {
 		t.Fatalf("migrate.UpEntityCounts: %v", err)
+	}
+	// G4 genre·kind·attribute tiering: user_kinds → genre/kind/attr tier (creates
+	// book_kinds + book_attributes, the cutover's FK targets) → seed system standards
+	// → destructive cutover (repoints glossary_entities.kind_id → book_kinds and
+	// entity_attribute_values.attr_def_id → book_attributes, rewrites the snapshot to
+	// the book tier). Order matters: UpGenreKindAttr MUST precede the cutover. Because
+	// the test DB is shared and this DDL persists, the cutover must be present in
+	// whatever chain runs first — so it lives in this lowest-level shared helper.
+	if err := migrate.UpUserKinds(ctx, pool); err != nil {
+		t.Fatalf("migrate.UpUserKinds: %v", err)
+	}
+	if err := migrate.UpGenreKindAttr(ctx, pool); err != nil {
+		t.Fatalf("migrate.UpGenreKindAttr: %v", err)
+	}
+	if err := migrate.SeedGenreKindAttr(ctx, pool); err != nil {
+		t.Fatalf("migrate.SeedGenreKindAttr: %v", err)
+	}
+	if err := migrate.UpGlossaryCutoverG4(ctx, pool); err != nil {
+		t.Fatalf("migrate.UpGlossaryCutoverG4: %v", err)
+	}
+	if err := migrate.UpGlossaryCutoverG4Cache(ctx, pool); err != nil {
+		t.Fatalf("migrate.UpGlossaryCutoverG4Cache: %v", err)
+	}
+	// G4e: IRREVERSIBLE drop of the retired legacy objects (genre_groups,
+	// system_kind_attributes, genre_tags columns). Runs LAST so the shared test DB
+	// matches production after every consumer was retargeted off them (G4d).
+	if err := migrate.UpGlossaryDropLegacyG4(ctx, pool); err != nil {
+		t.Fatalf("migrate.UpGlossaryDropLegacyG4: %v", err)
 	}
 }
 
@@ -128,21 +157,19 @@ func TestK2aCachedNamePopulatedFromEAV(t *testing.T) {
 	ctx := context.Background()
 
 	bookID := "00000000-0000-0000-0000-0000000ca100"
-	var kindID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	bid := uuid.MustParse(bookID)
+	adoptTestBook(t, pool, bid)
+	kindID := bookKindID(t, pool, bid, "character")
 
 	var entityID string
 	pool.QueryRow(ctx,
 		`INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`,
-		bookID, kindID).Scan(&entityID)
+		bid, kindID).Scan(&entityID)
 	t.Cleanup(func() {
 		pool.Exec(ctx, `DELETE FROM glossary_entities WHERE book_id=$1`, bookID)
 	})
 
-	var nameAttrID string
-	pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='name' LIMIT 1`,
-		kindID).Scan(&nameAttrID)
+	nameAttrID := bookAttrID(t, pool, bid, kindID, "name")
 	if _, err := pool.Exec(ctx,
 		`INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value)
 		 VALUES($1,$2,'zh','李雲')`,
@@ -163,24 +190,19 @@ func TestK2aCachedAliasesParsedFromJSONString(t *testing.T) {
 	ctx := context.Background()
 
 	bookID := "00000000-0000-0000-0000-0000000ca101"
-	var kindID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	bid := uuid.MustParse(bookID)
+	adoptTestBook(t, pool, bid)
+	kindID := bookKindID(t, pool, bid, "character")
 
 	var entityID string
 	pool.QueryRow(ctx,
 		`INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`,
-		bookID, kindID).Scan(&entityID)
+		bid, kindID).Scan(&entityID)
 	t.Cleanup(func() {
 		pool.Exec(ctx, `DELETE FROM glossary_entities WHERE book_id=$1`, bookID)
 	})
 
-	var aliasesAttrID string
-	pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='aliases' LIMIT 1`,
-		kindID).Scan(&aliasesAttrID)
-	if aliasesAttrID == "" {
-		t.Skip("character kind has no 'aliases' attribute definition")
-	}
+	aliasesAttrID := bookAttrID(t, pool, bid, kindID, "aliases")
 
 	if _, err := pool.Exec(ctx,
 		`INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value)
@@ -202,24 +224,19 @@ func TestK2aMalformedAliasesJSONFallsBackToEmpty(t *testing.T) {
 	ctx := context.Background()
 
 	bookID := "00000000-0000-0000-0000-0000000ca102"
-	var kindID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	bid := uuid.MustParse(bookID)
+	adoptTestBook(t, pool, bid)
+	kindID := bookKindID(t, pool, bid, "character")
 
 	var entityID string
 	pool.QueryRow(ctx,
 		`INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`,
-		bookID, kindID).Scan(&entityID)
+		bid, kindID).Scan(&entityID)
 	t.Cleanup(func() {
 		pool.Exec(ctx, `DELETE FROM glossary_entities WHERE book_id=$1`, bookID)
 	})
 
-	var aliasesAttrID string
-	pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='aliases' LIMIT 1`,
-		kindID).Scan(&aliasesAttrID)
-	if aliasesAttrID == "" {
-		t.Skip("character kind has no 'aliases' attribute definition")
-	}
+	aliasesAttrID := bookAttrID(t, pool, bid, kindID, "aliases")
 
 	// Garbage value — must NOT crash the trigger.
 	if _, err := pool.Exec(ctx,
@@ -242,13 +259,14 @@ func TestK2aSearchVectorRefreshesOnDirectShortDescriptionWrite(t *testing.T) {
 	ctx := context.Background()
 
 	bookID := "00000000-0000-0000-0000-0000000ca103"
-	var kindID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	bid := uuid.MustParse(bookID)
+	adoptTestBook(t, pool, bid)
+	kindID := bookKindID(t, pool, bid, "character")
 
 	var entityID string
 	pool.QueryRow(ctx,
 		`INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`,
-		bookID, kindID).Scan(&entityID)
+		bid, kindID).Scan(&entityID)
 	t.Cleanup(func() {
 		pool.Exec(ctx, `DELETE FROM glossary_entities WHERE book_id=$1`, bookID)
 	})
@@ -280,21 +298,19 @@ func TestK2aSearchVectorRefreshesOnEAVChange(t *testing.T) {
 	ctx := context.Background()
 
 	bookID := "00000000-0000-0000-0000-0000000ca104"
-	var kindID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	bid := uuid.MustParse(bookID)
+	adoptTestBook(t, pool, bid)
+	kindID := bookKindID(t, pool, bid, "character")
 
 	var entityID string
 	pool.QueryRow(ctx,
 		`INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`,
-		bookID, kindID).Scan(&entityID)
+		bid, kindID).Scan(&entityID)
 	t.Cleanup(func() {
 		pool.Exec(ctx, `DELETE FROM glossary_entities WHERE book_id=$1`, bookID)
 	})
 
-	var nameAttrID string
-	pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='name' LIMIT 1`,
-		kindID).Scan(&nameAttrID)
+	nameAttrID := bookAttrID(t, pool, bid, kindID, "name")
 	if _, err := pool.Exec(ctx,
 		`INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value)
 		 VALUES($1,$2,'zh','sigil_alpha')`,
@@ -322,13 +338,14 @@ func TestK2aPinTogglePartialIndex(t *testing.T) {
 	ctx := context.Background()
 
 	bookID := "00000000-0000-0000-0000-0000000ca105"
-	var kindID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	bid := uuid.MustParse(bookID)
+	adoptTestBook(t, pool, bid)
+	kindID := bookKindID(t, pool, bid, "character")
 
 	var entityID string
 	pool.QueryRow(ctx,
 		`INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`,
-		bookID, kindID).Scan(&entityID)
+		bid, kindID).Scan(&entityID)
 	t.Cleanup(func() {
 		pool.Exec(ctx, `DELETE FROM glossary_entities WHERE book_id=$1`, bookID)
 	})
@@ -405,23 +422,21 @@ func TestTriggerSkipsRecalcOnUpdatedAtOnly(t *testing.T) {
 	ctx := context.Background()
 
 	bookID := "00000000-0000-0000-0000-00000000bbbb"
-	var kindID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	bid := uuid.MustParse(bookID)
+	adoptTestBook(t, pool, bid)
+	kindID := bookKindID(t, pool, bid, "character")
 
 	var entityID string
 	pool.QueryRow(ctx,
 		`INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`,
-		bookID, kindID).Scan(&entityID)
+		bid, kindID).Scan(&entityID)
 	t.Cleanup(func() {
 		pool.Exec(ctx, `DELETE FROM glossary_entities WHERE book_id=$1`, bookID)
 	})
 
 	// Name the entity so recalculate_entity_snapshot produces a non-empty
 	// cached_name when we manually trigger it once below.
-	var nameAttrID string
-	pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='name' LIMIT 1`,
-		kindID).Scan(&nameAttrID)
+	nameAttrID := bookAttrID(t, pool, bid, kindID, "name")
 	pool.Exec(ctx,
 		`INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value)
 		 VALUES($1,$2,'en','Alice')`, entityID, nameAttrID)
@@ -461,49 +476,45 @@ func TestTriggerStillFiresOnWatchedFields(t *testing.T) {
 	runK2aMigrations(t, pool)
 	ctx := context.Background()
 
-	// Pre-fetch a second kind so the kind_id change has a distinct target.
-	var kindCharID, kindLocID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindCharID)
-	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='location' LIMIT 1`).Scan(&kindLocID)
-	if kindLocID == "" {
-		// Seed data may not include 'location'; pick any other kind.
-		pool.QueryRow(ctx,
-			`SELECT kind_id FROM system_kinds WHERE kind_id <> $1 LIMIT 1`, kindCharID,
-		).Scan(&kindLocID)
-	}
-
 	cases := []struct {
 		name        string
 		setClause   string
-		args        []any
+		usesKindLoc bool // true if the case changes kind_id to the book's 'location' kind
 		needsCharOK bool // true if the case needs a name seeded for snapshot to exist
 	}{
-		{"status", "status = 'inactive'", nil, true},
-		{"alive", "alive = false", nil, true},
-		{"tags", "tags = ARRAY['revised']", nil, true},
-		{"kind_id", "kind_id = $2", []any{kindLocID}, true},
-		{"short_description", "short_description = 'a brief'", nil, true},
-		{"deleted_at", "deleted_at = now()", nil, true},
-		{"permanently_deleted_at", "permanently_deleted_at = now()", nil, true},
+		{"status", "status = 'inactive'", false, true},
+		{"alive", "alive = false", false, true},
+		{"tags", "tags = ARRAY['revised']", false, true},
+		{"kind_id", "kind_id = $2", true, true},
+		{"short_description", "short_description = 'a brief'", false, true},
+		{"deleted_at", "deleted_at = now()", false, true},
+		{"permanently_deleted_at", "permanently_deleted_at = now()", false, true},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			bookID := "00000000-0000-0000-0000-0000" + fmt.Sprintf("%08x", len(tc.name)+0xbbcc)
+			bid := uuid.MustParse(bookID)
+			adoptTestBook(t, pool, bid)
+			// book-tier kind ids for THIS book (FK target is now book_kinds).
+			kindCharID := bookKindID(t, pool, bid, "character")
 
 			var entityID string
 			pool.QueryRow(ctx,
 				`INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`,
-				bookID, kindCharID).Scan(&entityID)
+				bid, kindCharID).Scan(&entityID)
 			t.Cleanup(func() {
 				pool.Exec(ctx, `DELETE FROM glossary_entities WHERE book_id=$1`, bookID)
 			})
 
+			// The kind_id case needs a distinct book-local kind to switch to.
+			var args []any
+			if tc.usesKindLoc {
+				args = []any{bookKindID(t, pool, bid, "location")}
+			}
+
 			if tc.needsCharOK {
-				var nameAttrID string
-				pool.QueryRow(ctx,
-					`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='name' LIMIT 1`,
-					kindCharID).Scan(&nameAttrID)
+				nameAttrID := bookAttrID(t, pool, bid, kindCharID, "name")
 				pool.Exec(ctx,
 					`INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value)
 					 VALUES($1,$2,'en','Bob')`, entityID, nameAttrID)
@@ -514,9 +525,9 @@ func TestTriggerStillFiresOnWatchedFields(t *testing.T) {
 				`SELECT entity_snapshot->>'snapshot_at' FROM glossary_entities WHERE entity_id=$1`,
 				entityID).Scan(&before)
 
-			args := append([]any{entityID}, tc.args...)
+			execArgs := append([]any{entityID}, args...)
 			q := fmt.Sprintf(`UPDATE glossary_entities SET %s WHERE entity_id=$1`, tc.setClause)
-			if _, err := pool.Exec(ctx, q, args...); err != nil {
+			if _, err := pool.Exec(ctx, q, execArgs...); err != nil {
 				t.Fatalf("%s update: %v", tc.name, err)
 			}
 
@@ -543,22 +554,20 @@ func TestPinSQLDoesNotBumpUpdatedAt(t *testing.T) {
 	ctx := context.Background()
 
 	bookID := "00000000-0000-0000-0000-00000000bbdd"
-	var kindID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	bid := uuid.MustParse(bookID)
+	adoptTestBook(t, pool, bid)
+	kindID := bookKindID(t, pool, bid, "character")
 
 	var entityID string
 	pool.QueryRow(ctx,
 		`INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`,
-		bookID, kindID).Scan(&entityID)
+		bid, kindID).Scan(&entityID)
 	t.Cleanup(func() {
 		pool.Exec(ctx, `DELETE FROM glossary_entities WHERE book_id=$1`, bookID)
 	})
 
 	// Seed a name so recalc runs once and we have a baseline snapshot_at.
-	var nameAttrID string
-	pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='name' LIMIT 1`,
-		kindID).Scan(&nameAttrID)
+	nameAttrID := bookAttrID(t, pool, bid, kindID, "name")
 	pool.Exec(ctx,
 		`INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value)
 		 VALUES($1,$2,'en','Cara')`, entityID, nameAttrID)

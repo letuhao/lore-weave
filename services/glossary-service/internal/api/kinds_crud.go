@@ -23,6 +23,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/loreweave/glossary-service/internal/domain"
@@ -39,12 +41,17 @@ type kindCreateParams struct {
 	GenreTags   []string `json:"genre_tags"`
 }
 
-// createKindFromParams inserts a kind + its seed 'name' attribute in one tx and
-// returns the created kind. A duplicate code surfaces as a unique-violation
-// (isUniqueViolation) so callers can map it to 409. Shared core — currently the
-// Tier-S confirm endpoint is the only caller (the manual user handler was removed
-// in SS-4 Milestone C). SS-7 rewires this to write the tiered tables.
-func (s *Server) createKindFromParams(ctx context.Context, in kindCreateParams) (domain.EntityKind, error) {
+// createKindFromParams inserts a kind into the BOOK tier (O2 — the assistant
+// proposes into the book's sovereign ontology, never the shared system catalogue,
+// per CLAUDE.md › User Boundaries & Tenancy). It writes book_kinds + a universal
+// kind↔genre link + a seed 'name' attribute in book_attributes (under the book's
+// `universal` genre), all in one tx, and returns the created kind (KindID =
+// book_kind_id). A duplicate (book_id, code) surfaces as a unique-violation
+// (isUniqueViolation → 409). An FK/missing-universal-genre surfaces as a 23503
+// (the book wasn't adopted) → the confirm handler maps it to a clean 422.
+//
+// The Tier-S confirm endpoint is the only caller; bookID is the token-bound book.
+func (s *Server) createKindFromParams(ctx context.Context, bookID uuid.UUID, in kindCreateParams) (domain.EntityKind, error) {
 	// SCHEMA-LOW1: defense-in-depth — the caller validates upstream, but the core
 	// must not create an unnamed kind if a future caller forgets.
 	if strings.TrimSpace(in.Code) == "" || strings.TrimSpace(in.Name) == "" {
@@ -56,9 +63,6 @@ func (s *Server) createKindFromParams(ctx context.Context, in kindCreateParams) 
 	if in.Color == "" {
 		in.Color = "#6366f1"
 	}
-	if in.GenreTags == nil {
-		in.GenreTags = []string{"universal"}
-	}
 
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -66,25 +70,47 @@ func (s *Server) createKindFromParams(ctx context.Context, in kindCreateParams) 
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 
+	// The book's `universal` genre anchors the seed 'name' attr (O4). If the book
+	// hasn't been adopted there is no universal genre → no row → the name-attr
+	// insert below trips a 23503-style "not adopted" path. Resolve it up front so a
+	// missing genre is a clean error rather than a partial kind.
+	var universalGenreID string
+	if err := tx.QueryRow(ctx,
+		`SELECT genre_id FROM book_genres WHERE book_id=$1 AND code='universal' AND deprecated_at IS NULL`,
+		bookID,
+	).Scan(&universalGenreID); err != nil {
+		// pgx.ErrNoRows here = book not adopted; surface as a foreign-key-shaped
+		// error so the confirm handler returns 422 ("book not scaffolded").
+		return domain.EntityKind{}, fmt.Errorf("book has no universal genre (adopt the book first): %w", errNotAdopted)
+	}
+
 	var kindID string
 	if err := tx.QueryRow(ctx, `
-		INSERT INTO system_kinds(code, name, description, icon, color, is_default, is_hidden, sort_order, genre_tags)
-		VALUES ($1,$2,$3,$4,$5,false,false,
-			COALESCE((SELECT MAX(sort_order)+1 FROM system_kinds),1),
-			$6)
-		RETURNING kind_id`,
-		in.Code, in.Name, in.Description, in.Icon, in.Color, in.GenreTags,
+		INSERT INTO book_kinds(book_id, code, name, description, icon, color, sort_order, is_hidden)
+		VALUES ($1,$2,$3,$4,$5,$6,
+			COALESCE((SELECT MAX(sort_order)+1 FROM book_kinds WHERE book_id=$1),1),
+			false)
+		RETURNING book_kind_id`,
+		bookID, in.Code, in.Name, in.Description, in.Icon, in.Color,
 	).Scan(&kindID); err != nil {
 		return domain.EntityKind{}, err
 	}
 
-	// Seed a system 'name' display attribute so the kind is name-capable from creation.
+	// Link the new kind to the book's universal genre (O4 — anchors base attrs).
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO book_kind_genres(book_id, kind_id, genre_id) VALUES ($1,$2,$3)
+		ON CONFLICT DO NOTHING`, bookID, kindID, universalGenreID,
+	); err != nil {
+		return domain.EntityKind{}, err
+	}
+
+	// Seed a 'name' display attribute (under universal) so the kind is name-capable.
 	nameAttr := domain.AttrDef{Code: "name", Name: "Name", FieldType: "text", IsRequired: true, IsActive: true, SortOrder: 0, GenreTags: []string{}}
 	if err := tx.QueryRow(ctx, `
-		INSERT INTO system_kind_attributes(kind_id, code, name, field_type, is_required, is_system, sort_order)
-		VALUES ($1,'name','Name','text',true,true,0)
-		RETURNING attr_def_id`,
-		kindID,
+		INSERT INTO book_attributes(book_id, kind_id, genre_id, code, name, field_type, is_required, sort_order)
+		VALUES ($1,$2,$3,'name','Name','text',true,0)
+		RETURNING attr_id`,
+		bookID, kindID, universalGenreID,
 	).Scan(&nameAttr.AttrDefID); err != nil {
 		return domain.EntityKind{}, err
 	}
@@ -102,10 +128,14 @@ func (s *Server) createKindFromParams(ctx context.Context, in kindCreateParams) 
 		Color:       in.Color,
 		IsDefault:   false,
 		IsHidden:    false,
-		GenreTags:   in.GenreTags,
+		GenreTags:   []string{"universal"},
 		Attributes:  []domain.AttrDef{nameAttr},
 	}, nil
 }
+
+// errNotAdopted marks a schema-create attempt against a book whose ontology hasn't
+// been scaffolded (no `universal` genre). The confirm handler maps it to 422.
+var errNotAdopted = errors.New("book ontology not adopted")
 
 // attrCreateParams is the create-spec for a new attribute definition — KindID is
 // resolved at propose time and carried inside the Tier-S confirm token.
@@ -123,10 +153,13 @@ type attrCreateParams struct {
 	TranslationHint *string  `json:"translation_hint"`
 }
 
-// createAttrDefFromParams inserts an attribute definition under in.KindID and
-// returns it. A duplicate (kind, code) surfaces as a unique-violation. Shared
-// core for the Tier-S confirm endpoint (the manual handler was removed in SS-4).
-func (s *Server) createAttrDefFromParams(ctx context.Context, in attrCreateParams) (domain.AttrDef, error) {
+// createAttrDefFromParams inserts an attribute definition into the BOOK tier (O2)
+// under in.KindID (a book_kind_id) + the book's `universal` genre, and returns it.
+// A duplicate (book_id, kind_id, genre_id, code) surfaces as a unique-violation
+// (→ 409). A KindID that isn't a live book kind, or a book with no universal genre,
+// trips an FK (23503) → the confirm handler maps it to a clean 422. Shared core for
+// the Tier-S confirm endpoint; bookID is the token-bound book.
+func (s *Server) createAttrDefFromParams(ctx context.Context, bookID uuid.UUID, in attrCreateParams) (domain.AttrDef, error) {
 	// SCHEMA-LOW1: defense-in-depth code/name guard (see createKindFromParams).
 	if strings.TrimSpace(in.Code) == "" || strings.TrimSpace(in.Name) == "" {
 		return domain.AttrDef{}, errors.New("code and name are required")
@@ -134,17 +167,26 @@ func (s *Server) createAttrDefFromParams(ctx context.Context, in attrCreateParam
 	if in.FieldType == "" {
 		in.FieldType = "text"
 	}
-	if in.GenreTags == nil {
-		in.GenreTags = []string{}
-	}
 	var attrDefID string
+	// genre_id resolves to the book's universal genre in a subquery so a not-yet-
+	// adopted book (no universal row) yields a NULL → NOT NULL violation surfaced as
+	// 23503-shaped via isForeignKeyViolation upstream. kind_id must belong to bookID.
 	err := s.pool.QueryRow(ctx, `
-		INSERT INTO system_kind_attributes(kind_id, code, name, description, field_type, is_required, sort_order, options, genre_tags, auto_fill_prompt, translation_hint)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-		RETURNING attr_def_id`,
-		in.KindID, in.Code, in.Name, in.Description, in.FieldType, in.IsRequired, in.SortOrder, in.Options, in.GenreTags, in.AutoFillPrompt, in.TranslationHint,
+		INSERT INTO book_attributes(book_id, kind_id, genre_id, code, name, description, field_type, is_required, sort_order, options, auto_fill_prompt, translation_hint)
+		SELECT $1, bk.book_kind_id,
+		       (SELECT genre_id FROM book_genres WHERE book_id=$1 AND code='universal' AND deprecated_at IS NULL),
+		       $3,$4,$5,$6,$7,$8,$9,$10,$11
+		FROM book_kinds bk
+		WHERE bk.book_id=$1 AND bk.book_kind_id=$2 AND bk.deprecated_at IS NULL
+		RETURNING attr_id`,
+		bookID, in.KindID, in.Code, in.Name, in.Description, in.FieldType, in.IsRequired, in.SortOrder, in.Options, in.AutoFillPrompt, in.TranslationHint,
 	).Scan(&attrDefID)
 	if err != nil {
+		// pgx.ErrNoRows = the kind_id doesn't match a live book kind for this book
+		// (deleted between propose and confirm, or never adopted) → FK-shaped 422.
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.AttrDef{}, fmt.Errorf("kind not found in book ontology: %w", errNotAdopted)
+		}
 		return domain.AttrDef{}, err
 	}
 	return domain.AttrDef{
@@ -157,7 +199,7 @@ func (s *Server) createAttrDefFromParams(ctx context.Context, in attrCreateParam
 		IsActive:        true,
 		SortOrder:       in.SortOrder,
 		Options:         in.Options,
-		GenreTags:       in.GenreTags,
+		GenreTags:       []string{"universal"},
 		AutoFillPrompt:  in.AutoFillPrompt,
 		TranslationHint: in.TranslationHint,
 	}, nil

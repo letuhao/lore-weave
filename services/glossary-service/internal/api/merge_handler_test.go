@@ -29,6 +29,17 @@ func runMergeMigrations(t *testing.T, pool *pgxpool.Pool) {
 		{"UpWikiSuggestions", migrate.UpWikiSuggestions}, {"UpExtraction", migrate.UpExtraction},
 		{"UpOutbox", migrate.UpOutbox}, {"UpEntityEnrichments", migrate.UpEntityEnrichments},
 		{"UpEntityMerge", migrate.UpEntityMerge}, {"UpMergeCandidates", migrate.UpMergeCandidates},
+		// G4 tier + cutover (shared DB: must be present in whatever chain runs first).
+		// UpGenreKindAttr creates book_kinds/book_attributes (cutover FK targets); the
+		// cutover then repoints glossary_entities.kind_id → book_kinds.
+		{"UpUserKinds", migrate.UpUserKinds}, {"UpGenreKindAttr", migrate.UpGenreKindAttr},
+		{"SeedGenreKindAttr", migrate.SeedGenreKindAttr}, {"UpGlossaryCutoverG4", migrate.UpGlossaryCutoverG4},
+		// G4 (cont.): merge_candidates.kind_id → book_kinds (after the cutover).
+		{"UpMergeCandidatesG4", migrate.UpMergeCandidatesG4},
+		// G4 (cont.): book-tier cache+search-aware recalculate_entity_snapshot.
+		{"UpGlossaryCutoverG4Cache", migrate.UpGlossaryCutoverG4Cache},
+		// G4e: IRREVERSIBLE drop of the retired legacy objects (runs LAST).
+		{"UpGlossaryDropLegacyG4", migrate.UpGlossaryDropLegacyG4},
 	} {
 		if err := m.fn(ctx, pool); err != nil {
 			t.Fatalf("migrate.%s: %v", m.name, err)
@@ -37,14 +48,14 @@ func runMergeMigrations(t *testing.T, pool *pgxpool.Pool) {
 }
 
 type mergeFixture struct {
-	pool         *pgxpool.Pool
-	ctx          context.Context
-	srv          *Server
-	bookID       uuid.UUID
-	kindID       uuid.UUID
-	nameAttr     uuid.UUID
-	aliasAttr    uuid.UUID
-	descAttr     uuid.UUID
+	pool      *pgxpool.Pool
+	ctx       context.Context
+	srv       *Server
+	bookID    uuid.UUID
+	kindID    uuid.UUID
+	nameAttr  uuid.UUID
+	aliasAttr uuid.UUID
+	descAttr  uuid.UUID
 }
 
 func newMergeFixture(t *testing.T, bookSuffix string) *mergeFixture {
@@ -55,24 +66,15 @@ func newMergeFixture(t *testing.T, bookSuffix string) *mergeFixture {
 	srv, _ := newEntitiesListServer(t)
 	srv.pool = pool
 	f.srv = srv
-	pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&f.kindID)
-	// migrate.Seed only seeds default kinds when system_kinds is EMPTY; on a shared
-	// test DB a prior test (e.g. the 'unknown' park kind) makes it skip, leaving
-	// 'character' absent. Seed it order-independently so the fixture is robust.
-	if f.kindID == uuid.Nil {
-		pool.Exec(ctx, `INSERT INTO system_kinds(code,name,icon,color,is_default,is_hidden,sort_order)
-			SELECT 'character','Character','user','#888888',true,false,0
-			WHERE NOT EXISTS (SELECT 1 FROM system_kinds WHERE code='character')`)
-		pool.QueryRow(ctx, `SELECT kind_id FROM system_kinds WHERE code='character' LIMIT 1`).Scan(&f.kindID)
-		for _, a := range []struct{ code, name string }{{"name", "Name"}, {"aliases", "Aliases"}, {"description", "Description"}} {
-			pool.Exec(ctx, `INSERT INTO system_kind_attributes(kind_id,code,name,field_type,is_required,is_system,sort_order)
-				SELECT $1,$2,$3,'text',false,true,0
-				WHERE NOT EXISTS (SELECT 1 FROM system_kind_attributes WHERE kind_id=$1 AND code=$2)`, f.kindID, a.code, a.name)
-		}
-	}
-	pool.QueryRow(ctx, `SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='name' LIMIT 1`, f.kindID).Scan(&f.nameAttr)
-	pool.QueryRow(ctx, `SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='aliases' LIMIT 1`, f.kindID).Scan(&f.aliasAttr)
-	pool.QueryRow(ctx, `SELECT attr_def_id FROM system_kind_attributes WHERE kind_id=$1 AND code='description' LIMIT 1`, f.kindID).Scan(&f.descAttr)
+	// G4: entities reference the BOOK tier. Adopt the book (copies every system kind +
+	// attr down into book_kinds/book_attributes; idempotent) then resolve 'character'
+	// and its name/aliases/description attrs book-locally. adoptTestBook guarantees
+	// 'character' exists, so the old "seed if missing" system-tier fallback is gone.
+	adoptTestBook(t, f.pool, f.bookID)
+	f.kindID = bookKindID(t, f.pool, f.bookID, "character")
+	f.nameAttr = bookAttrID(t, f.pool, f.bookID, f.kindID, "name")
+	f.aliasAttr = bookAttrID(t, f.pool, f.bookID, f.kindID, "aliases")
+	f.descAttr = bookAttrID(t, f.pool, f.bookID, f.kindID, "description")
 	t.Cleanup(func() {
 		pool.Exec(ctx, `DELETE FROM merge_journal WHERE book_id=$1`, f.bookID)
 		pool.Exec(ctx, `DELETE FROM merge_candidates WHERE book_id=$1`, f.bookID)
@@ -206,9 +208,9 @@ func TestMergeOne_Validation(t *testing.T) {
 	if _, reason, _ := f.srv.mergeOne(f.ctx, f.bookID, winner, f.kindID, uuid.New(), uuid.New()); reason != "loser not found" {
 		t.Errorf("not-found: reason=%q", reason)
 	}
-	// different kind: make a loser under a different kind
+	// different kind: make a loser under a different (book-tier) kind
 	var otherKind uuid.UUID
-	f.pool.QueryRow(f.ctx, `SELECT kind_id FROM system_kinds WHERE code<>'character' AND is_hidden=false LIMIT 1`).Scan(&otherKind)
+	f.pool.QueryRow(f.ctx, `SELECT book_kind_id FROM book_kinds WHERE book_id=$1 AND code<>'character' AND is_hidden=false LIMIT 1`, f.bookID).Scan(&otherKind)
 	if otherKind != uuid.Nil {
 		var lid uuid.UUID
 		f.pool.QueryRow(f.ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`, f.bookID, otherKind).Scan(&lid)
@@ -260,7 +262,7 @@ func TestMerge_RevertRoundTrip(t *testing.T) {
 // aliases instead of the folded/polluted form.
 func TestMerge_RevertRestoresLoserAliases_WhenWinnerLackedAliases(t *testing.T) {
 	f := newMergeFixture(t, "000000000005")
-	winner := f.mkEntity(t, "W", nil)                  // no aliases
+	winner := f.mkEntity(t, "W", nil)            // no aliases
 	loser := f.mkEntity(t, "L", []string{"别名一"}) // has aliases
 
 	jid, reason, err := f.srv.mergeOne(f.ctx, f.bookID, winner, f.kindID, loser, uuid.New())

@@ -379,7 +379,7 @@ func loadEntityEventFields(
 	err := q.QueryRow(ctx, `
 		SELECT e.cached_name, e.cached_aliases, e.short_description, k.code
 		FROM glossary_entities e
-		JOIN system_kinds k ON k.kind_id = e.kind_id
+		JOIN book_kinds k ON k.book_kind_id = e.kind_id
 		WHERE e.entity_id = $1`,
 		entityID,
 	).Scan(&cachedName, &cachedAlias, &shortDescDB, &kindCode)

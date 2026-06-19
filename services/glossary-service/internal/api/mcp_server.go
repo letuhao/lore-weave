@@ -279,7 +279,7 @@ func (s *Server) toolProposeNewEntity(ctx context.Context, _ *mcp.CallToolReques
 	if err := s.checkGrant(ctx, bookID, userID, grantclient.GrantEdit); err != nil {
 		return nil, proposeEntityToolOut{}, uniformOwnershipError(err)
 	}
-	kindMap, err := s.loadKindMap(ctx)
+	kindMap, err := s.loadKindMap(ctx, bookID)
 	if err != nil {
 		return nil, proposeEntityToolOut{}, errors.New("failed to resolve kinds")
 	}
@@ -316,7 +316,7 @@ func (s *Server) proposeNewEntity(ctx context.Context, bookID, kindID uuid.UUID,
 		return existingID, "skipped_exists", nil, nil
 	}
 
-	attrDefMap, err := s.loadAttrDefMap(ctx)
+	attrDefMap, err := s.loadAttrDefMap(ctx, bookID)
 	if err != nil {
 		return uuid.Nil, "", nil, fmt.Errorf("attr defs: %w", err)
 	}

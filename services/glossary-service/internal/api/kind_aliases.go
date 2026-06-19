@@ -62,7 +62,7 @@ func (s *Server) listUnknownEntities(w http.ResponseWriter, r *http.Request) {
 	if err := s.pool.QueryRow(r.Context(), `
 		SELECT COUNT(*)
 		FROM glossary_entities e
-		JOIN system_kinds k ON k.kind_id = e.kind_id AND k.code = 'unknown'
+		JOIN book_kinds k ON k.book_kind_id = e.kind_id AND k.code = 'unknown'
 		WHERE e.book_id = $1 AND e.deleted_at IS NULL`,
 		bookID,
 	).Scan(&total); err != nil {
@@ -73,12 +73,14 @@ func (s *Server) listUnknownEntities(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.pool.Query(r.Context(), `
 		SELECT e.entity_id, COALESCE(nv.original_value, ''), e.source_kind_code, e.status, e.created_at
 		FROM glossary_entities e
-		JOIN system_kinds k ON k.kind_id = e.kind_id AND k.code = 'unknown'
+		JOIN book_kinds k ON k.book_kind_id = e.kind_id AND k.code = 'unknown'
 		LEFT JOIN entity_attribute_values nv
 			ON nv.entity_id = e.entity_id
 			AND nv.attr_def_id = (
-				SELECT attr_def_id FROM system_kind_attributes
-				WHERE kind_id = e.kind_id AND code = 'name' LIMIT 1
+				SELECT ba.attr_id FROM book_attributes ba
+				JOIN book_genres g ON g.genre_id = ba.genre_id
+				WHERE ba.kind_id = e.kind_id AND ba.code = 'name'
+				ORDER BY (g.code = 'universal') DESC, ba.sort_order LIMIT 1
 			)
 		WHERE e.book_id = $1 AND e.deleted_at IS NULL
 		ORDER BY e.created_at DESC
@@ -179,7 +181,8 @@ func (s *Server) reassignEntityKind(w http.ResponseWriter, r *http.Request) {
 	}
 	var kindExists bool
 	if err := s.pool.QueryRow(r.Context(),
-		`SELECT EXISTS(SELECT 1 FROM system_kinds WHERE kind_id=$1)`, in.KindID,
+		`SELECT EXISTS(SELECT 1 FROM book_kinds WHERE book_kind_id=$1 AND book_id=$2 AND deprecated_at IS NULL)`,
+		in.KindID, bookUUID,
 	).Scan(&kindExists); err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "kind lookup failed")
 		return
@@ -224,14 +227,20 @@ func (s *Server) reassignEntityKind(w http.ResponseWriter, r *http.Request) {
 // them or the name/attrs would vanish). Values whose code has no counterpart in the
 // new kind are dropped. Clears source_kind_code (no longer in the unknown bucket).
 func (s *Server) rekeyEntityToKind(ctx context.Context, tx pgx.Tx, entityID, newKindID string) error {
-	// 1. Re-point each attr value to the new kind's attr_def of the SAME code.
+	// 1. Re-point each attr value to the new kind's attr_def of the SAME code (book
+	//    tier; attrs live under the universal genre, so resolve nd to that row).
 	if _, err := tx.Exec(ctx, `
 		UPDATE entity_attribute_values eav
-		SET attr_def_id = nd.attr_def_id
-		FROM system_kind_attributes od, system_kind_attributes nd
+		SET attr_def_id = nd.attr_id
+		FROM book_attributes od,
+		     LATERAL (
+		       SELECT ba.attr_id FROM book_attributes ba
+		       JOIN book_genres g ON g.genre_id = ba.genre_id
+		       WHERE ba.kind_id = $2 AND ba.code = od.code
+		       ORDER BY (g.code = 'universal') DESC, ba.sort_order LIMIT 1
+		     ) nd
 		WHERE eav.entity_id = $1
-		  AND eav.attr_def_id = od.attr_def_id
-		  AND nd.kind_id = $2 AND nd.code = od.code
+		  AND eav.attr_def_id = od.attr_id
 		  AND od.kind_id <> $2`,
 		entityID, newKindID,
 	); err != nil {
@@ -247,20 +256,22 @@ func (s *Server) rekeyEntityToKind(ctx context.Context, tx pgx.Tx, entityID, new
 	if _, err := tx.Exec(ctx, `
 		UPDATE entity_attribute_values eav
 		SET attr_def_id = (
-			SELECT attr_def_id FROM system_kind_attributes
-			WHERE kind_id = $2 AND code IN ('name','term')
-			ORDER BY CASE code WHEN 'name' THEN 0 ELSE 1 END
+			SELECT ba.attr_id FROM book_attributes ba
+			JOIN book_genres g ON g.genre_id = ba.genre_id
+			WHERE ba.kind_id = $2 AND ba.code IN ('name','term')
+			ORDER BY CASE ba.code WHEN 'name' THEN 0 ELSE 1 END,
+			         (g.code = 'universal') DESC, ba.sort_order
 			LIMIT 1
 		)
-		FROM system_kind_attributes od
+		FROM book_attributes od
 		WHERE eav.entity_id = $1
-		  AND eav.attr_def_id = od.attr_def_id
+		  AND eav.attr_def_id = od.attr_id
 		  AND od.kind_id <> $2
 		  AND od.code IN ('name','term')
-		  AND EXISTS (SELECT 1 FROM system_kind_attributes WHERE kind_id = $2 AND code IN ('name','term'))
+		  AND EXISTS (SELECT 1 FROM book_attributes WHERE kind_id = $2 AND code IN ('name','term'))
 		  AND NOT EXISTS (
 			SELECT 1 FROM entity_attribute_values x
-			JOIN system_kind_attributes xd ON xd.attr_def_id = x.attr_def_id
+			JOIN book_attributes xd ON xd.attr_id = x.attr_def_id
 			WHERE x.entity_id = $1 AND xd.kind_id = $2 AND xd.code IN ('name','term')
 		  )`,
 		entityID, newKindID,
@@ -271,8 +282,8 @@ func (s *Server) rekeyEntityToKind(ctx context.Context, tx pgx.Tx, entityID, new
 	//    at a foreign kind's attr_def).
 	if _, err := tx.Exec(ctx, `
 		DELETE FROM entity_attribute_values eav
-		USING system_kind_attributes od
-		WHERE eav.entity_id = $1 AND eav.attr_def_id = od.attr_def_id AND od.kind_id <> $2`,
+		USING book_attributes od
+		WHERE eav.entity_id = $1 AND eav.attr_def_id = od.attr_id AND od.kind_id <> $2`,
 		entityID, newKindID,
 	); err != nil {
 		return err

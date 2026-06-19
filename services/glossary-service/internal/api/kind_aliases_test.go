@@ -17,6 +17,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/loreweave/glossary-service/internal/migrate"
@@ -127,13 +128,16 @@ func TestKindResolution_ParksUnknownAndAliases(t *testing.T) {
 	ctx := context.Background()
 	book := "00000000-0000-0000-0aaa-000000000010"
 	resetKindAliasFixture(t, pool, book)
+	// G4: extraction resolves kind_code through the BOOK tier (loadKindMap reads
+	// book_kinds + alias→book_kind-by-code), so the book must be adopted first.
+	adoptTestBook(t, pool, uuid.MustParse(book))
 
 	// (1) unresolvable kind → parked under 'unknown' with source_kind_code recorded.
 	eid := extractOne(t, srv, book, "mythical_smoke_kind", "測試異兽")
 	var kindCode, srcCode string
 	pool.QueryRow(ctx, `
 		SELECT k.code, COALESCE(e.source_kind_code,'')
-		FROM glossary_entities e JOIN system_kinds k ON k.kind_id=e.kind_id
+		FROM glossary_entities e JOIN book_kinds k ON k.book_kind_id=e.kind_id
 		WHERE e.entity_id=$1`, eid).Scan(&kindCode, &srcCode)
 	if kindCode != "unknown" {
 		t.Fatalf("unresolvable kind: want parked under 'unknown', got %q", kindCode)
@@ -145,7 +149,7 @@ func TestKindResolution_ParksUnknownAndAliases(t *testing.T) {
 	// (2) a seeded alias (generic → terminology) resolves straight through.
 	eid2 := extractOne(t, srv, book, "generic", "通用詞條")
 	pool.QueryRow(ctx, `
-		SELECT k.code FROM glossary_entities e JOIN system_kinds k ON k.kind_id=e.kind_id
+		SELECT k.code FROM glossary_entities e JOIN book_kinds k ON k.book_kind_id=e.kind_id
 		WHERE e.entity_id=$1`, eid2).Scan(&kindCode)
 	if kindCode != "terminology" {
 		t.Fatalf("alias generic→terminology: want 'terminology', got %q", kindCode)
@@ -162,6 +166,10 @@ func TestKindResolution_ParkUnknownOptOutSkips(t *testing.T) {
 	ctx := context.Background()
 	book := "00000000-0000-0000-0aaa-000000000050"
 	resetKindAliasFixture(t, pool, book)
+	// G4: extraction resolves kinds through the BOOK tier; adopt the book so it is
+	// scaffolded (the unknown kind_code is then skipped per park_unknown_kinds=false,
+	// not because the book has no kinds at all).
+	adoptTestBook(t, pool, uuid.MustParse(book))
 
 	body, _ := json.Marshal(map[string]any{
 		"source_language":    "zh",

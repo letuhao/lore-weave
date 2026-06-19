@@ -265,7 +265,7 @@ func (s *Server) queryPinnedTier(
 	query := fmt.Sprintf(`
 		SELECT %s
 		FROM glossary_entities e
-		JOIN system_kinds ek ON ek.kind_id = e.kind_id
+		JOIN book_kinds ek ON ek.book_kind_id = e.kind_id
 		WHERE e.book_id = $1
 		  AND e.deleted_at IS NULL
 		  AND e.is_pinned_for_context = true
@@ -299,7 +299,7 @@ func (s *Server) queryExactTier(
 	query := fmt.Sprintf(`
 		SELECT %s
 		FROM glossary_entities e
-		JOIN system_kinds ek ON ek.kind_id = e.kind_id
+		JOIN book_kinds ek ON ek.book_kind_id = e.kind_id
 		WHERE e.book_id = $1
 		  AND e.deleted_at IS NULL
 		  AND NOT (e.entity_id = ANY($2::uuid[]))
@@ -352,7 +352,7 @@ func (s *Server) queryFTSTier(
 		SELECT %s,
 		       ts_rank_cd(e.search_vector, plainto_tsquery('simple', $3), 33) AS rank
 		FROM glossary_entities e
-		JOIN system_kinds ek ON ek.kind_id = e.kind_id
+		JOIN book_kinds ek ON ek.book_kind_id = e.kind_id
 		WHERE e.book_id = $1
 		  AND e.deleted_at IS NULL
 		  AND NOT (e.entity_id = ANY($2::uuid[]))
@@ -387,7 +387,7 @@ func (s *Server) queryRecentTier(
 	query := fmt.Sprintf(`
 		SELECT %s
 		FROM glossary_entities e
-		JOIN system_kinds ek ON ek.kind_id = e.kind_id
+		JOIN book_kinds ek ON ek.book_kind_id = e.kind_id
 		WHERE e.book_id = $1
 		  AND e.deleted_at IS NULL
 		  AND NOT (e.entity_id = ANY($2::uuid[]))

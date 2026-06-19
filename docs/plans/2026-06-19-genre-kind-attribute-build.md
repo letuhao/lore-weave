@@ -303,3 +303,24 @@ The audit confirms the existing **frontend is ~39 files** (29 glossary + 10 glos
 **Recommendation: (A)** — it's a hobby project on an isolated branch with only test data; the coexistence tax buys nothing here. The broken window is contained to the branch and closed at G6.
 
 **→ RATIFIED (R3): (A) destructive on-branch. (R4): all cross-service data is test — G1 clears Neo4j anchors; the rest recompute.**
+
+---
+
+## 12. G4 execution sub-plan (decomposition + current consumer map, authored 2026-06-19)
+
+**Scope discovery (announced before executing):** the consumer audit (current HEAD, post-SS-4) shows G4 is materially larger than "drop 3 tables": dropping `system_kind_attributes` + the `genre_tags` columns + `genre_groups` orphans the snapshot trigger, ~8 extraction functions, entity-detail, translate, listKinds, schema-confirm/kinds-crud, AND **~40 test files** that do `SELECT attr_def_id FROM system_kind_attributes …`. Per-milestone VERIFY stays green (G1 precedent) ⇒ every consumer + its tests retarget in the SAME sub-milestone that removes its source. Decomposed into VERIFY-gated sub-milestones; the irreversible step (**G4e**) is isolated last and gated.
+
+**Current state (confirmed):**
+- `glossary_entities.kind_id UUID NOT NULL REFERENCES system_kinds(kind_id)` (migrate.go:65) → target `book_kinds(book_kind_id)`.
+- `entity_attribute_values.attr_def_id UUID NOT NULL REFERENCES system_kind_attributes(attr_def_id)` (migrate.go:95) → target `book_attributes(attr_id)`.
+- `recalculate_entity_snapshot` PL/pgSQL (migrate.go:249) joins `system_kinds k` + `system_kind_attributes ad`; emits `kind.source:'system'` / `attr_def_source:'system'` → rewrite to `book_kinds`/`book_attributes`, source `'book'`.
+- Under R2 full-reset these are DROP+CREATE (no data transform), so the repoint is a fresh `CREATE TABLE` with the new FK, not an `ALTER`.
+
+| Sub | Ships | VERIFY |
+|---|---|---|
+| **G4a** | Repoint schema (recreate `glossary_entities`.kind_id→book_kinds, `entity_attribute_values`.attr_def_id→book_attributes) + rewrite `recalculate_entity_snapshot` to book tier + retarget `entity_handler.buildEntityDetail` + entity-layer tests (adopt-then-create harness). | entity CRUD + snapshot tests green on test DB. |
+| **G4b** | Extraction retarget: `loadKindMap`→book_kinds, `loadAttrDefMap`→book_attributes, `createExtractedEntity`/`mergeExtractedEntity`/`findEntityByNameOrAlias`/`getKnownEntities`/`writeExtractionProfile` (genre_groups→book_active_genres, system_kinds→book_kinds, system_kind_attributes→book_attributes). "Book must be adopted" precondition. + tests. | extraction suite green; profile returns "not scaffolded" pre-adopt. |
+| **G4c** | Translation read retarget: `glossary_translate_handler.loadTranslationCandidateEntity` + `/internal/books/{id}/translation-glossary` → book_attributes. + tests. | translate suite green. |
+| **G4d** | Assistant O2 retarget: `schema_confirm`/`kinds_crud.createKindFromParams`/`createAttrDefFromParams` propose into the BOOK tier (not system). `listKinds`/system reads off `genre_tags`+`system_kind_attributes` → repoint to `system_attributes`/`system_kind_genres` or retire. + tests. | no remaining reader of the doomed columns/table outside G4e. |
+| **G4e** | **IRREVERSIBLE (gated):** DROP `genre_groups`, `system_kind_attributes`, the `genre_tags` columns (system_kinds/user_kinds); TRUNCATE wiki_* (E1 — FK RESTRICT blocks entity drop otherwise); CLEAR Neo4j glossary anchors (E3). Dev DB only; rollback = `git revert` + re-migrate (R2/E8). | full `go test ./... -p 1` green with the legacy tables gone. |
+| **G4f** | Cross-service live-smoke (R6): stack up glossary + translation/extraction; real adopt → extract → translation-glossary fetch against book-local tables. | ≥2-service live call observed. |
