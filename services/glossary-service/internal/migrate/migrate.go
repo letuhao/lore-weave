@@ -1606,3 +1606,250 @@ CREATE INDEX IF NOT EXISTS idx_uka_kind
 func UpUserKinds(ctx context.Context, pool *pgxpool.Pool) error {
 	return execGuarded(ctx, pool, "user-kinds", userKindsSQL)
 }
+
+// ── G1: genre·kind·attribute tiering (standards → sovereign instance) ──────────
+// Spec: docs/specs/2026-06-19-genre-kind-attribute-tiering.md
+// Plan: docs/plans/2026-06-19-genre-kind-attribute-build.md
+//
+// Genre becomes a first-class TIERED level (system/user/book) alongside kind;
+// attributes are keyed by (kind × genre × code). Every reference is a PLAIN
+// single-tier FK — no polymorphism (proven by the G0 copy-down spike). This
+// migration is ADDITIVE: the legacy genre_tags[] columns, genre_groups, and
+// system_kind_attributes stay until their last consumer is retargeted (G4), so
+// each milestone's test suite stays green (broken-window is FE-only, R3).
+const genreKindAttrSQL = `
+-- Genre tier ───────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS system_genres (
+  genre_id     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  code         TEXT NOT NULL UNIQUE,
+  name         TEXT NOT NULL,
+  icon         TEXT NOT NULL DEFAULT '',
+  color        TEXT NOT NULL DEFAULT '#6366f1',
+  sort_order   INT  NOT NULL DEFAULT 0,
+  content_hash TEXT NOT NULL DEFAULT '',   -- Sync (G5) change-detection
+  is_default   BOOLEAN NOT NULL DEFAULT true,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS user_genres (
+  genre_id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_user_id          UUID NOT NULL,
+  code                   TEXT NOT NULL,
+  name                   TEXT NOT NULL,
+  icon                   TEXT NOT NULL DEFAULT '',
+  color                  TEXT NOT NULL DEFAULT '#6366f1',
+  sort_order             INT  NOT NULL DEFAULT 0,
+  content_hash           TEXT NOT NULL DEFAULT '',
+  cloned_from_genre_id   UUID REFERENCES system_genres(genre_id) ON DELETE SET NULL,
+  permanently_deleted_at TIMESTAMPTZ,
+  deleted_at             TIMESTAMPTZ,
+  created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(owner_user_id, code)
+);
+CREATE INDEX IF NOT EXISTS idx_ug_owner ON user_genres(owner_user_id) WHERE deleted_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS book_genres (
+  genre_id      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  book_id       UUID NOT NULL,
+  code          TEXT NOT NULL,
+  name          TEXT NOT NULL,
+  icon          TEXT NOT NULL DEFAULT '',
+  color         TEXT NOT NULL DEFAULT '#6366f1',
+  sort_order    INT  NOT NULL DEFAULT 0,
+  source_ref    TEXT,                       -- 'system:<id>' | 'user:<id>' | NULL(book-native)
+  source_hash   TEXT,                       -- content_hash captured at adopt; vs source = "update available"
+  deprecated_at TIMESTAMPTZ,                -- boundary independence: remove = deprecate
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(book_id, code)
+);
+CREATE INDEX IF NOT EXISTS idx_bg_book ON book_genres(book_id);
+
+-- Book kinds (T3) ───────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS book_kinds (
+  book_kind_id  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  book_id       UUID NOT NULL,
+  code          TEXT NOT NULL,
+  name          TEXT NOT NULL,
+  description   TEXT,
+  icon          TEXT NOT NULL DEFAULT 'box',
+  color         TEXT NOT NULL DEFAULT '#6366f1',
+  sort_order    INT  NOT NULL DEFAULT 0,
+  is_hidden     BOOLEAN NOT NULL DEFAULT false,
+  source_ref    TEXT,
+  source_hash   TEXT,
+  deprecated_at TIMESTAMPTZ,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(book_id, code)
+);
+CREATE INDEX IF NOT EXISTS idx_bk_book ON book_kinds(book_id);
+
+-- Kind↔genre links (per tier, plain FKs) ────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS system_kind_genres (
+  kind_id  UUID NOT NULL REFERENCES system_kinds(kind_id) ON DELETE CASCADE,
+  genre_id UUID NOT NULL REFERENCES system_genres(genre_id) ON DELETE CASCADE,
+  PRIMARY KEY (kind_id, genre_id)
+);
+CREATE TABLE IF NOT EXISTS user_kind_genres (
+  kind_id  UUID NOT NULL REFERENCES user_kinds(user_kind_id) ON DELETE CASCADE,
+  genre_id UUID NOT NULL REFERENCES user_genres(genre_id) ON DELETE CASCADE,
+  PRIMARY KEY (kind_id, genre_id)
+);
+CREATE TABLE IF NOT EXISTS book_kind_genres (
+  book_id  UUID NOT NULL,
+  kind_id  UUID NOT NULL REFERENCES book_kinds(book_kind_id) ON DELETE CASCADE,
+  genre_id UUID NOT NULL REFERENCES book_genres(genre_id) ON DELETE CASCADE,
+  PRIMARY KEY (kind_id, genre_id)
+);
+
+-- Attributes (per tier, keyed by kind × genre × code) ───────────────────────────
+CREATE TABLE IF NOT EXISTS system_attributes (
+  attr_id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  kind_id          UUID NOT NULL REFERENCES system_kinds(kind_id) ON DELETE CASCADE,
+  genre_id         UUID NOT NULL REFERENCES system_genres(genre_id) ON DELETE CASCADE,
+  code             TEXT NOT NULL,
+  name             TEXT NOT NULL,
+  description      TEXT,
+  field_type       TEXT NOT NULL DEFAULT 'text',
+  is_required      BOOLEAN NOT NULL DEFAULT false,
+  sort_order       INT  NOT NULL DEFAULT 0,
+  options          TEXT[],
+  auto_fill_prompt TEXT,
+  translation_hint TEXT,
+  content_hash     TEXT NOT NULL DEFAULT '',
+  UNIQUE(kind_id, genre_id, code)
+);
+CREATE INDEX IF NOT EXISTS idx_sa_kind_genre ON system_attributes(kind_id, genre_id);
+
+CREATE TABLE IF NOT EXISTS user_attributes (
+  attr_id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_user_id       UUID NOT NULL,
+  kind_id             UUID NOT NULL REFERENCES user_kinds(user_kind_id) ON DELETE CASCADE,
+  genre_id            UUID NOT NULL REFERENCES user_genres(genre_id) ON DELETE CASCADE,
+  code                TEXT NOT NULL,
+  name                TEXT NOT NULL,
+  description         TEXT,
+  field_type          TEXT NOT NULL DEFAULT 'text',
+  is_required         BOOLEAN NOT NULL DEFAULT false,
+  sort_order          INT  NOT NULL DEFAULT 0,
+  options             TEXT[],
+  auto_fill_prompt    TEXT,
+  translation_hint    TEXT,
+  content_hash        TEXT NOT NULL DEFAULT '',
+  cloned_from_attr_id UUID REFERENCES system_attributes(attr_id) ON DELETE SET NULL,
+  deleted_at          TIMESTAMPTZ,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(owner_user_id, kind_id, genre_id, code)
+);
+CREATE INDEX IF NOT EXISTS idx_ua_kind_genre ON user_attributes(kind_id, genre_id) WHERE deleted_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS book_attributes (
+  attr_id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  book_id          UUID NOT NULL,
+  kind_id          UUID NOT NULL REFERENCES book_kinds(book_kind_id) ON DELETE CASCADE,
+  genre_id         UUID NOT NULL REFERENCES book_genres(genre_id) ON DELETE CASCADE,
+  code             TEXT NOT NULL,
+  name             TEXT NOT NULL,
+  description      TEXT,
+  field_type       TEXT NOT NULL DEFAULT 'text',
+  is_required      BOOLEAN NOT NULL DEFAULT false,
+  sort_order       INT  NOT NULL DEFAULT 0,
+  options          TEXT[],
+  auto_fill_prompt TEXT,
+  translation_hint TEXT,
+  source_ref       TEXT,
+  source_hash      TEXT,
+  deprecated_at    TIMESTAMPTZ,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(book_id, kind_id, genre_id, code)
+);
+CREATE INDEX IF NOT EXISTS idx_ba_book_kind_genre ON book_attributes(book_id, kind_id, genre_id) WHERE deprecated_at IS NULL;
+
+-- Book genre activation + per-entity genre override (D2) ─────────────────────────
+CREATE TABLE IF NOT EXISTS book_active_genres (
+  book_id  UUID NOT NULL,
+  genre_id UUID NOT NULL REFERENCES book_genres(genre_id) ON DELETE CASCADE,
+  PRIMARY KEY (book_id, genre_id)
+);
+CREATE TABLE IF NOT EXISTS entity_genres (
+  entity_id UUID NOT NULL REFERENCES glossary_entities(entity_id) ON DELETE CASCADE,
+  genre_id  UUID NOT NULL REFERENCES book_genres(genre_id) ON DELETE CASCADE,
+  PRIMARY KEY (entity_id, genre_id)
+);
+`
+
+// UpGenreKindAttr creates the genre tier, kind↔genre link tables, per-(kind,genre)
+// attribute tables, the book tier (kinds/genres/attributes/active-genres), and the
+// per-entity genre override. Additive + idempotent. Register after UpUserKinds
+// (user_kind_genres / user_attributes FK user_kinds).
+func UpGenreKindAttr(ctx context.Context, pool *pgxpool.Pool) error {
+	return execGuarded(ctx, pool, "genre-kind-attr", genreKindAttrSQL)
+}
+
+// seedGenreKindAttrSQL derives the SYSTEM standards in the tiered tables FROM the
+// already-seeded system_kinds + system_kind_attributes (run AFTER Seed):
+//  1. the system genres (O3 vocabulary: universal + the DefaultKinds tags + xianxia/mystery),
+//  2. system_kind_genres — every kind links to `universal` (O4: mandatory, anchors base
+//     attrs) plus each of its declared genre_tags that resolves to a seeded genre,
+//  3. system_attributes — every existing per-kind attr lifted into (kind, universal).
+//     This is faithful to current behaviour (all of a kind's attrs always apply);
+//     moving genre-specific attrs onto their genre is the O1 curate pass (deferred).
+//
+// Idempotent (ON CONFLICT DO NOTHING) so it self-heals + never clobbers curation.
+//
+// Vocab assumption: only genre_tags that resolve to one of the seeded canonical
+// genres are linked; an exotic tag on a runtime-minted kind is dropped (only its
+// `universal` link survives). This is sound under R2 (full reset re-seeds every
+// kind from DefaultKinds, all in-vocab) — the drop only affects the transient
+// additive G1→G4 window, which the reset discards. content_hash is set once here
+// and NOT refreshed on re-seed; the admin-edit path (G2) owns recomputing it so
+// G5 Sync can detect system-side edits (review-impl finding 2, deferred).
+const seedGenreKindAttrSQL = `
+INSERT INTO system_genres (code, name, icon, color, sort_order, content_hash) VALUES
+  ('universal','Universal','🌐','#64748b',1, md5('universal|Universal')),
+  ('fantasy','Fantasy','🐉','#a855f7',2, md5('fantasy|Fantasy')),
+  ('xianxia','Xianxia','⚔️','#6366f1',3, md5('xianxia|Xianxia')),
+  ('romance','Romance','💕','#f43f5e',4, md5('romance|Romance')),
+  ('drama','Drama','🎭','#f59e0b',5, md5('drama|Drama')),
+  ('historical','Historical','🏛️','#0891b2',6, md5('historical|Historical')),
+  ('mystery','Mystery','🔍','#10b981',7, md5('mystery|Mystery'))
+ON CONFLICT (code) DO NOTHING;
+
+-- Every kind → universal (mandatory, O4)
+INSERT INTO system_kind_genres (kind_id, genre_id)
+SELECT k.kind_id, g.genre_id
+FROM system_kinds k
+JOIN system_genres g ON g.code = 'universal'
+ON CONFLICT DO NOTHING;
+
+-- Each kind → its declared genre_tags (only those resolving to a seeded genre)
+INSERT INTO system_kind_genres (kind_id, genre_id)
+SELECT k.kind_id, g.genre_id
+FROM system_kinds k
+CROSS JOIN LATERAL unnest(k.genre_tags) AS t(tag)
+JOIN system_genres g ON g.code = t.tag
+ON CONFLICT DO NOTHING;
+
+-- Lift every per-kind attribute into (kind, universal)
+INSERT INTO system_attributes
+  (kind_id, genre_id, code, name, description, field_type, is_required, sort_order, options, content_hash)
+SELECT a.kind_id, g.genre_id, a.code, a.name, a.description, a.field_type, a.is_required, a.sort_order, a.options,
+       md5(a.code||'|'||a.name||'|'||coalesce(a.description,'')||'|'||a.field_type||'|'||a.is_required::text||'|'||coalesce(array_to_string(a.options,','),''))
+FROM system_kind_attributes a
+JOIN system_genres g ON g.code = 'universal'
+ON CONFLICT (kind_id, genre_id, code) DO NOTHING;
+`
+
+// SeedGenreKindAttr populates the system-tier standards (genres, kind↔genre links,
+// attributes) from the seeded system kinds. Idempotent; call AFTER Seed (needs the
+// system_kinds + system_kind_attributes rows) and after UpGenreKindAttr.
+func SeedGenreKindAttr(ctx context.Context, pool *pgxpool.Pool) error {
+	if _, err := pool.Exec(ctx, seedGenreKindAttrSQL); err != nil {
+		return fmt.Errorf("seed genre-kind-attr: %w", err)
+	}
+	return nil
+}

@@ -177,6 +177,20 @@ func main() {
 		slog.Error("migrate user-kinds", "error", err)
 		os.Exit(1)
 	}
+	// G1 (genre·kind·attribute tiering, 2026-06-19): additive new schema — genre
+	// tier, kind↔genre links, per-(kind,genre) attributes, book tier, entity genre
+	// override. Old genre_tags[]/genre_groups/system_kind_attributes drop later (G4)
+	// as their consumers retarget. Spec docs/specs/2026-06-19-genre-kind-attribute-tiering.md.
+	if err := migrate.UpGenreKindAttr(ctx, pool); err != nil {
+		slog.Error("migrate genre-kind-attr", "error", err)
+		os.Exit(1)
+	}
+	// Seed the system standards into the tiered tables (genres + kind↔genre links +
+	// attributes under universal), derived from the seeded system kinds. After Seed.
+	if err := migrate.SeedGenreKindAttr(ctx, pool); err != nil {
+		slog.Error("seed genre-kind-attr", "error", err)
+		os.Exit(1)
+	}
 
 	// Run the short-description backfill in a background goroutine so
 	// the HTTP listener + healthcheck come up immediately. For a fresh
