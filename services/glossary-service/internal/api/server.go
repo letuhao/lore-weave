@@ -172,6 +172,13 @@ func (s *Server) Router() http.Handler {
 						r.Delete("/", s.deleteUserKindAttr)
 					})
 				})
+				// G2: kind↔genre association links (tiered genre level).
+				r.Route("/genres", func(r chi.Router) {
+					r.Get("/", s.listUserKindGenres)
+					r.Put("/", s.putUserKindGenres)
+					r.Put("/{genre_id}", s.addUserKindGenre)
+					r.Delete("/{genre_id}", s.deleteUserKindGenre)
+				})
 			})
 		})
 		// ── T2 user-kind recycle bin (SS-4) ──────────────────────────────────
@@ -200,6 +207,17 @@ func (s *Server) Router() http.Handler {
 			r.Get("/", s.listUserGenreTrash)
 			r.Post("/{genre_id}/restore", s.restoreUserGenre)
 			r.Delete("/{genre_id}", s.purgeUserGenre)
+		})
+
+		// ── Attribute tier (G2) ───────────────────────────────────────────────
+		// System attributes read-only (admin/seed); user attributes owner-scoped
+		// CRUD with attach-by-code. Keyed by (kind × genre × code).
+		r.Get("/system-attributes", s.listSystemAttributes)
+		r.Route("/user-attributes", func(r chi.Router) {
+			r.Get("/", s.listUserAttributes)
+			r.Post("/", s.createUserAttribute)
+			r.Patch("/{attr_id}", s.patchUserAttribute)
+			r.Delete("/{attr_id}", s.deleteUserAttribute)
 		})
 
 		// Cross-book wiki contributions for a user's public profile (UI-2a).
