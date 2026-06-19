@@ -1,0 +1,508 @@
+openapi: 3.0.3
+info:
+  title: LoreWeave Glossary Service — Genres · Kinds · Attributes API
+  version: 0.1.0
+  description: |
+    The tiered glossary ontology surface (genre·kind·attribute
+    re-architecture, 2026-06-19). Spec:
+    `docs/specs/2026-06-19-genre-kind-attribute-tiering.md`;
+    build plan: `docs/plans/2026-06-19-genre-kind-attribute-build.md`.
+
+    ## Model
+    Three TIERS (System / User / Book) × three LEVELS (Genre / Kind /
+    Attribute). System + User are **standards** (templates/definitions,
+    no entities); a Book is a **sovereign instance** scaffolded from
+    standards by copy-down (`POST …/adopt`, milestone G3). Every
+    reference is a PLAIN per-tier FK — no polymorphism.
+
+    ## Scope of THIS file (milestone G2 — standards CRUD)
+      * **System tier is READ-ONLY** over HTTP (admin/seed-only writes,
+        CLAUDE.md › User Boundaries & Tenancy). A regular user CLONES a
+        system genre/kind/attribute into their own tier; never edits the
+        shared original.
+      * **User tier is full CRUD**, owner-scoped, with a recycle bin
+        (parity with the SS-4 user-kinds surface).
+      * Kind↔genre LINKS are managed per user-kind.
+
+    The **book tier** (adopt / ontology / book-tier CRUD) and **Sync**
+    (`/sync/available`, `/sync/apply`) extend this contract in G3/G5 and
+    are intentionally NOT frozen here yet.
+
+    ## Auth
+    All routes require a Bearer JWT (the caller's user id). Reads merge
+    System (read-only) + the caller's User tier; writes land only in the
+    caller's User tier. There is no HTTP path by which a regular user
+    mutates a System-tier row.
+
+servers:
+  - url: http://api-gateway-bff:3000
+    description: Docker Compose dev (via gateway, prefix-proxied /v1/glossary)
+  - url: https://api.loreweave.dev
+    description: Production
+
+tags:
+  - name: genres
+    description: Genre tier — merged read + per-user CRUD + recycle bin
+  - name: attributes
+    description: Attribute tier — system read + per-user CRUD (keyed by kind × genre × code)
+  - name: kind-genres
+    description: Kind↔genre association links (per user-kind)
+
+paths:
+  /v1/glossary/genres:
+    get:
+      tags: [genres]
+      summary: List genres (merged System + caller's User tier)
+      description: |
+        Returns the genres visible to the caller: the System defaults
+        (read-only) merged with the caller's own User genres. Higher tier
+        shadows lower by `code`. This is the picker source for adopt + the
+        Manage workspace.
+      parameters:
+        - { name: include_system, in: query, schema: { type: boolean, default: true } }
+        - { name: include_user, in: query, schema: { type: boolean, default: true } }
+      responses:
+        '200':
+          description: Merged genre list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Genre' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /v1/glossary/user-genres:
+    get:
+      tags: [genres]
+      summary: List the caller's User-tier genres (live only)
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, default: 20, maximum: 100 } }
+        - { name: offset, in: query, schema: { type: integer, default: 0 } }
+        - name: sort
+          in: query
+          schema: { type: string, enum: [created, name], default: created }
+      responses:
+        '200':
+          description: Paginated user genres
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserGenreList' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [genres]
+      summary: Create a User-tier genre (optionally cloned from a System genre)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenreCreate' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Genre' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/DuplicateCode' }
+        '422': { $ref: '#/components/responses/InvalidBody' }
+
+  /v1/glossary/user-genres/{genre_id}:
+    parameters:
+      - { name: genre_id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [genres]
+      summary: Get one User-tier genre
+      responses:
+        '200':
+          description: Genre
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Genre' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [genres]
+      summary: Update a User-tier genre (partial)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenrePatch' }
+      responses:
+        '200':
+          description: Updated genre
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Genre' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/InvalidBody' }
+    delete:
+      tags: [genres]
+      summary: Soft-delete (move to recycle bin)
+      responses:
+        '204': { description: Deleted (recoverable) }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Genre still referenced by a live user-kind link
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /v1/glossary/user-genres-trash:
+    get:
+      tags: [genres]
+      summary: List trashed User-tier genres
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, default: 20, maximum: 100 } }
+        - { name: offset, in: query, schema: { type: integer, default: 0 } }
+      responses:
+        '200':
+          description: Trashed genres
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/GenreTrashItem' }
+                  total: { type: integer }
+                  limit: { type: integer }
+                  offset: { type: integer }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /v1/glossary/user-genres-trash/{genre_id}/restore:
+    parameters:
+      - { name: genre_id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [genres]
+      summary: Restore a trashed genre
+      responses:
+        '204': { description: Restored }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/glossary/user-genres-trash/{genre_id}:
+    parameters:
+      - { name: genre_id, in: path, required: true, schema: { type: string, format: uuid } }
+    delete:
+      tags: [genres]
+      summary: Permanently purge a trashed genre
+      responses:
+        '204': { description: Purged }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/glossary/system-attributes:
+    get:
+      tags: [attributes]
+      summary: Read System attributes for a (kind, genre) pair
+      description: Read-only. The System standard's attribute definitions for a (system_kind, system_genre).
+      parameters:
+        - { name: kind_id, in: query, required: true, schema: { type: string, format: uuid } }
+        - { name: genre_id, in: query, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Attributes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Attribute' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /v1/glossary/user-attributes:
+    get:
+      tags: [attributes]
+      summary: List the caller's User attributes for a (user-kind, user-genre)
+      parameters:
+        - { name: kind_id, in: query, required: true, schema: { type: string, format: uuid } }
+        - { name: genre_id, in: query, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Attributes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Attribute' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [attributes]
+      summary: Create a User attribute on a (user-kind × user-genre) cell
+      description: |
+        Attach-by-code (§2.6): `kind_id` and `genre_id` must reference the
+        caller's OWN user_kinds / user_genres rows. To extend a System
+        kind×genre, clone them into your tier first (the clone keeps the
+        same `code` so resolution still merges by code at adopt).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AttributeCreate' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Attribute' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/DuplicateCode' }
+        '422':
+          description: Invalid body, or kind_id/genre_id is not the caller's user-tier row
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /v1/glossary/user-attributes/{attr_id}:
+    parameters:
+      - { name: attr_id, in: path, required: true, schema: { type: string, format: uuid } }
+    patch:
+      tags: [attributes]
+      summary: Update a User attribute (partial)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AttributePatch' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Attribute' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/InvalidBody' }
+    delete:
+      tags: [attributes]
+      summary: Soft-delete a User attribute
+      responses:
+        '204': { description: Deleted }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/glossary/user-kinds/{user_kind_id}/genres:
+    parameters:
+      - { name: user_kind_id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [kind-genres]
+      summary: List the genres linked to a user-kind
+      responses:
+        '200':
+          description: Linked genres
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Genre' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [kind-genres]
+      summary: Replace the full set of genre links for a user-kind
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [genre_ids]
+              properties:
+                genre_ids:
+                  type: array
+                  items: { type: string, format: uuid }
+                  description: User-tier genre ids to link (replaces the current set).
+      responses:
+        '200':
+          description: Updated link set
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Genre' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/InvalidBody' }
+
+  /v1/glossary/user-kinds/{user_kind_id}/genres/{genre_id}:
+    parameters:
+      - { name: user_kind_id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: genre_id, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      tags: [kind-genres]
+      summary: Add a single genre link
+      responses:
+        '204': { description: Linked (idempotent) }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [kind-genres]
+      summary: Remove a single genre link
+      responses:
+        '204': { description: Unlinked }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  responses:
+    Unauthorized:
+      description: Missing or invalid Bearer token
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Resource not found or not owned by the caller
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    InvalidBody:
+      description: Request body failed validation
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    DuplicateCode:
+      description: A row with this code already exists in the caller's tier
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+  schemas:
+    Tier:
+      type: string
+      enum: [system, user, book]
+    FieldType:
+      type: string
+      enum: [text, textarea, select, number, date, tags, url, boolean]
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string, example: GLOSS_NOT_FOUND }
+        message: { type: string }
+    Genre:
+      type: object
+      required: [genre_id, tier, code, name]
+      properties:
+        genre_id: { type: string, format: uuid }
+        tier: { $ref: '#/components/schemas/Tier' }
+        owner_user_id: { type: string, format: uuid, nullable: true, description: Present for user-tier genres only }
+        code: { type: string }
+        name: { type: string }
+        icon: { type: string }
+        color: { type: string }
+        sort_order: { type: integer }
+        cloned_from_genre_id: { type: string, format: uuid, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    GenreCreate:
+      type: object
+      required: [name]
+      properties:
+        code: { type: string, description: Derived from name (slugified) when omitted }
+        name: { type: string }
+        icon: { type: string }
+        color: { type: string }
+        sort_order: { type: integer }
+        clone_from_genre_id:
+          type: string
+          format: uuid
+          description: A System genre to clone (copies its metadata into the new user genre).
+    GenrePatch:
+      type: object
+      properties:
+        name: { type: string }
+        icon: { type: string }
+        color: { type: string }
+        sort_order: { type: integer }
+    GenreTrashItem:
+      type: object
+      properties:
+        genre_id: { type: string, format: uuid }
+        code: { type: string }
+        name: { type: string }
+        icon: { type: string }
+        color: { type: string }
+        deleted_at: { type: string, format: date-time }
+    UserGenreList:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Genre' }
+        total: { type: integer }
+        limit: { type: integer }
+        offset: { type: integer }
+    Attribute:
+      type: object
+      required: [attr_id, tier, kind_id, genre_id, code, name, field_type]
+      properties:
+        attr_id: { type: string, format: uuid }
+        tier: { $ref: '#/components/schemas/Tier' }
+        kind_id: { type: string, format: uuid }
+        genre_id: { type: string, format: uuid }
+        code: { type: string }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        field_type: { $ref: '#/components/schemas/FieldType' }
+        is_required: { type: boolean }
+        sort_order: { type: integer }
+        options:
+          type: array
+          items: { type: string }
+        auto_fill_prompt: { type: string, nullable: true }
+        translation_hint: { type: string, nullable: true }
+    AttributeCreate:
+      type: object
+      required: [kind_id, genre_id, name]
+      properties:
+        kind_id: { type: string, format: uuid, description: The caller's user_kind id }
+        genre_id: { type: string, format: uuid, description: The caller's user_genre id }
+        code: { type: string, description: Derived from name when omitted }
+        name: { type: string }
+        description: { type: string }
+        field_type: { $ref: '#/components/schemas/FieldType' }
+        is_required: { type: boolean }
+        sort_order: { type: integer }
+        options:
+          type: array
+          items: { type: string }
+        auto_fill_prompt: { type: string }
+        translation_hint: { type: string }
+    AttributePatch:
+      type: object
+      properties:
+        name: { type: string }
+        description: { type: string, nullable: true }
+        field_type: { $ref: '#/components/schemas/FieldType' }
+        is_required: { type: boolean }
+        sort_order: { type: integer }
+        options:
+          type: array
+          items: { type: string }
+        auto_fill_prompt: { type: string, nullable: true }
+        translation_hint: { type: string, nullable: true }
+
+security:
+  - bearerAuth: []

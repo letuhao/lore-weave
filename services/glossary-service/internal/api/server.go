@@ -181,6 +181,27 @@ func (s *Server) Router() http.Handler {
 			r.Delete("/{user_kind_id}", s.purgeUserKind)
 		})
 
+		// ── Genre tier (G2, 2026-06-19) ───────────────────────────────────────
+		// System genres read-only (merged via /genres); user genres = owner-scoped
+		// CRUD + recycle bin, mirroring the user-kinds surface. This is the tiered
+		// genre level — distinct from the legacy per-book genre_groups at
+		// /books/{book_id}/genres (which retires in G4).
+		r.Get("/genres", s.listStandardGenres)
+		r.Route("/user-genres", func(r chi.Router) {
+			r.Get("/", s.listUserGenres)
+			r.Post("/", s.createUserGenre)
+			r.Route("/{genre_id}", func(r chi.Router) {
+				r.Get("/", s.getUserGenre)
+				r.Patch("/", s.patchUserGenre)
+				r.Delete("/", s.deleteUserGenre)
+			})
+		})
+		r.Route("/user-genres-trash", func(r chi.Router) {
+			r.Get("/", s.listUserGenreTrash)
+			r.Post("/{genre_id}/restore", s.restoreUserGenre)
+			r.Delete("/{genre_id}", s.purgeUserGenre)
+		})
+
 		// Cross-book wiki contributions for a user's public profile (UI-2a).
 		// Optional auth: self sees private/draft; others see public+published only.
 		r.Get("/users/{user_id}/wiki-contributions", s.listUserWikiContributions)
