@@ -14,10 +14,13 @@ package api
 // never system_*/user_* (the spike's EXPLAIN proof). This is the Manage workspace +
 // entity-form source.
 //
-// SCOPE (G3a): the copy-down source is the SYSTEM tier. The User-tier union at adopt
-// (D7 — book owner's user overrides shadow system by code) and book-tier CRUD are
-// tracked follow-ups (D-GKA-ADOPT-USER-TIER, D-GKA-BOOK-CRUD). Adopt-from-system is
-// the foundational path every book takes; user overrides layer on after.
+// SCOPE: the copy-down merges System (defaults) → the adopting CALLER's User tier
+// (D-GKA-ADOPT-USER-TIER, caller-scoped per the owner≈caller-under-Manage decision):
+// for each picked code, the caller's user-tier row shadows the System one. This is
+// done by inserting the user-tier rows FIRST, then System with ON CONFLICT (book_id,
+// code) DO NOTHING — so a code the caller customized resolves to their version, and
+// System fills only the codes they didn't. Resolution precedence System→User matches
+// CLAUDE.md › User Boundaries. (Book-tier CRUD layers on after: book_ontology_handler.go.)
 
 import (
 	"context"
@@ -125,7 +128,17 @@ func (s *Server) adoptBookOntology(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 1) genres
+	// 1) genres — caller's User tier FIRST (shadows System by code), then System.
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO book_genres (book_id, code, name, icon, color, sort_order, source_ref, source_hash)
+		SELECT $1, ug.code, ug.name, ug.icon, ug.color, ug.sort_order, 'user:'||ug.genre_id::text, ug.content_hash
+		FROM user_genres ug
+		WHERE ug.owner_user_id = $3 AND ug.code = ANY($2)
+		  AND ug.deleted_at IS NULL AND ug.permanently_deleted_at IS NULL
+		ON CONFLICT (book_id, code) DO NOTHING`, bookID, genres, userID); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "adopt user genres failed")
+		return
+	}
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO book_genres (book_id, code, name, icon, color, sort_order, source_ref, source_hash)
 		SELECT $1, sg.code, sg.name, sg.icon, sg.color, sg.sort_order, 'system:'||sg.genre_id::text, sg.content_hash
@@ -142,7 +155,20 @@ func (s *Server) adoptBookOntology(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "activate genres failed")
 		return
 	}
-	// 3) kinds (source_hash computed inline — system_kinds has no content_hash column)
+	// 3) kinds — caller's User tier FIRST (shadows System by code), then System.
+	//    (source_hash computed inline — neither tier's kind table mirrors the other's
+	//    content_hash; is_hidden derives from the user kind's is_active.)
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO book_kinds (book_id, code, name, description, icon, color, sort_order, is_hidden, source_ref, source_hash)
+		SELECT $1, uk.code, uk.name, uk.description, uk.icon, uk.color, 0, NOT uk.is_active,
+		       'user:'||uk.user_kind_id::text, md5(uk.code||'|'||uk.name||'|'||coalesce(uk.description,''))
+		FROM user_kinds uk
+		WHERE uk.owner_user_id = $3 AND uk.code = ANY($2)
+		  AND uk.deleted_at IS NULL AND uk.permanently_deleted_at IS NULL
+		ON CONFLICT (book_id, code) DO NOTHING`, bookID, kinds, userID); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "adopt user kinds failed")
+		return
+	}
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO book_kinds (book_id, code, name, description, icon, color, sort_order, is_hidden, source_ref, source_hash)
 		SELECT $1, sk.code, sk.name, sk.description, sk.icon, sk.color, sk.sort_order, sk.is_hidden,
@@ -152,7 +178,24 @@ func (s *Server) adoptBookOntology(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "adopt kinds failed")
 		return
 	}
-	// 4) kind↔genre links (picked kinds × picked genres the system kind supports), remapped to book ids
+	// 4) kind↔genre links (picked kinds × picked genres), remapped to book ids by
+	//    code. Union both tiers' links (book_kind_genres is keyed (kind,genre) so dups
+	//    collapse) — the effective kind carries genres from whichever standard declared them.
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO book_kind_genres (book_id, kind_id, genre_id)
+		SELECT $1, bk.book_kind_id, bg.genre_id
+		FROM user_kind_genres ukg
+		JOIN user_kinds  uk ON uk.user_kind_id = ukg.kind_id  AND uk.owner_user_id = $4
+		JOIN user_genres ug ON ug.genre_id      = ukg.genre_id AND ug.owner_user_id = $4
+		JOIN book_kinds  bk ON bk.book_id=$1 AND bk.code = uk.code
+		JOIN book_genres bg ON bg.book_id=$1 AND bg.code = ug.code
+		WHERE uk.code = ANY($2) AND ug.code = ANY($3)
+		  AND uk.deleted_at IS NULL AND uk.permanently_deleted_at IS NULL
+		  AND ug.deleted_at IS NULL AND ug.permanently_deleted_at IS NULL
+		ON CONFLICT DO NOTHING`, bookID, kinds, genres, userID); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "adopt user kind-genres failed")
+		return
+	}
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO book_kind_genres (book_id, kind_id, genre_id)
 		SELECT $1, bk.book_kind_id, bg.genre_id
@@ -166,7 +209,28 @@ func (s *Server) adoptBookOntology(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "adopt kind-genres failed")
 		return
 	}
-	// 5) attributes for the picked (kind × genre) cells, remapped to book ids
+	// 5) attributes for the picked (kind × genre) cells, remapped to book ids.
+	//    Caller's User tier FIRST (shadows System by (kind,genre,code)), then System.
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO book_attributes
+		  (book_id, kind_id, genre_id, code, name, description, field_type, is_required,
+		   sort_order, options, auto_fill_prompt, translation_hint, source_ref, source_hash)
+		SELECT $1, bk.book_kind_id, bg.genre_id, ua.code, ua.name, ua.description, ua.field_type, ua.is_required,
+		       ua.sort_order, ua.options, ua.auto_fill_prompt, ua.translation_hint,
+		       'user:'||ua.attr_id::text, ua.content_hash
+		FROM user_attributes ua
+		JOIN user_kinds  uk ON uk.user_kind_id = ua.kind_id  AND uk.owner_user_id = $4
+		JOIN user_genres ug ON ug.genre_id      = ua.genre_id AND ug.owner_user_id = $4
+		JOIN book_kinds  bk ON bk.book_id=$1 AND bk.code = uk.code
+		JOIN book_genres bg ON bg.book_id=$1 AND bg.code = ug.code
+		WHERE uk.code = ANY($2) AND ug.code = ANY($3)
+		  AND ua.deleted_at IS NULL
+		  AND uk.deleted_at IS NULL AND uk.permanently_deleted_at IS NULL
+		  AND ug.deleted_at IS NULL AND ug.permanently_deleted_at IS NULL
+		ON CONFLICT (book_id, kind_id, genre_id, code) DO NOTHING`, bookID, kinds, genres, userID); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "adopt user attributes failed")
+		return
+	}
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO book_attributes
 		  (book_id, kind_id, genre_id, code, name, description, field_type, is_required,
