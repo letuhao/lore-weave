@@ -96,7 +96,10 @@ func (s *Server) putUserKindGenres(w http.ResponseWriter, r *http.Request) {
 		if _, dup := seen[gid]; dup {
 			continue
 		}
-		if !s.ownsUserGenre(r.Context(), gid, userID) {
+		if owned, err := s.ownsUserGenre(r.Context(), gid, userID); err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "ownership check failed")
+			return
+		} else if !owned {
 			writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY",
 				"genre "+raw+" is not your user-tier genre (clone the system genre first)")
 			return
@@ -156,7 +159,10 @@ func (s *Server) addUserKindGenre(w http.ResponseWriter, r *http.Request) {
 	if !s.verifyUserKindOwner(w, r.Context(), userKindID, userID) {
 		return
 	}
-	if !s.ownsUserGenre(r.Context(), genreID, userID) {
+	if owned, err := s.ownsUserGenre(r.Context(), genreID, userID); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "ownership check failed")
+		return
+	} else if !owned {
 		writeError(w, http.StatusNotFound, "GLOSS_NOT_FOUND", "user genre not found")
 		return
 	}

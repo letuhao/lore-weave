@@ -209,12 +209,18 @@ func (s *Server) createUserAttribute(w http.ResponseWriter, r *http.Request) {
 
 	// ATTACH-BY-CODE tenancy gate: kind_id + genre_id MUST be the caller's own live
 	// user-tier rows. A non-owned/absent id → 422 (a body-validation failure), not 404.
-	if !s.ownsUserKind(r.Context(), kindID, userID) {
+	if owned, err := s.ownsUserKind(r.Context(), kindID, userID); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "ownership check failed")
+		return
+	} else if !owned {
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY",
 			"kind_id is not your user-tier kind (clone the system kind into your tier first)")
 		return
 	}
-	if !s.ownsUserGenre(r.Context(), genreID, userID) {
+	if owned, err := s.ownsUserGenre(r.Context(), genreID, userID); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "ownership check failed")
+		return
+	} else if !owned {
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY",
 			"genre_id is not your user-tier genre (clone the system genre into your tier first)")
 		return
@@ -398,20 +404,24 @@ func (s *Server) deleteUserAttribute(w http.ResponseWriter, r *http.Request) {
 
 // ── ownership predicates (no response side-effects; return bool) ───────────────
 
-func (s *Server) ownsUserKind(ctx context.Context, kindID, userID uuid.UUID) bool {
+// ownsUserKind/ownsUserGenre return (owned, error). The error is propagated (NOT
+// swallowed) so a transient DB fault surfaces as a 500 rather than masquerading as
+// a 422/404 "not yours" (review-impl finding 1). They still fail closed: callers
+// treat any non-nil error as "deny + 500", never as "granted".
+func (s *Server) ownsUserKind(ctx context.Context, kindID, userID uuid.UUID) (bool, error) {
 	var ok bool
-	_ = s.pool.QueryRow(ctx,
+	err := s.pool.QueryRow(ctx,
 		`SELECT EXISTS(SELECT 1 FROM user_kinds WHERE user_kind_id=$1 AND owner_user_id=$2
 		               AND deleted_at IS NULL AND permanently_deleted_at IS NULL)`,
 		kindID, userID).Scan(&ok)
-	return ok
+	return ok, err
 }
 
-func (s *Server) ownsUserGenre(ctx context.Context, genreID, userID uuid.UUID) bool {
+func (s *Server) ownsUserGenre(ctx context.Context, genreID, userID uuid.UUID) (bool, error) {
 	var ok bool
-	_ = s.pool.QueryRow(ctx,
+	err := s.pool.QueryRow(ctx,
 		`SELECT EXISTS(SELECT 1 FROM user_genres WHERE genre_id=$1 AND owner_user_id=$2
 		               AND deleted_at IS NULL AND permanently_deleted_at IS NULL)`,
 		genreID, userID).Scan(&ok)
-	return ok
+	return ok, err
 }
