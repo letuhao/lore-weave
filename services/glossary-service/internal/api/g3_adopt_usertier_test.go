@@ -44,8 +44,11 @@ func TestBookAdopt_UserTierShadowsSystem(t *testing.T) {
 		owner).Scan(&ukChar); err != nil {
 		t.Fatalf("seed user character: %v", err)
 	}
-	mustExec(`INSERT INTO user_attributes (owner_user_id, kind_id, genre_id, code, name) VALUES ($1,$2,$3,'name','My Name Attr')`,
-		owner, ukChar, ugUniversal)
+	// content_hash set explicitly (createUserAttribute would compute it) so we can
+	// assert it propagates into book_attributes.source_hash for G5 Sync.
+	const userNameHash = "usr-name-hash-001"
+	mustExec(`INSERT INTO user_attributes (owner_user_id, kind_id, genre_id, code, name, content_hash) VALUES ($1,$2,$3,'name','My Name Attr',$4)`,
+		owner, ukChar, ugUniversal, userNameHash)
 
 	base := "/v1/glossary/books/" + book.String()
 	aw := ukReq(t, srv, http.MethodPost, base+"/adopt", owner.String(),
@@ -98,7 +101,8 @@ func TestBookAdopt_UserTierShadowsSystem(t *testing.T) {
 	}
 	wantUser("character kind", ck.SourceRef)
 
-	// the 'name' attribute on character × universal: user shadows the System attr.
+	// the 'name' attribute on character × universal: user shadows the System attr,
+	// and the user attr's content_hash propagates into the book's source_hash (G5 Sync).
 	var found bool
 	for _, a := range ont.Attributes {
 		if a.KindID == ck.BookKindID && a.GenreID == ug.GenreID && a.Code == "name" {
@@ -108,5 +112,41 @@ func TestBookAdopt_UserTierShadowsSystem(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("name attribute on character×universal missing after adopt")
+	}
+	var bookNameHash string
+	if err := pool.QueryRow(ctx,
+		`SELECT source_hash FROM book_attributes
+		 WHERE book_id=$1 AND kind_id=$2 AND genre_id=$3 AND code='name' AND deprecated_at IS NULL`,
+		book, ck.BookKindID, ug.GenreID).Scan(&bookNameHash); err != nil {
+		t.Fatalf("read book name-attr source_hash: %v", err)
+	}
+	if bookNameHash != userNameHash {
+		t.Fatalf("user attr content_hash not propagated to source_hash: got %q want %q", bookNameHash, userNameHash)
+	}
+
+	// Re-adopt with the SAME picks is idempotent even with the user tier in play:
+	// counts stable AND provenance unchanged (no system row clobbering a user one).
+	countUserSourced := func(label string) (genres, kinds, attrs int) {
+		q := func(sql string) int {
+			var n int
+			if err := pool.QueryRow(ctx, sql, book).Scan(&n); err != nil {
+				t.Fatalf("%s count (%s): %v", label, sql, err)
+			}
+			return n
+		}
+		genres = q(`SELECT count(*) FROM book_genres WHERE book_id=$1 AND source_ref LIKE 'user:%'`)
+		kinds = q(`SELECT count(*) FROM book_kinds WHERE book_id=$1 AND source_ref LIKE 'user:%'`)
+		attrs = q(`SELECT count(*) FROM book_attributes WHERE book_id=$1 AND source_ref LIKE 'user:%'`)
+		return
+	}
+	g1, k1, a1 := countUserSourced("pre")
+	base2 := "/v1/glossary/books/" + book.String()
+	if w := ukReq(t, srv, http.MethodPost, base2+"/adopt", owner.String(),
+		`{"genres":["xianxia","romance"],"kinds":["character"]}`); w.Code != http.StatusOK {
+		t.Fatalf("re-adopt: want 200, got %d (%s)", w.Code, w.Body.String())
+	}
+	g2, k2, a2 := countUserSourced("post")
+	if g1 != g2 || k1 != k2 || a1 != a2 {
+		t.Fatalf("re-adopt changed user-sourced provenance: genres %d→%d kinds %d→%d attrs %d→%d", g1, g2, k1, k2, a1, a2)
 	}
 }

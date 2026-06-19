@@ -180,7 +180,10 @@ func (s *Server) adoptBookOntology(w http.ResponseWriter, r *http.Request) {
 	}
 	// 4) kind↔genre links (picked kinds × picked genres), remapped to book ids by
 	//    code. Union both tiers' links (book_kind_genres is keyed (kind,genre) so dups
-	//    collapse) — the effective kind carries genres from whichever standard declared them.
+	//    collapse) — the effective kind carries genres from whichever standard declared
+	//    them. NOTE: union-only — a user kind that shadows a system kind INHERITS the
+	//    system kind's links (via code remap below); adopt can add links, never suppress
+	//    one. To drop an inherited link, deprecate it post-adopt via book-tier CRUD.
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO book_kind_genres (book_id, kind_id, genre_id)
 		SELECT $1, bk.book_kind_id, bg.genre_id
