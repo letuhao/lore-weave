@@ -68,6 +68,8 @@ via the existing commit path (§5).
   max-speed-per-elapsed-tick + no-teleport/no-clip. Illegal → authoritative **snap-back**. Client
   prediction is provisional and always yields to server correction. (This is the realtime analogue
   of `TVL-V*`; the client may *predict* but may never *assert*.)
+  ⚠️ *How* this validation runs across the TS game-server / Rust kernel boundary is the open
+  cross-language seam — see **RTM-Q10**.
 
 - **RTM-A3 — The realtime layer may not write kernel/aggregate state directly.**
   Preserves **DP-A1** (DP primitives are the only path to kernel state) and **DP-A6** (Rust
@@ -228,6 +230,20 @@ edges need cross-room state sharing (significant). **Proposed default:** **hard 
 proximity/priority. **Why deferred:** the cap N and priority function need playtest data. **Proposed
 default:** **nearest-first cap** (render the closest N, summarize/drop the rest); N pending V1 load
 data. Relates to **G2 (load testing)**.
+
+### RTM-Q10 — Cross-language validation seam (TS game-server ↔ Rust tilemap kernel)
+**What:** RTM-A2 validates each move "against the tilemap kernel," but the game-server is **TypeScript**
+(Colyseus / PRR-20) and the tilemap kernel is **Rust**. At ~10 Hz, per-move RPC to the kernel adds
+latency, while reimplementing walkability in TS risks **logic drift** — the exact failure the kernel
+discipline exists to prevent. **Why deferred:** load-bearing architectural seam; needs the kernel
+team's input on how tilemap + speed data are exported. **Proposed default:** the game-server holds an
+**in-memory copy of the static region collision map + current actor speed**, and validates **locally**;
+the **Rust kernel remains the authoritative source/publisher** of that data (game-server subscribes to
+tilemap/speed updates, never re-derives the *rules*). Walkability is a pure data lookup (low drift
+risk); the subtle part is keeping the actor **speed** value current (it is a progression/kernel stat).
+Resolve before any `RTM-A*` lock — undersizing this defaults an implementer into the drift option.
+Relates to **I4** (DB-per-service), **DP-A1** (DP primitives are the only path to kernel state), and
+the language rule (game-server = TS, kernel-derived services = Rust).
 
 ---
 
