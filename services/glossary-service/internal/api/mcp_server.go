@@ -56,6 +56,8 @@ func (s *Server) mcpHandler() http.Handler {
 	// per-tier parallelism enabler (buildplan §4).
 	s.RegisterSyncTools(srv)
 	s.RegisterUserTools(srv)
+	// Pipeline M1: read tools (merge-candidates / chapter-links / revisions / unknowns).
+	s.RegisterPipelineReadTools(srv)
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "glossary_propose_new_entity",

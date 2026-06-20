@@ -52,56 +52,10 @@ func (s *Server) listUnknownEntities(w http.ResponseWriter, r *http.Request) {
 	if !s.requireGrant(w, r.Context(), bookUUID, userID, grantclient.GrantView) {
 		return
 	}
-	bookID := chi.URLParam(r, "book_id")
-
-	// True count first — the items query is LIMIT-capped, so returning len(items)
-	// as total would silently under-report when the queue exceeds the cap (the GUI
-	// then reads "all reviewed" when entities are hidden). Report the real count and
-	// let the client flag "showing first N of total".
-	var total int
-	if err := s.pool.QueryRow(r.Context(), `
-		SELECT COUNT(*)
-		FROM glossary_entities e
-		JOIN book_kinds k ON k.book_kind_id = e.kind_id AND k.code = 'unknown'
-		WHERE e.book_id = $1 AND e.deleted_at IS NULL`,
-		bookID,
-	).Scan(&total); err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to count unknown entities")
-		return
-	}
-
-	rows, err := s.pool.Query(r.Context(), `
-		SELECT e.entity_id, COALESCE(nv.original_value, ''), e.source_kind_code, e.status, e.created_at
-		FROM glossary_entities e
-		JOIN book_kinds k ON k.book_kind_id = e.kind_id AND k.code = 'unknown'
-		LEFT JOIN entity_attribute_values nv
-			ON nv.entity_id = e.entity_id
-			AND nv.attr_def_id = (
-				SELECT ba.attr_id FROM book_attributes ba
-				JOIN book_genres g ON g.genre_id = ba.genre_id
-				WHERE ba.kind_id = e.kind_id AND ba.code = 'name'
-				ORDER BY (g.code = 'universal') DESC, ba.sort_order LIMIT 1
-			)
-		WHERE e.book_id = $1 AND e.deleted_at IS NULL
-		ORDER BY e.created_at DESC
-		LIMIT 500`,
-		bookID,
-	)
+	out, total, err := s.queryUnknownEntities(r.Context(), bookUUID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to query unknown entities")
 		return
-	}
-	defer rows.Close()
-	out := make([]unknownEntityOut, 0)
-	for rows.Next() {
-		var e unknownEntityOut
-		var ts time.Time
-		if err := rows.Scan(&e.EntityID, &e.Name, &e.SourceKindCode, &e.Status, &ts); err != nil {
-			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to scan unknown entity")
-			return
-		}
-		e.CreatedAt = ts.Format(time.RFC3339)
-		out = append(out, e)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": out, "total": total})
 }

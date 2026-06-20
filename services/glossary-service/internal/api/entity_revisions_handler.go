@@ -73,29 +73,10 @@ func (s *Server) listEntityRevisions(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rows, err := s.pool.Query(r.Context(), `
-		SELECT revision_id, revision_num, op, actor_type, actor_id, created_at::text
-		FROM entity_revisions WHERE entity_id=$1
-		ORDER BY revision_num DESC LIMIT $2`,
-		entityID, entityRevisionsListCap,
-	)
+	items, err := s.queryEntityRevisions(r.Context(), entityID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "revisions query failed")
 		return
-	}
-	defer rows.Close()
-	items := make([]entityRevisionSummary, 0, 32)
-	for rows.Next() {
-		var it entityRevisionSummary
-		var actorID *uuid.UUID
-		if err := rows.Scan(&it.RevisionID, &it.RevisionNum, &it.Op, &it.ActorType, &actorID, &it.CreatedAt); err != nil {
-			continue
-		}
-		if actorID != nil {
-			a := actorID.String()
-			it.ActorID = &a
-		}
-		items = append(items, it)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"revisions": items})
 }
