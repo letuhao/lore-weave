@@ -52,7 +52,7 @@ from loreweave_mcp import (
 
 from ..book_client import book_owns_chapter
 from ..config import settings as app_settings
-from ..deps import get_db
+from ..deps import get_current_user, get_db
 from ..grant_client import GrantLevel, get_grant_client
 from ..mcp.estimate import (
     SCOPE_CHAPTERS,
@@ -61,15 +61,21 @@ from ..mcp.estimate import (
     reprice_exceeds_threshold,
 )
 from ..models import CreateJobPayload
-from .internal_dispatch import _retry_job_core, require_internal_token
+from .internal_dispatch import _retry_job_core
 from .jobs import _resolve_and_create_job, _resume_job_core, _retranslate_dirty_core
 
 log = logging.getLogger(__name__)
 
+# MCP-fanout C-CONFIRM seam fix (live-pass): the confirm spine is reached by the
+# FRONTEND confirm card (ConfirmActionCard → POST /v1/<domain>/actions/confirm via
+# the gateway) carrying the signed-in user's JWT — NOT a service internal token.
+# These routes are therefore JWT-gated like book/glossary/composition; identity
+# defence in depth is the user binding in the confirm token (the `u` claim is
+# asserted == the JWT caller before any spend), so the token cannot be redeemed by
+# a different signed-in user.
 router = APIRouter(
     prefix="/v1/translation/actions",
     tags=["translation-actions"],
-    dependencies=[Depends(require_internal_token)],
 )
 
 # Descriptors the confirm spine accepts (must match the MCP tool's mint descriptor).
@@ -122,6 +128,15 @@ def _forbidden() -> HTTPException:
     )
 
 
+def _assert_caller(claims, caller_user_id: str) -> None:
+    """Bind the confirm token to the proposing user (mirrors book-service's check):
+    the token's `u` claim must equal the JWT-authenticated caller, so a different
+    signed-in user cannot redeem it even with the token string. Folded into the
+    uniform 403 (anti-oracle)."""
+    if str(claims.user_id) != caller_user_id:
+        raise _forbidden()
+
+
 async def _reauthorize_book(book_id: UUID, user_id: UUID) -> None:
     """Re-resolve the caller's CURRENT grant on the token-bound book at EDIT, at
     confirm time (NOT trusting the mint-time `u`/`r` claims). A grant revoked inside
@@ -153,11 +168,15 @@ class PreviewResponse(BaseModel):
 
 
 @router.get("/preview", response_model=PreviewResponse)
-async def preview_action(token: str = Query(...)) -> PreviewResponse:
+async def preview_action(
+    token: str = Query(...),
+    caller_user_id: str = Depends(get_current_user),
+) -> PreviewResponse:
     """Re-surface the cost estimate BOUND into a confirm token (no re-price — the
     token already carries the estimate the user is being asked to confirm). The
     agent calls this to render the confirm card before committing."""
     claims = _verify(token)
+    _assert_caller(claims, caller_user_id)
     p = _payload(claims)
     return PreviewResponse(
         descriptor=claims.descriptor,
@@ -179,14 +198,20 @@ def _bound_model(bound_estimate: dict) -> tuple[str | None, str | None]:
 
 
 @router.post("/confirm")
-async def confirm_action(body: ConfirmRequest, db: asyncpg.Pool = Depends(get_db)) -> dict:
-    """The ONLY start path for a priced translation job. Verify the token,
-    RE-AUTHORIZE the caller's CURRENT grant on the bound book + assert the chapter
-    binding (a grant revoked inside the TTL stops the spend; a payload cannot
-    retarget another book's chapters), then RE-PRICE the bound model (H14) over the
-    accurate to-do/pending scope — either run the action or refuse with a re-confirm
-    signal when the cost drifted up past tolerance."""
+async def confirm_action(
+    body: ConfirmRequest,
+    db: asyncpg.Pool = Depends(get_db),
+    caller_user_id: str = Depends(get_current_user),
+) -> dict:
+    """The ONLY start path for a priced translation job. Verify the token, assert
+    the JWT caller == the token's bound user, RE-AUTHORIZE the caller's CURRENT
+    grant on the bound book + assert the chapter binding (a grant revoked inside the
+    TTL stops the spend; a payload cannot retarget another book's chapters), then
+    RE-PRICE the bound model (H14) over the accurate to-do/pending scope — either
+    run the action or refuse with a re-confirm signal when the cost drifted up past
+    tolerance."""
     claims = _verify(body.confirm_token)
+    _assert_caller(claims, caller_user_id)
     p = _payload(claims)
     user_id = str(claims.user_id)
     book_id = claims.resource_id  # the token binds the book as the resource (r).

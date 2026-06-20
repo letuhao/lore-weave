@@ -74,6 +74,17 @@ export function configureGatewayApp(
     selfHandleResponse: false,
     pathFilter: (pathname: string) => pathname.startsWith('/v1/worlds'),
   });
+  // MCP-fanout C-CONFIRM seam fix (live-pass): the generic confirm card commits a
+  // book Tier-W/S action via `/v1/book/actions/{preview,confirm}` (SINGULAR
+  // `book`, the domain enum used by confirm_action). bookProxy only matches
+  // `/v1/books` (plural), so this pair fell through to a 404 and the book confirm
+  // round-trip never completed. Thin passthrough to book-service, same target.
+  const bookActionsProxy = createProxyMiddleware({
+    target: urls.bookUrl,
+    changeOrigin: true,
+    selfHandleResponse: false,
+    pathFilter: (pathname: string) => pathname.startsWith('/v1/book/actions'),
+  });
   const sharingProxy = createProxyMiddleware({
     target: urls.sharingUrl,
     changeOrigin: true,
@@ -88,6 +99,16 @@ export function configureGatewayApp(
     target: urls.providerRegistryUrl,
     changeOrigin: true,
     pathFilter: (pathname: string) => pathname.startsWith('/v1/model-registry'),
+  });
+  // MCP-fanout C-CONFIRM seam fix (live-pass): the generic confirm card commits a
+  // settings Tier-W/S action (e.g. set a default model) via
+  // `/v1/settings/actions/{preview,confirm}` on provider-registry. There was no
+  // `/v1/settings` proxy (the service is otherwise reached at `/v1/model-registry`),
+  // so the settings confirm round-trip 404'd. Thin passthrough, same target.
+  const settingsActionsProxy = createProxyMiddleware({
+    target: urls.providerRegistryUrl,
+    changeOrigin: true,
+    pathFilter: (pathname: string) => pathname.startsWith('/v1/settings/actions'),
   });
   const usageBillingProxy = createProxyMiddleware({
     target: urls.usageBillingUrl,
@@ -290,6 +311,16 @@ export function configureGatewayApp(
     res: Response,
     next: NextFunction,
   ) => void;
+  const bookActionsProxyFn = bookActionsProxy as unknown as (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => void;
+  const settingsActionsProxyFn = settingsActionsProxy as unknown as (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => void;
   const sharingProxyFn = sharingProxy as unknown as (
     req: Request,
     res: Response,
@@ -384,6 +415,12 @@ export function configureGatewayApp(
     if (req.path.startsWith('/v1/auth') || req.path.startsWith('/v1/account') || req.path.startsWith('/v1/me/preferences') || req.path.startsWith('/v1/users') || req.path.startsWith('/v1/admin')) {
       return authProxyFn(req, res, next);
     }
+    // MCP-fanout C-CONFIRM: `/v1/book/actions/*` (singular) → book-service. Must
+    // precede the `/v1/books` (plural) check; the two are disjoint but keeping the
+    // generic-confirm action route first documents the intent.
+    if (req.path.startsWith('/v1/book/actions')) {
+      return bookActionsProxyFn(req, res, next);
+    }
     if (req.path.startsWith('/v1/books')) {
       return bookProxyFn(req, res, next);
     }
@@ -395,6 +432,11 @@ export function configureGatewayApp(
     }
     if (req.path.startsWith('/v1/catalog')) {
       return catalogProxyFn(req, res, next);
+    }
+    // MCP-fanout C-CONFIRM: `/v1/settings/actions/*` → provider-registry (the
+    // settings domain commit path for the generic confirm card).
+    if (req.path.startsWith('/v1/settings/actions')) {
+      return settingsActionsProxyFn(req, res, next);
     }
     if (req.path.startsWith('/v1/model-registry')) {
       return providerRegistryProxyFn(req, res, next);

@@ -19,7 +19,7 @@ vi.mock('../../actionsApi', () => ({
   },
 }));
 
-import { ConfirmActionCard } from '../ConfirmActionCard';
+import { ConfirmActionCard, descriptorDomain } from '../ConfirmActionCard';
 import type { ToolCallRecord } from '../../types';
 
 function record(args: Record<string, unknown>): ToolCallRecord {
@@ -134,5 +134,37 @@ describe('ConfirmActionCard', () => {
     render(<ConfirmActionCard record={record(baseArgs)} />);
     fireEvent.click(screen.getByText('actionConfirm.confirm'));
     await waitFor(() => expect(submitToolResult).toHaveBeenCalledWith('r1', 'c1', 'action_error'));
+  });
+
+  // MCP-fanout seam fix (#3): on a book-scoped chat the model may confirm a
+  // NON-glossary action via the legacy glossary_confirm_action tool, which carries
+  // a descriptor but NO `domain` arg. The card must derive the domain from the
+  // dotted descriptor so it still commits to /v1/<domain>/actions/* (not glossary).
+  it('derives the domain from a dotted descriptor when args.domain is absent', async () => {
+    confirmAction.mockResolvedValue({});
+    const { confirm_token, descriptor, title } = baseArgs; // no `domain`
+    render(<ConfirmActionCard record={record({ confirm_token, descriptor, title })} />);
+    // previews + commits against `book` (derived from `book.publish`), not '' / glossary.
+    await waitFor(() => expect(previewAction).toHaveBeenCalledWith('book', 'tok123', 'tok'));
+    fireEvent.click(screen.getByText('actionConfirm.confirm'));
+    await waitFor(() => expect(confirmAction).toHaveBeenCalledWith('book', 'tok123', 'tok'));
+    await waitFor(() => expect(submitToolResult).toHaveBeenCalledWith('r1', 'c1', 'action_done'));
+  });
+});
+
+describe('descriptorDomain', () => {
+  it('maps dotted generic-domain descriptors to their domain', () => {
+    expect(descriptorDomain('book.publish')).toBe('book');
+    expect(descriptorDomain('translation.start_job')).toBe('translation');
+    expect(descriptorDomain('composition.merge')).toBe('composition');
+    expect(descriptorDomain('settings.set_default_model')).toBe('settings');
+  });
+  it('returns null for glossary (non-dotted) descriptors and junk', () => {
+    expect(descriptorDomain('book_delete')).toBeNull();      // glossary's own
+    expect(descriptorDomain('schema_create_kind')).toBeNull();
+    expect(descriptorDomain('adopt')).toBeNull();
+    expect(descriptorDomain('unknown.thing')).toBeNull();    // unknown domain head
+    expect(descriptorDomain('.x')).toBeNull();
+    expect(descriptorDomain(undefined)).toBeNull();
   });
 });

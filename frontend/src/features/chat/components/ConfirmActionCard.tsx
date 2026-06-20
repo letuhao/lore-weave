@@ -44,6 +44,19 @@ interface ConfirmArgs {
 
 type CardState = null | 'done' | 'expired' | 'error' | 'cancelled';
 
+// The generic confirm domains, derivable from a dotted action descriptor
+// (`book.publish`, `translation.start_job`, …). Used as a fallback when `domain`
+// is absent from the tool args — e.g. when the model confirmed a non-glossary
+// action via the legacy `glossary_confirm_action` tool (which carries no domain).
+const GENERIC_DOMAINS = ['book', 'composition', 'translation', 'settings'] as const;
+export function descriptorDomain(descriptor: string | undefined): string | null {
+  if (!descriptor) return null;
+  const dot = descriptor.indexOf('.');
+  if (dot <= 0) return null; // glossary descriptors are non-dotted (book_delete, …)
+  const head = descriptor.slice(0, dot);
+  return (GENERIC_DOMAINS as readonly string[]).includes(head) ? head : null;
+}
+
 /** Render one batch row from an arbitrary item object — best-effort label. */
 function itemLabel(item: unknown): string {
   if (item == null) return '';
@@ -74,7 +87,11 @@ export function ConfirmActionCard({ record }: Props) {
 
   const args = (record.args ?? {}) as ConfirmArgs;
   const token = args.confirm_token ?? '';
-  const domain = args.domain ?? '';
+  // Prefer the explicit `domain` (the generic confirm_action tool sets it); fall
+  // back to deriving it from a dotted descriptor so a non-glossary action the model
+  // confirmed via the legacy `glossary_confirm_action` (no domain arg) still routes
+  // to the correct /v1/<domain>/actions/* endpoints instead of failing.
+  const domain = args.domain ?? descriptorDomain(args.descriptor) ?? '';
   const argTitle = args.title ?? '';
   const items = Array.isArray(args.items) ? args.items : [];
 

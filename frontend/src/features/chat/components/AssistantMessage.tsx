@@ -19,7 +19,7 @@ import { ToolCallIndicator } from './ToolCallIndicator';
 import { ProposeEditCard } from './ProposeEditCard';
 import { GlossaryDiffCard } from './GlossaryDiffCard';
 import { ConfirmCard } from './ConfirmCard';
-import { ConfirmActionCard } from './ConfirmActionCard';
+import { ConfirmActionCard, descriptorDomain } from './ConfirmActionCard';
 import { RecordDiffCard } from './RecordDiffCard';
 import { ActivityStrip } from './ActivityStrip';
 import { useMessageFeedback } from '../hooks/useMessageFeedback';
@@ -166,7 +166,17 @@ export function AssistantMessage({
             {proposals.map((tc) => {
               const key = tc.toolCallId ?? tc.tool;
               if (tc.tool === 'glossary_propose_entity_edit') return <GlossaryDiffCard key={key} record={tc} />;
-              if (tc.tool === 'glossary_confirm_action') return <ConfirmCard key={key} record={tc} />;
+              if (tc.tool === 'glossary_confirm_action') {
+                // Route BY DESCRIPTOR, not just tool name: on a book-scoped chat the
+                // model is offered both glossary_confirm_action (glossary-only) and
+                // the generic confirm_action, and may pick the glossary tool for a
+                // NON-glossary action (e.g. book.publish). A dotted generic-domain
+                // descriptor → the generic card (commits to /v1/<domain>/actions/*);
+                // glossary's own non-dotted descriptors → the legacy glossary card.
+                const desc = (tc.args as { descriptor?: string } | undefined)?.descriptor;
+                if (descriptorDomain(desc)) return <ConfirmActionCard key={key} record={tc} />;
+                return <ConfirmCard key={key} record={tc} />;
+              }
               if (tc.tool === 'confirm_action') return <ConfirmActionCard key={key} record={tc} />;
               if (tc.tool === 'propose_record_edit') return <RecordDiffCard key={key} record={tc} />;
               return <ProposeEditCard key={key} record={tc} />;

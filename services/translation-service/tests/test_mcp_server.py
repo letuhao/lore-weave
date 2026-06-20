@@ -512,7 +512,7 @@ async def test_confirm_token_round_trip_within_tolerance_starts_job():
             with patch.object(actions, "_resolve_and_create_job",
                               AsyncMock(return_value=_Job())) as create_mock:
                 res = await actions.confirm_action(
-                    actions.ConfirmRequest(confirm_token=token), db=pool,
+                    actions.ConfirmRequest(confirm_token=token), db=pool, caller_user_id=TEST_USER,
                 )
     create_mock.assert_awaited_once()
     assert res["status"] == "action_done"
@@ -552,7 +552,7 @@ async def test_confirm_reprices_against_bound_model_not_current_settings():
             with patch.object(actions, "_resolve_and_create_job",
                               AsyncMock(return_value=_Job())):
                 await actions.confirm_action(
-                    actions.ConfirmRequest(confirm_token=token), db=pool,
+                    actions.ConfirmRequest(confirm_token=token), db=pool, caller_user_id=TEST_USER,
                 )
     # The re-price priced the model the user APPROVED (bound), not re-resolved.
     _, kwargs = est_mock.call_args
@@ -585,7 +585,7 @@ async def test_confirm_reprice_over_threshold_refuses_and_does_not_start():
                               AsyncMock()) as create_mock:
                 with pytest.raises(HTTPException) as exc:
                     await actions.confirm_action(
-                        actions.ConfirmRequest(confirm_token=token), db=pool,
+                        actions.ConfirmRequest(confirm_token=token), db=pool, caller_user_id=TEST_USER,
                     )
     assert exc.value.status_code == 409
     assert exc.value.detail["code"] == "TRANSL_REPRICE_REQUIRED"
@@ -616,7 +616,7 @@ async def test_confirm_refuses_when_grant_revoked_in_ttl():
                               AsyncMock()) as create_mock:
                 with pytest.raises(HTTPException) as exc:
                     await actions.confirm_action(
-                        actions.ConfirmRequest(confirm_token=token), db=pool,
+                        actions.ConfirmRequest(confirm_token=token), db=pool, caller_user_id=TEST_USER,
                     )
     assert exc.value.status_code == 403
     assert exc.value.detail["code"] == "TRANSL_FORBIDDEN"
@@ -644,7 +644,7 @@ async def test_confirm_refuses_when_chapter_not_under_bound_book():
                               AsyncMock()) as create_mock:
                 with pytest.raises(HTTPException) as exc:
                     await actions.confirm_action(
-                        actions.ConfirmRequest(confirm_token=token), db=pool,
+                        actions.ConfirmRequest(confirm_token=token), db=pool, caller_user_id=TEST_USER,
                     )
     assert exc.value.status_code == 403
     assert exc.value.detail["code"] == "TRANSL_FORBIDDEN"
@@ -661,7 +661,7 @@ async def test_confirm_rejects_expired_token():
     pool = AsyncMock()
     with pytest.raises(HTTPException) as exc:
         await actions.confirm_action(
-            actions.ConfirmRequest(confirm_token=token), db=pool,
+            actions.ConfirmRequest(confirm_token=token), db=pool, caller_user_id=TEST_USER,
         )
     assert exc.value.status_code == 410
     assert exc.value.detail["code"] == "TRANSL_CONFIRM_EXPIRED"
@@ -675,9 +675,35 @@ async def test_confirm_rejects_forged_token():
     with pytest.raises(HTTPException) as exc:
         await actions.confirm_action(
             actions.ConfirmRequest(confirm_token="garbage.token"), db=pool,
+            caller_user_id=TEST_USER,
         )
     assert exc.value.status_code == 400
     assert exc.value.detail["code"] == "TRANSL_CONFIRM_INVALID"
+
+
+async def test_confirm_rejects_token_bound_to_a_different_user():
+    """Seam fix (live-pass): the confirm route is now JWT-gated (reached by the FE
+    confirm card carrying the user's JWT). The token's `u` claim must equal the
+    JWT caller — a DIFFERENT signed-in user must not redeem someone else's token
+    even with the string. Folded into the uniform 403 (anti-oracle)."""
+    from fastapi import HTTPException
+    from app.routers import actions
+
+    payload = {
+        "action": "start_job", "title": "t", "book_id": BOOK,
+        "chapter_ids": [CHAPTER], "target_language": "en",
+        "force_retranslate": False, "estimate": _bound_est().as_dict(),
+    }
+    token = _mint(actions.DESC_START_JOB, payload)  # bound to TEST_USER
+    other_user = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+    pool = AsyncMock()
+    with pytest.raises(HTTPException) as exc:
+        await actions.confirm_action(
+            actions.ConfirmRequest(confirm_token=token), db=pool,
+            caller_user_id=other_user,
+        )
+    assert exc.value.status_code == 403
+    assert exc.value.detail["code"] == "TRANSL_FORBIDDEN"
 
 
 async def test_confirm_rejects_token_signed_with_envelope_secret():
@@ -697,7 +723,7 @@ async def test_confirm_rejects_token_signed_with_envelope_secret():
     pool = AsyncMock()
     with pytest.raises(HTTPException) as exc:
         await actions.confirm_action(
-            actions.ConfirmRequest(confirm_token=token), db=pool,
+            actions.ConfirmRequest(confirm_token=token), db=pool, caller_user_id=TEST_USER,
         )
     assert exc.value.status_code == 400
     assert exc.value.detail["code"] == "TRANSL_CONFIRM_INVALID"
@@ -712,7 +738,7 @@ async def test_preview_returns_bound_estimate():
     payload = {"title": "Translate 1 chapter(s)",
                "estimate": {"cost_usd": 0.20, "input_tokens": 1000}}
     token = _mint(actions.DESC_START_JOB, payload)
-    res = await actions.preview_action(token=token)
+    res = await actions.preview_action(token=token, caller_user_id=TEST_USER)
     assert res.descriptor == actions.DESC_START_JOB
     assert res.title == "Translate 1 chapter(s)"
     assert res.estimate["cost_usd"] == 0.20
