@@ -1,7 +1,7 @@
 """S-JOBS — MCP server facade for the jobs-service read tools.
 
 Mounts at ``/mcp`` on the existing FastAPI app (``app/main.py``) and exposes the
-job-read SSOT (``jobs_list`` / ``jobs_summary`` / ``job_get``) over the projection
+job-read SSOT (``jobs_list`` / ``jobs_summary`` / ``jobs_get``) over the projection
 store as MCP tools, via the shared Python kit ``loreweave_mcp`` (C-KIT-PY).
 
 Design constraints (mirrors the proven knowledge-service `/mcp` facade + the
@@ -186,7 +186,7 @@ async def jobs_summary(ctx: MCPContext) -> dict:
 
 
 @mcp_server.tool(
-    name="job_get",
+    name="jobs_get",
     description=(
         "Get one job's full detail by its service + job_id (progress, status, "
         "error, cost/tokens, params, and the actions currently valid for it). "
@@ -197,10 +197,10 @@ async def jobs_summary(ctx: MCPContext) -> dict:
         "R",
         "user",
         synonyms=["job detail", "job status", "get job", "show job"],
-        tool_name="job_get",
+        tool_name="jobs_get",
     ),
 )
-async def job_get(
+async def jobs_get(
     ctx: MCPContext,
     service: Annotated[
         str,

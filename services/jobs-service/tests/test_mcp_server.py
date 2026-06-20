@@ -35,7 +35,7 @@ from mcp.client.streamable_http import streamablehttp_client
 # conftest.py sets the required env BEFORE app import.
 from .conftest import TEST_USER  # noqa: E402
 
-EXPECTED_TOOLS = {"jobs_list", "jobs_summary", "job_get"}
+EXPECTED_TOOLS = {"jobs_list", "jobs_summary", "jobs_get"}
 
 # Matches conftest.py's INTERNAL_SERVICE_TOKEN default so the auth check passes
 # when we want it to.
@@ -140,6 +140,22 @@ async def test_no_tool_leaks_a_scope_arg(mcp_base_url):
         props = set(tool.inputSchema.get("properties", {}))
         leaked = props & forbidden
         assert not leaked, f"tool {tool.name!r} leaks scope args: {leaked}"
+
+
+async def test_every_tool_name_has_jobs_prefix(mcp_base_url):
+    """C-GW prefix invariant: the gateway federates jobs-service tools under the
+    `jobs_` prefix and silently DROPS any tool whose name does not match. A tool
+    named e.g. `job_get` would be unreachable in production while still passing
+    every other unit test — so assert the prefix at the unit layer to fail that
+    class of bug here, not at federation."""
+    headers = {"X-Internal-Token": _GOOD_TOKEN}
+    async with _mcp_client(mcp_base_url, headers) as session:
+        listing = await session.list_tools()
+    assert listing.tools
+    for tool in listing.tools:
+        assert tool.name.startswith("jobs_"), (
+            f"tool {tool.name!r} would be dropped by the gateway's `jobs_` prefix"
+        )
 
 
 # ── Wire path: identity / auth from headers ───────────────────────────────────
@@ -306,7 +322,7 @@ async def test_job_get_shape_for_owned_job():
     from uuid import UUID
 
     async with _patched(_seed()) as (srv, _ctx):
-        res = await srv.job_get(
+        res = await srv.jobs_get(
             _ctx(UUID(TEST_USER)),
             service="translation",
             job_id="11111111-1111-1111-1111-111111111111",
@@ -322,7 +338,7 @@ async def test_job_get_foreign_job_is_not_accessible():
     from uuid import UUID
 
     async with _patched(_seed()) as (srv, _ctx):
-        res = await srv.job_get(
+        res = await srv.jobs_get(
             _ctx(UUID(TEST_USER)),
             service="translation",
             job_id="99999999-9999-9999-9999-999999999999",  # OTHER_USER's job
