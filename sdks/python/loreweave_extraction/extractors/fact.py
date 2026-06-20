@@ -43,7 +43,12 @@ from loreweave_extraction.context_budget import (
 )
 from loreweave_extraction.errors import ExtractionError
 from loreweave_extraction.extractors.entity import LLMEntityCandidate
-from loreweave_extraction.prompts import apply_prompt_override, load_prompt
+from loreweave_extraction.prompts import (
+    append_schema_constraints,
+    apply_prompt_override,
+    load_prompt,
+)
+from loreweave_extraction.schema_projection import ExtractionSchema
 
 __all__ = [
     "LLMFactCandidate",
@@ -55,9 +60,14 @@ logger = logging.getLogger(__name__)
 
 # ── LLM response schema (matches fact_extraction.md prompt) ───────
 
+# Static default vocab — preserved for the `schema=None` path (backward-compat).
 FactType = Literal[
     "description", "attribute", "negation", "temporal", "causal",
 ]
+
+_STATIC_FACT_TYPES: frozenset[str] = frozenset(
+    {"description", "attribute", "negation", "temporal", "causal"}
+)
 
 Polarity = Literal["affirm", "negate"]
 Modality = Literal["asserted", "reported", "hypothetical"]
@@ -135,8 +145,13 @@ async def extract_facts(
     on_dropped: DroppedHandler | None = None,
     context_budget: "ContextBudget | None" = None,
     prompt_override_system: str | None = None,
+    schema: ExtractionSchema | None = None,
 ) -> list[LLMFactCandidate]:
     """Extract factual claims from *text* via the user's BYOK LLM.
+
+    ``schema`` (lane LB): ``None`` (default) keeps the static ``FactType``
+    ``Literal`` + byte-identical prompt. A non-None schema injects + validates
+    against ``schema.fact_types`` (fail-soft).
 
     Args:
         text: chapter or passage text. Empty/whitespace returns ``[]``
@@ -165,13 +180,8 @@ async def extract_facts(
     if not text or not text.strip():
         return []
 
-    safe_known = json.dumps(
-        known_entities, ensure_ascii=False
-    ).replace("{", "{{").replace("}", "}}")
-
-    system_prompt = apply_prompt_override(
-        load_prompt("fact_system", known_entities=safe_known),
-        prompt_override_system,
+    system_prompt = build_fact_system(
+        known_entities, prompt_override_system, schema=schema,
     )
     raw_facts = await _extract_via_llm_client(
         llm_client=llm_client,
@@ -183,6 +193,7 @@ async def extract_facts(
         text=text,
         on_dropped=on_dropped,
         context_budget=context_budget,
+        schema=schema,
     )
 
     return _postprocess(
@@ -295,6 +306,7 @@ async def _extract_via_llm_client(
     text: str,
     on_dropped: DroppedHandler | None,
     context_budget: ContextBudget | None = None,
+    schema: ExtractionSchema | None = None,
 ) -> list[_LLMFact]:
     """Submit fact_extraction job + wait_terminal + tolerant-parse
     `result.facts`. Mirrors entity extractor's SDK path."""
@@ -319,7 +331,7 @@ async def _extract_via_llm_client(
             last_error=exc,
         ) from exc
 
-    return parse_fact_job(job, on_dropped=on_dropped)
+    return parse_fact_job(job, on_dropped=on_dropped, schema=schema)
 
 
 # ── Decouple seams (LLM re-arch Phase 2b WX-T2) — see entity.py ─────
@@ -369,6 +381,7 @@ def build_fact_submit_kwargs(
 
 def parse_fact_job(
     job: Any, *, on_dropped: DroppedHandler | None,
+    schema: ExtractionSchema | None = None,
 ) -> list[_LLMFact]:
     """Pure: validate the terminal Job + tolerant-parse `result.facts`."""
     if job.status == "cancelled":
@@ -388,38 +401,60 @@ def parse_fact_job(
         items = job.result.get("facts", [])
         if isinstance(items, list):
             raw_items = items
-    return _tolerant_parse_facts(raw_items, on_dropped=on_dropped)
+    return _tolerant_parse_facts(raw_items, on_dropped=on_dropped, schema=schema)
 
 
 def build_fact_system(
     known_entities: list[str], prompt_override_system: str | None = None,
+    *, schema: ExtractionSchema | None = None,
 ) -> str:
-    """Pure: the fact system prompt (WX-T2d)."""
+    """Pure: the fact system prompt (WX-T2d).
+
+    ``schema=None`` → byte-identical static prompt; a non-None schema appends
+    the project's fact-type vocab before override-contract logic (lane LB)."""
     safe_known = json.dumps(known_entities, ensure_ascii=False).replace("{", "{{").replace("}", "}}")
-    return apply_prompt_override(
-        load_prompt("fact_system", known_entities=safe_known), prompt_override_system,
+    default_system = append_schema_constraints(
+        load_prompt("fact_system", known_entities=safe_known), "fact", schema,
     )
+    return apply_prompt_override(default_system, prompt_override_system)
 
 
 def apply_fact_job(
     job: Any, *, on_dropped: DroppedHandler | None,
     entities: list, known_entities: list[str], user_id: str,
+    schema: ExtractionSchema | None = None,
 ) -> list[LLMFactCandidate]:
     """Parse + postprocess a fact terminal Job (WX-T2d)."""
     return _postprocess(
-        parse_fact_job(job, on_dropped=on_dropped),
+        parse_fact_job(job, on_dropped=on_dropped, schema=schema),
         entities=entities, known_entities=known_entities, user_id=user_id,
     )
+
+
+def _fact_type_accepted(ftype: str, schema: ExtractionSchema | None) -> bool:
+    """schema=None → in static FactType; else in schema.fact_types (empty vocab
+    accepts anything — never stricter than static). Case-insensitive."""
+    if schema is None:
+        return ftype in _STATIC_FACT_TYPES
+    vocab = schema.fact_types
+    if not vocab:
+        return True
+    low = ftype.strip().lower()
+    return any(low == v.strip().lower() for v in vocab)
 
 
 def _tolerant_parse_facts(
     raw_items: list[Any],
     *,
     on_dropped: DroppedHandler | None,
+    schema: ExtractionSchema | None = None,
 ) -> list[_LLMFact]:
     """Drop items missing `content` or with empty content; tolerate
     null subject; clamp confidence; drop on FactType validation
-    failure (kind not in Literal)."""
+    failure (kind not in Literal).
+
+    ``schema=None`` validates ``type`` against the static ``FactType``
+    ``Literal``; with a schema, against ``schema.fact_types`` (fail-soft)."""
     parsed: list[_LLMFact] = []
     for item in raw_items:
         if not isinstance(item, dict):
@@ -435,6 +470,27 @@ def _tolerant_parse_facts(
         if not isinstance(confidence, (int, float)):
             confidence = 0.5
         confidence = max(0.0, min(1.0, float(confidence)))
+        if schema is not None:
+            ftype = item.get("type", "description")
+            if not isinstance(ftype, str) or not _fact_type_accepted(ftype, schema):
+                if on_dropped:
+                    on_dropped("fact_extraction", "validation")
+                continue
+            try:
+                fact = _LLMFact.model_validate({
+                    "content": content,
+                    "type": "description",  # placeholder satisfies the Literal
+                    "subject": item.get("subject"),
+                    "polarity": item.get("polarity", "affirm"),
+                    "modality": item.get("modality", "asserted"),
+                    "confidence": confidence,
+                })
+                parsed.append(fact.model_copy(update={"type": ftype}))
+            except ValidationError:
+                if on_dropped:
+                    on_dropped("fact_extraction", "validation")
+                continue
+            continue
         try:
             parsed.append(_LLMFact(
                 content=content,

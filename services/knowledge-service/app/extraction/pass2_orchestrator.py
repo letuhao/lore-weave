@@ -50,6 +50,7 @@ from loreweave_extraction.extractors.entity import extract_entities
 from loreweave_extraction.extractors.event import extract_events
 from loreweave_extraction.extractors.fact import extract_facts
 from loreweave_extraction.extractors.relation import extract_relations
+from loreweave_extraction.schema_projection import ExtractionSchema
 
 from app.clients.book_client import get_book_client
 from app.clients.llm_client import LLMClient
@@ -716,6 +717,7 @@ async def gather_relations_events_facts(
     llm_client: LLMClient,
     on_dropped: Any = None,
     context_budget: "ContextBudget | None" = None,
+    schema: ExtractionSchema | None = None,
 ) -> tuple[list[Any], list[Any], list[Any]]:
     """C-PRED-ALIGN-DEF-01 — single source of truth for Pass 2 R+E+F
     parallelism. Returns ``(relations, events, facts)``.
@@ -758,6 +760,7 @@ async def gather_relations_events_facts(
         model_ref=model_ref,
         llm_client=llm_client,
         on_dropped=on_dropped,
+        schema=schema,
     )
     if context_budget is not None:
         extractor_kwargs["context_budget"] = context_budget
@@ -819,6 +822,11 @@ async def _run_pipeline(
     # gate the R/E/F gather; `summaries` gates the summary enqueue.
     # Requesting any of {relations,events,facts} auto-includes `entities`.
     targets: set[str] | None = None,
+    # KG customizable-ontology (lane LB) — resolved project schema projection.
+    # None (default) → static byte-identical prompts + Literal validation
+    # (today's behavior). A non-None ExtractionSchema activates the dynamic
+    # prompt/validation path in the SDK extractors.
+    schema: ExtractionSchema | None = None,
 ) -> Pass2WriteResult:
     """Core pipeline shared by chat_turn and chapter entry points.
 
@@ -878,6 +886,7 @@ async def _run_pipeline(
             model_ref=model_ref,
             llm_client=llm_client,
             on_dropped=_on_dropped,
+            schema=schema,
         ),
         deserializer=LLMEntityCandidate.model_validate,
         book_id=book_id,
@@ -950,6 +959,7 @@ async def _run_pipeline(
         model_ref=model_ref,
         llm_client=llm_client,
         on_dropped=_on_dropped,
+        schema=schema,
     )
     # C12 — build the R/E/F gather task-list CONDITIONALLY. Only the
     # requested trio ops run; skipped ops yield empty lists. Extractor
@@ -1067,6 +1077,7 @@ async def _run_pipeline(
         extraction_model=model_ref,
         anchors=anchors,
         hierarchy_paths=hierarchy_paths,   # P3 D2a — hierarchy MERGE in same Tx
+        schema=schema,  # lane LB — closed-edge-set write-boundary guard (None ⇒ no-op)
         **_WRITER_AUTOCREATE_CONFIG,
     )
     write_elapsed = time.perf_counter() - write_started
@@ -1218,6 +1229,9 @@ async def extract_pass2_chat_turn(
     llm_client: LLMClient,
     anchors: list[Anchor] | None = None,
     job_logs_repo: JobLogsRepo | None = None,
+    # KG customizable-ontology (lane LB) — resolved schema projection (None ⇒
+    # static byte-identical behavior). Forwarded to _run_pipeline → SDK.
+    schema: ExtractionSchema | None = None,
 ) -> Pass2WriteResult:
     """Run the Pass 2 LLM pipeline on a chat turn.
 
@@ -1253,6 +1267,7 @@ async def extract_pass2_chat_turn(
         llm_client=llm_client,
         anchors=anchors,
         job_logs_repo=job_logs_repo,
+        schema=schema,
     )
 
 
@@ -1292,6 +1307,9 @@ async def extract_pass2_chapter(
     summary_enqueue: SummaryEnqueueFn | None = None,
     # C12 — target-typed extraction (None ⇒ all passes; back-compat).
     targets: set[str] | None = None,
+    # KG customizable-ontology (lane LB) — resolved schema projection (None ⇒
+    # static byte-identical behavior). Forwarded to _run_pipeline → SDK.
+    schema: ExtractionSchema | None = None,
 ) -> Pass2WriteResult:
     """Run the Pass 2 LLM pipeline on a chapter.
 
@@ -1334,4 +1352,5 @@ async def extract_pass2_chapter(
         embedding_dimension=embedding_dimension,
         summary_enqueue=summary_enqueue,
         targets=targets,
+        schema=schema,
     )

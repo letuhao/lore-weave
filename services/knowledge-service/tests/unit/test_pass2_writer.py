@@ -1084,3 +1084,124 @@ async def test_provenance_defaults_to_human_authored(
 
     assert mock_entity.call_args.kwargs["provenance"] == "human_authored"
     assert mock_fact.call_args.kwargs["provenance"] == "human_authored"
+
+
+# ── Lane LB — closed-edge-set write-boundary guard ──────────────────────
+# KG customizable-ontology: when the project schema closes its edge set
+# (allow_free_edges=False + a non-empty edge vocab), the writer drops a
+# relation whose normalized predicate is off-vocab fail-soft (skip per-edge,
+# never fail the batch — spec §5-K7 B2). schema=None ⇒ no enforcement (today).
+
+from loreweave_extraction.schema_projection import ExtractionSchema  # noqa: E402
+
+_CLOSED_SCHEMA = ExtractionSchema(
+    edge_predicates=("trusts", "knows"),
+    allow_free_edges=False,
+    label="lb-closed@v1",
+)
+_OPEN_SCHEMA = ExtractionSchema(
+    edge_predicates=("trusts",),
+    allow_free_edges=True,
+    label="lb-open@v1",
+)
+
+
+@pytest.mark.asyncio
+@patch(f"{_PATCH_BASE}.create_relation", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.resolve_or_merge_entity", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
+async def test_lb_closed_edge_set_drops_off_vocab_predicate(
+    mock_upsert_source, mock_merge, mock_evidence, mock_create_rel,
+):
+    """Off-vocab predicate ('hates') dropped when edge set CLOSED; in-vocab
+    ('trusts') still written. create_relation called exactly once."""
+    mock_upsert_source.return_value = _make_source_result()
+    mock_merge.side_effect = [
+        _make_entity_result("eid-kai"),
+        _make_entity_result("eid-zhao"),
+    ]
+    mock_evidence.return_value = _make_evidence_result(True)
+    mock_create_rel.return_value = MagicMock()
+
+    result = await write_pass2_extraction(
+        _fake_session(),
+        user_id=USER_ID, project_id=PROJECT_ID,
+        source_type="chapter", source_id="ch-1",
+        job_id=JOB_ID,
+        entities=[_entity("Kai"), _entity("Zhao")],
+        relations=[
+            _relation("Kai", "trusts", "Zhao",
+                      subject_id="eid-kai", object_id="eid-zhao"),
+            _relation("Kai", "hates", "Zhao",
+                      subject_id="eid-kai", object_id="eid-zhao"),
+        ],
+        schema=_CLOSED_SCHEMA,
+    )
+
+    assert result.relations_created == 1
+    assert mock_create_rel.call_count == 1
+    assert mock_create_rel.call_args.kwargs["predicate"] == "trusts"
+
+
+@pytest.mark.asyncio
+@patch(f"{_PATCH_BASE}.create_relation", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.resolve_or_merge_entity", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
+async def test_lb_open_edge_set_keeps_off_vocab_predicate(
+    mock_upsert_source, mock_merge, mock_evidence, mock_create_rel,
+):
+    """allow_free_edges=True → off-vocab predicate survives (no guard)."""
+    mock_upsert_source.return_value = _make_source_result()
+    mock_merge.side_effect = [
+        _make_entity_result("eid-kai"),
+        _make_entity_result("eid-zhao"),
+    ]
+    mock_evidence.return_value = _make_evidence_result(True)
+    mock_create_rel.return_value = MagicMock()
+
+    result = await write_pass2_extraction(
+        _fake_session(),
+        user_id=USER_ID, project_id=PROJECT_ID,
+        source_type="chapter", source_id="ch-1",
+        job_id=JOB_ID,
+        entities=[_entity("Kai"), _entity("Zhao")],
+        relations=[_relation("Kai", "hates", "Zhao",
+                             subject_id="eid-kai", object_id="eid-zhao")],
+        schema=_OPEN_SCHEMA,
+    )
+
+    assert result.relations_created == 1
+    assert mock_create_rel.call_count == 1
+
+
+@pytest.mark.asyncio
+@patch(f"{_PATCH_BASE}.create_relation", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.resolve_or_merge_entity", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
+async def test_lb_schema_none_no_enforcement(
+    mock_upsert_source, mock_merge, mock_evidence, mock_create_rel,
+):
+    """schema=None (default) → any predicate written, byte-identical to today."""
+    mock_upsert_source.return_value = _make_source_result()
+    mock_merge.side_effect = [
+        _make_entity_result("eid-kai"),
+        _make_entity_result("eid-zhao"),
+    ]
+    mock_evidence.return_value = _make_evidence_result(True)
+    mock_create_rel.return_value = MagicMock()
+
+    result = await write_pass2_extraction(
+        _fake_session(),
+        user_id=USER_ID, project_id=PROJECT_ID,
+        source_type="chapter", source_id="ch-1",
+        job_id=JOB_ID,
+        entities=[_entity("Kai"), _entity("Zhao")],
+        relations=[_relation("Kai", "obliterates", "Zhao",
+                             subject_id="eid-kai", object_id="eid-zhao")],
+    )
+
+    assert result.relations_created == 1
+    assert mock_create_rel.call_count == 1
