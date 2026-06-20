@@ -45,6 +45,7 @@
 | `DL-*` | Daily Life (DF1 umbrella) | [`catalog/cat_12_DL_daily_life.md`](../catalog/cat_12_DL_daily_life.md) | next free | |
 | `Q-*` | Pending questions (external input required) | [`decisions/pending_questions.md`](../decisions/pending_questions.md) | Q-A5+ | Q-A4 / Q-D1 / Q-E3 |
 | `L1..L4` + `LMV-*` | Locked top-level storage + multiverse decisions | [`decisions/locked_decisions.md`](../decisions/locked_decisions.md) | rarely extended | LMV-Fork = Snapshot fork (MV4-a) |
+| `RTM-A1..A9` · `RTM-Q1..Q10` · `RTM-D1..D10` | Realtime movement & presence authority (axioms / decisions) | [`08_realtime_movement_authority.md`](../08_realtime_movement_authority.md) | RTM-A10+ / next free | RTM-A2 = predict→validate(WASM)→reconcile · RTM-Q8 = seamless cross-region (V1) |
 
 ---
 
