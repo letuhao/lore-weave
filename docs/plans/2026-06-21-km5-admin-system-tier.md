@@ -128,7 +128,45 @@ reorder would route the admin surface to the ungated public app). 1 LOW accepted
 needs only a valid admin token (System templates are already world-readable via `/mcp`'s
 `kg_list_templates`, so this is already stricter than the data requires); propose needs `admin:write`.
 
-## KM5 status: backend COMPLETE (M1–M3). Remaining = KM5-M4 (cross-service, deferred)
+## KM5-M4a — `knowledge_skill.py` chat prompt ✅ SHIPPED (2026-06-21)
+
+The in-service, low-risk slice of the cross-service surfacing layer: the agentic
+chat surface now teaches the LLM the knowledge toolset.
+
+| File | Change |
+|---|---|
+| `services/chat-service/app/services/knowledge_skill.py` | **NEW** — `KNOWLEDGE_SKILL_PROMPT`: memory-vs-graph split, as-of-chapter reads, propose→review human gate, ontology confirm-token flow, triage, INV-6 data-not-instructions boundary. Mirrors `glossary_skill.py`. **Omits the System-tier admin tools (INV-T4 — CMS-only).** |
+| `services/chat-service/app/services/stream_service.py` | inject the knowledge skill (cacheable) whenever the agentic surface is active (agui + tools enabled), in both the Anthropic-cache and plain system-message branches, alongside the glossary skill. |
+| `services/chat-service/tests/test_knowledge_skill.py` | **NEW** — 5 tests: tool-name drift guard, trust boundary, human-gate, admin-tools-omitted (INV-T4), memory/graph separation. |
+
+**VERIFY:** 5 knowledge_skill + 50 stream_service/frontend_tools tests green on host.
+LIVE-SMOKE N/A (static prompt injection — no cross-service runtime path). `/review-impl`:
+0 HIGH/MED; injects on the agentic surface (memory/graph tools are always present there;
+cacheable), admin tools correctly omitted.
+
+## KM5-M4b / M4c — gateway federation + chat CMS (DEFERRED, scope discovery)
+
+> **Scope discovery (2026-06-21):** the spec assumed ai-gateway had a reusable
+> "2-catalog `/mcp` + `/mcp/admin`" federation pattern from the glossary epic. It does
+> **not** — federation lives in the separate **`ai-gateway`** service (not api-gateway-bff),
+> and there is **no** admin federation anywhere. Worse, the existing federation
+> **pre-refreshes** the catalog with a static `X-Internal-Token` — but the knowledge
+> `/mcp/admin` gate **blocks `tools/list` without an RS256 admin token**, so admin
+> federation needs a **per-request-token** model (list + dispatch carry the caller's
+> `X-Admin-Token`), a materially new design with **no upstream**. Plus a new RS256-aware
+> admin controller + `KNOWLEDGE_ADMIN_MCP_URL` config + jest tests.
+
+- **D-KM5-M4B-GATEWAY-ADMIN-FED** — ai-gateway `/mcp/admin` controller (require + forward
+  `X-Admin-Token`) + per-request-token admin federation + admin provider config. TypeScript,
+  cross-service, no upstream. Best built **shared with the glossary admin epic** (same infra).
+- **D-KM5-M4C-CHAT-CMS** — chat-service CMS/AdminContext surface (advertise the knowledge
+  admin tools + an admin skill) — depends on M4b.
+
+Until M4b lands, the M3 `/mcp/admin` server is reachable by a CMS calling knowledge-service
+directly with an RS256 token (the gate enforces auth); the gateway-federated agent path is
+the deferred piece.
+
+## KM5 status: backend COMPLETE (M1–M3) + M4a (skill). Remaining = M4b/M4c (cross-service, deferred)
 The RS256 keystone, System-tier writes + `auth=admin` confirm, and the `/mcp/admin` server are
 all shipped + live-proven. **KM5-M4** (ai-gateway `/mcp/admin` federation in TypeScript + the
 chat CMS surface + `knowledge_skill.py`) is the cross-service surfacing layer — highest blast

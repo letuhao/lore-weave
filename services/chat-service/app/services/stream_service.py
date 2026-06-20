@@ -598,6 +598,22 @@ async def stream_response(
         from app.services.glossary_skill import GLOSSARY_SKILL_PROMPT
         glossary_skill = GLOSSARY_SKILL_PROMPT
 
+    # KM5-M4a (knowledge skill): on the agentic surface where knowledge/graph tools
+    # are advertised, prepend-as-system the static knowledge skill — the memory-vs-
+    # graph split, as-of-chapter reads, the propose→review human gate, the ontology
+    # confirm-token flow, triage, and the INV-6 data-not-instructions boundary.
+    # Gated like the toolset itself (agui + tools enabled); static + cacheable, the
+    # actual schema is fetched on demand via kg_schema_read, never baked per turn.
+    inject_knowledge_skill = (
+        stream_format == "agui"
+        and not disable_tools
+        and kctx.tool_calling_enabled
+    )
+    knowledge_skill: str | None = None
+    if inject_knowledge_skill:
+        from app.services.knowledge_skill import KNOWLEDGE_SKILL_PROMPT
+        knowledge_skill = KNOWLEDGE_SKILL_PROMPT
+
     use_anthropic_cache = (
         creds.provider_kind == "anthropic"
         and kctx.stable_context.strip() != ""
@@ -621,6 +637,8 @@ async def stream_response(
             })
         if glossary_skill:
             parts.append({"type": "text", "text": glossary_skill, "cache_control": {"type": "ephemeral"}})
+        if knowledge_skill:
+            parts.append({"type": "text", "text": knowledge_skill, "cache_control": {"type": "ephemeral"}})
         messages.insert(0, {"role": "system", "content": parts})
     else:
         system_parts: list[str] = []
@@ -634,6 +652,8 @@ async def stream_response(
                 system_parts.append(stripped)
         if glossary_skill:
             system_parts.append(glossary_skill)
+        if knowledge_skill:
+            system_parts.append(knowledge_skill)
         if system_parts:
             messages.insert(0, {"role": "system", "content": "\n\n".join(system_parts)})
 
