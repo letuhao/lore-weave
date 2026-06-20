@@ -98,7 +98,7 @@ These make "show me my glossary" open the page instead of dumping JSON. Reads th
 - **W:** `composition_write_prose` (proxies book-service draft, version-checked — Tier-A *or* W per CLARIFY; canon-adjacent → lean W with the prose diff card, reusing `propose_edit`'s renderer)
 
 ### translation-service (Python) + jobs (cross-service)
-- **R:** `translation_coverage`, `translation_segment_status`, `translation_list_versions`, `translation_job_status`, `jobs_list`, `jobs_summary`, `job_get`
+- **R:** `translation_coverage`, `translation_segment_status`, `translation_list_versions`, `translation_job_status`, `jobs_list`, `jobs_summary`, `jobs_get`
 - **A:** `translation_set_active_version`, `translation_save_edited_version`, `translation_patch_block`, `translation_update_settings`
 - **W:** `translation_start_job` (priced → **estimate must be built, see Money guard** + confirm), `translation_retranslate_dirty` (priced), `job_control` — **cancel/pause are reversible and free → A; resume and retry RE-SPEND money → W** (correcting the original "control is reversible" gloss)
 - *Async-job pattern:* start-job tools return a `job_id`; the agent reports it and may call `ui_watch_job`; status tools let the agent poll/report progress without blocking the turn.

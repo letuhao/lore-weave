@@ -136,6 +136,9 @@ services:
       HTTP_ADDR: ":8082"
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_book?sslmode=disable
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      # MCP fan-out /review-impl — dedicated confirm-token signing secret (split
+      # from JWT_SECRET so the Tier-W confirm HMAC key has a distinct blast radius).
+      CONFIRM_TOKEN_SIGNING_SECRET: ${CONFIRM_TOKEN_SIGNING_SECRET:-loreweave_local_dev_confirm_signing_secret_change_me_32chars}
       BOOKS_STORAGE_BUCKET: loreweave-dev-books
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: loreweave
@@ -174,6 +177,9 @@ services:
       PORT: "8093"
       COMPOSITION_DB_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_composition
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      # MCP fan-out /review-impl — dedicated confirm-token signing secret (split
+      # from the envelope internal token so the Tier-W confirm HMAC key is distinct).
+      CONFIRM_TOKEN_SIGNING_SECRET: ${CONFIRM_TOKEN_SIGNING_SECRET:-loreweave_local_dev_confirm_signing_secret_change_me_32chars}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       REDIS_URL: redis://redis:6379
       # M4 decouple — the API enqueues batch ops only when this is on. MUST match
@@ -221,6 +227,9 @@ services:
     environment:
       COMPOSITION_DB_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_composition
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      # MCP fan-out /review-impl — dedicated confirm-token signing secret (split
+      # from the envelope internal token so the Tier-W confirm HMAC key is distinct).
+      CONFIRM_TOKEN_SIGNING_SECRET: ${CONFIRM_TOKEN_SIGNING_SECRET:-loreweave_local_dev_confirm_signing_secret_change_me_32chars}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       REDIS_URL: redis://redis:6379
       LOG_LEVEL: INFO
@@ -312,8 +321,16 @@ services:
       HTTP_ADDR: ":8085"
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_provider_registry?sslmode=disable
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      # MCP fan-out /review-impl — dedicated confirm-token signing secret (split
+      # from JWT_SECRET so the Tier-W confirm HMAC key has a distinct blast radius).
+      CONFIRM_TOKEN_SIGNING_SECRET: ${CONFIRM_TOKEN_SIGNING_SECRET:-loreweave_local_dev_confirm_signing_secret_change_me_32chars}
       USAGE_BILLING_SERVICE_URL: http://usage-billing-service:8086
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # S-SETTINGS (MCP fan-out) — settings MCP server's profile tools call
+      # auth-service's token-gated /internal/users/{id}/full-profile here (each
+      # service owns its DB — no cross-service SQL). Optional; empty disables only
+      # the two profile tools' backing call.
+      AUTH_SERVICE_INTERNAL_URL: http://auth-service:8081
       # Phase 2c — async LLM job terminal events publish to
       # `loreweave.events` topic exchange. Empty/unset = NoopNotifier
       # (caller polls GET /v1/llm/jobs/{id}; no broker dependency).
@@ -466,6 +483,9 @@ services:
     environment:
       DATABASE_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_translation
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      # MCP fan-out /review-impl — dedicated confirm-token signing secret (split
+      # from the envelope internal token so the Tier-W confirm HMAC key is distinct).
+      CONFIRM_TOKEN_SIGNING_SECRET: ${CONFIRM_TOKEN_SIGNING_SECRET:-loreweave_local_dev_confirm_signing_secret_change_me_32chars}
       BOOK_SERVICE_INTERNAL_URL: http://book-service:8082
       PROVIDER_REGISTRY_SERVICE_URL: http://provider-registry-service:8085
       # Phase 4c-α: SDK install. Same host as legacy URL but separate
@@ -600,6 +620,9 @@ services:
     environment:
       DATABASE_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_translation
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      # MCP fan-out /review-impl — dedicated confirm-token signing secret (split
+      # from the envelope internal token so the Tier-W confirm HMAC key is distinct).
+      CONFIRM_TOKEN_SIGNING_SECRET: ${CONFIRM_TOKEN_SIGNING_SECRET:-loreweave_local_dev_confirm_signing_secret_change_me_32chars}
       BOOK_SERVICE_INTERNAL_URL: http://book-service:8082
       PROVIDER_REGISTRY_SERVICE_URL: http://provider-registry-service:8085
       # Phase 4c-α: SDK install. Same host as legacy URL.
@@ -826,6 +849,13 @@ services:
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       KNOWLEDGE_MCP_URL: http://knowledge-service:8092/mcp
       GLOSSARY_MCP_URL: http://glossary-service:8088/mcp
+      # MCP fan-out COMPOSE B — federate every domain MCP provider via env (C-GW:
+      # "adding a provider = an env entry, not a code edit"). Prefixes resolve from
+      # the gateway's DEFAULT_PREFIX_MAP by name; a provider that's down degrades the
+      # catalog to PARTIAL (H10) rather than blocking the gateway, so no hard
+      # depends_on is required here. Wave 1: knowledge, glossary, jobs.
+      # Wave 2: book, composition, translation, settings.
+      AI_GATEWAY_PROVIDERS: "knowledge=http://knowledge-service:8092/mcp,glossary=http://glossary-service:8088/mcp,jobs=http://jobs-service:8096/mcp,book=http://book-service:8082/mcp,composition=http://composition-service:8093/mcp,translation=http://translation-service:8087/mcp,settings=http://provider-registry-service:8085/mcp"
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       knowledge-service:
