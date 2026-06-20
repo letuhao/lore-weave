@@ -133,9 +133,9 @@ A `confirm_token` is an opaque, server-minted capability — NOT a snapshot the 
 
 ## 6. Architecture changes (beyond new handlers)
 
-1. **Two MCP servers, two endpoints (INV-T6, §4c)** — keep `/mcp` (user/book; gate `X-Internal-Token` + `X-User-Id`) and add a **separate** `/mcp/admin` server (gate: RS256 `X-Admin-Token` verified at the transport middleware *before* `tools/list`). Admin tools are registered ONLY on the admin server; book/user tools ONLY on `/mcp`. No shared catalog. Refactor `requireAdminScope`'s verify logic into a ctx-based helper reused by both the HTTP admin routes and the `/mcp/admin` middleware.
-2. **`ai-gateway` federation** — register the two as **distinct upstream MCP servers**. The book/reader/glossary surfaces federate `/mcp` only. The CMS surface additionally federates `/mcp/admin`, forwarding `X-Admin-Token`. Per-call, stateless (H3) — no admin token cached. A non-CMS surface's federation never dials `/mcp/admin`.
-3. **`chat-service`** — the CMS agent session attaches the caller's admin token; **per-surface tool curation (H7)** is the *second* layer (the first is endpoint separation): book tools on book surfaces, user-tier tools on book + a future "my standards" surface, **admin tools only on the CMS surface (which alone reaches `/mcp/admin`)**. New frontend tools for the confirm-token cards (adopt / sync-apply / book-delete / admin-*).
+1. **Glossary: two MCP servers, two endpoints (INV-T6, §4c)** — keep `/mcp` (user/book; gate `X-Internal-Token` + `X-User-Id`) and add a **separate** `/mcp/admin` server (gate: RS256 `X-Admin-Token` verified at the transport middleware *before* `tools/list`). Admin tools registered ONLY on the admin server; book/user tools ONLY on `/mcp`. No shared catalog. Refactor `requireAdminScope`'s verify into a ctx-based helper reused by the HTTP admin routes and the `/mcp/admin` middleware (mirrors the `mcpIdentityMiddleware` pattern at [mcp_server.go:88](../../services/glossary-service/internal/api/mcp_server.go#L88)).
+2. **`ai-gateway`: separation must be END-TO-END, not just two upstreams (corrected after the deep-dive).** The gateway federates by *tool name into one unified catalog* ([catalog.ts](../../services/ai-gateway/src/federation/catalog.ts), routing at [federation.service.ts:111](../../services/ai-gateway/src/federation/federation.service.ts#L111)) and does **no** per-surface/per-caller gating. So merely adding `/mcp/admin` as a 2nd upstream would put admin tool **names** into the single catalog every surface lists — an INV-T6 leak. Instead the gateway exposes **two downstream MCP endpoints**: its existing `/mcp` (federates glossary `/mcp` + knowledge) and a **new gateway `/mcp/admin`** (federates glossary `/mcp/admin` only, forwards `X-Admin-Token`). Two catalogs, never blended. Add `X-Admin-Token` to the envelope: `Envelope` iface + `extractEnvelope` ([handlers.ts:14](../../services/ai-gateway/src/mcp/handlers.ts#L14)) + forward in [federation.service.ts:115-118](../../services/ai-gateway/src/federation/federation.service.ts#L115). Stateless per-call; token never cached, never logged ([handlers.ts:44](../../services/ai-gateway/src/mcp/handlers.ts#L44) only logs *absence* of userId — keep that).
+3. **`chat-service`: the surface→endpoint map is the enforcement point.** Surfaces are implicit context objects, not an enum ([models.py:127-150](../../services/chat-service/app/models.py#L127)); tool curation is `frontend_tool_defs(editor, book_scoped)` ([frontend_tools.py:222](../../services/chat-service/app/services/frontend_tools.py#L222)); the MCP tool-def fetch + envelope is in the gateway client ([knowledge_client.py:349,408](../../services/chat-service/app/client/knowledge_client.py#L349)). Add an **`AdminContext`** surface that (a) lists tools from gateway **`/mcp/admin`** (not `/mcp`), (b) attaches `X-Admin-Token`, (c) advertises only admin tools + the admin confirm cards. A book/reader surface lists from `/mcp` only and never holds an admin token — so it can neither see nor reach admin tools. This per-surface base-URL+token choice is where INV-T4/T6 are actually enforced; **it is covered by a test** (§11 #4).
 4. **CMS agent surface (new sub-scope)** — the thin cms-frontend currently has no chat/assistant panel. A minimal admin-assistant surface (chat panel → chat-service/ai-gateway with the admin identity) is a **dependency for phase T4**. Could be a thin reuse of the existing chat UI scoped to admin tools. Flag for its own design at T4 PLAN.
 5. **Generalized confirm-token machinery** — today `schema/confirm` is schema-specific. Generalize it to carry an opaque action descriptor (`adopt`, `sync_apply`, `book_delete`, `system_create|patch|delete`) so all class-C tools share one mint/confirm path, honouring the §5.1 contract. (Or per-action endpoints — PLAN decides.)
 6. **Contracts** — the MCP tools are not OpenAPI (MCP catalog), but the new confirm endpoints + any new HTTP are contract-first.
@@ -172,14 +172,16 @@ Build order T1→T2→T3 first (compounding value, no authority risk), then the 
 
 ---
 
-## 9. Open decisions (resolve at each phase's CLARIFY)
+## 9. Open decisions
 
-1. **Verb-collapsing:** one tool per (verb × level) = 9 book tools, vs 3 tools with a `level` arg. *Lean: 3-verb form (smaller catalog, H7).* — PLAN.
-2. **Generalized vs per-action confirm endpoints** (§6.5). — T1/T5 PLAN.
-3. **CMS agent surface shape** (§6.4): full chat panel vs a minimal "propose change" affordance. — T4 design.
-4. **`admin:read` scope:** add a narrower read scope, or reuse `admin:write` presence for admin reads. *Lean: reuse for v1.* — T4.
-5. **User-tier agent surface:** do book surfaces expose user-tier tools (the author's own library while in a book), or only a dedicated "my standards" surface? — T3.
-6. **Adopt as C vs W:** adopt is large but non-destructive (idempotent copy-down). Class **C** proposed for visibility; could be W with a rich result. — T1 CLARIFY.
+Most were **resolved in the 2026-06-20 deep-dive (§12)**. Remaining truly-open items are deferred to the owning phase's CLARIFY:
+
+1. **Verb-collapsing:** one tool per (verb × level) = 9 book tools, vs 3 tools with a `level` arg. *Resolved (§12.8): 3-verb form.* — confirm at PLAN.
+2. **Generalized vs per-action confirm endpoints** (§6.5). *Resolved (§12.5): one generalized mint/confirm path that branches on the action descriptor's authority.* — shape at T1 PLAN.
+3. **CMS agent surface shape** (§6.4). *Resolved (§12.1): a chat panel in cms-frontend reusing the main FE's streaming infra.* — detail at T4.
+4. **`admin:read` scope:** narrower read scope vs reuse `admin:write` presence. *Lean: reuse for v1.* — still open, T4.
+5. **User-tier agent surface** placement. *Resolved (§12.3): book surfaces expose the caller's user-tier tools; a dedicated "my standards" surface is optional later.* — T3.
+6. **Adopt as C vs W.** *Resolved (§12.7): **C** (confirm-token).*
 
 ## 10. Out of scope
 - P6 grounding consolidation (already deferred, separate).
@@ -212,3 +214,60 @@ Adversarial walkthrough of every tier (happy + edge). Severity: 🔴 must-fix-in
 13. **Catalog-size discipline** (E26) → reinforces collapsing create/patch/delete to `(verb × level-arg)` (3 tools, not 9) and tight per-surface curation (H7); keep each surface's advertised catalog small so tool-selection stays accurate.
 
 **Validated as already-sound by the stress-test:** the two-endpoint admin separation (A2 — 401 before `tools/list`, no leak), human-confirm as the prompt-injection backstop (A4), and the three-class gating model all held under adversarial scenarios. The gaps above are detail-level, not architectural.
+
+---
+
+## 12. Resolved design questions (deep-dive 2026-06-20)
+
+Each was an *unflagged* ambiguity a builder would trip on. Resolved against the actual code, with anchors.
+
+### 12.1 / 12.2 / 12.5 — The admin/CMS delivery path (the riskiest cluster), now concrete
+The investigation found the gateway has **no per-surface gating** and federates by tool-name into **one unified catalog**. So the admin boundary cannot live at the gateway's routing — it must be **endpoint separation end-to-end** + **chat-service surface routing** + **glossary transport gate**. The full path:
+
+```
+cms-frontend (admin RS256 in `cms_auth` localStorage)
+  → chat-service  [NEW AdminContext surface]
+        · lists tool-defs from gateway **/mcp/admin** (not /mcp)
+        · attaches X-Admin-Token (from the request's admin bearer)
+        · advertises only admin tools + admin confirm cards
+  → ai-gateway  [NEW downstream **/mcp/admin** endpoint]
+        · federates glossary **/mcp/admin** ONLY (separate catalog; admin tool
+          names never appear in the /mcp catalog the book surfaces list)
+        · forwards X-Admin-Token; never logs it
+  → glossary-service **/mcp/admin** MCP server
+        · transport middleware verifies RS256 admin token + admin:write BEFORE tools/list
+        · admin tools mint confirm-tokens only (no direct System write)
+```
+
+- **CMS surface shape (12.1):** a chat panel **in cms-frontend**. cms-frontend today is pure CRUD with **no streaming** ([cms-frontend/src/api.ts](../../cms-frontend/src/api.ts)); the main FE has reusable SSE infra (`frontend/src/features/chat/useChatMessages.ts`, the `x-loreweave-stream-format: agui` + suspend/resume protocol). T4 ports a minimal version of that, keyed to the `cms_auth` admin token. **Greenfield-but-reuse**, scoped at T4.
+- **Surface→endpoint map (12.2):** the *enforcement point*. chat-service picks the gateway base (`/mcp` vs `/mcp/admin`) and whether to attach `X-Admin-Token` **by surface**. Add `AdminContext` to [models.py:143](../../services/chat-service/app/models.py#L143); branch the tool-def fetch + envelope build in [knowledge_client.py:349,408](../../services/chat-service/app/client/knowledge_client.py#L349).
+- **Confirm endpoints (12.5):** generalize the existing `mintSchemaToken`/`confirmSchema` ([schema_confirm_handler.go:125,149](../../services/glossary-service/internal/api/schema_confirm_handler.go#L125)) into one mint + one confirm path carrying an **action descriptor**. The confirm endpoint **branches authority by descriptor**: user-grant actions (adopt/sync/book-delete) re-check `GrantManage` like `confirmSchema` does today; System actions re-check the **RS256 admin token + admin:write** (a *distinct* admin-gated confirm, since System writes have no book/grant). The admin confirm card is a new frontend tool in the admin surface's `FRONTEND_TOOL_NAMES`.
+
+### 12.3 — Old vs new read tools (no overlap; complementary)
+Keep both, with clear, distinct roles (and rename for the LLM):
+- **`glossary_list_system_standards`** (retarget of today's `glossary_list_kinds`) → "what CAN I adopt": the System (+ caller's User) standards catalogue. Used **before** adopt.
+- **`glossary_book_ontology_read`** (new) → "what does THIS book have": the book-local genres/kinds/attributes. The canonical schema read for in-book work; what `propose_new_entity` already resolves against via `loadKindMap(bookID)`.
+Today's `glossary_list_kinds` takes no `book_id` and returns a global/merged view — *misleading* for a book assistant post-tiering. Retarget it to the standards-browse role; `book_ontology_read` owns the in-book read.
+
+### 12.4 — Sync: the LLM proposes per-row choices, the human confirms the set
+`applyBookSync` already takes `Items[]{entity, id, choice: keep_mine|take_theirs}` ([book_sync_handler.go:251](../../services/glossary-service/internal/api/book_sync_handler.go#L251)). So: `glossary_book_sync_apply` reads the diff (`sync_available`), the **LLM proposes** a per-row choice set (it has the context to recommend), mints a confirm-token carrying the proposed `Items[]`; the **human reviews the full diff + the proposed choices in the confirm card and may flip any row before confirming**. Input shape = the proposed `Items[]`; authority = `GrantManage`, re-checked at confirm.
+
+### 12.6 — Optimistic concurrency: yes, carry a base version (decided, not deferred)
+Patch tools **take a base version and 409 on drift** (the H5 lesson) — this is decided now because it fixes the tool *signature*. Reuse what exists: genres/attributes already carry **`content_hash`** → the tool passes `base_content_hash`, handler 409s if the live row's hash differs. Kinds have no hash → use **`updated_at`** as the concurrency token. Same for System-tier admin patches (concurrent admins; the `content_hash` also feeds Sync, so a blind overwrite would corrupt drift detection).
+
+### 12.7 — `adopt` is class **C** (confirm-token)
+Non-destructive but high-impact and visible (scaffolds the book by copy-down). The confirm card previews what will be adopted (which genres/kinds/attributes, and — re-rendered at confirm time — how many are *new* vs already present, since adopt is idempotent). Resolves the §3a↔§9 contradiction in favour of C.
+
+### 12.8 — Tool shape: 3 verbs × `level` arg (not 9), code-addressed
+Create/patch/delete collapse to `glossary_book_create|patch|delete` with a `level: genre|kind|attribute` arg (and the same for user-tier), keeping the catalogue small (H7, §11 #13). Args are **codes** (`kind_code`, `genre_code`) resolved server-side, not UUIDs (§6.8, §11 #9) — except where no stable code exists (entity ids).
+
+### 12.9 — Services touched per phase (scope is NOT glossary-only)
+| Phase | glossary (Go) | chat-service (Py) | ai-gateway (TS) | frontend (TS) | cms-frontend (TS) |
+|---|---|---|---|---|---|
+| **T1 book** | MCP tools on `/mcp` + generalized confirm mint/confirm | book-surface curation + adopt/book-delete confirm cards | — (same `/mcp`) | confirm-card renderers | — |
+| **T2 sync** | sync tools + confirm | sync-apply confirm card | — | confirm-card renderer | — |
+| **T3 user** | user-tier tools (+ restore) | user-tier tools on book surface | — | (minor) | — |
+| **T4 admin** | **NEW `/mcp/admin` server** + admin tools + admin confirm + admin-gated confirm endpoint | **NEW AdminContext surface** + admin token wiring + admin confirm cards | **NEW `/mcp/admin` downstream** + `X-Admin-Token` envelope | — | **NEW admin chat panel** (port main-FE SSE infra) + admin confirm cards |
+| **T5 cross-cutting** | — | glossary skill prompt per-surface + curation tests | — | — | — |
+
+Auth-service: **no change** — admin tools reuse the shipped `/v1/admin/session` RS256 exchange. The "single-service" framing in earlier phase tables applies only to T1–T3's *backend*; the FE/chat surfaces are always part of the phase.
