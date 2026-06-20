@@ -66,6 +66,10 @@ class TestLegacyEmitter:
             'data: {"type": "reasoning-delta", "delta": "think"}\n\n'
         ]
 
+    def test_activity_is_noop(self):
+        # C-ACTIVITY is agui-only; legacy clients don't render the Undo strip.
+        assert self.em.activity({"op": "x", "summary": "y", "undo": {}}) == []
+
     def test_text_delta(self):
         assert self.em.text_delta("hi") == [
             'data: {"type": "text-delta", "delta": "hi"}\n\n'
@@ -122,6 +126,13 @@ class TestAgUiEmitter:
     def test_memory_mode_is_custom(self):
         ev = _parse(self._em().memory_mode("static")[0])
         assert ev == {"type": "CUSTOM", "name": "memoryMode", "value": {"mode": "static"}}
+
+    def test_activity_is_custom_event(self):
+        # MCP-fanout C-ACTIVITY (H16) — Tier-A visibility + Undo strip.
+        payload = {"op": "chapter.create", "summary": "Created draft chapter",
+                   "undo": {"available": True, "tool": "chapter_delete", "args": {}}}
+        ev = _parse(self._em().activity(payload)[0])
+        assert ev == {"type": "CUSTOM", "name": "activity", "value": payload}
 
     def test_text_happy_path_frames_once(self):
         em = self._em()

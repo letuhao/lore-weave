@@ -29,8 +29,31 @@ from __future__ import annotations
 #                                   action `descriptor`, the user Confirms (POST to
 #                                   the token-gated /v1/glossary/actions/confirm) or
 #                                   Cancels. Supersedes the schema-only confirm card.
+# MCP-fanout S-CONSUMER — the GENERIC frontend tools (C-NAV / C-CONFIRM /
+# C-PROPOSE), shared across every domain (book/composition/translation/settings)
+# so the FE renders ONE confirm card + ONE diff card + the nav tools, not a
+# per-domain variant:
+#   ui_navigate/ui_open_book/ui_open_chapter/ui_show_panel/ui_watch_job
+#                                — navigation (C-NAV); resolve-immediately (no Apply)
+#   confirm_action               — generic Tier-W/S confirm (C-CONFIRM); the
+#                                  `domain` selects the committing endpoint, optional
+#                                  `items[]` renders ONE batch card (H2)
+#   propose_record_edit          — generic record diff card (C-PROPOSE) for
+#                                  book/composition record edits
 FRONTEND_TOOL_NAMES: frozenset[str] = frozenset(
-    {"propose_edit", "glossary_propose_entity_edit", "glossary_confirm_action"}
+    {
+        "propose_edit",
+        "glossary_propose_entity_edit",
+        "glossary_confirm_action",
+        # generic, cross-domain (MCP-fanout):
+        "ui_navigate",
+        "ui_open_book",
+        "ui_open_chapter",
+        "ui_show_panel",
+        "ui_watch_job",
+        "confirm_action",
+        "propose_record_edit",
+    }
 )
 
 # OpenAI function-calling schema for the editor write-back tool. Wire-standard;
@@ -222,6 +245,289 @@ GLOSSARY_CONFIRM_ACTION_TOOL: dict = {
         },
     },
 }
+
+
+# ── MCP-fanout C-NAV — navigation/render frontend tools ──────────────────────
+# Frontend tools (suspend→browser) but RESOLVE-IMMEDIATELY: no human Apply gate.
+# The FE executes the navigation and POSTs the resolve straight back. Advertised
+# only on the agui /chat surface (F2 — legacy clients never see them, so never
+# suspend / hang).
+
+UI_NAVIGATE_TOOL: dict = {
+    "type": "function",
+    "function": {
+        "name": "ui_navigate",
+        "description": (
+            "Navigate the user's browser to a page (e.g. '/books', '/jobs', "
+            "'/settings'). Use this to SHOW the user something rather than dumping "
+            "data into chat. The browser navigates immediately — no confirmation."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "An allowlisted in-app route, e.g. '/books' or '/settings'.",
+                },
+            },
+            "required": ["path"],
+            "additionalProperties": False,
+        },
+    },
+}
+
+UI_OPEN_BOOK_TOOL: dict = {
+    "type": "function",
+    "function": {
+        "name": "ui_open_book",
+        "description": (
+            "Open a book's detail page, optionally on a specific tab. Use when the "
+            "user wants to SEE a book or one of its surfaces (translation, glossary, "
+            "wiki...). Opens immediately."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "book_id": {"type": "string", "description": "The book to open (UUID)."},
+                "tab": {
+                    "type": "string",
+                    "enum": [
+                        "overview", "translation", "glossary",
+                        "enrichment", "wiki", "settings",
+                    ],
+                    "description": "Optional tab to open the book on.",
+                },
+            },
+            "required": ["book_id"],
+            "additionalProperties": False,
+        },
+    },
+}
+
+UI_OPEN_CHAPTER_TOOL: dict = {
+    "type": "function",
+    "function": {
+        "name": "ui_open_chapter",
+        "description": (
+            "Open a chapter in the editor or reader. Use when the user wants to write "
+            "or read a specific chapter. Opens immediately."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "book_id": {"type": "string", "description": "The book (UUID)."},
+                "chapter_id": {"type": "string", "description": "The chapter (UUID)."},
+                "mode": {
+                    "type": "string",
+                    "enum": ["edit", "read"],
+                    "description": "edit = open the editor; read = open the reader.",
+                },
+            },
+            "required": ["book_id", "chapter_id", "mode"],
+            "additionalProperties": False,
+        },
+    },
+}
+
+UI_SHOW_PANEL_TOOL: dict = {
+    "type": "function",
+    "function": {
+        "name": "ui_show_panel",
+        "description": (
+            "Open a tab or panel on the current view (e.g. the glossary, translation, "
+            "or wiki panel). Use to reveal a surface without leaving the page. Opens "
+            "immediately."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "panel": {"type": "string", "description": "The panel/tab name to show."},
+                "args": {
+                    "type": "object",
+                    "description": "Optional panel-specific arguments.",
+                    "additionalProperties": True,
+                },
+            },
+            "required": ["panel"],
+            "additionalProperties": False,
+        },
+    },
+}
+
+UI_WATCH_JOB_TOOL: dict = {
+    "type": "function",
+    "function": {
+        "name": "ui_watch_job",
+        "description": (
+            "Open the jobs monitor focused on a running job so the user sees live "
+            "progress. ALWAYS call this after starting a long-running job (translation, "
+            "media generation): the job runs for minutes — say you STARTED it and offer "
+            "this live view; NEVER claim it finished. Opens immediately."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "job_id": {"type": "string", "description": "The job to watch (UUID)."},
+            },
+            "required": ["job_id"],
+            "additionalProperties": False,
+        },
+    },
+}
+
+
+# ── MCP-fanout C-CONFIRM — generic Tier-W/S confirm (generalizes glossary) ────
+# The `domain` selects which /v1/<domain>/actions/confirm endpoint commits; the
+# optional `items[]` array renders ONE batch card with a single Apply (H2 — so
+# "publish all my drafts" is one click, not N).
+CONFIRM_ACTION_TOOL: dict = {
+    "type": "function",
+    "function": {
+        "name": "confirm_action",
+        "description": (
+            "Ask the user to CONFIRM a high-impact action (publish, delete, start a "
+            "PRICED job, change a default) that you proposed with a domain MCP tool. "
+            "Pass the `confirm_token`, `descriptor`, and `domain` you received from "
+            "that propose call. High-impact and irreversible changes ALWAYS require "
+            "explicit human confirmation — the action is NOT applied automatically. "
+            "For a BULK action (e.g. publish several chapters) pass `items` so the "
+            "user gets ONE card with a single Apply, not many cards. After the user "
+            "decides you receive an `outcome`: `action_done` (applied), "
+            "`token_expired` (the confirmation lapsed — propose again), `action_error` "
+            "(it failed), or `cancelled` (the user declined). State that the change "
+            "happened ONLY when the outcome is `action_done`."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "confirm_token": {
+                    "type": "string",
+                    "description": "The confirm_token returned by the propose call.",
+                },
+                "descriptor": {
+                    "type": "string",
+                    "description": (
+                        "The action descriptor from the propose call "
+                        "(e.g. 'book.publish', 'book.delete', 'translation.start_job')."
+                    ),
+                },
+                "title": {
+                    "type": "string",
+                    "description": "Human-readable title of the action, shown on the card.",
+                },
+                "domain": {
+                    "type": "string",
+                    "enum": ["glossary", "book", "composition", "translation", "settings"],
+                    "description": "Selects which service commits the action on Confirm.",
+                },
+                "items": {
+                    "type": "array",
+                    "description": (
+                        "OPTIONAL — for a BATCH confirm: one entry per affected row "
+                        "(e.g. the chapters to publish). The browser renders one card "
+                        "listing all of them with a single Apply."
+                    ),
+                    "items": {"type": "object", "additionalProperties": True},
+                },
+            },
+            "required": ["confirm_token", "descriptor", "title", "domain"],
+            "additionalProperties": False,
+        },
+    },
+}
+
+
+# ── MCP-fanout C-PROPOSE — generic record diff card ──────────────────────────
+# Generalizes glossary_propose_entity_edit for book/composition record edits.
+# Suspends; on Apply the FE issues the domain's version-checked PATCH
+# (If-Match: base_version → 409/412 on drift, H8).
+PROPOSE_RECORD_EDIT_TOOL: dict = {
+    "type": "function",
+    "function": {
+        "name": "propose_record_edit",
+        "description": (
+            "Propose one or more edits to the fields of an EXISTING record (a book's "
+            "metadata, a chapter's title, etc.) — applied together. The changes are "
+            "shown as a diff card with an Apply button and are NOT applied "
+            "automatically. BEFORE calling this, read the record's current values and "
+            "its version token (pass it as `base_version`). After the user decides you "
+            "receive an `outcome`: `applied_saved` (saved), `applied_conflict` (the "
+            "record changed since you read it — re-read and propose afresh), "
+            "`applied_error` (the save failed), or `dismissed`. State the change was "
+            "made ONLY when the outcome is `applied_saved`."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "domain": {
+                    "type": "string",
+                    "enum": ["glossary", "book", "composition", "translation", "settings"],
+                    "description": "Which service owns the record.",
+                },
+                "resource_ref": {
+                    "type": "object",
+                    "description": "Domain-specific ids, e.g. {book_id} or {book_id, chapter_id}.",
+                    "additionalProperties": True,
+                },
+                "base_version": {
+                    "type": "string",
+                    "description": "The record's version token (optimistic concurrency, H8).",
+                },
+                "changes": {
+                    "type": "array",
+                    "description": "One or more field changes to apply together.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "field_label": {
+                                "type": "string",
+                                "description": "Human-readable field name shown on the diff card.",
+                            },
+                            "old_value": {"type": "string", "description": "The current value."},
+                            "new_value": {"type": "string", "description": "The proposed value."},
+                            "target": {
+                                "type": "string",
+                                "description": "Machine field key the PATCH writes.",
+                            },
+                            "target_ref": {
+                                "type": "string",
+                                "description": "Optional sub-resource id for the field.",
+                            },
+                        },
+                        "required": ["field_label", "old_value", "new_value", "target"],
+                        "additionalProperties": False,
+                    },
+                },
+                "rationale": {
+                    "type": "string",
+                    "description": "Optional one-line explanation shown to the user.",
+                },
+            },
+            "required": ["domain", "resource_ref", "base_version", "changes"],
+            "additionalProperties": False,
+        },
+    },
+}
+
+
+# Map core frontend-tool names → their schema, so the discovery layer can
+# advertise the always-on core by name (C-FT). ui_open_chapter is NOT core
+# (discovered via find_tools) but is a valid frontend tool.
+_GENERIC_FRONTEND_TOOLS_BY_NAME: dict[str, dict] = {
+    "ui_navigate": UI_NAVIGATE_TOOL,
+    "ui_open_book": UI_OPEN_BOOK_TOOL,
+    "ui_open_chapter": UI_OPEN_CHAPTER_TOOL,
+    "ui_show_panel": UI_SHOW_PANEL_TOOL,
+    "ui_watch_job": UI_WATCH_JOB_TOOL,
+    "confirm_action": CONFIRM_ACTION_TOOL,
+    "propose_record_edit": PROPOSE_RECORD_EDIT_TOOL,
+    "propose_edit": PROPOSE_EDIT_TOOL,
+}
+
+
+def generic_frontend_tool_def(name: str) -> dict | None:
+    """The schema for a generic (cross-domain) frontend tool by name, or None."""
+    return _GENERIC_FRONTEND_TOOLS_BY_NAME.get(name)
 
 
 def frontend_tool_defs(*, editor: bool = False, book_scoped: bool = False) -> list[dict]:
