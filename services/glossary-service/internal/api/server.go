@@ -114,6 +114,12 @@ func (s *Server) Router() http.Handler {
 	// service token and lifts X-User-Id into ctx for the ownership guard.
 	r.Handle("/mcp", s.mcpHandler())
 
+	// ── Admin MCP server (System-tier tools, ai-gateway admin surface) ────
+	// PHYSICALLY SEPARATE from /mcp (INV-T6): the transport middleware verifies an
+	// RS256 admin:write token in X-Admin-Token BEFORE tools/list — a non-admin can't
+	// even enumerate these tools. System-tier tools NEVER appear on /mcp.
+	r.Handle("/mcp/admin", s.adminMCPHandler())
+
 	// ── Internal service-to-service endpoints ─────────────────────────────
 	r.Route("/internal", func(r chi.Router) {
 		r.Use(s.requireInternalToken)
@@ -177,6 +183,11 @@ func (s *Server) Router() http.Handler {
 		// the retired /schema/confirm. /preview is non-consuming (current-state card).
 		r.Post("/actions/confirm", s.confirmAction)
 		r.Post("/actions/preview", s.previewAction)
+		// T4 — System-tier admin confirm path, RS256-gated (requireAdminScope inside),
+		// SEPARATE from the HS256 user /actions/confirm above. The MCP admin tools
+		// propose (authorityAdmin token); a human admin confirms a System write here.
+		r.Post("/actions/admin/confirm", s.confirmAdminAction)
+		r.Post("/actions/admin/preview", s.previewAdminAction)
 		// Kind-resolution epic: alias table READ (alias_code → kind) for the
 		// unknown-kind review GUI. The write (createKindAlias + reassign) was removed
 		// in SS-4 Milestone C; it returns in SS-7 retargeted at the tiered model.

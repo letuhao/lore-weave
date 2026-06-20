@@ -67,8 +67,10 @@ func TestActionToken_TamperAndUnknownDescriptorRejected(t *testing.T) {
 	if _, err := verifyActionToken("another_secret_at_least_32_characters_xx", tok, now.Add(time.Minute)); !errors.Is(err, ErrActionTokenInvalid) {
 		t.Fatalf("wrong-secret must be invalid, got %v", err)
 	}
-	// a not-yet-live descriptor must NOT mint (fail closed)
-	if mintActionToken(secret, mkClaims(uuid.New(), uuid.New(), "system_create"), now) != "" {
+	// a not-yet-live descriptor must NOT mint (fail closed). `book_set_genres` is a
+	// buildplan §2 reserved descriptor that was implemented as a direct W (no token),
+	// so it never became live — a stable example of a rejected descriptor.
+	if mintActionToken(secret, mkClaims(uuid.New(), uuid.New(), "book_set_genres"), now) != "" {
 		t.Error("reserved descriptor must not mint a token")
 	}
 }

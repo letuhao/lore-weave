@@ -44,6 +44,13 @@ const (
 	descSchemaCreateAttr = "schema_create_attribute"
 	descAdopt            = "adopt"      // T1 — scaffold a book by copy-down from standards
 	descSyncApply        = "sync_apply" // T2 — apply a proposed per-row sync choice set
+
+	// T4 — System-tier admin writes (authorityAdmin only; confirmed via the
+	// RS256-gated /v1/glossary/actions/admin/confirm, never the user path). Verb is
+	// the descriptor, entity is the `level` in params (genre|kind|attribute).
+	descSystemCreate = "system_create"
+	descSystemPatch  = "system_patch"
+	descSystemDelete = "system_delete"
 )
 
 var (
@@ -56,7 +63,8 @@ var (
 // can never carry intent the confirm path doesn't fully validate.
 func liveDescriptor(d string) bool {
 	switch d {
-	case descBookDelete, descSchemaCreateKind, descSchemaCreateAttr, descAdopt, descSyncApply:
+	case descBookDelete, descSchemaCreateKind, descSchemaCreateAttr, descAdopt, descSyncApply,
+		descSystemCreate, descSystemPatch, descSystemDelete:
 		return true
 	default:
 		return false
