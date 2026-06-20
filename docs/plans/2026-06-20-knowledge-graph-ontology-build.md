@@ -309,7 +309,35 @@ S0 → L1 → (LA ∥ LC ∥ LD) → C2 → LB → (LE ∥ LF nối API) → LG 
   ("GET /internal/tools/definitions") — non-breaking (live path is MCP list-tools);
   track as `D-KM0-CHAT-STALE-COMMENT`, fix when chat-service is next touched.
 
-**NEXT (C1 fan-out):** open the parallel lanes against the frozen contracts —
-LA (resolver) · LC (adopt/sync/CRUD) · LD (views) · LH (triage) · LE (FE) ·
-LF (MCP). LB (extraction, worktree, backward-compat) after C2. LG (glossary
-internal-read) on the glossary branch.
+**2026-06-20 — C1 fan-out WAVE 1 DONE (LA ∥ LD ∥ LH).** Three independent
+backend lanes built as parallel worktree agents off `ae76ece7`, merged
+disjoint (zero conflicts), composed + verified:
+- **LA** (`app/ontology/resolver.py` + `validation.py` + `app/clients/glossary_ontology_client.py`):
+  TTL-cached resolver (system→user→project; node-kind source = book ontology
+  else user glossary-standards, glossary client injectable + faked till LG);
+  pure fail-soft validation (never raises) emitting the 4 §3.7 triage classes
+  by signature + a non-triage `validation_fact_type` diagnostic. 23 unit + 3 int.
+- **LD** (`graph_views.py` router + `repositories/graph_views.py` + `ontology/view_filter.py`):
+  per-user views CRUD (owner-scoped), temporal as-of-chapter graph read +
+  edge timeline (View-gated, K11.4 `$user_id`-bound Cypher). 38 unit + 6 int.
+- **LH** (`triage.py` router + `repositories/triage.py` + `ontology/triage_apply.py`):
+  triage queue grouped by signature, batch resolve, dismiss, glossary hand-off
+  (M1: pending_glossary + needs_glossary, never a KG→glossary write); dynamic
+  Edit/Manage grant-gating. 18 unit + 9 int.
+- **Compose VERIFY**: 25 KG live-PG integration + **2713 unit** green (app builds
+  with all 3 routers); provider-gate clean. **review-impl**: grant-gating
+  fail-closed (resolve-to-owner; non-grantee→404, under-tier→403) + validation
+  fail-soft verified by me.
+- **New deferred rows** (from the lanes, to clear in later waves):
+  `D-KG-LD-NEO4J-SMOKE` (live graph-read smoke — TEST_NEO4J_URI unset; faked
+  driver covers wiring) · `D-KG-LD-GRANTEE-TIMELINE` (grantee cross-owner entity
+  timeline — no Neo4j cross-owner read path today) · `D-KG-LH-NEO4J-REAPPLY`
+  (triage re-apply Neo4j write — seam, integrates C4/L7 w/ LB) ·
+  `D-KG-LH-LC-SCHEMA-WRITE` (triage schema-mutating write belongs to LC's
+  ontology_mutations).
+
+**NEXT — WAVE 2:** LC (adopt/sync/CRUD, wires LA resolver + glossary client +
+the LH schema-write compose-point) ∥ LE (FE, against contract). Then WAVE 3:
+LF (MCP, wraps LC/LD/LH HTTP) ∥ LB (extraction, worktree, backward-compat).
+Then L7 (enforcement flip + graph_id seam + cross-service live-smoke) → S3.
+LG (glossary internal-read) on the glossary branch before L7.
