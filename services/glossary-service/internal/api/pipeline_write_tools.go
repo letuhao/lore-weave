@@ -55,11 +55,18 @@ func (s *Server) toolCreateChapterLink(ctx context.Context, _ *mcp.CallToolReque
 	if n := strings.TrimSpace(in.Note); n != "" {
 		note = &n
 	}
-	// The core's sentinel errors (bad relevance / chapter-not-in-book / upstream / duplicate)
-	// are already LLM-readable, so return them verbatim.
 	cl, err := s.createChapterLinkCore(ctx, bookID, entityID, chapterID, in.Relevance, note)
 	if err != nil {
-		return nil, chapterLinkResp{}, err
+		// The core's sentinel errors are already LLM-readable — return them verbatim. Any
+		// OTHER error is an unexpected DB/internal failure; wrap it so a raw pgx string never
+		// reaches the model (the HTTP path does the same via writeChapterLinkErr's default).
+		switch {
+		case errors.Is(err, errChapterRelevance), errors.Is(err, errChapterNotInBook),
+			errors.Is(err, errChapterUpstream), errors.Is(err, errChapterLinkDup):
+			return nil, chapterLinkResp{}, err
+		default:
+			return nil, chapterLinkResp{}, errors.New("failed to create the chapter link")
+		}
 	}
 	return nil, *cl, nil
 }

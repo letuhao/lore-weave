@@ -4,8 +4,11 @@ package api
 // the LLM can now SEE merge candidates, an entity's chapter links + revision history, and
 // the unknown-kind triage bucket — the inputs it needs before proposing curation actions
 // (the M2 class-C write tools). All are class R: View-gated via bookToolAuth, scoped to
-// the book (+ entity-in-book for entity-addressed reads), output-capped by their cores.
-// They wrap the SAME core queries the HTTP handlers use (single source of truth).
+// the book (+ entity-in-book for entity-addressed reads). They wrap the SAME core queries
+// the HTTP handlers use (single source of truth). Output is bounded for the LLM: revisions
+// (200) and unknowns (500) cap in their cores; merge-candidates + chapter-links have no
+// core LIMIT (HTTP keeps them unbounded), so the TOOLS cap at pipelineReadCap with an
+// explicit `truncated` flag (no silent cap) to protect the model's token budget.
 
 import (
 	"context"
@@ -130,12 +133,17 @@ func (s *Server) queryUnknownEntities(ctx context.Context, bookID uuid.UUID) ([]
 
 // ── tools ─────────────────────────────────────────────────────────────────────
 
+// pipelineReadCap bounds the LLM-facing payload of the tools whose cores have no LIMIT
+// (merge-candidates, chapter-links). Truncation is signalled, never silent.
+const pipelineReadCap = 200
+
 type mergeCandToolIn struct {
 	BookID string `json:"book_id" jsonschema:"the book (UUID)"`
 	Status string `json:"status,omitempty" jsonschema:"proposed (default) | dismissed | merged"`
 }
 type mergeCandidatesOut struct {
 	Candidates []mergeCandidateView `json:"candidates"`
+	Truncated  bool                 `json:"truncated,omitempty"`
 }
 
 func (s *Server) toolListMergeCandidates(ctx context.Context, _ *mcp.CallToolRequest, in mergeCandToolIn) (*mcp.CallToolResult, mergeCandidatesOut, error) {
@@ -154,7 +162,12 @@ func (s *Server) toolListMergeCandidates(ctx context.Context, _ *mcp.CallToolReq
 	if err != nil {
 		return nil, mergeCandidatesOut{}, errors.New("failed to load merge candidates")
 	}
-	return nil, mergeCandidatesOut{Candidates: cands}, nil
+	truncated := false
+	if len(cands) > pipelineReadCap {
+		cands = cands[:pipelineReadCap]
+		truncated = true
+	}
+	return nil, mergeCandidatesOut{Candidates: cands, Truncated: truncated}, nil
 }
 
 type bookEntityToolIn struct {
@@ -162,7 +175,8 @@ type bookEntityToolIn struct {
 	EntityID string `json:"entity_id" jsonschema:"the entity (UUID)"`
 }
 type chapterLinksOut struct {
-	Links []chapterLinkResp `json:"links"`
+	Links     []chapterLinkResp `json:"links"`
+	Truncated bool              `json:"truncated,omitempty"`
 }
 
 func (s *Server) toolListChapterLinks(ctx context.Context, _ *mcp.CallToolRequest, in bookEntityToolIn) (*mcp.CallToolResult, chapterLinksOut, error) {
@@ -181,7 +195,12 @@ func (s *Server) toolListChapterLinks(ctx context.Context, _ *mcp.CallToolReques
 	if err != nil {
 		return nil, chapterLinksOut{}, errors.New("failed to load chapter links")
 	}
-	return nil, chapterLinksOut{Links: links}, nil
+	truncated := false
+	if len(links) > pipelineReadCap {
+		links = links[:pipelineReadCap]
+		truncated = true
+	}
+	return nil, chapterLinksOut{Links: links, Truncated: truncated}, nil
 }
 
 type entityRevisionsOut struct {
