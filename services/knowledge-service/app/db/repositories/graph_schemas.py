@@ -164,6 +164,24 @@ class GraphSchemasRepo:
             )
         return _row_to_schema(row) if row else None
 
+    async def active_project_schema(self, project_id: str) -> GraphSchema | None:
+        """The project's single active project-scoped schema row (schema_id +
+        schema_version), or ``None`` if the project never adopted (resolves to the
+        System `general` template). KM6: the confirm-token optimistic-concurrency
+        check reads (schema_id, schema_version) here at confirm time to detect drift
+        since mint. Mirrors ``resolve_for_project``'s project-row query — the same
+        one-active invariant + ORDER BY tiebreaker."""
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                f"""
+                SELECT {_SCHEMA_COLS} FROM kg_graph_schemas
+                WHERE scope = 'project' AND scope_id = $1 AND deprecated_at IS NULL
+                ORDER BY updated_at DESC, schema_id DESC LIMIT 1
+                """,
+                project_id,
+            )
+        return _row_to_schema(row) if row else None
+
     async def resolve_for_project(self, project_id: str, *, fallback_code: str = "general") -> ResolvedSchema:
         """The effective schema for a project (spec §3.5).
 

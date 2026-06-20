@@ -58,10 +58,17 @@ _LANE_LF_TOOLS = {
     "kg_triage_resolve",
 }
 
-# The class-C tools deferred to KM6 — they must NOT be registered anywhere.
+# KM6-M1: the FIRST live class-C tool — registered, but it MINTS a confirm-token
+# (no write); the human confirms via /v1/kg/actions/confirm.
+_CLASS_C_LIVE_TOOLS = {"kg_schema_edit"}
+
+# Every KG tool registered in the catalog (R + reversible W + live class-C).
+_REGISTERED_KG_TOOLS = _LANE_LF_TOOLS | _CLASS_C_LIVE_TOOLS
+
+# The class-C tools STILL deferred to later KM6 sub-phases / KM5 — they must NOT be
+# registered anywhere yet.
 _CLASS_C_TOOLS = {
     "kg_adopt_template",
-    "kg_schema_edit",
     "kg_sync_apply",
     "kg_triage_handoff_glossary",
     "kg_admin_template_read",
@@ -77,33 +84,32 @@ def _defn(name: str) -> dict:
 
 
 def test_total_tool_count_is_memory_plus_lane_lf():
-    """5 memory tools + 12 lane-LF tools = 17, with all three artifacts agreeing."""
+    """5 memory + 12 lane-LF + 1 live class-C (kg_schema_edit) = 18, all agreeing."""
     schema_names = {d["function"]["name"] for d in TOOL_DEFINITIONS}
-    assert len(TOOL_DEFINITIONS) == 17
+    assert len(TOOL_DEFINITIONS) == 18
     assert set(TOOL_NAMES) == set(ARG_MODELS) == schema_names
     assert len(set(TOOL_NAMES)) == len(TOOL_NAMES)  # no dupes
 
 
 def test_lane_lf_tools_all_registered():
-    assert _LANE_LF_TOOLS.issubset(set(GRAPH_SCHEMA_ARG_MODELS))
-    assert _LANE_LF_TOOLS == set(GRAPH_SCHEMA_ARG_MODELS)
+    assert _REGISTERED_KG_TOOLS == set(GRAPH_SCHEMA_ARG_MODELS)
     schema_names = {d["function"]["name"] for d in GRAPH_SCHEMA_TOOL_DEFINITIONS}
-    assert schema_names == _LANE_LF_TOOLS
+    assert schema_names == _REGISTERED_KG_TOOLS
 
 
 def test_class_c_tools_are_not_registered():
-    """INV-T3 / D-KG-LF-KM6 — the confirm-token tools must be absent from the
-    catalog until the KM6 confirm machinery lands. An LLM must not be able to
-    name (let alone call) them."""
+    """INV-T3 — the STILL-deferred class-C tools (adopt/sync/handoff/admin) must be
+    absent from the catalog until their KM6/KM5 phase lands. kg_schema_edit is the
+    one live class-C tool (it mints a confirm-token; no direct write)."""
     all_names = set(TOOL_NAMES)
     leaked = _CLASS_C_TOOLS & all_names
-    assert not leaked, f"class-C tools leaked into the catalog: {leaked}"
+    assert not leaked, f"deferred class-C tools leaked into the catalog: {leaked}"
 
 
 # ── OpenAI schema well-formedness + drift lock ────────────────────────
 
 
-@pytest.mark.parametrize("name", sorted(_LANE_LF_TOOLS))
+@pytest.mark.parametrize("name", sorted(_REGISTERED_KG_TOOLS))
 def test_tool_is_valid_openai_function_schema(name: str):
     defn = _defn(name)
     assert defn["type"] == "function"
@@ -119,7 +125,7 @@ def test_tool_is_valid_openai_function_schema(name: str):
         assert prop.get("description"), prop_name
 
 
-@pytest.mark.parametrize("name", sorted(_LANE_LF_TOOLS))
+@pytest.mark.parametrize("name", sorted(_REGISTERED_KG_TOOLS))
 def test_schema_properties_match_arg_model_fields(name: str):
     params = _defn(name)["function"]["parameters"]
     model = ARG_MODELS[name]
@@ -134,7 +140,7 @@ def test_schema_properties_match_arg_model_fields(name: str):
 def test_no_envelope_keys_leak_into_any_lane_lf_schema():
     """Design D3 / INV-K2 — user_id / project_id / session_id are envelope
     fields, never tool parameters."""
-    for name in _LANE_LF_TOOLS:
+    for name in _REGISTERED_KG_TOOLS:
         props = set(_defn(name)["function"]["parameters"]["properties"])
         assert _ENVELOPE_KEYS.isdisjoint(props), name
         assert _ENVELOPE_KEYS.isdisjoint(GRAPH_SCHEMA_ARG_MODELS[name].model_fields)
@@ -488,3 +494,99 @@ async def test_view_delete_reports_real_outcome():
     res = await execute_tool(ctx, "kg_view_delete", {"code": "ghost"})
     assert res.success
     assert res.result["deleted"] is False
+
+
+# ── KM6 — kg_schema_edit (class-C mint; NO write) ─────────────────────
+
+
+@pytest.mark.asyncio
+async def test_schema_edit_mints_confirm_token_and_does_not_write():
+    """The class-C tool returns a confirm_token bound to the proposer + the live
+    schema_id/version, and performs NO mutation (INV-K1/INV-T3)."""
+    import time as _time
+
+    from app.config import settings
+    from app.ontology.confirm import AUTH_GRANT, DESC_SCHEMA_EDIT, verify_action_token
+
+    sid = uuid4()
+    schemas = AsyncMock()
+    schemas.active_project_schema = AsyncMock(
+        return_value=SimpleNamespace(schema_id=sid, schema_version=7)
+    )
+    mutations = AsyncMock()
+    ctx = _ctx(graph_schemas_repo=schemas, ontology_mutations_repo=mutations)  # caller==owner
+    res = await execute_tool(
+        ctx, "kg_schema_edit",
+        {"verb": "add", "level": "edge_type", "code": "WORSHIPS", "label": "Worships"},
+    )
+    assert res.success
+    out = res.result
+    assert out["proposed"] is True and out["descriptor"] == DESC_SCHEMA_EDIT
+    assert out["confirm_token"]
+    # No write — only a token minted.
+    mutations.add_edge_type.assert_not_called()
+    mutations.add_fact_type.assert_not_called()
+    # The token verifies and carries the proposer + optimistic-concurrency anchor.
+    claims = verify_action_token(settings.jwt_secret, out["confirm_token"], _time.time())
+    assert claims.authority == AUTH_GRANT
+    assert claims.user_id == str(ctx.user_id)
+    assert claims.project_id == str(_PROJECT)
+    assert claims.params["schema_id"] == str(sid)
+    assert claims.params["expected_schema_version"] == 7
+    assert claims.params["verb"] == "add" and claims.params["code"] == "WORSHIPS"
+
+
+@pytest.mark.asyncio
+async def test_schema_edit_label_defaults_to_code():
+    import time as _time
+
+    from app.config import settings
+    from app.ontology.confirm import verify_action_token
+
+    schemas = AsyncMock()
+    schemas.active_project_schema = AsyncMock(
+        return_value=SimpleNamespace(schema_id=uuid4(), schema_version=1)
+    )
+    ctx = _ctx(graph_schemas_repo=schemas)
+    res = await execute_tool(
+        ctx, "kg_schema_edit", {"verb": "add", "level": "fact_type", "code": "prophecy"},
+    )
+    assert res.success
+    claims = verify_action_token(settings.jwt_secret, res.result["confirm_token"], _time.time())
+    assert claims.params["label"] == "prophecy"  # defaulted from code
+
+
+@pytest.mark.asyncio
+async def test_schema_edit_rejects_project_without_adopted_schema():
+    """A project resolving to the System `general` template (no project-scoped row)
+    has nothing project-local to edit — the tool refuses (never edits System tier)."""
+    schemas = AsyncMock()
+    schemas.active_project_schema = AsyncMock(return_value=None)
+    ctx = _ctx(graph_schemas_repo=schemas)
+    res = await execute_tool(
+        ctx, "kg_schema_edit", {"verb": "add", "level": "edge_type", "code": "X", "label": "X"},
+    )
+    assert not res.success
+    assert "adopt" in res.error.lower()
+
+
+@pytest.mark.asyncio
+async def test_schema_edit_requires_manage_grant():
+    """A grantee with EDIT (< MANAGE) is denied — class-C schema edits need MANAGE."""
+    grant = AsyncMock()
+    grant.resolve_grant = AsyncMock(return_value=GrantLevel.EDIT)  # < MANAGE
+    projects_repo = AsyncMock()
+    projects_repo.project_meta = AsyncMock(return_value=(_OWNER, _BOOK))  # owner != caller
+    schemas = AsyncMock()
+    schemas.active_project_schema = AsyncMock(
+        return_value=SimpleNamespace(schema_id=uuid4(), schema_version=1)
+    )
+    ctx = _ctx(
+        user_id=_USER, projects_repo=projects_repo, grant_client=grant,
+        graph_schemas_repo=schemas,
+    )
+    res = await execute_tool(
+        ctx, "kg_schema_edit", {"verb": "add", "level": "edge_type", "code": "X", "label": "X"},
+    )
+    assert not res.success
+    assert "insufficient access" in res.error.lower()

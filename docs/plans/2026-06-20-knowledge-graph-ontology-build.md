@@ -607,3 +607,35 @@ LM Studio BYOK** for `claude-test` (no new provider).
 live-proven (write-boundary + live-LLM emission). Remaining KG epic deferrals are
 unrelated: `D-KG-L7B-EXTRACT-ITEM` (dormant legacy path), KM5/KM6 (class-C MCP tools
 + confirm spine), `LG`/`D-KG-LG-REAL` (glossary branch), `D-KG-LE-BROWSER-SMOKE` (FE).
+
+**2026-06-20 — KM6-M1: class-C confirm-token machinery foundation + `kg_schema_edit`
+canary — BUILT + live-proven.** Plan: `docs/plans/2026-06-20-kg-confirm-token-machinery.md`.
+Spec §5/§13. Knowledge-service ONLY (zero glossary code touched — its §13 Go machinery
+is the read-only port reference). The generalized class-C spine:
+- **Token codec** `app/ontology/confirm.py` — port of glossary `action_confirm_token.go`:
+  domain-separated HMAC (`kg-action-confirm:v1|`, keyed by `jwt_secret`), `ActionClaims`,
+  closed descriptor enum (live = `{kg_schema_edit}`; reserved fail closed at mint+verify),
+  constant-time verify, 10-min TTL. Security-keystone TDD (11 unit incl tamper/expiry/
+  domain-separation/fail-closed).
+- **`consumed_tokens` ledger** (migration, mirrors glossary) + `ActionTokenRepo.consume`
+  (atomic `INSERT … ON CONFLICT DO NOTHING`; real-PG: first wins, replay loses,
+  concurrent double-claim → exactly one winner).
+- **`/v1/kg/actions/{preview,confirm}`** (`routers/public/kg_actions.py`) — JWT-gated;
+  decode → authority re-check (proposer-bind + MANAGE; admin→501) **before** the jti
+  claim → re-validate drift → effect. Preview is non-consuming, current-state.
+- **`kg_schema_edit` effect** (`app/ontology/schema_edit_effect.py`) — add/deprecate
+  edge_type|fact_type via the existing `OntologyMutationsRepo` (bumps schema_version),
+  with optimistic-concurrency re-validate (captured `schema_id`+`expected_schema_version`
+  vs live → drift = re-proposable 422).
+- **`kg_schema_edit` MCP tool** (the FIRST live class-C tool) — MINTS a confirm-token
+  (NO write; INV-K1/INV-T3), MANAGE-gated, requires an adopted project schema (never
+  edits System `general`). Registered in the catalog (now 18 tools).
+- **VERIFY:** 2828 knowledge unit (+~32 new) + real-PG integration (ledger atomicity,
+  effect add/deprecate/drift, preview) green. **Live-smoke on the running stack**
+  (rebuilt knowledge-service:8216, real JWT + real PG): preview→confirm(add WORSHIPS,
+  v1→v2)→replay 422→stale-drift 422→wrong-user 403; live schema_version=2, edge landed.
+  `/review-impl` (auth boundary): **no HIGH/MED**; 1 LOW fixed (descriptor-dispatch
+  tripwire test); 2 cosmetics accepted. Single-service change. `D-KG-LF-KM6` partially
+  cleared (spine + first descriptor); **still deferred:** the other descriptors
+  (`kg_adopt`/`kg_sync_apply`/`kg_triage_*`), KM5 admin `/mcp/admin` + RS256 + the
+  admin authority branch (currently 501), and the FE confirm card.

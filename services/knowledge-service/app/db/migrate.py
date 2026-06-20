@@ -1133,6 +1133,22 @@ ALTER TABLE kg_triage_items DROP CONSTRAINT IF EXISTS kg_triage_items_item_type_
 ALTER TABLE kg_triage_items ADD CONSTRAINT kg_triage_items_item_type_check
   CHECK (item_type IN ('unknown_node_kind','unknown_edge_type','edge_kind_mismatch',
                        'unknown_vocab_value','edge_cardinality_conflict','proposed_edge'));
+
+-- ═══════════════════════════════════════════════════════════════
+-- consumed_tokens (KM6 — class-C confirm-token single-use ledger, spec §13.4)
+-- Backs the single-use guarantee of the generalized confirm machinery
+-- (app/ontology/confirm.py + routers/public/kg_actions.py): a confirm-token's jti
+-- is recorded here the FIRST time it is redeemed, so a replay of the SAME token
+-- finds the row present and is rejected (the C2 guarantee). `exp` lets a future
+-- janitor prune long-expired rows; correctness does not depend on pruning — the PK
+-- dedup is what enforces single-use. Mirrors glossary's consumed_tokens.
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS consumed_tokens (
+  jti         TEXT PRIMARY KEY,
+  descriptor  TEXT NOT NULL,
+  consumed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  exp         TIMESTAMPTZ NOT NULL
+);
 """
 
 

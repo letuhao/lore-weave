@@ -42,11 +42,20 @@ imported verbatim from `app.routers.public.graph_views`).
 
 from __future__ import annotations
 
+import time
 from typing import TYPE_CHECKING, Literal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.config import settings
+from app.ontology.confirm import (
+    ACTION_TOKEN_TTL_S,
+    AUTH_GRANT,
+    DESC_SCHEMA_EDIT,
+    ActionClaims,
+    mint_action_token,
+)
 from app.db.neo4j import neo4j_session
 from app.db.neo4j_helpers import run_read
 from app.db.ontology_models import GraphView
@@ -83,6 +92,7 @@ __all__ = [
     "KgViewUpsertArgs",
     "KgViewDeleteArgs",
     "KgTriageResolveArgs",
+    "KgSchemaEditArgs",
 ]
 
 # Result-size + addressing caps (mirror the HTTP routers' query bounds so the
@@ -244,6 +254,19 @@ class KgTriageResolveArgs(BaseModel):
     params: dict = Field(default_factory=dict)
 
 
+class KgSchemaEditArgs(BaseModel):
+    """`kg_schema_edit` — class-C. Adds or deprecates a project edge_type/fact_type
+    and bumps the schema_version. Mints a confirm-token (no write); a human confirms
+    via the review surface (INV-K1: graph-shape changes are human-gated)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    verb: Literal["add", "deprecate"]
+    level: Literal["edge_type", "fact_type"]
+    code: str = Field(min_length=1, max_length=_CODE_MAX)
+    label: str = Field(default="", max_length=_NAME_MAX)
+
+
 GRAPH_SCHEMA_ARG_MODELS: dict[str, type[BaseModel]] = {
     # ── R (read) ──────────────────────────────────────────────────────
     "kg_graph_query": KgGraphQueryArgs,
@@ -259,9 +282,9 @@ GRAPH_SCHEMA_ARG_MODELS: dict[str, type[BaseModel]] = {
     "kg_view_upsert": KgViewUpsertArgs,
     "kg_view_delete": KgViewDeleteArgs,
     "kg_triage_resolve": KgTriageResolveArgs,
-    # ── C (confirm-token) — DEFERRED to KM6 confirm machinery ─────────
-    # kg_adopt_template       # KM3/KM4 class-C — deferred to KM6 confirm machinery (D-KG-LF-KM6)
-    # kg_schema_edit          # KM3/KM4 class-C — deferred to KM6 confirm machinery (D-KG-LF-KM6)
+    # ── C (confirm-token) — KM6 confirm machinery ─────────────────────
+    "kg_schema_edit": KgSchemaEditArgs,  # KM6-M1: mints a confirm-token (no write)
+    # kg_adopt_template       # KM3/KM4 class-C — deferred to KM6 (D-KG-LF-KM6)
     # kg_sync_apply           # KM3/KM4 class-C — deferred to KM6 confirm machinery (D-KG-LF-KM6)
     # kg_triage_resolve (schema-mutating actions) # KM3/KM4 class-C — deferred to KM6 confirm machinery (D-KG-LF-KM6)
     # kg_triage_handoff_glossary # KM3/KM4 class-C — deferred to KM6 confirm machinery (D-KG-LF-KM6)
@@ -542,6 +565,37 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
             },
         },
         ["signature", "action"],
+    ),
+    _tool(
+        "kg_schema_edit",
+        "Propose a change to THIS project's ontology: add or deprecate an edge "
+        "type or fact type. This is high-impact (it changes the graph's shape and "
+        "bumps the schema version), so it does NOT apply immediately — it returns a "
+        "confirm_token and a summary; a human must confirm it on the review surface. "
+        "Requires the project to have adopted its own ontology first.",
+        {
+            "verb": {
+                "type": "string",
+                "enum": ["add", "deprecate"],
+                "description": "add a new type, or deprecate (soft-remove) an existing one.",
+            },
+            "level": {
+                "type": "string",
+                "enum": ["edge_type", "fact_type"],
+                "description": "Which kind of ontology element to change.",
+            },
+            "code": {
+                "type": "string",
+                "maxLength": _CODE_MAX,
+                "description": "The type's code (e.g. WORSHIPS, prophecy).",
+            },
+            "label": {
+                "type": "string",
+                "maxLength": _NAME_MAX,
+                "description": "Human-readable label (for add; defaults to the code).",
+            },
+        },
+        ["verb", "level", "code"],
     ),
 ]
 
@@ -901,6 +955,68 @@ async def _handle_kg_triage_resolve(ctx: "ToolContext", args: KgTriageResolveArg
     return {"status": "resolved", "affected": affected, "action": args.action}
 
 
+async def _handle_kg_schema_edit(ctx: "ToolContext", args: KgSchemaEditArgs) -> dict:
+    """C (confirm-token) — KM6. Adds/deprecates a project edge_type|fact_type and
+    bumps schema_version. **Mints a confirm-token and returns it — performs NO
+    write** (INV-K1 + INV-T3: a graph-shape change is human-confirmed). The human
+    redeems the token at `POST /v1/kg/actions/confirm` (browser-JWT only; this MCP
+    path can never reach it).
+
+    Gate: MANAGE on the project. Requires an ADOPTED project-scoped schema — a project
+    resolving to the System `general` template has nothing project-local to edit, and
+    the System tier is admin-only (never user-editable). The token captures the live
+    schema_id + schema_version so confirm rejects on drift (optimistic concurrency)."""
+    from app.tools.executor import ToolExecutionError
+
+    await _resolve_project_owner(ctx, GrantLevel.MANAGE)
+    project_str = str(ctx.project_id)
+
+    current = await ctx.graph_schemas_repo.active_project_schema(project_str)
+    if current is None:
+        raise ToolExecutionError(
+            "this project has no adopted ontology to edit — adopt a project schema "
+            "first (the System template is read-only and admin-managed)"
+        )
+
+    label = args.label.strip() or args.code  # add needs a label; default to the code
+    params = {
+        "verb": args.verb,
+        "level": args.level,
+        "code": args.code,
+        "label": label,
+        "schema_id": str(current.schema_id),
+        "expected_schema_version": current.schema_version,
+    }
+    # Bind to the PROPOSER (ctx.user_id) — confirm requires redeemer == proposer.
+    token = mint_action_token(
+        settings.jwt_secret,
+        ActionClaims(
+            jti=str(uuid4()),
+            authority=AUTH_GRANT,
+            user_id=str(ctx.user_id),
+            descriptor=DESC_SCHEMA_EDIT,
+            project_id=project_str,
+            params=params,
+        ),
+        time.time(),
+    )
+    if not token:  # empty secret / misconfig → fail closed (never a silent no-op)
+        raise ToolExecutionError("could not mint a confirmation token")
+
+    bump = "deprecate" if args.verb == "deprecate" else "add"
+    return {
+        "proposed": True,
+        "confirm_token": token,
+        "expires_in_s": ACTION_TOKEN_TTL_S,
+        "descriptor": DESC_SCHEMA_EDIT,
+        "summary": (
+            f"{bump} {args.level} '{args.code}' "
+            f"(schema v{current.schema_version} → v{current.schema_version + 1} on confirm)"
+        ),
+        "requires": "human confirmation via the review surface (no change applied yet)",
+    }
+
+
 GRAPH_SCHEMA_HANDLERS = {
     "kg_graph_query": _handle_kg_graph_query,
     "kg_entity_edge_timeline": _handle_kg_entity_edge_timeline,
@@ -914,4 +1030,5 @@ GRAPH_SCHEMA_HANDLERS = {
     "kg_view_upsert": _handle_kg_view_upsert,
     "kg_view_delete": _handle_kg_view_delete,
     "kg_triage_resolve": _handle_kg_triage_resolve,
+    "kg_schema_edit": _handle_kg_schema_edit,
 }

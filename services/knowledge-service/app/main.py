@@ -59,6 +59,7 @@ from app.routers.public import user_data as public_user_data
 from app.routers.public import ontology as public_ontology
 from app.routers.public import graph_views as public_graph_views
 from app.routers.public import triage as public_triage
+from app.routers.public import kg_actions as public_kg_actions
 # ARCH-1 C1 — MCP server facade. build_mcp_app() returns the ASGI app
 # mounted at /mcp; mcp_server's StreamableHTTP session manager is run
 # inside the lifespan below.
@@ -724,6 +725,8 @@ app.include_router(public_user_data.router)
 app.include_router(public_ontology.router)
 app.include_router(public_graph_views.router)
 app.include_router(public_triage.router)
+# KM6 — class-C confirm-token machinery (generalized preview/confirm spine).
+app.include_router(public_kg_actions.router)
 
 # ARCH-1 C1 — MCP server facade. (KM0, 2026-06-20: the legacy dual-run
 # /internal/tools/* HTTP path was retired — MCP is the sole tool transport.)
