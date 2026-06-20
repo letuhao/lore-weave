@@ -245,6 +245,36 @@ def test_create_view_requires_project_grant(repo, auth_user):
     assert r.status_code == 404
 
 
+def test_grantee_creates_view_stored_under_grantee(repo, auth_user):
+    """D-KG-LD-VIEWS-GRANT: a book collaborator with a VIEW grant on a SHARED
+    project mints a view stored under THEIR user_id (per-user lens) — the gate
+    authorizes (returns the owner) but the repo owner-scopes the row to the
+    caller, so a grantee gets their own lens, never the owner's."""
+    from app.clients.grant_client import GrantLevel
+
+    owner = auth_user
+    grantee = uuid4()
+    book_id = uuid4()
+
+    class _FakeGrant:
+        async def resolve_grant(self, b, caller):
+            return GrantLevel.VIEW
+
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[get_current_user] = lambda: grantee
+    app.dependency_overrides[get_graph_views_repo] = lambda: repo
+    app.dependency_overrides[get_grant_client] = lambda: _FakeGrant()
+    app.dependency_overrides[project_meta_dep] = lambda: (owner, book_id)
+    c = TestClient(app)
+    r = c.post(f"/v1/kg/projects/{_PROJ}/views", json={"name": "Grantee lens", "code": "glens"})
+    assert r.status_code == 201, r.text
+    assert r.json()["user_id"] == str(grantee)  # stored under the grantee
+    # owner-scoped: the row is keyed to the grantee, not the owner.
+    assert (grantee, _PROJ, "glens") in repo._rows
+    assert (owner, _PROJ, "glens") not in repo._rows
+
+
 def test_views_are_owner_scoped(repo, auth_user):
     """A second user does not see the first user's views (owner scoping)."""
     other = uuid4()

@@ -404,15 +404,17 @@ async def _resolve_entity_project_grant(
 # ── Views CRUD (owner == caller) ──────────────────────────────────────────
 @router.get("/projects/{project_id}/views", response_model=ViewListResponse)
 async def list_views(
-    project_id: str = Path(min_length=1, max_length=200),
+    project_id: UUID = Path(description="knowledge project id (uuid)"),
     user_id: UUID = Depends(get_current_user),
     repo: GraphViewsRepo = Depends(get_graph_views_repo),
 ) -> ViewListResponse:
     """List the caller's views in a project (owner-scoped — never another
     user's). No project grant check needed: a view is the caller's OWN
     per-user data, scoped by `user_id`; it reveals nothing about the project
-    graph itself."""
-    items = await repo.list(user_id, project_id)
+    graph itself. `project_id` is UUID-typed (like the CRUD writes) so the
+    stored value and the list query canonicalize identically — a non-canonical
+    (e.g. uppercase) UUID can't make a created view invisible to list."""
+    items = await repo.list(user_id, str(project_id))
     return ViewListResponse(items=items)
 
 

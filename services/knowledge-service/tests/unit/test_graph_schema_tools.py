@@ -396,6 +396,23 @@ async def test_propose_edge_rejects_valid_to_before_valid_from():
     assert "valid_to" in res.error.lower()
 
 
+def test_propose_edge_args_temporal_window_boundaries():
+    # D-KG-LF-PROPOSE-VALIDTO — pin the validator boundaries directly on the model.
+    from app.tools.graph_schema_tools import KgProposeEdgeArgs
+
+    base = dict(source_entity_id="a", target_entity_id="b", edge_type="allies")
+    # equal is allowed (an edge that opens and closes in the same chapter)
+    KgProposeEdgeArgs(**base, valid_from=5, valid_to=5)
+    # one side None → no window constraint
+    KgProposeEdgeArgs(**base, valid_from=10)
+    KgProposeEdgeArgs(**base, valid_to=10)
+    # neither → fine
+    KgProposeEdgeArgs(**base)
+    # closing before opening → rejected
+    with pytest.raises(ValueError):
+        KgProposeEdgeArgs(**base, valid_from=10, valid_to=3)
+
+
 # ── triage_resolve: KG-local only, valid-action gating ────────────────
 
 
