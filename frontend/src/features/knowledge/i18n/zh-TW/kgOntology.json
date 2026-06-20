@@ -1,0 +1,55 @@
+{
+  "common": {
+    "dismiss": "關閉",
+    "deprecate": "標記為棄用",
+    "deprecated": "已棄用"
+  },
+  "adopt": {
+    "chooseTemplate": "選擇圖譜範本",
+    "select": "採用",
+    "selected": "已選擇 ✓",
+    "noTemplates": "沒有可採用的範本。",
+    "adoptButton": "採用範本",
+    "adopting": "採用中…",
+    "blockedTitle": "採用被阻擋（M1 閘門）。",
+    "blockedHelp": "此範本需要詞彙表缺少的節點類別。沒有隱藏的跨服務寫入——請先在詞彙表中新增這些類別，再返回採用。",
+    "blockedButton": "採用範本（{{count}} 項阻擋）",
+    "missing": "✗ 缺少",
+    "openGlossary": "在詞彙表中新增類別"
+  },
+  "schema": {
+    "edgeTypes": "邊類型",
+    "factTypes": "事實類型",
+    "nodeKinds": "節點類別（← 詞彙表）",
+    "vocabSet": "詞彙集",
+    "closed": "封閉——抽取器只能指派",
+    "temporal": "⏱ 時序",
+    "noEdges": "尚無邊類型。",
+    "addEdgeType": "新增邊類型",
+    "code": "代碼",
+    "label": "標籤",
+    "temporalField": "時序（valid_from + 來源）",
+    "cardinality": "基數",
+    "addButton": "新增邊類型"
+  },
+  "sync": {
+    "upToDate": "已是最新——上游沒有變更。",
+    "updatesAvailable": "上游有 {{count}} 項更新",
+    "keepAllMine": "全部保留我的",
+    "takeAllTheirs": "全部採用對方的",
+    "added": "新增",
+    "modified": "修改",
+    "removed": "上游已移除",
+    "keepMine": "保留我的",
+    "takeTheirs": "採用對方的",
+    "applyButton": "套用 {{count}} 項決定"
+  },
+  "views": {
+    "name": "視圖名稱",
+    "edgeTypes": "此視圖中的邊類型",
+    "nodeKinds": "顯示的節點類別",
+    "createButton": "建立視圖",
+    "saveButton": "儲存視圖",
+    "perUser": "依使用者"
+  }
+}
