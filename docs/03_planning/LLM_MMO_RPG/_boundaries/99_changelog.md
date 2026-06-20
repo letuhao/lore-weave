@@ -6,6 +6,18 @@
 
 ---
 
+## 2026-06-20 — Medium-correction registration batch (08–11 + COMB_002 standards into the matrix)
+
+- **Lock CLAIMED + RELEASED** in single cycle (combined `[boundaries-lock-claim+release]`). Pure registration of standards already designed + committed this session (commits `dd005622`→`5d753e8c`); no new design.
+- **Context:** the session corrected the game medium (text → rendered 2D/2.5D) and produced five new top-level standards — `08` realtime movement authority, `09` interaction-layer reconciliation, `10` blast-radius audit, `11` agent decision standard, `COMB_002` tactical-grid combat. These needed their ownership registered in the boundary matrix.
+- **Files landed (all within `_boundaries/`):**
+  - `01_feature_ownership_matrix.md` — **5 NEW Stable-ID prefix rows** (`RTM-*` / `ILR-*` / `TG-*` / `AGT-*` / `AUD-*`); **NEW aggregate row** `tactical_grid` (COMB_002; ephemeral per-encounter); **NEW Schema/envelope row** `contracts/agent/` Agent Decision contract (AGT-owned); **2 NEW drift watchpoints** (RTM-Q10 WASM seam; three-layer position stack ILR-A2).
+  - `02_extension_contracts.md` — **NEW §6** registering the `contracts/agent/` Agent Decision contract (ToolSchema/DecisionContext/Decision/Driver + the MCP-tool-as-bounded-vocab extension rules).
+  - `_LOCK.md` + `99_changelog.md` (this entry).
+- **Design surface declared:** the bounded agent-decision vocabulary IS a set of MCP tools on the owning domain service (AGT-A4); `tactical_grid` is the per-encounter combat battlefield (TG, ephemeral like RTM position); the game-server is the new owner of the realtime layer (RTM) pending registration in `contracts/language-rule.yaml` + service map at implementation. **These are DESIGN-layer standards, not yet feature DRAFTs** — rows mark ownership ahead of implementation. NEXT candidates: COMB_001 DRAFT promotion (apply COMB_002 §10 retirements + claim the `tactical_grid` aggregate shape) / `contracts/agent/` SDK scaffolding at implementation / the deferred cosmetic AUD-F3+F4.
+
+---
+
 ## 2026-05-16 — TVL_005 V1+30d+ Group/Party Travel DRAFT + /review-impl 1-pass fix cycle (the group layer; three later TVL features each declared a dependency on it; 2 HIGH + 1 MED + 3 LOW all resolved)
 
 - **Lock CLAIMED + RELEASED** in single cycle (combined `[boundaries-lock-claim+release]` commit — Phase 0 TVP-D1..D7 + DRAFT + /review-impl 1st pass all in this commit, per the POL/SET/ROUTE/TVL_001/TVL_002/TVL_004/TVL_003 precedent).

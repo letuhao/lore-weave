@@ -924,3 +924,42 @@ When a new shared schema arises (multiple features need to extend the same struc
 6. Lock-release
 
 Don't let new shared schemas accumulate without a contract.
+
+---
+
+## §6 — `contracts/agent/` Agent Decision contract (AGT DRAFT 2026-06-20)
+
+### Owner
+
+**[`11_agent_decision_standard.md`](../11_agent_decision_standard.md)** (`AGT-*`). Language-neutral schema in
+`contracts/agent/` (sibling of `contracts/prompt/`, `contracts/events/`), per the language rule.
+
+### Current shape
+
+```
+ToolSchema      { id, params_schema, target_kinds, domain_service }
+DecisionContext { actor, role, situation, allowed_tools: Vec<ToolSchema>, goal_hint }
+Decision        { tool: ToolId ∈ allowed_tools, target: Option<TargetRef>, params }
+trait Driver    { fn decide(ctx: DecisionContext) -> Decision }   // Llm | Script | Engine | Human
+```
+
+### Extension rules
+
+- **The `allowed_tools` set per `(actor-role, context)` IS a set of MCP tools** on the owning domain
+  service (combat-service, interaction-service, …) — defined once, with schema + validation + state
+  effect (AGT-A2/A4). A feature adding an agent action adds it as a domain MCP tool and lists it in the
+  relevant context's `allowed_tools`. **Out-of-set decision → reject + context fallback** (chaos limiter).
+- **Drivers are pluggable** (AGT-A3): `LlmDriver` invokes tools through **`ai-gateway` as MCP tool-calls**
+  (honors the MCP-first invariant); `ScriptDriver` / `EngineDriver` / `HumanDriver` call the same domain
+  tools locally. Driver assigned per AIT_001 tier; runtime-swappable = the cost lever.
+- **A `Decision` is a Proposal** (EVT-T6) → EVT-V* validate → commit (DP-A6); the driver never writes
+  state (AGT-A6). Script/Engine deterministic; the LlmDriver's chosen tool-call is recorded & replayed,
+  never re-prompted (AGT-D6).
+- **Subsumes** the per-feature vocabularies/allowlists (AIT_001 capability matrix, COMB `ActionDecl`,
+  TG-A4 `stance`, NPC_002 validated output, PL_002 §7.4 allowlist, 05-A5) — they are declared instances
+  (AGT-D8), not separate contracts.
+
+### Pending action
+
+`contracts/agent/` schema authoring + the 4 driver implementations are an **implementation-phase**
+deliverable; this section reserves the contract + ownership at the design layer.
