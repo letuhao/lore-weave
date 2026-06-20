@@ -512,3 +512,25 @@ server-side and stays the sole enforce+park point.
 **D-KG-L7-ACTIVATE — both milestones BUILT + unit-verified.** Remaining: the
 consolidated cross-service live-smoke (`D-KG-L7-LIVE-SMOKE`, blocked on a live
 stack) + the dormant legacy `/extract-item` (`D-KG-L7B-EXTRACT-ITEM`).
+
+**2026-06-20 — `D-KG-L7-LIVE-SMOKE` write-boundary half CLEARED (live PG + Neo4j).**
+Docker recovered; brought up infra postgres+neo4j and ran the KG integration suite.
+- **Live Neo4j ON-MATCH stamp** (`test_L7_create_relation_stamps_schema_version_on_match`):
+  pre-activation edge (NULL) → re-extraction backfills `schema_version=5` on MATCH →
+  later legacy NULL persist COALESCE-preserves it; `graph_id` untouched. **PASS.**
+- **Stitched end-to-end** (`test_l7_persist_activation.py`, NEW): ONE real
+  `write_pass2_extraction` with a CLOSED schema → on-schema edge written + stamped
+  `schema_version=42` in Neo4j, off-schema edge count=0 (dropped) + parked to real
+  `kg_triage_items` (`unknown_edge_type`, `edge:forbidden_pred`, schema_version=42,
+  pending) via the real `TriageRepo`. **PASS** — proves the whole Milestone-A chain
+  in one call (the unit writer tests mock these seams).
+- **Full KG live suite green:** 77 integration (relations + triage + graph_schemas +
+  ontology_mutations + resolver) on real PG+Neo4j. Component pieces all live-proven:
+  create_relation stamp (relations), TriageRepo.park→kg_triage_items (triage),
+  resolve_for_project (graph_schemas/resolver).
+- **STILL DEFERRED — the Milestone-B HTTP/LLM half** (`D-KG-L7-LIVE-SMOKE` residual):
+  the full cross-service run (worker-ai job → POST /resolve-schema → SDK vocab-in-prompt
+  → real LLM emits project vocab → persist) needs the whole stack + a BYOK provider +
+  a live model — a deploy-time/manual smoke. The HTTP wiring + SDK injection are
+  unit-proven (worker-ai 280, KS resolve-schema endpoint 4); only the live-LLM
+  vocab-emission remains unproven.
