@@ -1,0 +1,446 @@
+"""Lane LC integration tests — adopt (copy-down) + sync + per-tier CRUD + tenancy.
+
+Requires a real Postgres (TEST_KNOWLEDGE_DB_URL); skips otherwise via the shared
+`pool` fixture. Re-seeds the System templates each test and TRUNCATEs the kg
+tables, mirroring `test_kg_graph_schemas.py`.
+
+Two layers:
+  * **Repo** (`OntologyMutationsRepo`) directly — adopt copy-down + idempotent
+    re-adopt, adopt-gate, sync diff/apply (+ 409), child CRUD additive +
+    deprecate.
+  * **Route** (FastAPI + overridden grant deps) — adopt-gate 422 `NeedsGlossary`,
+    cross-tenant deny, system-tier read-only (403) + system create 501.
+"""
+
+from __future__ import annotations
+
+from uuid import uuid4
+
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from app.auth.grant_deps import project_meta_dep
+from app.clients.glossary_ontology_client import FakeGlossaryOntologyClient
+from app.db.repositories.graph_schemas import GraphSchemasRepo
+from app.db.repositories.ontology_mutations import (
+    ChildNotFoundError,
+    DuplicateChildError,
+    NeedsGlossaryError,
+    OntologyMutationsRepo,
+    SchemaNotWritableError,
+    SyncConflictError,
+)
+from app.db.seed_graph_schemas import seed_system_graph_schemas
+from app.deps import get_grant_client, get_projects_repo
+from app.middleware.jwt_auth import get_current_user
+from app.routers.public.ontology import (
+    get_glossary_ontology_client,
+    get_ontology_mutations_repo,
+    router,
+)
+
+# asyncio_mode=auto (pytest.ini) auto-marks the `async def` tests; the route
+# tests below are plain `def` (sync TestClient) so they must NOT carry the
+# asyncio marker — hence no module-level `pytestmark`.
+
+# the xianxia-harem required kinds — a glossary with all of these passes adopt.
+_XIANXIA_REQUIRED = ["character", "organization", "location", "concept", "technique"]
+
+
+async def _reset_kg(pool):
+    async with pool.acquire() as conn:
+        await conn.execute("TRUNCATE kg_graph_schemas RESTART IDENTITY CASCADE")
+        await conn.execute("TRUNCATE kg_views, kg_triage_items RESTART IDENTITY CASCADE")
+        await conn.execute("TRUNCATE knowledge_projects RESTART IDENTITY CASCADE")
+    await seed_system_graph_schemas(pool)
+
+
+async def _system_id(pool, code: str):
+    return (await GraphSchemasRepo(pool).get_system_template_by_code(code)).schema_id
+
+
+# ── adopt (copy-down) ──────────────────────────────────────────────────────
+async def test_adopt_copies_schema_and_children(pool):
+    await _reset_kg(pool)
+    repo = OntologyMutationsRepo(pool)
+    src = await _system_id(pool, "xianxia-harem")
+    project_id = f"proj-{uuid4()}"
+    result = await repo.adopt(
+        owner_user_id=uuid4(),
+        project_id=project_id,
+        source_schema_id=src,
+        glossary_kinds=set(_XIANXIA_REQUIRED + ["item", "event", "relationship"]),
+        book_id="book-1",
+    )
+    new = result.schema
+    assert new.scope == "project" and new.scope_id == project_id
+    assert new.code == "xianxia-harem"
+    assert new.source_ref == f"system:{src}"
+    assert new.source_hash and new.content_hash == new.source_hash  # fresh copy == source
+
+    # all children copied
+    tree = await GraphSchemasRepo(pool).get_tree(uuid4(), new.schema_id, project_id=project_id)
+    assert len(tree["edge_types"]) == 24
+    assert len(tree["fact_types"]) == 9
+    assert len(tree["node_kinds"]) == 8
+    assert len(tree["vocab_values"]["drive"]) == 16
+    assert result.missing_optional == []
+
+
+async def test_readopt_replaces_active_schema(pool):
+    """Re-adopt deprecates the prior active project schema (one-active invariant)."""
+    await _reset_kg(pool)
+    repo = OntologyMutationsRepo(pool)
+    project_id = f"proj-{uuid4()}"
+    kinds = set(_XIANXIA_REQUIRED + ["item", "event", "relationship"])
+    first = await repo.adopt(
+        owner_user_id=uuid4(), project_id=project_id,
+        source_schema_id=await _system_id(pool, "xianxia-harem"),
+        glossary_kinds=kinds, book_id=None,
+    )
+    second = await repo.adopt(
+        owner_user_id=uuid4(), project_id=project_id,
+        source_schema_id=await _system_id(pool, "general"),
+        glossary_kinds=set(), book_id=None,
+    )
+    assert second.schema.schema_id != first.schema.schema_id
+    # exactly one active project schema, and it's the latest (general).
+    async with pool.acquire() as conn:
+        active = await conn.fetch(
+            "SELECT code FROM kg_graph_schemas "
+            "WHERE scope='project' AND scope_id=$1 AND deprecated_at IS NULL",
+            project_id,
+        )
+    assert [r["code"] for r in active] == ["general"]
+    resolved = await GraphSchemasRepo(pool).resolve_for_project(project_id)
+    assert resolved.allow_free_edges is True  # general
+
+
+async def test_adopt_gate_blocks_missing_required(pool):
+    await _reset_kg(pool)
+    repo = OntologyMutationsRepo(pool)
+    src = await _system_id(pool, "xianxia-harem")
+    # glossary missing 'technique' (a required kind) → block
+    with pytest.raises(NeedsGlossaryError) as exc:
+        await repo.adopt(
+            owner_user_id=uuid4(), project_id=f"proj-{uuid4()}",
+            source_schema_id=src,
+            glossary_kinds={"character", "organization", "location", "concept"},
+            book_id="book-9",
+        )
+    assert "technique" in exc.value.kinds
+    assert exc.value.book_id == "book-9"
+
+
+async def test_adopt_proceeds_when_only_optional_missing(pool):
+    await _reset_kg(pool)
+    repo = OntologyMutationsRepo(pool)
+    src = await _system_id(pool, "xianxia-harem")
+    result = await repo.adopt(
+        owner_user_id=uuid4(), project_id=f"proj-{uuid4()}",
+        source_schema_id=src,
+        glossary_kinds=set(_XIANXIA_REQUIRED),  # required present, optional absent
+        book_id=None,
+    )
+    assert result.schema.schema_id is not None
+    assert set(result.missing_optional) == {"item", "event", "relationship"}
+
+
+# ── sync (diff / apply) ─────────────────────────────────────────────────────
+async def _adopt_xianxia(pool, repo) -> tuple[str, "UUID"]:
+    project_id = f"proj-{uuid4()}"
+    res = await repo.adopt(
+        owner_user_id=uuid4(), project_id=project_id,
+        source_schema_id=await _system_id(pool, "xianxia-harem"),
+        glossary_kinds=set(_XIANXIA_REQUIRED + ["item", "event", "relationship"]),
+        book_id=None,
+    )
+    return project_id, res.schema.schema_id
+
+
+async def test_sync_no_updates_when_source_unchanged(pool):
+    await _reset_kg(pool)
+    repo = OntologyMutationsRepo(pool)
+    _project_id, proj_schema = await _adopt_xianxia(pool, repo)
+    diff = await repo.sync_diff(proj_schema)
+    assert diff["has_updates"] is False
+    assert diff["changes"] == []
+
+
+async def test_sync_detects_added_modified_removed(pool):
+    await _reset_kg(pool)
+    repo = OntologyMutationsRepo(pool)
+    _project_id, proj_schema = await _adopt_xianxia(pool, repo)
+    src = await _system_id(pool, "xianxia-harem")
+    # upstream: add an edge, modify another's label, and delete (hard) one so
+    # the project copy has a type upstream no longer has (removed_upstream).
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO kg_edge_types (schema_id, code, label) VALUES ($1, 'SWORN_SIBLING_OF', 'sworn sibling of')",
+            src,
+        )
+        await conn.execute(
+            "UPDATE kg_edge_types SET label = 'lover (updated)' WHERE schema_id = $1 AND code = 'LOVER_OF'",
+            src,
+        )
+        await conn.execute("DELETE FROM kg_edge_types WHERE schema_id = $1 AND code = 'WIELDS'", src)
+    diff = await repo.sync_diff(proj_schema)
+    assert diff["has_updates"] is True
+    by = {(c["node_type"], c["code"]): c["change"] for c in diff["changes"]}
+    assert by[("edge_type", "SWORN_SIBLING_OF")] == "added"
+    assert by[("edge_type", "LOVER_OF")] == "modified"
+    assert by[("edge_type", "WIELDS")] == "removed_upstream"
+
+
+async def test_sync_apply_take_theirs_and_keep_mine(pool):
+    await _reset_kg(pool)
+    repo = OntologyMutationsRepo(pool)
+    _project_id, proj_schema = await _adopt_xianxia(pool, repo)
+    src = await _system_id(pool, "xianxia-harem")
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO kg_edge_types (schema_id, code, label) VALUES ($1, 'SWORN_SIBLING_OF', 'sworn sibling of')",
+            src,
+        )
+        await conn.execute(
+            "UPDATE kg_edge_types SET label = 'lover (updated)' WHERE schema_id = $1 AND code = 'LOVER_OF'",
+            src,
+        )
+    diff = await repo.sync_diff(proj_schema)
+    base = diff["source_hash_current"]
+    out = await repo.sync_apply(
+        proj_schema,
+        base_source_hash=base,
+        decisions=[
+            {"node_type": "edge_type", "code": "SWORN_SIBLING_OF", "choice": "take_theirs"},
+            {"node_type": "edge_type", "code": "LOVER_OF", "choice": "keep_mine"},
+        ],
+    )
+    assert out["applied"] == 1
+    assert out["source_hash"] == base
+    async with pool.acquire() as conn:
+        added = await conn.fetchrow(
+            "SELECT label FROM kg_edge_types WHERE schema_id = $1 AND code = 'SWORN_SIBLING_OF'", proj_schema
+        )
+        lover = await conn.fetchrow(
+            "SELECT label FROM kg_edge_types WHERE schema_id = $1 AND code = 'LOVER_OF'", proj_schema
+        )
+    assert added is not None  # take_theirs landed
+    assert lover["label"] == "lover of"  # keep_mine — unchanged
+    # source_hash refrozen → no further updates
+    assert (await repo.sync_diff(proj_schema))["has_updates"] is False
+
+
+async def test_sync_apply_conflict_on_stale_base_hash(pool):
+    await _reset_kg(pool)
+    repo = OntologyMutationsRepo(pool)
+    _project_id, proj_schema = await _adopt_xianxia(pool, repo)
+    src = await _system_id(pool, "xianxia-harem")
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE kg_edge_types SET label = 'moved' WHERE schema_id = $1 AND code = 'LOVER_OF'", src
+        )
+    with pytest.raises(SyncConflictError):
+        await repo.sync_apply(proj_schema, base_source_hash="stale-hash", decisions=[])
+
+
+# ── child CRUD ──────────────────────────────────────────────────────────────
+async def test_child_crud_additive_and_deprecate(pool):
+    await _reset_kg(pool)
+    repo = OntologyMutationsRepo(pool)
+    _project_id, proj_schema = await _adopt_xianxia(pool, repo)
+    before = (await repo.get_schema(proj_schema)).schema_version
+
+    edge = await repo.add_edge_type(proj_schema, code="OWES_DEBT_TO", label="owes debt to")
+    assert edge["code"] == "OWES_DEBT_TO"
+    after = (await repo.get_schema(proj_schema)).schema_version
+    assert after == before + 1  # bumped
+
+    fact = await repo.add_fact_type(proj_schema, code="ascension", label="Ascension")
+    assert fact["code"] == "ascension"
+    nk = await repo.add_node_kind(proj_schema, kind_code="beast", strength="optional")
+    assert nk["kind_code"] == "beast"
+    vv = await repo.add_vocab_value(proj_schema, set_code="drive", code="curiosity", label="Curiosity")
+    assert vv["code"] == "curiosity"
+
+    # duplicate → DuplicateChildError
+    with pytest.raises(DuplicateChildError):
+        await repo.add_edge_type(proj_schema, code="OWES_DEBT_TO", label="dup")
+
+    # deprecate-only (never hard-drop)
+    await repo.deprecate_edge_type(proj_schema, "OWES_DEBT_TO")
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT deprecated_at FROM kg_edge_types WHERE schema_id = $1 AND code = 'OWES_DEBT_TO'", proj_schema
+        )
+    assert row["deprecated_at"] is not None  # soft-deprecated, still present
+
+    with pytest.raises(ChildNotFoundError):
+        await repo.deprecate_fact_type(proj_schema, "does_not_exist")
+
+
+async def test_system_tier_is_read_only(pool):
+    await _reset_kg(pool)
+    repo = OntologyMutationsRepo(pool)
+    src = await _system_id(pool, "xianxia-harem")
+    with pytest.raises(SchemaNotWritableError):
+        await repo.add_edge_type(src, code="X", label="x")
+    with pytest.raises(SchemaNotWritableError):
+        await repo.patch_schema(src, name="hacked")
+    with pytest.raises(SchemaNotWritableError):
+        await repo.deprecate_schema(src)
+
+
+# ── route-level: adopt-gate 422, tenancy deny, system 501 ───────────────────
+# These exercise the FastAPI wiring (grant gate → glossary cross-check → repo
+# error→HTTP mapping). They use an in-memory FAKE mutations repo so the
+# TestClient's own event loop never drives the function-scoped asyncpg pool
+# (which is bound to the pytest-asyncio loop) — that cross-loop mix is the
+# `another operation in progress` trap. DB-backed behavior is covered above.
+from datetime import datetime, timezone  # noqa: E402
+from uuid import UUID  # noqa: E402
+
+from app.db.ontology_models import GraphSchema  # noqa: E402
+from app.db.repositories.ontology_mutations import AdoptResult  # noqa: E402
+
+
+def _schema(scope: str, scope_id: str | None, code: str = "xianxia-harem") -> GraphSchema:
+    now = datetime.now(timezone.utc)
+    return GraphSchema(
+        schema_id=uuid4(), scope=scope, scope_id=scope_id, code=code, name=code,
+        created_at=now, updated_at=now,
+    )
+
+
+class FakeMutationsRepo:
+    """Loop-free in-memory stand-in for OntologyMutationsRepo (route tests only).
+
+    `required_kinds` drives the adopt-gate; `schemas` maps schema_id→GraphSchema
+    for the writable-tier check on PATCH/DELETE/CRUD routes.
+    """
+
+    def __init__(self, *, required_kinds=None, schemas=None):
+        self._required = list(required_kinds or [])
+        self._schemas: dict[UUID, GraphSchema] = schemas or {}
+
+    async def get_schema(self, schema_id):
+        return self._schemas.get(schema_id)
+
+    async def required_node_kinds(self, schema_id):
+        return list(self._required)
+
+    async def adopt(self, *, owner_user_id, project_id, source_schema_id, glossary_kinds, book_id):
+        missing = sorted(k for k in self._required if k not in glossary_kinds)
+        if missing:
+            raise NeedsGlossaryError(missing, book_id)
+        return AdoptResult(_schema("project", project_id), [])
+
+    async def patch_schema(self, schema_id, **kw):
+        return self._schemas[schema_id]
+
+
+def _client(*, caller, project_meta, grant_level, glossary, mutations):
+    class _FakeGrant:
+        async def resolve_grant(self, book_id, user_id):
+            return grant_level
+
+    class _StubProjects:
+        async def project_meta(self, project_id):
+            return project_meta
+
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[get_current_user] = lambda: caller
+    app.dependency_overrides[get_ontology_mutations_repo] = lambda: mutations
+    app.dependency_overrides[get_projects_repo] = lambda: _StubProjects()
+    app.dependency_overrides[project_meta_dep] = lambda: project_meta
+    app.dependency_overrides[get_grant_client] = lambda: _FakeGrant()
+    app.dependency_overrides[get_glossary_ontology_client] = lambda: glossary
+    return TestClient(app)
+
+
+def test_route_adopt_gate_422():
+    from app.clients.grant_client import GrantLevel
+
+    owner, book, project_id, src = uuid4(), uuid4(), uuid4(), uuid4()
+    glossary = FakeGlossaryOntologyClient(
+        book_kinds={str(book): ["character", "organization", "location", "concept"]}
+    )
+    client = _client(
+        caller=owner, project_meta=(owner, book), grant_level=GrantLevel.OWNER,
+        glossary=glossary, mutations=FakeMutationsRepo(required_kinds=_XIANXIA_REQUIRED),
+    )
+    r = client.post(f"/v1/kg/projects/{project_id}/adopt", json={"source_schema_id": str(src)})
+    assert r.status_code == 422, r.text
+    detail = r.json()["detail"]
+    assert detail["code"] == "KG_ADOPT_NEEDS_GLOSSARY"
+    assert "technique" in detail["needs_glossary"]["kinds"]
+    assert detail["needs_glossary"]["book_id"] == str(book)
+
+
+def test_route_adopt_succeeds_with_full_glossary():
+    from app.clients.grant_client import GrantLevel
+
+    owner, book, project_id, src = uuid4(), uuid4(), uuid4(), uuid4()
+    glossary = FakeGlossaryOntologyClient(book_kinds={str(book): _XIANXIA_REQUIRED})
+    client = _client(
+        caller=owner, project_meta=(owner, book), grant_level=GrantLevel.OWNER,
+        glossary=glossary, mutations=FakeMutationsRepo(required_kinds=_XIANXIA_REQUIRED),
+    )
+    r = client.post(f"/v1/kg/projects/{project_id}/adopt", json={"source_schema_id": str(src)})
+    assert r.status_code == 201, r.text
+    assert r.json()["scope"] == "project"
+
+
+def test_route_cross_tenant_adopt_denied():
+    from app.clients.grant_client import GrantLevel
+
+    owner, attacker, book, project_id, src = uuid4(), uuid4(), uuid4(), uuid4(), uuid4()
+    glossary = FakeGlossaryOntologyClient(book_kinds={str(book): _XIANXIA_REQUIRED})
+    # attacker has NO grant on the owner's project → 404 (no existence oracle)
+    client = _client(
+        caller=attacker, project_meta=(owner, book), grant_level=GrantLevel.NONE,
+        glossary=glossary, mutations=FakeMutationsRepo(required_kinds=_XIANXIA_REQUIRED),
+    )
+    r = client.post(f"/v1/kg/projects/{project_id}/adopt", json={"source_schema_id": str(src)})
+    assert r.status_code == 404, r.text
+
+
+def test_route_system_create_501():
+    from app.clients.grant_client import GrantLevel
+
+    client = _client(
+        caller=uuid4(), project_meta=None, grant_level=GrantLevel.NONE,
+        glossary=FakeGlossaryOntologyClient(), mutations=FakeMutationsRepo(),
+    )
+    r = client.post("/v1/kg/system/graph-schemas", json={})
+    assert r.status_code == 501
+
+
+def test_route_patch_system_schema_403():
+    from app.clients.grant_client import GrantLevel
+
+    sys_schema = _schema("system", None, "general")
+    client = _client(
+        caller=uuid4(), project_meta=None, grant_level=GrantLevel.NONE,
+        glossary=FakeGlossaryOntologyClient(),
+        mutations=FakeMutationsRepo(schemas={sys_schema.schema_id: sys_schema}),
+    )
+    r = client.patch(f"/v1/kg/graph-schemas/{sys_schema.schema_id}", json={"name": "hacked"})
+    assert r.status_code == 403, r.text
+
+
+def test_route_cross_tenant_user_schema_edit_404():
+    """User B cannot PATCH user A's user-tier schema (owner==caller else 404)."""
+    from app.clients.grant_client import GrantLevel
+
+    user_a, user_b = uuid4(), uuid4()
+    a_schema = _schema("user", str(user_a), "my-template")
+    client = _client(
+        caller=user_b, project_meta=None, grant_level=GrantLevel.NONE,
+        glossary=FakeGlossaryOntologyClient(),
+        mutations=FakeMutationsRepo(schemas={a_schema.schema_id: a_schema}),
+    )
+    r = client.patch(f"/v1/kg/graph-schemas/{a_schema.schema_id}", json={"name": "hacked"})
+    assert r.status_code == 404, r.text
