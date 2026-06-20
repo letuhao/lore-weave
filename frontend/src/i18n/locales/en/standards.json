@@ -19,9 +19,56 @@
   },
   "toast": {
     "cloned": "Cloned “{{name}}” to your standards",
-    "cloneError": "Couldn't clone “{{name}}”"
+    "cloneError": "Couldn't clone “{{name}}”",
+    "attrCreated": "Added “{{name}}”",
+    "attrError": "Couldn't add “{{name}}”",
+    "linksSaved": "Genres updated",
+    "linksError": "Couldn't update genres"
   },
   "attributes": {
-    "placeholder": "Pick a kind and genre to manage its attributes (coming soon)."
+    "no_user_kinds": "Clone or create a kind first — attributes attach to your own kinds.",
+    "no_user_genres": "Clone or create a genre first — attributes attach to your own genres.",
+    "pick_kind": "Select a kind…",
+    "pick_genre": "Select a genre…",
+    "pick_both": "Pick a kind and a genre to see and add attributes.",
+    "new": "New attribute",
+    "empty": "No attributes yet for this pair.",
+    "system_ref": "From system (read-only)",
+    "your_attrs": "Your attributes"
+  },
+  "attrform": {
+    "title_create": "New attribute",
+    "title_edit": "Edit attribute",
+    "name": "Name",
+    "name_placeholder": "e.g. Rank",
+    "name_required": "Name is required",
+    "code": "Code",
+    "code_hint": "Optional — derived from the name if blank.",
+    "field_type": "Field type",
+    "required": "Required",
+    "options": "Options",
+    "options_hint": "One per line (for select / tags).",
+    "cancel": "Cancel",
+    "create": "Add attribute",
+    "save": "Save",
+    "saving": "Saving…",
+    "ft": {
+      "text": "Text",
+      "textarea": "Long text",
+      "select": "Select",
+      "number": "Number",
+      "date": "Date",
+      "tags": "Tags",
+      "url": "URL",
+      "boolean": "Yes / No"
+    }
+  },
+  "links": {
+    "edit": "Genres",
+    "title": "Genres for {{name}}",
+    "save": "Save",
+    "saving": "Saving…",
+    "empty": "No user genres to link. Clone or create a genre first.",
+    "cancel": "Cancel"
   }
 }

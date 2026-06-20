@@ -19,9 +19,56 @@
   },
   "toast": {
     "cloned": "Đã nhân bản “{{name}}” vào tiêu chuẩn của bạn",
-    "cloneError": "Không thể nhân bản “{{name}}”"
+    "cloneError": "Không thể nhân bản “{{name}}”",
+    "attrCreated": "Đã thêm “{{name}}”",
+    "attrError": "Không thể thêm “{{name}}”",
+    "linksSaved": "Đã cập nhật thể loại",
+    "linksError": "Không thể cập nhật thể loại"
   },
   "attributes": {
-    "placeholder": "Chọn một loại và thể loại để quản lý thuộc tính của nó (sắp ra mắt)."
+    "no_user_kinds": "Hãy nhân bản hoặc tạo một loại trước — thuộc tính gắn vào loại của riêng bạn.",
+    "no_user_genres": "Hãy nhân bản hoặc tạo một thể loại trước — thuộc tính gắn vào thể loại của riêng bạn.",
+    "pick_kind": "Chọn một loại…",
+    "pick_genre": "Chọn một thể loại…",
+    "pick_both": "Chọn một loại và một thể loại để xem và thêm thuộc tính.",
+    "new": "Thuộc tính mới",
+    "empty": "Chưa có thuộc tính nào cho cặp này.",
+    "system_ref": "Từ hệ thống (chỉ đọc)",
+    "your_attrs": "Thuộc tính của bạn"
+  },
+  "attrform": {
+    "title_create": "Thuộc tính mới",
+    "title_edit": "Sửa thuộc tính",
+    "name": "Tên",
+    "name_placeholder": "vd. Cấp bậc",
+    "name_required": "Tên là bắt buộc",
+    "code": "Mã",
+    "code_hint": "Tùy chọn — suy ra từ tên nếu để trống.",
+    "field_type": "Kiểu trường",
+    "required": "Bắt buộc",
+    "options": "Tùy chọn",
+    "options_hint": "Mỗi dòng một mục (cho select / tags).",
+    "cancel": "Hủy",
+    "create": "Thêm thuộc tính",
+    "save": "Lưu",
+    "saving": "Đang lưu…",
+    "ft": {
+      "text": "Văn bản",
+      "textarea": "Văn bản dài",
+      "select": "Chọn",
+      "number": "Số",
+      "date": "Ngày",
+      "tags": "Thẻ",
+      "url": "URL",
+      "boolean": "Có / Không"
+    }
+  },
+  "links": {
+    "edit": "Thể loại",
+    "title": "Thể loại cho {{name}}",
+    "save": "Lưu",
+    "saving": "Đang lưu…",
+    "empty": "Chưa có thể loại người dùng để liên kết. Hãy nhân bản hoặc tạo một thể loại trước.",
+    "cancel": "Hủy"
   }
 }

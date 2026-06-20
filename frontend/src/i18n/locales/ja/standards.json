@@ -19,9 +19,56 @@
   },
   "toast": {
     "cloned": "「{{name}}」を標準に複製しました",
-    "cloneError": "「{{name}}」を複製できませんでした"
+    "cloneError": "「{{name}}」を複製できませんでした",
+    "attrCreated": "「{{name}}」を追加しました",
+    "attrError": "「{{name}}」を追加できませんでした",
+    "linksSaved": "ジャンルを更新しました",
+    "linksError": "ジャンルを更新できませんでした"
   },
   "attributes": {
-    "placeholder": "種類とジャンルを選んで属性を管理します（近日公開）。"
+    "no_user_kinds": "先に種類を複製または作成してください。属性は自分の種類に紐づきます。",
+    "no_user_genres": "先にジャンルを複製または作成してください。属性は自分のジャンルに紐づきます。",
+    "pick_kind": "種類を選択…",
+    "pick_genre": "ジャンルを選択…",
+    "pick_both": "種類とジャンルを選ぶと属性を表示・追加できます。",
+    "new": "新しい属性",
+    "empty": "この組み合わせの属性はまだありません。",
+    "system_ref": "システムから（読み取り専用）",
+    "your_attrs": "あなたの属性"
+  },
+  "attrform": {
+    "title_create": "新しい属性",
+    "title_edit": "属性を編集",
+    "name": "名前",
+    "name_placeholder": "例：ランク",
+    "name_required": "名前は必須です",
+    "code": "コード",
+    "code_hint": "任意 — 空欄の場合は名前から生成されます。",
+    "field_type": "フィールド種別",
+    "required": "必須",
+    "options": "選択肢",
+    "options_hint": "1行に1つ（select / tags 用）。",
+    "cancel": "キャンセル",
+    "create": "属性を追加",
+    "save": "保存",
+    "saving": "保存中…",
+    "ft": {
+      "text": "テキスト",
+      "textarea": "長文テキスト",
+      "select": "選択",
+      "number": "数値",
+      "date": "日付",
+      "tags": "タグ",
+      "url": "URL",
+      "boolean": "はい / いいえ"
+    }
+  },
+  "links": {
+    "edit": "ジャンル",
+    "title": "{{name}} のジャンル",
+    "save": "保存",
+    "saving": "保存中…",
+    "empty": "リンクできるユーザージャンルがありません。先にジャンルを複製または作成してください。",
+    "cancel": "キャンセル"
   }
 }
