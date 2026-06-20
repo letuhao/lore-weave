@@ -44,6 +44,27 @@ export interface ChatSession {
   memory_mode?: 'no_project' | 'static' | 'degraded';
 }
 
+// MCP fan-out (C-ACTIVITY) — one auto-applied (Tier-A) op the agent ran this
+// turn. Streamed as an AG-UI CUSTOM event (`name:"activity"`, value = this
+// shape) and rendered as an Undo strip in the chat. `undo.available=false`
+// when the op has no reverse; Undo issues the named reverse tool via a fresh
+// turn. See the fan-out plan §3 C-ACTIVITY.
+export interface ActivityUndo {
+  available: boolean;
+  /** reverse tool name to call on Undo (e.g. "chapter_delete") */
+  tool?: string;
+  /** args for the reverse tool */
+  args?: Record<string, unknown>;
+}
+
+export interface ActivityEvent {
+  /** dotted op id, e.g. "chapter.create" */
+  op: string;
+  /** human summary, e.g. "Created draft chapter 'Chapter 5'" */
+  summary: string;
+  undo?: ActivityUndo;
+}
+
 // K21-C (D1/D2): one tool invocation recorded during an assistant turn.
 // Surfaced both live (accumulated from the `tool-call` SSE event in
 // useChatMessages) and on replay (the `tool_calls` JSONB column the
@@ -83,6 +104,9 @@ export interface ChatMessage {
   // K21-C (D1): tool calls the assistant made during this turn.
   // null/absent for user messages and pre-K21 assistant messages.
   tool_calls?: ToolCallRecord[] | null;
+  // MCP fan-out (C-ACTIVITY): Tier-A auto-applied ops streamed this turn,
+  // rendered as an Undo strip. null/absent when the turn auto-applied nothing.
+  activities?: ActivityEvent[] | null;
 }
 
 export interface BranchInfo {
