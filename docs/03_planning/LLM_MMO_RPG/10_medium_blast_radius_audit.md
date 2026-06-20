@@ -31,8 +31,8 @@ severity (STRUCTURAL / COSMETIC / NONE), and be honest about clean clusters:
 
 | ID | File | Assumption | Severity | Resolution |
 |---|---|---|---|---|
-| **AUD-F1** | `features/18_combat/00_CONCEPT_NOTES.md` §6 | V1 combat has **no zone-graph movement** ("no Move verb V1; abstract"), but Skill/Strike **target selection UI** is unspecified for the graphical client — how does a player pick a target with no spatial grid? | **STRUCTURAL (new)** | **OPEN — recommended:** V1 combat targeting is **roster/party-list-based** (select ally/enemy from a turn-select list, à la Pokémon / Honkai: Star Rail), *not* spatial-grid. Zone-targeted skills → V2+ when a combat zone-graph lands. Confirm + record as a COMB decision. |
-| **AUD-F2** | `features/18_combat/00_CONCEPT_NOTES.md` §6 row-mechanic | Front/Back **row** reads like a spatial position, but V1 defers zone graph. | **COSMETIC** | V1 row is a **damage modifier / stat badge**, not a visual position; all combatants render at one depth; row promotes to real grid position V2+. Clarify in COMB doc. |
+| **AUD-F1** | `features/18_combat/00_CONCEPT_NOTES.md` §6 | V1 combat has **no zone-graph movement** ("no Move verb V1; abstract"), but Skill/Strike **target selection UI** is unspecified for the graphical client. | **STRUCTURAL (new)** | ✅ **RESOLVED 2026-06-20 (user) — TACTICAL GRID in V1.** Combat uses a tactical grid (positions + range/LoS; movement via pathfinding), **reversing** §6/§11.1/§11.3. Justified: grid was deferred *only* for LLM-narration token cost (§139), which the medium correction dissolves (engine-deterministic math + visual render + batched narration). Reuses TMP_001 pathfinding + CSC_001 zone graph + the instanced combat scene (RTM-Q4). Recorded on COMB_001 (dated note) + `locked_decisions`. **Detailed tactical-grid combat design = follow-up before COMB_001 DRAFT promotion.** |
+| **AUD-F2** | `features/18_combat/00_CONCEPT_NOTES.md` §11.2 row-mechanic | Front/Back **row** reads like a spatial position. | ~~COSMETIC~~ **SUPERSEDED by AUD-F1** | The Front/Back 2-row metaphor is replaced by **real grid positions** (AUD-F1 tactical grid). No separate action. |
 | **AUD-F3** | `features/04_play_loop/PL_002_command_grammar.md` §13 ACs | Acceptance criteria test slash-command parsing only; ILR-D4 locked "UI gestures primary, slash optional" but it isn't **tested**. | **COSMETIC (testability)** | Add an acceptance criterion: *UI gesture → Interaction mapping* (map-click→travel, NPC-click→speak, drag→give) resolves to the same envelopes. Makes ILR-D4 enforceable. |
 | **AUD-F4** | `C_product_ux.md` C5 · `cat_11_CC_cross_cutting.md` CC-1 · onboarding copy | Residual "chat window / stream / tab" vocabulary from the text era. | **COSMETIC** | Terminology pass: "chat window" → "HUD panel", "stream" → "pane", "tab" → "toggle". Non-blocking; do opportunistically. |
 
@@ -66,10 +66,13 @@ The medium correction (text → 2D/2.5D) is **closed** across the design:
 |---|---|
 | Server / realtime authority | `08_realtime_movement_authority.md` (RTM-A1..A9, RTM-D1..D10) |
 | Player-facing interaction + position model | `09_interaction_layer_reconciliation.md` (ILR-A1..A3, ILR-D1..D9) |
-| Everything else (this sweep) | substantially clean; 1 open (AUD-F1), 3 cosmetic |
+| Everything else (this sweep) | substantially clean; AUD-F1 resolved (tactical grid V1), 2 cosmetic remain |
 
-**Only `AUD-F1` (combat targeting UI model) needs a decision.** It's small and has a clear recommended
-default (roster-based V1). The rest is cosmetic or already done.
+**All findings resolved or cosmetic.** AUD-F1 → tactical grid in V1 (reverses COMB_001's abstract-V1
+stance; recorded on COMB_001 + `locked_decisions`; detailed combat-grid design is a follow-up before
+COMB_001 DRAFT). AUD-F2 superseded by it. Remaining cosmetic: AUD-F3 (a PL_002 UI-gesture acceptance
+criterion) and AUD-F4 (terminology pass) — non-blocking, do opportunistically. The medium correction
+is **closed**.
 
 ---
 
