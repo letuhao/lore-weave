@@ -1,0 +1,138 @@
+// MCP fan-out (C-NAV) — resolve a `ui_*` navigation tool call into a concrete
+// router path + the resume payload the agent reads back. Pure logic (no React,
+// no router) so it is unit-testable on its own; the executor hook (useUiToolExecutor)
+// performs the navigate + POSTs the resolve.
+//
+// These frontend tools suspend→browser like propose_edit, but RESOLVE IMMEDIATELY
+// (no human Apply gate): the agent asked to move the UI, the FE just does it.
+//
+// Allowlisted route prefixes (C-NAV): a `ui_navigate(path)` is only honored when
+// the path begins with one of these — defence against the model being talked
+// into pushing an arbitrary route. ui_open_book / ui_open_chapter / ui_watch_job
+// build their path from typed ids, so they are always allowlisted by construction.
+
+/** The set of `ui_*` tool names this executor handles. */
+export const UI_TOOL_NAMES = [
+  'ui_navigate',
+  'ui_open_book',
+  'ui_open_chapter',
+  'ui_show_panel',
+  'ui_watch_job',
+] as const;
+
+export type UiToolName = (typeof UI_TOOL_NAMES)[number];
+
+export function isUiTool(name: string): name is UiToolName {
+  return (UI_TOOL_NAMES as readonly string[]).includes(name);
+}
+
+/** Route prefixes a `ui_navigate(path)` may target. Kept in sync with App.tsx. */
+export const ALLOWED_NAV_PREFIXES = [
+  '/books',
+  '/chat',
+  '/knowledge',
+  '/worlds',
+  '/campaigns',
+  '/jobs',
+  '/usage',
+  '/standards',
+  '/settings',
+  '/notifications',
+  '/browse',
+  '/trash',
+  '/onboarding',
+  '/reading-history',
+  '/leaderboard',
+] as const;
+
+const BOOK_TABS = [
+  'overview',
+  'translation',
+  'glossary',
+  'enrichment',
+  'wiki',
+  'settings',
+] as const;
+type BookTab = (typeof BOOK_TABS)[number];
+
+/** A book tab → its route path. `overview` is the bare `/books/:id`; the rest
+ *  map to the flat-tab routes declared in App.tsx. */
+function bookTabPath(bookId: string, tab?: string): string {
+  const base = `/books/${encodeURIComponent(bookId)}`;
+  if (!tab || tab === 'overview') return base;
+  if ((BOOK_TABS as readonly string[]).includes(tab)) return `${base}/${tab as BookTab}`;
+  // Unknown tab → fall back to overview (never an invalid route).
+  return base;
+}
+
+/** Outcome of resolving a `ui_*` tool: the path to navigate to (or null when the
+ *  request is rejected, e.g. a disallowed nav target) + the resume payload to
+ *  POST back to the agent. The boolean flag in `result` always reflects whether
+ *  the navigation was performed, so the agent never falsely believes it moved. */
+export interface UiNavResolution {
+  /** router path to push; null ⇒ do not navigate (rejected) */
+  path: string | null;
+  /** resume payload (the tool's result), per the C-NAV table */
+  result: Record<string, unknown>;
+}
+
+function isAllowed(path: string): boolean {
+  if (!path.startsWith('/')) return false;
+  return ALLOWED_NAV_PREFIXES.some(
+    (p) => path === p || path.startsWith(`${p}/`) || path.startsWith(`${p}?`),
+  );
+}
+
+/**
+ * Resolve a `ui_*` tool call to a navigation + resume payload.
+ * Returns `{ path, result }`; the caller navigates to `path` (when non-null) and
+ * POSTs `result` as the tool resolve. The result key (navigated/opened/shown/
+ * watching) matches the C-NAV contract per tool.
+ */
+export function resolveUiTool(tool: string, args: Record<string, unknown>): UiNavResolution {
+  switch (tool) {
+    case 'ui_navigate': {
+      const path = typeof args.path === 'string' ? args.path : '';
+      if (path && isAllowed(path)) return { path, result: { navigated: true } };
+      return { path: null, result: { navigated: false } };
+    }
+    case 'ui_open_book': {
+      const bookId = typeof args.book_id === 'string' ? args.book_id : '';
+      const tab = typeof args.tab === 'string' ? args.tab : undefined;
+      if (!bookId) return { path: null, result: { opened: false } };
+      return { path: bookTabPath(bookId, tab), result: { opened: true } };
+    }
+    case 'ui_open_chapter': {
+      const bookId = typeof args.book_id === 'string' ? args.book_id : '';
+      const chapterId = typeof args.chapter_id === 'string' ? args.chapter_id : '';
+      const mode = args.mode === 'read' ? 'read' : 'edit';
+      if (!bookId || !chapterId) return { path: null, result: { opened: false } };
+      const path = `/books/${encodeURIComponent(bookId)}/chapters/${encodeURIComponent(chapterId)}/${mode}`;
+      return { path, result: { opened: true } };
+    }
+    case 'ui_show_panel': {
+      // A panel/tab on the CURRENT view. We model it as a query param the host
+      // page reads (?panel=...&...). Resolve relative to the current location so
+      // we don't navigate away from the page the user is on.
+      const panel = typeof args.panel === 'string' ? args.panel : '';
+      if (!panel) return { path: null, result: { shown: false } };
+      const params = new URLSearchParams();
+      params.set('panel', panel);
+      const extra = args.args;
+      if (extra && typeof extra === 'object') {
+        for (const [k, v] of Object.entries(extra as Record<string, unknown>)) {
+          if (v != null) params.set(k, String(v));
+        }
+      }
+      const base = typeof window !== 'undefined' ? window.location.pathname : '';
+      return { path: `${base}?${params.toString()}`, result: { shown: true } };
+    }
+    case 'ui_watch_job': {
+      const jobId = typeof args.job_id === 'string' ? args.job_id : '';
+      if (!jobId) return { path: null, result: { watching: false } };
+      return { path: `/jobs?focus=${encodeURIComponent(jobId)}`, result: { watching: true } };
+    }
+    default:
+      return { path: null, result: {} };
+  }
+}

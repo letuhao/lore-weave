@@ -73,8 +73,21 @@ class SceneLinksRepo:
             rows = await c.fetch(query, user_id, project_id)
         return [_row_to_link(r) for r in rows]
 
-    async def delete(self, user_id: UUID, link_id: UUID) -> bool:
-        """Hard-delete an edge. Returns False on a cross-user / missing id."""
+    async def delete(
+        self, user_id: UUID, link_id: UUID, *, project_id: UUID | None = None,
+    ) -> bool:
+        """Hard-delete an edge. Returns False on a cross-user / missing id. When
+        `project_id` is given, the edge must also belong to that project (the MCP
+        by-id path constrains this so a same-user edge from another Work — gated on
+        a different book — cannot be deleted under the resolved Work's book gate)."""
+        if project_id is not None:
+            async with self._pool.acquire() as c:
+                status = await c.execute(
+                    "DELETE FROM scene_link "
+                    "WHERE user_id = $1 AND id = $2 AND project_id = $3",
+                    user_id, link_id, project_id,
+                )
+            return rows_changed(status) > 0
         async with self._pool.acquire() as c:
             status = await c.execute(
                 "DELETE FROM scene_link WHERE user_id = $1 AND id = $2",

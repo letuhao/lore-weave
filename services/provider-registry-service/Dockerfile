@@ -8,6 +8,11 @@ RUN apk add --no-cache git
 # context: .. and dockerfile: services/provider-registry-service/Dockerfile.
 # Copy the shared module first (separate cache layer), then service files.
 COPY sdks/go/observability /src/sdks/go/observability
+# S-SETTINGS (MCP fan-out) — the settings MCP server depends on the shared Go MCP
+# kit, which itself replaces github.com/loreweave/grantclient. Both must be in the
+# build context for the go.mod replace directives to resolve in-container.
+COPY sdks/go/loreweave_mcp /src/sdks/go/loreweave_mcp
+COPY sdks/go/grantclient /src/sdks/go/grantclient
 COPY services/provider-registry-service /src/services/provider-registry-service
 
 WORKDIR /src/services/provider-registry-service

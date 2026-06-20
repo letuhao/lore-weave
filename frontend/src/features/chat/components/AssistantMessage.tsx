@@ -19,9 +19,13 @@ import { ToolCallIndicator } from './ToolCallIndicator';
 import { ProposeEditCard } from './ProposeEditCard';
 import { GlossaryDiffCard } from './GlossaryDiffCard';
 import { ConfirmCard } from './ConfirmCard';
+import { ConfirmActionCard, descriptorDomain } from './ConfirmActionCard';
+import { RecordDiffCard } from './RecordDiffCard';
+import { ActivityStrip } from './ActivityStrip';
 import { useMessageFeedback } from '../hooks/useMessageFeedback';
+import { useActivityUndo } from '../hooks/useActivityUndo';
 import { firePasteToEditor } from '../utils/pasteToEditor';
-import type { ToolCallRecord } from '../types';
+import type { ActivityEvent, ToolCallRecord } from '../types';
 
 interface AssistantMessageProps {
   content: string;
@@ -46,6 +50,8 @@ interface AssistantMessageProps {
   voiceTtsSentences?: number;
   /** K21-C (D2): memory tool calls made during this turn. */
   toolCalls?: ToolCallRecord[] | null;
+  /** MCP fan-out (C-ACTIVITY): Tier-A auto-applied ops streamed this turn. */
+  activities?: ActivityEvent[] | null;
 }
 
 export function AssistantMessage({
@@ -64,11 +70,13 @@ export function AssistantMessage({
   messageId,
   voiceTtsSentences,
   toolCalls,
+  activities,
 }: AssistantMessageProps) {
   const { t } = useTranslation('chat');
   const [showMore, setShowMore] = useState(false);
   const moreRef = useRef<HTMLDivElement>(null);
   const feedback = useMessageFeedback(messageId);
+  const undoActivity = useActivityUndo();
 
   // Regenerate is an implicit negative signal on this turn (the user wasn't
   // satisfied) — post it silently, then run the parent's regenerate.
@@ -134,8 +142,20 @@ export function AssistantMessage({
           Apply/Dismiss card instead of a passive chip. */}
       {toolCalls && toolCalls.length > 0 && (() => {
         // H15: route a pending (suspended) frontend tool to its renderer BY NAME.
-        // propose_edit → prose card; glossary_propose_entity_edit → diff card.
-        const FRONTEND_TOOLS = ['propose_edit', 'glossary_propose_entity_edit', 'glossary_confirm_action'];
+        //   propose_edit                  → prose card
+        //   glossary_propose_entity_edit  → glossary diff card (legacy)
+        //   glossary_confirm_action       → glossary confirm card (legacy)
+        //   confirm_action               → GENERIC confirm card (C-CONFIRM, incl. batch)
+        //   propose_record_edit          → GENERIC record-diff card (C-PROPOSE)
+        // ui_* nav tools are NOT rendered here — useUiToolExecutor resolves them
+        // headlessly (no human gate), so they never reach this surface.
+        const FRONTEND_TOOLS = [
+          'propose_edit',
+          'glossary_propose_entity_edit',
+          'glossary_confirm_action',
+          'confirm_action',
+          'propose_record_edit',
+        ];
         const isPendingFrontend = (tc: ToolCallRecord) =>
           tc.pending === true && FRONTEND_TOOLS.includes(tc.tool);
         const proposals = toolCalls.filter(isPendingFrontend);
@@ -146,12 +166,30 @@ export function AssistantMessage({
             {proposals.map((tc) => {
               const key = tc.toolCallId ?? tc.tool;
               if (tc.tool === 'glossary_propose_entity_edit') return <GlossaryDiffCard key={key} record={tc} />;
-              if (tc.tool === 'glossary_confirm_action') return <ConfirmCard key={key} record={tc} />;
+              if (tc.tool === 'glossary_confirm_action') {
+                // Route BY DESCRIPTOR, not just tool name: on a book-scoped chat the
+                // model is offered both glossary_confirm_action (glossary-only) and
+                // the generic confirm_action, and may pick the glossary tool for a
+                // NON-glossary action (e.g. book.publish). A dotted generic-domain
+                // descriptor → the generic card (commits to /v1/<domain>/actions/*);
+                // glossary's own non-dotted descriptors → the legacy glossary card.
+                const desc = (tc.args as { descriptor?: string } | undefined)?.descriptor;
+                if (descriptorDomain(desc)) return <ConfirmActionCard key={key} record={tc} />;
+                return <ConfirmCard key={key} record={tc} />;
+              }
+              if (tc.tool === 'confirm_action') return <ConfirmActionCard key={key} record={tc} />;
+              if (tc.tool === 'propose_record_edit') return <RecordDiffCard key={key} record={tc} />;
               return <ProposeEditCard key={key} record={tc} />;
             })}
           </>
         );
       })()}
+
+      {/* MCP fan-out (C-ACTIVITY): Tier-A auto-applied ops + Undo. Renders
+          nothing when the turn auto-applied nothing. */}
+      {activities && activities.length > 0 && (
+        <ActivityStrip activities={activities} onUndo={undoActivity} disabled={disabled} />
+      )}
 
       {/* Audio replay (voice pipeline V2) */}
       {!isStreaming && sessionId && messageId && voiceTtsSentences && voiceTtsSentences > 0 && (

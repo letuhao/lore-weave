@@ -10,6 +10,10 @@ const EMPTY: Catalog = {
   toolToProvider: new Map(),
   version: '',
   partial: false,
+  // H10 per-provider availability — the admin catalog has a single upstream
+  // (glossary /mcp/admin); it's populated by computeCatalog on a successful list,
+  // empty here (no providers listed yet / EMPTY fallback).
+  providers: [],
 };
 
 /**

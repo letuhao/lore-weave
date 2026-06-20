@@ -178,6 +178,13 @@ class KnowledgeClient:
         # cache key and is NEVER cached. Kept distinct from `_tool_definitions`
         # so admin tools can never bleed into the user/book `/mcp` catalog (E17).
         self._admin_tool_definitions: list[dict] | None = None
+        # MCP-fanout C-FT/C-GW (H10) — catalog-level metadata from the most recent
+        # successful list-tools (the gateway's `_meta`). Carries the partial-catalog
+        # / per-provider availability signal so find_tools can distinguish
+        # "no such tool" from "provider temporarily unavailable". None until a
+        # successful fetch; {} when the gateway sends no signal yet (clean seam
+        # for S-GATEWAY — see get_catalog_meta()).
+        self._catalog_meta: dict | None = None
 
     async def aclose(self) -> None:
         await self._http.aclose()
@@ -369,17 +376,27 @@ class KnowledgeClient:
             logger.warning("get_tool_definitions (mcp list-tools) failed: %s", exc)
             return []
 
-        tools = [
-            {
-                "type": "function",
-                "function": {
-                    "name": t.name,
-                    "description": t.description or "",
-                    "parameters": _normalize_tool_parameters(t.inputSchema),
-                },
+        tools = []
+        for t in listed.tools:
+            fn: dict = {
+                "name": t.name,
+                "description": t.description or "",
+                "parameters": _normalize_tool_parameters(t.inputSchema),
             }
-            for t in listed.tools
-        ]
+            # MCP-fanout C-TOOL: preserve the per-tool `_meta` (tier / scope /
+            # synonyms / undo_hint) so the consumer can drive tier-based
+            # advertising + find_tools recall WITHOUT it ever reaching the
+            # provider — strip_tool_meta() removes it before the wire request.
+            meta = getattr(t, "meta", None)
+            if isinstance(meta, dict) and meta:
+                fn["_meta"] = dict(meta)
+            tools.append({"type": "function", "function": fn})
+        # MCP-fanout H10: stash the gateway's catalog-level `_meta` (availability /
+        # partial-catalog signal). The seam exists even when S-GATEWAY hasn't
+        # populated it yet (then it's {} and find_tools degrades to "no such tool"
+        # everywhere — never a false outage claim).
+        cat_meta = getattr(listed, "meta", None)
+        self._catalog_meta = dict(cat_meta) if isinstance(cat_meta, dict) else {}
         self._tool_definitions = tools
         return tools
 
@@ -443,6 +460,19 @@ class KnowledgeClient:
         ]
         self._admin_tool_definitions = tools
         return tools
+
+    def get_catalog_meta(self) -> dict:
+        """MCP-fanout H10 — the gateway's catalog-level `_meta` from the last
+        successful list-tools, or ``{}`` if none was fetched / sent.
+
+        S-GATEWAY (C-GW) is expected to populate a per-provider availability map
+        here, e.g. ``{"unavailable_providers": ["book"], "partial": true}``, so a
+        consumer's find_tools can tell "no such tool" from "provider temporarily
+        down" (→ the agent says "try again," never "I can't"). Until that lands
+        this returns ``{}`` (a clean, non-lying default). TODO(S-GATEWAY): pin the
+        exact key shape at COMPOSE A.
+        """
+        return self._catalog_meta or {}
 
     async def mcp_execute_tool(
         self,

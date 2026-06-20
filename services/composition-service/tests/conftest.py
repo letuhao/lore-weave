@@ -9,3 +9,4 @@ import os
 os.environ.setdefault("COMPOSITION_DB_URL", "postgresql://u:p@h:5432/composition")
 os.environ.setdefault("INTERNAL_SERVICE_TOKEN", "test_token")
 os.environ.setdefault("JWT_SECRET", "s" * 32)
+os.environ.setdefault("CONFIRM_TOKEN_SIGNING_SECRET", "c" * 32)

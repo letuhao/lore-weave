@@ -10,7 +10,7 @@ logging, OTel-optional, terse 500 envelope).
 import asyncio
 import contextlib
 import logging
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from datetime import datetime, timedelta, timezone
 
 from fastapi import FastAPI, Request
@@ -30,9 +30,10 @@ from app.db.pool import close_pool, create_pool, get_pool
 from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.worker.operations import SUPPORTED_OPERATIONS
 from app.logging_config import setup_logging, trace_id_var
+from app.mcp.server import build_mcp_app, mcp_server
 from app.middleware.trace_id import TraceIdMiddleware
 from app.routers import (
-    approve, canon, engine, grounding, health, internal_eval, internal_job_control,
+    actions, approve, canon, engine, grounding, health, internal_eval, internal_job_control,
     metrics, narrative_threads, outline, ping, plan, prose, works,
 )
 
@@ -89,9 +90,36 @@ async def lifespan(app: FastAPI):
     # cached grant on the spot (vs the 45s TTL). Best-effort; close_grant_client stops it.
     if settings.redis_url:
         get_grant_client().start_revoke_consumer(settings.redis_url)
+
+    # MCP fan-out S-COMPOSE — run the /mcp StreamableHTTP session manager. The /mcp
+    # sub-app is mounted at module level, but a mounted Starlette sub-app's lifespan
+    # is NOT auto-run under FastAPI, so we enter its session manager here.
+    # stateless_http=True → scope arrives in headers, no per-session state. Failure
+    # to start affects ONLY the /mcp path — the bespoke /v1/composition REST API
+    # stays up regardless (dual-run).
+    mcp_exit_stack: AsyncExitStack | None = None
+    try:
+        mcp_exit_stack = AsyncExitStack()
+        await mcp_exit_stack.enter_async_context(mcp_server.session_manager.run())
+        logger.info("S-COMPOSE: MCP session manager started; /mcp facade live")
+    except Exception:  # noqa: BLE001 — /mcp is best-effort relative to the REST API
+        logger.warning(
+            "S-COMPOSE: MCP session manager failed to start (non-fatal) — "
+            "/mcp facade unavailable, /v1/composition still serves",
+            exc_info=True,
+        )
+        if mcp_exit_stack is not None:
+            await mcp_exit_stack.aclose()
+            mcp_exit_stack = None
+
     try:
         yield
     finally:
+        # Stop the MCP session manager first so in-flight tool calls are cancelled
+        # before the pool/clients they touch are closed.
+        if mcp_exit_stack is not None:
+            with contextlib.suppress(Exception):
+                await mcp_exit_stack.aclose()
         if reaper_task is not None:
             reaper_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -150,3 +178,9 @@ app.include_router(internal_eval.router)
 app.include_router(internal_job_control.router)  # Unified Job Control Plane P3
 app.include_router(canon.router)
 app.include_router(narrative_threads.router)
+app.include_router(actions.router)  # MCP fan-out S-COMPOSE Tier-W confirm/preview
+
+# MCP fan-out S-COMPOSE — mount the /mcp facade. stateless_http=True + path="/" so
+# this yields the endpoint at exactly "/mcp"; the session manager is run in the
+# lifespan above (a mounted sub-app's lifespan is not auto-run under FastAPI).
+app.mount("/mcp", build_mcp_app())

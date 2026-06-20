@@ -25,6 +25,14 @@ export function useChatStream() {
   return ctx;
 }
 
+/** Non-throwing variant — returns null outside a ChatStreamProvider. Used by
+ *  leaf renderers (e.g. the activity Undo action) that must call a hook
+ *  unconditionally yet may be rendered in isolation (tests, storybook) without
+ *  the provider. */
+export function useChatStreamOptional() {
+  return useContext(ChatStreamCtx);
+}
+
 // ── Provider ───────────────────────────────────────────────────────────────────
 
 export function ChatStreamProvider({

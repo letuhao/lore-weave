@@ -318,6 +318,7 @@ async def submit_tool_result(
             tool_call_id=body.tool_call_id,
             outcome=body.outcome,
             applied_text=body.applied_text,
+            result=body.result,
             creds=creds,
             pool=pool,
             billing=billing,

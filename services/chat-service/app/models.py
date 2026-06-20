@@ -175,8 +175,13 @@ class ToolResultRequest(BaseModel):
     reports the REAL outcome (claim success only on applied_saved)."""
     run_id: str
     tool_call_id: str
-    outcome: str
+    # Optional because MCP-fanout ui_* nav tools resolve with a structured
+    # `result` instead of the outcome enum (no human gate — see `result`).
+    outcome: str | None = None
     applied_text: str | None = None
+    # MCP fan-out (C-NAV): structured result for a ui_* nav resolve (e.g.
+    # {"navigated": true}); fed back verbatim as the tool result on the 2nd pass.
+    result: dict | None = None
 
 
 class ChatMessage(BaseModel):
