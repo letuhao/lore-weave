@@ -182,6 +182,48 @@ class GraphSchemasRepo:
             )
         return _row_to_schema(row) if row else None
 
+    async def template_summary(self, source_schema_id: UUID, user_id: UUID) -> dict | None:
+        """Summary of an adoptable SOURCE template (KM6-M2): name/code + live child
+        counts, used by the `kg_adopt_template` mint check + the adopt preview render.
+
+        Visibility (no cross-tenant read): a **system** template is visible to all; a
+        **user** template only to its owner. Anything else (a project schema, another
+        user's template, or a missing id) → ``None`` (the caller maps to a clear error).
+        The authoritative adoptability check is `OntologyMutationsRepo._assert_source_adoptable`
+        at confirm; this is the lighter mint/preview-time gate."""
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                f"SELECT {_SCHEMA_COLS} FROM kg_graph_schemas WHERE schema_id = $1",
+                source_schema_id,
+            )
+            if row is None:
+                return None
+            schema = _row_to_schema(row)
+            if not (schema.scope == "system"
+                    or (schema.scope == "user" and schema.scope_id == str(user_id))):
+                return None
+            edges = await conn.fetchval(
+                "SELECT count(*) FROM kg_edge_types WHERE schema_id=$1 AND deprecated_at IS NULL",
+                source_schema_id,
+            )
+            kinds = await conn.fetchval(
+                "SELECT count(*) FROM kg_schema_node_kinds WHERE schema_id=$1 AND deprecated_at IS NULL",
+                source_schema_id,
+            )
+            facts = await conn.fetchval(
+                "SELECT count(*) FROM kg_fact_types WHERE schema_id=$1 AND deprecated_at IS NULL",
+                source_schema_id,
+            )
+        return {
+            "schema_id": str(schema.schema_id),
+            "code": schema.code,
+            "name": schema.name,
+            "scope": schema.scope,
+            "edge_type_count": edges,
+            "node_kind_count": kinds,
+            "fact_type_count": facts,
+        }
+
     async def resolve_for_project(self, project_id: str, *, fallback_code: str = "general") -> ResolvedSchema:
         """The effective schema for a project (spec §3.5).
 

@@ -21,10 +21,12 @@ from app.clients.grant_client import GrantLevel
 from app.config import settings
 from app.deps import get_grant_client, get_projects_repo
 from app.middleware.jwt_auth import get_current_user
+from app.db.repositories.ontology_mutations import NeedsGlossaryError
 from app.ontology.confirm import (
     ACTION_TOKEN_TTL_S,
     AUTH_ADMIN,
     AUTH_GRANT,
+    DESC_ADOPT,
     DESC_SCHEMA_EDIT,
     ActionClaims,
     mint_action_token,
@@ -79,8 +81,12 @@ def _build(*, caller=_CALLER, meta=(_CALLER, _BOOK), grant=GrantLevel.OWNER,
     )
     schemas.active_project_schema = AsyncMock(return_value=schema_obj)
     mutations = AsyncMock()
+    mutations.required_node_kinds = AsyncMock(return_value=[])  # adopt fail-open default
     tokens = AsyncMock()
     tokens.consume = AsyncMock(return_value=claimed)
+    glossary = AsyncMock()
+    glossary.get_book_ontology = AsyncMock(return_value=None)   # fail-open
+    glossary.get_user_standards = AsyncMock(return_value=None)
 
     app.dependency_overrides[get_current_user] = lambda: caller
     app.dependency_overrides[get_grant_client] = lambda: gc
@@ -88,6 +94,7 @@ def _build(*, caller=_CALLER, meta=(_CALLER, _BOOK), grant=GrantLevel.OWNER,
     app.dependency_overrides[kg_actions.get_graph_schemas_repo] = lambda: schemas
     app.dependency_overrides[kg_actions.get_ontology_mutations_repo] = lambda: mutations
     app.dependency_overrides[kg_actions.get_action_token_repo] = lambda: tokens
+    app.dependency_overrides[kg_actions.get_glossary_ontology_client] = lambda: glossary
     return app, mutations, tokens, schemas
 
 
@@ -222,6 +229,67 @@ async def test_preview_wrong_user_403():
     assert r.status_code == 403
 
 
+# ── KM6-M2 — kg_adopt descriptor dispatch ───────────────────────────────────
+def _adopt_token(*, user_id=_CALLER, project_id=_PROJECT, source_id=None, now=None) -> str:
+    return mint_action_token(
+        settings.jwt_secret,
+        ActionClaims(
+            jti=str(uuid4()), authority=AUTH_GRANT, user_id=str(user_id),
+            descriptor=DESC_ADOPT, project_id=str(project_id),
+            params={"source_schema_id": str(source_id or uuid4())},
+        ),
+        now if now is not None else time.time(),
+    )
+
+
+async def test_confirm_adopt_happy():
+    app, mutations, tokens, _s = _build()
+    mutations.adopt = AsyncMock(return_value=SimpleNamespace(
+        schema=SimpleNamespace(schema_id=uuid4(), code="xianxia", name="Xianxia", schema_version=1),
+        missing_optional=[],
+    ))
+    r = await _post(app, "/v1/kg/actions/confirm", {"confirm_token": _adopt_token()})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["adopted"] is True and body["name"] == "Xianxia"
+    tokens.consume.assert_awaited_once()
+    mutations.adopt.assert_awaited_once()
+
+
+async def test_confirm_adopt_needs_glossary_422():
+    app, mutations, _t, _s = _build()
+    mutations.adopt = AsyncMock(side_effect=NeedsGlossaryError(["bloodline"], "book-1"))
+    r = await _post(app, "/v1/kg/actions/confirm", {"confirm_token": _adopt_token()})
+    assert r.status_code == 422
+    detail = r.json()["detail"]
+    assert detail["code"] == "KG_ADOPT_NEEDS_GLOSSARY"
+    assert detail["needs_glossary"]["kinds"] == ["bloodline"]
+
+
+async def test_preview_adopt_renders_template_summary():
+    app, _m, tokens, schemas = _build(schema=None)  # no existing project schema
+    src = uuid4()
+    schemas.template_summary = AsyncMock(return_value={
+        "schema_id": str(src), "code": "xianxia", "name": "Xianxia", "scope": "system",
+        "edge_type_count": 7, "node_kind_count": 5, "fact_type_count": 3,
+    })
+    r = await _post(app, "/v1/kg/actions/preview", {"confirm_token": _adopt_token(source_id=src)})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["descriptor"] == DESC_ADOPT
+    assert body["blocked"] is False
+    assert any("Xianxia" in str(row["value"]) for row in body["preview_rows"])
+    tokens.consume.assert_not_awaited()  # preview never consumes
+
+
+async def test_preview_adopt_missing_template():
+    app, _m, _t, schemas = _build()
+    schemas.template_summary = AsyncMock(return_value=None)
+    r = await _post(app, "/v1/kg/actions/preview", {"confirm_token": _adopt_token()})
+    assert r.status_code == 200
+    assert r.json()["blocked"] is True
+
+
 async def test_every_live_descriptor_is_dispatched():
     """Tripwire (/review-impl LOW-1): the codec's live-descriptor set must EXACTLY
     match the descriptors the confirm/preview router dispatches. If someone adds a
@@ -230,7 +298,7 @@ async def test_every_live_descriptor_is_dispatched():
     Adding a descriptor MUST update both the codec set and this assertion (+ branch)."""
     from app.ontology import confirm as _confirm
 
-    assert _confirm._LIVE_DESCRIPTORS == {DESC_SCHEMA_EDIT}, (
+    assert _confirm._LIVE_DESCRIPTORS == {DESC_SCHEMA_EDIT, _confirm.DESC_ADOPT}, (
         "a new live descriptor must also get a confirm + preview dispatch branch in "
         "kg_actions.py and be added here"
     )

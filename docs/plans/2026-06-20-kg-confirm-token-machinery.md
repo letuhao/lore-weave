@@ -94,6 +94,42 @@ curation + `knowledge_skill.py` + the FE confirm card. Each is additive on this 
   a single implicit txn (replicas serialize on the table lock — proven in the L7 sweep);
   the `consumed_tokens` DDL appends to it.
 
+## KM6-M2 — `kg_adopt_template` descriptor (second class-C onto the spine)
+
+Adds the adopt scaffold to the agent path. The **human** path already exists (direct
+MANAGE-gated `POST /v1/kg/projects/{id}/adopt` — the human clicking IS the
+confirmation); KM6 adds the **agent** path: `kg_adopt_template` MINTS a confirm-token →
+the confirm endpoint runs the SAME `OntologyMutationsRepo.adopt` effect. Adopt is
+**replace-on-adopt** (idempotent; one active project schema) so there is NO version
+drift to re-validate — re-confirm just re-adopts. Re-validation at confirm = source
+template still visible/adoptable (`_assert_source_adoptable` → SchemaNotWritableError →
+re-proposable) + the M1 glossary node-kind gate (`NeedsGlossaryError` → 422 carrying the
+missing kinds).
+
+- `DESC_ADOPT = "kg_adopt"` added to the live set (codec); tripwire test updated.
+- `app/ontology/glossary_gate.py` (NEW) — extract the glossary-codes resolution shared
+  by the human adopt route + the confirm effect (project_meta → book ontology / user
+  standards → `required_node_kinds` fallback when glossary is unavailable, so we never
+  false-gate). Reused in `ontology.py` (DRY; its tests verify).
+- `app/ontology/adopt_effect.py` (NEW) — `apply_adopt` (resolve codes → `repo.adopt` →
+  map NeedsGlossary/NotWritable) + `preview_adopt` (template summary: name + child
+  counts + glossary gaps, current-state).
+- `GraphSchemasRepo.template_summary(source_id, user_id)` — visible-source name + child
+  counts for the mint check + preview render.
+- `kg_adopt_template` MCP tool — MANAGE-gated mint (no write); validates the source is a
+  visible template; params `{source_schema_id}`. Catalog → 19 tools.
+- Tests: codec tripwire, adopt effect integration (scaffold / re-adopt replaces /
+  needs-glossary), router dispatch, tool mint. Live-smoke: mint → preview → confirm →
+  project schema created.
+
+**KM6-M2 SHIPPED.** VERIFY: 2840 unit + 33 real-PG integration (incl the rewired human
+adopt route, unchanged behaviour) green. Live-smoke on the stack (real JWT + PG, glossary
+fail-open): preview → confirm (scaffold `xianxia-harem`) → replay 422; project schema
+created. `/review-impl`: no HIGH/MED; 1 LOW accepted (a grantee minting their OWN private
+user-template adopts a token that 404s at confirm since it isn't visible to the project
+owner — secure, rare; system templates pass both gates symmetrically). Catalog now 19
+tools, 2 live descriptors. Still deferred: `kg_sync_apply`, KM5 admin/RS256, FE card.
+
 ## Risk boundaries (checkpoint/commit candidates)
 
 New migration (table) · new public endpoints (auth) · new MCP tool (mint authority).

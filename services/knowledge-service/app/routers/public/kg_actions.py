@@ -27,6 +27,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ValidationError
 
 from app.auth.grant_deps import _resolve_owner  # canonical anti-oracle 404/403 gate
+from app.clients.glossary_ontology_client import GlossaryOntologyClient
 from app.clients.grant_client import GrantClient, GrantLevel
 from app.config import settings
 from app.db.pool import get_knowledge_pool
@@ -41,9 +42,17 @@ from app.db.repositories.ontology_mutations import (
 from app.db.repositories.projects import ProjectsRepo
 from app.deps import get_grant_client, get_projects_repo
 from app.middleware.jwt_auth import get_current_user
+from app.ontology.adopt_effect import (
+    AdoptNeedsGlossary,
+    AdoptParams,
+    AdoptSourceMissing,
+    apply_adopt,
+    preview_adopt,
+)
 from app.ontology.confirm import (
     AUTH_ADMIN,
     AUTH_GRANT,
+    DESC_ADOPT,
     DESC_SCHEMA_EDIT,
     ActionClaims,
     ActionTokenExpired,
@@ -56,6 +65,7 @@ from app.ontology.schema_edit_effect import (
     apply_schema_edit,
     preview_schema_edit,
 )
+from app.routers.public.ontology import get_glossary_ontology_client
 
 logger = logging.getLogger(__name__)
 
@@ -149,9 +159,10 @@ async def confirm_action(
     schemas: GraphSchemasRepo = Depends(get_graph_schemas_repo),
     mutations: OntologyMutationsRepo = Depends(get_ontology_mutations_repo),
     tokens: ActionTokenRepo = Depends(get_action_token_repo),
+    glossary: GlossaryOntologyClient = Depends(get_glossary_ontology_client),
 ) -> dict:
     claims = _decode_confirm_token(body)
-    await _authorize_action(claims, caller, gc, projects)
+    owner = await _authorize_action(claims, caller, gc, projects)
     # Single-use: claim the jti now. Fail-closed — a failed effect does NOT release it.
     claimed = await tokens.consume(
         jti=claims.jti,
@@ -166,6 +177,8 @@ async def confirm_action(
 
     if claims.descriptor == DESC_SCHEMA_EDIT:
         return await _confirm_schema_edit(claims, schemas, mutations)
+    if claims.descriptor == DESC_ADOPT:
+        return await _confirm_adopt(claims, owner, mutations, projects, glossary)
     # Unreachable: verify_action_token already rejects non-live descriptors.
     raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="unknown action")
 
@@ -200,6 +213,42 @@ async def _confirm_schema_edit(
         )
 
 
+async def _confirm_adopt(
+    claims: ActionClaims, owner: UUID, mutations: OntologyMutationsRepo,
+    projects: ProjectsRepo, glossary: GlossaryOntologyClient,
+) -> dict:
+    try:
+        params = AdoptParams(**claims.params)
+    except ValidationError:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="bad proposal payload"
+        )
+    try:
+        return await apply_adopt(
+            mutations, projects, glossary,
+            owner=owner, project_id=claims.project_id, params=params,
+        )
+    except AdoptNeedsGlossary as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={
+                "code": "KG_ADOPT_NEEDS_GLOSSARY",
+                "message": "the project's glossary is missing required node-kinds — "
+                           "add them in glossary first, then propose again",
+                "needs_glossary": {"book_id": exc.book_id, "kinds": exc.kinds},
+            },
+        )
+    except AdoptSourceMissing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="the source template no longer exists — propose again",
+        )
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="bad proposal payload"
+        )
+
+
 # ── preview (non-consuming current-state render) ──────────────────────────────
 @router.post("/preview")
 async def preview_action(
@@ -208,9 +257,11 @@ async def preview_action(
     gc: GrantClient = Depends(get_grant_client),
     projects: ProjectsRepo = Depends(get_projects_repo),
     schemas: GraphSchemasRepo = Depends(get_graph_schemas_repo),
+    mutations: OntologyMutationsRepo = Depends(get_ontology_mutations_repo),
+    glossary: GlossaryOntologyClient = Depends(get_glossary_ontology_client),
 ) -> dict:
     claims = _decode_confirm_token(body)
-    await _authorize_action(claims, caller, gc, projects)
+    owner = await _authorize_action(claims, caller, gc, projects)
     if claims.descriptor == DESC_SCHEMA_EDIT:
         try:
             params = SchemaEditParams(**claims.params)
@@ -219,4 +270,15 @@ async def preview_action(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="bad proposal payload"
             )
         return await preview_schema_edit(schemas, claims.project_id, params)
+    if claims.descriptor == DESC_ADOPT:
+        try:
+            params = AdoptParams(**claims.params)
+        except ValidationError:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="bad proposal payload"
+            )
+        return await preview_adopt(
+            schemas, mutations, projects, glossary,
+            owner=owner, project_id=claims.project_id, params=params,
+        )
     raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="unknown action")

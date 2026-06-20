@@ -58,9 +58,9 @@ _LANE_LF_TOOLS = {
     "kg_triage_resolve",
 }
 
-# KM6-M1: the FIRST live class-C tool — registered, but it MINTS a confirm-token
-# (no write); the human confirms via /v1/kg/actions/confirm.
-_CLASS_C_LIVE_TOOLS = {"kg_schema_edit"}
+# KM6 live class-C tools — registered, but each MINTS a confirm-token (no write);
+# the human confirms via /v1/kg/actions/confirm. M1: kg_schema_edit. M2: kg_adopt_template.
+_CLASS_C_LIVE_TOOLS = {"kg_schema_edit", "kg_adopt_template"}
 
 # Every KG tool registered in the catalog (R + reversible W + live class-C).
 _REGISTERED_KG_TOOLS = _LANE_LF_TOOLS | _CLASS_C_LIVE_TOOLS
@@ -68,7 +68,6 @@ _REGISTERED_KG_TOOLS = _LANE_LF_TOOLS | _CLASS_C_LIVE_TOOLS
 # The class-C tools STILL deferred to later KM6 sub-phases / KM5 — they must NOT be
 # registered anywhere yet.
 _CLASS_C_TOOLS = {
-    "kg_adopt_template",
     "kg_sync_apply",
     "kg_triage_handoff_glossary",
     "kg_admin_template_read",
@@ -84,9 +83,9 @@ def _defn(name: str) -> dict:
 
 
 def test_total_tool_count_is_memory_plus_lane_lf():
-    """5 memory + 12 lane-LF + 1 live class-C (kg_schema_edit) = 18, all agreeing."""
+    """5 memory + 12 lane-LF + 2 live class-C (kg_schema_edit, kg_adopt_template) = 19."""
     schema_names = {d["function"]["name"] for d in TOOL_DEFINITIONS}
-    assert len(TOOL_DEFINITIONS) == 18
+    assert len(TOOL_DEFINITIONS) == 19
     assert set(TOOL_NAMES) == set(ARG_MODELS) == schema_names
     assert len(set(TOOL_NAMES)) == len(TOOL_NAMES)  # no dupes
 
@@ -588,5 +587,65 @@ async def test_schema_edit_requires_manage_grant():
     res = await execute_tool(
         ctx, "kg_schema_edit", {"verb": "add", "level": "edge_type", "code": "X", "label": "X"},
     )
+    assert not res.success
+    assert "insufficient access" in res.error.lower()
+
+
+# ── KM6-M2 — kg_adopt_template (class-C mint; NO write) ───────────────
+
+
+@pytest.mark.asyncio
+async def test_adopt_template_mints_confirm_token():
+    import time as _time
+
+    from app.config import settings
+    from app.ontology.confirm import AUTH_GRANT, DESC_ADOPT, verify_action_token
+
+    src = uuid4()
+    schemas = AsyncMock()
+    schemas.template_summary = AsyncMock(return_value={
+        "schema_id": str(src), "code": "xianxia", "name": "Xianxia", "scope": "system",
+        "edge_type_count": 7, "node_kind_count": 5, "fact_type_count": 3,
+    })
+    mutations = AsyncMock()
+    ctx = _ctx(graph_schemas_repo=schemas, ontology_mutations_repo=mutations)  # caller==owner
+    res = await execute_tool(ctx, "kg_adopt_template", {"source_schema_id": str(src)})
+    assert res.success
+    out = res.result
+    assert out["proposed"] is True and out["descriptor"] == DESC_ADOPT
+    assert "Xianxia" in out["summary"]
+    mutations.adopt.assert_not_called()  # mint only — no write
+    claims = verify_action_token(settings.jwt_secret, out["confirm_token"], _time.time())
+    assert claims.authority == AUTH_GRANT and claims.user_id == str(ctx.user_id)
+    assert claims.project_id == str(_PROJECT)
+    assert claims.params["source_schema_id"] == str(src)
+
+
+@pytest.mark.asyncio
+async def test_adopt_template_rejects_invisible_or_missing_source():
+    schemas = AsyncMock()
+    schemas.template_summary = AsyncMock(return_value=None)  # not visible / missing
+    ctx = _ctx(graph_schemas_repo=schemas)
+    res = await execute_tool(ctx, "kg_adopt_template", {"source_schema_id": str(uuid4())})
+    assert not res.success
+    assert "template" in res.error.lower()
+
+
+@pytest.mark.asyncio
+async def test_adopt_template_rejects_malformed_source_id():
+    ctx = _ctx()
+    res = await execute_tool(ctx, "kg_adopt_template", {"source_schema_id": "not-a-uuid"})
+    assert not res.success
+    assert "valid template id" in res.error.lower()
+
+
+@pytest.mark.asyncio
+async def test_adopt_template_requires_manage_grant():
+    grant = AsyncMock()
+    grant.resolve_grant = AsyncMock(return_value=GrantLevel.EDIT)  # < MANAGE
+    projects_repo = AsyncMock()
+    projects_repo.project_meta = AsyncMock(return_value=(_OWNER, _BOOK))
+    ctx = _ctx(user_id=_USER, projects_repo=projects_repo, grant_client=grant)
+    res = await execute_tool(ctx, "kg_adopt_template", {"source_schema_id": str(uuid4())})
     assert not res.success
     assert "insufficient access" in res.error.lower()

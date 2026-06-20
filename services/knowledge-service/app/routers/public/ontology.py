@@ -49,6 +49,7 @@ from app.db.repositories.ontology_mutations import (
 from app.db.repositories.projects import ProjectsRepo
 from app.deps import get_grant_client, get_projects_repo
 from app.middleware.jwt_auth import get_current_user
+from app.ontology.glossary_gate import resolve_adopt_glossary_codes
 
 logger = logging.getLogger(__name__)
 
@@ -338,23 +339,11 @@ async def adopt_schema(
     replaces the project's active schema (one-active invariant).
     """
     project_str = str(project_id)
-    meta = await projects.project_meta(project_id)
-    book_id: str | None = None
-    glossary_codes: set[str] = set()
-    if meta is not None:
-        _owner, book_uuid = meta
-        if book_uuid is not None:
-            book_id = str(book_uuid)
-            kinds = await glossary.get_book_ontology(book_uuid, owner)
-        else:
-            kinds = await glossary.get_user_standards(owner)
-        if kinds is not None:
-            glossary_codes = set(kinds.codes())
-        else:
-            # Glossary source unavailable: we cannot prove a required kind is
-            # missing, so we do NOT false-gate. Required kinds pass (treated as
-            # present); the runtime mismatch (if any) parks to triage later.
-            glossary_codes = set(await mutations.required_node_kinds(body.source_schema_id))
+    # KM6-M2: shared with the agent confirm effect so the adopt-gate can't drift.
+    book_id, glossary_codes = await resolve_adopt_glossary_codes(
+        projects, glossary, mutations,
+        owner=owner, project_id=project_str, source_schema_id=body.source_schema_id,
+    )
 
     try:
         result = await mutations.adopt(

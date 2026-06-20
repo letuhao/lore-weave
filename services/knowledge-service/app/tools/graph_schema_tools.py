@@ -52,6 +52,7 @@ from app.config import settings
 from app.ontology.confirm import (
     ACTION_TOKEN_TTL_S,
     AUTH_GRANT,
+    DESC_ADOPT,
     DESC_SCHEMA_EDIT,
     ActionClaims,
     mint_action_token,
@@ -93,6 +94,7 @@ __all__ = [
     "KgViewDeleteArgs",
     "KgTriageResolveArgs",
     "KgSchemaEditArgs",
+    "KgAdoptTemplateArgs",
 ]
 
 # Result-size + addressing caps (mirror the HTTP routers' query bounds so the
@@ -267,6 +269,16 @@ class KgSchemaEditArgs(BaseModel):
     label: str = Field(default="", max_length=_NAME_MAX)
 
 
+class KgAdoptTemplateArgs(BaseModel):
+    """`kg_adopt_template` — class-C. Copies a system/user ontology template down into
+    the current project (scaffold). Mints a confirm-token (no write); a human confirms
+    via the review surface. `source_schema_id` is a template id from `kg_list_templates`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source_schema_id: str = Field(min_length=1, max_length=64)
+
+
 GRAPH_SCHEMA_ARG_MODELS: dict[str, type[BaseModel]] = {
     # ── R (read) ──────────────────────────────────────────────────────
     "kg_graph_query": KgGraphQueryArgs,
@@ -283,8 +295,8 @@ GRAPH_SCHEMA_ARG_MODELS: dict[str, type[BaseModel]] = {
     "kg_view_delete": KgViewDeleteArgs,
     "kg_triage_resolve": KgTriageResolveArgs,
     # ── C (confirm-token) — KM6 confirm machinery ─────────────────────
-    "kg_schema_edit": KgSchemaEditArgs,  # KM6-M1: mints a confirm-token (no write)
-    # kg_adopt_template       # KM3/KM4 class-C — deferred to KM6 (D-KG-LF-KM6)
+    "kg_schema_edit": KgSchemaEditArgs,    # KM6-M1: mints a confirm-token (no write)
+    "kg_adopt_template": KgAdoptTemplateArgs,  # KM6-M2: mints a confirm-token (no write)
     # kg_sync_apply           # KM3/KM4 class-C — deferred to KM6 confirm machinery (D-KG-LF-KM6)
     # kg_triage_resolve (schema-mutating actions) # KM3/KM4 class-C — deferred to KM6 confirm machinery (D-KG-LF-KM6)
     # kg_triage_handoff_glossary # KM3/KM4 class-C — deferred to KM6 confirm machinery (D-KG-LF-KM6)
@@ -596,6 +608,20 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
             },
         },
         ["verb", "level", "code"],
+    ),
+    _tool(
+        "kg_adopt_template",
+        "Propose adopting (copying down) a system or user ontology template into THIS "
+        "project, scaffolding its edge types / node kinds / fact types. High-impact — it "
+        "does NOT apply immediately; it returns a confirm_token and a summary, and a human "
+        "confirms on the review surface. Pick a `source_schema_id` from kg_list_templates.",
+        {
+            "source_schema_id": {
+                "type": "string",
+                "description": "The template id to adopt (from kg_list_templates).",
+            },
+        },
+        ["source_schema_id"],
     ),
 ]
 
@@ -1017,6 +1043,58 @@ async def _handle_kg_schema_edit(ctx: "ToolContext", args: KgSchemaEditArgs) -> 
     }
 
 
+async def _handle_kg_adopt_template(ctx: "ToolContext", args: KgAdoptTemplateArgs) -> dict:
+    """C (confirm-token) — KM6-M2. Copies a system/user template down into the project
+    (replace-on-adopt scaffold). **Mints a confirm-token and returns it — performs NO
+    write** (INV-T3). The human redeems it at `POST /v1/kg/actions/confirm` (the adopt
+    runs there, with the M1 glossary node-kind gate re-checked at confirm).
+
+    Gate: MANAGE on the project. Validates the source is a template visible to the
+    caller (system, or the caller's own) before minting."""
+    from app.tools.executor import ToolExecutionError
+
+    await _resolve_project_owner(ctx, GrantLevel.MANAGE)
+    project_str = str(ctx.project_id)
+
+    try:
+        source_uuid = UUID(args.source_schema_id)
+    except (ValueError, TypeError):
+        raise ToolExecutionError("source_schema_id must be a valid template id")
+    summary = await ctx.graph_schemas_repo.template_summary(source_uuid, ctx.user_id)
+    if summary is None:
+        raise ToolExecutionError(
+            "no such template is available to adopt (use kg_list_templates to find one)"
+        )
+
+    token = mint_action_token(
+        settings.jwt_secret,
+        ActionClaims(
+            jti=str(uuid4()),
+            authority=AUTH_GRANT,
+            user_id=str(ctx.user_id),
+            descriptor=DESC_ADOPT,
+            project_id=project_str,
+            params={"source_schema_id": args.source_schema_id},
+        ),
+        time.time(),
+    )
+    if not token:
+        raise ToolExecutionError("could not mint a confirmation token")
+
+    return {
+        "proposed": True,
+        "confirm_token": token,
+        "expires_in_s": ACTION_TOKEN_TTL_S,
+        "descriptor": DESC_ADOPT,
+        "summary": (
+            f"adopt template '{summary['name']}' "
+            f"({summary['edge_type_count']} edge types, {summary['node_kind_count']} "
+            f"node kinds, {summary['fact_type_count']} fact types)"
+        ),
+        "requires": "human confirmation via the review surface (no change applied yet)",
+    }
+
+
 GRAPH_SCHEMA_HANDLERS = {
     "kg_graph_query": _handle_kg_graph_query,
     "kg_entity_edge_timeline": _handle_kg_entity_edge_timeline,
@@ -1031,4 +1109,5 @@ GRAPH_SCHEMA_HANDLERS = {
     "kg_view_delete": _handle_kg_view_delete,
     "kg_triage_resolve": _handle_kg_triage_resolve,
     "kg_schema_edit": _handle_kg_schema_edit,
+    "kg_adopt_template": _handle_kg_adopt_template,
 }
