@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useAuth } from '@/auth';
 import { useBookOntology } from './useBookOntology';
-import { tieringApi } from '../tieringApi';
 import { glossaryApi } from '../api';
 import type { BookAttribute, BookGenre } from '../tieringTypes';
 
@@ -79,12 +78,11 @@ export function useEntityForm(bookId: string, kindId: string | null) {
     if (!kindId) throw new Error('no kind');
     setSubmitting(true);
     try {
-      const entity = await glossaryApi.createEntity(bookId, kindId, accessToken!);
-      // Persist the per-entity genre override (D2) ONLY when it diverges from the book
-      // default; an unchanged selection leaves the entity following book active genres.
-      if (!sameAsDefault(selectedGenreIds)) {
-        await tieringApi.setEntityGenres(bookId, entity.entity_id, selectedGenreIds, accessToken!);
-      }
+      // Pass the genre override AT create so the backend seeds exactly the right value
+      // rows in one tx (incl. keep-both conflicts) — D-GKA-ENTITY-MULTIGENRE-VALUES.
+      // Omit when the selection equals the book default so the entity FOLLOWS the book.
+      const override = sameAsDefault(selectedGenreIds) ? undefined : selectedGenreIds;
+      const entity = await glossaryApi.createEntity(bookId, kindId, accessToken!, override);
       // Map each filled field (book attr_id) → its attribute_value row, then write it.
       const detail = await glossaryApi.getEntity(bookId, entity.entity_id, accessToken!);
       const byDef = new Map(detail.attribute_values.map((v) => [v.attr_def_id, v.attr_value_id]));

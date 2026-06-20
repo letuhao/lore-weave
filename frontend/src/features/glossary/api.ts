@@ -58,10 +58,13 @@ export const glossaryApi = {
     );
   },
 
-  createEntity(bookId: string, kindId: string, token: string): Promise<GlossaryEntity> {
+  // genreIds (optional) is the per-entity genre override applied atomically at create:
+  // the backend seeds value rows for exactly those genres' attributes (keep-both
+  // conflicts included). Omit ⇒ the entity follows the book's active genres.
+  createEntity(bookId: string, kindId: string, token: string, genreIds?: string[]): Promise<GlossaryEntity> {
     return apiJson<GlossaryEntity>(`${BASE}/books/${bookId}/entities`, {
       method: 'POST',
-      body: JSON.stringify({ kind_id: kindId }),
+      body: JSON.stringify(genreIds ? { kind_id: kindId, genre_ids: genreIds } : { kind_id: kindId }),
       token,
     });
   },

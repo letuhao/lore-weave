@@ -110,3 +110,67 @@ func TestEntityGenres_SetGetAndGuards(t *testing.T) {
 		t.Fatalf("missing entity: want 404, got %d", mw.Code)
 	}
 }
+
+// TestCreateEntity_MultiGenreKeepBothValues proves the genres-at-create fix
+// (D-GKA-ENTITY-MULTIGENRE-VALUES): a code defined in TWO of the entity's genres gets a
+// value row PER genre (both persist), and the per-entity genre override is written in
+// the same create call (no separate setEntityGenres round-trip).
+func TestCreateEntity_MultiGenreKeepBothValues(t *testing.T) {
+	pool := openTestDB(t)
+	runGenreMigrations(t, pool)
+	ctx := context.Background()
+	owner := uuid.New()
+	book := uuid.New()
+	srv := newAdoptServer(t, pool, book, owner)
+	adoptTestBook(t, pool, book)
+	base := "/v1/glossary/books/" + book.String()
+
+	bk := bookKindID(t, pool, book, "character")
+	var fantasyID, universalID uuid.UUID
+	if err := pool.QueryRow(ctx, `SELECT genre_id FROM book_genres WHERE book_id=$1 AND code='fantasy'`, book).Scan(&fantasyID); err != nil {
+		t.Fatalf("fantasy genre: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT genre_id FROM book_genres WHERE book_id=$1 AND code='universal'`, book).Scan(&universalID); err != nil {
+		t.Fatalf("universal genre: %v", err)
+	}
+	// 'rank' defined in BOTH fantasy and universal on the character kind → keep-both.
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO book_attributes(book_id,kind_id,genre_id,code,name)
+		 VALUES($1,$2,$3,'rank','Rank (fantasy)'),($1,$2,$4,'rank','Rank (universal)')`,
+		book, bk, fantasyID, universalID); err != nil {
+		t.Fatalf("seed conflicting rank attrs: %v", err)
+	}
+
+	// Create overriding to [fantasy] (universal auto-included) → seeds for {fantasy, universal}.
+	cw := ukReq(t, srv, http.MethodPost, base+"/entities", owner.String(),
+		`{"kind_id":"`+bk.String()+`","genre_ids":["`+fantasyID.String()+`"]}`)
+	if cw.Code != http.StatusCreated {
+		t.Fatalf("create entity: want 201, got %d (%s)", cw.Code, cw.Body.String())
+	}
+	var created struct {
+		EntityID string `json:"entity_id"`
+	}
+	if err := json.Unmarshal(cw.Body.Bytes(), &created); err != nil || created.EntityID == "" {
+		t.Fatalf("decode entity: %v (%s)", err, cw.Body.String())
+	}
+
+	// BOTH 'rank' value rows seeded (one per genre) — the keep-both invariant.
+	var rankRows int
+	if err := pool.QueryRow(ctx,
+		`SELECT count(*) FROM entity_attribute_values av JOIN book_attributes ba ON ba.attr_id=av.attr_def_id
+		 WHERE av.entity_id=$1 AND ba.code='rank'`, created.EntityID).Scan(&rankRows); err != nil {
+		t.Fatalf("count rank rows: %v", err)
+	}
+	if rankRows != 2 {
+		t.Fatalf("keep-both: want 2 'rank' value rows (fantasy+universal), got %d", rankRows)
+	}
+
+	// The override was persisted at create (fantasy + universal), no extra call.
+	var egCount int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM entity_genres WHERE entity_id=$1`, created.EntityID).Scan(&egCount); err != nil {
+		t.Fatalf("count entity_genres: %v", err)
+	}
+	if egCount != 2 {
+		t.Fatalf("override genres: want 2 entity_genres rows (fantasy+universal), got %d", egCount)
+	}
+}

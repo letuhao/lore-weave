@@ -327,6 +327,11 @@ func (s *Server) createEntity(w http.ResponseWriter, r *http.Request) {
 
 	var in struct {
 		KindID string `json:"kind_id"`
+		// Optional per-entity genre override (D2). Non-empty ⇒ the entity's genres are
+		// exactly these (+ universal); empty/omitted ⇒ the entity follows the book's
+		// active genres. The set also decides which (kind × genre) attribute value rows
+		// are seeded (D-GKA-ENTITY-MULTIGENRE-VALUES — one per (genre, code)).
+		GenreIDs []string `json:"genre_ids"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || in.KindID == "" {
 		writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY", "kind_id is required")
@@ -358,6 +363,44 @@ func (s *Server) createEntity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate the per-entity genre override (if any) BEFORE the tx, so a bad id 422s
+	// without leaving a half-created entity. universal is auto-included (O4); every id
+	// must be a live book genre of THIS book (tenant boundary).
+	override := len(in.GenreIDs) > 0
+	var overrideSet []uuid.UUID
+	if override {
+		want := make([]uuid.UUID, 0, len(in.GenreIDs)+1)
+		for _, g := range in.GenreIDs {
+			id, perr := uuid.Parse(g)
+			if perr != nil {
+				writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "genre_ids must be UUIDs")
+				return
+			}
+			want = append(want, id)
+		}
+		var universalID uuid.UUID
+		if err := s.pool.QueryRow(ctx,
+			`SELECT genre_id FROM book_genres WHERE book_id=$1 AND code='universal' AND deprecated_at IS NULL`,
+			bookID).Scan(&universalID); err != nil {
+			writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "book has no universal genre (adopt it first)")
+			return
+		}
+		want = append(want, universalID)
+		var validCount int
+		if err := s.pool.QueryRow(ctx,
+			`SELECT count(DISTINCT genre_id) FROM book_genres
+			 WHERE book_id=$1 AND deprecated_at IS NULL AND genre_id = ANY($2)`,
+			bookID, want).Scan(&validCount); err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "validate genres failed")
+			return
+		}
+		if validCount != distinctCount(want) {
+			writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "every genre_id must be a live genre of this book")
+			return
+		}
+		overrideSet = want
+	}
+
 	// Create entity + attribute value rows in one transaction
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -375,14 +418,47 @@ func (s *Server) createEntity(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "insert entity failed")
 		return
 	}
+	entityUUID, _ := uuid.Parse(entityIDStr)
 
-	// Load attribute definitions for this kind
+	// Resolve the entity's effective genre set: the validated override (persisted as
+	// entity_genres rows), or the book's active genres (no override rows — follows the
+	// book). The set bounds which attribute value rows we seed.
+	var seedGenres []uuid.UUID
+	if override {
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO entity_genres(entity_id, genre_id)
+			 SELECT $1, g FROM unnest($2::uuid[]) AS g ON CONFLICT DO NOTHING`,
+			entityUUID, overrideSet); err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "insert entity genres failed")
+			return
+		}
+		seedGenres = overrideSet
+	} else {
+		grows, gerr := tx.Query(ctx, `SELECT genre_id FROM book_active_genres WHERE book_id=$1`, bookID)
+		if gerr != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "load active genres failed")
+			return
+		}
+		for grows.Next() {
+			var gid uuid.UUID
+			if err := grows.Scan(&gid); err != nil {
+				grows.Close()
+				writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "scan active genre failed")
+				return
+			}
+			seedGenres = append(seedGenres, gid)
+		}
+		grows.Close()
+	}
+
+	// Seed one attribute_value row per (genre, code) of the kind RESTRICTED to the
+	// entity's genres — NOT DISTINCT ON code, so a keep-both conflict (same code in two
+	// genres) gets a row per genre and both values persist (D-GKA-ENTITY-MULTIGENRE-VALUES).
 	attrRows, err := tx.Query(ctx, `
-		SELECT DISTINCT ON (ba.code) ba.attr_id
+		SELECT ba.attr_id
 		FROM book_attributes ba
-		JOIN book_genres g ON g.genre_id = ba.genre_id
-		WHERE ba.kind_id=$1
-		ORDER BY ba.code, (g.code = 'universal') DESC, ba.sort_order`, kindID)
+		WHERE ba.kind_id=$1 AND ba.deprecated_at IS NULL AND ba.genre_id = ANY($2::uuid[])
+		ORDER BY ba.sort_order`, kindID, seedGenres)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "load attrs failed")
 		return

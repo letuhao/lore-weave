@@ -86,18 +86,21 @@ describe('useEntityForm', () => {
     expect(labels).toContain('name'); // single-genre code stays bare
   });
 
-  it('does NOT persist a genre override when the selection equals the book default', async () => {
+  it('creates with NO genre override when the selection equals the book default', async () => {
     const { result } = renderHook(() => useEntityForm('book-1', KIND_ID));
     await act(async () => { await result.current.submit(); });
-    expect(glossaryMocks.createEntity).toHaveBeenCalledWith('book-1', KIND_ID, 'tok');
+    // genreIds (4th arg) is undefined → the entity follows the book's active genres.
+    expect(glossaryMocks.createEntity).toHaveBeenCalledWith('book-1', KIND_ID, 'tok', undefined);
     expect(tieringMocks.setEntityGenres).not.toHaveBeenCalled();
   });
 
-  it('persists the override only when the selection diverges from the default', async () => {
+  it('passes the override genres AT create when the selection diverges', async () => {
     const { result } = renderHook(() => useEntityForm('book-1', KIND_ID));
     act(() => result.current.setSelectedGenreIds([G_UNIV, G_XIANXIA, G_ROMANCE]));
     await act(async () => { await result.current.submit(); });
-    expect(tieringMocks.setEntityGenres).toHaveBeenCalledWith('book-1', 'e-new', [G_UNIV, G_XIANXIA, G_ROMANCE], 'tok');
+    expect(glossaryMocks.createEntity).toHaveBeenCalledWith('book-1', KIND_ID, 'tok', [G_UNIV, G_XIANXIA, G_ROMANCE]);
+    // No separate setEntityGenres round-trip — it's atomic in createEntity now.
+    expect(tieringMocks.setEntityGenres).not.toHaveBeenCalled();
   });
 
   it('writes filled attribute values mapped through their value rows', async () => {
