@@ -24,12 +24,12 @@
 
 | # | Quyết định | Chốt (đề xuất) |
 |---|---|---|
-| **M1 / G1** | Reconciliation node-kind glossary↔KG | **(b) adopt-gated**: adopt template KG **fail sớm** nếu book glossary thiếu kind cần ("adopt X,Y trong glossary trước"). Không cross-service write ngầm. Cần D1 (glossary internal-ontology read) để check. |
+| **M1 / G1** | Reconciliation node-kind glossary↔KG | **🔒 LOCKED S0 — adopt-gated PER-KIND STRENGTH**: mỗi expected kind mang `strength` (`kg_schema_node_kinds`, spec §3.2b). Adopt **BLOCK** nếu thiếu kind `required`; thiếu kind `optional` → warn + `unknown_node_kind` triage. Không cross-service write ngầm. Cần D1 (glossary internal-ontology read) để check. `xianxia-harem`: required = character/organization/location/concept/technique; optional = item/event/relationship. |
 | **M2 / C4** | Seam partition | `graph_id` **trên EDGE** (node dùng chung). View = read-only lens. View≠partition (không continuum). |
 | **M3 / B4** | Schema versioning | `schema_version` trên `kg_graph_schemas`, **stamp lên edge/fact** lúc write. Edit additive; rename/remove = deprecate-only. |
 | Q1 | Đa-schema-active/project | **v1: một project-schema active** (merge lúc adopt). Đa-template → để lớp 4. |
-| Q2 | Free-edge policy | **v1: `allow_free_edges=true` mặc định** (giữ hành vi free-string hiện tại); siết theo `kg_edge_types` là opt-in per-schema. Tránh vỡ project cũ. |
-| Q3 | Fact-type narrative | Seed trong `xianxia-harem`: `realm_change, allegiance_shift, motivation_shift, death, breakthrough`. `general` giữ bộ cũ. **PO duyệt danh sách ở S0.** |
+| Q2 | Free-edge policy | **🔒 LOCKED S0: `allow_free_edges=true` mặc định** (giữ hành vi free-string hiện tại); siết theo `kg_edge_types` là opt-in per-schema. Tránh vỡ project cũ. |
+| Q3 | Fact-type narrative | **🔒 LOCKED S0** — `xianxia-harem` seed 9 type: `realm_change, allegiance_shift, motivation_shift, death, breakthrough, battle_outcome, betrayal, bloodline_awakening, oath_or_vow`. `general` giữ bộ cũ. |
 | Q4 | Grant-level schema-write trong project shared | **Manage-gate** (mirror glossary). View **per-user** (UNIQUE project+user+code). |
 | Q5 | Drive vocab dùng chung | **v1: per-template** (`drive` trong `xianxia-harem`). Cấp system-shared để lớp sau (liên đới Q1). |
 
@@ -65,7 +65,7 @@
   - `app/db/neo4j_schema.py` — additive: property `graph_id`(edge, NULL), `schema_version`(edge/fact), index liên quan.
   - `app/main.py` — (KM0) **gỡ đăng ký router legacy** `internal_tools`; (sau) là chỗ pre-register router mới (xem fix router-choke bên dưới).
 - **File mới:**
-  - `app/db/ontology_models.py` — định nghĩa `kg_graph_schemas`, `kg_edge_types`, `kg_fact_types`, `kg_vocab_sets`, `kg_vocab_values`, `kg_views` (DDL §3 spec; scope-keyed UNIQUE). Import 1 dòng vào `models.py`.
+  - `app/db/ontology_models.py` — định nghĩa `kg_graph_schemas`, `kg_edge_types`, `kg_fact_types`, `kg_schema_node_kinds` (M1 strength, §3.2b), `kg_vocab_sets`, `kg_vocab_values`, `kg_views` (DDL §3 spec; scope-keyed UNIQUE). Import 1 dòng vào `models.py`.
   - `app/db/seed_graph_schemas.py` — seed system `general` (= ontology hardcode hiện tại) + `xianxia-harem` (VCTĐ §4 edges + §3.4 drives).
   - `app/db/repositories/graph_schemas.py` — **read + resolution query** (dùng bởi LA; read-only cho các lane khác).
 - **KM0 — Legacy MCP path retirement (do-first, spec MCP §8):** XÓA `app/routers/internal_tools.py` (`/internal/tools/execute` + `/internal/tools/definitions`) + đăng ký trong `main.py`; XÓA chat-service `app/client/knowledge_client.py::execute_tool()` (dead parity) + test legacy (`test_internal_tools.py`, `test_mcp_envelope_parity.py`); sửa stale docstring `tools/definitions.py`. **Precondition:** grep-verify 0 runtime caller (done) + check `infra/docker-compose.yml`/healthcheck. **Tại sao ở L1:** đụng `main.py` (cùng file router-registration) → gộp vào trunk, không để lane song song đụng.
@@ -111,7 +111,7 @@
     - `POST /v1/kg/system/graph-schemas` (admin-only sau `requireAdmin` placeholder)
   - `app/db/repositories/ontology_mutations.py` — adopt deep-copy, sync diff/apply, CRUD writes, `content_hash`/`source_hash`.
 - **Dùng:** `resolver.py` (LA, read), `graph_schemas.py` (L1, read).
-- **VERIFY:** adopt copy-down + idempotent; sync diff/apply tree-level; tenancy deny-test (user B không đụng schema user A — bài học [[e0-grant-mapping-test-pattern]]); adopt-gated 422 khi glossary thiếu kind.
+- **VERIFY:** adopt copy-down + idempotent; sync diff/apply tree-level; tenancy deny-test (user B không đụng schema user A — bài học [[e0-grant-mapping-test-pattern]]); adopt-gated per-kind strength: **422 khi thiếu kind `required`**, **proceed+warn khi chỉ thiếu kind `optional`** (M1).
 - **Stop point S2-LC:** POST-REVIEW (adopt/sync usable).
 - **Composition C3:** API thật → LE/LF bỏ mock.
 
