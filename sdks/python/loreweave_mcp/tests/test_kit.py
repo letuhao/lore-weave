@@ -1,0 +1,439 @@
+"""Tests for the shared Python MCP kit (C-KIT-PY / S-KIT-PY DoD).
+
+Covers:
+  - build_tool_context header extraction (+ bad/missing token rejected, SEC-1)
+  - all three guards: book / user / project — happy + denied + fail-closed (H15)
+  - uniform_not_accessible (H13)
+  - confirm mint->verify round-trip (+ expired + tampered rejected, INV-9)
+  - the _meta validator rejection (C-TOOL)
+"""
+
+from __future__ import annotations
+
+import uuid
+
+import pytest
+from mcp.server.fastmcp.exceptions import ToolError
+
+from loreweave_mcp import (
+    ConfirmTokenExpired,
+    ConfirmTokenInvalid,
+    ForbidExtra,
+    MetaValidationError,
+    NotAccessibleError,
+    ToolContext,
+    build_tool_context,
+    make_stateless_fastmcp,
+    mint_confirm_token,
+    require_book_owner,
+    require_meta,
+    require_project,
+    require_user_scope,
+    uniform_not_accessible,
+    validate_tool_meta,
+    verify_confirm_token,
+)
+
+SECRET = "test-internal-token-not-a-real-secret"  # noqa: S105 — test fixture only
+SIGNING_SECRET = "test-signing-secret-fixture"  # noqa: S105 — test fixture only
+
+
+# ── fakes ─────────────────────────────────────────────────────────────
+
+
+class _FakeHeaders:
+    """Case-insensitive header bag mimicking starlette's Headers.get()."""
+
+    def __init__(self, mapping: dict[str, str]):
+        self._m = {k.lower(): v for k, v in mapping.items()}
+
+    def get(self, key: str, default=None):
+        return self._m.get(key.lower(), default)
+
+
+class _FakeRequest:
+    def __init__(self, headers: dict[str, str]):
+        self.headers = _FakeHeaders(headers)
+
+
+class _FakeRequestContext:
+    def __init__(self, headers: dict[str, str]):
+        self.request = _FakeRequest(headers)
+
+
+class _FakeMCPContext:
+    def __init__(self, headers: dict[str, str]):
+        self.request_context = _FakeRequestContext(headers)
+
+
+def _ctx(**overrides) -> _FakeMCPContext:
+    headers = {
+        "x-internal-token": SECRET,
+        "x-user-id": str(uuid.uuid4()),
+        "x-session-id": "sess-abc",
+    }
+    headers.update(overrides)
+    return _FakeMCPContext(headers)
+
+
+# ── make_stateless_fastmcp ─────────────────────────────────────────────
+
+
+def test_make_stateless_fastmcp_wiring():
+    srv = make_stateless_fastmcp("test-kit")
+    assert srv.settings.stateless_http is True
+    assert srv.settings.streamable_http_path == "/"
+
+
+# ── build_tool_context (SEC-1) ─────────────────────────────────────────
+
+
+def test_build_tool_context_happy():
+    uid = uuid.uuid4()
+    pid = uuid.uuid4()
+    ctx = _ctx(
+        **{
+            "x-user-id": str(uid),
+            "x-project-id": str(pid),
+            "x-session-id": "sess-1",
+            "x-trace-id": "trace-1",
+        }
+    )
+    tc = build_tool_context(ctx, SECRET)
+    assert isinstance(tc, ToolContext)
+    assert tc.user_id == uid
+    assert tc.project_id == pid
+    assert tc.session_id == "sess-1"
+    assert tc.trace_id == "trace-1"
+
+
+def test_build_tool_context_optional_headers_absent():
+    tc = build_tool_context(_ctx(), SECRET)
+    assert tc.project_id is None
+    assert tc.trace_id is None
+
+
+def test_build_tool_context_missing_token_rejected():
+    ctx = _FakeMCPContext({"x-user-id": str(uuid.uuid4()), "x-session-id": "s"})
+    with pytest.raises(ValueError, match="missing required context header"):
+        build_tool_context(ctx, SECRET)
+
+
+def test_build_tool_context_bad_token_rejected():
+    with pytest.raises(ValueError, match="invalid internal token"):
+        build_tool_context(_ctx(**{"x-internal-token": "wrong"}), SECRET)
+
+
+def test_build_tool_context_empty_configured_secret_rejected():
+    # An empty server-side secret must never accept ANY caller token (fail closed):
+    # even a caller that sends a non-empty token is rejected.
+    with pytest.raises(ValueError, match="invalid internal token"):
+        build_tool_context(_ctx(**{"x-internal-token": "anything"}), "")
+
+
+def test_build_tool_context_missing_user_id_rejected():
+    ctx = _FakeMCPContext({"x-internal-token": SECRET, "x-session-id": "s"})
+    with pytest.raises(ValueError, match="x-user-id"):
+        build_tool_context(ctx, SECRET)
+
+
+def test_build_tool_context_bad_user_uuid_rejected():
+    with pytest.raises(ValueError, match="not a valid UUID"):
+        build_tool_context(_ctx(**{"x-user-id": "not-a-uuid"}), SECRET)
+
+
+def test_build_tool_context_bad_project_uuid_rejected():
+    with pytest.raises(ValueError, match="x-project-id is not a valid UUID"):
+        build_tool_context(_ctx(**{"x-project-id": "nope"}), SECRET)
+
+
+# ── ForbidExtra (INV-2) ────────────────────────────────────────────────
+
+
+def test_forbid_extra_rejects_unknown_field():
+    class Args(ForbidExtra):
+        name: str
+
+    Args(name="ok")  # happy
+    with pytest.raises(Exception):  # pydantic ValidationError
+        Args(name="ok", user_id="injected")
+
+
+# ── uniform_not_accessible (H13) ───────────────────────────────────────
+
+
+def test_uniform_not_accessible_is_tool_error_and_uniform():
+    e1 = uniform_not_accessible()
+    e2 = uniform_not_accessible(KeyError("missing row"))
+    assert isinstance(e1, ToolError)
+    assert isinstance(e1, NotAccessibleError)
+    # Same message regardless of cause → no enumeration oracle.
+    assert str(e1) == str(e2)
+    assert e2.__cause__ is not None
+
+
+# ── book-owner guard (H15) ─────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_book_owner_guard_happy():
+    async def resolver(book_id, user_id):
+        return 4  # owner
+
+    guard = require_book_owner(resolver, level=3)
+    tc = ToolContext(user_id=uuid.uuid4(), session_id="s")
+    assert await guard(tc, uuid.uuid4()) == 4
+
+
+@pytest.mark.asyncio
+async def test_book_owner_guard_denied_low_level():
+    async def resolver(book_id, user_id):
+        return 1  # view only
+
+    guard = require_book_owner(resolver, level=3)
+    tc = ToolContext(user_id=uuid.uuid4(), session_id="s")
+    with pytest.raises(NotAccessibleError):
+        await guard(tc, uuid.uuid4())
+
+
+@pytest.mark.asyncio
+async def test_book_owner_guard_fail_closed_on_resolver_error():
+    async def resolver(book_id, user_id):
+        raise RuntimeError("grant authority down")
+
+    guard = require_book_owner(resolver, level=1)
+    tc = ToolContext(user_id=uuid.uuid4(), session_id="s")
+    with pytest.raises(NotAccessibleError):
+        await guard(tc, uuid.uuid4())
+
+
+@pytest.mark.asyncio
+async def test_book_owner_guard_caches_positive_only():
+    calls = {"n": 0}
+
+    async def resolver(book_id, user_id):
+        calls["n"] += 1
+        return 4
+
+    guard = require_book_owner(resolver, level=1, cache_ttl_s=1000.0)
+    tc = ToolContext(user_id=uuid.uuid4(), session_id="s")
+    book = uuid.uuid4()
+    await guard(tc, book)
+    await guard(tc, book)
+    assert calls["n"] == 1  # second call served from positive cache
+
+
+@pytest.mark.asyncio
+async def test_book_owner_guard_does_not_cache_denials():
+    state = {"level": 0}
+
+    async def resolver(book_id, user_id):
+        return state["level"]
+
+    guard = require_book_owner(resolver, level=1, cache_ttl_s=1000.0)
+    tc = ToolContext(user_id=uuid.uuid4(), session_id="s")
+    book = uuid.uuid4()
+    with pytest.raises(NotAccessibleError):
+        await guard(tc, book)
+    # Grant just landed — must NOT be stale-denied (denials are never cached).
+    state["level"] = 4
+    assert await guard(tc, book) == 4
+
+
+# ── user-scope guard (H15) ─────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_user_scope_guard_happy():
+    uid = uuid.uuid4()
+
+    async def owner_of(ctx, resource_id):
+        return uid
+
+    guard = require_user_scope(owner_of)
+    tc = ToolContext(user_id=uid, session_id="s")
+    assert await guard(tc, uuid.uuid4()) == uid
+
+
+@pytest.mark.asyncio
+async def test_user_scope_guard_denied_other_owner():
+    async def owner_of(ctx, resource_id):
+        return uuid.uuid4()  # someone else
+
+    guard = require_user_scope(owner_of)
+    tc = ToolContext(user_id=uuid.uuid4(), session_id="s")
+    with pytest.raises(NotAccessibleError):
+        await guard(tc, uuid.uuid4())
+
+
+@pytest.mark.asyncio
+async def test_user_scope_guard_fail_closed_on_missing():
+    async def owner_of(ctx, resource_id):
+        raise LookupError("no such model row")
+
+    guard = require_user_scope(owner_of)
+    tc = ToolContext(user_id=uuid.uuid4(), session_id="s")
+    with pytest.raises(NotAccessibleError):
+        await guard(tc, uuid.uuid4())
+
+
+@pytest.mark.asyncio
+async def test_user_scope_guard_accepts_sync_owner_of():
+    uid = uuid.uuid4()
+
+    def owner_of(ctx, resource_id):  # sync resolver
+        return uid
+
+    guard = require_user_scope(owner_of)
+    tc = ToolContext(user_id=uid, session_id="s")
+    assert await guard(tc, uuid.uuid4()) == uid
+
+
+# ── project-scope guard (H15) ──────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_project_guard_requires_envelope():
+    guard = require_project()
+    tc = ToolContext(user_id=uuid.uuid4(), session_id="s", project_id=None)
+    with pytest.raises(NotAccessibleError):
+        await guard(tc)
+
+
+@pytest.mark.asyncio
+async def test_project_guard_happy_no_owner_check():
+    pid = uuid.uuid4()
+    guard = require_project()
+    tc = ToolContext(user_id=uuid.uuid4(), session_id="s", project_id=pid)
+    assert await guard(tc) == pid
+
+
+@pytest.mark.asyncio
+async def test_project_guard_membership_happy_and_denied():
+    uid = uuid.uuid4()
+    pid = uuid.uuid4()
+
+    async def owner_ok(ctx, project_id):
+        return uid
+
+    async def owner_other(ctx, project_id):
+        return uuid.uuid4()
+
+    tc = ToolContext(user_id=uid, session_id="s", project_id=pid)
+    assert await require_project(owner_ok)(tc) == pid
+    with pytest.raises(NotAccessibleError):
+        await require_project(owner_other)(tc)
+
+
+@pytest.mark.asyncio
+async def test_project_guard_fail_closed_on_error():
+    async def owner_of(ctx, project_id):
+        raise RuntimeError("membership lookup down")
+
+    tc = ToolContext(user_id=uuid.uuid4(), session_id="s", project_id=uuid.uuid4())
+    with pytest.raises(NotAccessibleError):
+        await require_project(owner_of)(tc)
+
+
+# ── confirm-token spine (INV-9) ────────────────────────────────────────
+
+
+def test_confirm_token_round_trip():
+    uid = uuid.uuid4()
+    rid = uuid.uuid4()
+    payload = {"action": "publish_batch", "chapters": [1, 2, 3]}
+    tok = mint_confirm_token(SIGNING_SECRET, uid, rid, "book.publish_batch", payload)
+    claims = verify_confirm_token(SIGNING_SECRET, tok)
+    assert claims.user_id == uid
+    assert claims.resource_id == rid
+    assert claims.descriptor == "book.publish_batch"
+    assert claims.payload == payload
+
+
+def test_confirm_token_expired_rejected():
+    uid, rid = uuid.uuid4(), uuid.uuid4()
+    # Minted in the past with a tiny TTL.
+    tok = mint_confirm_token(
+        SIGNING_SECRET, uid, rid, "book.delete", {}, ttl=10, now=1_000.0
+    )
+    with pytest.raises(ConfirmTokenExpired):
+        verify_confirm_token(SIGNING_SECRET, tok, now=2_000.0)
+
+
+def test_confirm_token_tampered_payload_rejected():
+    uid, rid = uuid.uuid4(), uuid.uuid4()
+    tok = mint_confirm_token(SIGNING_SECRET, uid, rid, "book.delete", {"n": 1})
+    payload_b64, sig_b64 = tok.split(".")
+    # Flip a char in the payload — signature no longer matches.
+    forged = payload_b64[:-1] + ("A" if payload_b64[-1] != "A" else "B")
+    with pytest.raises(ConfirmTokenInvalid):
+        verify_confirm_token(SIGNING_SECRET, forged + "." + sig_b64)
+
+
+def test_confirm_token_wrong_secret_rejected():
+    uid, rid = uuid.uuid4(), uuid.uuid4()
+    tok = mint_confirm_token(SIGNING_SECRET, uid, rid, "book.delete", {})
+    with pytest.raises(ConfirmTokenInvalid):
+        verify_confirm_token("different-secret", tok)
+
+
+def test_confirm_token_malformed_rejected():
+    with pytest.raises(ConfirmTokenInvalid):
+        verify_confirm_token(SIGNING_SECRET, "no-dot-here")
+
+
+def test_confirm_token_mint_requires_secret_and_descriptor():
+    uid, rid = uuid.uuid4(), uuid.uuid4()
+    with pytest.raises(ConfirmTokenInvalid):
+        mint_confirm_token("", uid, rid, "book.delete", {})
+    with pytest.raises(ConfirmTokenInvalid):
+        mint_confirm_token(SIGNING_SECRET, uid, rid, "   ", {})
+
+
+def test_confirm_token_wire_format_matches_go_scheme():
+    """Wire format = base64url(payload_json).base64url(hmac) with NO padding
+    (Go base64.RawURLEncoding) — the cross-language interop contract."""
+    uid, rid = uuid.uuid4(), uuid.uuid4()
+    tok = mint_confirm_token(SIGNING_SECRET, uid, rid, "book.delete", {})
+    assert tok.count(".") == 1
+    payload_b64, sig_b64 = tok.split(".")
+    # No '=' padding (RawURLEncoding); URL-safe alphabet only.
+    assert "=" not in payload_b64 and "=" not in sig_b64
+    assert "+" not in tok and "/" not in tok
+
+
+# ── _meta validator (C-TOOL) ───────────────────────────────────────────
+
+
+def test_require_meta_happy():
+    meta = require_meta("W", "book", undo_hint={"tool": "book_delete"}, synonyms=["rm"])
+    assert meta["tier"] == "W" and meta["scope"] == "book"
+
+
+def test_validate_tool_meta_rejects_missing_meta():
+    with pytest.raises(MetaValidationError):
+        validate_tool_meta(None, tool_name="book_x")
+
+
+def test_validate_tool_meta_rejects_missing_tier():
+    with pytest.raises(MetaValidationError, match="tier"):
+        validate_tool_meta({"scope": "book"}, tool_name="book_x")
+
+
+def test_validate_tool_meta_rejects_missing_scope():
+    with pytest.raises(MetaValidationError, match="scope"):
+        validate_tool_meta({"tier": "R"}, tool_name="book_x")
+
+
+def test_validate_tool_meta_rejects_bad_enum():
+    with pytest.raises(MetaValidationError):
+        validate_tool_meta({"tier": "Z", "scope": "book"})
+    with pytest.raises(MetaValidationError):
+        validate_tool_meta({"tier": "R", "scope": "galaxy"})
+
+
+def test_validate_tool_meta_rejects_bad_undo_hint_and_synonyms():
+    with pytest.raises(MetaValidationError):
+        validate_tool_meta({"tier": "A", "scope": "book", "undo_hint": {"no_tool": 1}})
+    with pytest.raises(MetaValidationError):
+        validate_tool_meta({"tier": "R", "scope": "none", "synonyms": "notalist"})
