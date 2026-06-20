@@ -56,7 +56,7 @@ func (s *Server) listKinds(w http.ResponseWriter, r *http.Request) {
 
 // loadKinds returns the global SYSTEM kind catalog + attribute definitions
 // (visible kinds only). Non-HTTP core shared by the listKinds HTTP endpoint and the
-// glossary_list_kinds MCP tool. System kinds are GLOBAL (not book-scoped).
+// glossary_list_system_standards MCP tool. System kinds are GLOBAL (not book-scoped).
 //
 // G4: genre_tags / system_kind_attributes are gone — genre membership now comes from
 // the system_kind_genres link table (→ system_genres.code) and attributes from the

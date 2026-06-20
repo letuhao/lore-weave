@@ -15,6 +15,7 @@ import type {
   Confidence,
   EntityRevisionSummary,
   EntityRevisionDetail,
+  ActionPreview,
 } from './types';
 
 const BASE = '/v1/glossary';
@@ -73,11 +74,22 @@ export const glossaryApi = {
     return apiJson<GlossaryEntity>(`${BASE}/books/${bookId}/entities/${entityId}`, { token });
   },
 
-  // Tier-S (P4): the token-gated schema-create. The assistant proposed a new
-  // kind/attribute (minting `confirmToken`); this confirms it after the human
-  // clicks Confirm. The endpoint is JWT-only — no gateway/MCP route reaches it.
-  confirmSchema(confirmToken: string, token: string): Promise<unknown> {
-    return apiJson<unknown>(`${BASE}/schema/confirm`, {
+  // Generalized class-C confirm (spec §13). The assistant proposed a high-impact
+  // action (schema create, book_delete, …) minting `confirmToken`; this confirms it
+  // after the human clicks Confirm. JWT-only — no gateway/MCP route reaches it.
+  // Single-use: a replay or a stale/expired token 422s.
+  confirmAction(confirmToken: string, token: string): Promise<unknown> {
+    return apiJson<unknown>(`${BASE}/actions/confirm`, {
+      method: 'POST',
+      body: JSON.stringify({ confirm_token: confirmToken }),
+      token,
+    });
+  },
+
+  // Non-consuming current-state render of a pending action's confirm card (§13.5).
+  // Called when the card mounts so the human confirms against what is true NOW.
+  previewAction(confirmToken: string, token: string): Promise<ActionPreview> {
+    return apiJson<ActionPreview>(`${BASE}/actions/preview`, {
       method: 'POST',
       body: JSON.stringify({ confirm_token: confirmToken }),
       token,

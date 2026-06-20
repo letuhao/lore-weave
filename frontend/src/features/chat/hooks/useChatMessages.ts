@@ -39,10 +39,10 @@ export type FrontendToolOutcome =
   | 'applied_saved'
   | 'applied_conflict'
   | 'applied_error'
-  // Tier-S schema confirm (P4)
-  | 'schema_created'
+  // Generalized class-C action confirm (spec §13) — supersedes the schema_* set
+  | 'action_done'
   | 'token_expired'
-  | 'schema_error'
+  | 'action_error'
   | 'cancelled';
 
 export function useChatMessages(

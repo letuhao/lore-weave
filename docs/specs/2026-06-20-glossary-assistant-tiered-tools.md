@@ -271,3 +271,88 @@ Create/patch/delete collapse to `glossary_book_create|patch|delete` with a `leve
 | **T5 cross-cutting** | — | glossary skill prompt per-surface + curation tests | — | — | — |
 
 Auth-service: **no change** — admin tools reuse the shipped `/v1/admin/session` RS256 exchange. The "single-service" framing in earlier phase tables applies only to T1–T3's *backend*; the FE/chat surfaces are always part of the phase.
+
+---
+
+## 13. CP-0 Confirm-Contract Appendix (DESIGN LOCK — 2026-06-20)
+
+The binding contract for the **generalized class-C confirm machinery** (F1) and its FE card (F3). This is the spec-side output of CP-0; no code. PO decisions baked in (2026-06-20): canary = `book_delete`; the legacy schema-confirm path is **migrated** onto this machinery during Foundation; token mechanism = **stateless domain-separated HMAC + a `jti` single-use ledger** (extends `schema_confirm_token.go`, not a rewrite).
+
+### 13.1 Action descriptors
+A descriptor names a class-C action; one mint/confirm path serves all. Class W (book/user create-patch) and R (reads) never mint a token.
+
+| Descriptor | Authority | Foundation status | Effect (re-validated at confirm) |
+|---|---|---|---|
+| `book_delete` | grant (Manage) | **LIVE (canary)** | soft `deprecated_at` cascade of a book genre/kind/attribute (`level` + `code`/`id` in params) — handlers from G3b |
+| `schema_create_kind` | grant (Manage) | **LIVE (migrated)** | `createKindFromParams` (book-tier post-G4) — replaces legacy `glossary_propose_new_kind`→`confirmSchema` |
+| `schema_create_attribute` | grant (Manage) | **LIVE (migrated)** | `createAttrDefFromParams` (book-tier) — replaces legacy `glossary_propose_new_attribute` |
+| `adopt` · `sync_apply` · `book_set_active_genres` · `book_set_kind_genres` | grant (Manage) | **RESERVED** (T1/T2) | scaffold / sync-apply / set-replace diff |
+| `system_create` · `system_patch` · `system_delete` | **admin (RS256)** | **RESERVED** (T4) | System-tier write; confirm re-checks `admin:write` |
+
+The enum is closed and validated on both mint and confirm — an unknown descriptor fails closed.
+
+### 13.2 Confirm-token claims (generalizes `schemaClaims`)
+```
+actionClaims {
+  jti        string          // NEW — single-use id (uuid); recorded in consumed_tokens at confirm
+  auth       "grant"|"admin" // NEW — authority_kind; selects the confirm-time re-check branch
+  u          uuid            // grant authority: the proposing user (omitted for admin)
+  asub       string          // admin authority: the RS256 admin subject (omitted for grant)
+  b          uuid            // book-scoped actions (book_delete, schema_*, adopt, sync, set-*); omitted for system_*
+  d          string          // descriptor (§13.1)
+  p          json.RawMessage // opaque params captured at mint (resolved ids, validated codes)
+  exp        int64           // unix seconds; TTL = schemaTokenTTL (10m) carried forward
+}
+```
+Wire format unchanged from today: `base64url(payload).base64url(HMAC_sha256(domain || payload))`, domain separator bumped to `gloss-action-confirm:v1|`. Forging requires the service JWT secret (full compromise — out of scope, unchanged threat model).
+
+### 13.3 `consumed_tokens` ledger (chain entry `0030`)
+```sql
+CREATE TABLE IF NOT EXISTS consumed_tokens (
+  jti         TEXT PRIMARY KEY,
+  descriptor  TEXT NOT NULL,
+  consumed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  exp         TIMESTAMPTZ NOT NULL         -- enables a future janitor to prune expired rows
+);
+```
+Added as `migrate.Step{"0030_consumed_tokens", UpConsumedTokens}` appended to `chain` in `ledger.go` — **through `RunChain`, never a bare exec** (migration-ledger discipline). Idempotent DDL; its own `execGuarded` advisory lock like the rest of the chain.
+
+### 13.4 Single-use semantics (the C2 guarantee)
+At confirm, the jti is **claimed atomically before the effect**:
+```
+INSERT INTO consumed_tokens(jti, descriptor, exp) VALUES($1,$2,$3)
+  ON CONFLICT (jti) DO NOTHING
+```
+Zero rows affected ⇒ the token was already consumed ⇒ **reject as replay** (422, "already confirmed — propose again"). Non-zero ⇒ proceed to the effect. **Fail-closed**: if the effect then errors, the jti stays recorded (token spent) and the human re-proposes — a spent token never re-applies. (Rationale: a replay must never double-apply even across a slow/failed effect; consume-first is the safe ordering. Documented per-tool.)
+
+### 13.5 Confirm endpoint(s)
+- **`POST /v1/glossary/actions/confirm`** `{ confirm_token }` — JWT-gated (browser only, exactly like `confirmSchema`; the MCP/mint path can never reach it). Flow: `verifyActionToken` (sig + exp + known descriptor) → **claim jti** (§13.4) → **branch authority** by `auth`:
+  - `grant`: `requireUserID == claims.u`, then `requireGrant(claims.b, user, Manage)` re-checked at confirm time (C3 + defense-in-depth, as `confirmSchema` does today).
+  - `admin`: verify RS256 `X-Admin-Token` + `admin:write` (T4; in Foundation this branch returns a clean 501 `not yet enabled` — structured, not wired).
+  → **re-validate the action** against current state (existence / FK / un-deletable `universal`·`unknown` guards / optimistic-concurrency where applicable, §11 #6) → dispatch the descriptor's effect. On drift: a clear, re-proposable 422 (never apply stale intent).
+- **`POST /v1/glossary/actions/preview`** `{ confirm_token }` — JWT-gated, **non-consuming, read-only**. Returns `preview_rows[]` recomputed from **current** state (the §5.1 #5 "preview at confirm render" requirement; e.g. `book_delete`'s cascade blast-radius enumerated now, not at mint). The FE confirm card calls this on render. Implemented for the canary in Foundation; each new descriptor adds its preview branch.
+
+### 13.6 Confirm-card payload (F3, the FE frontend-tool input)
+The propose (mint) tool returns, and the generic `confirm_card` frontend-tool family renders:
+```
+{
+  confirm_token: string,
+  descriptor:    string,          // keys the FE renderer (F3)
+  authority:     "grant"|"admin", // FE chooses user vs admin confirm affordance
+  title:         string,          // human sentence, e.g. 'Delete kind "Cultivation Realm"'
+  preview_rows:  [{ label, value, note? }],  // initial preview; re-fetched via /actions/preview on render
+  destructive:   bool             // red-path styling + extra confirm friction
+}
+```
+The renderer is keyed on `descriptor` with a default fallback row-list, so a new descriptor renders without an FE change (graceful) but can register a richer card.
+
+### 13.7 What Foundation migrates (PO decision #2)
+`mintSchemaToken`/`verifySchemaToken`/`schemaClaims`/`confirmSchema` + the `glossary_propose_new_kind`/`_attribute` MCP tools + the `glossary_confirm_schema` FE tool + `POST /v1/glossary/schema/confirm` are **retired and re-expressed** on this machinery: the two propose tools mint `schema_create_kind`/`schema_create_attribute` action tokens; `glossary_confirm_schema` becomes the generic `confirm_card`; the schema confirm route folds into `/v1/glossary/actions/confirm`. Behavior preserved (still class C, still Manage-gated, still book-tier creates post-G4) — only the plumbing generalizes. A regression test asserts the migrated kind/attribute create still round-trips.
+
+### 13.8 CP-1 exit criteria (the Foundation gate)
+1. `book_delete` round-trips: propose (mint) → `confirm_card` → `/actions/preview` shows current cascade → `/actions/confirm` soft-deletes + cascades.
+2. Replay of a consumed token → 422 (single-use proven).
+3. A patch-style base-version 409 helper exists and is unit-proven (used by T1 patch tools; the 409 path itself is exercised by a helper test even though `book_delete` doesn't patch).
+4. `glossary_list_kinds`→`glossary_list_system_standards` rename live; `glossary_book_ontology_read` returns book-local ontology.
+5. Migrated `schema_create_kind`/`schema_create_attribute` still create (regression green).
+6. `/review-impl` on F1: no HIGH; auth-branch + single-use + fail-closed reviewed.

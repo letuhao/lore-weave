@@ -171,10 +171,12 @@ func (s *Server) Router() http.Handler {
 		// /kinds/reorder, /kind-aliases, and the attribute write routes were removed
 		// here — a regular user must not mutate the shared system catalogue.
 		r.Get("/kinds", s.listKinds)
-		// Tier-S (P4): the assistant's token-gated schema-create path (INV-9/H8).
-		// It still writes the system catalogue today; SS-7 rewires it to mint TIERED
-		// kinds (tracked) so the assistant stops touching shared rows.
-		r.Post("/schema/confirm", s.confirmSchema)
+		// Generalized class-C confirm machinery (spec §13) — the single token-gated,
+		// single-use, human-confirmed write path for every high-impact action
+		// (book_delete + schema creates today; adopt/sync/system later). Supersedes
+		// the retired /schema/confirm. /preview is non-consuming (current-state card).
+		r.Post("/actions/confirm", s.confirmAction)
+		r.Post("/actions/preview", s.previewAction)
 		// Kind-resolution epic: alias table READ (alias_code → kind) for the
 		// unknown-kind review GUI. The write (createKindAlias + reassign) was removed
 		// in SS-4 Milestone C; it returns in SS-7 retargeted at the tiered model.

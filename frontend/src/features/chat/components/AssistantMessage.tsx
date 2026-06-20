@@ -18,7 +18,7 @@ import { AudioReplayPlayer } from './AudioReplayPlayer';
 import { ToolCallIndicator } from './ToolCallIndicator';
 import { ProposeEditCard } from './ProposeEditCard';
 import { GlossaryDiffCard } from './GlossaryDiffCard';
-import { SchemaConfirmCard } from './SchemaConfirmCard';
+import { ConfirmCard } from './ConfirmCard';
 import { useMessageFeedback } from '../hooks/useMessageFeedback';
 import { firePasteToEditor } from '../utils/pasteToEditor';
 import type { ToolCallRecord } from '../types';
@@ -135,7 +135,7 @@ export function AssistantMessage({
       {toolCalls && toolCalls.length > 0 && (() => {
         // H15: route a pending (suspended) frontend tool to its renderer BY NAME.
         // propose_edit → prose card; glossary_propose_entity_edit → diff card.
-        const FRONTEND_TOOLS = ['propose_edit', 'glossary_propose_entity_edit', 'glossary_confirm_schema'];
+        const FRONTEND_TOOLS = ['propose_edit', 'glossary_propose_entity_edit', 'glossary_confirm_action'];
         const isPendingFrontend = (tc: ToolCallRecord) =>
           tc.pending === true && FRONTEND_TOOLS.includes(tc.tool);
         const proposals = toolCalls.filter(isPendingFrontend);
@@ -146,7 +146,7 @@ export function AssistantMessage({
             {proposals.map((tc) => {
               const key = tc.toolCallId ?? tc.tool;
               if (tc.tool === 'glossary_propose_entity_edit') return <GlossaryDiffCard key={key} record={tc} />;
-              if (tc.tool === 'glossary_confirm_schema') return <SchemaConfirmCard key={key} record={tc} />;
+              if (tc.tool === 'glossary_confirm_action') return <ConfirmCard key={key} record={tc} />;
               return <ProposeEditCard key={key} record={tc} />;
             })}
           </>

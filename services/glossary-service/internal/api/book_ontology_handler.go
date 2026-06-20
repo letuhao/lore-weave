@@ -202,19 +202,33 @@ func (s *Server) patchBookGenre(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, detail)
 }
 
-// deleteBookGenre soft-deprecates a book genre and cascades: deprecate its
-// attributes, drop its active/link/per-entity rows (boundary independence — the
-// genre vanishes from the ontology read but the row survives for Sync history).
+// deleteBookGenre soft-deprecates a book genre and cascades (see cascadeDeleteBookGenre).
 func (s *Server) deleteBookGenre(w http.ResponseWriter, r *http.Request) {
 	bookID, genreID, ok := s.bookOntologyTarget(w, r, "genre_id")
 	if !ok {
 		return
 	}
-	ctx := r.Context()
+	found, err := s.cascadeDeleteBookGenre(r.Context(), bookID, genreID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "delete failed")
+		return
+	}
+	if !found {
+		writeError(w, http.StatusNotFound, "GLOSS_NOT_FOUND", "book genre not found")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// cascadeDeleteBookGenre soft-deprecates a book genre and cascades in one tx:
+// deprecate its attributes, drop its active/link/per-entity rows (boundary
+// independence — the genre vanishes from the ontology read but the row survives
+// for Sync history). The single source of truth shared by the HTTP delete handler
+// and the MCP book_delete confirm path. Returns found=false when no live genre matched.
+func (s *Server) cascadeDeleteBookGenre(ctx context.Context, bookID, genreID uuid.UUID) (bool, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "tx failed")
-		return
+		return false, err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 
@@ -222,38 +236,32 @@ func (s *Server) deleteBookGenre(w http.ResponseWriter, r *http.Request) {
 		UPDATE book_genres SET deprecated_at = now(), updated_at = now()
 		WHERE book_id = $1 AND genre_id = $2 AND deprecated_at IS NULL`, bookID, genreID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "deprecate failed")
-		return
+		return false, err
 	}
 	if tag.RowsAffected() == 0 {
-		writeError(w, http.StatusNotFound, "GLOSS_NOT_FOUND", "book genre not found")
-		return
+		return false, nil
 	}
 	if _, err := tx.Exec(ctx,
 		`UPDATE book_attributes SET deprecated_at = now(), updated_at = now()
 		 WHERE book_id = $1 AND genre_id = $2 AND deprecated_at IS NULL`, bookID, genreID); err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "deprecate attrs failed")
-		return
+		return false, err
 	}
 	for _, q := range []string{
 		`DELETE FROM book_active_genres WHERE book_id = $1 AND genre_id = $2`,
 		`DELETE FROM book_kind_genres   WHERE book_id = $1 AND genre_id = $2`,
 	} {
 		if _, err := tx.Exec(ctx, q, bookID, genreID); err != nil {
-			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "cascade failed")
-			return
+			return false, err
 		}
 	}
 	// entity_genres is keyed by genre_id alone (book scope is implied by the genre).
 	if _, err := tx.Exec(ctx, `DELETE FROM entity_genres WHERE genre_id = $1`, genreID); err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "cascade failed")
-		return
+		return false, err
 	}
 	if err := tx.Commit(ctx); err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "commit failed")
-		return
+		return false, err
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return true, nil
 }
 
 // setBookActiveGenres replaces the book's active-genre set (matrix columns).
@@ -386,11 +394,25 @@ func (s *Server) deleteBookKind(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	ctx := r.Context()
+	found, err := s.cascadeDeleteBookKind(r.Context(), bookID, kindID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "delete failed")
+		return
+	}
+	if !found {
+		writeError(w, http.StatusNotFound, "GLOSS_NOT_FOUND", "book kind not found")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// cascadeDeleteBookKind soft-deprecates a book kind and cascades its attributes +
+// genre links in one tx. Shared by the HTTP handler and the MCP book_delete path.
+// Returns found=false when no live kind matched.
+func (s *Server) cascadeDeleteBookKind(ctx context.Context, bookID, kindID uuid.UUID) (bool, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "tx failed")
-		return
+		return false, err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 
@@ -398,29 +420,24 @@ func (s *Server) deleteBookKind(w http.ResponseWriter, r *http.Request) {
 		UPDATE book_kinds SET deprecated_at = now(), updated_at = now()
 		WHERE book_id = $1 AND book_kind_id = $2 AND deprecated_at IS NULL`, bookID, kindID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "deprecate failed")
-		return
+		return false, err
 	}
 	if tag.RowsAffected() == 0 {
-		writeError(w, http.StatusNotFound, "GLOSS_NOT_FOUND", "book kind not found")
-		return
+		return false, nil
 	}
 	if _, err := tx.Exec(ctx,
 		`UPDATE book_attributes SET deprecated_at = now(), updated_at = now()
 		 WHERE book_id = $1 AND kind_id = $2 AND deprecated_at IS NULL`, bookID, kindID); err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "deprecate attrs failed")
-		return
+		return false, err
 	}
 	if _, err := tx.Exec(ctx,
 		`DELETE FROM book_kind_genres WHERE book_id = $1 AND kind_id = $2`, bookID, kindID); err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "unlink failed")
-		return
+		return false, err
 	}
 	if err := tx.Commit(ctx); err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "commit failed")
-		return
+		return false, err
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return true, nil
 }
 
 // setBookKindGenres replaces a kind's genre links (one matrix row).
@@ -590,18 +607,29 @@ func (s *Server) deleteBookAttribute(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	tag, err := s.pool.Exec(r.Context(), `
-		UPDATE book_attributes SET deprecated_at = now(), updated_at = now()
-		WHERE book_id = $1 AND attr_id = $2 AND deprecated_at IS NULL`, bookID, attrID)
+	found, err := s.softDeleteBookAttribute(r.Context(), bookID, attrID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "deprecate failed")
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "delete failed")
 		return
 	}
-	if tag.RowsAffected() == 0 {
+	if !found {
 		writeError(w, http.StatusNotFound, "GLOSS_NOT_FOUND", "book attribute not found")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// softDeleteBookAttribute soft-deprecates one book attribute (no children to
+// cascade). Shared by the HTTP handler and the MCP book_delete path. found=false
+// when no live attribute matched.
+func (s *Server) softDeleteBookAttribute(ctx context.Context, bookID, attrID uuid.UUID) (bool, error) {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE book_attributes SET deprecated_at = now(), updated_at = now()
+		WHERE book_id = $1 AND attr_id = $2 AND deprecated_at IS NULL`, bookID, attrID)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
 }
 
 // ── shared helpers ─────────────────────────────────────────────────────────────

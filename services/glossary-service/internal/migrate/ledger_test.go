@@ -201,6 +201,42 @@ func TestRunChain_TransitionPreservesData(t *testing.T) {
 	}
 }
 
+// TestConsumedTokens_LedgerShapeAndSingleUse — 0030 creates the consumed_tokens table,
+// UpConsumedTokens is idempotent, and the PK + ON CONFLICT DO NOTHING enforces single-use
+// (a second insert of the same jti affects 0 rows — the C2 guarantee at the DDL level).
+func TestConsumedTokens_LedgerShapeAndSingleUse(t *testing.T) {
+	ctx := context.Background()
+	pool := ephemeralDB(t, "glossary_consumed_tokens")
+
+	if err := RunChain(ctx, pool); err != nil {
+		t.Fatalf("RunChain: %v", err)
+	}
+	if reg := regclass(t, pool, "consumed_tokens"); reg == nil {
+		t.Fatal("consumed_tokens table missing after chain")
+	}
+	// idempotent re-run
+	if err := UpConsumedTokens(ctx, pool); err != nil {
+		t.Fatalf("UpConsumedTokens (re-run): %v", err)
+	}
+
+	ins := `INSERT INTO consumed_tokens(jti, descriptor, exp) VALUES ('jti-1','book_delete', now()+interval '10 min')
+	        ON CONFLICT (jti) DO NOTHING`
+	tag, err := pool.Exec(ctx, ins)
+	if err != nil {
+		t.Fatalf("first claim: %v", err)
+	}
+	if tag.RowsAffected() != 1 {
+		t.Fatalf("first claim should insert 1 row, got %d", tag.RowsAffected())
+	}
+	tag2, err := pool.Exec(ctx, ins)
+	if err != nil {
+		t.Fatalf("replay claim: %v", err)
+	}
+	if tag2.RowsAffected() != 0 {
+		t.Fatalf("replay of the same jti must affect 0 rows (single-use), got %d", tag2.RowsAffected())
+	}
+}
+
 // TestApplyOnce_SkipsApplied — a step runs exactly once even across repeated RunChain-
 // style passes; a second ApplyOnce of the same name does not invoke fn again.
 func TestApplyOnce_SkipsApplied(t *testing.T) {

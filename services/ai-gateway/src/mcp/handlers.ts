@@ -40,7 +40,7 @@ export async function handleCallTool(
   const env = extractEnvelope(headers);
   // A CallTool with no caller identity is almost always a bug. Per-tool identity
   // enforcement stays on the PROVIDER (SEC-2 — and some tools, e.g.
-  // glossary_list_kinds, are legitimately global), so the gateway forwards
+  // glossary_list_system_standards, are legitimately global), so the gateway forwards
   // regardless but logs the anomaly for observability rather than failing blind.
   if (!env.userId) {
     log.warn(`tool '${name}' called with no X-User-Id envelope`);

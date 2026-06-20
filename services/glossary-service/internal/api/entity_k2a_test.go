@@ -80,6 +80,10 @@ func runK2aMigrations(t *testing.T, pool *pgxpool.Pool) {
 	if err := migrate.UpGlossaryDropLegacyG4(ctx, pool); err != nil {
 		t.Fatalf("migrate.UpGlossaryDropLegacyG4: %v", err)
 	}
+	// 0030 — backs the generalized class-C confirm machinery's single-use ledger.
+	if err := migrate.UpConsumedTokens(ctx, pool); err != nil {
+		t.Fatalf("migrate.UpConsumedTokens: %v", err)
+	}
 }
 
 // ── schema shape tests ──────────────────────────────────────────────────────

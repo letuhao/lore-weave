@@ -1,4 +1,14 @@
 export type FieldType = 'text' | 'textarea' | 'select' | 'number' | 'date' | 'tags' | 'url' | 'boolean';
+
+// Class-C confirm-card preview (spec §13.6) — the current-state render returned by
+// POST /v1/glossary/actions/preview, keyed on the action `descriptor`.
+export type ActionPreviewRow = { label: string; value: string; note?: string };
+export type ActionPreview = {
+  descriptor: string;
+  title: string;
+  preview_rows: ActionPreviewRow[] | null;
+  destructive: boolean;
+};
 export type EntityStatus = 'draft' | 'active' | 'inactive';
 export type Confidence = 'verified' | 'draft' | 'machine';
 export type Relevance = 'major' | 'appears' | 'mentioned';

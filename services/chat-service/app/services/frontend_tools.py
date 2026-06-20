@@ -22,12 +22,15 @@ from __future__ import annotations
 #   glossary_propose_entity_edit  — edit an existing glossary entity (any book-scoped
 #                                   surface); the browser renders a diff card, the user
 #                                   Applies (version-checked PATCH, H5) or Dismisses.
-#   glossary_confirm_schema       — Tier-S two-step confirm of a proposed new
-#                                   kind/attribute (P4); the browser renders a
-#                                   confirm card, the user Confirms (POST to the
-#                                   token-gated /v1 endpoint) or Cancels.
+#   glossary_confirm_action       — generic class-C confirm of any proposed
+#                                   high-impact glossary action (schema create,
+#                                   book_delete, adopt/sync/system later); the
+#                                   browser renders a confirm card keyed on the
+#                                   action `descriptor`, the user Confirms (POST to
+#                                   the token-gated /v1/glossary/actions/confirm) or
+#                                   Cancels. Supersedes the schema-only confirm card.
 FRONTEND_TOOL_NAMES: frozenset[str] = frozenset(
-    {"propose_edit", "glossary_propose_entity_edit", "glossary_confirm_schema"}
+    {"propose_edit", "glossary_propose_entity_edit", "glossary_confirm_action"}
 )
 
 # OpenAI function-calling schema for the editor write-back tool. Wire-standard;
@@ -169,28 +172,28 @@ GLOSSARY_PROPOSE_EDIT_TOOL: dict = {
 }
 
 
-# OpenAI function-calling schema for the Tier-S schema-confirm frontend tool
-# (glossary-assistant P4). The LLM proposes a kind/attribute with the
-# glossary_propose_new_* MCP tools (which MINT a confirm_token, no write), then
-# calls THIS tool to surface the human confirm step. It suspends; the browser
-# renders a confirm card; on Confirm the FE POSTs the token to the glossary
-# /v1/glossary/schema/confirm endpoint (the only schema-create path). H6: the
-# resume reports the real outcome so the agent can't claim a schema change that
-# didn't happen.
-GLOSSARY_CONFIRM_SCHEMA_TOOL: dict = {
+# OpenAI function-calling schema for the generalized class-C confirm frontend tool.
+# The LLM proposes a high-impact action with a glossary_propose_*/glossary_book_*
+# MCP tool (which MINTS a confirm_token + confirm card, no write), then calls THIS
+# tool to surface the human confirm step. It suspends; the browser renders a confirm
+# card keyed on `descriptor` (re-fetching a current-state preview via
+# /v1/glossary/actions/preview); on Confirm the FE POSTs the token to
+# /v1/glossary/actions/confirm (the only write path). H6: the resume reports the
+# real outcome so the agent can't claim an action that didn't happen.
+GLOSSARY_CONFIRM_ACTION_TOOL: dict = {
     "type": "function",
     "function": {
-        "name": "glossary_confirm_schema",
+        "name": "glossary_confirm_action",
         "description": (
-            "Ask the user to CONFIRM a schema change (a new kind or a new attribute) that "
-            "you proposed with glossary_propose_new_kind / glossary_propose_new_attribute. "
-            "Pass the `confirm_token` you received from that propose call. The change is "
-            "shown to the user with a Confirm button and is NOT applied automatically — "
-            "schema changes are high-impact and ALWAYS require explicit human confirmation. "
-            "After the user decides you receive an `outcome`: `schema_created` (it was "
-            "created), `token_expired` (the confirmation lapsed — propose again to get a "
-            "fresh token), `schema_error` (the create failed), or `cancelled` (the user "
-            "declined). State that the schema changed ONLY when the outcome is `schema_created`."
+            "Ask the user to CONFIRM a high-impact glossary action (a new kind/attribute, "
+            "or DELETING a genre/kind/attribute) that you proposed with a glossary_propose_* "
+            "or glossary_book_delete MCP tool. Pass the `confirm_token` and `descriptor` you "
+            "received from that propose call. The action is shown with a Confirm button and is "
+            "NOT applied automatically — high-impact and destructive changes ALWAYS require "
+            "explicit human confirmation. After the user decides you receive an `outcome`: "
+            "`action_done` (applied), `token_expired` (the confirmation lapsed — propose again), "
+            "`action_error` (it failed), or `cancelled` (the user declined). State that the "
+            "change happened ONLY when the outcome is `action_done`."
         ),
         "parameters": {
             "type": "object",
@@ -199,20 +202,22 @@ GLOSSARY_CONFIRM_SCHEMA_TOOL: dict = {
                     "type": "string",
                     "description": "The confirm_token returned by the propose call.",
                 },
-                "op": {
-                    "type": "string",
-                    "enum": ["kind", "attribute"],
-                    "description": "What is being created — for the confirm card.",
-                },
-                "summary": {
+                "descriptor": {
                     "type": "string",
                     "description": (
-                        "Human-readable summary of the change (the `preview` from the "
-                        "propose call), shown on the confirm card."
+                        "The action `descriptor` from the propose call (e.g. book_delete, "
+                        "schema_create_kind) — keys which confirm card the browser renders."
+                    ),
+                },
+                "title": {
+                    "type": "string",
+                    "description": (
+                        "Human-readable title of the action (the `title` from the propose "
+                        "call), shown on the confirm card."
                     ),
                 },
             },
-            "required": ["confirm_token", "op", "summary"],
+            "required": ["confirm_token", "descriptor", "title"],
             "additionalProperties": False,
         },
     },
@@ -234,7 +239,7 @@ def frontend_tool_defs(*, editor: bool = False, book_scoped: bool = False) -> li
         defs.append(PROPOSE_EDIT_TOOL)
     if book_scoped:
         defs.append(GLOSSARY_PROPOSE_EDIT_TOOL)
-        defs.append(GLOSSARY_CONFIRM_SCHEMA_TOOL)
+        defs.append(GLOSSARY_CONFIRM_ACTION_TOOL)
     return defs
 
 

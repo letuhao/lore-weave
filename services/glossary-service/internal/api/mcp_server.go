@@ -38,11 +38,24 @@ func (s *Server) mcpHandler() http.Handler {
 			"counts) by id, within a book. Use after glossary_search to read an entity in depth.",
 	}, s.toolGetEntity)
 
+	// F2 (§12.3): retarget of the old glossary_list_kinds → the "what CAN I adopt"
+	// standards-browse role. Use BEFORE adopting; for the in-book schema use
+	// glossary_book_ontology_read.
 	mcp.AddTool(srv, &mcp.Tool{
-		Name: "glossary_list_kinds",
-		Description: "List the glossary's entity kinds and their attribute definitions " +
-			"(the schema). Use to learn what kinds/attributes exist before reasoning about entities.",
+		Name: "glossary_list_system_standards",
+		Description: "List the SYSTEM standards catalogue (entity kinds + their attribute " +
+			"definitions) — the templates a book can adopt. Use to learn what standards exist " +
+			"BEFORE scaffolding a book. For what a specific book ALREADY has, use glossary_book_ontology_read.",
 	}, s.toolListKinds)
+
+	// F2 (§12.3 new): the canonical in-book schema read — the book-local genres,
+	// kinds, attributes, and kind↔genre links.
+	mcp.AddTool(srv, &mcp.Tool{
+		Name: "glossary_book_ontology_read",
+		Description: "Read a BOOK's local ontology: its adopted/native genres, kinds, attribute " +
+			"definitions, and kind↔genre links. This is what entities in the book are described by. " +
+			"Use before proposing entities or shaping the book's schema.",
+	}, s.toolBookOntologyRead)
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "glossary_propose_new_entity",
@@ -50,29 +63,40 @@ func (s *Server) mcpHandler() http.Handler {
 			"glossary. It is created as a DRAFT suggestion in the review inbox — NOT canon — and " +
 			"must be approved by a human. If the name already exists, or was previously rejected, " +
 			"no duplicate is created. Call glossary_search first to confirm it doesn't already exist; " +
-			"call glossary_list_kinds to pick a valid kind.",
+			"call glossary_book_ontology_read to pick a valid kind.",
 	}, s.toolProposeNewEntity)
 
-	// Tier-S (P4): schema proposals. These MINT a confirm token (no write) — the
-	// actual create is the human-confirmed, JWT-only /v1/glossary/schema/confirm
-	// (there is deliberately NO MCP tool that creates schema — INV-9/H8). After
-	// calling one, pass its confirm_token to the glossary_confirm_schema frontend
-	// tool so the human can review and confirm.
+	// Class-C proposals. These MINT a generalized action confirm token (no write) +
+	// a confirm card — the actual write is the human-confirmed, JWT-only
+	// /v1/glossary/actions/confirm (there is deliberately NO MCP tool that writes —
+	// INV-T1/INV-T3). After calling one, pass its confirm_token to the
+	// glossary_confirm_action frontend tool so the human can review and confirm.
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "glossary_propose_new_kind",
 		Description: "Propose a NEW entity KIND (a schema-level type like 'Power System' that every " +
 			"entity of that kind is described by). This is high-impact — it does NOT create anything; it " +
 			"returns a confirm_token + preview that a human must explicitly confirm. Pass the confirm_token " +
-			"to glossary_confirm_schema. Use sparingly, only when no existing kind (glossary_list_kinds) fits.",
+			"to glossary_confirm_action. Use sparingly, only when no existing kind (glossary_book_ontology_read) fits.",
 	}, s.toolProposeNewKind)
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "glossary_propose_new_attribute",
 		Description: "Propose a NEW attribute on an existing kind (e.g. add 'cultivation_realm' to the " +
 			"character kind). Schema-level and high-impact — it does NOT write; it returns a confirm_token + " +
-			"preview a human must confirm via glossary_confirm_schema. Call glossary_list_kinds first to pick " +
+			"preview a human must confirm via glossary_confirm_action. Call glossary_book_ontology_read first to pick " +
 			"the kind_code and avoid duplicating an existing attribute.",
 	}, s.toolProposeNewAttribute)
+
+	// CP-1 canary — destructive cascade delete of a book genre/kind/attribute.
+	// Class C: mints a confirm card (cascade blast-radius previewed); the human
+	// confirms via glossary_confirm_action.
+	mcp.AddTool(srv, &mcp.Tool{
+		Name: "glossary_book_delete",
+		Description: "Propose DELETING a book's genre, kind, or attribute (soft-delete with cascade). " +
+			"High-impact and destructive — it does NOT delete; it returns a confirm_token + a preview of " +
+			"everything the cascade will remove, which a human must confirm via glossary_confirm_action. " +
+			"Address by code: level=genre|kind|attribute + code (for attribute also kind_code + genre_code).",
+	}, s.toolBookDelete)
 
 	streamable := mcp.NewStreamableHTTPHandler(
 		func(*http.Request) *mcp.Server { return srv },
@@ -221,6 +245,34 @@ func (s *Server) toolGetEntity(ctx context.Context, _ *mcp.CallToolRequest, in g
 	return nil, getEntityToolOut{Entity: detail}, nil
 }
 
+type bookOntologyReadToolIn struct {
+	BookID string `json:"book_id" jsonschema:"the book whose local ontology to read (UUID)"`
+}
+type bookOntologyReadToolOut struct {
+	Ontology *bookOntologyResp `json:"ontology"`
+}
+
+// toolBookOntologyRead reads a book's local ontology (genres/kinds/attributes/links).
+// View-gated — the in-book schema read for an assistant working inside a book.
+func (s *Server) toolBookOntologyRead(ctx context.Context, _ *mcp.CallToolRequest, in bookOntologyReadToolIn) (*mcp.CallToolResult, bookOntologyReadToolOut, error) {
+	userID, ok := userIDFromCtx(ctx)
+	if !ok {
+		return nil, bookOntologyReadToolOut{}, errors.New("missing caller identity")
+	}
+	bookID, err := uuid.Parse(in.BookID)
+	if err != nil {
+		return nil, bookOntologyReadToolOut{}, errors.New("book_id must be a UUID")
+	}
+	if err := s.checkGrant(ctx, bookID, userID, grantclient.GrantView); err != nil {
+		return nil, bookOntologyReadToolOut{}, uniformOwnershipError(err)
+	}
+	ont, err := s.loadBookOntology(ctx, bookID)
+	if err != nil {
+		return nil, bookOntologyReadToolOut{}, errors.New("failed to load book ontology")
+	}
+	return nil, bookOntologyReadToolOut{Ontology: ont}, nil
+}
+
 func (s *Server) toolListKinds(ctx context.Context, _ *mcp.CallToolRequest, _ listKindsToolIn) (*mcp.CallToolResult, listKindsToolOut, error) {
 	// Kinds are global (not book-scoped); the X-Internal-Token gate is sufficient.
 	kinds, err := s.loadKinds(ctx)
@@ -246,7 +298,7 @@ const tagAssistant = "assistant"
 
 type proposeEntityToolIn struct {
 	BookID     string         `json:"book_id" jsonschema:"the book to add the entity to (UUID)"`
-	Kind       string         `json:"kind" jsonschema:"the entity kind code (e.g. character, place) — see glossary_list_kinds"`
+	Kind       string         `json:"kind" jsonschema:"the entity kind code (e.g. character, place) — see glossary_book_ontology_read"`
 	Name       string         `json:"name" jsonschema:"the entity's name"`
 	Attributes map[string]any `json:"attributes,omitempty" jsonschema:"optional attribute code → value map"`
 }

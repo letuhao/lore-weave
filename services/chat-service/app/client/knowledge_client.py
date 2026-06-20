@@ -110,7 +110,7 @@ def _degraded() -> KnowledgeContext:
 def _normalize_tool_parameters(input_schema: dict | None) -> dict:
     """Normalize an MCP tool's inputSchema to a valid OpenAI function-call
     `parameters` object. OpenAI-compatible providers (e.g. LM Studio) REQUIRE a
-    `properties` object — a tool with an empty input (e.g. glossary_list_kinds,
+    `properties` object — a tool with an empty input (e.g. glossary_list_system_standards,
     whose Go input struct is empty) yields `{"type":"object"}` with no
     `properties`, which 400s the WHOLE request. Default the missing keys so an
     argument-less tool advertises `{"type":"object","properties":{}}`.
