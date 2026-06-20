@@ -825,6 +825,21 @@ pub struct TilemapDefaults {
 
 **Cross-feature dependencies:** TMP_001 derives child-cell anchor positions from MAP_001 `map_layout` author-positioned (x, y). MAP_001 is canonical source of truth; TMP_001 is derived render layer (TMP-A6).
 
+### §2.Y COMB_001 RealityManifest extensions (DRAFT 2026-06-20)
+
+**COMB_001 Combat Foundation** adds 5 OPTIONAL (engine-defaulted) combat-config fields, all per-reality
+(a slice-of-life reality may disable combat entirely; a wuxia/sci-fi reality enables it):
+- `combat_disparity_cap: CombatDisparityCapConfig` — anti-grief damage cap; **5 sub-fields** incl.
+  `apply_to_pve_in_safe_zone: bool` (V1 default true; Q4). Composes with the WA_001 Lex axiom
+  `combat_damage_cap_in_safe_zone` + PF_001 `combat_safety`.
+- `combat_mortality_config: CombatMortalityConfig` — KO→Dying semantics, `ko_duration_rounds` (V1=5), per
+  reality (Q3); per-actor override via ACT_001 `mortality_role`.
+- `initiative_system` — V1 fixed = HSR action value (Q7); reserved for V1+ alternatives.
+- `side_default_setup` — FAC_001-derived side bucketing defaults (Q5; `sides: Vec<Side>` cap 2).
+- `combat_seed_visible: bool` — dev-mode RNG-seed exposure (Q8; V1+).
+
+All additive per I14. See [COMB_001 §6/§7](../features/18_combat/COMB_001_combat_foundation.md).
+
 ### Pending action
 
 Creating `features/01_infrastructure/IF_001_reality_manifest.md` to formally own the envelope is a deferred action. Until that feature ships, this contract IS the truth — features cite "per `_boundaries/02_extension_contracts.md` §2".
@@ -904,6 +919,7 @@ Top-level event category EVT-T8 owned by **07_event_model agent** (Phase 1 LOCKE
 | `Forge:ResolveEncounter { encounter_id, resolution, reason }` (added 2026-05-16 DRAFT — admin force-resolve/skip of a stuck `travel_encounter`; `resolution=Skip` sets status=Skipped and resumes the journey untouched, OR forces a specific outcome) | TVL_004 Travel Encounters |
 | `Forge:GrantMount { owner_actor_id, kind, cell_id, display_name }` (added 2026-05-16 DRAFT — admin grant of a mount/vehicle; creates a `mount` row, `location=AtCell(cell_id)`, `acquired_via=ForgeGrant`) | TVL_003 Mount/Vehicle Travel |
 | `Forge:DisbandParty { party_id, reason }` (added 2026-05-16 DRAFT — admin disband of a `travel_party`; sets status=Disbanded; if the party was Traveling, the leader's bound journey is also Canceled + each member proportionally refunded; members released) | TVL_005 Group/Party Travel |
+| `Forge:CancelCombat { session_id, reason }` (added 2026-06-20 COMB_001 DRAFT — admin escape hatch; force-resolves a stuck `combat_session` to Cancelled, releases participants, no outcome applied; uses `forge_audit_log`) | COMB_001 Combat Foundation |
 
 ### Extension rules
 

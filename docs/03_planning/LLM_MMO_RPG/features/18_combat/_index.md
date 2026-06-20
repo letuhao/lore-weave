@@ -4,9 +4,11 @@
 > **Catalog reference:** `catalog/cat_18_COMB_combat.md` (NOT YET CREATED — defer to COMB_001 DRAFT promotion)
 > **Purpose:** Defines combat resolution including encounter mode, side allegiance, AI action selection, deterministic damage formula, status effect integration, and post-resolution narration. Solves user's V1 combat requirement (simple Pokemon-style hybrid with 2-row positioning; LLM-driven narration but engine-owned math). V2+ promotes to zone-graph tactical RPG using existing CSC_001 zones as battlefield grid (FE-style movement + range + terrain) without breaking TDIL-A5 atomic-per-turn travel. Resolves the long-standing PL_005 Strike "what does combat look like" gap that PROG_001 §9 partially addressed via hybrid LLM-proposes-damage formula.
 
-**Active:** COMB_001 — **Combat Foundation** (CONCEPT 2026-04-27 — Q1-Q9 ALL LOCKED via 4-batch deep-dive 2026-04-27; concept-notes ready for COMB_001 DRAFT promotion; chaos-backend `combat-core` design adoption applied; module decomposition + damage law chain locked)
+**Active:** COMB_001 — **Combat Foundation** (**DRAFT 2026-06-20** — promoted from concept notes; Q1-Q9 LOCKED; **tactical grid (COMB_002) integrated**; 3-layer AI expressed as Agent Decision drivers; 10 closure-pass-extensions declared).
 
-**Folder closure status:** Open — concept-notes Q-LOCKED phase complete; COMB_001 DRAFT promotion pending boundary lock window. User kickoff confirmed 2026-04-27 post TDIL_001 DRAFT; Q-deep-dive completed same session.
+> **⚠ ROADMAP RESHUFFLE 2026-06-20 (medium correction / AUD-F1):** the rendered 2D/2.5D medium pulled **zone-graph tactical combat from V2+ to V1** ([`COMB_002_tactical_grid.md`](COMB_002_tactical_grid.md), `TG-*`), **retiring** the concept-notes §11.1/§11.2 "abstract arena + Front/Back rows". `COMB_002` is now the **V1 tactical grid** (was reserved for "Social Skirmish" — that renumbers to a later COMB_NNN). Reason: the grid was deferred only for LLM-narration token cost (§139), which the graphical medium dissolves.
+
+**Folder closure status:** COMB_001 + COMB_002 DRAFT 2026-06-20 (combined `[boundaries-lock-claim+release]`). User kickoff 2026-04-27; Q-deep-dive same session; DRAFT promotion + grid integration 2026-06-20.
 
 **NOT a foundation tier feature:** Foundation tier remains 6/6 (closed at PROG_001). COMB_001 is a **domain-scale Tier 6 feature** consuming 6 V1 foundations + IDF + FF + FAC + REP + ACT + AIT + TDIL clocks + PROG progression + RES vital_pool + PL_006 status. Opt-in per reality (modern slice-of-life reality may have NO combat; tu tiên / wuxia / sci-fi reality has rich combat).
 
@@ -76,8 +78,9 @@ Translation: LLM intervention should be minimal or zero in combat. LLM only part
 
 | ID | Conversational name | Title | Status | File | Commit |
 |---|---|---|---|---|---|
-| (concept) | **00_CONCEPT_NOTES.md** — COMB_001 brainstorm + market survey + LLM-zero-math constraint LOCKED + 3-layer architecture + chaos-backend module decomposition + Q1-Q9 LOCKED matrix | **CONCEPT Q-LOCKED 2026-04-27** — Q1-Q9 ALL LOCKED via 4-batch deep-dive; ready for DRAFT promotion | [`00_CONCEPT_NOTES.md`](00_CONCEPT_NOTES.md) | pending |
-| COMB_001 | **Combat Foundation** (COMB) | **Q-LOCKED 2026-04-27 awaiting DRAFT promotion** — Side-based 2-row abstract combat V1; engine-owned math + LLM-narrated prose; HSR Action Value initiative; PL_006 status `knocked_out` for KO-intermediate; 4-step damage law chain (chaos-backend); 10 closure-pass-extensions across PROG/PL_005/PL_006/NPC_002/AIT_001/WA_006/WA_001/PF_001/ACT_001/RealityManifest. | DRAFT pending boundary lock | (to be created) | pending |
+| (concept) | **00_CONCEPT_NOTES.md** — COMB_001 brainstorm + market survey + LLM-zero-math constraint LOCKED + 3-layer architecture + chaos-backend module decomposition + Q1-Q9 LOCKED matrix | **CONCEPT Q-LOCKED 2026-04-27** — superseded-by-DRAFT (full derivation reference; §11.1/§11.2 retired by COMB_002) | [`00_CONCEPT_NOTES.md`](00_CONCEPT_NOTES.md) | committed |
+| COMB_001 | **Combat Foundation** (COMB) | **DRAFT 2026-06-20** — engine-owned math + LLM-narrated prose; HSR Action Value initiative; 4-step damage law chain; `combat_session` aggregate; 3-layer AI as Agent Decision drivers; tactical grid integrated; 10 closure-pass-extensions declared. | DRAFT | [`COMB_001_combat_foundation.md`](COMB_001_combat_foundation.md) | this commit |
+| COMB_002 | **Tactical-Grid Combat** (TG) | **DRAFT 2026-06-20** — AUD-F1; square grid (CSC_001 16×16 / arena), move+act budgets (FFT/XCOM), Chebyshev range + corner-line LoS, LLM-zero-space (engine owns all spatial math), NPC bounded-stance positioning. Pulls zone-tactics V2+→V1; retires Front/Back rows. | DRAFT | [`COMB_002_tactical_grid.md`](COMB_002_tactical_grid.md) | 3a6116f6 |
 
 ---
 

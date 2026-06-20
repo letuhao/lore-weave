@@ -6,6 +6,21 @@
 
 ---
 
+## 2026-06-20 — COMB_001 Combat Foundation DRAFT promotion (+ tactical-grid integration + Agent-driver expression)
+
+- **Lock CLAIMED + RELEASED** in single cycle (combined `[boundaries-lock-claim+release]`).
+- **Promoted** COMB_001 from concept-notes (Q1–Q9 LOCKED 2026-04-27) to **DRAFT** — `features/18_combat/COMB_001_combat_foundation.md`. Integrates the **COMB_002 tactical grid** (retires concept §11.1/§11.2 abstract arena + Front/Back rows; **pulls zone-tactics V2+→V1** per AUD-F1) and expresses the 3-layer AI as **Agent Decision drivers** (AGT-A3: PC=Human / Major=Llm via NPC_002 / Minor=Script / Untracked=Engine).
+- **Files landed:**
+  - **NEW** `features/18_combat/COMB_001_combat_foundation.md` (DRAFT).
+  - `features/18_combat/_index.md` — Active→DRAFT; feature-list COMB_001 + COMB_002 rows; roadmap reshuffle note (COMB_002 = V1 tactical grid, was reserved "Social Skirmish" → renumbers later).
+  - `_boundaries/01_feature_ownership_matrix.md` — NEW `combat_session` aggregate row; NEW combat EVT sub-types (EVT-T4 CombatSessionBorn/Resolved + EVT-T3 CombatRoundDelta + EVT-T8 Forge:CancelCombat) in Schema/envelope ownership; `combat.*` (10 V1 rule_ids) added to the RejectReason namespace row; NEW `COMB-*` Stable-ID prefix row.
+  - `_boundaries/02_extension_contracts.md` — NEW §2.Y RealityManifest combat fields (5 OPTIONAL) + §4 `Forge:CancelCombat` sub-shape.
+  - `_LOCK.md` + `99_changelog.md` (this entry).
+  - Dated closure-pass notes on `features/00_progression/PROG_001` (§9 Strike formula REVERSED) + `features/04_play_loop/PL_005` (Strike `damage_amount` drop) + `features/04_play_loop/PL_006` (3 combat status entries + knocked_out).
+- **Design surface declared:** `combat_session` ephemeral aggregate (holds the COMB_002 `tactical_grid`); engine-owned damage law-chain + HSR initiative + LLM-zero-math/zero-space; 10 closure-pass-extensions (PROG_001/PL_005/PL_006/NPC_002/AIT_001/WA_006/WA_001/PF_001/ACT_001/RealityManifest) — **3 load-bearing applied as dated notes this cycle**; the remaining 6 apply incrementally when each feature is next opened (behavioral-closure deferral, per the travel-arc precedent). **DRAFT ready for /review-impl.** NEXT: PCS_001 PC Substrate kickoff (full V1 vertical slice) / the remaining closure-pass notes / `contracts/agent/` SDK scaffolding.
+
+---
+
 ## 2026-06-20 — Medium-correction registration batch (08–11 + COMB_002 standards into the matrix)
 
 - **Lock CLAIMED + RELEASED** in single cycle (combined `[boundaries-lock-claim+release]`). Pure registration of standards already designed + committed this session (commits `dd005622`→`5d753e8c`); no new design.
