@@ -13,6 +13,11 @@ class Settings(BaseSettings):
     composition_db_url: str
     internal_service_token: str
     jwt_secret: str
+    # DEDICATED confirm-token signing secret (key-split from internal_service_token).
+    # The Tier-W confirm token is minted/verified with THIS secret, NOT the envelope
+    # gate token — so rotating/compromising one does not affect the other. Fail-closed:
+    # the service refuses to start if unset (env CONFIRM_TOKEN_SIGNING_SECRET).
+    confirm_token_signing_secret: str
 
     # Optional with defaults.
     redis_url: str = "redis://redis:6379"

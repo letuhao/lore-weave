@@ -167,6 +167,19 @@ class BookClient:
             logger.warning("book sort-orders unavailable: %s", exc)
             return {}
 
+    async def publish_chapter(
+        self, book_id: UUID, chapter_id: UUID, bearer: str,
+    ) -> dict[str, Any]:
+        """Canonize the chapter draft (Canon Model CM1: draft → published). POSTs
+        to book-service's public `/publish` route (JWT-only — book-service enforces
+        ownership in SQL on the JWT `sub`). Used by the S-COMPOSE Tier-W
+        `composition_publish` confirm path. Raises BookClientError on any non-2xx /
+        transport (e.g. 409 if there is no draft revision to pin)."""
+        resp = await self._request(
+            "POST", f"/v1/books/{book_id}/chapters/{chapter_id}/publish", bearer,
+        )
+        return self._raise_for_status(resp)
+
     async def list_revisions(
         self, book_id: UUID, chapter_id: UUID, bearer: str, *, limit: int = 1,
     ) -> dict[str, Any]:
