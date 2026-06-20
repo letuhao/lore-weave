@@ -47,11 +47,18 @@ from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import Field
 
 from app.clients.embedding_client import get_embedding_client
+from app.clients.grant_client import get_grant_client
 from app.config import settings
 from app.db.neo4j_repos.facts import FactType
 from app.db.pool import get_knowledge_pool
+from app.db.repositories.graph_schemas import GraphSchemasRepo
+from app.db.repositories.graph_views import GraphViewsRepo
+from app.db.repositories.ontology_mutations import OntologyMutationsRepo
 from app.db.repositories.pending_facts import PendingFactsRepo
 from app.db.repositories.projects import ProjectsRepo
+from app.db.repositories.triage import TriageRepo
+from app.ontology.resolver import OntologyResolver
+from app.routers.public.ontology import get_glossary_ontology_client
 from app.tools.definitions import (
     SEARCH_LIMIT_DEFAULT,
     SEARCH_LIMIT_MAX,
@@ -59,6 +66,18 @@ from app.tools.definitions import (
     TIMELINE_LIMIT_MAX,
 )
 from app.tools.executor import ToolContext, execute_tool, get_tools_redis
+from app.tools.graph_schema_tools import (
+    GRAPH_LIMIT_DEFAULT,
+    GRAPH_LIMIT_MAX,
+    TRIAGE_LIMIT_DEFAULT,
+    TRIAGE_LIMIT_MAX,
+)
+from app.tools.graph_schema_tools import (
+    TIMELINE_LIMIT_DEFAULT as KG_TIMELINE_LIMIT_DEFAULT,
+)
+from app.tools.graph_schema_tools import (
+    TIMELINE_LIMIT_MAX as KG_TIMELINE_LIMIT_MAX,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -143,14 +162,29 @@ def _build_tool_context(ctx: MCPContext) -> ToolContext:
     session_id = _require_header(ctx, "x-session-id")
 
     pool = get_knowledge_pool()
+    projects_repo = ProjectsRepo(pool)
     return ToolContext(
         user_id=user_id,
         project_id=project_id,
         session_id=session_id,
-        projects_repo=ProjectsRepo(pool),
+        projects_repo=projects_repo,
         pending_facts_repo=PendingFactsRepo(pool),
         embedding_client=get_embedding_client(),
         redis=get_tools_redis(),
+        # Lane LF (KG ontology MCP tools) deps — same process-singleton pool +
+        # grant-client getter the HTTP routers/deps.py use, constructed directly
+        # (the repos take a sync pool positional; the grant client is a process
+        # singleton). Populated for the unified /mcp surface.
+        grant_client=get_grant_client(),
+        graph_views_repo=GraphViewsRepo(pool),
+        graph_schemas_repo=GraphSchemasRepo(pool),
+        triage_repo=TriageRepo(pool),
+        ontology_resolver=OntologyResolver(
+            schemas=GraphSchemasRepo(pool),
+            projects=projects_repo,
+            glossary=get_glossary_ontology_client(),
+        ),
+        ontology_mutations_repo=OntologyMutationsRepo(pool),
     )
 
 
@@ -310,6 +344,306 @@ async def memory_forget(
     fact_id: Annotated[str, "The id of the fact to invalidate."],
 ) -> dict:
     return await _dispatch(ctx, "memory_forget", {"fact_id": fact_id})
+
+
+# ── KG ontology tools (lane LF; KM1/KM2 + R-class KM3/KM4) ─────────────
+# Descriptions mirror app/tools/graph_schema_tools.py verbatim. Only the
+# safe tiers are exposed here — R (read) + reversible W. The class-C
+# ontology tools (adopt / schema-edit / sync-apply / schema-mutating-triage
+# / handoff / admin) are DEFERRED to KM6 (confirm-token machinery) and are
+# intentionally absent from this catalog (INV-T3 / D-KG-LF-KM6).
+
+
+@mcp_server.tool(
+    name="kg_graph_query",
+    description=(
+        "Read the current project's knowledge graph as nodes + edges, "
+        "optionally narrowed to a named view (lens) and to a point in the "
+        "story via a chapter ordinal. Use this to see who relates to whom as "
+        "of a given chapter. Returns nodes, edges, and any warnings."
+    ),
+)
+async def kg_graph_query(
+    ctx: MCPContext,
+    view: Annotated[
+        str | None,
+        "Optional view code (a saved lens). Omit to read the whole graph.",
+    ] = None,
+    as_of_chapter: Annotated[
+        int | None,
+        Field(ge=0),
+        "Optional chapter ordinal — the graph as it stood at that chapter. "
+        "Omit for the latest state.",
+    ] = None,
+    limit: Annotated[
+        int,
+        Field(ge=1, le=GRAPH_LIMIT_MAX),
+        f"Max edges to scan (default {GRAPH_LIMIT_DEFAULT}).",
+    ] = GRAPH_LIMIT_DEFAULT,
+) -> dict:
+    args: dict[str, Any] = {"limit": limit}
+    if view is not None:
+        args["view"] = view
+    if as_of_chapter is not None:
+        args["as_of_chapter"] = as_of_chapter
+    return await _dispatch(ctx, "kg_graph_query", args)
+
+
+@mcp_server.tool(
+    name="kg_entity_edge_timeline",
+    description=(
+        "Retrieve the ordered temporal chain of one relationship type for a "
+        "single entity (e.g. a character's drive arc). Use an entity id and an "
+        "edge-type code seen in an earlier graph result. Returns the full arc, "
+        "including closed (superseded) instances."
+    ),
+)
+async def kg_entity_edge_timeline(
+    ctx: MCPContext,
+    entity_id: Annotated[str, "The entity id (as seen in a graph result)."],
+    edge_type: Annotated[str, "The relationship edge-type code to trace."],
+    limit: Annotated[
+        int,
+        Field(ge=1, le=KG_TIMELINE_LIMIT_MAX),
+        f"Max instances (default {KG_TIMELINE_LIMIT_DEFAULT}).",
+    ] = KG_TIMELINE_LIMIT_DEFAULT,
+) -> dict:
+    return await _dispatch(
+        ctx,
+        "kg_entity_edge_timeline",
+        {"entity_id": entity_id, "edge_type": edge_type, "limit": limit},
+    )
+
+
+@mcp_server.tool(
+    name="kg_schema_read",
+    description=(
+        "Read the resolved (effective) graph schema for the current project — "
+        "the edge types, fact types, controlled vocab, and expected node "
+        "kinds. Use this to learn what relationship and fact codes are valid "
+        "before proposing an edge or fact."
+    ),
+)
+async def kg_schema_read(ctx: MCPContext) -> dict:
+    return await _dispatch(ctx, "kg_schema_read", {})
+
+
+@mcp_server.tool(
+    name="kg_list_templates",
+    description=(
+        "List the graph-schema templates available to adopt — the system "
+        "(built-in) templates and the caller's own user templates. Use this to "
+        "discover what ontologies a project could be based on."
+    ),
+)
+async def kg_list_templates(
+    ctx: MCPContext,
+    scope: Annotated[
+        Literal["system", "user"] | None,
+        "Optional — restrict to 'system' or 'user' templates. Omit for both.",
+    ] = None,
+) -> dict:
+    args: dict[str, Any] = {}
+    if scope is not None:
+        args["scope"] = scope
+    return await _dispatch(ctx, "kg_list_templates", args)
+
+
+@mcp_server.tool(
+    name="kg_sync_available",
+    description=(
+        "Check whether the current project's graph schema has upstream "
+        "template updates available to pull (a tree-granular diff). Read-only: "
+        "reports what changed; it does NOT apply anything."
+    ),
+)
+async def kg_sync_available(ctx: MCPContext) -> dict:
+    return await _dispatch(ctx, "kg_sync_available", {})
+
+
+@mcp_server.tool(
+    name="kg_view_read",
+    description=(
+        "List the caller's saved views (named lenses of edge/node kinds) for "
+        "the current project. Views are per-user — you only ever see your own."
+    ),
+)
+async def kg_view_read(ctx: MCPContext) -> dict:
+    return await _dispatch(ctx, "kg_view_read", {})
+
+
+@mcp_server.tool(
+    name="kg_triage_list",
+    description=(
+        "List the project's triage queue — extracted graph elements that did "
+        "not match the schema and are parked for human review — grouped by "
+        "signature with a count and a suggested-action list."
+    ),
+)
+async def kg_triage_list(
+    ctx: MCPContext,
+    status: Annotated[
+        Literal["pending", "pending_glossary", "resolved", "dismissed"],
+        "Which queue to list (default 'pending').",
+    ] = "pending",
+    limit: Annotated[
+        int,
+        Field(ge=1, le=TRIAGE_LIMIT_MAX),
+        f"Max signature groups (default {TRIAGE_LIMIT_DEFAULT}).",
+    ] = TRIAGE_LIMIT_DEFAULT,
+) -> dict:
+    return await _dispatch(
+        ctx, "kg_triage_list", {"status": status, "limit": limit}
+    )
+
+
+@mcp_server.tool(
+    name="kg_propose_fact",
+    description=(
+        "Propose a narrative fact for the current project into the review "
+        "inbox (a draft awaiting the user's confirmation — it does NOT enter "
+        "the graph immediately). Use for durable, important facts the user "
+        "stated or confirmed."
+    ),
+)
+async def kg_propose_fact(
+    ctx: MCPContext,
+    fact_text: Annotated[str, "The fact to propose, as a clear statement."],
+    fact_type: Annotated[
+        Literal["decision", "preference", "milestone", "negation"],
+        "decision = a choice made; preference = a standing like/dislike; "
+        "milestone = a notable achievement; negation = something NOT true.",
+    ],
+) -> dict:
+    return await _dispatch(
+        ctx,
+        "kg_propose_fact",
+        {"fact_text": fact_text, "fact_type": fact_type},
+    )
+
+
+@mcp_server.tool(
+    name="kg_propose_edge",
+    description=(
+        "Propose a relationship edge between two entities for human review. "
+        "The edge is validated against the project schema and parked in the "
+        "triage inbox — it is NEVER written to the graph directly. If the edge "
+        "type is temporal you MUST supply valid_from (the chapter ordinal it "
+        "began); otherwise the proposal is rejected."
+    ),
+)
+async def kg_propose_edge(
+    ctx: MCPContext,
+    source_entity_id: Annotated[str, "The id of the relationship's source entity."],
+    target_entity_id: Annotated[str, "The id of the relationship's target entity."],
+    edge_type: Annotated[str, "The relationship edge-type code (see kg_schema_read)."],
+    source_kind: Annotated[
+        str | None, "Optional — the source entity's node kind, for validation."
+    ] = None,
+    target_kind: Annotated[
+        str | None, "Optional — the target entity's node kind, for validation."
+    ] = None,
+    valid_from: Annotated[
+        int | None,
+        Field(ge=0),
+        "The chapter ordinal the relationship began. REQUIRED for a temporal "
+        "edge type.",
+    ] = None,
+    valid_to: Annotated[
+        int | None,
+        Field(ge=0),
+        "Optional — the chapter ordinal the relationship ended.",
+    ] = None,
+) -> dict:
+    args: dict[str, Any] = {
+        "source_entity_id": source_entity_id,
+        "target_entity_id": target_entity_id,
+        "edge_type": edge_type,
+    }
+    if source_kind is not None:
+        args["source_kind"] = source_kind
+    if target_kind is not None:
+        args["target_kind"] = target_kind
+    if valid_from is not None:
+        args["valid_from"] = valid_from
+    if valid_to is not None:
+        args["valid_to"] = valid_to
+    return await _dispatch(ctx, "kg_propose_edge", args)
+
+
+@mcp_server.tool(
+    name="kg_view_upsert",
+    description=(
+        "Create or replace one of the caller's saved views (a named lens of "
+        "edge-type + node-kind codes) for the current project. Owner-scoped: "
+        "only ever touches your own view."
+    ),
+)
+async def kg_view_upsert(
+    ctx: MCPContext,
+    code: Annotated[str, "The view's stable code (slug)."],
+    name: Annotated[str, "A human-readable view name."],
+    description: Annotated[str, "Optional description."] = "",
+    edge_type_codes: Annotated[
+        list[str] | None, "Edge-type codes the view includes (empty = all)."
+    ] = None,
+    node_kind_codes: Annotated[
+        list[str] | None, "Node-kind codes the view includes (empty = all)."
+    ] = None,
+) -> dict:
+    return await _dispatch(
+        ctx,
+        "kg_view_upsert",
+        {
+            "code": code,
+            "name": name,
+            "description": description,
+            "edge_type_codes": edge_type_codes or [],
+            "node_kind_codes": node_kind_codes or [],
+        },
+    )
+
+
+@mcp_server.tool(
+    name="kg_view_delete",
+    description=(
+        "Delete one of the caller's saved views by code for the current "
+        "project. Owner-scoped and reversible (recreate with kg_view_upsert)."
+    ),
+)
+async def kg_view_delete(
+    ctx: MCPContext,
+    code: Annotated[str, "The code of the view to delete."],
+) -> dict:
+    return await _dispatch(ctx, "kg_view_delete", {"code": code})
+
+
+@mcp_server.tool(
+    name="kg_triage_resolve",
+    description=(
+        "Resolve a triage signature group with a low-impact, reversible "
+        "action: map, re_target, drop_edge, close_previous, or dismiss. "
+        "Schema-changing actions (add to vocab/schema, widen, promote to "
+        "glossary) are NOT available here — those need explicit human "
+        "confirmation via the review surface."
+    ),
+)
+async def kg_triage_resolve(
+    ctx: MCPContext,
+    signature: Annotated[str, "The triage signature to resolve (from kg_triage_list)."],
+    action: Annotated[
+        Literal["map", "re_target", "drop_edge", "close_previous", "dismiss"],
+        "The KG-local resolution action to apply.",
+    ],
+    params: Annotated[
+        dict | None, "Optional action parameters (e.g. the map target code)."
+    ] = None,
+) -> dict:
+    return await _dispatch(
+        ctx,
+        "kg_triage_resolve",
+        {"signature": signature, "action": action, "params": params or {}},
+    )
 
 
 # ── ASGI factory ──────────────────────────────────────────────────────
