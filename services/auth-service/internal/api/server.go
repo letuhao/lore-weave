@@ -92,6 +92,12 @@ func (s *Server) Router() http.Handler {
 		r.Post("/auth/login", func(w http.ResponseWriter, r *http.Request) {
 			ratelimit.Middleware(s.rl, "login", http.HandlerFunc(s.login)).ServeHTTP(w, r)
 		})
+		// Browser-facing admin-session exchange (admin CMS): a logged-in admin
+		// principal self-mints an RS256 admin JWT. Handler 404s when admin issuance
+		// is disabled. Rate-limited (admin sessions are low-volume).
+		r.Post("/admin/session", func(w http.ResponseWriter, req *http.Request) {
+			ratelimit.Middleware(s.rl, "admin_session", http.HandlerFunc(s.adminSession)).ServeHTTP(w, req)
+		})
 		r.Post("/auth/refresh", http.HandlerFunc(s.refresh))
 		r.Post("/auth/logout", http.HandlerFunc(s.logout))
 
@@ -126,4 +132,3 @@ func (s *Server) Router() http.Handler {
 	})
 	return r
 }
-

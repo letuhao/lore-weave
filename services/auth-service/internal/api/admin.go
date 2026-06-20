@@ -127,6 +127,62 @@ func (s *Server) adminToken(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, adminTokenResp{Token: issued.Token, JTI: issued.JTI.String(), ExpiresAt: issued.ExpiresAt.Unix()})
 }
 
+type adminSessionResp struct {
+	Token     string `json:"token"`
+	ExpiresAt int64  `json:"expires_at"`
+	Role      string `json:"role"`
+}
+
+// adminSession is the BROWSER-facing admin-session exchange (the admin CMS path).
+// A logged-in user (HS256 access token) who is an ACTIVE admin principal exchanges
+// it for an RS256 admin JWT. SELF-MINT ONLY — the subject is taken from the user's
+// own token, never a request body, so a user can never mint a token for anyone
+// else; admin authority still comes solely from the admin_principals row. Audited
+// exactly like the issuer-secret mint. 404 when admin issuance is disabled.
+func (s *Server) adminSession(w http.ResponseWriter, r *http.Request) {
+	if s.admin == nil {
+		writeErr(w, http.StatusNotFound, "AUTH_NOT_FOUND", "admin issuance disabled")
+		return
+	}
+	claims, err := s.parseAccess(r)
+	if err != nil {
+		writeErr(w, http.StatusUnauthorized, jwtErrorCode(err), "invalid access token")
+		return
+	}
+	uid, err := uuid.Parse(claims.Subject)
+	if err != nil {
+		writeErr(w, http.StatusUnauthorized, "AUTH_TOKEN_INVALID", "invalid subject")
+		return
+	}
+	ctx := r.Context()
+	p, found, err := s.admin.store.Lookup(ctx, uid)
+	if err != nil {
+		s.auditBestEffort(ctx, issuanceAudit{actorID: uid, actorHandle: uid.String(), kind: "admin", outcome: "error", denyReason: ptr("lookup failed")})
+		writeErr(w, http.StatusInternalServerError, "AUTH_VALIDATION_ERROR", "lookup failed")
+		return
+	}
+	if !found || !p.Active {
+		s.auditBestEffort(ctx, issuanceAudit{actorID: uid, actorHandle: uid.String(), kind: "admin", outcome: "deny", denyReason: ptr("not an active admin principal")})
+		writeErr(w, http.StatusForbidden, "AUTH_FORBIDDEN", "not an admin")
+		return
+	}
+	issued, err := authjwt.SignAdmin(ctx, s.admin.signer, uid, p.Role, p.Scopes, s.admin.tokenTTL)
+	if err != nil {
+		s.auditBestEffort(ctx, issuanceAudit{actorID: uid, actorHandle: p.Handle, kind: "admin", outcome: "error", role: &p.Role, scopes: p.Scopes, denyReason: ptr("sign failed")})
+		writeErr(w, http.StatusInternalServerError, "AUTH_VALIDATION_ERROR", "sign failed")
+		return
+	}
+	if err := s.auditIssuance(ctx, issuanceAudit{
+		actorID: uid, actorHandle: p.Handle, kind: "admin", outcome: "success",
+		role: &p.Role, scopes: p.Scopes, jti: &issued.JTI,
+		issuedAt: &issued.IssuedAt, expiresAt: &issued.ExpiresAt,
+	}); err != nil {
+		writeErr(w, http.StatusInternalServerError, "AUTH_INTERNAL", "audit write failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, adminSessionResp{Token: issued.Token, ExpiresAt: issued.ExpiresAt.Unix(), Role: p.Role})
+}
+
 type breakGlassReq struct {
 	PrimaryActorToken   string `json:"primary_actor_token"`
 	SecondaryActorToken string `json:"secondary_actor_token"`

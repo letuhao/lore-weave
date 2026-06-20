@@ -44,8 +44,8 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
 		secret:      []byte(cfg.JWTSecret),
 		grantClient: buildGrantClient(cfg.BookServiceURL, cfg.InternalServiceToken),
 	}
-	if pem := strings.TrimSpace(cfg.AdminJWTPublicKeyPEM); pem != "" {
-		pub, err := adminjwt.ParseRSAPublicKeyPEM([]byte(pem))
+	if raw := strings.TrimSpace(cfg.AdminJWTPublicKeyPEM); raw != "" {
+		pub, err := adminjwt.ParseRSAPublicKeyPEM(pemOrBase64(raw))
 		if err != nil {
 			// Misconfigured key → leave admin disabled (fail closed) + log loudly.
 			slog.Error("glossary: ADMIN_JWT_PUBLIC_KEY_PEM parse failed; System-tier admin endpoints DISABLED", "err", err)

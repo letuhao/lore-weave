@@ -10,6 +10,7 @@ package api
 // (D-GKA-SYNC-HASH-ON-ADMIN-EDIT).
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -19,6 +20,19 @@ import (
 )
 
 const scopeAdminWrite = "admin:write"
+
+// pemOrBase64 returns the raw PEM bytes from a value that is EITHER a literal PEM
+// block or a base64-encoded one. Single-line base64 is convenient to pass through
+// docker-compose env (a multi-line PEM there is awkward).
+func pemOrBase64(v string) []byte {
+	if strings.Contains(v, "BEGIN") {
+		return []byte(v)
+	}
+	if dec, err := base64.StdEncoding.DecodeString(strings.TrimSpace(v)); err == nil {
+		return dec
+	}
+	return []byte(v)
+}
 
 // decodeJSON decodes the request body into dst, writing a 400 + returning false on
 // malformed JSON. Local to the admin handlers (the rest of the package decodes inline).
