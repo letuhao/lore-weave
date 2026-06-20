@@ -651,6 +651,11 @@ services:
       REDIS_URL: redis://redis:6379
       # Phase 6c — OpenTelemetry trace export (see provider-registry-service).
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      # D-GKA-SYSTEM-TIER-ADMIN — SPKI/PKIX PEM of the platform admin-signing key
+      # (public half of the auth-service KMS key). When set, the System-tier admin
+      # write endpoints verify an RS256 admin JWT against it; unset → they fail
+      # closed (503). Optional — the rest of the service runs without it.
+      ADMIN_JWT_PUBLIC_KEY_PEM: ${ADMIN_JWT_PUBLIC_KEY_PEM:-}
     depends_on:
       postgres:
         condition: service_healthy

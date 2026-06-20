@@ -1,9 +1,12 @@
 package api
 
 import (
+	"crypto/rsa"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -12,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/loreweave/foundation/contracts/adminjwt"
 	"github.com/loreweave/grantclient"
 	"github.com/loreweave/observability"
 
@@ -26,15 +30,34 @@ type Server struct {
 	// grantClient resolves (user, book) grants against book-service (E0-1).
 	// Positive-grant caching lives in the client; nil → guards fail closed.
 	grantClient *grantclient.Client
+	// adminPub verifies RS256 admin JWTs for the System-tier write endpoints
+	// (D-GKA-SYSTEM-TIER-ADMIN). nil when ADMIN_JWT_PUBLIC_KEY_PEM is unset →
+	// those endpoints fail closed. adminKID = KeyFingerprint(adminPub).
+	adminPub *rsa.PublicKey
+	adminKID string
 }
 
 func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
-	return &Server{
+	s := &Server{
 		pool:        pool,
 		cfg:         cfg,
 		secret:      []byte(cfg.JWTSecret),
 		grantClient: buildGrantClient(cfg.BookServiceURL, cfg.InternalServiceToken),
 	}
+	if pem := strings.TrimSpace(cfg.AdminJWTPublicKeyPEM); pem != "" {
+		pub, err := adminjwt.ParseRSAPublicKeyPEM([]byte(pem))
+		if err != nil {
+			// Misconfigured key → leave admin disabled (fail closed) + log loudly.
+			slog.Error("glossary: ADMIN_JWT_PUBLIC_KEY_PEM parse failed; System-tier admin endpoints DISABLED", "err", err)
+		} else if kid, err := adminjwt.KeyFingerprint(pub); err != nil {
+			slog.Error("glossary: admin key fingerprint failed; System-tier admin endpoints DISABLED", "err", err)
+		} else {
+			s.adminPub = pub
+			s.adminKID = kid
+			slog.Info("glossary: System-tier admin endpoints ENABLED", "kid", kid)
+		}
+	}
+	return s
 }
 
 // GrantClient exposes the process's grant client so main can wire the
@@ -213,6 +236,27 @@ func (s *Server) Router() http.Handler {
 		// System attributes read-only (admin/seed); user attributes owner-scoped
 		// CRUD with attach-by-code. Keyed by (kind × genre × code).
 		r.Get("/system-attributes", s.listSystemAttributes)
+
+		// ── System-tier ADMIN writes (D-GKA-SYSTEM-TIER-ADMIN) ────────────────
+		// Platform-owned defaults: each handler gates on an RS256 admin JWT with
+		// the admin:write scope (requireAdminScope). A regular HS256 user token
+		// can never satisfy it. Edits recompute content_hash for G5 Sync.
+		r.Route("/system-genres", func(r chi.Router) {
+			r.Post("/", s.createSystemGenre)
+			r.Patch("/{genre_id}", s.patchSystemGenre)
+			r.Delete("/{genre_id}", s.deleteSystemGenre)
+		})
+		r.Route("/system-kinds", func(r chi.Router) {
+			r.Post("/", s.createSystemKind)
+			r.Patch("/{kind_id}", s.patchSystemKind)
+			r.Delete("/{kind_id}", s.deleteSystemKind)
+		})
+		r.Route("/system-attributes-admin", func(r chi.Router) {
+			r.Post("/", s.createSystemAttribute)
+			r.Patch("/{attr_id}", s.patchSystemAttribute)
+			r.Delete("/{attr_id}", s.deleteSystemAttribute)
+		})
+
 		r.Route("/user-attributes", func(r chi.Router) {
 			r.Get("/", s.listUserAttributes)
 			r.Post("/", s.createUserAttribute)
@@ -438,6 +482,34 @@ func (s *Server) requireUserID(r *http.Request) (uuid.UUID, bool) {
 		return uuid.Nil, false
 	}
 	return id, true
+}
+
+// requireAdminScope verifies the Bearer admin RS256 JWT and that it carries the
+// required scope, writing the error response + returning false on any failure.
+// System tier is platform-owned: only an admin principal (never a regular user)
+// may mutate it (CLAUDE.md › User Boundaries). Fail closed when the verify key is
+// unconfigured. A regular HS256 user token never satisfies adminjwt.Verify (RS256
+// only), so this is not bypassable with a normal login.
+func (s *Server) requireAdminScope(w http.ResponseWriter, r *http.Request, scope string) (adminjwt.AdminClaims, bool) {
+	if s.adminPub == nil {
+		writeError(w, http.StatusServiceUnavailable, "GLOSS_ADMIN_UNAVAILABLE", "system-tier administration is not configured")
+		return adminjwt.AdminClaims{}, false
+	}
+	auth := r.Header.Get("Authorization")
+	if !strings.HasPrefix(auth, "Bearer ") {
+		writeError(w, http.StatusUnauthorized, "GLOSS_ADMIN_UNAUTHORIZED", "valid admin Bearer token required")
+		return adminjwt.AdminClaims{}, false
+	}
+	claims, err := adminjwt.Verify(strings.TrimPrefix(auth, "Bearer "), s.adminPub, s.adminKID)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "GLOSS_ADMIN_UNAUTHORIZED", "invalid admin token")
+		return adminjwt.AdminClaims{}, false
+	}
+	if !slices.Contains(claims.Scopes, scope) {
+		writeError(w, http.StatusForbidden, "GLOSS_ADMIN_FORBIDDEN", "missing required admin scope")
+		return adminjwt.AdminClaims{}, false
+	}
+	return claims, true
 }
 
 // requireInternalToken validates the X-Internal-Token header for service-to-service calls.
