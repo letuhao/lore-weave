@@ -336,8 +336,34 @@ disjoint (zero conflicts), composed + verified:
   `D-KG-LH-LC-SCHEMA-WRITE` (triage schema-mutating write belongs to LC's
   ontology_mutations).
 
-**NEXT — WAVE 2:** LC (adopt/sync/CRUD, wires LA resolver + glossary client +
-the LH schema-write compose-point) ∥ LE (FE, against contract). Then WAVE 3:
-LF (MCP, wraps LC/LD/LH HTTP) ∥ LB (extraction, worktree, backward-compat).
-Then L7 (enforcement flip + graph_id seam + cross-service live-smoke) → S3.
-LG (glossary internal-read) on the glossary branch before L7.
+**2026-06-20 — C1 fan-out WAVE 2 DONE (LC ∥ LB ∥ LE).** Three more disjoint
+lanes built as parallel worktree agents, merged clean, composed + verified:
+- **LC** (`routers/public/ontology.py` + `repositories/ontology_mutations.py`):
+  adopt copy-down (replace-on-adopt → keeps one-active invariant), M1 adopt-gate
+  (422 needs_glossary on missing `required` kind via the glossary client; fail-OPEN
+  when glossary unavailable → don't false-block, runtime parks to triage),
+  tree-granular sync diff/apply (rule-only forward, 409 on base_source_hash drift),
+  per-tier child CRUD (additive + deprecate-only), Manage-gated. 7 unit + 16 int.
+- **LB** (extraction SDK + `app/extraction/pass2_*`): dynamic prompt/validation
+  from a resolved-schema projection; **backward-compat PROVEN byte-identical** for
+  `schema=None` (4 SHA-256 prompt snapshots match pre-change) via APPEND (not a
+  .md slot, which would break worker-ai's strict loader); worker-ai (0 schema=
+  sites) + translation (own pipeline) verified unaffected; §10-B1 token soft-cap.
+  28 dynamic + 305 SDK pass (4 fails PRE-EXISTING, confirmed at base) + 3 writer.
+- **LE** (`frontend/src/features/knowledge/*`): MVC api/types/hooks/components for
+  adopt/schema-edit/sync/views; `kgOntology` i18n ×4 locales (unregistered);
+  INTEGRATION.md lists C3 wiring. 28 vitest + 667 knowledge suite green; tsc 0.
+- **Compose VERIFY**: 41 KG live-PG integration + **2723 knowledge unit** + SDK 305
+  green; provider-gate clean. review-impl: LC tenancy fail-closed (Manage-gate);
+  glossary fail-open is a deliberate additive tradeoff.
+- **New deferred rows:** `D-KG-LC-REVADOPT-LOSS` (re-adopt replaces → drops a user's
+  prior schema customizations; warn in UI later) · `D-KG-LC-ROUTE-LIVE-TEST` (LC
+  route handlers unit-tested with a fake repo — asyncpg/TestClient loop conflict;
+  repo live-tested separately; add live HTTP route test) · `D-KG-LB-CACHE-SCHEMA-KEY`
+  (extraction cache task_id omits schema — safe under per-book/project, revisit if
+  cross-project text sharing appears) · `D-LB-LIVE-SMOKE` · `D-KG-LE-BROWSER-SMOKE`.
+
+**REMAINING:** LF (MCP tools — wraps the now-complete LC/LD/LH HTTP; spec
+`2026-06-20-knowledge-assistant-mcp-tools.md` KM1–KM4) · LG (glossary
+internal-read, glossary branch) · L7 (enforcement flip fail-soft→hard +
+graph_id seam + cross-service live-smoke) → S3 final.
