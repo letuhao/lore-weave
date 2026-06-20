@@ -32,6 +32,11 @@ from uuid import UUID
 from .context import ToolContext
 from .errors import uniform_not_accessible
 
+# The zero/nil UUID. A row whose resolved owner is the nil UUID (a NULL/zero owner
+# column) owns nothing — it must never match any caller, not even a zero-UUID
+# caller. Mirrors the Go kit's explicit `owner == uuid.Nil -> ErrNotAccessible`.
+_NIL_UUID = UUID(int=0)
+
 __all__ = [
     "GrantResolver",
     "OwnerResolver",
@@ -116,7 +121,10 @@ def require_user_scope(owner_of: OwnerResolver):
             owner_uuid = owner if isinstance(owner, UUID) else UUID(str(owner))
         except Exception as exc:  # noqa: BLE001 — missing/lookup error → uniform deny
             raise uniform_not_accessible(exc) from exc
-        if owner_uuid != ctx.user_id:
+        # Zero owns nothing: a nil/zero-UUID owner can never grant access, even to
+        # a zero-UUID caller. Reject explicitly before the owner-match check so a
+        # future change can't open a hole (mirrors Go `owner == uuid.Nil` reject).
+        if owner_uuid == _NIL_UUID or owner_uuid != ctx.user_id:
             raise uniform_not_accessible()
         return owner_uuid
 
@@ -145,7 +153,9 @@ def require_project(owner_of: OwnerResolver | None = None):
                 owner_uuid = owner if isinstance(owner, UUID) else UUID(str(owner))
             except Exception as exc:  # noqa: BLE001 — fail closed
                 raise uniform_not_accessible(exc) from exc
-            if owner_uuid != ctx.user_id:
+            # Zero owns nothing: a nil/zero-UUID owner can never grant access (see
+            # require_user_scope; mirrors Go `owner == uuid.Nil` reject).
+            if owner_uuid == _NIL_UUID or owner_uuid != ctx.user_id:
                 raise uniform_not_accessible()
         return ctx.project_id
 

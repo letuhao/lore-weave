@@ -281,19 +281,28 @@ async def test_user_scope_guard_fail_closed_on_missing():
 
 @pytest.mark.asyncio
 async def test_user_scope_guard_denied_zero_owner():
-    # A row whose owner resolves to the zero UUID (a NULL/zero owner column) must
-    # be denied — a zero owner can never match a real caller, so it grants nothing.
-    # (Mirrors the Go kit's explicit `owner == uuid.Nil` defense; here the deny
-    # falls out of the `owner != caller` check since the caller is a real UUID.)
+    # A row whose owner resolves to the zero UUID (a NULL/zero owner column) with
+    # NO error MUST be denied — a zero owner can never grant access, even to a
+    # zero-UUID caller. Mirrors the Go kit's explicit `owner == uuid.Nil` reject
+    # ("nil owner with nil error denied — zero owns nothing").
     zero = uuid.UUID(int=0)
 
     async def owner_of(ctx, resource_id):
-        return zero
+        return zero  # row exists but has a zero/NULL owner
 
     guard = require_user_scope(owner_of)
+
+    # A normal caller is denied (falls out of owner != caller too, but the explicit
+    # nil reject guarantees it independent of the match check).
     tc = ToolContext(user_id=uuid.uuid4(), session_id="s")
     with pytest.raises(NotAccessibleError):
         await guard(tc, uuid.uuid4())
+
+    # Even a zero-UUID caller must NOT match a zero owner — this is the case the
+    # explicit nil reject closes (a bare owner != caller check would allow it).
+    tc_zero = ToolContext(user_id=zero, session_id="s")
+    with pytest.raises(NotAccessibleError):
+        await guard(tc_zero, uuid.uuid4())
 
 
 @pytest.mark.asyncio
