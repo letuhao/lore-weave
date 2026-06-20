@@ -134,6 +134,26 @@ func (s *Server) Router() http.Handler {
 	// need X-Internal-Token.
 	r.Method(http.MethodGet, "/metrics", metricsHandler())
 
+	// S-BOOK (MCP fan-out) — the book MCP server. The kit's NewStatelessHandler
+	// wraps it in the identity middleware (X-Internal-Token gate + envelope to
+	// ctx), so it is mounted WITHOUT the /internal requireInternalToken wrapper
+	// (the kit does the gate). The federation gateway connects here per call.
+	//
+	// BOTH "/mcp" and "/mcp/*" are mounted: the go-sdk StreamableHTTP handler
+	// routes follow-up message traffic under the path subtree, so without the
+	// wildcard the initialize POST succeeds once but subsequent list-tools POSTs
+	// hit chi's 404 — which the federation gateway reports as the provider going
+	// unavailable after the first refresh. Mirrors provider-registry's mount.
+	// (Found at COMPOSE B live-smoke; unit tests used a single fresh handshake.)
+	r.Handle("/mcp", s.mcpHandler())
+	r.Handle("/mcp/*", s.mcpHandler())
+
+	// S-BOOK Tier-W — the NET-NEW class-C action routes. JWT-gated inside the
+	// handlers (requireUserID); confirm is the only token-gated write path.
+	s.registerActionRoutes(func(method, pattern string, h http.HandlerFunc) {
+		r.Method(method, pattern, h)
+	})
+
 	r.Get("/health/ready", func(w http.ResponseWriter, r *http.Request) {
 		if s.pool == nil {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "not ready", "error": "no db pool"})

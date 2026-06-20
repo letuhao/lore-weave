@@ -1,0 +1,208 @@
+package api
+
+// S-BOOK Tier-W DB-gated tests (/review-impl HIGH + H8 follow-ups). These need a
+// real Postgres because they exercise the single-use confirm-token ledger
+// (book_consumed_tokens) and the chapter_drafts optimistic-concurrency path —
+// behavior the nil-pool unit tests in mcp_server_test.go deliberately cannot cover.
+//
+// Gating: set BOOK_TEST_DATABASE_URL to a throwaway Postgres (PG18; the schema
+// uses uuidv7()/JSON_TABLE). When unset the whole file is SKIPPED, so `go test`
+// stays green on a machine with no DB. Each test seeds its own book/chapter and
+// runs migrate.Up() to install the schema (idempotent).
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"strings"
+	"testing"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/loreweave/book-service/internal/migrate"
+	lwmcp "github.com/loreweave/loreweave_mcp"
+)
+
+// dbTestServer spins a Server bound to a real pool (BOOK_TEST_DATABASE_URL) with
+// the schema migrated and a stubbed owner-grant resolver. Skips if the env var is
+// unset. The confirm secret is the DISTINCT mcpConfirmSecret (key-split).
+func dbTestServer(t *testing.T) (*Server, *pgxpool.Pool) {
+	t.Helper()
+	dsn := os.Getenv("BOOK_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("BOOK_TEST_DATABASE_URL not set — DB-gated test skipped")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("pgxpool.New: %v", err)
+	}
+	if err := pool.Ping(ctx); err != nil {
+		pool.Close()
+		t.Skipf("BOOK_TEST_DATABASE_URL unreachable (%v) — skipping", err)
+	}
+	if err := migrate.Up(ctx, pool); err != nil {
+		pool.Close()
+		t.Fatalf("migrate.Up: %v", err)
+	}
+	s := mcpTestServer(GrantOwner)
+	s.pool = pool
+	t.Cleanup(pool.Close)
+	return s, pool
+}
+
+// seedChapter inserts an active book + chapter + draft (version 1) owned by
+// ownerID, returning their ids. The draft has prose so publish passes the
+// non-empty check.
+func seedChapter(t *testing.T, ctx context.Context, pool *pgxpool.Pool, ownerID uuid.UUID) (bookID, chID uuid.UUID) {
+	t.Helper()
+	body := json.RawMessage(`{"type":"doc","content":[{"type":"paragraph","_text":"hello world"}]}`)
+	if err := pool.QueryRow(ctx, `INSERT INTO books(owner_user_id,title) VALUES($1,'t') RETURNING id`, ownerID).Scan(&bookID); err != nil {
+		t.Fatalf("seed book: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `
+INSERT INTO chapters(book_id,original_filename,original_language,content_type,sort_order,storage_key,lifecycle_state,editorial_status)
+VALUES($1,'c.txt','en','text/plain',1,'k','active','draft') RETURNING id`, bookID).Scan(&chID); err != nil {
+		t.Fatalf("seed chapter: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO chapter_drafts(chapter_id, body, draft_format, draft_version) VALUES($1,$2,'json',1)`, chID, body); err != nil {
+		t.Fatalf("seed draft: %v", err)
+	}
+	return bookID, chID
+}
+
+func confirmReq(t *testing.T, s *Server, userID uuid.UUID, tok string) *httptest.ResponseRecorder {
+	t.Helper()
+	body, _ := json.Marshal(map[string]string{"confirm_token": tok})
+	req := httptest.NewRequest(http.MethodPost, "/v1/book/actions/confirm", strings.NewReader(string(body)))
+	req.Header.Set("Authorization", "Bearer "+mcpJWT(t, userID))
+	rr := httptest.NewRecorder()
+	s.confirmBookAction(rr, req)
+	return rr
+}
+
+// /review-impl HIGH — single-use confirm-token ledger. A REPLAY of a VALID,
+// unexpired publish token must be refused on the 2nd confirm: the 1st publishes
+// (200, inserts ONE chapter_revisions row + ONE chapter.published outbox event),
+// the 2nd returns the used/!ok error (422) and does NOT re-run the effect.
+func TestMCP_ConfirmToken_SingleUse_RefusesReplay_DB(t *testing.T) {
+	s, pool := dbTestServer(t)
+	ctx := context.Background()
+	owner := uuid.New()
+	bookID, chID := seedChapter(t, ctx, pool, owner)
+	s.resolveBook = func(_ context.Context, _, _ uuid.UUID) (GrantLevel, uuid.UUID, string, error) {
+		return GrantOwner, owner, "active", nil
+	}
+
+	tok, err := lwmcp.MintConfirmToken(mcpConfirmSecret, owner, bookID, descBookPublish,
+		actionPayload{Op: "publish", ChapterID: chID.String()}, actionTokenTTL)
+	if err != nil {
+		t.Fatalf("mint: %v", err)
+	}
+
+	// 1st confirm → publishes.
+	rr1 := confirmReq(t, s, owner, tok)
+	if rr1.Code != http.StatusOK {
+		t.Fatalf("1st confirm = %d, want 200; body=%s", rr1.Code, rr1.Body.String())
+	}
+
+	// 2nd confirm (same still-valid token) → refused, single-use.
+	rr2 := confirmReq(t, s, owner, tok)
+	if rr2.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("replay confirm = %d, want 422; body=%s", rr2.Code, rr2.Body.String())
+	}
+	if !strings.Contains(rr2.Body.String(), "already confirmed") {
+		t.Errorf("replay body = %s, want 'already confirmed'", rr2.Body.String())
+	}
+
+	// Effect ran EXACTLY once: one publish revision, one chapter.published event.
+	var revCount, evtCount int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM chapter_revisions WHERE chapter_id=$1 AND message='publish'`, chID).Scan(&revCount); err != nil {
+		t.Fatalf("count revisions: %v", err)
+	}
+	if revCount != 1 {
+		t.Errorf("publish revisions = %d, want 1 (replay must NOT re-insert)", revCount)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM outbox_events WHERE aggregate_id=$1 AND event_type='chapter.published'`, chID).Scan(&evtCount); err != nil {
+		t.Fatalf("count events: %v", err)
+	}
+	if evtCount != 1 {
+		t.Errorf("chapter.published events = %d, want 1 (replay must NOT re-emit)", evtCount)
+	}
+	// The hash was recorded in the ledger.
+	var ledgered int
+	_ = pool.QueryRow(ctx, `SELECT count(*) FROM book_consumed_tokens WHERE token_hash=$1`, actionTokenHash(tok)).Scan(&ledgered)
+	if ledgered != 1 {
+		t.Errorf("ledger rows = %d, want 1", ledgered)
+	}
+}
+
+// The priced-media confirm round-trip (mint→verify→user-bind→consume→open_ui).
+// Moved here from the nil-pool unit suite because the single-use claim now hits
+// the DB before the open_ui outcome.
+func TestMCP_ConfirmToken_RoundTrip_Media_DB(t *testing.T) {
+	s, pool := dbTestServer(t)
+	ctx := context.Background()
+	owner := uuid.New()
+	bookID, _ := seedChapter(t, ctx, pool, owner)
+	s.resolveBook = func(_ context.Context, _, _ uuid.UUID) (GrantLevel, uuid.UUID, string, error) {
+		return GrantOwner, owner, "active", nil
+	}
+	tok, err := lwmcp.MintConfirmToken(mcpConfirmSecret, owner, bookID, descBookMedia,
+		actionPayload{Op: "set_cover", EstimateUSD: "~0.04"}, actionTokenTTL)
+	if err != nil {
+		t.Fatalf("mint: %v", err)
+	}
+	rr := confirmReq(t, s, owner, tok)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("confirm status = %d, want 200; body=%s", rr.Code, rr.Body.String())
+	}
+	var out map[string]any
+	_ = json.Unmarshal(rr.Body.Bytes(), &out)
+	if out["outcome"] != "open_ui" {
+		t.Fatalf("outcome = %v, want open_ui", out["outcome"])
+	}
+}
+
+// H8 — a POSITIVE-but-STALE base_version (≠ current draft_version) returns
+// ErrStaleDraftVersion and does NOT overwrite the draft. The existing nil-pool
+// tests only cover base_version<=0 (rejected before any DB access); this proves
+// the optimistic-concurrency stop on a real version mismatch.
+func TestMCP_SaveDraft_StaleBaseVersion_StopsNoOverwrite_DB(t *testing.T) {
+	s, pool := dbTestServer(t)
+	ctx := context.Background()
+	owner := uuid.New()
+	bookID, chID := seedChapter(t, ctx, pool, owner) // draft_version = 1
+	s.resolveBook = func(_ context.Context, _, _ uuid.UUID) (GrantLevel, uuid.UUID, string, error) {
+		return GrantOwner, owner, "active", nil
+	}
+	tctx := identityCtxForTest(t, owner)
+
+	// base_version = 5 is positive but stale (current is 1) → 409 stop.
+	in := saveDraftIn{
+		BookID:      bookID.String(),
+		ChapterID:   chID.String(),
+		BaseVersion: 5,
+		Body:        json.RawMessage(`{"type":"doc","content":[{"type":"paragraph","_text":"OVERWRITE"}]}`),
+	}
+	_, _, err := s.toolChapterSaveDraft(tctx, nil, in)
+	if err != ErrStaleDraftVersion {
+		t.Fatalf("err = %v, want ErrStaleDraftVersion", err)
+	}
+
+	// The draft was NOT overwritten: version still 1 and body unchanged.
+	var ver int64
+	var body string
+	if err := pool.QueryRow(ctx, `SELECT draft_version, body::text FROM chapter_drafts WHERE chapter_id=$1`, chID).Scan(&ver, &body); err != nil {
+		t.Fatalf("read draft: %v", err)
+	}
+	if ver != 1 {
+		t.Errorf("draft_version = %d, want 1 (stale save must not bump)", ver)
+	}
+	if strings.Contains(body, "OVERWRITE") {
+		t.Errorf("draft body was overwritten by a stale save: %s", body)
+	}
+}
