@@ -122,3 +122,84 @@ func TestPipelineTranslateTool_Guards(t *testing.T) {
 		t.Error("a verified translation was overwritten")
 	}
 }
+
+func TestPipelineProposeAliases_Guards(t *testing.T) {
+	pool := openTestDB(t)
+	f := newActionFixture(t, pool)
+	ctx := context.Background()
+	octx := ctxWithUser(f.ownerID)
+
+	charKind := bookKindID(t, pool, f.bookID, "character")
+	// an entity with NO pre-existing aliases value row (exercises resolve-or-create)
+	var eid uuid.UUID
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO glossary_entities(book_id, kind_id, short_description) VALUES($1,$2,'al') RETURNING entity_id`,
+		f.bookID, charKind).Scan(&eid); err != nil {
+		t.Fatalf("seed entity: %v", err)
+	}
+	t.Cleanup(func() { pool.Exec(context.Background(), `DELETE FROM glossary_entities WHERE entity_id=$1`, eid) }) //nolint:errcheck
+
+	book := f.bookID.String()
+
+	// grant gate
+	if _, _, err := f.srv.toolProposeAliases(ctxWithUser(uuid.New()), nil,
+		proposeAliasesToolIn{BookID: book, LanguageCode: "en", Items: []aliasItem{{EntityID: eid.String(), Aliases: []string{"X"}}}}); err == nil {
+		t.Error("non-grantee must be denied")
+	}
+	// empty items
+	if _, _, err := f.srv.toolProposeAliases(octx, nil,
+		proposeAliasesToolIn{BookID: book, LanguageCode: "en"}); err == nil {
+		t.Error("empty items must error")
+	}
+
+	// happy path — resolve-or-create the aliases value, write a JSON-array draft
+	_, out, err := f.srv.toolProposeAliases(octx, nil, proposeAliasesToolIn{
+		BookID: book, LanguageCode: "en",
+		Items: []aliasItem{
+			{EntityID: eid.String(), Aliases: []string{"Jiang Ziya", "Jiang Shang", "", "Jiang Ziya"}}, // dup + empty cleaned
+			{EntityID: uuid.NewString(), Aliases: []string{"Ghost"}},                                   // not in book → skip
+		},
+	})
+	if err != nil {
+		t.Fatalf("happy path: %v", err)
+	}
+	if out.Written != 1 || out.Skipped != 1 {
+		t.Errorf("want written=1 skipped=1, got %+v", out)
+	}
+	var got string
+	pool.QueryRow(ctx, `
+		SELECT t.value FROM attribute_translations t
+		JOIN entity_attribute_values av ON av.attr_value_id = t.attr_value_id
+		JOIN book_attributes ba ON ba.attr_id = av.attr_def_id
+		WHERE av.entity_id=$1 AND ba.code='aliases' AND t.language_code='en'`, eid).Scan(&got)
+	if got != `["Jiang Ziya","Jiang Shang"]` {
+		t.Errorf("alias-set not written as a deduped JSON array: %q", got)
+	}
+
+	// re-propose updates the draft set
+	if _, out2, err := f.srv.toolProposeAliases(octx, nil, proposeAliasesToolIn{
+		BookID: book, LanguageCode: "en", Items: []aliasItem{{EntityID: eid.String(), Aliases: []string{"Jiang Zi-Ya"}}},
+	}); err != nil || out2.Written != 1 {
+		t.Errorf("re-propose should update the draft set: %+v err=%v", out2, err)
+	}
+
+	// verified-protection
+	if _, err := pool.Exec(ctx, `
+		UPDATE attribute_translations SET confidence='verified'
+		WHERE attr_value_id IN (
+			SELECT av.attr_value_id FROM entity_attribute_values av
+			JOIN book_attributes ba ON ba.attr_id = av.attr_def_id
+			WHERE av.entity_id=$1 AND ba.code='aliases')
+		  AND language_code='en'`, eid); err != nil {
+		t.Fatalf("promote verified: %v", err)
+	}
+	_, out3, err := f.srv.toolProposeAliases(octx, nil, proposeAliasesToolIn{
+		BookID: book, LanguageCode: "en", Items: []aliasItem{{EntityID: eid.String(), Aliases: []string{"OVERWRITE"}}},
+	})
+	if err != nil {
+		t.Fatalf("verified-protection call: %v", err)
+	}
+	if out3.Written != 0 || out3.Skipped != 1 {
+		t.Errorf("verified alias set must be protected: %+v", out3)
+	}
+}
