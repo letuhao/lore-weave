@@ -79,6 +79,11 @@
     "revert": "Revert to default",
     "revert_hint": "Discard this book's local edits to this row and restore the System/User standard it was adopted from.",
     "name_required": "Name is required",
+    "ai_assist": "AI assistance",
+    "auto_fill_prompt": "Auto-fill prompt",
+    "auto_fill_prompt_hint": "How the AI fills this attribute from chapter text",
+    "translation_hint": "Translation hint",
+    "translation_hint_hint": "Guidance injected when translating this attribute's value",
     "from_system": "Adopted from a System standard — edits here change this book's copy only.",
     "from_user": "Adopted from your User standard.",
     "book_native": "Created in this book."

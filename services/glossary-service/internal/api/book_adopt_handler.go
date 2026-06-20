@@ -71,8 +71,10 @@ type bookAttrResp struct {
 	FieldType   string   `json:"field_type"`
 	IsRequired  bool     `json:"is_required"`
 	SortOrder   int      `json:"sort_order"`
-	Options     []string `json:"options"`
-	SourceRef   *string  `json:"source_ref,omitempty"`
+	Options         []string `json:"options"`
+	AutoFillPrompt  *string  `json:"auto_fill_prompt,omitempty"`  // G-U2
+	TranslationHint *string  `json:"translation_hint,omitempty"`
+	SourceRef       *string  `json:"source_ref,omitempty"`
 }
 
 type bookOntologyResp struct {
@@ -369,7 +371,7 @@ func (s *Server) loadBookOntology(ctx context.Context, bookID uuid.UUID) (*bookO
 
 	arows, err := s.pool.Query(ctx, `
 		SELECT attr_id::text, kind_id::text, genre_id::text, code, name, description,
-		       field_type, is_required, sort_order, options, source_ref
+		       field_type, is_required, sort_order, options, auto_fill_prompt, translation_hint, source_ref
 		FROM book_attributes WHERE book_id = $1 AND deprecated_at IS NULL ORDER BY sort_order, code`, bookID)
 	if err != nil {
 		return nil, err
@@ -378,7 +380,7 @@ func (s *Server) loadBookOntology(ctx context.Context, bookID uuid.UUID) (*bookO
 	for arows.Next() {
 		var a bookAttrResp
 		if err := arows.Scan(&a.AttrID, &a.KindID, &a.GenreID, &a.Code, &a.Name, &a.Description,
-			&a.FieldType, &a.IsRequired, &a.SortOrder, &a.Options, &a.SourceRef); err != nil {
+			&a.FieldType, &a.IsRequired, &a.SortOrder, &a.Options, &a.AutoFillPrompt, &a.TranslationHint, &a.SourceRef); err != nil {
 			return nil, err
 		}
 		if a.Options == nil {

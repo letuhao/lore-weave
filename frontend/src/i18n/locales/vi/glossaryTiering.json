@@ -79,6 +79,11 @@
     "revert": "Khôi phục mặc định",
     "revert_hint": "Loại bỏ các chỉnh sửa cục bộ của sách cho hàng này và khôi phục tiêu chuẩn Hệ thống/Người dùng đã áp dụng.",
     "name_required": "Tên là bắt buộc",
+    "ai_assist": "Hỗ trợ AI",
+    "auto_fill_prompt": "Lời nhắc tự động điền",
+    "auto_fill_prompt_hint": "Cách AI điền thuộc tính này từ nội dung chương",
+    "translation_hint": "Gợi ý dịch",
+    "translation_hint_hint": "Hướng dẫn được chèn khi dịch giá trị của thuộc tính này",
     "from_system": "Được áp dụng từ một tiêu chuẩn Hệ thống — chỉnh sửa ở đây chỉ thay đổi bản sao của cuốn sách này.",
     "from_user": "Được áp dụng từ tiêu chuẩn Người dùng của bạn.",
     "book_native": "Được tạo trong cuốn sách này."

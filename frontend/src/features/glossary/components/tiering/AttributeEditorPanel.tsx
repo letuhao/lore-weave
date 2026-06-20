@@ -24,6 +24,8 @@ export function AttributeEditorPanel({ attribute, onSave, onDelete, onRevert }: 
   const [isRequired, setIsRequired] = useState(false);
   const [description, setDescription] = useState('');
   const [options, setOptions] = useState('');
+  const [autoFillPrompt, setAutoFillPrompt] = useState('');
+  const [translationHint, setTranslationHint] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -34,6 +36,8 @@ export function AttributeEditorPanel({ attribute, onSave, onDelete, onRevert }: 
     setIsRequired(attribute.is_required);
     setDescription(attribute.description ?? '');
     setOptions((attribute.options ?? []).join('\n'));
+    setAutoFillPrompt(attribute.auto_fill_prompt ?? '');
+    setTranslationHint(attribute.translation_hint ?? '');
     setError('');
   }, [attribute]);
 
@@ -63,6 +67,8 @@ export function AttributeEditorPanel({ attribute, onSave, onDelete, onRevert }: 
         is_required: isRequired,
         description: description.trim() || null,
         options: fieldType === 'select' ? options.split('\n').map((o) => o.trim()).filter(Boolean) : [],
+        auto_fill_prompt: autoFillPrompt.trim() || null,
+        translation_hint: translationHint.trim() || null,
       });
     } catch (e) {
       setError((e as Error).message || t('toast.save_failed'));
@@ -125,6 +131,32 @@ export function AttributeEditorPanel({ attribute, onSave, onDelete, onRevert }: 
         <label className="flex items-center gap-2 text-xs font-medium">
           <input type="checkbox" checked={isRequired} onChange={(e) => setIsRequired(e.target.checked)} />
           {t('attr.required')}
+        </label>
+      </div>
+
+      <div className="mt-3 space-y-3 rounded-md border border-dashed border-border p-3">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          {t('attr.ai_assist')}
+        </p>
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium">{t('attr.auto_fill_prompt')}</span>
+          <textarea
+            value={autoFillPrompt}
+            onChange={(e) => setAutoFillPrompt(e.target.value)}
+            rows={2}
+            placeholder={t('attr.auto_fill_prompt_hint')}
+            className="w-full resize-vertical rounded-md border bg-background px-2.5 py-1.5 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-ring/40"
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium">{t('attr.translation_hint')}</span>
+          <textarea
+            value={translationHint}
+            onChange={(e) => setTranslationHint(e.target.value)}
+            rows={2}
+            placeholder={t('attr.translation_hint_hint')}
+            className="w-full resize-vertical rounded-md border bg-background px-2.5 py-1.5 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-ring/40"
+          />
         </label>
       </div>
 

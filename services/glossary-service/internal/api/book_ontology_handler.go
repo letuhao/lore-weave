@@ -65,11 +65,11 @@ func (s *Server) loadBookAttrOne(ctx context.Context, bookID, attrID uuid.UUID) 
 	var a bookAttrResp
 	err := s.pool.QueryRow(ctx, `
 		SELECT attr_id::text, kind_id::text, genre_id::text, code, name, description,
-		       field_type, is_required, sort_order, options, source_ref
+		       field_type, is_required, sort_order, options, auto_fill_prompt, translation_hint, source_ref
 		FROM book_attributes WHERE book_id = $1 AND attr_id = $2 AND deprecated_at IS NULL`,
 		bookID, attrID,
 	).Scan(&a.AttrID, &a.KindID, &a.GenreID, &a.Code, &a.Name, &a.Description,
-		&a.FieldType, &a.IsRequired, &a.SortOrder, &a.Options, &a.SourceRef)
+		&a.FieldType, &a.IsRequired, &a.SortOrder, &a.Options, &a.AutoFillPrompt, &a.TranslationHint, &a.SourceRef)
 	if err != nil {
 		return nil, err
 	}

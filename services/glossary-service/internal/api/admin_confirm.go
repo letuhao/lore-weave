@@ -29,26 +29,30 @@ type systemActionParams struct {
 	GenreCode string `json:"genre_code,omitempty"`
 
 	// create fields
-	Name        string   `json:"name,omitempty"`
-	Description string   `json:"description,omitempty"`
-	Icon        string   `json:"icon,omitempty"`
-	Color       string   `json:"color,omitempty"`
-	SortOrder   int      `json:"sort_order,omitempty"`
-	IsHidden    bool     `json:"is_hidden,omitempty"`
-	FieldType   string   `json:"field_type,omitempty"`
-	IsRequired  bool     `json:"is_required,omitempty"`
-	Options     []string `json:"options,omitempty"`
+	Name            string   `json:"name,omitempty"`
+	Description     string   `json:"description,omitempty"`
+	Icon            string   `json:"icon,omitempty"`
+	Color           string   `json:"color,omitempty"`
+	SortOrder       int      `json:"sort_order,omitempty"`
+	IsHidden        bool     `json:"is_hidden,omitempty"`
+	FieldType       string   `json:"field_type,omitempty"`
+	IsRequired      bool     `json:"is_required,omitempty"`
+	Options         []string `json:"options,omitempty"`
+	AutoFillPrompt  string   `json:"auto_fill_prompt,omitempty"`  // G-U2 (attribute)
+	TranslationHint string   `json:"translation_hint,omitempty"`
 
 	// patch fields (nil = unchanged)
-	PatchName        *string   `json:"patch_name,omitempty"`
-	PatchDescription *string   `json:"patch_description,omitempty"`
-	PatchIcon        *string   `json:"patch_icon,omitempty"`
-	PatchColor       *string   `json:"patch_color,omitempty"`
-	PatchSortOrder   *int      `json:"patch_sort_order,omitempty"`
-	PatchIsHidden    *bool     `json:"patch_is_hidden,omitempty"`
-	PatchFieldType   *string   `json:"patch_field_type,omitempty"`
-	PatchIsRequired  *bool     `json:"patch_is_required,omitempty"`
-	PatchOptions     *[]string `json:"patch_options,omitempty"`
+	PatchName            *string   `json:"patch_name,omitempty"`
+	PatchDescription     *string   `json:"patch_description,omitempty"`
+	PatchIcon            *string   `json:"patch_icon,omitempty"`
+	PatchColor           *string   `json:"patch_color,omitempty"`
+	PatchSortOrder       *int      `json:"patch_sort_order,omitempty"`
+	PatchIsHidden        *bool     `json:"patch_is_hidden,omitempty"`
+	PatchFieldType       *string   `json:"patch_field_type,omitempty"`
+	PatchIsRequired      *bool     `json:"patch_is_required,omitempty"`
+	PatchOptions         *[]string `json:"patch_options,omitempty"`
+	PatchAutoFillPrompt  *string   `json:"patch_auto_fill_prompt,omitempty"` // G-U2
+	PatchTranslationHint *string   `json:"patch_translation_hint,omitempty"`
 }
 
 // authorizeAdminAction re-checks admin authority at confirm/preview time: the token
@@ -164,7 +168,7 @@ func (s *Server) effectSystemCreate(w http.ResponseWriter, ctx context.Context, 
 		if !ok {
 			return
 		}
-		a, err := s.createSystemAttributeCore(ctx, systemAttrParams{KindID: kindID, GenreID: genreID, Code: p.Code, Name: p.Name, Description: optStr(p.Description), FieldType: p.FieldType, IsRequired: p.IsRequired, SortOrder: p.SortOrder, Options: p.Options})
+		a, err := s.createSystemAttributeCore(ctx, systemAttrParams{KindID: kindID, GenreID: genreID, Code: p.Code, Name: p.Name, Description: optStr(p.Description), FieldType: p.FieldType, IsRequired: p.IsRequired, SortOrder: p.SortOrder, Options: p.Options, AutoFillPrompt: optStr(p.AutoFillPrompt), TranslationHint: optStr(p.TranslationHint)})
 		writeSystemResult(w, http.StatusCreated, a, err, "create system attribute")
 	default:
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "unknown level")
@@ -184,7 +188,7 @@ func (s *Server) effectSystemPatch(w http.ResponseWriter, ctx context.Context, p
 		k, err := s.patchSystemKindCore(ctx, id, systemKindPatch{Name: p.PatchName, Description: p.PatchDescription, Icon: p.PatchIcon, Color: p.PatchColor, IsHidden: p.PatchIsHidden, SortOrder: p.PatchSortOrder})
 		writeSystemResult(w, http.StatusOK, k, err, "patch system kind")
 	case adminLevelAttr:
-		a, err := s.patchSystemAttributeCore(ctx, id, systemAttrPatch{Name: p.PatchName, Description: p.PatchDescription, FieldType: p.PatchFieldType, IsRequired: p.PatchIsRequired, SortOrder: p.PatchSortOrder, Options: p.PatchOptions})
+		a, err := s.patchSystemAttributeCore(ctx, id, systemAttrPatch{Name: p.PatchName, Description: p.PatchDescription, FieldType: p.PatchFieldType, IsRequired: p.PatchIsRequired, SortOrder: p.PatchSortOrder, Options: p.PatchOptions, AutoFillPrompt: p.PatchAutoFillPrompt, TranslationHint: p.PatchTranslationHint})
 		writeSystemResult(w, http.StatusOK, a, err, "patch system attribute")
 	default:
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "unknown level")

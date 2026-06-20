@@ -263,9 +263,11 @@ type userCreateToolIn struct {
 	SortOrder   int      `json:"sort_order,omitempty"`
 	KindCode    string   `json:"kind_code,omitempty" jsonschema:"attribute only: your user-tier kind it attaches to"`
 	GenreCode   string   `json:"genre_code,omitempty" jsonschema:"attribute only: your user-tier genre cell"`
-	FieldType   string   `json:"field_type,omitempty" jsonschema:"attribute only: text|textarea|select|number|date|tags|url|boolean"`
-	IsRequired  bool     `json:"is_required,omitempty" jsonschema:"attribute only"`
-	Options     []string `json:"options,omitempty" jsonschema:"attribute only: options for a select field"`
+	FieldType       string   `json:"field_type,omitempty" jsonschema:"attribute only: text|textarea|select|number|date|tags|url|boolean"`
+	IsRequired      bool     `json:"is_required,omitempty" jsonschema:"attribute only"`
+	Options         []string `json:"options,omitempty" jsonschema:"attribute only: options for a select field"`
+	AutoFillPrompt  string   `json:"auto_fill_prompt,omitempty" jsonschema:"attribute only: how the AI auto-fills this attribute from chapter text"`
+	TranslationHint string   `json:"translation_hint,omitempty" jsonschema:"attribute only: guidance injected when translating this attribute's value"`
 }
 
 type userWriteOut struct {
@@ -379,10 +381,10 @@ func (s *Server) createUserAttrTool(ctx context.Context, userID uuid.UUID, code,
 	var id uuid.UUID
 	err := s.pool.QueryRow(ctx, `
 		INSERT INTO user_attributes
-		  (owner_user_id, kind_id, genre_id, code, name, description, field_type, is_required, sort_order, options, content_hash)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+		  (owner_user_id, kind_id, genre_id, code, name, description, field_type, is_required, sort_order, options, auto_fill_prompt, translation_hint, content_hash)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
 		RETURNING attr_id`,
-		userID, kindID, genreID, code, name, desc, fieldType, in.IsRequired, in.SortOrder, in.Options, hash).Scan(&id)
+		userID, kindID, genreID, code, name, desc, fieldType, in.IsRequired, in.SortOrder, in.Options, optStr(in.AutoFillPrompt), optStr(in.TranslationHint), hash).Scan(&id)
 	if err != nil {
 		if isUniqueViolation(err) {
 			return nil, userWriteOut{}, errors.New("an attribute with this code already exists on this kind×genre")
@@ -405,9 +407,11 @@ type userPatchToolIn struct {
 	Icon        *string   `json:"icon,omitempty"`
 	Color       *string   `json:"color,omitempty"`
 	SortOrder   *int      `json:"sort_order,omitempty"`
-	FieldType   *string   `json:"field_type,omitempty" jsonschema:"attribute only"`
-	IsRequired  *bool     `json:"is_required,omitempty" jsonschema:"attribute only"`
-	Options     *[]string `json:"options,omitempty" jsonschema:"attribute only"`
+	FieldType       *string   `json:"field_type,omitempty" jsonschema:"attribute only"`
+	IsRequired      *bool     `json:"is_required,omitempty" jsonschema:"attribute only"`
+	Options         *[]string `json:"options,omitempty" jsonschema:"attribute only"`
+	AutoFillPrompt  *string   `json:"auto_fill_prompt,omitempty" jsonschema:"attribute only"`
+	TranslationHint *string   `json:"translation_hint,omitempty" jsonschema:"attribute only"`
 }
 
 func (s *Server) toolUserPatch(ctx context.Context, _ *mcp.CallToolRequest, in userPatchToolIn) (*mcp.CallToolResult, userWriteOut, error) {
@@ -555,6 +559,12 @@ func (s *Server) patchUserAttrTool(ctx context.Context, userID uuid.UUID, code s
 	}
 	if in.Options != nil {
 		fields = append(fields, updateField{"options", *in.Options})
+	}
+	if in.AutoFillPrompt != nil {
+		fields = append(fields, updateField{"auto_fill_prompt", in.AutoFillPrompt})
+	}
+	if in.TranslationHint != nil {
+		fields = append(fields, updateField{"translation_hint", in.TranslationHint})
 	}
 	if len(fields) == 0 {
 		return nil, userWriteOut{}, errors.New("no editable fields supplied")

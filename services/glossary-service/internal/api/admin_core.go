@@ -289,6 +289,10 @@ type systemAttrParams struct {
 	IsRequired      bool
 	SortOrder       int
 	Options         []string
+	// G-U2 — per-attribute AI-assistance authoring (consumed by the extract/translate
+	// pipeline). NOT part of content_hash (afp/th-only edits don't trigger Sync — v1).
+	AutoFillPrompt  *string
+	TranslationHint *string
 }
 
 func (s *Server) createSystemAttributeCore(ctx context.Context, p systemAttrParams) (*attributeResp, error) {
@@ -327,11 +331,11 @@ func (s *Server) createSystemAttributeCore(ctx context.Context, p systemAttrPara
 	hash := attrContentHash(p.Code, p.Name, p.Description, p.FieldType, p.IsRequired, p.Options)
 	a := &attributeResp{Tier: "system"}
 	err := s.pool.QueryRow(ctx, `
-		INSERT INTO system_attributes (kind_id, genre_id, code, name, description, field_type, is_required, sort_order, options, content_hash)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-		RETURNING attr_id::text, kind_id::text, genre_id::text, code, name, description, field_type, is_required, sort_order, options`,
-		p.KindID, p.GenreID, p.Code, p.Name, p.Description, p.FieldType, p.IsRequired, p.SortOrder, p.Options, hash,
-	).Scan(&a.AttrID, &a.KindID, &a.GenreID, &a.Code, &a.Name, &a.Description, &a.FieldType, &a.IsRequired, &a.SortOrder, &a.Options)
+		INSERT INTO system_attributes (kind_id, genre_id, code, name, description, field_type, is_required, sort_order, options, auto_fill_prompt, translation_hint, content_hash)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+		RETURNING attr_id::text, kind_id::text, genre_id::text, code, name, description, field_type, is_required, sort_order, options, auto_fill_prompt, translation_hint`,
+		p.KindID, p.GenreID, p.Code, p.Name, p.Description, p.FieldType, p.IsRequired, p.SortOrder, p.Options, p.AutoFillPrompt, p.TranslationHint, hash,
+	).Scan(&a.AttrID, &a.KindID, &a.GenreID, &a.Code, &a.Name, &a.Description, &a.FieldType, &a.IsRequired, &a.SortOrder, &a.Options, &a.AutoFillPrompt, &a.TranslationHint)
 	if isUniqueViolation(err) {
 		return nil, errDuplicateSystemCode
 	}
@@ -352,6 +356,8 @@ type systemAttrPatch struct {
 	IsRequired                   *bool
 	SortOrder                    *int
 	Options                      *[]string
+	AutoFillPrompt               *string // G-U2 (nil = unchanged)
+	TranslationHint              *string
 }
 
 // patchSystemAttributeCore read-modify-writes so content_hash is recomputed from the
@@ -359,9 +365,9 @@ type systemAttrPatch struct {
 func (s *Server) patchSystemAttributeCore(ctx context.Context, id uuid.UUID, p systemAttrPatch) (*attributeResp, error) {
 	cur := &attributeResp{Tier: "system"}
 	if err := s.pool.QueryRow(ctx, `
-		SELECT attr_id::text, kind_id::text, genre_id::text, code, name, description, field_type, is_required, sort_order, options
+		SELECT attr_id::text, kind_id::text, genre_id::text, code, name, description, field_type, is_required, sort_order, options, auto_fill_prompt, translation_hint
 		FROM system_attributes WHERE attr_id=$1`, id,
-	).Scan(&cur.AttrID, &cur.KindID, &cur.GenreID, &cur.Code, &cur.Name, &cur.Description, &cur.FieldType, &cur.IsRequired, &cur.SortOrder, &cur.Options); err != nil {
+	).Scan(&cur.AttrID, &cur.KindID, &cur.GenreID, &cur.Code, &cur.Name, &cur.Description, &cur.FieldType, &cur.IsRequired, &cur.SortOrder, &cur.Options, &cur.AutoFillPrompt, &cur.TranslationHint); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, errSystemNotFound
 		}
@@ -385,14 +391,22 @@ func (s *Server) patchSystemAttributeCore(ctx context.Context, id uuid.UUID, p s
 	if p.Options != nil {
 		cur.Options = *p.Options
 	}
+	if p.AutoFillPrompt != nil {
+		cur.AutoFillPrompt = p.AutoFillPrompt
+	}
+	if p.TranslationHint != nil {
+		cur.TranslationHint = p.TranslationHint
+	}
 	if cur.Options == nil {
 		cur.Options = []string{}
 	}
+	// content_hash deliberately excludes afp/th (Option B) — so an afp/th-only edit does
+	// NOT trigger Sync. A name/type/options edit recomputes it as before.
 	hash := attrContentHash(cur.Code, cur.Name, cur.Description, cur.FieldType, cur.IsRequired, cur.Options)
 	if _, err := s.pool.Exec(ctx, `
-		UPDATE system_attributes SET name=$2, description=$3, field_type=$4, is_required=$5, sort_order=$6, options=$7, content_hash=$8
+		UPDATE system_attributes SET name=$2, description=$3, field_type=$4, is_required=$5, sort_order=$6, options=$7, auto_fill_prompt=$8, translation_hint=$9, content_hash=$10
 		WHERE attr_id=$1`,
-		id, cur.Name, cur.Description, cur.FieldType, cur.IsRequired, cur.SortOrder, cur.Options, hash,
+		id, cur.Name, cur.Description, cur.FieldType, cur.IsRequired, cur.SortOrder, cur.Options, cur.AutoFillPrompt, cur.TranslationHint, hash,
 	); err != nil {
 		return nil, err
 	}

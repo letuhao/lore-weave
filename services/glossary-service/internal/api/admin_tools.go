@@ -194,9 +194,11 @@ type adminCreateToolIn struct {
 	IsHidden    bool     `json:"is_hidden,omitempty" jsonschema:"kind only"`
 	KindCode    string   `json:"kind_code,omitempty" jsonschema:"attribute only: the System kind it attaches to"`
 	GenreCode   string   `json:"genre_code,omitempty" jsonschema:"attribute only: the System genre cell"`
-	FieldType   string   `json:"field_type,omitempty" jsonschema:"attribute only: text|textarea|select|number|date|tags|url|boolean"`
-	IsRequired  bool     `json:"is_required,omitempty" jsonschema:"attribute only"`
-	Options     []string `json:"options,omitempty" jsonschema:"attribute only"`
+	FieldType       string   `json:"field_type,omitempty" jsonschema:"attribute only: text|textarea|select|number|date|tags|url|boolean"`
+	IsRequired      bool     `json:"is_required,omitempty" jsonschema:"attribute only"`
+	Options         []string `json:"options,omitempty" jsonschema:"attribute only"`
+	AutoFillPrompt  string   `json:"auto_fill_prompt,omitempty" jsonschema:"attribute only: how the AI auto-fills this attribute from chapter text"`
+	TranslationHint string   `json:"translation_hint,omitempty" jsonschema:"attribute only: guidance injected when translating this attribute's value"`
 }
 
 func (s *Server) toolAdminProposeCreate(ctx context.Context, _ *mcp.CallToolRequest, in adminCreateToolIn) (*mcp.CallToolResult, confirmCardOut, error) {
@@ -235,6 +237,7 @@ func (s *Server) toolAdminProposeCreate(ctx context.Context, _ *mcp.CallToolRequ
 		Icon: in.Icon, Color: in.Color, SortOrder: in.SortOrder, IsHidden: in.IsHidden,
 		KindCode: strings.TrimSpace(in.KindCode), GenreCode: strings.TrimSpace(in.GenreCode),
 		FieldType: in.FieldType, IsRequired: in.IsRequired, Options: in.Options,
+		AutoFillPrompt: in.AutoFillPrompt, TranslationHint: in.TranslationHint,
 	}
 	rows := []previewRow{{Label: "level", Value: level}, {Label: "name", Value: name}}
 	if p.Code != "" {
@@ -255,9 +258,11 @@ type adminPatchToolIn struct {
 	Color       *string   `json:"color,omitempty"`
 	SortOrder   *int      `json:"sort_order,omitempty"`
 	IsHidden    *bool     `json:"is_hidden,omitempty" jsonschema:"kind only"`
-	FieldType   *string   `json:"field_type,omitempty" jsonschema:"attribute only"`
-	IsRequired  *bool     `json:"is_required,omitempty" jsonschema:"attribute only"`
-	Options     *[]string `json:"options,omitempty" jsonschema:"attribute only"`
+	FieldType       *string   `json:"field_type,omitempty" jsonschema:"attribute only"`
+	IsRequired      *bool     `json:"is_required,omitempty" jsonschema:"attribute only"`
+	Options         *[]string `json:"options,omitempty" jsonschema:"attribute only"`
+	AutoFillPrompt  *string   `json:"auto_fill_prompt,omitempty" jsonschema:"attribute only"`
+	TranslationHint *string   `json:"translation_hint,omitempty" jsonschema:"attribute only"`
 }
 
 func (s *Server) toolAdminProposePatch(ctx context.Context, _ *mcp.CallToolRequest, in adminPatchToolIn) (*mcp.CallToolResult, confirmCardOut, error) {
@@ -281,6 +286,7 @@ func (s *Server) toolAdminProposePatch(ctx context.Context, _ *mcp.CallToolReque
 		PatchName: in.Name, PatchDescription: in.Description, PatchIcon: in.Icon, PatchColor: in.Color,
 		PatchSortOrder: in.SortOrder, PatchIsHidden: in.IsHidden, PatchFieldType: in.FieldType,
 		PatchIsRequired: in.IsRequired, PatchOptions: in.Options,
+		PatchAutoFillPrompt: in.AutoFillPrompt, PatchTranslationHint: in.TranslationHint,
 	}
 	rows := []previewRow{{Label: "level", Value: level}, {Label: "code", Value: code}}
 	return s.mintAdminActionCard(adminSub, descSystemPatch,

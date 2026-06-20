@@ -79,6 +79,11 @@
     "revert": "既定に戻す",
     "revert_hint": "この書籍のこの行へのローカル編集を破棄し、導入元の System/User 標準に戻します。",
     "name_required": "名前は必須です",
+    "ai_assist": "AI アシスト",
+    "auto_fill_prompt": "自動入力プロンプト",
+    "auto_fill_prompt_hint": "AI が章のテキストからこの属性を埋める方法",
+    "translation_hint": "翻訳ヒント",
+    "translation_hint_hint": "この属性の値を翻訳する際に挿入されるガイダンス",
     "from_system": "System 標準から導入されました。ここでの編集はこの書籍のコピーにのみ反映されます。",
     "from_user": "あなたの User 標準から導入されました。",
     "book_native": "この書籍で作成されました。"

@@ -223,15 +223,17 @@ func (s *Server) createSystemAttribute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		KindID      string   `json:"kind_id"`
-		GenreID     string   `json:"genre_id"`
-		Code        string   `json:"code"`
-		Name        string   `json:"name"`
-		Description *string  `json:"description"`
-		FieldType   string   `json:"field_type"`
-		IsRequired  bool     `json:"is_required"`
-		SortOrder   int      `json:"sort_order"`
-		Options     []string `json:"options"`
+		KindID          string   `json:"kind_id"`
+		GenreID         string   `json:"genre_id"`
+		Code            string   `json:"code"`
+		Name            string   `json:"name"`
+		Description     *string  `json:"description"`
+		FieldType       string   `json:"field_type"`
+		IsRequired      bool     `json:"is_required"`
+		SortOrder       int      `json:"sort_order"`
+		Options         []string `json:"options"`
+		AutoFillPrompt  *string  `json:"auto_fill_prompt"`
+		TranslationHint *string  `json:"translation_hint"`
 	}
 	if !decodeJSON(w, r, &in) {
 		return
@@ -249,6 +251,7 @@ func (s *Server) createSystemAttribute(w http.ResponseWriter, r *http.Request) {
 	a, err := s.createSystemAttributeCore(r.Context(), systemAttrParams{
 		KindID: kindID, GenreID: genreID, Code: in.Code, Name: in.Name, Description: in.Description,
 		FieldType: in.FieldType, IsRequired: in.IsRequired, SortOrder: in.SortOrder, Options: in.Options,
+		AutoFillPrompt: in.AutoFillPrompt, TranslationHint: in.TranslationHint,
 	})
 	if err != nil {
 		writeSystemErr(w, err, "create system attribute")
@@ -266,12 +269,14 @@ func (s *Server) patchSystemAttribute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		Name        *string   `json:"name"`
-		Description *string   `json:"description"`
-		FieldType   *string   `json:"field_type"`
-		IsRequired  *bool     `json:"is_required"`
-		SortOrder   *int      `json:"sort_order"`
-		Options     *[]string `json:"options"`
+		Name            *string   `json:"name"`
+		Description     *string   `json:"description"`
+		FieldType       *string   `json:"field_type"`
+		IsRequired      *bool     `json:"is_required"`
+		SortOrder       *int      `json:"sort_order"`
+		Options         *[]string `json:"options"`
+		AutoFillPrompt  *string   `json:"auto_fill_prompt"`
+		TranslationHint *string   `json:"translation_hint"`
 	}
 	if !decodeJSON(w, r, &in) {
 		return
@@ -279,6 +284,7 @@ func (s *Server) patchSystemAttribute(w http.ResponseWriter, r *http.Request) {
 	a, err := s.patchSystemAttributeCore(r.Context(), attrID, systemAttrPatch{
 		Name: in.Name, Description: in.Description, FieldType: in.FieldType,
 		IsRequired: in.IsRequired, SortOrder: in.SortOrder, Options: in.Options,
+		AutoFillPrompt: in.AutoFillPrompt, TranslationHint: in.TranslationHint,
 	})
 	if err != nil {
 		writeSystemErr(w, err, "patch system attribute")

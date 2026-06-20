@@ -454,7 +454,8 @@ func (s *Server) applySyncRow(ctx context.Context, tx pgx.Tx, bookID, userID uui
 			  AND src.owner_user_id = $3 AND src.deleted_at IS NULL AND src.permanently_deleted_at IS NULL`
 	case "attribute":
 		setT := "name = src.name, description = src.description, field_type = src.field_type, " +
-			"is_required = src.is_required, options = src.options, "
+			"is_required = src.is_required, options = src.options, " +
+			"auto_fill_prompt = src.auto_fill_prompt, translation_hint = src.translation_hint, " // G-U2 carry
 		sysSQL = `UPDATE book_attributes ba SET ` + ternarySet(take, setT) + `source_hash = src.content_hash, updated_at = now()
 			FROM system_attributes src
 			WHERE ba.book_id=$1 AND ba.attr_id=$2 AND ba.deprecated_at IS NULL AND ba.source_ref = 'system:'||src.attr_id::text AND src.deprecated_at IS NULL`

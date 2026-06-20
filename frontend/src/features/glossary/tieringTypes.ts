@@ -137,6 +137,8 @@ export interface BookAttribute {
   is_required: boolean;
   sort_order: number;
   options: string[];
+  auto_fill_prompt?: string | null;
+  translation_hint?: string | null;
   source_ref?: string | null;
 }
 

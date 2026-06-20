@@ -25,6 +25,8 @@ type Draft = {
   is_required: boolean;
   sort_order: string;
   options: string; // one per line
+  auto_fill_prompt: string;
+  translation_hint: string;
 };
 
 const EMPTY: Draft = {
@@ -35,6 +37,8 @@ const EMPTY: Draft = {
   is_required: false,
   sort_order: '',
   options: '',
+  auto_fill_prompt: '',
+  translation_hint: '',
 };
 
 // G-C3 — options only apply to choice-style field types. The backend accepts options on
@@ -53,6 +57,8 @@ function toDraft(a: SystemAttribute): Draft {
     is_required: !!a.is_required,
     sort_order: String(a.sort_order ?? ''),
     options: (a.options ?? []).join('\n'),
+    auto_fill_prompt: a.auto_fill_prompt ?? '',
+    translation_hint: a.translation_hint ?? '',
   };
 }
 
@@ -128,6 +134,8 @@ export function AttributesAdminPanel() {
             is_required: draft.is_required,
             sort_order: sort,
             options,
+            auto_fill_prompt: draft.auto_fill_prompt.trim() || undefined,
+            translation_hint: draft.translation_hint.trim() || undefined,
           },
         },
         { onSuccess: close },
@@ -144,6 +152,8 @@ export function AttributesAdminPanel() {
           is_required: draft.is_required,
           sort_order: sort,
           options,
+          auto_fill_prompt: draft.auto_fill_prompt.trim() || undefined,
+          translation_hint: draft.translation_hint.trim() || undefined,
         },
         { onSuccess: close },
       );
@@ -281,6 +291,24 @@ export function AttributesAdminPanel() {
                 type="number"
                 value={draft.sort_order}
                 onChange={(e) => setDraft({ ...draft, sort_order: e.target.value })}
+                className={inputCls}
+              />
+            </Field>
+            <Field label="Auto-fill prompt (optional)">
+              <textarea
+                value={draft.auto_fill_prompt}
+                onChange={(e) => setDraft({ ...draft, auto_fill_prompt: e.target.value })}
+                rows={2}
+                placeholder="How the AI fills this attribute from chapter text"
+                className={inputCls}
+              />
+            </Field>
+            <Field label="Translation hint (optional)">
+              <textarea
+                value={draft.translation_hint}
+                onChange={(e) => setDraft({ ...draft, translation_hint: e.target.value })}
+                rows={2}
+                placeholder="Guidance injected when translating this attribute's value"
                 className={inputCls}
               />
             </Field>

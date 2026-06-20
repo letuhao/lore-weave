@@ -79,6 +79,11 @@
     "revert": "還原為預設",
     "revert_hint": "捨棄本書對此列的本機編輯，還原為採用來源的系統/使用者標準。",
     "name_required": "名稱為必填",
+    "ai_assist": "AI 輔助",
+    "auto_fill_prompt": "自動填入提示",
+    "auto_fill_prompt_hint": "AI 如何從章節文字填入此屬性",
+    "translation_hint": "翻譯提示",
+    "translation_hint_hint": "翻譯此屬性值時注入的指引",
     "from_system": "採用自系統標準 — 在此編輯只會變更這本書的副本。",
     "from_user": "採用自你的使用者標準。",
     "book_native": "建立於這本書。"

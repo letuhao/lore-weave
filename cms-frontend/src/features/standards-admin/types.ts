@@ -88,6 +88,8 @@ export type SystemAttribute = {
   is_required: boolean;
   sort_order: number;
   options: string[] | null;
+  auto_fill_prompt?: string | null;
+  translation_hint?: string | null;
 };
 
 export type AttributeCreate = {
@@ -100,6 +102,8 @@ export type AttributeCreate = {
   is_required?: boolean;
   sort_order?: number;
   options?: string[];
+  auto_fill_prompt?: string;
+  translation_hint?: string;
 };
 
 export type AttributeUpdate = {
@@ -109,6 +113,8 @@ export type AttributeUpdate = {
   is_required?: boolean;
   sort_order?: number;
   options?: string[];
+  auto_fill_prompt?: string;
+  translation_hint?: string;
 };
 
 // ---- Recycle bin (G-C8 soft-delete) -------------------------------------
