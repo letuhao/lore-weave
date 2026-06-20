@@ -45,7 +45,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.db.neo4j import neo4j_session
 from app.db.neo4j_helpers import run_read
@@ -190,6 +190,23 @@ class KgProposeEdgeArgs(BaseModel):
     target_kind: str | None = Field(default=None, max_length=_CODE_MAX)
     valid_from: int | None = Field(default=None, ge=0)
     valid_to: int | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def _validate_temporal_window(self) -> "KgProposeEdgeArgs":
+        # D-KG-LF-PROPOSE-VALIDTO — a closing ordinal before the opening ordinal
+        # is a malformed temporal window; reject at mint (both are chapter
+        # ordinals on the same axis). valid_to == valid_from is allowed (an edge
+        # that opens and closes in the same chapter).
+        if (
+            self.valid_from is not None
+            and self.valid_to is not None
+            and self.valid_to < self.valid_from
+        ):
+            raise ValueError(
+                f"valid_to ({self.valid_to}) must be >= valid_from "
+                f"({self.valid_from}) — a closing ordinal cannot precede the opening one"
+            )
+        return self
 
 
 class KgViewUpsertArgs(BaseModel):
@@ -769,10 +786,11 @@ async def _handle_kg_propose_edge(ctx: "ToolContext", args: KgProposeEdgeArgs) -
         )
 
     # Schema validation (fail-soft) → off-schema edges park with the validator's
-    # taxonomy item_type/signature; an on-schema single_active edge parks as a
-    # cardinality conflict (the human decides whether to close the open
-    # instance, spec §10.12); an on-schema multi_active edge parks as a clean
-    # proposal for human placement (still inbox, never Neo4j).
+    # taxonomy item_type/signature (unknown_edge_type / edge_kind_mismatch). A
+    # well-formed on-schema edge parks as a `proposed_edge` draft — NOT a
+    # cardinality conflict: the conflict is a stateful condition the tool can't
+    # check (it never reads Neo4j, INV-K1), so labelling every clean proposal a
+    # "conflict" overloaded the taxonomy (D-KG-LF-PROPOSE-EDGE-INBOX).
     issue = validate_edge(
         resolved,
         predicate=args.edge_type,
@@ -793,10 +811,8 @@ async def _handle_kg_propose_edge(ctx: "ToolContext", args: KgProposeEdgeArgs) -
         item_type = issue.item_type
         signature = issue.signature
     else:
-        # On-schema: cardinality conflict is the taxonomy member meaning "an
-        # edge that may collide with an open instance — human decides". It is
-        # the only valid enum value for a well-formed-but-unconfirmed edge.
-        item_type = "edge_cardinality_conflict"
+        # On-schema + well-formed → a clean draft awaiting human placement.
+        item_type = "proposed_edge"
         signature = f"propose_edge:{args.edge_type}:{args.source_entity_id}->{args.target_entity_id}"
 
     parked = await ctx.triage_repo.park(

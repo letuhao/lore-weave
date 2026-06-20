@@ -884,22 +884,25 @@ def _diff_trees(upstream: dict, mine: dict) -> list[dict]:
     changes: list[dict] = []
     changes += _diff_list(upstream["edge_types"], mine["edge_types"], "edge_type", key="code")
     changes += _diff_list(upstream["fact_types"], mine["fact_types"], "fact_type", key=0, pair=True)
-    changes += _diff_list(upstream["node_kinds"], mine["node_kinds"], "node_kind", key=0, pair=True)
+    changes += _diff_list(upstream["node_kinds"], mine["node_kinds"], "node_kind", key=0, pair=True, pair_field="strength")
     changes += _diff_vocab(upstream["vocab_sets"], mine["vocab_sets"])
     return changes
 
 
 def _diff_list(
-    up: list, mine: list, node_type: str, *, key, pair: bool = False
+    up: list, mine: list, node_type: str, *, key, pair: bool = False,
+    pair_field: str = "label",
 ) -> list[dict]:
-    """Diff two lists of children. `pair=True` => items are `[code, label]`
-    lists; else dicts keyed by `key`."""
+    """Diff two lists of children. `pair=True` => items are `[code, <pair_field>]`
+    lists (the 2nd element's name is `pair_field` — "label" for fact_types,
+    "strength" for node_kinds; D-KG-SYNC-DIFF-LABEL: hardcoding "label" mislabelled
+    a node-kind's strength as a label in the diff); else dicts keyed by `key`."""
     def code_of(item):
         return item[key] if pair else item[key]
 
     def fields_of(item):
         if pair:
-            return {"code": item[0], "label": item[1]}
+            return {"code": item[0], pair_field: item[1]}
         return dict(item)
 
     up_by = {code_of(i): fields_of(i) for i in up}

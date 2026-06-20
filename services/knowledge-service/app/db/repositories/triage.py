@@ -46,6 +46,12 @@ SUGGESTED_ACTIONS: dict[TriageItemType, list[str]] = {
         "map",
         "dismiss",
     ],
+    # D-KG-LF-PROPOSE-EDGE-INBOX — an agent-drafted on-schema edge. Only `dismiss`
+    # (reject the proposal) is wired today; the "place the edge into Neo4j" confirm
+    # is the un-wired central write path (KM6 / D-KG-LH-NEO4J-REAPPLY) and is
+    # intentionally NOT offered here yet (offering an un-applied action would mark
+    # the item resolved without writing the edge — a silent no-op).
+    "proposed_edge": ["dismiss"],
 }
 
 # Action -> resolved-status classification (spec s11.2/s11.4).

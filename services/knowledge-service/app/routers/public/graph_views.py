@@ -423,9 +423,15 @@ async def list_views(
 )
 async def create_view(
     body: ViewCreate,
-    project_id: str = Path(min_length=1, max_length=200),
+    project_id: UUID = Path(description="knowledge project id (uuid)"),
     user_id: UUID = Depends(get_current_user),
     repo: GraphViewsRepo = Depends(get_graph_views_repo),
+    # D-KG-LD-VIEWS-GRANT — parity with the LF kg_view_upsert tool: a VIEW grant
+    # on the project is required to write a view for it (owner OR a >=VIEW book
+    # grantee). The repo still owner-scopes the row to the caller; this gate stops
+    # a caller minting views against a project they can't reach. 404/403 via the
+    # gate. (list_views stays ungated — it reveals only the caller's own rows.)
+    _grant: UUID = Depends(require_project_grant(GrantLevel.VIEW)),
 ) -> GraphView:
     """Create a view owned by the caller. `code` defaults to a slug of `name`.
     409 on a duplicate `(project_id, user_id, code)`."""
@@ -443,7 +449,7 @@ async def create_view(
     try:
         return await repo.create(
             user_id,
-            project_id,
+            str(project_id),
             code=code,
             name=body.name,
             description=body.description,
@@ -461,16 +467,18 @@ async def create_view(
 async def upsert_view(
     body: ViewCreate,
     response: Response,
-    project_id: str = Path(min_length=1, max_length=200),
+    project_id: UUID = Path(description="knowledge project id (uuid)"),
     code: str = Path(min_length=1, max_length=_CODE_MAX),
     user_id: UUID = Depends(get_current_user),
     repo: GraphViewsRepo = Depends(get_graph_views_repo),
+    # D-KG-LD-VIEWS-GRANT — VIEW grant required (see create_view).
+    _grant: UUID = Depends(require_project_grant(GrantLevel.VIEW)),
 ) -> GraphView:
     """Upsert a view by code (owner only). 200 on update, 201 on create. The
     path `code` is authoritative — a `code` in the body is ignored."""
     view, created = await repo.upsert(
         user_id,
-        project_id,
+        str(project_id),
         code=code,
         name=body.name,
         description=body.description,
@@ -486,13 +494,15 @@ async def upsert_view(
     status_code=status.HTTP_204_NO_CONTENT,
 )
 async def delete_view(
-    project_id: str = Path(min_length=1, max_length=200),
+    project_id: UUID = Path(description="knowledge project id (uuid)"),
     code: str = Path(min_length=1, max_length=_CODE_MAX),
     user_id: UUID = Depends(get_current_user),
     repo: GraphViewsRepo = Depends(get_graph_views_repo),
+    # D-KG-LD-VIEWS-GRANT — VIEW grant required (see create_view).
+    _grant: UUID = Depends(require_project_grant(GrantLevel.VIEW)),
 ) -> None:
     """Hard-delete the caller's view. 404 if the caller owns no such view."""
-    deleted = await repo.delete(user_id, project_id, code)
+    deleted = await repo.delete(user_id, str(project_id), code)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="view not found")
 

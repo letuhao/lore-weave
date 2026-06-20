@@ -178,49 +178,71 @@ def repo():
     return FakeViewsRepo()
 
 
+# D-KG-LD-VIEWS-GRANT — the CRUD writes now require a VIEW grant on the project.
+# Tests use a real UUID project and override the grant gate so project_meta returns
+# (owner==caller, no book) → the gate's caller==owner branch authorizes.
+_PROJ = "11111111-1111-1111-1111-111111111111"
+
+
 @pytest.fixture
 def crud_client(repo, auth_user):
     app = FastAPI()
     app.include_router(router)
     app.dependency_overrides[get_current_user] = lambda: auth_user
     app.dependency_overrides[get_graph_views_repo] = lambda: repo
+    app.dependency_overrides[get_grant_client] = lambda: object()
+    app.dependency_overrides[project_meta_dep] = lambda: (auth_user, None)
     return TestClient(app)
 
 
 def test_create_then_list_view(crud_client):
-    r = crud_client.post("/v1/kg/projects/p1/views", json={"name": "Drive Map", "edge_type_codes": ["PURSUES"]})
+    r = crud_client.post(f"/v1/kg/projects/{_PROJ}/views", json={"name": "Drive Map", "edge_type_codes": ["PURSUES"]})
     assert r.status_code == 201, r.text
     body = r.json()
     assert body["code"] == "drive_map"  # slugified
     assert body["edge_type_codes"] == ["PURSUES"]
-    lst = crud_client.get("/v1/kg/projects/p1/views")
+    lst = crud_client.get(f"/v1/kg/projects/{_PROJ}/views")
     assert [v["code"] for v in lst.json()["items"]] == ["drive_map"]
 
 
 def test_create_duplicate_code_409(crud_client):
-    crud_client.post("/v1/kg/projects/p1/views", json={"name": "L", "code": "lens"})
-    r = crud_client.post("/v1/kg/projects/p1/views", json={"name": "L2", "code": "lens"})
+    crud_client.post(f"/v1/kg/projects/{_PROJ}/views", json={"name": "L", "code": "lens"})
+    r = crud_client.post(f"/v1/kg/projects/{_PROJ}/views", json={"name": "L2", "code": "lens"})
     assert r.status_code == 409
 
 
 def test_create_undeducible_code_422(crud_client):
-    r = crud_client.post("/v1/kg/projects/p1/views", json={"name": "!!!"})
+    r = crud_client.post(f"/v1/kg/projects/{_PROJ}/views", json={"name": "!!!"})
     assert r.status_code == 422
 
 
 def test_upsert_create_then_update(crud_client):
-    r1 = crud_client.put("/v1/kg/projects/p1/views/lens", json={"name": "v1"})
+    r1 = crud_client.put(f"/v1/kg/projects/{_PROJ}/views/lens", json={"name": "v1"})
     assert r1.status_code == 201
-    r2 = crud_client.put("/v1/kg/projects/p1/views/lens", json={"name": "v2", "node_kind_codes": ["character"]})
+    r2 = crud_client.put(f"/v1/kg/projects/{_PROJ}/views/lens", json={"name": "v2", "node_kind_codes": ["character"]})
     assert r2.status_code == 200
     assert r2.json()["name"] == "v2"
     assert r2.json()["node_kind_codes"] == ["character"]
 
 
 def test_delete_view_then_404(crud_client):
-    crud_client.put("/v1/kg/projects/p1/views/lens", json={"name": "v"})
-    assert crud_client.delete("/v1/kg/projects/p1/views/lens").status_code == 204
-    assert crud_client.delete("/v1/kg/projects/p1/views/lens").status_code == 404
+    crud_client.put(f"/v1/kg/projects/{_PROJ}/views/lens", json={"name": "v"})
+    assert crud_client.delete(f"/v1/kg/projects/{_PROJ}/views/lens").status_code == 204
+    assert crud_client.delete(f"/v1/kg/projects/{_PROJ}/views/lens").status_code == 404
+
+
+def test_create_view_requires_project_grant(repo, auth_user):
+    """D-KG-LD-VIEWS-GRANT: a caller with no grant on the project (non-owner,
+    book-less project → owner-only) gets 404 at the gate, before the repo."""
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[get_current_user] = lambda: uuid4()  # NOT the owner
+    app.dependency_overrides[get_graph_views_repo] = lambda: repo
+    app.dependency_overrides[get_grant_client] = lambda: object()
+    app.dependency_overrides[project_meta_dep] = lambda: (auth_user, None)  # owner=auth_user
+    c = TestClient(app)
+    r = c.post(f"/v1/kg/projects/{_PROJ}/views", json={"name": "X", "code": "x"})
+    assert r.status_code == 404
 
 
 def test_views_are_owner_scoped(repo, auth_user):
@@ -229,16 +251,19 @@ def test_views_are_owner_scoped(repo, auth_user):
     app = FastAPI()
     app.include_router(router)
     app.dependency_overrides[get_graph_views_repo] = lambda: repo
-    # user A creates a view
+    app.dependency_overrides[get_grant_client] = lambda: object()
+    # grant gate: owner == auth_user (book-less project → owner-only).
+    app.dependency_overrides[project_meta_dep] = lambda: (auth_user, None)
+    # user A (the owner) creates a view
     app.dependency_overrides[get_current_user] = lambda: auth_user
     c_a = TestClient(app)
-    c_a.post("/v1/kg/projects/p1/views", json={"name": "A lens", "code": "alens"})
-    # user B lists — sees nothing
+    c_a.post(f"/v1/kg/projects/{_PROJ}/views", json={"name": "A lens", "code": "alens"})
+    # user B lists — sees nothing (list is ungated; owner-scoped repo returns [])
     app.dependency_overrides[get_current_user] = lambda: other
     c_b = TestClient(app)
-    assert c_b.get("/v1/kg/projects/p1/views").json()["items"] == []
-    # user B deleting A's code → 404 (cannot touch A's row)
-    assert c_b.delete("/v1/kg/projects/p1/views/alens").status_code == 404
+    assert c_b.get(f"/v1/kg/projects/{_PROJ}/views").json()["items"] == []
+    # user B deleting A's code → 404 (gate: non-owner on a book-less project)
+    assert c_b.delete(f"/v1/kg/projects/{_PROJ}/views/alens").status_code == 404
 
 
 # ── graph-read handler with a fake neo4j session ───────────────────────────

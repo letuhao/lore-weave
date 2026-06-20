@@ -355,7 +355,10 @@ async def test_propose_edge_parks_to_triage_inbox_never_neo4j(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_propose_edge_on_schema_parks_as_cardinality_conflict(monkeypatch):
+async def test_propose_edge_on_schema_parks_as_proposed_edge(monkeypatch):
+    # D-KG-LF-PROPOSE-EDGE-INBOX: a well-formed on-schema proposal parks as its own
+    # `proposed_edge` item_type — NOT edge_cardinality_conflict (a stateful
+    # condition the tool can't check, INV-K1).
     monkeypatch.setattr(
         "app.tools.graph_schema_tools.validate_edge",
         MagicMock(return_value=None),  # on-schema, no issue
@@ -366,7 +369,7 @@ async def test_propose_edge_on_schema_parks_as_cardinality_conflict(monkeypatch)
     ))
     triage_repo = AsyncMock()
     triage_repo.park = AsyncMock(return_value=SimpleNamespace(
-        triage_id=uuid4(), item_type="edge_cardinality_conflict",
+        triage_id=uuid4(), item_type="proposed_edge",
         signature="propose_edge:allies:a->b",
     ))
     ctx = _ctx(ontology_resolver=resolver, triage_repo=triage_repo)
@@ -376,7 +379,21 @@ async def test_propose_edge_on_schema_parks_as_cardinality_conflict(monkeypatch)
     )
     assert res.success
     assert res.result["on_schema"] is True
-    assert triage_repo.park.await_args.kwargs["item_type"] == "edge_cardinality_conflict"
+    assert triage_repo.park.await_args.kwargs["item_type"] == "proposed_edge"
+
+
+@pytest.mark.asyncio
+async def test_propose_edge_rejects_valid_to_before_valid_from():
+    # D-KG-LF-PROPOSE-VALIDTO: a closing ordinal before the opening one is a
+    # malformed temporal window → rejected at mint (Pydantic model_validator).
+    ctx = _ctx()
+    res = await execute_tool(
+        ctx, "kg_propose_edge",
+        {"source_entity_id": "a", "target_entity_id": "b", "edge_type": "allies",
+         "valid_from": 10, "valid_to": 3},
+    )
+    assert not res.success
+    assert "valid_to" in res.error.lower()
 
 
 # ── triage_resolve: KG-local only, valid-action gating ────────────────

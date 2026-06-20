@@ -25,14 +25,18 @@ from pydantic import BaseModel, ConfigDict, StringConstraints
 Scope = Literal["system", "user", "project"]
 Strength = Literal["required", "optional"]
 Cardinality = Literal["single_active", "multi_active"]
-# The triage item taxonomy (spec §3.7) — the five ways an extracted element
-# can fail to match the resolved schema.
+# The triage item taxonomy (spec §3.7) — the five ways an extracted element can
+# fail to match the resolved schema, plus `proposed_edge` (D-KG-LF-PROPOSE-EDGE-
+# INBOX): a well-formed on-schema edge the agent DRAFTED via kg_propose_edge,
+# awaiting human placement (distinct from the extraction-mismatch types — it is
+# not a failure, just an unconfirmed proposal).
 TriageItemType = Literal[
     "unknown_node_kind",
     "unknown_edge_type",
     "edge_kind_mismatch",
     "unknown_vocab_value",
     "edge_cardinality_conflict",
+    "proposed_edge",
 ]
 TriageStatus = Literal["pending", "pending_glossary", "resolved", "dismissed"]
 

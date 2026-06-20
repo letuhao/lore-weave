@@ -541,3 +541,27 @@ Docker recovered; brought up infra postgres+neo4j and ran the KG integration sui
   smoke. Everything around it is now proven: B1 endpoint live, write-boundary
   stamp/park live, worker-ai HTTP wiring + SDK prompt injection unit-proven
   (worker-ai 280).
+
+**2026-06-20 — small-deferred SWEEP (4 rows CLEARED).**
+- **`D-KG-LD-VIEWS-GRANT`** — views CRUD (create/upsert/delete) lacked the project
+  grant the LF `kg_view_upsert` tool has → a caller could mint views against a
+  project they can't reach. Added `require_project_grant(VIEW)` to all three
+  (project_id → UUID, repo still owner-scopes the row; `list_views` stays ungated —
+  reveals only the caller's own rows). 404/403 via the gate.
+- **`D-KG-LF-PROPOSE-VALIDTO`** — `kg_propose_edge` had no `valid_to >= valid_from`
+  guard. Added a Pydantic `model_validator` rejecting a closing ordinal before the
+  opening one at mint (equal allowed — opens+closes same chapter).
+- **`D-KG-SYNC-DIFF-LABEL`** — `_diff_list(pair=True)` hardcoded the 2nd field as
+  `"label"`, mislabelling a node-kind's *strength* in the sync diff. Added a
+  `pair_field` param; node_kinds now diff under `"strength"` (fact_types keep
+  `"label"`). Apply-safe; cosmetic-but-misleading fix.
+- **`D-KG-LF-PROPOSE-EDGE-INBOX`** — an on-schema agent-proposed edge parked as
+  `edge_cardinality_conflict` (a stateful condition the tool can't check, INV-K1),
+  overloading the taxonomy. Added a dedicated `proposed_edge` item_type (Literal +
+  **migration**: widened the `kg_triage_items` item_type CHECK idempotently;
+  `SUGGESTED_ACTIONS["proposed_edge"]=["dismiss"]` — the "place into Neo4j" confirm
+  is the un-wired central write path KM6, deliberately not offered yet).
+- **VERIFY:** 2794 knowledge unit (incl new propose-edge `proposed_edge`/`valid_to`,
+  views `404`/owner-scope, sync-diff `strength`) + 30 live integration (triage incl
+  the widened-CHECK `proposed_edge` park + mutations sync_diff) green; provider-gate
+  clean. Single-service (knowledge-service) — no cross-service token needed.

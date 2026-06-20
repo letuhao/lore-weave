@@ -81,7 +81,11 @@ def test_fact_and_node_kind_pairs_diff():
     assert facts[0]["change"] == "added" and facts[0]["code"] == "betrayal"
     nks = [c for c in changes if c["node_type"] == "node_kind"]
     assert nks[0]["change"] == "modified"
-    assert nks[0]["fields_changed"] == ["label"]  # pair stores strength under 'label'
+    # D-KG-SYNC-DIFF-LABEL: a node-kind pair is [code, strength] → the changed
+    # field is 'strength' (was mislabelled 'label'); the surfaced dicts key it
+    # under 'strength' too.
+    assert nks[0]["fields_changed"] == ["strength"]
+    assert nks[0]["upstream"] == {"code": "character", "strength": "required"}
 
 
 def test_vocab_set_added_and_value_modified():

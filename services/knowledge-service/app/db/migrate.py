@@ -1109,7 +1109,7 @@ CREATE TABLE IF NOT EXISTS kg_triage_items (
   source           JSONB NOT NULL DEFAULT '{}',    -- {run_id, chapter_id, chapter_ord}
   item_type        TEXT NOT NULL CHECK (item_type IN
                      ('unknown_node_kind','unknown_edge_type','edge_kind_mismatch',
-                      'unknown_vocab_value','edge_cardinality_conflict')),
+                      'unknown_vocab_value','edge_cardinality_conflict','proposed_edge')),
   payload          JSONB NOT NULL DEFAULT '{}',
   signature        TEXT NOT NULL,                  -- normalized group key, e.g. "drive:curiosity"
   status           TEXT NOT NULL DEFAULT 'pending' CHECK (status IN
@@ -1124,6 +1124,15 @@ CREATE INDEX IF NOT EXISTS idx_kg_triage_user_project_status
   ON kg_triage_items (user_id, project_id, status);
 CREATE INDEX IF NOT EXISTS idx_kg_triage_project_signature
   ON kg_triage_items (project_id, signature);
+-- D-KG-LF-PROPOSE-EDGE-INBOX: a well-formed on-schema edge PROPOSED by the agent
+-- (kg_propose_edge) is a clean draft awaiting human placement — NOT a cardinality
+-- conflict (a stateful condition the tool can't check per INV-K1). It gets its own
+-- `proposed_edge` item_type. Existing DBs created the CHECK with the old 5-member
+-- list; widen it idempotently (drop-then-add the auto-named column CHECK).
+ALTER TABLE kg_triage_items DROP CONSTRAINT IF EXISTS kg_triage_items_item_type_check;
+ALTER TABLE kg_triage_items ADD CONSTRAINT kg_triage_items_item_type_check
+  CHECK (item_type IN ('unknown_node_kind','unknown_edge_type','edge_kind_mismatch',
+                       'unknown_vocab_value','edge_cardinality_conflict','proposed_edge'));
 """
 
 
