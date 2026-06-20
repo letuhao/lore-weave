@@ -31,6 +31,33 @@ func undoResult(tool string, args map[string]any) *mcp.CallToolResult {
 	}
 }
 
+// maxBooksPerUser caps the number of ACTIVE (non-bible) books a single user may
+// own at once, across BOTH creation surfaces (the MCP book_create tool and the
+// HTTP createBook). Without it an agent (or a script) could loop book_create and
+// make unbounded empty books — the gap closed by D-MCP-BOOK-CREATE-QUOTA. It is a
+// package var (not a const) so DB-gated tests can lower it to seed at the cap
+// cheaply. 200 is a generous but real ceiling for a human library.
+var maxBooksPerUser = 200
+
+// countActiveBooks returns how many active, non-bible books owner_user_id owns —
+// the same predicate listBooks/book_list use to define "my library". This is the
+// per-user ceiling input shared by both creation surfaces (book_create + HTTP).
+func (s *Server) countActiveBooks(ctx context.Context, ownerID uuid.UUID) (int, error) {
+	var n int
+	err := s.pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM books WHERE owner_user_id=$1 AND is_bible=false AND lifecycle_state='active'`,
+		ownerID).Scan(&n)
+	return n, err
+}
+
+// errBookLimitReached is the MCP-surface refusal when a caller is at/over the
+// per-user active-book ceiling. It is informative (not the uniform
+// not-accessible error) because this is a quota condition, not an ownership one.
+// Built per-call so it reflects the current maxBooksPerUser (tests lower it).
+func errBookLimitReached() error {
+	return fmt.Errorf("book limit reached (%d) — delete or purge a book first", maxBooksPerUser)
+}
+
 // ── book_create ──────────────────────────────────────────────────────────────
 
 type bookCreateIn struct {
@@ -58,6 +85,15 @@ func (s *Server) toolBookCreate(ctx context.Context, _ *mcp.CallToolRequest, in 
 	}
 	if err := s.ensureQuotaRow(ctx, userID); err != nil {
 		return nil, bookCreateOut{}, errors.New("failed to initialize quota")
+	}
+	// Per-user active-book ceiling (parity with HTTP createBook) — refuse before
+	// inserting so an agent can't loop book_create into unbounded empty books.
+	n, err := s.countActiveBooks(ctx, userID)
+	if err != nil {
+		return nil, bookCreateOut{}, errors.New("failed to check book quota")
+	}
+	if n >= maxBooksPerUser {
+		return nil, bookCreateOut{}, errBookLimitReached()
 	}
 	var bookID uuid.UUID
 	if err := s.pool.QueryRow(ctx, `

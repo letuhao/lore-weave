@@ -208,6 +208,58 @@ func TestMCP_SaveDraft_StaleBaseVersion_StopsNoOverwrite_DB(t *testing.T) {
 	}
 }
 
+// D-MCP-BOOK-CREATE-QUOTA — book_create must enforce a per-user active-book
+// ceiling. Seed N active books at a temporarily-lowered cap, then assert the
+// (N+1)th book_create is refused with the limit error and inserts NO new row.
+func TestMCP_BookCreate_PerUserCeiling_Refuses_DB(t *testing.T) {
+	s, pool := dbTestServer(t)
+	ctx := context.Background()
+	owner := uuid.New()
+	s.resolveBook = func(_ context.Context, _, _ uuid.UUID) (GrantLevel, uuid.UUID, string, error) {
+		return GrantOwner, owner, "active", nil
+	}
+
+	// Lower the cap so we only need to seed a few rows; restore after the test.
+	const cap = 3
+	prev := maxBooksPerUser
+	maxBooksPerUser = cap
+	t.Cleanup(func() { maxBooksPerUser = prev })
+
+	// Seed exactly `cap` active, non-bible books owned by the caller.
+	for i := 0; i < cap; i++ {
+		if _, err := pool.Exec(ctx,
+			`INSERT INTO books(owner_user_id,title,is_bible,lifecycle_state) VALUES($1,'at-cap',false,'active')`,
+			owner); err != nil {
+			t.Fatalf("seed book %d: %v", i, err)
+		}
+	}
+
+	// Sanity: the count helper sees exactly `cap` active books.
+	if got, err := s.countActiveBooks(ctx, owner); err != nil || got != cap {
+		t.Fatalf("countActiveBooks = %d, err=%v; want %d", got, err, cap)
+	}
+
+	tctx := identityCtxForTest(t, owner)
+	_, _, err := s.toolBookCreate(tctx, nil, bookCreateIn{Title: "one too many"})
+	if err == nil {
+		t.Fatalf("book_create at cap = nil error, want refusal")
+	}
+	if !strings.Contains(err.Error(), "book limit reached") {
+		t.Errorf("err = %v, want 'book limit reached'", err)
+	}
+
+	// No new row was inserted — count is still exactly `cap`.
+	var n int
+	if err := pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM books WHERE owner_user_id=$1 AND is_bible=false AND lifecycle_state='active'`,
+		owner).Scan(&n); err != nil {
+		t.Fatalf("recount: %v", err)
+	}
+	if n != cap {
+		t.Errorf("active book count = %d, want %d (refused create must NOT insert)", n, cap)
+	}
+}
+
 // headerRoundTripper injects the kit identity envelope (X-Internal-Token +
 // X-User-Id) onto every outgoing MCP request so the in-process httptest server's
 // IdentityMiddleware authenticates the caller — the same headers the gateway

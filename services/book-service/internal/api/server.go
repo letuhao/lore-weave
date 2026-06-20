@@ -569,6 +569,18 @@ func (s *Server) createBook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to initialize quota")
 		return
 	}
+	// Per-user active-book ceiling (parity with the MCP book_create tool) — refuse
+	// before inserting so a script can't loop createBook into unbounded empty books.
+	n, err := s.countActiveBooks(ctx, ownerID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to check book quota")
+		return
+	}
+	if n >= maxBooksPerUser {
+		writeError(w, http.StatusConflict, "BOOK_LIMIT_REACHED",
+			fmt.Sprintf("book limit reached (%d) — delete or purge a book first", maxBooksPerUser))
+		return
+	}
 	var bookID uuid.UUID
 	if err := s.pool.QueryRow(ctx, `
 INSERT INTO books(owner_user_id,title,description,original_language,summary,genre_tags)
