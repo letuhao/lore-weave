@@ -1,8 +1,10 @@
 package loreweave_mcp
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -68,6 +70,80 @@ func TestConfirmToken_Tampered(t *testing.T) {
 	// Malformed (no separator) is also invalid.
 	if _, err := VerifyConfirmToken(testConfirmSecret, "garbage"); !errors.Is(err, ErrConfirmTokenInvalid) {
 		t.Fatalf("malformed Verify = %v, want ErrConfirmTokenInvalid", err)
+	}
+}
+
+// TestConfirmToken_DescriptorTamperEvident is the confused-deputy regression
+// guard: the descriptor (intent) is inside the HMAC, so re-encoding the payload
+// segment with a DIFFERENT descriptor — even though it is still valid JSON and
+// still base64url — MUST break the signature. This is what stops a token minted
+// for "book.publish" from being silently re-pointed at "book.delete".
+func TestConfirmToken_DescriptorTamperEvident(t *testing.T) {
+	user := uuid.New()
+	res := uuid.New()
+
+	tok, err := MintConfirmToken(testConfirmSecret, user, res, "book.publish", map[string]any{"x": 1}, time.Minute)
+	if err != nil {
+		t.Fatalf("Mint = %v", err)
+	}
+
+	// Decode the payload segment, swap the descriptor to "book.delete", re-encode
+	// it as valid JSON+base64url, and reattach the ORIGINAL signature. The token is
+	// structurally well-formed; only the descriptor changed.
+	parts := strings.Split(tok, ".")
+	if len(parts) != 2 {
+		t.Fatalf("token has %d parts, want 2", len(parts))
+	}
+	body, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		t.Fatalf("decode payload = %v", err)
+	}
+	var claims ConfirmClaims
+	if err := json.Unmarshal(body, &claims); err != nil {
+		t.Fatalf("unmarshal claims = %v", err)
+	}
+	if claims.Descriptor != "book.publish" {
+		t.Fatalf("precondition: minted descriptor = %q, want book.publish", claims.Descriptor)
+	}
+	claims.Descriptor = "book.delete" // tamper the intent
+	tampered, err := json.Marshal(claims)
+	if err != nil {
+		t.Fatalf("marshal tampered = %v", err)
+	}
+	forged := base64.RawURLEncoding.EncodeToString(tampered) + "." + parts[1]
+
+	if _, err := VerifyConfirmToken(testConfirmSecret, forged); !errors.Is(err, ErrConfirmTokenInvalid) {
+		t.Fatalf("descriptor-tampered Verify = %v, want ErrConfirmTokenInvalid (descriptor is inside the HMAC)", err)
+	}
+}
+
+// TestConfirmToken_DescriptorBoundExactly asserts that a validly-minted token's
+// verified Descriptor is returned EXACTLY as minted — so a confirm route
+// dispatching on claims.Descriptor cannot be fooled into running the wrong action.
+func TestConfirmToken_DescriptorBoundExactly(t *testing.T) {
+	tok, err := MintConfirmToken(testConfirmSecret, uuid.New(), uuid.New(), "book.delete", nil, time.Minute)
+	if err != nil {
+		t.Fatalf("Mint = %v", err)
+	}
+	claims, err := VerifyConfirmToken(testConfirmSecret, tok)
+	if err != nil {
+		t.Fatalf("Verify = %v", err)
+	}
+	if claims.Descriptor != "book.delete" {
+		t.Fatalf("verified descriptor = %q, want exactly book.delete", claims.Descriptor)
+	}
+}
+
+// TestConfirmToken_AtExpiryBoundary pins the `>=` expiry check: a token whose Exp
+// is exactly the current second is REJECTED (expired), not accepted. The token is
+// minted with ttl=0 so Exp == now-at-mint; by verify time now >= Exp holds.
+func TestConfirmToken_AtExpiryBoundary(t *testing.T) {
+	tok, err := MintConfirmToken(testConfirmSecret, uuid.New(), uuid.New(), "x", nil, 0)
+	if err != nil {
+		t.Fatalf("Mint = %v", err)
+	}
+	if _, err := VerifyConfirmToken(testConfirmSecret, tok); !errors.Is(err, ErrConfirmTokenExpired) {
+		t.Fatalf("at-expiry Verify = %v, want ErrConfirmTokenExpired (Exp==now must be rejected)", err)
 	}
 }
 

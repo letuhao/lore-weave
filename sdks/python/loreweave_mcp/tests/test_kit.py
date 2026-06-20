@@ -10,6 +10,8 @@ Covers:
 
 from __future__ import annotations
 
+import base64
+import json
 import uuid
 
 import pytest
@@ -278,6 +280,23 @@ async def test_user_scope_guard_fail_closed_on_missing():
 
 
 @pytest.mark.asyncio
+async def test_user_scope_guard_denied_zero_owner():
+    # A row whose owner resolves to the zero UUID (a NULL/zero owner column) must
+    # be denied — a zero owner can never match a real caller, so it grants nothing.
+    # (Mirrors the Go kit's explicit `owner == uuid.Nil` defense; here the deny
+    # falls out of the `owner != caller` check since the caller is a real UUID.)
+    zero = uuid.UUID(int=0)
+
+    async def owner_of(ctx, resource_id):
+        return zero
+
+    guard = require_user_scope(owner_of)
+    tc = ToolContext(user_id=uuid.uuid4(), session_id="s")
+    with pytest.raises(NotAccessibleError):
+        await guard(tc, uuid.uuid4())
+
+
+@pytest.mark.asyncio
 async def test_user_scope_guard_accepts_sync_owner_of():
     uid = uuid.uuid4()
 
@@ -368,6 +387,40 @@ def test_confirm_token_tampered_payload_rejected():
     forged = payload_b64[:-1] + ("A" if payload_b64[-1] != "A" else "B")
     with pytest.raises(ConfirmTokenInvalid):
         verify_confirm_token(SIGNING_SECRET, forged + "." + sig_b64)
+
+
+def test_confirm_token_descriptor_tamper_evident():
+    """Confused-deputy guard: the descriptor is inside the HMAC, so re-encoding the
+    payload segment with a DIFFERENT descriptor — still valid JSON, still
+    base64url — must break the signature. A token minted for "book.publish" can
+    never be silently re-pointed at "book.delete"."""
+    uid, rid = uuid.uuid4(), uuid.uuid4()
+    tok = mint_confirm_token(SIGNING_SECRET, uid, rid, "book.publish", {"x": 1})
+    payload_b64, sig_b64 = tok.split(".")
+
+    pad = "=" * (-len(payload_b64) % 4)
+    claims = json.loads(base64.urlsafe_b64decode(payload_b64 + pad))
+    assert claims["d"] == "book.publish"  # precondition
+    claims["d"] = "book.delete"  # tamper the intent only
+    forged_payload = (
+        base64.urlsafe_b64encode(
+            json.dumps(claims, separators=(",", ":"), sort_keys=True).encode()
+        )
+        .rstrip(b"=")
+        .decode("ascii")
+    )
+    # Reattach the ORIGINAL signature → well-formed token, only the descriptor changed.
+    with pytest.raises(ConfirmTokenInvalid):
+        verify_confirm_token(SIGNING_SECRET, forged_payload + "." + sig_b64)
+
+
+def test_confirm_token_descriptor_bound_exactly():
+    """A validly-minted descriptor round-trips EXACTLY, so a confirm route
+    dispatching on claims.descriptor cannot be fooled into the wrong action."""
+    uid, rid = uuid.uuid4(), uuid.uuid4()
+    tok = mint_confirm_token(SIGNING_SECRET, uid, rid, "book.delete", None)
+    claims = verify_confirm_token(SIGNING_SECRET, tok)
+    assert claims.descriptor == "book.delete"
 
 
 def test_confirm_token_wrong_secret_rejected():

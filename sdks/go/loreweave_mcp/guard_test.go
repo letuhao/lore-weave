@@ -107,6 +107,23 @@ func TestUserScopeGuard(t *testing.T) {
 			t.Fatalf("Check = %v, want ErrNotAccessible", err)
 		}
 	})
+
+	// The "zero UUID owns everything" defense: a row whose owner resolves to
+	// uuid.Nil (a NULL/zero owner column) with NO error MUST be denied — even if
+	// the caller themselves were somehow uuid.Nil — so a zero owner can never grant
+	// access. The owner==uuid.Nil branch in the guard exists precisely for this.
+	t.Run("nil owner with nil error denied (zero owns nothing)", func(t *testing.T) {
+		g := UserScopeGuard(func(context.Context, uuid.UUID) (uuid.UUID, error) {
+			return uuid.Nil, nil // row exists but has a zero/NULL owner
+		})
+		if err := g.Check(ctx, caller, res); !errors.Is(err, ErrNotAccessible) {
+			t.Fatalf("Check = %v, want ErrNotAccessible (zero owner must never grant)", err)
+		}
+		// Even a zero-UUID caller must not match a zero owner.
+		if err := g.Check(ctx, uuid.Nil, res); !errors.Is(err, ErrNotAccessible) {
+			t.Fatalf("Check(caller=Nil) = %v, want ErrNotAccessible", err)
+		}
+	})
 }
 
 func TestProjectGuard(t *testing.T) {
