@@ -172,6 +172,12 @@ class KnowledgeClient:
         # K21-B — process cache for GET /internal/tools/definitions.
         # None = not fetched yet; a list = the cached OpenAI schemas.
         self._tool_definitions: list[dict] | None = None
+        # T4c — separate process cache for the ADMIN catalog (`/mcp/admin`). The
+        # catalog is identical for every admin (only the per-request RS256 token
+        # varies), so the CATALOG is cached but the token is NEVER part of the
+        # cache key and is NEVER cached. Kept distinct from `_tool_definitions`
+        # so admin tools can never bleed into the user/book `/mcp` catalog (E17).
+        self._admin_tool_definitions: list[dict] | None = None
 
     async def aclose(self) -> None:
         await self._http.aclose()
@@ -377,6 +383,67 @@ class KnowledgeClient:
         self._tool_definitions = tools
         return tools
 
+    async def get_admin_tool_definitions(self, admin_token: str | None) -> list[dict]:
+        """T4c — fetch the SYSTEM-TIER admin tool catalog from the gateway's
+        SEPARATE ``/mcp/admin`` endpoint (NOT ``/mcp``), presenting the caller's
+        RS256 ``admin:write`` token in ``X-Admin-Token``.
+
+        Curation (E17/INV-T6): this is the ONLY method that dials ``/mcp/admin``;
+        the user/book ``get_tool_definitions`` never does, so admin tool names
+        never appear in a non-admin session's catalog. Conversely an admin
+        session calls THIS, not ``get_tool_definitions``.
+
+        The CATALOG is cached process-wide (identical for every admin); the
+        ``admin_token`` is NEVER cached and NEVER logged (§6.7). No token, or any
+        transport/auth failure (incl. a 401 from the transport gate) → ``[]`` so
+        the turn degrades tool-free, same contract as the user path.
+        """
+        if not admin_token:
+            return []
+        if self._admin_tool_definitions is not None:
+            return self._admin_tool_definitions
+        if streamablehttp_client is None or ClientSession is None:
+            logger.warning(
+                "get_admin_tool_definitions called but the 'mcp' package is not installed"
+            )
+            return []
+
+        mcp_url = f"{self._tools_base_url}/mcp/admin"
+        headers = {
+            "X-Internal-Token": self._http.headers["X-Internal-Token"],
+            "X-Admin-Token": admin_token,
+        }
+        tid = current_trace_id()
+        if tid:
+            headers["X-Trace-Id"] = tid
+        try:
+            async with streamablehttp_client(
+                mcp_url, headers=headers,
+                timeout=self._tool_timeout_s, sse_read_timeout=self._tool_timeout_s,
+            ) as (read, write, _):
+                async with ClientSession(read, write) as mcp_session:
+                    await mcp_session.initialize()
+                    listed = await mcp_session.list_tools()
+        except Exception as exc:
+            # NOTE: log only the exception, never `headers` — `X-Admin-Token`
+            # is a bearer credential and must not reach the logs (§6.7).
+            logger.warning("get_admin_tool_definitions (mcp list-tools) failed: %s", exc)
+            return []
+
+        tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": t.name,
+                    "description": t.description or "",
+                    "parameters": _normalize_tool_parameters(t.inputSchema),
+                },
+            }
+            for t in listed.tools
+        ]
+        self._admin_tool_definitions = tools
+        return tools
+
     async def mcp_execute_tool(
         self,
         *,
@@ -385,6 +452,7 @@ class KnowledgeClient:
         tool_name: str,
         tool_args: dict,
         project_id: str | None = None,
+        admin_token: str | None = None,
     ) -> dict:
         """ARCH-2 C2 — execute a memory tool via MCP streamable HTTP transport.
 
@@ -395,6 +463,11 @@ class KnowledgeClient:
         Context headers carry user_id / project_id / session_id — they never
         appear in tool_args (design D3). A transport or protocol failure returns
         success=False (graceful degradation, same contract as execute_tool()).
+
+        T4c — when ``admin_token`` is set the call routes to the SEPARATE
+        ``/mcp/admin`` endpoint with the RS256 token in ``X-Admin-Token`` and
+        DOES NOT send ``X-User-Id``: admin authority is the verified RS256 token,
+        never the user id (INV-T2). The token is never logged (§6.7).
         """
         if streamablehttp_client is None or ClientSession is None:
             logger.warning("mcp_execute_tool called but the 'mcp' package is not installed")
@@ -404,13 +477,22 @@ class KnowledgeClient:
                 "error": "mcp tool backend unavailable: mcp package not installed",
             }
 
-        mcp_url = f"{self._tools_base_url}/mcp"
-        headers = {
-            "X-Internal-Token": self._http.headers["X-Internal-Token"],
-            "X-User-Id": user_id,
-            "X-Session-Id": session_id,
-        }
-        if project_id:
+        if admin_token:
+            # System-tier admin tool: separate endpoint, RS256 authority, NO X-User-Id.
+            mcp_url = f"{self._tools_base_url}/mcp/admin"
+            headers = {
+                "X-Internal-Token": self._http.headers["X-Internal-Token"],
+                "X-Admin-Token": admin_token,
+                "X-Session-Id": session_id,
+            }
+        else:
+            mcp_url = f"{self._tools_base_url}/mcp"
+            headers = {
+                "X-Internal-Token": self._http.headers["X-Internal-Token"],
+                "X-User-Id": user_id,
+                "X-Session-Id": session_id,
+            }
+        if project_id and not admin_token:
             headers["X-Project-Id"] = project_id
         # K7e — mirror execute_tool: forward the caller's trace_id so
         # knowledge-service stitches its logs to the originating chat turn.

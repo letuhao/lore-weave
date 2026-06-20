@@ -257,6 +257,7 @@ async def _stream_with_tools(
     composer_model: tuple[str, str] | None = None,
     composer_system_prompt: str | None = None,
     max_iterations: int = MAX_TOOL_ITERATIONS,
+    admin_token: str | None = None,
 ) -> AsyncGenerator[dict, None]:
     """K21-B — the tool-calling loop.
 
@@ -424,9 +425,12 @@ async def _stream_with_tools(
                 # backend (memory) tool — execute via the ai-gateway over MCP
                 # (ai-gateway P0: the only tool transport; the bespoke path was
                 # retired with the hard cutover).
+                # T4c: on an admin surface, pass the RS256 admin token so
+                # glossary_admin_* route to /mcp/admin (no X-User-Id; INV-T2).
                 envelope = await knowledge_client.mcp_execute_tool(
                     user_id=user_id, session_id=session_id, project_id=project_id,
                     tool_name=c["name"], tool_args=args_obj,
+                    admin_token=admin_token,
                 )
                 ok = bool(envelope.get("success"))
                 tool_payload = envelope.get("result") if ok else {"error": envelope.get("error")}
@@ -481,6 +485,8 @@ async def stream_response(
     stream_format: str = "legacy",
     editor_context: dict | None = None,
     book_context: dict | None = None,
+    admin_context: dict | None = None,
+    admin_token: str | None = None,
     disable_tools: bool = False,
 ) -> AsyncGenerator[str, None]:
     """Async generator that yields chat-turn SSE lines.
@@ -597,6 +603,19 @@ async def stream_response(
     if inject_glossary_skill:
         from app.services.glossary_skill import GLOSSARY_SKILL_PROMPT
         glossary_skill = GLOSSARY_SKILL_PROMPT
+    # T4c — the admin (cms) surface gets the System-tier admin skill instead:
+    # propose-by-code → always human-confirm → never claim a write before
+    # `action_done`. Mutually exclusive with the book/user glossary skill (a
+    # request is one surface or the other).
+    inject_admin_skill = (
+        stream_format == "agui"
+        and bool(admin_context)
+        and not disable_tools
+        and kctx.tool_calling_enabled
+    )
+    if inject_admin_skill:
+        from app.services.glossary_skill import GLOSSARY_ADMIN_SKILL_PROMPT
+        glossary_skill = GLOSSARY_ADMIN_SKILL_PROMPT
 
     use_anthropic_cache = (
         creds.provider_kind == "anthropic"
@@ -651,23 +670,38 @@ async def stream_response(
     # schemas. A fetch failure → empty list → the turn runs tool-free.
     tool_defs: list[dict] = []
     if not disable_tools and kctx.tool_calling_enabled:
-        tool_defs = await knowledge_client.get_tool_definitions()
-        # Frontend (browser-executed, suspend→Apply) write-back tools, advertised
-        # per surface (agui only — other clients never see them):
-        #   propose_edit                 — chapter editor panel (editor_context)
-        #   glossary_propose_entity_edit — any book-scoped chat (editor OR a
-        #     glossary-page/reader chat carrying book_context) [glossary P3]
-        if stream_format == "agui" and (editor_context or book_context):
-            from app.services.frontend_tools import frontend_tool_defs
-            tool_defs = tool_defs + frontend_tool_defs(
-                editor=bool(editor_context),
-                book_scoped=bool(editor_context or book_context),
-            )
-        # A2A phase-2: advertise compose_prose only when a composer model is
-        # configured for this session (orchestrator → writer delegation).
-        if composer_model is not None:
-            from app.services.composer import compose_prose_defs
-            tool_defs = tool_defs + compose_prose_defs()
+        if admin_context:
+            # T4c — ADMIN surface (cms chat): advertise ONLY the System-tier admin
+            # catalog from the SEPARATE /mcp/admin endpoint. Curation E17/INV-T6:
+            # the book/user /mcp catalog and its frontend write-back tools are
+            # NEVER fetched here, so admin sessions can't see them and book/user
+            # sessions never reach /mcp/admin. No admin token / fetch failure →
+            # empty list → the turn runs tool-free.
+            tool_defs = await knowledge_client.get_admin_tool_definitions(admin_token)
+            # The generic class-C confirm frontend tool, so the agent can surface
+            # the System confirm card (suspend → human Confirm → the FE POSTs to
+            # /v1/glossary/actions/admin/confirm). Only when there ARE admin tools.
+            if stream_format == "agui" and tool_defs:
+                from app.services.frontend_tools import GLOSSARY_CONFIRM_ACTION_TOOL
+                tool_defs = tool_defs + [GLOSSARY_CONFIRM_ACTION_TOOL]
+        else:
+            tool_defs = await knowledge_client.get_tool_definitions()
+            # Frontend (browser-executed, suspend→Apply) write-back tools, advertised
+            # per surface (agui only — other clients never see them):
+            #   propose_edit                 — chapter editor panel (editor_context)
+            #   glossary_propose_entity_edit — any book-scoped chat (editor OR a
+            #     glossary-page/reader chat carrying book_context) [glossary P3]
+            if stream_format == "agui" and (editor_context or book_context):
+                from app.services.frontend_tools import frontend_tool_defs
+                tool_defs = tool_defs + frontend_tool_defs(
+                    editor=bool(editor_context),
+                    book_scoped=bool(editor_context or book_context),
+                )
+            # A2A phase-2: advertise compose_prose only when a composer model is
+            # configured for this session (orchestrator → writer delegation).
+            if composer_model is not None:
+                from app.services.composer import compose_prose_defs
+                tool_defs = tool_defs + compose_prose_defs()
     use_tools = bool(tool_defs)
 
     # ── Stream the turn ──────────────────────────────────────────────────────
@@ -687,6 +721,7 @@ async def stream_response(
         project_id=str(project_id) if project_id else None,
         stream_format=stream_format,
         editor_context=editor_context,
+        admin_token=admin_token,
         messages=messages,
         gen_params=gen_params,
         tool_defs=tool_defs,
@@ -698,7 +733,7 @@ async def stream_response(
         composer_model=composer_model,
         composer_system_prompt=system_prompt,
         # H11: book-scoped surfaces get the richer iteration budget.
-        max_iterations=GLOSSARY_TOOL_ITERATIONS if (editor_context or book_context) else MAX_TOOL_ITERATIONS,
+        max_iterations=GLOSSARY_TOOL_ITERATIONS if (editor_context or book_context or admin_context) else MAX_TOOL_ITERATIONS,
     ):
         yield line
 
@@ -722,6 +757,7 @@ async def _emit_chat_turn(
     tool_defs: list[dict],
     use_tools: bool,
     knowledge_client,
+    admin_token: str | None = None,
     fe_memory_mode: str | None,
     msg_id: str,
     seed_usage: tuple[int, int] | None,
@@ -778,6 +814,7 @@ async def _emit_chat_turn(
                 composer_model=composer_model,
                 composer_system_prompt=composer_system_prompt,
                 max_iterations=max_iterations,
+                admin_token=admin_token,
             )
         else:
             chunk_stream = _stream_via_gateway(
@@ -1079,6 +1116,7 @@ async def resume_stream_response(
     pool: asyncpg.Pool,
     billing: BillingClient,
     stream_format: str = "agui",
+    admin_token: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """ARCH-1 C6 — resume a suspended run after the FE executed a frontend tool.
 
@@ -1132,26 +1170,38 @@ async def resume_stream_response(
 
     knowledge_client = get_knowledge_client()
     tool_defs: list[dict] = []
-    try:
-        tool_defs = await knowledge_client.get_tool_definitions()
-    except Exception:
-        tool_defs = []
-    # The editor tool stays advertised on resume (the agent may propose again).
-    # Append it WHENEVER agui — mirror the fresh path (stream_response), which
-    # adds the frontend tool regardless of whether memory tools are present.
-    # Gating on `tool_defs` was a bug: with no memory tools (no project) the
-    # frontend tool was dropped AND the run fell through to the no-tools gateway
-    # path, which ignores seed_usage → resume usage was NOT summed across the two
-    # runs (caught by C6 live smoke). Going through _stream_with_tools keeps the
-    # seed and re-advertises the tool.
-    if stream_format == "agui":
-        # Re-advertise both frontend write-back tools on resume — the agent may
-        # propose again (prose or a glossary edit) after the user's decision.
-        tool_defs = tool_defs + frontend_tool_defs(editor=True, book_scoped=True)
-    if composer_model is not None:
-        from app.services.composer import compose_prose_defs
-        tool_defs = tool_defs + compose_prose_defs()
-    use_tools = bool(tool_defs)
+    if admin_token:
+        # T4c — resuming an ADMIN-surface run: re-derive the admin catalog from
+        # /mcp/admin and re-advertise ONLY glossary_confirm_action. Curation
+        # holds on resume too: never the book/user catalog or its write-back
+        # tools, never compose_prose. (The admin re-presents X-Admin-Token on the
+        # tool-results request.)
+        tool_defs = await knowledge_client.get_admin_tool_definitions(admin_token)
+        if stream_format == "agui" and tool_defs:
+            from app.services.frontend_tools import GLOSSARY_CONFIRM_ACTION_TOOL
+            tool_defs = tool_defs + [GLOSSARY_CONFIRM_ACTION_TOOL]
+        use_tools = bool(tool_defs)
+    else:
+        try:
+            tool_defs = await knowledge_client.get_tool_definitions()
+        except Exception:
+            tool_defs = []
+        # The editor tool stays advertised on resume (the agent may propose again).
+        # Append it WHENEVER agui — mirror the fresh path (stream_response), which
+        # adds the frontend tool regardless of whether memory tools are present.
+        # Gating on `tool_defs` was a bug: with no memory tools (no project) the
+        # frontend tool was dropped AND the run fell through to the no-tools gateway
+        # path, which ignores seed_usage → resume usage was NOT summed across the two
+        # runs (caught by C6 live smoke). Going through _stream_with_tools keeps the
+        # seed and re-advertises the tool.
+        if stream_format == "agui":
+            # Re-advertise both frontend write-back tools on resume — the agent may
+            # propose again (prose or a glossary edit) after the user's decision.
+            tool_defs = tool_defs + frontend_tool_defs(editor=True, book_scoped=True)
+        if composer_model is not None:
+            from app.services.composer import compose_prose_defs
+            tool_defs = tool_defs + compose_prose_defs()
+        use_tools = bool(tool_defs)
 
     # Delete the suspended run up front — the 2nd pass owns the turn now.
     await delete_suspended_run(pool, run_id)
@@ -1169,6 +1219,7 @@ async def resume_stream_response(
         project_id=str(project_id) if project_id else None,
         stream_format=stream_format,
         editor_context={"resumed": True},  # truthy so the frontend tool stays advertised
+        admin_token=admin_token,  # T4c: keep admin routing on the resume pass
         messages=working,
         gen_params=gen_params,
         tool_defs=tool_defs,
