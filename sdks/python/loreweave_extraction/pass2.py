@@ -38,6 +38,7 @@ from loreweave_extraction.extractors.relation import (
     LLMRelationCandidate,
     extract_relations,
 )
+from loreweave_extraction.schema_projection import ExtractionSchema
 
 __all__ = [
     "Pass2Candidates",
@@ -145,6 +146,11 @@ async def extract_pass2(
     # (current behaviour, back-compat). A positive int gates the gather with
     # an asyncio.Semaphore so at most N of the requested trio ops run at once.
     concurrency_level: int | None = None,
+    # KG customizable-ontology (lane LB) — the resolved project schema projection.
+    # None (default — worker-ai + translation never pass it) → byte-identical
+    # static prompts + Literal validation. A non-None ExtractionSchema activates
+    # the dynamic prompt/validation path in every per-op extractor.
+    schema: ExtractionSchema | None = None,
 ) -> Pass2Candidates:
     """Run the full Pass 2 extraction pipeline.
 
@@ -206,6 +212,7 @@ async def extract_pass2(
         llm_client=llm_client,
         on_dropped=on_dropped,
         prompt_override_system=_sys("entity"),
+        schema=schema,
     )
 
     # Gate: if no entities, nothing to anchor.
@@ -226,6 +233,7 @@ async def extract_pass2(
         model_ref=model_ref,
         llm_client=llm_client,
         on_dropped=on_dropped,
+        schema=schema,
     )
 
     # C12 — build the gather task-list CONDITIONALLY. Only the requested

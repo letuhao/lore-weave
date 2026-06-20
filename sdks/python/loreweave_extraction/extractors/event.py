@@ -44,7 +44,12 @@ from loreweave_extraction.context_budget import (
 )
 from loreweave_extraction.errors import ExtractionError
 from loreweave_extraction.extractors.entity import LLMEntityCandidate
-from loreweave_extraction.prompts import apply_prompt_override, load_prompt
+from loreweave_extraction.prompts import (
+    append_schema_constraints,
+    apply_prompt_override,
+    load_prompt,
+)
+from loreweave_extraction.schema_projection import ExtractionSchema
 
 __all__ = [
     "LLMEventCandidate",
@@ -57,10 +62,16 @@ logger = logging.getLogger(__name__)
 
 # ── LLM response schema (matches event_extraction.md prompt) ──────
 
+# Static default vocab — preserved for the `schema=None` path (backward-compat).
 EventKind = Literal[
     "action", "dialogue", "battle", "travel",
     "discovery", "death", "birth", "other",
 ]
+
+_STATIC_EVENT_KINDS: frozenset[str] = frozenset(
+    {"action", "dialogue", "battle", "travel",
+     "discovery", "death", "birth", "other"}
+)
 
 
 # C18 — truncated ISO date pattern. Months 01-12, days 01-31.
@@ -223,8 +234,13 @@ async def extract_events(
     on_dropped: DroppedHandler | None = None,
     context_budget: "ContextBudget | None" = None,
     prompt_override_system: str | None = None,
+    schema: ExtractionSchema | None = None,
 ) -> list[LLMEventCandidate]:
     """Extract narrative events from *text* via the user's BYOK LLM.
+
+    ``schema`` (lane LB): ``None`` (default) keeps the static ``EventKind``
+    ``Literal`` + byte-identical prompt. A non-None schema injects + validates
+    against ``schema.event_kinds`` (fail-soft).
 
     Args:
         text: chapter or passage text. Empty/whitespace returns ``[]``
@@ -254,13 +270,8 @@ async def extract_events(
     if not text or not text.strip():
         return []
 
-    safe_known = json.dumps(
-        known_entities, ensure_ascii=False
-    ).replace("{", "{{").replace("}", "}}")
-
-    system_prompt = apply_prompt_override(
-        load_prompt("event_system", known_entities=safe_known),
-        prompt_override_system,
+    system_prompt = build_event_system(
+        known_entities, prompt_override_system, schema=schema,
     )
     raw_events = await _extract_via_llm_client(
         llm_client=llm_client,
@@ -272,6 +283,7 @@ async def extract_events(
         text=text,
         on_dropped=on_dropped,
         context_budget=context_budget,
+        schema=schema,
     )
 
     return _postprocess(
@@ -403,6 +415,7 @@ async def _extract_via_llm_client(
     text: str,
     on_dropped: DroppedHandler | None,
     context_budget: ContextBudget | None = None,
+    schema: ExtractionSchema | None = None,
 ) -> list[_LLMEvent]:
     """Submit event_extraction job + wait_terminal + tolerant-parse
     `result.events`. Mirrors entity extractor's SDK path."""
@@ -427,7 +440,7 @@ async def _extract_via_llm_client(
             last_error=exc,
         ) from exc
 
-    return parse_event_job(job, on_dropped=on_dropped)
+    return parse_event_job(job, on_dropped=on_dropped, schema=schema)
 
 
 # ── Decouple seams (LLM re-arch Phase 2b WX-T2) — see entity.py ─────
@@ -477,6 +490,7 @@ def build_event_submit_kwargs(
 
 def parse_event_job(
     job: Any, *, on_dropped: DroppedHandler | None,
+    schema: ExtractionSchema | None = None,
 ) -> list[_LLMEvent]:
     """Pure: validate the terminal Job + tolerant-parse `result.events`."""
     if job.status == "cancelled":
@@ -496,39 +510,61 @@ def parse_event_job(
         items = job.result.get("events", [])
         if isinstance(items, list):
             raw_items = items
-    return _tolerant_parse_events(raw_items, on_dropped=on_dropped)
+    return _tolerant_parse_events(raw_items, on_dropped=on_dropped, schema=schema)
 
 
 def build_event_system(
     known_entities: list[str], prompt_override_system: str | None = None,
+    *, schema: ExtractionSchema | None = None,
 ) -> str:
-    """Pure: the event system prompt (WX-T2d)."""
+    """Pure: the event system prompt (WX-T2d).
+
+    ``schema=None`` → byte-identical static prompt; a non-None schema appends
+    the project's event-kind vocab before override-contract logic (lane LB)."""
     safe_known = json.dumps(known_entities, ensure_ascii=False).replace("{", "{{").replace("}", "}}")
-    return apply_prompt_override(
-        load_prompt("event_system", known_entities=safe_known), prompt_override_system,
+    default_system = append_schema_constraints(
+        load_prompt("event_system", known_entities=safe_known), "event", schema,
     )
+    return apply_prompt_override(default_system, prompt_override_system)
 
 
 def apply_event_job(
     job: Any, *, on_dropped: DroppedHandler | None,
     entities: list, known_entities: list[str], user_id: str,
+    schema: ExtractionSchema | None = None,
 ) -> list[LLMEventCandidate]:
     """Parse + postprocess an event terminal Job (WX-T2d)."""
     return _postprocess(
-        parse_event_job(job, on_dropped=on_dropped),
+        parse_event_job(job, on_dropped=on_dropped, schema=schema),
         entities=entities, known_entities=known_entities, user_id=user_id,
     )
+
+
+def _event_kind_accepted(kind: str, schema: ExtractionSchema | None) -> bool:
+    """schema=None → in static EventKind; else in schema.event_kinds (empty
+    vocab accepts anything — never stricter than static). Case-insensitive."""
+    if schema is None:
+        return kind in _STATIC_EVENT_KINDS
+    vocab = schema.event_kinds
+    if not vocab:
+        return True
+    low = kind.strip().lower()
+    return any(low == v.strip().lower() for v in vocab)
 
 
 def _tolerant_parse_events(
     raw_items: list[Any],
     *,
     on_dropped: DroppedHandler | None,
+    schema: ExtractionSchema | None = None,
 ) -> list[_LLMEvent]:
     """Drop items missing `name` or `summary` or `confidence`; tolerate
     null location/time_cue/event_date (validator coerces malformed
     event_date to None — preserved); clamp confidence; drop on enum
-    validation failure (kind not in EventKind Literal)."""
+    validation failure (kind not in EventKind Literal).
+
+    ``schema=None`` validates ``kind`` against the static ``EventKind``
+    ``Literal``; with a schema, against ``schema.event_kinds`` (fail-soft)."""
     parsed: list[_LLMEvent] = []
     for item in raw_items:
         if not isinstance(item, dict):
@@ -552,6 +588,39 @@ def _tolerant_parse_events(
         participants = item.get("participants") or []
         if not isinstance(participants, list):
             participants = []
+        if schema is not None:
+            # Dynamic path — validate kind against projected vocab; the rest of
+            # _LLMEvent's field validators (event_date coerce, status_effects
+            # filter) still run, but kind bypasses the EventKind Literal.
+            kind = item.get("kind", "other")
+            if not isinstance(kind, str) or not _event_kind_accepted(kind, schema):
+                if on_dropped:
+                    on_dropped("event_extraction", "validation")
+                continue
+            try:
+                # Validate field-by-field via a kind-free construct: build the
+                # model with model_validate on a dict that omits kind from the
+                # Literal check by setting it post-construct. Simpler: run the
+                # validators on everything else, then attach kind.
+                evt = _LLMEvent.model_validate({
+                    "name": name,
+                    "kind": "other",  # placeholder satisfies the Literal
+                    "participants": [p for p in participants if isinstance(p, str)],
+                    "location": item.get("location"),
+                    "time_cue": item.get("time_cue"),
+                    "event_date": item.get("event_date"),
+                    "summary": summary,
+                    "confidence": confidence,
+                    "status_effects": item.get("status_effects"),
+                })
+                # Override kind with the schema-validated value (model_copy keeps
+                # the other validated fields intact).
+                parsed.append(evt.model_copy(update={"kind": kind}))
+            except ValidationError:
+                if on_dropped:
+                    on_dropped("event_extraction", "validation")
+                continue
+            continue
         try:
             parsed.append(_LLMEvent(
                 name=name,

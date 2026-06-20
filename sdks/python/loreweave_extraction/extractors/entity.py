@@ -40,7 +40,12 @@ from loreweave_extraction.canonical import (
     entity_canonical_id,
 )
 from loreweave_extraction.errors import ExtractionError
-from loreweave_extraction.prompts import apply_prompt_override, load_prompt
+from loreweave_extraction.prompts import (
+    append_schema_constraints,
+    apply_prompt_override,
+    load_prompt,
+)
+from loreweave_extraction.schema_projection import ExtractionSchema
 
 __all__ = [
     "EntityExtractionResponse",
@@ -52,9 +57,17 @@ logger = logging.getLogger(__name__)
 
 # ── LLM response schema (matches entity_extraction.md prompt) ────────
 
+# Static default vocab — the SDK's historical hardcoded ontology, preserved
+# byte-for-byte for the `schema=None` path (backward-compat: worker-ai +
+# translation never pass a schema). When a dynamic ExtractionSchema IS passed,
+# validation accepts the schema's `entity_kinds` instead (fail-soft).
 EntityKind = Literal[
     "person", "place", "organization", "artifact", "concept", "other"
 ]
+
+_STATIC_ENTITY_KINDS: frozenset[str] = frozenset(
+    {"person", "place", "organization", "artifact", "concept", "other"}
+)
 
 
 class _LLMEntity(BaseModel):
@@ -107,8 +120,15 @@ async def extract_entities(
     on_dropped: DroppedHandler | None = None,
     context_budget: "ContextBudget | None" = None,
     prompt_override_system: str | None = None,
+    schema: ExtractionSchema | None = None,
 ) -> list[LLMEntityCandidate]:
     """Extract named entities from *text* via the user's BYOK LLM.
+
+    ``schema`` (KG customizable-ontology, lane LB): when ``None`` (default —
+    worker-ai + translation never pass it) the static ``EntityKind`` ``Literal``
+    governs validation and the prompt is byte-identical to the historical
+    ``.md``. When an :class:`ExtractionSchema` is passed, its ``entity_kinds``
+    are injected into the prompt and accepted by validation instead.
 
     Args:
         text: chapter or passage text to extract from. Empty/whitespace
@@ -142,19 +162,12 @@ async def extract_entities(
     if not text or not text.strip():
         return []
 
-    # Escape curly braces in caller-supplied values before substitution.
-    # load_prompt uses str.format_map internally — literal { or } in
-    # known_entities (e.g. "The {Ancient} One") would be misinterpreted
-    # as format placeholders and raise KeyError. `text` is NOT escaped
-    # because it goes directly into the user message without
-    # str.format_map().
-    safe_known = json.dumps(
-        known_entities, ensure_ascii=False
-    ).replace("{", "{{").replace("}", "}}")
-
-    system_prompt = apply_prompt_override(
-        load_prompt("entity_system", known_entities=safe_known),
-        prompt_override_system,
+    # build_entity_system handles curly-brace escaping of known_entities
+    # (load_prompt uses str.format_map; literal { or } in a known-entity name
+    # like "The {Ancient} One" would otherwise raise KeyError). `text` rides
+    # the user message verbatim — never format_map'd.
+    system_prompt = build_entity_system(
+        known_entities, prompt_override_system, schema=schema,
     )
     raw_entities = await _extract_via_llm_client(
         llm_client=llm_client,
@@ -166,6 +179,7 @@ async def extract_entities(
         text=text,
         on_dropped=on_dropped,
         context_budget=context_budget,
+        schema=schema,
     )
 
     return _postprocess(
@@ -190,6 +204,7 @@ async def _extract_via_llm_client(
     text: str,
     on_dropped: DroppedHandler | None,
     context_budget: ContextBudget | None = None,
+    schema: ExtractionSchema | None = None,
 ) -> list["_LLMEntity"]:
     """Submit entity_extraction job + wait_terminal + tolerant-parse the
     `result.entities` envelope into a list of `_LLMEntity` records.
@@ -245,7 +260,7 @@ async def _extract_via_llm_client(
             last_error=exc,
         ) from exc
 
-    return parse_entity_job(job, on_dropped=on_dropped)
+    return parse_entity_job(job, on_dropped=on_dropped, schema=schema)
 
 
 # ── Decouple seams (LLM re-arch Phase 2b WX-T2) ─────────────────────
@@ -306,6 +321,7 @@ def build_entity_submit_kwargs(
 
 def parse_entity_job(
     job: Any, *, on_dropped: DroppedHandler | None,
+    schema: ExtractionSchema | None = None,
 ) -> list["_LLMEntity"]:
     """Pure: validate the terminal Job + tolerant-parse `result.entities`. Cancelled
     / non-completed surface as ExtractionError (so the caller flips job status
@@ -327,41 +343,73 @@ def parse_entity_job(
         items = job.result.get("entities", [])
         if isinstance(items, list):
             raw_items = items
-    return _tolerant_parse_entities(raw_items, on_dropped=on_dropped)
+    return _tolerant_parse_entities(raw_items, on_dropped=on_dropped, schema=schema)
 
 
 def build_entity_system(
     known_entities: list[str], prompt_override_system: str | None = None,
+    *, schema: ExtractionSchema | None = None,
 ) -> str:
     """Pure: the entity system prompt (WX-T2d). Same as extract_entities builds —
-    so the decoupled orchestrator assembles an identical submit."""
+    so the decoupled orchestrator assembles an identical submit.
+
+    ``schema=None`` (default) → byte-identical to the historical static prompt.
+    A non-None schema appends the project ontology's entity-kind vocab BEFORE
+    the override-contract logic (lane LB)."""
     safe_known = json.dumps(known_entities, ensure_ascii=False).replace("{", "{{").replace("}", "}}")
-    return apply_prompt_override(
-        load_prompt("entity_system", known_entities=safe_known), prompt_override_system,
+    default_system = append_schema_constraints(
+        load_prompt("entity_system", known_entities=safe_known), "entity", schema,
     )
+    return apply_prompt_override(default_system, prompt_override_system)
 
 
 def apply_entity_job(
     job: Any, *, on_dropped: DroppedHandler | None,
     user_id: str, project_id: str | None, known_entities: list[str],
+    schema: ExtractionSchema | None = None,
 ) -> list[LLMEntityCandidate]:
     """Parse + postprocess an entity terminal Job (WX-T2d) = parse_entity_job →
     _postprocess. Identical to extract_entities' tail."""
     return _postprocess(
-        parse_entity_job(job, on_dropped=on_dropped),
+        parse_entity_job(job, on_dropped=on_dropped, schema=schema),
         user_id=user_id, project_id=project_id, known_entities=known_entities,
     )
+
+
+def _kind_accepted(
+    kind: str, schema: ExtractionSchema | None, static: frozenset[str],
+) -> bool:
+    """Dynamic-vs-static vocab gate (fail-soft).
+
+    ``schema=None`` → accept iff in the static ``Literal`` set (today's
+    behavior). With a schema: accept iff in the schema's vocab; an EMPTY schema
+    vocab accepts anything (a partial projection must never be STRICTER than the
+    static path — §schema_projection). Comparison is case-insensitive on the
+    code slug."""
+    if schema is None:
+        return kind in static
+    vocab = schema.entity_kinds
+    if not vocab:
+        return True
+    low = kind.strip().lower()
+    return any(low == v.strip().lower() for v in vocab)
 
 
 def _tolerant_parse_entities(
     raw_items: list[Any],
     *,
     on_dropped: DroppedHandler | None,
+    schema: ExtractionSchema | None = None,
 ) -> list["_LLMEntity"]:
     """Required name+kind; optional aliases (default []) + confidence
     (default 0.5). Items missing required fields are dropped + counted
     via `on_dropped` so quality regressions surface in dashboards
     before users notice missing entities.
+
+    ``schema=None`` validates ``kind`` against the static ``EntityKind``
+    ``Literal`` (via the ``_LLMEntity`` Pydantic model). With a schema, ``kind``
+    is validated against ``schema.entity_kinds`` (fail-soft: off-vocab → drop +
+    ``on_dropped``), bypassing the ``Literal`` so a custom kind is accepted.
     """
     parsed: list[_LLMEntity] = []
     for item in raw_items:
@@ -389,6 +437,22 @@ def _tolerant_parse_entities(
         # Clamp confidence to [0, 1] so a sloppy LLM emitting 1.2 doesn't
         # trip the Pydantic ge/le validator below.
         confidence = max(0.0, min(1.0, float(confidence)))
+        if schema is not None:
+            # Dynamic path — validate kind against the projected vocab WITHOUT
+            # the Literal (which would reject a custom kind). model_construct
+            # skips Pydantic validation so a schema kind isn't re-checked
+            # against EntityKind. Off-vocab → fail-soft drop.
+            if not _kind_accepted(kind, schema, _STATIC_ENTITY_KINDS):
+                if on_dropped:
+                    on_dropped("entity_extraction", "validation")
+                continue
+            parsed.append(_LLMEntity.model_construct(
+                name=name,
+                kind=kind,  # type: ignore[arg-type]
+                aliases=[a for a in aliases if isinstance(a, str)],
+                confidence=confidence,
+            ))
+            continue
         try:
             parsed.append(_LLMEntity(
                 name=name,

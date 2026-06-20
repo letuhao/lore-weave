@@ -51,6 +51,7 @@ KNOWLEDGE_SERVICE_TRACK2_IMPLEMENTATION.md; cycle 73e plan in
 from __future__ import annotations
 
 import logging
+import re
 from typing import Literal
 
 from pydantic import BaseModel
@@ -83,6 +84,7 @@ from loreweave_extraction.extractors.entity import LLMEntityCandidate
 from loreweave_extraction.extractors.event import LLMEventCandidate
 from loreweave_extraction.extractors.fact import LLMFactCandidate
 from loreweave_extraction.extractors.relation import LLMRelationCandidate
+from loreweave_extraction.schema_projection import ExtractionSchema
 
 __all__ = [
     "Pass2WriteResult",
@@ -90,6 +92,17 @@ __all__ = [
 ]
 
 logger = logging.getLogger(__name__)
+
+
+# KG customizable-ontology (lane LB) — normalize a schema edge-type code the
+# SAME way the SDK normalizes a relation predicate (`[^\w]+` runs → `_`,
+# lowercased, edge-trimmed) so the write-boundary closed-set comparison is
+# apples-to-apples with candidate.predicate (already SDK-normalized).
+_PREDICATE_NON_WORD_RE = re.compile(r"[^\w]+", re.UNICODE)
+
+
+def _normalize_predicate_code(code: str) -> str:
+    return _PREDICATE_NON_WORD_RE.sub("_", code.strip().lower()).strip("_")
 
 
 # Cycle 73e noise heuristic — char-length + word-count combined. The
@@ -266,6 +279,17 @@ async def write_pass2_extraction(
     # into each node's `provenances` set (a node mentioned by both origins
     # carries both).
     provenance: str = "human_authored",
+    # KG customizable-ontology (lane LB) — the resolved project schema
+    # projection. None (default) → no closed-set enforcement at the write
+    # boundary (today's behavior). When present AND the schema's edge set is
+    # CLOSED (``allow_free_edges`` False, non-empty ``edge_predicates``), a
+    # relation whose normalized predicate is off-vocab is SKIPPED fail-soft
+    # (drop-and-skip per-edge, never fail the batch — spec §5-K7 B2). This is a
+    # persistence-boundary belt-and-suspenders: the SDK extractor is the primary
+    # gate, but cached/legacy candidates (extracted pre-schema) can still reach
+    # the writer, so it re-checks. Triage parking of these drops is the LH lane's
+    # job (C4) — this lane only drops + logs.
+    schema: ExtractionSchema | None = None,
 ) -> Pass2WriteResult:
     """Persist Pass 2 LLM extraction candidates to Neo4j.
 
@@ -293,6 +317,21 @@ async def write_pass2_extraction(
     relation_list = relations or []
     event_list = events or []
     fact_list = facts or []
+
+    # KG customizable-ontology (lane LB) — closed-edge-set predicate vocab for
+    # the write-boundary guard. None ⇒ no enforcement (today's free-string
+    # behavior). Candidates' `predicate` is already normalized (snake_case) by
+    # the SDK, and schema codes are normalized identically, so the comparison
+    # is apples-to-apples. Empty / allow_free_edges ⇒ None ⇒ no guard.
+    _closed_edge_vocab: frozenset[str] | None = None
+    if (
+        schema is not None
+        and not schema.allow_free_edges
+        and schema.edge_predicates
+    ):
+        _closed_edge_vocab = frozenset(
+            _normalize_predicate_code(c) for c in schema.edge_predicates
+        )
 
     # P3 (D2 + D2a): MERGE Book/Part/Chapter/Scene hierarchy BEFORE entity
     # writes when hierarchy_paths supplied. Same CypherSession = same Tx
@@ -524,6 +563,22 @@ async def write_pass2_extraction(
             resolved_subject_id not in merged_entity_ids
             or resolved_object_id not in merged_entity_ids
         ):
+            skipped += 1
+            continue
+
+        # KG customizable-ontology (lane LB) — closed-edge-set guard. When the
+        # project schema closes its edge set, drop a relation whose predicate is
+        # off-vocab fail-soft (skip per-edge; never fail the batch — §5-K7 B2).
+        # rel.predicate is already SDK-normalized; vocab is normalized identically.
+        if (
+            _closed_edge_vocab is not None
+            and rel.predicate not in _closed_edge_vocab
+        ):
+            logger.info(
+                "pass2_writer: dropping off-schema edge predicate=%r "
+                "(closed edge set, project=%s, schema=%s)",
+                rel.predicate, project_id, schema.label if schema else "?",
+            )
             skipped += 1
             continue
 
