@@ -170,13 +170,20 @@ class GraphSchemasRepo:
         v1 (Q1 LOCKED): one active project-scoped schema — the merge happened at
         adopt. If the project never adopted, resolve to the System `general`
         template (the additive-first fallback → today's behavior).
+
+        TENANCY CONTRACT (review-impl): `project_id` is caller-supplied; this repo
+        does NOT verify the caller's grant on it. Every caller (LC/LD routers, the
+        extraction path) MUST grant-check the project before calling, exactly like
+        the other knowledge repos. The one-active invariant is maintained by adopt
+        (LC replaces, never accumulates project rows); the ORDER BY tiebreaker
+        below is only a defensive guard against accidental duplicates.
         """
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
                 f"""
                 SELECT {_SCHEMA_COLS} FROM kg_graph_schemas
                 WHERE scope = 'project' AND scope_id = $1 AND deprecated_at IS NULL
-                ORDER BY updated_at DESC LIMIT 1
+                ORDER BY updated_at DESC, schema_id DESC LIMIT 1
                 """,
                 project_id,
             )

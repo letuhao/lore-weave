@@ -32,6 +32,24 @@ async def test_seed_inserts_then_is_idempotent(pool):
     assert second == {"general": "skip", "xianxia-harem": "skip"}
 
 
+async def test_concurrent_seed_is_race_safe(pool):
+    """Multi-replica cold start: two seeders racing on an empty table must NOT
+    crash with a unique-violation (review-impl HIGH). Exactly one row per code."""
+    import asyncio
+
+    await _reset_kg(pool)
+    results = await asyncio.gather(
+        seed_system_graph_schemas(pool),
+        seed_system_graph_schemas(pool),
+        return_exceptions=True,
+    )
+    for r in results:
+        assert not isinstance(r, Exception), f"concurrent seed raised: {r!r}"
+    async with pool.acquire() as conn:
+        n = await conn.fetchval("SELECT count(*) FROM kg_graph_schemas WHERE scope = 'system'")
+    assert n == 2  # general + xianxia-harem, exactly once each
+
+
 async def test_seeded_xianxia_children_counts(pool):
     await _reset_kg(pool)
     await seed_system_graph_schemas(pool)

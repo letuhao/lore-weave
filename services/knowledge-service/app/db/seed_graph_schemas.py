@@ -181,21 +181,36 @@ def _content_hash(tpl: dict) -> str:
     return hashlib.sha256(json.dumps(tpl, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
 
 
-async def _seed_one(conn: asyncpg.Connection, tpl: dict) -> str:
-    """Insert/update one system template + children in a transaction. Returns action."""
-    chash = _content_hash(tpl)
-    existing = await conn.fetchrow(
-        """
-        SELECT schema_id, content_hash, schema_version
-        FROM kg_graph_schemas
-        WHERE scope = 'system' AND scope_id IS NULL AND code = $1
-        """,
-        tpl["code"],
-    )
-    if existing and existing["content_hash"] == chash:
-        return "skip"
+# Advisory-lock namespace for system-template seeding. Concurrent replicas at
+# cold start would otherwise both SELECT-miss then INSERT → unique violation on
+# idx_kg_graph_schemas_scope_code → a crashed startup (review-impl HIGH). Each
+# template serializes on (this ns, hashtext(code)) for the txn duration.
+_SEED_LOCK_NS = 0x4B47  # 'KG'
 
+
+async def _seed_one(conn: asyncpg.Connection, tpl: dict) -> str:
+    """Insert/update one system template + children in a transaction. Returns action.
+
+    The existence check runs INSIDE the txn, after a per-template advisory lock,
+    so two replicas racing on an empty table serialize: the loser blocks, then
+    sees the row + matching hash → skip (no unique violation, no crash).
+    """
+    chash = _content_hash(tpl)
     async with conn.transaction():
+        await conn.execute(
+            "SELECT pg_advisory_xact_lock($1, hashtext($2))", _SEED_LOCK_NS, tpl["code"]
+        )
+        existing = await conn.fetchrow(
+            """
+            SELECT schema_id, content_hash, schema_version
+            FROM kg_graph_schemas
+            WHERE scope = 'system' AND scope_id IS NULL AND code = $1
+            """,
+            tpl["code"],
+        )
+        if existing and existing["content_hash"] == chash:
+            return "skip"
+
         if existing:
             schema_id = existing["schema_id"]
             await conn.execute(

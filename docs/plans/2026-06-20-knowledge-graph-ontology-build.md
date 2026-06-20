@@ -291,8 +291,25 @@ S0 → L1 → (LA ∥ LC ∥ LD) → C2 → LB → (LE ∥ LF nối API) → LG 
   infra unavailable at dev time); provider-gate clean; single-service change
   (no cross-service live-smoke needed).
 
+**2026-06-20 — /review-impl on L1 (HIGH fixed, live-PG verified).**
+- **HIGH (fixed):** concurrent multi-replica cold start raced the seed →
+  `UniqueViolationError` on `idx_kg_graph_schemas_scope_code` → crashed startup.
+  Reproduced with a gather() race test, then fixed: existence-check moved inside
+  the txn behind a per-template `pg_advisory_xact_lock(_SEED_LOCK_NS, hashtext(code))`.
+- **Live-PG VERIFY (D-KG-L1-DB-SMOKE → DONE):** ran the 7 KG integration tests
+  against the running stack's PG18 (`loreweave_knowledge_test`, host :5555) — DDL +
+  seed + repo SQL all green (was skip-only at first commit). This closed the
+  "SQL never executed" coverage gap.
+- **MED (documented, for LC/LD):** `resolve_for_project` / `list_visible(project_id)`
+  load by caller-supplied `project_id` WITHOUT a grant check — the router MUST
+  grant-gate before calling (contract noted in the repo docstring; add a deny-test
+  in LC/LD per [[worker-loaded-id-needs-parent-scoping]]). Added a deterministic
+  resolution tiebreaker (`ORDER BY updated_at DESC, schema_id DESC`).
+- **LOW (deferred):** stale comment in chat-service `knowledge_client.py:172`
+  ("GET /internal/tools/definitions") — non-breaking (live path is MCP list-tools);
+  track as `D-KM0-CHAT-STALE-COMMENT`, fix when chat-service is next touched.
+
 **NEXT (C1 fan-out):** open the parallel lanes against the frozen contracts —
 LA (resolver) · LC (adopt/sync/CRUD) · LD (views) · LH (triage) · LE (FE) ·
 LF (MCP). LB (extraction, worktree, backward-compat) after C2. LG (glossary
-internal-read) on the glossary branch. L1 integration DB tests need a live PG
-run to flip from skip → green (token: `LIVE-SMOKE deferred to D-KG-L1-DB-SMOKE`).
+internal-read) on the glossary branch.
