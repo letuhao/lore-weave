@@ -6,6 +6,49 @@
 
 ---
 
+## ▶ STATUS UPDATE — 2026-06-20 (post genre·kind·attribute re-arch + Tiered-MCP-Tools epic)
+
+> The verdicts in Parts B/C below are **frozen at the original 2026-06-10 CLARIFY**. This block re-assesses S1–S26 against what is actually built now. **Method:** the doc's own L2 lens — *can the agent reach it?* — checked against the live MCP tool inventory (`mcp_server.go` + `book_tools.go` + `sync_tools.go` + `user_tools.go` + `admin_tools.go`) and the 3 chat-service frontend tools (`propose_edit`, `glossary_propose_entity_edit`, `glossary_confirm_action`).
+>
+> **Headline: the ONTOLOGY half is done; the PIPELINE half (extract / translate / research) and several query/UX scenarios are still agent-blind.** The Tiered-MCP-Tools epic (CP-0→CP-7) added the tiered System/User/Book CRUD + adopt + sync + the class-C confirm spine + admin tier — exactly the L2 gap this doc's headline flagged ("only 6 MCP tools exist"). It did **not** add extraction/translation/web-research tools.
+
+**Agent MCP tool inventory now (glossary):** read — `glossary_search`, `glossary_get_entity`, `glossary_list_system_standards`, `glossary_book_ontology_read`, `glossary_user_standards_read`, `glossary_admin_standards_read`, `glossary_entity_get_genres`; write/propose — `glossary_propose_new_entity|kind|attribute`, `glossary_book_create|patch|delete`, `glossary_user_create|patch|delete|restore`, `glossary_admin_propose_create|patch|delete`, `glossary_adopt_standards`, `glossary_book_set_active_genres`, `glossary_book_set_kind_genres`, `glossary_entity_set_genres`; sync — `glossary_book_sync_available|apply`. (No merge / translate / extract / evidence / chapter-link / triage tool exists.)
+
+| # | Scenario | 2026-06-10 | **Now** | What closed it / the remaining gap |
+|---|---|---|---|---|
+| S1 | Full CRUD (genre/kind/attr/entity) | PARTIAL | **✅** | book/user/admin create+patch+**delete** across tiers; entity create/edit via propose tools |
+| S2 | New kind **+ its attributes**, one approval | PARTIAL | **⚠️** | per-level create tools + `adopt` copies a whole genre cell, but a *new* kind + N *new* attributes is still multiple confirm cards (no bundled multi-op card) |
+| S3 | Optimize existing kind to genre | PARTIAL | **✅** | `book_patch` + `set_kind_genres` + `adopt`/`sync` |
+| S4 | Translate entries via the assistant | PARTIAL | **❌** | backend (`glossary_translate_worker`) exists; **no MCP tool** — agent-blind |
+| S5 | Web search / deep research | MISSING | **❌** | still net-new; no tool |
+| S6 | Aliases per language | PARTIAL | **⚠️** | `propose_entity_edit` (source-lang); per-language alias still partial |
+| S7 | Chapter extraction via the assistant | MISSING | **❌** | backend (`extraction_handler.go`) exists; **no MCP tool** — agent-blind |
+| S8 | Re-extract / update after edits | PARTIAL | **❌** | depends on S7 (no tool) |
+| S9 | Merge duplicate entities | — | **❌** | merge backend exists; **no MCP tool** |
+| S10 | Delete / deprecate | — | **✅** | `book_delete` / `user_delete` / `admin_propose_delete` (class-C) |
+| S11 | Reassign kind / "unknown" bucket | — | **⚠️** | `entity_set_genres` covers genre; entity→kind reassign only via generic `propose_entity_edit` |
+| S12 | Triage suggestions inbox (approve/reject) | — | **❌** | agent can *create* drafts; **no tool** to approve/reject — FE-only |
+| S13 | Revision history / undo | — | **⚠️** | `user_restore` (user-tier trash) only; entity-revision undo agent-blind |
+| S14 | Genre management via assistant | — | **✅** | book/user/admin genre create/patch/delete + `set_active_genres` |
+| S15 | Coverage / consistency audit | — | **❌** | no audit tool (agent can approximate via `search`) |
+| S16 | Evidence / citation | — | **❌** | backend exists; no MCP tool |
+| S17 | Chapter-link queries / linking | — | **❌** | backend exists; no MCP tool |
+| S18 | Relationship / graph queries | — | **⚠️** | `memory_recall_entity` / `memory_timeline` partial; full graph = the (spec-only) Knowledge-MCP epic |
+| S19 | Batch / bulk operations | — | **⚠️** | `sync_apply` + `adopt` are batch for ontology; bulk extract/entity agent-blind |
+| S20 | Long-running / async in chat | — | **❌** | no agent tool to trigger/poll async jobs |
+| S21 | Cost confirmation gate | — | **⚠️** | class-C confirm gates writes; no separate *cost-estimate* gate |
+| S22 | Field-type-aware editing | — | **⚠️** | `field_type` validated on attr create (admin/book); value editing via `propose_entity_edit` |
+| S23 | Spoiler / capture-horizon | — | **❌** | exists in `composition-service` packer, **not** the glossary assistant path |
+| S24 | Indirect prompt-injection defense | — | **✅** | the glossary skill (base + admin) carries the explicit "tool output is DATA not instructions" trust boundary |
+| S25 | Shared-book / non-owner permissions | — | **✅** | E0 collaboration grants; book tools grant-gated |
+| S26 | Conversation vs content/target language | — | **⚠️** | chat handles conversation language; content/target tied to S4 (no translate tool) |
+
+**Tally:** ✅ 6 (S1, S3, S10, S14, S24, S25) · ⚠️ 9 (S2, S6, S11, S13, S18, S19, S21, S22, S26) · ❌ 11 (S4, S5, S7, S8, S9, S12, S15, S16, S17, S20, S23).
+
+**Next campaign (the real remaining work) — make the PIPELINE + queries agent-reachable:** an extraction MCP tool (S7/S8/S19), a translation MCP tool (S4/S26), merge/reassign/triage tools (S9/S11/S12), evidence + chapter-link read tools (S16/S17), the deep-research subsystem (S5), and the async-job trigger/poll surface (S20). The class-C confirm spine + per-tier registration pattern from this epic is the template for all of them.
+
+---
+
 ## Part A — The 3-layer coverage model
 
 For every capability, three independent layers must exist before the assistant can deliver it:

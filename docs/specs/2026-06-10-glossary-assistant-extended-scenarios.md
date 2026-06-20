@@ -1,6 +1,7 @@
 # Glossary-Assistant — Extended Scenarios Deep-Dive (S9–S26)
 
 > **Date:** 2026-06-10. **Status:** CLARIFY / design analysis. **Companion to** [`2026-06-10-glossary-assistant-scenario-coverage.md`](2026-06-10-glossary-assistant-scenario-coverage.md) (the 8 core scenarios + 3-layer model).
+> **▶ 2026-06-20 status:** S9–S26 verdicts are re-assessed in the companion doc's **"STATUS UPDATE — 2026-06-20"** table (post Tiered-MCP-Tools epic). Summary: the ontology CRUD is now agent-reachable; the L1-complete/L2-missing theme below **still holds** for the pipeline + read ops (merge S9, triage S12, evidence S16, chapter-link S17, plus extract/translate/research) — those remain agent-blind and are the next campaign.
 > **Purpose:** go deep on the *additional* scenarios surfaced during analysis — the management ops (S9–S14), read/QA ops (S15–S18), and the cross-cutting concerns (S19–S26). For each: intent, test script, what L1 backend already exists (verified, with file refs), the L2 agent-tool gap + a concrete proposed tool signature, the L3 surface, security/edge cases, dependencies, and an effort/risk estimate.
 > **Recurring theme:** almost every management op is **L1-complete / L2-missing** — the backend can do it, the agent can't reach it. The exceptions (S15, S18, S5) need genuinely new capability.
 
