@@ -8,7 +8,11 @@
 
 ## 1. What this track is
 
-An exploratory design for a **text-based LLM-driven MMO RPG** built on top of LoreWeave's existing knowledge + glossary + book infrastructure. Status: **Exploratory — NOT approved for implementation.** Nothing here gates current Phase 1–5 work.
+An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-realtime avatar movement + turn-based combat; LLM text is the dialogue/narration sub-layer, not the medium) built on top of LoreWeave's existing knowledge + glossary + book infrastructure. Status: **Exploratory — NOT approved for implementation.** Nothing here gates current Phase 1–5 work.
+
+> ⚠️ **Medium correction (2026-06-20):** earlier docs in this track call it a "text-based MMO" with a "chat GUI" — that framing is **stale and wrong**. Canonical medium statement: [`00_VISION.md` §0](00_VISION.md). Reconciliation of the text/chat-shaped interaction decisions (C1 voice modes, C5 multi-stream UI, PL_002 command grammar, DF05 session group-chat) into the graphical client is a tracked follow-up — they survive only as the dialogue/narration sub-layer.
+>
+> 🆕 **New DRAFT (2026-06-20):** [`08_realtime_movement_authority.md`](08_realtime_movement_authority.md) — the medium correction exposed that all locked authority machinery is **turn-based**, leaving near-realtime avatar movement with **no authority model**. The draft specifies the realtime movement/presence layer (**RTM-A1..A9**) + the realtime↔turn-based handoff seam + an **interest-management/AOI subsystem** (RTM-A6..A8, reality-isolated presence) + **two-layer anti-cheat** (RTM-A9), referencing the locked turn-based design rather than reopening it. Checked against production-MMO practice (§8, sourced) — bones match; survey added AOI, two-layer anti-cheat, and the RTM-A1 checkpoint clause. **Nine `RTM-Q*` decisions deferred** (per user "clear questions later") with proposed defaults: movement scales (Q1), position-delta validation (Q2), ephemeral+checkpoint (Q3), instanced handoff (Q4), commit-service routing (Q5), ~10 Hz tick (Q6), AOI partition structure (Q7), cross-boundary visibility (Q8), dense-region cap (Q9). Needs a `_boundaries/` lock before any RTM-A* axiom locks. Also the design home for `D-GAME-WS-EDGE-CONTROLS`.
 
 Started 2026-04-23 from a SillyTavern prior-art survey. Evolved through systematic design of:
 - Four product shapes → Shape D (shared persistent world)

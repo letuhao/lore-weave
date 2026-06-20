@@ -1,13 +1,39 @@
-# 00 — Vision: LLM-Driven Text-Based MMO RPG
+# 00 — Vision: LLM-Driven 2D / 2.5D MMO RPG
 
 > **Status:** Exploratory. Captured from a design conversation on 2026-04-23.
 > **Purpose:** Preserve the intent so later sessions can resume from the same starting point.
 
 ---
 
+## 0. Medium & client (CANONICAL — added 2026-06-20, supersedes all "text-based" framing)
+
+> **This is a rendered 2D / 2.5D MMO RPG — NOT a text/chat game.** Earlier drafts of this
+> track (and ~47 docs) described a "text-based MMO" with an "extended chat GUI." That framing
+> is **wrong and dangerous**: it leads a reader to build a SillyTavern-style chat client instead
+> of a game client. The correct medium:
+>
+> - **World & movement** — a spatial **2D / 2.5D world** rendered in a game client. Players
+>   control an on-screen avatar on a tilemap; other players and NPCs are visible and move in
+>   **near-realtime** (server-authoritative position, client-predicted).
+> - **Combat** — **turn-based**, resolved server-side deterministically (seeded RNG).
+> - **LLM text is a SUB-LAYER, not the medium** — NPC dialogue, narration of outcomes, and
+>   player↔player chat are *surfaces inside* the graphical client. The glossary / knowledge-graph
+>   grounding drives dialogue & narration; it does **not** make this a text MUD.
+> - **Inspirations split by layer** — the world / movement / combat layer draws on graphical
+>   tile-based, turn-based MMORPGs; the dialogue & narration layer draws on SillyTavern-style
+>   prompt composition and MUD text discipline. The latter are **narration-layer inspirations
+>   only**, never the client medium.
+>
+> Any doc still saying "text-based MMO" / "chat GUI" as the *medium* is stale and must be read
+> through this correction. The text/chat-shaped interaction decisions (voice modes C1, multi-stream
+> UI C5, command grammar PL_002, session group-chat DF05) need a reconciliation pass — they survive
+> only as the **dialogue/narration sub-layer**, not as the primary interface.
+
+---
+
 ## 1. The Dream (one sentence)
 
-A text-based MMO RPG where the world is a LoreWeave book, NPCs are LLM-driven personas grounded in the glossary + knowledge graph, players share a persistent world, and every interaction is mediated through an extended chat GUI.
+A **rendered 2D / 2.5D MMO RPG** where the world is a LoreWeave book, NPCs are LLM-driven personas grounded in the glossary + knowledge graph, players share a persistent world rendered as an explorable map — moving their avatars in near-realtime and fighting in turn-based combat — with NPC dialogue and narration driven by the LLM as a **text sub-layer inside the game client** (not a chat-only interface).
 
 ## 2. What LoreWeave uniquely brings
 
@@ -95,9 +121,16 @@ Each stage is a release with standalone value. V1 might be sufficient for most u
 
 ## 7. Inspirations
 
-- **SillyTavern** — prompt composition, character cards, world info, macros, swipes, bookmarks, slash commands (see `../References/SillyTavern_Feature_Comparison.md`)
-- **Classic MUDs** — text-as-interface discipline, regions, exits, NPC placement, command grammar
-- **Tabletop RPG play patterns** — DM + players + dice + canon, applied to AI-mediated sessions
+> Split by layer (see §0). The world/client layer is graphical; the narration layer is text.
+
+**World / movement / combat layer (the client medium):**
+- **Graphical tile-based MMORPGs** — 2D / 2.5D rendered world, avatar movement on a tilemap, near-realtime presence of other players
+- **Turn-based tactical RPGs** — discrete, server-resolved combat encounters with seeded RNG
+
+**Dialogue & narration layer (a text sub-surface *inside* the graphical client — NOT the medium):**
+- **SillyTavern** — prompt composition, character cards, world info, macros (see `../References/SillyTavern_Feature_Comparison.md`). Applies to NPC dialogue/narration only, not the primary UI.
+- **Classic MUDs** — regions, exits, NPC placement, command grammar. Borrow the *world-model discipline*, not the "text-as-interface" medium.
+- **Tabletop RPG play patterns** — DM + players + dice + canon, applied to AI-mediated encounters
 
 ## 8. Why this is not on the roadmap
 

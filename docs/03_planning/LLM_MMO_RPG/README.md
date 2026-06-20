@@ -9,7 +9,9 @@
 
 ## Why this folder exists
 
-LoreWeave's long-term direction extends from **writing novels** to **playing inside the worlds you write**: a text-based MMO RPG where NPCs, narrator, and world events are driven by LLMs and grounded in the LoreWeave knowledge graph + glossary + book canon. This is the extension referenced as **Phase 6+** in the root [README](../../../README.md).
+LoreWeave's long-term direction extends from **writing novels** to **playing inside the worlds you write**: a **rendered 2D / 2.5D MMO RPG** (near-realtime avatar movement on a tilemap world + turn-based combat) where NPCs, narrator, and world events are driven by LLMs and grounded in the LoreWeave knowledge graph + glossary + book canon. This is the extension referenced as **Phase 6+** in the root [README](../../../README.md).
+
+> ⚠️ **Medium correction (2026-06-20):** this track is a **graphical** game, **NOT** a "text-based MMO." Older docs that say "text-based" / "chat GUI" describe the *medium* incorrectly — LLM text is the **dialogue & narration sub-layer inside the game client**, not the interface. See the canonical statement in [`00_VISION.md` §0](00_VISION.md#0-medium--client-canonical--added-2026-06-20-supersedes-all-text-based-framing).
 
 The novel platform remains the MVP; this track is a committed extension that reuses the same substrate (glossary, knowledge graph, book canon), not a replacement.
 
