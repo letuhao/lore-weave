@@ -69,6 +69,8 @@ describe('ConfirmActionCard', () => {
   });
 
   it('H2: a batch (items[]) renders ONE card with N rows and a single Apply', async () => {
+    // server returns NO enumeration → advisory fallback to items[], Confirm gated
+    // on the preview having loaded (FIX 1).
     previewAction.mockResolvedValue({ descriptor: 'book.publish_batch', title: 'Publish 3 drafts', preview_rows: null, destructive: false });
     confirmAction.mockResolvedValue({});
     render(<ConfirmActionCard record={record({
@@ -82,9 +84,55 @@ describe('ConfirmActionCard', () => {
     const rows = screen.getByTestId('confirm-batch-rows').querySelectorAll('li');
     expect(rows).toHaveLength(3);
     expect(screen.getByText('Chapter 2')).toBeInTheDocument();
+    // FIX 1: this fallback list is labelled advisory and sourced from items[]
+    expect(screen.getByTestId('confirm-batch-rows')).toHaveAttribute('data-source', 'advisory');
+    expect(screen.getByTestId('confirm-batch-advisory')).toBeInTheDocument();
+    // Confirm is gated until the server preview resolves.
+    await waitFor(() => expect(previewAction).toHaveBeenCalled());
     // a SINGLE Apply (Confirm all) commits the whole batch with one token
     fireEvent.click(screen.getByText('actionConfirm.confirm_all'));
     await waitFor(() => expect(confirmAction).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(submitToolResult).toHaveBeenCalledWith('r1', 'c1', 'action_done'));
+  });
+
+  it('FIX 1: a batch renders from the SERVER preview rows when it enumerates the token', async () => {
+    // server preview enumerates the token's items → batch rows come from the
+    // server (what actually commits), NOT from the LLM args.items.
+    previewAction.mockResolvedValue({
+      descriptor: 'book.publish_batch', title: 'Publish 2 drafts',
+      preview_rows: [
+        { label: 'Chapter A (server)', value: 'draft→published' },
+        { label: 'Chapter B (server)', value: 'draft→published' },
+      ],
+      destructive: false,
+    });
+    confirmAction.mockResolvedValue({});
+    render(<ConfirmActionCard record={record({
+      ...baseArgs, descriptor: 'book.publish_batch',
+      // LLM-supplied items differ from the server set on purpose — server wins.
+      items: [{ title: 'Chapter X (llm)' }, { title: 'Chapter Y (llm)' }, { title: 'Chapter Z (llm)' }],
+    })} />);
+
+    // rows are server-sourced (2), NOT the 3 advisory items
+    await waitFor(() =>
+      expect(screen.getByTestId('confirm-batch-rows')).toHaveAttribute('data-source', 'server'),
+    );
+    const rows = screen.getByTestId('confirm-batch-rows').querySelectorAll('li');
+    expect(rows).toHaveLength(2);
+    expect(screen.getByText(/Chapter A \(server\)/)).toBeInTheDocument();
+    // the LLM advisory items are NOT shown, and no advisory label is rendered
+    expect(screen.queryByText(/Chapter X \(llm\)/)).toBeNull();
+    expect(screen.queryByTestId('confirm-batch-advisory')).toBeNull();
+    // Confirm commits with the single server-bound token.
+    fireEvent.click(screen.getByText('actionConfirm.confirm_all'));
+    await waitFor(() => expect(confirmAction).toHaveBeenCalledWith('book', 'tok123', 'tok'));
+    await waitFor(() => expect(submitToolResult).toHaveBeenCalledWith('r1', 'c1', 'action_done'));
+  });
+
+  it('resumes action_error on a non-422 failure', async () => {
+    confirmAction.mockRejectedValue(Object.assign(new Error('boom'), { status: 500 }));
+    render(<ConfirmActionCard record={record(baseArgs)} />);
+    fireEvent.click(screen.getByText('actionConfirm.confirm'));
+    await waitFor(() => expect(submitToolResult).toHaveBeenCalledWith('r1', 'c1', 'action_error'));
   });
 });

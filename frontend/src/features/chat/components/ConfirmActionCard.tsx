@@ -21,6 +21,14 @@ import type { ToolCallRecord } from '../types';
 // "book.publish_batch"), this renders ONE card listing the N rows with a SINGLE
 // Apply — never N cards. The single confirm_token commits all rows server-side,
 // so "publish all my drafts" stays one click.
+//
+// /review-impl FIX 1 — the batch row list is driven by the SERVER preview (the
+// token-scoped `preview_rows` the non-batch path already fetches), NOT by the
+// LLM's `args.items`. The server preview is what actually commits, so the card
+// faithfully previews the commit. `args.items` is only a fallback for when the
+// server returns no enumeration, and it is then labelled "requested (advisory)"
+// with the Confirm button GATED on the server preview having loaded — so the
+// human never one-clicks a batch the server hasn't confirmed it will apply.
 
 interface Props {
   record: ToolCallRecord;
@@ -60,6 +68,9 @@ export function ConfirmActionCard({ record }: Props) {
   const [state, setState] = useState<CardState>(null);
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState<ActionPreview | null>(null);
+  // /review-impl FIX 1: track whether the server preview resolved (vs failed/
+  // pending) so a batch can gate its Confirm button on a loaded preview.
+  const [previewLoaded, setPreviewLoaded] = useState(false);
 
   const args = (record.args ?? {}) as ConfirmArgs;
   const token = args.confirm_token ?? '';
@@ -75,7 +86,10 @@ export function ConfirmActionCard({ record }: Props) {
     actionsApi
       .previewAction(domain, token, accessToken)
       .then((p) => {
-        if (alive) setPreview(p);
+        if (alive) {
+          setPreview(p);
+          setPreviewLoaded(true);
+        }
       })
       .catch(() => {
         /* preview is best-effort; confirm is the source of truth */
@@ -97,6 +111,9 @@ export function ConfirmActionCard({ record }: Props) {
 
   async function confirm() {
     if (busy || state || !accessToken || !token || !domain) return;
+    // FIX 1: when previewing a batch only from advisory items[], don't commit
+    // until the server preview loaded (button is also disabled, this is defence).
+    if (confirmGatedOnPreview) return;
     setBusy(true);
     let outcome: FrontendToolOutcome;
     try {
@@ -134,6 +151,15 @@ export function ConfirmActionCard({ record }: Props) {
 
   const accent = destructive ? 'red' : 'amber';
   const isBatch = items.length > 0;
+  // /review-impl FIX 1: prefer the SERVER preview's token-scoped rows for the
+  // batch list — that is what actually commits. Only when the server returns no
+  // enumeration do we fall back to the LLM's `args.items`, labelled advisory.
+  const serverEnumeratesBatch = isBatch && rows.length > 0;
+  const usingAdvisoryItems = isBatch && !serverEnumeratesBatch;
+  // When falling back to advisory items, the Confirm button is GATED on the
+  // server preview having actually loaded (so the human never one-clicks a batch
+  // the server hasn't confirmed). A server-enumerated batch is inherently loaded.
+  const confirmGatedOnPreview = usingAdvisoryItems && !previewLoaded;
 
   return (
     <div
@@ -151,19 +177,40 @@ export function ConfirmActionCard({ record }: Props) {
         {isBatch && ` · ${t('actionConfirm.batch_count', { defaultValue: '{{count}} items', count: items.length })}`}
       </div>
 
-      {/* H2 batch: render the N rows in ONE card. */}
-      {isBatch && (
-        <ul data-testid="confirm-batch-rows" className="mb-1 max-h-40 space-y-0.5 overflow-y-auto text-[10px] text-foreground/90">
-          {items.map((it, i) => (
+      {/* H2 batch, FIX 1 — render the N rows in ONE card, sourced from the SERVER
+          preview when it enumerates the token's items (what actually commits). */}
+      {serverEnumeratesBatch && (
+        <ul data-testid="confirm-batch-rows" data-source="server" className="mb-1 max-h-40 space-y-0.5 overflow-y-auto text-[10px] text-foreground/90">
+          {rows.map((r, i) => (
             <li key={i} className="flex items-center gap-1.5 rounded bg-background/60 px-1.5 py-0.5">
               <span className="text-muted-foreground">{i + 1}.</span>
-              <span className="truncate">{itemLabel(it)}</span>
+              <span className="truncate">{r.label}{r.value ? `: ${r.value}` : ''}{r.note ? ` — ${r.note}` : ''}</span>
             </li>
           ))}
         </ul>
       )}
 
-      {rows.length > 0 && (
+      {/* Fallback: the server preview didn't enumerate the batch, so we show the
+          LLM's requested items[] EXPLICITLY labelled advisory; Confirm is gated
+          on the server preview having loaded (see confirmGatedOnPreview). */}
+      {usingAdvisoryItems && (
+        <>
+          <p data-testid="confirm-batch-advisory" className="mb-0.5 text-[10px] italic text-muted-foreground">
+            {t('actionConfirm.advisory_items', { defaultValue: 'Requested (advisory) — the server confirms the exact set on apply' })}
+          </p>
+          <ul data-testid="confirm-batch-rows" data-source="advisory" className="mb-1 max-h-40 space-y-0.5 overflow-y-auto text-[10px] text-foreground/90">
+            {items.map((it, i) => (
+              <li key={i} className="flex items-center gap-1.5 rounded bg-background/60 px-1.5 py-0.5">
+                <span className="text-muted-foreground">{i + 1}.</span>
+                <span className="truncate">{itemLabel(it)}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      {/* Non-batch single-action preview rows (token-scoped). */}
+      {!isBatch && rows.length > 0 && (
         <ul className="mb-1 space-y-0.5 text-[10px] text-foreground/90">
           {rows.map((r, i) => (
             <li key={i} className="flex justify-between gap-2">
@@ -183,7 +230,8 @@ export function ConfirmActionCard({ record }: Props) {
           <button
             type="button"
             onClick={confirm}
-            disabled={busy}
+            disabled={busy || confirmGatedOnPreview}
+            title={confirmGatedOnPreview ? t('actionConfirm.awaiting_preview', { defaultValue: 'Loading the server preview…' }) : undefined}
             className={`inline-flex items-center gap-1 rounded-sm px-2 py-0.5 text-[11px] font-medium text-white hover:brightness-110 disabled:opacity-50 ${
               accent === 'red' ? 'bg-red-500' : 'bg-amber-500'
             }`}

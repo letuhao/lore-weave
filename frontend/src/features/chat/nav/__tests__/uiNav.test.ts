@@ -30,6 +30,37 @@ describe('resolveUiTool', () => {
     expect(resolveUiTool('ui_navigate', { path: 'books' }).result).toEqual({ navigated: false });
   });
 
+  it('ui_navigate rejects open-redirect / scheme-injection attempts', () => {
+    // Protocol-relative URL ("//host") — would navigate off-origin. The
+    // allowlist only matches absolute in-app paths under a known prefix.
+    for (const evil of [
+      '//evil.com',
+      '//evil.com/books',
+      'https://evil.com',
+      'http://evil.com/books',
+      'javascript:alert(1)',
+      'mailto:x@evil.com',
+      '\\\\evil.com',
+    ]) {
+      const r = resolveUiTool('ui_navigate', { path: evil });
+      expect(r).toEqual({ path: null, result: { navigated: false } });
+    }
+  });
+
+  it('ui_open_book / ui_open_chapter encode a malicious id so it cannot escape its segment', () => {
+    // A path-traversal id stays percent-encoded inside its route segment — it can
+    // never resolve to "/settings" etc.
+    const evilId = '../../settings';
+    const enc = encodeURIComponent(evilId); // "..%2F..%2Fsettings"
+    const book = resolveUiTool('ui_open_book', { book_id: evilId, tab: 'glossary' });
+    expect(book.path).toBe(`/books/${enc}/glossary`);
+    expect(book.path).not.toContain('../');
+
+    const chapter = resolveUiTool('ui_open_chapter', { book_id: evilId, chapter_id: evilId, mode: 'read' });
+    expect(chapter.path).toBe(`/books/${enc}/chapters/${enc}/read`);
+    expect(chapter.path).not.toContain('../');
+  });
+
   it('ui_open_book builds the tab route, overview = bare path', () => {
     expect(resolveUiTool('ui_open_book', { book_id: 'b1', tab: 'translation' })).toEqual({
       path: '/books/b1/translation',

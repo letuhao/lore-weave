@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Sparkles, Undo2 } from 'lucide-react';
 import type { ActivityEvent } from '../types';
+import { canUndo as undoAllowed } from '../hooks/useActivityUndo';
 
 // MCP fan-out (C-ACTIVITY) — the Tier-A activity / Undo strip.
 //
@@ -45,7 +46,9 @@ export function ActivityStrip({ activities, onUndo, disabled }: Props) {
       </div>
       <ul className="space-y-1">
         {activities.map((a, i) => {
-          const canUndo = a.undo?.available === true && !!a.undo.tool;
+          // /review-impl FIX 2(b): only allowlisted reverse ops are undoable —
+          // a non-allowlisted (or unavailable) `undo.tool` renders no Undo button.
+          const canUndo = undoAllowed(a);
           const isUndone = undone.has(i);
           return (
             <li
