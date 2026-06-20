@@ -9,11 +9,12 @@ Two parallel artefacts, kept in sync by `test_tool_definitions.py`:
     LLM-supplied `tool_args` against before touching a repo.
 
 **Envelope vs. tool args (design D3).** `user_id`, `project_id` and
-`session_id` are NEVER tool parameters — they come from the
-chat-service `/internal/tools/execute` envelope. The LLM only ever
-supplies the semantic arguments below. `extra="forbid"` on every arg
-model means a hallucinated parameter is surfaced as a tool error the
-model can see and correct, and can never smuggle in a scope override.
+`session_id` are NEVER tool parameters — they come from the MCP context
+headers forwarded by ai-gateway (`X-User-Id`/`X-Project-Id`/`X-Session-Id`),
+not from the LLM. The LLM only ever supplies the semantic arguments below.
+`extra="forbid"` on every arg model means a hallucinated parameter is
+surfaced as a tool error the model can see and correct, and can never
+smuggle in a scope override.
 """
 
 from __future__ import annotations

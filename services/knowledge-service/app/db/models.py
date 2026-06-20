@@ -5,6 +5,12 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, StringConstraints
 
+# KG customizable-ontology epic (L1) — the kg_* graph-schema models live in a
+# sibling module. Imported here so the DB-model package is a single surface;
+# consumers address them as `app.db.ontology_models.<Name>` (NOT re-exported
+# flat, to avoid clobbering the chat-memory `FactType` Literal defined below).
+from app.db import ontology_models  # noqa: F401
+
 ProjectType = Literal["book", "translation", "code", "general"]
 ExtractionStatus = Literal["disabled", "building", "paused", "ready", "failed"]
 ScopeType = Literal["global", "project", "session", "entity"]

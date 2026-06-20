@@ -53,6 +53,7 @@ async def test_startup_failure_closes_everything(monkeypatch):
     monkeypatch.setattr(main_mod, "create_pools", AsyncMock(return_value=None))
     monkeypatch.setattr(main_mod, "get_knowledge_pool", lambda: "fake-pool")
     monkeypatch.setattr(main_mod, "run_migrations", AsyncMock(return_value=None))
+    monkeypatch.setattr(main_mod, "seed_system_graph_schemas", AsyncMock(return_value={}))
     monkeypatch.setattr(main_mod, "init_glossary_client", lambda: None)
     monkeypatch.setattr(main_mod, "get_book_client", lambda: "fake")
     monkeypatch.setattr(main_mod, "get_embedding_client", lambda: "fake")

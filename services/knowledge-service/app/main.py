@@ -18,6 +18,7 @@ from app.db.migrate import run_migrations
 from app.db.neo4j import close_neo4j_driver, get_neo4j_driver, init_neo4j_driver
 from app.db.neo4j_schema import run_neo4j_schema
 from app.db.pool import close_pools, create_pools, get_knowledge_pool
+from app.db.seed_graph_schemas import seed_system_graph_schemas
 from app.logging_config import setup_logging, trace_id_var
 from app.middleware.trace_id import TraceIdMiddleware
 from app.routers import (
@@ -35,7 +36,6 @@ from app.routers import (
     internal_parse,
     internal_summarize,
     internal_timeline,
-    internal_tools,
     internal_wiki,
     metrics,
     ping,
@@ -54,6 +54,11 @@ from app.routers.public import summaries as public_summaries
 from app.routers.public.summaries import close_cooldown_client
 from app.routers.public import timeline as public_timeline
 from app.routers.public import user_data as public_user_data
+# KG customizable-ontology epic (L1) — empty router stubs pre-registered here
+# so lanes LC/LD/LH add handlers in their own files without touching main.py.
+from app.routers.public import ontology as public_ontology
+from app.routers.public import graph_views as public_graph_views
+from app.routers.public import triage as public_triage
 # ARCH-1 C1 — MCP server facade. build_mcp_app() returns the ASGI app
 # mounted at /mcp; mcp_server's StreamableHTTP session manager is run
 # inside the lifespan below.
@@ -102,6 +107,10 @@ async def lifespan(app: FastAPI):
         # Fail-fast: if either pool cannot be created, raise and stop startup.
         await create_pools(settings.knowledge_db_url, settings.glossary_db_url)
         await run_migrations(get_knowledge_pool())
+        # KG ontology epic (L1) — seed the System graph-schema templates
+        # (general + xianxia-harem). Idempotent + hash-gated; additive (no
+        # project reads these until it adopts → zero behavior change).
+        await seed_system_graph_schemas(get_knowledge_pool())
         # Long-lived httpx client for glossary-service calls (K4b).
         init_glossary_client()
         # K16.2 — long-lived httpx client for book-service chapter counts.
@@ -694,7 +703,6 @@ app.include_router(internal_extraction.router)
 app.include_router(internal_parse.router)
 app.include_router(internal_summarize.router)
 app.include_router(internal_timeline.router)
-app.include_router(internal_tools.router)
 app.include_router(internal_wiki.router)
 app.include_router(metrics.router)
 app.include_router(public_costs.router)
@@ -712,8 +720,13 @@ app.include_router(public_projects.router)
 app.include_router(public_summaries.router)
 app.include_router(public_timeline.timeline_router)
 app.include_router(public_user_data.router)
+# KG ontology epic (L1) — empty stubs; lanes LC/LD/LH fill the handlers.
+app.include_router(public_ontology.router)
+app.include_router(public_graph_views.router)
+app.include_router(public_triage.router)
 
-# ARCH-1 C1 — MCP server facade. Dual-run: /internal/tools/* retained.
+# ARCH-1 C1 — MCP server facade. (KM0, 2026-06-20: the legacy dual-run
+# /internal/tools/* HTTP path was retired — MCP is the sole tool transport.)
 # Streamable HTTP transport; auth via X-Internal-Token is checked inside
 # each tool handler's _build_tool_context(). build_mcp_app() returns the
 # Starlette ASGI app synchronously; mounted AFTER all routers so FastAPI

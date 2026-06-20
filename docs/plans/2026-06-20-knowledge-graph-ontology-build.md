@@ -257,3 +257,42 @@ S0 → L1 → (LA ∥ LC ∥ LD) → C2 → LB → (LE ∥ LF nối API) → LG 
 - Đa-template-active/project (Q1 lớp 4).
 - Admin-identity epic (system schema-write hiện sau placeholder).
 - Shared system-level `drive` vocab (Q5).
+
+---
+
+## 10. Status log (branch `feat/knowledge-graph-ontology`)
+
+> KG-specific session record (the shared `SESSION_HANDOFF.md` is intentionally
+> NOT touched on this branch — cross-branch discipline §0/§7).
+
+**2026-06-20 — S0 + C0 + KM0 + L1 DONE.**
+- **S0 design-lock** committed (`273801a1`): M1 revised to per-kind strength
+  (`kg_schema_node_kinds`), M2/M3/Q1/Q2/Q3/Q4/Q5 locked. Human-signed-off.
+- **C0 contracts frozen** under `contracts/api/knowledge-service/`:
+  `ontology.yaml` (12 paths) · `views.yaml` (4) · `triage.yaml` (3) +
+  `_deps/glossary-ontology-read.yaml` (KG-side mock; LG implements on glossary
+  branch). Sync tree-diff + triage signature shapes spiked into the contracts.
+- **KM0 (legacy retirement)**: deleted `routers/internal_tools.py` +
+  `test_internal_tools.py`, removed `main.py` import+register, fixed
+  `definitions.py` docstring + the dual-run comment. **Correction vs spec:**
+  chat-service `execute_tool()` never existed (only live `mcp_execute_tool`);
+  `test_mcp_envelope_parity.py` is a LIVE MCP test → KEPT (spec's delete-list
+  was pre-verification). KM0 scope = knowledge-service only.
+- **L1 Foundation (trunk)**: 8 `kg_*` tables in `migrate.py` (scope-keyed
+  UNIQUE NULLS NOT DISTINCT); `ontology_models.py` + 1-line `models.py` import
+  (module import to dodge the `FactType` Literal collision); additive Neo4j
+  `RELATES_TO` seam indexes (`graph_id`, `schema_version`); `seed_graph_schemas.py`
+  (idempotent hash-gated seed of `general` + `xianxia-harem`) wired into lifespan
+  (module-level import for test patchability); `repositories/graph_schemas.py`
+  (tier-aware read + resolution); 3 empty public router stubs registered.
+- **VERIFY**: unit suite **2634 passed** (incl 3 lifespan tests updated for the
+  new seed step + 10 new KG seed-content tests proving the S0 locks); KG
+  integration DB tests written (6, skip without `TEST_KNOWLEDGE_DB_URL` — live
+  infra unavailable at dev time); provider-gate clean; single-service change
+  (no cross-service live-smoke needed).
+
+**NEXT (C1 fan-out):** open the parallel lanes against the frozen contracts —
+LA (resolver) · LC (adopt/sync/CRUD) · LD (views) · LH (triage) · LE (FE) ·
+LF (MCP). LB (extraction, worktree, backward-compat) after C2. LG (glossary
+internal-read) on the glossary branch. L1 integration DB tests need a live PG
+run to flip from skip → green (token: `LIVE-SMOKE deferred to D-KG-L1-DB-SMOKE`).
