@@ -3,10 +3,10 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/loreweave/grantclient"
@@ -118,8 +118,10 @@ func (s *Server) reassignEntityKind(w http.ResponseWriter, r *http.Request) {
 	if !s.requireGrant(w, r.Context(), bookUUID, userID, grantclient.GrantEdit) {
 		return
 	}
-	bookID := chi.URLParam(r, "book_id")
-	entityID := chi.URLParam(r, "entity_id")
+	entityID, ok := parsePathUUID(w, r, "entity_id")
+	if !ok {
+		return
+	}
 	var in struct {
 		KindID string `json:"kind_id"`
 	}
@@ -129,51 +131,100 @@ func (s *Server) reassignEntityKind(w http.ResponseWriter, r *http.Request) {
 	}
 	// Validate the target kind up front so a bogus/non-existent kind_id is a clean
 	// 400/404 rather than an FK-violation 500 from the UPDATE (review-impl #1).
-	if _, perr := uuid.Parse(in.KindID); perr != nil {
+	newKindID, perr := uuid.Parse(in.KindID)
+	if perr != nil {
 		writeError(w, http.StatusBadRequest, "GLOSS_VALIDATION", "kind_id must be a UUID")
 		return
 	}
-	var kindExists bool
-	if err := s.pool.QueryRow(r.Context(),
-		`SELECT EXISTS(SELECT 1 FROM book_kinds WHERE book_kind_id=$1 AND book_id=$2 AND deprecated_at IS NULL)`,
-		in.KindID, bookUUID,
-	).Scan(&kindExists); err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "kind lookup failed")
-		return
-	}
-	if !kindExists {
+	err := s.reassignEntityKindCore(r.Context(), bookUUID, entityID, newKindID)
+	switch {
+	case errors.Is(err, errReassignKindNotFound):
 		writeError(w, http.StatusNotFound, "GLOSS_NOT_FOUND", "target kind not found")
 		return
+	case errors.Is(err, errReassignEntityNotFound):
+		writeError(w, http.StatusNotFound, "GLOSS_NOT_FOUND", "entity not found in this book")
+		return
+	case err != nil:
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "reassign failed")
+		return
 	}
-	// Confirm the entity exists in this book (scopes the action).
+	writeJSON(w, http.StatusOK, map[string]any{"entity_id": entityID.String(), "kind_id": newKindID.String()})
+}
+
+// reassign sentinels (shared by the HTTP handler + the glossary_propose_reassign_kind
+// confirm effect).
+var (
+	errReassignKindNotFound   = errors.New("target kind not found")         // → 404 / re-proposable
+	errReassignEntityNotFound = errors.New("entity not found in this book") // → 404 / re-proposable
+)
+
+// reassignEntityKindCore validates the target kind (live, in-book) + the entity (live,
+// in-book), then re-keys the entity onto the new kind in a transaction. Grant is the
+// CALLER's concern. Single source of truth for the HTTP reassign handler and the
+// confirm effect.
+func (s *Server) reassignEntityKindCore(ctx context.Context, bookID, entityID, newKindID uuid.UUID) error {
+	var kindExists bool
+	if err := s.pool.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM book_kinds WHERE book_kind_id=$1 AND book_id=$2 AND deprecated_at IS NULL)`,
+		newKindID, bookID,
+	).Scan(&kindExists); err != nil {
+		return err
+	}
+	if !kindExists {
+		return errReassignKindNotFound
+	}
 	var exists bool
-	if err := s.pool.QueryRow(r.Context(),
+	if err := s.pool.QueryRow(ctx,
 		`SELECT EXISTS(SELECT 1 FROM glossary_entities WHERE entity_id=$1 AND book_id=$2 AND deleted_at IS NULL)`,
 		entityID, bookID,
 	).Scan(&exists); err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "entity lookup failed")
-		return
+		return err
 	}
 	if !exists {
-		writeError(w, http.StatusNotFound, "GLOSS_NOT_FOUND", "entity not found in this book")
-		return
+		return errReassignEntityNotFound
 	}
 
-	tx, err := s.pool.Begin(r.Context())
+	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "tx begin failed")
-		return
+		return err
 	}
-	defer tx.Rollback(r.Context())
-	if err := s.rekeyEntityToKind(r.Context(), tx, entityID, in.KindID); err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "reassign failed: "+err.Error())
-		return
+	defer tx.Rollback(ctx) //nolint:errcheck
+	if err := s.rekeyEntityToKind(ctx, tx, entityID.String(), newKindID.String()); err != nil {
+		return err
 	}
-	if err := tx.Commit(r.Context()); err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "tx commit failed")
-		return
+	return tx.Commit(ctx)
+}
+
+// reassignKindDroppedCodes lists the attribute CODES currently on the entity that have
+// NO counterpart in the target kind — i.e. the values reassign will DROP (data loss).
+// 'name'/'term' are excluded because rekey maps the display value across them. Used to
+// render the reassign confirm preview (§11 #10) from current state.
+func (s *Server) reassignKindDroppedCodes(ctx context.Context, entityID, newKindID uuid.UUID) ([]string, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT DISTINCT od.code
+		FROM entity_attribute_values eav
+		JOIN book_attributes od ON od.attr_id = eav.attr_def_id
+		WHERE eav.entity_id = $1
+		  AND od.kind_id <> $2
+		  AND od.code NOT IN ('name','term')
+		  AND NOT EXISTS (
+		    SELECT 1 FROM book_attributes nd
+		    WHERE nd.kind_id = $2 AND nd.code = od.code
+		  )
+		ORDER BY od.code`, entityID, newKindID)
+	if err != nil {
+		return nil, err
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"entity_id": entityID, "kind_id": in.KindID})
+	defer rows.Close()
+	dropped := []string{}
+	for rows.Next() {
+		var code string
+		if err := rows.Scan(&code); err != nil {
+			return nil, err
+		}
+		dropped = append(dropped, code)
+	}
+	return dropped, rows.Err()
 }
 
 // rekeyEntityToKind moves an entity onto newKindID and RE-KEYS its attribute values

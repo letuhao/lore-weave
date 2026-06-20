@@ -25,6 +25,71 @@ func (s *Server) RegisterPipelineWriteTools(srv *mcp.Server) {
 			"book_id + entity_id + chapter_id (the chapter must belong to the book). relevance = " +
 			"major | appears (default) | mentioned. Errors if the entity is already linked to that chapter.",
 	}, s.toolCreateChapterLink)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name: "glossary_create_evidence",
+		Description: "Attach an evidence excerpt (a quote / summary / reference supporting an attribute value) " +
+			"to an entity's attribute (additive, takes effect immediately; Edit). book_id + entity_id + " +
+			"attr_value_id (the attribute value to support — get it from the entity's attributes). " +
+			"evidence_type = quote (default) | summary | reference. original_text is the excerpt; " +
+			"original_language defaults to 'zh'. Optionally cite chapter_id (UUID) + chapter_title + " +
+			"chapter_index + block_or_line.",
+	}, s.toolCreateEvidence)
+}
+
+type createEvidenceToolIn struct {
+	BookID           string  `json:"book_id" jsonschema:"the book (UUID)"`
+	EntityID         string  `json:"entity_id" jsonschema:"the entity (UUID)"`
+	AttrValueID      string  `json:"attr_value_id" jsonschema:"the attribute value the evidence supports (UUID; must belong to the entity)"`
+	EvidenceType     string  `json:"evidence_type,omitempty" jsonschema:"quote (default) | summary | reference"`
+	OriginalText     string  `json:"original_text" jsonschema:"the excerpt / evidence text"`
+	OriginalLanguage string  `json:"original_language,omitempty" jsonschema:"BCP-47 language of original_text (default zh)"`
+	ChapterID        string  `json:"chapter_id,omitempty" jsonschema:"the chapter this evidence comes from (UUID)"`
+	ChapterTitle     *string `json:"chapter_title,omitempty"`
+	ChapterIndex     *int    `json:"chapter_index,omitempty"`
+	BlockOrLine      string  `json:"block_or_line,omitempty" jsonschema:"a block/line locator within the chapter"`
+	Note             string  `json:"note,omitempty"`
+}
+
+func (s *Server) toolCreateEvidence(ctx context.Context, _ *mcp.CallToolRequest, in createEvidenceToolIn) (*mcp.CallToolResult, evidenceResp, error) {
+	_, bookID, err := s.bookToolAuth(ctx, in.BookID, grantclient.GrantEdit)
+	if err != nil {
+		return nil, evidenceResp{}, err
+	}
+	entityID, ok, err := s.resolveEntityInBook(ctx, in.EntityID, bookID)
+	if err != nil {
+		return nil, evidenceResp{}, err
+	}
+	if !ok {
+		return nil, evidenceResp{}, errors.New("entity not found in this book")
+	}
+	attrValueID, err := uuid.Parse(strings.TrimSpace(in.AttrValueID))
+	if err != nil {
+		return nil, evidenceResp{}, errors.New("attr_value_id must be a UUID")
+	}
+	inEntity, err := s.attrValueInEntity(ctx, attrValueID, entityID)
+	if err != nil {
+		return nil, evidenceResp{}, errors.New("failed to verify the attribute value")
+	}
+	if !inEntity {
+		return nil, evidenceResp{}, errors.New("attr_value_id does not belong to this entity")
+	}
+	var note *string
+	if n := strings.TrimSpace(in.Note); n != "" {
+		note = &n
+	}
+	ev, err := s.createEvidenceCore(ctx, attrValueID, in.EvidenceType, in.OriginalText,
+		in.OriginalLanguage, in.ChapterID, in.ChapterTitle, in.ChapterIndex, in.BlockOrLine, note)
+	if err != nil {
+		// Sentinels are LLM-readable; wrap anything else (raw pgx) like the chapter-link tool.
+		switch {
+		case errors.Is(err, errEvidenceType), errors.Is(err, errEvidenceChapter):
+			return nil, evidenceResp{}, err
+		default:
+			return nil, evidenceResp{}, errors.New("failed to create the evidence")
+		}
+	}
+	return nil, *ev, nil
 }
 
 type createChapterLinkToolIn struct {

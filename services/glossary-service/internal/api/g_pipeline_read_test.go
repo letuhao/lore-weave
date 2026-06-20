@@ -69,6 +69,47 @@ func TestPipelineReadTools_GatesAndData(t *testing.T) {
 		t.Error("chapter links for an entity not in the book should error")
 	}
 
+	// ── entity evidence (empty is fine) + entity-in-book guard ──
+	if _, _, err := f.srv.toolGetEntityEvidence(octx, nil, bookEntityToolIn{BookID: f.bookID.String(), EntityID: entityID.String()}); err != nil {
+		t.Errorf("get entity evidence: %v", err)
+	}
+	if _, _, err := f.srv.toolGetEntityEvidence(octx, nil, bookEntityToolIn{BookID: f.bookID.String(), EntityID: uuid.NewString()}); err == nil {
+		t.Error("entity evidence for an entity not in the book should error")
+	}
+
+	// ── AI suggestions: a seeded ai-suggested entity surfaces; an ai-rejected one does not ──
+	var suggestID, rejectedID uuid.UUID
+	charKind := bookKindID(t, pool, f.bookID, "character")
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO glossary_entities(book_id, kind_id, status, tags, short_description)
+		 VALUES($1,$2,'draft','{ai-suggested}','pending') RETURNING entity_id`,
+		f.bookID, charKind).Scan(&suggestID); err != nil {
+		t.Fatalf("seed ai-suggested: %v", err)
+	}
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO glossary_entities(book_id, kind_id, status, tags, short_description)
+		 VALUES($1,$2,'inactive','{ai-suggested,ai-rejected}','tombstoned') RETURNING entity_id`,
+		f.bookID, charKind).Scan(&rejectedID); err != nil {
+		t.Fatalf("seed ai-rejected: %v", err)
+	}
+	t.Cleanup(func() {
+		pool.Exec(context.Background(), `DELETE FROM glossary_entities WHERE entity_id = ANY($1::uuid[])`, []uuid.UUID{suggestID, rejectedID}) //nolint:errcheck
+	})
+	if _, out, err := f.srv.toolListAISuggestions(octx, nil, bookOnlyToolIn{BookID: f.bookID.String()}); err != nil {
+		t.Fatalf("list ai suggestions: %v", err)
+	} else {
+		seen := map[string]bool{}
+		for _, it := range out.Items {
+			seen[it.EntityID] = true
+		}
+		if !seen[suggestID.String()] {
+			t.Error("ai-suggested entity must surface in the inbox")
+		}
+		if seen[rejectedID.String()] {
+			t.Error("ai-rejected (tombstoned) entity must NOT surface")
+		}
+	}
+
 	// ── grant gate: a non-grantee is denied on every tool ──
 	stranger := ctxWithUser(uuid.New())
 	if _, _, err := f.srv.toolListUnknownEntities(stranger, nil, bookOnlyToolIn{BookID: f.bookID.String()}); err == nil {
@@ -76,5 +117,11 @@ func TestPipelineReadTools_GatesAndData(t *testing.T) {
 	}
 	if _, _, err := f.srv.toolListMergeCandidates(stranger, nil, mergeCandToolIn{BookID: f.bookID.String()}); err == nil {
 		t.Error("non-grantee must be denied (merge candidates)")
+	}
+	if _, _, err := f.srv.toolListAISuggestions(stranger, nil, bookOnlyToolIn{BookID: f.bookID.String()}); err == nil {
+		t.Error("non-grantee must be denied (ai suggestions)")
+	}
+	if _, _, err := f.srv.toolGetEntityEvidence(stranger, nil, bookEntityToolIn{BookID: f.bookID.String(), EntityID: entityID.String()}); err == nil {
+		t.Error("non-grantee must be denied (entity evidence)")
 	}
 }

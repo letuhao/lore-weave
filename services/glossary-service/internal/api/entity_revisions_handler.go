@@ -16,6 +16,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 
@@ -129,19 +130,48 @@ func (s *Server) restoreEntityRevision(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	revNum, err := s.restoreEntityRevisionCore(r.Context(), bookID, entityID, userID, revID)
+	switch {
+	case errors.Is(err, errRevisionNotFound):
+		writeError(w, http.StatusNotFound, "GLOSS_NOT_FOUND", "revision not found")
+		return
+	case errors.Is(err, errRevisionIncomplete):
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INCOMPLETE_REVISION",
+			"revision snapshot is incomplete (no attributes) — cannot restore")
+		return
+	case err != nil:
+		slog.Error("restoreEntityRevision", "entity", entityID, "error", err)
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "restore failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"restored": true, "entity_id": entityID.String(), "from_revision_num": revNum,
+	})
+}
 
+// restore sentinels (shared by the HTTP handler + the glossary_propose_restore_revision
+// confirm effect).
+var (
+	errRevisionNotFound   = errors.New("revision not found")              // → 404 / re-proposable
+	errRevisionIncomplete = errors.New("revision snapshot is incomplete") // → 422
+)
+
+// restoreEntityRevisionCore restores an entity to a chosen revision's snapshot (exact,
+// id-preserving reconcile) and emits the change as a USER edit so VG-1 captures a kept
+// (reversible) revision. Returns the restored-from revision_num. Grant + entity-in-book
+// are the CALLER's concern. Single source of truth for the HTTP restore handler and the
+// confirm effect.
+func (s *Server) restoreEntityRevisionCore(ctx context.Context, bookID, entityID, userID, revID uuid.UUID) (int, error) {
 	var snapshot json.RawMessage
 	var revNum int
-	if err := s.pool.QueryRow(r.Context(),
+	if err := s.pool.QueryRow(ctx,
 		`SELECT snapshot, revision_num FROM entity_revisions WHERE revision_id=$1 AND entity_id=$2`,
 		revID, entityID,
 	).Scan(&snapshot, &revNum); err != nil {
 		if err == pgx.ErrNoRows {
-			writeError(w, http.StatusNotFound, "GLOSS_NOT_FOUND", "revision not found")
-			return
+			return 0, errRevisionNotFound
 		}
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "revision fetch failed")
-		return
+		return 0, err
 	}
 
 	// Guard against an incomplete snapshot (e.g. a '{}' baseline of an entity that
@@ -149,51 +179,41 @@ func (s *Server) restoreEntityRevision(w http.ResponseWriter, r *http.Request) {
 	// 'attributes' key as "zero attributes" and prune the entity to nothing — a
 	// degenerate revision must not be a destructive restore target.
 	if !snapshotRestorable(snapshot) {
-		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INCOMPLETE_REVISION",
-			"revision snapshot is incomplete (no attributes) — cannot restore")
-		return
+		return 0, errRevisionIncomplete
 	}
 
-	tx, err := s.pool.Begin(r.Context())
+	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "tx begin failed")
-		return
+		return 0, err
 	}
-	defer tx.Rollback(r.Context())
+	defer tx.Rollback(ctx) //nolint:errcheck
 
 	// Pre-restore fields → the event's `before` snapshot (so the captured restore
 	// revision + learning-service see a faithful diff).
-	bn, bk, ba, bsd, _ := loadEntityEventFields(r.Context(), tx, entityID)
+	bn, bk, ba, bsd, _ := loadEntityEventFields(ctx, tx, entityID)
 	before := &EntitySnapshot{Name: bn, Kind: bk, Aliases: ba, ShortDescription: bsd}
 
-	if err := reconcileEntityFromSnapshot(r.Context(), tx, entityID, string(snapshot)); err != nil {
-		slog.Error("restoreEntityRevision reconcile", "entity", entityID, "error", err)
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "restore failed: "+err.Error())
-		return
+	if err := reconcileEntityFromSnapshot(ctx, tx, entityID, string(snapshot)); err != nil {
+		return 0, err
 	}
 
 	// Emit as a USER change so VG-1 captures a KEPT revision (reversible restore)
 	// and downstream sync (knowledge / staleness) reconciles.
-	an, ak, aa, asd, fok := loadEntityEventFields(r.Context(), tx, entityID)
+	an, ak, aa, asd, fok := loadEntityEventFields(ctx, tx, entityID)
 	if fok {
 		payload := buildEntityEventPayload(
 			bookID.String(), entityID.String(), an, ak, aa, asd,
 			"updated", "user", userID.String(), before,
 		)
-		if err := emitEntityUpdatedTx(r.Context(), tx, entityID, payload); err != nil {
-			slog.Error("restoreEntityRevision emit", "entity", entityID, "error", err)
-			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "restore emit failed")
-			return
+		if err := emitEntityUpdatedTx(ctx, tx, entityID, payload); err != nil {
+			return 0, err
 		}
 	}
 
-	if err := tx.Commit(r.Context()); err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "commit failed")
-		return
+	if err := tx.Commit(ctx); err != nil {
+		return 0, err
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"restored": true, "entity_id": entityID.String(), "from_revision_num": revNum,
-	})
+	return revNum, nil
 }
 
 // snapshotRestorable reports whether a revision snapshot is a complete, restorable

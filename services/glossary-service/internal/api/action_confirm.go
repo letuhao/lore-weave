@@ -142,6 +142,14 @@ func (s *Server) confirmAction(w http.ResponseWriter, r *http.Request) {
 		s.effectSyncApply(w, r.Context(), claims)
 	case descBookRevert:
 		s.effectBookRevert(w, r.Context(), claims)
+	case descStatusChange:
+		s.effectStatusChange(w, r.Context(), claims)
+	case descRestoreRevision:
+		s.effectRestoreRevision(w, r.Context(), claims)
+	case descReassignKind:
+		s.effectReassignKind(w, r.Context(), claims)
+	case descMerge:
+		s.effectMerge(w, r.Context(), claims)
 	default:
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "unknown action")
 	}
@@ -329,6 +337,14 @@ func (s *Server) previewAction(w http.ResponseWriter, r *http.Request) {
 		s.previewSyncApply(w, r.Context(), claims)
 	case descBookRevert:
 		s.previewBookRevert(w, r.Context(), claims)
+	case descStatusChange:
+		s.previewStatusChange(w, r.Context(), claims)
+	case descRestoreRevision:
+		s.previewRestoreRevision(w, r.Context(), claims)
+	case descReassignKind:
+		s.previewReassignKind(w, r.Context(), claims)
+	case descMerge:
+		s.previewMerge(w, r.Context(), claims)
 	default:
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "unknown action")
 	}

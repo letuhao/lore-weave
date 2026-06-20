@@ -58,8 +58,11 @@ func (s *Server) mcpHandler() http.Handler {
 	s.RegisterUserTools(srv)
 	// Pipeline M1: read tools (merge-candidates / chapter-links / revisions / unknowns).
 	s.RegisterPipelineReadTools(srv)
-	// Pipeline M2: direct (class-W) additive write tools (chapter-links).
+	// Pipeline M2: direct (class-W) additive write tools (chapter-links, evidence).
 	s.RegisterPipelineWriteTools(srv)
+	// Pipeline M2: class-C propose tools for destructive curation (status / restore /
+	// reassign-kind / merge) — mint a confirm card, never write directly.
+	s.RegisterPipelineProposeTools(srv)
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "glossary_propose_new_entity",
