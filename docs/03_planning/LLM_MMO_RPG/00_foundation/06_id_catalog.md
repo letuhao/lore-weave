@@ -48,6 +48,7 @@
 | `RTM-A1..A9` · `RTM-Q1..Q10` · `RTM-D1..D10` | Realtime movement & presence authority (axioms / decisions) | [`08_realtime_movement_authority.md`](../08_realtime_movement_authority.md) | RTM-A10+ / next free | RTM-A2 = predict→validate(WASM)→reconcile · RTM-Q8 = seamless cross-region (V1) |
 | `ILR-A1..A3` · `ILR-D1..D9` | Interaction layer ↔ graphical-medium reconciliation (axioms / decisions) | [`09_interaction_layer_reconciliation.md`](../09_interaction_layer_reconciliation.md) | next free | ILR-A2 = three-layer position stack · ILR-A3 = hybrid NPC movement |
 | `TG-A1..A4` · `TG-D1..D8` | Tactical-grid combat (axioms / decisions); extends COMB | [`features/18_combat/COMB_002_tactical_grid.md`](../features/18_combat/COMB_002_tactical_grid.md) | next free | TG-A1 = LLM-zero-space · TG-A3 = move+act budgets (FFT/XCOM) |
+| `AGT-A1..A6` · `AGT-D1..D8` | Agent Decision Standard & SDK (driver-agnostic agent contract) | [`11_agent_decision_standard.md`](../11_agent_decision_standard.md) | next free | AGT-A2 = bounded vocab = MCP tool set · AGT-A3 = pluggable drivers (cost lever) |
 
 ---
 
