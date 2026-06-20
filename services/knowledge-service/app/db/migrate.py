@@ -1009,9 +1009,16 @@ CREATE TABLE IF NOT EXISTS kg_graph_schemas (
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
--- scope-keyed uniqueness; NULLS NOT DISTINCT so two system rows can't share a code.
-CREATE UNIQUE INDEX IF NOT EXISTS idx_kg_graph_schemas_scope_code
-  ON kg_graph_schemas (scope, scope_id, code) NULLS NOT DISTINCT;
+-- scope-keyed uniqueness; NULLS NOT DISTINCT so two system rows can't share a
+-- code. PARTIAL (active rows only) — review-impl: replace-on-adopt deprecates
+-- the prior project schema then inserts a fresh copy with the SAME code, so a
+-- deprecated row must NOT occupy the (scope,scope_id,code) slot (else re-adopting
+-- the same template — or the M1 fill-glossary-then-re-adopt flow — would hit a
+-- unique violation). Uniqueness is enforced among NON-deprecated rows only.
+DROP INDEX IF EXISTS idx_kg_graph_schemas_scope_code;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_kg_graph_schemas_active_scope_code
+  ON kg_graph_schemas (scope, scope_id, code) NULLS NOT DISTINCT
+  WHERE deprecated_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_kg_graph_schemas_scope
   ON kg_graph_schemas (scope, scope_id);
 
@@ -1070,8 +1077,13 @@ CREATE TABLE IF NOT EXISTS kg_vocab_values (
   code             TEXT NOT NULL CHECK (length(code) BETWEEN 1 AND 120),
   label            TEXT NOT NULL,
   metadata         JSONB NOT NULL DEFAULT '{}',    -- e.g. { axis, has_target, archetype } for drive
+  deprecated_at    TIMESTAMPTZ,                    -- A4: soft-deprecate, never hard-drop (review-impl HIGH)
   UNIQUE (vocab_set_id, code)
 );
+-- review-impl HIGH: existing DBs created kg_vocab_values before deprecated_at —
+-- A4 (never hard-drop a row that may have referencing graph data) requires the
+-- column so sync removed_upstream can deprecate instead of DELETE.
+ALTER TABLE kg_vocab_values ADD COLUMN IF NOT EXISTS deprecated_at TIMESTAMPTZ;
 
 -- Layer 3 views — per-user named lenses over a project graph (READ-only).
 CREATE TABLE IF NOT EXISTS kg_views (

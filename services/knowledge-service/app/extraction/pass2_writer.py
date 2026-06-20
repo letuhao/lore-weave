@@ -95,6 +95,19 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 
+def _as_uuid(val: object) -> UUID | None:
+    """Coerce a tenant id to UUID, or None if it isn't one (caller logs + skips
+    the park rather than raising). Production user_id IS a UUID string."""
+    if isinstance(val, UUID):
+        return val
+    if isinstance(val, str):
+        try:
+            return UUID(val)
+        except ValueError:
+            return None
+    return None
+
+
 class TriageParkProtocol(Protocol):
     """Minimal structural type for the LH ``TriageRepo.park`` the writer calls to
     park an off-schema edge (L7/C4). Kept as a Protocol so the writer stays
@@ -608,24 +621,34 @@ async def write_pass2_extraction(
             # rather than silently losing it, when a TriageRepo is wired. Fail-soft:
             # a park error must NEVER break the extraction batch.
             if triage_repo is not None and project_id:
-                try:
-                    await triage_repo.park(
-                        user_id=UUID(user_id) if isinstance(user_id, str) else user_id,
-                        project_id=project_id,
-                        item_type="unknown_edge_type",
-                        signature=f"edge:{rel.predicate}",
-                        payload={
-                            "predicate": rel.predicate,
-                            "subject_id": resolved_subject_id,
-                            "object_id": resolved_object_id,
-                        },
-                        source={"job_id": job_id, "source_id": source.id},
-                        schema_version=schema.schema_version if schema else None,
+                # Coerce the tenant id OUTSIDE the try, so a non-UUID id surfaces as
+                # a distinct error rather than being swallowed by the best-effort
+                # park `except` (which would silently lose the edge — review-impl MED).
+                park_uid = _as_uuid(user_id)
+                if park_uid is None:
+                    logger.error(
+                        "pass2_writer: cannot park off-schema edge %r — user_id %r is not a UUID",
+                        rel.predicate, user_id,
                     )
-                except Exception:  # noqa: BLE001 — triage is best-effort; never block extraction
-                    logger.exception(
-                        "pass2_writer: triage park failed for off-schema edge %r", rel.predicate,
-                    )
+                else:
+                    try:
+                        await triage_repo.park(
+                            user_id=park_uid,
+                            project_id=project_id,
+                            item_type="unknown_edge_type",
+                            signature=f"edge:{rel.predicate}",
+                            payload={
+                                "predicate": rel.predicate,
+                                "subject_id": resolved_subject_id,
+                                "object_id": resolved_object_id,
+                            },
+                            source={"job_id": job_id, "source_id": source.id},
+                            schema_version=schema.schema_version if schema else None,
+                        )
+                    except Exception:  # noqa: BLE001 — triage is best-effort; never block extraction
+                        logger.exception(
+                            "pass2_writer: triage park failed for off-schema edge %r", rel.predicate,
+                        )
             skipped += 1
             continue
 

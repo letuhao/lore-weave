@@ -88,6 +88,142 @@ async def test_adopt_copies_schema_and_children(pool):
     assert result.missing_optional == []
 
 
+async def _insert_user_schema(pool, owner_user_id, *, code="my-tpl", with_drive=None):
+    """Insert a user-tier schema (optionally a `drive` vocab set + values) and
+    return its schema_id. `with_drive` = list of (code, label) value tuples."""
+    async with pool.acquire() as conn:
+        sid = await conn.fetchval(
+            "INSERT INTO kg_graph_schemas (scope, scope_id, code, name, content_hash) "
+            "VALUES ('user', $1, $2, 'Mine', 'h0') RETURNING schema_id",
+            str(owner_user_id), code,
+        )
+        if with_drive is not None:
+            set_id = await conn.fetchval(
+                "INSERT INTO kg_vocab_sets (schema_id, code, label, closed) "
+                "VALUES ($1, 'drive', 'Drive', true) RETURNING vocab_set_id",
+                sid,
+            )
+            for vcode, vlabel in with_drive:
+                await conn.execute(
+                    "INSERT INTO kg_vocab_values (vocab_set_id, code, label) VALUES ($1, $2, $3)",
+                    set_id, vcode, vlabel,
+                )
+    return sid
+
+
+async def test_HIGH_adopt_rejects_foreign_user_tier_source(pool):
+    """review-impl HIGH: a user cannot adopt (deep-copy/read) another user's
+    private user-tier template by passing its UUID."""
+    await _reset_kg(pool)
+    repo = OntologyMutationsRepo(pool)
+    owner_a = uuid4()
+    user_b = uuid4()
+    src = await _insert_user_schema(pool, owner_a, code="a-private")
+    # user B tries to adopt A's private template → not-found (no cross-tenant read)
+    with pytest.raises(SchemaNotWritableError):
+        await repo.adopt(
+            owner_user_id=user_b, project_id=f"proj-{uuid4()}",
+            source_schema_id=src, glossary_kinds=set(), book_id=None,
+        )
+    # owner A CAN adopt their own template
+    res = await repo.adopt(
+        owner_user_id=owner_a, project_id=f"proj-{uuid4()}",
+        source_schema_id=src, glossary_kinds=set(), book_id=None,
+    )
+    assert res.schema.code == "a-private"
+
+
+async def test_HIGH_sync_added_vocab_set_brings_its_values(pool):
+    """review-impl HIGH: taking a newly-added upstream vocab_set must copy its
+    VALUES too — not leave an empty closed set."""
+    await _reset_kg(pool)
+    repo = OntologyMutationsRepo(pool)
+    owner = uuid4()
+    src = await _insert_user_schema(pool, owner, code="src-tpl")  # no vocab yet
+    adopted = await repo.adopt(
+        owner_user_id=owner, project_id=f"proj-{uuid4()}",
+        source_schema_id=src, glossary_kinds=set(), book_id=None,
+    )
+    pc = adopted.schema.schema_id
+    # add a drive set + 2 values to the SOURCE
+    async with pool.acquire() as conn:
+        set_id = await conn.fetchval(
+            "INSERT INTO kg_vocab_sets (schema_id, code, label, closed) "
+            "VALUES ($1, 'drive', 'Drive', true) RETURNING vocab_set_id", src,
+        )
+        await conn.execute(
+            "INSERT INTO kg_vocab_values (vocab_set_id, code, label) VALUES ($1,'revenge','Revenge'),($1,'love','Love')",
+            set_id,
+        )
+    diff = await repo.sync_diff(pc)
+    assert diff["has_updates"]
+    await repo.sync_apply(
+        pc, base_source_hash=diff["source_hash_current"],
+        decisions=[{"node_type": "vocab_set", "code": "drive", "choice": "take_theirs"}],
+    )
+    tree = await GraphSchemasRepo(pool).get_tree(owner, pc, project_id=adopted.schema.scope_id)
+    assert sorted(v.code for v in tree["vocab_values"].get("drive", [])) == ["love", "revenge"]
+
+
+async def test_HIGH_sync_removed_vocab_value_deprecates_not_deletes(pool):
+    """review-impl HIGH (A4): removed_upstream vocab_value is deprecated, not
+    hard-deleted; it leaves the resolved schema but the row survives."""
+    await _reset_kg(pool)
+    repo = OntologyMutationsRepo(pool)
+    owner = uuid4()
+    src = await _insert_user_schema(pool, owner, code="src2", with_drive=[("revenge", "Revenge"), ("love", "Love")])
+    adopted = await repo.adopt(
+        owner_user_id=owner, project_id=f"proj-{uuid4()}",
+        source_schema_id=src, glossary_kinds=set(), book_id=None,
+    )
+    pc = adopted.schema.schema_id
+    # remove 'love' from the source
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "DELETE FROM kg_vocab_values WHERE code='love' AND vocab_set_id IN "
+            "(SELECT vocab_set_id FROM kg_vocab_sets WHERE schema_id=$1)", src,
+        )
+    diff = await repo.sync_diff(pc)
+    await repo.sync_apply(
+        pc, base_source_hash=diff["source_hash_current"],
+        decisions=[{"node_type": "vocab_value", "parent_code": "drive", "code": "love", "choice": "take_theirs"}],
+    )
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT deprecated_at FROM kg_vocab_values WHERE code='love' AND vocab_set_id IN "
+            "(SELECT vocab_set_id FROM kg_vocab_sets WHERE schema_id=$1)", pc,
+        )
+    assert row is not None and row["deprecated_at"] is not None  # deprecated, NOT deleted
+    # excluded from the resolved/read schema
+    tree = await GraphSchemasRepo(pool).get_tree(owner, pc, project_id=adopted.schema.scope_id)
+    assert "love" not in {v.code for v in tree["vocab_values"].get("drive", [])}
+
+
+async def test_MED_concurrent_adopt_is_race_safe(pool):
+    """review-impl MED (TOCTOU): two adopts racing on one project must not leave
+    two active schemas or raise."""
+    import asyncio
+
+    await _reset_kg(pool)
+    repo = OntologyMutationsRepo(pool)
+    project_id = f"proj-{uuid4()}"
+    kinds = set(_XIANXIA_REQUIRED + ["item", "event", "relationship"])
+    src = await _system_id(pool, "xianxia-harem")
+    results = await asyncio.gather(
+        repo.adopt(owner_user_id=uuid4(), project_id=project_id, source_schema_id=src, glossary_kinds=kinds, book_id=None),
+        repo.adopt(owner_user_id=uuid4(), project_id=project_id, source_schema_id=src, glossary_kinds=kinds, book_id=None),
+        return_exceptions=True,
+    )
+    for r in results:
+        assert not isinstance(r, Exception), f"concurrent adopt raised: {r!r}"
+    async with pool.acquire() as conn:
+        n = await conn.fetchval(
+            "SELECT count(*) FROM kg_graph_schemas WHERE scope='project' AND scope_id=$1 AND deprecated_at IS NULL",
+            project_id,
+        )
+    assert n == 1  # exactly one active project schema
+
+
 async def test_readopt_replaces_active_schema(pool):
     """Re-adopt deprecates the prior active project schema (one-active invariant)."""
     await _reset_kg(pool)

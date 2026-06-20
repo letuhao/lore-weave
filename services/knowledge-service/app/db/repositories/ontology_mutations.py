@@ -97,13 +97,47 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-async def _tree_surface(conn: asyncpg.Connection, schema_id: UUID) -> dict:
-    """Build the template-shaped semantic surface of a schema's tree.
+# review-impl MED: serialize per-project adopt/sync so concurrent re-adopt or an
+# adopt racing a sync can't leave two active project schemas / mutate a row that
+# was just deprecated underneath (TOCTOU). Same primitive as the L1 seed lock.
+_ONTOLOGY_LOCK_NS = 0x4B4F  # 'KO' (KG ontology)
 
-    Mirrors the dict the seed feeds to `_content_hash` (same keys, same nested
-    shapes, deprecated rows excluded — a deprecated child is not part of the
-    live semantic surface). Ordering is normalized by the SQL `ORDER BY` +
-    `sort_keys=True` at hash time, so the hash is stable across copies.
+
+async def _lock_project(conn: asyncpg.Connection, project_id: str) -> None:
+    await conn.execute(
+        "SELECT pg_advisory_xact_lock($1, hashtext($2))", _ONTOLOGY_LOCK_NS, project_id
+    )
+
+
+def _assert_source_adoptable(source: GraphSchema, *, owner_user_id: UUID, project_id: str) -> None:
+    """review-impl HIGH: the adopt source must be VISIBLE to the caller, else a
+    user could deep-copy (and thus read) another tenant's private user-tier
+    template by passing its UUID — the router only grant-gates the DESTINATION
+    project. Adoptable sources: System templates · the caller's OWN user-tier
+    templates · this project's own rows (re-adopt). Anything else → not-found
+    (no existence oracle)."""
+    if source.scope == "system":
+        return
+    if source.scope == "user" and source.scope_id == str(owner_user_id):
+        return
+    if source.scope == "project" and source.scope_id == project_id:
+        return
+    raise SchemaNotWritableError("source schema not found")
+
+
+async def _tree_surface(conn: asyncpg.Connection, schema_id: UUID) -> dict:
+    """Build the canonical semantic surface of a schema's tree for adopt/sync hashing.
+
+    This is the ONE hashing surface for adopt/sync: a project's frozen `source_hash`
+    and the upstream's recomputed current hash are BOTH `_tree_surface`-based, so
+    they compare apples-to-apples (and `sort_keys=True` + SQL `ORDER BY` make it
+    order-stable). Deprecated children are excluded (not part of the live surface).
+
+    NOTE (review-impl): this is intentionally NOT identical to the seed's raw
+    `_content_hash(template)` — that hashes the template literal (which carries a
+    top-level `code` key + authoring order) and is used only as the seed's
+    re-seed gate. The two hash families never cross; do not compare a stored
+    system `content_hash` (seed-family) against a `_compute_content_hash` result.
     """
     schema = await conn.fetchrow(
         "SELECT name, description, allow_free_edges FROM kg_graph_schemas WHERE schema_id = $1",
@@ -136,7 +170,7 @@ async def _tree_surface(conn: asyncpg.Connection, schema_id: UUID) -> dict:
     for vs in vocab_sets:
         vals = await conn.fetch(
             "SELECT code, label, metadata FROM kg_vocab_values "
-            "WHERE vocab_set_id = $1 ORDER BY code",
+            "WHERE vocab_set_id = $1 AND deprecated_at IS NULL ORDER BY code",
             vs["vocab_set_id"],
         )
         vsets.append(
@@ -243,6 +277,7 @@ class OntologyMutationsRepo:
         """
         async with self._pool.acquire() as conn:
             async with conn.transaction():
+                await _lock_project(conn, project_id)  # serialize adopt/sync (MED)
                 src = await conn.fetchrow(
                     f"SELECT {_SCHEMA_COLS} FROM kg_graph_schemas WHERE schema_id = $1 FOR SHARE",
                     source_schema_id,
@@ -250,6 +285,8 @@ class OntologyMutationsRepo:
                 if src is None:
                     raise SchemaNotWritableError("source schema not found")
                 source = _row_to_schema(src)
+                # HIGH: the source must be visible to the caller (no cross-tenant read).
+                _assert_source_adoptable(source, owner_user_id=owner_user_id, project_id=project_id)
 
                 # M1 adopt-gate — required must be present in glossary; optional warns.
                 req = await conn.fetch(
@@ -357,7 +394,8 @@ class OntologyMutationsRepo:
             await conn.execute(
                 """
                 INSERT INTO kg_vocab_values (vocab_set_id, code, label, metadata)
-                SELECT $2, code, label, metadata FROM kg_vocab_values WHERE vocab_set_id = $1
+                SELECT $2, code, label, metadata FROM kg_vocab_values
+                WHERE vocab_set_id = $1 AND deprecated_at IS NULL
                 """,
                 vs["vocab_set_id"], new_set_id,
             )
@@ -591,13 +629,24 @@ class OntologyMutationsRepo:
         """
         async with self._pool.acquire() as conn:
             async with conn.transaction():
+                # Serialize against a concurrent re-adopt that could deprecate this
+                # row + insert a new active one mid-apply (MED, TOCTOU). project_id
+                # is the schema's scope_id.
+                pid = await conn.fetchval(
+                    "SELECT scope_id FROM kg_graph_schemas WHERE schema_id = $1", project_schema_id
+                )
+                if pid:
+                    await _lock_project(conn, pid)
                 proj = await conn.fetchrow(
-                    "SELECT source_ref, source_hash FROM kg_graph_schemas "
+                    "SELECT source_ref, source_hash, deprecated_at FROM kg_graph_schemas "
                     "WHERE schema_id = $1 FOR UPDATE",
                     project_schema_id,
                 )
                 if proj is None or not proj["source_ref"]:
                     raise SchemaNotWritableError("project schema has no upstream source")
+                if proj["deprecated_at"] is not None:
+                    # a concurrent re-adopt deprecated this copy — don't mutate a dead row
+                    raise SyncConflictError("project schema was replaced (re-adopted)")
                 source_id = UUID(proj["source_ref"].split(":", 1)[1])
                 current_hash = await _compute_content_hash(conn, source_id)
                 if current_hash != base_source_hash:
@@ -714,10 +763,26 @@ class OntologyMutationsRepo:
                 return True
             return False
         if mine is None:
-            await conn.execute(
+            # HIGH: a newly-added upstream set must bring its VALUES too — else
+            # take_theirs inserts an EMPTY closed vocab set and extraction can
+            # assign nothing. Copy the set + all its values atomically (mirrors
+            # adopt's _copy_children), independent of value-decision ordering.
+            new_set_id = await conn.fetchval(
                 "INSERT INTO kg_vocab_sets (schema_id, code, label, description, closed) "
-                "VALUES ($1, $2, $3, $4, $5)",
+                "VALUES ($1, $2, $3, $4, $5) RETURNING vocab_set_id",
                 dst_id, code, up["label"], up["description"], up["closed"],
+            )
+            up_set_id = await conn.fetchval(
+                "SELECT vocab_set_id FROM kg_vocab_sets WHERE schema_id = $1 AND code = $2",
+                source_id, code,
+            )
+            await conn.execute(
+                """
+                INSERT INTO kg_vocab_values (vocab_set_id, code, label, metadata)
+                SELECT $1, code, label, metadata FROM kg_vocab_values
+                WHERE vocab_set_id = $2 AND deprecated_at IS NULL
+                """,
+                new_set_id, up_set_id,
             )
             return True
         await conn.execute(
@@ -747,13 +812,17 @@ class OntologyMutationsRepo:
             up_set, code,
         ) if up_set else None
         mine = await conn.fetchrow(
-            "SELECT vocab_value_id FROM kg_vocab_values WHERE vocab_set_id = $1 AND code = $2",
+            "SELECT vocab_value_id, deprecated_at FROM kg_vocab_values WHERE vocab_set_id = $1 AND code = $2",
             my_set, code,
         )
         if up is None:
-            if mine is not None:
+            # HIGH: removed_upstream → DEPRECATE, never hard-DELETE (A4 — graph data
+            # may reference this drive value by code; keep it queryable). Mirrors the
+            # set/edge/fact removed_upstream paths.
+            if mine is not None and mine["deprecated_at"] is None:
                 await conn.execute(
-                    "DELETE FROM kg_vocab_values WHERE vocab_set_id = $1 AND code = $2", my_set, code
+                    "UPDATE kg_vocab_values SET deprecated_at = now() WHERE vocab_set_id = $1 AND code = $2",
+                    my_set, code,
                 )
                 return True
             return False
@@ -764,8 +833,10 @@ class OntologyMutationsRepo:
                 my_set, code, up["label"], up["metadata"],
             )
             return True
+        # modified (or reintroduced) → overwrite + un-deprecate.
         await conn.execute(
-            "UPDATE kg_vocab_values SET label = $3, metadata = $4 WHERE vocab_set_id = $1 AND code = $2",
+            "UPDATE kg_vocab_values SET label = $3, metadata = $4, deprecated_at = NULL "
+            "WHERE vocab_set_id = $1 AND code = $2",
             my_set, code, up["label"], up["metadata"],
         )
         return True

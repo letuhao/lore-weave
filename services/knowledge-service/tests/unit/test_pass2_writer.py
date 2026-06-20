@@ -291,6 +291,38 @@ async def test_L7_off_schema_edge_parked_to_triage(
 @patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
 @patch(f"{_PATCH_BASE}.resolve_or_merge_entity", new_callable=AsyncMock)
 @patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
+async def test_L7_park_skipped_cleanly_for_non_uuid_user_id(
+    mock_upsert_source, mock_merge, mock_evidence, mock_create_rel,
+):
+    """review-impl MED: a non-UUID user_id must NOT crash and must NOT be swallowed
+    as a generic 'park failed' — the park is skipped with a distinct log, the batch
+    survives."""
+    mock_upsert_source.return_value = _make_source_result()
+    mock_merge.side_effect = [_make_entity_result("eid-kai"), _make_entity_result("eid-zhao")]
+    mock_evidence.return_value = _make_evidence_result(True)
+    schema = ExtractionSchema(edge_predicates=("trusts",), allow_free_edges=False, schema_version=7)
+    fake_triage = AsyncMock()
+
+    result = await write_pass2_extraction(
+        _fake_session(),
+        user_id="not-a-uuid", project_id=PROJECT_ID,  # USER_ID is a non-UUID placeholder
+        source_type="chapter", source_id="ch-1", job_id=JOB_ID,
+        entities=[_entity("Kai"), _entity("Zhao")],
+        relations=[_relation("Kai", "betrays", "Zhao", subject_id="eid-kai", object_id="eid-zhao")],
+        schema=schema,
+        triage_repo=fake_triage,
+    )
+
+    assert result.relations_created == 0   # off-schema edge still dropped
+    fake_triage.park.assert_not_called()   # park skipped (not attempted with a bad id)
+    mock_create_rel.assert_not_called()    # never written to Neo4j
+
+
+@pytest.mark.asyncio
+@patch(f"{_PATCH_BASE}.create_relation", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.resolve_or_merge_entity", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
 async def test_relations_skip_unresolvable_endpoints(
     mock_upsert_source, mock_merge, mock_evidence, mock_create_rel,
 ):

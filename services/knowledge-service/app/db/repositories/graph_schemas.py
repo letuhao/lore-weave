@@ -96,7 +96,7 @@ class GraphSchemasRepo:
             val_rows = await conn.fetch(
                 """
                 SELECT vocab_value_id, vocab_set_id, code, label, metadata
-                FROM kg_vocab_values WHERE vocab_set_id = $1 ORDER BY code
+                FROM kg_vocab_values WHERE vocab_set_id = $1 AND deprecated_at IS NULL ORDER BY code
                 """,
                 s.vocab_set_id,
             )

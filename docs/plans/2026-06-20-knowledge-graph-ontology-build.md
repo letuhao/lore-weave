@@ -407,10 +407,40 @@ lanes built as parallel worktree agents, merged clean, composed + verified:
   (no class-C leak, no scope leak, inputSchema mirror) + 4 live-PG MCP green;
   provider-gate clean.
 
-**REMAINING → S3:** **D-KG-L7-ACTIVATE** (turn enforcement on per project +
-full-pipeline cross-service live-smoke) · **LG** glossary internal-read
-(glossary branch) + `D-KG-LG-REAL` real-glossary smoke · KM5/KM6 (admin MCP +
-confirm-token machinery) for the class-C tools · `D-KG-LF-PROPOSE-EDGE-INBOX`.
-The data layer, HTTP surface, resolution, adopt/sync, dynamic-extraction
-plumbing, frontend, enforcement mechanism, and the safe MCP tier are BUILT +
-live-verified; the above are the tracked switches/dependencies that remain.
+**2026-06-20 — /review-impl (4 cold reviewers) + fixes.** Ran 4 independent
+adversarial reviewers (tenancy/IDOR · adopt-sync correctness · LB-backcompat/L7 ·
+MCP/LF). MCP security surface + LB backward-compat **confirmed solid** (dormancy
+true, INV-K1 holds, class-C no-leak with a failing-if-added test). Fixed:
+- **HIGH-1 (cross-tenant leak):** `adopt` fetched the source by id with NO scope
+  check → a user could deep-copy/read another tenant's private user-tier template
+  by UUID. Added `_assert_source_adoptable` (system | own-user | own-project).
+- **HIGH-2 (data loss):** sync taking a newly-`added` upstream vocab_set inserted
+  an EMPTY closed set (values dropped). `_take_vocab_set` now copies the values.
+- **HIGH-3 (A4 violation):** `removed_upstream` vocab_value hard-DELETEd. Added
+  `kg_vocab_values.deprecated_at` + deprecate-not-delete + exclude deprecated from
+  reads (resolver + `_tree_surface`).
+- **MED-4 + deeper bug:** added a per-project advisory lock to adopt/sync_apply
+  (TOCTOU) AND made `idx_kg_graph_schemas_*_scope_code` **partial (WHERE
+  deprecated_at IS NULL)** — replace-on-adopt's deprecate+reinsert-same-code (incl
+  the M1 fill-glossary-then-re-adopt flow) was hitting a unique violation; now
+  uniqueness is among ACTIVE rows only.
+- **MED-5:** corrected the false `_tree_surface` "mirrors the seed hash" docstring
+  (the two hash families intentionally differ; never cross).
+- **MED-6:** hardened triage-park `user_id` coercion — a non-UUID id is logged
+  distinctly + skips the park (was swallowed by the best-effort `except` → silent loss).
+- **VERIFY:** 49 KG live-PG integration (incl 4 new HIGH/MED tests + a concurrent-
+  adopt race test) + 2782 unit green; provider-gate clean.
+
+**Deferred (tracked, lower severity):** `D-KG-L7-ACTIVATE` now also covers the
+R3 activation-time MEDs (SDK pre-drops off-schema edges before the writer's
+triage-park → wire so the park still fires; `schema_version` ON CREATE only —
+re-matched edges stay NULL) · `D-KG-LD-VIEWS-GRANT` (views CRUD lacks the project
+grant the LF tool has) · `D-KG-LF-PROPOSE-VALIDTO` (propose-edge no valid_to<from
+guard) · `D-KG-SYNC-DIFF-LABEL` (node_kind diff mislabels strength as 'label' —
+apply-safe).
+
+**REMAINING → S3:** `D-KG-L7-ACTIVATE` · `LG` glossary internal-read (glossary
+branch) + `D-KG-LG-REAL` · KM5/KM6 (admin MCP + confirm machinery for class-C) ·
+`D-KG-LF-PROPOSE-EDGE-INBOX`. Data layer, HTTP surface, resolution, adopt/sync,
+extraction plumbing, frontend, enforcement mechanism, and the safe MCP tier are
+BUILT + live-verified + adversarially reviewed.
