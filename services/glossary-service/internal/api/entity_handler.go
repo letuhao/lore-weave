@@ -144,10 +144,10 @@ func (s *Server) loadEntityDetail(ctx context.Context, bookID, entityID uuid.UUI
 	err := s.pool.QueryRow(ctx, `
 		SELECT
 			e.entity_id, e.book_id, e.kind_id, e.status, e.tags, e.created_at, e.updated_at,
-			ek.kind_id, ek.code, ek.name, ek.icon, ek.color,
+			ek.book_kind_id, ek.code, ek.name, ek.icon, ek.color,
 			COALESCE((
 				SELECT eav.original_value FROM entity_attribute_values eav
-				JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+				JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
 				WHERE eav.entity_id = e.entity_id AND ad.code IN ('name','term')
 				ORDER BY ad.sort_order LIMIT 1
 			), '') AS display_name,
@@ -160,7 +160,7 @@ func (s *Server) loadEntityDetail(ctx context.Context, bookID, entityID uuid.UUI
 				JOIN entity_attribute_values eav3 ON eav3.attr_value_id = ev.attr_value_id
 				WHERE eav3.entity_id = e.entity_id) AS evidence_count
 		FROM glossary_entities e
-		JOIN entity_kinds ek ON ek.kind_id = e.kind_id
+		JOIN book_kinds ek ON ek.book_kind_id = e.kind_id
 		WHERE e.entity_id = $1 AND e.book_id = $2 AND e.deleted_at IS NULL`,
 		entityID, bookID,
 	).Scan(
@@ -210,9 +210,9 @@ func (s *Server) loadEntityDetail(ctx context.Context, bookID, entityID uuid.UUI
 	avRows, err := s.pool.Query(ctx, `
 		SELECT eav.attr_value_id, eav.entity_id, eav.attr_def_id,
 		       eav.original_language, eav.original_value,
-		       ad.attr_def_id, ad.code, ad.name, ad.field_type, ad.is_required, ad.is_system, ad.sort_order
+		       ad.attr_id, ad.code, ad.name, ad.field_type, ad.is_required, false AS is_system, ad.sort_order
 		FROM entity_attribute_values eav
-		JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+		JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
 		WHERE eav.entity_id = $1
 		ORDER BY ad.sort_order`, entityID)
 	if err != nil {
@@ -327,6 +327,11 @@ func (s *Server) createEntity(w http.ResponseWriter, r *http.Request) {
 
 	var in struct {
 		KindID string `json:"kind_id"`
+		// Optional per-entity genre override (D2). Non-empty ⇒ the entity's genres are
+		// exactly these (+ universal); empty/omitted ⇒ the entity follows the book's
+		// active genres. The set also decides which (kind × genre) attribute value rows
+		// are seeded (D-GKA-ENTITY-MULTIGENRE-VALUES — one per (genre, code)).
+		GenreIDs []string `json:"genre_ids"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || in.KindID == "" {
 		writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY", "kind_id is required")
@@ -340,17 +345,60 @@ func (s *Server) createEntity(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
-	// Validate kind exists and is visible
+	// Validate the kind is a live, visible BOOK kind of THIS book (G4: kind_id is a
+	// book_kind_id — the entity FK now targets book_kinds). A system_kind id would
+	// pass an old system check but then violate the book_kinds FK on insert; and a
+	// book_kind from another book must not be accepted (tenant boundary).
 	var kindExists bool
 	if err := s.pool.QueryRow(ctx,
-		`SELECT EXISTS(SELECT 1 FROM entity_kinds WHERE kind_id=$1 AND is_hidden=false)`, kindID,
+		`SELECT EXISTS(SELECT 1 FROM book_kinds
+		               WHERE book_kind_id=$1 AND book_id=$2 AND deprecated_at IS NULL AND is_hidden=false)`,
+		kindID, bookID,
 	).Scan(&kindExists); err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "db error")
 		return
 	}
 	if !kindExists {
-		writeError(w, http.StatusNotFound, "GLOSS_KIND_NOT_FOUND", "kind not found")
+		writeError(w, http.StatusNotFound, "GLOSS_KIND_NOT_FOUND", "kind not found in this book's ontology (adopt it first)")
 		return
+	}
+
+	// Validate the per-entity genre override (if any) BEFORE the tx, so a bad id 422s
+	// without leaving a half-created entity. universal is auto-included (O4); every id
+	// must be a live book genre of THIS book (tenant boundary).
+	override := len(in.GenreIDs) > 0
+	var overrideSet []uuid.UUID
+	if override {
+		want := make([]uuid.UUID, 0, len(in.GenreIDs)+1)
+		for _, g := range in.GenreIDs {
+			id, perr := uuid.Parse(g)
+			if perr != nil {
+				writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "genre_ids must be UUIDs")
+				return
+			}
+			want = append(want, id)
+		}
+		var universalID uuid.UUID
+		if err := s.pool.QueryRow(ctx,
+			`SELECT genre_id FROM book_genres WHERE book_id=$1 AND code='universal' AND deprecated_at IS NULL`,
+			bookID).Scan(&universalID); err != nil {
+			writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "book has no universal genre (adopt it first)")
+			return
+		}
+		want = append(want, universalID)
+		var validCount int
+		if err := s.pool.QueryRow(ctx,
+			`SELECT count(DISTINCT genre_id) FROM book_genres
+			 WHERE book_id=$1 AND deprecated_at IS NULL AND genre_id = ANY($2)`,
+			bookID, want).Scan(&validCount); err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "validate genres failed")
+			return
+		}
+		if validCount != distinctCount(want) {
+			writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "every genre_id must be a live genre of this book")
+			return
+		}
+		overrideSet = want
 	}
 
 	// Create entity + attribute value rows in one transaction
@@ -370,10 +418,47 @@ func (s *Server) createEntity(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "insert entity failed")
 		return
 	}
+	entityUUID, _ := uuid.Parse(entityIDStr)
 
-	// Load attribute definitions for this kind
-	attrRows, err := tx.Query(ctx,
-		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 ORDER BY sort_order`, kindID)
+	// Resolve the entity's effective genre set: the validated override (persisted as
+	// entity_genres rows), or the book's active genres (no override rows — follows the
+	// book). The set bounds which attribute value rows we seed.
+	var seedGenres []uuid.UUID
+	if override {
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO entity_genres(entity_id, genre_id)
+			 SELECT $1, g FROM unnest($2::uuid[]) AS g ON CONFLICT DO NOTHING`,
+			entityUUID, overrideSet); err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "insert entity genres failed")
+			return
+		}
+		seedGenres = overrideSet
+	} else {
+		grows, gerr := tx.Query(ctx, `SELECT genre_id FROM book_active_genres WHERE book_id=$1`, bookID)
+		if gerr != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "load active genres failed")
+			return
+		}
+		for grows.Next() {
+			var gid uuid.UUID
+			if err := grows.Scan(&gid); err != nil {
+				grows.Close()
+				writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "scan active genre failed")
+				return
+			}
+			seedGenres = append(seedGenres, gid)
+		}
+		grows.Close()
+	}
+
+	// Seed one attribute_value row per (genre, code) of the kind RESTRICTED to the
+	// entity's genres — NOT DISTINCT ON code, so a keep-both conflict (same code in two
+	// genres) gets a row per genre and both values persist (D-GKA-ENTITY-MULTIGENRE-VALUES).
+	attrRows, err := tx.Query(ctx, `
+		SELECT ba.attr_id
+		FROM book_attributes ba
+		WHERE ba.kind_id=$1 AND ba.deprecated_at IS NULL AND ba.genre_id = ANY($2::uuid[])
+		ORDER BY ba.sort_order`, kindID, seedGenres)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "load attrs failed")
 		return
@@ -549,7 +634,7 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 			bindDisplayLang()
 			leg = "(" + leg + fmt.Sprintf(` OR EXISTS (
 				SELECT 1 FROM entity_attribute_values eav
-				JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+				JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
 				JOIN attribute_translations at ON at.attr_value_id = eav.attr_value_id
 				WHERE eav.entity_id = e.entity_id
 				  AND ad.code IN ('name','term')
@@ -565,7 +650,7 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 			bindDisplayLang()
 			where = append(where, fmt.Sprintf(`EXISTS (
 			SELECT 1 FROM entity_attribute_values eav
-			JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+			JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
 			WHERE eav.entity_id = e.entity_id
 			  AND ad.code IN ('name','term')
 			  AND (
@@ -580,7 +665,7 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 		} else {
 			where = append(where, fmt.Sprintf(`EXISTS (
 			SELECT 1 FROM entity_attribute_values eav
-			JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+			JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
 			WHERE eav.entity_id = e.entity_id
 			  AND ad.code IN ('name','term')
 			  AND eav.original_value ILIKE $%d)`, searchArg))
@@ -602,7 +687,7 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 	// Total count (reuse args without limit/offset)
 	countSQL := fmt.Sprintf(`
 		SELECT COUNT(*) FROM glossary_entities e
-		JOIN entity_kinds ek ON ek.kind_id = e.kind_id
+		JOIN book_kinds ek ON ek.book_kind_id = e.kind_id
 		%s`, whereClause)
 	var total int
 	if err := s.pool.QueryRow(ctx, countSQL, args...).Scan(&total); err != nil {
@@ -620,7 +705,7 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 		bindDisplayLang()
 		transExactExpr = fmt.Sprintf(`EXISTS (
 			SELECT 1 FROM entity_attribute_values eav
-			JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+			JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
 			JOIN attribute_translations at ON at.attr_value_id = eav.attr_value_id
 			WHERE eav.entity_id = e.entity_id
 			  AND ad.code IN ('name','term')
@@ -646,7 +731,7 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 
 	displayNameSQL := `COALESCE((
 				SELECT eav.original_value FROM entity_attribute_values eav
-				JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+				JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
 				WHERE eav.entity_id = e.entity_id AND ad.code IN ('name','term')
 				ORDER BY ad.sort_order LIMIT 1
 			), '')`
@@ -656,7 +741,7 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 		displayNameSQL = fmt.Sprintf(`COALESCE((
 				SELECT COALESCE(NULLIF(at.value, ''), eav.original_value)
 				FROM entity_attribute_values eav
-				JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+				JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
 				LEFT JOIN attribute_translations at ON at.attr_value_id = eav.attr_value_id
 					AND at.language_code = $%d
 				WHERE eav.entity_id = e.entity_id AND ad.code IN ('name','term')
@@ -665,7 +750,7 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 		displayNameTranslationSQL = fmt.Sprintf(`(
 				SELECT NULLIF(at.value, '')
 				FROM entity_attribute_values eav
-				JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+				JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
 				LEFT JOIN attribute_translations at ON at.attr_value_id = eav.attr_value_id
 					AND at.language_code = $%d
 				WHERE eav.entity_id = e.entity_id AND ad.code IN ('name','term')
@@ -676,7 +761,7 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 	mainSQL := fmt.Sprintf(`
 		SELECT
 			e.entity_id, e.book_id, e.kind_id, e.status, e.tags, e.created_at, e.updated_at,
-			ek.kind_id, ek.code, ek.name, ek.icon, ek.color,
+			ek.book_kind_id, ek.code, ek.name, ek.icon, ek.color,
 			%s AS display_name,
 			%s AS display_name_translation,
 			e.short_description, e.is_pinned_for_context,
@@ -689,7 +774,7 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 				WHERE eav3.entity_id = e.entity_id) AS evidence_count,
 			e.cached_name, e.cached_aliases
 		FROM glossary_entities e
-		JOIN entity_kinds ek ON ek.kind_id = e.kind_id
+		JOIN book_kinds ek ON ek.book_kind_id = e.kind_id
 		%s
 		%s
 		LIMIT $%d OFFSET $%d`,
@@ -1252,9 +1337,13 @@ func (s *Server) listEntityNames(w http.ResponseWriter, r *http.Request) {
 		SELECT e.entity_id, eav.original_value AS display_name,
 			ek.code AS kind_code, ek.color AS kind_color, ek.icon AS kind_icon, ek.name AS kind_name
 		FROM glossary_entities e
-		JOIN entity_kinds ek ON ek.kind_id = e.kind_id
+		JOIN book_kinds ek ON ek.book_kind_id = e.kind_id
 		LEFT JOIN entity_attribute_values eav ON eav.entity_id = e.entity_id
-			AND eav.attr_def_id = (SELECT attr_def_id FROM attribute_definitions WHERE kind_id = e.kind_id AND code = 'name' LIMIT 1)
+			AND eav.attr_def_id = (
+				SELECT ba.attr_id FROM book_attributes ba
+				JOIN book_genres g ON g.genre_id = ba.genre_id
+				WHERE ba.kind_id = e.kind_id AND ba.code = 'name'
+				ORDER BY (g.code = 'universal') DESC, ba.sort_order LIMIT 1)
 		WHERE e.book_id = $1 AND e.deleted_at IS NULL AND e.status = 'active'
 		ORDER BY eav.original_value
 		LIMIT 500`, bookID)

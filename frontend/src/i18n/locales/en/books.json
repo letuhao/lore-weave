@@ -158,13 +158,11 @@
     "fallback_to_original": "No translation — showing original",
     "extract": "Extract",
     "translate": "Translate",
-    "genres": "Genres",
     "unknown": "Unknown kinds",
     "ai_suggestions": "AI suggestions",
     "merge_candidates": "Merge candidates",
-    "kinds": "Kinds",
+    "ontology": "Ontology",
     "new_entity": "New Entity",
-    "no_kinds": "No kinds available",
     "search": "Search entities...",
     "filter": "Filter",
     "filter_count": "{{count}} filter",
@@ -212,7 +210,6 @@
       "cap_note": "Selection capped at {{cap}} entities"
     },
     "clear_filters": "Clear all filters",
-    "created": "Entity created",
     "deleted": "Entity deleted",
     "empty": {
       "title": "No entities yet",
@@ -262,6 +259,21 @@
     "copy": "Copy",
     "copied": "Copied",
     "rotate": "Rotate link (invalidates old link)"
+  },
+  "collaborators": {
+    "title": "Collaborators",
+    "subtitle": "Invite people by email to view, edit, or manage this book.",
+    "email_placeholder": "Collaborator's email",
+    "role_label": "Role",
+    "roles": { "view": "Viewer", "edit": "Editor", "manage": "Manager" },
+    "invite": "Invite",
+    "invited": "Invited {{email}}",
+    "invite_failed": "Could not invite that collaborator",
+    "no_such_user": "No account found with that email",
+    "cannot_grant_owner": "That's your own account",
+    "empty": "No collaborators yet — invite someone by email.",
+    "unnamed": "User {{id}}",
+    "remove": "Remove"
   },
   "settings": {
     "saved": "Settings saved",

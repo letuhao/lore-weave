@@ -10,6 +10,8 @@ function fakeFederation(over: Partial<FederationService>): FederationService {
   return {
     catalog: () => [],
     executeTool: async () => ({ ok: true }),
+    providerAvailability: () => [],
+    isPartial: () => false,
     ...over,
   } as unknown as FederationService;
 }
@@ -32,9 +34,27 @@ describe('headerValue / extractEnvelope', () => {
 });
 
 describe('handleListTools', () => {
-  it('returns the federated catalog', () => {
+  it('returns the federated catalog with an availability _meta (H10)', () => {
     const fed = fakeFederation({ catalog: () => [{ name: 'memory_search' }] as any });
-    expect(handleListTools(fed)).toEqual({ tools: [{ name: 'memory_search' }] });
+    expect(handleListTools(fed)).toEqual({
+      tools: [{ name: 'memory_search' }],
+      _meta: { unavailable_providers: [], partial: false },
+    });
+  });
+
+  it('reports a down provider in _meta.unavailable_providers (H10)', () => {
+    const fed = fakeFederation({
+      catalog: () => [] as any,
+      providerAvailability: () => [
+        { name: 'knowledge', available: true },
+        { name: 'book', available: false },
+      ],
+      isPartial: () => true,
+    });
+    expect(handleListTools(fed)._meta).toEqual({
+      unavailable_providers: ['book'],
+      partial: true,
+    });
   });
 });
 
@@ -68,6 +88,23 @@ describe('handleCallTool', () => {
     });
     const res = await handleCallTool(fed, 'memory_search', {}, {});
     expect(res.isError).toBe(true);
-    expect(res.content[0].text).toContain('provider down');
+    // Generic LLM-facing message — names the tool, not the failure detail.
+    expect(res.content[0].text).toBe("tool 'memory_search' failed: provider error");
+  });
+
+  it('does NOT leak the internal provider URL into the LLM-visible tool-error text', async () => {
+    const fed = fakeFederation({
+      executeTool: async () => {
+        // A real transport failure embeds the internal endpoint in its message.
+        throw new Error('fetch failed: connect ECONNREFUSED http://book-service:8082/mcp');
+      },
+    });
+    const res = await handleCallTool(fed, 'book_create', {}, {});
+    expect(res.isError).toBe(true);
+    const text = res.content[0].text as string;
+    expect(text).not.toContain('book-service');
+    expect(text).not.toContain('8082');
+    expect(text).not.toContain('ECONNREFUSED');
+    expect(text).toBe("tool 'book_create' failed: provider error");
   });
 });

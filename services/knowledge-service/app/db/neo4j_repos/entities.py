@@ -55,6 +55,7 @@ __all__ = [
     "link_to_glossary",
     "get_entity_by_glossary_id",
     "unlink_from_glossary",
+    "reset_glossary_anchors",
     "recompute_anchor_score",
     "find_gap_candidates",
     "archive_entity",
@@ -1445,6 +1446,74 @@ async def unlink_from_glossary(
     if record is None:
         return None
     return _node_to_entity(record["e"])
+
+
+# ── reset_glossary_anchors (E3 maintenance) ───────────────────────────
+#
+# Glossary-tiering G4e (genre·kind·attribute epic) TRUNCATEs
+# glossary_entities under the full-reset (R2), orphaning every Neo4j
+# anchor: each :Entity node's `glossary_entity_id` now points at a
+# glossary entity id that no longer exists, so `get_entity_by_glossary_id`
+# returns a node the SSOT can't back. This maintenance op clears the
+# anchor FK from all :Entity nodes (a reset, not a per-entity unlink),
+# returning them to the discovered tier. anchor_score is set to 0.0 (the
+# next recompute_anchor_score pass restores fractional discovered-tier
+# scores) and any anchored name/kind stays in place — only the broken FK
+# is cleared.
+#
+# Scoping: pass user_id to reset one tenant's anchors; pass user_id=None
+# to reset EVERY anchor in the graph (the post-truncate full reset — only
+# safe because the KG holds test data at this epic, per E3/R4).
+#
+# This does NOT run automatically. Invoke it deliberately after the G4e
+# glossary reset, e.g. from a maintenance shell:
+#
+#     from app.db.neo4j_helpers import get_session
+#     from app.db.neo4j_repos.entities import reset_glossary_anchors
+#     async with get_session() as session:
+#         n = await reset_glossary_anchors(session, user_id=None)
+#         print(f"cleared {n} glossary anchors")
+#
+# (run_read/run_write inject $user_id for verification; the all-tenants
+# path passes user_id=None and the Cypher guards with a NULL check so the
+# verification wrapper still receives the parameter.)
+_RESET_GLOSSARY_ANCHORS_CYPHER = """
+MATCH (e:Entity)
+WHERE e.glossary_entity_id IS NOT NULL
+  AND ($user_id IS NULL OR e.user_id = $user_id)
+SET e.glossary_entity_id = NULL,
+    e.anchor_score = 0.0,
+    e.updated_at = datetime()
+RETURN count(e) AS cleared
+"""
+
+
+async def reset_glossary_anchors(
+    session: CypherSession,
+    *,
+    user_id: str | None = None,
+) -> int:
+    """Clear `glossary_entity_id` from every anchored :Entity node.
+
+    E3 maintenance for the glossary-tiering G4e full reset: glossary
+    entities were truncated, so every anchor FK is dangling. This
+    detaches them (returns the nodes to the discovered tier) without
+    deleting any node. Returns the number of anchors cleared.
+
+    Pass ``user_id`` to scope to one tenant; ``None`` resets all
+    anchors in the graph (only safe on test data — see E3/R4).
+
+    Idempotent: a second run finds no anchored nodes and returns 0.
+    """
+    result = await run_write(
+        session,
+        _RESET_GLOSSARY_ANCHORS_CYPHER,
+        user_id=user_id,
+    )
+    record = await result.single()
+    if record is None:
+        return 0
+    return int(record["cleared"])
 
 
 # ── recompute_anchor_score ────────────────────────────────────────────

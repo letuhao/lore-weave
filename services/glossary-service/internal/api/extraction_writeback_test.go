@@ -14,8 +14,40 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"testing"
+
+	"github.com/google/uuid"
 )
+
+// TestBulkExtract_UnadoptedBookReturns422 proves a book with no adopted ontology fails
+// fast with a clear error instead of silently skipping every entity
+// (D-GKA-EXTRACT-UNADOPTED-GUARD). An adopted book always has the 'unknown' kind, so an
+// empty kind map ⇒ not scaffolded.
+func TestBulkExtract_UnadoptedBookReturns422(t *testing.T) {
+	pool := openTestDB(t)
+	runK2aMigrations(t, pool)
+	srv, token := newEntitiesListServer(t)
+	srv.pool = pool
+
+	bookID := uuid.NewString() // never adopted → no book_kinds rows
+	raw, _ := json.Marshal(map[string]any{
+		"source_language": "zh",
+		"entities":        []map[string]any{{"kind_code": "character", "name": "哪吒"}},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/internal/books/"+bookID+"/extract-entities", bytes.NewReader(raw))
+	req.Header.Set("X-Internal-Token", token)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("unadopted book extract: want 422, got %d body=%s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "GLOSS_BOOK_NOT_SCAFFOLDED") {
+		t.Fatalf("want GLOSS_BOOK_NOT_SCAFFOLDED, got %s", w.Body.String())
+	}
+}
 
 // postExtract drives POST /internal/books/{book}/extract-entities and returns
 // the decoded response. Fails the test on a non-200.
@@ -47,6 +79,7 @@ func TestBulkExtract_DefaultTagsAppliedOnCreate(t *testing.T) {
 	runK2aMigrations(t, pool)
 
 	bookID := "00000000-0000-0000-0001-0000000a1001"
+	adoptTestBook(t, pool, uuid.MustParse(bookID))
 	t.Cleanup(func() {
 		pool.Exec(ctx, `DELETE FROM entity_attribute_values WHERE entity_id IN
 			(SELECT entity_id FROM glossary_entities WHERE book_id=$1)`, bookID)
@@ -73,7 +106,7 @@ func TestBulkExtract_DefaultTagsAppliedOnCreate(t *testing.T) {
 		`SELECT ge.status, ge.tags
 		   FROM glossary_entities ge
 		   JOIN entity_attribute_values eav ON eav.entity_id = ge.entity_id
-		   JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+		   JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
 		  WHERE ge.book_id=$1 AND ad.code='name' AND eav.original_value='哪吒'`,
 		bookID).Scan(&status, &tags)
 	if err != nil {
@@ -95,11 +128,10 @@ func TestBulkExtract_TombstoneSkipsRejectedName(t *testing.T) {
 	runK2aMigrations(t, pool)
 
 	bookID := "00000000-0000-0000-0001-0000000a1002"
-	var kindID, nameAttrID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
-	pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`,
-		kindID).Scan(&nameAttrID)
+	bid := uuid.MustParse(bookID)
+	adoptTestBook(t, pool, bid)
+	kindID := bookKindID(t, pool, bid, "character")
+	nameAttrID := bookAttrID(t, pool, bid, kindID, "name")
 
 	// Seed a previously-rejected entity named 李靖 (tombstoned).
 	var rejectedID string
@@ -152,6 +184,7 @@ func TestBulkExtract_NoDefaultTagsBackwardCompatible(t *testing.T) {
 	runK2aMigrations(t, pool)
 
 	bookID := "00000000-0000-0000-0001-0000000a1003"
+	adoptTestBook(t, pool, uuid.MustParse(bookID))
 	t.Cleanup(func() {
 		pool.Exec(ctx, `DELETE FROM entity_attribute_values WHERE entity_id IN
 			(SELECT entity_id FROM glossary_entities WHERE book_id=$1)`, bookID)
@@ -175,7 +208,7 @@ func TestBulkExtract_NoDefaultTagsBackwardCompatible(t *testing.T) {
 	pool.QueryRow(ctx,
 		`SELECT ge.tags FROM glossary_entities ge
 		   JOIN entity_attribute_values eav ON eav.entity_id = ge.entity_id
-		   JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+		   JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
 		  WHERE ge.book_id=$1 AND ad.code='name' AND eav.original_value='杨戬'`,
 		bookID).Scan(&tags)
 	if len(tags) != 0 {

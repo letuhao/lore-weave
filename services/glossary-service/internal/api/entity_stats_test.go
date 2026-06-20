@@ -104,18 +104,17 @@ func TestEntityStats_GroupByOnFixtureBook(t *testing.T) {
 	runK2aMigrations(t, pool)
 
 	bookID := "00000000-0000-0000-0002-0000000c1301"
-	var kindID, nameAttrID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
-	pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`,
-		kindID).Scan(&nameAttrID)
+	bid := uuid.MustParse(bookID)
+	adoptTestBook(t, pool, bid)
+	kindID := bookKindID(t, pool, bid, "character")
+	nameAttrID := bookAttrID(t, pool, bid, kindID, "name")
 
 	seed := func(name string) string {
 		var eid string
 		pool.QueryRow(ctx,
 			`INSERT INTO glossary_entities(book_id,kind_id,status,tags)
 			 VALUES($1,$2,'active','{}') RETURNING entity_id`,
-			bookID, kindID).Scan(&eid)
+			bid, kindID).Scan(&eid)
 		pool.Exec(ctx,
 			`INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value)
 			 VALUES($1,$2,'zh',$3)`, eid, nameAttrID, name)

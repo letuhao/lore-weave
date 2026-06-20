@@ -13,6 +13,21 @@ type Config struct {
 	UsageBillingServiceURL string
 	InternalServiceToken   string
 
+	// C-CONFIRM key-split — the settings Tier-W confirm token (mint/verify in
+	// mcp_server.go + settings_actions.go) signs with a DEDICATED secret, NOT
+	// JWTSecret. JWTSecret gates the auth() user-JWT route; reusing it for the
+	// confirm token conflates two trust domains (a leaked confirm secret would
+	// also forge user sessions, and vice versa). Required + ≥32 chars, fail-closed.
+	ConfirmTokenSigningSecret string
+
+	// S-SETTINGS (MCP fan-out) — auth-service internal base URL. The settings MCP
+	// server's profile tools (settings_get_profile / settings_update_profile) call
+	// auth's token-gated /internal/users/{id}/full-profile route here (each service
+	// owns its DB — no cross-service SQL). Optional: empty disables the two profile
+	// tools' backing call (they return "profile service not configured"); the model
+	// tools, which are the bulk of the catalog, work without it.
+	AuthServiceInternalURL string
+
 	// Phase 2c — optional. Empty = NoopNotifier (terminal events not
 	// published anywhere; caller can still poll). Set in production
 	// docker-compose; tests + dev-without-RabbitMQ keep working.
@@ -109,7 +124,9 @@ func Load() (*Config, error) {
 		DatabaseURL:            os.Getenv("DATABASE_URL"),
 		JWTSecret:              os.Getenv("JWT_SECRET"),
 		UsageBillingServiceURL: os.Getenv("USAGE_BILLING_SERVICE_URL"),
-		InternalServiceToken:   os.Getenv("INTERNAL_SERVICE_TOKEN"),
+		InternalServiceToken:      os.Getenv("INTERNAL_SERVICE_TOKEN"),
+		ConfirmTokenSigningSecret: os.Getenv("CONFIRM_TOKEN_SIGNING_SECRET"),
+		AuthServiceInternalURL:    os.Getenv("AUTH_SERVICE_INTERNAL_URL"),
 		RabbitMQURL:            os.Getenv("RABBITMQ_URL"),
 		// Phase 5e-β.2 — audio_gen URL-mode staging.
 		MinioEndpoint:    os.Getenv("MINIO_ENDPOINT"),
@@ -127,6 +144,9 @@ func Load() (*Config, error) {
 	}
 	if c.InternalServiceToken == "" {
 		return nil, fmt.Errorf("INTERNAL_SERVICE_TOKEN is required")
+	}
+	if len(c.ConfirmTokenSigningSecret) < 32 {
+		return nil, fmt.Errorf("CONFIRM_TOKEN_SIGNING_SECRET must be at least 32 characters")
 	}
 	if c.UsageBillingServiceURL == "" {
 		return nil, fmt.Errorf("USAGE_BILLING_SERVICE_URL is required")

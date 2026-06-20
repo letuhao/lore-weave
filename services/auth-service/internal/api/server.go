@@ -65,6 +65,18 @@ func (s *Server) Router() http.Handler {
 	// Internal (service-to-service, no JWT required)
 	r.Route("/internal", func(r chi.Router) {
 		r.Get("/users/{user_id}/profile", http.HandlerFunc(s.internalGetUserProfile))
+		// E0-5 collaborators email-invite: resolve an email → user (book-service calls it).
+		r.Get("/users/by-email", http.HandlerFunc(s.internalGetUserByEmail))
+
+		// S-SETTINGS (MCP fan-out): full editable profile read + update for the
+		// settings MCP server hosted in provider-registry-service. Token-gated
+		// (defense in depth) — a profile WRITE reachable cross-service must require
+		// the platform service token, even though /internal is network-isolated.
+		r.Group(func(r chi.Router) {
+			r.Use(s.requireInternalServiceToken)
+			r.Get("/users/{user_id}/full-profile", http.HandlerFunc(s.internalGetFullProfile))
+			r.Patch("/users/{user_id}/full-profile", http.HandlerFunc(s.internalUpdateFullProfile))
+		})
 
 		// Admin-JWT issuance (074/075) — mounted only when enabled. Gated by the
 		// DEDICATED issuer secret (NOT InternalServiceToken) + rate-limited.
@@ -89,6 +101,12 @@ func (s *Server) Router() http.Handler {
 		})
 		r.Post("/auth/login", func(w http.ResponseWriter, r *http.Request) {
 			ratelimit.Middleware(s.rl, "login", http.HandlerFunc(s.login)).ServeHTTP(w, r)
+		})
+		// Browser-facing admin-session exchange (admin CMS): a logged-in admin
+		// principal self-mints an RS256 admin JWT. Handler 404s when admin issuance
+		// is disabled. Rate-limited (admin sessions are low-volume).
+		r.Post("/admin/session", func(w http.ResponseWriter, req *http.Request) {
+			ratelimit.Middleware(s.rl, "admin_session", http.HandlerFunc(s.adminSession)).ServeHTTP(w, req)
 		})
 		r.Post("/auth/refresh", http.HandlerFunc(s.refresh))
 		r.Post("/auth/logout", http.HandlerFunc(s.logout))
@@ -124,4 +142,3 @@ func (s *Server) Router() http.Handler {
 	})
 	return r
 }
-

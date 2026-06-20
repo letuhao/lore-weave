@@ -17,6 +17,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from ..config import settings
 from ..deps import get_current_user, get_db
+from ..grant_deps import (
+    GrantLevel,
+    authorize_book,
+    get_grant_client_dep,
+    not_found as _grant_not_found,
+)
 from ..clients.book_client import BookClient, BookNotFound, BookServiceError
 from ..clients.dispatch_clients import (
     KnowledgeDispatchClient,
@@ -58,12 +64,17 @@ def _campaign_model(row: asyncpg.Record) -> Campaign:
     return Campaign(**dict(row))
 
 
-async def _owner_verified_chapters(*, book_id, user_id: str, chapter_from, chapter_to):
-    """Verify the caller owns the book (decision A) and return its in-range
-    published chapters. Shared by create + estimate so both apply the identical
-    ownership gate, range filter, and ingest-precondition (no published chapters
-    in range → 400). Raises the same HTTPExceptions on every path. The single
-    try/finally guarantees the httpx client closes even on the error branches."""
+async def _grant_verified_chapters(gc, *, book_id, caller: str, need: GrantLevel,
+                                   chapter_from, chapter_to):
+    """E0-4b: authorize the caller's `need` grant on the book (the gate), resolve the
+    book OWNER (the knowledge-graph partition + project owner — needed even for a
+    collaborator's campaign), and return its in-range published chapters. Shared by
+    create (manage) + estimate (view) so both apply the identical gate, range filter,
+    and ingest-precondition (no published chapters in range → 400). Returns
+    (chapters, book_owner). The single try/finally closes the httpx client on every
+    path. Anti-oracle: no grant → 404 (authorize_book), uniform with a missing book."""
+    # Gate FIRST (no-grant → 404 before any book existence is revealed).
+    await authorize_book(gc, book_id, UUID(caller), need)
     book = BookClient(
         settings.book_service_internal_url, settings.internal_service_token,
         timeout_s=settings.dispatch_timeout_s,
@@ -77,9 +88,6 @@ async def _owner_verified_chapters(*, book_id, user_id: str, chapter_from, chapt
         except BookServiceError as exc:
             raise HTTPException(status_code=502, detail={"code": "CAMPAIGN_BOOK_SERVICE_ERROR",
                                                          "message": str(exc)})
-        if owner != user_id:
-            raise HTTPException(status_code=403, detail={"code": "CAMPAIGN_FORBIDDEN",
-                                                         "message": "not your book"})
         try:
             chapters = await book.list_published_chapters(book_id)
         except BookServiceError as exc:
@@ -99,7 +107,20 @@ async def _owner_verified_chapters(*, book_id, user_id: str, chapter_from, chapt
             detail={"code": "CAMPAIGN_NO_CHAPTERS",
                     "message": "no published chapters in range — ingest first"},
         )
-    return chapters
+    return chapters, owner
+
+
+async def _grant_campaign(db, gc, campaign_id: UUID, caller: str, need: GrantLevel):
+    """E0-4b campaign-id-keyed gate: fetch the campaign by id (no owner predicate),
+    bootstrap its book, authorize the caller's `need` grant on that book, and return
+    the row. A missing campaign OR a non-grantee → uniform 404 (anti-oracle); a
+    grantee under tier → 403. The single chokepoint for every campaign-id route —
+    the shared per-book read/write view (D-E0-4-F)."""
+    row = await repo.get_campaign(db, campaign_id)
+    if row is None:
+        raise _grant_not_found()
+    await authorize_book(gc, row["book_id"], UUID(caller), need)
+    return row
 
 
 @router.post("", response_model=Campaign, status_code=status.HTTP_201_CREATED)
@@ -107,6 +128,7 @@ async def create_campaign(
     payload: CreateCampaignPayload,
     user_id: str = Depends(get_current_user),
     db: asyncpg.Pool = Depends(get_db),
+    gc=Depends(get_grant_client_dep),
 ):
     uid = UUID(user_id)
 
@@ -119,17 +141,39 @@ async def create_campaign(
                     "message": "knowledge_project_id is required"},
         )
 
-    # D-CAMPAIGN-KPROJECT-OWNERSHIP: fail fast with a clean 400 if the user doesn't
-    # own the project, instead of fail-closed mid-dispatch (404 → stage failed). A
-    # transient knowledge-service error must NOT block create — the dispatch path is
-    # itself owner-verified, so we only hard-reject a definitive not-found (404).
+    # ── E0-4b: gate `manage` on the book + resolve the book OWNER (knowledge-graph
+    # partition / project owner) + enumerate in-scope chapters. A manage-collaborator's
+    # campaign has owner_user_id = caller (billed), but the project/graph belong to the
+    # book owner. (decision A becomes "verify-once grant".)
+    chapters, book_owner = await _grant_verified_chapters(
+        gc, book_id=payload.book_id, caller=user_id, need=GrantLevel.MANAGE,
+        chapter_from=payload.chapter_from, chapter_to=payload.chapter_to,
+    )
+    is_collab = book_owner != user_id
+
+    # E0-4b caller-pays: a collaborator's knowledge stage bills THEIR key, which
+    # requires their own ref for the project's embedding model (the knowledge
+    # dispatch 422s without billing_embedding_model). Block at create with a clear
+    # error rather than letting every knowledge dispatch fail silently.
+    if is_collab and payload.embedding_model_ref is None:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "CAMPAIGN_NO_BILLING_EMBEDDING",
+                    "message": ("embedding_model_ref (your own ref for the project's "
+                                "embedding model) is required to run a campaign on a shared book")},
+        )
+
+    # D-CAMPAIGN-KPROJECT-OWNERSHIP: the project is owned by the BOOK OWNER (E0-3
+    # projects are book-owner-only), so verify ownership against the book owner — NOT
+    # the caller, who won't own it. A transient knowledge-service error must NOT block
+    # create (the dispatch path re-verifies); only a definitive 404 hard-rejects.
     _kc = KnowledgeDispatchClient(
         settings.knowledge_service_internal_url, settings.internal_service_token,
         timeout_s=settings.dispatch_timeout_s,
     )
     try:
         owned = await _kc.verify_project_owner(
-            user_id=user_id, project_id=str(payload.knowledge_project_id))
+            user_id=book_owner, project_id=str(payload.knowledge_project_id))
     except DispatchError:
         owned = True  # transient — don't block create on a knowledge blip
     finally:
@@ -138,20 +182,18 @@ async def create_campaign(
         raise HTTPException(
             status_code=400,
             detail={"code": "CAMPAIGN_PROJECT_NOT_FOUND",
-                    "message": "knowledge_project_id not found or not owned by you"},
+                    "message": "knowledge_project_id not found or not owned by the book owner"},
         )
-
-    # ── verify-once ownership (decision A) + enumerate in-scope chapters ────
-    chapters = await _owner_verified_chapters(
-        book_id=payload.book_id, user_id=user_id,
-        chapter_from=payload.chapter_from, chapter_to=payload.chapter_to,
-    )
 
     # ── S5b: apply the campaign's embedding/reranker picks to its project ───
     # (the project is SSOT for these). Done BEFORE the INSERT so a graph-conflict
     # rejects the whole create. A post-patch INSERT failure leaves the project with
     # the user's chosen model (benign — D-S5B-EMBED-CREATE-ATOMICITY).
-    if payload.embedding_model_ref is not None or payload.rerank_model_ref is not None:
+    # E0-4b: ONLY the book owner may mutate the project's models — a collaborator's
+    # embedding_model_ref is THEIR billing ref (persisted on the campaign), not a
+    # project change (a same-model ref-string mismatch would trigger a destructive
+    # graph swap on the owner's project). Skip set_campaign_models for a collaborator.
+    if not is_collab and (payload.embedding_model_ref is not None or payload.rerank_model_ref is not None):
         kc = KnowledgeDispatchClient(
             settings.knowledge_service_internal_url, settings.internal_service_token,
             timeout_s=settings.dispatch_timeout_s,
@@ -206,11 +248,13 @@ async def create_campaign(
             row = await repo.create_campaign(
                 conn,
                 owner_user_id=uid,
+                book_owner_user_id=UUID(book_owner),
                 book_id=payload.book_id,
                 name=payload.name,
                 gating_mode=payload.gating_mode,
                 target_language=payload.target_language,
                 knowledge_project_id=payload.knowledge_project_id,
+                embedding_model_ref=payload.embedding_model_ref,
                 knowledge_model_source=payload.knowledge_model_source,
                 knowledge_model_ref=payload.knowledge_model_ref,
                 translation_model_source=payload.translation_model_source,
@@ -239,15 +283,17 @@ async def create_campaign(
 async def estimate_campaign(
     payload: EstimateRequest,
     user_id: str = Depends(get_current_user),
+    gc=Depends(get_grant_client_dep),
 ):
     """S5a — pre-launch cost/time estimate for the wizard's review screen.
 
-    Owner-scoped (same book-ownership gate as create). Sizes the in-range
-    published chapters from their real byte_size, derives per-stage token counts
-    (app.estimate), prices them via the provider-registry oracle, and returns a
-    rough USD band + per-stage breakdown + minutes. No campaign is created."""
-    chapters = await _owner_verified_chapters(
-        book_id=payload.book_id, user_id=user_id,
+    E0-4b: grant-gated `view` on the book (a read/preview — any grantee may size a
+    campaign). Sizes the in-range published chapters from their real byte_size,
+    derives per-stage token counts (app.estimate), prices them via the
+    provider-registry oracle, and returns a rough USD band + per-stage breakdown +
+    minutes. No campaign is created."""
+    chapters, _book_owner = await _grant_verified_chapters(
+        gc, book_id=payload.book_id, caller=user_id, need=GrantLevel.VIEW,
         chapter_from=payload.chapter_from, chapter_to=payload.chapter_to,
     )
 
@@ -295,8 +341,9 @@ async def update_campaign(
     payload: UpdateCampaignPayload,
     user_id: str = Depends(get_current_user),
     db: asyncpg.Pool = Depends(get_db),
+    gc=Depends(get_grant_client_dep),
 ):
-    """PATCH a campaign (owner-scoped, partial). `budget_usd` raises/lowers the cap in
+    """PATCH a campaign (E0-4b: `manage`-gated, partial). `budget_usd` raises/lowers the cap in
     any non-terminal status (does NOT auto-resume — /start once budget > spent). The
     four LLM models (translation/knowledge/verifier/eval-judge) can be re-picked only
     while created/paused (D-FACTORY-SWITCH-MODEL-RESUME — switch to a local model, then
@@ -308,14 +355,9 @@ async def update_campaign(
             status_code=400,
             detail={"code": "CAMPAIGN_PATCH_EMPTY", "message": "no fields to update"},
         )
-    # A model switch is gated to created/paused — load the campaign to check status
-    # (also gives the owner-scoped 404). Only the explicitly-provided fields update.
-    row = await repo.get_campaign(db, campaign_id, UUID(user_id))
-    if row is None:
-        raise HTTPException(
-            status_code=404,
-            detail={"code": "CAMPAIGN_NOT_FOUND", "message": "campaign not found"},
-        )
+    # A model switch is gated to created/paused — load the campaign (grant-gated
+    # `manage`, anti-oracle 404) to check status. Only provided fields update.
+    row = await _grant_campaign(db, gc, campaign_id, user_id, GrantLevel.MANAGE)
     if provided & MODEL_PATCH_FIELDS and row["status"] not in ("created", "paused"):
         raise HTTPException(
             status_code=409,
@@ -323,7 +365,7 @@ async def update_campaign(
                     "message": f"models can only be changed while created/paused (status is {row['status']}); pause first"},
         )
     fields = payload.model_dump(include=provided)
-    updated = await repo.update_campaign_fields(db, campaign_id, UUID(user_id), fields)
+    updated = await repo.update_campaign_fields(db, campaign_id, fields)
     if updated is None:
         raise HTTPException(
             status_code=404,
@@ -334,10 +376,20 @@ async def update_campaign(
 
 @router.get("", response_model=list[CampaignListItem])
 async def list_campaigns(
+    book_id: UUID | None = None,
     user_id: str = Depends(get_current_user),
     db: asyncpg.Pool = Depends(get_db),
+    gc=Depends(get_grant_client_dep),
 ):
-    rows = await repo.list_campaigns(db, UUID(user_id))
+    """E0-4b: `?book_id=` → the shared per-book view (grant-gated `view`, every
+    campaign on that book regardless of creator — D-E0-4-F). No `book_id` → the
+    caller's own cross-book "my campaigns" dashboard. (A full cross-book shared
+    dashboard needs a book-service reverse-grant endpoint → D-E0-4B-LIST-CROSSBOOK-SHARED.)"""
+    if book_id is not None:
+        await authorize_book(gc, book_id, UUID(user_id), GrantLevel.VIEW)
+        rows = await repo.list_campaigns(db, book_id=book_id)
+    else:
+        rows = await repo.list_campaigns(db, owner_user_id=UUID(user_id))
     return [CampaignListItem(**dict(r)) for r in rows]
 
 
@@ -346,11 +398,9 @@ async def get_campaign(
     campaign_id: UUID,
     user_id: str = Depends(get_current_user),
     db: asyncpg.Pool = Depends(get_db),
+    gc=Depends(get_grant_client_dep),
 ):
-    row = await repo.get_campaign(db, campaign_id, UUID(user_id))
-    if row is None:
-        raise HTTPException(status_code=404, detail={"code": "CAMPAIGN_NOT_FOUND",
-                                                     "message": "campaign not found"})
+    row = await _grant_campaign(db, gc, campaign_id, user_id, GrantLevel.VIEW)
     # D-S6-CHAPTER-PAGING: chapters are no longer embedded here (a 4000-chapter
     # campaign would ship every row each poll) — the monitor fetches them paginated
     # via GET /{id}/chapters. The detail stays lightweight metadata.
@@ -365,15 +415,14 @@ async def get_campaign_chapters_endpoint(
     offset: int = 0,
     user_id: str = Depends(get_current_user),
     db: asyncpg.Pool = Depends(get_db),
+    gc=Depends(get_grant_client_dep),
 ):
     """D-S6-CHAPTER-PAGING — one server-side page of the per-chapter projection +
     total. `status=attention` (default) = rows that aren't fully settled (failed /
     in-progress); `status=inflight` = rows with a stage currently dispatched (the
-    processing panel); `status=all` = everything. Owner-scoped (404 if not owned)."""
-    row = await repo.get_campaign(db, campaign_id, UUID(user_id))
-    if row is None:
-        raise HTTPException(status_code=404, detail={"code": "CAMPAIGN_NOT_FOUND",
-                                                     "message": "campaign not found"})
+    processing panel); `status=all` = everything. E0-4b: grant-gated `view` (404 if
+    no grant — shared per-book view)."""
+    await _grant_campaign(db, gc, campaign_id, user_id, GrantLevel.VIEW)
     status = status if status in ("attention", "inflight", "all") else "attention"
     limit = max(1, min(limit, 500))
     offset = max(0, offset)
@@ -390,14 +439,12 @@ async def get_campaign_activity_endpoint(
     before_id: int | None = None,
     user_id: str = Depends(get_current_user),
     db: asyncpg.Pool = Depends(get_db),
+    gc=Depends(get_grant_client_dep),
 ):
     """D-FACTORY-INFLIGHT-LOG — the monitor's recent-first activity log (one row per
     stage-status transition, written by the campaign_chapters trigger). Keyset-paged
-    via `before_id` (pass back `next_before`). Owner-scoped (404 if not owned)."""
-    row = await repo.get_campaign(db, campaign_id, UUID(user_id))
-    if row is None:
-        raise HTTPException(status_code=404, detail={"code": "CAMPAIGN_NOT_FOUND",
-                                                     "message": "campaign not found"})
+    via `before_id` (pass back `next_before`). E0-4b: grant-gated `view`."""
+    await _grant_campaign(db, gc, campaign_id, user_id, GrantLevel.VIEW)
     limit = max(1, min(limit, 200))
     rows = await repo.get_campaign_activity(db, campaign_id, limit=limit, before_id=before_id)
     items = [ActivityEntry(**dict(r)) for r in rows]
@@ -411,13 +458,11 @@ async def get_campaign_progress_endpoint(
     campaign_id: UUID,
     user_id: str = Depends(get_current_user),
     db: asyncpg.Pool = Depends(get_db),
+    gc=Depends(get_grant_client_dep),
 ):
     """S6 — lightweight live-progress for the monitor poll (per-stage counts, not the
-    full chapters[]). Owner-scoped via get_campaign (404 if not owned)."""
-    row = await repo.get_campaign(db, campaign_id, UUID(user_id))
-    if row is None:
-        raise HTTPException(status_code=404, detail={"code": "CAMPAIGN_NOT_FOUND",
-                                                     "message": "campaign not found"})
+    full chapters[]). E0-4b: grant-gated `view` (404 if no grant)."""
+    row = await _grant_campaign(db, gc, campaign_id, user_id, GrantLevel.VIEW)
     agg = await repo.get_campaign_progress(db, campaign_id)
 
     def _stage(prefix: str) -> StageCounts:
@@ -449,11 +494,13 @@ async def get_campaign_report_endpoint(
     campaign_id: UUID,
     user_id: str = Depends(get_current_user),
     db: asyncpg.Pool = Depends(get_db),
+    gc=Depends(get_grant_client_dep),
 ):
     """G1 — completion / wake-up report: outcome summary + spend-vs-estimate +
-    failure breakdown (grouped by normalized cause). Owner-scoped (404 if not owned).
+    failure breakdown (grouped by normalized cause). E0-4b: grant-gated `view`.
     Available for any status; most useful once terminal (completed/failed/cancelled)."""
-    row = await repo.get_report_row(db, campaign_id, UUID(user_id))
+    await _grant_campaign(db, gc, campaign_id, user_id, GrantLevel.VIEW)
+    row = await repo.get_report_row(db, campaign_id)
     if row is None:
         raise HTTPException(status_code=404, detail={"code": "CAMPAIGN_NOT_FOUND",
                                                      "message": "campaign not found"})
@@ -497,11 +544,9 @@ async def start_campaign(
     campaign_id: UUID,
     user_id: str = Depends(get_current_user),
     db: asyncpg.Pool = Depends(get_db),
+    gc=Depends(get_grant_client_dep),
 ):
-    row = await repo.get_campaign(db, campaign_id, UUID(user_id))
-    if row is None:
-        raise HTTPException(status_code=404, detail={"code": "CAMPAIGN_NOT_FOUND",
-                                                     "message": "campaign not found"})
+    row = await _grant_campaign(db, gc, campaign_id, user_id, GrantLevel.MANAGE)
     if row["status"] not in ("created", "paused"):
         raise HTTPException(
             status_code=409,
@@ -518,7 +563,7 @@ async def start_campaign(
                     "message": "spent_usd is at/over budget_usd; raise the budget (PATCH) before resuming"},
         )
     await repo.set_campaign_status(db, campaign_id, "running", set_started=True)
-    updated = await repo.get_campaign(db, campaign_id, UUID(user_id))
+    updated = await repo.get_campaign(db, campaign_id)
     return _campaign_model(updated)
 
 
@@ -528,6 +573,7 @@ async def rerun_failed_campaign(
     payload: RerunFailedPayload | None = None,
     user_id: str = Depends(get_current_user),
     db: asyncpg.Pool = Depends(get_db),
+    gc=Depends(get_grant_client_dep),
 ):
     """G2 — reset the campaign's failed chapters (or a chosen subset) to `pending`
     (+ zero attempts, clear last_error) and re-arm the campaign to `running` so the
@@ -537,10 +583,7 @@ async def rerun_failed_campaign(
     *paused* campaign to running also resumes its other pending work (re-run implies
     "make progress again"); cancel instead if you only wanted the failed chapters
     inspected (review-impl LOW)."""
-    row = await repo.get_campaign(db, campaign_id, UUID(user_id))
-    if row is None:
-        raise HTTPException(status_code=404, detail={"code": "CAMPAIGN_NOT_FOUND",
-                                                     "message": "campaign not found"})
+    row = await _grant_campaign(db, gc, campaign_id, user_id, GrantLevel.MANAGE)
     if row["status"] in ("cancelled", "cancelling"):
         raise HTTPException(
             status_code=409,
@@ -558,7 +601,7 @@ async def rerun_failed_campaign(
     # Re-arm so the driver picks the reset chapters up; no-op if nothing was failed.
     if n > 0 and row["status"] != "running":
         await repo.set_campaign_status(db, campaign_id, "running", set_started=True)
-    updated = await repo.get_campaign(db, campaign_id, UUID(user_id))
+    updated = await repo.get_campaign(db, campaign_id)
     return _campaign_model(updated)
 
 
@@ -567,15 +610,14 @@ async def pause_campaign(
     campaign_id: UUID,
     user_id: str = Depends(get_current_user),
     db: asyncpg.Pool = Depends(get_db),
+    gc=Depends(get_grant_client_dep),
 ):
     """Pause a running campaign (S3c). Stops NEW dispatch — the driver's claim
     only leases running/cancelling campaigns, so a paused one is skipped — while
     in-flight jobs drain and their completions still advance the projection
-    (the consumer includes 'paused'). Resume via POST /start (paused → running)."""
-    row = await repo.get_campaign(db, campaign_id, UUID(user_id))
-    if row is None:
-        raise HTTPException(status_code=404, detail={"code": "CAMPAIGN_NOT_FOUND",
-                                                     "message": "campaign not found"})
+    (the consumer includes 'paused'). Resume via POST /start (paused → running).
+    E0-4b: grant-gated `edit` (less destructive than start/cancel)."""
+    row = await _grant_campaign(db, gc, campaign_id, user_id, GrantLevel.EDIT)
     if row["status"] != "running":
         raise HTTPException(
             status_code=409,
@@ -583,7 +625,7 @@ async def pause_campaign(
                     "message": f"only a running campaign can be paused (status={row['status']})"},
         )
     await repo.set_campaign_status(db, campaign_id, "paused")
-    updated = await repo.get_campaign(db, campaign_id, UUID(user_id))
+    updated = await repo.get_campaign(db, campaign_id)
     return _campaign_model(updated)
 
 
@@ -592,11 +634,9 @@ async def cancel_campaign(
     campaign_id: UUID,
     user_id: str = Depends(get_current_user),
     db: asyncpg.Pool = Depends(get_db),
+    gc=Depends(get_grant_client_dep),
 ):
-    row = await repo.get_campaign(db, campaign_id, UUID(user_id))
-    if row is None:
-        raise HTTPException(status_code=404, detail={"code": "CAMPAIGN_NOT_FOUND",
-                                                     "message": "campaign not found"})
+    row = await _grant_campaign(db, gc, campaign_id, user_id, GrantLevel.MANAGE)
     if row["status"] in ("completed", "failed", "cancelled"):
         raise HTTPException(
             status_code=409,
@@ -608,5 +648,5 @@ async def cancel_campaign(
     await repo.set_campaign_status(
         db, campaign_id, new_status, set_finished=(new_status == "cancelled"),
     )
-    updated = await repo.get_campaign(db, campaign_id, UUID(user_id))
+    updated = await repo.get_campaign(db, campaign_id)
     return _campaign_model(updated)

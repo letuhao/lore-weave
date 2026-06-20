@@ -33,6 +33,12 @@ func setupDB(t *testing.T) *pgxpool.Pool {
 		{"Up", migrate.Up}, {"Seed", migrate.Seed},
 		{"UpSnapshot", migrate.UpSnapshot}, {"UpSoftDelete", migrate.UpSoftDelete},
 		{"UpEntityRevisions", migrate.UpEntityRevisions},
+		// G4 cutover: glossary_entities.kind_id now FK→book_kinds. Need the tier
+		// tables (book_kinds) + the repoint so seedEntity's book-tier kind is valid.
+		{"UpUserKinds", migrate.UpUserKinds},
+		{"UpGenreKindAttr", migrate.UpGenreKindAttr},
+		{"SeedGenreKindAttr", migrate.SeedGenreKindAttr},
+		{"UpGlossaryCutoverG4", migrate.UpGlossaryCutoverG4},
 	} {
 		if err := m.fn(ctx, pool); err != nil {
 			t.Fatalf("migrate %s: %v", m.name, err)
@@ -44,10 +50,15 @@ func setupDB(t *testing.T) *pgxpool.Pool {
 func seedEntity(t *testing.T, pool *pgxpool.Pool, bookID uuid.UUID) uuid.UUID {
 	t.Helper()
 	ctx := context.Background()
-	var kindID string
-	if err := pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).
-		Scan(&kindID); err != nil {
-		t.Fatalf("kind lookup: %v", err)
+	// Post-G4: glossary_entities.kind_id → book_kinds (book-local). Ensure a book
+	// 'character' kind exists for this book, then reference it.
+	var kindID uuid.UUID
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO book_kinds(book_id,code,name) VALUES($1,'character','Character')
+		 ON CONFLICT (book_id,code) DO UPDATE SET name = book_kinds.name
+		 RETURNING book_kind_id`, bookID,
+	).Scan(&kindID); err != nil {
+		t.Fatalf("seed book kind: %v", err)
 	}
 	var eid uuid.UUID
 	if err := pool.QueryRow(ctx,

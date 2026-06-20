@@ -57,8 +57,8 @@ _ATTEMPTS_COL = {
 }
 
 _CAMPAIGN_COLS = """
-  campaign_id, owner_user_id, book_id, name, status, gating_mode, stages,
-  target_language, knowledge_project_id,
+  campaign_id, owner_user_id, book_owner_user_id, book_id, name, status, gating_mode, stages,
+  target_language, knowledge_project_id, embedding_model_ref,
   knowledge_model_source, knowledge_model_ref,
   translation_model_source, translation_model_ref,
   verifier_model_source, verifier_model_ref,
@@ -75,6 +75,17 @@ def _stage_col(stage: str) -> str:
     return col
 
 
+def _match_id_col(stage: str) -> str:
+    """E0-4b — which campaign identity an inbound completion event correlates on.
+    A `knowledge.chapter_extracted` event carries the GRAPH owner's user_id
+    (= the book owner, the knowledge-graph partition), so it matches
+    `book_owner_user_id`. Translation/eval events carry the CALLER's user_id
+    (caller-attributed/paid), so they match `owner_user_id`. For an owner-run
+    campaign the two columns are equal, so both stages correlate as before.
+    Whitelisted (never request-derived) → safe to interpolate."""
+    return "book_owner_user_id" if stage == "knowledge" else "owner_user_id"
+
+
 # ── Campaign CRUD ─────────────────────────────────────────────────────────
 
 
@@ -82,11 +93,13 @@ async def create_campaign(
     conn: asyncpg.Connection,
     *,
     owner_user_id: UUID,
+    book_owner_user_id: UUID,
     book_id: UUID,
     name: str,
     gating_mode: str,
     target_language: Optional[str],
     knowledge_project_id: Optional[UUID],
+    embedding_model_ref: Optional[UUID],
     knowledge_model_source: Optional[str],
     knowledge_model_ref: Optional[UUID],
     translation_model_source: Optional[str],
@@ -107,19 +120,21 @@ async def create_campaign(
     row = await conn.fetchrow(
         f"""
         INSERT INTO campaigns (
-          owner_user_id, book_id, name, gating_mode, target_language,
-          knowledge_project_id, knowledge_model_source, knowledge_model_ref,
+          owner_user_id, book_owner_user_id, book_id, name, gating_mode, target_language,
+          knowledge_project_id, embedding_model_ref,
+          knowledge_model_source, knowledge_model_ref,
           translation_model_source, translation_model_ref,
           verifier_model_source, verifier_model_ref,
           eval_judge_model_source, eval_judge_model_ref,
           chapter_from, chapter_to, total_chapters, budget_usd,
           est_usd_low, est_usd_high
         )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
         RETURNING {_CAMPAIGN_COLS}
         """,
-        owner_user_id, book_id, name, gating_mode, target_language,
-        knowledge_project_id, knowledge_model_source, knowledge_model_ref,
+        owner_user_id, book_owner_user_id, book_id, name, gating_mode, target_language,
+        knowledge_project_id, embedding_model_ref,
+        knowledge_model_source, knowledge_model_ref,
         translation_model_source, translation_model_ref,
         verifier_model_source, verifier_model_ref,
         eval_judge_model_source, eval_judge_model_ref,
@@ -186,29 +201,37 @@ async def seed_campaign_chapters(
 
 
 async def get_campaign(
-    pool: asyncpg.Pool, campaign_id: UUID, owner_user_id: UUID,
+    pool: asyncpg.Pool, campaign_id: UUID,
 ) -> Optional[asyncpg.Record]:
+    """E0-4b: fetch by campaign_id ONLY (PK). The grant gate is the access
+    chokepoint (the router resolves the campaign's book + grant before calling
+    this) — dropping the owner predicate gives the shared per-book read view."""
     return await pool.fetchrow(
-        f"SELECT {_CAMPAIGN_COLS} FROM campaigns "
-        f"WHERE campaign_id = $1 AND owner_user_id = $2",
-        campaign_id, owner_user_id,
+        f"SELECT {_CAMPAIGN_COLS} FROM campaigns WHERE campaign_id = $1",
+        campaign_id,
     )
 
 
 async def list_campaigns(
-    pool: asyncpg.Pool, owner_user_id: UUID,
+    pool: asyncpg.Pool, *, owner_user_id: Optional[UUID] = None, book_id: Optional[UUID] = None,
 ) -> list[asyncpg.Record]:
     # #2 polish — include a lightweight progress count (translation done+skipped) per
     # row via a correlated subquery, for the list's progress bar (one query total).
-    return await pool.fetch(
-        f"""
-        SELECT {_CAMPAIGN_COLS},
+    # E0-4b: `book_id` → shared per-book view (the router grant-gates the book, then
+    # lists every campaign on it, dropping the owner predicate — IDOR-safe, book scopes).
+    # `owner_user_id` → the cross-book "my campaigns" dashboard (a grantee's own).
+    progress = """,
           (SELECT COUNT(*) FROM campaign_chapters cc
            WHERE cc.campaign_id = campaigns.campaign_id
              AND cc.translation_status IN ('done', 'skipped')) AS progress_done
-        FROM campaigns
-        WHERE owner_user_id = $1 ORDER BY created_at DESC
-        """,
+        FROM campaigns"""
+    if book_id is not None:
+        return await pool.fetch(
+            f"SELECT {_CAMPAIGN_COLS}{progress} WHERE book_id = $1 ORDER BY created_at DESC",
+            book_id,
+        )
+    return await pool.fetch(
+        f"SELECT {_CAMPAIGN_COLS}{progress} WHERE owner_user_id = $1 ORDER BY created_at DESC",
         owner_user_id,
     )
 
@@ -333,11 +356,11 @@ async def get_campaign_progress(
 
 
 async def get_report_row(
-    pool: asyncpg.Pool, campaign_id: UUID, owner_user_id: UUID,
+    pool: asyncpg.Pool, campaign_id: UUID,
 ) -> Optional[asyncpg.Record]:
-    """G1 — owner-scoped summary row for the completion report (status, timing,
-    spend, budget, persisted estimate band). Dedicated SELECT so it stays isolated
-    from the Campaign-building endpoints."""
+    """G1 — summary row for the completion report (status, timing, spend, budget,
+    persisted estimate band). E0-4b: fetch by campaign_id (PK); the router
+    grant-gates the book before calling (shared per-book read view)."""
     return await pool.fetchrow(
         """
         SELECT status, total_chapters, spent_usd, budget_usd,
@@ -345,9 +368,9 @@ async def get_report_row(
                EXTRACT(EPOCH FROM (COALESCE(finished_at, now()) - started_at))::bigint
                  AS duration_seconds
         FROM campaigns
-        WHERE campaign_id = $1 AND owner_user_id = $2
+        WHERE campaign_id = $1
         """,
-        campaign_id, owner_user_id,
+        campaign_id,
     )
 
 
@@ -504,26 +527,27 @@ _UPDATABLE_COLS = (
 
 
 async def update_campaign_fields(
-    pool: asyncpg.Pool, campaign_id: UUID, owner_user_id: UUID, fields: dict,
+    pool: asyncpg.Pool, campaign_id: UUID, fields: dict,
 ) -> Optional[asyncpg.Record]:
-    """Owner-scoped partial update (PATCH) of whitelisted campaign columns (budget +
-    the four switchable LLM models). Only keys in `_UPDATABLE_COLS` are applied — the
-    column name is interpolated solely from that whitelist, values stay parameterized.
-    Returns the updated row, or None when no valid field is given / the campaign isn't
-    found or owned (→ 404). Status is unchanged (resume via /start)."""
+    """Partial update (PATCH) of whitelisted campaign columns (budget + the four
+    switchable LLM models). Only keys in `_UPDATABLE_COLS` are applied — the column
+    name is interpolated solely from that whitelist, values stay parameterized.
+    E0-4b: scoped by campaign_id (PK); the router grant-gates `manage` on the book
+    before calling. Returns the updated row, or None when no valid field is given /
+    the campaign isn't found. Status is unchanged (resume via /start)."""
     cols = [c for c in _UPDATABLE_COLS if c in fields]
     if not cols:
         return None
-    set_frag = ", ".join(f"{c} = ${i + 3}" for i, c in enumerate(cols))
+    set_frag = ", ".join(f"{c} = ${i + 2}" for i, c in enumerate(cols))
     values = [fields[c] for c in cols]
     return await pool.fetchrow(
         f"""
         UPDATE campaigns
         SET {set_frag}, updated_at = now()
-        WHERE campaign_id = $1 AND owner_user_id = $2
+        WHERE campaign_id = $1
         RETURNING {_CAMPAIGN_COLS}
         """,
-        campaign_id, owner_user_id, *values,
+        campaign_id, *values,
     )
 
 
@@ -553,6 +577,7 @@ async def mark_stage_done_by_chapter(
     would silently mark a campaign's chapter done in the WRONG language. Pass
     None for the language-agnostic knowledge stage (no filter)."""
     col = _stage_col(stage)
+    id_col = _match_id_col(stage)
     result = await pool.execute(
         f"""
         UPDATE campaign_chapters cc
@@ -560,7 +585,7 @@ async def mark_stage_done_by_chapter(
         FROM campaigns c
         WHERE c.campaign_id = cc.campaign_id
           AND c.book_id = $1
-          AND c.owner_user_id = $2
+          AND c.{id_col} = $2
           -- 'paused' included (S3c): a paused campaign stops NEW dispatch but
           -- must still absorb completions of already-in-flight jobs, else those
           -- chapters stay 'dispatched' and get stuck on resume.
@@ -628,11 +653,12 @@ async def pause_campaigns_for_dispatched_chapter(
     (not unrelated campaigns on the same book). Returns rows paused. Idempotent
     (WHERE status='running')."""
     col = _stage_col(stage)
+    id_col = _match_id_col(stage)
     result = await pool.execute(
         f"""
         UPDATE campaigns c
         SET status = 'paused', error_message = $4, updated_at = now()
-        WHERE c.owner_user_id = $1
+        WHERE c.{id_col} = $1
           AND c.book_id = $2
           AND c.status = 'running'
           AND EXISTS (

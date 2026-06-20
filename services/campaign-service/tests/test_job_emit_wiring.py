@@ -162,11 +162,13 @@ async def test_create_emits_pending_with_native_detail(monkeypatch):
     await repo.create_campaign(
         conn,
         owner_user_id=USER,
+        book_owner_user_id=USER,
         book_id=BOOK,
         name="My run",
         gating_mode="phase_barrier",
         target_language="vi",
         knowledge_project_id=None,
+        embedding_model_ref=None,
         knowledge_model_source=None,
         knowledge_model_ref=None,
         translation_model_source=None,
@@ -200,8 +202,9 @@ async def test_create_emits_per_stage_model_names(monkeypatch):
     conn = FakeConn(_create_row(status="created"))
     await repo.create_campaign(
         conn,
-        owner_user_id=USER, book_id=BOOK, name="My run", gating_mode="phase_barrier",
-        target_language="vi", knowledge_project_id=None,
+        owner_user_id=USER, book_owner_user_id=USER, book_id=BOOK, name="My run",
+        gating_mode="phase_barrier",
+        target_language="vi", knowledge_project_id=None, embedding_model_ref=None,
         knowledge_model_source="user_model", knowledge_model_ref=uuid4(),
         translation_model_source="user_model", translation_model_ref=uuid4(),
         chapter_from=None, chapter_to=None, total_chapters=0,

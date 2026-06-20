@@ -106,16 +106,26 @@ import enJobs from './locales/en/jobs.json';
 import viJobs from './locales/vi/jobs.json';
 import jaJobs from './locales/ja/jobs.json';
 import zhTWJobs from './locales/zh-TW/jobs.json';
+// G6 glossary-tiering UI — en/vi/ja/zh-TW (G6f).
+import enGlossaryTiering from './locales/en/glossaryTiering.json';
+import viGlossaryTiering from './locales/vi/glossaryTiering.json';
+import jaGlossaryTiering from './locales/ja/glossaryTiering.json';
+import zhTWGlossaryTiering from './locales/zh-TW/glossaryTiering.json';
+// Per-user glossary standards library — en/vi/ja/zh-TW.
+import enStandards from './locales/en/standards.json';
+import viStandards from './locales/vi/standards.json';
+import jaStandards from './locales/ja/standards.json';
+import zhTWStandards from './locales/zh-TW/standards.json';
 
 i18n
   .use(LanguageDetector)
   .use(initReactI18next)
   .init({
     resources: {
-      en: { common: enCommon, auth: enAuth, books: enBooks, leaderboard: enLeaderboard, profile: enProfile, notifications: enNotifications, glossaryEditor: enGlossaryEditor, wiki: enWiki, extraction: enExtraction, glossaryTranslate: enGlossaryTranslate, knowledge: enKnowledge, editor: enEditor, reader: enReader, chat: enChat, settings: enSettings, entityEditor: enEntityEditor, catalog: enCatalog, translation: enTranslation, usage: enUsage, enrichment: enEnrichment, composition: enComposition, rawSearch: enRawSearch, campaigns: enCampaigns, world: enWorld, onboarding: enOnboarding, jobs: enJobs },
-      vi: { common: viCommon, auth: viAuth, books: viBooks, leaderboard: viLeaderboard, profile: viProfile, notifications: viNotifications, glossaryEditor: viGlossaryEditor, wiki: viWiki, extraction: viExtraction, glossaryTranslate: viGlossaryTranslate, knowledge: viKnowledge, editor: viEditor, reader: viReader, chat: viChat, settings: viSettings, entityEditor: viEntityEditor, catalog: viCatalog, translation: viTranslation, usage: viUsage, enrichment: viEnrichment, composition: viComposition, rawSearch: viRawSearch, campaigns: viCampaigns, world: viWorld, onboarding: viOnboarding, jobs: viJobs },
-      ja: { common: jaCommon, auth: jaAuth, books: jaBooks, leaderboard: jaLeaderboard, profile: jaProfile, notifications: jaNotifications, glossaryEditor: jaGlossaryEditor, wiki: jaWiki, extraction: jaExtraction, glossaryTranslate: jaGlossaryTranslate, knowledge: jaKnowledge, editor: jaEditor, reader: jaReader, chat: jaChat, settings: jaSettings, entityEditor: jaEntityEditor, catalog: jaCatalog, translation: jaTranslation, usage: jaUsage, enrichment: jaEnrichment, composition: jaComposition, rawSearch: jaRawSearch, campaigns: jaCampaigns, world: jaWorld, onboarding: jaOnboarding, jobs: jaJobs },
-      'zh-TW': { common: zhTWCommon, auth: zhTWAuth, books: zhTWBooks, leaderboard: zhTWLeaderboard, profile: zhTWProfile, notifications: zhTWNotifications, glossaryEditor: zhTWGlossaryEditor, wiki: zhTWWiki, extraction: zhTWExtraction, glossaryTranslate: zhTWGlossaryTranslate, knowledge: zhTWKnowledge, editor: zhTWEditor, reader: zhTWReader, chat: zhTWChat, settings: zhTWSettings, entityEditor: zhTWEntityEditor, catalog: zhTWCatalog, translation: zhTWTranslation, usage: zhTWUsage, enrichment: zhTWEnrichment, composition: zhTWComposition, rawSearch: zhTWRawSearch, campaigns: zhTWCampaigns, world: zhTWWorld, onboarding: zhTWOnboarding, jobs: zhTWJobs },
+      en: { common: enCommon, auth: enAuth, books: enBooks, leaderboard: enLeaderboard, profile: enProfile, notifications: enNotifications, glossaryEditor: enGlossaryEditor, wiki: enWiki, extraction: enExtraction, glossaryTranslate: enGlossaryTranslate, knowledge: enKnowledge, editor: enEditor, reader: enReader, chat: enChat, settings: enSettings, entityEditor: enEntityEditor, catalog: enCatalog, translation: enTranslation, usage: enUsage, enrichment: enEnrichment, composition: enComposition, rawSearch: enRawSearch, campaigns: enCampaigns, world: enWorld, onboarding: enOnboarding, jobs: enJobs, glossaryTiering: enGlossaryTiering, standards: enStandards },
+      vi: { common: viCommon, auth: viAuth, books: viBooks, leaderboard: viLeaderboard, profile: viProfile, notifications: viNotifications, glossaryEditor: viGlossaryEditor, wiki: viWiki, extraction: viExtraction, glossaryTranslate: viGlossaryTranslate, knowledge: viKnowledge, editor: viEditor, reader: viReader, chat: viChat, settings: viSettings, entityEditor: viEntityEditor, catalog: viCatalog, translation: viTranslation, usage: viUsage, enrichment: viEnrichment, composition: viComposition, rawSearch: viRawSearch, campaigns: viCampaigns, world: viWorld, onboarding: viOnboarding, jobs: viJobs, glossaryTiering: viGlossaryTiering, standards: viStandards },
+      ja: { common: jaCommon, auth: jaAuth, books: jaBooks, leaderboard: jaLeaderboard, profile: jaProfile, notifications: jaNotifications, glossaryEditor: jaGlossaryEditor, wiki: jaWiki, extraction: jaExtraction, glossaryTranslate: jaGlossaryTranslate, knowledge: jaKnowledge, editor: jaEditor, reader: jaReader, chat: jaChat, settings: jaSettings, entityEditor: jaEntityEditor, catalog: jaCatalog, translation: jaTranslation, usage: jaUsage, enrichment: jaEnrichment, composition: jaComposition, rawSearch: jaRawSearch, campaigns: jaCampaigns, world: jaWorld, onboarding: jaOnboarding, jobs: jaJobs, glossaryTiering: jaGlossaryTiering, standards: jaStandards },
+      'zh-TW': { common: zhTWCommon, auth: zhTWAuth, books: zhTWBooks, leaderboard: zhTWLeaderboard, profile: zhTWProfile, notifications: zhTWNotifications, glossaryEditor: zhTWGlossaryEditor, wiki: zhTWWiki, extraction: zhTWExtraction, glossaryTranslate: zhTWGlossaryTranslate, knowledge: zhTWKnowledge, editor: zhTWEditor, reader: zhTWReader, chat: zhTWChat, settings: zhTWSettings, entityEditor: zhTWEntityEditor, catalog: zhTWCatalog, translation: zhTWTranslation, usage: zhTWUsage, enrichment: zhTWEnrichment, composition: zhTWComposition, rawSearch: zhTWRawSearch, campaigns: zhTWCampaigns, world: zhTWWorld, onboarding: zhTWOnboarding, jobs: zhTWJobs, glossaryTiering: zhTWGlossaryTiering, standards: zhTWStandards },
     },
     defaultNS: 'common',
     fallbackLng: 'en',

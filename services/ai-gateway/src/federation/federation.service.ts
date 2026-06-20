@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/commo
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { AppConfig, ProviderConfig, loadConfig } from '../config/config.js';
-import { Catalog, computeCatalog, ProviderResult } from './catalog.js';
+import { Catalog, computeCatalog, ProviderAvailability, ProviderResult } from './catalog.js';
 
 /** Per-call identity forwarded to a provider (SO-1 / INV-7). Never sourced from the LLM. */
 export interface Envelope {
@@ -16,6 +16,7 @@ const EMPTY: Catalog = {
   toolToProvider: new Map(),
   version: '',
   partial: false,
+  providers: [],
 };
 
 /**
@@ -58,6 +59,14 @@ export class FederationService implements OnModuleInit, OnModuleDestroy {
   }
   providerCount(): number {
     return this.cfg.providers.length;
+  }
+  /** H10 — per-provider availability (`{name, available}`); a down provider
+   * reads `available:false` so a consumer's find_tools can say "try again",
+   * not "no such tool". Mirrors the configured provider set even before the
+   * first refresh (all unavailable until federation runs). */
+  providerAvailability(): ProviderAvailability[] {
+    if (this.state.providers.length > 0) return this.state.providers;
+    return this.cfg.providers.map((p) => ({ name: p.name, available: false }));
   }
   providerFor(tool: string): ProviderConfig | undefined {
     return this.state.toolToProvider.get(tool);

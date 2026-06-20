@@ -22,6 +22,8 @@ def _campaign(**over):
     base = {
         "campaign_id": CID,
         "owner_user_id": USER,
+        "book_owner_user_id": USER,   # E0-4b: owner-run by default (book_owner == owner)
+        "embedding_model_ref": None,
         "book_id": BOOK,
         "status": "running",
         "stages": ["knowledge", "translation", "eval"],
@@ -119,6 +121,39 @@ async def test_cold_start_dispatches_both_stages(fake_pool, patch_repo):
     # Both claimed rows flipped to dispatched.
     stages = {c.args[3] for c in patch_repo["mark_stage_dispatched"].call_args_list}
     assert stages == {"knowledge", "translation"}
+
+
+BOOK_OWNER = UUID("cccccccc-cccc-cccc-cccc-cccccccccccc")
+EMB_REF = "44444444-4444-4444-4444-444444444444"
+
+
+async def test_owner_run_dispatch_has_no_billing_split(fake_pool, patch_repo):
+    # E0-4b: an owner-run campaign (book_owner == owner) dispatches knowledge under
+    # the owner with NO billing split (legacy owner-paid path).
+    patch_repo["load_chapter_states"].return_value = [_ch(C1, k="pending")]
+    clients, tr, kn = _clients()
+    await _process(fake_pool, clients, _campaign())  # book_owner_user_id defaults to USER
+    kw = kn.dispatch_extraction.call_args.kwargs
+    assert kw["user_id"] == str(USER)          # graph partition = owner
+    assert kw["billing_user_id"] is None        # no split
+    assert kw["billing_embedding_model"] is None
+
+
+async def test_collaborator_dispatch_dual_identity(fake_pool, patch_repo):
+    # E0-4b dual identity: a manage-collaborator's campaign (owner=caller, book_owner
+    # differs) dispatches knowledge under the BOOK OWNER (graph) but bills the CALLER
+    # (their key + same-model embedding ref). Translation stays caller-attributed.
+    patch_repo["load_chapter_states"].return_value = [_ch(C1, k="pending"), _ch(C2, k="done")]
+    clients, tr, kn = _clients()
+    await _process(fake_pool, clients,
+                   _campaign(book_owner_user_id=BOOK_OWNER, embedding_model_ref=UUID(EMB_REF)))
+    # knowledge: graph = book owner, billing = caller (the campaign owner), caller's emb ref.
+    kw = kn.dispatch_extraction.call_args.kwargs
+    assert kw["user_id"] == str(BOOK_OWNER)
+    assert kw["billing_user_id"] == str(USER)
+    assert kw["billing_embedding_model"] == EMB_REF
+    # translation: caller-attributed (= campaign owner), no book-owner identity leak.
+    assert tr.dispatch_job.call_args.kwargs["user_id"] == str(USER)
 
 
 async def test_completion_sets_completed(fake_pool, patch_repo):

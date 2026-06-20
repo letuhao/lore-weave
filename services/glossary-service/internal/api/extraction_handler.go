@@ -52,37 +52,42 @@ func (s *Server) internalExtractionProfile(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Server) writeExtractionProfile(w http.ResponseWriter, ctx context.Context, bookID uuid.UUID) {
-	// 1. Fetch the book's genre names from genre_groups table
-	rows, err := s.pool.Query(ctx, `SELECT name FROM genre_groups WHERE book_id=$1 ORDER BY sort_order`, bookID)
+	// G4: the extraction profile is BOOK-LOCAL (sovereign instance). A book MUST be
+	// adopted (book_kinds populated) before extraction can run — an un-adopted book
+	// yields zero kinds, which the worker treats as "book not scaffolded".
+	//
+	// 1. The book's ACTIVE genres (book_active_genres) drive attribute auto-selection.
+	//    `universal` is mandatory + always-active (O4) even if not explicitly active.
+	gRows, err := s.pool.Query(ctx, `
+		SELECT bg.genre_id, bg.code
+		FROM book_active_genres bag
+		JOIN book_genres bg ON bg.genre_id = bag.genre_id
+		WHERE bag.book_id = $1 AND bg.deprecated_at IS NULL`, bookID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to fetch genres")
 		return
 	}
-	var bookGenres []string
-	for rows.Next() {
-		var g string
-		if err := rows.Scan(&g); err != nil {
-			rows.Close()
+	activeGenreIDs := map[uuid.UUID]struct{}{}
+	for gRows.Next() {
+		var id uuid.UUID
+		var code string
+		if err := gRows.Scan(&id, &code); err != nil {
+			gRows.Close()
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to scan genre")
 			return
 		}
-		bookGenres = append(bookGenres, g)
+		activeGenreIDs[id] = struct{}{}
 	}
-	rows.Close()
+	gRows.Close()
 
-	// 2. Fetch all entity kinds with their attributes, apply genre filtering
-	//
-	// Resolution rules from design doc §4.2:
-	//   - Include system kinds where genre_tags overlap with book's genres
-	//   - Always include system kinds with genre_tags containing 'universal'
-	//   - Always include user-created kinds (is_default = false)
-	//   - Exclude kinds where is_hidden = true
+	// 2. Fetch all book kinds (book-local). All adopted/native book kinds are
+	//    auto-selected (the user already scaffolded them); is_hidden kinds excluded.
 	kindRows, err := s.pool.Query(ctx, `
-		SELECT kind_id, code, name, icon, is_default, genre_tags
-		FROM entity_kinds
-		WHERE is_hidden = false
+		SELECT book_kind_id, code, name, icon
+		FROM book_kinds
+		WHERE book_id = $1 AND is_hidden = false AND deprecated_at IS NULL
 		ORDER BY sort_order, name
-	`)
+	`, bookID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to fetch kinds")
 		return
@@ -109,32 +114,24 @@ func (s *Server) writeExtractionProfile(w http.ResponseWriter, ctx context.Conte
 
 	var kinds []kindOut
 	for kindRows.Next() {
-		var kindID, code, name, icon string
-		var isDefault bool
-		var kindGenreTags []string
-		if err := kindRows.Scan(&kindID, &code, &name, &icon, &isDefault, &kindGenreTags); err != nil {
+		var kindID uuid.UUID
+		var code, name, icon string
+		if err := kindRows.Scan(&kindID, &code, &name, &icon); err != nil {
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to scan kind")
 			return
 		}
 
-		// Determine if this kind is auto-selected
-		autoSelected := false
-		if !isDefault {
-			// User-created kinds are always included
-			autoSelected = true
-		} else {
-			// System kind: check genre overlap or universal
-			autoSelected = tagsOverlap(kindGenreTags, bookGenres) || containsTag(kindGenreTags, "universal")
-		}
-
-		// Fetch attributes for this kind
+		// Book kinds are book-local → always auto-selected for extraction.
+		// Fetch attributes for this kind from book_attributes, carrying the genre so
+		// auto-selection can honour the book's active genres.
 		attrRows, err := s.pool.Query(ctx, `
-			SELECT code, name, field_type, description, auto_fill_prompt,
-			       is_required, is_active, genre_tags
-			FROM attribute_definitions
-			WHERE kind_id = $1
-			ORDER BY sort_order, name
-		`, kindID)
+			SELECT ba.code, ba.name, ba.field_type, ba.description, ba.auto_fill_prompt,
+			       ba.is_required, ba.genre_id, (g.code = 'universal') AS is_universal
+			FROM book_attributes ba
+			JOIN book_genres g ON g.genre_id = ba.genre_id
+			WHERE ba.book_id = $1 AND ba.kind_id = $2 AND ba.deprecated_at IS NULL
+			ORDER BY ba.sort_order, ba.name
+		`, bookID, kindID)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to fetch attributes")
 			return
@@ -143,30 +140,20 @@ func (s *Server) writeExtractionProfile(w http.ResponseWriter, ctx context.Conte
 		var attrs []attrOut
 		for attrRows.Next() {
 			var a attrOut
-			var isActive bool
-			var attrGenreTags []string
+			var genreID uuid.UUID
+			var isUniversal bool
 			if err := attrRows.Scan(&a.Code, &a.Name, &a.FieldType, &a.Description,
-				&a.AutoFillPrompt, &a.IsRequired, &isActive, &attrGenreTags); err != nil {
+				&a.AutoFillPrompt, &a.IsRequired, &genreID, &isUniversal); err != nil {
 				attrRows.Close()
 				writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to scan attribute")
 				return
 			}
-
-			// Determine auto_selected for this attribute:
-			//   - is_required → always selected
-			//   - !is_active → never selected
-			//   - user-created kind → all active attrs selected (no genre filtering)
-			//   - system kind → genre_tags empty OR overlaps with book's genres
-			if !isActive {
-				a.AutoSelected = false
-			} else if a.IsRequired {
-				a.AutoSelected = true
-			} else if !isDefault {
-				// User-created kind: all active attrs are auto-selected
-				a.AutoSelected = true
-			} else {
-				a.AutoSelected = len(attrGenreTags) == 0 || tagsOverlap(attrGenreTags, bookGenres)
-			}
+			// Auto-select when:
+			//   - is_required → always (mandatory attr), OR
+			//   - the attr's genre is `universal` (O4 — always-active base attrs), OR
+			//   - the attr's genre is one of the book's active genres.
+			_, genreActive := activeGenreIDs[genreID]
+			a.AutoSelected = a.IsRequired || isUniversal || genreActive
 			attrs = append(attrs, a)
 		}
 		attrRows.Close()
@@ -175,11 +162,11 @@ func (s *Server) writeExtractionProfile(w http.ResponseWriter, ctx context.Conte
 			attrs = []attrOut{}
 		}
 		kinds = append(kinds, kindOut{
-			KindID:       kindID,
+			KindID:       kindID.String(),
 			Code:         code,
 			Name:         name,
 			Icon:         icon,
-			AutoSelected: autoSelected,
+			AutoSelected: true,
 			Attributes:   attrs,
 		})
 	}
@@ -225,7 +212,7 @@ func (s *Server) getKnownEntities(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Build the query dynamically based on filters.
-	// We join glossary_entities with entity_kinds and aggregate chapter_entity_links
+	// We join glossary_entities with system_kinds and aggregate chapter_entity_links
 	// to compute frequency and max chapter_index (recency).
 	//
 	// The entity "name" comes from entity_attribute_values where the attribute code = 'name'.
@@ -277,18 +264,22 @@ func (s *Server) getKnownEntities(w http.ResponseWriter, r *http.Request) {
 			COALESCE(alias_av.original_value, '') AS aliases_raw,
 			COUNT(cl.link_id) AS frequency
 		FROM glossary_entities e
-		JOIN entity_kinds k ON k.kind_id = e.kind_id
+		JOIN book_kinds k ON k.book_kind_id = e.kind_id
 		LEFT JOIN entity_attribute_values name_av
 			ON name_av.entity_id = e.entity_id
 			AND name_av.attr_def_id = (
-				SELECT attr_def_id FROM attribute_definitions
-				WHERE kind_id = e.kind_id AND code = 'name' LIMIT 1
+				SELECT ba.attr_id FROM book_attributes ba
+				JOIN book_genres g ON g.genre_id = ba.genre_id
+				WHERE ba.kind_id = e.kind_id AND ba.code = 'name'
+				ORDER BY (g.code = 'universal') DESC LIMIT 1
 			)
 		LEFT JOIN entity_attribute_values alias_av
 			ON alias_av.entity_id = e.entity_id
 			AND alias_av.attr_def_id = (
-				SELECT attr_def_id FROM attribute_definitions
-				WHERE kind_id = e.kind_id AND code = 'aliases' LIMIT 1
+				SELECT ba.attr_id FROM book_attributes ba
+				JOIN book_genres g ON g.genre_id = ba.genre_id
+				WHERE ba.kind_id = e.kind_id AND ba.code = 'aliases'
+				ORDER BY (g.code = 'universal') DESC LIMIT 1
 			)
 		LEFT JOIN chapter_entity_links cl
 			ON ` + linkCondition + `
@@ -450,16 +441,25 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Pre-load kind_id map (code → kind_id)
-	kindMap, err := s.loadKindMap(ctx)
+	// Pre-load kind_id map (code → book_kind_id) for THIS book (G4 book tier).
+	kindMap, err := s.loadKindMap(ctx, bookID)
 	if err != nil {
 		BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to load kinds")
 		return
 	}
+	// An adopted book always has at least the 'unknown' kind, so an empty kind map
+	// means the book has no ontology yet — extraction would silently skip every entity
+	// (D-GKA-EXTRACT-UNADOPTED-GUARD). Fail fast with a clear, actionable error instead.
+	if len(kindMap) == 0 {
+		BulkExtractTotal.WithLabelValues(OutcomeValidationError).Inc()
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_BOOK_NOT_SCAFFOLDED",
+			"book ontology not adopted — call POST /v1/glossary/books/{book_id}/adopt first")
+		return
+	}
 
-	// Pre-load attr_def map (kind_id+code → attr_def_id)
-	attrDefMap, err := s.loadAttrDefMap(ctx)
+	// Pre-load attr_def map (book_kind_id+code → attr_id) for THIS book (G4 book tier).
+	attrDefMap, err := s.loadAttrDefMap(ctx, bookID)
 	if err != nil {
 		BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to load attribute definitions")
@@ -726,9 +726,13 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// loadKindMap returns a map of kind code → kind_id.
-func (s *Server) loadKindMap(ctx context.Context) (map[string]uuid.UUID, error) {
-	rows, err := s.pool.Query(ctx, `SELECT kind_id, code FROM entity_kinds`)
+// loadKindMap returns a map of kind code → book_kind_id for the given book (G4:
+// entities reference the BOOK tier). The book must be adopted first (book_kinds
+// populated by the copy-down) — an un-adopted book yields an empty map, so every
+// kind_code falls through to the 'unknown' park bucket (which adopt always copies).
+func (s *Server) loadKindMap(ctx context.Context, bookID uuid.UUID) (map[string]uuid.UUID, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT book_kind_id, code FROM book_kinds WHERE book_id = $1 AND deprecated_at IS NULL`, bookID)
 	if err != nil {
 		return nil, err
 	}
@@ -745,10 +749,15 @@ func (s *Server) loadKindMap(ctx context.Context) (map[string]uuid.UUID, error) 
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	// Fold in kind ALIASES so an alias_code resolves to its kind exactly like a
-	// real code. A real kind.code ALWAYS wins (never overridden by an alias), so a
-	// code that later becomes a kind takes precedence over a stale alias.
-	arows, err := s.pool.Query(ctx, `SELECT alias_code, kind_id FROM entity_kind_aliases`)
+	// Fold in kind ALIASES, resolved to a BOOK kind by CODE: an alias points at a
+	// system kind; we map alias_code → the book_kind sharing that system kind's code.
+	// A real book_kind.code ALWAYS wins (the IF-not-present guard below), so a code
+	// that exists as a book kind takes precedence over a stale alias.
+	arows, err := s.pool.Query(ctx, `
+		SELECT a.alias_code, bk.book_kind_id
+		FROM entity_kind_aliases a
+		JOIN system_kinds sk ON sk.kind_id = a.kind_id
+		JOIN book_kinds   bk ON bk.book_id = $1 AND bk.code = sk.code AND bk.deprecated_at IS NULL`, bookID)
 	if err != nil {
 		return nil, err
 	}
@@ -766,9 +775,19 @@ func (s *Server) loadKindMap(ctx context.Context) (map[string]uuid.UUID, error) 
 	return m, arows.Err()
 }
 
-// loadAttrDefMap returns a map of "kind_id:code" → attr_def_id.
-func (s *Server) loadAttrDefMap(ctx context.Context) (map[string]uuid.UUID, error) {
-	rows, err := s.pool.Query(ctx, `SELECT attr_def_id, kind_id, code FROM attribute_definitions`)
+// loadAttrDefMap returns a map of "book_kind_id:code" → attr_id for the given book
+// (G4: book_attributes). Keyed by the UNIVERSAL-genre row — the seed lifts every
+// kind's attrs into (kind, universal) and adopt copies them there, so extraction /
+// entity attributes resolve under universal. DISTINCT ON (kind_id, code) preferring
+// the universal row keeps one attr per (kind, code) even if a genre-specific row
+// shares the code.
+func (s *Server) loadAttrDefMap(ctx context.Context, bookID uuid.UUID) (map[string]uuid.UUID, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT DISTINCT ON (ba.kind_id, ba.code) ba.attr_id, ba.kind_id, ba.code
+		FROM book_attributes ba
+		JOIN book_genres g ON g.genre_id = ba.genre_id
+		WHERE ba.book_id = $1 AND ba.deprecated_at IS NULL
+		ORDER BY ba.kind_id, ba.code, (g.code = 'universal') DESC, ba.sort_order`, bookID)
 	if err != nil {
 		return nil, err
 	}
@@ -782,7 +801,7 @@ func (s *Server) loadAttrDefMap(ctx context.Context) (map[string]uuid.UUID, erro
 		}
 		m[kindID.String()+":"+code] = attrDefID
 	}
-	return m, nil
+	return m, rows.Err()
 }
 
 // findEntityByNameOrAlias looks up an existing entity by normalized name match,
@@ -795,7 +814,7 @@ func (s *Server) findEntityByNameOrAlias(ctx context.Context, bookID, kindID uui
 		SELECT ge.entity_id, eav.original_value
 		FROM glossary_entities ge
 		JOIN entity_attribute_values eav ON eav.entity_id = ge.entity_id
-		JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+		JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
 		WHERE ge.book_id = $1
 		  AND ge.kind_id = $2
 		  AND ad.code = 'name'
@@ -826,7 +845,7 @@ func (s *Server) findEntityByNameOrAlias(ctx context.Context, bookID, kindID uui
 		SELECT ge.entity_id, eav.original_value
 		FROM glossary_entities ge
 		JOIN entity_attribute_values eav ON eav.entity_id = ge.entity_id
-		JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+		JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
 		WHERE ge.book_id = $1
 		  AND ge.kind_id = $2
 		  AND ad.code = 'aliases'
@@ -1286,24 +1305,30 @@ func (s *Server) internalListEntities(w http.ResponseWriter, r *http.Request) {
 			-- value when the column is null (backward-compatible).
 			COALESCE(NULLIF(e.short_description, ''), short_av.original_value) AS short_description
 		FROM glossary_entities e
-		JOIN entity_kinds k ON k.kind_id = e.kind_id
+		JOIN book_kinds k ON k.book_kind_id = e.kind_id
 		LEFT JOIN entity_attribute_values name_av
 			ON name_av.entity_id = e.entity_id
 			AND name_av.attr_def_id = (
-				SELECT attr_def_id FROM attribute_definitions
-				WHERE kind_id = e.kind_id AND code = 'name' LIMIT 1
+				SELECT ba.attr_id FROM book_attributes ba
+				JOIN book_genres g ON g.genre_id = ba.genre_id
+				WHERE ba.kind_id = e.kind_id AND ba.code = 'name'
+				ORDER BY (g.code = 'universal') DESC LIMIT 1
 			)
 		LEFT JOIN entity_attribute_values alias_av
 			ON alias_av.entity_id = e.entity_id
 			AND alias_av.attr_def_id = (
-				SELECT attr_def_id FROM attribute_definitions
-				WHERE kind_id = e.kind_id AND code = 'aliases' LIMIT 1
+				SELECT ba.attr_id FROM book_attributes ba
+				JOIN book_genres g ON g.genre_id = ba.genre_id
+				WHERE ba.kind_id = e.kind_id AND ba.code = 'aliases'
+				ORDER BY (g.code = 'universal') DESC LIMIT 1
 			)
 		LEFT JOIN entity_attribute_values short_av
 			ON short_av.entity_id = e.entity_id
 			AND short_av.attr_def_id = (
-				SELECT attr_def_id FROM attribute_definitions
-				WHERE kind_id = e.kind_id AND code = 'short_description' LIMIT 1
+				SELECT ba.attr_id FROM book_attributes ba
+				JOIN book_genres g ON g.genre_id = ba.genre_id
+				WHERE ba.kind_id = e.kind_id AND ba.code = 'short_description'
+				ORDER BY (g.code = 'universal') DESC LIMIT 1
 			)
 		WHERE e.book_id = $1
 		  AND e.alive = true

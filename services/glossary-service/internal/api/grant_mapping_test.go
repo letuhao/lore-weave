@@ -53,7 +53,7 @@ func grantMapJWT(t *testing.T, userID uuid.UUID) string {
 func TestGrantMapping_MutatingRoutesRejectViewGrantee(t *testing.T) {
 	s := denyServer(t, "view")
 	jwtStr := grantMapJWT(t, uuid.New())
-	b, e, g, a, rev := uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	b, e, a, rev := uuid.New(), uuid.New(), uuid.New(), uuid.New()
 	pre := "/v1/glossary/books/" + b.String()
 
 	cases := []struct{ name, method, path string }{
@@ -70,9 +70,6 @@ func TestGrantMapping_MutatingRoutesRejectViewGrantee(t *testing.T) {
 		{"purgeEntity", http.MethodDelete, pre + "/recycle-bin/" + e.String()},
 		{"createWikiArticle", http.MethodPost, pre + "/wiki"},
 		{"deleteWikiArticle", http.MethodDelete, pre + "/wiki/" + a.String()},
-		{"createGenre", http.MethodPost, pre + "/genres"},
-		{"patchGenre", http.MethodPatch, pre + "/genres/" + g.String()},
-		{"deleteGenre", http.MethodDelete, pre + "/genres/" + g.String()},
 	}
 	for _, c := range cases {
 		req := httptest.NewRequest(c.method, c.path, bytes.NewReader([]byte(`{}`)))

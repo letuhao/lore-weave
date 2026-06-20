@@ -327,6 +327,25 @@ CREATE INDEX IF NOT EXISTS idx_books_world ON books(world_id)
 ALTER TABLE books ADD COLUMN IF NOT EXISTS is_bible BOOLEAN NOT NULL DEFAULT false;
 
 ALTER TABLE chapters ADD COLUMN IF NOT EXISTS is_bible BOOLEAN NOT NULL DEFAULT false;
+
+-- ═══════════════════════════════════════════════════════════════
+-- MCP fan-out Tier-W single-use confirm-token ledger - 2026-06-20
+-- /review-impl HIGH: the confirm route (confirmBookAction) must be single-use.
+-- The stateless kit confirm token carries no jti, so we key on the SHA-256 hash
+-- of the full token string. confirmBookAction claims the hash (INSERT … ON
+-- CONFLICT DO NOTHING) BEFORE running the effect; a replay within the 10-min TTL
+-- hits the PK (0 rows affected) and is refused, so publish/delete/etc. run at
+-- most once per token (no duplicate chapter_revisions row, no duplicate
+-- chapter.published outbox event). exp is optional metadata for a future janitor.
+-- Mirrors provider-registry settings_consumed_tokens. Additive + idempotent —
+-- book-service has no down-migration; Up() re-run is the rollback story.
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS book_consumed_tokens (
+  token_hash  TEXT PRIMARY KEY,
+  consumed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  exp         TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_book_consumed_tokens_exp ON book_consumed_tokens(exp);
 `
 
 // WorldsDownSQL is the explicit reversible DDL for the C20 world container.

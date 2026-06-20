@@ -21,6 +21,7 @@ import {
   Sunset,
   Monitor,
   Sparkles,
+  Library,
 } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { useSidebar } from '@/providers/SidebarProvider';
@@ -46,6 +47,8 @@ const mainNav: NavItem[] = [
   // the entry active via the startsWith match).
   { to: '/worlds', icon: Globe2, labelKey: 'nav.worlds', auth: true },
   { to: '/campaigns', icon: Factory, labelKey: 'nav.campaigns', auth: true },
+  // Per-user glossary standards library (genres/kinds/attributes) — feeds book adopt.
+  { to: '/standards', icon: Library, labelKey: 'nav.standards', auth: true },
   { to: '/browse', icon: Search, labelKey: 'nav.browse' },
 ];
 

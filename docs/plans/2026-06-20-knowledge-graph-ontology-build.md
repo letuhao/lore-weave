@@ -1,0 +1,259 @@
+# KG Customizable Ontology — Build Plan (parallel-safe)
+
+> **Trạng thái:** PLAN — chưa code. Thiết kế chi tiết + ranh giới file + DAG chạy song song.
+> **Ngày:** 2026-06-20
+> **Spec nguồn:** [`2026-06-20-knowledge-graph-customizable-ontology.md`](../specs/2026-06-20-knowledge-graph-customizable-ontology.md)
+> **Branch:** implement trên branch riêng `feat/knowledge-graph-ontology` (KHÔNG trên branch glossary). Mục tiêu: chạy **song song nhiều lane** mà không đụng độ file với branch glossary / admin-CMS.
+> **Quy mô:** XL, load-bearing (schema + tenancy + migration + extraction cross-service). /amaw hoặc /warp cho các lane migration.
+
+---
+
+## 0. Nguyên tắc parallel-safe (đọc trước)
+
+1. **Contract-first, freeze trước khi fan-out.** Mọi API (knowledge ontology, glossary internal-ontology read) đông cứng ở **L0** dưới dạng OpenAPI. Lane build theo contract + **mock** cho tới composition point — không lane nào chờ code lane khác để bắt đầu.
+2. **Một file = một lane.** Mỗi lane sở hữu tập file **rời nhau** (§5 matrix). File dùng chung (`models.py`, `migrate.py`, `neo4j_schema.py`, `server.go`, i18n/route registry) chỉ được sửa ở **lane foundation (L1)** hoặc **lane tích hợp cuối (L7)**, KHÔNG sửa ở lane song song.
+3. **Code mới → file mới.** Logic mới đặt trong **module/file mới** thay vì chèn vào file lớn sẵn có → tránh xung đột line-number.
+4. **Cross-branch choke point = glossary `server.go`.** Route internal-ontology của glossary (LG) làm **trên branch glossary** như một commit nhỏ biệt lập (1 handler file mới + 1 dòng đăng ký). KG side coi đây là **dependency ngoài (D1)**, build client + mock cho tới khi route về.
+5. **Worktree cho lane mutate song song.** Lane đụng cùng repo-state (đặc biệt LB extraction) chạy trong **git worktree** riêng để không giẫm nhau.
+
+---
+
+## 1. Design-lock (S0) — chốt trước khi fan-out
+
+3 must-answer của spec §8 + đề xuất default cho Q còn lại. **S0 = stop point con người duyệt cả khối này.**
+
+| # | Quyết định | Chốt (đề xuất) |
+|---|---|---|
+| **M1 / G1** | Reconciliation node-kind glossary↔KG | **(b) adopt-gated**: adopt template KG **fail sớm** nếu book glossary thiếu kind cần ("adopt X,Y trong glossary trước"). Không cross-service write ngầm. Cần D1 (glossary internal-ontology read) để check. |
+| **M2 / C4** | Seam partition | `graph_id` **trên EDGE** (node dùng chung). View = read-only lens. View≠partition (không continuum). |
+| **M3 / B4** | Schema versioning | `schema_version` trên `kg_graph_schemas`, **stamp lên edge/fact** lúc write. Edit additive; rename/remove = deprecate-only. |
+| Q1 | Đa-schema-active/project | **v1: một project-schema active** (merge lúc adopt). Đa-template → để lớp 4. |
+| Q2 | Free-edge policy | **v1: `allow_free_edges=true` mặc định** (giữ hành vi free-string hiện tại); siết theo `kg_edge_types` là opt-in per-schema. Tránh vỡ project cũ. |
+| Q3 | Fact-type narrative | Seed trong `xianxia-harem`: `realm_change, allegiance_shift, motivation_shift, death, breakthrough`. `general` giữ bộ cũ. **PO duyệt danh sách ở S0.** |
+| Q4 | Grant-level schema-write trong project shared | **Manage-gate** (mirror glossary). View **per-user** (UNIQUE project+user+code). |
+| Q5 | Drive vocab dùng chung | **v1: per-template** (`drive` trong `xianxia-harem`). Cấp system-shared để lớp sau (liên đới Q1). |
+
+> Output S0: spec §8 cập nhật "LOCKED" + 2 contract YAML đông cứng (§4). Cho tới khi S0 pass, KHÔNG mở lane.
+
+---
+
+## 2. Milestone → Lane map
+
+| MS (spec §7) | Lane | Loại | Phụ thuộc |
+|---|---|---|---|
+| K1 schema+models+seed | **L1 Foundation** | SYNC (trunk) | S0 |
+| K2a glossary internal route | **LG** | ASYNC (branch glossary) | contract (L0) |
+| K2b KG glossary client | trong **LA** | ASYNC | contract (L0) |
+| K3 resolution + validation | **LA** | ASYNC | L1 |
+| K4 extraction động | **LB** (worktree) | ASYNC (dài nhất) | L1 + LA + K2b |
+| K5 adopt/sync/CRUD API | **LC** | ASYNC | L1 (+LA read) |
+| K6 views + as-of-chapter read | **LD** | ASYNC | L1 |
+| FE ontology UI | **LE** | ASYNC | contract → API thật ở C3 |
+| MCP graph-schema tools | **LF** | ASYNC | contract → API thật ở C3 |
+| K9 triage queue + resolution (spec §11) | **LH** | ASYNC | L1 → tích hợp K4(park)+K5(hand-off) ở C4 |
+| K7 enforcement + seam | **L7 Integration** | SYNC (compose) | LA+LB+LC+LD+LG |
+| K8 partition | — | DEFERRED | — |
+
+---
+
+## 3. Thiết kế chi tiết per lane (file mới + endpoint + logic)
+
+### L1 — Foundation (SYNC, trunk; chỉ lane này sửa file DB dùng chung)
+**Mục tiêu:** mọi bảng + seed sẵn sàng; additive, zero behavior change.
+- **Sửa (file dùng chung — độc quyền L1):**
+  - `app/db/migrate.py` — thêm bước migration tạo `kg_*` + gọi seed.
+  - `app/db/neo4j_schema.py` — additive: property `graph_id`(edge, NULL), `schema_version`(edge/fact), index liên quan.
+  - `app/main.py` — (KM0) **gỡ đăng ký router legacy** `internal_tools`; (sau) là chỗ pre-register router mới (xem fix router-choke bên dưới).
+- **File mới:**
+  - `app/db/ontology_models.py` — định nghĩa `kg_graph_schemas`, `kg_edge_types`, `kg_fact_types`, `kg_vocab_sets`, `kg_vocab_values`, `kg_views` (DDL §3 spec; scope-keyed UNIQUE). Import 1 dòng vào `models.py`.
+  - `app/db/seed_graph_schemas.py` — seed system `general` (= ontology hardcode hiện tại) + `xianxia-harem` (VCTĐ §4 edges + §3.4 drives).
+  - `app/db/repositories/graph_schemas.py` — **read + resolution query** (dùng bởi LA; read-only cho các lane khác).
+- **KM0 — Legacy MCP path retirement (do-first, spec MCP §8):** XÓA `app/routers/internal_tools.py` (`/internal/tools/execute` + `/internal/tools/definitions`) + đăng ký trong `main.py`; XÓA chat-service `app/client/knowledge_client.py::execute_tool()` (dead parity) + test legacy (`test_internal_tools.py`, `test_mcp_envelope_parity.py`); sửa stale docstring `tools/definitions.py`. **Precondition:** grep-verify 0 runtime caller (done) + check `infra/docker-compose.yml`/healthcheck. **Tại sao ở L1:** đụng `main.py` (cùng file router-registration) → gộp vào trunk, không để lane song song đụng.
+- **Router-registration choke point (fix):** `main.py` là file dùng chung mọi router lane (LC/LD/LH) phải wire. **L1 pre-register sẵn router stub rỗng** cho `ontology`/`graph_views`/`triage` → các lane chỉ điền handler vào file router riêng, KHÔNG đụng `main.py`.
+- **VERIFY:** ephemeral DB test bảng + seed; **full suite green sau khi gỡ legacy** (chứng minh không caller ẩn); project cũ default `general` (chưa ai đọc → no behavior change).
+- **Composition C1:** L1 merge vào branch → mở fan-out.
+
+### LA — Resolution + validation core (ASYNC)
+- **File mới (độc quyền LA):**
+  - `app/ontology/__init__.py`
+  - `app/ontology/resolver.py` — resolve `system→user→project` theo `code`, cache TTL ngắn. Trả "resolved schema" (edge types, fact types, vocab, node-kind expectation).
+  - `app/ontology/validation.py` — validate edge/fact/node-kind theo resolved schema. **Fail-soft (K3): log + triage**, chưa reject (reject bật ở L7).
+  - `app/clients/glossary_ontology_client.py` — **K2b**: gọi glossary internal-ontology read (D1); 2 nguồn node-kind — book ontology nếu có `book_id`, else **user glossary standards** (project no-book, spec §3.5/M1-refine); mock-able tới khi LG về.
+- **Dùng:** `repositories/graph_schemas.py` (L1, read-only).
+- **VERIFY:** unit resolver (shadow precedence), validation fail-soft, client với fake glossary.
+- **Composition C2:** resolver API ổn → LB tích hợp, LC dùng cho gate.
+
+### LB — Extraction động (ASYNC, **worktree**, lane dài nhất — ⚠ MULTI-SERVICE RISK)
+> **⚠ SDK KHÔNG isolated (verify 2026-06-20):** `sdks/python/loreweave_extraction` được consume bởi **3 service** — knowledge-service, **worker-ai** (`app/decoupled_extract.py`, `runner.py`, `llm_client.py`, `clients.py`) và **translation-service**. → LB **KHÔNG low-risk**; blast-radius cross-service. Bất kỳ branch nào động vào worker-ai/SDK = xung đột tiềm tàng.
+- **Sửa (độc quyền LB — không lane nào khác đụng extraction):**
+  - `sdks/python/loreweave_extraction/extractors/{entity,event,relation,fact}.py` — bỏ `Literal` cứng → validation động theo schema truyền vào.
+  - `sdks/python/loreweave_extraction/prompts/__init__.py` — builder dựng prompt **từ resolved schema** thay vì `.md` tĩnh.
+  - `sdks/python/loreweave_extraction/prompts/*.md` — templatize (chừa slot cho kind/edge/fact/vocab).
+  - `sdks/python/loreweave_extraction/resolve_config.py` — mở rộng (đã có priority user>book>system).
+  - `app/extraction/pass2_orchestrator.py`, `app/extraction/pass2_writer.py` — truyền resolved schema vào pipeline; **projection schema-cho-extraction** (§10-B1 token budget).
+- **Dùng:** `ontology/resolver.py` (LA, C2) + `glossary_ontology_client.py`.
+- **🔒 BACKWARD-COMPAT RULE (bắt buộc):** chữ ký SDK mới phải **default về hành vi tĩnh hôm nay khi KHÔNG được truyền schema** (`schema=None` → prompt/validation = bản `.md`+`Literal` cũ). worker-ai + translation-service gọi SDK **không đổi 1 dòng** và ra output y hệt. Thay đổi của LB chỉ "kích hoạt" khi knowledge truyền resolved schema vào.
+- **Golden-set eval (sub-task LB-G, có chủ + sizing — KHÔNG hand-wave):**
+  1. Chọn corpus cố định (vài chương đại diện, ≥1 VCTĐ + ≥1 bộ khác).
+  2. Capture **baseline** output extraction TRƯỚC khi đổi, **cho CẢ knowledge-service VÀ worker-ai path** (vì cùng SDK).
+  3. Sau đổi: chạy lại `schema=None` → **byte/však-diff = 0 so baseline** (backward-compat proof cho worker-ai/translation).
+  4. Chạy `schema=xianxia-harem` → assert edge/drive đúng schema.
+- **VERIFY:** golden-set #3 (parity `general`/`schema=None` cả 2 path) + #4 (xianxia-harem) ; **live-smoke worker-ai extraction không regress** (không chỉ knowledge); live-smoke 1 chương knowledge.
+- **Stop point S2-LB:** POST-REVIEW (dynamic extraction là shippable milestone; review phải xác nhận worker-ai/translation không đổi hành vi).
+
+### LC — Adopt / Sync / CRUD API (ASYNC)
+- **File mới (độc quyền LC):**
+  - `app/routers/public/ontology.py` — endpoint (theo contract §4):
+    - `GET /v1/kg/graph-schemas?scope=` (list/merged)
+    - `POST /v1/kg/projects/{project_id}/adopt` (copy-down; **M1 adopt-gated** check qua glossary client)
+    - `GET /v1/kg/projects/{project_id}/sync/available`, `POST .../sync/apply` (tree-granular, §10-A3)
+    - CRUD `/v1/kg/graph-schemas/...` (user/project tier; **Manage-gate**, Q4) + recycle bin (deprecate)
+    - `POST /v1/kg/system/graph-schemas` (admin-only sau `requireAdmin` placeholder)
+  - `app/db/repositories/ontology_mutations.py` — adopt deep-copy, sync diff/apply, CRUD writes, `content_hash`/`source_hash`.
+- **Dùng:** `resolver.py` (LA, read), `graph_schemas.py` (L1, read).
+- **VERIFY:** adopt copy-down + idempotent; sync diff/apply tree-level; tenancy deny-test (user B không đụng schema user A — bài học [[e0-grant-mapping-test-pattern]]); adopt-gated 422 khi glossary thiếu kind.
+- **Stop point S2-LC:** POST-REVIEW (adopt/sync usable).
+- **Composition C3:** API thật → LE/LF bỏ mock.
+
+### LD — Views + as-of-chapter read (ASYNC)
+- **File mới (độc quyền LD):**
+  - `app/routers/public/graph_views.py` — CRUD `/v1/kg/projects/{project_id}/views` (per-user, Q4) + **graph read** `GET /v1/kg/projects/{id}/graph?view=&as_of_chapter=` + `GET /v1/kg/entities/{id}/edges/{edge_type}/timeline` (spec §3.6).
+  - `app/db/repositories/graph_views.py`.
+  - `app/ontology/view_filter.py` — build filter query-scope theo view (READ-only; **không** scope extraction, §10-C3) + **temporal as-of**: `valid_from<=N AND (valid_to IS NULL OR valid_to>N)`.
+- **VERIFY:** view CRUD per-user tenancy; query scoped đúng edge/kind; as-of-chapter resolve đúng (đóng/mở instance); view trỏ deprecated type bị flag (§10-A4).
+
+### LH — Triage queue + resolution (ASYNC, spec §11)
+- **File mới (độc quyền LH):**
+  - `app/routers/public/triage.py` — `GET /v1/kg/projects/{id}/triage`, `POST .../triage/{signature}/resolve`, `POST .../triage/{triage_id}/dismiss`.
+  - `app/db/repositories/triage.py` — park (gọi từ LB extraction fail-soft), group theo `signature`, batch re-apply, status `pending_glossary` cho hand-off.
+  - `app/ontology/triage_apply.py` — re-process element parked → ghi edge/fact hợp-schema **qua write path tập trung** (D5).
+- **Tích hợp ở C4:** LB park vào triage (gọi `triage.repo`); LC glossary client cho hand-off promote-to-kind/demote-to-attr (`needs_glossary` → FE deep-link).
+- **VERIFY:** park đúng 5 `item_type`; batch re-apply theo signature; cross-service hand-off (mock glossary) → `pending_glossary` → re-process; tenancy deny-test ([[e0-grant-mapping-test-pattern]]).
+
+### LE — Frontend ontology UI (ASYNC, theo contract)
+- **File mới dưới `frontend/src/features/knowledge/` (độc quyền LE):**
+  - `api/ontology.ts` (client riêng, KHÔNG đụng `api.ts` dùng chung)
+  - `hooks/useGraphSchema.ts`, `hooks/useOntologyAdopt.ts`, `hooks/useGraphViews.ts`, `hooks/useOntologySync.ts`
+  - `components/ontology/*` (Adopt picker, Schema manage, Sync diff, View builder) — theo MVC rule (<100 LOC/component).
+- **File dùng chung (CHỈ ở commit tích hợp cuối, append-only, coordinate):** i18n namespace `kgOntology` ×4 locale, app route, sidebar entry.
+- **VERIFY:** vitest hooks/components; build theo mock tới C3 rồi nối API thật.
+
+### LF — MCP tool surface (ASYNC, theo contract)
+> **Spec riêng:** [`2026-06-20-knowledge-assistant-mcp-tools.md`](../specs/2026-06-20-knowledge-assistant-mcp-tools.md) — toàn bộ ~18 tool (graph read/propose/ontology/views/triage/admin), tiers R/W/C, `/mcp/admin` + RS256, confirm-token. LF = phase KM1–KM4 của spec đó; KM5 (admin `/mcp/admin`) + KM6 (skill prompt, confirm machinery) là phase riêng đồng bộ glossary T4/T5.
+- **File mới (độc quyền LF):**
+  - `app/tools/graph_schema_tools.py` — định nghĩa + handler tool (graph_query/adopt/schema_edit/views/triage…), import 1 dòng vào `tools/definitions.py` + `executor.py` (dòng đăng ký = commit tích hợp cuối).
+  - (KM5) `app/mcp/admin_server.py` + transport RS256 gate; (KM6) `app/ontology/confirm.py` (consumed_tokens + mint/confirm/preview, port glossary §13).
+- **MCP-first:** mọi tool agentic qua ai-gateway (CLAUDE.md). Extraction pipeline (không agentic) exempt.
+- **VERIFY:** tool schema valid; executor dispatch; ownership per-tool; confirm-token single-use/re-validate; CMS-surface curation test (admin tool vắng `/mcp`).
+
+### LG — Glossary internal-ontology read (ASYNC, **branch glossary**, EXTERNAL)
+- **File mới:** `services/glossary-service/internal/api/internal_ontology_read.go` — `GET /internal/books/{book_id}/ontology` (read-only, network-isolated, trả node-kinds của book).
+- **Sửa choke point (commit nhỏ cuối, biệt lập):** `server.go` +1 dòng đăng ký trong block `/internal` (dòng ~118-164).
+- **Contract:** thêm path vào `contracts/api/glossary-service/`.
+- **Coordinate:** owner branch glossary làm; KG dùng mock tới khi merge. **Đây là điểm đồng bộ cross-branch duy nhất.**
+
+### L7 — Integration + hard enforcement (SYNC, composition cuối)
+- **Sửa (trunk, sau khi mọi lane về):**
+  - `app/db/neo4j_repos/relations.py` (+`facts.py`) — bật **validate theo schema** + **cardinality closure** (single_active tự đóng) + **stamp `schema_version`** + temporal-required; **drop-and-triage per-edge** (§10-B2).
+  - `app/ontology/validation.py` — lật fail-soft → hard.
+  - Bật seam `graph_id` (edge, vẫn NULL/default).
+- **File mới:** `infra/kg-ontology-live-smoke.ps1` — cross-service: adopt (gated qua glossary) → extract 1 chương động → edge/drive đúng schema + temporal stamp → view query.
+- **VERIFY:** full suite + **live-smoke ≥2 service** (knowledge+glossary) — token bắt buộc (CLAUDE.md VERIFY).
+- **Stop point S3:** POST-REVIEW cuối + live-smoke evidence.
+
+---
+
+## 4. Contracts đông cứng ở L0 (điều kiện fan-out)
+
+| Contract | File | Dùng bởi |
+|---|---|---|
+| KG ontology API | `contracts/api/knowledge-service/ontology.yaml` (dir MỚI) | LC, LE, LF |
+| KG views + graph read (as-of-chapter) | `contracts/api/knowledge-service/views.yaml` | LD, LE |
+| KG triage API | `contracts/api/knowledge-service/triage.yaml` | LH, LE |
+| Glossary internal-ontology read (book + user standards) | thêm path vào `contracts/api/glossary-service/` | LA(client), LG |
+
+> Freeze = không đổi shape sau khi mở lane (đổi → quay lại S0). Đây là cái cho phép LE/LF/LC/LD/LG chạy song song với mock.
+
+---
+
+## 5. File-boundary matrix (chứng minh rời nhau)
+
+| Lane | File/dir SỞ HỮU (ghi) | Đọc (không ghi) | Cross-branch? |
+|---|---|---|---|
+| **L1** | `db/migrate.py`, `db/neo4j_schema.py`, `app/main.py` (router register/unregister), `db/ontology_models.py`*, `db/seed_graph_schemas.py`*, `db/repositories/graph_schemas.py`*, +1 dòng `models.py`; **KM0:** xóa `routers/internal_tools.py` + chat-service `knowledge_client.py::execute_tool()` + legacy tests + `definitions.py` docstring | — | KM0 đụng chat-service (cùng trunk, do-first) |
+| **LA** | `app/ontology/{resolver,validation,__init__}.py`*, `app/clients/glossary_ontology_client.py`* | `repositories/graph_schemas.py` | no |
+| **LB** | `sdks/.../extractors/*`, `sdks/.../prompts/*`, `sdks/.../resolve_config.py`, `app/extraction/pass2_{orchestrator,writer}.py` | `ontology/resolver.py`, glossary client | **YES — SDK chung worker-ai + translation; bắt buộc backward-compat (schema=None→no-op)** |
+| **LC** | `routers/public/ontology.py`*, `db/repositories/ontology_mutations.py`* | resolver, graph_schemas | no |
+| **LD** | `routers/public/graph_views.py`*, `db/repositories/graph_views.py`*, `app/ontology/view_filter.py`* | resolver | no |
+| **LE** | `features/knowledge/{api/ontology.ts,hooks/use*,components/ontology/*}`* | contract | no |
+| **LF** | `app/tools/graph_schema_tools.py`* | contract | no |
+| **LH** | `routers/public/triage.py`*, `db/repositories/triage.py`*, `app/ontology/triage_apply.py`* | resolver, validation, glossary client | no |
+| **LG** | `glossary/internal/api/internal_ontology_read.go`*, +1 dòng `server.go` | — | **YES (branch glossary)** |
+| **L7** | `neo4j_repos/relations.py`, `neo4j_repos/facts.py`, `ontology/validation.py` (flip), `infra/kg-ontology-live-smoke.ps1`* | tất cả | no |
+| **integration commit** | i18n registry, app route, sidebar, `tools/definitions.py`+`executor.py` (dòng đăng ký) | — | coordinate (append-only) |
+
+`*` = file mới. **Quy tắc:** không lane song song nào ghi cùng một file. `relations.py`/`facts.py` ghi ở L1 (additive props) rồi L7 (enforcement) — **tuần tự cùng trunk**, không song song.
+
+---
+
+## 6. DAG chạy song song — sync/async + stop/composition
+
+```
+        ┌─────────────── S0 (STOP: human design-lock + freeze contracts) ───────────────┐
+        │                                                                                 │
+        ▼ SYNC                                                                            
+   ┌─ L1 Foundation (trunk) ─┐                                                            
+   │  schema+models+seed     │── C1 (compose: L1 merged) ─────────────────────────────┐  
+   └─────────────────────────┘                                                         │  
+        │                                                                              ▼  
+        │  ── S1 (STOP: human review foundation) ──                          FAN-OUT (ASYNC, song song)
+        │                                                                              
+        ├──► LA resolution+validation ──┐                                              
+        │                               │── C2 (compose: resolver ready) ──► LB extraction (worktree, dài)
+        ├──► LC adopt/sync/CRUD ────────┤                                   │  └─ S2-LB (STOP: POST-REVIEW)
+        │        └─ S2-LC (STOP: POST-REVIEW)                               │
+        ├──► LD views + as-of-chapter ──┤── C3 (compose: API thật) ──► LE FE ─┐
+        │                               │                            └► LF MCP ┤
+        ├──► LH triage queue ───────────┤── C4 (compose: LB park + LC hand-off) ┤
+        └──► LG glossary route (branch glossary, EXTERNAL) ─────────────────────┘
+                                                                              │
+                                          ┌───────────────────────────────────┘
+                                          ▼ SYNC
+                                   ┌─ L7 Integration ─┐
+                                   │ enforcement+seam │── live-smoke ≥2 svc
+                                   │ +compose all     │
+                                   └──────────────────┘
+                                          │
+                                   ── S3 (STOP: final POST-REVIEW + live-smoke) ──
+```
+
+**Stop points (con người):** S0 design-lock · S1 foundation · S2-LC + S2-LB milestone POST-REVIEW · S3 final.
+**Composition points (merge/reconcile):** C0 contracts frozen · C1 foundation trunk · C2 resolver→LB/LC · C3 API thật→LE/LF · C4 LB-park+LC-handoff→LH triage · (L7) all→enforcement.
+
+**Song song thực tế:**
+- Sau C1: **LA, LC, LD, LE, LF, LG, LH chạy đồng thời** (7 lane). LE/LF dùng mock tới C3; LH dựng queue/router rồi tích hợp park+hand-off ở C4.
+- LB bắt đầu plumbing SDK ngay sau C1, **tích hợp resolver ở C2** (không chờ LA xong hẳn để khởi động).
+- LG hoàn toàn lệch nhịp (branch khác) — chỉ cần về trước L7.
+
+---
+
+## 7. Cross-branch conflict protocol
+
+| Branch | Đụng gì | Tránh đụng KG bằng |
+|---|---|---|
+| **glossary refactor** | `services/glossary-service/*`, `frontend/features/glossary/*`, `contracts/api/glossary-service/*` | KG chỉ chạm glossary qua **LG** (1 handler mới + 1 dòng `server.go`) — làm trên branch glossary, biệt lập. KG dùng `frontend/features/knowledge/*` (rời glossary). |
+| **admin-CMS** | (đang dev) admin surface | KG admin schema-write tạm sau `requireAdmin` placeholder; không build admin-identity ở epic này. |
+| **shared FE files** | i18n registry, app route, sidebar | KG dùng **namespace riêng `kgOntology`** + route riêng; chèn ở **commit tích hợp cuối**, append-only. |
+| **extraction SDK (worker-ai/translation)** | `sdks/python/loreweave_extraction/*` consume bởi worker-ai + translation-service | **LB backward-compat rule** (schema=None → hành vi cũ) = worker-ai/translation **không cần đổi 1 dòng**; golden-set baseline cover cả 2 path. **Coordinate timing nếu branch khác đang sửa worker-ai/SDK** — chạy LB trong worktree, merge SDK sớm + báo các consumer. |
+
+---
+
+## 8. Thứ tự khuyến nghị (nếu 1 người / ít agent)
+S0 → L1 → (LA ∥ LC ∥ LD) → C2 → LB → (LE ∥ LF nối API) → LG về → L7 → S3.
+**Nếu /warp nhiều agent:** L1 solo; rồi 6 lane worktree song song; LB worktree riêng vì dài + đụng SDK.
+
+## 9. Việc CHƯA làm (deferred, không trong epic)
+- K8 graph_id partition thật + promote view→partition.
+- Đa-template-active/project (Q1 lớp 4).
+- Admin-identity epic (system schema-write hiện sau placeholder).
+- Shared system-level `drive` vocab (Q5).

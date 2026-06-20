@@ -641,7 +641,7 @@ class TestGetToolDefinitions:
                 "name": "memory_forget", "description": "forget a fact",
                 # An empty-input tool MUST advertise properties:{} — OpenAI-compatible
                 # providers (LM Studio) 400 the whole request on a missing `properties`
-                # (live-smoke bug: glossary_list_kinds had no properties).
+                # (live-smoke bug: glossary_list_system_standards had no properties).
                 "parameters": {"type": "object", "properties": {}}}},
         ]
         await client.aclose()

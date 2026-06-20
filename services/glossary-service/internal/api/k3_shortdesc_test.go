@@ -52,34 +52,34 @@ func TestK3_BackfillPopulatesShortDescription(t *testing.T) {
 	ctx := context.Background()
 
 	bookID := "00000000-0000-0000-0000-000000033001"
-	var kindID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
-	var nameAttr, descAttr string
-	pool.QueryRow(ctx, `SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`, kindID).Scan(&nameAttr)
-	pool.QueryRow(ctx, `SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='description' LIMIT 1`, kindID).Scan(&descAttr)
+	bid := uuid.MustParse(bookID)
+	adoptTestBook(t, pool, bid)
+	kindID := bookKindID(t, pool, bid, "character")
+	nameAttr := bookAttrID(t, pool, bid, kindID, "name")
+	descAttr := bookAttrID(t, pool, bid, kindID, "description")
 
 	t.Cleanup(func() { pool.Exec(ctx, `DELETE FROM glossary_entities WHERE book_id=$1`, bookID) })
 
 	// Entity A: has description
 	var idA string
-	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`, bookID, kindID).Scan(&idA)
+	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`, bid, kindID).Scan(&idA)
 	pool.Exec(ctx, `INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value) VALUES($1,$2,'zh','Alice')`, idA, nameAttr)
 	pool.Exec(ctx, `INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value) VALUES($1,$2,'zh','A wandering swordsman. He wields two blades.')`, idA, descAttr)
 
 	// Entity B: no description
 	var idB string
-	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`, bookID, kindID).Scan(&idB)
+	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`, bid, kindID).Scan(&idB)
 	pool.Exec(ctx, `INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value) VALUES($1,$2,'zh','Bob')`, idB, nameAttr)
 
 	// Entity C: CJK description
 	var idC string
-	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`, bookID, kindID).Scan(&idC)
+	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`, bid, kindID).Scan(&idC)
 	pool.Exec(ctx, `INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value) VALUES($1,$2,'zh','李雲')`, idC, nameAttr)
 	pool.Exec(ctx, `INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value) VALUES($1,$2,'zh','一位神秘的刀客。')`, idC, descAttr)
 
 	// Entity D: user-overridden (auto=false) with NULL — must NOT be backfilled
 	var idD string
-	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags,short_description_auto) VALUES($1,$2,'active','{}',false) RETURNING entity_id`, bookID, kindID).Scan(&idD)
+	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags,short_description_auto) VALUES($1,$2,'active','{}',false) RETURNING entity_id`, bid, kindID).Scan(&idD)
 	pool.Exec(ctx, `INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value) VALUES($1,$2,'zh','Denise')`, idD, nameAttr)
 
 	n, err := migrate.BackfillShortDescription(ctx, pool, k3Generate)
@@ -122,15 +122,15 @@ func TestK3_BackfillCursorForwardProgress(t *testing.T) {
 	ctx := context.Background()
 
 	bookID := "00000000-0000-0000-0000-000000033099"
-	var kindID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
-	var nameAttr string
-	pool.QueryRow(ctx, `SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`, kindID).Scan(&nameAttr)
+	bid := uuid.MustParse(bookID)
+	adoptTestBook(t, pool, bid)
+	kindID := bookKindID(t, pool, bid, "character")
+	nameAttr := bookAttrID(t, pool, bid, kindID, "name")
 	t.Cleanup(func() { pool.Exec(ctx, `DELETE FROM glossary_entities WHERE book_id=$1`, bookID) })
 
 	for i := 0; i < 5; i++ {
 		var id string
-		pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`, bookID, kindID).Scan(&id)
+		pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`, bid, kindID).Scan(&id)
 		pool.Exec(ctx, `INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value) VALUES($1,$2,'zh','CursorTest')`, id, nameAttr)
 	}
 
@@ -164,14 +164,14 @@ func TestK3_BackfillIdempotent(t *testing.T) {
 	ctx := context.Background()
 
 	bookID := "00000000-0000-0000-0000-000000033002"
-	var kindID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
-	var nameAttr string
-	pool.QueryRow(ctx, `SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`, kindID).Scan(&nameAttr)
+	bid := uuid.MustParse(bookID)
+	adoptTestBook(t, pool, bid)
+	kindID := bookKindID(t, pool, bid, "character")
+	nameAttr := bookAttrID(t, pool, bid, kindID, "name")
 	t.Cleanup(func() { pool.Exec(ctx, `DELETE FROM glossary_entities WHERE book_id=$1`, bookID) })
 
 	var id string
-	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`, bookID, kindID).Scan(&id)
+	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`, bid, kindID).Scan(&id)
 	pool.Exec(ctx, `INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value) VALUES($1,$2,'zh','Eve')`, id, nameAttr)
 
 	n1, _ := migrate.BackfillShortDescription(ctx, pool, k3Generate)
@@ -192,16 +192,16 @@ func TestK3_AutoRegenOnDescriptionUpdate(t *testing.T) {
 	ctx := context.Background()
 
 	bookID := "00000000-0000-0000-0000-000000033003"
-	var kindID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
-	var nameAttr, descAttr string
-	pool.QueryRow(ctx, `SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`, kindID).Scan(&nameAttr)
-	pool.QueryRow(ctx, `SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='description' LIMIT 1`, kindID).Scan(&descAttr)
+	bid := uuid.MustParse(bookID)
+	adoptTestBook(t, pool, bid)
+	kindID := bookKindID(t, pool, bid, "character")
+	nameAttr := bookAttrID(t, pool, bid, kindID, "name")
+	descAttr := bookAttrID(t, pool, bid, kindID, "description")
 	t.Cleanup(func() { pool.Exec(ctx, `DELETE FROM glossary_entities WHERE book_id=$1`, bookID) })
 
 	// Seed entity with a name + description; backfill populates short_description.
 	var id string
-	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`, bookID, kindID).Scan(&id)
+	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`, bid, kindID).Scan(&id)
 	pool.Exec(ctx, `INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value) VALUES($1,$2,'zh','Frank')`, id, nameAttr)
 	var descAVID string
 	pool.QueryRow(ctx, `INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value) VALUES($1,$2,'zh','First sentence. Second sentence.') RETURNING attr_value_id`, id, descAttr).Scan(&descAVID)
@@ -254,18 +254,18 @@ func TestK3_AutoRegenSkippedWhenUserOverride(t *testing.T) {
 	ctx := context.Background()
 
 	bookID := "00000000-0000-0000-0000-000000033004"
-	var kindID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
-	var nameAttr, descAttr string
-	pool.QueryRow(ctx, `SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`, kindID).Scan(&nameAttr)
-	pool.QueryRow(ctx, `SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='description' LIMIT 1`, kindID).Scan(&descAttr)
+	bid := uuid.MustParse(bookID)
+	adoptTestBook(t, pool, bid)
+	kindID := bookKindID(t, pool, bid, "character")
+	nameAttr := bookAttrID(t, pool, bid, kindID, "name")
+	descAttr := bookAttrID(t, pool, bid, kindID, "description")
 	t.Cleanup(func() { pool.Exec(ctx, `DELETE FROM glossary_entities WHERE book_id=$1`, bookID) })
 
 	var id string
 	pool.QueryRow(ctx,
 		`INSERT INTO glossary_entities(book_id,kind_id,status,tags,short_description,short_description_auto)
 		 VALUES($1,$2,'active','{}','USER WROTE THIS',false) RETURNING entity_id`,
-		bookID, kindID).Scan(&id)
+		bid, kindID).Scan(&id)
 	pool.Exec(ctx, `INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value) VALUES($1,$2,'zh','Grace')`, id, nameAttr)
 	pool.Exec(ctx, `INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value) VALUES($1,$2,'zh','completely different description text for regeneration')`, id, descAttr)
 
@@ -299,17 +299,17 @@ func TestK3_AutoRegenSkipsWhenShortDescUnchanged(t *testing.T) {
 	ctx := context.Background()
 
 	bookID := "00000000-0000-0000-0000-000000033005"
-	var kindID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
-	var nameAttr, descAttr string
-	pool.QueryRow(ctx, `SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`, kindID).Scan(&nameAttr)
-	pool.QueryRow(ctx, `SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='description' LIMIT 1`, kindID).Scan(&descAttr)
+	bid := uuid.MustParse(bookID)
+	adoptTestBook(t, pool, bid)
+	kindID := bookKindID(t, pool, bid, "character")
+	nameAttr := bookAttrID(t, pool, bid, kindID, "name")
+	descAttr := bookAttrID(t, pool, bid, kindID, "description")
 	t.Cleanup(func() { pool.Exec(ctx, `DELETE FROM glossary_entities WHERE book_id=$1`, bookID) })
 
 	var id string
 	pool.QueryRow(ctx,
 		`INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`,
-		bookID, kindID).Scan(&id)
+		bid, kindID).Scan(&id)
 	pool.Exec(ctx,
 		`INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value) VALUES($1,$2,'en','Helga')`,
 		id, nameAttr)

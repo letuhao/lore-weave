@@ -29,6 +29,11 @@ dependencies = [
   # the SDK declares it so its own unit tests + the import resolve. (emit.py is duck-typed
   # — no asyncpg dep.)
   "redis>=5",
+  # MCP fan-out S-KIT-PY (2026-06-20) — loreweave_mcp is the shared Python MCP kit
+  # (stateless FastMCP wiring, identity envelope, scope guards, confirm-token spine,
+  # _meta validator). It needs the MCP SDK; every Python MCP provider service that
+  # `pip install /sdk`s gets the kit + its transport.
+  "mcp>=1.27",
 ]
 
 [project.optional-dependencies]
@@ -72,6 +77,12 @@ include = [
   # extracted from 3 byte-identical service copies: composition/knowledge/
   # translation). Pure httpx + stdlib; per-service knobs passed at construction.
   "loreweave_grants*",
+  # MCP fan-out S-KIT-PY (2026-06-20) — `loreweave_mcp` added (the shared Python
+  # MCP kit: make_stateless_fastmcp + build_tool_context + ForbidExtra extracted
+  # from knowledge-service; the 3 scope guards, confirm-token spine, and _meta
+  # validator built fresh). Depends on the `mcp` SDK + pydantic. Consumed by every
+  # Python MCP provider service (jobs, composition, translation).
+  "loreweave_mcp*",
 ]
 exclude = ["tests*"]
 

@@ -120,6 +120,17 @@ ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS eval_judge_model_source TEXT;
 ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS eval_judge_model_ref    UUID;
 ALTER TABLE campaign_chapters ADD COLUMN IF NOT EXISTS eval_fidelity_score NUMERIC(4,3);
 
+-- E0-4b — collaboration grant adoption. A manage-collaborator's campaign has
+-- owner_user_id = caller (the creator, billed), but the knowledge graph + project
+-- belong to the BOOK OWNER. book_owner_user_id is that partition identity — the
+-- saga dispatches knowledge under it while billing the caller. embedding_model_ref
+-- is the CALLER's own ref for the SAME embedding model the project uses, forwarded
+-- as billing_embedding_model on the collaborator knowledge dispatch (dimension-guarded
+-- knowledge-side). Backfill: pre-E0 campaigns were owner-run → book_owner = owner.
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS book_owner_user_id UUID;
+UPDATE campaigns SET book_owner_user_id = owner_user_id WHERE book_owner_user_id IS NULL;
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS embedding_model_ref UUID;
+
 -- D-FACTORY-INFLIGHT-LOG — append-only per-chapter activity log (the monitor's
 -- timestamped recent-activity feed). Sourced ENTIRELY by a trigger on
 -- campaign_chapters (below): every stage-status transition the driver/consumer/

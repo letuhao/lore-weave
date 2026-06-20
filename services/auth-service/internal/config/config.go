@@ -39,6 +39,13 @@ type Config struct {
 	AdminTokenIssuerSecret string        // X-Internal-Token required to mint admin tokens; DISTINCT from InternalServiceToken
 	AdminAuditHMACKey      string        // HMAC key for break-glass reason hashing (never store raw reason)
 	AdminTokenTTL          time.Duration // TTL for normal admin tokens (default 15m)
+	// AdminJWTLocalPrivateKeyPEM is a DEV/SELF-HOSTED fallback signer: an RSA
+	// private key (PKCS#8 or PKCS#1 PEM) used to sign admin JWTs in-process when no
+	// KMS key is configured. PRODUCTION SHOULD USE KMS (key never leaves KMS); this
+	// exists so the admin CMS works on a local/self-hosted stack without AWS. KMS
+	// wins when both are set. The matching PUBLIC key goes to verifiers (glossary's
+	// ADMIN_JWT_PUBLIC_KEY_PEM).
+	AdminJWTLocalPrivateKeyPEM string
 }
 
 func Load() (*Config, error) {
@@ -62,6 +69,7 @@ func Load() (*Config, error) {
 		AWSRegion:                      getEnv("AWS_REGION", "us-east-1"),
 		AdminTokenIssuerSecret:         os.Getenv("ADMIN_TOKEN_ISSUER_SECRET"),
 		AdminAuditHMACKey:              os.Getenv("ADMIN_AUDIT_HMAC_KEY"),
+		AdminJWTLocalPrivateKeyPEM:     os.Getenv("ADMIN_JWT_LOCAL_PRIVATE_KEY_PEM"),
 	}
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")
@@ -85,7 +93,9 @@ func Load() (*Config, error) {
 	// Admin-JWT issuance (074/075). Feature is off unless a KMS signing key is
 	// configured; when on, the rest is required and fails closed.
 	c.AdminTokenTTL = time.Duration(getInt("ADMIN_TOKEN_TTL_SECONDS", 900)) * time.Second
-	c.AdminIssuanceEnabled = c.KMSAdminSigningKeyID != ""
+	// Enabled by EITHER a KMS key (prod) or a local private key (dev/self-hosted).
+	// KMS takes precedence at signer-construction time (main.go).
+	c.AdminIssuanceEnabled = c.KMSAdminSigningKeyID != "" || c.AdminJWTLocalPrivateKeyPEM != ""
 	if c.AdminIssuanceEnabled {
 		if len(c.AdminTokenIssuerSecret) < 32 {
 			return nil, fmt.Errorf("ADMIN_TOKEN_ISSUER_SECRET must be >=32 chars when admin issuance is enabled")

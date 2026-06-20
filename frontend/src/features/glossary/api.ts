@@ -15,6 +15,7 @@ import type {
   Confidence,
   EntityRevisionSummary,
   EntityRevisionDetail,
+  ActionPreview,
 } from './types';
 
 const BASE = '/v1/glossary';
@@ -58,10 +59,13 @@ export const glossaryApi = {
     );
   },
 
-  createEntity(bookId: string, kindId: string, token: string): Promise<GlossaryEntity> {
+  // genreIds (optional) is the per-entity genre override applied atomically at create:
+  // the backend seeds value rows for exactly those genres' attributes (keep-both
+  // conflicts included). Omit ⇒ the entity follows the book's active genres.
+  createEntity(bookId: string, kindId: string, token: string, genreIds?: string[]): Promise<GlossaryEntity> {
     return apiJson<GlossaryEntity>(`${BASE}/books/${bookId}/entities`, {
       method: 'POST',
-      body: JSON.stringify({ kind_id: kindId }),
+      body: JSON.stringify(genreIds ? { kind_id: kindId, genre_ids: genreIds } : { kind_id: kindId }),
       token,
     });
   },
@@ -70,11 +74,22 @@ export const glossaryApi = {
     return apiJson<GlossaryEntity>(`${BASE}/books/${bookId}/entities/${entityId}`, { token });
   },
 
-  // Tier-S (P4): the token-gated schema-create. The assistant proposed a new
-  // kind/attribute (minting `confirmToken`); this confirms it after the human
-  // clicks Confirm. The endpoint is JWT-only — no gateway/MCP route reaches it.
-  confirmSchema(confirmToken: string, token: string): Promise<unknown> {
-    return apiJson<unknown>(`${BASE}/schema/confirm`, {
+  // Generalized class-C confirm (spec §13). The assistant proposed a high-impact
+  // action (schema create, book_delete, …) minting `confirmToken`; this confirms it
+  // after the human clicks Confirm. JWT-only — no gateway/MCP route reaches it.
+  // Single-use: a replay or a stale/expired token 422s.
+  confirmAction(confirmToken: string, token: string): Promise<unknown> {
+    return apiJson<unknown>(`${BASE}/actions/confirm`, {
+      method: 'POST',
+      body: JSON.stringify({ confirm_token: confirmToken }),
+      token,
+    });
+  },
+
+  // Non-consuming current-state render of a pending action's confirm card (§13.5).
+  // Called when the card mounts so the human confirms against what is true NOW.
+  previewAction(confirmToken: string, token: string): Promise<ActionPreview> {
+    return apiJson<ActionPreview>(`${BASE}/actions/preview`, {
       method: 'POST',
       body: JSON.stringify({ confirm_token: confirmToken }),
       token,
@@ -373,40 +388,11 @@ export const glossaryApi = {
 
   // ── Genre Groups ────────────────────────────────────────────────────────────
 
+  // Old-model genre-groups read — still used by SettingsTab's genre-tag picker.
+  // The write fns (createGenre/patchGenre/deleteGenre) retired with GenreGroupsPanel
+  // in G6f; the book genre tier is now managed via tieringApi + useBookOntology.
   listGenres(bookId: string, token: string): Promise<GenreGroup[]> {
     return apiJson<GenreGroup[]>(`${BASE}/books/${bookId}/genres`, { token });
-  },
-
-  createGenre(
-    bookId: string,
-    payload: { name: string; color?: string; description?: string; sort_order?: number },
-    token: string,
-  ): Promise<GenreGroup> {
-    return apiJson<GenreGroup>(`${BASE}/books/${bookId}/genres`, {
-      method: 'POST',
-      body: JSON.stringify(payload),
-      token,
-    });
-  },
-
-  patchGenre(
-    bookId: string,
-    genreId: string,
-    changes: Record<string, unknown>,
-    token: string,
-  ): Promise<GenreGroup> {
-    return apiJson<GenreGroup>(`${BASE}/books/${bookId}/genres/${genreId}`, {
-      method: 'PATCH',
-      body: JSON.stringify(changes),
-      token,
-    });
-  },
-
-  deleteGenre(bookId: string, genreId: string, token: string): Promise<void> {
-    return apiJson<void>(`${BASE}/books/${bookId}/genres/${genreId}`, {
-      method: 'DELETE',
-      token,
-    });
   },
 
   // ── Attribute Translations ────────────────────────────────────────────────

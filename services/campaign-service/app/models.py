@@ -148,6 +148,10 @@ MODEL_PATCH_FIELDS = frozenset({
 class Campaign(BaseModel):
     campaign_id: UUID
     owner_user_id: UUID
+    # E0-4b — the book owner = knowledge-graph partition / project owner. Equals
+    # owner_user_id for an owner-run campaign; differs when a manage-collaborator
+    # created it (owner_user_id = caller, billed). Optional/None for older rows.
+    book_owner_user_id: Optional[UUID] = None
     book_id: UUID
     name: str
     status: str
@@ -155,6 +159,9 @@ class Campaign(BaseModel):
     stages: list[str]
     target_language: Optional[str]
     knowledge_project_id: Optional[UUID]
+    # E0-4b — the caller's own ref for the SAME embedding model the project uses,
+    # forwarded as billing_embedding_model on the collaborator knowledge dispatch.
+    embedding_model_ref: Optional[UUID] = None
     knowledge_model_source: Optional[str]
     knowledge_model_ref: Optional[UUID]
     translation_model_source: Optional[str]

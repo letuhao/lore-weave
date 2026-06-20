@@ -10,9 +10,16 @@ RUN apk add --no-cache git
 # Phase 6c — also COPY sdks/go/observability for the second replace
 # directive (github.com/loreweave/observability).
 #
+# MCP fan-out S-BOOK (2026-06-20) — the book MCP server's go.mod now replaces
+# github.com/loreweave/loreweave_mcp (the shared Go MCP kit), which itself
+# replaces github.com/loreweave/grantclient. Both must be in the build context
+# or `go mod download`/build fails. Mirrors provider-registry's Dockerfile.
+#
 # Copy SDKs first (separate cache layers), then service files.
 COPY sdks/go/llmgw /src/sdks/go/llmgw
 COPY sdks/go/observability /src/sdks/go/observability
+COPY sdks/go/loreweave_mcp /src/sdks/go/loreweave_mcp
+COPY sdks/go/grantclient /src/sdks/go/grantclient
 COPY services/book-service /src/services/book-service
 
 WORKDIR /src/services/book-service

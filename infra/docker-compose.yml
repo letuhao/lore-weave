@@ -103,6 +103,15 @@ services:
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       # Phase 6c — OpenTelemetry trace export (see provider-registry-service).
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      # Admin-JWT issuance (admin CMS / D-GKA-SYSTEM-TIER-ADMIN). Disabled unless a
+      # signing key is provided. DEV/self-hosted: set ADMIN_JWT_LOCAL_PRIVATE_KEY_PEM
+      # (a base64-or-PEM RSA private key — see infra/gen-admin-dev-keys.ps1); PROD:
+      # set KMS_ADMIN_SIGNING_KEY_ID instead (key never leaves KMS). The issuer/audit
+      # secrets are dev defaults, only used when issuance is enabled.
+      ADMIN_JWT_LOCAL_PRIVATE_KEY_PEM: ${ADMIN_JWT_LOCAL_PRIVATE_KEY_PEM:-}
+      KMS_ADMIN_SIGNING_KEY_ID: ${KMS_ADMIN_SIGNING_KEY_ID:-}
+      ADMIN_TOKEN_ISSUER_SECRET: ${ADMIN_TOKEN_ISSUER_SECRET:-dev_admin_issuer_secret_distinct_32chars!}
+      ADMIN_AUDIT_HMAC_KEY: ${ADMIN_AUDIT_HMAC_KEY:-dev_admin_audit_hmac_key_at_least_32chars}
     depends_on:
       postgres:
         condition: service_healthy
@@ -127,6 +136,9 @@ services:
       HTTP_ADDR: ":8082"
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_book?sslmode=disable
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      # MCP fan-out /review-impl — dedicated confirm-token signing secret (split
+      # from JWT_SECRET so the Tier-W confirm HMAC key has a distinct blast radius).
+      CONFIRM_TOKEN_SIGNING_SECRET: ${CONFIRM_TOKEN_SIGNING_SECRET:-loreweave_local_dev_confirm_signing_secret_change_me_32chars}
       BOOKS_STORAGE_BUCKET: loreweave-dev-books
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: loreweave
@@ -165,6 +177,9 @@ services:
       PORT: "8093"
       COMPOSITION_DB_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_composition
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      # MCP fan-out /review-impl — dedicated confirm-token signing secret (split
+      # from the envelope internal token so the Tier-W confirm HMAC key is distinct).
+      CONFIRM_TOKEN_SIGNING_SECRET: ${CONFIRM_TOKEN_SIGNING_SECRET:-loreweave_local_dev_confirm_signing_secret_change_me_32chars}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       REDIS_URL: redis://redis:6379
       # M4 decouple — the API enqueues batch ops only when this is on. MUST match
@@ -212,6 +227,9 @@ services:
     environment:
       COMPOSITION_DB_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_composition
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      # MCP fan-out /review-impl — dedicated confirm-token signing secret (split
+      # from the envelope internal token so the Tier-W confirm HMAC key is distinct).
+      CONFIRM_TOKEN_SIGNING_SECRET: ${CONFIRM_TOKEN_SIGNING_SECRET:-loreweave_local_dev_confirm_signing_secret_change_me_32chars}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       REDIS_URL: redis://redis:6379
       LOG_LEVEL: INFO
@@ -303,8 +321,16 @@ services:
       HTTP_ADDR: ":8085"
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_provider_registry?sslmode=disable
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      # MCP fan-out /review-impl — dedicated confirm-token signing secret (split
+      # from JWT_SECRET so the Tier-W confirm HMAC key has a distinct blast radius).
+      CONFIRM_TOKEN_SIGNING_SECRET: ${CONFIRM_TOKEN_SIGNING_SECRET:-loreweave_local_dev_confirm_signing_secret_change_me_32chars}
       USAGE_BILLING_SERVICE_URL: http://usage-billing-service:8086
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # S-SETTINGS (MCP fan-out) — settings MCP server's profile tools call
+      # auth-service's token-gated /internal/users/{id}/full-profile here (each
+      # service owns its DB — no cross-service SQL). Optional; empty disables only
+      # the two profile tools' backing call.
+      AUTH_SERVICE_INTERNAL_URL: http://auth-service:8081
       # Phase 2c — async LLM job terminal events publish to
       # `loreweave.events` topic exchange. Empty/unset = NoopNotifier
       # (caller polls GET /v1/llm/jobs/{id}; no broker dependency).
@@ -457,6 +483,9 @@ services:
     environment:
       DATABASE_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_translation
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      # MCP fan-out /review-impl — dedicated confirm-token signing secret (split
+      # from the envelope internal token so the Tier-W confirm HMAC key is distinct).
+      CONFIRM_TOKEN_SIGNING_SECRET: ${CONFIRM_TOKEN_SIGNING_SECRET:-loreweave_local_dev_confirm_signing_secret_change_me_32chars}
       BOOK_SERVICE_INTERNAL_URL: http://book-service:8082
       PROVIDER_REGISTRY_SERVICE_URL: http://provider-registry-service:8085
       # Phase 4c-α: SDK install. Same host as legacy URL but separate
@@ -591,6 +620,9 @@ services:
     environment:
       DATABASE_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_translation
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      # MCP fan-out /review-impl — dedicated confirm-token signing secret (split
+      # from the envelope internal token so the Tier-W confirm HMAC key is distinct).
+      CONFIRM_TOKEN_SIGNING_SECRET: ${CONFIRM_TOKEN_SIGNING_SECRET:-loreweave_local_dev_confirm_signing_secret_change_me_32chars}
       BOOK_SERVICE_INTERNAL_URL: http://book-service:8082
       PROVIDER_REGISTRY_SERVICE_URL: http://provider-registry-service:8085
       # Phase 4c-α: SDK install. Same host as legacy URL.
@@ -651,6 +683,11 @@ services:
       REDIS_URL: redis://redis:6379
       # Phase 6c — OpenTelemetry trace export (see provider-registry-service).
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      # D-GKA-SYSTEM-TIER-ADMIN — SPKI/PKIX PEM of the platform admin-signing key
+      # (public half of the auth-service KMS key). When set, the System-tier admin
+      # write endpoints verify an RS256 admin JWT against it; unset → they fail
+      # closed (503). Optional — the rest of the service runs without it.
+      ADMIN_JWT_PUBLIC_KEY_PEM: ${ADMIN_JWT_PUBLIC_KEY_PEM:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -812,6 +849,13 @@ services:
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       KNOWLEDGE_MCP_URL: http://knowledge-service:8092/mcp
       GLOSSARY_MCP_URL: http://glossary-service:8088/mcp
+      # MCP fan-out COMPOSE B — federate every domain MCP provider via env (C-GW:
+      # "adding a provider = an env entry, not a code edit"). Prefixes resolve from
+      # the gateway's DEFAULT_PREFIX_MAP by name; a provider that's down degrades the
+      # catalog to PARTIAL (H10) rather than blocking the gateway, so no hard
+      # depends_on is required here. Wave 1: knowledge, glossary, jobs.
+      # Wave 2: book, composition, translation, settings.
+      AI_GATEWAY_PROVIDERS: "knowledge=http://knowledge-service:8092/mcp,glossary=http://glossary-service:8088/mcp,jobs=http://jobs-service:8096/mcp,book=http://book-service:8082/mcp,composition=http://composition-service:8093/mcp,translation=http://translation-service:8087/mcp,settings=http://provider-registry-service:8085/mcp"
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       knowledge-service:
@@ -1388,6 +1432,23 @@ services:
       - "5174:80"
     # profiles:
     #   - v2
+
+  # ── Admin CMS (System-tier glossary standards) ────────────────────────
+  # Thin internal admin UI (separate from the main app). Talks to the same
+  # gateway at /v1; manages the System tier via the admin endpoints, which
+  # require an admin session (auth-service /v1/admin/session — needs admin
+  # issuance enabled + the caller to be an admin_principal).
+  cms-frontend:
+    build:
+      context: ../cms-frontend
+      dockerfile: Dockerfile
+      labels: *build-labels
+      args:
+        VITE_API_BASE: ${VITE_API_BASE:-http://localhost:3123}
+    depends_on:
+      - api-gateway-bff
+    ports:
+      - "5175:80"
 
   # ── K11.1 — Neo4j for the Track 2/3 knowledge graph ───────────────────
   # Default-on: Tracks 1-3 are feature-complete and the graph (entities,

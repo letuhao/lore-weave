@@ -178,11 +178,15 @@ def test_estimate_no_models_skips_oracle(client, mocker):
     assert float(resp.json()["estimated_usd_high"]) == 0.0
 
 
-def test_estimate_forbidden_other_owner(client, mocker):
-    _book_stub(mocker, owner="someone-else")
+def test_estimate_denied_without_grant_404(client, mocker, fake_grant):
+    # E0-4b: estimate is `view`-gated (any grantee may size a campaign on a shared
+    # book). No grant → 404 (anti-oracle). Owner-compare is gone.
+    from app.grant_client import GrantLevel
+    fake_grant.resolve_grant.return_value = GrantLevel.NONE
+    _book_stub(mocker)
     resp = client.post("/v1/campaigns/estimate", json=_req())
-    assert resp.status_code == 403
-    assert resp.json()["detail"]["code"] == "CAMPAIGN_FORBIDDEN"
+    assert resp.status_code == 404
+    assert resp.json()["detail"]["code"] == "CAMPAIGN_NOT_FOUND"
 
 
 def test_estimate_no_chapters(client, mocker):

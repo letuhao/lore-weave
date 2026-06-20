@@ -10,6 +10,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/google/uuid"
 )
 
 func TestInternalExtractionProfile_RequiresInternalToken(t *testing.T) {
@@ -31,6 +33,10 @@ func TestInternalExtractionProfile_ReturnsKindsWithoutJWT(t *testing.T) {
 
 	srv, token := newEntitiesListServer(t)
 	srv.pool = pool
+
+	// G4: the extraction profile is book-local — a book must be adopted (book_kinds
+	// populated) before it yields any kinds. Adopt so the profile is non-empty.
+	adoptTestBook(t, pool, uuid.MustParse(bookID))
 
 	req := httptest.NewRequest(http.MethodGet,
 		"/internal/books/"+bookID+"/extraction-profile", nil)

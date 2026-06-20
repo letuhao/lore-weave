@@ -1,9 +1,12 @@
 package api
 
 import (
+	"crypto/rsa"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -12,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/loreweave/foundation/contracts/adminjwt"
 	"github.com/loreweave/grantclient"
 	"github.com/loreweave/observability"
 
@@ -26,15 +30,34 @@ type Server struct {
 	// grantClient resolves (user, book) grants against book-service (E0-1).
 	// Positive-grant caching lives in the client; nil → guards fail closed.
 	grantClient *grantclient.Client
+	// adminPub verifies RS256 admin JWTs for the System-tier write endpoints
+	// (D-GKA-SYSTEM-TIER-ADMIN). nil when ADMIN_JWT_PUBLIC_KEY_PEM is unset →
+	// those endpoints fail closed. adminKID = KeyFingerprint(adminPub).
+	adminPub *rsa.PublicKey
+	adminKID string
 }
 
 func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
-	return &Server{
+	s := &Server{
 		pool:        pool,
 		cfg:         cfg,
 		secret:      []byte(cfg.JWTSecret),
 		grantClient: buildGrantClient(cfg.BookServiceURL, cfg.InternalServiceToken),
 	}
+	if raw := strings.TrimSpace(cfg.AdminJWTPublicKeyPEM); raw != "" {
+		pub, err := adminjwt.ParseRSAPublicKeyPEM(pemOrBase64(raw))
+		if err != nil {
+			// Misconfigured key → leave admin disabled (fail closed) + log loudly.
+			slog.Error("glossary: ADMIN_JWT_PUBLIC_KEY_PEM parse failed; System-tier admin endpoints DISABLED", "err", err)
+		} else if kid, err := adminjwt.KeyFingerprint(pub); err != nil {
+			slog.Error("glossary: admin key fingerprint failed; System-tier admin endpoints DISABLED", "err", err)
+		} else {
+			s.adminPub = pub
+			s.adminKID = kid
+			slog.Info("glossary: System-tier admin endpoints ENABLED", "kid", kid)
+		}
+	}
+	return s
 }
 
 // GrantClient exposes the process's grant client so main can wire the
@@ -141,25 +164,106 @@ func (s *Server) Router() http.Handler {
 	})
 
 	r.Route("/v1/glossary", func(r chi.Router) {
+		// System (T1) kinds are READ-ONLY over HTTP (SS-4 Milestone C). The merged
+		// kind list (T1 system + the caller's T2 user kinds, then T3 book kinds in
+		// SS-5) stays readable; all user-facing kind WRITES moved to the per-user
+		// (/user-kinds) and per-book tiers. The old POST/PATCH/DELETE /kinds*,
+		// /kinds/reorder, /kind-aliases, and the attribute write routes were removed
+		// here — a regular user must not mutate the shared system catalogue.
 		r.Get("/kinds", s.listKinds)
-		r.Post("/kinds", s.createKind)
-		r.Patch("/kinds/reorder", s.reorderKinds)
-		// Tier-S (P4): the ONLY schema-create path for the assistant — JWT-only,
-		// gated on a server-minted confirm token (INV-9/H8). The gateway/MCP side
-		// can mint a token (propose tools) but has no route here.
-		r.Post("/schema/confirm", s.confirmSchema)
-		// Kind-resolution epic: alias table (alias_code → kind) for the unknown-kind review.
+		// Generalized class-C confirm machinery (spec §13) — the single token-gated,
+		// single-use, human-confirmed write path for every high-impact action
+		// (book_delete + schema creates today; adopt/sync/system later). Supersedes
+		// the retired /schema/confirm. /preview is non-consuming (current-state card).
+		r.Post("/actions/confirm", s.confirmAction)
+		r.Post("/actions/preview", s.previewAction)
+		// Kind-resolution epic: alias table READ (alias_code → kind) for the
+		// unknown-kind review GUI. The write (createKindAlias + reassign) was removed
+		// in SS-4 Milestone C; it returns in SS-7 retargeted at the tiered model.
 		r.Get("/kind-aliases", s.listKindAliases)
-		r.Post("/kind-aliases", s.createKindAlias)
-		r.Route("/kinds/{kind_id}", func(r chi.Router) {
-			r.Patch("/", s.patchKind)
-			r.Delete("/", s.deleteKind)
-			r.Post("/attributes", s.createAttrDef)
-			r.Patch("/attributes/reorder", s.reorderAttrDefs)
-			r.Route("/attributes/{attr_def_id}", func(r chi.Router) {
-				r.Patch("/", s.patchAttrDef)
-				r.Delete("/", s.deleteAttrDef)
+
+		// ── T2 per-user kind CRUD (SS-4) — owner-scoped, JWT-only ─────────────
+		r.Route("/user-kinds", func(r chi.Router) {
+			r.Get("/", s.listUserKinds)
+			r.Post("/", s.createUserKind)
+			r.Route("/{user_kind_id}", func(r chi.Router) {
+				r.Get("/", s.getUserKind)
+				r.Patch("/", s.patchUserKind)
+				r.Delete("/", s.deleteUserKind)
+				r.Route("/attributes", func(r chi.Router) {
+					r.Post("/", s.createUserKindAttr)
+					r.Route("/{attr_id}", func(r chi.Router) {
+						r.Patch("/", s.patchUserKindAttr)
+						r.Delete("/", s.deleteUserKindAttr)
+					})
+				})
+				// G2: kind↔genre association links (tiered genre level).
+				r.Route("/genres", func(r chi.Router) {
+					r.Get("/", s.listUserKindGenres)
+					r.Put("/", s.putUserKindGenres)
+					r.Put("/{genre_id}", s.addUserKindGenre)
+					r.Delete("/{genre_id}", s.deleteUserKindGenre)
+				})
 			})
+		})
+		// ── T2 user-kind recycle bin (SS-4) ──────────────────────────────────
+		r.Route("/user-kinds-trash", func(r chi.Router) {
+			r.Get("/", s.listUserKindTrash)
+			r.Post("/{user_kind_id}/restore", s.restoreUserKind)
+			r.Delete("/{user_kind_id}", s.purgeUserKind)
+		})
+
+		// ── Genre tier (G2, 2026-06-19) ───────────────────────────────────────
+		// System genres read-only (merged via /genres); user genres = owner-scoped
+		// CRUD + recycle bin, mirroring the user-kinds surface. This is the tiered
+		// genre level — distinct from the legacy per-book genre_groups at
+		// /books/{book_id}/genres (which retires in G4).
+		r.Get("/genres", s.listStandardGenres)
+		r.Route("/user-genres", func(r chi.Router) {
+			r.Get("/", s.listUserGenres)
+			r.Post("/", s.createUserGenre)
+			r.Route("/{genre_id}", func(r chi.Router) {
+				r.Get("/", s.getUserGenre)
+				r.Patch("/", s.patchUserGenre)
+				r.Delete("/", s.deleteUserGenre)
+			})
+		})
+		r.Route("/user-genres-trash", func(r chi.Router) {
+			r.Get("/", s.listUserGenreTrash)
+			r.Post("/{genre_id}/restore", s.restoreUserGenre)
+			r.Delete("/{genre_id}", s.purgeUserGenre)
+		})
+
+		// ── Attribute tier (G2) ───────────────────────────────────────────────
+		// System attributes read-only (admin/seed); user attributes owner-scoped
+		// CRUD with attach-by-code. Keyed by (kind × genre × code).
+		r.Get("/system-attributes", s.listSystemAttributes)
+
+		// ── System-tier ADMIN writes (D-GKA-SYSTEM-TIER-ADMIN) ────────────────
+		// Platform-owned defaults: each handler gates on an RS256 admin JWT with
+		// the admin:write scope (requireAdminScope). A regular HS256 user token
+		// can never satisfy it. Edits recompute content_hash for G5 Sync.
+		r.Route("/system-genres", func(r chi.Router) {
+			r.Post("/", s.createSystemGenre)
+			r.Patch("/{genre_id}", s.patchSystemGenre)
+			r.Delete("/{genre_id}", s.deleteSystemGenre)
+		})
+		r.Route("/system-kinds", func(r chi.Router) {
+			r.Post("/", s.createSystemKind)
+			r.Patch("/{kind_id}", s.patchSystemKind)
+			r.Delete("/{kind_id}", s.deleteSystemKind)
+		})
+		r.Route("/system-attributes-admin", func(r chi.Router) {
+			r.Post("/", s.createSystemAttribute)
+			r.Patch("/{attr_id}", s.patchSystemAttribute)
+			r.Delete("/{attr_id}", s.deleteSystemAttribute)
+		})
+
+		r.Route("/user-attributes", func(r chi.Router) {
+			r.Get("/", s.listUserAttributes)
+			r.Post("/", s.createUserAttribute)
+			r.Patch("/{attr_id}", s.patchUserAttribute)
+			r.Delete("/{attr_id}", s.deleteUserAttribute)
 		})
 
 		// Cross-book wiki contributions for a user's public profile (UI-2a).
@@ -169,14 +273,47 @@ func (s *Server) Router() http.Handler {
 		r.Route("/books/{book_id}", func(r chi.Router) {
 			r.Get("/extraction-profile", s.getExtractionProfile)
 			r.Get("/export", s.exportGlossary)
-			r.Route("/genres", func(r chi.Router) {
-				r.Get("/", s.listGenres)
-				r.Post("/", s.createGenre)
-				r.Route("/{genre_id}", func(r chi.Router) {
-					r.Patch("/", s.patchGenre)
-					r.Delete("/", s.deleteGenre)
+			// G3: book-tier ontology — adopt (copy-down from System standards,
+			// Manage-gated) + book-local single-tier read (View-gated) + book-tier
+			// CRUD (G3b, Manage-gated). The legacy per-book genre_groups /genres
+			// routes were retired in G4e.
+			r.Post("/adopt", s.adoptBookOntology)
+			r.Route("/ontology", func(r chi.Router) {
+				r.Get("/", s.getBookOntology)
+				r.Put("/active-genres", s.setBookActiveGenres)
+				r.Route("/genres", func(r chi.Router) {
+					r.Post("/", s.createBookGenre)
+					r.Route("/{genre_id}", func(r chi.Router) {
+						r.Patch("/", s.patchBookGenre)
+						r.Delete("/", s.deleteBookGenre)
+					})
+				})
+				r.Route("/kinds", func(r chi.Router) {
+					r.Post("/", s.createBookKind)
+					r.Route("/{book_kind_id}", func(r chi.Router) {
+						r.Patch("/", s.patchBookKind)
+						r.Delete("/", s.deleteBookKind)
+						r.Put("/genres", s.setBookKindGenres)
+					})
+				})
+				r.Route("/attributes", func(r chi.Router) {
+					r.Post("/", s.createBookAttribute)
+					r.Route("/{attr_id}", func(r chi.Router) {
+						r.Patch("/", s.patchBookAttribute)
+						r.Delete("/", s.deleteBookAttribute)
+					})
 				})
 			})
+			// G5: Sync — on-demand diff (View) + per-row apply (Manage) of the book's
+			// adopted standards against their upstream source (book_sync_handler.go).
+			r.Route("/sync", func(r chi.Router) {
+				r.Get("/available", s.getBookSyncAvailable)
+				r.Post("/apply", s.applyBookSync)
+			})
+			// NOTE: the legacy per-book /genres routes (genre_groups) were RETIRED in
+			// G4e — genre_groups is dropped, replaced by the tiered *_genres +
+			// book_active_genres model. Book-tier genre CRUD lives under
+			// /ontology/genres above.
 			r.Route("/recycle-bin", func(r chi.Router) {
 				r.Get("/", s.listEntityTrash)
 				r.Post("/{entity_id}/restore", s.restoreEntity)
@@ -250,6 +387,13 @@ func (s *Server) Router() http.Handler {
 					r.Post("/reassign-kind", s.reassignEntityKind)
 					// mui #1c: merge loser entities into this (winner) entity.
 					r.Post("/merge", s.mergeEntities)
+					// G6/D2: per-entity genre override (entity_genres) — read (View) +
+					// replace (Edit). universal is always included (O4). Drives the
+					// merged entity form's which-attributes-apply decision.
+					r.Route("/genres", func(r chi.Router) {
+						r.Get("/", s.getEntityGenres)
+						r.Put("/", s.setEntityGenres)
+					})
 					r.Route("/chapter-links", func(r chi.Router) {
 						r.Get("/", s.listChapterLinks)
 						r.Post("/", s.createChapterLink)
@@ -340,6 +484,34 @@ func (s *Server) requireUserID(r *http.Request) (uuid.UUID, bool) {
 		return uuid.Nil, false
 	}
 	return id, true
+}
+
+// requireAdminScope verifies the Bearer admin RS256 JWT and that it carries the
+// required scope, writing the error response + returning false on any failure.
+// System tier is platform-owned: only an admin principal (never a regular user)
+// may mutate it (CLAUDE.md › User Boundaries). Fail closed when the verify key is
+// unconfigured. A regular HS256 user token never satisfies adminjwt.Verify (RS256
+// only), so this is not bypassable with a normal login.
+func (s *Server) requireAdminScope(w http.ResponseWriter, r *http.Request, scope string) (adminjwt.AdminClaims, bool) {
+	if s.adminPub == nil {
+		writeError(w, http.StatusServiceUnavailable, "GLOSS_ADMIN_UNAVAILABLE", "system-tier administration is not configured")
+		return adminjwt.AdminClaims{}, false
+	}
+	auth := r.Header.Get("Authorization")
+	if !strings.HasPrefix(auth, "Bearer ") {
+		writeError(w, http.StatusUnauthorized, "GLOSS_ADMIN_UNAUTHORIZED", "valid admin Bearer token required")
+		return adminjwt.AdminClaims{}, false
+	}
+	claims, err := adminjwt.Verify(strings.TrimPrefix(auth, "Bearer "), s.adminPub, s.adminKID)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "GLOSS_ADMIN_UNAUTHORIZED", "invalid admin token")
+		return adminjwt.AdminClaims{}, false
+	}
+	if !slices.Contains(claims.Scopes, scope) {
+		writeError(w, http.StatusForbidden, "GLOSS_ADMIN_FORBIDDEN", "missing required admin scope")
+		return adminjwt.AdminClaims{}, false
+	}
+	return claims, true
 }
 
 // requireInternalToken validates the X-Internal-Token header for service-to-service calls.
@@ -442,11 +614,13 @@ SELECT
     ae.best_tier
 FROM all_entities ae
 JOIN glossary_entities e ON e.entity_id = ae.entity_id
-JOIN entity_kinds ek ON ek.kind_id = e.kind_id
+JOIN book_kinds ek ON ek.book_kind_id = e.kind_id
 LEFT JOIN entity_attribute_values eav ON eav.entity_id = e.entity_id
     AND eav.attr_def_id = (
-        SELECT attr_def_id FROM attribute_definitions
-        WHERE kind_id = e.kind_id AND code = 'name' LIMIT 1
+        SELECT ba.attr_id FROM book_attributes ba
+        JOIN book_genres g ON g.genre_id = ba.genre_id
+        WHERE ba.kind_id = e.kind_id AND ba.code = 'name'
+        ORDER BY (g.code = 'universal') DESC LIMIT 1
     )
 LEFT JOIN attribute_translations at ON at.attr_value_id = eav.attr_value_id
     AND at.language_code = $2
@@ -465,11 +639,13 @@ SELECT
     COALESCE(at.confidence, '') AS name_confidence,
     0 AS best_tier
 FROM glossary_entities e
-JOIN entity_kinds ek ON ek.kind_id = e.kind_id
+JOIN book_kinds ek ON ek.book_kind_id = e.kind_id
 LEFT JOIN entity_attribute_values eav ON eav.entity_id = e.entity_id
     AND eav.attr_def_id = (
-        SELECT attr_def_id FROM attribute_definitions
-        WHERE kind_id = e.kind_id AND code = 'name' LIMIT 1
+        SELECT ba.attr_id FROM book_attributes ba
+        JOIN book_genres g ON g.genre_id = ba.genre_id
+        WHERE ba.kind_id = e.kind_id AND ba.code = 'name'
+        ORDER BY (g.code = 'universal') DESC LIMIT 1
     )
 LEFT JOIN attribute_translations at ON at.attr_value_id = eav.attr_value_id
     AND at.language_code = $2

@@ -43,8 +43,25 @@ def fake_pool():
 
 
 @pytest.fixture
-def client(fake_pool):
-    """FastAPI TestClient with DB + background tasks (consumer/driver) stubbed."""
+def fake_grant():
+    """E0-4b grant-client shim. Default OWNER so existing owner-run router tests
+    pass through the new grant gate unchanged; a deny test sets
+    `fake_grant.resolve_grant.return_value = GrantLevel.<X>` before its call (the
+    same instance backs the dependency override)."""
+    from app.grant_client import GrantLevel
+
+    gc = MagicMock()
+    gc.resolve_grant = AsyncMock(return_value=GrantLevel.OWNER)
+    gc.invalidate = MagicMock(return_value=True)
+    gc.aclose = AsyncMock()
+    gc.start_revoke_consumer = MagicMock()
+    return gc
+
+
+@pytest.fixture
+def client(fake_pool, fake_grant):
+    """FastAPI TestClient with DB + background tasks (consumer/driver) stubbed and
+    the E0-4b grant client shimmed to OWNER (owner-run tests pass through)."""
     from fastapi.testclient import TestClient
 
     _stub = MagicMock()
@@ -60,9 +77,13 @@ def client(fake_pool):
         patch("app.main.ProjectionConsumer", return_value=_stub),
         patch("app.main.SpendConsumer", return_value=_stub),
         patch("app.main.SagaDriver", return_value=_stub),
+        # Lifespan grant wiring: don't open a real client / tail redis in tests.
+        patch("app.main.init_grant_client", return_value=fake_grant),
+        patch("app.main.close_grant_client", new_callable=AsyncMock),
     ):
         from app.main import app
         from app.deps import get_current_user, get_db
+        from app.grant_deps import get_grant_client_dep
 
         async def _user():
             return TEST_USER
@@ -72,6 +93,7 @@ def client(fake_pool):
 
         app.dependency_overrides[get_current_user] = _user
         app.dependency_overrides[get_db] = _db
+        app.dependency_overrides[get_grant_client_dep] = lambda: fake_grant
         with TestClient(app, raise_server_exceptions=True) as c:
             yield c
         app.dependency_overrides.clear()

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -112,6 +113,7 @@ func TestCollaboratorMgmt_RequiresJWT(t *testing.T) {
 	// All owner-only endpoints must 401 without a Bearer token (before DB).
 	reqs := []*http.Request{
 		httptest.NewRequest(http.MethodGet, "/v1/books/"+book+"/collaborators", nil),
+		httptest.NewRequest(http.MethodPost, "/v1/books/"+book+"/collaborators", nil), // E0-5 invite
 		httptest.NewRequest(http.MethodPut, "/v1/books/"+book+"/collaborators/"+target, nil),
 		httptest.NewRequest(http.MethodDelete, "/v1/books/"+book+"/collaborators/"+target, nil),
 	}
@@ -121,5 +123,67 @@ func TestCollaboratorMgmt_RequiresJWT(t *testing.T) {
 		if rr.Code != http.StatusUnauthorized {
 			t.Errorf("%s %s without JWT: got %d want 401", req.Method, req.URL.Path, rr.Code)
 		}
+	}
+}
+
+// --- E0-5 auth-service resolution helpers (HTTP, no DB) ---
+
+func authStubServer(t *testing.T, status int, body string) *Server {
+	t.Helper()
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(ts.Close)
+	return NewServer(nil, &config.Config{
+		JWTSecret:              "test-secret-at-least-32-characters-long!",
+		InternalServiceToken:   "itok",
+		AuthServiceInternalURL: ts.URL,
+	})
+}
+
+func TestAuthResolveByEmail_Found(t *testing.T) {
+	t.Parallel()
+	id := uuid.New()
+	s := authStubServer(t, http.StatusOK,
+		`{"user_id":"`+id.String()+`","email":"a@b.co","display_name":"Ada"}`)
+	got, name, found, err := s.authResolveByEmail(context.Background(), "a@b.co")
+	if err != nil || !found {
+		t.Fatalf("want found, no err; got found=%v err=%v", found, err)
+	}
+	if got != id || name != "Ada" {
+		t.Errorf("got (%s,%q) want (%s,Ada)", got, name, id)
+	}
+}
+
+func TestAuthResolveByEmail_NotFound(t *testing.T) {
+	t.Parallel()
+	// 404 → found=false, NO error (the invite surfaces a clean "no such user").
+	s := authStubServer(t, http.StatusNotFound, `{"error":{"code":"AUTH_USER_NOT_FOUND"}}`)
+	_, _, found, err := s.authResolveByEmail(context.Background(), "nobody@x.co")
+	if err != nil || found {
+		t.Fatalf("404 must be found=false,err=nil; got found=%v err=%v", found, err)
+	}
+}
+
+func TestAuthResolveByEmail_ServerErrorIsError(t *testing.T) {
+	t.Parallel()
+	// A 5xx is an ERROR (the invite fails 503), never a silent "not found".
+	s := authStubServer(t, http.StatusInternalServerError, ``)
+	if _, _, _, err := s.authResolveByEmail(context.Background(), "x@y.co"); err == nil {
+		t.Fatal("5xx from auth must return an error, not a silent not-found")
+	}
+}
+
+func TestAuthDisplayName_BestEffort(t *testing.T) {
+	t.Parallel()
+	// Happy path returns the name; a non-200 degrades to "" (never errors the list).
+	ok := authStubServer(t, http.StatusOK, `{"display_name":"Bo"}`)
+	if got := ok.authDisplayName(context.Background(), uuid.New()); got != "Bo" {
+		t.Errorf("display_name=%q want Bo", got)
+	}
+	down := authStubServer(t, http.StatusServiceUnavailable, ``)
+	if got := down.authDisplayName(context.Background(), uuid.New()); got != "" {
+		t.Errorf("auth down: display_name=%q want empty (best-effort)", got)
 	}
 }

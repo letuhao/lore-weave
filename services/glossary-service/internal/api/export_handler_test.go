@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/loreweave/glossary-service/internal/config"
@@ -62,19 +63,12 @@ func openTestDB(t *testing.T) *pgxpool.Pool {
 	return pool
 }
 
-// runMigrations applies Up + Seed + UpSnapshot on the test DB.
+// runMigrations applies the full canonical chain on the test DB. Delegates to
+// runK2aMigrations (the lowest-level shared helper) so EVERY api test runs on the
+// G4 cutover — book_kinds/book_attributes FK targets + the book-tier snapshot.
 func runMigrations(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
-	ctx := context.Background()
-	if err := migrate.Up(ctx, pool); err != nil {
-		t.Fatalf("migrate.Up: %v", err)
-	}
-	if err := migrate.Seed(ctx, pool); err != nil {
-		t.Fatalf("migrate.Seed: %v", err)
-	}
-	if err := migrate.UpSnapshot(ctx, pool); err != nil {
-		t.Fatalf("migrate.UpSnapshot: %v", err)
-	}
+	runK2aMigrations(t, pool)
 }
 
 // ── snapshotToRAGEntity unit tests (no DB required) ──────────────────────────
@@ -291,25 +285,19 @@ func TestRecalculateBuildsCorrectSnapshot(t *testing.T) {
 	ctx := context.Background()
 	runMigrations(t, pool)
 
-	// Seed: create a book UUID and a kind + attribute def
+	// Seed: create a book UUID and a kind + attribute def (G4 book tier).
 	bookID := "00000000-0000-0000-0000-000000000001"
-	var kindID, attrDefID string
-	if err := pool.QueryRow(ctx,
-		`SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID); err != nil {
-		t.Fatalf("get kind: %v", err)
-	}
-	if err := pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`,
-		kindID).Scan(&attrDefID); err != nil {
-		t.Fatalf("get attr_def: %v", err)
-	}
+	bid := uuid.MustParse(bookID)
+	adoptTestBook(t, pool, bid)
+	kindID := bookKindID(t, pool, bid, "character")
+	attrDefID := bookAttrID(t, pool, bid, kindID, "name")
 
 	// Create entity
 	var entityID string
 	if err := pool.QueryRow(ctx,
 		`INSERT INTO glossary_entities(book_id, kind_id, status, tags)
 		 VALUES($1,$2,'active','{"hero"}') RETURNING entity_id`,
-		bookID, kindID).Scan(&entityID); err != nil {
+		bid, kindID).Scan(&entityID); err != nil {
 		t.Fatalf("insert entity: %v", err)
 	}
 
@@ -369,12 +357,13 @@ func TestTriggerFiresOnAttrValueUpdate(t *testing.T) {
 	runMigrations(t, pool)
 
 	bookID := "00000000-0000-0000-0000-000000000002"
-	var kindID, attrDefID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
-	pool.QueryRow(ctx, `SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`, kindID).Scan(&attrDefID)
+	bid := uuid.MustParse(bookID)
+	adoptTestBook(t, pool, bid)
+	kindID := bookKindID(t, pool, bid, "character")
+	attrDefID := bookAttrID(t, pool, bid, kindID, "name")
 
 	var entityID string
-	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`, bookID, kindID).Scan(&entityID)
+	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`, bid, kindID).Scan(&entityID)
 	var avID string
 	pool.QueryRow(ctx, `INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_value,original_language) VALUES($1,$2,'Original','zh') RETURNING attr_value_id`, entityID, attrDefID).Scan(&avID)
 
@@ -404,12 +393,13 @@ func TestTriggerFiresOnTranslationInsert(t *testing.T) {
 	runMigrations(t, pool)
 
 	bookID := "00000000-0000-0000-0000-000000000003"
-	var kindID, attrDefID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
-	pool.QueryRow(ctx, `SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`, kindID).Scan(&attrDefID)
+	bid := uuid.MustParse(bookID)
+	adoptTestBook(t, pool, bid)
+	kindID := bookKindID(t, pool, bid, "character")
+	attrDefID := bookAttrID(t, pool, bid, kindID, "name")
 
 	var entityID string
-	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`, bookID, kindID).Scan(&entityID)
+	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`, bid, kindID).Scan(&entityID)
 	var avID string
 	pool.QueryRow(ctx, `INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_value,original_language) VALUES($1,$2,'王林','zh') RETURNING attr_value_id`, entityID, attrDefID).Scan(&avID)
 
@@ -442,12 +432,13 @@ func TestTriggerFiresOnEvidenceDelete(t *testing.T) {
 	runMigrations(t, pool)
 
 	bookID := "00000000-0000-0000-0000-000000000004"
-	var kindID, attrDefID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
-	pool.QueryRow(ctx, `SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`, kindID).Scan(&attrDefID)
+	bid := uuid.MustParse(bookID)
+	adoptTestBook(t, pool, bid)
+	kindID := bookKindID(t, pool, bid, "character")
+	attrDefID := bookAttrID(t, pool, bid, kindID, "name")
 
 	var entityID string
-	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`, bookID, kindID).Scan(&entityID)
+	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`, bid, kindID).Scan(&entityID)
 	var avID string
 	pool.QueryRow(ctx, `INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_value,original_language) VALUES($1,$2,'Test','zh') RETURNING attr_value_id`, entityID, attrDefID).Scan(&avID)
 	var evID string
@@ -478,11 +469,12 @@ func TestNoInfiniteLoop(t *testing.T) {
 	runMigrations(t, pool)
 
 	bookID := "00000000-0000-0000-0000-000000000005"
-	var kindID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	bid := uuid.MustParse(bookID)
+	adoptTestBook(t, pool, bid)
+	kindID := bookKindID(t, pool, bid, "character")
 
 	var entityID string
-	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'draft','{}') RETURNING entity_id`, bookID, kindID).Scan(&entityID)
+	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'draft','{}') RETURNING entity_id`, bid, kindID).Scan(&entityID)
 
 	// This should complete without hanging (infinite loop would timeout/deadlock).
 	done := make(chan error, 1)
@@ -515,10 +507,11 @@ func TestBackfillIdempotent(t *testing.T) {
 
 	// Insert an entity with a manually-nulled snapshot to force a backfill target.
 	bookID := "00000000-0000-0000-0000-000000000006"
-	var kindID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	bid := uuid.MustParse(bookID)
+	adoptTestBook(t, pool, bid)
+	kindID := bookKindID(t, pool, bid, "character")
 	var entityID string
-	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'draft','{}') RETURNING entity_id`, bookID, kindID).Scan(&entityID)
+	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'draft','{}') RETURNING entity_id`, bid, kindID).Scan(&entityID)
 	pool.Exec(ctx, `UPDATE glossary_entities SET entity_snapshot=NULL WHERE entity_id=$1`, entityID)
 
 	if err := migrate.BackfillSnapshots(ctx, pool); err != nil {
@@ -682,11 +675,12 @@ func TestTriggerFiresOnChapterLinkChange(t *testing.T) {
 	runMigrations(t, pool)
 
 	bookID := "00000000-0000-0000-0000-000000000007"
-	var kindID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	bid := uuid.MustParse(bookID)
+	adoptTestBook(t, pool, bid)
+	kindID := bookKindID(t, pool, bid, "character")
 
 	var entityID string
-	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`, bookID, kindID).Scan(&entityID)
+	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`, bid, kindID).Scan(&entityID)
 
 	chapterID := "cccccccc-0000-0000-0000-000000000001"
 	pool.Exec(ctx, `INSERT INTO chapter_entity_links(entity_id,chapter_id,chapter_title,relevance) VALUES($1,$2,'Chapter 1','major')`,
@@ -728,11 +722,12 @@ func TestTriggerFiresOnEntityStatusUpdate(t *testing.T) {
 	runMigrations(t, pool)
 
 	bookID := "00000000-0000-0000-0000-000000000008"
-	var kindID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	bid := uuid.MustParse(bookID)
+	adoptTestBook(t, pool, bid)
+	kindID := bookKindID(t, pool, bid, "character")
 
 	var entityID string
-	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'draft','{}') RETURNING entity_id`, bookID, kindID).Scan(&entityID)
+	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'draft','{}') RETURNING entity_id`, bid, kindID).Scan(&entityID)
 
 	// Update status (also touch updated_at so self-trigger guard passes)
 	pool.Exec(ctx, `UPDATE glossary_entities SET status='active', updated_at=now() WHERE entity_id=$1`, entityID)
@@ -759,12 +754,17 @@ func TestSnapshotKindFields(t *testing.T) {
 	runMigrations(t, pool)
 
 	bookID := "00000000-0000-0000-0000-000000000009"
-	var kindID, kindName, kindIcon, kindColor string
-	pool.QueryRow(ctx, `SELECT kind_id, name, icon, color FROM entity_kinds WHERE code='character' LIMIT 1`).
-		Scan(&kindID, &kindName, &kindIcon, &kindColor)
+	bid := uuid.MustParse(bookID)
+	adoptTestBook(t, pool, bid)
+	kindID := bookKindID(t, pool, bid, "character")
+	// G4: the snapshot now reads the BOOK tier — read the book_kind's display fields
+	// (adopt copies name/icon/color from the system kind) for the parity assertion.
+	var kindName, kindIcon, kindColor string
+	pool.QueryRow(ctx, `SELECT name, icon, color FROM book_kinds WHERE book_kind_id=$1`, kindID).
+		Scan(&kindName, &kindIcon, &kindColor)
 
 	var entityID string
-	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`, bookID, kindID).Scan(&entityID)
+	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`, bid, kindID).Scan(&entityID)
 	pool.Exec(ctx, `SELECT recalculate_entity_snapshot($1)`, entityID)
 
 	var snapBytes []byte
@@ -787,8 +787,8 @@ func TestSnapshotKindFields(t *testing.T) {
 	if kind["color"] != kindColor {
 		t.Errorf("kind.color: want %q, got %v", kindColor, kind["color"])
 	}
-	if kind["source"] != "system" {
-		t.Errorf("kind.source: want %q, got %v", "system", kind["source"])
+	if kind["source"] != "book" {
+		t.Errorf("kind.source: want %q, got %v", "book", kind["source"])
 	}
 
 	t.Cleanup(func() {
@@ -803,17 +803,26 @@ func TestSnapshotAttributeOrder(t *testing.T) {
 	runMigrations(t, pool)
 
 	bookID := "00000000-0000-0000-0000-00000000000a"
-	var kindID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	bid := uuid.MustParse(bookID)
+	adoptTestBook(t, pool, bid)
+	kindID := bookKindID(t, pool, bid, "character")
 
-	// Fetch attr_defs ordered by sort_order — we expect snapshot to match this order.
-	attrRows, err := pool.Query(ctx,
-		`SELECT attr_def_id, code FROM attribute_definitions WHERE kind_id=$1 ORDER BY sort_order LIMIT 3`,
-		kindID)
+	// Fetch the book-tier attr defs (universal genre) ordered by sort_order — we
+	// expect the snapshot to match this order. After the G4 cutover the snapshot
+	// reads book_attributes, so the ordering source is the book tier.
+	attrRows, err := pool.Query(ctx, `
+		SELECT ba.attr_id, ba.code
+		FROM book_attributes ba
+		JOIN book_genres g ON g.genre_id = ba.genre_id
+		WHERE ba.book_id=$1 AND ba.kind_id=$2 AND g.code='universal'
+		ORDER BY ba.sort_order LIMIT 3`, bid, kindID)
 	if err != nil {
 		t.Fatalf("fetch attr defs: %v", err)
 	}
-	type attrDef struct{ id, code string }
+	type attrDef struct {
+		id   uuid.UUID
+		code string
+	}
 	var defs []attrDef
 	for attrRows.Next() {
 		var d attrDef
@@ -826,7 +835,7 @@ func TestSnapshotAttributeOrder(t *testing.T) {
 	}
 
 	var entityID string
-	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`, bookID, kindID).Scan(&entityID)
+	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`, bid, kindID).Scan(&entityID)
 
 	// Insert values for each def (in reverse order to force the sort to matter)
 	for i := len(defs) - 1; i >= 0; i-- {
@@ -862,11 +871,12 @@ func TestSnapshotChapterLinkOrder(t *testing.T) {
 	runMigrations(t, pool)
 
 	bookID := "00000000-0000-0000-0000-00000000000b"
-	var kindID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	bid := uuid.MustParse(bookID)
+	adoptTestBook(t, pool, bid)
+	kindID := bookKindID(t, pool, bid, "character")
 
 	var entityID string
-	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`, bookID, kindID).Scan(&entityID)
+	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`, bid, kindID).Scan(&entityID)
 
 	// Insert links out of order: chapter_index 3, 1, 2
 	for _, idx := range []int{3, 1, 2} {
@@ -911,13 +921,14 @@ func TestExportQueryChapterFilter(t *testing.T) {
 	runMigrations(t, pool)
 
 	bookID := "00000000-0000-0000-0000-00000000000c"
-	var kindID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	bid := uuid.MustParse(bookID)
+	adoptTestBook(t, pool, bid)
+	kindID := bookKindID(t, pool, bid, "character")
 
 	// Create two entities
 	var entA, entB string
-	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`, bookID, kindID).Scan(&entA)
-	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`, bookID, kindID).Scan(&entB)
+	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`, bid, kindID).Scan(&entA)
+	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`, bid, kindID).Scan(&entB)
 
 	// Force snapshot on both
 	pool.Exec(ctx, `SELECT recalculate_entity_snapshot($1)`, entA)
@@ -971,13 +982,14 @@ func TestExportQuerySnapshotIsNull(t *testing.T) {
 	runMigrations(t, pool)
 
 	bookID := "00000000-0000-0000-0000-00000000000d"
-	var kindID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	bid := uuid.MustParse(bookID)
+	adoptTestBook(t, pool, bid)
+	kindID := bookKindID(t, pool, bid, "character")
 
 	// Create two entities: one with snapshot, one without.
 	var entWithSnap, entNoSnap string
-	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`, bookID, kindID).Scan(&entWithSnap)
-	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`, bookID, kindID).Scan(&entNoSnap)
+	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`, bid, kindID).Scan(&entWithSnap)
+	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`, bid, kindID).Scan(&entNoSnap)
 
 	pool.Exec(ctx, `SELECT recalculate_entity_snapshot($1)`, entWithSnap)
 	// Explicitly null out the second entity's snapshot.

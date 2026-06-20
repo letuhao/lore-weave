@@ -54,16 +54,31 @@ func (s *Server) listKinds(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
-// loadKinds returns the global kind catalog + attribute definitions (visible
-// kinds only). Non-HTTP core shared by the listKinds HTTP endpoint and the
-// glossary_list_kinds MCP tool. Kinds are GLOBAL (not book-scoped).
+// loadKinds returns the global SYSTEM kind catalog + attribute definitions
+// (visible kinds only). Non-HTTP core shared by the listKinds HTTP endpoint and the
+// glossary_list_system_standards MCP tool. System kinds are GLOBAL (not book-scoped).
+//
+// G4: genre_tags / system_kind_attributes are gone — genre membership now comes from
+// the system_kind_genres link table (→ system_genres.code) and attributes from the
+// per-(kind,genre) system_attributes table (the universal-genre rows are the kind's
+// base attrs). entity_count counts entities for the SAME-code book kind across all
+// books (the entity layer is now book-local), so a system kind still reflects usage.
 func (s *Server) loadKinds(ctx context.Context) ([]domain.EntityKind, error) {
 	kindRows, err := s.pool.Query(ctx, `
-		SELECT kind_id, code, name, description, icon, color, is_default, is_hidden, sort_order, genre_tags,
-			COALESCE((SELECT count(*) FROM glossary_entities ge WHERE ge.kind_id = ek.kind_id AND ge.deleted_at IS NULL), 0) AS entity_count
-		FROM entity_kinds ek
-		WHERE is_hidden = false
-		ORDER BY sort_order`)
+		SELECT ek.kind_id, ek.code, ek.name, ek.description, ek.icon, ek.color, ek.is_default, ek.is_hidden, ek.sort_order,
+			COALESCE((
+				SELECT array_agg(g.code ORDER BY g.sort_order)
+				FROM system_kind_genres kg JOIN system_genres g ON g.genre_id = kg.genre_id
+				WHERE kg.kind_id = ek.kind_id
+			), '{}') AS genre_tags,
+			COALESCE((
+				SELECT count(*) FROM glossary_entities ge
+				JOIN book_kinds bk ON bk.book_kind_id = ge.kind_id
+				WHERE bk.code = ek.code AND ge.deleted_at IS NULL
+			), 0) AS entity_count
+		FROM system_kinds ek
+		WHERE ek.is_hidden = false
+		ORDER BY ek.sort_order`)
 	if err != nil {
 		return nil, fmt.Errorf("query kinds: %w", err)
 	}
@@ -82,10 +97,15 @@ func (s *Server) loadKinds(ctx context.Context) ([]domain.EntityKind, error) {
 		return nil, fmt.Errorf("kind rows: %w", err)
 	}
 
+	// Attributes from system_attributes; the genre's code rides along as the attr's
+	// genre_tags so a UI can still group/badge by genre. is_system/is_active are
+	// synthesised (system standards are always system + active).
 	attrRowsQ, err := s.pool.Query(ctx, `
-		SELECT ad.attr_def_id, ad.kind_id, ad.code, ad.name, ad.description, ad.field_type, ad.is_required, ad.is_system, ad.is_active, ad.sort_order, ad.genre_tags, ad.auto_fill_prompt, ad.translation_hint
-		FROM attribute_definitions ad
-		JOIN entity_kinds ek ON ek.kind_id = ad.kind_id AND ek.is_hidden = false
+		SELECT ad.attr_id, ad.kind_id, ad.code, ad.name, ad.description, ad.field_type, ad.is_required, ad.sort_order,
+			g.code AS genre_code, ad.auto_fill_prompt, ad.translation_hint
+		FROM system_attributes ad
+		JOIN system_kinds  ek ON ek.kind_id  = ad.kind_id AND ek.is_hidden = false
+		JOIN system_genres g  ON g.genre_id   = ad.genre_id
 		ORDER BY ad.kind_id, ad.sort_order`)
 	if err != nil {
 		return nil, fmt.Errorf("query attrs: %w", err)
@@ -94,13 +114,18 @@ func (s *Server) loadKinds(ctx context.Context) ([]domain.EntityKind, error) {
 
 	attrsByKind := make(map[string][]attrRow)
 	for attrRowsQ.Next() {
-		var kindID string
+		var kindID, genreCode string
 		var a attrRow
 		if err := attrRowsQ.Scan(&a.AttrDefID, &kindID, &a.Code, &a.Name, &a.Description,
-			&a.FieldType, &a.IsRequired, &a.IsSystem, &a.IsActive, &a.SortOrder, &a.GenreTags,
+			&a.FieldType, &a.IsRequired, &a.SortOrder, &genreCode,
 			&a.AutoFillPrompt, &a.TranslationHint); err != nil {
 			return nil, fmt.Errorf("scan attr: %w", err)
 		}
+		// System standards are always system-owned + active; the per-(kind,genre)
+		// attribute's genre code rides along as its single-element genre_tags.
+		a.IsSystem = true
+		a.IsActive = true
+		a.GenreTags = []string{genreCode}
 		attrsByKind[kindID] = append(attrsByKind[kindID], a)
 	}
 	if err := attrRowsQ.Err(); err != nil {

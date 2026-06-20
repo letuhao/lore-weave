@@ -85,6 +85,26 @@ features/<name>/
 - **Multi-device, multi-user** — design for users accessing from PC, phone, tablet simultaneously
 - **No platform lock-in** — no Vercel, no Cloudflare-specific APIs. Standard Docker + Postgres + S3
 
+### User Boundaries & Tenancy (LOCKED — read before designing ANY feature)
+
+**Root-cause note:** early in this project the agent conflated "self-hosted" with "single-user" and designed features with **no user boundary** — shared rows any user could mutate for everyone (the canonical bug: `glossary_entities`'s `entity_kinds` were *globally unique + user-mutable*, so one user editing a "kind" changed it for all users). **Self-hosted ≠ single-user.** Every deployment is **multi-tenant**: many users, each with private data, sharing one DB and one set of system defaults.
+
+**The scoping tiers — every user-facing resource MUST declare which tier it belongs to:**
+
+| Tier | Owner | Who may WRITE | Visible to | Example |
+|---|---|---|---|---|
+| **System** | the platform | **admin only** (never a regular user) | everyone (read-only) | default entity-kinds, the 12 seeded glossary kinds, pricing presets |
+| **Per-user** | a `user_id` | that user | that user (+ collaborators they grant) | a user's custom glossary kinds, BYOK credentials, preferences |
+| **Per-book** (or per-project/per-resource) | a `book_id`/`project_id` | the owner + grantees (E0 grants) | the owner + grantees | book-specific kinds, glossary entities, campaigns |
+
+**Hard rules:**
+- **A regular user MUST NOT mutate a System-tier (shared/global) row.** System defaults are seeded + admin-managed; users *clone* or *override* them into their own per-user/per-book tier, never edit the shared original. A write endpoint on a shared resource that any authenticated user can call is a **tenancy defect**, not a feature.
+- **Every table holding user-customizable data carries a scope key** — `owner_user_id` and/or `book_id` — and **every query filters by it**. A `UNIQUE(code)` on a shared table (no scope column) is the smell that produced the kinds bug; the correct constraint is `UNIQUE(owner_user_id, code)` / `UNIQUE(book_id, code)`.
+- **Cross-tenant access is grant-gated, never implicit** — sharing happens only through the E0 collaboration grants (see the Gateway/grants invariants), never by a global row everyone can see/edit.
+- **Resolution merges tiers, lowest-precedence first:** System (defaults) → Per-user (the user's overrides/additions) → Per-book (book-specific). Higher tiers shadow lower by `code`.
+
+**Design checklist (apply to every new feature before building):** Who owns each row? What is its scope key? Can user A's action affect user B's data or view? If a "shared" or "global" resource is user-editable, STOP — it almost certainly needs a per-user/per-book tier instead, with System read-only + admin-only writes.
+
 ---
 
 ## Session Protocol

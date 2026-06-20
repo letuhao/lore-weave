@@ -20,7 +20,17 @@ func setupRevisionsDB(t *testing.T) *pgxpool.Pool {
 	ctx := context.Background()
 	for _, fn := range []func(context.Context, *pgxpool.Pool) error{
 		migrate.Up, migrate.Seed, migrate.UpSnapshot, migrate.UpSoftDelete,
+		// UpExtraction adds glossary_entities.alive, which the rewritten (book-tier)
+		// snapshot function reads.
+		migrate.UpExtraction,
 		migrate.UpOutbox, migrate.UpEntityRevisions,
+		// G4 tier + cutover (shared DB: present in whatever chain runs first). The tier
+		// migration creates book_kinds/book_attributes (cutover FK targets) before the
+		// cutover repoints the entity layer + rewrites the snapshot to the book tier.
+		migrate.UpUserKinds, migrate.UpGenreKindAttr, migrate.SeedGenreKindAttr,
+		migrate.UpGlossaryCutoverG4, migrate.UpGlossaryCutoverG4Cache,
+		// G4e: IRREVERSIBLE drop of the retired legacy objects (runs LAST).
+		migrate.UpGlossaryDropLegacyG4,
 	} {
 		if err := fn(ctx, pool); err != nil {
 			t.Fatalf("migrate: %v", err)
@@ -34,11 +44,10 @@ func TestReconcileEntityFromSnapshot_ExactRestoreWithPrune(t *testing.T) {
 	ctx := context.Background()
 
 	bookID := uuid.MustParse("00000000-0000-0000-0004-0000000f1001")
-	var kindID, nameAttrID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
-	pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`,
-		kindID).Scan(&nameAttrID)
+	// G4: entities reference the BOOK tier — adopt then resolve book_kinds/book_attributes.
+	adoptTestBook(t, pool, bookID)
+	kindID := bookKindID(t, pool, bookID, "character")
+	nameAttrID := bookAttrID(t, pool, bookID, kindID, "name")
 
 	var entityID, nameAVID, tVi uuid.UUID
 	pool.QueryRow(ctx,
@@ -108,13 +117,11 @@ func TestReconcileEntityFromSnapshot_PrunesPostRevisionAttribute(t *testing.T) {
 	ctx := context.Background()
 
 	bookID := uuid.MustParse("00000000-0000-0000-0004-0000000f1002")
-	var kindID, nameAttrID, aliasAttrID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
-	pool.QueryRow(ctx, `SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`, kindID).Scan(&nameAttrID)
-	pool.QueryRow(ctx, `SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='aliases' LIMIT 1`, kindID).Scan(&aliasAttrID)
-	if aliasAttrID == "" {
-		t.Skip("no aliases attr_def — skipping attribute-prune case")
-	}
+	// G4: book-tier kind/attr ids — adopt then resolve from book_kinds/book_attributes.
+	adoptTestBook(t, pool, bookID)
+	kindID := bookKindID(t, pool, bookID, "character")
+	nameAttrID := bookAttrID(t, pool, bookID, kindID, "name")
+	aliasAttrID := bookAttrID(t, pool, bookID, kindID, "aliases")
 
 	var entityID uuid.UUID
 	pool.QueryRow(ctx,
@@ -157,11 +164,11 @@ func TestSnapshotRestorable(t *testing.T) {
 		snap string
 		want bool
 	}{
-		{`{}`, false},                                   // baseline of a snapshot-less entity
-		{`{"status":"active"}`, false},                  // object but no attributes key
-		{`not json`, false},                             // malformed
-		{`[]`, false},                                   // not an object
-		{`{"attributes":[]}`, true},                     // genuinely zero attributes — valid
+		{`{}`, false},                  // baseline of a snapshot-less entity
+		{`{"status":"active"}`, false}, // object but no attributes key
+		{`not json`, false},            // malformed
+		{`[]`, false},                  // not an object
+		{`{"attributes":[]}`, true},    // genuinely zero attributes — valid
 		{`{"attributes":[{"attr_value_id":"x"}]}`, true}, // full snapshot
 	}
 	for _, c := range cases {
@@ -176,8 +183,9 @@ func TestReconcileEntityFromSnapshot_RestoresAndPrunesChapterLinks(t *testing.T)
 	ctx := context.Background()
 
 	bookID := uuid.MustParse("00000000-0000-0000-0004-0000000f1003")
-	var kindID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	// G4: book-tier kind id — adopt then resolve from book_kinds.
+	adoptTestBook(t, pool, bookID)
+	kindID := bookKindID(t, pool, bookID, "character")
 	var entityID uuid.UUID
 	pool.QueryRow(ctx,
 		`INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`,

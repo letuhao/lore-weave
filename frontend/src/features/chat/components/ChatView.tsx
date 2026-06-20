@@ -14,6 +14,7 @@ import { VoiceChatOverlay } from './VoiceChatOverlay';
 import { VoiceSettingsPanel } from './VoiceSettingsPanel';
 import { useVoiceChat } from '../hooks/useVoiceChat';
 import { useAutoTTS } from '../hooks/useAutoTTS';
+import { useUiToolExecutor } from '../hooks/useUiToolExecutor';
 import { usePanelState } from '../hooks/usePanelState';
 import { loadVoicePrefs, saveVoicePrefs } from '../voicePrefs';
 
@@ -44,6 +45,12 @@ export function ChatView({ className, footerSlot }: ChatViewProps) {
 
   const { settingsOpen, setSettingsOpen, voiceSettingsOpen, setVoiceSettingsOpen } = usePanelState();
   const isArchived = activeSession?.status === 'archived';
+
+  // MCP fan-out (C-NAV): resolve any suspended `ui_*` nav tool the agent calls —
+  // perform the router action + POST the resolve immediately (no human gate).
+  // Mounted here (inside the providers, under the router) so it runs for both
+  // the chat page and the embedded dock/editor surfaces.
+  useUiToolExecutor();
 
   // Voice Assist mode — user toggle (persisted in prefs)
   const [voiceAssistOn, setVoiceAssistOn] = useState(() => loadVoicePrefs().voiceAssistEnabled);

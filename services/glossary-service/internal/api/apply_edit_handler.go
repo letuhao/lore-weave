@@ -184,7 +184,7 @@ func (s *Server) applyEntityEdit(w http.ResponseWriter, r *http.Request) {
 		if err := tx.QueryRow(ctx, `
 			SELECT EXISTS(
 				SELECT 1 FROM entity_attribute_values eav
-				JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+				JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
 				WHERE eav.attr_value_id = ANY($1) AND ad.code = 'description')`,
 			attrIDs).Scan(&descriptionChanged); err != nil {
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "attr lookup failed")

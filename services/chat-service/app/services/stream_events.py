@@ -79,6 +79,12 @@ class StreamEmitter(Protocol):
         slow) writer model runs, instead of a silent panel."""
         ...
 
+    def activity(self, payload: dict) -> list[str]:
+        """MCP-fanout C-ACTIVITY (H16) — a Tier-A auto-write happened. ``payload``
+        = {op, summary, undo}; the FE renders an "agent did X · Undo" strip so a
+        low-blast auto-commit is visible, not a silent surprise."""
+        ...
+
     def close_message(self) -> list[str]:
         """Close the open assistant/reasoning message — called once the token
         stream ends, before persistence/finish, so the message END frames the
@@ -120,6 +126,11 @@ class LegacyEmitter:
 
     def composing(self, active: bool) -> list[str]:
         # Legacy chat page has no composer model → no-op.
+        return []
+
+    def activity(self, payload: dict) -> list[str]:
+        # C-ACTIVITY is an agui-surface affordance; legacy clients don't render
+        # the Undo strip → no-op (the tool-call event still conveys the write).
         return []
 
     def reasoning_delta(self, delta: str) -> list[str]:
@@ -210,6 +221,16 @@ class AgUiEmitter:
             "type": "CUSTOM",
             "name": "composing",
             "value": {"active": active},
+        })]
+
+    def activity(self, payload: dict) -> list[str]:
+        # C-ACTIVITY (H16) — Tier-A auto-write visibility + Undo affordance. The
+        # FE renders {op, summary, undo} as a strip in chat; clicking Undo issues
+        # the named reverse tool when undo.available.
+        return [_sse({
+            "type": "CUSTOM",
+            "name": "activity",
+            "value": payload,
         })]
 
     def reasoning_delta(self, delta: str) -> list[str]:

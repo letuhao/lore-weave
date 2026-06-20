@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -214,6 +217,9 @@ type collaboratorRow struct {
 	GrantedBy uuid.UUID `json:"granted_by"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+	// E0-5 — display label for the collaborators panel, enriched from auth-service
+	// (best-effort; "" when auth is unreachable or the user has no display name).
+	DisplayName string `json:"display_name"`
 }
 
 // listCollaborators (owner-only) — the collaborators of a book.
@@ -242,7 +248,163 @@ func (s *Server) listCollaborators(w http.ResponseWriter, r *http.Request) {
 		}
 		out = append(out, c)
 	}
+	s.enrichDisplayNames(r.Context(), out)
 	writeJSON(w, http.StatusOK, map[string]any{"collaborators": out})
+}
+
+// enrichDisplayNames fills each row's DisplayName from auth-service concurrently
+// (best-effort: a failed/slow lookup leaves "" — the list never blocks on auth).
+// Collaborator lists are tiny (owner-curated), so the fan-out is bounded in practice.
+func (s *Server) enrichDisplayNames(ctx context.Context, rows []collaboratorRow) {
+	if len(rows) == 0 {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	var wg sync.WaitGroup
+	for i := range rows {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			rows[i].DisplayName = s.authDisplayName(ctx, rows[i].UserID)
+		}(i)
+	}
+	wg.Wait()
+}
+
+// authResolveByEmail asks auth-service for the user behind an invite email (E0-5).
+// Returns (userID, displayName, found, err): found=false on a 404 (no such active
+// user → the caller surfaces a clean "no user with that email"); err only on a
+// transport/non-404 failure (the caller fails the invite rather than guessing).
+func (s *Server) authResolveByEmail(ctx context.Context, email string) (uuid.UUID, string, bool, error) {
+	u := fmt.Sprintf("%s/internal/users/by-email?email=%s",
+		strings.TrimRight(s.cfg.AuthServiceInternalURL, "/"), url.QueryEscape(email))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return uuid.Nil, "", false, err
+	}
+	req.Header.Set("X-Internal-Token", s.cfg.InternalServiceToken)
+	resp, err := internalClient.Do(req)
+	if err != nil {
+		return uuid.Nil, "", false, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return uuid.Nil, "", false, nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		return uuid.Nil, "", false, fmt.Errorf("auth by-email: status %d", resp.StatusCode)
+	}
+	var body struct {
+		UserID      string `json:"user_id"`
+		DisplayName string `json:"display_name"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return uuid.Nil, "", false, err
+	}
+	id, err := uuid.Parse(body.UserID)
+	if err != nil {
+		return uuid.Nil, "", false, err
+	}
+	return id, body.DisplayName, true, nil
+}
+
+// authDisplayName resolves a user_id → display_name via auth-service (E0-5 list
+// enrichment). Best-effort: any failure → "" (never errors the list).
+func (s *Server) authDisplayName(ctx context.Context, userID uuid.UUID) string {
+	u := fmt.Sprintf("%s/internal/users/%s/profile",
+		strings.TrimRight(s.cfg.AuthServiceInternalURL, "/"), userID.String())
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return ""
+	}
+	req.Header.Set("X-Internal-Token", s.cfg.InternalServiceToken)
+	resp, err := internalClient.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return ""
+	}
+	var body struct {
+		DisplayName string `json:"display_name"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return ""
+	}
+	return body.DisplayName
+}
+
+// inviteCollaborator (owner-only, E0-5) — grant a collaborator by EMAIL. Resolves
+// the email to a user via auth-service, then upserts the role (identical write +
+// audit + instant-revoke as putCollaborator). 404 when no active user has that
+// email (uniform with a missing book — the owner can't probe the user table). The
+// owner can't invite themselves. Returns {user_id, role, display_name}.
+func (s *Server) inviteCollaborator(w http.ResponseWriter, r *http.Request) {
+	bookID, err := uuid.Parse(chi.URLParam(r, "book_id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "BAD_BOOK_ID", "invalid book id")
+		return
+	}
+	ownerID, ok := s.requireBookOwner(w, r, bookID)
+	if !ok {
+		return
+	}
+	var body struct {
+		Email string `json:"email"`
+		Role  string `json:"role"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Email) == "" || !validCollaboratorRole(body.Role) {
+		writeError(w, http.StatusBadRequest, "BAD_INVITE", "email and role (view|edit|manage) are required")
+		return
+	}
+	targetID, displayName, found, err := s.authResolveByEmail(r.Context(), strings.TrimSpace(body.Email))
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, "AUTH_UNAVAILABLE", "could not resolve the email")
+		return
+	}
+	if !found {
+		writeError(w, http.StatusNotFound, "USER_NOT_FOUND", "no user with that email")
+		return
+	}
+	if targetID == ownerID {
+		writeError(w, http.StatusBadRequest, "CANNOT_GRANT_OWNER", "you already have full access")
+		return
+	}
+	tx, err := s.pool.Begin(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "DB_ERROR", "begin failed")
+		return
+	}
+	defer tx.Rollback(r.Context())
+	if _, err := tx.Exec(r.Context(), `
+		INSERT INTO book_collaborators (book_id, user_id, role, granted_by)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (book_id, user_id)
+		DO UPDATE SET role = EXCLUDED.role, granted_by = EXCLUDED.granted_by, updated_at = now()
+	`, bookID, targetID, body.Role, ownerID); err != nil {
+		writeError(w, http.StatusInternalServerError, "DB_ERROR", "grant failed")
+		return
+	}
+	if err := insertBookOutbox(r.Context(), tx, "book.collaborator_granted", bookID, map[string]any{
+		"book_id": bookID, "user_id": targetID, "role": body.Role, "granted_by": ownerID,
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, "DB_ERROR", "audit failed")
+		return
+	}
+	// A re-invite at a lower role is a downgrade → drop the cached grant at once.
+	if err := insertGrantRevokeOutbox(r.Context(), tx, bookID, targetID); err != nil {
+		writeError(w, http.StatusInternalServerError, "DB_ERROR", "audit failed")
+		return
+	}
+	if err := tx.Commit(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "DB_ERROR", "commit failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{
+		"user_id": targetID.String(), "role": body.Role, "display_name": displayName,
+	})
 }
 
 // putCollaborator (owner-only) — grant or update a collaborator's role.
