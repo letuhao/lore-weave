@@ -24,6 +24,10 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.db.neo4j_repos.facts import FACT_TYPES
+from app.tools.graph_schema_tools import (
+    GRAPH_SCHEMA_ARG_MODELS,
+    GRAPH_SCHEMA_TOOL_DEFINITIONS,
+)
 
 __all__ = [
     "TOOL_NAMES",
@@ -118,6 +122,12 @@ ARG_MODELS: dict[str, type[BaseModel]] = {
     "memory_timeline": MemoryTimelineArgs,
     "memory_remember": MemoryRememberArgs,
     "memory_forget": MemoryForgetArgs,
+    # Lane LF — KG ontology MCP tools (R + reversible W). Appended here so the
+    # executor's validate→dispatch path and the MCP catalog cover them uniformly
+    # with the memory tools. The class-C ontology tools (adopt/schema-edit/
+    # sync-apply/schema-mutating-triage/handoff) are DEFERRED to KM6 (the
+    # confirm-token machinery) and intentionally NOT registered (D-KG-LF-KM6).
+    **GRAPH_SCHEMA_ARG_MODELS,
 }
 
 TOOL_NAMES: tuple[str, ...] = tuple(ARG_MODELS)
@@ -259,4 +269,8 @@ TOOL_DEFINITIONS: list[dict] = [
         },
         ["fact_id"],
     ),
+    # Lane LF — KG ontology MCP tools (R + reversible W). Spread last so the
+    # memory tools keep their indices; drift-locked against GRAPH_SCHEMA_ARG_MODELS
+    # by test_tool_definitions / test_graph_schema_tools.
+    *GRAPH_SCHEMA_TOOL_DEFINITIONS,
 ]

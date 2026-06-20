@@ -48,13 +48,18 @@ from mcp.client.streamable_http import streamablehttp_client
 from app.mcp.server import build_mcp_app
 from app.tools.definitions import TOOL_DEFINITIONS
 
-EXPECTED_TOOLS = {
+# Derived from the single source of truth (TOOL_DEFINITIONS) so a tool added
+# to the catalog (lane LF appended the KG ontology tools) keeps this in sync.
+# The memory tools are asserted present below as a floor.
+EXPECTED_TOOLS = {d["function"]["name"] for d in TOOL_DEFINITIONS}
+_MEMORY_TOOLS = {
     "memory_search",
     "memory_recall_entity",
     "memory_timeline",
     "memory_remember",
     "memory_forget",
 }
+assert _MEMORY_TOOLS.issubset(EXPECTED_TOOLS)
 
 # Matches conftest.py's INTERNAL_SERVICE_TOKEN default so the auth check
 # in _build_tool_context passes when we want it to.
