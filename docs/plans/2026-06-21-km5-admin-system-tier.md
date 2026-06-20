@@ -99,7 +99,44 @@ secret, but the authority model must enforce it). Fixed + 2 tests. The KM5-M1-ca
 (reject empty `sub`/`asub`) is implemented + tested (`test_admin_empty_asub_403`). LOW accepted:
 admin key cached at startup → rotation needs a restart (matches glossary; documented).
 
-## Carry-forward into KM5-M3 (the `/mcp/admin` server — no shipped upstream)
+## KM5-M3 — the `/mcp/admin` MCP server (RS256-gated transport) ✅ SHIPPED (2026-06-21)
+
+The agent PROPOSE side of the System tier — a physically separate, RS256-gated MCP
+endpoint. Net-new (no shipped glossary upstream).
+
+| File | Change |
+|---|---|
+| `app/auth/admin_key.py` | **NEW** — shared process-cached admin-key resolver (`get_admin_key`), used by both the confirm branch (M2) and the transport gate (M3). kg_actions refactored to use it. |
+| `app/mcp/admin_server.py` | **NEW** — second `FastMCP` instance + `kg_admin_template_read` (R) + `kg_admin_propose_template` (C: verb create/patch/delete → mints an `auth=admin` confirm-token, `asub`=verified RS256 `sub`, NO write). `rs256_gate` ASGI wrapper verifies `X-Admin-Token` BEFORE `tools/list` (401/503; `inner` never runs without a valid token → can't enumerate). |
+| `app/db/repositories/system_templates.py` | `list_templates(include_deprecated=)` for the admin read tool. |
+| `app/main.py` | mount `/mcp/admin` **before** `/mcp` (Starlette prefix order); run the admin session manager in the shared MCP exit-stack. |
+| tests | `tests/unit/test_admin_mcp_server.py` (9: catalog isolation both directions, mount-order, gate 401/503/invalid/delegate, propose scope/sub/disabled), `tests/integration/db/test_admin_mcp_tools.py` (3, real PG: read lists seeded, propose mints valid token + writes nothing, patch descriptor matches verb). |
+
+**Defense-in-depth (3 independent checks, INV-T2/T3/T6):** (1) transport RS256 gate blocks
+enumeration without a verified token; (2) each tool re-verifies to recover claims + checks
+`admin:write` for the mint; (3) the confirm endpoint (M2) re-verifies AGAIN + binds `sub==asub`
+before the single-use write.
+
+**VERIFY:** 2893 unit + KG-ontology integration (real PG) green. **LIVE-SMOKE
+(D-KM5-M3-LIVE-SMOKE cleared):** real mounted `/mcp/admin` gate → 401 without token; then the
+**full KM5 chain** — `kg_admin_propose_template` mints (real RS256) → redeemed at
+`/v1/kg/actions/confirm` → System template written to real PG → cleaned.
+
+**`/review-impl` (auth boundary):** 0 HIGH. **1 MED fixed** — the mount order (`/mcp/admin`
+before `/mcp`) is load-bearing for INV-T6 but was untested; added a route-order assertion (a
+reorder would route the admin surface to the ungated public app). 1 LOW accepted: admin read
+needs only a valid admin token (System templates are already world-readable via `/mcp`'s
+`kg_list_templates`, so this is already stricter than the data requires); propose needs `admin:write`.
+
+## KM5 status: backend COMPLETE (M1–M3). Remaining = KM5-M4 (cross-service, deferred)
+The RS256 keystone, System-tier writes + `auth=admin` confirm, and the `/mcp/admin` server are
+all shipped + live-proven. **KM5-M4** (ai-gateway `/mcp/admin` federation in TypeScript + the
+chat CMS surface + `knowledge_skill.py`) is the cross-service surfacing layer — highest blast
+radius, no shipped upstream, and glossary hasn't shipped its half either. Recommended **deferred**
+(`D-KM5-M4-GATEWAY-CMS`) until the gateway/chat admin-federation pattern is built (shared with
+the glossary epic). The knowledge backend is fully ready for it.
+
+## (historical) Carry-forward into KM5-M3 (the `/mcp/admin` server — no shipped upstream)
 - The **mint** side is still absent: nothing mints `auth=admin` + `kg_system_*` tokens in prod
   yet (the confirm path is fully tested but unreachable until M3 wires the MCP admin tool). This
   dead-mint window (M2→M3) is intentional + documented.

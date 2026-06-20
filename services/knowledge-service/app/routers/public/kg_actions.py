@@ -30,9 +30,9 @@ from app.auth.admin_jwt import (
     SCOPE_ADMIN_WRITE,
     AdminKey,
     AdminTokenInvalid,
-    load_admin_key,
     verify_admin_token,
 )
+from app.auth.admin_key import get_admin_key as _shared_get_admin_key
 from app.auth.grant_deps import _resolve_owner  # canonical anti-oracle 404/403 gate
 from app.clients.glossary_ontology_client import GlossaryOntologyClient
 from app.clients.grant_client import GrantClient, GrantLevel
@@ -101,30 +101,6 @@ logger = logging.getLogger(__name__)
 
 _SYSTEM_DESCRIPTORS = frozenset({DESC_SYSTEM_CREATE, DESC_SYSTEM_PATCH, DESC_SYSTEM_DELETE})
 
-
-# Resolve the RS256 admin key ONCE (parse cost + a misconfig log should not repeat
-# per request). A parse failure logs loud + disables admin (returns None → 503),
-# never crash-loops the service. Cached at module level; tests override the FastAPI
-# `get_admin_key` dependency rather than this.
-_admin_key_cached: AdminKey | None = None
-_admin_key_resolved = False
-
-
-def _resolve_admin_key() -> AdminKey | None:
-    global _admin_key_cached, _admin_key_resolved
-    if _admin_key_resolved:
-        return _admin_key_cached
-    try:
-        _admin_key_cached = load_admin_key(settings.admin_jwt_public_key_pem)
-    except AdminTokenInvalid as exc:
-        logger.error(
-            "knowledge: ADMIN_JWT_PUBLIC_KEY_PEM parse failed; System-tier admin DISABLED: %s",
-            exc,
-        )
-        _admin_key_cached = None
-    _admin_key_resolved = True
-    return _admin_key_cached
-
 router = APIRouter(
     prefix="/v1/kg/actions",
     tags=["kg-actions"],
@@ -150,9 +126,9 @@ def get_system_templates_repo() -> SystemTemplatesRepo:
 
 
 def get_admin_key() -> AdminKey | None:
-    """The configured RS256 admin key, or None when System-tier admin is disabled
-    (ADMIN_JWT_PUBLIC_KEY_PEM unset/unparseable). Overridable in tests."""
-    return _resolve_admin_key()
+    """The configured RS256 admin key (shared process cache), or None when
+    System-tier admin is disabled. Overridable in tests."""
+    return _shared_get_admin_key()
 
 
 class ConfirmTokenBody(BaseModel):

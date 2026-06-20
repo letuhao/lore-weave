@@ -70,6 +70,18 @@ class SystemTemplatesRepo:
             )
         return _row_to_schema(row) if row else None
 
+    async def list_templates(self, *, include_deprecated: bool = False) -> list[GraphSchema]:
+        """All System-tier templates (admin read surface). System tier is global
+        read-only to regular users; the admin reads it here over the RS256 gate."""
+        where = "scope = 'system' AND scope_id IS NULL"
+        if not include_deprecated:
+            where += " AND deprecated_at IS NULL"
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                f"SELECT {_SCHEMA_COLS} FROM kg_graph_schemas WHERE {where} ORDER BY code"
+            )
+        return [_row_to_schema(r) for r in rows]
+
     async def code_exists(self, code: str) -> bool:
         """True iff a system template with this code exists (used by create preview
         to flag a would-be 409 before the admin confirms)."""

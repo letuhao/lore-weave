@@ -64,6 +64,10 @@ from app.routers.public import kg_actions as public_kg_actions
 # mounted at /mcp; mcp_server's StreamableHTTP session manager is run
 # inside the lifespan below.
 from app.mcp.server import build_mcp_app, mcp_server
+# KM5-M3 — the System-tier admin MCP server, a PHYSICALLY separate endpoint
+# (/mcp/admin) RS256-gated at the transport before tools/list (INV-T6). Its
+# session manager is run alongside mcp_server in the lifespan below.
+from app.mcp.admin_server import build_admin_mcp_app, mcp_admin_server
 
 logger = logging.getLogger(__name__)
 
@@ -471,7 +475,10 @@ async def lifespan(app: FastAPI):
     try:
         mcp_exit_stack = AsyncExitStack()
         await mcp_exit_stack.enter_async_context(mcp_server.session_manager.run())
-        logger.info("ARCH-1 C1: MCP session manager started; /mcp facade live")
+        # KM5-M3 — the /mcp/admin session manager runs in the SAME exit stack so
+        # both stop together at shutdown. Its surface is RS256-gated at transport.
+        await mcp_exit_stack.enter_async_context(mcp_admin_server.session_manager.run())
+        logger.info("ARCH-1 C1 + KM5-M3: MCP session managers started; /mcp + /mcp/admin live")
     except Exception:
         logger.warning(
             "ARCH-1 C1: MCP session manager failed to start (non-fatal) — "
@@ -727,6 +734,13 @@ app.include_router(public_graph_views.router)
 app.include_router(public_triage.router)
 # KM6 — class-C confirm-token machinery (generalized preview/confirm spine).
 app.include_router(public_kg_actions.router)
+
+# KM5-M3 — the System-tier admin MCP server. MOUNTED BEFORE "/mcp" because
+# Starlette matches mounts by prefix in registration order: "/mcp" would also
+# match "/mcp/admin", so the more-specific admin prefix must be registered first.
+# RS256-gated at the transport (build_admin_mcp_app) before tools/list, so the
+# admin surface cannot be enumerated without a verified X-Admin-Token (INV-T6).
+app.mount("/mcp/admin", build_admin_mcp_app())
 
 # ARCH-1 C1 — MCP server facade. (KM0, 2026-06-20: the legacy dual-run
 # /internal/tools/* HTTP path was retired — MCP is the sole tool transport.)
