@@ -528,9 +528,16 @@ Docker recovered; brought up infra postgres+neo4j and ran the KG integration sui
   ontology_mutations + resolver) on real PG+Neo4j. Component pieces all live-proven:
   create_relation stamp (relations), TriageRepo.park→kg_triage_items (triage),
   resolve_for_project (graph_schemas/resolver).
-- **STILL DEFERRED — the Milestone-B HTTP/LLM half** (`D-KG-L7-LIVE-SMOKE` residual):
-  the full cross-service run (worker-ai job → POST /resolve-schema → SDK vocab-in-prompt
-  → real LLM emits project vocab → persist) needs the whole stack + a BYOK provider +
-  a live model — a deploy-time/manual smoke. The HTTP wiring + SDK injection are
-  unit-proven (worker-ai 280, KS resolve-schema endpoint 4); only the live-LLM
-  vocab-emission remains unproven.
+- **B1 endpoint LIVE-PROVEN** on the real rebuilt knowledge-service container
+  (`:8216`, the first request 404'd → confirmed the running image was stale →
+  `docker compose up -d --build knowledge-service` → healthy): `POST
+  /internal/extraction/resolve-schema` for a random project returns the `general`
+  fallback advisory projection — `has_schema=true`, 6 entity_kinds, 5 fact_types,
+  `allow_free_edges=true`, `schema_version=1`, `label=<project>@v1`. Proves the
+  endpoint is registered, resolves the schema, and emits the advisory projection.
+- **STILL DEFERRED — only the live-LLM vocab-emission** (`D-KG-L7-LIVE-SMOKE`
+  residual): a full worker-ai job whose REAL LLM actually emits the project vocab
+  needs the whole stack + a BYOK provider + a live model — a deploy-time/manual
+  smoke. Everything around it is now proven: B1 endpoint live, write-boundary
+  stamp/park live, worker-ai HTTP wiring + SDK prompt injection unit-proven
+  (worker-ai 280).
