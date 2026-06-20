@@ -479,7 +479,36 @@ which is the sole enforce+park point).
   schema_version_on_match` + the persist closed-edge park/stamp smoke) must run when
   the stack is up → `D-KG-L7A-LIVE-SMOKE`.
 
-**Milestone B (SDK-prompt activation) — IN PROGRESS:** new KS internal resolve
-endpoint → worker-ai resolves at job start → `extract_pass2(schema=advisory)` so the
-LLM emits the project vocab; writer (A) stays the sole enforce+park. `/extract-item`
-legacy path gets the same advisory split. Reconciles the R3 SDK pre-drop.
+**2026-06-20 — D-KG-L7-ACTIVATE Milestone B (SDK-prompt activation) — DONE (unit), live deferred.**
+Makes the LLM emit the project's vocab (the precision half of activation). The
+R3 pre-drop is reconciled by construction: the SDK is fed an **advisory**
+projection (`allow_free_edges` forced True) so it injects vocab as a prompt hint
+but never pre-drops; the writer (Milestone A) resolves the AUTHORITATIVE schema
+server-side and stays the sole enforce+park point.
+- **B1 — KS internal endpoint** `POST /internal/extraction/resolve-schema`
+  (X-Internal-Token): resolves the project schema → returns the advisory projection
+  (`has_schema=False` for no project / resolve error → static prompt). Internal
+  endpoint (not in the public OpenAPI, like the sibling /internal/extraction/*).
+- **B2 — worker-ai** (`clients.py` + `runner.py`): `KnowledgeClient.resolve_extraction_schema`
+  fetches the advisory schema; the runner resolves it **once per job** (pinned like
+  the config snapshot) and threads `schema=` into `extract_pass2` on BOTH the sync
+  `_extract_and_persist` (chapters + chat turns) and the decoupled path.
+- **B-decoupled** (`decoupled_extract.py`): the schema dict is stashed in
+  `resume_state["_schema"]`; `_schema_from` rebuilds it and
+  `assemble_entity_submit`/`assemble_trio_submits` pass it into the four
+  `build_*_system` seams (all of which already accept `schema=`, lane LB) → vocab
+  reaches the prompt on the decoupled fan-out too.
+- **B3 — reconciliation:** advisory projection ⇒ SDK `_closed_edge_vocab` returns
+  None ⇒ no SDK pre-drop ⇒ the writer's triage park always fires.
+- **B4 — `/extract-item` legacy path:** intentionally **left dormant** (Phase 4b-γ
+  replaced it with persist-pass2; worker-ai no longer calls it). If revived it needs
+  the same advisory-to-SDK / authoritative-to-writer split → `D-KG-L7B-EXTRACT-ITEM`.
+- **VERIFY:** worker-ai 280 + KS unit 2792 green (+9 worker-ai: 4 client + 5 decoupled;
+  +4 KS resolve-schema endpoint); provider-gate clean. **`live infra unavailable:
+  docker daemon hung this session`** → the full-pipeline cross-service live-smoke
+  (job → resolve-schema → vocab-in-prompt → persist stamp/park) deferred to
+  `D-KG-L7-LIVE-SMOKE` (consolidates the Milestone-A `D-KG-L7A-LIVE-SMOKE`).
+
+**D-KG-L7-ACTIVATE — both milestones BUILT + unit-verified.** Remaining: the
+consolidated cross-service live-smoke (`D-KG-L7-LIVE-SMOKE`, blocked on a live
+stack) + the dormant legacy `/extract-item` (`D-KG-L7B-EXTRACT-ITEM`).

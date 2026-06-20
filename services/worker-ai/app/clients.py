@@ -26,6 +26,7 @@ from loreweave_extraction.extractors.entity import LLMEntityCandidate
 from loreweave_extraction.extractors.event import LLMEventCandidate
 from loreweave_extraction.extractors.fact import LLMFactCandidate
 from loreweave_extraction.extractors.relation import LLMRelationCandidate
+from loreweave_extraction.schema_projection import ExtractionSchema
 
 __all__ = [
     "BookClient",
@@ -333,6 +334,46 @@ class KnowledgeClient:
             retryable=resp.status_code in (502, 503, 429),
             error=f"HTTP {resp.status_code}: {resp.text[:200]}",
         )
+
+    async def resolve_extraction_schema(
+        self, *, user_id: UUID, project_id: UUID | None,
+    ) -> ExtractionSchema | None:
+        """L7 (Milestone B) — fetch the project's ADVISORY extraction-schema
+        projection, called ONCE per job at start. Threaded into
+        ``extract_pass2(schema=...)`` so the LLM emits the project's vocab.
+
+        Returns ``None`` for no project, a non-200, or any transport error →
+        worker-ai uses the static prompt (fail-soft). The projection is advisory
+        (``allow_free_edges`` forced True server-side) so the SDK injects vocab as
+        a hint but never pre-drops — /persist-pass2 stays the authoritative
+        enforce+park point regardless."""
+        if project_id is None:
+            return None
+        url = f"{self._base_url}/internal/extraction/resolve-schema"
+        try:
+            resp = await self._http.post(
+                url, json={"user_id": str(user_id), "project_id": str(project_id)},
+            )
+        except httpx.HTTPError as exc:
+            logger.warning("resolve-schema HTTP error: %s — using static prompt", exc)
+            return None
+        if resp.status_code != 200:
+            logger.warning(
+                "resolve-schema status=%s — using static prompt", resp.status_code,
+            )
+            return None
+        data = resp.json()
+        if not data.get("has_schema"):
+            return None
+        return ExtractionSchema.from_resolved({
+            "entity_kinds": data.get("entity_kinds", []),
+            "edge_predicates": data.get("edge_predicates", []),
+            "event_kinds": data.get("event_kinds", []),
+            "fact_types": data.get("fact_types", []),
+            "allow_free_edges": data.get("allow_free_edges", True),
+            "label": data.get("label", ""),
+            "schema_version": data.get("schema_version"),
+        })
 
     async def process_summarize_message(
         self,

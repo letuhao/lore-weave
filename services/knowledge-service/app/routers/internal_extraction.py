@@ -30,7 +30,10 @@ from app.deps import get_projects_repo
 from app.db.repositories.graph_schemas import GraphSchemasRepo
 from app.db.repositories.job_logs import JobLogsRepo
 from app.db.repositories.triage import TriageRepo
-from app.ontology.extraction_projection import build_extraction_schema
+from app.ontology.extraction_projection import (
+    build_extraction_schema,
+    resolved_to_extraction_dict,
+)
 from app.extraction.anchor_loader import Anchor, load_glossary_anchors
 from loreweave_extraction.schema_projection import ExtractionSchema
 from loreweave_extraction.errors import ExtractionError
@@ -850,6 +853,76 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
         facts_merged=result.facts_merged,
         evidence_edges=result.evidence_edges,
         duration_seconds=round(elapsed, 2),
+    )
+
+
+# ── L7 activation (Milestone B) — resolve the advisory extraction schema ──────
+
+
+class ResolveSchemaRequest(BaseModel):
+    user_id: UUID
+    project_id: UUID | None = None
+
+
+class ResolveSchemaResponse(BaseModel):
+    """The ADVISORY extraction-prompt projection of a project's resolved KG schema.
+
+    `allow_free_edges` is forced True so worker-ai's SDK injects the vocab as a
+    prompt *hint* but never pre-drops an off-vocab predicate — the write boundary
+    (/persist-pass2, Milestone A) resolves the AUTHORITATIVE schema server-side and
+    stays the sole closed-set enforce+park point (the R3 pre-drop reconciliation).
+
+    `has_schema=False` ⇒ no project / resolve failure ⇒ worker-ai passes
+    `schema=None` (today's static prompt behavior)."""
+
+    has_schema: bool
+    entity_kinds: list[str] = []
+    edge_predicates: list[str] = []
+    event_kinds: list[str] = []
+    fact_types: list[str] = []
+    allow_free_edges: bool = True
+    label: str = ""
+    schema_version: int | None = None
+
+
+@router.post(
+    "/resolve-schema",
+    response_model=ResolveSchemaResponse,
+    status_code=status.HTTP_200_OK,
+    summary="L7 — resolve a project's advisory extraction-schema projection",
+    description=(
+        "Worker-ai calls this ONCE per job at start to get the project's KG vocab "
+        "for the extraction prompt. Returns the ADVISORY projection "
+        "(allow_free_edges forced True → hint, never pre-drop); /persist-pass2 is "
+        "the authoritative enforce+park point. Behind X-Internal-Token. Degrades "
+        "to has_schema=False (no project / resolve error) → static prompt."
+    ),
+)
+async def resolve_extraction_schema(
+    body: ResolveSchemaRequest,
+) -> ResolveSchemaResponse:
+    if body.project_id is None:
+        return ResolveSchemaResponse(has_schema=False)
+    try:
+        repo = GraphSchemasRepo(get_knowledge_pool())
+        resolved = await repo.resolve_for_project(str(body.project_id))
+        d = resolved_to_extraction_dict(resolved, advisory=True)
+    except Exception:
+        logger.warning(
+            "L7: resolve-schema failed for project=%s — worker-ai will use the "
+            "static prompt this job",
+            body.project_id, exc_info=True,
+        )
+        return ResolveSchemaResponse(has_schema=False)
+    return ResolveSchemaResponse(
+        has_schema=True,
+        entity_kinds=d["entity_kinds"],
+        edge_predicates=d["edge_predicates"],
+        event_kinds=d["event_kinds"],
+        fact_types=d["fact_types"],
+        allow_free_edges=d["allow_free_edges"],
+        label=d["label"],
+        schema_version=d["schema_version"],
     )
 
 

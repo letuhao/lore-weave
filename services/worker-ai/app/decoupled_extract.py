@@ -293,6 +293,19 @@ def reconstruct_candidates(rs: dict[str, Any]):
     )
 
 
+def _schema_from(rs: dict[str, Any]):
+    """L7 (Milestone B) — rebuild the ADVISORY ExtractionSchema stashed in
+    resume_state (None when the project has no resolved schema). The stashed dict
+    has allow_free_edges=True, so the SDK injects the vocab as a prompt hint but
+    never pre-drops an off-vocab predicate — /persist-pass2 stays the sole
+    enforce+park point (the R3 reconciliation)."""
+    raw = rs.get("_schema")
+    if not raw:
+        return None
+    from loreweave_extraction.schema_projection import ExtractionSchema
+    return ExtractionSchema.from_resolved(raw)
+
+
 def assemble_entity_submit(rs: dict[str, Any]) -> dict:
     """Submit kwargs for the entity stage (build_entity_system + build_entity_submit_kwargs).
     context_budget=None matches worker-ai's extract_pass2 call (chunk_size=15)."""
@@ -300,7 +313,7 @@ def assemble_entity_submit(rs: dict[str, Any]) -> dict:
         build_entity_submit_kwargs, build_entity_system,
     )
     po = rs.get("prompt_overrides") or {}
-    system = build_entity_system(rs["known_entities"], po.get("entity"))
+    system = build_entity_system(rs["known_entities"], po.get("entity"), schema=_schema_from(rs))
     return build_entity_submit_kwargs(
         system_prompt=system, text=rs["chunk_text"],
         model_source=rs["model_source"], model_ref=rs["model_ref"],
@@ -335,13 +348,14 @@ def assemble_trio_submits(rs: dict[str, Any]) -> dict[str, dict]:
     # ops. begin_trio records exactly these job ids, and the fan-in completes
     # against the same subset (trio_complete uses _requested_trio_ops).
     requested = set(_requested_trio_ops(rs))
+    sch = _schema_from(rs)  # L7 (Milestone B) — advisory vocab hint (None ⇒ static)
     builders = {
         "relation": lambda: relation.build_relation_submit_kwargs(
-            system_prompt=relation.build_relation_system(known, po.get("relation")), **common),
+            system_prompt=relation.build_relation_system(known, po.get("relation"), schema=sch), **common),
         "event": lambda: event.build_event_submit_kwargs(
-            system_prompt=event.build_event_system(known, po.get("event")), **common),
+            system_prompt=event.build_event_system(known, po.get("event"), schema=sch), **common),
         "fact": lambda: fact.build_fact_submit_kwargs(
-            system_prompt=fact.build_fact_system(known, po.get("fact")), **common),
+            system_prompt=fact.build_fact_system(known, po.get("fact"), schema=sch), **common),
     }
     return {op: build() for op, build in builders.items() if op in requested}
 

@@ -471,6 +471,74 @@ def test_persist_pass2_schema_none_still_passes_triage_repo(
     assert isinstance(write_kwargs["triage_repo"], TriageRepo)
 
 
+# -- L7 Milestone B: /resolve-schema endpoint ---------------------------
+
+
+def _post_resolve(client, body, token=_TEST_TOKEN):
+    headers = {"X-Internal-Token": token} if token else {}
+    return client.post(
+        "/internal/extraction/resolve-schema", json=body, headers=headers,
+    )
+
+
+def test_resolve_schema_missing_token_returns_401():
+    client = _client()
+    resp = _post_resolve(client, {"user_id": str(uuid4())}, token=None)
+    assert resp.status_code == 401
+
+
+def test_resolve_schema_no_project_returns_has_schema_false():
+    """No project_id → has_schema=False, worker-ai uses the static prompt."""
+    client = _client()
+    resp = _post_resolve(client, {"user_id": str(uuid4()), "project_id": None})
+    assert resp.status_code == 200
+    assert resp.json()["has_schema"] is False
+
+
+@patch("app.routers.internal_extraction.get_knowledge_pool")
+@patch("app.routers.internal_extraction.GraphSchemasRepo")
+def test_resolve_schema_returns_advisory_projection(mock_repo_cls, mock_pool):
+    """L7 Milestone B (R3 reconciliation): even a CLOSED schema is projected as
+    advisory (allow_free_edges forced True) so the SDK injects vocab as a hint but
+    never pre-drops — the writer stays the sole enforce+park point."""
+    from app.db.ontology_models import EdgeType, FactType, ResolvedSchema, SchemaNodeKind
+
+    sid = uuid4()
+    resolved = ResolvedSchema(
+        project_id="p1", schema_version=3, allow_free_edges=False,  # CLOSED
+        edge_types=[EdgeType(edge_type_id=uuid4(), schema_id=sid, code="disciple_of", label="X")],
+        fact_types=[FactType(fact_type_id=uuid4(), schema_id=sid, code="realm", label="R")],
+        node_kinds=[SchemaNodeKind(schema_node_kind_id=uuid4(), schema_id=sid, kind_code="cultivator", strength="required")],
+    )
+    mock_pool.return_value = MagicMock()
+    mock_repo_cls.return_value.resolve_for_project = AsyncMock(return_value=resolved)
+
+    client = _client()
+    resp = _post_resolve(client, {"user_id": str(uuid4()), "project_id": str(uuid4())})
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["has_schema"] is True
+    assert data["allow_free_edges"] is True  # advisory forced despite closed schema
+    assert data["edge_predicates"] == ["disciple_of"]
+    assert data["entity_kinds"] == ["cultivator"]
+    assert data["fact_types"] == ["realm"]
+    assert data["schema_version"] == 3
+    assert data["label"] == "p1@v3"
+
+
+@patch("app.routers.internal_extraction.get_knowledge_pool")
+@patch("app.routers.internal_extraction.GraphSchemasRepo")
+def test_resolve_schema_resolve_failure_returns_has_schema_false(mock_repo_cls, mock_pool):
+    """A resolve error degrades to has_schema=False (static prompt) — never 500s."""
+    mock_pool.return_value = MagicMock()
+    mock_repo_cls.return_value.resolve_for_project = AsyncMock(side_effect=RuntimeError("db down"))
+    client = _client()
+    resp = _post_resolve(client, {"user_id": str(uuid4()), "project_id": str(uuid4())})
+    assert resp.status_code == 200
+    assert resp.json()["has_schema"] is False
+
+
 @patch("app.db.neo4j_repos.provenance.cleanup_zero_evidence_nodes", new_callable=AsyncMock)
 @patch("app.db.neo4j_repos.provenance.remove_evidence_for_natural_key", new_callable=AsyncMock)
 @patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
