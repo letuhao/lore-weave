@@ -384,7 +384,33 @@ lanes built as parallel worktree agents, merged clean, composed + verified:
   cross-service live-smoke is the remaining switch. `single_active` cardinality
   auto-close stays dormant (all seeded edges multi_active) → `D-KG-L7-CARDINALITY`.
 
-**REMAINING:** LF (MCP tools — running as a background agent) · LG (glossary
-internal-read, glossary branch) · **D-KG-L7-ACTIVATE** (turn enforcement on per
-project + full-pipeline live-smoke) · real-glossary cross-service smoke
-(`D-KG-LG-REAL`) → S3 final.
+**2026-06-20 — LF (MCP tool surface) DONE + merged + reviewed.**
+- 12 tools registered (`app/tools/graph_schema_tools.py` + appended to
+  `definitions.py`/`executor.py`/`mcp/server.py`): **R** = kg_graph_query,
+  kg_entity_edge_timeline, kg_schema_read, kg_list_templates, kg_sync_available,
+  kg_view_read, kg_triage_list; **W (reversible)** = kg_propose_fact,
+  kg_propose_edge, kg_view_upsert, kg_view_delete, kg_triage_resolve (KG-local).
+- **Class-C correctly DEFERRED to KM6** (adopt/schema_edit/sync_apply/
+  schema-mutating-triage/handoff/admin) — NOT registered; a unit test asserts
+  zero leak into the catalog (an LLM cannot mutate schema/adopt without the
+  confirm-token backstop). `D-KG-LF-KM6`.
+- **review-impl (security surface):** INV-K1 holds — `graph_schema_tools.py`
+  imports only `run_read`/`neo4j_session`, so `kg_propose_edge` parks (never
+  writes Neo4j); every project tool grant-gates via `_resolve_project_owner`
+  (resolve-to-owner); identity from envelope + `extra="forbid"`.
+- **MED `D-KG-LF-PROPOSE-EDGE-INBOX`:** on-schema (valid) proposed edges are
+  parked into `kg_triage_items` as `edge_cardinality_conflict` (no dedicated
+  edge-draft inbox exists) — overloads the triage taxonomy. Human-gated, no
+  integrity risk; fix = a proper edge-propose status/inbox distinct from the
+  extraction-mismatch item_types.
+- **Compose VERIFY (LF + L7 together):** 2781 knowledge unit + 95 MCP catalog
+  (no class-C leak, no scope leak, inputSchema mirror) + 4 live-PG MCP green;
+  provider-gate clean.
+
+**REMAINING → S3:** **D-KG-L7-ACTIVATE** (turn enforcement on per project +
+full-pipeline cross-service live-smoke) · **LG** glossary internal-read
+(glossary branch) + `D-KG-LG-REAL` real-glossary smoke · KM5/KM6 (admin MCP +
+confirm-token machinery) for the class-C tools · `D-KG-LF-PROPOSE-EDGE-INBOX`.
+The data layer, HTTP surface, resolution, adopt/sync, dynamic-extraction
+plumbing, frontend, enforcement mechanism, and the safe MCP tier are BUILT +
+live-verified; the above are the tracked switches/dependencies that remain.
