@@ -314,6 +314,7 @@ func (s *Server) createUserKind(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "name is required")
 		return
 	}
+	in.Name = strings.TrimSpace(in.Name) // normalize identically to the MCP tool path
 	if in.Icon == "" {
 		in.Icon = "box"
 	}
@@ -462,7 +463,7 @@ func (s *Server) patchUserKind(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		setClauses = append(setClauses, fmt.Sprintf("name = $%d", argN))
-		args = append(args, v)
+		args = append(args, strings.TrimSpace(v)) // normalize identically to the MCP tool path
 		argN++
 	}
 	if raw, ok := in["description"]; ok {

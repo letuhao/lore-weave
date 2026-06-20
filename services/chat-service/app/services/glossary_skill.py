@@ -38,6 +38,20 @@ concurrent edit is caught). Toggle the active-genre matrix with \
 `glossary_book_set_active_genres` (add/remove codes) and a kind's genre links with \
 `glossary_book_set_kind_genres`. Override one entity's genres with \
 `glossary_entity_set_genres`.
+- Reconcile the book against the standards it adopted: `glossary_book_sync_available` \
+lists which adopted genres/kinds/attributes have a newer (or retired) source. Recommend \
+a per-row choice set (take_theirs to pull the update, keep_mine to keep the book's value) \
+and propose it with `glossary_book_sync_apply` — it returns a `confirm_token` + \
+`descriptor` the user confirms via `glossary_confirm_action` (and may flip any row first).
+
+## Your personal standards library (user tier)
+- Beyond this book, the user has a PRIVATE, reusable standards library (their own \
+genres/kinds/attributes) that any of their books can later adopt. Read it with \
+`glossary_user_standards_read`; build it with `glossary_user_create` / \
+`glossary_user_patch` (pass `base_version`). These act on the SIGNED-IN user's own \
+library — never another user's. Deletes are reversible: `glossary_user_delete` trashes \
+a row and `glossary_user_restore` brings it back (no confirm needed — they are direct, \
+low-impact, reversible writes).
 
 ## Making changes (all human-gated)
 - Edit an existing entity (name, alias, description, an attribute): \

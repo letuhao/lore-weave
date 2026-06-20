@@ -51,6 +51,11 @@ func (s *Server) mcpHandler() http.Handler {
 	// T1: book-tier ontology tools (read, adopt, create/patch/delete, set-genres,
 	// entity-genres) register in their own file so tier streams don't contend here.
 	s.RegisterBookTools(srv)
+	// T2: book sync tools (available R + apply C). T3: user-tier standards tools.
+	// Each appends here from its own file — append-only registration is the
+	// per-tier parallelism enabler (buildplan §4).
+	s.RegisterSyncTools(srv)
+	s.RegisterUserTools(srv)
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "glossary_propose_new_entity",

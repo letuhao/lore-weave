@@ -138,9 +138,39 @@ func (s *Server) confirmAction(w http.ResponseWriter, r *http.Request) {
 		s.effectSchemaCreateAttr(w, r.Context(), claims)
 	case descAdopt:
 		s.effectAdopt(w, r.Context(), claims)
+	case descSyncApply:
+		s.effectSyncApply(w, r.Context(), claims)
 	default:
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "unknown action")
 	}
+}
+
+// syncApplyParams is the captured intent for a sync_apply action: the per-row choice
+// set the LLM proposed and the human confirmed (§12.4). Each item is re-validated
+// against current source state at confirm time inside applyBookSyncCore.
+type syncApplyParams struct {
+	Items []syncApplyItemReq `json:"items"`
+}
+
+func (s *Server) effectSyncApply(w http.ResponseWriter, ctx context.Context, claims actionClaims) {
+	var p syncApplyParams
+	if err := json.Unmarshal(claims.Params, &p); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "bad proposal payload")
+		return
+	}
+	// userID = the proposer (== redeemer, enforced in authorizeAction). The user-tier
+	// source scoping inside applySyncRow keys off it, so a grantee can only pull their
+	// own private user-tier values (D-GKA-SYNC-USER-SOURCE-VISIBILITY).
+	resp, err := s.applyBookSyncCore(ctx, claims.BookID, claims.UserID, p.Items)
+	if errors.Is(err, errSyncInvalidItem) {
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "the proposed items are no longer valid — propose again")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "sync apply failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) effectAdopt(w http.ResponseWriter, ctx context.Context, claims actionClaims) {
@@ -293,9 +323,50 @@ func (s *Server) previewAction(w http.ResponseWriter, r *http.Request) {
 		s.previewSchemaCreate(w, claims)
 	case descAdopt:
 		s.previewAdopt(w, r.Context(), claims)
+	case descSyncApply:
+		s.previewSyncApply(w, r.Context(), claims)
 	default:
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "unknown action")
 	}
+}
+
+// previewSyncApply re-renders the sync confirm card from CURRENT state (§5.1 #5):
+// it re-runs the live diff and reports, of the proposed rows, how many will still
+// take_theirs / keep_mine and how many the source has retired since the proposal.
+func (s *Server) previewSyncApply(w http.ResponseWriter, ctx context.Context, claims actionClaims) {
+	var p syncApplyParams
+	if err := json.Unmarshal(claims.Params, &p); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "bad proposal payload")
+		return
+	}
+	// Bucket each proposed row by whether its source is CURRENTLY live — matching what
+	// applySyncRow will actually do (a live row applies, take or keep; a row whose
+	// source retired since the proposal is skipped as source_retired).
+	live, err := s.bookSyncSourceLiveByID(ctx, claims.BookID, claims.UserID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "preview failed")
+		return
+	}
+	var takeN, keepN, retiredN int
+	for _, it := range p.Items {
+		if !live[it.ID] {
+			retiredN++ // source retired/removed (or no longer a sourced row of this book)
+			continue
+		}
+		if it.Choice == "take_theirs" {
+			takeN++
+		} else {
+			keepN++
+		}
+	}
+	writeJSON(w, http.StatusOK, actionPreview{
+		Descriptor: descSyncApply, Title: "Apply standard updates to this book", Destructive: true,
+		PreviewRows: []previewRow{
+			{Label: "rows updated from source", Value: fmt.Sprint(takeN), Note: "take_theirs"},
+			{Label: "rows kept as-is", Value: fmt.Sprint(keepN), Note: "keep_mine (accept divergence)"},
+			{Label: "no longer available", Value: fmt.Sprint(retiredN), Note: "source retired / already current since proposed"},
+		},
+	})
 }
 
 // previewAdopt enumerates, from CURRENT state, how many picked standards are new vs

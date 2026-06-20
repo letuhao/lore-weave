@@ -42,7 +42,8 @@ const (
 	descBookDelete       = "book_delete"
 	descSchemaCreateKind = "schema_create_kind"
 	descSchemaCreateAttr = "schema_create_attribute"
-	descAdopt            = "adopt" // T1 — scaffold a book by copy-down from standards
+	descAdopt            = "adopt"      // T1 — scaffold a book by copy-down from standards
+	descSyncApply        = "sync_apply" // T2 — apply a proposed per-row sync choice set
 )
 
 var (
@@ -55,7 +56,7 @@ var (
 // can never carry intent the confirm path doesn't fully validate.
 func liveDescriptor(d string) bool {
 	switch d {
-	case descBookDelete, descSchemaCreateKind, descSchemaCreateAttr, descAdopt:
+	case descBookDelete, descSchemaCreateKind, descSchemaCreateAttr, descAdopt, descSyncApply:
 		return true
 	default:
 		return false
