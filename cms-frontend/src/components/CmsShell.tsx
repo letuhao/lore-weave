@@ -6,6 +6,7 @@ const NAV = [
   { to: 'genres', label: 'Genres' },
   { to: 'kinds', label: 'Kinds' },
   { to: 'attributes', label: 'Attributes' },
+  { to: 'chat', label: 'Assistant' },
 ];
 
 export function CmsShell() {

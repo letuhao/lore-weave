@@ -10,6 +10,12 @@ type UserProfile = {
 
 type AuthState = {
   accessToken: string | null;
+  // T4d: the ORIGINAL user (HS256) access token, kept alongside the admin RS256
+  // token. The admin CRUD/confirm endpoints want the RS256 `accessToken`; the
+  // chat-service message stream wants this HS256 bearer for `get_current_user`
+  // (admin authority then rides the separate X-Admin-Token header). Null for a
+  // session stored before this field existed (re-login repopulates it).
+  userToken: string | null;
   user: UserProfile | null;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
@@ -21,21 +27,25 @@ const Ctx = createContext<AuthState | null>(null);
 // apps can be open side by side without clobbering each other's session.
 const AUTH_KEY = 'cms_auth';
 
-type Stored = { accessToken: string | null; user: UserProfile | null };
+type Stored = { accessToken: string | null; userToken: string | null; user: UserProfile | null };
 
 function readStored(): Stored {
   try {
     const raw = localStorage.getItem(AUTH_KEY);
-    if (!raw) return { accessToken: null, user: null };
+    if (!raw) return { accessToken: null, userToken: null, user: null };
     const parsed = JSON.parse(raw) as Stored;
-    return { accessToken: parsed.accessToken ?? null, user: parsed.user ?? null };
+    return {
+      accessToken: parsed.accessToken ?? null,
+      userToken: parsed.userToken ?? null,
+      user: parsed.user ?? null,
+    };
   } catch {
-    return { accessToken: null, user: null };
+    return { accessToken: null, userToken: null, user: null };
   }
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [{ accessToken, user }, setState] = useState<Stored>(() => readStored());
+  const [{ accessToken, userToken, user }, setState] = useState<Stored>(() => readStored());
 
   const persist = useCallback((next: Stored) => {
     setState(next);
@@ -69,16 +79,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch {
         throw new Error('This account does not have admin access.');
       }
-      persist({ accessToken: adminToken, user: res.user ?? null });
+      // Keep BOTH: the admin RS256 token (working token for admin endpoints) and
+      // the original user HS256 token (the chat-service stream bearer, T4d).
+      persist({ accessToken: adminToken, userToken: res.access_token, user: res.user ?? null });
     },
     [persist],
   );
 
-  const logout = useCallback(() => persist({ accessToken: null, user: null }), [persist]);
+  const logout = useCallback(
+    () => persist({ accessToken: null, userToken: null, user: null }),
+    [persist],
+  );
 
   const v = useMemo(
-    () => ({ accessToken, user, login, logout }),
-    [accessToken, user, login, logout],
+    () => ({ accessToken, userToken, user, login, logout }),
+    [accessToken, userToken, user, login, logout],
   );
 
   return <Ctx.Provider value={v}>{children}</Ctx.Provider>;

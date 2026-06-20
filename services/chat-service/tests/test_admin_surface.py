@@ -35,7 +35,7 @@ from tests.test_stream_service import (  # noqa: E402
     _make_pool_with_conn,
     _patched_knowledge,
 )
-from tests.test_stream_tools import _patch_client, _FakeClient, done, tok  # noqa: E402
+from tests.test_stream_tools import _patch_client, _FakeClient, _drain, done, tok, usage  # noqa: E402
 
 ADMIN_TOKEN = "rs256.admin.token.value.do-not-log"
 
@@ -277,3 +277,80 @@ class TestSurfaceCuration:
         assert not any(n.startswith("glossary_admin_") for n in names)
         # The admin catalog was never touched on a book surface.
         kc.get_admin_tool_definitions.assert_not_awaited()
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# 4. resume_stream_response curation (E17 on the RESUME path)
+# ════════════════════════════════════════════════════════════════════════════
+#
+# The fresh stream curates by surface; the resume (post-confirm 2nd pass) must
+# curate IDENTICALLY when the admin re-presents X-Admin-Token — else a refactor
+# could silently re-advertise the book/user write-back tools on an admin resume.
+
+
+def _suspended_admin():
+    from app.db.suspended_runs import SuspendedRun
+
+    return SuspendedRun(
+        run_id="run-A",
+        session_id=str(TEST_SESSION_ID),
+        owner_user_id=str(TEST_USER_ID),
+        message_id="m-A",
+        working=[
+            {"role": "user", "content": "add a steampunk genre"},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "c1",
+                        "type": "function",
+                        "function": {"name": "glossary_confirm_action", "arguments": "{}"},
+                    }
+                ],
+            },
+        ],
+        pending_tool_call={"id": "c1", "name": "glossary_confirm_action", "args": {}},
+        input_tokens=1,
+        output_tokens=1,
+        model_source="user_model",
+        model_ref=str(TEST_MODEL_REF),
+        parent_message_id=None,
+        user_message_content="add a steampunk genre",
+    )
+
+
+class TestResumeCuration:
+    @pytest.mark.asyncio
+    async def test_admin_resume_readvertises_admin_catalog_only(self):
+        """resume_stream_response(admin_token=…) re-advertises the admin catalog
+        + glossary_confirm_action ONLY — never the book/user write-back tools,
+        never the user /mcp catalog (curation holds across the confirm round-trip)."""
+        from app.services.stream_service import resume_stream_response
+
+        pool, conn = _make_pool_with_conn()
+        conn.fetchval.return_value = 1
+        pool.fetchrow.return_value = {"generation_params": {}, "project_id": None}
+        kc = _admin_knowledge()
+        scripts = [[tok("Done."), usage(2, 1), done("stop")]]
+
+        with _patch_client(scripts), \
+                patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+                patch("app.services.stream_service.load_suspended_run",
+                      AsyncMock(return_value=_suspended_admin())), \
+                patch("app.services.stream_service.delete_suspended_run", AsyncMock()):
+            await _drain(resume_stream_response(
+                session_id=str(TEST_SESSION_ID), user_id=str(TEST_USER_ID),
+                run_id="run-A", tool_call_id="c1", outcome="action_done",
+                applied_text=None, creds=_make_creds(), pool=pool, billing=AsyncMock(),
+                stream_format="agui", admin_token=ADMIN_TOKEN,
+            ))
+
+        names = _advertised_tool_names()
+        assert "glossary_confirm_action" in names
+        assert "glossary_admin_propose_create" in names
+        assert "glossary_propose_entity_edit" not in names
+        assert "propose_edit" not in names
+        assert "memory_search" not in names
+        kc.get_admin_tool_definitions.assert_awaited_once_with(ADMIN_TOKEN)
+        kc.get_tool_definitions.assert_not_awaited()
