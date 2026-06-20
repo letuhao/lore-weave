@@ -10,6 +10,8 @@ function fakeFederation(over: Partial<FederationService>): FederationService {
   return {
     catalog: () => [],
     executeTool: async () => ({ ok: true }),
+    providerAvailability: () => [],
+    isPartial: () => false,
     ...over,
   } as unknown as FederationService;
 }
@@ -32,9 +34,27 @@ describe('headerValue / extractEnvelope', () => {
 });
 
 describe('handleListTools', () => {
-  it('returns the federated catalog', () => {
+  it('returns the federated catalog with an availability _meta (H10)', () => {
     const fed = fakeFederation({ catalog: () => [{ name: 'memory_search' }] as any });
-    expect(handleListTools(fed)).toEqual({ tools: [{ name: 'memory_search' }] });
+    expect(handleListTools(fed)).toEqual({
+      tools: [{ name: 'memory_search' }],
+      _meta: { unavailable_providers: [], partial: false },
+    });
+  });
+
+  it('reports a down provider in _meta.unavailable_providers (H10)', () => {
+    const fed = fakeFederation({
+      catalog: () => [] as any,
+      providerAvailability: () => [
+        { name: 'knowledge', available: true },
+        { name: 'book', available: false },
+      ],
+      isPartial: () => true,
+    });
+    expect(handleListTools(fed)._meta).toEqual({
+      unavailable_providers: ['book'],
+      partial: true,
+    });
   });
 });
 

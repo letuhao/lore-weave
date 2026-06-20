@@ -1359,8 +1359,9 @@ async def resume_stream_response(
     user_id: str,
     run_id: str,
     tool_call_id: str,
-    outcome: str,
+    outcome: str | None,
     applied_text: str | None,
+    result: dict | None = None,
     creds: ProviderCredentials,
     pool: asyncpg.Pool,
     billing: BillingClient,
@@ -1389,9 +1390,14 @@ async def resume_stream_response(
     # Append the frontend tool's result (the human's apply decision) so the
     # agent can acknowledge it in the 2nd pass.
     working = list(susp.working)
-    result_payload = {"outcome": outcome}
-    if applied_text is not None:
-        result_payload["applied_text"] = applied_text
+    if result is not None:
+        # MCP fan-out (C-NAV): a ui_* nav resolve — feed the structured result
+        # (e.g. {"navigated": true}) back verbatim as the tool result.
+        result_payload: dict = result
+    else:
+        result_payload = {"outcome": outcome if outcome is not None else "dismissed"}
+        if applied_text is not None:
+            result_payload["applied_text"] = applied_text
     working.append({
         "role": "tool",
         "tool_call_id": tool_call_id,

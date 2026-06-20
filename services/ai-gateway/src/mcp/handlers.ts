@@ -20,8 +20,21 @@ export function extractEnvelope(headers: Headers): Envelope {
   };
 }
 
-export function handleListTools(federation: FederationService): { tools: any[] } {
-  return { tools: federation.catalog() as any[] };
+export function handleListTools(federation: FederationService): {
+  tools: any[];
+  _meta: { unavailable_providers: string[]; partial: boolean };
+} {
+  // MCP fan-out (H10) — carry the per-provider availability on the list-tools
+  // `_meta` so the consumer's find_tools can distinguish "no such tool" from
+  // "owning provider temporarily unavailable" (→ "try again", never "I can't").
+  const unavailable = federation
+    .providerAvailability()
+    .filter((p) => !p.available)
+    .map((p) => p.name);
+  return {
+    tools: federation.catalog() as any[],
+    _meta: { unavailable_providers: unavailable, partial: federation.isPartial() },
+  };
 }
 
 /**
