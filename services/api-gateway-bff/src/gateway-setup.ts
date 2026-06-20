@@ -37,7 +37,12 @@ export function configureGatewayApp(
     // GET. Without an explicit entry here the CORS preflight
     // (OPTIONS) rejects any PATCH that includes it, even though
     // the actual verb would have been allowed.
-    allowedHeaders: ['Content-Type', 'Authorization', 'If-Match'],
+    // MCP fan-out: `x-loreweave-stream-format` is the AG-UI stream-format
+    // negotiation header the chat FE sends on /chat messages + tool-results.
+    // The entire MCP-fanout FE runs on the agui surface, so a cross-origin
+    // deployment is broken without this (preflight rejects the POST). Found by
+    // the COMPOSE-C browser pass.
+    allowedHeaders: ['Content-Type', 'Authorization', 'If-Match', 'x-loreweave-stream-format'],
     // ETag is a response header, not a request header. Browsers
     // expose a small default set (Content-Type, etc.) to JS; any
     // non-default header must be explicitly exposed. The FE only
