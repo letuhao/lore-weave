@@ -173,6 +173,7 @@ export function ManageWorkspace({ bookId }: { bookId: string }) {
             'toast.delete_failed',
           )
         }
+        onRevert={(id) => guard(() => ont.revertAttribute(id), t('toast.reverted'), 'toast.revert_failed')}
       />
 
       {showAdopt && (

@@ -62,6 +62,15 @@ func (s *Server) RegisterBookTools(srv *mcp.Server) {
 	}, s.toolBookDelete)
 
 	mcp.AddTool(srv, &mcp.Tool{
+		Name: "glossary_book_revert",
+		Description: "Propose REVERTING a book genre/kind/attribute back to the System/User standard it was " +
+			"adopted from — discards the book's local edits to this row and re-pulls the parent's CURRENT values. " +
+			"It does NOT write; it returns a confirm_token + a preview of the parent it reverts to, which a human " +
+			"confirms via glossary_confirm_action. Only works on adopted rows (not book-native ones). Address by " +
+			"code: level=genre|kind|attribute + code (for attribute also kind_code + genre_code).",
+	}, s.toolBookRevert)
+
+	mcp.AddTool(srv, &mcp.Tool{
 		Name: "glossary_book_set_active_genres",
 		Description: "Turn book genres on/off as active matrix columns by DELTA — `add` and/or `remove` " +
 			"lists of genre codes. (Delta, not replace, so you never silently drop a column you didn't mention.)",

@@ -75,7 +75,7 @@ func (s *Server) listStandardGenres(w http.ResponseWriter, r *http.Request) {
 	if inclSystem {
 		rows, err := s.pool.Query(ctx, `
 			SELECT genre_id::text, code, name, icon, color, sort_order, created_at, updated_at
-			FROM system_genres ORDER BY sort_order, code`)
+			FROM system_genres WHERE deprecated_at IS NULL ORDER BY sort_order, code`)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "system genres query failed")
 			return

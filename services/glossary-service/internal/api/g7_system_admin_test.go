@@ -112,6 +112,15 @@ func TestSystemTierAdmin_CRUDAndGuards(t *testing.T) {
 	base := "/v1/glossary"
 	admin := mint([]string{"admin:read", "admin:write"})
 
+	// Deletes are now SOFT (G-C8) — the fixed-code rows linger as deprecated after the
+	// test's own delete path, so hard-delete them to keep the test re-runnable.
+	t.Cleanup(func() {
+		c := context.Background()
+		pool.Exec(c, `DELETE FROM system_attributes WHERE code='armor'`)        //nolint:errcheck
+		pool.Exec(c, `DELETE FROM system_kinds WHERE code='mecha_g7'`)          //nolint:errcheck
+		pool.Exec(c, `DELETE FROM system_genres WHERE code='cyberpunk_g7'`)     //nolint:errcheck
+	})
+
 	// ── create a system genre ────────────────────────────────────────────────
 	cw := adminReq(t, srv, http.MethodPost, base+"/system-genres", admin,
 		`{"name":"Cyberpunk","code":"cyberpunk_g7","icon":"🤖"}`)

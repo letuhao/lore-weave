@@ -76,6 +76,8 @@
     "saving": "Đang lưu…",
     "delete": "Xóa",
     "deleting": "Đang xóa…",
+    "revert": "Khôi phục mặc định",
+    "revert_hint": "Loại bỏ các chỉnh sửa cục bộ của sách cho hàng này và khôi phục tiêu chuẩn Hệ thống/Người dùng đã áp dụng.",
     "name_required": "Tên là bắt buộc",
     "from_system": "Được áp dụng từ một tiêu chuẩn Hệ thống — chỉnh sửa ở đây chỉ thay đổi bản sao của cuốn sách này.",
     "from_user": "Được áp dụng từ tiêu chuẩn Người dùng của bạn.",
@@ -140,8 +142,10 @@
     "adopted": "Đã áp dụng vào cuốn sách này",
     "saved": "Đã lưu",
     "deleted": "Đã xóa",
+    "reverted": "Đã khôi phục mặc định",
     "save_failed": "Lưu thất bại",
     "delete_failed": "Xóa thất bại",
+    "revert_failed": "Khôi phục thất bại",
     "adopt_failed": "Áp dụng thất bại",
     "forbidden": "Bạn cần quyền Quản lý trên cuốn sách này để thực hiện thay đổi"
   }

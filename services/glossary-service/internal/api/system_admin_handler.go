@@ -57,6 +57,10 @@ func writeSystemErr(w http.ResponseWriter, err error, action string) {
 		writeError(w, http.StatusNotFound, "GLOSS_NOT_FOUND", "system row not found")
 	case errors.Is(err, errSystemNotDeletable):
 		writeError(w, http.StatusNotFound, "GLOSS_NOT_FOUND", "system row not found or not deletable")
+	case errors.Is(err, errSystemNotInTrash):
+		writeError(w, http.StatusNotFound, "GLOSS_NOT_FOUND", "system row is not in the recycle bin")
+	case errors.Is(err, errSystemParentDeprecated):
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "restore the parent kind/genre first")
 	case errors.Is(err, errSystemFKNotLive):
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "kind_id or genre_id is not a live system row")
 	case errors.Is(err, errSystemNameRequired), errors.Is(err, errSystemCodeUnderivable), errors.Is(err, errInvalidFieldType):
@@ -296,4 +300,69 @@ func (s *Server) deleteSystemAttribute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// ── Recycle bin (G-C8): list soft-deleted + restore ──────────────────────────────
+// All admin:write-gated, same as the CRUD above. Restore is the human-CMS undo; the
+// agent path is the class-C glossary_admin_propose_restore MCP tool (admin_tools.go),
+// which lands on the same restore cores via the admin-confirm effect.
+
+func (s *Server) listSystemTrash(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireAdminScope(w, r, scopeAdminWrite); !ok {
+		return
+	}
+	trash, err := s.listSystemTrashCore(r.Context())
+	if err != nil {
+		writeSystemErr(w, err, "list system trash")
+		return
+	}
+	writeJSON(w, http.StatusOK, trash)
+}
+
+func (s *Server) restoreSystemGenre(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireAdminScope(w, r, scopeAdminWrite); !ok {
+		return
+	}
+	genreID, ok := parsePathUUID(w, r, "genre_id")
+	if !ok {
+		return
+	}
+	g, err := s.restoreSystemGenreCore(r.Context(), genreID)
+	if err != nil {
+		writeSystemErr(w, err, "restore system genre")
+		return
+	}
+	writeJSON(w, http.StatusOK, g)
+}
+
+func (s *Server) restoreSystemKind(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireAdminScope(w, r, scopeAdminWrite); !ok {
+		return
+	}
+	kindID, ok := parsePathUUID(w, r, "kind_id")
+	if !ok {
+		return
+	}
+	k, err := s.restoreSystemKindCore(r.Context(), kindID)
+	if err != nil {
+		writeSystemErr(w, err, "restore system kind")
+		return
+	}
+	writeJSON(w, http.StatusOK, k)
+}
+
+func (s *Server) restoreSystemAttribute(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireAdminScope(w, r, scopeAdminWrite); !ok {
+		return
+	}
+	attrID, ok := parsePathUUID(w, r, "attr_id")
+	if !ok {
+		return
+	}
+	a, err := s.restoreSystemAttributeCore(r.Context(), attrID)
+	if err != nil {
+		writeSystemErr(w, err, "restore system attribute")
+		return
+	}
+	writeJSON(w, http.StatusOK, a)
 }

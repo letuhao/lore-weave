@@ -76,6 +76,8 @@
     "saving": "保存中…",
     "delete": "削除",
     "deleting": "削除中…",
+    "revert": "既定に戻す",
+    "revert_hint": "この書籍のこの行へのローカル編集を破棄し、導入元の System/User 標準に戻します。",
     "name_required": "名前は必須です",
     "from_system": "System 標準から導入されました。ここでの編集はこの書籍のコピーにのみ反映されます。",
     "from_user": "あなたの User 標準から導入されました。",
@@ -140,8 +142,10 @@
     "adopted": "この書籍に導入しました",
     "saved": "保存しました",
     "deleted": "削除しました",
+    "reverted": "既定に戻しました",
     "save_failed": "保存に失敗しました",
     "delete_failed": "削除に失敗しました",
+    "revert_failed": "復元に失敗しました",
     "adopt_failed": "導入に失敗しました",
     "forbidden": "変更するには、この書籍の管理アクセス権が必要です"
   }

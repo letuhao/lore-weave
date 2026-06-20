@@ -140,6 +140,8 @@ func (s *Server) confirmAction(w http.ResponseWriter, r *http.Request) {
 		s.effectAdopt(w, r.Context(), claims)
 	case descSyncApply:
 		s.effectSyncApply(w, r.Context(), claims)
+	case descBookRevert:
+		s.effectBookRevert(w, r.Context(), claims)
 	default:
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "unknown action")
 	}
@@ -325,6 +327,8 @@ func (s *Server) previewAction(w http.ResponseWriter, r *http.Request) {
 		s.previewAdopt(w, r.Context(), claims)
 	case descSyncApply:
 		s.previewSyncApply(w, r.Context(), claims)
+	case descBookRevert:
+		s.previewBookRevert(w, r.Context(), claims)
 	default:
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "unknown action")
 	}
@@ -415,6 +419,89 @@ func (s *Server) previewBookDelete(w http.ResponseWriter, ctx context.Context, c
 		return
 	}
 	out.PreviewRows = rows
+	writeJSON(w, http.StatusOK, out)
+}
+
+// effectBookRevert re-pulls a book row's parent values (G-U1). Re-resolves the target by
+// code at confirm time; a vanished target or a now-retired/deprecated source is
+// re-proposable (422). On success returns the refreshed row.
+func (s *Server) effectBookRevert(w http.ResponseWriter, ctx context.Context, claims actionClaims) {
+	var p bookDeleteParams
+	if err := json.Unmarshal(claims.Params, &p); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "bad proposal payload")
+		return
+	}
+	targetID, err := s.resolveDeleteTarget(ctx, claims.BookID, p)
+	if isNoRows(err) {
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "the target no longer exists — propose again")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "revert failed")
+		return
+	}
+	reverted, err := s.revertBookRow(ctx, claims.BookID, claims.UserID, p.Level, targetID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "revert failed")
+		return
+	}
+	if !reverted {
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN",
+			"the parent standard is no longer available — propose again")
+		return
+	}
+	var detail any
+	switch p.Level {
+	case deleteLevelGenre:
+		detail, err = s.loadBookGenreOne(ctx, claims.BookID, targetID)
+	case deleteLevelKind:
+		detail, err = s.loadBookKindOne(ctx, claims.BookID, targetID)
+	case deleteLevelAttr:
+		detail, err = s.loadBookAttrOne(ctx, claims.BookID, targetID)
+	default:
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "unknown revert level")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "load failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, detail)
+}
+
+// previewBookRevert re-renders the revert confirm card from CURRENT state: the parent tier
+// the row reverts to, or a "book-native / nothing to revert" note.
+func (s *Server) previewBookRevert(w http.ResponseWriter, ctx context.Context, claims actionClaims) {
+	var p bookDeleteParams
+	if err := json.Unmarshal(claims.Params, &p); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "bad proposal payload")
+		return
+	}
+	out := actionPreview{Descriptor: descBookRevert, Destructive: false,
+		Title: fmt.Sprintf("Revert %s %q to default", p.Level, p.Code)}
+	targetID, err := s.resolveDeleteTarget(ctx, claims.BookID, p)
+	if isNoRows(err) {
+		out.PreviewRows = []previewRow{{Label: "status", Value: "already removed", Note: "this target no longer exists"}}
+		writeJSON(w, http.StatusOK, out)
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "preview failed")
+		return
+	}
+	ref, err := s.bookRowSourceRef(ctx, claims.BookID, p.Level, targetID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "preview failed")
+		return
+	}
+	if ref == "" {
+		out.PreviewRows = []previewRow{{Label: "status", Value: "book-native", Note: "no parent standard to revert to"}}
+		writeJSON(w, http.StatusOK, out)
+		return
+	}
+	out.PreviewRows = []previewRow{
+		{Label: "reverts to", Value: tierLabel(ref) + " default", Note: "discards this book's local edits to this row"},
+	}
 	writeJSON(w, http.StatusOK, out)
 }
 

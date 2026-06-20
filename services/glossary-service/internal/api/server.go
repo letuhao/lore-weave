@@ -257,18 +257,23 @@ func (s *Server) Router() http.Handler {
 		r.Route("/system-genres", func(r chi.Router) {
 			r.Post("/", s.createSystemGenre)
 			r.Patch("/{genre_id}", s.patchSystemGenre)
-			r.Delete("/{genre_id}", s.deleteSystemGenre)
+			r.Delete("/{genre_id}", s.deleteSystemGenre)         // soft-delete (G-C8)
+			r.Post("/{genre_id}/restore", s.restoreSystemGenre)  // recycle-bin restore (G-C8)
 		})
 		r.Route("/system-kinds", func(r chi.Router) {
 			r.Post("/", s.createSystemKind)
 			r.Patch("/{kind_id}", s.patchSystemKind)
 			r.Delete("/{kind_id}", s.deleteSystemKind)
+			r.Post("/{kind_id}/restore", s.restoreSystemKind)
 		})
 		r.Route("/system-attributes-admin", func(r chi.Router) {
 			r.Post("/", s.createSystemAttribute)
 			r.Patch("/{attr_id}", s.patchSystemAttribute)
 			r.Delete("/{attr_id}", s.deleteSystemAttribute)
+			r.Post("/{attr_id}/restore", s.restoreSystemAttribute)
 		})
+		// Recycle bin: all soft-deleted System rows (G-C8). admin:write-gated.
+		r.Get("/system-trash", s.listSystemTrash)
 
 		r.Route("/user-attributes", func(r chi.Router) {
 			r.Get("/", s.listUserAttributes)
@@ -297,6 +302,7 @@ func (s *Server) Router() http.Handler {
 					r.Route("/{genre_id}", func(r chi.Router) {
 						r.Patch("/", s.patchBookGenre)
 						r.Delete("/", s.deleteBookGenre)
+						r.Post("/revert", s.revertBookGenre) // G-U1 revert to parent tier
 					})
 				})
 				r.Route("/kinds", func(r chi.Router) {
@@ -305,6 +311,7 @@ func (s *Server) Router() http.Handler {
 						r.Patch("/", s.patchBookKind)
 						r.Delete("/", s.deleteBookKind)
 						r.Put("/genres", s.setBookKindGenres)
+						r.Post("/revert", s.revertBookKind)
 					})
 				})
 				r.Route("/attributes", func(r chi.Router) {
@@ -312,6 +319,7 @@ func (s *Server) Router() http.Handler {
 					r.Route("/{attr_id}", func(r chi.Router) {
 						r.Patch("/", s.patchBookAttribute)
 						r.Delete("/", s.deleteBookAttribute)
+						r.Post("/revert", s.revertBookAttribute)
 					})
 				})
 			})

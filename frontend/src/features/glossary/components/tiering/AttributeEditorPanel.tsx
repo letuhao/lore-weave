@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Trash2 } from 'lucide-react';
+import { Trash2, RotateCcw } from 'lucide-react';
 import type { BookAttribute, FieldType } from '../../tieringTypes';
 import { tierFromSourceRef } from '../../lib/tiering';
 import { TierChip } from './TierChip';
@@ -11,11 +11,13 @@ type Props = {
   attribute: BookAttribute | null;
   onSave: (attrId: string, changes: Record<string, unknown>) => Promise<void>;
   onDelete: (attrId: string) => Promise<void>;
+  /** G-U1 — revert this adopted row to its parent (System/User) standard. */
+  onRevert: (attrId: string) => Promise<void>;
 };
 
 /** Edits one book attribute (every book row is the book's own editable copy — the
  *  source chip shows where it was adopted from). Manage-gated server-side. */
-export function AttributeEditorPanel({ attribute, onSave, onDelete }: Props) {
+export function AttributeEditorPanel({ attribute, onSave, onDelete, onRevert }: Props) {
   const { t } = useTranslation('glossaryTiering');
   const [name, setName] = useState('');
   const [fieldType, setFieldType] = useState<FieldType>('text');
@@ -129,13 +131,25 @@ export function AttributeEditorPanel({ attribute, onSave, onDelete }: Props) {
       {error && <p className="mt-2 text-xs text-destructive">{error}</p>}
 
       <div className="mt-4 flex items-center justify-between">
-        <button
-          onClick={() => void onDelete(attribute.attr_id)}
-          disabled={busy}
-          className="flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/10 disabled:opacity-50"
-        >
-          <Trash2 className="h-3.5 w-3.5" /> {t('attr.delete')}
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => void onDelete(attribute.attr_id)}
+            disabled={busy}
+            className="flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/10 disabled:opacity-50"
+          >
+            <Trash2 className="h-3.5 w-3.5" /> {t('attr.delete')}
+          </button>
+          {tier !== 'book' && (
+            <button
+              onClick={() => void onRevert(attribute.attr_id)}
+              disabled={busy}
+              title={t('attr.revert_hint')}
+              className="flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted disabled:opacity-50"
+            >
+              <RotateCcw className="h-3.5 w-3.5" /> {t('attr.revert')}
+            </button>
+          )}
+        </div>
         <button
           onClick={() => void save()}
           disabled={busy || !name.trim()}

@@ -84,6 +84,10 @@ func runK2aMigrations(t *testing.T, pool *pgxpool.Pool) {
 	if err := migrate.UpConsumedTokens(ctx, pool); err != nil {
 		t.Fatalf("migrate.UpConsumedTokens: %v", err)
 	}
+	// 0031 — System-tier soft-delete (G-C8): deprecated_at on system_genres/kinds/attributes.
+	if err := migrate.UpSystemSoftDelete(ctx, pool); err != nil {
+		t.Fatalf("migrate.UpSystemSoftDelete: %v", err)
+	}
 }
 
 // ── schema shape tests ──────────────────────────────────────────────────────

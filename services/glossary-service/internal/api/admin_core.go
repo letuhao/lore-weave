@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -23,6 +24,9 @@ var (
 	errSystemNotDeletable    = errors.New("this system row is not deletable")             // → 404/422 (universal/unknown)
 	errSystemNameRequired    = errors.New("name is required")                             // → 422
 	errSystemCodeUnderivable = errors.New("code could not be derived from name")          // → 422
+	// G-C8 soft-delete/restore sentinels.
+	errSystemNotInTrash       = errors.New("system row is not in the recycle bin")                   // → 404
+	errSystemParentDeprecated = errors.New("restore the parent kind/genre first")                    // → 422
 )
 
 // ── code → id resolvers (System tier; codes are globally unique per entity) ────
@@ -121,17 +125,51 @@ func (s *Server) patchSystemGenreCore(ctx context.Context, id uuid.UUID, p syste
 	return g, nil
 }
 
-// deleteSystemGenreCore removes a System genre. `universal` is mandatory (O4) — never
-// deletable; a delete of it (or a missing id) yields errSystemNotDeletable.
+// deleteSystemGenreCore SOFT-deletes a System genre (G-C8): sets deprecated_at instead
+// of DELETE, so it is restorable from the recycle bin. `universal` is mandatory (O4) —
+// never deletable; a delete of it (or a missing/already-deprecated id) yields
+// errSystemNotDeletable. The genre's attributes are cascade-deprecated in the SAME
+// transaction (the FK ON DELETE CASCADE no longer fires on a soft delete, so the cascade
+// is explicit). The system_kind_genres link rows are left intact so a restore re-attaches.
 func (s *Server) deleteSystemGenreCore(ctx context.Context, id uuid.UUID) error {
-	tag, err := s.pool.Exec(ctx, `DELETE FROM system_genres WHERE genre_id=$1 AND code <> 'universal'`, id)
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	tag, err := tx.Exec(ctx, `UPDATE system_genres SET deprecated_at=now() WHERE genre_id=$1 AND code <> 'universal' AND deprecated_at IS NULL`, id)
 	if err != nil {
 		return err
 	}
 	if tag.RowsAffected() == 0 {
 		return errSystemNotDeletable
 	}
-	return nil
+	if _, err := tx.Exec(ctx, `UPDATE system_attributes SET deprecated_at=now() WHERE genre_id=$1 AND deprecated_at IS NULL`, id); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// restoreSystemGenreCore clears deprecated_at on a soft-deleted System genre (G-C8). Per
+// the P0 restore semantics, restoring a genre un-hides ONLY the genre — its cascade-
+// deprecated attributes are restored individually (so an attribute independently deleted
+// earlier is not accidentally resurrected). A row not currently in the bin yields
+// errSystemNotInTrash.
+func (s *Server) restoreSystemGenreCore(ctx context.Context, id uuid.UUID) (*genreResp, error) {
+	g := &genreResp{Tier: "system"}
+	err := s.pool.QueryRow(ctx, `
+		UPDATE system_genres SET deprecated_at=NULL, updated_at=now()
+		WHERE genre_id=$1 AND deprecated_at IS NOT NULL
+		RETURNING genre_id::text, code, name, icon, color, sort_order, created_at, updated_at`,
+		id,
+	).Scan(&g.GenreID, &g.Code, &g.Name, &g.Icon, &g.Color, &g.SortOrder, &g.CreatedAt, &g.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, errSystemNotInTrash
+	}
+	if err != nil {
+		return nil, err
+	}
+	return g, nil
 }
 
 // ── System kinds ───────────────────────────────────────────────────────────────
@@ -199,17 +237,46 @@ func (s *Server) patchSystemKindCore(ctx context.Context, id uuid.UUID, p system
 	return k, nil
 }
 
-// deleteSystemKindCore removes a System kind. `unknown` is the extraction parking kind
-// (E6) — never deletable.
+// deleteSystemKindCore SOFT-deletes a System kind (G-C8). `unknown` is the extraction
+// parking kind (E6) — never deletable. The kind's attributes are cascade-deprecated in
+// the same transaction.
 func (s *Server) deleteSystemKindCore(ctx context.Context, id uuid.UUID) error {
-	tag, err := s.pool.Exec(ctx, `DELETE FROM system_kinds WHERE kind_id=$1 AND code <> 'unknown'`, id)
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	tag, err := tx.Exec(ctx, `UPDATE system_kinds SET deprecated_at=now() WHERE kind_id=$1 AND code <> 'unknown' AND deprecated_at IS NULL`, id)
 	if err != nil {
 		return err
 	}
 	if tag.RowsAffected() == 0 {
 		return errSystemNotDeletable
 	}
-	return nil
+	if _, err := tx.Exec(ctx, `UPDATE system_attributes SET deprecated_at=now() WHERE kind_id=$1 AND deprecated_at IS NULL`, id); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// restoreSystemKindCore clears deprecated_at on a soft-deleted System kind (G-C8).
+// Restores ONLY the kind (its attributes are restored individually). system_kinds has no
+// updated_at column.
+func (s *Server) restoreSystemKindCore(ctx context.Context, id uuid.UUID) (*systemKindResp, error) {
+	k := &systemKindResp{Tier: "system"}
+	err := s.pool.QueryRow(ctx, `
+		UPDATE system_kinds SET deprecated_at=NULL
+		WHERE kind_id=$1 AND deprecated_at IS NOT NULL
+		RETURNING kind_id::text, code, name, description, icon, color, is_hidden, sort_order`,
+		id,
+	).Scan(&k.KindID, &k.Code, &k.Name, &k.Description, &k.Icon, &k.Color, &k.IsHidden, &k.SortOrder)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, errSystemNotInTrash
+	}
+	if err != nil {
+		return nil, err
+	}
+	return k, nil
 }
 
 // ── System attributes ──────────────────────────────────────────────────────────
@@ -243,6 +310,19 @@ func (s *Server) createSystemAttributeCore(ctx context.Context, p systemAttrPara
 	}
 	if p.Options == nil {
 		p.Options = []string{}
+	}
+	// G-C8: a System attribute must never be created under a SOFT-DELETED kind/genre — the
+	// FK only checks existence, and a deprecated parent would make the new attribute an
+	// invisible orphan that resurfaces if the parent is later restored. Reject up front.
+	var parentsLive bool
+	if err := s.pool.QueryRow(ctx, `SELECT
+		EXISTS(SELECT 1 FROM system_kinds  WHERE kind_id=$1  AND deprecated_at IS NULL)
+		AND EXISTS(SELECT 1 FROM system_genres WHERE genre_id=$2 AND deprecated_at IS NULL)`,
+		p.KindID, p.GenreID).Scan(&parentsLive); err != nil {
+		return nil, err
+	}
+	if !parentsLive {
+		return nil, errSystemFKNotLive
 	}
 	hash := attrContentHash(p.Code, p.Name, p.Description, p.FieldType, p.IsRequired, p.Options)
 	a := &attributeResp{Tier: "system"}
@@ -319,8 +399,9 @@ func (s *Server) patchSystemAttributeCore(ctx context.Context, id uuid.UUID, p s
 	return cur, nil
 }
 
+// deleteSystemAttributeCore SOFT-deletes a single System attribute (G-C8).
 func (s *Server) deleteSystemAttributeCore(ctx context.Context, id uuid.UUID) error {
-	tag, err := s.pool.Exec(ctx, `DELETE FROM system_attributes WHERE attr_id=$1`, id)
+	tag, err := s.pool.Exec(ctx, `UPDATE system_attributes SET deprecated_at=now() WHERE attr_id=$1 AND deprecated_at IS NULL`, id)
 	if err != nil {
 		return err
 	}
@@ -328,4 +409,131 @@ func (s *Server) deleteSystemAttributeCore(ctx context.Context, id uuid.UUID) er
 		return errSystemNotFound
 	}
 	return nil
+}
+
+// restoreSystemAttributeCore clears deprecated_at on a soft-deleted System attribute
+// (G-C8). Guarded: a restored attribute under a still-deprecated kind/genre would be
+// invisible in merged reads (they filter the parent), so restore is BLOCKED with
+// errSystemParentDeprecated until the parent is restored first.
+func (s *Server) restoreSystemAttributeCore(ctx context.Context, id uuid.UUID) (*attributeResp, error) {
+	var parentsLive bool
+	err := s.pool.QueryRow(ctx, `
+		SELECT (sk.deprecated_at IS NULL AND sg.deprecated_at IS NULL)
+		FROM system_attributes sa
+		JOIN system_kinds  sk ON sk.kind_id  = sa.kind_id
+		JOIN system_genres sg ON sg.genre_id = sa.genre_id
+		WHERE sa.attr_id=$1 AND sa.deprecated_at IS NOT NULL`, id,
+	).Scan(&parentsLive)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, errSystemNotInTrash
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !parentsLive {
+		return nil, errSystemParentDeprecated
+	}
+	a := &attributeResp{Tier: "system"}
+	err = s.pool.QueryRow(ctx, `
+		UPDATE system_attributes SET deprecated_at=NULL
+		WHERE attr_id=$1 AND deprecated_at IS NOT NULL
+		RETURNING attr_id::text, kind_id::text, genre_id::text, code, name, description, field_type, is_required, sort_order, options`,
+		id,
+	).Scan(&a.AttrID, &a.KindID, &a.GenreID, &a.Code, &a.Name, &a.Description, &a.FieldType, &a.IsRequired, &a.SortOrder, &a.Options)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, errSystemNotInTrash
+	}
+	if err != nil {
+		return nil, err
+	}
+	if a.Options == nil {
+		a.Options = []string{}
+	}
+	return a, nil
+}
+
+// ── Recycle bin (list-deprecated) ────────────────────────────────────────────────
+
+// systemTrashRow is one soft-deleted System row for the recycle bin. KindCode/GenreCode/
+// FieldType are populated for attributes only (so the bin can show the cell context even
+// when the parent kind/genre is itself deprecated).
+type systemTrashRow struct {
+	ID           string    `json:"id"`
+	Code         string    `json:"code"`
+	Name         string    `json:"name"`
+	KindCode     string    `json:"kind_code,omitempty"`
+	GenreCode    string    `json:"genre_code,omitempty"`
+	FieldType    string    `json:"field_type,omitempty"`
+	DeprecatedAt time.Time `json:"deprecated_at"`
+}
+
+type systemTrashResp struct {
+	Genres     []systemTrashRow `json:"genres"`
+	Kinds      []systemTrashRow `json:"kinds"`
+	Attributes []systemTrashRow `json:"attributes"`
+}
+
+// listSystemTrashCore returns every soft-deleted System genre/kind/attribute, newest
+// first, for the CMS recycle bin (G-C8). Attribute rows carry their kind/genre codes via
+// plain JOINs (codes survive deprecation of the parent).
+func (s *Server) listSystemTrashCore(ctx context.Context) (*systemTrashResp, error) {
+	out := &systemTrashResp{Genres: []systemTrashRow{}, Kinds: []systemTrashRow{}, Attributes: []systemTrashRow{}}
+
+	grows, err := s.pool.Query(ctx, `
+		SELECT genre_id::text, code, name, deprecated_at
+		FROM system_genres WHERE deprecated_at IS NOT NULL ORDER BY deprecated_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer grows.Close()
+	for grows.Next() {
+		var r systemTrashRow
+		if err := grows.Scan(&r.ID, &r.Code, &r.Name, &r.DeprecatedAt); err != nil {
+			return nil, err
+		}
+		out.Genres = append(out.Genres, r)
+	}
+	if err := grows.Err(); err != nil {
+		return nil, err
+	}
+
+	krows, err := s.pool.Query(ctx, `
+		SELECT kind_id::text, code, name, deprecated_at
+		FROM system_kinds WHERE deprecated_at IS NOT NULL ORDER BY deprecated_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer krows.Close()
+	for krows.Next() {
+		var r systemTrashRow
+		if err := krows.Scan(&r.ID, &r.Code, &r.Name, &r.DeprecatedAt); err != nil {
+			return nil, err
+		}
+		out.Kinds = append(out.Kinds, r)
+	}
+	if err := krows.Err(); err != nil {
+		return nil, err
+	}
+
+	arows, err := s.pool.Query(ctx, `
+		SELECT sa.attr_id::text, sa.code, sa.name, sk.code, sg.code, sa.field_type, sa.deprecated_at
+		FROM system_attributes sa
+		JOIN system_kinds  sk ON sk.kind_id  = sa.kind_id
+		JOIN system_genres sg ON sg.genre_id = sa.genre_id
+		WHERE sa.deprecated_at IS NOT NULL ORDER BY sa.deprecated_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer arows.Close()
+	for arows.Next() {
+		var r systemTrashRow
+		if err := arows.Scan(&r.ID, &r.Code, &r.Name, &r.KindCode, &r.GenreCode, &r.FieldType, &r.DeprecatedAt); err != nil {
+			return nil, err
+		}
+		out.Attributes = append(out.Attributes, r)
+	}
+	if err := arows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
 }

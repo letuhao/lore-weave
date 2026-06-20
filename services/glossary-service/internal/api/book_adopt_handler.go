@@ -155,7 +155,7 @@ func (s *Server) adoptBookOntologyCore(ctx context.Context, bookID, userID uuid.
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO book_genres (book_id, code, name, icon, color, sort_order, source_ref, source_hash)
 		SELECT $1, sg.code, sg.name, sg.icon, sg.color, sg.sort_order, 'system:'||sg.genre_id::text, sg.content_hash
-		FROM system_genres sg WHERE sg.code = ANY($2)
+		FROM system_genres sg WHERE sg.code = ANY($2) AND sg.deprecated_at IS NULL
 		ON CONFLICT (book_id, code) DO NOTHING`, bookID, genres); err != nil {
 		return err
 	}
@@ -181,7 +181,7 @@ func (s *Server) adoptBookOntologyCore(ctx context.Context, bookID, userID uuid.
 		INSERT INTO book_kinds (book_id, code, name, description, icon, color, sort_order, is_hidden, source_ref, source_hash)
 		SELECT $1, sk.code, sk.name, sk.description, sk.icon, sk.color, sk.sort_order, sk.is_hidden,
 		       'system:'||sk.kind_id::text, md5(sk.code||'|'||sk.name||'|'||coalesce(sk.description,''))
-		FROM system_kinds sk WHERE sk.code = ANY($2)
+		FROM system_kinds sk WHERE sk.code = ANY($2) AND sk.deprecated_at IS NULL
 		ON CONFLICT (book_id, code) DO NOTHING`, bookID, kinds); err != nil {
 		return err
 	}
@@ -245,7 +245,7 @@ func (s *Server) adoptBookOntologyCore(ctx context.Context, bookID, userID uuid.
 		JOIN system_genres sg ON sg.genre_id = sa.genre_id
 		JOIN book_kinds  bk ON bk.book_id=$1 AND bk.code = sk.code
 		JOIN book_genres bg ON bg.book_id=$1 AND bg.code = sg.code
-		WHERE sk.code = ANY($2) AND sg.code = ANY($3)
+		WHERE sk.code = ANY($2) AND sg.code = ANY($3) AND sa.deprecated_at IS NULL
 		ON CONFLICT (book_id, kind_id, genre_id, code) DO NOTHING`, bookID, kinds, genres); err != nil {
 		return err
 	}

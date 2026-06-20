@@ -104,6 +104,8 @@ func (s *Server) confirmAdminAction(w http.ResponseWriter, r *http.Request) {
 		s.effectSystemPatch(w, r.Context(), p)
 	case descSystemDelete:
 		s.effectSystemDelete(w, r.Context(), p)
+	case descSystemRestore:
+		s.effectSystemRestore(w, r.Context(), p)
 	default:
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "unknown admin action")
 	}
@@ -129,9 +131,10 @@ func (s *Server) previewAdminAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	title := map[string]string{
-		descSystemCreate: "Create System " + p.Level,
-		descSystemPatch:  "Edit System " + p.Level,
-		descSystemDelete: "Delete System " + p.Level,
+		descSystemCreate:  "Create System " + p.Level,
+		descSystemPatch:   "Edit System " + p.Level,
+		descSystemDelete:  "Delete System " + p.Level,
+		descSystemRestore: "Restore System " + p.Level,
 	}[claims.Descriptor]
 	rows := []previewRow{{Label: "level", Value: p.Level}}
 	if p.Code != "" {
@@ -210,6 +213,30 @@ func (s *Server) effectSystemDelete(w http.ResponseWriter, ctx context.Context, 
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// effectSystemRestore re-resolves the (soft-deleted) target by code at confirm time and
+// clears its deprecated_at via the shared restore cores (G-C8). resolveSystemTarget finds
+// the row regardless of state (codes stay unique while deprecated); the restore core then
+// enforces "must currently be in the bin" + the attribute parent-liveness guard.
+func (s *Server) effectSystemRestore(w http.ResponseWriter, ctx context.Context, p systemActionParams) {
+	id, ok := s.resolveSystemTarget(w, ctx, p)
+	if !ok {
+		return
+	}
+	switch p.Level {
+	case adminLevelGenre:
+		g, err := s.restoreSystemGenreCore(ctx, id)
+		writeSystemResult(w, http.StatusOK, g, err, "restore system genre")
+	case adminLevelKind:
+		k, err := s.restoreSystemKindCore(ctx, id)
+		writeSystemResult(w, http.StatusOK, k, err, "restore system kind")
+	case adminLevelAttr:
+		a, err := s.restoreSystemAttributeCore(ctx, id)
+		writeSystemResult(w, http.StatusOK, a, err, "restore system attribute")
+	default:
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "unknown level")
+	}
 }
 
 // resolveSystemTarget re-resolves a patch/delete target by code at confirm time. A

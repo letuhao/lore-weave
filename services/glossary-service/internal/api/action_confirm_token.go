@@ -42,15 +42,17 @@ const (
 	descBookDelete       = "book_delete"
 	descSchemaCreateKind = "schema_create_kind"
 	descSchemaCreateAttr = "schema_create_attribute"
-	descAdopt            = "adopt"      // T1 — scaffold a book by copy-down from standards
-	descSyncApply        = "sync_apply" // T2 — apply a proposed per-row sync choice set
+	descAdopt            = "adopt"       // T1 — scaffold a book by copy-down from standards
+	descSyncApply        = "sync_apply"  // T2 — apply a proposed per-row sync choice set
+	descBookRevert       = "book_revert" // G-U1 — revert a book override back to its parent tier
 
 	// T4 — System-tier admin writes (authorityAdmin only; confirmed via the
 	// RS256-gated /v1/glossary/actions/admin/confirm, never the user path). Verb is
 	// the descriptor, entity is the `level` in params (genre|kind|attribute).
-	descSystemCreate = "system_create"
-	descSystemPatch  = "system_patch"
-	descSystemDelete = "system_delete"
+	descSystemCreate  = "system_create"
+	descSystemPatch   = "system_patch"
+	descSystemDelete  = "system_delete"
+	descSystemRestore = "system_restore" // G-C8 — restore a soft-deleted System row from the recycle bin
 )
 
 var (
@@ -63,8 +65,8 @@ var (
 // can never carry intent the confirm path doesn't fully validate.
 func liveDescriptor(d string) bool {
 	switch d {
-	case descBookDelete, descSchemaCreateKind, descSchemaCreateAttr, descAdopt, descSyncApply,
-		descSystemCreate, descSystemPatch, descSystemDelete:
+	case descBookDelete, descSchemaCreateKind, descSchemaCreateAttr, descAdopt, descSyncApply, descBookRevert,
+		descSystemCreate, descSystemPatch, descSystemDelete, descSystemRestore:
 		return true
 	default:
 		return false

@@ -120,19 +120,19 @@ func (s *Server) bookSyncSourceLiveByID(ctx context.Context, bookID, userID uuid
 	queries := []string{
 		`SELECT bg.genre_id::text, (sg.genre_id IS NOT NULL OR ug.genre_id IS NOT NULL)
 		   FROM book_genres bg
-		   LEFT JOIN system_genres sg ON bg.source_ref = 'system:'||sg.genre_id::text
+		   LEFT JOIN system_genres sg ON bg.source_ref = 'system:'||sg.genre_id::text AND sg.deprecated_at IS NULL
 		   LEFT JOIN user_genres   ug ON bg.source_ref = 'user:'||ug.genre_id::text
 		                              AND ug.owner_user_id=$2 AND ug.deleted_at IS NULL AND ug.permanently_deleted_at IS NULL
 		   WHERE bg.book_id=$1 AND bg.deprecated_at IS NULL AND bg.source_ref IS NOT NULL`,
 		`SELECT bk.book_kind_id::text, (sk.kind_id IS NOT NULL OR uk.user_kind_id IS NOT NULL)
 		   FROM book_kinds bk
-		   LEFT JOIN system_kinds sk ON bk.source_ref = 'system:'||sk.kind_id::text
+		   LEFT JOIN system_kinds sk ON bk.source_ref = 'system:'||sk.kind_id::text AND sk.deprecated_at IS NULL
 		   LEFT JOIN user_kinds   uk ON bk.source_ref = 'user:'||uk.user_kind_id::text
 		                              AND uk.owner_user_id=$2 AND uk.deleted_at IS NULL AND uk.permanently_deleted_at IS NULL
 		   WHERE bk.book_id=$1 AND bk.deprecated_at IS NULL AND bk.source_ref IS NOT NULL`,
 		`SELECT ba.attr_id::text, (sa.attr_id IS NOT NULL OR ua.attr_id IS NOT NULL)
 		   FROM book_attributes ba
-		   LEFT JOIN system_attributes sa ON ba.source_ref = 'system:'||sa.attr_id::text
+		   LEFT JOIN system_attributes sa ON ba.source_ref = 'system:'||sa.attr_id::text AND sa.deprecated_at IS NULL
 		   LEFT JOIN user_attributes   ua ON ba.source_ref = 'user:'||ua.attr_id::text
 		                                  AND ua.owner_user_id=$2 AND ua.deleted_at IS NULL
 		   WHERE ba.book_id=$1 AND ba.deprecated_at IS NULL AND ba.source_ref IS NOT NULL`,
@@ -172,7 +172,7 @@ func (s *Server) syncGenresAvailable(ctx context.Context, bookID, userID uuid.UU
 		       COALESCE(sg.name, ug.name)                 AS up_name,
 		       (sg.genre_id IS NOT NULL OR ug.genre_id IS NOT NULL) AS src_live
 		FROM book_genres bg
-		LEFT JOIN system_genres sg ON bg.source_ref = 'system:'||sg.genre_id::text
+		LEFT JOIN system_genres sg ON bg.source_ref = 'system:'||sg.genre_id::text AND sg.deprecated_at IS NULL
 		LEFT JOIN user_genres   ug ON bg.source_ref = 'user:'||ug.genre_id::text
 		                           AND ug.owner_user_id = $2
 		                           AND ug.deleted_at IS NULL AND ug.permanently_deleted_at IS NULL
@@ -212,7 +212,7 @@ func (s *Server) syncKindsAvailable(ctx context.Context, bookID, userID uuid.UUI
 		       COALESCE(sk.description, uk.description)  AS up_desc,
 		       (sk.kind_id IS NOT NULL OR uk.user_kind_id IS NOT NULL) AS src_live
 		FROM book_kinds bk
-		LEFT JOIN system_kinds sk ON bk.source_ref = 'system:'||sk.kind_id::text
+		LEFT JOIN system_kinds sk ON bk.source_ref = 'system:'||sk.kind_id::text AND sk.deprecated_at IS NULL
 		LEFT JOIN user_kinds   uk ON bk.source_ref = 'user:'||uk.user_kind_id::text
 		                          AND uk.owner_user_id = $2
 		                          AND uk.deleted_at IS NULL AND uk.permanently_deleted_at IS NULL
@@ -257,7 +257,7 @@ func (s *Server) syncAttributesAvailable(ctx context.Context, bookID, userID uui
 		       COALESCE(sa.options, ua.options)           AS up_opts,
 		       (sa.attr_id IS NOT NULL OR ua.attr_id IS NOT NULL) AS src_live
 		FROM book_attributes ba
-		LEFT JOIN system_attributes sa ON ba.source_ref = 'system:'||sa.attr_id::text
+		LEFT JOIN system_attributes sa ON ba.source_ref = 'system:'||sa.attr_id::text AND sa.deprecated_at IS NULL
 		LEFT JOIN user_attributes   ua ON ba.source_ref = 'user:'||ua.attr_id::text
 		                               AND ua.owner_user_id = $2
 		                               AND ua.deleted_at IS NULL
@@ -437,7 +437,7 @@ func (s *Server) applySyncRow(ctx context.Context, tx pgx.Tx, bookID, userID uui
 		setT := "name = src.name, "
 		sysSQL = `UPDATE book_genres bg SET ` + ternarySet(take, setT) + `source_hash = src.content_hash, updated_at = now()
 			FROM system_genres src
-			WHERE bg.book_id=$1 AND bg.genre_id=$2 AND bg.deprecated_at IS NULL AND bg.source_ref = 'system:'||src.genre_id::text`
+			WHERE bg.book_id=$1 AND bg.genre_id=$2 AND bg.deprecated_at IS NULL AND bg.source_ref = 'system:'||src.genre_id::text AND src.deprecated_at IS NULL`
 		usrSQL = `UPDATE book_genres bg SET ` + ternarySet(take, setT) + `source_hash = src.content_hash, updated_at = now()
 			FROM user_genres src
 			WHERE bg.book_id=$1 AND bg.genre_id=$2 AND bg.deprecated_at IS NULL AND bg.source_ref = 'user:'||src.genre_id::text
@@ -447,7 +447,7 @@ func (s *Server) applySyncRow(ctx context.Context, tx pgx.Tx, bookID, userID uui
 		hash := kindHashExpr("src")
 		sysSQL = `UPDATE book_kinds bk SET ` + ternarySet(take, setT) + `source_hash = ` + hash + `, updated_at = now()
 			FROM system_kinds src
-			WHERE bk.book_id=$1 AND bk.book_kind_id=$2 AND bk.deprecated_at IS NULL AND bk.source_ref = 'system:'||src.kind_id::text`
+			WHERE bk.book_id=$1 AND bk.book_kind_id=$2 AND bk.deprecated_at IS NULL AND bk.source_ref = 'system:'||src.kind_id::text AND src.deprecated_at IS NULL`
 		usrSQL = `UPDATE book_kinds bk SET ` + ternarySet(take, setT) + `source_hash = ` + hash + `, updated_at = now()
 			FROM user_kinds src
 			WHERE bk.book_id=$1 AND bk.book_kind_id=$2 AND bk.deprecated_at IS NULL AND bk.source_ref = 'user:'||src.user_kind_id::text
@@ -457,7 +457,7 @@ func (s *Server) applySyncRow(ctx context.Context, tx pgx.Tx, bookID, userID uui
 			"is_required = src.is_required, options = src.options, "
 		sysSQL = `UPDATE book_attributes ba SET ` + ternarySet(take, setT) + `source_hash = src.content_hash, updated_at = now()
 			FROM system_attributes src
-			WHERE ba.book_id=$1 AND ba.attr_id=$2 AND ba.deprecated_at IS NULL AND ba.source_ref = 'system:'||src.attr_id::text`
+			WHERE ba.book_id=$1 AND ba.attr_id=$2 AND ba.deprecated_at IS NULL AND ba.source_ref = 'system:'||src.attr_id::text AND src.deprecated_at IS NULL`
 		usrSQL = `UPDATE book_attributes ba SET ` + ternarySet(take, setT) + `source_hash = src.content_hash, updated_at = now()
 			FROM user_attributes src
 			WHERE ba.book_id=$1 AND ba.attr_id=$2 AND ba.deprecated_at IS NULL AND ba.source_ref = 'user:'||src.attr_id::text

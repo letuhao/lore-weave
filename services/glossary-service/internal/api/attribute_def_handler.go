@@ -117,7 +117,7 @@ func (s *Server) listSystemAttributes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows, err := s.pool.Query(r.Context(),
-		`SELECT `+attrDefCols+` FROM system_attributes WHERE kind_id=$1 AND genre_id=$2 ORDER BY sort_order, code`,
+		`SELECT `+attrDefCols+` FROM system_attributes WHERE kind_id=$1 AND genre_id=$2 AND deprecated_at IS NULL ORDER BY sort_order, code`,
 		kindID, genreID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "query failed")

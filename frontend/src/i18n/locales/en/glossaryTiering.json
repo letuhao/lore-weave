@@ -76,6 +76,8 @@
     "saving": "Saving…",
     "delete": "Delete",
     "deleting": "Deleting…",
+    "revert": "Revert to default",
+    "revert_hint": "Discard this book's local edits to this row and restore the System/User standard it was adopted from.",
     "name_required": "Name is required",
     "from_system": "Adopted from a System standard — edits here change this book's copy only.",
     "from_user": "Adopted from your User standard.",
@@ -140,8 +142,10 @@
     "adopted": "Adopted into this book",
     "saved": "Saved",
     "deleted": "Deleted",
+    "reverted": "Reverted to default",
     "save_failed": "Save failed",
     "delete_failed": "Delete failed",
+    "revert_failed": "Revert failed",
     "adopt_failed": "Adopt failed",
     "forbidden": "You need Manage access on this book to make changes"
   }

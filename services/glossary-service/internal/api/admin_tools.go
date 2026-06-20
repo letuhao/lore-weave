@@ -49,8 +49,17 @@ func (s *Server) RegisterAdminTools(srv *mcp.Server) {
 		Name: "glossary_admin_propose_delete",
 		Description: "Propose DELETING a System-tier genre/kind/attribute. level + code (attribute also needs " +
 			"kind_code + genre_code). High-impact, shared — returns a confirm_token + preview a human admin confirms. " +
-			"`universal` genre and `unknown` kind are never deletable.",
+			"`universal` genre and `unknown` kind are never deletable. Deletes are SOFT — the row moves to the recycle " +
+			"bin and can be restored with glossary_admin_propose_restore.",
 	}, s.toolAdminProposeDelete)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name: "glossary_admin_propose_restore",
+		Description: "Propose RESTORING a soft-deleted System-tier genre/kind/attribute from the recycle bin. " +
+			"level + code (attribute also needs kind_code + genre_code). Returns a confirm_token + preview a human " +
+			"admin confirms. Only works on a row currently in the recycle bin; restoring an attribute requires its " +
+			"parent kind & genre to be live (restore those first).",
+	}, s.toolAdminProposeRestore)
 }
 
 const (
@@ -103,7 +112,7 @@ func (s *Server) toolAdminStandardsRead(ctx context.Context, _ *mcp.CallToolRequ
 	out := adminStandardsOut{Genres: []genreResp{}, Kinds: []systemKindResp{}, Attributes: []attributeResp{}}
 
 	grows, err := s.pool.Query(ctx, `SELECT genre_id::text, code, name, icon, color, sort_order, created_at, updated_at
-		FROM system_genres ORDER BY sort_order, code`)
+		FROM system_genres WHERE deprecated_at IS NULL ORDER BY sort_order, code`)
 	if err != nil {
 		return nil, adminStandardsOut{}, errors.New("system genres query failed")
 	}
@@ -121,7 +130,7 @@ func (s *Server) toolAdminStandardsRead(ctx context.Context, _ *mcp.CallToolRequ
 	}
 
 	krows, err := s.pool.Query(ctx, `SELECT kind_id::text, code, name, description, icon, color, is_hidden, sort_order
-		FROM system_kinds ORDER BY sort_order, code`)
+		FROM system_kinds WHERE deprecated_at IS NULL ORDER BY sort_order, code`)
 	if err != nil {
 		return nil, adminStandardsOut{}, errors.New("system kinds query failed")
 	}
@@ -148,7 +157,7 @@ func (s *Server) toolAdminStandardsRead(ctx context.Context, _ *mcp.CallToolRequ
 			return nil, adminStandardsOut{}, errors.New("failed to resolve the kind×genre cell")
 		}
 		arows, err := s.pool.Query(ctx, `SELECT `+attrDefCols+` FROM system_attributes
-			WHERE kind_id=$1 AND genre_id=$2 ORDER BY sort_order, code`, kindID, genreID)
+			WHERE kind_id=$1 AND genre_id=$2 AND deprecated_at IS NULL ORDER BY sort_order, code`, kindID, genreID)
 		if err != nil {
 			return nil, adminStandardsOut{}, errors.New("system attributes query failed")
 		}
@@ -302,6 +311,68 @@ func (s *Server) toolAdminProposeDelete(ctx context.Context, _ *mcp.CallToolRequ
 	rows := []previewRow{{Label: "level", Value: level}, {Label: "code", Value: code}, {Label: "action", Value: "delete", Note: "shared System default"}}
 	return s.mintAdminActionCard(adminSub, descSystemDelete,
 		fmt.Sprintf("Delete System %s %q", level, code), p, rows, true)
+}
+
+// toolAdminProposeRestore proposes restoring a soft-deleted System row (G-C8). Reuses the
+// delete tool's input shape (level/code + kind_code/genre_code for attrs). Mint-time it
+// asserts the row is currently in the recycle bin; confirm-time the restore core enforces
+// the parent-liveness guard.
+func (s *Server) toolAdminProposeRestore(ctx context.Context, _ *mcp.CallToolRequest, in adminDeleteToolIn) (*mcp.CallToolResult, confirmCardOut, error) {
+	adminSub, ok := adminSubFromCtx(ctx)
+	if !ok {
+		return nil, confirmCardOut{}, errors.New("missing admin identity")
+	}
+	level := strings.TrimSpace(in.Level)
+	code := strings.TrimSpace(in.Code)
+	if code == "" {
+		return nil, confirmCardOut{}, errors.New("code is required")
+	}
+	if err := s.adminProposeRestorable(ctx, level, code, in.KindCode, in.GenreCode); err != nil {
+		return nil, confirmCardOut{}, err
+	}
+	p := systemActionParams{Level: level, Code: code, KindCode: strings.TrimSpace(in.KindCode), GenreCode: strings.TrimSpace(in.GenreCode)}
+	rows := []previewRow{{Label: "level", Value: level}, {Label: "code", Value: code}, {Label: "action", Value: "restore", Note: "from recycle bin"}}
+	return s.mintAdminActionCard(adminSub, descSystemRestore,
+		fmt.Sprintf("Restore System %s %q", level, code), p, rows, false)
+}
+
+// adminProposeRestorable validates (mint-time) that the addressed System row exists AND is
+// currently soft-deleted (in the recycle bin). Restoring a live row is a no-op the agent
+// should not propose. Confirm-time re-validation still runs in the restore core.
+func (s *Server) adminProposeRestorable(ctx context.Context, level, code, kindCode, genreCode string) error {
+	var deprecated bool
+	var err error
+	switch level {
+	case adminLevelGenre:
+		err = s.pool.QueryRow(ctx, `SELECT deprecated_at IS NOT NULL FROM system_genres WHERE code=$1`, code).Scan(&deprecated)
+	case adminLevelKind:
+		err = s.pool.QueryRow(ctx, `SELECT deprecated_at IS NOT NULL FROM system_kinds WHERE code=$1`, code).Scan(&deprecated)
+	case adminLevelAttr:
+		kc, gc := strings.TrimSpace(kindCode), strings.TrimSpace(genreCode)
+		if kc == "" || gc == "" {
+			return errors.New("kind_code and genre_code are required for an attribute")
+		}
+		id, rerr := s.resolveSystemAttrID(ctx, kc, gc, code)
+		if isNoRows(rerr) {
+			return fmt.Errorf("no System %s with that code", level)
+		}
+		if rerr != nil {
+			return errors.New("failed to resolve the target")
+		}
+		err = s.pool.QueryRow(ctx, `SELECT deprecated_at IS NOT NULL FROM system_attributes WHERE attr_id=$1`, id).Scan(&deprecated)
+	default:
+		return errors.New("level must be genre, kind, or attribute")
+	}
+	if isNoRows(err) {
+		return fmt.Errorf("no System %s with that code", level)
+	}
+	if err != nil {
+		return errors.New("failed to resolve the target")
+	}
+	if !deprecated {
+		return fmt.Errorf("System %s %q is not in the recycle bin", level, code)
+	}
+	return nil
 }
 
 // adminProposeResolvable validates (mint-time, §11 #8) that the addressed System row
