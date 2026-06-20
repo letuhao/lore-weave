@@ -822,7 +822,12 @@ async def stream_response(
     universal_skill: str | None = None
     if inject_universal_skill:
         from app.services.universal_skill import UNIVERSAL_SKILL_PROMPT
-        universal_skill = UNIVERSAL_SKILL_PROMPT
+        # S-WORKFLOW (Wave 3): append the cross-service ORDERING fragment. The
+        # universal skill teaches how to act; this teaches the required sequence
+        # (chapters -> translate -> glossary -> wiki) + async-dependency waits +
+        # H4 scope honesty. Composes by concatenation, shares the same cache slot.
+        from app.services.workflow_skill import WORKFLOW_SKILL_PROMPT
+        universal_skill = UNIVERSAL_SKILL_PROMPT + "\n\n" + WORKFLOW_SKILL_PROMPT
 
     use_anthropic_cache = (
         creds.provider_kind == "anthropic"

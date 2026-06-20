@@ -883,6 +883,10 @@ class TestK21BToolCallingIntegration:
         # universal skill in, glossary skill out
         assert "Glossary assistant" not in content
         assert "Universal assistant" in content
+        # S-WORKFLOW (Wave 3): the cross-service ORDERING fragment composes in on
+        # the same universal surface (chapters -> translate -> glossary -> wiki).
+        assert "Cross-service workflows" in content
+        assert "Build a book end-to-end" in content
         # H9: universal cap = 20, and discovery is on (catalog passed)
         assert loop_mock.call_args.kwargs["max_iterations"] == 20
         assert loop_mock.call_args.kwargs["discovery_catalog"] is not None
