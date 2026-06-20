@@ -63,6 +63,8 @@ func (s *Server) mcpHandler() http.Handler {
 	// Pipeline M2: class-C propose tools for destructive curation (status / restore /
 	// reassign-kind / merge) — mint a confirm card, never write directly.
 	s.RegisterPipelineProposeTools(srv)
+	// Pipeline M4: entity-translation tool (class-W; draft, never overwrites verified).
+	s.RegisterPipelineTranslateTools(srv)
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "glossary_propose_new_entity",

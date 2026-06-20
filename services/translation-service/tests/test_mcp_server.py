@@ -52,7 +52,7 @@ EXPECTED_TOOLS = {
     "translation_set_active_version", "translation_save_edited_version",
     "translation_patch_block", "translation_update_settings",
     "translation_start_job", "translation_retranslate_dirty",
-    "translation_job_control",
+    "translation_job_control", "translation_start_extraction",
 }
 
 # Per-tool expected tier (C-TOOL §4 S-TRANSL). job_control is declared W (its
@@ -63,7 +63,7 @@ EXPECTED_TIER = {
     "translation_set_active_version": "A", "translation_save_edited_version": "A",
     "translation_patch_block": "A", "translation_update_settings": "A",
     "translation_start_job": "W", "translation_retranslate_dirty": "W",
-    "translation_job_control": "W",
+    "translation_job_control": "W", "translation_start_extraction": "W",
 }
 
 
@@ -742,3 +742,96 @@ async def test_preview_returns_bound_estimate():
     assert res.descriptor == actions.DESC_START_JOB
     assert res.title == "Translate 1 chapter(s)"
     assert res.estimate["cost_usd"] == 0.20
+
+
+# ── M3: glossary chapter-extraction (translation_start_extraction) ─────────────
+
+
+async def test_start_extraction_mints_a_confirm_token():
+    """The extraction tool is priced Tier-W: it returns a confirm token + a token
+    ESTIMATE and writes NOTHING (the confirm route is the only start path)."""
+    from app.grant_client import GrantLevel
+
+    profile = {"kinds": [{"code": "character", "attributes": [{"code": "name"}]}]}
+    async with _patched(grant_level=GrantLevel.EDIT) as (srv, ctx):
+        with patch.object(srv, "fetch_extraction_profile",
+                          AsyncMock(return_value=profile)):
+            res = await srv.translation_start_extraction(
+                ctx, book_id=BOOK, chapter_ids=[CHAPTER],
+                extraction_profile={"character": {"name": "fill"}},
+            )
+    assert res["needs_confirm"] is True
+    assert res["confirm_token"]
+    assert res["descriptor"] == "translation.start_extraction"
+    assert res["domain"] == "translation"
+    # The estimate is a token projection (no money) — present and structured.
+    assert "estimated_total_tokens" in res["estimate"]
+
+
+async def test_start_extraction_non_owner_rejected():
+    """No EDIT grant on the book → the uniform not-accessible error, no token."""
+    from app.grant_client import GrantLevel
+    from loreweave_mcp import NotAccessibleError
+
+    async with _patched(grant_level=GrantLevel.NONE) as (srv, ctx):
+        with patch.object(srv, "fetch_extraction_profile", AsyncMock(return_value={})):
+            with pytest.raises(NotAccessibleError):
+                await srv.translation_start_extraction(
+                    ctx, book_id=BOOK, chapter_ids=[CHAPTER],
+                )
+
+
+async def test_confirm_start_extraction_creates_job():
+    """The DESC_START_EXTRACTION confirm branch re-authorizes + asserts the chapter
+    binding, then runs the shared extraction core and returns the job handle."""
+    from app.routers import actions
+
+    payload = {
+        "action": "start_extraction", "title": "Extract glossary from 1 chapter(s)",
+        "book_id": BOOK, "chapter_ids": [CHAPTER],
+        "extraction_profile": {"character": {"name": "fill"}},
+        "model_source": "platform_model", "model_ref": None,
+        "max_entities_per_kind": 30, "thinking_enabled": False,
+        "estimate": {"estimated_total_tokens": 1234},
+    }
+    token = _mint(actions.DESC_START_EXTRACTION, payload)
+    pool = AsyncMock()
+    async with _confirm_patches():
+        with patch.object(
+            actions, "_create_extraction_job_core",
+            AsyncMock(return_value={"job_id": "55555555-5555-5555-5555-555555555555",
+                                    "status": "pending"}),
+        ) as core_mock:
+            res = await actions.confirm_action(
+                actions.ConfirmRequest(confirm_token=token), db=pool, caller_user_id=TEST_USER,
+            )
+    core_mock.assert_awaited_once()
+    assert res["status"] == "action_done"
+    assert res["job_id"] == "55555555-5555-5555-5555-555555555555"
+    assert res["job_status"] == "pending"
+
+
+async def test_confirm_start_extraction_refuses_chapter_not_under_bound_book():
+    """A confirm payload cannot retarget a chapter under a DIFFERENT book than the
+    re-authorized one → uniform 403, the extraction core never runs."""
+    from fastapi import HTTPException
+    from app.routers import actions
+
+    payload = {
+        "action": "start_extraction", "title": "t", "book_id": BOOK,
+        "chapter_ids": [CHAPTER], "extraction_profile": {},
+        "model_source": "platform_model", "model_ref": None,
+        "estimate": {},
+    }
+    token = _mint(actions.DESC_START_EXTRACTION, payload)
+    pool = AsyncMock()
+    async with _confirm_patches(chapters_bound=False):
+        with patch.object(actions, "_create_extraction_job_core",
+                          AsyncMock()) as core_mock:
+            with pytest.raises(HTTPException) as exc:
+                await actions.confirm_action(
+                    actions.ConfirmRequest(confirm_token=token), db=pool, caller_user_id=TEST_USER,
+                )
+    assert exc.value.status_code == 403
+    assert exc.value.detail["code"] == "TRANSL_FORBIDDEN"
+    core_mock.assert_not_called()

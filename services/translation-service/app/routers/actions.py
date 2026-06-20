@@ -61,6 +61,7 @@ from ..mcp.estimate import (
     reprice_exceeds_threshold,
 )
 from ..models import CreateJobPayload
+from .extraction import CreateExtractionJobPayload, _create_extraction_job_core
 from .internal_dispatch import _retry_job_core
 from .jobs import _resolve_and_create_job, _resume_job_core, _retranslate_dirty_core
 
@@ -84,6 +85,8 @@ DESC_RETRANSLATE_DIRTY = "translation.retranslate_dirty"
 # job_control re-spend descriptors (resume/retry are Tier-W → confirm).
 DESC_JOB_RESUME = "translation.job_resume"
 DESC_JOB_RETRY = "translation.job_retry"
+# Glossary chapter-extraction (M3) — priced Tier-W, confirm before run.
+DESC_START_EXTRACTION = "translation.start_extraction"
 
 
 def _verify(token: str):
@@ -323,6 +326,31 @@ async def confirm_action(
         out["job_status"] = out.pop("status", None)
         out["status"] = "action_done"
         return out
+
+    if claims.descriptor == DESC_START_EXTRACTION:
+        # Glossary chapter-extraction (M3). The grant was re-authorized above; assert
+        # every requested chapter belongs to the bound book (a payload cannot retarget
+        # another book's chapters). No H14 re-price: the extraction estimate is a
+        # deterministic token-count projection over (chapter count × profile), not a
+        # model-priced quote, so confirm-time == mint-time — re-running the core
+        # re-computes the SAME estimate and stores it on the job row.
+        chapter_ids = [UUID(c) for c in p.get("chapter_ids", [])]
+        await _assert_chapters_under_book(book_id, chapter_ids)
+        ext_payload = CreateExtractionJobPayload(
+            chapter_ids=chapter_ids,
+            extraction_profile=p.get("extraction_profile") or {},
+            model_source=p.get("model_source") or "platform_model",
+            model_ref=UUID(p["model_ref"]) if p.get("model_ref") else None,
+            max_entities_per_kind=int(p.get("max_entities_per_kind", 30)),
+            thinking_enabled=bool(p.get("thinking_enabled", False)),
+        )
+        result = await _create_extraction_job_core(db, book_id, claims.user_id, ext_payload)
+        return {
+            "status": "action_done",
+            "job_id": result["job_id"],
+            "job_status": result.get("status"),
+            "estimate": bound_estimate,
+        }
 
     raise HTTPException(
         status_code=status.HTTP_400_BAD_REQUEST,

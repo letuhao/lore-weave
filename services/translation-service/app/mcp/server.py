@@ -55,7 +55,13 @@ from ..database import get_pool
 from ..grant_client import GrantLevel, get_grant_client
 from ..effective_settings import resolve_effective_settings
 from ..mcp.estimate import SCOPE_CHAPTERS, SCOPE_DIRTY, estimate_job_cost
-from ..routers.actions import DESC_RETRANSLATE_DIRTY, DESC_START_JOB
+from ..routers.actions import (
+    DESC_RETRANSLATE_DIRTY,
+    DESC_START_EXTRACTION,
+    DESC_START_JOB,
+)
+from ..workers.extraction_prompt import estimate_extraction_cost
+from ..workers.glossary_client import fetch_extraction_profile
 
 logger = logging.getLogger(__name__)
 
@@ -660,6 +666,74 @@ async def translation_retranslate_dirty(
         DESC_RETRANSLATE_DIRTY, payload, _CONFIRM_TTL_S,
     )
     return _confirm_envelope(token, DESC_RETRANSLATE_DIRTY, payload["title"], est)
+
+
+@mcp_server.tool(
+    name="translation_start_extraction",
+    description=(
+        "Extract glossary entities (characters, places, items, ...) from one or more "
+        "chapters of a book — extracted entities land as draft / ai-suggested for review. "
+        "This COSTS money, so it returns a token ESTIMATE and a confirm token — it does "
+        "NOT start until confirmed via confirm_action. extraction_profile maps "
+        "kind_code -> {attr_code: 'fill'|'overwrite'} (fill = only empty values; "
+        "overwrite = replace + audit-log); omit to extract names only. Poll progress with "
+        "jobs_get (kind 'glossary_extraction'). Book-scoped (edit)."
+    ),
+    meta=require_meta(
+        "W", "book",
+        synonyms=["extract glossary", "extract entities", "scan chapters for entities",
+                  "build glossary", "extract characters"],
+        tool_name="translation_start_extraction",
+    ),
+)
+async def translation_start_extraction(
+    ctx: MCPContext,
+    book_id: Annotated[str, "The book's id (UUID)."],
+    chapter_ids: Annotated[list[str], "The chapter ids (UUIDs) to extract from."],
+    extraction_profile: Annotated[
+        dict[str, dict[str, str]] | None,
+        "kind_code -> {attr_code: 'fill'|'overwrite'}; omit to extract names only.",
+    ] = None,
+    model_ref: Annotated[str | None, "Model id (UUID); omit to use your translation setting."] = None,
+    max_entities_per_kind: Annotated[int, "Max entities per kind per chapter."] = 30,
+    thinking_enabled: Annotated[bool, "Enable extended thinking (slower, pricier)."] = False,
+) -> dict:
+    tc = _ctx(ctx)
+    bid = _uuid(book_id)
+    await _require_edit(tc, bid)
+    cids = [_uuid(c) for c in chapter_ids]
+    profile = extraction_profile or {}
+    # Estimate for the confirm card — a deterministic token projection over
+    # (chapter count × the profile's kinds/attrs). The confirm effect re-runs the
+    # core (which re-computes the SAME estimate + stores it), so no H14 re-price.
+    profile_data = await fetch_extraction_profile(str(bid))
+    kinds_metadata = (profile_data or {}).get("kinds") or []
+    chapters_meta = [{"text_length": 8000}] * len(cids)
+    estimate = estimate_extraction_cost(chapters_meta, profile, kinds_metadata)
+    payload = {
+        "action": "start_extraction",
+        "title": f"Extract glossary from {len(cids)} chapter(s)",
+        "book_id": book_id,
+        "chapter_ids": [str(c) for c in cids],
+        "extraction_profile": profile,
+        "model_source": "platform_model",
+        "model_ref": str(_uuid(model_ref)) if model_ref else None,
+        "max_entities_per_kind": max_entities_per_kind,
+        "thinking_enabled": thinking_enabled,
+        "estimate": estimate,
+    }
+    token = mint_confirm_token(
+        settings.confirm_token_signing_secret, tc.user_id, bid,
+        DESC_START_EXTRACTION, payload, _CONFIRM_TTL_S,
+    )
+    return {
+        "needs_confirm": True,
+        "confirm_token": token,
+        "descriptor": DESC_START_EXTRACTION,
+        "domain": "translation",
+        "title": payload["title"],
+        "estimate": estimate,
+    }
 
 
 # ── job_control — A (cancel/pause) / W (resume/retry) ─────────────────────────
