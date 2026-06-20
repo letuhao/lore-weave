@@ -1,0 +1,65 @@
+import { parseProviders, DEFAULT_PREFIX_MAP } from '../src/config/config.js';
+
+describe('parseProviders (C-GW env-driven registry)', () => {
+  it('parses a comma-separated name=url list and resolves prefixes by name', () => {
+    const warn = jest.fn();
+    const ps = parseProviders(
+      'knowledge=http://k:8092/mcp,glossary=http://g:8088/mcp,book=http://b:8080/mcp',
+      warn,
+    );
+    expect(ps.map((p) => p.name)).toEqual(['knowledge', 'glossary', 'book']);
+    expect(ps[0].mcpUrl).toBe('http://k:8092/mcp');
+    expect(ps[0].prefix).toBe(DEFAULT_PREFIX_MAP.knowledge);
+    expect(ps[2].prefix).toBe('book_');
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the knowledge+glossary defaults when unset/empty (back-compat)', () => {
+    const def = parseProviders(undefined, jest.fn());
+    expect(def.map((p) => p.name)).toEqual(['knowledge', 'glossary']);
+    expect(def[0].prefix).toBe('memory_');
+    expect(def[1].prefix).toBe('glossary_');
+
+    const empty = parseProviders('   ', jest.fn());
+    expect(empty.map((p) => p.name)).toEqual(['knowledge', 'glossary']);
+  });
+
+  it('skips a malformed entry (no =) with a warning, keeps the valid ones', () => {
+    const warn = jest.fn();
+    const ps = parseProviders('knowledge=http://k/mcp,garbage,glossary=http://g/mcp', warn);
+    expect(ps.map((p) => p.name)).toEqual(['knowledge', 'glossary']);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('garbage'));
+  });
+
+  it('skips entries with an empty name or url', () => {
+    const warn = jest.fn();
+    const ps = parseProviders('=http://nope/mcp,book=,glossary=http://g/mcp', warn);
+    expect(ps.map((p) => p.name)).toEqual(['glossary']);
+    expect(warn).toHaveBeenCalledTimes(2);
+  });
+
+  it('honors an inline prefix override (name|prefix_=url)', () => {
+    const ps = parseProviders('myprov|my_=http://m:9000/mcp', jest.fn());
+    expect(ps[0]).toEqual({ name: 'myprov', mcpUrl: 'http://m:9000/mcp', prefix: 'my_' });
+  });
+
+  it('leaves prefix undefined for an unmapped provider with no override', () => {
+    const ps = parseProviders('weird=http://w/mcp', jest.fn());
+    expect(ps[0].name).toBe('weird');
+    expect(ps[0].prefix).toBeUndefined();
+  });
+
+  it('drops a duplicate provider name with a warning', () => {
+    const warn = jest.fn();
+    const ps = parseProviders('book=http://b1/mcp,book=http://b2/mcp', warn);
+    expect(ps).toHaveLength(1);
+    expect(ps[0].mcpUrl).toBe('http://b1/mcp');
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('duplicate'));
+  });
+
+  it('falls back to defaults when the whole list is malformed (never zero providers)', () => {
+    const warn = jest.fn();
+    const ps = parseProviders('garbage,,nope', warn);
+    expect(ps.map((p) => p.name)).toEqual(['knowledge', 'glossary']);
+  });
+});
