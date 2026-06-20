@@ -110,3 +110,22 @@ export type AttributeUpdate = {
   sort_order?: number;
   options?: string[];
 };
+
+// ---- Recycle bin (G-C8 soft-delete) -------------------------------------
+
+export type SystemTrashRow = {
+  id: string;
+  code: string;
+  name: string;
+  /** attributes only — the cell context (survives a deprecated parent) */
+  kind_code?: string;
+  genre_code?: string;
+  field_type?: string;
+  deprecated_at: string;
+};
+
+export type SystemTrash = {
+  genres: SystemTrashRow[];
+  kinds: SystemTrashRow[];
+  attributes: SystemTrashRow[];
+};

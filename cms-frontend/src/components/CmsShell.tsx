@@ -6,6 +6,7 @@ const NAV = [
   { to: 'genres', label: 'Genres' },
   { to: 'kinds', label: 'Kinds' },
   { to: 'attributes', label: 'Attributes' },
+  { to: 'recycle-bin', label: 'Recycle Bin' },
   { to: 'chat', label: 'Assistant' },
 ];
 
