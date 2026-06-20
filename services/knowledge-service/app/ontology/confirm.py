@@ -30,6 +30,7 @@ __all__ = [
     "AUTH_ADMIN",
     "DESC_SCHEMA_EDIT",
     "DESC_ADOPT",
+    "DESC_SYNC",
     "ActionClaims",
     "ActionTokenInvalid",
     "ActionTokenExpired",
@@ -48,12 +49,12 @@ AUTH_GRANT = "grant"  # project/user tiers: re-check proposing user + MANAGE gra
 AUTH_ADMIN = "admin"  # System tier: re-check the RS256 admin authority (KM5)
 
 # Action descriptors LIVE in this build (§13.1). Reserved descriptors
-# (kg_sync_apply, kg_triage_schema, kg_triage_handoff, kg_system_*) are intentionally
-# NOT accepted yet — verify/mint fail closed on them until their phase wires the
-# effect + preview.
+# (kg_triage_schema, kg_triage_handoff, kg_system_*) are intentionally NOT accepted
+# yet — verify/mint fail closed on them until their phase wires the effect + preview.
 DESC_SCHEMA_EDIT = "kg_schema_edit"
 DESC_ADOPT = "kg_adopt"
-_LIVE_DESCRIPTORS: frozenset[str] = frozenset({DESC_SCHEMA_EDIT, DESC_ADOPT})
+DESC_SYNC = "kg_sync_apply"
+_LIVE_DESCRIPTORS: frozenset[str] = frozenset({DESC_SCHEMA_EDIT, DESC_ADOPT, DESC_SYNC})
 
 
 class ActionTokenInvalid(Exception):

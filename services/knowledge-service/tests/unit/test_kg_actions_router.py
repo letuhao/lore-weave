@@ -21,13 +21,14 @@ from app.clients.grant_client import GrantLevel
 from app.config import settings
 from app.deps import get_grant_client, get_projects_repo
 from app.middleware.jwt_auth import get_current_user
-from app.db.repositories.ontology_mutations import NeedsGlossaryError
+from app.db.repositories.ontology_mutations import NeedsGlossaryError, SyncConflictError
 from app.ontology.confirm import (
     ACTION_TOKEN_TTL_S,
     AUTH_ADMIN,
     AUTH_GRANT,
     DESC_ADOPT,
     DESC_SCHEMA_EDIT,
+    DESC_SYNC,
     ActionClaims,
     mint_action_token,
 )
@@ -290,6 +291,59 @@ async def test_preview_adopt_missing_template():
     assert r.json()["blocked"] is True
 
 
+# ── KM6-M3 — kg_sync_apply descriptor dispatch ──────────────────────────────
+def _sync_token(*, user_id=_CALLER, project_id=_PROJECT, base_hash="h0", decisions=None) -> str:
+    return mint_action_token(
+        settings.jwt_secret,
+        ActionClaims(
+            jti=str(uuid4()), authority=AUTH_GRANT, user_id=str(user_id),
+            descriptor=DESC_SYNC, project_id=str(project_id),
+            params={"base_source_hash": base_hash, "decisions": decisions or []},
+        ),
+        time.time(),
+    )
+
+
+async def test_confirm_sync_happy():
+    app, mutations, tokens, _s = _build()  # default schema present
+    mutations.sync_apply = AsyncMock(return_value={"applied": 3, "schema_version": 5})
+    r = await _post(app, "/v1/kg/actions/confirm", {"confirm_token": _sync_token(
+        decisions=[{"node_type": "edge_type", "code": "X", "choice": "take_theirs"}])})
+    assert r.status_code == 200, r.text
+    tokens.consume.assert_awaited_once()
+    mutations.sync_apply.assert_awaited_once()
+
+
+async def test_confirm_sync_drift_422():
+    app, mutations, tokens, _s = _build()
+    mutations.sync_apply = AsyncMock(side_effect=SyncConflictError())
+    r = await _post(app, "/v1/kg/actions/confirm", {"confirm_token": _sync_token()})
+    assert r.status_code == 422
+    assert "moved" in r.json()["detail"].lower()
+    tokens.consume.assert_awaited_once()  # jti spent (fail-closed), no apply succeeded
+
+
+async def test_confirm_sync_no_schema_422():
+    app, mutations, _t, _s = _build(schema=None)  # project never adopted
+    r = await _post(app, "/v1/kg/actions/confirm", {"confirm_token": _sync_token()})
+    assert r.status_code == 422
+    mutations.sync_apply.assert_not_awaited()
+
+
+async def test_preview_sync_renders_diff():
+    app, mutations, tokens, _s = _build()
+    mutations.sync_diff = AsyncMock(return_value={
+        "source_ref": "system:abc", "source_hash_current": "h9", "has_updates": True, "changes": [],
+    })
+    r = await _post(app, "/v1/kg/actions/preview", {"confirm_token": _sync_token(
+        base_hash="h0", decisions=[{"node_type": "edge_type", "code": "X", "choice": "take_theirs"}])})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["descriptor"] == DESC_SYNC
+    assert body["drift"] is True  # base_hash h0 != current h9
+    tokens.consume.assert_not_awaited()
+
+
 async def test_every_live_descriptor_is_dispatched():
     """Tripwire (/review-impl LOW-1): the codec's live-descriptor set must EXACTLY
     match the descriptors the confirm/preview router dispatches. If someone adds a
@@ -298,7 +352,7 @@ async def test_every_live_descriptor_is_dispatched():
     Adding a descriptor MUST update both the codec set and this assertion (+ branch)."""
     from app.ontology import confirm as _confirm
 
-    assert _confirm._LIVE_DESCRIPTORS == {DESC_SCHEMA_EDIT, _confirm.DESC_ADOPT}, (
+    assert _confirm._LIVE_DESCRIPTORS == {DESC_SCHEMA_EDIT, _confirm.DESC_ADOPT, _confirm.DESC_SYNC}, (
         "a new live descriptor must also get a confirm + preview dispatch branch in "
         "kg_actions.py and be added here"
     )

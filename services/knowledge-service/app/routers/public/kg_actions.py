@@ -54,6 +54,7 @@ from app.ontology.confirm import (
     AUTH_GRANT,
     DESC_ADOPT,
     DESC_SCHEMA_EDIT,
+    DESC_SYNC,
     ActionClaims,
     ActionTokenExpired,
     ActionTokenInvalid,
@@ -64,6 +65,13 @@ from app.ontology.schema_edit_effect import (
     SchemaEditParams,
     apply_schema_edit,
     preview_schema_edit,
+)
+from app.ontology.sync_effect import (
+    SyncApplyParams,
+    SyncDrift,
+    SyncNoSchema,
+    apply_sync,
+    preview_sync,
 )
 from app.routers.public.ontology import get_glossary_ontology_client
 
@@ -179,6 +187,8 @@ async def confirm_action(
         return await _confirm_schema_edit(claims, schemas, mutations)
     if claims.descriptor == DESC_ADOPT:
         return await _confirm_adopt(claims, owner, mutations, projects, glossary)
+    if claims.descriptor == DESC_SYNC:
+        return await _confirm_sync(claims, schemas, mutations)
     # Unreachable: verify_action_token already rejects non-live descriptors.
     raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="unknown action")
 
@@ -249,6 +259,23 @@ async def _confirm_adopt(
         )
 
 
+async def _confirm_sync(
+    claims: ActionClaims, schemas: GraphSchemasRepo, mutations: OntologyMutationsRepo
+) -> dict:
+    try:
+        params = SyncApplyParams(**claims.params)
+    except ValidationError:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="bad proposal payload"
+        )
+    try:
+        return await apply_sync(schemas, mutations, claims.project_id, params)
+    except SyncDrift as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc))
+    except SyncNoSchema as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc))
+
+
 # ── preview (non-consuming current-state render) ──────────────────────────────
 @router.post("/preview")
 async def preview_action(
@@ -281,4 +308,12 @@ async def preview_action(
             schemas, mutations, projects, glossary,
             owner=owner, project_id=claims.project_id, params=params,
         )
+    if claims.descriptor == DESC_SYNC:
+        try:
+            params = SyncApplyParams(**claims.params)
+        except ValidationError:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="bad proposal payload"
+            )
+        return await preview_sync(schemas, mutations, claims.project_id, params)
     raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="unknown action")

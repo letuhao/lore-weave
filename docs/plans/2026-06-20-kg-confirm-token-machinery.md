@@ -130,6 +130,26 @@ user-template adopts a token that 404s at confirm since it isn't visible to the 
 owner — secure, rare; system templates pass both gates symmetrically). Catalog now 19
 tools, 2 live descriptors. Still deferred: `kg_sync_apply`, KM5 admin/RS256, FE card.
 
+## KM6-M3 — `kg_sync_apply` descriptor (third class-C; completes the KM3 trio)
+
+The agent path for template sync (apply per-child keep_mine/take_theirs). Human path
+already exists (`POST /sync/apply`). Optimistic-concurrency is intrinsic to
+`OntologyMutationsRepo.sync_apply` (keyed on `base_source_hash` from `kg_sync_available`);
+the confirm just maps `SyncConflictError → 422` (re-proposable). No glossary dependency.
+
+- `DESC_SYNC = "kg_sync_apply"` live (tripwire → 3 descriptors).
+- `app/ontology/sync_effect.py` — `apply_sync` (SyncDrift/SyncNoSchema mapping) +
+  `preview_sync` (live `sync_diff` + take/keep counts + drift flag).
+- `kg_sync_apply` MCP tool — MANAGE-gated mint (no write), nested `decisions[]` arg
+  ({node_type, code, parent_code?, choice}); requires an adopted schema. Catalog → 20
+  tools, 3 live descriptors.
+
+**KM6-M3 SHIPPED.** VERIFY: 2850 unit + 37 real-PG integration green. Live-smoke
+(real JWT + PG): preview (drift=false, upstream has updates) → confirm (take_theirs edge
+landed, v→2) → replay 422. `/review-impl`: no HIGH/MED; 1 LOW accepted (re-adopt-same-
+template → benign idempotent re-apply). KM3 trio (adopt + schema_edit + sync) COMPLETE.
+Still deferred: KM5 admin `/mcp/admin` + RS256 (admin branch 501), FE confirm card.
+
 ## Risk boundaries (checkpoint/commit candidates)
 
 New migration (table) · new public endpoints (auth) · new MCP tool (mint authority).

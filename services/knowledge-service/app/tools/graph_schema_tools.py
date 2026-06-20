@@ -54,6 +54,7 @@ from app.ontology.confirm import (
     AUTH_GRANT,
     DESC_ADOPT,
     DESC_SCHEMA_EDIT,
+    DESC_SYNC,
     ActionClaims,
     mint_action_token,
 )
@@ -95,6 +96,7 @@ __all__ = [
     "KgTriageResolveArgs",
     "KgSchemaEditArgs",
     "KgAdoptTemplateArgs",
+    "KgSyncApplyArgs",
 ]
 
 # Result-size + addressing caps (mirror the HTTP routers' query bounds so the
@@ -279,6 +281,28 @@ class KgAdoptTemplateArgs(BaseModel):
     source_schema_id: str = Field(min_length=1, max_length=64)
 
 
+class KgSyncDecision(BaseModel):
+    """One per-child sync decision (from a `kg_sync_available` change)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    node_type: str = Field(min_length=1, max_length=40)
+    code: str = Field(min_length=1, max_length=_CODE_MAX)
+    parent_code: str | None = Field(default=None, max_length=_CODE_MAX)
+    choice: Literal["keep_mine", "take_theirs"]
+
+
+class KgSyncApplyArgs(BaseModel):
+    """`kg_sync_apply` — class-C. Applies per-child keep_mine/take_theirs decisions to
+    bring the project ontology in line with its upstream template. Mints a confirm-token
+    (no write). `base_source_hash` is the upstream hash from `kg_sync_available`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    base_source_hash: str = Field(min_length=1, max_length=128)
+    decisions: list[KgSyncDecision] = Field(default_factory=list)
+
+
 GRAPH_SCHEMA_ARG_MODELS: dict[str, type[BaseModel]] = {
     # ── R (read) ──────────────────────────────────────────────────────
     "kg_graph_query": KgGraphQueryArgs,
@@ -297,7 +321,7 @@ GRAPH_SCHEMA_ARG_MODELS: dict[str, type[BaseModel]] = {
     # ── C (confirm-token) — KM6 confirm machinery ─────────────────────
     "kg_schema_edit": KgSchemaEditArgs,    # KM6-M1: mints a confirm-token (no write)
     "kg_adopt_template": KgAdoptTemplateArgs,  # KM6-M2: mints a confirm-token (no write)
-    # kg_sync_apply           # KM3/KM4 class-C — deferred to KM6 confirm machinery (D-KG-LF-KM6)
+    "kg_sync_apply": KgSyncApplyArgs,      # KM6-M3: mints a confirm-token (no write)
     # kg_triage_resolve (schema-mutating actions) # KM3/KM4 class-C — deferred to KM6 confirm machinery (D-KG-LF-KM6)
     # kg_triage_handoff_glossary # KM3/KM4 class-C — deferred to KM6 confirm machinery (D-KG-LF-KM6)
 }
@@ -622,6 +646,36 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
             },
         },
         ["source_schema_id"],
+    ),
+    _tool(
+        "kg_sync_apply",
+        "Propose syncing THIS project's ontology with its upstream template — applying "
+        "per-change keep_mine / take_theirs decisions (read the diff with "
+        "kg_sync_available first). High-impact (overwrites/deprecates rows + bumps the "
+        "schema version), so it returns a confirm_token and summary; a human confirms on "
+        "the review surface. Requires the project to have adopted a template.",
+        {
+            "base_source_hash": {
+                "type": "string",
+                "description": "The upstream hash returned by kg_sync_available (drift guard).",
+            },
+            "decisions": {
+                "type": "array",
+                "description": "Per-change decisions to apply.",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "node_type": {"type": "string", "description": "edge_type | fact_type | node_kind | vocab_value."},
+                        "code": {"type": "string", "description": "The child's code."},
+                        "parent_code": {"type": "string", "description": "Parent code (vocab_value only)."},
+                        "choice": {"type": "string", "enum": ["keep_mine", "take_theirs"]},
+                    },
+                    "required": ["node_type", "code", "choice"],
+                },
+            },
+        },
+        ["base_source_hash"],
     ),
 ]
 
@@ -1095,6 +1149,55 @@ async def _handle_kg_adopt_template(ctx: "ToolContext", args: KgAdoptTemplateArg
     }
 
 
+async def _handle_kg_sync_apply(ctx: "ToolContext", args: KgSyncApplyArgs) -> dict:
+    """C (confirm-token) — KM6-M3. Applies keep_mine/take_theirs sync decisions to the
+    project ontology (overwrites/deprecates rows; bumps schema_version). **Mints a
+    confirm-token and returns it — performs NO write** (INV-T3). The human redeems it at
+    `POST /v1/kg/actions/confirm`; optimistic-concurrency (`base_source_hash`) is
+    re-checked there (upstream moved → rejected).
+
+    Gate: MANAGE. Requires an adopted project schema with an upstream source to sync."""
+    from app.tools.executor import ToolExecutionError
+
+    await _resolve_project_owner(ctx, GrantLevel.MANAGE)
+    project_str = str(ctx.project_id)
+
+    active = await ctx.graph_schemas_repo.active_project_schema(project_str)
+    if active is None:
+        raise ToolExecutionError(
+            "this project has no adopted ontology to sync — adopt a template first"
+        )
+
+    token = mint_action_token(
+        settings.jwt_secret,
+        ActionClaims(
+            jti=str(uuid4()),
+            authority=AUTH_GRANT,
+            user_id=str(ctx.user_id),
+            descriptor=DESC_SYNC,
+            project_id=project_str,
+            params={
+                "base_source_hash": args.base_source_hash,
+                "decisions": [d.model_dump() for d in args.decisions],
+            },
+        ),
+        time.time(),
+    )
+    if not token:
+        raise ToolExecutionError("could not mint a confirmation token")
+
+    take = sum(1 for d in args.decisions if d.choice == "take_theirs")
+    return {
+        "proposed": True,
+        "confirm_token": token,
+        "expires_in_s": ACTION_TOKEN_TTL_S,
+        "descriptor": DESC_SYNC,
+        "summary": f"sync from template: {take} take-theirs / "
+                   f"{len(args.decisions) - take} keep-mine decisions",
+        "requires": "human confirmation via the review surface (no change applied yet)",
+    }
+
+
 GRAPH_SCHEMA_HANDLERS = {
     "kg_graph_query": _handle_kg_graph_query,
     "kg_entity_edge_timeline": _handle_kg_entity_edge_timeline,
@@ -1110,4 +1213,5 @@ GRAPH_SCHEMA_HANDLERS = {
     "kg_triage_resolve": _handle_kg_triage_resolve,
     "kg_schema_edit": _handle_kg_schema_edit,
     "kg_adopt_template": _handle_kg_adopt_template,
+    "kg_sync_apply": _handle_kg_sync_apply,
 }

@@ -114,9 +114,9 @@ def test_expired_token_distinct_error():
 
 def test_non_live_descriptor_fails_closed_at_mint():
     # Reserved-but-not-live descriptor → mint returns "" (cannot mint).
-    assert mint_action_token(_SECRET, _claims(descriptor="kg_sync_apply"), _NOW) == ""
+    assert mint_action_token(_SECRET, _claims(descriptor="kg_triage_schema"), _NOW) == ""
     assert mint_action_token(_SECRET, _claims(descriptor="kg_system_delete"), _NOW) == ""
-    assert not live_descriptor("kg_sync_apply")
+    assert not live_descriptor("kg_triage_schema")
     assert live_descriptor(DESC_SCHEMA_EDIT)
 
 

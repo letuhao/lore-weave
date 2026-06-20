@@ -58,9 +58,9 @@ _LANE_LF_TOOLS = {
     "kg_triage_resolve",
 }
 
-# KM6 live class-C tools — registered, but each MINTS a confirm-token (no write);
-# the human confirms via /v1/kg/actions/confirm. M1: kg_schema_edit. M2: kg_adopt_template.
-_CLASS_C_LIVE_TOOLS = {"kg_schema_edit", "kg_adopt_template"}
+# KM6 live class-C tools — registered, but each MINTS a confirm-token (no write); the
+# human confirms via /v1/kg/actions/confirm. M1: schema_edit, M2: adopt, M3: sync_apply.
+_CLASS_C_LIVE_TOOLS = {"kg_schema_edit", "kg_adopt_template", "kg_sync_apply"}
 
 # Every KG tool registered in the catalog (R + reversible W + live class-C).
 _REGISTERED_KG_TOOLS = _LANE_LF_TOOLS | _CLASS_C_LIVE_TOOLS
@@ -68,7 +68,6 @@ _REGISTERED_KG_TOOLS = _LANE_LF_TOOLS | _CLASS_C_LIVE_TOOLS
 # The class-C tools STILL deferred to later KM6 sub-phases / KM5 — they must NOT be
 # registered anywhere yet.
 _CLASS_C_TOOLS = {
-    "kg_sync_apply",
     "kg_triage_handoff_glossary",
     "kg_admin_template_read",
     "kg_admin_propose_template",
@@ -83,9 +82,9 @@ def _defn(name: str) -> dict:
 
 
 def test_total_tool_count_is_memory_plus_lane_lf():
-    """5 memory + 12 lane-LF + 2 live class-C (kg_schema_edit, kg_adopt_template) = 19."""
+    """5 memory + 12 lane-LF + 3 live class-C (schema_edit, adopt, sync_apply) = 20."""
     schema_names = {d["function"]["name"] for d in TOOL_DEFINITIONS}
-    assert len(TOOL_DEFINITIONS) == 19
+    assert len(TOOL_DEFINITIONS) == 20
     assert set(TOOL_NAMES) == set(ARG_MODELS) == schema_names
     assert len(set(TOOL_NAMES)) == len(TOOL_NAMES)  # no dupes
 
@@ -649,3 +648,60 @@ async def test_adopt_template_requires_manage_grant():
     res = await execute_tool(ctx, "kg_adopt_template", {"source_schema_id": str(uuid4())})
     assert not res.success
     assert "insufficient access" in res.error.lower()
+
+
+# ── KM6-M3 — kg_sync_apply (class-C mint; NO write) ───────────────────
+
+
+@pytest.mark.asyncio
+async def test_sync_apply_mints_confirm_token():
+    import time as _time
+
+    from app.config import settings
+    from app.ontology.confirm import DESC_SYNC, verify_action_token
+
+    schemas = AsyncMock()
+    schemas.active_project_schema = AsyncMock(
+        return_value=SimpleNamespace(schema_id=uuid4(), schema_version=4)
+    )
+    mutations = AsyncMock()
+    ctx = _ctx(graph_schemas_repo=schemas, ontology_mutations_repo=mutations)
+    res = await execute_tool(ctx, "kg_sync_apply", {
+        "base_source_hash": "abc123",
+        "decisions": [
+            {"node_type": "edge_type", "code": "WORSHIPS", "choice": "take_theirs"},
+            {"node_type": "fact_type", "code": "curse", "choice": "keep_mine"},
+        ],
+    })
+    assert res.success
+    out = res.result
+    assert out["descriptor"] == DESC_SYNC and "1 take-theirs" in out["summary"]
+    mutations.sync_apply.assert_not_called()  # mint only
+    claims = verify_action_token(settings.jwt_secret, out["confirm_token"], _time.time())
+    assert claims.params["base_source_hash"] == "abc123"
+    assert len(claims.params["decisions"]) == 2
+    assert claims.params["decisions"][0]["choice"] == "take_theirs"
+
+
+@pytest.mark.asyncio
+async def test_sync_apply_rejects_project_without_adopted_schema():
+    schemas = AsyncMock()
+    schemas.active_project_schema = AsyncMock(return_value=None)
+    ctx = _ctx(graph_schemas_repo=schemas)
+    res = await execute_tool(ctx, "kg_sync_apply", {"base_source_hash": "h", "decisions": []})
+    assert not res.success
+    assert "adopt" in res.error.lower()
+
+
+@pytest.mark.asyncio
+async def test_sync_apply_rejects_bad_choice_at_the_model():
+    schemas = AsyncMock()
+    schemas.active_project_schema = AsyncMock(
+        return_value=SimpleNamespace(schema_id=uuid4(), schema_version=1)
+    )
+    ctx = _ctx(graph_schemas_repo=schemas)
+    res = await execute_tool(ctx, "kg_sync_apply", {
+        "base_source_hash": "h",
+        "decisions": [{"node_type": "edge_type", "code": "X", "choice": "overwrite_all"}],
+    })
+    assert not res.success  # invalid choice → arg validation error
