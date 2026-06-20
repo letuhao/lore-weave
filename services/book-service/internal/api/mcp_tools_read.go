@@ -37,12 +37,12 @@ type bookListIn struct {
 	Offset int `json:"offset,omitempty" jsonschema:"pagination offset"`
 }
 type bookSummary struct {
-	BookID           uuid.UUID `json:"book_id"`
-	Title            string    `json:"title"`
-	AccessLevel      string    `json:"access_level"`
-	OriginalLanguage *string   `json:"original_language"`
-	LifecycleState   string    `json:"lifecycle_state"`
-	ChapterCount     int       `json:"chapter_count"`
+	BookID           string  `json:"book_id"`
+	Title            string  `json:"title"`
+	AccessLevel      string  `json:"access_level"`
+	OriginalLanguage *string `json:"original_language"`
+	LifecycleState   string  `json:"lifecycle_state"`
+	ChapterCount     int     `json:"chapter_count"`
 }
 type bookListOut struct {
 	Books []bookSummary `json:"books"`
@@ -78,7 +78,9 @@ LIMIT $2 OFFSET $3`, userID, limit, offset)
 	out := bookListOut{Books: []bookSummary{}}
 	for rows.Next() {
 		var b bookSummary
-		if err := rows.Scan(&b.BookID, &b.Title, &b.OriginalLanguage, &b.LifecycleState, &b.ChapterCount, &b.AccessLevel); err == nil {
+		var bookID uuid.UUID
+		if err := rows.Scan(&bookID, &b.Title, &b.OriginalLanguage, &b.LifecycleState, &b.ChapterCount, &b.AccessLevel); err == nil {
+			b.BookID = bookID.String()
 			out.Books = append(out.Books, b)
 		}
 	}
@@ -92,15 +94,15 @@ type bookGetIn struct {
 	BookID string `json:"book_id" jsonschema:"the book to fetch (UUID)"`
 }
 type bookDetail struct {
-	BookID           uuid.UUID `json:"book_id"`
-	Title            string    `json:"title"`
-	Description      *string   `json:"description"`
-	OriginalLanguage *string   `json:"original_language"`
-	Summary          *string   `json:"summary"`
-	GenreTags        []string  `json:"genre_tags"`
-	LifecycleState   string    `json:"lifecycle_state"`
-	ChapterCount     int       `json:"chapter_count"`
-	AccessLevel      string    `json:"access_level"`
+	BookID           string   `json:"book_id"`
+	Title            string   `json:"title"`
+	Description      *string  `json:"description"`
+	OriginalLanguage *string  `json:"original_language"`
+	Summary          *string  `json:"summary"`
+	GenreTags        []string `json:"genre_tags"`
+	LifecycleState   string   `json:"lifecycle_state"`
+	ChapterCount     int      `json:"chapter_count"`
+	AccessLevel      string   `json:"access_level"`
 }
 type bookGetOut struct {
 	Book bookDetail `json:"book"`
@@ -119,14 +121,14 @@ func (s *Server) toolBookGet(ctx context.Context, _ *mcp.CallToolRequest, in boo
 		return nil, bookGetOut{}, mcpOwnershipError(err)
 	}
 	var d bookDetail
-	var owner uuid.UUID
+	var bookIDScan, owner uuid.UUID
 	err = s.pool.QueryRow(ctx, `
 SELECT b.id,b.owner_user_id,b.title,b.description,b.original_language,b.summary,b.genre_tags,b.lifecycle_state,
   COALESCE((SELECT COUNT(*) FROM chapters c WHERE c.book_id=b.id AND c.lifecycle_state='active'),0),
   CASE WHEN b.owner_user_id=$2 THEN 'owner'
        ELSE COALESCE((SELECT role FROM book_collaborators bc WHERE bc.book_id=b.id AND bc.user_id=$2),'none') END
 FROM books b WHERE b.id=$1`, bookID, userID).
-		Scan(&d.BookID, &owner, &d.Title, &d.Description, &d.OriginalLanguage, &d.Summary, &d.GenreTags, &d.LifecycleState, &d.ChapterCount, &d.AccessLevel)
+		Scan(&bookIDScan, &owner, &d.Title, &d.Description, &d.OriginalLanguage, &d.Summary, &d.GenreTags, &d.LifecycleState, &d.ChapterCount, &d.AccessLevel)
 	if errors.Is(err, pgx.ErrNoRows) || d.LifecycleState == "purge_pending" {
 		// Grant already passed, so this is a TOCTOU race; still collapse uniformly.
 		return nil, bookGetOut{}, errBookNotAccessible
@@ -134,6 +136,7 @@ FROM books b WHERE b.id=$1`, bookID, userID).
 	if err != nil {
 		return nil, bookGetOut{}, errors.New("failed to get book")
 	}
+	d.BookID = bookIDScan.String()
 	if d.GenreTags == nil {
 		d.GenreTags = []string{}
 	}
@@ -148,13 +151,13 @@ type listChaptersIn struct {
 	Offset int    `json:"offset,omitempty" jsonschema:"pagination offset"`
 }
 type chapterSummary struct {
-	ChapterID        uuid.UUID `json:"chapter_id"`
-	Title            *string   `json:"title"`
-	OriginalLanguage string    `json:"original_language"`
-	SortOrder        int       `json:"sort_order"`
-	EditorialStatus  string    `json:"editorial_status"`
-	DraftRevisions   int       `json:"draft_revision_count"`
-	LifecycleState   string    `json:"lifecycle_state"`
+	ChapterID        string  `json:"chapter_id"`
+	Title            *string `json:"title"`
+	OriginalLanguage string  `json:"original_language"`
+	SortOrder        int     `json:"sort_order"`
+	EditorialStatus  string  `json:"editorial_status"`
+	DraftRevisions   int     `json:"draft_revision_count"`
+	LifecycleState   string  `json:"lifecycle_state"`
 }
 type listChaptersOut struct {
 	Chapters []chapterSummary `json:"chapters"`
@@ -189,7 +192,9 @@ ORDER BY sort_order, created_at LIMIT $2 OFFSET $3`, bookID, limit, offset)
 	out := listChaptersOut{Chapters: []chapterSummary{}}
 	for rows.Next() {
 		var c chapterSummary
-		if err := rows.Scan(&c.ChapterID, &c.Title, &c.OriginalLanguage, &c.SortOrder, &c.EditorialStatus, &c.DraftRevisions, &c.LifecycleState); err == nil {
+		var chID uuid.UUID
+		if err := rows.Scan(&chID, &c.Title, &c.OriginalLanguage, &c.SortOrder, &c.EditorialStatus, &c.DraftRevisions, &c.LifecycleState); err == nil {
+			c.ChapterID = chID.String()
 			out.Chapters = append(out.Chapters, c)
 		}
 	}
@@ -204,15 +209,27 @@ type getChapterIn struct {
 	ChapterID string `json:"chapter_id" jsonschema:"the chapter to fetch (UUID)"`
 }
 type chapterDetail struct {
-	ChapterID           uuid.UUID  `json:"chapter_id"`
-	BookID              uuid.UUID  `json:"book_id"`
-	Title               *string    `json:"title"`
-	OriginalLanguage    string     `json:"original_language"`
-	SortOrder           int        `json:"sort_order"`
-	EditorialStatus     string     `json:"editorial_status"`
-	PublishedRevisionID *uuid.UUID `json:"published_revision_id"`
-	DraftRevisions      int        `json:"draft_revision_count"`
-	LifecycleState      string     `json:"lifecycle_state"`
+	ChapterID           string  `json:"chapter_id"`
+	BookID              string  `json:"book_id"`
+	Title               *string `json:"title"`
+	OriginalLanguage    string  `json:"original_language"`
+	SortOrder           int     `json:"sort_order"`
+	EditorialStatus     string  `json:"editorial_status"`
+	PublishedRevisionID *string `json:"published_revision_id"`
+	DraftRevisions      int     `json:"draft_revision_count"`
+	LifecycleState      string  `json:"lifecycle_state"`
+}
+
+// uuidPtrToStr renders an optional UUID as an optional string for an MCP tool
+// OUTPUT struct (the go-sdk infers a string-or-null schema from *string, but a
+// [16]byte from *uuid.UUID, which then fails its own output validation since
+// uuid.UUID marshals as a string).
+func uuidPtrToStr(p *uuid.UUID) *string {
+	if p == nil {
+		return nil
+	}
+	s := p.String()
+	return &s
 }
 type getChapterOut struct {
 	Chapter chapterDetail `json:"chapter"`
@@ -236,16 +253,21 @@ func (s *Server) toolBookGetChapter(ctx context.Context, _ *mcp.CallToolRequest,
 	}
 	var c chapterDetail
 	var titleRaw string
+	var chIDScan, bookIDScan uuid.UUID
+	var pubRevID *uuid.UUID
 	err = s.pool.QueryRow(ctx, `
 SELECT c.id,c.book_id,c.title,c.original_language,c.sort_order,c.editorial_status,c.published_revision_id,c.draft_revision_count,c.lifecycle_state
 FROM chapters c WHERE c.id=$1 AND c.book_id=$2`, chID, bookID).
-		Scan(&c.ChapterID, &c.BookID, &titleRaw, &c.OriginalLanguage, &c.SortOrder, &c.EditorialStatus, &c.PublishedRevisionID, &c.DraftRevisions, &c.LifecycleState)
+		Scan(&chIDScan, &bookIDScan, &titleRaw, &c.OriginalLanguage, &c.SortOrder, &c.EditorialStatus, &pubRevID, &c.DraftRevisions, &c.LifecycleState)
 	if errors.Is(err, pgx.ErrNoRows) || c.LifecycleState == "purge_pending" {
 		return nil, getChapterOut{}, errBookNotAccessible
 	}
 	if err != nil {
 		return nil, getChapterOut{}, errors.New("failed to get chapter")
 	}
+	c.ChapterID = chIDScan.String()
+	c.BookID = bookIDScan.String()
+	c.PublishedRevisionID = uuidPtrToStr(pubRevID)
 	if titleRaw != "" {
 		c.Title = &titleRaw
 	}
@@ -261,11 +283,11 @@ type listRevisionsIn struct {
 	Offset    int    `json:"offset,omitempty" jsonschema:"pagination offset"`
 }
 type revisionSummary struct {
-	RevisionID     uuid.UUID  `json:"revision_id"`
-	CreatedAt      time.Time  `json:"created_at"`
-	AuthorUserID   *uuid.UUID `json:"author_user_id"`
-	Message        *string    `json:"message"`
-	BodyByteLength int        `json:"body_byte_length"`
+	RevisionID     string    `json:"revision_id"`
+	CreatedAt      time.Time `json:"created_at"`
+	AuthorUserID   *string   `json:"author_user_id"`
+	Message        *string   `json:"message"`
+	BodyByteLength int       `json:"body_byte_length"`
 }
 type listRevisionsOut struct {
 	Revisions []revisionSummary `json:"revisions"`
@@ -305,7 +327,11 @@ ORDER BY rv.created_at DESC LIMIT $3 OFFSET $4`, chID, bookID, limit, offset)
 	out := listRevisionsOut{Revisions: []revisionSummary{}}
 	for rows.Next() {
 		var rv revisionSummary
-		if err := rows.Scan(&rv.RevisionID, &rv.CreatedAt, &rv.AuthorUserID, &rv.Message, &rv.BodyByteLength); err == nil {
+		var revID uuid.UUID
+		var authorID *uuid.UUID
+		if err := rows.Scan(&revID, &rv.CreatedAt, &authorID, &rv.Message, &rv.BodyByteLength); err == nil {
+			rv.RevisionID = revID.String()
+			rv.AuthorUserID = uuidPtrToStr(authorID)
 			out.Revisions = append(out.Revisions, rv)
 		}
 	}

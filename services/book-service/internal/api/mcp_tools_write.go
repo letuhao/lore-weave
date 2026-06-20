@@ -41,7 +41,7 @@ type bookCreateIn struct {
 	GenreTags        []string `json:"genre_tags,omitempty"`
 }
 type bookCreateOut struct {
-	BookID uuid.UUID `json:"book_id"`
+	BookID string `json:"book_id"`
 }
 
 func (s *Server) toolBookCreate(ctx context.Context, _ *mcp.CallToolRequest, in bookCreateIn) (*mcp.CallToolResult, bookCreateOut, error) {
@@ -70,7 +70,7 @@ VALUES($1,$2,$3,$4,$5,$6) RETURNING id`,
 	// Undo of a fresh create is the reversible trash → restore. We name book_delete
 	// as the reverse; the consumer's Undo issues it as a confirmable delete).
 	res := undoResult("book_delete", map[string]any{"book_id": bookID.String()})
-	return res, bookCreateOut{BookID: bookID}, nil
+	return res, bookCreateOut{BookID: bookID.String()}, nil
 }
 
 // ── book_update_meta ─────────────────────────────────────────────────────────
@@ -84,8 +84,8 @@ type bookUpdateMetaIn struct {
 	GenreTags        *[]string `json:"genre_tags,omitempty"`
 }
 type bookUpdateMetaOut struct {
-	BookID  uuid.UUID `json:"book_id"`
-	Updated []string  `json:"updated_fields"`
+	BookID  string   `json:"book_id"`
+	Updated []string `json:"updated_fields"`
 }
 
 func (s *Server) toolBookUpdateMeta(ctx context.Context, _ *mcp.CallToolRequest, in bookUpdateMetaIn) (*mcp.CallToolResult, bookUpdateMetaOut, error) {
@@ -167,7 +167,7 @@ func (s *Server) toolBookUpdateMeta(ctx context.Context, _ *mcp.CallToolRequest,
 	}
 	prior["book_id"] = bookID.String()
 	res := undoResult("book_update_meta", prior)
-	return res, bookUpdateMetaOut{BookID: bookID, Updated: updated}, nil
+	return res, bookUpdateMetaOut{BookID: bookID.String(), Updated: updated}, nil
 }
 
 func derefStr(p *string) any {
@@ -187,7 +187,7 @@ type chapterCreateIn struct {
 	Body             string `json:"body,omitempty" jsonschema:"plain-text body (optional)"`
 }
 type chapterCreateOut struct {
-	ChapterID uuid.UUID `json:"chapter_id"`
+	ChapterID string `json:"chapter_id"`
 }
 
 func (s *Server) toolChapterCreate(ctx context.Context, _ *mcp.CallToolRequest, in chapterCreateIn) (*mcp.CallToolResult, chapterCreateOut, error) {
@@ -219,7 +219,7 @@ func (s *Server) toolChapterCreate(ctx context.Context, _ *mcp.CallToolRequest, 
 		return nil, chapterCreateOut{}, err
 	}
 	res := undoResult("book_chapter_delete", map[string]any{"book_id": bookID.String(), "chapter_id": chID.String()})
-	return res, chapterCreateOut{ChapterID: chID}, nil
+	return res, chapterCreateOut{ChapterID: chID.String()}, nil
 }
 
 // mcpCreateChapter inserts one chapter (+ draft + seed revision) in a tx, billing
@@ -276,9 +276,9 @@ type chapterBulkCreateIn struct {
 	Chapters         []chapterBulkItem `json:"chapters" jsonschema:"the chapters to create"`
 }
 type chapterBulkCreateOut struct {
-	Created    int         `json:"created"`
-	Skipped    int         `json:"skipped"`
-	ChapterIDs []uuid.UUID `json:"chapter_ids"`
+	Created    int      `json:"created"`
+	Skipped    int      `json:"skipped"`
+	ChapterIDs []string `json:"chapter_ids"`
 }
 
 func (s *Server) toolChapterBulkCreate(ctx context.Context, _ *mcp.CallToolRequest, in chapterBulkCreateIn) (*mcp.CallToolResult, chapterBulkCreateOut, error) {
@@ -342,7 +342,7 @@ func (s *Server) toolChapterBulkCreate(ctx context.Context, _ *mcp.CallToolReque
 		}
 		rows.Close()
 	}
-	out := chapterBulkCreateOut{ChapterIDs: []uuid.UUID{}}
+	out := chapterBulkCreateOut{ChapterIDs: []string{}}
 	for _, it := range in.Chapters {
 		title := strings.TrimSpace(it.Title)
 		if title == "" {
@@ -373,7 +373,7 @@ VALUES($1,$2,$3,$4,'text/plain',$5,$6,$7,'active',now(),now()) RETURNING id`,
 		if err := insertOutboxEvent(ctx, tx, "chapter.created", chID, map[string]any{"book_id": bookID}); err != nil {
 			return nil, chapterBulkCreateOut{}, errors.New("failed to commit chapters")
 		}
-		out.ChapterIDs = append(out.ChapterIDs, chID)
+		out.ChapterIDs = append(out.ChapterIDs, chID.String())
 		out.Created++
 		sortOrder++
 	}
@@ -382,11 +382,9 @@ VALUES($1,$2,$3,$4,'text/plain',$5,$6,$7,'active',now(),now()) RETURNING id`,
 	}
 	_ = s.recalcQuota(ctx, owner)
 	// Undo of a bulk create = trash each created chapter. The hint names the
-	// per-chapter reverse tool + the id list the consumer iterates.
-	ids := make([]string, len(out.ChapterIDs))
-	for i, id := range out.ChapterIDs {
-		ids[i] = id.String()
-	}
+	// per-chapter reverse tool + the id list the consumer iterates. out.ChapterIDs
+	// are already string-rendered ids (the MCP output struct uses string UUIDs).
+	ids := append([]string(nil), out.ChapterIDs...)
 	res := undoResult("book_chapter_delete", map[string]any{"book_id": bookID.String(), "chapter_ids": ids})
 	return res, out, nil
 }
@@ -401,8 +399,8 @@ type chapterUpdateMetaIn struct {
 	OriginalLanguage *string `json:"original_language,omitempty"`
 }
 type chapterUpdateMetaOut struct {
-	ChapterID uuid.UUID `json:"chapter_id"`
-	Updated   []string  `json:"updated_fields"`
+	ChapterID string   `json:"chapter_id"`
+	Updated   []string `json:"updated_fields"`
 }
 
 func (s *Server) toolChapterUpdateMeta(ctx context.Context, _ *mcp.CallToolRequest, in chapterUpdateMetaIn) (*mcp.CallToolResult, chapterUpdateMetaOut, error) {
@@ -461,7 +459,7 @@ WHERE id=$1 AND book_id=$2`, chID, bookID, in.Title, in.SortOrder, in.OriginalLa
 		return nil, chapterUpdateMetaOut{}, errors.New("failed to update chapter")
 	}
 	res := undoResult("book_chapter_update_meta", prior)
-	return res, chapterUpdateMetaOut{ChapterID: chID, Updated: updated}, nil
+	return res, chapterUpdateMetaOut{ChapterID: chID.String(), Updated: updated}, nil
 }
 
 // ── book_chapter_restore_revision ────────────────────────────────────────────
@@ -472,10 +470,10 @@ type restoreRevisionIn struct {
 	RevisionID string `json:"revision_id" jsonschema:"the revision to restore the draft to (UUID)"`
 }
 type restoreRevisionOut struct {
-	ChapterID        uuid.UUID `json:"chapter_id"`
-	NewDraftVersion  int64     `json:"new_draft_version"`
-	SnapshotRevision uuid.UUID `json:"snapshot_revision_id"`
-	RestoredRevision uuid.UUID `json:"restored_revision_id"`
+	ChapterID        string `json:"chapter_id"`
+	NewDraftVersion  int64  `json:"new_draft_version"`
+	SnapshotRevision string `json:"snapshot_revision_id"`
+	RestoredRevision string `json:"restored_revision_id"`
 }
 
 func (s *Server) toolChapterRestoreRevision(ctx context.Context, _ *mcp.CallToolRequest, in restoreRevisionIn) (*mcp.CallToolResult, restoreRevisionOut, error) {
@@ -507,7 +505,7 @@ func (s *Server) toolChapterRestoreRevision(ctx context.Context, _ *mcp.CallTool
 		"book_id": bookID.String(), "chapter_id": chID.String(), "revision_id": snapshotID.String(),
 	})
 	return res, restoreRevisionOut{
-		ChapterID: chID, NewDraftVersion: restoredVer, SnapshotRevision: snapshotID, RestoredRevision: revID,
+		ChapterID: chID.String(), NewDraftVersion: restoredVer, SnapshotRevision: snapshotID.String(), RestoredRevision: revID.String(),
 	}, nil
 }
 
@@ -567,9 +565,9 @@ type saveDraftIn struct {
 	CommitMessage string          `json:"commit_message,omitempty"`
 }
 type saveDraftOut struct {
-	ChapterID        uuid.UUID `json:"chapter_id"`
-	NewDraftVersion  int64     `json:"new_draft_version"`
-	SnapshotRevision uuid.UUID `json:"snapshot_revision_id"`
+	ChapterID        string `json:"chapter_id"`
+	NewDraftVersion  int64  `json:"new_draft_version"`
+	SnapshotRevision string `json:"snapshot_revision_id"`
 }
 
 // ErrStaleDraftVersion — H8: book_chapter_save_draft requires base_version; a
@@ -646,5 +644,5 @@ WHERE chapter_id=$1 RETURNING draft_version`, chID, in.Body).Scan(&newVer); err 
 	res := undoResult("book_chapter_restore_revision", map[string]any{
 		"book_id": bookID.String(), "chapter_id": chID.String(), "revision_id": snapshotID.String(),
 	})
-	return res, saveDraftOut{ChapterID: chID, NewDraftVersion: newVer, SnapshotRevision: snapshotID}, nil
+	return res, saveDraftOut{ChapterID: chID.String(), NewDraftVersion: newVer, SnapshotRevision: snapshotID.String()}, nil
 }

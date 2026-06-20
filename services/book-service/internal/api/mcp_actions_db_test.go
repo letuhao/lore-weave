@@ -21,6 +21,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/loreweave/book-service/internal/migrate"
 	lwmcp "github.com/loreweave/loreweave_mcp"
@@ -204,5 +205,87 @@ func TestMCP_SaveDraft_StaleBaseVersion_StopsNoOverwrite_DB(t *testing.T) {
 	}
 	if strings.Contains(body, "OVERWRITE") {
 		t.Errorf("draft body was overwritten by a stale save: %s", body)
+	}
+}
+
+// headerRoundTripper injects the kit identity envelope (X-Internal-Token +
+// X-User-Id) onto every outgoing MCP request so the in-process httptest server's
+// IdentityMiddleware authenticates the caller — the same headers the gateway
+// stamps on a real /mcp call.
+type headerRoundTripper struct {
+	rt     http.RoundTripper
+	userID string
+}
+
+func (h headerRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	req.Header.Set(lwmcp.HeaderInternalToken, mcpTestToken)
+	req.Header.Set(lwmcp.HeaderUserID, h.userID)
+	return h.rt.RoundTrip(req)
+}
+
+// TestMCP_BookList_OutputValidates_DB is the regression guard for the go-sdk
+// output-schema bug: a UUID OUTPUT field reflected to JSON type "array" (from
+// [16]byte) but marshaled as a string, so the SERVER rejected its own output
+// ("validating tool output: .../book_id: <uuid> has type \"string\", want
+// \"array\""). The empty-list COMPOSE-B smoke could not catch it (no items → no
+// item validation). Here we seed a book owned by the caller, call book_list
+// THROUGH the real /mcp handler (identity middleware + stateless StreamableHTTP +
+// the go-sdk's output validator), and assert the call returns a NON-error result
+// whose book_id is the seeded id rendered as a STRING.
+func TestMCP_BookList_OutputValidates_DB(t *testing.T) {
+	s, pool := dbTestServer(t)
+	ctx := context.Background()
+	owner := uuid.New()
+	bookID, _ := seedChapter(t, ctx, pool, owner) // book owned by `owner`, active, not a bible
+
+	// Stand up the genuine /mcp handler (X-Internal-Token gate + envelope→ctx +
+	// the stateless StreamableHTTP transport that runs the output-schema validator).
+	srv := httptest.NewServer(s.mcpHandler())
+	t.Cleanup(srv.Close)
+
+	transport := &mcp.StreamableClientTransport{
+		Endpoint: srv.URL,
+		HTTPClient: &http.Client{
+			Transport: headerRoundTripper{rt: http.DefaultTransport, userID: owner.String()},
+		},
+		DisableStandaloneSSE: true, // request/response only (JSONResponse:true server)
+	}
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "0.0.1"}, nil)
+	cs, err := client.Connect(ctx, transport, nil)
+	if err != nil {
+		t.Fatalf("connect /mcp: %v", err)
+	}
+	t.Cleanup(func() { _ = cs.Close() })
+
+	res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "book_list"})
+	if err != nil {
+		// A protocol-level error here is the output-validation failure surfacing
+		// (the server refuses to emit output that violates its own schema).
+		t.Fatalf("book_list call failed (the output-schema bug regressed?): %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("book_list returned isError=true (output validation failed): %+v", res.Content)
+	}
+
+	// The structured result must carry the seeded book_id as a STRING.
+	raw, err := json.Marshal(res.StructuredContent)
+	if err != nil {
+		t.Fatalf("marshal structured content: %v", err)
+	}
+	var out bookListOut
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatalf("unmarshal book_list output: %v; raw=%s", err, raw)
+	}
+	if out.Total < 1 || len(out.Books) < 1 {
+		t.Fatalf("book_list returned no books for the owner; out=%s", raw)
+	}
+	var found bool
+	for _, b := range out.Books {
+		if b.BookID == bookID.String() {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("seeded book_id %s (as string) not in book_list output; raw=%s", bookID, raw)
 	}
 }
