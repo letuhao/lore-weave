@@ -43,10 +43,10 @@ describe('parseProviders (C-GW env-driven registry)', () => {
     expect(ps[0]).toEqual({ name: 'myprov', mcpUrl: 'http://m:9000/mcp', prefix: 'my_' });
   });
 
-  it('leaves prefix undefined for an unmapped provider with no override', () => {
+  it('derives a default `${name}_` prefix for an unmapped provider with no override (so it is still policed)', () => {
     const ps = parseProviders('weird=http://w/mcp', jest.fn());
     expect(ps[0].name).toBe('weird');
-    expect(ps[0].prefix).toBeUndefined();
+    expect(ps[0].prefix).toBe('weird_');
   });
 
   it('drops a duplicate provider name with a warning', () => {
@@ -55,6 +55,23 @@ describe('parseProviders (C-GW env-driven registry)', () => {
     expect(ps).toHaveLength(1);
     expect(ps[0].mcpUrl).toBe('http://b1/mcp');
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('duplicate'));
+  });
+
+  it('skips a second provider claiming an already-taken prefix (keeps first, warns)', () => {
+    const warn = jest.fn();
+    // Two distinct names both forced onto the `book_` namespace via inline override.
+    const ps = parseProviders('book=http://b1/mcp,shadow|book_=http://b2/mcp', warn);
+    expect(ps.map((p) => p.name)).toEqual(['book']);
+    expect(ps[0].mcpUrl).toBe('http://b1/mcp');
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('prefix'));
+  });
+
+  it('skips a second provider whose DERIVED prefix collides with an earlier one', () => {
+    const warn = jest.fn();
+    // First claims `dup_` via override; second is named `dup` so derives `dup_`.
+    const ps = parseProviders('first|dup_=http://a/mcp,dup=http://b/mcp', warn);
+    expect(ps.map((p) => p.name)).toEqual(['first']);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('prefix'));
   });
 
   it('falls back to defaults when the whole list is malformed (never zero providers)', () => {

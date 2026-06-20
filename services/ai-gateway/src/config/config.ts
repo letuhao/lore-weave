@@ -10,8 +10,9 @@ export interface ProviderConfig {
   /**
    * required name prefix for this provider's tools (C-GW prefix enforcement).
    * Resolved from {@link DEFAULT_PREFIX_MAP} by provider name, or overridden inline
-   * in the env entry (`name|prefix_=url`). When unknown, prefix enforcement is
-   * skipped for that provider (legacy/unmapped providers are not policed).
+   * in the env entry (`name|prefix_=url`). When neither resolves, `parseProviders`
+   * DERIVES a default `${name}_` so EVERY provider is policed — a provider with no
+   * prefix would otherwise be unpoliced and could shadow another's namespace.
    */
   prefix?: string;
 }
@@ -71,6 +72,11 @@ function defaultProviders(): ProviderConfig[] {
  * A provider's prefix is resolved from {@link DEFAULT_PREFIX_MAP} by name, or
  * overridden inline with a `|` between name and url:
  *   `myprov|my_=http://myprov:9000/mcp`
+ * When neither resolves, a default `${name}_` is derived so the provider is still
+ * policed by the C-GW prefix gate (no unpoliced namespace-shadowing hole).
+ * Providers are de-duped by NAME *and* by PREFIX — a second provider claiming an
+ * already-taken namespace is warned + skipped (it would otherwise both pass the
+ * gate for that namespace and shadow the first).
  *
  * Adding a provider becomes an env entry — no code edit (the load-bearing
  * no-conflict guarantee). Falls back to {@link defaultProviders} when the env var
@@ -90,6 +96,7 @@ export function parseProviders(
 
   const providers: ProviderConfig[] = [];
   const seen = new Set<string>();
+  const seenPrefix = new Set<string>();
   for (const rawEntry of raw.split(',')) {
     const entry = rawEntry.trim();
     if (entry === '') continue;
@@ -116,8 +123,23 @@ export function parseProviders(
       warn(`AI_GATEWAY_PROVIDERS: skipping duplicate provider '${name}'`);
       continue;
     }
+    // Resolve prefix: inline override → DEFAULT_PREFIX_MAP → derived `${name}_`.
+    // Never leave it undefined — an unpoliced provider could shadow another's
+    // namespace through the C-GW gate.
+    const prefix =
+      overridePrefix !== '' ? overridePrefix : DEFAULT_PREFIX_MAP[name] ?? `${name}_`;
+    // De-dupe by PREFIX too: two providers can't both own the same namespace, or
+    // both would pass the prefix gate and the first would silently shadow the
+    // second on every collision. Warn + skip the later claimant (keep first).
+    if (seenPrefix.has(prefix)) {
+      warn(
+        `AI_GATEWAY_PROVIDERS: skipping provider '${name}' — prefix '${prefix}' ` +
+          `already claimed by an earlier provider`,
+      );
+      continue;
+    }
     seen.add(name);
-    const prefix = overridePrefix !== '' ? overridePrefix : DEFAULT_PREFIX_MAP[name];
+    seenPrefix.add(prefix);
     providers.push({ name, mcpUrl, prefix });
   }
 

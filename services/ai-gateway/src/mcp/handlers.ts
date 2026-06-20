@@ -63,10 +63,13 @@ export async function handleCallTool(
     // headers, §20) so a provider that reads req.Params.Meta still receives it.
     return await federation.executeTool(name, args, env, meta);
   } catch (e) {
+    // Full detail stays server-side only. The LLM-visible text is GENERIC: a
+    // transport failure's `String(e)` includes the internal provider URL (e.g.
+    // http://book-service:8082/mcp), which must never leak to the model.
     log.warn(`tool '${name}' execution failed: ${e}`);
     return {
       isError: true,
-      content: [{ type: 'text', text: `tool '${name}' failed: ${String(e)}` }],
+      content: [{ type: 'text', text: `tool '${name}' failed: provider error` }],
     };
   }
 }
