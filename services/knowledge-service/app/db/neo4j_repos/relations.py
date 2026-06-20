@@ -214,6 +214,14 @@ ON MATCH SET
     WHEN $confidence > r.confidence THEN $pending_validation
     ELSE r.pending_validation
   END,
+  // KG customizable-ontology (L7 activation) — re-confirm the schema version on a
+  // re-matched edge so an edge first written pre-activation (NULL) gets stamped on
+  // the next extraction under the resolved schema. COALESCE so a legacy/un-adopted
+  // persist (schema_version NULL) NEVER wipes an existing stamp — only a non-NULL
+  // new value updates. graph_id is intentionally NOT touched on MATCH: it is NULL
+  // at v1 everywhere, and overwriting would clobber a future partition assignment
+  // (M2). The ON CREATE branch still sets graph_id for fresh edges.
+  r.schema_version = coalesce($schema_version, r.schema_version),
   r.updated_at = datetime()
 RETURN properties(r) AS rel,
        properties(subj) AS subj,

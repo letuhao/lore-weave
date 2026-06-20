@@ -398,6 +398,79 @@ def test_persist_pass2_happy_path_returns_write_counts(
     assert write_kwargs["extraction_model"] == "test-model"
 
 
+@patch("app.routers.internal_extraction.get_knowledge_pool")
+@patch("app.routers.internal_extraction._resolve_schema_for_persist", new_callable=AsyncMock)
+@patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
+@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.write_pass2_extraction", new_callable=AsyncMock)
+@patch("app.routers.internal_extraction.settings")
+def test_persist_pass2_forwards_resolved_schema_and_triage_repo(
+    mock_settings, mock_write, mock_neo4j, mock_anchors, mock_resolve, mock_pool,
+):
+    """L7 activation: a resolved (closed) schema + a TriageRepo are forwarded to
+    the writer so the closed-edge guard + triage park + schema_version stamp go
+    live on the worker-ai persist path."""
+    from app.db.repositories.triage import TriageRepo
+    from loreweave_extraction.schema_projection import ExtractionSchema
+
+    mock_settings.neo4j_uri = "bolt://localhost:7687"
+    mock_settings.internal_service_token = _TEST_TOKEN
+    mock_anchors.return_value = []
+    mock_write.return_value = _MOCK_RESULT
+    mock_pool.return_value = MagicMock()  # TriageRepo just stores the pool
+    closed = ExtractionSchema(
+        edge_predicates=("disciple_of",), allow_free_edges=False,
+        schema_version=4, label="proj@v4",
+    )
+    mock_resolve.return_value = closed
+
+    mock_session = AsyncMock()
+    mock_neo4j.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_neo4j.return_value.__aexit__ = AsyncMock(return_value=False)
+
+    client = _client()
+    resp = _post_persist(client, _persist_body())
+
+    assert resp.status_code == 200
+    write_kwargs = mock_write.call_args.kwargs
+    assert write_kwargs["schema"] is closed
+    assert isinstance(write_kwargs["triage_repo"], TriageRepo)
+
+
+@patch("app.routers.internal_extraction.get_knowledge_pool")
+@patch("app.routers.internal_extraction._resolve_schema_for_persist", new_callable=AsyncMock)
+@patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
+@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.write_pass2_extraction", new_callable=AsyncMock)
+@patch("app.routers.internal_extraction.settings")
+def test_persist_pass2_schema_none_still_passes_triage_repo(
+    mock_settings, mock_write, mock_neo4j, mock_anchors, mock_resolve, mock_pool,
+):
+    """When resolution yields None (chat/global or resolve failure), schema=None
+    is forwarded (today's behavior) — the writer only parks inside the closed-edge
+    guard, so a None schema never enforces/parks. triage_repo is still wired."""
+    from app.db.repositories.triage import TriageRepo
+
+    mock_settings.neo4j_uri = "bolt://localhost:7687"
+    mock_settings.internal_service_token = _TEST_TOKEN
+    mock_anchors.return_value = []
+    mock_write.return_value = _MOCK_RESULT
+    mock_pool.return_value = MagicMock()
+    mock_resolve.return_value = None
+
+    mock_session = AsyncMock()
+    mock_neo4j.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_neo4j.return_value.__aexit__ = AsyncMock(return_value=False)
+
+    client = _client()
+    resp = _post_persist(client, _persist_body())
+
+    assert resp.status_code == 200
+    write_kwargs = mock_write.call_args.kwargs
+    assert write_kwargs["schema"] is None
+    assert isinstance(write_kwargs["triage_repo"], TriageRepo)
+
+
 @patch("app.db.neo4j_repos.provenance.cleanup_zero_evidence_nodes", new_callable=AsyncMock)
 @patch("app.db.neo4j_repos.provenance.remove_evidence_for_natural_key", new_callable=AsyncMock)
 @patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)

@@ -444,3 +444,42 @@ branch) + `D-KG-LG-REAL` · KM5/KM6 (admin MCP + confirm machinery for class-C) 
 `D-KG-LF-PROPOSE-EDGE-INBOX`. Data layer, HTTP surface, resolution, adopt/sync,
 extraction plumbing, frontend, enforcement mechanism, and the safe MCP tier are
 BUILT + live-verified + adversarially reviewed.
+
+---
+
+**2026-06-20 — D-KG-L7-ACTIVATE Milestone A (write-boundary activation) — DONE (unit), live deferred.**
+The enforcement was DORMANT: `/persist-pass2` (the live worker-ai persist path)
+passed neither `schema=` nor `triage_repo=`. Milestone A activates the write
+boundary, **knowledge-service only** — no SDK/worker-ai changes, so NO pre-drop
+tension (the SDK isn't schema-aware here → every candidate reaches the writer,
+which is the sole enforce+park point).
+- **A1 — projection helper** (`app/ontology/extraction_projection.py`):
+  `ResolvedSchema` → SDK `ExtractionSchema` dict. `advisory=False` carries the
+  schema's real `allow_free_edges` (write boundary = authoritative); `advisory=True`
+  forces it True (the Milestone-B SDK-prompt posture — hint, never pre-drop).
+  `event_kinds` projects empty (not modeled → SDK keeps static event behavior).
+- **A2 — resolve at persist** (`internal_extraction.py`): `_resolve_schema_for_persist`
+  resolves the project's effective schema via `GraphSchemasRepo.resolve_for_project`,
+  projects it (authoritative), and `/persist-pass2` passes `schema=` + a `TriageRepo`
+  to the writer. 30s TTLCache keyed by `(user_id, project_id)` (mirrors `_anchor_cache`)
+  so a bulk job doesn't re-resolve per chapter; adopt/sync picked up within the TTL.
+  Fail-soft: no project / resolve error → `schema=None` (today's behavior); `TriageRepo`
+  guarded like the JobLogsRepo producer (pool-absent → None, harmless since the writer
+  only parks inside the closed-edge guard). **Net effect now LIVE:** M3 `schema_version`
+  stamped on every edge; closed-edge projects drop+park off-schema edges to triage.
+- **A3 — ON-MATCH stamp fix** (`relations.py`, R3 MED): `create_relation` stamped
+  `schema_version`/`graph_id` ON CREATE only → re-matched edges stayed NULL. Added
+  `r.schema_version = coalesce($schema_version, r.schema_version)` to ON MATCH —
+  backfills a pre-activation edge on re-extraction, and a legacy NULL persist NEVER
+  wipes an existing stamp. `graph_id` intentionally NOT touched on MATCH (NULL at v1;
+  don't clobber a future M2 partition assignment).
+- **VERIFY:** 2788 knowledge unit green (+6: 4 projection + 2 persist-wiring), full
+  suite no-regression; provider-gate clean. **`live infra unavailable: docker daemon
+  hung this session`** — the written live tests (`test_L7_create_relation_stamps_
+  schema_version_on_match` + the persist closed-edge park/stamp smoke) must run when
+  the stack is up → `D-KG-L7A-LIVE-SMOKE`.
+
+**Milestone B (SDK-prompt activation) — IN PROGRESS:** new KS internal resolve
+endpoint → worker-ai resolves at job start → `extract_pass2(schema=advisory)` so the
+LLM emits the project vocab; writer (A) stays the sole enforce+park. `/extract-item`
+legacy path gets the same advisory split. Reconciles the R3 SDK pre-drop.

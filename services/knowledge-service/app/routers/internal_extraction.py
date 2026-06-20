@@ -27,8 +27,12 @@ from app.config import settings
 from app.db.neo4j import neo4j_session
 from app.db.pool import get_knowledge_pool
 from app.deps import get_projects_repo
+from app.db.repositories.graph_schemas import GraphSchemasRepo
 from app.db.repositories.job_logs import JobLogsRepo
+from app.db.repositories.triage import TriageRepo
+from app.ontology.extraction_projection import build_extraction_schema
 from app.extraction.anchor_loader import Anchor, load_glossary_anchors
+from loreweave_extraction.schema_projection import ExtractionSchema
 from loreweave_extraction.errors import ExtractionError
 from loreweave_extraction.extractors.entity import LLMEntityCandidate
 from loreweave_extraction.extractors.event import LLMEventCandidate
@@ -238,6 +242,62 @@ _ANCHOR_CACHE_MAX = 256
 _anchor_cache: TTLCache[tuple[str, str], list[Anchor]] = TTLCache(
     maxsize=_ANCHOR_CACHE_MAX, ttl=_ANCHOR_CACHE_TTL_S,
 )
+
+
+# ── L7 activation — per-project resolved-schema cache for the write boundary ──
+#
+# /persist-pass2 resolves the project's effective KG schema and passes it to the
+# Pass-2 writer so M3 schema_version stamping + the closed-edge guard + triage
+# park go live. The resolve is a bounded Postgres read; a 100-chapter job would
+# otherwise re-resolve per chapter. Cache the PROJECTED ExtractionSchema per
+# (user_id, project_id) with a 30s TTL — long enough to collapse a bulk job's
+# repeats, short enough that an adopt/sync is picked up almost immediately
+# (matches OntologyResolver's own 30s design intent). Only successful resolves
+# are cached; a transient failure degrades to "no schema this call" and is
+# re-tried next call (not locked in for 30s). Per-process; empties on restart.
+_SCHEMA_CACHE_TTL_S = 30.0
+_SCHEMA_CACHE_MAX = 256
+_schema_cache: TTLCache[tuple[str, str], ExtractionSchema] = TTLCache(
+    maxsize=_SCHEMA_CACHE_MAX, ttl=_SCHEMA_CACHE_TTL_S,
+)
+
+
+async def _resolve_schema_for_persist(
+    *, user_id: UUID, project_id: UUID | None,
+) -> ExtractionSchema | None:
+    """L7 activation — resolve the project's effective schema (AUTHORITATIVE) for
+    the write boundary: the closed-edge guard + triage park + ``schema_version``
+    stamp.
+
+    Returns ``None`` for chat/global (no project) or on any resolution failure —
+    extraction still persists, just without the stamp/guard this call (fail-soft,
+    exactly like the anchor pre-load). Cached per ``(user_id, project_id)`` for
+    30s.
+
+    NOT advisory: carries the schema's real ``allow_free_edges`` so the writer is
+    the SOLE closed-set enforce+park point. (The SDK extraction-prompt path uses
+    ``advisory=True`` separately, so it injects vocab as a hint but never
+    pre-drops — which would otherwise rob this park of the off-schema edge.)
+    """
+    if project_id is None:
+        return None
+    cache_key = (str(user_id), str(project_id))
+    cached = _schema_cache.get(cache_key)
+    if cached is not None:
+        return cached
+    try:
+        repo = GraphSchemasRepo(get_knowledge_pool())
+        resolved = await repo.resolve_for_project(str(project_id))
+        schema = build_extraction_schema(resolved, advisory=False)
+    except Exception:
+        logger.warning(
+            "L7: schema resolve failed for project=%s — persist will not stamp/"
+            "enforce schema this call",
+            project_id, exc_info=True,
+        )
+        return None  # don't cache failures
+    _schema_cache[cache_key] = schema
+    return schema
 
 
 async def _load_anchors_for_extraction(
@@ -507,6 +567,25 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
     )
 
     project_id_str = str(body.project_id) if body.project_id else None
+
+    # L7 activation — resolve the project's effective KG schema for the write
+    # boundary. None (chat/global, or resolve failure) → today's behavior (no
+    # stamp/guard). When present, the writer stamps schema_version on every edge
+    # (M3) and, for a project that CLOSES its edge set, drops + parks off-schema
+    # edges to triage. The TriageRepo is always wired (cheap); the writer only
+    # parks inside the closed-edge guard, so a free-edge/None schema never parks.
+    schema = await _resolve_schema_for_persist(
+        user_id=body.user_id, project_id=body.project_id,
+    )
+    # Best-effort like the JobLogsRepo producer below: if the pool isn't
+    # initialised (unit tests that only mock the writer), triage_repo=None — the
+    # writer only parks inside the closed-edge guard (which needs a resolved
+    # schema), so None never changes behavior for a free-edge/None schema.
+    try:
+        triage_repo: TriageRepo | None = TriageRepo(get_knowledge_pool())
+    except Exception:
+        triage_repo = None
+
     async with neo4j_session() as session:
         # Canon Model CM3b (B6): retract THIS source's prior evidence BEFORE
         # re-writing. Re-extracting a chapter (e.g. re-publish) must drop facts
@@ -550,6 +629,8 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
             autocreate_enabled=autocreate_enabled,
             autocreate_max=_WRITER_AUTOCREATE_CONFIG["autocreate_max"],
             provenance=body.provenance,  # CM5
+            schema=schema,  # L7 — schema_version stamp + closed-edge guard
+            triage_repo=triage_repo,  # L7/C4 — park off-schema edge drops
         )
         # CM3b-RETRACT-FIX: after re-writing, sweep nodes whose evidence the
         # retract dropped to zero (disappeared from the new revision) — this

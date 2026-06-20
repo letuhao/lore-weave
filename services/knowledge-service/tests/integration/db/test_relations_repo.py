@@ -170,6 +170,51 @@ async def test_L7_create_relation_stamps_schema_version_and_graph_id(neo4j_drive
 
 
 @pytest.mark.asyncio
+async def test_L7_create_relation_stamps_schema_version_on_match(neo4j_driver, test_user):
+    """L7 activation (R3 MED): an edge first written pre-activation (schema_version
+    NULL) is BACKFILLED on the next extraction under a resolved schema (ON MATCH),
+    and a later legacy/un-adopted persist (schema_version NULL) does NOT wipe the
+    stamp (COALESCE preserves it). graph_id stays untouched on MATCH."""
+    async with neo4j_driver.session() as session:
+        mei = await _entity(session, user_id=test_user, name="Mei")
+        lan = await _entity(session, user_id=test_user, name="Lan")
+        rid = relation_id(user_id=test_user, subject_id=mei.id, predicate="rivals", object_id=lan.id)
+
+        # 1) pre-activation write — no schema_version → NULL stamp.
+        await create_relation(
+            session, user_id=test_user, subject_id=mei.id, predicate="rivals",
+            object_id=lan.id, confidence=0.6,
+        )
+        res = await session.run(
+            "MATCH ()-[r:RELATES_TO {id: $rid}]->() RETURN r.schema_version AS sv", rid=rid,
+        )
+        assert (await res.single())["sv"] is None
+
+        # 2) re-extraction under a resolved schema → ON MATCH backfills the version.
+        await create_relation(
+            session, user_id=test_user, subject_id=mei.id, predicate="rivals",
+            object_id=lan.id, confidence=0.9, schema_version=5,
+        )
+        res = await session.run(
+            "MATCH ()-[r:RELATES_TO {id: $rid}]->() RETURN r.schema_version AS sv, r.graph_id AS gid",
+            rid=rid,
+        )
+        rec = await res.single()
+        assert rec["sv"] == 5      # backfilled on match
+        assert rec["gid"] is None  # graph_id never set on match
+
+        # 3) a later legacy persist (schema_version NULL) must NOT wipe the stamp.
+        await create_relation(
+            session, user_id=test_user, subject_id=mei.id, predicate="rivals",
+            object_id=lan.id, confidence=0.95,
+        )
+        res = await session.run(
+            "MATCH ()-[r:RELATES_TO {id: $rid}]->() RETURN r.schema_version AS sv", rid=rid,
+        )
+        assert (await res.single())["sv"] == 5  # COALESCE preserved
+
+
+@pytest.mark.asyncio
 async def test_k11_6_create_relation_is_idempotent_per_event(
     neo4j_driver, test_user
 ):
