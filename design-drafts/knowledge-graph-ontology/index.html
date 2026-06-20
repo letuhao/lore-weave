@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>KG Customizable Ontology — Design Drafts</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = { theme: { extend: { colors: {
+    primary:'#6366f1', sys:'#64748b', user:'#6366f1', proj:'#0ea5e9',
+    edge:'#8b5cf6', temporal:'#f59e0b', drive:'#10b981', gloss:'#14b8a6' } } } };
+</script>
+<style>
+  body { font-family: ui-sans-serif, system-ui, "Segoe UI", sans-serif; }
+  .chip { display:inline-flex; align-items:center; gap:.25rem; border-radius:.375rem; padding:.05rem .4rem; font-size:10px; font-weight:600; }
+  .tier-system { background:#64748b1a; color:#475569; border:1px solid #64748b40; }
+  .tier-user   { background:#6366f11a; color:#4f46e5; border:1px solid #6366f140; }
+  .tier-proj   { background:#0ea5e91a; color:#0369a1; border:1px solid #0ea5e940; }
+  .chip-edge   { background:#8b5cf61a; color:#6d28d9; border:1px solid #8b5cf640; }
+  .chip-temporal { background:#f59e0b1a; color:#b45309; border:1px solid #f59e0b40; }
+  .chip-drive  { background:#10b9811a; color:#047857; border:1px solid #10b98140; }
+  .chip-gloss  { background:#14b8a61a; color:#0f766e; border:1px solid #14b8a640; }
+  .gap { border:1px dashed #f59e0b; background:#fffbeb; }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+
+<header class="border-b bg-white">
+  <div class="mx-auto max-w-6xl px-6 py-4">
+    <div class="flex items-center justify-between">
+      <div>
+        <h1 class="text-lg font-bold">Knowledge Graph — Customizable Ontology</h1>
+        <p class="text-xs text-slate-500">A KG is only good when shaped to a specific problem. Make the KG ontology customizable (system · user · project) + multi-graph. Static mockups — not wired.</p>
+      </div>
+      <span class="chip tier-user">DRAFT v0.1 · 2026-06-20</span>
+    </div>
+    <nav class="mt-3 flex flex-wrap gap-2 text-sm">
+      <a href="index.html" class="rounded-md bg-primary px-3 py-1.5 font-medium text-white">Model</a>
+      <a href="01-adopt.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Adopt template</a>
+      <a href="02-schema-editor.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Schema editor</a>
+      <a href="03-views.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Views / lenses</a>
+      <a href="04-graph-explore.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Graph explore</a>
+      <a href="05-extraction-triage.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Extraction &amp; triage</a>
+      <a href="06-sync.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Updates &amp; Sync</a>
+    </nav>
+  </div>
+</header>
+
+<main class="mx-auto max-w-6xl space-y-10 px-6 py-8">
+
+  <!-- problem -->
+  <section class="rounded-lg border border-amber-300 bg-amber-50 p-4">
+    <h2 class="text-sm font-bold text-amber-900">⚠ The problem we're correcting</h2>
+    <p class="mt-1 text-[13px] text-amber-900/80">
+      Today the KG ships <b>one hardcoded general ontology</b> — entity/event/fact kinds are Python <code class="rounded bg-amber-100 px-1">Literal</code>s,
+      edge predicates are free strings with no vocab, baked into static prompts. Glossary already solved "customizable" for
+      <b>node identity</b> (genre·kind·attribute, tiered). The KG needs the same for <b>graph shape</b> (edge vocab, fact/state types,
+      controlled vocab) — but that's the KG's domain, not glossary's.
+    </p>
+  </section>
+
+  <!-- ownership split -->
+  <section class="grid gap-6 md:grid-cols-2">
+    <div class="rounded-lg border bg-white p-5">
+      <h3 class="text-sm font-bold">Ownership split</h3>
+      <p class="mt-1 text-[12px] text-slate-600">Two domains, one anchor. KG never re-defines node kinds.</p>
+      <div class="mt-3 space-y-2 text-[12px]">
+        <div class="rounded-md border bg-teal-50/50 p-2.5">
+          <div class="flex items-center gap-2"><span class="chip chip-gloss">GLOSSARY</span><b>Node identity</b></div>
+          <div class="mt-1 text-slate-600">"what a thing <i>is</i>" — kind, name, aliases, attributes. Already tiered (system/user/book). SSOT.</div>
+        </div>
+        <div class="rounded-md border bg-violet-50/40 p-2.5">
+          <div class="flex items-center gap-2"><span class="chip chip-edge">KNOWLEDGE</span><b>Graph shape</b></div>
+          <div class="mt-1 text-slate-600">"how things <i>relate</i> + change" — edge vocab, fact/state types, drive vocab, temporal. <b>This epic.</b></div>
+        </div>
+        <div class="gap rounded-md p-2.5 text-[11px] text-amber-900">
+          ❓ <b>Gap (M1 / §10-G1):</b> node kinds come from glossary at <i>book</i> tier (shared); graph schema is at <i>project</i> tier (per-user). They must agree on kind codes. Adopt is <b>gated</b> on the book glossary already having the kinds. → see <a class="underline" href="01-adopt.html">Adopt</a>.
+        </div>
+      </div>
+    </div>
+
+    <div class="rounded-lg border bg-white p-5">
+      <h3 class="text-sm font-bold">A graph schema = the customizable unit</h3>
+      <p class="mt-1 text-[12px] text-slate-600">Tiered like glossary. Adopt (copy-down) + sync. Declares:</p>
+      <ul class="mt-3 space-y-1.5 text-[12px]">
+        <li class="flex items-center gap-2"><span class="chip chip-edge">edge types</span> code · direction · source/target node-kinds · <span class="chip chip-temporal">temporal?</span> · cardinality</li>
+        <li class="flex items-center gap-2"><span class="chip" style="background:#64748b1a;color:#475569">fact types</span> narrative state events (realm_change, allegiance_shift…)</li>
+        <li class="flex items-center gap-2"><span class="chip chip-drive">vocab sets</span> closed controlled vocab (e.g. <b>drive</b> ×16)</li>
+        <li class="flex items-center gap-2"><span class="chip" style="background:#e2e8f0;color:#475569">extraction hints</span> what to pull / node budget</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 4 layers -->
+  <section>
+    <h2 class="text-base font-bold">The 4-layer model</h2>
+    <div class="mt-4 space-y-3">
+      <div class="rounded-lg border bg-white p-4">
+        <div class="flex items-center gap-2"><span class="rounded bg-teal-100 px-2 py-0.5 text-[11px] font-bold text-teal-700">Layer 1</span><b class="text-sm">Node kinds</b><span class="text-[11px] text-slate-500">← from glossary (anchor, not redefined)</span></div>
+      </div>
+      <div class="rounded-lg border bg-white p-4">
+        <div class="flex items-center gap-2"><span class="rounded bg-violet-100 px-2 py-0.5 text-[11px] font-bold text-violet-700">Layer 2</span><b class="text-sm">Graph schema</b><span class="text-[11px] text-slate-500">← KG-owned, tiered system/user/project, adopt + sync</span></div>
+        <div class="mt-2 flex gap-2 text-[11px]"><span class="chip tier-system">system templates</span><span class="text-slate-400">→</span><span class="chip tier-user">user</span><span class="text-slate-400">→</span><span class="chip tier-proj">project (active)</span></div>
+      </div>
+      <div class="rounded-lg border bg-white p-4">
+        <div class="flex items-center gap-2"><span class="rounded bg-sky-100 px-2 py-0.5 text-[11px] font-bold text-sky-700">Layer 3</span><b class="text-sm">View / lens</b><span class="text-[11px] text-slate-500">← multi-graph v1: named {edge-types + node-kinds} over ONE project graph. READ-only.</span></div>
+      </div>
+      <div class="rounded-lg border border-dashed bg-slate-50 p-4 opacity-70">
+        <div class="flex items-center gap-2"><span class="rounded bg-slate-200 px-2 py-0.5 text-[11px] font-bold text-slate-600">Layer 4</span><b class="text-sm">Graph partition</b><span class="text-[11px] text-slate-500">← DEFERRED. graph_id <b>on edge</b> (nodes shared). View ≠ partition — not a continuum.</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- first template -->
+  <section class="rounded-lg border border-violet-200 bg-violet-50/30 p-5">
+    <h3 class="text-sm font-bold">First system template — <span class="chip tier-system">xianxia-harem</span> (Vạn Cổ Thần Đế)</h3>
+    <p class="mt-1 text-[12px] text-slate-600">Seeded from the VCTĐ ontology spec. Plus a <span class="chip tier-system">general</span> template that reproduces today's hardcoded ontology (so old projects don't change).</p>
+    <div class="mt-3 grid gap-3 md:grid-cols-3 text-[12px]">
+      <div class="rounded-md border bg-white p-3">
+        <div class="text-[11px] font-semibold text-slate-500">8 node kinds (from glossary)</div>
+        <div class="mt-1 text-slate-700">character · organization · location · concept · technique · item · event · relationship</div>
+      </div>
+      <div class="rounded-md border bg-white p-3">
+        <div class="text-[11px] font-semibold text-slate-500">~18 edge types</div>
+        <div class="mt-1 flex flex-wrap gap-1">
+          <span class="chip chip-edge">MASTER_OF</span><span class="chip chip-edge chip-temporal">BETROTHED_TO ⏱</span><span class="chip chip-edge chip-temporal">BETRAYED ⏱</span><span class="chip chip-edge chip-temporal">PURSUES ⏱</span><span class="chip chip-edge">COMPREHENDS</span><span class="chip chip-edge">MEMBER_OF</span>
+        </div>
+      </div>
+      <div class="rounded-md border bg-white p-3">
+        <div class="text-[11px] font-semibold text-slate-500">drive vocab ×16 (closed)</div>
+        <div class="mt-1 flex flex-wrap gap-1">
+          <span class="chip chip-drive">revenge</span><span class="chip chip-drive">seek_dao</span><span class="chip chip-drive">transcendence</span><span class="chip chip-drive">survival</span><span class="chip chip-drive">+12</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="border-t pt-4 text-[11px] text-slate-400">
+    Throwaway HTML mockups to agree UX + model before any code. <b>Amber dashed boxes = gaps surfaced by the draft</b> — candidates to fold back into the spec. Open the screens from the nav.
+  </footer>
+</main>
+</body>
+</html>

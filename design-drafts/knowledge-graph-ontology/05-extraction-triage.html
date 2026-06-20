@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Extraction & triage — KG Ontology Drafts</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = { theme: { extend: { colors: { primary:'#6366f1', edge:'#8b5cf6', temporal:'#f59e0b', drive:'#10b981', gloss:'#14b8a6' } } } };
+</script>
+<style>
+  body { font-family: ui-sans-serif, system-ui, "Segoe UI", sans-serif; }
+  .chip { display:inline-flex; align-items:center; gap:.25rem; border-radius:.375rem; padding:.05rem .4rem; font-size:10px; font-weight:600; }
+  .chip-edge   { background:#8b5cf61a; color:#6d28d9; border:1px solid #8b5cf640; }
+  .chip-temporal { background:#f59e0b1a; color:#b45309; border:1px solid #f59e0b40; }
+  .chip-drive  { background:#10b9811a; color:#047857; border:1px solid #10b98140; }
+  .chip-gloss  { background:#14b8a61a; color:#0f766e; border:1px solid #14b8a640; }
+  .gap { border:1px dashed #f59e0b; background:#fffbeb; }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+
+<header class="border-b bg-white">
+  <div class="mx-auto max-w-6xl px-6 py-4">
+    <div class="flex items-center justify-between">
+      <div><h1 class="text-lg font-bold">Extraction & triage — schema-bound</h1>
+      <p class="text-xs text-slate-500">Extraction builds its prompt + validation from the resolved schema. Unknown kinds/edges/drives → triage, never silent.</p></div>
+      <span class="chip chip-temporal">chapter 42 · run #318</span>
+    </div>
+    <nav class="mt-3 flex flex-wrap gap-2 text-sm">
+      <a href="index.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Model</a>
+      <a href="01-adopt.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Adopt template</a>
+      <a href="02-schema-editor.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Schema editor</a>
+      <a href="03-views.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Views / lenses</a>
+      <a href="04-graph-explore.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Graph explore</a>
+      <a href="05-extraction-triage.html" class="rounded-md bg-primary px-3 py-1.5 font-medium text-white">Extraction &amp; triage</a>
+      <a href="06-sync.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Updates &amp; Sync</a>
+    </nav>
+  </div>
+</header>
+
+<main class="mx-auto max-w-6xl grid gap-6 px-6 py-8 lg:grid-cols-2">
+
+  <!-- accepted -->
+  <section class="space-y-4">
+    <div class="rounded-lg border bg-white p-5">
+      <h3 class="text-sm font-bold">Resolved schema used for this run</h3>
+      <div class="mt-2 flex flex-wrap gap-1.5 text-[11px]">
+        <span class="chip" style="background:#0ea5e91a;color:#0369a1">project: xianxia-harem · v3</span>
+        <span class="chip chip-gloss">node kinds ← glossary (8)</span>
+        <span class="chip chip-edge">edges (18)</span>
+        <span class="chip chip-drive">drive (16)</span>
+      </div>
+      <div class="gap mt-3 rounded-md p-2.5 text-[11px] text-amber-900">❓ <b>Gap (§10-B1):</b> the whole schema (8 kinds + 18 edges + 16 drives + 5 fact types) goes into every extraction prompt → token cost scales with schema size. Need a "projection" (only what extraction needs) + a cap. Unspecified.</div>
+    </div>
+
+    <div class="rounded-lg border bg-white p-5">
+      <h3 class="text-sm font-bold">Accepted this chapter <span class="text-[11px] font-normal text-slate-400">validated against schema</span></h3>
+      <ul class="mt-2 space-y-1.5 text-[12px]">
+        <li class="flex items-center justify-between rounded-md bg-emerald-50/60 px-2 py-1.5"><span>👤 Cửu U Tiên Tử <span class="chip chip-gloss">character</span></span><span class="text-emerald-700 text-[11px]">new node → glossary</span></li>
+        <li class="flex items-center justify-between rounded-md bg-emerald-50/60 px-2 py-1.5"><span><span class="chip chip-edge">DAO_COMPANION_OF ⏱</span> TNT ↔ Cửu U</span><span class="text-emerald-700 text-[11px]">@ch.42 ✓</span></li>
+        <li class="flex items-center justify-between rounded-md bg-emerald-50/60 px-2 py-1.5"><span><span class="chip chip-edge">PURSUES ⏱</span> TNT → seek_dao</span><span class="text-amber-700 text-[11px]">closes revenge?</span></li>
+      </ul>
+      <div class="gap mt-3 rounded-md p-2.5 text-[11px] text-amber-900">❓ <b>Gap (§10-F1):</b> PURSUES is <code>multi_active</code>, so opening <code>seek_dao</code> should NOT auto-close <code>revenge</code> — but the chapter implies a shift. Who decides closure: extractor, or a human in triage? Closure-detection UX is undefined.</div>
+    </div>
+  </section>
+
+  <!-- triage -->
+  <section class="space-y-4">
+    <div class="rounded-lg border border-rose-200 bg-white p-5">
+      <h3 class="text-sm font-bold">Triage queue <span class="chip" style="background:#fee2e2;color:#b91c1c">3 unresolved</span></h3>
+      <p class="mt-1 text-[12px] text-slate-600">Things the extractor saw that don't fit the schema. Never written silently.</p>
+
+      <div class="mt-3 space-y-3 text-[12px]">
+        <div class="rounded-md border p-3">
+          <div class="flex items-center justify-between"><b>Unknown drive: "curiosity"</b><span class="chip chip-drive">drive (closed)</span></div>
+          <p class="mt-1 text-slate-600">A minor cultivator "just wanted to know what lay beyond". No matching drive value.</p>
+          <div class="mt-2 flex gap-2 text-[11px]">
+            <button class="rounded border px-2 py-1">Map → uncover_truth</button>
+            <button class="rounded border px-2 py-1">Add "curiosity" to vocab</button>
+            <button class="rounded border px-2 py-1 text-slate-400">Discard</button>
+          </div>
+        </div>
+
+        <div class="rounded-md border p-3">
+          <div class="flex items-center justify-between"><b>Edge target kind mismatch</b><span class="chip chip-edge">LOVER_OF</span></div>
+          <p class="mt-1 text-slate-600">Extractor linked <code>character → organization</code>; schema allows <code>character → character</code> only.</p>
+          <div class="mt-2 flex gap-2 text-[11px]"><button class="rounded border px-2 py-1">Re-target</button><button class="rounded border px-2 py-1 text-slate-400">Drop edge</button></div>
+        </div>
+
+        <div class="rounded-md border p-3">
+          <div class="flex items-center justify-between"><b>Unknown node kind: "bloodline"</b><span class="chip chip-gloss">node kind</span></div>
+          <p class="mt-1 text-slate-600">Per VCTĐ §5 this should be a <i>string/edge</i>, not an entity. But the kind doesn't exist in glossary.</p>
+          <div class="mt-2 flex gap-2 text-[11px]">
+            <button class="rounded border border-teal-300 bg-teal-50 px-2 py-1 text-teal-800">↗ Promote to glossary kind</button>
+            <button class="rounded border px-2 py-1">Demote to attribute</button>
+            <button class="rounded border px-2 py-1 text-slate-400">Discard</button>
+          </div>
+        </div>
+      </div>
+      <div class="gap mt-3 rounded-md p-2.5 text-[11px] text-amber-900">❓ <b>Gap (big one):</b> triage resolution spans BOTH services — "add to vocab" is KG, "promote to glossary kind" is a glossary write (cross-service, M1 in reverse). The whole <b>triage→resolution workflow + who-owns-it is not in the spec.</b> This is the clearest missing piece.</div>
+    </div>
+  </section>
+</main>
+</body>
+</html>

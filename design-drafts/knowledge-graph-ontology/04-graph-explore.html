@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Graph explore — KG Ontology Drafts</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = { theme: { extend: { colors: { primary:'#6366f1', edge:'#8b5cf6', temporal:'#f59e0b', drive:'#10b981', gloss:'#14b8a6' } } } };
+</script>
+<style>
+  body { font-family: ui-sans-serif, system-ui, "Segoe UI", sans-serif; }
+  .chip { display:inline-flex; align-items:center; gap:.25rem; border-radius:.375rem; padding:.05rem .4rem; font-size:10px; font-weight:600; }
+  .chip-edge   { background:#8b5cf61a; color:#6d28d9; border:1px solid #8b5cf640; }
+  .chip-temporal { background:#f59e0b1a; color:#b45309; border:1px solid #f59e0b40; }
+  .chip-drive  { background:#10b9811a; color:#047857; border:1px solid #10b98140; }
+  .chip-gloss  { background:#14b8a61a; color:#0f766e; border:1px solid #14b8a640; }
+  .tier-proj   { background:#0ea5e91a; color:#0369a1; border:1px solid #0ea5e940; }
+  .gap { border:1px dashed #f59e0b; background:#fffbeb; }
+  .node { position:absolute; transform:translate(-50%,-50%); border-radius:9999px; font-size:11px; font-weight:600; padding:.35rem .6rem; border:1px solid; white-space:nowrap; }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+
+<header class="border-b bg-white">
+  <div class="mx-auto max-w-6xl px-6 py-4">
+    <div class="flex items-center justify-between">
+      <div><h1 class="text-lg font-bold">Graph explore — temporal read</h1>
+      <p class="text-xs text-slate-500">The payoff. Filtered by a view, scrubbed by chapter. Temporal edges resolve "true at chapter N".</p></div>
+      <span class="chip tier-proj">view: Relationship · Motivation</span>
+    </div>
+    <nav class="mt-3 flex flex-wrap gap-2 text-sm">
+      <a href="index.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Model</a>
+      <a href="01-adopt.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Adopt template</a>
+      <a href="02-schema-editor.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Schema editor</a>
+      <a href="03-views.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Views / lenses</a>
+      <a href="04-graph-explore.html" class="rounded-md bg-primary px-3 py-1.5 font-medium text-white">Graph explore</a>
+      <a href="05-extraction-triage.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Extraction &amp; triage</a>
+      <a href="06-sync.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Updates &amp; Sync</a>
+    </nav>
+  </div>
+</header>
+
+<main class="mx-auto max-w-6xl space-y-5 px-6 py-8">
+
+  <!-- controls -->
+  <div class="flex flex-wrap items-center gap-3 rounded-lg border bg-white p-3 text-[12px]">
+    <span class="font-semibold">View:</span>
+    <select class="rounded-md border px-2 py-1"><option>Relationship / hậu cung</option></select>
+    <span class="ml-4 font-semibold">Chapter:</span>
+    <input type="range" min="1" max="120" value="42" class="w-48 accent-amber-500" />
+    <span class="chip chip-temporal">⏱ ch. 42 / 120</span>
+    <label class="ml-auto flex items-center gap-1.5 text-slate-600"><input type="checkbox" checked /> show drive lens</label>
+  </div>
+
+  <!-- graph canvas mock -->
+  <div class="relative h-[360px] overflow-hidden rounded-lg border bg-white">
+    <svg class="absolute inset-0 h-full w-full" style="z-index:0">
+      <line x1="30%" y1="40%" x2="62%" y2="32%" stroke="#f59e0b" stroke-width="2" stroke-dasharray="4 3"/>
+      <line x1="30%" y1="40%" x2="55%" y2="70%" stroke="#8b5cf6" stroke-width="2"/>
+      <line x1="30%" y1="40%" x2="80%" y2="55%" stroke="#10b981" stroke-width="2" stroke-dasharray="4 3"/>
+      <line x1="62%" y1="32%" x2="80%" y2="22%" stroke="#8b5cf6" stroke-width="2"/>
+    </svg>
+    <div class="node bg-teal-50 border-teal-300 text-teal-800" style="left:30%;top:40%">👤 Trương Nhược Trần</div>
+    <div class="node bg-teal-50 border-teal-300 text-teal-800" style="left:62%;top:32%">👤 Trì Dao</div>
+    <div class="node bg-teal-50 border-teal-300 text-teal-800" style="left:55%;top:70%">👤 Cửu U Tiên Tử</div>
+    <div class="node bg-teal-50 border-teal-300 text-teal-800" style="left:80%;top:22%">🏛 Thánh Minh Đế Quốc</div>
+    <div class="node bg-emerald-50 border-emerald-300 text-emerald-800" style="left:80%;top:55%">🎯 revenge</div>
+    <!-- edge labels -->
+    <span class="absolute rounded bg-amber-100 px-1 text-[10px] font-semibold text-amber-800" style="left:44%;top:33%">BETRAYED ⏱ @ch.3</span>
+    <span class="absolute rounded bg-violet-100 px-1 text-[10px] font-semibold text-violet-800" style="left:40%;top:57%">DAO_COMPANION_OF</span>
+    <span class="absolute rounded bg-emerald-100 px-1 text-[10px] font-semibold text-emerald-800" style="left:54%;top:49%">PURSUES ⏱</span>
+  </div>
+
+  <div class="grid gap-6 md:grid-cols-2">
+    <!-- temporal timeline of an edge -->
+    <section class="rounded-lg border bg-white p-5">
+      <h3 class="text-sm font-bold">Drive arc · Trương Nhược Trần <span class="chip chip-edge">PURSUES ⏱</span></h3>
+      <p class="mt-1 text-[12px] text-slate-600">A temporal edge per chapter range. This is the character's growth map.</p>
+      <ol class="mt-3 space-y-2 text-[12px]">
+        <li class="flex items-center gap-2"><span class="chip chip-temporal">ch.1–40</span><span class="chip chip-drive">revenge</span><span class="text-slate-400 text-[10px]">EVIDENCED_BY ch.3,12,38</span></li>
+        <li class="flex items-center gap-2"><span class="chip chip-temporal">ch.41–88</span><span class="chip chip-drive">seek_dao</span></li>
+        <li class="flex items-center gap-2"><span class="chip chip-temporal">ch.89–</span><span class="chip chip-drive">transcendence</span></li>
+      </ol>
+      <div class="gap mt-3 rounded-md p-2.5 text-[11px] text-amber-900">❓ <b>Gap:</b> the read API needs "edges valid at chapter N" (a chapter scrubber). Spec has the temporal <i>data</i> model but no <b>read/query contract</b> for as-of-chapter resolution. Add to views/query contract.</div>
+    </section>
+
+    <!-- node inspector -->
+    <section class="rounded-lg border bg-white p-5">
+      <h3 class="text-sm font-bold">Node · Trương Nhược Trần</h3>
+      <div class="mt-2 flex flex-wrap gap-1.5 text-[11px]">
+        <span class="chip chip-gloss">kind: character ← glossary</span>
+        <span class="chip" style="background:#e2e8f0;color:#475569">glossary_entity_id ✓ anchored</span>
+      </div>
+      <p class="mt-3 text-[12px] text-slate-600">Identity (name, aliases, race) is read from <b>glossary</b>. Relationships + state are KG. The two-layer anchor.</p>
+      <div class="mt-2 space-y-1 text-[12px]">
+        <div class="flex justify-between border-b py-1"><span class="chip chip-edge">BETRAYED ⏱</span><span>← Trì Dao @ch.3</span></div>
+        <div class="flex justify-between border-b py-1"><span class="chip chip-edge">PURSUES ⏱</span><span>→ revenge (now: seek_dao)</span></div>
+        <div class="flex justify-between py-1"><span class="chip chip-edge">COMPREHENDS</span><span>→ Không Gian Đạo</span></div>
+      </div>
+      <div class="gap mt-3 rounded-md p-2.5 text-[11px] text-amber-900">❓ <b>Gap:</b> a node may carry edges from <b>deprecated</b> edge types or an <b>older schema_version</b>. How does the inspector render those (tombstoned? hidden?)? Ties to §10-A4/B4.</div>
+    </section>
+  </div>
+</main>
+</body>
+</html>

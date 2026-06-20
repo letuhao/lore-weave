@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Schema editor — KG Ontology Drafts</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = { theme: { extend: { colors: { primary:'#6366f1', edge:'#8b5cf6', temporal:'#f59e0b', drive:'#10b981', gloss:'#14b8a6' } } } };
+</script>
+<style>
+  body { font-family: ui-sans-serif, system-ui, "Segoe UI", sans-serif; }
+  .chip { display:inline-flex; align-items:center; gap:.25rem; border-radius:.375rem; padding:.05rem .4rem; font-size:10px; font-weight:600; }
+  .tier-system { background:#64748b1a; color:#475569; border:1px solid #64748b40; }
+  .tier-proj   { background:#0ea5e91a; color:#0369a1; border:1px solid #0ea5e940; }
+  .chip-edge   { background:#8b5cf61a; color:#6d28d9; border:1px solid #8b5cf640; }
+  .chip-temporal { background:#f59e0b1a; color:#b45309; border:1px solid #f59e0b40; }
+  .chip-drive  { background:#10b9811a; color:#047857; border:1px solid #10b98140; }
+  .chip-gloss  { background:#14b8a61a; color:#0f766e; border:1px solid #14b8a640; }
+  .gap { border:1px dashed #f59e0b; background:#fffbeb; }
+  th,td { text-align:left; }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+
+<header class="border-b bg-white">
+  <div class="mx-auto max-w-6xl px-6 py-4">
+    <div class="flex items-center justify-between">
+      <div><h1 class="text-lg font-bold">Schema editor — project graph schema</h1>
+      <p class="text-xs text-slate-500">Edit the project's edge types, fact types, and vocab. Manage-gated. <span class="chip tier-proj">project · v3</span></p></div>
+      <span class="chip chip-gloss">node kinds ← glossary (live)</span>
+    </div>
+    <nav class="mt-3 flex flex-wrap gap-2 text-sm">
+      <a href="index.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Model</a>
+      <a href="01-adopt.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Adopt template</a>
+      <a href="02-schema-editor.html" class="rounded-md bg-primary px-3 py-1.5 font-medium text-white">Schema editor</a>
+      <a href="03-views.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Views / lenses</a>
+      <a href="04-graph-explore.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Graph explore</a>
+      <a href="05-extraction-triage.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Extraction &amp; triage</a>
+      <a href="06-sync.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Updates &amp; Sync</a>
+    </nav>
+  </div>
+</header>
+
+<main class="mx-auto max-w-6xl space-y-6 px-6 py-8">
+
+  <!-- tabs -->
+  <div class="flex gap-2 text-[13px]">
+    <span class="rounded-md bg-slate-800 px-3 py-1.5 font-medium text-white">Edge types <span class="ml-1 rounded bg-white/20 px-1 text-[10px]">18</span></span>
+    <span class="rounded-md border bg-white px-3 py-1.5">Fact / state types <span class="ml-1 rounded bg-slate-100 px-1 text-[10px]">5</span></span>
+    <span class="rounded-md border bg-white px-3 py-1.5">Vocab sets <span class="ml-1 rounded bg-slate-100 px-1 text-[10px]">1</span></span>
+  </div>
+
+  <!-- edge types table -->
+  <section class="overflow-hidden rounded-lg border bg-white">
+    <table class="w-full text-[12px]">
+      <thead class="bg-slate-100 text-[11px] uppercase text-slate-500">
+        <tr><th class="px-3 py-2">Edge code</th><th class="px-3 py-2">Source → Target kind</th><th class="px-3 py-2">Temporal</th><th class="px-3 py-2">Cardinality</th><th class="px-3 py-2">Provenance</th><th class="px-3 py-2"></th></tr>
+      </thead>
+      <tbody class="divide-y">
+        <tr>
+          <td class="px-3 py-2"><span class="chip chip-edge">MASTER_OF</span></td>
+          <td class="px-3 py-2"><span class="chip chip-gloss">character</span> → <span class="chip chip-gloss">character</span></td>
+          <td class="px-3 py-2 text-slate-400">— invariant</td>
+          <td class="px-3 py-2 text-slate-400">—</td>
+          <td class="px-3 py-2">optional</td>
+          <td class="px-3 py-2 text-right text-slate-400">edit</td>
+        </tr>
+        <tr class="bg-amber-50/40">
+          <td class="px-3 py-2"><span class="chip chip-edge">BETROTHED_TO</span></td>
+          <td class="px-3 py-2"><span class="chip chip-gloss">character</span> → <span class="chip chip-gloss">character</span></td>
+          <td class="px-3 py-2"><span class="chip chip-temporal">⏱ temporal</span></td>
+          <td class="px-3 py-2">single_active</td>
+          <td class="px-3 py-2"><b>required</b></td>
+          <td class="px-3 py-2 text-right text-slate-400">edit</td>
+        </tr>
+        <tr class="bg-amber-50/40">
+          <td class="px-3 py-2"><span class="chip chip-edge">PURSUES</span></td>
+          <td class="px-3 py-2"><span class="chip chip-gloss">character</span> → <span class="chip chip-drive">concept:drive</span></td>
+          <td class="px-3 py-2"><span class="chip chip-temporal">⏱ temporal</span></td>
+          <td class="px-3 py-2">multi_active</td>
+          <td class="px-3 py-2"><b>required</b></td>
+          <td class="px-3 py-2 text-right text-slate-400">edit</td>
+        </tr>
+        <tr>
+          <td class="px-3 py-2"><span class="chip chip-edge">COMPREHENDS</span></td>
+          <td class="px-3 py-2"><span class="chip chip-gloss">character</span> → <span class="chip chip-gloss">concept</span></td>
+          <td class="px-3 py-2 text-slate-400">— invariant</td>
+          <td class="px-3 py-2 text-slate-400">—</td>
+          <td class="px-3 py-2">optional</td>
+          <td class="px-3 py-2 text-right text-slate-400">edit</td>
+        </tr>
+        <tr class="opacity-50">
+          <td class="px-3 py-2"><span class="chip chip-edge">SWORN_SIBLING_OF</span> <span class="chip" style="background:#fee2e2;color:#b91c1c">deprecated</span></td>
+          <td class="px-3 py-2"><span class="chip chip-gloss">character</span> → <span class="chip chip-gloss">character</span></td>
+          <td class="px-3 py-2"><span class="chip chip-temporal">⏱</span></td>
+          <td class="px-3 py-2">single_active</td>
+          <td class="px-3 py-2">required</td>
+          <td class="px-3 py-2 text-right text-[11px] text-rose-600">14 edges still use this</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="flex items-center justify-between border-t bg-slate-50 px-3 py-2 text-[12px]">
+      <span class="text-slate-500">+ add edge type</span>
+      <label class="flex items-center gap-1.5 text-slate-600"><input type="checkbox" checked class="rounded" /> allow free-string edges outside this vocab <span class="text-[10px] text-slate-400">(Q2)</span></label>
+    </div>
+  </section>
+
+  <div class="grid gap-6 md:grid-cols-2">
+    <!-- edit drawer mock -->
+    <section class="rounded-lg border bg-white p-5">
+      <h3 class="text-sm font-bold">Edit edge type · <span class="chip chip-edge">PURSUES</span></h3>
+      <div class="mt-3 space-y-3 text-[12px]">
+        <div><label class="text-slate-500">Source kind</label><div class="mt-0.5 rounded-md border px-2 py-1.5">character ▾ <span class="text-[10px] text-slate-400">(from glossary book ontology)</span></div></div>
+        <div><label class="text-slate-500">Target kind</label><div class="mt-0.5 rounded-md border px-2 py-1.5">concept (vocab: drive) ▾</div></div>
+        <div class="flex gap-4">
+          <label class="flex items-center gap-1.5"><input type="checkbox" checked /> temporal (valid_from + provenance)</label>
+        </div>
+        <div><label class="text-slate-500">Cardinality</label>
+          <div class="mt-0.5 flex gap-2">
+            <span class="rounded border px-2 py-1">single_active <span class="text-[10px] text-slate-400">opens-closes-prev</span></span>
+            <span class="rounded border-2 border-primary px-2 py-1">multi_active ✓</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- gaps -->
+    <section class="space-y-3">
+      <div class="gap rounded-lg p-4 text-[12px] text-amber-900">
+        ❓ <b>Gap (M3 / §10-B4):</b> editing this schema bumps <code>schema_version 3→4</code>. <b>1,240 edges + 86 facts were extracted under v1-v3.</b> The editor should warn + state the policy (additive OK; rename/remove = deprecate). No such warning UX in the spec.
+      </div>
+      <div class="gap rounded-lg p-4 text-[12px] text-amber-900">
+        ❓ <b>Gap (§10-A4):</b> deprecating <code>SWORN_SIBLING_OF</code> leaves <b>14 live edges</b> orphaned vs schema. Deprecate-don't-delete: keep them queryable, block new. The "still in use" count + a tombstone state are new and unspecified.
+      </div>
+      <div class="gap rounded-lg p-4 text-[12px] text-amber-900">
+        ❓ <b>Gap:</b> source/target kind pickers pull <b>live glossary book ontology</b> — so the schema editor needs the same glossary internal read (D1) as adopt, not just at adopt time. Confirm the dependency spans authoring too.
+      </div>
+    </section>
+  </div>
+
+  <!-- vocab editor preview -->
+  <section class="rounded-lg border bg-white p-5">
+    <h3 class="text-sm font-bold">Vocab set · <span class="chip chip-drive">drive</span> <span class="text-[11px] font-normal text-slate-500">closed — extractor may only assign, never invent</span></h3>
+    <div class="mt-3 flex flex-wrap gap-1.5">
+      <span class="chip chip-drive">godhood</span><span class="chip chip-drive">immortality</span><span class="chip chip-drive">seek_dao</span><span class="chip chip-drive">revenge</span><span class="chip chip-drive">protect</span><span class="chip chip-drive">love</span><span class="chip chip-drive">domination</span><span class="chip chip-drive">uncover_truth</span><span class="chip chip-drive">transcendence</span><span class="chip chip-drive">survival</span><span class="chip chip-drive">hedonism</span><span class="chip chip-drive">bloodlust</span><span class="chip chip-drive">freedom</span><span class="chip chip-drive">+3</span>
+      <span class="chip" style="background:#e2e8f0;color:#475569">+ add value</span>
+    </div>
+    <div class="gap mt-3 rounded-md p-2.5 text-[11px] text-amber-900">❓ <b>Gap (Q5):</b> drive vocab lives in this template only. If another template also defines <code>drive</code> with different values, multi-adopt (Q1) collides. Decide: per-template vs a shared system vocab.</div>
+  </section>
+</main>
+</body>
+</html>

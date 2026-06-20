@@ -219,6 +219,39 @@ kg_views
 Lúc extraction/query, resolve **graph schema hiệu lực** của project:
 - Project adopt 1+ system/user schema → đã copy-down thành (các) row scope=project. Resolution v1: **một project-scoped schema "active"** (kết quả merge lúc adopt), shadow theo `code`: project > user > system. Đa-schema-active để dành lớp 4.
 - Cache resolved schema (TTL ngắn) — extraction gọi nhiều.
+- **Nguồn node-kind (gap draft-01, M1 refine):** book ontology nếu project có `book_id`; nếu **không có book** (project_type translation/code/general) → lấy từ **glossary standards của user** (user∪system tier — chính cái `/standards` glossary đã có). Adopt-gate + kind picker resolve theo nguồn này.
+
+### 3.6 Temporal read — query "as-of-chapter" (gap draft-04)
+
+Spec có **data model** temporal nhưng thiếu **read contract**. Bổ sung:
+- `valid_from` / `valid_to` lưu **chapter ordinal (int)** (so sánh range được); `chapter_id` đi trong `:EVIDENCED_BY` cho provenance.
+- Edge **hiển thị tại chương N** khi `valid_from <= N AND (valid_to IS NULL OR valid_to > N)`. Edge invariant (`temporal=false`) luôn hiển thị.
+- Endpoint:
+  - `GET /v1/kg/projects/{id}/graph?view={code}&as_of_chapter={N}` → nodes+edges lọc theo **view** (lớp 3) + temporal as-of.
+  - `GET /v1/kg/entities/{entity_id}/edges/{edge_type}/timeline` → chuỗi instance temporal (vd drive arc revenge→seek_dao→transcendence).
+- `as_of_chapter` bỏ trống = "mới nhất" (mọi instance đang mở). Đây là scrubber theo chương ở draft-04.
+
+### 3.7 Bảng triage (gap draft-05)
+
+Phần tử extraction KHÔNG khớp schema KHÔNG ghi thẳng vào Neo4j — **park vào triage** (Neo4j chỉ chứa edge hợp-schema). Workflow §11.
+
+```
+kg_triage_items
+  triage_id      uuid PK
+  user_id        text
+  project_id     text
+  source         jsonb         -- {run_id, chapter_id, chapter_ord}
+  item_type      text  CHECK (item_type IN
+                   ('unknown_node_kind','unknown_edge_type','edge_kind_mismatch',
+                    'unknown_vocab_value','edge_cardinality_conflict'))
+  payload        jsonb         -- phần tử extractor thấy (proposed kind/edge/drive, src/tgt, evidence)
+  signature      text          -- hash chuẩn hoá để gom + batch re-apply (vd "drive:curiosity")
+  status         text  CHECK (status IN ('pending','pending_glossary','resolved','dismissed'))
+  resolution     jsonb         -- hành động + tham số (§11)
+  schema_version int           -- schema lúc park
+  created_at, resolved_at, resolved_by
+  INDEX (user_id, project_id, status), INDEX (project_id, signature)
+```
 
 ---
 
@@ -261,8 +294,9 @@ Thứ tự để không vỡ project đang chạy:
 
 | # | Hạng mục | Ghi chú |
 |---|---|---|
-| D1 | Glossary `/internal/.../ontology` | Chưa tồn tại; chỉ là read route mới, KHÔNG sửa mô hình glossary. Block lớp 1 + K2. |
-| D2 | Refactor extraction SDK (`loreweave_extraction`) | Rủi ro cao nhất: `Literal` → dynamic; prompt tĩnh → build động. Giữ `general` fallback + so sánh output. |
+| D1 | Glossary `/internal/.../ontology` read | Chưa tồn tại; read route mới, KHÔNG sửa mô hình glossary. **Dùng ở 3 chỗ** (gap draft-02): adopt-gate (§11/M1), schema-authoring kind-picker (draft-02), triage promote-to-kind (§11). → read nóng, **cache**. Cần 2 biến thể: book ontology (`/internal/books/{id}/ontology`) + user glossary standards (`/internal/users/{id}/glossary-standards`, cho project no-book). Block K2/K3. |
+| D1b | Glossary write API cho triage hand-off | "Promote to glossary kind" / "demote to attribute" (§11) là **glossary write**, do **user khởi xướng qua gateway** (không phải KG service-to-service write — giữ nguyên tắc M1). Tái dùng route adopt-kind/create-attribute của glossary đã có. |
+| D2 | Refactor extraction SDK (`loreweave_extraction`) — **MULTI-SERVICE** | Rủi ro cao nhất + **blast-radius 3 service** (verify 2026-06-20): SDK consume bởi knowledge-service **+ worker-ai + translation-service**, KHÔNG isolated. `Literal`→dynamic, prompt tĩnh→động. **Backward-compat bắt buộc:** `schema=None` → hành vi tĩnh hôm nay y hệt (worker-ai/translation không đổi 1 dòng). Golden-set baseline phải cover **cả worker-ai path**, không chỉ knowledge. (Chi tiết: build plan lane LB.) |
 | D3 | Provider/model invariant | Extraction qua provider-registry; không hardcode model. Không vi phạm khi build prompt động. |
 | D4 | Tenancy | Schema mới phải theo luật user-boundary (system admin-only, scope-keyed UNIQUE). Thêm deny-test cross-tenant (bài học e0-grant-mapping). |
 | D5 | Neo4j enforcement | Validate predicate theo schema phải đi qua write path tập trung (relations repo) — tránh bypass. |
@@ -281,6 +315,7 @@ Thứ tự để không vỡ project đang chạy:
 | K5 | Adopt + Sync + per-tier CRUD (admin placeholder) | L | K3 |
 | K6 | View/Lens CRUD + scoped query/extraction | M | K5 |
 | K7 | Hard enforcement + `graph_id` NULL seam | M | K4, K6 |
+| K9 | Triage queue + resolution workflow (§11) + as-of-chapter read (§3.6) | L | K4, K5 |
 | K8 | (Deferred) Graph partition `graph_id` thật | XL | K7 |
 
 Toàn epic: **XL, load-bearing** (schema + tenancy + migration + extraction cross-service). Spec + plan riêng mỗi milestone; /amaw cho K4/K5 (migration + cross-service).
@@ -291,9 +326,9 @@ Toàn epic: **XL, load-bearing** (schema + tenancy + migration + extraction cros
 
 ### MUST-ANSWER trước khi DESIGN-lock (rút từ §10, không được skip)
 
-- **M1 (≙ §10-G1, CRITICAL) — reconciliation node-kind giữa glossary↔KG.** Adopt template KG khi book glossary CHƯA có kind tương ứng thì xử sao? Đề xuất: **(b) adopt-gated** — adopt fail với "hãy adopt các kind này trong glossary trước" (không cross-service write ngầm). Chốt (a)/(b)/(c) tại §10-G1.
-- **M2 (≙ §10-C4, HIGH) — seam partition.** Xác nhận `graph_id` đặt **trên EDGE** (node dùng chung), và "view→partition" KHÔNG phải continuum mà là feature riêng. Nếu muốn promotion mượt thì phải đổi mô hình.
-- **M3 (≙ §10-B4, HIGH) — schema versioning + edit policy.** Xác nhận `schema_version` stamp lên edge/fact, và schema edit là **additive** (thêm type OK; rename/remove = deprecate-only hoặc migration tường minh).
+- **M1 (≙ §10-G1, CRITICAL) — reconciliation node-kind giữa glossary↔KG.** Adopt template KG khi book glossary CHƯA có kind tương ứng thì xử sao? **CHỐT: (b) adopt-gated** — adopt fail với "hãy adopt các kind này trong glossary trước" (không cross-service write ngầm). **Refine (gap draft-01):** project **no-book** → nguồn node-kind = glossary standards của user (§3.5); adopt-gate khi blocked **deep-link** sang glossary rồi re-check (idempotent).
+- **M2 (≙ §10-C4, HIGH) — seam partition.** **CHỐT:** `graph_id` đặt **trên EDGE** (node dùng chung); "view→partition" KHÔNG phải continuum mà là feature riêng.
+- **M3 (≙ §10-B4, HIGH) — schema versioning + edit policy.** **CHỐT:** `schema_version` stamp lên edge/fact; schema edit **additive** (thêm type OK; rename/remove = deprecate-only). **Refine (gap draft-06):** **sync-apply đổi RULE going-forward, KHÔNG retro-recompute data** mặc định; recompute là hành động **opt-in riêng** (dry-run + count), không nằm trong sync-apply.
 
 ### Còn lại
 
@@ -312,6 +347,46 @@ Toàn epic: **XL, load-bearing** (schema + tenancy + migration + extraction cros
 - **Additive tới phút chót**; `general` template = lưới an toàn cho project cũ.
 - **Temporal/provenance đã có** — tận dụng, chỉ thêm enforcement theo `temporal` flag.
 - **View trước, partition sau** — giải nhu cầu "graph theo bài toán" rẻ; để dành `graph_id` seam (trên EDGE).
+- **Không ghi rác vào graph** — phần tử không-hợp-schema park ở triage, không vào Neo4j (§11). Resolve cross-service do **user khởi xướng**, không write ngầm.
+
+---
+
+## 11. Triage & resolution workflow (gap lớn nhất — draft-05)
+
+Đây là chỗ 2 hệ tiered (glossary node-kind ↔ KG graph-schema) **va nhau hằng ngày** lúc extraction, không chỉ lúc adopt. Spec cũ thiếu hoàn toàn.
+
+### 11.1 Nguyên tắc
+- **Neo4j chỉ chứa edge/fact hợp-schema.** Validation fail-soft (K3) KHÔNG ghi phần tử lệch vào graph — **park vào `kg_triage_items`** (§3.7). Extraction không bao giờ bị block.
+- **Mọi resolution là human-gated.** Assistant có thể *đề xuất* (MCP tool, follow-up), nhưng v1 do người quyết.
+- **Cross-service resolution do user khởi xướng qua gateway**, không phải KG write thẳng vào glossary (giữ nguyên tắc M1 "no hidden cross-service write").
+
+### 11.2 Loại triage + hành động resolve
+
+| `item_type` | Tình huống | Hành động (KG-local trừ khi ghi ✦glossary) |
+|---|---|---|
+| `unknown_vocab_value` | drive "curiosity" ngoài vocab `drive` (closed) | **map→** giá trị có sẵn (relabel element parked) · **add→vocab** (KG schema write, bump `schema_version`) · **dismiss** |
+| `unknown_edge_type` | predicate không thuộc `kg_edge_types` | **map→** edge type có sẵn · **add→schema** (KG write) · **dismiss** |
+| `edge_kind_mismatch` | `LOVER_OF: character→organization` (schema: char→char) | **re-target** endpoint · **widen** target_node_kinds (KG write) · **drop edge** |
+| `edge_cardinality_conflict` | mở instance #2 trên edge `single_active` | **close-previous** (đóng cái cũ) · **đổi sang multi_active** (KG write) · **dismiss** |
+| `unknown_node_kind` | "bloodline" — VCTĐ §5 nên là string/edge, kind không có trong glossary | ✦**promote→glossary kind** (glossary write, user khởi xướng) · ✦**demote→attribute** (glossary write) · **map→** kind có sẵn · **dismiss** |
+
+✦ = hand-off glossary: item chuyển `status='pending_glossary'`; user thao tác bên glossary (deep-link); khi kind/attr xuất hiện trong glossary ontology → KG re-process element parked.
+
+### 11.3 Batch re-apply
+- Mỗi triage item có `signature` (vd `drive:curiosity`). Resolve **một** item kiểu signature → **áp cho mọi item cùng signature** đang pending (vd mọi mention "curiosity" → `uncover_truth`). Tránh resolve từng dòng.
+
+### 11.4 Endpoints
+```
+GET    /v1/kg/projects/{id}/triage?status=pending           # queue (group theo signature)
+POST   /v1/kg/projects/{id}/triage/{signature}/resolve      # {action, params, apply_to_signature:true}
+POST   /v1/kg/projects/{id}/triage/{triage_id}/dismiss
+```
+- Resolve thành công + (nếu cần) re-process element parked → ghi edge/fact hợp-schema vào Neo4j (qua write path tập trung, D5).
+- Resolve có glossary write → trả `needs_glossary: {book_id, kinds:[...]}` để FE deep-link; item ở `pending_glossary` tới khi glossary có.
+
+### 11.5 Build (milestone K9)
+- Lane **LH** (xem build plan): bảng `kg_triage_items` (đã ở K1/§3.7), router `routers/public/triage.py`, repo `repositories/triage.py`, re-apply qua write path. Phụ thuộc K4 (extraction park) + K5 (glossary client/hand-off).
+- VERIFY: park đúng từng item_type; batch re-apply theo signature; cross-service hand-off (mock glossary) → pending_glossary → re-process; tenancy deny-test.
 
 ---
 
