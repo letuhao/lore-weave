@@ -71,11 +71,40 @@ does not require `sub` (faithful to Go); the **M2 admin-confirm binding MUST rej
 `sub`/`asub`** (the guard belongs at the binding site, not the codec). 1 LOW fixed (added the
 non-RSA-key rejection test). COSMETIC redundant-except accepted.
 
-## Carry-forward into KM5-M2
-- **Bind `asub`:** at confirm, re-present + re-verify the RS256 `X-Admin-Token`, assert its
-  `sub == claims.admin_sub` AND `sub`/`asub` are **non-empty**, AND `has_scope(admin:write)`.
-- **Resolve the key once** (module singleton / DI provider), not per request (parse cost + log spam);
-  parse-failure → log loud + disable (503), never crash-loop.
-- **Terse uniform 401** at the route (don't leak the distinct internal kid/sig messages).
-- Add `kg_system_create|patch|delete` to the confirm codec's live descriptor set (tripwire test).
-- System-template writes are **DML** on the existing `kg_graph_schemas` table — **no migration**.
+## KM5-M2 — System-tier writes + `auth=admin` confirm branch ✅ SHIPPED (2026-06-21)
+
+The load-bearing milestone: System-tier template writes (INV-T3 — every System write
+human-confirmed) reached ONLY via the RS256-gated `auth=admin` confirm path.
+
+| File | Change |
+|---|---|
+| `app/db/repositories/system_templates.py` | **NEW** — `SystemTemplatesRepo` (create/patch/deprecate + `get_system_template`/`code_exists`). `_load_system` is the **inverse** of `OntologyMutationsRepo._load_writable`: it asserts the row IS system, so the admin path can never reach a user/project schema. `create` requires a new code (rejects the seeded `general`/`xianxia-harem`). |
+| `app/ontology/system_effect.py` | **NEW** — `SystemTemplateParams`(verb create/patch/delete) + `apply`/`preview`; re-validates target + `expected_schema_version` drift at confirm (optimistic concurrency). |
+| `app/ontology/confirm.py` | `DESC_SYSTEM_CREATE|PATCH|DELETE` added to `_LIVE_DESCRIPTORS` (admin authority). |
+| `app/routers/public/kg_actions.py` | `auth=admin` branch wired (`_authorize_admin`): re-verify RS256 `X-Admin-Token` → require `admin:write` → bind `sub == asub` (both non-empty) **before** the jti claim → dispatch `_confirm_system`. **Authority↔descriptor pairing enforced** (a System descriptor MUST be admin authority, a grant descriptor MUST be grant — `/review-impl` fix). Cached admin key (resolve-once, fail-disable→503). |
+| tests | `tests/unit/test_kg_actions_admin.py` (15 admin-branch tests, real RS256), `tests/integration/db/test_system_effect.py` (10 real-PG), tripwire + non-live-descriptor updated. |
+
+**VERIFY:** 2884 unit + 51 KG-ontology integration (real PG, incl. 10 new `system_effect`)
+green. 4 unrelated integration failures (`extraction_jobs`/`provenance` — no import path to
+any changed file) are pre-existing/environmental.
+
+**LIVE-SMOKE (D-KM5-M2-LIVE-SMOKE CLEARED):** in-container driver on real PG + real RS256 +
+real `consumed_tokens` ledger — preview 200 (non-consuming) → confirm 200 (system row landed,
+verified in PG) → replay 422 (single-use) → no-admin-token 401; smoke row cleaned. Driver removed.
+
+**`/review-impl` (auth boundary, mandatory):** 0 HIGH. **1 MED found + FIXED** — authority↔descriptor
+pairing was unenforced (an `auth=admin` + grant descriptor could drive a project effect; an
+`auth=grant` + System descriptor could drive a System write — only forgeable with the JWT
+secret, but the authority model must enforce it). Fixed + 2 tests. The KM5-M1-carry MED
+(reject empty `sub`/`asub`) is implemented + tested (`test_admin_empty_asub_403`). LOW accepted:
+admin key cached at startup → rotation needs a restart (matches glossary; documented).
+
+## Carry-forward into KM5-M3 (the `/mcp/admin` server — no shipped upstream)
+- The **mint** side is still absent: nothing mints `auth=admin` + `kg_system_*` tokens in prod
+  yet (the confirm path is fully tested but unreachable until M3 wires the MCP admin tool). This
+  dead-mint window (M2→M3) is intentional + documented.
+- M3 builds the **physically separate `/mcp/admin`** FastMCP app (RS256-gated at transport BEFORE
+  `tools/list` → no token = 401, can't enumerate; INV-T6) + `kg_admin_template_read` (R) +
+  `kg_admin_propose_template` (verb create|patch|delete — mints the `auth=admin` confirm-token,
+  `asub` = the verified RS256 `sub`). Reuse `verify_admin_token` (M1) at the transport gate.
+- The admin tools must NEVER appear in the existing `/mcp` catalog (INV-T6) — separate registry.

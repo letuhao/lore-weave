@@ -96,6 +96,9 @@ def _build(*, caller=_CALLER, meta=(_CALLER, _BOOK), grant=GrantLevel.OWNER,
     app.dependency_overrides[kg_actions.get_ontology_mutations_repo] = lambda: mutations
     app.dependency_overrides[kg_actions.get_action_token_repo] = lambda: tokens
     app.dependency_overrides[kg_actions.get_glossary_ontology_client] = lambda: glossary
+    # KM5-M2 added a system-templates dep to confirm/preview; FastAPI resolves
+    # every param regardless of descriptor, so the grant-path tests must stub it too.
+    app.dependency_overrides[kg_actions.get_system_templates_repo] = lambda: AsyncMock()
     return app, mutations, tokens, schemas
 
 
@@ -138,11 +141,18 @@ async def test_confirm_wrong_user_403_before_claim():
     tokens.consume.assert_not_awaited()  # a stranger cannot burn the jti
 
 
-async def test_confirm_admin_authority_501():
+async def test_confirm_admin_authority_503_when_admin_disabled():
+    # KM5-M2: admin authority is wired, but with no ADMIN_JWT_PUBLIC_KEY_PEM the
+    # default `get_admin_key` resolves to None → 503 (disabled), before any claim.
+    # (The full admin path — RS256 re-verify, asub bind, effect — is exercised in
+    # test_kg_actions_admin.py with a configured key.)
     app, _m, tokens, _s = _build()
-    tok = _token(authority=AUTH_ADMIN)
+    tok = _token(
+        authority=AUTH_ADMIN, descriptor=kg_actions.DESC_SYSTEM_CREATE,
+        params={"verb": "create", "code": "c", "name": "n"},
+    )
     r = await _post(app, "/v1/kg/actions/confirm", {"confirm_token": tok})
-    assert r.status_code == 501
+    assert r.status_code == 503
     tokens.consume.assert_not_awaited()
 
 
@@ -352,7 +362,10 @@ async def test_every_live_descriptor_is_dispatched():
     Adding a descriptor MUST update both the codec set and this assertion (+ branch)."""
     from app.ontology import confirm as _confirm
 
-    assert _confirm._LIVE_DESCRIPTORS == {DESC_SCHEMA_EDIT, _confirm.DESC_ADOPT, _confirm.DESC_SYNC}, (
+    assert _confirm._LIVE_DESCRIPTORS == {
+        DESC_SCHEMA_EDIT, _confirm.DESC_ADOPT, _confirm.DESC_SYNC,
+        _confirm.DESC_SYSTEM_CREATE, _confirm.DESC_SYSTEM_PATCH, _confirm.DESC_SYSTEM_DELETE,
+    }, (
         "a new live descriptor must also get a confirm + preview dispatch branch in "
         "kg_actions.py and be added here"
     )

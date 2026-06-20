@@ -113,9 +113,11 @@ def test_expired_token_distinct_error():
 
 
 def test_non_live_descriptor_fails_closed_at_mint():
-    # Reserved-but-not-live descriptor → mint returns "" (cannot mint).
+    # Reserved-but-not-live descriptor → mint returns "" (cannot mint). These two
+    # remain reserved (KM6 triage phase wires them); the kg_system_* descriptors
+    # went live in KM5-M2, so use the still-reserved triage ones here.
     assert mint_action_token(_SECRET, _claims(descriptor="kg_triage_schema"), _NOW) == ""
-    assert mint_action_token(_SECRET, _claims(descriptor="kg_system_delete"), _NOW) == ""
+    assert mint_action_token(_SECRET, _claims(descriptor="kg_triage_handoff"), _NOW) == ""
     assert not live_descriptor("kg_triage_schema")
     assert live_descriptor(DESC_SCHEMA_EDIT)
 

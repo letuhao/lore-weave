@@ -31,6 +31,9 @@ __all__ = [
     "DESC_SCHEMA_EDIT",
     "DESC_ADOPT",
     "DESC_SYNC",
+    "DESC_SYSTEM_CREATE",
+    "DESC_SYSTEM_PATCH",
+    "DESC_SYSTEM_DELETE",
     "ActionClaims",
     "ActionTokenInvalid",
     "ActionTokenExpired",
@@ -49,12 +52,22 @@ AUTH_GRANT = "grant"  # project/user tiers: re-check proposing user + MANAGE gra
 AUTH_ADMIN = "admin"  # System tier: re-check the RS256 admin authority (KM5)
 
 # Action descriptors LIVE in this build (§13.1). Reserved descriptors
-# (kg_triage_schema, kg_triage_handoff, kg_system_*) are intentionally NOT accepted
-# yet — verify/mint fail closed on them until their phase wires the effect + preview.
+# (kg_triage_schema, kg_triage_handoff) are intentionally NOT accepted yet —
+# verify/mint fail closed on them until their phase wires the effect + preview.
+#
+# Grant-authority descriptors (re-check proposing user + MANAGE grant at confirm):
 DESC_SCHEMA_EDIT = "kg_schema_edit"
 DESC_ADOPT = "kg_adopt"
 DESC_SYNC = "kg_sync_apply"
-_LIVE_DESCRIPTORS: frozenset[str] = frozenset({DESC_SCHEMA_EDIT, DESC_ADOPT, DESC_SYNC})
+# Admin-authority descriptors (KM5-M2) — re-check the RS256 admin JWT + asub bind
+# at confirm; never a grant/owner path. System-tier template management.
+DESC_SYSTEM_CREATE = "kg_system_create"
+DESC_SYSTEM_PATCH = "kg_system_patch"
+DESC_SYSTEM_DELETE = "kg_system_delete"
+_LIVE_DESCRIPTORS: frozenset[str] = frozenset({
+    DESC_SCHEMA_EDIT, DESC_ADOPT, DESC_SYNC,
+    DESC_SYSTEM_CREATE, DESC_SYSTEM_PATCH, DESC_SYSTEM_DELETE,
+})
 
 
 class ActionTokenInvalid(Exception):
