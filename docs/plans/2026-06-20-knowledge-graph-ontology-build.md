@@ -535,10 +535,8 @@ Docker recovered; brought up infra postgres+neo4j and ran the KG integration sui
   fallback advisory projection — `has_schema=true`, 6 entity_kinds, 5 fact_types,
   `allow_free_edges=true`, `schema_version=1`, `label=<project>@v1`. Proves the
   endpoint is registered, resolves the schema, and emits the advisory projection.
-- **STILL DEFERRED — only the live-LLM vocab-emission** (`D-KG-L7-LIVE-SMOKE`
-  residual): a full worker-ai job whose REAL LLM actually emits the project vocab
-  needs the whole stack + a BYOK provider + a live model — a deploy-time/manual
-  smoke. Everything around it is now proven: B1 endpoint live, write-boundary
+- **Live-LLM vocab-emission residual — now CLEARED 2026-06-20** (see the entry
+  below). Everything around it was already proven: B1 endpoint live, write-boundary
   stamp/park live, worker-ai HTTP wiring + SDK prompt injection unit-proven
   (worker-ai 280).
 
@@ -565,3 +563,47 @@ Docker recovered; brought up infra postgres+neo4j and ran the KG integration sui
   views `404`/owner-scope, sync-diff `strength`) + 30 live integration (triage incl
   the widened-CHECK `proposed_edge` park + mutations sync_diff) green; provider-gate
   clean. Single-service (knowledge-service) — no cross-service token needed.
+
+**2026-06-20 — `D-KG-L7-LIVE-SMOKE` residual CLEARED (live-LLM vocab emission).**
+Full stack up (infra postgres+neo4j+rabbitmq+provider-registry+ai-gateway+knowledge
++worker-ai). **First, the stale-image trap fired exactly as `live-smoke-rebuild-
+stale-images-first` warns:** the running `infra-worker-ai-1` image PRE-DATED Milestone B
+(`grep resolve_extraction_schema` → 0; bundled SDK had no `ExtractionSchema`). Rebuilt
++ recreated worker-ai → Milestone B code now live. Used the **already-registered
+LM Studio BYOK** for `claude-test` (no new provider).
+- **Seed (reproducible):** a project-scoped CLOSED custom schema for synthetic project
+  `1111…1111` — `kg_graph_schemas(scope='project', allow_free_edges=false,
+  schema_version=77)` + edge types `WORSHIPS/GUARDS/SEALED_BY`, node kinds
+  `deity/relic/bloodline`, fact types `curse/prophecy`. Distinctive vocab the LLM
+  would not emit by default → emission is provable. (Seed removed after the run.)
+- **[1] Live resolve-schema** (real `KnowledgeClient.resolve_extraction_schema` →
+  `POST /internal/extraction/resolve-schema`): returned the project's vocab,
+  `label=…@v77`, `schema_version=77`, **`allow_free_edges=true`** even though the DB
+  row is `false` — proving the **advisory projection forces free-edges True** live
+  (the R3 reconciliation; the writer stays the authoritative closed enforce+park).
+- **[2] Prompt injection proven:** `append_schema_constraints` appended a
+  `## Project ontology (custom schema)` block to the relation system prompt listing
+  `GUARDS, SEALED_BY, WORSHIPS` as preferred predicates.
+- **[3] LIVE `extract_pass2(schema=…)`** → loreweave_llm SDK → provider-registry →
+  **LM Studio `qwen2.5-7b-instruct`** on the passage *"…priestess Lyra worshipped the
+  storm-god Aolen… the relic Heartstone was guarded by the dragon Vorth… the Targon
+  bloodline sealed the Heartstone to contain its curse."* Emitted:
+  - **Entity kinds 3/3 exact** — every entity classified with a *project* kind
+    (`Aolen=deity`, `Heartstone=relic`, `Targon bloodline=bloodline`); ZERO generic
+    `character`/`organization`.
+  - **Relation predicates** — `Lyra -[worships]-> Aolen` ✓, `Targon bloodline
+    -[sealed_by]-> Heartstone` ✓ (exact project vocab), `Heartstone -[guarded_by]->
+    Vorth` (a coined variant of `GUARDS`). The coin is CORRECT under advisory mode
+    (`allow_free_edges=True` permits coining); `/persist-pass2`'s authoritative closed
+    schema would then park `guarded_by` as off-schema — the advisory-SDK /
+    authoritative-writer split working exactly as designed.
+- **RESULT: PASS** — the project vocab flows seeded-schema → live resolve-schema →
+  SDK prompt → REAL LLM → emitted output. With the write-boundary half already live
+  (PG+Neo4j stamp/park), **`D-KG-L7-LIVE-SMOKE` is fully closed.** Driver was a
+  throwaway in-container script (hardcoded dev-box user/model UUIDs, not portable) —
+  not committed; the recipe above is the reproduction record.
+
+**D-KG-L7-ACTIVATE — COMPLETE.** Both milestones built, unit-verified, and fully
+live-proven (write-boundary + live-LLM emission). Remaining KG epic deferrals are
+unrelated: `D-KG-L7B-EXTRACT-ITEM` (dormant legacy path), KM5/KM6 (class-C MCP tools
++ confirm spine), `LG`/`D-KG-LG-REAL` (glossary branch), `D-KG-LE-BROWSER-SMOKE` (FE).
