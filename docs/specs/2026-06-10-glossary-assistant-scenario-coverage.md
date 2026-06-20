@@ -47,6 +47,10 @@
 
 **Next campaign (the real remaining work) — make the PIPELINE + queries agent-reachable:** an extraction MCP tool (S7/S8/S19), a translation MCP tool (S4/S26), merge/reassign/triage tools (S9/S11/S12), evidence + chapter-link read tools (S16/S17), the deep-research subsystem (S5), and the async-job trigger/poll surface (S20). The class-C confirm spine + per-tier registration pattern from this epic is the template for all of them.
 
+**▶ Two follow-on docs (2026-06-20) extend this coverage to the tiered + CMS world:**
+- [`2026-06-20-glossary-tiered-cms-scenarios.md`](2026-06-20-glossary-tiered-cms-scenarios.md) — **S27–S40**: the System/User/Book tier + CMS + per-tier genre-edit scenarios, each with **human (FE)** and **AI (MCP)** verdicts.
+- [`docs/plans/2026-06-20-glossary-tiered-cms-gap-plan.md`](../plans/2026-06-20-glossary-tiered-cms-gap-plan.md) — the **FE/BE gap backlog** (P0 reversibility → P1 CMS UX parity → P2 authoring → P3 polish), with corrections for the stale drafts.
+
 ---
 
 ## Part A — The 3-layer coverage model
