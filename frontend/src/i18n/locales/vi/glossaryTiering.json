@@ -35,6 +35,19 @@
     "loading": "Đang tải tiêu chuẩn…",
     "none_selected": "Chọn ít nhất một thể loại hoặc loại."
   },
+  "quickcreate": {
+    "title_genre": "Thể loại mới",
+    "title_kind": "Loại mới",
+    "name": "Tên",
+    "name_placeholder": "ví dụ: Tu luyện",
+    "icon": "Biểu tượng (tùy chọn)",
+    "code": "Mã (tùy chọn)",
+    "code_hint": "Để trống để tự suy ra từ tên.",
+    "create": "Tạo",
+    "creating": "Đang tạo…",
+    "cancel": "Hủy",
+    "name_required": "Tên là bắt buộc"
+  },
   "col": {
     "genres": "Thể loại",
     "kinds": "Loại",

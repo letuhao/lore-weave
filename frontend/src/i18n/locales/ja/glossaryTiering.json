@@ -35,6 +35,19 @@
     "loading": "標準を読み込み中…",
     "none_selected": "ジャンルか種別を少なくとも1つ選んでください。"
   },
+  "quickcreate": {
+    "title_genre": "新規ジャンル",
+    "title_kind": "新規種別",
+    "name": "名前",
+    "name_placeholder": "例：修練",
+    "icon": "アイコン（任意）",
+    "code": "コード（任意）",
+    "code_hint": "空欄の場合は名前から自動生成されます。",
+    "create": "作成",
+    "creating": "作成中…",
+    "cancel": "キャンセル",
+    "name_required": "名前は必須です"
+  },
   "col": {
     "genres": "ジャンル",
     "kinds": "種別",

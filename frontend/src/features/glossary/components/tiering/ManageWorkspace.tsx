@@ -9,6 +9,7 @@ import type { AdoptRequest } from '../../tieringTypes';
 import { OntologyColumn, type ColumnRow } from './OntologyColumn';
 import { AttributeEditorPanel } from './AttributeEditorPanel';
 import { AdoptPicklistModal } from './AdoptPicklistModal';
+import { QuickCreateModal } from './QuickCreateModal';
 
 /** 01-manage: the book ontology Manage workspace. Genre → kind → attribute drilldown
  *  over the book-local ontology, with adopt copy-down + book-tier attribute editing.
@@ -21,6 +22,7 @@ export function ManageWorkspace({ bookId }: { bookId: string }) {
   const [kindId, setKindId] = useState<string | null>(null);
   const [attrId, setAttrId] = useState<string | null>(null);
   const [showAdopt, setShowAdopt] = useState(false);
+  const [quickCreate, setQuickCreate] = useState<'genre' | 'kind' | null>(null);
 
   const { genres, kinds, kind_genres, attributes } = ont.ontology;
 
@@ -63,14 +65,10 @@ export function ManageWorkspace({ bookId }: { bookId: string }) {
   const adopt = (req: AdoptRequest) =>
     guard(() => ont.adopt(req), t('toast.adopted'), 'toast.adopt_failed');
 
-  const onNewGenre = () => {
-    const name = window.prompt(t('col.new_genre'));
-    if (name?.trim()) void guard(() => ont.createGenre({ name: name.trim() }), t('toast.saved'), 'toast.save_failed');
-  };
-  const onNewKind = () => {
-    const name = window.prompt(t('col.new_kind'));
-    if (name?.trim()) void guard(() => ont.createKind({ name: name.trim() }), t('toast.saved'), 'toast.save_failed');
-  };
+  const onQuickCreate = (payload: { name: string; icon?: string; code?: string }) =>
+    quickCreate === 'genre'
+      ? guard(() => ont.createGenre(payload), t('toast.saved'), 'toast.save_failed')
+      : guard(() => ont.createKind(payload), t('toast.saved'), 'toast.save_failed');
   const onNewAttr = () => {
     if (!genreId || !kindId) return;
     void guard(
@@ -133,7 +131,7 @@ export function ManageWorkspace({ bookId }: { bookId: string }) {
             setKindId(null);
             setAttrId(null);
           }}
-          onNew={onNewGenre}
+          onNew={() => setQuickCreate('genre')}
           newLabel={t('col.new_genre')}
           emptyText={t('col.select_genre')}
         />
@@ -145,7 +143,7 @@ export function ManageWorkspace({ bookId }: { bookId: string }) {
             setKindId(id);
             setAttrId(null);
           }}
-          onNew={onNewKind}
+          onNew={() => setQuickCreate('kind')}
           newLabel={t('col.new_kind')}
           emptyText={genreId ? t('col.empty_kinds') : t('col.select_genre')}
           disabled={!genreId}
@@ -184,6 +182,14 @@ export function ManageWorkspace({ bookId }: { bookId: string }) {
           loading={standards.isLoading}
           onAdopt={adopt}
           onClose={() => setShowAdopt(false)}
+        />
+      )}
+
+      {quickCreate && (
+        <QuickCreateModal
+          kind={quickCreate}
+          onCreate={onQuickCreate}
+          onClose={() => setQuickCreate(null)}
         />
       )}
     </div>

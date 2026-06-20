@@ -35,6 +35,19 @@
     "loading": "Loading standards…",
     "none_selected": "Select at least one genre or kind."
   },
+  "quickcreate": {
+    "title_genre": "New genre",
+    "title_kind": "New kind",
+    "name": "Name",
+    "name_placeholder": "e.g. Cultivation",
+    "icon": "Icon (optional)",
+    "code": "Code (optional)",
+    "code_hint": "Leave blank to auto-derive from the name.",
+    "create": "Create",
+    "creating": "Creating…",
+    "cancel": "Cancel",
+    "name_required": "Name is required"
+  },
   "col": {
     "genres": "Genres",
     "kinds": "Kinds",

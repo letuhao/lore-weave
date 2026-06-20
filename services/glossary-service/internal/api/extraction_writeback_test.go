@@ -14,10 +14,40 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
 )
+
+// TestBulkExtract_UnadoptedBookReturns422 proves a book with no adopted ontology fails
+// fast with a clear error instead of silently skipping every entity
+// (D-GKA-EXTRACT-UNADOPTED-GUARD). An adopted book always has the 'unknown' kind, so an
+// empty kind map ⇒ not scaffolded.
+func TestBulkExtract_UnadoptedBookReturns422(t *testing.T) {
+	pool := openTestDB(t)
+	runK2aMigrations(t, pool)
+	srv, token := newEntitiesListServer(t)
+	srv.pool = pool
+
+	bookID := uuid.NewString() // never adopted → no book_kinds rows
+	raw, _ := json.Marshal(map[string]any{
+		"source_language": "zh",
+		"entities":        []map[string]any{{"kind_code": "character", "name": "哪吒"}},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/internal/books/"+bookID+"/extract-entities", bytes.NewReader(raw))
+	req.Header.Set("X-Internal-Token", token)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("unadopted book extract: want 422, got %d body=%s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "GLOSS_BOOK_NOT_SCAFFOLDED") {
+		t.Fatalf("want GLOSS_BOOK_NOT_SCAFFOLDED, got %s", w.Body.String())
+	}
+}
 
 // postExtract drives POST /internal/books/{book}/extract-entities and returns
 // the decoded response. Fails the test on a non-200.

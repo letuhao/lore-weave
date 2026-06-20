@@ -35,6 +35,19 @@
     "loading": "正在載入標準…",
     "none_selected": "請至少選擇一個類型或種類。"
   },
+  "quickcreate": {
+    "title_genre": "新增類型",
+    "title_kind": "新增種類",
+    "name": "名稱",
+    "name_placeholder": "例如：修煉",
+    "icon": "圖示（選填）",
+    "code": "代碼（選填）",
+    "code_hint": "留空則由名稱自動推導。",
+    "create": "建立",
+    "creating": "正在建立…",
+    "cancel": "取消",
+    "name_required": "名稱為必填"
+  },
   "col": {
     "genres": "類型",
     "kinds": "種類",

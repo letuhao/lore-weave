@@ -448,6 +448,15 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to load kinds")
 		return
 	}
+	// An adopted book always has at least the 'unknown' kind, so an empty kind map
+	// means the book has no ontology yet — extraction would silently skip every entity
+	// (D-GKA-EXTRACT-UNADOPTED-GUARD). Fail fast with a clear, actionable error instead.
+	if len(kindMap) == 0 {
+		BulkExtractTotal.WithLabelValues(OutcomeValidationError).Inc()
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_BOOK_NOT_SCAFFOLDED",
+			"book ontology not adopted — call POST /v1/glossary/books/{book_id}/adopt first")
+		return
+	}
 
 	// Pre-load attr_def map (book_kind_id+code → attr_id) for THIS book (G4 book tier).
 	attrDefMap, err := s.loadAttrDefMap(ctx, bookID)

@@ -242,6 +242,56 @@ func TestBookSync_SourceRetired(t *testing.T) {
 	}
 }
 
+// TestBookSync_UserSourceScopedToOwner proves the user-tier source is resolved ONLY for
+// the caller's own rows (D-GKA-SYNC-USER-SOURCE-VISIBILITY): the owner sees their own
+// user-standard edit as update_available, but a different user can't resolve that private
+// source at all — it reads as source_retired (the book copy stays frozen, no leak).
+func TestBookSync_UserSourceScopedToOwner(t *testing.T) {
+	pool := openTestDB(t)
+	runGenreMigrations(t, pool)
+	ctx := context.Background()
+	owner := uuid.New()
+	book := uuid.New()
+	srv := newAdoptServer(t, pool, book, owner)
+	base := "/v1/glossary/books/" + book.String()
+
+	// Owner's user-tier genre (real handler → content_hash), adopted so the book's
+	// fantasy genre is user-sourced ('user:<owner row>').
+	if w := ukReq(t, srv, http.MethodPost, "/v1/glossary/user-genres", owner.String(),
+		`{"code":"fantasy","name":"My Fantasy"}`); w.Code != http.StatusCreated {
+		t.Fatalf("create user genre: want 201, got %d (%s)", w.Code, w.Body.String())
+	}
+	if w := ukReq(t, srv, http.MethodPost, base+"/adopt", owner.String(),
+		`{"genres":["fantasy"],"kinds":["character"]}`); w.Code != http.StatusOK {
+		t.Fatalf("adopt: want 200, got %d (%s)", w.Code, w.Body.String())
+	}
+	// Diverge the owner's user genre from the book's frozen copy.
+	if _, err := pool.Exec(ctx,
+		`UPDATE user_genres SET name='Edited', content_hash=md5('fantasy|Edited') WHERE owner_user_id=$1 AND code='fantasy'`,
+		owner); err != nil {
+		t.Fatalf("edit user genre: %v", err)
+	}
+
+	// Owner resolves their OWN source → update_available with theirs.
+	mine, err := srv.syncGenresAvailable(ctx, book, owner)
+	if err != nil {
+		t.Fatalf("owner diff: %v", err)
+	}
+	if g, ok := findUpdate(mine, "genre", "fantasy"); !ok || g.Status != syncStatusUpdate || g.Theirs == nil || g.Theirs.Name != "Edited" {
+		t.Fatalf("owner: want update_available + theirs 'Edited', got %+v (ok=%v)", g, ok)
+	}
+
+	// A DIFFERENT user can't see the owner's private user-tier value → source_retired.
+	other := uuid.New()
+	theirs, err := srv.syncGenresAvailable(ctx, book, other)
+	if err != nil {
+		t.Fatalf("other diff: %v", err)
+	}
+	if g, ok := findUpdate(theirs, "genre", "fantasy"); !ok || g.Status != syncStatusRetired || g.Theirs != nil {
+		t.Fatalf("other user: want source_retired + nil theirs, got %+v (ok=%v)", g, ok)
+	}
+}
+
 // TestBookSync_UserEditRefreshesHash is the milestone VERIFY: editing a user-tier
 // standard through the REAL handler bumps content_hash, so a book that adopted it sees
 // update_available (without the D-GKA-HASH-REFRESH fix the hash never moves).

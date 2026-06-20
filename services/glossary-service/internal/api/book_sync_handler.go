@@ -85,19 +85,19 @@ func (s *Server) getBookSyncAvailable(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	out := &syncAvailableResp{BookID: bookID.String(), Updates: []syncUpdateItem{}}
 
-	g, err := s.syncGenresAvailable(ctx, bookID)
+	g, err := s.syncGenresAvailable(ctx, bookID, userID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "genre diff failed")
 		return
 	}
 	out.Updates = append(out.Updates, g...)
-	k, err := s.syncKindsAvailable(ctx, bookID)
+	k, err := s.syncKindsAvailable(ctx, bookID, userID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "kind diff failed")
 		return
 	}
 	out.Updates = append(out.Updates, k...)
-	a, err := s.syncAttributesAvailable(ctx, bookID)
+	a, err := s.syncAttributesAvailable(ctx, bookID, userID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "attribute diff failed")
 		return
@@ -107,7 +107,12 @@ func (s *Server) getBookSyncAvailable(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
-func (s *Server) syncGenresAvailable(ctx context.Context, bookID uuid.UUID) ([]syncUpdateItem, error) {
+// The user-tier source is resolved ONLY for the caller's own rows (owner_user_id =
+// caller): user-tier standards are private to their owner (LOCKED tenancy), so a
+// collaborator never sees another user's current user-tier values — those rows read as
+// source_retired and stay frozen (D-GKA-SYNC-USER-SOURCE-VISIBILITY). System-sourced
+// rows are global-read and unaffected.
+func (s *Server) syncGenresAvailable(ctx context.Context, bookID, userID uuid.UUID) ([]syncUpdateItem, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT bg.genre_id::text, bg.code, bg.source_ref, bg.name,
 		       COALESCE(sg.content_hash, ug.content_hash) AS up_hash,
@@ -116,11 +121,12 @@ func (s *Server) syncGenresAvailable(ctx context.Context, bookID uuid.UUID) ([]s
 		FROM book_genres bg
 		LEFT JOIN system_genres sg ON bg.source_ref = 'system:'||sg.genre_id::text
 		LEFT JOIN user_genres   ug ON bg.source_ref = 'user:'||ug.genre_id::text
+		                           AND ug.owner_user_id = $2
 		                           AND ug.deleted_at IS NULL AND ug.permanently_deleted_at IS NULL
 		WHERE bg.book_id=$1 AND bg.deprecated_at IS NULL AND bg.source_ref IS NOT NULL
 		  AND ( (sg.genre_id IS NULL AND ug.genre_id IS NULL)
 		     OR COALESCE(sg.content_hash, ug.content_hash) IS DISTINCT FROM bg.source_hash )
-		ORDER BY bg.code`, bookID)
+		ORDER BY bg.code`, bookID, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -145,7 +151,7 @@ func (s *Server) syncGenresAvailable(ctx context.Context, bookID uuid.UUID) ([]s
 	return out, rows.Err()
 }
 
-func (s *Server) syncKindsAvailable(ctx context.Context, bookID uuid.UUID) ([]syncUpdateItem, error) {
+func (s *Server) syncKindsAvailable(ctx context.Context, bookID, userID uuid.UUID) ([]syncUpdateItem, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT bk.book_kind_id::text, bk.code, bk.source_ref, bk.name, bk.description,
 		       COALESCE(`+kindHashExpr("sk")+`, `+kindHashExpr("uk")+`) AS up_hash,
@@ -155,11 +161,12 @@ func (s *Server) syncKindsAvailable(ctx context.Context, bookID uuid.UUID) ([]sy
 		FROM book_kinds bk
 		LEFT JOIN system_kinds sk ON bk.source_ref = 'system:'||sk.kind_id::text
 		LEFT JOIN user_kinds   uk ON bk.source_ref = 'user:'||uk.user_kind_id::text
+		                          AND uk.owner_user_id = $2
 		                          AND uk.deleted_at IS NULL AND uk.permanently_deleted_at IS NULL
 		WHERE bk.book_id=$1 AND bk.deprecated_at IS NULL AND bk.source_ref IS NOT NULL
 		  AND ( (sk.kind_id IS NULL AND uk.user_kind_id IS NULL)
 		     OR COALESCE(`+kindHashExpr("sk")+`, `+kindHashExpr("uk")+`) IS DISTINCT FROM bk.source_hash )
-		ORDER BY bk.code`, bookID)
+		ORDER BY bk.code`, bookID, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -185,7 +192,7 @@ func (s *Server) syncKindsAvailable(ctx context.Context, bookID uuid.UUID) ([]sy
 	return out, rows.Err()
 }
 
-func (s *Server) syncAttributesAvailable(ctx context.Context, bookID uuid.UUID) ([]syncUpdateItem, error) {
+func (s *Server) syncAttributesAvailable(ctx context.Context, bookID, userID uuid.UUID) ([]syncUpdateItem, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT ba.attr_id::text, ba.code, ba.source_ref,
 		       ba.name, ba.description, ba.field_type, ba.is_required, ba.options,
@@ -199,11 +206,12 @@ func (s *Server) syncAttributesAvailable(ctx context.Context, bookID uuid.UUID) 
 		FROM book_attributes ba
 		LEFT JOIN system_attributes sa ON ba.source_ref = 'system:'||sa.attr_id::text
 		LEFT JOIN user_attributes   ua ON ba.source_ref = 'user:'||ua.attr_id::text
+		                               AND ua.owner_user_id = $2
 		                               AND ua.deleted_at IS NULL
 		WHERE ba.book_id=$1 AND ba.deprecated_at IS NULL AND ba.source_ref IS NOT NULL
 		  AND ( (sa.attr_id IS NULL AND ua.attr_id IS NULL)
 		     OR COALESCE(sa.content_hash, ua.content_hash) IS DISTINCT FROM ba.source_hash )
-		ORDER BY ba.code`, bookID)
+		ORDER BY ba.code`, bookID, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -319,7 +327,7 @@ func (s *Server) applyBookSync(w http.ResponseWriter, r *http.Request) {
 	for _, it := range in.Items {
 		id := uuid.MustParse(it.ID) // validated above
 		take := it.Choice == "take_theirs"
-		applied, err := s.applySyncRow(ctx, tx, bookID, it.Entity, id, take)
+		applied, err := s.applySyncRow(ctx, tx, bookID, userID, it.Entity, id, take)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "apply failed")
 			return
@@ -347,7 +355,11 @@ func (s *Server) applyBookSync(w http.ResponseWriter, r *http.Request) {
 // take_theirs overwrites the SEMANTIC fields (the hash surface) + source_hash;
 // keep_mine bumps source_hash only (accept divergence, silence the prompt). The table
 // / column names are internal constants (no request data) — no SQL-injection surface.
-func (s *Server) applySyncRow(ctx context.Context, tx pgx.Tx, bookID uuid.UUID, entity string, id uuid.UUID, take bool) (bool, error) {
+// The user-tier UPDATE variant is scoped to the caller's own source rows
+// (src.owner_user_id = $3) — a collaborator can never pull another user's private
+// user-tier value (D-GKA-SYNC-USER-SOURCE-VISIBILITY); for them the user source reads
+// as retired (0 rows). System sources are global and unscoped.
+func (s *Server) applySyncRow(ctx context.Context, tx pgx.Tx, bookID, userID uuid.UUID, entity string, id uuid.UUID, take bool) (bool, error) {
 	var sysSQL, usrSQL string
 	switch entity {
 	case "genre":
@@ -358,7 +370,7 @@ func (s *Server) applySyncRow(ctx context.Context, tx pgx.Tx, bookID uuid.UUID, 
 		usrSQL = `UPDATE book_genres bg SET ` + ternarySet(take, setT) + `source_hash = src.content_hash, updated_at = now()
 			FROM user_genres src
 			WHERE bg.book_id=$1 AND bg.genre_id=$2 AND bg.source_ref = 'user:'||src.genre_id::text
-			  AND src.deleted_at IS NULL AND src.permanently_deleted_at IS NULL`
+			  AND src.owner_user_id = $3 AND src.deleted_at IS NULL AND src.permanently_deleted_at IS NULL`
 	case "kind":
 		setT := "name = src.name, description = src.description, "
 		hash := kindHashExpr("src")
@@ -368,7 +380,7 @@ func (s *Server) applySyncRow(ctx context.Context, tx pgx.Tx, bookID uuid.UUID, 
 		usrSQL = `UPDATE book_kinds bk SET ` + ternarySet(take, setT) + `source_hash = ` + hash + `, updated_at = now()
 			FROM user_kinds src
 			WHERE bk.book_id=$1 AND bk.book_kind_id=$2 AND bk.source_ref = 'user:'||src.user_kind_id::text
-			  AND src.deleted_at IS NULL AND src.permanently_deleted_at IS NULL`
+			  AND src.owner_user_id = $3 AND src.deleted_at IS NULL AND src.permanently_deleted_at IS NULL`
 	case "attribute":
 		setT := "name = src.name, description = src.description, field_type = src.field_type, " +
 			"is_required = src.is_required, options = src.options, "
@@ -378,7 +390,7 @@ func (s *Server) applySyncRow(ctx context.Context, tx pgx.Tx, bookID uuid.UUID, 
 		usrSQL = `UPDATE book_attributes ba SET ` + ternarySet(take, setT) + `source_hash = src.content_hash, updated_at = now()
 			FROM user_attributes src
 			WHERE ba.book_id=$1 AND ba.attr_id=$2 AND ba.source_ref = 'user:'||src.attr_id::text
-			  AND src.deleted_at IS NULL`
+			  AND src.owner_user_id = $3 AND src.deleted_at IS NULL`
 	default:
 		return false, fmt.Errorf("unknown sync entity %q", entity) // unreachable (validated)
 	}
@@ -390,7 +402,7 @@ func (s *Server) applySyncRow(ctx context.Context, tx pgx.Tx, bookID uuid.UUID, 
 	if tag.RowsAffected() > 0 {
 		return true, nil
 	}
-	tag, err = tx.Exec(ctx, usrSQL, bookID, id)
+	tag, err = tx.Exec(ctx, usrSQL, bookID, id, userID)
 	if err != nil {
 		return false, err
 	}

@@ -107,6 +107,20 @@ func (s *Server) setEntityGenres(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY", "invalid JSON")
 		return
 	}
+
+	ctx := r.Context()
+	// Empty body clears the override back to the book default (D-GKA-ENTITY-GENRES-RESET):
+	// delete all rows so the entity FOLLOWS book_active_genres again (universal stays
+	// active via the book's own active set, so O4 holds without an entity-level row).
+	if len(in.GenreIDs) == 0 {
+		if _, err := s.pool.Exec(ctx, `DELETE FROM entity_genres WHERE entity_id=$1`, entityID); err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "clear failed")
+			return
+		}
+		writeJSON(w, http.StatusOK, entityGenresResp{GenreIDs: []string{}, UsesBookDefault: true})
+		return
+	}
+
 	// Parse the requested ids (reject non-UUIDs early).
 	want := make([]uuid.UUID, 0, len(in.GenreIDs))
 	for _, s := range in.GenreIDs {
@@ -118,7 +132,6 @@ func (s *Server) setEntityGenres(w http.ResponseWriter, r *http.Request) {
 		want = append(want, id)
 	}
 
-	ctx := r.Context()
 	// Always include the book's universal genre (O4 — mandatory, never droppable).
 	var universalID uuid.UUID
 	if err := s.pool.QueryRow(ctx,

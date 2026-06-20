@@ -80,6 +80,23 @@ func TestEntityGenres_SetGetAndGuards(t *testing.T) {
 		t.Fatalf("after set: want 2 ids, got %+v", got2)
 	}
 
+	// Empty body clears the override back to the book default (D-GKA-ENTITY-GENRES-RESET).
+	clw := ukReq(t, srv, http.MethodPut, gbase, owner.String(), `{"genre_ids":[]}`)
+	if clw.Code != http.StatusOK {
+		t.Fatalf("clear genres: want 200, got %d (%s)", clw.Code, clw.Body.String())
+	}
+	var cleared entityGenresResp
+	_ = json.Unmarshal(clw.Body.Bytes(), &cleared)
+	if !cleared.UsesBookDefault || len(cleared.GenreIDs) != 0 {
+		t.Fatalf("clear genres: want uses_book_default + empty, got %+v", cleared)
+	}
+	gw3 := ukReq(t, srv, http.MethodGet, gbase, owner.String(), "")
+	var got3 entityGenresResp
+	_ = json.Unmarshal(gw3.Body.Bytes(), &got3)
+	if !got3.UsesBookDefault || len(got3.GenreIDs) != 0 {
+		t.Fatalf("after clear: want empty default, got %+v", got3)
+	}
+
 	// A non-book genre id → 422 (tenant boundary).
 	bw := ukReq(t, srv, http.MethodPut, gbase, owner.String(), `{"genre_ids":["`+uuid.NewString()+`"]}`)
 	if bw.Code != http.StatusUnprocessableEntity {
