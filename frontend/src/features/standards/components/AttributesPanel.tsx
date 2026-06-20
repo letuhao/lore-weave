@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { Plus } from 'lucide-react';
+import { Plus, Pencil, Trash2 } from 'lucide-react';
 import { FieldTypeBadge } from '@/features/glossary/components/tiering/FieldTypeBadge';
 import { TierChip } from '@/features/glossary/components/tiering/TierChip';
 import type { Attribute } from '@/features/glossary/tieringTypes';
@@ -19,16 +19,18 @@ export function AttributesPanel() {
   const [kindId, setKindId] = useState('');
   const [genreId, setGenreId] = useState('');
   const [creating, setCreating] = useState(false);
+  const [editAttr, setEditAttr] = useState<Attribute | null>(null);
 
   const selKind = userKinds.find((k) => k.id === kindId) ?? null;
   const selGenre = userGenres.find((g) => g.genre_id === genreId) ?? null;
 
-  const { userAttrs, systemAttrs, hasSystemParent, isLoading, createAttr } = useStandardAttributes({
-    userKindId: selKind?.id ?? null,
-    userGenreId: selGenre?.genre_id ?? null,
-    systemKindId: selKind?.clonedFromKindId ?? null,
-    systemGenreId: selGenre?.cloned_from_genre_id ?? null,
-  });
+  const { userAttrs, systemAttrs, hasSystemParent, isLoading, createAttr, patchAttr, deleteAttr } =
+    useStandardAttributes({
+      userKindId: selKind?.id ?? null,
+      userGenreId: selGenre?.genre_id ?? null,
+      systemKindId: selKind?.clonedFromKindId ?? null,
+      systemGenreId: selGenre?.cloned_from_genre_id ?? null,
+    });
 
   const onCreate = async (vals: AttributeFormValues) => {
     await createAttr.mutateAsync(
@@ -39,6 +41,19 @@ export function AttributesPanel() {
       },
     );
   };
+
+  const onEdit = async (vals: AttributeFormValues) => {
+    await patchAttr.mutateAsync(
+      { id: editAttr!.attr_id, changes: { name: vals.name, field_type: vals.field_type, is_required: vals.is_required, options: vals.options } },
+      { onSuccess: () => toast.success(t('toast.saved')), onError: () => toast.error(t('toast.saveError')) },
+    );
+  };
+
+  const onDelete = (a: Attribute) =>
+    deleteAttr.mutate(a.attr_id, {
+      onSuccess: () => toast.success(t('toast.deleted', { name: a.name })),
+      onError: () => toast.error(t('toast.deleteError', { name: a.name })),
+    });
 
   if (userKinds.length === 0 || userGenres.length === 0) {
     return (
@@ -92,7 +107,18 @@ export function AttributesPanel() {
             ) : userAttrs.length === 0 ? (
               <p className="text-sm text-muted-foreground">{t('attributes.empty')}</p>
             ) : (
-              <ul className="space-y-1" data-testid="user-attrs">{userAttrs.map((a) => <AttrRow key={a.attr_id} a={a} />)}</ul>
+              <ul className="space-y-1" data-testid="user-attrs">
+                {userAttrs.map((a) => (
+                  <AttrRow key={a.attr_id} a={a}>
+                    <button type="button" onClick={() => setEditAttr(a)} className="rounded border p-1 text-muted-foreground hover:text-foreground" aria-label={t('action.edit')} data-testid={`edit-attr-${a.code}`}>
+                      <Pencil className="h-3 w-3" />
+                    </button>
+                    <button type="button" onClick={() => onDelete(a)} className="rounded border p-1 text-destructive hover:bg-destructive/10" aria-label={t('action.delete')} data-testid={`delete-attr-${a.code}`}>
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </AttrRow>
+                ))}
+              </ul>
             )}
           </section>
         </>
@@ -101,11 +127,19 @@ export function AttributesPanel() {
       {creating && (
         <AttributeFormModal mode="create" onSubmit={onCreate} onClose={() => setCreating(false)} />
       )}
+      {editAttr && (
+        <AttributeFormModal
+          mode="edit"
+          initial={{ name: editAttr.name, field_type: editAttr.field_type, is_required: editAttr.is_required, options: editAttr.options }}
+          onSubmit={onEdit}
+          onClose={() => setEditAttr(null)}
+        />
+      )}
     </div>
   );
 }
 
-function AttrRow({ a }: { a: Attribute }) {
+function AttrRow({ a, children }: { a: Attribute; children?: ReactNode }) {
   return (
     <li className="flex items-center gap-2 rounded-md border px-3 py-1.5" data-testid={`attr-row-${a.code}`}>
       <span className="text-[13px] font-medium">{a.name}</span>
@@ -113,6 +147,7 @@ function AttrRow({ a }: { a: Attribute }) {
       <FieldTypeBadge fieldType={a.field_type} />
       {a.is_required && <span className="text-[10px] font-semibold text-destructive">*</span>}
       <TierChip tier={a.tier} className="ml-auto" />
+      {children && <div className="flex gap-1">{children}</div>}
     </li>
   );
 }

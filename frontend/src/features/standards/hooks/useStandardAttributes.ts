@@ -42,6 +42,15 @@ export function useStandardAttributes(params: {
     mutationFn: (payload: UserAttributeCreate) => tieringApi.createUserAttribute(payload, accessToken!),
     onSuccess: invalidate,
   });
+  const patchAttr = useMutation({
+    mutationFn: (v: { id: string; changes: Partial<UserAttributeCreate> }) =>
+      tieringApi.patchUserAttribute(v.id, v.changes, accessToken!),
+    onSuccess: invalidate,
+  });
+  const deleteAttr = useMutation({
+    mutationFn: (id: string) => tieringApi.deleteUserAttribute(id, accessToken!),
+    onSuccess: invalidate,
+  });
 
   return {
     userAttrs: (userAttrsQ.data ?? []) as Attribute[],
@@ -50,6 +59,8 @@ export function useStandardAttributes(params: {
     isLoading: userAttrsQ.isLoading,
     error: userAttrsQ.error,
     createAttr,
+    patchAttr,
+    deleteAttr,
     invalidate,
   };
 }

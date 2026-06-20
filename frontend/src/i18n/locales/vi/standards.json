@@ -15,11 +15,21 @@
   },
   "action": {
     "clone": "Nhân bản vào tầng của tôi",
-    "yours": "Của bạn"
+    "yours": "Của bạn",
+    "edit": "Sửa",
+    "delete": "Xóa"
   },
+  "genres": { "new": "Thể loại mới" },
+  "kinds": { "new": "Loại mới" },
   "toast": {
     "cloned": "Đã nhân bản “{{name}}” vào tiêu chuẩn của bạn",
     "cloneError": "Không thể nhân bản “{{name}}”",
+    "created": "Đã tạo “{{name}}”",
+    "createError": "Không thể tạo",
+    "saved": "Đã lưu",
+    "saveError": "Không thể lưu",
+    "deleted": "Đã chuyển “{{name}}” vào thùng rác",
+    "deleteError": "Không thể xóa “{{name}}”",
     "attrCreated": "Đã thêm “{{name}}”",
     "attrError": "Không thể thêm “{{name}}”",
     "linksSaved": "Đã cập nhật thể loại",
@@ -63,6 +73,23 @@
       "boolean": "Có / Không"
     }
   },
+  "stdform": {
+    "title_create_genre": "Thể loại mới",
+    "title_edit_genre": "Sửa thể loại",
+    "title_create_kind": "Loại mới",
+    "title_edit_kind": "Sửa loại",
+    "name": "Tên",
+    "name_required": "Tên là bắt buộc",
+    "icon": "Biểu tượng",
+    "color": "Màu",
+    "code": "Mã",
+    "code_hint": "Tùy chọn — suy ra từ tên nếu để trống.",
+    "description": "Mô tả",
+    "cancel": "Hủy",
+    "create": "Tạo",
+    "save": "Lưu",
+    "saving": "Đang lưu…"
+  },
   "links": {
     "edit": "Thể loại",
     "title": "Thể loại cho {{name}}",
@@ -70,5 +97,19 @@
     "saving": "Đang lưu…",
     "empty": "Chưa có thể loại người dùng để liên kết. Hãy nhân bản hoặc tạo một thể loại trước.",
     "cancel": "Hủy"
+  },
+  "trash": {
+    "open": "Thùng rác",
+    "title": "Thùng rác",
+    "close": "Đóng",
+    "genres": "Thể loại",
+    "kinds": "Loại",
+    "empty_section": "Không có gì ở đây.",
+    "restore": "Khôi phục",
+    "purge": "Xóa vĩnh viễn",
+    "restored": "Đã khôi phục",
+    "restoreError": "Không thể khôi phục",
+    "purged": "Đã xóa vĩnh viễn",
+    "purgeError": "Không thể xóa"
   }
 }

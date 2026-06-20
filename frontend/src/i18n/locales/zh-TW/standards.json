@@ -15,11 +15,21 @@
   },
   "action": {
     "clone": "複製到我的層級",
-    "yours": "你的"
+    "yours": "你的",
+    "edit": "編輯",
+    "delete": "刪除"
   },
+  "genres": { "new": "新增類型" },
+  "kinds": { "new": "新增種類" },
   "toast": {
     "cloned": "已將「{{name}}」複製到你的標準",
     "cloneError": "無法複製「{{name}}」",
+    "created": "已建立「{{name}}」",
+    "createError": "無法建立",
+    "saved": "已儲存",
+    "saveError": "無法儲存",
+    "deleted": "已將「{{name}}」移至回收筒",
+    "deleteError": "無法刪除「{{name}}」",
     "attrCreated": "已新增「{{name}}」",
     "attrError": "無法新增「{{name}}」",
     "linksSaved": "已更新類型",
@@ -63,6 +73,23 @@
       "boolean": "是 / 否"
     }
   },
+  "stdform": {
+    "title_create_genre": "新增類型",
+    "title_edit_genre": "編輯類型",
+    "title_create_kind": "新增種類",
+    "title_edit_kind": "編輯種類",
+    "name": "名稱",
+    "name_required": "名稱為必填",
+    "icon": "圖示",
+    "color": "顏色",
+    "code": "代碼",
+    "code_hint": "選填 — 留空時由名稱產生。",
+    "description": "說明",
+    "cancel": "取消",
+    "create": "建立",
+    "save": "儲存",
+    "saving": "儲存中…"
+  },
   "links": {
     "edit": "類型",
     "title": "{{name}} 的類型",
@@ -70,5 +97,19 @@
     "saving": "儲存中…",
     "empty": "沒有可連結的使用者類型。請先複製或建立一個類型。",
     "cancel": "取消"
+  },
+  "trash": {
+    "open": "回收筒",
+    "title": "回收筒",
+    "close": "關閉",
+    "genres": "類型",
+    "kinds": "種類",
+    "empty_section": "這裡沒有任何項目。",
+    "restore": "還原",
+    "purge": "永久刪除",
+    "restored": "已還原",
+    "restoreError": "無法還原",
+    "purged": "已永久刪除",
+    "purgeError": "無法刪除"
   }
 }

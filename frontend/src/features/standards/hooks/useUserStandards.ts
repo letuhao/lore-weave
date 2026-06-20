@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/auth';
 import { tieringApi } from '@/features/glossary/tieringApi';
 import { glossaryApi } from '@/features/glossary/api';
-import type { Genre } from '@/features/glossary/tieringTypes';
+import type { Genre, UserGenreCreate, UserKindCreate } from '@/features/glossary/tieringTypes';
 
 /**
  * A merged standards row (genre OR kind) for the per-user Standards Library. The
@@ -135,6 +135,34 @@ export function useUserStandards() {
     onSuccess: invalidateKinds,
   });
 
+  // Create-from-scratch + edit + soft-delete (→ recycle bin) for the User tier.
+  const createGenre = useMutation({
+    mutationFn: (payload: UserGenreCreate) => tieringApi.createUserGenre(payload, accessToken!),
+    onSuccess: invalidateGenres,
+  });
+  const patchGenre = useMutation({
+    mutationFn: (v: { id: string; changes: Partial<UserGenreCreate> }) =>
+      tieringApi.patchUserGenre(v.id, v.changes, accessToken!),
+    onSuccess: invalidateGenres,
+  });
+  const deleteGenre = useMutation({
+    mutationFn: (id: string) => tieringApi.deleteUserGenre(id, accessToken!),
+    onSuccess: invalidateGenres,
+  });
+  const createKind = useMutation({
+    mutationFn: (payload: UserKindCreate) => tieringApi.createUserKind(payload, accessToken!),
+    onSuccess: invalidateKinds,
+  });
+  const patchKind = useMutation({
+    mutationFn: (v: { id: string; changes: Partial<UserKindCreate> }) =>
+      tieringApi.patchUserKind(v.id, v.changes, accessToken!),
+    onSuccess: invalidateKinds,
+  });
+  const deleteKind = useMutation({
+    mutationFn: (id: string) => tieringApi.deleteUserKind(id, accessToken!),
+    onSuccess: invalidateKinds,
+  });
+
   return {
     genres,
     kinds,
@@ -142,6 +170,12 @@ export function useUserStandards() {
     error: genresQ.error || sysKindsQ.error || userKindsQ.error,
     cloneGenre,
     cloneKind,
+    createGenre,
+    patchGenre,
+    deleteGenre,
+    createKind,
+    patchKind,
+    deleteKind,
     invalidateGenres,
     invalidateKinds,
   };

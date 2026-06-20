@@ -15,11 +15,21 @@
   },
   "action": {
     "clone": "自分の層に複製",
-    "yours": "あなたのもの"
+    "yours": "あなたのもの",
+    "edit": "編集",
+    "delete": "削除"
   },
+  "genres": { "new": "新しいジャンル" },
+  "kinds": { "new": "新しい種類" },
   "toast": {
     "cloned": "「{{name}}」を標準に複製しました",
     "cloneError": "「{{name}}」を複製できませんでした",
+    "created": "「{{name}}」を作成しました",
+    "createError": "作成できませんでした",
+    "saved": "保存しました",
+    "saveError": "保存できませんでした",
+    "deleted": "「{{name}}」をゴミ箱に移動しました",
+    "deleteError": "「{{name}}」を削除できませんでした",
     "attrCreated": "「{{name}}」を追加しました",
     "attrError": "「{{name}}」を追加できませんでした",
     "linksSaved": "ジャンルを更新しました",
@@ -63,6 +73,23 @@
       "boolean": "はい / いいえ"
     }
   },
+  "stdform": {
+    "title_create_genre": "新しいジャンル",
+    "title_edit_genre": "ジャンルを編集",
+    "title_create_kind": "新しい種類",
+    "title_edit_kind": "種類を編集",
+    "name": "名前",
+    "name_required": "名前は必須です",
+    "icon": "アイコン",
+    "color": "色",
+    "code": "コード",
+    "code_hint": "任意 — 空欄の場合は名前から生成されます。",
+    "description": "説明",
+    "cancel": "キャンセル",
+    "create": "作成",
+    "save": "保存",
+    "saving": "保存中…"
+  },
   "links": {
     "edit": "ジャンル",
     "title": "{{name}} のジャンル",
@@ -70,5 +97,19 @@
     "saving": "保存中…",
     "empty": "リンクできるユーザージャンルがありません。先にジャンルを複製または作成してください。",
     "cancel": "キャンセル"
+  },
+  "trash": {
+    "open": "ゴミ箱",
+    "title": "ゴミ箱",
+    "close": "閉じる",
+    "genres": "ジャンル",
+    "kinds": "種類",
+    "empty_section": "ここには何もありません。",
+    "restore": "復元",
+    "purge": "完全に削除",
+    "restored": "復元しました",
+    "restoreError": "復元できませんでした",
+    "purged": "完全に削除しました",
+    "purgeError": "削除できませんでした"
   }
 }
