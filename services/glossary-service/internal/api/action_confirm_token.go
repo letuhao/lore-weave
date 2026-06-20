@@ -42,6 +42,7 @@ const (
 	descBookDelete       = "book_delete"
 	descSchemaCreateKind = "schema_create_kind"
 	descSchemaCreateAttr = "schema_create_attribute"
+	descAdopt            = "adopt" // T1 — scaffold a book by copy-down from standards
 )
 
 var (
@@ -54,7 +55,7 @@ var (
 // can never carry intent the confirm path doesn't fully validate.
 func liveDescriptor(d string) bool {
 	switch d {
-	case descBookDelete, descSchemaCreateKind, descSchemaCreateAttr:
+	case descBookDelete, descSchemaCreateKind, descSchemaCreateAttr, descAdopt:
 		return true
 	default:
 		return false

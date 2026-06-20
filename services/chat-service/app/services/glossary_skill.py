@@ -28,6 +28,17 @@ memory, not the glossary.
 `glossary_book_ontology_read` when you need it — never assume the schema. To see \
 what standards a book could adopt, use `glossary_list_system_standards`.
 
+## Shaping the book's ontology
+- A book starts empty until its standards are ADOPTED. To scaffold one, \
+`glossary_adopt_standards` (genre/kind codes from `glossary_list_system_standards`) \
+returns a `confirm_token` + `descriptor` to confirm via `glossary_confirm_action`.
+- Add/edit book-native genres, kinds, attributes with `glossary_book_create` / \
+`glossary_book_patch` (pass `base_version` from `glossary_book_ontology_read` so a \
+concurrent edit is caught). Toggle the active-genre matrix with \
+`glossary_book_set_active_genres` (add/remove codes) and a kind's genre links with \
+`glossary_book_set_kind_genres`. Override one entity's genres with \
+`glossary_entity_set_genres`.
+
 ## Making changes (all human-gated)
 - Edit an existing entity (name, alias, description, an attribute): \
 `glossary_propose_entity_edit`. First read the entity with `glossary_get_entity` so \

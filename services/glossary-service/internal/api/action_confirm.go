@@ -36,6 +36,12 @@ const (
 	deleteLevelAttr  = "attribute"
 )
 
+// adoptParams is the captured intent for an adopt action (copy-down from standards).
+type adoptParams struct {
+	Genres []string `json:"genres"`
+	Kinds  []string `json:"kinds"`
+}
+
 // consumeToken records a jti in the consumed_tokens ledger, enforcing single-use
 // (§13.4). Returns claimed=true the FIRST time a jti is seen; a replay hits the PK
 // and ON CONFLICT DO NOTHING → 0 rows → claimed=false (reject as replay).
@@ -130,9 +136,30 @@ func (s *Server) confirmAction(w http.ResponseWriter, r *http.Request) {
 		s.effectSchemaCreateKind(w, r.Context(), claims)
 	case descSchemaCreateAttr:
 		s.effectSchemaCreateAttr(w, r.Context(), claims)
+	case descAdopt:
+		s.effectAdopt(w, r.Context(), claims)
 	default:
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "unknown action")
 	}
+}
+
+func (s *Server) effectAdopt(w http.ResponseWriter, ctx context.Context, claims actionClaims) {
+	var p adoptParams
+	if err := json.Unmarshal(claims.Params, &p); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "bad proposal payload")
+		return
+	}
+	// userID = the proposer (already confirmed == the redeemer in authorizeAction).
+	if err := s.adoptBookOntologyCore(ctx, claims.BookID, claims.UserID, p.Genres, p.Kinds); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "adopt failed")
+		return
+	}
+	ont, err := s.loadBookOntology(ctx, claims.BookID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "load ontology failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, ont)
 }
 
 // ── effects (each re-validates against CURRENT state, §13.5 #4) ───────────────
@@ -264,9 +291,33 @@ func (s *Server) previewAction(w http.ResponseWriter, r *http.Request) {
 		s.previewBookDelete(w, r.Context(), claims)
 	case descSchemaCreateKind, descSchemaCreateAttr:
 		s.previewSchemaCreate(w, claims)
+	case descAdopt:
+		s.previewAdopt(w, r.Context(), claims)
 	default:
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "unknown action")
 	}
+}
+
+// previewAdopt enumerates, from CURRENT state, how many picked standards are new vs
+// already present (adopt is idempotent copy-down, §12.7).
+func (s *Server) previewAdopt(w http.ResponseWriter, ctx context.Context, claims actionClaims) {
+	var p adoptParams
+	if err := json.Unmarshal(claims.Params, &p); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "bad proposal payload")
+		return
+	}
+	newGenres, newKinds, err := s.adoptCounts(ctx, claims.BookID, p.Genres, p.Kinds)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "preview failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, actionPreview{
+		Descriptor: descAdopt, Title: "Adopt standards into this book", Destructive: false,
+		PreviewRows: []previewRow{
+			{Label: "genres newly adopted", Value: fmt.Sprint(newGenres), Note: "+ universal (always)"},
+			{Label: "kinds newly adopted", Value: fmt.Sprint(newKinds), Note: "+ unknown (always)"},
+		},
+	})
 }
 
 func (s *Server) previewBookDelete(w http.ResponseWriter, ctx context.Context, claims actionClaims) {

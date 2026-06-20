@@ -11,7 +11,9 @@ package api
 // and cannot be dropped from an entity's genre set.
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -21,6 +23,98 @@ import (
 type entityGenresResp struct {
 	GenreIDs        []string `json:"genre_ids"`
 	UsesBookDefault bool     `json:"uses_book_default"` // true when no per-entity override is set
+}
+
+var (
+	// errEntityGenreInvalid → 422: a requested genre is not a live book genre (tenancy).
+	errEntityGenreInvalid = errors.New("a genre is not a live genre of this book")
+	// errBookNoUniversal → 422: the book has no universal genre (not adopted yet).
+	errBookNoUniversal = errors.New("book has no universal genre — adopt standards first")
+)
+
+// entityExistsInBook reports whether the entity belongs to the book (the tenant guard
+// core shared by HTTP entityInBook and the MCP entity tools).
+func (s *Server) entityExistsInBook(ctx context.Context, entityID, bookID uuid.UUID) (bool, error) {
+	var exists bool
+	err := s.pool.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM glossary_entities WHERE entity_id=$1 AND book_id=$2)`,
+		entityID, bookID).Scan(&exists)
+	return exists, err
+}
+
+// getEntityGenreIDs returns the entity's live genre-override ids (empty ⇒ book default).
+func (s *Server) getEntityGenreIDs(ctx context.Context, entityID uuid.UUID) ([]string, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT eg.genre_id::text
+		 FROM entity_genres eg JOIN book_genres bg ON bg.genre_id = eg.genre_id
+		 WHERE eg.entity_id=$1 AND bg.deprecated_at IS NULL
+		 ORDER BY bg.sort_order, bg.code`, entityID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	ids := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+// setEntityGenresCore replaces an entity's genre-override set. Empty want ⇒ clear back
+// to the book default. Otherwise universal is force-included (O4) and every id must be a
+// live book genre of THIS book (errEntityGenreInvalid). Shared by HTTP + MCP.
+func (s *Server) setEntityGenresCore(ctx context.Context, bookID, entityID uuid.UUID, want []uuid.UUID) (*entityGenresResp, error) {
+	if len(want) == 0 {
+		if _, err := s.pool.Exec(ctx, `DELETE FROM entity_genres WHERE entity_id=$1`, entityID); err != nil {
+			return nil, err
+		}
+		return &entityGenresResp{GenreIDs: []string{}, UsesBookDefault: true}, nil
+	}
+	var universalID uuid.UUID
+	if err := s.pool.QueryRow(ctx,
+		`SELECT genre_id FROM book_genres WHERE book_id=$1 AND code='universal' AND deprecated_at IS NULL`,
+		bookID).Scan(&universalID); err != nil {
+		return nil, errBookNoUniversal
+	}
+	want = append(want, universalID)
+
+	var validCount int
+	if err := s.pool.QueryRow(ctx,
+		`SELECT count(DISTINCT genre_id) FROM book_genres
+		 WHERE book_id=$1 AND deprecated_at IS NULL AND genre_id = ANY($2)`,
+		bookID, want).Scan(&validCount); err != nil {
+		return nil, err
+	}
+	if validCount != distinctCount(want) {
+		return nil, errEntityGenreInvalid
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	if _, err := tx.Exec(ctx, `DELETE FROM entity_genres WHERE entity_id=$1`, entityID); err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(ctx,
+		`INSERT INTO entity_genres(entity_id, genre_id)
+		 SELECT $1, g FROM unnest($2::uuid[]) AS g ON CONFLICT DO NOTHING`,
+		entityID, want); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	ids := make([]string, len(want))
+	for i, id := range want {
+		ids[i] = id.String()
+	}
+	return &entityGenresResp{GenreIDs: dedupStrings(ids), UsesBookDefault: false}, nil
 }
 
 // GET /v1/glossary/books/{book_id}/entities/{entity_id}/genres
@@ -47,28 +141,9 @@ func (s *Server) getEntityGenres(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := r.Context()
-	rows, err := s.pool.Query(ctx,
-		`SELECT eg.genre_id::text
-		 FROM entity_genres eg JOIN book_genres bg ON bg.genre_id = eg.genre_id
-		 WHERE eg.entity_id=$1 AND bg.deprecated_at IS NULL
-		 ORDER BY bg.sort_order, bg.code`, entityID)
+	ids, err := s.getEntityGenreIDs(r.Context(), entityID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "query failed")
-		return
-	}
-	defer rows.Close()
-	ids := []string{}
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "scan failed")
-			return
-		}
-		ids = append(ids, id)
-	}
-	if err := rows.Err(); err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "rows error")
 		return
 	}
 	writeJSON(w, http.StatusOK, entityGenresResp{GenreIDs: ids, UsesBookDefault: len(ids) == 0})
@@ -107,21 +182,6 @@ func (s *Server) setEntityGenres(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY", "invalid JSON")
 		return
 	}
-
-	ctx := r.Context()
-	// Empty body clears the override back to the book default (D-GKA-ENTITY-GENRES-RESET):
-	// delete all rows so the entity FOLLOWS book_active_genres again (universal stays
-	// active via the book's own active set, so O4 holds without an entity-level row).
-	if len(in.GenreIDs) == 0 {
-		if _, err := s.pool.Exec(ctx, `DELETE FROM entity_genres WHERE entity_id=$1`, entityID); err != nil {
-			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "clear failed")
-			return
-		}
-		writeJSON(w, http.StatusOK, entityGenresResp{GenreIDs: []string{}, UsesBookDefault: true})
-		return
-	}
-
-	// Parse the requested ids (reject non-UUIDs early).
 	want := make([]uuid.UUID, 0, len(in.GenreIDs))
 	for _, s := range in.GenreIDs {
 		id, err := uuid.Parse(s)
@@ -131,70 +191,31 @@ func (s *Server) setEntityGenres(w http.ResponseWriter, r *http.Request) {
 		}
 		want = append(want, id)
 	}
-
-	// Always include the book's universal genre (O4 — mandatory, never droppable).
-	var universalID uuid.UUID
-	if err := s.pool.QueryRow(ctx,
-		`SELECT genre_id FROM book_genres WHERE book_id=$1 AND code='universal' AND deprecated_at IS NULL`,
-		bookID).Scan(&universalID); err != nil {
-		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "book has no universal genre (adopt it first)")
-		return
-	}
-	want = append(want, universalID)
-
-	// Validate every requested id is a LIVE book genre of THIS book (tenant boundary):
-	// count the live book-genre matches and compare to the distinct requested set.
-	var validCount int
-	if err := s.pool.QueryRow(ctx,
-		`SELECT count(DISTINCT genre_id) FROM book_genres
-		 WHERE book_id=$1 AND deprecated_at IS NULL AND genre_id = ANY($2)`,
-		bookID, want).Scan(&validCount); err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "validate failed")
-		return
-	}
-	if validCount != distinctCount(want) {
-		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY",
-			"every genre_id must be a live genre of this book")
-		return
-	}
-
-	// Replace the override set in one transaction.
-	tx, err := s.pool.Begin(ctx)
+	resp, err := s.setEntityGenresCore(r.Context(), bookID, entityID, want)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "tx failed")
+		writeEntityGenresErr(w, err)
 		return
 	}
-	defer tx.Rollback(ctx) //nolint:errcheck
-	if _, err := tx.Exec(ctx, `DELETE FROM entity_genres WHERE entity_id=$1`, entityID); err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "clear failed")
-		return
-	}
-	if _, err := tx.Exec(ctx,
-		`INSERT INTO entity_genres(entity_id, genre_id)
-		 SELECT $1, g FROM unnest($2::uuid[]) AS g ON CONFLICT DO NOTHING`,
-		entityID, want); err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "insert failed")
-		return
-	}
-	if err := tx.Commit(ctx); err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "commit failed")
-		return
-	}
+	writeJSON(w, http.StatusOK, *resp)
+}
 
-	ids := make([]string, len(want))
-	for i, id := range want {
-		ids[i] = id.String()
+// writeEntityGenresErr maps the set-core sentinels to HTTP responses.
+func writeEntityGenresErr(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, errEntityGenreInvalid):
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "every genre_id must be a live genre of this book")
+	case errors.Is(err, errBookNoUniversal):
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "book has no universal genre (adopt it first)")
+	default:
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "set genres failed")
 	}
-	writeJSON(w, http.StatusOK, entityGenresResp{GenreIDs: dedupStrings(ids), UsesBookDefault: false})
 }
 
 // entityInBook writes 404 + returns false when the entity isn't part of the book
 // (or doesn't exist) — the tenant guard for the per-entity routes.
 func (s *Server) entityInBook(w http.ResponseWriter, r *http.Request, entityID, bookID uuid.UUID) bool {
-	var exists bool
-	if err := s.pool.QueryRow(r.Context(),
-		`SELECT EXISTS(SELECT 1 FROM glossary_entities WHERE entity_id=$1 AND book_id=$2)`,
-		entityID, bookID).Scan(&exists); err != nil {
+	exists, err := s.entityExistsInBook(r.Context(), entityID, bookID)
+	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "db error")
 		return false
 	}

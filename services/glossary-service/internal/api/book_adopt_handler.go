@@ -109,23 +109,37 @@ func (s *Server) adoptBookOntology(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY", "invalid JSON")
 		return
 	}
-	// `universal` is mandatory + always-active (O4); `unknown` always adopted (E6).
-	genres := dedupAppend(in.Genres, "universal")
-	kinds := dedupAppend(in.Kinds, "unknown")
-
 	ctx := r.Context()
+	if err := s.adoptBookOntologyCore(ctx, bookID, userID, in.Genres, in.Kinds); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "adopt failed")
+		return
+	}
+	ont, err := s.loadBookOntology(ctx, bookID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "load ontology failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, ont)
+}
+
+// adoptBookOntologyCore copies the picked System standards (shadowed by the caller's
+// User tier) into the book tier — the single source of truth shared by the HTTP adopt
+// handler and the MCP adopt confirm effect. `universal` genre + `unknown` kind are
+// always included (O4/E6). Idempotent (per-book advisory lock + ON CONFLICT DO NOTHING).
+func (s *Server) adoptBookOntologyCore(ctx context.Context, bookID, userID uuid.UUID, genresIn, kindsIn []string) error {
+	genres := dedupAppend(genresIn, "universal")
+	kinds := dedupAppend(kindsIn, "unknown")
+
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "tx failed")
-		return
+		return err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 
 	// Per-book advisory lock: serialize concurrent / double-submit adopts so the
 	// multi-statement copy can't interleave. Released on commit/rollback.
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('gloss-adopt:' || $1::text))`, bookID); err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "lock failed")
-		return
+		return err
 	}
 
 	// 1) genres — caller's User tier FIRST (shadows System by code), then System.
@@ -136,28 +150,23 @@ func (s *Server) adoptBookOntology(w http.ResponseWriter, r *http.Request) {
 		WHERE ug.owner_user_id = $3 AND ug.code = ANY($2)
 		  AND ug.deleted_at IS NULL AND ug.permanently_deleted_at IS NULL
 		ON CONFLICT (book_id, code) DO NOTHING`, bookID, genres, userID); err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "adopt user genres failed")
-		return
+		return err
 	}
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO book_genres (book_id, code, name, icon, color, sort_order, source_ref, source_hash)
 		SELECT $1, sg.code, sg.name, sg.icon, sg.color, sg.sort_order, 'system:'||sg.genre_id::text, sg.content_hash
 		FROM system_genres sg WHERE sg.code = ANY($2)
 		ON CONFLICT (book_id, code) DO NOTHING`, bookID, genres); err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "adopt genres failed")
-		return
+		return err
 	}
 	// 2) activate the adopted genres
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO book_active_genres (book_id, genre_id)
 		SELECT $1, bg.genre_id FROM book_genres bg WHERE bg.book_id=$1 AND bg.code = ANY($2)
 		ON CONFLICT DO NOTHING`, bookID, genres); err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "activate genres failed")
-		return
+		return err
 	}
 	// 3) kinds — caller's User tier FIRST (shadows System by code), then System.
-	//    (source_hash computed inline — neither tier's kind table mirrors the other's
-	//    content_hash; is_hidden derives from the user kind's is_active.)
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO book_kinds (book_id, code, name, description, icon, color, sort_order, is_hidden, source_ref, source_hash)
 		SELECT $1, uk.code, uk.name, uk.description, uk.icon, uk.color, 0, NOT uk.is_active,
@@ -166,8 +175,7 @@ func (s *Server) adoptBookOntology(w http.ResponseWriter, r *http.Request) {
 		WHERE uk.owner_user_id = $3 AND uk.code = ANY($2)
 		  AND uk.deleted_at IS NULL AND uk.permanently_deleted_at IS NULL
 		ON CONFLICT (book_id, code) DO NOTHING`, bookID, kinds, userID); err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "adopt user kinds failed")
-		return
+		return err
 	}
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO book_kinds (book_id, code, name, description, icon, color, sort_order, is_hidden, source_ref, source_hash)
@@ -175,15 +183,10 @@ func (s *Server) adoptBookOntology(w http.ResponseWriter, r *http.Request) {
 		       'system:'||sk.kind_id::text, md5(sk.code||'|'||sk.name||'|'||coalesce(sk.description,''))
 		FROM system_kinds sk WHERE sk.code = ANY($2)
 		ON CONFLICT (book_id, code) DO NOTHING`, bookID, kinds); err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "adopt kinds failed")
-		return
+		return err
 	}
-	// 4) kind↔genre links (picked kinds × picked genres), remapped to book ids by
-	//    code. Union both tiers' links (book_kind_genres is keyed (kind,genre) so dups
-	//    collapse) — the effective kind carries genres from whichever standard declared
-	//    them. NOTE: union-only — a user kind that shadows a system kind INHERITS the
-	//    system kind's links (via code remap below); adopt can add links, never suppress
-	//    one. To drop an inherited link, deprecate it post-adopt via book-tier CRUD.
+	// 4) kind↔genre links (picked kinds × picked genres), remapped to book ids by code
+	//    (union both tiers; adopt can add links, never suppress one).
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO book_kind_genres (book_id, kind_id, genre_id)
 		SELECT $1, bk.book_kind_id, bg.genre_id
@@ -196,8 +199,7 @@ func (s *Server) adoptBookOntology(w http.ResponseWriter, r *http.Request) {
 		  AND uk.deleted_at IS NULL AND uk.permanently_deleted_at IS NULL
 		  AND ug.deleted_at IS NULL AND ug.permanently_deleted_at IS NULL
 		ON CONFLICT DO NOTHING`, bookID, kinds, genres, userID); err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "adopt user kind-genres failed")
-		return
+		return err
 	}
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO book_kind_genres (book_id, kind_id, genre_id)
@@ -209,11 +211,9 @@ func (s *Server) adoptBookOntology(w http.ResponseWriter, r *http.Request) {
 		JOIN book_genres bg ON bg.book_id=$1 AND bg.code = sg.code
 		WHERE sk.code = ANY($2) AND sg.code = ANY($3)
 		ON CONFLICT DO NOTHING`, bookID, kinds, genres); err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "adopt kind-genres failed")
-		return
+		return err
 	}
 	// 5) attributes for the picked (kind × genre) cells, remapped to book ids.
-	//    Caller's User tier FIRST (shadows System by (kind,genre,code)), then System.
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO book_attributes
 		  (book_id, kind_id, genre_id, code, name, description, field_type, is_required,
@@ -231,8 +231,7 @@ func (s *Server) adoptBookOntology(w http.ResponseWriter, r *http.Request) {
 		  AND uk.deleted_at IS NULL AND uk.permanently_deleted_at IS NULL
 		  AND ug.deleted_at IS NULL AND ug.permanently_deleted_at IS NULL
 		ON CONFLICT (book_id, kind_id, genre_id, code) DO NOTHING`, bookID, kinds, genres, userID); err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "adopt user attributes failed")
-		return
+		return err
 	}
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO book_attributes
@@ -248,21 +247,33 @@ func (s *Server) adoptBookOntology(w http.ResponseWriter, r *http.Request) {
 		JOIN book_genres bg ON bg.book_id=$1 AND bg.code = sg.code
 		WHERE sk.code = ANY($2) AND sg.code = ANY($3)
 		ON CONFLICT (book_id, kind_id, genre_id, code) DO NOTHING`, bookID, kinds, genres); err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "adopt attributes failed")
-		return
+		return err
 	}
+	return tx.Commit(ctx)
+}
 
-	if err := tx.Commit(ctx); err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "commit failed")
-		return
+// adoptCounts reports, for the picked codes, how many would be NEWLY adopted vs are
+// already present in the book — for the adopt confirm card preview (§12.7). Always
+// counts the implicit universal/unknown too.
+func (s *Server) adoptCounts(ctx context.Context, bookID uuid.UUID, genresIn, kindsIn []string) (newGenres, newKinds int, err error) {
+	genres := dedupAppend(genresIn, "universal")
+	kinds := dedupAppend(kindsIn, "unknown")
+	// genres that exist as a System OR the caller-agnostic standard but are NOT yet a
+	// live book row (a present-but-deprecated row still counts as present — adopt won't
+	// resurrect it). Count picked codes absent from book_genres.
+	if err = s.pool.QueryRow(ctx, `
+		SELECT count(*) FROM unnest($2::text[]) AS c(code)
+		WHERE NOT EXISTS (SELECT 1 FROM book_genres bg WHERE bg.book_id=$1 AND bg.code = c.code)`,
+		bookID, genres).Scan(&newGenres); err != nil {
+		return 0, 0, err
 	}
-
-	ont, err := s.loadBookOntology(ctx, bookID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "load ontology failed")
-		return
+	if err = s.pool.QueryRow(ctx, `
+		SELECT count(*) FROM unnest($2::text[]) AS c(code)
+		WHERE NOT EXISTS (SELECT 1 FROM book_kinds bk WHERE bk.book_id=$1 AND bk.code = c.code)`,
+		bookID, kinds).Scan(&newKinds); err != nil {
+		return 0, 0, err
 	}
-	writeJSON(w, http.StatusOK, ont)
+	return newGenres, newKinds, nil
 }
 
 // ── GET /v1/glossary/books/{book_id}/ontology ──────────────────────────────────
