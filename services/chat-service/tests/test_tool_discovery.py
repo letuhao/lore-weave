@@ -15,6 +15,7 @@ import pytest
 from app.services import tool_discovery as td
 from app.services.frontend_tools import FRONTEND_TOOL_NAMES, frontend_tool_defs
 from app.services.stream_service import (
+    TIER_A_AGGREGATE_CAP,
     TIER_A_SAME_OP_CAP,
     _stream_with_tools,
 )
@@ -317,6 +318,57 @@ class TestTierAVolumeCapH7:
         assert pending["name"] == "confirm_action"
         assert pending["args"]["items"]  # batch card carries the held op
         assert pending["args"]["domain"] == "chapter"
+
+    @pytest.mark.asyncio
+    async def test_aggregate_cap_escalates_on_alternating_ops(self):
+        """An ALTERNATING-op turn that exceeds the aggregate ceiling escalates to
+        batch confirm even though no single op reaches the per-op cap (H7
+        aggregate). Cycle 3 distinct Tier-A ops so each op's count stays below
+        TIER_A_SAME_OP_CAP while the turn TOTAL crosses TIER_A_AGGREGATE_CAP."""
+        kc = _kc()
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={})
+
+        # Three distinct Tier-A ops, cycled so no single op hits the per-op cap
+        # before the aggregate cap. With CAP=12 and 3 ops, each op reaches 4 at
+        # 12 writes (<5), so ONLY the aggregate ceiling can trip.
+        ops = ["book_create", "chapter_create", "scene_create"]
+        catalog = [
+            _tool("book_create", "Create a book", tier="A"),
+            _tool("chapter_create", "Create a chapter", tier="A"),
+            _tool("scene_create", "Create a scene", tier="A"),
+        ]
+        # Sanity: the construction must exercise the aggregate (not per-op) cap.
+        assert TIER_A_AGGREGATE_CAP // len(ops) < TIER_A_SAME_OP_CAP
+
+        # One pass that calls the cycle CAP+1 times (indices 0..CAP).
+        frags = []
+        for i in range(TIER_A_AGGREGATE_CAP + 1):
+            frags.append(tool_frag(i, id=f"c{i}", name=ops[i % len(ops)]))
+            frags.append(tool_frag(i, arguments_delta=f'{{"n":{i}}}'))
+        frags.append(done("tool_calls"))
+        scripts = [frags]
+
+        with _patch_client(scripts):
+            chunks = await _drain(
+                _run_discovery(
+                    scripts, knowledge_client=kc, catalog=catalog, max_iterations=20
+                )
+            )
+
+        # Auto-writes stop exactly at the aggregate ceiling; the next one suspends.
+        assert kc.mcp_execute_tool.await_count == TIER_A_AGGREGATE_CAP
+        # No single op reached the per-op cap (proves it was the aggregate cap).
+        from collections import Counter
+
+        applied = Counter(
+            call.kwargs["tool_name"] for call in kc.mcp_execute_tool.await_args_list
+        )
+        assert all(n < TIER_A_SAME_OP_CAP for n in applied.values())
+        suspends = [c for c in chunks if "suspend" in c]
+        assert len(suspends) == 1
+        pending = suspends[0]["suspend"]["pending_tool_call"]
+        assert pending["name"] == "confirm_action"
+        assert pending["args"]["items"]  # batch card carries the held op
 
 
 # ════════════════════════════════════════════════════════════════════════════

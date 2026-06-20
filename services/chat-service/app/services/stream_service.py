@@ -188,6 +188,12 @@ UNIVERSAL_TOOL_ITERATIONS = 20
 # loop escalates to a single batch confirm_action (the enforceable
 # injection-damage bound — see spec E2/H7).
 TIER_A_SAME_OP_CAP = 5
+# MCP-fanout H7 (aggregate): an additional turn-TOTAL ceiling across ALL Tier-A
+# ops, so an alternating-op turn (e.g. book_create×5 + chapter_create×5) can't
+# slip past the per-op cap and do an unbounded number of auto-writes. Chosen
+# > the per-op cap (5) so a single legitimate op never trips the aggregate first,
+# but low enough that a high-volume multi-op turn still hits ONE human gate.
+TIER_A_AGGREGATE_CAP = 12
 
 
 def _is_tools_unsupported(exc: LLMError) -> bool:
@@ -566,28 +572,48 @@ async def _stream_with_tools(
                 # they never auto-emit an activity/undo and never count as a write.
                 tier = tool_tier(cat_index.get(c["name"], {})) if discovery else "R"
 
-                # H7 — same-op Tier-A volume cap: beyond TIER_A_SAME_OP_CAP
-                # auto-writes of the SAME op in a turn, STOP auto-applying and
-                # escalate to ONE batch confirm_action (the enforceable
-                # injection-damage bound). We suspend on a synthetic confirm_action
+                # H7 — Tier-A volume caps: STOP auto-applying and escalate to ONE
+                # batch confirm_action (the enforceable injection-damage bound) when
+                # EITHER ceiling is reached. We suspend on a synthetic confirm_action
                 # so the user gates the rest — exactly the H2 batch card.
-                if tier == "A" and tier_a_op_counts.get(c["name"], 0) >= TIER_A_SAME_OP_CAP:
-                    suspended_call = {
-                        "id": c["id"],
-                        "name": "confirm_action",
-                        "args": {
-                            "confirm_token": "",
-                            "descriptor": f"{c['name']}.batch",
-                            "title": f"Apply {c['name']} again?",
-                            "domain": (c["name"].split("_", 1)[0] or "book"),
-                            "items": [args_obj],
-                            "_reason": (
+                #   (1) per-op cap   — beyond TIER_A_SAME_OP_CAP auto-writes of the
+                #       SAME op in a turn (bounds a single runaway op).
+                #   (2) aggregate cap — beyond TIER_A_AGGREGATE_CAP auto-writes
+                #       across ALL ops in a turn (bounds an alternating-op turn that
+                #       never trips any single per-op cap; residual was
+                #       5×distinct_ops without this).
+                if tier == "A":
+                    per_op_hit = (
+                        tier_a_op_counts.get(c["name"], 0) >= TIER_A_SAME_OP_CAP
+                    )
+                    aggregate_hit = (
+                        sum(tier_a_op_counts.values()) >= TIER_A_AGGREGATE_CAP
+                    )
+                    if per_op_hit or aggregate_hit:
+                        if aggregate_hit and not per_op_hit:
+                            reason = (
+                                f"Auto-apply ceiling reached: already ran "
+                                f"{TIER_A_AGGREGATE_CAP} auto-writes this turn. "
+                                f"Confirm to continue."
+                            )
+                        else:
+                            reason = (
                                 f"Auto-apply cap reached: already ran {c['name']} "
                                 f"{TIER_A_SAME_OP_CAP}× this turn. Confirm to continue."
-                            ),
-                        },
-                    }
-                    break
+                            )
+                        suspended_call = {
+                            "id": c["id"],
+                            "name": "confirm_action",
+                            "args": {
+                                "confirm_token": "",
+                                "descriptor": f"{c['name']}.batch",
+                                "title": f"Apply {c['name']} again?",
+                                "domain": (c["name"].split("_", 1)[0] or "book"),
+                                "items": [args_obj],
+                                "_reason": reason,
+                            },
+                        }
+                        break
 
                 # backend tool — execute via the ai-gateway over MCP (ai-gateway
                 # P0: the only tool transport). Tier-A auto-commits here (the
