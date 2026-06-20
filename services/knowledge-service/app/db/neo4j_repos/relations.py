@@ -193,6 +193,11 @@ ON CREATE SET
   r.valid_from = coalesce($valid_from, datetime()),
   r.valid_until = NULL,
   r.pending_validation = $pending_validation,
+  // KG customizable-ontology (L7) — stamp the resolved-schema version this edge
+  // was written under (M3) + the layer-4 partition seam (M2, NULL at v1). Both
+  // additive; NULL for legacy/un-adopted writes (no behavior change).
+  r.schema_version = $schema_version,
+  r.graph_id = $graph_id,
   r.created_at = datetime(),
   r.updated_at = datetime()
 ON MATCH SET
@@ -228,6 +233,8 @@ async def create_relation(
     source_chapter: str | None = None,
     valid_from: datetime | None = None,
     pending_validation: bool = False,
+    schema_version: int | None = None,
+    graph_id: str | None = None,
 ) -> Relation | None:
     """Idempotent edge upsert. Re-running with the same
     `(subject_id, predicate, object_id)` returns the same edge —
@@ -272,6 +279,8 @@ async def create_relation(
         source_chapter=source_chapter,
         valid_from=valid_from,
         pending_validation=pending_validation,
+        schema_version=schema_version,
+        graph_id=graph_id,
     )
     record = await result.single()
     if record is None:

@@ -52,7 +52,8 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Literal
+from typing import Any, Literal, Protocol
+from uuid import UUID
 
 from pydantic import BaseModel
 
@@ -92,6 +93,24 @@ __all__ = [
 ]
 
 logger = logging.getLogger(__name__)
+
+
+class TriageParkProtocol(Protocol):
+    """Minimal structural type for the LH ``TriageRepo.park`` the writer calls to
+    park an off-schema edge (L7/C4). Kept as a Protocol so the writer stays
+    decoupled from the repo + tests can inject a fake."""
+
+    async def park(
+        self,
+        *,
+        user_id: UUID,
+        project_id: str,
+        item_type: str,
+        signature: str,
+        payload: dict[str, Any],
+        source: dict[str, Any] | None = ...,
+        schema_version: int | None = ...,
+    ) -> Any: ...
 
 
 # KG customizable-ontology (lane LB) — normalize a schema edge-type code the
@@ -290,6 +309,12 @@ async def write_pass2_extraction(
     # the writer, so it re-checks. Triage parking of these drops is the LH lane's
     # job (C4) — this lane only drops + logs.
     schema: ExtractionSchema | None = None,
+    # KG customizable-ontology (L7, C4 compose) — when a TriageRepo is supplied,
+    # an off-schema edge that the closed-edge guard drops is PARKED to
+    # kg_triage_items (unknown_edge_type, signature ``edge:<predicate>``) instead
+    # of vanishing, so the human triage queue (lane LH) sees it. None (default) →
+    # today's drop-and-log only, so legacy callers are unchanged.
+    triage_repo: "TriageParkProtocol | None" = None,
 ) -> Pass2WriteResult:
     """Persist Pass 2 LLM extraction candidates to Neo4j.
 
@@ -579,6 +604,28 @@ async def write_pass2_extraction(
                 "(closed edge set, project=%s, schema=%s)",
                 rel.predicate, project_id, schema.label if schema else "?",
             )
+            # L7/C4 — park the drop to the human triage queue (unknown_edge_type)
+            # rather than silently losing it, when a TriageRepo is wired. Fail-soft:
+            # a park error must NEVER break the extraction batch.
+            if triage_repo is not None and project_id:
+                try:
+                    await triage_repo.park(
+                        user_id=UUID(user_id) if isinstance(user_id, str) else user_id,
+                        project_id=project_id,
+                        item_type="unknown_edge_type",
+                        signature=f"edge:{rel.predicate}",
+                        payload={
+                            "predicate": rel.predicate,
+                            "subject_id": resolved_subject_id,
+                            "object_id": resolved_object_id,
+                        },
+                        source={"job_id": job_id, "source_id": source.id},
+                        schema_version=schema.schema_version if schema else None,
+                    )
+                except Exception:  # noqa: BLE001 — triage is best-effort; never block extraction
+                    logger.exception(
+                        "pass2_writer: triage park failed for off-schema edge %r", rel.predicate,
+                    )
             skipped += 1
             continue
 
@@ -597,6 +644,10 @@ async def write_pass2_extraction(
             confidence=rel.confidence,
             source_event_id=source.id,
             pending_validation=False,
+            # L7 — stamp the resolved-schema version (M3) + the graph_id partition
+            # seam (M2, NULL at v1). schema=None → both NULL (legacy, no change).
+            schema_version=schema.schema_version if schema else None,
+            graph_id=None,
         )
         if result is not None:
             relations_created += 1

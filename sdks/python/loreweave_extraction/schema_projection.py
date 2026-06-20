@@ -82,6 +82,10 @@ class ExtractionSchema:
     # Free-form provenance for logging (project_id / schema_version) — never
     # injected into the prompt, never part of validation.
     label: str = ""
+    # The resolved schema version (M3) — stamped onto written edges/facts by the
+    # knowledge-service write path (L7). None for legacy/un-adopted. Never in the
+    # prompt or validation; provenance only.
+    schema_version: int | None = None
 
     @classmethod
     def from_resolved(
@@ -133,6 +137,11 @@ class ExtractionSchema:
             allow_free_edges=bool(allow_free) if isinstance(allow_free, bool) else True,
             vocab_soft_cap=vocab_soft_cap,
             label=str(resolved.get("label") or ""),
+            schema_version=(
+                resolved["schema_version"]
+                if isinstance(resolved.get("schema_version"), int)
+                else None
+            ),
         )
 
     # ── vocab rendering (§10-B1 soft-cap + log on truncate) ──────────────

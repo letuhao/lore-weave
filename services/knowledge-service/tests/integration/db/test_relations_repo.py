@@ -135,6 +135,41 @@ async def test_k11_6_create_relation_creates_edge(neo4j_driver, test_user):
 
 
 @pytest.mark.asyncio
+async def test_L7_create_relation_stamps_schema_version_and_graph_id(neo4j_driver, test_user):
+    """L7: the resolved schema_version (M3) + graph_id seam (M2, NULL at v1) are
+    persisted onto the written edge. Read back via raw Cypher — the Relation model
+    doesn't surface these provenance/seam props."""
+    async with neo4j_driver.session() as session:
+        kai = await _entity(session, user_id=test_user, name="Kai")
+        zhao = await _entity(session, user_id=test_user, name="Zhao")
+        rel = await create_relation(
+            session, user_id=test_user, subject_id=kai.id,
+            predicate="trusts", object_id=zhao.id, schema_version=9,
+        )
+        assert rel is not None
+        rid = relation_id(user_id=test_user, subject_id=kai.id, predicate="trusts", object_id=zhao.id)
+        res = await session.run(
+            "MATCH ()-[r:RELATES_TO {id: $rid}]->() RETURN r.schema_version AS sv, r.graph_id AS gid",
+            rid=rid,
+        )
+        rec = await res.single()
+    assert rec["sv"] == 9        # M3 schema_version stamp persisted
+    assert rec["gid"] is None    # M2 graph_id seam present + NULL at v1
+
+    # legacy/un-adopted write (schema_version omitted) → NULL, no behavior change
+    async with neo4j_driver.session() as session:
+        a = await _entity(session, user_id=test_user, name="Aoi")
+        b = await _entity(session, user_id=test_user, name="Bo")
+        await create_relation(session, user_id=test_user, subject_id=a.id, predicate="knows", object_id=b.id)
+        rid2 = relation_id(user_id=test_user, subject_id=a.id, predicate="knows", object_id=b.id)
+        res2 = await session.run(
+            "MATCH ()-[r:RELATES_TO {id: $rid}]->() RETURN r.schema_version AS sv", rid=rid2,
+        )
+        rec2 = await res2.single()
+    assert rec2["sv"] is None
+
+
+@pytest.mark.asyncio
 async def test_k11_6_create_relation_is_idempotent_per_event(
     neo4j_driver, test_user
 ):

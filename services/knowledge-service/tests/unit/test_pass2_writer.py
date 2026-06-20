@@ -23,6 +23,7 @@ from loreweave_extraction.extractors.entity import LLMEntityCandidate
 from loreweave_extraction.extractors.event import LLMEventCandidate
 from loreweave_extraction.extractors.fact import LLMFactCandidate
 from loreweave_extraction.extractors.relation import LLMRelationCandidate
+from loreweave_extraction.schema_projection import ExtractionSchema
 from app.extraction.pass2_writer import Pass2WriteResult, write_pass2_extraction
 from app.metrics import injection_pattern_matched_total
 
@@ -213,6 +214,76 @@ async def test_relations_created_when_endpoints_merged(
 
     assert result.relations_created == 1
     assert result.skipped_missing_endpoint == 0
+
+
+@pytest.mark.asyncio
+@patch(f"{_PATCH_BASE}.create_relation", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.resolve_or_merge_entity", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
+async def test_L7_stamps_schema_version_on_written_edge(
+    mock_upsert_source, mock_merge, mock_evidence, mock_create_rel,
+):
+    """L7: an on-schema edge is written with the resolved schema_version stamped
+    (+ graph_id seam None)."""
+    mock_upsert_source.return_value = _make_source_result()
+    mock_merge.side_effect = [_make_entity_result("eid-kai"), _make_entity_result("eid-zhao")]
+    mock_evidence.return_value = _make_evidence_result(True)
+    mock_create_rel.return_value = MagicMock()
+    schema = ExtractionSchema(edge_predicates=("trusts",), allow_free_edges=False, schema_version=7)
+
+    await write_pass2_extraction(
+        _fake_session(),
+        user_id=USER_ID, project_id=PROJECT_ID,
+        source_type="chapter", source_id="ch-1", job_id=JOB_ID,
+        entities=[_entity("Kai"), _entity("Zhao")],
+        relations=[_relation("Kai", "trusts", "Zhao", subject_id="eid-kai", object_id="eid-zhao")],
+        schema=schema,
+    )
+
+    mock_create_rel.assert_awaited_once()
+    kwargs = mock_create_rel.await_args.kwargs
+    assert kwargs["schema_version"] == 7
+    assert kwargs["graph_id"] is None
+
+
+@pytest.mark.asyncio
+@patch(f"{_PATCH_BASE}.create_relation", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.resolve_or_merge_entity", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
+async def test_L7_off_schema_edge_parked_to_triage(
+    mock_upsert_source, mock_merge, mock_evidence, mock_create_rel,
+):
+    """L7/C4: under a CLOSED edge set, an off-schema edge is dropped AND parked to
+    the triage queue (unknown_edge_type, signature edge:<predicate>) — not silently
+    lost — when a TriageRepo is wired. create_relation is never called for it."""
+    mock_upsert_source.return_value = _make_source_result()
+    mock_merge.side_effect = [_make_entity_result("eid-kai"), _make_entity_result("eid-zhao")]
+    mock_evidence.return_value = _make_evidence_result(True)
+    schema = ExtractionSchema(edge_predicates=("trusts",), allow_free_edges=False, schema_version=7)
+    fake_triage = AsyncMock()
+    # production tenant id is a UUID; the writer coerces str→UUID for TriageRepo.park
+    real_user_id = "11111111-1111-1111-1111-111111111111"
+
+    result = await write_pass2_extraction(
+        _fake_session(),
+        user_id=real_user_id, project_id=PROJECT_ID,
+        source_type="chapter", source_id="ch-1", job_id=JOB_ID,
+        entities=[_entity("Kai"), _entity("Zhao")],
+        relations=[_relation("Kai", "betrays", "Zhao", subject_id="eid-kai", object_id="eid-zhao")],
+        schema=schema,
+        triage_repo=fake_triage,
+    )
+
+    assert result.relations_created == 0
+    mock_create_rel.assert_not_called()  # off-schema edge never written
+    fake_triage.park.assert_awaited_once()
+    pkwargs = fake_triage.park.await_args.kwargs
+    assert pkwargs["item_type"] == "unknown_edge_type"
+    assert pkwargs["signature"] == "edge:betrays"
+    assert pkwargs["schema_version"] == 7
+    assert str(pkwargs["project_id"]) == str(PROJECT_ID)
 
 
 @pytest.mark.asyncio

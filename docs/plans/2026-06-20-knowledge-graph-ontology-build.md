@@ -363,7 +363,28 @@ lanes built as parallel worktree agents, merged clean, composed + verified:
   (extraction cache task_id omits schema — safe under per-book/project, revisit if
   cross-project text sharing appears) · `D-LB-LIVE-SMOKE` · `D-KG-LE-BROWSER-SMOKE`.
 
-**REMAINING:** LF (MCP tools — wraps the now-complete LC/LD/LH HTTP; spec
-`2026-06-20-knowledge-assistant-mcp-tools.md` KM1–KM4) · LG (glossary
-internal-read, glossary branch) · L7 (enforcement flip fail-soft→hard +
-graph_id seam + cross-service live-smoke) → S3 final.
+**2026-06-20 — L7 enforcement MECHANISM done + live-smoked (Neo4j + PG).**
+- **Stamp (M2/M3):** `create_relation` now stamps `schema_version` + `graph_id`
+  (NULL seam) on the edge; `schema=None`/legacy → NULL (no change). Added a clean
+  `schema_version` field to the SDK `ExtractionSchema` projection; the writer passes
+  `schema.schema_version`. **Live-Neo4j verified** (stamp persists; legacy NULL).
+- **Drop→triage (C4 compose):** `write_pass2_extraction` now PARKS an off-schema
+  edge (the closed-edge guard's drop) to `kg_triage_items` (unknown_edge_type,
+  `edge:<predicate>`) via an optional `triage_repo` (TriageParkProtocol) — fail-soft
+  (a park error never breaks the batch); `triage_repo=None` → today's drop+log.
+- **L1 Neo4j seam live-applied:** the additive `relates_to_schema_version` /
+  `relates_to_graph_id` indexes apply cleanly on the running Neo4j (schema test 4/4).
+- **VERIFY:** 2725 unit (incl 2 new L7 writer tests: stamp pass-through + drop→park)
+  + live-Neo4j stamp test + 471 extraction/writer green; provider-gate clean.
+- **Deferred `D-KG-L7-ACTIVATE`:** the enforcement is built + tested but DORMANT in
+  production — nothing constructs the resolver→`ExtractionSchema` projection in the
+  live extraction entry point yet, and `triage_repo` isn't threaded through the
+  orchestrator's write calls. Activating per-project (resolve schema at job start →
+  pass `schema=` + `triage_repo=` into `write_pass2_extraction`) + a full-pipeline
+  cross-service live-smoke is the remaining switch. `single_active` cardinality
+  auto-close stays dormant (all seeded edges multi_active) → `D-KG-L7-CARDINALITY`.
+
+**REMAINING:** LF (MCP tools — running as a background agent) · LG (glossary
+internal-read, glossary branch) · **D-KG-L7-ACTIVATE** (turn enforcement on per
+project + full-pipeline live-smoke) · real-glossary cross-service smoke
+(`D-KG-LG-REAL`) → S3 final.
