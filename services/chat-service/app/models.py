@@ -160,6 +160,7 @@ class SendMessageRequest(BaseModel):
     book_context: BookContext | None = None  # Glossary-assistant P3: book-scoped chat → enable glossary edit tool
     admin_context: AdminContext | None = None  # T4c: cms admin chat → advertise System-tier admin tools (token via X-Admin-Token header)
     disable_tools: bool = False  # Editor "Compose" mode: advertise no tools this turn (prose-only; reasoning model drafts, user Applies)
+    display_language: str | None = None  # S6: the user's display language → knowledge composes entity aliases in this language (omit = source-language)
 
 
 class ToolResultRequest(BaseModel):

@@ -725,6 +725,7 @@ async def stream_response(
     admin_context: dict | None = None,
     admin_token: str | None = None,
     disable_tools: bool = False,
+    display_language: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """Async generator that yields chat-turn SSE lines.
 
@@ -775,6 +776,7 @@ async def stream_response(
         session_id=session_id,
         project_id=str(project_id) if project_id else None,
         message=user_message_content,
+        language=display_language,
     )
 
     # ── K-CLEAN-5 (D-K8-04): emit memory_mode to the FE ─────────────────────

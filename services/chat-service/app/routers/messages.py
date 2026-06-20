@@ -268,6 +268,7 @@ async def send_message(
             admin_context=body.admin_context.model_dump() if body.admin_context else None,
             admin_token=x_admin_token,
             disable_tools=body.disable_tools,
+            display_language=body.display_language,
         ),
         media_type="text/event-stream",
         headers=headers,

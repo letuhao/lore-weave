@@ -196,6 +196,7 @@ class KnowledgeClient:
         session_id: str | None = None,
         project_id: str | None = None,
         message: str = "",
+        language: str | None = None,
     ) -> KnowledgeContext:
         """POST /internal/context/build.
 
@@ -227,6 +228,10 @@ class KnowledgeClient:
             "user_id": user_id,
             "message": safe_message,
         }
+        # S6 — the display/target language for entity aliases (optional). Omitted
+        # when unset → knowledge returns source-language aliases (back-compat).
+        if language:
+            body["language"] = language
         # Truthy checks (not `is not None`) so empty strings are omitted,
         # which prevents knowledge-service's UUID validator from 422-ing
         # the call.

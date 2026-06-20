@@ -90,6 +90,7 @@ async def build_static_mode(
     user_id: UUID,
     project: Project,
     message: str,
+    language: str | None = None,
 ) -> BuiltContext:
     """Build a Mode 2 memory block for a user + project + current message.
 
@@ -135,6 +136,7 @@ async def build_static_mode(
                 user_id=user_id,
                 project=project,
                 message=message,
+                language=language,
             ),
             timeout=settings.context_glossary_timeout_s,
         )

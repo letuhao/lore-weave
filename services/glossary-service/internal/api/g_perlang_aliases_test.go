@@ -64,3 +64,45 @@ func TestPerLanguageAliases_ResolverCrossLanguage(t *testing.T) {
 		t.Errorf("an unknown name must not resolve (got %v)", got)
 	}
 }
+
+func TestPerLanguageAliases_ContextComposition(t *testing.T) {
+	pool := openTestDB(t)
+	f := newActionFixture(t, pool)
+	ctx := context.Background()
+	octx := ctxWithUser(f.ownerID)
+
+	charKind := bookKindID(t, pool, f.bookID, "character")
+	var eid uuid.UUID
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO glossary_entities(book_id, kind_id, short_description) VALUES($1,$2,'ctx') RETURNING entity_id`,
+		f.bookID, charKind).Scan(&eid); err != nil {
+		t.Fatalf("seed entity: %v", err)
+	}
+	t.Cleanup(func() { pool.Exec(context.Background(), `DELETE FROM glossary_entities WHERE entity_id=$1`, eid) }) //nolint:errcheck
+
+	// Give it an English alias set.
+	if _, out, err := f.srv.toolProposeAliases(octx, nil, proposeAliasesToolIn{
+		BookID: f.bookID.String(), LanguageCode: "en",
+		Items: []aliasItem{{EntityID: eid.String(), Aliases: []string{"Flame Demon"}}},
+	}); err != nil || out.Written != 1 {
+		t.Fatalf("propose aliases: %+v err=%v", out, err)
+	}
+
+	items := []glossaryEntityForContext{{EntityID: eid.String(), CachedAliases: []string{"源别名"}}}
+
+	// language="" → unchanged (back-compat).
+	f.srv.composePerLanguageAliases(ctx, f.bookID, items, "")
+	if len(items[0].CachedAliases) != 1 {
+		t.Errorf("no language must leave aliases untouched: %v", items[0].CachedAliases)
+	}
+
+	// language="en" → source ∪ en alias set.
+	f.srv.composePerLanguageAliases(ctx, f.bookID, items, "en")
+	has := map[string]bool{}
+	for _, a := range items[0].CachedAliases {
+		has[a] = true
+	}
+	if !has["源别名"] || !has["Flame Demon"] {
+		t.Errorf("composed aliases must contain source + en set: %v", items[0].CachedAliases)
+	}
+}

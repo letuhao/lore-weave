@@ -231,6 +231,7 @@ async def select_glossary_semantic(
     query: str,
     max_entities: int = 20,
     max_tokens: int = 800,
+    language: str | None = None,
 ) -> list[GlossaryEntityForContext]:
     """mui #4 — semantic glossary selection (architecture B).
 
@@ -290,7 +291,7 @@ async def select_glossary_semantic(
         return []
 
     rows = await glossary_client.fetch_entities_by_ids(
-        book_id=book_id, entity_ids=ranked_ids
+        book_id=book_id, entity_ids=ranked_ids, language=language
     )
     by_id = {r.entity_id: r for r in rows}
     out: list[GlossaryEntityForContext] = []
@@ -318,13 +319,14 @@ async def select_glossary_semantic(
 
 
 async def _pinned_entities(
-    client: GlossaryClient, user_id: UUID, book_id: UUID, max_tokens: int
+    client: GlossaryClient, user_id: UUID, book_id: UUID, max_tokens: int,
+    language: str | None = None,
 ) -> list[GlossaryEntityForContext]:
     """Fetch just the pinned tier (empty-query select-for-context returns
     pinned + recent; keep only pinned). Best-effort — [] on failure."""
     rows = await client.select_for_context(
         user_id=user_id, book_id=book_id, query="",
-        max_entities=10, max_tokens=max_tokens,
+        max_entities=10, max_tokens=max_tokens, language=language,
     )
     return [r for r in rows if r.tier == "pinned"]
 
@@ -338,6 +340,7 @@ async def _semantic_with_pinned(
     message: str,
     max_entities: int,
     max_tokens: int,
+    language: str | None = None,
 ) -> list[GlossaryEntityForContext]:
     """mui #4 K-2: vector-ranked entities + pinned merged ahead. Returns []
     if semantic yielded nothing (caller falls back to FTS)."""
@@ -354,12 +357,13 @@ async def _semantic_with_pinned(
             query=message,
             max_entities=max_entities,
             max_tokens=max_tokens,
+            language=language,
         )
     if not semantic:
         return []
     # Pinned is an authoring signal vectors can't represent — merge it ahead
     # of the semantic hits, deduped by entity_id (AC3).
-    pinned = await _pinned_entities(client, user_id, project.book_id, max_tokens)
+    pinned = await _pinned_entities(client, user_id, project.book_id, max_tokens, language)
     seen: set[str] = set()
     out: list[GlossaryEntityForContext] = []
     for e in [*pinned, *semantic]:
@@ -379,6 +383,7 @@ async def select_glossary_for_context(
     max_entities: int = 20,
     max_tokens: int = 800,
     embedding_client: EmbeddingClient | None = None,
+    language: str | None = None,
 ) -> list[GlossaryEntityForContext]:
     if project.book_id is None:
         return []
@@ -391,7 +396,7 @@ async def select_glossary_for_context(
         semantic = await _semantic_with_pinned(
             client, embedding_client,
             user_id=user_id, project=project, message=message,
-            max_entities=max_entities, max_tokens=max_tokens,
+            max_entities=max_entities, max_tokens=max_tokens, language=language,
         )
         if semantic:
             return semantic
@@ -408,6 +413,7 @@ async def select_glossary_for_context(
             query="",
             max_entities=max_entities,
             max_tokens=max_tokens,
+            language=language,
         )
 
     # K4-I2: divide the entity budget across candidates with a small
@@ -424,6 +430,7 @@ async def select_glossary_for_context(
             query=candidate,
             max_entities=per_call_limit,
             max_tokens=max_tokens,
+            language=language,
         )
         for candidate in candidates
     ]
