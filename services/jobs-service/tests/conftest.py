@@ -4,6 +4,7 @@ Env vars are set BEFORE any `app.*` import because `config.Settings` is fail-fas
 (no defaults for the required secrets)."""
 
 import os
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -38,6 +39,19 @@ def client(spy_pool):
     _stub.stop = AsyncMock()
     _stub.close = AsyncMock()
 
+    # Stub the MCP StreamableHTTP session manager so the REST `client` lifespan does
+    # NOT consume its once-per-instance `.run()` — otherwise the real wire-path MCP
+    # tests (which run the same module-level `mcp_server` over a loopback server) hit
+    # "run() can only be called once per instance" depending on test order. The /mcp
+    # facade is best-effort relative to the REST API, so a no-op session manager here
+    # leaves every `/v1/jobs` route fully exercised.
+    @asynccontextmanager
+    async def _noop_session_manager():
+        yield
+
+    _mcp_stub = MagicMock()
+    _mcp_stub.session_manager.run = _noop_session_manager
+
     with (
         patch("app.database.create_pool", new_callable=AsyncMock, return_value=spy_pool),
         patch("app.database.close_pool", new_callable=AsyncMock),
@@ -45,6 +59,7 @@ def client(spy_pool):
         patch("app.migrate.run_migrations", new_callable=AsyncMock),
         patch("app.main.JobProjectionConsumer", return_value=_stub),
         patch("app.main.ReconcileSweeper", return_value=_stub),
+        patch("app.main.mcp_server", _mcp_stub),
     ):
         from app.deps import get_current_user, get_db
         from app.main import app
