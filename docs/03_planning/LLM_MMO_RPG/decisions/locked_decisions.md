@@ -592,6 +592,15 @@ As user confirms items, they move here with the answer and any rationale.
 | RTM-D8 | Cross-region visibility | 2026-06-20 | **Seamless cross-region from V1** — AOI spans region boundaries. Commits V1 to the **seamless-world-server problem** (cross-node state sharing + node handoff). Heaviest item; *delivery* may stage V1→V2 without reopening the design. | [08 RTM-Q8 / §6 scope flag](../08_realtime_movement_authority.md) |
 | RTM-D9 | Dense-region interest cap | 2026-06-20 | **Nearest-first cap** (closest N rendered, rest summarized/dropped); N pending V1 load data (**G2**). | [08 RTM-Q9](../08_realtime_movement_authority.md) |
 | RTM-D10 | TS↔Rust validation seam | 2026-06-20 | **Rust core via WASM** — walkability/speed check authored once in Rust (with TMP_001 tilemap kernel), compiled to WASM, run in the TS game-server; kernel publishes the data. Zero rule-drift, no per-move RPC. | [08 RTM-Q10 / RTM-A2](../08_realtime_movement_authority.md) |
+| ILR-D1 | Interaction semantics under medium change | 2026-06-20 | **Unchanged** — only input method + output medium reframe for the graphical client; parser/classifier/validators/envelopes stay backend (ILR-A1). | [09 §1](../09_interaction_layer_reconciliation.md) |
+| ILR-D2 | C1 voice modes (graphical) | 2026-06-20 | **Dialogue-rendering preference** (UI setting), not a typed input mode. | [09 §2](../09_interaction_layer_reconciliation.md) |
+| ILR-D3 | C5 multi-stream UI (graphical) | 2026-06-20 | **HUD panels** (speech bubbles / subtitle / combat-log / toasts), not chat windows. | [09 §2](../09_interaction_layer_reconciliation.md) |
+| ILR-D4 | PL_002 command grammar (graphical) | 2026-06-20 | **Backend envelopes unchanged**; frontend maps UI/spatial gestures (map-click→travel, NPC-click→speak/session, drag→give); slash commands = optional power-user affordance. | [09 §2](../09_interaction_layer_reconciliation.md) |
+| ILR-D5 | DF05 session creation (graphical) | 2026-06-20 | **NPC-click / multi-select**; sparse-session structure + caps + POV-distill intact. | [09 §2](../09_interaction_layer_reconciliation.md) |
+| ILR-D6 | PL_005 interaction output (graphical) | 2026-06-20 | **Visual primary** (animation / HP-bar / SFX) + **prose sub-layer**. | [09 §2](../09_interaction_layer_reconciliation.md) |
+| ILR-D7 | Position model | 2026-06-20 | **Three-layer stack** — coarse cell membership (EF_001 `entity_binding.InCell`, evented on transition) · continuous within-area position (RTM-ephemeral) · static CSC_001 scene composition (ILR-A2). | [09 §4](../09_interaction_layer_reconciliation.md) |
+| ILR-D8 | NPC movement | 2026-06-20 | **Hybrid** — ambient NPCs keep CSC_001 zone-placement (zero realtime cost); PCs always + NPCs while engaged (session/combat) carry live RTM position superseding zone-assignment; AOI tracks live entities only (ILR-A3). | [09 §4](../09_interaction_layer_reconciliation.md) |
+| ILR-D9 | CSC_001 / EF_001 contradiction | 2026-06-20 | **Revised additively** (dated medium-reconciliation notes on both; candidate-lock preserved, no decision row removed). | [09 §6](../09_interaction_layer_reconciliation.md) · CSC_001 / EF_001 top notes |
 
 ---
 
