@@ -68,6 +68,16 @@ func (s *Server) Router() http.Handler {
 		// E0-5 collaborators email-invite: resolve an email → user (book-service calls it).
 		r.Get("/users/by-email", http.HandlerFunc(s.internalGetUserByEmail))
 
+		// S-SETTINGS (MCP fan-out): full editable profile read + update for the
+		// settings MCP server hosted in provider-registry-service. Token-gated
+		// (defense in depth) — a profile WRITE reachable cross-service must require
+		// the platform service token, even though /internal is network-isolated.
+		r.Group(func(r chi.Router) {
+			r.Use(s.requireInternalServiceToken)
+			r.Get("/users/{user_id}/full-profile", http.HandlerFunc(s.internalGetFullProfile))
+			r.Patch("/users/{user_id}/full-profile", http.HandlerFunc(s.internalUpdateFullProfile))
+		})
+
 		// Admin-JWT issuance (074/075) — mounted only when enabled. Gated by the
 		// DEDICATED issuer secret (NOT InternalServiceToken) + rate-limited.
 		if s.admin != nil {
