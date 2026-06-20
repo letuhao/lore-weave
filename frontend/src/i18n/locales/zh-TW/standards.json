@@ -1,0 +1,27 @@
+{
+  "title": "詞彙標準",
+  "subtitle": "你可重複使用的類型、種類與屬性。將系統預設複製到你的層級加以自訂，或自行建立。",
+  "tabs_aria": "標準區塊",
+  "tab": {
+    "genres": "類型",
+    "kinds": "種類",
+    "attributes": "屬性"
+  },
+  "loading": "正在載入標準…",
+  "error": "無法載入你的標準，請再試一次。",
+  "empty": {
+    "genres": "尚無類型。",
+    "kinds": "尚無種類。"
+  },
+  "action": {
+    "clone": "複製到我的層級",
+    "yours": "你的"
+  },
+  "toast": {
+    "cloned": "已將「{{name}}」複製到你的標準",
+    "cloneError": "無法複製「{{name}}」"
+  },
+  "attributes": {
+    "placeholder": "選擇種類與類型以管理其屬性（即將推出）。"
+  }
+}

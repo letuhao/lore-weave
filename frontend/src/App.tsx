@@ -42,6 +42,7 @@ import { WorldWorkspacePage } from '@/features/world/pages/WorldWorkspacePage';
 import { CampaignsPage } from '@/features/campaigns/pages/CampaignsPage';
 import { CreateCampaignWizardPage } from '@/features/campaigns/pages/CreateCampaignWizardPage';
 import { CampaignDetailPage } from '@/features/campaigns/pages/CampaignDetailPage';
+import { StandardsPage } from '@/features/standards/pages/StandardsPage';
 import { JobsPage } from '@/features/jobs/pages/JobsPage';
 import { JobDetailPage } from '@/features/jobs/pages/JobDetailPage';
 import { SettingsPage } from '@/pages/SettingsPage';
@@ -169,6 +170,10 @@ export function App() {
 
             {/* Manage */}
             <Route path="/usage" element={<UsagePage />} />
+
+            {/* Glossary standards library (per-user, tier-scoped) */}
+            <Route path="/standards" element={<Navigate to="/standards/genres" replace />} />
+            <Route path="/standards/:tab" element={<StandardsPage />} />
 
             {/* Settings */}
             <Route path="/settings" element={<Navigate to="/settings/account" replace />} />

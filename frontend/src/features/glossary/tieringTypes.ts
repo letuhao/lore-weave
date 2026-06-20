@@ -72,6 +72,15 @@ export interface UserAttributeCreate {
   translation_hint?: string | null;
 }
 
+export interface UserKindCreate {
+  code?: string;
+  name: string;
+  description?: string | null;
+  icon?: string;
+  color?: string;
+  clone_from_kind_id?: string | null;
+}
+
 /** A user-tier kind (`GET /v1/glossary/user-kinds`). */
 export interface UserKind {
   user_kind_id: string;

@@ -1,0 +1,27 @@
+{
+  "title": "Tiêu chuẩn thuật ngữ",
+  "subtitle": "Các thể loại, loại và thuộc tính có thể tái sử dụng của bạn. Nhân bản một mặc định hệ thống vào tầng của bạn để tùy chỉnh, hoặc tự tạo riêng.",
+  "tabs_aria": "Các phần tiêu chuẩn",
+  "tab": {
+    "genres": "Thể loại",
+    "kinds": "Loại",
+    "attributes": "Thuộc tính"
+  },
+  "loading": "Đang tải tiêu chuẩn…",
+  "error": "Không tải được tiêu chuẩn của bạn. Hãy thử lại.",
+  "empty": {
+    "genres": "Chưa có thể loại nào.",
+    "kinds": "Chưa có loại nào."
+  },
+  "action": {
+    "clone": "Nhân bản vào tầng của tôi",
+    "yours": "Của bạn"
+  },
+  "toast": {
+    "cloned": "Đã nhân bản “{{name}}” vào tiêu chuẩn của bạn",
+    "cloneError": "Không thể nhân bản “{{name}}”"
+  },
+  "attributes": {
+    "placeholder": "Chọn một loại và thể loại để quản lý thuộc tính của nó (sắp ra mắt)."
+  }
+}

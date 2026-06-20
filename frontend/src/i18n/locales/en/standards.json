@@ -1,0 +1,27 @@
+{
+  "title": "Glossary Standards",
+  "subtitle": "Your reusable genres, kinds, and attributes. Clone a system default into your tier to customize it, or build your own.",
+  "tabs_aria": "Standards sections",
+  "tab": {
+    "genres": "Genres",
+    "kinds": "Kinds",
+    "attributes": "Attributes"
+  },
+  "loading": "Loading standards…",
+  "error": "Couldn't load your standards. Try again.",
+  "empty": {
+    "genres": "No genres yet.",
+    "kinds": "No kinds yet."
+  },
+  "action": {
+    "clone": "Clone to my tier",
+    "yours": "Yours"
+  },
+  "toast": {
+    "cloned": "Cloned “{{name}}” to your standards",
+    "cloneError": "Couldn't clone “{{name}}”"
+  },
+  "attributes": {
+    "placeholder": "Pick a kind and genre to manage its attributes (coming soon)."
+  }
+}

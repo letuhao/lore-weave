@@ -10,6 +10,7 @@ import type {
   Attribute,
   UserAttributeCreate,
   UserKind,
+  UserKindCreate,
   KindGenreLink,
   BookOntology,
   AdoptRequest,
@@ -105,6 +106,49 @@ export const tieringApi = {
 
   listUserKinds(token: string): Promise<UserKind[]> {
     return apiJson<{ items: UserKind[] }>(`${BASE}/user-kinds`, { token }).then((r) => r.items);
+  },
+
+  /** Create a user kind — or clone a System kind into the User tier (same code). */
+  createUserKind(payload: UserKindCreate, token: string): Promise<UserKind> {
+    return apiJson<UserKind>(`${BASE}/user-kinds`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      token,
+    });
+  },
+
+  patchUserKind(userKindId: string, changes: Partial<UserKindCreate>, token: string): Promise<UserKind> {
+    return apiJson<UserKind>(`${BASE}/user-kinds/${userKindId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(changes),
+      token,
+    });
+  },
+
+  deleteUserKind(userKindId: string, token: string): Promise<void> {
+    return apiJson<void>(`${BASE}/user-kinds/${userKindId}`, { method: 'DELETE', token });
+  },
+
+  // ── Standards recycle bins (soft-delete restore / purge) ───────────────────
+
+  listUserGenreTrash(token: string): Promise<Genre[]> {
+    return apiJson<ItemsResponse<Genre>>(`${BASE}/user-genres-trash`, { token }).then((r) => r.items);
+  },
+  restoreUserGenre(genreId: string, token: string): Promise<Genre> {
+    return apiJson<Genre>(`${BASE}/user-genres-trash/${genreId}/restore`, { method: 'POST', token });
+  },
+  purgeUserGenre(genreId: string, token: string): Promise<void> {
+    return apiJson<void>(`${BASE}/user-genres-trash/${genreId}`, { method: 'DELETE', token });
+  },
+
+  listUserKindTrash(token: string): Promise<UserKind[]> {
+    return apiJson<ItemsResponse<UserKind>>(`${BASE}/user-kinds-trash`, { token }).then((r) => r.items);
+  },
+  restoreUserKind(userKindId: string, token: string): Promise<UserKind> {
+    return apiJson<UserKind>(`${BASE}/user-kinds-trash/${userKindId}/restore`, { method: 'POST', token });
+  },
+  purgeUserKind(userKindId: string, token: string): Promise<void> {
+    return apiJson<void>(`${BASE}/user-kinds-trash/${userKindId}`, { method: 'DELETE', token });
   },
 
   listUserKindGenres(userKindId: string, token: string): Promise<KindGenreLink[]> {
