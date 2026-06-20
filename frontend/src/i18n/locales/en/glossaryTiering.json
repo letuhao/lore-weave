@@ -1,4 +1,13 @@
 {
+  "shell": {
+    "back_to_entities": "Entities"
+  },
+  "create": {
+    "title": "New entity",
+    "subtitle": "Pick a kind, then fill the attributes merged across its genres.",
+    "pick_kind": "What kind of entity?",
+    "not_adopted": "Adopt an ontology for this book first — open Ontology to scaffold genres and kinds."
+  },
   "manage": {
     "title": "Ontology",
     "subtitle": "Genres, kinds, and attributes for this book — adopted from the standards, yours to edit.",

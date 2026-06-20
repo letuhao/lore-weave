@@ -158,13 +158,11 @@
     "fallback_to_original": "翻訳なし — 原文を表示",
     "extract": "抽出",
     "translate": "翻訳",
-    "genres": "ジャンル",
     "unknown": "未分類の種別",
     "ai_suggestions": "AI の提案",
     "merge_candidates": "統合候補",
-    "kinds": "種類",
+    "ontology": "オントロジー",
     "new_entity": "新しいエンティティ",
-    "no_kinds": "利用可能な種類がありません",
     "search": "エンティティを検索...",
     "filter": "フィルター",
     "filter_count": "{{count}}個のフィルター",
@@ -212,7 +210,6 @@
       "cap_note": "選択は最大 {{cap}} 件までです"
     },
     "clear_filters": "すべてのフィルターをクリア",
-    "created": "エンティティを作成しました",
     "deleted": "エンティティを削除しました",
     "empty": {
       "title": "まだエンティティがありません",

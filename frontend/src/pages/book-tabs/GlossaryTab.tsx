@@ -1,12 +1,12 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { BookOpen, Plus, Filter, Trash2, Settings2, Layers, Sparkles, Languages, HelpCircle, Lightbulb, GitMerge, CheckCircle2, CircleSlash } from 'lucide-react';
+import { BookOpen, Plus, Filter, Trash2, Layers, Sparkles, Languages, HelpCircle, Lightbulb, GitMerge, CheckCircle2, CircleSlash } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { glossaryApi } from '@/features/glossary/api';
 import { useGlossaryDisplayLanguage } from '@/features/glossary/hooks/useGlossaryDisplayLanguage';
-import { type GlossaryEntitySummary, type EntityKind, type FilterState, type EntitySort, defaultFilters } from '@/features/glossary/types';
+import { type GlossaryEntitySummary, type FilterState, type EntitySort, defaultFilters } from '@/features/glossary/types';
 import { useServerPagedList } from '@/components/pagination/useServerPagedList';
 import { useDebouncedValue } from '@/features/raw-search/hooks/useDebouncedValue';
 import { MatchSnippet } from '@/features/glossary/components/MatchSnippet';
@@ -15,8 +15,9 @@ import { getLanguageName } from '@/lib/languages';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { EmptyState, ConfirmDialog, FloatingActionBar, FloatingActionDivider } from '@/components/shared';
 import { cn } from '@/lib/utils';
-import { KindEditor } from './KindEditor';
-import { GenreGroupsPanel } from '@/features/glossary/components/GenreGroupsPanel';
+import { OntologyShell } from '@/features/glossary/components/tiering/OntologyShell';
+import { CreateEntityModal } from '@/features/glossary/components/tiering/CreateEntityModal';
+import { useBookOntology } from '@/features/glossary/hooks/useBookOntology';
 import { UnknownEntitiesPanel } from '@/features/glossary/components/UnknownEntitiesPanel';
 import { AiSuggestionsPanel } from '@/features/glossary/components/AiSuggestionsPanel';
 import { MergeCandidatePanel } from '@/features/glossary/components/MergeCandidatePanel';
@@ -25,7 +26,7 @@ import { ExtractionWizard } from '@/features/extraction/ExtractionWizard';
 import { GlossaryTranslateWizard } from '@/features/glossary-translate/GlossaryTranslateWizard';
 import { BookAssistantDock } from '@/features/chat/BookAssistantDock';
 
-type GlossaryView = 'entities' | 'kinds' | 'genres' | 'unknown' | 'ai_suggestions' | 'merge_candidates';
+type GlossaryView = 'entities' | 'ontology' | 'unknown' | 'ai_suggestions' | 'merge_candidates';
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-amber-400/15 text-amber-400',
@@ -52,7 +53,7 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
   const [filters, setFilters] = useState<FilterState>(defaultFilters);
   const [filterOpen, setFilterOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<GlossaryEntitySummary | null>(null);
-  const [createKindOpen, setCreateKindOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
   const [view, setView] = useState<GlossaryView>('entities');
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const [extractionOpen, setExtractionOpen] = useState(false);
@@ -126,11 +127,21 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
     placeholderData: (prev) => prev, // keep the current page visible while the next loads
   });
 
-  const { data: kinds = [] } = useQuery({
+  // Book-tier ontology drives the kind filter + count (G6f): entities are book-kind
+  // scoped post-G4, so the filter must list THIS book's adopted kinds — not the global
+  // system kinds (D-GKA-FILTER-BOOKKINDS). Shares the ['glossary-ontology', bookId]
+  // query with the Ontology screens, so it's one fetch.
+  const ontology = useBookOntology(bookId);
+  const kinds = ontology.ontology.kinds;
+
+  // System kinds — still needed by the orthogonal E3 unknown-review flow (reassign an
+  // unrecognized entity to a kind in the system taxonomy). NOT used for the entity
+  // filter, which is book-scoped above.
+  const { data: systemKinds = [] } = useQuery({
     queryKey: ['glossary-kinds'],
     queryFn: () => glossaryApi.getKinds(accessToken!),
     enabled: !!accessToken,
-    staleTime: 10 * 60 * 1000, // kinds rarely change
+    staleTime: 10 * 60 * 1000,
   });
 
   // Unknown-kind review queue count — drives the conditional triage button + badge.
@@ -194,30 +205,19 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
     void queryClient.invalidateQueries({ queryKey: ['glossary-translation-languages', bookId] });
   };
 
+  // Book kinds are already book-scoped, so no genre_tags filtering is needed (the old
+  // flat model filtered system kinds by genre_tags; that column was retired in G4).
   const visibleKinds = useMemo(
-    () => kinds
-      .filter((k) => !k.is_hidden)
-      .filter((k) => {
-        const tags = k.genre_tags ?? [];
-        // Empty genre_tags or "universal" = show for all books
-        if (tags.length === 0 || tags.includes('universal')) return true;
-        // Otherwise, show if book has at least one matching genre
-        return bookGenreTags.length === 0 || tags.some((tag) => bookGenreTags.includes(tag));
-      })
-      .sort((a, b) => a.sort_order - b.sort_order),
-    [kinds, bookGenreTags],
+    () => kinds.filter((k) => !k.is_hidden).sort((a, b) => a.sort_order - b.sort_order),
+    [kinds],
   );
 
-  const handleCreate = async (kindId: string) => {
-    if (!accessToken) return;
-    try {
-      await glossaryApi.createEntity(bookId, kindId, accessToken);
-      toast.success(t('glossary.created'));
-      setCreateKindOpen(false);
-      invalidate();
-    } catch (e) {
-      toast.error((e as Error).message);
-    }
+  // G6f: creation moved into CreateEntityModal (post-G4 a kind is a book_kind_id, so the
+  // tiered form picks a BOOK kind and writes its genre override + attribute values). The
+  // new entity surfaces in the list on invalidate; the user opens it to keep editing.
+  const handleEntityCreated = (_entityId: string) => {
+    setCreateOpen(false);
+    invalidate();
   };
 
   const handleDelete = async () => {
@@ -320,14 +320,11 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
 
   const activeFilterCount = (filters.kindCodes.length > 0 ? 1 : 0) + (filters.status !== 'all' ? 1 : 0);
 
-  if (view === 'kinds') {
-    return <KindEditor bookId={bookId} onClose={() => setView('entities')} />;
-  }
-  if (view === 'genres') {
-    return <GenreGroupsPanel bookId={bookId} kinds={kinds} onClose={() => setView('entities')} />;
+  if (view === 'ontology') {
+    return <OntologyShell bookId={bookId} onClose={() => setView('entities')} />;
   }
   if (view === 'unknown') {
-    return <UnknownEntitiesPanel bookId={bookId} kinds={kinds} onClose={() => setView('entities')} />;
+    return <UnknownEntitiesPanel bookId={bookId} kinds={systemKinds} onClose={() => setView('entities')} />;
   }
   if (view === 'ai_suggestions') {
     return <AiSuggestionsPanel bookId={bookId} onClose={() => setView('entities')} />;
@@ -443,48 +440,21 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
             </button>
           )}
           <button
-            onClick={() => setView('genres')}
+            onClick={() => setView('ontology')}
+            data-testid="glossary-ontology-trigger"
             className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
           >
             <Layers className="h-3.5 w-3.5" />
-            {t('glossary.genres')}
+            {t('glossary.ontology')}
           </button>
           <button
-            onClick={() => setView('kinds')}
-            className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+            onClick={() => setCreateOpen(true)}
+            data-testid="glossary-new-entity"
+            className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
           >
-            <Settings2 className="h-3.5 w-3.5" />
-            {t('glossary.kinds')}
+            <Plus className="h-3.5 w-3.5" />
+            {t('glossary.new_entity')}
           </button>
-          <div className="relative">
-            <button
-              onClick={() => setCreateKindOpen(!createKindOpen)}
-              className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              {t('glossary.new_entity')}
-            </button>
-            {createKindOpen && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setCreateKindOpen(false)} />
-                <div className="absolute right-0 top-full z-50 mt-1 w-48 rounded-md border bg-card shadow-lg">
-                  {visibleKinds.map((k) => (
-                    <button
-                      key={k.kind_id}
-                      onClick={() => void handleCreate(k.kind_id)}
-                      className="flex w-full items-center gap-2 px-3 py-2 text-xs hover:bg-secondary transition-colors first:rounded-t-md last:rounded-b-md"
-                    >
-                      <span>{k.icon}</span>
-                      <span>{k.name}</span>
-                    </button>
-                  ))}
-                  {visibleKinds.length === 0 && (
-                    <p className="px-3 py-2 text-xs text-muted-foreground">{t('glossary.no_kinds')}</p>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
         </div>
       </div>
 
@@ -522,7 +492,7 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
                   const active = filters.kindCodes.includes(k.code);
                   return (
                     <button
-                      key={k.kind_id}
+                      key={k.book_kind_id}
                       onClick={() => updateFilters({
                         kindCodes: active ? filters.kindCodes.filter((c) => c !== k.code) : [...filters.kindCodes, k.code],
                       })}
@@ -723,7 +693,9 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
       {/* Entity Editor Modal */}
       {selectedEntityId && (() => {
         const selectedEntity = entities.find((e) => e.entity_id === selectedEntityId);
-        const kindTags = kinds.find((k) => k.kind_id === selectedEntity?.kind_id)?.genre_tags ?? [];
+        // kindGenreTags drove old flat-model genre filtering; genre_tags was retired in
+        // G4 and entities are book-kind scoped, so there are no kind-level genre tags now.
+        const kindTags: string[] = [];
         return (
           <EntityEditorModal
             bookId={bookId}
@@ -740,6 +712,14 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
           />
         );
       })()}
+
+      {createOpen && (
+        <CreateEntityModal
+          bookId={bookId}
+          onClose={() => setCreateOpen(false)}
+          onCreated={handleEntityCreated}
+        />
+      )}
 
       <ExtractionWizard
         open={extractionOpen}

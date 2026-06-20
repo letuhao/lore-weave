@@ -158,13 +158,11 @@
     "fallback_to_original": "尚無譯文 — 顯示原文",
     "extract": "擷取",
     "translate": "翻譯",
-    "genres": "類型",
     "unknown": "未知種類",
     "ai_suggestions": "AI 建議",
     "merge_candidates": "合併候選",
-    "kinds": "種類",
+    "ontology": "本體論",
     "new_entity": "新實體",
-    "no_kinds": "沒有可用的種類",
     "search": "搜尋實體...",
     "filter": "篩選",
     "filter_count": "{{count}} 個篩選",
@@ -212,7 +210,6 @@
       "cap_note": "選取上限為 {{cap}} 個實體"
     },
     "clear_filters": "清除所有篩選",
-    "created": "已建立實體",
     "deleted": "已刪除實體",
     "empty": {
       "title": "尚無實體",

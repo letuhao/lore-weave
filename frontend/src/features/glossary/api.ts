@@ -373,40 +373,11 @@ export const glossaryApi = {
 
   // ── Genre Groups ────────────────────────────────────────────────────────────
 
+  // Old-model genre-groups read — still used by SettingsTab's genre-tag picker.
+  // The write fns (createGenre/patchGenre/deleteGenre) retired with GenreGroupsPanel
+  // in G6f; the book genre tier is now managed via tieringApi + useBookOntology.
   listGenres(bookId: string, token: string): Promise<GenreGroup[]> {
     return apiJson<GenreGroup[]>(`${BASE}/books/${bookId}/genres`, { token });
-  },
-
-  createGenre(
-    bookId: string,
-    payload: { name: string; color?: string; description?: string; sort_order?: number },
-    token: string,
-  ): Promise<GenreGroup> {
-    return apiJson<GenreGroup>(`${BASE}/books/${bookId}/genres`, {
-      method: 'POST',
-      body: JSON.stringify(payload),
-      token,
-    });
-  },
-
-  patchGenre(
-    bookId: string,
-    genreId: string,
-    changes: Record<string, unknown>,
-    token: string,
-  ): Promise<GenreGroup> {
-    return apiJson<GenreGroup>(`${BASE}/books/${bookId}/genres/${genreId}`, {
-      method: 'PATCH',
-      body: JSON.stringify(changes),
-      token,
-    });
-  },
-
-  deleteGenre(bookId: string, genreId: string, token: string): Promise<void> {
-    return apiJson<void>(`${BASE}/books/${bookId}/genres/${genreId}`, {
-      method: 'DELETE',
-      token,
-    });
   },
 
   // ── Attribute Translations ────────────────────────────────────────────────

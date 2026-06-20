@@ -158,13 +158,11 @@
     "fallback_to_original": "Chưa có bản dịch — hiển thị ngôn ngữ gốc",
     "extract": "Trích xuất",
     "translate": "Dịch",
-    "genres": "Thể loại",
     "unknown": "Loại chưa rõ",
     "ai_suggestions": "Đề xuất AI",
     "merge_candidates": "Ứng viên hợp nhất",
-    "kinds": "Loại",
+    "ontology": "Bản thể học",
     "new_entity": "Thực thể mới",
-    "no_kinds": "Không có loại nào",
     "search": "Tìm thực thể...",
     "filter": "Lọc",
     "filter_count": "{{count}} bộ lọc",
@@ -212,7 +210,6 @@
       "cap_note": "Chỉ chọn tối đa {{cap}} thực thể"
     },
     "clear_filters": "Xóa tất cả bộ lọc",
-    "created": "Đã tạo thực thể",
     "deleted": "Đã xóa thực thể",
     "empty": {
       "title": "Chưa có thực thể nào",

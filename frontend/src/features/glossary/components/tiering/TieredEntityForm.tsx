@@ -12,24 +12,32 @@ export function TieredEntityForm({
   kindId,
   onCreated,
   onCancel,
+  onBusyChange,
 }: {
   bookId: string;
   kindId: string;
   onCreated: (entityId: string) => void;
   onCancel: () => void;
+  /** Lets a host (e.g. CreateEntityModal) block dismissal while a create is in flight. */
+  onBusyChange?: (busy: boolean) => void;
 }) {
   const { t } = useTranslation('glossaryTiering');
   const form = useEntityForm(bookId, kindId);
 
   const create = async () => {
+    onBusyChange?.(true);
+    let createdId: string | null = null;
     try {
-      const id = await form.submit();
+      createdId = await form.submit();
       toast.success(t('toast.saved'));
-      onCreated(id);
     } catch (e) {
       const msg = (e as { status?: number }).status === 403 ? t('toast.forbidden') : (e as Error).message;
       toast.error(msg || t('toast.save_failed'));
+    } finally {
+      // Clear busy BEFORE onCreated unmounts the host, so no setState lands on it.
+      onBusyChange?.(false);
     }
+    if (createdId) onCreated(createdId);
   };
 
   // Codes that appear under more than one genre section — drives the conflict note.
