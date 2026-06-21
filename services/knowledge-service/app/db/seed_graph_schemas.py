@@ -11,9 +11,10 @@ Two templates:
                       kinds, the 5 SDK fact types, free-string edges). The safe
                       fallback: a project that never adopts resolves to this →
                       zero behavior change (additive-first).
-  * `xianxia-harem` — the Vạn Cổ Thần Đế template (spec §4): curated edge vocab,
-                      the closed 16-value `drive` set, 9 narrative fact types,
-                      and per-kind adopt strength (M1, LOCKED S0).
+  * `xianxia-harem` — a genre template for cultivation + harem novels (spec §4):
+                      curated edge vocab, the closed 16-value `drive` set, 9
+                      narrative fact types, and per-kind adopt strength (M1,
+                      LOCKED S0).
 
 Spec: docs/specs/2026-06-20-knowledge-graph-customizable-ontology.md §4.
 """
@@ -82,9 +83,9 @@ _C = ["character"]
 
 _XIANXIA_HAREM = {
     "code": "xianxia-harem",
-    "name": "Xianxia · Harem (Vạn Cổ Thần Đế)",
+    "name": "Xianxia · Harem",
     "description": (
-        "Cultivation + harem template from the VCTĐ ontology: curated relationship / "
+        "Genre template for cultivation + harem novels: curated relationship / "
         "cultivation / political edge vocab, the closed 16-value drive vocab, and "
         "narrative state-delta fact types. Anchors character-centric node kinds."
     ),

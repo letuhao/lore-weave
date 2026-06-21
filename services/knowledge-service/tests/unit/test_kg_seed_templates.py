@@ -38,7 +38,7 @@ def test_general_fact_types_are_the_legacy_sdk_set():
     assert codes == {"description", "attribute", "negation", "temporal", "causal"}
 
 
-# ── xianxia-harem (VCTĐ template) ─────────────────────────────────────
+# ── xianxia-harem (cultivation + harem genre template) ────────────────
 def test_xianxia_node_kind_strength_split_matches_M1_lock():
     kinds = _kinds(_XIANXIA_HAREM)
     required = {k for k, s in kinds.items() if s == "required"}
