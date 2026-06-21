@@ -29,6 +29,8 @@ from loreweave_llm.errors import (
 
 from ..config import settings
 from ..llm_client import LLMClient
+from .block_batcher import build_batch_plan
+from .chunk_splitter import estimate_tokens
 from .extraction_preprocessor import prepare_chapter_text
 from .extraction_prompt import (
     build_extraction_prompt,
@@ -52,6 +54,88 @@ log = logging.getLogger(__name__)
 # emit must never fail the job; the reconcile UNION in internal_dispatch.py backstops).
 _JOB_SERVICE = "translation"
 _JOB_KIND = "glossary_extraction"
+
+# Context-aware chapter windowing (D-EXTRACTION-CONTEXT-WINDOW). A chapter can be
+# larger than the model's context window; we split it into sub-chapter windows that
+# fit, extract from each, then accumulate the entities (dedup across windows). This
+# reuses the translation pipeline's block batcher (novel-fitted: it packs whole Tiptap
+# paragraph blocks up to a token budget — never splitting a paragraph/sentence), so a
+# 1MB chapter just becomes N windows. Output budget per window is sized to leave room
+# in the context (input + output + safety ≤ context) so the gateway never 400s on
+# LLM_CONTEXT_OVERFLOW.
+_FALLBACK_CONTEXT_WINDOW = 8192
+_EXTRACTION_OUTPUT_CEILING = 8000  # per-window output cap (entities JSON is small)
+_EXTRACTION_OUTPUT_FLOOR = 1024
+_CONTEXT_SAFETY_RATIO = 0.15  # mirror the gateway's context-fit safety margin
+
+
+async def _get_model_context_window(model_source: str | None, model_ref: str | None) -> int:
+    """Model context window (tokens) via provider-registry — the same endpoint the
+    translation chapter worker uses. Falls back when unknown (local models often don't
+    publish a context length)."""
+    if not model_ref:
+        return _FALLBACK_CONTEXT_WINDOW
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            r = await client.get(
+                f"{settings.provider_registry_service_url}"
+                f"/v1/model-registry/models/{model_ref}/context-window",
+                params={"model_source": model_source or "user_model"},
+            )
+            if r.status_code == 200:
+                return int(r.json().get("context_window") or _FALLBACK_CONTEXT_WINDOW)
+    except Exception as exc:  # noqa: BLE001 — fall back on any failure
+        log.debug("extraction: context_window fetch failed (%s) — fallback %d", exc, _FALLBACK_CONTEXT_WINDOW)
+    return _FALLBACK_CONTEXT_WINDOW
+
+
+def _plan_chapter_windows(chapter: dict, chapter_text: str, context_window: int, source_language: str) -> list[str]:
+    """Split a chapter into sub-chapter windows that fit the model context, reusing the
+    translation block batcher. Each window is clean prose (block-joined, no [BLOCK N]
+    markers — those are translation-alignment artifacts the extractor doesn't need).
+
+    Falls back to a single window (the whole text) when the chapter has no Tiptap block
+    array (legacy text_content) or the batcher yields nothing."""
+    body = chapter.get("body")
+    blocks = body.get("content") if isinstance(body, dict) else None
+    if not isinstance(blocks, list) or not blocks:
+        return [chapter_text]
+    # source_lang == target_lang: extraction doesn't translate, but reusing the
+    # expansion-ratio budget is safe (it only RESERVES more output room → smaller, safer
+    # windows). build_batch_plan packs whole paragraph blocks up to the input budget.
+    plan = build_batch_plan(
+        blocks, context_window_tokens=context_window,
+        source_lang=source_language, target_lang=source_language,
+    )
+    windows: list[str] = []
+    for bg in plan.batches:
+        prose = "\n\n".join(e.text for e in bg.entries if e.text.strip())
+        if prose.strip():
+            windows.append(prose)
+    return windows or [chapter_text]
+
+
+def _merge_window_entities(entities: list[dict]) -> list[dict]:
+    """Accumulate entities found across sub-chapter windows: merge by (kind, normalized
+    name), unioning each entity's chapter_links by chapter_id. The glossary bulk-upsert
+    also dedups by name, but merging here keeps the chapter_links clean + the posted set
+    small. First occurrence wins for the entity's attributes (order-stable)."""
+    merged: dict[tuple[str, str], dict] = {}
+    for ent in entities:
+        name = str(ent.get("name", "")).strip()
+        if not name:
+            continue
+        key = (str(ent.get("kind", "")), name.lower())
+        if key not in merged:
+            merged[key] = ent
+            continue
+        existing = merged[key]
+        seen = {l.get("chapter_id") for l in existing.get("chapter_links", [])}
+        for link in ent.get("chapter_links", []):
+            if link.get("chapter_id") not in seen:
+                existing.setdefault("chapter_links", []).append(link)
+                seen.add(link.get("chapter_id"))
+    return list(merged.values())
 
 
 async def handle_extraction_job(msg: dict, pool, publish, publish_event, llm_client: LLMClient) -> None:
@@ -390,10 +474,16 @@ async def _process_extraction_chapter(
         log.warning("extraction: chapter %s has no text content — skipping", chapter_id)
         return {"created": 0, "updated": 0, "skipped": 0, "entities": [], "input_tokens": 0, "output_tokens": 0}
 
-    # 2. Plan batches
+    # Context-aware windowing (D-EXTRACTION-CONTEXT-WINDOW): split a chapter that exceeds
+    # the model context into sub-chapter windows (whole paragraph blocks) that fit, then
+    # accumulate the entities. Reuses the translation block batcher (novel-fitted).
+    context_window = await _get_model_context_window(model_source, model_ref)
+    windows = _plan_chapter_windows(chapter, chapter_text, context_window, source_language)
+
+    # 2. Plan kind-batches (output-schema grouping — same set for every window).
     batches = plan_kind_batches(extraction_profile, kinds_metadata)
-    log.info("extraction: chapter %s (index %d) — %d batch(es), text_len=%d",
-             chapter_id, chapter_index, len(batches), len(chapter_text))
+    log.info("extraction: chapter %s (index %d) — %d window(s) × %d batch(es), ctx=%d, text_len=%d",
+             chapter_id, chapter_index, len(windows), len(batches), context_window, len(chapter_text))
 
     # 3. Build known entities context
     known_ctx = build_known_entities_context(known_entities) if known_entities else ""
@@ -408,7 +498,19 @@ async def _process_extraction_chapter(
     total_input_tokens = 0
     total_output_tokens = 0
 
-    for batch_idx, batch in enumerate(batches):
+    # Per-call output budget sized so input + output + safety ≤ context (so the gateway
+    # never 400s on LLM_CONTEXT_OVERFLOW), capped — extraction output (entities JSON) is
+    # small, so a modest ceiling avoids reserving context the input needs.
+    safety = int(context_window * _CONTEXT_SAFETY_RATIO)
+    max_win_tok = max((estimate_tokens(w) for w in windows), default=0)
+    out_budget = context_window - max_win_tok - safety - estimate_tokens(known_ctx) - 600
+    out_budget = max(_EXTRACTION_OUTPUT_FLOOR, min(_EXTRACTION_OUTPUT_CEILING, out_budget))
+
+    # Flatten window × kind-batch so the existing per-call body is unchanged; window_text
+    # replaces the whole-chapter text in the user prompt.
+    for window_idx, window_text, batch_idx, batch in (
+        (wi, w, bi, b) for wi, w in enumerate(windows) for bi, b in enumerate(batches)
+    ):
         # 4. Build prompt
         schema = build_extraction_prompt(batch, extraction_profile, kinds_metadata)
         system_prompt = build_system_prompt(
@@ -417,7 +519,7 @@ async def _process_extraction_chapter(
             known_entities_context=known_ctx,
             max_entities_per_kind=max_entities_per_kind,
         )
-        user_prompt = build_user_prompt(chapter_text)
+        user_prompt = build_user_prompt(window_text)
 
         # 5. LLM call via SDK (replaces /internal/invoke).
         # Phase 4c-γ: HIGH#1 lesson from cycle 11 applied — catch
@@ -446,7 +548,7 @@ async def _process_extraction_chapter(
                     # so an entity-dense chapter completes instead of truncating at
                     # finish_reason=length. If a batch still truncates, the parser
                     # repairs the partial array rather than dropping every entity.
-                    "max_tokens": 20000,
+                    "max_tokens": out_budget,
                     **thinking_llm_fields(enabled=thinking_enabled),
                 },
                 chunking=None,
@@ -515,6 +617,10 @@ async def _process_extraction_chapter(
         all_entities.extend(entities)
 
     _ch_elapsed = _time.monotonic() - _ch_start
+
+    # Accumulate across windows: the same entity can surface in multiple sub-chapter
+    # windows — merge by (kind, normalized name), unioning chapter_links.
+    all_entities = _merge_window_entities(all_entities)
 
     if not all_entities:
         log.info("extraction: chapter %s done in %.1fs — 0 entities (empty LLM output)", chapter_id, _ch_elapsed)
