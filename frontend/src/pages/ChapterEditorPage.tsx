@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import {
   Save, PanelLeft, PanelRight, Clock, ChevronRight, ChevronLeft, ChevronRight as ChevronRightNav, SpellCheck,
-  BookOpen, FileText, BookMarked, ListTree, Pen, Sparkles, Languages, AlertTriangle,
+  BookOpen, FileText, BookMarked, ListTree, Pen, Sparkles, Languages, AlertTriangle, Eye,
 } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { apiBase } from '@/api';
@@ -631,6 +631,20 @@ export function ChapterEditorPage() {
           >
             <Languages className="h-3.5 w-3.5" />
             {translating ? t('translating') : t('translate')}
+          </button>
+
+          {/* View saved translation versions (language switcher, version history,
+              side-by-side compare) — the canonical ChapterTranslationsPage, which
+              was previously only reachable from the translation matrix. Guarded so
+              an unsaved draft prompts to save before leaving. */}
+          <button
+            data-testid="editor-view-translations"
+            onClick={() => guardedNavigate(`/books/${bookId}/chapters/${chapterId}/translations`)}
+            className="flex items-center gap-1 rounded px-2 py-1 text-[10px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+            title={t('view_translations_title')}
+          >
+            <Eye className="h-3.5 w-3.5" />
+            {t('view_translations')}
           </button>
 
           <button

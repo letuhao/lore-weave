@@ -37,6 +37,7 @@
       "chapters": "章",
       "translation": "翻訳",
       "glossary": "用語集",
+      "kgOntology": "グラフスキーマ",
       "enrichment": "拡充",
       "wiki": "Wiki",
       "sharing": "共有",
@@ -122,6 +123,7 @@
     },
     "action": {
       "edit": "編集",
+      "translations": "翻訳を表示",
       "extract": "用語を抽出",
       "download": "ダウンロード",
       "trash": "ゴミ箱"

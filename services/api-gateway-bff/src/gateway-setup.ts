@@ -166,7 +166,12 @@ export function configureGatewayApp(
   const knowledgeProxy = createProxyMiddleware({
     target: urls.knowledgeUrl,
     changeOrigin: true,
-    pathFilter: (pathname: string) => pathname.startsWith('/v1/knowledge'),
+    // Both /v1/knowledge (projects, entities, …) AND /v1/kg (the KG customizable-
+    // ontology surface: graph-schemas, adopt, views, sync, triage) live on
+    // knowledge-service — the FE ontologyApi targets /v1/kg. (D-KG-ONTOLOGY-FE-WIRING:
+    // the BFF previously proxied only /v1/knowledge, so every /v1/kg call 404'd.)
+    pathFilter: (pathname: string) =>
+      pathname.startsWith('/v1/knowledge') || pathname.startsWith('/v1/kg'),
     // K-CLEAN-5 (Gate-5-I4 + D-K8-04): when knowledge-service is
     // unreachable (container down, DNS, refused) http-proxy-middleware
     // would otherwise propagate the upstream connection error as a
@@ -471,7 +476,7 @@ export function configureGatewayApp(
     ) {
       return notificationProxyFn(req, res, next);
     }
-    if (req.path.startsWith('/v1/knowledge')) {
+    if (req.path.startsWith('/v1/knowledge') || req.path.startsWith('/v1/kg')) {
       return knowledgeProxyFn(req, res, next);
     }
     if (req.path.startsWith('/v1/campaigns')) {

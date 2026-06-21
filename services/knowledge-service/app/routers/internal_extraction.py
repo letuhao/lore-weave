@@ -27,8 +27,15 @@ from app.config import settings
 from app.db.neo4j import neo4j_session
 from app.db.pool import get_knowledge_pool
 from app.deps import get_projects_repo
+from app.db.repositories.graph_schemas import GraphSchemasRepo
 from app.db.repositories.job_logs import JobLogsRepo
+from app.db.repositories.triage import TriageRepo
+from app.ontology.extraction_projection import (
+    build_extraction_schema,
+    resolved_to_extraction_dict,
+)
 from app.extraction.anchor_loader import Anchor, load_glossary_anchors
+from loreweave_extraction.schema_projection import ExtractionSchema
 from loreweave_extraction.errors import ExtractionError
 from loreweave_extraction.extractors.entity import LLMEntityCandidate
 from loreweave_extraction.extractors.event import LLMEventCandidate
@@ -240,6 +247,103 @@ _anchor_cache: TTLCache[tuple[str, str], list[Anchor]] = TTLCache(
 )
 
 
+# ── L7 activation — per-project resolved-schema cache for the write boundary ──
+#
+# /persist-pass2 resolves the project's effective KG schema and passes it to the
+# Pass-2 writer so M3 schema_version stamping + the closed-edge guard + triage
+# park go live. The resolve is a bounded Postgres read; a 100-chapter job would
+# otherwise re-resolve per chapter. Cache the PROJECTED ExtractionSchema per
+# (user_id, project_id) with a 30s TTL — long enough to collapse a bulk job's
+# repeats, short enough that an adopt/sync is picked up almost immediately
+# (matches OntologyResolver's own 30s design intent). Only successful resolves
+# are cached; a transient failure degrades to "no schema this call" and is
+# re-tried next call (not locked in for 30s). Per-process; empties on restart.
+_SCHEMA_CACHE_TTL_S = 30.0
+_SCHEMA_CACHE_MAX = 256
+_schema_cache: TTLCache[tuple[str, str], ExtractionSchema] = TTLCache(
+    maxsize=_SCHEMA_CACHE_MAX, ttl=_SCHEMA_CACHE_TTL_S,
+)
+
+
+async def _resolve_schema_for_persist(
+    *, user_id: UUID, project_id: UUID | None,
+) -> ExtractionSchema | None:
+    """L7 activation — resolve the project's effective schema (AUTHORITATIVE) for
+    the write boundary: the closed-edge guard + triage park + ``schema_version``
+    stamp.
+
+    Returns ``None`` for chat/global (no project) or on any resolution failure —
+    extraction still persists, just without the stamp/guard this call (fail-soft,
+    exactly like the anchor pre-load). Cached per ``(user_id, project_id)`` for
+    30s.
+
+    NOT advisory: carries the schema's real ``allow_free_edges`` so the writer is
+    the SOLE closed-set enforce+park point. (The SDK extraction-prompt path uses
+    ``advisory=True`` separately, so it injects vocab as a hint but never
+    pre-drops — which would otherwise rob this park of the off-schema edge.)
+    """
+    if project_id is None:
+        return None
+    cache_key = (str(user_id), str(project_id))
+    cached = _schema_cache.get(cache_key)
+    if cached is not None:
+        return cached
+    try:
+        repo = GraphSchemasRepo(get_knowledge_pool())
+        resolved = await repo.resolve_for_project(str(project_id))
+        schema = build_extraction_schema(resolved, advisory=False)
+    except Exception:
+        logger.warning(
+            "L7: schema resolve failed for project=%s — persist will not stamp/"
+            "enforce schema this call",
+            project_id, exc_info=True,
+        )
+        return None  # don't cache failures
+    _schema_cache[cache_key] = schema
+    return schema
+
+
+async def _resolve_schemas_for_extract_item(
+    *, user_id: UUID, project_id: UUID | None,
+) -> tuple[ExtractionSchema | None, ExtractionSchema | None]:
+    """L7B (D-KG-L7B-EXTRACT-ITEM) — resolve the L7 schema SPLIT for the
+    combined extract-then-write ``/extract-item`` path.
+
+    Returns ``(advisory, authoritative)``:
+
+      * **advisory** (``allow_free_edges`` forced True) → fed to the SDK
+        extraction prompt as a vocab *hint* so it never pre-drops an off-vocab
+        predicate (which would rob the write boundary's triage park of the edge);
+      * **authoritative** (real ``allow_free_edges``) → handed to
+        ``write_pass2_extraction`` so the closed-edge guard + ``schema_version``
+        stamp + off-schema triage park go live there.
+
+    Same posture split ``/persist-pass2`` (authoritative) + ``/resolve-schema``
+    (advisory) use, but resolved ONCE here because this endpoint runs both the
+    SDK extraction AND the write in a single in-process pipeline.
+
+    Returns ``(None, None)`` for chat/global (no project) or on any resolution
+    failure — extraction still persists, just with the static prompt + no
+    stamp/guard this call (fail-soft, exactly like the anchor pre-load and
+    ``_resolve_schema_for_persist``). The general fallback = today's behavior.
+    """
+    if project_id is None:
+        return (None, None)
+    try:
+        repo = GraphSchemasRepo(get_knowledge_pool())
+        resolved = await repo.resolve_for_project(str(project_id))
+        advisory = build_extraction_schema(resolved, advisory=True)
+        authoritative = build_extraction_schema(resolved, advisory=False)
+    except Exception:
+        logger.warning(
+            "L7B: schema resolve failed for project=%s — extract-item will use "
+            "the static prompt + no stamp/guard this call",
+            project_id, exc_info=True,
+        )
+        return (None, None)
+    return (advisory, authoritative)
+
+
 async def _load_anchors_for_extraction(
     *, user_id: UUID, project_id: UUID | None,
 ) -> list[Anchor]:
@@ -348,6 +452,26 @@ async def extract_item(body: ExtractItemRequest) -> ExtractItemResponse:
         user_id=body.user_id, project_id=body.project_id,
     )
 
+    # L7B (D-KG-L7B-EXTRACT-ITEM) — resolve the L7 schema SPLIT internally so
+    # this endpoint gets the same ontology customization /persist-pass2 has,
+    # WITHOUT changing the cross-service contract (composition-service C27 sends
+    # no schema field). The advisory schema feeds the SDK extraction prompt as a
+    # vocab hint; the authoritative schema + triage_repo go to the writer for the
+    # closed-edge guard + off-schema park + schema_version stamp. Both None
+    # (chat/global or resolve failure) → general fallback (today's behavior).
+    advisory_schema, write_schema = await _resolve_schemas_for_extract_item(
+        user_id=body.user_id, project_id=body.project_id,
+    )
+    # Best-effort like the JobLogsRepo producer above: if the pool isn't
+    # initialised (unit tests that only mock the extractor helpers), triage_repo
+    # stays None — the writer only parks inside the closed-edge guard (which needs
+    # a resolved authoritative schema), so None never changes behavior for a
+    # free-edge/None schema.
+    try:
+        triage_repo: TriageRepo | None = TriageRepo(get_knowledge_pool())
+    except Exception:
+        triage_repo = None
+
     try:
         async with neo4j_session() as session:
             if body.item_type == "chapter":
@@ -370,6 +494,9 @@ async def extract_item(body: ExtractItemRequest) -> ExtractItemResponse:
                     llm_client=llm_client,
                     anchors=anchors,
                     job_logs_repo=job_logs_repo,
+                    schema=advisory_schema,  # L7B — advisory vocab hint for SDK
+                    write_schema=write_schema,  # L7B — authoritative write guard
+                    triage_repo=triage_repo,  # L7B — park off-schema edges
                 )
             else:  # "chat_turn" — Pydantic Literal rejects other values at 422
                 if not body.user_message and not body.assistant_message:
@@ -392,6 +519,9 @@ async def extract_item(body: ExtractItemRequest) -> ExtractItemResponse:
                     llm_client=llm_client,
                     anchors=anchors,
                     job_logs_repo=job_logs_repo,
+                    schema=advisory_schema,  # L7B — advisory vocab hint for SDK
+                    write_schema=write_schema,  # L7B — authoritative write guard
+                    triage_repo=triage_repo,  # L7B — park off-schema edges
                 )
     except HTTPException:
         raise  # re-raise validation errors (422)
@@ -507,6 +637,25 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
     )
 
     project_id_str = str(body.project_id) if body.project_id else None
+
+    # L7 activation — resolve the project's effective KG schema for the write
+    # boundary. None (chat/global, or resolve failure) → today's behavior (no
+    # stamp/guard). When present, the writer stamps schema_version on every edge
+    # (M3) and, for a project that CLOSES its edge set, drops + parks off-schema
+    # edges to triage. The TriageRepo is always wired (cheap); the writer only
+    # parks inside the closed-edge guard, so a free-edge/None schema never parks.
+    schema = await _resolve_schema_for_persist(
+        user_id=body.user_id, project_id=body.project_id,
+    )
+    # Best-effort like the JobLogsRepo producer below: if the pool isn't
+    # initialised (unit tests that only mock the writer), triage_repo=None — the
+    # writer only parks inside the closed-edge guard (which needs a resolved
+    # schema), so None never changes behavior for a free-edge/None schema.
+    try:
+        triage_repo: TriageRepo | None = TriageRepo(get_knowledge_pool())
+    except Exception:
+        triage_repo = None
+
     async with neo4j_session() as session:
         # Canon Model CM3b (B6): retract THIS source's prior evidence BEFORE
         # re-writing. Re-extracting a chapter (e.g. re-publish) must drop facts
@@ -550,6 +699,8 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
             autocreate_enabled=autocreate_enabled,
             autocreate_max=_WRITER_AUTOCREATE_CONFIG["autocreate_max"],
             provenance=body.provenance,  # CM5
+            schema=schema,  # L7 — schema_version stamp + closed-edge guard
+            triage_repo=triage_repo,  # L7/C4 — park off-schema edge drops
         )
         # CM3b-RETRACT-FIX: after re-writing, sweep nodes whose evidence the
         # retract dropped to zero (disappeared from the new revision) — this
@@ -769,6 +920,76 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
         facts_merged=result.facts_merged,
         evidence_edges=result.evidence_edges,
         duration_seconds=round(elapsed, 2),
+    )
+
+
+# ── L7 activation (Milestone B) — resolve the advisory extraction schema ──────
+
+
+class ResolveSchemaRequest(BaseModel):
+    user_id: UUID
+    project_id: UUID | None = None
+
+
+class ResolveSchemaResponse(BaseModel):
+    """The ADVISORY extraction-prompt projection of a project's resolved KG schema.
+
+    `allow_free_edges` is forced True so worker-ai's SDK injects the vocab as a
+    prompt *hint* but never pre-drops an off-vocab predicate — the write boundary
+    (/persist-pass2, Milestone A) resolves the AUTHORITATIVE schema server-side and
+    stays the sole closed-set enforce+park point (the R3 pre-drop reconciliation).
+
+    `has_schema=False` ⇒ no project / resolve failure ⇒ worker-ai passes
+    `schema=None` (today's static prompt behavior)."""
+
+    has_schema: bool
+    entity_kinds: list[str] = []
+    edge_predicates: list[str] = []
+    event_kinds: list[str] = []
+    fact_types: list[str] = []
+    allow_free_edges: bool = True
+    label: str = ""
+    schema_version: int | None = None
+
+
+@router.post(
+    "/resolve-schema",
+    response_model=ResolveSchemaResponse,
+    status_code=status.HTTP_200_OK,
+    summary="L7 — resolve a project's advisory extraction-schema projection",
+    description=(
+        "Worker-ai calls this ONCE per job at start to get the project's KG vocab "
+        "for the extraction prompt. Returns the ADVISORY projection "
+        "(allow_free_edges forced True → hint, never pre-drop); /persist-pass2 is "
+        "the authoritative enforce+park point. Behind X-Internal-Token. Degrades "
+        "to has_schema=False (no project / resolve error) → static prompt."
+    ),
+)
+async def resolve_extraction_schema(
+    body: ResolveSchemaRequest,
+) -> ResolveSchemaResponse:
+    if body.project_id is None:
+        return ResolveSchemaResponse(has_schema=False)
+    try:
+        repo = GraphSchemasRepo(get_knowledge_pool())
+        resolved = await repo.resolve_for_project(str(body.project_id))
+        d = resolved_to_extraction_dict(resolved, advisory=True)
+    except Exception:
+        logger.warning(
+            "L7: resolve-schema failed for project=%s — worker-ai will use the "
+            "static prompt this job",
+            body.project_id, exc_info=True,
+        )
+        return ResolveSchemaResponse(has_schema=False)
+    return ResolveSchemaResponse(
+        has_schema=True,
+        entity_kinds=d["entity_kinds"],
+        edge_predicates=d["edge_predicates"],
+        event_kinds=d["event_kinds"],
+        fact_types=d["fact_types"],
+        allow_free_edges=d["allow_free_edges"],
+        label=d["label"],
+        schema_version=d["schema_version"],
     )
 
 

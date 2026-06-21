@@ -1,0 +1,204 @@
+openapi: 3.0.3
+info:
+  title: LoreWeave Knowledge Service — Extraction Triage API
+  version: 0.1.0
+  description: |
+    The KG **triage queue** — extraction elements that don't match the resolved
+    schema are parked here (NOT written to Neo4j) and resolved human-gated.
+    Spec: `docs/specs/2026-06-20-knowledge-graph-customizable-ontology.md` §3.7, §11.
+    FROZEN at S0/C0 — lanes LH/LE build against this shape.
+
+    ## Principle
+    Neo4j holds ONLY schema-valid edges/facts. Validation is fail-soft: a
+    mismatch parks a `kg_triage_items` row, never blocks extraction. Items are
+    grouped by `signature` (a normalized hash, e.g. `drive:curiosity`) so one
+    resolution **batch-applies** to every pending item of the same signature.
+
+    ## Item types + resolution
+    `unknown_vocab_value` · `unknown_edge_type` · `edge_kind_mismatch` ·
+    `edge_cardinality_conflict` · `unknown_node_kind`. KG-local actions
+    (map / re-target / dismiss) are Edit-gated; schema-mutating actions
+    (add-to-vocab/schema, widen) are Manage-gated and bump `schema_version`.
+    `unknown_node_kind` promote/demote is a **glossary write the USER initiates**
+    (returns `needs_glossary` deep-link; item → `pending_glossary`; KG re-processes
+    when the kind appears — never a KG→glossary service-to-service write, M1).
+
+    ## Auth
+    Bearer JWT. List is View-gated; KG-local resolve is Edit-gated; schema-mutating
+    resolve + glossary hand-off are Manage-gated.
+
+servers:
+  - url: http://api-gateway-bff:3000
+    description: Docker Compose dev (via gateway, prefix-proxied /v1/kg)
+  - url: https://api.loreweave.dev
+    description: Production
+
+tags:
+  - name: triage
+    description: Park / list (grouped by signature) / resolve / dismiss extraction mismatches.
+
+paths:
+  /v1/kg/projects/{project_id}/triage:
+    parameters:
+      - { name: project_id, in: path, required: true, schema: { type: string } }
+      - { name: status, in: query, schema: { type: string, enum: [pending, pending_glossary, resolved, dismissed], default: pending } }
+      - { name: item_type, in: query, schema: { $ref: '#/components/schemas/ItemType' } }
+      - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 500, default: 100 } }
+      - { name: cursor, in: query, schema: { type: string }, description: opaque pagination cursor }
+    get:
+      tags: [triage]
+      summary: Triage queue, grouped by signature
+      description: |
+        Returns one row per `signature` (not per item) with a count + a sample
+        payload, so the UI/agent resolves a class at a time. View-gated.
+      responses:
+        '200':
+          description: Grouped triage queue
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TriageGroupList' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/kg/projects/{project_id}/triage/{signature}/resolve:
+    parameters:
+      - { name: project_id, in: path, required: true, schema: { type: string } }
+      - { name: signature, in: path, required: true, schema: { type: string }, description: the group key, e.g. "drive:curiosity" }
+    post:
+      tags: [triage]
+      summary: Resolve every pending item of a signature (batch)
+      description: |
+        Applies `action` to all pending items sharing the signature. KG-local
+        actions (Edit-gated) re-process parked elements through the central write
+        path into Neo4j. Schema-mutating actions (Manage-gated) also bump
+        `schema_version`. Glossary hand-off actions return `needs_glossary` and
+        move the items to `pending_glossary` (no KG→glossary write).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TriageResolve' }
+      responses:
+        '200':
+          description: Resolved (or handed off to glossary)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TriageResolveResult' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422':
+          description: Action requires glossary work first (unknown_node_kind hand-off)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TriageResolveResult' }
+
+  /v1/kg/projects/{project_id}/triage/{triage_id}/dismiss:
+    parameters:
+      - { name: project_id, in: path, required: true, schema: { type: string } }
+      - { name: triage_id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [triage]
+      summary: Dismiss a single triage item (Edit-gated)
+      responses:
+        '204': { description: Dismissed }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  responses:
+    Unauthorized:
+      description: Missing or invalid Bearer token
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Forbidden:
+      description: Caller lacks the required grant for this action
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    NotFound:
+      description: Triage item/group not found or not visible to the caller
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string, example: KG_NOT_FOUND }
+        message: { type: string }
+    ItemType:
+      type: string
+      enum: [unknown_node_kind, unknown_edge_type, edge_kind_mismatch, unknown_vocab_value, edge_cardinality_conflict]
+    TriageGroupList:
+      type: object
+      required: [groups]
+      properties:
+        groups:
+          type: array
+          items: { $ref: '#/components/schemas/TriageGroup' }
+        next_cursor: { type: string, nullable: true }
+    TriageGroup:
+      type: object
+      required: [signature, item_type, count, status]
+      properties:
+        signature: { type: string, example: "drive:curiosity" }
+        item_type: { $ref: '#/components/schemas/ItemType' }
+        count: { type: integer, description: pending items sharing this signature }
+        status: { type: string, enum: [pending, pending_glossary, resolved, dismissed] }
+        sample_payload:
+          type: object
+          additionalProperties: true
+          description: a representative parked element (proposed kind/edge/drive, src/tgt, evidence)
+        suggested_actions:
+          type: array
+          description: the resolution actions valid for this item_type
+          items: { type: string }
+    TriageResolve:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          description: |
+            unknown_vocab_value: map | add_to_vocab | dismiss ·
+            unknown_edge_type: map | add_to_schema | dismiss ·
+            edge_kind_mismatch: re_target | widen_target_kinds | drop_edge ·
+            edge_cardinality_conflict: close_previous | set_multi_active | dismiss ·
+            unknown_node_kind: promote_to_glossary_kind | demote_to_attribute | map | dismiss
+          enum:
+            - map
+            - add_to_vocab
+            - add_to_schema
+            - re_target
+            - widen_target_kinds
+            - drop_edge
+            - close_previous
+            - set_multi_active
+            - promote_to_glossary_kind
+            - demote_to_attribute
+            - dismiss
+        params:
+          type: object
+          additionalProperties: true
+          description: "action-specific params (e.g. map_to=uncover_truth, new_target_id=..., widen_kinds=[...])"
+        apply_to_signature:
+          type: boolean
+          default: true
+          description: when true, batch-apply to every pending item of this signature
+    TriageResolveResult:
+      type: object
+      required: [status, affected]
+      properties:
+        status: { type: string, enum: [resolved, pending_glossary] }
+        affected: { type: integer, description: number of items resolved/handed off }
+        schema_version: { type: integer, nullable: true, description: present when the action mutated the schema }
+        needs_glossary:
+          type: object
+          nullable: true
+          description: present for promote/demote hand-off — FE deep-links the user to glossary
+          properties:
+            book_id: { type: string, nullable: true }
+            kinds: { type: array, items: { type: string } }
+
+security:
+  - bearerAuth: []

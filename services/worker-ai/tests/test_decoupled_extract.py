@@ -196,6 +196,59 @@ def test_shell_empty_entities_short_circuits_to_persist():
     assert d.reconstruct_candidates(rs).entities == []
 
 
+# ── L7 Milestone B — advisory schema threaded into the decoupled submits ──
+
+
+_ADVISORY_SCHEMA = {
+    "entity_kinds": ["cultivator"],
+    "edge_predicates": ["disciple_of", "pursues"],
+    "event_kinds": [],
+    "fact_types": ["realm"],
+    "allow_free_edges": True,  # advisory — SDK hints, never pre-drops
+    "label": "p1@v3",
+    "schema_version": 3,
+}
+
+
+def test_schema_from_absent_returns_none():
+    assert d._schema_from(_seed_shell_rs()) is None
+
+
+def test_schema_from_present_builds_advisory_schema():
+    rs = _seed_shell_rs()
+    rs["_schema"] = _ADVISORY_SCHEMA
+    sch = d._schema_from(rs)
+    assert sch is not None
+    assert sch.edge_predicates == ("disciple_of", "pursues")
+    assert sch.allow_free_edges is True  # never pre-drops on the SDK path
+
+
+def test_entity_submit_injects_schema_vocab_into_prompt():
+    """A stashed schema reaches build_entity_system → its vocab appears in the
+    submitted system prompt (the LLM gets the project's node-kinds as a hint)."""
+    rs = _seed_shell_rs()
+    rs["_schema"] = _ADVISORY_SCHEMA
+    ek = d.assemble_entity_submit(rs)
+    system = ek["input"]["messages"][0]["content"]
+    assert "cultivator" in system
+
+
+def test_trio_submits_inject_edge_vocab_into_relation_prompt():
+    rs = _seed_shell_rs()
+    rs["_schema"] = _ADVISORY_SCHEMA
+    rs = d.fold_entity_job(rs, _job({"entities": [{"name": "Kai", "kind": "person", "confidence": 0.9}]}))
+    ts = d.assemble_trio_submits(rs)
+    rel_system = ts["relation"]["input"]["messages"][0]["content"]
+    assert "disciple_of" in rel_system
+
+
+def test_entity_submit_no_schema_omits_vocab():
+    """Back-compat: no stashed schema → the static prompt (no injected vocab)."""
+    ek = d.assemble_entity_submit(_seed_shell_rs())
+    system = ek["input"]["messages"][0]["content"]
+    assert "cultivator" not in system
+
+
 def test_shell_trio_serde_roundtrips_nonempty():
     """review-impl finding 5 — non-empty relation/event/fact serde: model_dump(mode='json')
     ↔ model_validate through the resume_state JSONB must round-trip (the prior shell test

@@ -88,8 +88,8 @@ describe('useChatMessages — tool-call accumulation (AG-UI)', () => {
     expect(assistant).toBeDefined();
     expect(assistant!.message_id).toBe('m-1');
     expect(assistant!.tool_calls).toEqual([
-      { tool: 'memory_search', ok: true },
-      { tool: 'memory_remember', ok: false },
+      expect.objectContaining({ tool: 'memory_search', ok: true }),
+      expect.objectContaining({ tool: 'memory_remember', ok: false }),
     ]);
   });
 
@@ -137,7 +137,7 @@ describe('useChatMessages — tool-call accumulation (AG-UI)', () => {
 
     const assistant = result.current.messages.find((m) => m.role === 'assistant');
     // Only the well-framed tool call accumulates.
-    expect(assistant!.tool_calls).toEqual([{ tool: 'memory_timeline', ok: true }]);
+    expect(assistant!.tool_calls).toEqual([expect.objectContaining({ tool: 'memory_timeline', ok: true })]);
   });
 
   it('treats a non-JSON tool result as a successful opaque result', async () => {
@@ -160,7 +160,7 @@ describe('useChatMessages — tool-call accumulation (AG-UI)', () => {
     });
 
     const assistant = result.current.messages.find((m) => m.role === 'assistant');
-    expect(assistant!.tool_calls).toEqual([{ tool: 'memory_forget', ok: true }]);
+    expect(assistant!.tool_calls).toEqual([expect.objectContaining({ tool: 'memory_forget', ok: true })]);
   });
 
   it('reads ok from the envelope, not from an "error" key inside a success result', async () => {
@@ -190,6 +190,6 @@ describe('useChatMessages — tool-call accumulation (AG-UI)', () => {
     });
 
     const assistant = result.current.messages.find((m) => m.role === 'assistant');
-    expect(assistant!.tool_calls).toEqual([{ tool: 'memory_search', ok: true }]);
+    expect(assistant!.tool_calls).toEqual([expect.objectContaining({ tool: 'memory_search', ok: true })]);
   });
 });

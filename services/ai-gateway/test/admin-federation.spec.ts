@@ -82,7 +82,10 @@ describe('catalog isolation (INV-T6)', () => {
     expect(adminCatalog.toolList.map((t) => t.name)).toEqual([
       'glossary_admin_standards_read',
     ]);
-    expect(listAdmin).toHaveBeenCalledTimes(1);
+    // One list call per admin upstream (glossary-admin + knowledge-admin). The spy
+    // returns the same glossary tool for both; knowledge-admin's `kg_` prefix drops
+    // it, so the merged catalog still has just the glossary admin tool.
+    expect(listAdmin).toHaveBeenCalledTimes((admin as any).providers.length);
 
     // The user FederationService has its own EMPTY/independent catalog state and
     // does not expose any glossary_admin_* tool through its `catalog()` accessor.
@@ -128,7 +131,8 @@ describe('no admin token → no admin surface (INV-T6 barrier 1)', () => {
 
   it('AdminFederationService.executeTool throws without a token', async () => {
     const admin = new AdminFederationService();
-    await expect(admin.executeTool('glossary_admin_standards_read', {}, {})).rejects.toThrow(
+    const prov = { name: 'glossary-admin', mcpUrl: 'http://g/mcp/admin' };
+    await expect(admin.executeTool(prov, 'glossary_admin_standards_read', {}, {})).rejects.toThrow(
       'admin token required',
     );
   });
@@ -158,6 +162,75 @@ describe('no admin token → no admin surface (INV-T6 barrier 1)', () => {
     expect(res.isError).toBe(true);
     expect(res.content[0].text).toContain('unknown admin tool');
     expect((admin as any).executeTool).not.toHaveBeenCalled();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// (b2) KM5-M4b — multiple admin upstreams (glossary + knowledge), disjoint namespaces
+// ─────────────────────────────────────────────────────────────────────────────
+describe('multi-provider admin federation (KM5-M4b)', () => {
+  const tool = (name: string) => ({ name, inputSchema: { type: 'object' } });
+
+  it('config registers glossary-admin AND knowledge-admin (kg_), neither in user providers', () => {
+    const cfg = loadConfig();
+    const byName = Object.fromEntries(cfg.adminProviders.map((p) => [p.name, p]));
+    expect(Object.keys(byName).sort()).toEqual(['glossary-admin', 'knowledge-admin']);
+    expect(byName['knowledge-admin'].mcpUrl).toMatch(/\/mcp\/admin$/);
+    expect(byName['knowledge-admin'].prefix).toBe('kg_');
+    // both admin upstreams are policed → namespace-disjoint shared catalog (LOW-2)
+    expect(byName['glossary-admin'].prefix).toBe('glossary_');
+    // INV-T6: admin upstreams are never user-facing providers.
+    const userNames = cfg.providers.map((p) => p.name);
+    expect(userNames).not.toContain('knowledge-admin');
+    expect(userNames).not.toContain('glossary-admin');
+    // back-compat alias still points at the first (glossary) admin upstream
+    expect(cfg.adminProvider.name).toBe('glossary-admin');
+  });
+
+  it('merged admin catalog keeps BOTH glossary_admin_* and kg_admin_*; drops cross-namespace', () => {
+    const cat = computeCatalog([
+      { provider: { name: 'glossary-admin', mcpUrl: 'http://g/mcp/admin' }, tools: [tool('glossary_admin_genre_create')] },
+      {
+        provider: { name: 'knowledge-admin', mcpUrl: 'http://k/mcp/admin', prefix: 'kg_' },
+        tools: [tool('kg_admin_propose_template'), tool('glossary_admin_smuggled')],
+      },
+    ], jest.fn());
+    const names = cat.toolList.map((t) => t.name);
+    expect(names).toContain('glossary_admin_genre_create');
+    expect(names).toContain('kg_admin_propose_template');
+    // a non-kg_ tool from the knowledge-admin upstream is dropped (namespace gate)
+    expect(names).not.toContain('glossary_admin_smuggled');
+  });
+
+  it('routes each admin tool to its OWNING upstream (providerFor mapping) — the M4b core', () => {
+    const glossaryAdmin = { name: 'glossary-admin', mcpUrl: 'http://g/mcp/admin', prefix: 'glossary_' };
+    const knowledgeAdmin = { name: 'knowledge-admin', mcpUrl: 'http://k/mcp/admin', prefix: 'kg_' };
+    const cat = computeCatalog([
+      { provider: glossaryAdmin, tools: [tool('glossary_admin_propose_create')] },
+      { provider: knowledgeAdmin, tools: [tool('kg_admin_propose_template')] },
+    ], jest.fn());
+    const admin = new AdminFederationService();
+    // a glossary admin tool resolves to the glossary upstream URL; a kg_ one to knowledge.
+    expect(admin.providerFor('glossary_admin_propose_create', cat)?.mcpUrl).toBe('http://g/mcp/admin');
+    expect(admin.providerFor('kg_admin_propose_template', cat)?.mcpUrl).toBe('http://k/mcp/admin');
+    expect(admin.providerFor('nonexistent_tool', cat)).toBeUndefined();
+  });
+
+  it('catalogFor degrades to PARTIAL when one upstream is down but the token is valid', async () => {
+    const admin = new AdminFederationService();
+    jest.spyOn(admin as any, 'listAdminTools').mockImplementation(async (p: any) => {
+      if (p.name === 'glossary-admin') return [tool('glossary_admin_genre_create')];
+      throw new Error('HTTP 503 knowledge-admin down');
+    });
+    const cat = await admin.catalogFor({ adminToken: ADMIN_TOKEN });
+    expect(cat.toolList.map((t) => t.name)).toEqual(['glossary_admin_genre_create']);
+    expect(cat.partial).toBe(true);
+  });
+
+  it('catalogFor THROWS when EVERY upstream errors (invalid token → all 401 → no enumeration)', async () => {
+    const admin = new AdminFederationService();
+    jest.spyOn(admin as any, 'listAdminTools').mockRejectedValue(new Error('HTTP 401 Unauthorized'));
+    await expect(admin.catalogFor({ adminToken: 'invalid' })).rejects.toThrow('401');
   });
 });
 

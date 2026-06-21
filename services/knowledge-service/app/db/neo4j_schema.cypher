@@ -309,3 +309,17 @@ OPTIONS {
     `vector.similarity_function`: 'cosine'
   }
 };
+
+// ── KG customizable-ontology epic (L1) — additive seam, unused at v1 ─────────
+// `schema_version` stamps each edge with the resolved-schema version it was
+// written under (M3); `graph_id` is the layer-4 partition seam on the EDGE
+// (M2 — nodes are shared across views/graphs, so the seam lives on the
+// relationship, never the node). Both default NULL and are populated only at
+// L7 enforcement / a later partition epic. Indexed now so the seam is query-
+// ready without a later reindex. RELATES_TO is the canonical relation edge
+// (app/db/neo4j_repos/relations.py).
+CREATE INDEX relates_to_schema_version IF NOT EXISTS
+FOR ()-[r:RELATES_TO]-() ON (r.schema_version);
+
+CREATE INDEX relates_to_graph_id IF NOT EXISTS
+FOR ()-[r:RELATES_TO]-() ON (r.graph_id);

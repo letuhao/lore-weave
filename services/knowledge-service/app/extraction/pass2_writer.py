@@ -51,7 +51,9 @@ KNOWLEDGE_SERVICE_TRACK2_IMPLEMENTATION.md; cycle 73e plan in
 from __future__ import annotations
 
 import logging
-from typing import Literal
+import re
+from typing import Any, Literal, Protocol
+from uuid import UUID
 
 from pydantic import BaseModel
 
@@ -83,6 +85,7 @@ from loreweave_extraction.extractors.entity import LLMEntityCandidate
 from loreweave_extraction.extractors.event import LLMEventCandidate
 from loreweave_extraction.extractors.fact import LLMFactCandidate
 from loreweave_extraction.extractors.relation import LLMRelationCandidate
+from loreweave_extraction.schema_projection import ExtractionSchema
 
 __all__ = [
     "Pass2WriteResult",
@@ -90,6 +93,48 @@ __all__ = [
 ]
 
 logger = logging.getLogger(__name__)
+
+
+def _as_uuid(val: object) -> UUID | None:
+    """Coerce a tenant id to UUID, or None if it isn't one (caller logs + skips
+    the park rather than raising). Production user_id IS a UUID string."""
+    if isinstance(val, UUID):
+        return val
+    if isinstance(val, str):
+        try:
+            return UUID(val)
+        except ValueError:
+            return None
+    return None
+
+
+class TriageParkProtocol(Protocol):
+    """Minimal structural type for the LH ``TriageRepo.park`` the writer calls to
+    park an off-schema edge (L7/C4). Kept as a Protocol so the writer stays
+    decoupled from the repo + tests can inject a fake."""
+
+    async def park(
+        self,
+        *,
+        user_id: UUID,
+        project_id: str,
+        item_type: str,
+        signature: str,
+        payload: dict[str, Any],
+        source: dict[str, Any] | None = ...,
+        schema_version: int | None = ...,
+    ) -> Any: ...
+
+
+# KG customizable-ontology (lane LB) — normalize a schema edge-type code the
+# SAME way the SDK normalizes a relation predicate (`[^\w]+` runs → `_`,
+# lowercased, edge-trimmed) so the write-boundary closed-set comparison is
+# apples-to-apples with candidate.predicate (already SDK-normalized).
+_PREDICATE_NON_WORD_RE = re.compile(r"[^\w]+", re.UNICODE)
+
+
+def _normalize_predicate_code(code: str) -> str:
+    return _PREDICATE_NON_WORD_RE.sub("_", code.strip().lower()).strip("_")
 
 
 # Cycle 73e noise heuristic — char-length + word-count combined. The
@@ -266,6 +311,23 @@ async def write_pass2_extraction(
     # into each node's `provenances` set (a node mentioned by both origins
     # carries both).
     provenance: str = "human_authored",
+    # KG customizable-ontology (lane LB) — the resolved project schema
+    # projection. None (default) → no closed-set enforcement at the write
+    # boundary (today's behavior). When present AND the schema's edge set is
+    # CLOSED (``allow_free_edges`` False, non-empty ``edge_predicates``), a
+    # relation whose normalized predicate is off-vocab is SKIPPED fail-soft
+    # (drop-and-skip per-edge, never fail the batch — spec §5-K7 B2). This is a
+    # persistence-boundary belt-and-suspenders: the SDK extractor is the primary
+    # gate, but cached/legacy candidates (extracted pre-schema) can still reach
+    # the writer, so it re-checks. Triage parking of these drops is the LH lane's
+    # job (C4) — this lane only drops + logs.
+    schema: ExtractionSchema | None = None,
+    # KG customizable-ontology (L7, C4 compose) — when a TriageRepo is supplied,
+    # an off-schema edge that the closed-edge guard drops is PARKED to
+    # kg_triage_items (unknown_edge_type, signature ``edge:<predicate>``) instead
+    # of vanishing, so the human triage queue (lane LH) sees it. None (default) →
+    # today's drop-and-log only, so legacy callers are unchanged.
+    triage_repo: "TriageParkProtocol | None" = None,
 ) -> Pass2WriteResult:
     """Persist Pass 2 LLM extraction candidates to Neo4j.
 
@@ -293,6 +355,32 @@ async def write_pass2_extraction(
     relation_list = relations or []
     event_list = events or []
     fact_list = facts or []
+
+    # KG customizable-ontology (lane LB) — closed-edge-set predicate vocab for
+    # the write-boundary guard. None ⇒ no enforcement (today's free-string
+    # behavior). Candidates' `predicate` is already normalized (snake_case) by
+    # the SDK, and schema codes are normalized identically, so the comparison
+    # is apples-to-apples. Empty / allow_free_edges ⇒ None ⇒ no guard.
+    _closed_edge_vocab: frozenset[str] | None = None
+    if (
+        schema is not None
+        and not schema.allow_free_edges
+        and schema.edge_predicates
+    ):
+        _closed_edge_vocab = frozenset(
+            _normalize_predicate_code(c) for c in schema.edge_predicates
+        )
+
+    # KG customizable-ontology (L7, D-KG-L7-CARDINALITY) — per-predicate
+    # cardinality keyed by the SAME normalized predicate code the candidates
+    # carry, so the lookup is apples-to-apples with `predicate_clean`. None /
+    # empty (schema=None or no cardinalities) ⇒ no auto-close (legacy behavior).
+    _edge_cardinalities: dict[str, str] = {}
+    if schema is not None and schema.edge_cardinalities:
+        _edge_cardinalities = {
+            _normalize_predicate_code(code): card
+            for code, card in schema.edge_cardinalities.items()
+        }
 
     # P3 (D2 + D2a): MERGE Book/Part/Chapter/Scene hierarchy BEFORE entity
     # writes when hierarchy_paths supplied. Same CypherSession = same Tx
@@ -527,12 +615,68 @@ async def write_pass2_extraction(
             skipped += 1
             continue
 
+        # KG customizable-ontology (lane LB) — closed-edge-set guard. When the
+        # project schema closes its edge set, drop a relation whose predicate is
+        # off-vocab fail-soft (skip per-edge; never fail the batch — §5-K7 B2).
+        # rel.predicate is already SDK-normalized; vocab is normalized identically.
+        if (
+            _closed_edge_vocab is not None
+            and rel.predicate not in _closed_edge_vocab
+        ):
+            logger.info(
+                "pass2_writer: dropping off-schema edge predicate=%r "
+                "(closed edge set, project=%s, schema=%s)",
+                rel.predicate, project_id, schema.label if schema else "?",
+            )
+            # L7/C4 — park the drop to the human triage queue (unknown_edge_type)
+            # rather than silently losing it, when a TriageRepo is wired. Fail-soft:
+            # a park error must NEVER break the extraction batch.
+            if triage_repo is not None and project_id:
+                # Coerce the tenant id OUTSIDE the try, so a non-UUID id surfaces as
+                # a distinct error rather than being swallowed by the best-effort
+                # park `except` (which would silently lose the edge — review-impl MED).
+                park_uid = _as_uuid(user_id)
+                if park_uid is None:
+                    logger.error(
+                        "pass2_writer: cannot park off-schema edge %r — user_id %r is not a UUID",
+                        rel.predicate, user_id,
+                    )
+                else:
+                    try:
+                        await triage_repo.park(
+                            user_id=park_uid,
+                            project_id=project_id,
+                            item_type="unknown_edge_type",
+                            signature=f"edge:{rel.predicate}",
+                            payload={
+                                "predicate": rel.predicate,
+                                "subject_id": resolved_subject_id,
+                                "object_id": resolved_object_id,
+                            },
+                            source={"job_id": job_id, "source_id": source.id},
+                            schema_version=schema.schema_version if schema else None,
+                        )
+                    except Exception:  # noqa: BLE001 — triage is best-effort; never block extraction
+                        logger.exception(
+                            "pass2_writer: triage park failed for off-schema edge %r", rel.predicate,
+                        )
+            skipped += 1
+            continue
+
         # Predicate is pre-normalized by K17.5 `_normalize_predicate`
         # (`[^\w]+` → `_`), which already strips most English injection
         # markers. CJK (e.g. `无视指令`) survives normalization because
         # CJK characters are `\w` in Python 3, so sanitize is still
         # load-bearing — see K17.9 predicate CJK test.
         predicate_clean = _sanitize(rel.predicate, project_id)
+        # L7 (D-KG-L7-CARDINALITY) — look the predicate's cardinality up from the
+        # resolved schema. A `single_active` edge type auto-closes its prior open
+        # instance between the same endpoints. The lookup keys on the SDK-normalized
+        # predicate code, matching the schema's normalized edge_cardinalities.
+        # schema=None / unknown predicate ⇒ None ⇒ no auto-close (legacy behavior).
+        edge_cardinality = _edge_cardinalities.get(
+            _normalize_predicate_code(predicate_clean)
+        )
         result = await create_relation(
             session,
             user_id=user_id,
@@ -542,6 +686,11 @@ async def write_pass2_extraction(
             confidence=rel.confidence,
             source_event_id=source.id,
             pending_validation=False,
+            # L7 — stamp the resolved-schema version (M3) + the graph_id partition
+            # seam (M2, NULL at v1). schema=None → both NULL (legacy, no change).
+            schema_version=schema.schema_version if schema else None,
+            graph_id=None,
+            cardinality=edge_cardinality,
         )
         if result is not None:
             relations_created += 1

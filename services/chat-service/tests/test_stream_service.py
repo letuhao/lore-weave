@@ -883,6 +883,9 @@ class TestK21BToolCallingIntegration:
         # universal skill in, glossary skill out
         assert "Glossary assistant" not in content
         assert "Universal assistant" in content
+        # KM5-M4a + merge: the knowledge/graph skill co-injects on this surface
+        # (independent of the universal skill — the merge keeps BOTH).
+        assert "Knowledge & graph assistant" in content
         # S-WORKFLOW (Wave 3): the cross-service ORDERING fragment composes in on
         # the same universal surface (chapters -> translate -> glossary -> wiki).
         assert "Cross-service workflows" in content
@@ -897,6 +900,44 @@ class TestK21BToolCallingIntegration:
         assert "ui_navigate" in adv_names and "confirm_action" in adv_names
         # memory_search is in the catalog but discovered via find_tools, not core.
         assert "memory_search" not in adv_names
+
+    @pytest.mark.asyncio
+    async def test_admin_surface_excludes_knowledge_skill(self):
+        """/review-impl LOW-3: the CMS/admin surface advertises ONLY the System-tier
+        admin tools, so the project knowledge/graph skill must NOT be injected there
+        (it would be guidance for tools that aren't present). The admin skill is."""
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+        kc = _patched_knowledge(stable="", volatile="", mode="static")
+        # admin surface fetches the SEPARATE admin catalog (not the user catalog)
+        kc.get_admin_tool_definitions = AsyncMock(
+            return_value=[{"type": "function", "function": {"name": "glossary_admin_propose_genre"}}]
+        )
+
+        async def fake_tool_loop(**kwargs):
+            yield {"content": "ok", "reasoning_content": "", "finish_reason": "stop", "usage": _Usage(1, 1)}
+
+        with patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+             patch("app.services.stream_service._stream_with_tools", side_effect=fake_tool_loop) as loop_mock, \
+             patch("app.services.stream_service._stream_via_gateway"):
+            async for _ in stream_response(
+                session_id=TEST_SESSION_ID, user_message_content="edit system kinds",
+                user_id=TEST_USER_ID, model_source="user_model",
+                model_ref=TEST_MODEL_REF, creds=_make_creds(),
+                pool=pool, billing=AsyncMock(),
+                stream_format="agui", admin_context={"surface": "cms"}, admin_token="adm-tok",
+            ):
+                pass
+
+        msgs = loop_mock.call_args.kwargs["messages"]
+        system = next((m for m in msgs if m["role"] == "system"), None)
+        assert system is not None
+        content = system["content"] if isinstance(system["content"], str) \
+            else " ".join(p["text"] for p in system["content"])
+        # admin skill present, knowledge skill ABSENT (LOW-3)
+        assert "System-tier admin assistant" in content
+        assert "Knowledge & graph assistant" not in content
 
     @pytest.mark.asyncio
     async def test_legacy_surface_no_discovery_no_frontend_tools(self):

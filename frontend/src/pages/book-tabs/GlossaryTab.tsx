@@ -25,7 +25,6 @@ import { EntityEditorModal } from '@/components/entity-editor';
 import { ExtractionWizard } from '@/features/extraction/ExtractionWizard';
 import { GlossaryTranslateWizard } from '@/features/glossary-translate/GlossaryTranslateWizard';
 import { BatchTranslateDialog } from '@/features/glossary/components/BatchTranslateDialog';
-import { BookAssistantDock } from '@/features/chat/BookAssistantDock';
 
 type GlossaryView = 'entities' | 'ontology' | 'unknown' | 'ai_suggestions' | 'merge_candidates';
 
@@ -758,9 +757,6 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
           }}
         />
       )}
-
-      {/* P5: the book-scoped glossary assistant (floating dock → embedded chat). */}
-      <BookAssistantDock bookId={bookId} />
     </div>
   );
 }

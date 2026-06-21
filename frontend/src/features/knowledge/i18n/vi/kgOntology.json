@@ -1,0 +1,55 @@
+{
+  "common": {
+    "dismiss": "Bỏ qua",
+    "deprecate": "Ngừng dùng",
+    "deprecated": "đã ngừng dùng"
+  },
+  "adopt": {
+    "chooseTemplate": "Chọn một mẫu đồ thị",
+    "select": "Áp dụng",
+    "selected": "Đã chọn ✓",
+    "noTemplates": "Không có mẫu nào để áp dụng.",
+    "adoptButton": "Áp dụng mẫu",
+    "adopting": "Đang áp dụng…",
+    "blockedTitle": "Bị chặn khi áp dụng (cổng M1).",
+    "blockedHelp": "Mẫu này cần các loại node mà từ điển của bạn đang thiếu. Không có ghi chéo dịch vụ ẩn — hãy thêm các loại đó vào từ điển trước, rồi quay lại áp dụng.",
+    "blockedButton": "Áp dụng mẫu ({{count}} vướng mắc)",
+    "missing": "✗ thiếu",
+    "openGlossary": "Thêm loại trong từ điển"
+  },
+  "schema": {
+    "edgeTypes": "Loại cạnh",
+    "factTypes": "Loại sự kiện",
+    "nodeKinds": "Loại node (← từ điển)",
+    "vocabSet": "Bộ từ vựng",
+    "closed": "đóng — bộ trích xuất chỉ được gán",
+    "temporal": "⏱ theo thời gian",
+    "noEdges": "Chưa có loại cạnh nào.",
+    "addEdgeType": "Thêm loại cạnh",
+    "code": "Mã",
+    "label": "Nhãn",
+    "temporalField": "theo thời gian (valid_from + nguồn gốc)",
+    "cardinality": "Bản số",
+    "addButton": "Thêm loại cạnh"
+  },
+  "sync": {
+    "upToDate": "Đã cập nhật — không có thay đổi từ nguồn.",
+    "updatesAvailable": "Có {{count}} cập nhật từ nguồn",
+    "keepAllMine": "Giữ tất cả của tôi",
+    "takeAllTheirs": "Lấy tất cả của họ",
+    "added": "ĐÃ THÊM",
+    "modified": "ĐÃ SỬA",
+    "removed": "ĐÃ GỠ Ở NGUỒN",
+    "keepMine": "Giữ của tôi",
+    "takeTheirs": "Lấy của họ",
+    "applyButton": "Áp dụng {{count}} quyết định"
+  },
+  "views": {
+    "name": "Tên góc nhìn",
+    "edgeTypes": "Loại cạnh trong góc nhìn này",
+    "nodeKinds": "Loại node hiển thị",
+    "createButton": "Tạo góc nhìn",
+    "saveButton": "Lưu góc nhìn",
+    "perUser": "theo người dùng"
+  }
+}

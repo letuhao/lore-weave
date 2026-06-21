@@ -47,6 +47,7 @@ from typing import Any, Literal
 from loreweave_extraction._version import get_extractor_version
 from loreweave_extraction.entity_recovery import EntityRecoveryConfig
 from loreweave_extraction.pass2_filter import PrecisionFilterConfig
+from loreweave_extraction.schema_projection import ExtractionSchema
 
 __all__ = [
     "ResolvedConfig",
@@ -54,6 +55,7 @@ __all__ = [
     "config_hash",
     "base_default_version",
     "PROMPT_OPS",
+    "extraction_schema_from_resolved",
 ]
 
 # The op set whose prompts are versioned (mirror _version._OP_PROMPTS keys).
@@ -271,6 +273,29 @@ def config_hash(rc: ResolvedConfig) -> str:
         _canonical_dict(rc), sort_keys=True, separators=(",", ":"), ensure_ascii=True
     )
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def extraction_schema_from_resolved(
+    resolved: dict | None, *, vocab_soft_cap: int | None = None,
+) -> ExtractionSchema | None:
+    """Build the SDK-local :class:`ExtractionSchema` projection for extraction.
+
+    KG customizable-ontology (lane LB). ``resolved`` is the plain-dict
+    projection knowledge-service builds from its ``ResolvedSchema`` (system→
+    user→project merge — the existing tier priority is applied UPSTREAM by the
+    KG ``OntologyResolver``, not re-implemented here; this is just the SDK-side
+    shaping). Returns ``None`` when ``resolved`` is ``None`` so the caller can
+    forward it straight into ``extract_pass2(schema=...)`` and keep the static
+    byte-identical path when no schema was resolved.
+
+    Kept here so resolve_config's consumers have ONE import surface for the
+    per-job extraction shape (config + ontology); the projection logic itself
+    lives in ``schema_projection`` (which never imports knowledge-service)."""
+    if resolved is None:
+        return None
+    if vocab_soft_cap is None:
+        return ExtractionSchema.from_resolved(resolved)
+    return ExtractionSchema.from_resolved(resolved, vocab_soft_cap=vocab_soft_cap)
 
 
 def base_default_version(global_defaults: dict) -> str:

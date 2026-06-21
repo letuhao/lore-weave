@@ -37,6 +37,7 @@
       "chapters": "Chapters",
       "translation": "Translation",
       "glossary": "Glossary",
+      "kgOntology": "Graph Schema",
       "enrichment": "Enrichment",
       "wiki": "Wiki",
       "sharing": "Sharing",
@@ -122,6 +123,7 @@
     },
     "action": {
       "edit": "Edit",
+      "translations": "View translations",
       "extract": "Extract Glossary",
       "download": "Download",
       "trash": "Trash"
