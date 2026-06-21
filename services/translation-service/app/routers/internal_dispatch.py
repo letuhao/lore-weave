@@ -25,6 +25,7 @@ from ..deps import get_db
 from ..grant_deps import GrantLevel, authorize_book
 from ..grant_client import get_grant_client
 from ..models import CreateJobPayload
+from ..workers.extraction_outcomes import reconcile_from_rows
 from ..workers.segment_store import ensure_chapter_segments
 from ..workers.segment_status import compute_segment_status
 from .jobs import _resolve_and_create_job, _cancel_job_core, _pause_job_core, _resume_job_core
@@ -379,6 +380,42 @@ async def reconcile_jobs(
             "occurred_at": r["ts"].isoformat() if r["ts"] else None,
         })
     return {"jobs": out}
+
+
+@router.get("/extraction-jobs/{job_id}/reconcile", dependencies=[Depends(require_internal_token)])
+async def reconcile_extraction_job(
+    job_id: UUID,
+    db: asyncpg.Pool = Depends(get_db),
+) -> dict:
+    """OBS/M2 reconciliation sweep (INV-O12): re-derive an extraction job's stats from the
+    `extraction_batch_outcomes` SSOT rows and compare to the cached counters on
+    `extraction_jobs`. The outcome rows are the truth; the job-row counters are a cache a
+    mid-update crash can skew. Report-only by design — it surfaces drift (so a sweeper / ops
+    dashboard can detect a divergence) without auto-correcting the convergence-critical
+    completed/failed counters, which are chapter-grained and must not be clobbered by a
+    batch-grained re-derivation mid-flight. Internal-token; any owner."""
+    job = await db.fetchrow(
+        "SELECT status, completed_chapters, failed_chapters, total_chapters "
+        "FROM extraction_jobs WHERE job_id=$1", job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail={"code": "EXTRACT_JOB_NOT_FOUND", "message": "Job not found"})
+    rows = await db.fetch(
+        "SELECT chapter_id, status FROM extraction_batch_outcomes WHERE job_id=$1", job_id)
+    ssot = reconcile_from_rows([(r["chapter_id"], r["status"]) for r in rows])
+    # A chapter is "finished" in the SSOT when it has any outcome rows; compare that count to
+    # the job row's completed_chapters (clean + with-errors both count as finished).
+    derived_finished = ssot["chapters_completed"] + ssot["chapters_with_errors"]
+    return {
+        "job_id": str(job_id),
+        "ssot": ssot,
+        "job_row": {
+            "status": job["status"],
+            "completed_chapters": job["completed_chapters"],
+            "failed_chapters": job["failed_chapters"],
+            "total_chapters": job["total_chapters"],
+        },
+        "drift": derived_finished != (job["completed_chapters"] or 0),
+    }
 
 
 class JobControlPayload(BaseModel):
