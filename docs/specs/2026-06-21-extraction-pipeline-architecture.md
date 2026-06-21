@@ -1,9 +1,17 @@
 # Extraction / LLM-Pipeline Architecture — Design Spec
 
 **Status:** DESIGN (CLARIFY) — no build yet. PO checkpoint pending.
-**Date:** 2026-06-21
+**Date:** 2026-06-21 (rev 2 — hardened after a 4-lens adversarial evaluation; see §7–§11)
 **Branch:** `feat/extraction-knowledge-architecture`
 **Author:** session design pass after the 26-scenario test surfaced 5 architectural gaps.
+
+> **Rev 2 note:** §1–§6 are the original decomposition (still valid). §7 is an adversarial
+> scenario evaluation (concurrency / failure / scale / tenancy) that found the decomposition
+> sound but specced at *single-writer, happy-path* altitude — every real failure lives in the
+> **seams between stages**. §8 adds the contracts that close those seams (two-ledger model,
+> concurrency, batch taxonomy, two-phase planner, provenance trust, merge integrity, tenancy).
+> §9 revises the milestones, §10 the open questions. **The 4 HIGH findings in §7 must be
+> resolved in the design before any BUILD.**
 
 ---
 
@@ -239,3 +247,167 @@ Per the tightened defer rule (CLAUDE.md), the items here qualify to defer/plan b
 are **large/structural** (gate #2) and the cross-team gate (#1) — they are explicitly *not*
 the "small in-scope bug" class that must be fixed inline. This doc is the "serious plan" that
 the rule requires before such work proceeds.
+
+---
+
+## 7. Architecture evaluation — adversarial scenarios (rev 2)
+
+Four independent evaluators stress-tested §1–§6 against the **live code** (not just the spec)
+through distinct lenses. The decomposition held; **the failures are all in the seams the spec
+left unspecified.** Verdicts: **HOLDS** (design covers it) · **GAP** (under-specified, fixable
+in spec text) · **BREAKS** (would lose/corrupt data as written). Edge cases that matter:
+
+### 7.1 Concurrency & idempotency
+
+| # | Scenario (incl. edge) | Verdict | The seam |
+|---|---|---|---|
+| C1 | Two jobs extract the **same** chapter concurrently (double-click / broker redelivery while in-flight). Both `findEntityByNameOrAlias` miss, both CREATE "Lin Feng". | **BREAKS** | `glossary_entities` has **no `UNIQUE(book_id,kind_id,normalized_name)`**; dedup is a lock-free read-then-write on the pool → duplicate entities + duplicate Neo4j nodes. |
+| C2 | Alias dedup: job A writes entity w/ alias "Brother Lin"; job B extracts "Brother Lin" as a primary name before A commits. | **BREAKS** | Alias match is an app-layer JSON scan — **unprotectable by a constraint**. Needs per-book write serialization. |
+| C3 | A 40-entity writeback fails at entity #25. | **BREAKS** | `bulkExtractEntities` is **non-transactional**; #1–24 already committed; retry re-POSTs all 40 → duplicate `evidences` (no content-unique), double counters. |
+| C4 | Chapter **edited mid-flight**: slow job A (old hash H1) finishes *after* job B (new hash H2) and overwrites B's current entities with stale data; evidence offsets point into text that changed. | **BREAKS** | No **content-hash precondition** on writeback; last-writer-wins by completion order, not content recency. |
+| C5 | Partial-kind cache race: job A wants {char,loc}, job B wants {loc,faction}; both read `covered_kinds=∅` → both call LLM for `loc`. | **GAP** | The cache-gate `covered_kinds` check-then-act is a **TOCTOU**; defeats the cost-saving + writes divergent `loc` entities. |
+| C6 | `append` (P4): ch.3 and ch.7 both append a power to the same character via parallel jobs. | **GAP** | JSON-array append is read-modify-write on one cell → **lost update**; no dedup-by-normalized-value key. |
+| C7 | Observability: a truncated batch emits `batch_failed`, then the message redelivers and re-emits. | **GAP** | Outbox relay is **at-least-once**; stats double-count truncations → false alerts. No stable `event_id`. |
+
+### 7.2 Failure & partial completion
+
+| # | Scenario | Verdict | The seam |
+|---|---|---|---|
+| F1 | Cache HIT for {A,B}, but the **writeback fails** (glossary 500). Job re-runs later: cache-gate sees {A,B} covered → **skips the LLM forever**, entities never land. | **BREAKS** | The raw-cache conflates **"LLM produced this"** with **"this is in glossary."** A failed writeback is permanently masked → **data-loss amplifier.** |
+| F2 | Plan = 5 batches; 1–3 write, crash before 4–5; chapter stuck `running`. | **BREAKS/GAP** | Resume is **chapter-granular** (re-does 1–3, re-spends + double-writes). Partial entities sit in glossary unmarked. |
+| F3 | LLM returns 15 entities, VALIDATE rejects **all** (kind mismatch) → `all_entities=[]` → chapter marked `completed` with 0. | **GAP** | **No taxonomy** distinguishing `empty_valid` from `validation_rejected` from `truncated` from `llm_error` — a total failure reads as clean success (the literal 26-scenario bug). |
+| F4 | Provenance: model returns a **paraphrased** quote that doesn't substring-match, or matches **two** paragraphs. | **GAP** | §3.4 fallback "substring search" silently picks the **first** match → confidently-wrong citation. No offset taxonomy (exact/resolved/ambiguous/unmatched). |
+| F5 | Outbox relay down when a batch fails → failure lives only in `extraction_chapter_results.error_message` "queryable by nobody." | **GAP** | OBSERVE reproduces the exact gap it claims to close. Events must be a **projection of an SSOT row**, with reconciliation. |
+| F6 | 50 chapters each truncate one batch. | **GAP** | Per-batch → notification = **50 notifications.** §5-Q5 defers it; needs a default (per-batch→stats only; terminal rollup→notification). |
+
+### 7.3 Scale, cost & model limits
+
+| # | Scenario | Verdict | The seam |
+|---|---|---|---|
+| S1 | One entity / one kind whose **schema alone > context window**. | **BREAKS** | The `Unit` is "smallest indivisible thing"; planner only packs **up**, never **splits down** → 1-unit call that truncates, or a loop. |
+| S2 | A 40k-token chapter vs a 32k model. | **BREAKS** | Extraction has **no chapter-chunking** — `split_chapter` lives in the *translation* path only. Packing kinds down to 1 still sends the whole chapter. |
+| S3 | Re-run at `effort=high` a book that fit at `effort=none`. | **BREAKS** | The two specs aren't composed: the planner's output budget has **no effort term**; high effort 2–4× output → re-truncation. Cache key is effort-blind → replays a low-effort parse for a high-effort request. |
+| S4 | 4k-context BYOK model, 500 ch × 30 kinds → ~15,000 calls. | **GAP** | "Model-aware" is *correct* but catastrophic; no **fan-out sanity floor** / model-fit warning / wall-clock estimate. |
+| S5 | glossary_translate packs attrs from entities A,B,C into one call. | **GAP (correctness)** | Packing a single blob → **result re-attribution** can write B's translation onto A. Sold as cost win, it's a correctness risk without a `unit_id` echo + validation. |
+| S6 | 1,500-call job; price drifts +30% mid-run (H14). | **GAP** | One PLAN-time estimate; no **price snapshot** or budget-breach re-confirm → re-confirm storm or silent overspend. |
+| S7 | Book re-extracted N times; append-only raw rows × per-call granularity. | **GAP** | "~50MB/book" is optimistic by an order of magnitude; **retention is manual only** → unbounded growth; hot index bloats. |
+
+### 7.4 Tenancy, security & data integrity
+
+| # | Scenario | Sev/Verdict | The seam |
+|---|---|---|---|
+| T1 | Model **supplies** the source block index/offset; it's hallucinated/out-of-range/points at the wrong paragraph. | **HIGH / BREAKS** | Model output is **untrusted (INV-6)** but written as truth → OOB slice, fabricated "verifiable" citation, injection vector. |
+| T2 | Extraction `overwrite` (or `append`) lands on a **human-verified** value. | **HIGH / BREAKS** | No **verified-clobber guard** — `merge_strategy` silently replaces canon. Trust-tier (verified) and merge-strategy axes are never reconciled. |
+| T3 | New tables (`extraction_raw_outputs`, outcome ledger) + new stats/notification events. | **HIGH / GAP** | **No `owner_user_id` scope key**; cache-gate filters by `book_id` only. A View-only collaborator sees another tenant's `cost_per_book`/failures; notifications addressed by book, not user. |
+| T4 | Replay re-applies cached entities under a **new** attribute-action profile "at zero cost." | **HIGH / GAP** | Replay is a **write** — but framed as free, implying it **skips the confirm/cost + grant gate**; `from_job_id` not tenant-scoped → cross-tenant cache theft. |
+| T5 | Evidence `original_text` (raw chapter quote, possibly "ignore previous instructions…") flows into a later known-entities / deep-research prompt. | **MED / GAP** | **Stored prompt-injection** — INV-6 neutralization never applied to stored evidence before reuse. |
+| T6 | A View-only collaborator fires `/effort=high` / MCP `reasoning_effort=high` on a shared book's expensive tool. | **MED / GAP** | Effort is a **cost lever with no spend authorization** — escalates spend on the owner's credentials. Must route through the confirm/cost + grant cap. |
+| T7 | Provider error `detail` echoing an API key / prompt is put into a (cross-tenant-visible) stats/notification event. | **MED / GAP** | No **redaction contract**; `raw_response`/secrets must never reach a notification body. |
+
+---
+
+## 8. Hardening adopted (rev 2 design changes)
+
+These amend the named §1–§5 sections; **the HIGH items (T1–T4, F1, C1–C4, S1–S3) are design-blocking.**
+
+### 8.1 The two-ledger model (the linchpin — fixes F1, and underpins all idempotency)
+
+Split the conflated "covered" concept into **two** records:
+- **`extraction_raw_outputs`** = the **EXECUTE** record: "the LLM produced this parse" (raw + parsed). Keyed `(owner_user_id, book_id, chapter_id, content_hash, kinds, batch_idx, profile_hash)`. Gates **LLM-skip** (don't re-spend tokens).
+- **`extraction_writeback_log`** (NEW) = the **WRITEBACK** record: "these entities landed in glossary," written **only on a confirmed glossary-200**. Gates **writeback-skip**.
+
+So a retry/replay correctly does **skip the LLM AND re-drive the writeback** until it lands.
+Resume skips a chapter only when `completed AND writeback_committed`.
+
+### 8.2 Concurrency & idempotency contract (NEW §3.7 — fixes C1–C7, F2)
+
+1. **WRITEBACK is per-book serialized** (`pg_advisory_xact_lock(hashtext(book_id))`) and **transactional** (whole-chapter atomic) — the only correct closure for alias-based dedup.
+2. **Constraint-backed dedup:** add `normalized_name` on `glossary_entities` + `UNIQUE(book_id, kind_id, normalized_name) WHERE deleted_at IS NULL`; CREATE path = `INSERT … ON CONFLICT DO NOTHING` → re-resolve to existing → MERGE.
+3. **Writeback idempotency key** = the §8.1 writeback-log key; a duplicate key is a no-op returning the prior result (dedupes retry = replay = concurrent fresh).
+4. **Content-hash precondition:** the writeback carries the `content_hash` it was computed from; abort `409 STALE_EXTRACTION` if the chapter changed (optimistic concurrency on source version).
+5. **Idempotent evidence + append:** `UNIQUE(attr_value_id, evidence_type, md5(original_text))` on `evidences`; append is an atomic server-side `jsonb` dedup-merge (or `UNIQUE(entity_id, attr_def_id, normalized_value)` in the multi-row model).
+6. **Cache-gate read-decide-write runs inside the per-(book,chapter,content_hash) lock** (fixes the C5 TOCTOU).
+7. **Writeback granularity = per chapter, not per call:** stage per-call parses into the raw-cache, commit the chapter's writeback once as one transaction after all its calls settle (or at a deadline, marking missing calls partial). Restores per-chapter atomicity + clean resume.
+
+### 8.3 Batch-outcome taxonomy + finish_reason (fixes F3; M0 prerequisite)
+
+- **M0 prerequisite:** verify the gateway SDK result propagates **`finish_reason`** per call. Without it the entire P1 story is undeliverable (today the worker never reads it).
+- **Closed status enum:** `ok` · `empty_valid` (ran, genuinely 0) · `truncated` (finish_reason=length, partial salvage) · `validation_rejected` (LLM returned items, all dropped — a **distinct warning**, never success) · `llm_error` · `writeback_failed`.
+- **Chapter rollup:** `completed` only if every batch ∈ {ok, empty_valid}; anything else → `completed_with_warnings`/`failed`, flowing to job status + notification. `validation_rejected`/`truncated` **must** persist `raw_response` (P5 earns its keep as the debugging artifact). A `truncated` batch feeds back to the planner as a **re-plan-smaller** signal.
+
+### 8.4 Two-phase planner (fixes S1–S5)
+
+Replace the pack-only model with **normalize → pack**:
+1. **Phase 1 — normalize/split (the missing direction):** any `Unit` with `est > per_call_budget` is split along a declared `split_axis` (entity→attribute-subset; chapter×kind → **chapter-chunk** [new extraction chunking, mirroring `split_chapter`, with overlap] → kind). Irreducible → emit `UNPLANNABLE{unit, reason}` so the cost-gate surfaces it instead of the executor truncating.
+2. **Phase 2 — pack** fitting units up to budget (as in §3.2).
+3. **`per_call_budget` is a function of `reasoning_effort`** — `effort_output_multiplier(effort, caps)` (composes the reasoning spec); the effort resolver runs **before** planning and feeds `PlanRequest.policy`.
+4. **Fan-out guard:** surface `est_llm_calls`, `calls_per_chapter`, a `model_fit_warning` when `calls_per_unit > threshold`; the cost-gate shows **call count + wall-clock**, not just dollars, and suggests a larger model when fan-out is pathological.
+5. **Throttle/backpressure:** the executor chunks the plan into bounded broker work-units with a **per-job + per-user in-flight cap**, provider-aware rate limiting, and checkpointed resume *through the cache* (completed calls are free on resume).
+6. **Packing preserves attribution:** each packed unit carries a stable `unit_id` the model must echo; VALIDATE asserts every `unit_id` present exactly once before WRITEBACK (fixes S5). Cross-chunk entity merge is specced **with** P4, not bolted on (extraction chunking creates same-chapter duplicates to dedup).
+7. **Cost:** snapshot price at confirm; track running actual; **auto-pause + re-confirm at a budget breach** (e.g. ≥120% of approved), not per-tick; report estimate as a **range** (low/expected/high via the effort multiplier).
+
+### 8.5 Provenance trust (fixes T1, F4)
+
+- Model-supplied offset is a **hint only**. ALWAYS validate `original_text` actually occurs at the claimed block; clamp `char_start/end` to `[0, len]`; on mismatch fall back to authoritative substring search — **never persist an unverified offset.** Validation is the default path, not the fallback.
+- **Offset taxonomy:** `exact` (model index verified) · `resolved` (unique substring) · `ambiguous` (multi-match → flag, don't blind-pick) · `unmatched` (hallucinated → `block_or_line=null, provenance_status='unverified'`, keep the evidence, don't fabricate). Never fail the entity on bad provenance; grounding consumers filter on `provenance_status`.
+
+### 8.6 Merge integrity (fixes T2, C6, F-append)
+
+- **Verified-clobber guard supersedes `merge_strategy`:** if the existing value (or list item) is human-`verified`, `overwrite`/`replace`/`append` **downgrade to `manual`** (queue for review) + emit skip-reason `verified` — checked at write time, never assumed.
+- **Trust-tier × merge-strategy matrix** is explicit: machine appends never modify/shadow a verified value; a list with a verified item still accepts new machine appends but flags them.
+- **Tombstone check** wired into append: an ai-rejected/tombstoned value is never re-appended (the user's deletion sticks).
+- **Append is atomic + idempotent by normalized value** (server-side, under the row lock; §8.2.5).
+- **System-tier `merge_strategy` defaults to safe** (`fill_if_empty`/`manual`), admin-only; users override only into their per-user/per-book tier.
+
+### 8.7 Tenancy & Trust contract (NEW §3.8 — fixes T3–T7)
+
+- **Scope key on everything new:** `owner_user_id` (+`book_id`) on `extraction_raw_outputs`, `extraction_writeback_log`, the BatchOutcome event payload, and every statistics row. Every cache/replay/usage/stats query filters by tenant + an **E0 grant check**, never `book_id` alone.
+- **Cache key carries the tenant dimension forever;** cross-book/cross-tenant cache reuse is **forbidden** (not merely out-of-scope). `content_hash` is a *within-tenant* idempotency key.
+- **Replay is a write:** gated by the **same EDIT-grant + confirm/cost authorization** as a normal extraction (cost may be $0, the *write authorization + confirm token* are not); `from_job_id` tenant-scoped; the verified-clobber guard applies.
+- **Effort = a cost dimension:** the resolver clamps to model capability **and** to the caller's authorized spend on the target book (grant-level cap / owner-budget consent). A non-owner cannot raise effort past a policy ceiling on a book they don't own.
+- **INV-6 on stored evidence:** `original_text` (and any stored raw snippet) is untrusted DATA — neutralized/fenced before it flows into any downstream prompt (known-entities, deep-research).
+- **Redaction contract:** structured enumerated `error_code` for routing; `detail` scrubbed of secrets + raw source/prompt text before it leaves the worker into the cross-tenant-readable stats/notification lanes; **never** put `raw_response`/BYOK config into a notification.
+- **Notifications addressed to the triggering user** (+ explicitly-granted collaborators by grant level), never broadcast by book.
+
+### 8.8 Observability integrity (fixes C7, F5, F6)
+
+- **SSOT = the outcome rows** (`extraction_chapter_results` / BatchOutcome); events are a **derived projection** written in the **same transaction** (transactional outbox). A **reconciliation sweep** recomputes stats aggregates from rows so a dropped event is eventually consistent, not lost.
+- **Stable `event_id`** = `hash(job_id, chapter_id, batch_idx, content_hash)` (redelivery-stable); consumers dedup before aggregating; idempotent set-union aggregation, not running counters.
+- **Two sinks by cardinality:** per-batch outcomes → **statistics only** (aggregation-tolerant). The **notification** sink gets **only the job-terminal rollup** ("14 entities, 3 batches truncated — raise model"), debounced with a per-job dedup key. This is the spec default, not a PO question.
+
+---
+
+## 9. Revised milestones (rev 2)
+
+| M | Scope | Why this order |
+|---|---|---|
+| **M0** | `finish_reason` propagation through the gateway SDK result (verify/wire) | Prerequisite — without it P1 is undeliverable (§8.3). |
+| **M1** | Concurrency & two-ledger foundation: entity unique-constraint + `ON CONFLICT`, per-book serialized transactional writeback, `extraction_writeback_log`, idempotency key, content-hash precondition, idempotent evidence | **Design-blocking** — every later milestone writes through this seam (§8.1–8.2). |
+| **M2** | P1 observability: BatchOutcome taxonomy + transactional-outbox events + reconciliation + 2-sink routing | §8.3, §8.8 |
+| **M3** | P3 provenance: validated offsets + taxonomy + INV-6 on stored evidence | §8.5, §8.7 |
+| **M4** | P2 two-phase planner: normalize/split (+ extraction chapter-chunking) → pack, effort-aware budget, fan-out guard, throttle, attribution | §8.4 |
+| **M5** | P4 merge: `merge_strategy` + verified-clobber guard + atomic idempotent append + tombstone | §8.6 (data-model change → own plan + migration) |
+| **M6** | P5 raw-cache executor + replay (grant+confirm-gated) + retention | §8.1, §8.7; PO gate (§4) |
+
+Tenancy/trust (§8.7) and concurrency (§8.2) are **cross-cutting contracts every milestone honors**, not standalone milestones.
+
+## 10. New open questions surfaced by the evaluation
+
+6. **Writeback atomicity unit** — confirm per-chapter (recommended, §8.2.7) vs per-call; affects resume + partial-visibility UX.
+7. **Effort ↔ cache key** — add `reasoning_effort` (or an effort band) to the raw-cache key, or make raising effort require `force_reextract`? (§8.4.3 / S3.)
+8. **Append data model** — JSON-array atomic-merge interim vs the multi-row `entity_attribute_values` change now (provenance per list item needs the latter). (§8.6 / C6.)
+9. **Fan-out admission control** — hard per-user job/concurrency caps and a queue-depth guard: what limits? (§8.4.5 / S4–S5.)
+10. **Raw-cache retention** — keep-latest + bounded history depth, and MinIO offload of cold `raw_response` at what age/size? (§8.4.7 / S7.)
+11. **Effort spend authorization** — what is the non-owner effort ceiling on a shared book, and does it consume the owner's budget or the actor's? (§8.7 / T6.)
+
+## 11. Evaluation verdict
+
+The five-facet decomposition (§0) is the right architecture. But as written it was a set of
+**single-writer, happy-path contracts deployed into a multi-writer, at-least-once-retry,
+multi-tenant, untrusted-LLM-output runtime.** The hardening above adds the missing seam
+contracts — **two-ledger** (don't mask un-landed writes), **concurrency** (constraint + lock +
+idempotency), **taxonomy** (empty-valid ≠ failed ≠ truncated), **two-phase planning** (split,
+not just pack), **provenance trust** (validate model offsets), **merge integrity** (never
+clobber verified), and **tenancy** (scope key + grant gate + INV-6 on every new surface). With
+§8 folded in, the design is build-ready *as a design*; without the 4 HIGH items it would ship
+data-loss and tenancy holes. **Still no build — this remains the CLARIFY/DESIGN artifact.**
