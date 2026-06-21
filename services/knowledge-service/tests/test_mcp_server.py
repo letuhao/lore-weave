@@ -232,6 +232,27 @@ async def test_mcp_inputschema_mirrors_bespoke_openai_schema(mcp_base_url):
                             f"{mcp_bound!r} vs bespoke {bespoke_spec[bound]!r}"
                         )
 
+            # (d) array-of-object params must carry the SAME per-item shape on
+            # both paths (a bare list[dict] shim would advertise a structureless
+            # object array to the LLM while bespoke names the item fields — the
+            # exact MCP-vs-bespoke drift FIX #7 guards, but for nested items).
+            bespoke_items = bespoke_spec.get("items")
+            if isinstance(bespoke_items, dict) and bespoke_items.get("type") == "object":
+                mcp_items = _mcp_array_items(mcp_spec, schema)
+                assert mcp_items is not None, (
+                    f"{name}.{prop_name}: bespoke schema declares object array "
+                    f"items but MCP inputSchema exposes no item schema"
+                )
+                bespoke_item_props = set(bespoke_items.get("properties", {}))
+                mcp_item_props = set(mcp_items.get("properties", {}))
+                assert mcp_item_props == bespoke_item_props, (
+                    f"{name}.{prop_name}.items: property mismatch — MCP "
+                    f"{sorted(mcp_item_props)} vs bespoke {sorted(bespoke_item_props)}"
+                )
+                assert set(mcp_items.get("required", [])) == set(
+                    bespoke_items.get("required", [])
+                ), f"{name}.{prop_name}.items: required mismatch"
+
 
 def _mcp_enum_values(spec: dict) -> set | None:
     """Collect enum choices from an MCP inputSchema property.
@@ -259,6 +280,31 @@ def _mcp_numeric_bound(spec: dict, bound: str):
     for branch in spec.get("anyOf", []):
         if bound in branch:
             return branch[bound]
+    return None
+
+
+def _resolve_ref(node: dict, root: dict) -> dict:
+    """Follow a local ``$ref`` (#/$defs/Name) into the root inputSchema.
+
+    Pydantic renders a nested model param (``list[SomeModel]``) as a ``$ref``
+    into a top-level ``$defs`` block rather than inlining the item properties,
+    so the item schema must be resolved before its fields can be compared."""
+    ref = node.get("$ref")
+    if not ref or not ref.startswith("#/"):
+        return node
+    cur: dict = root
+    for part in ref[2:].split("/"):
+        cur = cur.get(part, {}) if isinstance(cur, dict) else {}
+    return cur if isinstance(cur, dict) else node
+
+
+def _mcp_array_items(spec: dict, root: dict) -> dict | None:
+    """Read an array param's resolved ``items`` schema from an MCP inputSchema
+    property, descending into an ``anyOf`` Optional union (``list[...] | None``)
+    and resolving a local ``$ref`` to its ``$defs`` entry."""
+    for branch in (spec, *spec.get("anyOf", [])):
+        if branch.get("type") == "array" and isinstance(branch.get("items"), dict):
+            return _resolve_ref(branch["items"], root)
     return None
 
 

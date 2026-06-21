@@ -71,6 +71,7 @@ from app.tools.graph_schema_tools import (
     GRAPH_LIMIT_MAX,
     TRIAGE_LIMIT_DEFAULT,
     TRIAGE_LIMIT_MAX,
+    KgSyncDecision,
 )
 from app.tools.graph_schema_tools import (
     TIMELINE_LIMIT_DEFAULT as KG_TIMELINE_LIMIT_DEFAULT,
@@ -724,15 +725,20 @@ async def kg_sync_apply(
         str, "The upstream hash returned by kg_sync_available (drift guard)."
     ],
     decisions: Annotated[
-        list[dict] | None,
-        "Per-change decisions, each {node_type, code, parent_code?, choice: "
-        "keep_mine|take_theirs}.",
+        list[KgSyncDecision] | None,
+        "Per-change decisions to apply (omit for none).",
     ] = None,
 ) -> dict:
+    # Typed item model (not bare list[dict]) so the MCP inputSchema carries the
+    # SAME per-decision shape the bespoke OpenAI schema advertises (parity).
+    # model_dump() back to plain dicts — execute_tool re-validates via the arg model.
     return await _dispatch(
         ctx,
         "kg_sync_apply",
-        {"base_source_hash": base_source_hash, "decisions": decisions or []},
+        {
+            "base_source_hash": base_source_hash,
+            "decisions": [d.model_dump() for d in (decisions or [])],
+        },
     )
 
 
