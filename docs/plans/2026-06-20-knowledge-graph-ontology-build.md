@@ -702,3 +702,23 @@ checkout), each TDD + 2-stage review; `/review-impl` on the security-relevant la
 
 Net: the **pure-code deferred surface for this branch is fully cleared.** What remains is the one
 consolidated live E2E (stack) + the glossary-branch row.
+
+**2026-06-21 — live E2E (data layer + deployed routes) GREEN.** Brought up the full infra
+stack (postgres+neo4j+rabbitmq+provider-registry+ai-gateway+knowledge+worker-ai). Ran the
+KG integration suite on a throwaway test DB (`loreweave_knowledge_e2e`, dropped after) + the
+live Neo4j (`bolt://localhost:7688`): **101 passed** — cardinality A (incl. cross-user +
+cross-project boundary locks), reapply E1 (map/close_previous/dismiss Neo4j writes), proposed-
+edge E2 park, schema-write E3 (add_to_vocab bumps version, drift→422, set_multi_active/widen),
+adopt-preview F (+ route cross-tenant denial), resolver/views/schemas/persist-activation. The
+run **caught a real stale assertion** the unit suite couldn't (proposed_edge suggested_actions
+still encoded dismiss-only → fixed to `[dismiss, place_edge]`, commit `68411c6a`) — the exact
+cross-layer gap the E2E exists for. Rebuilt the knowledge-service image + recreated the
+container (`:8216`, healthy); the new routes are registered + reachable live (POST
+`/v1/kg/projects/{id}/adopt/preview` and GET `/v1/kg/entities/{id}/edges/{type}/timeline`
+both 401 unauth'd, not 404). **Cleared:** `D-KG-LD-NEO4J-SMOKE`, the cardinality/reapply/
+schema-write live halves, `D-KG-LC-ROUTE-LIVE-TEST` (new routes live-reachable + repo logic
+live-tested).
+**Still needing the heavy cross-service/LLM/UI tier (next opt-in):** `D-KM5-M3-LIVE-SMOKE`
+(CMS RS256 → gateway `/mcp/admin` → `kg_admin_*`), `D-LB-LIVE-SMOKE` (real-LLM vocab emission
+through the cache-key path), `D-KG-LE-BROWSER-SMOKE` (Playwright adopt-loss warning UI). These
+need BYOK model availability + a `frontend` image rebuild + browser automation.
