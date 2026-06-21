@@ -398,10 +398,12 @@ def test_edge_timeline(monkeypatch, auth_user):
     app.dependency_overrides[get_grant_client] = lambda: object()
     app.dependency_overrides[get_projects_repo] = lambda: object()
 
-    # stub the grant-gate (its own resolution is covered by the repo + grant
-    # tests); here we assert the Cypher→build_timeline wiring.
+    # stub the grant-gate (its own resolution is covered by the dedicated
+    # tenancy tests below); here we assert the Cypher→build_timeline wiring.
+    # The gate now returns (project_id, owner) so the handler can bind the
+    # owner partition.
     async def _ok_grant(entity_id, caller, gc, projects_repo):
-        return "proj-x"
+        return "proj-x", auth_user
     monkeypatch.setattr(gv, "_resolve_entity_project_grant", _ok_grant)
 
     records = [
@@ -423,3 +425,220 @@ def test_edge_timeline(monkeypatch, auth_user):
     assert body["entity_id"] == "kai" and body["edge_type"] == "PURSUES"
     assert [i["target_id"] for i in body["instances"]] == ["revenge", "seek_dao"]
     assert body["instances"][0]["evidence_chapter_id"] == "ch1"
+
+
+# ── D-KG-LD-GRANTEE-TIMELINE — cross-owner gate (the proof) ────────────────
+# These exercise the REAL `_resolve_entity_project_grant` logic with a stubbed
+# any-owner entity lookup + stub grant client / projects repo, mirroring the
+# test_grant_deps style. The boundary is cross-tenant, so be paranoid: assert
+# owner self-read OK, VIEW-grantee OK (resolves to OWNER), under-VIEW 403,
+# non-grantee 404 (no existence leak), and cross-book grantee 404.
+
+import pytest as _pytest  # noqa: E402  (kept local to this section)
+from fastapi import HTTPException  # noqa: E402
+
+from app.clients.grant_client import GrantLevel as _GL  # noqa: E402
+from app.db.neo4j_repos.entities import Entity as _Entity  # noqa: E402
+
+
+_PROJ_UUID = "22222222-2222-2222-2222-222222222222"
+
+
+def _owned_entity(owner, project_id=_PROJ_UUID):
+    return _Entity(
+        id="kai",
+        user_id=str(owner),
+        project_id=project_id,
+        name="Kai",
+        canonical_name="kai",
+        kind="character",
+    )
+
+
+class _GCFixed:
+    """Stub grant client returning a fixed level for any (book, user)."""
+
+    def __init__(self, level):
+        self._level = level
+
+    async def resolve_grant(self, book_id, user_id):
+        return self._level
+
+
+class _ProjectsRepoFixed:
+    """Stub ProjectsRepo.project_meta returning a fixed (owner, book_id)."""
+
+    def __init__(self, meta):
+        self._meta = meta
+
+    async def project_meta(self, project_id):
+        return self._meta
+
+
+def _patch_entity(monkeypatch, ent):
+    """Patch the any-owner Neo4j lookup the gate imports lazily, plus the
+    session ctx-manager, so the gate runs driver-free."""
+    import app.db.neo4j_repos.entities as ent_mod
+
+    async def _fake_lookup(session, canonical_id):
+        return ent
+
+    monkeypatch.setattr(ent_mod, "get_entity_by_id_any_owner", _fake_lookup)
+    monkeypatch.setattr(gv, "neo4j_session", lambda **kw: _FakeSession([]))
+
+
+@_pytest.mark.asyncio
+async def test_grant_owner_self_read_returns_owner(monkeypatch):
+    owner = uuid4()
+    _patch_entity(monkeypatch, _owned_entity(owner))
+    # owner==caller short-circuits; grant client never consulted.
+    pid, resolved = await gv._resolve_entity_project_grant(
+        "kai", owner, _GCFixed(_GL.NONE), _ProjectsRepoFixed((owner, None)),
+    )
+    assert pid == _PROJ_UUID
+    assert resolved == owner
+
+
+@_pytest.mark.asyncio
+async def test_grant_view_grantee_resolves_to_owner(monkeypatch):
+    """A VIEW-grantee of the owner's book reads the OWNER's timeline — the gate
+    returns the OWNER user_id so the handler binds the owner partition."""
+    owner, grantee, book = uuid4(), uuid4(), uuid4()
+    _patch_entity(monkeypatch, _owned_entity(owner))
+    pid, resolved = await gv._resolve_entity_project_grant(
+        "kai", grantee, _GCFixed(_GL.VIEW), _ProjectsRepoFixed((owner, book)),
+    )
+    assert pid == _PROJ_UUID
+    assert resolved == owner  # resolve-to-owner, NOT the caller
+
+
+@_pytest.mark.asyncio
+async def test_grant_under_view_is_403(monkeypatch):
+    owner, grantee, book = uuid4(), uuid4(), uuid4()
+    _patch_entity(monkeypatch, _owned_entity(owner))
+    # NONE is the only level below VIEW in the tier ladder used here; simulate a
+    # "has access but under the required tier" by a level that is not NONE yet
+    # fails at_least(VIEW). VIEW is the lowest grant tier, so under-VIEW for a
+    # cross-owner READ is represented by NONE→404; a non-NONE-but-under tier is
+    # not reachable for VIEW. We instead assert the 403 path via a custom level.
+    class _UnderView:
+        def at_least(self, _other):
+            return False
+
+        def __eq__(self, other):
+            return False  # not NONE
+
+    with _pytest.raises(HTTPException) as ei:
+        await gv._resolve_entity_project_grant(
+            "kai", grantee, _GCFixed(_UnderView()), _ProjectsRepoFixed((owner, book)),
+        )
+    assert ei.value.status_code == 403
+
+
+@_pytest.mark.asyncio
+async def test_grant_non_grantee_is_404_no_leak(monkeypatch):
+    owner, stranger, book = uuid4(), uuid4(), uuid4()
+    _patch_entity(monkeypatch, _owned_entity(owner))
+    with _pytest.raises(HTTPException) as ei:
+        await gv._resolve_entity_project_grant(
+            "kai", stranger, _GCFixed(_GL.NONE), _ProjectsRepoFixed((owner, book)),
+        )
+    # 404, never 403 — no existence oracle for a stranger.
+    assert ei.value.status_code == 404
+
+
+@_pytest.mark.asyncio
+async def test_grant_missing_entity_is_404(monkeypatch):
+    _patch_entity(monkeypatch, None)
+    with _pytest.raises(HTTPException) as ei:
+        await gv._resolve_entity_project_grant(
+            "ghost", uuid4(), _GCFixed(_GL.OWNER), _ProjectsRepoFixed((uuid4(), uuid4())),
+        )
+    assert ei.value.status_code == 404
+
+
+@_pytest.mark.asyncio
+async def test_grant_grantee_of_book_a_cannot_read_book_b_entity(monkeypatch):
+    """A grantee holds VIEW on book A but the entity lives in a project under
+    book B. The gate resolves the entity's OWN project_meta (book B) and asks
+    the grant client for book B — the grantee has no grant there → 404. (The
+    stub grant client returns NONE for book B regardless of book A.)"""
+    owner, grantee, book_b = uuid4(), uuid4(), uuid4()
+    _patch_entity(monkeypatch, _owned_entity(owner))
+    # grant client says NONE for the entity's actual book (book B).
+    with _pytest.raises(HTTPException) as ei:
+        await gv._resolve_entity_project_grant(
+            "kai", grantee, _GCFixed(_GL.NONE), _ProjectsRepoFixed((owner, book_b)),
+        )
+    assert ei.value.status_code == 404
+
+
+@_pytest.mark.asyncio
+async def test_grant_book_less_project_owner_only(monkeypatch):
+    """A book-less project (book_id None) is owner-only (R1): a non-owner caller
+    gets 404 even if the grant client would have said OWNER."""
+    owner, stranger = uuid4(), uuid4()
+    _patch_entity(monkeypatch, _owned_entity(owner))
+    with _pytest.raises(HTTPException) as ei:
+        await gv._resolve_entity_project_grant(
+            "kai", stranger, _GCFixed(_GL.OWNER), _ProjectsRepoFixed((owner, None)),
+        )
+    assert ei.value.status_code == 404
+
+
+def test_timeline_grantee_binds_owner_partition(monkeypatch, auth_user):
+    """End-to-end: a VIEW-grantee hits the timeline route; the handler binds the
+    Cypher `$user_id` to the OWNER (not the caller), so the grantee reads the
+    owner's arc. Asserts the owner — not the grantee — is the bound partition."""
+    owner = auth_user
+    grantee = uuid4()
+    book = uuid4()
+
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[get_current_user] = lambda: grantee
+    app.dependency_overrides[get_grant_client] = lambda: _GCFixed(_GL.VIEW)
+    app.dependency_overrides[get_projects_repo] = lambda: _ProjectsRepoFixed((owner, book))
+
+    _patch_entity(monkeypatch, _owned_entity(owner))
+
+    bound = {}
+
+    class _CapturingSession(_FakeSession):
+        async def run(self, cypher, **params):
+            assert "$user_id" in cypher
+            bound["user_id"] = params.get("user_id")
+            return _FakeResult(self._records)
+
+    records = [
+        _FakeRecord({
+            "rel": {"valid_from": 1, "valid_to": None, "schema_version": 1, "source_chapter": "ch1"},
+            "obj": {"id": "revenge", "name": "Revenge"},
+        }),
+    ]
+    monkeypatch.setattr(gv, "neo4j_session", lambda **kw: _CapturingSession(records))
+
+    client = TestClient(app)
+    r = client.get("/v1/kg/entities/kai/edges/PURSUES/timeline")
+    assert r.status_code == 200, r.text
+    # The Cypher partition is the OWNER, not the grantee caller.
+    assert bound["user_id"] == str(owner)
+    assert bound["user_id"] != str(grantee)
+
+
+def test_timeline_non_grantee_404(monkeypatch, auth_user):
+    """A stranger (no grant) hitting the route → 404, never reaching the Cypher."""
+    owner = auth_user
+    stranger = uuid4()
+    book = uuid4()
+
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[get_current_user] = lambda: stranger
+    app.dependency_overrides[get_grant_client] = lambda: _GCFixed(_GL.NONE)
+    app.dependency_overrides[get_projects_repo] = lambda: _ProjectsRepoFixed((owner, book))
+
+    _patch_entity(monkeypatch, _owned_entity(owner))
+    client = TestClient(app)
+    r = client.get("/v1/kg/entities/kai/edges/PURSUES/timeline")
+    assert r.status_code == 404

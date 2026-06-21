@@ -581,6 +581,43 @@ async def get_entity(
     return _node_to_entity(record["e"])
 
 
+# Any-owner lookup: matches by the globally-unique `Entity.id` with NO
+# `user_id` filter. `Entity.id` is a deterministic, globally-unique key
+# (schema uniqueness constraint), so this cannot collide across tenants —
+# it returns the single owning entity (incl. its owner `user_id` +
+# `project_id`).
+_GET_ENTITY_ANY_OWNER_CYPHER = """
+MATCH (e:Entity {id: $id})
+RETURN e
+"""
+
+
+async def get_entity_by_id_any_owner(
+    session: CypherSession,
+    canonical_id: str,
+) -> Entity | None:
+    """Look up an entity by its globally-unique id WITHOUT a `user_id`
+    filter. Returns the entity incl. its owner `user_id` + `project_id`,
+    or None if no node matches.
+
+    SECURITY: this bypasses the per-tenant `user_id` filter that every
+    other `:Entity` read enforces. It is safe ONLY because `Entity.id` is
+    globally unique (no cross-tenant collision), and it MUST be paired with
+    an explicit grant check on the returned entity's project before any of
+    its data is exposed to the caller. Used by
+    `_resolve_entity_project_grant` to resolve-to-owner for the grant-gated
+    edge timeline (D-KG-LD-GRANTEE-TIMELINE)."""
+    result = await run_read(
+        session,
+        _GET_ENTITY_ANY_OWNER_CYPHER,
+        id=canonical_id,
+    )
+    record = await result.single()
+    if record is None:
+        return None
+    return _node_to_entity(record["e"])
+
+
 # ── find_entities_by_name ─────────────────────────────────────────────
 
 
