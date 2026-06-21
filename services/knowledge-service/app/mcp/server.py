@@ -849,6 +849,51 @@ async def kg_triage_schema_write(
     )
 
 
+# ── Cost-gated job triggers (KM6) — PROPOSE only ──────────────────────
+# kg_build_graph mints a confirm-token carrying a cost estimate; the human
+# confirms via /v1/kg/actions/confirm and the extraction job starts there
+# (D-KG-LF-BUILDKG-MCP). Nothing is spent at mint time.
+
+
+@mcp_server.tool(
+    name="kg_build_graph",
+    description=(
+        "Build the current project's knowledge graph by starting an extraction job over "
+        "the book's chapters. EXPENSIVE (LLM cost) so it does NOT run immediately — it "
+        "returns a confirm_token + summary; a human confirms on the review surface (which "
+        "shows the estimated cost) and the job starts then. Requires the project to have "
+        "an embedding model configured (run extraction setup once in the UI first). Pick "
+        "the extraction llm_model from settings_list_models."
+    ),
+)
+async def kg_build_graph(
+    ctx: MCPContext,
+    llm_model: Annotated[
+        str, "The extraction LLM model ref (from settings_list_models)."
+    ],
+    scope: Annotated[
+        Literal["all", "chapters", "chat", "glossary_sync"],
+        "What to extract (default 'all').",
+    ] = "all",
+    chapter_from: Annotated[
+        int | None,
+        Field(ge=0),
+        "Optional inclusive lower chapter ordinal (with chapter_to).",
+    ] = None,
+    chapter_to: Annotated[
+        int | None,
+        Field(ge=0),
+        "Optional inclusive upper chapter ordinal (with chapter_from).",
+    ] = None,
+) -> dict:
+    args: dict[str, Any] = {"llm_model": llm_model, "scope": scope}
+    if chapter_from is not None:
+        args["chapter_from"] = chapter_from
+    if chapter_to is not None:
+        args["chapter_to"] = chapter_to
+    return await _dispatch(ctx, "kg_build_graph", args)
+
+
 # ── ASGI factory ──────────────────────────────────────────────────────
 
 

@@ -28,6 +28,7 @@ from app.tools.graph_schema_tools import (
     GRAPH_SCHEMA_ARG_MODELS,
     GRAPH_SCHEMA_TOOL_DEFINITIONS,
 )
+from app.tools.build_tools import BUILD_TOOL_ARG_MODELS
 from app.tools.project_tools import PROJECT_TOOL_ARG_MODELS
 
 __all__ = [
@@ -131,6 +132,8 @@ ARG_MODELS: dict[str, type[BaseModel]] = {
     **GRAPH_SCHEMA_ARG_MODELS,
     # Knowledge-project lifecycle (kg_project_create) — book↔KG bootstrap.
     **PROJECT_TOOL_ARG_MODELS,
+    # Cost-gated job triggers (kg_build_graph) — confirm-token mint.
+    **BUILD_TOOL_ARG_MODELS,
 }
 
 TOOL_NAMES: tuple[str, ...] = tuple(ARG_MODELS)
@@ -313,5 +316,38 @@ TOOL_DEFINITIONS: list[dict] = [
             },
         },
         ["name"],
+    ),
+    # Cost-gated job trigger — build the knowledge graph (propose→confirm).
+    _tool(
+        "kg_build_graph",
+        "Build the current project's knowledge graph by starting an extraction job over "
+        "the book's chapters. EXPENSIVE (LLM cost) so it does NOT run immediately — it "
+        "returns a confirm_token + summary; a human confirms on the review surface, which "
+        "shows the estimated cost, and the job starts then. Requires the project to have "
+        "an embedding model configured (run extraction setup once in the UI first). Pick "
+        "the extraction llm_model from settings_list_models.",
+        {
+            "llm_model": {
+                "type": "string",
+                "maxLength": 200,
+                "description": "The extraction LLM model ref (from settings_list_models).",
+            },
+            "scope": {
+                "type": "string",
+                "enum": ["all", "chapters", "chat", "glossary_sync"],
+                "description": "What to extract (default 'all').",
+            },
+            "chapter_from": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Optional inclusive lower chapter ordinal (with chapter_to).",
+            },
+            "chapter_to": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Optional inclusive upper chapter ordinal (with chapter_from).",
+            },
+        },
+        ["llm_model"],
     ),
 ]

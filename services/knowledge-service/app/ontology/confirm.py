@@ -36,6 +36,8 @@ __all__ = [
     "DESC_SYSTEM_DELETE",
     "DESC_TRIAGE_PROPOSED_EDGE",
     "DESC_TRIAGE_SCHEMA_WRITE",
+    "DESC_BUILD_GRAPH",
+    "DESC_BUILD_WIKI",
     "ActionClaims",
     "ActionTokenInvalid",
     "ActionTokenExpired",
@@ -71,10 +73,18 @@ DESC_SYSTEM_DELETE = "kg_system_delete"
 DESC_TRIAGE_PROPOSED_EDGE = "kg_triage_proposed_edge"
 # E3 — apply a schema-mutating triage resolution via ontology_mutations (Manage-gated).
 DESC_TRIAGE_SCHEMA_WRITE = "kg_triage_schema_write"
+# Cost-gated job triggers (grant authority — re-check proposer + grant at confirm).
+# The MCP tool mints the cost estimate; the human confirms before any spend. The
+# effect starts the async job in the confirm route (which has the full DI).
+DESC_BUILD_GRAPH = "kg_build_graph"  # start an extraction job over the book's chapters
+# Reserved — DESC_BUILD_WIKI is defined but NOT yet live (its confirm/preview dispatch
+# lands with the kg_build_wiki tool). Until then verify/mint fail closed on it.
+DESC_BUILD_WIKI = "kg_build_wiki"    # generate wiki articles for the book's entities
 _LIVE_DESCRIPTORS: frozenset[str] = frozenset({
     DESC_SCHEMA_EDIT, DESC_ADOPT, DESC_SYNC,
     DESC_SYSTEM_CREATE, DESC_SYSTEM_PATCH, DESC_SYSTEM_DELETE,
     DESC_TRIAGE_PROPOSED_EDGE, DESC_TRIAGE_SCHEMA_WRITE,
+    DESC_BUILD_GRAPH,
 })
 
 

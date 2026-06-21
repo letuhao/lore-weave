@@ -559,6 +559,7 @@ async def test_every_live_descriptor_is_dispatched():
         DESC_SCHEMA_EDIT, _confirm.DESC_ADOPT, _confirm.DESC_SYNC,
         _confirm.DESC_SYSTEM_CREATE, _confirm.DESC_SYSTEM_PATCH, _confirm.DESC_SYSTEM_DELETE,
         _confirm.DESC_TRIAGE_PROPOSED_EDGE, _confirm.DESC_TRIAGE_SCHEMA_WRITE,
+        _confirm.DESC_BUILD_GRAPH,
     }, (
         "a new live descriptor must also get a confirm + preview dispatch branch in "
         "kg_actions.py and be added here"

@@ -71,6 +71,7 @@ from app.tools.definitions import (
     MemorySearchArgs,
     MemoryTimelineArgs,
 )
+from app.tools.build_tools import BUILD_TOOL_HANDLERS
 from app.tools.graph_schema_tools import GRAPH_SCHEMA_HANDLERS
 from app.tools.project_tools import PROJECT_TOOL_HANDLERS
 
@@ -445,6 +446,9 @@ _HANDLERS = {
     # Knowledge-project lifecycle (kg_project_create) — the book↔KG bootstrap the
     # schema/extraction/wiki tools depend on (D-KG-LF-PROJECT-CREATE-MCP).
     **PROJECT_TOOL_HANDLERS,
+    # Cost-gated job triggers (kg_build_graph) — mint a confirm-token; the human
+    # confirms + the job starts in the confirm route (D-KG-LF-BUILDKG-MCP).
+    **BUILD_TOOL_HANDLERS,
 }
 
 

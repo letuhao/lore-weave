@@ -53,7 +53,14 @@ from app.db.repositories.system_templates import (
     SystemTemplatesRepo,
 )
 from app.db.repositories.triage import TriageRepo
-from app.deps import get_grant_client, get_projects_repo
+from app.deps import (
+    get_benchmark_runs_repo,
+    get_book_client,
+    get_extraction_jobs_repo,
+    get_extraction_wake,
+    get_grant_client,
+    get_projects_repo,
+)
 from app.middleware.jwt_auth import get_current_user
 from app.ontology.adopt_effect import (
     AdoptNeedsGlossary,
@@ -62,10 +69,16 @@ from app.ontology.adopt_effect import (
     apply_adopt,
     preview_adopt,
 )
+from app.ontology.build_graph_effect import (
+    BuildGraphParams,
+    apply_build_graph,
+    preview_build_graph,
+)
 from app.ontology.confirm import (
     AUTH_ADMIN,
     AUTH_GRANT,
     DESC_ADOPT,
+    DESC_BUILD_GRAPH,
     DESC_SCHEMA_EDIT,
     DESC_SYNC,
     DESC_SYSTEM_CREATE,
@@ -325,6 +338,8 @@ async def confirm_action(
         return await _confirm_proposed_edge(claims, owner, triage)
     if claims.descriptor == DESC_TRIAGE_SCHEMA_WRITE:
         return await _confirm_triage_schema_write(claims, owner, schemas, mutations, triage)
+    if claims.descriptor == DESC_BUILD_GRAPH:
+        return await _confirm_build_graph(claims, owner, projects)
     if claims.descriptor in _SYSTEM_DESCRIPTORS:
         return await _confirm_system(claims, system_repo)
     # Unreachable: verify_action_token already rejects non-live descriptors.
@@ -480,6 +495,34 @@ async def _confirm_triage_schema_write(
         )
 
 
+async def _confirm_build_graph(
+    claims: ActionClaims, owner: UUID | None, projects: ProjectsRepo
+) -> dict:
+    """Cost-gated job trigger — start the extraction job via the shared core (grant
+    authority; `owner` is the resolved project owner, never None here). The core's
+    HTTPExceptions (K17.9 benchmark 409, active-job 409, scope 422) propagate as-is —
+    fail-closed (the consumed jti is not released; the human re-proposes after fixing).
+
+    The extraction deps (jobs/benchmark repos, book client, wake) are built HERE rather
+    than injected into the shared confirm route — adding them to the route signature would
+    force every confirm (incl. admin/system) to resolve the redis-backed wake + book
+    client, breaking unrelated paths. They are process singletons / pool-backed repos."""
+    try:
+        params = BuildGraphParams(**claims.params)
+    except ValidationError:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="bad proposal payload"
+        )
+    return await apply_build_graph(
+        project_id=claims.project_id, owner=owner, params=params,
+        projects_repo=projects,
+        jobs_repo=await get_extraction_jobs_repo(),
+        benchmark_repo=await get_benchmark_runs_repo(),
+        book_client=await get_book_client(),
+        extraction_wake=await get_extraction_wake(),
+    )
+
+
 async def _confirm_system(claims: ActionClaims, system_repo: SystemTemplatesRepo) -> dict:
     """Admin System-tier template effect. Authority (RS256 + asub bind) was already
     re-checked in `_authorize_admin` and the jti consumed; here we re-validate the
@@ -538,6 +581,21 @@ async def preview_action(
     )
     if claims.descriptor in _SYSTEM_DESCRIPTORS:
         return await preview_system_template(system_repo, _system_params(claims))
+    if claims.descriptor == DESC_BUILD_GRAPH:
+        try:
+            params = BuildGraphParams(**claims.params)
+        except ValidationError:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="bad proposal payload"
+            )
+        project = await projects.get(owner, UUID(claims.project_id))
+        if project is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
+        # Deps built here (not route-injected) — see _confirm_build_graph.
+        return await preview_build_graph(
+            project=project, params=params, book_client=await get_book_client(),
+            benchmark_repo=await get_benchmark_runs_repo(), owner=owner,
+        )
     if claims.descriptor == DESC_SCHEMA_EDIT:
         try:
             params = SchemaEditParams(**claims.params)
