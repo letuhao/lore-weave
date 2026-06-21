@@ -167,6 +167,11 @@ func (s *Server) Router() http.Handler {
 		// wiki-llm M8 (D-WIKI-M8-FEWSHOT) — gold AI→human revision pairs (plaintext,
 		// truncated) for few-shot generation in knowledge-service.
 		r.Get("/books/{book_id}/wiki/gold-pairs", s.listWikiGoldPairs)
+		// D-KG-LG-REAL — the KG ontology resolver / adopt-gate node-kind source
+		// (knowledge-service glossary_ontology_client). Book tier + the System
+		// standards baseline for book-less projects.
+		r.Get("/books/{book_id}/ontology", s.internalBookOntology)
+		r.Get("/users/{user_id}/glossary-standards", s.internalUserGlossaryStandards)
 	})
 
 	r.Route("/v1/glossary", func(r chi.Router) {
