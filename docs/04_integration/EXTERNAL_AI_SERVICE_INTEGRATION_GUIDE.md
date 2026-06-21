@@ -836,9 +836,13 @@ These exact keys (`answer`, `results[].{title,url,content,score}`) are what Lore
 
 LoreWeave treats any non-2xx as a provider error (no in-turn retry), surfaces a clean message, and the assistant degrades to "search unavailable" — it never blocks the chat. **No VRAM/model-lifecycle layer is required** (web search is stateless per request).
 
-### Recommended backend: **SearXNG** (local + free) ⭐
+### Recommended backend: **SearXNG** (local + free) ⭐ — reference impl built
 
 [SearXNG](https://github.com/searxng/searxng) is an OSS metasearch engine (aggregates Google/Bing/DuckDuckGo/Brave/…), one Docker container, **no API key, no account, no per-query cost**. Build a thin shim that accepts `POST /search` above, calls SearXNG `GET /search?q=…&format=json`, and maps its `results[]` (`title`/`url`/`content`) → the response. Optionally fetch+extract page text (`trafilatura`) for richer `content` on `advanced`. (Alternatives: a **Tavily proxy** — Tavily already speaks this shape — or **Brave/SerpAPI/Exa** wrappers.)
+
+> **Reference impl: `local-web-search-service`.** SearXNG + a FastAPI shim conforming to this §8, with passing contract tests and a `docker-compose.yml` that runs both. It *additionally* exposes the same search as an **MCP tool** (`/mcp` → `web_search`) for direct Cursor/agent use — note this is orthogonal: LoreWeave always calls `POST /search`, never MCP. Details + the MCP surface: **`docs/04_integration/2026-06-21-web-search-service-integration.md` §7**.
+>
+> It also adds a **companion `web_fetch` capability** (`POST /fetch` + `fetch_page`/`fetch_pages` MCP tools) backed by a **Scrapling** sidecar (browser / anti-bot), for reading the full clean content of a specific page — the natural follow-up to a search hit. The LoreWeave consumer for `web_fetch` is **not built yet**; see **§10** of the integration doc for the forward contract.
 
 ### Usage Reporting
 

@@ -1,6 +1,6 @@
 # Web-Search Service — Integration Guide & API Contract
 
-**Status:** contract draft · 2026-06-21 · owners: LoreWeave (consumer, this repo) + external **`local-web-search-service`** repo (provider, to be built)
+**Status:** contract draft · 2026-06-21 · owners: LoreWeave (consumer, this repo) + external **`local-web-search-service`** repo (provider — **reference implementation built**, see §5a)
 **Why:** the glossary deep-research feature (S5) lets the assistant research an entity on the **web** and attach the fetched **source URLs as evidence**. Neither LM Studio nor Ollama exposes web search, and per the **provider-gateway invariant** no domain service may call a search API directly. So web search lives in a **dedicated external service** (its own repo, like `local-rerank-service` / `local-stt-service` / `local-tts-service` / the ComfyUI `local-image-generator-service`) that LoreWeave reaches **only as a BYOK provider credential through `provider-registry`**.
 
 This document is the **contract** both repos implement against. **The consumer side (this repo) is already built** — see §6; the provider side (external repo) implements **§3–§5**. A conforming service drops in with zero LoreWeave code changes.
@@ -106,14 +106,16 @@ LoreWeave treats **any non-2xx as a provider error** (it does not retry inside t
 
 Pick one backend; all speak §3 on the wire.
 
-### 5a. SearXNG wrapper — **recommended for local + free** ⭐
+### 5a. SearXNG wrapper — **recommended for local + free** ⭐ — **BUILT** ✅
 - **What:** [SearXNG](https://github.com/searxng/searxng) is an OSS metasearch engine (aggregates Google/Bing/DuckDuckGo/Brave/…). One Docker container, **no API key, no account, no per-query cost**, JSON output.
+- **Status:** the **`local-web-search-service`** repo now ships this as its reference implementation — a FastAPI shim + SearXNG `docker-compose.yml`, conforming to §3/§8 with passing contract tests. It additionally exposes an **MCP surface** for direct agent use (see §7 — not part of this contract).
 - **Build:** a thin FastAPI (or any HTTP) shim that:
   1. accepts `POST /search` (§3),
   2. calls SearXNG `GET {SEARXNG_URL}/search?q=<query>&format=json&language=<…>` (+ engines/categories config),
-  3. maps SearXNG's `results[]` (`title`, `url`, `content`) → the §3 response (set `score` from SearXNG's `score` if present; `answer` from SearXNG's `answers[]`/`infoboxes[]` if available, else omit),
+  3. maps SearXNG's `results[]` (`title`, `url`, `content`) → the §3 response (set `score` from SearXNG's `score` if present; `answer` from SearXNG's `answers[]`/`infoboxes[]` if available, else omit), dropping non-`http(s)` URLs and deduping by URL,
   4. returns ≤ `max_results`.
-- **Content depth:** SearXNG returns search-snippet `content`. For richer `content` on `advanced`, optionally fetch + extract the page (e.g. `trafilatura`/`readability`) for the top results — but snippet-only is fine for v1.
+- **SearXNG config gotcha:** SearXNG must have `formats: [html, json]` enabled in its `settings.yml`, else `/search?format=json` returns HTML and the shim cannot parse it. (The reference impl ships a minimal `searxng/settings.yml` that sets this.)
+- **Content depth:** SearXNG returns search-snippet `content`. For richer `content` on `advanced`, optionally fetch + extract the page (e.g. `trafilatura`/`readability`) for the top results — but snippet-only is fine for v1. (The reference impl does this on `search_depth="advanced"` via `trafilatura`, capped + best-effort.)
 - **Footprint:** tiny — no GPU, no model load (unlike rerank/STT/TTS, this service has **no VRAM lifecycle**; §4 of the rerank doc does not apply).
 
 ### 5b. Tavily proxy
@@ -159,7 +161,27 @@ Register a BYOK `web_search` credential + model for the user (via Settings UI, t
 
 ---
 
-## 7. Sequence
+## 7. Optional second surface: MCP tool (NOT part of the LoreWeave contract)
+
+A service MAY *additionally* expose the same search as an **MCP tool** (Streamable HTTP) for direct use by Cursor / Claude / any MCP client. This is **orthogonal to LoreWeave**: LoreWeave reaches the service **only** via `POST /search` through `provider-registry` (the provider-gateway invariant) and **never** via MCP. The MCP surface is a convenience for human/agent-driven research outside LoreWeave.
+
+The reference impl (`local-web-search-service`) mounts both on one ASGI app:
+
+| Surface | Path | Consumer | Auth |
+|---|---|---|---|
+| HTTP (this contract, §3) | `POST /search` | LoreWeave `provider-registry` | Bearer (§2) |
+| MCP (addition) | `/mcp` → tool `web_search` | Cursor / agents | none (local trust) |
+
+- Both surfaces call the **same** SearXNG orchestrator, so results are identical.
+- MCP tool: `web_search(query, max_results=5, search_depth="basic", include_answer=false)` → `{query, answer?, results:[{title,url,content,score}]}`.
+- MCP client config: `{"mcpServers":{"local-web-search":{"type":"http","url":"http://<host>:8090/mcp"}}}`.
+- **Untrusted-output (principle 4) still applies** to MCP consumers — the tool returns external DATA; an agent must not treat it as instructions.
+
+Implementing MCP is **not required** for LoreWeave conformance — a service that exposes only `POST /search` is fully conformant.
+
+---
+
+## 8. Sequence
 
 ```mermaid
 sequenceDiagram
@@ -179,14 +201,137 @@ sequenceDiagram
 
 ---
 
-## 8. Build checklist (external repo)
+## 9. Build checklist (external repo)
 
-- [ ] `POST /search` per §3 (request fields tolerated, response keys exact: `answer`, `results[].{title,url,content,score}`).
-- [ ] Bearer auth when a secret is configured; keyless allowed for a private local backend; ignore an unknown body `api_key`.
-- [ ] `max_results` clamp (1–20); empty `results` on no-hit (200, not error); `429 {retry_after_s}` on backend quota; non-2xx `{error}` otherwise.
-- [ ] `GET /health` + `GET /ready`.
-- [ ] Return **absolute http(s) URLs** and **clean snippet `content`** (LoreWeave neutralizes regardless, but clean text = better evidence).
-- [ ] Containerized; addressable by URL on the compose/LAN network. (SearXNG backend ⇒ ship SearXNG + the shim.)
-- [ ] README declares the backend + whether `search_depth`/`answer` are supported.
+The `local-web-search-service` reference impl satisfies all of these (✅ = done there):
+
+- [x] `POST /search` per §3 (request fields tolerated, response keys exact: `answer`, `results[].{title,url,content,score}`).
+- [x] Bearer auth when a secret is configured; keyless allowed for a private local backend; ignore an unknown body `api_key`.
+- [x] `max_results` clamp (1–20); empty `results` on no-hit (200, not error); `429 {retry_after_s}` on backend quota; non-2xx `{error}` otherwise.
+- [x] `GET /health` + `GET /ready`.
+- [x] Return **absolute http(s) URLs** (drop non-http(s), dedupe by URL) and **clean snippet `content`** (LoreWeave neutralizes regardless, but clean text = better evidence).
+- [x] Containerized; addressable by URL on the compose/LAN network. (SearXNG backend ⇒ ship SearXNG + the shim — `docker-compose.yml` runs both.)
+- [x] README declares the backend + whether `search_depth`/`answer` are supported.
+- [ ] _(optional)_ MCP surface (§7) for direct agent use — done in the reference impl, **not** required for conformance.
 
 **No VRAM/model-lifecycle layer is required** (unlike rerank/STT/TTS) — web search is stateless per request.
+
+### Reference implementation layout (`local-web-search-service`)
+```
+app/service.py        # search orchestrator: clamp → SearXNG → map → (advanced) enrich → answer
+app/searxng_client.py # SearXNG JSON client + §3 mapping (http-only, deduped)
+app/fetch_service.py  # fetch orchestrator: mode dispatch (http/browser/stealth/auto) — §10
+app/scrapling_client.py # MCP client to the Scrapling sidecar — §10
+app/api.py            # POST /search, /fetch, /fetch/bulk, GET /health, /ready
+app/mcp_server.py     # FastMCP tools: web_search + fetch_page + fetch_pages (Streamable HTTP)
+app/main.py           # one ASGI app: /search, /fetch… + mounted /mcp
+docker-compose.yml    # SearXNG + Scrapling sidecar + the shim
+tests/                # test_contract.py (search §3) + test_fetch.py (fetch §10), backends mocked
+```
+
+---
+
+## 10. Companion capability: page fetch (`web_fetch`) — **NEW**
+
+Search (§3) finds *which* URLs are relevant and returns snippets. **Fetch** reads
+*one specific page* and returns its **clean, full content** (markdown/text/html).
+Together they complete deep-research: search → pick an evidence URL → fetch its
+full text for a richer description / quote.
+
+> **Status.** The **provider side is built** in `local-web-search-service`
+> (Scrapling-backed, with an HTTP fallback). The **LoreWeave consumer side is
+> NOT built yet** — there is no `web_fetch` provider-registry adapter or
+> glossary wiring today. This section is the **forward contract** for when it is
+> added (mirroring how §3 was the contract before/while the search consumer was
+> built). Until then, the fetch surface is consumed directly via MCP (§10.4) or
+> HTTP by agents/tools, **not** through provider-registry.
+
+> **Untrusted output (same as §1.4).** Returned `content`/`title` is **hostile
+> external DATA** — a consumer MUST neutralize it (INV-6) and treat it as data,
+> never instructions, before it reaches a prompt or lands as evidence.
+
+### 10.1 Backend: Scrapling sidecar (+ HTTP fallback)
+
+The service fetches via a **[Scrapling](https://scrapling.readthedocs.io/) sidecar**
+(`pyd4vinci/scrapling`, exposed over MCP) for browser rendering and anti-bot
+handling, with an **in-process `httpx`+`trafilatura` fallback** for plain HTTP
+when no sidecar is configured. Pluggable like the search backend — the wire
+shape below is fixed; the scraper behind it is the service's business.
+
+**Modes** (how hard to try):
+
+| mode | backend tool | use for |
+|---|---|---|
+| `http` | Scrapling `get` (or HTTP fallback) | fast static pages, low protection |
+| `browser` | Scrapling `fetch` (Playwright) | JS-rendered / dynamic content |
+| `stealth` | Scrapling `stealthy_fetch` | Cloudflare / anti-bot (`solve_cloudflare`) |
+| `auto` *(default)* | `http`, escalate → `stealth` | unknown pages: try cheap, escalate if blocked/thin |
+
+### 10.2 `POST {endpoint_base_url}/fetch`
+
+Fetch one page. Bearer auth per §2 (keyless allowed).
+
+**Request**
+```json
+{ "url": "https://en.wikipedia.org/wiki/Nezha",
+  "mode": "auto", "format": "markdown", "max_chars": 8000, "css_selector": null }
+```
+| field | type | required | notes |
+|---|---|---|---|
+| `url` | string | yes | absolute **http(s)** URL; others → `400 validation`. |
+| `mode` | string | no | `auto`(default)·`http`·`browser`·`stealth` (§10.1). |
+| `format` | string | no | `markdown`(default)·`text`·`html` (shape of `content`). |
+| `max_chars` | int | no | cap on `content` length (default 8000). |
+| `css_selector` | string | no | extract only matching subtree(s) (Scrapling backend only). |
+| `api_key` | string | no | ignored (wire-compat; auth is the Bearer header). |
+
+**Response `200`**
+```json
+{ "url": "https://en.wikipedia.org/wiki/Nezha",
+  "final_url": "https://en.wikipedia.org/wiki/Nezha",
+  "status": 200, "title": "Nezha", "content": "# Nezha\n\n...",
+  "content_format": "markdown", "length": 5234, "engine": "http", "error": null }
+```
+| field | type | notes |
+|---|---|---|
+| `url` | string | the requested URL (echo). |
+| `final_url` | string | URL after redirects (may differ). |
+| `status` | int\|null | upstream HTTP status (null if backend gave none). |
+| `title` | string | best-effort (first heading); may be empty. |
+| `content` | string | clean extracted page content in `content_format`. |
+| `content_format` | string | echo of requested `format`. |
+| `length` | int | `len(content)` after `max_chars` cap. |
+| `engine` | string | which path produced it: `http`·`browser`·`stealth`. |
+| `error` | string\|null | null on success (set only in bulk per-URL failures). |
+
+### 10.3 `POST {endpoint_base_url}/fetch/bulk`
+
+```json
+{ "urls": ["https://a/","https://b/"], "mode": "auto", "format": "markdown" }
+```
+→ `200 { "results": [ <fetch object>, … ] }` — one item per input URL, same
+order. A per-URL failure sets that item's `error` (and leaves `content` empty)
+instead of failing the batch. Server caps the list (default 10 URLs).
+
+### Errors
+| status | body | meaning |
+|---|---|---|
+| 400 | `{"error":"validation","detail":…}` | empty/non-http url, unknown mode/format |
+| 401 | `{"error":"unauthorized"}` | bad/missing bearer (when a secret is set) |
+| 404 | `{"error":"fetch_disabled"}` | fetch capability turned off (`ENABLE_FETCH=false`) |
+| 502 | `{"error":"fetch_failed","detail":…}` | backend failed, or `browser`/`stealth` requested with no sidecar |
+
+### 10.4 MCP tools (same `/mcp` surface as §7)
+
+The reference impl exposes fetch over MCP alongside `web_search`:
+- `fetch_page(url, mode="auto", format="markdown", max_chars=8000, css_selector=None)` → the §10.2 object.
+- `fetch_pages(urls, mode="auto", format="markdown", max_chars=8000, css_selector=None)` → the §10.3 object.
+
+### 10.5 Build checklist (fetch)
+- [x] `POST /fetch` + `POST /fetch/bulk` per §10.2/§10.3 (http(s)-only url; modes/formats validated).
+- [x] Scrapling sidecar wired over MCP; **graceful HTTP fallback** when absent (`http`/`auto` still work; `browser`/`stealth` → `502`).
+- [x] `auto` escalates http → stealth on block/thin content.
+- [x] Bearer auth (§2); `ENABLE_FETCH` toggle; bulk per-URL error isolation + count cap.
+- [x] MCP `fetch_page` / `fetch_pages` tools.
+- [x] Untrusted-output discipline documented for consumers.
+- [ ] _(consumer, future)_ LoreWeave `web_fetch` provider-registry adapter + glossary wiring — **not built yet**.
