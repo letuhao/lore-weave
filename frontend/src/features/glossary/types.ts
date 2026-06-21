@@ -82,6 +82,39 @@ export type Evidence = {
   translations: Array<{ id: string; evidence_id: string; language_code: string; value: string; confidence: Confidence }>;
 };
 
+// S4 — batch-translate dialog (GET translation-candidates / POST apply-translations).
+export type TranslationCandidateAttr = {
+  attr_value_id: string;
+  code: string;
+  field_type: string;
+  original_language: string;
+  original_value: string;
+  existing_value?: string | null;
+  existing_confidence?: string | null;
+};
+export type TranslationCandidateEntity = {
+  entity_id: string;
+  display_name: string;
+  kind_code: string;
+  status: string;
+  attributes: TranslationCandidateAttr[];
+};
+export type TranslationCandidatesResponse = {
+  book_id: string;
+  target_language: string;
+  total: number;
+  limit: number;
+  offset: number;
+  items: TranslationCandidateEntity[];
+};
+export type ApplyTranslationItem = { entity_id: string; attr_value_id: string; value: string };
+export type ApplyTranslationsResponse = {
+  translated: number;
+  skipped_verified: number;
+  skipped_empty: number;
+  failed: string[];
+};
+
 export type AttributeValue = {
   attr_value_id: string;
   entity_id: string;

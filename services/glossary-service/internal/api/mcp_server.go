@@ -65,6 +65,8 @@ func (s *Server) mcpHandler() http.Handler {
 	s.RegisterPipelineProposeTools(srv)
 	// Pipeline M4: entity-translation tool (class-W; draft, never overwrites verified).
 	s.RegisterPipelineTranslateTools(srv)
+	// S5: web-search deep-research tool (class-C; paid outward call → confirm-gated).
+	s.RegisterDeepResearchTools(srv)
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "glossary_propose_new_entity",

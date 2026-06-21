@@ -338,6 +338,16 @@ func (s *Server) resolveBookPatch(ctx context.Context, bookID uuid.UUID, level s
 		return "", "", uuid.Nil, nil, errors.New("level must be genre, kind, or attribute")
 	}
 	if isNoRows(err) {
+		if level == bookLevelAttr {
+			// An attribute is identified by (kind_code, genre_code, code) — genre is
+			// part of its identity, NOT a patchable field. The most common cause of a
+			// miss here is passing the *target* genre to "move" an attribute; that
+			// never resolves (and a genre change isn't a patch). Say so explicitly so
+			// the agent doesn't retry the same shape.
+			return "", "", uuid.Nil, nil, fmt.Errorf(
+				"no live attribute %q under kind %q in genre %q — attributes are keyed by (kind, genre, code); genre is identity, not editable, so to move an attribute to a different genre delete it and recreate it there",
+				code, strings.TrimSpace(in.KindCode), strings.TrimSpace(in.GenreCode))
+		}
 		return "", "", uuid.Nil, nil, errors.New("no live row with that code in this book")
 	}
 	if err != nil {

@@ -181,6 +181,15 @@
     "undo": "Hoàn tác",
     "undone": "Đã hoàn tác"
   },
+  "translation_review": {
+    "header": "Đề xuất bản dịch tên tiếng {{lang}}",
+    "header_aliases": "Đề xuất bí danh tiếng {{lang}}",
+    "draft": "nháp",
+    "more": "+{{count}} nữa",
+    "written": "{{count}} đã ghi",
+    "skipped": "{{count}} đã bỏ qua",
+    "verify_hint": "Xác minh trong Thuật ngữ"
+  },
   "facts": {
     "type": {
       "decision": "Quyết định",

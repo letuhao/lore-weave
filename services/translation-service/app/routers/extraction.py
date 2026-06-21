@@ -131,12 +131,27 @@ async def _create_extraction_job_core(
         )
     kinds_metadata = profile_data["kinds"]
 
+    # The MCP path (translation_start_extraction) does NOT supply an extraction_profile —
+    # the agent can't reasonably author the full kind→attr→action map, and shouldn't (it's
+    # book config, not an agent decision). Derive it from the book's auto-selected ontology
+    # (every non-skip attr on each auto-selected kind), i.e. the same profile the FE would
+    # have built. The HTTP/FE path sends a user-customized profile (kinds/attrs may be
+    # deselected) → respect it as-is. Without this, the worker gets {} → 0 batches → 0
+    # entities (the MCP extraction path silently no-ops).
+    extraction_profile = payload.extraction_profile
+    if not extraction_profile:
+        extraction_profile = {
+            k["code"]: {a["code"]: "fill" for a in k.get("attributes", [])}
+            for k in kinds_metadata
+            if k.get("auto_selected", True) and k.get("attributes")
+        }
+
     # Compute cost estimate
     # Rough estimate: assumes ~8K chars per chapter. Actual sizes would require fetching
     # from book-service. This is intentionally approximate per design §6.7.1 ("estimate, not quote").
     chapters_meta = [{"text_length": 8000}] * len(payload.chapter_ids)
     cost_estimate = estimate_extraction_cost(
-        chapters_meta, payload.extraction_profile, kinds_metadata
+        chapters_meta, extraction_profile, kinds_metadata
     )
 
     context_filters = payload.context_filters or {}
@@ -168,7 +183,7 @@ async def _create_extraction_job_core(
                 RETURNING *
                 """,
                 book_id, uid, source_language, model_source, model_ref,
-                json.dumps(payload.extraction_profile),
+                json.dumps(extraction_profile),
                 json.dumps(context_filters),
                 payload.chapter_ids,
                 len(payload.chapter_ids),
@@ -194,7 +209,7 @@ async def _create_extraction_job_core(
         "user_id": str(uid),
         "book_id": str(book_id),
         "chapter_ids": [str(c) for c in payload.chapter_ids],
-        "extraction_profile": payload.extraction_profile,
+        "extraction_profile": extraction_profile,
         "kinds_metadata": kinds_metadata,
         "context_filters": context_filters,
         "source_language": source_language,

@@ -259,6 +259,28 @@ func TestBookTool_PatchAttributeLevel(t *testing.T) {
 	if got != nm {
 		t.Errorf("attr patch did not apply: name=%q", got)
 	}
+
+	// D-BOOKPATCH-GENRE-ERRMSG: patching an attribute under the WRONG genre (the
+	// common "move the attribute to another genre" mistake — genre is identity, not
+	// patchable) must NOT return the misleading generic "no live row with that code"
+	// message; it must explain the (kind, genre, code) identity + the delete+recreate
+	// path so the agent doesn't blindly retry.
+	_, _, err := f.srv.toolBookPatch(octx, nil, bookPatchToolIn{
+		BookID: f.bookID.String(), Level: "attribute", Code: "t1_title",
+		KindCode: "character", GenreCode: "xianxia", Name: &nm,
+	})
+	if err == nil {
+		t.Fatalf("patch under wrong genre: want resolve failure, got nil")
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "no live row with that code") {
+		t.Errorf("still emits the misleading generic message: %q", msg)
+	}
+	for _, want := range []string{"kind, genre, code", "delete it and recreate", "xianxia"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("genre-move error missing %q: %q", want, msg)
+		}
+	}
 }
 
 // field_type is validated on the new W tools (no DB CHECK backstops it) — a hallucinated

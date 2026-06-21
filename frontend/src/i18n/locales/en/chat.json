@@ -181,6 +181,15 @@
     "undo": "Undo",
     "undone": "Undone"
   },
+  "translation_review": {
+    "header": "Proposed {{lang}} name translations",
+    "header_aliases": "Proposed {{lang}} aliases",
+    "draft": "draft",
+    "more": "+{{count}} more",
+    "written": "{{count}} written",
+    "skipped": "{{count}} skipped",
+    "verify_hint": "Verify in Glossary"
+  },
   "facts": {
     "type": {
       "decision": "Decision",

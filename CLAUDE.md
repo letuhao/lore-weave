@@ -181,14 +181,33 @@ Update `docs/sessions/SESSION_HANDOFF.md` at meaningful phase boundaries:
 LoreWeave is a hobby project with **no fixed deadline**. This shapes how reviews and planning work:
 
 - **Don't rush past quality issues.** A second-pass code review after every BUILD is mandatory, not optional. If you find a bug or smell, fix it now unless it genuinely belongs in a later phase.
-- **"Defer" must mean "tracked", not "forgotten".** Every intentional postponement gets a row in the **Deferred Items** section of `docs/sessions/SESSION_HANDOFF.md` with: ID, origin phase, description, target phase. Categories:
-  - **Naturally-next-phase** — implement when its target phase begins
-  - **Track 2 planning** — document only, no Track 1 action
-  - **Perf items** — fix when profiling shows pain
-  - **Won't-fix** — conscious decision, removed from mental backlog
+
+- **FIX-NOW is the default; deferral is the exception that must EARN its row.** The Deferred
+  list is not a parking lot for every finding — it exists only for work that genuinely cannot be
+  resolved in the current run. Tracking is mandatory (a deferral must never be silently dropped),
+  but tracking is *not* a licence to defer. A defer row carries ongoing cost: it's re-read at
+  every PLAN and re-evaluated every session. **If fixing the bug is cheaper than writing +
+  carrying its defer row, just fix it.** Small, in-scope, root-cause-clear bugs (a wrong
+  condition, a misleading message, a missing guard, a one-file logic error) are fix-now — even if
+  found late in a run. Writing a defer row for a one-line fix is the anti-pattern this rule kills.
+
+- **Defer-eligibility gate — a finding may be deferred ONLY if it meets at least one of:**
+  1. **Out of scope** — belongs to a different branch/module/track than the one in flight (fixing it here would scope-creep the current effort).
+  2. **Large / structural** — the correct fix needs a refactor, a schema/DB migration, a new feature, or touches a cross-service contract — i.e. it needs a *serious plan*, not a quick edit.
+  3. **Naturally-next-phase** — it is genuinely implementable only when a later phase begins (its prerequisites don't exist yet).
+  4. **Blocked / unresolvable now** — waiting on an external dependency, a product decision, or profiling evidence (perf items: fix when profiling shows pain).
+  5. **Conscious won't-fix** — a deliberate decision to not fix, recorded so it stops re-surfacing.
+
+  If a finding fits **none** of these, it is NOT eligible to defer — fix it this run. When in
+  doubt between "small enough to fix now" and "large enough to defer", **fix it now**; only the
+  things that clearly clear the gate above earn a row.
+
+- **A deferral that passes the gate gets a tracked row** in the **Deferred Items** section of
+  `docs/sessions/SESSION_HANDOFF.md` (and `docs/deferred/DEFERRED.md` in AMAW mode): ID, origin
+  phase, description, the gate reason (which of 1–5), and target phase/trigger.
 - **At every PLAN phase, read the Deferred Items section.** Any row whose Target phase equals the current phase is a must-do for that phase.
-- **Whenever a deferral is cleared, move it to "Recently cleared"** (or delete after a few sessions). The list should shrink as often as it grows.
-- **Avoid the "we'll come back to it" trap.** If you find yourself saying "skip if time is tight", that's a yellow flag — there is no time pressure here. Either it's genuinely Track 2, or it's a real bug to fix now.
+- **Whenever a deferral is cleared, move it to "Recently cleared"** (or delete after a few sessions). The list should shrink as often as it grows — if it's only growing, the gate above is being applied too loosely.
+- **Avoid the "we'll come back to it" trap.** "Skip if time is tight" is a yellow flag — there is no time pressure here. Either it clears the defer gate, or it's a real bug to fix now.
 
 ---
 
