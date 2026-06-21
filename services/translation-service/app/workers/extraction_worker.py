@@ -31,6 +31,7 @@ from loreweave_llm.errors import (
 from ..config import settings
 from ..llm_client import LLMClient
 from .extraction_preprocessor import prepare_chapter_text
+from .extraction_provenance import stamp_entity_provenance
 from .extraction_prompt import (
     build_extraction_prompt,
     build_known_entities_context,
@@ -592,6 +593,17 @@ async def _process_extraction_chapter(
                         "batch_finish_reasons": batch_finish_reasons, "stale_skipped": True}
     except Exception as exc:  # noqa: BLE001 — precondition is best-effort
         log.warning("extraction: chapter %s drift re-check failed (%s) — proceeding", chapter_id, exc)
+
+    # 6c. PROV/M3 — stamp VALIDATED evidence provenance (INV-7 / T1). The model
+    # returned an EXACT QUOTE per entity; locate each one in the REAL prepared
+    # chapter text and record chapter-relative char offsets + a block index + a
+    # trust status. A model offset is a HINT verified before trust; a quote we
+    # cannot find keeps its evidence but gets NO fabricated offset. Done once here
+    # (the block map is built per-chapter) so glossary persists only validated
+    # offsets — it never trusts a raw model number. The offsets index the same
+    # prepared text whose `content_hash` guards the writeback, so they stay valid
+    # exactly when the writeback lands (a drifted chapter is skipped above).
+    stamp_entity_provenance(all_entities, chapter_text)
 
     # 7. Post to glossary-service (whole-chapter, idempotent, tenant-scoped writeback)
     upsert_result = await post_extracted_entities(

@@ -444,6 +444,177 @@ func TestBulkExtract_EvidenceCarriesChapterProvenance(t *testing.T) {
 	}
 }
 
+// TestEvidenceProvenanceFields is the pure-unit defensive gate (INV-7 / T1): glossary
+// trusts no raw model number. Only the closed enum is honored, offsets persist solely
+// for exact/resolved AND only when sane, and a status claiming exact/resolved without
+// valid offsets degrades to 'unverified' rather than landing half-trusted.
+func TestEvidenceProvenanceFields(t *testing.T) {
+	ip := func(v int) *int { return &v }
+	cases := []struct {
+		name      string
+		ent       extractedEntity
+		wantStat  string
+		wantCS    *int
+		wantCE    *int
+		wantBlock string
+	}{
+		{"resolved with offsets",
+			extractedEntity{EvidenceProvenanceStatus: "resolved", EvidenceCharStart: ip(5), EvidenceCharEnd: ip(12), EvidenceBlockOrLine: ip(1)},
+			"resolved", ip(5), ip(12), "1"},
+		{"exact with offsets",
+			extractedEntity{EvidenceProvenanceStatus: "exact", EvidenceCharStart: ip(0), EvidenceCharEnd: ip(3), EvidenceBlockOrLine: ip(0)},
+			"exact", ip(0), ip(3), "0"},
+		{"ambiguous keeps status NULL offsets",
+			extractedEntity{EvidenceProvenanceStatus: "ambiguous", EvidenceCharStart: ip(5), EvidenceCharEnd: ip(12)},
+			"ambiguous", nil, nil, ""},
+		{"unmatched keeps status NULL offsets",
+			extractedEntity{EvidenceProvenanceStatus: "unmatched"},
+			"unmatched", nil, nil, ""},
+		{"resolved but missing offsets degrades",
+			extractedEntity{EvidenceProvenanceStatus: "resolved"},
+			"unverified", nil, nil, ""},
+		{"resolved but inverted offsets degrades",
+			extractedEntity{EvidenceProvenanceStatus: "resolved", EvidenceCharStart: ip(12), EvidenceCharEnd: ip(5)},
+			"unverified", nil, nil, ""},
+		{"resolved but negative offset degrades",
+			extractedEntity{EvidenceProvenanceStatus: "resolved", EvidenceCharStart: ip(-1), EvidenceCharEnd: ip(5)},
+			"unverified", nil, nil, ""},
+		{"unknown status degrades to unverified",
+			extractedEntity{EvidenceProvenanceStatus: "totally-made-up", EvidenceCharStart: ip(5), EvidenceCharEnd: ip(12)},
+			"unverified", nil, nil, ""},
+		{"omitted status (legacy caller) is unverified",
+			extractedEntity{},
+			"unverified", nil, nil, ""},
+		{"resolved with valid offsets but negative block drops the block only",
+			extractedEntity{EvidenceProvenanceStatus: "resolved", EvidenceCharStart: ip(5), EvidenceCharEnd: ip(12), EvidenceBlockOrLine: ip(-3)},
+			"resolved", ip(5), ip(12), ""},
+	}
+	eqp := func(a, b *int) bool {
+		if a == nil || b == nil {
+			return a == b
+		}
+		return *a == *b
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			gotStat, gotCS, gotCE, gotBlock := evidenceProvenanceFields(c.ent)
+			if gotStat != c.wantStat {
+				t.Errorf("status: want %q got %q", c.wantStat, gotStat)
+			}
+			if !eqp(gotCS, c.wantCS) || !eqp(gotCE, c.wantCE) {
+				t.Errorf("offsets: want (%v,%v) got (%v,%v)", c.wantCS, c.wantCE, gotCS, gotCE)
+			}
+			if gotBlock != c.wantBlock {
+				t.Errorf("block_or_line: want %q got %q", c.wantBlock, gotBlock)
+			}
+		})
+	}
+}
+
+// TestBulkExtract_EvidencePersistsValidatedOffsets proves the persist side of PROV/M3:
+// a writeback carrying WORKER-VALIDATED offsets + a 'resolved' status lands them on the
+// evidences row (replacing the chapter-only 'unverified' default), so a grounding
+// consumer can trace the quote to exact source coordinates.
+func TestBulkExtract_EvidencePersistsValidatedOffsets(t *testing.T) {
+	pool := openTestDB(t)
+	ctx := context.Background()
+	runK2aMigrations(t, pool)
+
+	bookID := "00000000-0000-0000-0001-0000000a1019"
+	adoptTestBook(t, pool, uuid.MustParse(bookID))
+	t.Cleanup(func() { cleanupExtractBook(pool, bookID) })
+
+	srv, token := newEntitiesListServer(t)
+	srv.pool = pool
+
+	chap := uuid.NewString()
+	postExtract(t, srv, token, bookID, map[string]any{
+		"source_language": "zh",
+		"entities": []map[string]any{
+			{"kind_code": "character", "name": "证据者", "evidence": "他在第七章登场。",
+				"evidence_provenance_status": "resolved",
+				"evidence_char_start":        10,
+				"evidence_char_end":          18,
+				"evidence_block_or_line":     2,
+				"chapter_links": []map[string]any{
+					{"chapter_id": chap, "chapter_title": "第七章", "chapter_index": 7}}},
+		},
+	})
+
+	var cs, ce int
+	var block, status string
+	if err := pool.QueryRow(ctx, `
+		SELECT ev.char_start, ev.char_end, ev.block_or_line, ev.provenance_status
+		FROM evidences ev
+		JOIN entity_attribute_values eav ON eav.attr_value_id = ev.attr_value_id
+		JOIN glossary_entities ge ON ge.entity_id = eav.entity_id
+		WHERE ge.book_id=$1 AND ev.evidence_type='extraction_quote'`, bookID).Scan(&cs, &ce, &block, &status); err != nil {
+		t.Fatalf("query evidence offsets: %v", err)
+	}
+	if status != "resolved" {
+		t.Errorf("want provenance_status=resolved, got %q", status)
+	}
+	if cs != 10 || ce != 18 {
+		t.Errorf("want char_start=10 char_end=18, got %d,%d", cs, ce)
+	}
+	if block != "2" {
+		t.Errorf("want block_or_line=\"2\", got %q", block)
+	}
+}
+
+// TestBulkExtract_EvidenceOffsetRefreshesOnReExtract proves the latest-validated-wins
+// refresh: a second writeback (DISTINCT writeback_key, same quote, NEW validated offsets
+// — the chapter-edited-but-quote-byte-identical case) updates the stored offset/status in
+// place rather than leaving the first writer's now-stale coordinates. Still ONE row.
+func TestBulkExtract_EvidenceOffsetRefreshesOnReExtract(t *testing.T) {
+	pool := openTestDB(t)
+	ctx := context.Background()
+	runK2aMigrations(t, pool)
+
+	bookID := "00000000-0000-0000-0001-0000000a1020"
+	adoptTestBook(t, pool, uuid.MustParse(bookID))
+	t.Cleanup(func() { cleanupExtractBook(pool, bookID) })
+
+	srv, token := newEntitiesListServer(t)
+	srv.pool = pool
+
+	chap := uuid.NewString()
+	mk := func(key string, cs, ce, blk int) map[string]any {
+		return map[string]any{
+			"source_language": "zh", "chapter_id": chap, "writeback_key": key,
+			"entities": []map[string]any{
+				{"kind_code": "character", "name": "漂移者", "evidence": "他在此登场。",
+					"evidence_provenance_status": "resolved",
+					"evidence_char_start":        cs,
+					"evidence_char_end":          ce,
+					"evidence_block_or_line":     blk,
+					"chapter_links": []map[string]any{
+						{"chapter_id": chap, "chapter_title": "章", "chapter_index": 1}}},
+			},
+		}
+	}
+	postExtract(t, srv, token, bookID, mk("drift-key-1", 5, 11, 0))   // first: offset 5..11
+	postExtract(t, srv, token, bookID, mk("drift-key-2", 40, 46, 3)) // re-extract: quote moved to 40..46
+
+	var cs, ce int
+	var block string
+	var n int
+	if err := pool.QueryRow(ctx, `
+		SELECT count(*), max(ev.char_start), max(ev.char_end), max(ev.block_or_line)
+		FROM evidences ev
+		JOIN entity_attribute_values eav ON eav.attr_value_id = ev.attr_value_id
+		JOIN glossary_entities ge ON ge.entity_id = eav.entity_id
+		WHERE ge.book_id=$1 AND ev.evidence_type='extraction_quote'`, bookID).Scan(&n, &cs, &ce, &block); err != nil {
+		t.Fatalf("query refreshed evidence: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("re-extract duplicated evidence: want 1 row, got %d", n)
+	}
+	if cs != 40 || ce != 46 || block != "3" {
+		t.Errorf("offset not refreshed to latest: got start=%d end=%d block=%q (want 40,46,\"3\")", cs, ce, block)
+	}
+}
+
 // TestEntityDedup_UniqueIndexBackstop proves the constraint backstop (INV-C2): two
 // LIVE entities of the same book+kind cannot share a normalized name. Driven through
 // the real EAV name-write path (the trig_eav_snapshot trigger maintains cached_name,

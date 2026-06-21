@@ -410,6 +410,18 @@ type extractedEntity struct {
 	Attributes   map[string]any  `json:"attributes"`
 	Evidence     string          `json:"evidence"`
 	ChapterLinks []chapterLinkIn `json:"chapter_links"`
+	// PROV/M3 — VALIDATED evidence provenance (INV-7 / T1). The worker is the only
+	// component holding the chapter text, so it locates the `evidence` quote in the
+	// REAL text and sends offsets it already verified + a closed-enum trust status.
+	// Glossary persists them DEFENSIVELY (evidenceProvenanceFields): it accepts only
+	// the {exact,resolved,ambiguous,unmatched} enum, clamps the offsets (non-negative,
+	// start<=end) and keeps them only for exact/resolved — a raw model number is NEVER
+	// persisted unvalidated. Omitted (legacy callers / the MCP path) ⇒ status defaults
+	// to 'unverified' with NULL offsets (the migration-0033 column default).
+	EvidenceProvenanceStatus string `json:"evidence_provenance_status"`
+	EvidenceCharStart        *int   `json:"evidence_char_start"`
+	EvidenceCharEnd          *int   `json:"evidence_char_end"`
+	EvidenceBlockOrLine      *int   `json:"evidence_block_or_line"`
 	// Translation (M4d-2b) — optional target-language rendering of the name, seeded
 	// by the translation 2-pass cold-start writeback. Written to the name attr's
 	// attribute_translations at confidence='machine' (the M1d trust ladder treats
@@ -448,6 +460,41 @@ const (
 	// suggestion; an AI writeback batch skips names that carry it.
 	tagAIRejected = "ai-rejected"
 )
+
+// evidenceProvenanceFields returns the (provenance_status, char_start, char_end,
+// block_or_line) to persist for an evidence row — the DEFENSIVE glossary side of the
+// model-offset-trust contract (INV-7 / T1). The worker already validated the quote's
+// location against the real chapter text; glossary still trusts no raw number:
+//
+//   - Only the closed enum {exact,resolved,ambiguous,unmatched} is honored; anything
+//     else (incl. an omitting legacy caller) degrades to 'unverified' with NULL offsets.
+//   - Offsets are persisted ONLY for exact/resolved (a single verified location) AND only
+//     when sane (non-negative, start<=end). A status that claims exact/resolved without
+//     valid offsets is downgraded to 'unverified' rather than stored half-trusted.
+//   - ambiguous/unmatched keep the status but carry NULL offsets (no blind pick / no
+//     fabricated citation — the quote is still stored via original_text).
+//
+// block_or_line is TEXT NOT NULL DEFAULT '' (the legacy column), so a present block index
+// is rendered as a decimal string and absence is the empty string.
+func evidenceProvenanceFields(ent extractedEntity) (status string, charStart, charEnd *int, blockOrLine string) {
+	status = "unverified"
+	switch ent.EvidenceProvenanceStatus {
+	case "exact", "resolved":
+		if ent.EvidenceCharStart != nil && ent.EvidenceCharEnd != nil &&
+			*ent.EvidenceCharStart >= 0 && *ent.EvidenceCharEnd >= *ent.EvidenceCharStart {
+			status = ent.EvidenceProvenanceStatus
+			charStart = ent.EvidenceCharStart
+			charEnd = ent.EvidenceCharEnd
+			if ent.EvidenceBlockOrLine != nil && *ent.EvidenceBlockOrLine >= 0 {
+				blockOrLine = strconv.Itoa(*ent.EvidenceBlockOrLine)
+			}
+		}
+		// else: claimed exact/resolved but no/invalid offset → stay 'unverified'.
+	case "ambiguous", "unmatched":
+		status = ent.EvidenceProvenanceStatus // keep the quote; offsets stay NULL
+	}
+	return
+}
 
 // bulkExtractEntities receives extracted entities from translation-service and upserts them.
 //
@@ -753,16 +800,38 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 						ci := ent.ChapterLinks[0].ChapterIndex
 						evChapterIndex = &ci
 					}
-					// INV-C5: idempotent evidence. ON CONFLICT DO NOTHING against the new
-					// uq_evidence_dedup index makes re-extraction/replay/redelivery of the
-					// same quote a no-op — and (crucial inside a tx) prevents a duplicate
-					// from raising an error that would poison the whole writeback.
+					// PROV/M3 — VALIDATED offset + trust status (INV-7). The worker already
+					// located the quote in the real text; glossary trusts no raw number —
+					// evidenceProvenanceFields clamps + enum-gates, degrading anything
+					// off-contract to 'unverified' with NULL offsets (keep the quote, never
+					// fabricate a citation).
+					provStatus, provCS, provCE, provBlk := evidenceProvenanceFields(ent)
+					// INV-C5: idempotent evidence — uq_evidence_dedup keeps ONE row per
+					// (attr_value_id, evidence_type, quote), so re-extraction/redelivery
+					// of the same quote never duplicates, and (crucial inside a tx) the
+					// ON CONFLICT keeps a duplicate from raising an error that would poison
+					// the whole writeback. A TRUE replay is already short-circuited upstream
+					// by the writeback_key guard, so this conflict path is reached only by a
+					// DISTINCT writeback that re-asserts the same quote (e.g. a re-extraction
+					// after the chapter was edited so a byte-identical quote MOVED). There we
+					// DO UPDATE the PROVENANCE columns only — latest-validated-wins — so the
+					// stored offset/trust tracks the current text instead of going stale on
+					// the first-writer's coordinates. original_text is the conflict key (so
+					// it's identical); chapter-level fields are stable; only the validated
+					// offsets can legitimately differ, so only they refresh.
 					if _, err := tx.Exec(ctx, `
 						INSERT INTO evidences (attr_value_id, chapter_id, chapter_title, chapter_index,
+						                       block_or_line, char_start, char_end, provenance_status,
 						                       evidence_type, original_language, original_text, note)
-						VALUES ($1, $2, $3, $4, 'extraction_quote', $5, $6, 'auto-extracted by glossary extraction pipeline')
-						ON CONFLICT (attr_value_id, evidence_type, md5(original_text)) DO NOTHING
+						VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
+						        'extraction_quote', $9, $10, 'auto-extracted by glossary extraction pipeline')
+						ON CONFLICT (attr_value_id, evidence_type, md5(original_text)) DO UPDATE SET
+							block_or_line     = EXCLUDED.block_or_line,
+							char_start        = EXCLUDED.char_start,
+							char_end          = EXCLUDED.char_end,
+							provenance_status = EXCLUDED.provenance_status
 					`, nameAVID, s.firstChapterID(ent.ChapterLinks), evChapterTitle, evChapterIndex,
+						provBlk, provCS, provCE, provStatus,
 						req.SourceLanguage, ent.Evidence); err != nil {
 						BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 						writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to insert evidence: "+err.Error())
