@@ -58,7 +58,7 @@ async def test_park_then_list_grouped_one_row_per_signature(pool):
 async def test_proposed_edge_item_type_accepted_by_widened_check(pool):
     """D-KG-LF-PROPOSE-EDGE-INBOX — the migration widened the item_type CHECK to
     include 'proposed_edge'; parking one must succeed (not violate the constraint)
-    and surface its `dismiss`-only suggested action."""
+    and surface its suggested actions (dismiss + place_edge — the E2 class-C apply)."""
     await _truncate(pool)
     repo = TriageRepo(pool)
     owner = uuid4()
@@ -73,7 +73,7 @@ async def test_proposed_edge_item_type_accepted_by_widened_check(pool):
     assert item.item_type == "proposed_edge"
     groups, _ = await repo.list_grouped(user_id=owner, project_id=project)
     assert groups[0].item_type == "proposed_edge"
-    assert groups[0].suggested_actions == SUGGESTED_ACTIONS["proposed_edge"] == ["dismiss"]
+    assert groups[0].suggested_actions == SUGGESTED_ACTIONS["proposed_edge"] == ["dismiss", "place_edge"]
 
 
 async def test_item_type_filter(pool):
