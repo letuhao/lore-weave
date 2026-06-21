@@ -98,6 +98,19 @@ from loreweave_extraction.resolve_config import (
     config_hash,
     resolve_effective_config,
 )
+from loreweave_extraction.planner import (
+    CostRange,
+    LLMCall,
+    ModelCaps,
+    Plan,
+    PlanRequest,
+    Policy,
+    Unit,
+    Unplannable,
+    effort_output_multiplier,
+    per_call_budget,
+    plan,
+)
 
 __all__ = [
     # Orchestration
@@ -172,4 +185,16 @@ __all__ = [
     "estimate_paragraph_count",
     "DEFAULT_MAX_OUTPUT_TOKENS",
     "DEFAULT_MODEL_CONTEXT",
+    # PLAN lane — two-phase split/pack planner (architecture §3.1, §8.4)
+    "plan",
+    "PlanRequest",
+    "Plan",
+    "Unit",
+    "LLMCall",
+    "ModelCaps",
+    "Policy",
+    "CostRange",
+    "Unplannable",
+    "per_call_budget",
+    "effort_output_multiplier",
 ]
