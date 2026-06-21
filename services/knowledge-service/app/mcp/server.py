@@ -347,11 +347,15 @@ async def memory_forget(
 
 
 # ── KG ontology tools (lane LF; KM1/KM2 + R-class KM3/KM4) ─────────────
-# Descriptions mirror app/tools/graph_schema_tools.py verbatim. Only the
-# safe tiers are exposed here — R (read) + reversible W. The class-C
-# ontology tools (adopt / schema-edit / sync-apply / schema-mutating-triage
-# / handoff / admin) are DEFERRED to KM6 (confirm-token machinery) and are
-# intentionally absent from this catalog (INV-T3 / D-KG-LF-KM6).
+# Descriptions mirror app/tools/graph_schema_tools.py verbatim. R (read) +
+# reversible W tiers below; the class-C ontology tools (adopt / schema-edit /
+# sync-apply / schema-mutating-triage) follow at the end of the file. The
+# class-C tools NEVER write — each MINTS a confirm-token + summary that a human
+# redeems on the review surface (POST /v1/kg/actions/confirm, browser-JWT), so
+# the agent only proposes and the INV-T3 human-confirm backstop holds (mirrors
+# glossary's adopt/propose tools). System-tier ADMIN tools stay off this
+# catalog — they live behind the separate RS256-gated /mcp/admin endpoint
+# (D-KG-LF-KM6 cleared 2026-06-21).
 
 
 @mcp_server.tool(
@@ -643,6 +647,157 @@ async def kg_triage_resolve(
         ctx,
         "kg_triage_resolve",
         {"signature": signature, "action": action, "params": params or {}},
+    )
+
+
+# ── KG ontology class-C tools (KM6) — PROPOSE only ─────────────────────
+# Each mints a confirm-token + summary (no write); a human redeems it via
+# POST /v1/kg/actions/confirm (browser-JWT). See the catalog note above.
+
+
+@mcp_server.tool(
+    name="kg_schema_edit",
+    description=(
+        "Propose a change to THIS project's ontology: add or deprecate an edge "
+        "type or fact type. High-impact (it changes the graph's shape and bumps "
+        "the schema version), so it does NOT apply immediately — it returns a "
+        "confirm_token and a summary; a human must confirm it on the review "
+        "surface. Requires the project to have adopted its own ontology first."
+    ),
+)
+async def kg_schema_edit(
+    ctx: MCPContext,
+    verb: Annotated[
+        Literal["add", "deprecate"],
+        "add a new type, or deprecate (soft-remove) an existing one.",
+    ],
+    level: Annotated[
+        Literal["edge_type", "fact_type"],
+        "Which kind of ontology element to change.",
+    ],
+    code: Annotated[str, "The type's code (e.g. WORSHIPS, prophecy)."],
+    label: Annotated[
+        str, "Human-readable label (for add; defaults to the code)."
+    ] = "",
+) -> dict:
+    return await _dispatch(
+        ctx,
+        "kg_schema_edit",
+        {"verb": verb, "level": level, "code": code, "label": label},
+    )
+
+
+@mcp_server.tool(
+    name="kg_adopt_template",
+    description=(
+        "Propose adopting (copying down) a system or user ontology template "
+        "into THIS project, scaffolding its edge types / node kinds / fact "
+        "types. High-impact — it does NOT apply immediately; it returns a "
+        "confirm_token and a summary, and a human confirms on the review "
+        "surface. Pick a source_schema_id from kg_list_templates."
+    ),
+)
+async def kg_adopt_template(
+    ctx: MCPContext,
+    source_schema_id: Annotated[
+        str, "The template id to adopt (from kg_list_templates)."
+    ],
+) -> dict:
+    return await _dispatch(
+        ctx, "kg_adopt_template", {"source_schema_id": source_schema_id}
+    )
+
+
+@mcp_server.tool(
+    name="kg_sync_apply",
+    description=(
+        "Propose syncing THIS project's ontology with its upstream template — "
+        "applying per-change keep_mine / take_theirs decisions (read the diff "
+        "with kg_sync_available first). High-impact (overwrites/deprecates rows "
+        "+ bumps the schema version), so it returns a confirm_token and summary; "
+        "a human confirms on the review surface."
+    ),
+)
+async def kg_sync_apply(
+    ctx: MCPContext,
+    base_source_hash: Annotated[
+        str, "The upstream hash returned by kg_sync_available (drift guard)."
+    ],
+    decisions: Annotated[
+        list[dict] | None,
+        "Per-change decisions, each {node_type, code, parent_code?, choice: "
+        "keep_mine|take_theirs}.",
+    ] = None,
+) -> dict:
+    return await _dispatch(
+        ctx,
+        "kg_sync_apply",
+        {"base_source_hash": base_source_hash, "decisions": decisions or []},
+    )
+
+
+@mcp_server.tool(
+    name="kg_triage_place_edge",
+    description=(
+        "Place an agent-drafted proposed edge (from kg_triage_list, item_type "
+        "'proposed_edge') into the knowledge graph. High-impact (it writes a "
+        "real edge), so it does NOT apply immediately — it returns a "
+        "confirm_token and a summary; a human confirms on the review surface."
+    ),
+)
+async def kg_triage_place_edge(
+    ctx: MCPContext,
+    triage_id: Annotated[
+        str, "The proposed_edge triage item id to place (from kg_triage_list)."
+    ],
+) -> dict:
+    return await _dispatch(ctx, "kg_triage_place_edge", {"triage_id": triage_id})
+
+
+@mcp_server.tool(
+    name="kg_triage_schema_write",
+    description=(
+        "Resolve a schema-mutating triage signature group: add_to_vocab (add a "
+        "controlled-vocab value), add_to_schema (add an edge type), "
+        "widen_target_kinds (allow more target node kinds on an edge type), or "
+        "set_multi_active (let an edge type hold multiple open instances). This "
+        "changes the project ontology and bumps the schema version, so it does "
+        "NOT apply immediately — it returns a confirm_token and a summary; a "
+        "human confirms on the review surface."
+    ),
+)
+async def kg_triage_schema_write(
+    ctx: MCPContext,
+    signature: Annotated[
+        str, "The triage signature to resolve (from kg_triage_list)."
+    ],
+    action: Annotated[
+        Literal[
+            "add_to_vocab", "add_to_schema", "widen_target_kinds", "set_multi_active"
+        ],
+        "The schema-mutating resolution action to apply.",
+    ],
+    code: Annotated[
+        str, "The new/affected element code (add_to_vocab / add_to_schema)."
+    ] = "",
+    label: Annotated[str, "Human-readable label (for add actions)."] = "",
+    set_code: Annotated[str, "The vocab-set code (add_to_vocab only)."] = "",
+    add_kinds: Annotated[
+        list[str] | None,
+        "Target node-kind codes to allow (widen_target_kinds only).",
+    ] = None,
+) -> dict:
+    return await _dispatch(
+        ctx,
+        "kg_triage_schema_write",
+        {
+            "signature": signature,
+            "action": action,
+            "code": code,
+            "label": label,
+            "set_code": set_code,
+            "add_kinds": add_kinds or [],
+        },
     )
 
 

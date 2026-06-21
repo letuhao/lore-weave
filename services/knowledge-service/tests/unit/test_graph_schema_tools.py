@@ -102,9 +102,11 @@ def test_lane_lf_tools_all_registered():
 
 
 def test_class_c_tools_are_not_registered():
-    """INV-T3 — the STILL-deferred class-C tools (adopt/sync/handoff/admin) must be
-    absent from the catalog until their KM6/KM5 phase lands. kg_schema_edit is the
-    one live class-C tool (it mints a confirm-token; no direct write)."""
+    """INV-T3 — the STILL-deferred class-C tools (handoff + System-tier admin) must be
+    absent from the user catalog. The 5 live class-C tools (schema_edit / adopt /
+    sync_apply / triage_place_edge / triage_schema_write) ARE registered + MCP-exposed
+    as of D-KG-LF-KM6 — each mints a confirm-token (no direct write); admin tools live
+    behind the separate RS256-gated /mcp/admin endpoint."""
     all_names = set(TOOL_NAMES)
     leaked = _CLASS_C_TOOLS & all_names
     assert not leaked, f"deferred class-C tools leaked into the catalog: {leaked}"

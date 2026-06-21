@@ -790,5 +790,25 @@ need BYOK model availability + a `frontend` image rebuild + browser automation.
   System + 1), user-tier list showed the seeded kind AND a pre-existing `character` user-kind
   **shadowing** the System "character" (tier=user). Seed cleaned up.
 
+**2026-06-21 — D-KG-LF-KM6: class-C KG schema-authoring MCP tools EXPOSED (live).**
+- The 5 class-C handlers (`kg_schema_edit`, `kg_adopt_template`, `kg_sync_apply`,
+  `kg_triage_place_edge`, `kg_triage_schema_write`) were fully implemented (handlers +
+  `GRAPH_SCHEMA_ARG_MODELS` + OpenAI defs in `TOOL_DEFINITIONS`; chat `knowledge_skill.py`
+  already named them) but their `@mcp_server.tool` shims were missing — leaving the
+  `tests/test_mcp_server.py` catalog-equality test FAILING (5 tools defined, absent from
+  `/mcp`). Added the 5 propose→confirm shims in `app/mcp/server.py`. Each is **mint-only**:
+  the handler grant-gates (`_resolve_project_owner(MANAGE)` — EDIT for `triage_place_edge`)
+  BEFORE minting, returns a `confirm_token` + summary, writes nothing; the human redeems via
+  `POST /v1/kg/actions/confirm` (browser-JWT, unreachable from the MCP path → INV-T3 holds).
+  System-tier admin tools stay on the separate RS256 `/mcp/admin`.
+- VERIFY: knowledge unit **2972 passed** (incl. the now-green catalog test + inputSchema-mirror);
+  provider-gate clean. `/review-impl`: SOUND — mint-only, proposer+descriptor-bound, drift-guarded,
+  fail-closed; mirrors glossary's propose→confirm; scope from headers (no leak).
+- LIVE (rebuilt knowledge image): real MCP `tools/list` over the wire → 22 tools, all 5 class-C
+  present; `kg_adopt_template` minted a `confirm_token` end-to-end (descriptor `kg_adopt`, "no
+  change applied yet") with **0 project-scoped schemas written** afterward (mint-only proven).
+  Seed project cleaned up. Now an agent can "tell MCP to define the KG".
+
 **KG epic deferred surface: FULLY CLEARED + live-proven** — every tracked KG deferred row,
-including `D-KG-LG-REAL`'s user-tier-kind union refinement, is cleared.
+including `D-KG-LG-REAL`'s union refinement and `D-KG-LF-KM6` (class-C MCP exposure), is cleared.
+Remaining nice-to-have: an MCP **project-create** tool (book↔KG link is REST/UI today).
