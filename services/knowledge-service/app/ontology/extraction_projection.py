@@ -57,6 +57,15 @@ def resolved_to_extraction_dict(
         "event_kinds": [],
         "fact_types": [ft.code for ft in resolved.fact_types],
         "allow_free_edges": True if advisory else resolved.allow_free_edges,
+        # KG customizable-ontology (L7) — per-predicate cardinality (write-path
+        # only; never a prompt/validation concern, so it is carried in BOTH the
+        # authoritative and advisory projections). The write boundary
+        # (``write_pass2_extraction``) looks a predicate's cardinality up here to
+        # auto-close the prior open ``single_active`` edge. ``multi_active`` (the
+        # default) is the no-op case; only ``single_active`` entries matter, but
+        # we project the full map so the writer can distinguish "unknown" (no
+        # entry → no-op) from an explicit ``multi_active``.
+        "edge_cardinalities": {et.code: et.cardinality for et in resolved.edge_types},
         "label": f"{resolved.project_id}@v{resolved.schema_version}",
         "schema_version": resolved.schema_version,
     }

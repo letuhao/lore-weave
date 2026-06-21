@@ -22,7 +22,8 @@ def _resolved(*, allow_free_edges: bool, schema_version: int = 7) -> ResolvedSch
         schema_version=schema_version,
         allow_free_edges=allow_free_edges,
         edge_types=[
-            EdgeType(edge_type_id=uuid4(), schema_id=sid, code="disciple_of", label="Disciple Of"),
+            EdgeType(edge_type_id=uuid4(), schema_id=sid, code="disciple_of", label="Disciple Of",
+                     cardinality="single_active"),
             EdgeType(edge_type_id=uuid4(), schema_id=sid, code="pursues", label="Pursues"),
         ],
         fact_types=[
@@ -74,3 +75,40 @@ def test_build_extraction_schema_roundtrips():
 
     advisory = build_extraction_schema(_resolved(allow_free_edges=False), advisory=True)
     assert advisory.allow_free_edges is True
+
+
+# ── L7 edge cardinality (D-KG-L7-CARDINALITY) ───────────────────────────
+
+
+def test_projection_carries_edge_cardinalities():
+    """The per-predicate cardinality map is projected (write-path concern) in
+    BOTH postures — single_active for disciple_of, multi_active default for pursues."""
+    d = resolved_to_extraction_dict(_resolved(allow_free_edges=False))
+    assert d["edge_cardinalities"] == {
+        "disciple_of": "single_active",
+        "pursues": "multi_active",
+    }
+    # advisory posture carries it too (it is not a prompt/validation concern).
+    adv = resolved_to_extraction_dict(_resolved(allow_free_edges=True), advisory=True)
+    assert adv["edge_cardinalities"] == {
+        "disciple_of": "single_active",
+        "pursues": "multi_active",
+    }
+
+
+def test_build_extraction_schema_exposes_cardinalities():
+    schema = build_extraction_schema(_resolved(allow_free_edges=False))
+    assert schema.edge_cardinalities["disciple_of"] == "single_active"
+    assert schema.edge_cardinalities["pursues"] == "multi_active"
+
+
+def test_cardinalities_empty_default_is_legacy():
+    """An ExtractionSchema built from a dict with no edge_cardinalities key
+    (legacy / partial projection) gets an empty map ⇒ the write path finds no
+    cardinality ⇒ no auto-close, today's behavior."""
+    from loreweave_extraction.schema_projection import ExtractionSchema
+
+    s = ExtractionSchema.from_resolved({"edge_predicates": ["x"]})
+    assert s.edge_cardinalities == {}
+    # default constructor too
+    assert ExtractionSchema().edge_cardinalities == {}

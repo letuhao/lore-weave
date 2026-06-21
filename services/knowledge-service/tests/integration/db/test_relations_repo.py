@@ -215,6 +215,135 @@ async def test_L7_create_relation_stamps_schema_version_on_match(neo4j_driver, t
 
 
 @pytest.mark.asyncio
+async def test_L7_single_active_auto_closes_prior_open_instance(neo4j_driver, test_user):
+    """Lane A (D-KG-L7-CARDINALITY): for a `single_active` edge type, writing a new
+    instance for the same (subject, predicate) auto-closes the prior OPEN instance
+    (different object), leaving exactly one `valid_until IS NULL` edge."""
+    async with neo4j_driver.session() as session:
+        kai = await _entity(session, user_id=test_user, name="Kai")
+        sect_a = await _entity(session, user_id=test_user, name="SectA")
+        sect_b = await _entity(session, user_id=test_user, name="SectB")
+
+        # 1) Kai member_of SectA (single_active) — first open instance.
+        r1 = await create_relation(
+            session, user_id=test_user, subject_id=kai.id,
+            predicate="member_of", object_id=sect_a.id, confidence=0.9,
+            cardinality="single_active",
+        )
+        assert r1 is not None and r1.valid_until is None
+
+        # 2) Kai member_of SectB (single_active) — should close the SectA edge.
+        r2 = await create_relation(
+            session, user_id=test_user, subject_id=kai.id,
+            predicate="member_of", object_id=sect_b.id, confidence=0.9,
+            cardinality="single_active",
+        )
+        assert r2 is not None and r2.valid_until is None
+
+        # Exactly one open member_of edge from Kai; the SectA edge is closed.
+        res = await session.run(
+            "MATCH (s:Entity {id:$sid})-[r:RELATES_TO]->(o:Entity) "
+            "WHERE r.predicate='member_of' "
+            "RETURN o.id AS oid, r.valid_until AS vu",
+            sid=kai.id,
+        )
+        rows = {rec["oid"]: rec["vu"] async for rec in res}
+        assert rows[sect_a.id] is not None   # SectA auto-closed
+        assert rows[sect_b.id] is None       # SectB the sole open instance
+
+
+@pytest.mark.asyncio
+async def test_L7_multi_active_keeps_both_open(neo4j_driver, test_user):
+    """Regression: `multi_active` (the default, e.g. PURSUES) coexists — a second
+    instance for the same (subject, predicate) does NOT close the first."""
+    async with neo4j_driver.session() as session:
+        kai = await _entity(session, user_id=test_user, name="Kai")
+        d1 = await _entity(session, user_id=test_user, name="Power")
+        d2 = await _entity(session, user_id=test_user, name="Revenge")
+
+        await create_relation(
+            session, user_id=test_user, subject_id=kai.id,
+            predicate="pursues", object_id=d1.id, cardinality="multi_active",
+        )
+        await create_relation(
+            session, user_id=test_user, subject_id=kai.id,
+            predicate="pursues", object_id=d2.id, cardinality="multi_active",
+        )
+        res = await session.run(
+            "MATCH (s:Entity {id:$sid})-[r:RELATES_TO]->() "
+            "WHERE r.predicate='pursues' AND r.valid_until IS NULL "
+            "RETURN count(r) AS open",
+            sid=kai.id,
+        )
+        assert (await res.single())["open"] == 2  # both still open
+
+
+@pytest.mark.asyncio
+async def test_L7_no_cardinality_does_not_close(neo4j_driver, test_user):
+    """Legacy: cardinality=None (default) never closes a prior instance — the
+    auto-close path is opt-in."""
+    async with neo4j_driver.session() as session:
+        kai = await _entity(session, user_id=test_user, name="Kai")
+        s1 = await _entity(session, user_id=test_user, name="S1")
+        s2 = await _entity(session, user_id=test_user, name="S2")
+        await create_relation(
+            session, user_id=test_user, subject_id=kai.id,
+            predicate="member_of", object_id=s1.id,  # no cardinality
+        )
+        await create_relation(
+            session, user_id=test_user, subject_id=kai.id,
+            predicate="member_of", object_id=s2.id,
+        )
+        res = await session.run(
+            "MATCH (s:Entity {id:$sid})-[r:RELATES_TO]->() "
+            "WHERE r.predicate='member_of' AND r.valid_until IS NULL "
+            "RETURN count(r) AS open",
+            sid=kai.id,
+        )
+        assert (await res.single())["open"] == 2  # both open — no auto-close
+
+
+@pytest.mark.asyncio
+async def test_L7_single_active_does_not_cross_user_boundary(neo4j_driver):
+    """Tenancy: a single_active write for user A must NEVER close user B's open
+    instance of the same predicate, even if the canonical ids collide."""
+    ua = f"u-test-{uuid.uuid4().hex[:12]}"
+    ub = f"u-test-{uuid.uuid4().hex[:12]}"
+    try:
+        async with neo4j_driver.session() as session:
+            a_kai = await _entity(session, user_id=ua, name="Kai")
+            a_sect = await _entity(session, user_id=ua, name="SectA")
+            b_kai = await _entity(session, user_id=ub, name="Kai")
+            b_sect = await _entity(session, user_id=ub, name="SectA")
+            # B opens a single_active member_of edge.
+            await create_relation(
+                session, user_id=ub, subject_id=b_kai.id,
+                predicate="member_of", object_id=b_sect.id,
+                cardinality="single_active",
+            )
+            # A writes its own single_active member_of edge.
+            await create_relation(
+                session, user_id=ua, subject_id=a_kai.id,
+                predicate="member_of", object_id=a_sect.id,
+                cardinality="single_active",
+            )
+            # B's edge must still be open (A's close stayed in A's partition).
+            res = await session.run(
+                "MATCH (s:Entity {user_id:$uid})-[r:RELATES_TO]->() "
+                "WHERE r.predicate='member_of' AND r.valid_until IS NULL "
+                "RETURN count(r) AS open",
+                uid=ub,
+            )
+            assert (await res.single())["open"] == 1
+    finally:
+        async with neo4j_driver.session() as session:
+            for uid in (ua, ub):
+                await session.run(
+                    "MATCH (e:Entity {user_id: $uid}) DETACH DELETE e", uid=uid,
+                )
+
+
+@pytest.mark.asyncio
 async def test_k11_6_create_relation_is_idempotent_per_event(
     neo4j_driver, test_user
 ):
