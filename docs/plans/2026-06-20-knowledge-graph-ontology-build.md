@@ -753,3 +753,27 @@ need BYOK model availability + a `frontend` image rebuild + browser automation.
   help. Reclassified: blocked on KG-ontology FE route integration (a feature-wiring task, NOT a
   lane-F bug) → tracked as `D-KG-ONTOLOGY-FE-WIRING` (supersedes `D-KG-LE-BROWSER-SMOKE`, which
   presumed a mounted UI).
+
+**2026-06-21 — D-KG-LG-REAL + D-KG-ONTOLOGY-FE-WIRING + D-KG-LE-BROWSER-SMOKE CLEARED (live).**
+- **`D-KG-LG-REAL`** ✅ — the knowledge KG resolver/adopt-gate's `glossary_ontology_client`
+  (real `HttpGlossaryOntologyClient`) targeted two glossary `/internal` endpoints that never
+  existed (the planned "LG") → 404→None degrade. Added them (additive: `internal_ontology_read.go`
+  + 2 server.go registrations, reusing `loadBookOntology`/`loadKinds`): `GET /internal/books/
+  {id}/ontology` + `GET /internal/users/{id}/glossary-standards`. LIVE: user-standards→200 + 12
+  System kinds; book→200 source=book; no-token→401; **S2S from inside the knowledge container →
+  glossary-service:8088 → 200 real kinds** (the resolver now reads real node-kinds). Commit `b56edc09`.
+- **`D-KG-ONTOLOGY-FE-WIRING` + `D-KG-LE-BROWSER-SMOKE`** ✅ — wired the lane-LE ontology UI into
+  a "Graph Schema" book tab (`KnowledgeOntologyTab` composing adopt/schema/views/sync; resolves
+  the book's project via `book_id`); consolidated the `kgOntology` i18n into the registered locale
+  files (×4) + a page shell; commit `c7cb1aaa`. The in-browser smoke then caught **two more real
+  gaps** (unit/vitest couldn't): the App router had no `/books/:bookId/kg-ontology` route (tab
+  404'd), and **the BFF proxied only `/v1/knowledge`, not `/v1/kg`** (every ontologyApi call 404'd
+  at the gateway) — fixed both (commit `eb39a3ca`). LIVE browser (claude-test, real stack): the
+  Graph Schema tab loads, AdoptPicker lists real templates (general/xianxia-harem); seeded a
+  book-linked project + adopted general + a custom edge, then selecting general rendered the loss
+  warning listing "smoke_custom_edge (edge type) removed" with the adopt button GATED until "I
+  understand, proceed" → enabled. Seed cleaned up. (User-tier kind union in user-standards remains
+  a later refinement; the System baseline is what the gate needs today.)
+
+**KG epic deferred surface: FULLY CLEARED.** Only `D-KG-LG-REAL`'s user-tier-kind refinement
+remains as a nice-to-have; every tracked KG deferred row is cleared + live-proven.
