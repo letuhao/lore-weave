@@ -1,0 +1,34 @@
+{
+  "adopt": {
+    "chooseTemplate": "採用するテンプレートを選択",
+    "select": "選択",
+    "selected": "選択済み",
+    "noTemplates": "採用可能なテンプレートがありません。",
+    "adoptButton": "テンプレートを採用",
+    "adopting": "採用中…",
+    "missing": "不足",
+    "openGlossary": "用語集を開く",
+    "blockedTitle": "用語集に必須の種別が不足しています",
+    "blockedHelp": "まず用語集にこれらのノード種別を追加してから、再採用してください。",
+    "blockedButton": "用語集に{{count}}件の種別を先に追加",
+    "lossTitle": "再採用するとカスタマイズが破棄されます",
+    "lossHelp": "再採用するとプロジェクトの現在のスキーマが置き換えられます。{{count}}件のカスタマイズが削除または上書きされ、復元できません。",
+    "lossProceed": "理解しました、続行",
+    "lossAcknowledged": "確認済み",
+    "lossBlockedButton": "続行するには警告を確認してください",
+    "nodeType": {
+      "edge_type": "エッジ種別",
+      "fact_type": "ファクト種別",
+      "node_kind": "ノード種別",
+      "vocab_set": "語彙セット",
+      "vocab_value": "語彙値"
+    },
+    "lossChange": {
+      "removed_upstream": "削除",
+      "modified": "上書き"
+    }
+  },
+  "common": {
+    "dismiss": "閉じる"
+  }
+}

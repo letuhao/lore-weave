@@ -1,0 +1,34 @@
+{
+  "adopt": {
+    "chooseTemplate": "Choose a template to adopt",
+    "select": "Select",
+    "selected": "Selected",
+    "noTemplates": "No adoptable templates available.",
+    "adoptButton": "Adopt template",
+    "adopting": "Adopting…",
+    "missing": "missing",
+    "openGlossary": "Open glossary",
+    "blockedTitle": "Glossary is missing required kinds",
+    "blockedHelp": "Add these node-kinds in the glossary first, then re-adopt.",
+    "blockedButton": "Add {{count}} kind(s) in glossary first",
+    "lossTitle": "Re-adopting will discard your customizations",
+    "lossHelp": "Re-adopting replaces the project's current schema. {{count}} customization(s) will be dropped or overwritten and cannot be recovered.",
+    "lossProceed": "I understand, proceed",
+    "lossAcknowledged": "Acknowledged",
+    "lossBlockedButton": "Acknowledge the warning to continue",
+    "nodeType": {
+      "edge_type": "edge type",
+      "fact_type": "fact type",
+      "node_kind": "node kind",
+      "vocab_set": "vocab set",
+      "vocab_value": "vocab value"
+    },
+    "lossChange": {
+      "removed_upstream": "removed",
+      "modified": "overwritten"
+    }
+  },
+  "common": {
+    "dismiss": "Dismiss"
+  }
+}

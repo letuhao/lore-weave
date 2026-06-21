@@ -1,0 +1,34 @@
+{
+  "adopt": {
+    "chooseTemplate": "選擇要採用的範本",
+    "select": "選擇",
+    "selected": "已選擇",
+    "noTemplates": "沒有可採用的範本。",
+    "adoptButton": "採用範本",
+    "adopting": "採用中…",
+    "missing": "缺少",
+    "openGlossary": "開啟詞彙表",
+    "blockedTitle": "詞彙表缺少必要的種類",
+    "blockedHelp": "請先在詞彙表中新增這些節點種類，然後再重新採用。",
+    "blockedButton": "請先在詞彙表新增 {{count}} 個種類",
+    "lossTitle": "重新採用將會捨棄您的自訂內容",
+    "lossHelp": "重新採用會取代專案目前的結構。{{count}} 項自訂內容將被捨棄或覆寫，且無法復原。",
+    "lossProceed": "我了解，繼續",
+    "lossAcknowledged": "已確認",
+    "lossBlockedButton": "請確認警告以繼續",
+    "nodeType": {
+      "edge_type": "邊類型",
+      "fact_type": "事實類型",
+      "node_kind": "節點種類",
+      "vocab_set": "詞彙集",
+      "vocab_value": "詞彙值"
+    },
+    "lossChange": {
+      "removed_upstream": "已移除",
+      "modified": "已覆寫"
+    }
+  },
+  "common": {
+    "dismiss": "關閉"
+  }
+}

@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { OntologyChip } from './OntologyChip';
 import type {
+  AdoptLoss,
   GraphSchemaSummary,
   NeedsGlossary,
 } from '../../types/ontology';
@@ -9,7 +10,10 @@ import type {
 // Render-only adopt picker (mirrors 01-adopt.html). Lists adoptable templates
 // (system read-only + user), lets the user pick one + adopt. When the M1
 // adopt-gate fires, `needsGlossary` is rendered as the blocker list with a
-// glossary deep-link. All logic lives in useOntologyAdopt; this only renders.
+// glossary deep-link. When re-adopt would DROP customizations (D-KG-LC-REVADOPT-
+// LOSS), `wouldLose` renders a loss warning gated behind an explicit "I
+// understand, proceed" acknowledgment before adopt re-enables. All logic lives in
+// useOntologyAdopt; this only renders.
 
 interface Props {
   schemas: GraphSchemaSummary[];
@@ -20,6 +24,11 @@ interface Props {
   needsGlossary: NeedsGlossary | null;
   onOpenGlossary: (bookId: string | null | undefined) => void;
   onClearGate: () => void;
+  // ── re-adopt loss preview ──
+  wouldLose?: AdoptLoss[];
+  /** true while the destructive adopt must stay disabled (loss un-acknowledged) */
+  lossBlocked?: boolean;
+  onAcknowledgeLoss?: () => void;
 }
 
 export function AdoptPicker({
@@ -31,9 +40,16 @@ export function AdoptPicker({
   needsGlossary,
   onOpenGlossary,
   onClearGate,
+  wouldLose = [],
+  lossBlocked = false,
+  onAcknowledgeLoss,
 }: Props) {
   const { t } = useTranslation('kgOntology');
-  const blocked = !!needsGlossary;
+  const glossaryBlocked = !!needsGlossary;
+  const hasLoss = wouldLose.length > 0;
+  // adopt is disabled by either gate: the M1 glossary gate or an un-acknowledged
+  // loss warning.
+  const blocked = glossaryBlocked || lossBlocked;
 
   return (
     <div className="space-y-4" data-testid="adopt-picker">
@@ -76,7 +92,7 @@ export function AdoptPicker({
         )}
       </ul>
 
-      {blocked && (
+      {glossaryBlocked && (
         <div
           className="rounded-md border border-rose-200 bg-rose-50 p-3 text-[12px]"
           data-testid="adopt-needs-glossary"
@@ -115,6 +131,56 @@ export function AdoptPicker({
         </div>
       )}
 
+      {/* re-adopt loss warning — only when not already glossary-blocked. */}
+      {hasLoss && !glossaryBlocked && (
+        <div
+          className="rounded-md border border-amber-300 bg-amber-50 p-3 text-[12px]"
+          data-testid="adopt-loss-warning"
+          role="alert"
+        >
+          <b className="text-amber-800">{t('adopt.lossTitle')}</b>
+          <p className="mt-1 text-slate-600">
+            {t('adopt.lossHelp', { count: wouldLose.length })}
+          </p>
+          <ul className="mt-2 space-y-1" data-testid="adopt-loss-list">
+            {wouldLose.map((loss) => (
+              <li
+                key={`${loss.node_type}:${loss.parent_code ?? ''}:${loss.code}`}
+                className="flex items-center justify-between rounded bg-white/70 px-2 py-1"
+              >
+                <span>
+                  <b>{loss.code}</b>{' '}
+                  <span className="text-muted-foreground">
+                    ({t(`adopt.nodeType.${loss.node_type}`)})
+                  </span>
+                </span>
+                <span className="text-amber-800">
+                  {t(`adopt.lossChange.${loss.change}`)}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-3">
+            <button
+              type="button"
+              onClick={onAcknowledgeLoss}
+              disabled={!lossBlocked}
+              className={cn(
+                'rounded-md px-3 py-1.5 text-[12px] font-medium',
+                lossBlocked
+                  ? 'bg-amber-600 text-white'
+                  : 'cursor-not-allowed bg-amber-200 text-amber-700',
+              )}
+              data-testid="adopt-loss-acknowledge"
+            >
+              {lossBlocked
+                ? t('adopt.lossProceed')
+                : t('adopt.lossAcknowledged')}
+            </button>
+          </div>
+        </div>
+      )}
+
       <button
         type="button"
         disabled={!selectedId || isAdopting || blocked}
@@ -127,11 +193,13 @@ export function AdoptPicker({
         )}
         data-testid="adopt-submit"
       >
-        {blocked
+        {glossaryBlocked
           ? t('adopt.blockedButton', { count: needsGlossary!.needs_glossary.kinds.length })
-          : isAdopting
-            ? t('adopt.adopting')
-            : t('adopt.adoptButton')}
+          : lossBlocked
+            ? t('adopt.lossBlockedButton')
+            : isAdopting
+              ? t('adopt.adopting')
+              : t('adopt.adoptButton')}
       </button>
     </div>
   );
