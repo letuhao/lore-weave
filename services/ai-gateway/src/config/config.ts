@@ -225,6 +225,10 @@ export function loadConfig(): AppConfig {
       name: 'glossary-admin',
       mcpUrl:
         process.env.GLOSSARY_ADMIN_MCP_URL ?? glossaryMcp.replace(/\/mcp\/?$/, '/mcp/admin'),
+      // Policed to glossary_ so the two admin upstreams sharing one catalog stay
+      // namespace-disjoint: an unpoliced first provider could otherwise shadow
+      // knowledge-admin's kg_ tools (every glossary admin tool is glossary_admin_*).
+      prefix: 'glossary_',
     });
   }
   if (knowledgeMcp || process.env.KNOWLEDGE_ADMIN_MCP_URL) {

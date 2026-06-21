@@ -168,8 +168,11 @@ admin upstreams and registered knowledge:
   CMS surface automatically. (A dedicated knowledge-admin *skill* section is an optional follow-up;
   `knowledge_skill` itself stays OFF the admin surface per /review-impl LOW-3.)
 
-VERIFY: ai-gateway **52** jest pass (incl. 4 new M4b tests: config registration, merged-catalog
-namespace isolation, partial-on-one-down, throw-on-all-fail) · `tsc --noEmit` clean.
+VERIFY: ai-gateway **53** jest pass (M4b tests: config registration, merged-catalog namespace
+isolation, **per-upstream routing via providerFor**, partial-on-one-down, throw-on-all-fail) ·
+`tsc --noEmit` clean. /review-impl folded in: MED-1 (added the routing test — the core M4b claim
+was untested) + LOW-2 (police glossary-admin with `glossary_` so both shared-catalog upstreams are
+namespace-disjoint; verified all glossary admin tools are `glossary_admin_*`).
 
 ## (superseded) KM5-M4b / M4c — gateway federation + chat CMS (was DEFERRED)
 

@@ -177,6 +177,8 @@ describe('multi-provider admin federation (KM5-M4b)', () => {
     expect(Object.keys(byName).sort()).toEqual(['glossary-admin', 'knowledge-admin']);
     expect(byName['knowledge-admin'].mcpUrl).toMatch(/\/mcp\/admin$/);
     expect(byName['knowledge-admin'].prefix).toBe('kg_');
+    // both admin upstreams are policed → namespace-disjoint shared catalog (LOW-2)
+    expect(byName['glossary-admin'].prefix).toBe('glossary_');
     // INV-T6: admin upstreams are never user-facing providers.
     const userNames = cfg.providers.map((p) => p.name);
     expect(userNames).not.toContain('knowledge-admin');
@@ -198,6 +200,20 @@ describe('multi-provider admin federation (KM5-M4b)', () => {
     expect(names).toContain('kg_admin_propose_template');
     // a non-kg_ tool from the knowledge-admin upstream is dropped (namespace gate)
     expect(names).not.toContain('glossary_admin_smuggled');
+  });
+
+  it('routes each admin tool to its OWNING upstream (providerFor mapping) — the M4b core', () => {
+    const glossaryAdmin = { name: 'glossary-admin', mcpUrl: 'http://g/mcp/admin', prefix: 'glossary_' };
+    const knowledgeAdmin = { name: 'knowledge-admin', mcpUrl: 'http://k/mcp/admin', prefix: 'kg_' };
+    const cat = computeCatalog([
+      { provider: glossaryAdmin, tools: [tool('glossary_admin_propose_create')] },
+      { provider: knowledgeAdmin, tools: [tool('kg_admin_propose_template')] },
+    ], jest.fn());
+    const admin = new AdminFederationService();
+    // a glossary admin tool resolves to the glossary upstream URL; a kg_ one to knowledge.
+    expect(admin.providerFor('glossary_admin_propose_create', cat)?.mcpUrl).toBe('http://g/mcp/admin');
+    expect(admin.providerFor('kg_admin_propose_template', cat)?.mcpUrl).toBe('http://k/mcp/admin');
+    expect(admin.providerFor('nonexistent_tool', cat)).toBeUndefined();
   });
 
   it('catalogFor degrades to PARTIAL when one upstream is down but the token is valid', async () => {
