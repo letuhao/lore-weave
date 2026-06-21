@@ -15,10 +15,50 @@ import (
 	"net/http/httptest"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+// postExtractRaw drives POST /extract-entities and returns (status, decodedBody)
+// WITHOUT failing the test — for concurrent callers where t.Fatalf (not goroutine
+// safe) can't be used. Mirrors postExtract otherwise.
+func postExtractRaw(srv *Server, token, bookID string, body map[string]any) (int, map[string]any) {
+	raw, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost,
+		"/internal/books/"+bookID+"/extract-entities", bytes.NewReader(raw))
+	req.Header.Set("X-Internal-Token", token)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+	var r map[string]any
+	_ = json.Unmarshal(w.Body.Bytes(), &r)
+	return w.Code, r
+}
+
+// liveEntityCount counts non-deleted entities for a book.
+func liveEntityCount(t *testing.T, pool *pgxpool.Pool, ctx context.Context, bookID string) int {
+	t.Helper()
+	var n int
+	if err := pool.QueryRow(ctx,
+		`SELECT count(*) FROM glossary_entities WHERE book_id=$1 AND deleted_at IS NULL`,
+		bookID).Scan(&n); err != nil {
+		t.Fatalf("count entities: %v", err)
+	}
+	return n
+}
+
+// cleanupExtractBook drops a test book's entities (EAV/evidence/links cascade) and
+// its writeback-log rows.
+func cleanupExtractBook(pool *pgxpool.Pool, bookID string) {
+	ctx := context.Background()
+	pool.Exec(ctx, `DELETE FROM extraction_writeback_log WHERE book_id=$1`, bookID)           //nolint:errcheck
+	pool.Exec(ctx, `DELETE FROM entity_attribute_values WHERE entity_id IN
+		(SELECT entity_id FROM glossary_entities WHERE book_id=$1)`, bookID)                  //nolint:errcheck
+	pool.Exec(ctx, `DELETE FROM glossary_entities WHERE book_id=$1`, bookID)                  //nolint:errcheck
+}
 
 // TestBulkExtract_UnadoptedBookReturns422 proves a book with no adopted ontology fails
 // fast with a clear error instead of silently skipping every entity
@@ -213,5 +253,193 @@ func TestBulkExtract_NoDefaultTagsBackwardCompatible(t *testing.T) {
 		bookID).Scan(&tags)
 	if len(tags) != 0 {
 		t.Errorf("want empty tags for non-AI create, got %v", tags)
+	}
+}
+
+// ── Extraction pipeline FND/M1 — two-ledger + concurrency ────────────────────
+
+// TestBulkExtract_IdempotentReplay proves INV-C3: re-posting the SAME writeback_key
+// is a no-op that echoes the original counts (idempotent_replay) and leaks no row.
+func TestBulkExtract_IdempotentReplay(t *testing.T) {
+	pool := openTestDB(t)
+	ctx := context.Background()
+	runK2aMigrations(t, pool)
+
+	bookID := "00000000-0000-0000-0001-0000000a1010"
+	adoptTestBook(t, pool, uuid.MustParse(bookID))
+	t.Cleanup(func() { cleanupExtractBook(pool, bookID) })
+
+	srv, token := newEntitiesListServer(t)
+	srv.pool = pool
+
+	chap := uuid.NewString()
+	body := map[string]any{
+		"source_language": "zh",
+		"chapter_id":      chap,
+		"writeback_key":   "wbk-replay-1",
+		"content_hash":    "hash-abc",
+		"entities": []map[string]any{
+			{"kind_code": "character", "name": "林动",
+				"chapter_links": []map[string]any{{"chapter_id": chap, "chapter_index": 1}}},
+		},
+	}
+
+	r1 := postExtract(t, srv, token, bookID, body)
+	if r1["created"] != float64(1) {
+		t.Fatalf("first apply: want created=1, got %v", r1)
+	}
+
+	// Replay: same key → early no-op before the loop even runs.
+	st, r2 := postExtractRaw(srv, token, bookID, body)
+	if st != http.StatusOK {
+		t.Fatalf("replay status: want 200, got %d", st)
+	}
+	if r2["idempotent_replay"] != true {
+		t.Errorf("want idempotent_replay=true, got %v", r2)
+	}
+	if r2["created"] != float64(1) {
+		t.Errorf("replay must echo created=1 from the log, got %v", r2["created"])
+	}
+
+	if n := liveEntityCount(t, pool, ctx, bookID); n != 1 {
+		t.Errorf("idempotent replay leaked rows: want 1 entity, got %d", n)
+	}
+	var status string
+	if err := pool.QueryRow(ctx,
+		`SELECT status FROM extraction_writeback_log WHERE writeback_key='wbk-replay-1'`,
+	).Scan(&status); err != nil {
+		t.Fatalf("writeback-log row missing: %v", err)
+	}
+	if status != "committed" {
+		t.Errorf("want committed log row, got %q", status)
+	}
+}
+
+// TestBulkExtract_ConcurrentNoDuplicate proves INV-C1/C2: two concurrent writebacks
+// of the SAME entity on the same book land exactly ONE row. The per-book advisory
+// lock serializes them so the second's resolver sees the first and merges — the
+// TOCTOU duplicate the old lock-free path produced is gone.
+func TestBulkExtract_ConcurrentNoDuplicate(t *testing.T) {
+	pool := openTestDB(t)
+	ctx := context.Background()
+	runK2aMigrations(t, pool)
+
+	bookID := "00000000-0000-0000-0001-0000000a1011"
+	adoptTestBook(t, pool, uuid.MustParse(bookID))
+	t.Cleanup(func() { cleanupExtractBook(pool, bookID) })
+
+	srv, token := newEntitiesListServer(t)
+	srv.pool = pool
+
+	// No writeback_key → BOTH run the full create/merge path (the idempotency
+	// short-circuit is deliberately NOT exercised here; we want the lock+resolver
+	// to be what prevents the duplicate).
+	body := map[string]any{
+		"source_language": "zh",
+		"entities":        []map[string]any{{"kind_code": "character", "name": "重复者"}},
+	}
+
+	var wg sync.WaitGroup
+	codes := make([]int, 4)
+	for i := range codes {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			codes[i], _ = postExtractRaw(srv, token, bookID, body)
+		}(i)
+	}
+	wg.Wait()
+	for i, c := range codes {
+		if c != http.StatusOK {
+			t.Fatalf("goroutine %d: status %d", i, c)
+		}
+	}
+
+	if n := liveEntityCount(t, pool, ctx, bookID); n != 1 {
+		t.Errorf("concurrent writeback duplicated the entity: want 1, got %d", n)
+	}
+}
+
+// TestBulkExtract_EvidenceIdempotent proves INV-C5: the same quote written twice
+// (two DIFFERENT writeback keys so both apply, bypassing the idempotency
+// short-circuit) yields ONE evidence row, via uq_evidence_dedup + ON CONFLICT.
+func TestBulkExtract_EvidenceIdempotent(t *testing.T) {
+	pool := openTestDB(t)
+	ctx := context.Background()
+	runK2aMigrations(t, pool)
+
+	bookID := "00000000-0000-0000-0001-0000000a1012"
+	adoptTestBook(t, pool, uuid.MustParse(bookID))
+	t.Cleanup(func() { cleanupExtractBook(pool, bookID) })
+
+	srv, token := newEntitiesListServer(t)
+	srv.pool = pool
+
+	chap := uuid.NewString()
+	mk := func(key string) map[string]any {
+		return map[string]any{
+			"source_language": "zh", "chapter_id": chap, "writeback_key": key,
+			"entities": []map[string]any{
+				{"kind_code": "character", "name": "引用者", "evidence": "他在第一章出现。",
+					"chapter_links": []map[string]any{{"chapter_id": chap, "chapter_index": 1}}},
+			},
+		}
+	}
+	postExtract(t, srv, token, bookID, mk("ev-key-1"))
+	postExtract(t, srv, token, bookID, mk("ev-key-2")) // different key → re-applies; same quote
+
+	var n int
+	if err := pool.QueryRow(ctx, `
+		SELECT count(*) FROM evidences ev
+		JOIN entity_attribute_values eav ON eav.attr_value_id = ev.attr_value_id
+		JOIN glossary_entities ge ON ge.entity_id = eav.entity_id
+		WHERE ge.book_id=$1 AND ev.evidence_type='extraction_quote'`, bookID).Scan(&n); err != nil {
+		t.Fatalf("count evidence: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("evidence not idempotent: want 1 row, got %d", n)
+	}
+}
+
+// TestEntityDedup_UniqueIndexBackstop proves the constraint backstop (INV-C2): two
+// LIVE entities of the same book+kind cannot share a normalized name. Driven through
+// the real EAV name-write path (the trig_eav_snapshot trigger maintains cached_name,
+// from which normalized_name is generated and the unique index is checked).
+func TestEntityDedup_UniqueIndexBackstop(t *testing.T) {
+	pool := openTestDB(t)
+	ctx := context.Background()
+	runK2aMigrations(t, pool)
+
+	bookID := "00000000-0000-0000-0001-0000000a1013"
+	bid := uuid.MustParse(bookID)
+	adoptTestBook(t, pool, bid)
+	t.Cleanup(func() { cleanupExtractBook(pool, bookID) })
+
+	kindID := bookKindID(t, pool, bid, "character")
+	nameAttr := bookAttrID(t, pool, bid, kindID, "name")
+
+	// Entity 1 named 独一 — lands fine.
+	var e1, e2 uuid.UUID
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO glossary_entities(book_id,kind_id,status) VALUES($1,$2,'draft') RETURNING entity_id`,
+		bid, kindID).Scan(&e1); err != nil {
+		t.Fatalf("insert e1: %v", err)
+	}
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value)
+		 VALUES($1,$2,'zh','独一')`, e1, nameAttr); err != nil {
+		t.Fatalf("name e1: %v", err)
+	}
+
+	// Entity 2 with the SAME normalized name — its name write must violate uq_entity_dedup.
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO glossary_entities(book_id,kind_id,status) VALUES($1,$2,'draft') RETURNING entity_id`,
+		bid, kindID).Scan(&e2); err != nil {
+		t.Fatalf("insert e2: %v", err)
+	}
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value)
+		 VALUES($1,$2,'zh','独一')`, e2, nameAttr); err == nil {
+		t.Errorf("uq_entity_dedup did not reject a second live entity with the same normalized name")
 	}
 }

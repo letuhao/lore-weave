@@ -75,6 +75,7 @@ var chain = []Step{
 	{"0029_glossary_drop_legacy_g4", UpGlossaryDropLegacyG4},
 	{"0030_consumed_tokens", UpConsumedTokens},
 	{"0031_system_soft_delete", UpSystemSoftDelete},
+	{"0032_extraction_concurrency", UpExtractionConcurrency},
 }
 
 // EnsureLedger creates the schema_migrations bookkeeping table. Idempotent; must run

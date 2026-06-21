@@ -88,6 +88,12 @@ func runK2aMigrations(t *testing.T, pool *pgxpool.Pool) {
 	if err := migrate.UpSystemSoftDelete(ctx, pool); err != nil {
 		t.Fatalf("migrate.UpSystemSoftDelete: %v", err)
 	}
+	// 0032 — extraction FND/M1: normalized_name + uq_entity_dedup, uq_evidence_dedup,
+	// extraction_writeback_log. Runs after the G4 cutover-cache (adds cached_name, the
+	// generated normalized_name's base).
+	if err := migrate.UpExtractionConcurrency(ctx, pool); err != nil {
+		t.Fatalf("migrate.UpExtractionConcurrency: %v", err)
+	}
 }
 
 // ── schema shape tests ──────────────────────────────────────────────────────

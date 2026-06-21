@@ -396,6 +396,11 @@ async def post_extracted_entities(
     source_language: str,
     attribute_actions: dict[str, dict[str, str]],
     entities: list[dict],
+    *,
+    chapter_id: str | None = None,
+    content_hash: str | None = None,
+    writeback_key: str | None = None,
+    owner_user_id: str | None = None,
 ) -> dict | None:
     """Post extracted entities to glossary-service for upsert.
 
@@ -403,17 +408,33 @@ async def post_extracted_entities(
 
     Returns the response dict with created/updated/skipped counts,
     or None on failure.
+
+    M1 (extraction pipeline FND) — the optional two-ledger fields make this
+    whole-chapter writeback idempotent + tenant-scoped at the glossary boundary:
+    `writeback_key` keys the extraction_writeback_log so a retry/redelivery/
+    concurrent fresh run lands the chapter exactly once; `chapter_id`/`content_hash`/
+    `owner_user_id` populate that ledger row. All optional/additive — omitting them
+    keeps the legacy (non-idempotent) behavior, so other callers are unaffected.
     """
+    body: dict = {
+        "source_language": source_language,
+        "attribute_actions": attribute_actions,
+        "entities": entities,
+    }
+    if chapter_id:
+        body["chapter_id"] = chapter_id
+    if content_hash:
+        body["content_hash"] = content_hash
+    if writeback_key:
+        body["writeback_key"] = writeback_key
+    if owner_user_id:
+        body["owner_user_id"] = owner_user_id
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(
                 f"{settings.glossary_service_internal_url}"
                 f"/internal/books/{book_id}/extract-entities",
-                json={
-                    "source_language": source_language,
-                    "attribute_actions": attribute_actions,
-                    "entities": entities,
-                },
+                json=body,
                 headers={"X-Internal-Token": settings.internal_service_token},
             )
             if resp.status_code != 200:

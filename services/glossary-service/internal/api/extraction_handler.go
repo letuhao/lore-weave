@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"regexp"
 	"slices"
@@ -15,9 +14,30 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/loreweave/grantclient"
 	"golang.org/x/text/unicode/norm"
 )
+
+// pgxRWQuerier is the read+write querier shared by *pgxpool.Pool and pgx.Tx —
+// like pgxExecQuerier (attribute_handler.go) but also exposes multi-row Query,
+// so the extraction writeback's resolver/create/merge helpers run either
+// standalone on the pool (the MCP propose-entity path) OR enlisted in the
+// per-chapter writeback transaction (bulkExtractEntities), where every write
+// for a chapter must commit or roll back as one unit (INV-C1). (The package's
+// existing pgxQuerier in outbox.go is read-only QueryRow; extraction needs all three.)
+type pgxRWQuerier interface {
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+}
+
+// extractionWritebackLockNS namespaces the per-book advisory lock taken around a
+// whole-chapter extraction writeback (INV-C1: per-book serialized). The 2-key
+// pg_advisory_xact_lock(ns, hashtext(book)) form keeps extraction locks from
+// colliding with the migration lock or any single-key advisory use elsewhere.
+// Value is the ASCII bytes of "EXTW".
+const extractionWritebackLockNS int32 = 0x45585457
 
 // getExtractionProfile auto-resolves entity kinds + attributes for extraction
 // based on the book's genre groups. JWT + book grant (public route only).
@@ -364,6 +384,24 @@ type bulkUpsertRequest struct {
 	// tombstone is SKIPPED — a user-rejected suggestion is not re-proposed.
 	// nil/empty → no tags applied, no tombstone gate (backward-compatible).
 	DefaultTags []string `json:"default_tags"`
+	// ── Extraction pipeline FND/M1 — two-ledger writeback (all additive/optional;
+	//    an omitting caller keeps today's non-idempotent, lock-free behavior) ──
+	// ChapterID scopes this writeback to ONE chapter (the per-chapter atomic unit,
+	// design §3.3). Used for the writeback-log row + the advisory lock is per-book.
+	ChapterID string `json:"chapter_id"`
+	// WritebackKey = the worker-computed idempotency key hash(book, chapter,
+	// content_hash, kinds, profile_hash). When present and ALREADY committed in
+	// extraction_writeback_log, the whole apply is a no-op returning the original
+	// counts (INV-C3: retry = replay = concurrent fresh land once). Empty → no
+	// idempotency record (legacy callers / the MCP single-entity path).
+	WritebackKey string `json:"writeback_key"`
+	// ContentHash of the prepared chapter text the entities were extracted from —
+	// stored on the log row for provenance + the worker-side source-drift
+	// precondition (INV-C4). Glossary records it; the 409-on-drift check is upstream.
+	ContentHash string `json:"content_hash"`
+	// OwnerUserID stamps the writeback-log row for tenancy/redaction (INV-6). The
+	// worker resolves it from extraction_jobs; omitted → NULL (book_id still scopes).
+	OwnerUserID string `json:"owner_user_id"`
 }
 
 type extractedEntity struct {
@@ -459,11 +497,76 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Pre-load attr_def map (book_kind_id+code → attr_id) for THIS book (G4 book tier).
+	// These two reads are book CONFIG — left on the pool, BEFORE the writeback tx, to
+	// keep the per-book advisory lock window tight (only the actual writes are locked).
 	attrDefMap, err := s.loadAttrDefMap(ctx, bookID)
 	if err != nil {
 		BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to load attribute definitions")
 		return
+	}
+
+	// ── M1: parse the optional two-ledger writeback fields (additive/back-compat) ──
+	var chapterID uuid.UUID
+	if req.ChapterID != "" {
+		chapterID, err = uuid.Parse(req.ChapterID)
+		if err != nil {
+			BulkExtractTotal.WithLabelValues(OutcomeValidationError).Inc()
+			writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY", "invalid chapter_id")
+			return
+		}
+	}
+	var ownerUserID uuid.UUID
+	if req.OwnerUserID != "" {
+		ownerUserID, _ = uuid.Parse(req.OwnerUserID) // best-effort tenancy stamp; nil if malformed
+	}
+
+	// ── M1: per-book serialized, whole-chapter transactional writeback (INV-C1) ──
+	// One transaction for the whole chapter's entities: partial failure rolls the
+	// entire chapter back (no half-written chapter), and a per-book advisory lock
+	// serializes concurrent jobs so the app-layer resolver is race-free (two jobs on
+	// the same chapter no longer both miss-then-create the same entity — the TOCTOU
+	// duplicate). defer-rollback is a no-op after a successful Commit.
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to begin writeback tx")
+		return
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1, hashtext($2))`,
+		extractionWritebackLockNS, bookID.String()); err != nil {
+		BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to take book writeback lock")
+		return
+	}
+
+	// Idempotency (INV-C3): a writeback_key already 'committed' means this chapter's
+	// entities ALREADY landed (a retry, a redelivery, or a concurrent fresh run that
+	// won the lock). Return the original counts without re-applying — duplicate apply
+	// is a no-op. The check runs INSIDE the lock so a same-key concurrent request that
+	// lost the lock sees the committed row here.
+	if req.WritebackKey != "" {
+		var prevStatus string
+		var pc, pu, ps int
+		ierr := tx.QueryRow(ctx,
+			`SELECT status, entities_created, entities_updated, entities_skipped
+			   FROM extraction_writeback_log WHERE writeback_key = $1`, req.WritebackKey,
+		).Scan(&prevStatus, &pc, &pu, &ps)
+		if ierr == nil && prevStatus == "committed" {
+			_ = tx.Rollback(ctx)
+			BulkExtractTotal.WithLabelValues(OutcomeOK).Inc()
+			writeJSON(w, http.StatusOK, map[string]any{
+				"created": pc, "updated": pu, "skipped": ps,
+				"entities": []entityResult{}, "idempotent_replay": true,
+			})
+			return
+		}
+		if ierr != nil && ierr != pgx.ErrNoRows {
+			BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "writeback-log lookup failed")
+			return
+		}
 	}
 
 	// The 'unknown' review bucket: a kind_code that resolves to neither a kind nor
@@ -509,7 +612,7 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// 1. Find existing entity by normalized name or alias match
-		existingID, err := s.findEntityByNameOrAlias(ctx, bookID, kindID, ent.Name)
+		existingID, err := s.findEntityByNameOrAlias(ctx, tx, bookID, kindID, ent.Name)
 		if err != nil {
 			BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "entity lookup failed")
@@ -525,7 +628,7 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 		// (tag 'ai-rejected') is skipped without touching the row — a
 		// rejected suggestion must not be re-proposed every extraction.
 		if existingID != uuid.Nil && isAIWriteback {
-			rejected, terr := s.entityHasTag(ctx, existingID, tagAIRejected)
+			rejected, terr := s.entityHasTag(ctx, tx, existingID, tagAIRejected)
 			if terr != nil {
 				BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 				writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "tombstone check failed")
@@ -547,7 +650,7 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 			// 2. CREATE new entity — default tags (e.g. ai-suggested) are
 			// applied on create only, so an AI writeback never re-tags a
 			// user's existing/active entity into the suggestion inbox.
-			entityID, err := s.createExtractedEntity(ctx, bookID, kindID, ent, actions, attrDefMap, req.SourceLanguage, req.DefaultTags)
+			entityID, err := s.createExtractedEntity(ctx, tx, bookID, kindID, ent, actions, attrDefMap, req.SourceLanguage, req.DefaultTags)
 			if err != nil {
 				BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 				writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to create entity: "+err.Error())
@@ -558,7 +661,7 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 			// Parked under 'unknown' → remember the code it arrived as, so the review
 			// GUI can offer "alias <code> → <kind>" / "create kind from <code>".
 			if sourceKindCode != "" {
-				if _, uerr := s.pool.Exec(ctx,
+				if _, uerr := tx.Exec(ctx,
 					`UPDATE glossary_entities SET source_kind_code = $1 WHERE entity_id = $2`,
 					sourceKindCode, entityID,
 				); uerr != nil {
@@ -577,7 +680,7 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 			created++
 		} else {
 			// 3. MERGE with existing entity
-			written, skippedAttrs, err := s.mergeExtractedEntity(ctx, existingID, kindID, ent, actions, attrDefMap, req.SourceLanguage)
+			written, skippedAttrs, err := s.mergeExtractedEntity(ctx, tx, existingID, kindID, ent, actions, attrDefMap, req.SourceLanguage)
 			if err != nil {
 				BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 				writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to merge entity: "+err.Error())
@@ -606,7 +709,7 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 			if relevance == "" {
 				relevance = "appears"
 			}
-			if _, err := s.pool.Exec(ctx, `
+			if _, err := tx.Exec(ctx, `
 				INSERT INTO chapter_entity_links (entity_id, chapter_id, chapter_title, chapter_index, relevance)
 				VALUES ($1, $2, $3, $4, $5)
 				ON CONFLICT (entity_id, chapter_id) DO UPDATE SET
@@ -614,7 +717,13 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 					chapter_index = EXCLUDED.chapter_index,
 					relevance = EXCLUDED.relevance
 			`, entID, chID, cl.ChapterTitle, cl.ChapterIndex, relevance); err != nil {
-				slog.Warn("extraction: failed to insert chapter_entity_link", "entity_id", entID, "chapter_id", chID, "error", err)
+				// In a tx a failed statement poisons it, so this must not error in
+				// practice — the ON CONFLICT makes the insert total. Roll back + 500
+				// rather than swallow (a swallowed error would abort every later
+				// statement in this tx anyway).
+				BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
+				writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to link chapter: "+err.Error())
+				return
 			}
 		}
 
@@ -625,16 +734,23 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 			if nameOK {
 				// Get the name attr_value_id
 				var nameAVID uuid.UUID
-				err := s.pool.QueryRow(ctx, `
+				err := tx.QueryRow(ctx, `
 					SELECT attr_value_id FROM entity_attribute_values
 					WHERE entity_id = $1 AND attr_def_id = $2
 				`, entID, nameAttrDefID).Scan(&nameAVID)
 				if err == nil {
-					if _, err := s.pool.Exec(ctx, `
+					// INV-C5: idempotent evidence. ON CONFLICT DO NOTHING against the new
+					// uq_evidence_dedup index makes re-extraction/replay/redelivery of the
+					// same quote a no-op — and (crucial inside a tx) prevents a duplicate
+					// from raising an error that would poison the whole writeback.
+					if _, err := tx.Exec(ctx, `
 						INSERT INTO evidences (attr_value_id, chapter_id, evidence_type, original_language, original_text, note)
 						VALUES ($1, $2, 'extraction_quote', $3, $4, 'auto-extracted by glossary extraction pipeline')
+						ON CONFLICT (attr_value_id, evidence_type, md5(original_text)) DO NOTHING
 					`, nameAVID, s.firstChapterID(ent.ChapterLinks), req.SourceLanguage, ent.Evidence); err != nil {
-						slog.Warn("extraction: failed to insert evidence", "entity", ent.Name, "error", err)
+						BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
+						writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to insert evidence: "+err.Error())
+						return
 					}
 				}
 			}
@@ -652,11 +768,11 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 			nameAttrDefID, nameOK := attrDefMap[kindID.String()+":name"]
 			if nameOK {
 				var nameAVID uuid.UUID
-				if err := s.pool.QueryRow(ctx, `
+				if err := tx.QueryRow(ctx, `
 					SELECT attr_value_id FROM entity_attribute_values
 					WHERE entity_id = $1 AND attr_def_id = $2
 				`, entID, nameAttrDefID).Scan(&nameAVID); err == nil {
-					ct, err := s.pool.Exec(ctx, `
+					ct, err := tx.Exec(ctx, `
 						INSERT INTO attribute_translations (attr_value_id, language_code, value, confidence, translator)
 						VALUES ($1, $2, $3, 'machine', 'translation-2pass')
 						ON CONFLICT (attr_value_id, language_code) DO UPDATE
@@ -665,8 +781,9 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 						  WHERE attribute_translations.confidence <> 'verified'
 					`, nameAVID, ent.Translation.LanguageCode, ent.Translation.Value)
 					if err != nil {
-						slog.Warn("extraction: failed to write name translation",
-							"entity", ent.Name, "error", err)
+						BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
+						writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to write name translation: "+err.Error())
+						return
 					} else if ct.RowsAffected() > 0 {
 						translationChanged = true
 					}
@@ -702,12 +819,18 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 				bookID.String(), result.EntityID, ent.Name, ent.KindCode,
 				nil, "", result.Status, "pipeline", "", nil,
 			)
+			// Transactional outbox (INV-O12): the event row now commits ATOMICALLY
+			// with the entity write in this same tx (it used to be a post-commit
+			// best-effort pool write). A failed INSERT poisons the tx, so it's fatal
+			// here — but it's a DB write, not a broker publish (the relay drains the
+			// outbox table later), so this does not couple the response to the broker.
 			if err := insertEntityOutboxEvent(ctx, func(ctx context.Context, sql string, args ...any) error {
-				_, e := s.pool.Exec(ctx, sql, args...)
+				_, e := tx.Exec(ctx, sql, args...)
 				return e
 			}, entID, payload); err != nil {
-				slog.Warn("extraction: failed to emit glossary.entity_updated (non-fatal)",
-					"entity_id", entID, "name", ent.Name, "error", err)
+				BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
+				writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to emit entity event: "+err.Error())
+				return
 			}
 		}
 
@@ -717,6 +840,36 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 	if results == nil {
 		results = []entityResult{}
 	}
+
+	// ── M1: record the WRITEBACK ledger row (INV-C3) + commit the chapter atomically.
+	// Only when the caller supplied an idempotency key AND a chapter (the per-chapter
+	// unit). ON CONFLICT DO NOTHING guards a concurrent winner (the advisory lock makes
+	// that unreachable in practice, but it keeps the insert total inside the tx).
+	if req.WritebackKey != "" && chapterID != uuid.Nil {
+		var ownerArg any
+		if ownerUserID != uuid.Nil {
+			ownerArg = ownerUserID
+		}
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO extraction_writeback_log
+			  (owner_user_id, book_id, chapter_id, writeback_key, content_hash, status,
+			   entities_created, entities_updated, entities_skipped, committed_at)
+			VALUES ($1, $2, $3, $4, $5, 'committed', $6, $7, $8, now())
+			ON CONFLICT (writeback_key) DO NOTHING
+		`, ownerArg, bookID, chapterID, req.WritebackKey, req.ContentHash,
+			created, updated, skipped); err != nil {
+			BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to record writeback log: "+err.Error())
+			return
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to commit writeback: "+err.Error())
+		return
+	}
+
 	BulkExtractTotal.WithLabelValues(OutcomeOK).Inc()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"created":  created,
@@ -812,11 +965,11 @@ func (s *Server) loadAttrDefMap(ctx context.Context, bookID uuid.UUID) (map[stri
 // merged-away loser is soft-deleted with its name/aliases folded into the WINNER, so an
 // incoming name must resolve to the live winner (whose folded alias matches), never to the
 // hidden loser. (/review-impl S6 #1 — Steps 1-2 previously omitted this; Step 3 inherited.)
-func (s *Server) findEntityByNameOrAlias(ctx context.Context, bookID, kindID uuid.UUID, name string) (uuid.UUID, error) {
+func (s *Server) findEntityByNameOrAlias(ctx context.Context, q pgxRWQuerier, bookID, kindID uuid.UUID, name string) (uuid.UUID, error) {
 	normalizedName := normalizeEntity(name)
 
 	// Step 1: Try exact name match (normalized)
-	rows, err := s.pool.Query(ctx, `
+	rows, err := q.Query(ctx, `
 		SELECT ge.entity_id, eav.original_value
 		FROM glossary_entities ge
 		JOIN entity_attribute_values eav ON eav.entity_id = ge.entity_id
@@ -848,7 +1001,7 @@ func (s *Server) findEntityByNameOrAlias(ctx context.Context, bookID, kindID uui
 	}
 
 	// Step 2: Check aliases (app-layer JSON parsing per design C1)
-	aliasRows, err := s.pool.Query(ctx, `
+	aliasRows, err := q.Query(ctx, `
 		SELECT ge.entity_id, eav.original_value
 		FROM glossary_entities ge
 		JOIN entity_attribute_values eav ON eav.entity_id = ge.entity_id
@@ -886,7 +1039,7 @@ func (s *Server) findEntityByNameOrAlias(ctx context.Context, bookID, kindID uui
 	// entity whose 'en' alias set contains the incoming name resolves to it even when the
 	// source-language name/aliases don't match (anti-resurrection across languages). Same
 	// book+kind scope as Steps 1-2.
-	tRows, err := s.pool.Query(ctx, `
+	tRows, err := q.Query(ctx, `
 		SELECT ge.entity_id, t.value
 		FROM glossary_entities ge
 		JOIN entity_attribute_values eav ON eav.entity_id = ge.entity_id
@@ -926,9 +1079,9 @@ func (s *Server) findEntityByNameOrAlias(ctx context.Context, bookID, kindID uui
 // entityHasTag reports whether the entity's tags array contains tag.
 // Used by the AI-writeback tombstone gate (ai-rejected). Returns false
 // if the entity is gone (no row) — a deleted target can't be tombstoned.
-func (s *Server) entityHasTag(ctx context.Context, entityID uuid.UUID, tag string) (bool, error) {
+func (s *Server) entityHasTag(ctx context.Context, q pgxRWQuerier, entityID uuid.UUID, tag string) (bool, error) {
 	var has bool
-	err := s.pool.QueryRow(ctx,
+	err := q.QueryRow(ctx,
 		`SELECT $2 = ANY(tags) FROM glossary_entities WHERE entity_id = $1`,
 		entityID, tag,
 	).Scan(&has)
@@ -944,6 +1097,7 @@ func (s *Server) entityHasTag(ctx context.Context, entityID uuid.UUID, tag strin
 // createExtractedEntity creates a new entity with all provided attributes.
 func (s *Server) createExtractedEntity(
 	ctx context.Context,
+	q pgxRWQuerier,
 	bookID, kindID uuid.UUID,
 	ent extractedEntity,
 	actions map[string]string,
@@ -955,7 +1109,7 @@ func (s *Server) createExtractedEntity(
 		tags = []string{} // tags column is NOT NULL DEFAULT '{}'
 	}
 	var entityID uuid.UUID
-	err := s.pool.QueryRow(ctx, `
+	err := q.QueryRow(ctx, `
 		INSERT INTO glossary_entities (book_id, kind_id, status, tags)
 		VALUES ($1, $2, 'draft', $3)
 		RETURNING entity_id
@@ -967,7 +1121,7 @@ func (s *Server) createExtractedEntity(
 	// Insert name attribute
 	nameDefID, ok := attrDefMap[kindID.String()+":name"]
 	if ok {
-		_, err = s.pool.Exec(ctx, `
+		_, err = q.Exec(ctx, `
 			INSERT INTO entity_attribute_values (entity_id, attr_def_id, original_language, original_value)
 			VALUES ($1, $2, $3, $4)
 			ON CONFLICT (entity_id, attr_def_id) DO NOTHING
@@ -984,7 +1138,7 @@ func (s *Server) createExtractedEntity(
 			continue
 		}
 		serialized := serializeValue(val)
-		_, err = s.pool.Exec(ctx, `
+		_, err = q.Exec(ctx, `
 			INSERT INTO entity_attribute_values (entity_id, attr_def_id, original_language, original_value)
 			VALUES ($1, $2, $3, $4)
 			ON CONFLICT (entity_id, attr_def_id) DO NOTHING
@@ -1000,6 +1154,7 @@ func (s *Server) createExtractedEntity(
 // mergeExtractedEntity merges attributes into an existing entity based on fill/overwrite actions.
 func (s *Server) mergeExtractedEntity(
 	ctx context.Context,
+	q pgxRWQuerier,
 	entityID, kindID uuid.UUID,
 	ent extractedEntity,
 	actions map[string]string,
@@ -1022,7 +1177,7 @@ func (s *Server) mergeExtractedEntity(
 		// Check existing value
 		var existingValue string
 		var attrValueExists bool
-		err := s.pool.QueryRow(ctx, `
+		err := q.QueryRow(ctx, `
 			SELECT original_value FROM entity_attribute_values
 			WHERE entity_id = $1 AND attr_def_id = $2
 		`, entityID, defID).Scan(&existingValue)
@@ -1037,12 +1192,12 @@ func (s *Server) mergeExtractedEntity(
 			}
 			// Fill empty value
 			if attrValueExists {
-				_, err = s.pool.Exec(ctx, `
+				_, err = q.Exec(ctx, `
 					UPDATE entity_attribute_values SET original_value = $1, original_language = $2
 					WHERE entity_id = $3 AND attr_def_id = $4
 				`, serialized, sourceLang, entityID, defID)
 			} else {
-				_, err = s.pool.Exec(ctx, `
+				_, err = q.Exec(ctx, `
 					INSERT INTO entity_attribute_values (entity_id, attr_def_id, original_language, original_value)
 					VALUES ($1, $2, $3, $4)
 				`, entityID, defID, sourceLang, serialized)
@@ -1055,19 +1210,23 @@ func (s *Server) mergeExtractedEntity(
 			// Log to extraction_audit_log before overwriting
 			if attrValueExists {
 				chapterID := firstChapterIDFromLinks(ent.ChapterLinks)
-				if _, auditErr := s.pool.Exec(ctx, `
+				// /review-impl (M1) — must HARD-FAIL inside the writeback tx, not warn:
+				// a swallowed Exec error POISONS the transaction (pgx aborts every later
+				// statement until rollback), so the next attr's UPDATE would fail with a
+				// confusing "current transaction is aborted" instead of this real cause.
+				if _, auditErr := q.Exec(ctx, `
 					INSERT INTO extraction_audit_log (entity_id, attr_def_id, chapter_id, old_value, new_value)
 					VALUES ($1, $2, $3, $4, $5)
 				`, entityID, defID, chapterID, existingValue, serialized); auditErr != nil {
-					slog.Warn("extraction: failed to insert audit log", "entity_id", entityID, "attr", code, "error", auditErr)
+					return nil, nil, fmt.Errorf("audit log attr %s: %w", code, auditErr)
 				}
 
-				_, err = s.pool.Exec(ctx, `
+				_, err = q.Exec(ctx, `
 					UPDATE entity_attribute_values SET original_value = $1, original_language = $2
 					WHERE entity_id = $3 AND attr_def_id = $4
 				`, serialized, sourceLang, entityID, defID)
 			} else {
-				_, err = s.pool.Exec(ctx, `
+				_, err = q.Exec(ctx, `
 					INSERT INTO entity_attribute_values (entity_id, attr_def_id, original_language, original_value)
 					VALUES ($1, $2, $3, $4)
 				`, entityID, defID, sourceLang, serialized)
@@ -1079,10 +1238,12 @@ func (s *Server) mergeExtractedEntity(
 		}
 	}
 
-	// Touch updated_at
+	// Touch updated_at. /review-impl (M1): hard-fail, not warn — a swallowed error
+	// here poisons the writeback tx (this is the LAST statement of the merge, so the
+	// poison would surface on the NEXT entity's resolver query or at commit).
 	if len(written) > 0 {
-		if _, err := s.pool.Exec(ctx, `UPDATE glossary_entities SET updated_at = now() WHERE entity_id = $1`, entityID); err != nil {
-			slog.Warn("extraction: failed to touch updated_at", "entity_id", entityID, "error", err)
+		if _, err := q.Exec(ctx, `UPDATE glossary_entities SET updated_at = now() WHERE entity_id = $1`, entityID); err != nil {
+			return nil, nil, fmt.Errorf("touch updated_at: %w", err)
 		}
 	}
 

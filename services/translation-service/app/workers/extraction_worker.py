@@ -9,6 +9,7 @@ Design reference: GLOSSARY_EXTRACTION_PIPELINE.md §6.6, §7
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 from uuid import UUID
@@ -395,6 +396,20 @@ async def _process_extraction_chapter(
     log.info("extraction: chapter %s (index %d) — %d batch(es), text_len=%d",
              chapter_id, chapter_index, len(batches), len(chapter_text))
 
+    # M1 (extraction pipeline FND) — content hash of the prepared text (the
+    # source-drift precondition + the M6 cache-key dimension) and the whole-chapter
+    # writeback idempotency key = hash(book, chapter, content_hash, kinds, profile).
+    # The glossary writeback dedupes on this key so a retry/redelivery/concurrent
+    # fresh run lands the chapter exactly once (INV-C3).
+    content_hash = hashlib.sha256(chapter_text.encode("utf-8")).hexdigest()
+    profile_hash = hashlib.sha256(
+        json.dumps(extraction_profile, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    ).hexdigest()
+    all_kinds = sorted({k for batch in batches for k in batch})
+    writeback_key = hashlib.sha256(
+        "|".join([book_id, str(chapter_id), content_hash, ",".join(all_kinds), profile_hash]).encode("utf-8")
+    ).hexdigest()
+
     # 3. Build known entities context
     known_ctx = build_known_entities_context(known_entities) if known_entities else ""
 
@@ -407,6 +422,14 @@ async def _process_extraction_chapter(
     all_entities: list[dict] = []
     total_input_tokens = 0
     total_output_tokens = 0
+    # M0 (extraction pipeline FND) — capture the LLM `finish_reason` per batch.
+    # `length` = output-token truncation (the 26-scenario data-loss bug): the
+    # model was cut mid-array, so the parser only salvages a partial result.
+    # Surfacing it here is the prerequisite for the M2 BatchOutcome taxonomy +
+    # the M6 raw-cache (`extraction_raw_outputs.finish_reason`); today the
+    # worker never read it (architecture §8.3). Consumed via `.get()` downstream
+    # so it is additive/non-breaking on the chapter-result dict.
+    batch_finish_reasons: list[dict] = []
 
     for batch_idx, batch in enumerate(batches):
         # 4. Build prompt
@@ -494,9 +517,31 @@ async def _process_extraction_chapter(
         total_input_tokens += input_tokens
         total_output_tokens += output_tokens
 
-        log.info("extraction: chapter %s batch %d/%d — in=%d out=%d response=%d chars",
+        # M0 — first-class truncation signal. `finish_reason="length"` means the
+        # provider stopped because it hit max_tokens, so `response_text` is a
+        # truncated JSON array (the parser salvages the complete-objects prefix
+        # but later entities are LOST). Record it per batch for the outcome
+        # taxonomy / re-plan-smaller signal (M2) and warn loudly so truncation is
+        # no longer invisible in the logs.
+        finish_reason = sdk_job.finish_reason
+        truncated = finish_reason == "length"
+        batch_finish_reasons.append({
+            "batch_idx": batch_idx,
+            "kinds": list(batch),
+            "finish_reason": finish_reason,
+            "truncated": truncated,
+            "output_tokens": output_tokens,
+        })
+
+        log.info("extraction: chapter %s batch %d/%d — in=%d out=%d response=%d chars finish=%s",
                  chapter_id, batch_idx + 1, len(batches), input_tokens, output_tokens,
-                 len(response_text))
+                 len(response_text), finish_reason or "?")
+        if truncated:
+            log.warning(
+                "extraction: chapter %s batch %d/%d TRUNCATED (finish_reason=length, "
+                "out=%d tokens, kinds=%s) — partial salvage only; downstream entities dropped",
+                chapter_id, batch_idx + 1, len(batches), output_tokens, batch,
+            )
 
         # 6. Parse + validate
         entities = parse_and_validate(response_text, batch, extraction_profile)
@@ -518,14 +563,46 @@ async def _process_extraction_chapter(
 
     if not all_entities:
         log.info("extraction: chapter %s done in %.1fs — 0 entities (empty LLM output)", chapter_id, _ch_elapsed)
-        return {"created": 0, "updated": 0, "skipped": 0, "entities": [], "input_tokens": total_input_tokens, "output_tokens": total_output_tokens}
+        return {"created": 0, "updated": 0, "skipped": 0, "entities": [],
+                "input_tokens": total_input_tokens, "output_tokens": total_output_tokens,
+                "batch_finish_reasons": batch_finish_reasons}
 
-    # 7. Post to glossary-service
+    # 6b. M1 — content-hash precondition (INV-C4). The LLM calls above took real
+    # wall-clock; if the chapter was EDITED meanwhile, these entities were extracted
+    # from stale text and must NOT land (a fresh extraction against the new text
+    # supersedes them). Re-fetch + re-hash; on drift, skip the writeback. Best-effort:
+    # a re-fetch failure does not abort (the writeback_key still guards double-apply).
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10, read=30, write=30, pool=5)) as client:
+            rr = await client.get(
+                f"{settings.book_service_internal_url}"
+                f"/internal/books/{book_id}/chapters/{chapter_id}",
+                headers={"X-Internal-Token": settings.internal_service_token},
+            )
+        if rr.status_code == 200:
+            current_hash = hashlib.sha256(prepare_chapter_text(rr.json()).encode("utf-8")).hexdigest()
+            if current_hash != content_hash:
+                log.warning(
+                    "extraction: chapter %s source DRIFTED during extraction "
+                    "(hash %s→%s) — skipping stale writeback (will re-extract)",
+                    chapter_id, content_hash[:12], current_hash[:12],
+                )
+                return {"created": 0, "updated": 0, "skipped": 0, "entities": [],
+                        "input_tokens": total_input_tokens, "output_tokens": total_output_tokens,
+                        "batch_finish_reasons": batch_finish_reasons, "stale_skipped": True}
+    except Exception as exc:  # noqa: BLE001 — precondition is best-effort
+        log.warning("extraction: chapter %s drift re-check failed (%s) — proceeding", chapter_id, exc)
+
+    # 7. Post to glossary-service (whole-chapter, idempotent, tenant-scoped writeback)
     upsert_result = await post_extracted_entities(
         book_id=book_id,
         source_language=source_language,
         attribute_actions=extraction_profile,
         entities=all_entities,
+        chapter_id=str(chapter_id),
+        content_hash=content_hash,
+        writeback_key=writeback_key,
+        owner_user_id=str(owner_user_id) if owner_user_id else None,
     )
 
     if upsert_result is None:
@@ -538,4 +615,5 @@ async def _process_extraction_chapter(
 
     upsert_result["input_tokens"] = total_input_tokens
     upsert_result["output_tokens"] = total_output_tokens
+    upsert_result["batch_finish_reasons"] = batch_finish_reasons
     return upsert_result
