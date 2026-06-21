@@ -94,6 +94,10 @@ func runK2aMigrations(t *testing.T, pool *pgxpool.Pool) {
 	if err := migrate.UpExtractionConcurrency(ctx, pool); err != nil {
 		t.Fatalf("migrate.UpExtractionConcurrency: %v", err)
 	}
+	// 0033 — extraction PROV/M3: evidence offset + provenance_status columns.
+	if err := migrate.UpEvidenceProvenance(ctx, pool); err != nil {
+		t.Fatalf("migrate.UpEvidenceProvenance: %v", err)
+	}
 }
 
 // ── schema shape tests ──────────────────────────────────────────────────────

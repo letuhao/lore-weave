@@ -401,6 +401,49 @@ func TestBulkExtract_EvidenceIdempotent(t *testing.T) {
 	}
 }
 
+// TestBulkExtract_EvidenceCarriesChapterProvenance proves PROV/M3: an extracted
+// evidence quote now records its chapter (index + title) and a provenance_status
+// (DEFAULT 'unverified' until offsets are validated), not just chapter_id + text.
+func TestBulkExtract_EvidenceCarriesChapterProvenance(t *testing.T) {
+	pool := openTestDB(t)
+	ctx := context.Background()
+	runK2aMigrations(t, pool)
+
+	bookID := "00000000-0000-0000-0001-0000000a1014"
+	adoptTestBook(t, pool, uuid.MustParse(bookID))
+	t.Cleanup(func() { cleanupExtractBook(pool, bookID) })
+
+	srv, token := newEntitiesListServer(t)
+	srv.pool = pool
+
+	chap := uuid.NewString()
+	postExtract(t, srv, token, bookID, map[string]any{
+		"source_language": "zh",
+		"entities": []map[string]any{
+			{"kind_code": "character", "name": "证据者", "evidence": "他在第七章登场。",
+				"chapter_links": []map[string]any{
+					{"chapter_id": chap, "chapter_title": "第七章", "chapter_index": 7}}},
+		},
+	})
+
+	var idx int
+	var title, status string
+	if err := pool.QueryRow(ctx, `
+		SELECT ev.chapter_index, ev.chapter_title, ev.provenance_status
+		FROM evidences ev
+		JOIN entity_attribute_values eav ON eav.attr_value_id = ev.attr_value_id
+		JOIN glossary_entities ge ON ge.entity_id = eav.entity_id
+		WHERE ge.book_id=$1 AND ev.evidence_type='extraction_quote'`, bookID).Scan(&idx, &title, &status); err != nil {
+		t.Fatalf("query evidence provenance: %v", err)
+	}
+	if idx != 7 || title != "第七章" {
+		t.Errorf("chapter provenance not populated: idx=%d title=%q", idx, title)
+	}
+	if status != "unverified" {
+		t.Errorf("want provenance_status=unverified (offsets not validated yet), got %q", status)
+	}
+}
+
 // TestEntityDedup_UniqueIndexBackstop proves the constraint backstop (INV-C2): two
 // LIVE entities of the same book+kind cannot share a normalized name. Driven through
 // the real EAV name-write path (the trig_eav_snapshot trigger maintains cached_name,

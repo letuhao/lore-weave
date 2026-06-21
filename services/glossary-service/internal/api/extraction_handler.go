@@ -739,15 +739,31 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 					WHERE entity_id = $1 AND attr_def_id = $2
 				`, entID, nameAttrDefID).Scan(&nameAVID)
 				if err == nil {
+					// PROV/M3 — populate CHAPTER-LEVEL provenance (chapter_title +
+					// chapter_index) from the entity's first chapter link, so a quote
+					// traces at least to its chapter (was: only chapter_id + text). The
+					// finer block_or_line/char offsets + the trust taxonomy stay at the
+					// safe DEFAULT 'unverified' until the translation-side offset map +
+					// validation populate them (INV-7: model offsets are validated, never
+					// trusted — that's the model-offset-trust step, deliberately not here).
+					var evChapterTitle string
+					var evChapterIndex *int
+					if len(ent.ChapterLinks) > 0 {
+						evChapterTitle = ent.ChapterLinks[0].ChapterTitle
+						ci := ent.ChapterLinks[0].ChapterIndex
+						evChapterIndex = &ci
+					}
 					// INV-C5: idempotent evidence. ON CONFLICT DO NOTHING against the new
 					// uq_evidence_dedup index makes re-extraction/replay/redelivery of the
 					// same quote a no-op — and (crucial inside a tx) prevents a duplicate
 					// from raising an error that would poison the whole writeback.
 					if _, err := tx.Exec(ctx, `
-						INSERT INTO evidences (attr_value_id, chapter_id, evidence_type, original_language, original_text, note)
-						VALUES ($1, $2, 'extraction_quote', $3, $4, 'auto-extracted by glossary extraction pipeline')
+						INSERT INTO evidences (attr_value_id, chapter_id, chapter_title, chapter_index,
+						                       evidence_type, original_language, original_text, note)
+						VALUES ($1, $2, $3, $4, 'extraction_quote', $5, $6, 'auto-extracted by glossary extraction pipeline')
 						ON CONFLICT (attr_value_id, evidence_type, md5(original_text)) DO NOTHING
-					`, nameAVID, s.firstChapterID(ent.ChapterLinks), req.SourceLanguage, ent.Evidence); err != nil {
+					`, nameAVID, s.firstChapterID(ent.ChapterLinks), evChapterTitle, evChapterIndex,
+						req.SourceLanguage, ent.Evidence); err != nil {
 						BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 						writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to insert evidence: "+err.Error())
 						return

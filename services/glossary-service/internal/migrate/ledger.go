@@ -76,6 +76,7 @@ var chain = []Step{
 	{"0030_consumed_tokens", UpConsumedTokens},
 	{"0031_system_soft_delete", UpSystemSoftDelete},
 	{"0032_extraction_concurrency", UpExtractionConcurrency},
+	{"0033_evidence_provenance", UpEvidenceProvenance},
 }
 
 // EnsureLedger creates the schema_migrations bookkeeping table. Idempotent; must run
