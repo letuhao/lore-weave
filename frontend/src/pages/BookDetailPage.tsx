@@ -18,6 +18,7 @@ import { WikiTab } from '@/pages/book-tabs/WikiTab';
 import { SharingTab } from '@/pages/book-tabs/SharingTab';
 import { EnrichmentTab } from '@/pages/book-tabs/EnrichmentTab';
 import { KnowledgeOntologyTab } from '@/pages/book-tabs/KnowledgeOntologyTab';
+import { BookAssistantDock } from '@/features/chat/BookAssistantDock';
 
 const tabs = [
   { key: '', labelKey: 'detail.tabs.chapters' },
@@ -162,6 +163,13 @@ export function BookDetailPage() {
         variant="destructive"
         onConfirm={() => void handleTrash()}
       />
+
+      {/* Unified book-scoped AI assistant — one dock for the WHOLE workspace
+          (every tab), book-context-aware so the user can ask in plain language
+          without telling it which book. Previously this dock was scattered
+          per-tab (glossary); hoisted here so it is single + consistent. The
+          reader route keeps its own dock (separate surface). */}
+      <BookAssistantDock bookId={bookId} />
     </div>
   );
 }
