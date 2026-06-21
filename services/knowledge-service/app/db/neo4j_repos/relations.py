@@ -180,6 +180,13 @@ def _edge_props_to_relation(
 # a clean no-op. `multi_active` (e.g. PURSUES — multiple coexisting drives) never
 # reaches this query. Mirrors the `invalidate_relation` close primitive
 # (sets `valid_until` + `updated_at`).
+#
+# Project scoping is IMPLICIT and complete: `Entity.id` (entity_canonical_id)
+# folds project_id into its hash, so `{id: $subject_id}` matches exactly one
+# project's subject node, and every outgoing edge of that node was created with
+# that project's (also project-scoped) objects. A user's single_active write in
+# project A therefore cannot reach an open edge in project B — locked by
+# test_L7_single_active_does_not_cross_project_boundary.
 _CLOSE_PRIOR_SINGLE_ACTIVE_CYPHER = """
 MATCH (subj:Entity {id: $subject_id})-[rp:RELATES_TO]->(obj:Entity)
 WHERE rp.user_id = $user_id

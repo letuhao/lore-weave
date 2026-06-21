@@ -600,6 +600,30 @@ def test_route_cross_tenant_adopt_denied():
     assert r.status_code == 404, r.text
 
 
+def test_route_cross_tenant_adopt_preview_denied():
+    """D-KG-LC-REVADOPT-LOSS: the read-only adopt/preview route is Manage-gated
+    (resolve-to-owner) exactly like adopt — an attacker with no grant on the
+    owner's project gets 404 (no existence oracle), and the gate fires before the
+    handler ever deep-reads any template (compute_adopt_preview never called)."""
+    from app.clients.grant_client import GrantLevel
+    from app.routers.public.ontology import get_graph_schemas_repo
+
+    owner, attacker, book, project_id, src = uuid4(), uuid4(), uuid4(), uuid4(), uuid4()
+    mutations = FakeMutationsRepo(required_kinds=_XIANXIA_REQUIRED)
+    client = _client(
+        caller=attacker, project_meta=(owner, book), grant_level=GrantLevel.NONE,
+        glossary=FakeGlossaryOntologyClient(), mutations=mutations,
+    )
+    # the preview route also depends on the graph-schemas repo — stub it so the
+    # denial is proven without a live pool (the gate raises before this is used).
+    client.app.dependency_overrides[get_graph_schemas_repo] = lambda: None
+    r = client.post(
+        f"/v1/kg/projects/{project_id}/adopt/preview",
+        json={"source_schema_id": str(src)},
+    )
+    assert r.status_code == 404, r.text
+
+
 def test_route_system_create_501():
     from app.clients.grant_client import GrantLevel
 

@@ -48,6 +48,7 @@ __all__ = [
     "merge_entity",
     "upsert_glossary_anchor",
     "get_entity",
+    "get_entity_by_id_any_owner",
     "find_entities_by_name",
     "find_entities_by_vector",
     "set_entity_embedding",
