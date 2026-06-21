@@ -676,6 +676,10 @@ services:
       # depends_on coupling). Without it, /wiki/generate omits the KG relationship
       # sections in the dev/prod stack.
       KNOWLEDGE_SERVICE_URL: http://knowledge-service:8092
+      # S5 deep-research: reach the BYOK web_search capability via provider-registry's
+      # /internal/web-search (the outward search call lives only there — provider-gateway
+      # invariant). This is the SERVICE URL (like BOOK_SERVICE_URL), NOT a model/key.
+      PROVIDER_REGISTRY_URL: http://provider-registry-service:8085
       # VG-1: glossary entity versioning. When set, glossary-service runs the
       # revision-projection consumer on loreweave:events:glossary (whole-entity
       # snapshots into entity_revisions — the recovery/undo substrate). Unset =

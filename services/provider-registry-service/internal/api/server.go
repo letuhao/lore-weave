@@ -2718,15 +2718,19 @@ LIMIT 1
 		writeError(w, http.StatusInternalServerError, "WEBSEARCH_MODEL_QUERY_FAILED", "failed to resolve model")
 		return
 	}
-	if secretCipher == "" {
-		writeError(w, http.StatusInternalServerError, "WEBSEARCH_MISSING_CREDENTIAL",
-			"web_search model has no provider credential ciphertext")
-		return
-	}
-	secret, err := s.decryptSecret(secretCipher)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "WEBSEARCH_SECRET_FAILED", "failed to decrypt secret")
-		return
+	// A KEYLESS local web-search backend (e.g. self-hosted SearXNG) legitimately has NO
+	// secret — the §8 contract explicitly supports an empty credential ("Authorization
+	// ignored"). So unlike rerank/embed (platform services that require a token), an empty
+	// ciphertext is valid here: pass an empty secret (the adapter omits the Authorization
+	// header). Decrypt only when a secret is actually set.
+	secret := ""
+	if secretCipher != "" {
+		decrypted, err := s.decryptSecret(secretCipher)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "WEBSEARCH_SECRET_FAILED", "failed to decrypt secret")
+			return
+		}
+		secret = decrypted
 	}
 
 	results, answer, err := provider.WebSearch(r.Context(), s.invokeClient, endpointBaseURL, secret, in.Query,
