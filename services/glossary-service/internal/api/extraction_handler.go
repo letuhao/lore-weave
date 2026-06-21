@@ -563,6 +563,14 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to load attribute definitions")
 		return
 	}
+	// MERGE/M5 slice 2 — the authored per-attribute merge_strategy (the default the
+	// profile overrides). Book CONFIG, read on the pool before the writeback tx.
+	strategyMap, err := s.loadAttrStrategyMap(ctx, bookID)
+	if err != nil {
+		BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to load merge strategies")
+		return
+	}
 
 	// ── M1: parse the optional two-ledger writeback fields (additive/back-compat) ──
 	var chapterID uuid.UUID
@@ -738,7 +746,7 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 			created++
 		} else {
 			// 3. MERGE with existing entity
-			written, skippedAttrs, err := s.mergeExtractedEntity(ctx, tx, existingID, kindID, ent, actions, attrDefMap, req.SourceLanguage)
+			written, skippedAttrs, err := s.mergeExtractedEntity(ctx, tx, existingID, kindID, ent, actions, strategyMap, attrDefMap, req.SourceLanguage)
 			if err != nil {
 				BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 				writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to merge entity: "+err.Error())
@@ -1059,6 +1067,50 @@ func (s *Server) loadAttrDefMap(ctx context.Context, bookID uuid.UUID) (map[stri
 	return m, rows.Err()
 }
 
+// loadAttrStrategyMap returns kindID:code → authored merge_strategy (MERGE/M5 slice 2).
+// The authored strategy is the DEFAULT merge behavior; the per-extraction profile
+// (attribute_actions) overrides it. Resolved book-tier (the same DISTINCT-ON universal-
+// preferred selection as loadAttrDefMap) so a book override of the System default wins.
+func (s *Server) loadAttrStrategyMap(ctx context.Context, bookID uuid.UUID) (map[string]string, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT DISTINCT ON (ba.kind_id, ba.code) ba.kind_id, ba.code, ba.merge_strategy
+		FROM book_attributes ba
+		JOIN book_genres g ON g.genre_id = ba.genre_id
+		WHERE ba.book_id = $1 AND ba.deprecated_at IS NULL
+		ORDER BY ba.kind_id, ba.code, (g.code = 'universal') DESC, ba.sort_order`, bookID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	m := make(map[string]string)
+	for rows.Next() {
+		var kindID uuid.UUID
+		var code, strategy string
+		if err := rows.Scan(&kindID, &code, &strategy); err != nil {
+			return nil, err
+		}
+		m[kindID.String()+":"+code] = strategy
+	}
+	return m, rows.Err()
+}
+
+// strategyToAction maps an authored merge_strategy to the runtime merge action the
+// extraction writeback understands. 'manual' returns "" (the caller skips it with a
+// 'manual' reason — queue for human review, never auto-write). Unknown/empty → the safe
+// fill-if-empty default.
+func strategyToAction(strategy string) string {
+	switch strategy {
+	case "replace", "overwrite":
+		return "overwrite"
+	case "append":
+		return "append"
+	case "manual":
+		return "" // skip → 'manual'
+	default: // "fill_if_empty" and anything unrecognized
+		return "fill"
+	}
+}
+
 // findEntityByNameOrAlias looks up an existing LIVE entity by normalized name match,
 // then by alias match if not found. Returns uuid.Nil if no match.
 //
@@ -1253,13 +1305,18 @@ func (s *Server) createExtractedEntity(
 	return entityID, nil
 }
 
-// mergeExtractedEntity merges attributes into an existing entity based on fill/overwrite actions.
+// mergeExtractedEntity merges attributes into an existing entity. The action is the
+// per-extraction profile directive (fill/overwrite/append/skip); when the profile does NOT
+// specify one, the attribute's AUTHORED merge_strategy is the default (MERGE/M5 slice 2 —
+// strategy is the default, profile overrides). The verified-clobber guard (INV-8) supersedes
+// whichever action results.
 func (s *Server) mergeExtractedEntity(
 	ctx context.Context,
 	q pgxRWQuerier,
 	entityID, kindID uuid.UUID,
 	ent extractedEntity,
 	actions map[string]string,
+	strategyMap map[string]string,
 	attrDefMap map[string]uuid.UUID,
 	sourceLang string,
 ) (written []string, skipped []attrSkip, err error) {
@@ -1268,10 +1325,21 @@ func (s *Server) mergeExtractedEntity(
 		if !ok {
 			continue
 		}
-		action := actions[code]
-		if action == "" || action == "skip" {
+		// Resolve the effective action: the profile overrides; otherwise the authored
+		// merge_strategy default governs (fill_if_empty→fill, replace→overwrite,
+		// append→append, manual→queue for review). An explicit profile 'skip' wins.
+		action, specified := actions[code]
+		if action == "skip" {
 			skipped = append(skipped, attrSkip{code, "no_action"})
 			continue
+		}
+		if !specified || action == "" {
+			strat := strategyMap[kindID.String()+":"+code]
+			if strat == "manual" {
+				skipped = append(skipped, attrSkip{code, "manual"})
+				continue
+			}
+			action = strategyToAction(strat)
 		}
 
 		serialized := serializeValue(val)
@@ -1348,6 +1416,33 @@ func (s *Server) mergeExtractedEntity(
 				return nil, nil, fmt.Errorf("overwrite attr %s: %w", code, err)
 			}
 			written = append(written, code)
+		} else if action == "append" {
+			// MERGE/M5 slice 2 — atomic dedup-merge into a JSON-array list value. The
+			// merge happens under the per-book writeback lock (this whole tx), so the
+			// read-modify-write is race-free; it is idempotent by normalized value (a
+			// re-append of the same items is a no-op → skip-reason 'unchanged'). Interim
+			// JSON-array model (multi-row per-item provenance + per-item tombstones ride
+			// D-GLOSSARY-MULTIROW-ATTR-VALUES).
+			merged, changed := appendDedupMerge(existingValue, serialized)
+			if !changed {
+				skipped = append(skipped, attrSkip{code, "unchanged"})
+				continue
+			}
+			if attrValueExists {
+				_, err = q.Exec(ctx, `
+					UPDATE entity_attribute_values SET original_value = $1, original_language = $2
+					WHERE entity_id = $3 AND attr_def_id = $4
+				`, merged, sourceLang, entityID, defID)
+			} else {
+				_, err = q.Exec(ctx, `
+					INSERT INTO entity_attribute_values (entity_id, attr_def_id, original_language, original_value)
+					VALUES ($1, $2, $3, $4)
+				`, entityID, defID, sourceLang, merged)
+			}
+			if err != nil {
+				return nil, nil, fmt.Errorf("append attr %s: %w", code, err)
+			}
+			written = append(written, code)
 		}
 	}
 
@@ -1418,6 +1513,56 @@ func serializeValue(val any) string {
 		b, _ := json.Marshal(v)
 		return string(b)
 	}
+}
+
+// parseListValue interprets a stored attribute value as a string list: a JSON array
+// yields its non-empty string elements; a non-empty scalar is a single-element list;
+// empty → none. (MERGE/M5 slice 2 append.)
+func parseListValue(s string) []string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil
+	}
+	if strings.HasPrefix(s, "[") {
+		var arr []any
+		if err := json.Unmarshal([]byte(s), &arr); err == nil {
+			out := make([]string, 0, len(arr))
+			for _, v := range arr {
+				if str, ok := v.(string); ok && strings.TrimSpace(str) != "" {
+					out = append(out, str)
+				}
+			}
+			return out
+		}
+	}
+	return []string{s}
+}
+
+// appendDedupMerge merges `incoming` into `existing` as a JSON-array list, deduping by
+// normalized value and preserving existing order (new items appended). Returns the merged
+// JSON array + whether anything was actually added — so a re-append of the same items is a
+// no-op (idempotent). (MERGE/M5 slice 2.)
+func appendDedupMerge(existing, incoming string) (string, bool) {
+	items := parseListValue(existing)
+	seen := make(map[string]bool, len(items))
+	for _, it := range items {
+		seen[normalizeEntity(it)] = true
+	}
+	added := false
+	for _, it := range parseListValue(incoming) {
+		n := normalizeEntity(it)
+		if n == "" || seen[n] {
+			continue
+		}
+		seen[n] = true
+		items = append(items, it)
+		added = true
+	}
+	if !added {
+		return existing, false
+	}
+	b, _ := json.Marshal(items)
+	return string(b), true
 }
 
 // ── Name normalization ──────────────────────────────────────────────────────

@@ -728,11 +728,13 @@ func TestBulkExtract_SkipReasonTaxonomy(t *testing.T) {
 		},
 	})
 
-	// Re-extract: fill on the occupied appearance (→ fill_occupied) + personality with NO
-	// action in attribute_actions (→ no_action).
+	// Re-extract: fill on the occupied appearance (→ fill_occupied) + personality with an
+	// EXPLICIT 'skip' action (→ no_action). (An ABSENT action now falls to the authored
+	// merge_strategy default — covered by TestMergeStrategy_FromOntology — so 'no_action'
+	// is reserved for an explicit profile skip.)
 	resp := postExtract(t, srv, token, bookID, map[string]any{
 		"source_language":   "zh",
-		"attribute_actions": map[string]any{"character": map[string]any{"appearance": "fill"}},
+		"attribute_actions": map[string]any{"character": map[string]any{"appearance": "fill", "personality": "skip"}},
 		"entities": []map[string]any{
 			{"kind_code": "character", "name": "记录者",
 				"attributes":    map[string]any{"appearance": "new", "personality": "brave"},
@@ -758,6 +760,160 @@ func TestBulkExtract_SkipReasonTaxonomy(t *testing.T) {
 	}
 	if val != "tall" {
 		t.Errorf("fill clobbered an occupied value: got %q (want 'tall')", val)
+	}
+}
+
+// TestAppendDedupMerge is the pure-unit proof of the append merge (MERGE/M5 slice 2):
+// dedup by normalized value, preserve order, idempotent (re-append → no change).
+func TestAppendDedupMerge(t *testing.T) {
+	cases := []struct {
+		name, existing, incoming, want string
+		changed                        bool
+	}{
+		{"scalar+scalar", "tall", "short", `["tall","short"]`, true},
+		{"into empty", "", "Ghost", `["Ghost"]`, true},
+		{"array+array dedup", `["a","b"]`, `["b","c"]`, `["a","b","c"]`, true},
+		{"idempotent re-append", `["a","b"]`, `["a","b"]`, `["a","b"]`, false},
+		{"case/space-insensitive dedup", `["Yan Mo"]`, `["yan  mo","New"]`, `["Yan Mo","New"]`, true},
+		{"nothing new keeps existing repr", "tall", "tall", "tall", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, changed := appendDedupMerge(c.existing, c.incoming)
+			if changed != c.changed {
+				t.Errorf("changed: want %v got %v", c.changed, changed)
+			}
+			if changed && got != c.want {
+				t.Errorf("merged: want %q got %q", c.want, got)
+			}
+			if !changed && got != c.existing {
+				t.Errorf("unchanged must return existing verbatim: want %q got %q", c.existing, got)
+			}
+		})
+	}
+}
+
+// setMergeStrategy sets the authored merge_strategy for (character, code) on a book.
+func setMergeStrategy(t *testing.T, pool *pgxpool.Pool, bookID, code, strategy string) {
+	t.Helper()
+	if _, err := pool.Exec(context.Background(), `
+		UPDATE book_attributes SET merge_strategy=$1
+		WHERE attr_id IN (
+			SELECT ba.attr_id FROM book_attributes ba
+			JOIN book_kinds bk ON bk.book_kind_id = ba.kind_id
+			WHERE bk.book_id=$2 AND bk.code='character' AND ba.code=$3)`,
+		strategy, bookID, code); err != nil {
+		t.Fatalf("setMergeStrategy: %v", err)
+	}
+}
+
+func appearanceValue(t *testing.T, pool *pgxpool.Pool, bookID string) string {
+	t.Helper()
+	var v string
+	if err := pool.QueryRow(context.Background(), `
+		SELECT eav.original_value FROM entity_attribute_values eav
+		JOIN glossary_entities ge ON ge.entity_id = eav.entity_id
+		JOIN book_attributes ba ON ba.attr_id = eav.attr_def_id
+		WHERE ge.book_id=$1 AND ba.code='appearance'`, bookID).Scan(&v); err != nil {
+		t.Fatalf("query appearance: %v", err)
+	}
+	return v
+}
+
+// TestBulkExtract_AppendAction proves the append action dedup-merges a list value and is
+// idempotent (a re-append of the same item is skipped 'unchanged').
+func TestBulkExtract_AppendAction(t *testing.T) {
+	pool := openTestDB(t)
+	runK2aMigrations(t, pool)
+	bookID := "00000000-0000-0000-0001-0000000a1023"
+	adoptTestBook(t, pool, uuid.MustParse(bookID))
+	t.Cleanup(func() { cleanupExtractBook(pool, bookID) })
+	srv, token := newEntitiesListServer(t)
+	srv.pool = pool
+	links := []map[string]any{{"chapter_id": uuid.NewString(), "chapter_index": 1}}
+
+	mk := func(val string) map[string]any {
+		return map[string]any{
+			"source_language":   "zh",
+			"attribute_actions": map[string]any{"character": map[string]any{"appearance": "append"}},
+			"entities": []map[string]any{
+				{"kind_code": "character", "name": "拼接者",
+					"attributes": map[string]any{"appearance": val}, "chapter_links": links},
+			},
+		}
+	}
+	// Create the entity (createExtractedEntity writes appearance='tall').
+	postExtract(t, srv, token, bookID, map[string]any{
+		"source_language": "zh",
+		"entities": []map[string]any{
+			{"kind_code": "character", "name": "拼接者",
+				"attributes": map[string]any{"appearance": "tall"}, "chapter_links": links},
+		},
+	})
+	// Append 'short' → ["tall","short"].
+	postExtract(t, srv, token, bookID, mk("short"))
+	if v := appearanceValue(t, pool, bookID); v != `["tall","short"]` {
+		t.Errorf("append: want [\"tall\",\"short\"], got %q", v)
+	}
+	// Re-append 'short' → unchanged (idempotent).
+	resp := postExtract(t, srv, token, bookID, mk("short"))
+	if v := appearanceValue(t, pool, bookID); v != `["tall","short"]` {
+		t.Errorf("idempotent append changed the value: got %q", v)
+	}
+	if r := skipReasonFor(resp, "拼接者", "appearance"); r != "unchanged" {
+		t.Errorf("want re-append skip reason 'unchanged', got %q", r)
+	}
+}
+
+// TestMergeStrategy_FromOntology proves the authored merge_strategy is the DEFAULT when the
+// profile gives no action: 'manual' → skipped 'manual' (queue for review, no write);
+// 'append' → appends. (The profile, when present, still overrides — covered elsewhere.)
+func TestMergeStrategy_FromOntology(t *testing.T) {
+	pool := openTestDB(t)
+	runK2aMigrations(t, pool)
+	bookID := "00000000-0000-0000-0001-0000000a1024"
+	adoptTestBook(t, pool, uuid.MustParse(bookID))
+	t.Cleanup(func() { cleanupExtractBook(pool, bookID) })
+	srv, token := newEntitiesListServer(t)
+	srv.pool = pool
+	links := []map[string]any{{"chapter_id": uuid.NewString(), "chapter_index": 1}}
+
+	// Create with appearance='tall'.
+	postExtract(t, srv, token, bookID, map[string]any{
+		"source_language": "zh",
+		"entities": []map[string]any{
+			{"kind_code": "character", "name": "策略者",
+				"attributes": map[string]any{"appearance": "tall"}, "chapter_links": links},
+		},
+	})
+
+	// merge_strategy='manual' + NO profile action → skip 'manual', value unchanged.
+	setMergeStrategy(t, pool, bookID, "appearance", "manual")
+	resp := postExtract(t, srv, token, bookID, map[string]any{
+		"source_language": "zh", // no attribute_actions → authored strategy governs
+		"entities": []map[string]any{
+			{"kind_code": "character", "name": "策略者",
+				"attributes": map[string]any{"appearance": "short"}, "chapter_links": links},
+		},
+	})
+	if r := skipReasonFor(resp, "策略者", "appearance"); r != "manual" {
+		t.Errorf("want manual-strategy skip reason 'manual', got %q", r)
+	}
+	if v := appearanceValue(t, pool, bookID); v != "tall" {
+		t.Errorf("manual strategy must not write: got %q", v)
+	}
+
+	// merge_strategy='append' + NO profile action → appends.
+	setMergeStrategy(t, pool, bookID, "appearance", "append")
+	postExtract(t, srv, token, bookID, map[string]any{
+		"source_language": "zh",
+		"entities": []map[string]any{
+			{"kind_code": "character", "name": "策略者",
+				"attributes": map[string]any{"appearance": "short"}, "chapter_links": links},
+		},
+	})
+	if v := appearanceValue(t, pool, bookID); v != `["tall","short"]` {
+		t.Errorf("append strategy: want [\"tall\",\"short\"], got %q", v)
 	}
 }
 
