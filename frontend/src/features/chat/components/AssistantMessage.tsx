@@ -21,7 +21,7 @@ import { GlossaryDiffCard } from './GlossaryDiffCard';
 import { ConfirmCard } from './ConfirmCard';
 import { ConfirmActionCard, descriptorDomain } from './ConfirmActionCard';
 import { RecordDiffCard } from './RecordDiffCard';
-import { TranslationReviewCard, isTranslationProposeCall } from './TranslationReviewCard';
+import { TranslationReviewCard, isTranslationProposeCall, summarizeTranslationReview } from './TranslationReviewCard';
 import { ActivityStrip } from './ActivityStrip';
 import { useMessageFeedback } from '../hooks/useMessageFeedback';
 import { useActivityUndo } from '../hooks/useActivityUndo';
@@ -161,10 +161,15 @@ export function AssistantMessage({
           tc.pending === true && FRONTEND_TOOLS.includes(tc.tool);
         const proposals = toolCalls.filter(isPendingFrontend);
         // S4: completed class-W translation/alias proposals render as a review card
-        // (visible drafts), not a passive chip; everything else stays a chip.
-        const translationCards = toolCalls.filter(isTranslationProposeCall);
+        // (visible drafts), not a passive chip — but ONLY when the record carries
+        // something renderable. A sparse record (e.g. replayed {tool, ok} with no
+        // args/result) has no summary, so it stays a chip rather than vanishing from
+        // both surfaces.
+        const isRenderableTranslation = (tc: ToolCallRecord) =>
+          isTranslationProposeCall(tc) && summarizeTranslationReview(tc) !== null;
+        const translationCards = toolCalls.filter(isRenderableTranslation);
         const rest = toolCalls.filter(
-          (tc) => !isPendingFrontend(tc) && !isTranslationProposeCall(tc),
+          (tc) => !isPendingFrontend(tc) && !isRenderableTranslation(tc),
         );
         return (
           <>

@@ -44,12 +44,23 @@ export function isTranslationProposeCall(record: ToolCallRecord): boolean {
   );
 }
 
-export function TranslationReviewCard({ record }: { record: ToolCallRecord }) {
-  const { t } = useTranslation('chat');
+export interface TranslationReviewSummary {
+  isAliases: boolean;
+  langName: string;
+  values: string[];
+  written: number;
+  skipped: number;
+}
+
+/** Parse a completed translation/alias propose call into a renderable summary, or null
+ *  when the record carries nothing to show (e.g. a replayed record that persisted only
+ *  {tool, ok} without args/result). Callers route a null-summary record to the plain tool
+ *  chip instead — never excluding it from BOTH the chip and the card (which would hide the
+ *  tool call entirely). */
+export function summarizeTranslationReview(record: ToolCallRecord): TranslationReviewSummary | null {
   const args = (record.args ?? {}) as TranslateArgs;
   const result = (record.result ?? {}) as TranslateResult;
   const isAliases = record.tool === 'glossary_propose_aliases';
-
   const lang = result.language_code || args.language_code || '';
   // The proposed values are the useful, human-readable payload (the translated
   // names / alias strings). Entity ids are opaque, so we surface the values.
@@ -58,14 +69,19 @@ export function TranslationReviewCard({ record }: { record: ToolCallRecord }) {
   );
   const written = result.written ?? 0;
   const skipped = result.skipped ?? 0;
-
-  // Nothing meaningful to show (e.g. a malformed record) → render nothing rather
-  // than an empty card.
   if (values.length === 0 && written === 0 && skipped === 0) return null;
+  return { isAliases, langName: lang ? getLanguageName(lang) : '', values, written, skipped };
+}
+
+export function TranslationReviewCard({ record }: { record: ToolCallRecord }) {
+  const { t } = useTranslation('chat');
+  const summary = summarizeTranslationReview(record);
+  // Nothing meaningful to show → render nothing (the caller keeps it as a chip).
+  if (!summary) return null;
+  const { isAliases, langName, values, written, skipped } = summary;
 
   const shown = values.slice(0, PREVIEW_CAP);
   const overflow = values.length - shown.length;
-  const langName = lang ? getLanguageName(lang) : '';
 
   return (
     <div

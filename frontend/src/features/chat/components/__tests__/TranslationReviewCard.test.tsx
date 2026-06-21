@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { TranslationReviewCard, isTranslationProposeCall } from '../TranslationReviewCard';
+import { TranslationReviewCard, isTranslationProposeCall, summarizeTranslationReview } from '../TranslationReviewCard';
 import type { ToolCallRecord } from '../types';
 
 // S4 — the chat translation-review card renders the agent's class-W draft proposals
@@ -78,5 +78,25 @@ describe('TranslationReviewCard', () => {
   it('renders nothing for an empty/malformed record', () => {
     const { container } = render(<TranslationReviewCard record={rec({ args: {}, result: {} })} />);
     expect(container).toBeEmptyDOMElement();
+  });
+});
+
+// /review-impl #1 — a sparse record (no args/result, e.g. a replayed {tool, ok}) must
+// summarize to null so AssistantMessage keeps it as a chip instead of hiding it.
+describe('summarizeTranslationReview', () => {
+  it('returns null for a record with no renderable content', () => {
+    expect(summarizeTranslationReview(rec({}))).toBeNull();
+    expect(summarizeTranslationReview(rec({ args: {}, result: {} }))).toBeNull();
+  });
+
+  it('returns a summary when values or counts are present', () => {
+    const s = summarizeTranslationReview(
+      rec({ args: { language_code: 'en', items: [{ entity_id: 'e1', value: 'X' }] }, result: { written: 1 } }),
+    );
+    expect(s).not.toBeNull();
+    expect(s!.values).toEqual(['X']);
+    expect(s!.written).toBe(1);
+    // counts-only (no items) still summarizes — so the call never vanishes.
+    expect(summarizeTranslationReview(rec({ result: { written: 0, skipped: 3 } }))).not.toBeNull();
   });
 });
