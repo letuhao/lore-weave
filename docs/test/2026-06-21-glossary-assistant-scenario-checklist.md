@@ -70,7 +70,7 @@ by the authoritative Go unit suites (green this run).
 | 5 | Deep research | ✅ | `glossary_deep_research` → cost card → 5 web sources as draft `reference` evidence |
 | 6 | Per-language aliases | ✅ | `glossary_propose_aliases` en set; chip editor |
 | 7 | Chapter extraction | ✅ | confirm → job → 9 entities (chapter 1) |
-| 8 | Re-extract for kind | ✅ | confirm card (est 18,060 tok) → Apply → job ran 2 batches → completed. 0 entities this run = local-model malformed-JSON artifact (`parse failed` / `0 valid from 10 raw`), pipeline handled gracefully |
+| 8 | Re-extract for kind | ✅ | confirm card → Apply → job → completed. **First run gave 0 entities — root-caused to a token-truncation harness bug (NOT the model), now FIXED** (`D-EXTRACTION-TOKEN-TRUNCATION`); re-run on the same chapter now extracts **9 created + 5 skipped** (glossary 10→19) |
 | 9 | Merge duplicates | ✅ | `glossary_propose_merge` destructive card round-trip |
 | 10 | Reassign kind (triage) | ✅ | `glossary_propose_reassign_kind` data-loss preview |
 | 11 | Status change | ✅ | `glossary_propose_status_change` round-trip |
@@ -91,6 +91,25 @@ by the authoritative Go unit suites (green this run).
 | 26 | Cost gate | ✅ | confirm card w/ estimate on S5/S7/S8; no paid call without Apply |
 
 ### Findings
+- **HIGH (`D-EXTRACTION-TOKEN-TRUNCATION`) — FIXED + live-re-verified.** My initial S8 write-up
+  blamed the local model for the 0-entity result; that was wrong. Direct replay against LM Studio
+  proved it was **output-token truncation in the harness**, not the model:
+  `plan_kind_batches` budgeted only the *input* schema (`SCHEMA_TOKEN_BUDGET`), so a 9-kind book
+  packed **7 kinds into one call**; that batch's output hit `finish_reason=length` at the
+  `max_tokens=12000` ceiling → cut mid-array → unparseable → 0 entities. (Raising the ceiling to
+  20000 alone let the 7-kind batch complete with 21 entities but also let a separate batch *run
+  away* to fill 20000 — confirming over-large batches are the root cause.) **Fix
+  ([extraction_prompt.py](../../services/translation-service/app/workers/extraction_prompt.py),
+  [extraction_worker.py](../../services/translation-service/app/workers/extraction_worker.py)):**
+  (1) **cap kinds-per-batch** (`MAX_KINDS_PER_BATCH=3`) so each call's output is bounded — the
+  real root-cause fix; (2) `max_tokens` 12000→20000 headroom; (3) the JSON extractor now
+  **repairs a truncated/fenced array** (closes at the last complete object) instead of discarding
+  every entity. **Live re-verify:** the same chapter that gave 0 now extracts 9 created + 5
+  skipped across **3 clean batches, all `finish=stop`** (replay: 3×[finish=stop, ~1.3k tok] → 20
+  entities). +5 regression tests (`test_extraction_truncation.py`). Grammar-constrained decoding
+  (`response_format: json_schema`) was tested as the textbook fix but a *permissive* schema made
+  it worse (uniform runaway) — tracked as `D-EXTRACTION-CONSTRAINED-DECODING` (needs a tight
+  per-kind schema; genuinely larger).
 - **LOW (`D-BOOKPATCH-GENRE-ERRMSG`) — FIXED + live-re-verified.** `glossary_book_patch` on an
   attribute returned the misleading `"no live row with that code in this book"` when the row
   exists but under a different genre. Attributes are keyed by `(kind, genre, code)` (genre is

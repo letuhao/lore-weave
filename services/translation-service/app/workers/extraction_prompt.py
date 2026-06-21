@@ -15,7 +15,18 @@ from dataclasses import dataclass
 
 log = logging.getLogger(__name__)
 
-SCHEMA_TOKEN_BUDGET = 2000  # max schema tokens per LLM call
+SCHEMA_TOKEN_BUDGET = 2000  # max schema tokens per LLM call (INPUT side)
+
+# Output-side guard against finish_reason=length truncation. plan_kind_batches
+# historically budgeted only the *schema* (input) tokens, so a book with many kinds
+# packed 7+ kinds into one call — and the model's *output* (every entity × every
+# attribute for all those kinds) blew past max_tokens, getting cut mid-JSON →
+# unparseable → 0 entities. Output size scales with the number of kinds in a batch,
+# so we also cap kinds-per-batch. With max_entities_per_kind entities × (attrs+5)
+# fields each, ~3 kinds keeps a batch comfortably under the worker's max_tokens even
+# on entity-dense chapters. (See D-EXTRACTION-CONSTRAINED-DECODING for the longer-term
+# json_schema/grammar-constrained-decoding fix that also eliminates malformed JSON.)
+MAX_KINDS_PER_BATCH = 3
 
 SYSTEM_TEMPLATE = """\
 You are a literary entity extractor. Analyze the following {source_language} novel \
@@ -103,7 +114,11 @@ def plan_kind_batches(
         # ~40 tokens per attribute description + ~20 tokens overhead per kind
         kind_tokens = 20 + len(attr_actions) * 40
 
-        if current_tokens + kind_tokens > SCHEMA_TOKEN_BUDGET and current_batch:
+        # Break the batch when EITHER the input schema budget OR the output-side
+        # kinds cap would be exceeded — the latter prevents max_tokens truncation.
+        over_schema = current_tokens + kind_tokens > SCHEMA_TOKEN_BUDGET
+        over_kinds = len(current_batch) >= MAX_KINDS_PER_BATCH
+        if (over_schema or over_kinds) and current_batch:
             batches.append(current_batch)
             current_batch = []
             current_tokens = 0
@@ -251,24 +266,37 @@ def _extract_json_from_text(text: str) -> str | None:
     """
     text = text.strip()
 
-    # Try markdown fences first
-    fence_match = _MARKDOWN_FENCE_RE.search(text)
-    if fence_match:
-        return fence_match.group(1).strip()
+    # Strip a markdown fence — closed OR unterminated. Truncation (finish_reason=
+    # length) routinely cuts the closing ```, so a fence-only regex would miss the
+    # body entirely and the salvageable partial array would be discarded. Prefer the
+    # closed-fence body; otherwise just drop the opening fence line and continue.
+    closed = _MARKDOWN_FENCE_RE.search(text)
+    if closed:
+        text = closed.group(1).strip()
+    else:
+        opener = re.match(r"```(?:json)?\s*", text)
+        if opener:
+            text = text[opener.end():].strip()
 
-    # Try to find a complete JSON array directly
-    arr_match = _JSON_ARRAY_RE.search(text)
-    if arr_match:
-        return arr_match.group(0)
+    # Everything before the first array opener is prose/reasoning.
+    start = text.find("[")
+    if start == -1:
+        return None
+    text = text[start:]
 
-    # If starts with bracket, use as-is (may need closing bracket)
-    if text.startswith("["):
-        if text.endswith("]"):
+    # Complete + well-formed array → return as-is. We re-validate here (not just
+    # endswith "]") because the old greedy regex could over-capture to an inner "]"
+    # and yield malformed JSON; on any parse failure we fall through to repair.
+    if text.endswith("]"):
+        try:
+            json.loads(text)
             return text
-        # Truncated array — try to repair by closing incomplete trailing entry
-        return _repair_truncated_array(text)
+        except json.JSONDecodeError:
+            pass
 
-    return None
+    # Truncated or malformed — close the array at the last COMPLETE object so the
+    # entities the model finished before being cut off are still recovered.
+    return _repair_truncated_array(text)
 
 
 def _repair_truncated_array(text: str) -> str:

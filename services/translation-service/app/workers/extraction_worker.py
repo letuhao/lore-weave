@@ -439,7 +439,14 @@ async def _process_extraction_chapter(
                         {"role": "user", "content": user_prompt},
                     ],
                     "temperature": 0.1,
-                    "max_tokens": 12000,
+                    # Output ceiling. A batch is capped at MAX_KINDS_PER_BATCH kinds
+                    # (extraction_prompt) so its output stays well under this; the
+                    # headroom is generous on purpose (typical model context is tens
+                    # of thousands of tokens and the extraction input is only ~4–5k),
+                    # so an entity-dense chapter completes instead of truncating at
+                    # finish_reason=length. If a batch still truncates, the parser
+                    # repairs the partial array rather than dropping every entity.
+                    "max_tokens": 20000,
                     **thinking_llm_fields(enabled=thinking_enabled),
                 },
                 chunking=None,
