@@ -500,6 +500,7 @@ function AttrGrid({ attrs, getValue, onChange, pendingChanges, translationLang, 
         language={activeLang}
         translation={existingTranslation}
         translationHint={def.translation_hint}
+        attrCode={def.code}
         sourceOriginal={viewTranslationMode ? (getValue(attr) || undefined) : undefined}
         sourceOriginalLang={viewTranslationMode ? (bookOriginalLanguage ?? attr.original_language) : undefined}
         onChanged={(updated) => {

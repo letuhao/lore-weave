@@ -52,6 +52,7 @@
     "save": "儲存",
     "delete_aria": "刪除翻譯",
     "placeholder": "{{lang}} 翻譯...",
+    "tags_add": "+ 新增別名",
     "delete_title": "刪除翻譯？",
     "delete_desc": "此屬性的 {{lang}} 翻譯將被永久刪除。",
     "delete_confirm": "刪除",
