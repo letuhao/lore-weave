@@ -722,3 +722,34 @@ live-tested).
 (CMS RS256 → gateway `/mcp/admin` → `kg_admin_*`), `D-LB-LIVE-SMOKE` (real-LLM vocab emission
 through the cache-key path), `D-KG-LE-BROWSER-SMOKE` (Playwright adopt-loss warning UI). These
 need BYOK model availability + a `frontend` image rebuild + browser automation.
+
+**2026-06-21 — heavy live tier (admin RS256 + real-LLM extraction; browser blocked).**
+- **`D-KM5-M3` admin gate — PASS (live).** Found + fixed a real **deployability gap**: the
+  knowledge-service compose block never wired `ADMIN_JWT_PUBLIC_KEY_PEM`, so `/mcp/admin` was
+  permanently 503 in the deployed stack (the verifier code shipped in KM5-M1/M3 but the env
+  passthrough didn't). Added it (defaults empty → no behavior change unless set). Generated a
+  dev RS256 keypair, set the key, recreated knowledge-service, minted a real admin JWT, and
+  drove the DEPLOYED `/mcp/admin` over real HTTP via the MCP client: valid internal+admin token
+  → `tools/list` = `kg_admin_propose_template` + `kg_admin_template_read`, `kg_admin_template_read`
+  returned the real System templates (incl `general`); **missing-admin / missing-internal /
+  tampered / wrong-kid all rejected (401).** The ai-gateway federation hop (M4b) is the
+  53-jest-unit-proven transparent proxy over this exact endpoint. Key removed + stack restored
+  after the run.
+- **`D-LB` — D-lane `/extract-item` LLM→Neo4j pipeline PASS (live).** Drove a real `/extract-item`
+  against the deployed container with the BYOK LM-Studio `qwen2.5-7b-instruct`: resolved the
+  schema internally (my D lane) → LLM extracted (5 entities, 5 relations, 2 events) → wrote to
+  Neo4j (verified 5 entities + 5 relations for the synthetic project; cleaned by project_id
+  after). Proves the schema-split extraction pipeline live end-to-end. **Note:** the
+  schema-aware cache key (B) is NOT exercised by `/extract-item` (the `extraction_leaves` cache
+  is keyed on `book_id`+`chapter_id`, used by the worker/persist-pass2 path), so B stays
+  unit-proven (8 tests incl. cross-schema discrimination + byte-identical legacy); cardinality
+  auto-close is live-proven at the write boundary (the 101-test run). Live LLM vocab emission
+  was already cleared in the earlier `D-KG-L7-LIVE-SMOKE`.
+- **`D-KG-LE-BROWSER-SMOKE` — BLOCKED (not runnable).** The KG knowledge-ontology FE
+  (`AdoptPicker` + the lane-F loss warning) is built as MVC components + vitest-proven (10
+  AdoptPicker + 9 hook tests) but is **NOT imported by any page/route** — the "C3 wiring" the
+  LE `INTEGRATION.md` defers was never done, so the component is unmounted and unreachable in
+  the running app. A Playwright smoke has nothing to navigate to; a `frontend` rebuild wouldn't
+  help. Reclassified: blocked on KG-ontology FE route integration (a feature-wiring task, NOT a
+  lane-F bug) → tracked as `D-KG-ONTOLOGY-FE-WIRING` (supersedes `D-KG-LE-BROWSER-SMOKE`, which
+  presumed a mounted UI).

@@ -886,6 +886,12 @@ services:
       GLOSSARY_DB_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_glossary
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # KM5 (D-KM5-M3) — SPKI/PKIX PEM (or base64) of the platform admin-signing
+      # key's public half (same value glossary-service gets). When set, the System-
+      # tier admin write endpoints + the /mcp/admin server verify an RS256 admin JWT
+      # against it; unset → admin is disabled (callers 503). DEV keys via
+      # infra/gen-admin-dev-keys.ps1; PROD = the public half of the auth-service KMS key.
+      ADMIN_JWT_PUBLIC_KEY_PEM: ${ADMIN_JWT_PUBLIC_KEY_PEM:-}
       # Phase 6c-γ — OpenTelemetry trace export (see provider-registry-service).
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       REDIS_URL: redis://redis:6379
