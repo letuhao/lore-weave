@@ -98,6 +98,10 @@ func runK2aMigrations(t *testing.T, pool *pgxpool.Pool) {
 	if err := migrate.UpEvidenceProvenance(ctx, pool); err != nil {
 		t.Fatalf("migrate.UpEvidenceProvenance: %v", err)
 	}
+	// 0034 — extraction MERGE/M5: EAV confidence marker + attribute merge_strategy.
+	if err := migrate.UpMergePolicy(ctx, pool); err != nil {
+		t.Fatalf("migrate.UpMergePolicy: %v", err)
+	}
 }
 
 // ── schema shape tests ──────────────────────────────────────────────────────

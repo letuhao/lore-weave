@@ -615,6 +615,152 @@ func TestBulkExtract_EvidenceOffsetRefreshesOnReExtract(t *testing.T) {
 	}
 }
 
+// skipReasonFor digs an entity's per-attribute skip reason out of the bulk response.
+func skipReasonFor(resp map[string]any, name, code string) string {
+	ents, _ := resp["entities"].([]any)
+	for _, e := range ents {
+		em, _ := e.(map[string]any)
+		if em == nil || em["name"] != name {
+			continue
+		}
+		reasons, _ := em["attributes_skipped_reasons"].([]any)
+		for _, r := range reasons {
+			rm, _ := r.(map[string]any)
+			if rm != nil && rm["code"] == code {
+				s, _ := rm["reason"].(string)
+				return s
+			}
+		}
+	}
+	return ""
+}
+
+// TestBulkExtract_VerifiedClobberGuard proves INV-8 (T2): a human-'verified' SOURCE value
+// is NEVER overwritten by a machine re-extraction, even with action=overwrite — it is
+// skipped with reason 'verified', and the stored value is unchanged.
+func TestBulkExtract_VerifiedClobberGuard(t *testing.T) {
+	pool := openTestDB(t)
+	ctx := context.Background()
+	runK2aMigrations(t, pool)
+
+	bookID := "00000000-0000-0000-0001-0000000a1021"
+	adoptTestBook(t, pool, uuid.MustParse(bookID))
+	t.Cleanup(func() { cleanupExtractBook(pool, bookID) })
+
+	srv, token := newEntitiesListServer(t)
+	srv.pool = pool
+	chap := uuid.NewString()
+
+	mk := func(appearance, action string) map[string]any {
+		return map[string]any{
+			"source_language":   "zh",
+			"attribute_actions": map[string]any{"character": map[string]any{"appearance": action}},
+			"entities": []map[string]any{
+				{"kind_code": "character", "name": "守护者",
+					"attributes":    map[string]any{"appearance": appearance},
+					"chapter_links": []map[string]any{{"chapter_id": chap, "chapter_index": 1}}},
+			},
+		}
+	}
+
+	// 1. First extraction creates the entity + writes appearance='tall' (DEFAULT machine).
+	postExtract(t, srv, token, bookID, mk("tall", "overwrite"))
+
+	var avid uuid.UUID
+	var val, conf string
+	if err := pool.QueryRow(ctx, `
+		SELECT eav.attr_value_id, eav.original_value, eav.confidence
+		FROM entity_attribute_values eav
+		JOIN glossary_entities ge ON ge.entity_id = eav.entity_id
+		JOIN book_attributes ba ON ba.attr_id = eav.attr_def_id
+		WHERE ge.book_id=$1 AND ba.code='appearance'`, bookID).Scan(&avid, &val, &conf); err != nil {
+		t.Fatalf("query appearance: %v", err)
+	}
+	if val != "tall" || conf != "machine" {
+		t.Fatalf("setup: want tall/machine, got %q/%q", val, conf)
+	}
+
+	// 2. A human verifies the value (the editor / apply-edit producer marks it 'verified').
+	if _, err := pool.Exec(ctx,
+		`UPDATE entity_attribute_values SET confidence='verified' WHERE attr_value_id=$1`, avid); err != nil {
+		t.Fatalf("mark verified: %v", err)
+	}
+
+	// 3. Re-extract a DIFFERENT value with overwrite → the guard must refuse.
+	resp := postExtract(t, srv, token, bookID, mk("short", "overwrite"))
+
+	var val2 string
+	if err := pool.QueryRow(ctx,
+		`SELECT original_value FROM entity_attribute_values WHERE attr_value_id=$1`, avid).Scan(&val2); err != nil {
+		t.Fatalf("re-query appearance: %v", err)
+	}
+	if val2 != "tall" {
+		t.Errorf("verified-clobber guard FAILED: value overwritten to %q (want unchanged 'tall')", val2)
+	}
+	if r := skipReasonFor(resp, "守护者", "appearance"); r != "verified" {
+		t.Errorf("want skip reason 'verified', got %q", r)
+	}
+}
+
+// TestBulkExtract_SkipReasonTaxonomy proves the skip-reason taxonomy ends the silent-skip
+// gap: fill on an occupied (machine) value → 'fill_occupied'; an attribute with no action
+// → 'no_action'. (Verified is covered above.)
+func TestBulkExtract_SkipReasonTaxonomy(t *testing.T) {
+	pool := openTestDB(t)
+	ctx := context.Background()
+	runK2aMigrations(t, pool)
+
+	bookID := "00000000-0000-0000-0001-0000000a1022"
+	adoptTestBook(t, pool, uuid.MustParse(bookID))
+	t.Cleanup(func() { cleanupExtractBook(pool, bookID) })
+
+	srv, token := newEntitiesListServer(t)
+	srv.pool = pool
+	chap := uuid.NewString()
+	links := []map[string]any{{"chapter_id": chap, "chapter_index": 1}}
+
+	// Create the entity with a machine appearance value.
+	postExtract(t, srv, token, bookID, map[string]any{
+		"source_language": "zh",
+		"entities": []map[string]any{
+			{"kind_code": "character", "name": "记录者",
+				"attributes": map[string]any{"appearance": "tall"}, "chapter_links": links},
+		},
+	})
+
+	// Re-extract: fill on the occupied appearance (→ fill_occupied) + personality with NO
+	// action in attribute_actions (→ no_action).
+	resp := postExtract(t, srv, token, bookID, map[string]any{
+		"source_language":   "zh",
+		"attribute_actions": map[string]any{"character": map[string]any{"appearance": "fill"}},
+		"entities": []map[string]any{
+			{"kind_code": "character", "name": "记录者",
+				"attributes":    map[string]any{"appearance": "new", "personality": "brave"},
+				"chapter_links": links},
+		},
+	})
+
+	if r := skipReasonFor(resp, "记录者", "appearance"); r != "fill_occupied" {
+		t.Errorf("want appearance skip reason 'fill_occupied', got %q", r)
+	}
+	if r := skipReasonFor(resp, "记录者", "personality"); r != "no_action" {
+		t.Errorf("want personality skip reason 'no_action', got %q", r)
+	}
+
+	// The occupied value was NOT overwritten by fill.
+	var val string
+	if err := pool.QueryRow(ctx, `
+		SELECT eav.original_value FROM entity_attribute_values eav
+		JOIN glossary_entities ge ON ge.entity_id = eav.entity_id
+		JOIN book_attributes ba ON ba.attr_id = eav.attr_def_id
+		WHERE ge.book_id=$1 AND ba.code='appearance'`, bookID).Scan(&val); err != nil {
+		t.Fatalf("query appearance: %v", err)
+	}
+	if val != "tall" {
+		t.Errorf("fill clobbered an occupied value: got %q (want 'tall')", val)
+	}
+}
+
 // TestEntityDedup_UniqueIndexBackstop proves the constraint backstop (INV-C2): two
 // LIVE entities of the same book+kind cannot share a normalized name. Driven through
 // the real EAV name-write path (the trig_eav_snapshot trigger maintains cached_name,

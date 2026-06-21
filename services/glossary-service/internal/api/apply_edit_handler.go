@@ -163,8 +163,10 @@ func (s *Server) applyEntityEdit(w http.ResponseWriter, r *http.Request) {
 	// Attribute values — each scoped to this entity (RowsAffected guards an
 	// attr_value_id that doesn't belong → 422, whole tx rolls back).
 	for i, a := range attrs {
+		// MERGE/M5 (INV-8) — a human-confirmed apply marks the SOURCE value 'verified', so
+		// a later machine re-extraction's verified-clobber guard won't silently overwrite it.
 		tag, err := tx.Exec(ctx,
-			`UPDATE entity_attribute_values SET original_value = $1 WHERE attr_value_id = $2 AND entity_id = $3`,
+			`UPDATE entity_attribute_values SET original_value = $1, confidence = 'verified' WHERE attr_value_id = $2 AND entity_id = $3`,
 			a.OriginalValue, attrIDs[i], entityID)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "update attribute failed")

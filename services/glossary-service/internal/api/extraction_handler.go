@@ -449,7 +449,18 @@ type entityResult struct {
 	Status            string   `json:"status"` // "created" | "updated" | "skipped"
 	AttributesWritten []string `json:"attributes_written"`
 	AttributesSkipped []string `json:"attributes_skipped"`
-	SkipReason        string   `json:"skip_reason,omitempty"` // e.g. "tombstoned" when an ai-rejected name is re-proposed
+	// AttributesSkippedReasons (MERGE/M5) carries WHY each attribute was skipped — the
+	// skip-reason taxonomy that ends the silent-skip gap (F-append). Additive to the bare
+	// AttributesSkipped code list (kept for back-compat). Reasons: no_action | fill_occupied
+	// | verified (the verified-clobber guard fired, INV-8) | tombstoned (Slice-2 append).
+	AttributesSkippedReasons []attrSkip `json:"attributes_skipped_reasons,omitempty"`
+	SkipReason               string     `json:"skip_reason,omitempty"` // e.g. "tombstoned" when an ai-rejected name is re-proposed
+}
+
+// attrSkip pairs a skipped attribute code with the reason it was skipped (MERGE/M5).
+type attrSkip struct {
+	Code   string `json:"code"`
+	Reason string `json:"reason"`
 }
 
 const (
@@ -735,7 +746,13 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 			}
 			result.EntityID = existingID.String()
 			result.AttributesWritten = written
-			result.AttributesSkipped = skippedAttrs
+			// Surface both the bare code list (back-compat) and the structured reasons.
+			skippedCodes := make([]string, 0, len(skippedAttrs))
+			for _, sa := range skippedAttrs {
+				skippedCodes = append(skippedCodes, sa.Code)
+			}
+			result.AttributesSkipped = skippedCodes
+			result.AttributesSkippedReasons = skippedAttrs
 			if len(written) > 0 {
 				result.Status = "updated"
 				updated++
@@ -1245,7 +1262,7 @@ func (s *Server) mergeExtractedEntity(
 	actions map[string]string,
 	attrDefMap map[string]uuid.UUID,
 	sourceLang string,
-) (written, skippedAttrs []string, err error) {
+) (written []string, skipped []attrSkip, err error) {
 	for code, val := range ent.Attributes {
 		defID, ok := attrDefMap[kindID.String()+":"+code]
 		if !ok {
@@ -1253,26 +1270,37 @@ func (s *Server) mergeExtractedEntity(
 		}
 		action := actions[code]
 		if action == "" || action == "skip" {
-			skippedAttrs = append(skippedAttrs, code)
+			skipped = append(skipped, attrSkip{code, "no_action"})
 			continue
 		}
 
 		serialized := serializeValue(val)
 
-		// Check existing value
+		// Check existing value + its trust marker (MERGE/M5).
 		var existingValue string
+		var existingConfidence string
 		var attrValueExists bool
 		err := q.QueryRow(ctx, `
-			SELECT original_value FROM entity_attribute_values
+			SELECT original_value, confidence FROM entity_attribute_values
 			WHERE entity_id = $1 AND attr_def_id = $2
-		`, entityID, defID).Scan(&existingValue)
+		`, entityID, defID).Scan(&existingValue, &existingConfidence)
 		if err == nil {
 			attrValueExists = true
 		}
 
+		// INV-8 verified-clobber guard — a human-authored ('verified') SOURCE value
+		// supersedes the machine merge action: never overwrite it, queue for manual review
+		// (skip-reason 'verified'). Checked at WRITE time against the stored marker, never
+		// assumed. This is the T2 fix — a re-extraction can no longer silently clobber a
+		// value the user curated via the editor / apply-edit.
+		if attrValueExists && existingConfidence == "verified" {
+			skipped = append(skipped, attrSkip{code, "verified"})
+			continue
+		}
+
 		if action == "fill" {
 			if attrValueExists && existingValue != "" {
-				skippedAttrs = append(skippedAttrs, code)
+				skipped = append(skipped, attrSkip{code, "fill_occupied"})
 				continue
 			}
 			// Fill empty value
@@ -1335,10 +1363,10 @@ func (s *Server) mergeExtractedEntity(
 	if written == nil {
 		written = []string{}
 	}
-	if skippedAttrs == nil {
-		skippedAttrs = []string{}
+	if skipped == nil {
+		skipped = []attrSkip{}
 	}
-	return written, skippedAttrs, nil
+	return written, skipped, nil
 }
 
 // firstChapterID extracts the first chapter UUID from chapter links input.
