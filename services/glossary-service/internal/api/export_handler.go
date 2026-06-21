@@ -132,9 +132,12 @@ func snapshotToRAGEntity(raw []byte) (ragEntityExport, error) {
 			e := ragEvidExport{
 				Type:         ev.EvidenceType,
 				OriginalLang: ev.OriginalLanguage,
-				Text:         ev.OriginalText,
-				Chapter:      ev.ChapterTitle,
-				Note:         ev.Note,
+				// INV-6 (D-PROV-EVIDENCE-INV6-REUSE): the RAG export flows evidence toward a
+				// retrieval/prompt consumer, so the source quote is neutralized as untrusted
+				// DATA here (the stored DB value stays exact for in-app citation).
+				Text:    neutralizeEvidenceText(ev.OriginalText),
+				Chapter: ev.ChapterTitle,
+				Note:    ev.Note,
 			}
 			if ev.BlockOrLine != "" {
 				e.Location = ev.BlockOrLine
