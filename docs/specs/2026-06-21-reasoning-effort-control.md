@@ -1,6 +1,8 @@
 # Reasoning / Effort Control — Design Spec
 
-**Status:** DESIGN — no build yet.
+**Status:** DESIGN COMPLETE — open questions (§4) resolved in the
+[detailed design](2026-06-21-extraction-pipeline-detailed-design.md) §1 (RE-1…RE-5); build via the
+[parallel plan](../plans/2026-06-21-extraction-pipeline-plan.md) lane **RE**.
 **Date:** 2026-06-21
 **Branch:** `feat/extraction-knowledge-architecture`
 **Goal:** let users select reasoning **effort** (graded, not just on/off) and toggle **thinking**

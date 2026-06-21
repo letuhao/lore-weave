@@ -1,6 +1,8 @@
 # Extraction / LLM-Pipeline Architecture — Design Spec
 
-**Status:** DESIGN (CLARIFY) — no build yet. PO checkpoint pending.
+**Status:** DESIGN COMPLETE (rev 2). All open questions resolved in the
+[detailed design](2026-06-21-extraction-pipeline-detailed-design.md); build via the
+[parallel plan](../plans/2026-06-21-extraction-pipeline-plan.md). No build yet.
 **Date:** 2026-06-21 (rev 2 — hardened after a 4-lens adversarial evaluation; see §7–§11)
 **Branch:** `feat/extraction-knowledge-architecture`
 **Author:** session design pass after the 26-scenario test surfaced 5 architectural gaps.
