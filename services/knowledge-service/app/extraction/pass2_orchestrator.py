@@ -556,6 +556,24 @@ async def _fetch_chapter_leaf_text(
     return (None, "missing")
 
 
+def _p2_schema_key(schema: "ExtractionSchema | None") -> str:
+    """Cache-key segment for the resolved ontology schema (D-KG-LB-CACHE-SCHEMA-KEY).
+
+    Returns the schema's ``label`` ("project_id@vN") — the full identity that
+    disambiguates BOTH a schema_version bump within a project AND two projects
+    with distinct custom vocab (schema_version alone collides cross-project).
+    Falls back to ``v<schema_version>`` if the label is blank. ``None`` schema
+    → "" → the legacy task_id hash is preserved byte-for-byte.
+    """
+    if schema is None:
+        return ""
+    label = getattr(schema, "label", "") or ""
+    if label:
+        return label
+    ver = getattr(schema, "schema_version", None)
+    return f"v{ver}" if ver is not None else ""
+
+
 async def _p2_cache_wrap(
     *,
     op: Literal["entity", "relation", "event", "fact"],
@@ -567,6 +585,7 @@ async def _p2_cache_wrap(
     chapter_id: UUID | None,
     model_ref: str,
     save_raw: bool,
+    schema_key: str = "",
 ) -> list[Any]:
     """P2 cache wrapper around a single extractor call.
 
@@ -587,7 +606,7 @@ async def _p2_cache_wrap(
     # Format: `v1-{op}-{8hex}` (vs old `v1-{8hex}`). One-time cache
     # thrash on first deploy: every existing P2 task_id changes once.
     extractor_version = get_extractor_version(op=op)
-    task_id = compute_task_id(leaf_text, op, extractor_version, model_ref)
+    task_id = compute_task_id(leaf_text, op, extractor_version, model_ref, schema_key)
     pool = get_knowledge_pool()
     repo = ExtractionLeavesRepo(pool)
 
@@ -910,6 +929,7 @@ async def _run_pipeline(
         chapter_id=chapter_id,
         model_ref=model_ref,
         save_raw=save_raw_extraction,
+        schema_key=_p2_schema_key(schema),
     )
 
     entities_elapsed = time.perf_counter() - started
@@ -1006,6 +1026,7 @@ async def _run_pipeline(
                     deserializer=deser,
                     book_id=book_id, chapter_id=chapter_id,
                     model_ref=model_ref, save_raw=save_raw_extraction,
+                    schema_key=_p2_schema_key(schema),
                 )
                 for _key, op, extractor, deser in _trio_specs
             )
