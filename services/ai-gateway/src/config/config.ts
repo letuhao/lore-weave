@@ -33,11 +33,19 @@ export interface AppConfig {
   internalToken: string;
   providers: ProviderConfig[];
   /**
-   * The glossary admin MCP upstream (`/mcp/admin`) — federated into a SEPARATE,
-   * admin-only catalog (INV-T6, spec §4c/§6.2). Deliberately NOT a member of
-   * `providers` so its tool names can never blend into the user/book `/mcp`
-   * catalog. Defaults to the glossary provider's MCP base with `/mcp` → `/mcp/admin`,
-   * so no new env is required for the standard topology; overridable.
+   * The admin MCP upstreams (`/mcp/admin`) — federated into a SEPARATE, admin-only
+   * catalog (INV-T6, spec §4c/§6.2). Deliberately NOT members of `providers` so
+   * their tool names can never blend into the user/book `/mcp` catalog. Each
+   * domain that owns System-tier admin tools contributes one: glossary (`glossary_*`)
+   * and knowledge (`kg_admin_*`, policed by the `kg_` prefix). Built from each
+   * domain's MCP base (`/mcp` → `/mcp/admin`) so no new env is required; each is
+   * overridable (GLOSSARY_ADMIN_MCP_URL / KNOWLEDGE_ADMIN_MCP_URL).
+   */
+  adminProviders: ProviderConfig[];
+  /**
+   * Back-compat alias = `adminProviders[0]` (glossary-admin). Retained so existing
+   * callers/tests that reference a single admin upstream keep working.
+   * @deprecated use {@link adminProviders}
    */
   adminProvider: ProviderConfig;
   /** how often the federated catalog is refreshed from providers (H10) */
@@ -205,19 +213,41 @@ export function loadConfig(): AppConfig {
     process.env.KNOWLEDGE_SERVICE_URL ?? knowledgeMcp.replace(/\/mcp\/?$/, '')
   ).replace(/\/$/, '');
 
-  // T4b: the glossary admin MCP upstream. Default = glossary's MCP base with the
-  // `/mcp` segment rewritten to `/mcp/admin`; overridable via GLOSSARY_ADMIN_MCP_URL.
+  // T4b / KM5-M4b: the admin MCP upstreams. Each domain's admin surface = its MCP
+  // base with `/mcp` rewritten to `/mcp/admin`; included only when that domain has a
+  // (user) provider configured OR its admin URL is set explicitly. knowledge-admin is
+  // policed by `kg_` so its kg_admin_* tools survive the C-GW gate (a glossary tool
+  // can never bleed into the knowledge admin namespace and vice-versa).
   const glossaryMcp = providers.find((p) => p.name === 'glossary')?.mcpUrl ?? '';
-  const adminProvider: ProviderConfig = {
-    name: 'glossary-admin',
-    mcpUrl:
-      process.env.GLOSSARY_ADMIN_MCP_URL ?? glossaryMcp.replace(/\/mcp\/?$/, '/mcp/admin'),
-  };
+  const adminProviders: ProviderConfig[] = [];
+  if (glossaryMcp || process.env.GLOSSARY_ADMIN_MCP_URL) {
+    adminProviders.push({
+      name: 'glossary-admin',
+      mcpUrl:
+        process.env.GLOSSARY_ADMIN_MCP_URL ?? glossaryMcp.replace(/\/mcp\/?$/, '/mcp/admin'),
+    });
+  }
+  if (knowledgeMcp || process.env.KNOWLEDGE_ADMIN_MCP_URL) {
+    adminProviders.push({
+      name: 'knowledge-admin',
+      mcpUrl:
+        process.env.KNOWLEDGE_ADMIN_MCP_URL ?? knowledgeMcp.replace(/\/mcp\/?$/, '/mcp/admin'),
+      prefix: 'kg_',
+    });
+  }
+  // Back-compat alias (deprecated): the first admin upstream (glossary). Never
+  // undefined — fall back to a glossary-admin shape even if no provider matched.
+  const adminProvider: ProviderConfig =
+    adminProviders[0] ?? {
+      name: 'glossary-admin',
+      mcpUrl: glossaryMcp.replace(/\/mcp\/?$/, '/mcp/admin'),
+    };
 
   cached = {
     port: parseInt(process.env.AI_GATEWAY_PORT ?? '8210', 10),
     internalToken: process.env.INTERNAL_SERVICE_TOKEN ?? '',
     providers,
+    adminProviders,
     adminProvider,
     catalogRefreshMs: parseInt(process.env.AI_GATEWAY_CATALOG_REFRESH_MS ?? '30000', 10),
     groundingUrl,

@@ -144,7 +144,34 @@ LIVE-SMOKE N/A (static prompt injection — no cross-service runtime path). `/re
 0 HIGH/MED; injects on the agentic surface (memory/graph tools are always present there;
 cacheable), admin tools correctly omitted.
 
-## KM5-M4b / M4c — gateway federation + chat CMS (DEFERRED, scope discovery)
+## KM5-M4b — gateway admin federation of knowledge `/mcp/admin` ✅ SHIPPED (2026-06-21)
+
+After merging `origin/main` (which now carries the glossary epic's gateway admin
+federation — single `adminProvider` hardwired to glossary), generalized it to multiple
+admin upstreams and registered knowledge:
+
+- `config.ts` — `AppConfig.adminProviders: ProviderConfig[]` (glossary-admin + knowledge-admin),
+  built from each domain's MCP base (`/mcp` → `/mcp/admin`); knowledge-admin carries `prefix: 'kg_'`
+  so its `kg_admin_*` tools survive the C-GW gate and can't blend with `glossary_*`. Per-domain
+  overrides `GLOSSARY_ADMIN_MCP_URL` / `KNOWLEDGE_ADMIN_MCP_URL`; an admin upstream is included only
+  when its domain provider (or override) exists. `adminProvider` retained as a deprecated alias
+  (= `adminProviders[0]`).
+- `admin-federation.service.ts` — federates the SET: `catalogFor` lists every upstream with the
+  caller's `X-Admin-Token`, merges via `computeCatalog`. **Failure policy:** throw iff EVERY
+  upstream errors (the invalid-token case → all 401 → nothing enumerated, INV-T6); degrade to a
+  PARTIAL catalog when only some are down (token still valid). `executeTool(provider, …)` now takes
+  the resolved owning provider (race-free routing across upstreams).
+- `admin-handlers.ts` — resolves the owning provider via `providerFor(name, catalog)` and passes it
+  to `executeTool`.
+- **M4c (chat CMS tools) — satisfied for free:** the chat admin surface's `get_admin_tool_definitions`
+  lists the merged gateway `/mcp/admin` catalog, so knowledge `kg_admin_*` tools now appear on the
+  CMS surface automatically. (A dedicated knowledge-admin *skill* section is an optional follow-up;
+  `knowledge_skill` itself stays OFF the admin surface per /review-impl LOW-3.)
+
+VERIFY: ai-gateway **52** jest pass (incl. 4 new M4b tests: config registration, merged-catalog
+namespace isolation, partial-on-one-down, throw-on-all-fail) · `tsc --noEmit` clean.
+
+## (superseded) KM5-M4b / M4c — gateway federation + chat CMS (was DEFERRED)
 
 > **Scope discovery (2026-06-21):** the spec assumed ai-gateway had a reusable
 > "2-catalog `/mcp` + `/mcp/admin`" federation pattern from the glossary epic. It does
@@ -176,13 +203,15 @@ Until M4b lands, the M3 `/mcp/admin` server is reachable by a CMS calling knowle
 directly with an RS256 token (the gate enforces auth); the gateway-federated agent path is
 the deferred piece.
 
-## KM5 status: backend COMPLETE (M1–M3) + M4a (skill). Remaining = M4b/M4c (cross-service, deferred)
-The RS256 keystone, System-tier writes + `auth=admin` confirm, and the `/mcp/admin` server are
-all shipped + live-proven. **KM5-M4** (ai-gateway `/mcp/admin` federation in TypeScript + the
-chat CMS surface + `knowledge_skill.py`) is the cross-service surfacing layer — highest blast
-radius, no shipped upstream, and glossary hasn't shipped its half either. Recommended **deferred**
-(`D-KM5-M4-GATEWAY-CMS`) until the gateway/chat admin-federation pattern is built (shared with
-the glossary epic). The knowledge backend is fully ready for it.
+## KM5 status: COMPLETE (M1–M3 backend + M4a skill + M4b gateway admin federation)
+The RS256 keystone, System-tier writes + `auth=admin` confirm, the `/mcp/admin` server, the
+`knowledge_skill` chat prompt, and the gateway admin federation of knowledge `/mcp/admin` are all
+shipped. The agent path is end-to-end: CMS admin chat → gateway `/mcp/admin` (RS256-gated, now
+federating BOTH glossary + knowledge admin) → knowledge `kg_admin_propose_template` mints an
+`auth=admin` confirm-token → human admin confirms at `/v1/kg/actions/confirm` → System write.
+**Optional follow-up (not blocking):** a knowledge-specific admin *skill* section for the CMS
+surface (today it inherits the glossary admin skill + the federated kg_admin_* tools). Cross-service
+live-smoke (stack-up: CMS token → gateway → knowledge admin tool) recommended before relying on it.
 
 ## Post-merge `/review-impl` fixes (2026-06-21, after merging origin/main)
 

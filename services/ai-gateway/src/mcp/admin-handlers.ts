@@ -53,15 +53,18 @@ export async function handleAdminCallTool(
   const env = extractAdminEnvelope(headers);
   try {
     // Re-list with the caller's token so dispatch authority is re-proven and the
-    // tool name is confirmed to be an admin tool (no cross-surface smuggling).
+    // tool name is confirmed to be an admin tool (no cross-surface smuggling). The
+    // resolved provider (which upstream owns the tool) is passed to executeTool so
+    // routing is race-free across multiple admin upstreams (glossary + knowledge).
     const catalog = await admin.catalogFor(env);
-    if (!admin.providerFor(name, catalog)) {
+    const provider = admin.providerFor(name, catalog);
+    if (!provider) {
       return {
         isError: true,
         content: [{ type: 'text', text: `unknown admin tool '${name}'` }],
       };
     }
-    return await admin.executeTool(name, args, env, meta);
+    return await admin.executeTool(provider, name, args, env, meta);
   } catch (e) {
     log.warn(`admin tool '${name}' execution failed: ${e}`);
     return {
