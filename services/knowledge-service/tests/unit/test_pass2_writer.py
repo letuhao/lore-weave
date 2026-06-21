@@ -252,6 +252,86 @@ async def test_L7_stamps_schema_version_on_written_edge(
 @patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
 @patch(f"{_PATCH_BASE}.resolve_or_merge_entity", new_callable=AsyncMock)
 @patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
+async def test_L7_single_active_cardinality_passed_to_create_relation(
+    mock_upsert_source, mock_merge, mock_evidence, mock_create_rel,
+):
+    """Lane A (D-KG-L7-CARDINALITY): the writer looks up the predicate's
+    cardinality from schema.edge_cardinalities and threads it into
+    create_relation. A single_active predicate → cardinality='single_active'."""
+    mock_upsert_source.return_value = _make_source_result()
+    mock_merge.side_effect = [_make_entity_result("eid-kai"), _make_entity_result("eid-zhao")]
+    mock_evidence.return_value = _make_evidence_result(True)
+    mock_create_rel.return_value = MagicMock()
+    schema = ExtractionSchema(
+        edge_predicates=("disciple_of",),
+        edge_cardinalities={"disciple_of": "single_active"},
+        allow_free_edges=False, schema_version=7,
+    )
+
+    await write_pass2_extraction(
+        _fake_session(),
+        user_id=USER_ID, project_id=PROJECT_ID,
+        source_type="chapter", source_id="ch-1", job_id=JOB_ID,
+        entities=[_entity("Kai"), _entity("Zhao")],
+        relations=[_relation("Kai", "disciple_of", "Zhao", subject_id="eid-kai", object_id="eid-zhao")],
+        schema=schema,
+    )
+
+    mock_create_rel.assert_awaited_once()
+    assert mock_create_rel.await_args.kwargs["cardinality"] == "single_active"
+
+
+@pytest.mark.asyncio
+@patch(f"{_PATCH_BASE}.create_relation", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.resolve_or_merge_entity", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
+async def test_L7_multi_active_and_no_schema_pass_no_cardinality(
+    mock_upsert_source, mock_merge, mock_evidence, mock_create_rel,
+):
+    """multi_active maps through as 'multi_active' (no auto-close downstream);
+    schema=None → cardinality None (legacy, no auto-close)."""
+    mock_upsert_source.return_value = _make_source_result()
+    mock_merge.side_effect = [
+        _make_entity_result("eid-kai"), _make_entity_result("eid-zhao"),
+        _make_entity_result("eid-kai"), _make_entity_result("eid-zhao"),
+    ]
+    mock_evidence.return_value = _make_evidence_result(True)
+    mock_create_rel.return_value = MagicMock()
+
+    # multi_active predicate
+    schema = ExtractionSchema(
+        edge_predicates=("pursues",),
+        edge_cardinalities={"pursues": "multi_active"},
+        allow_free_edges=True, schema_version=7,
+    )
+    await write_pass2_extraction(
+        _fake_session(),
+        user_id=USER_ID, project_id=PROJECT_ID,
+        source_type="chapter", source_id="ch-1", job_id=JOB_ID,
+        entities=[_entity("Kai"), _entity("Zhao")],
+        relations=[_relation("Kai", "pursues", "Zhao", subject_id="eid-kai", object_id="eid-zhao")],
+        schema=schema,
+    )
+    assert mock_create_rel.await_args.kwargs["cardinality"] == "multi_active"
+
+    # legacy schema=None path → None (no auto-close)
+    mock_create_rel.reset_mock()
+    await write_pass2_extraction(
+        _fake_session(),
+        user_id=USER_ID, project_id=PROJECT_ID,
+        source_type="chapter", source_id="ch-2", job_id=JOB_ID,
+        entities=[_entity("Kai"), _entity("Zhao")],
+        relations=[_relation("Kai", "ally_of", "Zhao", subject_id="eid-kai", object_id="eid-zhao")],
+    )
+    assert mock_create_rel.await_args.kwargs["cardinality"] is None
+
+
+@pytest.mark.asyncio
+@patch(f"{_PATCH_BASE}.create_relation", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.resolve_or_merge_entity", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
 async def test_L7_off_schema_edge_parked_to_triage(
     mock_upsert_source, mock_merge, mock_evidence, mock_create_rel,
 ):

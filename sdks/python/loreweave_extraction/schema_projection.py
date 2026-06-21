@@ -77,6 +77,14 @@ class ExtractionSchema:
     event_kinds: tuple[str, ...] = ()
     fact_types: tuple[str, ...] = ()
     allow_free_edges: bool = True
+    # KG customizable-ontology (L7) — per-predicate cardinality
+    # (predicate code → ``"single_active"`` | ``"multi_active"``). A
+    # ``single_active`` edge type auto-closes the prior open instance when a new
+    # instance is written between the same endpoints (the write path consults
+    # this; the SDK itself never enforces it). Empty default ⇒ the write path
+    # finds no cardinality ⇒ no auto-close, i.e. today's behavior. NEVER injected
+    # into the prompt or used in validation — a write-path concern only.
+    edge_cardinalities: dict[str, str] = field(default_factory=dict)
     # The soft cap applied when rendering vocab into a prompt (§10-B1).
     vocab_soft_cap: int = DEFAULT_VOCAB_SOFT_CAP
     # Free-form provenance for logging (project_id / schema_version) — never
@@ -128,6 +136,19 @@ class ExtractionSchema:
                         out.append(c)
             return tuple(out)
 
+        def _cardinalities() -> dict[str, str]:
+            raw = resolved.get("edge_cardinalities")
+            if not isinstance(raw, dict):
+                return {}
+            out: dict[str, str] = {}
+            for k, v in raw.items():
+                if isinstance(k, str) and isinstance(v, str):
+                    code = k.strip()
+                    card = v.strip()
+                    if code and card:
+                        out[code] = card
+            return out
+
         allow_free = resolved.get("allow_free_edges", True)
         return cls(
             entity_kinds=_codes("entity_kinds"),
@@ -135,6 +156,7 @@ class ExtractionSchema:
             event_kinds=_codes("event_kinds"),
             fact_types=_codes("fact_types"),
             allow_free_edges=bool(allow_free) if isinstance(allow_free, bool) else True,
+            edge_cardinalities=_cardinalities(),
             vocab_soft_cap=vocab_soft_cap,
             label=str(resolved.get("label") or ""),
             schema_version=(

@@ -371,6 +371,17 @@ async def write_pass2_extraction(
             _normalize_predicate_code(c) for c in schema.edge_predicates
         )
 
+    # KG customizable-ontology (L7, D-KG-L7-CARDINALITY) — per-predicate
+    # cardinality keyed by the SAME normalized predicate code the candidates
+    # carry, so the lookup is apples-to-apples with `predicate_clean`. None /
+    # empty (schema=None or no cardinalities) ⇒ no auto-close (legacy behavior).
+    _edge_cardinalities: dict[str, str] = {}
+    if schema is not None and schema.edge_cardinalities:
+        _edge_cardinalities = {
+            _normalize_predicate_code(code): card
+            for code, card in schema.edge_cardinalities.items()
+        }
+
     # P3 (D2 + D2a): MERGE Book/Part/Chapter/Scene hierarchy BEFORE entity
     # writes when hierarchy_paths supplied. Same CypherSession = same Tx
     # per chapter — partial failure rolls back hierarchy + entities together.
@@ -658,6 +669,14 @@ async def write_pass2_extraction(
         # CJK characters are `\w` in Python 3, so sanitize is still
         # load-bearing — see K17.9 predicate CJK test.
         predicate_clean = _sanitize(rel.predicate, project_id)
+        # L7 (D-KG-L7-CARDINALITY) — look the predicate's cardinality up from the
+        # resolved schema. A `single_active` edge type auto-closes its prior open
+        # instance between the same endpoints. The lookup keys on the SDK-normalized
+        # predicate code, matching the schema's normalized edge_cardinalities.
+        # schema=None / unknown predicate ⇒ None ⇒ no auto-close (legacy behavior).
+        edge_cardinality = _edge_cardinalities.get(
+            _normalize_predicate_code(predicate_clean)
+        )
         result = await create_relation(
             session,
             user_id=user_id,
@@ -671,6 +690,7 @@ async def write_pass2_extraction(
             # seam (M2, NULL at v1). schema=None → both NULL (legacy, no change).
             schema_version=schema.schema_version if schema else None,
             graph_id=None,
+            cardinality=edge_cardinality,
         )
         if result is not None:
             relations_created += 1

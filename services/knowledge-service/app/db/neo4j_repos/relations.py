@@ -164,6 +164,36 @@ def _edge_props_to_relation(
 # ── create_relation ───────────────────────────────────────────────────
 
 
+# KG customizable-ontology (L7, D-KG-L7-CARDINALITY) — auto-close the prior
+# OPEN instance of a `single_active` edge type for this `(subject, predicate)`,
+# BEFORE the new instance is MERGEd. Runs in the same CypherSession transaction
+# as the create, so the close + the new-open are atomic (a reader never sees two
+# open instances, and a rollback leaves both untouched).
+#
+# Cardinality semantic: `single_active` means a subject holds AT MOST ONE open
+# instance of this predicate at a time (e.g. CURRENT_SECT — joining sect B closes
+# the open membership of sect A). So the close scopes to the same SUBJECT +
+# PREDICATE under the SAME `$user_id` partition (no cross-tenant close), across
+# ANY object, and only edges still open (`valid_until IS NULL`). The new
+# instance's OWN id is excluded so re-running an idempotent create of the *same*
+# relation never closes itself, and re-asserting the identical (subj,pred,obj) is
+# a clean no-op. `multi_active` (e.g. PURSUES — multiple coexisting drives) never
+# reaches this query. Mirrors the `invalidate_relation` close primitive
+# (sets `valid_until` + `updated_at`).
+_CLOSE_PRIOR_SINGLE_ACTIVE_CYPHER = """
+MATCH (subj:Entity {id: $subject_id})-[rp:RELATES_TO]->(obj:Entity)
+WHERE rp.user_id = $user_id
+  AND subj.user_id = $user_id
+  AND obj.user_id = $user_id
+  AND rp.predicate = $predicate
+  AND rp.valid_until IS NULL
+  AND rp.id <> $relation_id
+SET rp.valid_until = datetime(),
+    rp.updated_at = datetime()
+RETURN count(rp) AS closed
+"""
+
+
 # Structural MERGE on the edge `id` property. We can't use the
 # bare structural pattern `(a)-[r:RELATES_TO {predicate: $p}]->(b)`
 # because that would collide two relations with the same
@@ -243,6 +273,7 @@ async def create_relation(
     pending_validation: bool = False,
     schema_version: int | None = None,
     graph_id: str | None = None,
+    cardinality: str | None = None,
 ) -> Relation | None:
     """Idempotent edge upsert. Re-running with the same
     `(subject_id, predicate, object_id)` returns the same edge —
@@ -261,6 +292,15 @@ async def create_relation(
     This is how K17 (LLM Pass 2) promotes a Pass 1 quarantined
     edge: re-create with higher confidence + `pending_validation
     = false`, and the existing edge is upgraded in place.
+
+    `cardinality` (KG L7, D-KG-L7-CARDINALITY): when ``"single_active"``, the
+    prior OPEN edge of this `(subject, predicate, object)` under the SAME
+    `$user_id` is auto-closed (`valid_until = now()`) BEFORE the new instance is
+    written — so a `single_active` edge type can only hold one open instance at a
+    time. ``"multi_active"`` / ``None`` (the default) ⇒ no auto-close, exactly
+    today's behavior. The close runs in the same session transaction as the
+    create (atomic). The new relation's own id is excluded from the close, so a
+    pure idempotent re-create of the same edge never closes itself.
     """
     if not predicate:
         raise ValueError("predicate must be a non-empty string")
@@ -274,6 +314,18 @@ async def create_relation(
         predicate=predicate,
         object_id=object_id,
     )
+    # L7 single_active auto-close — close the prior OPEN instance (same tenant,
+    # same endpoints+predicate) before the MERGE of the new one. multi_active /
+    # None ⇒ skip entirely (legacy path is byte-identical: no extra query).
+    if cardinality == "single_active":
+        await run_write(
+            session,
+            _CLOSE_PRIOR_SINGLE_ACTIVE_CYPHER,
+            user_id=user_id,
+            relation_id=rid,
+            subject_id=subject_id,
+            predicate=predicate,
+        )
     result = await run_write(
         session,
         _CREATE_RELATION_CYPHER,
