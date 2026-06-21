@@ -768,6 +768,38 @@ async def test_start_extraction_mints_a_confirm_token():
     assert "estimated_total_tokens" in res["estimate"]
 
 
+async def test_start_extraction_derives_profile_and_uses_user_model_when_omitted():
+    """Scenario-test regression (two M3 bugs): when the agent OMITS extraction_profile
+    (it can't author the full kind→attr map), the tool DERIVES it from the book's
+    auto-selected ontology so the estimate + job aren't empty (was 0 batches → 0 entities),
+    and the minted payload uses model_source='user_model' (caller-pays BYOK), NOT
+    'platform_model' (which 404s a user_model ref → LLMModelNotFound)."""
+    from app.grant_client import GrantLevel
+    from loreweave_mcp import verify_confirm_token
+    from app.config import settings
+
+    profile = {"kinds": [
+        {"code": "character", "auto_selected": True,
+         "attributes": [{"code": "name"}, {"code": "aliases"}]},
+        {"code": "location", "auto_selected": True, "attributes": [{"code": "name"}]},
+    ]}
+    async with _patched(grant_level=GrantLevel.EDIT) as (srv, ctx):
+        with patch.object(srv, "fetch_extraction_profile", AsyncMock(return_value=profile)):
+            res = await srv.translation_start_extraction(
+                ctx, book_id=BOOK, chapter_ids=[CHAPTER],
+                model_ref="11111111-1111-1111-1111-111111111111",
+            )
+    # Derivation → a real estimate (was estimated_total_tokens=0 / batches=0 before).
+    assert res["estimate"]["estimated_total_tokens"] > 0
+    assert res["estimate"]["batches_per_chapter"] >= 1
+    # Decode the minted payload: profile derived from the ontology + user_model.
+    claims = verify_confirm_token(settings.confirm_token_signing_secret, res["confirm_token"])
+    payload = claims.payload
+    assert payload["model_source"] == "user_model"
+    assert payload["extraction_profile"]["character"] == {"name": "fill", "aliases": "fill"}
+    assert payload["extraction_profile"]["location"] == {"name": "fill"}
+
+
 async def test_start_extraction_non_owner_rejected():
     """No EDIT grant on the book → the uniform not-accessible error, no token."""
     from app.grant_client import GrantLevel
