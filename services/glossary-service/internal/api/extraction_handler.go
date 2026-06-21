@@ -804,8 +804,14 @@ func (s *Server) loadAttrDefMap(ctx context.Context, bookID uuid.UUID) (map[stri
 	return m, rows.Err()
 }
 
-// findEntityByNameOrAlias looks up an existing entity by normalized name match,
+// findEntityByNameOrAlias looks up an existing LIVE entity by normalized name match,
 // then by alias match if not found. Returns uuid.Nil if no match.
+//
+// All steps exclude soft-deleted entities (`deleted_at IS NULL`): a deleted row must
+// never be an extraction resolution target. This is the anti-resurrection contract — a
+// merged-away loser is soft-deleted with its name/aliases folded into the WINNER, so an
+// incoming name must resolve to the live winner (whose folded alias matches), never to the
+// hidden loser. (/review-impl S6 #1 — Steps 1-2 previously omitted this; Step 3 inherited.)
 func (s *Server) findEntityByNameOrAlias(ctx context.Context, bookID, kindID uuid.UUID, name string) (uuid.UUID, error) {
 	normalizedName := normalizeEntity(name)
 
@@ -817,6 +823,7 @@ func (s *Server) findEntityByNameOrAlias(ctx context.Context, bookID, kindID uui
 		JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
 		WHERE ge.book_id = $1
 		  AND ge.kind_id = $2
+		  AND ge.deleted_at IS NULL
 		  AND ad.code = 'name'
 	`, bookID, kindID)
 	if err != nil {
@@ -848,6 +855,7 @@ func (s *Server) findEntityByNameOrAlias(ctx context.Context, bookID, kindID uui
 		JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
 		WHERE ge.book_id = $1
 		  AND ge.kind_id = $2
+		  AND ge.deleted_at IS NULL
 		  AND ad.code = 'aliases'
 		  AND eav.original_value != ''
 	`, bookID, kindID)
@@ -886,6 +894,7 @@ func (s *Server) findEntityByNameOrAlias(ctx context.Context, bookID, kindID uui
 		JOIN attribute_translations t ON t.attr_value_id = eav.attr_value_id
 		WHERE ge.book_id = $1
 		  AND ge.kind_id = $2
+		  AND ge.deleted_at IS NULL
 		  AND ad.code = 'aliases'
 		  AND t.value != ''
 	`, bookID, kindID)
