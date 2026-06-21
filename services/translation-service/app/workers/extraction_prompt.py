@@ -139,11 +139,14 @@ def build_extraction_prompt(
     kind_batch: list[str],
     extraction_profile: dict[str, dict[str, str]],
     kinds_metadata: list[dict],
+    *,
+    block_hints: bool = False,
 ) -> str:
     """Build dynamic schema section for ONE BATCH of kinds.
 
     Security: Whitelist validates kind_codes and attr_codes against
-    glossary-service metadata (design §S4).
+    glossary-service metadata (design §S4). When ``block_hints``, the schema asks for an
+    optional ``evidence_block`` (the ⟦B#⟧ number the evidence quote came from).
     """
     valid_kind_codes = {k["code"] for k in kinds_metadata}
 
@@ -192,6 +195,10 @@ def build_extraction_prompt(
 
         # Special fields always included
         json_fields["evidence"] = "..."
+        if block_hints:
+            # The ⟦B#⟧ block the evidence quote came from (a number, e.g. 3). The quote
+            # itself must be the EXACT source text WITHOUT the ⟦B#⟧ marker.
+            json_fields["evidence_block"] = "0"
         json_fields["relevance"] = "major|appears"
 
         sections.append(
@@ -246,8 +253,18 @@ def build_system_prompt(
     )
 
 
-def build_user_prompt(chapter_text: str) -> str:
-    """Assemble the user prompt with chapter text."""
+def build_user_prompt(chapter_text: str, *, block_hints: bool = False) -> str:
+    """Assemble the user prompt with chapter text. When ``block_hints``, the chapter is
+    rendered as ⟦B#⟧-numbered paragraphs (the SAME segmentation the provenance validator
+    uses) so the model can cite an ``evidence_block`` per quote — validated downstream."""
+    if block_hints:
+        from app.workers.extraction_provenance import build_block_offset_map
+
+        blocks = build_block_offset_map(chapter_text)
+        if blocks:
+            chapter_text = "\n".join(
+                f"⟦B{b.index}⟧ {chapter_text[b.start:b.end]}" for b in blocks
+            )
     return USER_TEMPLATE.format(chapter_text=chapter_text)
 
 
@@ -416,18 +433,22 @@ def parse_and_validate_with_stats(
         allowed_attrs = set(extraction_profile.get(kind, {}).keys())
         attrs = {}
         for key, val in entry.items():
-            if key in ("kind", "name", "evidence", "relevance"):
+            if key in ("kind", "name", "evidence", "evidence_block", "relevance"):
                 continue
             if key in allowed_attrs:
                 attrs[key] = val
 
-        validated.append({
+        out = {
             "kind_code": kind,
             "name": name,
             "attributes": attrs,
             "evidence": entry.get("evidence", ""),
             "relevance": entry.get("relevance", "appears"),
-        })
+        }
+        # PROV/M3 — carry the model's optional block citation (validated downstream).
+        if "evidence_block" in entry:
+            out["evidence_block"] = entry.get("evidence_block")
+        validated.append(out)
 
     log.info("extraction parsed: %d valid entities from %d raw entries", len(validated), len(data))
     return validated, ParseStats(raw_count=len(data), parse_ok=True)

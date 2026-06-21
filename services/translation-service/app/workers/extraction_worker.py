@@ -549,14 +549,15 @@ async def _process_extraction_chapter(
 
     for batch_idx, batch in enumerate(batches):
         # 4. Build prompt
-        schema = build_extraction_prompt(batch, extraction_profile, kinds_metadata)
+        _block_hints = settings.extraction_evidence_block_hints
+        schema = build_extraction_prompt(batch, extraction_profile, kinds_metadata, block_hints=_block_hints)
         system_prompt = build_system_prompt(
             dynamic_schema=schema,
             source_language=source_language,
             known_entities_context=known_ctx,
             max_entities_per_kind=max_entities_per_kind,
         )
-        user_prompt = build_user_prompt(chapter_text)
+        user_prompt = build_user_prompt(chapter_text, block_hints=_block_hints)
 
         # 5. LLM call via SDK (replaces /internal/invoke).
         # Phase 4c-γ: HIGH#1 lesson from cycle 11 applied — catch

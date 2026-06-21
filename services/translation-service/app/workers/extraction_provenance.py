@@ -26,7 +26,24 @@ detailed-design §4 INV-7.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
+
+# The block sentinel the prompt prefixes onto each numbered paragraph (⟦B3⟧). Stripped
+# from a model's evidence quote before validation so a model that accidentally copies the
+# marker into the quote still matches the clean source text (graceful degradation).
+_BLOCK_MARKER_RE = re.compile(r"⟦B\d+⟧\s*")
+
+
+def strip_block_markers(s: str) -> str:
+    return _BLOCK_MARKER_RE.sub("", s)
+
+
+def _coerce_block(v) -> int | None:
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return None
 
 # provenance_status taxonomy — keep in sync with glossary evidences.provenance_status.
 PROV_EXACT = "exact"
@@ -118,13 +135,16 @@ def validate_evidence(
     blocks: list[_Block],
     *,
     model_hint: int | None = None,
+    block_hint: int | None = None,
 ) -> EvidenceProvenance:
     """Locate ``quote`` in ``chapter_text`` and return its validated provenance.
 
     Order of trust (INV-7 — validate, never trust a raw number):
-      1. If the model volunteered an offset hint, VERIFY the text at that offset
-         actually equals the quote (after clamping to ``[0, len]``). Only then is it
-         ``exact``; a hint that doesn't verify is discarded, not persisted.
+      0. If the model CITED a block (``block_hint``), verify the quote occurs uniquely
+         WITHIN that block's real text. Only a verified citation is ``exact``; a wrong
+         citation is discarded (falls through to search). (D-PROV-MODEL-OFFSET-HINT.)
+      1. If the model volunteered a char offset hint, VERIFY the text at that offset
+         equals the quote (after clamping to ``[0, len]``). Only then ``exact``.
       2. Authoritative raw substring search — a single occurrence is ``resolved``;
          multiple occurrences are ``ambiguous`` (flag, no blind pick).
       3. Whitespace-normalized search (prose may differ only in whitespace), mapping
@@ -135,6 +155,18 @@ def validate_evidence(
         return EvidenceProvenance(PROV_UNMATCHED)
 
     n = len(chapter_text)
+
+    # 0) Model-supplied BLOCK citation — verified against that block's real text. A unique
+    #    occurrence in the cited block confirms the model's citation → 'exact'. This both
+    #    disambiguates an otherwise-ambiguous quote and upgrades a confirmed cite. A wrong
+    #    cite (quote not uniquely there) is distrusted → fall through to authoritative search.
+    if block_hint is not None and 0 <= block_hint < len(blocks):
+        blk = blocks[block_hint]
+        seg = chapter_text[blk.start:blk.end]
+        pos = seg.find(quote)
+        if pos != -1 and seg.find(quote, pos + 1) == -1:
+            start = blk.start + pos
+            return EvidenceProvenance(PROV_EXACT, start, start + len(quote), block_hint)
 
     # 1) Model-supplied hint — a HINT only, verified against the real text.
     if model_hint is not None:
@@ -189,7 +221,11 @@ def stamp_entity_provenance(entities: list[dict], chapter_text: str) -> None:
     """
     blocks = build_block_offset_map(chapter_text)
     for ent in entities:
-        prov = validate_evidence(ent.get("evidence", "") or "", chapter_text, blocks)
+        # Strip any ⟦B#⟧ block marker the model may have copied into the quote, then pass its
+        # optional block citation (D-PROV-MODEL-OFFSET-HINT) — validated, never trusted.
+        quote = strip_block_markers(ent.get("evidence", "") or "")
+        block_hint = _coerce_block(ent.get("evidence_block"))
+        prov = validate_evidence(quote, chapter_text, blocks, block_hint=block_hint)
         ent["evidence_provenance_status"] = prov.provenance_status
         if prov.char_start is not None:
             ent["evidence_char_start"] = prov.char_start

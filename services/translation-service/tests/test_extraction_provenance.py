@@ -12,6 +12,7 @@ from app.workers.extraction_provenance import (
     PROV_UNMATCHED,
     build_block_offset_map,
     stamp_entity_provenance,
+    strip_block_markers,
     validate_evidence,
 )
 
@@ -96,6 +97,42 @@ def test_whitespace_normalized_fallback_maps_back_to_real_offsets():
 
 def test_empty_quote_is_unmatched():
     assert validate_evidence("", CHAPTER, _blocks()).provenance_status == PROV_UNMATCHED
+
+
+# ── D-PROV-MODEL-OFFSET-HINT: model block citation (validated, never trusted) ──
+
+
+def test_block_hint_correct_citation_is_exact():
+    # "the sword" is ambiguous (blocks 0 and 2); a correct block cite disambiguates → exact.
+    prov = validate_evidence("the sword", CHAPTER, _blocks(), block_hint=2)
+    assert prov.provenance_status == PROV_EXACT
+    assert prov.block_or_line == 2
+    assert CHAPTER[prov.char_start:prov.char_end] == "the sword"
+
+
+def test_block_hint_wrong_citation_falls_through_to_search():
+    # The model cites block 1, but "the sword" isn't there → distrust the cite, fall to
+    # search, which finds it in two blocks → ambiguous (no blind pick).
+    prov = validate_evidence("the sword", CHAPTER, _blocks(), block_hint=1)
+    assert prov.provenance_status == PROV_AMBIGUOUS
+
+
+def test_block_hint_out_of_range_ignored():
+    prov = validate_evidence("Divine Mark glowed", CHAPTER, _blocks(), block_hint=99)
+    assert prov.provenance_status == PROV_RESOLVED  # still resolved by search
+
+
+def test_strip_block_markers_removes_sentinel():
+    assert strip_block_markers("⟦B3⟧ the sword") == "the sword"
+    assert strip_block_markers("no marker here") == "no marker here"
+
+
+def test_stamp_uses_block_hint_and_strips_marker():
+    # The model copied the ⟦B2⟧ marker into the quote AND cited block 2 → strip + verify.
+    entities = [{"name": "Sword", "evidence": "⟦B2⟧ the sword", "evidence_block": 2}]
+    stamp_entity_provenance(entities, CHAPTER)
+    assert entities[0]["evidence_provenance_status"] == PROV_EXACT
+    assert entities[0]["evidence_block_or_line"] == 2
 
 
 def test_stamp_entities_mutates_in_place_with_namespaced_keys():

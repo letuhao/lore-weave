@@ -9,6 +9,8 @@ truncated/fenced array instead of discarding every entity.
 """
 from app.workers.extraction_prompt import (
     MAX_KINDS_PER_BATCH,
+    build_extraction_prompt,
+    build_user_prompt,
     plan_kind_batches,
     _extract_json_from_text,
     parse_and_validate,
@@ -81,6 +83,23 @@ def test_parse_stats_distinguishes_empty_from_rejected():
     # Unparseable garbage → parse failed.
     _, bad = parse_and_validate_with_stats("not json at all", ["item"], {"item": {}})
     assert not bad.parse_ok and bad.raw_count == 0
+
+
+def test_block_hints_off_is_default_unchanged_prompt():
+    # D-PROV-MODEL-OFFSET-HINT default OFF: the prompt is the plain chapter text, no ⟦B#⟧.
+    text = "para one\npara two"
+    assert "⟦B" not in build_user_prompt(text)
+    assert "evidence_block" not in build_extraction_prompt(
+        ["item"], {"item": {}}, [{"code": "item", "attributes": []}])
+
+
+def test_block_hints_on_numbers_blocks_and_adds_schema_field():
+    text = "para one\npara two"
+    up = build_user_prompt(text, block_hints=True)
+    assert "⟦B0⟧ para one" in up and "⟦B1⟧ para two" in up
+    schema = build_extraction_prompt(
+        ["item"], {"item": {}}, [{"code": "item", "attributes": []}], block_hints=True)
+    assert "evidence_block" in schema
 
 
 def test_extract_json_bare_array_no_fence():
