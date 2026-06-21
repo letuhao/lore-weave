@@ -153,6 +153,7 @@ async def send_message(
     user_id: str = Depends(get_current_user),
     pool: asyncpg.Pool = Depends(get_db),
     x_loreweave_stream_format: str | None = Header(default=None),
+    x_admin_token: str | None = Header(default=None),
 ) -> StreamingResponse:
     # Verify session ownership and get model info
     session = await pool.fetchrow(
@@ -262,7 +263,12 @@ async def send_message(
             stream_format=stream_format,
             editor_context=body.editor_context.model_dump() if body.editor_context else None,
             book_context=body.book_context.model_dump() if body.book_context else None,
+            # T4c: admin surface marker (body) + RS256 admin token (header).
+            # The token rides the header only — bearer hygiene (§6.7).
+            admin_context=body.admin_context.model_dump() if body.admin_context else None,
+            admin_token=x_admin_token,
             disable_tools=body.disable_tools,
+            display_language=body.display_language,
         ),
         media_type="text/event-stream",
         headers=headers,
@@ -275,6 +281,7 @@ async def submit_tool_result(
     body: ToolResultRequest,
     user_id: str = Depends(get_current_user),
     pool: asyncpg.Pool = Depends(get_db),
+    x_admin_token: str | None = Header(default=None),
 ) -> StreamingResponse:
     """ARCH-1 C6 — resume a suspended run after the FE executed a frontend tool.
 
@@ -312,10 +319,14 @@ async def submit_tool_result(
             tool_call_id=body.tool_call_id,
             outcome=body.outcome,
             applied_text=body.applied_text,
+            result=body.result,
             creds=creds,
             pool=pool,
             billing=billing,
             stream_format="agui",
+            # T4c: on resume of an admin-surface run, re-present the admin token
+            # so a re-proposed System action again routes to /mcp/admin.
+            admin_token=x_admin_token,
         ),
         media_type="text/event-stream",
         headers=headers,

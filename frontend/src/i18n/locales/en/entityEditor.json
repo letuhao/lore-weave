@@ -52,6 +52,7 @@
     "save": "Save",
     "delete_aria": "Delete translation",
     "placeholder": "{{lang}} translation...",
+    "tags_add": "+ Add alias",
     "delete_title": "Delete translation?",
     "delete_desc": "The {{lang}} translation for this attribute will be permanently deleted.",
     "delete_confirm": "Delete",

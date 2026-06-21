@@ -114,6 +114,12 @@ func (s *Server) Router() http.Handler {
 	// service token and lifts X-User-Id into ctx for the ownership guard.
 	r.Handle("/mcp", s.mcpHandler())
 
+	// ── Admin MCP server (System-tier tools, ai-gateway admin surface) ────
+	// PHYSICALLY SEPARATE from /mcp (INV-T6): the transport middleware verifies an
+	// RS256 admin:write token in X-Admin-Token BEFORE tools/list — a non-admin can't
+	// even enumerate these tools. System-tier tools NEVER appear on /mcp.
+	r.Handle("/mcp/admin", s.adminMCPHandler())
+
 	// ── Internal service-to-service endpoints ─────────────────────────────
 	r.Route("/internal", func(r chi.Router) {
 		r.Use(s.requireInternalToken)
@@ -177,6 +183,11 @@ func (s *Server) Router() http.Handler {
 		// the retired /schema/confirm. /preview is non-consuming (current-state card).
 		r.Post("/actions/confirm", s.confirmAction)
 		r.Post("/actions/preview", s.previewAction)
+		// T4 — System-tier admin confirm path, RS256-gated (requireAdminScope inside),
+		// SEPARATE from the HS256 user /actions/confirm above. The MCP admin tools
+		// propose (authorityAdmin token); a human admin confirms a System write here.
+		r.Post("/actions/admin/confirm", s.confirmAdminAction)
+		r.Post("/actions/admin/preview", s.previewAdminAction)
 		// Kind-resolution epic: alias table READ (alias_code → kind) for the
 		// unknown-kind review GUI. The write (createKindAlias + reassign) was removed
 		// in SS-4 Milestone C; it returns in SS-7 retargeted at the tiered model.
@@ -246,18 +257,23 @@ func (s *Server) Router() http.Handler {
 		r.Route("/system-genres", func(r chi.Router) {
 			r.Post("/", s.createSystemGenre)
 			r.Patch("/{genre_id}", s.patchSystemGenre)
-			r.Delete("/{genre_id}", s.deleteSystemGenre)
+			r.Delete("/{genre_id}", s.deleteSystemGenre)         // soft-delete (G-C8)
+			r.Post("/{genre_id}/restore", s.restoreSystemGenre)  // recycle-bin restore (G-C8)
 		})
 		r.Route("/system-kinds", func(r chi.Router) {
 			r.Post("/", s.createSystemKind)
 			r.Patch("/{kind_id}", s.patchSystemKind)
 			r.Delete("/{kind_id}", s.deleteSystemKind)
+			r.Post("/{kind_id}/restore", s.restoreSystemKind)
 		})
 		r.Route("/system-attributes-admin", func(r chi.Router) {
 			r.Post("/", s.createSystemAttribute)
 			r.Patch("/{attr_id}", s.patchSystemAttribute)
 			r.Delete("/{attr_id}", s.deleteSystemAttribute)
+			r.Post("/{attr_id}/restore", s.restoreSystemAttribute)
 		})
+		// Recycle bin: all soft-deleted System rows (G-C8). admin:write-gated.
+		r.Get("/system-trash", s.listSystemTrash)
 
 		r.Route("/user-attributes", func(r chi.Router) {
 			r.Get("/", s.listUserAttributes)
@@ -286,6 +302,7 @@ func (s *Server) Router() http.Handler {
 					r.Route("/{genre_id}", func(r chi.Router) {
 						r.Patch("/", s.patchBookGenre)
 						r.Delete("/", s.deleteBookGenre)
+						r.Post("/revert", s.revertBookGenre) // G-U1 revert to parent tier
 					})
 				})
 				r.Route("/kinds", func(r chi.Router) {
@@ -294,6 +311,7 @@ func (s *Server) Router() http.Handler {
 						r.Patch("/", s.patchBookKind)
 						r.Delete("/", s.deleteBookKind)
 						r.Put("/genres", s.setBookKindGenres)
+						r.Post("/revert", s.revertBookKind)
 					})
 				})
 				r.Route("/attributes", func(r chi.Router) {
@@ -301,6 +319,7 @@ func (s *Server) Router() http.Handler {
 					r.Route("/{attr_id}", func(r chi.Router) {
 						r.Patch("/", s.patchBookAttribute)
 						r.Delete("/", s.deleteBookAttribute)
+						r.Post("/revert", s.revertBookAttribute)
 					})
 				})
 			})

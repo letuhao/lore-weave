@@ -302,3 +302,23 @@ func TestRawSearchTrigramMigration(t *testing.T) {
 		t.Fatal("pg_trgm DDL must be best-effort in Up(), not in schemaSQL (review-impl MED-1)")
 	}
 }
+
+// ── MCP fan-out Tier-W single-use confirm-token ledger - 2026-06-20 ─────────
+// Regression lock for book_consumed_tokens (/review-impl HIGH). The confirm route
+// keys single-use on token_hash (PK); a replay hits the PK and is refused. Mirrors
+// provider-registry settings_consumed_tokens. Additive + idempotent (IF NOT EXISTS).
+func TestSchemaContainsConsumedTokensTable(t *testing.T) {
+	if !strings.Contains(schemaSQL, "CREATE TABLE IF NOT EXISTS book_consumed_tokens") {
+		t.Fatal("schemaSQL missing book_consumed_tokens — Tier-W single-use replay guard broke")
+	}
+	for _, frag := range []string{
+		"token_hash  TEXT PRIMARY KEY",
+		"consumed_at TIMESTAMPTZ NOT NULL DEFAULT now()",
+		"exp         TIMESTAMPTZ",
+		"CREATE INDEX IF NOT EXISTS idx_book_consumed_tokens_exp ON book_consumed_tokens(exp)",
+	} {
+		if !strings.Contains(schemaSQL, frag) {
+			t.Fatalf("book_consumed_tokens missing fragment: %q", frag)
+		}
+	}
+}

@@ -357,7 +357,11 @@ func (s *Server) patchProfile(w http.ResponseWriter, r *http.Request) {
 		loc = &s
 	}
 	if v, ok := body["avatar_url"]; ok && v != nil {
-		s := fmt.Sprint(v)
+		s := strings.TrimSpace(fmt.Sprint(v))
+		if !validAvatarURL(s) {
+			writeErr(w, http.StatusBadRequest, "AUTH_VALIDATION_ERROR", "avatar_url must be an http(s) URL or empty")
+			return
+		}
 		av = &s
 	}
 	if v, ok := body["bio"]; ok && v != nil {

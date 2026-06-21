@@ -1211,15 +1211,45 @@ func (s *Server) bulkSetEntityStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tag, err := s.pool.Exec(r.Context(),
-		`UPDATE glossary_entities SET status = $1, updated_at = now()
-		 WHERE book_id = $2 AND entity_id = ANY($3::uuid[]) AND deleted_at IS NULL`,
-		in.Status, bookID, ids)
+	updated, err := s.bulkSetEntityStatusCore(r.Context(), bookID, in.Status, ids)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "bulk status update failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]int{"updated": int(tag.RowsAffected())})
+	writeJSON(w, http.StatusOK, map[string]int{"updated": updated})
+}
+
+// bulkSetEntityStatusCore sets `status` on the live, book-scoped entities in `ids`
+// and returns the count actually updated. Status validity + grant are the CALLER's
+// concern; book-scoping (book_id = $2) is enforced here so a confirm-token effect can
+// never touch another book's rows. Single source of truth for the HTTP bulk handler
+// and the glossary_propose_status_change confirm effect.
+func (s *Server) bulkSetEntityStatusCore(ctx context.Context, bookID uuid.UUID, status string, ids []uuid.UUID) (int, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	tag, err := s.pool.Exec(ctx,
+		`UPDATE glossary_entities SET status = $1, updated_at = now()
+		 WHERE book_id = $2 AND entity_id = ANY($3::uuid[]) AND deleted_at IS NULL`,
+		status, bookID, ids)
+	if err != nil {
+		return 0, err
+	}
+	return int(tag.RowsAffected()), nil
+}
+
+// countLiveEntitiesInBook returns how many of `ids` are live entities in the book — used
+// to render the status-change confirm preview from current state.
+func (s *Server) countLiveEntitiesInBook(ctx context.Context, bookID uuid.UUID, ids []uuid.UUID) (int, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	var n int
+	err := s.pool.QueryRow(ctx,
+		`SELECT count(*) FROM glossary_entities
+		 WHERE book_id = $1 AND entity_id = ANY($2::uuid[]) AND deleted_at IS NULL`,
+		bookID, ids).Scan(&n)
+	return n, err
 }
 
 // ── POST/DELETE /v1/glossary/books/{book_id}/entities/{entity_id}/pin ────────

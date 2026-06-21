@@ -43,6 +43,14 @@ class Settings(BaseSettings):
     redis_url: str = "redis://redis:6379"
     notification_service_internal_url: str = "http://notification-service:8091"
     internal_service_token: str
+    # MCP fan-out S-TRANSL (key-split, /review-impl): the confirm-token signing
+    # secret is DEDICATED — distinct from `internal_service_token` (which gates the
+    # X-Internal-Token route/envelope). Splitting the keys means a leak of one does
+    # not forge the other: the envelope token proves "trusted caller", the confirm
+    # secret proves "this exact priced action was proposed". Fail-closed: required,
+    # no default — the service refuses to start unless CONFIRM_TOKEN_SIGNING_SECRET
+    # is set (an unsigned/shared-secret confirm token is a money-path defect).
+    confirm_token_signing_secret: str
     port: int = 8087
     # M7d-3: opt-in feed of source+translated text into the translation.quality
     # event so the M7d-2 online fidelity judge has inputs to score. OFF by default
@@ -84,6 +92,22 @@ class Settings(BaseSettings):
     p5_lease_ttl_ms: int = 3_600_000  # crash-leak backstop; must exceed a chapter's runtime
     p5_dispatch_interval_s: float = 0.5  # dispatcher tick (latency to first dispatch)
     p5_reclaim_interval_s: int = 60  # periodic expired-lease self-heal
+
+    # ── MCP fan-out S-TRANSL: cost-estimate (HIGH#1) + re-price-at-execution (H14) ──
+    # Output:input token ratio for the translation cost projection. A translation's
+    # output is roughly the same length as its source (sometimes a touch longer in
+    # a target language). 1.0 is a faithful neutral projection; tune per deployment
+    # without touching code. NOT a model/price literal (those resolve from
+    # provider-registry) — only a workload shape heuristic, so it does NOT trip the
+    # ai-provider-gate.
+    transl_estimate_output_ratio: float = 1.0
+    # H14 re-price-at-execution thresholds. Before a confirmed Tier-W job actually
+    # runs, re-price the SAME scope; if the fresh estimate exceeds BOTH a relative
+    # AND an absolute floor over the confirmed estimate, refuse and signal a
+    # re-confirm rather than silently overspending. "exceeds est×1.25 OR est+$0.50"
+    # (the design's H14) — i.e. trip when actual > est*mult OR actual > est+abs.
+    transl_reprice_mult: float = 1.25
+    transl_reprice_abs_usd: float = 0.50
 
     class Config:
         env_file = ".env"

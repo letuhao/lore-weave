@@ -48,14 +48,23 @@ func (s *Server) mcpHandler() http.Handler {
 			"BEFORE scaffolding a book. For what a specific book ALREADY has, use glossary_book_ontology_read.",
 	}, s.toolListKinds)
 
-	// F2 (§12.3 new): the canonical in-book schema read — the book-local genres,
-	// kinds, attributes, and kind↔genre links.
-	mcp.AddTool(srv, &mcp.Tool{
-		Name: "glossary_book_ontology_read",
-		Description: "Read a BOOK's local ontology: its adopted/native genres, kinds, attribute " +
-			"definitions, and kind↔genre links. This is what entities in the book are described by. " +
-			"Use before proposing entities or shaping the book's schema.",
-	}, s.toolBookOntologyRead)
+	// T1: book-tier ontology tools (read, adopt, create/patch/delete, set-genres,
+	// entity-genres) register in their own file so tier streams don't contend here.
+	s.RegisterBookTools(srv)
+	// T2: book sync tools (available R + apply C). T3: user-tier standards tools.
+	// Each appends here from its own file — append-only registration is the
+	// per-tier parallelism enabler (buildplan §4).
+	s.RegisterSyncTools(srv)
+	s.RegisterUserTools(srv)
+	// Pipeline M1: read tools (merge-candidates / chapter-links / revisions / unknowns).
+	s.RegisterPipelineReadTools(srv)
+	// Pipeline M2: direct (class-W) additive write tools (chapter-links, evidence).
+	s.RegisterPipelineWriteTools(srv)
+	// Pipeline M2: class-C propose tools for destructive curation (status / restore /
+	// reassign-kind / merge) — mint a confirm card, never write directly.
+	s.RegisterPipelineProposeTools(srv)
+	// Pipeline M4: entity-translation tool (class-W; draft, never overwrites verified).
+	s.RegisterPipelineTranslateTools(srv)
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "glossary_propose_new_entity",
@@ -86,17 +95,7 @@ func (s *Server) mcpHandler() http.Handler {
 			"preview a human must confirm via glossary_confirm_action. Call glossary_book_ontology_read first to pick " +
 			"the kind_code and avoid duplicating an existing attribute.",
 	}, s.toolProposeNewAttribute)
-
-	// CP-1 canary — destructive cascade delete of a book genre/kind/attribute.
-	// Class C: mints a confirm card (cascade blast-radius previewed); the human
-	// confirms via glossary_confirm_action.
-	mcp.AddTool(srv, &mcp.Tool{
-		Name: "glossary_book_delete",
-		Description: "Propose DELETING a book's genre, kind, or attribute (soft-delete with cascade). " +
-			"High-impact and destructive — it does NOT delete; it returns a confirm_token + a preview of " +
-			"everything the cascade will remove, which a human must confirm via glossary_confirm_action. " +
-			"Address by code: level=genre|kind|attribute + code (for attribute also kind_code + genre_code).",
-	}, s.toolBookDelete)
+	// glossary_book_delete + glossary_book_* tools are registered in RegisterBookTools (T1).
 
 	streamable := mcp.NewStreamableHTTPHandler(
 		func(*http.Request) *mcp.Server { return srv },

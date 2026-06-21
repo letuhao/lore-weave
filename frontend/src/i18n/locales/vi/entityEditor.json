@@ -52,6 +52,7 @@
     "save": "Lưu",
     "delete_aria": "Xóa bản dịch",
     "placeholder": "Bản dịch {{lang}}...",
+    "tags_add": "+ Thêm bí danh",
     "delete_title": "Xóa bản dịch?",
     "delete_desc": "Bản dịch {{lang}} cho thuộc tính này sẽ bị xóa vĩnh viễn.",
     "delete_confirm": "Xóa",

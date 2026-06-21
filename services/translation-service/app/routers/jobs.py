@@ -92,8 +92,30 @@ async def retranslate_dirty(
     if book_id is None:
         raise HTTPException(status_code=404, detail={"code": "TRANSL_NOT_FOUND", "message": "Chapter has no translations"})
     await authorize_book(gc, book_id, UUID(user_id), GrantLevel.EDIT)
+    return await _retranslate_dirty_core(
+        db, chapter_id, body.target_language, user_id, book_id=book_id,
+    )
 
-    lang = body.target_language
+
+async def _retranslate_dirty_core(
+    db: asyncpg.Pool, chapter_id: UUID, target_language: str, user_id: str,
+    *, book_id: UUID | None = None,
+) -> "TranslationJob":
+    """Core of the dirty-only re-translate — book ownership is assumed ALREADY
+    verified by the caller (the public route authorizes via the E0-4a grant gate;
+    the MCP Tier-W confirm route via the kit's `require_book_owner` at mint + the
+    user binding in the confirm token). Reused by both so the dirty-set selection,
+    seed resolution, and job-create stay byte-identical (no second copy to drift).
+
+    `book_id` is passed by the public route (which already resolved it) to avoid a
+    redundant lookup; the MCP confirm path omits it and lets the core resolve it
+    from the chapter."""
+    if book_id is None:
+        book_id = await book_for_chapter(db, chapter_id)
+    if book_id is None:
+        raise HTTPException(status_code=404, detail={"code": "TRANSL_NOT_FOUND", "message": "Chapter has no translations"})
+
+    lang = target_language
     items = await compute_segment_status(db, chapter_id, lang)
     # "needs" = source-dirty ∪ glossary-stale (T2-M3.2) — every segment that should
     # be re-translated, not just the source-changed ones.

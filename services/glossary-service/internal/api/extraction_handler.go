@@ -804,8 +804,14 @@ func (s *Server) loadAttrDefMap(ctx context.Context, bookID uuid.UUID) (map[stri
 	return m, rows.Err()
 }
 
-// findEntityByNameOrAlias looks up an existing entity by normalized name match,
+// findEntityByNameOrAlias looks up an existing LIVE entity by normalized name match,
 // then by alias match if not found. Returns uuid.Nil if no match.
+//
+// All steps exclude soft-deleted entities (`deleted_at IS NULL`): a deleted row must
+// never be an extraction resolution target. This is the anti-resurrection contract — a
+// merged-away loser is soft-deleted with its name/aliases folded into the WINNER, so an
+// incoming name must resolve to the live winner (whose folded alias matches), never to the
+// hidden loser. (/review-impl S6 #1 — Steps 1-2 previously omitted this; Step 3 inherited.)
 func (s *Server) findEntityByNameOrAlias(ctx context.Context, bookID, kindID uuid.UUID, name string) (uuid.UUID, error) {
 	normalizedName := normalizeEntity(name)
 
@@ -817,6 +823,7 @@ func (s *Server) findEntityByNameOrAlias(ctx context.Context, bookID, kindID uui
 		JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
 		WHERE ge.book_id = $1
 		  AND ge.kind_id = $2
+		  AND ge.deleted_at IS NULL
 		  AND ad.code = 'name'
 	`, bookID, kindID)
 	if err != nil {
@@ -848,6 +855,7 @@ func (s *Server) findEntityByNameOrAlias(ctx context.Context, bookID, kindID uui
 		JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
 		WHERE ge.book_id = $1
 		  AND ge.kind_id = $2
+		  AND ge.deleted_at IS NULL
 		  AND ad.code = 'aliases'
 		  AND eav.original_value != ''
 	`, bookID, kindID)
@@ -860,6 +868,45 @@ func (s *Server) findEntityByNameOrAlias(ctx context.Context, bookID, kindID uui
 		var entityID uuid.UUID
 		var aliasRaw string
 		if err := aliasRows.Scan(&entityID, &aliasRaw); err != nil {
+			return uuid.Nil, err
+		}
+		var aliases []string
+		if err := json.Unmarshal([]byte(aliasRaw), &aliases); err != nil {
+			continue // not a valid JSON array, skip
+		}
+		for _, alias := range aliases {
+			if normalizeEntity(alias) == normalizedName {
+				return entityID, nil
+			}
+		}
+	}
+
+	// Step 3 (S6): check PER-LANGUAGE alias sets — the aliases attr's translations, each
+	// a JSON array in some target language. This makes resolution cross-language: an
+	// entity whose 'en' alias set contains the incoming name resolves to it even when the
+	// source-language name/aliases don't match (anti-resurrection across languages). Same
+	// book+kind scope as Steps 1-2.
+	tRows, err := s.pool.Query(ctx, `
+		SELECT ge.entity_id, t.value
+		FROM glossary_entities ge
+		JOIN entity_attribute_values eav ON eav.entity_id = ge.entity_id
+		JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
+		JOIN attribute_translations t ON t.attr_value_id = eav.attr_value_id
+		WHERE ge.book_id = $1
+		  AND ge.kind_id = $2
+		  AND ge.deleted_at IS NULL
+		  AND ad.code = 'aliases'
+		  AND t.value != ''
+	`, bookID, kindID)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	defer tRows.Close()
+
+	for tRows.Next() {
+		var entityID uuid.UUID
+		var aliasRaw string
+		if err := tRows.Scan(&entityID, &aliasRaw); err != nil {
 			return uuid.Nil, err
 		}
 		var aliases []string

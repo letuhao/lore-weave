@@ -372,6 +372,17 @@ func (s *Server) Router() http.Handler {
 		r.HandleFunc("/proxy/*", s.publicProxy)
 	})
 
+	// S-SETTINGS (MCP fan-out) — settings MCP server (Tier R/A/W tools for
+	// profile + model registry). Internal-token gated + X-User-Id → ctx by the
+	// kit's stateless handler; the federation gateway connects here per call.
+	r.Handle("/mcp", s.mcpHandler())
+	r.Handle("/mcp/*", s.mcpHandler())
+
+	// S-SETTINGS Tier-W (model_delete) confirm + preview — JWT-gated (the user's
+	// browser token); the ONLY write path (INV-9). NET-NEW per provider.
+	r.Post("/v1/settings/actions/preview", s.previewSettingsAction)
+	r.Post("/v1/settings/actions/confirm", s.confirmSettingsAction)
+
 	// Phase 1a (LLM_PIPELINE_UNIFIED_REFACTOR_PLAN) — unified streaming
 	// endpoint. SSE response, no timeout. JWT auth.
 	r.Post("/v1/llm/stream", s.llmStream)

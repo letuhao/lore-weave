@@ -29,6 +29,11 @@ func runGenreMigrations(t *testing.T, pool *pgxpool.Pool) {
 	if err := migrate.SeedGenreKindAttr(ctx, pool); err != nil {
 		t.Fatalf("migrate.SeedGenreKindAttr: %v", err)
 	}
+	// 0031 — System-tier soft-delete (G-C8): deprecated_at on system_genres/kinds/attributes.
+	// Required because applySyncRow (sync + G-U1 revert) filters src.deprecated_at IS NULL.
+	if err := migrate.UpSystemSoftDelete(ctx, pool); err != nil {
+		t.Fatalf("migrate.UpSystemSoftDelete: %v", err)
+	}
 }
 
 func mustCreateUserGenre(t *testing.T, srv *Server, userID, body string) genreResp {

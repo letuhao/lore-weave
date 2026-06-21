@@ -16,7 +16,9 @@ export function useGlossaryDisplayLanguage(
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    if (!accessToken) {
+    // No auth, or no book (e.g. the global chat page passes '') → nothing to load;
+    // skip the server round-trip and resolve to the default immediately.
+    if (!accessToken || !bookId) {
       setDisplayLanguageState(defaultLang);
       setPrefMap({});
       setLoaded(true);

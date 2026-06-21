@@ -76,7 +76,14 @@
     "saving": "正在儲存…",
     "delete": "刪除",
     "deleting": "正在刪除…",
+    "revert": "還原為預設",
+    "revert_hint": "捨棄本書對此列的本機編輯，還原為採用來源的系統/使用者標準。",
     "name_required": "名稱為必填",
+    "ai_assist": "AI 輔助",
+    "auto_fill_prompt": "自動填入提示",
+    "auto_fill_prompt_hint": "AI 如何從章節文字填入此屬性",
+    "translation_hint": "翻譯提示",
+    "translation_hint_hint": "翻譯此屬性值時注入的指引",
     "from_system": "採用自系統標準 — 在此編輯只會變更這本書的副本。",
     "from_user": "採用自你的使用者標準。",
     "book_native": "建立於這本書。"
@@ -140,8 +147,10 @@
     "adopted": "已採用進這本書",
     "saved": "已儲存",
     "deleted": "已刪除",
+    "reverted": "已還原為預設",
     "save_failed": "儲存失敗",
     "delete_failed": "刪除失敗",
+    "revert_failed": "還原失敗",
     "adopt_failed": "採用失敗",
     "forbidden": "你需要這本書的「管理」權限才能進行變更"
   }

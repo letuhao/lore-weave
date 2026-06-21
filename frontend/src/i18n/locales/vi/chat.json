@@ -147,6 +147,40 @@
     "ok": "ổn",
     "failed": "thất bại"
   },
+  "actionConfirm": {
+    "label": "Xác nhận hành động",
+    "batch_count": "{{count}} mục",
+    "warning": "Thay đổi này có tác động lớn — vui lòng xác nhận.",
+    "warning_destructive": "Hành động này có tính phá hủy và lan truyền — vui lòng xác nhận.",
+    "confirm": "Xác nhận",
+    "confirm_all": "Xác nhận tất cả",
+    "cancel": "Hủy",
+    "done": "Xong ✓",
+    "expired": "Xác nhận này không còn hợp lệ — hãy yêu cầu lại để đề xuất mới.",
+    "expired_short": "Hết hạn — hỏi lại",
+    "error": "Không thể áp dụng thay đổi.",
+    "error_short": "Thất bại",
+    "cancelled": "Đã hủy"
+  },
+  "recordEdit": {
+    "label": "Đề xuất chỉnh sửa",
+    "field": "Trường",
+    "fields": "{{count}} trường",
+    "empty": "(trống)",
+    "apply": "Áp dụng",
+    "dismiss": "Bỏ qua",
+    "applied": "Đã áp dụng ✓",
+    "conflict": "Đã thay đổi kể từ khi được đề xuất — hãy hỏi lại để xem bản mới nhất.",
+    "conflict_short": "Đã đổi kể từ khi đề xuất — hỏi lại",
+    "error": "Không thể lưu thay đổi.",
+    "error_short": "Lưu thất bại",
+    "dismissed": "Đã bỏ qua"
+  },
+  "activity": {
+    "label": "Đã làm giúp bạn",
+    "undo": "Hoàn tác",
+    "undone": "Đã hoàn tác"
+  },
   "facts": {
     "type": {
       "decision": "Quyết định",

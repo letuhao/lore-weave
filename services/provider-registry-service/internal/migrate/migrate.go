@@ -275,6 +275,19 @@ CREATE TABLE IF NOT EXISTS user_default_models (
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (owner_user_id, capability)
 );
+
+-- S-SETTINGS (MCP fan-out) — single-use ledger for the Tier-W settings.model_delete
+-- confirm token. The confirm route records the token's hash here on first redeem;
+-- a replay hits the PK (ON CONFLICT DO NOTHING → 0 rows) and is rejected. The
+-- stateless kit confirm token has no jti, so we key on the token-hash. exp lets a
+-- future sweeper prune expired rows.
+CREATE TABLE IF NOT EXISTS settings_consumed_tokens (
+  token_hash  TEXT PRIMARY KEY,
+  descriptor  TEXT NOT NULL,
+  exp         TIMESTAMPTZ NOT NULL,
+  consumed_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_settings_consumed_tokens_exp ON settings_consumed_tokens(exp);
 `
 
 func Up(ctx context.Context, pool *pgxpool.Pool) error {

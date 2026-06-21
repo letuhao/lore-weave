@@ -8,9 +8,10 @@ PyJWT>=2.8
 python-dotenv>=1.0
 redis[hiredis]>=5.0
 
-# loreweave_jobs + loreweave_obs are installed via the Dockerfile COPY of
-# sdks/python (build context is the repo root). For host-side pytest the SDK
-# is resolved via pytest.ini `pythonpath = ../../sdks/python`.
+# loreweave_jobs + loreweave_obs + loreweave_mcp (the shared MCP kit backing the
+# /mcp facade — pulls in `mcp>=1.27` via its own deps) are installed via the
+# Dockerfile COPY+pip-install of sdks/python (build context is the repo root). For
+# host-side pytest they resolve via pytest.ini `pythonpath = ../../sdks/python`.
 
 # test
 pytest>=8.0

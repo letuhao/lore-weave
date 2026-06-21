@@ -20,6 +20,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -107,6 +108,58 @@ func (s *Server) getBookSyncAvailable(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+// bookSyncSourceLiveByID returns, for every sourced non-deprecated book row, whether
+// its recorded source CURRENTLY resolves live — keyed book-row-id → live. Unlike
+// bookSyncUpdatesByID (which lists only rows with a pending hash diff), this covers
+// already-current rows too, so previewSyncApply matches what applySyncRow will do:
+// the effect applies a row iff its source is live (a current row still applies as a
+// no-op overwrite), and skips it as source_retired iff the source is gone. User-tier
+// sources are scoped to the caller's own rows (D-GKA-SYNC-USER-SOURCE-VISIBILITY).
+func (s *Server) bookSyncSourceLiveByID(ctx context.Context, bookID, userID uuid.UUID) (map[string]bool, error) {
+	out := map[string]bool{}
+	queries := []string{
+		`SELECT bg.genre_id::text, (sg.genre_id IS NOT NULL OR ug.genre_id IS NOT NULL)
+		   FROM book_genres bg
+		   LEFT JOIN system_genres sg ON bg.source_ref = 'system:'||sg.genre_id::text AND sg.deprecated_at IS NULL
+		   LEFT JOIN user_genres   ug ON bg.source_ref = 'user:'||ug.genre_id::text
+		                              AND ug.owner_user_id=$2 AND ug.deleted_at IS NULL AND ug.permanently_deleted_at IS NULL
+		   WHERE bg.book_id=$1 AND bg.deprecated_at IS NULL AND bg.source_ref IS NOT NULL`,
+		`SELECT bk.book_kind_id::text, (sk.kind_id IS NOT NULL OR uk.user_kind_id IS NOT NULL)
+		   FROM book_kinds bk
+		   LEFT JOIN system_kinds sk ON bk.source_ref = 'system:'||sk.kind_id::text AND sk.deprecated_at IS NULL
+		   LEFT JOIN user_kinds   uk ON bk.source_ref = 'user:'||uk.user_kind_id::text
+		                              AND uk.owner_user_id=$2 AND uk.deleted_at IS NULL AND uk.permanently_deleted_at IS NULL
+		   WHERE bk.book_id=$1 AND bk.deprecated_at IS NULL AND bk.source_ref IS NOT NULL`,
+		`SELECT ba.attr_id::text, (sa.attr_id IS NOT NULL OR ua.attr_id IS NOT NULL)
+		   FROM book_attributes ba
+		   LEFT JOIN system_attributes sa ON ba.source_ref = 'system:'||sa.attr_id::text AND sa.deprecated_at IS NULL
+		   LEFT JOIN user_attributes   ua ON ba.source_ref = 'user:'||ua.attr_id::text
+		                                  AND ua.owner_user_id=$2 AND ua.deleted_at IS NULL
+		   WHERE ba.book_id=$1 AND ba.deprecated_at IS NULL AND ba.source_ref IS NOT NULL`,
+	}
+	for _, q := range queries {
+		rows, err := s.pool.Query(ctx, q, bookID, userID)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var id string
+			var live bool
+			if err := rows.Scan(&id, &live); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			out[id] = live
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		rows.Close()
+	}
+	return out, nil
+}
+
 // The user-tier source is resolved ONLY for the caller's own rows (owner_user_id =
 // caller): user-tier standards are private to their owner (LOCKED tenancy), so a
 // collaborator never sees another user's current user-tier values — those rows read as
@@ -119,7 +172,7 @@ func (s *Server) syncGenresAvailable(ctx context.Context, bookID, userID uuid.UU
 		       COALESCE(sg.name, ug.name)                 AS up_name,
 		       (sg.genre_id IS NOT NULL OR ug.genre_id IS NOT NULL) AS src_live
 		FROM book_genres bg
-		LEFT JOIN system_genres sg ON bg.source_ref = 'system:'||sg.genre_id::text
+		LEFT JOIN system_genres sg ON bg.source_ref = 'system:'||sg.genre_id::text AND sg.deprecated_at IS NULL
 		LEFT JOIN user_genres   ug ON bg.source_ref = 'user:'||ug.genre_id::text
 		                           AND ug.owner_user_id = $2
 		                           AND ug.deleted_at IS NULL AND ug.permanently_deleted_at IS NULL
@@ -159,7 +212,7 @@ func (s *Server) syncKindsAvailable(ctx context.Context, bookID, userID uuid.UUI
 		       COALESCE(sk.description, uk.description)  AS up_desc,
 		       (sk.kind_id IS NOT NULL OR uk.user_kind_id IS NOT NULL) AS src_live
 		FROM book_kinds bk
-		LEFT JOIN system_kinds sk ON bk.source_ref = 'system:'||sk.kind_id::text
+		LEFT JOIN system_kinds sk ON bk.source_ref = 'system:'||sk.kind_id::text AND sk.deprecated_at IS NULL
 		LEFT JOIN user_kinds   uk ON bk.source_ref = 'user:'||uk.user_kind_id::text
 		                          AND uk.owner_user_id = $2
 		                          AND uk.deleted_at IS NULL AND uk.permanently_deleted_at IS NULL
@@ -204,7 +257,7 @@ func (s *Server) syncAttributesAvailable(ctx context.Context, bookID, userID uui
 		       COALESCE(sa.options, ua.options)           AS up_opts,
 		       (sa.attr_id IS NOT NULL OR ua.attr_id IS NOT NULL) AS src_live
 		FROM book_attributes ba
-		LEFT JOIN system_attributes sa ON ba.source_ref = 'system:'||sa.attr_id::text
+		LEFT JOIN system_attributes sa ON ba.source_ref = 'system:'||sa.attr_id::text AND sa.deprecated_at IS NULL
 		LEFT JOIN user_attributes   ua ON ba.source_ref = 'user:'||ua.attr_id::text
 		                               AND ua.owner_user_id = $2
 		                               AND ua.deleted_at IS NULL
@@ -291,46 +344,65 @@ func (s *Server) applyBookSync(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY", "items is required")
 		return
 	}
-	// Validate every item BEFORE mutating so a bad item rejects the whole batch (no
-	// partial apply on malformed input).
-	for _, it := range in.Items {
+
+	resp, err := s.applyBookSyncCore(r.Context(), bookID, userID, in.Items)
+	if errors.Is(err, errSyncInvalidItem) {
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", err.Error())
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "apply failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// errSyncInvalidItem → 422: a sync item has a bad entity/choice/id. The core
+// validates the whole batch BEFORE mutating so a single bad item rejects the set
+// (no partial apply on malformed input).
+var errSyncInvalidItem = errors.New("invalid sync item")
+
+// applyBookSyncCore validates the proposed items, then applies them under the same
+// per-book advisory lock adopt uses. Shared by the HTTP handler and effectSyncApply
+// (the T1 core pattern) so the two write paths can never diverge. Each row re-checks
+// its source against CURRENT state inside applySyncRow — a retired/removed source
+// yields result=source_retired, never an error, so a stale proposed id can't fail
+// the batch. The caller is already authorized (Manage grant / confirm-token).
+func (s *Server) applyBookSyncCore(ctx context.Context, bookID, userID uuid.UUID, items []syncApplyItemReq) (syncApplyResp, error) {
+	if len(items) == 0 {
+		return syncApplyResp{}, fmt.Errorf("%w: items is required", errSyncInvalidItem)
+	}
+	for _, it := range items {
 		if it.Entity != "genre" && it.Entity != "kind" && it.Entity != "attribute" {
-			writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "invalid entity: "+it.Entity)
-			return
+			return syncApplyResp{}, fmt.Errorf("%w: invalid entity %q", errSyncInvalidItem, it.Entity)
 		}
 		if it.Choice != "keep_mine" && it.Choice != "take_theirs" {
-			writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "invalid choice: "+it.Choice)
-			return
+			return syncApplyResp{}, fmt.Errorf("%w: invalid choice %q", errSyncInvalidItem, it.Choice)
 		}
 		if _, err := uuid.Parse(it.ID); err != nil {
-			writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "invalid id: "+it.ID)
-			return
+			return syncApplyResp{}, fmt.Errorf("%w: invalid id %q", errSyncInvalidItem, it.ID)
 		}
 	}
 
-	ctx := r.Context()
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "tx failed")
-		return
+		return syncApplyResp{}, err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 
 	// Same per-book advisory lock as adopt: serialize apply against concurrent
 	// adopt / +adopt-more so the multi-statement updates can't interleave.
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('gloss-adopt:' || $1::text))`, bookID); err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "lock failed")
-		return
+		return syncApplyResp{}, err
 	}
 
 	resp := syncApplyResp{Results: []syncApplyItemResult{}}
-	for _, it := range in.Items {
+	for _, it := range items {
 		id := uuid.MustParse(it.ID) // validated above
 		take := it.Choice == "take_theirs"
 		applied, err := s.applySyncRow(ctx, tx, bookID, userID, it.Entity, id, take)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "apply failed")
-			return
+			return syncApplyResp{}, err
 		}
 		res := syncApplyItemResult{Entity: it.Entity, ID: it.ID, Result: syncStatusRetired}
 		if applied {
@@ -341,10 +413,9 @@ func (s *Server) applyBookSync(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "commit failed")
-		return
+		return syncApplyResp{}, err
 	}
-	writeJSON(w, http.StatusOK, resp)
+	return resp, nil
 }
 
 // applySyncRow refreshes one book row from its recorded source. It runs the system-
@@ -366,30 +437,31 @@ func (s *Server) applySyncRow(ctx context.Context, tx pgx.Tx, bookID, userID uui
 		setT := "name = src.name, "
 		sysSQL = `UPDATE book_genres bg SET ` + ternarySet(take, setT) + `source_hash = src.content_hash, updated_at = now()
 			FROM system_genres src
-			WHERE bg.book_id=$1 AND bg.genre_id=$2 AND bg.source_ref = 'system:'||src.genre_id::text`
+			WHERE bg.book_id=$1 AND bg.genre_id=$2 AND bg.deprecated_at IS NULL AND bg.source_ref = 'system:'||src.genre_id::text AND src.deprecated_at IS NULL`
 		usrSQL = `UPDATE book_genres bg SET ` + ternarySet(take, setT) + `source_hash = src.content_hash, updated_at = now()
 			FROM user_genres src
-			WHERE bg.book_id=$1 AND bg.genre_id=$2 AND bg.source_ref = 'user:'||src.genre_id::text
+			WHERE bg.book_id=$1 AND bg.genre_id=$2 AND bg.deprecated_at IS NULL AND bg.source_ref = 'user:'||src.genre_id::text
 			  AND src.owner_user_id = $3 AND src.deleted_at IS NULL AND src.permanently_deleted_at IS NULL`
 	case "kind":
 		setT := "name = src.name, description = src.description, "
 		hash := kindHashExpr("src")
 		sysSQL = `UPDATE book_kinds bk SET ` + ternarySet(take, setT) + `source_hash = ` + hash + `, updated_at = now()
 			FROM system_kinds src
-			WHERE bk.book_id=$1 AND bk.book_kind_id=$2 AND bk.source_ref = 'system:'||src.kind_id::text`
+			WHERE bk.book_id=$1 AND bk.book_kind_id=$2 AND bk.deprecated_at IS NULL AND bk.source_ref = 'system:'||src.kind_id::text AND src.deprecated_at IS NULL`
 		usrSQL = `UPDATE book_kinds bk SET ` + ternarySet(take, setT) + `source_hash = ` + hash + `, updated_at = now()
 			FROM user_kinds src
-			WHERE bk.book_id=$1 AND bk.book_kind_id=$2 AND bk.source_ref = 'user:'||src.user_kind_id::text
+			WHERE bk.book_id=$1 AND bk.book_kind_id=$2 AND bk.deprecated_at IS NULL AND bk.source_ref = 'user:'||src.user_kind_id::text
 			  AND src.owner_user_id = $3 AND src.deleted_at IS NULL AND src.permanently_deleted_at IS NULL`
 	case "attribute":
 		setT := "name = src.name, description = src.description, field_type = src.field_type, " +
-			"is_required = src.is_required, options = src.options, "
+			"is_required = src.is_required, options = src.options, " +
+			"auto_fill_prompt = src.auto_fill_prompt, translation_hint = src.translation_hint, " // G-U2 carry
 		sysSQL = `UPDATE book_attributes ba SET ` + ternarySet(take, setT) + `source_hash = src.content_hash, updated_at = now()
 			FROM system_attributes src
-			WHERE ba.book_id=$1 AND ba.attr_id=$2 AND ba.source_ref = 'system:'||src.attr_id::text`
+			WHERE ba.book_id=$1 AND ba.attr_id=$2 AND ba.deprecated_at IS NULL AND ba.source_ref = 'system:'||src.attr_id::text AND src.deprecated_at IS NULL`
 		usrSQL = `UPDATE book_attributes ba SET ` + ternarySet(take, setT) + `source_hash = src.content_hash, updated_at = now()
 			FROM user_attributes src
-			WHERE ba.book_id=$1 AND ba.attr_id=$2 AND ba.source_ref = 'user:'||src.attr_id::text
+			WHERE ba.book_id=$1 AND ba.attr_id=$2 AND ba.deprecated_at IS NULL AND ba.source_ref = 'user:'||src.attr_id::text
 			  AND src.owner_user_id = $3 AND src.deleted_at IS NULL`
 	default:
 		return false, fmt.Errorf("unknown sync entity %q", entity) // unreachable (validated)

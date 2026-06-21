@@ -40,7 +40,20 @@ from app.db.suspended_runs import (
 )
 from app.models import ProviderCredentials
 from app.services.composer import build_composer_messages, is_composer_tool
-from app.services.frontend_tools import is_frontend_tool
+from app.services.frontend_tools import (
+    generic_frontend_tool_def,
+    is_frontend_tool,
+)
+from app.services.tool_discovery import (
+    ALWAYS_ON_CORE_NAMES,
+    FIND_TOOLS_DEFAULT_LIMIT,
+    FIND_TOOLS_NAME,
+    FIND_TOOLS_TOOL,
+    find_tools_result,
+    strip_tool_meta,
+    tool_tier,
+    tool_undo_hint,
+)
 from app.services.output_extractor import extract_outputs
 from app.services.stream_events import make_emitter
 
@@ -164,6 +177,23 @@ MAX_TOOL_ITERATIONS = 5
 # tasks need headroom), so the cap is raised there. Per-turn token budget still
 # bounds cost. Plain chat keeps the default 5.
 GLOSSARY_TOOL_ITERATIONS = 10
+# MCP-fanout H9: the universal /chat surface runs multi-step cross-service goals
+# (find_tools → read → write across services) so it gets the highest cap. CRUCIAL
+# (H9): find_tools calls + Tier-R reads do NOT decrement this budget — only passes
+# that actually execute a Tier-A/W write count — so discovery never starves the
+# write budget. The forced-final tool-free pass still guarantees termination.
+UNIVERSAL_TOOL_ITERATIONS = 20
+
+# MCP-fanout H7: at most this many same-op Tier-A auto-writes per turn before the
+# loop escalates to a single batch confirm_action (the enforceable
+# injection-damage bound — see spec E2/H7).
+TIER_A_SAME_OP_CAP = 5
+# MCP-fanout H7 (aggregate): an additional turn-TOTAL ceiling across ALL Tier-A
+# ops, so an alternating-op turn (e.g. book_create×5 + chapter_create×5) can't
+# slip past the per-op cap and do an unbounded number of auto-writes. Chosen
+# > the per-op cap (5) so a single legitimate op never trips the aggregate first,
+# but low enough that a high-volume multi-op turn still hits ONE human gate.
+TIER_A_AGGREGATE_CAP = 12
 
 
 def _is_tools_unsupported(exc: LLMError) -> bool:
@@ -243,6 +273,58 @@ async def _run_composer(
     return "".join(parts).strip(), used_in, used_out
 
 
+def _catalog_index(catalog: list[dict]) -> dict[str, dict]:
+    """name → tool def, for the discovery catalog."""
+    idx: dict[str, dict] = {}
+    for td in catalog:
+        fn = td.get("function") if isinstance(td, dict) else None
+        if isinstance(fn, dict) and fn.get("name"):
+            idx[fn["name"]] = td
+    return idx
+
+
+def _advertise_discovery_tools(
+    catalog_index: dict[str, dict],
+    active_tool_names: set[str],
+    extra_frontend: list[dict],
+) -> list[dict]:
+    """MCP-fanout C-FT — the tools advertised on a universal /chat pass:
+    ``{always-on core} ∪ {full schemas of active_tool_names}``, with the
+    consumer-only `_meta` stripped before it reaches the provider.
+
+    ``extra_frontend`` carries surface-specific frontend tools (e.g. propose_edit
+    on an editor surface) that are always advertised alongside the core.
+    """
+    out: list[dict] = []
+    seen: set[str] = set()
+
+    def _add(td: dict | None) -> None:
+        if not td:
+            return
+        fn = td.get("function") if isinstance(td, dict) else None
+        name = fn.get("name") if isinstance(fn, dict) else None
+        if not name or name in seen:
+            return
+        seen.add(name)
+        out.append(strip_tool_meta(td))
+
+    # Always-on core: prefer the catalog's own def (if a core tool is federated),
+    # else the consumer-local find_tools schema or a generic frontend-tool schema
+    # (ui_*/confirm/propose). find_tools is NOT federated, so it has no catalog
+    # entry — source it from FIND_TOOLS_TOOL.
+    for name in ALWAYS_ON_CORE_NAMES:
+        if name == FIND_TOOLS_NAME:
+            _add(FIND_TOOLS_TOOL)
+            continue
+        _add(catalog_index.get(name) or generic_frontend_tool_def(name))
+    for td in extra_frontend:
+        _add(td)
+    # Discovered tools — full schemas now that find_tools matched them.
+    for name in active_tool_names:
+        _add(catalog_index.get(name))
+    return out
+
+
 async def _stream_with_tools(
     model_source: str,
     model_ref: str,
@@ -257,6 +339,9 @@ async def _stream_with_tools(
     composer_model: tuple[str, str] | None = None,
     composer_system_prompt: str | None = None,
     max_iterations: int = MAX_TOOL_ITERATIONS,
+    admin_token: str | None = None,
+    discovery_catalog: list[dict] | None = None,
+    discovery_extra_frontend: list[dict] | None = None,
 ) -> AsyncGenerator[dict, None]:
     """K21-B — the tool-calling loop.
 
@@ -290,8 +375,34 @@ async def _stream_with_tools(
             max_tokens = None
         tools_supported = True  # D8 — flipped off if the provider rejects tools
 
-        for iteration in range(max_iterations):
-            last_iter = iteration == max_iterations - 1
+        # ── MCP-fanout C-FT/H9: two-stage tool discovery state ───────────────
+        # When `discovery_catalog` is provided (universal /chat surface), the
+        # pass advertises {core} ∪ {full schemas of active_tool_names}; a
+        # find_tools result unions matched names into the active set so the NEXT
+        # pass advertises them. H9: only passes that execute a Tier-A/W WRITE
+        # decrement the budget — find_tools + Tier-R reads are free — so
+        # discovery never starves the write budget.
+        discovery = discovery_catalog is not None
+        cat_index = _catalog_index(discovery_catalog) if discovery else {}
+        extra_fe = discovery_extra_frontend or []
+        active_tool_names: set[str] = set()
+        write_passes = 0  # H9 — budget is counted in write passes, not all passes
+        # H7 — same-op Tier-A auto-write counter (resets never within a turn).
+        tier_a_op_counts: dict[str, int] = {}
+        # Hard safety bound on TOTAL passes (reads + writes + discovery) so a
+        # pathological find_tools/read loop can't spin forever even though those
+        # don't count against the write budget.
+        max_total_passes = max_iterations * 3
+
+        iteration = -1
+        while True:
+            iteration += 1
+            if iteration >= max_total_passes:
+                break
+            # The write budget — NOT the total-pass count — decides the forced
+            # tool-free final pass (D7). Once the write budget is spent, the next
+            # pass must answer in text.
+            last_iter = write_passes >= max_iterations - 1
             request_kwargs: dict = {
                 "model_source": model_source,
                 "model_ref": model_ref,
@@ -305,7 +416,10 @@ async def _stream_with_tools(
             # is the forced-final pass (D7 — must answer in text).
             offered_tools = tools_supported and not last_iter
             if offered_tools:
-                request_kwargs["tools"] = tools
+                request_kwargs["tools"] = (
+                    _advertise_discovery_tools(cat_index, active_tool_names, extra_fe)
+                    if discovery else tools
+                )
                 request_kwargs["tool_choice"] = "auto"
             # M3 — one observability/cancel job id PER pass (each pass is a
             # separate gateway stream; the active pass is what a disconnect aborts).
@@ -387,7 +501,40 @@ async def _stream_with_tools(
             # frontend one. Process calls in order: run backend tools inline,
             # and on the first frontend tool, suspend with the partial state.
             suspended_call: dict | None = None
+            pass_did_write = False  # H9 — only a Tier-A/W write decrements budget
             for c in calls:
+                # MCP-fanout C-FT — find_tools is CONSUMER-LOCAL: it never goes to
+                # a domain service. Run the in-memory catalog search, union the
+                # matched names into the active set (so the NEXT pass advertises
+                # their full schemas), and feed the result back. It carries no
+                # write → it does NOT count against the write budget (H9). H6/H10:
+                # the result distinguishes "no match" / "weak match" /
+                # "provider temporarily unavailable" so the agent never falsely
+                # denies a covered capability.
+                if discovery and c["name"] == FIND_TOOLS_NAME:
+                    args_obj = _parse_tool_args(c["arguments"])
+                    intent = str(args_obj.get("intent", "") or "")
+                    limit = args_obj.get("limit") or FIND_TOOLS_DEFAULT_LIMIT
+                    try:
+                        limit = int(limit)
+                    except (TypeError, ValueError):
+                        limit = FIND_TOOLS_DEFAULT_LIMIT
+                    payload, matched = find_tools_result(
+                        discovery_catalog or [], intent, limit,
+                        exclude=set(ALWAYS_ON_CORE_NAMES),
+                        catalog_meta=knowledge_client.get_catalog_meta(),
+                    )
+                    active_tool_names.update(matched)
+                    working.append({
+                        "role": "tool", "tool_call_id": c["id"],
+                        "content": json.dumps(payload),
+                    })
+                    yield {"tool_call": {
+                        "id": c["id"], "iteration": iteration, "tool": c["name"],
+                        "args": args_obj, "ok": True,
+                        "result": payload, "error": None,
+                    }}
+                    continue
                 if is_frontend_tool(c["name"]):
                     suspended_call = {
                         "id": c["id"],
@@ -421,12 +568,65 @@ async def _stream_with_tools(
                         "result": {"prose": prose}, "error": None,
                     }}
                     continue
-                # backend (memory) tool — execute via the ai-gateway over MCP
-                # (ai-gateway P0: the only tool transport; the bespoke path was
-                # retired with the hard cutover).
+                # MCP-fanout C-TOOL: read the tool's tier (R|A|W|S) from the
+                # discovery catalog. Legacy/untiered tools default to R (inert) —
+                # they never auto-emit an activity/undo and never count as a write.
+                tier = tool_tier(cat_index.get(c["name"], {})) if discovery else "R"
+
+                # H7 — Tier-A volume caps: STOP auto-applying and escalate to ONE
+                # batch confirm_action (the enforceable injection-damage bound) when
+                # EITHER ceiling is reached. We suspend on a synthetic confirm_action
+                # so the user gates the rest — exactly the H2 batch card.
+                #   (1) per-op cap   — beyond TIER_A_SAME_OP_CAP auto-writes of the
+                #       SAME op in a turn (bounds a single runaway op).
+                #   (2) aggregate cap — beyond TIER_A_AGGREGATE_CAP auto-writes
+                #       across ALL ops in a turn (bounds an alternating-op turn that
+                #       never trips any single per-op cap; residual was
+                #       5×distinct_ops without this).
+                if tier == "A":
+                    per_op_hit = (
+                        tier_a_op_counts.get(c["name"], 0) >= TIER_A_SAME_OP_CAP
+                    )
+                    aggregate_hit = (
+                        sum(tier_a_op_counts.values()) >= TIER_A_AGGREGATE_CAP
+                    )
+                    if per_op_hit or aggregate_hit:
+                        if aggregate_hit and not per_op_hit:
+                            reason = (
+                                f"Auto-apply ceiling reached: already ran "
+                                f"{TIER_A_AGGREGATE_CAP} auto-writes this turn. "
+                                f"Confirm to continue."
+                            )
+                        else:
+                            reason = (
+                                f"Auto-apply cap reached: already ran {c['name']} "
+                                f"{TIER_A_SAME_OP_CAP}× this turn. Confirm to continue."
+                            )
+                        suspended_call = {
+                            "id": c["id"],
+                            "name": "confirm_action",
+                            "args": {
+                                "confirm_token": "",
+                                "descriptor": f"{c['name']}.batch",
+                                "title": f"Apply {c['name']} again?",
+                                "domain": (c["name"].split("_", 1)[0] or "book"),
+                                "items": [args_obj],
+                                "_reason": reason,
+                            },
+                        }
+                        break
+
+                # backend tool — execute via the ai-gateway over MCP (ai-gateway
+                # P0: the only tool transport). Tier-A auto-commits here (the
+                # "lazy man" path); Tier-W/S domain tools MINT a confirm_token and
+                # return it (no write) — the agent then calls the confirm_action
+                # frontend tool, which suspends for the human gate.
+                # T4c: on an admin surface, pass the RS256 admin token so
+                # glossary_admin_* route to /mcp/admin (no X-User-Id; INV-T2).
                 envelope = await knowledge_client.mcp_execute_tool(
                     user_id=user_id, session_id=session_id, project_id=project_id,
                     tool_name=c["name"], tool_args=args_obj,
+                    admin_token=admin_token,
                 )
                 ok = bool(envelope.get("success"))
                 tool_payload = envelope.get("result") if ok else {"error": envelope.get("error")}
@@ -434,12 +634,38 @@ async def _stream_with_tools(
                     "role": "tool", "tool_call_id": c["id"],
                     "content": json.dumps(tool_payload),
                 })
-                yield {"tool_call": {
+                tool_chunk: dict = {
                     "id": c["id"], "iteration": iteration, "tool": c["name"],
                     "args": args_obj, "ok": ok,
                     "result": envelope.get("result") if ok else None,
                     "error": None if ok else envelope.get("error"),
-                }}
+                }
+                # C-ACTIVITY (H16) — a successful Tier-A auto-write emits a visible
+                # "agent did X · Undo" activity event. The op summary + undo come
+                # from the tool RESULT's `_meta` (undo_hint is NET-NEW per provider;
+                # absent → undo unavailable, still surfaced so the write isn't a
+                # silent surprise). H17: a FAILED Tier-A is reported as failed (ok=
+                # False) so a multi-step goal can't falsely claim whole success.
+                if tier == "A":
+                    pass_did_write = True
+                    tier_a_op_counts[c["name"]] = tier_a_op_counts.get(c["name"], 0) + 1
+                    if ok:
+                        result = envelope.get("result") or {}
+                        result_meta = result.get("_meta") if isinstance(result, dict) else None
+                        undo = tool_undo_hint(result_meta)
+                        summary = ""
+                        if isinstance(result_meta, dict):
+                            summary = str(result_meta.get("summary", "") or "")
+                        tool_chunk["activity"] = {
+                            "op": c["name"],
+                            "summary": summary or f"Did {c['name']}",
+                            "undo": (
+                                {"available": True, "tool": undo.get("tool"),
+                                 "args": undo.get("args", {})}
+                                if undo else {"available": False}
+                            ),
+                        }
+                yield {"tool_call": tool_chunk}
 
             if suspended_call is not None:
                 # Hand the full conversation + the pending frontend call back to
@@ -455,8 +681,23 @@ async def _stream_with_tools(
                 return
             # (all-backend-tools case: the inline loop above already executed
             # them and appended results; just continue to the next pass.)
+            # MCP-fanout H9: only a pass that actually executed a Tier-A/W WRITE
+            # decrements the write budget. A find_tools / Tier-R read pass is
+            # free — so discovery + reading never starve the write budget. In the
+            # non-discovery (legacy memory-tool) path every tool pass counts, so
+            # the cap is byte-identical to the old `for iteration in range(...)`.
+            if pass_did_write or not discovery:
+                write_passes += 1
+            # D7 termination guard: if this pass was the forced tool-free final
+            # pass (offered_tools False) yet the model defiantly emitted tool
+            # calls, do NOT loop again — fall through to the defensive limit
+            # chunk below. (Mirrors the old `for … range(max_iterations)`
+            # exhaustion; in the realistic path the final pass has no tool calls
+            # and already returned above.)
+            if not offered_tools:
+                break
 
-        # MAX_TOOL_ITERATIONS exhausted. The final pass is forced
+        # Write budget exhausted. The final pass is forced
         # tool-free (D7) so this is unreachable in practice — defensive.
         yield {"content": "", "reasoning_content": "",
                "finish_reason": "stop",
@@ -481,7 +722,10 @@ async def stream_response(
     stream_format: str = "legacy",
     editor_context: dict | None = None,
     book_context: dict | None = None,
+    admin_context: dict | None = None,
+    admin_token: str | None = None,
     disable_tools: bool = False,
+    display_language: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """Async generator that yields chat-turn SSE lines.
 
@@ -532,6 +776,7 @@ async def stream_response(
         session_id=session_id,
         project_id=str(project_id) if project_id else None,
         message=user_message_content,
+        language=display_language,
     )
 
     # ── K-CLEAN-5 (D-K8-04): emit memory_mode to the FE ─────────────────────
@@ -597,6 +842,40 @@ async def stream_response(
     if inject_glossary_skill:
         from app.services.glossary_skill import GLOSSARY_SKILL_PROMPT
         glossary_skill = GLOSSARY_SKILL_PROMPT
+    # T4c — the admin (cms) surface gets the System-tier admin skill instead:
+    # propose-by-code → always human-confirm → never claim a write before
+    # `action_done`. Mutually exclusive with the book/user glossary skill (a
+    # request is one surface or the other).
+    inject_admin_skill = (
+        stream_format == "agui"
+        and bool(admin_context)
+        and not disable_tools
+        and kctx.tool_calling_enabled
+    )
+    if inject_admin_skill:
+        from app.services.glossary_skill import GLOSSARY_ADMIN_SKILL_PROMPT
+        glossary_skill = GLOSSARY_ADMIN_SKILL_PROMPT
+    # MCP-fanout H5/H17: on the UNIVERSAL /chat surface (agui, no book/editor
+    # context) inject the discovery + capability-honesty skill so the agent
+    # searches with find_tools, answers "what can you do" by category, and is
+    # honest about async jobs + partial failures. Mutually exclusive with the
+    # glossary skill (book-scoped) AND the admin skill (cms surface).
+    inject_universal_skill = (
+        stream_format == "agui"
+        and not bool(editor_context or book_context)
+        and not bool(admin_context)
+        and not disable_tools
+        and kctx.tool_calling_enabled
+    )
+    universal_skill: str | None = None
+    if inject_universal_skill:
+        from app.services.universal_skill import UNIVERSAL_SKILL_PROMPT
+        # S-WORKFLOW (Wave 3): append the cross-service ORDERING fragment. The
+        # universal skill teaches how to act; this teaches the required sequence
+        # (chapters -> translate -> glossary -> wiki) + async-dependency waits +
+        # H4 scope honesty. Composes by concatenation, shares the same cache slot.
+        from app.services.workflow_skill import WORKFLOW_SKILL_PROMPT
+        universal_skill = UNIVERSAL_SKILL_PROMPT + "\n\n" + WORKFLOW_SKILL_PROMPT
 
     # KM5-M4a (knowledge skill): on the agentic surface where knowledge/graph tools
     # are advertised, prepend-as-system the static knowledge skill — the memory-vs-
@@ -639,6 +918,8 @@ async def stream_response(
             parts.append({"type": "text", "text": glossary_skill, "cache_control": {"type": "ephemeral"}})
         if knowledge_skill:
             parts.append({"type": "text", "text": knowledge_skill, "cache_control": {"type": "ephemeral"}})
+        if universal_skill:
+            parts.append({"type": "text", "text": universal_skill, "cache_control": {"type": "ephemeral"}})
         messages.insert(0, {"role": "system", "content": parts})
     else:
         system_parts: list[str] = []
@@ -654,6 +935,8 @@ async def stream_response(
             system_parts.append(glossary_skill)
         if knowledge_skill:
             system_parts.append(knowledge_skill)
+        if universal_skill:
+            system_parts.append(universal_skill)
         if system_parts:
             messages.insert(0, {"role": "system", "content": "\n\n".join(system_parts)})
 
@@ -669,20 +952,75 @@ async def stream_response(
     # Offer tool-calling when the project hasn't opted out
     # (kctx.tool_calling_enabled) AND knowledge-service serves the tool
     # schemas. A fetch failure → empty list → the turn runs tool-free.
+    # MCP-fanout C-FT: the UNIVERSAL /chat surface = agui WITHOUT an editor/book
+    # context (the "do anything" surface). There, the full federated catalog is
+    # too large to ship every turn (P0), so we switch on two-stage discovery:
+    # advertise only the always-on core (find_tools + the generic ui_*/confirm/
+    # propose frontend tools) and let the agent search the catalog with
+    # find_tools. The book/editor surfaces keep their focused, fully-advertised
+    # group (unchanged). F2: legacy clients get NO frontend tools and never
+    # discover/suspend — they fall through to the plain or memory-only path.
+    universal_surface = (
+        stream_format == "agui"
+        and not (editor_context or book_context)
+        and not bool(admin_context)
+        and not disable_tools
+        and kctx.tool_calling_enabled
+    )
     tool_defs: list[dict] = []
+    discovery_catalog: list[dict] | None = None
+    discovery_extra_frontend: list[dict] | None = None
     if not disable_tools and kctx.tool_calling_enabled:
-        tool_defs = await knowledge_client.get_tool_definitions()
-        # Frontend (browser-executed, suspend→Apply) write-back tools, advertised
-        # per surface (agui only — other clients never see them):
-        #   propose_edit                 — chapter editor panel (editor_context)
-        #   glossary_propose_entity_edit — any book-scoped chat (editor OR a
-        #     glossary-page/reader chat carrying book_context) [glossary P3]
-        if stream_format == "agui" and (editor_context or book_context):
-            from app.services.frontend_tools import frontend_tool_defs
-            tool_defs = tool_defs + frontend_tool_defs(
-                editor=bool(editor_context),
-                book_scoped=bool(editor_context or book_context),
-            )
+        if admin_context:
+            # T4c — ADMIN surface (cms chat): advertise ONLY the System-tier admin
+            # catalog from the SEPARATE /mcp/admin endpoint. Curation E17/INV-T6:
+            # the book/user /mcp catalog and its frontend write-back tools are
+            # NEVER fetched here, so admin sessions can't see them and book/user
+            # sessions never reach /mcp/admin. No admin token / fetch failure →
+            # empty list → the turn runs tool-free. (Never the discovery path —
+            # the admin catalog is small + fully advertised.)
+            tool_defs = await knowledge_client.get_admin_tool_definitions(admin_token)
+            # The generic class-C confirm frontend tool, so the agent can surface
+            # the System confirm card (suspend → human Confirm → the FE POSTs to
+            # /v1/glossary/actions/admin/confirm). Only when there ARE admin tools.
+            if stream_format == "agui" and tool_defs:
+                from app.services.frontend_tools import GLOSSARY_CONFIRM_ACTION_TOOL
+                tool_defs = tool_defs + [GLOSSARY_CONFIRM_ACTION_TOOL]
+        else:
+            catalog = await knowledge_client.get_tool_definitions()
+            # Discovery needs a catalog to search. When the gateway is unreachable
+            # (catalog == []), there is nothing to find_tools over, so we fall back to
+            # the plain tool-free path rather than spin up a discovery loop with only
+            # frontend tools. (TODO(S-GATEWAY): once availability is wired, a partial
+            # catalog still enables discovery.)
+            if universal_surface and not catalog:
+                universal_surface = False
+            if universal_surface:
+                # Discovery mode: the catalog stays available to find_tools, but the
+                # LLM's first pass is advertised only the always-on core. The loop
+                # (in _stream_with_tools) builds {core} ∪ {discovered} per pass.
+                from app.services.frontend_tools import frontend_tool_defs
+                discovery_catalog = catalog
+                discovery_extra_frontend = frontend_tool_defs(editor=False, book_scoped=False)
+                # `tool_defs` is the FIRST-pass advertisement when discovery is on;
+                # _stream_with_tools recomputes it each pass, but a non-empty value
+                # flips use_tools True and seeds the tool path.
+                tool_defs = _advertise_discovery_tools(
+                    _catalog_index(catalog), set(), discovery_extra_frontend
+                )
+            else:
+                tool_defs = catalog
+            # Frontend (browser-executed, suspend→Apply) write-back tools, advertised
+            # per surface (agui only — other clients never see them):
+            #   propose_edit                 — chapter editor panel (editor_context)
+            #   glossary_propose_entity_edit — any book-scoped chat (editor OR a
+            #     glossary-page/reader chat carrying book_context) [glossary P3]
+            if stream_format == "agui" and (editor_context or book_context):
+                from app.services.frontend_tools import frontend_tool_defs
+                tool_defs = tool_defs + frontend_tool_defs(
+                    editor=bool(editor_context),
+                    book_scoped=bool(editor_context or book_context),
+                )
         # A2A phase-2: advertise compose_prose only when a composer model is
         # configured for this session (orchestrator → writer delegation).
         if composer_model is not None:
@@ -707,6 +1045,7 @@ async def stream_response(
         project_id=str(project_id) if project_id else None,
         stream_format=stream_format,
         editor_context=editor_context,
+        admin_token=admin_token,
         messages=messages,
         gen_params=gen_params,
         tool_defs=tool_defs,
@@ -717,8 +1056,15 @@ async def stream_response(
         seed_usage=None,
         composer_model=composer_model,
         composer_system_prompt=system_prompt,
-        # H11: book-scoped surfaces get the richer iteration budget.
-        max_iterations=GLOSSARY_TOOL_ITERATIONS if (editor_context or book_context) else MAX_TOOL_ITERATIONS,
+        # Iteration budget by surface (H9 / H11): universal /chat = 20 (find_tools
+        # + reads uncounted), book-scoped + admin (cms) = 10, plain = 5.
+        max_iterations=(
+            UNIVERSAL_TOOL_ITERATIONS if universal_surface
+            else GLOSSARY_TOOL_ITERATIONS if (editor_context or book_context or admin_context)
+            else MAX_TOOL_ITERATIONS
+        ),
+        discovery_catalog=discovery_catalog,
+        discovery_extra_frontend=discovery_extra_frontend,
     ):
         yield line
 
@@ -742,12 +1088,15 @@ async def _emit_chat_turn(
     tool_defs: list[dict],
     use_tools: bool,
     knowledge_client,
+    admin_token: str | None = None,
     fe_memory_mode: str | None,
     msg_id: str,
     seed_usage: tuple[int, int] | None,
     composer_model: tuple[str, str] | None = None,
     composer_system_prompt: str | None = None,
     max_iterations: int = MAX_TOOL_ITERATIONS,
+    discovery_catalog: list[dict] | None = None,
+    discovery_extra_frontend: list[dict] | None = None,
 ) -> AsyncGenerator[str, None]:
     """Shared Stream→persist→finish body for a chat turn (fresh OR C6 resume).
 
@@ -798,6 +1147,9 @@ async def _emit_chat_turn(
                 composer_model=composer_model,
                 composer_system_prompt=composer_system_prompt,
                 max_iterations=max_iterations,
+                admin_token=admin_token,
+                discovery_catalog=discovery_catalog,
+                discovery_extra_frontend=discovery_extra_frontend,
             )
         else:
             chunk_stream = _stream_via_gateway(
@@ -821,6 +1173,13 @@ async def _emit_chat_turn(
                 tool_calls_history.append(tool_call)
                 for line in emitter.tool_call(tool_call):
                     yield line
+                # MCP-fanout C-ACTIVITY (H16) — a Tier-A auto-write attaches an
+                # `activity` block to its tool_call chunk; surface it as the
+                # visible "agent did X · Undo" strip.
+                activity = tool_call.get("activity")
+                if activity is not None:
+                    for line in emitter.activity(activity):
+                        yield line
                 continue
             # A2A phase-2: composer drafting on/off → transient UI indicator.
             composing = chunk_data.get("composing")
@@ -1093,12 +1452,14 @@ async def resume_stream_response(
     user_id: str,
     run_id: str,
     tool_call_id: str,
-    outcome: str,
+    outcome: str | None,
     applied_text: str | None,
+    result: dict | None = None,
     creds: ProviderCredentials,
     pool: asyncpg.Pool,
     billing: BillingClient,
     stream_format: str = "agui",
+    admin_token: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """ARCH-1 C6 — resume a suspended run after the FE executed a frontend tool.
 
@@ -1123,9 +1484,14 @@ async def resume_stream_response(
     # Append the frontend tool's result (the human's apply decision) so the
     # agent can acknowledge it in the 2nd pass.
     working = list(susp.working)
-    result_payload = {"outcome": outcome}
-    if applied_text is not None:
-        result_payload["applied_text"] = applied_text
+    if result is not None:
+        # MCP fan-out (C-NAV): a ui_* nav resolve — feed the structured result
+        # (e.g. {"navigated": true}) back verbatim as the tool result.
+        result_payload: dict = result
+    else:
+        result_payload = {"outcome": outcome if outcome is not None else "dismissed"}
+        if applied_text is not None:
+            result_payload["applied_text"] = applied_text
     working.append({
         "role": "tool",
         "tool_call_id": tool_call_id,
@@ -1151,27 +1517,65 @@ async def resume_stream_response(
     composer_system_prompt = session_row.get("system_prompt") if session_row else None
 
     knowledge_client = get_knowledge_client()
+    resume_discovery_catalog: list[dict] | None = None
+    resume_extra_frontend: list[dict] | None = None
     tool_defs: list[dict] = []
-    try:
-        tool_defs = await knowledge_client.get_tool_definitions()
-    except Exception:
-        tool_defs = []
-    # The editor tool stays advertised on resume (the agent may propose again).
-    # Append it WHENEVER agui — mirror the fresh path (stream_response), which
-    # adds the frontend tool regardless of whether memory tools are present.
-    # Gating on `tool_defs` was a bug: with no memory tools (no project) the
-    # frontend tool was dropped AND the run fell through to the no-tools gateway
-    # path, which ignores seed_usage → resume usage was NOT summed across the two
-    # runs (caught by C6 live smoke). Going through _stream_with_tools keeps the
-    # seed and re-advertises the tool.
-    if stream_format == "agui":
-        # Re-advertise both frontend write-back tools on resume — the agent may
-        # propose again (prose or a glossary edit) after the user's decision.
-        tool_defs = tool_defs + frontend_tool_defs(editor=True, book_scoped=True)
-    if composer_model is not None:
-        from app.services.composer import compose_prose_defs
-        tool_defs = tool_defs + compose_prose_defs()
-    use_tools = bool(tool_defs)
+    if admin_token:
+        # T4c — resuming an ADMIN-surface run: re-derive the admin catalog from
+        # /mcp/admin and re-advertise ONLY glossary_confirm_action. Curation
+        # holds on resume too: never the book/user catalog or its write-back
+        # tools, never discovery, never compose_prose. (The admin re-presents
+        # X-Admin-Token on the tool-results request.)
+        tool_defs = await knowledge_client.get_admin_tool_definitions(admin_token)
+        if stream_format == "agui" and tool_defs:
+            from app.services.frontend_tools import GLOSSARY_CONFIRM_ACTION_TOOL
+            tool_defs = tool_defs + [GLOSSARY_CONFIRM_ACTION_TOOL]
+        use_tools = bool(tool_defs)
+    else:
+        catalog: list[dict] = []
+        try:
+            catalog = await knowledge_client.get_tool_definitions()
+        except Exception:
+            catalog = []
+        # The editor tool stays advertised on resume (the agent may propose again).
+        # Append it WHENEVER agui — mirror the fresh path (stream_response), which
+        # adds the frontend tool regardless of whether memory tools are present.
+        # Gating on `tool_defs` was a bug: with no memory tools (no project) the
+        # frontend tool was dropped AND the run fell through to the no-tools gateway
+        # path, which ignores seed_usage → resume usage was NOT summed across the two
+        # runs (caught by C6 live smoke). Going through _stream_with_tools keeps the
+        # seed and re-advertises the tool.
+        # MCP-fanout C-FT: on an agui resume re-enable two-stage discovery when the
+        # catalog is non-empty, so a generic confirm_action / ui_* suspend can resume
+        # into a fully-capable turn (find more tools, confirm again) — not just the
+        # glossary frontend tools. The generic ui_*/confirm/propose tools come in via
+        # the always-on core; the glossary write-back tools are advertised alongside
+        # (a book-scoped suspend may still propose a glossary edit).
+        tool_defs = list(catalog)
+        if stream_format == "agui" and catalog:
+            resume_discovery_catalog = catalog
+            # The generic frontend tools (core) + the glossary write-back tools, both
+            # available on resume; _stream_with_tools advertises {core} ∪ {discovered}
+            # ∪ extra_frontend per pass.
+            resume_extra_frontend = (
+                frontend_tool_defs(editor=False, book_scoped=False)
+                + frontend_tool_defs(editor=True, book_scoped=True)
+            )
+            tool_defs = _advertise_discovery_tools(
+                _catalog_index(catalog), set(), resume_extra_frontend
+            )
+        elif stream_format == "agui":
+            # No catalog (gateway down) → no discovery, but still re-advertise the
+            # frontend write-back tools so the suspended run resumes through the tool
+            # path (seed_usage summed) rather than the no-tools gateway path.
+            tool_defs = (
+                frontend_tool_defs(editor=False, book_scoped=False)
+                + frontend_tool_defs(editor=True, book_scoped=True)
+            )
+        if composer_model is not None:
+            from app.services.composer import compose_prose_defs
+            tool_defs = tool_defs + compose_prose_defs()
+        use_tools = bool(tool_defs)
 
     # Delete the suspended run up front — the 2nd pass owns the turn now.
     await delete_suspended_run(pool, run_id)
@@ -1189,6 +1593,7 @@ async def resume_stream_response(
         project_id=str(project_id) if project_id else None,
         stream_format=stream_format,
         editor_context={"resumed": True},  # truthy so the frontend tool stays advertised
+        admin_token=admin_token,  # T4c: keep admin routing on the resume pass
         messages=working,
         gen_params=gen_params,
         tool_defs=tool_defs,
@@ -1199,9 +1604,16 @@ async def resume_stream_response(
         seed_usage=(susp.input_tokens, susp.output_tokens),
         composer_model=composer_model,
         composer_system_prompt=composer_system_prompt,
-        # H11: a resume continues a book-scoped frontend-tool turn (agui) → keep
-        # the richer cap so the post-Apply/Confirm follow-up isn't truncated.
-        max_iterations=GLOSSARY_TOOL_ITERATIONS if stream_format == "agui" else MAX_TOOL_ITERATIONS,
+        # H9/H11: an agui resume continues a frontend-tool turn → keep a rich cap
+        # (universal when discovery is on, else the book-scoped cap) so the
+        # post-Apply/Confirm follow-up isn't truncated.
+        max_iterations=(
+            UNIVERSAL_TOOL_ITERATIONS if resume_discovery_catalog is not None
+            else GLOSSARY_TOOL_ITERATIONS if stream_format == "agui"
+            else MAX_TOOL_ITERATIONS
+        ),
+        discovery_catalog=resume_discovery_catalog,
+        discovery_extra_frontend=resume_extra_frontend,
     ):
         yield line
 

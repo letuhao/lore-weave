@@ -204,6 +204,13 @@ export const tieringApi = {
       token,
     });
   },
+  /** G-U1: revert an adopted book genre back to its parent (System/User) standard. */
+  revertBookGenre(bookId: string, genreId: string, token: string) {
+    return apiJson(`${BASE}/books/${bookId}/ontology/genres/${genreId}/revert`, {
+      method: 'POST',
+      token,
+    });
+  },
 
   createBookKind(bookId: string, payload: BookKindCreate, token: string) {
     return apiJson(`${BASE}/books/${bookId}/ontology/kinds`, {
@@ -222,6 +229,13 @@ export const tieringApi = {
   deleteBookKind(bookId: string, kindId: string, token: string): Promise<void> {
     return apiJson<void>(`${BASE}/books/${bookId}/ontology/kinds/${kindId}`, {
       method: 'DELETE',
+      token,
+    });
+  },
+  /** G-U1: revert an adopted book kind back to its parent (System/User) standard. */
+  revertBookKind(bookId: string, kindId: string, token: string) {
+    return apiJson(`${BASE}/books/${bookId}/ontology/kinds/${kindId}/revert`, {
+      method: 'POST',
       token,
     });
   },
@@ -251,6 +265,13 @@ export const tieringApi = {
   deleteBookAttribute(bookId: string, attrId: string, token: string): Promise<void> {
     return apiJson<void>(`${BASE}/books/${bookId}/ontology/attributes/${attrId}`, {
       method: 'DELETE',
+      token,
+    });
+  },
+  /** G-U1: revert an adopted book attribute back to its parent (System/User) standard. */
+  revertBookAttribute(bookId: string, attrId: string, token: string) {
+    return apiJson(`${BASE}/books/${bookId}/ontology/attributes/${attrId}/revert`, {
+      method: 'POST',
       token,
     });
   },

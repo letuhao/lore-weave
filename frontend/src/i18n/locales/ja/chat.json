@@ -147,6 +147,40 @@
     "ok": "成功",
     "failed": "失敗"
   },
+  "actionConfirm": {
+    "label": "操作を確認",
+    "batch_count": "{{count}}件",
+    "warning": "影響の大きい変更です。確認してください。",
+    "warning_destructive": "破壊的で連鎖する操作です。確認してください。",
+    "confirm": "確認",
+    "confirm_all": "すべて確認",
+    "cancel": "キャンセル",
+    "done": "完了 ✓",
+    "expired": "この確認は無効になりました。もう一度依頼してください。",
+    "expired_short": "期限切れ — 再依頼",
+    "error": "変更を適用できませんでした。",
+    "error_short": "失敗",
+    "cancelled": "キャンセルしました"
+  },
+  "recordEdit": {
+    "label": "提案された編集",
+    "field": "項目",
+    "fields": "{{count}}項目",
+    "empty": "(空)",
+    "apply": "適用",
+    "dismiss": "却下",
+    "applied": "適用しました ✓",
+    "conflict": "提案後に変更されました。最新を確認するには再度依頼してください。",
+    "conflict_short": "提案後に変更 — 再依頼",
+    "error": "変更を保存できませんでした。",
+    "error_short": "保存失敗",
+    "dismissed": "却下しました"
+  },
+  "activity": {
+    "label": "実行済み",
+    "undo": "元に戻す",
+    "undone": "取り消し済み"
+  },
   "facts": {
     "type": {
       "decision": "決定",

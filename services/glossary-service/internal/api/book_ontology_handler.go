@@ -23,7 +23,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -66,11 +65,11 @@ func (s *Server) loadBookAttrOne(ctx context.Context, bookID, attrID uuid.UUID) 
 	var a bookAttrResp
 	err := s.pool.QueryRow(ctx, `
 		SELECT attr_id::text, kind_id::text, genre_id::text, code, name, description,
-		       field_type, is_required, sort_order, options, source_ref
+		       field_type, is_required, sort_order, options, auto_fill_prompt, translation_hint, source_ref
 		FROM book_attributes WHERE book_id = $1 AND attr_id = $2 AND deprecated_at IS NULL`,
 		bookID, attrID,
 	).Scan(&a.AttrID, &a.KindID, &a.GenreID, &a.Code, &a.Name, &a.Description,
-		&a.FieldType, &a.IsRequired, &a.SortOrder, &a.Options, &a.SourceRef)
+		&a.FieldType, &a.IsRequired, &a.SortOrder, &a.Options, &a.AutoFillPrompt, &a.TranslationHint, &a.SourceRef)
 	if err != nil {
 		return nil, err
 	}
@@ -118,63 +117,30 @@ func (s *Server) createBookGenre(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY", "invalid JSON")
 		return
 	}
-	if strings.TrimSpace(in.Name) == "" {
-		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "name is required")
-		return
-	}
-	if in.Color == "" {
-		in.Color = "#6366f1"
-	}
-	if strings.TrimSpace(in.Code) == "" {
-		in.Code = slugify(in.Name)
-	}
-	if in.Code == "" {
-		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "code could not be derived from name")
-		return
-	}
-	active := in.Active == nil || *in.Active // default: active
-
-	ctx := r.Context()
-	tx, err := s.pool.Begin(ctx)
+	detail, err := s.createBookGenreCore(r.Context(), bookID, bookGenreCreateParams{
+		Code: in.Code, Name: in.Name, Icon: in.Icon, Color: in.Color, SortOrder: in.SortOrder, Active: in.Active,
+	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "tx failed")
-		return
-	}
-	defer tx.Rollback(ctx) //nolint:errcheck
-
-	var genreID uuid.UUID
-	err = tx.QueryRow(ctx, `
-		INSERT INTO book_genres (book_id, code, name, icon, color, sort_order)
-		VALUES ($1,$2,$3,$4,$5,$6) RETURNING genre_id`,
-		bookID, in.Code, in.Name, in.Icon, in.Color, in.SortOrder,
-	).Scan(&genreID)
-	if err != nil {
-		if isUniqueViolation(err) {
-			writeError(w, http.StatusConflict, "GLOSS_DUPLICATE_CODE", "a book genre with this code already exists")
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "insert failed")
-		return
-	}
-	if active {
-		if _, err := tx.Exec(ctx,
-			`INSERT INTO book_active_genres (book_id, genre_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
-			bookID, genreID); err != nil {
-			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "activate failed")
-			return
-		}
-	}
-	if err := tx.Commit(ctx); err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "commit failed")
-		return
-	}
-
-	detail, err := s.loadBookGenreOne(ctx, bookID, genreID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "load failed")
+		writeBookCreateErr(w, err, "book genre")
 		return
 	}
 	writeJSON(w, http.StatusCreated, detail)
+}
+
+// writeBookCreateErr maps the shared create-core sentinels to HTTP responses.
+func writeBookCreateErr(w http.ResponseWriter, err error, what string) {
+	switch {
+	case errors.Is(err, errDuplicateBookCode):
+		writeError(w, http.StatusConflict, "GLOSS_DUPLICATE_CODE", "a "+what+" with this code already exists")
+	case errors.Is(err, errBookFKNotLive):
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "kind_id or genre_id is not a live row of this book")
+	case errors.Is(err, errInvalidFieldType):
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", err.Error())
+	case err.Error() == "name is required" || err.Error() == "code could not be derived from name":
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", err.Error())
+	default:
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "create failed")
+	}
 }
 
 func (s *Server) patchBookGenre(w http.ResponseWriter, r *http.Request) {
@@ -323,41 +289,12 @@ func (s *Server) createBookKind(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY", "invalid JSON")
 		return
 	}
-	if strings.TrimSpace(in.Name) == "" {
-		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "name is required")
-		return
-	}
-	if in.Icon == "" {
-		in.Icon = "box"
-	}
-	if in.Color == "" {
-		in.Color = "#6366f1"
-	}
-	if strings.TrimSpace(in.Code) == "" {
-		in.Code = slugify(in.Name)
-	}
-	if in.Code == "" {
-		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "code could not be derived from name")
-		return
-	}
-
-	var kindID uuid.UUID
-	err := s.pool.QueryRow(r.Context(), `
-		INSERT INTO book_kinds (book_id, code, name, description, icon, color, sort_order, is_hidden)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING book_kind_id`,
-		bookID, in.Code, in.Name, in.Description, in.Icon, in.Color, in.SortOrder, in.IsHidden,
-	).Scan(&kindID)
+	detail, err := s.createBookKindCore(r.Context(), bookID, bookKindCreateParams{
+		Code: in.Code, Name: in.Name, Description: in.Description, Icon: in.Icon,
+		Color: in.Color, SortOrder: in.SortOrder, IsHidden: in.IsHidden,
+	})
 	if err != nil {
-		if isUniqueViolation(err) {
-			writeError(w, http.StatusConflict, "GLOSS_DUPLICATE_CODE", "a book kind with this code already exists")
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "insert failed")
-		return
-	}
-	detail, err := s.loadBookKindOne(r.Context(), bookID, kindID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "load failed")
+		writeBookCreateErr(w, err, "book kind")
 		return
 	}
 	writeJSON(w, http.StatusCreated, detail)
@@ -510,10 +447,6 @@ func (s *Server) createBookAttribute(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY", "invalid JSON")
 		return
 	}
-	if strings.TrimSpace(in.Name) == "" {
-		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "name is required")
-		return
-	}
 	kindID, err := uuid.Parse(in.KindID)
 	if err != nil {
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "invalid kind_id")
@@ -524,54 +457,13 @@ func (s *Server) createBookAttribute(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "invalid genre_id")
 		return
 	}
-	// Book-local FK guard: both must be live rows of THIS book (a row from another
-	// book would satisfy the raw FK but is a cross-tenant reference).
-	if live, err := s.bookKindLive(r.Context(), bookID, kindID); err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "kind check failed")
-		return
-	} else if !live {
-		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "kind_id is not a live kind of this book")
-		return
-	}
-	if live, err := s.bookGenreLive(r.Context(), bookID, genreID); err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "genre check failed")
-		return
-	} else if !live {
-		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "genre_id is not a live genre of this book")
-		return
-	}
-	if in.FieldType == "" {
-		in.FieldType = "text"
-	}
-	if strings.TrimSpace(in.Code) == "" {
-		in.Code = slugify(in.Name)
-	}
-	if in.Code == "" {
-		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "code could not be derived from name")
-		return
-	}
-
-	var attrID uuid.UUID
-	err = s.pool.QueryRow(r.Context(), `
-		INSERT INTO book_attributes
-		  (book_id, kind_id, genre_id, code, name, description, field_type, is_required,
-		   sort_order, options, auto_fill_prompt, translation_hint)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING attr_id`,
-		bookID, kindID, genreID, in.Code, in.Name, in.Description, in.FieldType, in.IsRequired,
-		in.SortOrder, in.Options, in.AutoFillPrompt, in.TranslationHint,
-	).Scan(&attrID)
+	detail, err := s.createBookAttributeCore(r.Context(), bookID, bookAttrCreateParams{
+		KindID: kindID, GenreID: genreID, Code: in.Code, Name: in.Name, Description: in.Description,
+		FieldType: in.FieldType, IsRequired: in.IsRequired, SortOrder: in.SortOrder, Options: in.Options,
+		AutoFillPrompt: in.AutoFillPrompt, TranslationHint: in.TranslationHint,
+	})
 	if err != nil {
-		if isUniqueViolation(err) {
-			writeError(w, http.StatusConflict, "GLOSS_DUPLICATE_CODE",
-				"an attribute with this code already exists on this kind×genre cell")
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "insert failed")
-		return
-	}
-	detail, err := s.loadBookAttrOne(r.Context(), bookID, attrID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "load failed")
+		writeBookCreateErr(w, err, "book attribute")
 		return
 	}
 	writeJSON(w, http.StatusCreated, detail)

@@ -412,6 +412,8 @@ def _patched_knowledge(stable: str = "", volatile: str = "", context: str | None
     client = MagicMock()
     client.build_context = AsyncMock(return_value=kctx)
     client.get_tool_definitions = AsyncMock(return_value=tool_defs or [])
+    # MCP-fanout: discovery reads the catalog-meta (availability) synchronously.
+    client.get_catalog_meta = lambda: {}
     return client
 
 
@@ -845,9 +847,11 @@ class TestK21BToolCallingIntegration:
         assert loop_mock.call_args.kwargs["max_iterations"] == 10  # H11
 
     @pytest.mark.asyncio
-    async def test_global_chat_no_skill_default_cap(self):
-        """A non-book-scoped chat gets neither the glossary skill nor the raised
-        cap — the skill/cap are scoped to book surfaces only."""
+    async def test_global_chat_universal_surface_discovery_and_cap(self):
+        """MCP-fanout C-FT/H9: the agui /chat surface WITHOUT a book/editor
+        context is the UNIVERSAL "do anything" surface — it switches on two-stage
+        discovery (cap=20, discovery_catalog passed, universal skill injected,
+        NOT the glossary skill)."""
         pool, conn = _make_pool_with_conn()
         pool.fetch.return_value = []
         conn.fetchval.return_value = 1
@@ -867,17 +871,70 @@ class TestK21BToolCallingIntegration:
                 user_id=TEST_USER_ID, model_source="user_model",
                 model_ref=TEST_MODEL_REF, creds=_make_creds(),
                 pool=pool, billing=AsyncMock(),
-                stream_format="agui",  # agui but NO book/editor context
+                stream_format="agui",  # agui but NO book/editor context = universal
             ):
                 pass
 
         msgs = loop_mock.call_args.kwargs["messages"]
         system = next((m for m in msgs if m["role"] == "system"), None)
-        if system is not None:
-            content = system["content"] if isinstance(system["content"], str) \
-                else " ".join(p["text"] for p in system["content"])
-            assert "Glossary assistant" not in content
+        assert system is not None
+        content = system["content"] if isinstance(system["content"], str) \
+            else " ".join(p["text"] for p in system["content"])
+        # universal skill in, glossary skill out
+        assert "Glossary assistant" not in content
+        assert "Universal assistant" in content
+        # S-WORKFLOW (Wave 3): the cross-service ORDERING fragment composes in on
+        # the same universal surface (chapters -> translate -> glossary -> wiki).
+        assert "Cross-service workflows" in content
+        assert "Build a book end-to-end" in content
+        # H9: universal cap = 20, and discovery is on (catalog passed)
+        assert loop_mock.call_args.kwargs["max_iterations"] == 20
+        assert loop_mock.call_args.kwargs["discovery_catalog"] is not None
+        # C-FT: the first-pass advertisement is the curated core (incl. find_tools
+        # + the generic frontend tools), NOT the full catalog dumped to the LLM.
+        adv_names = [t["function"]["name"] for t in loop_mock.call_args.kwargs["tools"]]
+        assert "find_tools" in adv_names
+        assert "ui_navigate" in adv_names and "confirm_action" in adv_names
+        # memory_search is in the catalog but discovered via find_tools, not core.
+        assert "memory_search" not in adv_names
+
+    @pytest.mark.asyncio
+    async def test_legacy_surface_no_discovery_no_frontend_tools(self):
+        """F2: a LEGACY (non-agui) client never gets discovery or frontend tools —
+        it advertises only the federated catalog as-is (no find_tools, no ui_*,
+        no confirm_action) and never enters the discovery path, so it can't
+        suspend on a frontend tool / hang."""
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+        kc = _patched_knowledge(
+            stable="", volatile="", mode="static",
+            tool_defs=[{"type": "function", "function": {"name": "memory_search"}}],
+        )
+
+        async def fake_tool_loop(**kwargs):
+            yield {"content": "ok", "reasoning_content": "", "finish_reason": "stop", "usage": _Usage(1, 1)}
+
+        with patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+             patch("app.services.stream_service._stream_with_tools", side_effect=fake_tool_loop) as loop_mock, \
+             patch("app.services.stream_service._stream_via_gateway"):
+            async for _ in stream_response(
+                session_id=TEST_SESSION_ID, user_message_content="hi",
+                user_id=TEST_USER_ID, model_source="user_model",
+                model_ref=TEST_MODEL_REF, creds=_make_creds(),
+                pool=pool, billing=AsyncMock(),
+                stream_format="legacy",  # legacy → no discovery, no frontend tools
+            ):
+                pass
+
+        # No discovery, default cap, only the federated catalog advertised.
+        assert loop_mock.call_args.kwargs["discovery_catalog"] is None
         assert loop_mock.call_args.kwargs["max_iterations"] == 5
+        adv_names = [t["function"]["name"] for t in loop_mock.call_args.kwargs["tools"]]
+        assert adv_names == ["memory_search"]
+        assert "find_tools" not in adv_names
+        for fe in ("ui_navigate", "confirm_action", "propose_record_edit", "propose_edit"):
+            assert fe not in adv_names
 
     @pytest.mark.asyncio
     async def test_disable_tools_advertises_no_tools_compose_mode(self):
