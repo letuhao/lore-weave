@@ -123,6 +123,7 @@
     },
     "action": {
       "edit": "編輯",
+      "translations": "檢視翻譯",
       "extract": "擷取詞彙",
       "download": "下載",
       "trash": "回收筒"

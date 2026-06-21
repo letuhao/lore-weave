@@ -21,6 +21,8 @@
   "translate_title": "使用 AI 翻譯內容（區塊模式）",
   "translating": "翻譯中...",
   "translate": "翻譯",
+  "view_translations": "翻譯",
+  "view_translations_title": "檢視已儲存的翻譯版本（語言、歷史、並排比較）",
   "toggle_source": "切換來源面板",
   "toggle_history": "切換歷史 / AI 面板",
   "unsaved": "未儲存",

@@ -123,6 +123,7 @@
     },
     "action": {
       "edit": "Sửa",
+      "translations": "Xem bản dịch",
       "extract": "Trích xuất thuật ngữ",
       "download": "Tải xuống",
       "trash": "Thùng rác"

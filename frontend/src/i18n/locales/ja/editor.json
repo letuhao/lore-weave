@@ -21,6 +21,8 @@
   "translate_title": "AIでコンテンツを翻訳（ブロックモード）",
   "translating": "翻訳中...",
   "translate": "翻訳",
+  "view_translations": "翻訳",
+  "view_translations_title": "保存された翻訳バージョンを表示（言語・履歴・並列比較）",
   "toggle_source": "ソースパネルの切り替え",
   "toggle_history": "履歴 / AIパネルの切り替え",
   "unsaved": "未保存",

@@ -123,6 +123,7 @@
     },
     "action": {
       "edit": "Edit",
+      "translations": "View translations",
       "extract": "Extract Glossary",
       "download": "Download",
       "trash": "Trash"
