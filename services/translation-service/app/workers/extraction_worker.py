@@ -396,6 +396,23 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
             job_id, final_status,
         )
 
+    # OBS/M2 (INV-O14) — the JOB-TERMINAL rollup. The per-batch outcome rows are the SSOT;
+    # the notification sink gets ONLY this debounced job-level summary (never per-batch), so
+    # the user sees an actionable "N batches truncated — raise the model / shrink the batch"
+    # instead of a silent 0-entities success. Derived from the SSOT at finalize (best-effort:
+    # a query failure just omits the summary). This is the consumer-side realization of the
+    # batch-outcome SSOT — a per-batch projection to an external stream is intentionally NOT
+    # emitted (no subscriber); the rollup here + the /reconcile sweep cover observability.
+    batch_summary: dict[str, int] = {}
+    try:
+        async with pool.acquire() as db:
+            srows = await db.fetch(
+                "SELECT status, count(*) AS n FROM extraction_batch_outcomes "
+                "WHERE job_id=$1 GROUP BY status", job_id)
+        batch_summary = {r["status"]: r["n"] for r in srows}
+    except Exception as exc:  # noqa: BLE001 — the summary is advisory, never fail finalize
+        log.warning("extraction_worker: job %s batch-summary rollup failed: %s", job_id, exc)
+
     # P1 terminal emit (best-effort). 'completed_with_errors' has no canonical JobStatus →
     # map to 'completed' (the job DID finish; per-chapter failures are tracked on the row).
     _canon = "completed" if final_status in ("completed", "completed_with_errors") else "failed"
@@ -414,8 +431,18 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
             "entities_created": total_created,
             "entities_updated": total_updated,
             "entities_skipped": total_skipped,
+            # INV-O14 rollup: a count per batch-outcome status across the whole job. A
+            # non-empty truncated/validation_rejected/llm_error count is the actionable
+            # signal (the 26-scenario bug was this being invisible).
+            "batch_summary": batch_summary,
         },
     })
+
+    if batch_summary.get("truncated") or batch_summary.get("validation_rejected") or batch_summary.get("llm_error"):
+        log.warning(
+            "extraction_worker: job %s finished with batch issues — %s (consider a smaller "
+            "batch / larger model)", job_id, batch_summary,
+        )
 
     log.info(
         "extraction_worker: job %s complete — created=%d updated=%d skipped=%d failed_chapters=%d",

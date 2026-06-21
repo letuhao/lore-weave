@@ -103,6 +103,39 @@ async def test_resume_skips_completed_chapters_and_finalizes():
     assert all(c.kwargs.get("kind") == "glossary_extraction" for c in emit.await_args_list)
 
 
+@pytest.mark.asyncio
+async def test_job_terminal_emits_batch_summary_rollup():
+    # OBS/M2 (INV-O14): the job-terminal notification carries a per-status rollup derived
+    # from the extraction_batch_outcomes SSOT, so a truncated/rejected batch is visible.
+    jid = uuid4()
+    c1 = str(uuid4())
+    db = AsyncMock()
+    db.fetchval = AsyncMock(return_value=jid)  # claim succeeds
+    db.fetch = AsyncMock(side_effect=[
+        # 1) resume checkpoint: c1 already completed on a prior delivery.
+        [{"chapter_id": c1, "status": "completed", "it": 10, "ot": 5}],
+        # 2) the finalize rollup query over extraction_batch_outcomes.
+        [{"status": "ok", "n": 3}, {"status": "truncated", "n": 1}],
+    ])
+    db.execute = AsyncMock()
+    publish, publish_event = AsyncMock(), AsyncMock()
+
+    with patch("app.workers.extraction_worker.fetch_known_entities", new=AsyncMock(return_value=[])), \
+         patch("app.workers.extraction_worker._process_extraction_chapter", new=AsyncMock()), \
+         patch("app.workers.extraction_worker.emit_job_event_safe", new=AsyncMock()):
+        await _run_extraction_job(
+            {"book_id": "b", "chapter_ids": [c1]},
+            jid, "u", _pool(db), publish, publish_event, MagicMock(),
+        )
+
+    terminal = [
+        c.args[1]["payload"] for c in publish_event.await_args_list
+        if c.args[1].get("payload", {}).get("status") in ("completed", "completed_with_errors", "failed")
+    ]
+    assert terminal, "no terminal status_changed event emitted"
+    assert terminal[-1]["batch_summary"] == {"ok": 3, "truncated": 1}
+
+
 # ── M0 (extraction pipeline FND): finish_reason consumption ───────────────
 
 
