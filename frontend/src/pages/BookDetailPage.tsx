@@ -17,10 +17,12 @@ import { SettingsTab } from '@/pages/book-tabs/SettingsTab';
 import { WikiTab } from '@/pages/book-tabs/WikiTab';
 import { SharingTab } from '@/pages/book-tabs/SharingTab';
 import { EnrichmentTab } from '@/pages/book-tabs/EnrichmentTab';
+import { KnowledgeOntologyTab } from '@/pages/book-tabs/KnowledgeOntologyTab';
 
 const tabs = [
   { key: '', labelKey: 'detail.tabs.chapters' },
   { key: '/glossary', labelKey: 'detail.tabs.glossary' },
+  { key: '/kg-ontology', labelKey: 'detail.tabs.kgOntology' },
   { key: '/translation', labelKey: 'detail.tabs.translation' },
   { key: '/enrichment', labelKey: 'detail.tabs.enrichment' },
   { key: '/wiki', labelKey: 'detail.tabs.wiki' },
@@ -191,6 +193,11 @@ function BookTabContent({ bookId, book, activeTab, onReload }: {
       {visited.has('/glossary') && (
         <div style={{ display: activeTab === '/glossary' ? undefined : 'none' }}>
           <GlossaryTab bookId={bookId} bookGenreTags={book.genre_tags ?? []} bookOriginalLanguage={book.original_language ?? undefined} />
+        </div>
+      )}
+      {visited.has('/kg-ontology') && (
+        <div style={{ display: activeTab === '/kg-ontology' ? undefined : 'none' }}>
+          <KnowledgeOntologyTab bookId={bookId} />
         </div>
       )}
       {visited.has('/enrichment') && (

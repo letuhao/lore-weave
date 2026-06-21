@@ -1,4 +1,16 @@
 {
+  "page": {
+    "title": "Knowledge Graph Schema",
+    "tabs": { "adopt": "Adopt", "schema": "Schema", "views": "Views", "sync": "Sync" },
+    "noProject": "No knowledge project for this book",
+    "noProjectHelp": "This book has no linked knowledge project yet. Run extraction or create a project to manage its graph schema.",
+    "noSchema": "No schema adopted yet — adopt a template to start."
+  },
+  "common": {
+    "dismiss": "Dismiss",
+    "deprecate": "Deprecate",
+    "deprecated": "deprecated"
+  },
   "adopt": {
     "chooseTemplate": "Choose a template to adopt",
     "select": "Select",
@@ -28,7 +40,39 @@
       "modified": "overwritten"
     }
   },
-  "common": {
-    "dismiss": "Dismiss"
+  "schema": {
+    "edgeTypes": "Edge types",
+    "factTypes": "Fact types",
+    "nodeKinds": "Node kinds (← glossary)",
+    "vocabSet": "Vocab set",
+    "closed": "closed — extractor may only assign",
+    "temporal": "⏱ temporal",
+    "noEdges": "No edge types yet.",
+    "addEdgeType": "Add edge type",
+    "code": "Code",
+    "label": "Label",
+    "temporalField": "temporal (valid_from + provenance)",
+    "cardinality": "Cardinality",
+    "addButton": "Add edge type"
+  },
+  "sync": {
+    "upToDate": "Up to date — no upstream changes.",
+    "updatesAvailable": "{{count}} updates available from upstream",
+    "keepAllMine": "Keep all mine",
+    "takeAllTheirs": "Take all theirs",
+    "added": "ADDED",
+    "modified": "MODIFIED",
+    "removed": "REMOVED UPSTREAM",
+    "keepMine": "Keep mine",
+    "takeTheirs": "Take theirs",
+    "applyButton": "Apply {{count}} decisions"
+  },
+  "views": {
+    "name": "View name",
+    "edgeTypes": "Edge types in this view",
+    "nodeKinds": "Node kinds shown",
+    "createButton": "Create view",
+    "saveButton": "Save view",
+    "perUser": "per-user"
   }
 }

@@ -1,4 +1,16 @@
 {
+  "page": {
+    "title": "知識圖譜結構",
+    "tabs": { "adopt": "採用", "schema": "結構", "views": "視圖", "sync": "同步" },
+    "noProject": "此書尚無知識專案",
+    "noProjectHelp": "此書尚未連結任何知識專案。請執行抽取或建立專案以管理其圖譜結構。",
+    "noSchema": "尚未採用結構——請先採用一個範本以開始。"
+  },
+  "common": {
+    "dismiss": "關閉",
+    "deprecate": "標記為棄用",
+    "deprecated": "已棄用"
+  },
   "adopt": {
     "chooseTemplate": "選擇要採用的範本",
     "select": "選擇",
@@ -28,7 +40,39 @@
       "modified": "已覆寫"
     }
   },
-  "common": {
-    "dismiss": "關閉"
+  "schema": {
+    "edgeTypes": "邊類型",
+    "factTypes": "事實類型",
+    "nodeKinds": "節點類別（← 詞彙表）",
+    "vocabSet": "詞彙集",
+    "closed": "封閉——抽取器只能指派",
+    "temporal": "⏱ 時序",
+    "noEdges": "尚無邊類型。",
+    "addEdgeType": "新增邊類型",
+    "code": "代碼",
+    "label": "標籤",
+    "temporalField": "時序（valid_from + 來源）",
+    "cardinality": "基數",
+    "addButton": "新增邊類型"
+  },
+  "sync": {
+    "upToDate": "已是最新——上游沒有變更。",
+    "updatesAvailable": "上游有 {{count}} 項更新",
+    "keepAllMine": "全部保留我的",
+    "takeAllTheirs": "全部採用對方的",
+    "added": "新增",
+    "modified": "修改",
+    "removed": "上游已移除",
+    "keepMine": "保留我的",
+    "takeTheirs": "採用對方的",
+    "applyButton": "套用 {{count}} 項決定"
+  },
+  "views": {
+    "name": "視圖名稱",
+    "edgeTypes": "此視圖中的邊類型",
+    "nodeKinds": "顯示的節點類別",
+    "createButton": "建立視圖",
+    "saveButton": "儲存視圖",
+    "perUser": "依使用者"
   }
 }
