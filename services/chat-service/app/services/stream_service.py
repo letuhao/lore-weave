@@ -820,7 +820,13 @@ async def stream_response(
     # ── RE-3: parse + STRIP a chat-only inline reasoning command (/no_think etc.)
     # before the message reaches the model or is persisted. The inline override is
     # the highest-precedence reasoning signal (beats the `thinking` toggle below).
-    user_message_content, _inline_effort = parse_inline_effort(user_message_content)
+    # /review-impl guard: only adopt the stripped text when it's NON-EMPTY — a
+    # command-ONLY message ("/no_think") strips to "", and an empty user turn 400s
+    # on some providers. In that degenerate case keep the original; the effort
+    # override still applies.
+    _stripped_msg, _inline_effort = parse_inline_effort(user_message_content)
+    if _stripped_msg:
+        user_message_content = _stripped_msg
 
     # ── Load session settings ───────────────────────────────────────────────
     session_row = await pool.fetchrow(

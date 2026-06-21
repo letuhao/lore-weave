@@ -68,6 +68,9 @@ def test_parse_inline_effort_commands():
     assert parse_inline_effort(text) == (text, None)
     # Last command wins.
     assert parse_inline_effort("/think a /no_think b")[1] == "off"
+    # Command-ONLY message strips to empty (the caller must guard against an empty
+    # user turn — stream_response keeps the original in that case).
+    assert parse_inline_effort("/no_think") == ("", "off")
 
 
 def _make_creds(**overrides) -> ProviderCredentials:
