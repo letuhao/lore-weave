@@ -138,9 +138,49 @@ func (s *Server) confirmAction(w http.ResponseWriter, r *http.Request) {
 		s.effectSchemaCreateAttr(w, r.Context(), claims)
 	case descAdopt:
 		s.effectAdopt(w, r.Context(), claims)
+	case descSyncApply:
+		s.effectSyncApply(w, r.Context(), claims)
+	case descBookRevert:
+		s.effectBookRevert(w, r.Context(), claims)
+	case descStatusChange:
+		s.effectStatusChange(w, r.Context(), claims)
+	case descRestoreRevision:
+		s.effectRestoreRevision(w, r.Context(), claims)
+	case descReassignKind:
+		s.effectReassignKind(w, r.Context(), claims)
+	case descMerge:
+		s.effectMerge(w, r.Context(), claims)
 	default:
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "unknown action")
 	}
+}
+
+// syncApplyParams is the captured intent for a sync_apply action: the per-row choice
+// set the LLM proposed and the human confirmed (§12.4). Each item is re-validated
+// against current source state at confirm time inside applyBookSyncCore.
+type syncApplyParams struct {
+	Items []syncApplyItemReq `json:"items"`
+}
+
+func (s *Server) effectSyncApply(w http.ResponseWriter, ctx context.Context, claims actionClaims) {
+	var p syncApplyParams
+	if err := json.Unmarshal(claims.Params, &p); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "bad proposal payload")
+		return
+	}
+	// userID = the proposer (== redeemer, enforced in authorizeAction). The user-tier
+	// source scoping inside applySyncRow keys off it, so a grantee can only pull their
+	// own private user-tier values (D-GKA-SYNC-USER-SOURCE-VISIBILITY).
+	resp, err := s.applyBookSyncCore(ctx, claims.BookID, claims.UserID, p.Items)
+	if errors.Is(err, errSyncInvalidItem) {
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "the proposed items are no longer valid — propose again")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "sync apply failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) effectAdopt(w http.ResponseWriter, ctx context.Context, claims actionClaims) {
@@ -293,9 +333,60 @@ func (s *Server) previewAction(w http.ResponseWriter, r *http.Request) {
 		s.previewSchemaCreate(w, claims)
 	case descAdopt:
 		s.previewAdopt(w, r.Context(), claims)
+	case descSyncApply:
+		s.previewSyncApply(w, r.Context(), claims)
+	case descBookRevert:
+		s.previewBookRevert(w, r.Context(), claims)
+	case descStatusChange:
+		s.previewStatusChange(w, r.Context(), claims)
+	case descRestoreRevision:
+		s.previewRestoreRevision(w, r.Context(), claims)
+	case descReassignKind:
+		s.previewReassignKind(w, r.Context(), claims)
+	case descMerge:
+		s.previewMerge(w, r.Context(), claims)
 	default:
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "unknown action")
 	}
+}
+
+// previewSyncApply re-renders the sync confirm card from CURRENT state (§5.1 #5):
+// it re-runs the live diff and reports, of the proposed rows, how many will still
+// take_theirs / keep_mine and how many the source has retired since the proposal.
+func (s *Server) previewSyncApply(w http.ResponseWriter, ctx context.Context, claims actionClaims) {
+	var p syncApplyParams
+	if err := json.Unmarshal(claims.Params, &p); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "bad proposal payload")
+		return
+	}
+	// Bucket each proposed row by whether its source is CURRENTLY live — matching what
+	// applySyncRow will actually do (a live row applies, take or keep; a row whose
+	// source retired since the proposal is skipped as source_retired).
+	live, err := s.bookSyncSourceLiveByID(ctx, claims.BookID, claims.UserID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "preview failed")
+		return
+	}
+	var takeN, keepN, retiredN int
+	for _, it := range p.Items {
+		if !live[it.ID] {
+			retiredN++ // source retired/removed (or no longer a sourced row of this book)
+			continue
+		}
+		if it.Choice == "take_theirs" {
+			takeN++
+		} else {
+			keepN++
+		}
+	}
+	writeJSON(w, http.StatusOK, actionPreview{
+		Descriptor: descSyncApply, Title: "Apply standard updates to this book", Destructive: true,
+		PreviewRows: []previewRow{
+			{Label: "rows updated from source", Value: fmt.Sprint(takeN), Note: "take_theirs"},
+			{Label: "rows kept as-is", Value: fmt.Sprint(keepN), Note: "keep_mine (accept divergence)"},
+			{Label: "no longer available", Value: fmt.Sprint(retiredN), Note: "source retired / already current since proposed"},
+		},
+	})
 }
 
 // previewAdopt enumerates, from CURRENT state, how many picked standards are new vs
@@ -344,6 +435,89 @@ func (s *Server) previewBookDelete(w http.ResponseWriter, ctx context.Context, c
 		return
 	}
 	out.PreviewRows = rows
+	writeJSON(w, http.StatusOK, out)
+}
+
+// effectBookRevert re-pulls a book row's parent values (G-U1). Re-resolves the target by
+// code at confirm time; a vanished target or a now-retired/deprecated source is
+// re-proposable (422). On success returns the refreshed row.
+func (s *Server) effectBookRevert(w http.ResponseWriter, ctx context.Context, claims actionClaims) {
+	var p bookDeleteParams
+	if err := json.Unmarshal(claims.Params, &p); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "bad proposal payload")
+		return
+	}
+	targetID, err := s.resolveDeleteTarget(ctx, claims.BookID, p)
+	if isNoRows(err) {
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "the target no longer exists — propose again")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "revert failed")
+		return
+	}
+	reverted, err := s.revertBookRow(ctx, claims.BookID, claims.UserID, p.Level, targetID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "revert failed")
+		return
+	}
+	if !reverted {
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN",
+			"the parent standard is no longer available — propose again")
+		return
+	}
+	var detail any
+	switch p.Level {
+	case deleteLevelGenre:
+		detail, err = s.loadBookGenreOne(ctx, claims.BookID, targetID)
+	case deleteLevelKind:
+		detail, err = s.loadBookKindOne(ctx, claims.BookID, targetID)
+	case deleteLevelAttr:
+		detail, err = s.loadBookAttrOne(ctx, claims.BookID, targetID)
+	default:
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "unknown revert level")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "load failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, detail)
+}
+
+// previewBookRevert re-renders the revert confirm card from CURRENT state: the parent tier
+// the row reverts to, or a "book-native / nothing to revert" note.
+func (s *Server) previewBookRevert(w http.ResponseWriter, ctx context.Context, claims actionClaims) {
+	var p bookDeleteParams
+	if err := json.Unmarshal(claims.Params, &p); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "bad proposal payload")
+		return
+	}
+	out := actionPreview{Descriptor: descBookRevert, Destructive: false,
+		Title: fmt.Sprintf("Revert %s %q to default", p.Level, p.Code)}
+	targetID, err := s.resolveDeleteTarget(ctx, claims.BookID, p)
+	if isNoRows(err) {
+		out.PreviewRows = []previewRow{{Label: "status", Value: "already removed", Note: "this target no longer exists"}}
+		writeJSON(w, http.StatusOK, out)
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "preview failed")
+		return
+	}
+	ref, err := s.bookRowSourceRef(ctx, claims.BookID, p.Level, targetID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "preview failed")
+		return
+	}
+	if ref == "" {
+		out.PreviewRows = []previewRow{{Label: "status", Value: "book-native", Note: "no parent standard to revert to"}}
+		writeJSON(w, http.StatusOK, out)
+		return
+	}
+	out.PreviewRows = []previewRow{
+		{Label: "reverts to", Value: tierLabel(ref) + " default", Note: "discards this book's local edits to this row"},
+	}
 	writeJSON(w, http.StatusOK, out)
 }
 

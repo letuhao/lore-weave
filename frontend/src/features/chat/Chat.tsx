@@ -4,6 +4,7 @@ import { ChatView } from './components/ChatView';
 import { NewChatDialog } from './components/NewChatDialog';
 import { ChatEmptyState } from './components/ChatEmptyState';
 import { useEmbeddedChatBinding } from './useEmbeddedChatBinding';
+import { useGlossaryDisplayLanguage } from '@/features/glossary/hooks/useGlossaryDisplayLanguage';
 
 interface ChatProps {
   /** When set, the chat binds to this book's knowledge project (memory/RAG)
@@ -36,9 +37,17 @@ export function Chat({ bookId, editorContext, composeMode, actionBar, className 
   // glossary edit-existing tool. The editor also passes editorContext (chapter
   // prose tool); a glossary-page/reader chat passes only bookContext.
   const bookContext = bookId ? { book_id: bookId } : undefined;
+  // S6: the user's per-book display language (set only when viewing a translation).
+  // Forwarded so knowledge composes entity aliases in it for the chat context.
+  const { apiDisplayLanguage } = useGlossaryDisplayLanguage(bookId ?? '');
   return (
     <ChatSessionProvider embedded>
-      <ChatStreamProvider editorContext={editorContext} composeMode={composeMode} bookContext={bookContext}>
+      <ChatStreamProvider
+        editorContext={editorContext}
+        composeMode={composeMode}
+        bookContext={bookContext}
+        displayLanguage={apiDisplayLanguage}
+      >
         <EmbeddedChat bookId={bookId} actionBar={actionBar} className={className} />
       </ChatStreamProvider>
     </ChatSessionProvider>

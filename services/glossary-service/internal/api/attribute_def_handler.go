@@ -117,7 +117,7 @@ func (s *Server) listSystemAttributes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows, err := s.pool.Query(r.Context(),
-		`SELECT `+attrDefCols+` FROM system_attributes WHERE kind_id=$1 AND genre_id=$2 ORDER BY sort_order, code`,
+		`SELECT `+attrDefCols+` FROM system_attributes WHERE kind_id=$1 AND genre_id=$2 AND deprecated_at IS NULL ORDER BY sort_order, code`,
 		kindID, genreID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "query failed")
@@ -196,6 +196,7 @@ func (s *Server) createUserAttribute(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "name is required")
 		return
 	}
+	in.Name = strings.TrimSpace(in.Name) // normalize identically to the MCP tool path
 	if strings.TrimSpace(in.Code) == "" {
 		in.Code = slugify(in.Name)
 	}
@@ -304,7 +305,7 @@ func (s *Server) patchUserAttribute(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		setClauses = append(setClauses, fmt.Sprintf("name = $%d", argN))
-		args = append(args, v)
+		args = append(args, strings.TrimSpace(v)) // normalize identically to the MCP tool path
 		argN++
 	}
 	if raw, ok := in["field_type"]; ok {

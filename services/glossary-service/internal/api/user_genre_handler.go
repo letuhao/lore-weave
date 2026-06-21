@@ -75,7 +75,7 @@ func (s *Server) listStandardGenres(w http.ResponseWriter, r *http.Request) {
 	if inclSystem {
 		rows, err := s.pool.Query(ctx, `
 			SELECT genre_id::text, code, name, icon, color, sort_order, created_at, updated_at
-			FROM system_genres ORDER BY sort_order, code`)
+			FROM system_genres WHERE deprecated_at IS NULL ORDER BY sort_order, code`)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "system genres query failed")
 			return
@@ -256,6 +256,7 @@ func (s *Server) createUserGenre(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "name is required")
 		return
 	}
+	in.Name = strings.TrimSpace(in.Name) // normalize identically to the MCP tool path
 	if in.Icon == "" {
 		in.Icon = ""
 	}
@@ -367,7 +368,7 @@ func (s *Server) patchUserGenre(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		setClauses = append(setClauses, fmt.Sprintf("name = $%d", argN))
-		args = append(args, v)
+		args = append(args, strings.TrimSpace(v)) // normalize identically to the MCP tool path
 		nameArgN = argN
 		argN++
 	}

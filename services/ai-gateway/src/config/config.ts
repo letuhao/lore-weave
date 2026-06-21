@@ -22,6 +22,14 @@ export interface AppConfig {
   /** service-to-service token; consumers must present it, gateway forwards its own to providers (SO-1) */
   internalToken: string;
   providers: ProviderConfig[];
+  /**
+   * The glossary admin MCP upstream (`/mcp/admin`) — federated into a SEPARATE,
+   * admin-only catalog (INV-T6, spec §4c/§6.2). Deliberately NOT a member of
+   * `providers` so its tool names can never blend into the user/book `/mcp`
+   * catalog. Defaults to the glossary provider's MCP base with `/mcp` → `/mcp/admin`,
+   * so no new env is required for the standard topology; overridable.
+   */
+  adminProvider: ProviderConfig;
   /** how often the federated catalog is refreshed from providers (H10) */
   catalogRefreshMs: number;
   /**
@@ -164,10 +172,20 @@ export function loadConfig(): AppConfig {
     process.env.KNOWLEDGE_SERVICE_URL ?? knowledgeMcp.replace(/\/mcp\/?$/, '')
   ).replace(/\/$/, '');
 
+  // T4b: the glossary admin MCP upstream. Default = glossary's MCP base with the
+  // `/mcp` segment rewritten to `/mcp/admin`; overridable via GLOSSARY_ADMIN_MCP_URL.
+  const glossaryMcp = providers.find((p) => p.name === 'glossary')?.mcpUrl ?? '';
+  const adminProvider: ProviderConfig = {
+    name: 'glossary-admin',
+    mcpUrl:
+      process.env.GLOSSARY_ADMIN_MCP_URL ?? glossaryMcp.replace(/\/mcp\/?$/, '/mcp/admin'),
+  };
+
   cached = {
     port: parseInt(process.env.AI_GATEWAY_PORT ?? '8210', 10),
     internalToken: process.env.INTERNAL_SERVICE_TOKEN ?? '',
     providers,
+    adminProvider,
     catalogRefreshMs: parseInt(process.env.AI_GATEWAY_CATALOG_REFRESH_MS ?? '30000', 10),
     groundingUrl,
   };

@@ -72,6 +72,36 @@ describe('useChatMessages — MCP fan-out (C-ACTIVITY + C-NAV)', () => {
     expect(assistant!.activities).toBeNull();
   });
 
+  it('S6: sends display_language in the body when provided (and omits it otherwise)', async () => {
+    // Fresh response per call — a ReadableStream body locks once consumed.
+    const fetchMock = vi.fn().mockImplementation(async () => sseResponse([
+      JSON.stringify({ type: 'RUN_FINISHED', result: {} }),
+    ]));
+    vi.stubGlobal('fetch', fetchMock);
+
+    // With a per-book display language → body carries display_language.
+    const withLang = renderHook(() =>
+      useChatMessages('s-1', undefined, undefined, { book_id: 'b1' }, 'en'),
+    );
+    await waitFor(() => expect(withLang.result.current.isLoading).toBe(false));
+    await act(async () => { await withLang.result.current.send('hi'); });
+    const sentBody = JSON.parse(
+      (fetchMock.mock.calls.find((c) => String(c[0]).includes('/messages'))![1] as RequestInit).body as string,
+    );
+    expect(sentBody.display_language).toBe('en');
+    expect(sentBody.book_context).toEqual({ book_id: 'b1' });
+
+    // Without a display language → the field is omitted (source-language aliases).
+    fetchMock.mockClear();
+    const noLang = renderHook(() => useChatMessages('s-2'));
+    await waitFor(() => expect(noLang.result.current.isLoading).toBe(false));
+    await act(async () => { await noLang.result.current.send('hi'); });
+    const sentBody2 = JSON.parse(
+      (fetchMock.mock.calls.find((c) => String(c[0]).includes('/messages'))![1] as RequestInit).body as string,
+    );
+    expect(sentBody2.display_language).toBeUndefined();
+  });
+
   it('submitToolResolve POSTs a structured result for a nav resolve', async () => {
     const fetchMock = vi.fn().mockResolvedValue(sseResponse([
       JSON.stringify({ type: 'RUN_FINISHED', result: {} }),

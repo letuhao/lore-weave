@@ -71,8 +71,10 @@ type bookAttrResp struct {
 	FieldType   string   `json:"field_type"`
 	IsRequired  bool     `json:"is_required"`
 	SortOrder   int      `json:"sort_order"`
-	Options     []string `json:"options"`
-	SourceRef   *string  `json:"source_ref,omitempty"`
+	Options         []string `json:"options"`
+	AutoFillPrompt  *string  `json:"auto_fill_prompt,omitempty"`  // G-U2
+	TranslationHint *string  `json:"translation_hint,omitempty"`
+	SourceRef       *string  `json:"source_ref,omitempty"`
 }
 
 type bookOntologyResp struct {
@@ -155,7 +157,7 @@ func (s *Server) adoptBookOntologyCore(ctx context.Context, bookID, userID uuid.
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO book_genres (book_id, code, name, icon, color, sort_order, source_ref, source_hash)
 		SELECT $1, sg.code, sg.name, sg.icon, sg.color, sg.sort_order, 'system:'||sg.genre_id::text, sg.content_hash
-		FROM system_genres sg WHERE sg.code = ANY($2)
+		FROM system_genres sg WHERE sg.code = ANY($2) AND sg.deprecated_at IS NULL
 		ON CONFLICT (book_id, code) DO NOTHING`, bookID, genres); err != nil {
 		return err
 	}
@@ -181,7 +183,7 @@ func (s *Server) adoptBookOntologyCore(ctx context.Context, bookID, userID uuid.
 		INSERT INTO book_kinds (book_id, code, name, description, icon, color, sort_order, is_hidden, source_ref, source_hash)
 		SELECT $1, sk.code, sk.name, sk.description, sk.icon, sk.color, sk.sort_order, sk.is_hidden,
 		       'system:'||sk.kind_id::text, md5(sk.code||'|'||sk.name||'|'||coalesce(sk.description,''))
-		FROM system_kinds sk WHERE sk.code = ANY($2)
+		FROM system_kinds sk WHERE sk.code = ANY($2) AND sk.deprecated_at IS NULL
 		ON CONFLICT (book_id, code) DO NOTHING`, bookID, kinds); err != nil {
 		return err
 	}
@@ -245,7 +247,7 @@ func (s *Server) adoptBookOntologyCore(ctx context.Context, bookID, userID uuid.
 		JOIN system_genres sg ON sg.genre_id = sa.genre_id
 		JOIN book_kinds  bk ON bk.book_id=$1 AND bk.code = sk.code
 		JOIN book_genres bg ON bg.book_id=$1 AND bg.code = sg.code
-		WHERE sk.code = ANY($2) AND sg.code = ANY($3)
+		WHERE sk.code = ANY($2) AND sg.code = ANY($3) AND sa.deprecated_at IS NULL
 		ON CONFLICT (book_id, kind_id, genre_id, code) DO NOTHING`, bookID, kinds, genres); err != nil {
 		return err
 	}
@@ -369,7 +371,7 @@ func (s *Server) loadBookOntology(ctx context.Context, bookID uuid.UUID) (*bookO
 
 	arows, err := s.pool.Query(ctx, `
 		SELECT attr_id::text, kind_id::text, genre_id::text, code, name, description,
-		       field_type, is_required, sort_order, options, source_ref
+		       field_type, is_required, sort_order, options, auto_fill_prompt, translation_hint, source_ref
 		FROM book_attributes WHERE book_id = $1 AND deprecated_at IS NULL ORDER BY sort_order, code`, bookID)
 	if err != nil {
 		return nil, err
@@ -378,7 +380,7 @@ func (s *Server) loadBookOntology(ctx context.Context, bookID uuid.UUID) (*bookO
 	for arows.Next() {
 		var a bookAttrResp
 		if err := arows.Scan(&a.AttrID, &a.KindID, &a.GenreID, &a.Code, &a.Name, &a.Description,
-			&a.FieldType, &a.IsRequired, &a.SortOrder, &a.Options, &a.SourceRef); err != nil {
+			&a.FieldType, &a.IsRequired, &a.SortOrder, &a.Options, &a.AutoFillPrompt, &a.TranslationHint, &a.SourceRef); err != nil {
 			return nil, err
 		}
 		if a.Options == nil {

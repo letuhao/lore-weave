@@ -1,9 +1,11 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useMemo, useState } from 'react';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { useGenresAdmin } from './hooks/useGenresAdmin';
 import { Modal } from './components/Modal';
 import { StatusBanner } from './components/StatusBanner';
 import { Field, ModalActions, inputCls } from './components/FormBits';
+import { SearchInput, matchesQuery } from './components/SearchInput';
+import { ColorField, IconField } from './components/IconColorPickers';
 import type { SystemGenre } from './types';
 
 type Draft = {
@@ -31,8 +33,14 @@ export function GenresAdminPanel() {
   const [editing, setEditing] = useState<SystemGenre | null>(null);
   const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState<Draft>(EMPTY);
+  const [query, setQuery] = useState('');
 
   const submitting = create.isPending || update.isPending;
+
+  const filtered = useMemo(
+    () => (list.data ?? []).filter((g) => matchesQuery(query, g.name, g.code)),
+    [list.data, query],
+  );
 
   function openCreate() {
     setDraft(EMPTY);
@@ -105,6 +113,10 @@ export function GenresAdminPanel() {
 
       <StatusBanner status={status} onDismiss={clearStatus} />
 
+      {list.data && list.data.length > 0 && (
+        <SearchInput value={query} onChange={setQuery} placeholder="Search genres…" />
+      )}
+
       {list.isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
       {list.isError && (
         <p className="text-sm text-destructive">Failed to load genres.</p>
@@ -123,14 +135,14 @@ export function GenresAdminPanel() {
               </tr>
             </thead>
             <tbody>
-              {list.data.length === 0 && (
+              {filtered.length === 0 && (
                 <tr>
                   <td colSpan={5} className="px-3 py-4 text-center text-muted-foreground">
-                    No system genres.
+                    {list.data.length === 0 ? 'No system genres.' : 'No genres match your search.'}
                   </td>
                 </tr>
               )}
-              {list.data.map((g) => (
+              {filtered.map((g) => (
                 <tr key={g.genre_id} className="border-t border-border">
                   <td className="px-3 py-2">{g.icon || '—'}</td>
                   <td className="px-3 py-2 font-medium text-foreground">{g.name}</td>
@@ -185,18 +197,15 @@ export function GenresAdminPanel() {
               </Field>
             )}
             <Field label="Icon (optional)">
-              <input
+              <IconField
                 value={draft.icon}
-                onChange={(e) => setDraft({ ...draft, icon: e.target.value })}
-                className={inputCls}
+                onChange={(icon) => setDraft({ ...draft, icon })}
               />
             </Field>
             <Field label="Color (optional)">
-              <input
+              <ColorField
                 value={draft.color}
-                onChange={(e) => setDraft({ ...draft, color: e.target.value })}
-                placeholder="#7c3aed"
-                className={inputCls}
+                onChange={(color) => setDraft({ ...draft, color })}
               />
             </Field>
             <Field label="Sort order (optional)">

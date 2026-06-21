@@ -9,6 +9,14 @@ export interface Envelope {
   userId?: string;
   sessionId?: string;
   traceId?: string;
+  /**
+   * Admin authority (INV-T2) — the RS256 `admin:write` token, forwarded ONLY on
+   * the admin federation path as `X-Admin-Token`. It is a bearer credential and
+   * MUST NEVER be logged or serialized (spec §6.7, §11 #7). The normal `/mcp`
+   * federation never sets this; `extractEnvelope` (handlers.ts) never reads it
+   * for the user/book surface.
+   */
+  adminToken?: string;
 }
 
 const EMPTY: Catalog = {

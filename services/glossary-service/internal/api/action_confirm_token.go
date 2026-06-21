@@ -42,7 +42,24 @@ const (
 	descBookDelete       = "book_delete"
 	descSchemaCreateKind = "schema_create_kind"
 	descSchemaCreateAttr = "schema_create_attribute"
-	descAdopt            = "adopt" // T1 — scaffold a book by copy-down from standards
+	descAdopt            = "adopt"       // T1 — scaffold a book by copy-down from standards
+	descSyncApply        = "sync_apply"  // T2 — apply a proposed per-row sync choice set
+	descBookRevert       = "book_revert" // G-U1 — revert a book override back to its parent tier
+
+	// Pipeline M2 — high-impact / destructive entity-curation writes (authorityGrant,
+	// Manage-gated at confirm). Each effect re-validates against current state (§13.5).
+	descStatusChange    = "status_change"    // batch set entity status
+	descRestoreRevision = "restore_revision" // restore an entity to a prior revision (prune+upsert)
+	descReassignKind    = "reassign_kind"    // move an entity to another kind (drops non-matching attrs)
+	descMerge           = "merge"            // merge loser entities into a winner (destructive; journaled)
+
+	// T4 — System-tier admin writes (authorityAdmin only; confirmed via the
+	// RS256-gated /v1/glossary/actions/admin/confirm, never the user path). Verb is
+	// the descriptor, entity is the `level` in params (genre|kind|attribute).
+	descSystemCreate  = "system_create"
+	descSystemPatch   = "system_patch"
+	descSystemDelete  = "system_delete"
+	descSystemRestore = "system_restore" // G-C8 — restore a soft-deleted System row from the recycle bin
 )
 
 var (
@@ -55,7 +72,9 @@ var (
 // can never carry intent the confirm path doesn't fully validate.
 func liveDescriptor(d string) bool {
 	switch d {
-	case descBookDelete, descSchemaCreateKind, descSchemaCreateAttr, descAdopt:
+	case descBookDelete, descSchemaCreateKind, descSchemaCreateAttr, descAdopt, descSyncApply, descBookRevert,
+		descStatusChange, descRestoreRevision, descReassignKind, descMerge,
+		descSystemCreate, descSystemPatch, descSystemDelete, descSystemRestore:
 		return true
 	default:
 		return false

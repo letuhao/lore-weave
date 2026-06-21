@@ -16,7 +16,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/google/uuid"
 )
 
 const scopeAdminWrite = "admin:write"
@@ -46,6 +46,30 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
 
 // ── System genres ──────────────────────────────────────────────────────────────
 
+// writeSystemErr maps the shared admin-core sentinels (admin_core.go) to HTTP status
+// for the System admin handlers. Both the HTTP path and the MCP admin-confirm path
+// run the same cores, so this mapping is the one place HTTP statuses are decided.
+func writeSystemErr(w http.ResponseWriter, err error, action string) {
+	switch {
+	case errors.Is(err, errDuplicateSystemCode):
+		writeError(w, http.StatusConflict, "GLOSS_CONFLICT", "a system row with this code already exists")
+	case errors.Is(err, errSystemNotFound):
+		writeError(w, http.StatusNotFound, "GLOSS_NOT_FOUND", "system row not found")
+	case errors.Is(err, errSystemNotDeletable):
+		writeError(w, http.StatusNotFound, "GLOSS_NOT_FOUND", "system row not found or not deletable")
+	case errors.Is(err, errSystemNotInTrash):
+		writeError(w, http.StatusNotFound, "GLOSS_NOT_FOUND", "system row is not in the recycle bin")
+	case errors.Is(err, errSystemParentDeprecated):
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "restore the parent kind/genre first")
+	case errors.Is(err, errSystemFKNotLive):
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "kind_id or genre_id is not a live system row")
+	case errors.Is(err, errSystemNameRequired), errors.Is(err, errSystemCodeUnderivable), errors.Is(err, errInvalidFieldType):
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", err.Error())
+	default:
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", action+" failed")
+	}
+}
+
 func (s *Server) createSystemGenre(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requireAdminScope(w, r, scopeAdminWrite); !ok {
 		return
@@ -60,34 +84,9 @@ func (s *Server) createSystemGenre(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &in) {
 		return
 	}
-	if strings.TrimSpace(in.Name) == "" {
-		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "name is required")
-		return
-	}
-	if strings.TrimSpace(in.Code) == "" {
-		in.Code = slugify(in.Name)
-	}
-	if in.Code == "" {
-		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "code could not be derived from name")
-		return
-	}
-	if in.Color == "" {
-		in.Color = "#6366f1"
-	}
-	var g genreResp
-	g.Tier = "system"
-	err := s.pool.QueryRow(r.Context(), `
-		INSERT INTO system_genres (code, name, icon, color, sort_order, content_hash)
-		VALUES ($1,$2,$3,$4,$5, md5($1||'|'||$2))
-		RETURNING genre_id::text, code, name, icon, color, sort_order, created_at, updated_at`,
-		in.Code, in.Name, in.Icon, in.Color, in.SortOrder,
-	).Scan(&g.GenreID, &g.Code, &g.Name, &g.Icon, &g.Color, &g.SortOrder, &g.CreatedAt, &g.UpdatedAt)
-	if isUniqueViolation(err) {
-		writeError(w, http.StatusConflict, "GLOSS_GENRE_EXISTS", "a system genre with this code already exists")
-		return
-	}
+	g, err := s.createSystemGenreCore(r.Context(), systemGenreParams{Code: in.Code, Name: in.Name, Icon: in.Icon, Color: in.Color, SortOrder: in.SortOrder})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "create system genre failed")
+		writeSystemErr(w, err, "create system genre")
 		return
 	}
 	writeJSON(w, http.StatusCreated, g)
@@ -110,28 +109,9 @@ func (s *Server) patchSystemGenre(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &in) {
 		return
 	}
-	var g genreResp
-	g.Tier = "system"
-	// content_hash recomputed from the post-update name (md5(code|name)) so Sync
-	// sees the edit (D-GKA-SYNC-HASH-ON-ADMIN-EDIT).
-	err := s.pool.QueryRow(r.Context(), `
-		UPDATE system_genres SET
-		  name       = COALESCE($2, name),
-		  icon       = COALESCE($3, icon),
-		  color      = COALESCE($4, color),
-		  sort_order = COALESCE($5, sort_order),
-		  content_hash = md5(code||'|'||COALESCE($2, name)),
-		  updated_at = now()
-		WHERE genre_id = $1
-		RETURNING genre_id::text, code, name, icon, color, sort_order, created_at, updated_at`,
-		genreID, in.Name, in.Icon, in.Color, in.SortOrder,
-	).Scan(&g.GenreID, &g.Code, &g.Name, &g.Icon, &g.Color, &g.SortOrder, &g.CreatedAt, &g.UpdatedAt)
-	if errors.Is(err, pgx.ErrNoRows) {
-		writeError(w, http.StatusNotFound, "GLOSS_GENRE_NOT_FOUND", "system genre not found")
-		return
-	}
+	g, err := s.patchSystemGenreCore(r.Context(), genreID, systemGenrePatch{Name: in.Name, Icon: in.Icon, Color: in.Color, SortOrder: in.SortOrder})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "patch system genre failed")
+		writeSystemErr(w, err, "patch system genre")
 		return
 	}
 	writeJSON(w, http.StatusOK, g)
@@ -145,17 +125,8 @@ func (s *Server) deleteSystemGenre(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	// `universal` is mandatory (O4) — never deletable. Its attributes + kind links
-	// cascade (FK ON DELETE CASCADE); adopted book rows reference it by source_ref
-	// (a string, not FK) → they read as source_retired in Sync.
-	tag, err := s.pool.Exec(r.Context(),
-		`DELETE FROM system_genres WHERE genre_id=$1 AND code <> 'universal'`, genreID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "delete system genre failed")
-		return
-	}
-	if tag.RowsAffected() == 0 {
-		writeError(w, http.StatusNotFound, "GLOSS_GENRE_NOT_FOUND", "system genre not found or not deletable")
+	if err := s.deleteSystemGenreCore(r.Context(), genreID); err != nil {
+		writeSystemErr(w, err, "delete system genre")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -193,33 +164,9 @@ func (s *Server) createSystemKind(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &in) {
 		return
 	}
-	if strings.TrimSpace(in.Name) == "" {
-		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "name is required")
-		return
-	}
-	if strings.TrimSpace(in.Code) == "" {
-		in.Code = slugify(in.Name)
-	}
-	if in.Code == "" {
-		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "code could not be derived from name")
-		return
-	}
-	if in.Color == "" {
-		in.Color = "#6366f1"
-	}
-	k := systemKindResp{Tier: "system"}
-	err := s.pool.QueryRow(r.Context(), `
-		INSERT INTO system_kinds (code, name, description, icon, color, is_hidden, sort_order)
-		VALUES ($1,$2,$3,$4,$5,$6,$7)
-		RETURNING kind_id::text, code, name, description, icon, color, is_hidden, sort_order`,
-		in.Code, in.Name, in.Description, in.Icon, in.Color, in.IsHidden, in.SortOrder,
-	).Scan(&k.KindID, &k.Code, &k.Name, &k.Description, &k.Icon, &k.Color, &k.IsHidden, &k.SortOrder)
-	if isUniqueViolation(err) {
-		writeError(w, http.StatusConflict, "GLOSS_KIND_EXISTS", "a system kind with this code already exists")
-		return
-	}
+	k, err := s.createSystemKindCore(r.Context(), systemKindParams{Code: in.Code, Name: in.Name, Description: in.Description, Icon: in.Icon, Color: in.Color, IsHidden: in.IsHidden, SortOrder: in.SortOrder})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "create system kind failed")
+		writeSystemErr(w, err, "create system kind")
 		return
 	}
 	writeJSON(w, http.StatusCreated, k)
@@ -244,25 +191,9 @@ func (s *Server) patchSystemKind(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &in) {
 		return
 	}
-	k := systemKindResp{Tier: "system"}
-	err := s.pool.QueryRow(r.Context(), `
-		UPDATE system_kinds SET
-		  name        = COALESCE($2, name),
-		  description = COALESCE($3, description),
-		  icon        = COALESCE($4, icon),
-		  color       = COALESCE($5, color),
-		  is_hidden   = COALESCE($6, is_hidden),
-		  sort_order  = COALESCE($7, sort_order)
-		WHERE kind_id = $1
-		RETURNING kind_id::text, code, name, description, icon, color, is_hidden, sort_order`,
-		kindID, in.Name, in.Description, in.Icon, in.Color, in.IsHidden, in.SortOrder,
-	).Scan(&k.KindID, &k.Code, &k.Name, &k.Description, &k.Icon, &k.Color, &k.IsHidden, &k.SortOrder)
-	if errors.Is(err, pgx.ErrNoRows) {
-		writeError(w, http.StatusNotFound, "GLOSS_KIND_NOT_FOUND", "system kind not found")
-		return
-	}
+	k, err := s.patchSystemKindCore(r.Context(), kindID, systemKindPatch{Name: in.Name, Description: in.Description, Icon: in.Icon, Color: in.Color, IsHidden: in.IsHidden, SortOrder: in.SortOrder})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "patch system kind failed")
+		writeSystemErr(w, err, "patch system kind")
 		return
 	}
 	writeJSON(w, http.StatusOK, k)
@@ -276,16 +207,8 @@ func (s *Server) deleteSystemKind(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	// `unknown` is the extraction parking kind (E6) — never deletable. Attributes +
-	// kind-genre links cascade.
-	tag, err := s.pool.Exec(r.Context(),
-		`DELETE FROM system_kinds WHERE kind_id=$1 AND code <> 'unknown'`, kindID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "delete system kind failed")
-		return
-	}
-	if tag.RowsAffected() == 0 {
-		writeError(w, http.StatusNotFound, "GLOSS_KIND_NOT_FOUND", "system kind not found or not deletable")
+	if err := s.deleteSystemKindCore(r.Context(), kindID); err != nil {
+		writeSystemErr(w, err, "delete system kind")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -300,54 +223,39 @@ func (s *Server) createSystemAttribute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		KindID      string   `json:"kind_id"`
-		GenreID     string   `json:"genre_id"`
-		Code        string   `json:"code"`
-		Name        string   `json:"name"`
-		Description *string  `json:"description"`
-		FieldType   string   `json:"field_type"`
-		IsRequired  bool     `json:"is_required"`
-		SortOrder   int      `json:"sort_order"`
-		Options     []string `json:"options"`
+		KindID          string   `json:"kind_id"`
+		GenreID         string   `json:"genre_id"`
+		Code            string   `json:"code"`
+		Name            string   `json:"name"`
+		Description     *string  `json:"description"`
+		FieldType       string   `json:"field_type"`
+		IsRequired      bool     `json:"is_required"`
+		SortOrder       int      `json:"sort_order"`
+		Options         []string `json:"options"`
+		AutoFillPrompt  *string  `json:"auto_fill_prompt"`
+		TranslationHint *string  `json:"translation_hint"`
 	}
 	if !decodeJSON(w, r, &in) {
 		return
 	}
-	if strings.TrimSpace(in.Name) == "" || in.KindID == "" || in.GenreID == "" {
-		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "kind_id, genre_id and name are required")
-		return
-	}
-	if strings.TrimSpace(in.Code) == "" {
-		in.Code = slugify(in.Name)
-	}
-	if in.FieldType == "" {
-		in.FieldType = "text"
-	}
-	if in.Options == nil {
-		in.Options = []string{}
-	}
-	hash := attrContentHash(in.Code, in.Name, in.Description, in.FieldType, in.IsRequired, in.Options)
-	a := attributeResp{Tier: "system"}
-	err := s.pool.QueryRow(r.Context(), `
-		INSERT INTO system_attributes (kind_id, genre_id, code, name, description, field_type, is_required, sort_order, options, content_hash)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-		RETURNING attr_id::text, kind_id::text, genre_id::text, code, name, description, field_type, is_required, sort_order, options`,
-		in.KindID, in.GenreID, in.Code, in.Name, in.Description, in.FieldType, in.IsRequired, in.SortOrder, in.Options, hash,
-	).Scan(&a.AttrID, &a.KindID, &a.GenreID, &a.Code, &a.Name, &a.Description, &a.FieldType, &a.IsRequired, &a.SortOrder, &a.Options)
-	if isUniqueViolation(err) {
-		writeError(w, http.StatusConflict, "GLOSS_ATTR_EXISTS", "an attribute with this code already exists for the (kind, genre)")
-		return
-	}
-	if isForeignKeyViolation(err) {
-		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "kind_id or genre_id is not a live system row")
-		return
-	}
+	kindID, err := uuid.Parse(in.KindID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "create system attribute failed")
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "kind_id is required (uuid)")
 		return
 	}
-	if a.Options == nil {
-		a.Options = []string{}
+	genreID, err := uuid.Parse(in.GenreID)
+	if err != nil {
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "genre_id is required (uuid)")
+		return
+	}
+	a, err := s.createSystemAttributeCore(r.Context(), systemAttrParams{
+		KindID: kindID, GenreID: genreID, Code: in.Code, Name: in.Name, Description: in.Description,
+		FieldType: in.FieldType, IsRequired: in.IsRequired, SortOrder: in.SortOrder, Options: in.Options,
+		AutoFillPrompt: in.AutoFillPrompt, TranslationHint: in.TranslationHint,
+	})
+	if err != nil {
+		writeSystemErr(w, err, "create system attribute")
+		return
 	}
 	writeJSON(w, http.StatusCreated, a)
 }
@@ -361,63 +269,28 @@ func (s *Server) patchSystemAttribute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		Name        *string  `json:"name"`
-		Description *string  `json:"description"`
-		FieldType   *string  `json:"field_type"`
-		IsRequired  *bool    `json:"is_required"`
-		SortOrder   *int     `json:"sort_order"`
-		Options     []string `json:"options"`
+		Name            *string   `json:"name"`
+		Description     *string   `json:"description"`
+		FieldType       *string   `json:"field_type"`
+		IsRequired      *bool     `json:"is_required"`
+		SortOrder       *int      `json:"sort_order"`
+		Options         *[]string `json:"options"`
+		AutoFillPrompt  *string   `json:"auto_fill_prompt"`
+		TranslationHint *string   `json:"translation_hint"`
 	}
 	if !decodeJSON(w, r, &in) {
 		return
 	}
-	ctx := r.Context()
-	// Read-modify-write so content_hash is recomputed from the merged row via the
-	// shared attrContentHash (single source of truth with the seed/user tiers).
-	cur := attributeResp{Tier: "system"}
-	if err := s.pool.QueryRow(ctx, `
-		SELECT attr_id::text, kind_id::text, genre_id::text, code, name, description, field_type, is_required, sort_order, options
-		FROM system_attributes WHERE attr_id=$1`, attrID,
-	).Scan(&cur.AttrID, &cur.KindID, &cur.GenreID, &cur.Code, &cur.Name, &cur.Description, &cur.FieldType, &cur.IsRequired, &cur.SortOrder, &cur.Options); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			writeError(w, http.StatusNotFound, "GLOSS_ATTR_NOT_FOUND", "system attribute not found")
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "load system attribute failed")
+	a, err := s.patchSystemAttributeCore(r.Context(), attrID, systemAttrPatch{
+		Name: in.Name, Description: in.Description, FieldType: in.FieldType,
+		IsRequired: in.IsRequired, SortOrder: in.SortOrder, Options: in.Options,
+		AutoFillPrompt: in.AutoFillPrompt, TranslationHint: in.TranslationHint,
+	})
+	if err != nil {
+		writeSystemErr(w, err, "patch system attribute")
 		return
 	}
-	if in.Name != nil {
-		cur.Name = *in.Name
-	}
-	if in.Description != nil {
-		cur.Description = in.Description
-	}
-	if in.FieldType != nil {
-		cur.FieldType = *in.FieldType
-	}
-	if in.IsRequired != nil {
-		cur.IsRequired = *in.IsRequired
-	}
-	if in.SortOrder != nil {
-		cur.SortOrder = *in.SortOrder
-	}
-	if in.Options != nil {
-		cur.Options = in.Options
-	}
-	if cur.Options == nil {
-		cur.Options = []string{}
-	}
-	hash := attrContentHash(cur.Code, cur.Name, cur.Description, cur.FieldType, cur.IsRequired, cur.Options)
-	if _, err := s.pool.Exec(ctx, `
-		UPDATE system_attributes SET
-		  name=$2, description=$3, field_type=$4, is_required=$5, sort_order=$6, options=$7, content_hash=$8
-		WHERE attr_id=$1`,
-		attrID, cur.Name, cur.Description, cur.FieldType, cur.IsRequired, cur.SortOrder, cur.Options, hash,
-	); err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "patch system attribute failed")
-		return
-	}
-	writeJSON(w, http.StatusOK, cur)
+	writeJSON(w, http.StatusOK, a)
 }
 
 func (s *Server) deleteSystemAttribute(w http.ResponseWriter, r *http.Request) {
@@ -428,14 +301,74 @@ func (s *Server) deleteSystemAttribute(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	tag, err := s.pool.Exec(r.Context(), `DELETE FROM system_attributes WHERE attr_id=$1`, attrID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "delete system attribute failed")
-		return
-	}
-	if tag.RowsAffected() == 0 {
-		writeError(w, http.StatusNotFound, "GLOSS_ATTR_NOT_FOUND", "system attribute not found")
+	if err := s.deleteSystemAttributeCore(r.Context(), attrID); err != nil {
+		writeSystemErr(w, err, "delete system attribute")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// ── Recycle bin (G-C8): list soft-deleted + restore ──────────────────────────────
+// All admin:write-gated, same as the CRUD above. Restore is the human-CMS undo; the
+// agent path is the class-C glossary_admin_propose_restore MCP tool (admin_tools.go),
+// which lands on the same restore cores via the admin-confirm effect.
+
+func (s *Server) listSystemTrash(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireAdminScope(w, r, scopeAdminWrite); !ok {
+		return
+	}
+	trash, err := s.listSystemTrashCore(r.Context())
+	if err != nil {
+		writeSystemErr(w, err, "list system trash")
+		return
+	}
+	writeJSON(w, http.StatusOK, trash)
+}
+
+func (s *Server) restoreSystemGenre(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireAdminScope(w, r, scopeAdminWrite); !ok {
+		return
+	}
+	genreID, ok := parsePathUUID(w, r, "genre_id")
+	if !ok {
+		return
+	}
+	g, err := s.restoreSystemGenreCore(r.Context(), genreID)
+	if err != nil {
+		writeSystemErr(w, err, "restore system genre")
+		return
+	}
+	writeJSON(w, http.StatusOK, g)
+}
+
+func (s *Server) restoreSystemKind(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireAdminScope(w, r, scopeAdminWrite); !ok {
+		return
+	}
+	kindID, ok := parsePathUUID(w, r, "kind_id")
+	if !ok {
+		return
+	}
+	k, err := s.restoreSystemKindCore(r.Context(), kindID)
+	if err != nil {
+		writeSystemErr(w, err, "restore system kind")
+		return
+	}
+	writeJSON(w, http.StatusOK, k)
+}
+
+func (s *Server) restoreSystemAttribute(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireAdminScope(w, r, scopeAdminWrite); !ok {
+		return
+	}
+	attrID, ok := parsePathUUID(w, r, "attr_id")
+	if !ok {
+		return
+	}
+	a, err := s.restoreSystemAttributeCore(r.Context(), attrID)
+	if err != nil {
+		writeSystemErr(w, err, "restore system attribute")
+		return
+	}
+	writeJSON(w, http.StatusOK, a)
 }

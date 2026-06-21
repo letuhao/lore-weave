@@ -541,6 +541,7 @@ async def build_full_mode(
     message: str,
     embedding_client: EmbeddingClient | None = None,
     llm_client: LLMClient | None = None,
+    language: str | None = None,
 ) -> BuiltContext:
     """Build the Mode 3 memory block.
 
@@ -580,6 +581,7 @@ async def build_full_mode(
                 project=project,
                 message=message,
                 embedding_client=embedding_client,  # mui #4 — semantic-first
+                language=language,
             ),
             timeout=settings.context_glossary_timeout_s,
         )

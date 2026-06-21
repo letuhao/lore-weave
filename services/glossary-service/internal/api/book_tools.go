@@ -62,6 +62,15 @@ func (s *Server) RegisterBookTools(srv *mcp.Server) {
 	}, s.toolBookDelete)
 
 	mcp.AddTool(srv, &mcp.Tool{
+		Name: "glossary_book_revert",
+		Description: "Propose REVERTING a book genre/kind/attribute back to the System/User standard it was " +
+			"adopted from — discards the book's local edits to this row and re-pulls the parent's CURRENT values. " +
+			"It does NOT write; it returns a confirm_token + a preview of the parent it reverts to, which a human " +
+			"confirms via glossary_confirm_action. Only works on adopted rows (not book-native ones). Address by " +
+			"code: level=genre|kind|attribute + code (for attribute also kind_code + genre_code).",
+	}, s.toolBookRevert)
+
+	mcp.AddTool(srv, &mcp.Tool{
 		Name: "glossary_book_set_active_genres",
 		Description: "Turn book genres on/off as active matrix columns by DELTA — `add` and/or `remove` " +
 			"lists of genre codes. (Delta, not replace, so you never silently drop a column you didn't mention.)",
@@ -131,9 +140,11 @@ type bookCreateToolIn struct {
 	IsHidden    bool     `json:"is_hidden,omitempty" jsonschema:"kind only"`
 	KindCode    string   `json:"kind_code,omitempty" jsonschema:"attribute only: the kind it belongs to"`
 	GenreCode   string   `json:"genre_code,omitempty" jsonschema:"attribute only: the genre cell (e.g. universal)"`
-	FieldType   string   `json:"field_type,omitempty" jsonschema:"attribute only: text|textarea|select|number|date|tags|url|boolean"`
-	IsRequired  bool     `json:"is_required,omitempty" jsonschema:"attribute only"`
-	Options     []string `json:"options,omitempty" jsonschema:"attribute only: options for a select field"`
+	FieldType       string   `json:"field_type,omitempty" jsonschema:"attribute only: text|textarea|select|number|date|tags|url|boolean"`
+	IsRequired      bool     `json:"is_required,omitempty" jsonschema:"attribute only"`
+	Options         []string `json:"options,omitempty" jsonschema:"attribute only: options for a select field"`
+	AutoFillPrompt  string   `json:"auto_fill_prompt,omitempty" jsonschema:"attribute only: how the AI auto-fills this attribute from chapter text"`
+	TranslationHint string   `json:"translation_hint,omitempty" jsonschema:"attribute only: guidance injected when translating this attribute's value"`
 }
 
 type bookWriteOut struct {
@@ -176,7 +187,7 @@ func (s *Server) toolBookCreate(ctx context.Context, _ *mcp.CallToolRequest, in 
 		} else if ge != nil {
 			return nil, bookWriteOut{}, errors.New("failed to resolve genre_code")
 		}
-		a, err := s.createBookAttributeCore(ctx, bookID, bookAttrCreateParams{KindID: kindID, GenreID: genreID, Code: in.Code, Name: in.Name, Description: desc, FieldType: in.FieldType, IsRequired: in.IsRequired, SortOrder: in.SortOrder, Options: in.Options})
+		a, err := s.createBookAttributeCore(ctx, bookID, bookAttrCreateParams{KindID: kindID, GenreID: genreID, Code: in.Code, Name: in.Name, Description: desc, FieldType: in.FieldType, IsRequired: in.IsRequired, SortOrder: in.SortOrder, Options: in.Options, AutoFillPrompt: optStr(in.AutoFillPrompt), TranslationHint: optStr(in.TranslationHint)})
 		if err != nil {
 			return nil, bookWriteOut{}, bookCreateToolErr(err)
 		}
@@ -215,9 +226,11 @@ type bookPatchToolIn struct {
 	Color       *string   `json:"color,omitempty"`
 	SortOrder   *int      `json:"sort_order,omitempty"`
 	IsHidden    *bool     `json:"is_hidden,omitempty" jsonschema:"kind only"`
-	FieldType   *string   `json:"field_type,omitempty" jsonschema:"attribute only"`
-	IsRequired  *bool     `json:"is_required,omitempty" jsonschema:"attribute only"`
-	Options     *[]string `json:"options,omitempty" jsonschema:"attribute only"`
+	FieldType       *string   `json:"field_type,omitempty" jsonschema:"attribute only"`
+	IsRequired      *bool     `json:"is_required,omitempty" jsonschema:"attribute only"`
+	Options         *[]string `json:"options,omitempty" jsonschema:"attribute only"`
+	AutoFillPrompt  *string   `json:"auto_fill_prompt,omitempty" jsonschema:"attribute only"`
+	TranslationHint *string   `json:"translation_hint,omitempty" jsonschema:"attribute only"`
 }
 
 func (s *Server) toolBookPatch(ctx context.Context, _ *mcp.CallToolRequest, in bookPatchToolIn) (*mcp.CallToolResult, bookWriteOut, error) {
@@ -314,6 +327,12 @@ func (s *Server) resolveBookPatch(ctx context.Context, bookID uuid.UUID, level s
 		}
 		if in.Options != nil {
 			add("options", *in.Options)
+		}
+		if in.AutoFillPrompt != nil {
+			add("auto_fill_prompt", in.AutoFillPrompt)
+		}
+		if in.TranslationHint != nil {
+			add("translation_hint", in.TranslationHint)
 		}
 	default:
 		return "", "", uuid.Nil, nil, errors.New("level must be genre, kind, or attribute")

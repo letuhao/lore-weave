@@ -140,6 +140,17 @@ class BookContext(BaseModel):
     book_id: str
 
 
+class AdminContext(BaseModel):
+    """Tiered-MCP-tools T4c — present when the cms-frontend ADMIN chat panel sends
+    a message. A presence marker only: it signals chat-service to advertise the
+    System-tier admin tools from glossary's `/mcp/admin` (instead of the book/user
+    `/mcp` catalog). It carries NO admin credential — the RS256 `admin:write` token
+    rides the `X-Admin-Token` HEADER (bearer hygiene, §6.7), never the body. The
+    optional `label` is a UI string only and grants no authority (INV-T2: admin
+    authority is the verified RS256 token, never anything in this model)."""
+    label: str | None = None
+
+
 class SendMessageRequest(BaseModel):
     content: str
     edit_from_sequence: int | None = None
@@ -147,7 +158,9 @@ class SendMessageRequest(BaseModel):
     thinking: bool | None = None  # Override session default: true=think, false=fast, None=use session default
     editor_context: EditorContext | None = None  # ARCH-1 C6: editor panel → enable frontend write-back tool
     book_context: BookContext | None = None  # Glossary-assistant P3: book-scoped chat → enable glossary edit tool
+    admin_context: AdminContext | None = None  # T4c: cms admin chat → advertise System-tier admin tools (token via X-Admin-Token header)
     disable_tools: bool = False  # Editor "Compose" mode: advertise no tools this turn (prose-only; reasoning model drafts, user Applies)
+    display_language: str | None = None  # S6: the user's display language → knowledge composes entity aliases in this language (omit = source-language)
 
 
 class ToolResultRequest(BaseModel):

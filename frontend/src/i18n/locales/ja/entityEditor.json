@@ -52,6 +52,7 @@
     "save": "保存",
     "delete_aria": "翻訳を削除",
     "placeholder": "{{lang}} の翻訳...",
+    "tags_add": "+ 別名を追加",
     "delete_title": "翻訳を削除しますか？",
     "delete_desc": "この属性の {{lang}} 翻訳は完全に削除されます。",
     "delete_confirm": "削除",

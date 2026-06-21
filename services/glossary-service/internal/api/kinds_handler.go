@@ -68,7 +68,7 @@ func (s *Server) loadKinds(ctx context.Context) ([]domain.EntityKind, error) {
 		SELECT ek.kind_id, ek.code, ek.name, ek.description, ek.icon, ek.color, ek.is_default, ek.is_hidden, ek.sort_order,
 			COALESCE((
 				SELECT array_agg(g.code ORDER BY g.sort_order)
-				FROM system_kind_genres kg JOIN system_genres g ON g.genre_id = kg.genre_id
+				FROM system_kind_genres kg JOIN system_genres g ON g.genre_id = kg.genre_id AND g.deprecated_at IS NULL
 				WHERE kg.kind_id = ek.kind_id
 			), '{}') AS genre_tags,
 			COALESCE((
@@ -77,7 +77,7 @@ func (s *Server) loadKinds(ctx context.Context) ([]domain.EntityKind, error) {
 				WHERE bk.code = ek.code AND ge.deleted_at IS NULL
 			), 0) AS entity_count
 		FROM system_kinds ek
-		WHERE ek.is_hidden = false
+		WHERE ek.is_hidden = false AND ek.deprecated_at IS NULL
 		ORDER BY ek.sort_order`)
 	if err != nil {
 		return nil, fmt.Errorf("query kinds: %w", err)
@@ -104,8 +104,9 @@ func (s *Server) loadKinds(ctx context.Context) ([]domain.EntityKind, error) {
 		SELECT ad.attr_id, ad.kind_id, ad.code, ad.name, ad.description, ad.field_type, ad.is_required, ad.sort_order,
 			g.code AS genre_code, ad.auto_fill_prompt, ad.translation_hint
 		FROM system_attributes ad
-		JOIN system_kinds  ek ON ek.kind_id  = ad.kind_id AND ek.is_hidden = false
-		JOIN system_genres g  ON g.genre_id   = ad.genre_id
+		JOIN system_kinds  ek ON ek.kind_id  = ad.kind_id AND ek.is_hidden = false AND ek.deprecated_at IS NULL
+		JOIN system_genres g  ON g.genre_id   = ad.genre_id AND g.deprecated_at IS NULL
+		WHERE ad.deprecated_at IS NULL
 		ORDER BY ad.kind_id, ad.sort_order`)
 	if err != nil {
 		return nil, fmt.Errorf("query attrs: %w", err)

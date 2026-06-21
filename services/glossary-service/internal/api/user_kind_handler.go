@@ -314,6 +314,7 @@ func (s *Server) createUserKind(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "name is required")
 		return
 	}
+	in.Name = strings.TrimSpace(in.Name) // normalize identically to the MCP tool path
 	if in.Icon == "" {
 		in.Icon = "box"
 	}
@@ -385,8 +386,8 @@ func (s *Server) createUserKind(w http.ResponseWriter, r *http.Request) {
 			  (user_kind_id, code, name, description, field_type, is_required, sort_order, options)
 			SELECT $1, sa.code, sa.name, sa.description, sa.field_type, sa.is_required, sa.sort_order, sa.options
 			FROM system_attributes sa
-			JOIN system_genres g ON g.genre_id = sa.genre_id AND g.code = 'universal'
-			WHERE sa.kind_id = $2
+			JOIN system_genres g ON g.genre_id = sa.genre_id AND g.code = 'universal' AND g.deprecated_at IS NULL
+			WHERE sa.kind_id = $2 AND sa.deprecated_at IS NULL
 			ORDER BY sa.sort_order`,
 			ukID, cloneFromKindID,
 		); err != nil {
@@ -462,7 +463,7 @@ func (s *Server) patchUserKind(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		setClauses = append(setClauses, fmt.Sprintf("name = $%d", argN))
-		args = append(args, v)
+		args = append(args, strings.TrimSpace(v)) // normalize identically to the MCP tool path
 		argN++
 	}
 	if raw, ok := in["description"]; ok {

@@ -159,11 +159,16 @@ class GlossaryClient:
         max_entities: int = 20,
         max_tokens: int = 800,
         exclude_ids: list[str] | None = None,
+        language: str | None = None,
     ) -> list[GlossaryEntityForContext]:
         """POST /internal/books/{book_id}/select-for-context.
 
         Returns an empty list on any failure — never raises. The caller
         treats missing glossary as "degrade silently".
+
+        `language` (S6, optional): when set, entity aliases are augmented with the
+        per-language alias set for that language (source ∪ target). Omitted →
+        source-language aliases only.
         """
         url = f"{self._base_url}/internal/books/{book_id}/select-for-context"
         body = {
@@ -173,6 +178,8 @@ class GlossaryClient:
             "max_tokens": int(max_tokens),
             "exclude_ids": exclude_ids or [],
         }
+        if language:
+            body["language"] = language
 
         # K6.4 — circuit breaker gate. `_cb_enter` returns one of three
         # states: "closed" (breaker healthy, proceed), "probe" (this
@@ -427,20 +434,26 @@ class GlossaryClient:
         *,
         book_id: UUID,
         entity_ids: list[str],
+        language: str | None = None,
     ) -> list[GlossaryEntityForContext]:
         """POST /internal/books/{book_id}/entities/by-ids (mui #4).
 
         Batch-fetch glossary entities by id so the semantic selector can
         enrich vector hits with canon detail. Best-effort: returns [] on any
         failure — the caller degrades to FTS.
+
+        `language` (S6, optional): augment aliases with the per-language set.
         """
         if not entity_ids:
             return []
         url = f"{self._base_url}/internal/books/{book_id}/entities/by-ids"
         tid = trace_id_var.get()
+        body: dict = {"entity_ids": entity_ids}
+        if language:
+            body["language"] = language
         try:
             resp = await self._http.post(
-                url, json={"entity_ids": entity_ids},
+                url, json=body,
                 headers={"X-Trace-Id": tid} if tid else None,
             )
             if resp.status_code != 200:

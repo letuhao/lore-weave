@@ -15,6 +15,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
@@ -126,8 +127,27 @@ func (s *Server) mergeEntities(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := r.Context()
+	results, err := s.mergeEntitiesCore(r.Context(), bookID, winnerID, req.LoserIDs, userID)
+	if errors.Is(err, errMergeBadWinner) {
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_BAD_WINNER", "winner not a live entity in this book")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "merge failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"winner_id": winnerID.String(), "results": results})
+}
 
+// errMergeBadWinner — the winner is not a live entity in this book (→ 422 / re-proposable).
+var errMergeBadWinner = errors.New("winner not a live entity in this book")
+
+// mergeEntitiesCore validates the winner, merges each loser into it (per-loser
+// transaction + journal via mergeOne), fires best-effort post-commit events, and flips
+// fully-resolved merge candidates to merged. Returns the per-loser results. Grant +
+// loser-non-empty are the CALLER's concern. Single source of truth for the HTTP merge
+// handler and the glossary_propose_merge confirm effect.
+func (s *Server) mergeEntitiesCore(ctx context.Context, bookID, winnerID uuid.UUID, loserIDs []string, actor uuid.UUID) ([]mergeResultItem, error) {
 	// Winner must exist, live, in this book — resolve its kind for the same-kind check.
 	var winnerKind uuid.UUID
 	var winnerDeleted *time.Time
@@ -135,23 +155,24 @@ func (s *Server) mergeEntities(w http.ResponseWriter, r *http.Request) {
 	if err := s.pool.QueryRow(ctx,
 		`SELECT kind_id, deleted_at, book_id FROM glossary_entities WHERE entity_id = $1`, winnerID,
 	).Scan(&winnerKind, &winnerDeleted, &winnerBook); err != nil {
-		writeError(w, http.StatusNotFound, "GLOSS_NOT_FOUND", "winner entity not found")
-		return
+		if err == pgx.ErrNoRows {
+			return nil, errMergeBadWinner
+		}
+		return nil, err
 	}
 	if winnerBook != bookID || winnerDeleted != nil {
-		writeError(w, http.StatusUnprocessableEntity, "GLOSS_BAD_WINNER", "winner not a live entity in this book")
-		return
+		return nil, errMergeBadWinner
 	}
 
-	results := make([]mergeResultItem, 0, len(req.LoserIDs))
-	mergedLosers := make([]uuid.UUID, 0, len(req.LoserIDs))
-	for _, raw := range req.LoserIDs {
+	results := make([]mergeResultItem, 0, len(loserIDs))
+	mergedLosers := make([]uuid.UUID, 0, len(loserIDs))
+	for _, raw := range loserIDs {
 		loserID, err := uuid.Parse(raw)
 		if err != nil {
 			results = append(results, mergeResultItem{LoserID: raw, Status: "skipped", Reason: "invalid uuid"})
 			continue
 		}
-		jid, reason, merr := s.mergeOne(ctx, bookID, winnerID, winnerKind, loserID, userID)
+		jid, reason, merr := s.mergeOne(ctx, bookID, winnerID, winnerKind, loserID, actor)
 		if merr != nil {
 			// MED-3b: don't abort the whole request — earlier losers already
 			// committed. Record this one as failed and continue so the response
@@ -184,8 +205,7 @@ func (s *Server) mergeEntities(w http.ResponseWriter, r *http.Request) {
 	// proposed (review-impl MED-1). Done once after the loop with the full
 	// merged-loser set so subset semantics are exact.
 	s.markCandidatesMerged(ctx, bookID, winnerID, mergedLosers)
-
-	writeJSON(w, http.StatusOK, map[string]any{"winner_id": winnerID.String(), "results": results})
+	return results, nil
 }
 
 // mergeOne performs the transactional merge of one loser into the winner.

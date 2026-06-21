@@ -69,6 +69,9 @@ class ContextBuildRequest(BaseModel):
     # 4k char cap fits legitimate chat turns without giving callers a
     # silent DoS knob.
     message: str = Field(default="", max_length=4000)
+    # S6 (optional): the display/target language for entity aliases shown in context.
+    # Omitted → source-language aliases only (back-compat).
+    language: str | None = Field(default=None, max_length=35)
 
 
 class ContextBuildResponse(BaseModel):
@@ -118,6 +121,7 @@ async def build(
             message=req.message,
             embedding_client=embedding_client,
             llm_client=llm_client,
+            language=req.language,
         )
         _mode_label = built.mode
     except ProjectNotFound:

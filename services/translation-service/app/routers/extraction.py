@@ -67,8 +67,21 @@ async def create_extraction_job(
     _grant: UUID = Depends(require_book_grant(GrantLevel.EDIT)),
     db: asyncpg.Pool = Depends(get_db),
 ):
-    uid = UUID(user_id)
+    return await _create_extraction_job_core(db, book_id, UUID(user_id), payload)
 
+
+async def _create_extraction_job_core(
+    db: asyncpg.Pool,
+    book_id: UUID,
+    uid: UUID,
+    payload: CreateExtractionJobPayload,
+) -> dict:
+    """Resolve the model + extraction profile, estimate cost, atomically create the
+    job (+ chapter-result rows + the 'pending' JobEvent), and publish to the worker
+    queue. The single source of truth for the HTTP `create_extraction_job` handler
+    AND the `translation.start_extraction` confirm effect (the MCP path) — the caller
+    owns the grant/identity check (HTTP via the EDIT dep; confirm via re-authorize +
+    chapter-binding). Returns the job-handle dict."""
     # The grant gate already authorized + proved the book exists (a missing book
     # resolves to `none` → 404). Fetch the projection only for source_language
     # (original_language); ownership is no longer decided here.
@@ -178,7 +191,7 @@ async def create_extraction_job(
     # Publish job to broker
     await publish("extraction.job", {
         "job_id": str(job_id),
-        "user_id": user_id,
+        "user_id": str(uid),
         "book_id": str(book_id),
         "chapter_ids": [str(c) for c in payload.chapter_ids],
         "extraction_profile": payload.extraction_profile,

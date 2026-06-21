@@ -51,6 +51,20 @@ func (s *Server) mcpHandler() http.Handler {
 	// T1: book-tier ontology tools (read, adopt, create/patch/delete, set-genres,
 	// entity-genres) register in their own file so tier streams don't contend here.
 	s.RegisterBookTools(srv)
+	// T2: book sync tools (available R + apply C). T3: user-tier standards tools.
+	// Each appends here from its own file — append-only registration is the
+	// per-tier parallelism enabler (buildplan §4).
+	s.RegisterSyncTools(srv)
+	s.RegisterUserTools(srv)
+	// Pipeline M1: read tools (merge-candidates / chapter-links / revisions / unknowns).
+	s.RegisterPipelineReadTools(srv)
+	// Pipeline M2: direct (class-W) additive write tools (chapter-links, evidence).
+	s.RegisterPipelineWriteTools(srv)
+	// Pipeline M2: class-C propose tools for destructive curation (status / restore /
+	// reassign-kind / merge) — mint a confirm card, never write directly.
+	s.RegisterPipelineProposeTools(srv)
+	// Pipeline M4: entity-translation tool (class-W; draft, never overwrites verified).
+	s.RegisterPipelineTranslateTools(srv)
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "glossary_propose_new_entity",
