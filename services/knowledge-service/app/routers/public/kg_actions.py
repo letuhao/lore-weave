@@ -52,6 +52,7 @@ from app.db.repositories.system_templates import (
     SystemTemplateNotFound,
     SystemTemplatesRepo,
 )
+from app.db.repositories.triage import TriageRepo
 from app.deps import get_grant_client, get_projects_repo
 from app.middleware.jwt_auth import get_current_user
 from app.ontology.adopt_effect import (
@@ -70,6 +71,8 @@ from app.ontology.confirm import (
     DESC_SYSTEM_CREATE,
     DESC_SYSTEM_DELETE,
     DESC_SYSTEM_PATCH,
+    DESC_TRIAGE_PROPOSED_EDGE,
+    DESC_TRIAGE_SCHEMA_WRITE,
     ActionClaims,
     ActionTokenExpired,
     ActionTokenInvalid,
@@ -80,6 +83,21 @@ from app.ontology.schema_edit_effect import (
     SchemaEditParams,
     apply_schema_edit,
     preview_schema_edit,
+)
+from app.ontology.triage_proposed_edge_effect import (
+    ProposedEdgeDrift,
+    ProposedEdgeNotFound,
+    ProposedEdgeParams,
+    ProposedEdgeWriteFailed,
+    apply_proposed_edge,
+    preview_proposed_edge,
+)
+from app.ontology.triage_schema_write_effect import (
+    TriageSchemaWriteDrift,
+    TriageSchemaWriteParams,
+    TriageSchemaWriteUnsupported,
+    apply_triage_schema_write,
+    preview_triage_schema_write,
 )
 from app.ontology.sync_effect import (
     SyncApplyParams,
@@ -123,6 +141,10 @@ def get_ontology_mutations_repo() -> OntologyMutationsRepo:
 
 def get_system_templates_repo() -> SystemTemplatesRepo:
     return SystemTemplatesRepo(get_knowledge_pool())
+
+
+def get_triage_repo() -> TriageRepo:
+    return TriageRepo(get_knowledge_pool())
 
 
 def get_admin_key() -> AdminKey | None:
@@ -269,6 +291,7 @@ async def confirm_action(
     schemas: GraphSchemasRepo = Depends(get_graph_schemas_repo),
     mutations: OntologyMutationsRepo = Depends(get_ontology_mutations_repo),
     system_repo: SystemTemplatesRepo = Depends(get_system_templates_repo),
+    triage: TriageRepo = Depends(get_triage_repo),
     tokens: ActionTokenRepo = Depends(get_action_token_repo),
     glossary: GlossaryOntologyClient = Depends(get_glossary_ontology_client),
     admin_key: AdminKey | None = Depends(get_admin_key),
@@ -298,6 +321,10 @@ async def confirm_action(
         return await _confirm_adopt(claims, owner, mutations, projects, glossary)
     if claims.descriptor == DESC_SYNC:
         return await _confirm_sync(claims, schemas, mutations)
+    if claims.descriptor == DESC_TRIAGE_PROPOSED_EDGE:
+        return await _confirm_proposed_edge(claims, owner, triage)
+    if claims.descriptor == DESC_TRIAGE_SCHEMA_WRITE:
+        return await _confirm_triage_schema_write(claims, owner, schemas, mutations, triage)
     if claims.descriptor in _SYSTEM_DESCRIPTORS:
         return await _confirm_system(claims, system_repo)
     # Unreachable: verify_action_token already rejects non-live descriptors.
@@ -387,6 +414,72 @@ async def _confirm_sync(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc))
 
 
+async def _confirm_proposed_edge(
+    claims: ActionClaims, owner: UUID | None, triage: TriageRepo
+) -> dict:
+    """E2 — place a parked `proposed_edge` into Neo4j (class-C, grant authority).
+    `owner` is the resolved project owner from `_authorize_action` (grant path is
+    never None here; the authority↔descriptor pairing already rejected admin)."""
+    try:
+        params = ProposedEdgeParams(**claims.params)
+    except ValidationError:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="bad proposal payload"
+        )
+    try:
+        return await apply_proposed_edge(
+            triage, owner=owner, project_id=claims.project_id, params=params
+        )
+    except ProposedEdgeNotFound as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except ProposedEdgeDrift as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc))
+    except ProposedEdgeWriteFailed as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+
+
+async def _confirm_triage_schema_write(
+    claims: ActionClaims,
+    owner: UUID | None,
+    schemas: GraphSchemasRepo,
+    mutations: OntologyMutationsRepo,
+    triage: TriageRepo,
+) -> dict:
+    """E3 — apply a schema-mutating triage resolution via ontology_mutations
+    (class-C, Manage-gated) and write the new schema_version onto the items.
+    `owner` is the resolved project owner (grant path; never None here) — passed
+    so the version stamp scopes to (owner, project, signature)."""
+    try:
+        params = TriageSchemaWriteParams(**claims.params)
+    except ValidationError:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="bad proposal payload"
+        )
+    try:
+        return await apply_triage_schema_write(
+            schemas, mutations, triage, claims.project_id, params, owner=owner
+        )
+    except TriageSchemaWriteDrift as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc))
+    except TriageSchemaWriteUnsupported as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc))
+    except DuplicateChildError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="that schema element already exists — propose again",
+        )
+    except ChildNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="the targeted schema element no longer exists — propose again",
+        )
+    except SchemaNotWritableError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="the project schema is no longer writable — propose again",
+        )
+
+
 async def _confirm_system(claims: ActionClaims, system_repo: SystemTemplatesRepo) -> dict:
     """Admin System-tier template effect. Authority (RS256 + asub bind) was already
     re-checked in `_authorize_admin` and the jti consumed; here we re-validate the
@@ -434,6 +527,7 @@ async def preview_action(
     schemas: GraphSchemasRepo = Depends(get_graph_schemas_repo),
     mutations: OntologyMutationsRepo = Depends(get_ontology_mutations_repo),
     system_repo: SystemTemplatesRepo = Depends(get_system_templates_repo),
+    triage: TriageRepo = Depends(get_triage_repo),
     glossary: GlossaryOntologyClient = Depends(get_glossary_ontology_client),
     admin_key: AdminKey | None = Depends(get_admin_key),
     x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
@@ -471,4 +565,22 @@ async def preview_action(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="bad proposal payload"
             )
         return await preview_sync(schemas, mutations, claims.project_id, params)
+    if claims.descriptor == DESC_TRIAGE_PROPOSED_EDGE:
+        try:
+            params = ProposedEdgeParams(**claims.params)
+        except ValidationError:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="bad proposal payload"
+            )
+        return await preview_proposed_edge(
+            triage, owner=owner, project_id=claims.project_id, params=params
+        )
+    if claims.descriptor == DESC_TRIAGE_SCHEMA_WRITE:
+        try:
+            params = TriageSchemaWriteParams(**claims.params)
+        except ValidationError:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="bad proposal payload"
+            )
+        return await preview_triage_schema_write(schemas, claims.project_id, params)
     raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="unknown action")

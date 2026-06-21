@@ -59,8 +59,13 @@ _LANE_LF_TOOLS = {
 }
 
 # KM6 live class-C tools — registered, but each MINTS a confirm-token (no write); the
-# human confirms via /v1/kg/actions/confirm. M1: schema_edit, M2: adopt, M3: sync_apply.
-_CLASS_C_LIVE_TOOLS = {"kg_schema_edit", "kg_adopt_template", "kg_sync_apply"}
+# human confirms via /v1/kg/actions/confirm. M1: schema_edit, M2: adopt, M3: sync_apply,
+# E2: triage_place_edge (place a proposed_edge), E3: triage_schema_write (schema-mutating
+# triage resolution) — both via the confirm spine.
+_CLASS_C_LIVE_TOOLS = {
+    "kg_schema_edit", "kg_adopt_template", "kg_sync_apply",
+    "kg_triage_place_edge", "kg_triage_schema_write",
+}
 
 # Every KG tool registered in the catalog (R + reversible W + live class-C).
 _REGISTERED_KG_TOOLS = _LANE_LF_TOOLS | _CLASS_C_LIVE_TOOLS
@@ -82,9 +87,10 @@ def _defn(name: str) -> dict:
 
 
 def test_total_tool_count_is_memory_plus_lane_lf():
-    """5 memory + 12 lane-LF + 3 live class-C (schema_edit, adopt, sync_apply) = 20."""
+    """5 memory + 12 lane-LF + 5 live class-C (schema_edit, adopt, sync_apply,
+    triage_place_edge, triage_schema_write) = 22."""
     schema_names = {d["function"]["name"] for d in TOOL_DEFINITIONS}
-    assert len(TOOL_DEFINITIONS) == 20
+    assert len(TOOL_DEFINITIONS) == 22
     assert set(TOOL_NAMES) == set(ARG_MODELS) == schema_names
     assert len(set(TOOL_NAMES)) == len(TOOL_NAMES)  # no dupes
 
@@ -705,3 +711,131 @@ async def test_sync_apply_rejects_bad_choice_at_the_model():
         "decisions": [{"node_type": "edge_type", "code": "X", "choice": "overwrite_all"}],
     })
     assert not res.success  # invalid choice → arg validation error
+
+
+# ── E2 — kg_triage_place_edge (class-C mint; NO write) ────────────────
+
+
+def _pending_proposed_edge_item(tid):
+    from datetime import datetime, timezone
+
+    from app.db.ontology_models import TriageItem
+
+    return TriageItem(
+        triage_id=tid, user_id=_OWNER, project_id=str(_PROJECT), source={},
+        item_type="proposed_edge",
+        payload={"source_entity_id": "a", "target_entity_id": "b", "predicate": "ALLIES"},
+        signature="propose_edge:ALLIES:a->b", status="pending", resolution=None,
+        schema_version=None, created_at=datetime.now(timezone.utc),
+        resolved_at=None, resolved_by=None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_triage_place_edge_mints_confirm_token_and_does_not_write():
+    """INV-K1 — the place_edge MCP tool MINTS a confirm-token bound to the proposer
+    and the triage_id, and performs NO Neo4j write (the central path runs only at
+    confirm, redeemed by the human's browser JWT)."""
+    import time as _time
+
+    from app.config import settings
+    from app.ontology.confirm import (
+        AUTH_GRANT,
+        DESC_TRIAGE_PROPOSED_EDGE,
+        verify_action_token,
+    )
+
+    tid = uuid4()
+    triage = AsyncMock()
+    triage.get_item = AsyncMock(return_value=_pending_proposed_edge_item(tid))
+    triage.resolve_item = AsyncMock()
+    ctx = _ctx(triage_repo=triage)  # caller==owner
+    res = await execute_tool(ctx, "kg_triage_place_edge", {"triage_id": str(tid)})
+    assert res.success, res.error
+    out = res.result
+    assert out["proposed"] is True and out["descriptor"] == DESC_TRIAGE_PROPOSED_EDGE
+    assert out["confirm_token"]
+    # MINT-ONLY — the item is NOT resolved + nothing written from the MCP path.
+    triage.resolve_item.assert_not_called()
+    claims = verify_action_token(settings.jwt_secret, out["confirm_token"], _time.time())
+    assert claims.authority == AUTH_GRANT
+    assert claims.user_id == str(ctx.user_id)
+    assert claims.params["triage_id"] == str(tid)
+
+
+@pytest.mark.asyncio
+async def test_triage_place_edge_rejects_non_pending_or_wrong_type():
+    tid = uuid4()
+    triage = AsyncMock()
+    triage.get_item = AsyncMock(return_value=None)  # gone / not visible
+    ctx = _ctx(triage_repo=triage)
+    res = await execute_tool(ctx, "kg_triage_place_edge", {"triage_id": str(tid)})
+    assert not res.success
+    assert "no pending proposed edge" in res.error.lower()
+
+
+# ── E3 — kg_triage_schema_write (class-C mint; NO write) ──────────────
+
+
+@pytest.mark.asyncio
+async def test_triage_schema_write_mints_confirm_token_and_does_not_write():
+    """INV-T3 — the schema-write MCP tool MINTS a confirm-token bound to the proposer
+    + the live schema_id/version, and performs NO mutation (Manage-gated)."""
+    import time as _time
+
+    from app.config import settings
+    from app.ontology.confirm import (
+        AUTH_GRANT,
+        DESC_TRIAGE_SCHEMA_WRITE,
+        verify_action_token,
+    )
+
+    sid = uuid4()
+    schemas = AsyncMock()
+    schemas.active_project_schema = AsyncMock(
+        return_value=SimpleNamespace(schema_id=sid, schema_version=4)
+    )
+    mutations = AsyncMock()
+    ctx = _ctx(graph_schemas_repo=schemas, ontology_mutations_repo=mutations)  # caller==owner
+    res = await execute_tool(ctx, "kg_triage_schema_write", {
+        "signature": "drive:curiosity", "action": "add_to_vocab",
+        "code": "curiosity", "set_code": "drive",
+    })
+    assert res.success, res.error
+    out = res.result
+    assert out["proposed"] is True and out["descriptor"] == DESC_TRIAGE_SCHEMA_WRITE
+    # MINT-ONLY — no schema mutation from the MCP path.
+    mutations.add_vocab_value.assert_not_called()
+    mutations.set_edge_cardinality.assert_not_called()
+    claims = verify_action_token(settings.jwt_secret, out["confirm_token"], _time.time())
+    assert claims.authority == AUTH_GRANT
+    assert claims.user_id == str(ctx.user_id)
+    assert claims.params["action"] == "add_to_vocab"
+    assert claims.params["schema_id"] == str(sid)
+    assert claims.params["expected_schema_version"] == 4
+
+
+@pytest.mark.asyncio
+async def test_triage_schema_write_requires_manage():
+    grant = AsyncMock()
+    grant.resolve_grant = AsyncMock(return_value=GrantLevel.EDIT)  # < MANAGE
+    projects_repo = AsyncMock()
+    projects_repo.project_meta = AsyncMock(return_value=(_OWNER, _BOOK))
+    ctx = _ctx(user_id=_USER, projects_repo=projects_repo, grant_client=grant)
+    res = await execute_tool(ctx, "kg_triage_schema_write", {
+        "signature": "s", "action": "set_multi_active", "code": "X",
+    })
+    assert not res.success
+    assert "insufficient access" in res.error.lower()
+
+
+@pytest.mark.asyncio
+async def test_triage_schema_write_requires_adopted_schema():
+    schemas = AsyncMock()
+    schemas.active_project_schema = AsyncMock(return_value=None)
+    ctx = _ctx(graph_schemas_repo=schemas)
+    res = await execute_tool(ctx, "kg_triage_schema_write", {
+        "signature": "s", "action": "add_to_schema", "code": "WORSHIPS",
+    })
+    assert not res.success
+    assert "adopt" in res.error.lower()

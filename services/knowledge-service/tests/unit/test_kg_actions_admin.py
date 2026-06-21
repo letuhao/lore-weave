@@ -92,6 +92,7 @@ def _build(*, claimed=True, system_repo=None, admin_enabled=True):
     # the grant-path repos so DI doesn't reach for an uninitialised pool.
     app.dependency_overrides[kg_actions.get_graph_schemas_repo] = lambda: AsyncMock()
     app.dependency_overrides[kg_actions.get_ontology_mutations_repo] = lambda: AsyncMock()
+    app.dependency_overrides[kg_actions.get_triage_repo] = lambda: AsyncMock()
     app.dependency_overrides[kg_actions.get_glossary_ontology_client] = lambda: AsyncMock()
     app.dependency_overrides[kg_actions.get_admin_key] = (
         (lambda: admin_key) if admin_enabled else (lambda: None)

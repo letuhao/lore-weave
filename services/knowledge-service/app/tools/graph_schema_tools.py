@@ -55,6 +55,8 @@ from app.ontology.confirm import (
     DESC_ADOPT,
     DESC_SCHEMA_EDIT,
     DESC_SYNC,
+    DESC_TRIAGE_PROPOSED_EDGE,
+    DESC_TRIAGE_SCHEMA_WRITE,
     ActionClaims,
     mint_action_token,
 )
@@ -97,6 +99,8 @@ __all__ = [
     "KgSchemaEditArgs",
     "KgAdoptTemplateArgs",
     "KgSyncApplyArgs",
+    "KgTriagePlaceEdgeArgs",
+    "KgTriageSchemaWriteArgs",
 ]
 
 # Result-size + addressing caps (mirror the HTTP routers' query bounds so the
@@ -117,6 +121,11 @@ _PROPOSE_FACT_TYPES = ("decision", "preference", "milestone", "negation")
 # The schema-mutating + glossary-handoff actions are class-C (KM6) and rejected
 # here with a clear tool error pointing the agent at the human-confirm surface.
 _KG_LOCAL_TRIAGE_ACTIONS = ("map", "re_target", "drop_edge", "close_previous", "dismiss")
+
+# Schema-mutating triage actions the kg_triage_schema_write tool mints for (E3).
+_ACTIONS_SCHEMA_WRITE = (
+    "add_to_vocab", "add_to_schema", "widen_target_kinds", "set_multi_active",
+)
 
 
 # ── arg models (extra="forbid"; envelope keys are NEVER fields) ───────
@@ -303,6 +312,32 @@ class KgSyncApplyArgs(BaseModel):
     decisions: list[KgSyncDecision] = Field(default_factory=list)
 
 
+class KgTriagePlaceEdgeArgs(BaseModel):
+    """`kg_triage_place_edge` — class-C. Places a drafted `proposed_edge` triage item
+    into the graph. Mints a `kg_triage_proposed_edge` confirm-token (NO write — INV-K1);
+    a human redeems it on the review surface. `triage_id` is from `kg_triage_list`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    triage_id: str = Field(min_length=1, max_length=64)
+
+
+class KgTriageSchemaWriteArgs(BaseModel):
+    """`kg_triage_schema_write` — class-C. Resolves a schema-mutating triage signature
+    (add a vocab value / edge type, widen an edge's target kinds, or make an edge type
+    multi_active) by MINTING a `kg_triage_schema_write` confirm-token (NO write — INV-T3
+    / Manage-gated). A human confirms on the review surface; the schema_version bumps."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    signature: str = Field(min_length=1, max_length=500)
+    action: Literal["add_to_vocab", "add_to_schema", "widen_target_kinds", "set_multi_active"]
+    code: str = Field(default="", max_length=_CODE_MAX)
+    label: str = Field(default="", max_length=_NAME_MAX)
+    set_code: str = Field(default="", max_length=_CODE_MAX)
+    add_kinds: list[str] = Field(default_factory=list, max_length=50)
+
+
 GRAPH_SCHEMA_ARG_MODELS: dict[str, type[BaseModel]] = {
     # ── R (read) ──────────────────────────────────────────────────────
     "kg_graph_query": KgGraphQueryArgs,
@@ -322,6 +357,8 @@ GRAPH_SCHEMA_ARG_MODELS: dict[str, type[BaseModel]] = {
     "kg_schema_edit": KgSchemaEditArgs,    # KM6-M1: mints a confirm-token (no write)
     "kg_adopt_template": KgAdoptTemplateArgs,  # KM6-M2: mints a confirm-token (no write)
     "kg_sync_apply": KgSyncApplyArgs,      # KM6-M3: mints a confirm-token (no write)
+    "kg_triage_place_edge": KgTriagePlaceEdgeArgs,  # E2: mints a confirm-token (no write)
+    "kg_triage_schema_write": KgTriageSchemaWriteArgs,  # E3: mints a confirm-token (no write)
     # kg_triage_resolve (schema-mutating actions) # KM3/KM4 class-C — deferred to KM6 confirm machinery (D-KG-LF-KM6)
     # kg_triage_handoff_glossary # KM3/KM4 class-C — deferred to KM6 confirm machinery (D-KG-LF-KM6)
 }
@@ -676,6 +713,60 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
             },
         },
         ["base_source_hash"],
+    ),
+    _tool(
+        "kg_triage_place_edge",
+        "Place an agent-drafted proposed edge (from kg_triage_list, item_type "
+        "'proposed_edge') into the knowledge graph. High-impact (it writes a real "
+        "edge), so it does NOT apply immediately — it returns a confirm_token and a "
+        "summary; a human confirms on the review surface. Pick a `triage_id` of a "
+        "pending proposed_edge from kg_triage_list.",
+        {
+            "triage_id": {
+                "type": "string",
+                "description": "The proposed_edge triage item id to place (from kg_triage_list).",
+            },
+        },
+        ["triage_id"],
+    ),
+    _tool(
+        "kg_triage_schema_write",
+        "Resolve a schema-mutating triage signature group: add_to_vocab (add a "
+        "controlled-vocab value), add_to_schema (add an edge type), "
+        "widen_target_kinds (allow more target node kinds on an edge type), or "
+        "set_multi_active (let an edge type hold multiple open instances). This "
+        "changes the project ontology and bumps the schema version, so it does NOT "
+        "apply immediately — it returns a confirm_token and a summary; a human "
+        "confirms on the review surface.",
+        {
+            "signature": {
+                "type": "string",
+                "description": "The triage signature to resolve (from kg_triage_list).",
+            },
+            "action": {
+                "type": "string",
+                "enum": list(_ACTIONS_SCHEMA_WRITE),
+                "description": "The schema-mutating resolution action to apply.",
+            },
+            "code": {
+                "type": "string",
+                "description": "The edge-type / vocab-value code being added or modified.",
+            },
+            "label": {
+                "type": "string",
+                "description": "Human-readable label (for add actions; defaults to the code).",
+            },
+            "set_code": {
+                "type": "string",
+                "description": "The vocab set code (add_to_vocab only).",
+            },
+            "add_kinds": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Target node kinds to add (widen_target_kinds only).",
+            },
+        },
+        ["signature", "action"],
     ),
 ]
 
@@ -1198,6 +1289,123 @@ async def _handle_kg_sync_apply(ctx: "ToolContext", args: KgSyncApplyArgs) -> di
     }
 
 
+async def _handle_kg_triage_place_edge(
+    ctx: "ToolContext", args: KgTriagePlaceEdgeArgs
+) -> dict:
+    """C (confirm-token) — E2. Places a `proposed_edge` triage item into Neo4j.
+    **Mints a confirm-token and returns it — performs NO write** (INV-K1): the
+    central write path runs only after a human redeems the token at
+    `POST /v1/kg/actions/confirm` (browser-JWT only; this MCP path can't reach it).
+
+    Gate: EDIT on the project (placing a drafted edge is a KG-local-grade write,
+    Edit-tier — symmetric with kg_triage_resolve). Validates the item is a still-
+    pending `proposed_edge` for this owner before minting (no token for a vanished
+    or wrong-type item)."""
+    from app.tools.executor import ToolExecutionError
+
+    owner = await _resolve_project_owner(ctx, GrantLevel.EDIT)
+    project_str = str(ctx.project_id)
+
+    try:
+        triage_uuid = UUID(args.triage_id)
+    except (ValueError, TypeError):
+        raise ToolExecutionError("triage_id must be a valid id")
+    item = await ctx.triage_repo.get_item(
+        user_id=owner, project_id=project_str, triage_id=triage_uuid
+    )
+    if item is None or item.item_type != "proposed_edge" or item.status != "pending":
+        raise ToolExecutionError(
+            "no pending proposed edge with that id (use kg_triage_list to find one)"
+        )
+
+    token = mint_action_token(
+        settings.jwt_secret,
+        ActionClaims(
+            jti=str(uuid4()),
+            authority=AUTH_GRANT,
+            user_id=str(ctx.user_id),  # bind to the PROPOSER — confirm requires redeemer==proposer
+            descriptor=DESC_TRIAGE_PROPOSED_EDGE,
+            project_id=project_str,
+            params={"triage_id": args.triage_id},
+        ),
+        time.time(),
+    )
+    if not token:
+        raise ToolExecutionError("could not mint a confirmation token")
+
+    payload = item.payload or {}
+    subject = payload.get("source_entity_id") or payload.get("subject_id")
+    obj = payload.get("target_entity_id") or payload.get("object_id")
+    return {
+        "proposed": True,
+        "confirm_token": token,
+        "expires_in_s": ACTION_TOKEN_TTL_S,
+        "descriptor": DESC_TRIAGE_PROPOSED_EDGE,
+        "summary": f"place edge {subject} —{payload.get('predicate')}→ {obj}",
+        "requires": "human confirmation via the review surface (no change applied yet)",
+    }
+
+
+async def _handle_kg_triage_schema_write(
+    ctx: "ToolContext", args: KgTriageSchemaWriteArgs
+) -> dict:
+    """C (confirm-token) — E3. Resolves a schema-mutating triage signature by MINTING
+    a `kg_triage_schema_write` confirm-token (NO write — INV-T3). The human redeems it
+    at `POST /v1/kg/actions/confirm`, which applies the ontology mutation (bumps the
+    schema_version) + stamps the version onto the resolved items.
+
+    Gate: MANAGE on the project (schema mutations are Manage-tier). Requires an ADOPTED
+    project-scoped schema (the System tier is admin-only). The token captures the live
+    schema_id + schema_version so confirm rejects on drift (optimistic concurrency)."""
+    from app.tools.executor import ToolExecutionError
+
+    await _resolve_project_owner(ctx, GrantLevel.MANAGE)
+    project_str = str(ctx.project_id)
+
+    current = await ctx.graph_schemas_repo.active_project_schema(project_str)
+    if current is None:
+        raise ToolExecutionError(
+            "this project has no adopted ontology to edit — adopt a project schema "
+            "first (the System template is read-only and admin-managed)"
+        )
+
+    token = mint_action_token(
+        settings.jwt_secret,
+        ActionClaims(
+            jti=str(uuid4()),
+            authority=AUTH_GRANT,
+            user_id=str(ctx.user_id),  # bind to the proposer
+            descriptor=DESC_TRIAGE_SCHEMA_WRITE,
+            project_id=project_str,
+            params={
+                "action": args.action,
+                "signature": args.signature,
+                "schema_id": str(current.schema_id),
+                "expected_schema_version": current.schema_version,
+                "code": args.code,
+                "label": args.label,
+                "set_code": args.set_code,
+                "add_kinds": args.add_kinds,
+            },
+        ),
+        time.time(),
+    )
+    if not token:
+        raise ToolExecutionError("could not mint a confirmation token")
+
+    return {
+        "proposed": True,
+        "confirm_token": token,
+        "expires_in_s": ACTION_TOKEN_TTL_S,
+        "descriptor": DESC_TRIAGE_SCHEMA_WRITE,
+        "summary": (
+            f"{args.action} '{args.code or args.set_code}' "
+            f"(schema v{current.schema_version} → v{current.schema_version + 1} on confirm)"
+        ),
+        "requires": "human confirmation via the review surface (no change applied yet)",
+    }
+
+
 GRAPH_SCHEMA_HANDLERS = {
     "kg_graph_query": _handle_kg_graph_query,
     "kg_entity_edge_timeline": _handle_kg_entity_edge_timeline,
@@ -1214,4 +1422,6 @@ GRAPH_SCHEMA_HANDLERS = {
     "kg_schema_edit": _handle_kg_schema_edit,
     "kg_adopt_template": _handle_kg_adopt_template,
     "kg_sync_apply": _handle_kg_sync_apply,
+    "kg_triage_place_edge": _handle_kg_triage_place_edge,
+    "kg_triage_schema_write": _handle_kg_triage_schema_write,
 }

@@ -305,3 +305,173 @@ async def test_apply_resolved_glossary_handoff_is_no_reapply():
     did = await apply_resolved(_item(), "promote_to_glossary_kind", {}, writer=writer)
     assert did is False
     writer.reapply.assert_not_called()
+
+
+# ── E1 — Neo4jReapplyWriter dispatch (over a spied create_relation) ───────────
+def _edge_item(item_type="proposed_edge", **payload):
+    base = {
+        "source_entity_id": "ent-a",
+        "target_entity_id": "ent-b",
+        "predicate": "ALLIES",
+    }
+    base.update(payload)
+    return _item(item_type=item_type, signature="propose_edge:ALLIES:ent-a->ent-b",
+                 payload=base)
+
+
+@pytest.mark.asyncio
+async def test_neo4j_reapply_writer_map_writes_edge(monkeypatch):
+    from app.ontology import triage_apply
+
+    spy = AsyncMock(return_value=object())  # non-None → write succeeded
+    monkeypatch.setattr(triage_apply, "create_relation", spy)
+    writer = triage_apply.Neo4jReapplyWriter(object(), owner_user_id=str(_OWNER))
+    await writer.reapply(_edge_item(), action="map", params={})
+    spy.assert_awaited_once()
+    kwargs = spy.await_args.kwargs
+    assert kwargs["user_id"] == str(_OWNER)  # owner-scoped, not caller
+    assert kwargs["subject_id"] == "ent-a"
+    assert kwargs["object_id"] == "ent-b"
+    assert kwargs["predicate"] == "ALLIES"
+    assert kwargs["cardinality"] is None  # map ≠ single_active
+
+
+@pytest.mark.asyncio
+async def test_neo4j_reapply_writer_close_previous_uses_single_active(monkeypatch):
+    from app.ontology import triage_apply
+
+    spy = AsyncMock(return_value=object())
+    monkeypatch.setattr(triage_apply, "create_relation", spy)
+    writer = triage_apply.Neo4jReapplyWriter(object(), owner_user_id=str(_OWNER))
+    await writer.reapply(
+        _edge_item(item_type="edge_cardinality_conflict"),
+        action="close_previous", params={},
+    )
+    assert spy.await_args.kwargs["cardinality"] == "single_active"
+
+
+@pytest.mark.asyncio
+async def test_neo4j_reapply_writer_re_target_overrides_object(monkeypatch):
+    from app.ontology import triage_apply
+
+    spy = AsyncMock(return_value=object())
+    monkeypatch.setattr(triage_apply, "create_relation", spy)
+    writer = triage_apply.Neo4jReapplyWriter(object(), owner_user_id=str(_OWNER))
+    await writer.reapply(
+        _edge_item(item_type="edge_kind_mismatch"),
+        action="re_target", params={"target_entity_id": "ent-c"},
+    )
+    assert spy.await_args.kwargs["object_id"] == "ent-c"
+
+
+@pytest.mark.asyncio
+async def test_neo4j_reapply_writer_map_recodes_predicate(monkeypatch):
+    from app.ontology import triage_apply
+
+    spy = AsyncMock(return_value=object())
+    monkeypatch.setattr(triage_apply, "create_relation", spy)
+    writer = triage_apply.Neo4jReapplyWriter(object(), owner_user_id=str(_OWNER))
+    await writer.reapply(_edge_item(), action="map", params={"map_to": "FRIENDS_WITH"})
+    assert spy.await_args.kwargs["predicate"] == "FRIENDS_WITH"
+
+
+@pytest.mark.asyncio
+async def test_neo4j_reapply_writer_handles_extraction_payload_keys(monkeypatch):
+    """Off-schema extraction parks use subject_id/object_id (not source/target)."""
+    from app.ontology import triage_apply
+
+    spy = AsyncMock(return_value=object())
+    monkeypatch.setattr(triage_apply, "create_relation", spy)
+    item = _item(item_type="unknown_edge_type", signature="edge:ALLIES",
+                 payload={"subject_id": "s1", "object_id": "o1", "predicate": "ALLIES"})
+    writer = triage_apply.Neo4jReapplyWriter(object(), owner_user_id=str(_OWNER))
+    await writer.reapply(item, action="map", params={})
+    kwargs = spy.await_args.kwargs
+    assert kwargs["subject_id"] == "s1" and kwargs["object_id"] == "o1"
+
+
+@pytest.mark.asyncio
+async def test_neo4j_reapply_writer_missing_fields_raises(monkeypatch):
+    from app.ontology import triage_apply
+    from app.ontology.triage_apply import TriageApplyError
+
+    spy = AsyncMock(return_value=object())
+    monkeypatch.setattr(triage_apply, "create_relation", spy)
+    item = _item(item_type="unknown_edge_type", payload={"predicate": "ALLIES"})  # no ids
+    writer = triage_apply.Neo4jReapplyWriter(object(), owner_user_id=str(_OWNER))
+    with pytest.raises(TriageApplyError):
+        await writer.reapply(item, action="map", params={})
+    spy.assert_not_awaited()  # never reached the write
+
+
+@pytest.mark.asyncio
+async def test_neo4j_reapply_writer_missing_endpoint_raises(monkeypatch):
+    from app.ontology import triage_apply
+    from app.ontology.triage_apply import TriageApplyError
+
+    spy = AsyncMock(return_value=None)  # create_relation → endpoint absent
+    monkeypatch.setattr(triage_apply, "create_relation", spy)
+    writer = triage_apply.Neo4jReapplyWriter(object(), owner_user_id=str(_OWNER))
+    with pytest.raises(TriageApplyError):
+        await writer.reapply(_edge_item(), action="map", params={})
+
+
+# ── E1 — the resolve route injects the REAL writer, not NotWired ──────────────
+def test_resolve_map_injects_real_writer_not_notwired(monkeypatch):
+    """A `map` resolve must drive the real re-apply batch (owner-scoped), never the
+    un-wired seam. We spy `_reapply_batch` to assert it ran with the resolved owner
+    + the pending list (the Neo4j write itself is covered by the writer unit + the
+    live integration test)."""
+    from app.routers.public import triage as triage_router
+
+    seen = {}
+
+    async def _spy_reapply(owner, action, params, pending):
+        seen["owner"] = owner
+        seen["action"] = action
+        seen["count"] = len(pending)
+
+    monkeypatch.setattr(triage_router, "_reapply_batch", _spy_reapply)
+
+    repo = MagicMock()
+    # map is valid for unknown_edge_type (its payload carries subject/object/pred).
+    repo.list_pending_for_signature = AsyncMock(
+        return_value=[
+            _edge_item(item_type="unknown_edge_type"),
+            _edge_item(item_type="unknown_edge_type"),
+        ]
+    )
+    repo.resolve_signature = AsyncMock(return_value=2)
+    client, _, _ = _make_client(repo=repo)
+    r = client.post(
+        f"/v1/kg/projects/{_PROJECT}/triage/edge:ALLIES/resolve",
+        json={"action": "map", "params": {}},
+    )
+    assert r.status_code == 200, r.text
+    assert seen["action"] == "map"
+    assert seen["owner"] == _OWNER
+    assert seen["count"] == 2
+
+
+def test_resolve_dismiss_does_not_reapply(monkeypatch):
+    from app.routers.public import triage as triage_router
+
+    called = {"n": 0}
+
+    async def _spy_reapply(owner, action, params, pending):
+        called["n"] += 1
+
+    monkeypatch.setattr(triage_router, "_reapply_batch", _spy_reapply)
+    repo = MagicMock()
+    # drop_edge is valid for edge_kind_mismatch.
+    repo.list_pending_for_signature = AsyncMock(
+        return_value=[_edge_item(item_type="edge_kind_mismatch")]
+    )
+    repo.resolve_signature = AsyncMock(return_value=1)
+    client, _, _ = _make_client(repo=repo)
+    r = client.post(
+        f"/v1/kg/projects/{_PROJECT}/triage/edge_kind:LOVER_OF/resolve",
+        json={"action": "drop_edge", "params": {}},
+    )
+    assert r.status_code == 200, r.text
+    assert called["n"] == 0  # drop_edge is not a REAPPLY action

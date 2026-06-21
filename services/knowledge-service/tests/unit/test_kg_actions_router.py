@@ -66,9 +66,10 @@ def _token(*, user_id=_CALLER, project_id=_PROJECT, authority=AUTH_GRANT,
 
 
 def _build(*, caller=_CALLER, meta=(_CALLER, _BOOK), grant=GrantLevel.OWNER,
-           schema="default", claimed=True):
+           schema="default", claimed=True, triage=None):
     """Assemble an app + the fakes, with sensible owner==caller defaults (gate passes
-    without consulting the grant client). Returns (app, mutations, tokens, schemas)."""
+    without consulting the grant client). Returns (app, mutations, tokens, schemas).
+    Pass a configured `triage` AsyncMock to exercise the Lane-E triage descriptors."""
     app = FastAPI()
     app.include_router(kg_actions.router)
 
@@ -99,6 +100,9 @@ def _build(*, caller=_CALLER, meta=(_CALLER, _BOOK), grant=GrantLevel.OWNER,
     # KM5-M2 added a system-templates dep to confirm/preview; FastAPI resolves
     # every param regardless of descriptor, so the grant-path tests must stub it too.
     app.dependency_overrides[kg_actions.get_system_templates_repo] = lambda: AsyncMock()
+    # Lane E added a triage-repo dep to confirm/preview — stub it for all paths;
+    # tests that exercise the triage descriptors pass a configured fake.
+    app.dependency_overrides[kg_actions.get_triage_repo] = lambda: triage or AsyncMock()
     return app, mutations, tokens, schemas
 
 
@@ -354,6 +358,195 @@ async def test_preview_sync_renders_diff():
     tokens.consume.assert_not_awaited()
 
 
+# ── E2 — kg_triage_proposed_edge descriptor dispatch ────────────────────────
+def _pe_token(*, user_id=_CALLER, project_id=_PROJECT, triage_id=None, now=None) -> str:
+    from app.ontology.confirm import DESC_TRIAGE_PROPOSED_EDGE
+
+    return mint_action_token(
+        settings.jwt_secret,
+        ActionClaims(
+            jti=str(uuid4()), authority=AUTH_GRANT, user_id=str(user_id),
+            descriptor=DESC_TRIAGE_PROPOSED_EDGE, project_id=str(project_id),
+            params={"triage_id": str(triage_id or uuid4())},
+        ),
+        now if now is not None else time.time(),
+    )
+
+
+def _pending_proposed_edge(tid):
+    from datetime import datetime, timezone
+
+    from app.db.ontology_models import TriageItem
+
+    return TriageItem(
+        triage_id=tid, user_id=_OWNER, project_id=str(_PROJECT), source={},
+        item_type="proposed_edge",
+        payload={"source_entity_id": "a", "target_entity_id": "b", "predicate": "ALLIES"},
+        signature="propose_edge:ALLIES:a->b", status="pending", resolution=None,
+        schema_version=None, created_at=datetime.now(timezone.utc),
+        resolved_at=None, resolved_by=None,
+    )
+
+
+async def test_confirm_proposed_edge_happy(monkeypatch):
+    tid = uuid4()
+    triage = AsyncMock()
+    triage.get_item = AsyncMock(return_value=_pending_proposed_edge(tid))
+    triage.resolve_item = AsyncMock(return_value=True)
+    app, _m, tokens, _s = _build(triage=triage)
+
+    # Stub the central write path so no real Neo4j is needed.
+    from app.ontology import triage_apply, triage_proposed_edge_effect
+
+    monkeypatch.setattr(triage_apply, "create_relation", AsyncMock(return_value=object()))
+
+    class _FakeSession:
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+
+    monkeypatch.setattr(triage_proposed_edge_effect, "neo4j_session", lambda: _FakeSession(), raising=False)
+    # the effect imports neo4j_session lazily from app.db.neo4j — patch there too.
+    import app.db.neo4j as _neo4j
+    monkeypatch.setattr(_neo4j, "neo4j_session", lambda: _FakeSession())
+
+    r = await _post(app, "/v1/kg/actions/confirm", {"confirm_token": _pe_token(triage_id=tid)})
+    assert r.status_code == 200, r.text
+    assert r.json()["applied"] is True
+    tokens.consume.assert_awaited_once()
+    triage.resolve_item.assert_awaited_once()
+
+
+async def test_confirm_proposed_edge_drift_already_resolved_422(monkeypatch):
+    tid = uuid4()
+    item = _pending_proposed_edge(tid)
+    item = item.model_copy(update={"status": "resolved"})
+    triage = AsyncMock()
+    triage.get_item = AsyncMock(return_value=item)
+    app, _m, tokens, _s = _build(triage=triage)
+    r = await _post(app, "/v1/kg/actions/confirm", {"confirm_token": _pe_token(triage_id=tid)})
+    assert r.status_code == 422
+    tokens.consume.assert_awaited_once()  # jti spent (fail-closed), no write
+
+
+async def test_confirm_proposed_edge_missing_404(monkeypatch):
+    tid = uuid4()
+    triage = AsyncMock()
+    triage.get_item = AsyncMock(return_value=None)
+    app, *_ = _build(triage=triage)
+    r = await _post(app, "/v1/kg/actions/confirm", {"confirm_token": _pe_token(triage_id=tid)})
+    assert r.status_code == 404
+
+
+async def test_confirm_proposed_edge_wrong_user_403():
+    app, _m, tokens, _s = _build()
+    r = await _post(app, "/v1/kg/actions/confirm",
+                    {"confirm_token": _pe_token(user_id=_OTHER)})
+    assert r.status_code == 403
+    tokens.consume.assert_not_awaited()
+
+
+async def test_preview_proposed_edge_renders_edge(monkeypatch):
+    tid = uuid4()
+    triage = AsyncMock()
+    triage.get_item = AsyncMock(return_value=_pending_proposed_edge(tid))
+    app, _m, tokens, _s = _build(triage=triage)
+    r = await _post(app, "/v1/kg/actions/preview", {"confirm_token": _pe_token(triage_id=tid)})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["descriptor"] == "kg_triage_proposed_edge"
+    assert body["drift"] is False
+    assert any(row["label"] == "predicate" for row in body["preview_rows"])
+    tokens.consume.assert_not_awaited()
+
+
+# ── E3 — kg_triage_schema_write descriptor dispatch ─────────────────────────
+def _sw_token(*, user_id=_CALLER, project_id=_PROJECT, action="add_to_vocab",
+              schema_id=None, version=3, now=None) -> str:
+    from app.ontology.confirm import DESC_TRIAGE_SCHEMA_WRITE
+
+    return mint_action_token(
+        settings.jwt_secret,
+        ActionClaims(
+            jti=str(uuid4()), authority=AUTH_GRANT, user_id=str(user_id),
+            descriptor=DESC_TRIAGE_SCHEMA_WRITE, project_id=str(project_id),
+            params={
+                "action": action, "signature": "drive:curiosity",
+                "schema_id": str(schema_id or _SID), "expected_schema_version": version,
+                "code": "curiosity", "label": "Curiosity", "set_code": "drive",
+                "add_kinds": [],
+            },
+        ),
+        now if now is not None else time.time(),
+    )
+
+
+async def test_confirm_schema_write_add_to_vocab_happy():
+    triage = AsyncMock()
+    triage.stamp_schema_version = AsyncMock(return_value=2)
+    app, mutations, tokens, _s = _build(triage=triage)  # default schema v3
+    # apply bumps to v4 → active_project_schema returns v4 after the mutation.
+    mutations.add_vocab_value = AsyncMock(return_value={})
+    schemas = app.dependency_overrides[kg_actions.get_graph_schemas_repo]()
+    schemas.active_project_schema = AsyncMock(side_effect=[
+        SimpleNamespace(schema_id=_SID, schema_version=3),  # _revalidate
+        SimpleNamespace(schema_id=_SID, schema_version=4),  # after-bump read
+    ])
+    r = await _post(app, "/v1/kg/actions/confirm", {"confirm_token": _sw_token()})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["applied"] is True
+    assert body["schema_version"] == 4
+    tokens.consume.assert_awaited_once()
+    mutations.add_vocab_value.assert_awaited_once()
+    triage.stamp_schema_version.assert_awaited_once()
+
+
+async def test_confirm_schema_write_drift_422():
+    triage = AsyncMock()
+    app, mutations, tokens, _s = _build(
+        triage=triage, schema=SimpleNamespace(schema_id=_SID, schema_version=99),
+    )
+    r = await _post(app, "/v1/kg/actions/confirm", {"confirm_token": _sw_token(version=3)})
+    assert r.status_code == 422
+    tokens.consume.assert_awaited_once()  # jti spent, no mutation
+    mutations.add_vocab_value.assert_not_awaited()
+
+
+async def test_confirm_schema_write_set_multi_active_calls_repo():
+    triage = AsyncMock()
+    triage.stamp_schema_version = AsyncMock(return_value=1)
+    app, mutations, _t, _s = _build(triage=triage)
+    mutations.set_edge_cardinality = AsyncMock(return_value={})
+    schemas = app.dependency_overrides[kg_actions.get_graph_schemas_repo]()
+    schemas.active_project_schema = AsyncMock(side_effect=[
+        SimpleNamespace(schema_id=_SID, schema_version=3),
+        SimpleNamespace(schema_id=_SID, schema_version=4),
+    ])
+    r = await _post(app, "/v1/kg/actions/confirm",
+                    {"confirm_token": _sw_token(action="set_multi_active")})
+    assert r.status_code == 200, r.text
+    mutations.set_edge_cardinality.assert_awaited_once()
+    assert mutations.set_edge_cardinality.await_args.kwargs["cardinality"] == "multi_active"
+
+
+async def test_preview_schema_write_renders_bump():
+    triage = AsyncMock()
+    app, *_ = _build(triage=triage)  # default schema v3
+    r = await _post(app, "/v1/kg/actions/preview", {"confirm_token": _sw_token()})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["descriptor"] == "kg_triage_schema_write"
+    assert body["drift"] is False
+    assert any(row["label"] == "will bump to" for row in body["preview_rows"])
+
+
+async def test_confirm_schema_write_wrong_user_403():
+    app, _m, tokens, _s = _build()
+    r = await _post(app, "/v1/kg/actions/confirm", {"confirm_token": _sw_token(user_id=_OTHER)})
+    assert r.status_code == 403
+    tokens.consume.assert_not_awaited()
+
+
 async def test_every_live_descriptor_is_dispatched():
     """Tripwire (/review-impl LOW-1): the codec's live-descriptor set must EXACTLY
     match the descriptors the confirm/preview router dispatches. If someone adds a
@@ -365,6 +558,7 @@ async def test_every_live_descriptor_is_dispatched():
     assert _confirm._LIVE_DESCRIPTORS == {
         DESC_SCHEMA_EDIT, _confirm.DESC_ADOPT, _confirm.DESC_SYNC,
         _confirm.DESC_SYSTEM_CREATE, _confirm.DESC_SYSTEM_PATCH, _confirm.DESC_SYSTEM_DELETE,
+        _confirm.DESC_TRIAGE_PROPOSED_EDGE, _confirm.DESC_TRIAGE_SCHEMA_WRITE,
     }, (
         "a new live descriptor must also get a confirm + preview dispatch branch in "
         "kg_actions.py and be added here"

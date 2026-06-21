@@ -45,6 +45,12 @@ from app.db.repositories.triage import (
 )
 from app.deps import get_grant_client
 from app.middleware.jwt_auth import get_current_user
+from app.ontology.triage_apply import (
+    Neo4jReapplyWriter,
+    TriageApplyError,
+    apply_resolved,
+    requires_reapply,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -246,11 +252,14 @@ async def resolve_triage(
             action, project, signature,
         )
 
-    # KG-local actions (map/re_target/drop_edge/close_previous) + the recorded
-    # schema-mutating intent: mark the batch resolved. The Neo4j re-apply of the
-    # now-valid edge is the un-wired seam (D-KG-LH-NEO4J-REAPPLY,
-    # app.ontology.triage_apply) -- integrates at C4/L7 with LB. We resolve the
-    # PG state here; the live re-apply is tracked, not silently faked.
+    # KG-local actions (map/re_target/drop_edge/close_previous): mark the batch
+    # resolved, THEN (E1, D-KG-LH-NEO4J-REAPPLY) re-apply the now-valid edge into
+    # Neo4j via the central write path (create_relation) for the REAPPLY actions
+    # (map/re_target/close_previous). drop_edge/dismiss write nothing. The
+    # re-apply runs over the SAME pending list we resolved, fail-soft per item:
+    # one bad park (missing endpoint / unreconstructable payload) is logged and
+    # skipped, never breaks the batch. The Neo4j write is owner-scoped (the writer
+    # is bound to the resolved OWNER), so a cross-tenant write is impossible.
     affected = await repo.resolve_signature(
         user_id=owner,
         project_id=project,
@@ -261,6 +270,8 @@ async def resolve_triage(
         new_status="resolved",
         schema_version=new_schema_version,
     )
+    if requires_reapply(action):
+        await _reapply_batch(owner, action, body.params, pending)
     return TriageResolveResultOut(
         status="resolved",
         affected=affected,
@@ -291,6 +302,43 @@ async def dismiss_triage(
     if not dismissed:
         raise _not_found("triage item not found")
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# ── E1 re-apply (D-KG-LH-NEO4J-REAPPLY) ──────────────────────────────────────
+async def _reapply_batch(
+    owner: UUID, action: str, params: dict[str, Any], pending: list
+) -> None:
+    """Re-apply every just-resolved item of a REAPPLY action into Neo4j via the
+    central write path, under the project OWNER. One session for the whole batch.
+
+    Fail-soft on TWO levels:
+      * Neo4j unconfigured (Track-1 mode) → log + return (PG state already
+        resolved; the live re-apply is a no-op, never a 500).
+      * a single item that can't be reconstructed / whose endpoint is missing →
+        log + continue (one bad park never breaks the batch)."""
+    from app.db.neo4j import Neo4jNotConfiguredError, neo4j_session
+
+    try:
+        session_cm = neo4j_session()
+    except Neo4jNotConfiguredError:
+        logger.warning(
+            "triage re-apply skipped — Neo4j not configured (Track-1); PG state "
+            "resolved, %d item(s) of action '%s' not written", len(pending), action,
+        )
+        return
+
+    async with session_cm as session:
+        writer = Neo4jReapplyWriter(session, owner_user_id=str(owner))
+        for item in pending:
+            try:
+                await apply_resolved(item, action, params, writer=writer)
+            except TriageApplyError as exc:
+                logger.warning("triage re-apply skipped one item: %s", exc)
+            except Exception:  # noqa: BLE001 — re-apply is best-effort, never block
+                logger.exception(
+                    "triage re-apply failed for item %s (action '%s')",
+                    getattr(item, "triage_id", "?"), action,
+                )
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────

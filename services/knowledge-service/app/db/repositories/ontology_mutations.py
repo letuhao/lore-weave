@@ -581,6 +581,56 @@ class OntologyMutationsRepo:
         out["metadata"] = _as_dict(out["metadata"])
         return out
 
+    async def widen_edge_target_kinds(
+        self, schema_id: UUID, *, code: str, add_kinds: list[str]
+    ) -> dict:
+        """Additively widen a live edge type's ``target_node_kinds`` (E3 —
+        widen_target_kinds resolution). Union (idempotent) so a kind already
+        present is a no-op; raises ChildNotFoundError if the edge type is gone /
+        deprecated. Bumps schema_version + rehashes (a schema-shape change)."""
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                await self._load_writable(conn, schema_id)
+                row = await conn.fetchrow(
+                    "SELECT target_node_kinds FROM kg_edge_types "
+                    "WHERE schema_id = $1 AND code = $2 AND deprecated_at IS NULL FOR UPDATE",
+                    schema_id, code,
+                )
+                if row is None:
+                    raise ChildNotFoundError(code)
+                current = list(row["target_node_kinds"] or [])
+                merged = current + [k for k in add_kinds if k and k not in current]
+                if merged != current:
+                    await conn.execute(
+                        "UPDATE kg_edge_types SET target_node_kinds = $3 "
+                        "WHERE schema_id = $1 AND code = $2",
+                        schema_id, code, merged,
+                    )
+                    await self._bump_and_rehash(conn, schema_id)
+        return {"code": code, "target_node_kinds": merged}
+
+    async def set_edge_cardinality(
+        self, schema_id: UUID, *, code: str, cardinality: str
+    ) -> dict:
+        """Set a live edge type's ``cardinality`` (E3 — set_multi_active resolution
+        flips a single_active type to multi_active so coexisting instances stop
+        triaging as cardinality conflicts). Raises ChildNotFoundError if gone;
+        bumps schema_version + rehashes."""
+        if cardinality not in ("single_active", "multi_active"):
+            raise ValueError("cardinality must be single_active|multi_active")
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                await self._load_writable(conn, schema_id)
+                res = await conn.execute(
+                    "UPDATE kg_edge_types SET cardinality = $3 "
+                    "WHERE schema_id = $1 AND code = $2 AND deprecated_at IS NULL",
+                    schema_id, code, cardinality,
+                )
+                if res.endswith(" 0"):
+                    raise ChildNotFoundError(code)
+                await self._bump_and_rehash(conn, schema_id)
+        return {"code": code, "cardinality": cardinality}
+
     async def deprecate_edge_type(self, schema_id: UUID, code: str) -> None:
         await self._deprecate_child(schema_id, "kg_edge_types", "code", code)
 

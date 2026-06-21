@@ -34,6 +34,8 @@ __all__ = [
     "DESC_SYSTEM_CREATE",
     "DESC_SYSTEM_PATCH",
     "DESC_SYSTEM_DELETE",
+    "DESC_TRIAGE_PROPOSED_EDGE",
+    "DESC_TRIAGE_SCHEMA_WRITE",
     "ActionClaims",
     "ActionTokenInvalid",
     "ActionTokenExpired",
@@ -64,9 +66,15 @@ DESC_SYNC = "kg_sync_apply"
 DESC_SYSTEM_CREATE = "kg_system_create"
 DESC_SYSTEM_PATCH = "kg_system_patch"
 DESC_SYSTEM_DELETE = "kg_system_delete"
+# Triage class-C descriptors (Lane E, grant authority — re-check proposer + grant):
+# E2 — place an agent-drafted `proposed_edge` triage item into Neo4j (Edit-gated).
+DESC_TRIAGE_PROPOSED_EDGE = "kg_triage_proposed_edge"
+# E3 — apply a schema-mutating triage resolution via ontology_mutations (Manage-gated).
+DESC_TRIAGE_SCHEMA_WRITE = "kg_triage_schema_write"
 _LIVE_DESCRIPTORS: frozenset[str] = frozenset({
     DESC_SCHEMA_EDIT, DESC_ADOPT, DESC_SYNC,
     DESC_SYSTEM_CREATE, DESC_SYSTEM_PATCH, DESC_SYSTEM_DELETE,
+    DESC_TRIAGE_PROPOSED_EDGE, DESC_TRIAGE_SCHEMA_WRITE,
 })
 
 

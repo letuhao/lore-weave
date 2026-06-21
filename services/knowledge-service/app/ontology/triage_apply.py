@@ -7,37 +7,45 @@ but ONLY via the **central write path** (D5: relations/facts repos), never raw
 Cypher from here. This module is the seam between the PG-side triage state
 machine (`app.db.repositories.triage`) and that write path.
 
-WHY A SEAM, NOT THE WRITE ITSELF
-================================
-The actual Neo4j re-apply integrates at C4/L7 together with lane LB (extraction
-park + the schema-aware write path that knows how to turn a parked
-``payload`` back into a validated edge/fact). At LH-build time that consumer
-does not exist yet, so this module:
+THE REAL WRITER (E1, D-KG-LH-NEO4J-REAPPLY)
+===========================================
+``Neo4jReapplyWriter`` is the concrete ``ReapplyWriter`` over ``create_relation``
+(D5). It reconstructs the corrected edge from the resolved triage item's parked
+``payload`` (+ the resolution ``params``) and writes it through the central path:
 
-  * fully classifies each action (KG-local re-apply vs glossary hand-off vs
-    schema-mutating vs dismiss) -- the decision logic IS owned here, and
-  * exposes ``apply_resolved(item, action, params, *, writer=...)`` that DELEGATES
-    the Neo4j write to an injected ``ReapplyWriter``. The default writer raises
-    ``NotImplementedError`` (the un-wired seam); tests pass a fake writer and
-    assert it is called with the right corrected element.
+  * ``map``           — write the (optionally code-mapped) edge.
+  * ``re_target``     — write the edge with the corrected target entity.
+  * ``close_previous``— write the new edge with ``cardinality="single_active"``,
+    reusing Lane A's auto-close of the prior open instance.
 
-DEFERRED: ``D-KG-LH-NEO4J-REAPPLY`` -- wire a real ``ReapplyWriter`` over the
-relations/facts central write path when LB/L7 land. Until then the router
-resolves the PG state (status -> resolved/pending_glossary) and, for KG-local
-actions, MAY skip the live re-apply (tracked) rather than 500.
+Owner-scoped: the router injects the writer bound to the resolved project OWNER
+(resolve-to-owner), so ``create_relation`` writes under the owner's tenant
+partition — never the caller's. Fail-soft per item: a single item whose payload
+can't be reconstructed into a valid edge raises ``TriageApplyError`` (or the
+write returns ``None``), which the router's batch loop logs + continues — one
+bad park never breaks the batch.
 
-Spec: docs/specs/2026-06-20-knowledge-graph-customizable-ontology.md s11.2 / s11.4.
+``NotWiredReapplyWriter`` is retained as the explicit "un-wired" default for the
+pure-unit ``apply_resolved`` contract tests; the live router always injects the
+real writer.
+
+Spec: docs/specs/2026-06-20-knowledge-graph-customizable-ontology.md s11.2 / s11.4;
+docs/specs/2026-06-21-kg-deferred-clearance.md §5 (E1).
 """
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Protocol, runtime_checkable
 
+from app.db.neo4j_repos.relations import create_relation
 from app.db.ontology_models import TriageItem
 from app.db.repositories.triage import (
     GLOSSARY_HANDOFF_ACTIONS,
     SCHEMA_MUTATING_ACTIONS,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class TriageApplyError(Exception):
@@ -124,3 +132,86 @@ async def apply_resolved(
     w = writer or NotWiredReapplyWriter()
     await w.reapply(item, action=action, params=params or {})
     return True
+
+
+# ── E1 — the real writer over the central write path (create_relation) ─────────
+def _edge_fields(item: TriageItem, params: dict[str, Any]) -> tuple[str, str, str]:
+    """Reconstruct (subject_id, predicate, object_id) for the corrected edge from
+    a parked triage payload + the resolution params.
+
+    Two park sources feed this seam, with different key names, so we normalize
+    both:
+      * extraction off-schema park (pass2_writer) — ``subject_id`` / ``object_id``
+        / ``predicate``.
+      * agent draft (kg_propose_edge) — ``source_entity_id`` / ``target_entity_id``
+        / ``predicate``.
+
+    Resolution params override the parked values for the corrected write:
+      * ``map``       — ``params.map_to`` (or ``params.predicate``) re-codes the
+        predicate to the mapped edge-type.
+      * ``re_target`` — ``params.target_entity_id`` (or ``params.object_id``)
+        replaces the object endpoint.
+
+    Raises ``TriageApplyError`` when a required field is absent — the router's
+    batch loop catches it (fail-soft, log + continue)."""
+    payload = item.payload or {}
+    subject_id = payload.get("subject_id") or payload.get("source_entity_id")
+    object_id = payload.get("object_id") or payload.get("target_entity_id")
+    predicate = payload.get("predicate")
+
+    # re_target — corrected object endpoint comes from the resolution params.
+    if "target_entity_id" in params or "object_id" in params:
+        object_id = params.get("target_entity_id") or params.get("object_id") or object_id
+    # map — corrected predicate code comes from the resolution params.
+    if "map_to" in params or "predicate" in params:
+        predicate = params.get("map_to") or params.get("predicate") or predicate
+
+    if not subject_id or not object_id or not predicate:
+        raise TriageApplyError(
+            f"triage item {item.triage_id} payload lacks the (subject, predicate, "
+            f"object) needed to re-apply the edge (subject={subject_id!r}, "
+            f"predicate={predicate!r}, object={object_id!r})"
+        )
+    return str(subject_id), str(predicate), str(object_id)
+
+
+class Neo4jReapplyWriter:
+    """Real ``ReapplyWriter`` (E1, D-KG-LH-NEO4J-REAPPLY).
+
+    Writes the corrected edge for a resolved KG-local triage item through the
+    central ``create_relation`` path under the project OWNER (resolve-to-owner —
+    the router injects ``owner``). ``close_previous`` passes
+    ``cardinality="single_active"`` so Lane A auto-closes the prior open
+    instance between the same endpoints before the new one is MERGEd.
+
+    A ``CypherSession`` is injected (so the router can reuse one session for the
+    whole batch). The owner's id is the tenant partition key — NEVER the
+    caller's — so a cross-tenant write is structurally impossible here."""
+
+    def __init__(self, session: Any, *, owner_user_id: str) -> None:
+        self._session = session
+        self._owner = owner_user_id
+
+    async def reapply(
+        self, item: TriageItem, *, action: str, params: dict[str, Any]
+    ) -> None:
+        subject_id, predicate, object_id = _edge_fields(item, params)
+        cardinality = "single_active" if action == "close_previous" else None
+        rel = await create_relation(
+            self._session,
+            user_id=self._owner,
+            subject_id=subject_id,
+            predicate=predicate,
+            object_id=object_id,
+            confidence=1.0,  # human-confirmed resolution
+            pending_validation=False,
+            schema_version=item.schema_version,
+            cardinality=cardinality,
+        )
+        if rel is None:
+            # Endpoint missing under the owner (e.g. deleted entity / stale id) —
+            # nothing to relate. Fail-soft: surface so the batch loop logs + skips.
+            raise TriageApplyError(
+                f"triage item {item.triage_id}: edge endpoint not found under the "
+                f"owner (subject={subject_id!r}, object={object_id!r}) — skipped"
+            )

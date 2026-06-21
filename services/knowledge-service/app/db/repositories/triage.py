@@ -46,12 +46,12 @@ SUGGESTED_ACTIONS: dict[TriageItemType, list[str]] = {
         "map",
         "dismiss",
     ],
-    # D-KG-LF-PROPOSE-EDGE-INBOX — an agent-drafted on-schema edge. Only `dismiss`
-    # (reject the proposal) is wired today; the "place the edge into Neo4j" confirm
-    # is the un-wired central write path (KM6 / D-KG-LH-NEO4J-REAPPLY) and is
-    # intentionally NOT offered here yet (offering an un-applied action would mark
-    # the item resolved without writing the edge — a silent no-op).
-    "proposed_edge": ["dismiss"],
+    # D-KG-LF-PROPOSE-EDGE-INBOX — an agent-drafted on-schema edge. `dismiss`
+    # rejects it; `place_edge` (E2) places it into Neo4j as a CLASS-C confirm
+    # action: the MCP tool MINTS a DESC_TRIAGE_PROPOSED_EDGE confirm-token (never
+    # writes — INV-K1), the human redeems it at /v1/kg/actions/confirm, and the
+    # effect writes the edge via the central write path + marks the item resolved.
+    "proposed_edge": ["dismiss", "place_edge"],
 }
 
 # Action -> resolved-status classification (spec s11.2/s11.4).
@@ -282,6 +282,88 @@ class TriageRepo:
                 resolved_by,
             )
         return len(affected)
+
+    # -- single-item read + resolve (E2 proposed_edge confirm) ------------
+    async def get_item(
+        self, *, user_id: UUID, project_id: str, triage_id: UUID
+    ) -> TriageItem | None:
+        """Fetch ONE triage item by id, scoped to ``(user_id, project_id)``.
+
+        Returns ``None`` when not found / not visible (no existence oracle). Used
+        by the E2 proposed_edge confirm effect to re-fetch + drift-check the item
+        at confirm time (resolved/dismissed since mint → 422)."""
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                f"""
+                SELECT {_ITEM_COLS} FROM kg_triage_items
+                WHERE triage_id = $3 AND user_id = $1 AND project_id = $2
+                """,
+                user_id,
+                project_id,
+                triage_id,
+            )
+        return _row_to_item(row) if row else None
+
+    async def resolve_item(
+        self,
+        *,
+        user_id: UUID,
+        project_id: str,
+        triage_id: UUID,
+        action: str,
+        params: dict[str, Any] | None,
+        resolved_by: str,
+    ) -> bool:
+        """Mark ONE pending item resolved (E2 confirm write-through), scoped.
+
+        Returns True if the row transitioned (was pending), False otherwise
+        (already terminal / not found / not visible) — the effect maps False to a
+        drift 422 (concurrently resolved since the writer placed the edge)."""
+        resolution = {"action": action, "params": params or {}}
+        now = datetime.now(timezone.utc)
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                UPDATE kg_triage_items
+                SET status = 'resolved', resolution = $4::jsonb,
+                    resolved_at = $5, resolved_by = $6
+                WHERE triage_id = $3 AND user_id = $1 AND project_id = $2
+                  AND status = 'pending'
+                RETURNING triage_id
+                """,
+                user_id,
+                project_id,
+                triage_id,
+                json.dumps(resolution),
+                now,
+                resolved_by,
+            )
+        return row is not None
+
+    async def stamp_schema_version(
+        self, *, user_id: UUID, project_id: str, signature: str, schema_version: int
+    ) -> int:
+        """Backfill ``schema_version`` onto the RESOLVED items of a signature (E3
+        write-through). The schema-mutating resolve route sets schema_version=None;
+        once the class-C confirm applies the schema change + computes the new
+        version, this stamps it onto those items. Scoped to ``(user_id, project_id,
+        signature)`` per the locked tenancy rule (every query filters by both keys).
+        Returns rows affected."""
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                UPDATE kg_triage_items
+                SET schema_version = $4
+                WHERE user_id = $1 AND project_id = $2 AND signature = $3
+                  AND status = 'resolved'
+                RETURNING triage_id
+                """,
+                user_id,
+                project_id,
+                signature,
+                schema_version,
+            )
+        return len(rows)
 
     # -- dismiss a single item (s11.4 POST, Edit-gated) -------------------
     async def dismiss(
