@@ -303,6 +303,47 @@ async def _resolve_schema_for_persist(
     return schema
 
 
+async def _resolve_schemas_for_extract_item(
+    *, user_id: UUID, project_id: UUID | None,
+) -> tuple[ExtractionSchema | None, ExtractionSchema | None]:
+    """L7B (D-KG-L7B-EXTRACT-ITEM) — resolve the L7 schema SPLIT for the
+    combined extract-then-write ``/extract-item`` path.
+
+    Returns ``(advisory, authoritative)``:
+
+      * **advisory** (``allow_free_edges`` forced True) → fed to the SDK
+        extraction prompt as a vocab *hint* so it never pre-drops an off-vocab
+        predicate (which would rob the write boundary's triage park of the edge);
+      * **authoritative** (real ``allow_free_edges``) → handed to
+        ``write_pass2_extraction`` so the closed-edge guard + ``schema_version``
+        stamp + off-schema triage park go live there.
+
+    Same posture split ``/persist-pass2`` (authoritative) + ``/resolve-schema``
+    (advisory) use, but resolved ONCE here because this endpoint runs both the
+    SDK extraction AND the write in a single in-process pipeline.
+
+    Returns ``(None, None)`` for chat/global (no project) or on any resolution
+    failure — extraction still persists, just with the static prompt + no
+    stamp/guard this call (fail-soft, exactly like the anchor pre-load and
+    ``_resolve_schema_for_persist``). The general fallback = today's behavior.
+    """
+    if project_id is None:
+        return (None, None)
+    try:
+        repo = GraphSchemasRepo(get_knowledge_pool())
+        resolved = await repo.resolve_for_project(str(project_id))
+        advisory = build_extraction_schema(resolved, advisory=True)
+        authoritative = build_extraction_schema(resolved, advisory=False)
+    except Exception:
+        logger.warning(
+            "L7B: schema resolve failed for project=%s — extract-item will use "
+            "the static prompt + no stamp/guard this call",
+            project_id, exc_info=True,
+        )
+        return (None, None)
+    return (advisory, authoritative)
+
+
 async def _load_anchors_for_extraction(
     *, user_id: UUID, project_id: UUID | None,
 ) -> list[Anchor]:
@@ -411,6 +452,26 @@ async def extract_item(body: ExtractItemRequest) -> ExtractItemResponse:
         user_id=body.user_id, project_id=body.project_id,
     )
 
+    # L7B (D-KG-L7B-EXTRACT-ITEM) — resolve the L7 schema SPLIT internally so
+    # this endpoint gets the same ontology customization /persist-pass2 has,
+    # WITHOUT changing the cross-service contract (composition-service C27 sends
+    # no schema field). The advisory schema feeds the SDK extraction prompt as a
+    # vocab hint; the authoritative schema + triage_repo go to the writer for the
+    # closed-edge guard + off-schema park + schema_version stamp. Both None
+    # (chat/global or resolve failure) → general fallback (today's behavior).
+    advisory_schema, write_schema = await _resolve_schemas_for_extract_item(
+        user_id=body.user_id, project_id=body.project_id,
+    )
+    # Best-effort like the JobLogsRepo producer above: if the pool isn't
+    # initialised (unit tests that only mock the extractor helpers), triage_repo
+    # stays None — the writer only parks inside the closed-edge guard (which needs
+    # a resolved authoritative schema), so None never changes behavior for a
+    # free-edge/None schema.
+    try:
+        triage_repo: TriageRepo | None = TriageRepo(get_knowledge_pool())
+    except Exception:
+        triage_repo = None
+
     try:
         async with neo4j_session() as session:
             if body.item_type == "chapter":
@@ -433,6 +494,9 @@ async def extract_item(body: ExtractItemRequest) -> ExtractItemResponse:
                     llm_client=llm_client,
                     anchors=anchors,
                     job_logs_repo=job_logs_repo,
+                    schema=advisory_schema,  # L7B — advisory vocab hint for SDK
+                    write_schema=write_schema,  # L7B — authoritative write guard
+                    triage_repo=triage_repo,  # L7B — park off-schema edges
                 )
             else:  # "chat_turn" — Pydantic Literal rejects other values at 422
                 if not body.user_message and not body.assistant_message:
@@ -455,6 +519,9 @@ async def extract_item(body: ExtractItemRequest) -> ExtractItemResponse:
                     llm_client=llm_client,
                     anchors=anchors,
                     job_logs_repo=job_logs_repo,
+                    schema=advisory_schema,  # L7B — advisory vocab hint for SDK
+                    write_schema=write_schema,  # L7B — authoritative write guard
+                    triage_repo=triage_repo,  # L7B — park off-schema edges
                 )
     except HTTPException:
         raise  # re-raise validation errors (422)

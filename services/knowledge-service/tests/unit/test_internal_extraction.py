@@ -144,6 +144,201 @@ def test_chapter_without_text_returns_422():
     assert resp.status_code == 422
 
 
+# -- L7B: extract-item schema split (D-KG-L7B-EXTRACT-ITEM) ---------
+
+
+@patch("app.routers.internal_extraction.get_knowledge_pool")
+@patch("app.routers.internal_extraction._resolve_schemas_for_extract_item", new_callable=AsyncMock)
+@patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
+@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.get_llm_client")
+@patch("app.routers.internal_extraction.extract_pass2_chapter")
+@patch("app.routers.internal_extraction.settings")
+def test_extract_item_threads_schema_split_to_orchestrator(
+    mock_settings, mock_extract, mock_llm, mock_neo4j,
+    mock_anchors, mock_resolve, mock_pool,
+):
+    """L7B: extract-item resolves the L7 schema split internally and passes
+    BOTH the advisory schema (SDK prompt) and the authoritative write_schema +
+    a TriageRepo (writer's closed-edge guard + off-schema park) to the
+    orchestrator — the same activation /persist-pass2 has, without any change to
+    the cross-service contract (composition sends no schema field)."""
+    from app.db.repositories.triage import TriageRepo
+    from loreweave_extraction.schema_projection import ExtractionSchema
+
+    mock_settings.neo4j_uri = "bolt://localhost:7687"
+    mock_settings.internal_service_token = _TEST_TOKEN
+    mock_extract.return_value = _MOCK_RESULT
+    mock_llm.return_value = MagicMock()
+    mock_anchors.return_value = []
+    mock_pool.return_value = MagicMock()  # TriageRepo just stores the pool
+
+    advisory = ExtractionSchema(
+        edge_predicates=("disciple_of",), allow_free_edges=True,  # advisory hint
+        schema_version=4, label="proj@v4",
+    )
+    authoritative = ExtractionSchema(
+        edge_predicates=("disciple_of",), allow_free_edges=False,  # CLOSED
+        schema_version=4, label="proj@v4",
+    )
+    mock_resolve.return_value = (advisory, authoritative)
+
+    mock_session = AsyncMock()
+    mock_neo4j.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_neo4j.return_value.__aexit__ = AsyncMock(return_value=False)
+
+    client = _client()
+    resp = _post(client, _chapter_body())
+
+    assert resp.status_code == 200, resp.text
+    mock_extract.assert_called_once()
+    kw = mock_extract.call_args.kwargs
+    # Advisory schema → SDK prompt path.
+    assert kw["schema"] is advisory
+    # Authoritative schema → write boundary (closed-edge guard + stamp).
+    assert kw["write_schema"] is authoritative
+    # TriageRepo wired so an off-schema edge the guard drops PARKS to triage.
+    assert isinstance(kw["triage_repo"], TriageRepo)
+
+
+@patch("app.routers.internal_extraction.get_knowledge_pool")
+@patch("app.routers.internal_extraction._resolve_schemas_for_extract_item", new_callable=AsyncMock)
+@patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
+@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.get_llm_client")
+@patch("app.routers.internal_extraction.extract_pass2_chat_turn")
+@patch("app.routers.internal_extraction.settings")
+def test_extract_item_chat_turn_also_threads_schema_split(
+    mock_settings, mock_extract, mock_llm, mock_neo4j,
+    mock_anchors, mock_resolve, mock_pool,
+):
+    """The chat_turn branch threads the schema split too (parity with chapter)."""
+    from app.db.repositories.triage import TriageRepo
+    from loreweave_extraction.schema_projection import ExtractionSchema
+
+    mock_settings.neo4j_uri = "bolt://localhost:7687"
+    mock_settings.internal_service_token = _TEST_TOKEN
+    mock_extract.return_value = _MOCK_RESULT
+    mock_llm.return_value = MagicMock()
+    mock_anchors.return_value = []
+    mock_pool.return_value = MagicMock()
+
+    advisory = ExtractionSchema(edge_predicates=("x",), allow_free_edges=True, schema_version=1, label="p@v1")
+    authoritative = ExtractionSchema(edge_predicates=("x",), allow_free_edges=False, schema_version=1, label="p@v1")
+    mock_resolve.return_value = (advisory, authoritative)
+
+    mock_session = AsyncMock()
+    mock_neo4j.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_neo4j.return_value.__aexit__ = AsyncMock(return_value=False)
+
+    resp = _post(_client(), _chat_body())
+
+    assert resp.status_code == 200, resp.text
+    kw = mock_extract.call_args.kwargs
+    assert kw["schema"] is advisory
+    assert kw["write_schema"] is authoritative
+    assert isinstance(kw["triage_repo"], TriageRepo)
+
+
+@patch("app.routers.internal_extraction.get_knowledge_pool")
+@patch("app.routers.internal_extraction._resolve_schemas_for_extract_item", new_callable=AsyncMock)
+@patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
+@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.get_llm_client")
+@patch("app.routers.internal_extraction.extract_pass2_chapter")
+@patch("app.routers.internal_extraction.settings")
+def test_extract_item_no_schema_falls_back_to_general(
+    mock_settings, mock_extract, mock_llm, mock_neo4j,
+    mock_anchors, mock_resolve, mock_pool,
+):
+    """When no schema resolves (chat/global or resolve failure → (None, None)),
+    extract-item passes schema=None/write_schema=None — the general fallback,
+    i.e. today's static-prompt behavior. (TriageRepo is still wired but a None
+    authoritative schema never enters the closed-edge guard, so it never parks.)"""
+    mock_settings.neo4j_uri = "bolt://localhost:7687"
+    mock_settings.internal_service_token = _TEST_TOKEN
+    mock_extract.return_value = _MOCK_RESULT
+    mock_llm.return_value = MagicMock()
+    mock_anchors.return_value = []
+    mock_pool.return_value = MagicMock()
+    mock_resolve.return_value = (None, None)
+
+    mock_session = AsyncMock()
+    mock_neo4j.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_neo4j.return_value.__aexit__ = AsyncMock(return_value=False)
+
+    resp = _post(_client(), _chapter_body())
+
+    assert resp.status_code == 200, resp.text
+    kw = mock_extract.call_args.kwargs
+    assert kw["schema"] is None
+    assert kw["write_schema"] is None
+
+
+@patch("app.routers.internal_extraction.GraphSchemasRepo")
+@patch("app.routers.internal_extraction.get_knowledge_pool")
+def test_resolve_schemas_for_extract_item_builds_advisory_and_authoritative(
+    mock_pool, mock_repo_cls,
+):
+    """The resolver builds BOTH projections from one resolve: advisory forces
+    allow_free_edges True (SDK hint), authoritative carries the real (closed)
+    flag (write guard). Same schema_version/vocab on both."""
+    import asyncio
+    from app.db.ontology_models import EdgeType, FactType, ResolvedSchema, SchemaNodeKind
+    from app.routers.internal_extraction import _resolve_schemas_for_extract_item
+
+    sid = uuid4()
+    resolved = ResolvedSchema(
+        project_id="p1", schema_version=5, allow_free_edges=False,  # CLOSED
+        edge_types=[EdgeType(edge_type_id=uuid4(), schema_id=sid, code="disciple_of", label="X")],
+        fact_types=[FactType(fact_type_id=uuid4(), schema_id=sid, code="realm", label="R")],
+        node_kinds=[SchemaNodeKind(schema_node_kind_id=uuid4(), schema_id=sid, kind_code="cultivator", strength="required")],
+    )
+    mock_pool.return_value = MagicMock()
+    mock_repo_cls.return_value.resolve_for_project = AsyncMock(return_value=resolved)
+
+    advisory, authoritative = asyncio.run(
+        _resolve_schemas_for_extract_item(user_id=uuid4(), project_id=uuid4())
+    )
+
+    assert advisory is not None and authoritative is not None
+    assert advisory.allow_free_edges is True  # advisory hint, never pre-drops
+    assert authoritative.allow_free_edges is False  # closed → writer enforces
+    assert advisory.schema_version == 5
+    assert authoritative.schema_version == 5
+
+
+def test_resolve_schemas_for_extract_item_no_project_returns_none_none():
+    import asyncio
+    from app.routers.internal_extraction import _resolve_schemas_for_extract_item
+
+    advisory, authoritative = asyncio.run(
+        _resolve_schemas_for_extract_item(user_id=uuid4(), project_id=None)
+    )
+    assert advisory is None
+    assert authoritative is None
+
+
+@patch("app.routers.internal_extraction.GraphSchemasRepo")
+@patch("app.routers.internal_extraction.get_knowledge_pool")
+def test_resolve_schemas_for_extract_item_resolve_failure_returns_none_none(
+    mock_pool, mock_repo_cls,
+):
+    """A resolve error degrades to (None, None) (general fallback) — never raises
+    so extraction still persists this call."""
+    import asyncio
+    from app.routers.internal_extraction import _resolve_schemas_for_extract_item
+
+    mock_pool.return_value = MagicMock()
+    mock_repo_cls.return_value.resolve_for_project = AsyncMock(side_effect=RuntimeError("db down"))
+
+    advisory, authoritative = asyncio.run(
+        _resolve_schemas_for_extract_item(user_id=uuid4(), project_id=uuid4())
+    )
+    assert advisory is None
+    assert authoritative is None
+
+
 # -- Chat turn extraction ------------------------------------------
 
 
