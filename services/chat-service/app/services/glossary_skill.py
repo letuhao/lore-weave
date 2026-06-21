@@ -32,9 +32,46 @@ what standards a book could adopt, use `glossary_list_system_standards`.
 - A book starts empty until its standards are ADOPTED. To scaffold one, \
 `glossary_adopt_standards` (genre/kind codes from `glossary_list_system_standards`) \
 returns a `confirm_token` + `descriptor` to confirm via `glossary_confirm_action`.
+- **A kind is only useful with ATTRIBUTES.** A kind is just a type label; what makes \
+it describe anything are the attributes entities of that kind carry (e.g. a `vampire` \
+kind needs attributes like `weaknesses`, `powers`, `origin`, `bloodline`; a `hunter` \
+needs `methods`, `allegiance`, `notable_kills`). So when you suggest or design an \
+ontology, NEVER propose a bare kind on its own — for every new kind, also propose the \
+3–6 attributes that define it. A kind with no attributes is an incomplete proposal; \
+say so and offer to add them. The same holds when adopting standards: check the \
+adopted kinds actually have attributes, and propose any that are missing. This is the \
+single most common gap — do not skip it.
+- **Every proposed attribute MUST have a clear, specific `description`.** The \
+description is not optional polish — the downstream extraction and generation \
+pipelines feed each attribute's description to the LLM as the INSTRUCTION for what to \
+fill. An attribute with no description (or a vague one like "info") cannot be \
+extracted correctly. Write the description as a concrete instruction naming what to \
+capture, e.g. for `weaknesses`: "The vampire's specific vulnerabilities (sunlight, \
+garlic, holy symbols, running water) and how each affects them"; for `bloodline`: \
+"The vampire's lineage or sire — who turned them and which vampire line they belong \
+to". Always pass `description` (and a `field_type`) to `glossary_propose_new_attribute`. \
+If the user asks you to add an attribute without enough detail to write a good \
+description, ask a brief clarifying question rather than proposing an empty one.
+- **Order matters: kind first, then its attributes.** An attribute attaches to an \
+EXISTING kind, so propose (and have the user confirm) the new kind first, THEN call \
+`glossary_propose_new_attribute` for each of its attributes (passing that kind's \
+`kind_code`) for the user to confirm. If you propose several kinds at once, after they \
+are confirmed, do a follow-up pass proposing each kind's attributes. After confirming \
+a kind, briefly tell the user you will now propose its attributes (or ask which they \
+want) — never leave a freshly created kind attribute-less.
+- **Curate adopted defaults.** When a book adopts standards, the kinds arrive with \
+attributes that usually have NO description. Treat that as work to do: read the kind's \
+attributes (`glossary_book_ontology_read`), write a description for every one that \
+lacks it, and delete the attributes that don't fit this book (e.g. romance-only \
+`love_language`/`emotional_wound` on a horror novel) with `glossary_book_delete`.
 - Add/edit book-native genres, kinds, attributes with `glossary_book_create` / \
-`glossary_book_patch` (pass `base_version` from `glossary_book_ontology_read` so a \
-concurrent edit is caught). Toggle the active-genre matrix with \
+`glossary_book_patch`. **`glossary_book_patch` takes FLAT top-level fields** — to set \
+a description on an existing attribute call it with `level="attribute"`, `kind_code`, \
+`genre_code`, `code`, and `description` (a plain string). Do NOT pass a `changes` / \
+`old_value` / `new_value` / `target` diff payload here — that shape belongs only to \
+`glossary_propose_entity_edit` (which edits one entity's VALUES, not the schema). \
+Pass `base_version` from `glossary_book_ontology_read` so a concurrent edit is caught. \
+Toggle the active-genre matrix with \
 `glossary_book_set_active_genres` (add/remove codes) and a kind's genre links with \
 `glossary_book_set_kind_genres`. Override one entity's genres with \
 `glossary_entity_set_genres`.
