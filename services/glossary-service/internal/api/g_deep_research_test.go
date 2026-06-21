@@ -177,6 +177,27 @@ func TestDeepResearch_EffectNeutralizesAttachesAndReturns(t *testing.T) {
 	if evCount != 2 {
 		t.Errorf("want 2 reference evidence rows, got %d", evCount)
 	}
+
+	// /review-impl #1 — re-research the SAME entity → sources still returned, but NO
+	// duplicate evidence rows (dedup by URL).
+	rec2 := httptest.NewRecorder()
+	f.srv.effectDeepResearch(rec2, ctx, claims)
+	var resp2 struct {
+		SourcesAttached int                  `json:"sources_attached"`
+		Sources         []deepResearchSource `json:"sources"`
+	}
+	json.Unmarshal(rec2.Body.Bytes(), &resp2) //nolint:errcheck
+	if len(resp2.Sources) != 2 {
+		t.Errorf("re-research must still return the sources, got %d", len(resp2.Sources))
+	}
+	if resp2.SourcesAttached != 0 {
+		t.Errorf("re-research must attach 0 new evidence (dedup), got %d", resp2.SourcesAttached)
+	}
+	pool.QueryRow(ctx,
+		`SELECT count(*) FROM evidences WHERE attr_value_id=$1 AND evidence_type='reference'`, nameAVID).Scan(&evCount) //nolint:errcheck
+	if evCount != 2 {
+		t.Errorf("re-research duplicated evidence: want 2, got %d", evCount)
+	}
 }
 
 func TestDeepResearch_NotConfigured(t *testing.T) {

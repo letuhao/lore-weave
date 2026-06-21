@@ -181,8 +181,11 @@ func (s *Server) effectDeepResearch(w http.ResponseWriter, ctx context.Context, 
 		}
 		title := neutralizeWebText(r.Title, deepResearchTitleCap)
 		snippet := neutralizeWebText(r.Content, deepResearchSnippetCap)
+		// The agent sees every safe source (even if its evidence already exists).
 		sources = append(sources, deepResearchSource{Title: title, URL: safeURL, Snippet: snippet})
-		if hasAnchor && snippet != "" {
+		if hasAnchor && snippet != "" && !s.referenceEvidenceExists(ctx, attrValueID, safeURL) {
+			// Dedup by URL so re-researching the same entity doesn't pile up duplicate
+			// 'reference' rows on the name attr value.
 			note := title
 			if note == "" {
 				note = safeURL
@@ -262,9 +265,13 @@ func neutralizeWebText(sval string, maxLen int) string {
 
 // safeHTTPURL accepts only http(s) URLs with a host — dropping javascript:/data:/file:
 // and other schemes so a hostile search result can't land an XSS/redirect vector as
-// evidence or hand one to the agent.
+// evidence or hand one to the agent. Bounds the length too (a real URL is well under 2048).
 func safeHTTPURL(raw string) (string, bool) {
-	u, err := url.Parse(strings.TrimSpace(raw))
+	raw = strings.TrimSpace(raw)
+	if raw == "" || len(raw) > 2048 {
+		return "", false
+	}
+	u, err := url.Parse(raw)
 	if err != nil {
 		return "", false
 	}
@@ -272,4 +279,17 @@ func safeHTTPURL(raw string) (string, bool) {
 		return "", false
 	}
 	return u.String(), true
+}
+
+// referenceEvidenceExists reports whether a 'reference' evidence row for this URL already
+// hangs off the attr value — the dedup guard that keeps re-research from duplicating
+// sources. Best-effort: a query error returns false (attach proceeds, never blocks).
+func (s *Server) referenceEvidenceExists(ctx context.Context, attrValueID uuid.UUID, url string) bool {
+	var exists bool
+	if err := s.pool.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM evidences WHERE attr_value_id=$1 AND evidence_type='reference' AND block_or_line=$2)`,
+		attrValueID, url).Scan(&exists); err != nil {
+		return false
+	}
+	return exists
 }
