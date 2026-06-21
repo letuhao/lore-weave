@@ -184,6 +184,28 @@ radius, no shipped upstream, and glossary hasn't shipped its half either. Recomm
 (`D-KM5-M4-GATEWAY-CMS`) until the gateway/chat admin-federation pattern is built (shared with
 the glossary epic). The knowledge backend is fully ready for it.
 
+## Post-merge `/review-impl` fixes (2026-06-21, after merging origin/main)
+
+Merging the glossary epic (gateway `/mcp/admin` federation + C-GW prefix policing) onto
+this branch exposed cross-branch contract drift (textually clean, semantically not). Fixed
+in one batch:
+
+- **HIGH-1 — gateway prefix gate dropped all 15 `kg_*` tools.** Main's `computeCatalog`
+  drops any tool whose name doesn't match its provider's prefix; knowledge's prefix is
+  `memory_`, but this branch added 15 `kg_*` tools to knowledge's `/mcp` server → the whole
+  KG ontology agentic surface was invisible through the gateway (the mandated path). Fix:
+  `ProviderConfig.extraPrefixes` + `EXTRA_PREFIX_MAP` (knowledge → `kg_`); the gate keeps a
+  tool matching ANY of `[prefix, ...extraPrefixes]`; inline env syntax `name|canon_+extra_=url`.
+- **MED-2 — same gate would drop `kg_admin_*` at M4b.** Covered by the mechanism: the future
+  knowledge admin provider declares `kg_` (kg_admin_* ⊂ kg_). Test added.
+- **LOW-3 — `knowledge_skill` injected on the CMS/admin surface** (its tools aren't advertised
+  there). Gated with `and not bool(admin_context)` (mirrors `inject_universal_skill`).
+- **LOW-4 — `/mcp/admin` transport gate only checked `X-Admin-Token`.** Added the SO-1
+  `X-Internal-Token` check FIRST (a non-trusted caller can't even learn admin is configured;
+  the gateway already forwards both).
+
+VERIFY: ai-gateway 48 jest · knowledge admin 31 · chat stream/skill 39 — all pass.
+
 ## (historical) Carry-forward into KM5-M3 (the `/mcp/admin` server — no shipped upstream)
 - The **mint** side is still absent: nothing mints `auth=admin` + `kg_system_*` tokens in prod
   yet (the confirm path is fully tested but unreachable until M3 wires the MCP admin tool). This

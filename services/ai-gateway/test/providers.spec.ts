@@ -43,6 +43,25 @@ describe('parseProviders (C-GW env-driven registry)', () => {
     expect(ps[0]).toEqual({ name: 'myprov', mcpUrl: 'http://m:9000/mcp', prefix: 'my_' });
   });
 
+  it('resolves knowledge extraPrefixes (kg_) by name so kg_* tools are allowed (HIGH-1)', () => {
+    const ps = parseProviders('knowledge=http://k:8092/mcp', jest.fn());
+    expect(ps[0].prefix).toBe('memory_');
+    expect(ps[0].extraPrefixes).toEqual(['kg_']);
+    // defaults path carries the same extras
+    const def = parseProviders(undefined, jest.fn());
+    expect(def[0].extraPrefixes).toEqual(['kg_']);
+  });
+
+  it('honors an inline multi-prefix override (name|canon_+extra_=url)', () => {
+    const ps = parseProviders('prov|a_+b_+c_=http://m/mcp', jest.fn());
+    expect(ps[0]).toEqual({
+      name: 'prov',
+      mcpUrl: 'http://m/mcp',
+      prefix: 'a_',
+      extraPrefixes: ['b_', 'c_'],
+    });
+  });
+
   it('derives a default `${name}_` prefix for an unmapped provider with no override (so it is still policed)', () => {
     const ps = parseProviders('weird=http://w/mcp', jest.fn());
     expect(ps[0].name).toBe('weird');

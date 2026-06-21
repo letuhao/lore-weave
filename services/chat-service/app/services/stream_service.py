@@ -883,8 +883,12 @@ async def stream_response(
     # confirm-token flow, triage, and the INV-6 data-not-instructions boundary.
     # Gated like the toolset itself (agui + tools enabled); static + cacheable, the
     # actual schema is fetched on demand via kg_schema_read, never baked per turn.
+    # Not on the CMS/admin surface — that surface advertises the System-tier admin
+    # tools (glossary admin skill), not the project knowledge/graph tools, so the
+    # knowledge skill would be guidance for tools that aren't there.
     inject_knowledge_skill = (
         stream_format == "agui"
+        and not bool(admin_context)
         and not disable_tools
         and kctx.tool_calling_enabled
     )

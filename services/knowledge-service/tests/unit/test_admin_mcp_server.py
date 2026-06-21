@@ -78,8 +78,14 @@ class _Spy:
         await send({"type": "http.response.body", "body": b"ok"})
 
 
-def _scope(token: str | None):
+# conftest sets INTERNAL_SERVICE_TOKEN=default_test_token (settings.internal_service_token).
+_INTERNAL = "default_test_token"
+
+
+def _scope(token: str | None, *, internal: str | None = _INTERNAL):
     headers = [(b"host", b"t")]
+    if internal is not None:
+        headers.append((b"x-internal-token", internal.encode()))
     if token is not None:
         headers.append((b"x-admin-token", token.encode()))
     return {"type": "http", "headers": headers, "method": "POST", "path": "/"}
@@ -134,6 +140,31 @@ async def test_gate_valid_token_delegates(monkeypatch):
     status = await _drive(rs256_gate(spy), _scope(_admin_jwt(priv, key.kid)))
     assert status == 200
     assert spy.called is True
+
+
+async def test_gate_missing_internal_token_401(monkeypatch):
+    # SO-1 (gate 1): no internal token → 401 BEFORE the admin token / disabled check,
+    # so a caller without service trust can't even learn admin is configured, and
+    # the inner surface is never reached even with an otherwise-valid admin token.
+    priv = _gen()
+    key = load_admin_key(_spki(priv))
+    monkeypatch.setattr(admin_server, "get_admin_key", lambda: key)
+    spy = _Spy()
+    status = await _drive(rs256_gate(spy), _scope(_admin_jwt(priv, key.kid), internal=None))
+    assert status == 401
+    assert spy.called is False
+
+
+async def test_gate_wrong_internal_token_401(monkeypatch):
+    priv = _gen()
+    key = load_admin_key(_spki(priv))
+    monkeypatch.setattr(admin_server, "get_admin_key", lambda: key)
+    spy = _Spy()
+    status = await _drive(
+        rs256_gate(spy), _scope(_admin_jwt(priv, key.kid), internal="wrong-token")
+    )
+    assert status == 401
+    assert spy.called is False
 
 
 # ── mint tool scope / sub guards (no PG needed — they reject first) ───────────

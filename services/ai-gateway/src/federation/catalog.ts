@@ -54,14 +54,19 @@ export function computeCatalog(
       continue;
     }
     providers.push({ name: r.provider.name, available: true });
-    const prefix = r.provider.prefix;
+    // A provider may own MORE than one namespace (e.g. knowledge serves both
+    // `memory_*` and `kg_*`); a tool is kept if it matches ANY allowed prefix.
+    // No canonical prefix ⇒ empty allow-set ⇒ unpoliced (legacy/unmapped).
+    const allowed = r.provider.prefix
+      ? [r.provider.prefix, ...(r.provider.extraPrefixes ?? [])]
+      : [];
     for (const t of r.tools) {
       if (!t || typeof t.name !== 'string') continue;
-      // C-GW prefix enforcement: drop + warn a tool that escapes its namespace.
-      if (prefix && !t.name.startsWith(prefix)) {
+      // C-GW prefix enforcement: drop + warn a tool that escapes its namespace(s).
+      if (allowed.length > 0 && !allowed.some((p) => t.name.startsWith(p))) {
         warn(
           `dropping tool '${t.name}' from provider '${r.provider.name}': ` +
-            `name does not match required prefix '${prefix}'`,
+            `name does not match any allowed prefix [${allowed.join(', ')}]`,
         );
         continue;
       }

@@ -22,6 +22,7 @@ admin token; (2) each tool re-verifies the token to recover its claims + checks
 from __future__ import annotations
 
 import logging
+import secrets
 import time
 from typing import Annotated, Literal
 from uuid import uuid4
@@ -184,6 +185,14 @@ def rs256_gate(inner):
     async def gated(scope, receive, send):
         if scope["type"] != "http":
             await inner(scope, receive, send)
+            return
+        # SO-1 (gate 1): service-to-service trust, like the user /mcp server. Checked
+        # FIRST so a caller without the internal token cannot even learn whether admin
+        # is configured (the 503 below would otherwise leak that). Defense in depth —
+        # the RS256 admin token (gate 2) is the authority; this is the service trust.
+        internal = _header(scope, b"x-internal-token")
+        if not internal or not secrets.compare_digest(internal, settings.internal_service_token):
+            await _reject(scope, receive, send, 401, "invalid or missing internal service token")
             return
         key = get_admin_key()
         if key is None:

@@ -13,8 +13,18 @@ export interface ProviderConfig {
    * in the env entry (`name|prefix_=url`). When neither resolves, `parseProviders`
    * DERIVES a default `${name}_` so EVERY provider is policed — a provider with no
    * prefix would otherwise be unpoliced and could shadow another's namespace.
+   * This is the provider's CANONICAL namespace — used for dedup + logs.
    */
   prefix?: string;
+  /**
+   * ADDITIONAL allowed tool-name prefixes beyond {@link prefix}. A provider that
+   * legitimately serves more than one namespace from one MCP server lists the
+   * extras here; the C-GW gate keeps a tool matching ANY of `[prefix, ...extraPrefixes]`.
+   * Resolved from {@link EXTRA_PREFIX_MAP} by name, or inline via `name|canon_+extra_=url`.
+   * (knowledge serves both `memory_` memory tools AND `kg_` graph/ontology tools.)
+   * Dedup is on the canonical {@link prefix} only — extras are curated, not env-shadowable.
+   */
+  extraPrefixes?: string[];
 }
 
 export interface AppConfig {
@@ -56,6 +66,18 @@ export const DEFAULT_PREFIX_MAP: Record<string, string> = {
   jobs: 'jobs_',
 };
 
+/**
+ * Additional allowed prefixes per provider (beyond the canonical {@link DEFAULT_PREFIX_MAP}).
+ * A provider serving more than one namespace from one MCP server lists the extras here.
+ * knowledge's `/mcp` server serves BOTH `memory_*` (chat memory) AND `kg_*` (graph +
+ * ontology + views + triage, the KG ontology epic) — without `kg_` here the C-GW gate
+ * would silently drop every kg_ tool, hiding the whole agentic KG surface from the
+ * federated catalog. `kg_admin_*` (the future /mcp/admin provider) is covered by `kg_`.
+ */
+export const EXTRA_PREFIX_MAP: Record<string, string[]> = {
+  knowledge: ['kg_'],
+};
+
 /** Back-compat default registry: P0 knowledge + P1 glossary. */
 function defaultProviders(): ProviderConfig[] {
   return [
@@ -63,6 +85,7 @@ function defaultProviders(): ProviderConfig[] {
       name: 'knowledge',
       mcpUrl: process.env.KNOWLEDGE_MCP_URL ?? 'http://knowledge-service:8092/mcp',
       prefix: DEFAULT_PREFIX_MAP.knowledge,
+      extraPrefixes: EXTRA_PREFIX_MAP.knowledge,
     },
     {
       name: 'glossary',
@@ -119,10 +142,11 @@ export function parseProviders(
       warn(`AI_GATEWAY_PROVIDERS: skipping entry '${entry}' (empty name or url)`);
       continue;
     }
-    // optional inline prefix override: `name|prefix_`
+    // optional inline prefix override: `name|prefix_` (canonical) or
+    // `name|canon_+extra_` (canonical + extra allowed namespaces).
     const pipe = keyPart.indexOf('|');
     const name = pipe >= 0 ? keyPart.slice(0, pipe).trim() : keyPart;
-    const overridePrefix = pipe >= 0 ? keyPart.slice(pipe + 1).trim() : '';
+    const overrideRaw = pipe >= 0 ? keyPart.slice(pipe + 1).trim() : '';
     if (name === '') {
       warn(`AI_GATEWAY_PROVIDERS: skipping entry '${entry}' (empty provider name)`);
       continue;
@@ -131,11 +155,20 @@ export function parseProviders(
       warn(`AI_GATEWAY_PROVIDERS: skipping duplicate provider '${name}'`);
       continue;
     }
-    // Resolve prefix: inline override → DEFAULT_PREFIX_MAP → derived `${name}_`.
-    // Never leave it undefined — an unpoliced provider could shadow another's
-    // namespace through the C-GW gate.
-    const prefix =
-      overridePrefix !== '' ? overridePrefix : DEFAULT_PREFIX_MAP[name] ?? `${name}_`;
+    // Resolve canonical prefix + extra allowed prefixes:
+    //   inline `canon_+extra_` → DEFAULT_PREFIX_MAP + EXTRA_PREFIX_MAP → derived `${name}_`.
+    // Never leave the canonical prefix undefined — an unpoliced provider could shadow
+    // another's namespace through the C-GW gate.
+    let prefix: string;
+    let extraPrefixes: string[] | undefined;
+    if (overrideRaw !== '') {
+      const parts = overrideRaw.split('+').map((s) => s.trim()).filter((s) => s !== '');
+      prefix = parts[0];
+      extraPrefixes = parts.length > 1 ? parts.slice(1) : undefined;
+    } else {
+      prefix = DEFAULT_PREFIX_MAP[name] ?? `${name}_`;
+      extraPrefixes = EXTRA_PREFIX_MAP[name];
+    }
     // De-dupe by PREFIX too: two providers can't both own the same namespace, or
     // both would pass the prefix gate and the first would silently shadow the
     // second on every collision. Warn + skip the later claimant (keep first).
@@ -148,7 +181,7 @@ export function parseProviders(
     }
     seen.add(name);
     seenPrefix.add(prefix);
-    providers.push({ name, mcpUrl, prefix });
+    providers.push({ name, mcpUrl, prefix, ...(extraPrefixes ? { extraPrefixes } : {}) });
   }
 
   // An entirely-malformed list must not silently drop the gateway to zero
