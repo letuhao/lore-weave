@@ -639,3 +639,37 @@ is the read-only port reference). The generalized class-C spine:
   cleared (spine + first descriptor); **still deferred:** the other descriptors
   (`kg_adopt`/`kg_sync_apply`/`kg_triage_*`), KM5 admin `/mcp/admin` + RS256 + the
   admin authority branch (currently 501), and the FE confirm card.
+
+**2026-06-21 — deferred SWEEP (verified vs code; 6 rows CLEARED).** After KM5 (M1–M3
+backend + M4a skill + M4b gateway admin federation) shipped, swept this branch's open
+deferrals and verified each against the current code:
+- **`D-KG-LF-KM6`** ✅ CLEARED — KM6 confirm machinery + all 3 class-C descriptors
+  (`kg_schema_edit`/`kg_adopt`/`kg_sync_apply`) shipped; the LF MCP tools' class-C writes
+  now route through the confirm spine.
+- **`D-KM5-M4B-GATEWAY-ADMIN-FED`** ✅ CLEARED — ai-gateway federates knowledge `/mcp/admin`
+  (multi-provider `adminProviders`, `kg_` prefix; commit `2f22bdfa`/`490adde7`, 53 jest).
+- **`D-KM5-M4C-CHAT-CMS`** ✅ CLEARED — the chat admin surface's `get_admin_tool_definitions`
+  lists the merged gateway `/mcp/admin` catalog, so `kg_admin_*` tools appear on CMS
+  automatically (no chat change needed; `knowledge_skill` stays OFF the admin surface).
+- **`D-KG-LF-PROPOSE-VALIDTO`** ✅ CLEARED — the propose-edge `valid_to < valid_from`
+  guard exists (`graph_schema_tools.py` arg-model validator, raises on inversion).
+- **`D-KG-SYNC-DIFF-LABEL`** ✅ CLEARED — `_diff_list` takes a `pair_field` ("strength"
+  for node_kinds, "label" for fact_types) in `ontology_mutations.py`; no longer mislabels.
+- **`D-KM0-CHAT-STALE-COMMENT`** ✅ CLEARED — the stale `/internal/tools/definitions`
+  comment in chat `knowledge_client.py` corrected to the MCP `tools/list` source (KM0 retired
+  the HTTP path).
+
+**Still open (verified genuinely-remaining):**
+- **Live-smokes (need the multi-service stack up, blocked at dev-time):** `D-KM5-M3-LIVE-SMOKE`
+  (CMS RS256 → gateway `/mcp/admin` → `kg_admin_*` end-to-end), the residual `D-KG-L7-LIVE-SMOKE`
+  extraction half, `D-KG-L7A-LIVE-SMOKE`, `D-KG-LD-NEO4J-SMOKE`, `D-KG-LC-ROUTE-LIVE-TEST`,
+  `D-KG-LE-BROWSER-SMOKE`, `D-LB-LIVE-SMOKE`.
+- **Design/feature (not pure-code-clearable):** `D-KG-LF-PROPOSE-EDGE-INBOX` (MED — on-schema
+  proposed-edge inbox semantics), `D-KG-LC-REVADOPT-LOSS` (UI warn on re-adopt customization
+  loss), `D-KG-L7-CARDINALITY` (dormant — all seeded edges multi_active), `D-KG-LD-GRANTEE-TIMELINE`,
+  `D-KG-LH-NEO4J-REAPPLY`, `D-KG-LH-LC-SCHEMA-WRITE`, `D-KG-L7B-EXTRACT-ITEM` (dormant legacy
+  `/extract-item`), `D-KG-LB-CACHE-SCHEMA-KEY`.
+- **Not ours:** `D-KG-LG-REAL` (glossary-branch internal-read dependency).
+
+Net: the **autonomous-safe pure-code deferred surface for this branch is now exhausted** — the
+remainder is live-smoke (stack), FE/design, or another branch.
