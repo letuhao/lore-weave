@@ -184,6 +184,104 @@ async def test_run_pipeline_happy_path_writes_all_four_lists(
     assert write_kwargs["facts"] == ["fact"]
 
 
+# ── L7B (D-KG-L7B-EXTRACT-ITEM) — schema split reaches the writer ──────
+
+
+@pytest.mark.asyncio
+@patch(f"{_ORCH}.write_pass2_extraction", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_events", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_entities", new_callable=AsyncMock)
+async def test_write_schema_and_triage_repo_reach_writer(
+    mock_entities, mock_relations, mock_events, mock_facts, mock_write,
+):
+    """L7B: when the caller (/extract-item) splits the advisory prompt schema
+    from the authoritative write schema, the orchestrator feeds the SDK with the
+    advisory `schema` but hands the WRITER the authoritative `write_schema` +
+    `triage_repo` — so the closed-edge guard + off-schema park run at the write
+    boundary (the same activation /persist-pass2 has)."""
+    from app.extraction.pass2_orchestrator import extract_pass2_chapter
+    from loreweave_extraction.schema_projection import ExtractionSchema
+
+    mock_entities.return_value = [_entity("Kai")]
+    mock_relations.return_value = ["rel"]
+    mock_events.return_value = []
+    mock_facts.return_value = []
+    mock_write.return_value = _write_result(entities=1, relations=1)
+
+    advisory = ExtractionSchema(
+        edge_predicates=("disciple_of",), allow_free_edges=True,
+        schema_version=2, label="p@v2",
+    )
+    authoritative = ExtractionSchema(
+        edge_predicates=("disciple_of",), allow_free_edges=False,
+        schema_version=2, label="p@v2",
+    )
+    triage_repo = MagicMock()
+
+    await extract_pass2_chapter(
+        session=MagicMock(),
+        user_id=_USER_ID, project_id=_PROJECT_ID,
+        source_type="chapter", source_id="ch-1", job_id=_JOB_ID,
+        chapter_text="Kai bows to the master.",
+        model_source="user_model", model_ref="test-model",
+        llm_client=MagicMock(),
+        schema=advisory,
+        write_schema=authoritative,
+        triage_repo=triage_repo,
+    )
+
+    # SDK extractors received the ADVISORY schema (hint, never pre-drops).
+    assert mock_entities.call_args.kwargs["schema"] is advisory
+    assert mock_relations.call_args.kwargs["schema"] is advisory
+    # The writer received the AUTHORITATIVE schema (real closed flag) + the
+    # triage_repo so an off-schema drop PARKS instead of vanishing.
+    write_kwargs = mock_write.call_args.kwargs
+    assert write_kwargs["schema"] is authoritative
+    assert write_kwargs["triage_repo"] is triage_repo
+
+
+@pytest.mark.asyncio
+@patch(f"{_ORCH}.write_pass2_extraction", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_events", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_entities", new_callable=AsyncMock)
+async def test_write_schema_none_falls_back_to_advisory_schema_no_triage(
+    mock_entities, mock_relations, mock_events, mock_facts, mock_write,
+):
+    """Back-compat: when write_schema/triage_repo are omitted (every pre-L7B
+    caller), the writer receives the single `schema` and triage_repo=None —
+    byte-identical to before the split."""
+    from app.extraction.pass2_orchestrator import extract_pass2_chapter
+    from loreweave_extraction.schema_projection import ExtractionSchema
+
+    mock_entities.return_value = [_entity("Kai")]
+    mock_relations.return_value = ["rel"]
+    mock_events.return_value = []
+    mock_facts.return_value = []
+    mock_write.return_value = _write_result(entities=1, relations=1)
+
+    schema = ExtractionSchema(
+        edge_predicates=("x",), allow_free_edges=True, schema_version=1, label="p@v1",
+    )
+
+    await extract_pass2_chapter(
+        session=MagicMock(),
+        user_id=_USER_ID, project_id=_PROJECT_ID,
+        source_type="chapter", source_id="ch-1", job_id=_JOB_ID,
+        chapter_text="Kai walks.",
+        model_source="user_model", model_ref="test-model",
+        llm_client=MagicMock(),
+        schema=schema,  # no write_schema / triage_repo
+    )
+
+    write_kwargs = mock_write.call_args.kwargs
+    assert write_kwargs["schema"] is schema  # fell back to the single schema
+    assert write_kwargs["triage_repo"] is None
+
+
 # ── C13 — glossary pinning: pinned names reach EVERY window ─────────
 
 

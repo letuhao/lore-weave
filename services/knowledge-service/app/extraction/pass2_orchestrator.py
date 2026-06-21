@@ -32,7 +32,7 @@ import logging
 import os
 import time
 from collections.abc import Iterable
-from typing import Any, Literal, TypedDict
+from typing import TYPE_CHECKING, Any, Literal, TypedDict
 from uuid import UUID
 
 from loreweave_extraction import (
@@ -61,6 +61,11 @@ from app.db.repositories.job_logs import JobLogsRepo
 from app.extraction.anchor_loader import Anchor
 from app.extraction.hierarchy_writer import HierarchyPaths
 from app.extraction.pass2_writer import Pass2WriteResult, write_pass2_extraction
+
+if TYPE_CHECKING:
+    # L7B — the writer's triage-park Protocol, used only as a type annotation
+    # (string-quoted in signatures) so the runtime import graph is unchanged.
+    from app.extraction.pass2_writer import TriageParkProtocol
 from app.jobs.summary_enqueue import SummaryEnqueueFn, SummarizeMessage
 from app.jobs.task_id import compute_task_id
 from app.metrics import (
@@ -825,8 +830,20 @@ async def _run_pipeline(
     # KG customizable-ontology (lane LB) — resolved project schema projection.
     # None (default) → static byte-identical prompts + Literal validation
     # (today's behavior). A non-None ExtractionSchema activates the dynamic
-    # prompt/validation path in the SDK extractors.
+    # prompt/validation path in the SDK extractors. This is the ADVISORY posture
+    # (allow_free_edges hint, never pre-drop) — see ``write_schema`` below.
     schema: ExtractionSchema | None = None,
+    # L7B (D-KG-L7B-EXTRACT-ITEM) — the L7 schema SPLIT for the combined
+    # extract-then-write path (/extract-item). ``schema`` above feeds the SDK
+    # prompt as an advisory hint; ``write_schema`` is the AUTHORITATIVE projection
+    # (real ``allow_free_edges``) handed to the write boundary so the closed-edge
+    # guard + ``schema_version`` stamp go live there, and ``triage_repo`` lets an
+    # off-schema edge that the guard drops PARK to kg_triage_items instead of
+    # vanishing. Both default None → the writer receives ``schema`` (back-compat:
+    # before the split the writer got the same advisory schema and no triage_repo,
+    # so ``write_schema=None``/``triage_repo=None`` is byte-identical to today).
+    write_schema: ExtractionSchema | None = None,
+    triage_repo: "TriageParkProtocol | None" = None,
 ) -> Pass2WriteResult:
     """Core pipeline shared by chat_turn and chapter entry points.
 
@@ -1077,7 +1094,13 @@ async def _run_pipeline(
         extraction_model=model_ref,
         anchors=anchors,
         hierarchy_paths=hierarchy_paths,   # P3 D2a — hierarchy MERGE in same Tx
-        schema=schema,  # lane LB — closed-edge-set write-boundary guard (None ⇒ no-op)
+        # lane LB / L7B — closed-edge-set write-boundary guard. Prefer the
+        # AUTHORITATIVE write_schema (real allow_free_edges) when the caller
+        # split it from the advisory prompt schema (/extract-item, L7B); else
+        # fall back to the single `schema` (back-compat — byte-identical when
+        # write_schema is None). None ⇒ no-op guard (today's behavior).
+        schema=write_schema if write_schema is not None else schema,
+        triage_repo=triage_repo,  # L7B/C4 — park off-schema edge drops to triage
         **_WRITER_AUTOCREATE_CONFIG,
     )
     write_elapsed = time.perf_counter() - write_started
@@ -1232,6 +1255,10 @@ async def extract_pass2_chat_turn(
     # KG customizable-ontology (lane LB) — resolved schema projection (None ⇒
     # static byte-identical behavior). Forwarded to _run_pipeline → SDK.
     schema: ExtractionSchema | None = None,
+    # L7B (D-KG-L7B-EXTRACT-ITEM) — authoritative write-boundary schema + triage
+    # repo for the schema split (see _run_pipeline). Both None ⇒ byte-identical.
+    write_schema: ExtractionSchema | None = None,
+    triage_repo: "TriageParkProtocol | None" = None,
 ) -> Pass2WriteResult:
     """Run the Pass 2 LLM pipeline on a chat turn.
 
@@ -1268,6 +1295,8 @@ async def extract_pass2_chat_turn(
         anchors=anchors,
         job_logs_repo=job_logs_repo,
         schema=schema,
+        write_schema=write_schema,
+        triage_repo=triage_repo,
     )
 
 
@@ -1310,6 +1339,10 @@ async def extract_pass2_chapter(
     # KG customizable-ontology (lane LB) — resolved schema projection (None ⇒
     # static byte-identical behavior). Forwarded to _run_pipeline → SDK.
     schema: ExtractionSchema | None = None,
+    # L7B (D-KG-L7B-EXTRACT-ITEM) — authoritative write-boundary schema + triage
+    # repo for the schema split (see _run_pipeline). Both None ⇒ byte-identical.
+    write_schema: ExtractionSchema | None = None,
+    triage_repo: "TriageParkProtocol | None" = None,
 ) -> Pass2WriteResult:
     """Run the Pass 2 LLM pipeline on a chapter.
 
@@ -1353,4 +1386,6 @@ async def extract_pass2_chapter(
         summary_enqueue=summary_enqueue,
         targets=targets,
         schema=schema,
+        write_schema=write_schema,
+        triage_repo=triage_repo,
     )
