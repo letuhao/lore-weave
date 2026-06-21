@@ -708,6 +708,15 @@ async def translation_start_extraction(
     # core (which re-computes the SAME estimate + stores it), so no H14 re-price.
     profile_data = await fetch_extraction_profile(str(bid))
     kinds_metadata = (profile_data or {}).get("kinds") or []
+    # The agent rarely authors the full kind→attr map; when omitted, extract every
+    # auto-selected attribute (the same default the FE builds) so the cost estimate AND
+    # the job aren't empty — without this the worker plans 0 batches → 0 entities.
+    if not profile:
+        profile = {
+            k["code"]: {a["code"]: "fill" for a in k.get("attributes", [])}
+            for k in kinds_metadata
+            if k.get("auto_selected", True) and k.get("attributes")
+        }
     chapters_meta = [{"text_length": 8000}] * len(cids)
     estimate = estimate_extraction_cost(chapters_meta, profile, kinds_metadata)
     payload = {
@@ -716,7 +725,9 @@ async def translation_start_extraction(
         "book_id": book_id,
         "chapter_ids": [str(c) for c in cids],
         "extraction_profile": profile,
-        "model_source": "platform_model",
+        # The agent picks one of the user's OWN models (settings_list_models) and the
+        # worker runs on the caller's key (caller-pays) → user_model, never platform_model.
+        "model_source": "user_model",
         "model_ref": str(_uuid(model_ref)) if model_ref else None,
         "max_entities_per_kind": max_entities_per_kind,
         "thinking_enabled": thinking_enabled,

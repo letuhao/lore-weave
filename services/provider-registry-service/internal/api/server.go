@@ -410,7 +410,8 @@ func (s *Server) Router() http.Handler {
 		// audio paths (transcriptions, speech) pass through.
 		r.HandleFunc("/proxy/*", s.internalProxy)
 		r.Post("/embed", s.internalEmbed)
-		r.Post("/rerank", s.internalRerank) // E5B — cross-encoder rerank (platform service)
+		r.Post("/rerank", s.internalRerank)                              // E5B — cross-encoder rerank (platform service)
+		r.Post("/web-search", s.internalWebSearch)                       // S5 — BYOK web search (deep-research)
 		r.Get("/default-models/{capability}", s.internalGetDefaultModel) // per-user default model fallback
 
 		// S5a — campaign cost-estimate pricing oracle (token-count → USD).
@@ -2661,6 +2662,89 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"model": providerModelName, "results": results})
+}
+
+// internalWebSearch handles POST /internal/web-search?user_id=...
+// S5 — resolves the user's BYOK web_search model (capability_flags web_search) and runs
+// a single web search via the provider adapter. The outward HTTP call lives ONLY in the
+// provider package (provider-gateway invariant); this is the user-paid, BYOK resolution
+// layer. Result `content` is UNTRUSTED external text — the CALLER neutralizes it (INV-6).
+func (s *Server) internalWebSearch(w http.ResponseWriter, r *http.Request) {
+	userIDStr := r.URL.Query().Get("user_id")
+	if userIDStr == "" {
+		writeError(w, http.StatusBadRequest, "WEBSEARCH_VALIDATION", "user_id query param required")
+		return
+	}
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "WEBSEARCH_VALIDATION", "invalid user_id")
+		return
+	}
+	var in struct {
+		Query       string `json:"query"`
+		MaxResults  int    `json:"max_results"`
+		SearchDepth string `json:"search_depth"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		writeError(w, http.StatusBadRequest, "WEBSEARCH_VALIDATION", "invalid payload")
+		return
+	}
+	if strings.TrimSpace(in.Query) == "" {
+		writeError(w, http.StatusBadRequest, "WEBSEARCH_VALIDATION", "query is required")
+		return
+	}
+
+	// Resolve the user's preferred active web_search model (BYOK). owner_user_id=$1
+	// guarantees tenant isolation. The web_search capability is STRICT: the model must be
+	// explicitly flagged (boolean {"web_search":true} or legacy _capability), never
+	// defaulted from '{}' the way chat is.
+	var providerModelName, endpointBaseURL, secretCipher string
+	err = s.pool.QueryRow(r.Context(), `
+SELECT um.provider_model_name, COALESCE(pc.endpoint_base_url,''), COALESCE(pc.secret_ciphertext,'')
+FROM user_models um
+JOIN provider_credentials pc ON pc.provider_credential_id = um.provider_credential_id
+WHERE um.owner_user_id=$1 AND um.is_active=true AND pc.status='active'
+  AND (um.capability_flags @> '{"web_search": true}'::jsonb
+       OR um.capability_flags->>'_capability' = 'web_search')
+ORDER BY um.is_favorite DESC, um.created_at ASC
+LIMIT 1
+`, userID).Scan(&providerModelName, &endpointBaseURL, &secretCipher)
+	if err == pgx.ErrNoRows {
+		writeError(w, http.StatusNotFound, "WEBSEARCH_MODEL_NOT_FOUND",
+			"no active web_search model configured — add a web-search provider credential in Settings")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "WEBSEARCH_MODEL_QUERY_FAILED", "failed to resolve model")
+		return
+	}
+	// A KEYLESS local web-search backend (e.g. self-hosted SearXNG) legitimately has NO
+	// secret — the §8 contract explicitly supports an empty credential ("Authorization
+	// ignored"). So unlike rerank/embed (platform services that require a token), an empty
+	// ciphertext is valid here: pass an empty secret (the adapter omits the Authorization
+	// header). Decrypt only when a secret is actually set.
+	secret := ""
+	if secretCipher != "" {
+		decrypted, err := s.decryptSecret(secretCipher)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "WEBSEARCH_SECRET_FAILED", "failed to decrypt secret")
+			return
+		}
+		secret = decrypted
+	}
+
+	results, answer, err := provider.WebSearch(r.Context(), s.invokeClient, endpointBaseURL, secret, in.Query,
+		provider.WebSearchOptions{MaxResults: in.MaxResults, SearchDepth: in.SearchDepth})
+	if err != nil {
+		// Upstream provider failure ⇒ 502 so the caller degrades (not a client bug).
+		writeError(w, http.StatusBadGateway, "WEBSEARCH_UPSTREAM_ERROR", "web search provider error")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"provider_model": providerModelName,
+		"answer":         answer,
+		"results":        results,
+	})
 }
 
 // internalEmbed handles POST /internal/embed.

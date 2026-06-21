@@ -181,6 +181,15 @@
     "undo": "元に戻す",
     "undone": "取り消し済み"
   },
+  "translation_review": {
+    "header": "{{lang}} の名称翻訳を提案",
+    "header_aliases": "{{lang}} の別名を提案",
+    "draft": "下書き",
+    "more": "他 {{count}} 件",
+    "written": "{{count}} 件作成",
+    "skipped": "{{count}} 件スキップ",
+    "verify_hint": "用語集で確認"
+  },
   "facts": {
     "type": {
       "decision": "決定",

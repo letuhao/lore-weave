@@ -53,6 +53,11 @@ const (
 	descReassignKind    = "reassign_kind"    // move an entity to another kind (drops non-matching attrs)
 	descMerge           = "merge"            // merge loser entities into a winner (destructive; journaled)
 
+	// S5 — web-search deep-research (authorityGrant, Manage-gated). Class-C because it is
+	// a PAID outward call (S21 cost gate); the effect runs the search + attaches sources as
+	// draft evidence. Additive (not destructive).
+	descDeepResearch = "deep_research"
+
 	// T4 — System-tier admin writes (authorityAdmin only; confirmed via the
 	// RS256-gated /v1/glossary/actions/admin/confirm, never the user path). Verb is
 	// the descriptor, entity is the `level` in params (genre|kind|attribute).
@@ -73,7 +78,7 @@ var (
 func liveDescriptor(d string) bool {
 	switch d {
 	case descBookDelete, descSchemaCreateKind, descSchemaCreateAttr, descAdopt, descSyncApply, descBookRevert,
-		descStatusChange, descRestoreRevision, descReassignKind, descMerge,
+		descStatusChange, descRestoreRevision, descReassignKind, descMerge, descDeepResearch,
 		descSystemCreate, descSystemPatch, descSystemDelete, descSystemRestore:
 		return true
 	default:

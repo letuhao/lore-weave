@@ -181,6 +181,15 @@
     "undo": "復原",
     "undone": "已復原"
   },
+  "translation_review": {
+    "header": "已提議 {{lang}} 名稱翻譯",
+    "header_aliases": "已提議 {{lang}} 別名",
+    "draft": "草稿",
+    "more": "另外 {{count}} 項",
+    "written": "已寫入 {{count}} 項",
+    "skipped": "已略過 {{count}} 項",
+    "verify_hint": "在詞彙表中確認"
+  },
   "facts": {
     "type": {
       "decision": "決定",

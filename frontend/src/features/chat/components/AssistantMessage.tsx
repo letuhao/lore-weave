@@ -21,6 +21,7 @@ import { GlossaryDiffCard } from './GlossaryDiffCard';
 import { ConfirmCard } from './ConfirmCard';
 import { ConfirmActionCard, descriptorDomain } from './ConfirmActionCard';
 import { RecordDiffCard } from './RecordDiffCard';
+import { TranslationReviewCard, isTranslationProposeCall, summarizeTranslationReview } from './TranslationReviewCard';
 import { ActivityStrip } from './ActivityStrip';
 import { useMessageFeedback } from '../hooks/useMessageFeedback';
 import { useActivityUndo } from '../hooks/useActivityUndo';
@@ -159,10 +160,23 @@ export function AssistantMessage({
         const isPendingFrontend = (tc: ToolCallRecord) =>
           tc.pending === true && FRONTEND_TOOLS.includes(tc.tool);
         const proposals = toolCalls.filter(isPendingFrontend);
-        const rest = toolCalls.filter((tc) => !isPendingFrontend(tc));
+        // S4: completed class-W translation/alias proposals render as a review card
+        // (visible drafts), not a passive chip — but ONLY when the record carries
+        // something renderable. A sparse record (e.g. replayed {tool, ok} with no
+        // args/result) has no summary, so it stays a chip rather than vanishing from
+        // both surfaces.
+        const isRenderableTranslation = (tc: ToolCallRecord) =>
+          isTranslationProposeCall(tc) && summarizeTranslationReview(tc) !== null;
+        const translationCards = toolCalls.filter(isRenderableTranslation);
+        const rest = toolCalls.filter(
+          (tc) => !isPendingFrontend(tc) && !isRenderableTranslation(tc),
+        );
         return (
           <>
             {rest.length > 0 && <ToolCallIndicator toolCalls={rest} />}
+            {translationCards.map((tc) => (
+              <TranslationReviewCard key={tc.toolCallId ?? `${tc.tool}-${tc.iteration ?? 0}`} record={tc} />
+            ))}
             {proposals.map((tc) => {
               const key = tc.toolCallId ?? tc.tool;
               if (tc.tool === 'glossary_propose_entity_edit') return <GlossaryDiffCard key={key} record={tc} />;

@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/loreweave/grantclient"
 )
 
 type translationCandidateAttr struct {
@@ -333,6 +334,50 @@ func (s *Server) internalApplyTranslations(w http.ResponseWriter, r *http.Reques
 	}
 
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// ── Public batch-translate surface (S4) ───────────────────────────────────────
+// The internal candidates/apply handlers above are X-Internal-Token-gated (the
+// translation worker). These two thin wrappers expose the SAME logic to the FE batch
+// dialog on the JWT-authed /v1 path, adding the tenancy gate the internal callers don't
+// need: the user must hold a grant on the book (View to list, Edit to write). After the
+// grant check they DELEGATE to the internal handler (no body read yet), so there is one
+// source of truth for the query + the never-overwrite-verified upsert.
+
+// GET /v1/glossary/books/{book_id}/translation-candidates
+func (s *Server) bookTranslationCandidates(w http.ResponseWriter, r *http.Request) {
+	userID, ok := s.requireUserID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "GLOSS_UNAUTHORIZED", "authentication required")
+		return
+	}
+	bookID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		return
+	}
+	if err := s.checkGrant(r.Context(), bookID, userID, grantclient.GrantView); err != nil {
+		writeError(w, http.StatusForbidden, "GLOSS_FORBIDDEN", "you do not have access to this book")
+		return
+	}
+	s.internalTranslationCandidates(w, r)
+}
+
+// POST /v1/glossary/books/{book_id}/apply-translations
+func (s *Server) bookApplyTranslations(w http.ResponseWriter, r *http.Request) {
+	userID, ok := s.requireUserID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "GLOSS_UNAUTHORIZED", "authentication required")
+		return
+	}
+	bookID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		return
+	}
+	if err := s.checkGrant(r.Context(), bookID, userID, grantclient.GrantEdit); err != nil {
+		writeError(w, http.StatusForbidden, "GLOSS_FORBIDDEN", "you need edit access to this book")
+		return
+	}
+	s.internalApplyTranslations(w, r)
 }
 
 func parseOptionalUUIDList(csv string) []uuid.UUID {
