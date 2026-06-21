@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { BookOpen, Plus, Filter, Trash2, Layers, Sparkles, Languages, HelpCircle, Lightbulb, GitMerge, CheckCircle2, CircleSlash } from 'lucide-react';
+import { BookOpen, Plus, Filter, Trash2, Layers, Sparkles, Languages, HelpCircle, Lightbulb, GitMerge, CheckCircle2, CircleSlash, PencilLine } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { glossaryApi } from '@/features/glossary/api';
@@ -24,6 +24,7 @@ import { MergeCandidatePanel } from '@/features/glossary/components/MergeCandida
 import { EntityEditorModal } from '@/components/entity-editor';
 import { ExtractionWizard } from '@/features/extraction/ExtractionWizard';
 import { GlossaryTranslateWizard } from '@/features/glossary-translate/GlossaryTranslateWizard';
+import { BatchTranslateDialog } from '@/features/glossary/components/BatchTranslateDialog';
 import { BookAssistantDock } from '@/features/chat/BookAssistantDock';
 
 type GlossaryView = 'entities' | 'ontology' | 'unknown' | 'ai_suggestions' | 'merge_candidates';
@@ -58,6 +59,7 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const [extractionOpen, setExtractionOpen] = useState(false);
   const [translateOpen, setTranslateOpen] = useState(false);
+  const [batchTranslateOpen, setBatchTranslateOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   // Default sort = appearance (chapter-link count) DESC, so the most-present
@@ -406,6 +408,15 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
             <Languages className="h-3.5 w-3.5" />
             {t('glossary.translate')}
           </button>
+          <button
+            onClick={() => setBatchTranslateOpen(true)}
+            data-testid="glossary-batch-translate-trigger"
+            title={t('glossary.batch_translate_hint', { defaultValue: 'Type target names for many entities by hand (drafts; never overwrites verified)' })}
+            className="inline-flex items-center gap-1.5 rounded-md border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 transition-colors"
+          >
+            <PencilLine className="h-3.5 w-3.5" />
+            {t('glossary.batch_translate', { defaultValue: 'Manual translate' })}
+          </button>
           {aiSuggestCount > 0 && (
             <button
               onClick={() => setView('ai_suggestions')}
@@ -736,6 +747,17 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
         bookOriginalLanguage={bookOriginalLanguage}
         onComplete={() => invalidate()}
       />
+
+      {/* S4 — manual per-entity batch translate (complements the auto wizard above). */}
+      {batchTranslateOpen && (
+        <BatchTranslateDialog
+          bookId={bookId}
+          onClose={() => {
+            setBatchTranslateOpen(false);
+            invalidate();
+          }}
+        />
+      )}
 
       {/* P5: the book-scoped glossary assistant (floating dock → embedded chat). */}
       <BookAssistantDock bookId={bookId} />

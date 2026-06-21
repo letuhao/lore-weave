@@ -257,8 +257,8 @@ func (s *Server) Router() http.Handler {
 		r.Route("/system-genres", func(r chi.Router) {
 			r.Post("/", s.createSystemGenre)
 			r.Patch("/{genre_id}", s.patchSystemGenre)
-			r.Delete("/{genre_id}", s.deleteSystemGenre)         // soft-delete (G-C8)
-			r.Post("/{genre_id}/restore", s.restoreSystemGenre)  // recycle-bin restore (G-C8)
+			r.Delete("/{genre_id}", s.deleteSystemGenre)        // soft-delete (G-C8)
+			r.Post("/{genre_id}/restore", s.restoreSystemGenre) // recycle-bin restore (G-C8)
 		})
 		r.Route("/system-kinds", func(r chi.Router) {
 			r.Post("/", s.createSystemKind)
@@ -380,6 +380,10 @@ func (s *Server) Router() http.Handler {
 			})
 			r.Get("/entity-names", s.listEntityNames)
 			r.Get("/translation-languages", s.listBookTranslationLanguages)
+			// S4 — batch-translate dialog: list candidates (View) + apply drafts (Edit),
+			// reusing the internal worker cores behind a grant gate.
+			r.Get("/translation-candidates", s.bookTranslationCandidates)
+			r.Post("/apply-translations", s.bookApplyTranslations)
 			// Kind-resolution epic: the per-book unknown-kind review queue.
 			r.Get("/unknown-entities", s.listUnknownEntities)
 			// mui #1c: revert a recorded entity merge.

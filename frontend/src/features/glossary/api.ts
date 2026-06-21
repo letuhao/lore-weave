@@ -16,6 +16,9 @@ import type {
   EntityRevisionSummary,
   EntityRevisionDetail,
   ActionPreview,
+  TranslationCandidatesResponse,
+  ApplyTranslationsResponse,
+  ApplyTranslationItem,
 } from './types';
 
 const BASE = '/v1/glossary';
@@ -29,6 +32,36 @@ export const glossaryApi = {
     return apiJson<{ languages: string[] }>(
       `${BASE}/books/${bookId}/translation-languages`,
       { token },
+    );
+  },
+
+  // S4 — batch translate: list entities with untranslated attrs for a target language.
+  listTranslationCandidates(
+    bookId: string,
+    targetLanguage: string,
+    opts: { overwriteMode?: 'missing_only' | 'refresh_machine'; limit?: number; offset?: number },
+    token: string,
+  ): Promise<TranslationCandidatesResponse> {
+    const qs = new URLSearchParams({ target_language: targetLanguage });
+    if (opts.overwriteMode) qs.set('overwrite_mode', opts.overwriteMode);
+    if (opts.limit) qs.set('limit', String(opts.limit));
+    if (opts.offset) qs.set('offset', String(opts.offset));
+    return apiJson<TranslationCandidatesResponse>(
+      `${BASE}/books/${bookId}/translation-candidates?${qs.toString()}`,
+      { token },
+    );
+  },
+
+  // S4 — batch translate: write draft translations (never overwrites verified; per-item
+  // partial-failure report).
+  applyTranslations(
+    bookId: string,
+    req: { target_language: string; items: ApplyTranslationItem[] },
+    token: string,
+  ): Promise<ApplyTranslationsResponse> {
+    return apiJson<ApplyTranslationsResponse>(
+      `${BASE}/books/${bookId}/apply-translations`,
+      { method: 'POST', body: JSON.stringify(req), token },
     );
   },
 
