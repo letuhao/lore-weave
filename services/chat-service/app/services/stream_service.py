@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from dataclasses import dataclass
 from typing import AsyncGenerator
 from uuid import uuid4
@@ -28,6 +29,9 @@ from loreweave_llm import (
     TokenEvent,
     ToolCallEvent,
     UsageEvent,
+    infer_reasoning_control,
+    reasoning_fields,
+    resolve_reasoning,
 )
 
 from app.client.billing_client import BillingClient
@@ -83,6 +87,73 @@ class _Usage:
     completion_tokens: int = 0
 
 
+_INLINE_EFFORT_RE = re.compile(
+    r"(?:^|\s)/(?P<cmd>no_thinking|no_think|think|effort=(?P<val>none|off|low|medium|high))(?=\s|$)",
+    re.IGNORECASE,
+)
+
+
+def parse_inline_effort(text: str) -> tuple[str, str | None]:
+    """RE-3 — parse a CHAT-ONLY inline reasoning command from the message and strip
+    it before the text reaches the model / is persisted. Returns (stripped, pref):
+
+      /no_think · /no_thinking   → "off"
+      /think                     → "medium"
+      /effort=none|off|low|medium|high → that effort ("none"→"off")
+
+    Anchored at a whitespace/edge boundary so a '/think' inside a word or code span
+    isn't matched. The LAST command wins (sub scans left-to-right, overwriting pref).
+    Inline command is the HIGHEST-precedence reasoning signal (> per-msg toggle >
+    session > model-default > platform)."""
+    if not text:
+        return text, None
+    pref: str | None = None
+
+    def _sub(m: re.Match) -> str:
+        nonlocal pref
+        cmd = m.group("cmd").lower()
+        if cmd in ("no_think", "no_thinking"):
+            pref = "off"
+        elif cmd == "think":
+            pref = "medium"
+        else:  # effort=<val>
+            v = (m.group("val") or "").lower()
+            pref = "off" if v == "none" else v
+        return ""
+
+    stripped = _INLINE_EFFORT_RE.sub(_sub, text).strip()
+    return stripped, pref
+
+
+def _thinking_pref(thinking: bool | None, gen_params: dict) -> str:
+    """Map the per-request `thinking` toggle (+ the session generation_params
+    default) to a UserReasoningPref for resolve_reasoning. True → explicit
+    "medium" (matches the legacy thinking_llm_fields enabled→medium), False →
+    "off"; None falls back to a session-stored `reasoning_effort`/`thinking`
+    default, else the platform default "off" (RE-1: thinking is opt-in)."""
+    if thinking is True:
+        return "medium"
+    if thinking is False:
+        return "off"
+    stored = gen_params.get("reasoning_effort", gen_params.get("thinking"))
+    if isinstance(stored, str) and stored in ("off", "auto", "low", "medium", "high"):
+        return stored
+    if stored is True:
+        return "medium"
+    return "off"
+
+
+def _apply_reasoning_kwargs(request_kwargs: dict, gen_params: dict) -> None:
+    """Forward the resolved reasoning fields (stashed in gen_params by
+    stream_response) into the StreamRequest kwargs. THIS is the wiring that was
+    missing — `_stream_via_gateway`/`_stream_with_tools` never forwarded
+    reasoning, so the chat thinking toggle was a live no-op."""
+    if gen_params.get("reasoning_effort") is not None:
+        request_kwargs["reasoning_effort"] = gen_params["reasoning_effort"]
+    if gen_params.get("chat_template_kwargs") is not None:
+        request_kwargs["chat_template_kwargs"] = gen_params["chat_template_kwargs"]
+
+
 async def _stream_via_gateway(
     model_source: str,
     model_ref: str,
@@ -126,6 +197,7 @@ async def _stream_via_gateway(
         # observability row for this stream + makes it cancellable on disconnect.
         stream_job_id = str(uuid4())
         request_kwargs["stream_job_id"] = stream_job_id
+        _apply_reasoning_kwargs(request_kwargs, gen_params)
         request = StreamRequest(**request_kwargs)
         last_usage: _Usage | None = None
         finish_reason: str | None = None
@@ -425,6 +497,7 @@ async def _stream_with_tools(
             # separate gateway stream; the active pass is what a disconnect aborts).
             stream_job_id = str(uuid4())
             request_kwargs["stream_job_id"] = stream_job_id
+            _apply_reasoning_kwargs(request_kwargs, gen_params)
             request = StreamRequest(**request_kwargs)
 
             tool_frags: dict = {}
@@ -744,6 +817,11 @@ async def stream_response(
     tool-*calling* is off — which lets a reasoning model (Qwen 3.5/3.6) draft
     without spending its budget deciding whether to call a tool."""
 
+    # ── RE-3: parse + STRIP a chat-only inline reasoning command (/no_think etc.)
+    # before the message reaches the model or is persisted. The inline override is
+    # the highest-precedence reasoning signal (beats the `thinking` toggle below).
+    user_message_content, _inline_effort = parse_inline_effort(user_message_content)
+
     # ── Load session settings ───────────────────────────────────────────────
     session_row = await pool.fetchrow(
         "SELECT system_prompt, generation_params, project_id, composer_model_source, composer_model_ref "
@@ -755,6 +833,27 @@ async def stream_response(
     if isinstance(gp_raw, str):
         gp_raw = json.loads(gp_raw)
     gen_params: dict = gp_raw if gp_raw else {}
+
+    # ── RE: resolve reasoning effort and STASH the provider fields in gen_params ──
+    # The `thinking` toggle was previously accepted and dropped (a live no-op). Map
+    # it (+ the session default) to a reasoning pref, resolve against the model's
+    # reasoning-control style (adaptive Anthropic → omit & self-decide; effort
+    # models → send reasoning_effort; non-reasoning → omit), and stash the wire
+    # fields so both _stream_via_gateway and _stream_with_tools forward them.
+    # Precedence: inline /command > per-msg `thinking` toggle > session > platform.
+    _user_pref = _inline_effort or _thinking_pref(thinking, gen_params)
+    _directive = resolve_reasoning(
+        user_pref=_user_pref,  # type: ignore[arg-type]
+        model_control=infer_reasoning_control(creds.provider_kind, creds.provider_model_name),
+    )
+    _rf = reasoning_fields(_directive)
+    # Clear any stale stored knobs first so a directive that says "omit" (adaptive /
+    # non-reasoning) doesn't leave a previous run's reasoning_effort in gen_params.
+    gen_params.pop("reasoning_effort", None)
+    gen_params.pop("chat_template_kwargs", None)
+    if _rf:
+        gen_params.update(_rf)
+
     # asyncpg.Record supports .get() since 0.27; using it lets test mocks
     # that pass a plain dict without project_id continue to work.
     project_id = session_row.get("project_id") if session_row else None
