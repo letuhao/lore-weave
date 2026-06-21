@@ -55,6 +55,10 @@ export function useChatMessages(
   /** Glossary-assistant P3: book-scoped chat (glossary page / reader) that is
    *  NOT the chapter editor. Enables the glossary edit-existing frontend tool. */
   bookContext?: { book_id: string },
+  /** S6: the user's per-book display language (set only when showing a
+   *  translation). Forwarded so knowledge-service composes entity aliases in
+   *  this language for the chat context. Omitted → source-language aliases. */
+  displayLanguage?: string,
 ) {
   const { accessToken } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -180,6 +184,11 @@ export function useChatMessages(
         // editor_context (book_id); a glossary-page chat sends this instead.
         if (bookContext) {
           body.book_context = bookContext;
+        }
+        // S6: forward the per-book display language so knowledge composes entity
+        // aliases in it (omitted when not viewing a translation → source aliases).
+        if (displayLanguage) {
+          body.display_language = displayLanguage;
         }
         // Compose mode: prose-only turn, no tool advertising (server-side gate).
         if (composeMode) {
@@ -442,7 +451,7 @@ export function useChatMessages(
         setIsComposing(false);  // never leave the drafting indicator stuck on
       }
     },
-    [accessToken, sessionId, fetchMessages, editorContext, composeMode, bookContext],
+    [accessToken, sessionId, fetchMessages, editorContext, composeMode, bookContext, displayLanguage],
   );
 
   // ── ARCH-1 C6: resume a suspended run after a frontend-tool decision ──────────
