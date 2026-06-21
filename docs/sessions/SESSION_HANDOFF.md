@@ -1,3 +1,14 @@
+# ▶ THIS BRANCH — `feat/knowledge-graph-ontology` · KG deferred clearance COMPLETE (pure-code) · NEXT: **the consolidated live E2E** · 2026-06-21
+
+> **KG customizable-ontology epic — the design/feature deferred surface is now fully cleared.**
+> The full record is in [`docs/plans/2026-06-20-knowledge-graph-ontology-build.md`](../plans/2026-06-20-knowledge-graph-ontology-build.md) §10; the clearance spec is [`docs/specs/2026-06-21-kg-deferred-clearance.md`](../specs/2026-06-21-kg-deferred-clearance.md).
+> - **8 rows cleared** (6 lanes, 2 waves, fan-out + batched): `D-KG-L7-CARDINALITY`, `D-KG-LB-CACHE-SCHEMA-KEY`, `D-KG-LD-GRANTEE-TIMELINE`, `D-KG-L7B-EXTRACT-ITEM`, `D-KG-LH-NEO4J-REAPPLY`, `D-KG-LF-PROPOSE-EDGE-INBOX`, `D-KG-LH-LC-SCHEMA-WRITE`, `D-KG-LC-REVADOPT-LOSS`. Full knowledge unit suite **2965 passed**; provider-gate clean; `/review-impl` (4 cold reviewers, C/F/A/E) found ZERO real bugs (class-C confirm spine verified sound) — only test/doc hardening landed.
+> - **▶ FIRST ACTION next session: the §8 consolidated live E2E** (needs the multi-service stack up — rebuild touched images first). It ticks the live-smoke rows: `D-KM5-M3-LIVE-SMOKE`, residual `D-KG-L7-LIVE-SMOKE`, `D-KG-L7A-LIVE-SMOKE`, `D-KG-LD-NEO4J-SMOKE`, `D-KG-LC-ROUTE-LIVE-TEST`, `D-KG-LE-BROWSER-SMOKE`, `D-LB-LIVE-SMOKE`, plus the new cardinality/reapply/schema-write/grantee-timeline live integration tests (written, collect+skip at dev time).
+> - **Not ours:** `D-KG-LG-REAL` (glossary-branch internal-read dependency).
+> - **Unpushed:** the branch is many commits ahead of `origin/main` (push only on explicit go-ahead).
+
+---
+
 # Session Handoff — `feat/glossary-assistant-coverage` · **Pipeline M1–M4 + per-language aliases (S6) Parts 1–4b COMPLETE (vertical LIVE + human edit surface)** · **merged `main` 2026-06-21 (MCP fan-out epic)** · NEXT: **deep-research (S5) / translation review-card FE (S4 L3) / pipeline live-smoke** · 2026-06-21
 
 > **▶ S6 per-language aliases — BE vertical DONE (3 commits, unpushed: `fbf022f8` P1+2, `ecc661ec` P3).** Decision Option (a): a per-language alias set = a DRAFT translation of the entity's `aliases` attr value in `attribute_translations` (JSON array), no new table. Plan: [`docs/plans/2026-06-21-glossary-perlang-aliases.md`](../plans/2026-06-21-glossary-perlang-aliases.md).

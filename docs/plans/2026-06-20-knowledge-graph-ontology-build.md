@@ -659,17 +659,46 @@ deferrals and verified each against the current code:
   comment in chat `knowledge_client.py` corrected to the MCP `tools/list` source (KM0 retired
   the HTTP path).
 
-**Still open (verified genuinely-remaining):**
-- **Live-smokes (need the multi-service stack up, blocked at dev-time):** `D-KM5-M3-LIVE-SMOKE`
-  (CMS RS256 → gateway `/mcp/admin` → `kg_admin_*` end-to-end), the residual `D-KG-L7-LIVE-SMOKE`
-  extraction half, `D-KG-L7A-LIVE-SMOKE`, `D-KG-LD-NEO4J-SMOKE`, `D-KG-LC-ROUTE-LIVE-TEST`,
-  `D-KG-LE-BROWSER-SMOKE`, `D-LB-LIVE-SMOKE`.
-- **Design/feature (not pure-code-clearable):** `D-KG-LF-PROPOSE-EDGE-INBOX` (MED — on-schema
-  proposed-edge inbox semantics), `D-KG-LC-REVADOPT-LOSS` (UI warn on re-adopt customization
-  loss), `D-KG-L7-CARDINALITY` (dormant — all seeded edges multi_active), `D-KG-LD-GRANTEE-TIMELINE`,
-  `D-KG-LH-NEO4J-REAPPLY`, `D-KG-LH-LC-SCHEMA-WRITE`, `D-KG-L7B-EXTRACT-ITEM` (dormant legacy
-  `/extract-item`), `D-KG-LB-CACHE-SCHEMA-KEY`.
+**2026-06-21 — design/feature deferred CLEARANCE (8 rows, fan-out + batched).** Spec
+`docs/specs/2026-06-21-kg-deferred-clearance.md`. Built as 6 lanes across 2 waves (wave-1
+parallel worktree agents A/B/C/D/F merged into the branch; wave-2 lane E serial in the main
+checkout), each TDD + 2-stage review; `/review-impl` on the security-relevant lanes (C, F, A, E).
+- **`D-KG-L7-CARDINALITY`** ✅ — `single_active` edge auto-close in `create_relation`
+  (`_CLOSE_PRIOR_SINGLE_ACTIVE_CYPHER`, same-Tx, before MERGE); `ExtractionSchema.edge_cardinalities`
+  threaded from the resolver → writer. Semantic: a subject holds ≤1 open instance of the predicate
+  (close = same subject+predicate, any object, own-id excluded). Cross-user AND cross-project
+  non-leak proven (project-scoped `entity_canonical_id` makes the subject node project-unique).
+- **`D-KG-LB-CACHE-SCHEMA-KEY`** ✅ — `compute_task_id` gains `schema_key` (= schema label
+  "project@vN"); `_p2_cache_wrap` derives it via `_p2_schema_key` at both call sites. Empty/None
+  ⇒ byte-identical legacy hash. (Wave-1 agent shipped a no-op on a stale base; redone on the
+  merged base so the schema is actually in scope — commit `5da9954d`.)
+- **`D-KG-LD-GRANTEE-TIMELINE`** ✅ — grant-gated cross-owner edge-timeline read
+  (`get_entity_by_id_any_owner` + resolve-to-owner gate mirroring `_resolve_owner`; cypher binds
+  the OWNER). 404/403 discipline + cross-book denial unit-proven. `/review-impl`: clean.
+- **`D-KG-L7B-EXTRACT-ITEM`** ✅ — `/extract-item` (NOT dead — composition C27 calls it) given
+  the L7 advisory-SDK / authoritative-writer schema split, resolved internally; contract unchanged.
+- **`D-KG-LH-NEO4J-REAPPLY`** ✅ — real `Neo4jReapplyWriter` over `create_relation`, injected into
+  the triage resolve route (owner-scoped, fail-soft per item); `close_previous` reuses the L7 close.
+- **`D-KG-LF-PROPOSE-EDGE-INBOX`** ✅ — `proposed_edge` apply wired as class-C
+  `DESC_TRIAGE_PROPOSED_EDGE` (`triage_proposed_edge_effect.py`); `kg_triage_place_edge` MCP tool
+  MINTS only (INV-K1, `assert_not_called` locked); `place_edge` added to SUGGESTED_ACTIONS.
+- **`D-KG-LH-LC-SCHEMA-WRITE`** ✅ — schema-mutating triage routed through `ontology_mutations`
+  via class-C `DESC_TRIAGE_SCHEMA_WRITE` (`triage_schema_write_effect.py`, optimistic-concurrency
+  drift→422); `set_edge_cardinality`/`widen_edge_target_kinds` additive repo methods; resolved
+  items get the new schema_version stamped (tenant-scoped).
+- **VERIFY:** full knowledge unit suite **2965 passed**; provider-gate clean; the cardinality /
+  reapply / schema-write live integration tests collect + skip (infra down) → fold into the §6 E2E.
+- **`/review-impl` (4 cold reviewers across C/F/A/E): ZERO real bugs.** Class-C spine verified
+  (jti consume-before-effect, descriptor↔authority pairing, HMAC param integrity, cross-tenant
+  gating, drift revalidation). Landed hardening: cross-project cardinality lock test, adopt-preview
+  route cross-tenant test, `get_entity_by_id_any_owner` `__all__` export, gate-assumption docstrings.
+
+**Still open (genuinely-remaining — all infra/another-branch):**
+- **Live-smokes (need the multi-service stack up):** the consolidated `§8` E2E (spec
+  `2026-06-21-kg-deferred-clearance.md`) will tick `D-KM5-M3-LIVE-SMOKE`, residual `D-KG-L7-LIVE-SMOKE`,
+  `D-KG-L7A-LIVE-SMOKE`, `D-KG-LD-NEO4J-SMOKE`, `D-KG-LC-ROUTE-LIVE-TEST`, `D-KG-LE-BROWSER-SMOKE`,
+  `D-LB-LIVE-SMOKE`, plus the new cardinality/reapply/schema-write/grantee-timeline live tests.
 - **Not ours:** `D-KG-LG-REAL` (glossary-branch internal-read dependency).
 
-Net: the **autonomous-safe pure-code deferred surface for this branch is now exhausted** — the
-remainder is live-smoke (stack), FE/design, or another branch.
+Net: the **pure-code deferred surface for this branch is fully cleared.** What remains is the one
+consolidated live E2E (stack) + the glossary-branch row.

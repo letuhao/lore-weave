@@ -587,7 +587,12 @@ class OntologyMutationsRepo:
         """Additively widen a live edge type's ``target_node_kinds`` (E3 —
         widen_target_kinds resolution). Union (idempotent) so a kind already
         present is a no-op; raises ChildNotFoundError if the edge type is gone /
-        deprecated. Bumps schema_version + rehashes (a schema-shape change)."""
+        deprecated. Bumps schema_version + rehashes (a schema-shape change).
+
+        Gate assumption: only reachable through the class-C confirm spine
+        (kg_actions.confirm_action), which re-checks MANAGE on the schema's
+        project before the effect. `_load_writable` additionally refuses a
+        System-tier schema. Do NOT add an ungated caller."""
         async with self._pool.acquire() as conn:
             async with conn.transaction():
                 await self._load_writable(conn, schema_id)
@@ -615,7 +620,12 @@ class OntologyMutationsRepo:
         """Set a live edge type's ``cardinality`` (E3 — set_multi_active resolution
         flips a single_active type to multi_active so coexisting instances stop
         triaging as cardinality conflicts). Raises ChildNotFoundError if gone;
-        bumps schema_version + rehashes."""
+        bumps schema_version + rehashes.
+
+        Gate assumption: only reachable through the class-C confirm spine
+        (kg_actions.confirm_action), which re-checks MANAGE on the schema's
+        project before the effect. `_load_writable` additionally refuses a
+        System-tier schema. Do NOT add an ungated caller."""
         if cardinality not in ("single_active", "multi_active"):
             raise ValueError("cardinality must be single_active|multi_active")
         async with self._pool.acquire() as conn:
