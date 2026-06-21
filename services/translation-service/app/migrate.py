@@ -272,6 +272,37 @@ CREATE TABLE IF NOT EXISTS extraction_chapter_results (
 );
 CREATE INDEX IF NOT EXISTS idx_ecr_job ON extraction_chapter_results(job_id);
 
+-- OBS/M2: per-batch outcome SSOT (extraction-pipeline §2.3 / INV-F15, INV-O12/13).
+-- The batch-outcome taxonomy that makes a silent all-rejected/truncated batch visible.
+-- These rows are the OBSERVE source-of-truth; a reconciliation sweep re-derives job stats
+-- from them. (A same-txn outbox PROJECTION of these rows is deferred until a consumer binds
+-- — D-OBS-BATCH-OUTCOME-PROJECTION.) owner_user_id + book_id carry the tenant scope
+-- (INV-T6); detail_redacted is bounded + carries NO raw_response/secrets.
+CREATE TABLE IF NOT EXISTS extraction_batch_outcomes (
+  id                        UUID PRIMARY KEY DEFAULT uuidv7(),
+  job_id                    UUID NOT NULL REFERENCES extraction_jobs(job_id) ON DELETE CASCADE,
+  owner_user_id             UUID NOT NULL,
+  book_id                   UUID NOT NULL,
+  chapter_id                UUID NOT NULL,
+  batch_idx                 INT  NOT NULL DEFAULT 0,
+  chunk_idx                 INT  NOT NULL DEFAULT 0,
+  status                    TEXT NOT NULL,   -- ok|empty_valid|truncated|validation_rejected|llm_error|writeback_failed
+  finish_reason             TEXT,
+  kinds                     TEXT[] NOT NULL DEFAULT '{}',
+  entities_found            INT NOT NULL DEFAULT 0,
+  entities_written          INT NOT NULL DEFAULT 0,
+  validation_rejected_count INT NOT NULL DEFAULT 0,
+  input_tokens             INT NOT NULL DEFAULT 0,
+  output_tokens            INT NOT NULL DEFAULT 0,
+  error_code               TEXT,
+  detail_redacted          TEXT,
+  event_id                 TEXT NOT NULL,   -- stable: sha256(job_id, chapter_id, batch_idx, content_hash)
+  created_at               TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (event_id)        -- redelivery-stable dedup for the projection (INV-O13)
+);
+CREATE INDEX IF NOT EXISTS idx_ebo_job     ON extraction_batch_outcomes(job_id);
+CREATE INDEX IF NOT EXISTS idx_ebo_chapter ON extraction_batch_outcomes(job_id, chapter_id);
+
 -- ── V8: Translation Pipeline V3 — selection flag, per-role models, QA config ──
 -- Additive + idempotent. Default pipeline_version='v2' ⇒ zero behavior change
 -- until a book/job opts into 'v3'. verifier_model_* nullable ⇒ falls back to the

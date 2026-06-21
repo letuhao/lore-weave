@@ -30,6 +30,12 @@ from loreweave_llm.errors import (
 
 from ..config import settings
 from ..llm_client import LLMClient
+from .extraction_outcomes import (
+    LLM_ERROR,
+    chapter_status_from_outcomes,
+    classify_batch,
+    compute_event_id,
+)
 from .extraction_preprocessor import prepare_chapter_text
 from .extraction_provenance import stamp_entity_provenance
 from .extraction_prompt import (
@@ -37,7 +43,7 @@ from .extraction_prompt import (
     build_known_entities_context,
     build_system_prompt,
     build_user_prompt,
-    parse_and_validate,
+    parse_and_validate_with_stats,
     plan_kind_batches,
 )
 from .glossary_client import (
@@ -54,6 +60,45 @@ log = logging.getLogger(__name__)
 # emit must never fail the job; the reconcile UNION in internal_dispatch.py backstops).
 _JOB_SERVICE = "translation"
 _JOB_KIND = "glossary_extraction"
+
+
+async def _persist_batch_outcomes(pool, job_id, owner_user_id, book_id, chapter_id,
+                                  outcomes: list[dict]) -> None:
+    """Persist the per-batch outcome SSOT rows (INV-O12: these rows ARE the observability
+    truth; a reconciliation sweep re-derives job stats from them).
+
+    Best-effort relative to the job: the batches already did their real work, so a failure
+    to record observability must NEVER fail the chapter — log and move on. All rows for the
+    chapter share ONE transaction; UNIQUE(event_id) makes a redelivered batch an idempotent
+    no-op (INV-O13). The same-txn OUTBOX projection (events as a fan-out of these rows) is
+    deliberately NOT emitted yet — there is no consumer, and routing it onto an existing
+    stream would mis-deliver: tracked `D-OBS-BATCH-OUTCOME-PROJECTION` to wire with a
+    dedicated stream + a bound consumer. detail/kinds carry counts + status only (REDACTED
+    by construction — no raw_response, no secrets; INV-T6/§8.7).
+    """
+    if not outcomes:
+        return
+    try:
+        async with pool.acquire() as db:
+            async with db.transaction():
+                for o in outcomes:
+                    await db.execute(
+                        """INSERT INTO extraction_batch_outcomes
+                           (job_id, owner_user_id, book_id, chapter_id, batch_idx, status,
+                            finish_reason, kinds, entities_found, entities_written,
+                            validation_rejected_count, input_tokens, output_tokens,
+                            error_code, event_id)
+                           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+                           ON CONFLICT (event_id) DO NOTHING""",
+                        job_id, owner_user_id, book_id, chapter_id,
+                        o["batch_idx"], o["status"], o.get("finish_reason"),
+                        o.get("kinds", []), o.get("entities_found", 0), 0,
+                        o.get("validation_rejected_count", 0),
+                        o.get("input_tokens", 0), o.get("output_tokens", 0),
+                        o.get("error_code"), o["event_id"],
+                    )
+    except Exception as exc:  # noqa: BLE001 — observability must not fail the job
+        log.warning("extraction: failed to persist batch outcomes for chapter %s: %s", chapter_id, exc)
 
 
 async def handle_extraction_job(msg: dict, pool, publish, publish_event, llm_client: LLMClient) -> None:
@@ -154,11 +199,15 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
     # reaches total_chapters, so the job never finalizes and the message redelivers forever
     # (the second half of the runaway). Resuming makes each delivery advance, so the job
     # converges to a terminal state and the message is finally ACKed.
+    # A chapter is "done" (skipped on resume) when it reached ANY terminal status —
+    # 'completed', the new OBS 'completed_with_errors' (finished, but some batch failed),
+    # or 'failed'. Omitting completed_with_errors here would re-run + re-spend LLM on a
+    # chapter that already finished, and break convergence (it'd never count as done).
     async with pool.acquire() as db:
         done_rows = await db.fetch(
             "SELECT chapter_id, status, COALESCE(input_tokens,0) AS it, "
             "COALESCE(output_tokens,0) AS ot FROM extraction_chapter_results "
-            "WHERE job_id=$1 AND status IN ('completed','failed')",
+            "WHERE job_id=$1 AND status IN ('completed','completed_with_errors','failed')",
             job_id,
         )
     done_ids = {str(r["chapter_id"]) for r in done_rows}
@@ -189,7 +238,11 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
     # on a multi-pass resume); correctness of finalize + cost rides on the counts/tokens.
     total_input_tokens = sum(r["it"] for r in done_rows)
     total_output_tokens = sum(r["ot"] for r in done_rows)
-    completed = sum(1 for r in done_rows if r["status"] == "completed")
+    # `completed` counts every FINISHED chapter (clean or with-errors) for convergence;
+    # `chapters_with_errors` tracks the with-errors subset so the JOB rollup surfaces them
+    # (else the chapter taxonomy would be recorded but the job would still read clean).
+    completed = sum(1 for r in done_rows if r["status"] in ("completed", "completed_with_errors"))
+    chapters_with_errors = sum(1 for r in done_rows if r["status"] == "completed_with_errors")
     failed = sum(1 for r in done_rows if r["status"] == "failed")
 
     for idx, chapter_id_str in enumerate(chapter_ids):
@@ -272,15 +325,22 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
             total_input_tokens += ch_input_tokens
             total_output_tokens += ch_output_tokens
             completed += 1
+            # OBS/M2 — the chapter status is DERIVED from its batch outcomes (INV-F15):
+            # 'completed' only if every batch was clean, else 'completed_with_errors'. This
+            # is the fix for the silent-failure bug — a chapter whose batches all rejected /
+            # truncated no longer records as a clean success.
+            ch_status = result.get("chapter_status", "completed")
+            if ch_status == "completed_with_errors":
+                chapters_with_errors += 1
 
             async with pool.acquire() as db:
                 await db.execute(
                     """UPDATE extraction_chapter_results
-                       SET status='completed', entities_found=$3,
+                       SET status=$6, entities_found=$3,
                            input_tokens=$4, output_tokens=$5, completed_at=now()
                        WHERE job_id=$1 AND chapter_id=$2""",
                     job_id, chapter_id, ch_created + ch_updated,
-                    ch_input_tokens, ch_output_tokens,
+                    ch_input_tokens, ch_output_tokens, ch_status,
                 )
 
         except Exception as exc:
@@ -321,8 +381,15 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
             },
         })
 
-    # Job complete
-    final_status = "completed" if failed == 0 else ("failed" if completed == 0 else "completed_with_errors")
+    # Job complete. OBS/M2 — the job is 'completed' only when nothing failed AND no chapter
+    # finished with batch errors; a chapter that finished completed_with_errors now bubbles
+    # up so the job rollup reflects the per-batch taxonomy instead of masking it.
+    if completed == 0:
+        final_status = "failed"
+    elif failed == 0 and chapters_with_errors == 0:
+        final_status = "completed"
+    else:
+        final_status = "completed_with_errors"
     async with pool.acquire() as db:
         await db.execute(
             "UPDATE extraction_jobs SET status=$2, finished_at=now() WHERE job_id=$1",
@@ -431,6 +498,27 @@ async def _process_extraction_chapter(
     # worker never read it (architecture §8.3). Consumed via `.get()` downstream
     # so it is additive/non-breaking on the chapter-result dict.
     batch_finish_reasons: list[dict] = []
+    # OBS/M2 — per-batch outcome rows (the SSOT, INV-F15). Each batch contributes one
+    # row with its classified status so a silent all-rejected/truncated/errored batch is
+    # no longer invisible; the chapter status is then DERIVED from these (not from a bare
+    # entity count). Persisted post-loop, idempotent on a stable event_id (INV-O13).
+    batch_outcomes: list[dict] = []
+
+    def _record_outcome(batch_idx: int, batch: list, status: str, *, finish_reason=None,
+                        entities_found=0, validation_rejected_count=0,
+                        input_tokens=0, output_tokens=0, error_code=None):
+        batch_outcomes.append({
+            "batch_idx": batch_idx,
+            "kinds": list(batch),
+            "status": status,
+            "finish_reason": finish_reason,
+            "entities_found": entities_found,
+            "validation_rejected_count": validation_rejected_count,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "error_code": error_code,
+            "event_id": compute_event_id(str(job_id), str(chapter_id), batch_idx, content_hash),
+        })
 
     for batch_idx, batch in enumerate(batches):
         # 4. Build prompt
@@ -488,12 +576,16 @@ async def _process_extraction_chapter(
                 "extraction: permanent SDK error %s for chapter %s batch %d/%d — failing batch",
                 exc.__class__.__name__, chapter_id, batch_idx + 1, len(batches),
             )
+            # OBS — the batch failed at the LLM; record it so the chapter can't read as
+            # clean (was: a bare `continue` that silently dropped the batch).
+            _record_outcome(batch_idx, batch, LLM_ERROR, error_code=exc.__class__.__name__)
             continue
         except (LLMTransientRetryNeededError, LLMError) as exc:
             log.error(
                 "extraction: transient SDK error for chapter %s batch %d/%d: %s",
                 chapter_id, batch_idx + 1, len(batches), exc,
             )
+            _record_outcome(batch_idx, batch, LLM_ERROR, error_code=exc.__class__.__name__)
             continue
 
         if sdk_job.status != "completed":
@@ -502,6 +594,7 @@ async def _process_extraction_chapter(
                 "extraction: LLM job ended status=%s code=%s for chapter %s batch %d/%d — skipping batch (kinds: %s)",
                 sdk_job.status, err_code, chapter_id, batch_idx + 1, len(batches), batch,
             )
+            _record_outcome(batch_idx, batch, LLM_ERROR, error_code=err_code)
             continue
 
         # chatAggregator output: {"messages": [{"role":"assistant","content":...}], "usage": {...}}
@@ -544,8 +637,26 @@ async def _process_extraction_chapter(
                 chapter_id, batch_idx + 1, len(batches), output_tokens, batch,
             )
 
-        # 6. Parse + validate
-        entities = parse_and_validate(response_text, batch, extraction_profile)
+        # 6. Parse + validate (with stats so the batch outcome can be classified)
+        entities, pstats = parse_and_validate_with_stats(response_text, batch, extraction_profile)
+
+        # OBS/M2 — classify this batch. `truncated` (finish=length) wins over ok even when
+        # some entities were salvaged (later ones were lost); a non-empty raw array with 0
+        # survivors is `validation_rejected` (the all-kind-mismatch case), an empty array is
+        # `empty_valid`. Recorded as the SSOT row; the chapter status derives from these.
+        rejected = max(0, pstats.raw_count - len(entities))
+        status = classify_batch(
+            llm_errored=False,
+            parse_ok=pstats.parse_ok,
+            raw_entity_count=pstats.raw_count,
+            validated_count=len(entities),
+            finish_reason=finish_reason,
+        )
+        _record_outcome(
+            batch_idx, batch, status, finish_reason=finish_reason,
+            entities_found=len(entities), validation_rejected_count=rejected,
+            input_tokens=input_tokens, output_tokens=output_tokens,
+        )
 
         # Add chapter_links to each entity (use .get() to avoid mutating parsed dict)
         chapter_title = chapter.get("title", "")
@@ -562,11 +673,21 @@ async def _process_extraction_chapter(
 
     _ch_elapsed = _time.monotonic() - _ch_start
 
+    # OBS/M2 — persist the per-batch outcome SSOT (+ same-txn projection) once the batches
+    # are done, BEFORE any downstream early-return, so the empty/stale/success paths all
+    # record what each batch actually did. Best-effort (never fails the chapter). The chapter
+    # status is DERIVED from these (INV-F15) so an all-rejected/truncated chapter no longer
+    # reads as a clean 'completed'.
+    await _persist_batch_outcomes(pool, job_id, owner_user_id, book_id, chapter_id, batch_outcomes)
+    chapter_status = chapter_status_from_outcomes([o["status"] for o in batch_outcomes])
+
     if not all_entities:
-        log.info("extraction: chapter %s done in %.1fs — 0 entities (empty LLM output)", chapter_id, _ch_elapsed)
+        log.info("extraction: chapter %s done in %.1fs — 0 entities (status=%s)",
+                 chapter_id, _ch_elapsed, chapter_status)
         return {"created": 0, "updated": 0, "skipped": 0, "entities": [],
                 "input_tokens": total_input_tokens, "output_tokens": total_output_tokens,
-                "batch_finish_reasons": batch_finish_reasons}
+                "batch_finish_reasons": batch_finish_reasons,
+                "batch_outcomes": batch_outcomes, "chapter_status": chapter_status}
 
     # 6b. M1 — content-hash precondition (INV-C4). The LLM calls above took real
     # wall-clock; if the chapter was EDITED meanwhile, these entities were extracted
@@ -590,7 +711,9 @@ async def _process_extraction_chapter(
                 )
                 return {"created": 0, "updated": 0, "skipped": 0, "entities": [],
                         "input_tokens": total_input_tokens, "output_tokens": total_output_tokens,
-                        "batch_finish_reasons": batch_finish_reasons, "stale_skipped": True}
+                        "batch_finish_reasons": batch_finish_reasons,
+                        "batch_outcomes": batch_outcomes, "chapter_status": chapter_status,
+                        "stale_skipped": True}
     except Exception as exc:  # noqa: BLE001 — precondition is best-effort
         log.warning("extraction: chapter %s drift re-check failed (%s) — proceeding", chapter_id, exc)
 
@@ -628,4 +751,6 @@ async def _process_extraction_chapter(
     upsert_result["input_tokens"] = total_input_tokens
     upsert_result["output_tokens"] = total_output_tokens
     upsert_result["batch_finish_reasons"] = batch_finish_reasons
+    upsert_result["batch_outcomes"] = batch_outcomes
+    upsert_result["chapter_status"] = chapter_status
     return upsert_result

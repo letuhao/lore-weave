@@ -339,12 +339,37 @@ def _repair_truncated_array(text: str) -> str:
     return text + "\n]"  # fallback: just close it
 
 
+@dataclass
+class ParseStats:
+    """Signals the OBS batch-outcome taxonomy needs that a bare entity list can't
+    carry (extraction-pipeline §8.3 / INV-F15). ``raw_count`` is how many entries the
+    model's array held BEFORE validation — the discriminator between *empty_valid* (the
+    model correctly returned ``[]``) and *validation_rejected* (it returned entities that
+    were all rejected, e.g. kind mismatch). ``parse_ok`` is False when no JSON array could
+    be parsed at all (garbage / prose / mid-truncation that even repair couldn't close)."""
+
+    raw_count: int = 0
+    parse_ok: bool = False
+
+
 def parse_and_validate(
     response_text: str,
     kind_batch: list[str],
     extraction_profile: dict[str, dict[str, str]],
 ) -> list[dict]:
-    """Parse LLM output and validate against extraction profile.
+    """Parse + validate LLM output → the validated entity list (back-compat wrapper)."""
+    entities, _ = parse_and_validate_with_stats(response_text, kind_batch, extraction_profile)
+    return entities
+
+
+def parse_and_validate_with_stats(
+    response_text: str,
+    kind_batch: list[str],
+    extraction_profile: dict[str, dict[str, str]],
+) -> tuple[list[dict], ParseStats]:
+    """Parse LLM output and validate against extraction profile, returning the validated
+    entities AND a ``ParseStats`` (raw pre-validation count + parse-success) so the worker
+    can classify the batch outcome (OBS/M2). The validation logic is unchanged.
 
     Steps (design §6.8):
     1. Extract JSON from response (handles markdown fences, reasoning text, raw arrays)
@@ -356,21 +381,21 @@ def parse_and_validate(
     json_text = _extract_json_from_text(response_text)
     if json_text is None:
         log.warning("extraction parse failed: no JSON array found in response (len=%d)", len(response_text))
-        return []
+        return [], ParseStats(raw_count=0, parse_ok=False)
 
     # Step 1: parse JSON
     try:
         data = json.loads(json_text)
     except json.JSONDecodeError:
         log.warning("extraction parse failed: invalid JSON (extracted len=%d)", len(json_text))
-        return []
+        return [], ParseStats(raw_count=0, parse_ok=False)
 
     if not isinstance(data, list):
         if isinstance(data, dict):
             data = [data]
         else:
             log.warning("extraction parse: expected array, got %s", type(data).__name__)
-            return []
+            return [], ParseStats(raw_count=0, parse_ok=False)
 
     valid_kinds = set(kind_batch)
     validated: list[dict] = []
@@ -405,7 +430,7 @@ def parse_and_validate(
         })
 
     log.info("extraction parsed: %d valid entities from %d raw entries", len(validated), len(data))
-    return validated
+    return validated, ParseStats(raw_count=len(data), parse_ok=True)
 
 
 # ── Cost estimation ──────────────────────────────────────────────────────────

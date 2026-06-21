@@ -19,6 +19,7 @@ from loreweave_llm.models import Job
 
 from app.workers import extraction_worker as ew
 from app.workers.extraction_worker import _run_extraction_job
+from app.workers.extraction_prompt import ParseStats
 
 
 class _AcquireCM:
@@ -162,7 +163,9 @@ async def _run_one_chapter_batch(finish_reason: str | None, entities: list[dict]
          patch.object(ew, "build_system_prompt", return_value="sys"), \
          patch.object(ew, "build_user_prompt", return_value="usr"), \
          patch.object(ew, "thinking_llm_fields", return_value={}), \
-         patch.object(ew, "parse_and_validate", return_value=entities), \
+         patch.object(ew, "parse_and_validate_with_stats",
+                      return_value=(entities, ParseStats(raw_count=len(entities), parse_ok=True))), \
+         patch.object(ew, "_persist_batch_outcomes", new=AsyncMock()), \
          patch.object(ew, "post_extracted_entities", new=post):
         result = await ew._process_extraction_chapter(
             job_id=uuid4(), book_id="b", chapter_id=uuid4(), chapter_index=0,
