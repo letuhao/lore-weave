@@ -772,8 +772,23 @@ need BYOK model availability + a `frontend` image rebuild + browser automation.
   Graph Schema tab loads, AdoptPicker lists real templates (general/xianxia-harem); seeded a
   book-linked project + adopted general + a custom edge, then selecting general rendered the loss
   warning listing "smoke_custom_edge (edge type) removed" with the adopt button GATED until "I
-  understand, proceed" → enabled. Seed cleaned up. (User-tier kind union in user-standards remains
-  a later refinement; the System baseline is what the gate needs today.)
+  understand, proceed" → enabled. Seed cleaned up.
 
-**KG epic deferred surface: FULLY CLEARED.** Only `D-KG-LG-REAL`'s user-tier-kind refinement
-remains as a nice-to-have; every tracked KG deferred row is cleared + live-proven.
+**2026-06-21 (later) — D-KG-LG-REAL user-tier-kind UNION refinement CLEARED (live).**
+- `/internal/users/{id}/glossary-standards` now returns the user's RESOLVED kind catalog —
+  System defaults UNION the user's own per-user `user_kinds` tier, per-user shadowing System by
+  `code` (CLAUDE.md › User Boundaries resolution rule), instead of System-only. Additive: the
+  handler builds a `byCode` slot index over the System rows, then overlays active non-trashed
+  `user_kinds` (owner-scoped) — matching code → overwrite in place (tier flips to `user`, no
+  dup), new code → append. Degrades to System-only on a missing `user_kinds` table (42P01) so an
+  un-migrated glossary DB still serves the baseline rather than 500.
+- Tests: `internal_ontology_read_test.go` — 3 unit (token gate ×2, bad-UUID 400) + a real-PG
+  integration proving union + shadow-by-code (no dup, count unchanged) + tenant-isolation (user
+  B never sees A's per-user kinds). All green (integration vs a throwaway PG on infra:5555).
+- LIVE S2S (rebuilt glossary image): seeded a `user_kinds` row for claude-test, called the
+  endpoint from inside the knowledge container → `glossary-service:8088` → 200, count 13 (12
+  System + 1), user-tier list showed the seeded kind AND a pre-existing `character` user-kind
+  **shadowing** the System "character" (tier=user). Seed cleaned up.
+
+**KG epic deferred surface: FULLY CLEARED + live-proven** — every tracked KG deferred row,
+including `D-KG-LG-REAL`'s user-tier-kind union refinement, is cleared.
