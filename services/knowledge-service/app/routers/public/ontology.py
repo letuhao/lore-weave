@@ -117,6 +117,10 @@ class AdoptRequest(BaseModel):
     acknowledge_optional_gaps: bool = False
 
 
+class AdoptPreviewRequest(BaseModel):
+    source_schema_id: UUID
+
+
 class EdgeTypeCreate(BaseModel):
     code: str = Field(min_length=1, max_length=_CODE_MAX)
     label: str = Field(min_length=1)
@@ -371,6 +375,35 @@ async def adopt_schema(
     if result.missing_optional and not body.acknowledge_optional_gaps:
         response.headers["X-KG-Optional-Gaps"] = ",".join(result.missing_optional)
     return result.schema
+
+
+# ── adopt loss preview (read-only, D-KG-LC-REVADOPT-LOSS) ──────────────────────
+@router.post("/projects/{project_id}/adopt/preview")
+async def adopt_preview(
+    body: AdoptPreviewRequest,
+    project_id: UUID = Path(),
+    owner: UUID = Depends(require_project_grant(GrantLevel.MANAGE)),
+    mutations: OntologyMutationsRepo = Depends(get_ontology_mutations_repo),
+    repo: GraphSchemasRepo = Depends(get_graph_schemas_repo),
+):
+    """Preview "what you'll lose" before re-adopting a template. Read-only,
+    Manage-gated (same grant as adopt — resolve-to-owner). Re-adopt deprecates
+    the project's active schema and replaces it with a fresh copy of the source,
+    silently dropping any customizations the source lacks; this surfaces them
+    first so the UI can warn + gate the destructive action.
+
+    Returns `{has_current, would_lose:[{node_type, code, change, ...}]}`. When the
+    project never adopted (`has_current=False`) there is nothing to lose."""
+    current_schema_id = await _active_project_schema_id(repo, str(project_id))
+    try:
+        return await mutations.compute_adopt_preview(
+            owner_user_id=owner,
+            project_id=str(project_id),
+            current_schema_id=current_schema_id,
+            incoming_source_id=body.source_schema_id,
+        )
+    except SchemaNotWritableError:
+        raise _not_found()
 
 
 # ── sync (tree diff / apply) ──────────────────────────────────────────────────

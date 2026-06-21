@@ -1,0 +1,34 @@
+{
+  "adopt": {
+    "chooseTemplate": "Chọn một mẫu để áp dụng",
+    "select": "Chọn",
+    "selected": "Đã chọn",
+    "noTemplates": "Không có mẫu nào có thể áp dụng.",
+    "adoptButton": "Áp dụng mẫu",
+    "adopting": "Đang áp dụng…",
+    "missing": "thiếu",
+    "openGlossary": "Mở thuật ngữ",
+    "blockedTitle": "Thuật ngữ thiếu các loại bắt buộc",
+    "blockedHelp": "Hãy thêm các loại node này vào thuật ngữ trước, rồi áp dụng lại.",
+    "blockedButton": "Thêm {{count}} loại vào thuật ngữ trước",
+    "lossTitle": "Áp dụng lại sẽ loại bỏ các tùy chỉnh của bạn",
+    "lossHelp": "Áp dụng lại sẽ thay thế lược đồ hiện tại của dự án. {{count}} tùy chỉnh sẽ bị loại bỏ hoặc ghi đè và không thể khôi phục.",
+    "lossProceed": "Tôi hiểu, tiếp tục",
+    "lossAcknowledged": "Đã xác nhận",
+    "lossBlockedButton": "Xác nhận cảnh báo để tiếp tục",
+    "nodeType": {
+      "edge_type": "loại cạnh",
+      "fact_type": "loại sự kiện",
+      "node_kind": "loại node",
+      "vocab_set": "bộ từ vựng",
+      "vocab_value": "giá trị từ vựng"
+    },
+    "lossChange": {
+      "removed_upstream": "bị xóa",
+      "modified": "bị ghi đè"
+    }
+  },
+  "common": {
+    "dismiss": "Bỏ qua"
+  }
+}

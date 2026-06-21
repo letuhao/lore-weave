@@ -151,6 +151,29 @@ export interface NeedsGlossary {
   };
 }
 
+// ── adopt loss preview (re-adopt "what you'll lose") ──────────────────────────
+
+export interface AdoptPreviewPayload {
+  /** the candidate template to re-adopt; preview reports what the swap drops */
+  source_schema_id: string;
+}
+
+/** One customization re-adopt would drop (removed_upstream) or overwrite (modified). */
+export interface AdoptLoss {
+  node_type: SyncNodeType;
+  parent_code?: string | null;
+  code: string;
+  /** 'removed_upstream' = vanishes; 'modified' = overwritten by the template */
+  change: 'removed_upstream' | 'modified';
+  fields_changed?: string[];
+}
+
+export interface AdoptPreview {
+  /** false => project never adopted; nothing to lose */
+  has_current: boolean;
+  would_lose: AdoptLoss[];
+}
+
 // ── sync ──────────────────────────────────────────────────────────────────────
 
 export type SyncNodeType =

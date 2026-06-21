@@ -35,6 +35,7 @@ from app.db.seed_graph_schemas import _content_hash
 __all__ = [
     "OntologyMutationsRepo",
     "AdoptResult",
+    "compute_adopt_losses",
     "NeedsGlossaryError",
     "SyncConflictError",
     "SchemaNotWritableError",
@@ -399,6 +400,47 @@ class OntologyMutationsRepo:
                 """,
                 vs["vocab_set_id"], new_set_id,
             )
+
+    # ── re-adopt loss preview (read-only, D-KG-LC-REVADOPT-LOSS) ────────────
+    async def compute_adopt_preview(
+        self,
+        *,
+        owner_user_id: UUID,
+        project_id: str,
+        current_schema_id: UUID | None,
+        incoming_source_id: UUID,
+    ) -> dict:
+        """Preview "what you'll lose" if the project re-adopts `incoming_source_id`.
+
+        Read-only (no write, no lock). `current_schema_id` is the project's active
+        schema (None when the project never adopted → nothing to lose). Builds both
+        tree surfaces and returns the losing diff (removed_upstream + modified) as
+        `would_lose`.
+
+        Tenancy (mirrors adopt): the preview DEEP-READS the source's tree surface,
+        so it MUST apply the same visibility gate as adopt — else a caller could read
+        another tenant's private user-tier template by passing its UUID (the router
+        only grant-gates the DESTINATION project). `_assert_source_adoptable` allows
+        only System templates / the caller's own user templates / this project's own
+        rows; anything else → SchemaNotWritableError → 404 (no existence oracle)."""
+        async with self._pool.acquire() as conn:
+            src = await conn.fetchrow(
+                f"SELECT {_SCHEMA_COLS} FROM kg_graph_schemas WHERE schema_id = $1",
+                incoming_source_id,
+            )
+            if src is None:
+                raise SchemaNotWritableError("source schema not found")
+            _assert_source_adoptable(
+                _row_to_schema(src), owner_user_id=owner_user_id, project_id=project_id
+            )
+            if current_schema_id is None:
+                return {"has_current": False, "would_lose": []}
+            incoming = await _tree_surface(conn, incoming_source_id)
+            current = await _tree_surface(conn, current_schema_id)
+        return {
+            "has_current": True,
+            "would_lose": compute_adopt_losses(current=current, incoming=incoming),
+        }
 
     # ── schema metadata patch / deprecate ──────────────────────────────────
     async def patch_schema(
@@ -871,6 +913,28 @@ class OntologyMutationsRepo:
         await conn.execute(
             "UPDATE kg_graph_schemas SET content_hash = $2 WHERE schema_id = $1", schema_id, chash
         )
+
+
+# ── re-adopt loss preview (D-KG-LC-REVADOPT-LOSS) ──────────────────────────
+# "What will you LOSE if you re-adopt?" — `adopt` deprecates the project's active
+# schema and replaces it with a fresh copy of the incoming source. Any child the
+# CURRENT copy has but the INCOMING source lacks (or has differently) is silently
+# dropped/overwritten. We reuse the sync tree-diff, framing `incoming` as the
+# "upstream" the project would move to and `current` as "mine": a child present in
+# current-only is `removed_upstream` (vanishes → loss); a child present in both but
+# differing is `modified` (overwritten → loss). An `added` change is incoming-only
+# (a GAIN) and never a loss.
+_LOSS_CHANGES = ("removed_upstream", "modified")
+
+
+def compute_adopt_losses(*, current: dict, incoming: dict) -> list[dict]:
+    """Pure: diff two tree surfaces and return only the losing changes.
+
+    `current`/`incoming` are `_tree_surface`-shaped dicts. Returns the subset of
+    `_diff_trees(incoming, current)` whose `change` is removed_upstream/modified —
+    i.e. the customizations re-adopt would drop or overwrite.
+    """
+    return [c for c in _diff_trees(incoming, current) if c["change"] in _LOSS_CHANGES]
 
 
 # ── pure tree-diff (unit-testable) ─────────────────────────────────────────

@@ -381,6 +381,63 @@ async def test_sync_apply_conflict_on_stale_base_hash(pool):
         await repo.sync_apply(proj_schema, base_source_hash="stale-hash", decisions=[])
 
 
+# ── re-adopt loss preview (D-KG-LC-REVADOPT-LOSS) ────────────────────────────
+async def test_adopt_preview_surfaces_customizations_as_losses(pool):
+    await _reset_kg(pool)
+    repo = OntologyMutationsRepo(pool)
+    owner = uuid4()
+    project_id = f"proj-{uuid4()}"
+    src = await _system_id(pool, "xianxia-harem")
+    res = await repo.adopt(
+        owner_user_id=owner, project_id=project_id, source_schema_id=src,
+        glossary_kinds=set(_XIANXIA_REQUIRED + ["item", "event", "relationship"]),
+        book_id=None,
+    )
+    proj_schema = res.schema.schema_id
+    # customize the project copy: add a user-only edge (a loss on re-adopt).
+    await repo.add_edge_type(proj_schema, code="MY_CUSTOM_EDGE", label="my custom")
+
+    preview = await repo.compute_adopt_preview(
+        owner_user_id=owner, project_id=project_id,
+        current_schema_id=proj_schema, incoming_source_id=src,
+    )
+    assert preview["has_current"] is True
+    losses = preview["would_lose"]
+    assert any(
+        c["node_type"] == "edge_type" and c["code"] == "MY_CUSTOM_EDGE"
+        and c["change"] == "removed_upstream"
+        for c in losses
+    )
+
+
+async def test_adopt_preview_empty_when_no_current_schema(pool):
+    await _reset_kg(pool)
+    repo = OntologyMutationsRepo(pool)
+    src = await _system_id(pool, "xianxia-harem")
+    preview = await repo.compute_adopt_preview(
+        owner_user_id=uuid4(), project_id=f"proj-{uuid4()}",
+        current_schema_id=None, incoming_source_id=src,
+    )
+    assert preview == {"has_current": False, "would_lose": []}
+
+
+async def test_adopt_preview_rejects_unvisible_source(pool):
+    await _reset_kg(pool)
+    repo = OntologyMutationsRepo(pool)
+    # another tenant's user-tier template — not adoptable by this caller/project.
+    async with pool.acquire() as conn:
+        other_src = await conn.fetchval(
+            "INSERT INTO kg_graph_schemas (scope, scope_id, code, name) "
+            "VALUES ('user', $1, 'private', 'Private') RETURNING schema_id",
+            str(uuid4()),
+        )
+    with pytest.raises(SchemaNotWritableError):
+        await repo.compute_adopt_preview(
+            owner_user_id=uuid4(), project_id=f"proj-{uuid4()}",
+            current_schema_id=None, incoming_source_id=other_src,
+        )
+
+
 # ── child CRUD ──────────────────────────────────────────────────────────────
 async def test_child_crud_additive_and_deprecate(pool):
     await _reset_kg(pool)

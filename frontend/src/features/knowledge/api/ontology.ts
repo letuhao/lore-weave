@@ -10,6 +10,8 @@
 import { apiJson } from '../../../api';
 import type {
   AdoptPayload,
+  AdoptPreviewPayload,
+  AdoptPreview,
   EdgeType,
   EdgeTypeCreate,
   FactType,
@@ -111,6 +113,23 @@ export const ontologyApi = {
     token: string,
   ): Promise<GraphSchemaSummary> {
     return apiJson(`${BASE}/projects/${projectId}/adopt`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      token,
+    });
+  },
+
+  // ── adopt loss preview (read-only — "what you'll lose" on re-adopt) ───────────
+
+  // Read-only POST (body carries the candidate source_schema_id). Returns
+  // { has_current, would_lose:[...] }; useOntologyAdopt auto-fetches this on
+  // template select so AdoptPicker can warn + gate before the destructive adopt.
+  adoptPreview(
+    projectId: string,
+    payload: AdoptPreviewPayload,
+    token: string,
+  ): Promise<AdoptPreview> {
+    return apiJson(`${BASE}/projects/${projectId}/adopt/preview`, {
       method: 'POST',
       body: JSON.stringify(payload),
       token,

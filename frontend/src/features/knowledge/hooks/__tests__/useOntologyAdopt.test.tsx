@@ -13,8 +13,12 @@ vi.mock('@/auth', () => ({
 // fn per test keeps each rejection scoped to its own test so it never surfaces
 // as a stray unhandled rejection in a sibling test.
 let adoptImpl: ReturnType<typeof vi.fn>;
+let adoptPreviewImpl: ReturnType<typeof vi.fn>;
 vi.mock('../../api/ontology', () => ({
-  ontologyApi: { adopt: (...a: unknown[]) => adoptImpl(...a) },
+  ontologyApi: {
+    adopt: (...a: unknown[]) => adoptImpl(...a),
+    adoptPreview: (...a: unknown[]) => adoptPreviewImpl(...a),
+  },
 }));
 
 import { useOntologyAdopt } from '../useOntologyAdopt';
@@ -28,6 +32,7 @@ function wrapper({ children }: PropsWithChildren) {
 
 beforeEach(() => {
   adoptImpl = vi.fn();
+  adoptPreviewImpl = vi.fn().mockResolvedValue({ has_current: false, would_lose: [] });
 });
 
 describe('useOntologyAdopt — M1 adopt-gate', () => {
@@ -126,5 +131,72 @@ describe('useOntologyAdopt — M1 adopt-gate', () => {
     ).rejects.toThrow('boom');
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(result.current.needsGlossary).toBeNull();
+  });
+});
+
+describe('useOntologyAdopt — re-adopt loss preview (D-KG-LC-REVADOPT-LOSS)', () => {
+  it('does not fetch a preview until a template is selected', async () => {
+    renderHook(() => useOntologyAdopt('p1'), { wrapper });
+    // no selection => query disabled => no call.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(adoptPreviewImpl).not.toHaveBeenCalled();
+  });
+
+  it('auto-fetches the preview on selection and exposes the losses', async () => {
+    adoptPreviewImpl.mockResolvedValue({
+      has_current: true,
+      would_lose: [{ node_type: 'edge_type', code: 'CUSTOM', change: 'removed_upstream' }],
+    });
+    const { result } = renderHook(() => useOntologyAdopt('p1', 's1'), { wrapper });
+
+    await waitFor(() => expect(result.current.hasLoss).toBe(true));
+    expect(adoptPreviewImpl).toHaveBeenCalledWith(
+      'p1',
+      { source_schema_id: 's1' },
+      'tok',
+    );
+    expect(result.current.wouldLose).toHaveLength(1);
+    // adopt stays gated until the user acknowledges.
+    expect(result.current.lossBlocked).toBe(true);
+  });
+
+  it('clears lossBlocked after acknowledgeLoss', async () => {
+    adoptPreviewImpl.mockResolvedValue({
+      has_current: true,
+      would_lose: [{ node_type: 'edge_type', code: 'CUSTOM', change: 'removed_upstream' }],
+    });
+    const { result } = renderHook(() => useOntologyAdopt('p1', 's1'), { wrapper });
+    await waitFor(() => expect(result.current.lossBlocked).toBe(true));
+
+    act(() => result.current.acknowledgeLoss());
+    await waitFor(() => expect(result.current.lossBlocked).toBe(false));
+    // the warning data is still present — only the gate is lifted.
+    expect(result.current.hasLoss).toBe(true);
+  });
+
+  it('does not block when the project has no current schema', async () => {
+    adoptPreviewImpl.mockResolvedValue({ has_current: false, would_lose: [] });
+    const { result } = renderHook(() => useOntologyAdopt('p1', 's1'), { wrapper });
+    await waitFor(() => expect(adoptPreviewImpl).toHaveBeenCalled());
+    expect(result.current.hasLoss).toBe(false);
+    expect(result.current.lossBlocked).toBe(false);
+  });
+
+  it('re-arms the gate when a different template is selected', async () => {
+    adoptPreviewImpl.mockResolvedValue({
+      has_current: true,
+      would_lose: [{ node_type: 'edge_type', code: 'CUSTOM', change: 'removed_upstream' }],
+    });
+    const { result, rerender } = renderHook(
+      ({ sel }) => useOntologyAdopt('p1', sel),
+      { wrapper, initialProps: { sel: 's1' } },
+    );
+    await waitFor(() => expect(result.current.lossBlocked).toBe(true));
+    act(() => result.current.acknowledgeLoss());
+    await waitFor(() => expect(result.current.lossBlocked).toBe(false));
+
+    // pick a different template — the prior ack no longer matches → re-armed.
+    rerender({ sel: 's2' });
+    await waitFor(() => expect(result.current.lossBlocked).toBe(true));
   });
 });
