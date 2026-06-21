@@ -135,6 +135,7 @@ export function App() {
             <Route path="/books/:bookId" element={<BookDetailPage />} />
             <Route path="/books/:bookId/translation" element={<BookDetailPage />} />
             <Route path="/books/:bookId/glossary" element={<BookDetailPage />} />
+            <Route path="/books/:bookId/kg-ontology" element={<BookDetailPage />} />
             <Route path="/books/:bookId/enrichment" element={<BookDetailPage />} />
             <Route path="/books/:bookId/sharing" element={<BookDetailPage />} />
             <Route path="/books/:bookId/settings" element={<BookDetailPage />} />
