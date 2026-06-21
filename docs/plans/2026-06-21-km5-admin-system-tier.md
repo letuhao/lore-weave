@@ -158,7 +158,17 @@ cacheable), admin tools correctly omitted.
 
 - **D-KM5-M4B-GATEWAY-ADMIN-FED** — ai-gateway `/mcp/admin` controller (require + forward
   `X-Admin-Token`) + per-request-token admin federation + admin provider config. TypeScript,
-  cross-service, no upstream. Best built **shared with the glossary admin epic** (same infra).
+  cross-service. **UPDATE 2026-06-21 (verified):** this gateway admin federation **ALREADY
+  EXISTS** on `origin/feat/glossary-assistant-coverage` (the glossary epic branch; NOT yet on
+  `main`, NOT on this branch) — `admin-federation.service.ts` (`catalogFor(env)`, per-request
+  token, no background refresh), `admin-mcp.controller.ts` (`/mcp/admin`, X-Internal-Token +
+  X-Admin-Token gates, forward-and-relay-401), `admin-proxy-server.factory.ts`, `admin-handlers.ts`,
+  + config/module wiring + `admin-federation.spec.ts`. It federates a **single `adminProvider`
+  hardwired to glossary `/mcp/admin`**. → **Do NOT rebuild on this branch** (it would duplicate
+  the glossary epic's work on diverged `config.ts`/`catalog.ts`/`app.module.ts` → large merge
+  conflict). Knowledge admin federation = a SMALL change to that SHARED code: generalize
+  `adminProvider` (singular) → multiple admin providers and add knowledge's `/mcp/admin`. Do it
+  **after the glossary branch merges to `main`**, on top of the real shared infra.
 - **D-KM5-M4C-CHAT-CMS** — chat-service CMS/AdminContext surface (advertise the knowledge
   admin tools + an admin skill) — depends on M4b.
 
