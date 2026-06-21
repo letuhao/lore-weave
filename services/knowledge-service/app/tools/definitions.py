@@ -28,6 +28,7 @@ from app.tools.graph_schema_tools import (
     GRAPH_SCHEMA_ARG_MODELS,
     GRAPH_SCHEMA_TOOL_DEFINITIONS,
 )
+from app.tools.project_tools import PROJECT_TOOL_ARG_MODELS
 
 __all__ = [
     "TOOL_NAMES",
@@ -128,6 +129,8 @@ ARG_MODELS: dict[str, type[BaseModel]] = {
     # sync-apply/schema-mutating-triage/handoff) are DEFERRED to KM6 (the
     # confirm-token machinery) and intentionally NOT registered (D-KG-LF-KM6).
     **GRAPH_SCHEMA_ARG_MODELS,
+    # Knowledge-project lifecycle (kg_project_create) — book↔KG bootstrap.
+    **PROJECT_TOOL_ARG_MODELS,
 }
 
 TOOL_NAMES: tuple[str, ...] = tuple(ARG_MODELS)
@@ -273,4 +276,42 @@ TOOL_DEFINITIONS: list[dict] = [
     # memory tools keep their indices; drift-locked against GRAPH_SCHEMA_ARG_MODELS
     # by test_tool_definitions / test_graph_schema_tools.
     *GRAPH_SCHEMA_TOOL_DEFINITIONS,
+    # Knowledge-project lifecycle — the book↔KG bootstrap tool.
+    _tool(
+        "kg_project_create",
+        "Create (or get) the knowledge PROJECT that anchors a book's knowledge "
+        "graph + memory — the prerequisite for the KG schema, extraction, and "
+        "wiki tools, which all operate on 'the current project'. A book-bound "
+        "project (book_id set) can only be created by the book's owner; omit "
+        "book_id for a personal project. Idempotent: a repeat call for the same "
+        "book returns the existing project. Returns the project_id to use next.",
+        {
+            "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200,
+                "description": "A human-readable project name.",
+            },
+            "project_type": {
+                "type": "string",
+                "enum": ["book", "translation", "code", "general"],
+                "description": "Project kind (default 'book' for a book's KG).",
+            },
+            "book_id": {
+                "type": "string",
+                "description": "Link to this book (book-owner only). Omit for a personal project.",
+            },
+            "description": {
+                "type": "string",
+                "maxLength": 2000,
+                "description": "Optional project description.",
+            },
+            "genre": {
+                "type": "string",
+                "maxLength": 100,
+                "description": "Optional genre hint (e.g. 'gothic horror').",
+            },
+        },
+        ["name"],
+    ),
 ]

@@ -347,6 +347,48 @@ async def memory_forget(
     return await _dispatch(ctx, "memory_forget", {"fact_id": fact_id})
 
 
+# ── Knowledge-project lifecycle ───────────────────────────────────────
+# kg_project_create is the book↔KG bootstrap: the KG schema, extraction, and
+# wiki tools all operate on "the current project", so an agent needs to be able
+# to stand one up. Class-W (additive, reversible); book-bound create is
+# book-owner-only (D-KG-LF-PROJECT-CREATE-MCP).
+
+
+@mcp_server.tool(
+    name="kg_project_create",
+    description=(
+        "Create (or get) the knowledge PROJECT that anchors a book's knowledge "
+        "graph + memory — the prerequisite for the KG schema, extraction, and "
+        "wiki tools (which all act on 'the current project'). A book-bound "
+        "project (book_id set) can only be created by the book's owner; omit "
+        "book_id for a personal project. Idempotent per book. Returns the "
+        "project_id — use it as the active project for subsequent KG tools."
+    ),
+)
+async def kg_project_create(
+    ctx: MCPContext,
+    name: Annotated[str, "A human-readable project name."],
+    project_type: Annotated[
+        Literal["book", "translation", "code", "general"],
+        "Project kind (default 'book' for a book's KG).",
+    ] = "book",
+    book_id: Annotated[
+        str | None,
+        "Link to this book (book-owner only). Omit for a personal project.",
+    ] = None,
+    description: Annotated[str, "Optional project description."] = "",
+    genre: Annotated[
+        str | None, "Optional genre hint (e.g. 'gothic horror')."
+    ] = None,
+) -> dict:
+    args: dict[str, Any] = {"name": name, "project_type": project_type, "description": description}
+    if book_id is not None:
+        args["book_id"] = book_id
+    if genre is not None:
+        args["genre"] = genre
+    return await _dispatch(ctx, "kg_project_create", args)
+
+
 # ── KG ontology tools (lane LF; KM1/KM2 + R-class KM3/KM4) ─────────────
 # Descriptions mirror app/tools/graph_schema_tools.py verbatim. R (read) +
 # reversible W tiers below; the class-C ontology tools (adopt / schema-edit /

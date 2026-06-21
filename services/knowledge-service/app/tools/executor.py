@@ -72,6 +72,7 @@ from app.tools.definitions import (
     MemoryTimelineArgs,
 )
 from app.tools.graph_schema_tools import GRAPH_SCHEMA_HANDLERS
+from app.tools.project_tools import PROJECT_TOOL_HANDLERS
 
 logger = logging.getLogger(__name__)
 
@@ -441,6 +442,9 @@ _HANDLERS = {
     # the executor dispatches them through the SAME validate→dispatch→metrics
     # path as the memory tools; their ARG_MODELS are appended in definitions.py.
     **GRAPH_SCHEMA_HANDLERS,
+    # Knowledge-project lifecycle (kg_project_create) — the book↔KG bootstrap the
+    # schema/extraction/wiki tools depend on (D-KG-LF-PROJECT-CREATE-MCP).
+    **PROJECT_TOOL_HANDLERS,
 }
 
 
