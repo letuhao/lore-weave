@@ -348,57 +348,67 @@ async def _resolve_entity_project_grant(
     caller: UUID,
     gc: GrantClient,
     projects_repo: ProjectsRepo,
-) -> str:
-    """Grant-gate the timeline route, which carries NO project_id in its path.
+) -> tuple[str, UUID]:
+    """Grant-gate the timeline route (which carries NO project_id in its path)
+    and resolve-to-owner so a book grantee can read the OWNER's entity timeline.
 
-    The entity is resolved CALLER-scoped (every `:Entity` Neo4j read in this
-    service binds the caller's `$user_id` — there is no cross-owner entity read
-    path). A found entity therefore belongs to the caller, so the caller is the
-    owner of its project; we still re-confirm a VIEW grant on that project as
-    defense-in-depth (a book-bound project the caller has since lost access to
-    would 403/404). A missing / cross-user entity collapses to 404 — no
-    existence oracle, uniform with every other entity route.
+    D-KG-LD-GRANTEE-TIMELINE — the entity is looked up by its globally-unique
+    `id` WITHOUT a user filter (`get_entity_by_id_any_owner`; safe because
+    `Entity.id` is globally unique, so no cross-tenant collision). That yields
+    the entity's OWNER `user_id` + `project_id`. We then apply the SAME gate as
+    `grant_deps._resolve_owner`:
 
-    Returns the entity's project_id (the partition key for the timeline query).
+      * `caller == owner` → ok (owner self-read);
+      * else resolve the OWNER's project-book grant — non-grantee → **404**
+        (no existence oracle), under-VIEW → **403**.
 
-    Known limitation (deferred D-KG-LD-GRANTEE-TIMELINE): a *grantee* of
-    another user's book cannot read that owner's entity timeline, because the
-    caller-scoped lookup never matches the owner's entity. The graph-read route
-    DOES support grantees (it carries project_id → resolve-to-owner). Closing
-    this needs an owner-resolution entity lookup the Neo4j layer doesn't expose
-    today; tracked, not silently grandfathered.
+    A missing entity (or one with no project/owner) collapses to 404 — uniform
+    with every other entity route, no existence leak.
+
+    Returns ``(project_id, owner_user_id)``. The timeline query is bound to the
+    **owner** (the graph partition is owner-scoped), never the caller — parity
+    with the graph-read route, which carries project_id and resolves-to-owner
+    via `require_project_grant`. A grantee of book A therefore reads the owner's
+    timeline for an entity in book A, but CANNOT reach an entity whose project
+    book they hold no grant on (404).
     """
-    from app.db.neo4j_repos.entities import get_entity
+    from app.db.neo4j_repos.entities import get_entity_by_id_any_owner
 
     async with neo4j_session() as session:
-        ent = await get_entity(session, user_id=str(caller), canonical_id=entity_id)
-    if ent is None or not ent.project_id:
+        ent = await get_entity_by_id_any_owner(session, entity_id)
+    if ent is None or not ent.project_id or not ent.user_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="entity not found")
     project_id = ent.project_id
-    # Re-confirm a VIEW grant on the resolved project. project_meta wants a UUID;
-    # knowledge project ids ARE uuids — a non-uuid project_id (legacy/global) is
-    # treated as owner-only (the caller already owns the entity, so it passes).
+    owner = UUID(ent.user_id)
+    # Owner self-read short-circuits (mirrors _resolve_owner caller==owner). The
+    # owner is the graph-partition authority for its own entity.
+    if caller == owner:
+        return project_id, owner
+    # Cross-owner: re-confirm a VIEW grant on the OWNER's project book.
+    # project_meta wants a UUID; knowledge project ids ARE uuids. A non-uuid
+    # project_id (legacy/global) has no resolvable book → owner-only → 404 for a
+    # non-owner caller (fail closed, no oracle).
     try:
         pid_uuid = UUID(project_id)
     except (ValueError, AttributeError):
-        return project_id  # non-uuid scope → owner already proven by the find
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="entity not found")
     meta = await projects_repo.project_meta(pid_uuid)
     if meta is None:
-        # Entity references a project with no row (global/cross-service) — the
-        # caller-scoped find already proved ownership; allow.
-        return project_id
-    owner, book_id = meta
-    if caller == owner:
-        return project_id
-    # Caller found the entity but is not the project owner — only possible if
-    # the graph is shared cross-owner (not a path this service creates today).
-    # Fail closed via the grant gate.
-    lvl = await gc.resolve_grant(book_id, caller) if book_id is not None else GrantLevel.NONE
+        # Owner's entity references a project with no row → no book to resolve a
+        # grant on → owner-only → 404 for a non-owner.
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="entity not found")
+    _meta_owner, book_id = meta
+    if book_id is None:
+        # Book-less project → owner-only (R1): a non-owner caller cannot reach.
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="entity not found")
+    lvl = await gc.resolve_grant(book_id, caller)
     if lvl == GrantLevel.NONE:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="entity not found")
     if not lvl.at_least(GrantLevel.VIEW):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="insufficient access")
-    return project_id
+    # Bind the timeline to the entity OWNER (the graph partition), not the
+    # caller — this is the cross-tenant read the lane closes.
+    return project_id, owner
 
 
 # ── Views CRUD (owner == caller) ──────────────────────────────────────────
@@ -576,14 +586,22 @@ async def read_edge_timeline(
 ) -> EdgeTimeline:
     """The temporal instance chain for one entity + edge type (e.g. a drive
     arc). View-gated on the entity's project (see
-    `_resolve_entity_project_grant`). Returns the FULL arc — active AND
-    superseded instances — ordered by opening chapter ordinal."""
-    await _resolve_entity_project_grant(entity_id, caller, gc, projects_repo)
+    `_resolve_entity_project_grant`), which resolves-to-owner so a VIEW-grantee
+    of the owner's book reads the OWNER's timeline (D-KG-LD-GRANTEE-TIMELINE).
+    Returns the FULL arc — active AND superseded instances — ordered by opening
+    chapter ordinal."""
+    _project_id, owner = await _resolve_entity_project_grant(
+        entity_id, caller, gc, projects_repo
+    )
+    # Bind to the resolved OWNER, not the caller — the graph partition is
+    # owner-scoped, so a grantee correctly reads the owner's arc (mirrors the
+    # graph-read route). Binding the caller here would re-introduce the 404 the
+    # lane fixes (caller != owner ⇒ no rows).
     async with neo4j_session() as session:
         result = await run_read(
             session,
             _TIMELINE_CYPHER,
-            user_id=str(caller),
+            user_id=str(owner),
             entity_id=entity_id,
             edge_type=edge_type,
             limit=limit,
