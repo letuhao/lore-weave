@@ -306,15 +306,23 @@ export function useChatMessages(
                   if (tool === undefined) break; // RESULT without a START — skip
                   openToolCalls.delete(e.toolCallId);
                   let ok = true;
+                  let result: unknown;
                   try {
                     const parsed = JSON.parse(e.content);
+                    result = parsed;
                     if (parsed && typeof parsed === 'object' && parsed.ok === false) {
                       ok = false;
                     }
                   } catch {
                     // non-JSON content → treat as a successful opaque result
+                    result = e.content;
                   }
-                  accumulatedToolCalls.push({ tool, ok });
+                  // Keep the parsed result on the record (matches the replay shape from
+                  // the tool_calls JSONB). AssistantMessage reads it to auto-render a
+                  // confirm card when a class-C propose tool minted a confirm_token but
+                  // the model never called the frontend confirm tool — so the human gate
+                  // appears LIVE, not only after a reload.
+                  accumulatedToolCalls.push({ tool, ok, result });
                   break;
                 }
                 case AgUiEventType.CUSTOM: {
