@@ -91,9 +91,16 @@ by the authoritative Go unit suites (green this run).
 | 26 | Cost gate | ✅ | confirm card w/ estimate on S5/S7/S8; no paid call without Apply |
 
 ### Findings
-- **LOW (`D-BOOKPATCH-GENRE-ERRMSG`)** — `glossary_book_patch` on an attribute returns the
-  misleading `"no live row with that code in this book"` when the row exists but under a
-  different genre. Attributes are keyed by `(kind, genre, code)` (genre is identity, not a
-  patchable field — see `resolveBookAttrID`, [tool_helpers.go:53](../../services/glossary-service/internal/api/tool_helpers.go#L53)),
-  so a genre change isn't a patch. By design, but the error cost the agent 3 retries / ~10k tokens.
-  Fix: clearer message ("identified by kind+genre+code; to move genres, delete + recreate"). Deferred (cosmetic, needs rebuild).
+- **LOW (`D-BOOKPATCH-GENRE-ERRMSG`) — FIXED + live-re-verified.** `glossary_book_patch` on an
+  attribute returned the misleading `"no live row with that code in this book"` when the row
+  exists but under a different genre. Attributes are keyed by `(kind, genre, code)` (genre is
+  identity, not a patchable field — see `resolveBookAttrID`,
+  [tool_helpers.go:53](../../services/glossary-service/internal/api/tool_helpers.go#L53)), so a
+  genre change isn't a patch. **Fix:** the attribute-level not-found branch now returns
+  `"no live attribute <code> under kind <k> in genre <g> — attributes are keyed by (kind, genre,
+  code); genre is identity, not editable, so to move an attribute to a different genre delete it
+  and recreate it there"` ([book_tools.go](../../services/glossary-service/internal/api/book_tools.go)),
+  + regression assertions in `TestBookTool_PatchAttributeLevel`. **Live re-verify:** on the
+  rebuilt stack the agent received the new message and **self-corrected** — it called
+  `glossary_book_delete` on the universal-genre attr (suspending at the destructive confirm card)
+  to delete+recreate, instead of the old 3-blind-retry dead-end.
