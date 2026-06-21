@@ -27,6 +27,7 @@ from app.ontology.confirm import (
     ACTION_TOKEN_TTL_S,
     AUTH_GRANT,
     DESC_BUILD_GRAPH,
+    DESC_BUILD_WIKI,
     ActionClaims,
     mint_action_token,
 )
@@ -103,10 +104,78 @@ async def _handle_kg_build_graph(ctx: "ToolContext", args: KgBuildGraphArgs) -> 
     }
 
 
+class KgBuildWikiArgs(BaseModel):
+    """`kg_build_wiki` — class-C cost gate. Generate wiki articles for the project's book
+    entities. Mints a confirm-token (no spend until a human confirms)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    model_ref: str = Field(
+        min_length=1,
+        max_length=200,
+        description="The wiki-generation LLM model ref (from settings_list_models).",
+    )
+    model_source: str = Field(default="user_model", max_length=40)
+    entity_ids: list[str] | None = Field(
+        default=None,
+        max_length=2000,
+        description="Optional explicit entity ids; omit to generate for ALL book entities.",
+    )
+
+
+async def _handle_kg_build_wiki(ctx: "ToolContext", args: KgBuildWikiArgs) -> dict:
+    """C (confirm-token). Resolve owner (EDIT) + the project's book, then mint a
+    DESC_BUILD_WIKI token. NO job starts here — the human confirms via the review surface
+    (which shows the entity count + cost), where the entity set is resolved + the job runs."""
+    from app.tools.executor import ToolExecutionError
+
+    owner = await _resolve_project_owner(ctx, GrantLevel.EDIT)
+    project = await ctx.projects_repo.get(owner, ctx.project_id)
+    if project is None:
+        raise ToolExecutionError("project not found")
+    if project.book_id is None:
+        raise ToolExecutionError(
+            "this project has no linked book — wiki articles are generated for a book's entities"
+        )
+
+    params = {
+        "model_source": args.model_source,
+        "model_ref": args.model_ref,
+        "entity_ids": args.entity_ids or [],
+    }
+    token = mint_action_token(
+        settings.jwt_secret,
+        ActionClaims(
+            jti=str(uuid4()),
+            authority=AUTH_GRANT,
+            user_id=str(ctx.user_id),
+            descriptor=DESC_BUILD_WIKI,
+            project_id=str(ctx.project_id),
+            params=params,
+        ),
+        time.time(),
+    )
+    if not token:
+        raise ToolExecutionError("could not mint a confirmation token")
+
+    scope_note = "selected entities" if args.entity_ids else "all book entities"
+    return {
+        "proposed": True,
+        "confirm_token": token,
+        "expires_in_s": ACTION_TOKEN_TTL_S,
+        "descriptor": DESC_BUILD_WIKI,
+        "summary": f"generate wiki articles ({scope_note})",
+        "requires": "human confirmation via the review surface — the card shows the entity "
+                    "count + cost estimate; nothing is spent until confirmed",
+    }
+
+
 BUILD_TOOL_ARG_MODELS: dict[str, type[BaseModel]] = {
     "kg_build_graph": KgBuildGraphArgs,
+    "kg_build_wiki": KgBuildWikiArgs,
 }
 
 BUILD_TOOL_HANDLERS = {
     "kg_build_graph": _handle_kg_build_graph,
+    "kg_build_wiki": _handle_kg_build_wiki,
 }

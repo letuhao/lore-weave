@@ -15,7 +15,7 @@ from uuid import uuid4
 import pytest
 from loreweave_grants import GrantLevel
 
-from app.ontology.confirm import DESC_BUILD_GRAPH, verify_action_token
+from app.ontology.confirm import DESC_BUILD_GRAPH, DESC_BUILD_WIKI, verify_action_token
 from app.config import settings
 from app.tools.executor import ToolContext, execute_tool
 
@@ -24,11 +24,14 @@ _PROJECT = uuid4()
 _BOOK = uuid4()
 
 
-def _mk_ctx(*, embedding_model="emb-model-1", project_id=_PROJECT, owner=_USER, grant=None):
+def _mk_ctx(*, embedding_model="emb-model-1", project_id=_PROJECT, owner=_USER, grant=None,
+           book_id=_BOOK):
     repo = AsyncMock()
     repo.project_meta = AsyncMock(return_value=(owner, _BOOK))
     repo.get = AsyncMock(
-        return_value=SimpleNamespace(project_id=_PROJECT, embedding_model=embedding_model)
+        return_value=SimpleNamespace(
+            project_id=_PROJECT, embedding_model=embedding_model, book_id=book_id
+        )
     )
     return ToolContext(
         user_id=_USER,
@@ -103,3 +106,39 @@ async def test_build_graph_smuggled_scope_arg_rejected():
         ctx, "kg_build_graph", {"llm_model": "gpt-x", "project_id": "smuggled"}
     )
     assert not res.success
+
+
+# ── kg_build_wiki mint ────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_build_wiki_mints_confirm_token():
+    ctx = _mk_ctx()
+    res = await execute_tool(ctx, "kg_build_wiki", {"model_ref": "gpt-x"})
+    assert res.success, res.error
+    assert res.result["descriptor"] == DESC_BUILD_WIKI
+    import time as _t
+    claims = verify_action_token(settings.jwt_secret, res.result["confirm_token"], _t.time())
+    assert claims.descriptor == DESC_BUILD_WIKI
+    assert claims.params["model_ref"] == "gpt-x"
+    assert claims.params["entity_ids"] == []  # empty ⇒ resolved to ALL at confirm
+
+
+@pytest.mark.asyncio
+async def test_build_wiki_requires_linked_book():
+    ctx = _mk_ctx(book_id=None)
+    res = await execute_tool(ctx, "kg_build_wiki", {"model_ref": "gpt-x"})
+    assert not res.success
+    assert "book" in res.error.lower()
+
+
+@pytest.mark.asyncio
+async def test_build_wiki_explicit_entity_subset_embedded():
+    ctx = _mk_ctx()
+    res = await execute_tool(
+        ctx, "kg_build_wiki", {"model_ref": "gpt-x", "entity_ids": ["e1", "e2"]}
+    )
+    assert res.success, res.error
+    import time as _t
+    claims = verify_action_token(settings.jwt_secret, res.result["confirm_token"], _t.time())
+    assert claims.params["entity_ids"] == ["e1", "e2"]

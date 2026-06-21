@@ -894,6 +894,36 @@ async def kg_build_graph(
     return await _dispatch(ctx, "kg_build_graph", args)
 
 
+@mcp_server.tool(
+    name="kg_build_wiki",
+    description=(
+        "Generate wiki articles for the current project's book entities. EXPENSIVE (LLM "
+        "cost per entity) so it does NOT run immediately — it returns a confirm_token + "
+        "summary; a human confirms on the review surface (which shows the entity count + "
+        "estimated cost) and the job starts then. Omit entity_ids to generate for ALL the "
+        "book's glossary entities (extract the glossary first); pick the model_ref from "
+        "settings_list_models."
+    ),
+)
+async def kg_build_wiki(
+    ctx: MCPContext,
+    model_ref: Annotated[
+        str, "The wiki-generation LLM model ref (from settings_list_models)."
+    ],
+    model_source: Annotated[
+        str, "Model source (default 'user_model' for BYOK)."
+    ] = "user_model",
+    entity_ids: Annotated[
+        list[str] | None,
+        "Optional explicit entity ids; omit to generate for ALL book entities.",
+    ] = None,
+) -> dict:
+    args: dict[str, Any] = {"model_ref": model_ref, "model_source": model_source}
+    if entity_ids is not None:
+        args["entity_ids"] = entity_ids
+    return await _dispatch(ctx, "kg_build_wiki", args)
+
+
 # ── ASGI factory ──────────────────────────────────────────────────────
 
 

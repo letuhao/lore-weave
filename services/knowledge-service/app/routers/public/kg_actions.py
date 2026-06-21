@@ -58,6 +58,7 @@ from app.deps import (
     get_book_client,
     get_extraction_jobs_repo,
     get_extraction_wake,
+    get_glossary_client,
     get_grant_client,
     get_projects_repo,
 )
@@ -74,11 +75,19 @@ from app.ontology.build_graph_effect import (
     apply_build_graph,
     preview_build_graph,
 )
+from app.ontology.build_wiki_effect import (
+    BuildWikiActiveJob,
+    BuildWikiNoEntities,
+    BuildWikiParams,
+    apply_build_wiki,
+    preview_build_wiki,
+)
 from app.ontology.confirm import (
     AUTH_ADMIN,
     AUTH_GRANT,
     DESC_ADOPT,
     DESC_BUILD_GRAPH,
+    DESC_BUILD_WIKI,
     DESC_SCHEMA_EDIT,
     DESC_SYNC,
     DESC_SYSTEM_CREATE,
@@ -340,6 +349,8 @@ async def confirm_action(
         return await _confirm_triage_schema_write(claims, owner, schemas, mutations, triage)
     if claims.descriptor == DESC_BUILD_GRAPH:
         return await _confirm_build_graph(claims, owner, projects)
+    if claims.descriptor == DESC_BUILD_WIKI:
+        return await _confirm_build_wiki(claims, owner, projects)
     if claims.descriptor in _SYSTEM_DESCRIPTORS:
         return await _confirm_system(claims, system_repo)
     # Unreachable: verify_action_token already rejects non-live descriptors.
@@ -523,6 +534,40 @@ async def _confirm_build_graph(
     )
 
 
+async def _confirm_build_wiki(
+    claims: ActionClaims, owner: UUID | None, projects: ProjectsRepo
+) -> dict:
+    """Cost-gated wiki generation — resolve the entity set + create/enqueue the job
+    (grant authority; `owner` resolved, never None). Deps built here (glossary client +
+    redis), not route-injected (see _confirm_build_graph)."""
+    from app.routers.internal_wiki import _redis  # process-singleton redis for the XADD
+
+    try:
+        params = BuildWikiParams(**claims.params)
+    except ValidationError:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="bad proposal payload"
+        )
+    project = await projects.get(owner, UUID(claims.project_id))
+    if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
+    try:
+        return await apply_build_wiki(
+            project=project, owner=owner, params=params,
+            glossary_client=await get_glossary_client(), redis=_redis(),
+        )
+    except BuildWikiNoEntities:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="no entities to generate wiki articles for — extract the glossary first",
+        )
+    except BuildWikiActiveJob as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"error": "active_job_exists", "job_id": exc.existing_job_id},
+        )
+
+
 async def _confirm_system(claims: ActionClaims, system_repo: SystemTemplatesRepo) -> dict:
     """Admin System-tier template effect. Authority (RS256 + asub bind) was already
     re-checked in `_authorize_admin` and the jti consumed; here we re-validate the
@@ -595,6 +640,19 @@ async def preview_action(
         return await preview_build_graph(
             project=project, params=params, book_client=await get_book_client(),
             benchmark_repo=await get_benchmark_runs_repo(), owner=owner,
+        )
+    if claims.descriptor == DESC_BUILD_WIKI:
+        try:
+            params = BuildWikiParams(**claims.params)
+        except ValidationError:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="bad proposal payload"
+            )
+        project = await projects.get(owner, UUID(claims.project_id))
+        if project is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
+        return await preview_build_wiki(
+            project=project, params=params, glossary_client=await get_glossary_client(),
         )
     if claims.descriptor == DESC_SCHEMA_EDIT:
         try:

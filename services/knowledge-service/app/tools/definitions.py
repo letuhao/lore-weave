@@ -350,4 +350,32 @@ TOOL_DEFINITIONS: list[dict] = [
         },
         ["llm_model"],
     ),
+    # Cost-gated job trigger — generate wiki articles (propose→confirm).
+    _tool(
+        "kg_build_wiki",
+        "Generate wiki articles for the current project's book entities. EXPENSIVE (LLM "
+        "cost per entity) so it does NOT run immediately — it returns a confirm_token + "
+        "summary; a human confirms on the review surface (which shows the entity count + "
+        "estimated cost) and the job starts then. Omit entity_ids to generate for ALL the "
+        "book's glossary entities (extract the glossary first); pick model_ref from "
+        "settings_list_models.",
+        {
+            "model_ref": {
+                "type": "string",
+                "maxLength": 200,
+                "description": "The wiki-generation LLM model ref (from settings_list_models).",
+            },
+            "model_source": {
+                "type": "string",
+                "maxLength": 40,
+                "description": "Model source (default 'user_model' for BYOK).",
+            },
+            "entity_ids": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Optional explicit entity ids; omit to generate for ALL book entities.",
+            },
+        },
+        ["model_ref"],
+    ),
 ]

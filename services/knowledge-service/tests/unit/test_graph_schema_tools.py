@@ -88,12 +88,12 @@ def _defn(name: str) -> dict:
 
 def test_total_tool_count_is_memory_plus_lane_lf():
     """5 memory + 12 lane-LF + 5 live class-C + 1 kg_project_create
-    + 1 kg_build_graph (cost-gated) = 24."""
+    + 2 cost-gated (kg_build_graph, kg_build_wiki) = 25."""
     schema_names = {d["function"]["name"] for d in TOOL_DEFINITIONS}
-    assert len(TOOL_DEFINITIONS) == 24
+    assert len(TOOL_DEFINITIONS) == 25
     assert set(TOOL_NAMES) == set(ARG_MODELS) == schema_names
     assert len(set(TOOL_NAMES)) == len(TOOL_NAMES)  # no dupes
-    assert {"kg_project_create", "kg_build_graph"}.issubset(schema_names)
+    assert {"kg_project_create", "kg_build_graph", "kg_build_wiki"}.issubset(schema_names)
 
 
 def test_lane_lf_tools_all_registered():
