@@ -77,29 +77,55 @@ per user is unbounded, and each concurrent job holds HTTP clients + contends the
   (translation owns `extraction_jobs`, so no cross-service call.)
 - Test: the (N+1)-th concurrent job for one user → 429; a different user unaffected.
 
-### Wave 4 — agentic-effort, the REAL targets (knowledge-service, Python)
-**D-RE-OTHER-AGENTIC-EFFORT (M)** — reframed. `glossary_deep_research` drives no reasoning LLM
-(web-search; agent summarizes) → **won't-fix, one-line rationale**. The actual unclamped
-reasoning-LLM agentic tools are `kg_build_graph` + `kg_build_wiki` in **knowledge-service**:
-1. **Promote the clamp to the shared SDK**: move `clamp_effort_to_grant` + the rank/ceiling
-   tables from `translation-service/grant_deps.py` into `sdks/python/loreweave_grants` (beside
-   `GrantLevel`); translation-service imports it (kills the duplicate).
-2. `kg_build_graph`: add a `reasoning_effort` MCP arg + `KgBuildGraphArgs`; have
-   `_handle_kg_build_graph` surface the caller's resolved `GrantLevel` (today `_resolve_project_
-   owner` discards it after the binary `AtLeast` check — add a sibling that returns the level),
-   clamp at mint, store in the token; add `reasoning_effort` to `StartJobRequest` →
-   `_start_extraction_job_core` → the knowledge extraction job row (migration) → worker;
-   **re-clamp at confirm** in `apply_build_graph` against a fresh grant read (the load-bearing
-   defense-in-depth — mirror translation's `actions.py`).
-3. `kg_build_wiki`: same pattern in `build_wiki_effect.py`.
-- Live smoke (≥2 services): `kg_build_graph` confirm exercises knowledge extraction + provider-
-  registry model resolution.
-- Note: this touches **knowledge-service**, a different track — may belong on its own branch
-  rather than this extraction branch (decision point below).
+### Wave 4 — agentic-effort, the REAL targets (knowledge-service) — FULLY MAPPED 2026-06-22
+**D-RE-OTHER-AGENTIC-EFFORT** — reframed twice by investigation + a deep code map.
+`glossary_deep_research` drives no reasoning LLM (web-search; agent summarizes) → **won't-fix,
+one-line rationale**. The real unclamped reasoning-LLM agentic tools are `kg_build_graph` +
+`kg_build_wiki` in **knowledge-service**. The deep map found this is **broader than the M/L the
+investigation guessed**, and splits exactly like translation did (clamp ≠ worker-honoring):
 
-**Batch-A sizing:** Waves 1-3 are translation-service-only (XS+M+S+S ≈ one coherent L run, all
-its own VERIFY/`/review-impl`/commit). Wave 4 crosses into knowledge-service → arguably its own
-milestone/branch.
+**SIZE: L (knowledge-service clamp+store) + a worker-ai follow-up.** The actual extraction worker
+is **worker-ai (a separate service)** — so the effort being HONORED by the LLM is `D-KG-WORKER-
+GRADED-EFFORT` (a NEW follow-up, the exact analog of translation's `D-RE-WORKER-GRADED-EFFORT`
+that Wave 1 cleared). What clears D-RE-OTHER-AGENTIC-EFFORT itself = the **param + clamp + store**
+in knowledge-service. Critically, **the clamp is dead code unless the effort is STORED on the job**
+(else the clamped value is discarded) — so the job-storage L is not optional.
+
+**Exact seams (mapped — ready to execute):**
+1. **Local clamp helper** `services/knowledge-service/app/effort.py` — `clamp_effort_to_grant`
+   mirroring `translation-service/grant_deps.py` (ceiling: NONE/VIEW→none, EDIT→medium,
+   MANAGE/OWNER→high; rank none<low<medium<high), on `loreweave_grants.GrantLevel` (already
+   imported, IntEnum NONE..OWNER). LOCAL, not an SDK promotion — avoids re-triggering the
+   `D-SDK-DISTRIBUTION-SPLIT` landmine; ~15-line dup of translation's, acceptable.
+2. **Grant-level resolver** `graph_schema_tools.py` — add `_resolve_project_owner_and_level(ctx,
+   need) -> (UUID, GrantLevel)` beside `_resolve_project_owner` (today returns owner only; for an
+   owner caller `ctx.user_id == owner` → level = `GrantLevel.OWNER`; else the resolved `lvl`).
+3. **Mint clamp** `build_tools.py` — `reasoning_effort` arg on `KgBuildGraphArgs` + `KgBuildWikiArgs`;
+   `_handle_kg_build_*` clamp via the new resolver → store in the token `params`.
+4. **Confirm re-clamp** `kg_actions.py` — thread `caller` + `gc` into `_confirm_build_graph` /
+   `_confirm_build_wiki` (call sites L351/L353) + re-resolve the grant + re-clamp
+   `params.reasoning_effort` before the effect (defense-in-depth vs a grant downgrade in the
+   token TTL — the load-bearing security property, mirror translation `actions.py`).
+5. **Carry + store (graph)** `build_graph_effect.py` `BuildGraphParams.reasoning_effort` →
+   `apply_build_graph` passes it into `StartJobRequest` (`routers/public/extraction.py` L179) →
+   `_start_extraction_job_core` (L506) → `ExtractionJobCreate` (L777) → `_create_and_start_job`
+   INSERT → **migration: `extraction_jobs.reasoning_effort TEXT DEFAULT 'none'`** → `ExtractionJob`
+   model (re-read).
+6. **Carry + store (wiki)** `build_wiki_effect.py` `BuildWikiParams.reasoning_effort` → the wiki-gen
+   job path (its own storage; map at build time).
+7. **Tests** — clamp unit (EDIT caps high→medium); mint stores clamped; confirm re-clamps a
+   downgraded grant; job row carries the effort.
+8. **Follow-up rows:** `D-KG-WORKER-GRADED-EFFORT` (worker-ai reads `extraction_jobs.reasoning_effort`
+   → `reasoning_fields` on the LLM call) + optionally promote the now-duplicated clamp to
+   `loreweave_grants` once the SDK-distribution split is resolved cluster-wide.
+- **Live smoke (≥2 services):** `kg_build_graph` mint→confirm exercises knowledge extraction +
+  provider-registry; assert the job row stores the clamped effort.
+- **DECISION POINT:** ~10 files across knowledge-service + a confirm-token SPEND gate — a focused
+  session is recommended over a tail-of-marathon grind. Per CLAUDE.md (don't rush load-bearing
+  work), this earns its own run even though the user opted to "proceed".
+
+**Batch-A sizing:** Waves 1-3 = translation-only (XS+M+S+S), DONE + pushed. Wave 4 = knowledge-
+service L (clamp+store) + the worker-ai follow-up.
 
 ---
 
