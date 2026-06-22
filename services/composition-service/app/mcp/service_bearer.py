@@ -45,13 +45,20 @@ import jwt
 _SERVICE_BEARER_TTL_S = 60
 
 
-def mint_service_bearer(user_id: UUID, secret: str, *, now: float | None = None) -> str:
+def mint_service_bearer(
+    user_id: UUID, secret: str, *, now: float | None = None, ttl: int = _SERVICE_BEARER_TTL_S
+) -> str:
     """Mint a short-lived HS256 bearer whose `sub` is the envelope `user_id`, for
     forwarding to book-service's JWT-only draft routes from the MCP path.
 
     `secret` is `settings.jwt_secret` (the shared HS256 secret). Raises
     `ValueError` on an empty secret (fail-closed: never emit an unsigned/forgeable
     token). `now` is injectable for tests.
+
+    `ttl` defaults to 60s — enough for an IMMEDIATE downstream call (get/write_prose/
+    publish). The cowrite-engine generate effect must pass a LARGER ttl: it reuses the
+    bearer to PERSIST the chapter draft AFTER a multi-minute LLM generation, so a 60s
+    token would be expired by the persist (silent best-effort draft loss).
     """
     if not secret:
         raise ValueError("cannot mint service bearer: empty jwt_secret")
@@ -59,7 +66,7 @@ def mint_service_bearer(user_id: UUID, secret: str, *, now: float | None = None)
     claims = {
         "sub": str(user_id),
         "iat": issued,
-        "exp": issued + _SERVICE_BEARER_TTL_S,
+        "exp": issued + int(ttl),
         # Marker so a log/audit can tell this apart from a real user login token.
         "src": "composition-mcp",
     }

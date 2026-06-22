@@ -244,8 +244,14 @@ def test_confirm_executes_generate_chapter(client):
     gen.assert_awaited_once()
     # Persisted single-pass (the chapter target writes the book draft).
     # Signature: generate_chapter(project_id, chapter_id, body, ...) → body is args[2].
-    args, _ = gen.await_args
+    args, kwargs = gen.await_args
     assert args[2].persist is True
+    # Regression (HIGH-1): the chapter path reuses this bearer to PERSIST the draft
+    # AFTER a multi-minute generation, so it must outlive the 60s immediate-call
+    # default — else the draft write 401s on an expired token (silent best-effort loss).
+    import jwt as _jwt
+    claims = _jwt.decode(kwargs["bearer"], options={"verify_signature": False})
+    assert claims["exp"] - claims["iat"] >= 600
 
 
 def test_confirm_executes_generate_scene(client):

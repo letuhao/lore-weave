@@ -48,8 +48,8 @@ async def main():
         cr = await c.post(
             f"http://book-service:8082/v1/books/{BOOK}/chapters",
             headers={"Authorization": f"Bearer {bearer}", "Content-Type": "application/json"},
-            json={"title": "Chapter V — The Escape", "original_language": "en",
-                  "sort_order": 50, "body": ""},
+            json={"title": "Chapter VI — The Escape", "original_language": "en",
+                  "sort_order": 73, "body": ""},
         )
     cr.raise_for_status()
     chapter_id = cr.json()["chapter_id"]

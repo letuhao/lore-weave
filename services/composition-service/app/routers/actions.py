@@ -60,6 +60,11 @@ router = APIRouter(prefix="/v1/composition/actions")
 _PUBLISH_DESCRIPTOR = "composition.publish"
 _GENERATE_DESCRIPTOR = "composition.generate"
 
+# The generate effect's service bearer must outlive a multi-minute LLM generation
+# AND the subsequent chapter-draft persist (which reuses it). 15 min is generous
+# headroom for a slow local model on a long chapter (vs the 60s immediate-call default).
+_GENERATE_BEARER_TTL_S = 900
+
 
 def _require_internal_token(x_internal_token: str | None) -> None:
     """Gate these routes on the internal service token (mirrors the bespoke
@@ -236,7 +241,11 @@ async def _execute_generate(
     max_out = payload.get("max_output_tokens")
     operation = payload.get("operation")
 
-    bearer = mint_service_bearer(envelope_user, settings.jwt_secret)
+    # Generation can run for MINUTES (a slow local model + a long chapter), and the
+    # chapter path REUSES this bearer to persist the draft AFTER generation — so a
+    # 60s token (the default) would be expired by the persist, silently dropping the
+    # draft write. Mint a generous TTL covering the worst-case generation+persist.
+    bearer = mint_service_bearer(envelope_user, settings.jwt_secret, ttl=_GENERATE_BEARER_TTL_S)
     pool = get_pool()
     deps = dict(
         works=WorksRepo(pool), outline=OutlineRepo(pool),
