@@ -9,6 +9,7 @@ Design reference: GLOSSARY_EXTRACTION_PIPELINE.md §6.6, §7
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 from uuid import UUID
@@ -31,13 +32,28 @@ from ..config import settings
 from ..llm_client import LLMClient
 from .block_batcher import build_batch_plan
 from .chunk_splitter import estimate_tokens
+from .extraction_cache import (
+    RawCacheKey,
+    effort_band_for,
+    get_cached_batch,
+    put_batch,
+)
+from .extraction_outcomes import (
+    EMPTY_VALID,
+    LLM_ERROR,
+    OK,
+    chapter_status_from_outcomes,
+    classify_batch,
+    compute_event_id,
+)
 from .extraction_preprocessor import prepare_chapter_text
+from .extraction_provenance import stamp_entity_provenance
 from .extraction_prompt import (
     build_extraction_prompt,
     build_known_entities_context,
     build_system_prompt,
     build_user_prompt,
-    parse_and_validate,
+    parse_and_validate_with_stats,
     plan_kind_batches,
 )
 from .glossary_client import (
@@ -125,7 +141,7 @@ def _merge_window_entities(entities: list[dict]) -> list[dict]:
         name = str(ent.get("name", "")).strip()
         if not name:
             continue
-        key = (str(ent.get("kind", "")), name.lower())
+        key = (str(ent.get("kind_code", "")), name.lower())
         if key not in merged:
             merged[key] = ent
             continue
@@ -136,6 +152,45 @@ def _merge_window_entities(entities: list[dict]) -> list[dict]:
                 existing.setdefault("chapter_links", []).append(link)
                 seen.add(link.get("chapter_id"))
     return list(merged.values())
+
+
+async def _persist_batch_outcomes(pool, job_id, owner_user_id, book_id, chapter_id,
+                                  outcomes: list[dict]) -> None:
+    """Persist the per-batch outcome SSOT rows (INV-O12: these rows ARE the observability
+    truth; a reconciliation sweep re-derives job stats from them).
+
+    Best-effort relative to the job: the batches already did their real work, so a failure
+    to record observability must NEVER fail the chapter — log and move on. All rows for the
+    chapter share ONE transaction; UNIQUE(event_id) makes a redelivered batch an idempotent
+    no-op (INV-O13). The same-txn OUTBOX projection (events as a fan-out of these rows) is
+    deliberately NOT emitted yet — there is no consumer, and routing it onto an existing
+    stream would mis-deliver: tracked `D-OBS-BATCH-OUTCOME-PROJECTION` to wire with a
+    dedicated stream + a bound consumer. detail/kinds carry counts + status only (REDACTED
+    by construction — no raw_response, no secrets; INV-T6/§8.7).
+    """
+    if not outcomes:
+        return
+    try:
+        async with pool.acquire() as db:
+            async with db.transaction():
+                for o in outcomes:
+                    await db.execute(
+                        """INSERT INTO extraction_batch_outcomes
+                           (job_id, owner_user_id, book_id, chapter_id, batch_idx, status,
+                            finish_reason, kinds, entities_found, entities_written,
+                            validation_rejected_count, input_tokens, output_tokens,
+                            error_code, event_id)
+                           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+                           ON CONFLICT (event_id) DO NOTHING""",
+                        job_id, owner_user_id, book_id, chapter_id,
+                        o["batch_idx"], o["status"], o.get("finish_reason"),
+                        o.get("kinds", []), o.get("entities_found", 0), 0,
+                        o.get("validation_rejected_count", 0),
+                        o.get("input_tokens", 0), o.get("output_tokens", 0),
+                        o.get("error_code"), o["event_id"],
+                    )
+    except Exception as exc:  # noqa: BLE001 — observability must not fail the job
+        log.warning("extraction: failed to persist batch outcomes for chapter %s: %s", chapter_id, exc)
 
 
 async def handle_extraction_job(msg: dict, pool, publish, publish_event, llm_client: LLMClient) -> None:
@@ -236,11 +291,15 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
     # reaches total_chapters, so the job never finalizes and the message redelivers forever
     # (the second half of the runaway). Resuming makes each delivery advance, so the job
     # converges to a terminal state and the message is finally ACKed.
+    # A chapter is "done" (skipped on resume) when it reached ANY terminal status —
+    # 'completed', the new OBS 'completed_with_errors' (finished, but some batch failed),
+    # or 'failed'. Omitting completed_with_errors here would re-run + re-spend LLM on a
+    # chapter that already finished, and break convergence (it'd never count as done).
     async with pool.acquire() as db:
         done_rows = await db.fetch(
             "SELECT chapter_id, status, COALESCE(input_tokens,0) AS it, "
             "COALESCE(output_tokens,0) AS ot FROM extraction_chapter_results "
-            "WHERE job_id=$1 AND status IN ('completed','failed')",
+            "WHERE job_id=$1 AND status IN ('completed','completed_with_errors','failed')",
             job_id,
         )
     done_ids = {str(r["chapter_id"]) for r in done_rows}
@@ -271,7 +330,11 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
     # on a multi-pass resume); correctness of finalize + cost rides on the counts/tokens.
     total_input_tokens = sum(r["it"] for r in done_rows)
     total_output_tokens = sum(r["ot"] for r in done_rows)
-    completed = sum(1 for r in done_rows if r["status"] == "completed")
+    # `completed` counts every FINISHED chapter (clean or with-errors) for convergence;
+    # `chapters_with_errors` tracks the with-errors subset so the JOB rollup surfaces them
+    # (else the chapter taxonomy would be recorded but the job would still read clean).
+    completed = sum(1 for r in done_rows if r["status"] in ("completed", "completed_with_errors"))
+    chapters_with_errors = sum(1 for r in done_rows if r["status"] == "completed_with_errors")
     failed = sum(1 for r in done_rows if r["status"] == "failed")
 
     for idx, chapter_id_str in enumerate(chapter_ids):
@@ -354,15 +417,22 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
             total_input_tokens += ch_input_tokens
             total_output_tokens += ch_output_tokens
             completed += 1
+            # OBS/M2 — the chapter status is DERIVED from its batch outcomes (INV-F15):
+            # 'completed' only if every batch was clean, else 'completed_with_errors'. This
+            # is the fix for the silent-failure bug — a chapter whose batches all rejected /
+            # truncated no longer records as a clean success.
+            ch_status = result.get("chapter_status", "completed")
+            if ch_status == "completed_with_errors":
+                chapters_with_errors += 1
 
             async with pool.acquire() as db:
                 await db.execute(
                     """UPDATE extraction_chapter_results
-                       SET status='completed', entities_found=$3,
+                       SET status=$6, entities_found=$3,
                            input_tokens=$4, output_tokens=$5, completed_at=now()
                        WHERE job_id=$1 AND chapter_id=$2""",
                     job_id, chapter_id, ch_created + ch_updated,
-                    ch_input_tokens, ch_output_tokens,
+                    ch_input_tokens, ch_output_tokens, ch_status,
                 )
 
         except Exception as exc:
@@ -403,13 +473,37 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
             },
         })
 
-    # Job complete
-    final_status = "completed" if failed == 0 else ("failed" if completed == 0 else "completed_with_errors")
+    # Job complete. OBS/M2 — the job is 'completed' only when nothing failed AND no chapter
+    # finished with batch errors; a chapter that finished completed_with_errors now bubbles
+    # up so the job rollup reflects the per-batch taxonomy instead of masking it.
+    if completed == 0:
+        final_status = "failed"
+    elif failed == 0 and chapters_with_errors == 0:
+        final_status = "completed"
+    else:
+        final_status = "completed_with_errors"
     async with pool.acquire() as db:
         await db.execute(
             "UPDATE extraction_jobs SET status=$2, finished_at=now() WHERE job_id=$1",
             job_id, final_status,
         )
+
+    # OBS/M2 (INV-O14) — the JOB-TERMINAL rollup. The per-batch outcome rows are the SSOT;
+    # the notification sink gets ONLY this debounced job-level summary (never per-batch), so
+    # the user sees an actionable "N batches truncated — raise the model / shrink the batch"
+    # instead of a silent 0-entities success. Derived from the SSOT at finalize (best-effort:
+    # a query failure just omits the summary). This is the consumer-side realization of the
+    # batch-outcome SSOT — a per-batch projection to an external stream is intentionally NOT
+    # emitted (no subscriber); the rollup here + the /reconcile sweep cover observability.
+    batch_summary: dict[str, int] = {}
+    try:
+        async with pool.acquire() as db:
+            srows = await db.fetch(
+                "SELECT status, count(*) AS n FROM extraction_batch_outcomes "
+                "WHERE job_id=$1 GROUP BY status", job_id)
+        batch_summary = {r["status"]: r["n"] for r in srows}
+    except Exception as exc:  # noqa: BLE001 — the summary is advisory, never fail finalize
+        log.warning("extraction_worker: job %s batch-summary rollup failed: %s", job_id, exc)
 
     # P1 terminal emit (best-effort). 'completed_with_errors' has no canonical JobStatus →
     # map to 'completed' (the job DID finish; per-chapter failures are tracked on the row).
@@ -429,8 +523,18 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
             "entities_created": total_created,
             "entities_updated": total_updated,
             "entities_skipped": total_skipped,
+            # INV-O14 rollup: a count per batch-outcome status across the whole job. A
+            # non-empty truncated/validation_rejected/llm_error count is the actionable
+            # signal (the 26-scenario bug was this being invisible).
+            "batch_summary": batch_summary,
         },
     })
+
+    if batch_summary.get("truncated") or batch_summary.get("validation_rejected") or batch_summary.get("llm_error"):
+        log.warning(
+            "extraction_worker: job %s finished with batch issues — %s (consider a smaller "
+            "batch / larger model)", job_id, batch_summary,
+        )
 
     log.info(
         "extraction_worker: job %s complete — created=%d updated=%d skipped=%d failed_chapters=%d",
@@ -485,6 +589,20 @@ async def _process_extraction_chapter(
     log.info("extraction: chapter %s (index %d) — %d window(s) × %d batch(es), ctx=%d, text_len=%d",
              chapter_id, chapter_index, len(windows), len(batches), context_window, len(chapter_text))
 
+    # M1 (extraction pipeline FND) — content hash of the prepared text (the
+    # source-drift precondition + the M6 cache-key dimension) and the whole-chapter
+    # writeback idempotency key = hash(book, chapter, content_hash, kinds, profile).
+    # The glossary writeback dedupes on this key so a retry/redelivery/concurrent
+    # fresh run lands the chapter exactly once (INV-C3).
+    content_hash = hashlib.sha256(chapter_text.encode("utf-8")).hexdigest()
+    profile_hash = hashlib.sha256(
+        json.dumps(extraction_profile, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    ).hexdigest()
+    all_kinds = sorted({k for batch in batches for k in batch})
+    writeback_key = hashlib.sha256(
+        "|".join([book_id, str(chapter_id), content_hash, ",".join(all_kinds), profile_hash]).encode("utf-8")
+    ).hexdigest()
+
     # 3. Build known entities context
     known_ctx = build_known_entities_context(known_entities) if known_entities else ""
 
@@ -497,6 +615,52 @@ async def _process_extraction_chapter(
     all_entities: list[dict] = []
     total_input_tokens = 0
     total_output_tokens = 0
+    # M0 (extraction pipeline FND) — capture the LLM `finish_reason` per batch.
+    # `length` = output-token truncation (the 26-scenario data-loss bug): the
+    # model was cut mid-array, so the parser only salvages a partial result.
+    # Surfacing it here is the prerequisite for the M2 BatchOutcome taxonomy +
+    # the M6 raw-cache (`extraction_raw_outputs.finish_reason`); today the
+    # worker never read it (architecture §8.3). Consumed via `.get()` downstream
+    # so it is additive/non-breaking on the chapter-result dict.
+    batch_finish_reasons: list[dict] = []
+    # OBS/M2 — per-batch outcome rows (the SSOT, INV-F15). Each batch contributes one
+    # row with its classified status so a silent all-rejected/truncated/errored batch is
+    # no longer invisible; the chapter status is then DERIVED from these (not from a bare
+    # entity count). Persisted post-loop, idempotent on a stable event_id (INV-O13).
+    batch_outcomes: list[dict] = []
+
+    def _record_outcome(call_idx: int, batch: list, status: str, *, finish_reason=None,
+                        entities_found=0, validation_rejected_count=0,
+                        input_tokens=0, output_tokens=0, error_code=None):
+        # call_idx is the unique per-chapter call index (window × kind-batch flattened), so the
+        # row + event_id are unique even when the same kind-batch runs across multiple windows.
+        batch_outcomes.append({
+            "batch_idx": call_idx,
+            "kinds": list(batch),
+            "status": status,
+            "finish_reason": finish_reason,
+            "entities_found": entities_found,
+            "validation_rejected_count": validation_rejected_count,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "error_code": error_code,
+            "event_id": compute_event_id(str(job_id), str(chapter_id), call_idx, content_hash),
+        })
+
+    def _accept(entities: list[dict]) -> None:
+        # Attach this chapter's link to each entity (fresh per run — NOT cached, since the
+        # chapter_index is per-job) and merge into the chapter's accumulated entities.
+        chapter_title = chapter.get("title", "")
+        for ent in entities:
+            ent["chapter_links"] = [{
+                "chapter_id": str(chapter_id),
+                "chapter_title": chapter_title,
+                "chapter_index": chapter_index,
+                "relevance": ent.get("relevance", "appears"),
+            }]
+        all_entities.extend(entities)
+
+    _effort_band = effort_band_for(thinking_enabled)
 
     # Per-call output budget sized so input + output + safety ≤ context (so the gateway
     # never 400s on LLM_CONTEXT_OVERFLOW), capped — extraction output (entities JSON) is
@@ -506,20 +670,47 @@ async def _process_extraction_chapter(
     out_budget = context_window - max_win_tok - safety - estimate_tokens(known_ctx) - 600
     out_budget = max(_EXTRACTION_OUTPUT_FLOOR, min(_EXTRACTION_OUTPUT_CEILING, out_budget))
 
-    # Flatten window × kind-batch so the existing per-call body is unchanged; window_text
-    # replaces the whole-chapter text in the user prompt.
-    for window_idx, window_text, batch_idx, batch in (
+    # Flatten window × kind-batch into one call sequence. `call_idx` is the unique per-chapter
+    # call index — it keys the OBS event_id (so two windows' batch-0 don't collide), while the
+    # CACHE key uses `chunk_idx`=window_idx + the real `batch_idx` so each window's parse caches
+    # independently. `window_text` replaces the whole-chapter text in the prompt.
+    total_calls = len(windows) * len(batches)
+    for call_idx, (window_idx, window_text, batch_idx, batch) in enumerate(
         (wi, w, bi, b) for wi, w in enumerate(windows) for bi, b in enumerate(batches)
     ):
+        # CACHE/M6 — LLM-skip gate (the EXECUTE ledger). If this exact (tenant, chapter
+        # content, effort band, window, batch) was already extracted, reuse the cached parse
+        # instead of re-spending tokens. Best-effort: a miss/error falls through to the call.
+        cache_key = RawCacheKey(
+            owner_user_id=str(owner_user_id) if owner_user_id else "",
+            book_id=book_id, chapter_id=str(chapter_id), content_hash=content_hash,
+            batch_idx=batch_idx, chunk_idx=window_idx, profile_hash=profile_hash,
+            effort_band=_effort_band,
+        )
+        cached = await get_cached_batch(pool, cache_key) if owner_user_id else None
+        if cached is not None:
+            entities = cached["parsed_entities"]
+            # Replay the cached batch outcome (status stored at first extraction); 0 NEW tokens
+            # are spent (the cost was already paid + billed on the original run).
+            _record_outcome(
+                call_idx, batch, cached.get("parse_status") or "ok",
+                finish_reason=cached.get("finish_reason"), entities_found=len(entities),
+            )
+            log.info("extraction: chapter %s call %d/%d (win %d) — CACHE HIT (%d entities, 0 tokens, effort=%s)",
+                     chapter_id, call_idx + 1, total_calls, window_idx, len(entities), _effort_band)
+            _accept(entities)
+            continue
+
         # 4. Build prompt
-        schema = build_extraction_prompt(batch, extraction_profile, kinds_metadata)
+        _block_hints = settings.extraction_evidence_block_hints
+        schema = build_extraction_prompt(batch, extraction_profile, kinds_metadata, block_hints=_block_hints)
         system_prompt = build_system_prompt(
             dynamic_schema=schema,
             source_language=source_language,
             known_entities_context=known_ctx,
             max_entities_per_kind=max_entities_per_kind,
         )
-        user_prompt = build_user_prompt(window_text)
+        user_prompt = build_user_prompt(window_text, block_hints=_block_hints)
 
         # 5. LLM call via SDK (replaces /internal/invoke).
         # Phase 4c-γ: HIGH#1 lesson from cycle 11 applied — catch
@@ -566,12 +757,16 @@ async def _process_extraction_chapter(
                 "extraction: permanent SDK error %s for chapter %s batch %d/%d — failing batch",
                 exc.__class__.__name__, chapter_id, batch_idx + 1, len(batches),
             )
+            # OBS — the batch failed at the LLM; record it so the chapter can't read as
+            # clean (was: a bare `continue` that silently dropped the batch).
+            _record_outcome(call_idx, batch, LLM_ERROR, error_code=exc.__class__.__name__)
             continue
         except (LLMTransientRetryNeededError, LLMError) as exc:
             log.error(
                 "extraction: transient SDK error for chapter %s batch %d/%d: %s",
                 chapter_id, batch_idx + 1, len(batches), exc,
             )
+            _record_outcome(call_idx, batch, LLM_ERROR, error_code=exc.__class__.__name__)
             continue
 
         if sdk_job.status != "completed":
@@ -580,6 +775,7 @@ async def _process_extraction_chapter(
                 "extraction: LLM job ended status=%s code=%s for chapter %s batch %d/%d — skipping batch (kinds: %s)",
                 sdk_job.status, err_code, chapter_id, batch_idx + 1, len(batches), batch,
             )
+            _record_outcome(call_idx, batch, LLM_ERROR, error_code=err_code)
             continue
 
         # chatAggregator output: {"messages": [{"role":"assistant","content":...}], "usage": {...}}
@@ -596,42 +792,141 @@ async def _process_extraction_chapter(
         total_input_tokens += input_tokens
         total_output_tokens += output_tokens
 
-        log.info("extraction: chapter %s batch %d/%d — in=%d out=%d response=%d chars",
+        # M0 — first-class truncation signal. `finish_reason="length"` means the
+        # provider stopped because it hit max_tokens, so `response_text` is a
+        # truncated JSON array (the parser salvages the complete-objects prefix
+        # but later entities are LOST). Record it per batch for the outcome
+        # taxonomy / re-plan-smaller signal (M2) and warn loudly so truncation is
+        # no longer invisible in the logs.
+        finish_reason = sdk_job.finish_reason
+        truncated = finish_reason == "length"
+        batch_finish_reasons.append({
+            "batch_idx": batch_idx,
+            "kinds": list(batch),
+            "finish_reason": finish_reason,
+            "truncated": truncated,
+            "output_tokens": output_tokens,
+        })
+
+        log.info("extraction: chapter %s batch %d/%d — in=%d out=%d response=%d chars finish=%s",
                  chapter_id, batch_idx + 1, len(batches), input_tokens, output_tokens,
-                 len(response_text))
+                 len(response_text), finish_reason or "?")
+        if truncated:
+            log.warning(
+                "extraction: chapter %s batch %d/%d TRUNCATED (finish_reason=length, "
+                "out=%d tokens, kinds=%s) — partial salvage only; downstream entities dropped",
+                chapter_id, batch_idx + 1, len(batches), output_tokens, batch,
+            )
 
-        # 6. Parse + validate
-        entities = parse_and_validate(response_text, batch, extraction_profile)
+        # 6. Parse + validate (with stats so the batch outcome can be classified)
+        entities, pstats = parse_and_validate_with_stats(response_text, batch, extraction_profile)
 
-        # Add chapter_links to each entity (use .get() to avoid mutating parsed dict)
-        chapter_title = chapter.get("title", "")
-        for ent in entities:
-            relevance = ent.get("relevance", "appears")
-            ent["chapter_links"] = [{
-                "chapter_id": str(chapter_id),
-                "chapter_title": chapter_title,
-                "chapter_index": chapter_index,
-                "relevance": relevance,
-            }]
+        # OBS/M2 — classify this batch. `truncated` (finish=length) wins over ok even when
+        # some entities were salvaged (later ones were lost); a non-empty raw array with 0
+        # survivors is `validation_rejected` (the all-kind-mismatch case), an empty array is
+        # `empty_valid`. Recorded as the SSOT row; the chapter status derives from these.
+        rejected = max(0, pstats.raw_count - len(entities))
+        status = classify_batch(
+            llm_errored=False,
+            parse_ok=pstats.parse_ok,
+            raw_entity_count=pstats.raw_count,
+            validated_count=len(entities),
+            finish_reason=finish_reason,
+        )
+        _record_outcome(
+            call_idx, batch, status, finish_reason=finish_reason,
+            entities_found=len(entities), validation_rejected_count=rejected,
+            input_tokens=input_tokens, output_tokens=output_tokens,
+        )
 
-        all_entities.extend(entities)
+        # CACHE/M6 — record the EXECUTE-ledger row (LLM-skip on a future re-run). Only CLEAN
+        # batches are cached ({ok, empty_valid}): a `truncated` (entities lost) or
+        # `validation_rejected` batch must NOT become sticky — a re-run is exactly how the user
+        # RECOVERS those, and a cache hit would return the same bad result forever (and short-
+        # circuit the §8.3 re-plan-smaller signal). Stored PRE-chapter-links (the pure parse;
+        # links are per-job, re-attached each run). parse_status carries the outcome so a hit
+        # replays the taxonomy. Best-effort + idempotent (ON CONFLICT).
+        if owner_user_id and status in (OK, EMPTY_VALID):
+            await put_batch(
+                pool, cache_key, job_id=str(job_id), kinds_requested=list(batch),
+                model_source=model_source, model_ref=str(model_ref),
+                reasoning_effort=_effort_band, input_tokens=input_tokens, output_tokens=output_tokens,
+                finish_reason=finish_reason, raw_response=response_text,
+                parsed_entities=entities, parse_status=status,
+            )
+
+        _accept(entities)
 
     _ch_elapsed = _time.monotonic() - _ch_start
 
-    # Accumulate across windows: the same entity can surface in multiple sub-chapter
-    # windows — merge by (kind, normalized name), unioning chapter_links.
+    # Accumulate across windows: the same entity can surface in multiple sub-chapter windows
+    # — merge by (kind, normalized name), unioning chapter_links (context-window feature).
     all_entities = _merge_window_entities(all_entities)
 
-    if not all_entities:
-        log.info("extraction: chapter %s done in %.1fs — 0 entities (empty LLM output)", chapter_id, _ch_elapsed)
-        return {"created": 0, "updated": 0, "skipped": 0, "entities": [], "input_tokens": total_input_tokens, "output_tokens": total_output_tokens}
+    # OBS/M2 — persist the per-call outcome SSOT once the calls are done, BEFORE any downstream
+    # early-return, so the empty/stale/success paths all record what each call actually did.
+    # Best-effort (never fails the chapter). The chapter status is DERIVED from these (INV-F15)
+    # so an all-rejected/truncated chapter no longer reads as a clean 'completed'.
+    await _persist_batch_outcomes(pool, job_id, owner_user_id, book_id, chapter_id, batch_outcomes)
+    chapter_status = chapter_status_from_outcomes([o["status"] for o in batch_outcomes])
 
-    # 7. Post to glossary-service
+    if not all_entities:
+        log.info("extraction: chapter %s done in %.1fs — 0 entities (status=%s)",
+                 chapter_id, _ch_elapsed, chapter_status)
+        return {"created": 0, "updated": 0, "skipped": 0, "entities": [],
+                "input_tokens": total_input_tokens, "output_tokens": total_output_tokens,
+                "batch_finish_reasons": batch_finish_reasons,
+                "batch_outcomes": batch_outcomes, "chapter_status": chapter_status}
+
+    # 6b. M1 — content-hash precondition (INV-C4). The LLM calls above took real
+    # wall-clock; if the chapter was EDITED meanwhile, these entities were extracted
+    # from stale text and must NOT land (a fresh extraction against the new text
+    # supersedes them). Re-fetch + re-hash; on drift, skip the writeback. Best-effort:
+    # a re-fetch failure does not abort (the writeback_key still guards double-apply).
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10, read=30, write=30, pool=5)) as client:
+            rr = await client.get(
+                f"{settings.book_service_internal_url}"
+                f"/internal/books/{book_id}/chapters/{chapter_id}",
+                headers={"X-Internal-Token": settings.internal_service_token},
+            )
+        if rr.status_code == 200:
+            current_hash = hashlib.sha256(prepare_chapter_text(rr.json()).encode("utf-8")).hexdigest()
+            if current_hash != content_hash:
+                log.warning(
+                    "extraction: chapter %s source DRIFTED during extraction "
+                    "(hash %s→%s) — skipping stale writeback (will re-extract)",
+                    chapter_id, content_hash[:12], current_hash[:12],
+                )
+                return {"created": 0, "updated": 0, "skipped": 0, "entities": [],
+                        "input_tokens": total_input_tokens, "output_tokens": total_output_tokens,
+                        "batch_finish_reasons": batch_finish_reasons,
+                        "batch_outcomes": batch_outcomes, "chapter_status": chapter_status,
+                        "stale_skipped": True}
+    except Exception as exc:  # noqa: BLE001 — precondition is best-effort
+        log.warning("extraction: chapter %s drift re-check failed (%s) — proceeding", chapter_id, exc)
+
+    # 6c. PROV/M3 — stamp VALIDATED evidence provenance (INV-7 / T1). The model
+    # returned an EXACT QUOTE per entity; locate each one in the REAL prepared
+    # chapter text and record chapter-relative char offsets + a block index + a
+    # trust status. A model offset is a HINT verified before trust; a quote we
+    # cannot find keeps its evidence but gets NO fabricated offset. Done once here
+    # (the block map is built per-chapter) so glossary persists only validated
+    # offsets — it never trusts a raw model number. The offsets index the same
+    # prepared text whose `content_hash` guards the writeback, so they stay valid
+    # exactly when the writeback lands (a drifted chapter is skipped above).
+    stamp_entity_provenance(all_entities, chapter_text)
+
+    # 7. Post to glossary-service (whole-chapter, idempotent, tenant-scoped writeback)
     upsert_result = await post_extracted_entities(
         book_id=book_id,
         source_language=source_language,
         attribute_actions=extraction_profile,
         entities=all_entities,
+        chapter_id=str(chapter_id),
+        content_hash=content_hash,
+        writeback_key=writeback_key,
+        owner_user_id=str(owner_user_id) if owner_user_id else None,
     )
 
     if upsert_result is None:
@@ -644,4 +939,7 @@ async def _process_extraction_chapter(
 
     upsert_result["input_tokens"] = total_input_tokens
     upsert_result["output_tokens"] = total_output_tokens
+    upsert_result["batch_finish_reasons"] = batch_finish_reasons
+    upsert_result["batch_outcomes"] = batch_outcomes
+    upsert_result["chapter_status"] = chapter_status
     return upsert_result

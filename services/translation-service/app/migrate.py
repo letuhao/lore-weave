@@ -272,6 +272,75 @@ CREATE TABLE IF NOT EXISTS extraction_chapter_results (
 );
 CREATE INDEX IF NOT EXISTS idx_ecr_job ON extraction_chapter_results(job_id);
 
+-- OBS/M2: per-batch outcome SSOT (extraction-pipeline §2.3 / INV-F15, INV-O12/13).
+-- The batch-outcome taxonomy that makes a silent all-rejected/truncated batch visible.
+-- These rows are the OBSERVE source-of-truth; a reconciliation sweep re-derives job stats
+-- from them. (A same-txn outbox PROJECTION of these rows is deferred until a consumer binds
+-- — D-OBS-BATCH-OUTCOME-PROJECTION.) owner_user_id + book_id carry the tenant scope
+-- (INV-T6); detail_redacted is bounded + carries NO raw_response/secrets.
+CREATE TABLE IF NOT EXISTS extraction_batch_outcomes (
+  id                        UUID PRIMARY KEY DEFAULT uuidv7(),
+  job_id                    UUID NOT NULL REFERENCES extraction_jobs(job_id) ON DELETE CASCADE,
+  owner_user_id             UUID NOT NULL,
+  book_id                   UUID NOT NULL,
+  chapter_id                UUID NOT NULL,
+  batch_idx                 INT  NOT NULL DEFAULT 0,
+  chunk_idx                 INT  NOT NULL DEFAULT 0,
+  status                    TEXT NOT NULL,   -- ok|empty_valid|truncated|validation_rejected|llm_error|writeback_failed
+  finish_reason             TEXT,
+  kinds                     TEXT[] NOT NULL DEFAULT '{}',
+  entities_found            INT NOT NULL DEFAULT 0,
+  entities_written          INT NOT NULL DEFAULT 0,
+  validation_rejected_count INT NOT NULL DEFAULT 0,
+  input_tokens             INT NOT NULL DEFAULT 0,
+  output_tokens            INT NOT NULL DEFAULT 0,
+  error_code               TEXT,
+  detail_redacted          TEXT,
+  event_id                 TEXT NOT NULL,   -- stable: sha256(job_id, chapter_id, batch_idx, content_hash)
+  created_at               TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (event_id)        -- redelivery-stable dedup for the projection (INV-O13)
+);
+CREATE INDEX IF NOT EXISTS idx_ebo_job     ON extraction_batch_outcomes(job_id);
+CREATE INDEX IF NOT EXISTS idx_ebo_chapter ON extraction_batch_outcomes(job_id, chapter_id);
+
+-- CACHE/M6: the EXECUTE ledger (extraction-pipeline §2.1 / §8.1 two-ledger model). "The LLM
+-- produced this parse" — keyed by tenant + chapter content-hash + effort band + batch, so a
+-- re-extraction of an UNCHANGED chapter skips the LLM (don't re-spend tokens). Distinct from
+-- extraction_writeback_log ("landed in glossary"): LLM-skip keys here, writeback-skip there.
+-- owner_user_id is IN the unique key + every lookup — cross-tenant cache reuse is forbidden
+-- (INV-9; content_hash is a within-tenant idempotency key, never cross-tenant). raw_response
+-- is the verbatim debugging/provenance artifact; parsed_entities is what a cache hit reuses.
+CREATE TABLE IF NOT EXISTS extraction_raw_outputs (
+  id                   UUID PRIMARY KEY DEFAULT uuidv7(),
+  job_id               UUID,
+  owner_user_id        UUID NOT NULL,
+  book_id              UUID NOT NULL,
+  chapter_id           UUID NOT NULL,
+  chapter_content_hash TEXT NOT NULL,
+  chapter_chunk_idx    INT  NOT NULL DEFAULT 0,
+  batch_idx            INT  NOT NULL DEFAULT 0,
+  kinds_requested      TEXT[] NOT NULL DEFAULT '{}',
+  profile_hash         TEXT NOT NULL DEFAULT '',
+  model_source         TEXT NOT NULL DEFAULT '',
+  model_ref            UUID,
+  model_name           TEXT,
+  reasoning_effort     TEXT NOT NULL DEFAULT 'none',
+  effort_band          TEXT NOT NULL DEFAULT 'none',
+  input_tokens         INT,
+  output_tokens        INT,
+  finish_reason        TEXT,
+  raw_response         TEXT NOT NULL DEFAULT '',
+  parsed_entities      JSONB NOT NULL DEFAULT '[]',
+  parse_status         TEXT NOT NULL DEFAULT 'ok',
+  created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- profile_hash IS in the key (§8.1): a changed extraction profile (different kinds/attrs)
+  -- re-maps batch_idx to different work, so it must MISS the cache and re-extract — without
+  -- it a re-extraction after an ontology edit would silently reuse the old profile's parse.
+  UNIQUE (owner_user_id, book_id, chapter_id, chapter_chunk_idx, chapter_content_hash, effort_band, batch_idx, profile_hash)
+);
+CREATE INDEX IF NOT EXISTS idx_ero_cache
+  ON extraction_raw_outputs(owner_user_id, book_id, chapter_id, chapter_content_hash, effort_band);
+
 -- ── V8: Translation Pipeline V3 — selection flag, per-role models, QA config ──
 -- Additive + idempotent. Default pipeline_version='v2' ⇒ zero behavior change
 -- until a book/job opts into 'v3'. verifier_model_* nullable ⇒ falls back to the

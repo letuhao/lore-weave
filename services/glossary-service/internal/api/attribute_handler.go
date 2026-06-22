@@ -146,6 +146,10 @@ func (s *Server) patchAttributeValue(w http.ResponseWriter, r *http.Request) {
 		setClauses = append(setClauses, fmt.Sprintf("original_value = $%d", argN))
 		args = append(args, val)
 		argN++
+		// MERGE/M5 (INV-8) — a human authoring a SOURCE value marks it 'verified', so a
+		// later machine re-extraction's verified-clobber guard refuses to overwrite it.
+		// Literal (no placeholder) so it rides both the If-Match guard-CTE and plain paths.
+		setClauses = append(setClauses, "confidence = 'verified'")
 	}
 
 	ctx := r.Context()

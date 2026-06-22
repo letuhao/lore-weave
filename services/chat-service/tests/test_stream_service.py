@@ -16,8 +16,61 @@ from uuid import uuid4
 import pytest
 
 from app.models import ProviderCredentials
-from app.services.stream_service import stream_response, _Usage
+from app.services.stream_service import (
+    stream_response,
+    _Usage,
+    _thinking_pref,
+    _apply_reasoning_kwargs,
+    parse_inline_effort,
+)
 from tests.conftest import TEST_SESSION_ID, TEST_USER_ID, TEST_MODEL_REF
+
+
+# ── RE: reasoning-effort wiring (the chat thinking no-op fix) ──────────────
+
+
+def test_thinking_pref_mapping():
+    # request toggle wins; True→medium (legacy enabled→medium), False→off.
+    assert _thinking_pref(True, {}) == "medium"
+    assert _thinking_pref(False, {}) == "off"
+    # None → session generation_params default, else platform "off".
+    assert _thinking_pref(None, {}) == "off"
+    assert _thinking_pref(None, {"reasoning_effort": "high"}) == "high"
+    assert _thinking_pref(None, {"thinking": True}) == "medium"
+
+
+def test_apply_reasoning_kwargs_forwards_only_when_present():
+    # The wiring that was missing: stashed reasoning fields reach the request kwargs.
+    rk: dict = {}
+    _apply_reasoning_kwargs(rk, {"reasoning_effort": "high",
+                                 "chat_template_kwargs": {"thinking": True, "enable_thinking": True}})
+    assert rk["reasoning_effort"] == "high"
+    assert rk["chat_template_kwargs"] == {"thinking": True, "enable_thinking": True}
+    # No reasoning in gen_params → nothing added (adaptive/non-reasoning models).
+    empty: dict = {}
+    _apply_reasoning_kwargs(empty, {"temperature": 0.5})
+    assert "reasoning_effort" not in empty and "chat_template_kwargs" not in empty
+
+
+def test_parse_inline_effort_commands():
+    # /no_think → off, stripped.
+    assert parse_inline_effort("summarize this /no_think") == ("summarize this", "off")
+    # /think → medium, leading command.
+    assert parse_inline_effort("/think solve it") == ("solve it", "medium")
+    # /effort=high.
+    assert parse_inline_effort("plan /effort=high the trip") == ("plan the trip", "high")
+    # /effort=none normalizes to "off".
+    assert parse_inline_effort("/effort=none go") == ("go", "off")
+    # No command → unchanged, None.
+    assert parse_inline_effort("just a normal message") == ("just a normal message", None)
+    # Not anchored mid-word → NOT matched (the path '/think/x' has no boundary).
+    text = "see https://x/think/page"
+    assert parse_inline_effort(text) == (text, None)
+    # Last command wins.
+    assert parse_inline_effort("/think a /no_think b")[1] == "off"
+    # Command-ONLY message strips to empty (the caller must guard against an empty
+    # user turn — stream_response keeps the original in that case).
+    assert parse_inline_effort("/no_think") == ("", "off")
 
 
 def _make_creds(**overrides) -> ProviderCredentials:

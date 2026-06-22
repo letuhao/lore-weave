@@ -54,6 +54,7 @@ from ..book_client import book_owns_chapter
 from ..config import settings as app_settings
 from ..deps import get_current_user, get_db
 from ..grant_client import GrantLevel, get_grant_client
+from ..grant_deps import clamp_effort_to_grant
 from ..mcp.estimate import (
     SCOPE_CHAPTERS,
     SCOPE_DIRTY,
@@ -140,17 +141,21 @@ def _assert_caller(claims, caller_user_id: str) -> None:
         raise _forbidden()
 
 
-async def _reauthorize_book(book_id: UUID, user_id: UUID) -> None:
+async def _reauthorize_book(book_id: UUID, user_id: UUID) -> int:
     """Re-resolve the caller's CURRENT grant on the token-bound book at EDIT, at
     confirm time (NOT trusting the mint-time `u`/`r` claims). A grant revoked inside
     the confirm TTL must stop the spend. Fail-CLOSED: any resolver error → no grant
-    → refuse (the grant client itself returns NONE on book-service unreachable)."""
+    → refuse (the grant client itself returns NONE on book-service unreachable).
+    Returns the resolved grant level (int) so a caller can RE-CLAMP effort-auth
+    against the fresh grant (a Manage→Edit downgrade in the TTL window mustn't replay
+    a now-too-high reasoning effort baked into the token)."""
     try:
         lvl = await get_grant_client().resolve_grant(book_id, user_id)
     except Exception:  # noqa: BLE001 — fail-closed on any resolver error.
         raise _forbidden()
     if lvl == GrantLevel.NONE or not lvl.at_least(GrantLevel.EDIT):
         raise _forbidden()
+    return int(lvl)
 
 
 async def _assert_chapters_under_book(book_id: UUID, chapter_ids: list[UUID]) -> None:
@@ -221,7 +226,7 @@ async def confirm_action(
 
     # ── RE-AUTHORIZE at confirm (review-impl HIGH) ────────────────────────────
     # Re-check the grant on the bound book NOW — never trust the mint-time claim.
-    await _reauthorize_book(book_id, claims.user_id)
+    caller_grant_level = await _reauthorize_book(book_id, claims.user_id)
 
     bound_estimate = (p.get("estimate") or {})
     bound_cost = bound_estimate.get("cost_usd")
@@ -336,13 +341,22 @@ async def confirm_action(
         # re-computes the SAME estimate and stores it on the job row.
         chapter_ids = [UUID(c) for c in p.get("chapter_ids", [])]
         await _assert_chapters_under_book(book_id, chapter_ids)
+        # RE-Q11 (effort-auth) — RE-CLAMP the baked effort against the CURRENT grant.
+        # The mint clamped it too, but a grant downgrade inside the confirm TTL
+        # (Manage→Edit) must not let a token replay a now-too-high paid effort.
+        # Back-compat: a token minted before this field existed carries only the
+        # `thinking_enabled` bool → treat True as the medium alias.
+        requested_effort = p.get("reasoning_effort")
+        if requested_effort is None and p.get("thinking_enabled"):
+            requested_effort = "medium"
+        effort, _capped = clamp_effort_to_grant(requested_effort, caller_grant_level)
         ext_payload = CreateExtractionJobPayload(
             chapter_ids=chapter_ids,
             extraction_profile=p.get("extraction_profile") or {},
             model_source=p.get("model_source") or "platform_model",
             model_ref=UUID(p["model_ref"]) if p.get("model_ref") else None,
             max_entities_per_kind=int(p.get("max_entities_per_kind", 30)),
-            thinking_enabled=bool(p.get("thinking_enabled", False)),
+            thinking_enabled=effort not in ("none", "off"),
         )
         result = await _create_extraction_job_core(db, book_id, claims.user_id, ext_payload)
         return {

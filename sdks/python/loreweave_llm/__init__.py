@@ -80,6 +80,7 @@ from .reasoning import (
     UserReasoningPref,
     bucket_effort,
     infer_reasoning_control,
+    reasoning_fields,
     resolve_reasoning,
 )
 
@@ -95,6 +96,7 @@ __all__ = [
     "infer_reasoning_control",
     "bucket_effort",
     "resolve_reasoning",
+    "reasoning_fields",
     "StreamEvent",
     "TokenEvent",
     "ReasoningEvent",

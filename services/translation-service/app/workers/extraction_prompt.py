@@ -139,11 +139,14 @@ def build_extraction_prompt(
     kind_batch: list[str],
     extraction_profile: dict[str, dict[str, str]],
     kinds_metadata: list[dict],
+    *,
+    block_hints: bool = False,
 ) -> str:
     """Build dynamic schema section for ONE BATCH of kinds.
 
     Security: Whitelist validates kind_codes and attr_codes against
-    glossary-service metadata (design §S4).
+    glossary-service metadata (design §S4). When ``block_hints``, the schema asks for an
+    optional ``evidence_block`` (the ⟦B#⟧ number the evidence quote came from).
     """
     valid_kind_codes = {k["code"] for k in kinds_metadata}
 
@@ -192,6 +195,10 @@ def build_extraction_prompt(
 
         # Special fields always included
         json_fields["evidence"] = "..."
+        if block_hints:
+            # The ⟦B#⟧ block the evidence quote came from (a number, e.g. 3). The quote
+            # itself must be the EXACT source text WITHOUT the ⟦B#⟧ marker.
+            json_fields["evidence_block"] = "0"
         json_fields["relevance"] = "major|appears"
 
         sections.append(
@@ -246,8 +253,18 @@ def build_system_prompt(
     )
 
 
-def build_user_prompt(chapter_text: str) -> str:
-    """Assemble the user prompt with chapter text."""
+def build_user_prompt(chapter_text: str, *, block_hints: bool = False) -> str:
+    """Assemble the user prompt with chapter text. When ``block_hints``, the chapter is
+    rendered as ⟦B#⟧-numbered paragraphs (the SAME segmentation the provenance validator
+    uses) so the model can cite an ``evidence_block`` per quote — validated downstream."""
+    if block_hints:
+        from app.workers.extraction_provenance import build_block_offset_map
+
+        blocks = build_block_offset_map(chapter_text)
+        if blocks:
+            chapter_text = "\n".join(
+                f"⟦B{b.index}⟧ {chapter_text[b.start:b.end]}" for b in blocks
+            )
     return USER_TEMPLATE.format(chapter_text=chapter_text)
 
 
@@ -339,12 +356,37 @@ def _repair_truncated_array(text: str) -> str:
     return text + "\n]"  # fallback: just close it
 
 
+@dataclass
+class ParseStats:
+    """Signals the OBS batch-outcome taxonomy needs that a bare entity list can't
+    carry (extraction-pipeline §8.3 / INV-F15). ``raw_count`` is how many entries the
+    model's array held BEFORE validation — the discriminator between *empty_valid* (the
+    model correctly returned ``[]``) and *validation_rejected* (it returned entities that
+    were all rejected, e.g. kind mismatch). ``parse_ok`` is False when no JSON array could
+    be parsed at all (garbage / prose / mid-truncation that even repair couldn't close)."""
+
+    raw_count: int = 0
+    parse_ok: bool = False
+
+
 def parse_and_validate(
     response_text: str,
     kind_batch: list[str],
     extraction_profile: dict[str, dict[str, str]],
 ) -> list[dict]:
-    """Parse LLM output and validate against extraction profile.
+    """Parse + validate LLM output → the validated entity list (back-compat wrapper)."""
+    entities, _ = parse_and_validate_with_stats(response_text, kind_batch, extraction_profile)
+    return entities
+
+
+def parse_and_validate_with_stats(
+    response_text: str,
+    kind_batch: list[str],
+    extraction_profile: dict[str, dict[str, str]],
+) -> tuple[list[dict], ParseStats]:
+    """Parse LLM output and validate against extraction profile, returning the validated
+    entities AND a ``ParseStats`` (raw pre-validation count + parse-success) so the worker
+    can classify the batch outcome (OBS/M2). The validation logic is unchanged.
 
     Steps (design §6.8):
     1. Extract JSON from response (handles markdown fences, reasoning text, raw arrays)
@@ -356,21 +398,21 @@ def parse_and_validate(
     json_text = _extract_json_from_text(response_text)
     if json_text is None:
         log.warning("extraction parse failed: no JSON array found in response (len=%d)", len(response_text))
-        return []
+        return [], ParseStats(raw_count=0, parse_ok=False)
 
     # Step 1: parse JSON
     try:
         data = json.loads(json_text)
     except json.JSONDecodeError:
         log.warning("extraction parse failed: invalid JSON (extracted len=%d)", len(json_text))
-        return []
+        return [], ParseStats(raw_count=0, parse_ok=False)
 
     if not isinstance(data, list):
         if isinstance(data, dict):
             data = [data]
         else:
             log.warning("extraction parse: expected array, got %s", type(data).__name__)
-            return []
+            return [], ParseStats(raw_count=0, parse_ok=False)
 
     valid_kinds = set(kind_batch)
     validated: list[dict] = []
@@ -391,21 +433,25 @@ def parse_and_validate(
         allowed_attrs = set(extraction_profile.get(kind, {}).keys())
         attrs = {}
         for key, val in entry.items():
-            if key in ("kind", "name", "evidence", "relevance"):
+            if key in ("kind", "name", "evidence", "evidence_block", "relevance"):
                 continue
             if key in allowed_attrs:
                 attrs[key] = val
 
-        validated.append({
+        out = {
             "kind_code": kind,
             "name": name,
             "attributes": attrs,
             "evidence": entry.get("evidence", ""),
             "relevance": entry.get("relevance", "appears"),
-        })
+        }
+        # PROV/M3 — carry the model's optional block citation (validated downstream).
+        if "evidence_block" in entry:
+            out["evidence_block"] = entry.get("evidence_block")
+        validated.append(out)
 
     log.info("extraction parsed: %d valid entities from %d raw entries", len(validated), len(data))
-    return validated
+    return validated, ParseStats(raw_count=len(data), parse_ok=True)
 
 
 # ── Cost estimation ──────────────────────────────────────────────────────────
@@ -420,6 +466,12 @@ def estimate_extraction_cost(
 
     Returns dict with estimated_input_tokens, estimated_output_tokens,
     estimated_total_tokens, llm_calls, chapters_count.
+
+    NOTE (D-CACHE-PLANNER-WIRING): wiring the two-phase planner (PLAN lane,
+    `loreweave_extraction.plan`) in here to make the estimate SPLIT-AWARE is BLOCKED on the
+    SDK-distribution split — this dev/runtime env resolves `loreweave_extraction` to a sibling
+    checkout that predates the planner, so importing `plan` here would ImportError. Land the
+    wiring once the consuming service reliably builds against the planner-containing SDK.
     """
     batches = plan_kind_batches(extraction_profile, kinds_metadata)
     batches_per_chapter = len(batches)

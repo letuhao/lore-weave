@@ -233,6 +233,22 @@ func (s *Server) previewDeepResearch(w http.ResponseWriter, ctx context.Context,
 
 // ── INV-6 helpers ───────────────────────────────────────────────────────────
 
+// evidenceReuseCap bounds neutralized evidence text flowing toward a prompt / RAG export.
+// Generous (a "short EXACT QUOTE" extraction evidence is well under this) while bounding
+// pathological input.
+const evidenceReuseCap = 4000
+
+// neutralizeEvidenceText sanitizes stored evidence `original_text` before it flows into ANY
+// downstream prompt or RAG export (INV-6 / threat T5: a stored source quote may carry hostile
+// "ignore previous instructions…" text). It applies the SAME treatment as untrusted web text
+// — strip control chars, collapse whitespace, cap length — so a consumer frames it as DATA,
+// never instructions. The stored DB value stays EXACT (provenance/citation fidelity is
+// preserved); only the copy that LEAVES toward a prompt is neutralized. Any future in-process
+// prompt that reads stored evidence MUST route it through this helper.
+func neutralizeEvidenceText(s string) string {
+	return neutralizeWebText(s, evidenceReuseCap)
+}
+
 // neutralizeWebText makes fetched web text safe to STORE and return as quoted DATA: it
 // drops control characters, collapses whitespace runs (so layout/line tricks can't fake
 // structure), and bounds the length. It does NOT try to "understand" the text — the

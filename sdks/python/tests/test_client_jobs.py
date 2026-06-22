@@ -215,6 +215,48 @@ async def test_get_job_returns_typed_job_envelope():
     assert job.result == {"entities": [{"name": "Holmes", "kind": "person"}]}
 
 
+def test_job_finish_reason_reads_from_result():
+    # M0 (extraction pipeline) — the gateway's chat/json-list aggregators stamp
+    # `finish_reason` into Job.result (it is NOT a top-level wire field). The
+    # typed accessor surfaces it first-class for the truncation taxonomy.
+    truncated = Job(
+        job_id=JOB_UUID, operation="chat", status="completed",
+        result={"messages": [], "finish_reason": "length"},
+        submitted_at="2026-04-26T00:00:00Z",
+    )
+    assert truncated.finish_reason == "length"
+
+    clean = Job(
+        job_id=JOB_UUID, operation="chat", status="completed",
+        result={"messages": [], "finish_reason": "stop"},
+        submitted_at="2026-04-26T00:00:00Z",
+    )
+    assert clean.finish_reason == "stop"
+
+
+def test_job_finish_reason_none_when_absent_or_no_result():
+    # No `finish_reason` key in result → None (not a KeyError).
+    no_key = Job(
+        job_id=JOB_UUID, operation="chat", status="completed",
+        result={"messages": []}, submitted_at="2026-04-26T00:00:00Z",
+    )
+    assert no_key.finish_reason is None
+
+    # No result at all (a failed job) → None.
+    failed = Job(
+        job_id=JOB_UUID, operation="chat", status="failed",
+        result=None, submitted_at="2026-04-26T00:00:00Z",
+    )
+    assert failed.finish_reason is None
+
+    # Non-string junk in the field → None (defensive narrowing).
+    junk = Job(
+        job_id=JOB_UUID, operation="chat", status="completed",
+        result={"finish_reason": 123}, submitted_at="2026-04-26T00:00:00Z",
+    )
+    assert junk.finish_reason is None
+
+
 @pytest.mark.asyncio
 async def test_get_job_404_raises_job_not_found():
     def handler(req: httpx.Request) -> httpx.Response:
