@@ -441,6 +441,8 @@ func (s *Server) Router() http.Handler {
 					})
 					r.Route("/attributes/{attr_value_id}", func(r chi.Router) {
 						r.Patch("/", s.patchAttributeValue)
+						// D-GLOSSARY-MULTIROW-ATTR-VALUES slice 3 — per-item verify/tombstone.
+						r.Patch("/items/{item_id}", s.patchAttributeValueItem)
 						r.Route("/translations", func(r chi.Router) {
 							r.Post("/", s.createTranslation)
 							r.Route("/{translation_id}", func(r chi.Router) {
