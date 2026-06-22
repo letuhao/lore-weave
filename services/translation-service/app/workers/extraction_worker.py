@@ -79,30 +79,14 @@ _JOB_KIND = "glossary_extraction"
 # 1MB chapter just becomes N windows. Output budget per window is sized to leave room
 # in the context (input + output + safety ≤ context) so the gateway never 400s on
 # LLM_CONTEXT_OVERFLOW.
-_FALLBACK_CONTEXT_WINDOW = 8192
+# Shared with the route's cost estimate (D-CACHE-PLANNER-WIRING) so the quote + the real run
+# resolve the SAME model context. `_get_model_context_window` keeps its internal name here.
+from .extraction_model import FALLBACK_CONTEXT_WINDOW as _FALLBACK_CONTEXT_WINDOW  # noqa: E402,F401
+from .extraction_model import get_model_context_window as _get_model_context_window  # noqa: E402
+
 _EXTRACTION_OUTPUT_CEILING = 8000  # per-window output cap (entities JSON is small)
 _EXTRACTION_OUTPUT_FLOOR = 1024
 _CONTEXT_SAFETY_RATIO = 0.15  # mirror the gateway's context-fit safety margin
-
-
-async def _get_model_context_window(model_source: str | None, model_ref: str | None) -> int:
-    """Model context window (tokens) via provider-registry — the same endpoint the
-    translation chapter worker uses. Falls back when unknown (local models often don't
-    publish a context length)."""
-    if not model_ref:
-        return _FALLBACK_CONTEXT_WINDOW
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            r = await client.get(
-                f"{settings.provider_registry_service_url}"
-                f"/v1/model-registry/models/{model_ref}/context-window",
-                params={"model_source": model_source or "user_model"},
-            )
-            if r.status_code == 200:
-                return int(r.json().get("context_window") or _FALLBACK_CONTEXT_WINDOW)
-    except Exception as exc:  # noqa: BLE001 — fall back on any failure
-        log.debug("extraction: context_window fetch failed (%s) — fallback %d", exc, _FALLBACK_CONTEXT_WINDOW)
-    return _FALLBACK_CONTEXT_WINDOW
 
 
 def _plan_chapter_windows(chapter: dict, chapter_text: str, context_window: int, source_language: str) -> list[str]:

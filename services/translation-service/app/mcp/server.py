@@ -731,7 +731,13 @@ async def translation_start_extraction(
             if k.get("auto_selected", True) and k.get("attributes")
         }
     chapters_meta = [{"text_length": 8000}] * len(cids)
-    estimate = estimate_extraction_cost(chapters_meta, profile, kinds_metadata)
+    # D-CACHE-PLANNER-WIRING: split-aware quote against the REAL model context (caller's own
+    # model → user_model). Best-effort resolve → conservative fallback.
+    from ..workers.extraction_model import get_model_context_window
+    model_context_window = await get_model_context_window(
+        "user_model", str(_uuid(model_ref)) if model_ref else None)
+    estimate = estimate_extraction_cost(
+        chapters_meta, profile, kinds_metadata, model_context_window=model_context_window)
     payload = {
         "action": "start_extraction",
         "title": f"Extract glossary from {len(cids)} chapter(s)",

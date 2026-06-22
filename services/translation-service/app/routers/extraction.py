@@ -28,6 +28,7 @@ from ..grant_deps import (
     require_book_grant,
 )
 from ..model_name import resolve_model_name
+from ..workers.extraction_model import get_model_context_window
 from ..workers.extraction_prompt import estimate_extraction_cost
 from ..workers.glossary_client import fetch_extraction_profile
 
@@ -149,9 +150,14 @@ async def _create_extraction_job_core(
     # Compute cost estimate
     # Rough estimate: assumes ~8K chars per chapter. Actual sizes would require fetching
     # from book-service. This is intentionally approximate per design §6.7.1 ("estimate, not quote").
+    # D-CACHE-PLANNER-WIRING: resolve the REAL model context so the planner-backed quote
+    # windows oversized chapters against the SAME budget the executor will use (not the SDK's
+    # conservative default, which would over-split every chapter). Best-effort → fallback.
+    model_context_window = await get_model_context_window(model_source, str(model_ref) if model_ref else None)
     chapters_meta = [{"text_length": 8000}] * len(payload.chapter_ids)
     cost_estimate = estimate_extraction_cost(
-        chapters_meta, extraction_profile, kinds_metadata
+        chapters_meta, extraction_profile, kinds_metadata,
+        model_context_window=model_context_window,
     )
 
     context_filters = payload.context_filters or {}
