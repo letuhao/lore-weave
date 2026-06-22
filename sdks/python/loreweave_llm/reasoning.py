@@ -113,3 +113,26 @@ def resolve_reasoning(
     if model_control == "effort":
         return ReasoningDirective(effort=auto_effort, passthrough=False, source=auto_source)
     return ReasoningDirective(effort=None, passthrough=False, source="non_reasoning")
+
+
+def reasoning_fields(directive: ReasoningDirective) -> dict[str, Any]:
+    """The provider chat-job input fragments for a resolved reasoning directive —
+    the single place that turns a `ReasoningDirective` into wire fields, replacing
+    translation's `thinking_llm_fields` + composition's inline copies.
+
+    - `passthrough` (an adaptive self-deciding model, e.g. Anthropic) → `{}`: OMIT
+      reasoning_effort entirely so we don't out-think a model that self-orchestrates
+      (sending it to Anthropic is wrong — it has no reasoning_effort knob).
+    - `effort is None` (non-reasoning model) → `{}`: nothing to send.
+    - an explicit effort → `{reasoning_effort, chat_template_kwargs}`. `reasoning_effort`
+      is the OpenAI-o/local knob; `chat_template_kwargs.{thinking,enable_thinking}` is
+      the LM Studio / llama.cpp / vLLM template toggle. effort='none' explicitly
+      DISABLES hidden thinking (so reasoning_tokens don't silently burn the output
+      budget — the empty-prose footgun)."""
+    if directive.passthrough or directive.effort is None:
+        return {}
+    enable = directive.effort != "none"
+    return {
+        "reasoning_effort": directive.effort,
+        "chat_template_kwargs": {"thinking": enable, "enable_thinking": enable},
+    }

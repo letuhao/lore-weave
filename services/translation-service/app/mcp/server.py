@@ -53,6 +53,7 @@ from loreweave_mcp import (
 from ..config import settings
 from ..database import get_pool
 from ..grant_client import GrantLevel, get_grant_client
+from ..grant_deps import clamp_effort_to_grant
 from ..effective_settings import resolve_effective_settings
 from ..mcp.estimate import SCOPE_CHAPTERS, SCOPE_DIRTY, estimate_job_cost
 from ..routers.actions import (
@@ -696,11 +697,23 @@ async def translation_start_extraction(
     ] = None,
     model_ref: Annotated[str | None, "Model id (UUID); omit to use your translation setting."] = None,
     max_entities_per_kind: Annotated[int, "Max entities per kind per chapter."] = 30,
-    thinking_enabled: Annotated[bool, "Enable extended thinking (slower, pricier)."] = False,
+    reasoning_effort: Annotated[
+        str,
+        "Reasoning effort for the extraction LLM: none|low|medium|high (paid compute; "
+        "clamped to your grant — Edit caps at medium, Manage/owner at high).",
+    ] = "none",
+    thinking_enabled: Annotated[bool, "Deprecated alias for reasoning_effort=medium."] = False,
 ) -> dict:
     tc = _ctx(ctx)
     bid = _uuid(book_id)
     await _require_edit(tc, bid)
+    # RE-Q11 (effort-auth, the HIGH finding): clamp the requested reasoning effort to
+    # the CALLER'S grant ceiling so an Edit grantee can't escalate paid compute past
+    # medium on a book they don't own. `thinking_enabled` is the deprecated bool alias
+    # (→ medium). Re-clamped again at confirm (actions.py) against a fresh grant read.
+    requested_effort = reasoning_effort or ("medium" if thinking_enabled else "none")
+    caller_level = await _grant_resolver(bid, tc.user_id)
+    effort, _capped = clamp_effort_to_grant(requested_effort, caller_level)
     cids = [_uuid(c) for c in chapter_ids]
     profile = extraction_profile or {}
     # Estimate for the confirm card — a deterministic token projection over
@@ -730,7 +743,10 @@ async def translation_start_extraction(
         "model_source": "user_model",
         "model_ref": str(_uuid(model_ref)) if model_ref else None,
         "max_entities_per_kind": max_entities_per_kind,
-        "thinking_enabled": thinking_enabled,
+        # Clamped effort is the SSOT; keep thinking_enabled derived for the worker's
+        # current thinking_llm_fields path (effort > none ⇒ thinking on).
+        "reasoning_effort": effort,
+        "thinking_enabled": effort not in ("none", "off"),
         "estimate": estimate,
     }
     token = mint_confirm_token(

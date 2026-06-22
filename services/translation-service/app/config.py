@@ -88,6 +88,13 @@ class Settings(BaseSettings):
     # monopolizing the fleet. Lane = "translation:chapter".
     p5_sched_enabled: bool = False
     p5_owner_cap: int = 5
+    # PROV/M3 (D-PROV-MODEL-OFFSET-HINT): when ON, the extraction prompt numbers the
+    # chapter into ⟦B#⟧ blocks and asks the model for an optional `evidence_block` citation.
+    # The worker validates that citation against the real text (a verified cite → 'exact';
+    # a wrong/absent cite falls to the existing authoritative search → resolved/ambiguous/
+    # unmatched, exactly today's behavior). Default OFF — numbering the prompt is a broad
+    # change to live extraction input; enable per-deployment once a competent model is in use.
+    extraction_evidence_block_hints: bool = False
     p5_global_budget: int = 0  # 0 ⇒ unlimited (per-owner cap is then the only limit)
     p5_lease_ttl_ms: int = 3_600_000  # crash-leak backstop; must exceed a chapter's runtime
     p5_dispatch_interval_s: float = 0.5  # dispatcher tick (latency to first dispatch)

@@ -357,12 +357,12 @@ func (s *Server) toolProposeNewEntity(ctx context.Context, _ *mcp.CallToolReques
 // canon). The caller must have verified book ownership. Returns the entity id +
 // a status: created | skipped_exists | skipped_tombstoned.
 func (s *Server) proposeNewEntity(ctx context.Context, bookID, kindID uuid.UUID, name string, attrs map[string]any) (uuid.UUID, string, []string, error) {
-	existingID, err := s.findEntityByNameOrAlias(ctx, bookID, kindID, name)
+	existingID, err := s.findEntityByNameOrAlias(ctx, s.pool, bookID, kindID, name)
 	if err != nil {
 		return uuid.Nil, "", nil, fmt.Errorf("entity lookup: %w", err)
 	}
 	if existingID != uuid.Nil {
-		rejected, err := s.entityHasTag(ctx, existingID, tagAIRejected)
+		rejected, err := s.entityHasTag(ctx, s.pool, existingID, tagAIRejected)
 		if err != nil {
 			return uuid.Nil, "", nil, fmt.Errorf("tombstone check: %w", err)
 		}
@@ -388,7 +388,7 @@ func (s *Server) proposeNewEntity(ctx context.Context, bookID, kindID uuid.UUID,
 	ent := extractedEntity{Name: name, Attributes: attrs}
 	// "und" (ISO 639-2 undetermined) for the tool-proposed name's language — the
 	// human can correct it when reviewing the draft in the inbox.
-	entityID, err := s.createExtractedEntity(ctx, bookID, kindID, ent, nil, attrDefMap, "und", []string{tagAISuggested, tagAssistant})
+	entityID, err := s.createExtractedEntity(ctx, s.pool, bookID, kindID, ent, nil, attrDefMap, "und", []string{tagAISuggested, tagAssistant})
 	if err != nil {
 		return uuid.Nil, "", nil, fmt.Errorf("create draft: %w", err)
 	}

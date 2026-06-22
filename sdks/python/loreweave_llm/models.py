@@ -293,6 +293,24 @@ class Job(BaseModel):
     def is_terminal(self) -> bool:
         return self.status in ("completed", "failed", "cancelled")
 
+    @property
+    def finish_reason(self) -> str | None:
+        """The terminal LLM `finish_reason` for a chat/completion/extraction
+        job (`stop` | `length` | `content_filter` | `tool_calls` | `error`),
+        or None when absent.
+
+        The gateway's chat/json-list aggregators stamp `finish_reason` INTO
+        `Job.result` (the gateway also persists it to an `llm_jobs` column,
+        but that column is `json:"-"` so it is NOT a top-level field on the
+        wire — `result.finish_reason` is the contract surface). This typed
+        accessor makes the signal first-class for consumers (the extraction
+        pipeline's truncation taxonomy keys on `length`) without each call
+        site reaching into the raw result dict."""
+        if not self.result:
+            return None
+        fr = self.result.get("finish_reason")
+        return fr if isinstance(fr, str) else None
+
 
 # ── Audio operation models (Phase 5a) ─────────────────────────────────
 

@@ -251,12 +251,19 @@ func reconcileEntityFromSnapshot(ctx context.Context, tx pgx.Tx, entityID uuid.U
 		   AND attr_value_id NOT IN (
 		     SELECT (a->>'attr_value_id')::uuid
 		     FROM jsonb_array_elements(COALESCE($1::jsonb->'attributes','[]'::jsonb)) a)`,
-		`INSERT INTO entity_attribute_values (attr_value_id, entity_id, attr_def_id, original_language, original_value)
+		// MERGE/M5 — a revision restore is a deliberate human curation action, so the
+		// restored SOURCE values are marked 'verified': they reflect a state the user
+		// explicitly chose, and the verified-clobber guard then protects them from a later
+		// machine re-extraction silently overwriting the restore. (Snapshots predate the
+		// confidence column, so we cannot faithfully restore the captured trust tier; the
+		// human's restore intent justifies 'verified' regardless — empties can still fill.)
+		`INSERT INTO entity_attribute_values (attr_value_id, entity_id, attr_def_id, original_language, original_value, confidence)
 		 SELECT (a->>'attr_value_id')::uuid, $2, (a->>'attr_def_ref_id')::uuid,
-		        COALESCE(a->>'original_language','zh'), COALESCE(a->>'original_value','')
+		        COALESCE(a->>'original_language','zh'), COALESCE(a->>'original_value',''), 'verified'
 		 FROM jsonb_array_elements(COALESCE($1::jsonb->'attributes','[]'::jsonb)) a
 		 ON CONFLICT (attr_value_id) DO UPDATE SET
-		   original_language = EXCLUDED.original_language, original_value = EXCLUDED.original_value
+		   original_language = EXCLUDED.original_language, original_value = EXCLUDED.original_value,
+		   confidence = 'verified'
 		 WHERE entity_attribute_values.entity_id = $2`,
 
 		// 4-5. Translations: prune then upsert.
