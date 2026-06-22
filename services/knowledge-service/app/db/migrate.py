@@ -372,6 +372,13 @@ ALTER TABLE extraction_jobs
 ALTER TABLE extraction_jobs
   ADD COLUMN IF NOT EXISTS pinned_entity_ids JSONB;
 
+-- D-RE-OTHER-AGENTIC-EFFORT: the clamped graded reasoning effort (none|low|medium|high) the
+-- kg_build_graph cost-gate captured (clamped to the caller's grant at mint + confirm). worker-ai
+-- honors it via D-KG-WORKER-GRADED-EFFORT. Additive + idempotent; default 'none' ⇒ no behavior
+-- change for existing rows / callers that omit it.
+ALTER TABLE extraction_jobs
+  ADD COLUMN IF NOT EXISTS reasoning_effort TEXT NOT NULL DEFAULT 'none';
+
 CREATE INDEX IF NOT EXISTS idx_extraction_jobs_project
   ON extraction_jobs (project_id, created_at DESC);
 
@@ -980,6 +987,11 @@ ALTER TABLE wiki_gen_jobs
 ALTER TABLE wiki_gen_jobs
   ADD COLUMN IF NOT EXISTS revise_model_ref    TEXT,
   ADD COLUMN IF NOT EXISTS revise_model_source TEXT;
+
+-- D-RE-OTHER-AGENTIC-EFFORT: clamped reasoning effort for the wiki-gen LLM (kg_build_wiki
+-- cost-gate, clamped to the caller's grant at mint). Additive; default 'none' (no thinking).
+ALTER TABLE wiki_gen_jobs
+  ADD COLUMN IF NOT EXISTS reasoning_effort TEXT NOT NULL DEFAULT 'none';
 
 -- ═══════════════════════════════════════════════════════════════
 -- KG CUSTOMIZABLE ONTOLOGY (epic 2026-06-20, lane L1) — additive.

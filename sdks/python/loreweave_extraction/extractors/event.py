@@ -49,6 +49,7 @@ from loreweave_extraction.prompts import (
     apply_prompt_override,
     load_prompt,
 )
+from loreweave_extraction.reasoning_wire import reasoning_wire_fields
 from loreweave_extraction.schema_projection import ExtractionSchema
 
 __all__ = [
@@ -235,6 +236,8 @@ async def extract_events(
     context_budget: "ContextBudget | None" = None,
     prompt_override_system: str | None = None,
     schema: ExtractionSchema | None = None,
+    # D-KG-WORKER-GRADED-EFFORT — graded reasoning effort (default "none" ⇒ off).
+    reasoning_effort: str = "none",
 ) -> list[LLMEventCandidate]:
     """Extract narrative events from *text* via the user's BYOK LLM.
 
@@ -284,6 +287,7 @@ async def extract_events(
         on_dropped=on_dropped,
         context_budget=context_budget,
         schema=schema,
+        reasoning_effort=reasoning_effort,
     )
 
     return _postprocess(
@@ -416,12 +420,14 @@ async def _extract_via_llm_client(
     on_dropped: DroppedHandler | None,
     context_budget: ContextBudget | None = None,
     schema: ExtractionSchema | None = None,
+    reasoning_effort: str = "none",
 ) -> list[_LLMEvent]:
     """Submit event_extraction job + wait_terminal + tolerant-parse
     `result.events`. Mirrors entity extractor's SDK path."""
     kwargs = build_event_submit_kwargs(
         system_prompt=system_prompt, text=text, model_source=model_source,
         model_ref=model_ref, project_id=project_id, context_budget=context_budget,
+        reasoning_effort=reasoning_effort,
     )
     try:
         job = await llm_client.submit_and_wait(
@@ -454,6 +460,8 @@ def build_event_submit_kwargs(
     model_ref: str,
     project_id: str | None,
     context_budget: ContextBudget | None = None,
+    # D-KG-WORKER-GRADED-EFFORT — see build_entity_submit_kwargs.
+    reasoning_effort: str = "none",
 ) -> dict[str, Any]:
     """Pure: submit_and_wait / submit_job kwargs for an event_extraction job."""
     if context_budget is not None:
@@ -479,6 +487,8 @@ def build_event_submit_kwargs(
                 context_budget.max_output_tokens
                 if context_budget is not None else 4096
             ),
+            # D-KG-WORKER-GRADED-EFFORT — graded effort wire fields ({} default).
+            **reasoning_wire_fields(reasoning_effort),
         },
         chunking=ChunkingConfig(strategy="paragraphs", size=chunk_size),
         job_meta={

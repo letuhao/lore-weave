@@ -116,6 +116,37 @@ class Settings(BaseSettings):
     transl_reprice_mult: float = 1.25
     transl_reprice_abs_usd: float = 0.50
 
+    # ── CACHE/M6 raw-output offload (D-RAWCACHE-MINIO-OFFLOAD) ──
+    # OPTIONAL object storage for cold-archiving the bulky verbatim `raw_response`
+    # column out of extraction_raw_outputs. Unlike chat-service (which REQUIRES MinIO),
+    # translation-service only uses it for an opt-in maintenance sweep — so every field
+    # is optional with a dev default, and an EMPTY `minio_secret_key` disables offload
+    # entirely (the service boots fine without object storage; the offload endpoint
+    # reports "not configured" and archives nothing). No hardcoded secret — the default
+    # is blank, set MINIO_SECRET_KEY in the stack to enable.
+    minio_endpoint: str = "minio:9000"
+    minio_access_key: str = "loreweave"
+    minio_secret_key: str = ""  # blank ⇒ offload disabled (no boot dependency on MinIO)
+    minio_bucket: str = "lw-extraction-raw"
+    minio_use_ssl: bool = False
+    minio_external_url: str = ""
+    # Offload sweep default: archive raw_response of rows older than this (the verbatim
+    # text is a debug/provenance artifact, never needed for replay — that uses
+    # parsed_entities — so it can move to cold storage after a short hot window).
+    raw_offload_age_days: int = 7
+    # D-CACHE-MODEL-KEY: the raw-output cache is content-addressed (the model is NOT in the key,
+    # §8.1), so switching the extraction model + re-running an unchanged chapter reuses the prior
+    # model's parse. Default OFF preserves that content-addressed reuse. Turn ON to BUST the cache
+    # on a model change: a hit whose stored model_ref ≠ the resolved model falls through to a live
+    # call (re-extract on a model upgrade). The model is stored on every row, so the buster just
+    # compares it — no cache-key fragmentation (which adding model to the key would cause).
+    extraction_cache_bust_on_model_change: bool = False
+    # D-EXTRACTION-ADMISSION-CONTROL: per-user cap on CONCURRENT extraction jobs (pending|running).
+    # P5 fair-scheduling is translation-chapter-only — it places NO bound on extraction job fan-out,
+    # so without this a user can launch unbounded concurrent jobs, each holding HTTP clients +
+    # contending the glossary per-book advisory lock (pool pressure). 0 ⇒ unlimited (disabled).
+    extraction_max_concurrent_jobs_per_user: int = 3
+
     class Config:
         env_file = ".env"
 

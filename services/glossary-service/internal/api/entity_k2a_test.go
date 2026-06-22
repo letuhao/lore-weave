@@ -102,6 +102,10 @@ func runK2aMigrations(t *testing.T, pool *pgxpool.Pool) {
 	if err := migrate.UpMergePolicy(ctx, pool); err != nil {
 		t.Fatalf("migrate.UpMergePolicy: %v", err)
 	}
+	// 0035 — D-GLOSSARY-MULTIROW-ATTR-VALUES: per-item child table + backfill.
+	if err := migrate.UpMultirowAttrValues(ctx, pool); err != nil {
+		t.Fatalf("migrate.UpMultirowAttrValues: %v", err)
+	}
 }
 
 // ── schema shape tests ──────────────────────────────────────────────────────

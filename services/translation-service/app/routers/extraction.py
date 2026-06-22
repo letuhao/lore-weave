@@ -21,13 +21,16 @@ from pydantic import BaseModel
 from ..broker import publish, publish_event
 from ..config import settings as app_settings
 from ..deps import get_current_user, get_db
+from ..grant_client import get_grant_client
 from ..grant_deps import (
     GrantLevel,
     authorize_book,
+    clamp_effort_to_grant,
     get_grant_client_dep,
     require_book_grant,
 )
 from ..model_name import resolve_model_name
+from ..workers.extraction_model import get_model_context_window
 from ..workers.extraction_prompt import estimate_extraction_cost
 from ..workers.glossary_client import fetch_extraction_profile
 
@@ -49,6 +52,10 @@ class CreateExtractionJobPayload(BaseModel):
     model_ref: UUID | None = None
     context_filters: dict | None = None
     max_entities_per_kind: int = 30
+    # D-RE-WORKER-GRADED-EFFORT: graded reasoning effort (none|low|medium|high). Clamped to the
+    # caller's grant ceiling in the core (INV-T11). `thinking_enabled` is the deprecated bool
+    # alias (True→medium) kept for back-compat; `reasoning_effort` wins when set.
+    reasoning_effort: str = "none"
     thinking_enabled: bool = False
 
 
@@ -149,9 +156,25 @@ async def _create_extraction_job_core(
     # Compute cost estimate
     # Rough estimate: assumes ~8K chars per chapter. Actual sizes would require fetching
     # from book-service. This is intentionally approximate per design §6.7.1 ("estimate, not quote").
+    # D-CACHE-PLANNER-WIRING: resolve the REAL model context so the planner-backed quote
+    # windows oversized chapters against the SAME budget the executor will use (not the SDK's
+    # conservative default, which would over-split every chapter). Best-effort → fallback.
+    model_context_window = await get_model_context_window(model_source, str(model_ref) if model_ref else None)
+
+    # D-RE-WORKER-GRADED-EFFORT: resolve the graded reasoning effort, CLAMPED to the caller's
+    # grant ceiling (INV-T11 — effort is paid compute; a non-owner must not escalate spend past
+    # their grant). The MCP/confirm paths already clamp, so re-clamping here is idempotent for
+    # them AND secures the direct HTTP path (whose payload effort is unclamped). `reasoning_effort`
+    # wins; `thinking_enabled` is the deprecated bool alias (True→medium).
+    effort_raw = (payload.reasoning_effort or "").strip().lower() or ("medium" if payload.thinking_enabled else "none")
+    _grant_level = await get_grant_client().resolve_grant(book_id, uid)
+    reasoning_effort, _ = clamp_effort_to_grant(effort_raw, int(_grant_level))
+
     chapters_meta = [{"text_length": 8000}] * len(payload.chapter_ids)
     cost_estimate = estimate_extraction_cost(
-        chapters_meta, extraction_profile, kinds_metadata
+        chapters_meta, extraction_profile, kinds_metadata,
+        model_context_window=model_context_window,
+        reasoning_effort=reasoning_effort,
     )
 
     context_filters = payload.context_filters or {}
@@ -165,7 +188,28 @@ async def _create_extraction_job_core(
         "source_language": source_language,
         "max_entities_per_kind": payload.max_entities_per_kind,
         "thinking_enabled": payload.thinking_enabled,
+        "reasoning_effort": reasoning_effort,
     }
+
+    # D-EXTRACTION-ADMISSION-CONTROL: cap CONCURRENT extraction jobs per user. P5 fair-scheduling
+    # is translation-chapter-only — it does NOT bound extraction fan-out, so without this a user
+    # could launch unbounded concurrent jobs (each holds HTTP clients + contends the glossary
+    # per-book advisory lock → pool pressure). 0 ⇒ disabled. Checked here so BOTH the HTTP and the
+    # MCP-confirm paths (which share this core) are bounded.
+    _cap = app_settings.extraction_max_concurrent_jobs_per_user
+    if _cap > 0:
+        active = await db.fetchval(
+            "SELECT count(*) FROM extraction_jobs WHERE owner_user_id=$1 "
+            "AND status IN ('pending','running')",
+            uid,
+        )
+        if (active or 0) >= _cap:
+            raise HTTPException(
+                status_code=429,
+                detail={"code": "EXTRACT_TOO_MANY_JOBS",
+                        "message": f"You already have {active} extraction job(s) running "
+                                   f"(max {_cap}). Wait for one to finish or cancel it."},
+            )
 
     # Insert job + chapter result rows + emit the 'pending' lifecycle event in ONE tx
     # (H1: the JobEvent commits atomically with the row). The chapter-results are a SINGLE
@@ -178,8 +222,9 @@ async def _create_extraction_job_core(
                 """
                 INSERT INTO extraction_jobs
                   (book_id, owner_user_id, status, source_language, model_source, model_ref,
-                   extraction_profile, context_filters, chapter_ids, total_chapters, cost_estimate)
-                VALUES ($1,$2,'pending',$3,$4,$5,$6,$7,$8,$9,$10)
+                   extraction_profile, context_filters, chapter_ids, total_chapters, cost_estimate,
+                   reasoning_effort)
+                VALUES ($1,$2,'pending',$3,$4,$5,$6,$7,$8,$9,$10,$11)
                 RETURNING *
                 """,
                 book_id, uid, source_language, model_source, model_ref,
@@ -188,6 +233,7 @@ async def _create_extraction_job_core(
                 payload.chapter_ids,
                 len(payload.chapter_ids),
                 json.dumps(cost_estimate),
+                reasoning_effort,
             )
             job_id = job_row["job_id"]
 
@@ -217,6 +263,7 @@ async def _create_extraction_job_core(
         "model_ref": str(model_ref),
         "max_entities_per_kind": payload.max_entities_per_kind,
         "thinking_enabled": payload.thinking_enabled,
+        "reasoning_effort": reasoning_effort,
     })
 
     return {

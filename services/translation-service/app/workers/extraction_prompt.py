@@ -461,18 +461,30 @@ def estimate_extraction_cost(
     chapters: list[dict],
     extraction_profile: dict[str, dict[str, str]],
     kinds_metadata: list[dict],
+    *,
+    model_context_window: int | None = None,
+    reasoning_effort: str = "none",
 ) -> dict:
-    """Estimate token cost before starting extraction job.
+    """Estimate token cost before starting an extraction job.
 
     Returns dict with estimated_input_tokens, estimated_output_tokens,
-    estimated_total_tokens, llm_calls, chapters_count.
+    estimated_total_tokens, llm_calls, chapters_count, batches_per_chapter — plus
+    (when the planner is available) calls_per_chapter, unplannable, model_fit_warning.
 
-    NOTE (D-CACHE-PLANNER-WIRING): wiring the two-phase planner (PLAN lane,
-    `loreweave_extraction.plan`) in here to make the estimate SPLIT-AWARE is BLOCKED on the
-    SDK-distribution split — this dev/runtime env resolves `loreweave_extraction` to a sibling
-    checkout that predates the planner, so importing `plan` here would ImportError. Land the
-    wiring once the consuming service reliably builds against the planner-containing SDK.
-    """
+    D-CACHE-PLANNER-WIRING (Part 1): SPLIT-AWARE via the two-phase planner (PLAN lane,
+    `loreweave_extraction.plan`). The old heuristic charged `chapters × batches` calls each
+    over the WHOLE chapter — blind to the windowing the executor actually does, so a chapter
+    that exceeds the model context (→ N sub-chapter windows × batches) was undercounted N×.
+    The planner models each (chapter × kind-batch) as a `chunk`-splittable unit and splits an
+    oversized one into windows, so the quote tracks the executor's real call fan-out.
+
+    `max_units_per_call=1` is LOAD-BEARING: in extraction the chapter/window text is injected
+    PER kind-batch call (each batch is its own LLM call), NOT shared across packed units —
+    so packing would double-count the shared text. One unit per call keeps the planner's
+    per-unit input sum equal to extraction's real per-call input.
+
+    Falls back to the flat heuristic if the planner SDK isn't importable (keeps the estimate
+    working through any SDK-distribution drift — the old `D-SDK-DISTRIBUTION-SPLIT` blocker)."""
     batches = plan_kind_batches(extraction_profile, kinds_metadata)
     batches_per_chapter = len(batches)
 
@@ -483,23 +495,68 @@ def estimate_extraction_cost(
     )
     output_per_call = 2000  # ~30 entities × ~60 tokens
 
-    total_input = 0
-    total_output = 0
-
-    for ch in chapters:
-        # Estimate chapter tokens: text_length / 2 for CJK (rough)
+    def _chapter_tokens(ch: dict) -> int:
+        # text_length / 2 for CJK (rough); floor so an empty/short chapter still costs a call.
         text_len = ch.get("text_length", ch.get("byte_size", 4000))
-        chapter_tokens = max(text_len // 2, 500)
+        return max(text_len // 2, 500)
 
-        for _ in range(batches_per_chapter):
-            total_input += prompt_overhead + schema_tokens + chapter_tokens
-            total_output += output_per_call
+    try:
+        from loreweave_extraction import (
+            DEFAULT_MODEL_CONTEXT, ModelCaps, PlanRequest, Policy, Unit,
+            effort_output_multiplier, plan,
+        )
 
-    return {
-        "estimated_input_tokens": total_input,
-        "estimated_output_tokens": total_output,
-        "estimated_total_tokens": total_input + total_output,
-        "llm_calls": len(chapters) * batches_per_chapter,
-        "chapters_count": len(chapters),
-        "batches_per_chapter": batches_per_chapter,
-    }
+        # D-RE-EFFORT-COST-ESTIMATE: a reasoning model spends extra OUTPUT tokens on its thinking
+        # trace, so the quote must grow with effort. The planner's per-call output RESERVATION
+        # already scales by effort (Policy.reasoning_effort), but the reported `est_output` is the
+        # sum of unit outputs — so scale the per-call output by the SAME multiplier here, and pass
+        # the effort to Policy so the split/budget math stays consistent with the larger output.
+        out_per_call = int(round(output_per_call * effort_output_multiplier(reasoning_effort)))
+        units: list[Unit] = []
+        for ci, ch in enumerate(chapters):
+            cid = str(ch.get("chapter_id") or ch.get("id") or ci)
+            unit_in = prompt_overhead + schema_tokens + _chapter_tokens(ch)
+            for bi in range(batches_per_chapter):
+                units.append(Unit(
+                    id=f"{cid}:b{bi}", kind="extract", est_input=unit_in,
+                    est_output=out_per_call, splittable=True, split_axis="chunk", group=cid,
+                ))
+        caps = ModelCaps(context_window=model_context_window or DEFAULT_MODEL_CONTEXT)
+        p = plan(PlanRequest(
+            pipeline="extraction", units=units, model=caps,
+            policy=Policy(max_units_per_call=1, reasoning_effort=reasoning_effort),
+        ))
+        total_input = sum(c.est_input for c in p.calls)
+        total_output = sum(c.est_output for c in p.calls)
+        return {
+            "estimated_input_tokens": total_input,
+            "estimated_output_tokens": total_output,
+            "estimated_total_tokens": total_input + total_output,
+            "llm_calls": p.est_llm_calls,
+            "chapters_count": len(chapters),
+            "batches_per_chapter": batches_per_chapter,
+            "calls_per_chapter": round(p.calls_per_chapter, 2),
+            "unplannable": len(p.unplannable),
+            "model_fit_warning": p.model_fit_warning,
+        }
+    except Exception as exc:  # noqa: BLE001
+        # Planner SDK unavailable (ImportError — the D-SDK-DISTRIBUTION-SPLIT net) OR any
+        # planner failure — degrade to the flat heuristic. A cost ESTIMATE must never fail
+        # job creation; a windowing-blind number beats a 500.
+        if not isinstance(exc, ImportError):
+            log.warning("estimate_extraction_cost: planner failed (%s) — flat heuristic", exc)
+        total_input = 0
+        total_output = 0
+        for ch in chapters:
+            chapter_tokens = _chapter_tokens(ch)
+            for _ in range(batches_per_chapter):
+                total_input += prompt_overhead + schema_tokens + chapter_tokens
+                total_output += output_per_call
+        return {
+            "estimated_input_tokens": total_input,
+            "estimated_output_tokens": total_output,
+            "estimated_total_tokens": total_input + total_output,
+            "llm_calls": len(chapters) * batches_per_chapter,
+            "chapters_count": len(chapters),
+            "batches_per_chapter": batches_per_chapter,
+        }

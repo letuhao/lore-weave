@@ -322,5 +322,11 @@ func reconcileEntityFromSnapshot(ctx context.Context, tx pgx.Tx, entityID uuid.U
 			return err
 		}
 	}
+	// D-GLOSSARY-MULTIROW slice 2 — rebuild per-item child rows from the restored list
+	// values (verified — a restore is human curation). The upserted EAVs' items were stale;
+	// orphan items of pruned EAVs are gone via the FK ON DELETE CASCADE.
+	if err := resyncEntityListItems(ctx, tx, entityID, "verified"); err != nil {
+		return err
+	}
 	return nil
 }

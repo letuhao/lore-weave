@@ -390,6 +390,12 @@ func (s *Server) mergeOne(
 				return uuid.Nil, "", e
 			}
 		}
+		// D-GLOSSARY-MULTIROW slice 2 — sync the per-item child rows to the merged alias
+		// union (a list value). 'machine' (an automated merge, not a human curation); a
+		// human can verify individual aliases later. In-tx → atomic with the merge.
+		if e := syncListItems(ctx, tx, winnerID, aliasDef, string(newJSON), "machine", nil); e != nil {
+			return uuid.Nil, "", e
+		}
 	}
 
 	// 3. Soft-delete the loser (hidden; conflicting rows stay attached to it).

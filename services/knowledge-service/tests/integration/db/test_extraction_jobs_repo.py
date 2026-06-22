@@ -54,6 +54,7 @@ def _job_payload(
     *,
     max_spend_usd: Decimal | None = Decimal("1.00"),
     scope: str = "chapters",
+    reasoning_effort: str = "none",
 ) -> ExtractionJobCreate:
     return ExtractionJobCreate(
         project_id=project_id,
@@ -61,6 +62,7 @@ def _job_payload(
         llm_model="test-llm",
         embedding_model="test-embed",
         max_spend_usd=max_spend_usd,
+        reasoning_effort=reasoning_effort,
     )
 
 
@@ -91,6 +93,23 @@ async def test_k10_4_create_defaults(pool):
     assert job.billing_user_id is None
     assert job.billing_embedding_model is None
     assert job.billing_llm_model is None
+    # D-RE-OTHER-AGENTIC-EFFORT: default reasoning effort round-trips as 'none'.
+    assert job.reasoning_effort == "none"
+
+
+@pytest.mark.asyncio
+async def test_reasoning_effort_persists_and_round_trips(pool):
+    # D-RE-OTHER-AGENTIC-EFFORT: the clamped effort must survive
+    # ExtractionJobCreate → INSERT → the job row → repo.get (the store path the build-tool
+    # clamp feeds; previously only the token-params clamp was tested).
+    repo = ExtractionJobsRepo(pool)
+    user = uuid4()
+    project_id = await _make_project(pool, user)
+    created = await repo.create(
+        user, _job_payload(project_id, reasoning_effort="high"))
+    assert created.reasoning_effort == "high"
+    got = await repo.get(user, created.job_id)
+    assert got is not None and got.reasoning_effort == "high"
 
 
 @pytest.mark.asyncio
