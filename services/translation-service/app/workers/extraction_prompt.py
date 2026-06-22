@@ -466,6 +466,12 @@ def estimate_extraction_cost(
 
     Returns dict with estimated_input_tokens, estimated_output_tokens,
     estimated_total_tokens, llm_calls, chapters_count.
+
+    NOTE (D-CACHE-PLANNER-WIRING): wiring the two-phase planner (PLAN lane,
+    `loreweave_extraction.plan`) in here to make the estimate SPLIT-AWARE is BLOCKED on the
+    SDK-distribution split — this dev/runtime env resolves `loreweave_extraction` to a sibling
+    checkout that predates the planner, so importing `plan` here would ImportError. Land the
+    wiring once the consuming service reliably builds against the planner-containing SDK.
     """
     batches = plan_kind_batches(extraction_profile, kinds_metadata)
     batches_per_chapter = len(batches)
