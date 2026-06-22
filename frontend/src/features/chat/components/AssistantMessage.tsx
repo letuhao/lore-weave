@@ -91,10 +91,14 @@ function proposeConfirm(tc: ToolCallRecord): ProposeConfirm | null {
   const p = (typeof o.confirm_token === 'string' ? o
     : (o.result && typeof o.result === 'object' ? o.result as Record<string, unknown> : null));
   if (!p || typeof p.confirm_token !== 'string' || !p.confirm_token) return null;
+  // Glossary propose tools return `title`; KG tools return `summary` — accept either
+  // so the auto-card has a label without waiting on the (best-effort) preview fetch.
+  const label = typeof p.title === 'string' ? p.title
+    : typeof p.summary === 'string' ? p.summary : undefined;
   return {
     confirm_token: p.confirm_token,
     descriptor: typeof p.descriptor === 'string' ? p.descriptor : undefined,
-    title: typeof p.title === 'string' ? p.title : undefined,
+    title: label,
   };
 }
 

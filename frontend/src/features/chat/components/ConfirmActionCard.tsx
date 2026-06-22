@@ -51,6 +51,12 @@ type CardState = null | 'done' | 'expired' | 'error' | 'cancelled';
 const GENERIC_DOMAINS = ['book', 'composition', 'translation', 'settings'] as const;
 export function descriptorDomain(descriptor: string | undefined): string | null {
   if (!descriptor) return null;
+  // KG class-C descriptors are non-dotted but kg_-prefixed (kg_schema_edit,
+  // kg_adopt, kg_sync_apply, kg_triage_*) and commit at /v1/kg/actions/* — route
+  // them to the generic card's `kg` domain. (Glossary's non-dotted descriptors —
+  // schema_create_kind, book_delete, adopt, … — are never kg_-prefixed, so this
+  // disambiguates cleanly and they keep falling through to the legacy ConfirmCard.)
+  if (descriptor.startsWith('kg_')) return 'kg';
   const dot = descriptor.indexOf('.');
   if (dot <= 0) return null; // glossary descriptors are non-dotted (book_delete, …)
   const head = descriptor.slice(0, dot);
