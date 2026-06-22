@@ -687,14 +687,16 @@ async def _start_extraction_job_core(
     # a "See report" link. Keeping ops commands out of the public API
     # response avoids confusing end users if the 409 surfaces in a
     # toast before the picker's badge logic catches it.
-    # E0-3 Phase 2b — the benchmark gate stays OWNER/PROJECT-scoped: it validates
-    # the project's vector space (owner's user_id + the project's canonical
-    # model). A collaborator inherits it via the dimension match above — no
-    # per-collaborator benchmark is needed. `storage_embedding_model` is the
-    # project's model on the collaborator path and body's (== project's) for the
-    # owner.
-    latest_benchmark = await benchmark_repo.get_latest(
-        user_id, project_id, embedding_model=storage_embedding_model,
+    # E0-3 Phase 2b — the benchmark gate is OWNER + MODEL-scoped (R1,
+    # D-JOURNEY-KG-BENCHMARK-UX): it validates the embedding MODEL's quality, which
+    # is a per-model property, not per-project. A passing run for this model on ANY
+    # of the owner's projects (incl. the hidden benchmark sandbox the run actually
+    # executes on) satisfies it — so the run never has to (and never can) happen on
+    # this content-bearing build project. A collaborator inherits it via the
+    # dimension match above. `storage_embedding_model` is the project's model on the
+    # collaborator path and body's (== project's) for the owner.
+    latest_benchmark = await benchmark_repo.get_latest_for_model(
+        user_id, storage_embedding_model,
     )
     if latest_benchmark is None:
         raise HTTPException(
@@ -1735,6 +1737,21 @@ async def run_project_benchmark_endpoint(
             detail="project not found",
         )
 
+    # R1 (D-JOURNEY-KG-BENCHMARK-UX) — the benchmark validates the embedding
+    # MODEL, so it runs on a hidden per-(user, model) SANDBOX, never on this
+    # content-bearing build project. That removes the not_benchmark_project
+    # dead-end (the sandbox is always empty) and keeps the ~10 synthetic fixture
+    # passages out of the real project's vector space. The model-scoped gate then
+    # finds the passing run for any project using this model.
+    if not project.embedding_model or not project.embedding_dimension:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"error_code": "no_embedding_model"},
+        )
+    sandbox = await projects_repo.get_or_create_benchmark_sandbox(
+        user_id, project.embedding_model, project.embedding_dimension,
+    )
+
     req = body or BenchmarkRunRequest()
     pool = get_knowledge_pool()
     embedding_client = get_embedding_client()
@@ -1742,7 +1759,7 @@ async def run_project_benchmark_endpoint(
     try:
         result = await run_project_benchmark(
             user_id=user_id,
-            project_id=project_id,
+            project_id=sandbox.project_id,
             runs=req.runs,
             pool=pool,
             projects_repo=projects_repo,

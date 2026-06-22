@@ -243,6 +243,48 @@ class ProjectsRepo:
                     return _row_to_project(existing), False
                 return _row_to_project(await self._insert(conn, user_id, data)), True
 
+    async def get_or_create_benchmark_sandbox(
+        self, user_id: UUID, embedding_model: str, embedding_dimension: int
+    ) -> Project:
+        """R1 (D-JOURNEY-KG-BENCHMARK-UX) — resolve (or lazily create) the hidden
+        benchmark SANDBOX project for ``(user, embedding_model)``. The K17.9
+        benchmark runs HERE, never on the user's real content-bearing build
+        project, so it cannot trip ``not_benchmark_project`` and its ~10 synthetic
+        fixture passages never pollute real data. Owner-scoped, ``book_id`` NULL,
+        ``is_benchmark_sandbox=true``, and excluded from every project listing.
+        Idempotent via a per-(user, model) advisory lock so two concurrent
+        benchmark POSTs can't create duplicate sandboxes."""
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                await conn.execute(
+                    "SELECT pg_advisory_xact_lock($1, hashtext($2))",
+                    _PROJECT_BOOK_LOCK_NS, f"benchmark:{user_id}:{embedding_model}",
+                )
+                existing = await conn.fetchrow(
+                    f"""
+                    SELECT {_SELECT_COLS} FROM knowledge_projects
+                    WHERE user_id = $1 AND is_benchmark_sandbox
+                      AND embedding_model = $2 AND NOT is_archived
+                    ORDER BY created_at ASC
+                    LIMIT 1
+                    """,
+                    user_id, embedding_model,
+                )
+                if existing is not None:
+                    return _row_to_project(existing)
+                row = await conn.fetchrow(
+                    f"""
+                    INSERT INTO knowledge_projects
+                      (user_id, name, project_type, is_benchmark_sandbox,
+                       embedding_model, embedding_dimension)
+                    VALUES ($1, $2, 'general', true, $3, $4)
+                    RETURNING {_SELECT_COLS}
+                    """,
+                    user_id, f"__benchmark__:{embedding_model}",
+                    embedding_model, embedding_dimension,
+                )
+                return _row_to_project(row)
+
     async def list(
         self,
         user_id: UUID,
@@ -363,7 +405,7 @@ class ProjectsRepo:
         query = f"""
         SELECT {_SELECT_COLS}
         FROM knowledge_projects
-        WHERE user_id = $1{status_pred}{search_pred}{cursor_pred}{book_pred}{world_pred}
+        WHERE user_id = $1 AND NOT is_benchmark_sandbox{status_pred}{search_pred}{cursor_pred}{book_pred}{world_pred}
         ORDER BY {col} {direction}, project_id {direction}
         LIMIT ${len(params)}
         """
@@ -386,7 +428,7 @@ class ProjectsRepo:
         query = f"""
         SELECT {_SELECT_COLS}
         FROM knowledge_projects
-        WHERE user_id = $1
+        WHERE user_id = $1 AND NOT is_benchmark_sandbox
         ORDER BY created_at, project_id
         LIMIT {self.EXPORT_HARD_CAP + 1}
         """
