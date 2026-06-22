@@ -116,6 +116,25 @@ class Settings(BaseSettings):
     transl_reprice_mult: float = 1.25
     transl_reprice_abs_usd: float = 0.50
 
+    # ── CACHE/M6 raw-output offload (D-RAWCACHE-MINIO-OFFLOAD) ──
+    # OPTIONAL object storage for cold-archiving the bulky verbatim `raw_response`
+    # column out of extraction_raw_outputs. Unlike chat-service (which REQUIRES MinIO),
+    # translation-service only uses it for an opt-in maintenance sweep — so every field
+    # is optional with a dev default, and an EMPTY `minio_secret_key` disables offload
+    # entirely (the service boots fine without object storage; the offload endpoint
+    # reports "not configured" and archives nothing). No hardcoded secret — the default
+    # is blank, set MINIO_SECRET_KEY in the stack to enable.
+    minio_endpoint: str = "minio:9000"
+    minio_access_key: str = "loreweave"
+    minio_secret_key: str = ""  # blank ⇒ offload disabled (no boot dependency on MinIO)
+    minio_bucket: str = "lw-extraction-raw"
+    minio_use_ssl: bool = False
+    minio_external_url: str = ""
+    # Offload sweep default: archive raw_response of rows older than this (the verbatim
+    # text is a debug/provenance artifact, never needed for replay — that uses
+    # parsed_entities — so it can move to cold storage after a short hot window).
+    raw_offload_age_days: int = 7
+
     class Config:
         env_file = ".env"
 

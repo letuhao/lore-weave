@@ -142,6 +142,7 @@ async def purge_stale_raw_outputs(
     owner_user_id: str | None = None,
     book_id: str | None = None,
     chapter_id: str | None = None,
+    store=None,
 ) -> int:
     """Retention (CACHE/M6, architecture §8.1): keep the latest `keep` content-hash
     GENERATIONS per chapter and purge older ones. As a chapter is edited, each new
@@ -164,7 +165,11 @@ async def purge_stale_raw_outputs(
     the global retention job. Returns the number of rows deleted. Tenancy (INV-9): the
     partition is always keyed by `owner_user_id`, so one tenant's generations never count
     against another's keep-window. Best-effort — a failure logs and returns 0 (retention is
-    an optimization; a transient failure must never surface as a job error)."""
+    an optimization; a transient failure must never surface as a job error).
+
+    When a `store` is given (D-RAWCACHE-MINIO-OFFLOAD), any purged row whose `raw_response`
+    was cold-archived has its object deleted too, so a purge never orphans a blob. Blob
+    deletes are best-effort (a leaked object is harmless), and run AFTER the DB commit."""
     if keep < 1:
         keep = 1
     filters = ["TRUE"]
@@ -206,20 +211,133 @@ async def purge_stale_raw_outputs(
           AND ro.chapter_id = r.chapter_id
           AND ro.chapter_content_hash = r.chapter_content_hash
           AND r.gen_rank > $1
+        RETURNING ro.raw_response_uri
     """
     try:
         async with pool.acquire() as db:
-            status = await db.execute(sql, *params)
-        # asyncpg returns "DELETE <n>"
-        try:
-            deleted = int(status.split()[-1])
-        except (ValueError, IndexError):
-            deleted = 0
+            rows = await db.fetch(sql, *params)
+        deleted = len(rows)
         if deleted:
             log.info("extraction_cache: retention purged %d stale raw-output row(s) "
                      "(keep=%d, owner=%s book=%s chapter=%s)",
                      deleted, keep, owner_user_id, book_id, chapter_id)
+        # Best-effort blob cleanup AFTER the DB commit, so a purged row never orphans its
+        # cold-archived body. A delete failure is logged inside the store (harmless leak).
+        if store is not None:
+            for r in rows:
+                uri = r["raw_response_uri"]
+                if uri:
+                    await store.delete(uri)
         return deleted
     except Exception as exc:  # noqa: BLE001 — retention is best-effort
         log.warning("extraction_cache: retention purge failed (%s)", exc)
         return 0
+
+
+async def offload_raw_responses(
+    pool,
+    store,
+    *,
+    older_than_days: int = 7,
+    limit: int = 500,
+    owner_user_id: str | None = None,
+    book_id: str | None = None,
+) -> dict:
+    """Cold-archive the bulky `raw_response` of rows older than `older_than_days` to object
+    storage, then NULL the DB column (D-RAWCACHE-MINIO-OFFLOAD). raw_response is a verbatim
+    debug/provenance artifact never needed for replay (which uses `parsed_entities`), so
+    offloading it is transparent to the cache while shrinking the hot table.
+
+    Per-row best-effort: a row is archived in its OWN step — write the blob, then a GUARDED
+    UPDATE (`WHERE id=$ AND raw_response_uri IS NULL`) that flips the row to offloaded only if
+    nothing else claimed it meanwhile. A write/update failure skips that row (its body stays
+    in the DB; a later sweep retries) and never aborts the batch. The object key is
+    tenant-prefixed (INV-9): ``raw/{owner}/{id}``. Returns
+    ``{"offloaded": n, "bytes": total, "scanned": m}``. No-op (offloaded=0) when `store` is
+    None (MinIO unconfigured)."""
+    if store is None:
+        return {"offloaded": 0, "bytes": 0, "scanned": 0, "disabled": True}
+    if limit < 1:
+        limit = 1
+    filters = ["raw_response <> ''", "raw_response_uri IS NULL",
+               "created_at < now() - make_interval(days => $1)"]
+    params: list = [int(older_than_days)]
+    if owner_user_id is not None:
+        params.append(owner_user_id)
+        filters.append(f"owner_user_id = ${len(params)}")
+    if book_id is not None:
+        params.append(book_id)
+        filters.append(f"book_id = ${len(params)}")
+    params.append(limit)
+    where = " AND ".join(filters)
+    # Column names are fixed literals (never user input) → injection-safe; values are bound.
+    select_sql = (f"SELECT id, owner_user_id, raw_response FROM extraction_raw_outputs "
+                  f"WHERE {where} ORDER BY created_at LIMIT ${len(params)}")
+    try:
+        async with pool.acquire() as db:
+            rows = await db.fetch(select_sql, *params)
+    except Exception as exc:  # noqa: BLE001 — offload is an optional maintenance sweep
+        log.warning("extraction_cache: offload scan failed (%s)", exc)
+        return {"offloaded": 0, "bytes": 0, "scanned": 0}
+
+    offloaded = 0
+    total_bytes = 0
+    for row in rows:
+        body = row["raw_response"] or ""
+        if not body:
+            continue
+        data = body.encode("utf-8")
+        key = f"raw/{row['owner_user_id']}/{row['id']}"
+        try:
+            uri = await store.put(key, data)
+        except Exception as exc:  # noqa: BLE001 — leave the row's body in the DB; retry later
+            log.warning("extraction_cache: offload put failed for row %s (%s)", row["id"], exc)
+            continue
+        try:
+            async with pool.acquire() as db:
+                # Guard on raw_response_uri IS NULL so a concurrent sweep can't double-flip.
+                res = await db.execute(
+                    "UPDATE extraction_raw_outputs SET raw_response='', raw_response_uri=$2 "
+                    "WHERE id=$1 AND raw_response_uri IS NULL", row["id"], uri)
+            if res.split()[-1] == "0":
+                # Another sweep already marked this row. The object key is DETERMINISTIC
+                # (raw/{owner}/{id}), so the blob we just wrote is byte-identical to and
+                # AT THE SAME KEY AS the one the winning sweep's pointer references — we must
+                # NOT delete it (that would orphan the live pointer = data loss). Just skip.
+                continue
+        except Exception as exc:  # noqa: BLE001
+            # The blob is written at the row's deterministic key; leave it (the next sweep
+            # re-marks this still-NULL row and re-uploads the same key). Deleting here risks
+            # removing a blob a concurrent winner already pointed at.
+            log.warning("extraction_cache: offload mark failed for row %s (%s)", row["id"], exc)
+            continue
+        offloaded += 1
+        total_bytes += len(data)
+    if offloaded:
+        log.info("extraction_cache: offloaded %d raw-output bod(ies) (%d bytes) to object store",
+                 offloaded, total_bytes)
+    return {"offloaded": offloaded, "bytes": total_bytes, "scanned": len(rows)}
+
+
+async def fetch_raw_response(pool, store, row_id: str) -> str | None:
+    """Read a row's verbatim raw_response, transparently fetching from cold storage if it was
+    offloaded (D-RAWCACHE-MINIO-OFFLOAD). Returns the inline body if present, else the archived
+    object's text, else None (row gone / object missing / store unavailable). For debug/audit
+    only — replay never calls this."""
+    try:
+        async with pool.acquire() as db:
+            row = await db.fetchrow(
+                "SELECT raw_response, raw_response_uri FROM extraction_raw_outputs WHERE id=$1",
+                row_id)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("extraction_cache: fetch_raw_response lookup failed for %s (%s)", row_id, exc)
+        return None
+    if row is None:
+        return None
+    if row["raw_response"]:
+        return row["raw_response"]
+    uri = row["raw_response_uri"]
+    if not uri or store is None:
+        return None
+    data = await store.get(uri)
+    return data.decode("utf-8") if data is not None else None

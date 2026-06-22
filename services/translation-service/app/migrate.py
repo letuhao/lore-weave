@@ -340,6 +340,15 @@ CREATE TABLE IF NOT EXISTS extraction_raw_outputs (
 );
 CREATE INDEX IF NOT EXISTS idx_ero_cache
   ON extraction_raw_outputs(owner_user_id, book_id, chapter_id, chapter_content_hash, effort_band);
+-- D-RAWCACHE-MINIO-OFFLOAD: cold-archive pointer for the bulky verbatim `raw_response`.
+-- When an offload sweep moves a row's raw_response to object storage it NULLs raw_response
+-- (sets it to '') and records the object key here; replay never needs raw_response (it uses
+-- parsed_entities), so offload is transparent to the cache. A partial index makes the sweep's
+-- "not-yet-offloaded, has a body" scan cheap without bloating the index with archived rows.
+ALTER TABLE extraction_raw_outputs ADD COLUMN IF NOT EXISTS raw_response_uri TEXT;
+CREATE INDEX IF NOT EXISTS idx_ero_offload_pending
+  ON extraction_raw_outputs(created_at)
+  WHERE raw_response_uri IS NULL AND raw_response <> '';
 
 -- ── V8: Translation Pipeline V3 — selection flag, per-role models, QA config ──
 -- Additive + idempotent. Default pipeline_version='v2' ⇒ zero behavior change
