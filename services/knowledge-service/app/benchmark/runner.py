@@ -117,6 +117,10 @@ class BenchmarkRunResult:
     stddev_recall: float
     stddev_mrr: float
     runs: int
+    # R2 — the named gates that failed (empty == passed). Lets the FE render
+    # "inconclusive — needs ≥3 runs" for an insufficient_runs-only fail instead
+    # of the false "low-quality results".
+    gate_failures: tuple[str, ...] = ()
 
 
 # Per-(user, project) in-flight sentinel. Single-threaded asyncio
@@ -234,6 +238,13 @@ async def run_project_benchmark(
 
     try:
         golden = load_golden_set(golden_path or _default_golden_path())
+        # R3 (D-JOURNEY-KG-BENCHMARK-UX) — clamp the run count UP to min_runs for
+        # this interactive path. A `runs=1` request can't measure stddev across
+        # samples, so it short-circuits to passed:false even at recall@3=1.0 — a
+        # confusing "perfect-but-failed". The benchmark is embeddings-only (~$0),
+        # so running the min is cheap and is the only path to a valid pass. The
+        # FE already pins runs:3; this closes the trap for API/agent callers.
+        runs = max(runs, int(getattr(golden, "thresholds", {}).get("min_runs", 3)))
         async with neo4j_session() as session:
             loaded = await load_golden_set_as_passages(
                 session,
@@ -315,6 +326,7 @@ def _project_report(
         stddev_recall=report.stddev_recall,
         stddev_mrr=report.stddev_mrr,
         runs=report.runs,
+        gate_failures=tuple(report.gate_failures()),
     )
 
 

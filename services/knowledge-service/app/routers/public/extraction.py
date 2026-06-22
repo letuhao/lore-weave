@@ -1675,6 +1675,10 @@ class BenchmarkRunResponse(BaseModel):
     stddev_recall: float
     stddev_mrr: float
     runs: int
+    # R2 — named failing gates (empty == passed). `insufficient_runs` means the
+    # run was inconclusive (too few passes), NOT that the model is low-quality;
+    # the FE keys its copy off this instead of guessing from `passed` alone.
+    gate_failures: list[str] = []
 
 
 @router.post(
@@ -1802,6 +1806,7 @@ async def run_project_benchmark_endpoint(
         stddev_recall=result.stddev_recall,
         stddev_mrr=result.stddev_mrr,
         runs=result.runs,
+        gate_failures=list(result.gate_failures),
     )
 
 
