@@ -220,6 +220,69 @@ async def test_unplannable_oversized_window_skips_llm(caplog):
     assert any("UNPLANNABLE" in r.getMessage() for r in caplog.records)
 
 
+async def _run_with_window_and_ctx(window: str, ctx: int, llm_job):
+    """Drive _process_extraction_chapter with a FIXED single window + a FIXED model context, so
+    a test can probe the planner gate's budget boundary. Returns (llm_mock, captured_outcomes)."""
+    db = AsyncMock()
+    db.fetchval = AsyncMock(return_value=uuid4())
+    db.execute = AsyncMock()
+    llm = MagicMock()
+    llm.submit_and_wait = AsyncMock(return_value=llm_job)
+    captured = {}
+
+    async def _cap(pool, job_id, owner, book, chap, outcomes):
+        captured["outcomes"] = outcomes
+
+    with patch.object(ew.httpx, "AsyncClient",
+                      return_value=_http_cm_returning({"title": "Ch1", "content": "text"})), \
+         patch.object(ew, "prepare_chapter_text", new=MagicMock(return_value="t")), \
+         patch.object(ew, "_get_model_context_window", new=AsyncMock(return_value=ctx)), \
+         patch.object(ew, "_plan_chapter_windows", return_value=[window]), \
+         patch.object(ew, "plan_kind_batches", return_value=[["character"]]), \
+         patch.object(ew, "build_known_entities_context", return_value=""), \
+         patch.object(ew, "build_extraction_prompt", return_value={}), \
+         patch.object(ew, "build_system_prompt", return_value="sys"), \
+         patch.object(ew, "build_user_prompt", return_value="usr"), \
+         patch.object(ew, "thinking_llm_fields", return_value={}), \
+         patch.object(ew, "parse_and_validate_with_stats",
+                      return_value=([], ParseStats(raw_count=0, parse_ok=True))), \
+         patch.object(ew, "stamp_entity_provenance", new=MagicMock()), \
+         patch.object(ew, "_persist_batch_outcomes", new=AsyncMock(side_effect=_cap)), \
+         patch.object(ew, "get_cached_batch", new=AsyncMock(return_value=None)), \
+         patch.object(ew, "put_batch", new=AsyncMock()), \
+         patch.object(ew, "post_extracted_entities",
+                      new=AsyncMock(return_value={"created": 0, "updated": 0, "skipped": 0})):
+        await ew._process_extraction_chapter(
+            job_id=uuid4(), book_id="b", chapter_id=uuid4(), chapter_index=0,
+            extraction_profile={"character": {}}, kinds_metadata=[], known_entities=[],
+            source_language="zh", model_source="user_model", model_ref=str(uuid4()),
+            max_entities_per_kind=10, thinking_enabled=False, pool=_pool(db), llm_client=llm,
+        )
+    return llm, captured.get("outcomes", [])
+
+
+@pytest.mark.asyncio
+async def test_gate_budget_boundary_respects_real_context():
+    # The SAME window is UNPLANNABLE under a small context but PLANNED under a large one —
+    # locks the gate's budget math (a regression making it always- or never-fire breaks this)
+    # AND proves the gate uses the REAL resolved context, not a constant.
+    from app.workers.chunk_splitter import estimate_tokens
+    window = "这是一段中等长度的文本。" * 1500
+    win_tok = estimate_tokens(window)
+    # est_input = win_tok + schema(20) + known(0) + 600; in_budget = ctx*0.85 − 1024.
+    # Unplannable iff ctx < (win_tok + 620 + 1024) / 0.85. Pick contexts well on each side.
+    thresh = (win_tok + 1644) / 0.85
+    ctx_small, ctx_large = int(thresh) - 3000, int(thresh) + 4000
+
+    llm_small, out_small = await _run_with_window_and_ctx(window, ctx_small, _sdk_job("stop"))
+    llm_small.submit_and_wait.assert_not_awaited()          # gate refused → no LLM
+    assert [o["status"] for o in out_small] == ["unplannable"]
+
+    llm_large, out_large = await _run_with_window_and_ctx(window, ctx_large, _sdk_job("stop"))
+    llm_large.submit_and_wait.assert_awaited_once()         # fits → the LLM ran
+    assert "unplannable" not in [o["status"] for o in out_large]
+
+
 @pytest.mark.asyncio
 async def test_truncated_batch_is_not_cached():
     # CACHE/M6 (review-impl HIGH): a truncated batch (entities lost) must NOT be cached, so a

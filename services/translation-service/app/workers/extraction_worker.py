@@ -697,8 +697,17 @@ async def _process_extraction_chapter(
         if unplannable_keys:
             log.warning("extraction: chapter %s — %d (window×batch) unit(s) UNPLANNABLE "
                         "(oversized block); skipping their LLM calls", chapter_id, len(unplannable_keys))
-    except Exception as exc:  # noqa: BLE001 — gate is best-effort; ungated = prior behaviour
+    except ImportError as exc:
+        # Expected on a pre-planner image (before the SDK ships plan()) — ungated = prior path.
         log.debug("extraction: chapter %s planner gate unavailable (%s) — ungated", chapter_id, exc)
+    except Exception as exc:  # noqa: BLE001 — gate is best-effort; ungated = prior behaviour
+        # NOT an ImportError: a genuine gate failure (a plan() contract drift, a unit-id parse
+        # error from a future splittable change, …). On a deployed stack the planner IS present,
+        # so this is unexpected and means the gate SILENTLY reverted to the truncating path —
+        # surface it loudly (WARNING, not DEBUG) so a broken gate can't hide. Mirrors the Part 1
+        # cost-estimate fallback.
+        log.warning("extraction: chapter %s planner gate FAILED (%s) — ungated (oversized blocks "
+                    "will hit the LLM and may truncate)", chapter_id, exc)
 
     # Flatten window × kind-batch into one call sequence. `call_idx` is the unique per-chapter
     # call index — it keys the OBS event_id (so two windows' batch-0 don't collide), while the
