@@ -18,7 +18,8 @@ from app.wiki.orchestrator import OrchestratorClients, run_wiki_gen_job
 
 
 def _job(entity_ids, *, items_done=None, max_spend=None, cost_spent="0",
-         revise_model_ref=None, revise_model_source=None) -> WikiGenJob:
+         revise_model_ref=None, revise_model_source=None,
+         reasoning_effort="none") -> WikiGenJob:
     return WikiGenJob(
         job_id=uuid4(), user_id=uuid4(), project_id=uuid4(), book_id=uuid4(),
         status="pending", model_source="user_model", model_ref="m1",
@@ -27,6 +28,7 @@ def _job(entity_ids, *, items_done=None, max_spend=None, cost_spent="0",
         items_total=len(entity_ids), items_processed=0,
         cost_spent_usd=Decimal(cost_spent),
         revise_model_ref=revise_model_ref, revise_model_source=revise_model_source,
+        reasoning_effort=reasoning_effort,
     )
 
 
@@ -106,6 +108,31 @@ async def _run(job, clients, repo):
         retrieval_params={}, prompt_version="p", pipeline_version="v",
         cost_per_article_usd=Decimal("0.05"),
     )
+
+
+@pytest.mark.asyncio
+async def test_reasoning_effort_flows_to_generate_and_revise():
+    """D-KG-WIKI-WORKER-GRADED-EFFORT — the job's stored effort reaches BOTH the
+    generate and the revise prose calls (the orchestrator wiring drift-lock)."""
+    job = _job(["e1"], reasoning_effort="high")
+    clients, repo = _clients(), _repo()
+    gen = _ok_gen(); verify = _verify()
+    gen_mock = AsyncMock(return_value=gen)
+    revise_mock = AsyncMock(return_value=(gen, verify))
+    # a HIGH flag forces the revise path to actually call revise_article.
+    with patch.multiple(
+        "app.wiki.orchestrator",
+        gather_entity_context=AsyncMock(return_value=_ctx()),
+        generate_article=gen_mock,
+        verify_article=AsyncMock(return_value=verify),
+        revise_article=revise_mock,
+        compose_provenance_cites=AsyncMock(return_value=[]),
+        compute_build_inputs=MagicMock(return_value={}),
+        build_writeback_body=MagicMock(return_value={}),
+    ):
+        await _run(job, clients, repo)
+    assert gen_mock.await_args.kwargs["reasoning_effort"] == "high"
+    assert revise_mock.await_args.kwargs["reasoning_effort"] == "high"
 
 
 @pytest.mark.asyncio
