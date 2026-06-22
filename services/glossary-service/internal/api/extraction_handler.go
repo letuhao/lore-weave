@@ -1299,6 +1299,12 @@ func (s *Server) createExtractedEntity(
 		if err != nil {
 			return uuid.Nil, fmt.Errorf("insert attr %s: %w", code, err)
 		}
+		// D-GLOSSARY-MULTIROW slice 2 — seed per-item rows for a list value on create
+		// (scalar ⇒ no-op) so a freshly-created list attr is item-consistent for
+		// verify/tombstone without waiting for a later append.
+		if e := syncListItems(ctx, q, entityID, defID, serialized, "machine", firstChapterIDFromLinks(ent.ChapterLinks)); e != nil {
+			return uuid.Nil, fmt.Errorf("insert attr %s (items): %w", code, e)
+		}
 	}
 
 	return entityID, nil
@@ -1387,6 +1393,11 @@ func (s *Server) mergeExtractedEntity(
 			if err != nil {
 				return nil, nil, fmt.Errorf("fill attr %s: %w", code, err)
 			}
+			// D-GLOSSARY-MULTIROW slice 2 — keep the per-item rows in step for a list value
+			// (scalar ⇒ no-op). A machine fill writes machine items with chapter provenance.
+			if e := syncListItems(ctx, q, entityID, defID, serialized, "machine", firstChapterIDFromLinks(ent.ChapterLinks)); e != nil {
+				return nil, nil, fmt.Errorf("fill attr %s (items): %w", code, e)
+			}
 			written = append(written, code)
 		} else if action == "overwrite" {
 			// Log to extraction_audit_log before overwriting
@@ -1415,6 +1426,12 @@ func (s *Server) mergeExtractedEntity(
 			}
 			if err != nil {
 				return nil, nil, fmt.Errorf("overwrite attr %s: %w", code, err)
+			}
+			// D-GLOSSARY-MULTIROW slice 2 — replace the per-item rows for a list value
+			// (scalar ⇒ no-op), closing the slice-1 overwrite→append divergence. Machine
+			// items with chapter provenance.
+			if e := syncListItems(ctx, q, entityID, defID, serialized, "machine", firstChapterIDFromLinks(ent.ChapterLinks)); e != nil {
+				return nil, nil, fmt.Errorf("overwrite attr %s (items): %w", code, e)
 			}
 			written = append(written, code)
 		} else if action == "append" {
@@ -1456,7 +1473,7 @@ func (s *Server) mergeExtractedEntity(
 			// legacy scalar (canonicalize it to the active-item JSON array — INV-MR1 never
 			// diverges, even on a no-op re-append).
 			if added > 0 || seeded {
-				if err := rebuildItemsCache(ctx, q, attrValueID, sourceLang); err != nil {
+				if err := rebuildItemsCache(ctx, q, attrValueID); err != nil {
 					return nil, nil, fmt.Errorf("append attr %s (cache): %w", code, err)
 				}
 			}

@@ -177,6 +177,12 @@ func (s *Server) applyEntityEdit(w http.ResponseWriter, r *http.Request) {
 				"attribute does not belong to this entity")
 			return
 		}
+		// D-GLOSSARY-MULTIROW slice 2 — sync per-item child rows for a LIST value
+		// (scalar ⇒ no-op), stamped 'verified' (a human-confirmed apply). In-tx.
+		if err := syncListItemsByID(ctx, tx, attrIDs[i], a.OriginalValue, "verified", nil); err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "item sync failed")
+			return
+		}
 	}
 
 	// Did any changed attribute carry the 'description' code? (drives the

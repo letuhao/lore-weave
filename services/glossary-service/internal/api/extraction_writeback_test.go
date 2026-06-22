@@ -1012,6 +1012,65 @@ func TestBulkExtract_AppendScalarReappendCanonicalizes(t *testing.T) {
 	}
 }
 
+// TestBulkExtract_OverwriteThenAppendNoResurrection locks the slice-2 divergence closure:
+// an extraction overwrite of a list attr replaces the item set, so a SUBSEQUENT append builds
+// on the overwritten list — the pre-overwrite items are NOT resurrected by the cache rebuild
+// (the slice-1 boundary, now closed).
+func TestBulkExtract_OverwriteThenAppendNoResurrection(t *testing.T) {
+	pool := openTestDB(t)
+	runK2aMigrations(t, pool)
+	bookID := "00000000-0000-0000-0001-0000000a1102"
+	adoptTestBook(t, pool, uuid.MustParse(bookID))
+	t.Cleanup(func() { cleanupExtractBook(pool, bookID) })
+	srv, token := newEntitiesListServer(t)
+	srv.pool = pool
+	links := []map[string]any{{"chapter_id": uuid.NewString(), "chapter_index": 1}}
+	mk := func(action string, val any) map[string]any {
+		return map[string]any{
+			"source_language":   "zh",
+			"attribute_actions": map[string]any{"character": map[string]any{"appearance": action}},
+			"entities": []map[string]any{
+				{"kind_code": "character", "name": "镜匠",
+					"attributes": map[string]any{"appearance": val}, "chapter_links": links},
+			},
+		}
+	}
+	// create → append two → items [tall, short]
+	postExtract(t, srv, token, bookID, map[string]any{
+		"source_language": "zh",
+		"entities": []map[string]any{
+			{"kind_code": "character", "name": "镜匠",
+				"attributes": map[string]any{"appearance": "tall"}, "chapter_links": links},
+		},
+	})
+	postExtract(t, srv, token, bookID, mk("append", "short"))
+	if v := appearanceValue(t, pool, bookID); v != `["tall","short"]` {
+		t.Fatalf("setup append: want [\"tall\",\"short\"], got %q", v)
+	}
+	// overwrite with a fresh LIST → item set replaced (tall/short gone)
+	postExtract(t, srv, token, bookID, mk("overwrite", []any{"fresh"}))
+	if v := appearanceValue(t, pool, bookID); v != `["fresh"]` {
+		t.Fatalf("overwrite: want [\"fresh\"], got %q", v)
+	}
+	// append builds on the overwritten list — NO resurrection of tall/short
+	postExtract(t, srv, token, bookID, mk("append", "more"))
+	if v := appearanceValue(t, pool, bookID); v != `["fresh","more"]` {
+		t.Errorf("post-overwrite append resurrected stale items: want [\"fresh\",\"more\"], got %q", v)
+	}
+	var n int
+	if err := pool.QueryRow(context.Background(), `
+		SELECT count(*) FROM entity_attribute_value_items i
+		JOIN entity_attribute_values eav ON eav.attr_value_id = i.attr_value_id
+		JOIN glossary_entities ge ON ge.entity_id = eav.entity_id
+		JOIN book_attributes ba ON ba.attr_id = eav.attr_def_id
+		WHERE ge.book_id=$1 AND ba.code='appearance' AND i.status='active'`, bookID).Scan(&n); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if n != 2 {
+		t.Errorf("want 2 active items after overwrite+append, got %d", n)
+	}
+}
+
 // TestMultirowBackfill proves migration 0035's Go backfill re-materializes per-item child
 // rows from a list-valued original_value that has none (the pre-0035 state). Simulated by
 // appending (which creates items) then deleting the items while keeping the list cache, then
