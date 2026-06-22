@@ -166,7 +166,8 @@ async def test_cache_hit_skips_llm_and_reuses_entities():
             job_id=uuid4(), book_id="b", chapter_id=uuid4(), chapter_index=0,
             extraction_profile={"character": {}}, kinds_metadata=[], known_entities=[],
             source_language="zh", model_source="user_model", model_ref=str(uuid4()),
-            max_entities_per_kind=10, thinking_enabled=False, pool=_pool(db), llm_client=llm,
+            max_entities_per_kind=10, thinking_enabled=False, reasoning_effort=None,
+            pool=_pool(db), llm_client=llm,
         )
 
     llm.submit_and_wait.assert_not_awaited()  # LLM skipped
@@ -197,7 +198,7 @@ async def test_truncated_batch_is_not_cached():
          patch.object(ew, "build_extraction_prompt", return_value={}), \
          patch.object(ew, "build_system_prompt", return_value="sys"), \
          patch.object(ew, "build_user_prompt", return_value="usr"), \
-         patch.object(ew, "thinking_llm_fields", return_value={}), \
+         patch.object(ew, "reasoning_fields", return_value={}), \
          patch.object(ew, "parse_and_validate_with_stats",
                       return_value=(entities, ParseStats(raw_count=1, parse_ok=True))), \
          patch.object(ew, "_persist_batch_outcomes", new=AsyncMock()), \
@@ -208,7 +209,8 @@ async def test_truncated_batch_is_not_cached():
             job_id=uuid4(), book_id="b", chapter_id=uuid4(), chapter_index=0,
             extraction_profile={"character": {}}, kinds_metadata=[], known_entities=[],
             source_language="zh", model_source="user_model", model_ref=str(uuid4()),
-            max_entities_per_kind=10, thinking_enabled=False, pool=_pool(db), llm_client=llm,
+            max_entities_per_kind=10, thinking_enabled=False, reasoning_effort=None,
+            pool=_pool(db), llm_client=llm,
         )
 
     put_mock.assert_not_awaited()  # truncated → NOT cached (re-run must be able to recover)
@@ -273,7 +275,7 @@ async def _run_one_chapter_batch(finish_reason: str | None, entities: list[dict]
          patch.object(ew, "build_extraction_prompt", return_value={}), \
          patch.object(ew, "build_system_prompt", return_value="sys"), \
          patch.object(ew, "build_user_prompt", return_value="usr"), \
-         patch.object(ew, "thinking_llm_fields", return_value={}), \
+         patch.object(ew, "reasoning_fields", return_value={}), \
          patch.object(ew, "parse_and_validate_with_stats",
                       return_value=(entities, ParseStats(raw_count=len(entities), parse_ok=True))), \
          patch.object(ew, "_persist_batch_outcomes", new=AsyncMock()), \
@@ -284,9 +286,72 @@ async def _run_one_chapter_batch(finish_reason: str | None, entities: list[dict]
             job_id=uuid4(), book_id="b", chapter_id=uuid4(), chapter_index=0,
             extraction_profile={"character": {}}, kinds_metadata=[], known_entities=[],
             source_language="zh", model_source="user_model", model_ref=str(uuid4()),
-            max_entities_per_kind=10, thinking_enabled=False, pool=_pool(db), llm_client=llm,
+            max_entities_per_kind=10, thinking_enabled=False, reasoning_effort=None,
+            pool=_pool(db), llm_client=llm,
         )
         return result, post
+
+
+# ── RE (D-RE-WORKER-GRADED-EFFORT): the worker honors graded reasoning_effort ──
+
+
+async def _capture_llm_input(*, thinking_enabled: bool, reasoning_effort):
+    """Drive ONE batch through the LLM (cache miss) and return the gateway `input`
+    dict the worker built, so a test can assert the reasoning wire fields."""
+    db = AsyncMock()
+    db.fetchval = AsyncMock(return_value=uuid4())
+    db.execute = AsyncMock()
+    llm = MagicMock()
+    llm.submit_and_wait = AsyncMock(return_value=_sdk_job("stop"))
+    post = AsyncMock(return_value={"created": 1, "updated": 0, "skipped": 0})
+    entities = [{"name": "x", "kind_code": "character"}]
+    with patch.object(ew.httpx, "AsyncClient",
+                      return_value=_http_cm_returning({"title": "Ch1", "content": "text"})), \
+         patch.object(ew, "prepare_chapter_text", new=MagicMock(return_value="some chapter text")), \
+         patch.object(ew, "plan_kind_batches", return_value=[["character"]]), \
+         patch.object(ew, "build_known_entities_context", return_value=""), \
+         patch.object(ew, "build_extraction_prompt", return_value={}), \
+         patch.object(ew, "build_system_prompt", return_value="sys"), \
+         patch.object(ew, "build_user_prompt", return_value="usr"), \
+         patch.object(ew, "stamp_entity_provenance", new=MagicMock()), \
+         patch.object(ew, "parse_and_validate_with_stats",
+                      return_value=(entities, ParseStats(raw_count=1, parse_ok=True))), \
+         patch.object(ew, "_persist_batch_outcomes", new=AsyncMock()), \
+         patch.object(ew, "get_cached_batch", new=AsyncMock(return_value=None)), \
+         patch.object(ew, "put_batch", new=AsyncMock()), \
+         patch.object(ew, "post_extracted_entities", new=post):
+        await ew._process_extraction_chapter(
+            job_id=uuid4(), book_id="b", chapter_id=uuid4(), chapter_index=0,
+            extraction_profile={"character": {}}, kinds_metadata=[], known_entities=[],
+            source_language="zh", model_source="user_model", model_ref=str(uuid4()),
+            max_entities_per_kind=10, thinking_enabled=thinking_enabled,
+            reasoning_effort=reasoning_effort, pool=_pool(db), llm_client=llm,
+        )
+    return llm.submit_and_wait.await_args.kwargs["input"]
+
+
+@pytest.mark.asyncio
+async def test_graded_reasoning_effort_reaches_gateway():
+    # A high request is honored end-to-end (NOT collapsed to medium-or-none).
+    inp = await _capture_llm_input(thinking_enabled=False, reasoning_effort="high")
+    assert inp["reasoning_effort"] == "high"
+    assert inp["chat_template_kwargs"] == {"thinking": True, "enable_thinking": True}
+
+
+@pytest.mark.asyncio
+async def test_reasoning_effort_none_disables_thinking():
+    # effort='none' explicitly disables hidden thinking (no reasoning-token burn).
+    inp = await _capture_llm_input(thinking_enabled=False, reasoning_effort="none")
+    assert inp["reasoning_effort"] == "none"
+    assert inp["chat_template_kwargs"] == {"thinking": False, "enable_thinking": False}
+
+
+@pytest.mark.asyncio
+async def test_thinking_enabled_bool_fallback_is_medium():
+    # Back-compat: a message with only the legacy bool (no reasoning_effort) → medium.
+    inp = await _capture_llm_input(thinking_enabled=True, reasoning_effort=None)
+    assert inp["reasoning_effort"] == "medium"
+    assert inp["chat_template_kwargs"] == {"thinking": True, "enable_thinking": True}
 
 
 @pytest.mark.asyncio

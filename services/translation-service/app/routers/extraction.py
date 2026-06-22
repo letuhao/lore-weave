@@ -50,6 +50,10 @@ class CreateExtractionJobPayload(BaseModel):
     context_filters: dict | None = None
     max_entities_per_kind: int = 30
     thinking_enabled: bool = False
+    # Graded reasoning effort (none|low|medium|high). The SSOT once set; the worker
+    # honors low/high (not just medium-or-none). `thinking_enabled` stays as the
+    # back-compat bool alias (True ⇒ medium) when reasoning_effort is omitted.
+    reasoning_effort: str | None = None
 
 
 class CancelJobResponse(BaseModel):
@@ -165,6 +169,7 @@ async def _create_extraction_job_core(
         "source_language": source_language,
         "max_entities_per_kind": payload.max_entities_per_kind,
         "thinking_enabled": payload.thinking_enabled,
+        "reasoning_effort": payload.reasoning_effort,
     }
 
     # Insert job + chapter result rows + emit the 'pending' lifecycle event in ONE tx
@@ -217,6 +222,7 @@ async def _create_extraction_job_core(
         "model_ref": str(model_ref),
         "max_entities_per_kind": payload.max_entities_per_kind,
         "thinking_enabled": payload.thinking_enabled,
+        "reasoning_effort": payload.reasoning_effort,
     })
 
     return {

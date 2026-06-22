@@ -27,6 +27,7 @@ from loreweave_llm.errors import (
     LLMStreamNotSupported,
     LLMTransientRetryNeededError,
 )
+from loreweave_llm.reasoning import ReasoningDirective, reasoning_fields
 
 from ..config import settings
 from ..llm_client import LLMClient
@@ -60,7 +61,6 @@ from .glossary_client import (
     fetch_known_entities,
     post_extracted_entities,
 )
-from .llm_thinking import thinking_llm_fields
 
 log = logging.getLogger(__name__)
 
@@ -237,6 +237,12 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
     model_ref = msg.get("model_ref")
     max_entities_per_kind = msg.get("max_entities_per_kind", 30)
     thinking_enabled = bool(msg.get("thinking_enabled", False))
+    # Graded reasoning effort is the SSOT when present; fall back to the bool alias
+    # (back-compat with messages minted before reasoning_effort flowed through). An
+    # out-of-vocabulary value degrades to the bool path rather than reaching the gateway.
+    reasoning_effort = msg.get("reasoning_effort")
+    if reasoning_effort not in ("none", "low", "medium", "high"):
+        reasoning_effort = None
 
     log.info("extraction_worker: job %s — %d chapters", job_id, len(chapter_ids))
 
@@ -390,6 +396,7 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
                 model_ref=model_ref,
                 max_entities_per_kind=max_entities_per_kind,
                 thinking_enabled=thinking_enabled,
+                reasoning_effort=reasoning_effort,
                 pool=pool,
                 llm_client=llm_client,
             )
@@ -555,6 +562,7 @@ async def _process_extraction_chapter(
     model_ref: str | None,
     max_entities_per_kind: int,
     thinking_enabled: bool,
+    reasoning_effort: str | None,
     pool,
     llm_client: LLMClient,
 ) -> dict:
@@ -660,7 +668,10 @@ async def _process_extraction_chapter(
             }]
         all_entities.extend(entities)
 
-    _effort_band = effort_band_for(thinking_enabled)
+    # One effort value drives BOTH the cache band and the gateway wire fields, so a
+    # low/high request is honored (not collapsed to medium) and never cache-collides
+    # with a different effort. Graded effort wins; else the bool alias (True⇒medium).
+    _effort_band = effort_band_for(thinking_enabled, reasoning_effort)
 
     # Per-call output budget sized so input + output + safety ≤ context (so the gateway
     # never 400s on LLM_CONTEXT_OVERFLOW), capped — extraction output (entities JSON) is
@@ -740,7 +751,11 @@ async def _process_extraction_chapter(
                     # finish_reason=length. If a batch still truncates, the parser
                     # repairs the partial array rather than dropping every entity.
                     "max_tokens": out_budget,
-                    **thinking_llm_fields(enabled=thinking_enabled),
+                    # Graded reasoning_effort (none|low|medium|high) → the gateway wire
+                    # fields via the shared SDK primitive (replaces thinking_llm_fields'
+                    # medium-or-none). effort='none' explicitly disables hidden thinking.
+                    **reasoning_fields(ReasoningDirective(
+                        effort=_effort_band, passthrough=False, source="extraction")),
                 },
                 chunking=None,
                 job_meta={

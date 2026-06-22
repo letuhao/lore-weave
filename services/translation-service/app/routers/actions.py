@@ -357,6 +357,7 @@ async def confirm_action(
             model_ref=UUID(p["model_ref"]) if p.get("model_ref") else None,
             max_entities_per_kind=int(p.get("max_entities_per_kind", 30)),
             thinking_enabled=effort not in ("none", "off"),
+            reasoning_effort=effort,
         )
         result = await _create_extraction_job_core(db, book_id, claims.user_id, ext_payload)
         return {
