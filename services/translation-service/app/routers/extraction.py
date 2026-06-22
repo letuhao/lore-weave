@@ -155,7 +155,7 @@ async def _create_extraction_job_core(
     # from book-service. This is intentionally approximate per design §6.7.1 ("estimate, not quote").
     chapters_meta = [{"text_length": 8000}] * len(payload.chapter_ids)
     cost_estimate = estimate_extraction_cost(
-        chapters_meta, extraction_profile, kinds_metadata
+        chapters_meta, extraction_profile, kinds_metadata, payload.reasoning_effort
     )
 
     context_filters = payload.context_filters or {}

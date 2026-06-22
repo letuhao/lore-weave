@@ -731,7 +731,7 @@ async def translation_start_extraction(
             if k.get("auto_selected", True) and k.get("attributes")
         }
     chapters_meta = [{"text_length": 8000}] * len(cids)
-    estimate = estimate_extraction_cost(chapters_meta, profile, kinds_metadata)
+    estimate = estimate_extraction_cost(chapters_meta, profile, kinds_metadata, effort)
     payload = {
         "action": "start_extraction",
         "title": f"Extract glossary from {len(cids)} chapter(s)",
@@ -743,8 +743,8 @@ async def translation_start_extraction(
         "model_source": "user_model",
         "model_ref": str(_uuid(model_ref)) if model_ref else None,
         "max_entities_per_kind": max_entities_per_kind,
-        # Clamped effort is the SSOT; keep thinking_enabled derived for the worker's
-        # current thinking_llm_fields path (effort > none ⇒ thinking on).
+        # Clamped effort is the SSOT; the worker maps it via the SDK reasoning_fields
+        # (graded low/med/high). thinking_enabled stays as the back-compat bool alias.
         "reasoning_effort": effort,
         "thinking_enabled": effort not in ("none", "off"),
         "estimate": estimate,
