@@ -134,6 +134,13 @@ class Settings(BaseSettings):
     # text is a debug/provenance artifact, never needed for replay — that uses
     # parsed_entities — so it can move to cold storage after a short hot window).
     raw_offload_age_days: int = 7
+    # D-CACHE-MODEL-KEY: the raw-output cache is content-addressed (the model is NOT in the key,
+    # §8.1), so switching the extraction model + re-running an unchanged chapter reuses the prior
+    # model's parse. Default OFF preserves that content-addressed reuse. Turn ON to BUST the cache
+    # on a model change: a hit whose stored model_ref ≠ the resolved model falls through to a live
+    # call (re-extract on a model upgrade). The model is stored on every row, so the buster just
+    # compares it — no cache-key fragmentation (which adding model to the key would cause).
+    extraction_cache_bust_on_model_change: bool = False
 
     class Config:
         env_file = ".env"

@@ -62,7 +62,8 @@ async def get_cached_batch(pool, key: RawCacheKey) -> dict | None:
     try:
         async with pool.acquire() as db:
             row = await db.fetchrow(
-                """SELECT parsed_entities, finish_reason, input_tokens, output_tokens, parse_status
+                """SELECT parsed_entities, finish_reason, input_tokens, output_tokens, parse_status,
+                          model_ref
                    FROM extraction_raw_outputs
                    WHERE owner_user_id=$1 AND book_id=$2 AND chapter_id=$3
                      AND chapter_chunk_idx=$4 AND chapter_content_hash=$5
@@ -80,6 +81,9 @@ async def get_cached_batch(pool, key: RawCacheKey) -> dict | None:
             "input_tokens": row["input_tokens"] or 0,
             "output_tokens": row["output_tokens"] or 0,
             "parse_status": row["parse_status"],
+            # D-CACHE-MODEL-KEY: the model that produced this parse (for the opt-in
+            # bust-on-model-change check; None for a legacy row written without it).
+            "model_ref": str(row["model_ref"]) if row["model_ref"] else None,
         }
     except Exception as exc:  # noqa: BLE001 — cache is best-effort; fall back to a live call
         log.warning("extraction_cache: get failed for chapter %s batch %d (%s) — live call",
@@ -102,10 +106,14 @@ async def put_batch(
     raw_response: str,
     parsed_entities: list,
     parse_status: str = "ok",
+    overwrite: bool = False,
 ) -> None:
-    """Idempotently record a batch's LLM output (EXECUTE ledger). `ON CONFLICT DO NOTHING`
-    makes a concurrent-miss race / replay a no-op. Best-effort — a write failure logs and is
-    swallowed (the entities already flow to writeback; only the LLM-skip optimization is lost)."""
+    """Record a batch's LLM output (EXECUTE ledger). Default `ON CONFLICT DO NOTHING` makes a
+    concurrent-miss race / replay a no-op. With `overwrite=True` (a D-CACHE-MODEL-KEY model-change
+    bust) the conflicting row is UPDATED with the new parse + model — the cache key has no model,
+    so a plain DO-NOTHING could never refresh a busted row and every run would re-extract. Best-
+    effort — a write failure logs and is swallowed (entities already flow to writeback; only the
+    LLM-skip optimization is lost)."""
     mref = None
     if model_ref:
         try:
@@ -113,17 +121,27 @@ async def put_batch(
             mref = UUID(model_ref)
         except (ValueError, TypeError):
             mref = None
+    # The conflict action: DO NOTHING (idempotent default) vs DO UPDATE (refresh on a bust). The
+    # conflict target is a fixed column list (never user input) → injection-safe.
+    conflict = (
+        """DO UPDATE SET parsed_entities=EXCLUDED.parsed_entities, parse_status=EXCLUDED.parse_status,
+                         model_source=EXCLUDED.model_source, model_ref=EXCLUDED.model_ref,
+                         reasoning_effort=EXCLUDED.reasoning_effort, input_tokens=EXCLUDED.input_tokens,
+                         output_tokens=EXCLUDED.output_tokens, finish_reason=EXCLUDED.finish_reason,
+                         raw_response=EXCLUDED.raw_response, raw_response_uri=NULL, job_id=EXCLUDED.job_id"""
+        if overwrite else "DO NOTHING"
+    )
     try:
         async with pool.acquire() as db:
             await db.execute(
-                """INSERT INTO extraction_raw_outputs
+                f"""INSERT INTO extraction_raw_outputs
                    (job_id, owner_user_id, book_id, chapter_id, chapter_content_hash,
                     chapter_chunk_idx, batch_idx, kinds_requested, profile_hash, model_source,
                     model_ref, reasoning_effort, effort_band, input_tokens, output_tokens,
                     finish_reason, raw_response, parsed_entities, parse_status)
                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
                    ON CONFLICT (owner_user_id, book_id, chapter_id, chapter_chunk_idx,
-                                chapter_content_hash, effort_band, batch_idx, profile_hash) DO NOTHING""",
+                                chapter_content_hash, effort_band, batch_idx, profile_hash) {conflict}""",
                 job_id, key.owner_user_id, key.book_id, key.chapter_id, key.content_hash,
                 key.chunk_idx, key.batch_idx, kinds_requested, key.profile_hash, model_source,
                 mref, reasoning_effort, key.effort_band, input_tokens, output_tokens,

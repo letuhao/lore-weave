@@ -177,6 +177,45 @@ async def test_cache_hit_skips_llm_and_reuses_entities():
 
 
 @pytest.mark.asyncio
+async def test_cache_busts_on_model_change_when_enabled(monkeypatch):
+    # D-CACHE-MODEL-KEY: with the flag ON, a cache hit whose stored model_ref differs from the
+    # CURRENT model is busted → the LLM IS called (re-extract on a model change). Default-off is
+    # covered by test_cache_hit_skips_llm (the hit is reused).
+    monkeypatch.setattr(ew.settings, "extraction_cache_bust_on_model_change", True)
+    db = AsyncMock()
+    db.fetchval = AsyncMock(return_value=uuid4())
+    db.execute = AsyncMock()
+    llm = MagicMock()
+    llm.submit_and_wait = AsyncMock(return_value=_sdk_job("stop"))
+    cached = {  # a parse produced by a DIFFERENT (old) model
+        "parsed_entities": [{"name": "X", "kind_code": "character"}], "finish_reason": "stop",
+        "input_tokens": 0, "output_tokens": 0, "parse_status": "ok", "model_ref": str(uuid4()),
+    }
+    with patch.object(ew.httpx, "AsyncClient",
+                      return_value=_http_cm_returning({"title": "Ch1", "content": "text"})), \
+         patch.object(ew, "prepare_chapter_text", new=MagicMock(return_value="short chapter text")), \
+         patch.object(ew, "plan_kind_batches", return_value=[["character"]]), \
+         patch.object(ew, "build_known_entities_context", return_value=""), \
+         patch.object(ew, "build_extraction_prompt", return_value={}), \
+         patch.object(ew, "build_system_prompt", return_value="sys"), \
+         patch.object(ew, "build_user_prompt", return_value="usr"), \
+         patch.object(ew, "parse_and_validate_with_stats",
+                      return_value=([], ParseStats(raw_count=0, parse_ok=True))), \
+         patch.object(ew, "stamp_entity_provenance", new=MagicMock()), \
+         patch.object(ew, "_persist_batch_outcomes", new=AsyncMock()), \
+         patch.object(ew, "get_cached_batch", new=AsyncMock(return_value=cached)), \
+         patch.object(ew, "put_batch", new=AsyncMock()), \
+         patch.object(ew, "post_extracted_entities", new=AsyncMock(return_value={})):
+        await ew._process_extraction_chapter(
+            job_id=uuid4(), book_id="b", chapter_id=uuid4(), chapter_index=0,
+            extraction_profile={"character": {}}, kinds_metadata=[], known_entities=[],
+            source_language="zh", model_source="user_model", model_ref=str(uuid4()),  # NEW model
+            max_entities_per_kind=10, thinking_enabled=False, pool=_pool(db), llm_client=llm,
+        )
+    llm.submit_and_wait.assert_awaited()  # cache busted on the model change → a live call ran
+
+
+@pytest.mark.asyncio
 async def test_unplannable_oversized_window_skips_llm(caplog):
     # D-CACHE-PLANNER-WIRING Part 2: a window too big to fit the context even alone is flagged
     # `unplannable` by the pre-flight planner gate → its LLM call is SKIPPED (no truncation, no

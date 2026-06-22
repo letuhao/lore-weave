@@ -86,6 +86,8 @@ async def test_raw_cache_roundtrip_idempotency_and_tenant_scope():
         assert hit is not None
         assert hit["parsed_entities"] == [{"name": "X"}]
         assert hit["finish_reason"] == "stop" and hit["parse_status"] == "ok"
+        # D-CACHE-MODEL-KEY: the producing model round-trips (for the bust-on-model-change check).
+        assert hit["model_ref"]  # _put wrote a model_ref
 
         # Idempotent: a second put on the same key is a no-op (ON CONFLICT DO NOTHING).
         await _put(pool, key, parsed_entities=[{"name": "DIFFERENT"}], input_tokens=999)
@@ -120,6 +122,39 @@ async def test_raw_cache_roundtrip_idempotency_and_tenant_scope():
                                   content_hash="h1", batch_idx=0, profile_hash="p2", effort_band="none")
         assert await get_cached_batch(pool, new_profile) is None
         await tx.rollback()  # nothing persists (clean test DB)
+    finally:
+        await conn.close()
+
+
+@pytest.mark.asyncio
+async def test_put_overwrite_refreshes_on_model_bust():
+    # D-CACHE-MODEL-KEY: a plain put can't refresh a busted row (model isn't in the key, so
+    # ON CONFLICT DO NOTHING keeps the old parse); put_batch(overwrite=True) DOES, so a
+    # model-change bust re-extracts AND updates the cache (no perpetual re-bust).
+    try:
+        conn = await asyncpg.connect(_DSN, timeout=3)
+    except Exception:
+        pytest.skip(f"no reachable Postgres at TRANSLATION_TEST_PG_DSN ({_DSN})")
+    owner = uuid.uuid4()
+    model_a, model_b = str(uuid.uuid4()), str(uuid.uuid4())
+    try:
+        await conn.execute(DDL)
+        pool = _ConnPool(conn)
+        tx = conn.transaction()
+        await tx.start()
+        book, chap = uuid.uuid4(), uuid.uuid4()
+        key = RawCacheKey(owner_user_id=str(owner), book_id=str(book), chapter_id=str(chap),
+                          content_hash="h1", batch_idx=0, effort_band="none")
+        await _put(pool, key, model_ref=model_a, parsed_entities=[{"name": "A"}])
+        # plain re-put with model B → DO NOTHING, model A's parse survives.
+        await _put(pool, key, model_ref=model_b, parsed_entities=[{"name": "B"}])
+        hit = await get_cached_batch(pool, key)
+        assert hit["parsed_entities"] == [{"name": "A"}] and hit["model_ref"] == model_a
+        # overwrite put → refreshes to model B's parse.
+        await _put(pool, key, model_ref=model_b, parsed_entities=[{"name": "B"}], overwrite=True)
+        hit2 = await get_cached_batch(pool, key)
+        assert hit2["parsed_entities"] == [{"name": "B"}] and hit2["model_ref"] == model_b
+        await tx.rollback()
     finally:
         await conn.close()
 

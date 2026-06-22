@@ -743,6 +743,21 @@ async def _process_extraction_chapter(
             effort_band=_effort_band,
         )
         cached = await get_cached_batch(pool, cache_key) if owner_user_id else None
+        # D-CACHE-MODEL-KEY: opt-in bust-on-model-change. The cache is content-addressed (model
+        # NOT in the key), so a hit may carry a DIFFERENT model's parse. When the flag is on, a
+        # hit whose stored model_ref differs from the resolved model is treated as a miss → a live
+        # re-extraction on the new model (default off keeps the content-addressed reuse). `_busted`
+        # is threaded to put_batch so the live re-extraction OVERWRITES the stale row (the key has
+        # no model, so a plain DO-NOTHING put could never refresh it → every run would re-bust).
+        _busted = False
+        if (cached is not None and settings.extraction_cache_bust_on_model_change
+                and cached.get("model_ref") and model_ref
+                and str(cached["model_ref"]) != str(model_ref)):
+            log.info("extraction: chapter %s call %d (win %d batch %d) — cache model %s ≠ current "
+                     "%s; busting (re-extract on model change)",
+                     chapter_id, call_idx + 1, window_idx, batch_idx, cached["model_ref"], model_ref)
+            cached = None
+            _busted = True
         if cached is not None:
             entities = cached["parsed_entities"]
             # Replay the cached batch outcome (status stored at first extraction); 0 NEW tokens
@@ -913,6 +928,9 @@ async def _process_extraction_chapter(
                 reasoning_effort=_effort_band, input_tokens=input_tokens, output_tokens=output_tokens,
                 finish_reason=finish_reason, raw_response=response_text,
                 parsed_entities=entities, parse_status=status,
+                # D-CACHE-MODEL-KEY: on a model-change bust, OVERWRITE the stale row so the cache
+                # holds the new model's parse (else the next run re-busts forever).
+                overwrite=_busted,
             )
 
         _accept(entities)
