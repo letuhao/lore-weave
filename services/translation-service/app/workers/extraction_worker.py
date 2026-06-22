@@ -42,6 +42,7 @@ from .extraction_outcomes import (
     EMPTY_VALID,
     LLM_ERROR,
     OK,
+    UNPLANNABLE,
     chapter_status_from_outcomes,
     classify_batch,
     compute_event_id,
@@ -651,8 +652,53 @@ async def _process_extraction_chapter(
     # small, so a modest ceiling avoids reserving context the input needs.
     safety = int(context_window * _CONTEXT_SAFETY_RATIO)
     max_win_tok = max((estimate_tokens(w) for w in windows), default=0)
-    out_budget = context_window - max_win_tok - safety - estimate_tokens(known_ctx) - 600
+    known_ctx_tok = estimate_tokens(known_ctx)
+    out_budget = context_window - max_win_tok - safety - known_ctx_tok - 600
     out_budget = max(_EXTRACTION_OUTPUT_FLOOR, min(_EXTRACTION_OUTPUT_CEILING, out_budget))
+
+    # D-CACHE-PLANNER-WIRING Part 2 — pre-flight FEASIBILITY gate (Option B, spec
+    # docs/specs/2026-06-22-planner-executor-wiring-part2.md). The block-windower packs WHOLE
+    # paragraph blocks; a single block bigger than the context can't be split further, so it
+    # becomes an oversized window that TRUNCATES mid-output (entities silently LOST — the S1–S5
+    # class) with no signal. Run the two-phase planner over the ACTUAL windows×batches and flag
+    # any unit that can't fit even alone; the loop then records it `unplannable` + SKIPS its LLM
+    # call (don't spend tokens to truncate). Units are splittable=False — a window is already the
+    # finest block-join the executor can emit — and the unit id IS the (window,batch) coordinate,
+    # so there's no remap onto the cache/OBS keys. The gate fires only when input doesn't fit with
+    # the minimum output reservation (output_ceiling=floor, budget_ratio=1−safety) — EXACTLY the
+    # condition under which the executor would truncate, so it never false-positives a window that
+    # fits. Effort is irrelevant to INPUT feasibility (it spends within the output budget), so the
+    # gate is effort-independent. Best-effort: any planner failure leaves it ungated (prior path).
+    unplannable_keys: set[tuple[int, int]] = set()
+    try:
+        from loreweave_extraction import ModelCaps, PlanRequest, Policy, Unit, plan
+
+        gate_units = []
+        for wi, w in enumerate(windows):
+            win_tok = estimate_tokens(w)
+            for bi, b in enumerate(batches):
+                schema_tok = sum(20 + len(extraction_profile.get(k, {})) * 40 for k in b)
+                gate_units.append(Unit(
+                    id=f"{wi}:{bi}", kind="extract",
+                    est_input=win_tok + schema_tok + known_ctx_tok + 600,
+                    est_output=_EXTRACTION_OUTPUT_FLOOR, splittable=False,
+                    group=str(chapter_id),
+                ))
+        gate_plan = plan(PlanRequest(
+            pipeline="extraction", units=gate_units,
+            model=ModelCaps(context_window=context_window, output_ceiling=_EXTRACTION_OUTPUT_FLOOR),
+            policy=Policy(budget_ratio=1.0 - _CONTEXT_SAFETY_RATIO, max_units_per_call=1),
+        ))
+        for up in gate_plan.unplannable:
+            wi_s, _, bi_s = up.unit.id.partition(":")
+            unplannable_keys.add((int(wi_s), int(bi_s)))
+        if gate_plan.model_fit_warning:
+            log.warning("extraction: chapter %s — %s", chapter_id, gate_plan.model_fit_warning)
+        if unplannable_keys:
+            log.warning("extraction: chapter %s — %d (window×batch) unit(s) UNPLANNABLE "
+                        "(oversized block); skipping their LLM calls", chapter_id, len(unplannable_keys))
+    except Exception as exc:  # noqa: BLE001 — gate is best-effort; ungated = prior behaviour
+        log.debug("extraction: chapter %s planner gate unavailable (%s) — ungated", chapter_id, exc)
 
     # Flatten window × kind-batch into one call sequence. `call_idx` is the unique per-chapter
     # call index — it keys the OBS event_id (so two windows' batch-0 don't collide), while the
@@ -662,6 +708,17 @@ async def _process_extraction_chapter(
     for call_idx, (window_idx, window_text, batch_idx, batch) in enumerate(
         (wi, w, bi, b) for wi, w in enumerate(windows) for bi, b in enumerate(batches)
     ):
+        # Part 2 gate: a unit the planner refused as UNPLANNABLE (an oversized block that can't
+        # fit even alone) — record the outcome + SKIP its LLM call. The chapter then derives
+        # `completed_with_errors` (INV-F15), so the un-fittable batch is VISIBLE instead of
+        # silently truncating; the entities from the fitting windows/batches still land.
+        if (window_idx, batch_idx) in unplannable_keys:
+            _record_outcome(call_idx, batch, UNPLANNABLE)
+            log.warning("extraction: chapter %s call %d/%d (win %d batch %d) — UNPLANNABLE, "
+                        "skipped LLM (block exceeds context)",
+                        chapter_id, call_idx + 1, total_calls, window_idx, batch_idx)
+            continue
+
         # CACHE/M6 — LLM-skip gate (the EXECUTE ledger). If this exact (tenant, chapter
         # content, effort band, window, batch) was already extracted, reuse the cached parse
         # instead of re-spending tokens. Best-effort: a miss/error falls through to the call.

@@ -286,7 +286,7 @@ CREATE TABLE IF NOT EXISTS extraction_batch_outcomes (
   chapter_id                UUID NOT NULL,
   batch_idx                 INT  NOT NULL DEFAULT 0,
   chunk_idx                 INT  NOT NULL DEFAULT 0,
-  status                    TEXT NOT NULL,   -- ok|empty_valid|truncated|validation_rejected|llm_error|writeback_failed
+  status                    TEXT NOT NULL,   -- ok|empty_valid|truncated|validation_rejected|llm_error|writeback_failed|unplannable
   finish_reason             TEXT,
   kinds                     TEXT[] NOT NULL DEFAULT '{}',
   entities_found            INT NOT NULL DEFAULT 0,

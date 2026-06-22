@@ -16,6 +16,12 @@ Status taxonomy (architecture rev 2 §8.3 / detailed-design §2.3, §4 INV-F15):
     validation_rejected— produced output but nothing usable (all rejected / unparseable)
     llm_error          — the LLM call itself failed (transient/permanent SDK error, non-completion)
     writeback_failed   — chapter-level: the glossary writeback POST did not land
+    unplannable        — PRE-FLIGHT: a (window×batch) unit can't fit the model context even
+                         alone (an irreducible oversized block), so the planner REFUSED it and
+                         the executor SKIPPED its LLM call rather than truncating (D-CACHE-
+                         PLANNER-WIRING Part 2). Distinct from `truncated` (which tried + lost
+                         the tail): the operator action differs — shrink the block / use a
+                         bigger-context model, vs. nothing (truncated may self-recover on retry).
 """
 from __future__ import annotations
 
@@ -27,6 +33,7 @@ TRUNCATED = "truncated"
 VALIDATION_REJECTED = "validation_rejected"
 LLM_ERROR = "llm_error"
 WRITEBACK_FAILED = "writeback_failed"
+UNPLANNABLE = "unplannable"
 
 # The statuses that mean "this batch is clean" — a chapter is `completed` only if ALL its
 # batches are in this set (INV-F15). Anything else makes the chapter completed_with_errors.

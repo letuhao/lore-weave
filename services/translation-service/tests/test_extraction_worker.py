@@ -177,6 +177,50 @@ async def test_cache_hit_skips_llm_and_reuses_entities():
 
 
 @pytest.mark.asyncio
+async def test_unplannable_oversized_window_skips_llm(caplog):
+    # D-CACHE-PLANNER-WIRING Part 2: a window too big to fit the context even alone is flagged
+    # `unplannable` by the pre-flight planner gate → its LLM call is SKIPPED (no truncation, no
+    # tokens), the batch outcome is recorded `unplannable`, and the chapter derives
+    # completed_with_errors so the un-fittable block is VISIBLE.
+    caplog.set_level(logging.WARNING, logger="app.workers.extraction_worker")
+    db = AsyncMock()
+    db.fetchval = AsyncMock(return_value=uuid4())  # owner_user_id resolve
+    db.execute = AsyncMock()
+    llm = MagicMock()
+    llm.submit_and_wait = AsyncMock()  # must NOT be awaited — the call is skipped
+    post = AsyncMock(return_value={"created": 0, "updated": 0, "skipped": 0})
+    persisted = {}
+
+    async def _capture_outcomes(pool, job_id, owner, book, chap, outcomes):
+        persisted["outcomes"] = outcomes
+
+    huge_window = "这是一个非常长的段落。" * 60_000  # one block far larger than the 8192 ctx
+
+    with patch.object(ew.httpx, "AsyncClient",
+                      return_value=_http_cm_returning({"title": "Ch1", "content": "text"})), \
+         patch.object(ew, "prepare_chapter_text", new=MagicMock(return_value="some chapter text")), \
+         patch.object(ew, "_plan_chapter_windows", return_value=[huge_window]), \
+         patch.object(ew, "plan_kind_batches", return_value=[["character"]]), \
+         patch.object(ew, "build_known_entities_context", return_value=""), \
+         patch.object(ew, "stamp_entity_provenance", new=MagicMock()), \
+         patch.object(ew, "_persist_batch_outcomes", new=AsyncMock(side_effect=_capture_outcomes)), \
+         patch.object(ew, "get_cached_batch", new=AsyncMock(return_value=None)), \
+         patch.object(ew, "put_batch", new=AsyncMock()), \
+         patch.object(ew, "post_extracted_entities", new=post):
+        result = await ew._process_extraction_chapter(
+            job_id=uuid4(), book_id="b", chapter_id=uuid4(), chapter_index=0,
+            extraction_profile={"character": {}}, kinds_metadata=[], known_entities=[],
+            source_language="zh", model_source="user_model", model_ref=str(uuid4()),
+            max_entities_per_kind=10, thinking_enabled=False, pool=_pool(db), llm_client=llm,
+        )
+
+    llm.submit_and_wait.assert_not_awaited()  # the oversized unit's call was skipped
+    assert result["chapter_status"] == "completed_with_errors"
+    assert [o["status"] for o in persisted["outcomes"]] == ["unplannable"]
+    assert any("UNPLANNABLE" in r.getMessage() for r in caplog.records)
+
+
+@pytest.mark.asyncio
 async def test_truncated_batch_is_not_cached():
     # CACHE/M6 (review-impl HIGH): a truncated batch (entities lost) must NOT be cached, so a
     # re-run re-attempts it instead of replaying the partial result forever.
