@@ -285,6 +285,27 @@ async def test_list_entities_forwards_status_filter(gc: GlossaryClient):
 
 
 @pytest.mark.asyncio
+async def test_list_entities_forwards_min_frequency(gc: GlossaryClient):
+    """min_frequency must be sent as the `min_frequency` query param (the Go
+    handler's chapter-appearance gate). Default is 2 (extraction-anchor semantics);
+    wiki overrides to 1 to include every entity on a low-chapter book."""
+    book_id = uuid4()
+    captured: list[tuple[str, str]] = []
+
+    def capture(request: httpx.Request) -> httpx.Response:
+        p = request.url.params
+        captured.append((p.get("status") or "", p.get("min_frequency") or ""))
+        return httpx.Response(200, json=[])
+
+    with respx.mock() as mock:
+        mock.get(_known_entities_url(str(book_id))).mock(side_effect=capture)
+        await gc.list_entities(book_id)  # default
+        await gc.list_entities(book_id, min_frequency=1)  # wiki path
+
+    assert captured == [("active", "2"), ("active", "1")]
+
+
+@pytest.mark.asyncio
 async def test_list_entities_5xx_returns_none(gc: GlossaryClient):
     """5xx must be treated as a soft failure — caller falls back to
     no-anchor extraction rather than crashing the job.

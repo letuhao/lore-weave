@@ -49,6 +49,7 @@ EXPECTED_TOOLS = {
     # Tier R
     "composition_get_work", "composition_list_outline",
     "composition_get_prose", "composition_list_canon_rules",
+    "composition_get_generation_job",
     # Tier A
     "composition_create_work",
     "composition_outline_node_create", "composition_outline_node_update",
@@ -60,7 +61,8 @@ EXPECTED_TOOLS = {
     "composition_publish", "composition_generate",
 }
 TIER_R = {"composition_get_work", "composition_list_outline",
-          "composition_get_prose", "composition_list_canon_rules"}
+          "composition_get_prose", "composition_list_canon_rules",
+          "composition_get_generation_job"}
 TIER_W = {"composition_publish", "composition_generate"}
 
 
@@ -296,6 +298,58 @@ async def test_get_work_grant_denied_rejected():
     async with _patched(grant_level=0):
         with pytest.raises(NotAccessibleError):
             await srv.composition_get_work(_Ctx(), project_id=str(PROJECT))
+
+
+async def test_get_generation_job_owner_ok():
+    """A generation job that belongs to the caller's Work+project is returned."""
+    import app.mcp.server as srv
+    from app.db.models import GenerationJob
+
+    job_id = uuid.uuid4()
+    job = GenerationJob(id=job_id, user_id=TEST_USER, project_id=PROJECT,
+                        operation="generate", status="completed")
+    jobs = AsyncMock()
+    jobs.get = AsyncMock(return_value=job)
+    async with _patched(grant_level=1, GenerationJobsRepo=jobs):
+        res = await srv.composition_get_generation_job(
+            _Ctx(), project_id=str(PROJECT), job_id=str(job_id),
+        )
+    assert res["id"] == str(job_id)
+    assert res["status"] == "completed"
+    jobs.get.assert_awaited_once_with(TEST_USER, job_id)
+
+
+async def test_get_generation_job_foreign_project_rejected():
+    """A job_id the caller owns but under a DIFFERENT project is not readable here
+    (no cross-Work leak) → H13 uniform error."""
+    import app.mcp.server as srv
+    from loreweave_mcp import NotAccessibleError
+    from app.db.models import GenerationJob
+
+    job_id, other_project = uuid.uuid4(), uuid.uuid4()
+    job = GenerationJob(id=job_id, user_id=TEST_USER, project_id=other_project,
+                        operation="generate", status="completed")
+    jobs = AsyncMock()
+    jobs.get = AsyncMock(return_value=job)
+    async with _patched(grant_level=1, GenerationJobsRepo=jobs):
+        with pytest.raises(NotAccessibleError):
+            await srv.composition_get_generation_job(
+                _Ctx(), project_id=str(PROJECT), job_id=str(job_id),
+            )
+
+
+async def test_get_generation_job_missing_rejected():
+    """An unknown job_id (repo returns None — user-scoped miss) → H13 uniform error."""
+    import app.mcp.server as srv
+    from loreweave_mcp import NotAccessibleError
+
+    jobs = AsyncMock()
+    jobs.get = AsyncMock(return_value=None)
+    async with _patched(grant_level=1, GenerationJobsRepo=jobs):
+        with pytest.raises(NotAccessibleError):
+            await srv.composition_get_generation_job(
+                _Ctx(), project_id=str(PROJECT), job_id=str(uuid.uuid4()),
+            )
 
 
 async def test_outline_node_create_returns_undo_hint():

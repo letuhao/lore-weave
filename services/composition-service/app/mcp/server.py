@@ -62,6 +62,7 @@ from app.db.repositories import (
     VersionMismatchError,
 )
 from app.db.repositories.canon_rules import CanonRulesRepo
+from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.db.repositories.outline import OutlineRepo
 from app.db.repositories.scene_links import SceneLinksRepo
 from app.db.repositories.works import WorksRepo
@@ -247,6 +248,42 @@ async def composition_list_canon_rules(
     rules = await (canon.list_active(tc.user_id, pid) if active_only
                    else canon.list_all(tc.user_id, pid))
     return {"rules": [r.model_dump(mode="json") for r in rules]}
+
+
+@mcp_server.tool(
+    name="composition_get_generation_job",
+    description=(
+        "Poll an async composition GENERATION job — the cowrite-engine job that a "
+        "confirmed composition_generate returns when the background worker is enabled "
+        "(it returns a `pending` job rather than inline prose). Returns the job's "
+        "status, its generated `result` once complete, and cost. Use to wait for a "
+        "generate to finish. Owner/grant-filtered (VIEW)."
+    ),
+    meta=require_meta(
+        "R", "book",
+        synonyms=["generation job", "poll generation", "generate status", "job status",
+                  "cowrite job", "writing job", "is the chapter done"],
+        tool_name="composition_get_generation_job",
+    ),
+)
+async def composition_get_generation_job(
+    ctx: MCPContext,
+    project_id: Annotated[str, "The Work's project_id."],
+    job_id: Annotated[str, "The generation job id returned by composition_generate."],
+) -> dict:
+    tc = _ctx(ctx)
+    works = WorksRepo(get_pool())
+    pid = UUID(project_id)
+    work = await _work_or_deny(works, tc, pid)
+    await _gate(tc, work.book_id, GrantLevel.VIEW)
+    jobs = GenerationJobsRepo(get_pool())
+    job = await jobs.get(tc.user_id, UUID(job_id))
+    # The repo already filters on user_id; also confirm the job belongs to THIS
+    # project so a job_id from another of the caller's Works can't be read through
+    # this one. A miss is the uniform "not accessible" (never an existence oracle).
+    if job is None or job.project_id != pid:
+        raise uniform_not_accessible()
+    return job.model_dump(mode="json")
 
 
 # ── Tier A — auto-write + Undo ────────────────────────────────────────────────

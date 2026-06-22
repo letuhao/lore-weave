@@ -10,6 +10,7 @@ from loreweave_obs import current_otel_trace_id, setup_tracing
 
 from app.api import eval as eval_api
 from app.api import book_profile, compose, compose_tasks, gaps, internal_job_control, jobs, observability, proposals, sources, templates, uploads
+from app.clients.grant_client import close_grant_client, init_grant_client
 from app.config import settings
 from app.db.migrate import run_migrations
 from app.db.pool import close_pool, create_pool
@@ -29,6 +30,9 @@ async def lifespan(app: FastAPI):
     # KG/glossary/book client wiring here (C1), NO redis/minio (later cycles).
     pool = await create_pool(settings.database_url)
     await run_migrations(pool)
+    # E0 grant authority (D-ENRICH-MCP-OWNER-GATE) — the auto-enrich tenancy gate
+    # resolves (user, book) grants against book-service via this shared client.
+    init_grant_client()
     logger.info("lore-enrichment-service started on port %d", settings.port)
 
     # MCP fan-out — run the /mcp StreamableHTTP session manager. The /mcp sub-app is
@@ -56,6 +60,7 @@ async def lifespan(app: FastAPI):
         if mcp_exit_stack is not None:
             with contextlib.suppress(Exception):
                 await mcp_exit_stack.aclose()
+        await close_grant_client()
         await close_pool()
 
 

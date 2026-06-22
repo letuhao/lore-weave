@@ -250,11 +250,15 @@ describe('X-Admin-Token is never logged (§6.7, §11 #7)', () => {
       adminToken: ADMIN_TOKEN,
       userId: 'u1',
       traceId: 't1',
+      projectId: 'proj-9',
     });
     expect(headers['X-Admin-Token']).toBe(ADMIN_TOKEN);
     expect(headers['X-Internal-Token']).toBe('tok');
     expect(headers['X-User-Id']).toBe('u1');
     expect(headers['X-Trace-Id']).toBe('t1');
+    expect(headers['X-Project-Id']).toBe('proj-9'); // M1: forwarded when present
+    // omitted when the envelope has no project scope
+    expect((admin as any).adminHeaders({ adminToken: ADMIN_TOKEN })['X-Project-Id']).toBeUndefined();
   });
 
   it('a failing admin tool call logs the failure WITHOUT the admin token', async () => {

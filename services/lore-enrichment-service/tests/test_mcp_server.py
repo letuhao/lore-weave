@@ -161,6 +161,10 @@ async def _patched(auto_enrich_impl):
     with (
         patch.object(srv, "_ctx", side_effect=lambda ctx: ctx),
         patch.object(srv, "get_pool", return_value=object()),
+        # The tool resolves the grant client to pass to auto_enrich explicitly
+        # (it is called as a plain fn — Depends defaults don't resolve). Stub it
+        # so no real httpx client is constructed; auto_enrich itself is faked.
+        patch.object(srv, "get_grant_client", return_value=object()),
         patch.object(srv, "auto_enrich", new=auto_enrich_impl),
     ):
         yield srv
@@ -171,11 +175,12 @@ async def test_auto_enrich_delegates_with_envelope_identity():
 
     captured = {}
 
-    async def fake_auto_enrich(project_id, body, *, principal, pool):
+    async def fake_auto_enrich(project_id, body, *, principal, pool, grants):
         captured["project_id"] = project_id
         captured["book_id"] = body.book_id
         captured["user_id"] = principal.user_id
         captured["max_gaps"] = body.max_gaps
+        captured["grants"] = grants  # the tool must pass a grant client explicitly
         return {"project_id": str(project_id), "job_id": "job-1", "enqueued": True}
 
     async with _patched(AsyncMock(side_effect=fake_auto_enrich)):
@@ -191,6 +196,10 @@ async def test_auto_enrich_delegates_with_envelope_identity():
     assert captured["book_id"] == BOOK
     assert captured["user_id"] == TEST_USER  # identity from the envelope, not an arg
     assert captured["max_gaps"] == 7
+    # D-ENRICH-MCP-OWNER-GATE: the tool MUST pass the grant client to auto_enrich
+    # explicitly (Depends defaults don't resolve on a direct call), else the gate
+    # would receive a Depends sentinel and AttributeError.
+    assert captured["grants"] is not None
 
 
 async def test_auto_enrich_passes_explicit_targets():
@@ -198,7 +207,7 @@ async def test_auto_enrich_passes_explicit_targets():
 
     captured = {}
 
-    async def fake_auto_enrich(project_id, body, *, principal, pool):
+    async def fake_auto_enrich(project_id, body, *, principal, pool, grants):
         captured["targets"] = body.targets
         return {"enqueued": True}
 
@@ -218,7 +227,7 @@ async def test_auto_enrich_passes_explicit_targets():
 async def test_auto_enrich_http_error_becomes_tool_refusal():
     import app.mcp.server as srv
 
-    async def boom(project_id, body, *, principal, pool):
+    async def boom(project_id, body, *, principal, pool, grants):
         raise HTTPException(status_code=400, detail="unknown technique 'bogus'")
 
     async with _patched(AsyncMock(side_effect=boom)):
@@ -232,3 +241,23 @@ async def test_auto_enrich_http_error_becomes_tool_refusal():
     assert res["success"] is False
     assert "bogus" in res["error"]
     assert res["status"] == 400
+
+
+async def test_auto_enrich_denied_grant_becomes_tool_refusal():
+    # D-ENRICH-MCP-OWNER-GATE: a denied grant surfaces from auto_enrich as a 404
+    # HTTPException; the tool degrades it to a structured refusal, not a raised 5xx.
+    import app.mcp.server as srv
+
+    async def denied(project_id, body, *, principal, pool, grants):
+        raise HTTPException(status_code=404, detail="not found")
+
+    async with _patched(AsyncMock(side_effect=denied)):
+        res = await srv.lore_enrichment_auto_enrich(
+            _Ctx(), project_id=str(PROJECT),
+            args=srv._AutoEnrichArgs(
+                book_id=str(BOOK), embedding_model_ref=str(EMB),
+                generation_model_ref=str(GEN),
+            ),
+        )
+    assert res["success"] is False
+    assert res["status"] == 404

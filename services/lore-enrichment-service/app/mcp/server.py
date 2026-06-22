@@ -43,6 +43,7 @@ from loreweave_mcp import (
 
 from app.api.gaps import AutoEnrichBody, AutoEnrichTarget, auto_enrich
 from app.api.principal import Principal
+from app.clients.grant_client import get_grant_client
 from app.config import settings
 from app.db.pool import get_pool
 
@@ -121,11 +122,18 @@ async def lore_enrichment_auto_enrich(
     # Reuse the REST handler verbatim with the envelope identity. It raises
     # HTTPException on a bad technique (400) or an upstream glossary error (502/503);
     # surface those as a structured tool refusal (not a raised 5xx).
+    # NOTE: `auto_enrich` is called as a plain function here (not via FastAPI DI), so
+    # its `Depends(...)` defaults are NOT resolved — every dependency it needs MUST be
+    # passed explicitly. The grant gate (D-ENRICH-MCP-OWNER-GATE) therefore requires
+    # `grants=get_grant_client()`; omitting it would pass a `Depends` sentinel and the
+    # gate would AttributeError. The MCP envelope identity (tc.user_id, trusted via the
+    # internal token) is the subject the grant is resolved for.
     try:
         result = await auto_enrich(
             UUID(project_id), body,
             principal=Principal(user_id=tc.user_id),
             pool=get_pool(),
+            grants=get_grant_client(),
         )
     except HTTPException as exc:
         return {"success": False, "error": str(exc.detail), "status": exc.status_code}
