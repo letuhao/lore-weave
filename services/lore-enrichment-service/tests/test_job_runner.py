@@ -673,6 +673,42 @@ async def test_generation_error_surfaces_as_skip():
     assert outcome.skipped_gaps == ["loc:蓬萊"]
 
 
+async def test_empty_completion_skips_gap_not_fail_job():
+    """D-JOURNEY-ENRICH-EMPTY-COMPLETION — a CompletionSeamError (the LLM returned
+    an empty completion / stream hiccup for ONE gap) is a per-gap SKIP, NOT a
+    whole-job failure. One model blip must not discard the other gaps' work."""
+    from app.generation.complete import CompletionSeamError
+
+    store = InMemoryProposalStore()
+
+    class _EmptyOnFirst(SchemaGovernedGenerator):
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)
+            self._n = 0
+
+        async def generate(self, proposal, context):
+            self._n += 1
+            if self._n == 1:
+                raise CompletionSeamError("LLM stream produced no token text (empty completion)")
+            return await super().generate(proposal, context)
+
+    pipeline = GapPipeline(
+        retrieval=_FakeRetrieval(),
+        generator=_EmptyOnFirst(complete=_const_complete("{}")),
+        verifier=_verifier(),
+    )
+    runner = JobRunner(
+        store=store, pipeline=pipeline, cost_strategy=TemplateStrategy(),
+        emitter=_emitter(), budget=JobCostBudget(None),
+    )
+    outcome = await runner.run_job(
+        job_id="job-1", gaps=[_gap("蓬萊")], context=_ctx()
+    )
+    # The job COMPLETES (not failed) with the empty-completion gap skipped.
+    assert outcome.final_state == "completed"
+    assert outcome.skipped_gaps == ["loc:蓬萊"]
+
+
 # ── slice B: a grounding-starved gap is skipped with an ACTIONABLE completion note
 
 

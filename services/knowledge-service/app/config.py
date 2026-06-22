@@ -84,13 +84,16 @@ class Settings(BaseSettings):
     lore_enrichment_client_timeout_s: float = 5.0
     book_profile_cache_ttl_s: float = 60.0
 
-    # wiki-llm M6 — batch wiki-generation orchestrator. `wiki_gen_enabled` gates
-    # the stream consumer (OFF by default: generation costs tokens, so a deploy
-    # never auto-starts generating). cost_per_article is the per-article ESTIMATE
-    # charged against a job's max_spend_usd (the LLMClient meters real tokens via
-    # provider-registry; precise per-job metering is a follow-up). prompt/pipeline
-    # version stamp the C7 build_inputs fingerprint (Phase-2 staleness).
-    wiki_gen_enabled: bool = False
+    # wiki-llm M6 — batch wiki-generation orchestrator.
+    # NOTE (D-JOURNEY-WIKI-FLAG): `wiki_gen_enabled` is DEPRECATED + no longer gates
+    # the stream consumer, which now ALWAYS runs (it is idle/free until a user-
+    # triggered, cost-gated job arrives — gating it off-by-default silently pended
+    # every wiki-gen job). Spend is bounded per-request (max_spend_usd + the
+    # cost-gated trigger), not by this platform env. Kept only for back-compat;
+    # default True. cost_per_article is the per-article ESTIMATE charged against a
+    # job's max_spend_usd. prompt/pipeline version stamp the C7 build_inputs
+    # fingerprint (Phase-2 staleness).
+    wiki_gen_enabled: bool = True
     wiki_gen_cost_per_article_usd: float = 0.05
     wiki_gen_passage_limit: int = 8
     wiki_prompt_version: str = "wiki-v1"

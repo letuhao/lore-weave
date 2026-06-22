@@ -170,8 +170,13 @@ async def _redrive_locked(
     finally:
         await bundle.aclose()
 
+    # NOTE (D-JOURNEY-ENRICH-COST-UNITS): `spent` is denominated in TOKENS, not USD
+    # (tokens.py — the per-job cost-cap is a real-token count per the C1 PO ruling).
+    # The DB/API still expose it under `*_cost_usd` names (a misleading rename that
+    # needs a migration + FE contract change — tracked); label it `tokens` here so the
+    # log doesn't read 8409 as dollars.
     logger.info(
-        "resume %s → %s (skipped_done=%d, new_proposals=%d, spent=%.4f)",
+        "resume %s → %s (skipped_done=%d, new_proposals=%d, spent=%.0f tokens)",
         job_id, outcome.final_state, len(outcome.resumed_skipped),
         len(outcome.proposals), outcome.spent,
     )
