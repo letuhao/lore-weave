@@ -924,6 +924,20 @@ async def kg_build_wiki(
     return await _dispatch(ctx, "kg_build_wiki", args)
 
 
+@mcp_server.tool(
+    name="kg_run_benchmark",
+    description=(
+        "Run the required embedding-quality benchmark for the current project's embedding "
+        "model. Build-KG (kg_build_graph) is BLOCKED until this passes — call this when a "
+        "build preview warns the benchmark is not passing, instead of sending the user to "
+        "the UI. Cheap (embeddings only, no LLM cost) and runs immediately on a hidden "
+        "sandbox. Returns passed + gate_failures; a pass enables Build-KG for this model."
+    ),
+)
+async def kg_run_benchmark(ctx: MCPContext) -> dict:
+    return await _dispatch(ctx, "kg_run_benchmark", {})
+
+
 # ── ASGI factory ──────────────────────────────────────────────────────
 
 

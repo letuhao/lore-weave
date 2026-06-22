@@ -170,12 +170,83 @@ async def _handle_kg_build_wiki(ctx: "ToolContext", args: KgBuildWikiArgs) -> di
     }
 
 
+class KgRunBenchmarkArgs(BaseModel):
+    """`kg_run_benchmark` — R4 (D-JOURNEY-KG-BENCHMARK-UX). Run the K17.9 golden-set
+    embedding benchmark for the project's configured embedding model. No args — the
+    model is read from the project; the run executes on a hidden sandbox (so it never
+    touches the real graph), and a pass enables Build-KG for that model."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+async def _handle_kg_run_benchmark(ctx: "ToolContext", args: KgRunBenchmarkArgs) -> dict:
+    """Direct action (NOT cost-gated — embeddings-only, ~$0). The agent calls this when
+    `kg_build_graph`'s preview shows '⚠ benchmark not passing', instead of dead-ending
+    into the FE. Owner-only (mirrors the REST benchmark-run route). Runs on the hidden
+    per-(user, model) sandbox via the same orchestration the REST endpoint uses, so it
+    can't trip not_benchmark_project and never pollutes the real graph (R1)."""
+    from app.benchmark.runner import (
+        BenchmarkAlreadyRunningError,
+        FixtureLoadIncompleteError,
+        NotBenchmarkProjectError,
+        UnknownEmbeddingModelError,
+        run_project_benchmark,
+    )
+    from app.db.pool import get_knowledge_pool
+    from app.tools.executor import ToolExecutionError
+
+    owner = await _resolve_project_owner(ctx, GrantLevel.OWNER)
+    project = await ctx.projects_repo.get(owner, ctx.project_id)
+    if project is None:
+        raise ToolExecutionError("project not found")
+    if not project.embedding_model or not project.embedding_dimension:
+        raise ToolExecutionError(
+            "this project has no embedding model configured — set one first"
+        )
+    sandbox = await ctx.projects_repo.get_or_create_benchmark_sandbox(
+        owner, project.embedding_model, project.embedding_dimension,
+    )
+    try:
+        result = await run_project_benchmark(
+            user_id=owner,
+            project_id=sandbox.project_id,
+            runs=3,  # the runner clamps up to min_runs anyway (R3)
+            pool=get_knowledge_pool(),
+            projects_repo=ctx.projects_repo,
+            embedding_client=ctx.embedding_client,
+        )
+    except (UnknownEmbeddingModelError, NotBenchmarkProjectError) as e:
+        raise ToolExecutionError(str(e))
+    except BenchmarkAlreadyRunningError:
+        raise ToolExecutionError("a benchmark is already running for this model — retry shortly")
+    except FixtureLoadIncompleteError:
+        raise ToolExecutionError(
+            "the embedding provider returned an incomplete fixture (provider flake) — retry"
+        )
+
+    return {
+        "passed": result.passed,
+        "embedding_model": result.embedding_model,
+        "recall_at_3": result.recall_at_3,
+        "mrr": result.mrr,
+        "runs": result.runs,
+        "gate_failures": list(result.gate_failures),
+        "summary": (
+            "benchmark PASSED — Build Knowledge Graph is now enabled for this embedding model"
+            if result.passed
+            else f"benchmark did NOT pass (gate_failures={list(result.gate_failures)})"
+        ),
+    }
+
+
 BUILD_TOOL_ARG_MODELS: dict[str, type[BaseModel]] = {
     "kg_build_graph": KgBuildGraphArgs,
     "kg_build_wiki": KgBuildWikiArgs,
+    "kg_run_benchmark": KgRunBenchmarkArgs,
 }
 
 BUILD_TOOL_HANDLERS = {
     "kg_build_graph": _handle_kg_build_graph,
     "kg_build_wiki": _handle_kg_build_wiki,
+    "kg_run_benchmark": _handle_kg_run_benchmark,
 }

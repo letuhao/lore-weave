@@ -378,4 +378,16 @@ TOOL_DEFINITIONS: list[dict] = [
         },
         ["model_ref"],
     ),
+    # Direct action — run the embedding benchmark that gates Build-KG (R4).
+    _tool(
+        "kg_run_benchmark",
+        "Run the required embedding-quality benchmark for the current project's embedding "
+        "model. Build-KG (kg_build_graph) is BLOCKED until this passes — call this when a "
+        "build preview warns the benchmark is not passing, instead of sending the user to "
+        "the UI. Cheap (embeddings only, no LLM cost) and runs immediately on a hidden "
+        "sandbox (it never touches the real graph). Returns passed + gate_failures; a pass "
+        "enables Build-KG for this embedding model.",
+        {},
+        [],
+    ),
 ]
