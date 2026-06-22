@@ -83,9 +83,9 @@ class CreateJobBody(BaseModel):
     # END-TO-END: the runner resolves the pipeline through the gate-aware factory,
     # which REFUSES it (409) while the live eval gate is LOCKED (DEFERRED-054).
     technique: str = Field(default=Technique.RETRIEVAL.value)
-    # Cost guardrail (C8); aligns with the frozen contract's max_spend_usd. The
+    # Cost guardrail (C8); aligns with the frozen contract's max_spend_tokens. The
     # reserved eval-cost line (M5) is held back from this cap.
-    max_spend_usd: float | None = Field(default=None, ge=0.0)
+    max_spend_tokens: float | None = Field(default=None, ge=0.0)
     eval_reserve_fraction: float = Field(default=0.15, ge=0.0, lt=1.0)
     top_k: int = Field(default=5, ge=1, le=20)
 
@@ -208,7 +208,7 @@ async def create_job(
         book_id=str(body.book_id) if body.book_id else None,
         technique=technique.value,
         entity_kind="location",
-        max_spend=body.max_spend_usd,
+        max_spend=body.max_spend_tokens,
         estimated_cost=0.0,
         model_name=_model_name,
     )
@@ -231,7 +231,7 @@ async def create_job(
             user_id=str(user_id),
             project_id=str(body.project_id),
             embedding_model_ref=str(body.embedding_model_ref),
-            cost_cap=body.max_spend_usd,
+            cost_cap=body.max_spend_tokens,
             eval_reserve_fraction=body.eval_reserve_fraction,
             top_k=body.top_k,
             technique=technique.value,
@@ -340,7 +340,7 @@ async def list_jobs(
         )
         rows = await conn.fetch(
             f"""SELECT job_id, project_id, status, technique, entity_kind, book_id, proposals_total,
-                      estimated_cost_usd, actual_cost_usd, max_spend_usd,
+                      estimated_cost_tokens, actual_cost_tokens, max_spend_tokens,
                       error_message, created_at
                FROM enrichment_job
                WHERE {where}
@@ -369,7 +369,7 @@ async def get_job(
     async with pool.acquire() as conn:
         r = await conn.fetchrow(
             """SELECT job_id, project_id, status, technique, entity_kind, book_id, proposals_total,
-                      estimated_cost_usd, actual_cost_usd, max_spend_usd,
+                      estimated_cost_tokens, actual_cost_tokens, max_spend_tokens,
                       error_message, created_at
                FROM enrichment_job
                WHERE user_id=$1 AND project_id=$2 AND job_id=$3""",
@@ -391,9 +391,9 @@ def _job_row(r: asyncpg.Record) -> dict:
         "entity_kind": r["entity_kind"],
         "book_id": str(r["book_id"]) if r["book_id"] is not None else None,
         "proposals_total": r["proposals_total"],
-        "estimated_cost": float(r["estimated_cost_usd"]),
-        "actual_cost": float(r["actual_cost_usd"]),
-        "max_spend": float(r["max_spend_usd"]) if r["max_spend_usd"] is not None else None,
+        "estimated_cost": float(r["estimated_cost_tokens"]),
+        "actual_cost": float(r["actual_cost_tokens"]),
+        "max_spend": float(r["max_spend_tokens"]) if r["max_spend_tokens"] is not None else None,
         "error_message": r["error_message"],
         "created_at": r["created_at"].isoformat(),
     }
@@ -412,7 +412,7 @@ def _job_row(r: asyncpg.Record) -> dict:
 # request's targets + model_refs are not persisted on the job row, so the runner
 # cannot be rebuilt here). Re-running a job IS safe, though: the per-gap
 # idempotent persist (UNIQUE(job_id, gap_ref)) prevents DUPLICATE proposals and
-# ``build_live_runner(spent_so_far=...)`` (seeded from ``actual_cost_usd`` via
+# ``build_live_runner(spent_so_far=...)`` (seeded from ``actual_cost_tokens`` via
 # :func:`load_spent_so_far`) prevents DOUBLE-CHARGING the budget on a re-run.
 # Full auto-resume (re-drive only the not-yet-persisted gaps from a single
 # resume call) is tracked as a deferral — see SESSION_PATCH D-C14-FULL-RESUME.
@@ -420,11 +420,11 @@ def _job_row(r: asyncpg.Record) -> dict:
 async def load_spent_so_far(
     *, pool: asyncpg.Pool, job_id: UUID
 ) -> float:
-    """Read what a prior run already spent (``actual_cost_usd``) so a re-run can
+    """Read what a prior run already spent (``actual_cost_tokens``) so a re-run can
     seed its budget and NOT reset to 0 / double-spend (WARN-1)."""
     async with pool.acquire() as conn:
         v = await conn.fetchval(
-            "SELECT actual_cost_usd FROM enrichment_job WHERE job_id=$1", job_id
+            "SELECT actual_cost_tokens FROM enrichment_job WHERE job_id=$1", job_id
         )
     return float(v) if v is not None else 0.0
 

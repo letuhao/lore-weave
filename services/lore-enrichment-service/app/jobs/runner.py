@@ -28,7 +28,7 @@ Resume/re-run SAFETY (WARN-1): a paused job is re-run by invoking ``run_job``
 again on a fresh runner seeded with the prior spend (``build_live_runner
 (spent_so_far=...)``). Re-running is SAFE but NOT yet skip-prior-work: it
 re-processes from gap 0, but it does NOT double-charge (the budget is seeded
-from ``actual_cost_usd``) and does NOT duplicate proposals (the per-gap
+from ``actual_cost_tokens``) and does NOT duplicate proposals (the per-gap
 idempotent persist, UNIQUE(job_id, gap_ref), reloads an already-persisted gap's
 row instead of inserting again — ``persisted.deduped`` flags it). Skipping the
 already-done gaps on resume is tracked as D-C14-FULL-RESUME. Events are

@@ -713,7 +713,7 @@ paths:
                 technique: { type: string, default: retrieval }
                 max_gaps: { type: integer, minimum: 1, maximum: 100, default: 10 }
                 coverage_limit: { type: integer, minimum: 1, maximum: 1000, default: 200 }
-                max_spend_usd: { type: number, minimum: 0 }
+                max_spend_tokens: { type: number, minimum: 0 }
                 eval_reserve_fraction: { type: number, minimum: 0, default: 0.15 }
                 top_k: { type: integer, minimum: 1, maximum: 20, default: 5 }
                 targets:
@@ -847,7 +847,7 @@ paths:
                   description: >
                     Output technique for gap input (retrieval|fabrication|recook,
                     gate-enforced). Ignored for draft (forced to compose_draft).
-                max_spend_usd: { type: number, minimum: 0 }
+                max_spend_tokens: { type: number, minimum: 0 }
                 eval_reserve_fraction: { type: number, minimum: 0, default: 0.15 }
                 top_k: { type: integer, minimum: 1, maximum: 20, default: 5 }
       responses:
@@ -1607,19 +1607,20 @@ components:
             entity's MISSING dimensions via the C7 gap engine.
           items:
             $ref: '#/components/schemas/JobGapTarget'
-        max_spend_usd:
+        max_spend_tokens:
           type: number
           minimum: 0
           description: >
-            Cost guardrail (C8). The job PAUSES (resumable) on a working-cap
-            breach; a fraction (eval_reserve_fraction) is held back for the C15
-            eval pass (M5) and is never consumed by the pipeline.
+            Cost guardrail (C8), denominated in REAL TOKENS (the per-job cap is a
+            token count per the C1 PO ruling — NOT dollars). The job PAUSES
+            (resumable) on a working-cap breach; a fraction (eval_reserve_fraction)
+            is held back for the C15 eval pass (M5) and is never consumed.
         eval_reserve_fraction:
           type: number
           minimum: 0
           exclusiveMaximum: 1.0
           default: 0.15
-          description: Fraction of max_spend_usd reserved for the C15 eval pass (M5).
+          description: Fraction of max_spend_tokens reserved for the C15 eval pass (M5).
         top_k:
           type: integer
           minimum: 1
@@ -1699,8 +1700,8 @@ components:
         - user_id
         - status
         - technique
-        - estimated_cost_usd
-        - actual_cost_usd
+        - estimated_cost
+        - actual_cost
         - proposals_total
         - created_at
         - updated_at
@@ -1721,15 +1722,18 @@ components:
           $ref: '#/components/schemas/Technique'
         entity_kind:
           type: [string, 'null']
-        estimated_cost_usd:
+        estimated_cost:
           type: number
           minimum: 0
-        actual_cost_usd:
+          description: Estimated job cost in TOKENS (D-JOURNEY-ENRICH-COST-UNITS; not USD).
+        actual_cost:
           type: number
           minimum: 0
-        max_spend_usd:
+          description: Actual tokens spent so far (seeds a resume's budget).
+        max_spend:
           type: [number, 'null']
           minimum: 0
+          description: The job's token cost-cap (null == uncapped).
         proposals_total:
           type: integer
           minimum: 0

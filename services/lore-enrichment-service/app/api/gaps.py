@@ -66,7 +66,7 @@ class AutoEnrichBody(BaseModel):
     technique: str = "retrieval"
     max_gaps: int = Field(default=10, ge=1, le=100)        # top-N ranked gaps to enrich
     coverage_limit: int = Field(default=200, ge=1, le=1000)  # entities scanned for gaps
-    max_spend_usd: float | None = Field(default=None, ge=0.0)
+    max_spend_tokens: float | None = Field(default=None, ge=0.0)
     eval_reserve_fraction: float = Field(default=0.15, ge=0.0, lt=1.0)
     top_k: int = Field(default=5, ge=1, le=20)
     # LE-064 — when set, enrich exactly these targets (the per-row "enrich →"),
@@ -326,7 +326,7 @@ async def auto_enrich(
         book_id=str(body.book_id),
         technique=technique.value,
         entity_kind="location",
-        max_spend=body.max_spend_usd,
+        max_spend=body.max_spend_tokens,
         estimated_cost=0.0,
     )
     await save_job_request(
@@ -339,7 +339,7 @@ async def auto_enrich(
             "technique": technique.value,
             "top_k": body.top_k,
             "eval_reserve_fraction": body.eval_reserve_fraction,
-            "max_spend_usd": body.max_spend_usd,
+            "max_spend_tokens": body.max_spend_tokens,
             "entity_kind": "location",
             "targets": targets,
             "user_id": str(principal.user_id),

@@ -25,8 +25,8 @@ const J = (over: Partial<Job> = {}): Job =>
     entity_kind: null,
     book_id: 'book-1',
     proposals_total: 7,
-    estimated_cost: 0.5,
-    actual_cost: 0.1234,
+    estimated_cost: 500,
+    actual_cost: 1234,
     max_spend: null,
     error_message: null,
     created_at: '2026-06-01T10:00:00Z',
@@ -75,15 +75,18 @@ describe('JobsPanel', () => {
   });
 
   it('renders a row per job with tier+technique, status badge, proposals_total, cost, and created_at', () => {
-    jobsStub.items = [J({ technique: 'recook', status: 'completed', proposals_total: 7, actual_cost: 0.1234 })];
+    jobsStub.items = [J({ technique: 'recook', status: 'completed', proposals_total: 7, actual_cost: 1234 })];
     renderPanel();
     // tierOf('recook') === 'P3'; rendered as "P3 · recook"
     expect(screen.getByText('P3 · recook')).toBeInTheDocument();
     // StatusBadge label is the i18n key the panel builds: jobs.status.<status>
     expect(screen.getByText('jobs.status.completed')).toBeInTheDocument();
     expect(screen.getByText('7')).toBeInTheDocument();
-    // actual_cost.toFixed(4) prefixed with $
-    expect(screen.getByText('$0.1234')).toBeInTheDocument();
+    // D-JOURNEY-ENRICH-COST-UNITS: cost is shown in TOKENS (rounded, `tok` unit), no `$`.
+    const cost = screen.getByTestId('job-cost-job-1');
+    expect(cost).toHaveTextContent('1,234');
+    expect(cost).toHaveTextContent('tok');
+    expect(cost.textContent).not.toContain('$');
     // created_at is rendered via toLocaleString()
     expect(
       screen.getByText(new Date('2026-06-01T10:00:00Z').toLocaleString()),
@@ -145,11 +148,12 @@ describe('JobsPanel', () => {
   });
 
   it('shows spent-vs-cap when a cost cap is set (#5)', () => {
-    jobsStub.items = [J({ actual_cost: 0.1234, max_spend: 2 })];
+    jobsStub.items = [J({ actual_cost: 1234, max_spend: 2000 })];
     renderPanel();
     const cost = screen.getByTestId('job-cost-job-1');
-    expect(cost).toHaveTextContent('$0.1234');
-    expect(cost).toHaveTextContent('/ $2.00');
+    expect(cost).toHaveTextContent('1,234');
+    expect(cost).toHaveTextContent('/ 2,000');
+    expect(cost).toHaveTextContent('tok');
   });
 
   it('shows the Resume button only for a paused job', () => {

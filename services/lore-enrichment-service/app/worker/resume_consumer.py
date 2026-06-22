@@ -130,7 +130,11 @@ async def _redrive_locked(
             # Optional (D-COMPOSE-S1-EMBED-REF): a compose_draft job has no embed ref;
             # build_live_runner ignores it (the embed seam resolves from the ctx).
             embedding_model_ref=request.get("embedding_model_ref"),
-            cost_cap=request.get("max_spend_usd"),
+            # D-JOURNEY-ENRICH-COST-UNITS: the cap is now persisted under
+            # `max_spend_tokens`; fall back to the legacy `max_spend_usd` key so an
+            # in-flight job persisted before the rename still resumes (same TOKEN value,
+            # only the key name changed).
+            cost_cap=request.get("max_spend_tokens", request.get("max_spend_usd")),
             eval_reserve_fraction=float(request.get("eval_reserve_fraction") or 0.15),
             top_k=int(request.get("top_k") or 5),
             technique=str(request.get("technique") or "retrieval"),
@@ -170,11 +174,9 @@ async def _redrive_locked(
     finally:
         await bundle.aclose()
 
-    # NOTE (D-JOURNEY-ENRICH-COST-UNITS): `spent` is denominated in TOKENS, not USD
-    # (tokens.py — the per-job cost-cap is a real-token count per the C1 PO ruling).
-    # The DB/API still expose it under `*_cost_usd` names (a misleading rename that
-    # needs a migration + FE contract change — tracked); label it `tokens` here so the
-    # log doesn't read 8409 as dollars.
+    # `spent` is denominated in TOKENS, not USD (tokens.py — the per-job cost-cap is a
+    # real-token count per the C1 PO ruling). The DB columns + API fields now carry the
+    # honest `*_tokens` names (D-JOURNEY-ENRICH-COST-UNITS cleared); `tokens` here matches.
     logger.info(
         "resume %s → %s (skipped_done=%d, new_proposals=%d, spent=%.0f tokens)",
         job_id, outcome.final_state, len(outcome.resumed_skipped),

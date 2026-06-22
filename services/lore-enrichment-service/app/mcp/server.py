@@ -16,7 +16,7 @@ DESIGN (mirrors the proven jobs/composition `loreweave_mcp` facades):
 - **Scope = book**; the arg model is `ForbidExtra` so the LLM cannot add fields.
 - **Tier A** (auto-write): auto-enrich ENQUEUES an async job that only ever
   produces QUARANTINED proposals (H0 — nothing lands in canon without human
-  promotion) and is cost-bounded (`max_spend_usd` + the per-job cap). It is NOT a
+  promotion) and is cost-bounded (`max_spend_tokens` + the per-job cap). It is NOT a
   destructive/canon write, so it does not need the confirm-token (Tier-W) gate.
 
 The tool delegates to the EXISTING REST handler (`app.api.gaps.auto_enrich`) with a
@@ -67,7 +67,7 @@ class _AutoEnrichArgs(ForbidExtra):
     technique: str = "retrieval"
     max_gaps: int = 10
     coverage_limit: int = 200
-    max_spend_usd: float | None = None
+    max_spend_tokens: float | None = None
     eval_reserve_fraction: float = 0.15
     top_k: int = 5
     # Optional explicit gaps to enrich (the per-row "enrich →"); omit to auto-detect
@@ -83,7 +83,7 @@ class _AutoEnrichArgs(ForbidExtra):
         "and enqueue a background job that drafts enrichment for the top-N — grounded "
         "in the book's own text. Returns the job id immediately (async). Every "
         "generated proposal is QUARANTINED for human review (nothing lands in canon "
-        "automatically); spend is bounded by max_spend_usd. Requires the book to have "
+        "automatically); spend is bounded by max_spend_tokens. Requires the book to have "
         "been extracted first (it enriches existing entities). Pass `targets` to "
         "enrich specific entities instead of the auto-detected top-N."
     ),
@@ -111,7 +111,7 @@ async def lore_enrichment_auto_enrich(
             technique=args.technique,
             max_gaps=args.max_gaps,
             coverage_limit=args.coverage_limit,
-            max_spend_usd=args.max_spend_usd,
+            max_spend_tokens=args.max_spend_tokens,
             eval_reserve_fraction=args.eval_reserve_fraction,
             top_k=args.top_k,
             targets=targets,

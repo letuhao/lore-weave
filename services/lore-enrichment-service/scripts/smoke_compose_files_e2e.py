@@ -109,7 +109,7 @@ def main() -> int:
                 "book_id": args.project, "input_source": "files", "upload_ids": upload_ids,
                 "target": {"mode": "new", "canonical_name": TARGET, "entity_kind": "location"},
                 "embedding_model_ref": args.embed, "generation_model_ref": args.gen,
-                "technique": "retrieval", "max_spend_usd": 100000, "top_k": 5,
+                "technique": "retrieval", "max_spend_tokens": 100000, "top_k": 5,
             },
         )
         print(r.status_code, r.text[:200])

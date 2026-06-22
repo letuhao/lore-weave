@@ -146,7 +146,7 @@ export function ComposePanel() {
         technique: config.technique, // #2: author-chosen technique (retrieval|fabrication|recook)
         generation_model_ref: config.genModel,
         embedding_model_ref: config.embedModel || undefined,
-        max_spend_usd: maxSpend,
+        max_spend_tokens: maxSpend,
         top_k: topK,
       });
     }
@@ -159,7 +159,7 @@ export function ComposePanel() {
         technique: config.technique, // #2
         generation_model_ref: config.genModel,
         embedding_model_ref: config.embedModel || undefined,
-        max_spend_usd: maxSpend,
+        max_spend_tokens: maxSpend,
         top_k: topK,
       });
     }
@@ -171,7 +171,7 @@ export function ComposePanel() {
         technique: intentTechnique,
         generation_model_ref: config.genModel,
         embedding_model_ref: config.embedModel || undefined,
-        max_spend_usd: maxSpend,
+        max_spend_tokens: maxSpend,
         top_k: topK,
       });
     }
@@ -183,7 +183,7 @@ export function ComposePanel() {
       generation_model_ref: config.genModel,
       // omit when unset → the BE treats embed as optional for draft.
       embedding_model_ref: config.embedModel || undefined,
-      max_spend_usd: maxSpend,
+      max_spend_tokens: maxSpend,
       top_k: topK,
     });
   };

@@ -5,9 +5,9 @@ overrides, NOT the store class directly. The basic happy path (detect → create
 job → enqueue → 202) is already covered in ``test_gaps_api``; this file adds the
 gaps that path does NOT cover:
 
-  1. cost-cap round-trip — ``max_spend_usd`` set → ``create_job`` receives
+  1. cost-cap round-trip — ``max_spend_tokens`` set → ``create_job`` receives
      ``max_spend`` AND the persisted ``job_request`` carries the budget triad the
-     worker reads back (``max_spend_usd`` + ``eval_reserve_fraction`` + ``top_k``).
+     worker reads back (``max_spend_tokens`` + ``eval_reserve_fraction`` + ``top_k``).
   2. ZERO gaps detected → 202 with ``detected:0`` / ``enqueued:false`` and NO
      ``create_job`` / NO enqueue (the short-circuit branch).
   3. unknown technique → 400 BEFORE any glossary read / store write.
@@ -31,11 +31,23 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.api import gaps as gaps_api
+from app.clients.grant_client import GrantLevel
 from app.config import settings
 from app.db.book_profile import NEUTRAL_PROFILE
-from app.deps import get_db
+from app.deps import get_db, get_grant_client_dep
 
 OWNER = "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c"
+
+
+class _StubGrant:
+    """auto-enrich is grant-gated (D-ENRICH-MCP-OWNER-GATE) — stub the client so
+    these handler tests resolve to an EDIT grant instead of calling book-service."""
+
+    def __init__(self, level: GrantLevel = GrantLevel.EDIT):
+        self.level = level
+
+    async def resolve_grant(self, _book_id, _user_id):
+        return self.level
 
 
 @pytest.fixture(autouse=True)
@@ -87,6 +99,7 @@ def _app() -> FastAPI:
     # auto-enrich depends on get_db; a stub keeps wiring valid (the store +
     # save_job_request are monkeypatched per-test, so the pool is never used).
     app.dependency_overrides[get_db] = lambda: object()
+    app.dependency_overrides[get_grant_client_dep] = lambda: _StubGrant()
     return app
 
 
@@ -138,8 +151,8 @@ def _patch_store(monkeypatch, *, jid, created, saved, producer):
 
 @respx.mock
 async def test_auto_enrich_cost_cap_round_trips_to_job_and_request(monkeypatch):
-    """max_spend_usd → create_job(max_spend=...) AND the persisted job_request
-    carries the worker's budget triad (max_spend_usd + eval_reserve_fraction +
+    """max_spend_tokens → create_job(max_spend=...) AND the persisted job_request
+    carries the worker's budget triad (max_spend_tokens + eval_reserve_fraction +
     top_k). This is the budget the resume worker reads back, so the round-trip
     MUST be lossless."""
     book, project, jid = uuid4(), uuid4(), uuid4()
@@ -155,7 +168,7 @@ async def test_auto_enrich_cost_cap_round_trips_to_job_and_request(monkeypatch):
             "embedding_model_ref": str(uuid4()),
             "generation_model_ref": str(uuid4()),
             "max_gaps": 5,
-            "max_spend_usd": 4.25,
+            "max_spend_tokens": 4.25,
             "eval_reserve_fraction": 0.3,
             "top_k": 8,
         },
@@ -179,7 +192,7 @@ async def test_auto_enrich_cost_cap_round_trips_to_job_and_request(monkeypatch):
     # The persisted request carries the worker-read budget triad, losslessly.
     req = saved["request"]
     assert saved["job_id"] == jid
-    assert req["max_spend_usd"] == 4.25
+    assert req["max_spend_tokens"] == 4.25
     assert req["eval_reserve_fraction"] == 0.3
     assert req["top_k"] == 8
     # ...alongside the rest of the re-drive shape the worker rebuilds from.
@@ -192,7 +205,7 @@ async def test_auto_enrich_cost_cap_round_trips_to_job_and_request(monkeypatch):
 
 @respx.mock
 async def test_auto_enrich_default_max_spend_is_none(monkeypatch):
-    """When max_spend_usd is omitted, the cap is None (uncapped) and the
+    """When max_spend_tokens is omitted, the cap is None (uncapped) and the
     defaults for the budget triad flow through unchanged."""
     book, project, jid = uuid4(), uuid4(), uuid4()
     _mock_coverage(book, [_under_described("蓬萊")])
@@ -213,7 +226,7 @@ async def test_auto_enrich_default_max_spend_is_none(monkeypatch):
     assert resp.status_code == 202, resp.text
     assert created["max_spend"] is None
     # AutoEnrichBody defaults: eval_reserve_fraction=0.15, top_k=5.
-    assert saved["request"]["max_spend_usd"] is None
+    assert saved["request"]["max_spend_tokens"] is None
     assert saved["request"]["eval_reserve_fraction"] == 0.15
     assert saved["request"]["top_k"] == 5
 
@@ -306,7 +319,7 @@ async def test_auto_enrich_enqueue_failure_still_persists_and_returns_202(monkey
             "book_id": str(book),
             "embedding_model_ref": str(uuid4()),
             "generation_model_ref": str(uuid4()),
-            "max_spend_usd": 2.0,
+            "max_spend_tokens": 2.0,
         },
         headers={"Authorization": f"Bearer {_bearer()}"},
     )
@@ -320,7 +333,7 @@ async def test_auto_enrich_enqueue_failure_still_persists_and_returns_202(monkey
     # The persist happened BEFORE the failed enqueue → the run is re-triggerable.
     assert created["max_spend"] == 2.0
     assert saved["job_id"] == jid
-    assert saved["request"]["max_spend_usd"] == 2.0
+    assert saved["request"]["max_spend_tokens"] == 2.0
     # The producer was still closed in the finally despite the raise.
     assert prod.closed is True
 
@@ -348,7 +361,7 @@ async def test_auto_enrich_with_targets_skips_detection_and_enqueues(monkeypatch
             "book_id": str(book),
             "embedding_model_ref": str(uuid4()),
             "generation_model_ref": str(uuid4()),
-            "max_spend_usd": 1.5,
+            "max_spend_tokens": 1.5,
             "targets": [
                 {"canonical_name": "玉虛宮", "entity_kind": "location",
                  "mention_count": 42, "present_dimensions": ["历史"]},
@@ -370,7 +383,7 @@ async def test_auto_enrich_with_targets_skips_detection_and_enqueues(monkeypatch
     # defaults to the canonical_name when omitted; the budget still round-trips.
     req = saved["request"]
     assert created["max_spend"] == 1.5
-    assert req["max_spend_usd"] == 1.5
+    assert req["max_spend_tokens"] == 1.5
     targets = req["targets"]
     assert len(targets) == 1
     assert targets[0]["canonical_name"] == "玉虛宮"
