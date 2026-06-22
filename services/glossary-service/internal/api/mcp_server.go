@@ -67,6 +67,9 @@ func (s *Server) mcpHandler() http.Handler {
 	s.RegisterPipelineTranslateTools(srv)
 	// S5: web-search deep-research tool (class-C; paid outward call → confirm-gated).
 	s.RegisterDeepResearchTools(srv)
+	// General free-form web research (class-R read; paid outward call, not gated —
+	// returns neutralized sources for topic research before any entity exists).
+	s.RegisterWebSearchTool(srv)
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "glossary_propose_new_entity",

@@ -1,0 +1,55 @@
+{
+  "common": {
+    "dismiss": "閉じる",
+    "deprecate": "非推奨にする",
+    "deprecated": "非推奨"
+  },
+  "adopt": {
+    "chooseTemplate": "グラフテンプレートを選択",
+    "select": "採用",
+    "selected": "選択済み ✓",
+    "noTemplates": "採用できるテンプレートがありません。",
+    "adoptButton": "テンプレートを採用",
+    "adopting": "採用中…",
+    "blockedTitle": "採用がブロックされました（M1ゲート）。",
+    "blockedHelp": "このテンプレートには用語集に不足しているノード種別が必要です。隠れたサービス間書き込みはありません。まず用語集に種別を追加してから採用に戻ってください。",
+    "blockedButton": "テンプレートを採用（{{count}} 件の障害）",
+    "missing": "✗ 不足",
+    "openGlossary": "用語集に種別を追加"
+  },
+  "schema": {
+    "edgeTypes": "エッジ種別",
+    "factTypes": "ファクト種別",
+    "nodeKinds": "ノード種別（← 用語集）",
+    "vocabSet": "語彙セット",
+    "closed": "クローズド — 抽出器は割り当てのみ可能",
+    "temporal": "⏱ 時系列",
+    "noEdges": "エッジ種別はまだありません。",
+    "addEdgeType": "エッジ種別を追加",
+    "code": "コード",
+    "label": "ラベル",
+    "temporalField": "時系列（valid_from + 来歴）",
+    "cardinality": "カーディナリティ",
+    "addButton": "エッジ種別を追加"
+  },
+  "sync": {
+    "upToDate": "最新です — 上流の変更はありません。",
+    "updatesAvailable": "上流から {{count}} 件の更新があります",
+    "keepAllMine": "すべて自分のものを保持",
+    "takeAllTheirs": "すべて相手のものを採用",
+    "added": "追加",
+    "modified": "変更",
+    "removed": "上流で削除",
+    "keepMine": "自分のものを保持",
+    "takeTheirs": "相手のものを採用",
+    "applyButton": "{{count}} 件の決定を適用"
+  },
+  "views": {
+    "name": "ビュー名",
+    "edgeTypes": "このビューのエッジ種別",
+    "nodeKinds": "表示するノード種別",
+    "createButton": "ビューを作成",
+    "saveButton": "ビューを保存",
+    "perUser": "ユーザーごと"
+  }
+}

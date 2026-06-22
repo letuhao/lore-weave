@@ -62,3 +62,58 @@ def test_task_id_format_is_sha256_hex():
     h = compute_task_id("x", "entity", "v1-abc", "m")
     assert len(h) == 64
     assert all(c in "0123456789abcdef" for c in h)
+
+
+# --- D-KG-LB-CACHE-SCHEMA-KEY: schema-aware cache key ---------------------
+
+import hashlib  # noqa: E402
+from types import SimpleNamespace  # noqa: E402
+
+from app.jobs.task_id import _SEP  # noqa: E402
+from app.extraction.pass2_orchestrator import _p2_schema_key  # noqa: E402
+
+_SK_ARGS = ("the priestess worshipped the storm-god", "entity", "v1-entity-abcd1234", "MODEL-UUID")
+
+
+def _legacy_hash(text, op, ver, model):
+    """The exact pre-change 4-field hash (no schema segment)."""
+    payload = f"{text}{_SEP}{op.lower()}{_SEP}{ver}{_SEP}{model.lower()}"
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def test_empty_schema_key_is_byte_identical_to_legacy():
+    # Default (omitted) and explicit "" both reproduce the pre-change hash.
+    assert compute_task_id(*_SK_ARGS) == _legacy_hash(*_SK_ARGS)
+    assert compute_task_id(*_SK_ARGS, schema_key="") == _legacy_hash(*_SK_ARGS)
+
+
+def test_non_empty_schema_key_changes_the_hash():
+    assert compute_task_id(*_SK_ARGS, schema_key="proj-a@v3") != compute_task_id(*_SK_ARGS)
+
+
+def test_distinct_schemas_do_not_collide():
+    # Same text/op/version/model but three different schemas → three keys.
+    a = compute_task_id(*_SK_ARGS, schema_key="proj-a@v3")
+    b = compute_task_id(*_SK_ARGS, schema_key="proj-a@v4")  # version bump
+    c = compute_task_id(*_SK_ARGS, schema_key="proj-b@v3")  # other project, same version
+    assert len({a, b, c}) == 3
+
+
+def test_same_schema_key_is_stable():
+    assert compute_task_id(*_SK_ARGS, schema_key="p@v3") == compute_task_id(*_SK_ARGS, schema_key="p@v3")
+
+
+def test_schema_key_none_is_empty():
+    assert _p2_schema_key(None) == ""
+
+
+def test_schema_key_prefers_label():
+    assert _p2_schema_key(SimpleNamespace(label="1111-2222@v77", schema_version=77)) == "1111-2222@v77"
+
+
+def test_schema_key_falls_back_to_version_when_label_blank():
+    assert _p2_schema_key(SimpleNamespace(label="", schema_version=42)) == "v42"
+
+
+def test_schema_key_blank_label_no_version_is_empty():
+    assert _p2_schema_key(SimpleNamespace(label="", schema_version=None)) == ""

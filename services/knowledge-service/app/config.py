@@ -8,6 +8,14 @@ class Settings(BaseSettings):
     internal_service_token: str
     jwt_secret: str
 
+    # KM5 — RS256 admin-signing public key (SPKI/PKIX "PUBLIC KEY" PEM, or
+    # base64 of it). The public half of auth-service's KMS admin key; when set,
+    # System-tier admin actions verify an RS256 admin JWT against it (INV-T2).
+    # Unset (default) → System-tier admin is DISABLED, those paths 503. Same
+    # contract + env-var name as glossary (ADMIN_JWT_PUBLIC_KEY_PEM) so one
+    # platform admin token works across both services.
+    admin_jwt_public_key_pem: str = ""
+
     # Optional with defaults.
     redis_url: str = "redis://redis:6379"
     # FD-22 — emit a Redis wake signal when an extraction job starts so worker-ai

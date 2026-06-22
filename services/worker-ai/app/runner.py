@@ -41,6 +41,7 @@ from loreweave_extraction import (
     resolve_effective_config,
 )
 from loreweave_extraction.errors import ExtractionError
+from loreweave_extraction.schema_projection import ExtractionSchema
 from loreweave_llm.errors import LLMError
 
 from app import fair_sched
@@ -1270,6 +1271,11 @@ async def _extract_and_persist(
     # B2-B-b2 — per-op raw system-prompt overrides {op: {"system": str}} from
     # the job's resolved snapshot ({} when the project has no custom prompts).
     prompt_overrides: dict | None = None,
+    # L7 (Milestone B) — the project's ADVISORY extraction schema, resolved once
+    # per job. Threaded into extract_pass2 so the LLM emits the project's vocab.
+    # None ⇒ static prompt. allow_free_edges is forced True server-side, so the
+    # SDK never pre-drops — /persist-pass2 stays the sole enforce+park point.
+    schema: ExtractionSchema | None = None,
     # B2 follow-up — per-project Pass2-writer autocreate override (forwarded to
     # /persist-pass2). None = chat/glossary callers leave the env default.
     writer_autocreate: bool | None = None,
@@ -1368,6 +1374,8 @@ async def _extract_and_persist(
             entity_recovery=eff_recovery,
             # B2-B-b2 — per-op raw system-prompt overrides ({} = all defaults).
             prompt_overrides=prompt_overrides,
+            # L7 (Milestone B) — advisory project schema (None ⇒ static prompt).
+            schema=schema,
         )
     except ExtractionError as exc:
         retryable = exc.stage == "provider_exhausted"
@@ -1454,6 +1462,9 @@ async def _start_decoupled_chunk(
     # resume_state so the decoupled consumer can release the exact slot at the chunk
     # terminal; released here on submit-failure (no chunk ends up in flight).
     p5_token: str | None = None,
+    # L7 (Milestone B) — the project's ADVISORY extraction schema (None ⇒ static
+    # prompt). Stashed in resume_state so the consumer rebuilds it for build_*_system.
+    extraction_schema: ExtractionSchema | None = None,
 ) -> None:
     """WX-T3b — seed resume_state for one chapter + submit its entity job, then
     return (released). The llm_extract_consumer folds the terminal events through
@@ -1558,6 +1569,20 @@ async def _start_decoupled_chunk(
             "categories": list(eff_filter.categories),
             "max_items_per_batch": eff_filter.max_items_per_batch,
             "transient_retry_budget": eff_filter.transient_retry_budget,
+        }
+    # L7 (Milestone B) — stash the advisory schema projection so the consumer
+    # rebuilds it for build_*_system (vocab hint in the prompt). allow_free_edges
+    # is True (advisory) → never pre-drops; /persist-pass2 stays the enforce+park
+    # point. Absent when the project has no resolved schema.
+    if extraction_schema is not None:
+        rs["_schema"] = {
+            "entity_kinds": list(extraction_schema.entity_kinds),
+            "edge_predicates": list(extraction_schema.edge_predicates),
+            "event_kinds": list(extraction_schema.event_kinds),
+            "fact_types": list(extraction_schema.fact_types),
+            "allow_free_edges": extraction_schema.allow_free_edges,
+            "label": extraction_schema.label,
+            "schema_version": extraction_schema.schema_version,
         }
     # Bounded transient-retry on the entity submit — mirrors submit_and_wait's
     # resilience. A fire-and-forget submit_job has no retry, so without this a single
@@ -1711,6 +1736,17 @@ async def process_job(
         # extract_pass2 still reads the module globals in B2-A (B2-B wires the
         # snapshot into the pipeline).
         run_snapshot, run_cfg_hash, run_base_version = _build_run_config(job)
+
+        # L7 (Milestone B) — resolve the project's ADVISORY extraction schema ONCE
+        # per job (pinned like the config snapshot). Threaded into extract_pass2 so
+        # the LLM emits the project's vocab. None (no project / resolve failure /
+        # un-adopted → general@v1 with no custom vocab) ⇒ static prompt. The
+        # writer (/persist-pass2) resolves the AUTHORITATIVE schema server-side and
+        # stays the sole closed-set enforce+park point — so this advisory copy
+        # never pre-drops an off-schema edge (the R3 reconciliation).
+        extraction_schema = await knowledge_client.resolve_extraction_schema(
+            user_id=job.user_id, project_id=job.project_id,
+        )
 
         # Pre-enumerate items. Done once — the results are reused for
         # both K16.7 items_total counting and the main processing loop,
@@ -1940,6 +1976,8 @@ async def process_job(
                         # P5 — the WFQ lease for this chunk; stashed in resume_state so the
                         # consumer releases it at the chunk terminal. None when P5 off.
                         p5_token=_p5_token,
+                        # L7 (Milestone B) — advisory project schema (None ⇒ static prompt).
+                        extraction_schema=extraction_schema,
                     )
                     logger.info(
                         "Job %s: chapter %s submitted via DECOUPLED extraction (released)",
@@ -1975,6 +2013,8 @@ async def process_job(
                     entity_recovery=run_snapshot.entity_recovery,
                     prompt_overrides=run_snapshot.prompts,
                     writer_autocreate=run_snapshot.writer_autocreate,
+                    # L7 (Milestone B) — advisory project schema (None ⇒ static).
+                    schema=extraction_schema,
                     text=text,
                     hierarchy_paths=p3_hierarchy_paths,
                     chapter_index=p3_chapter_index,  # FD-4 (066) — flat-book event_order
@@ -2204,6 +2244,8 @@ async def process_job(
                     # included (the cost estimate's num_windows counts chat turns,
                     # so the injection must too). Resolved once per job above.
                     pinned_names=pinned_names,
+                    # L7 (Milestone B) — advisory project schema (None ⇒ static).
+                    schema=extraction_schema,
                 )
 
                 if result.error and not result.retryable:

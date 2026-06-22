@@ -6,6 +6,10 @@ pydantic-settings>=2.2
 python-json-logger>=2.0
 httpx>=0.27
 PyJWT>=2.8
+# KM5 — RS256 admin-JWT verification (app/auth/admin_jwt.py) needs the
+# cryptography backend for RSA + SPKI/PKIX PEM parsing. Present transitively
+# today, but pinned explicitly so a security-critical dep can't silently drop.
+cryptography>=42
 cachetools>=5.3
 prometheus-client>=0.20
 

@@ -21,6 +21,8 @@
   "translate_title": "Translate content using AI (block mode)",
   "translating": "Translating...",
   "translate": "Translate",
+  "view_translations": "Translations",
+  "view_translations_title": "View saved translation versions (languages, history, side-by-side compare)",
   "toggle_source": "Toggle source panel",
   "toggle_history": "Toggle history / AI panel",
   "unsaved": "Unsaved",

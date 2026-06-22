@@ -66,3 +66,78 @@ async def test_revision_text_200_returns_text():
         assert await bc.get_chapter_revision_text(uuid4(), "ch", "rev") == "hello"
     finally:
         await bc.aclose()
+
+
+# ── L7 Milestone B — KnowledgeClient.resolve_extraction_schema ─────────
+
+
+from app.clients import KnowledgeClient
+
+
+def _knowledge_with(handler):
+    kc = KnowledgeClient("http://knowledge-service:8086", "tok", 5.0)
+    kc._http = httpx.AsyncClient(
+        transport=httpx.MockTransport(handler),
+        headers={"X-Internal-Token": "tok"},
+    )
+    return kc
+
+
+@pytest.mark.asyncio
+async def test_resolve_schema_no_project_short_circuits_no_http():
+    """project_id=None → None without any HTTP call (chat/global path)."""
+    called = {"n": 0}
+
+    def handler(req):
+        called["n"] += 1
+        return httpx.Response(200, json={"has_schema": False})
+
+    kc = _knowledge_with(handler)
+    try:
+        assert await kc.resolve_extraction_schema(user_id=uuid4(), project_id=None) is None
+        assert called["n"] == 0
+    finally:
+        await kc.aclose()
+
+
+@pytest.mark.asyncio
+async def test_resolve_schema_builds_advisory_extraction_schema():
+    payload = {
+        "has_schema": True,
+        "entity_kinds": ["cultivator"],
+        "edge_predicates": ["disciple_of", "pursues"],
+        "event_kinds": [],
+        "fact_types": ["realm"],
+        "allow_free_edges": True,  # advisory
+        "label": "p1@v3",
+        "schema_version": 3,
+    }
+    kc = _knowledge_with(lambda req: httpx.Response(200, json=payload))
+    try:
+        schema = await kc.resolve_extraction_schema(user_id=uuid4(), project_id=uuid4())
+    finally:
+        await kc.aclose()
+    assert schema is not None
+    assert schema.entity_kinds == ("cultivator",)
+    assert schema.edge_predicates == ("disciple_of", "pursues")
+    assert schema.fact_types == ("realm",)
+    assert schema.allow_free_edges is True  # never pre-drops on the SDK path
+    assert schema.schema_version == 3
+
+
+@pytest.mark.asyncio
+async def test_resolve_schema_has_schema_false_returns_none():
+    kc = _knowledge_with(lambda req: httpx.Response(200, json={"has_schema": False}))
+    try:
+        assert await kc.resolve_extraction_schema(user_id=uuid4(), project_id=uuid4()) is None
+    finally:
+        await kc.aclose()
+
+
+@pytest.mark.asyncio
+async def test_resolve_schema_non_200_returns_none():
+    kc = _knowledge_with(lambda req: httpx.Response(503))
+    try:
+        assert await kc.resolve_extraction_schema(user_id=uuid4(), project_id=uuid4()) is None
+    finally:
+        await kc.aclose()

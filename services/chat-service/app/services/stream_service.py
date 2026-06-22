@@ -982,6 +982,26 @@ async def stream_response(
         from app.services.workflow_skill import WORKFLOW_SKILL_PROMPT
         universal_skill = UNIVERSAL_SKILL_PROMPT + "\n\n" + WORKFLOW_SKILL_PROMPT
 
+    # KM5-M4a (knowledge skill): on the agentic surface where knowledge/graph tools
+    # are advertised, prepend-as-system the static knowledge skill — the memory-vs-
+    # graph split, as-of-chapter reads, the propose→review human gate, the ontology
+    # confirm-token flow, triage, and the INV-6 data-not-instructions boundary.
+    # Gated like the toolset itself (agui + tools enabled); static + cacheable, the
+    # actual schema is fetched on demand via kg_schema_read, never baked per turn.
+    # Not on the CMS/admin surface — that surface advertises the System-tier admin
+    # tools (glossary admin skill), not the project knowledge/graph tools, so the
+    # knowledge skill would be guidance for tools that aren't there.
+    inject_knowledge_skill = (
+        stream_format == "agui"
+        and not bool(admin_context)
+        and not disable_tools
+        and kctx.tool_calling_enabled
+    )
+    knowledge_skill: str | None = None
+    if inject_knowledge_skill:
+        from app.services.knowledge_skill import KNOWLEDGE_SKILL_PROMPT
+        knowledge_skill = KNOWLEDGE_SKILL_PROMPT
+
     use_anthropic_cache = (
         creds.provider_kind == "anthropic"
         and kctx.stable_context.strip() != ""
@@ -1005,6 +1025,8 @@ async def stream_response(
             })
         if glossary_skill:
             parts.append({"type": "text", "text": glossary_skill, "cache_control": {"type": "ephemeral"}})
+        if knowledge_skill:
+            parts.append({"type": "text", "text": knowledge_skill, "cache_control": {"type": "ephemeral"}})
         if universal_skill:
             parts.append({"type": "text", "text": universal_skill, "cache_control": {"type": "ephemeral"}})
         messages.insert(0, {"role": "system", "content": parts})
@@ -1020,6 +1042,8 @@ async def stream_response(
                 system_parts.append(stripped)
         if glossary_skill:
             system_parts.append(glossary_skill)
+        if knowledge_skill:
+            system_parts.append(knowledge_skill)
         if universal_skill:
             system_parts.append(universal_skill)
         if system_parts:

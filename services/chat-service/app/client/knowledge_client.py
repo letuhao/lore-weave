@@ -169,7 +169,9 @@ class KnowledgeClient:
         if transport is not None:
             client_kwargs["transport"] = transport
         self._http = httpx.AsyncClient(**client_kwargs)
-        # K21-B — process cache for GET /internal/tools/definitions.
+        # K21-B — process cache for the federated tool catalog. Sourced from the
+        # ai-gateway `/mcp` MCP `tools/list` (see get_tool_definitions); the legacy
+        # `/internal/tools/definitions` HTTP path was retired in KM0.
         # None = not fetched yet; a list = the cached OpenAI schemas.
         self._tool_definitions: list[dict] | None = None
         # T4c — separate process cache for the ADMIN catalog (`/mcp/admin`). The

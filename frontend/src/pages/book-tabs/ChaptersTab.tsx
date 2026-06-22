@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Pencil, Download, Trash2, Upload, Sparkles } from 'lucide-react';
+import { Plus, Pencil, Download, Trash2, Upload, Sparkles, Languages } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { booksApi, type Chapter } from '@/features/books/api';
 import { DataTable, type Column } from '@/components/data/DataTable';
@@ -137,7 +137,7 @@ export function ChaptersTab({ bookId }: ChaptersTabProps) {
     {
       key: 'actions',
       header: '',
-      className: 'w-28 text-right',
+      className: 'w-36 text-right',
       render: (ch) => (
         <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
           <Link
@@ -146,6 +146,13 @@ export function ChaptersTab({ bookId }: ChaptersTabProps) {
             title={t('chapters.action.edit')}
           >
             <Pencil className="h-3.5 w-3.5" />
+          </Link>
+          <Link
+            to={`/books/${bookId}/chapters/${ch.chapter_id}/translations`}
+            className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            title={t('chapters.action.translations')}
+          >
+            <Languages className="h-3.5 w-3.5" />
           </Link>
           <button
             onClick={() => setExtractChapterId(ch.chapter_id)}

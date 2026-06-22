@@ -980,6 +980,175 @@ ALTER TABLE wiki_gen_jobs
 ALTER TABLE wiki_gen_jobs
   ADD COLUMN IF NOT EXISTS revise_model_ref    TEXT,
   ADD COLUMN IF NOT EXISTS revise_model_source TEXT;
+
+-- ═══════════════════════════════════════════════════════════════
+-- KG CUSTOMIZABLE ONTOLOGY (epic 2026-06-20, lane L1) — additive.
+-- Tiered graph schemas (system/user/project) describing GRAPH SHAPE
+-- (edge types · fact/state types · controlled vocab · expected node
+-- kinds). Postgres is SSOT; Neo4j stays derived. Scope-keyed UNIQUE
+-- (NULLS NOT DISTINCT) — never UNIQUE(code) globally (the glossary
+-- kinds-bug class). Nothing reads these until a project adopts, so old
+-- projects are unaffected (additive-first).
+-- Spec: docs/specs/2026-06-20-knowledge-graph-customizable-ontology.md §3.
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS kg_graph_schemas (
+  schema_id        UUID PRIMARY KEY DEFAULT uuidv7(),
+  scope            TEXT NOT NULL CHECK (scope IN ('system','user','project')),
+  scope_id         TEXT,                       -- NULL=system; user_id; project_id
+  code             TEXT NOT NULL CHECK (length(code) BETWEEN 1 AND 120),
+  name             TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 200),
+  description      TEXT NOT NULL DEFAULT '',
+  schema_version   INT  NOT NULL DEFAULT 1,
+  -- Q2 (LOCKED S0): true => off-vocab free-string predicates allowed
+  -- (today's behavior); false => closed to kg_edge_types (off-vocab → triage).
+  allow_free_edges BOOLEAN NOT NULL DEFAULT true,
+  content_hash     TEXT,                        -- semantic surface hash, for Sync
+  source_ref       TEXT,                        -- 'system:<id>' | 'user:<id>' | NULL native
+  source_hash      TEXT,                        -- upstream content_hash frozen at adopt
+  deprecated_at    TIMESTAMPTZ,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+-- scope-keyed uniqueness; NULLS NOT DISTINCT so two system rows can't share a
+-- code. PARTIAL (active rows only) — review-impl: replace-on-adopt deprecates
+-- the prior project schema then inserts a fresh copy with the SAME code, so a
+-- deprecated row must NOT occupy the (scope,scope_id,code) slot (else re-adopting
+-- the same template — or the M1 fill-glossary-then-re-adopt flow — would hit a
+-- unique violation). Uniqueness is enforced among NON-deprecated rows only.
+DROP INDEX IF EXISTS idx_kg_graph_schemas_scope_code;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_kg_graph_schemas_active_scope_code
+  ON kg_graph_schemas (scope, scope_id, code) NULLS NOT DISTINCT
+  WHERE deprecated_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_kg_graph_schemas_scope
+  ON kg_graph_schemas (scope, scope_id);
+
+CREATE TABLE IF NOT EXISTS kg_edge_types (
+  edge_type_id        UUID PRIMARY KEY DEFAULT uuidv7(),
+  schema_id           UUID NOT NULL REFERENCES kg_graph_schemas(schema_id) ON DELETE CASCADE,
+  code                TEXT NOT NULL CHECK (length(code) BETWEEN 1 AND 120),
+  label               TEXT NOT NULL,
+  directed            BOOLEAN NOT NULL DEFAULT true,
+  source_node_kinds   TEXT[] NOT NULL DEFAULT '{}',   -- glossary kind codes (soft ref)
+  target_node_kinds   TEXT[] NOT NULL DEFAULT '{}',
+  temporal            BOOLEAN NOT NULL DEFAULT false,  -- true => valid_from + EVIDENCED_BY required (L7)
+  provenance_required BOOLEAN NOT NULL DEFAULT false,
+  cardinality         TEXT NOT NULL DEFAULT 'multi_active'
+                        CHECK (cardinality IN ('single_active','multi_active')),
+  description         TEXT NOT NULL DEFAULT '',
+  deprecated_at       TIMESTAMPTZ,
+  UNIQUE (schema_id, code)
+);
+
+CREATE TABLE IF NOT EXISTS kg_fact_types (
+  fact_type_id     UUID PRIMARY KEY DEFAULT uuidv7(),
+  schema_id        UUID NOT NULL REFERENCES kg_graph_schemas(schema_id) ON DELETE CASCADE,
+  code             TEXT NOT NULL CHECK (length(code) BETWEEN 1 AND 120),
+  label            TEXT NOT NULL,
+  description      TEXT NOT NULL DEFAULT '',
+  deprecated_at    TIMESTAMPTZ,
+  UNIQUE (schema_id, code)
+);
+
+-- M1 (LOCKED S0): expected node-kinds anchored to glossary, with adopt strength.
+-- `required` gates adopt (block if glossary missing); `optional` warns + triages.
+CREATE TABLE IF NOT EXISTS kg_schema_node_kinds (
+  schema_node_kind_id UUID PRIMARY KEY DEFAULT uuidv7(),
+  schema_id           UUID NOT NULL REFERENCES kg_graph_schemas(schema_id) ON DELETE CASCADE,
+  kind_code           TEXT NOT NULL CHECK (length(kind_code) BETWEEN 1 AND 120),
+  strength            TEXT NOT NULL CHECK (strength IN ('required','optional')),
+  deprecated_at       TIMESTAMPTZ,
+  UNIQUE (schema_id, kind_code)
+);
+
+CREATE TABLE IF NOT EXISTS kg_vocab_sets (
+  vocab_set_id     UUID PRIMARY KEY DEFAULT uuidv7(),
+  schema_id        UUID NOT NULL REFERENCES kg_graph_schemas(schema_id) ON DELETE CASCADE,
+  code             TEXT NOT NULL CHECK (length(code) BETWEEN 1 AND 120),
+  label            TEXT NOT NULL,
+  description      TEXT NOT NULL DEFAULT '',
+  closed           BOOLEAN NOT NULL DEFAULT true,  -- true => assign-only, no coin
+  deprecated_at    TIMESTAMPTZ,
+  UNIQUE (schema_id, code)
+);
+
+CREATE TABLE IF NOT EXISTS kg_vocab_values (
+  vocab_value_id   UUID PRIMARY KEY DEFAULT uuidv7(),
+  vocab_set_id     UUID NOT NULL REFERENCES kg_vocab_sets(vocab_set_id) ON DELETE CASCADE,
+  code             TEXT NOT NULL CHECK (length(code) BETWEEN 1 AND 120),
+  label            TEXT NOT NULL,
+  metadata         JSONB NOT NULL DEFAULT '{}',    -- e.g. { axis, has_target, archetype } for drive
+  deprecated_at    TIMESTAMPTZ,                    -- A4: soft-deprecate, never hard-drop (review-impl HIGH)
+  UNIQUE (vocab_set_id, code)
+);
+-- review-impl HIGH: existing DBs created kg_vocab_values before deprecated_at —
+-- A4 (never hard-drop a row that may have referencing graph data) requires the
+-- column so sync removed_upstream can deprecate instead of DELETE.
+ALTER TABLE kg_vocab_values ADD COLUMN IF NOT EXISTS deprecated_at TIMESTAMPTZ;
+
+-- Layer 3 views — per-user named lenses over a project graph (READ-only).
+CREATE TABLE IF NOT EXISTS kg_views (
+  view_id          UUID PRIMARY KEY DEFAULT uuidv7(),
+  project_id       TEXT NOT NULL,
+  user_id          UUID NOT NULL,                  -- owner (view per-user in shared project)
+  code             TEXT NOT NULL CHECK (length(code) BETWEEN 1 AND 120),
+  name             TEXT NOT NULL,
+  description      TEXT NOT NULL DEFAULT '',
+  edge_type_codes  TEXT[] NOT NULL DEFAULT '{}',
+  node_kind_codes  TEXT[] NOT NULL DEFAULT '{}',
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (project_id, user_id, code)
+);
+
+-- Triage queue (spec §3.7) — extraction elements that don't match the resolved
+-- schema park here (NOT written to Neo4j) and resolve human-gated by signature.
+CREATE TABLE IF NOT EXISTS kg_triage_items (
+  triage_id        UUID PRIMARY KEY DEFAULT uuidv7(),
+  user_id          UUID NOT NULL,
+  project_id       TEXT NOT NULL,
+  source           JSONB NOT NULL DEFAULT '{}',    -- {run_id, chapter_id, chapter_ord}
+  item_type        TEXT NOT NULL CHECK (item_type IN
+                     ('unknown_node_kind','unknown_edge_type','edge_kind_mismatch',
+                      'unknown_vocab_value','edge_cardinality_conflict','proposed_edge')),
+  payload          JSONB NOT NULL DEFAULT '{}',
+  signature        TEXT NOT NULL,                  -- normalized group key, e.g. "drive:curiosity"
+  status           TEXT NOT NULL DEFAULT 'pending' CHECK (status IN
+                     ('pending','pending_glossary','resolved','dismissed')),
+  resolution       JSONB,
+  schema_version   INT,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  resolved_at      TIMESTAMPTZ,
+  resolved_by      TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_kg_triage_user_project_status
+  ON kg_triage_items (user_id, project_id, status);
+CREATE INDEX IF NOT EXISTS idx_kg_triage_project_signature
+  ON kg_triage_items (project_id, signature);
+-- D-KG-LF-PROPOSE-EDGE-INBOX: a well-formed on-schema edge PROPOSED by the agent
+-- (kg_propose_edge) is a clean draft awaiting human placement — NOT a cardinality
+-- conflict (a stateful condition the tool can't check per INV-K1). It gets its own
+-- `proposed_edge` item_type. Existing DBs created the CHECK with the old 5-member
+-- list; widen it idempotently (drop-then-add the auto-named column CHECK).
+ALTER TABLE kg_triage_items DROP CONSTRAINT IF EXISTS kg_triage_items_item_type_check;
+ALTER TABLE kg_triage_items ADD CONSTRAINT kg_triage_items_item_type_check
+  CHECK (item_type IN ('unknown_node_kind','unknown_edge_type','edge_kind_mismatch',
+                       'unknown_vocab_value','edge_cardinality_conflict','proposed_edge'));
+
+-- ═══════════════════════════════════════════════════════════════
+-- consumed_tokens (KM6 — class-C confirm-token single-use ledger, spec §13.4)
+-- Backs the single-use guarantee of the generalized confirm machinery
+-- (app/ontology/confirm.py + routers/public/kg_actions.py): a confirm-token's jti
+-- is recorded here the FIRST time it is redeemed, so a replay of the SAME token
+-- finds the row present and is rejected (the C2 guarantee). `exp` lets a future
+-- janitor prune long-expired rows; correctness does not depend on pruning — the PK
+-- dedup is what enforces single-use. Mirrors glossary's consumed_tokens.
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS consumed_tokens (
+  jti         TEXT PRIMARY KEY,
+  descriptor  TEXT NOT NULL,
+  consumed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  exp         TIMESTAMPTZ NOT NULL
+);
 """
 
 

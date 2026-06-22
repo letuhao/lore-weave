@@ -3,10 +3,14 @@
 // this file covers only the page-level render path: hook result → conditional chip.
 import { forwardRef } from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// vi.hoisted so the fn is in-scope inside vi.mock factory closures (vitest hoisting rule)
-const { mockUseGate } = vi.hoisted(() => ({ mockUseGate: vi.fn() }));
+// vi.hoisted so the fns are in-scope inside vi.mock factory closures (vitest hoisting rule)
+const { mockUseGate, mockGuardedNavigate } = vi.hoisted(() => ({
+  mockUseGate: vi.fn(),
+  mockGuardedNavigate: vi.fn(),
+}));
 
 vi.mock('react-router-dom', async (orig) => {
   const m = await orig<typeof import('react-router-dom')>();
@@ -24,7 +28,7 @@ vi.mock('@/hooks/useEditorPanels', () => ({
 }));
 vi.mock('@/contexts/EditorDirtyContext', () => ({
   useEditorDirty: () => ({
-    setIsDirty: vi.fn(), guardedNavigate: vi.fn(),
+    setIsDirty: vi.fn(), guardedNavigate: mockGuardedNavigate,
     pendingNavigation: null, confirmNavigation: vi.fn(), cancelNavigation: vi.fn(),
   }),
 }));
@@ -72,23 +76,41 @@ vi.mock('@/features/composition/components/CompositionPanel', () => ({
 vi.mock('@/features/chat/context/sendToChat', () => ({ fireSendToChat: vi.fn() }));
 vi.mock('@/features/chat/context/editorBridge', () => ({ registerEditorTarget: vi.fn() }));
 // T3.2: the page resolves the co-writer Work for the editor Selection Tools; stub
-// it to "no work" so this publish-gate test needs no QueryClient.
-vi.mock('@/features/composition/hooks/useWork', () => ({ useWorkResolution: () => ({ data: undefined }) }));
+// both Work hooks to "no work" so the page renders the no-co-writer path.
+vi.mock('@/features/composition/hooks/useWork', () => ({
+  useWorkResolution: () => ({ data: undefined }),
+  useChapterScenes: () => ({ data: undefined }),
+}));
+// C17: the page lists chat models via react-query; stub the API to an empty set.
+vi.mock('@/features/ai-models/api', () => ({
+  aiModelsApi: { listUserModels: () => Promise.resolve({ items: [] }) },
+}));
 
 import { ChapterEditorPage } from '../ChapterEditorPage';
 import type { ChapterPublishGate } from '@/features/composition/hooks/usePublishGate';
+
+function renderPage() {
+  // The page uses react-query (chat-models, publish gate); provide a client so the
+  // render path doesn't throw "No QueryClient set".
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={qc}>
+      <ChapterEditorPage />
+    </QueryClientProvider>,
+  );
+}
 
 const baseGate: ChapterPublishGate = {
   blocked: false, scenesTotal: 3, scenesDone: 3,
   canonBlocked: false, canonUnresolvedScenes: 0, canonUncheckedScenes: 0,
 };
 
-beforeEach(() => mockUseGate.mockReset());
+beforeEach(() => { mockUseGate.mockReset(); mockGuardedNavigate.mockReset(); });
 
 describe('A2-S4b — ChapterEditorPage: publish-gate unchecked chip', () => {
   it('renders the amber chip when canonUncheckedScenes > 0', async () => {
     mockUseGate.mockReturnValue({ ...baseGate, canonUncheckedScenes: 2 });
-    render(<ChapterEditorPage />);
+    renderPage();
     await waitFor(() => {
       expect(screen.getByTestId('publish-canon-unchecked')).toBeTruthy();
     });
@@ -96,9 +118,22 @@ describe('A2-S4b — ChapterEditorPage: publish-gate unchecked chip', () => {
 
   it('does NOT render the chip when canonUncheckedScenes === 0', async () => {
     mockUseGate.mockReturnValue(baseGate);
-    render(<ChapterEditorPage />);
+    renderPage();
     // Wait for TiptapEditor stub to confirm initial render settled, then assert absence
     await screen.findByTestId('tiptap-stub');
     expect(screen.queryByTestId('publish-canon-unchecked')).toBeNull();
+  });
+});
+
+describe('ChapterEditorPage: View-translations affordance', () => {
+  // Regression-lock the wiring of the canonical ChapterTranslationsPage into the
+  // editor toolbar — previously the translated version was only reachable from the
+  // translation matrix / published reader.
+  it('navigates to the chapter translations page when clicked', async () => {
+    mockUseGate.mockReturnValue(baseGate);
+    renderPage();
+    const btn = await screen.findByTestId('editor-view-translations');
+    btn.click();
+    expect(mockGuardedNavigate).toHaveBeenCalledWith('/books/b1/chapters/c1/translations');
   });
 });

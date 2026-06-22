@@ -21,6 +21,8 @@
   "translate_title": "Dịch nội dung bằng AI (chế độ khối)",
   "translating": "Đang dịch...",
   "translate": "Dịch",
+  "view_translations": "Bản dịch",
+  "view_translations_title": "Xem các phiên bản bản dịch đã lưu (ngôn ngữ, lịch sử, so sánh song song)",
   "toggle_source": "Bật/tắt bảng nguồn",
   "toggle_history": "Bật/tắt bảng lịch sử / AI",
   "unsaved": "Chưa lưu",
