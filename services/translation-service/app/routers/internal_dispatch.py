@@ -27,6 +27,7 @@ from ..grant_client import get_grant_client
 from ..models import CreateJobPayload
 from ..workers.extraction_cache import purge_stale_raw_outputs
 from ..workers.extraction_outcomes import reconcile_from_rows
+from ..workers.extraction_replay import replay_chapter_from_cache
 from ..workers.segment_store import ensure_chapter_segments
 from ..workers.segment_status import compute_segment_status
 from .jobs import _resolve_and_create_job, _cancel_job_core, _pause_job_core, _resume_job_core
@@ -417,6 +418,42 @@ async def reconcile_extraction_job(
         },
         "drift": derived_finished != (job["completed_chapters"] or 0),
     }
+
+
+class ReplayPayload(BaseModel):
+    # The asserted caller (verified service forwards the real user_id). Re-checked for an
+    # EDIT grant on the book; replay reads ONLY this user's own cache rows (INV-9).
+    user_id: UUID
+    book_id: UUID
+    chapter_id: UUID
+    # Two-step write gate: confirm=False (default) returns a dry-run PREVIEW (no glossary
+    # write); confirm=True performs the idempotent whole-chapter writeback.
+    confirm: bool = False
+
+
+@router.post("/extraction-cache/replay", dependencies=[Depends(require_internal_token)])
+async def extraction_cache_replay(
+    payload: ReplayPayload,
+    db: asyncpg.Pool = Depends(get_db),
+) -> dict:
+    """CACHE/M6 replay (architecture §8.1): re-apply a chapter's CACHED extraction parse to
+    glossary at $0 LLM. Grant-gated (the asserted user must hold EDIT on the book — the
+    internal token authenticates the SERVICE, this confirms the USER claim), tenancy-scoped
+    (reads only the caller's own cache rows, writes attributed to the caller — INV-9), and
+    confirm-gated (a write happens only when `confirm=True`; otherwise a dry-run preview).
+
+    Faithful-by-construction: it only proceeds when the current chapter text + source-job
+    profile still hash to the cached generation (else it returns a no-cache/profile status
+    and the caller runs a fresh extraction)."""
+    caller = str(payload.user_id)
+    await authorize_book(get_grant_client(), payload.book_id, payload.user_id, GrantLevel.EDIT)
+    return await replay_chapter_from_cache(
+        db,
+        caller_user_id=caller,
+        book_id=str(payload.book_id),
+        chapter_id=str(payload.chapter_id),
+        confirm=payload.confirm,
+    )
 
 
 class CacheRetentionPayload(BaseModel):
