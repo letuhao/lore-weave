@@ -49,6 +49,8 @@ class BuildWikiParams(BaseModel):
     model_source: str = Field(default="user_model", min_length=1, max_length=40)
     model_ref: str = Field(min_length=1, max_length=200)
     entity_ids: list[str] = Field(default_factory=list)
+    # D-RE-OTHER-AGENTIC-EFFORT: clamped reasoning effort (mint + confirm). Default 'none'.
+    reasoning_effort: str = "none"
 
 
 async def _resolve_entity_ids(params: BuildWikiParams, book_id: UUID, glossary_client) -> list[str]:
@@ -85,6 +87,7 @@ async def apply_build_wiki(
             model_source=params.model_source, model_ref=params.model_ref,
             entity_ids=entity_ids, max_spend_usd=None, items_total=len(entity_ids),
             revise_model_ref=None, revise_model_source=None,
+            reasoning_effort=params.reasoning_effort,
         )
     except ActiveJobExists as exc:
         raise BuildWikiActiveJob(

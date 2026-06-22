@@ -31,7 +31,14 @@ from app.ontology.confirm import (
     ActionClaims,
     mint_action_token,
 )
-from app.tools.graph_schema_tools import GrantLevel, _resolve_project_owner
+from app.effort import clamp_effort_to_grant
+from app.tools.graph_schema_tools import (
+    GrantLevel,
+    _resolve_project_owner_and_level,
+)
+
+_EFFORT_DESC = ("Reasoning effort for the build LLM: none|low|medium|high (paid compute; "
+                "clamped to your grant — Edit caps at medium, Manage/owner at high).")
 
 if TYPE_CHECKING:
     from app.tools.executor import ToolContext
@@ -51,6 +58,8 @@ class KgBuildGraphArgs(BaseModel):
     scope: Literal["all", "chapters", "chat", "glossary_sync"] = "all"
     chapter_from: int | None = Field(default=None, ge=0)
     chapter_to: int | None = Field(default=None, ge=0)
+    reasoning_effort: Literal["none", "low", "medium", "high"] = Field(
+        default="none", description=_EFFORT_DESC)
 
 
 async def _handle_kg_build_graph(ctx: "ToolContext", args: KgBuildGraphArgs) -> dict:
@@ -59,9 +68,9 @@ async def _handle_kg_build_graph(ctx: "ToolContext", args: KgBuildGraphArgs) -> 
     surface, where the cost estimate is shown and the job is started."""
     from app.tools.executor import ToolExecutionError
 
-    # EDIT to start extraction (mirrors the REST start route). resolve-to-owner returns
-    # the project owner the job's graph partition runs as.
-    owner = await _resolve_project_owner(ctx, GrantLevel.EDIT)
+    # EDIT to start extraction (mirrors the REST start route). Resolve owner + the caller's
+    # grant LEVEL so the paid reasoning effort can be clamped to their ceiling (INV-T11).
+    owner, level = await _resolve_project_owner_and_level(ctx, GrantLevel.EDIT)
     project = await ctx.projects_repo.get(owner, ctx.project_id)
     if project is None:
         raise ToolExecutionError("project not found")
@@ -71,12 +80,16 @@ async def _handle_kg_build_graph(ctx: "ToolContext", args: KgBuildGraphArgs) -> 
             "in the Build Knowledge Graph dialog (it also runs the required benchmark)"
         )
 
+    # D-RE-OTHER-AGENTIC-EFFORT: clamp the requested effort to the caller's grant at MINT
+    # (re-clamped again at confirm against a fresh grant). Store the clamped value in the token.
+    effort, _capped = clamp_effort_to_grant(args.reasoning_effort, level)
     params = {
         "scope": args.scope,
         "chapter_from": args.chapter_from,
         "chapter_to": args.chapter_to,
         "llm_model": args.llm_model,
         "embedding_model": project.embedding_model,
+        "reasoning_effort": effort,
     }
     token = mint_action_token(
         settings.jwt_secret,
@@ -121,6 +134,8 @@ class KgBuildWikiArgs(BaseModel):
         max_length=2000,
         description="Optional explicit entity ids; omit to generate for ALL book entities.",
     )
+    reasoning_effort: Literal["none", "low", "medium", "high"] = Field(
+        default="none", description=_EFFORT_DESC)
 
 
 async def _handle_kg_build_wiki(ctx: "ToolContext", args: KgBuildWikiArgs) -> dict:
@@ -129,7 +144,7 @@ async def _handle_kg_build_wiki(ctx: "ToolContext", args: KgBuildWikiArgs) -> di
     (which shows the entity count + cost), where the entity set is resolved + the job runs."""
     from app.tools.executor import ToolExecutionError
 
-    owner = await _resolve_project_owner(ctx, GrantLevel.EDIT)
+    owner, level = await _resolve_project_owner_and_level(ctx, GrantLevel.EDIT)
     project = await ctx.projects_repo.get(owner, ctx.project_id)
     if project is None:
         raise ToolExecutionError("project not found")
@@ -138,10 +153,13 @@ async def _handle_kg_build_wiki(ctx: "ToolContext", args: KgBuildWikiArgs) -> di
             "this project has no linked book — wiki articles are generated for a book's entities"
         )
 
+    # D-RE-OTHER-AGENTIC-EFFORT: clamp the paid reasoning effort to the caller's grant at mint.
+    effort, _capped = clamp_effort_to_grant(args.reasoning_effort, level)
     params = {
         "model_source": args.model_source,
         "model_ref": args.model_ref,
         "entity_ids": args.entity_ids or [],
+        "reasoning_effort": effort,
     }
     token = mint_action_token(
         settings.jwt_secret,

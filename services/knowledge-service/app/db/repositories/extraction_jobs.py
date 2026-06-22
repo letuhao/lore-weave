@@ -172,7 +172,7 @@ _SELECT_COLS = """
   started_at, paused_at, completed_at, created_at, updated_at,
   error_message, campaign_id,
   billing_user_id, billing_embedding_model, billing_llm_model,
-  targets, concurrency_level, pinned_entity_ids
+  targets, concurrency_level, pinned_entity_ids, reasoning_effort
 """
 
 
@@ -221,6 +221,9 @@ class ExtractionJob(BaseModel):
     # extraction window's known_entities. NULL/None ⇒ no pins (back-compat).
     # Stored as a JSONB array; the worker fetches the names + prepends them.
     pinned_entity_ids: list[str] | None = None
+    # D-RE-OTHER-AGENTIC-EFFORT: the clamped graded reasoning effort for the extraction LLM.
+    # worker-ai honors it via D-KG-WORKER-GRADED-EFFORT; 'none' ⇒ no thinking (back-compat).
+    reasoning_effort: str = "none"
 
     items_total: int | None = None
     items_processed: int = 0
@@ -284,6 +287,8 @@ class ExtractionJobCreate(BaseModel):
     concurrency_level: Annotated[int, Field(ge=1, le=64)] | None = None
     # C13 — pinned glossary entity ids. None / empty ⇒ no pins (back-compat).
     pinned_entity_ids: list[str] | None = None
+    # D-RE-OTHER-AGENTIC-EFFORT: clamped reasoning effort persisted on the job. Default 'none'.
+    reasoning_effort: str = "none"
 
 
 # ── try_spend outcome ────────────────────────────────────────────────────
@@ -346,9 +351,9 @@ class ExtractionJobsRepo:
           (user_id, project_id, scope, scope_range, llm_model,
            embedding_model, max_spend_usd, items_total, campaign_id,
            billing_user_id, billing_embedding_model, billing_llm_model,
-           targets, concurrency_level, pinned_entity_ids)
+           targets, concurrency_level, pinned_entity_ids, reasoning_effort)
         VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10, $11, $12,
-                $13, $14, $15::jsonb)
+                $13, $14, $15::jsonb, $16)
         RETURNING {_SELECT_COLS}
         """
         async with self._pool.acquire() as conn:
@@ -375,6 +380,8 @@ class ExtractionJobsRepo:
                     # C13 — pinned glossary entity ids as a JSONB array (NULL ⇒ no
                     # pins, back-compat).
                     json.dumps(data.pinned_entity_ids) if data.pinned_entity_ids else None,
+                    # D-RE-OTHER-AGENTIC-EFFORT — the clamped reasoning effort.
+                    data.reasoning_effort,
                 )
                 job = _row_to_job(row)
                 # Unified Job Control Plane P1 — emit the initial lifecycle event.
