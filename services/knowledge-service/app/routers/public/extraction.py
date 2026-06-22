@@ -33,7 +33,7 @@ from app.pricing import cost_per_token
 from app.db.neo4j import neo4j_session
 from app.db.pool import get_knowledge_pool
 from app.db.repositories.benchmark_runs import BenchmarkRunsRepo
-from app.routers.internal_benchmark import BenchmarkStatusResponse
+from app.routers.internal_benchmark import BenchmarkStatusResponse, gate_failures_from_raw
 from app.db.repositories.extraction_jobs import (
     DEFAULT_TARGETS,
     LIST_ALL_MAX_LIMIT,
@@ -1310,7 +1310,8 @@ async def change_embedding_model(
     if not confirm:
         return {
             "warning": "Changing the embedding model requires deleting the existing knowledge graph. "
-                       "Pass ?confirm=true to proceed.",
+                       "The new model also needs its own passing embedding benchmark — you'll have "
+                       "to re-run it before you can build the graph again. Pass ?confirm=true to proceed.",
             "current_model": current_model,
             "new_model": new_model,
             "action_required": "confirm",
@@ -1636,6 +1637,7 @@ async def get_project_benchmark_status(
         recall_at_3=row.recall_at_3,
         mrr=row.mrr,
         created_at=row.created_at,
+        gate_failures=gate_failures_from_raw(row.raw_report),
     )
 
 

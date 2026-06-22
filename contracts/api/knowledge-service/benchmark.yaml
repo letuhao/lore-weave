@@ -1,0 +1,220 @@
+openapi: 3.0.3
+info:
+  title: LoreWeave Knowledge Service — Embedding-Benchmark API
+  version: 0.1.0
+  description: |
+    The K17.9 embedding-quality **benchmark** surface — the gate that Build-KG
+    (`kg_build_graph` / `POST .../extraction/start`) checks before it will run.
+    Added with the benchmark-UX fix (`docs/plans/2026-06-22-kg-benchmark-ux-fix.md`,
+    deferred row `D-JOURNEY-KG-BENCHMARK-UX`).
+
+    ## What it answers
+    "Is this **embedding model** good enough to anchor entity extraction?" — a
+    per-**model** property, not per-project. The gate lookup is keyed
+    `(user, embedding_model)`: a passing run for model X on ANY of the user's
+    projects unlocks Build-KG for every project that uses X.
+
+    ## Sandbox keying (R1)
+    `POST /benchmark-run` resolves the project's embedding model, then runs the
+    golden-set harness on a hidden per-`(user, model)` **sandbox** project (zero
+    real passages, excluded from every project list). The ~10 synthetic fixtures
+    land in the sandbox's vector space — **never** in the real project. The
+    `project_id` in the path therefore identifies *the user + the model to
+    benchmark*, not the run target.
+
+    ## Self-explaining pass/fail (R2)
+    A non-passing run carries `gate_failures` — named codes
+    (`insufficient_runs`, `low_recall`, `low_mrr`, `low_avg_score`,
+    `negative_control_too_high`, `unstable`). `insufficient_runs` means the run
+    was **inconclusive** (too few passes), NOT that the model is low quality —
+    so a perfect `recall@3` with too few runs is never mislabelled. The
+    interactive `benchmark-run` endpoint clamps the effective run count up to
+    `min_runs` (a requested `runs=1` reports `runs=3` and can pass), so
+    `insufficient_runs` is effectively unreachable from this endpoint.
+
+    ## Agent surface (R4)
+    The same capability is exposed as the **`kg_run_benchmark`** MCP tool
+    (knowledge MCP catalogue) — owner-gated, no cost-confirm (embeddings only,
+    ~\$0), runs on the sandbox. The agent calls it when a `kg_build_graph`
+    preview warns the benchmark is not passing, instead of sending the user to
+    the UI.
+
+    ## Auth
+    Bearer JWT (the caller's user id). Both routes are project-grant-gated
+    (View). Cross-user / nonexistent project → 404 (no existence leak).
+
+servers:
+  - url: http://api-gateway-bff:3000
+    description: Docker Compose dev (via gateway, prefix-proxied /v1/knowledge)
+  - url: https://api.loreweave.dev
+    description: Production
+
+tags:
+  - name: benchmark
+    description: Embedding-quality benchmark run + status. The Build-KG gate signal.
+
+paths:
+  /v1/knowledge/projects/{project_id}/benchmark-run:
+    post:
+      tags: [benchmark]
+      operationId: runProjectBenchmark
+      summary: Run the embedding benchmark for a project's embedding model (on a sandbox)
+      description: |
+        Synchronous (~15–60s). Resolves the project's embedding model and runs the
+        golden-set harness on the hidden `(user, model)` sandbox. The effective run
+        count is clamped up to `min_runs`. A pass unlocks Build-KG for that model on
+        every project. Returns the run summary incl. `gate_failures`.
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BenchmarkRunRequest'
+      responses:
+        '200':
+          description: Benchmark ran (passed or not — check `passed` / `gate_failures`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BenchmarkRunResponse'
+        '400':
+          description: No embedding model on the project, or an unsupported model.
+        '404':
+          description: Project not found / not accessible to the caller.
+        '409':
+          description: A benchmark is already running for this model's sandbox.
+        '502':
+          description: The embedding provider failed mid-run (retryable).
+
+  /v1/knowledge/projects/{project_id}/benchmark-status:
+    get:
+      tags: [benchmark]
+      operationId: getProjectBenchmarkStatus
+      summary: Latest benchmark result for a project's embedding model
+      description: |
+        Read-only. Returns the latest run for the given (or the project's)
+        embedding model, keyed `(user, model)`. `has_run=false` is a valid 200
+        (the FE renders a neutral "no benchmark yet" badge, not an error). Uses
+        the same lookup the Build-KG gate uses, so the badge never disagrees with
+        the gate.
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - name: embedding_model
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter to a specific model; omit for latest-any.
+      responses:
+        '200':
+          description: Latest benchmark status (possibly `has_run=false`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BenchmarkStatusResponse'
+        '404':
+          description: Project not found / not accessible to the caller.
+
+components:
+  parameters:
+    ProjectId:
+      name: project_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: The knowledge project id (identifies the user + embedding model to benchmark).
+
+  schemas:
+    GateFailureCode:
+      type: string
+      description: |
+        A named benchmark gate that did not pass. `insufficient_runs` is
+        inconclusive (too few passes), NOT a quality failure.
+      enum:
+        - insufficient_runs
+        - low_recall
+        - low_mrr
+        - low_avg_score
+        - negative_control_too_high
+        - unstable
+
+    BenchmarkRunRequest:
+      type: object
+      properties:
+        runs:
+          type: integer
+          minimum: 1
+          maximum: 5
+          default: 3
+          description: >
+            Passes to average over. Clamped UP to `min_runs` server-side, so a
+            value below the minimum still produces a valid (passing) run.
+      additionalProperties: false
+
+    BenchmarkRunResponse:
+      type: object
+      required: [run_id, embedding_model, passed, recall_at_3, mrr, runs]
+      properties:
+        run_id:
+          type: string
+          format: uuid
+        embedding_model:
+          type: string
+        passed:
+          type: boolean
+        recall_at_3:
+          type: number
+        mrr:
+          type: number
+        avg_score_positive:
+          type: number
+        negative_control_max_score:
+          type: number
+        stddev_recall:
+          type: number
+        stddev_mrr:
+          type: number
+        runs:
+          type: integer
+          description: The EFFECTIVE run count (clamped up to min_runs).
+        gate_failures:
+          type: array
+          items:
+            $ref: '#/components/schemas/GateFailureCode'
+          description: Named failing gates. Empty == passed.
+
+    BenchmarkStatusResponse:
+      type: object
+      required: [has_run]
+      properties:
+        has_run:
+          type: boolean
+          description: false == no benchmark yet (a valid state, not an error).
+        passed:
+          type: boolean
+          nullable: true
+        run_id:
+          type: string
+          nullable: true
+        embedding_model:
+          type: string
+          nullable: true
+        recall_at_3:
+          type: number
+          nullable: true
+        mrr:
+          type: number
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+        gate_failures:
+          type: array
+          items:
+            $ref: '#/components/schemas/GateFailureCode'
+          description: Named failing gates on the latest run. Empty == passed.
