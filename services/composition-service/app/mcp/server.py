@@ -36,7 +36,7 @@ service-bearer seam with a direct internal call.
 from __future__ import annotations
 
 import logging
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 import asyncpg
@@ -74,8 +74,12 @@ __all__ = ["mcp_server", "build_mcp_app"]
 
 mcp_server = make_stateless_fastmcp("composition")
 
-# Confirm descriptor for the Tier-W publish (C-CONFIRM domain map → composition).
+# Confirm descriptors for the Tier-W actions (C-CONFIRM domain map → composition).
 _PUBLISH_DESCRIPTOR = "composition.publish"
+# Cost-gated grounded generation (the cowrite ENGINE — distinct from write_prose,
+# which only SAVES prose the LLM wrote itself). Mints a confirm token; the actual
+# spend happens in the confirm-route effect (app/routers/actions.py).
+_GENERATE_DESCRIPTOR = "composition.generate"
 
 
 # ── shared helpers ────────────────────────────────────────────────────────────
@@ -837,6 +841,101 @@ async def composition_publish(
         "descriptor": _PUBLISH_DESCRIPTOR,
         "title": "Publish chapter (canonize the reviewed draft)",
         "domain": "composition",
+    }
+
+
+class _GenerateArgs(ForbidExtra):
+    project_id: str
+    # XOR target: a SCENE (outline_node_id, mode=auto) OR a whole CHAPTER
+    # (chapter_id, single-pass → persisted to the book draft). Exactly one.
+    outline_node_id: str | None = None
+    chapter_id: str | None = None
+    # Literals mirror the engine's GenerateBody so a bad value is a clean refusal at
+    # propose (not a pydantic 500 when the confirm effect rebuilds the engine body).
+    model_source: Literal["user_model", "platform_model"]
+    model_ref: str
+    # The free-form prose op; defaults per target (draft_scene / draft_chapter).
+    operation: str | None = None
+    guide: str = ""
+    max_output_tokens: int | None = None
+    # Author reasoning preference, forwarded to the engine's capability-aware
+    # resolver (auto = let the model/scorer decide).
+    reasoning: Literal["off", "auto", "low", "medium", "high"] = "auto"
+
+
+@mcp_server.tool(
+    name="composition_generate",
+    description=(
+        "PROPOSE running the grounded cowrite ENGINE to generate prose — a SCENE "
+        "(pass outline_node_id) or a whole CHAPTER (pass chapter_id; persisted to the "
+        "book draft). This is DISTINCT from composition_write_prose, which only SAVES "
+        "text you wrote yourself: this invokes the canon-grounded drafter+critic engine "
+        "and SPENDS LLM tokens, so it is cost-gated — it returns a `confirm_token` + "
+        "descriptor and generates NOTHING until the user confirms via confirm_action. "
+        "Pass EXACTLY ONE of outline_node_id / chapter_id. EDIT on the book required. "
+        "For a chapter, first build its outline (a chapter node + at least one scene "
+        "node) with the composition_outline_node_create tool."
+    ),
+    meta=require_meta(
+        "W", "book",
+        synonyms=["generate prose", "write scene", "write chapter", "draft scene",
+                  "draft chapter", "cowrite", "co-write", "ai write", "generate draft"],
+        tool_name="composition_generate",
+    ),
+)
+async def composition_generate(ctx: MCPContext, args: _GenerateArgs) -> dict:
+    tc = _ctx(ctx)
+    # XOR — exactly one target. A bad shape is a clean tool refusal (not a 5xx).
+    has_scene = bool(args.outline_node_id)
+    has_chapter = bool(args.chapter_id)
+    if has_scene == has_chapter:
+        return {
+            "success": False,
+            "error": "pass EXACTLY ONE of outline_node_id (a scene) or chapter_id (a whole chapter)",
+        }
+    works = WorksRepo(get_pool())
+    pid = UUID(args.project_id)
+    work = await _work_or_deny(works, tc, pid)
+    # Generation is a write/spend → EDIT (mirrors the engine's E0-4c pack tier).
+    await _gate(tc, work.book_id, GrantLevel.EDIT)
+
+    target_kind = "scene" if has_scene else "chapter"
+    target_id = args.outline_node_id if has_scene else args.chapter_id
+    # Light propose-time validation for the SCENE target: the node must exist + be in
+    # the resolved Work's project (the same project-scope guard the other by-id
+    # handlers apply). The CHAPTER target is validated at confirm by the engine
+    # (it needs book-service to resolve the chapter sort/plan).
+    if has_scene:
+        outline = OutlineRepo(get_pool())
+        node = await outline.get_node(tc.user_id, UUID(target_id))
+        if node is None or node.project_id != pid:
+            raise uniform_not_accessible()
+
+    payload = {
+        "project_id": args.project_id,
+        "book_id": str(work.book_id),
+        "target_kind": target_kind,
+        "target_id": target_id,
+        "model_source": args.model_source,
+        "model_ref": args.model_ref,
+        "operation": args.operation,
+        "guide": args.guide,
+        "max_output_tokens": args.max_output_tokens,
+        "reasoning": args.reasoning,
+    }
+    confirm_token = mint_confirm_token(
+        settings.confirm_token_signing_secret,
+        tc.user_id, UUID(target_id), _GENERATE_DESCRIPTOR, payload,
+    )
+    summary = (f"generate a {target_kind} with the cowrite engine "
+               f"(model {args.model_source}/{args.model_ref})")
+    return {
+        "confirm_token": confirm_token,
+        "descriptor": _GENERATE_DESCRIPTOR,
+        "title": summary,
+        "domain": "composition",
+        "requires": "human confirmation via the review surface — this spends LLM "
+                    "tokens; nothing is generated until confirmed",
     }
 
 

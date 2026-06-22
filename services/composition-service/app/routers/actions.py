@@ -24,6 +24,7 @@ revealing whether the resource exists.
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 from uuid import UUID
@@ -42,6 +43,7 @@ from app.grant_deps import InsufficientGrant, authorize_book
 from app.deps import get_grant_client_dep, get_outline_repo, get_works_repo
 from app.db.repositories.outline import OutlineRepo
 from app.db.repositories.works import WorksRepo
+from app.db.models import CompositionWork
 from app.mcp.service_bearer import mint_service_bearer
 from app.clients.book_client import BookClient, BookClientError
 from app.deps import get_book_client_dep
@@ -51,10 +53,12 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v1/composition/actions")
 
-# The single descriptor this domain's confirm path commits. Kept narrow: only
-# the canonization (publish) is Tier-W in S-COMPOSE; every other write is Tier-A
-# (auto-applied with Undo), so it does NOT route through here.
+# The Tier-W descriptors this domain's confirm path commits. Most writes are
+# Tier-A (auto-applied with Undo) and do NOT route through here; the two
+# cost/canon-bearing actions are: the canonization (publish) and the grounded
+# cowrite engine (generate, which spends LLM tokens).
 _PUBLISH_DESCRIPTOR = "composition.publish"
+_GENERATE_DESCRIPTOR = "composition.generate"
 
 
 def _require_internal_token(x_internal_token: str | None) -> None:
@@ -127,18 +131,18 @@ async def confirm_action(
         # H13 anti-oracle — uniform refusal, never reveal "this token is someone else's".
         raise HTTPException(status_code=400, detail={"code": "action_error"})
 
-    if claims.descriptor != _PUBLISH_DESCRIPTOR:
+    if claims.descriptor not in (_PUBLISH_DESCRIPTOR, _GENERATE_DESCRIPTOR):
         raise HTTPException(status_code=400, detail={"code": "action_error"})
 
     payload = claims.payload if isinstance(claims.payload, dict) else {}
     try:
         project_id = UUID(str(payload["project_id"]))
-        chapter_id = UUID(str(payload["chapter_id"]))
     except (KeyError, ValueError, TypeError) as exc:
         raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
 
-    # Re-resolve ownership at confirm time (the Work is user-scoped → None if not
-    # the caller's; the grant may have been revoked since propose).
+    # Re-resolve ownership + EDIT at confirm time, common to every composition
+    # confirm descriptor (the Work is user-scoped → None if not the caller's; the
+    # grant may have been revoked since propose).
     work = await works.get(envelope_user, project_id)
     if work is None:
         raise HTTPException(status_code=400, detail={"code": "action_error"})
@@ -146,6 +150,21 @@ async def confirm_action(
         await authorize_book(grant, work.book_id, envelope_user, GrantLevel.EDIT)
     except (OwnershipError, InsufficientGrant) as exc:
         raise HTTPException(status_code=403, detail={"code": "action_error"}) from exc
+
+    if claims.descriptor == _PUBLISH_DESCRIPTOR:
+        return await _execute_publish(payload, project_id, work, envelope_user, outline, book)
+    return await _execute_generate(payload, project_id, work, envelope_user)
+
+
+async def _execute_publish(
+    payload: dict[str, Any], project_id: UUID, work: CompositionWork,
+    envelope_user: UUID, outline: OutlineRepo, book: BookClient,
+) -> dict[str, Any]:
+    """composition.publish effect — canonize a reviewed chapter draft (CM1)."""
+    try:
+        chapter_id = UUID(str(payload["chapter_id"]))
+    except (KeyError, ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
 
     # Canonization gate (CM1 / OI-1): a chapter is publishable ONLY when all its
     # composition scenes are 'done' and no unresolved canon contradiction survives
@@ -171,8 +190,110 @@ async def confirm_action(
 
     return {
         "outcome": "action_done",
-        "descriptor": claims.descriptor,
+        "descriptor": _PUBLISH_DESCRIPTOR,
         "project_id": str(project_id),
         "chapter_id": str(chapter_id),
         "book": result,
+    }
+
+
+async def _execute_generate(
+    payload: dict[str, Any], project_id: UUID, work: CompositionWork, envelope_user: UUID,
+) -> dict[str, Any]:
+    """composition.generate effect — run the grounded cowrite ENGINE (the only
+    spend path for the MCP `composition_generate` tool). Calls the engine router
+    coroutine IN-PROCESS (the deps are trivial per-request factories) in auto
+    (non-stream) mode, so the full canon-grounded drafter+critic pipeline runs and
+    returns JSON. The MCP path has no JWT → mint a short-lived service bearer for
+    the envelope user (book-service still enforces ownership in SQL on `sub`)."""
+    # Imported here (not at module top) to avoid an import cycle: the engine router
+    # imports the action confirm helpers' siblings; deferring keeps actions.py light.
+    from app.routers import engine as engine_router
+    from app.clients.book_client import get_book_client
+    from app.clients.glossary_client import get_glossary_client
+    from app.clients.knowledge_client import get_knowledge_client
+    from app.clients.llm_client import get_llm_client
+    from app.db.pool import get_pool
+    from app.db.repositories.canon_rules import CanonRulesRepo
+    from app.db.repositories.derivatives import DerivativesRepo
+    from app.db.repositories.generation_jobs import GenerationJobsRepo
+    from app.db.repositories.narrative_thread import NarrativeThreadRepo
+    from app.db.repositories.scene_links import SceneLinksRepo
+
+    target_kind = str(payload.get("target_kind") or "")
+    target_id_raw = payload.get("target_id")
+    model_source = str(payload.get("model_source") or "")
+    model_ref_raw = payload.get("model_ref")
+    if target_kind not in ("scene", "chapter") or not target_id_raw or not model_ref_raw:
+        raise HTTPException(status_code=400, detail={"code": "action_error"})
+    try:
+        target_id = UUID(str(target_id_raw))
+        model_ref = UUID(str(model_ref_raw))
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+    guide = str(payload.get("guide") or "")
+    reasoning = str(payload.get("reasoning") or "auto")
+    max_out = payload.get("max_output_tokens")
+    operation = payload.get("operation")
+
+    bearer = mint_service_bearer(envelope_user, settings.jwt_secret)
+    pool = get_pool()
+    deps = dict(
+        works=WorksRepo(pool), outline=OutlineRepo(pool),
+        scene_links=SceneLinksRepo(pool), canon=CanonRulesRepo(pool),
+        jobs=GenerationJobsRepo(pool), book=get_book_client(),
+        glossary=get_glossary_client(), knowledge=get_knowledge_client(),
+        llm=get_llm_client(), narrative_threads=NarrativeThreadRepo(pool),
+        derivatives=DerivativesRepo(pool),
+    )
+    # Build the engine body from the (signed, tamper-proof) payload. The propose
+    # tool already constrains the enums, but guard the construction so a malformed
+    # payload is a clean 400 rather than a pydantic 500.
+    try:
+        if target_kind == "scene":
+            body_kwargs: dict[str, Any] = dict(
+                outline_node_id=target_id, model_source=model_source, model_ref=model_ref,
+                mode="auto", guide=guide, reasoning=reasoning,
+                operation=operation or "draft_scene",
+            )
+            if max_out is not None:
+                body_kwargs["max_output_tokens"] = int(max_out)
+            body = engine_router.GenerateBody(**body_kwargs)
+        else:
+            body_kwargs = dict(
+                model_source=model_source, model_ref=model_ref, guide=guide,
+                reasoning=reasoning, operation=operation or "draft_chapter",
+                persist=True,
+            )
+            if max_out is not None:
+                body_kwargs["max_output_tokens"] = int(max_out)
+            body = engine_router.GenerateChapterBody(**body_kwargs)
+    except (ValueError, TypeError) as exc:  # pydantic ValidationError ⊂ ValueError
+        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+
+    try:
+        if target_kind == "scene":
+            resp = await engine_router.generate(
+                project_id, body, user_id=envelope_user, bearer=bearer, **deps)
+        else:
+            resp = await engine_router.generate_chapter(
+                project_id, target_id, body, user_id=envelope_user, bearer=bearer, **deps)
+    except HTTPException:
+        # The engine's own HTTPExceptions (404 not found / 403 insufficient / 413
+        # too-large / 409 use-chapter-endpoint / 502 upstream) are already
+        # meaningful — let them propagate to the FE confirm card unchanged.
+        raise
+
+    # The engine returns a JSONResponse in auto mode; surface its body verbatim.
+    try:
+        result = json.loads(resp.body)
+    except (ValueError, AttributeError, TypeError):
+        result = {}
+    return {
+        "outcome": "action_done",
+        "descriptor": _GENERATE_DESCRIPTOR,
+        "project_id": str(project_id),
+        "target_kind": target_kind,
+        "target_id": str(target_id),
+        "generation": result,
     }

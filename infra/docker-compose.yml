@@ -859,7 +859,9 @@ services:
       # catalog to PARTIAL (H10) rather than blocking the gateway, so no hard
       # depends_on is required here. Wave 1: knowledge, glossary, jobs.
       # Wave 2: book, composition, translation, settings.
-      AI_GATEWAY_PROVIDERS: "knowledge=http://knowledge-service:8092/mcp,glossary=http://glossary-service:8088/mcp,jobs=http://jobs-service:8096/mcp,book=http://book-service:8082/mcp,composition=http://composition-service:8093/mcp,translation=http://translation-service:8087/mcp,settings=http://provider-registry-service:8085/mcp"
+      # Provider name `lore_enrichment` (underscore) → derived prefix `lore_enrichment_`
+      # (no DEFAULT_PREFIX_MAP entry needed), which matches the tool `lore_enrichment_auto_enrich`.
+      AI_GATEWAY_PROVIDERS: "knowledge=http://knowledge-service:8092/mcp,glossary=http://glossary-service:8088/mcp,jobs=http://jobs-service:8096/mcp,book=http://book-service:8082/mcp,composition=http://composition-service:8093/mcp,translation=http://translation-service:8087/mcp,settings=http://provider-registry-service:8085/mcp,lore_enrichment=http://lore-enrichment-service:8093/mcp"
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       knowledge-service:
