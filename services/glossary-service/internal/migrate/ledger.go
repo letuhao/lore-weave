@@ -78,6 +78,7 @@ var chain = []Step{
 	{"0032_extraction_concurrency", UpExtractionConcurrency},
 	{"0033_evidence_provenance", UpEvidenceProvenance},
 	{"0034_merge_policy", UpMergePolicy},
+	{"0035_multirow_attr_values", UpMultirowAttrValues},
 }
 
 // EnsureLedger creates the schema_migrations bookkeeping table. Idempotent; must run

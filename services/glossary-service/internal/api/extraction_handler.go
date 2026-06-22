@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -16,7 +15,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/loreweave/grantclient"
-	"golang.org/x/text/unicode/norm"
+	"github.com/loreweave/glossary-service/internal/textnorm"
 )
 
 // pgxRWQuerier is the read+write querier shared by *pgxpool.Pool and pgx.Tx —
@@ -1344,14 +1343,16 @@ func (s *Server) mergeExtractedEntity(
 
 		serialized := serializeValue(val)
 
-		// Check existing value + its trust marker (MERGE/M5).
+		// Check existing value + its trust marker (MERGE/M5) + its surrogate id (the
+		// child-item FK target, D-GLOSSARY-MULTIROW-ATTR-VALUES).
 		var existingValue string
 		var existingConfidence string
+		var existingAttrValueID uuid.UUID
 		var attrValueExists bool
 		err := q.QueryRow(ctx, `
-			SELECT original_value, confidence FROM entity_attribute_values
+			SELECT attr_value_id, original_value, confidence FROM entity_attribute_values
 			WHERE entity_id = $1 AND attr_def_id = $2
-		`, entityID, defID).Scan(&existingValue, &existingConfidence)
+		`, entityID, defID).Scan(&existingAttrValueID, &existingValue, &existingConfidence)
 		if err == nil {
 			attrValueExists = true
 		}
@@ -1417,30 +1418,54 @@ func (s *Server) mergeExtractedEntity(
 			}
 			written = append(written, code)
 		} else if action == "append" {
-			// MERGE/M5 slice 2 — atomic dedup-merge into a JSON-array list value. The
-			// merge happens under the per-book writeback lock (this whole tx), so the
-			// read-modify-write is race-free; it is idempotent by normalized value (a
-			// re-append of the same items is a no-op → skip-reason 'unchanged'). Interim
-			// JSON-array model (multi-row per-item provenance + per-item tombstones ride
-			// D-GLOSSARY-MULTIROW-ATTR-VALUES).
-			merged, changed := appendDedupMerge(existingValue, serialized)
-			if !changed {
+			// D-GLOSSARY-MULTIROW-ATTR-VALUES slice 1 — per-item append. Each incoming
+			// element becomes a child row (its own confidence/status/source-chapter); the
+			// list is deduped by normalized value via UNIQUE(attr_value_id, item_norm) +
+			// ON CONFLICT DO NOTHING, so a re-append is a no-op → skip 'unchanged'. The
+			// whole op runs under the per-book writeback lock (this tx), so the cache
+			// rebuild is race-free. original_value is kept as the write-synced cache of the
+			// ACTIVE items (rebuildItemsCache) so every existing reader is unchanged.
+			incoming := parseListValue(serialized)
+			if len(dedupNormalized(incoming)) == 0 {
+				// nothing meaningful to append (empty/whitespace input)
 				skipped = append(skipped, attrSkip{code, "unchanged"})
 				continue
 			}
-			if attrValueExists {
-				_, err = q.Exec(ctx, `
-					UPDATE entity_attribute_values SET original_value = $1, original_language = $2
-					WHERE entity_id = $3 AND attr_def_id = $4
-				`, merged, sourceLang, entityID, defID)
-			} else {
-				_, err = q.Exec(ctx, `
+			attrValueID := existingAttrValueID
+			seeded := false
+			if !attrValueExists {
+				// Materialize the EAV first (cache seeded empty; rebuilt below). RETURNING
+				// gives us the child-FK target.
+				if err = q.QueryRow(ctx, `
 					INSERT INTO entity_attribute_values (entity_id, attr_def_id, original_language, original_value)
-					VALUES ($1, $2, $3, $4)
-				`, entityID, defID, sourceLang, merged)
+					VALUES ($1, $2, $3, '[]')
+					RETURNING attr_value_id
+				`, entityID, defID, sourceLang).Scan(&attrValueID); err != nil {
+					return nil, nil, fmt.Errorf("append attr %s (create): %w", code, err)
+				}
+			} else if seeded, err = ensureItemsMaterialized(ctx, q, attrValueID, existingValue, existingConfidence); err != nil {
+				// First per-item touch of a value first written as a scalar/legacy list:
+				// seed its existing elements so the cache rebuild doesn't drop them.
+				return nil, nil, fmt.Errorf("append attr %s (materialize): %w", code, err)
 			}
+			added, err := appendListItems(ctx, q, attrValueID, incoming, firstChapterIDFromLinks(ent.ChapterLinks))
 			if err != nil {
-				return nil, nil, fmt.Errorf("append attr %s: %w", code, err)
+				return nil, nil, fmt.Errorf("append attr %s (items): %w", code, err)
+			}
+			// Rebuild the cache whenever the item set changed OR we just materialized a
+			// legacy scalar (canonicalize it to the active-item JSON array — INV-MR1 never
+			// diverges, even on a no-op re-append).
+			if added > 0 || seeded {
+				if err := rebuildItemsCache(ctx, q, attrValueID, sourceLang); err != nil {
+					return nil, nil, fmt.Errorf("append attr %s (cache): %w", code, err)
+				}
+			}
+			if added == 0 && attrValueExists {
+				// no NEW element (every incoming item already present) → idempotent;
+				// report 'unchanged' (the cache may have canonicalized, but the active set
+				// is the same). Preserves the slice-2 'unchanged' contract.
+				skipped = append(skipped, attrSkip{code, "unchanged"})
+				continue
 			}
 			written = append(written, code)
 		}
@@ -1515,68 +1540,21 @@ func serializeValue(val any) string {
 	}
 }
 
-// parseListValue interprets a stored attribute value as a string list: a JSON array
-// yields its non-empty string elements; a non-empty scalar is a single-element list;
-// empty → none. (MERGE/M5 slice 2 append.)
+// parseListValue interprets a stored attribute value as a string list (delegates to
+// the shared textnorm.ParseList — the single impl shared with the migration backfill,
+// D-GLOSSARY-MULTIROW-ATTR-VALUES normalize-parity).
 func parseListValue(s string) []string {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return nil
-	}
-	if strings.HasPrefix(s, "[") {
-		var arr []any
-		if err := json.Unmarshal([]byte(s), &arr); err == nil {
-			out := make([]string, 0, len(arr))
-			for _, v := range arr {
-				if str, ok := v.(string); ok && strings.TrimSpace(str) != "" {
-					out = append(out, str)
-				}
-			}
-			return out
-		}
-	}
-	return []string{s}
-}
-
-// appendDedupMerge merges `incoming` into `existing` as a JSON-array list, deduping by
-// normalized value and preserving existing order (new items appended). Returns the merged
-// JSON array + whether anything was actually added — so a re-append of the same items is a
-// no-op (idempotent). (MERGE/M5 slice 2.)
-func appendDedupMerge(existing, incoming string) (string, bool) {
-	items := parseListValue(existing)
-	seen := make(map[string]bool, len(items))
-	for _, it := range items {
-		seen[normalizeEntity(it)] = true
-	}
-	added := false
-	for _, it := range parseListValue(incoming) {
-		n := normalizeEntity(it)
-		if n == "" || seen[n] {
-			continue
-		}
-		seen[n] = true
-		items = append(items, it)
-		added = true
-	}
-	if !added {
-		return existing, false
-	}
-	b, _ := json.Marshal(items)
-	return string(b), true
+	return textnorm.ParseList(s)
 }
 
 // ── Name normalization ──────────────────────────────────────────────────────
 
-var wsCollapse = regexp.MustCompile(`\s+`)
-
-// normalizeEntity prepares a name string for dedup comparison.
-// Unicode NFC, trim, collapse whitespace, lowercase.
+// normalizeEntity prepares a name string for dedup comparison (delegates to the
+// shared textnorm.Normalize — NFC, trim, collapse whitespace, lowercase). Shared
+// with the migration backfill so the per-item child rows dedup identically to the
+// runtime append path (D-GLOSSARY-MULTIROW-ATTR-VALUES normalize-parity).
 func normalizeEntity(s string) string {
-	s = norm.NFC.String(s)
-	s = strings.TrimSpace(s)
-	s = wsCollapse.ReplaceAllString(s, " ")
-	s = strings.ToLower(s)
-	return s
+	return textnorm.Normalize(s)
 }
 
 // Ensure pgx import is used
