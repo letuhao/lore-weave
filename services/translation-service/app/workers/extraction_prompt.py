@@ -463,6 +463,7 @@ def estimate_extraction_cost(
     kinds_metadata: list[dict],
     *,
     model_context_window: int | None = None,
+    reasoning_effort: str = "none",
 ) -> dict:
     """Estimate token cost before starting an extraction job.
 
@@ -501,9 +502,16 @@ def estimate_extraction_cost(
 
     try:
         from loreweave_extraction import (
-            DEFAULT_MODEL_CONTEXT, ModelCaps, PlanRequest, Policy, Unit, plan,
+            DEFAULT_MODEL_CONTEXT, ModelCaps, PlanRequest, Policy, Unit,
+            effort_output_multiplier, plan,
         )
 
+        # D-RE-EFFORT-COST-ESTIMATE: a reasoning model spends extra OUTPUT tokens on its thinking
+        # trace, so the quote must grow with effort. The planner's per-call output RESERVATION
+        # already scales by effort (Policy.reasoning_effort), but the reported `est_output` is the
+        # sum of unit outputs — so scale the per-call output by the SAME multiplier here, and pass
+        # the effort to Policy so the split/budget math stays consistent with the larger output.
+        out_per_call = int(round(output_per_call * effort_output_multiplier(reasoning_effort)))
         units: list[Unit] = []
         for ci, ch in enumerate(chapters):
             cid = str(ch.get("chapter_id") or ch.get("id") or ci)
@@ -511,12 +519,12 @@ def estimate_extraction_cost(
             for bi in range(batches_per_chapter):
                 units.append(Unit(
                     id=f"{cid}:b{bi}", kind="extract", est_input=unit_in,
-                    est_output=output_per_call, splittable=True, split_axis="chunk", group=cid,
+                    est_output=out_per_call, splittable=True, split_axis="chunk", group=cid,
                 ))
         caps = ModelCaps(context_window=model_context_window or DEFAULT_MODEL_CONTEXT)
         p = plan(PlanRequest(
             pipeline="extraction", units=units, model=caps,
-            policy=Policy(max_units_per_call=1),
+            policy=Policy(max_units_per_call=1, reasoning_effort=reasoning_effort),
         ))
         total_input = sum(c.est_input for c in p.calls)
         total_output = sum(c.est_output for c in p.calls)

@@ -21,9 +21,11 @@ from pydantic import BaseModel
 from ..broker import publish, publish_event
 from ..config import settings as app_settings
 from ..deps import get_current_user, get_db
+from ..grant_client import get_grant_client
 from ..grant_deps import (
     GrantLevel,
     authorize_book,
+    clamp_effort_to_grant,
     get_grant_client_dep,
     require_book_grant,
 )
@@ -50,6 +52,10 @@ class CreateExtractionJobPayload(BaseModel):
     model_ref: UUID | None = None
     context_filters: dict | None = None
     max_entities_per_kind: int = 30
+    # D-RE-WORKER-GRADED-EFFORT: graded reasoning effort (none|low|medium|high). Clamped to the
+    # caller's grant ceiling in the core (INV-T11). `thinking_enabled` is the deprecated bool
+    # alias (True→medium) kept for back-compat; `reasoning_effort` wins when set.
+    reasoning_effort: str = "none"
     thinking_enabled: bool = False
 
 
@@ -154,10 +160,21 @@ async def _create_extraction_job_core(
     # windows oversized chapters against the SAME budget the executor will use (not the SDK's
     # conservative default, which would over-split every chapter). Best-effort → fallback.
     model_context_window = await get_model_context_window(model_source, str(model_ref) if model_ref else None)
+
+    # D-RE-WORKER-GRADED-EFFORT: resolve the graded reasoning effort, CLAMPED to the caller's
+    # grant ceiling (INV-T11 — effort is paid compute; a non-owner must not escalate spend past
+    # their grant). The MCP/confirm paths already clamp, so re-clamping here is idempotent for
+    # them AND secures the direct HTTP path (whose payload effort is unclamped). `reasoning_effort`
+    # wins; `thinking_enabled` is the deprecated bool alias (True→medium).
+    effort_raw = (payload.reasoning_effort or "").strip().lower() or ("medium" if payload.thinking_enabled else "none")
+    _grant_level = await get_grant_client().resolve_grant(book_id, uid)
+    reasoning_effort, _ = clamp_effort_to_grant(effort_raw, int(_grant_level))
+
     chapters_meta = [{"text_length": 8000}] * len(payload.chapter_ids)
     cost_estimate = estimate_extraction_cost(
         chapters_meta, extraction_profile, kinds_metadata,
         model_context_window=model_context_window,
+        reasoning_effort=reasoning_effort,
     )
 
     context_filters = payload.context_filters or {}
@@ -171,6 +188,7 @@ async def _create_extraction_job_core(
         "source_language": source_language,
         "max_entities_per_kind": payload.max_entities_per_kind,
         "thinking_enabled": payload.thinking_enabled,
+        "reasoning_effort": reasoning_effort,
     }
 
     # Insert job + chapter result rows + emit the 'pending' lifecycle event in ONE tx
@@ -184,8 +202,9 @@ async def _create_extraction_job_core(
                 """
                 INSERT INTO extraction_jobs
                   (book_id, owner_user_id, status, source_language, model_source, model_ref,
-                   extraction_profile, context_filters, chapter_ids, total_chapters, cost_estimate)
-                VALUES ($1,$2,'pending',$3,$4,$5,$6,$7,$8,$9,$10)
+                   extraction_profile, context_filters, chapter_ids, total_chapters, cost_estimate,
+                   reasoning_effort)
+                VALUES ($1,$2,'pending',$3,$4,$5,$6,$7,$8,$9,$10,$11)
                 RETURNING *
                 """,
                 book_id, uid, source_language, model_source, model_ref,
@@ -194,6 +213,7 @@ async def _create_extraction_job_core(
                 payload.chapter_ids,
                 len(payload.chapter_ids),
                 json.dumps(cost_estimate),
+                reasoning_effort,
             )
             job_id = job_row["job_id"]
 
@@ -223,6 +243,7 @@ async def _create_extraction_job_core(
         "model_ref": str(model_ref),
         "max_entities_per_kind": payload.max_entities_per_kind,
         "thinking_enabled": payload.thinking_enabled,
+        "reasoning_effort": reasoning_effort,
     })
 
     return {

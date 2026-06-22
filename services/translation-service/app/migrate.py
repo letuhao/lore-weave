@@ -253,6 +253,10 @@ CREATE TABLE IF NOT EXISTS extraction_jobs (
   finished_at        TIMESTAMPTZ,
   created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- D-RE-WORKER-GRADED-EFFORT: the clamped graded reasoning effort (none|low|medium|high) the
+-- worker honors per call. Additive + idempotent; default 'none' ⇒ zero behavior change for
+-- existing rows (the worker falls back to the thinking_enabled bool when absent).
+ALTER TABLE extraction_jobs ADD COLUMN IF NOT EXISTS reasoning_effort TEXT NOT NULL DEFAULT 'none';
 CREATE INDEX IF NOT EXISTS idx_ej_owner ON extraction_jobs(owner_user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_ej_book  ON extraction_jobs(book_id, created_at DESC);
 

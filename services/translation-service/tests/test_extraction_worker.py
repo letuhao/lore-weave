@@ -243,7 +243,7 @@ async def _run_with_window_and_ctx(window: str, ctx: int, llm_job):
          patch.object(ew, "build_extraction_prompt", return_value={}), \
          patch.object(ew, "build_system_prompt", return_value="sys"), \
          patch.object(ew, "build_user_prompt", return_value="usr"), \
-         patch.object(ew, "thinking_llm_fields", return_value={}), \
+         patch.object(ew, "reasoning_fields", return_value={}), \
          patch.object(ew, "parse_and_validate_with_stats",
                       return_value=([], ParseStats(raw_count=0, parse_ok=True))), \
          patch.object(ew, "stamp_entity_provenance", new=MagicMock()), \
@@ -259,6 +259,43 @@ async def _run_with_window_and_ctx(window: str, ctx: int, llm_job):
             max_entities_per_kind=10, thinking_enabled=False, pool=_pool(db), llm_client=llm,
         )
     return llm, captured.get("outcomes", [])
+
+
+@pytest.mark.asyncio
+async def test_graded_effort_reaches_llm_input():
+    # D-RE-WORKER-GRADED-EFFORT: the clamped graded effort reaches the LLM call (NOT collapsed
+    # to medium/none by the old thinking_enabled bool) and keys the cache effort_band.
+    db = AsyncMock()
+    db.fetchval = AsyncMock(return_value=uuid4())
+    db.execute = AsyncMock()
+    llm = MagicMock()
+    llm.submit_and_wait = AsyncMock(return_value=_sdk_job("stop"))
+    put_mock = AsyncMock()
+    with patch.object(ew.httpx, "AsyncClient",
+                      return_value=_http_cm_returning({"title": "Ch1", "content": "text"})), \
+         patch.object(ew, "prepare_chapter_text", new=MagicMock(return_value="short chapter text")), \
+         patch.object(ew, "plan_kind_batches", return_value=[["character"]]), \
+         patch.object(ew, "build_known_entities_context", return_value=""), \
+         patch.object(ew, "build_extraction_prompt", return_value={}), \
+         patch.object(ew, "build_system_prompt", return_value="sys"), \
+         patch.object(ew, "build_user_prompt", return_value="usr"), \
+         patch.object(ew, "parse_and_validate_with_stats",
+                      return_value=([], ParseStats(raw_count=0, parse_ok=True))), \
+         patch.object(ew, "stamp_entity_provenance", new=MagicMock()), \
+         patch.object(ew, "_persist_batch_outcomes", new=AsyncMock()), \
+         patch.object(ew, "get_cached_batch", new=AsyncMock(return_value=None)), \
+         patch.object(ew, "put_batch", new=put_mock), \
+         patch.object(ew, "post_extracted_entities", new=AsyncMock(return_value={})):
+        await ew._process_extraction_chapter(
+            job_id=uuid4(), book_id="b", chapter_id=uuid4(), chapter_index=0,
+            extraction_profile={"character": {}}, kinds_metadata=[], known_entities=[],
+            source_language="zh", model_source="user_model", model_ref=str(uuid4()),
+            max_entities_per_kind=10, thinking_enabled=False, reasoning_effort="low",
+            pool=_pool(db), llm_client=llm,
+        )
+    inp = llm.submit_and_wait.await_args.kwargs["input"]
+    assert inp.get("reasoning_effort") == "low"            # graded → reached the LLM
+    assert put_mock.await_args.args[1].effort_band == "low"  # graded → keyed the cache
 
 
 @pytest.mark.asyncio
@@ -304,7 +341,7 @@ async def test_truncated_batch_is_not_cached():
          patch.object(ew, "build_extraction_prompt", return_value={}), \
          patch.object(ew, "build_system_prompt", return_value="sys"), \
          patch.object(ew, "build_user_prompt", return_value="usr"), \
-         patch.object(ew, "thinking_llm_fields", return_value={}), \
+         patch.object(ew, "reasoning_fields", return_value={}), \
          patch.object(ew, "parse_and_validate_with_stats",
                       return_value=(entities, ParseStats(raw_count=1, parse_ok=True))), \
          patch.object(ew, "_persist_batch_outcomes", new=AsyncMock()), \
@@ -380,7 +417,7 @@ async def _run_one_chapter_batch(finish_reason: str | None, entities: list[dict]
          patch.object(ew, "build_extraction_prompt", return_value={}), \
          patch.object(ew, "build_system_prompt", return_value="sys"), \
          patch.object(ew, "build_user_prompt", return_value="usr"), \
-         patch.object(ew, "thinking_llm_fields", return_value={}), \
+         patch.object(ew, "reasoning_fields", return_value={}), \
          patch.object(ew, "parse_and_validate_with_stats",
                       return_value=(entities, ParseStats(raw_count=len(entities), parse_ok=True))), \
          patch.object(ew, "_persist_batch_outcomes", new=AsyncMock()), \

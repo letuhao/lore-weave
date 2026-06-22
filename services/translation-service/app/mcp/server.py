@@ -736,8 +736,11 @@ async def translation_start_extraction(
     from ..workers.extraction_model import get_model_context_window
     model_context_window = await get_model_context_window(
         "user_model", str(_uuid(model_ref)) if model_ref else None)
+    # D-RE-EFFORT-COST-ESTIMATE: quote against the CLAMPED effort (resolved above) so the
+    # confirm card's cost grows with high effort — the spend the user is approving.
     estimate = estimate_extraction_cost(
-        chapters_meta, profile, kinds_metadata, model_context_window=model_context_window)
+        chapters_meta, profile, kinds_metadata, model_context_window=model_context_window,
+        reasoning_effort=effort)
     payload = {
         "action": "start_extraction",
         "title": f"Extract glossary from {len(cids)} chapter(s)",

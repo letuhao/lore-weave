@@ -49,6 +49,16 @@ def test_estimate_calls_scale_with_chapters_and_batches():
     assert five == one * 5
 
 
+def test_estimate_output_grows_with_effort():
+    # D-RE-EFFORT-COST-ESTIMATE: a reasoning model spends extra output tokens on its thinking
+    # trace, so the quote's output must grow none < medium < high.
+    def _out(effort):
+        return estimate_extraction_cost(_chapters(2, 4000), _PROFILE, _KINDS,
+                                        model_context_window=128_000,
+                                        reasoning_effort=effort)["estimated_output_tokens"]
+    assert _out("none") < _out("medium") < _out("high")
+
+
 def test_estimate_falls_back_without_planner(monkeypatch):
     # If the planner SDK isn't importable, the estimate degrades to the flat heuristic
     # (windowing-blind) rather than failing — the D-SDK-DISTRIBUTION-SPLIT safety net.

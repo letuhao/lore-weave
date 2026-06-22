@@ -61,7 +61,7 @@ from .glossary_client import (
     fetch_known_entities,
     post_extracted_entities,
 )
-from .llm_thinking import thinking_llm_fields
+from loreweave_llm.reasoning import ReasoningDirective, reasoning_fields
 
 log = logging.getLogger(__name__)
 
@@ -222,6 +222,9 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
     model_ref = msg.get("model_ref")
     max_entities_per_kind = msg.get("max_entities_per_kind", 30)
     thinking_enabled = bool(msg.get("thinking_enabled", False))
+    # D-RE-WORKER-GRADED-EFFORT: the clamped graded effort (none|low|medium|high). Absent on a
+    # message minted before this field (back-compat) → fall back to the thinking_enabled bool.
+    reasoning_effort = msg.get("reasoning_effort") or ("medium" if thinking_enabled else "none")
 
     log.info("extraction_worker: job %s — %d chapters", job_id, len(chapter_ids))
 
@@ -375,6 +378,7 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
                 model_ref=model_ref,
                 max_entities_per_kind=max_entities_per_kind,
                 thinking_enabled=thinking_enabled,
+                reasoning_effort=reasoning_effort,
                 pool=pool,
                 llm_client=llm_client,
             )
@@ -542,6 +546,7 @@ async def _process_extraction_chapter(
     thinking_enabled: bool,
     pool,
     llm_client: LLMClient,
+    reasoning_effort: str = "none",
 ) -> dict:
     """Extract entities from a single chapter via LLM."""
     import time as _time
@@ -645,7 +650,7 @@ async def _process_extraction_chapter(
             }]
         all_entities.extend(entities)
 
-    _effort_band = effort_band_for(thinking_enabled)
+    _effort_band = effort_band_for(thinking_enabled, reasoning_effort)
 
     # Per-call output budget sized so input + output + safety ≤ context (so the gateway
     # never 400s on LLM_CONTEXT_OVERFLOW), capped — extraction output (entities JSON) is
@@ -790,7 +795,12 @@ async def _process_extraction_chapter(
                     # finish_reason=length. If a batch still truncates, the parser
                     # repairs the partial array rather than dropping every entity.
                     "max_tokens": out_budget,
-                    **thinking_llm_fields(enabled=thinking_enabled),
+                    # D-RE-WORKER-GRADED-EFFORT: graded reasoning effort (low/medium/high/none),
+                    # not the old bool→medium. The worker doesn't resolve model-capability dispatch
+                    # (a later improvement), so a direct user-source directive — same wire shape as
+                    # the prior thinking_llm_fields, but graded.
+                    **reasoning_fields(ReasoningDirective(
+                        effort=reasoning_effort, passthrough=False, source="user")),
                 },
                 chunking=None,
                 job_meta={
