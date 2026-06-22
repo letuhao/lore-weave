@@ -191,6 +191,26 @@ async def _create_extraction_job_core(
         "reasoning_effort": reasoning_effort,
     }
 
+    # D-EXTRACTION-ADMISSION-CONTROL: cap CONCURRENT extraction jobs per user. P5 fair-scheduling
+    # is translation-chapter-only — it does NOT bound extraction fan-out, so without this a user
+    # could launch unbounded concurrent jobs (each holds HTTP clients + contends the glossary
+    # per-book advisory lock → pool pressure). 0 ⇒ disabled. Checked here so BOTH the HTTP and the
+    # MCP-confirm paths (which share this core) are bounded.
+    _cap = app_settings.extraction_max_concurrent_jobs_per_user
+    if _cap > 0:
+        active = await db.fetchval(
+            "SELECT count(*) FROM extraction_jobs WHERE owner_user_id=$1 "
+            "AND status IN ('pending','running')",
+            uid,
+        )
+        if (active or 0) >= _cap:
+            raise HTTPException(
+                status_code=429,
+                detail={"code": "EXTRACT_TOO_MANY_JOBS",
+                        "message": f"You already have {active} extraction job(s) running "
+                                   f"(max {_cap}). Wait for one to finish or cancel it."},
+            )
+
     # Insert job + chapter result rows + emit the 'pending' lifecycle event in ONE tx
     # (H1: the JobEvent commits atomically with the row). The chapter-results are a SINGLE
     # bulk INSERT (was an O(N) per-chapter await loop — the create-path latency that froze

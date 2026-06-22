@@ -141,6 +141,11 @@ class Settings(BaseSettings):
     # call (re-extract on a model upgrade). The model is stored on every row, so the buster just
     # compares it — no cache-key fragmentation (which adding model to the key would cause).
     extraction_cache_bust_on_model_change: bool = False
+    # D-EXTRACTION-ADMISSION-CONTROL: per-user cap on CONCURRENT extraction jobs (pending|running).
+    # P5 fair-scheduling is translation-chapter-only — it places NO bound on extraction job fan-out,
+    # so without this a user can launch unbounded concurrent jobs, each holding HTTP clients +
+    # contending the glossary per-book advisory lock (pool pressure). 0 ⇒ unlimited (disabled).
+    extraction_max_concurrent_jobs_per_user: int = 3
 
     class Config:
         env_file = ".env"
