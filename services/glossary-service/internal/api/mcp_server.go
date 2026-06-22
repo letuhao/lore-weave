@@ -88,9 +88,13 @@ func (s *Server) mcpHandler() http.Handler {
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "glossary_propose_new_kind",
 		Description: "Propose a NEW entity KIND (a schema-level type like 'Power System' that every " +
-			"entity of that kind is described by). This is high-impact — it does NOT create anything; it " +
-			"returns a confirm_token + preview that a human must explicitly confirm. Pass the confirm_token " +
-			"to glossary_confirm_action. Use sparingly, only when no existing kind (glossary_book_ontology_read) fits.",
+			"entity of that kind is described by). PASS the kind's defining `attributes` in the SAME call " +
+			"(each with a clear `description` — extraction uses it as the per-attribute instruction): they are " +
+			"created ATOMICALLY with the kind on ONE confirm, so no follow-up per-attribute call is needed. A " +
+			"kind with no attributes can't describe anything. This is high-impact — it does NOT create " +
+			"anything; it returns a confirm_token + preview that a human must explicitly confirm. Pass the " +
+			"confirm_token to glossary_confirm_action. Use sparingly, only when no existing kind " +
+			"(glossary_book_ontology_read) fits.",
 	}, s.toolProposeNewKind)
 
 	mcp.AddTool(srv, &mcp.Tool{

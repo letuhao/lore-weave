@@ -73,6 +73,20 @@ type proposeKindToolIn struct {
 	Icon        string   `json:"icon,omitempty"`
 	Color       string   `json:"color,omitempty"`
 	GenreTags   []string `json:"genre_tags,omitempty"`
+	// F3b — propose the kind's defining attributes in the SAME call; they are
+	// created atomically with the kind on one confirm. Strongly recommended: a
+	// kind with no attributes can't describe anything (and extraction needs each
+	// attribute's description as its instruction).
+	Attributes []proposeKindAttrIn `json:"attributes,omitempty" jsonschema:"the kind's defining attributes (each needs a clear description for extraction)"`
+}
+
+type proposeKindAttrIn struct {
+	Code        string   `json:"code" jsonschema:"machine code, e.g. weaknesses"`
+	Name        string   `json:"name" jsonschema:"display name"`
+	Description string   `json:"description,omitempty" jsonschema:"what this attribute captures — used by extraction as the instruction"`
+	FieldType   string   `json:"field_type,omitempty" jsonschema:"text|textarea|select|number|date|tags|url|boolean (default text)"`
+	IsRequired  bool     `json:"is_required,omitempty"`
+	Options     []string `json:"options,omitempty" jsonschema:"options for a select field"`
 }
 
 type proposeAttrToolIn struct {
@@ -107,10 +121,53 @@ func (s *Server) toolProposeNewKind(ctx context.Context, _ *mcp.CallToolRequest,
 	if d := strings.TrimSpace(in.Description); d != "" {
 		desc = &d
 	}
-	params := kindCreateParams{Code: code, Name: name, Description: desc, Icon: in.Icon, Color: in.Color, GenreTags: in.GenreTags}
+	// F3b — fold the proposed attributes into the create-spec (created atomically
+	// with the kind on confirm). Validate each field_type up front + dedup by code
+	// so a doomed proposal never reaches a confirm card.
+	attrs := make([]kindAttrSpec, 0, len(in.Attributes))
+	seen := map[string]bool{"name": true} // `name` is auto-seeded
+	for _, a := range in.Attributes {
+		ac := strings.TrimSpace(a.Code)
+		an := strings.TrimSpace(a.Name)
+		if ac == "" || an == "" {
+			return nil, confirmCardOut{}, errors.New("each attribute needs a code and a name")
+		}
+		if a.FieldType != "" && !isValidFieldType(a.FieldType) {
+			return nil, confirmCardOut{}, errors.New("invalid field_type: " + a.FieldType +
+				" (text|textarea|select|number|date|tags|url|boolean)")
+		}
+		if seen[ac] {
+			continue
+		}
+		seen[ac] = true
+		var ad *string
+		if d := strings.TrimSpace(a.Description); d != "" {
+			ad = &d
+		}
+		attrs = append(attrs, kindAttrSpec{
+			Code: ac, Name: an, Description: ad, FieldType: a.FieldType,
+			IsRequired: a.IsRequired, Options: a.Options,
+		})
+	}
+	params := kindCreateParams{Code: code, Name: name, Description: desc, Icon: in.Icon, Color: in.Color, GenreTags: in.GenreTags, Attributes: attrs}
 	rows := []previewRow{{Label: "code", Value: code}, {Label: "name", Value: name}}
-	return s.mintGrantActionCard(userID, bookID, descSchemaCreateKind,
-		fmt.Sprintf("Create kind %q (code: %s)", name, code), params, rows, false)
+	for _, a := range attrs {
+		rows = append(rows, previewRow{Label: "+ attribute", Value: a.Code, Note: a.FieldTypeOrDefault()})
+	}
+	title := fmt.Sprintf("Create kind %q (code: %s)", name, code)
+	if len(attrs) > 0 {
+		title = fmt.Sprintf("Create kind %q + %d attribute(s)", name, len(attrs))
+	}
+	return s.mintGrantActionCard(userID, bookID, descSchemaCreateKind, title, params, rows, false)
+}
+
+// FieldTypeOrDefault returns the spec's field type, defaulting to "text" for the
+// confirm-card preview note.
+func (a kindAttrSpec) FieldTypeOrDefault() string {
+	if a.FieldType == "" {
+		return "text"
+	}
+	return a.FieldType
 }
 
 func (s *Server) toolProposeNewAttribute(ctx context.Context, _ *mcp.CallToolRequest, in proposeAttrToolIn) (*mcp.CallToolResult, confirmCardOut, error) {

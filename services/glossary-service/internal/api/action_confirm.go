@@ -586,6 +586,17 @@ func (s *Server) previewSchemaCreate(w http.ResponseWriter, claims actionClaims)
 		_ = json.Unmarshal(claims.Params, &p)
 		title = fmt.Sprintf("Create kind %q", p.Name)
 		rows = []previewRow{{Label: "code", Value: p.Code}, {Label: "name", Value: p.Name}}
+		// F3b — list the defining attributes created atomically with the kind.
+		if len(p.Attributes) > 0 {
+			title = fmt.Sprintf("Create kind %q + %d attribute(s)", p.Name, len(p.Attributes))
+			for _, a := range p.Attributes {
+				ft := a.FieldType
+				if ft == "" {
+					ft = "text"
+				}
+				rows = append(rows, previewRow{Label: "+ attribute", Value: a.Code, Note: ft})
+			}
+		}
 	case descSchemaCreateAttr:
 		var p attrCreateParams
 		_ = json.Unmarshal(claims.Params, &p)

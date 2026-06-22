@@ -39,6 +39,23 @@ type kindCreateParams struct {
 	Icon        string   `json:"icon"`
 	Color       string   `json:"color"`
 	GenreTags   []string `json:"genre_tags"`
+	// F3b — optional defining attributes created ATOMICALLY with the kind (one
+	// confirm token, one tx). Collapses the fragile propose-kind → approve →
+	// propose-each-attr → approve chain into a single human approval, which is
+	// the biggest reliability win for weak tool-callers (and nicer for strong ones).
+	Attributes []kindAttrSpec `json:"attributes,omitempty"`
+}
+
+// kindAttrSpec is one defining attribute proposed alongside a new kind (created
+// under the book's `universal` genre, like the auto-seeded `name` attr).
+type kindAttrSpec struct {
+	Code           string   `json:"code"`
+	Name           string   `json:"name"`
+	Description    *string  `json:"description"`
+	FieldType      string   `json:"field_type"`
+	IsRequired     bool     `json:"is_required"`
+	Options        []string `json:"options"`
+	AutoFillPrompt *string  `json:"auto_fill_prompt"`
 }
 
 // createKindFromParams inserts a kind into the BOOK tier (O2 — the assistant
@@ -115,6 +132,45 @@ func (s *Server) createKindFromParams(ctx context.Context, bookID uuid.UUID, in 
 		return domain.EntityKind{}, err
 	}
 
+	// F3b — the kind's defining attributes, created in the SAME tx so the kind +
+	// attributes land atomically (any failure rolls the whole proposal back → the
+	// confirm handler returns a clean re-proposable error). De-duped by code; the
+	// auto-seeded `name` is skipped. genre = the book's universal genre (same anchor
+	// as the seed name attr). sort_order starts at 1 (name is 0).
+	attrs := []domain.AttrDef{nameAttr}
+	seen := map[string]bool{"name": true}
+	sortOrder := 1
+	for _, a := range in.Attributes {
+		code := strings.TrimSpace(a.Code)
+		if code == "" || seen[code] {
+			continue
+		}
+		seen[code] = true
+		name := strings.TrimSpace(a.Name)
+		if name == "" {
+			name = code
+		}
+		ft := a.FieldType
+		if ft == "" {
+			ft = "text"
+		}
+		var attrID string
+		if err := tx.QueryRow(ctx, `
+			INSERT INTO book_attributes(book_id, kind_id, genre_id, code, name, description, field_type, is_required, sort_order, options, auto_fill_prompt)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+			RETURNING attr_id`,
+			bookID, kindID, universalGenreID, code, name, a.Description, ft, a.IsRequired, sortOrder, a.Options, a.AutoFillPrompt,
+		).Scan(&attrID); err != nil {
+			return domain.EntityKind{}, err
+		}
+		attrs = append(attrs, domain.AttrDef{
+			AttrDefID: attrID, Code: code, Name: name, Description: a.Description,
+			FieldType: ft, IsRequired: a.IsRequired, IsActive: true, SortOrder: sortOrder,
+			Options: a.Options, GenreTags: []string{"universal"}, AutoFillPrompt: a.AutoFillPrompt,
+		})
+		sortOrder++
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return domain.EntityKind{}, err
 	}
@@ -129,7 +185,7 @@ func (s *Server) createKindFromParams(ctx context.Context, bookID uuid.UUID, in 
 		IsDefault:   false,
 		IsHidden:    false,
 		GenreTags:   []string{"universal"},
-		Attributes:  []domain.AttrDef{nameAttr},
+		Attributes:  attrs,
 	}, nil
 }
 
