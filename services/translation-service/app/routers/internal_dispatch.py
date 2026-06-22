@@ -25,6 +25,7 @@ from ..deps import get_db
 from ..grant_deps import GrantLevel, authorize_book
 from ..grant_client import get_grant_client
 from ..models import CreateJobPayload
+from ..workers.extraction_cache import purge_stale_raw_outputs
 from ..workers.extraction_outcomes import reconcile_from_rows
 from ..workers.segment_store import ensure_chapter_segments
 from ..workers.segment_status import compute_segment_status
@@ -416,6 +417,37 @@ async def reconcile_extraction_job(
         },
         "drift": derived_finished != (job["completed_chapters"] or 0),
     }
+
+
+class CacheRetentionPayload(BaseModel):
+    # All optional — unfiltered = the GLOBAL retention sweep (the scheduled job); the
+    # scope fields narrow it to one tenant/book/chapter for a targeted compaction.
+    keep: int = 3
+    owner_user_id: UUID | None = None
+    book_id: UUID | None = None
+    chapter_id: UUID | None = None
+
+
+@router.post("/extraction-cache/retention", dependencies=[Depends(require_internal_token)])
+async def extraction_cache_retention(
+    payload: CacheRetentionPayload,
+    db: asyncpg.Pool = Depends(get_db),
+) -> dict:
+    """CACHE/M6 retention (architecture §8.1): purge stale `extraction_raw_outputs`
+    generations, keeping the latest `keep` content-hash versions per (owner, book,
+    chapter). This is the maintenance seam a scheduler/cron hits — internal-token only
+    (it is a platform housekeeping op, not a user action; no grant gate, every owner's
+    cache is in scope when unfiltered). The optional scope fields target one tenant/book/
+    chapter. Best-effort: a purge failure returns deleted=0, never raises (retention must
+    not break a cron run)."""
+    deleted = await purge_stale_raw_outputs(
+        db,
+        keep=payload.keep,
+        owner_user_id=str(payload.owner_user_id) if payload.owner_user_id else None,
+        book_id=str(payload.book_id) if payload.book_id else None,
+        chapter_id=str(payload.chapter_id) if payload.chapter_id else None,
+    )
+    return {"deleted": deleted, "keep": payload.keep}
 
 
 class JobControlPayload(BaseModel):

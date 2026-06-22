@@ -13,6 +13,7 @@ from app.workers.extraction_cache import (
     RawCacheKey,
     effort_band_for,
     get_cached_batch,
+    purge_stale_raw_outputs,
     put_batch,
 )
 
@@ -119,5 +120,77 @@ async def test_raw_cache_roundtrip_idempotency_and_tenant_scope():
                                   content_hash="h1", batch_idx=0, profile_hash="p2", effort_band="none")
         assert await get_cached_batch(pool, new_profile) is None
         await tx.rollback()  # nothing persists (clean test DB)
+    finally:
+        await conn.close()
+
+
+async def _seed_generation(conn, *, owner, book, chapter, content_hash, created_at,
+                           batches=(0, 1), effort_band="none", profile_hash=""):
+    """Insert one content-hash GENERATION (one row per batch_idx) for a chapter at a
+    controlled `created_at`, so the retention ranking is deterministic (put_batch would
+    stamp now() for every row)."""
+    for b in batches:
+        await conn.execute(
+            """INSERT INTO extraction_raw_outputs
+               (owner_user_id, book_id, chapter_id, chapter_content_hash, chapter_chunk_idx,
+                batch_idx, profile_hash, effort_band, parsed_entities, parse_status, created_at)
+               VALUES ($1,$2,$3,$4,0,$5,$6,$7,'[]','ok',$8)""",
+            owner, book, chapter, content_hash, b, profile_hash, effort_band, created_at,
+        )
+
+
+@pytest.mark.asyncio
+async def test_retention_keeps_latest_k_generations_per_chapter():
+    """CACHE/M6 retention: keep the latest K content-hash generations per (owner, book,
+    chapter); purge older ones. Tenant-isolated; scope filters narrow the sweep."""
+    from datetime import datetime, timedelta, timezone
+    try:
+        conn = await asyncpg.connect(_DSN, timeout=3)
+    except Exception:
+        pytest.skip(f"no reachable Postgres at TRANSLATION_TEST_PG_DSN ({_DSN})")
+    owner, other = uuid.uuid4(), uuid.uuid4()
+    book, chap, chap2 = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    base = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    try:
+        await conn.execute(DDL)
+        pool = _ConnPool(conn)
+        tx = conn.transaction()
+        await tx.start()
+
+        async def _hashes(owner_id=owner, chapter=chap):
+            rows = await conn.fetch(
+                "SELECT DISTINCT chapter_content_hash FROM extraction_raw_outputs "
+                "WHERE owner_user_id=$1 AND chapter_id=$2 ORDER BY 1", owner_id, chapter)
+            return {r["chapter_content_hash"] for r in rows}
+
+        # 4 generations of one chapter (h1 oldest … h4 newest), 2 batches each = 8 rows.
+        for i, h in enumerate(["h1", "h2", "h3", "h4"]):
+            await _seed_generation(conn, owner=owner, book=book, chapter=chap,
+                                   content_hash=h, created_at=base + timedelta(hours=i))
+        # A second chapter (its own generations must NOT count against chap's keep window).
+        await _seed_generation(conn, owner=owner, book=book, chapter=chap2,
+                               content_hash="c2", created_at=base)
+        # A DIFFERENT tenant, same book/chapter — INV-9: never purged by owner's sweep.
+        await _seed_generation(conn, owner=other, book=book, chapter=chap,
+                               content_hash="o1", created_at=base)
+
+        # keep=2 → drop h1,h2 (rank 3,4), keep h3,h4. 4 rows deleted (2 gens × 2 batches).
+        deleted = await purge_stale_raw_outputs(pool, keep=2)
+        assert deleted == 4
+        assert await _hashes() == {"h3", "h4"}
+        # second chapter untouched (separate partition), other tenant untouched (INV-9).
+        assert await _hashes(chapter=chap2) == {"c2"}
+        assert await _hashes(owner_id=other) == {"o1"}
+
+        # Idempotent: a re-run with nothing newly stale deletes 0.
+        assert await purge_stale_raw_outputs(pool, keep=2) == 0
+
+        # keep floored to 1: keep only the newest (h4). Scoped to this chapter only.
+        deleted2 = await purge_stale_raw_outputs(
+            pool, keep=0, owner_user_id=str(owner), book_id=str(book), chapter_id=str(chap))
+        assert deleted2 == 2  # h3's 2 rows
+        assert await _hashes() == {"h4"}
+
+        await tx.rollback()
     finally:
         await conn.close()

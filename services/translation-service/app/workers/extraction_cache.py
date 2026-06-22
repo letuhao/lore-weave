@@ -133,3 +133,93 @@ async def put_batch(
     except Exception as exc:  # noqa: BLE001 — cache write is best-effort
         log.warning("extraction_cache: put failed for chapter %s batch %d (%s)",
                     key.chapter_id, key.batch_idx, exc)
+
+
+async def purge_stale_raw_outputs(
+    pool,
+    *,
+    keep: int = 3,
+    owner_user_id: str | None = None,
+    book_id: str | None = None,
+    chapter_id: str | None = None,
+) -> int:
+    """Retention (CACHE/M6, architecture §8.1): keep the latest `keep` content-hash
+    GENERATIONS per chapter and purge older ones. As a chapter is edited, each new
+    `chapter_content_hash` mints a fresh generation (a set of rows, one per window×batch);
+    older generations will never be hit again (a cache lookup is content-addressed on the
+    CURRENT text), so they are dead weight. This keeps cache growth bounded by edit-history
+    depth, not edit COUNT.
+
+    A "generation" is one `chapter_content_hash` for a chapter; its recency is the MAX
+    `created_at` across its rows. The retention unit is **(owner, book, chapter)** — every
+    `effort_band`/`profile_hash` variant of a KEPT content_hash survives (they share the
+    kept hash); every variant of a PURGED content_hash goes. So this is literally "keep the
+    latest K versions of the chapter's text", regardless of how many effort/profile combos
+    were cached against each version. The CURRENT text is always the most-recently-written
+    generation ⇒ rank 1 ⇒ never purged.
+
+    `DENSE_RANK` (not `ROW_NUMBER`) so generations that tie on recency share a rank — a
+    conservative keep (never purges a generation tied with a kept one). Optional filters
+    scope the sweep to one tenant / book / chapter (a targeted compaction); unfiltered =
+    the global retention job. Returns the number of rows deleted. Tenancy (INV-9): the
+    partition is always keyed by `owner_user_id`, so one tenant's generations never count
+    against another's keep-window. Best-effort — a failure logs and returns 0 (retention is
+    an optimization; a transient failure must never surface as a job error)."""
+    if keep < 1:
+        keep = 1
+    filters = ["TRUE"]
+    params: list = [keep]
+    if owner_user_id is not None:
+        params.append(owner_user_id)
+        filters.append(f"owner_user_id = ${len(params)}")
+    if book_id is not None:
+        params.append(book_id)
+        filters.append(f"book_id = ${len(params)}")
+    if chapter_id is not None:
+        params.append(chapter_id)
+        filters.append(f"chapter_id = ${len(params)}")
+    where = " AND ".join(filters)
+    # $1 is the keep window; the optional scope predicates ($2..) appear in BOTH the
+    # generation CTE and the DELETE's USING-join so the same scoped subset is ranked
+    # and purged. The predicate text is built from FIXED column names (never user input),
+    # so the f-string is injection-safe; all VALUES are bound params.
+    sql = f"""
+        WITH gens AS (
+            SELECT owner_user_id, book_id, chapter_id, chapter_content_hash,
+                   MAX(created_at) AS max_created
+            FROM extraction_raw_outputs
+            WHERE {where}
+            GROUP BY owner_user_id, book_id, chapter_id, chapter_content_hash
+        ),
+        ranked AS (
+            SELECT owner_user_id, book_id, chapter_id, chapter_content_hash,
+                   DENSE_RANK() OVER (
+                       PARTITION BY owner_user_id, book_id, chapter_id
+                       ORDER BY max_created DESC
+                   ) AS gen_rank
+            FROM gens
+        )
+        DELETE FROM extraction_raw_outputs ro
+        USING ranked r
+        WHERE ro.owner_user_id = r.owner_user_id
+          AND ro.book_id = r.book_id
+          AND ro.chapter_id = r.chapter_id
+          AND ro.chapter_content_hash = r.chapter_content_hash
+          AND r.gen_rank > $1
+    """
+    try:
+        async with pool.acquire() as db:
+            status = await db.execute(sql, *params)
+        # asyncpg returns "DELETE <n>"
+        try:
+            deleted = int(status.split()[-1])
+        except (ValueError, IndexError):
+            deleted = 0
+        if deleted:
+            log.info("extraction_cache: retention purged %d stale raw-output row(s) "
+                     "(keep=%d, owner=%s book=%s chapter=%s)",
+                     deleted, keep, owner_user_id, book_id, chapter_id)
+        return deleted
+    except Exception as exc:  # noqa: BLE001 — retention is best-effort
+        log.warning("extraction_cache: retention purge failed (%s)", exc)
+        return 0
