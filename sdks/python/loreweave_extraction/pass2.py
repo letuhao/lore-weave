@@ -151,6 +151,16 @@ async def extract_pass2(
     # static prompts + Literal validation. A non-None ExtractionSchema activates
     # the dynamic prompt/validation path in every per-op extractor.
     schema: ExtractionSchema | None = None,
+    # D-KG-WORKER-GRADED-EFFORT — graded reasoning effort applied to the core
+    # entity/relation/event/fact extraction LLM calls. Default "none" emits NO
+    # reasoning wire fields, so every existing caller (worker-ai + translation +
+    # knowledge pass2 consumers that don't pass it) is byte-identical. A graded
+    # value (low/medium/high) spreads {reasoning_effort, chat_template_kwargs}
+    # into each op's input. The recovery + precision-filter passes are NOT graded
+    # (they stay force-thinking-off — cheap structural passes; see the worker spec
+    # D1 carve-out). The value is trusted as-is (already clamped to the caller's
+    # grant at mint time, knowledge-side) — the SDK does no re-clamp.
+    reasoning_effort: str = "none",
 ) -> Pass2Candidates:
     """Run the full Pass 2 extraction pipeline.
 
@@ -213,6 +223,7 @@ async def extract_pass2(
         on_dropped=on_dropped,
         prompt_override_system=_sys("entity"),
         schema=schema,
+        reasoning_effort=reasoning_effort,
     )
 
     # Gate: if no entities, nothing to anchor.
@@ -234,6 +245,7 @@ async def extract_pass2(
         llm_client=llm_client,
         on_dropped=on_dropped,
         schema=schema,
+        reasoning_effort=reasoning_effort,
     )
 
     # C12 — build the gather task-list CONDITIONALLY. Only the requested

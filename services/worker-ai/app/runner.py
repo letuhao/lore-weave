@@ -591,6 +591,13 @@ class JobRow:
     # extraction window's known_entities. None/empty ⇒ no pins (back-compat —
     # the column is JSONB NULL by default).
     pinned_entity_ids: list[str] | None = None
+    # D-KG-WORKER-GRADED-EFFORT — the graded reasoning effort stored on the row
+    # (knowledge-side clamp at mint, Wave 4). The runner reads it and threads it
+    # through extract_pass2 → the SDK submit builders → the LLM input. The column
+    # is NOT NULL DEFAULT 'none', so a real row always carries a concrete value;
+    # the default here only covers synthetic/test rows. No re-clamp (already
+    # clamped at mint — the runner is single-purpose + trusted).
+    reasoning_effort: str = "none"
 
 
 # ── E0-3 Phase 2a — BYOK dual-identity billing resolution ────────────
@@ -689,6 +696,7 @@ async def _get_running_jobs(pool: asyncpg.Pool) -> list[JobRow]:
                j.cost_spent_usd, j.campaign_id,
                j.billing_user_id, j.billing_embedding_model, j.billing_llm_model,
                j.targets, j.concurrency_level, j.pinned_entity_ids,
+               j.reasoning_effort,
                p.embedding_dimension,
                p.extraction_config, p.genre, p.save_raw_extraction
         FROM extraction_jobs j
@@ -737,6 +745,9 @@ async def _get_running_jobs(pool: asyncpg.Pool) -> list[JobRow]:
             # C13 — pinned_entity_ids is JSONB; asyncpg returns it as a str (raw
             # JSON) or a decoded list depending on the codec. Normalise both.
             pinned_entity_ids=_decode_pinned(r["pinned_entity_ids"]),
+            # D-KG-WORKER-GRADED-EFFORT — TEXT NOT NULL DEFAULT 'none'; coerce a
+            # stray NULL (synthetic row / pre-migration replica) to "none".
+            reasoning_effort=r["reasoning_effort"] or "none",
         ))
     return result
 
@@ -1307,6 +1318,10 @@ async def _extract_and_persist(
     # known_entities (replaces the legacy hardcoded []). None ⇒ [] (back-compat:
     # chat_turn / glossary callers leave it unset → no pins).
     pinned_names: list[str] | None = None,
+    # D-KG-WORKER-GRADED-EFFORT — the job's graded reasoning effort, threaded
+    # into the SDK's core extraction LLM calls. Default "none" ⇒ no reasoning
+    # wire fields (chat_turn / glossary callers omit it → unchanged).
+    reasoning_effort: str = "none",
 ) -> tuple[ExtractionResult, "Pass2Candidates | None"]:
     """Phase 4b-γ — replaces the legacy `knowledge_client.extract_item`.
 
@@ -1376,6 +1391,9 @@ async def _extract_and_persist(
             prompt_overrides=prompt_overrides,
             # L7 (Milestone B) — advisory project schema (None ⇒ static prompt).
             schema=schema,
+            # D-KG-WORKER-GRADED-EFFORT — graded effort → core extraction LLM
+            # calls ("none" ⇒ no wire fields; recovery/filter stay force-off).
+            reasoning_effort=reasoning_effort,
         )
     except ExtractionError as exc:
         retryable = exc.stage == "provider_exhausted"
@@ -1505,6 +1523,11 @@ async def _start_decoupled_chunk(
     rs.update(
         user_id=str(job.user_id), project_id=str(job.project_id),
         model_source="user_model", model_ref=str(eff_model_ref),
+        # D-KG-WORKER-GRADED-EFFORT — stash the job's graded effort in
+        # resume_state alongside model_ref so the decoupled consumer rebuilds the
+        # entity + trio submits with the SAME effort on resume. Missing it here
+        # would silently drop graded effort on the async/resume path.
+        reasoning_effort=job.reasoning_effort,
         prompt_overrides=run_snapshot.prompts or {},
         # C12 (D-C12-CONCURRENCY-DECOUPLED) — carry the job's cap on parallel
         # LLM calls into the decoupled state so the consumer bounds the trio /
@@ -2045,6 +2068,8 @@ async def process_job(
                     # C13 — pinned names resolved once per job above; injected
                     # into this window's known_entities.
                     pinned_names=pinned_names,
+                    # D-KG-WORKER-GRADED-EFFORT — the job's stored graded effort.
+                    reasoning_effort=job.reasoning_effort,
                 )
 
                 if result.error:
@@ -2246,6 +2271,8 @@ async def process_job(
                     pinned_names=pinned_names,
                     # L7 (Milestone B) — advisory project schema (None ⇒ static).
                     schema=extraction_schema,
+                    # D-KG-WORKER-GRADED-EFFORT — the job's stored graded effort.
+                    reasoning_effort=job.reasoning_effort,
                 )
 
                 if result.error and not result.retryable:
