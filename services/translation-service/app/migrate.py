@@ -303,6 +303,44 @@ CREATE TABLE IF NOT EXISTS extraction_batch_outcomes (
 CREATE INDEX IF NOT EXISTS idx_ebo_job     ON extraction_batch_outcomes(job_id);
 CREATE INDEX IF NOT EXISTS idx_ebo_chapter ON extraction_batch_outcomes(job_id, chapter_id);
 
+-- CACHE/M6: the EXECUTE ledger (extraction-pipeline §2.1 / §8.1 two-ledger model). "The LLM
+-- produced this parse" — keyed by tenant + chapter content-hash + effort band + batch, so a
+-- re-extraction of an UNCHANGED chapter skips the LLM (don't re-spend tokens). Distinct from
+-- extraction_writeback_log ("landed in glossary"): LLM-skip keys here, writeback-skip there.
+-- owner_user_id is IN the unique key + every lookup — cross-tenant cache reuse is forbidden
+-- (INV-9; content_hash is a within-tenant idempotency key, never cross-tenant). raw_response
+-- is the verbatim debugging/provenance artifact; parsed_entities is what a cache hit reuses.
+CREATE TABLE IF NOT EXISTS extraction_raw_outputs (
+  id                   UUID PRIMARY KEY DEFAULT uuidv7(),
+  job_id               UUID,
+  owner_user_id        UUID NOT NULL,
+  book_id              UUID NOT NULL,
+  chapter_id           UUID NOT NULL,
+  chapter_content_hash TEXT NOT NULL,
+  chapter_chunk_idx    INT  NOT NULL DEFAULT 0,
+  batch_idx            INT  NOT NULL DEFAULT 0,
+  kinds_requested      TEXT[] NOT NULL DEFAULT '{}',
+  profile_hash         TEXT NOT NULL DEFAULT '',
+  model_source         TEXT NOT NULL DEFAULT '',
+  model_ref            UUID,
+  model_name           TEXT,
+  reasoning_effort     TEXT NOT NULL DEFAULT 'none',
+  effort_band          TEXT NOT NULL DEFAULT 'none',
+  input_tokens         INT,
+  output_tokens        INT,
+  finish_reason        TEXT,
+  raw_response         TEXT NOT NULL DEFAULT '',
+  parsed_entities      JSONB NOT NULL DEFAULT '[]',
+  parse_status         TEXT NOT NULL DEFAULT 'ok',
+  created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- profile_hash IS in the key (§8.1): a changed extraction profile (different kinds/attrs)
+  -- re-maps batch_idx to different work, so it must MISS the cache and re-extract — without
+  -- it a re-extraction after an ontology edit would silently reuse the old profile's parse.
+  UNIQUE (owner_user_id, book_id, chapter_id, chapter_chunk_idx, chapter_content_hash, effort_band, batch_idx, profile_hash)
+);
+CREATE INDEX IF NOT EXISTS idx_ero_cache
+  ON extraction_raw_outputs(owner_user_id, book_id, chapter_id, chapter_content_hash, effort_band);
+
 -- ── V8: Translation Pipeline V3 — selection flag, per-role models, QA config ──
 -- Additive + idempotent. Default pipeline_version='v2' ⇒ zero behavior change
 -- until a book/job opts into 'v3'. verifier_model_* nullable ⇒ falls back to the

@@ -30,8 +30,16 @@ from loreweave_llm.errors import (
 
 from ..config import settings
 from ..llm_client import LLMClient
+from .extraction_cache import (
+    RawCacheKey,
+    effort_band_for,
+    get_cached_batch,
+    put_batch,
+)
 from .extraction_outcomes import (
+    EMPTY_VALID,
     LLM_ERROR,
+    OK,
     chapter_status_from_outcomes,
     classify_batch,
     compute_event_id,
@@ -547,7 +555,44 @@ async def _process_extraction_chapter(
             "event_id": compute_event_id(str(job_id), str(chapter_id), batch_idx, content_hash),
         })
 
+    def _accept(entities: list[dict]) -> None:
+        # Attach this chapter's link to each entity (fresh per run — NOT cached, since the
+        # chapter_index is per-job) and merge into the chapter's accumulated entities.
+        chapter_title = chapter.get("title", "")
+        for ent in entities:
+            ent["chapter_links"] = [{
+                "chapter_id": str(chapter_id),
+                "chapter_title": chapter_title,
+                "chapter_index": chapter_index,
+                "relevance": ent.get("relevance", "appears"),
+            }]
+        all_entities.extend(entities)
+
+    _effort_band = effort_band_for(thinking_enabled)
+
     for batch_idx, batch in enumerate(batches):
+        # CACHE/M6 — LLM-skip gate (the EXECUTE ledger). If this exact (tenant, chapter
+        # content, effort band, batch) was already extracted, reuse the cached parse instead
+        # of re-spending tokens. Best-effort: a miss/error falls through to the live call.
+        cache_key = RawCacheKey(
+            owner_user_id=str(owner_user_id) if owner_user_id else "",
+            book_id=book_id, chapter_id=str(chapter_id), content_hash=content_hash,
+            batch_idx=batch_idx, profile_hash=profile_hash, effort_band=_effort_band,
+        )
+        cached = await get_cached_batch(pool, cache_key) if owner_user_id else None
+        if cached is not None:
+            entities = cached["parsed_entities"]
+            # Replay the cached batch outcome (status was stored at first extraction); 0 NEW
+            # tokens are spent (the cost was already paid + billed on the original run).
+            _record_outcome(
+                batch_idx, batch, cached.get("parse_status") or "ok",
+                finish_reason=cached.get("finish_reason"), entities_found=len(entities),
+            )
+            log.info("extraction: chapter %s batch %d/%d — CACHE HIT (%d entities, 0 tokens, effort=%s)",
+                     chapter_id, batch_idx + 1, len(batches), len(entities), _effort_band)
+            _accept(entities)
+            continue
+
         # 4. Build prompt
         _block_hints = settings.extraction_evidence_block_hints
         schema = build_extraction_prompt(batch, extraction_profile, kinds_metadata, block_hints=_block_hints)
@@ -686,18 +731,23 @@ async def _process_extraction_chapter(
             input_tokens=input_tokens, output_tokens=output_tokens,
         )
 
-        # Add chapter_links to each entity (use .get() to avoid mutating parsed dict)
-        chapter_title = chapter.get("title", "")
-        for ent in entities:
-            relevance = ent.get("relevance", "appears")
-            ent["chapter_links"] = [{
-                "chapter_id": str(chapter_id),
-                "chapter_title": chapter_title,
-                "chapter_index": chapter_index,
-                "relevance": relevance,
-            }]
+        # CACHE/M6 — record the EXECUTE-ledger row (LLM-skip on a future re-run). Only CLEAN
+        # batches are cached ({ok, empty_valid}): a `truncated` (entities lost) or
+        # `validation_rejected` batch must NOT become sticky — a re-run is exactly how the user
+        # RECOVERS those, and a cache hit would return the same bad result forever (and short-
+        # circuit the §8.3 re-plan-smaller signal). Stored PRE-chapter-links (the pure parse;
+        # links are per-job, re-attached each run). parse_status carries the outcome so a hit
+        # replays the taxonomy. Best-effort + idempotent (ON CONFLICT).
+        if owner_user_id and status in (OK, EMPTY_VALID):
+            await put_batch(
+                pool, cache_key, job_id=str(job_id), kinds_requested=list(batch),
+                model_source=model_source, model_ref=str(model_ref),
+                reasoning_effort=_effort_band, input_tokens=input_tokens, output_tokens=output_tokens,
+                finish_reason=finish_reason, raw_response=response_text,
+                parsed_entities=entities, parse_status=status,
+            )
 
-        all_entities.extend(entities)
+        _accept(entities)
 
     _ch_elapsed = _time.monotonic() - _ch_start
 
