@@ -46,6 +46,12 @@ NOT enter the graph directly. If an edge type is temporal you MUST supply \
 fact type), and `kg_sync_apply` (pull upstream template changes) each return a \
 `confirm_token` + `descriptor` + a preview — the user confirms before anything \
 changes. Only say a change happened once a tool result confirms it.
+- **Adopt FIRST, then edit.** `kg_schema_edit` only works on a project that has \
+adopted its OWN schema — a project still inheriting the read-only System template \
+has nothing project-local to edit (the tool returns "no adopted ontology to edit"). \
+So to add edge types (e.g. HUNTS / TURNED_BY / PROTECTS), the order is: \
+`kg_adopt_template` → user confirms → THEN `kg_schema_edit` for each edge type → \
+user confirms each. Don't call `kg_schema_edit` before the project has adopted.
 
 ## Triage (off-schema items)
 - `kg_triage_list` shows extracted elements that didn't match the schema, parked \
