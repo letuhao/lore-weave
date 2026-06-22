@@ -172,10 +172,11 @@ def _make_client(
     jobs_repo.get = AsyncMock(return_value=job_after_create or _job_stub())
 
     benchmark_repo = AsyncMock()
+    # R1: the start gate is now MODEL-scoped (get_latest_for_model), not project-scoped.
     if benchmark is _NO_BENCHMARK:
-        benchmark_repo.get_latest = AsyncMock(return_value=None)
+        benchmark_repo.get_latest_for_model = AsyncMock(return_value=None)
     else:
-        benchmark_repo.get_latest = AsyncMock(
+        benchmark_repo.get_latest_for_model = AsyncMock(
             return_value=benchmark if benchmark is not None else _benchmark_run_stub(),
         )
 
