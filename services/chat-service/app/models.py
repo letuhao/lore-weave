@@ -44,6 +44,78 @@ class WorkingMemory(BaseModel):
         return [c for c in self.charter.checklist if c not in done]
 
 
+# ── Interview-roleplay: session_templates (the goal authority) ───────────────
+# A reusable interviewer persona + the scenario that seeds a session's frozen
+# `charter`. Tenancy: System tier (owner_user_id NULL, seeded via migration,
+# admin-managed) is read-only to users; Per-user tier is the user's own. The
+# user-facing write API only ever touches the caller's own Per-user rows —
+# System rows are never writable through it (a regular user MUST NOT mutate a
+# shared/System row).
+
+class SessionTemplateScenario(BaseModel):
+    """Seeds working_memory.charter at session create (the goal authority)."""
+
+    goal: str
+    phases: list[str] = Field(min_length=1)
+    checklist: list[str] = Field(default_factory=list)
+    time_budget_min: int | None = None
+    language: str = "en"
+
+
+class CreateTemplateRequest(BaseModel):
+    code: str = Field(min_length=1, max_length=100)
+    name: str = Field(min_length=1, max_length=255)
+    description: str | None = None
+    system_prompt: str = Field(min_length=1)
+    model_source: str | None = None
+    model_ref: UUID | None = None
+    scenario: SessionTemplateScenario
+    rubric: dict[str, Any] | None = None
+
+
+class PatchTemplateRequest(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    system_prompt: str | None = None
+    model_source: str | None = None
+    model_ref: UUID | None = None
+    scenario: SessionTemplateScenario | None = None
+    rubric: dict[str, Any] | None = None
+    is_active: bool | None = None
+
+
+class SessionTemplate(BaseModel):
+    template_id: UUID
+    owner_user_id: UUID | None
+    tier: str
+    code: str
+    name: str
+    description: str | None
+    system_prompt: str
+    model_source: str | None
+    model_ref: UUID | None
+    scenario: SessionTemplateScenario
+    rubric: Any | None
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class TemplateListResponse(BaseModel):
+    items: list[SessionTemplate]
+
+
+class StartPracticeRequest(BaseModel):
+    """Clone a template into a new chat session (seeds the frozen charter)."""
+
+    title: str | None = None
+    # Override the template's default model when set; else the template must
+    # carry one.
+    model_source: str | None = None
+    model_ref: UUID | None = None
+    project_id: UUID | None = None
+
+
 # ── Message feedback (Q3 — Production Eval + Feedback Flywheel) ───────────────
 
 
