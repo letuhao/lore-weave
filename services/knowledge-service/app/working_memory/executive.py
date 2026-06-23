@@ -21,10 +21,6 @@ import json
 import logging
 from uuid import UUID
 
-import httpx
-
-from app.config import settings
-
 logger = logging.getLogger(__name__)
 
 # How many recent turns the prompt is bounded to (chat-service sends the window).
@@ -44,8 +40,19 @@ EXECUTIVE_SYSTEM_PROMPT = (
 )
 
 
+# Per-turn content cap — bound the prompt size so a single pasted wall of text
+# can't blow the model context / cost (EXECUTIVE_MAX_TURNS bounds the count).
+EXECUTIVE_MAX_TURN_CHARS = 2000
+
+
 def build_messages(charter: dict, state: dict, recent_turns: list[dict]) -> list[dict]:
-    turns = recent_turns[-EXECUTIVE_MAX_TURNS:] if recent_turns else []
+    turns = [
+        {
+            "role": t.get("role", ""),
+            "content": (t.get("content", "") or "")[:EXECUTIVE_MAX_TURN_CHARS],
+        }
+        for t in (recent_turns or [])[-EXECUTIVE_MAX_TURNS:]
+    ]
     ctx = {"charter": charter, "current_state": state, "recent_turns": turns}
     user = (
         "Session context:\n"
@@ -85,24 +92,6 @@ def merge_state(charter: dict, old_state: dict, llm_state: dict) -> dict:
     }
 
 
-async def resolve_default_chat_model(user_id: str) -> str | None:
-    """The user's default 'chat' model (a provider-registry user_model UUID), or
-    None. None → the executive skips (EC-10), no hardcoded fallback model."""
-    url = f"{settings.provider_registry_internal_url}/internal/default-models/chat"
-    try:
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(5.0, connect=5.0),
-            headers={"X-Internal-Token": settings.internal_service_token},
-        ) as c:
-            resp = await c.get(url, params={"user_id": user_id})
-        if resp.status_code != 200:
-            return None
-        return resp.json().get("user_model_id")
-    except (httpx.HTTPError, ValueError, KeyError) as exc:
-        logger.warning("executive: default chat model unavailable: %s", exc)
-        return None
-
-
 def _extract_content(job_result: dict | None) -> str:
     messages_out = (job_result or {}).get("messages") or []
     if isinstance(messages_out, list) and messages_out and isinstance(messages_out[0], dict):
@@ -116,18 +105,22 @@ async def run_executive(
     llm_client,
     session_id: UUID,
     user_id: UUID,
+    model_source: str | None,
+    model_ref: str | None,
     recent_turns: list[dict],
 ) -> str:
     """Run one executive pass. Returns a status string; never raises.
 
-    Statuses: no_block | no_model | llm_failed | bad_json | updated.
+    The model is the SESSION's own model (passed by chat-service) — the user
+    already chose it, it's a provider-registry user_model UUID (no hardcoded
+    model, no separate default-model capability needed). Statuses:
+    no_block | no_model | llm_failed | bad_json | updated.
     """
     block = await repo.get(session_id, user_id)
     if block is None:
         return "no_block"
 
-    model_ref = await resolve_default_chat_model(str(user_id))
-    if not model_ref:
+    if not model_source or not model_ref:
         return "no_model"
 
     messages = build_messages(block["charter"], block["state"], recent_turns or [])
@@ -135,7 +128,7 @@ async def run_executive(
         job = await llm_client.submit_and_wait(
             user_id=str(user_id),
             operation="chat",
-            model_source="user_model",
+            model_source=model_source,
             model_ref=model_ref,
             input={
                 "messages": messages,

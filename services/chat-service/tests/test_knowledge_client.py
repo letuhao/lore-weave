@@ -830,11 +830,13 @@ async def test_tick_working_memory_posts_turns_and_returns_status():
     client = _make_client(handler)
     status = await client.tick_working_memory(
         session_id="s-1", user_id="u-1",
+        model_source="user_model", model_ref="m-1",
         recent_turns=[{"role": "user", "content": "hi"}],
     )
     assert status == "updated"
     assert captured["url"].endswith("/internal/working-memory/tick")
     assert captured["body"]["recent_turns"][0]["content"] == "hi"
+    assert captured["body"]["model_ref"] == "m-1"
 
 
 @pytest.mark.asyncio
@@ -843,5 +845,7 @@ async def test_tick_working_memory_swallows_failure():
         return httpx.Response(503)
 
     client = _make_client(handler)
-    status = await client.tick_working_memory(session_id="s", user_id="u", recent_turns=[])
+    status = await client.tick_working_memory(
+        session_id="s", user_id="u", model_source="user_model", model_ref="m", recent_turns=[],
+    )
     assert status is None

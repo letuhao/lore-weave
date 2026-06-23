@@ -73,45 +73,62 @@ def _job(content: str, status="completed"):
     return job
 
 
+_MODEL = {"model_source": "user_model", "model_ref": "m-1"}
+
+
 @pytest.mark.asyncio
-async def test_no_block_skips(monkeypatch):
+async def test_no_block_skips():
     repo = AsyncMock()
     repo.get.return_value = None
     status = await ex.run_executive(repo=repo, llm_client=AsyncMock(),
-                                    session_id="s", user_id="u", recent_turns=[])
+                                    session_id="s", user_id="u", recent_turns=[], **_MODEL)
     assert status == "no_block"
     repo.update_state.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_no_model_skips(monkeypatch):
+async def test_no_model_skips():
     repo = AsyncMock()
     repo.get.return_value = _block()
-    monkeypatch.setattr(ex, "resolve_default_chat_model", AsyncMock(return_value=None))
+    # session carried no model → skip (the dead default-models/chat lookup is gone)
     status = await ex.run_executive(repo=repo, llm_client=AsyncMock(),
-                                    session_id="s", user_id="u", recent_turns=[])
+                                    session_id="s", user_id="u", recent_turns=[],
+                                    model_source="user_model", model_ref=None)
     assert status == "no_model"
     repo.update_state.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_bad_json_skips(monkeypatch):
+async def test_bad_json_skips():
     repo = AsyncMock()
     repo.get.return_value = _block()
-    monkeypatch.setattr(ex, "resolve_default_chat_model", AsyncMock(return_value="m-1"))
     llm = AsyncMock()
     llm.submit_and_wait.return_value = _job("not json at all")
     status = await ex.run_executive(repo=repo, llm_client=llm,
-                                    session_id="s", user_id="u", recent_turns=[])
+                                    session_id="s", user_id="u", recent_turns=[], **_MODEL)
     assert status == "bad_json"
     repo.update_state.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_happy_path_updates_state_only(monkeypatch):
+async def test_executive_runs_on_the_session_model():
+    repo = AsyncMock()
+    repo.get.return_value = _block()
+    llm = AsyncMock()
+    llm.submit_and_wait.return_value = _job(json.dumps({"phase": "warmup", "covered": []}))
+    await ex.run_executive(repo=repo, llm_client=llm, session_id="s", user_id="u",
+                           recent_turns=[], model_source="user_model", model_ref="the-session-model")
+    # the executive must call the gateway with the session's own model — not a
+    # separate default (provider-registry has no 'chat' default capability).
+    kw = llm.submit_and_wait.call_args.kwargs
+    assert kw["model_source"] == "user_model"
+    assert kw["model_ref"] == "the-session-model"
+
+
+@pytest.mark.asyncio
+async def test_happy_path_updates_state_only():
     repo = AsyncMock()
     repo.get.return_value = _block(state={"phase": "warmup", "covered": ["system design"]})
-    monkeypatch.setattr(ex, "resolve_default_chat_model", AsyncMock(return_value="m-1"))
     llm = AsyncMock()
     llm.submit_and_wait.return_value = _job(json.dumps({
         "phase": "technical",
@@ -120,7 +137,7 @@ async def test_happy_path_updates_state_only(monkeypatch):
     }))
     status = await ex.run_executive(repo=repo, llm_client=llm,
                                     session_id="s", user_id="u",
-                                    recent_turns=[{"role": "user", "content": "hi"}])
+                                    recent_turns=[{"role": "user", "content": "hi"}], **_MODEL)
     assert status == "updated"
     repo.update_state.assert_awaited_once()
     written = repo.update_state.call_args.args[1]
@@ -134,13 +151,21 @@ async def test_happy_path_updates_state_only(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_llm_failed_status_skips(monkeypatch):
+async def test_llm_failed_status_skips():
     repo = AsyncMock()
     repo.get.return_value = _block()
-    monkeypatch.setattr(ex, "resolve_default_chat_model", AsyncMock(return_value="m-1"))
     llm = AsyncMock()
     llm.submit_and_wait.return_value = _job("{}", status="failed")
     status = await ex.run_executive(repo=repo, llm_client=llm,
-                                    session_id="s", user_id="u", recent_turns=[])
+                                    session_id="s", user_id="u", recent_turns=[], **_MODEL)
     assert status == "llm_failed"
     repo.update_state.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_build_messages_caps_turn_size():
+    huge = "x" * 50000
+    msgs = ex.build_messages(_CHARTER, {"phase": "", "covered": []},
+                             [{"role": "user", "content": huge}])
+    # the pasted wall is truncated so the prompt stays bounded
+    assert len(msgs[1]["content"]) < 10000

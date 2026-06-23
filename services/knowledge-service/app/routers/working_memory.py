@@ -60,6 +60,10 @@ class TurnInput(BaseModel):
 class TickRequest(BaseModel):
     session_id: UUID
     user_id: UUID
+    # The session's own model (a provider-registry user_model the user already
+    # chose) — the executive runs on it. No separate default-model capability.
+    model_source: str | None = None
+    model_ref: str | None = None
     recent_turns: list[TurnInput] = []
 
 
@@ -77,6 +81,8 @@ async def tick_working_memory(
         llm_client=llm_client,
         session_id=req.session_id,
         user_id=req.user_id,
+        model_source=req.model_source,
+        model_ref=req.model_ref,
         recent_turns=[t.model_dump() for t in req.recent_turns],
     )
     return {"status": status}

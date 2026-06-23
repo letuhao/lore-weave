@@ -295,19 +295,33 @@ class KnowledgeClient:
             return False
 
     async def tick_working_memory(
-        self, *, session_id: str, user_id: str, recent_turns: list[dict]
+        self, *, session_id: str, user_id: str,
+        model_source: str | None, model_ref: str | None,
+        recent_turns: list[dict],
     ) -> str | None:
         """POST /internal/working-memory/tick — run one executive pass.
 
-        Sends the recent-turns window so knowledge-service needn't call back into
-        chat. Best-effort: returns the status string on success, None on any
-        failure (the anchor still holds from the existing block / seed)."""
+        Sends the session's model (the executive runs on it) + the recent-turns
+        window so knowledge-service needn't call back into chat. Best-effort:
+        returns the status string on success, None on any failure (the anchor
+        still holds from the existing block / seed).
+
+        Uses the LONGER tool timeout: the executive makes an LLM call, so the
+        build_context-sized default would disconnect mid-pass and could abort the
+        server-side handler before it writes state.
+        """
         url = f"{self._base_url}/internal/working-memory/tick"
-        body = {"session_id": session_id, "user_id": user_id, "recent_turns": recent_turns}
+        body = {
+            "session_id": session_id, "user_id": user_id,
+            "model_source": model_source, "model_ref": model_ref,
+            "recent_turns": recent_turns,
+        }
         tid = current_trace_id()
         headers = {"X-Trace-Id": tid} if tid else None
         try:
-            resp = await self._http.post(url, json=body, headers=headers)
+            resp = await self._http.post(
+                url, json=body, headers=headers, timeout=self._tool_timeout_s,
+            )
             if resp.status_code == 200:
                 return resp.json().get("status")
             logger.warning("tick_working_memory non-200: %s", resp.status_code)

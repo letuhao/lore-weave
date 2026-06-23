@@ -1557,7 +1557,9 @@ async def _emit_chat_turn(
             and current_count is not None
             and current_count % EXECUTIVE_EVERY_N_TURNS == 0
         ):
-            asyncio.create_task(_fire_executive_tick(session_id, user_id, pool))
+            asyncio.create_task(
+                _fire_executive_tick(session_id, user_id, model_source, model_ref, pool)
+            )
         if current_count is not None and current_count <= 2:
             asyncio.create_task(
                 _auto_generate_title(
@@ -1774,11 +1776,14 @@ EXECUTIVE_EVERY_N_TURNS = 4
 EXECUTIVE_TURN_WINDOW = 12
 
 
-async def _fire_executive_tick(session_id: str, user_id: str, pool: asyncpg.Pool) -> None:
+async def _fire_executive_tick(
+    session_id: str, user_id: str, model_source: str, model_ref: str, pool: asyncpg.Pool,
+) -> None:
     """Gather the recent-turns window and run one executive pass (best-effort).
 
-    A failure is swallowed — the anchor still holds from the existing block /
-    seed, so a missed tick only delays the next state update."""
+    Passes the session's own model — the executive runs on it. A failure is
+    swallowed: the anchor still holds from the existing block / seed, so a missed
+    tick only delays the next state update."""
     try:
         rows = await pool.fetch(
             """
@@ -1790,7 +1795,8 @@ async def _fire_executive_tick(session_id: str, user_id: str, pool: asyncpg.Pool
         )
         recent = [{"role": r["role"], "content": r["content"]} for r in reversed(rows)]
         await get_knowledge_client().tick_working_memory(
-            session_id=session_id, user_id=user_id, recent_turns=recent,
+            session_id=session_id, user_id=user_id,
+            model_source=model_source, model_ref=model_ref, recent_turns=recent,
         )
     except Exception:
         logger.warning("executive tick failed for session %s", session_id, exc_info=True)
