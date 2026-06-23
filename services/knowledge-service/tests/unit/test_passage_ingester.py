@@ -11,7 +11,9 @@ from app.extraction.passage_ingester import (
     MIN_CHUNK_CHARS,
     OVERLAP_CHARS,
     TARGET_CHARS,
+    BackfillResult,
     IngestResult,
+    backfill_published_passages,
     chunk_text,
     delete_chapter_passages,
     ingest_chapter_passages,
@@ -486,3 +488,109 @@ async def test_ingest_keeps_passages_when_revision_missing_and_flag_false(monkey
     assert result.chunks_created == 0
     delete.assert_not_awaited()  # passages preserved
     emb.embed.assert_not_called()
+
+
+# ── D-KG-PASSAGE-BACKFILL — published-chapter passage backfill ───────────────
+
+
+def _book_with_published(chapters, text="Arthur rode toward Camelot. " * 20):
+    """book_client whose list_chapters returns `chapters` and whose per-chapter live
+    text yields one chunk (so each published chapter ingests one passage)."""
+    book = _mk_book_client(text=text)
+    book.list_chapters = AsyncMock(return_value=chapters)
+    return book
+
+
+def _dyn_embed():
+    """Embedding stub that returns exactly len(texts) vectors (so any chunk count
+    matches and ingest upserts every chunk)."""
+    async def fake_embed(*, user_id, model_source, model_ref, texts):
+        return EmbeddingResult(
+            embeddings=[[0.1] * 1024 for _ in texts], dimension=1024, model="bge-m3",
+        )
+    emb = MagicMock()
+    emb.embed = fake_embed
+    return emb
+
+
+@pytest.mark.asyncio
+async def test_backfill_ingests_every_published_chapter_as_canon(monkeypatch):
+    """The backfill enumerates PUBLISHED chapters and ingests each as canon=True —
+    the fix for chapters published before the project/embedding existed."""
+    chapters = [
+        {"chapter_id": str(uuid4()), "sort_order": 1, "editorial_status": "published"},
+        {"chapter_id": str(uuid4()), "sort_order": 2, "editorial_status": "published"},
+    ]
+    book = _book_with_published(chapters)
+    emb = _dyn_embed()
+    upsert = AsyncMock()
+    monkeypatch.setattr("app.extraction.passage_ingester.upsert_passage", upsert)
+    monkeypatch.setattr(
+        "app.extraction.passage_ingester.delete_passages_for_source",
+        AsyncMock(return_value=0),
+    )
+
+    res = await backfill_published_passages(
+        MagicMock(), book, emb,
+        user_id=USER_ID, project_id=PROJECT_ID, book_id=BOOK_ID,
+        embedding_model="bge-m3", embedding_dim=1024,
+    )
+    # Scopes to PUBLISHED chapters only.
+    book.list_chapters.assert_awaited_once_with(BOOK_ID, editorial_status="published")
+    assert res.chapters_indexed == 2
+    assert res.passages_created == 2  # one chunk per chapter
+    assert upsert.await_count == 2
+    # Published passages are canon.
+    for call in upsert.await_args_list:
+        assert call.kwargs["canon"] is True
+
+
+@pytest.mark.asyncio
+async def test_backfill_no_published_chapters_is_noop(monkeypatch):
+    """Empty (or None) published list → no ingest, no embed calls."""
+    book = _book_with_published([])
+    emb = _dyn_embed()
+    monkeypatch.setattr("app.extraction.passage_ingester.upsert_passage", AsyncMock())
+    monkeypatch.setattr(
+        "app.extraction.passage_ingester.delete_passages_for_source", AsyncMock(),
+    )
+    res = await backfill_published_passages(
+        MagicMock(), book, emb,
+        user_id=USER_ID, project_id=PROJECT_ID, book_id=BOOK_ID,
+        embedding_model="bge-m3", embedding_dim=1024,
+    )
+    assert res == BackfillResult(0, 0, 0)
+
+    # list_chapters returning None (book-service down) is also a clean no-op.
+    book.list_chapters = AsyncMock(return_value=None)
+    res2 = await backfill_published_passages(
+        MagicMock(), book, emb,
+        user_id=USER_ID, project_id=PROJECT_ID, book_id=BOOK_ID,
+        embedding_model="bge-m3", embedding_dim=1024,
+    )
+    assert res2 == BackfillResult(0, 0, 0)
+
+
+@pytest.mark.asyncio
+async def test_backfill_skips_malformed_chapter_but_processes_rest(monkeypatch):
+    """A chapter row missing chapter_id is skipped; the valid ones still ingest
+    (best-effort — one bad item never aborts the backfill)."""
+    good = str(uuid4())
+    chapters = [
+        {"sort_order": 1, "editorial_status": "published"},          # no chapter_id
+        {"chapter_id": good, "sort_order": 2, "editorial_status": "published"},
+    ]
+    book = _book_with_published(chapters)
+    emb = _dyn_embed()
+    monkeypatch.setattr("app.extraction.passage_ingester.upsert_passage", AsyncMock())
+    monkeypatch.setattr(
+        "app.extraction.passage_ingester.delete_passages_for_source",
+        AsyncMock(return_value=0),
+    )
+    res = await backfill_published_passages(
+        MagicMock(), book, emb,
+        user_id=USER_ID, project_id=PROJECT_ID, book_id=BOOK_ID,
+        embedding_model="bge-m3", embedding_dim=1024,
+    )
+    assert res.chapters_indexed == 1
+    assert res.chapters_skipped == 1

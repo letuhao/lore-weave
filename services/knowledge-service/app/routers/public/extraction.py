@@ -1355,10 +1355,44 @@ async def change_embedding_model(
         embedding_dimension=new_dim,
     )
 
+    # D-KG-PASSAGE-BACKFILL — the embedding model is now set, so passages become
+    # ingestable. Backfill any already-PUBLISHED chapters whose `chapter.published`
+    # event fired BEFORE this project/model existed (the natural publish-then-setup
+    # flow), so wiki/enrichment have grounding without a manual re-publish. The graph
+    # delete above also dropped any stale-dimension passages, so a model CHANGE
+    # re-ingests at the new dimension here. Best-effort: never fail the model set.
+    passages_backfilled = 0
+    if project.book_id is not None:
+        try:
+            from app.clients.book_client import get_book_client
+            from app.clients.embedding_client import get_embedding_client
+            from app.db.neo4j import neo4j_session
+            from app.extraction.passage_ingester import backfill_published_passages
+
+            async with neo4j_session() as session:
+                bf = await backfill_published_passages(
+                    session,
+                    get_book_client(),
+                    get_embedding_client(),
+                    user_id=user_id,
+                    project_id=project_id,
+                    book_id=project.book_id,
+                    embedding_model=new_model,
+                    embedding_dim=new_dim,
+                )
+            passages_backfilled = bf.passages_created
+        except Exception:  # noqa: BLE001 — best-effort; the model set already succeeded
+            logger.warning(
+                "K16.10: passage backfill failed for project=%s — non-fatal",
+                project_id, exc_info=True,
+            )
+
     trace_id = trace_id_var.get()
     logger.info(
-        "K16.10: embedding model changed project_id=%s %s→%s dim=%d nodes_deleted=%d trace_id=%s",
-        project_id, current_model, new_model, new_dim, deleted_total, trace_id,
+        "K16.10: embedding model changed project_id=%s %s→%s dim=%d nodes_deleted=%d "
+        "passages_backfilled=%d trace_id=%s",
+        project_id, current_model, new_model, new_dim, deleted_total,
+        passages_backfilled, trace_id,
     )
 
     return {
@@ -1367,6 +1401,7 @@ async def change_embedding_model(
         "new_model": new_model,
         "embedding_dimension": new_dim,
         "nodes_deleted": deleted_total,
+        "passages_backfilled": passages_backfilled,
         "extraction_status": "disabled",
     }
 
