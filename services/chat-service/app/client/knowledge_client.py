@@ -270,6 +270,30 @@ class KnowledgeClient:
         # Gateway and direct both unreachable → degraded (turn proceeds tool/context-free).
         return _degraded()
 
+    async def init_working_memory(
+        self, *, session_id: str, user_id: str, charter: dict
+    ) -> bool:
+        """POST /internal/working-memory/init — the goal-authority write path.
+
+        Pushes the FROZEN charter so knowledge-service owns the evolving block
+        (the executive then updates state). Best-effort: on any failure returns
+        False and logs — the session still anchors from its own
+        working_memory_seed (EC-4), so a knowledge outage never blocks start.
+        """
+        url = f"{self._base_url}/internal/working-memory/init"
+        body = {"session_id": session_id, "user_id": user_id, "charter": charter}
+        tid = current_trace_id()
+        headers = {"X-Trace-Id": tid} if tid else None
+        try:
+            resp = await self._http.post(url, json=body, headers=headers)
+            if resp.status_code in (200, 204):
+                return True
+            logger.warning("init_working_memory non-2xx: %s", resp.status_code)
+            return False
+        except Exception:
+            logger.warning("init_working_memory failed for session %s", session_id, exc_info=True)
+            return False
+
     async def _build_context_at(
         self,
         url: str,

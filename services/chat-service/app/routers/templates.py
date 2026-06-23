@@ -23,6 +23,7 @@ from uuid import UUID
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from app.client.knowledge_client import get_knowledge_client
 from app.deps import get_current_user, get_db
 from app.models import (
     ChatSession,
@@ -244,5 +245,14 @@ async def start_practice(
         user_id, title, str(model_source), str(model_ref), tpl["system_prompt"],
         str(body.project_id) if body.project_id else None,
         json.dumps(seed.model_dump(mode="json")),
+    )
+
+    # Goal-authority write path → push the frozen charter to knowledge-service so
+    # it owns the evolving block (the executive then updates state). Best-effort:
+    # a failure leaves the session anchored from its own seed (EC-4).
+    await get_knowledge_client().init_working_memory(
+        session_id=str(row["session_id"]),
+        user_id=user_id,
+        charter=charter.model_dump(),
     )
     return _row_to_session(row)

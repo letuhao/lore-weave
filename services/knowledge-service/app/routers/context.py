@@ -14,6 +14,7 @@ them with `app.dependency_overrides[...]` instead of monkey-patching
 module globals.
 """
 
+import json
 import logging
 import time
 from uuid import UUID
@@ -29,12 +30,14 @@ from app.context.selectors.glossary import select_glossary_semantic
 from app.db.neo4j import neo4j_session
 from app.db.repositories.projects import ProjectsRepo
 from app.db.repositories.summaries import SummariesRepo
+from app.db.repositories.working_memory import WorkingMemoryRepo
 from app.deps import (
     get_embedding_client,
     get_glossary_client,
     get_llm_client,
     get_projects_repo,
     get_summaries_repo,
+    get_working_memory_repo,
 )
 from app.metrics import context_build_duration_seconds
 from app.middleware.internal_auth import require_internal_token
@@ -110,6 +113,7 @@ async def build(
     glossary_client: GlossaryClient = Depends(get_glossary_client),
     embedding_client: EmbeddingClient = Depends(get_embedding_client),
     llm_client: LLMClient = Depends(get_llm_client),
+    working_memory_repo: WorkingMemoryRepo = Depends(get_working_memory_repo),
 ) -> ContextBuildResponse:
     # K6.5: observe end-to-end build duration. Label distinguishes
     # successful modes (no_project/static/full) from each error path
@@ -146,7 +150,20 @@ async def build(
         context_build_duration_seconds.labels(mode=_mode_label).observe(
             time.monotonic() - _t0
         )
-    return ContextBuildResponse.model_validate(built)
+    resp = ContextBuildResponse.model_validate(built)
+    # Interview-roleplay (M4): attach the session's working_memory block (charter
+    # + state) as JSON so chat-service can pin + tail-anchor it. Best-effort —
+    # a lookup failure must never fail the context build (chat-service falls back
+    # to its own seed, EC-4). Only when the session has a block.
+    if req.session_id is not None:
+        try:
+            block = await working_memory_repo.get(req.session_id, req.user_id)
+            if block is not None:
+                resp.working_memory = json.dumps(block)
+        except Exception:
+            logger.warning("working_memory lookup failed for session %s", req.session_id,
+                           exc_info=True)
+    return resp
 
 
 # ── mui #4 — semantic glossary selection (architecture B) ───────────────────

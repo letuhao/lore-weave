@@ -13,6 +13,7 @@ knowledge-service is unavailable.
 """
 from __future__ import annotations
 
+import json
 import os
 from typing import Callable
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -776,3 +777,42 @@ class TestToolCallingEnabledField:
         assert result.mode == "degraded"
         assert result.tool_calling_enabled is True
         await client.aclose()
+
+
+# ── M4: init_working_memory (goal-authority write path, best-effort) ──────────
+
+
+@pytest.mark.asyncio
+async def test_init_working_memory_posts_charter():
+    captured = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        captured["url"] = str(req.url)
+        captured["token"] = req.headers.get("X-Internal-Token")
+        captured["body"] = json.loads(req.content)
+        return httpx.Response(204)
+
+    client = _make_client(handler)
+    ok = await client.init_working_memory(
+        session_id="s-1", user_id="u-1",
+        charter={"goal": "g", "phases": ["warmup"], "checklist": [], "language": "vi"},
+    )
+    assert ok is True
+    assert captured["url"].endswith("/internal/working-memory/init")
+    assert captured["token"] == "unit-test-token"
+    assert captured["body"]["charter"]["goal"] == "g"
+    assert captured["body"]["session_id"] == "s-1"
+
+
+@pytest.mark.asyncio
+async def test_init_working_memory_swallows_failure():
+    def handler(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(500)
+
+    client = _make_client(handler)
+    # Best-effort: a knowledge outage must not raise — the session anchors from
+    # its own seed (EC-4).
+    ok = await client.init_working_memory(
+        session_id="s", user_id="u", charter={"goal": "g", "phases": ["x"], "language": "en"},
+    )
+    assert ok is False

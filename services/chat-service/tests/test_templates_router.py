@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
@@ -137,8 +138,14 @@ class TestStartPractice:
             make_template_record(),
             make_session_record(title="FAANG SWE"),
         ]
-        resp = await client.post(f"/v1/chat/templates/{uuid4()}/start", json={})
+        kc = AsyncMock()
+        with patch("app.routers.templates.get_knowledge_client", return_value=kc):
+            resp = await client.post(f"/v1/chat/templates/{uuid4()}/start", json={})
         assert resp.status_code == 201
+        # Goal-authority write path: the frozen charter is pushed to knowledge.
+        kc.init_working_memory.assert_awaited_once()
+        pushed = kc.init_working_memory.call_args.kwargs["charter"]
+        assert pushed["goal"] == "Assess senior backend skill"
 
         insert_args = mock_pool.fetchrow.call_args_list[1].args
         # working_memory_seed is the last bound param (JSON string).

@@ -1177,6 +1177,28 @@ CREATE TABLE IF NOT EXISTS consumed_tokens (
   consumed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   exp         TIMESTAMPTZ NOT NULL
 );
+
+-- ═══════════════════════════════════════════════════════════════
+-- session_working_memory — the pinned goal-state block (SSOT).
+-- docs/specs/2026-06-23-interview-roleplay.md (M4).
+--
+-- `charter` and `state` are SEPARATE columns ON PURPOSE: the repo exposes
+-- update_state() but NO update_charter(), so the summarizing executive (M5)
+-- can structurally never write the goal — only the goal authority writes
+-- `charter`, once, via init (ON CONFLICT DO NOTHING keeps it frozen and
+-- preserves any state). For interview the authority is chat-service pushing
+-- the template charter; for roleplay it is the world model (the POC seam).
+-- Keyed by session_id (working memory is per-session, not per-project), with
+-- user_id for tenant scoping. No cross-DB FK (session_id lives in loreweave_chat).
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS session_working_memory (
+  session_id  UUID PRIMARY KEY,                            -- no FK (cross-DB)
+  user_id     UUID NOT NULL,
+  charter     JSONB NOT NULL,
+  state       JSONB NOT NULL DEFAULT '{"phase":"","covered":[]}'::jsonb,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 """
 
 
