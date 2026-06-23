@@ -174,6 +174,8 @@ func (s *Server) Router() http.Handler {
 		// E0 — the single grant-resolution authority every service calls.
 		// Always 200 {grant_level}; `none` for missing/forbidden (no oracle, R4).
 		r.Get("/books/{book_id}/access", s.getBookAccess)
+		// KG-ML M3 (DD3) — cross-service reader-language resolver (M4/M7).
+		r.Get("/books/{book_id}/reader-language", s.getInternalReaderLanguage)
 		// G4 (W2) — world membership for the knowledge-service world-rollup
 		// subgraph. Owner-scoped by the ?user_id param (404 if not owned).
 		r.Get("/worlds/{world_id}/books", s.internalListWorldBooks)
@@ -223,6 +225,12 @@ func (s *Server) Router() http.Handler {
 			r.Post("/favorite", s.addFavorite)
 			r.Delete("/favorite", s.removeFavorite)
 			r.Get("/favorite", s.checkFavorite)
+
+			// KG-ML M3 (DD3) — per-(user,book) reader-language preference
+			// (server SSOT, cross-device). View-gated (per-user data on a
+			// readable book), so NOT in the mutating-routes grant table.
+			r.Get("/reader-language", s.getReaderLanguage)
+			r.Put("/reader-language", s.setReaderLanguage)
 
 			r.Get("/cover", s.getCover)
 			r.Post("/cover", s.uploadCover)

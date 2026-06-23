@@ -182,6 +182,23 @@ CREATE TABLE IF NOT EXISTS reading_progress (
 );
 CREATE INDEX IF NOT EXISTS idx_rp_user_book ON reading_progress(user_id, book_id);
 
+-- ── KG-ML M3 (DD3): per-(user,book) reader-language preference ──────────
+-- Server SSOT for the language a user prefers to READ a book in — distinct
+-- from UI language (auth.user_preferences.ui_language). Per-(user,book) so it
+-- can NEVER become a shared mutable row (tenancy rule); cross-device because it
+-- lives in the DB, not localStorage (CLAUDE.md data-persistence rule). Read by
+-- knowledge-service language-aware retrieval (M4) + chat/composition consumers
+-- (M7) via the /internal/books/{id}/reader-language resolver. No FK to books
+-- (matches reading_progress — a soft per-user table; book existence is gated at
+-- the handler via canViewOrPublic).
+CREATE TABLE IF NOT EXISTS user_book_prefs (
+  user_id         UUID NOT NULL,
+  book_id         UUID NOT NULL,
+  reader_language TEXT NOT NULL,
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, book_id)
+);
+
 CREATE TABLE IF NOT EXISTS book_views (
   id         UUID PRIMARY KEY DEFAULT uuidv7(),
   book_id    UUID NOT NULL,
