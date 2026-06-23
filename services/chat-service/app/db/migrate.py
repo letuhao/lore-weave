@@ -267,6 +267,37 @@ DO $$ BEGIN
     ALTER TABLE chat_sessions ADD COLUMN working_memory_seed JSONB;
   END IF;
 END $$;
+
+-- ══════════════════════════════════════════════════════════════════════
+-- M7 — System-tier seed templates (the admin/platform path). These are the
+-- shared defaults every tenant sees read-only; a user clones one (POST
+-- /templates) to localize/customize. owner_user_id IS NULL ⇒ tier='system'.
+-- ON CONFLICT DO NOTHING keys on the partial unique index
+-- (uq_session_templates_system_code: code WHERE owner_user_id IS NULL) so a
+-- re-run never duplicates and never clobbers an admin edit. Neutral 'en'
+-- defaults — System tier is multi-tenant; localization is a per-user clone.
+-- model_source/model_ref are NULL: the user supplies their own model at /start.
+INSERT INTO session_templates (owner_user_id, tier, code, name, description, system_prompt, scenario, rubric)
+VALUES
+  (NULL, 'system', 'faang_swe',
+   'FAANG SWE Interview',
+   'A senior software-engineer loop: a brief warm-up, a coding/problem-solving round, then wrap-up.',
+   'You are a senior engineer running a FAANG-style software interview. Be professional, concise, and probing. Ask ONE question at a time, let the candidate drive, and follow up on their reasoning (edge cases, complexity, trade-offs). Do not lecture or solve it for them. Keep the interview moving through the phases.',
+   '{"goal":"Assess senior software-engineering skill through a coding/problem-solving interview","phases":["warmup","coding","followup","wrap"],"checklist":["clarifies the problem before coding","states an approach and its complexity","handles edge cases","writes correct working logic"],"time_budget_min":45,"language":"en"}'::jsonb,
+   '{"dimensions":["problem clarification","algorithmic approach","code correctness","communication"]}'::jsonb),
+  (NULL, 'system', 'behavioral_hr',
+   'Behavioral (HR) Interview',
+   'A behavioral interview focused on STAR stories: motivation, teamwork, conflict, and impact.',
+   'You are a thoughtful HR / hiring-manager interviewer running a behavioral interview. Ask open-ended questions that invite STAR (Situation, Task, Action, Result) stories, one at a time. Gently probe for specifics — the candidate''s own actions and measurable results. Stay warm but keep them on track.',
+   '{"goal":"Assess behavioral fit through STAR stories on teamwork, conflict, and impact","phases":["warmup","stories","followup","wrap"],"checklist":["gives a concrete Situation and Task","describes their own Actions specifically","states a measurable Result","tells a genuine conflict / failure story"],"time_budget_min":40,"language":"en"}'::jsonb,
+   '{"dimensions":["STAR structure","specificity","ownership","reflection"]}'::jsonb),
+  (NULL, 'system', 'system_design',
+   'System Design Interview',
+   'A senior system-design interview: requirements, high-level design, deep-dives, and trade-offs.',
+   'You are a staff engineer running a system-design interview. Start from requirements and scale, then guide the candidate through a high-level design and one or two deep-dives. Push on trade-offs, bottlenecks, and failure modes. Ask one prompt at a time; let the candidate lead the design.',
+   '{"goal":"Assess senior system-design skill: requirements, architecture, scaling, and trade-offs","phases":["requirements","high_level","deep_dive","wrap"],"checklist":["clarifies functional and scale requirements","proposes a clear high-level architecture","reasons about a data store and partitioning","discusses bottlenecks and failure modes"],"time_budget_min":50,"language":"en"}'::jsonb,
+   '{"dimensions":["requirements","architecture","scalability","trade-off reasoning"]}'::jsonb)
+ON CONFLICT (code) WHERE owner_user_id IS NULL DO NOTHING;
 """
 
 
