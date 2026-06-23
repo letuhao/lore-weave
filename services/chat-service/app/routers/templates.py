@@ -234,6 +234,15 @@ async def start_practice(
     seed = WorkingMemory(charter=charter)  # state starts empty; executive fills it later
     title = body.title or tpl["name"]
 
+    # The seed is the session's immutable charter fallback (EC-4). M6: it also
+    # carries the template's optional scoring `rubric` (a sibling key — the
+    # WorkingMemory model ignores extras), since the knowledge block holds only
+    # charter+state. `evaluate` reads the rubric back from here.
+    seed_json = seed.model_dump(mode="json")
+    rubric = _jsonb(tpl["rubric"]) if tpl["rubric"] is not None else None
+    if rubric:
+        seed_json["rubric"] = rubric
+
     row = await pool.fetchrow(
         """
         INSERT INTO chat_sessions
@@ -244,7 +253,7 @@ async def start_practice(
         """,
         user_id, title, str(model_source), str(model_ref), tpl["system_prompt"],
         str(body.project_id) if body.project_id else None,
-        json.dumps(seed.model_dump(mode="json")),
+        json.dumps(seed_json),
     )
 
     # Goal-authority write path → push the frozen charter to knowledge-service so

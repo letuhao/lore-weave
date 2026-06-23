@@ -116,6 +116,51 @@ class StartPracticeRequest(BaseModel):
     project_id: UUID | None = None
 
 
+# ── Interview-roleplay: evaluation scorecard (M6) ────────────────────────────
+# A non-agentic pipeline scores the finished practice transcript against the
+# frozen charter.checklist (+ optional template rubric) → a structured
+# Scorecard, stored as a ChatOutput (output_type='scorecard'). The model emits
+# the JSON; we coerce it defensively so a hallucinating model can never invent a
+# checklist item or 500 the endpoint.
+
+class ChecklistVerdict(BaseModel):
+    """Per-charter-checklist verdict. `item` is always a verbatim charter item;
+    the coercion step guarantees every charter item has exactly one verdict so
+    the model can neither drop nor invent items."""
+
+    item: str
+    covered: bool = False
+    note: str | None = None  # one-line evidence (covered) or what was missing
+
+
+class Scorecard(BaseModel):
+    """Structured interview scorecard (spec §3.5). Every field is optional/
+    defaulted: the LLM fills what it can, coercion supplies the rest. `partial`
+    is set by the server (EC-13), never trusted from the model."""
+
+    overall_score: int | None = None        # 0-100, model's holistic estimate
+    star_coverage: str | None = None        # Situation/Task/Action/Result narrative
+    clarity: str | None = None              # how clearly the candidate communicated
+    filler: str | None = None               # rambling / filler-word observation
+    checklist: list[ChecklistVerdict] = Field(default_factory=list)
+    strengths: list[str] = Field(default_factory=list)
+    improvements: list[str] = Field(default_factory=list)  # improvement tips
+    summary: str | None = None
+    # Server-set: the transcript didn't reach `wrap`, was short, or was clipped
+    # to the prompt budget — the scorecard scores only what exists (EC-13).
+    partial: bool = False
+
+
+class EvaluateResponse(BaseModel):
+    """The evaluate result: the persisted ChatOutput id + the structured card."""
+
+    output_id: UUID
+    session_id: UUID
+    scorecard: Scorecard
+    model_source: str
+    model_ref: str
+
+
 # ── Message feedback (Q3 — Production Eval + Feedback Flywheel) ───────────────
 
 
