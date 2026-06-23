@@ -114,10 +114,16 @@ def resolve_source_lang(
     ambiguous (`detect_primary_language` returned "mixed") — in that case
     `source_lang` is stored as "mixed" and ranking treats it as matching any
     query language (M4).
+
+    The declared value is normalized to its ISO-639-1 primary subtag (BCP-47
+    region/script stripped: "zh-CN"→"zh", "en_US"→"en") so M4's
+    `reader_pref == source_lang` comparison doesn't silently miss on a regional
+    variant. `detect_primary_language` already returns bare ISO-639-1 codes.
     """
     declared_norm = (declared or "").strip().lower()
     if declared_norm and declared_norm != "unknown":
-        return declared_norm, False
+        # Primary subtag only — split on BCP-47 '-' or locale '_'.
+        return re.split(r"[-_]", declared_norm, maxsplit=1)[0], False
     detected = detect_primary_language(text)
     if detected == "mixed":
         return "mixed", True
@@ -342,6 +348,7 @@ async def ingest_chapter_passages(
         and state["content_hash"] == content_hash
         and state["canon"] == canon
         and state["chapter_index"] == chapter_index
+        and state["embedding_model"] == embedding_model
     ):
         await set_source_lang_for_source(
             session,

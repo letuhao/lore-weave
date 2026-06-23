@@ -187,10 +187,19 @@ async def index_drafts(
     # Inline imports mirror the event-handler pattern (avoid circular import at
     # module load before the Neo4j driver is wired).
     from app.db.neo4j import neo4j_session
+    from app.db.pool import get_knowledge_pool
     from app.extraction.passage_ingester import ingest_chapter_passages
 
     indexed = 0
     skipped = 0
+    # KG-ML M1 (C10) — meter the on-demand draft-index embed spend too (same
+    # leak class the publish/backfill paths fixed; owner-on-demand but still real
+    # embedding tokens). Best-effort: pool acquisition must never break indexing,
+    # so an uninitialised pool → None → metering simply skipped.
+    try:
+        pool = get_knowledge_pool()
+    except RuntimeError:
+        pool = None
     async with neo4j_session() as session:
         for item in items:
             try:
@@ -215,6 +224,8 @@ async def index_drafts(
                     # Live draft (chapter_blocks), NOT a pinned revision.
                     revision_id=None,
                     canon=False,
+                    source_lang=item.get("original_language"),
+                    pool=pool,
                 )
                 if res.chunks_created > 0:
                     indexed += 1

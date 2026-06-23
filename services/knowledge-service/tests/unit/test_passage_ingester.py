@@ -544,11 +544,12 @@ async def test_ingest_skip_gate_unchanged_text(monkeypatch):
     book = _mk_book_client(text=text)
     matching_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
 
-    # State matches on hash + canon(True default) + chapter_index(1) → skip.
+    # State matches on hash + canon(True default) + chapter_index(1) + model → skip.
     monkeypatch.setattr(
         pi, "get_source_ingest_state",
         AsyncMock(return_value={
             "content_hash": matching_hash, "canon": True, "chapter_index": 1,
+            "embedding_model": "bge-m3",
         }),
     )
     tag = AsyncMock(return_value=3)
@@ -590,6 +591,7 @@ async def test_skip_gate_does_not_skip_on_canon_flip(monkeypatch):
         pi, "get_source_ingest_state",
         AsyncMock(return_value={
             "content_hash": matching_hash, "canon": False, "chapter_index": 1,
+            "embedding_model": "bge-m3",
         }),
     )
     monkeypatch.setattr(pi, "set_source_lang_for_source", AsyncMock(return_value=0))
@@ -615,6 +617,62 @@ async def test_skip_gate_does_not_skip_on_canon_flip(monkeypatch):
     assert result.chunks_created > 0
     for call in upsert.await_args_list:
         assert call.kwargs["canon"] is True  # re-ingested as canon
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "state_override",
+    [
+        {"chapter_index": 2},          # reorder: same text, different sort_order
+        {"embedding_model": "old-model"},  # model change: same text, new model/dim
+    ],
+)
+async def test_skip_gate_does_not_skip_on_metadata_drift(monkeypatch, state_override):
+    """C10 correctness: identical text but a metadata change (chapter reorder OR
+    embedding-model change — the model-set path does NOT delete passages) MUST
+    re-ingest, not skip. Guards the HIGH stale-dimension regression + reorder."""
+    import hashlib
+    import app.extraction.passage_ingester as pi
+
+    text = "Arthur rode toward Camelot. " * 300
+    book = _mk_book_client(text=text)
+    matching_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    state = {
+        "content_hash": matching_hash, "canon": True, "chapter_index": 1,
+        "embedding_model": "bge-m3",
+    }
+    state.update(state_override)
+    monkeypatch.setattr(pi, "get_source_ingest_state", AsyncMock(return_value=state))
+    monkeypatch.setattr(pi, "set_source_lang_for_source", AsyncMock(return_value=0))
+    upsert = AsyncMock()
+    monkeypatch.setattr(pi, "upsert_passage", upsert)
+    monkeypatch.setattr(pi, "delete_passages_for_source", AsyncMock(return_value=0))
+
+    async def fake_embed(*, user_id, model_source, model_ref, texts):
+        return EmbeddingResult(
+            embeddings=[[0.1] * 1024 for _ in texts], dimension=1024, model="bge-m3",
+        )
+    emb = MagicMock()
+    emb.embed = fake_embed
+
+    result = await ingest_chapter_passages(
+        MagicMock(), book, emb,
+        user_id=USER_ID, project_id=PROJECT_ID,
+        book_id=BOOK_ID, chapter_id=CHAPTER_ID, chapter_index=1,
+        embedding_model="bge-m3", embedding_dim=1024, canon=True,
+    )
+    assert result.skipped_unchanged is False
+    assert result.chunks_created > 0
+
+
+def test_resolve_source_lang_strips_region_subtag(monkeypatch):
+    """#5: BCP-47 region / locale variants normalize to the ISO-639-1 primary
+    subtag so M4's reader_pref==source_lang comparison doesn't miss."""
+    from app.extraction.passage_ingester import resolve_source_lang
+
+    assert resolve_source_lang("zh-CN", "x") == ("zh", False)
+    assert resolve_source_lang("en_US", "x") == ("en", False)
+    assert resolve_source_lang("ZH-Hant", "x") == ("zh", False)
 
 
 @pytest.mark.asyncio

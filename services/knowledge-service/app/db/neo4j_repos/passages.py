@@ -351,7 +351,8 @@ WHERE p.user_id = $user_id
   AND p.content_hash IS NOT NULL
 RETURN p.content_hash AS content_hash,
        coalesce(p.canon, true) AS canon,
-       p.chapter_index AS chapter_index
+       p.chapter_index AS chapter_index,
+       p.embedding_model AS embedding_model
 LIMIT 1
 """
 
@@ -365,12 +366,14 @@ async def get_source_ingest_state(
 ) -> dict | None:
     """KG-ML M1 (C10) — read the cached ingest state for a source's passages.
 
-    Returns `{content_hash, canon, chapter_index}` from any existing passage of
-    this source (they share these), or None when none exist / legacy nodes carry
-    no hash. The ingest path skips the re-embed ONLY when the fresh text hash AND
-    `canon` AND `chapter_index` all match — so a draft→publish canon flip or a
-    chapter reorder (same text, changed metadata) still re-ingests correctly
-    rather than being silently skipped.
+    Returns `{content_hash, canon, chapter_index, embedding_model}` from any
+    existing passage of this source (they share these), or None when none exist /
+    legacy nodes carry no hash. The ingest path skips the re-embed ONLY when the
+    fresh text hash AND `canon` AND `chapter_index` AND `embedding_model` all
+    match — so a draft→publish canon flip, a chapter reorder, OR an embedding-model
+    change (same text, different model/dim — the model-set path does NOT delete
+    `:Passage` nodes, only graph nodes) still re-ingests correctly rather than
+    being silently skipped with stale-dimension vectors.
     """
     result = await run_read(
         session,
@@ -383,10 +386,12 @@ async def get_source_ingest_state(
     if record is None or not record["content_hash"]:
         return None
     ci = record["chapter_index"]
+    em = record["embedding_model"]
     return {
         "content_hash": str(record["content_hash"]),
         "canon": bool(record["canon"]),
         "chapter_index": int(ci) if ci is not None else None,
+        "embedding_model": str(em) if em is not None else None,
     }
 
 
