@@ -33,6 +33,7 @@ from app.deps import (
     get_reranker_client,
 )
 from app.clients.grant_client import GrantClient, GrantLevel
+from app.extraction.patterns import detect_primary_language
 from app.middleware.jwt_auth import get_current_user
 from app.search.retriever import (
     MIN_RELEVANCE_DEFAULT,
@@ -77,6 +78,13 @@ async def search_book(
         description="canon = published content only; all = canon + on-demand-indexed "
         "drafts (owner-only — a non-owner 'all' is silently treated as 'canon').",
     ),
+    language: str | None = Query(
+        None,
+        max_length=35,
+        description="KG-ML M4 — preferred reader language (e.g. 'vi'). Soft boost, "
+        "not a filter. Omit to use the caller's stored reader-language for this book, "
+        "else the detected query language.",
+    ),
     caller: UUID = Depends(get_current_user),
     projects_repo: ProjectsRepo = Depends(get_projects_repo),
     grant_client: GrantClient = Depends(get_grant_client),
@@ -108,6 +116,17 @@ async def search_book(
         "all" if (surface == "all" and caller == project.user_id) else "canon"
     )
 
+    # KG-ML M4 (D5/DD6) — resolve the reader-language for the soft boost:
+    # explicit ?language= → the CALLER's stored reader-language (M3) → the
+    # detected query language → None (no boost). It's the SEARCHER's preference
+    # (caller), not the resolved-to-owner project user.
+    pref_lang = (language or "").strip() or None
+    if pref_lang is None:
+        pref_lang = await book_client.get_reader_language(book_id, caller)
+    if pref_lang is None:
+        detected = detect_primary_language(q)
+        pref_lang = detected if detected and detected != "mixed" else None
+
     result = await run_hybrid_search(
         user_id=project.user_id,
         book_id=book_id,
@@ -123,6 +142,7 @@ async def search_book(
         rerank=rerank,
         min_rerank_score=min_rerank_score,
         surface=effective_surface,
+        pref_lang=pref_lang,
     )
     return RawSearchResponse(
         query=q, mode=mode, results=result.hits, degraded=result.degraded,

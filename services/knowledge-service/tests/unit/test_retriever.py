@@ -49,11 +49,13 @@ def _project(
     )
 
 
-def _passage_hit(chunk_index=0, score=0.9) -> PassageSearchHit:
+def _passage_hit(chunk_index=0, score=0.9, source_lang="unknown",
+                 source_id="ch-canon") -> PassageSearchHit:
     p = Passage(
-        id=f"pg-{chunk_index}", user_id=str(_USER), project_id=str(_PROJECT_ID),
-        source_type="chapter", source_id="ch-canon", chunk_index=chunk_index,
+        id=f"pg-{source_lang}-{chunk_index}", user_id=str(_USER), project_id=str(_PROJECT_ID),
+        source_type="chapter", source_id=source_id, chunk_index=chunk_index,
         text="canon prose", embedding_model="bge-m3", is_hub=False, chapter_index=9,
+        source_lang=source_lang,
         created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc),
     )
     return PassageSearchHit(passage=p, raw_score=score, vector=None)
@@ -240,6 +242,62 @@ async def test_surface_all_includes_drafts_both_legs(embed, find):
     )
     assert find.await_args.kwargs["include_drafts"] is True
     assert book.lexical_search.await_args.kwargs["surface"] == "all"
+
+
+# ── KG-ML M4: language-aware retrieval ──────────────────────────────────────
+
+
+def test_passage_to_hit_carries_source_lang():
+    p = Passage(
+        id="p", user_id=str(_USER), source_type="chapter", source_id="ch1",
+        chunk_index=0, text="t", source_lang="vi",
+    )
+    assert passage_to_hit(PassageSearchHit(passage=p, raw_score=0.9))["sourceLang"] == "vi"
+
+
+@pytest.mark.asyncio
+@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
+async def test_pref_lang_boosts_matching_passage(embed, find):
+    """A vi reader's pref lifts the vi passage above the zh one even when both
+    fuse equally (rerank OFF so the soft-boost order is the final order)."""
+    embed.return_value = [0.1] * 1024
+    # two distinct chapters, identical cosine → identical RRF; language breaks it
+    find.return_value = [
+        _passage_hit(source_lang="zh", source_id="ch-zh"),
+        _passage_hit(source_lang="vi", source_id="ch-vi"),
+    ]
+    book, emb, rr = _clients(lex_hits=None)
+    out = await run_hybrid_search(
+        user_id=_USER, book_id=_BOOK, query="Dracula", project=_project(),
+        book_client=book, embedding_client=emb, reranker_client=rr,
+        mode="semantic", rerank=False, pref_lang="vi",
+    )
+    assert out.hits[0]["sourceLang"] == "vi"
+    assert out.hits[0]["langMatch"] is True
+    rr.rerank.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
+async def test_no_pref_lang_leaves_order_unboosted(embed, find):
+    """pref_lang=None (wiki path / no reader pref) → no langMatch annotation."""
+    embed.return_value = [0.1] * 1024
+    find.return_value = [
+        _passage_hit(score=0.95, source_lang="zh", source_id="ch-zh"),
+        _passage_hit(score=0.80, source_lang="vi", source_id="ch-vi"),
+    ]
+    book, emb, rr = _clients(lex_hits=None)
+    out = await run_hybrid_search(
+        user_id=_USER, book_id=_BOOK, query="Dracula", project=_project(),
+        book_client=book, embedding_client=emb, reranker_client=rr,
+        mode="semantic", rerank=False,  # pref_lang defaults None
+    )
+    assert all("langMatch" not in h for h in out.hits)
+    assert out.hits[0]["sourceLang"] == "zh"  # higher cosine wins, unboosted
 
 
 def test_passage_to_hit_surface_reflects_canon_flag():

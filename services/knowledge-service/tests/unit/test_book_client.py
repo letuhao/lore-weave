@@ -47,6 +47,43 @@ def _lexical_url(book_id) -> str:
     return f"http://book-service:8082/internal/books/{book_id}/lexical-search"
 
 
+def _reader_lang_url(book_id) -> str:
+    return f"http://book-service:8082/internal/books/{book_id}/reader-language"
+
+
+# ── get_reader_language (KG-ML M4 resolver) ──────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_get_reader_language_success(bc: BookClient):
+    book_id, user_id = uuid4(), uuid4()
+    with respx.mock() as mock:
+        route = mock.get(_reader_lang_url(book_id)).mock(
+            return_value=httpx.Response(200, json={"reader_language": "vi"}),
+        )
+        out = await bc.get_reader_language(book_id, user_id)
+    assert out == "vi"
+    assert route.calls.last.request.url.params["user_id"] == str(user_id)
+
+
+@pytest.mark.asyncio
+async def test_get_reader_language_unset_returns_none(bc: BookClient):
+    book_id, user_id = uuid4(), uuid4()
+    with respx.mock() as mock:
+        mock.get(_reader_lang_url(book_id)).mock(
+            return_value=httpx.Response(200, json={"reader_language": None}),
+        )
+        assert await bc.get_reader_language(book_id, user_id) is None
+
+
+@pytest.mark.asyncio
+async def test_get_reader_language_failure_returns_none(bc: BookClient):
+    book_id, user_id = uuid4(), uuid4()
+    with respx.mock() as mock:
+        mock.get(_reader_lang_url(book_id)).mock(return_value=httpx.Response(503))
+        assert await bc.get_reader_language(book_id, user_id) is None
+
+
 # ── lexical_search (raw-search Phase 2) ──────────────────────────────
 
 

@@ -31,7 +31,7 @@ const (
 //	$3 = escaped ILIKE pattern   $4 = limit
 const lexicalSearchSQL = `
 SELECT cb.chapter_id, c.title, c.sort_order, cb.block_index, cb.heading_context,
-       cb.text_content, similarity(cb.text_content, $2) AS sim
+       cb.text_content, similarity(cb.text_content, $2) AS sim, c.original_language
 FROM chapter_blocks cb
 JOIN chapters c ON c.id = cb.chapter_id
 WHERE c.book_id = $1
@@ -50,10 +50,10 @@ LIMIT $4`
 //	$1 = book_id   $2 = raw query   $3 = escaped ILIKE pattern   $4 = limit
 const lexicalSearchChapterSQL = `
 SELECT t.chapter_id, t.title, t.sort_order, t.block_index, t.heading_context,
-       t.text_content, t.sim
+       t.text_content, t.sim, t.original_language
 FROM (
   SELECT cb.chapter_id, c.title, c.sort_order, cb.block_index, cb.heading_context,
-         cb.text_content, similarity(cb.text_content, $2) AS sim,
+         cb.text_content, similarity(cb.text_content, $2) AS sim, c.original_language,
          (cb.text_content ILIKE $3) AS exact,
          ROW_NUMBER() OVER (
            PARTITION BY cb.chapter_id
@@ -82,7 +82,7 @@ LIMIT $4`
 const lexicalSearchCanonSQL = `
 SELECT c.id, c.title, c.sort_order, (x.ord - 1)::int AS block_index,
        NULL::text AS heading_context, (x.elem ->> '_text') AS text_content,
-       similarity(x.elem ->> '_text', $2) AS sim
+       similarity(x.elem ->> '_text', $2) AS sim, c.original_language
 FROM chapters c
 JOIN chapter_revisions rv ON rv.id = c.published_revision_id
 CROSS JOIN LATERAL jsonb_array_elements(rv.body -> 'content') WITH ORDINALITY AS x(elem, ord)
@@ -296,7 +296,7 @@ func (s *Server) searchChapterTextInternal(w http.ResponseWriter, r *http.Reques
 //
 // NOTE (review-impl MED-2): charStart/charEnd + highlights are Unicode
 // CODE-POINT (rune) offsets, NOT UTF-16 units — clients index by code point.
-func buildLexicalHit(chapterID uuid.UUID, title, headingCtx *string, sortOrder, blockIndex int, textContent string, sim float64, q, surface string) map[string]any {
+func buildLexicalHit(chapterID uuid.UUID, title, headingCtx *string, sortOrder, blockIndex int, textContent string, sim float64, q, surface, sourceLang string) map[string]any {
 	hl := computeHighlight(textContent, q, searchSnippetWindow)
 	score := sim
 	relevance := sim // E5: calibrated 0–1 relevance (exact match ⇒ 1.0)
@@ -312,6 +312,7 @@ func buildLexicalHit(chapterID uuid.UUID, title, headingCtx *string, sortOrder, 
 		"sortOrder":    sortOrder,
 		"surface":      surface, // P3-B: "draft" (chapter_blocks) or "canon" (published rev)
 		"matchType":    "lexical",
+		"sourceLang":   sourceLang, // KG-ML M4 — chapter original_language, for language-aware ranking
 		"score":        score,
 		"relevance":    relevance,
 		"snippet":      hl.Snippet,
@@ -376,10 +377,11 @@ func (s *Server) runLexicalSQL(ctx context.Context, sql string, bookID uuid.UUID
 		var sortOrder, blockIndex int
 		var textContent string
 		var sim float64
-		if err := rows.Scan(&chapterID, &title, &sortOrder, &blockIndex, &headingCtx, &textContent, &sim); err != nil {
+		var sourceLang string // chapters.original_language (NOT NULL) — KG-ML M4
+		if err := rows.Scan(&chapterID, &title, &sortOrder, &blockIndex, &headingCtx, &textContent, &sim, &sourceLang); err != nil {
 			continue
 		}
-		results = append(results, buildLexicalHit(chapterID, title, headingCtx, sortOrder, blockIndex, textContent, sim, q, surface))
+		results = append(results, buildLexicalHit(chapterID, title, headingCtx, sortOrder, blockIndex, textContent, sim, q, surface, sourceLang))
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

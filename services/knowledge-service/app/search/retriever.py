@@ -33,6 +33,7 @@ from app.db.neo4j_repos.passages import (
 )
 from app.search.hybrid_fusion import (
     BLOCK_CHAPTER_CAP,
+    apply_language_preference,
     apply_relevance_floor,
     cap_per_chapter,
     rrf_fuse,
@@ -74,6 +75,9 @@ def passage_to_hit(h: PassageSearchHit) -> dict[str, Any]:
         "sortOrder": p.chapter_index if p.chapter_index is not None else 0,
         "surface": "canon" if p.canon else "draft",
         "matchType": "semantic",
+        # KG-ML M4 — source language of this passage (zh original / vi dual-index),
+        # for language-aware ranking. "mixed" matches any reader pref.
+        "sourceLang": p.source_lang,
         "score": h.raw_score,
         "relevance": h.raw_score,  # E5: native cosine (0–1) for the score-floor
         "snippet": p.text,
@@ -168,6 +172,7 @@ async def run_hybrid_search(
     rerank: bool = True,
     min_rerank_score: float | None = None,
     surface: Surface = "canon",
+    pref_lang: str | None = None,
 ) -> RetrievalResult:
     """Run the hybrid lexical+semantic search for one already-resolved project.
 
@@ -234,6 +239,13 @@ async def run_hybrid_search(
 
     lexical_hits, semantic_hits = await asyncio.gather(_lexical(), _semantic())
     fused = rrf_fuse([lexical_hits, semantic_hits])
+    # KG-ML M4 (D5/DD6) — soft language-preference boost, POST-fusion / PRE-rerank.
+    # A reader-language hit is lifted up the candidate order (so it makes the rerank
+    # pool, and — with rerank OFF/BYOK-absent — directly ranks higher). The
+    # multilingual cross-encoder still has final say when rerank runs. No-op when
+    # pref_lang is None (the wiki in-process path is unaffected).
+    if pref_lang:
+        fused = apply_language_preference(fused, pref_lang, w_lang=settings.lang_pref_weight)
     # E5B: cross-encoder rerank for semantic/hybrid (where junk leaks). Lexical
     # mode is already clean (exact substring) so it skips rerank + stays fast.
     # D-RERANK-NOT-BYOK: rerank is OPTIONAL and BYOK. Resolve the effective model =

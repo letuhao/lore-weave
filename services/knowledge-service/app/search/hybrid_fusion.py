@@ -7,9 +7,16 @@ the two legs' incomparable score scales fuse fairly (spec §3.4, ADJ-3).
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 RRF_K = 60
+# KG-ML M4 (D5/DD6) — default language-preference boost. ≈ a rank-0 RRF
+# contribution at k=60 (1/(60+1) ≈ 0.0164): a language match adds roughly the
+# weight of appearing first in one leg — enough to lift a reader-language hit
+# above an equally-fused off-language one, without overpowering a hit that wins
+# both legs. Env-tunable (settings.lang_pref_weight); tune against the eval set.
+DEFAULT_LANG_PREF_WEIGHT = 0.0164
 PER_CHAPTER_CAP = 3
 # E5: "block" granularity (exhaustive mining) lifts the per-chapter cap so
 # every matching block can surface; "chapter" granularity uses cap=1 (best
@@ -56,6 +63,55 @@ def rrf_fuse(ranked_lists: list[list[Hit]], *, k: int = RRF_K) -> list[Hit]:
     fused = [{**chosen[key], "score": round(scores[key], 6)} for key in order]
     fused.sort(key=lambda h: h["score"], reverse=True)
     return fused
+
+
+def normalize_lang(value: Any) -> str:
+    """ISO-639-1 primary subtag, lowercased (BCP-47 region/script stripped:
+    "zh-Hant"→"zh", "en_US"→"en"). "" for empty/None/"unknown". Mirrors
+    `passage_ingester.resolve_source_lang`'s normalization so both sides of the
+    M4 `reader_pref == source_lang` comparison agree on the primary subtag."""
+    s = str(value or "").strip().lower()
+    if not s or s == "unknown":
+        return ""
+    return re.split(r"[-_]", s, maxsplit=1)[0]
+
+
+def apply_language_preference(
+    hits: list[Hit], pref_lang: str | None, *, w_lang: float = DEFAULT_LANG_PREF_WEIGHT,
+) -> list[Hit]:
+    """KG-ML M4 (D5/DD6) — soft language-preference re-ranking.
+
+    Applied POST-RRF / PRE-rerank. For each hit, a match on the reader's
+    preferred language adds `w_lang` to the fused score; hits then re-sort by
+    ``(boosted_score, lang_match, fused_score)`` — a deterministic order where
+    language is a soft tiebreaker, never a hard filter (robust to partial
+    translation; an off-language hit with no on-language alternative still
+    surfaces). A ``"mixed"`` passage matches ANY preference (it contains the
+    reader's language). The original fused RRF score is preserved on
+    ``fusedScore`` so a later rerank / floor can still reason about it.
+
+    No-op when `pref_lang` is empty/None (the wiki in-process path and any
+    caller that doesn't resolve a reader language) — order is unchanged.
+    """
+    pref = normalize_lang(pref_lang)
+    if not pref:
+        return hits
+    for h in hits:
+        hl = normalize_lang(h.get("sourceLang"))
+        match = bool(hl) and (hl == pref or hl == "mixed")
+        fused = float(h.get("score") or 0.0)
+        h["fusedScore"] = fused
+        h["langMatch"] = match
+        h["score"] = round(fused + (w_lang if match else 0.0), 6)
+    hits.sort(
+        key=lambda h: (
+            float(h.get("score") or 0.0),
+            1 if h.get("langMatch") else 0,
+            float(h.get("fusedScore") or 0.0),
+        ),
+        reverse=True,
+    )
+    return hits
 
 
 def cap_per_chapter(hits: list[Hit], *, cap: int = PER_CHAPTER_CAP) -> list[Hit]:

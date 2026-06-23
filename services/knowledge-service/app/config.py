@@ -159,6 +159,13 @@ class Settings(BaseSettings):
     # first-after-long-idle pays cold) — see rerank guide §6.6 (D-RAWSEARCH-RERANK-LATENCY).
     rerank_timeout_s: float = 5.0
 
+    # KG-ML M4 (D5/DD6) — soft language-preference boost weight for
+    # language-aware retrieval. A reader-language hit gets this added to its
+    # fused RRF score (a soft tiebreaker, never a hard filter). Default ≈ a
+    # rank-0 RRF contribution at k=60 (see hybrid_fusion.DEFAULT_LANG_PREF_WEIGHT);
+    # tune against the multilingual eval set. 0 ⇒ language-aware ranking off.
+    lang_pref_weight: float = 0.0164
+
     # K11.2 — Neo4j connection (Track 2 extraction graph). Empty
     # `neo4j_uri` means "skip Neo4j init at startup" — Track 1 dev
     # keeps working without Neo4j running. Set to e.g.
