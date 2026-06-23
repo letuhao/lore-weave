@@ -162,6 +162,21 @@ async def test_llm_failed_status_skips():
     repo.update_state.assert_not_awaited()
 
 
+def test_parse_json_object_handles_fences_and_prose():
+    # bare object
+    assert ex._parse_json_object('{"phase": "warmup"}')["phase"] == "warmup"
+    # ```json fenced (lm_studio / many local models do this)
+    assert ex._parse_json_object('```json\n{"phase": "technical"}\n```')["phase"] == "technical"
+    # prose-wrapped — extract the outermost { ... }
+    assert ex._parse_json_object('Here is the progress: {"phase": "wrap"} done.')["phase"] == "wrap"
+
+
+def test_parse_json_object_raises_on_no_object():
+    import pytest as _pytest
+    with _pytest.raises(ValueError):
+        ex._parse_json_object("no json here")
+
+
 @pytest.mark.asyncio
 async def test_build_messages_caps_turn_size():
     huge = "x" * 50000

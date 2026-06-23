@@ -99,6 +99,32 @@ def _extract_content(job_result: dict | None) -> str:
     return ""
 
 
+def _parse_json_object(content: str) -> dict:
+    """Parse a JSON object from a model reply that may wrap it in prose or a
+    ```json fence. We do NOT use response_format=json_object — lm_studio rejects
+    it (only json_schema/text), so the prompt asks for JSON and we extract it.
+    Raises ValueError if no object is found."""
+    s = (content or "").strip()
+    # strip a leading/trailing code fence if present
+    if s.startswith("```"):
+        s = s.split("```", 2)
+        s = s[1] if len(s) > 1 else ""
+        if s.startswith("json"):
+            s = s[4:]
+        s = s.strip()
+    try:
+        obj = json.loads(s)
+    except (json.JSONDecodeError, ValueError):
+        # fall back to the outermost { ... } span
+        start, end = s.find("{"), s.rfind("}")
+        if start == -1 or end <= start:
+            raise ValueError("no JSON object in reply")
+        obj = json.loads(s[start:end + 1])
+    if not isinstance(obj, dict):
+        raise ValueError("reply is not a JSON object")
+    return obj
+
+
 async def run_executive(
     *,
     repo,
@@ -130,9 +156,10 @@ async def run_executive(
             operation="chat",
             model_source=model_source,
             model_ref=model_ref,
+            # No response_format: lm_studio rejects json_object (json_schema/text
+            # only). The prompt asks for JSON-only; we extract it defensively.
             input={
                 "messages": messages,
-                "response_format": {"type": "json_object"},
                 "temperature": 0.0,
                 "max_tokens": 500,
             },
@@ -149,9 +176,7 @@ async def run_executive(
 
     content = _extract_content(getattr(job, "result", None))
     try:
-        llm_state = json.loads(content)
-        if not isinstance(llm_state, dict):
-            raise ValueError("not a JSON object")
+        llm_state = _parse_json_object(content)
     except (json.JSONDecodeError, ValueError, TypeError) as exc:
         logger.warning("executive: bad JSON session=%s err=%s body=%r", session_id, exc, content[:200])
         return "bad_json"
