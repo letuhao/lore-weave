@@ -198,6 +198,10 @@ class StartJobRequest(BaseModel):
     # sparse-but-critical entities are anchored regardless of chapter content.
     # None / empty ⇒ no pins (back-compat). Stored as pinned_entity_ids JSONB.
     pinned_glossary_entity_ids: list[str] | None = None
+    # D-RE-OTHER-AGENTIC-EFFORT: the clamped graded reasoning effort (none|low|medium|high) for
+    # the extraction LLM. Stored on the job; worker-ai honors it via D-KG-WORKER-GRADED-EFFORT.
+    # Default 'none' ⇒ back-compat (no thinking) for callers that don't set it.
+    reasoning_effort: str = "none"
 
     @field_validator("targets")
     @classmethod
@@ -797,6 +801,8 @@ async def _start_extraction_job_core(
         concurrency_level=body.concurrency_level,
         # C13 — pinned glossary entity ids → stored as pinned_entity_ids JSONB.
         pinned_entity_ids=body.pinned_glossary_entity_ids,
+        # D-RE-OTHER-AGENTIC-EFFORT: the clamped reasoning effort persisted on the job row.
+        reasoning_effort=body.reasoning_effort,
     )
 
     job_id = await _create_and_start_job(

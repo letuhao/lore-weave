@@ -125,6 +125,10 @@ func (s *Server) patchAttributeValue(w http.ResponseWriter, r *http.Request) {
 	setClauses := []string{}
 	args := []any{}
 	argN := 1
+	// D-GLOSSARY-MULTIROW slice 2 — the new SOURCE value when original_value is patched,
+	// so the per-item child rows can be synced (verified) after the UPDATE. nil ⇒ value
+	// not touched by this PATCH.
+	var newSourceValue *string
 
 	if raw, ok := in["original_language"]; ok {
 		var lang string
@@ -150,6 +154,8 @@ func (s *Server) patchAttributeValue(w http.ResponseWriter, r *http.Request) {
 		// later machine re-extraction's verified-clobber guard refuses to overwrite it.
 		// Literal (no placeholder) so it rides both the If-Match guard-CTE and plain paths.
 		setClauses = append(setClauses, "confidence = 'verified'")
+		v := val
+		newSourceValue = &v
 	}
 
 	ctx := r.Context()
@@ -210,6 +216,17 @@ func (s *Server) patchAttributeValue(w http.ResponseWriter, r *http.Request) {
 				strings.Join(setClauses, ", "), argN, argN+1)
 			if _, err := tx.Exec(ctx, updateSQL, args...); err != nil {
 				writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "update failed")
+				return
+			}
+		}
+
+		// D-GLOSSARY-MULTIROW slice 2 — sync the per-item child rows for a LIST value
+		// (scalar ⇒ no-op), stamped 'verified' (a human edit). Keeps items in step with
+		// the editor's original_value so per-item verify/tombstone and a later append see
+		// the curated list. In-tx → atomic with the edit.
+		if newSourceValue != nil {
+			if err := syncListItemsByID(ctx, tx, attrValueID, *newSourceValue, "verified", nil); err != nil {
+				writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "item sync failed")
 				return
 			}
 		}

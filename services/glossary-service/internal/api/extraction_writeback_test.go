@@ -20,6 +20,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/loreweave/glossary-service/internal/migrate"
 )
 
 // postExtractRaw drives POST /extract-entities and returns (status, decodedBody)
@@ -763,31 +765,33 @@ func TestBulkExtract_SkipReasonTaxonomy(t *testing.T) {
 	}
 }
 
-// TestAppendDedupMerge is the pure-unit proof of the append merge (MERGE/M5 slice 2):
-// dedup by normalized value, preserve order, idempotent (re-append → no change).
-func TestAppendDedupMerge(t *testing.T) {
+// TestDedupNormalized is the pure-unit proof of the per-item append dedup
+// (D-GLOSSARY-MULTIROW-ATTR-VALUES slice 1): drop empties, dedup by normalized
+// value (NFC + case/space-insensitive), preserve first-seen order. This is the
+// up-front "anything to add?" gate; UNIQUE(attr_value_id, item_norm) is the
+// DB-level backstop.
+func TestDedupNormalized(t *testing.T) {
 	cases := []struct {
-		name, existing, incoming, want string
-		changed                        bool
+		name string
+		in   []string
+		want []string
 	}{
-		{"scalar+scalar", "tall", "short", `["tall","short"]`, true},
-		{"into empty", "", "Ghost", `["Ghost"]`, true},
-		{"array+array dedup", `["a","b"]`, `["b","c"]`, `["a","b","c"]`, true},
-		{"idempotent re-append", `["a","b"]`, `["a","b"]`, `["a","b"]`, false},
-		{"case/space-insensitive dedup", `["Yan Mo"]`, `["yan  mo","New"]`, `["Yan Mo","New"]`, true},
-		{"nothing new keeps existing repr", "tall", "tall", "tall", false},
+		{"plain", []string{"tall", "short"}, []string{"tall", "short"}},
+		{"dups dropped", []string{"a", "b", "a"}, []string{"a", "b"}},
+		{"case/space-insensitive", []string{"Yan Mo", "yan  mo", "New"}, []string{"Yan Mo", "New"}},
+		{"empties dropped", []string{"", "  ", "x"}, []string{"x"}},
+		{"all dup → empty", []string{"a", "A", " a "}, []string{"a"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got, changed := appendDedupMerge(c.existing, c.incoming)
-			if changed != c.changed {
-				t.Errorf("changed: want %v got %v", c.changed, changed)
+			got := dedupNormalized(c.in)
+			if len(got) != len(c.want) {
+				t.Fatalf("len: want %v got %v", c.want, got)
 			}
-			if changed && got != c.want {
-				t.Errorf("merged: want %q got %q", c.want, got)
-			}
-			if !changed && got != c.existing {
-				t.Errorf("unchanged must return existing verbatim: want %q got %q", c.existing, got)
+			for i := range got {
+				if got[i] != c.want[i] {
+					t.Errorf("idx %d: want %q got %q", i, c.want[i], got[i])
+				}
 			}
 		})
 	}
@@ -862,6 +866,280 @@ func TestBulkExtract_AppendAction(t *testing.T) {
 	}
 	if r := skipReasonFor(resp, "拼接者", "appearance"); r != "unchanged" {
 		t.Errorf("want re-append skip reason 'unchanged', got %q", r)
+	}
+}
+
+// TestBulkExtract_AppendCreatesItems proves the slice-1 per-item model
+// (D-GLOSSARY-MULTIROW-ATTR-VALUES): an append materializes the prior scalar + the new
+// element as ACTIVE child rows (the appended one carrying source-chapter provenance),
+// keeps original_value as the write-synced cache, and is idempotent (UNIQUE item_norm).
+func TestBulkExtract_AppendCreatesItems(t *testing.T) {
+	pool := openTestDB(t)
+	runK2aMigrations(t, pool)
+	bookID := "00000000-0000-0000-0001-0000000a1099"
+	adoptTestBook(t, pool, uuid.MustParse(bookID))
+	t.Cleanup(func() { cleanupExtractBook(pool, bookID) })
+	srv, token := newEntitiesListServer(t)
+	srv.pool = pool
+	chapterID := uuid.NewString()
+	links := []map[string]any{{"chapter_id": chapterID, "chapter_index": 1}}
+
+	postExtract(t, srv, token, bookID, map[string]any{
+		"source_language": "zh",
+		"entities": []map[string]any{
+			{"kind_code": "character", "name": "缝合怪",
+				"attributes": map[string]any{"appearance": "tall"}, "chapter_links": links},
+		},
+	})
+	postExtract(t, srv, token, bookID, map[string]any{
+		"source_language":   "zh",
+		"attribute_actions": map[string]any{"character": map[string]any{"appearance": "append"}},
+		"entities": []map[string]any{
+			{"kind_code": "character", "name": "缝合怪",
+				"attributes": map[string]any{"appearance": "short"}, "chapter_links": links},
+		},
+	})
+
+	// Child items: 2 active rows, ordered; the seeded 'tall' has NULL provenance, the
+	// appended 'short' carries the chapter id; both default confidence 'machine'.
+	type item struct {
+		val, norm, conf, status string
+		src                     *string
+	}
+	rows, err := pool.Query(context.Background(), `
+		SELECT i.item_value, i.item_norm, i.confidence, i.status, i.source_chapter_id::text
+		FROM entity_attribute_value_items i
+		JOIN entity_attribute_values eav ON eav.attr_value_id = i.attr_value_id
+		JOIN glossary_entities ge ON ge.entity_id = eav.entity_id
+		JOIN book_attributes ba ON ba.attr_id = eav.attr_def_id
+		WHERE ge.book_id=$1 AND ba.code='appearance'
+		ORDER BY i.sort_order, i.item_norm`, bookID)
+	if err != nil {
+		t.Fatalf("query items: %v", err)
+	}
+	var items []item
+	for rows.Next() {
+		var it item
+		if err := rows.Scan(&it.val, &it.norm, &it.conf, &it.status, &it.src); err != nil {
+			rows.Close()
+			t.Fatalf("scan item: %v", err)
+		}
+		items = append(items, it)
+	}
+	rows.Close()
+	if len(items) != 2 {
+		t.Fatalf("want 2 child items, got %d (%+v)", len(items), items)
+	}
+	if items[0].val != "tall" || items[0].src != nil {
+		t.Errorf("seeded item: want tall/NULL-src, got %q/%v", items[0].val, items[0].src)
+	}
+	if items[1].val != "short" || items[1].src == nil || *items[1].src != chapterID {
+		t.Errorf("appended item: want short/src=%s, got %q/%v", chapterID, items[1].val, items[1].src)
+	}
+	for _, it := range items {
+		if it.conf != "machine" || it.status != "active" {
+			t.Errorf("item %q: want machine/active, got %s/%s", it.val, it.conf, it.status)
+		}
+		if it.norm == "" {
+			t.Errorf("item %q: empty item_norm", it.val)
+		}
+	}
+	// Cache parity (INV-MR1) + idempotency: re-append 'short' adds no new row.
+	if v := appearanceValue(t, pool, bookID); v != `["tall","short"]` {
+		t.Errorf("cache parity: want [\"tall\",\"short\"], got %q", v)
+	}
+	postExtract(t, srv, token, bookID, map[string]any{
+		"source_language":   "zh",
+		"attribute_actions": map[string]any{"character": map[string]any{"appearance": "append"}},
+		"entities": []map[string]any{
+			{"kind_code": "character", "name": "缝合怪",
+				"attributes": map[string]any{"appearance": "short"}, "chapter_links": links},
+		},
+	})
+	var n int
+	if err := pool.QueryRow(context.Background(), `
+		SELECT count(*) FROM entity_attribute_value_items i
+		JOIN entity_attribute_values eav ON eav.attr_value_id = i.attr_value_id
+		JOIN glossary_entities ge ON ge.entity_id = eav.entity_id
+		JOIN book_attributes ba ON ba.attr_id = eav.attr_def_id
+		WHERE ge.book_id=$1 AND ba.code='appearance'`, bookID).Scan(&n); err != nil {
+		t.Fatalf("recount: %v", err)
+	}
+	if n != 2 {
+		t.Errorf("idempotent re-append created a row: want 2 items, got %d", n)
+	}
+}
+
+// TestBulkExtract_AppendScalarReappendCanonicalizes locks the INV-MR1 fix: appending a
+// scalar list value with its OWN value adds no new element (skip 'unchanged') but still
+// materializes the legacy scalar into a child item and canonicalizes original_value to the
+// active-item JSON array — the cache never diverges from the items.
+func TestBulkExtract_AppendScalarReappendCanonicalizes(t *testing.T) {
+	pool := openTestDB(t)
+	runK2aMigrations(t, pool)
+	bookID := "00000000-0000-0000-0001-0000000a1101"
+	adoptTestBook(t, pool, uuid.MustParse(bookID))
+	t.Cleanup(func() { cleanupExtractBook(pool, bookID) })
+	srv, token := newEntitiesListServer(t)
+	srv.pool = pool
+	links := []map[string]any{{"chapter_id": uuid.NewString(), "chapter_index": 1}}
+
+	postExtract(t, srv, token, bookID, map[string]any{
+		"source_language": "zh",
+		"entities": []map[string]any{
+			{"kind_code": "character", "name": "钟表匠",
+				"attributes": map[string]any{"appearance": "tall"}, "chapter_links": links},
+		},
+	})
+	// Pre-state: scalar cache, zero items.
+	if v := appearanceValue(t, pool, bookID); v != "tall" {
+		t.Fatalf("precondition: want scalar 'tall', got %q", v)
+	}
+	resp := postExtract(t, srv, token, bookID, map[string]any{
+		"source_language":   "zh",
+		"attribute_actions": map[string]any{"character": map[string]any{"appearance": "append"}},
+		"entities": []map[string]any{
+			{"kind_code": "character", "name": "钟表匠",
+				"attributes": map[string]any{"appearance": "tall"}, "chapter_links": links},
+		},
+	})
+	if r := skipReasonFor(resp, "钟表匠", "appearance"); r != "unchanged" {
+		t.Errorf("want skip 'unchanged' (no new element), got %q", r)
+	}
+	// INV-MR1: cache canonicalized to the active-item array, parity with the one item.
+	if v := appearanceValue(t, pool, bookID); v != `["tall"]` {
+		t.Errorf("cache not canonicalized: want [\"tall\"], got %q", v)
+	}
+}
+
+// TestBulkExtract_OverwriteThenAppendNoResurrection locks the slice-2 divergence closure:
+// an extraction overwrite of a list attr replaces the item set, so a SUBSEQUENT append builds
+// on the overwritten list — the pre-overwrite items are NOT resurrected by the cache rebuild
+// (the slice-1 boundary, now closed).
+func TestBulkExtract_OverwriteThenAppendNoResurrection(t *testing.T) {
+	pool := openTestDB(t)
+	runK2aMigrations(t, pool)
+	bookID := "00000000-0000-0000-0001-0000000a1102"
+	adoptTestBook(t, pool, uuid.MustParse(bookID))
+	t.Cleanup(func() { cleanupExtractBook(pool, bookID) })
+	srv, token := newEntitiesListServer(t)
+	srv.pool = pool
+	links := []map[string]any{{"chapter_id": uuid.NewString(), "chapter_index": 1}}
+	mk := func(action string, val any) map[string]any {
+		return map[string]any{
+			"source_language":   "zh",
+			"attribute_actions": map[string]any{"character": map[string]any{"appearance": action}},
+			"entities": []map[string]any{
+				{"kind_code": "character", "name": "镜匠",
+					"attributes": map[string]any{"appearance": val}, "chapter_links": links},
+			},
+		}
+	}
+	// create → append two → items [tall, short]
+	postExtract(t, srv, token, bookID, map[string]any{
+		"source_language": "zh",
+		"entities": []map[string]any{
+			{"kind_code": "character", "name": "镜匠",
+				"attributes": map[string]any{"appearance": "tall"}, "chapter_links": links},
+		},
+	})
+	postExtract(t, srv, token, bookID, mk("append", "short"))
+	if v := appearanceValue(t, pool, bookID); v != `["tall","short"]` {
+		t.Fatalf("setup append: want [\"tall\",\"short\"], got %q", v)
+	}
+	// overwrite with a fresh LIST → item set replaced (tall/short gone)
+	postExtract(t, srv, token, bookID, mk("overwrite", []any{"fresh"}))
+	if v := appearanceValue(t, pool, bookID); v != `["fresh"]` {
+		t.Fatalf("overwrite: want [\"fresh\"], got %q", v)
+	}
+	// append builds on the overwritten list — NO resurrection of tall/short
+	postExtract(t, srv, token, bookID, mk("append", "more"))
+	if v := appearanceValue(t, pool, bookID); v != `["fresh","more"]` {
+		t.Errorf("post-overwrite append resurrected stale items: want [\"fresh\",\"more\"], got %q", v)
+	}
+	var n int
+	if err := pool.QueryRow(context.Background(), `
+		SELECT count(*) FROM entity_attribute_value_items i
+		JOIN entity_attribute_values eav ON eav.attr_value_id = i.attr_value_id
+		JOIN glossary_entities ge ON ge.entity_id = eav.entity_id
+		JOIN book_attributes ba ON ba.attr_id = eav.attr_def_id
+		WHERE ge.book_id=$1 AND ba.code='appearance' AND i.status='active'`, bookID).Scan(&n); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if n != 2 {
+		t.Errorf("want 2 active items after overwrite+append, got %d", n)
+	}
+}
+
+// TestMultirowBackfill proves migration 0035's Go backfill re-materializes per-item child
+// rows from a list-valued original_value that has none (the pre-0035 state). Simulated by
+// appending (which creates items) then deleting the items while keeping the list cache, then
+// re-running UpMultirowAttrValues (idempotent): the backfill scans LIKE '[%' rows and rebuilds
+// the items via the SHARED textnorm normalize (parity with the runtime append path).
+func TestMultirowBackfill(t *testing.T) {
+	pool := openTestDB(t)
+	runK2aMigrations(t, pool)
+	bookID := "00000000-0000-0000-0001-0000000a1100"
+	adoptTestBook(t, pool, uuid.MustParse(bookID))
+	t.Cleanup(func() { cleanupExtractBook(pool, bookID) })
+	srv, token := newEntitiesListServer(t)
+	srv.pool = pool
+	links := []map[string]any{{"chapter_id": uuid.NewString(), "chapter_index": 1}}
+
+	postExtract(t, srv, token, bookID, map[string]any{
+		"source_language": "zh",
+		"entities": []map[string]any{
+			{"kind_code": "character", "name": "古董商",
+				"attributes": map[string]any{"appearance": "tall"}, "chapter_links": links},
+		},
+	})
+	postExtract(t, srv, token, bookID, map[string]any{
+		"source_language":   "zh",
+		"attribute_actions": map[string]any{"character": map[string]any{"appearance": "append"}},
+		"entities": []map[string]any{
+			{"kind_code": "character", "name": "古董商",
+				"attributes": map[string]any{"appearance": "Yan  Mo"}, "chapter_links": links},
+		},
+	})
+	// Simulate a pre-0035 row: the list cache exists, but the child items don't.
+	if _, err := pool.Exec(context.Background(), `
+		DELETE FROM entity_attribute_value_items i
+		USING entity_attribute_values eav, glossary_entities ge, book_attributes ba
+		WHERE i.attr_value_id = eav.attr_value_id AND eav.entity_id = ge.entity_id
+		  AND ba.attr_id = eav.attr_def_id AND ge.book_id=$1 AND ba.code='appearance'`, bookID); err != nil {
+		t.Fatalf("delete items: %v", err)
+	}
+	// Backfill re-runs (idempotent) and rebuilds the items from the cache.
+	if err := migrate.UpMultirowAttrValues(context.Background(), pool); err != nil {
+		t.Fatalf("UpMultirowAttrValues: %v", err)
+	}
+	rows, err := pool.Query(context.Background(), `
+		SELECT i.item_value, i.item_norm FROM entity_attribute_value_items i
+		JOIN entity_attribute_values eav ON eav.attr_value_id = i.attr_value_id
+		JOIN glossary_entities ge ON ge.entity_id = eav.entity_id
+		JOIN book_attributes ba ON ba.attr_id = eav.attr_def_id
+		WHERE ge.book_id=$1 AND ba.code='appearance' AND i.status='active'
+		ORDER BY i.sort_order`, bookID)
+	if err != nil {
+		t.Fatalf("query items: %v", err)
+	}
+	var vals, norms []string
+	for rows.Next() {
+		var v, n string
+		if err := rows.Scan(&v, &n); err != nil {
+			rows.Close()
+			t.Fatalf("scan: %v", err)
+		}
+		vals = append(vals, v)
+		norms = append(norms, n)
+	}
+	rows.Close()
+	if len(vals) != 2 || vals[0] != "tall" || vals[1] != "Yan  Mo" {
+		t.Fatalf("backfill items: want [tall, Yan  Mo], got %v", vals)
+	}
+	// Normalize parity: item_norm uses the SHARED textnorm (NFC+collapse+lower).
+	if norms[1] != "yan mo" {
+		t.Errorf("backfill normalize: want 'yan mo', got %q", norms[1])
 	}
 }
 

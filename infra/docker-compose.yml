@@ -513,6 +513,14 @@ services:
       P5_SCHED_ENABLED: ${P5_SCHED_ENABLED:-true}
       P5_OWNER_CAP: ${P5_OWNER_CAP:-5}
       P5_GLOBAL_BUDGET: ${P5_GLOBAL_BUDGET:-0}
+      # CACHE/M6 raw-output offload (D-RAWCACHE-MINIO-OFFLOAD): cold-archive the bulky
+      # verbatim raw_response to MinIO. OPTIONAL — a blank MINIO_SECRET_KEY disables it,
+      # so the service boots fine without object storage; set the secret to enable the sweep.
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-loreweave}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-loreweave_dev_minio_secret}
+      MINIO_USE_SSL: ${MINIO_USE_SSL:-false}
+      MINIO_BUCKET: ${TRANSLATION_RAW_BUCKET:-lw-extraction-raw}
       PORT: "8087"
     depends_on:
       postgres:

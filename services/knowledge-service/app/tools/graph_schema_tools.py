@@ -805,6 +805,33 @@ async def _resolve_project_owner(ctx: "ToolContext", need: GrantLevel) -> UUID:
     return owner
 
 
+async def _resolve_project_owner_and_level(
+    ctx: "ToolContext", need: GrantLevel,
+) -> tuple[UUID, GrantLevel]:
+    """Like `_resolve_project_owner`, but ALSO returns the caller's effective grant level —
+    needed to clamp paid reasoning effort (D-RE-OTHER-AGENTIC-EFFORT). The project OWNER (the
+    caller IS the owner) gets `GrantLevel.OWNER`; a book collaborator gets their resolved grant.
+    Same gating/anti-oracle as `_resolve_project_owner`."""
+    from app.tools.executor import ToolExecutionError
+
+    if ctx.project_id is None:
+        raise ToolExecutionError("a project must be in scope for this tool")
+    meta = await ctx.projects_repo.project_meta(ctx.project_id)
+    if meta is None:
+        raise ToolExecutionError("project not found")
+    owner, book_id = meta
+    if ctx.user_id == owner:
+        return owner, GrantLevel.OWNER
+    if book_id is None:
+        raise ToolExecutionError("project not found")  # book-less → owner-only
+    lvl = await ctx.grant_client.resolve_grant(book_id, ctx.user_id)
+    if lvl == GrantLevel.NONE:
+        raise ToolExecutionError("project not found")
+    if not lvl.at_least(need):
+        raise ToolExecutionError("insufficient access for this action")
+    return owner, lvl
+
+
 async def _active_project_schema_id(ctx: "ToolContext", project_id: str):
     """The project's active project-scoped schema_id (or None if it never
     adopted — then there is no upstream to sync against). Read-only.

@@ -318,6 +318,9 @@ def assemble_entity_submit(rs: dict[str, Any]) -> dict:
         system_prompt=system, text=rs["chunk_text"],
         model_source=rs["model_source"], model_ref=rs["model_ref"],
         project_id=rs["project_id"], context_budget=None,
+        # D-KG-WORKER-GRADED-EFFORT — graded effort stashed in resume_state by
+        # _start_decoupled_chunk. Default "none" (legacy/pre-effort blob) ⇒ off.
+        reasoning_effort=rs.get("reasoning_effort", "none"),
     )
 
 
@@ -343,6 +346,9 @@ def assemble_trio_submits(rs: dict[str, Any]) -> dict[str, dict]:
     common = dict(
         text=rs["chunk_text"], model_source=rs["model_source"],
         model_ref=rs["model_ref"], project_id=rs["project_id"], context_budget=None,
+        # D-KG-WORKER-GRADED-EFFORT — same graded effort as the entity submit
+        # (stashed in resume_state). Default "none" (legacy blob) ⇒ off.
+        reasoning_effort=rs.get("reasoning_effort", "none"),
     )
     # C12 — build the submit-dict CONDITIONALLY for only the requested trio
     # ops. begin_trio records exactly these job ids, and the fan-in completes

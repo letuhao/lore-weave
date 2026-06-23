@@ -511,3 +511,49 @@ def test_c12_legacy_rs_without_trio_targets_defaults_all():
     assert not d.trio_complete(rs)  # still needs fact (legacy = all three)
     rs = d.fold_trio_op(rs, "fact", ["fa"])
     assert d.trio_complete(rs)
+
+
+# ── D-KG-WORKER-GRADED-EFFORT — graded effort survives the resume_state ─────
+
+
+def test_graded_effort_in_resume_state_reaches_entity_submit():
+    """A reasoning_effort stashed in resume_state spreads the reasoning wire
+    fields into the entity submit the consumer rebuilds on resume."""
+    rs = _seed_shell_rs()
+    rs["reasoning_effort"] = "high"
+    ek = d.assemble_entity_submit(rs)
+    assert ek["input"]["reasoning_effort"] == "high"
+    assert ek["input"]["chat_template_kwargs"] == {
+        "thinking": True, "enable_thinking": True,
+    }
+
+
+def test_graded_effort_in_resume_state_reaches_trio_submits():
+    rs = _seed_shell_rs()
+    rs["reasoning_effort"] = "high"
+    rs = d.fold_entity_job(rs, _job({"entities": [
+        {"name": "Kai", "kind": "person", "confidence": 0.9},
+    ]}))
+    ts = d.assemble_trio_submits(rs)
+    for op in ("relation", "event", "fact"):
+        assert ts[op]["input"]["reasoning_effort"] == "high"
+
+
+def test_absent_effort_in_resume_state_omits_wire_fields():
+    """A legacy/pre-effort resume blob (no reasoning_effort key) ⇒ no wire
+    fields, byte-identical to the historical decoupled submit."""
+    ek = d.assemble_entity_submit(_seed_shell_rs())
+    assert "reasoning_effort" not in ek["input"]
+    assert "chat_template_kwargs" not in ek["input"]
+
+
+def test_recovery_submit_stays_force_off_under_graded_effort():
+    """D1 carve-out drift-lock: the recovery classifier is a cheap structural
+    pass that must NOT inherit graded effort — its thinking stays force-OFF and
+    it carries no reasoning_effort, even when the job runs at high effort."""
+    rs = _recovery_rs()
+    rs["reasoning_effort"] = "high"
+    submits, _ = d.assemble_recovery(rs)
+    inp = submits["r0"]["input"]
+    assert "reasoning_effort" not in inp
+    assert inp["chat_template_kwargs"] == {"thinking": False, "enable_thinking": False}

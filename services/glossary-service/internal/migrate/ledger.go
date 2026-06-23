@@ -78,7 +78,10 @@ var chain = []Step{
 	{"0032_extraction_concurrency", UpExtractionConcurrency},
 	{"0033_evidence_provenance", UpEvidenceProvenance},
 	{"0034_merge_policy", UpMergePolicy},
-	{"0035_system_attr_descriptions", UpSystemAttrDescriptions},
+	{"0035_multirow_attr_values", UpMultirowAttrValues},
+	// Merge: this branch's 0035 collided with main's 0035_multirow_attr_values; renumbered
+	// to 0036 (idempotent migration, so a DB that already ran it under the old key re-runs cleanly).
+	{"0036_system_attr_descriptions", UpSystemAttrDescriptions},
 }
 
 // EnsureLedger creates the schema_migrations bookkeeping table. Idempotent; must run

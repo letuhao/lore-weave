@@ -67,6 +67,45 @@ async def test_build_graph_mints_confirm_token_when_configured():
 
 
 @pytest.mark.asyncio
+async def test_build_graph_owner_keeps_high_effort():
+    # D-RE-OTHER-AGENTIC-EFFORT: the project owner (caller == owner) has the high ceiling.
+    ctx = _mk_ctx()
+    res = await execute_tool(
+        ctx, "kg_build_graph", {"llm_model": "gpt-x", "reasoning_effort": "high"})
+    assert res.success, res.error
+    import time as _t
+    claims = verify_action_token(settings.jwt_secret, res.result["confirm_token"], _t.time())
+    assert claims.params["reasoning_effort"] == "high"
+
+
+@pytest.mark.asyncio
+async def test_build_graph_clamps_effort_to_edit_grant():
+    # An EDIT grantee (not the owner) requesting high effort is CLAMPED to medium at mint.
+    grant = AsyncMock()
+    grant.resolve_grant = AsyncMock(return_value=GrantLevel.EDIT)
+    ctx = _mk_ctx(owner=uuid4(), grant=grant)
+    res = await execute_tool(
+        ctx, "kg_build_graph", {"llm_model": "gpt-x", "reasoning_effort": "high"})
+    assert res.success, res.error
+    import time as _t
+    claims = verify_action_token(settings.jwt_secret, res.result["confirm_token"], _t.time())
+    assert claims.params["reasoning_effort"] == "medium"  # high → EDIT ceiling
+
+
+@pytest.mark.asyncio
+async def test_build_wiki_clamps_effort_to_edit_grant():
+    grant = AsyncMock()
+    grant.resolve_grant = AsyncMock(return_value=GrantLevel.EDIT)
+    ctx = _mk_ctx(owner=uuid4(), grant=grant)
+    res = await execute_tool(
+        ctx, "kg_build_wiki", {"model_ref": "gpt-x", "reasoning_effort": "high"})
+    assert res.success, res.error
+    import time as _t
+    claims = verify_action_token(settings.jwt_secret, res.result["confirm_token"], _t.time())
+    assert claims.params["reasoning_effort"] == "medium"
+
+
+@pytest.mark.asyncio
 async def test_build_graph_requires_embedding_model():
     ctx = _mk_ctx(embedding_model=None)
     res = await execute_tool(ctx, "kg_build_graph", {"llm_model": "gpt-x"})

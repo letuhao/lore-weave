@@ -356,8 +356,11 @@ async def confirm_action(
             model_source=p.get("model_source") or "platform_model",
             model_ref=UUID(p["model_ref"]) if p.get("model_ref") else None,
             max_entities_per_kind=int(p.get("max_entities_per_kind", 30)),
-            thinking_enabled=effort not in ("none", "off"),
+            # D-RE-WORKER-GRADED-EFFORT: carry the GRADED effort through (not just the bool) so
+            # low/high reach the worker. The core re-clamps (idempotent here). thinking_enabled
+            # kept as the back-compat alias.
             reasoning_effort=effort,
+            thinking_enabled=effort not in ("none", "off"),
         )
         result = await _create_extraction_job_core(db, book_id, claims.user_id, ext_payload)
         return {

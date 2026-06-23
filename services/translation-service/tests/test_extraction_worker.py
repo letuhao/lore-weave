@@ -178,6 +178,189 @@ async def test_cache_hit_skips_llm_and_reuses_entities():
 
 
 @pytest.mark.asyncio
+async def test_cache_busts_on_model_change_when_enabled(monkeypatch):
+    # D-CACHE-MODEL-KEY: with the flag ON, a cache hit whose stored model_ref differs from the
+    # CURRENT model is busted → the LLM IS called (re-extract on a model change). Default-off is
+    # covered by test_cache_hit_skips_llm (the hit is reused).
+    monkeypatch.setattr(ew.settings, "extraction_cache_bust_on_model_change", True)
+    db = AsyncMock()
+    db.fetchval = AsyncMock(return_value=uuid4())
+    db.execute = AsyncMock()
+    llm = MagicMock()
+    llm.submit_and_wait = AsyncMock(return_value=_sdk_job("stop"))
+    cached = {  # a parse produced by a DIFFERENT (old) model
+        "parsed_entities": [{"name": "X", "kind_code": "character"}], "finish_reason": "stop",
+        "input_tokens": 0, "output_tokens": 0, "parse_status": "ok", "model_ref": str(uuid4()),
+    }
+    with patch.object(ew.httpx, "AsyncClient",
+                      return_value=_http_cm_returning({"title": "Ch1", "content": "text"})), \
+         patch.object(ew, "prepare_chapter_text", new=MagicMock(return_value="short chapter text")), \
+         patch.object(ew, "plan_kind_batches", return_value=[["character"]]), \
+         patch.object(ew, "build_known_entities_context", return_value=""), \
+         patch.object(ew, "build_extraction_prompt", return_value={}), \
+         patch.object(ew, "build_system_prompt", return_value="sys"), \
+         patch.object(ew, "build_user_prompt", return_value="usr"), \
+         patch.object(ew, "parse_and_validate_with_stats",
+                      return_value=([], ParseStats(raw_count=0, parse_ok=True))), \
+         patch.object(ew, "stamp_entity_provenance", new=MagicMock()), \
+         patch.object(ew, "_persist_batch_outcomes", new=AsyncMock()), \
+         patch.object(ew, "get_cached_batch", new=AsyncMock(return_value=cached)), \
+         patch.object(ew, "put_batch", new=AsyncMock()), \
+         patch.object(ew, "post_extracted_entities", new=AsyncMock(return_value={})):
+        await ew._process_extraction_chapter(
+            job_id=uuid4(), book_id="b", chapter_id=uuid4(), chapter_index=0,
+            extraction_profile={"character": {}}, kinds_metadata=[], known_entities=[],
+            source_language="zh", model_source="user_model", model_ref=str(uuid4()),  # NEW model
+            max_entities_per_kind=10, thinking_enabled=False, pool=_pool(db), llm_client=llm,
+        )
+    llm.submit_and_wait.assert_awaited()  # cache busted on the model change → a live call ran
+
+
+@pytest.mark.asyncio
+async def test_unplannable_oversized_window_skips_llm(caplog):
+    # D-CACHE-PLANNER-WIRING Part 2: a window too big to fit the context even alone is flagged
+    # `unplannable` by the pre-flight planner gate → its LLM call is SKIPPED (no truncation, no
+    # tokens), the batch outcome is recorded `unplannable`, and the chapter derives
+    # completed_with_errors so the un-fittable block is VISIBLE.
+    caplog.set_level(logging.WARNING, logger="app.workers.extraction_worker")
+    db = AsyncMock()
+    db.fetchval = AsyncMock(return_value=uuid4())  # owner_user_id resolve
+    db.execute = AsyncMock()
+    llm = MagicMock()
+    llm.submit_and_wait = AsyncMock()  # must NOT be awaited — the call is skipped
+    post = AsyncMock(return_value={"created": 0, "updated": 0, "skipped": 0})
+    persisted = {}
+
+    async def _capture_outcomes(pool, job_id, owner, book, chap, outcomes):
+        persisted["outcomes"] = outcomes
+
+    huge_window = "这是一个非常长的段落。" * 60_000  # one block far larger than the 8192 ctx
+
+    with patch.object(ew.httpx, "AsyncClient",
+                      return_value=_http_cm_returning({"title": "Ch1", "content": "text"})), \
+         patch.object(ew, "prepare_chapter_text", new=MagicMock(return_value="some chapter text")), \
+         patch.object(ew, "_plan_chapter_windows", return_value=[huge_window]), \
+         patch.object(ew, "plan_kind_batches", return_value=[["character"]]), \
+         patch.object(ew, "build_known_entities_context", return_value=""), \
+         patch.object(ew, "stamp_entity_provenance", new=MagicMock()), \
+         patch.object(ew, "_persist_batch_outcomes", new=AsyncMock(side_effect=_capture_outcomes)), \
+         patch.object(ew, "get_cached_batch", new=AsyncMock(return_value=None)), \
+         patch.object(ew, "put_batch", new=AsyncMock()), \
+         patch.object(ew, "post_extracted_entities", new=post):
+        result = await ew._process_extraction_chapter(
+            job_id=uuid4(), book_id="b", chapter_id=uuid4(), chapter_index=0,
+            extraction_profile={"character": {}}, kinds_metadata=[], known_entities=[],
+            source_language="zh", model_source="user_model", model_ref=str(uuid4()),
+            max_entities_per_kind=10, thinking_enabled=False, pool=_pool(db), llm_client=llm,
+        )
+
+    llm.submit_and_wait.assert_not_awaited()  # the oversized unit's call was skipped
+    assert result["chapter_status"] == "completed_with_errors"
+    assert [o["status"] for o in persisted["outcomes"]] == ["unplannable"]
+    assert any("UNPLANNABLE" in r.getMessage() for r in caplog.records)
+
+
+async def _run_with_window_and_ctx(window: str, ctx: int, llm_job):
+    """Drive _process_extraction_chapter with a FIXED single window + a FIXED model context, so
+    a test can probe the planner gate's budget boundary. Returns (llm_mock, captured_outcomes)."""
+    db = AsyncMock()
+    db.fetchval = AsyncMock(return_value=uuid4())
+    db.execute = AsyncMock()
+    llm = MagicMock()
+    llm.submit_and_wait = AsyncMock(return_value=llm_job)
+    captured = {}
+
+    async def _cap(pool, job_id, owner, book, chap, outcomes):
+        captured["outcomes"] = outcomes
+
+    with patch.object(ew.httpx, "AsyncClient",
+                      return_value=_http_cm_returning({"title": "Ch1", "content": "text"})), \
+         patch.object(ew, "prepare_chapter_text", new=MagicMock(return_value="t")), \
+         patch.object(ew, "_get_model_context_window", new=AsyncMock(return_value=ctx)), \
+         patch.object(ew, "_plan_chapter_windows", return_value=[window]), \
+         patch.object(ew, "plan_kind_batches", return_value=[["character"]]), \
+         patch.object(ew, "build_known_entities_context", return_value=""), \
+         patch.object(ew, "build_extraction_prompt", return_value={}), \
+         patch.object(ew, "build_system_prompt", return_value="sys"), \
+         patch.object(ew, "build_user_prompt", return_value="usr"), \
+         patch.object(ew, "reasoning_fields", return_value={}), \
+         patch.object(ew, "parse_and_validate_with_stats",
+                      return_value=([], ParseStats(raw_count=0, parse_ok=True))), \
+         patch.object(ew, "stamp_entity_provenance", new=MagicMock()), \
+         patch.object(ew, "_persist_batch_outcomes", new=AsyncMock(side_effect=_cap)), \
+         patch.object(ew, "get_cached_batch", new=AsyncMock(return_value=None)), \
+         patch.object(ew, "put_batch", new=AsyncMock()), \
+         patch.object(ew, "post_extracted_entities",
+                      new=AsyncMock(return_value={"created": 0, "updated": 0, "skipped": 0})):
+        await ew._process_extraction_chapter(
+            job_id=uuid4(), book_id="b", chapter_id=uuid4(), chapter_index=0,
+            extraction_profile={"character": {}}, kinds_metadata=[], known_entities=[],
+            source_language="zh", model_source="user_model", model_ref=str(uuid4()),
+            max_entities_per_kind=10, thinking_enabled=False, pool=_pool(db), llm_client=llm,
+        )
+    return llm, captured.get("outcomes", [])
+
+
+@pytest.mark.asyncio
+async def test_graded_effort_reaches_llm_input():
+    # D-RE-WORKER-GRADED-EFFORT: the clamped graded effort reaches the LLM call (NOT collapsed
+    # to medium/none by the old thinking_enabled bool) and keys the cache effort_band.
+    db = AsyncMock()
+    db.fetchval = AsyncMock(return_value=uuid4())
+    db.execute = AsyncMock()
+    llm = MagicMock()
+    llm.submit_and_wait = AsyncMock(return_value=_sdk_job("stop"))
+    put_mock = AsyncMock()
+    with patch.object(ew.httpx, "AsyncClient",
+                      return_value=_http_cm_returning({"title": "Ch1", "content": "text"})), \
+         patch.object(ew, "prepare_chapter_text", new=MagicMock(return_value="short chapter text")), \
+         patch.object(ew, "plan_kind_batches", return_value=[["character"]]), \
+         patch.object(ew, "build_known_entities_context", return_value=""), \
+         patch.object(ew, "build_extraction_prompt", return_value={}), \
+         patch.object(ew, "build_system_prompt", return_value="sys"), \
+         patch.object(ew, "build_user_prompt", return_value="usr"), \
+         patch.object(ew, "parse_and_validate_with_stats",
+                      return_value=([], ParseStats(raw_count=0, parse_ok=True))), \
+         patch.object(ew, "stamp_entity_provenance", new=MagicMock()), \
+         patch.object(ew, "_persist_batch_outcomes", new=AsyncMock()), \
+         patch.object(ew, "get_cached_batch", new=AsyncMock(return_value=None)), \
+         patch.object(ew, "put_batch", new=put_mock), \
+         patch.object(ew, "post_extracted_entities", new=AsyncMock(return_value={})):
+        await ew._process_extraction_chapter(
+            job_id=uuid4(), book_id="b", chapter_id=uuid4(), chapter_index=0,
+            extraction_profile={"character": {}}, kinds_metadata=[], known_entities=[],
+            source_language="zh", model_source="user_model", model_ref=str(uuid4()),
+            max_entities_per_kind=10, thinking_enabled=False, reasoning_effort="low",
+            pool=_pool(db), llm_client=llm,
+        )
+    inp = llm.submit_and_wait.await_args.kwargs["input"]
+    assert inp.get("reasoning_effort") == "low"            # graded → reached the LLM
+    assert put_mock.await_args.args[1].effort_band == "low"  # graded → keyed the cache
+
+
+@pytest.mark.asyncio
+async def test_gate_budget_boundary_respects_real_context():
+    # The SAME window is UNPLANNABLE under a small context but PLANNED under a large one —
+    # locks the gate's budget math (a regression making it always- or never-fire breaks this)
+    # AND proves the gate uses the REAL resolved context, not a constant.
+    from app.workers.chunk_splitter import estimate_tokens
+    window = "这是一段中等长度的文本。" * 1500
+    win_tok = estimate_tokens(window)
+    # est_input = win_tok + schema(20) + known(0) + 600; in_budget = ctx*0.85 − 1024.
+    # Unplannable iff ctx < (win_tok + 620 + 1024) / 0.85. Pick contexts well on each side.
+    thresh = (win_tok + 1644) / 0.85
+    ctx_small, ctx_large = int(thresh) - 3000, int(thresh) + 4000
+
+    llm_small, out_small = await _run_with_window_and_ctx(window, ctx_small, _sdk_job("stop"))
+    llm_small.submit_and_wait.assert_not_awaited()          # gate refused → no LLM
+    assert [o["status"] for o in out_small] == ["unplannable"]
+
+    llm_large, out_large = await _run_with_window_and_ctx(window, ctx_large, _sdk_job("stop"))
+    llm_large.submit_and_wait.assert_awaited_once()         # fits → the LLM ran
+    assert "unplannable" not in [o["status"] for o in out_large]
+
+
+@pytest.mark.asyncio
 async def test_truncated_batch_is_not_cached():
     # CACHE/M6 (review-impl HIGH): a truncated batch (entities lost) must NOT be cached, so a
     # re-run re-attempts it instead of replaying the partial result forever.
@@ -346,12 +529,11 @@ async def test_reasoning_effort_none_disables_thinking():
     assert inp["chat_template_kwargs"] == {"thinking": False, "enable_thinking": False}
 
 
-@pytest.mark.asyncio
-async def test_thinking_enabled_bool_fallback_is_medium():
-    # Back-compat: a message with only the legacy bool (no reasoning_effort) → medium.
-    inp = await _capture_llm_input(thinking_enabled=True, reasoning_effort=None)
-    assert inp["reasoning_effort"] == "medium"
-    assert inp["chat_template_kwargs"] == {"thinking": True, "enable_thinking": True}
+# NOTE (main-merge): the legacy-bool → "medium" fallback now lives in the OUTER worker
+# message handler (`reasoning_effort = msg.get(...) or ("medium" if thinking_enabled ...)`),
+# NOT in `_process_extraction_chapter` (which trusts the already-resolved effort). The
+# former HEAD test that drove this through `_process_extraction_chapter` was obsolete; the
+# explicit-effort tests above (high / none) cover the wire shape.
 
 
 @pytest.mark.asyncio

@@ -45,6 +45,7 @@ from loreweave_extraction.prompts import (
     apply_prompt_override,
     load_prompt,
 )
+from loreweave_extraction.reasoning_wire import reasoning_wire_fields
 from loreweave_extraction.schema_projection import ExtractionSchema
 
 __all__ = [
@@ -121,6 +122,9 @@ async def extract_entities(
     context_budget: "ContextBudget | None" = None,
     prompt_override_system: str | None = None,
     schema: ExtractionSchema | None = None,
+    # D-KG-WORKER-GRADED-EFFORT — graded reasoning effort threaded to the
+    # submit builder. Default "none" ⇒ no wire fields (back-compat).
+    reasoning_effort: str = "none",
 ) -> list[LLMEntityCandidate]:
     """Extract named entities from *text* via the user's BYOK LLM.
 
@@ -179,6 +183,7 @@ async def extract_entities(
         text=text,
         on_dropped=on_dropped,
         context_budget=context_budget,
+        reasoning_effort=reasoning_effort,
         schema=schema,
     )
 
@@ -205,6 +210,7 @@ async def _extract_via_llm_client(
     on_dropped: DroppedHandler | None,
     context_budget: ContextBudget | None = None,
     schema: ExtractionSchema | None = None,
+    reasoning_effort: str = "none",
 ) -> list["_LLMEntity"]:
     """Submit entity_extraction job + wait_terminal + tolerant-parse the
     `result.entities` envelope into a list of `_LLMEntity` records.
@@ -242,6 +248,7 @@ async def _extract_via_llm_client(
     kwargs = build_entity_submit_kwargs(
         system_prompt=system_prompt, text=text, model_source=model_source,
         model_ref=model_ref, project_id=project_id, context_budget=context_budget,
+        reasoning_effort=reasoning_effort,
     )
     try:
         job = await llm_client.submit_and_wait(
@@ -278,6 +285,10 @@ def build_entity_submit_kwargs(
     model_ref: str,
     project_id: str | None,
     context_budget: ContextBudget | None = None,
+    # D-KG-WORKER-GRADED-EFFORT — graded reasoning effort. Default "none" emits
+    # NO wire fields (byte-identical for every caller that doesn't opt in); a
+    # graded value spreads {reasoning_effort, chat_template_kwargs}.
+    reasoning_effort: str = "none",
 ) -> dict[str, Any]:
     """Pure: the submit_and_wait / submit_job kwargs for an entity_extraction job
     (operation/model/input/chunking/job_meta — NOT user_id, which is per-call)."""
@@ -310,6 +321,9 @@ def build_entity_submit_kwargs(
                 if context_budget is not None
                 else 4096
             ),
+            # D-KG-WORKER-GRADED-EFFORT — graded effort → reasoning wire fields
+            # ({} for the default "none", so unchanged for non-opt-in callers).
+            **reasoning_wire_fields(reasoning_effort),
         },
         chunking=ChunkingConfig(strategy="paragraphs", size=chunk_size),
         job_meta={

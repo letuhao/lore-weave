@@ -347,6 +347,12 @@ TOOL_DEFINITIONS: list[dict] = [
                 "minimum": 0,
                 "description": "Optional inclusive upper chapter ordinal (with chapter_from).",
             },
+            "reasoning_effort": {
+                "type": "string",
+                "enum": ["none", "low", "medium", "high"],
+                "description": "Reasoning effort for the extraction LLM (paid compute; clamped "
+                               "to your grant — Edit caps at medium, Manage/owner at high).",
+            },
         },
         ["llm_model"],
     ),
@@ -374,6 +380,12 @@ TOOL_DEFINITIONS: list[dict] = [
                 "type": "array",
                 "items": {"type": "string"},
                 "description": "Optional explicit entity ids; omit to generate for ALL book entities.",
+            },
+            "reasoning_effort": {
+                "type": "string",
+                "enum": ["none", "low", "medium", "high"],
+                "description": "Reasoning effort for the wiki-gen LLM (paid compute; clamped "
+                               "to your grant — Edit caps at medium, Manage/owner at high).",
             },
         },
         ["model_ref"],

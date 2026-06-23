@@ -113,6 +113,33 @@ async def test_non_completed_job_is_llm_failed():
     assert res.status == "llm_failed"
 
 
+# ── D-KG-WIKI-WORKER-GRADED-EFFORT — stored effort reaches the prose call ───
+
+
+@pytest.mark.asyncio
+async def test_default_effort_omits_reasoning_wire_fields():
+    """No reasoning_effort passed ⇒ the chat input is byte-identical to the
+    prior path (no reasoning_effort / chat_template_kwargs keys)."""
+    llm = _llm(_job("completed", _GROUNDED))
+    await _gen(llm)
+    inp = llm.submit_and_wait.await_args_list[0].kwargs["input"]
+    assert "reasoning_effort" not in inp
+    assert "chat_template_kwargs" not in inp
+
+
+@pytest.mark.asyncio
+async def test_graded_effort_reaches_prose_call():
+    llm = _llm(_job("completed", _GROUNDED))
+    await generate_article(
+        context=_context(), profile=BookProfile(language="zh"), llm=llm,
+        user_id="u1", model_source="user_model", model_ref="m1",
+        reasoning_effort="high",
+    )
+    inp = llm.submit_and_wait.await_args_list[0].kwargs["input"]
+    assert inp["reasoning_effort"] == "high"
+    assert inp["chat_template_kwargs"] == {"thinking": True, "enable_thinking": True}
+
+
 @pytest.mark.asyncio
 async def test_degraded_markers_carry_through():
     # A not_indexed context (0 passages elsewhere) must be distinguishable

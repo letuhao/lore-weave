@@ -45,6 +45,9 @@ class BuildGraphParams(BaseModel):
     chapter_to: int | None = Field(default=None, ge=0)
     llm_model: str = Field(min_length=1, max_length=200)
     embedding_model: str = Field(min_length=1, max_length=200)
+    # D-RE-OTHER-AGENTIC-EFFORT: the clamped reasoning effort captured at mint (re-clamped at
+    # confirm). Default 'none' for back-compat with tokens minted before this field.
+    reasoning_effort: str = "none"
 
 
 def _scope_range(params: BuildGraphParams) -> dict | None:
@@ -72,6 +75,7 @@ async def apply_build_graph(
         scope_range=_scope_range(params),
         llm_model=params.llm_model,
         embedding_model=params.embedding_model,
+        reasoning_effort=params.reasoning_effort,
     )
     job = await _start_extraction_job_core(
         UUID(project_id), body, owner, projects_repo, jobs_repo, benchmark_repo,

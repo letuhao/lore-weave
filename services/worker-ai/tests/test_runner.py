@@ -156,6 +156,89 @@ def _mock_llm_client():
     return MagicMock()
 
 
+# ── D-KG-WORKER-GRADED-EFFORT — sync path threads job effort to the SDK ─────
+
+
+@pytest.mark.asyncio
+@patch("app.runner.extract_pass2", new_callable=AsyncMock)
+async def test_extract_and_persist_threads_reasoning_effort(mock_pass2):
+    """_extract_and_persist(reasoning_effort='high') forwards it to extract_pass2."""
+    from app.runner import _extract_and_persist
+
+    mock_pass2.return_value = _FakeCandidates()
+    await _extract_and_persist(
+        knowledge_client=_mock_knowledge_client(),
+        llm_client=_mock_llm_client(),
+        user_id=uuid4(), project_id=uuid4(),
+        source_type="chapter", source_id="ch-1", job_id=uuid4(),
+        model_ref="m", text="Kai walks.",
+        reasoning_effort="high",
+    )
+    assert mock_pass2.call_args.kwargs["reasoning_effort"] == "high"
+
+
+@pytest.mark.asyncio
+@patch("app.runner.extract_pass2", new_callable=AsyncMock)
+async def test_extract_and_persist_default_effort_is_none(mock_pass2):
+    """Omitting reasoning_effort (chat_turn/glossary callers) defaults to 'none'."""
+    from app.runner import _extract_and_persist
+
+    mock_pass2.return_value = _FakeCandidates()
+    await _extract_and_persist(
+        knowledge_client=_mock_knowledge_client(),
+        llm_client=_mock_llm_client(),
+        user_id=uuid4(), project_id=uuid4(),
+        source_type="chapter", source_id="ch-1", job_id=uuid4(),
+        model_ref="m", text="Kai walks.",
+    )
+    assert mock_pass2.call_args.kwargs["reasoning_effort"] == "none"
+
+
+def test_jobrow_default_reasoning_effort_is_none():
+    """A JobRow built without the field defaults to 'none' (synthetic/test rows)."""
+    assert _job().reasoning_effort == "none"
+    assert _job(reasoning_effort="high").reasoning_effort == "high"
+
+
+@pytest.mark.asyncio
+async def test_start_decoupled_chunk_stashes_effort_into_resume_state():
+    """D-KG-WORKER-GRADED-EFFORT — the decoupled dispatch MUST stash the job's
+    effort into resume_state (the spec's flagged 'silently drops effort on the
+    decoupled flow' failure mode); the consumer rebuilds the trio submits from
+    it on resume. Locks the dispatch stash directly (the assemble-side is tested
+    separately given an rs that already carries the key)."""
+    import json as _json
+    from unittest.mock import MagicMock as _MM
+    from app.runner import _start_decoupled_chunk
+
+    job = _job(scope="chapters", reasoning_effort="high")
+    pool = AsyncMock()
+    captured = {}
+
+    async def _exec(sql, *args):
+        if "resume_state" in sql:
+            captured["rs"] = _json.loads(args[1])  # $2 = json.dumps(rs)
+    pool.execute = AsyncMock(side_effect=_exec)
+
+    llm = _MM()
+    llm.submit_job = AsyncMock(return_value=_MM(job_id="pj-1"))
+
+    snap = _MM()
+    snap.model_ref = "m"; snap.model_source = "user_model"
+    snap.entity_recovery = None; snap.precision_filter = None
+    snap.prompts = {}; snap.writer_autocreate = None; snap.prompt_versions = {}
+
+    ch = _MM(); ch.chapter_id = "ch-1"
+
+    await _start_decoupled_chunk(
+        pool, llm, job=job, ch=ch, text="Kai walks.", book_id=_TEST_BOOK_ID,
+        run_snapshot=snap, run_cfg_hash="h", run_base_version="v",
+        p3_hierarchy_paths=None, p3_chapter_index=0, p3_book_parts=None, p3_is_last=False,
+    )
+
+    assert captured["rs"]["reasoning_effort"] == "high"
+
+
 def _mock_book_client(chapters=None, text="Chapter text here."):
     client = AsyncMock(spec=BookClient)
     if chapters is None:
@@ -1605,6 +1688,7 @@ async def test_get_running_jobs_pulls_embedding_dimension(monkeypatch):
         "targets": None,
         "concurrency_level": None,
         "pinned_entity_ids": None,
+        "reasoning_effort": "none",
     }
     pool = AsyncMock()
     pool.fetch = AsyncMock(return_value=[fake_row])
@@ -1639,6 +1723,7 @@ async def test_get_running_jobs_handles_null_embedding_dimension():
         "targets": None,
         "concurrency_level": None,
         "pinned_entity_ids": None,
+        "reasoning_effort": "none",
     }
     pool = AsyncMock()
     pool.fetch = AsyncMock(return_value=[fake_row])
@@ -1672,6 +1757,7 @@ async def test_get_running_jobs_threads_billing_identity():
         "targets": None,
         "concurrency_level": None,
         "pinned_entity_ids": None,
+        "reasoning_effort": "none",
     }
     pool = AsyncMock()
     pool.fetch = AsyncMock(return_value=[fake_row])
@@ -1707,11 +1793,14 @@ async def test_get_running_jobs_threads_pinned_entity_ids():
         "concurrency_level": None,
         # JSONB returned as a raw JSON string (the asyncpg default codec).
         "pinned_entity_ids": '["g-1", "g-2"]',
+        "reasoning_effort": "high",
     }
     pool = AsyncMock()
     pool.fetch = AsyncMock(return_value=[fake_row])
     jobs = await _get_running_jobs(pool)
     assert jobs[0].pinned_entity_ids == ["g-1", "g-2"]
+    # D-KG-WORKER-GRADED-EFFORT — the stored graded effort threads onto JobRow.
+    assert jobs[0].reasoning_effort == "high"
 
 
 # ── D-PHASE6C-WORKERAI-JOB-SPAN: parent span per process_job call ───

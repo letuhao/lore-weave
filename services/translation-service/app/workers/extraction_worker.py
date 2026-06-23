@@ -43,6 +43,7 @@ from .extraction_outcomes import (
     EMPTY_VALID,
     LLM_ERROR,
     OK,
+    UNPLANNABLE,
     chapter_status_from_outcomes,
     classify_batch,
     compute_event_id,
@@ -61,6 +62,7 @@ from .glossary_client import (
     fetch_known_entities,
     post_extracted_entities,
 )
+from loreweave_llm.reasoning import ReasoningDirective, reasoning_fields
 
 log = logging.getLogger(__name__)
 
@@ -79,30 +81,14 @@ _JOB_KIND = "glossary_extraction"
 # 1MB chapter just becomes N windows. Output budget per window is sized to leave room
 # in the context (input + output + safety ≤ context) so the gateway never 400s on
 # LLM_CONTEXT_OVERFLOW.
-_FALLBACK_CONTEXT_WINDOW = 8192
+# Shared with the route's cost estimate (D-CACHE-PLANNER-WIRING) so the quote + the real run
+# resolve the SAME model context. `_get_model_context_window` keeps its internal name here.
+from .extraction_model import FALLBACK_CONTEXT_WINDOW as _FALLBACK_CONTEXT_WINDOW  # noqa: E402,F401
+from .extraction_model import get_model_context_window as _get_model_context_window  # noqa: E402
+
 _EXTRACTION_OUTPUT_CEILING = 8000  # per-window output cap (entities JSON is small)
 _EXTRACTION_OUTPUT_FLOOR = 1024
 _CONTEXT_SAFETY_RATIO = 0.15  # mirror the gateway's context-fit safety margin
-
-
-async def _get_model_context_window(model_source: str | None, model_ref: str | None) -> int:
-    """Model context window (tokens) via provider-registry — the same endpoint the
-    translation chapter worker uses. Falls back when unknown (local models often don't
-    publish a context length)."""
-    if not model_ref:
-        return _FALLBACK_CONTEXT_WINDOW
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            r = await client.get(
-                f"{settings.provider_registry_service_url}"
-                f"/v1/model-registry/models/{model_ref}/context-window",
-                params={"model_source": model_source or "user_model"},
-            )
-            if r.status_code == 200:
-                return int(r.json().get("context_window") or _FALLBACK_CONTEXT_WINDOW)
-    except Exception as exc:  # noqa: BLE001 — fall back on any failure
-        log.debug("extraction: context_window fetch failed (%s) — fallback %d", exc, _FALLBACK_CONTEXT_WINDOW)
-    return _FALLBACK_CONTEXT_WINDOW
 
 
 def _plan_chapter_windows(chapter: dict, chapter_text: str, context_window: int, source_language: str) -> list[str]:
@@ -237,12 +223,9 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
     model_ref = msg.get("model_ref")
     max_entities_per_kind = msg.get("max_entities_per_kind", 30)
     thinking_enabled = bool(msg.get("thinking_enabled", False))
-    # Graded reasoning effort is the SSOT when present; fall back to the bool alias
-    # (back-compat with messages minted before reasoning_effort flowed through). An
-    # out-of-vocabulary value degrades to the bool path rather than reaching the gateway.
-    reasoning_effort = msg.get("reasoning_effort")
-    if reasoning_effort not in ("none", "low", "medium", "high"):
-        reasoning_effort = None
+    # D-RE-WORKER-GRADED-EFFORT: the clamped graded effort (none|low|medium|high). Absent on a
+    # message minted before this field (back-compat) → fall back to the thinking_enabled bool.
+    reasoning_effort = msg.get("reasoning_effort") or ("medium" if thinking_enabled else "none")
 
     log.info("extraction_worker: job %s — %d chapters", job_id, len(chapter_ids))
 
@@ -562,9 +545,9 @@ async def _process_extraction_chapter(
     model_ref: str | None,
     max_entities_per_kind: int,
     thinking_enabled: bool,
-    reasoning_effort: str | None,
     pool,
     llm_client: LLMClient,
+    reasoning_effort: str = "none",
 ) -> dict:
     """Extract entities from a single chapter via LLM."""
     import time as _time
@@ -668,9 +651,6 @@ async def _process_extraction_chapter(
             }]
         all_entities.extend(entities)
 
-    # One effort value drives BOTH the cache band and the gateway wire fields, so a
-    # low/high request is honored (not collapsed to medium) and never cache-collides
-    # with a different effort. Graded effort wins; else the bool alias (True⇒medium).
     _effort_band = effort_band_for(thinking_enabled, reasoning_effort)
 
     # Per-call output budget sized so input + output + safety ≤ context (so the gateway
@@ -678,8 +658,62 @@ async def _process_extraction_chapter(
     # small, so a modest ceiling avoids reserving context the input needs.
     safety = int(context_window * _CONTEXT_SAFETY_RATIO)
     max_win_tok = max((estimate_tokens(w) for w in windows), default=0)
-    out_budget = context_window - max_win_tok - safety - estimate_tokens(known_ctx) - 600
+    known_ctx_tok = estimate_tokens(known_ctx)
+    out_budget = context_window - max_win_tok - safety - known_ctx_tok - 600
     out_budget = max(_EXTRACTION_OUTPUT_FLOOR, min(_EXTRACTION_OUTPUT_CEILING, out_budget))
+
+    # D-CACHE-PLANNER-WIRING Part 2 — pre-flight FEASIBILITY gate (Option B, spec
+    # docs/specs/2026-06-22-planner-executor-wiring-part2.md). The block-windower packs WHOLE
+    # paragraph blocks; a single block bigger than the context can't be split further, so it
+    # becomes an oversized window that TRUNCATES mid-output (entities silently LOST — the S1–S5
+    # class) with no signal. Run the two-phase planner over the ACTUAL windows×batches and flag
+    # any unit that can't fit even alone; the loop then records it `unplannable` + SKIPS its LLM
+    # call (don't spend tokens to truncate). Units are splittable=False — a window is already the
+    # finest block-join the executor can emit — and the unit id IS the (window,batch) coordinate,
+    # so there's no remap onto the cache/OBS keys. The gate fires only when input doesn't fit with
+    # the minimum output reservation (output_ceiling=floor, budget_ratio=1−safety) — EXACTLY the
+    # condition under which the executor would truncate, so it never false-positives a window that
+    # fits. Effort is irrelevant to INPUT feasibility (it spends within the output budget), so the
+    # gate is effort-independent. Best-effort: any planner failure leaves it ungated (prior path).
+    unplannable_keys: set[tuple[int, int]] = set()
+    try:
+        from loreweave_extraction import ModelCaps, PlanRequest, Policy, Unit, plan
+
+        gate_units = []
+        for wi, w in enumerate(windows):
+            win_tok = estimate_tokens(w)
+            for bi, b in enumerate(batches):
+                schema_tok = sum(20 + len(extraction_profile.get(k, {})) * 40 for k in b)
+                gate_units.append(Unit(
+                    id=f"{wi}:{bi}", kind="extract",
+                    est_input=win_tok + schema_tok + known_ctx_tok + 600,
+                    est_output=_EXTRACTION_OUTPUT_FLOOR, splittable=False,
+                    group=str(chapter_id),
+                ))
+        gate_plan = plan(PlanRequest(
+            pipeline="extraction", units=gate_units,
+            model=ModelCaps(context_window=context_window, output_ceiling=_EXTRACTION_OUTPUT_FLOOR),
+            policy=Policy(budget_ratio=1.0 - _CONTEXT_SAFETY_RATIO, max_units_per_call=1),
+        ))
+        for up in gate_plan.unplannable:
+            wi_s, _, bi_s = up.unit.id.partition(":")
+            unplannable_keys.add((int(wi_s), int(bi_s)))
+        if gate_plan.model_fit_warning:
+            log.warning("extraction: chapter %s — %s", chapter_id, gate_plan.model_fit_warning)
+        if unplannable_keys:
+            log.warning("extraction: chapter %s — %d (window×batch) unit(s) UNPLANNABLE "
+                        "(oversized block); skipping their LLM calls", chapter_id, len(unplannable_keys))
+    except ImportError as exc:
+        # Expected on a pre-planner image (before the SDK ships plan()) — ungated = prior path.
+        log.debug("extraction: chapter %s planner gate unavailable (%s) — ungated", chapter_id, exc)
+    except Exception as exc:  # noqa: BLE001 — gate is best-effort; ungated = prior behaviour
+        # NOT an ImportError: a genuine gate failure (a plan() contract drift, a unit-id parse
+        # error from a future splittable change, …). On a deployed stack the planner IS present,
+        # so this is unexpected and means the gate SILENTLY reverted to the truncating path —
+        # surface it loudly (WARNING, not DEBUG) so a broken gate can't hide. Mirrors the Part 1
+        # cost-estimate fallback.
+        log.warning("extraction: chapter %s planner gate FAILED (%s) — ungated (oversized blocks "
+                    "will hit the LLM and may truncate)", chapter_id, exc)
 
     # Flatten window × kind-batch into one call sequence. `call_idx` is the unique per-chapter
     # call index — it keys the OBS event_id (so two windows' batch-0 don't collide), while the
@@ -689,6 +723,17 @@ async def _process_extraction_chapter(
     for call_idx, (window_idx, window_text, batch_idx, batch) in enumerate(
         (wi, w, bi, b) for wi, w in enumerate(windows) for bi, b in enumerate(batches)
     ):
+        # Part 2 gate: a unit the planner refused as UNPLANNABLE (an oversized block that can't
+        # fit even alone) — record the outcome + SKIP its LLM call. The chapter then derives
+        # `completed_with_errors` (INV-F15), so the un-fittable batch is VISIBLE instead of
+        # silently truncating; the entities from the fitting windows/batches still land.
+        if (window_idx, batch_idx) in unplannable_keys:
+            _record_outcome(call_idx, batch, UNPLANNABLE)
+            log.warning("extraction: chapter %s call %d/%d (win %d batch %d) — UNPLANNABLE, "
+                        "skipped LLM (block exceeds context)",
+                        chapter_id, call_idx + 1, total_calls, window_idx, batch_idx)
+            continue
+
         # CACHE/M6 — LLM-skip gate (the EXECUTE ledger). If this exact (tenant, chapter
         # content, effort band, window, batch) was already extracted, reuse the cached parse
         # instead of re-spending tokens. Best-effort: a miss/error falls through to the call.
@@ -699,6 +744,21 @@ async def _process_extraction_chapter(
             effort_band=_effort_band,
         )
         cached = await get_cached_batch(pool, cache_key) if owner_user_id else None
+        # D-CACHE-MODEL-KEY: opt-in bust-on-model-change. The cache is content-addressed (model
+        # NOT in the key), so a hit may carry a DIFFERENT model's parse. When the flag is on, a
+        # hit whose stored model_ref differs from the resolved model is treated as a miss → a live
+        # re-extraction on the new model (default off keeps the content-addressed reuse). `_busted`
+        # is threaded to put_batch so the live re-extraction OVERWRITES the stale row (the key has
+        # no model, so a plain DO-NOTHING put could never refresh it → every run would re-bust).
+        _busted = False
+        if (cached is not None and settings.extraction_cache_bust_on_model_change
+                and cached.get("model_ref") and model_ref
+                and str(cached["model_ref"]) != str(model_ref)):
+            log.info("extraction: chapter %s call %d (win %d batch %d) — cache model %s ≠ current "
+                     "%s; busting (re-extract on model change)",
+                     chapter_id, call_idx + 1, window_idx, batch_idx, cached["model_ref"], model_ref)
+            cached = None
+            _busted = True
         if cached is not None:
             entities = cached["parsed_entities"]
             # Replay the cached batch outcome (status stored at first extraction); 0 NEW tokens
@@ -751,11 +811,12 @@ async def _process_extraction_chapter(
                     # finish_reason=length. If a batch still truncates, the parser
                     # repairs the partial array rather than dropping every entity.
                     "max_tokens": out_budget,
-                    # Graded reasoning_effort (none|low|medium|high) → the gateway wire
-                    # fields via the shared SDK primitive (replaces thinking_llm_fields'
-                    # medium-or-none). effort='none' explicitly disables hidden thinking.
+                    # D-RE-WORKER-GRADED-EFFORT: graded reasoning effort (low/medium/high/none),
+                    # not the old bool→medium. The worker doesn't resolve model-capability dispatch
+                    # (a later improvement), so a direct user-source directive — same wire shape as
+                    # the prior thinking_llm_fields, but graded.
                     **reasoning_fields(ReasoningDirective(
-                        effort=_effort_band, passthrough=False, source="extraction")),
+                        effort=reasoning_effort, passthrough=False, source="user")),
                 },
                 chunking=None,
                 job_meta={
@@ -868,6 +929,9 @@ async def _process_extraction_chapter(
                 reasoning_effort=_effort_band, input_tokens=input_tokens, output_tokens=output_tokens,
                 finish_reason=finish_reason, raw_response=response_text,
                 parsed_entities=entities, parse_status=status,
+                # D-CACHE-MODEL-KEY: on a model-change bust, OVERWRITE the stale row so the cache
+                # holds the new model's parse (else the next run re-busts forever).
+                overwrite=_busted,
             )
 
         _accept(entities)

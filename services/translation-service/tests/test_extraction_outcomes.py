@@ -9,6 +9,7 @@ from app.workers.extraction_outcomes import (
     LLM_ERROR,
     OK,
     TRUNCATED,
+    UNPLANNABLE,
     VALIDATION_REJECTED,
     chapter_status_from_outcomes,
     classify_batch,
@@ -59,6 +60,19 @@ def test_chapter_status_any_dirty_is_with_errors():
     assert chapter_status_from_outcomes([OK, VALIDATION_REJECTED]) == "completed_with_errors"
     assert chapter_status_from_outcomes([TRUNCATED]) == "completed_with_errors"
     assert chapter_status_from_outcomes([LLM_ERROR, OK]) == "completed_with_errors"
+    # D-CACHE-PLANNER-WIRING Part 2: an unplannable (skipped) batch is NOT clean → with_errors,
+    # so a chapter with an irreducible oversized block is visible, not a silent clean completion.
+    assert chapter_status_from_outcomes([OK, UNPLANNABLE]) == "completed_with_errors"
+    assert chapter_status_from_outcomes([UNPLANNABLE]) == "completed_with_errors"
+
+
+def test_reconcile_counts_unplannable_as_with_errors():
+    # The SSOT re-derivation must treat unplannable as a non-clean batch (the chapter has an
+    # un-fittable unit), so a job rollup can't read it as fully completed.
+    stats = reconcile_from_rows([("c1", OK), ("c1", UNPLANNABLE), ("c2", OK)])
+    assert stats["chapters_completed"] == 1          # only c2 is all-clean
+    assert stats["chapters_with_errors"] == 1        # c1 has the unplannable unit
+    assert stats["by_status"][UNPLANNABLE] == 1
 
 
 def test_chapter_status_no_batches_is_completed():
