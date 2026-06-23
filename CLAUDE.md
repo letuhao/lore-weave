@@ -406,5 +406,17 @@ mcp_url:         http://localhost:3000/mcp (optional, ContextHub — a DISTINCT 
 email:    claude-test@loreweave.dev
 password: Claude@Test2026
 name:     Claude Test
+auth id:  019d5e3c-7cc5-7e6a-8b27-1344e148bf7c   (loreweave_auth.users.id)
 ```
 Use this account for browser smoke tests (Playwright MCP, etc.).
+
+**It also has ~15 active BYOK `user_models`** (in `loreweave_provider_registry`),
+so it can drive **real LLM smokes**, not just browser tests. Chat-capable models
+include **gpt-4o** (OpenAI — real cost) and several **local lm_studio** chat
+models (e.g. *Qwen2.5 7B Instruct*, *Gemma-4 26B*, *Qwen3 35B*) plus *bge-m3*
+(embedding), *bge-reranker-v2-m3* (rerank), *Kokoro* (tts). Prefer a **local**
+chat model for $0 spend (needs lm_studio running). The `model_ref` to pass is the
+`user_model_id` UUID — resolve live:
+`SELECT user_model_id, alias, capability_flags FROM user_models WHERE owner_user_id='019d5e3c-…' AND is_active;`
+Caveat: `user_default_models` is **empty** for this account — anything resolving
+a "default model for capability X" gets nothing; pass an explicit `model_ref`.
