@@ -1031,9 +1031,11 @@ async def stream_response(
         if volatile:
             parts.append({"type": "text", "text": volatile})
         if wm_pinned:
-            # Pinned anchor (primacy). NOT cached: the live block's `state`
-            # changes as the executive updates it, so caching would serve a
-            # stale anchor.
+            # Pinned anchor (primacy). No cache_control of its own; it sits in
+            # the prefix the NEXT breakpoint (system_prompt) caches. Caching is
+            # content-addressed, so when the executive changes `state` the anchor
+            # text changes and the cache simply MISSES from here — never stale,
+            # just re-processed (the anchor is small; the cost is negligible).
             parts.append({"type": "text", "text": wm_pinned})
         if system_prompt and system_prompt.strip():
             parts.append({

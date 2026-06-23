@@ -102,6 +102,33 @@ class TestTenancyDeny:
         assert TEST_USER_ID in mock_pool.execute.call_args.args
 
 
+class TestMalformedRowResilience:
+    @pytest.mark.asyncio
+    async def test_list_skips_malformed_row_serves_rest(self, client, mock_pool):
+        # A System seed with an empty scenario ('{}') must not 500 the whole list.
+        bad = make_template_record(owner_user_id=None, tier="system",
+                                   code="bad_sys", scenario="{}")
+        good = make_template_record(code="faang_swe")
+        mock_pool.fetch.return_value = [bad, good]
+        resp = await client.get("/v1/chat/templates")
+        assert resp.status_code == 200
+        items = resp.json()["items"]
+        assert len(items) == 1
+        assert items[0]["code"] == "faang_swe"
+
+    @pytest.mark.asyncio
+    async def test_get_malformed_template_is_422_not_500(self, client, mock_pool):
+        mock_pool.fetchrow.return_value = make_template_record(scenario="{}")
+        resp = await client.get(f"/v1/chat/templates/{uuid4()}")
+        assert resp.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_start_malformed_template_is_422_not_500(self, client, mock_pool):
+        mock_pool.fetchrow.return_value = make_template_record(scenario="{}")
+        resp = await client.post(f"/v1/chat/templates/{uuid4()}/start", json={})
+        assert resp.status_code == 422
+
+
 class TestStartPractice:
     @pytest.mark.asyncio
     async def test_start_seeds_frozen_charter(self, client, mock_pool):

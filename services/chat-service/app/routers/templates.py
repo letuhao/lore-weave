@@ -17,6 +17,7 @@ session's `system_prompt` + `model_ref` and **seeds `working_memory_seed`** with
 the frozen charter (cold-start anchor, EC-2; degraded fallback, EC-4).
 """
 import json
+import logging
 from uuid import UUID
 
 import asyncpg
@@ -35,6 +36,8 @@ from app.models import (
     WorkingMemoryCharter,
 )
 from app.routers.sessions import _row_to_session
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v1/chat/templates", tags=["templates"])
 
@@ -104,7 +107,19 @@ async def list_templates(
         """,
         user_id,
     )
-    return TemplateListResponse(items=[_row_to_template(r) for r in rows])
+    # Defensive: a single malformed row (e.g. a System seed with an empty/invalid
+    # `scenario` — the JSONB DEFAULT '{}' is the smell) must NOT 500 the listing
+    # for everyone. Skip + log the bad row; serve the rest. (A regular user can
+    # never write a System row, so a bad System seed is an admin/migration bug,
+    # not user input — but the blast radius is all tenants, so we contain it.)
+    items: list[SessionTemplate] = []
+    for r in rows:
+        try:
+            items.append(_row_to_template(r))
+        except Exception:
+            logger.warning("skipping malformed session_template %s (code=%s)",
+                           r["template_id"], r["code"], exc_info=True)
+    return TemplateListResponse(items=items)
 
 
 async def _load_visible(pool: asyncpg.Pool, template_id: UUID, user_id: str) -> asyncpg.Record | None:
@@ -127,7 +142,10 @@ async def get_template(
     row = await _load_visible(pool, template_id, user_id)
     if not row:
         raise HTTPException(status_code=404, detail="template not found")
-    return _row_to_template(row)
+    try:
+        return _row_to_template(row)
+    except Exception:
+        raise HTTPException(status_code=422, detail="template scenario is invalid")
 
 
 @router.patch("/{template_id}", response_model=SessionTemplate)
@@ -200,7 +218,10 @@ async def start_practice(
             detail="no model: template has no default model and none was provided",
         )
 
-    scenario = SessionTemplateScenario(**_jsonb(tpl["scenario"]))
+    try:
+        scenario = SessionTemplateScenario(**_jsonb(tpl["scenario"]))
+    except Exception:
+        raise HTTPException(status_code=422, detail="template scenario is invalid")
     # Goal authority = this template: freeze the charter into working_memory_seed.
     charter = WorkingMemoryCharter(
         goal=scenario.goal,
