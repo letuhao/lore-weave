@@ -60,6 +60,7 @@ from app.services.tool_discovery import (
 )
 from app.services.output_extractor import extract_outputs
 from app.services.stream_events import make_emitter
+from app.services.working_memory import resolve_anchor
 
 logger = logging.getLogger(__name__)
 
@@ -830,7 +831,8 @@ async def stream_response(
 
     # ── Load session settings ───────────────────────────────────────────────
     session_row = await pool.fetchrow(
-        "SELECT system_prompt, generation_params, project_id, composer_model_source, composer_model_ref "
+        "SELECT system_prompt, generation_params, project_id, composer_model_source, composer_model_ref, "
+        "working_memory_seed "
         "FROM chat_sessions WHERE session_id = $1",
         session_id,
     )
@@ -882,6 +884,17 @@ async def stream_response(
         project_id=str(project_id) if project_id else None,
         message=user_message_content,
         language=display_language,
+    )
+
+    # ── Anchoring (interview-roleplay) — resolve the working_memory anchor ────
+    # Prefer the live block from knowledge-service (kctx.working_memory); fall
+    # back to the session's frozen working_memory_seed (M3 / degraded EC-4).
+    # ("", "") for a non-roleplay session → no injection. Pinned goes in the
+    # system block (primacy); tail goes right before the latest user turn
+    # (recency). Shared with the voice path (EC-3).
+    wm_pinned, wm_tail = resolve_anchor(
+        kctx.working_memory,
+        session_row.get("working_memory_seed") if session_row else None,
     )
 
     # ── K-CLEAN-5 (D-K8-04): emit memory_mode to the FE ─────────────────────
@@ -1017,6 +1030,11 @@ async def stream_response(
         volatile = kctx.volatile_context.strip()
         if volatile:
             parts.append({"type": "text", "text": volatile})
+        if wm_pinned:
+            # Pinned anchor (primacy). NOT cached: the live block's `state`
+            # changes as the executive updates it, so caching would serve a
+            # stale anchor.
+            parts.append({"type": "text", "text": wm_pinned})
         if system_prompt and system_prompt.strip():
             parts.append({
                 "type": "text",
@@ -1036,6 +1054,8 @@ async def stream_response(
             stripped = kctx.context.strip()
             if stripped:
                 system_parts.append(stripped)
+        if wm_pinned:
+            system_parts.append(wm_pinned)
         if system_prompt:
             stripped = system_prompt.strip()
             if stripped:
@@ -1052,6 +1072,11 @@ async def stream_response(
     # Inject per-message context as a system message right before the last user message
     if context:
         messages.insert(-1, {"role": "system", "content": f"The user has attached the following context:\n\n{context}"})
+
+    # Tail anchor (recency) — inserted LAST so it sits closest to the latest user
+    # turn, where attention weights it most (beats lost-in-the-middle). EC-3/EC-7.
+    if wm_tail:
+        messages.insert(-1, {"role": "system", "content": wm_tail})
 
     # ── Phase 1c-ii: gateway resolves api_key / base_url / model_string
     # internally; service no longer needs them. We keep `creds.provider_kind`
