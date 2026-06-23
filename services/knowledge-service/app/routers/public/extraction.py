@@ -1373,7 +1373,10 @@ async def change_embedding_model(
             from app.clients.book_client import get_book_client
             from app.clients.embedding_client import get_embedding_client
             from app.db.neo4j import neo4j_session
-            from app.extraction.passage_ingester import backfill_published_passages
+            from app.extraction.passage_ingester import (
+                backfill_published_passages,
+                backfill_source_lang,
+            )
 
             async with neo4j_session() as session:
                 bf = await backfill_published_passages(
@@ -1385,6 +1388,17 @@ async def change_embedding_model(
                     book_id=project.book_id,
                     embedding_model=new_model,
                     embedding_dim=new_dim,
+                    # KG-ML M1 (C10) — meter the backfill re-embed spend.
+                    pool=get_knowledge_pool(),
+                )
+                # KG-ML M1 (DD1) — tag-only pass for any passage NOT re-embedded
+                # above (e.g. draft-indexed chunks): stamp declared source_lang
+                # without re-embedding (bills zero). Idempotent + best-effort.
+                await backfill_source_lang(
+                    session,
+                    get_book_client(),
+                    user_id=user_id,
+                    book_id=project.book_id,
                 )
             passages_backfilled = bf.passages_created
         except Exception:  # noqa: BLE001 — best-effort; the model set already succeeded

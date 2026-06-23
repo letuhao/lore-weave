@@ -33,6 +33,8 @@ __all__ = [
     "delete_passages_for_source",
     "find_passages_by_vector",
     "count_passages_by_source_type",
+    "set_source_lang_for_source",
+    "get_source_ingest_state",
 ]
 
 # C8 (D-K19e-γa-01) — closed set of recognised source_type values on
@@ -79,6 +81,19 @@ class Passage(BaseModel):
     # a semantic hit can jump-to-source precisely (reader scrolls to ?block=N).
     # None for chunks ingested before P3-C or from the canon/revision path.
     block_index: int | None = None
+    # KG-ML M1 (DD1) — ISO-639-1 language of the source text this passage was
+    # ingested from (the chapter's `original_language`, or a translation's
+    # target language for dual-indexed vi passages). "unknown" for legacy nodes
+    # written before this tag + backfilled by source_lang backfill. Dormant
+    # until M4 reads it for language-aware ranking; "mixed" + `mixed=true` when
+    # detect_primary_language is ambiguous.
+    source_lang: str = "unknown"
+    mixed: bool = False
+    # KG-ML M1 (C10) — sha256 of the full source text at ingest time. Lets the
+    # ingest path skip the (delete + re-embed + re-bill) cycle when a republish
+    # carries identical text. None for legacy nodes (treated as a cache miss →
+    # ingest proceeds, same as before).
+    content_hash: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -150,6 +165,9 @@ ON CREATE SET
   p.chapter_index = $chapter_index,
   p.canon = $canon,
   p.block_index = $block_index,
+  p.source_lang = $source_lang,
+  p.mixed = $mixed,
+  p.content_hash = $content_hash,
   p.{embed_prop} = $embedding,
   p.created_at = datetime(),
   p.updated_at = datetime()
@@ -160,6 +178,9 @@ ON MATCH SET
   p.chapter_index = $chapter_index,
   p.canon = $canon,
   p.block_index = $block_index,
+  p.source_lang = $source_lang,
+  p.mixed = $mixed,
+  p.content_hash = $content_hash,
   p.{embed_prop} = $embedding,
   p.updated_at = datetime()
 WITH p WHERE p.user_id = $user_id
@@ -183,6 +204,9 @@ async def upsert_passage(
     chapter_index: int | None = None,
     canon: bool = True,
     block_index: int | None = None,
+    source_lang: str = "unknown",
+    mixed: bool = False,
+    content_hash: str | None = None,
 ) -> Passage:
     """Idempotent MERGE of a `:Passage` with its per-dim embedding.
 
@@ -236,6 +260,9 @@ async def upsert_passage(
         chapter_index=chapter_index,
         canon=canon,
         block_index=block_index,
+        source_lang=source_lang,
+        mixed=mixed,
+        content_hash=content_hash,
         embedding=embedding,
     )
     record = await result.single()
@@ -273,6 +300,94 @@ async def delete_passages_for_source(
     )
     record = await result.single()
     return int(record["deleted"]) if record else 0
+
+
+_SET_SOURCE_LANG_CYPHER = """
+MATCH (p:Passage)
+WHERE p.user_id = $user_id
+  AND p.source_type = $source_type
+  AND p.source_id = $source_id
+SET p.source_lang = $source_lang,
+    p.mixed = $mixed,
+    p.updated_at = datetime()
+RETURN count(p) AS tagged
+"""
+
+
+async def set_source_lang_for_source(
+    session: CypherSession,
+    *,
+    user_id: str,
+    source_type: str,
+    source_id: str,
+    source_lang: str,
+    mixed: bool = False,
+) -> int:
+    """KG-ML M1 (DD1) — tag-only `source_lang` backfill for one source.
+
+    Sets `source_lang`/`mixed` on every existing `:Passage` of a source
+    WITHOUT re-embedding (pure property write) — used by the one-shot
+    backfill that stamps legacy zh passages at embedding-model-set time.
+    Returns the count of passages tagged.
+    """
+    result = await run_write(
+        session,
+        _SET_SOURCE_LANG_CYPHER,
+        user_id=user_id,
+        source_type=source_type,
+        source_id=source_id,
+        source_lang=source_lang,
+        mixed=mixed,
+    )
+    record = await result.single()
+    return int(record["tagged"]) if record else 0
+
+
+_GET_SOURCE_STATE_CYPHER = """
+MATCH (p:Passage)
+WHERE p.user_id = $user_id
+  AND p.source_type = $source_type
+  AND p.source_id = $source_id
+  AND p.content_hash IS NOT NULL
+RETURN p.content_hash AS content_hash,
+       coalesce(p.canon, true) AS canon,
+       p.chapter_index AS chapter_index
+LIMIT 1
+"""
+
+
+async def get_source_ingest_state(
+    session: CypherSession,
+    *,
+    user_id: str,
+    source_type: str,
+    source_id: str,
+) -> dict | None:
+    """KG-ML M1 (C10) — read the cached ingest state for a source's passages.
+
+    Returns `{content_hash, canon, chapter_index}` from any existing passage of
+    this source (they share these), or None when none exist / legacy nodes carry
+    no hash. The ingest path skips the re-embed ONLY when the fresh text hash AND
+    `canon` AND `chapter_index` all match — so a draft→publish canon flip or a
+    chapter reorder (same text, changed metadata) still re-ingests correctly
+    rather than being silently skipped.
+    """
+    result = await run_read(
+        session,
+        _GET_SOURCE_STATE_CYPHER,
+        user_id=user_id,
+        source_type=source_type,
+        source_id=source_id,
+    )
+    record = await result.single()
+    if record is None or not record["content_hash"]:
+        return None
+    ci = record["chapter_index"]
+    return {
+        "content_hash": str(record["content_hash"]),
+        "canon": bool(record["canon"]),
+        "chapter_index": int(ci) if ci is not None else None,
+    }
 
 
 # The `{vector_projection}` placeholder is f-string-substituted at call

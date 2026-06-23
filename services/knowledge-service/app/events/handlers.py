@@ -171,6 +171,7 @@ async def handle_chapter_published(event: EventData, *, pool: asyncpg.Pool) -> N
         user_id=user_id,
         embedding_model=embedding_model,
         embedding_dim=embedding_dim,
+        pool=pool,
     )
 
 
@@ -183,6 +184,7 @@ async def _ingest_published_passages(
     user_id: UUID,
     embedding_model: str | None,
     embedding_dim: int | None,
+    pool: asyncpg.Pool | None = None,
 ) -> None:
     """CM3c — ingest L3 passages for a published chapter at its pinned revision.
 
@@ -240,6 +242,8 @@ async def _ingest_published_passages(
                 # Transient pinned-revision-fetch failure must NOT wipe canon
                 # passages (R3-WARN#1) — keep what we have.
                 delete_stale_on_missing=False,
+                # KG-ML M1 (C10) — meter embedding spend on the live publish path.
+                pool=pool,
             )
     except Exception:
         logger.warning(
