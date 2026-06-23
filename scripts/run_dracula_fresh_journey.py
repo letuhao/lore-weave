@@ -28,6 +28,7 @@ H = {"X-Internal-Token": TOKEN, "X-User-Id": USER, "X-Session-Id": "fresh-journe
 STATE = "/app/scenario_state.json"
 GLOSS_SVC = "http://glossary-service:8088"
 XLATE_SVC = "http://translation-service:8087"
+BOOK_SVC = "http://book-service:8082"
 
 GUTENBERG = "https://www.gutenberg.org/cache/epub/345/pg345.txt"
 _FALLBACK = (
@@ -97,7 +98,7 @@ def fetch_chapter1() -> str:
 
 
 async def confirm(domain, token):
-    base = {"glossary": GLOSS_SVC, "translation": XLATE_SVC}[domain]
+    base = {"glossary": GLOSS_SVC, "translation": XLATE_SVC, "book": BOOK_SVC}[domain]
     async with httpx.AsyncClient(timeout=120) as c:
         r = await c.post(f"{base}/v1/{domain}/actions/confirm",
                          headers={"Authorization": f"Bearer {bearer()}"},
@@ -217,8 +218,13 @@ async def main():
 
             if not st.get("published"):
                 for cid in chapters:
-                    pr = await s.call_tool("book_chapter_publish", {"book_id": book, "chapter_id": cid})
-                    print("  publish", cid, "->", "ok" if not getattr(pr, "isError", False) else _err(pr)[:100])
+                    # book_chapter_publish is propose->confirm: confirm the token so the
+                    # chapter is GENUINELY published (chapter.published fires → the
+                    # embedding-model-set backfill later grounds it; D-KG-PASSAGE-BACKFILL).
+                    pr = _p(await s.call_tool("book_chapter_publish",
+                                              {"book_id": book, "chapter_id": cid}))
+                    code, _b = await confirm("book", pr["confirm_token"])
+                    print("  publish+confirm", cid, "->", code)
                 st["published"] = True
                 save(st)
 
