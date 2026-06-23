@@ -28,7 +28,7 @@ Resume/re-run SAFETY (WARN-1): a paused job is re-run by invoking ``run_job``
 again on a fresh runner seeded with the prior spend (``build_live_runner
 (spent_so_far=...)``). Re-running is SAFE but NOT yet skip-prior-work: it
 re-processes from gap 0, but it does NOT double-charge (the budget is seeded
-from ``actual_cost_usd``) and does NOT duplicate proposals (the per-gap
+from ``actual_cost_tokens``) and does NOT duplicate proposals (the per-gap
 idempotent persist, UNIQUE(job_id, gap_ref), reloads an already-persisted gap's
 row instead of inserting again — ``persisted.deduped`` flags it). Skipping the
 already-done gaps on resume is tracked as D-C14-FULL-RESUME. Events are
@@ -46,6 +46,7 @@ import time
 from dataclasses import dataclass, field
 
 from app.gaps.model import Gap
+from app.generation.complete import CompletionSeamError
 from app.generation.generate import GenerationError, InsufficientGroundingError
 from app.jobs.cost import CostCapExceeded, JobCostBudget
 from app.jobs.events import JobEventEmitter, JobEventType
@@ -290,13 +291,17 @@ class JobRunner:
                 stage_started = time.monotonic()
                 try:
                     stage = await self._pipeline.run_gap(gap, context, jwt=jwt)
-                except (GenerationError, FabricationError) as exc:
+                except (GenerationError, FabricationError, CompletionSeamError) as exc:
                     # An ungroundable / unrepairable gap is SKIPPED (not a job
                     # failure): the pipeline refused to mint an unprovenanced
                     # fact (H0). FabricationError is the P2 counterpart of
                     # GenerationError — an ungrounded fabrication is refused the
-                    # same way (never free invention). Record + continue; other
-                    # gaps still enrich.
+                    # same way (never free invention). CompletionSeamError
+                    # (the LLM returned an EMPTY completion / a stream hiccup for
+                    # THIS gap, D-JOURNEY-ENRICH-EMPTY-COMPLETION) is likewise a
+                    # per-gap skip — one model blip must NOT discard the whole
+                    # job's already-enriched gaps; re-run picks the skip back up.
+                    # Record + continue; other gaps still enrich.
                     # Reconcile the tokens that DID run (the embed query, and any
                     # generation up to the refusal) so a skipped gap's real spend
                     # is charged truthfully — not the full pre-estimate.

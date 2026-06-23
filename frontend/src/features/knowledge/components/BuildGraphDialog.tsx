@@ -432,6 +432,48 @@ export function BuildGraphDialog({
           className={`flex flex-col gap-4 ${wizardStep === 1 ? '' : 'hidden'}`}
           data-testid="build-wizard-body-1"
         >
+        {/* R5 (KN-1/BL-16) — leading prerequisite checklist so the build chain
+            (LLM → embedding → passing benchmark) is visible up front with a
+            ✓/✗/⋯ per item, not just a disabled-Confirm reason at the bottom. */}
+        <ul
+          className="flex flex-col gap-1 rounded-md border border-border/60 bg-muted/30 p-2 text-[11px]"
+          data-testid="build-graph-prereqs"
+        >
+          <PrereqRow
+            ok={llmModel !== ''}
+            label={t('projects.buildDialog.prereq.llm', {
+              defaultValue: 'Extraction LLM model selected',
+            })}
+          />
+          <PrereqRow
+            ok={hasEmbedding}
+            label={t('projects.buildDialog.prereq.embedding', {
+              defaultValue: 'Embedding model selected',
+            })}
+          />
+          <PrereqRow
+            ok={!!(hasEmbedding && benchmarkOk && !benchmarkLoading)}
+            pending={benchmarkLoading}
+            label={
+              benchmarkLoading
+                ? t('projects.buildDialog.prereq.benchmarkChecking', {
+                    defaultValue: 'Checking the embedding benchmark…',
+                  })
+                : !hasEmbedding
+                  ? t('projects.buildDialog.prereq.benchmarkPending', {
+                      defaultValue: 'Embedding benchmark passing (pick a model first)',
+                    })
+                  : benchmarkOk
+                    ? t('projects.buildDialog.prereq.benchmarkPassed', {
+                        defaultValue: 'Embedding benchmark passing',
+                      })
+                    : t('projects.buildDialog.prereq.benchmarkRequired', {
+                        defaultValue:
+                          'Embedding benchmark passing — run it from the model picker below',
+                      })
+            }
+          />
+        </ul>
         {/* Scope selector */}
         <fieldset className="flex flex-col gap-1">
           <legend className="text-xs font-medium text-muted-foreground">
@@ -695,5 +737,34 @@ export function BuildGraphDialog({
         </div>
       </BuildWizardSteps>
     </FormDialog>
+  );
+}
+
+/** One row of the R5 build-prerequisite checklist: ✓ (met) / ✗ (missing) /
+ * ⋯ (still checking). View-only — gating stays in `canConfirm`. */
+function PrereqRow({
+  ok,
+  pending,
+  label,
+}: {
+  ok: boolean;
+  pending?: boolean;
+  label: string;
+}) {
+  const mark = pending ? '⋯' : ok ? '✓' : '✗';
+  const color = pending
+    ? 'text-muted-foreground'
+    : ok
+      ? 'text-green-600 dark:text-green-400'
+      : 'text-destructive';
+  return (
+    <li className="flex items-center gap-1.5">
+      <span className={`font-semibold ${color}`} aria-hidden>
+        {mark}
+      </span>
+      <span className={ok || pending ? 'text-foreground' : 'text-muted-foreground'}>
+        {label}
+      </span>
+    </li>
   );
 }

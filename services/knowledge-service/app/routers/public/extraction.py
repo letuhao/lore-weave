@@ -33,7 +33,7 @@ from app.pricing import cost_per_token
 from app.db.neo4j import neo4j_session
 from app.db.pool import get_knowledge_pool
 from app.db.repositories.benchmark_runs import BenchmarkRunsRepo
-from app.routers.internal_benchmark import BenchmarkStatusResponse
+from app.routers.internal_benchmark import BenchmarkStatusResponse, gate_failures_from_raw
 from app.db.repositories.extraction_jobs import (
     DEFAULT_TARGETS,
     LIST_ALL_MAX_LIMIT,
@@ -691,14 +691,16 @@ async def _start_extraction_job_core(
     # a "See report" link. Keeping ops commands out of the public API
     # response avoids confusing end users if the 409 surfaces in a
     # toast before the picker's badge logic catches it.
-    # E0-3 Phase 2b — the benchmark gate stays OWNER/PROJECT-scoped: it validates
-    # the project's vector space (owner's user_id + the project's canonical
-    # model). A collaborator inherits it via the dimension match above — no
-    # per-collaborator benchmark is needed. `storage_embedding_model` is the
-    # project's model on the collaborator path and body's (== project's) for the
-    # owner.
-    latest_benchmark = await benchmark_repo.get_latest(
-        user_id, project_id, embedding_model=storage_embedding_model,
+    # E0-3 Phase 2b — the benchmark gate is OWNER + MODEL-scoped (R1,
+    # D-JOURNEY-KG-BENCHMARK-UX): it validates the embedding MODEL's quality, which
+    # is a per-model property, not per-project. A passing run for this model on ANY
+    # of the owner's projects (incl. the hidden benchmark sandbox the run actually
+    # executes on) satisfies it — so the run never has to (and never can) happen on
+    # this content-bearing build project. A collaborator inherits it via the
+    # dimension match above. `storage_embedding_model` is the project's model on the
+    # collaborator path and body's (== project's) for the owner.
+    latest_benchmark = await benchmark_repo.get_latest_for_model(
+        user_id, storage_embedding_model,
     )
     if latest_benchmark is None:
         raise HTTPException(
@@ -1314,7 +1316,8 @@ async def change_embedding_model(
     if not confirm:
         return {
             "warning": "Changing the embedding model requires deleting the existing knowledge graph. "
-                       "Pass ?confirm=true to proceed.",
+                       "The new model also needs its own passing embedding benchmark — you'll have "
+                       "to re-run it before you can build the graph again. Pass ?confirm=true to proceed.",
             "current_model": current_model,
             "new_model": new_model,
             "action_required": "confirm",
@@ -1358,10 +1361,44 @@ async def change_embedding_model(
         embedding_dimension=new_dim,
     )
 
+    # D-KG-PASSAGE-BACKFILL — the embedding model is now set, so passages become
+    # ingestable. Backfill any already-PUBLISHED chapters whose `chapter.published`
+    # event fired BEFORE this project/model existed (the natural publish-then-setup
+    # flow), so wiki/enrichment have grounding without a manual re-publish. The graph
+    # delete above also dropped any stale-dimension passages, so a model CHANGE
+    # re-ingests at the new dimension here. Best-effort: never fail the model set.
+    passages_backfilled = 0
+    if project.book_id is not None:
+        try:
+            from app.clients.book_client import get_book_client
+            from app.clients.embedding_client import get_embedding_client
+            from app.db.neo4j import neo4j_session
+            from app.extraction.passage_ingester import backfill_published_passages
+
+            async with neo4j_session() as session:
+                bf = await backfill_published_passages(
+                    session,
+                    get_book_client(),
+                    get_embedding_client(),
+                    user_id=user_id,
+                    project_id=project_id,
+                    book_id=project.book_id,
+                    embedding_model=new_model,
+                    embedding_dim=new_dim,
+                )
+            passages_backfilled = bf.passages_created
+        except Exception:  # noqa: BLE001 — best-effort; the model set already succeeded
+            logger.warning(
+                "K16.10: passage backfill failed for project=%s — non-fatal",
+                project_id, exc_info=True,
+            )
+
     trace_id = trace_id_var.get()
     logger.info(
-        "K16.10: embedding model changed project_id=%s %s→%s dim=%d nodes_deleted=%d trace_id=%s",
-        project_id, current_model, new_model, new_dim, deleted_total, trace_id,
+        "K16.10: embedding model changed project_id=%s %s→%s dim=%d nodes_deleted=%d "
+        "passages_backfilled=%d trace_id=%s",
+        project_id, current_model, new_model, new_dim, deleted_total,
+        passages_backfilled, trace_id,
     )
 
     return {
@@ -1370,6 +1407,7 @@ async def change_embedding_model(
         "new_model": new_model,
         "embedding_dimension": new_dim,
         "nodes_deleted": deleted_total,
+        "passages_backfilled": passages_backfilled,
         "extraction_status": "disabled",
     }
 
@@ -1640,6 +1678,7 @@ async def get_project_benchmark_status(
         recall_at_3=row.recall_at_3,
         mrr=row.mrr,
         created_at=row.created_at,
+        gate_failures=gate_failures_from_raw(row.raw_report),
     )
 
 
@@ -1679,6 +1718,10 @@ class BenchmarkRunResponse(BaseModel):
     stddev_recall: float
     stddev_mrr: float
     runs: int
+    # R2 — named failing gates (empty == passed). `insufficient_runs` means the
+    # run was inconclusive (too few passes), NOT that the model is low-quality;
+    # the FE keys its copy off this instead of guessing from `passed` alone.
+    gate_failures: list[str] = []
 
 
 @router.post(
@@ -1741,6 +1784,21 @@ async def run_project_benchmark_endpoint(
             detail="project not found",
         )
 
+    # R1 (D-JOURNEY-KG-BENCHMARK-UX) — the benchmark validates the embedding
+    # MODEL, so it runs on a hidden per-(user, model) SANDBOX, never on this
+    # content-bearing build project. That removes the not_benchmark_project
+    # dead-end (the sandbox is always empty) and keeps the ~10 synthetic fixture
+    # passages out of the real project's vector space. The model-scoped gate then
+    # finds the passing run for any project using this model.
+    if not project.embedding_model or not project.embedding_dimension:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"error_code": "no_embedding_model"},
+        )
+    sandbox = await projects_repo.get_or_create_benchmark_sandbox(
+        user_id, project.embedding_model, project.embedding_dimension,
+    )
+
     req = body or BenchmarkRunRequest()
     pool = get_knowledge_pool()
     embedding_client = get_embedding_client()
@@ -1748,7 +1806,7 @@ async def run_project_benchmark_endpoint(
     try:
         result = await run_project_benchmark(
             user_id=user_id,
-            project_id=project_id,
+            project_id=sandbox.project_id,
             runs=req.runs,
             pool=pool,
             projects_repo=projects_repo,
@@ -1791,6 +1849,7 @@ async def run_project_benchmark_endpoint(
         stddev_recall=result.stddev_recall,
         stddev_mrr=result.stddev_mrr,
         runs=result.runs,
+        gate_failures=list(result.gate_failures),
     )
 
 

@@ -112,6 +112,28 @@ async def _post(app, path, json):
         return await c.post(path, json=json)
 
 
+async def _get(app, path):
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://t") as c:
+        return await c.get(path)
+
+
+# ── F2b: the GET /preview?token= alias (generic confirm-card contract) ──────
+async def test_preview_get_requires_token_422():
+    # No token query param → FastAPI Query validation rejects (route is wired).
+    app, *_ = _build()
+    r = await _get(app, "/v1/kg/actions/preview")
+    assert r.status_code == 422
+
+
+async def test_preview_get_garbage_token_422():
+    # The GET alias shares the same decode path as POST — a bad token is rejected.
+    app, *_ = _build()
+    r = await _get(app, "/v1/kg/actions/preview?token=not.a.token")
+    assert r.status_code == 422
+    assert "invalid" in r.json()["detail"].lower()
+
+
 # ── decode ────────────────────────────────────────────────────────────────
 async def test_confirm_missing_token_400():
     app, *_ = _build()

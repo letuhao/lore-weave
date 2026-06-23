@@ -18,6 +18,7 @@ export function extractAdminEnvelope(headers: Headers): Envelope {
     userId: headerValue(headers, 'x-user-id'),
     sessionId: headerValue(headers, 'x-session-id'),
     traceId: headerValue(headers, 'x-trace-id'),
+    projectId: headerValue(headers, 'x-project-id'),
     adminToken: headerValue(headers, 'x-admin-token'),
   };
 }

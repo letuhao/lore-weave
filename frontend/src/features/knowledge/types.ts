@@ -230,6 +230,11 @@ export interface BenchmarkStatus {
   recall_at_3: number | null;
   mrr: number | null;
   created_at: string | null;
+  // R2 (D-JOURNEY-KG-BENCHMARK-UX) — named failing gates on the latest run
+  // (empty == passed). `insufficient_runs` means inconclusive (too few passes),
+  // NOT a low-quality model; the badge keys its copy off this so it never says
+  // "low-quality" when recall@3 is actually fine. Optional (older BE omits it).
+  gate_failures?: string[];
 }
 
 // ── C12b-b — K17.9 on-demand benchmark run ─────────────────────────────
@@ -249,5 +254,9 @@ export interface BenchmarkRunResponse {
   negative_control_max_score: number;
   stddev_recall: number;
   stddev_mrr: number;
+  // The effective run count (the interactive endpoint clamps up to min_runs, so
+  // a requested runs=1 reports runs=3 — a perfect short run no longer "fails").
   runs: number;
+  // R2 — named failing gates (empty == passed). See BenchmarkStatus.gate_failures.
+  gate_failures?: string[];
 }

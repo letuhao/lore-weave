@@ -54,6 +54,12 @@ class BenchmarkStatusResponse(BaseModel):
     recall_at_3: float | None = None
     mrr: float | None = None
     created_at: datetime | None = None
+    # R2 (D-JOURNEY-KG-BENCHMARK-UX) — the named gates that failed on the latest
+    # run (empty == passed, or a not-yet-passed run with no recorded reason).
+    # `insufficient_runs` means inconclusive (too few passes), NOT a low-quality
+    # model — the FE keys its badge copy off this instead of guessing from
+    # `passed` alone (so it never says "low-quality" at recall@3 ≥ threshold).
+    gate_failures: list[str] = []
 
 
 @router.get(
@@ -79,4 +85,15 @@ async def get_benchmark_status(
         recall_at_3=row.recall_at_3,
         mrr=row.mrr,
         created_at=row.created_at,
+        gate_failures=gate_failures_from_raw(row.raw_report),
     )
+
+
+def gate_failures_from_raw(raw_report: object) -> list[str]:
+    """Pull the R2 `gate_failures` list out of a stored benchmark `raw_report`
+    (defensive — older rows predate the field → empty)."""
+    if isinstance(raw_report, dict):
+        gf = raw_report.get("gate_failures")
+        if isinstance(gf, list):
+            return [str(x) for x in gf]
+    return []

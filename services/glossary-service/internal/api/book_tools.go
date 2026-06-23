@@ -129,17 +129,17 @@ func (s *Server) toolAdoptStandards(ctx context.Context, _ *mcp.CallToolRequest,
 // ── create (W) ────────────────────────────────────────────────────────────────
 
 type bookCreateToolIn struct {
-	BookID      string   `json:"book_id" jsonschema:"the book (UUID)"`
-	Level       string   `json:"level" jsonschema:"genre | kind | attribute"`
-	Code        string   `json:"code,omitempty" jsonschema:"machine code (derived from name if omitted)"`
-	Name        string   `json:"name" jsonschema:"display name"`
-	Description string   `json:"description,omitempty"`
-	Icon        string   `json:"icon,omitempty"`
-	Color       string   `json:"color,omitempty"`
-	SortOrder   int      `json:"sort_order,omitempty"`
-	IsHidden    bool     `json:"is_hidden,omitempty" jsonschema:"kind only"`
-	KindCode    string   `json:"kind_code,omitempty" jsonschema:"attribute only: the kind it belongs to"`
-	GenreCode   string   `json:"genre_code,omitempty" jsonschema:"attribute only: the genre cell (e.g. universal)"`
+	BookID          string   `json:"book_id" jsonschema:"the book (UUID)"`
+	Level           string   `json:"level" jsonschema:"genre | kind | attribute"`
+	Code            string   `json:"code,omitempty" jsonschema:"machine code (derived from name if omitted)"`
+	Name            string   `json:"name" jsonschema:"display name"`
+	Description     string   `json:"description,omitempty"`
+	Icon            string   `json:"icon,omitempty"`
+	Color           string   `json:"color,omitempty"`
+	SortOrder       int      `json:"sort_order,omitempty"`
+	IsHidden        bool     `json:"is_hidden,omitempty" jsonschema:"kind only"`
+	KindCode        string   `json:"kind_code,omitempty" jsonschema:"attribute only: the kind it belongs to"`
+	GenreCode       string   `json:"genre_code,omitempty" jsonschema:"attribute only: the genre cell (e.g. universal)"`
 	FieldType       string   `json:"field_type,omitempty" jsonschema:"attribute only: text|textarea|select|number|date|tags|url|boolean"`
 	IsRequired      bool     `json:"is_required,omitempty" jsonschema:"attribute only"`
 	Options         []string `json:"options,omitempty" jsonschema:"attribute only: options for a select field"`
@@ -214,23 +214,98 @@ func bookCreateToolErr(err error) error {
 // ── patch (W, base-version) ───────────────────────────────────────────────────
 
 type bookPatchToolIn struct {
-	BookID      string    `json:"book_id" jsonschema:"the book (UUID)"`
-	Level       string    `json:"level" jsonschema:"genre | kind | attribute"`
-	Code        string    `json:"code" jsonschema:"the row's code"`
-	KindCode    string    `json:"kind_code,omitempty" jsonschema:"attribute only"`
-	GenreCode   string    `json:"genre_code,omitempty" jsonschema:"attribute only"`
-	BaseVersion string    `json:"base_version,omitempty" jsonschema:"the updated_at you read; 409 if the row changed since"`
-	Name        *string   `json:"name,omitempty"`
-	Description *string   `json:"description,omitempty"`
-	Icon        *string   `json:"icon,omitempty"`
-	Color       *string   `json:"color,omitempty"`
-	SortOrder   *int      `json:"sort_order,omitempty"`
-	IsHidden    *bool     `json:"is_hidden,omitempty" jsonschema:"kind only"`
+	BookID          string    `json:"book_id" jsonschema:"the book (UUID)"`
+	Level           string    `json:"level" jsonschema:"genre | kind | attribute"`
+	Code            string    `json:"code" jsonschema:"the row's code"`
+	KindCode        string    `json:"kind_code,omitempty" jsonschema:"attribute only"`
+	GenreCode       string    `json:"genre_code,omitempty" jsonschema:"attribute only"`
+	BaseVersion     string    `json:"base_version,omitempty" jsonschema:"the updated_at you read; 409 if the row changed since"`
+	Name            *string   `json:"name,omitempty"`
+	Description     *string   `json:"description,omitempty"`
+	Icon            *string   `json:"icon,omitempty"`
+	Color           *string   `json:"color,omitempty"`
+	SortOrder       *int      `json:"sort_order,omitempty"`
+	IsHidden        *bool     `json:"is_hidden,omitempty" jsonschema:"kind only"`
 	FieldType       *string   `json:"field_type,omitempty" jsonschema:"attribute only"`
 	IsRequired      *bool     `json:"is_required,omitempty" jsonschema:"attribute only"`
 	Options         *[]string `json:"options,omitempty" jsonschema:"attribute only"`
 	AutoFillPrompt  *string   `json:"auto_fill_prompt,omitempty" jsonschema:"attribute only"`
 	TranslationHint *string   `json:"translation_hint,omitempty" jsonschema:"attribute only"`
+	// Tolerance (F3a): weaker models routinely emit the ENTITY-EDIT diff shape here
+	// (a `changes` array of {target/field_label, new_value}) instead of the flat
+	// fields, which silently patched nothing. Accept it and map it onto the flat
+	// fields below. NOT advertised in the schema (we don't want to encourage it).
+	Changes []bookPatchChange `json:"changes,omitempty"`
+}
+
+// bookPatchChange is one entry of the tolerated entity-edit diff shape. Only the
+// field-key (target|field|field_label) and the new value are used; old_value is
+// ignored (the patch is keyed by the row, not its prior value).
+type bookPatchChange struct {
+	Target     string  `json:"target,omitempty"`
+	Field      string  `json:"field,omitempty"`
+	FieldLabel string  `json:"field_label,omitempty"`
+	NewValue   *string `json:"new_value,omitempty"`
+	Value      *string `json:"value,omitempty"`
+}
+
+// normalizeBookPatchDiff folds a tolerated `changes` diff onto the flat fields,
+// filling ONLY fields the caller left nil (an explicit flat field always wins).
+// When it consumes a diff it clears base_version — a model that sent the diff
+// shape never read the real updated_at, so enforcing optimistic-concurrency against
+// a hallucinated value would 409 a valid intent. Returns the count it mapped.
+func normalizeBookPatchDiff(in *bookPatchToolIn) int {
+	mapped := 0
+	for _, c := range in.Changes {
+		key := strings.ToLower(strings.TrimSpace(firstNonEmpty(c.Target, c.Field, c.FieldLabel)))
+		val := c.NewValue
+		if val == nil {
+			val = c.Value
+		}
+		if key == "" || val == nil {
+			continue
+		}
+		switch key {
+		case "description", "short_description", "desc", "summary":
+			if in.Description == nil {
+				in.Description = val
+				mapped++
+			}
+		case "name", "display_name", "label", "title":
+			if in.Name == nil {
+				in.Name = val
+				mapped++
+			}
+		case "field_type":
+			if in.FieldType == nil {
+				in.FieldType = val
+				mapped++
+			}
+		case "auto_fill_prompt":
+			if in.AutoFillPrompt == nil {
+				in.AutoFillPrompt = val
+				mapped++
+			}
+		case "translation_hint":
+			if in.TranslationHint == nil {
+				in.TranslationHint = val
+				mapped++
+			}
+		}
+	}
+	if mapped > 0 {
+		in.BaseVersion = "" // the diff shape implies the version was not read
+	}
+	return mapped
+}
+
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 func (s *Server) toolBookPatch(ctx context.Context, _ *mcp.CallToolRequest, in bookPatchToolIn) (*mcp.CallToolResult, bookWriteOut, error) {
@@ -238,6 +313,8 @@ func (s *Server) toolBookPatch(ctx context.Context, _ *mcp.CallToolRequest, in b
 	if err != nil {
 		return nil, bookWriteOut{}, err
 	}
+	// F3a: tolerate the entity-edit diff shape by folding it onto the flat fields.
+	normalizeBookPatchDiff(&in)
 	level := strings.TrimSpace(in.Level)
 	// Validate an attribute field_type before any write (no DB CHECK backstops it).
 	if level == bookLevelAttr && in.FieldType != nil && !isValidFieldType(*in.FieldType) {

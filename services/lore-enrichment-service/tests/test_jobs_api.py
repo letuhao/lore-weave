@@ -132,9 +132,9 @@ def _job_row(*, status: str, project_id: str = PROJECT):
         "entity_kind": "location",
         "book_id": UUID(BOOK),
         "proposals_total": 3,
-        "estimated_cost_usd": 1.5,
-        "actual_cost_usd": 0.75,
-        "max_spend_usd": 10.0,
+        "estimated_cost_tokens": 1.5,
+        "actual_cost_tokens": 0.75,
+        "max_spend_tokens": 10.0,
         "error_message": None,
         "created_at": datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc),
     }

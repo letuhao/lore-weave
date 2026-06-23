@@ -27,6 +27,7 @@ from loreweave_llm.errors import (
     LLMStreamNotSupported,
     LLMTransientRetryNeededError,
 )
+from loreweave_llm.reasoning import ReasoningDirective, reasoning_fields
 
 from ..config import settings
 from ..llm_client import LLMClient

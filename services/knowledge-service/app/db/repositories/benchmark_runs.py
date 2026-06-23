@@ -97,6 +97,39 @@ class BenchmarkRunsRepo:
             return None
         return _row_to_run(row)
 
+    async def get_latest_for_model(
+        self,
+        user_id: UUID,
+        embedding_model: str,
+    ) -> BenchmarkRun | None:
+        """Most recent benchmark run for ``(user, embedding_model)`` across ANY
+        of the user's projects — the MODEL-scoped gate lookup
+        (D-JOURNEY-KG-BENCHMARK-UX R1). The benchmark answers "is this *model*
+        good enough?", which is a per-model property, so a passing run on the
+        user's hidden benchmark *sandbox* unlocks every project using the same
+        model. Drops the ``b.project_id`` filter of :meth:`get_latest`; keeps the
+        ``knowledge_projects`` JOIN on ``user_id`` for cross-user isolation.
+
+        Back-compat: an existing per-project passing run still satisfies this
+        (same table, looser filter), so already-built projects keep working.
+        """
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT b.*
+                FROM project_embedding_benchmark_runs b
+                JOIN knowledge_projects p USING (project_id)
+                WHERE p.user_id = $1
+                  AND b.embedding_model = $2
+                ORDER BY b.created_at DESC
+                LIMIT 1
+                """,
+                user_id, embedding_model,
+            )
+        if row is None:
+            return None
+        return _row_to_run(row)
+
 
 def _row_to_run(row: asyncpg.Record) -> BenchmarkRun:
     raw = row["raw_report"]

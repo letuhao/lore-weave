@@ -16,6 +16,7 @@ stubbed so this REST test does not consume the once-per-instance `.run()`.
 
 from __future__ import annotations
 
+import json
 import uuid
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -33,6 +34,7 @@ OTHER = uuid.uuid4()
 BOOK = uuid.uuid4()
 PROJECT = uuid.uuid4()
 CHAPTER = uuid.uuid4()
+MODEL_REF = uuid.uuid4()
 GOOD_TOKEN = "test_token"  # tests/conftest.py INTERNAL_SERVICE_TOKEN
 
 
@@ -45,6 +47,25 @@ def _publish_token(user=USER, *, ttl=600, now=None) -> str:
     # Key-split: the confirm path verifies with the DEDICATED signing secret.
     return mint_confirm_token(
         settings.confirm_token_signing_secret, user, CHAPTER, "composition.publish",
+        payload, ttl=ttl, now=now,
+    )
+
+
+class _FakeResp:
+    """Stand-in for the engine's JSONResponse — the generate effect reads `.body`."""
+    def __init__(self, data: dict):
+        self.body = json.dumps(data).encode()
+
+
+def _generate_token(user=USER, *, target_kind="chapter", target_id=None, ttl=600, now=None) -> str:
+    tid = target_id or CHAPTER
+    payload = {
+        "project_id": str(PROJECT), "book_id": str(BOOK), "target_kind": target_kind,
+        "target_id": str(tid), "model_source": "user_model", "model_ref": str(MODEL_REF),
+        "operation": None, "guide": "", "max_output_tokens": None, "reasoning": "auto",
+    }
+    return mint_confirm_token(
+        settings.confirm_token_signing_secret, user, tid, "composition.generate",
         payload, ttl=ttl, now=now,
     )
 
@@ -195,3 +216,71 @@ def test_confirm_re_checks_publish_gate(client):
     resp = _confirm(client, _publish_token())
     assert resp.status_code == 409
     client._book.publish_chapter.assert_not_awaited()
+
+
+# ── composition.generate confirm effect (runs the cowrite engine in-process) ───
+
+
+def test_confirm_executes_generate_chapter(client):
+    """A composition.generate token (chapter) runs the engine's generate_chapter in
+    auto/persist mode and surfaces its JSON result under `generation`."""
+    fake = {"job_id": str(uuid.uuid4()), "text": "It was a dark night.",
+            "persisted": True, "status": "completed", "assembly_mode": "chapter"}
+    gen = AsyncMock(return_value=_FakeResp(fake))
+    with (
+        patch("app.routers.engine.generate_chapter", new=gen),
+        patch("app.clients.book_client.get_book_client", MagicMock()),
+        patch("app.clients.glossary_client.get_glossary_client", MagicMock()),
+        patch("app.clients.knowledge_client.get_knowledge_client", MagicMock()),
+        patch("app.clients.llm_client.get_llm_client", MagicMock()),
+    ):
+        resp = _confirm(client, _generate_token(target_kind="chapter"))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["outcome"] == "action_done"
+    assert body["descriptor"] == "composition.generate"
+    assert body["target_kind"] == "chapter"
+    assert body["generation"]["text"] == "It was a dark night."
+    gen.assert_awaited_once()
+    # Persisted single-pass (the chapter target writes the book draft).
+    # Signature: generate_chapter(project_id, chapter_id, body, ...) → body is args[2].
+    args, kwargs = gen.await_args
+    assert args[2].persist is True
+    # Regression (HIGH-1): the chapter path reuses this bearer to PERSIST the draft
+    # AFTER a multi-minute generation, so it must outlive the 60s immediate-call
+    # default — else the draft write 401s on an expired token (silent best-effort loss).
+    import jwt as _jwt
+    claims = _jwt.decode(kwargs["bearer"], options={"verify_signature": False})
+    assert claims["exp"] - claims["iat"] >= 600
+
+
+def test_confirm_executes_generate_scene(client):
+    """A scene target runs the engine's `generate` in auto mode."""
+    scene_id = uuid.uuid4()
+    fake = {"job_id": str(uuid.uuid4()), "text": "She turned.", "mode": "auto", "status": "completed"}
+    gen = AsyncMock(return_value=_FakeResp(fake))
+    with (
+        patch("app.routers.engine.generate", new=gen),
+        patch("app.clients.book_client.get_book_client", MagicMock()),
+        patch("app.clients.glossary_client.get_glossary_client", MagicMock()),
+        patch("app.clients.knowledge_client.get_knowledge_client", MagicMock()),
+        patch("app.clients.llm_client.get_llm_client", MagicMock()),
+    ):
+        resp = _confirm(client, _generate_token(target_kind="scene", target_id=scene_id))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["target_kind"] == "scene"
+    assert body["generation"]["text"] == "She turned."
+    gen.assert_awaited_once()
+    # Signature: generate(project_id, body, ...) → body is args[1].
+    args, _ = gen.await_args
+    assert args[1].mode == "auto"
+
+
+def test_generate_token_for_other_user_refused(client):
+    """A generate token minted for USER cannot be confirmed by OTHER — no engine call."""
+    gen = AsyncMock()
+    with patch("app.routers.engine.generate_chapter", new=gen):
+        resp = _confirm(client, _generate_token(user=USER), user=OTHER)
+    assert resp.status_code == 400
+    gen.assert_not_awaited()

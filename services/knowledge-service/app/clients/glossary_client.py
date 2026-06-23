@@ -326,12 +326,17 @@ class GlossaryClient:
     # ── K11.10 — HTTP methods for extraction pipeline ────────────────
 
     async def list_entities(
-        self, book_id: UUID, *, status_filter: str = "active",
+        self, book_id: UUID, *, status_filter: str = "active", min_frequency: int = 2,
     ) -> list[dict] | None:
         """GET /internal/books/{book_id}/known-entities.
 
         Returns entity list for anchor pre-loading (K13.0).
         Returns None on failure.
+
+        ``min_frequency`` gates on chapter-appearance count (the Go handler's
+        ``HAVING COUNT(chapter_entity_links) >= min_frequency``, default 2 — the
+        extraction-anchor semantics). Callers that want EVERY entity regardless of
+        chapter spread (e.g. wiki generation on a low-chapter book) pass 1.
         """
         url = f"{self._base_url}/internal/books/{book_id}/known-entities"
         tid = trace_id_var.get()
@@ -339,7 +344,7 @@ class GlossaryClient:
             resp = await self._http.get(
                 url,
                 headers={"X-Trace-Id": tid} if tid else None,
-                params={"status": status_filter},
+                params={"status": status_filter, "min_frequency": str(min_frequency)},
             )
             if resp.status_code != 200:
                 logger.warning("glossary list-entities %d", resp.status_code)

@@ -49,6 +49,7 @@ EXPECTED_TOOLS = {
     # Tier R
     "composition_get_work", "composition_list_outline",
     "composition_get_prose", "composition_list_canon_rules",
+    "composition_get_generation_job",
     # Tier A
     "composition_create_work",
     "composition_outline_node_create", "composition_outline_node_update",
@@ -57,11 +58,12 @@ EXPECTED_TOOLS = {
     "composition_canon_rule_create", "composition_canon_rule_update",
     "composition_canon_rule_delete", "composition_write_prose",
     # Tier W
-    "composition_publish",
+    "composition_publish", "composition_generate",
 }
 TIER_R = {"composition_get_work", "composition_list_outline",
-          "composition_get_prose", "composition_list_canon_rules"}
-TIER_W = {"composition_publish"}
+          "composition_get_prose", "composition_list_canon_rules",
+          "composition_get_generation_job"}
+TIER_W = {"composition_publish", "composition_generate"}
 
 
 # ── wire-path fixture ─────────────────────────────────────────────────────────
@@ -296,6 +298,58 @@ async def test_get_work_grant_denied_rejected():
     async with _patched(grant_level=0):
         with pytest.raises(NotAccessibleError):
             await srv.composition_get_work(_Ctx(), project_id=str(PROJECT))
+
+
+async def test_get_generation_job_owner_ok():
+    """A generation job that belongs to the caller's Work+project is returned."""
+    import app.mcp.server as srv
+    from app.db.models import GenerationJob
+
+    job_id = uuid.uuid4()
+    job = GenerationJob(id=job_id, user_id=TEST_USER, project_id=PROJECT,
+                        operation="generate", status="completed")
+    jobs = AsyncMock()
+    jobs.get = AsyncMock(return_value=job)
+    async with _patched(grant_level=1, GenerationJobsRepo=jobs):
+        res = await srv.composition_get_generation_job(
+            _Ctx(), project_id=str(PROJECT), job_id=str(job_id),
+        )
+    assert res["id"] == str(job_id)
+    assert res["status"] == "completed"
+    jobs.get.assert_awaited_once_with(TEST_USER, job_id)
+
+
+async def test_get_generation_job_foreign_project_rejected():
+    """A job_id the caller owns but under a DIFFERENT project is not readable here
+    (no cross-Work leak) → H13 uniform error."""
+    import app.mcp.server as srv
+    from loreweave_mcp import NotAccessibleError
+    from app.db.models import GenerationJob
+
+    job_id, other_project = uuid.uuid4(), uuid.uuid4()
+    job = GenerationJob(id=job_id, user_id=TEST_USER, project_id=other_project,
+                        operation="generate", status="completed")
+    jobs = AsyncMock()
+    jobs.get = AsyncMock(return_value=job)
+    async with _patched(grant_level=1, GenerationJobsRepo=jobs):
+        with pytest.raises(NotAccessibleError):
+            await srv.composition_get_generation_job(
+                _Ctx(), project_id=str(PROJECT), job_id=str(job_id),
+            )
+
+
+async def test_get_generation_job_missing_rejected():
+    """An unknown job_id (repo returns None — user-scoped miss) → H13 uniform error."""
+    import app.mcp.server as srv
+    from loreweave_mcp import NotAccessibleError
+
+    jobs = AsyncMock()
+    jobs.get = AsyncMock(return_value=None)
+    async with _patched(grant_level=1, GenerationJobsRepo=jobs):
+        with pytest.raises(NotAccessibleError):
+            await srv.composition_get_generation_job(
+                _Ctx(), project_id=str(PROJECT), job_id=str(uuid.uuid4()),
+            )
 
 
 async def test_outline_node_create_returns_undo_hint():
@@ -574,3 +628,115 @@ async def test_publish_refused_when_not_publishable():
         res = await srv.composition_publish(_Ctx(), project_id=str(PROJECT), chapter_id=str(CHAPTER))
     assert res["success"] is False
     assert "confirm_token" not in res
+
+
+# ── composition_generate (Tier-W propose: cost-gated cowrite engine) ───────────
+
+MODEL_REF = uuid.UUID("11111111-2222-3333-4444-555555555555")
+
+
+async def test_generate_chapter_mints_confirm_token():
+    """A chapter target mints a verifiable composition.generate token whose payload
+    captures the resolved spec; nothing is generated yet."""
+    import app.mcp.server as srv
+    from loreweave_mcp import verify_confirm_token
+    from app.config import settings
+
+    async with _patched(grant_level=2):
+        res = await srv.composition_generate(
+            _Ctx(),
+            srv._GenerateArgs(
+                project_id=str(PROJECT), chapter_id=str(CHAPTER),
+                model_source="user_model", model_ref=str(MODEL_REF), guide="dark tone",
+            ),
+        )
+    assert res["descriptor"] == "composition.generate"
+    assert res["domain"] == "composition"
+    claims = verify_confirm_token(settings.confirm_token_signing_secret, res["confirm_token"])
+    assert claims.user_id == TEST_USER
+    assert claims.resource_id == CHAPTER
+    assert claims.payload["target_kind"] == "chapter"
+    assert claims.payload["target_id"] == str(CHAPTER)
+    assert claims.payload["model_ref"] == str(MODEL_REF)
+    assert claims.payload["guide"] == "dark tone"
+
+
+async def test_generate_scene_mints_confirm_token():
+    """A scene target validates the node belongs to the Work's project, then mints."""
+    import app.mcp.server as srv
+    from loreweave_mcp import verify_confirm_token
+    from app.config import settings
+
+    scene = _node(id=uuid.uuid4(), kind="scene")
+    outline = AsyncMock()
+    outline.get_node = AsyncMock(return_value=scene)
+    async with _patched(grant_level=2, OutlineRepo=outline):
+        res = await srv.composition_generate(
+            _Ctx(),
+            srv._GenerateArgs(
+                project_id=str(PROJECT), outline_node_id=str(scene.id),
+                model_source="user_model", model_ref=str(MODEL_REF),
+            ),
+        )
+    claims = verify_confirm_token(settings.confirm_token_signing_secret, res["confirm_token"])
+    assert claims.resource_id == scene.id
+    assert claims.payload["target_kind"] == "scene"
+    assert claims.payload["target_id"] == str(scene.id)
+
+
+async def test_generate_requires_exactly_one_target():
+    """Both targets, or neither, is a clean refusal (no token, no spend)."""
+    import app.mcp.server as srv
+
+    async with _patched(grant_level=2):
+        both = await srv.composition_generate(
+            _Ctx(),
+            srv._GenerateArgs(
+                project_id=str(PROJECT), chapter_id=str(CHAPTER),
+                outline_node_id=str(uuid.uuid4()),
+                model_source="user_model", model_ref=str(MODEL_REF),
+            ),
+        )
+        neither = await srv.composition_generate(
+            _Ctx(),
+            srv._GenerateArgs(
+                project_id=str(PROJECT), model_source="user_model", model_ref=str(MODEL_REF),
+            ),
+        )
+    for res in (both, neither):
+        assert res["success"] is False
+        assert "confirm_token" not in res
+
+
+async def test_generate_scene_foreign_project_refused():
+    """A scene node in the caller's OTHER Work (project ≠ passed project_id) → H13."""
+    import app.mcp.server as srv
+    from loreweave_mcp import NotAccessibleError
+
+    outline = AsyncMock()
+    outline.get_node = AsyncMock(return_value=_foreign_node())
+    async with _patched(grant_level=2, OutlineRepo=outline):
+        with pytest.raises(NotAccessibleError):
+            await srv.composition_generate(
+                _Ctx(),
+                srv._GenerateArgs(
+                    project_id=str(PROJECT), outline_node_id=str(uuid.uuid4()),
+                    model_source="user_model", model_ref=str(MODEL_REF),
+                ),
+            )
+
+
+async def test_generate_grant_denied_refused():
+    """No EDIT grant on the book → H13 uniform deny before any token mint."""
+    import app.mcp.server as srv
+    from loreweave_mcp import NotAccessibleError
+
+    async with _patched(grant_level=0):
+        with pytest.raises(NotAccessibleError):
+            await srv.composition_generate(
+                _Ctx(),
+                srv._GenerateArgs(
+                    project_id=str(PROJECT), chapter_id=str(CHAPTER),
+                    model_source="user_model", model_ref=str(MODEL_REF),
+                ),
+            )

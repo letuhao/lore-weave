@@ -282,6 +282,18 @@ def test_prompt_is_chinese_and_requests_json():
     assert cjk_ratio(prompt) > 0.4
 
 
+def test_prompt_demands_synthesis_not_verbatim_copy():
+    """C (D-JOURNEY-ENRICH-VERBATIM) — the prompt must tell the model to SYNTHESIZE
+    in its own words, not copy the excerpts verbatim. Without this the model copies
+    the source (the safe grounded path) and our anti-plagiarism gate auto-rejects it
+    — a self-defeating loop. Both language templates carry the instruction."""
+    en = build_generation_prompt(_proposal())  # neutral/English template
+    el = en.lower()
+    assert "verbatim" in el and ("synthesize" in el or "own words" in el)
+    zh = build_generation_prompt(_proposal(), _ZH_PROFILE)
+    assert "逐字" in zh and "改写" in zh  # don't-copy-verbatim + paraphrase
+
+
 def test_prompt_contains_no_model_name():
     prompt = build_generation_prompt(_proposal())
     lowered = prompt.lower()

@@ -111,7 +111,7 @@ describe('ComposePanel (mode D)', () => {
       expand_mode: 'rewrite',
       generation_model_ref: 'g1',
       embedding_model_ref: 'e1',
-      max_spend_usd: null,
+      max_spend_tokens: null,
       top_k: 5,
     });
     expect(body.target).toMatchObject({
@@ -151,7 +151,7 @@ describe('ComposePanel (mode D)', () => {
     const body = composeMock.mock.calls[0][0];
     expect(body.top_k).toBeGreaterThanOrEqual(1);
     expect(body.top_k).toBeLessThanOrEqual(20);
-    expect(body.max_spend_usd).toBe(0.25);
+    expect(body.max_spend_tokens).toBe(0.25);
   });
 
   it('add_only expand mode flows into the body', async () => {

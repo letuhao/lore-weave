@@ -50,8 +50,10 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "IngestResult",
+    "BackfillResult",
     "chunk_text",
     "ingest_chapter_passages",
+    "backfill_published_passages",
     "delete_chapter_passages",
     "TARGET_CHARS",
     "OVERLAP_CHARS",
@@ -397,3 +399,87 @@ async def delete_chapter_passages(
         source_type="chapter",
         source_id=str(chapter_id),
     )
+
+
+@dataclass
+class BackfillResult:
+    """Outcome of a published-chapter passage backfill (D-KG-PASSAGE-BACKFILL)."""
+
+    chapters_indexed: int
+    chapters_skipped: int
+    passages_created: int
+
+
+async def backfill_published_passages(
+    session: CypherSession,
+    book_client: BookClient,
+    embedding_client: EmbeddingClient,
+    *,
+    user_id: UUID,
+    project_id: UUID,
+    book_id: UUID,
+    embedding_model: str,
+    embedding_dim: int,
+) -> BackfillResult:
+    """D-KG-PASSAGE-BACKFILL — ingest `:Passage` nodes for ALL of a book's already-
+    PUBLISHED chapters as `canon=True`.
+
+    Fixes the ordering gap: passages are normally ingested by the `chapter.published`
+    event handler, but that handler SKIPS when no knowledge project / embedding model
+    exists yet (handlers.py). In the natural flow a user publishes chapters BEFORE
+    creating the KG project + setting the embedding model, so the publish events fire
+    too early and nothing ever backfills — wiki/enrichment then have no grounding.
+
+    Called the moment passages become ingestable (the embedding model is set on the
+    project). Idempotent: `ingest_chapter_passages` deletes-then-upserts per chapter,
+    so a re-run refreshes rather than duplicates. Best-effort per chapter — a single
+    chapter's failure never aborts the rest (mirrors the event-handler degradation).
+
+    Uses the live (current) chapter text (`revision_id=None`), which equals the
+    published canon at setup time; a later edit+republish re-ingests at the pinned
+    revision via the event path.
+    """
+    items = await book_client.list_chapters(book_id, editorial_status="published")
+    if not items:
+        return BackfillResult(0, 0, 0)
+
+    indexed = skipped = created = 0
+    for item in items:
+        try:
+            chapter_id = UUID(str(item["chapter_id"]))
+        except (KeyError, ValueError, TypeError):
+            skipped += 1
+            continue
+        sort_order = item.get("sort_order")
+        chapter_index = sort_order if isinstance(sort_order, int) else None
+        try:
+            res = await ingest_chapter_passages(
+                session,
+                book_client,
+                embedding_client,
+                user_id=user_id,
+                project_id=project_id,
+                book_id=book_id,
+                chapter_id=chapter_id,
+                chapter_index=chapter_index,
+                embedding_model=embedding_model,
+                embedding_dim=embedding_dim,
+                revision_id=None,  # live published text (== canon at setup time)
+                canon=True,
+            )
+            if res.chunks_created > 0:
+                indexed += 1
+                created += res.chunks_created
+            else:
+                skipped += 1
+        except Exception:  # noqa: BLE001 — one chapter's failure must not abort the rest
+            logger.warning(
+                "D-KG-PASSAGE-BACKFILL: ingest failed for chapter=%s book=%s — non-fatal",
+                chapter_id, book_id, exc_info=True,
+            )
+            skipped += 1
+    logger.info(
+        "D-KG-PASSAGE-BACKFILL: book=%s project=%s chapters_indexed=%d skipped=%d passages=%d",
+        book_id, project_id, indexed, skipped, created,
+    )
+    return BackfillResult(indexed, skipped, created)

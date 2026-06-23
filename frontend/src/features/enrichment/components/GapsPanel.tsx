@@ -38,7 +38,7 @@ export function GapsPanel() {
       embedding_model_ref: embedModel,
       technique,
       max_gaps: maxGaps,
-      max_spend_usd: maxSpend.trim() === '' ? null : Number(maxSpend),
+      max_spend_tokens: maxSpend.trim() === '' ? null : Number(maxSpend),
       top_k: topK,
       ...(targets ? { targets } : {}),
     });

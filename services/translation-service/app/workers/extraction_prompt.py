@@ -457,6 +457,13 @@ def parse_and_validate_with_stats(
 # ── Cost estimation ──────────────────────────────────────────────────────────
 
 
+# Reasoning models emit hidden reasoning tokens that count toward OUTPUT, so a higher
+# reasoning_effort costs MORE than the entity JSON alone. These are rough multipliers on
+# the per-call output reservation (the estimate is "estimate, not quote" — design §6.7.1);
+# 'none'/'off' = no reasoning overhead. Keyed defensively (unknown → 1.0).
+_EFFORT_OUTPUT_MULTIPLIER = {"none": 1.0, "off": 1.0, "low": 1.5, "medium": 2.5, "high": 4.0}
+
+
 def estimate_extraction_cost(
     chapters: list[dict],
     extraction_profile: dict[str, dict[str, str]],
@@ -493,7 +500,8 @@ def estimate_extraction_cost(
         20 + len(attrs) * 40
         for attrs in extraction_profile.values()
     )
-    output_per_call = 2000  # ~30 entities × ~60 tokens
+    _effort_mult = _EFFORT_OUTPUT_MULTIPLIER.get(reasoning_effort or "none", 1.0)
+    output_per_call = int(2000 * _effort_mult)  # ~30 entities × ~60 tokens, + reasoning overhead
 
     def _chapter_tokens(ch: dict) -> int:
         # text_length / 2 for CJK (rough); floor so an empty/short chapter still costs a call.

@@ -62,7 +62,7 @@ def main() -> int:
             "book_id": args.project, "input_source": "intent", "target": compose_target,
             "intent_text": INTENT, "technique": technique,
             "generation_model_ref": args.gen, "embedding_model_ref": args.embed,
-            "max_spend_usd": 100000, "top_k": 5,
+            "max_spend_tokens": 100000, "top_k": 5,
         }
         r = c.post(f"{base}/v1/lore-enrichment/projects/{args.project}/compose", headers=uh, json=body)
         print(r.status_code, r.text[:200])

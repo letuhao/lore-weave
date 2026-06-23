@@ -55,7 +55,8 @@ async def test_list_sql_no_cursor_no_book():
     await repo.list(user, limit=50)
     q = _norm(pool.conn.query)
     # only user_id + fetch_limit → LIMIT is $2
-    assert "WHERE user_id = $1 AND NOT is_archived" in q
+    # R1: benchmark sandboxes are excluded from every user-facing listing.
+    assert "WHERE user_id = $1 AND NOT is_benchmark_sandbox AND NOT is_archived" in q
     assert "book_id =" not in q
     # Default order unchanged (back-compat).
     assert "ORDER BY created_at DESC, project_id DESC" in q

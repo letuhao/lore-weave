@@ -19,6 +19,11 @@ write is reviewed by the user — nothing you do reaches the glossary without an
 explicit human action.
 
 ## How to use the tools
+- **Stay on the task.** For a plain curation/edit request (add a kind, fix an \
+attribute, delete an unneeded one) act DIRECTLY with the glossary tools — do NOT \
+call web-search or list-templates tools. Only research the web or list ontology \
+templates when the user EXPLICITLY asks you to research a topic or adopt a \
+template; otherwise those calls are off-task and waste the turn.
 - To find entities, use `glossary_search` — it is the canonical glossary lookup. \
 Do not use `memory_search` for glossary questions; that tool is for conversation \
 memory, not the glossary.

@@ -167,4 +167,24 @@ describe('descriptorDomain', () => {
     expect(descriptorDomain('.x')).toBeNull();
     expect(descriptorDomain(undefined)).toBeNull();
   });
+  it('maps kg_-prefixed KG descriptors to the kg domain (not glossary)', () => {
+    // KG class-C descriptors commit at /v1/kg/actions/* — must NOT fall through to
+    // the glossary ConfirmCard (which would POST /v1/glossary/actions/confirm → 422).
+    expect(descriptorDomain('kg_schema_edit')).toBe('kg');
+    expect(descriptorDomain('kg_adopt')).toBe('kg');
+    expect(descriptorDomain('kg_sync_apply')).toBe('kg');
+    expect(descriptorDomain('kg_triage_schema_write')).toBe('kg');
+  });
+});
+
+describe('ConfirmActionCard — KG domain routing', () => {
+  it('previews + confirms a kg_ descriptor against the kg endpoint', async () => {
+    confirmAction.mockResolvedValue({});
+    previewAction.mockResolvedValue({ descriptor: 'kg_schema_edit', title: 'add edge_type HUNTS', preview_rows: [], destructive: false });
+    // No explicit domain arg → the card derives it from the descriptor.
+    render(<ConfirmActionCard record={record({ confirm_token: 'kgtok', descriptor: 'kg_schema_edit', title: 'add edge_type HUNTS' })} />);
+    await waitFor(() => expect(previewAction).toHaveBeenCalledWith('kg', 'kgtok', 'tok'));
+    fireEvent.click(screen.getByText('actionConfirm.confirm'));
+    await waitFor(() => expect(confirmAction).toHaveBeenCalledWith('kg', 'kgtok', 'tok'));
+  });
 });

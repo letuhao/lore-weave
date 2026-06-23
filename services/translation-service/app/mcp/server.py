@@ -752,8 +752,8 @@ async def translation_start_extraction(
         "model_source": "user_model",
         "model_ref": str(_uuid(model_ref)) if model_ref else None,
         "max_entities_per_kind": max_entities_per_kind,
-        # Clamped effort is the SSOT; keep thinking_enabled derived for the worker's
-        # current thinking_llm_fields path (effort > none ⇒ thinking on).
+        # Clamped effort is the SSOT; the worker maps it via the SDK reasoning_fields
+        # (graded low/med/high). thinking_enabled stays as the back-compat bool alias.
         "reasoning_effort": effort,
         "thinking_enabled": effort not in ("none", "off"),
         "estimate": estimate,

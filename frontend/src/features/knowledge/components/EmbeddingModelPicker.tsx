@@ -216,11 +216,28 @@ function BenchmarkBadge({ status }: { status: BenchmarkStatus }) {
       </span>
     );
   }
+  // Not passed. Distinguish "inconclusive" (too few passes — NOT a model-quality
+  // problem; recall@3 may be perfect) from a genuine metric failure. R2: never
+  // claim "low-quality" when the only failing gate is insufficient_runs.
+  const gates = status.gate_failures ?? [];
+  const inconclusiveOnly =
+    gates.length > 0 && gates.every((g) => g === 'insufficient_runs');
+  if (inconclusiveOnly) {
+    return (
+      <span className="text-[11px] text-amber-600 dark:text-amber-400">
+        {t('projects.form.benchmarkInconclusive', {
+          defaultValue:
+            '⋯ Benchmark inconclusive (recall@3 {{recall}}) — needs ≥3 passes to validate this model. Re-run it.',
+          recall: status.recall_at_3?.toFixed(2) ?? '—',
+        })}
+      </span>
+    );
+  }
   return (
     <span className="text-[11px] text-destructive">
       {t('projects.form.benchmarkFailed', {
         defaultValue:
-          '✗ Benchmark failed (recall@3 {{recall}}) — extraction would produce low-quality results.',
+          '✗ Benchmark not passing (recall@3 {{recall}}) — this model scored below the quality bar for extraction; try a different embedding model.',
         recall: status.recall_at_3?.toFixed(2) ?? '—',
       })}
     </span>
@@ -318,9 +335,12 @@ function runBenchmarkErrorMessage(
           'This embedding model isn’t supported by the benchmark harness.',
       });
     case 'not_benchmark_project':
+      // R1: benchmarks now run automatically on a hidden per-model sandbox, so
+      // this is effectively unreachable from the Run-benchmark button; keep a
+      // neutral retry message rather than the old (now-wrong) "make a new project".
       return t('projects.form.benchmark.errorNotBenchmarkProject', {
         defaultValue:
-          'Benchmarks must run on a dedicated project. Create a new project before running.',
+          'The benchmark couldn’t start on its sandbox — please retry in a moment.',
       });
     case 'benchmark_already_running':
       return t('projects.form.benchmark.errorAlreadyRunning', {

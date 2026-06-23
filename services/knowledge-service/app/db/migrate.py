@@ -898,6 +898,22 @@ CREATE INDEX IF NOT EXISTS idx_knowledge_projects_world
   ON knowledge_projects(world_id) WHERE world_id IS NOT NULL;
 
 -- ═══════════════════════════════════════════════════════════════
+-- D-JOURNEY-KG-BENCHMARK-UX (R1) — hidden per-(user, embedding_model)
+-- benchmark SANDBOX projects. The K17.9 embedding benchmark runs on a
+-- dedicated empty project (the runner refuses any project with real
+-- passages), but the build gate is now MODEL-scoped, so a passing run on
+-- this sandbox unlocks every real project using the same model — without
+-- the run ever touching (or polluting) the content-bearing build project.
+-- Sandboxes are owner-scoped, book_id IS NULL, and excluded from every
+-- user-facing project listing.
+-- ═══════════════════════════════════════════════════════════════
+ALTER TABLE knowledge_projects
+  ADD COLUMN IF NOT EXISTS is_benchmark_sandbox BOOLEAN NOT NULL DEFAULT false;
+
+CREATE INDEX IF NOT EXISTS idx_knowledge_projects_benchmark_sandbox
+  ON knowledge_projects(user_id, embedding_model) WHERE is_benchmark_sandbox;
+
+-- ═══════════════════════════════════════════════════════════════
 -- Q4b-feed — per-run items+source sample for the online LLM judge
 -- (2026-06-01). docs/plans/2026-06-01-q4b-feed-extraction-run-samples.md
 --

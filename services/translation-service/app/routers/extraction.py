@@ -57,6 +57,10 @@ class CreateExtractionJobPayload(BaseModel):
     # alias (True→medium) kept for back-compat; `reasoning_effort` wins when set.
     reasoning_effort: str = "none"
     thinking_enabled: bool = False
+    # Graded reasoning effort (none|low|medium|high). The SSOT once set; the worker
+    # honors low/high (not just medium-or-none). `thinking_enabled` stays as the
+    # back-compat bool alias (True ⇒ medium) when reasoning_effort is omitted.
+    reasoning_effort: str | None = None
 
 
 class CancelJobResponse(BaseModel):

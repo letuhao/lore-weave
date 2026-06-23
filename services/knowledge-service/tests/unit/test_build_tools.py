@@ -181,3 +181,38 @@ async def test_build_wiki_explicit_entity_subset_embedded():
     import time as _t
     claims = verify_action_token(settings.jwt_secret, res.result["confirm_token"], _t.time())
     assert claims.params["entity_ids"] == ["e1", "e2"]
+
+
+# ── kg_build_wiki confirm-effect entity resolution (D-WIKI-ENTITY-FREQ-GATE) ──
+
+
+@pytest.mark.asyncio
+async def test_resolve_entity_ids_passes_min_frequency_1():
+    """The 'all entities' path must call known-entities with min_frequency=1 so a
+    single-chapter book (every entity freq 1) still yields its entities — the freq
+    default 2 silently dropped them all → spurious BuildWikiNoEntities → 422."""
+    from app.ontology.build_wiki_effect import BuildWikiParams, _resolve_entity_ids
+
+    glossary = AsyncMock()
+    glossary.list_entities = AsyncMock(
+        return_value=[{"entity_id": "e1"}, {"entity_id": "e2"}]
+    )
+    params = BuildWikiParams(model_ref="gpt-x")  # entity_ids empty ⇒ resolve ALL
+    book_id = uuid4()
+    out = await _resolve_entity_ids(params, book_id, glossary)
+    assert out == ["e1", "e2"]
+    glossary.list_entities.assert_awaited_once_with(
+        book_id, status_filter="active", min_frequency=1
+    )
+
+
+@pytest.mark.asyncio
+async def test_resolve_entity_ids_explicit_subset_skips_glossary():
+    """An explicit entity subset is used verbatim — no glossary call (no freq gate)."""
+    from app.ontology.build_wiki_effect import BuildWikiParams, _resolve_entity_ids
+
+    glossary = AsyncMock()
+    params = BuildWikiParams(model_ref="gpt-x", entity_ids=["x", "y"])
+    out = await _resolve_entity_ids(params, uuid4(), glossary)
+    assert out == ["x", "y"]
+    glossary.list_entities.assert_not_awaited()

@@ -31,6 +31,16 @@ describe('headerValue / extractEnvelope', () => {
     });
     expect(env).toEqual({ userId: 'u1', sessionId: 's1', traceId: 'tr1' });
   });
+
+  it('lifts X-Project-Id into the envelope so project-scoped tools resolve downstream', () => {
+    const env = extractEnvelope({
+      'x-user-id': 'u1',
+      'x-project-id': 'proj-9',
+    });
+    expect(env.projectId).toBe('proj-9');
+    // omitted when the header is absent (so it is forwarded only when present)
+    expect(extractEnvelope({ 'x-user-id': 'u1' }).projectId).toBeUndefined();
+  });
 });
 
 describe('handleListTools', () => {
@@ -78,6 +88,19 @@ describe('handleCallTool', () => {
       meta,
     );
     expect(res).toEqual({ content: [{ type: 'text', text: 'ok' }] });
+  });
+
+  it('carries X-Project-Id through the envelope to executeTool (M1 fix)', async () => {
+    const executeTool = jest.fn().mockResolvedValue({ content: [] });
+    const fed = fakeFederation({ executeTool });
+    await handleCallTool(
+      fed,
+      'kg_build_wiki',
+      { model_ref: 'm' },
+      { 'x-user-id': 'u1', 'x-project-id': 'proj-9' },
+    );
+    const env = executeTool.mock.calls[0][2];
+    expect(env.projectId).toBe('proj-9');
   });
 
   it('turns a provider failure into an MCP tool error (isError), not a throw', async () => {

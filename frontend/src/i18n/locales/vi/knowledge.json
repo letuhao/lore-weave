@@ -617,7 +617,7 @@
         "success": "Benchmark hoàn tất cho {{model}} (recall@3 {{recall}}).",
         "errorNoModel": "Hãy chọn một mô hình embedding trước khi chạy benchmark.",
         "errorUnknownModel": "Mô hình embedding này không được hỗ trợ bởi bộ benchmark.",
-        "errorNotBenchmarkProject": "Benchmark phải chạy trên một dự án chuyên dụng. Hãy tạo một dự án mới trước khi chạy.",
+        "errorNotBenchmarkProject": "Không thể khởi động benchmark trên sandbox — vui lòng thử lại sau giây lát.",
         "errorAlreadyRunning": "Đã có một benchmark đang chạy cho dự án này. Vui lòng chờ và thử lại.",
         "errorProviderFlake": "Nhà cung cấp embedding gặp lỗi giữa chừng. Vui lòng thử lại.",
         "errorGeneric": "Benchmark thất bại: {{message}}"

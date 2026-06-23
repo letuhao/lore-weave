@@ -17,12 +17,24 @@ from fastapi.testclient import TestClient
 from app.api import gaps as gaps_api
 from app.api.gaps import coverages_from_rows
 from app.clients.glossary import EntityCoverageRow
+from app.clients.grant_client import GrantLevel
 from app.config import settings
-from app.deps import get_db
+from app.deps import get_db, get_grant_client_dep
 from app.db.book_profile import NEUTRAL_PROFILE
 from app.gaps.model import Dimension, EntityKind
 
 OWNER = "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c"
+
+
+class _StubGrant:
+    """Stand-in grant client: resolves every (book, user) to a fixed level. The
+    auto-enrich tenancy gate (D-ENRICH-MCP-OWNER-GATE) calls ``resolve_grant``."""
+
+    def __init__(self, level: GrantLevel = GrantLevel.EDIT):
+        self.level = level
+
+    async def resolve_grant(self, _book_id, _user_id):
+        return self.level
 
 
 @pytest.fixture(autouse=True)
@@ -77,12 +89,15 @@ def test_coverages_from_rows_is_multi_kind_and_id_or_label_tolerant():
     assert by_name["X"].present_dimensions == ()  # unknown label dropped
 
 
-def _app() -> FastAPI:
+def _app(grant_level: GrantLevel = GrantLevel.EDIT) -> FastAPI:
     app = FastAPI()
     app.include_router(gaps_api.router)
     # auto-enrich depends on get_db (detect-gaps doesn't); a stub keeps wiring valid
     # — the store + save_job_request are monkeypatched in the test that uses it.
     app.dependency_overrides[get_db] = lambda: object()
+    # auto-enrich also gates on a (user, book) grant — stub it so the existing
+    # happy-path tests resolve to an EDIT grant (D-ENRICH-MCP-OWNER-GATE).
+    app.dependency_overrides[get_grant_client_dep] = lambda: _StubGrant(grant_level)
     return app
 
 
@@ -252,6 +267,27 @@ async def test_auto_enrich_requires_auth():
               "generation_model_ref": str(uuid4())},
     )
     assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_auto_enrich_no_grant_is_404(monkeypatch):
+    # D-ENRICH-MCP-OWNER-GATE: a caller with NO grant on the book cannot enqueue a
+    # caller-paid enrichment on it. NONE → 404 (never an existence oracle). The gate
+    # runs BEFORE any glossary read / job create, so no enrich work is started.
+    from app.api import gaps as g
+
+    def _boom(*a, **k):  # pragma: no cover — must never be reached past the gate
+        raise AssertionError("glossary read ran despite a denied grant")
+
+    monkeypatch.setattr(g, "GlossaryClient", _boom)
+    bearer = pyjwt.encode({"sub": OWNER}, "x", algorithm="HS256")
+    resp = TestClient(_app(grant_level=GrantLevel.NONE)).post(
+        f"/v1/lore-enrichment/projects/{uuid4()}/auto-enrich",
+        json={"book_id": str(uuid4()), "embedding_model_ref": str(uuid4()),
+              "generation_model_ref": str(uuid4()), "max_gaps": 1},
+        headers={"Authorization": f"Bearer {bearer}"},
+    )
+    assert resp.status_code == 404, resp.text
 
 
 @pytest.mark.asyncio

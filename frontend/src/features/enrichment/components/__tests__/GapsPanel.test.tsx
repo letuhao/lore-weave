@@ -158,7 +158,7 @@ describe('GapsPanel', () => {
     expect(button).not.toBeDisabled();
   });
 
-  it('clicking auto-enrich calls autoEnrich with the full body; empty cost-cap -> max_spend_usd null', async () => {
+  it('clicking auto-enrich calls autoEnrich with the full body; empty cost-cap -> max_spend_tokens null', async () => {
     renderPanel();
     await selectModel('gaps.gen_model', 'm1', 'qwen');
     await selectModel('gaps.embed_model', 'm1', 'qwen');
@@ -175,12 +175,12 @@ describe('GapsPanel', () => {
       embedding_model_ref: 'm1',
       technique: 'recook',
       max_gaps: 3,
-      max_spend_usd: null,
+      max_spend_tokens: null,
       top_k: 5,
     });
   });
 
-  it('a filled cost-cap is forwarded as a number in max_spend_usd', async () => {
+  it('a filled cost-cap is forwarded as a number in max_spend_tokens', async () => {
     renderPanel();
     await selectModel('gaps.gen_model', 'm1', 'qwen');
     await selectModel('gaps.embed_model', 'm1', 'qwen');
@@ -189,7 +189,7 @@ describe('GapsPanel', () => {
     fireEvent.click(screen.getByText('gaps.auto_enrich').closest('button')!);
 
     expect(autoEnrichMock).toHaveBeenCalledWith(
-      expect.objectContaining({ max_spend_usd: 1.5 }),
+      expect.objectContaining({ max_spend_tokens: 1.5 }),
     );
   });
 

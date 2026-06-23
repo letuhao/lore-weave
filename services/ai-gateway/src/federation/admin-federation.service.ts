@@ -101,6 +101,7 @@ export class AdminFederationService implements OnModuleInit, OnModuleDestroy {
     if (env.userId) headers['X-User-Id'] = env.userId;
     if (env.sessionId) headers['X-Session-Id'] = env.sessionId;
     if (env.traceId) headers['X-Trace-Id'] = env.traceId;
+    if (env.projectId) headers['X-Project-Id'] = env.projectId;
     return headers;
   }
 

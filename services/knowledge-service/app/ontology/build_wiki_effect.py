@@ -56,7 +56,13 @@ class BuildWikiParams(BaseModel):
 async def _resolve_entity_ids(params: BuildWikiParams, book_id: UUID, glossary_client) -> list[str]:
     if params.entity_ids:
         return params.entity_ids
-    rows = await glossary_client.list_entities(book_id, status_filter="active")
+    # Wiki wants EVERY entity of the book, not just multi-chapter ones — each
+    # extracted entity has ≥1 chapter link, so min_frequency=1 includes them all
+    # (the default 2 is the extraction-ANCHOR semantics and silently drops every
+    # entity on a single-chapter book → spurious "no entities" → 422).
+    rows = await glossary_client.list_entities(
+        book_id, status_filter="active", min_frequency=1,
+    )
     if not rows:
         return []
     return [r["entity_id"] for r in rows if r.get("entity_id")]

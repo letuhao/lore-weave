@@ -10,6 +10,13 @@ export interface Envelope {
   sessionId?: string;
   traceId?: string;
   /**
+   * Active project scope (X-Project-Id) — forwarded so project-scoped provider
+   * tools (kg_build_graph, kg_build_wiki, any `ctx.project_id`-resolving tool)
+   * can resolve "the current project" downstream. Lifted off the request headers
+   * only (SEC-1 — never from the LLM); forwarded only when present.
+   */
+  projectId?: string;
+  /**
    * Admin authority (INV-T2) — the RS256 `admin:write` token, forwarded ONLY on
    * the admin federation path as `X-Admin-Token`. It is a bearer credential and
    * MUST NEVER be logged or serialized (spec §6.7, §11 #7). The normal `/mcp`
@@ -133,6 +140,7 @@ export class FederationService implements OnModuleInit, OnModuleDestroy {
     if (env.userId) headers['X-User-Id'] = env.userId;
     if (env.sessionId) headers['X-Session-Id'] = env.sessionId;
     if (env.traceId) headers['X-Trace-Id'] = env.traceId;
+    if (env.projectId) headers['X-Project-Id'] = env.projectId;
 
     const client = new Client({ name: 'ai-gateway', version: '0.1.0' });
     const transport = new StreamableHTTPClientTransport(new URL(p.mcpUrl), {

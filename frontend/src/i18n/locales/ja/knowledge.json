@@ -617,7 +617,7 @@
         "success": "{{model}} のベンチマーク完了 (recall@3 {{recall}})。",
         "errorNoModel": "ベンチマークを実行する前に、埋め込みモデルを選択してください。",
         "errorUnknownModel": "この埋め込みモデルはベンチマークハーネスでサポートされていません。",
-        "errorNotBenchmarkProject": "ベンチマークは専用プロジェクトで実行する必要があります。実行前に新しいプロジェクトを作成してください。",
+        "errorNotBenchmarkProject": "ベンチマークをサンドボックスで開始できませんでした。少し待ってから再試行してください。",
         "errorAlreadyRunning": "このプロジェクトでは既にベンチマークが実行中です。少し待ってから再試行してください。",
         "errorProviderFlake": "埋め込みプロバイダーが実行中に失敗しました。再試行してください。",
         "errorGeneric": "ベンチマーク失敗: {{message}}"

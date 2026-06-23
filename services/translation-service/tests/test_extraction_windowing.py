@@ -64,3 +64,31 @@ def test_merge_window_entities_dedups_and_unions_links():
 def test_merge_window_entities_skips_nameless():
     merged = _merge_window_entities([{"kind": "character", "name": "  "}])
     assert merged == []
+
+
+def test_estimate_cost_scales_with_reasoning_effort():
+    # D-RE-EFFORT-COST-ESTIMATE: a higher reasoning_effort reserves MORE output
+    # (hidden reasoning tokens the entity JSON estimate alone misses), so the quote
+    # grows monotonically; 'none' is the baseline and an omitted arg == 'none'.
+    from app.workers.extraction_prompt import estimate_extraction_cost
+
+    profile = {"character": {"name": "fill", "role": "fill"}}
+    kinds = [{"code": "character", "attributes": [{"code": "name"}, {"code": "role"}]}]
+    chapters = [{"text_length": 8000}]
+
+    none_est = estimate_extraction_cost(chapters, profile, kinds, reasoning_effort="none")
+    low = estimate_extraction_cost(chapters, profile, kinds, reasoning_effort="low")
+    high = estimate_extraction_cost(chapters, profile, kinds, reasoning_effort="high")
+    default = estimate_extraction_cost(chapters, profile, kinds)  # omitted == none
+
+    assert default["estimated_output_tokens"] == none_est["estimated_output_tokens"]
+    assert low["estimated_output_tokens"] > none_est["estimated_output_tokens"]
+    assert high["estimated_output_tokens"] > low["estimated_output_tokens"]
+    # Effort grows the OUTPUT reservation; input is essentially unaffected (main's
+    # planner-based estimate has a ≤ few-token rounding variance as the output
+    # reservation feeds the per-call budget → window count → prompt overhead).
+    assert abs(high["estimated_input_tokens"] - none_est["estimated_input_tokens"]) <= 5
+    # An unknown/garbage effort degrades to the baseline (defensive .get).
+    assert estimate_extraction_cost(chapters, profile, kinds, reasoning_effort="bogus")[
+        "estimated_output_tokens"
+    ] == none_est["estimated_output_tokens"]

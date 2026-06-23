@@ -23,7 +23,7 @@ import time
 from datetime import datetime, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from pydantic import BaseModel, ValidationError
 
 from app.auth.admin_jwt import (
@@ -700,3 +700,30 @@ async def preview_action(
             )
         return await preview_triage_schema_write(schemas, claims.project_id, params)
     raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="unknown action")
+
+
+# Generic-contract alias: GET /preview?token=… — the shared FE confirm card
+# (`actionsApi.previewAction`) previews every domain with GET + a `token` query
+# param. The POST form above stays for non-card callers; this forwards the
+# query token into the same (non-consuming) logic so KG actions render in the
+# auto-confirm card exactly like book/translation/settings (F2b).
+@router.get("/preview")
+async def preview_action_get(
+    token: str = Query(..., description="the confirm_token to preview"),
+    caller: UUID = Depends(get_current_user),
+    gc: GrantClient = Depends(get_grant_client),
+    projects: ProjectsRepo = Depends(get_projects_repo),
+    schemas: GraphSchemasRepo = Depends(get_graph_schemas_repo),
+    mutations: OntologyMutationsRepo = Depends(get_ontology_mutations_repo),
+    system_repo: SystemTemplatesRepo = Depends(get_system_templates_repo),
+    triage: TriageRepo = Depends(get_triage_repo),
+    glossary: GlossaryOntologyClient = Depends(get_glossary_ontology_client),
+    admin_key: AdminKey | None = Depends(get_admin_key),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+) -> dict:
+    return await preview_action(
+        body=ConfirmTokenBody(confirm_token=token),
+        caller=caller, gc=gc, projects=projects, schemas=schemas,
+        mutations=mutations, system_repo=system_repo, triage=triage,
+        glossary=glossary, admin_key=admin_key, x_admin_token=x_admin_token,
+    )
