@@ -7,6 +7,43 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 
+# ── Interview-roleplay: working_memory (charter + state) ─────────────────────
+# The pinned goal-state block. Mirrors contracts/interview/working_memory.schema.json.
+# `charter` is written ONLY by the goal authority (template here) and is the frozen
+# anchor; `state` is the executive-rewritten progress estimate (safe-when-wrong).
+# Spec: docs/specs/2026-06-23-interview-roleplay.md.
+
+class WorkingMemoryCharter(BaseModel):
+    """Committed goal/intention. Frozen for interview (template writes once)."""
+
+    goal: str
+    phases: list[str] = Field(min_length=1)
+    checklist: list[str] = Field(default_factory=list)
+    time_budget_min: int | None = None
+    language: str
+
+
+class WorkingMemoryState(BaseModel):
+    """Mutable progress estimate. `covered` is monotonic; `remaining` is derived."""
+
+    phase: str = ""
+    covered: list[str] = Field(default_factory=list)
+    elapsed_min: int | None = None
+    drift_note: str | None = None
+    redirect_hint: str | None = None
+
+
+class WorkingMemory(BaseModel):
+    version: int = 1
+    charter: WorkingMemoryCharter
+    state: WorkingMemoryState = Field(default_factory=WorkingMemoryState)
+
+    def remaining(self) -> list[str]:
+        """Derived, never stored: charter.checklist − state.covered."""
+        done = set(self.state.covered)
+        return [c for c in self.charter.checklist if c not in done]
+
+
 # ── Message feedback (Q3 — Production Eval + Feedback Flywheel) ───────────────
 
 

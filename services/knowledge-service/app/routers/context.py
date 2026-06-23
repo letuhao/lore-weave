@@ -94,6 +94,12 @@ class ContextBuildResponse(BaseModel):
     # chat-service that doesn't read this field still behaves as before
     # (tools offered) and a degraded build stays tool-enabled.
     tool_calling_enabled: bool = True
+    # Interview-roleplay — the rendered working_memory anchor text (charter +
+    # state). chat-service pins this into the system block AND tail-injects it
+    # (depth-0). Default "" so a session with no working_memory block, and an
+    # older builder that doesn't set it, both stay backward-compatible. Populated
+    # by the working_memory selector (M4). See contracts/interview/README.md.
+    working_memory: str = ""
 
 
 @router.post("/build", response_model=ContextBuildResponse)

@@ -96,6 +96,11 @@ class KnowledgeContext(BaseModel):
     # an older knowledge-service that omits the field, the no-project
     # path, and the degraded path all leave tool-calling enabled.
     tool_calling_enabled: bool = True
+    # Interview-roleplay — rendered working_memory anchor (charter + state).
+    # Pinned into the system block AND tail-injected by stream_service. "" when
+    # the session has no working_memory block or on the degraded path; chat-service
+    # then falls back to the session's working_memory_seed (EC-4). M4 populates it.
+    working_memory: str = ""
 
 
 def _degraded() -> KnowledgeContext:

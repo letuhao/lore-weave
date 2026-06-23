@@ -214,6 +214,59 @@ CREATE INDEX IF NOT EXISTS idx_message_feedback_message
   ON message_feedback(message_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_message_feedback_user
   ON message_feedback(user_id, created_at DESC);
+
+-- ══════════════════════════════════════════════════════════════════════
+-- Interview-Practice Roleplay (POC for roleplay-service).
+-- docs/specs/2026-06-23-interview-roleplay.md
+--
+-- session_templates — the "goal authority" for interview sessions. A
+-- reusable interviewer persona + the scenario that seeds a session's frozen
+-- `charter`. TENANCY (LOCKED rules): two tiers keyed by owner_user_id —
+--   * System tier  : owner_user_id IS NULL → platform-owned, admin-write,
+--                     read-only to users (seeded defaults).
+--   * Per-user tier: owner_user_id = a user → that user writes their own.
+-- Resolution merges System (defaults) → Per-user (overrides) by `code`.
+-- NULL-distinct UNIQUE would let two System rows share a code, so the
+-- uniqueness is split into two PARTIAL indexes (the correct fix for the
+-- shared-row tenancy bug: never a bare UNIQUE(code) on a shared table).
+-- ══════════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS session_templates (
+  template_id    UUID PRIMARY KEY DEFAULT uuidv7(),
+  owner_user_id  UUID,                                      -- NULL ⇒ System tier
+  tier           VARCHAR(10) NOT NULL DEFAULT 'user',       -- 'system' | 'user'
+  code           VARCHAR(100) NOT NULL,                     -- stable id for merge/resolution
+  name           VARCHAR(255) NOT NULL,
+  description    TEXT,
+  system_prompt  TEXT NOT NULL,                             -- persona voice + rules
+  model_source   VARCHAR(20),                               -- optional default model
+  model_ref      UUID,
+  scenario       JSONB NOT NULL DEFAULT '{}',               -- seeds working_memory.charter
+  rubric         JSONB,                                     -- optional eval rubric (M6)
+  is_active      BOOLEAN NOT NULL DEFAULT true,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT session_templates_tier_owner_chk CHECK (
+    (tier = 'system' AND owner_user_id IS NULL) OR
+    (tier = 'user'   AND owner_user_id IS NOT NULL)
+  )
+);
+-- System-tier codes globally unique; per-user codes unique within the user.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_session_templates_system_code
+  ON session_templates (code) WHERE owner_user_id IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_session_templates_user_code
+  ON session_templates (owner_user_id, code) WHERE owner_user_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_session_templates_owner
+  ON session_templates (owner_user_id, is_active);
+
+-- working_memory_seed — the frozen `charter` written ONCE at session create
+-- from the chosen template's scenario (goal authority = template). Also the
+-- degraded fallback (EC-4) when knowledge-service is unavailable. NULL for
+-- non-interview sessions.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_sessions' AND column_name='working_memory_seed') THEN
+    ALTER TABLE chat_sessions ADD COLUMN working_memory_seed JSONB;
+  END IF;
+END $$;
 """
 
 
