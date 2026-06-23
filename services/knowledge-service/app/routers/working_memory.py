@@ -17,9 +17,11 @@ from uuid import UUID
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
+from app.clients.llm_client import LLMClient
 from app.db.repositories.working_memory import WorkingMemoryRepo
-from app.deps import get_working_memory_repo
+from app.deps import get_llm_client, get_working_memory_repo
 from app.middleware.internal_auth import require_internal_token
+from app.working_memory.executive import run_executive
 
 router = APIRouter(
     prefix="/internal/working-memory",
@@ -48,3 +50,33 @@ async def init_working_memory(
     repo: WorkingMemoryRepo = Depends(get_working_memory_repo),
 ) -> None:
     await repo.init_charter(req.session_id, req.user_id, req.charter.model_dump())
+
+
+class TurnInput(BaseModel):
+    role: str
+    content: str
+
+
+class TickRequest(BaseModel):
+    session_id: UUID
+    user_id: UUID
+    recent_turns: list[TurnInput] = []
+
+
+@router.post("/tick")
+async def tick_working_memory(
+    req: TickRequest,
+    repo: WorkingMemoryRepo = Depends(get_working_memory_repo),
+    llm_client: LLMClient = Depends(get_llm_client),
+) -> dict:
+    """The executive pass: update `state` from recent turns. Best-effort — the
+    body's `status` reports what happened (updated / no_block / no_model /
+    llm_failed / bad_json); it never 500s on a skip."""
+    status = await run_executive(
+        repo=repo,
+        llm_client=llm_client,
+        session_id=req.session_id,
+        user_id=req.user_id,
+        recent_turns=[t.model_dump() for t in req.recent_turns],
+    )
+    return {"status": status}

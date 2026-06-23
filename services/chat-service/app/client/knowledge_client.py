@@ -294,6 +294,28 @@ class KnowledgeClient:
             logger.warning("init_working_memory failed for session %s", session_id, exc_info=True)
             return False
 
+    async def tick_working_memory(
+        self, *, session_id: str, user_id: str, recent_turns: list[dict]
+    ) -> str | None:
+        """POST /internal/working-memory/tick — run one executive pass.
+
+        Sends the recent-turns window so knowledge-service needn't call back into
+        chat. Best-effort: returns the status string on success, None on any
+        failure (the anchor still holds from the existing block / seed)."""
+        url = f"{self._base_url}/internal/working-memory/tick"
+        body = {"session_id": session_id, "user_id": user_id, "recent_turns": recent_turns}
+        tid = current_trace_id()
+        headers = {"X-Trace-Id": tid} if tid else None
+        try:
+            resp = await self._http.post(url, json=body, headers=headers)
+            if resp.status_code == 200:
+                return resp.json().get("status")
+            logger.warning("tick_working_memory non-200: %s", resp.status_code)
+            return None
+        except Exception:
+            logger.warning("tick_working_memory failed for session %s", session_id, exc_info=True)
+            return None
+
     async def _build_context_at(
         self,
         url: str,

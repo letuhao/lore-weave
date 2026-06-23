@@ -816,3 +816,32 @@ async def test_init_working_memory_swallows_failure():
         session_id="s", user_id="u", charter={"goal": "g", "phases": ["x"], "language": "en"},
     )
     assert ok is False
+
+
+@pytest.mark.asyncio
+async def test_tick_working_memory_posts_turns_and_returns_status():
+    captured = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        captured["url"] = str(req.url)
+        captured["body"] = json.loads(req.content)
+        return httpx.Response(200, json={"status": "updated"})
+
+    client = _make_client(handler)
+    status = await client.tick_working_memory(
+        session_id="s-1", user_id="u-1",
+        recent_turns=[{"role": "user", "content": "hi"}],
+    )
+    assert status == "updated"
+    assert captured["url"].endswith("/internal/working-memory/tick")
+    assert captured["body"]["recent_turns"][0]["content"] == "hi"
+
+
+@pytest.mark.asyncio
+async def test_tick_working_memory_swallows_failure():
+    def handler(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(503)
+
+    client = _make_client(handler)
+    status = await client.tick_working_memory(session_id="s", user_id="u", recent_turns=[])
+    assert status is None
