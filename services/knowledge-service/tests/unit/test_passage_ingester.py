@@ -675,6 +675,63 @@ def test_resolve_source_lang_strips_region_subtag(monkeypatch):
     assert resolve_source_lang("ZH-Hant", "x") == ("zh", False)
 
 
+# ── KG-ML M2: language-scoped identity + vi dual-index ──────────────
+
+
+def test_canonical_id_distinct_per_language():
+    """M2 (DD1): vi and zh chunks of the SAME chapter (same source_id) get
+    DISTINCT ids so dual-indexing never overwrites the source passages; an
+    empty/'unknown' lang keeps the pre-M2 id byte-identical (back-compat)."""
+    from app.db.neo4j_repos.passages import passage_canonical_id
+
+    base = dict(user_id="u", project_id="p", source_type="chapter",
+                source_id="ch1", chunk_index=0)
+    zh = passage_canonical_id(**base, source_lang="zh")
+    vi = passage_canonical_id(**base, source_lang="vi")
+    none = passage_canonical_id(**base)
+    assert zh != vi  # distinct nodes per language
+    # back-compat: no lang == "" == "unknown" handled by caller; bare call stable
+    assert passage_canonical_id(**base, source_lang="") == none
+
+
+@pytest.mark.asyncio
+async def test_ingest_text_override_bypasses_book_fetch(monkeypatch):
+    """M2: text_override (a translation's text) skips the book-service fetch and
+    drives the same chunk→embed→upsert path with source_lang stamped."""
+    import app.extraction.passage_ingester as pi
+
+    book = _mk_book_client(text="SHOULD NOT BE USED")
+    book.get_chapter_text_and_blocks = AsyncMock(
+        side_effect=AssertionError("book fetch must not run for text_override"),
+    )
+
+    async def fake_embed(*, user_id, model_source, model_ref, texts):
+        return EmbeddingResult(
+            embeddings=[[0.1] * 1024 for _ in texts], dimension=1024, model="bge-m3",
+        )
+    emb = MagicMock()
+    emb.embed = fake_embed
+    upsert = AsyncMock()
+    delete = AsyncMock(return_value=0)
+    monkeypatch.setattr(pi, "upsert_passage", upsert)
+    monkeypatch.setattr(pi, "delete_passages_for_source", delete)
+
+    vi_text = "Bá tước Dracula bước vào lâu đài. " * 200
+    result = await ingest_chapter_passages(
+        MagicMock(), book, emb,
+        user_id=USER_ID, project_id=PROJECT_ID,
+        book_id=BOOK_ID, chapter_id=CHAPTER_ID, chapter_index=1,
+        embedding_model="bge-m3", embedding_dim=1024,
+        source_lang="vi", text_override=vi_text, canon=True,
+    )
+    assert result.chunks_created > 0
+    assert result.source_lang == "vi"
+    # the delete was language-scoped to vi (never wipes zh source passages)
+    assert delete.await_args.kwargs["source_lang"] == "vi"
+    for call in upsert.await_args_list:
+        assert call.kwargs["source_lang"] == "vi"
+
+
 @pytest.mark.asyncio
 async def test_backfill_source_lang_tags_per_chapter(monkeypatch):
     """KG-ML M1: backfill_source_lang reads each chapter's declared

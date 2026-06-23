@@ -11,6 +11,7 @@ from ..metrics import record_stage
 from .. import fair_sched
 from .cost import resolve_job_cost_usd
 from .session_translator import translate_chapter
+from ..translation_events import emit_translation_published
 
 log = logging.getLogger(__name__)
 
@@ -447,9 +448,31 @@ async def _finalize_chapter(
                 # (module top) for the statement, the M5b unresolved-high gate, and the
                 # human-edit guard. Promotes a clean re-translation over an existing active
                 # version for both campaign and interactive jobs; never clobbers a human edit.
-                await db.execute(
+                promote_res = await db.execute(
                     _PROMOTE_ACTIVE_SQL, chapter_id, chapter_translation_id,
                 )
+                # KG-ML M2 — emit translation.published ONLY when the promote
+                # actually changed the active row ("INSERT 0 0" = blocked by the
+                # human-edit guard / unresolved-high gate → active unchanged → no
+                # re-index). Same db (transactional outbox). aggregate_type=
+                # 'translation' routes to knowledge-service's dual-index consumer.
+                promoted = isinstance(promote_res, str) and not promote_res.endswith(" 0")
+                if promoted:
+                    try:
+                        await emit_translation_published(
+                            db,
+                            user_id=msg["user_id"],
+                            book_id=msg["book_id"],
+                            chapter_id=chapter_id,
+                            chapter_translation_id=chapter_translation_id,
+                            target_language=msg["target_language"],
+                            source="auto_promote",
+                        )
+                    except Exception:  # noqa: BLE001 — never break the worker
+                        log.warning(
+                            "KG-ML M2: failed to emit translation.published (auto_promote)",
+                            exc_info=True,
+                        )
                 # Emit outbox event for statistics-service
                 await _insert_outbox_event(db, "chapter.translated", chapter_id, {
                     "user_id": str(msg["user_id"]),

@@ -252,6 +252,7 @@ async def ingest_chapter_passages(
     delete_stale_on_missing: bool = True,
     canon: bool = True,
     source_lang: str | None = None,
+    text_override: str | None = None,
     pool: "asyncpg.Pool | None" = None,
 ) -> IngestResult:
     """Fetch, chunk, embed, and upsert passages for one chapter.
@@ -287,16 +288,22 @@ async def ingest_chapter_passages(
         )
         return result
 
-    # 1. Fetch chapter text — pinned published revision (CM3c) or live draft.
-    # block_indices (draft path, P3-C) maps a chunk's paragraph position → the
-    # real chapter_blocks.block_index for precise jump-to-source; empty for the
-    # revision path (canon precise-scroll deferred — no canon data yet).
+    # 1. Resolve chapter text. KG-ML M2: `text_override` (a translation's text)
+    # bypasses the book-service fetch entirely so the SAME chunk→embed→upsert
+    # path (skip-gate, cost metering, language-scoped delete) serves dual-indexed
+    # vi passages. Precise-scroll (block_indices) is deferred for translations
+    # (no per-block map yet) → empty, hits open the chapter top.
     block_indices: list[int] = []
-    if revision_id is not None:
+    if text_override is not None:
+        text = text_override
+    elif revision_id is not None:
+        # pinned published revision (CM3c)
         text = await book_client.get_chapter_revision_text(
             book_id, chapter_id, str(revision_id),
         )
     else:
+        # live draft, P3-C maps a chunk's paragraph position → the real
+        # chapter_blocks.block_index for precise jump-to-source.
         text, block_indices = await book_client.get_chapter_text_and_blocks(
             book_id, chapter_id,
         )
@@ -342,6 +349,7 @@ async def ingest_chapter_passages(
         user_id=str(user_id),
         source_type="chapter",
         source_id=str(chapter_id),
+        source_lang=resolved_lang,
     )
     if (
         state is not None
@@ -359,6 +367,7 @@ async def ingest_chapter_passages(
             mixed=mixed,
         )
         result.skipped_unchanged = True
+        result.source_lang = resolved_lang
         logger.info(
             "KG-ML M1: skip-gate hit chapter=%s (text+canon+index unchanged) — no re-embed",
             chapter_id,
@@ -431,12 +440,14 @@ async def ingest_chapter_passages(
                 chapter_id, project_id, exc_info=True,
             )
 
-    # 4. Delete stale passages, then upsert fresh.
+    # 4. Delete stale passages (THIS language only — never wipe the other
+    # language's passages of the same chapter), then upsert fresh.
     await delete_passages_for_source(
         session,
         user_id=str(user_id),
         source_type="chapter",
         source_id=str(chapter_id),
+        source_lang=resolved_lang,
     )
 
     for idx, ((chunk, block_pos), vector) in enumerate(

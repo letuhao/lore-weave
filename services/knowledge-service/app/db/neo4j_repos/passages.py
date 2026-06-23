@@ -125,6 +125,7 @@ def passage_canonical_id(
     source_type: str,
     source_id: str,
     chunk_index: int,
+    source_lang: str = "",
 ) -> str:
     """Deterministic id for a passage chunk.
 
@@ -133,10 +134,19 @@ def passage_canonical_id(
     duplicates. The text itself is NOT in the hash so an edit to
     chapter text (e.g., typo fix) updates-in-place rather than
     forking a new node.
+
+    KG-ML M2 (DD1): `source_lang` participates so a chapter's translated
+    (vi) passages are DISTINCT nodes from its source (zh) passages even
+    though they share `source_id=chapter_id` (kept clean so a hit maps
+    back to the real chapter). The segment is appended ONLY when non-empty
+    so every pre-M2 passage id (chat/glossary/benchmark + untagged chapter)
+    stays byte-identical — a language-tagged chapter re-ingest forks a new
+    id, and the delete-then-upsert step reaps the old one (no orphan).
     """
+    lang_seg = f"{source_lang}:" if source_lang else ""
     key = (
         f"v1:{user_id}:{project_id or 'global'}:"
-        f"{source_type}:{source_id}:{chunk_index}"
+        f"{source_type}:{source_id}:{lang_seg}{chunk_index}"
     )
     return hashlib.sha256(key.encode("utf-8")).hexdigest()[:32]
 
@@ -237,6 +247,9 @@ async def upsert_passage(
         source_type=source_type,
         source_id=source_id,
         chunk_index=chunk_index,
+        # KG-ML M2 — language participates so vi/zh chunks of the same chapter
+        # are distinct nodes ("unknown" stays out of the id for back-compat).
+        source_lang=source_lang if source_lang and source_lang != "unknown" else "",
     )
 
     # Dim was validated above against the closed set SUPPORTED_PASSAGE_DIMS,
@@ -276,6 +289,7 @@ MATCH (p:Passage)
 WHERE p.user_id = $user_id
   AND p.source_type = $source_type
   AND p.source_id = $source_id
+  AND ($source_lang IS NULL OR coalesce(p.source_lang, 'unknown') = $source_lang)
 WITH p, p.id AS id
 DETACH DELETE p
 RETURN count(id) AS deleted
@@ -288,15 +302,23 @@ async def delete_passages_for_source(
     user_id: str,
     source_type: str,
     source_id: str,
+    source_lang: str | None = None,
 ) -> int:
-    """Delete all `:Passage` nodes for a given source (e.g. a chapter
-    that was re-ingested with different chunking)."""
+    """Delete `:Passage` nodes for a given source (e.g. a chapter re-ingested
+    with different chunking).
+
+    KG-ML M2 (DD1): `source_lang` scopes the delete to ONE language so
+    re-ingesting a chapter's vi translation never wipes its zh source passages
+    (and vice-versa). None = all languages (back-compat: the chapter-delete /
+    chapter.deleted path drops every language of a removed chapter).
+    """
     result = await run_write(
         session,
         _DELETE_BY_SOURCE_CYPHER,
         user_id=user_id,
         source_type=source_type,
         source_id=source_id,
+        source_lang=source_lang,
     )
     record = await result.single()
     return int(record["deleted"]) if record else 0
@@ -348,6 +370,7 @@ MATCH (p:Passage)
 WHERE p.user_id = $user_id
   AND p.source_type = $source_type
   AND p.source_id = $source_id
+  AND ($source_lang IS NULL OR coalesce(p.source_lang, 'unknown') = $source_lang)
   AND p.content_hash IS NOT NULL
 RETURN p.content_hash AS content_hash,
        coalesce(p.canon, true) AS canon,
@@ -363,6 +386,7 @@ async def get_source_ingest_state(
     user_id: str,
     source_type: str,
     source_id: str,
+    source_lang: str | None = None,
 ) -> dict | None:
     """KG-ML M1 (C10) — read the cached ingest state for a source's passages.
 
@@ -381,6 +405,7 @@ async def get_source_ingest_state(
         user_id=user_id,
         source_type=source_type,
         source_id=source_id,
+        source_lang=source_lang,
     )
     record = await result.single()
     if record is None or not record["content_hash"]:

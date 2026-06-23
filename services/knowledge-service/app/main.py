@@ -227,10 +227,14 @@ async def lifespan(app: FastAPI):
             handle_chapter_deleted,
             handle_glossary_entity_updated,
             handle_glossary_entity_merged,
+            handle_translation_published,
         )
 
         dispatcher = EventDispatcher()
         dispatcher.register("chat.turn_completed", handle_chat_turn)
+        # KG-ML M2 — a chapter's translation became active → dual-index its vi
+        # passages (index-only; never re-extracts Layer 1).
+        dispatcher.register("translation.published", handle_translation_published)
         # Canon Model CM3c: canon = published. BOTH graph extraction AND L3
         # passage-ingest now trigger on chapter.published (at the pinned
         # revision), never chapter.saved — so unreviewed draft prose never
