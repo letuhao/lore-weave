@@ -126,3 +126,13 @@ Freeze the cross-service surface before any behavior.
 - Cross-session weak-spot recall (long_term_memory) — separate tier.
 - User re-charter mid-session — locked out for MVP (new session instead).
 - World-model goal authority — the roleplay extension this POC de-risks (§9 of spec).
+- **D-PROVIDER-STRUCTURED-OUTPUT** (gate: out-of-scope, cross-service / new feature) —
+  provider-registry should NORMALIZE structured-output: accept a canonical intent
+  (`response_format: json` or a json_schema) and translate to each provider's
+  supported dialect (`json_object` for OpenAI, `json_schema` where supported —
+  both OpenAI and lm_studio accept it — strip to prompt-only for the rest). Today
+  it passthroughs raw `response_format`, so `json_object` 400s on lm_studio and
+  every AI service (executive, rerank, future ones) must lowest-common-denominator
+  it. Fixing it once at the gateway (the only layer allowed to know provider
+  quirks) is architecture **C** — a provider-registry mini-epic, not part of
+  interview-roleplay. Target: a dedicated provider-registry branch.
