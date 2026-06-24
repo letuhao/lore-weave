@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from app.clients.glossary_ontology_client import OntologyKind, OntologyKinds
 from app.labels.graph_labels import localize_edge_timeline, localize_graph_slice
-from app.labels.reader_lang import clean_lang_param
+from app.labels.reader_lang import clean_lang_param, primary_subtag
 from app.routers.public.graph_views import (
     EdgeTimeline,
     GraphEdge,
@@ -117,3 +117,14 @@ def test_clean_lang_param():
     assert clean_lang_param(None) is None
     assert clean_lang_param("not a tag!") is None  # malformed → None (resolver falls through)
     assert clean_lang_param("toolonglang") is None  # > 3-char primary subtag
+
+
+def test_primary_subtag_folds_to_same_axis():
+    # All KG label types key by primary subtag — folding keeps entity-name
+    # translations (stored under 'vi') reachable for a 'vi-VN' reader.
+    assert primary_subtag("vi") == "vi"
+    assert primary_subtag("vi-VN") == "vi"
+    assert primary_subtag("zh-Hant") == "zh"
+    assert primary_subtag("EN_US") == "en"
+    assert primary_subtag("") is None
+    assert primary_subtag(None) is None

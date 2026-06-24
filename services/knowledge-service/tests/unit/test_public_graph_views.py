@@ -428,7 +428,10 @@ def test_graph_read_localizes_with_language(monkeypatch, repo, auth_user):
 
     class _FakeGloss:
         async def fetch_entity_display_names(self, *, book_id, entity_ids, language):
-            # only g1 is translated; g2 has no vi name → omitted (fallback)
+            # Gate on EXACTLY "vi" (primary subtag) — proves read_graph folds the
+            # reader language before the glossary call. only g1 is translated.
+            if language != "vi":
+                return {}
             return {"g1": "Hỏa Ma"} if "g1" in entity_ids else {}
 
     app = FastAPI()
@@ -468,6 +471,98 @@ def test_graph_read_localizes_with_language(monkeypatch, repo, auth_user):
     assert by_id["b"]["name_label"] is None  # untranslated → canonical fallback
     assert by_id["b"]["name"] == "天剑峰"  # canonical name still present
     assert body["edges"][0]["edge_type_label"] == "đồng minh của"
+
+
+def test_graph_read_folds_region_subtag(monkeypatch, repo, auth_user):
+    """KG-ML M5 (C7) /review-impl MED — a vi-VN reader must still resolve entity
+    names stored under 'vi'. read_graph folds the language to its primary subtag
+    before the glossary call (consistent with name_i18n / predicate / M4)."""
+    from app.clients.glossary_ontology_client import FakeGlossaryOntologyClient
+
+    project_id, book_id = uuid4(), uuid4()
+
+    class _ViOnlyGloss:
+        async def fetch_entity_display_names(self, *, book_id, entity_ids, language):
+            assert language == "vi", f"expected folded 'vi', got {language!r}"
+            return {"g1": "Hỏa Ma"}
+
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[get_current_user] = lambda: auth_user
+    app.dependency_overrides[get_graph_views_repo] = lambda: repo
+    app.dependency_overrides[get_graph_schemas_repo] = lambda: object()
+    app.dependency_overrides[get_grant_client] = lambda: object()
+    app.dependency_overrides[project_meta_dep] = lambda: (auth_user, book_id)
+    app.dependency_overrides[get_book_client] = lambda: _NoLangBookClient()
+    app.dependency_overrides[get_glossary_client] = lambda: _ViOnlyGloss()
+    app.dependency_overrides[get_glossary_ontology_client] = lambda: FakeGlossaryOntologyClient(
+        book_kinds={str(book_id): ["character"]},
+        kind_labels={"character": {"vi": "Nhân vật"}},
+    )
+    rec = {
+        "rel": {"predicate": "ALLY_OF", "valid_from": None, "valid_to": None, "schema_version": None},
+        "subj": {"id": "a", "kind": "character", "name": "火魔", "glossary_entity_id": "g1"},
+        "obj": {"id": "a", "kind": "character", "name": "火魔", "glossary_entity_id": "g1"},
+    }
+    monkeypatch.setattr(gv, "neo4j_session", lambda **kw: _FakeSession([_FakeRecord(rec)]))
+
+    async def _no_deprecated(repo_, pid):
+        return []
+    monkeypatch.setattr(gv, "_deprecated_edge_codes", _no_deprecated)
+
+    client = TestClient(app)
+    r = client.get(f"/v1/kg/projects/{project_id}/graph?language=vi-VN")
+    assert r.status_code == 200, r.text
+    node = r.json()["nodes"][0]
+    assert node["kind_label"] == "Nhân vật"
+    assert node["name_label"] == "Hỏa Ma"  # resolved despite the vi-VN region subtag
+
+
+def test_edge_timeline_localizes_with_language(monkeypatch, auth_user):
+    """KG-ML M5 (C7) /review-impl LOW — router-level coverage of the edge-timeline
+    localization wiring: predicate label + per-instance target name re-keyed from
+    glossary_entity_id → target_id."""
+    owner = auth_user
+    book_id = uuid4()
+
+    class _TgtGloss:
+        async def fetch_entity_display_names(self, *, book_id, entity_ids, language):
+            assert language == "vi"
+            # keyed by glossary_entity_id; only g-rev translated
+            return {"g-rev": "Báo thù"} if "g-rev" in entity_ids else {}
+
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[get_current_user] = lambda: owner
+    app.dependency_overrides[get_grant_client] = lambda: _GCFixed(_GL.VIEW)
+    app.dependency_overrides[get_projects_repo] = lambda: _ProjectsRepoFixed((owner, book_id))
+    app.dependency_overrides[get_book_client] = lambda: _NoLangBookClient()
+    app.dependency_overrides[get_glossary_client] = lambda: _TgtGloss()
+
+    async def _ok_grant(entity_id, caller, gc, projects_repo):
+        return _PROJ_UUID, owner  # a real uuid so project_meta(UUID(...)) parses
+    monkeypatch.setattr(gv, "_resolve_entity_project_grant", _ok_grant)
+
+    records = [
+        _FakeRecord({
+            "rel": {"valid_from": 1, "valid_to": None, "schema_version": 1, "source_chapter": "ch1"},
+            "obj": {"id": "revenge", "name": "Revenge", "glossary_entity_id": "g-rev"},
+        }),
+        _FakeRecord({
+            "rel": {"valid_from": 5, "valid_to": None, "schema_version": 1, "source_chapter": "ch5"},
+            "obj": {"id": "seek_dao", "name": "Seek Dao", "glossary_entity_id": None},
+        }),
+    ]
+    monkeypatch.setattr(gv, "neo4j_session", lambda **kw: _FakeSession(records))
+
+    client = TestClient(app)
+    r = client.get("/v1/kg/entities/kai/edges/PURSUES/timeline?language=vi")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["edge_type_label"] == "theo đuổi"  # predicate localized
+    by_id = {i["target_id"]: i for i in body["instances"]}
+    assert by_id["revenge"]["target_label_localized"] == "Báo thù"
+    assert by_id["seek_dao"]["target_label_localized"] is None  # untranslated → fallback
 
 
 # ── timeline handler with a fake neo4j session + stubbed grant ─────────────

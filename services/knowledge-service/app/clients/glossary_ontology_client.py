@@ -24,6 +24,7 @@ Spec: docs/specs/2026-06-20-knowledge-graph-customizable-ontology.md §3.5, D1.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
@@ -78,8 +79,6 @@ class OntologyKinds(BaseModel):
         primary subtag are included; the caller falls back to the canonical
         name (or the raw code) for any kind not in the map. Empty/blank
         ``language`` ⇒ empty map (no localization)."""
-        import re
-
         lang = re.split(r"[-_]", str(language or "").strip().lower(), maxsplit=1)[0]
         if not lang:
             return {}

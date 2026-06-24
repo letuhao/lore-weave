@@ -58,7 +58,7 @@ from app.deps import (
     get_projects_repo,
 )
 from app.labels.graph_labels import localize_edge_timeline, localize_graph_slice
-from app.labels.reader_lang import clean_lang_param
+from app.labels.reader_lang import clean_lang_param, primary_subtag
 from app.middleware.jwt_auth import get_current_user
 from app.routers.public.ontology import get_glossary_ontology_client
 from app.ontology.view_filter import (
@@ -660,6 +660,10 @@ async def read_graph(
     book_id = meta[1] if meta else None
     if reader_lang is None and book_id is not None:
         reader_lang = await book_client.get_reader_language(book_id, caller)
+    # Fold to primary subtag so ALL three label types resolve on the same axis
+    # (name_i18n / predicate / entity-name translations are keyed by primary
+    # subtag) — a vi-VN reader must still match vi entity-name translations.
+    reader_lang = primary_subtag(reader_lang)
     if reader_lang:
         glossary_entity_ids = [
             n.glossary_entity_id for n in graph.nodes if n.glossary_entity_id
@@ -742,6 +746,7 @@ async def read_edge_timeline(
     reader_lang = clean_lang_param(language)
     if reader_lang is None and book_id is not None:
         reader_lang = await book_client.get_reader_language(book_id, caller)
+    reader_lang = primary_subtag(reader_lang)  # same-axis fold (see read_graph)
     if reader_lang:
         gids = [
             i.target_glossary_entity_id
