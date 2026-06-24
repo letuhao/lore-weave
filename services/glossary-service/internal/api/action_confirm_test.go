@@ -247,6 +247,32 @@ func TestProposeNewKind_RoundTripToConfirm(t *testing.T) {
 	}
 }
 
+// An UNADOPTED book auto-scaffolds the baseline ontology on the first kind-create,
+// instead of 422'ing "not adopted" AFTER the human confirmed (and the single-use
+// token burned). The agent no longer has to sequence adopt→kind by hand.
+func TestProposeNewKind_AutoScaffoldsUnadoptedBook(t *testing.T) {
+	pool := openTestDB(t)
+	f := newActionFixtureNoAdopt(t, pool)
+	_, out, err := f.srv.toolProposeNewKind(ctxWithUser(f.ownerID), nil,
+		proposeKindToolIn{BookID: f.bookID.String(), Code: "qa_scaffold_kind", Name: "Power System"})
+	if err != nil {
+		t.Fatalf("propose: %v", err)
+	}
+	if w := f.confirm(t, out.ConfirmToken); w.Code != http.StatusCreated {
+		t.Fatalf("confirm create-kind on an UNADOPTED book: want 201 (auto-scaffold), got %d (%s)", w.Code, w.Body.String())
+	}
+	// The baseline universal genre must now exist — proof the scaffold ran.
+	var hasUniversal bool
+	if err := pool.QueryRow(context.Background(),
+		`SELECT EXISTS(SELECT 1 FROM book_genres WHERE book_id=$1 AND code='universal' AND deprecated_at IS NULL)`,
+		f.bookID).Scan(&hasUniversal); err != nil {
+		t.Fatalf("check universal genre: %v", err)
+	}
+	if !hasUniversal {
+		t.Error("auto-scaffold did not create the baseline universal genre")
+	}
+}
+
 // The kind is deleted between propose and confirm → clean 422 (re-validate at confirm).
 func TestConfirmAction_DeletedKindIsCleanError(t *testing.T) {
 	pool := openTestDB(t)

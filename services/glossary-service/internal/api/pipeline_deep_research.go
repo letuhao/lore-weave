@@ -59,10 +59,15 @@ type deepResearchParams struct {
 }
 
 type deepResearchToolIn struct {
-	BookID     string `json:"book_id" jsonschema:"the book (UUID)"`
-	EntityID   string `json:"entity_id" jsonschema:"the entity to research (UUID)"`
-	Query      string `json:"query" jsonschema:"what to look up on the web"`
-	MaxResults int    `json:"max_results" jsonschema:"how many sources (1-10, default 5)"`
+	BookID   string `json:"book_id" jsonschema:"the book (UUID)"`
+	EntityID string `json:"entity_id" jsonschema:"the entity to research (UUID)"`
+	Query    string `json:"query" jsonschema:"what to look up on the web"`
+	// `,omitempty` keeps max_results OPTIONAL in the generated MCP arg schema —
+	// the handler defaults it via clampDeepResearchMax. Without it the go-sdk marks
+	// the non-pointer int REQUIRED, so a caller that omits it is rejected at arg
+	// validation ("required: missing properties: [max_results]") before the handler
+	// ever runs — the silent step-0 failure (matches glossary_web_search's tag).
+	MaxResults int `json:"max_results,omitempty" jsonschema:"how many sources (1-10, default 5)"`
 }
 
 func (s *Server) toolDeepResearch(ctx context.Context, _ *mcp.CallToolRequest, in deepResearchToolIn) (*mcp.CallToolResult, confirmCardOut, error) {

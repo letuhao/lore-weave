@@ -245,10 +245,41 @@ func (s *Server) effectBookDelete(w http.ResponseWriter, ctx context.Context, cl
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// ensureBookScaffolded guarantees the book has the baseline `universal` genre (and
+// `unknown` kind) that custom kinds anchor to. Idempotent — a no-op once the book is
+// scaffolded. This lets glossary_propose_new_kind "just work" without a MANDATORY
+// prior glossary_adopt_standards: the universal genre is infrastructure, not a content
+// choice (adopt ALWAYS seeds it regardless of picked genres), so a user/agent never
+// has to know the adopt→kind ordering. Genre-specific standards (fantasy, …) can still
+// be adopted later to import their seeded kinds.
+func (s *Server) ensureBookScaffolded(ctx context.Context, bookID, userID uuid.UUID) error {
+	var exists bool
+	if err := s.pool.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM book_genres WHERE book_id=$1 AND code='universal' AND deprecated_at IS NULL)`,
+		bookID).Scan(&exists); err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+	// nil genres/kinds → adoptBookOntologyCore still seeds the baseline `universal`
+	// genre + `unknown` kind (it dedup-appends them), and is itself idempotent
+	// (advisory lock + ON CONFLICT DO NOTHING).
+	return s.adoptBookOntologyCore(ctx, bookID, userID, nil, nil)
+}
+
 func (s *Server) effectSchemaCreateKind(w http.ResponseWriter, ctx context.Context, claims actionClaims) {
 	var p kindCreateParams
 	if err := json.Unmarshal(claims.Params, &p); err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "bad proposal payload")
+		return
+	}
+	// Auto-scaffold the baseline ontology if the book hasn't been adopted yet, so
+	// creating the first custom kind succeeds instead of 422'ing "not adopted" AFTER
+	// the human already confirmed (and the single-use token burned). The agent no
+	// longer has to sequence adopt→kind by hand.
+	if err := s.ensureBookScaffolded(ctx, claims.BookID, claims.UserID); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to scaffold book ontology")
 		return
 	}
 	k, err := s.createKindFromParams(ctx, claims.BookID, p)
