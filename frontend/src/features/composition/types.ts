@@ -173,6 +173,21 @@ export type ProgressStats = {
   sparkline: ProgressPoint[];
 };
 
+// T3.5 — prose-style steering. style_profile is per-scope (work|chapter|scene);
+// the packer resolves the most-specific for a scene. voice_profile is per-character.
+export type StyleScope = 'work' | 'chapter' | 'scene';
+export type StyleProfile = {
+  scope_type: StyleScope;
+  scope_id: string;
+  density: number; // 0-100, lean ↔ lush
+  pace: number;    // 0-100, slow ↔ fast
+};
+export type VoiceProfile = {
+  entity_id: string;
+  entity_name: string;
+  tags: string[];
+};
+
 // T3.4 — one addressable grounding item (present-entity / canon-rule / lore-source)
 // with its per-scene pin/exclude state. `id` is a stable canonical id (not a label).
 export type GroundingItemType = 'present' | 'canon' | 'lore';

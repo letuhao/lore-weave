@@ -192,6 +192,35 @@ class SceneGroundingPin(BaseModel):
     created_at: datetime | None = None
 
 
+StyleScope = Literal["work", "chapter", "scene"]
+
+
+class StyleProfile(BaseModel):
+    """T3.5 — per-scope prose-style steering. `scope_id` is the project_id (work),
+    chapter_id (chapter) or outline node_id (scene). Density/Pace are 0-100; the
+    packer resolves the most-specific row for a scene and maps them to prose-style
+    directives in the draft prompts."""
+    user_id: UUID
+    project_id: UUID
+    scope_type: StyleScope
+    scope_id: UUID
+    density: Annotated[int, Field(ge=0, le=100)]
+    pace: Annotated[int, Field(ge=0, le=100)]
+    updated_at: datetime | None = None
+
+
+class VoiceProfile(BaseModel):
+    """T3.5 — per-character voice tags. Keyed by `entity_id`; `entity_name` is
+    denormalized for prompt rendering. Injected only when the entity is present in
+    the scene."""
+    user_id: UUID
+    project_id: UUID
+    entity_id: UUID
+    entity_name: str
+    tags: list[str] = []
+    updated_at: datetime | None = None
+
+
 class GenerationJob(BaseModel):
     id: UUID
     user_id: UUID

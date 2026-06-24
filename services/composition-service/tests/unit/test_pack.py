@@ -136,8 +136,28 @@ class StubGroundingPins:
         return [SimpleNamespace(item_type=t, item_id=i, action=a) for (t, i, a) in self._rows]
 
 
+class StubStyleRepo:
+    """T3.5 — resolve() returns a StyleProfile (or None)."""
+    def __init__(self, resolved=None):
+        self._r = resolved
+
+    async def resolve(self, user_id, project_id, scene_id, chapter_id):
+        return self._r
+
+
+class StubVoiceRepo:
+    """T3.5 — list_for_entities filters the stub rows by the present ids."""
+    def __init__(self, rows=None):
+        self._rows = rows or []
+
+    async def list_for_entities(self, user_id, project_id, entity_ids):
+        ids = {str(e) for e in entity_ids}
+        return [v for v in self._rows if str(v.entity_id) in ids]
+
+
 async def _pack(req, *, book=None, glossary=None, knowledge=None, canon=None,
-                narrative_threads=None, grounding_pins=None, budget_tokens=10_000):
+                narrative_threads=None, grounding_pins=None,
+                style_profiles=None, voice_profiles=None, budget_tokens=10_000):
     bk = book or StubBook()
     return await pack(
         req, book=bk, glossary=glossary or StubGlossary(),
@@ -146,8 +166,38 @@ async def _pack(req, *, book=None, glossary=None, knowledge=None, canon=None,
         budget_tokens=budget_tokens, counter=_wc,
         narrative_threads_repo=narrative_threads,
         grounding_pins_repo=grounding_pins,
+        style_profile_repo=style_profiles,
+        voice_profile_repo=voice_profiles,
         grant=_grant_for(bk),
     )
+
+
+async def test_pack_threads_style_and_voice_into_profile():
+    """T3.5 — pack() resolves the scene's style + present-character voices and folds
+    them into the returned profile (the glue the engine then renders into prompts)."""
+    from app.db.models import StyleProfile, VoiceProfile
+    ent = uuid.uuid4()
+    req = PackRequest(
+        user_id=USER, project_id=PROJECT, book_id=BOOK,
+        node={"id": str(NODE), "chapter_id": str(CHAPTER), "story_order": 5,
+              "present_entity_ids": [str(ent)], "pov_entity_id": None, "beat_role": "hook",
+              "goal": "rescue", "synopsis": "the escape", "title": "Ch1"},
+        bearer="jwt", guide="", settings={},
+    )
+    sp = StyleProfile(user_id=USER, project_id=PROJECT, scope_type="scene",
+                      scope_id=NODE, density=90, pace=10)
+    vp = VoiceProfile(user_id=USER, project_id=PROJECT, entity_id=ent,
+                      entity_name="Kael", tags=["terse"])
+    pc = await _pack(req, style_profiles=StubStyleRepo(sp), voice_profiles=StubVoiceRepo([vp]))
+    assert pc.profile.density_level == 90 and pc.profile.pace_level == 10
+    assert pc.profile.character_voices == (("Kael", ("terse",)),)
+
+
+async def test_pack_style_neutral_when_repos_absent():
+    """No style/voice repos wired → the profile carries no style steer (dormant)."""
+    pc = await _pack(_req())
+    assert pc.profile.density_level is None and pc.profile.pace_level is None
+    assert pc.profile.character_voices == ()
 
 
 async def test_a1_chokepoint_still_guards_the_knowledge_lens_path():

@@ -26,11 +26,13 @@ from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.db.repositories.grounding_pins import GroundingPinsRepo
 from app.db.repositories.outline import OutlineRepo
 from app.db.repositories.scene_links import SceneLinksRepo
+from app.db.repositories.style_voice import StyleProfileRepo, VoiceProfileRepo
 from app.db.repositories.works import WorksRepo
 from app.deps import (
     get_book_client_dep, get_canon_rules_repo, get_derivatives_repo,
     get_generation_jobs_repo, get_glossary_client_dep, get_grounding_pins_repo,
-    get_knowledge_client_dep, get_outline_repo, get_scene_links_repo, get_works_repo,
+    get_knowledge_client_dep, get_outline_repo, get_scene_links_repo,
+    get_style_profile_repo, get_voice_profile_repo, get_works_repo,
 )
 from app.middleware.jwt_auth import get_bearer_token, get_current_user
 from app.grant_deps import InsufficientGrant
@@ -66,6 +68,8 @@ async def get_grounding(
     jobs: GenerationJobsRepo = Depends(get_generation_jobs_repo),
     derivatives: DerivativesRepo = Depends(get_derivatives_repo),
     grounding_pins: GroundingPinsRepo = Depends(get_grounding_pins_repo),
+    style_profiles: StyleProfileRepo = Depends(get_style_profile_repo),
+    voice_profiles: VoiceProfileRepo = Depends(get_voice_profile_repo),
 ) -> dict[str, Any]:
     work = await works.get(user_id, project_id)
     if work is None:
@@ -91,6 +95,8 @@ async def get_grounding(
             canon_repo=canon, outline_repo=outline, scene_links_repo=scene_links,
             budget_tokens=settings.pack_token_budget, jobs_repo=jobs,
             grounding_pins_repo=grounding_pins,  # T3.4 — honor per-scene pins
+            style_profile_repo=style_profiles,  # T3.5 — density/pace
+            voice_profile_repo=voice_profiles,  # T3.5 — present-character voices
         )
     except OwnershipError:
         raise HTTPException(status_code=404, detail="book not found")
@@ -110,6 +116,12 @@ async def get_grounding(
             "source_language": pc.profile.source_language,
             "voice": pc.profile.voice,
             "structure_pref": pc.profile.structure_pref,
+            # T3.5 — the resolved prose style + present-character voices steering this scene
+            "density_level": pc.profile.density_level,
+            "pace_level": pc.profile.pace_level,
+            "character_voices": [
+                {"name": name, "tags": list(tags)} for name, tags in pc.profile.character_voices
+            ],
         },
         "token_count": pc.token_count,
         "dropped_count": pc.dropped_count,

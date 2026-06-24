@@ -211,8 +211,23 @@
   "grounding": "依據",
   "canon": "正典",
   "progress": "進度",
+  "style": "文風",
   "quality": "品質",
   "settings": "設定",
+  "styleVoice": {
+    "proseStyle": "文風",
+    "density": "密度",
+    "densityRange": "簡練 ◂▸ 濃麗",
+    "pace": "節奏",
+    "paceRange": "慢 ◂▸ 快",
+    "scope": { "work": "書籍", "chapter": "章節", "scene": "場景" },
+    "scopeHint": "最具體的範圍優先（場景 › 章節 › 書籍）。中間值為平衡——不引導。",
+    "voices": "角色聲音",
+    "noVoices": "尚無角色聲音。",
+    "addCharacter": "新增角色…",
+    "addTag": "+ 標籤",
+    "remove": "移除"
+  },
   "progressPanel": {
     "loading": "載入進度中…",
     "error": "無法載入進度。",

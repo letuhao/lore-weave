@@ -211,8 +211,23 @@
   "grounding": "グラウンディング",
   "canon": "正典",
   "progress": "進捗",
+  "style": "文体",
   "quality": "品質",
   "settings": "設定",
+  "styleVoice": {
+    "proseStyle": "文体",
+    "density": "密度",
+    "densityRange": "簡潔 ◂▸ 濃密",
+    "pace": "テンポ",
+    "paceRange": "緩 ◂▸ 急",
+    "scope": { "work": "作品", "chapter": "章", "scene": "シーン" },
+    "scopeHint": "最も具体的なスコープが優先（シーン › 章 › 作品）。中間値はバランス＝指示なし。",
+    "voices": "キャラクターの声",
+    "noVoices": "キャラクターの声はまだありません。",
+    "addCharacter": "キャラクターを追加…",
+    "addTag": "+ タグ",
+    "remove": "削除"
+  },
   "progressPanel": {
     "loading": "進捗を読み込み中…",
     "error": "進捗を読み込めませんでした。",

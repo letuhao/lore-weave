@@ -211,8 +211,23 @@
   "grounding": "Căn cứ",
   "canon": "Canon",
   "progress": "Tiến độ",
+  "style": "Văn phong",
   "quality": "Chất lượng",
   "settings": "Cài đặt",
+  "styleVoice": {
+    "proseStyle": "Văn phong",
+    "density": "Độ dày",
+    "densityRange": "súc tích ◂▸ giàu hình ảnh",
+    "pace": "Nhịp độ",
+    "paceRange": "chậm ◂▸ nhanh",
+    "scope": { "work": "Sách", "chapter": "Chương", "scene": "Cảnh" },
+    "scopeHint": "Phạm vi cụ thể nhất được ưu tiên (cảnh › chương › sách). Giá trị giữa là cân bằng — không định hướng.",
+    "voices": "Giọng nhân vật",
+    "noVoices": "Chưa có giọng nhân vật nào.",
+    "addCharacter": "Thêm nhân vật…",
+    "addTag": "+ thẻ",
+    "remove": "Xóa"
+  },
   "progressPanel": {
     "loading": "Đang tải tiến độ…",
     "error": "Không tải được tiến độ.",

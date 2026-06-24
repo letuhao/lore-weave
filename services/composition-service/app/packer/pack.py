@@ -174,6 +174,8 @@ async def pack(
     compress_fn: Callable[[list[str], list[str], str], Awaitable[str]] | None = None,
     narrative_threads_repo=None,  # FD-1 S3 — open-promise re-injection (gated)
     grounding_pins_repo=None,  # T3.4 — per-scene pin/exclude steering (gated)
+    style_profile_repo=None,  # T3.5 — per-scope density/pace (gated)
+    voice_profile_repo=None,  # T3.5 — per-character voice tags (gated)
     grant: "GrantClient | None" = None,
     need: "GrantLevel | None" = None,
 ) -> PackedContext:
@@ -226,6 +228,30 @@ async def pack(
     present_ids = [u for u in (
         [_as_uuid(node.get("pov_entity_id"))] + [_as_uuid(e) for e in (node.get("present_entity_ids") or [])]
     ) if u is not None]
+
+    # T3.5 — resolve the scene's prose style (density/pace, most-specific scope) and
+    # the present characters' voice tags, and fold them into the profile so the engine
+    # threads them into the draft prompts and the grounding preview surfaces them. Both
+    # are GATED on the repo being wired (dormant otherwise) and degrade to neutral on
+    # any error — style/voice are a soft steer, never a reason to fail a pack.
+    from dataclasses import replace as _replace
+    if style_profile_repo is not None:
+        try:
+            sp = await style_profile_repo.resolve(
+                req.user_id, req.project_id, _as_uuid(node.get("id")), chapter_id)
+            if sp is not None:
+                profile = _replace(profile, density_level=sp.density, pace_level=sp.pace)
+        except Exception:  # noqa: BLE001 — style is a soft steer; neutral on failure
+            logger.warning("pack: style_profile resolve failed", exc_info=True)
+    if voice_profile_repo is not None and present_ids:
+        try:
+            vps = await voice_profile_repo.list_for_entities(
+                req.user_id, req.project_id, present_ids)
+            cv = tuple((vp.entity_name, tuple(vp.tags)) for vp in vps if vp.tags)
+            if cv:
+                profile = _replace(profile, character_voices=cv)
+        except Exception:  # noqa: BLE001 — voice is a soft steer; neutral on failure
+            logger.warning("pack: voice_profile resolve failed", exc_info=True)
 
     # KG-ML M7 (C6) — the author's reader-language for this book (M3). Resolved
     # ONCE and threaded into the knowledge/glossary lenses so the pack carries

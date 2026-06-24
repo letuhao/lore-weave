@@ -24,6 +24,7 @@ from app.db.repositories import outbox
 from app.db.repositories.canon_rules import CanonRulesRepo
 from app.db.repositories.daily_progress import DailyProgressRepo
 from app.db.repositories.derivatives import DerivativesRepo
+from app.db.repositories.style_voice import StyleProfileRepo, VoiceProfileRepo
 from app.db.repositories.generation_corrections import GenerationCorrectionsRepo
 from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.db.repositories.grounding_pins import GroundingPinsRepo
@@ -42,6 +43,8 @@ pytestmark = pytest.mark.skipif(
 _TABLES = [
     "composition_daily_progress",
     "composition_progress_baseline",
+    "style_profile",
+    "voice_profile",
     "scene_grounding_pins",
     "outbox_events", "generation_correction", "generation_job", "narrative_thread",
     "canon_rule", "scene_link", "outline_node", "structure_template",
@@ -1531,3 +1534,72 @@ async def test_daily_progress_book_total_includes_unwritten_baseline(pool):
     await repo.ensure_baseline(user, project, ch_opened, 500)  # opened, not written
     agg = await repo.read_aggregate(user, project, date(2026, 6, 24))
     assert agg.book_total == 2600  # 2100 (written latest) + 500 (opened baseline)
+
+
+# ─────────────────────── style_profile / voice_profile (T3.5) ───────────────────────
+
+async def test_style_profile_resolve_precedence(pool):
+    """resolve() returns the MOST SPECIFIC scope: scene > chapter > work > None."""
+    repo = StyleProfileRepo(pool)
+    user, project, _ = _ids()
+    scene, chapter = uuid.uuid4(), uuid.uuid4()
+    await repo.upsert(user, project, "work", project, 50, 50)
+    # only work set → resolve returns work
+    r = await repo.resolve(user, project, scene, chapter)
+    assert r is not None and r.scope_type == "work"
+    # add chapter → chapter wins over work
+    await repo.upsert(user, project, "chapter", chapter, 40, 60)
+    r = await repo.resolve(user, project, scene, chapter)
+    assert r.scope_type == "chapter" and r.density == 40
+    # add scene → scene wins over chapter + work
+    await repo.upsert(user, project, "scene", scene, 80, 20)
+    r = await repo.resolve(user, project, scene, chapter)
+    assert r.scope_type == "scene" and r.density == 80 and r.pace == 20
+    # a DIFFERENT scene (no scene row) falls back to chapter
+    other = await repo.resolve(user, project, uuid.uuid4(), chapter)
+    assert other.scope_type == "chapter"
+
+
+async def test_style_profile_upsert_replaces_and_delete_reverts(pool):
+    repo = StyleProfileRepo(pool)
+    user, project, _ = _ids()
+    chapter = uuid.uuid4()
+    await repo.upsert(user, project, "chapter", chapter, 30, 30)
+    await repo.upsert(user, project, "chapter", chapter, 70, 70)  # replace in place
+    rows = await repo.list_all(user, project)
+    assert len(rows) == 1 and rows[0].density == 70
+    assert await repo.delete(user, project, "chapter", chapter) is True
+    assert await repo.list_all(user, project) == []
+    # cross-user isolation
+    assert await repo.resolve(uuid.uuid4(), project, None, chapter) is None
+
+
+async def test_voice_profile_present_only_and_upsert(pool):
+    """list_for_entities returns only the requested (present) entities; upsert replaces."""
+    repo = VoiceProfileRepo(pool)
+    user, project, _ = _ids()
+    kael, mira, absent = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    await repo.upsert(user, project, kael, "Kael", ["terse", "understatement"])
+    await repo.upsert(user, project, mira, "Mira", ["formal"])
+    # only Kael present in the scene
+    present = await repo.list_for_entities(user, project, [kael, absent])
+    assert [v.entity_name for v in present] == ["Kael"]
+    assert present[0].tags == ["terse", "understatement"]
+    # upsert replaces tags in place (not a second row)
+    await repo.upsert(user, project, kael, "Kael", ["wry"])
+    again = await repo.list_for_entities(user, project, [kael])
+    assert again[0].tags == ["wry"]
+    # empty present set → no query, empty list
+    assert await repo.list_for_entities(user, project, []) == []
+    # cross-user isolation
+    assert await repo.list_for_entities(uuid.uuid4(), project, [kael]) == []
+
+
+async def test_voice_profile_list_all_and_delete(pool):
+    repo = VoiceProfileRepo(pool)
+    user, project, _ = _ids()
+    e = uuid.uuid4()
+    await repo.upsert(user, project, e, "Kael", ["terse"])
+    assert len(await repo.list_all(user, project)) == 1
+    assert await repo.delete(user, project, e) is True
+    assert await repo.list_all(user, project) == []

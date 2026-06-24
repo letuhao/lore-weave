@@ -4,7 +4,7 @@
 import { apiBase, apiJson } from '../../api';
 import type {
   AutoGeneration, CanonRule, ChapterGeneration, CommitDecomposePayload, CorrectionBody, CorrectionStats,
-  DecomposePreview, DeriveBody, GenerationJob, Grounding, GroundingItemType, NarrativeThread, OutlineNode, PinAction, ProgressStats, PublishGate, SceneLink, SceneLinkKind, StructureTemplate, Work, WorkResolution,
+  DecomposePreview, DeriveBody, GenerationJob, Grounding, GroundingItemType, NarrativeThread, OutlineNode, PinAction, ProgressStats, PublishGate, SceneLink, SceneLinkKind, StructureTemplate, StyleProfile, StyleScope, VoiceProfile, Work, WorkResolution,
 } from './types';
 
 // A3 decompose preview request (cycle 13).
@@ -239,6 +239,34 @@ export const compositionApi = {
     return apiJson(`${BASE}/works/${projectId}/progress/baseline`, {
       method: 'POST', body: JSON.stringify(body), token,
     });
+  },
+  // T3.5 — style profiles (per-scope density/pace) + voice profiles (per-character tags).
+  getStyleProfiles(projectId: string, token: string): Promise<{ items: StyleProfile[] }> {
+    return apiJson(`${BASE}/works/${projectId}/style-profiles`, { token });
+  },
+  putStyleProfile(projectId: string, body: StyleProfile, token: string): Promise<StyleProfile> {
+    return apiJson(`${BASE}/works/${projectId}/style-profile`, {
+      method: 'PUT', body: JSON.stringify(body), token,
+    });
+  },
+  deleteStyleProfile(
+    projectId: string, scopeType: StyleScope, scopeId: string, token: string,
+  ): Promise<{ removed: boolean }> {
+    const qs = `?scope_type=${scopeType}&scope_id=${encodeURIComponent(scopeId)}`;
+    return apiJson(`${BASE}/works/${projectId}/style-profile${qs}`, { method: 'DELETE', token });
+  },
+  getVoiceProfiles(projectId: string, token: string): Promise<{ items: VoiceProfile[] }> {
+    return apiJson(`${BASE}/works/${projectId}/voice-profiles`, { token });
+  },
+  putVoiceProfile(projectId: string, body: VoiceProfile, token: string): Promise<VoiceProfile> {
+    return apiJson(`${BASE}/works/${projectId}/voice-profiles`, {
+      method: 'PUT', body: JSON.stringify(body), token,
+    });
+  },
+  deleteVoiceProfile(
+    projectId: string, entityId: string, token: string,
+  ): Promise<{ removed: boolean }> {
+    return apiJson(`${BASE}/works/${projectId}/voice-profiles/${entityId}`, { method: 'DELETE', token });
   },
   // T3.4 — pin / exclude / clear ('none') one addressable grounding item for a scene.
   setGroundingPin(

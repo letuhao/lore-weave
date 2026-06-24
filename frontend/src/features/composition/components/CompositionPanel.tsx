@@ -35,6 +35,7 @@ import { CanonRulesPanel } from './CanonRulesPanel';
 import { ThreadsPanel } from './ThreadsPanel';
 import { QualityPanel } from './QualityPanel';
 import { ProgressPanel } from './ProgressPanel';
+import { StyleVoicePanel } from './StyleVoicePanel';
 import { CompositionSettingsView } from './CompositionSettingsView';
 
 type Props = {
@@ -48,7 +49,7 @@ type Props = {
   onSceneChange?: (id: string) => void;
 };
 
-type SubTab = 'compose' | 'cowriter' | 'assemble' | 'planner' | 'beats' | 'graph' | 'cast' | 'relmap' | 'timeline' | 'arc' | 'worldmap' | 'grounding' | 'canon' | 'threads' | 'progress' | 'quality' | 'settings';
+type SubTab = 'compose' | 'cowriter' | 'assemble' | 'planner' | 'beats' | 'graph' | 'cast' | 'relmap' | 'timeline' | 'arc' | 'worldmap' | 'grounding' | 'style' | 'canon' | 'threads' | 'progress' | 'quality' | 'settings';
 
 export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: sceneIdProp, onSceneChange }: Props) {
   const { t } = useTranslation('composition');
@@ -439,7 +440,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
         testid="composition-subtabs"
         className="flex gap-1 overflow-x-auto border-b border-neutral-200 px-2 pt-1 text-sm dark:border-neutral-700"
       >
-        {(['compose', 'cowriter', 'assemble', 'planner', 'beats', 'graph', 'cast', 'relmap', 'timeline', 'arc', 'worldmap', 'grounding', 'canon', ...(threadsEnabled ? ['threads' as const] : []), 'progress', 'quality', 'settings'] as SubTab[]).map((tb) => (
+        {(['compose', 'cowriter', 'assemble', 'planner', 'beats', 'graph', 'cast', 'relmap', 'timeline', 'arc', 'worldmap', 'grounding', 'style', 'canon', ...(threadsEnabled ? ['threads' as const] : []), 'progress', 'quality', 'settings'] as SubTab[]).map((tb) => (
           <button
             key={tb}
             data-testid={`composition-subtab-${tb}`}
@@ -551,6 +552,14 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
             />
           )}
           <GroundingPanel projectId={work.project_id} sceneId={effectiveScene} token={token} />
+        </div>
+        <div className={tab === 'style' ? '' : 'hidden'}>
+          <StyleVoicePanel
+            projectId={work.project_id}
+            chapterId={chapterId}
+            sceneId={effectiveScene}
+            token={token}
+          />
         </div>
         <div className={tab === 'canon' ? '' : 'hidden'}>
           <CanonRulesPanel projectId={work.project_id} bookId={bookId} token={token} />

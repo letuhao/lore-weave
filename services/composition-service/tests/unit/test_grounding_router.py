@@ -64,7 +64,8 @@ def ctx(monkeypatch):
     from app.deps import (get_book_client_dep, get_canon_rules_repo, get_derivatives_repo,
                           get_generation_jobs_repo, get_glossary_client_dep,
                           get_grounding_pins_repo, get_knowledge_client_dep, get_outline_repo,
-                          get_scene_links_repo, get_works_repo)
+                          get_scene_links_repo, get_style_profile_repo,
+                          get_voice_profile_repo, get_works_repo)
     from app.middleware.jwt_auth import get_bearer_token, get_current_user
 
     works, outline = StubWorks(), StubOutline()
@@ -83,6 +84,8 @@ def ctx(monkeypatch):
     app.dependency_overrides[get_knowledge_client_dep] = lambda: object()
     app.dependency_overrides[get_generation_jobs_repo] = lambda: object()  # S1: new pack dep
     app.dependency_overrides[get_grounding_pins_repo] = lambda: object()  # T3.4: pack stubbed
+    app.dependency_overrides[get_style_profile_repo] = lambda: object()  # T3.5: pack stubbed
+    app.dependency_overrides[get_voice_profile_repo] = lambda: object()  # T3.5: pack stubbed
     # C25 — derivatives repo (StubWorks non-derivative → never read; pack stubbed).
     from types import SimpleNamespace
     app.dependency_overrides[get_derivatives_repo] = lambda: SimpleNamespace(

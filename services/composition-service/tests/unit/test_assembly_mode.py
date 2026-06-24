@@ -292,7 +292,8 @@ def chap_ctx(monkeypatch):
                           get_glossary_client_dep, get_grounding_pins_repo,
                           get_knowledge_client_dep, get_llm_client_dep,
                           get_narrative_thread_repo, get_outline_repo,
-                          get_scene_links_repo, get_works_repo)
+                          get_scene_links_repo, get_style_profile_repo,
+                          get_voice_profile_repo, get_works_repo)
     from app.main import app
     from app.middleware.jwt_auth import get_bearer_token, get_current_user
 
@@ -307,6 +308,8 @@ def chap_ctx(monkeypatch):
     app.dependency_overrides[get_scene_links_repo] = lambda: object()
     app.dependency_overrides[get_narrative_thread_repo] = lambda: object()  # FD-1 (off in tests)
     app.dependency_overrides[get_grounding_pins_repo] = lambda: object()  # T3.4 (pack stubbed)
+    app.dependency_overrides[get_style_profile_repo] = lambda: object()  # T3.5 (pack stubbed)
+    app.dependency_overrides[get_voice_profile_repo] = lambda: object()  # T3.5 (pack stubbed)
     # C25 — derivatives repo (non-derivative works in these tests → never read).
     app.dependency_overrides[get_derivatives_repo] = lambda: SimpleNamespace(
         list_overrides_for_work=lambda *a, **k: [])

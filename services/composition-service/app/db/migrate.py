@@ -429,6 +429,38 @@ CREATE TABLE IF NOT EXISTS composition_progress_baseline (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (user_id, project_id, chapter_id)
 );
+
+-- ── style_profile: LOOM T3.5 — per-scope prose-style steering (Density + Pace,
+-- 0-100). Scoped work | chapter | scene so a scene can override its chapter which
+-- overrides the book default; the packer resolves the MOST SPECIFIC row for the
+-- target scene (scene > chapter > work) and threads density/pace into the draft
+-- prompts. `scope_id` is the project_id (work), chapter_id (chapter) or outline
+-- node_id (scene) — never null, so the PK is clean. Per-user (own authoring config).
+CREATE TABLE IF NOT EXISTS style_profile (
+  user_id     UUID NOT NULL,
+  project_id  UUID NOT NULL,
+  scope_type  TEXT NOT NULL CHECK (scope_type IN ('work','chapter','scene')),
+  scope_id    UUID NOT NULL,
+  density     INT  NOT NULL CHECK (density BETWEEN 0 AND 100),
+  pace        INT  NOT NULL CHECK (pace BETWEEN 0 AND 100),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, project_id, scope_type, scope_id)
+);
+
+-- ── voice_profile: LOOM T3.5 — per-character voice tags (e.g. terse, understatement,
+-- no purple prose). Keyed by entity_id (the glossary/knowledge entity); `entity_name`
+-- is denormalized so the packer renders the directive without a name lookup. The
+-- packer injects a character's tags ONLY when that entity is PRESENT in the scene.
+-- `tags` is a JSON array of short strings. Per-user (own authoring config).
+CREATE TABLE IF NOT EXISTS voice_profile (
+  user_id      UUID NOT NULL,
+  project_id   UUID NOT NULL,
+  entity_id    UUID NOT NULL,
+  entity_name  TEXT NOT NULL,
+  tags         JSONB NOT NULL DEFAULT '[]'::jsonb,
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, project_id, entity_id)
+);
 """
 
 # C23 down-migration (round-trip proof only — the live schema is idempotent-forward

@@ -25,6 +25,7 @@ from app.db.repositories.narrative_thread import NarrativeThreadRepo
 from app.db.repositories.outline import OutlineRepo
 from app.db.repositories.scene_links import SceneLinksRepo
 from app.db.repositories.structure_templates import StructureTemplatesRepo
+from app.db.repositories.style_voice import StyleProfileRepo, VoiceProfileRepo
 from app.db.repositories.works import WorksRepo
 
 
@@ -67,6 +68,17 @@ async def get_daily_progress_repo() -> DailyProgressRepo:
     """T4.2 — server-SSOT writing-progress stats (per-chapter word-count snapshots
     differenced into per-day authored words + streak + book total)."""
     return DailyProgressRepo(get_pool())
+
+
+async def get_style_profile_repo() -> StyleProfileRepo:
+    """T3.5 — per-scope Density/Pace prose-style steering. Resolved by pack() and
+    threaded into the draft prompts."""
+    return StyleProfileRepo(get_pool())
+
+
+async def get_voice_profile_repo() -> VoiceProfileRepo:
+    """T3.5 — per-character voice tags, injected by pack() for present entities."""
+    return VoiceProfileRepo(get_pool())
 
 
 async def get_generation_jobs_repo() -> GenerationJobsRepo:

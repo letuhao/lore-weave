@@ -106,7 +106,7 @@ def ctx(monkeypatch):
                           get_generation_jobs_repo, get_glossary_client_dep,
                           get_grounding_pins_repo, get_knowledge_client_dep, get_llm_client_dep,
                           get_narrative_thread_repo, get_outline_repo, get_scene_links_repo,
-                          get_works_repo)
+                          get_style_profile_repo, get_voice_profile_repo, get_works_repo)
     from app.middleware.jwt_auth import get_bearer_token, get_current_user
 
     works, outline, canon, jobs = StubWorks(), StubOutline(), StubCanon(), StubJobs()
@@ -121,6 +121,9 @@ def ctx(monkeypatch):
     app.dependency_overrides[get_narrative_thread_repo] = lambda: object()
     # T3.4: pack is patched in these tests, so the repo only needs to satisfy DI.
     app.dependency_overrides[get_grounding_pins_repo] = lambda: object()
+    # T3.5: same — style/voice repos only need to satisfy DI (pack is patched).
+    app.dependency_overrides[get_style_profile_repo] = lambda: object()
+    app.dependency_overrides[get_voice_profile_repo] = lambda: object()
     # C25 — derivatives repo (StubWorks returns non-derivative works → never read).
     app.dependency_overrides[get_derivatives_repo] = lambda: SimpleNamespace(
         list_overrides_for_work=lambda *a, **k: [])
@@ -158,6 +161,29 @@ def test_selection_edit_does_not_tag_the_scene_node(ctx):
     assert "the gate of ash rose" in captured["messages"][1]["content"]
     # T3.4 lock — selection_edit must thread grounding_pins_repo into pack.
     assert captured["pack_grounding_pins_repo"] not in (None, "__missing__")
+
+
+def test_selection_edit_threads_styled_profile(ctx, monkeypatch):
+    """T3.5 /review-impl lock: a selection edit builds its prompt from the PACK's
+    STYLED profile (density/pace/voice), not the neutral settings profile — the bug
+    was passing the from_settings profile to build_selection_messages instead of
+    pc.profile, silently dropping Style & Voice on rewrite/expand/describe."""
+    c, _, _, _, _, _, captured = ctx
+    from app.packer.profile import BookProfile
+
+    async def styled_pack(req, **kw):
+        return PackedContext(blocks={}, prompt="GROUNDING",
+                             profile=BookProfile(density_level=90),  # lush
+                             token_count=5, dropped_count=0, l4_dropped_no_position=0,
+                             grounding_available=True, over_budget=False,
+                             reinjected_promise_count=0, warnings=[])
+    monkeypatch.setattr("app.routers.engine.pack", styled_pack)
+    r = c.post(f"/v1/composition/works/{PROJECT}/selection-edit", json={
+        "operation": "rewrite", "selection": "x", "scene_context": str(NODE),
+        "model_source": "user_model", "model_ref": str(DRAFTER)})
+    assert r.status_code == 200
+    # the styled profile reached build_selection_messages → its directive is in the system msg
+    assert "lush" in captured["messages"][0]["content"].lower()
 
 
 def test_selection_edit_worker_enabled_enqueues_202(ctx, monkeypatch):

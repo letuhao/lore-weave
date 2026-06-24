@@ -17,7 +17,7 @@ from loreweave_llm.errors import LLMError
 from app.clients.eval_client import extract_judge_content
 from app.clients.llm_client import LLMClient
 from app.engine.select import _NO_THINK
-from app.packer.profile import BookProfile
+from app.packer.profile import BookProfile, style_directive
 
 logger = logging.getLogger(__name__)
 
@@ -75,13 +75,14 @@ async def stitch_chapter(
         f" Write the prose in the language with code '{profile.source_language}'."
     )
     voice = f" Match this voice: {profile.voice}." if profile.voice else ""
+    style = style_directive(profile)  # T3.5 — chapter-scoped density/pace
     system = (
         "You are a fiction editor merging consecutive scene drafts of ONE chapter "
         "into a single seamless chapter. Remove repeated introductions and echoed "
         "descriptions, smooth the transitions between scenes, and keep one "
         "continuous narrative. Change NO plot facts, events, or dialogue meaning — "
         "only restructure and de-duplicate the prose. Output ONLY the chapter prose."
-        + lang + voice
+        + lang + voice + style
     )
     intent = (chapter_intent or "").strip()
     user = (f"Chapter intent: {intent}\n\n" if intent else "") + "\n\n".join(
