@@ -36,6 +36,7 @@ import { CowriteBridgeButton } from '@/features/composition/components/CowriteBr
 import { SelectionToolbar } from '@/features/composition/components/SelectionToolbar';
 import { InlineAiLayer } from '@/features/composition/components/InlineAiLayer';
 import { useWorkResolution, useChapterScenes } from '@/features/composition/hooks/useWork';
+import { useReportProgress, useEnsureBaseline } from '@/features/composition/hooks/useProgress';
 import { useFocusMode } from '@/features/composition/hooks/useFocusMode';
 import { aiModelsApi } from '@/features/ai-models/api';
 import { useQuery } from '@tanstack/react-query';
@@ -158,6 +159,16 @@ export function ChapterEditorPage() {
       : workResolution.data?.status === 'candidates' ? (workResolution.data.candidates[0] ?? null)
         : null;
   const composeProjectId = composeWork?.project_id ?? null;
+  // T4.2 — report the chapter's word count to the progress SSOT on save (best-effort,
+  // accrues regardless of which sub-tab is open). `wcRef` keeps the live count fresh
+  // for the save callback (which doesn't depend on the per-render `wc`).
+  const reportProgress = useReportProgress(composeProjectId ?? undefined, accessToken);
+  const ensureBaseline = useEnsureBaseline(composeProjectId ?? undefined, accessToken);
+  const wcRef = useRef(0);
+  // T4.2 — the chapter's ON-DISK word count at load (NOT the live `wc`, which moves as
+  // you type). The baseline is captured from this so pre-existing content is the
+  // reference point, not a mid-session count.
+  const [loadedWordCount, setLoadedWordCount] = useState<number | null>(null);
   // C17 (WG-5) — "Continue from cursor" needs a model. Prefer the persisted per-Work
   // default; otherwise fall back to the SOLE registered chat model (same auto-pick
   // rule as the guided first-run — only when exactly one exists, never 0/≥2, and read
@@ -300,13 +311,16 @@ export function ChapterEditorPage() {
 
   const load = useCallback(async () => {
     if (!accessToken) return;
+    setLoadedWordCount(null); // clear the prior chapter's baseline count while loading
     try {
       const [draft, chapter] = await Promise.all([
         booksApi.getDraft(accessToken, bookId, chapterId),
         booksApi.getChapter(accessToken, bookId, chapterId),
       ]);
       setSavedBody(draft.body);
-      setTextContent(draft.text_content ?? '');
+      const loadedText = draft.text_content ?? '';
+      setTextContent(loadedText);
+      setLoadedWordCount(wordCount(loadedText)); // T4.2 — pre-existing count for the baseline
       setTiptapJson(null);
       setVersion(draft.draft_version);
       const chTitle = chapter.title ?? '';
@@ -427,13 +441,25 @@ export function ChapterEditorPage() {
       setSaveNote('');
       toast.success(t('saved'));
       setRevKey((k) => k + 1);
+      // T4.2 — snapshot the chapter's word count for today's progress (fire-and-forget
+      // inside the hook; a failure never reaches here / never disrupts the save).
+      reportProgress(chapterId, wcRef.current);
       await load();
     } catch (e) { toast.error((e as Error).message); }
     setSaving(false);
-  }, [accessToken, bookId, chapterId, tiptapJson, savedBody, saveNote, version, title, savedTitle, load]);
+  }, [accessToken, bookId, chapterId, tiptapJson, savedBody, saveNote, version, title, savedTitle, load, reportProgress]);
 
   // Keep ref current so auto-save always calls the latest version
   useEffect(() => { saveRef.current = save; }, [save]);
+
+  // T4.2 — seed the chapter's progress baseline once the Work is resolved and the
+  // chapter's on-disk content has loaded. SYNCHRONIZATION (server baseline ↔ loaded
+  // resource), not a user-action reaction. Server-side insert-once, so re-firing
+  // (e.g. when composeProjectId resolves after load) is a harmless no-op.
+  useEffect(() => {
+    if (!composeProjectId || loadedWordCount == null) return;
+    ensureBaseline(chapterId, loadedWordCount);
+  }, [composeProjectId, chapterId, loadedWordCount, ensureBaseline]);
 
   // ── Auto-save (5 minutes after last change) ─────────────────────────────
 
@@ -517,6 +543,7 @@ export function ChapterEditorPage() {
   // ── Stats ─────────────────────────────────────────────────────────────────
 
   const wc = wordCount(textContent);
+  wcRef.current = wc; // T4.2 — keep the live count fresh for the save-time progress report
   const charCount = textContent.length;
   const paraCount = textContent ? textContent.split(/\n\n+/).filter(Boolean).length : 0;
   const chapterLang = allChapters.find((c) => c.chapter_id === chapterId)?.original_language;

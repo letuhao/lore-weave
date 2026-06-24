@@ -160,6 +160,19 @@ export type PublishGate = {
   can_publish: boolean;
 };
 
+// T4.2 — server-SSOT writing progress for a Work. `sparkline` is a dense
+// 30-day [today-29 .. today] series (zero-filled); the panel slices 7/30.
+// `daily_goal` is null until the user sets one (read from work.settings).
+export type ProgressPoint = { date: string; words: number };
+export type ProgressStats = {
+  today: string;
+  today_words: number;
+  book_total: number;
+  daily_goal: number | null;
+  current_streak: number;
+  sparkline: ProgressPoint[];
+};
+
 // T3.4 — one addressable grounding item (present-entity / canon-rule / lore-source)
 // with its per-scene pin/exclude state. `id` is a stable canonical id (not a label).
 export type GroundingItemType = 'present' | 'canon' | 'lore';

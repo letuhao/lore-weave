@@ -34,6 +34,7 @@ import { useDerivativeContext } from '../hooks/useDerivativeContext';
 import { CanonRulesPanel } from './CanonRulesPanel';
 import { ThreadsPanel } from './ThreadsPanel';
 import { QualityPanel } from './QualityPanel';
+import { ProgressPanel } from './ProgressPanel';
 import { CompositionSettingsView } from './CompositionSettingsView';
 
 type Props = {
@@ -47,7 +48,7 @@ type Props = {
   onSceneChange?: (id: string) => void;
 };
 
-type SubTab = 'compose' | 'cowriter' | 'assemble' | 'planner' | 'beats' | 'graph' | 'cast' | 'relmap' | 'timeline' | 'arc' | 'worldmap' | 'grounding' | 'canon' | 'threads' | 'quality' | 'settings';
+type SubTab = 'compose' | 'cowriter' | 'assemble' | 'planner' | 'beats' | 'graph' | 'cast' | 'relmap' | 'timeline' | 'arc' | 'worldmap' | 'grounding' | 'canon' | 'threads' | 'progress' | 'quality' | 'settings';
 
 export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: sceneIdProp, onSceneChange }: Props) {
   const { t } = useTranslation('composition');
@@ -438,7 +439,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
         testid="composition-subtabs"
         className="flex gap-1 overflow-x-auto border-b border-neutral-200 px-2 pt-1 text-sm dark:border-neutral-700"
       >
-        {(['compose', 'cowriter', 'assemble', 'planner', 'beats', 'graph', 'cast', 'relmap', 'timeline', 'arc', 'worldmap', 'grounding', 'canon', ...(threadsEnabled ? ['threads' as const] : []), 'quality', 'settings'] as SubTab[]).map((tb) => (
+        {(['compose', 'cowriter', 'assemble', 'planner', 'beats', 'graph', 'cast', 'relmap', 'timeline', 'arc', 'worldmap', 'grounding', 'canon', ...(threadsEnabled ? ['threads' as const] : []), 'progress', 'quality', 'settings'] as SubTab[]).map((tb) => (
           <button
             key={tb}
             data-testid={`composition-subtab-${tb}`}
@@ -559,6 +560,9 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
             <ThreadsPanel projectId={work.project_id} token={token} enabled={threadsEnabled} />
           </div>
         )}
+        <div className={tab === 'progress' ? '' : 'hidden'}>
+          <ProgressPanel projectId={work.project_id} bookId={bookId} settings={work.settings} token={token} />
+        </div>
         <div className={tab === 'quality' ? '' : 'hidden'}>
           <QualityPanel projectId={work.project_id} token={token} />
         </div>

@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import os
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import asyncpg
 import pytest
@@ -22,6 +22,7 @@ from app.db.models import DivergenceSpec, EntityOverride
 from app.db.repositories import ReferenceViolationError, VersionMismatchError
 from app.db.repositories import outbox
 from app.db.repositories.canon_rules import CanonRulesRepo
+from app.db.repositories.daily_progress import DailyProgressRepo
 from app.db.repositories.derivatives import DerivativesRepo
 from app.db.repositories.generation_corrections import GenerationCorrectionsRepo
 from app.db.repositories.generation_jobs import GenerationJobsRepo
@@ -39,6 +40,8 @@ pytestmark = pytest.mark.skipif(
 )
 
 _TABLES = [
+    "composition_daily_progress",
+    "composition_progress_baseline",
     "scene_grounding_pins",
     "outbox_events", "generation_correction", "generation_job", "narrative_thread",
     "canon_rule", "scene_link", "outline_node", "structure_template",
@@ -1417,3 +1420,114 @@ async def test_narrative_thread_node_delete_sets_null(pool):
         await c.execute("DELETE FROM outline_node WHERE id = $1", node)
     after = (await repo.list_for_project(user, project))[0]
     assert after.id == t.id and after.opened_at_node is None
+
+
+# ─────────────────────── daily_progress (T4.2) ───────────────────────
+
+async def test_daily_progress_diff_streak_and_book_total(pool):
+    """Snapshot-differencing model: the FIRST snapshot of a chapter is a baseline
+    (0 authored), later snapshots count their positive delta, a deletion clamps to
+    0, the book total is the sum of each chapter's latest snapshot, and a re-report
+    the same (chapter, date) overwrites that day's snapshot (idempotent upsert)."""
+    repo = DailyProgressRepo(pool)
+    user, project, _ = _ids()
+    chA, chB = uuid.uuid4(), uuid.uuid4()
+    d20, d21, d22 = date(2026, 6, 20), date(2026, 6, 21), date(2026, 6, 22)
+
+    # chapter A: baseline 500 (pre-existing) -> 800 (+300) -> 750 (deleted 50)
+    await repo.report(user, project, chA, 500, d20)
+    await repo.report(user, project, chA, 800, d21)
+    await repo.report(user, project, chA, 750, d22)
+    # chapter B: first appears on d21 at 100 (baseline, 0 authored) -> 250 (+150)
+    await repo.report(user, project, chB, 100, d21)
+    await repo.report(user, project, chB, 250, d22)
+
+    agg = await repo.read_aggregate(user, project, d22)
+    by_date = dict(agg.day_words)
+    # d20: A baseline -> 0
+    assert by_date[d20] == 0
+    # d21: A +300, B baseline 0 -> 300
+    assert by_date[d21] == 300
+    # d22: A delta -50 clamps to 0, B +150 -> 150
+    assert by_date[d22] == 150
+    # book total = latest snapshot per chapter = A:750 + B:250
+    assert agg.book_total == 1000
+
+
+async def test_daily_progress_report_is_idempotent_per_date(pool):
+    """Re-reporting the same (chapter, date) overwrites — never double-counts."""
+    repo = DailyProgressRepo(pool)
+    user, project, _ = _ids()
+    ch = uuid.uuid4()
+    d = date(2026, 6, 24)
+    await repo.report(user, project, ch, 100, d)
+    await repo.report(user, project, ch, 900, d)  # same day, corrected count
+    agg = await repo.read_aggregate(user, project, d)
+    # one baseline row for the day -> 0 authored, book total reflects the LATEST value
+    assert dict(agg.day_words).get(d, 0) == 0
+    assert agg.book_total == 900
+
+
+async def test_daily_progress_anchor_excludes_future_dates_and_isolates_user(pool):
+    """`on_or_before` clips future-dated snapshots (clock skew) and the read is
+    per-user (another user's words never leak into the aggregate)."""
+    repo = DailyProgressRepo(pool)
+    user, project, _ = _ids()
+    ch = uuid.uuid4()
+    await repo.report(user, project, ch, 200, date(2026, 6, 20))
+    await repo.report(user, project, ch, 400, date(2026, 6, 25))  # "future" vs anchor
+    agg = await repo.read_aggregate(user, project, date(2026, 6, 22))
+    assert agg.book_total == 200  # the 25th is excluded
+    # cross-user isolation
+    other = await repo.read_aggregate(uuid.uuid4(), project, date(2026, 6, 25))
+    assert other.book_total == 0 and other.day_words == []
+
+
+async def test_daily_progress_baseline_excludes_preexisting_counts_deltas(pool):
+    """An EXISTING chapter baselined at its pre-existing count: its first daily
+    snapshot counts only the NEW words (no enablement spike), book total is current."""
+    repo = DailyProgressRepo(pool)
+    user, project, _ = _ids()
+    ch = uuid.uuid4()
+    await repo.ensure_baseline(user, project, ch, 5000)   # pre-existing on open
+    await repo.report(user, project, ch, 5200, date(2026, 6, 24))  # wrote 200 today
+    agg = await repo.read_aggregate(user, project, date(2026, 6, 24))
+    assert dict(agg.day_words)[date(2026, 6, 24)] == 200  # 5200-5000, NOT 5200
+    assert agg.book_total == 5200
+
+
+async def test_daily_progress_new_chapter_baselined_zero_counts_fully(pool):
+    """A NEW chapter (opened at ~0 words → baseline 0): its first day counts FULLY."""
+    repo = DailyProgressRepo(pool)
+    user, project, _ = _ids()
+    ch = uuid.uuid4()
+    await repo.ensure_baseline(user, project, ch, 0)
+    await repo.report(user, project, ch, 300, date(2026, 6, 24))
+    agg = await repo.read_aggregate(user, project, date(2026, 6, 24))
+    assert dict(agg.day_words)[date(2026, 6, 24)] == 300  # all 300 count
+    assert agg.book_total == 300
+
+
+async def test_daily_progress_baseline_is_insert_once(pool):
+    """Re-opening a chapter must NOT reset the baseline (would erase progress)."""
+    repo = DailyProgressRepo(pool)
+    user, project, _ = _ids()
+    ch = uuid.uuid4()
+    await repo.ensure_baseline(user, project, ch, 1000)
+    await repo.ensure_baseline(user, project, ch, 9999)  # later re-open — ignored
+    await repo.report(user, project, ch, 1100, date(2026, 6, 24))
+    agg = await repo.read_aggregate(user, project, date(2026, 6, 24))
+    assert dict(agg.day_words)[date(2026, 6, 24)] == 100  # 1100-1000 (baseline stayed)
+
+
+async def test_daily_progress_book_total_includes_unwritten_baseline(pool):
+    """A chapter opened (baselined) but not yet written this window still counts
+    toward the book total at its baseline value."""
+    repo = DailyProgressRepo(pool)
+    user, project, _ = _ids()
+    ch_written, ch_opened = uuid.uuid4(), uuid.uuid4()
+    await repo.ensure_baseline(user, project, ch_written, 2000)
+    await repo.report(user, project, ch_written, 2100, date(2026, 6, 24))
+    await repo.ensure_baseline(user, project, ch_opened, 500)  # opened, not written
+    agg = await repo.read_aggregate(user, project, date(2026, 6, 24))
+    assert agg.book_total == 2600  # 2100 (written latest) + 500 (opened baseline)

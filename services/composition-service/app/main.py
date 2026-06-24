@@ -34,7 +34,7 @@ from app.mcp.server import build_mcp_app, mcp_server
 from app.middleware.trace_id import TraceIdMiddleware
 from app.routers import (
     actions, approve, canon, engine, grounding, health, internal_eval, internal_job_control,
-    metrics, narrative_threads, outline, ping, plan, prose, works,
+    metrics, narrative_threads, outline, ping, plan, progress, prose, works,
 )
 
 logger = logging.getLogger(__name__)
@@ -171,6 +171,7 @@ app.include_router(works.router)
 app.include_router(prose.router)
 app.include_router(approve.router)
 app.include_router(grounding.router)
+app.include_router(progress.router)  # LOOM T4.2 — writing-progress stats
 app.include_router(engine.router)
 app.include_router(outline.router)
 app.include_router(plan.router)

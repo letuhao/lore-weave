@@ -11,7 +11,7 @@ import { CompositionPanel } from '../CompositionPanel';
 // edit state survives. We mock each sub-panel to (a) drop a stable testid and
 // (b) bump a per-panel MOUNT counter on mount; a remount (the bug) would bump it.
 
-const mounts = vi.hoisted(() => ({ compose: 0, cowriter: 0, assemble: 0, planner: 0, beats: 0, graph: 0, cast: 0, relmap: 0, timeline: 0, arc: 0, worldmap: 0, grounding: 0, canon: 0, quality: 0, settings: 0 }));
+const mounts = vi.hoisted(() => ({ compose: 0, cowriter: 0, assemble: 0, planner: 0, beats: 0, graph: 0, cast: 0, relmap: 0, timeline: 0, arc: 0, worldmap: 0, grounding: 0, canon: 0, progress: 0, quality: 0, settings: 0 }));
 
 function mockPanel(name: keyof typeof mounts) {
   return function Mock() {
@@ -35,6 +35,7 @@ vi.mock('../CharacterArcView', () => ({ CharacterArcView: mockPanel('arc') }));
 vi.mock('../WorldMap', () => ({ WorldMap: mockPanel('worldmap') }));
 vi.mock('../GroundingPanel', () => ({ GroundingPanel: mockPanel('grounding') }));
 vi.mock('../CanonRulesPanel', () => ({ CanonRulesPanel: mockPanel('canon') }));
+vi.mock('../ProgressPanel', () => ({ ProgressPanel: mockPanel('progress') }));
 vi.mock('../QualityPanel', () => ({ QualityPanel: mockPanel('quality') }));
 vi.mock('../CompositionSettingsView', () => ({ CompositionSettingsView: mockPanel('settings') }));
 
@@ -52,7 +53,7 @@ vi.mock('../../../ai-models/api', () => ({
 }));
 
 beforeEach(() => {
-  mounts.compose = mounts.cowriter = mounts.assemble = mounts.planner = mounts.beats = mounts.graph = mounts.cast = mounts.relmap = mounts.timeline = mounts.arc = mounts.worldmap = mounts.grounding = mounts.canon = mounts.quality = mounts.settings = 0;
+  mounts.compose = mounts.cowriter = mounts.assemble = mounts.planner = mounts.beats = mounts.graph = mounts.cast = mounts.relmap = mounts.timeline = mounts.arc = mounts.worldmap = mounts.grounding = mounts.canon = mounts.progress = mounts.quality = mounts.settings = 0;
 });
 
 function renderPanel(initialEntries: string[] = ['/books/b']) {
@@ -69,9 +70,9 @@ function renderPanel(initialEntries: string[] = ['/books/b']) {
 const wrapperOf = (name: string) => screen.getByTestId(`mock-${name}`).parentElement;
 
 describe('CompositionPanel sub-tab CSS-hidden (visibility-transition)', () => {
-  it('mounts ALL fifteen sub-panels (none ternary-unmounted), only the active one visible', () => {
+  it('mounts ALL sixteen sub-panels (none ternary-unmounted), only the active one visible', () => {
     renderPanel();
-    for (const name of ['compose', 'cowriter', 'assemble', 'planner', 'beats', 'graph', 'cast', 'relmap', 'timeline', 'arc', 'worldmap', 'grounding', 'canon', 'quality', 'settings']) {
+    for (const name of ['compose', 'cowriter', 'assemble', 'planner', 'beats', 'graph', 'cast', 'relmap', 'timeline', 'arc', 'worldmap', 'grounding', 'canon', 'progress', 'quality', 'settings']) {
       expect(screen.getByTestId(`mock-${name}`)).toBeInTheDocument();
     }
     // compose is the default tab → visible; the rest (incl. planner) carry `hidden`.

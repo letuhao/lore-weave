@@ -4,7 +4,7 @@
 import { apiBase, apiJson } from '../../api';
 import type {
   AutoGeneration, CanonRule, ChapterGeneration, CommitDecomposePayload, CorrectionBody, CorrectionStats,
-  DecomposePreview, DeriveBody, GenerationJob, Grounding, GroundingItemType, NarrativeThread, OutlineNode, PinAction, PublishGate, SceneLink, SceneLinkKind, StructureTemplate, Work, WorkResolution,
+  DecomposePreview, DeriveBody, GenerationJob, Grounding, GroundingItemType, NarrativeThread, OutlineNode, PinAction, ProgressStats, PublishGate, SceneLink, SceneLinkKind, StructureTemplate, Work, WorkResolution,
 } from './types';
 
 // A3 decompose preview request (cycle 13).
@@ -216,6 +216,29 @@ export const compositionApi = {
   getGrounding(projectId: string, nodeId: string, guide: string, token: string): Promise<Grounding> {
     const qs = guide ? `?guide=${encodeURIComponent(guide)}` : '';
     return apiJson(`${BASE}/works/${projectId}/scenes/${nodeId}/grounding${qs}`, { token });
+  },
+  // T4.2 — server-SSOT writing progress. `today` is the client's LOCAL date
+  // (YYYY-MM-DD) so streaks honor the writer's midnight, not UTC.
+  getProgress(projectId: string, today: string, token: string): Promise<ProgressStats> {
+    return apiJson(`${BASE}/works/${projectId}/progress?today=${encodeURIComponent(today)}`, { token });
+  },
+  // T4.2 — report the active chapter's current total word count (a snapshot keyed
+  // to the local date). Idempotent per (chapter, date). Fired best-effort on save.
+  reportProgress(
+    projectId: string, body: { chapter_id: string; words: number; date: string }, token: string,
+  ): Promise<{ ok: boolean; date: string; words: number }> {
+    return apiJson(`${BASE}/works/${projectId}/progress/report`, {
+      method: 'POST', body: JSON.stringify(body), token,
+    });
+  },
+  // T4.2 — capture a chapter's PRE-EXISTING word count the first time it's opened
+  // (insert-once server-side) so its first daily snapshot counts only NEW words.
+  baselineProgress(
+    projectId: string, body: { chapter_id: string; words: number }, token: string,
+  ): Promise<{ ok: boolean }> {
+    return apiJson(`${BASE}/works/${projectId}/progress/baseline`, {
+      method: 'POST', body: JSON.stringify(body), token,
+    });
   },
   // T3.4 — pin / exclude / clear ('none') one addressable grounding item for a scene.
   setGroundingPin(

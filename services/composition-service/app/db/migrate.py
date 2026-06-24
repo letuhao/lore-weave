@@ -389,6 +389,46 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_scene_grounding_pins_item
   ON scene_grounding_pins(project_id, outline_node_id, item_type, item_id);
 CREATE INDEX IF NOT EXISTS idx_scene_grounding_pins_scene
   ON scene_grounding_pins(user_id, project_id, outline_node_id);
+
+-- ── composition_daily_progress: LOOM T4.2 — server-SSOT writing progress stats.
+-- One row per (work, chapter, local-date): `words` is the chapter's TOTAL word
+-- count as last reported on that local date (a SNAPSHOT, NOT a delta) — the client
+-- reports the active chapter's current word count on save, keyed to its LOCAL date
+-- (PO 2026-06-24: snapshot/server-differenced for multi-device correctness). The
+-- per-day authored count is then DERIVED server-side by differencing successive
+-- snapshots; the per-chapter book total = the sum of each chapter's latest snapshot.
+-- PK(user,project,chapter,date) ⇒ the report upsert is IDEMPOTENT per local date
+-- (a re-save the same day overwrites that day's snapshot, last-write-wins). `words`
+-- is the user's OWN studio stat (per-user predicate everywhere) — no cross-tenant read.
+CREATE TABLE IF NOT EXISTS composition_daily_progress (
+  user_id        UUID NOT NULL,
+  project_id     UUID NOT NULL,
+  chapter_id     UUID NOT NULL,
+  snapshot_date  DATE NOT NULL,
+  words          INT  NOT NULL CHECK (words >= 0),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, project_id, chapter_id, snapshot_date)
+);
+-- the windowed read (day-words diff + book total) scans by (work, date) across chapters
+CREATE INDEX IF NOT EXISTS idx_comp_daily_progress_work_date
+  ON composition_daily_progress(user_id, project_id, snapshot_date);
+
+-- ── composition_progress_baseline: LOOM T4.2 — the per-chapter PRE-EXISTING word
+-- count captured the FIRST time a chapter is opened after progress tracking starts.
+-- It is the reference point the chapter's first daily snapshot diffs against, so a
+-- chapter's pre-existing content is NOT counted as "written today" (no enablement
+-- spike) while a brand-new chapter (opened at ~0 words) baselines at ~0 and so its
+-- writing counts fully from word one. Captured ONCE per chapter (the report upsert is
+-- ON CONFLICT DO NOTHING — re-opening a chapter must NOT reset the baseline to its now
+-- larger count, which would erase recorded progress). Per-user (own studio stat).
+CREATE TABLE IF NOT EXISTS composition_progress_baseline (
+  user_id     UUID NOT NULL,
+  project_id  UUID NOT NULL,
+  chapter_id  UUID NOT NULL,
+  words       INT  NOT NULL CHECK (words >= 0),
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, project_id, chapter_id)
+);
 """
 
 # C23 down-migration (round-trip proof only — the live schema is idempotent-forward
