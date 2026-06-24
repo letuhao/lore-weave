@@ -262,6 +262,52 @@ def test_explicit_language_param_skips_reader_pref(mock_embed, mock_find):
 @patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
 @patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
+def test_malformed_language_falls_through_to_reader_pref(mock_embed, mock_find):
+    """/review-impl LOW — a malformed ?language= is IGNORED and resolution falls
+    through to the stored reader-pref, instead of silently disabling the boost."""
+    mock_embed.return_value = [0.1] * 1024
+    mock_find.return_value = [_passage_hit()]
+    client, _, book_client = _make_client()
+    book_client.get_reader_language = AsyncMock(return_value="vi")
+    resp = client.get(_url("hybrid") + "&language=english")  # fails the tag shape
+    assert resp.status_code == 200
+    book_client.get_reader_language.assert_awaited_once()
+
+
+@patch("app.routers.public.raw_search.detect_primary_language")
+@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
+def test_short_query_skips_language_detection(mock_embed, mock_find, mock_detect):
+    """/review-impl LOW — a too-short query can't reliably detect a language, so
+    detection is skipped (no mis-boost). No explicit param, no stored pref."""
+    mock_embed.return_value = [0.1] * 1024
+    mock_find.return_value = [_passage_hit()]
+    client, _, book_client = _make_client()
+    book_client.get_reader_language = AsyncMock(return_value=None)
+    resp = client.get(f"/v1/knowledge/books/{_BOOK}/search?query=Dr&mode=hybrid")
+    assert resp.status_code == 200
+    mock_detect.assert_not_called()
+
+
+@patch("app.routers.public.raw_search.detect_primary_language", return_value="en")
+@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
+def test_long_query_uses_language_detection(mock_embed, mock_find, mock_detect):
+    """A query long enough to detect reliably DOES fall through to detection."""
+    mock_embed.return_value = [0.1] * 1024
+    mock_find.return_value = [_passage_hit()]
+    client, _, book_client = _make_client()
+    book_client.get_reader_language = AsyncMock(return_value=None)
+    resp = client.get(f"/v1/knowledge/books/{_BOOK}/search?query=Dracula castle journey&mode=hybrid")
+    assert resp.status_code == 200
+    mock_detect.assert_called_once()
+
+
+@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_dim_mismatch_degrades_to_lexical(mock_embed, mock_find):
     mock_embed.return_value = [0.1] * 1536  # user changed model out-of-band
     mock_find.side_effect = ValueError("query_vector length 1536 does not match dim 1024")

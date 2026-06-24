@@ -13,6 +13,7 @@ never a 500 on a partial outage (spec §3.4–3.5).
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 from uuid import UUID
 
@@ -53,6 +54,14 @@ router = APIRouter(
 
 RAW_SEARCH_MAX_LIMIT = 100
 RAW_SEARCH_QUERY_MAX_LENGTH = 1000
+
+# KG-ML M4 — a lenient BCP-47-ish shape for the optional ?language= hint (mirrors
+# book-service M3 langTagRe). A malformed value is IGNORED (falls through to the
+# stored reader-language) rather than silently disabling the boost — /review-impl
+# LOW. Query-language auto-detection (the last resolver tier) is only trusted for
+# queries long enough to detect reliably, so a 1–2 char query can't mis-boost.
+_LANG_TAG_RE = re.compile(r"^[A-Za-z]{2,3}(-[A-Za-z0-9]{1,8})*$")
+_MIN_QUERY_CHARS_FOR_DETECT = 8
 
 
 class RawSearchResponse(BaseModel):
@@ -116,14 +125,18 @@ async def search_book(
         "all" if (surface == "all" and caller == project.user_id) else "canon"
     )
 
-    # KG-ML M4 (D5/DD6) — resolve the reader-language for the soft boost:
-    # explicit ?language= → the CALLER's stored reader-language (M3) → the
-    # detected query language → None (no boost). It's the SEARCHER's preference
-    # (caller), not the resolved-to-owner project user.
+    # KG-ML M4 (D5) — resolve the reader-language for the soft boost:
+    # explicit ?language= (well-formed) → the CALLER's stored reader-language
+    # (M3) → the detected query language (long queries only) → None (no boost).
+    # It's the SEARCHER's preference (caller), not the resolved-to-owner project
+    # user. A malformed explicit hint is ignored so it falls through rather than
+    # silently disabling the boost (/review-impl LOW).
     pref_lang = (language or "").strip() or None
+    if pref_lang and not _LANG_TAG_RE.match(pref_lang):
+        pref_lang = None
     if pref_lang is None:
         pref_lang = await book_client.get_reader_language(book_id, caller)
-    if pref_lang is None:
+    if pref_lang is None and len(q) >= _MIN_QUERY_CHARS_FOR_DETECT:
         detected = detect_primary_language(q)
         pref_lang = detected if detected and detected != "mixed" else None
 
