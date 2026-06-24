@@ -259,9 +259,11 @@
     "keyless": "keyless",
     "no_endpoint": "no endpoint",
     "no_model": "no model",
+    "test": "Test",
     "activate_aria": "Activate service",
     "deactivate_aria": "Deactivate service",
     "delete_aria": "Delete {{name}}",
+    "edit_aria": "Edit {{name}}",
     "type": {
       "web_search": {
         "label": "Web Search",
@@ -273,7 +275,7 @@
       "title": "Add External Service",
       "type": "Service",
       "endpoint": "Endpoint URL",
-      "endpoint_hint": "The service base URL — provider-registry calls it server-side.",
+      "endpoint_hint": "The service base URL — provider-registry calls it server-side. For a service on the host machine use host.docker.internal, NOT localhost (inside the container, localhost is the container itself).",
       "key": "API Key",
       "key_ph": "Bearer token",
       "key_ph_keyless": "Leave empty for a keyless local service",
@@ -287,12 +289,28 @@
       "submit": "Add Service",
       "adding": "Adding…"
     },
+    "edit_dialog": {
+      "aria": "Edit external service",
+      "title": "Edit {{name}}",
+      "endpoint": "Endpoint URL",
+      "key": "API Key",
+      "key_ph_keep": "Leave empty to keep the current key",
+      "key_keep_hint": "Leave empty to keep the existing key.",
+      "cancel": "Cancel",
+      "submit": "Save",
+      "saving": "Saving…"
+    },
     "toast": {
       "added": "{{name}} added",
       "add_failed": "Failed to add service",
+      "updated": "Service updated",
+      "update_failed": "Failed to update service",
       "removed": "Service removed",
       "remove_failed": "Failed to remove service",
-      "toggle_failed": "Failed to toggle service"
+      "toggle_failed": "Failed to toggle service",
+      "verify_ok": "Service reachable ({{ms}}ms)",
+      "verify_failed": "Verify failed: {{error}}",
+      "unknown_error": "unknown error"
     }
   },
   "tags": {

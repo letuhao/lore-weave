@@ -259,9 +259,11 @@
     "keyless": "không khóa",
     "no_endpoint": "chưa có endpoint",
     "no_model": "thiếu model",
+    "test": "Kiểm tra",
     "activate_aria": "Bật dịch vụ",
     "deactivate_aria": "Tắt dịch vụ",
     "delete_aria": "Xóa {{name}}",
+    "edit_aria": "Sửa {{name}}",
     "type": {
       "web_search": {
         "label": "Tìm kiếm web",
@@ -273,7 +275,7 @@
       "title": "Thêm dịch vụ ngoài",
       "type": "Dịch vụ",
       "endpoint": "Endpoint URL",
-      "endpoint_hint": "URL gốc của dịch vụ — provider-registry gọi phía server.",
+      "endpoint_hint": "URL gốc của dịch vụ — provider-registry gọi phía server. Nếu dịch vụ chạy trên máy host, dùng host.docker.internal, KHÔNG dùng localhost (trong container, localhost là chính container).",
       "key": "API Key",
       "key_ph": "Bearer token",
       "key_ph_keyless": "Để trống nếu dịch vụ local không cần khóa",
@@ -287,12 +289,28 @@
       "submit": "Thêm dịch vụ",
       "adding": "Đang thêm…"
     },
+    "edit_dialog": {
+      "aria": "Sửa dịch vụ ngoài",
+      "title": "Sửa {{name}}",
+      "endpoint": "Endpoint URL",
+      "key": "API Key",
+      "key_ph_keep": "Để trống để giữ khóa hiện tại",
+      "key_keep_hint": "Để trống để giữ nguyên khóa đang dùng.",
+      "cancel": "Hủy",
+      "submit": "Lưu",
+      "saving": "Đang lưu…"
+    },
     "toast": {
       "added": "Đã thêm {{name}}",
       "add_failed": "Thêm dịch vụ thất bại",
+      "updated": "Đã cập nhật dịch vụ",
+      "update_failed": "Cập nhật dịch vụ thất bại",
       "removed": "Đã xóa dịch vụ",
       "remove_failed": "Xóa dịch vụ thất bại",
-      "toggle_failed": "Bật/tắt dịch vụ thất bại"
+      "toggle_failed": "Bật/tắt dịch vụ thất bại",
+      "verify_ok": "Dịch vụ phản hồi ({{ms}}ms)",
+      "verify_failed": "Kiểm tra thất bại: {{error}}",
+      "unknown_error": "lỗi không xác định"
     }
   },
   "tags": {

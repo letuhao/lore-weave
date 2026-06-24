@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, Search, Globe, Trash2, Loader2 } from 'lucide-react';
+import { Plus, Search, Globe, Zap, Pencil, Trash2, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/auth';
 import { providerApi, type ProviderCredential, type UserModel } from './api';
 import { AddServiceModal } from './AddServiceModal';
+import { EditServiceModal } from './EditServiceModal';
 import { getServiceType } from './serviceCatalog';
 
 type Props = {
@@ -30,7 +31,9 @@ export function ExternalServicesCard({ providers, models, onChanged }: Props) {
   const { t } = useTranslation('settings');
   const { accessToken } = useAuth();
   const [showAdd, setShowAdd] = useState(false);
+  const [editProvider, setEditProvider] = useState<ProviderCredential | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [verifyingId, setVerifyingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   async function handleToggle(model: UserModel) {
@@ -46,11 +49,27 @@ export function ExternalServicesCard({ providers, models, onChanged }: Props) {
     }
   }
 
-  // No "Test"/verify action here: provider-registry's verify endpoint has no
-  // web_search case — keyless services fail its empty-secret guard, keyed ones
-  // fall through to a meaningless chat ping. A failing Test would mislead users
-  // into thinking a correctly-configured service is broken. Verification is the
-  // real deep-research run. (Deferred: BE web_search verify — see SESSION_HANDOFF.)
+  // Test = a real /search "ping" through provider-registry's web_search-aware
+  // verify (keyless-tolerant). Surfaces the common misconfig the old generic
+  // chat-ping could not — an endpoint unreachable from inside the container
+  // (e.g. `localhost` instead of `host.docker.internal`).
+  async function handleVerify(model: UserModel) {
+    if (!accessToken || verifyingId) return;
+    setVerifyingId(model.user_model_id);
+    try {
+      const res = await providerApi.verifyUserModel(accessToken, model.user_model_id);
+      if (res.verified) {
+        toast.success(t('services.toast.verify_ok', { ms: res.latency_ms }));
+      } else {
+        toast.error(t('services.toast.verify_failed', { error: res.error ?? t('services.toast.unknown_error') }));
+      }
+    } catch {
+      toast.error(t('services.toast.verify_failed', { error: t('services.toast.unknown_error') }));
+    } finally {
+      setVerifyingId(null);
+    }
+  }
+
   async function handleDelete(provider: ProviderCredential, provModels: UserModel[]) {
     if (!accessToken || deletingId) return;
     setDeletingId(provider.provider_credential_id);
@@ -118,24 +137,41 @@ export function ExternalServicesCard({ providers, models, onChanged }: Props) {
                 </div>
 
                 {model ? (
-                  <button
-                    onClick={() => handleToggle(model)}
-                    disabled={togglingId === model.user_model_id}
-                    aria-label={model.is_active ? t('services.deactivate_aria') : t('services.activate_aria')}
-                    className={cn(
-                      'relative h-5 w-9 flex-shrink-0 rounded-full transition-colors disabled:opacity-50',
-                      model.is_active ? 'bg-green-500' : 'bg-secondary',
-                    )}
-                  >
-                    <span className={cn(
-                      'absolute top-0.5 h-4 w-4 rounded-full bg-foreground transition-[left]',
-                      model.is_active ? 'left-[18px]' : 'left-0.5',
-                    )} />
-                  </button>
+                  <>
+                    <button
+                      onClick={() => handleToggle(model)}
+                      disabled={togglingId === model.user_model_id}
+                      aria-label={model.is_active ? t('services.deactivate_aria') : t('services.activate_aria')}
+                      className={cn(
+                        'relative h-5 w-9 flex-shrink-0 rounded-full transition-colors disabled:opacity-50',
+                        model.is_active ? 'bg-green-500' : 'bg-secondary',
+                      )}
+                    >
+                      <span className={cn(
+                        'absolute top-0.5 h-4 w-4 rounded-full bg-foreground transition-[left]',
+                        model.is_active ? 'left-[18px]' : 'left-0.5',
+                      )} />
+                    </button>
+                    <button
+                      onClick={() => handleVerify(model)}
+                      disabled={verifyingId === model.user_model_id}
+                      className="flex items-center gap-1 rounded bg-green-500/10 px-2 py-1 text-[10px] font-medium text-green-400 transition-colors hover:bg-green-500/20 disabled:opacity-50"
+                    >
+                      {verifyingId === model.user_model_id ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : <Zap className="h-2.5 w-2.5" />}
+                      {t('services.test')}
+                    </button>
+                  </>
                 ) : (
                   <span className="text-[10px] text-destructive">{t('services.no_model')}</span>
                 )}
 
+                <button
+                  onClick={() => setEditProvider(prov)}
+                  aria-label={t('services.edit_aria', { name: prov.display_name })}
+                  className="rounded p-1 text-muted-foreground/60 transition-colors hover:bg-secondary hover:text-foreground"
+                >
+                  <Pencil className="h-3 w-3" />
+                </button>
                 <button
                   onClick={() => handleDelete(prov, provModels)}
                   disabled={deletingId === prov.provider_credential_id}
@@ -151,6 +187,14 @@ export function ExternalServicesCard({ providers, models, onChanged }: Props) {
       )}
 
       {showAdd && <AddServiceModal onClose={() => setShowAdd(false)} onAdded={onChanged} />}
+      {editProvider && (
+        <EditServiceModal
+          provider={editProvider}
+          model={models.find((m) => m.provider_credential_id === editProvider.provider_credential_id)}
+          onClose={() => setEditProvider(null)}
+          onUpdated={onChanged}
+        />
+      )}
     </div>
   );
 }

@@ -67,6 +67,22 @@ describe('ConfirmCard', () => {
     await waitFor(() => expect(submitToolResult).toHaveBeenCalledWith('r1', 'c1', 'token_expired'));
   });
 
+  it('surfaces the BE 422 reason instead of a blanket "Expired — re-ask"', async () => {
+    confirmAction.mockRejectedValue(
+      Object.assign(new Error('the book ontology must be adopted before adding kinds'), { status: 422 }),
+    );
+    render(<ConfirmCard record={record(delArgs)} />);
+
+    fireEvent.click(screen.getByText('actionConfirm.confirm'));
+
+    // The actionable BE message is shown — NOT the generic expired_short key.
+    await waitFor(() =>
+      expect(screen.getByText('the book ontology must be adopted before adding kinds')).toBeInTheDocument(),
+    );
+    expect(screen.queryByText('actionConfirm.expired_short')).not.toBeInTheDocument();
+    expect(submitToolResult).toHaveBeenCalledWith('r1', 'c1', 'token_expired');
+  });
+
   it('cancel resumes cancelled without a confirm POST', async () => {
     render(<ConfirmCard record={record(delArgs)} />);
 

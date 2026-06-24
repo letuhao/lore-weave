@@ -37,6 +37,9 @@ export function ConfirmCard({ record }: Props) {
   const [state, setState] = useState<CardState>(null);
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState<ActionPreview | null>(null);
+  // The BE's actionable reason for a 422 (e.g. "the book ontology must be adopted
+  // before adding kinds"), surfaced instead of a blanket "Expired — re-ask".
+  const [detail, setDetail] = useState('');
 
   const args = (record.args ?? {}) as ConfirmArgs;
   const token = args.confirm_token ?? '';
@@ -82,10 +85,16 @@ export function ConfirmCard({ record }: Props) {
     } catch (err) {
       const status = (err as { status?: number }).status;
       if (status === 422) {
-        // expired, already-confirmed (single-use), or drift — all re-proposable.
+        // expired, already-confirmed (single-use), or a precondition drift — all
+        // re-proposable. Surface the BE's actionable reason instead of a blanket
+        // "expired"; the card used to collapse EVERY 422 to "expired", hiding WHY
+        // (e.g. "the book ontology must be adopted before adding kinds").
         outcome = 'token_expired';
         setState('expired');
-        toast.error(t('actionConfirm.expired', { defaultValue: 'This confirmation is no longer valid — ask again to propose it afresh.' }));
+        const msg = (err as Error).message;
+        const meaningful = !!msg && msg !== 'Unprocessable Entity';
+        setDetail(meaningful ? msg : '');
+        toast.error(meaningful ? msg : t('actionConfirm.expired', { defaultValue: 'This confirmation is no longer valid — ask again to propose it afresh.' }));
       } else {
         outcome = 'action_error';
         setState('error');
@@ -161,7 +170,7 @@ export function ConfirmCard({ record }: Props) {
       ) : (
         <div className="mt-1.5 text-[10px] text-muted-foreground">
           {state === 'done' && t('actionConfirm.done', { defaultValue: 'Done ✓' })}
-          {state === 'expired' && t('actionConfirm.expired_short', { defaultValue: 'Expired — re-ask' })}
+          {state === 'expired' && (detail || t('actionConfirm.expired_short', { defaultValue: 'Expired — re-ask' }))}
           {state === 'error' && t('actionConfirm.error_short', { defaultValue: 'Failed' })}
           {state === 'cancelled' && t('actionConfirm.cancelled', { defaultValue: 'Cancelled' })}
         </div>

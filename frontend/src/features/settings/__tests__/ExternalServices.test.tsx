@@ -14,6 +14,9 @@ const createUserModelMock = vi.fn();
 const deleteProviderMock = vi.fn();
 const deleteUserModelMock = vi.fn();
 const patchActivationMock = vi.fn();
+const verifyUserModelMock = vi.fn();
+const patchProviderMock = vi.fn();
+const patchUserModelMock = vi.fn();
 
 vi.mock('../api', async (orig) => {
   const actual = await orig<typeof import('../api')>();
@@ -26,12 +29,16 @@ vi.mock('../api', async (orig) => {
       deleteProvider: (...a: unknown[]) => deleteProviderMock(...a),
       deleteUserModel: (...a: unknown[]) => deleteUserModelMock(...a),
       patchActivation: (...a: unknown[]) => patchActivationMock(...a),
+      verifyUserModel: (...a: unknown[]) => verifyUserModelMock(...a),
+      patchProvider: (...a: unknown[]) => patchProviderMock(...a),
+      patchUserModel: (...a: unknown[]) => patchUserModelMock(...a),
     },
   };
 });
 
 import { AddServiceModal } from '../AddServiceModal';
 import { ExternalServicesCard } from '../ExternalServicesCard';
+import { EditServiceModal } from '../EditServiceModal';
 
 const SERVICE_PROVIDER = {
   provider_credential_id: 'pc1',
@@ -62,6 +69,9 @@ beforeEach(() => {
   deleteProviderMock.mockReset();
   deleteUserModelMock.mockReset();
   patchActivationMock.mockReset();
+  verifyUserModelMock.mockReset();
+  patchProviderMock.mockReset();
+  patchUserModelMock.mockReset();
 });
 
 describe('AddServiceModal', () => {
@@ -136,5 +146,51 @@ describe('ExternalServicesCard', () => {
     await waitFor(() => expect(deleteProviderMock).toHaveBeenCalledWith('tok-test', 'pc1'));
     expect(deleteUserModelMock).toHaveBeenCalledWith('tok-test', 'um1');
     expect(onChanged).toHaveBeenCalled();
+  });
+
+  it('tests a service via verifyUserModel (the connection ping)', async () => {
+    verifyUserModelMock.mockResolvedValue({ verified: true, latency_ms: 12, capability: 'web_search', result_count: 1 });
+    render(<ExternalServicesCard providers={[SERVICE_PROVIDER]} models={[SERVICE_MODEL]} onChanged={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: 'services.test' }));
+    await waitFor(() => expect(verifyUserModelMock).toHaveBeenCalledWith('tok-test', 'um1'));
+  });
+
+  it('opens the edit modal for a service', () => {
+    render(<ExternalServicesCard providers={[SERVICE_PROVIDER]} models={[SERVICE_MODEL]} onChanged={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: 'services.edit_aria' }));
+    // EditServiceModal pre-fills the endpoint from the credential.
+    expect(screen.getByDisplayValue('http://ws:8090')).toBeInTheDocument();
+  });
+});
+
+describe('EditServiceModal', () => {
+  it('patches the credential endpoint when it changes (the localhost fix path)', async () => {
+    patchProviderMock.mockResolvedValue({});
+    const onUpdated = vi.fn();
+    render(<EditServiceModal provider={SERVICE_PROVIDER} model={SERVICE_MODEL} onClose={() => {}} onUpdated={onUpdated} />);
+
+    fireEvent.change(screen.getByDisplayValue('http://ws:8090'), {
+      target: { value: 'http://host.docker.internal:15487' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'services.edit_dialog.submit' }));
+
+    await waitFor(() => expect(patchProviderMock).toHaveBeenCalled());
+    expect(patchProviderMock).toHaveBeenCalledWith(
+      'tok-test',
+      'pc1',
+      expect.objectContaining({ endpoint_base_url: 'http://host.docker.internal:15487' }),
+    );
+    expect(onUpdated).toHaveBeenCalled();
+  });
+
+  it('does NOT send a secret when the key field is left empty (never blanks the key)', async () => {
+    patchProviderMock.mockResolvedValue({});
+    render(<EditServiceModal provider={SERVICE_PROVIDER} model={SERVICE_MODEL} onClose={() => {}} onUpdated={() => {}} />);
+
+    fireEvent.change(screen.getByDisplayValue('http://ws:8090'), { target: { value: 'http://x' } });
+    fireEvent.click(screen.getByRole('button', { name: 'services.edit_dialog.submit' }));
+
+    await waitFor(() => expect(patchProviderMock).toHaveBeenCalled());
+    expect(patchProviderMock.mock.calls[0][2]).not.toHaveProperty('secret');
   });
 });
