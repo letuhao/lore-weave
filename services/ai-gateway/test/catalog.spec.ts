@@ -3,6 +3,7 @@ import { ProviderConfig } from '../src/config/config.js';
 
 const knowledge: ProviderConfig = { name: 'knowledge', mcpUrl: 'http://k/mcp' };
 const glossary: ProviderConfig = { name: 'glossary', mcpUrl: 'http://g/mcp' };
+const book: ProviderConfig = { name: 'book', mcpUrl: 'http://b/mcp', prefix: 'book_' };
 
 const tool = (name: string, schema: unknown = { type: 'object' }) => ({
   name,
@@ -58,5 +59,70 @@ describe('computeCatalog', () => {
     const c = computeCatalog([]);
     expect(c.toolList).toEqual([]);
     expect(c.partial).toBe(false);
+    expect(c.providers).toEqual([]);
+  });
+
+  it('drops + warns a mis-prefixed tool, keeps the correctly-prefixed one (C-GW)', () => {
+    const warn = jest.fn();
+    const c = computeCatalog(
+      [{ provider: book, tools: [tool('book_create'), tool('memory_search')] }],
+      warn,
+    );
+    expect(c.toolList.map((t) => t.name)).toEqual(['book_create']);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('memory_search'));
+  });
+
+  it('keeps tools matching ANY of a provider\'s prefixes (memory_ + kg_) — drops the rest (HIGH-1)', () => {
+    const warn = jest.fn();
+    const knowledgeMulti: ProviderConfig = {
+      name: 'knowledge',
+      mcpUrl: 'http://k/mcp',
+      prefix: 'memory_',
+      extraPrefixes: ['kg_'],
+    };
+    const c = computeCatalog(
+      [
+        {
+          provider: knowledgeMulti,
+          tools: [tool('memory_search'), tool('kg_graph_query'), tool('kg_schema_edit'), tool('glossary_x')],
+        },
+      ],
+      warn,
+    );
+    // both namespaces survive; the foreign-namespace tool is dropped + warned
+    expect(c.toolList.map((t) => t.name)).toEqual(['kg_graph_query', 'kg_schema_edit', 'memory_search']);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('glossary_x'));
+  });
+
+  it('an admin provider declaring kg_ keeps kg_admin_* tools (MED-2 mechanism)', () => {
+    const knowledgeAdmin: ProviderConfig = {
+      name: 'knowledge-admin',
+      mcpUrl: 'http://k/mcp/admin',
+      prefix: 'kg_',
+    };
+    const c = computeCatalog(
+      [{ provider: knowledgeAdmin, tools: [tool('kg_admin_template_read'), tool('kg_admin_propose_template')] }],
+      jest.fn(),
+    );
+    expect(c.toolList.map((t) => t.name)).toEqual(['kg_admin_propose_template', 'kg_admin_template_read']);
+  });
+
+  it('does not police a provider with no prefix (legacy/unmapped)', () => {
+    const c = computeCatalog([{ provider: knowledge, tools: [tool('anything_goes')] }], jest.fn());
+    expect(c.toolList.map((t) => t.name)).toEqual(['anything_goes']);
+  });
+
+  it('reports per-provider availability — a down provider reads available:false (H10)', () => {
+    const c = computeCatalog([
+      { provider: knowledge, tools: [tool('memory_search')] },
+      { provider: glossary, error: new Error('down') },
+    ]);
+    expect(c.providers).toEqual([
+      { name: 'knowledge', available: true },
+      { name: 'glossary', available: false },
+    ]);
+    expect(c.partial).toBe(true);
   });
 });

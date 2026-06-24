@@ -1,0 +1,44 @@
+# L7.A migration-domain admin commands — RAID cycle 36 DPS 4.
+# CONSOLIDATES cycle 6 migration-orchestrator CLI under the unified `admin` binary.
+
+domain: migration
+commands:
+  - name: migration up
+    version: "1.0.0"
+    summary: "Apply pending migrations to a target DB (CONSOLIDATED cycle 6)."
+    handler: migrationUp
+    params:
+      - {name: scope,  type: enum,   required: true, description: "meta|per-reality"}
+      - {name: target, type: string, required: false, description: "Target migration ID (default latest)"}
+      - {name: reason, type: string, required: true,  description: "Audit explanation"}
+    impact_class: tier-1-destructive
+    dry_run_required: true
+    double_approval_required: true
+    carry_forward_cycle: "6"
+    locked_qs_consumed: [Q-L7A-1, Q-L7A-2]
+
+  - name: migration down
+    version: "1.0.0"
+    summary: "Roll back the last migration on a target DB (CONSOLIDATED cycle 6)."
+    handler: migrationDown
+    params:
+      - {name: scope,  type: enum,   required: true, description: "meta|per-reality"}
+      - {name: target, type: string, required: true, description: "Target migration ID"}
+      - {name: reason, type: string, required: true, description: "Audit explanation"}
+    impact_class: tier-1-destructive
+    dry_run_required: true
+    double_approval_required: true
+    carry_forward_cycle: "6"
+    locked_qs_consumed: [Q-L7A-1, Q-L7A-2]
+
+  - name: migration status
+    version: "1.0.0"
+    summary: "Print migration state per DB (informational; CONSOLIDATED cycle 6)."
+    handler: migrationStatus
+    params:
+      - {name: scope, type: enum, required: false, description: "meta|per-reality|all (default all)"}
+    impact_class: tier-3-informational
+    dry_run_required: false
+    double_approval_required: false
+    carry_forward_cycle: "6"
+    locked_qs_consumed: [Q-L7A-1, Q-L7A-2]

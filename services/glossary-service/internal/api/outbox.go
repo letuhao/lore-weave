@@ -171,6 +171,7 @@ type wikiCorrectedPayload struct {
 	BookID                string `json:"book_id"`
 	ArticleID             string `json:"article_id"`
 	EntityID              string `json:"entity_id"`
+	UserID                string `json:"user_id"` // the owner who edited (learning's correction owner)
 	PriorGenerationStatus string `json:"prior_generation_status"` // generated | needs_review | blocked
 	EmittedAt             string `json:"emitted_at"`
 }
@@ -204,7 +205,8 @@ type wikiSuggestionReviewedPayload struct {
 	BookID         string `json:"book_id"`
 	ArticleID      string `json:"article_id"`
 	SuggestionID   string `json:"suggestion_id"`
-	Action         string `json:"action"` // "accept" | "reject"
+	UserID         string `json:"user_id"` // the owner who reviewed (learning's score owner)
+	Action         string `json:"action"`  // "accept" | "reject"
 	WasAIGenerated bool   `json:"was_ai_generated"`
 	EmittedAt      string `json:"emitted_at"`
 }
@@ -377,7 +379,7 @@ func loadEntityEventFields(
 	err := q.QueryRow(ctx, `
 		SELECT e.cached_name, e.cached_aliases, e.short_description, k.code
 		FROM glossary_entities e
-		JOIN entity_kinds k ON k.kind_id = e.kind_id
+		JOIN book_kinds k ON k.book_kind_id = e.kind_id
 		WHERE e.entity_id = $1`,
 		entityID,
 	).Scan(&cachedName, &cachedAlias, &shortDescDB, &kindCode)

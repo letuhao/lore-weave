@@ -60,8 +60,7 @@ from app.jobs.events import LORE_ENRICHMENT_RESUME_STREAM, make_redis_producer
 from app.jobs.job_request import save_job_request
 from app.api.license_assert import resolve_asserted_license
 from app.api.uploads import fetch_upload
-from app.compose.intent import IntentResolutionError, resolve_intent
-from app.generation.complete import CompletionSeamError, make_complete_fn
+from app.compose.compose_task import create_compose_task, enqueue_compose_task
 from app.jobs.proposal_store import PgProposalStore
 from app.retrieval.store import SourceCorpusStore
 from app.strategies.base import Technique
@@ -141,7 +140,7 @@ class ComposeBody(BaseModel):
     # output config (shared with auto-enrich). draft FORCES compose_draft; gap may
     # pick retrieval/fabrication/recook (gate-enforced downstream).
     technique: str | None = None
-    max_spend_usd: float | None = Field(default=None, ge=0.0)
+    max_spend_tokens: float | None = Field(default=None, ge=0.0)
     eval_reserve_fraction: float = Field(default=0.15, ge=0.0, lt=1.0)
     top_k: int = Field(default=5, ge=1, le=20)
 
@@ -298,7 +297,7 @@ async def _create_and_enqueue(
         book_id=str(body.book_id),
         technique=technique,
         entity_kind=entity_kind,
-        max_spend=body.max_spend_usd,
+        max_spend=body.max_spend_tokens,
         estimated_cost=0.0,
     )
     request: dict = {
@@ -311,7 +310,7 @@ async def _create_and_enqueue(
         "technique": technique,
         "top_k": body.top_k,
         "eval_reserve_fraction": body.eval_reserve_fraction,
-        "max_spend_usd": body.max_spend_usd,
+        "max_spend_tokens": body.max_spend_tokens,
         "entity_kind": entity_kind,
         "targets": targets,
         "user_id": user_id,
@@ -684,7 +683,7 @@ class ResolveIntentBody(BaseModel):
     generation_model_ref: UUID
 
 
-@router.post("/{project_id}/compose/resolve-intent")
+@router.post("/{project_id}/compose/resolve-intent", status_code=status.HTTP_202_ACCEPTED)
 async def compose_resolve_intent(
     project_id: UUID,
     body: ResolveIntentBody,
@@ -692,47 +691,34 @@ async def compose_resolve_intent(
     pool: asyncpg.Pool = Depends(get_db),
 ) -> dict:
     """Mode B step 1 (F5): resolve a free-text intent → a PROPOSED target + dimensions
-    + technique + rationale via ONE LLM call. Synchronous, NO job created. The FE shows
-    the result, lets the author edit/confirm, then POSTs a normal /compose with
-    input_source='intent' + the confirmed target — so a mis-resolved target is never
-    silently enriched."""
+    + technique + rationale via ONE LLM call.
+
+    Phase 3 M2 — OFF the request path: creates a 'pending' compose task + enqueues a
+    resume-stream trigger, returns 202 + task_id. The resume worker runs the resolver
+    (model by BYOK model_ref); GET /v1/lore-enrichment/compose-tasks/{task_id} polls.
+    The FE shows the resolved result, lets the author edit/confirm, then POSTs a normal
+    /compose with input_source='intent' + the confirmed target — so a mis-resolved
+    target is never silently enriched. Unmetered (one resolver call, no cost cap)."""
     if principal.user_id is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="auth required")
 
-    profile = await get_book_profile(pool, body.book_id)
-    client = GlossaryClient(
-        base_url=settings.glossary_service_url,
-        internal_token=settings.internal_service_token,
+    task_id = await create_compose_task(
+        pool,
+        kind="intent_resolve",
+        user_id=str(principal.user_id),
+        project_id=str(project_id),
+        book_id=str(body.book_id),
+        request={
+            "user_id": str(principal.user_id),
+            "project_id": str(project_id),
+            "book_id": str(body.book_id),
+            "intent_text": body.intent_text,
+            "generation_model_ref": str(body.generation_model_ref),
+        },
     )
-    try:
-        # Cap at 200 (review-impl #4, accepted): an advisory hint to the resolver, not
-        # a correctness boundary — the author confirms/edits the target before any run.
-        ents = await client.list_entities(book_id=body.book_id, limit=200)
-    except (GlossaryServiceError, Exception):  # noqa: BLE001 — best-effort; resolver can still propose new
-        ents = []
-    finally:
-        await client.aclose()
-    entities = [{"name": e.name, "kind": e.kind} for e in ents]
-
-    # Unmetered (review-impl #3, accepted): one resolver LLM call, no cost cap —
-    # consistent with the profile-suggest precedent (BYOK self-limiting, owner-gated).
-    complete = make_complete_fn(
-        provider_registry_base_url=settings.provider_registry_internal_url,
-        internal_token=settings.internal_service_token,
+    enqueued = await enqueue_compose_task(
+        task_id=task_id, kind="intent_resolve",
+        user_id=str(principal.user_id), project_id=str(project_id),
     )
-    try:
-        resolved = await resolve_intent(
-            complete=complete,
-            intent_text=body.intent_text,
-            entities=entities,
-            profile=profile,
-            user_id=str(principal.user_id),
-            project_id=str(project_id),
-            model_ref=str(body.generation_model_ref),
-        )
-    except CompletionSeamError as exc:
-        code = status.HTTP_503_SERVICE_UNAVAILABLE if exc.retryable else status.HTTP_502_BAD_GATEWAY
-        raise HTTPException(status_code=code, detail=f"intent resolver LLM failed: {exc}")
-    except IntentResolutionError as exc:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"intent resolver produced unusable output: {exc}")
-    return resolved.as_dict()
+    return {"task_id": task_id, "status": "pending",
+            "enqueued": "ok" if enqueued else "retriggerable"}

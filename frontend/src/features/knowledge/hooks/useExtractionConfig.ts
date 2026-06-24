@@ -16,10 +16,11 @@ import {
 
 // B2-C controller for the per-novel extraction-tuning panel.
 //
-// Surfaces only the FULLY-WIRED levers: precision filter (enabled / categories
-// / partial-policy), entity recovery (enabled), and per-op raw system prompts.
-// `writer_autocreate` and the model-ref overrides are deliberately NOT exposed
-// (resolved BE-side but not yet applied / need a provider-registry picker).
+// Surfaces the FULLY-WIRED levers: precision filter (enabled / categories /
+// partial-policy / model), entity recovery (enabled), and per-op raw system
+// prompts. The precision-filter MODEL is now exposed via a provider-registry
+// picker (D-WX-PRECISION-FILTER-MODEL-ARCH — it used to come from a hardcoded
+// platform env UUID that 404'd cross-tenant); empty = reuse the extraction model.
 //
 // PUT-replace contract: the BE replaces extraction_config wholesale, so on save
 // we READ-MODIFY-WRITE — start from the project's existing config (preserving
@@ -31,6 +32,9 @@ interface Draft {
   filterEnabled: boolean;
   filterCategories: FilterCategory[];
   filterPartialPolicy: PartialPolicy;
+  // Precision-filter model: a provider-registry user_model_id, or null = reuse
+  // the extraction model (the BE resolves the fallback per-user). NEVER an env model.
+  filterModelRef: string | null;
   recoveryEnabled: boolean;
   autocreateEnabled: boolean;
   prompts: Record<PromptOp, string>; // per-op system text ('' = no override)
@@ -59,6 +63,7 @@ function deriveDraft(config: Record<string, unknown>): Draft {
       ? (pf.categories as FilterCategory[])
       : ALL_CATEGORIES,
     filterPartialPolicy: pf.partial_policy === 'drop' ? 'drop' : 'keep',
+    filterModelRef: typeof pf.model_ref === 'string' ? pf.model_ref : null,
     recoveryEnabled: er.enabled === true,
     autocreateEnabled: ac.enabled === true,
     prompts,
@@ -106,12 +111,22 @@ export function useExtractionConfig(project: Project, open: boolean, onChanged: 
       ...(project.extraction_config as ExtractionConfigPayload),
     };
     if (draft.filterEnabled) {
-      payload.precision_filter = {
+      const pf: Record<string, unknown> = {
         ...asRecord(project.extraction_config.precision_filter),
         enabled: true,
         categories: draft.filterCategories,
         partial_policy: draft.filterPartialPolicy,
       };
+      // Explicit per-user filter model, or clear it so the BE reuses the
+      // extraction model (D-WX-PRECISION-FILTER-MODEL-ARCH — never an env model).
+      if (draft.filterModelRef) {
+        pf.model_ref = draft.filterModelRef;
+        pf.model_source = 'user_model';
+      } else {
+        delete pf.model_ref;
+        delete pf.model_source;
+      }
+      payload.precision_filter = pf as ExtractionConfigPayload['precision_filter'];
     } else {
       // Explicit disable so the BE turns the filter OFF for this project.
       payload.precision_filter = { enabled: false };

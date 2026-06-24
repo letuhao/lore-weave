@@ -41,6 +41,7 @@ from app.services.stream_service import (
     _Usage,
     _parse_tool_args,
     _reassemble_tool_calls,
+    _stream_via_gateway,
     _stream_with_tools,
 )
 from tests.conftest import TEST_MODEL_REF, TEST_SESSION_ID, TEST_USER_ID
@@ -103,7 +104,11 @@ class _FakeClient:
         self.requests: list = []
         self._call_index = 0
         self.closed = False
+        self.cancelled: list = []  # M3 — stream_job_ids cancelled on disconnect
         _FakeClient.instances.append(self)
+
+    async def cancel_job(self, job_id):
+        self.cancelled.append(str(job_id))
 
     def stream(self, request):
         self.requests.append(request)
@@ -142,6 +147,44 @@ async def _drain(gen) -> list[dict]:
     async for c in gen:
         out.append(c)
     return out
+
+
+# ── M3 (chat disconnect-cancel) ──────────────────────────────────────────────
+
+
+async def test_via_gateway_mints_job_id_and_disconnect_uses_cascade():
+    """A stream aborted mid-flight (consumer aclose → GeneratorExit) unwinds to the
+    helper's aclose() — the SILENT cascade frees the slot + finalizes the row. Chat
+    must NOT issue an explicit DELETE (that path notifies → 'Chat cancelled' spam)."""
+    scripts = [[tok("hel"), tok("lo"), usage(1, 2), done()]]
+    with _patch_client(scripts):
+        gen = _stream_via_gateway(
+            "user_model", str(TEST_MODEL_REF), str(TEST_USER_ID),
+            [{"role": "user", "content": "hi"}], {},
+        )
+        first = await gen.__anext__()
+        assert first["content"] == "hel"
+        await gen.aclose()  # client disconnected mid-stream
+    client = _FakeClient.instances[0]
+    assert client.requests[0].stream_job_id, "stream_job_id must be minted + sent"
+    assert client.closed, "aclose must run (the cascade that finalizes the row)"
+    assert client.cancelled == [], "no explicit DELETE on disconnect (no notify spam)"
+
+
+async def test_via_gateway_mints_job_id_on_natural_completion():
+    """A completed stream mints + sends the id (so the observability row exists)
+    and issues no explicit cancel."""
+    scripts = [[tok("hi"), usage(1, 1), done()]]
+    with _patch_client(scripts):
+        out = await _drain(_stream_via_gateway(
+            "user_model", str(TEST_MODEL_REF), str(TEST_USER_ID),
+            [{"role": "user", "content": "hi"}], {},
+        ))
+    client = _FakeClient.instances[0]
+    assert client.requests[0].stream_job_id  # minted (row exists)
+    assert client.cancelled == []
+    assert client.closed
+    assert out[-1]["finish_reason"] == "stop"
 
 
 def _run(

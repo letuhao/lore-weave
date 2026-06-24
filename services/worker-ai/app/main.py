@@ -29,7 +29,7 @@ from app.runner import (
     hydrate_precision_filter_config_from_redis,
     poll_and_run,
 )
-from app.summary_consumer import consume_summary_stream
+from app.summary_consumer import SummaryConsumer
 from app.wake import WakeWaiter
 
 logger = logging.getLogger("worker-ai")
@@ -140,15 +140,64 @@ async def main() -> None:
     # half-running state).
     coroutines = [_job_poll_loop()]
     if settings.summary_consumer_enabled:
-        coroutines.append(consume_summary_stream(
+        _summary_consumer = SummaryConsumer(
+            settings.redis_url,
             knowledge_client,
-            redis_url=settings.redis_url,
             consumer_group=settings.summary_consumer_group,
             consumer_name=settings.summary_consumer_name,
             block_ms=settings.summary_consumer_block_ms,
-        ))
+        )
+        coroutines.append(_summary_consumer.run())
     else:
         logger.info("summary consumer disabled via config")
+
+    # LLM re-arch Phase 2b WX-T3b — decoupled-extraction terminal-event consumer.
+    # Started only when the decouple flag is on (inert otherwise — no decoupled
+    # chunks exist so every event would ack+ignore). Drives entity→trio→persist off
+    # loreweave:events:llm_job_terminal for chapters the runner released.
+    if settings.extraction_decouple_enabled and settings.redis_url:
+        _extract_consumer_name = f"{settings.summary_consumer_name}-extract"
+        if settings.extraction_consumer_use_sdk:
+            # Unified Job Control Plane P1 — the migrated path on the shared base. Same
+            # group/consumer_name (PEL continuity) + the verbatim fold/sweep; flip only
+            # after a live extraction E2E (money-path, default OFF).
+            from app.llm_extract_consumer import ExtractTerminalConsumer
+            _extract_consumer = ExtractTerminalConsumer(
+                settings.redis_url, pool, knowledge_client, llm_client,
+                consumer_name=_extract_consumer_name,
+                block_ms=settings.summary_consumer_block_ms,
+            )
+            coroutines.append(_extract_consumer.run())
+            logger.info("WX-T3b: decoupled-extraction consumer started (SDK base)")
+            if settings.extraction_resume_sweep_interval_s > 0:
+                coroutines.append(_extract_consumer.run_sweeper(
+                    interval_s=settings.extraction_resume_sweep_interval_s,
+                    timeout_s=settings.extraction_resume_sweep_timeout_s,
+                    batch=settings.extraction_resume_sweep_batch,
+                ))
+                logger.info("WX Wave 1b: decoupled-extraction resume sweeper started (SDK base)")
+        else:
+            from app.llm_extract_consumer import (
+                consume_llm_terminal_stream,
+                run_resume_sweeper,
+            )
+            coroutines.append(consume_llm_terminal_stream(
+                pool, knowledge_client, llm_client,
+                redis_url=settings.redis_url,
+                consumer_name=_extract_consumer_name,
+                block_ms=settings.summary_consumer_block_ms,
+            ))
+            logger.info("WX-T3b: decoupled-extraction consumer started")
+            # WX Wave 1b — the stuck-resume sweeper (runtime backstop for a stranded
+            # resume_state: consumer poison, lost terminal event, or a submit→persist gap).
+            if settings.extraction_resume_sweep_interval_s > 0:
+                coroutines.append(run_resume_sweeper(
+                    pool, knowledge_client, llm_client,
+                    interval_s=settings.extraction_resume_sweep_interval_s,
+                    timeout_s=settings.extraction_resume_sweep_timeout_s,
+                    batch=settings.extraction_resume_sweep_batch,
+                ))
+                logger.info("WX Wave 1b: decoupled-extraction resume sweeper started")
 
     # Cycle 73f — runtime filter config reload. Subscribes to Redis
     # pubsub; on each signal, re-reads the Redis config key + atomically

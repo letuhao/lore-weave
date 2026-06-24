@@ -100,6 +100,9 @@ class _FakeReport:
     def passes_thresholds(self) -> bool:
         return True
 
+    def gate_failures(self) -> list[str]:
+        return []
+
 
 class _FakeAsyncRunner:
     """Returned by ``AsyncBenchmarkRunner`` patch — captures the ``runs``

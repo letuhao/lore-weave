@@ -49,7 +49,13 @@ from loreweave_extraction.canonical import (
 )
 from loreweave_extraction.errors import ExtractionError
 from loreweave_extraction.extractors.entity import LLMEntityCandidate
-from loreweave_extraction.prompts import apply_prompt_override, load_prompt
+from loreweave_extraction.prompts import (
+    append_schema_constraints,
+    apply_prompt_override,
+    load_prompt,
+)
+from loreweave_extraction.reasoning_wire import reasoning_wire_fields
+from loreweave_extraction.schema_projection import ExtractionSchema
 
 __all__ = [
     "LLMRelationCandidate",
@@ -156,8 +162,17 @@ async def extract_relations(
     on_dropped: DroppedHandler | None = None,
     context_budget: "ContextBudget | None" = None,
     prompt_override_system: str | None = None,
+    schema: ExtractionSchema | None = None,
+    # D-KG-WORKER-GRADED-EFFORT — graded reasoning effort (default "none" ⇒ off).
+    reasoning_effort: str = "none",
 ) -> list[LLMRelationCandidate]:
     """Extract relations from *text* via the user's BYOK LLM.
+
+    ``schema`` (lane LB): ``None`` (default — worker-ai + translation never pass
+    it) keeps the historical free-string predicate behavior + byte-identical
+    prompt. A non-None schema injects its ``edge_predicates`` into the prompt;
+    when ``schema.allow_free_edges`` is False the edge set is CLOSED — off-vocab
+    predicates are dropped (fail-soft) + reported via ``on_dropped``.
 
     Args:
         text: chapter or passage text. Empty/whitespace returns ``[]``
@@ -187,13 +202,8 @@ async def extract_relations(
     if not text or not text.strip():
         return []
 
-    safe_known = json.dumps(
-        known_entities, ensure_ascii=False
-    ).replace("{", "{{").replace("}", "}}")
-
-    system_prompt = apply_prompt_override(
-        load_prompt("relation_system", known_entities=safe_known),
-        prompt_override_system,
+    system_prompt = build_relation_system(
+        known_entities, prompt_override_system, schema=schema,
     )
     raw_relations = await _extract_via_llm_client(
         llm_client=llm_client,
@@ -205,6 +215,7 @@ async def extract_relations(
         text=text,
         on_dropped=on_dropped,
         context_budget=context_budget,
+        reasoning_effort=reasoning_effort,
     )
 
     return _postprocess(
@@ -213,6 +224,8 @@ async def extract_relations(
         known_entities=known_entities,
         user_id=user_id,
         project_id=project_id,
+        schema=schema,
+        on_dropped=on_dropped,
     )
 
 
@@ -230,6 +243,7 @@ async def _extract_via_llm_client(
     text: str,
     on_dropped: DroppedHandler | None,
     context_budget: ContextBudget | None = None,
+    reasoning_effort: str = "none",
 ) -> list[_LLMRelation]:
     """Submit relation_extraction job + wait_terminal + tolerant-parse
     `result.relations`. Mirrors entity extractor's SDK path:
@@ -239,41 +253,14 @@ async def _extract_via_llm_client(
       - Cancelled job raises ExtractionError(stage='cancelled')
       - Tolerant parser drops items missing required fields
     """
-    if context_budget is not None:
-        sys_tokens = estimate_text_tokens(system_prompt)
-        chunk_size = context_budget.max_paragraphs_per_chunk(
-            system_prompt_tokens=sys_tokens, lang="auto",
-        )
-    else:
-        chunk_size = 15
+    kwargs = build_relation_submit_kwargs(
+        system_prompt=system_prompt, text=text, model_source=model_source,
+        model_ref=model_ref, project_id=project_id, context_budget=context_budget,
+        reasoning_effort=reasoning_effort,
+    )
     try:
         job = await llm_client.submit_and_wait(
-            user_id=user_id,
-            operation="relation_extraction",
-            model_source=model_source,
-            model_ref=model_ref,
-            input={
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": text},
-                ],
-                "response_format": {"type": "text"},
-                "temperature": 0.0,
-                # See entity.py for rationale (LM Studio KV-cache slot
-                # OOM when extractors don't cap max_tokens — server
-                # reserves full model_ctx per slot, R+E+F gather × 3
-                # slots overflows GPU VRAM).
-                "max_tokens": (
-                    context_budget.max_output_tokens
-                    if context_budget is not None else 4096
-                ),
-            },
-            chunking=ChunkingConfig(strategy="paragraphs", size=chunk_size),
-            job_meta={
-                "extractor": "relation",
-                "project_id": project_id or "",
-            },
-            transient_retry_budget=1,
+            user_id=user_id, transient_retry_budget=1, **kwargs,
         )
     except LLMTransientRetryNeededError as exc:
         raise ExtractionError(
@@ -288,6 +275,62 @@ async def _extract_via_llm_client(
             last_error=exc,
         ) from exc
 
+    return parse_relation_job(job, on_dropped=on_dropped)
+
+
+# ── Decouple seams (LLM re-arch Phase 2b WX-T2) — see entity.py ─────
+
+
+def build_relation_submit_kwargs(
+    *,
+    system_prompt: str,
+    text: str,
+    model_source: Literal["user_model", "platform_model"],
+    model_ref: str,
+    project_id: str | None,
+    context_budget: ContextBudget | None = None,
+    # D-KG-WORKER-GRADED-EFFORT — see build_entity_submit_kwargs.
+    reasoning_effort: str = "none",
+) -> dict[str, Any]:
+    """Pure: submit_and_wait / submit_job kwargs for a relation_extraction job."""
+    if context_budget is not None:
+        sys_tokens = estimate_text_tokens(system_prompt)
+        chunk_size = context_budget.max_paragraphs_per_chunk(
+            system_prompt_tokens=sys_tokens, lang="auto",
+        )
+    else:
+        chunk_size = 15
+    return dict(
+        operation="relation_extraction",
+        model_source=model_source,
+        model_ref=model_ref,
+        input={
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": text},
+            ],
+            "response_format": {"type": "text"},
+            "temperature": 0.0,
+            # See entity.py for rationale (LM Studio KV-cache slot OOM).
+            "max_tokens": (
+                context_budget.max_output_tokens
+                if context_budget is not None else 4096
+            ),
+            # D-KG-WORKER-GRADED-EFFORT — graded effort wire fields ({} default).
+            **reasoning_wire_fields(reasoning_effort),
+        },
+        chunking=ChunkingConfig(strategy="paragraphs", size=chunk_size),
+        job_meta={
+            "extractor": "relation",
+            "project_id": project_id or "",
+        },
+    )
+
+
+def parse_relation_job(
+    job: Any, *, on_dropped: DroppedHandler | None,
+) -> list[_LLMRelation]:
+    """Pure: validate the terminal Job + tolerant-parse `result.relations`."""
     if job.status == "cancelled":
         raise ExtractionError(
             f"relation_extraction job cancelled (job_id={job.job_id})",
@@ -300,13 +343,42 @@ async def _extract_via_llm_client(
             f"relation_extraction job ended status={job.status} code={err_code}: {err_msg}",
             stage="provider",
         )
-
     raw_items: list[Any] = []
     if job.result is not None:
         items = job.result.get("relations", [])
         if isinstance(items, list):
             raw_items = items
     return _tolerant_parse_relations(raw_items, on_dropped=on_dropped)
+
+
+def build_relation_system(
+    known_entities: list[str], prompt_override_system: str | None = None,
+    *, schema: ExtractionSchema | None = None,
+) -> str:
+    """Pure: the relation system prompt (WX-T2d).
+
+    ``schema=None`` → byte-identical static prompt. A non-None schema appends
+    the project's edge-predicate vocab (+ closed-set note when
+    ``allow_free_edges`` is False) before override-contract logic (lane LB)."""
+    safe_known = json.dumps(known_entities, ensure_ascii=False).replace("{", "{{").replace("}", "}}")
+    default_system = append_schema_constraints(
+        load_prompt("relation_system", known_entities=safe_known), "relation", schema,
+    )
+    return apply_prompt_override(default_system, prompt_override_system)
+
+
+def apply_relation_job(
+    job: Any, *, on_dropped: DroppedHandler | None,
+    entities: list, known_entities: list[str], user_id: str, project_id: str | None,
+    schema: ExtractionSchema | None = None,
+) -> list[LLMRelationCandidate]:
+    """Parse + postprocess a relation terminal Job (WX-T2d)."""
+    return _postprocess(
+        parse_relation_job(job, on_dropped=on_dropped),
+        entities=entities, known_entities=known_entities,
+        user_id=user_id, project_id=project_id, schema=schema,
+        on_dropped=on_dropped,
+    )
 
 
 def _tolerant_parse_relations(
@@ -393,6 +465,16 @@ def _resolve_entity(
     return None
 
 
+def _closed_edge_vocab(schema: ExtractionSchema | None) -> frozenset[str] | None:
+    """The normalized closed-edge predicate set, or None when off-vocab edges
+    are allowed (schema=None, or allow_free_edges, or empty edge vocab).
+
+    Returns None means "no closed-set filter" — today's free-string behavior."""
+    if schema is None or schema.allow_free_edges or not schema.edge_predicates:
+        return None
+    return frozenset(_normalize_predicate(c) for c in schema.edge_predicates)
+
+
 def _postprocess(
     raw_relations: list[_LLMRelation],
     *,
@@ -400,18 +482,32 @@ def _postprocess(
     known_entities: list[str],
     user_id: str,
     project_id: str | None,
+    schema: ExtractionSchema | None = None,
+    on_dropped: DroppedHandler | None = None,
 ) -> list[LLMRelationCandidate]:
-    """Resolve endpoints, normalize predicates, deduplicate."""
+    """Resolve endpoints, normalize predicates, deduplicate.
+
+    When ``schema`` has a CLOSED edge set (``allow_free_edges`` False + a
+    non-empty ``edge_predicates``), off-vocab predicates are dropped fail-soft
+    (+ ``on_dropped`` 'off_schema_edge'). ``schema=None`` / ``allow_free_edges``
+    keeps the historical free-string predicate behavior."""
     entity_lookup = _build_entity_lookup(entities)
     known_lower: dict[str, str] = {
         n.strip().lower(): n.strip() for n in known_entities
     }
+    closed_vocab = _closed_edge_vocab(schema)
 
     seen: dict[str, LLMRelationCandidate] = {}
 
     for rel in raw_relations:
         predicate = _normalize_predicate(rel.predicate)
         if not predicate:
+            continue
+
+        # Closed-edge-set gate (lane LB) — drop off-vocab predicates fail-soft.
+        if closed_vocab is not None and predicate not in closed_vocab:
+            if on_dropped:
+                on_dropped("relation_extraction", "off_schema_edge")
             continue
 
         # C-LM-STUDIO-FIX: rel.subject / rel.object_ can be None when

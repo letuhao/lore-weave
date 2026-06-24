@@ -1,0 +1,30 @@
+{
+  "_spec": "npc.said (Q-L3B-1 fan-out) → UPDATE npc_projection.last_event_version + UPDATE npc_session_memory_projection.interaction_count (via the interaction_count_increment pseudo-field), keyed npc_id + metadata.session_id.",
+  "envelope": {
+    "event_id": "00000000-0000-0000-0000-000000000201",
+    "event_type": "npc.said",
+    "event_version": 1,
+    "aggregate_id": "npc-1",
+    "aggregate_type": "npc",
+    "aggregate_version": 2,
+    "reality_id": "22222222-2222-2222-2222-222222222222",
+    "occurred_at": "2026-01-01T00:00:01.000000Z",
+    "recorded_at": "2026-01-01T00:00:01.000000Z",
+    "payload": { "text": "hello" },
+    "metadata": { "session_id": "sess-1" }
+  },
+  "expected_updates": [
+    { "Update": {
+      "table": "npc_projection",
+      "pk": { "npc_id": "npc-1" },
+      "fields": { "last_event_version": 2 },
+      "meta": { "event_id": "00000000-0000-0000-0000-000000000201", "aggregate_version": 2, "applied_at": "2026-01-01T00:00:01.000000Z" }
+    }},
+    { "Update": {
+      "table": "npc_session_memory_projection",
+      "pk": { "npc_id": "npc-1", "session_id": "sess-1" },
+      "fields": { "interaction_count_increment": 1 },
+      "meta": { "event_id": "00000000-0000-0000-0000-000000000201", "aggregate_version": 2, "applied_at": "2026-01-01T00:00:01.000000Z" }
+    }}
+  ]
+}

@@ -1,0 +1,97 @@
+"""Unit tests for the interview-roleplay working_memory model (M1).
+
+Validates: the Pydantic WorkingMemory model round-trips, `remaining()` derives
+correctly, charter required fields are enforced, and a serialized instance
+conforms to the cross-service JSON Schema contract
+(contracts/interview/working_memory.schema.json).
+"""
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import jsonschema
+import pytest
+from pydantic import ValidationError
+
+from app.models import WorkingMemory, WorkingMemoryCharter, WorkingMemoryState
+
+# contracts/interview/working_memory.schema.json — repo root is 3 parents up
+# from this file: tests/ -> chat-service/ -> services/ -> <root>.
+_SCHEMA_PATH = (
+    Path(__file__).resolve().parents[3]
+    / "contracts"
+    / "interview"
+    / "working_memory.schema.json"
+)
+
+
+def _charter(**over) -> WorkingMemoryCharter:
+    base = dict(
+        goal="Senior backend interview",
+        phases=["warmup", "technical", "behavioral", "wrap"],
+        checklist=["system design", "conflict story", "REST vs gRPC"],
+        time_budget_min=60,
+        language="vi",
+    )
+    base.update(over)
+    return WorkingMemoryCharter(**base)
+
+
+def test_working_memory_round_trips():
+    wm = WorkingMemory(charter=_charter())
+    dumped = wm.model_dump()
+    again = WorkingMemory.model_validate(dumped)
+    assert again.charter.goal == "Senior backend interview"
+    assert again.version == 1
+    # state defaults: empty progress
+    assert again.state.covered == []
+    assert again.state.phase == ""
+
+
+def test_remaining_is_derived_from_checklist_minus_covered():
+    wm = WorkingMemory(
+        charter=_charter(),
+        state=WorkingMemoryState(phase="technical", covered=["REST vs gRPC", "system design"]),
+    )
+    assert wm.remaining() == ["conflict story"]
+
+
+def test_remaining_full_when_nothing_covered():
+    wm = WorkingMemory(charter=_charter())
+    assert wm.remaining() == ["system design", "conflict story", "REST vs gRPC"]
+
+
+def test_charter_requires_goal_and_phases():
+    with pytest.raises(ValidationError):
+        WorkingMemoryCharter(phases=["a"], language="vi")  # missing goal
+    with pytest.raises(ValidationError):
+        WorkingMemoryCharter(goal="g", phases=[], language="vi")  # phases min_length=1
+
+
+def test_instance_conforms_to_json_schema_contract():
+    schema = json.loads(_SCHEMA_PATH.read_text(encoding="utf-8"))
+    wm = WorkingMemory(
+        charter=_charter(),
+        state=WorkingMemoryState(phase="technical", covered=["REST vs gRPC"], elapsed_min=23),
+    )
+    # model_dump(mode="json") gives JSON-native types (no UUID/datetime here, but
+    # keeps the contract check honest for future fields).
+    jsonschema.validate(instance=wm.model_dump(mode="json"), schema=schema)
+
+
+def test_schema_rejects_unknown_charter_field():
+    schema = json.loads(_SCHEMA_PATH.read_text(encoding="utf-8"))
+    bad = {
+        "version": 1,
+        "charter": {
+            "goal": "g",
+            "phases": ["warmup"],
+            "checklist": [],
+            "language": "vi",
+            "surprise": "not allowed",  # additionalProperties: false
+        },
+        "state": {"phase": "", "covered": []},
+    }
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(instance=bad, schema=schema)

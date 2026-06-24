@@ -1,0 +1,9 @@
+id: perf-bencher-gate
+description: "S7/F5 — cross-language perf regression gate via self-hosted Bencher (bencher run --adapter go_bench --err). Self-host validated viable (docs/specs/2026-06-13-S7-bencher-selfhost-decision.md: boots, SMTP-less token bootstrap, project create). Needs the bencher CLI + a bootstrapped BENCHER_API_TOKEN, so it runs manual/nightly; benchstat (perf-micro-bench-gate) is the per-PR gate."
+invariant: I-perf-bencher-gate
+kind: live-probe
+# live-probe: notrun when the bencher CLI is absent or the self-host/token are
+# not provisioned; a real Bencher threshold alert → fail.
+command: ["bash", "scripts/perf/bencher-gate.sh"]
+requires: ["bencher"]
+skip_when: []

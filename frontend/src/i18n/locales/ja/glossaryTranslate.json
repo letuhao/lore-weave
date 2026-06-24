@@ -1,0 +1,87 @@
+{
+  "title": "用語集翻訳",
+  "subtitle": "AIでエンティティ属性を一括翻訳",
+  "steps": {
+    "config": "設定",
+    "confirm": "確認",
+    "progress": "進行",
+    "results": "結果"
+  },
+  "config": {
+    "title": "翻訳設定",
+    "description": "対象言語とモデルを選択。原文がある属性はすべて翻訳されます。",
+    "sourceLanguage": "原文言語",
+    "sourceUnknown": "書籍から",
+    "targetLanguage": "対象言語",
+    "overwriteMode": "上書き方針",
+    "model": "モデル",
+    "noModels": "モデルが設定されていません。",
+    "addInSettings": "設定で追加",
+    "selectModel": "モデルを選択...",
+    "allAttrsNote": "原文値がある属性はすべて対象です。検証済みの翻訳は上書きされません。",
+    "sameLanguageError": "対象言語は書籍の原文言語と異なる必要があります。",
+    "thinkingEnabled": "思考／推論を有効にする",
+    "thinkingHint": "デフォルトはオフ。Gemmaなどで推論させたい場合にオンにしてください。",
+    "mode": {
+      "missing_only": {
+        "label": "未翻訳のみ",
+        "hint": "対象言語の翻訳が既にある属性はスキップします。"
+      },
+      "refresh_machine": {
+        "label": "機械翻訳を更新",
+        "hint": "下書きと機械翻訳を再翻訳。検証済みは変更しません。"
+      }
+    }
+  },
+  "confirm": {
+    "languages": "言語",
+    "mode": "モード",
+    "model": "モデル",
+    "estimateNote": "エンティティ数とトークン使用量はジョブ開始時に確定します。実際の使用量は属性数によります。",
+    "editConfig": "設定を編集",
+    "startTranslate": "翻訳を開始",
+    "startFailed": "翻訳ジョブの開始に失敗しました",
+    "thinkingOn": "思考：オン",
+    "thinkingOff": "思考：オフ"
+  },
+  "progress": {
+    "title": "用語集を翻訳中",
+    "processing": "エンティティ {{current}} / {{total}} を処理中...",
+    "entityProgress": "エンティティ進捗",
+    "entitiesCount": "{{completed}} / {{total}} エンティティ",
+    "failedCount": "{{count}} 件失敗",
+    "attrsTranslated": "翻訳した属性",
+    "attrsSkipped": "スキップ",
+    "entitiesDone": "完了",
+    "entitiesFailed": "失敗",
+    "cancel": "キャンセル",
+    "cancelConfirm": "この翻訳ジョブをキャンセルしますか？処理済みのエンティティの翻訳は保持されます。",
+    "cancelRequested": "キャンセルを要求しました",
+    "noEntities": "この言語で翻訳が必要なエンティティはありません。"
+  },
+  "results": {
+    "title": "翻訳完了",
+    "titleNoEntities": "翻訳対象なし",
+    "titleWithErrors": "翻訳完了（エラーあり）",
+    "titleFailed": "翻訳失敗",
+    "titleCancelled": "翻訳キャンセル",
+    "duration": "{{count}} エンティティ / {{duration}}",
+    "attrsTranslated": "翻訳",
+    "attrsSkipped": "スキップ",
+    "entitiesDone": "完了",
+    "entitiesFailed": "失敗",
+    "partialFailure": "{{count}} エンティティが失敗",
+    "tokenUsage": "トークン使用量",
+    "estimated": "見積もり: {{tokens}}",
+    "noEntities": "すべての属性にこの言語の翻訳があるか、原文テキストがありません。",
+    "machineNote": "翻訳は機械信頼度で保存されます。エンティティエディターで確認・検証してください。",
+    "viewGlossary": "用語集で確認",
+    "runAgain": "再度翻訳",
+    "close": "閉じる"
+  },
+  "button": {
+    "next": "次へ",
+    "back": "戻る",
+    "cancel": "キャンセル"
+  }
+}

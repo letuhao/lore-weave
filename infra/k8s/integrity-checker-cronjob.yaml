@@ -1,0 +1,119 @@
+# infra/k8s/integrity-checker-cronjob.yaml — L3.F.3 (RAID cycle 15).
+#
+# Two Kubernetes CronJobs run the same `integrity-checker` binary against the
+# same `contracts/integrity/config.yaml`, overriding the `mode:` field via an
+# --config-overlay arg. This setup mirrors archive-worker + retention-worker:
+# ONE binary, multiple cron schedules, ONE config file.
+#
+# LOCKED Q-L3E-1: SEPARATE service from world-service. Each cron runs in its
+# own pod; failures isolated from world-service hot path.
+#
+# Schedule rationale:
+#   - daily   : 02:00 UTC — low-traffic window (R02 §12B.4 acceptance =
+#               "drift detected within 24h"); avoids overlap with the
+#               retention-worker 03:00 sweep + archive-worker 04:00 sweep.
+#   - monthly : 1st of month 03:00 UTC — separate window so monthly's
+#               larger row-walking footprint doesn't compound with daily's
+#               sample. activeDeadlineSeconds=3600 enforces the L3.F
+#               acceptance bar (< 1h for 10K-aggregate reality).
+#
+# Resource model: monthly mode is heavier (full-scan ALL rows × all tables);
+# bumps CPU + memory + activeDeadlineSeconds. Daily mode is light (sample
+# 20 rows × 10 tables = 200 row-checks per reality per run).
+
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: integrity-checker-daily
+  namespace: world-platform
+  labels:
+    app.kubernetes.io/name: integrity-checker
+    app.kubernetes.io/component: daily
+    locked-decision: q-l3e-1  # SEPARATE service
+spec:
+  # 02:00 UTC every day. Low-traffic window. R02 §12B.4 acceptance:
+  # "drift detected within 24h" → daily cadence meets the bar.
+  schedule: "0 2 * * *"
+  concurrencyPolicy: Forbid          # no overlapping runs (still in flight = skip)
+  startingDeadlineSeconds: 600       # if it can't start within 10m of schedule, skip
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 900     # daily must complete in ≤ 15m
+      backoffLimit: 0                # do not auto-retry; alert and let SRE investigate
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: integrity-checker
+            app.kubernetes.io/component: daily
+        spec:
+          restartPolicy: Never
+          serviceAccountName: integrity-checker
+          containers:
+            - name: integrity-checker
+              image: loreweave/integrity-checker:v1  # placeholder — live wiring deferred
+              args:
+                - "--config=/etc/integrity-checker/config.yaml"
+                - "--mode-override=daily"            # overrides config.yaml mode:
+              resources:
+                requests: {cpu: "100m", memory: "128Mi"}
+                limits:   {cpu: "500m", memory: "512Mi"}
+              volumeMounts:
+                - {name: config, mountPath: /etc/integrity-checker, readOnly: true}
+              env:
+                - {name: DATABASE_URL, valueFrom: {secretKeyRef: {name: per-reality-db, key: url}}}
+          volumes:
+            - name: config
+              configMap:
+                name: integrity-checker-config
+
+---
+
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: integrity-checker-monthly
+  namespace: world-platform
+  labels:
+    app.kubernetes.io/name: integrity-checker
+    app.kubernetes.io/component: monthly
+    locked-decision: q-l3e-1  # SEPARATE service (daily + monthly share binary, separate cron)
+spec:
+  # 1st of month, 03:00 UTC. Heavier scan — runs in low-traffic window
+  # AFTER daily (which is on a daily 02:00 schedule). activeDeadline=3600
+  # enforces the L3.F acceptance bar: "< 1h for 10K-aggregate reality".
+  schedule: "0 3 1 * *"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 1800
+  successfulJobsHistoryLimit: 6
+  failedJobsHistoryLimit: 6
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 3600    # L3.F acceptance: monthly full check completes in ≤ 1h
+      backoffLimit: 0
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: integrity-checker
+            app.kubernetes.io/component: monthly
+        spec:
+          restartPolicy: Never
+          serviceAccountName: integrity-checker
+          containers:
+            - name: integrity-checker
+              image: loreweave/integrity-checker:v1
+              args:
+                - "--config=/etc/integrity-checker/config.yaml"
+                - "--mode-override=monthly"
+              resources:
+                requests: {cpu: "500m", memory: "512Mi"}
+                limits:   {cpu: "2",    memory: "2Gi"}
+              volumeMounts:
+                - {name: config, mountPath: /etc/integrity-checker, readOnly: true}
+              env:
+                - {name: DATABASE_URL, valueFrom: {secretKeyRef: {name: per-reality-db, key: url}}}
+          volumes:
+            - name: config
+              configMap:
+                name: integrity-checker-config

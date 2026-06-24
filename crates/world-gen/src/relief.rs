@@ -48,6 +48,12 @@ const RELIEF_HI: f32 = 0.045;
 /// Valley-floor depth (signed high-pass, normalized) at which the concavity
 /// occlusion reaches full strength.
 const OCC_RELIEF: f32 = 0.032;
+/// Sub-sea detail suppression (S6, D7): fBm detail is **0 at/below sea level**
+/// and ramps to full over this much normalized land elevation above the coast,
+/// so the ocean floor isn't bumped (a clean `water_color` depth ramp + no
+/// shallow-water vertex poking above sea), while the fractal coastline still
+/// forms on the land side.
+const DETAIL_SEA_RAMP: f32 = 0.04;
 
 /// Cartographic style — switches palette, coastline treatment and hillshade
 /// contrast. The relief *engine* is identical for both.
@@ -217,9 +223,11 @@ impl ReliefField {
                 let b = base[i];
                 let hp = b - base_lo[i]; // signed high-pass
 
-                // open ocean stays smooth; detail ramps up toward the coast.
+                // Sub-sea detail suppression (S6, D7): detail is 0 at/below sea
+                // and ramps in just above the waterline, so the ocean floor reads
+                // as clean bathymetry, not fBm bumps.
                 let land_t = (b - sea) / (1.0 - sea).max(1e-3);
-                let ocean_gate = smoothstep(-0.15, 0.02, land_t);
+                let ocean_gate = smoothstep(0.0, DETAIL_SEA_RAMP, land_t);
                 // 3D detail fBm — seamless across the antimeridian.
                 let detail = p.detail_amp
                     * ocean_gate
@@ -499,6 +507,27 @@ mod tests {
             r.shade.iter().zip(&a.shade).any(|(x, y)| x.to_bits() != y.to_bits()),
             "realistic and atlas produced an identical hillshade"
         );
+    }
+
+    #[test]
+    fn sub_sea_detail_is_suppressed() {
+        // S6 (D7): with detail gated off at/below sea, no water pixel's relief
+        // elevation is bumped to/above sea — the ocean floor stays below the
+        // coast. Atlas keys `water` on the base alone, so a water pixel pushed
+        // ≥ sea would be detail leaking below sea (the old `-0.15, 0.02` gate,
+        // ≈0.97 at sea level, did exactly that).
+        let m = sample_map();
+        let f = ReliefField::build(&m, 128, 128, RenderStyle::Atlas, Projection::Equirectangular);
+        for i in 0..f.elev.len() {
+            if f.water[i] {
+                assert!(
+                    f.elev[i] < f.sea + 1e-6,
+                    "water pixel {i} elev {} reached sea {} — sub-sea detail not suppressed",
+                    f.elev[i],
+                    f.sea
+                );
+            }
+        }
     }
 
     #[test]

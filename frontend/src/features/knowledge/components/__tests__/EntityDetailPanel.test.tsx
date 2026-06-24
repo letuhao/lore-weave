@@ -22,13 +22,29 @@ vi.mock('../../hooks/useEntityDetail', () => ({
   useEntityDetail: () => useEntityDetailMock(),
 }));
 
+// C9 — the panel now also pulls facts (provenance MVP). Stub it out so
+// this unlock-focused suite stays narrow.
+vi.mock('../../hooks/useEntityFacts', () => ({
+  useEntityFacts: () => ({
+    facts: [],
+    windowAvailable: true,
+    isLoading: false,
+    error: null,
+  }),
+}));
+
 const unlockEntityMock = vi.fn();
+const promoteEntityMock = vi.fn();
+const setGlossaryEntityPinnedMock = vi.fn();
 vi.mock('../../api', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('../../api');
   return {
     ...actual,
     knowledgeApi: {
       unlockEntity: (...args: unknown[]) => unlockEntityMock(...args),
+      promoteEntity: (...args: unknown[]) => promoteEntityMock(...args),
+      setGlossaryEntityPinned: (...args: unknown[]) =>
+        setGlossaryEntityPinnedMock(...args),
     },
   };
 });

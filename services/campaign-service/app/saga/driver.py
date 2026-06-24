@@ -121,7 +121,14 @@ async def process_campaign(
     knowledge_ch = [d.chapter_id for d in result.dispatches if d.stage == "knowledge"]
     translation_ch = [d.chapter_id for d in result.dispatches if d.stage == "translation"]
 
-    user_id = str(campaign["owner_user_id"])
+    # E0-4b dual identity. `caller` = campaigns.owner_user_id (the creator — billed,
+    # caller-attributed for translation). `book_owner` = the knowledge-graph partition
+    # / project owner. They differ only for a manage-collaborator's campaign; for an
+    # owner-run campaign book_owner_user_id == owner_user_id (set at create / backfill).
+    caller = str(campaign["owner_user_id"])
+    book_owner = str(campaign["book_owner_user_id"] or campaign["owner_user_id"])
+    is_collab = book_owner != caller
+    user_id = caller  # translation stays caller-attributed/paid (unchanged)
     book_id = str(campaign["book_id"])
 
     # CLAIM-FIRST ordering (double-spend guard): flip the rows to `dispatched`
@@ -146,7 +153,7 @@ async def process_campaign(
             try:
                 kn_job_id = await clients.knowledge.dispatch_extraction(
                     project_id=str(project_id),
-                    user_id=user_id,
+                    user_id=book_owner,  # E0-4b: graph partition = book owner
                     scope="chapters",
                     chapter_from=campaign["chapter_from"],
                     chapter_to=campaign["chapter_to"],
@@ -156,6 +163,13 @@ async def process_campaign(
                         if campaign["knowledge_model_ref"] else None
                     ),
                     campaign_id=str(campaign_id),  # S4a: cost attribution
+                    # E0-4b caller-pays: a collaborator bills their own key (the
+                    # endpoint dimension-guards the caller's same-model embedding ref).
+                    billing_user_id=caller if is_collab else None,
+                    billing_embedding_model=(
+                        str(campaign["embedding_model_ref"])
+                        if (is_collab and campaign["embedding_model_ref"]) else None
+                    ),
                 )
                 if kn_job_id:  # S3c-2: record for cancel propagation
                     await repo.set_dispatched_job_id(
@@ -215,18 +229,21 @@ async def _propagate_cancel(
     we terminalize the projection regardless). Translation is cancelled per
     distinct in-flight job_id; knowledge by the project's active extraction."""
     campaign_id: UUID = campaign["campaign_id"]
-    user_id = str(campaign["owner_user_id"])
+    # E0-4b: translation jobs are caller-owned; the knowledge extraction is owned by
+    # the book owner (graph partition). Cancel each under the identity that created it.
+    caller = str(campaign["owner_user_id"])
+    book_owner = str(campaign["book_owner_user_id"] or campaign["owner_user_id"])
 
     for jid in await repo.inflight_translation_job_ids(pool, campaign_id):
         try:
-            await clients.translation.cancel_job(user_id=user_id, job_id=str(jid))
+            await clients.translation.cancel_job(user_id=caller, job_id=str(jid))
         except DispatchError as exc:
             logger.warning("campaign %s translation cancel %s failed: %s", campaign_id, jid, exc)
 
     project_id = campaign["knowledge_project_id"]
     if project_id is not None and await repo.has_inflight_knowledge(pool, campaign_id):
         try:
-            await clients.knowledge.cancel_extraction(user_id=user_id, project_id=str(project_id))
+            await clients.knowledge.cancel_extraction(user_id=book_owner, project_id=str(project_id))
         except DispatchError as exc:
             logger.warning("campaign %s knowledge cancel failed: %s", campaign_id, exc)
 

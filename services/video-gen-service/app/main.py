@@ -10,7 +10,10 @@ from loreweave_obs import setup_tracing
 # vars (internal_service_token, minio_*, jwt_secret) fail FAST at process
 # start rather than at first request. Mirrors translation-service pattern.
 from .config import settings  # noqa: F401 — import for side-effect validation
+from .db.migrate import run_migrations
+from .db.pool import close_pool, create_pool
 from .routers.generate import bootstrap_minio, router as generate_router
+from .routers.internal_job_control import router as internal_job_control_router
 
 
 @asynccontextmanager
@@ -20,7 +23,19 @@ async def lifespan(app: FastAPI):
     # outage here is logged, not fatal; ensure_bucket_ready self-heals on
     # the first request.
     bootstrap_minio()
-    yield
+    # LLM re-arch Phase 3 M5 — only the decoupled path needs the DB (the
+    # submit endpoint persists a job row; the poll endpoint reads it). Flag
+    # off → stay stateless (no pool, no migration) exactly as before.
+    pool_up = False
+    if settings.video_gen_decouple_enabled:
+        pool = await create_pool(settings.video_gen_db_url)
+        await run_migrations(pool)
+        pool_up = True
+    try:
+        yield
+    finally:
+        if pool_up:
+            await close_pool()
 
 
 app = FastAPI(
@@ -39,6 +54,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 # request, CORS included. /review-impl(6c-γ) LOW#4.
 setup_tracing("video-gen-service", app=app)
 app.include_router(generate_router, prefix="/v1/video-gen", tags=["video-gen"])
+app.include_router(internal_job_control_router)  # Unified Job Control Plane P3
 
 
 @app.get("/health")

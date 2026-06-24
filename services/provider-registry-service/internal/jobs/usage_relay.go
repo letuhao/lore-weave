@@ -31,8 +31,13 @@ type RelayConfig struct {
 	CampaignUsageStream string
 	UsageMaxLen         int64
 	CampaignMaxLen      int64
-	PollInterval        time.Duration
-	BatchSize           int
+	// LLM re-arch Phase 1 — the durable, per-job terminal-event stream
+	// (job_event_outbox → here). A caller (SDK adapter / future service consumer)
+	// resumes on it, keyed by job_id.
+	TerminalStream string
+	TerminalMaxLen int64
+	PollInterval   time.Duration
+	BatchSize      int
 	// DrainTimeout bounds ONE drain batch (SELECT…FOR UPDATE SKIP LOCKED held
 	// across the XADD network calls + mark-published). Caps how long a batch can
 	// hold its row locks + a pool connection if Redis is slow/hung — independent
@@ -68,6 +73,9 @@ func NewUsageRelay(rdb *redis.Client, pool PgxPool, cfg RelayConfig, logger *slo
 	if cfg.CampaignUsageStream == "" {
 		cfg.CampaignUsageStream = "loreweave:events:campaign_usage"
 	}
+	if cfg.TerminalStream == "" {
+		cfg.TerminalStream = "loreweave:events:llm_job_terminal"
+	}
 	return &UsageRelay{rdb: rdb, pool: pool, cfg: cfg, logger: logger}
 }
 
@@ -88,6 +96,14 @@ func (r *UsageRelay) Run(ctx context.Context) {
 				r.logger.Warn("usage relay drain failed", "err", err)
 			} else if n > 0 {
 				r.logger.Debug("usage relay published", "rows", n)
+			}
+			// LLM re-arch Phase 1 — drain the terminal-event outbox in the same
+			// tick. Independent tx/stream from usage; a failure of one doesn't
+			// block the other (both retry next tick).
+			if n, err := r.drainTerminalOnce(ctx); err != nil {
+				r.logger.Warn("terminal relay drain failed", "err", err)
+			} else if n > 0 {
+				r.logger.Debug("terminal relay published", "rows", n)
 			}
 		}
 	}
@@ -209,4 +225,110 @@ FOR UPDATE SKIP LOCKED
 		return 0, err
 	}
 	return len(batch), nil
+}
+
+// buildTerminalFields produces the Redis-stream field map for one terminal
+// event. This is the wire contract the SDK event adapter + future service
+// consumers read (every value string-encoded; empty string for a null). Pure +
+// unit-tested so a key rename / dropped field is caught without a live stack.
+// result_ref = job_id — the consumer fetches the full result via
+// GET /internal/llm/jobs/{id}; the event carries only correlation + summary.
+func buildTerminalFields(jobID, ownerID, operation, status, kind, cost, errCode, errMsg, campaign, correlation string) map[string]any {
+	return map[string]any{
+		"job_id":         jobID,
+		"owner_user_id":  ownerID,
+		"operation":      operation,
+		"status":         status,
+		"kind":           kind,
+		"result_ref":     jobID,
+		"cost_usd":       cost,
+		"error_code":     errCode,
+		"error_message":  errMsg,
+		"campaign_id":    campaign,
+		"correlation_id": correlation,
+	}
+}
+
+type terminalRow struct {
+	id     int64
+	fields map[string]any
+}
+
+// drainTerminalOnce publishes one batch of unpublished job_event_outbox rows to
+// the terminal stream. Same FOR UPDATE SKIP LOCKED + lock-across-XADD shape as
+// drainOnce (multi-replica-safe, at-least-once; consumers dedup on job_id).
+func (r *UsageRelay) drainTerminalOnce(ctx context.Context) (int, error) {
+	ctx, cancel := context.WithTimeout(ctx, r.cfg.DrainTimeout)
+	defer cancel()
+
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	rows, err := tx.Query(ctx, `
+SELECT id, job_id::text, owner_user_id::text, operation, status, kind,
+       cost_usd::text, error_code, error_message, campaign_id::text, correlation_id
+FROM job_event_outbox
+WHERE published_at IS NULL
+ORDER BY id
+LIMIT $1
+FOR UPDATE SKIP LOCKED
+`, r.cfg.BatchSize)
+	if err != nil {
+		return 0, err
+	}
+
+	var batch []terminalRow
+	for rows.Next() {
+		var id int64
+		var jobID, ownerID, operation, status, kind string
+		var cost, errCode, errMsg, campaign, correlation *string // nullable
+		if err := rows.Scan(&id, &jobID, &ownerID, &operation, &status, &kind,
+			&cost, &errCode, &errMsg, &campaign, &correlation); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		batch = append(batch, terminalRow{
+			id: id,
+			fields: buildTerminalFields(jobID, ownerID, operation, status, kind,
+				deref(cost), deref(errCode), deref(errMsg), deref(campaign), deref(correlation)),
+		})
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	if len(batch) == 0 {
+		return 0, tx.Commit(ctx)
+	}
+
+	for _, b := range batch {
+		if err := r.rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: r.cfg.TerminalStream,
+			MaxLen: r.cfg.TerminalMaxLen,
+			Approx: true,
+			Values: b.fields,
+		}).Err(); err != nil {
+			// Row stays unpublished (rollback releases the lock) → retried next
+			// tick. Already-XADDed rows are deduped downstream on job_id.
+			return 0, err
+		}
+		if _, err := tx.Exec(ctx, `UPDATE job_event_outbox SET published_at=now() WHERE id=$1`, b.id); err != nil {
+			return 0, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return 0, err
+	}
+	return len(batch), nil
+}
+
+// deref returns the pointed-to string or "" for a nil (null column) pointer.
+func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }

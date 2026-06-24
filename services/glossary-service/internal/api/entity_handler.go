@@ -92,21 +92,22 @@ type attrValueResp struct {
 }
 
 type entityListItem struct {
-	EntityID               string      `json:"entity_id"`
-	BookID                 string      `json:"book_id"`
-	KindID                 string      `json:"kind_id"`
-	Kind                   kindSummary `json:"kind"`
-	DisplayName            string      `json:"display_name"`
-	DisplayNameTranslation *string     `json:"display_name_translation"`
-	Status                 string      `json:"status"`
-	Tags                   []string    `json:"tags"`
-	ShortDescription       *string     `json:"short_description"`
-	IsPinnedForContext     bool        `json:"is_pinned_for_context"`
-	ChapterLinkCount       int         `json:"chapter_link_count"`
-	TranslationCount       int         `json:"translation_count"`
-	EvidenceCount          int         `json:"evidence_count"`
-	CreatedAt              time.Time   `json:"created_at"`
-	UpdatedAt              time.Time   `json:"updated_at"`
+	EntityID               string       `json:"entity_id"`
+	BookID                 string       `json:"book_id"`
+	KindID                 string       `json:"kind_id"`
+	Kind                   kindSummary  `json:"kind"`
+	DisplayName            string       `json:"display_name"`
+	DisplayNameTranslation *string      `json:"display_name_translation"`
+	Status                 string       `json:"status"`
+	Tags                   []string     `json:"tags"`
+	ShortDescription       *string      `json:"short_description"`
+	IsPinnedForContext     bool         `json:"is_pinned_for_context"`
+	ChapterLinkCount       int          `json:"chapter_link_count"`
+	TranslationCount       int          `json:"translation_count"`
+	EvidenceCount          int          `json:"evidence_count"`
+	CreatedAt              time.Time    `json:"created_at"`
+	UpdatedAt              time.Time    `json:"updated_at"`
+	Match                  *entityMatch `json:"match,omitempty"` // raw-search only: why this entity matched
 }
 
 type entityListResp struct {
@@ -143,10 +144,10 @@ func (s *Server) loadEntityDetail(ctx context.Context, bookID, entityID uuid.UUI
 	err := s.pool.QueryRow(ctx, `
 		SELECT
 			e.entity_id, e.book_id, e.kind_id, e.status, e.tags, e.created_at, e.updated_at,
-			ek.kind_id, ek.code, ek.name, ek.icon, ek.color,
+			ek.book_kind_id, ek.code, ek.name, ek.icon, ek.color,
 			COALESCE((
 				SELECT eav.original_value FROM entity_attribute_values eav
-				JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+				JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
 				WHERE eav.entity_id = e.entity_id AND ad.code IN ('name','term')
 				ORDER BY ad.sort_order LIMIT 1
 			), '') AS display_name,
@@ -159,7 +160,7 @@ func (s *Server) loadEntityDetail(ctx context.Context, bookID, entityID uuid.UUI
 				JOIN entity_attribute_values eav3 ON eav3.attr_value_id = ev.attr_value_id
 				WHERE eav3.entity_id = e.entity_id) AS evidence_count
 		FROM glossary_entities e
-		JOIN entity_kinds ek ON ek.kind_id = e.kind_id
+		JOIN book_kinds ek ON ek.book_kind_id = e.kind_id
 		WHERE e.entity_id = $1 AND e.book_id = $2 AND e.deleted_at IS NULL`,
 		entityID, bookID,
 	).Scan(
@@ -209,9 +210,9 @@ func (s *Server) loadEntityDetail(ctx context.Context, bookID, entityID uuid.UUI
 	avRows, err := s.pool.Query(ctx, `
 		SELECT eav.attr_value_id, eav.entity_id, eav.attr_def_id,
 		       eav.original_language, eav.original_value,
-		       ad.attr_def_id, ad.code, ad.name, ad.field_type, ad.is_required, ad.is_system, ad.sort_order
+		       ad.attr_id, ad.code, ad.name, ad.field_type, ad.is_required, false AS is_system, ad.sort_order
 		FROM entity_attribute_values eav
-		JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+		JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
 		WHERE eav.entity_id = $1
 		ORDER BY ad.sort_order`, entityID)
 	if err != nil {
@@ -326,6 +327,11 @@ func (s *Server) createEntity(w http.ResponseWriter, r *http.Request) {
 
 	var in struct {
 		KindID string `json:"kind_id"`
+		// Optional per-entity genre override (D2). Non-empty ⇒ the entity's genres are
+		// exactly these (+ universal); empty/omitted ⇒ the entity follows the book's
+		// active genres. The set also decides which (kind × genre) attribute value rows
+		// are seeded (D-GKA-ENTITY-MULTIGENRE-VALUES — one per (genre, code)).
+		GenreIDs []string `json:"genre_ids"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || in.KindID == "" {
 		writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY", "kind_id is required")
@@ -339,17 +345,60 @@ func (s *Server) createEntity(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
-	// Validate kind exists and is visible
+	// Validate the kind is a live, visible BOOK kind of THIS book (G4: kind_id is a
+	// book_kind_id — the entity FK now targets book_kinds). A system_kind id would
+	// pass an old system check but then violate the book_kinds FK on insert; and a
+	// book_kind from another book must not be accepted (tenant boundary).
 	var kindExists bool
 	if err := s.pool.QueryRow(ctx,
-		`SELECT EXISTS(SELECT 1 FROM entity_kinds WHERE kind_id=$1 AND is_hidden=false)`, kindID,
+		`SELECT EXISTS(SELECT 1 FROM book_kinds
+		               WHERE book_kind_id=$1 AND book_id=$2 AND deprecated_at IS NULL AND is_hidden=false)`,
+		kindID, bookID,
 	).Scan(&kindExists); err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "db error")
 		return
 	}
 	if !kindExists {
-		writeError(w, http.StatusNotFound, "GLOSS_KIND_NOT_FOUND", "kind not found")
+		writeError(w, http.StatusNotFound, "GLOSS_KIND_NOT_FOUND", "kind not found in this book's ontology (adopt it first)")
 		return
+	}
+
+	// Validate the per-entity genre override (if any) BEFORE the tx, so a bad id 422s
+	// without leaving a half-created entity. universal is auto-included (O4); every id
+	// must be a live book genre of THIS book (tenant boundary).
+	override := len(in.GenreIDs) > 0
+	var overrideSet []uuid.UUID
+	if override {
+		want := make([]uuid.UUID, 0, len(in.GenreIDs)+1)
+		for _, g := range in.GenreIDs {
+			id, perr := uuid.Parse(g)
+			if perr != nil {
+				writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "genre_ids must be UUIDs")
+				return
+			}
+			want = append(want, id)
+		}
+		var universalID uuid.UUID
+		if err := s.pool.QueryRow(ctx,
+			`SELECT genre_id FROM book_genres WHERE book_id=$1 AND code='universal' AND deprecated_at IS NULL`,
+			bookID).Scan(&universalID); err != nil {
+			writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "book has no universal genre (adopt it first)")
+			return
+		}
+		want = append(want, universalID)
+		var validCount int
+		if err := s.pool.QueryRow(ctx,
+			`SELECT count(DISTINCT genre_id) FROM book_genres
+			 WHERE book_id=$1 AND deprecated_at IS NULL AND genre_id = ANY($2)`,
+			bookID, want).Scan(&validCount); err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "validate genres failed")
+			return
+		}
+		if validCount != distinctCount(want) {
+			writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "every genre_id must be a live genre of this book")
+			return
+		}
+		overrideSet = want
 	}
 
 	// Create entity + attribute value rows in one transaction
@@ -369,10 +418,47 @@ func (s *Server) createEntity(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "insert entity failed")
 		return
 	}
+	entityUUID, _ := uuid.Parse(entityIDStr)
 
-	// Load attribute definitions for this kind
-	attrRows, err := tx.Query(ctx,
-		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 ORDER BY sort_order`, kindID)
+	// Resolve the entity's effective genre set: the validated override (persisted as
+	// entity_genres rows), or the book's active genres (no override rows — follows the
+	// book). The set bounds which attribute value rows we seed.
+	var seedGenres []uuid.UUID
+	if override {
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO entity_genres(entity_id, genre_id)
+			 SELECT $1, g FROM unnest($2::uuid[]) AS g ON CONFLICT DO NOTHING`,
+			entityUUID, overrideSet); err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "insert entity genres failed")
+			return
+		}
+		seedGenres = overrideSet
+	} else {
+		grows, gerr := tx.Query(ctx, `SELECT genre_id FROM book_active_genres WHERE book_id=$1`, bookID)
+		if gerr != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "load active genres failed")
+			return
+		}
+		for grows.Next() {
+			var gid uuid.UUID
+			if err := grows.Scan(&gid); err != nil {
+				grows.Close()
+				writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "scan active genre failed")
+				return
+			}
+			seedGenres = append(seedGenres, gid)
+		}
+		grows.Close()
+	}
+
+	// Seed one attribute_value row per (genre, code) of the kind RESTRICTED to the
+	// entity's genres — NOT DISTINCT ON code, so a keep-both conflict (same code in two
+	// genres) gets a row per genre and both values persist (D-GKA-ENTITY-MULTIGENRE-VALUES).
+	attrRows, err := tx.Query(ctx, `
+		SELECT ba.attr_id
+		FROM book_attributes ba
+		WHERE ba.kind_id=$1 AND ba.deprecated_at IS NULL AND ba.genre_id = ANY($2::uuid[])
+		ORDER BY ba.sort_order`, kindID, seedGenres)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "load attrs failed")
 		return
@@ -457,11 +543,24 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	q := r.URL.Query()
+	displayLang := strings.TrimSpace(q.Get("display_language"))
 
 	// Build dynamic WHERE clause
 	args := []any{bookID}
 	n := 1
 	where := []string{"e.book_id = $1", "e.deleted_at IS NULL"}
+
+	var displayLangArg int
+	displayLangInArgs := false
+	bindDisplayLang := func() {
+		if displayLang == "" || displayLangInArgs {
+			return
+		}
+		n++
+		displayLangArg = n
+		args = append(args, displayLang)
+		displayLangInArgs = true
+	}
 
 	// Filter: kind_codes
 	if kc := q.Get("kind_codes"); kc != "" {
@@ -501,16 +600,76 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Filter: search (ILIKE on name/term attribute original_value)
-	if searchVal := q.Get("search"); searchVal != "" {
+	// Filter: search. Two modes:
+	//   simple (default)        — ILIKE '%q%' on the name/term original_value
+	//                             (+ the display-language translation when set).
+	//   raw (search_mode=raw)   — the entity-side mirror of the chapter raw
+	//                             search: ILIKE exact-substring PRIMARY + pg_trgm
+	//                             similarity ranking over the denormalised
+	//                             cached_name / cached_aliases (+ display-language
+	//                             translated name), accelerated by the GIN trigram
+	//                             indexes. CJK-safe (search_vector's 'simple' FTS
+	//                             config can't segment CJK — see migrate notes).
+	searchVal := strings.TrimSpace(q.Get("search"))
+	rawMode := q.Get("search_mode") == "raw"
+	var rawQArg, rawPatArg int // bound positions of the raw query + escaped pattern (0 = unbound)
+	if searchVal != "" {
+		if utf8.RuneCountInString(searchVal) > maxEntitySearchRunes {
+			writeError(w, http.StatusBadRequest, "GLOSS_INVALID_QUERY", "search query too long")
+			return
+		}
+	}
+	if searchVal != "" && rawMode {
 		n++
-		where = append(where, fmt.Sprintf(`EXISTS (
+		rawQArg = n
+		args = append(args, searchVal)
+		n++
+		rawPatArg = n
+		args = append(args, escapeLikePattern(searchVal))
+		leg := fmt.Sprintf(
+			"(e.cached_name ILIKE $%d OR glossary_aliases_text(e.cached_aliases) ILIKE $%d "+
+				"OR e.cached_name %% $%d OR glossary_aliases_text(e.cached_aliases) %% $%d)",
+			rawPatArg, rawPatArg, rawQArg, rawQArg)
+		if displayLang != "" {
+			bindDisplayLang()
+			leg = "(" + leg + fmt.Sprintf(` OR EXISTS (
+				SELECT 1 FROM entity_attribute_values eav
+				JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
+				JOIN attribute_translations at ON at.attr_value_id = eav.attr_value_id
+				WHERE eav.entity_id = e.entity_id
+				  AND ad.code IN ('name','term')
+				  AND at.language_code = $%d
+				  AND at.value ILIKE $%d))`, displayLangArg, rawPatArg)
+		}
+		where = append(where, leg)
+	} else if searchVal != "" {
+		n++
+		searchArg := n
+		args = append(args, "%"+searchVal+"%")
+		if displayLang != "" {
+			bindDisplayLang()
+			where = append(where, fmt.Sprintf(`EXISTS (
 			SELECT 1 FROM entity_attribute_values eav
-			JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+			JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
 			WHERE eav.entity_id = e.entity_id
 			  AND ad.code IN ('name','term')
-			  AND eav.original_value ILIKE $%d)`, n))
-		args = append(args, "%"+searchVal+"%")
+			  AND (
+			    eav.original_value ILIKE $%d
+			    OR EXISTS (
+			      SELECT 1 FROM attribute_translations at
+			      WHERE at.attr_value_id = eav.attr_value_id
+			        AND at.language_code = $%d
+			        AND at.value ILIKE $%d
+			    )
+			  ))`, searchArg, displayLangArg, searchArg))
+		} else {
+			where = append(where, fmt.Sprintf(`EXISTS (
+			SELECT 1 FROM entity_attribute_values eav
+			JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
+			WHERE eav.entity_id = e.entity_id
+			  AND ad.code IN ('name','term')
+			  AND eav.original_value ILIKE $%d)`, searchArg))
+		}
 	}
 
 	// Filter: tags (AND containment)
@@ -528,7 +687,7 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 	// Total count (reuse args without limit/offset)
 	countSQL := fmt.Sprintf(`
 		SELECT COUNT(*) FROM glossary_entities e
-		JOIN entity_kinds ek ON ek.kind_id = e.kind_id
+		JOIN book_kinds ek ON ek.book_kind_id = e.kind_id
 		%s`, whereClause)
 	var total int
 	if err := s.pool.QueryRow(ctx, countSQL, args...).Scan(&total); err != nil {
@@ -536,11 +695,24 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Sort
-	sortClause := "ORDER BY e.updated_at DESC"
-	if q.Get("sort") == "updated_at_asc" {
-		sortClause = "ORDER BY e.updated_at ASC"
+	// Sort — whitelist-mapped to fixed ORDER BY clauses (no user input is ever
+	// interpolated). Raw mode defaults to relevance (exact-first, then trigram
+	// similarity). When raw-searching with a display language, an exact match in
+	// the translated name joins the top "exact" tier (else a pure translation hit
+	// ranks by name/alias similarity ≈0 and sinks).
+	transExactExpr := ""
+	if rawMode && displayLang != "" && rawPatArg > 0 {
+		bindDisplayLang()
+		transExactExpr = fmt.Sprintf(`EXISTS (
+			SELECT 1 FROM entity_attribute_values eav
+			JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
+			JOIN attribute_translations at ON at.attr_value_id = eav.attr_value_id
+			WHERE eav.entity_id = e.entity_id
+			  AND ad.code IN ('name','term')
+			  AND at.language_code = $%d
+			  AND at.value ILIKE $%d)`, displayLangArg, rawPatArg)
 	}
+	sortClause := entityOrderBy(q.Get("sort"), rawMode, rawQArg, rawPatArg, transExactExpr)
 
 	// Pagination
 	limit := 50
@@ -557,16 +729,41 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 	offsetArg := n
 	args = append(args, limit, offset)
 
+	displayNameSQL := `COALESCE((
+				SELECT eav.original_value FROM entity_attribute_values eav
+				JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
+				WHERE eav.entity_id = e.entity_id AND ad.code IN ('name','term')
+				ORDER BY ad.sort_order LIMIT 1
+			), '')`
+	displayNameTranslationSQL := `NULL::text`
+	if displayLang != "" {
+		bindDisplayLang()
+		displayNameSQL = fmt.Sprintf(`COALESCE((
+				SELECT COALESCE(NULLIF(at.value, ''), eav.original_value)
+				FROM entity_attribute_values eav
+				JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
+				LEFT JOIN attribute_translations at ON at.attr_value_id = eav.attr_value_id
+					AND at.language_code = $%d
+				WHERE eav.entity_id = e.entity_id AND ad.code IN ('name','term')
+				ORDER BY ad.sort_order LIMIT 1
+			), '')`, displayLangArg)
+		displayNameTranslationSQL = fmt.Sprintf(`(
+				SELECT NULLIF(at.value, '')
+				FROM entity_attribute_values eav
+				JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
+				LEFT JOIN attribute_translations at ON at.attr_value_id = eav.attr_value_id
+					AND at.language_code = $%d
+				WHERE eav.entity_id = e.entity_id AND ad.code IN ('name','term')
+				ORDER BY ad.sort_order LIMIT 1
+			)`, displayLangArg)
+	}
+
 	mainSQL := fmt.Sprintf(`
 		SELECT
 			e.entity_id, e.book_id, e.kind_id, e.status, e.tags, e.created_at, e.updated_at,
-			ek.kind_id, ek.code, ek.name, ek.icon, ek.color,
-			COALESCE((
-				SELECT eav.original_value FROM entity_attribute_values eav
-				JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
-				WHERE eav.entity_id = e.entity_id AND ad.code IN ('name','term')
-				ORDER BY ad.sort_order LIMIT 1
-			), '') AS display_name,
+			ek.book_kind_id, ek.code, ek.name, ek.icon, ek.color,
+			%s AS display_name,
+			%s AS display_name_translation,
 			e.short_description, e.is_pinned_for_context,
 			(SELECT COUNT(*) FROM chapter_entity_links WHERE entity_id = e.entity_id) AS chapter_link_count,
 			(SELECT COUNT(*) FROM attribute_translations tr
@@ -574,13 +771,14 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 				WHERE eav2.entity_id = e.entity_id) AS translation_count,
 			(SELECT COUNT(*) FROM evidences ev
 				JOIN entity_attribute_values eav3 ON eav3.attr_value_id = ev.attr_value_id
-				WHERE eav3.entity_id = e.entity_id) AS evidence_count
+				WHERE eav3.entity_id = e.entity_id) AS evidence_count,
+			e.cached_name, e.cached_aliases
 		FROM glossary_entities e
-		JOIN entity_kinds ek ON ek.kind_id = e.kind_id
+		JOIN book_kinds ek ON ek.book_kind_id = e.kind_id
 		%s
 		%s
 		LIMIT $%d OFFSET $%d`,
-		whereClause, sortClause, limitArg, offsetArg)
+		displayNameSQL, displayNameTranslationSQL, whereClause, sortClause, limitArg, offsetArg)
 
 	rows, err := s.pool.Query(ctx, mainSQL, args...)
 	if err != nil {
@@ -592,19 +790,33 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 	items := []entityListItem{}
 	for rows.Next() {
 		var item entityListItem
+		var cachedName *string
+		var cachedAliases []string
 		if err := rows.Scan(
 			&item.EntityID, &item.BookID, &item.KindID, &item.Status, &item.Tags,
 			&item.CreatedAt, &item.UpdatedAt,
 			&item.Kind.KindID, &item.Kind.Code, &item.Kind.Name, &item.Kind.Icon, &item.Kind.Color,
 			&item.DisplayName,
+			&item.DisplayNameTranslation,
 			&item.ShortDescription, &item.IsPinnedForContext,
 			&item.ChapterLinkCount, &item.TranslationCount, &item.EvidenceCount,
+			&cachedName, &cachedAliases,
 		); err != nil {
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "scan failed")
 			return
 		}
 		if item.Tags == nil {
 			item.Tags = []string{}
+		}
+		// Raw mode: attach the per-row "why it matched" payload (field + verbatim
+		// snippet + rune offsets) so the UI can show the match at 20K scale.
+		if rawMode && searchVal != "" {
+			name := ""
+			if cachedName != nil {
+				name = *cachedName
+			}
+			m := buildEntityMatch(name, cachedAliases, item.DisplayNameTranslation, searchVal)
+			item.Match = &m
 		}
 		items = append(items, item)
 	}
@@ -619,6 +831,60 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 		Limit:  limit,
 		Offset: offset,
 	})
+}
+
+// ── GET /v1/glossary/books/{book_id}/translation-languages ────────────────────
+
+type bookTranslationLanguagesResp struct {
+	Languages []string `json:"languages"`
+}
+
+func (s *Server) listBookTranslationLanguages(w http.ResponseWriter, r *http.Request) {
+	userID, ok := s.requireUserID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "GLOSS_UNAUTHORIZED", "valid Bearer token required")
+		return
+	}
+	bookID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		return
+	}
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantView) {
+		return
+	}
+
+	rows, err := s.pool.Query(r.Context(), `
+		SELECT DISTINCT at.language_code
+		FROM attribute_translations at
+		JOIN entity_attribute_values eav ON eav.attr_value_id = at.attr_value_id
+		JOIN glossary_entities e ON e.entity_id = eav.entity_id
+		WHERE e.book_id = $1 AND e.deleted_at IS NULL
+		  AND at.value IS NOT NULL AND trim(at.value) <> ''
+		ORDER BY at.language_code`, bookID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "query failed")
+		return
+	}
+	defer rows.Close()
+
+	langs := []string{}
+	for rows.Next() {
+		var code string
+		if err := rows.Scan(&code); err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "scan failed")
+			return
+		}
+		langs = append(langs, code)
+	}
+	if err := rows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "rows error")
+		return
+	}
+	if langs == nil {
+		langs = []string{}
+	}
+
+	writeJSON(w, http.StatusOK, bookTranslationLanguagesResp{Languages: langs})
 }
 
 // ── GET /v1/glossary/books/{book_id}/entities/{entity_id} ─────────────────────
@@ -884,6 +1150,108 @@ func (s *Server) patchEntity(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, detail)
 }
 
+// ── POST /v1/glossary/books/{book_id}/entities/bulk-status ───────────────────
+
+// bulkSetEntityStatus flips status (active|inactive|draft) for many entities in
+// one transaction-free UPDATE. Primary use: bulk-activate freshly-extracted draft
+// entities so they feed the translation glossary (the translation-glossary query
+// only returns status='active'). Book-scoped + edit-grant gated.
+//
+// No outbox event is emitted: the glossary.entity_updated payload carries
+// name/kind/aliases/short_description (the wiki-staleness inputs), none of which a
+// status flip changes — emitting "updated" here would mark wikis stale for nothing.
+func (s *Server) bulkSetEntityStatus(w http.ResponseWriter, r *http.Request) {
+	userID, ok := s.requireUserID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "GLOSS_UNAUTHORIZED", "valid Bearer token required")
+		return
+	}
+	bookID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		return
+	}
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantEdit) {
+		return
+	}
+
+	var in struct {
+		Status    string   `json:"status"`
+		EntityIDs []string `json:"entity_ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY", "invalid JSON")
+		return
+	}
+	switch in.Status {
+	case "active", "inactive", "draft":
+	default:
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_STATUS",
+			"status must be active, inactive, or draft")
+		return
+	}
+	if len(in.EntityIDs) == 0 {
+		writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY", "entity_ids must not be empty")
+		return
+	}
+	if len(in.EntityIDs) > 1000 {
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_TOO_MANY",
+			"entity_ids must be at most 1000")
+		return
+	}
+	// Drop malformed ids (mirrors entities/by-ids) — a bad id never matches the
+	// book-scoped WHERE anyway, so coerce to a clean uuid slice.
+	ids := make([]uuid.UUID, 0, len(in.EntityIDs))
+	for _, raw := range in.EntityIDs {
+		if id, err := uuid.Parse(strings.TrimSpace(raw)); err == nil {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		writeJSON(w, http.StatusOK, map[string]int{"updated": 0})
+		return
+	}
+
+	updated, err := s.bulkSetEntityStatusCore(r.Context(), bookID, in.Status, ids)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "bulk status update failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"updated": updated})
+}
+
+// bulkSetEntityStatusCore sets `status` on the live, book-scoped entities in `ids`
+// and returns the count actually updated. Status validity + grant are the CALLER's
+// concern; book-scoping (book_id = $2) is enforced here so a confirm-token effect can
+// never touch another book's rows. Single source of truth for the HTTP bulk handler
+// and the glossary_propose_status_change confirm effect.
+func (s *Server) bulkSetEntityStatusCore(ctx context.Context, bookID uuid.UUID, status string, ids []uuid.UUID) (int, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	tag, err := s.pool.Exec(ctx,
+		`UPDATE glossary_entities SET status = $1, updated_at = now()
+		 WHERE book_id = $2 AND entity_id = ANY($3::uuid[]) AND deleted_at IS NULL`,
+		status, bookID, ids)
+	if err != nil {
+		return 0, err
+	}
+	return int(tag.RowsAffected()), nil
+}
+
+// countLiveEntitiesInBook returns how many of `ids` are live entities in the book — used
+// to render the status-change confirm preview from current state.
+func (s *Server) countLiveEntitiesInBook(ctx context.Context, bookID uuid.UUID, ids []uuid.UUID) (int, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	var n int
+	err := s.pool.QueryRow(ctx,
+		`SELECT count(*) FROM glossary_entities
+		 WHERE book_id = $1 AND entity_id = ANY($2::uuid[]) AND deleted_at IS NULL`,
+		bookID, ids).Scan(&n)
+	return n, err
+}
+
 // ── POST/DELETE /v1/glossary/books/{book_id}/entities/{entity_id}/pin ────────
 //
 // Idempotent toggle of the is_pinned_for_context flag used by the
@@ -999,9 +1367,13 @@ func (s *Server) listEntityNames(w http.ResponseWriter, r *http.Request) {
 		SELECT e.entity_id, eav.original_value AS display_name,
 			ek.code AS kind_code, ek.color AS kind_color, ek.icon AS kind_icon, ek.name AS kind_name
 		FROM glossary_entities e
-		JOIN entity_kinds ek ON ek.kind_id = e.kind_id
+		JOIN book_kinds ek ON ek.book_kind_id = e.kind_id
 		LEFT JOIN entity_attribute_values eav ON eav.entity_id = e.entity_id
-			AND eav.attr_def_id = (SELECT attr_def_id FROM attribute_definitions WHERE kind_id = e.kind_id AND code = 'name' LIMIT 1)
+			AND eav.attr_def_id = (
+				SELECT ba.attr_id FROM book_attributes ba
+				JOIN book_genres g ON g.genre_id = ba.genre_id
+				WHERE ba.kind_id = e.kind_id AND ba.code = 'name'
+				ORDER BY (g.code = 'universal') DESC, ba.sort_order LIMIT 1)
 		WHERE e.book_id = $1 AND e.deleted_at IS NULL AND e.status = 'active'
 		ORDER BY eav.original_value
 		LIMIT 500`, bookID)

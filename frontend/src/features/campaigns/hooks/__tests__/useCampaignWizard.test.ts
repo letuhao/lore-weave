@@ -73,6 +73,18 @@ describe('useCampaignWizard', () => {
     expect(p.eval_judge_model_ref).toBeNull();
   });
 
+  it('threads the estimate band into the create payload (G1); null when not estimated', () => {
+    const { result } = renderHook(() => useCampaignWizard());
+    expect(result.current.buildCreatePayload().est_usd_low).toBeNull();
+    act(() => {
+      result.current.setField('estUsdLow', '7.00');
+      result.current.setField('estUsdHigh', '11.00');
+    });
+    const p = result.current.buildCreatePayload();
+    expect(p.est_usd_low).toBe('7.00');
+    expect(p.est_usd_high).toBe('11.00');
+  });
+
   it('gating_mode is user-selectable (D-S5C-GATING)', () => {
     const { result } = renderHook(() => useCampaignWizard());
     act(() => {

@@ -275,6 +275,48 @@ func TestResolveAccess_FailClosed(t *testing.T) {
 	}
 }
 
+// D-GRANT-INSTANT-REVOKE — Invalidate drops the cached grant so the next resolve
+// re-fetches (instant revoke), and reports whether an entry was actually removed.
+func TestInvalidate_DropsCachedGrantForcingRefetch(t *testing.T) {
+	t.Parallel()
+	srv, hits := stubAuthority(t, "edit")
+	c := testClient(t, srv.URL)
+	book, user := uuid.New(), uuid.New()
+
+	if _, err := c.ResolveGrant(context.Background(), book, user); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.ResolveGrant(context.Background(), book, user); err != nil { // cached
+		t.Fatal(err)
+	}
+	if got := atomic.LoadInt64(hits); got != 1 {
+		t.Fatalf("positive grant should be cached: %d hits, want 1", got)
+	}
+
+	if !c.Invalidate(book, user) {
+		t.Error("Invalidate should report an entry was removed")
+	}
+	if c.Invalidate(book, user) {
+		t.Error("second Invalidate should be a no-op (false)")
+	}
+
+	if _, err := c.ResolveGrant(context.Background(), book, user); err != nil { // re-fetch
+		t.Fatal(err)
+	}
+	if got := atomic.LoadInt64(hits); got != 2 {
+		t.Errorf("invalidate should force a re-fetch: %d hits, want 2", got)
+	}
+}
+
+func TestInvalidate_UncachedIsSafeNoop(t *testing.T) {
+	t.Parallel()
+	srv, _ := stubAuthority(t, "edit")
+	c := testClient(t, srv.URL)
+	if c.Invalidate(uuid.New(), uuid.New()) {
+		t.Error("invalidating an uncached pair should return false")
+	}
+}
+
 func TestRequireGrant_UnavailableFailsClosed(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

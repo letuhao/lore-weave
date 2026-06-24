@@ -169,6 +169,26 @@ describe('EntitiesTab', () => {
     await screen.findByTestId('entities-error');
   });
 
+  it('renders the project select in the unscoped (cross-project) surface', async () => {
+    render(<EntitiesTab />, { wrapper: Wrapper });
+    await screen.findByTestId('entities-table');
+    expect(screen.getByTestId('entities-filter-project')).toBeInTheDocument();
+  });
+
+  it('C6: hides the project select AND scopes by the route projectId when scoped', async () => {
+    render(<EntitiesTab scopedProjectId="p-9" />, { wrapper: Wrapper });
+    await screen.findByTestId('entities-table');
+    // G6 backbone: no per-tab dropdown when route-scoped.
+    expect(
+      screen.queryByTestId('entities-filter-project'),
+    ).not.toBeInTheDocument();
+    // The route param is the effective project filter.
+    expect(listEntitiesMock).toHaveBeenCalledWith(
+      expect.objectContaining({ project_id: 'p-9' }),
+      'tok-test',
+    );
+  });
+
   it('pagination prev/next buttons flip offset', async () => {
     // Seed > PAGE_SIZE total so next is enabled; BE returns 1 row to
     // simulate the tail page.

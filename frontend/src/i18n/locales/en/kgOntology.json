@@ -1,0 +1,78 @@
+{
+  "page": {
+    "title": "Knowledge Graph Schema",
+    "tabs": { "adopt": "Adopt", "schema": "Schema", "views": "Views", "sync": "Sync" },
+    "noProject": "No knowledge project for this book",
+    "noProjectHelp": "This book has no linked knowledge project yet. Run extraction or create a project to manage its graph schema.",
+    "noSchema": "No schema adopted yet — adopt a template to start."
+  },
+  "common": {
+    "dismiss": "Dismiss",
+    "deprecate": "Deprecate",
+    "deprecated": "deprecated"
+  },
+  "adopt": {
+    "chooseTemplate": "Choose a template to adopt",
+    "select": "Select",
+    "selected": "Selected",
+    "noTemplates": "No adoptable templates available.",
+    "adoptButton": "Adopt template",
+    "adopting": "Adopting…",
+    "missing": "missing",
+    "openGlossary": "Open glossary",
+    "blockedTitle": "Glossary is missing required kinds",
+    "blockedHelp": "Add these node-kinds in the glossary first, then re-adopt.",
+    "blockedButton": "Add {{count}} kind(s) in glossary first",
+    "lossTitle": "Re-adopting will discard your customizations",
+    "lossHelp": "Re-adopting replaces the project's current schema. {{count}} customization(s) will be dropped or overwritten and cannot be recovered.",
+    "lossProceed": "I understand, proceed",
+    "lossAcknowledged": "Acknowledged",
+    "lossBlockedButton": "Acknowledge the warning to continue",
+    "nodeType": {
+      "edge_type": "edge type",
+      "fact_type": "fact type",
+      "node_kind": "node kind",
+      "vocab_set": "vocab set",
+      "vocab_value": "vocab value"
+    },
+    "lossChange": {
+      "removed_upstream": "removed",
+      "modified": "overwritten"
+    }
+  },
+  "schema": {
+    "edgeTypes": "Edge types",
+    "factTypes": "Fact types",
+    "nodeKinds": "Node kinds (← glossary)",
+    "vocabSet": "Vocab set",
+    "closed": "closed — extractor may only assign",
+    "temporal": "⏱ temporal",
+    "noEdges": "No edge types yet.",
+    "addEdgeType": "Add edge type",
+    "code": "Code",
+    "label": "Label",
+    "temporalField": "temporal (valid_from + provenance)",
+    "cardinality": "Cardinality",
+    "addButton": "Add edge type"
+  },
+  "sync": {
+    "upToDate": "Up to date — no upstream changes.",
+    "updatesAvailable": "{{count}} updates available from upstream",
+    "keepAllMine": "Keep all mine",
+    "takeAllTheirs": "Take all theirs",
+    "added": "ADDED",
+    "modified": "MODIFIED",
+    "removed": "REMOVED UPSTREAM",
+    "keepMine": "Keep mine",
+    "takeTheirs": "Take theirs",
+    "applyButton": "Apply {{count}} decisions"
+  },
+  "views": {
+    "name": "View name",
+    "edgeTypes": "Edge types in this view",
+    "nodeKinds": "Node kinds shown",
+    "createButton": "Create view",
+    "saveButton": "Save view",
+    "perUser": "per-user"
+  }
+}

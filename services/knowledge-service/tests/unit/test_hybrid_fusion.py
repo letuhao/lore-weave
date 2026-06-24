@@ -3,10 +3,34 @@
 from __future__ import annotations
 
 from app.search.hybrid_fusion import (
+    apply_language_preference,
     apply_relevance_floor,
     cap_per_chapter,
+    language_coverage,
+    normalize_lang,
     rrf_fuse,
 )
+
+
+def test_language_coverage():
+    # full coverage → no note
+    full = language_coverage(["vi", "vi", "mixed"], "vi")
+    assert full["total"] == 3 and full["in_language"] == 3
+    assert full["partial"] is False and full["note"] is None
+    # partial → honest note (mixed counts as in-language)
+    part = language_coverage(["vi", "mixed", "zh", "en"], "vi-VN")
+    assert part["reader_lang"] == "vi"  # folded
+    assert part["in_language"] == 2 and part["total"] == 4
+    assert part["partial"] is True and "2 of 4" in part["note"]
+    # none in language → distinct note
+    none = language_coverage(["zh", "en"], "vi")
+    assert none["in_language"] == 0 and "No results in your language" in none["note"]
+    # no preference → None (no note to show)
+    assert language_coverage(["vi"], None) is None
+    assert language_coverage(["vi"], "") is None
+    # empty result set → no note even with a pref
+    empty = language_coverage([], "vi")
+    assert empty["total"] == 0 and empty["note"] is None
 
 
 def _h(chapter: str, surface: str, pos: int, score: float = 0.0,
@@ -16,6 +40,14 @@ def _h(chapter: str, surface: str, pos: int, score: float = 0.0,
     if relevance is not None:
         h["relevance"] = relevance
     return h
+
+
+def _lh(chapter: str, lang: str) -> dict:
+    """A hit carrying a sourceLang, for language-preference tests. The LIST order
+    represents the upstream (rerank/RRF) ranking the partition must preserve
+    within each language group."""
+    return {"chapterId": chapter, "surface": "canon", "sourceLang": lang,
+            "location": {"chunkIndex": 0}}
 
 
 def test_rrf_combines_legs_distinct_keys():
@@ -85,6 +117,91 @@ def test_relevance_floor_missing_field_passes_through():
 def test_relevance_floor_zero_is_noop():
     hits = [_h("a", "canon", 0, relevance=0.01)]
     assert apply_relevance_floor(hits, 0.0) == hits
+
+
+# ── KG-ML M4: soft language-preference boost ─────────────────────────
+
+
+def test_normalize_lang_primary_subtag():
+    assert normalize_lang("zh-Hant") == "zh"
+    assert normalize_lang("en_US") == "en"
+    assert normalize_lang("VI") == "vi"
+    assert normalize_lang("  ") == ""
+    assert normalize_lang(None) == ""
+    assert normalize_lang("unknown") == ""
+    assert normalize_lang("mixed") == "mixed"
+
+
+def test_lang_pref_none_is_noop():
+    hits = [_lh("a", "zh"), _lh("b", "vi")]
+    out = apply_language_preference(list(hits), None)
+    assert [h["chapterId"] for h in out] == ["a", "b"]  # untouched order
+    assert "langMatch" not in out[0]  # no annotation when disabled
+
+
+def test_lang_pref_partitions_matched_first():
+    # upstream order is [a(zh), b(vi)]; a vi reader pulls b to the front even
+    # though it ranked lower upstream (matched-first partition).
+    hits = [_lh("a", "zh"), _lh("b", "vi")]
+    out = apply_language_preference(hits, "vi")
+    assert [h["chapterId"] for h in out] == ["b", "a"]
+    assert out[0]["langMatch"] is True
+    assert out[1]["langMatch"] is False
+
+
+def test_lang_pref_does_not_filter_offlanguage():
+    # soft, not hard: a zh-only result set still surfaces for a vi reader,
+    # in its original upstream order (nothing dropped, nothing reordered).
+    hits = [_lh("a", "zh"), _lh("b", "zh")]
+    out = apply_language_preference(hits, "vi")
+    assert [h["chapterId"] for h in out] == ["a", "b"]
+    assert all(h["langMatch"] is False for h in out)
+
+
+def test_lang_pref_preserves_upstream_order_within_groups():
+    # the partition is STABLE: within the matched group AND the unmatched group,
+    # the upstream (rerank/RRF) order is retained. Upstream: en1, vi1, en2, vi2.
+    hits = [_lh("en1", "en"), _lh("vi1", "vi"), _lh("en2", "en"), _lh("vi2", "vi")]
+    out = apply_language_preference(hits, "vi")
+    assert [h["chapterId"] for h in out] == ["vi1", "vi2", "en1", "en2"]
+
+
+def test_lang_pref_mixed_matches_any():
+    hits = [_lh("a", "zh"), _lh("b", "mixed")]
+    out = apply_language_preference(hits, "vi")
+    assert out[0]["chapterId"] == "b"  # mixed matches a vi reader
+    assert out[0]["langMatch"] is True
+
+
+def test_lang_pref_regional_variant_matches():
+    # reader pref "zh-Hant" normalizes to "zh" and matches a "zh" passage.
+    hits = [_lh("a", "en"), _lh("b", "zh")]
+    out = apply_language_preference(hits, "zh-Hant")
+    assert out[0]["chapterId"] == "b"
+    assert out[0]["langMatch"] is True
+
+
+def test_lang_pref_idempotent():
+    # re-running with the same pref preserves order (no oscillation).
+    hits = [_lh("a", "zh"), _lh("b", "vi")]
+    once = apply_language_preference(hits, "vi")
+    twice = apply_language_preference(once, "vi")
+    assert [h["chapterId"] for h in twice] == ["b", "a"]
+
+
+def test_rrf_keeps_both_languages_of_same_chapter_chunk():
+    # /review-impl HIGH: a dual-indexed chapter has vi + en passages that share
+    # chapterId + surface(canon) + chunkIndex (the M2 node id keeps source_id
+    # clean). Without sourceLang in the fusion key, RRF collapses them and one
+    # language is dropped BEFORE the language-preference pass — denying a reader
+    # the language they asked for. Both must survive.
+    vi = {"chapterId": "ch", "surface": "canon", "sourceLang": "vi",
+          "location": {"chunkIndex": 0}}
+    en = {"chapterId": "ch", "surface": "canon", "sourceLang": "en",
+          "location": {"chunkIndex": 0}}
+    fused = rrf_fuse([[vi, en]])
+    assert len(fused) == 2
+    assert {h["sourceLang"] for h in fused} == {"vi", "en"}
 
 
 def test_hit_key_keeps_distinct_chunks_sharing_a_block_index():

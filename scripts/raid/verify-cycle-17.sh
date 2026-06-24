@@ -1,193 +1,84 @@
 #!/usr/bin/env bash
-# verify-cycle-17.sh — CI gate for RAID cycle 17 (strategy (d) RE-COOK, P3 —
-# gate-enforced + LICENSING). Exit 0 = PASS.
-#
-# Asserts (per docs/raid/cycle_briefs/17_strategy-recook.md acceptance +
-# DEFERRED-054 gate-enforcement hard requirement + the C17 LICENSING safety):
-#   1. C17 unit suite green: ReCookStrategy (H0 origin='enriched:recook' + conf<1.0
-#      + quarantined + recook-basis provenance citing the LICENSED source),
-#      canon-verify runs on re-cooked content (anachronism on re-cooked modern!),
-#      grounding required (no invent-from-nothing), the LICENSING gate (default-deny:
-#      public_domain/licensed ADMITTED; unlicensed/copyrighted/unknown/missing
-#      REFUSED at corpus-admission AND fact-emit), AND the gate-aware factory
-#      enforcement (LOCKED → InactiveStrategyError; CLEARED → selectable; an
-#      override cannot bypass a locked gate; read-error fails closed).
-#   2. RUNNER gate e2e: gate LOCKED + recook → refused before runner; CLEARED + PD
-#      → re-cooks H0 proposals; CLEARED + unlicensed → refused mid-run (no proposal);
-#      recook cost (12.0) binds; P1 path unaffected. (Same end-to-end enforcement as
-#      C16's test_runner_gate_e2e, extended to P3 + licensing.)
-#   3. Full lore-enrichment suite green — no C0–C16 regression.
-#   4. ruff clean on the C17 code paths.
-#   5. No hardcoded model names in the C17 app code (model via provider-registry
-#      model_ref / the injected CompleteFn seam).
-#   6. GATE ENFORCEMENT (054): focused assertion that gate-LOCKED → recook is NOT
-#      selectable and gate-CLEARED → selectable (gate ENFORCED, not advisory).
-#   7. LICENSING ENFORCEMENT: focused assertion that an unlicensed/unknown source
-#      is REFUSED and a public_domain/licensed source is ADMITTED (default-deny).
-#   8. Eval-gate clears threshold BEFORE active: re-run the C15 deterministic gate
-#      (bad fixture BLOCKS) to confirm the gate the factory reads is real + gates.
-#      C17 reads this gate; it does NOT edit it.
-#   9. Isolation: git diff touches NO climate/geo eval files, NO C15 eval files,
-#      NO world-service / game-server / infra/existing-prod.
-#  10. LIVE SMOKE (best-effort): a real re-cook of a PUBLIC-DOMAIN history snippet
-#      into 商周 via real Qwen → a quarantined, H0-tagged proposal, ONLY when the
-#      gate is cleared, AND a copyrighted negative-control source REFUSED. Genuine
-#      infra-unavailable is a legitimate skip (no cross-service token required —
-#      this cycle is in-service per the brief).
-set -uo pipefail
+# verify-cycle-17 — C17 Writer flow polish (FE) acceptance gate. ▶ M3.
+# Per RAID_WORKFLOW.md §13 (exit 0 = pass). FE-only: guided first-run (auto first
+# scene + auto-pick the SOLE chat model + a contextual cue → ≤2 clicks to a first
+# draft) + "Continue from cursor" first-class (caret-anchored streaming continue,
+# WG-4/WG-5, LOCKED writer-not-hard-blocked). Targeted vitest + eslint/tsc on touched.
+set -euo pipefail
 CYCLE=17
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-LE_SVC="$REPO_ROOT/services/lore-enrichment-service"
+FE="$REPO_ROOT/frontend"
 AUDIT_LOG="$REPO_ROOT/docs/audit/AUDIT_LOG.jsonl"
 NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-fail() { echo "[verify-cycle-17] FAIL: $1"; exit 1; }
-ok()   { echo "[verify-cycle-17] ok: $1"; }
-note() { echo "[verify-cycle-17] note: $1"; }
+audit() { mkdir -p "$(dirname "$AUDIT_LOG")"; echo "{\"ts\":\"$NOW\",\"event\":\"$1\",\"cycle\":$CYCLE}" >> "$AUDIT_LOG"; }
+fail() { echo "[verify-cycle-17] FAIL: $1" >&2; audit "verify_cycle_17_failed"; exit 1; }
+have() { grep -Fq "$2" "$1" || fail "$3"; }
 
 echo "[verify-cycle-17] running CI gate"
 
-# ── 1+2. C17 unit + runner-e2e suites ────────────────────────────────────────────
-if command -v python >/dev/null 2>&1; then
-  ( cd "$LE_SVC" && python -m pytest \
-      tests/test_recook_strategy.py tests/test_runner_recook_gate_e2e.py -q ) \
-    >/tmp/c17_unit.log 2>&1 \
-    || { cat /tmp/c17_unit.log; fail "C17 re-cook unit/e2e suite failed"; }
-  ok "C17 re-cook unit + runner-gate-e2e suites green (H0 + canon-verify + gate + licensing)"
+HOOK="$FE/src/features/composition/hooks/useGuidedFirstRun.ts"
+PANEL="$FE/src/features/composition/components/CompositionPanel.tsx"
+INLINE="$FE/src/features/composition/components/InlineAiLayer.tsx"
+EDITOR="$FE/src/pages/ChapterEditorPage.tsx"
 
-  # ── 3. full service suite — no C0–C16 regression ─────────────────────────────
-  ( cd "$LE_SVC" && python -m pytest -q ) >/tmp/c17_full.log 2>&1 \
-    || { tail -40 /tmp/c17_full.log; fail "lore-enrichment full suite regressed"; }
-  ok "lore-enrichment full suite green (no C0–C16 regression)"
-else
-  note "python not on PATH — skipping unit suite here"
+# ── 1. guided first-run: auto first scene + auto-pick the SOLE model in a HOOK ──
+have "$HOOK" "useGuidedFirstRun" "missing guided first-run hook"
+have "$HOOK" "soleModelId" "hook must expose the sole-model auto-pick"
+have "$HOOK" "runGuided" "hook must expose an explicit runGuided() action"
+# Auto-pick ONLY when exactly one model — never 0/≥2 (the misfire guard).
+grep -Fq "models.length === 1" "$HOOK" || fail "auto-pick is not gated to EXACTLY one model"
+# Logic lives in the hook, not the component (FE MVC).
+have "$PANEL" "useGuidedFirstRun" "CompositionPanel must consume the guided hook"
+
+# ── 2. first-run cue renders + a primed Start action creates the first scene ──
+have "$PANEL" "composition-guided-cue" "missing first-run cue"
+have "$PANEL" "composition-guided-start" "missing primed Start-writing action"
+have "$PANEL" "guided.runGuided" "Start action must call the hook's explicit runGuided handler"
+
+# ── 3. "Continue from cursor" is FIRST-CLASS (not buried behind the AI-mode toggle) ──
+have "$INLINE" "inline-continue" "missing continue-from-cursor affordance"
+have "$INLINE" "continueFromCursor" "continue-from-cursor must use the first-class i18n label"
+have "$INLINE" "g.continueDraft" "continue-from-cursor must be wired to the streaming continue"
+# The continue button must NOT be gated by `mode === 'ai'` (the C17 un-burying).
+if grep -n "data-testid=\"inline-continue\"" "$INLINE" | grep -q "mode === 'ai'"; then
+  fail "continue-from-cursor still gated behind the AI-mode toggle (not first-class)"
 fi
+# No useEffect-for-events in the inline layer's continue path (direct handler).
+have "$INLINE" "onClick={g.continueDraft}" "continue-from-cursor must fire from a direct onClick handler"
 
-# ── 4. ruff clean on C17 paths ────────────────────────────────────────────────────
-if command -v ruff >/dev/null 2>&1; then
-  ( cd "$LE_SVC" && ruff check \
-      app/strategies/recook.py app/strategies/licensing.py \
-      app/strategies/__init__.py app/jobs/stages.py app/jobs/assembly.py \
-      app/retrieval/store.py app/db/migrate.py \
-      tests/test_recook_strategy.py tests/test_runner_recook_gate_e2e.py ) \
-    >/tmp/c17_ruff.log 2>&1 \
-    || { cat /tmp/c17_ruff.log; fail "ruff failed on C17 files"; }
-  ok "ruff clean on C17 code paths"
-fi
+# ── 4. editor falls back to the SOLE chat model so Continue works without a default ──
+have "$EDITOR" "soleChatModel" "editor must fall back to the sole registered chat model for inline continue"
+grep -Fq "chatModels.data?.length === 1" "$EDITOR" || fail "editor sole-model fallback not gated to EXACTLY one model"
 
-# ── 5. no hardcoded model names in C17 app code ──────────────────────────────────
-if grep -rnE --include='*.py' \
-     'gpt-|claude-[0-9]|qwen[/-][0-9]|bge-m3|text-embedding-|gemma-[0-9]|llama-[0-9]' \
-     "$LE_SVC/app/strategies/recook.py" \
-     "$LE_SVC/app/strategies/licensing.py" >/dev/null 2>&1; then
-  fail "hardcoded model name found in a C17 app code path"
-fi
-ok "no hardcoded model names in C17 app code (model via model_ref / CompleteFn)"
-grep -q 'model_ref' "$LE_SVC/app/strategies/recook.py" \
-  || fail "re-cook strategy does not reference model_ref"
-ok "re-cook resolves the model via provider-registry model_ref"
-
-# ── 6. GATE ENFORCEMENT (054) — the load-bearing assertion (P3) ──────────────────
-if command -v python >/dev/null 2>&1; then
-  ( cd "$LE_SVC" && python -m pytest \
-      tests/test_recook_strategy.py tests/test_runner_recook_gate_e2e.py -q -k \
-      "gate_locked or gate_cleared or override_cannot_bypass or read_error or fails_closed or refuses_recook" ) \
-    >/tmp/c17_gate.log 2>&1 \
-    || { cat /tmp/c17_gate.log; fail "GATE ENFORCEMENT tests failed (054 not enforced for P3)"; }
-  ok "GATE ENFORCED (054) for P3: LOCKED→unselectable+refused, CLEARED→selectable, no override bypass"
+# ── 5. writer NOT hard-blocked: Generate still gates only on scene+model+busy ──
+CV="$FE/src/features/composition/components/ComposeView.tsx"
+if grep -nE 'canGenerate' "$CV" | grep -iqE 'knowledge|grounding|embedding|rerank'; then
+  fail "Generate gated on knowledge/grounding (violates LOCKED writer-not-hard-blocked)"
 fi
 
-# ── 7. LICENSING ENFORCEMENT — the C17-specific safety ───────────────────────────
-if command -v python >/dev/null 2>&1; then
-  ( cd "$LE_SVC" && python -m pytest \
-      tests/test_recook_strategy.py tests/test_runner_recook_gate_e2e.py -q -k \
-      "license or licensed or inadmissible or unlicensed or unresolvable or admits" ) \
-    >/tmp/c17_lic.log 2>&1 \
-    || { cat /tmp/c17_lic.log; fail "LICENSING ENFORCEMENT tests failed"; }
-  ok "LICENSING ENFORCED (default-deny): PD/licensed ADMITTED; unlicensed/unknown/copyrighted REFUSED"
-fi
+# ── 6. no hardcoded chat-model name in the auto-pick (provider invariant) ──
+# Auto-pick resolves from the registered model list (listUserModels capability:'chat').
+have "$PANEL" "listUserModels" "auto-pick must resolve the chat model via the registry"
+have "$EDITOR" "listUserModels" "editor sole-model fallback must resolve via the registry"
 
-# ── 8. eval gate clears threshold BEFORE active (the gate C17 reads is real) ─────
-if command -v python >/dev/null 2>&1 \
-   && [ -f "$REPO_ROOT/scripts/enrichment_eval.py" ]; then
-  set +e
-  ( cd "$REPO_ROOT" && python scripts/enrichment_eval.py \
-      --fixture eval/fixtures/enrichment_bad.json ) >/tmp/c17_evalbad.log 2>&1
-  BAD_RC=$?
-  set -e
-  [ "$BAD_RC" -ne 0 ] || { cat /tmp/c17_evalbad.log; fail "eval gate FALSE-GREEN: bad fixture did not BLOCK"; }
-  ok "eval gate still blocks the bad fixture (exit $BAD_RC) — gate is real, re-cook gated on it"
-fi
+# ── 7. targeted vitest green ──
+cd "$FE"
+echo "[verify-cycle-17] vitest (guided first-run + continue-from-cursor)"
+npx vitest run \
+  src/features/composition/hooks/__tests__/useGuidedFirstRun.test.ts \
+  src/features/composition/components/__tests__/CompositionPanelGuided.test.tsx \
+  src/features/composition/components/__tests__/CompositionPanelReadiness.test.tsx \
+  src/features/composition/components/__tests__/CompositionPanel.test.tsx \
+  src/features/composition/components/__tests__/InlineAiLayer.test.tsx \
+  --reporter=dot --testTimeout=10000 2>&1 | tail -12
 
-# ── 9. ISOLATION (additive-not-fork + no prod/cross-service drift) ───────────────
-if command -v git >/dev/null 2>&1; then
-  TOUCHED="$(cd "$REPO_ROOT" && git diff --name-only HEAD -- \
-      eval/climate-eval-suite.toml 'eval/baselines/v*.json' \
-      scripts/climate_eval.py scripts/climate_eval_sweep.py 'eval/compare-*' \
-      scripts/enrichment_eval.py eval/enrichment-eval-suite.toml \
-      'eval/baselines/enrichment-*.json' \
-      services/world-service services/game-server infra/existing-prod 2>/dev/null)"
-  if [ -n "$TOUCHED" ]; then
-    echo "$TOUCHED"
-    fail "isolation violated — C17 must NOT touch climate/geo eval, C15 eval files, world-service/game-server/prod"
-  fi
-  ok "isolation OK (no climate/geo eval, no C15 eval files, no world-service/game-server/prod)"
+# ── 8. eslint + tsc on touched files ──
+echo "[verify-cycle-17] eslint (touched files)"
+npx eslint "$HOOK" "$PANEL" "$INLINE" "$EDITOR" --max-warnings=0 2>&1 | tail -10
+echo "[verify-cycle-17] tsc --noEmit"
+npx tsc --noEmit 2>&1 | tail -10
 
-  if [ -x "$REPO_ROOT/scripts/raid/prod-isolation-lint.sh" ]; then
-    bash "$REPO_ROOT/scripts/raid/prod-isolation-lint.sh" >/tmp/c17_prodlint.log 2>&1 \
-      || { cat /tmp/c17_prodlint.log; fail "prod-isolation lint failed"; }
-    ok "prod-isolation lint clean"
-  fi
-fi
-
-# ── 10. LIVE SMOKE — real Qwen re-cook of a PD source into 商周 (best-effort) ─────
-LIVE_SMOKE="$LE_SVC/tests/live_smoke_c17_recook.py"
-if ! command -v docker >/dev/null 2>&1; then
-  note "live infra unavailable: docker not on PATH — deterministic gate only"
-  echo "{\"ts\":\"$NOW\",\"cycle\":$CYCLE,\"event\":\"verify\",\"result\":\"pass\",\"live_smoke\":\"skipped:no-docker\"}" >> "$AUDIT_LOG"
-  ok "cycle 17 gate PASS (live smoke skipped: no docker)"
-  exit 0
-fi
-if ! docker compose -f "$REPO_ROOT/infra/docker-compose.yml" ps >/dev/null 2>&1; then
-  note "live infra unavailable: compose stack not reachable — deterministic gate only"
-  echo "{\"ts\":\"$NOW\",\"cycle\":$CYCLE,\"event\":\"verify\",\"result\":\"pass\",\"live_smoke\":\"skipped:stack-down\"}" >> "$AUDIT_LOG"
-  ok "cycle 17 gate PASS (live smoke skipped: stack down)"
-  exit 0
-fi
-if [ ! -f "$LIVE_SMOKE" ]; then
-  note "live smoke harness not present — deterministic gate only (in-service cycle, no cross-service token required)"
-  echo "{\"ts\":\"$NOW\",\"cycle\":$CYCLE,\"event\":\"verify\",\"result\":\"pass\",\"live_smoke\":\"skipped:no-harness\"}" >> "$AUDIT_LOG"
-  ok "cycle 17 gate PASS (live smoke skipped: harness JIT — deterministic enforcement proven)"
-  exit 0
-fi
-
-echo "[verify-cycle-17] stack reachable — running REAL Qwen re-cook of a PD source into 商周"
-LE_DB="${TEST_LORE_ENRICHMENT_DB_URL:-postgresql://loreweave:loreweave_dev@localhost:5555/loreweave_lore_enrichment}"
-PR_DB="${PROVIDER_REGISTRY_DB_URL:-postgresql://loreweave:loreweave_dev@localhost:5555/loreweave_provider_registry}"
-PR_URL="${PROVIDER_REGISTRY_URL:-http://localhost:8208}"
-INTERNAL_TOKEN="${INTERNAL_SERVICE_TOKEN:-dev_internal_token}"
-# app.config.Settings() (pulled in transitively at smoke import) requires these;
-# supply the compose dev defaults so config-load can't crash the smoke before
-# _main runs (a missing secret would otherwise look like a hard fail, not a skip).
-JWT_SECRET_V="${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}"
-set +e
-SMOKE_OUT="$( cd "$LE_SVC" && \
-  LORE_ENRICHMENT_DB_URL="$LE_DB" PROVIDER_REGISTRY_DB_URL="$PR_DB" \
-  PROVIDER_REGISTRY_URL="$PR_URL" INTERNAL_SERVICE_TOKEN="$INTERNAL_TOKEN" \
-  JWT_SECRET="$JWT_SECRET_V" \
-  python -m tests.live_smoke_c17_recook 2>&1 )"
-SMOKE_RC=$?
-set -e
-echo "$SMOKE_OUT"
-if [ "$SMOKE_RC" -eq 0 ]; then
-  echo "{\"ts\":\"$NOW\",\"cycle\":$CYCLE,\"event\":\"verify\",\"result\":\"pass\",\"live_smoke\":\"real Qwen re-cook of PD source into 商周 → quarantined H0 proposal; copyrighted source refused\"}" >> "$AUDIT_LOG"
-  ok "cycle 17 CI gate PASS (real re-cook → quarantined H0-tagged proposal; licensing enforced)"
-  exit 0
-elif [ "$SMOKE_RC" -eq 3 ]; then
-  note "live infra unavailable: Qwen JIT load / DB unreachable / gate not cleared after retries"
-  echo "{\"ts\":\"$NOW\",\"cycle\":$CYCLE,\"event\":\"verify\",\"result\":\"pass\",\"live_smoke\":\"infra-unavailable:qwen-jit-or-gate\"}" >> "$AUDIT_LOG"
-  ok "cycle 17 gate PASS (live smoke: live infra unavailable: Qwen JIT load / gate)"
-  exit 0
-else
-  fail "live smoke: real re-cook did NOT complete (rc=$SMOKE_RC) — see output above"
-fi
+audit "verify_cycle_17_passed"
+echo "[verify-cycle-17] PASS"
+exit 0

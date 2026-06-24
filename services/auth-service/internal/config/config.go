@@ -9,15 +9,15 @@ import (
 )
 
 type Config struct {
-	HTTPAddr              string
-	DatabaseURL           string
-	JWTSecret             string
-	AccessTokenTTL        time.Duration
-	RefreshTokenTTL       time.Duration
-	PasswordMinLength     int
-	RateLimitWindow       time.Duration
-	RateLimitMax          int
-	DevLogEmailTokens     bool
+	HTTPAddr          string
+	DatabaseURL       string
+	JWTSecret         string
+	AccessTokenTTL    time.Duration
+	RefreshTokenTTL   time.Duration
+	PasswordMinLength int
+	RateLimitWindow   time.Duration
+	RateLimitMax      int
+	DevLogEmailTokens bool
 	// Optional SMTP (e.g. Mailhog: host localhost, port 1025). If SMTPHost is empty, no email is sent.
 	SMTPHost     string
 	SMTPPort     int
@@ -29,24 +29,47 @@ type Config struct {
 	// Notification service internal URL for creating notifications on events.
 	NotificationServiceInternalURL string
 	InternalServiceToken           string
+
+	// Admin-JWT issuance (074/075). Feature is ENABLED iff KMSAdminSigningKeyID
+	// is set; when enabled the other admin fields are required (fail-closed).
+	AdminIssuanceEnabled   bool
+	KMSAdminSigningKeyID   string        // AWS KMS asymmetric (RSA SIGN_VERIFY) key id/arn
+	KMSEndpoint            string        // override KMS endpoint (e.g. LocalStack http://localhost:54566)
+	AWSRegion              string        // AWS region for the KMS client
+	AdminTokenIssuerSecret string        // X-Internal-Token required to mint admin tokens; DISTINCT from InternalServiceToken
+	AdminAuditHMACKey      string        // HMAC key for break-glass reason hashing (never store raw reason)
+	AdminTokenTTL          time.Duration // TTL for normal admin tokens (default 15m)
+	// AdminJWTLocalPrivateKeyPEM is a DEV/SELF-HOSTED fallback signer: an RSA
+	// private key (PKCS#8 or PKCS#1 PEM) used to sign admin JWTs in-process when no
+	// KMS key is configured. PRODUCTION SHOULD USE KMS (key never leaves KMS); this
+	// exists so the admin CMS works on a local/self-hosted stack without AWS. KMS
+	// wins when both are set. The matching PUBLIC key goes to verifiers (glossary's
+	// ADMIN_JWT_PUBLIC_KEY_PEM).
+	AdminJWTLocalPrivateKeyPEM string
 }
 
 func Load() (*Config, error) {
 	c := &Config{
-		HTTPAddr:          getEnv("HTTP_ADDR", ":8081"),
-		DatabaseURL:       os.Getenv("DATABASE_URL"),
-		JWTSecret:         os.Getenv("JWT_SECRET"),
-		PasswordMinLength: getInt("PASSWORD_MIN_LENGTH", 8),
-		RateLimitMax:      getInt("RATE_LIMIT_MAX_REQUESTS", 60),
-		DevLogEmailTokens: getBool("DEV_LOG_EMAIL_TOKENS", true),
-		SMTPHost:          os.Getenv("SMTP_HOST"),
-		SMTPPort:          getInt("SMTP_PORT", 1025),
-		SMTPUser:          os.Getenv("SMTP_USER"),
-		SMTPPassword:      os.Getenv("SMTP_PASSWORD"),
-		SMTPFrom:          getEnv("SMTP_FROM", ""),
+		HTTPAddr:                       getEnv("HTTP_ADDR", ":8081"),
+		DatabaseURL:                    os.Getenv("DATABASE_URL"),
+		JWTSecret:                      os.Getenv("JWT_SECRET"),
+		PasswordMinLength:              getInt("PASSWORD_MIN_LENGTH", 8),
+		RateLimitMax:                   getInt("RATE_LIMIT_MAX_REQUESTS", 60),
+		DevLogEmailTokens:              getBool("DEV_LOG_EMAIL_TOKENS", true),
+		SMTPHost:                       os.Getenv("SMTP_HOST"),
+		SMTPPort:                       getInt("SMTP_PORT", 1025),
+		SMTPUser:                       os.Getenv("SMTP_USER"),
+		SMTPPassword:                   os.Getenv("SMTP_PASSWORD"),
+		SMTPFrom:                       getEnv("SMTP_FROM", ""),
 		PublicAppURL:                   getEnv("PUBLIC_APP_URL", ""),
 		NotificationServiceInternalURL: getEnv("NOTIFICATION_SERVICE_INTERNAL_URL", ""),
 		InternalServiceToken:           os.Getenv("INTERNAL_SERVICE_TOKEN"),
+		KMSAdminSigningKeyID:           os.Getenv("KMS_ADMIN_SIGNING_KEY_ID"),
+		KMSEndpoint:                    os.Getenv("KMS_ENDPOINT"),
+		AWSRegion:                      getEnv("AWS_REGION", "us-east-1"),
+		AdminTokenIssuerSecret:         os.Getenv("ADMIN_TOKEN_ISSUER_SECRET"),
+		AdminAuditHMACKey:              os.Getenv("ADMIN_AUDIT_HMAC_KEY"),
+		AdminJWTLocalPrivateKeyPEM:     os.Getenv("ADMIN_JWT_LOCAL_PRIVATE_KEY_PEM"),
 	}
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")
@@ -65,6 +88,27 @@ func Load() (*Config, error) {
 	}
 	if c.InternalServiceToken == "" {
 		return nil, fmt.Errorf("INTERNAL_SERVICE_TOKEN is required")
+	}
+
+	// Admin-JWT issuance (074/075). Feature is off unless a KMS signing key is
+	// configured; when on, the rest is required and fails closed.
+	c.AdminTokenTTL = time.Duration(getInt("ADMIN_TOKEN_TTL_SECONDS", 900)) * time.Second
+	// Enabled by EITHER a KMS key (prod) or a local private key (dev/self-hosted).
+	// KMS takes precedence at signer-construction time (main.go).
+	c.AdminIssuanceEnabled = c.KMSAdminSigningKeyID != "" || c.AdminJWTLocalPrivateKeyPEM != ""
+	if c.AdminIssuanceEnabled {
+		if len(c.AdminTokenIssuerSecret) < 32 {
+			return nil, fmt.Errorf("ADMIN_TOKEN_ISSUER_SECRET must be >=32 chars when admin issuance is enabled")
+		}
+		if c.AdminTokenIssuerSecret == c.InternalServiceToken {
+			return nil, fmt.Errorf("ADMIN_TOKEN_ISSUER_SECRET must differ from INTERNAL_SERVICE_TOKEN (separate privilege)")
+		}
+		if len(c.AdminAuditHMACKey) < 32 {
+			return nil, fmt.Errorf("ADMIN_AUDIT_HMAC_KEY must be >=32 chars when admin issuance is enabled")
+		}
+		if c.AdminTokenTTL <= 0 {
+			return nil, fmt.Errorf("ADMIN_TOKEN_TTL_SECONDS must be > 0")
+		}
 	}
 	return c, nil
 }

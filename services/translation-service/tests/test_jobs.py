@@ -206,15 +206,17 @@ def test_create_job_qa_config_overrides_flow_to_broker(client, fake_pool):
     assert published["verifier_model_ref"] == verifier_ref
     assert published["cold_start_mode"] == "single_pass"  # M4d-2c default (not overridden here)
 
-    # Also guard the INSERT positional args ($17-$21) — a column/value swap would
-    # persist wrong data yet still pass the message assertion above (built from eff).
-    # S4a appended campaign_id ($22); S5b-eval appended eval_judge_model_source/ref
-    # ($23,$24) → the qa/verifier/cold tuple is now [-8:-3], campaign_id is [-3],
-    # and the trailing pair is the (None, None) eval-judge override.
+    # Also guard the INSERT positional args — a column/value swap would persist wrong
+    # data yet still pass the message assertion above (built from eff). Trailing order:
+    # …, qa_depth, max_qa_rounds, verifier_source, verifier_ref, cold_start_mode,
+    # campaign_id, eval_judge_source, eval_judge_ref, block_index_filter, seed_version_id
+    # (S4a + S5b-eval + T2-M2). So the qa/verifier/cold tuple is [-10:-5], campaign_id
+    # is [-5], the eval-judge pair is [-4:-2], and the T2-M2 pair is the trailing [-2:].
     insert_args = fake_pool.fetchrow.call_args_list[1].args  # [0]=resolve, [1]=INSERT
-    assert insert_args[-8:-3] == ("thorough", 4, "platform_model", UUID(verifier_ref), "single_pass")
-    assert insert_args[-3] is None  # campaign_id — public job is not campaign-owned
-    assert insert_args[-2:] == (None, None)  # eval_judge source/ref — none for a public job
+    assert insert_args[-10:-5] == ("thorough", 4, "platform_model", UUID(verifier_ref), "single_pass")
+    assert insert_args[-5] is None  # campaign_id — public job is not campaign-owned
+    assert insert_args[-4:-2] == (None, None)  # eval_judge source/ref — none for a public job
+    assert insert_args[-2:] == (None, None)  # block_index_filter / seed_version_id — whole-chapter job
 
 
 def test_create_job_defaults_qa_config_when_unset(client, fake_pool):
@@ -248,10 +250,34 @@ async def test_resolve_and_create_job_threads_campaign_id(fake_pool):
             CreateJobPayload(chapter_ids=[UUID(CHAPTER_ID)]),
             USER_ID, campaign_id=camp,
         )
-    # persisted (campaign_id is [-3] since S5b-eval added the trailing eval-judge pair)
+    # persisted (campaign_id is [-5]: trailing eval-judge pair + T2-M2 block-filter pair)
     # + published on the "translation.job" message
-    assert fake_pool.fetchrow.call_args_list[1].args[-3] == camp
+    assert fake_pool.fetchrow.call_args_list[1].args[-5] == camp
     assert mock_publish.call_args.args[1]["campaign_id"] == str(camp)
+
+
+@pytest.mark.asyncio
+async def test_resolve_and_create_job_emits_model_and_params(fake_pool):
+    """P4 — the 'pending' create event carries the resolved model NAME + a whitelisted
+    params dict (model/params set once here; the projection's COALESCE keeps them across
+    later events). resolve_model_name is stubbed (autouse) → 'qwen2.5-7b-instruct'."""
+    from app.routers.jobs import _resolve_and_create_job
+    from app.models import CreateJobPayload
+    fake_pool.fetchrow.side_effect = [_BOOK_SETTINGS_ROW, FakeRecord({**_JOB_ROW})]
+    with patch("app.routers.jobs.publish", new_callable=AsyncMock), \
+         patch("app.routers.jobs.publish_event", new_callable=AsyncMock), \
+         patch("app.routers.jobs.emit_job_event", new_callable=AsyncMock) as emit:
+        await _resolve_and_create_job(
+            fake_pool, UUID(BOOK_ID),
+            CreateJobPayload(chapter_ids=[UUID(CHAPTER_ID)]), USER_ID,
+        )
+    # the 'pending' create emit (first call) carries model + params
+    pending = emit.call_args_list[0].kwargs
+    assert pending["status"] == "pending"
+    assert pending["model"] == "qwen2.5-7b-instruct"
+    assert pending["params"]["model"] == "qwen2.5-7b-instruct"
+    assert pending["params"]["target_language"]  # whitelisted key present
+    assert "pipeline_version" in pending["params"]
 
 
 @pytest.mark.asyncio
@@ -288,7 +314,7 @@ def test_public_create_job_ignores_campaign_id_in_body(client, fake_pool):
         )
     assert resp.status_code == 201
     assert mock_publish.call_args.args[1]["campaign_id"] is None  # not honoured
-    assert fake_pool.fetchrow.call_args_list[1].args[-3] is None  # campaign_id NULL persisted ([-3] post S5b-eval)
+    assert fake_pool.fetchrow.call_args_list[1].args[-5] is None  # campaign_id NULL persisted ([-5] post S5b-eval + T2-M2)
 
 
 def test_create_job_cold_start_mode_override_flows_to_broker(client, fake_pool):
@@ -302,10 +328,11 @@ def test_create_job_cold_start_mode_override_flows_to_broker(client, fake_pool):
     assert resp.status_code == 201
     assert mock_publish.call_args.args[1]["cold_start_mode"] == "two_pass"
     insert_args = fake_pool.fetchrow.call_args_list[1].args
-    # Trailing INSERT positionals: …, cold_start_mode[-4], campaign_id[-3],
-    # eval_judge_model_source[-2], eval_judge_model_ref[-1] (S4a + S5b-eval).
-    assert insert_args[-4] == "two_pass"  # cold_start_mode
-    assert insert_args[-3] is None  # campaign_id — public job is not campaign-owned
+    # Trailing INSERT positionals: …, cold_start_mode[-6], campaign_id[-5],
+    # eval_judge_model_source[-4], eval_judge_model_ref[-3],
+    # block_index_filter[-2], seed_version_id[-1] (S4a + S5b-eval + T2-M2).
+    assert insert_args[-6] == "two_pass"  # cold_start_mode
+    assert insert_args[-5] is None  # campaign_id — public job is not campaign-owned
 
 
 def test_create_job_rejects_invalid_cold_start_mode(client):
@@ -361,6 +388,11 @@ def test_create_job_uses_per_job_override_without_settings(client, fake_pool):
     # (used for version_num scoping + the stored target), not just the broker message.
     chapter_insert_args = fake_pool.execute.call_args.args
     assert chapter_insert_args[5] == "vi"
+    # review-impl MED-3: the per-chapter advisory lock serializing MAX(version_num)+1
+    # (D-TRANSL-VERSION-NUM-RACE) must be issued before the chapter insert — pin the
+    # wiring so removing the lock fails a test, not only live under concurrency.
+    lock_calls = [c for c in fake_pool.execute.call_args_list if "pg_advisory_xact_lock" in c.args[0]]
+    assert lock_calls and lock_calls[0].args[1] == f"{CHAPTER_ID}|vi"
 
 
 def test_create_job_override_satisfies_model_check_when_settings_have_none(client, fake_pool):
@@ -502,15 +534,26 @@ def test_get_chapter_translation_returns_404_when_chapter_missing(client, fake_p
 # ── POST /v1/translation/jobs/{job_id}/cancel ────────────────────────────────
 
 def test_cancel_job_sets_cancelled_status(client, fake_pool):
+    # P1: _do_cancel now runs `UPDATE ... RETURNING owner_user_id` (fetchrow) +
+    # emit_job_event in one tx, so the cancel row needs owner_user_id and the
+    # assertion is on fetchrow (not execute). The same fetchrow mock backs both
+    # the auth-check SELECT and the cancel UPDATE.
     fake_pool.fetchrow.return_value = FakeRecord({
         "book_id": UUID(BOOK_ID),
         "status": "running",
+        "owner_user_id": UUID(USER_ID),
     })
-    resp = client.post(f"/v1/translation/jobs/{JOB_ID}/cancel")
+    with patch("app.routers.jobs.emit_job_event", new_callable=AsyncMock) as emit:
+        resp = client.post(f"/v1/translation/jobs/{JOB_ID}/cancel")
     assert resp.status_code == 204
-    fake_pool.execute.assert_called_once()
-    sql = fake_pool.execute.call_args.args[0]
-    assert "cancelled" in sql
+    # The cancel UPDATE went through fetchrow with the cancelled status.
+    cancel_calls = [
+        c for c in fake_pool.fetchrow.call_args_list if "cancelled" in c.args[0]
+    ]
+    assert len(cancel_calls) == 1
+    emit.assert_awaited_once()
+    assert emit.await_args.kwargs["status"] == "cancelled"
+    assert emit.await_args.kwargs["service"] == "translation"
 
 
 def test_cancel_job_returns_409_when_already_completed(client, fake_pool):
@@ -551,6 +594,8 @@ def test_cancel_pending_job_succeeds(client, fake_pool):
     fake_pool.fetchrow.return_value = FakeRecord({
         "book_id": UUID(BOOK_ID),
         "status": "pending",
+        "owner_user_id": UUID(USER_ID),  # P1: cancel UPDATE RETURNING owner_user_id
     })
-    resp = client.post(f"/v1/translation/jobs/{JOB_ID}/cancel")
+    with patch("app.routers.jobs.emit_job_event", new_callable=AsyncMock):
+        resp = client.post(f"/v1/translation/jobs/{JOB_ID}/cancel")
     assert resp.status_code == 204

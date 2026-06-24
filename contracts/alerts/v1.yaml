@@ -1,0 +1,77 @@
+openapi: 3.1.0
+info:
+  title: contracts/alerts — Envelope wire schema (v1)
+  version: "1.0.0"
+  description: |
+    L4.P (cycle 22) — internal documentation per Q-L4-5; api-gateway-bff
+    does NOT serve these endpoints. Cycle-7's
+    infra/prometheus/alerts/*.yaml files reference this envelope shape.
+
+components:
+  schemas:
+    Severity:
+      type: string
+      enum: [page, warn, info, silence]
+      description: 4-step ladder per SR09 §12AL.
+    Action:
+      type: string
+      enum: [pagerduty, slack, email, log_only]
+      description: SR2 alert routing matrix destination.
+    Envelope:
+      type: object
+      required:
+        - v
+        - alert_id
+        - rule_id
+        - severity
+        - action
+        - summary
+        - fired_at_nanos
+      properties:
+        v:
+          type: integer
+          enum: [1]
+          description: Envelope version; receivers MUST reject mismatch.
+        alert_id:
+          type: string
+          format: uuid
+        rule_id:
+          type: string
+          example: LWMetaPostgresPrimaryDown
+        severity:
+          $ref: '#/components/schemas/Severity'
+        action:
+          $ref: '#/components/schemas/Action'
+        summary:
+          type: string
+          maxLength: 120
+        description:
+          type: string
+        labels:
+          type: object
+          additionalProperties: { type: string }
+        annotations:
+          type: object
+          additionalProperties: { type: string }
+        correlation_id:
+          type: string
+          description: trace_id / request_id chained from the originating event.
+        fired_at_nanos:
+          type: integer
+          format: int64
+
+paths:
+  /internal/v1/alerts/emit:
+    post:
+      summary: Emit an alert envelope (internal-only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Envelope'
+      responses:
+        "200":
+          description: Alert accepted
+        "400":
+          description: Envelope failed validation (version mismatch, bad enum, etc.)

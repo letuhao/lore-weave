@@ -83,7 +83,7 @@ func (w *Worker) processImageGenJob(
 		return
 	}
 
-	w.runImageGenJob(ctx, jobID, ownerUserID, operation, providerModelName,
+	w.runImageGenJob(ctx, jobID, ownerUserID, operation, providerKind, providerModelName,
 		endpointBaseURL, secret, adapter, inputMap, logger)
 }
 
@@ -103,7 +103,7 @@ func (w *Worker) runImageGenJob(
 	ctx context.Context,
 	jobID, ownerUserID uuid.UUID,
 	operation string,
-	providerModelName, endpointBaseURL, secret string,
+	providerKind, providerModelName, endpointBaseURL, secret string,
 	adapter provider.Adapter,
 	inputMap map[string]any,
 	logger *slog.Logger,
@@ -151,6 +151,11 @@ func (w *Worker) runImageGenJob(
 	result := map[string]any{
 		"created": out.Created,
 		"data":    dataItems,
+		// D-PHASE5E — surface the resolved provider identity so the consumer
+		// (book-service) can record application-level analytics + the displayed
+		// model name without a second lookup. Both already resolved above.
+		"provider_kind":       providerKind,
+		"provider_model_name": providerModelName,
 	}
 	_ = w.repo.UpdateProgress(ctx, jobID, intPtr(1), 1, 0)
 	w.finalizeAndNotify(ctx, jobID, ownerUserID, operation, "completed", result, "", "", "")

@@ -9,11 +9,12 @@ Two parallel artefacts, kept in sync by `test_tool_definitions.py`:
     LLM-supplied `tool_args` against before touching a repo.
 
 **Envelope vs. tool args (design D3).** `user_id`, `project_id` and
-`session_id` are NEVER tool parameters — they come from the
-chat-service `/internal/tools/execute` envelope. The LLM only ever
-supplies the semantic arguments below. `extra="forbid"` on every arg
-model means a hallucinated parameter is surfaced as a tool error the
-model can see and correct, and can never smuggle in a scope override.
+`session_id` are NEVER tool parameters — they come from the MCP context
+headers forwarded by ai-gateway (`X-User-Id`/`X-Project-Id`/`X-Session-Id`),
+not from the LLM. The LLM only ever supplies the semantic arguments below.
+`extra="forbid"` on every arg model means a hallucinated parameter is
+surfaced as a tool error the model can see and correct, and can never
+smuggle in a scope override.
 """
 
 from __future__ import annotations
@@ -23,6 +24,12 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.db.neo4j_repos.facts import FACT_TYPES
+from app.tools.graph_schema_tools import (
+    GRAPH_SCHEMA_ARG_MODELS,
+    GRAPH_SCHEMA_TOOL_DEFINITIONS,
+)
+from app.tools.build_tools import BUILD_TOOL_ARG_MODELS
+from app.tools.project_tools import PROJECT_TOOL_ARG_MODELS
 
 __all__ = [
     "TOOL_NAMES",
@@ -117,6 +124,16 @@ ARG_MODELS: dict[str, type[BaseModel]] = {
     "memory_timeline": MemoryTimelineArgs,
     "memory_remember": MemoryRememberArgs,
     "memory_forget": MemoryForgetArgs,
+    # Lane LF — KG ontology MCP tools (R + reversible W). Appended here so the
+    # executor's validate→dispatch path and the MCP catalog cover them uniformly
+    # with the memory tools. The class-C ontology tools (adopt/schema-edit/
+    # sync-apply/schema-mutating-triage/handoff) are DEFERRED to KM6 (the
+    # confirm-token machinery) and intentionally NOT registered (D-KG-LF-KM6).
+    **GRAPH_SCHEMA_ARG_MODELS,
+    # Knowledge-project lifecycle (kg_project_create) — book↔KG bootstrap.
+    **PROJECT_TOOL_ARG_MODELS,
+    # Cost-gated job triggers (kg_build_graph) — confirm-token mint.
+    **BUILD_TOOL_ARG_MODELS,
 }
 
 TOOL_NAMES: tuple[str, ...] = tuple(ARG_MODELS)
@@ -257,5 +274,132 @@ TOOL_DEFINITIONS: list[dict] = [
             },
         },
         ["fact_id"],
+    ),
+    # Lane LF — KG ontology MCP tools (R + reversible W). Spread last so the
+    # memory tools keep their indices; drift-locked against GRAPH_SCHEMA_ARG_MODELS
+    # by test_tool_definitions / test_graph_schema_tools.
+    *GRAPH_SCHEMA_TOOL_DEFINITIONS,
+    # Knowledge-project lifecycle — the book↔KG bootstrap tool.
+    _tool(
+        "kg_project_create",
+        "Create (or get) the knowledge PROJECT that anchors a book's knowledge "
+        "graph + memory — the prerequisite for the KG schema, extraction, and "
+        "wiki tools, which all operate on 'the current project'. A book-bound "
+        "project (book_id set) can only be created by the book's owner; omit "
+        "book_id for a personal project. Idempotent: a repeat call for the same "
+        "book returns the existing project. Returns the project_id to use next.",
+        {
+            "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200,
+                "description": "A human-readable project name.",
+            },
+            "project_type": {
+                "type": "string",
+                "enum": ["book", "translation", "code", "general"],
+                "description": "Project kind (default 'book' for a book's KG).",
+            },
+            "book_id": {
+                "type": "string",
+                "description": "Link to this book (book-owner only). Omit for a personal project.",
+            },
+            "description": {
+                "type": "string",
+                "maxLength": 2000,
+                "description": "Optional project description.",
+            },
+            "genre": {
+                "type": "string",
+                "maxLength": 100,
+                "description": "Optional genre hint (e.g. 'gothic horror').",
+            },
+        },
+        ["name"],
+    ),
+    # Cost-gated job trigger — build the knowledge graph (propose→confirm).
+    _tool(
+        "kg_build_graph",
+        "Build the current project's knowledge graph by starting an extraction job over "
+        "the book's chapters. EXPENSIVE (LLM cost) so it does NOT run immediately — it "
+        "returns a confirm_token + summary; a human confirms on the review surface, which "
+        "shows the estimated cost, and the job starts then. Requires the project to have "
+        "an embedding model configured (run extraction setup once in the UI first). Pick "
+        "the extraction llm_model from settings_list_models.",
+        {
+            "llm_model": {
+                "type": "string",
+                "maxLength": 200,
+                "description": "The extraction LLM model ref (from settings_list_models).",
+            },
+            "scope": {
+                "type": "string",
+                "enum": ["all", "chapters", "chat", "glossary_sync"],
+                "description": "What to extract (default 'all').",
+            },
+            "chapter_from": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Optional inclusive lower chapter ordinal (with chapter_to).",
+            },
+            "chapter_to": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Optional inclusive upper chapter ordinal (with chapter_from).",
+            },
+            "reasoning_effort": {
+                "type": "string",
+                "enum": ["none", "low", "medium", "high"],
+                "description": "Reasoning effort for the extraction LLM (paid compute; clamped "
+                               "to your grant — Edit caps at medium, Manage/owner at high).",
+            },
+        },
+        ["llm_model"],
+    ),
+    # Cost-gated job trigger — generate wiki articles (propose→confirm).
+    _tool(
+        "kg_build_wiki",
+        "Generate wiki articles for the current project's book entities. EXPENSIVE (LLM "
+        "cost per entity) so it does NOT run immediately — it returns a confirm_token + "
+        "summary; a human confirms on the review surface (which shows the entity count + "
+        "estimated cost) and the job starts then. Omit entity_ids to generate for ALL the "
+        "book's glossary entities (extract the glossary first); pick model_ref from "
+        "settings_list_models.",
+        {
+            "model_ref": {
+                "type": "string",
+                "maxLength": 200,
+                "description": "The wiki-generation LLM model ref (from settings_list_models).",
+            },
+            "model_source": {
+                "type": "string",
+                "maxLength": 40,
+                "description": "Model source (default 'user_model' for BYOK).",
+            },
+            "entity_ids": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Optional explicit entity ids; omit to generate for ALL book entities.",
+            },
+            "reasoning_effort": {
+                "type": "string",
+                "enum": ["none", "low", "medium", "high"],
+                "description": "Reasoning effort for the wiki-gen LLM (paid compute; clamped "
+                               "to your grant — Edit caps at medium, Manage/owner at high).",
+            },
+        },
+        ["model_ref"],
+    ),
+    # Direct action — run the embedding benchmark that gates Build-KG (R4).
+    _tool(
+        "kg_run_benchmark",
+        "Run the required embedding-quality benchmark for the current project's embedding "
+        "model. Build-KG (kg_build_graph) is BLOCKED until this passes — call this when a "
+        "build preview warns the benchmark is not passing, instead of sending the user to "
+        "the UI. Cheap (embeddings only, no LLM cost) and runs immediately on a hidden "
+        "sandbox (it never touches the real graph). Returns passed + gate_failures; a pass "
+        "enables Build-KG for this embedding model.",
+        {},
+        [],
     ),
 ]

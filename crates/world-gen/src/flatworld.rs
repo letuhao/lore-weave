@@ -1398,113 +1398,236 @@ mod tests {
         }
     }
 
-    /// Hash every load-bearing field of a `FlatWorld` (polygon vertices,
-    /// velocities, zone sites, subzone sites, salts, ranks) into a single
-    /// blake3 digest. Used by the v3.0 byte-identical snapshot pins below.
-    fn hash_world(world: &FlatWorld) -> [u8; 32] {
-        let mut hasher = blake3::Hasher::new();
-        hasher.update(&world.width.to_le_bytes());
-        hasher.update(&world.height.to_le_bytes());
-        hasher.update(&world.collision_gain.to_le_bytes());
-        hasher.update(&(world.plates.len() as u32).to_le_bytes());
+    /// Build a `FlatWorld` the way the cross-platform geometry pins below need
+    /// it: `Fixed(Ellipse)` dispatch (independent of the default shape
+    /// distribution) + coastline fractalize disabled (v3.0 had no post-process).
+    /// Shared by `_capture_flat_aggs` and `flatworld_geometry_is_stable_*` so the
+    /// regen tool and the assertion can never drift apart on params.
+    fn gen_flat(seed: u64) -> FlatWorld {
+        generate(&FlatParams {
+            seed,
+            plate_dispatch: Some(DispatchMode::Fixed(ShapeKind::Ellipse)),
+            coastline: crate::shape::FractalizeConfig::disabled(),
+            ..Default::default()
+        })
+    }
+
+    /// Continuous geometry aggregates of a `FlatWorld` — exact structural counts
+    /// plus coordinate **sums** and the vertex **bounding box**. This replaces
+    /// the old `blake3` digest of raw `f32` `to_le_bytes()`: the plate/zone/vertex
+    /// coords are `f32` derived through `sinf`/`cosf`/`sqrtf` (the Ellipse
+    /// generator alone has ~15 transcendental calls), whose last bit differs by
+    /// ~1 ULP (≈1e-4 px at pixel scale) between MSVC and glibc libm. A hard hash
+    /// grid can't absorb that noise without becoming too coarse to be a
+    /// regression lock (`D-WORLDGEN-XPLATFORM-GOLDEN`). The float aggregates are
+    /// compared with an epsilon band — ≫ the ULP noise, ≪ any real RNG/algorithm
+    /// drift (which shifts coords by whole pixels) — so they are
+    /// cross-platform-robust *by construction*.
+    ///
+    /// The **discrete** part (counts + `per_plate_verts`) is asserted *exactly*:
+    /// it is purely RNG/structural, not coordinate-derived (vertex count `nv`
+    /// is `min_v + (rng.next_f32()*range) as usize` — a PRNG draw + one f32 mul +
+    /// truncate, with no dedup/simplify), so it is platform-stable AND
+    /// order-sensitive. `per_plate_verts` is what makes the sums' blind spots
+    /// (order-independence + sign cancellation) non-load-bearing: plate
+    /// reordering and cross-plate vertex redistribution both change this ordered
+    /// vector even when the global sums/totals are preserved.
+    #[derive(Debug, Clone)]
+    struct FlatAgg {
+        plates: u32,
+        polys: u32,
+        verts: u32,
+        zones: u32,
+        subzones: u32,
+        /// Per-plate vertex counts, in plate order. RNG-structural ⇒
+        /// platform-stable; ordered ⇒ catches reordering + redistribution.
+        per_plate_verts: Vec<u32>,
+        /// Σ of every position x / y (polygon vertices + plate/zone/subzone
+        /// centres). Accumulated in `f64` over a fixed iteration order.
+        pos_sum_x: f64,
+        pos_sum_y: f64,
+        /// Σ of plate velocity x / y, kept separate so small velocities are not
+        /// drowned by the ~1024-scale positions.
+        vel_sum_x: f64,
+        vel_sum_y: f64,
+        /// Vertex bounding box (single extreme coords — noise ≈ 1 ULP).
+        min_x: f32,
+        min_y: f32,
+        max_x: f32,
+        max_y: f32,
+    }
+
+    fn flat_agg(world: &FlatWorld) -> FlatAgg {
+        let mut a = FlatAgg {
+            plates: world.plates.len() as u32,
+            polys: 0,
+            verts: 0,
+            zones: 0,
+            subzones: 0,
+            per_plate_verts: Vec::with_capacity(world.plates.len()),
+            pos_sum_x: 0.0,
+            pos_sum_y: 0.0,
+            vel_sum_x: 0.0,
+            vel_sum_y: 0.0,
+            min_x: f32::INFINITY,
+            min_y: f32::INFINITY,
+            max_x: f32::NEG_INFINITY,
+            max_y: f32::NEG_INFINITY,
+        };
         for p in &world.plates {
-            hasher.update(&(p.id as u32).to_le_bytes());
-            hasher.update(&p.center.0.to_le_bytes());
-            hasher.update(&p.center.1.to_le_bytes());
-            hasher.update(&p.velocity.0.to_le_bytes());
-            hasher.update(&p.velocity.1.to_le_bytes());
-            hasher.update(&p.zone_warp_salt.to_le_bytes());
-            hasher.update(&p.shape_seed.to_le_bytes());
-            hasher.update(p.size_rank.as_str().as_bytes());
-            // Note: shape_kind is NOT in the hash — for v3.1a the default
-            // dispatcher returns Ellipse for every plate; including it
-            // would make the snapshot diverge if v3.1b flips the default,
-            // even when underlying geometry is unchanged. The polygon
-            // vertices below are the load-bearing byte-identical witness.
-            hasher.update(&(p.components.len() as u32).to_le_bytes());
+            a.pos_sum_x += p.center.0 as f64;
+            a.pos_sum_y += p.center.1 as f64;
+            a.vel_sum_x += p.velocity.0 as f64;
+            a.vel_sum_y += p.velocity.1 as f64;
+            a.polys += p.components.len() as u32;
+            let mut plate_verts = 0u32;
             for poly in &p.components {
-                hasher.update(&(poly.len() as u32).to_le_bytes());
+                plate_verts += poly.len() as u32;
                 for &(x, y) in poly {
-                    hasher.update(&x.to_le_bytes());
-                    hasher.update(&y.to_le_bytes());
+                    a.pos_sum_x += x as f64;
+                    a.pos_sum_y += y as f64;
+                    a.min_x = a.min_x.min(x);
+                    a.min_y = a.min_y.min(y);
+                    a.max_x = a.max_x.max(x);
+                    a.max_y = a.max_y.max(y);
                 }
             }
-            // **v4.1d**: read zone centres from `zones[].center` (was
-            // `zone_sites`). The two were populated in parallel from v4.1a
-            // onward — values match bit-for-bit, so the v3.0 pinned digests
-            // hold across this rename.
-            hasher.update(&(p.zones.len() as u32).to_le_bytes());
+            a.verts += plate_verts;
+            a.per_plate_verts.push(plate_verts);
+            a.zones += p.zones.len() as u32;
             for zone in &p.zones {
-                hasher.update(&zone.center.0.to_le_bytes());
-                hasher.update(&zone.center.1.to_le_bytes());
-            }
-            // **v4.2d**: read sub-zone centres from
-            // `zones[].subzones[].center` (was `subzone_sites`). The two
-            // were populated in parallel from v4.2a onward — values
-            // match bit-for-bit, so the v3.0 pinned digests hold across
-            // this rename. Outer count = number of L1 zones (identical
-            // shape because `p.zones.len() == p.subzone_sites.len()` by
-            // v4.2a invariant).
-            hasher.update(&(p.zones.len() as u32).to_le_bytes());
-            for zone in &p.zones {
-                hasher.update(&(zone.subzones.len() as u32).to_le_bytes());
+                a.pos_sum_x += zone.center.0 as f64;
+                a.pos_sum_y += zone.center.1 as f64;
+                a.subzones += zone.subzones.len() as u32;
                 for sub in &zone.subzones {
-                    hasher.update(&sub.center.0.to_le_bytes());
-                    hasher.update(&sub.center.1.to_le_bytes());
+                    a.pos_sum_x += sub.center.0 as f64;
+                    a.pos_sum_y += sub.center.1 as f64;
                 }
             }
         }
-        *hasher.finalize().as_bytes()
+        a
     }
 
-    /// **Byte-identical to v3.0 (commit f022cf82) at canonical seeds 1, 7,
-    /// 13, 42, 100.** The v3.1a refactor (extract Ellipse algorithm + thread
-    /// through ShapeRegistry+DispatchMode) MUST preserve every RNG draw and
-    /// arithmetic operation — any drift here means the load-bearing
-    /// invariant of the whole roadmap (eval stays at v5.2 baseline 85.24
-    /// after a refactor-only commit) is broken.
-    ///
-    /// To regenerate after an intentional output change (e.g. v3.1b ships a
-    /// new default dispatcher): run this test, copy the printed hex into
-    /// the constants below, justify the change in the commit message.
+    /// Manual regeneration tool for the golden aggregates below. `#[ignore]`d so
+    /// it never runs in a normal suite; run it deliberately after an intentional
+    /// output change:
+    /// `cargo test -p world-gen --lib _capture_flat_aggs -- --ignored --nocapture`
+    /// then paste the printed values into `flatworld_geometry_is_stable_*`.
     #[test]
-    fn flatworld_v3_0_byte_identical_seeds_1_7_13_42_100() {
-        // v3.0 reference hashes captured at commit f022cf82 (PRE-v3.1a).
-        // Re-validated under v3.1a: dispatcher routes through
-        // `Fixed(Ellipse)` by default → byte-identical render.
-        // Captured from f022cf82 via a git-worktree replay (an inline copy
-        // of `hash_world` ran in the v3.0 source tree); v3.1a's refactor
-        // reproduces every hash exactly. Documented in
-        // docs/sessions/SESSION_PATCH.md under the v3.1a entry.
-        let expected: &[(u64, &str)] = &[
-            (1,   "edcbd2262d8371d17bf67b2aab889fd6c3ab25dbbaf59a6adfbc87ca8263cd66"),
-            (7,   "a8677f9abd411164e9f564159f2c1cbb84d0f2c69969c1e534215f60059e6229"),
-            (13,  "06218f6396a293bd1f2d8a7a6da6ef7a6fb6074d4adb8c45b5ff1c37bfeb2464"),
-            (42,  "cb8b0395a7b115cd1c53e4a48dc20ca98005ec723d5662e766136180384f6658"),
-            (100, "4235724c256df3763481937ba783fbe6d08358552833610de3f246766cbe80ba"),
+    #[ignore = "manual: regenerate golden aggregates with --ignored --nocapture"]
+    fn _capture_flat_aggs() {
+        for seed in [1u64, 7, 13, 42, 100] {
+            let a = flat_agg(&gen_flat(seed));
+            eprintln!("AGG seed={seed}: {a:?}");
+        }
+    }
+
+    /// Golden geometry fingerprint for one seed. Discrete fields (`*_count`,
+    /// `per_plate_verts`) are asserted exactly; the float fields with an epsilon
+    /// band. Captured on the geo dev host (Windows/MSVC) via `_capture_flat_aggs`.
+    struct Golden {
+        seed: u64,
+        plates: u32,
+        polys: u32,
+        verts: u32,
+        zones: u32,
+        subzones: u32,
+        per_plate_verts: &'static [u32],
+        pos_sum_x: f64,
+        pos_sum_y: f64,
+        vel_sum_x: f64,
+        vel_sum_y: f64,
+        min_x: f32,
+        min_y: f32,
+        max_x: f32,
+        max_y: f32,
+    }
+
+    /// **Geometry-stable across platforms** at canonical seeds 1, 7, 13, 42, 100.
+    /// Replaces the old byte-identical `blake3` pin (removed — the FlatWorld
+    /// coords are `f32` derived through libm `sinf`/`cosf`/`sqrtf`, whose last bit
+    /// differs ~1 ULP between MSVC and glibc, so a raw-bytes hash was not
+    /// CI-portable: `D-WORLDGEN-XPLATFORM-GOLDEN`). Runs in CI on every platform
+    /// — **no `#[ignore]`**.
+    ///
+    /// **What this locks:** any refactor that changes an RNG draw or arithmetic
+    /// op shifts vertices by whole pixels ⇒ the sums/bbox blow past their bands
+    /// and the discrete counts change. The exact `per_plate_verts` vector also
+    /// catches plate **reordering** and cross-plate **vertex redistribution** —
+    /// drifts the order-independent, sign-cancelling coordinate sums alone would
+    /// miss — because `nv` is purely RNG/structural (no libm), hence
+    /// platform-stable yet order-sensitive.
+    ///
+    /// **Accepted residual gap (LOW):** a regression that moves a single
+    /// *interior* (non-extreme) vertex by less than the `pos_sum` band (~4.5 px)
+    /// *and* leaves every per-plate count unchanged would slip — the sums absorb
+    /// it and the bbox only guards the extremes. Accidental refactor drift moves
+    /// *all* coords (≫ band) or changes a count, so this is not load-bearing;
+    /// tightening the band toward the ~1e-4 px noise floor would risk CI flake.
+    /// To regenerate after an *intentional* output change, see `_capture_flat_aggs`.
+    #[test]
+    fn flatworld_geometry_is_stable_seeds_1_7_13_42_100() {
+        let golden: &[Golden] = &[
+            Golden { seed: 1, plates: 12, polys: 12, verts: 417, zones: 62, subzones: 285,
+                per_plate_verts: &[42, 37, 44, 24, 33, 29, 29, 30, 37, 37, 31, 44],
+                pos_sum_x: 443092.3841266632, pos_sum_y: 227510.61740112305,
+                vel_sum_x: 3.115135261323303, vel_sum_y: 0.7354320962913334,
+                min_x: -24.427536, min_y: -255.09604, max_x: 1208.7537, max_y: 732.98004 },
+            Golden { seed: 7, plates: 12, polys: 12, verts: 440, zones: 71, subzones: 318,
+                per_plate_verts: &[29, 29, 33, 40, 44, 40, 34, 33, 26, 44, 43, 45],
+                pos_sum_x: 378630.8881883621, pos_sum_y: 225159.17255544662,
+                vel_sum_x: 1.3958149818936363, vel_sum_y: 1.6566689359024167,
+                min_x: -9.476, min_y: -172.99524, max_x: 1053.4386, max_y: 709.40875 },
+            Golden { seed: 13, plates: 12, polys: 12, verts: 490, zones: 56, subzones: 259,
+                per_plate_verts: &[40, 43, 48, 31, 39, 48, 38, 25, 44, 42, 45, 47],
+                pos_sum_x: 451179.9264922142, pos_sum_y: 197961.40641784668,
+                vel_sum_x: -1.0875011645257473, vel_sum_y: -1.4819622030481696,
+                min_x: -22.75351, min_y: -221.35829, max_x: 1124.0885, max_y: 660.0463 },
+            Golden { seed: 42, plates: 12, polys: 12, verts: 437, zones: 54, subzones: 240,
+                per_plate_verts: &[32, 43, 35, 27, 32, 41, 48, 33, 35, 38, 28, 45],
+                pos_sum_x: 357838.2476987839, pos_sum_y: 245574.22198915482,
+                vel_sum_x: 1.8266913844272494, vel_sum_y: 3.3218605555593967,
+                min_x: -56.202187, min_y: -184.88622, max_x: 1089.0316, max_y: 731.2035 },
+            Golden { seed: 100, plates: 12, polys: 12, verts: 399, zones: 55, subzones: 251,
+                per_plate_verts: &[32, 47, 37, 28, 30, 27, 25, 33, 27, 36, 46, 31],
+                pos_sum_x: 356504.06736660004, pos_sum_y: 228294.23940086365,
+                vel_sum_x: -0.956503514200449, vel_sum_y: 0.09399772249162197,
+                min_x: -70.3382, min_y: -116.85872, max_x: 1151.8076, max_y: 715.87714 },
         ];
-        for &(seed, expected_hex) in expected {
-            // v3.1b: default dispatch flipped to Weighted, so we must
-            // explicitly pin Fixed(Ellipse) here. This test now witnesses
-            // EllipseGenerator's bit-exact extraction independently of
-            // the platform's default shape distribution.
-            let world = generate(&FlatParams {
-                seed,
-                plate_dispatch: Some(DispatchMode::Fixed(ShapeKind::Ellipse)),
-                // v3.5: coastline fractalize disabled to keep v3.0 byte-
-                // identical hash. v3.0 had no post-process.
-                coastline: crate::shape::FractalizeConfig::disabled(),
-                ..Default::default()
-            });
-            let actual = hash_world(&world);
-            let actual_hex = actual
-                .iter()
-                .map(|b| format!("{b:02x}"))
-                .collect::<String>();
-            assert_eq!(
-                actual_hex, expected_hex,
-                "seed {seed}: byte-identical broke. Investigate RNG order in shape dispatcher or EllipseGenerator extraction"
+
+        // |actual − golden| ≤ max(abs, rel·|golden|). The bands sit far above the
+        // worst-case ~1e-4 px f32 libm noise (CI platform-stable) and far below any
+        // genuine regression (RNG/algorithm drift moves coords by whole pixels).
+        fn close(actual: f64, golden: f64, rel: f64, abs: f64, what: &str, seed: u64) {
+            let tol = abs.max(rel * golden.abs());
+            let diff = (actual - golden).abs();
+            assert!(
+                diff <= tol,
+                "seed {seed}: {what} drifted by {diff} (> tol {tol}); actual {actual}, golden {golden}. \
+                 If this is an intentional output change, re-capture via `_capture_flat_aggs`."
             );
+        }
+
+        for g in golden {
+            let a = flat_agg(&gen_flat(g.seed));
+            // Discrete, RNG/structural ⇒ asserted exactly (platform-stable).
+            assert_eq!(
+                (a.plates, a.polys, a.verts, a.zones, a.subzones),
+                (g.plates, g.polys, g.verts, g.zones, g.subzones),
+                "seed {}: structural counts changed (topology drift)", g.seed
+            );
+            assert_eq!(
+                a.per_plate_verts.as_slice(), g.per_plate_verts,
+                "seed {}: per-plate vertex counts changed (reorder or cross-plate redistribution)", g.seed
+            );
+            close(a.pos_sum_x, g.pos_sum_x, 1e-5, 1e-2, "pos_sum_x", g.seed);
+            close(a.pos_sum_y, g.pos_sum_y, 1e-5, 1e-2, "pos_sum_y", g.seed);
+            close(a.vel_sum_x, g.vel_sum_x, 1e-5, 1e-3, "vel_sum_x", g.seed);
+            close(a.vel_sum_y, g.vel_sum_y, 1e-5, 1e-3, "vel_sum_y", g.seed);
+            close(a.min_x as f64, g.min_x as f64, 0.0, 1e-2, "min_x", g.seed);
+            close(a.min_y as f64, g.min_y as f64, 0.0, 1e-2, "min_y", g.seed);
+            close(a.max_x as f64, g.max_x as f64, 0.0, 1e-2, "max_x", g.seed);
+            close(a.max_y as f64, g.max_y as f64, 0.0, 1e-2, "max_y", g.seed);
         }
     }
 

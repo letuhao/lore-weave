@@ -1,0 +1,7 @@
+id: w4-usl-no-n1
+description: "W4.1 / D-S7-USL-NO-N1 — the USL fitter recovers from samples WITHOUT an N=1 anchor. guntherSeed seeds gamma from max(X(N)/N) and the OLS skips N≤1; with no N=1 the seed gamma is taken at N=2, under-estimating the true X(1) (USL X(N)/N is strictly decreasing). TestFitRecoversKnownCoefficients_NoN1 asserts the seed genuinely under-estimates (non-vacuity), then that the Nelder-Mead refine recovers gamma/alpha/beta/Nmax within the same discriminating tolerances. Pure Go unit test (no infra)."
+invariant: I-w4-usl-no-n1-seed-recovery
+kind: go-test
+command: ["bash", "-c", "go -C tests/perf test ./usl/... -run TestFitRecoversKnownCoefficients_NoN1"]
+requires: []
+skip_when: []

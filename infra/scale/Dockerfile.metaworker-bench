@@ -1,0 +1,17 @@
+# infra/scale/Dockerfile.metaworker-bench
+#
+# S12 (Inc-2) — packages the prebuilt static metaworker-bench so it runs IN the
+# scale-net Docker network (container -> Redis), NOT on the Windows host. The
+# host->WSL2 loopback adds ~0.3ms per Redis round-trip, which the per-message
+# XAck in the consume loop multiplies into a 10x+ inflated picture — an
+# environment artifact, not the I7 ceiling. In-network the RTT is real.
+#
+# The binary is cross-compiled on the host first (CGO_ENABLED=0, static), so the
+# build context is tiny (just services/meta-worker) and there is no in-Docker Go
+# toolchain step. Build:
+#   GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go -C services/meta-worker build \
+#       -o mwbench-linux ./cmd/metaworker-bench
+#   docker build -f infra/scale/Dockerfile.metaworker-bench -t scale-mwbench services/meta-worker
+FROM alpine:3
+COPY mwbench-linux /usr/local/bin/metaworker-bench
+ENTRYPOINT ["/usr/local/bin/metaworker-bench"]

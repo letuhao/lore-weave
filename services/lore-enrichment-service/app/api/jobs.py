@@ -23,15 +23,19 @@ from uuid import UUID
 
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from loreweave_jobs import emit_job_event
 from pydantic import BaseModel, Field
 
 from app.api.principal import Principal, require_principal
+from app.clients.model_name import resolve_model_name
 from app.config import settings
 from app.db.book_profile import NEUTRAL_PROFILE, BookProfile, get_book_profile
 from app.deps import get_db
 from app.gaps.model import Gap, resolve_dimensions
+from app.jobs import fair_sched
 from app.jobs.assembly import build_live_runner
 from app.jobs.events import LORE_ENRICHMENT_RESUME_STREAM, make_redis_producer
+from app.jobs.job_events import JOB_KIND, JOB_SERVICE, canonical_status, job_error
 from app.jobs.job_request import save_job_request
 from app.jobs.proposal_store import PgProposalStore
 from app.jobs.state_machine import (
@@ -79,9 +83,9 @@ class CreateJobBody(BaseModel):
     # END-TO-END: the runner resolves the pipeline through the gate-aware factory,
     # which REFUSES it (409) while the live eval gate is LOCKED (DEFERRED-054).
     technique: str = Field(default=Technique.RETRIEVAL.value)
-    # Cost guardrail (C8); aligns with the frozen contract's max_spend_usd. The
+    # Cost guardrail (C8); aligns with the frozen contract's max_spend_tokens. The
     # reserved eval-cost line (M5) is held back from this cap.
-    max_spend_usd: float | None = Field(default=None, ge=0.0)
+    max_spend_tokens: float | None = Field(default=None, ge=0.0)
     eval_reserve_fraction: float = Field(default=0.15, ge=0.0, lt=1.0)
     top_k: int = Field(default=5, ge=1, le=20)
 
@@ -132,8 +136,18 @@ async def create_job(
 ) -> dict:
     """Run a P1 enrichment job over the requested under-described LOCATIONs.
 
-    Synchronous for the demo: the full pipeline runs and the outcome (job state,
-    quarantined proposals, cost) is returned. H0: every proposal is quarantined.
+    DEMO / TEST-ONLY — NOT the production entry point. This runs the full pipeline
+    SYNCHRONOUSLY in-process and returns the outcome (job state, quarantined
+    proposals, cost), which is convenient for the e2e gate-refusal tests and the
+    c14/live-smoke scripts but holds the HTTP connection for the whole multi-gap
+    LLM run. The PRODUCTION path is asynchronous and worker-driven:
+    ``POST /v1/lore-enrichment/projects/{book_id}/auto-enrich`` (and compose)
+    create the row + persist the request + XADD a trigger, and the resume worker
+    re-drives it via ``redrive_one`` (M1 per-job claim + M2 cancel/pause parity +
+    M3 retry all apply there). No frontend or sibling service calls THIS route;
+    keep it for the demo/gate coverage, don't wire new callers to it.
+
+    H0: every proposal is quarantined regardless of path.
     """
     if principal.user_id is None:
         raise HTTPException(
@@ -165,19 +179,38 @@ async def create_job(
             detail="no gaps to enrich (all targets fully described)",
         )
 
+    # P5 — per-owner concurrent-job cap (the noisy-neighbor fix for the synchronous
+    # in-process runner). Claimed BEFORE the job row is created so a 429 leaves no orphan
+    # row; released on every exit path below (gate-refused raises + the run's finally). At
+    # cap → 429. Off ⇒ (True, None) ⇒ no cap. Fail-open on a redis blip.
+    _p5_allowed, _p5_token = await fair_sched.try_acquire_job(user_id)
+    if not _p5_allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=(
+                f"you already have {settings.p5_owner_cap} enrichment job(s) running — "
+                "wait for one to finish, then retry"
+            ),
+        )
+
     # Persist the job row first so the runner + the event stream both key on the
     # real DB job id (event correlation). The job row records the REQUESTED
     # technique — a gate-refused fabrication job is then visible as a failed row
     # carrying technique='fabrication' (auditable refusal, not a silent drop).
     store = PgProposalStore(pool)
+    # P4 (D-JOBS-P4-LORE-MODEL) — resolve the generation model NAME OUT-OF-TX (network I/O;
+    # H1) so the create event carries the human name for the Jobs GUI. Best-effort: None on
+    # failure; the projection's COALESCE keeps it across the later status events.
+    _model_name = await resolve_model_name("user_model", str(body.generation_model_ref))
     db_job_id = await store.create_job(
         user_id=str(user_id),
         project_id=str(body.project_id),
         book_id=str(body.book_id) if body.book_id else None,
         technique=technique.value,
         entity_kind="location",
-        max_spend=body.max_spend_usd,
+        max_spend=body.max_spend_tokens,
         estimated_cost=0.0,
+        model_name=_model_name,
     )
     # Persist the request so a cost-cap-paused job can be RE-DRIVEN by the resume
     # worker (F-C14-1/051). Stores only the request shape (targets + model_ref
@@ -198,7 +231,7 @@ async def create_job(
             user_id=str(user_id),
             project_id=str(body.project_id),
             embedding_model_ref=str(body.embedding_model_ref),
-            cost_cap=body.max_spend_usd,
+            cost_cap=body.max_spend_tokens,
             eval_reserve_fraction=body.eval_reserve_fraction,
             top_k=body.top_k,
             technique=technique.value,
@@ -210,6 +243,7 @@ async def create_job(
             status="failed",
             error_message=f"refused: technique {technique.value!r} gate-locked ({exc})",
         )
+        await fair_sched.release_job(user_id, _p5_token)  # P5 — free the slot on gate-refusal
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
@@ -221,6 +255,7 @@ async def create_job(
         await store.mark_job_status(
             job_id=db_job_id, status="failed", error_message=str(exc)
         )
+        await fair_sched.release_job(user_id, _p5_token)  # P5 — free the slot on bad-strategy
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
         )
@@ -238,6 +273,9 @@ async def create_job(
         )
     finally:
         await bundle.aclose()
+        # P5 — release the per-owner job slot once the synchronous run ends (success OR
+        # exception). The lease TTL backstops a crash before this runs.
+        await fair_sched.release_job(user_id, _p5_token)
 
     return {
         "job_id": outcome.job_id,
@@ -302,7 +340,7 @@ async def list_jobs(
         )
         rows = await conn.fetch(
             f"""SELECT job_id, project_id, status, technique, entity_kind, book_id, proposals_total,
-                      estimated_cost_usd, actual_cost_usd, max_spend_usd,
+                      estimated_cost_tokens, actual_cost_tokens, max_spend_tokens,
                       error_message, created_at
                FROM enrichment_job
                WHERE {where}
@@ -331,7 +369,7 @@ async def get_job(
     async with pool.acquire() as conn:
         r = await conn.fetchrow(
             """SELECT job_id, project_id, status, technique, entity_kind, book_id, proposals_total,
-                      estimated_cost_usd, actual_cost_usd, max_spend_usd,
+                      estimated_cost_tokens, actual_cost_tokens, max_spend_tokens,
                       error_message, created_at
                FROM enrichment_job
                WHERE user_id=$1 AND project_id=$2 AND job_id=$3""",
@@ -353,9 +391,9 @@ def _job_row(r: asyncpg.Record) -> dict:
         "entity_kind": r["entity_kind"],
         "book_id": str(r["book_id"]) if r["book_id"] is not None else None,
         "proposals_total": r["proposals_total"],
-        "estimated_cost": float(r["estimated_cost_usd"]),
-        "actual_cost": float(r["actual_cost_usd"]),
-        "max_spend": float(r["max_spend_usd"]) if r["max_spend_usd"] is not None else None,
+        "estimated_cost": float(r["estimated_cost_tokens"]),
+        "actual_cost": float(r["actual_cost_tokens"]),
+        "max_spend": float(r["max_spend_tokens"]) if r["max_spend_tokens"] is not None else None,
         "error_message": r["error_message"],
         "created_at": r["created_at"].isoformat(),
     }
@@ -374,7 +412,7 @@ def _job_row(r: asyncpg.Record) -> dict:
 # request's targets + model_refs are not persisted on the job row, so the runner
 # cannot be rebuilt here). Re-running a job IS safe, though: the per-gap
 # idempotent persist (UNIQUE(job_id, gap_ref)) prevents DUPLICATE proposals and
-# ``build_live_runner(spent_so_far=...)`` (seeded from ``actual_cost_usd`` via
+# ``build_live_runner(spent_so_far=...)`` (seeded from ``actual_cost_tokens`` via
 # :func:`load_spent_so_far`) prevents DOUBLE-CHARGING the budget on a re-run.
 # Full auto-resume (re-drive only the not-yet-persisted gaps from a single
 # resume call) is tracked as a deferral — see SESSION_PATCH D-C14-FULL-RESUME.
@@ -382,11 +420,11 @@ def _job_row(r: asyncpg.Record) -> dict:
 async def load_spent_so_far(
     *, pool: asyncpg.Pool, job_id: UUID
 ) -> float:
-    """Read what a prior run already spent (``actual_cost_usd``) so a re-run can
+    """Read what a prior run already spent (``actual_cost_tokens``) so a re-run can
     seed its budget and NOT reset to 0 / double-spend (WARN-1)."""
     async with pool.acquire() as conn:
         v = await conn.fetchval(
-            "SELECT actual_cost_usd FROM enrichment_job WHERE job_id=$1", job_id
+            "SELECT actual_cost_tokens FROM enrichment_job WHERE job_id=$1", job_id
         )
     return float(v) if v is not None else 0.0
 
@@ -408,37 +446,55 @@ async def _transition_job(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="auth required"
         )
     async with pool.acquire() as conn:
-        r = await conn.fetchrow(
-            """SELECT status FROM enrichment_job
-               WHERE user_id=$1 AND project_id=$2 AND job_id=$3""",
-            principal.user_id, project_id, job_id,
-        )
-        if r is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="job not found"
+        # M2/HIGH-1: read-modify-write under a row lock so the control transition is
+        # atomic vs the runner's CAS lifecycle writes. SELECT … FOR UPDATE holds the
+        # row for the txn: a concurrent runner UPDATE on the same row blocks until we
+        # commit, then re-evaluates its `WHERE status='running'` guard against the new
+        # status — so neither writer can clobber the other (e.g. a cancel landing as
+        # the runner completes ends 'cancelled', and the runner's complete no-ops).
+        async with conn.transaction():  # SELECT FOR UPDATE + UPDATE + emit atomic
+            r = await conn.fetchrow(
+                """SELECT status FROM enrichment_job
+                   WHERE user_id=$1 AND project_id=$2 AND job_id=$3
+                   FOR UPDATE""",
+                principal.user_id, project_id, job_id,
             )
-        record = JobRecord(job_id=str(job_id), state=JobState(r["status"]))
-        machine = JobStateMachine(record)
-        try:
-            if action == "pause":
-                await machine.pause(reason=PauseReason.MANUAL)
-            elif action == "cancel":
-                await machine.cancel()
-            elif action == "resume":
-                await machine.resume()
-            else:  # start: pending → estimating → running
-                if record.state is JobState.PENDING:
-                    await machine.estimate()
-                await machine.start()
-        except IllegalTransitionError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+            if r is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND, detail="job not found"
+                )
+            record = JobRecord(job_id=str(job_id), state=JobState(r["status"]))
+            machine = JobStateMachine(record)
+            try:
+                if action == "pause":
+                    await machine.pause(reason=PauseReason.MANUAL)
+                elif action == "cancel":
+                    await machine.cancel()
+                elif action == "resume":
+                    await machine.resume()
+                else:  # start: pending → estimating → running
+                    if record.state is JobState.PENDING:
+                        await machine.estimate()
+                    await machine.start()
+            except IllegalTransitionError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+                )
+            await conn.execute(
+                "UPDATE enrichment_job SET status=$4, updated_at=now() "
+                "WHERE user_id=$1 AND project_id=$2 AND job_id=$3",
+                principal.user_id, project_id, job_id, record.state.value,
             )
-        await conn.execute(
-            "UPDATE enrichment_job SET status=$4, updated_at=now() "
-            "WHERE user_id=$1 AND project_id=$2 AND job_id=$3",
-            principal.user_id, project_id, job_id, record.state.value,
-        )
+            # Unified Job Control Plane P1 — emit the author lifecycle transition on the
+            # SAME conn as the UPDATE (H1). A non-canonical state (estimating) is skipped;
+            # 'start' walks pending→estimating→running and emits only the final 'running'.
+            cstatus = canonical_status(record.state.value)
+            if cstatus is not None:
+                await emit_job_event(
+                    conn, service=JOB_SERVICE, job_id=str(job_id),
+                    owner_user_id=str(principal.user_id), kind=JOB_KIND, status=cstatus,
+                    error=job_error(record.error_message) if cstatus == "failed" else None,
+                )
     return {"job_id": str(job_id), "status": record.state.value}
 
 
@@ -468,6 +524,48 @@ async def pause_job(
     )
 
 
+async def _compensate_stuck_running(
+    pool: asyncpg.Pool, *, job_id: UUID, owner_user_id, project_id: UUID, to_status: str
+) -> str:
+    """Roll a control flip back when its re-drive enqueue FAILED (/review-impl MED-1).
+
+    resume/retry flip the row to 'running' BEFORE the XADD (the worker's run_job
+    pre-flight bails on a still-'paused' row, so the flip must precede the trigger).
+    If the XADD then fails there is no worker trigger AND no stranded-running sweeper
+    for enrichment_job → the job would be stuck 'running' and NOT re-triggerable
+    (resume 409s unless paused, retry 409s unless failed). So roll the flip back to
+    its prior state (``to_status`` = 'paused' for resume / 'failed' for retry),
+    GUARDED on the row still being 'running' (a racing worker that already advanced
+    it is never clobbered) + emit, so the action stays available. Best-effort: if
+    THIS also fails the row is left 'running' (operator-recoverable). Returns the
+    resulting status string."""
+    try:
+        async with pool.acquire() as conn:
+            async with conn.transaction():  # rollback UPDATE + emit atomic (H1)
+                row = await conn.fetchrow(
+                    "UPDATE enrichment_job SET status=$4, updated_at=now() "
+                    "WHERE user_id=$1 AND project_id=$2 AND job_id=$3 AND status='running' "
+                    "RETURNING error_message",
+                    owner_user_id, project_id, job_id, to_status,
+                )
+                if row is None:
+                    return "running"  # a worker already advanced it — leave it be
+                cstatus = canonical_status(to_status)
+                if cstatus is not None:
+                    await emit_job_event(
+                        conn, service=JOB_SERVICE, job_id=str(job_id),
+                        owner_user_id=str(owner_user_id), kind=JOB_KIND, status=cstatus,
+                        error=job_error(row["error_message"]) if cstatus == "failed" else None,
+                    )
+        return to_status
+    except Exception:  # noqa: BLE001 — best-effort rollback; leave running if it fails
+        logger.warning(
+            "enqueue-failure rollback for job %s failed (left running — operator-recoverable)",
+            job_id, exc_info=True,
+        )
+        return "running"
+
+
 @router.post("/{job_id}/resume", status_code=status.HTTP_202_ACCEPTED)
 async def resume_job(
     job_id: UUID,
@@ -485,8 +583,9 @@ async def resume_job(
         action="resume", job_id=job_id, project_id=project_id,
         principal=principal, pool=pool,
     )
-    # Enqueue the re-drive trigger (best-effort: the status is already 'running';
-    # a transient Redis hiccup leaves the job re-triggerable by a repeat resume).
+    # Enqueue the re-drive trigger. On failure, roll the paused→running flip BACK to
+    # 'paused' so the job stays re-triggerable (a flipped-but-un-enqueued job is stuck
+    # 'running' with no worker trigger + no sweeper, and a repeat resume 409s — MED-1).
     producer = make_redis_producer(settings.redis_url)
     try:
         await producer.xadd(
@@ -500,7 +599,11 @@ async def resume_job(
         )
         result["resume"] = "enqueued"
     except Exception:  # noqa: BLE001 — enqueue failure must not 500 a flipped job
-        logger.warning("resume enqueue failed for job %s (re-triggerable)", job_id, exc_info=True)
+        logger.warning("resume enqueue failed for job %s — rolling back to paused", job_id, exc_info=True)
+        result["status"] = await _compensate_stuck_running(
+            pool, job_id=job_id, owner_user_id=principal.user_id,
+            project_id=project_id, to_status="paused",
+        )
         result["resume"] = "enqueue_failed"
     finally:
         await producer.aclose()
@@ -518,3 +621,84 @@ async def cancel_job(
         action="cancel", job_id=job_id, project_id=project_id,
         principal=principal, pool=pool,
     )
+
+
+@router.post("/{job_id}/retry", status_code=status.HTTP_202_ACCEPTED)
+async def retry_job(
+    job_id: UUID,
+    project_id: UUID = Query(...),
+    principal: Principal = Depends(require_principal),
+    pool: asyncpg.Pool = Depends(get_db),
+) -> dict:
+    """Retry a FAILED enrichment job (D-JOBS-P4-RETRY-LORE).
+
+    Re-drives the SAME job_id over the live async path (resume stream → the
+    re-drive worker), which SKIPS already-done gaps (UNIQUE(job_id,gap_ref) +
+    skip_gap_refs → no re-spend) and re-runs the rest. Flips failed→running +
+    emits the transition for immediate feedback (mirroring resume), then enqueues.
+
+    Idempotent + concurrency-safe: the failed→running CAS makes a double-retry a
+    no-op (only a genuinely failed, owner-scoped row transitions); the M1 per-job
+    advisory claim makes a retry-while-already-running a safe worker no-op. An
+    illegal retry (not failed) → 409; not owned/found → 404 (never a cross-tenant
+    oracle). Unlike the C8 manual transitions this is NOT a state-machine move
+    (failed is terminal there) — retry RESURRECTS via a re-run, exactly like the
+    knowledge/video-gen retries (D-JOBS-P4-RETRY)."""
+    if principal.user_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="auth required"
+        )
+    async with pool.acquire() as conn:
+        async with conn.transaction():  # CAS UPDATE + emit_job_event atomic (H1)
+            row = await conn.fetchrow(
+                """UPDATE enrichment_job SET status='running', updated_at=now()
+                   WHERE user_id=$1 AND project_id=$2 AND job_id=$3 AND status='failed'
+                   RETURNING user_id""",
+                principal.user_id, project_id, job_id,
+            )
+            if row is not None:
+                await emit_job_event(
+                    conn, service=JOB_SERVICE, job_id=str(job_id),
+                    owner_user_id=str(principal.user_id), kind=JOB_KIND, status="running",
+                )
+    if row is None:
+        # The CAS didn't match: disambiguate owner-scoped (404 unknown/not-owned vs
+        # 409 not-failed) — never leak existence across tenants.
+        cur = await pool.fetchval(
+            "SELECT status FROM enrichment_job WHERE user_id=$1 AND project_id=$2 AND job_id=$3",
+            principal.user_id, project_id, job_id,
+        )
+        if cur is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="job not found"
+            )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"job not retryable from status '{cur}' (only 'failed')",
+        )
+    # Enqueue the re-drive. On failure, roll the failed→running flip BACK to 'failed'
+    # so the job stays retryable (a flipped-but-un-enqueued job is stuck 'running' with
+    # no worker trigger + no sweeper, and a repeat retry 409s — MED-1).
+    result = {"job_id": str(job_id), "status": "running"}
+    producer = make_redis_producer(settings.redis_url)
+    try:
+        await producer.xadd(
+            LORE_ENRICHMENT_RESUME_STREAM,
+            {
+                "job_id": str(job_id),
+                "project_id": str(project_id),
+                "user_id": str(principal.user_id),
+            },
+            maxlen=10000,
+        )
+        result["retry"] = "enqueued"
+    except Exception:  # noqa: BLE001 — enqueue failure must not 500 a flipped job
+        logger.warning("retry enqueue failed for job %s — rolling back to failed", job_id, exc_info=True)
+        result["status"] = await _compensate_stuck_running(
+            pool, job_id=job_id, owner_user_id=principal.user_id,
+            project_id=project_id, to_status="failed",
+        )
+        result["retry"] = "enqueue_failed"
+    finally:
+        await producer.aclose()
+    return result

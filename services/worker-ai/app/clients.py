@@ -26,6 +26,7 @@ from loreweave_extraction.extractors.entity import LLMEntityCandidate
 from loreweave_extraction.extractors.event import LLMEventCandidate
 from loreweave_extraction.extractors.fact import LLMFactCandidate
 from loreweave_extraction.extractors.relation import LLMRelationCandidate
+from loreweave_extraction.schema_projection import ExtractionSchema
 
 __all__ = [
     "BookClient",
@@ -236,6 +237,10 @@ class KnowledgeClient:
         billing_user_id: str | None = None,
         billing_llm_model: str | None = None,
         billing_embedding_model: str | None = None,
+        # C12 — target-typed extraction. None ⇒ all passes (the endpoint
+        # enqueues summaries as before). A concrete list gates the summary
+        # enqueue on `summaries ∈ targets`.
+        targets: list[str] | None = None,
     ) -> ExtractionResult:
         """Phase 4b-γ — POST /internal/extraction/persist-pass2.
 
@@ -294,6 +299,11 @@ class KnowledgeClient:
             body["billing_llm_model"] = billing_llm_model
         if billing_embedding_model:
             body["billing_embedding_model"] = billing_embedding_model
+        # C12 — only include when the caller resolved a concrete set (explicit
+        # None check so a default-all job omits it ⇒ endpoint enqueues summaries
+        # as before, back-compat).
+        if targets is not None:
+            body["targets"] = list(targets)
 
         try:
             resp = await self._http.post(url, json=body)
@@ -324,6 +334,46 @@ class KnowledgeClient:
             retryable=resp.status_code in (502, 503, 429),
             error=f"HTTP {resp.status_code}: {resp.text[:200]}",
         )
+
+    async def resolve_extraction_schema(
+        self, *, user_id: UUID, project_id: UUID | None,
+    ) -> ExtractionSchema | None:
+        """L7 (Milestone B) — fetch the project's ADVISORY extraction-schema
+        projection, called ONCE per job at start. Threaded into
+        ``extract_pass2(schema=...)`` so the LLM emits the project's vocab.
+
+        Returns ``None`` for no project, a non-200, or any transport error →
+        worker-ai uses the static prompt (fail-soft). The projection is advisory
+        (``allow_free_edges`` forced True server-side) so the SDK injects vocab as
+        a hint but never pre-drops — /persist-pass2 stays the authoritative
+        enforce+park point regardless."""
+        if project_id is None:
+            return None
+        url = f"{self._base_url}/internal/extraction/resolve-schema"
+        try:
+            resp = await self._http.post(
+                url, json={"user_id": str(user_id), "project_id": str(project_id)},
+            )
+        except httpx.HTTPError as exc:
+            logger.warning("resolve-schema HTTP error: %s — using static prompt", exc)
+            return None
+        if resp.status_code != 200:
+            logger.warning(
+                "resolve-schema status=%s — using static prompt", resp.status_code,
+            )
+            return None
+        data = resp.json()
+        if not data.get("has_schema"):
+            return None
+        return ExtractionSchema.from_resolved({
+            "entity_kinds": data.get("entity_kinds", []),
+            "edge_predicates": data.get("edge_predicates", []),
+            "event_kinds": data.get("event_kinds", []),
+            "fact_types": data.get("fact_types", []),
+            "allow_free_edges": data.get("allow_free_edges", True),
+            "label": data.get("label", ""),
+            "schema_version": data.get("schema_version"),
+        })
 
     async def process_summarize_message(
         self,
@@ -783,3 +833,42 @@ class GlossaryClient:
         except (httpx.HTTPError, ValueError, KeyError) as exc:
             logger.warning("glossary-service entities failed: %s", exc)
             return None
+
+    async def fetch_entities_by_ids(
+        self,
+        book_id: UUID,
+        entity_ids: list[str],
+    ) -> list[str]:
+        """C13 — batch-fetch glossary entity NAMES by id for pinning.
+
+        POSTs to the SAME internal endpoint the knowledge-service semantic
+        selector uses (``/internal/books/{book_id}/entities/by-ids``), reusing
+        the existing ``X-Internal-Token`` baked into this client's headers — NO
+        new secret / URL / token env. The runner force-injects the returned
+        names into every extraction window's ``known_entities`` so pinned
+        entities stay anchored even in chapters that never mention them.
+
+        Returns the entity names (``cached_name`` from the select-for-context
+        row shape). Best-effort: empty input → ``[]``; any HTTP / decode failure
+        → ``[]`` (the runner degrades to no-pins, never blocks the job).
+        """
+        if not entity_ids:
+            return []
+        url = f"{self._base_url}/internal/books/{book_id}/entities/by-ids"
+        try:
+            resp = await self._http.post(url, json={"entity_ids": entity_ids})
+            if resp.status_code != 200:
+                logger.warning(
+                    "glossary entities/by-ids %d for %s", resp.status_code, book_id,
+                )
+                return []
+            data = resp.json()
+            names: list[str] = []
+            for item in data.get("items", []):
+                name = (item.get("cached_name") or "").strip()
+                if name:
+                    names.append(name)
+            return names
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            logger.warning("glossary entities/by-ids failed: %s", exc)
+            return []

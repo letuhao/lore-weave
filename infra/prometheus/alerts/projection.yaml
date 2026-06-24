@@ -1,0 +1,129 @@
+# infra/prometheus/alerts/projection.yaml — L3.J projection-health alerts.
+#
+# RAID cycle 15 (L3.J.2). Per-reality projection-health alerting.
+#
+# Tiers:
+#   - warning  → Slack notify
+#   - page     → PagerDuty
+#
+# Cardinality: bounded by reality_id × table (10 L3.A tables). At V1+30d
+# horizon = ≤ 10K series; the metrics_cardinality_test in cycle 6 pins the
+# upper bound and includes these names in its scrape.
+#
+# Inhibit rules (configured in alertmanager.yaml at deploy time, NOT here):
+#   - Daily drift WARN inhibited DURING monthly full-check runs.
+#     Monthly mode produces a HIGH expected drift count if there's an
+#     ongoing schema-migration backfill; we don't want the daily WARN
+#     to spam-page during a known-noisy window.
+#   - LWProjectionStaleVerification inhibited when the integrity-checker
+#     service is itself DOWN (separate alert from the SR02 service-down
+#     pipeline) — no point complaining about stale checks when the
+#     checker can't run.
+#
+# Daily ≠ Monthly thresholds:
+#   - Daily: WARN on drift_count > 0, PAGE on drift_count > 5 (sustained).
+#   - Monthly: PAGE on drift_count > 5 (single occurrence — monthly is
+#     supposed to be ALL-GREEN since it walks every row). Monthly does
+#     not get a WARN tier; if monthly finds drift, it's load-bearing.
+#
+# Stale verification = the integrity-checker didn't run within
+# expected_next_sweep_at + grace. This is the alert that catches "checker
+# silently broke" — the most insidious failure mode.
+
+groups:
+  - name: lw_projection_warning
+    rules:
+      # Daily-mode drift detected — single row sample disagreement.
+      # `for: 3m` requires the drift to survive 3 consecutive scrapes
+      # (~3 minutes at default 1m scrape interval). Prevents transient
+      # flapping (e.g. a row updated mid-sample) from paging.
+      - alert: LWProjectionDriftWarning
+        expr: lw_projection_drift_count > 0
+        for: 3m
+        labels:
+          severity: warning
+          team: world-platform
+          route: slack
+          source_metric: lw_projection_drift_count
+        annotations:
+          summary: 'Projection drift detected on {{ $labels.table }}'
+          description: 'reality_id={{ $labels.reality_id }} table={{ $labels.table }} drift_count={{ $value }}. Daily sampler found rows where re-replay disagrees with projection state.'
+          runbook: runbooks/integrity/drift_alert.md
+
+      # Projection lag — applied_at vs NOW(). 60s WARN.
+      - alert: LWProjectionLagWarning
+        expr: lw_projection_lag_seconds > 60
+        for: 5m
+        labels:
+          severity: warning
+          team: world-platform
+          route: slack
+          source_metric: lw_projection_lag_seconds
+        annotations:
+          summary: 'Projection lag {{ $value | humanizeDuration }} on {{ $labels.table }}'
+          description: 'reality_id={{ $labels.reality_id }} table={{ $labels.table }} lag={{ $value }}s — projection consumer is behind event publisher.'
+          runbook: runbooks/integrity/drift_alert.md
+
+  - name: lw_projection_page
+    rules:
+      # Daily-mode SUSTAINED drift — > 5 drifted rows persisting 15m.
+      # The 15m for-window prevents a brief schema-migration window from
+      # paging immediately; if drift persists 15m, it's load-bearing.
+      - alert: LWProjectionDriftCritical
+        expr: lw_projection_drift_count > 5
+        for: 15m
+        labels:
+          severity: page
+          team: world-platform
+          route: pagerduty
+          source_metric: lw_projection_drift_count
+        annotations:
+          summary: 'Projection drift critical on {{ $labels.table }} ({{ $value }} drifted rows)'
+          description: 'reality_id={{ $labels.reality_id }} table={{ $labels.table }} drift_count={{ $value }}. Sustained drift > 5 rows for 15m. Likely projection bug or partial corruption — engage L3.D rebuilder runbook.'
+          runbook: runbooks/integrity/drift_alert.md
+
+      # Projection lag PAGE — 5 minute lag.
+      - alert: LWProjectionLagCritical
+        expr: lw_projection_lag_seconds > 300
+        for: 10m
+        labels:
+          severity: page
+          team: world-platform
+          route: pagerduty
+          source_metric: lw_projection_lag_seconds
+        annotations:
+          summary: 'Projection lag critical {{ $value | humanizeDuration }} on {{ $labels.table }}'
+          description: 'reality_id={{ $labels.reality_id }} table={{ $labels.table }} lag={{ $value }}s — projection consumer is severely behind.'
+          runbook: runbooks/integrity/drift_alert.md
+
+      # The "checker silently broke" alert. lw_projection_drift_last_check_age_seconds
+      # is emitted by the integrity-checker (cycle-13 inventory line 480-488).
+      # > 7 days (604800s) with NO check = STALE. Daily mode runs every 24h
+      # so the 7-day window allows for 6 missed runs before paging.
+      - alert: LWProjectionStaleVerification
+        expr: lw_projection_drift_last_check_age_seconds > 604800
+        for: 1h
+        labels:
+          severity: page
+          team: world-platform
+          route: pagerduty
+          source_metric: lw_projection_drift_last_check_age_seconds
+        annotations:
+          summary: 'Projection integrity-checker stale > 7d on {{ $labels.table }}'
+          description: 'reality_id={{ $labels.reality_id }} table={{ $labels.table }} last_verified={{ $value }}s ago. Integrity-checker has not run on this projection for > 7 days. Check the cronjob status and the checker pod logs.'
+          runbook: runbooks/integrity/drift_alert.md
+
+      # Monthly full-scan drift — ANY drift in monthly is PAGE (no WARN
+      # tier). Monthly is supposed to be all-green.
+      - alert: LWProjectionMonthlyDriftDetected
+        expr: lw_projection_check_runs_total{mode="monthly", outcome="error"} > 0
+        for: 5m
+        labels:
+          severity: page
+          team: world-platform
+          route: pagerduty
+          source_metric: lw_projection_check_runs_total
+        annotations:
+          summary: 'Monthly full-scan integrity check FAILED on {{ $labels.table }}'
+          description: 'Monthly full-scan reported errors. This is load-bearing — investigate via runbook.'
+          runbook: runbooks/integrity/full_check_failure.md

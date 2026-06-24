@@ -24,8 +24,8 @@ C1 = UUID("11111111-1111-1111-1111-111111111111")
 
 def _campaign(**over):
     base = {
-        "campaign_id": CID, "owner_user_id": USER, "book_id": BOOK,
-        "knowledge_project_id": PROJ, "target_language": "vi",
+        "campaign_id": CID, "owner_user_id": USER, "book_owner_user_id": USER,
+        "book_id": BOOK, "knowledge_project_id": PROJ, "target_language": "vi",
     }
     base.update(over)
     return FakeRecord(base)

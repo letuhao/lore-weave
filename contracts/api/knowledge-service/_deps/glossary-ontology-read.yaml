@@ -1,0 +1,90 @@
+openapi: 3.0.3
+info:
+  title: "[DEPENDENCY MOCK] Glossary internal ontology read — as consumed by knowledge-service"
+  version: 0.1.0
+  description: |
+    **This is a KG-side dependency contract, NOT the glossary service's own spec.**
+    It freezes the shape the KG ontology resolver/adopt-gate (lane LA client) mocks
+    against. The AUTHORITATIVE glossary-side implementation (lane LG: a read-only
+    `/internal` handler + route registration) lands on the **glossary branch** and
+    must conform to this shape. We do NOT edit `contracts/api/glossary-service/` on
+    the KG branch (cross-branch discipline, build plan §0/§7).
+
+    Two read variants (spec D1):
+      * book ontology — node-kinds defined for a specific book (project has book_id).
+      * user glossary standards — node-kinds from the user's system∪user standards
+        (project has NO book; project_type translation/code/general).
+
+    Used by KG at: adopt-gate (M1 strength check), schema-authoring kind picker,
+    triage promote-to-kind re-check. Read-hot → KG caches with short TTL.
+
+    ## Auth
+    Network-isolated `/internal` routes. `X-Internal-Token` service token +
+    `user_id`/`book_id` carried explicitly (server-to-server, never from an LLM).
+
+servers:
+  - url: http://glossary-service:8080
+    description: Docker Compose dev (internal, network-isolated — not via gateway)
+
+tags:
+  - name: internal-ontology
+    description: Read-only node-kind source for KG anchoring (D1). No writes.
+
+paths:
+  /internal/books/{book_id}/ontology:
+    parameters:
+      - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: user_id, in: query, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [internal-ontology]
+      summary: Node-kinds defined for a book (book-tier glossary ontology)
+      security:
+        - internalServiceToken: []
+      responses:
+        '200':
+          description: Book node-kinds
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OntologyKinds' }
+        '401': { description: Missing/invalid internal token }
+        '404': { description: Book not found / not owned by user_id }
+
+  /internal/users/{user_id}/glossary-standards:
+    parameters:
+      - { name: user_id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [internal-ontology]
+      summary: User glossary standards node-kinds (system∪user tier) — for no-book projects
+      security:
+        - internalServiceToken: []
+      responses:
+        '200':
+          description: User-standards node-kinds (merged system + user)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OntologyKinds' }
+        '401': { description: Missing/invalid internal token }
+
+components:
+  securitySchemes:
+    internalServiceToken:
+      type: apiKey
+      in: header
+      name: X-Internal-Token
+  schemas:
+    OntologyKinds:
+      type: object
+      required: [kinds]
+      properties:
+        source: { type: string, enum: [book, user_standards] }
+        book_id: { type: string, format: uuid, nullable: true }
+        kinds:
+          type: array
+          items: { $ref: '#/components/schemas/Kind' }
+    Kind:
+      type: object
+      required: [code, name]
+      properties:
+        code: { type: string, example: character }
+        name: { type: string }
+        tier: { type: string, enum: [system, user, book], description: which tier the kind resolved from }

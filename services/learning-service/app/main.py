@@ -18,9 +18,11 @@ from app.db.eval_repo import ensure_score_configs
 from app.db.migrate import run_migrations
 from app.db.online_eval import ensure_default_online_eval_rule
 from app.db.pool import close_pool, create_pool, get_pool
+from app.clients.llm_client import build_judge_sdk
 from app.events.consumer import EventConsumer
 from app.events.eval_runner import EvalRunner
 from app.events.dispatcher import EventDispatcher
+from app.events.llm_judge_consumer import LLMJudgeConsumer
 from app.events.handlers import (
     handle_chat_feedback,
     handle_config_adjusted,
@@ -32,9 +34,11 @@ from app.events.handlers import (
     handle_translation_corrected,
     handle_translation_quality,
     handle_translation_reviewed,
+    handle_wiki_corrected,
+    handle_wiki_suggestion_reviewed,
 )
 from app.middleware.trace_id import TraceIdMiddleware
-from app.routers import corrections, eval as eval_routes, mining
+from app.routers import corrections, eval as eval_routes, mining, wiki_judge
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -55,6 +59,8 @@ def build_dispatcher() -> EventDispatcher:
     dispatcher.register("translation.reviewed", handle_translation_reviewed)  # M7b
     dispatcher.register("translation.corrected", handle_translation_corrected)  # M7c-1
     dispatcher.register("glossary.name_confirmed", handle_name_confirmed)  # M7c-3
+    dispatcher.register("wiki.corrected", handle_wiki_corrected)  # D-WIKI-M8
+    dispatcher.register("wiki.suggestion_reviewed", handle_wiki_suggestion_reviewed)  # D-WIKI-M8
     return dispatcher
 
 
@@ -76,6 +82,25 @@ async def lifespan(app: FastAPI):
         eval_runner = EvalRunner(settings.redis_url, pool)
         eval_runner_task = asyncio.create_task(eval_runner.run())
         logger.info("online-eval sampler started (consumer group=eval-runner)")
+
+    # M1 — decoupled online-judge terminal-event consumer (+ stuck-resume sweeper).
+    # Runs unconditionally: a campaign-chosen translation judge can fire even when the
+    # service-wide judge flags are off, so the resume path must always be live. Idle
+    # when no judge rows exist (every terminal event finds no row → ack + ignore).
+    judge_sdk = build_judge_sdk(
+        base_url=settings.provider_registry_internal_url,
+        internal_token=settings.internal_service_token,
+    )
+    judge_consumer = LLMJudgeConsumer(settings.redis_url, pool, judge_sdk)
+    judge_consumer_task = asyncio.create_task(judge_consumer.run())
+    judge_sweeper_task = asyncio.create_task(
+        judge_consumer.run_sweeper(
+            interval_s=settings.llm_judge_resume_sweep_interval_s,
+            timeout_s=settings.llm_judge_resume_sweep_timeout_s,
+            batch=settings.llm_judge_resume_sweep_batch,
+        )
+    )
+    logger.info("llm-judge resume consumer started (consumer group=learning-judge-resume)")
     try:
         yield
     finally:
@@ -92,6 +117,14 @@ async def lifespan(app: FastAPI):
                 await eval_runner_task
             except asyncio.CancelledError:
                 pass
+        await judge_consumer.stop()
+        for task in (judge_consumer_task, judge_sweeper_task):
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+        await judge_sdk.aclose()
         await close_pool()
 
 
@@ -109,6 +142,7 @@ app.add_middleware(
 app.include_router(corrections.router)
 app.include_router(mining.router)
 app.include_router(eval_routes.router)
+app.include_router(wiki_judge.router)  # D-WIKI-M8-EVAL-PLUS — internal groundedness judge
 
 
 @app.get("/health", response_class=PlainTextResponse)

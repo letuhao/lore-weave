@@ -1,0 +1,23 @@
+{
+  "_spec": "canon.entry.decanonized → UPDATE canon_projection {lock_level='archived', source_event_id=env.event_id, last_synced_at=env.recorded_at}, keyed canon_entry_id (CanonProjection; authored retraction, row stays for L5.J history).",
+  "envelope": {
+    "event_id": "00000000-0000-0000-0000-000000000704",
+    "event_type": "canon.entry.decanonized",
+    "event_version": 1,
+    "aggregate_id": "c-1",
+    "aggregate_type": "canon",
+    "aggregate_version": 4,
+    "reality_id": "22222222-2222-2222-2222-222222222222",
+    "occurred_at": "2026-01-01T00:00:12.000000Z",
+    "recorded_at": "2026-01-01T00:00:12.000000Z",
+    "payload": { "canon_entry_id": "c-1" }
+  },
+  "expected_updates": [
+    { "Update": {
+      "table": "canon_projection",
+      "pk": { "canon_entry_id": "c-1" },
+      "fields": { "lock_level": "archived", "source_event_id": "00000000-0000-0000-0000-000000000704", "last_synced_at": "2026-01-01T00:00:12.000000Z" },
+      "meta": { "event_id": "00000000-0000-0000-0000-000000000704", "aggregate_version": 4, "applied_at": "2026-01-01T00:00:12.000000Z" }
+    }}
+  ]
+}

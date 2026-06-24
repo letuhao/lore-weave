@@ -1,0 +1,96 @@
+# infra/prometheus/alerts/meta.yaml — L1.I.4 (RAID cycle 6)
+#
+# Meta-stack alerts per C03 §12O.12 (lw_meta_* alert family).
+#
+# Each alert wires to the SR02 alert routing matrix. Cycle 6 ships the
+# meta-HA + migration-orchestrator alerts; further L7 cycles add the SLO
+# burn-rate ladder.
+
+groups:
+  - name: lw_meta_postgres_critical
+    rules:
+      - alert: LWMetaPostgresPrimaryDown
+        expr: up{job="meta-postgres",role="meta"} == 0 and on (instance) pg_replication_is_replica == 0
+        for: 30s
+        labels:
+          severity: page
+          team: sre
+          route: pagerduty
+        annotations:
+          summary: 'Meta-Postgres PRIMARY down'
+          description: 'Patroni primary {{ $labels.instance }} is unreachable. Failover may be in progress.'
+          runbook: runbooks/meta/failover.md
+
+      - alert: LWMetaPostgresSyncReplicaLag
+        expr: pg_stat_replication_lag_bytes{db_class="meta-postgres",application_name=~".*sync.*"} > 100 * 1024 * 1024  # 100 MiB
+        for: 2m
+        labels:
+          severity: page
+          team: sre
+          route: pagerduty
+        annotations:
+          summary: 'Meta-Postgres SYNC replica lag > 100 MiB'
+          description: '{{ $labels.application_name }} sync lag {{ $value | humanize1024 }}B. synchronous_commit=on means writes are blocked.'
+          runbook: runbooks/meta/failover.md
+
+      - alert: LWMetaWriteAuditInsertStopped
+        expr: rate(pg_stat_user_tables_n_tup_ins{db_class="meta-postgres",relname="meta_write_audit"}[5m]) == 0
+        for: 10m
+        labels:
+          severity: page
+          team: sre
+          route: pagerduty
+        annotations:
+          summary: 'No meta_write_audit inserts in 10m'
+          description: 'No MetaWrite() activity in 10m — services may be wedged.'
+
+  - name: lw_meta_postgres_warning
+    rules:
+      - alert: LWMetaPostgresAsyncReplicaLag
+        expr: pg_stat_replication_lag_bytes{db_class="meta-postgres",application_name=~".*async.*"} > 1024 * 1024 * 1024  # 1 GiB
+        for: 5m
+        labels:
+          severity: warning
+          team: sre
+          route: slack
+        annotations:
+          summary: 'Meta-Postgres ASYNC replica lag > 1 GiB'
+          description: 'Read path may serve stale data. {{ $labels.application_name }} lag {{ $value | humanize1024 }}B.'
+
+      - alert: LWMetaWALArchiveStalled
+        expr: time() - pg_archive_last_archived_seconds > 300  # 5 minutes
+        for: 5m
+        labels:
+          severity: warning
+          team: sre
+          route: slack
+        annotations:
+          summary: 'WAL archive stalled > 5m'
+          description: 'PITR may be compromised if archive lag exceeds RPO target (60s per L1.E).'
+          runbook: runbooks/meta/pitr_restore.md
+
+  - name: lw_migration_orchestrator
+    rules:
+      - alert: lw_migration_persistent_failure
+        expr: increase(pg_stat_user_tables_n_tup_ins{relname="reality_migration_audit"}[10m]) > 5
+        for: 5m
+        labels:
+          severity: page
+          team: sre
+          route: pagerduty
+        annotations:
+          summary: 'Persistent migration failures detected'
+          description: 'More than 5 reality_migration_audit inserts in 10m — likely persistent failures hitting dead-letter.'
+          runbook: runbooks/migration/persistent_failure.md
+
+      - alert: lw_migration_canary_aborted
+        expr: increase(lw_migration_orchestrator_canary_aborted_total[15m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+          team: sre
+          route: slack
+        annotations:
+          summary: 'Breaking migration canary aborted'
+          description: 'Migration {{ $labels.migration_id }} canary halted; fanout did NOT run. Investigate before re-running.'
+          runbook: runbooks/migration/persistent_failure.md

@@ -163,8 +163,10 @@ func (s *Server) applyEntityEdit(w http.ResponseWriter, r *http.Request) {
 	// Attribute values — each scoped to this entity (RowsAffected guards an
 	// attr_value_id that doesn't belong → 422, whole tx rolls back).
 	for i, a := range attrs {
+		// MERGE/M5 (INV-8) — a human-confirmed apply marks the SOURCE value 'verified', so
+		// a later machine re-extraction's verified-clobber guard won't silently overwrite it.
 		tag, err := tx.Exec(ctx,
-			`UPDATE entity_attribute_values SET original_value = $1 WHERE attr_value_id = $2 AND entity_id = $3`,
+			`UPDATE entity_attribute_values SET original_value = $1, confidence = 'verified' WHERE attr_value_id = $2 AND entity_id = $3`,
 			a.OriginalValue, attrIDs[i], entityID)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "update attribute failed")
@@ -173,6 +175,12 @@ func (s *Server) applyEntityEdit(w http.ResponseWriter, r *http.Request) {
 		if tag.RowsAffected() == 0 {
 			writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_ATTRIBUTE",
 				"attribute does not belong to this entity")
+			return
+		}
+		// D-GLOSSARY-MULTIROW slice 2 — sync per-item child rows for a LIST value
+		// (scalar ⇒ no-op), stamped 'verified' (a human-confirmed apply). In-tx.
+		if err := syncListItemsByID(ctx, tx, attrIDs[i], a.OriginalValue, "verified", nil); err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "item sync failed")
 			return
 		}
 	}
@@ -184,7 +192,7 @@ func (s *Server) applyEntityEdit(w http.ResponseWriter, r *http.Request) {
 		if err := tx.QueryRow(ctx, `
 			SELECT EXISTS(
 				SELECT 1 FROM entity_attribute_values eav
-				JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+				JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
 				WHERE eav.attr_value_id = ANY($1) AND ad.code = 'description')`,
 			attrIDs).Scan(&descriptionChanged); err != nil {
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "attr lookup failed")
@@ -219,7 +227,7 @@ func (s *Server) applyEntityEdit(w http.ResponseWriter, r *http.Request) {
 	// K3.3b parity: if the description attr changed and short_description is still
 	// auto, regenerate it (best-effort, post-commit, never fails the request).
 	if descriptionChanged {
-		if err := s.regenerateAutoShortDescription(ctx, entityID); err != nil {
+		if err := s.regenerateAutoShortDescription(ctx, s.pool, entityID); err != nil {
 			slog.Warn("apply-edit: regenerate short_description failed",
 				"entity_id", entityID.String(), "error", err.Error())
 		}

@@ -1,4 +1,14 @@
 export type FieldType = 'text' | 'textarea' | 'select' | 'number' | 'date' | 'tags' | 'url' | 'boolean';
+
+// Class-C confirm-card preview (spec §13.6) — the current-state render returned by
+// POST /v1/glossary/actions/preview, keyed on the action `descriptor`.
+export type ActionPreviewRow = { label: string; value: string; note?: string };
+export type ActionPreview = {
+  descriptor: string;
+  title: string;
+  preview_rows: ActionPreviewRow[] | null;
+  destructive: boolean;
+};
 export type EntityStatus = 'draft' | 'active' | 'inactive';
 export type Confidence = 'verified' | 'draft' | 'machine';
 export type Relevance = 'major' | 'appears' | 'mentioned';
@@ -72,6 +82,39 @@ export type Evidence = {
   translations: Array<{ id: string; evidence_id: string; language_code: string; value: string; confidence: Confidence }>;
 };
 
+// S4 — batch-translate dialog (GET translation-candidates / POST apply-translations).
+export type TranslationCandidateAttr = {
+  attr_value_id: string;
+  code: string;
+  field_type: string;
+  original_language: string;
+  original_value: string;
+  existing_value?: string | null;
+  existing_confidence?: string | null;
+};
+export type TranslationCandidateEntity = {
+  entity_id: string;
+  display_name: string;
+  kind_code: string;
+  status: string;
+  attributes: TranslationCandidateAttr[];
+};
+export type TranslationCandidatesResponse = {
+  book_id: string;
+  target_language: string;
+  total: number;
+  limit: number;
+  offset: number;
+  items: TranslationCandidateEntity[];
+};
+export type ApplyTranslationItem = { entity_id: string; attr_value_id: string; value: string };
+export type ApplyTranslationsResponse = {
+  translated: number;
+  skipped_verified: number;
+  skipped_empty: number;
+  failed: string[];
+};
+
 export type AttributeValue = {
   attr_value_id: string;
   entity_id: string;
@@ -81,6 +124,15 @@ export type AttributeValue = {
   original_value: string;
   translations: Translation[];
   evidences: Evidence[];
+};
+
+// Raw-search "why it matched" payload (search_mode=raw). Highlights are
+// Unicode CODE-POINT (rune) offset pairs within `snippet` — render via
+// Array.from() slicing (UTF-16 indexing would mis-slice astral/CJK).
+export type EntityMatch = {
+  field_code: string; // name | alias | translation
+  snippet: string;
+  highlights: number[][];
 };
 
 export type GlossaryEntitySummary = {
@@ -98,7 +150,23 @@ export type GlossaryEntitySummary = {
   evidence_count: number;
   created_at: string;
   updated_at: string;
+  match?: EntityMatch | null; // present only on raw-search results
 };
+
+// Whitelisted server sort keys (must match glossary-service entityOrderBy).
+export type EntitySort =
+  | 'updated_at'
+  | 'updated_at_asc'
+  | 'name'
+  | 'name_desc'
+  | 'created_at'
+  | 'created_at_asc'
+  | 'kind'
+  | 'status'
+  | 'alive'
+  | 'links'
+  | 'evidence'
+  | 'relevance';
 
 export type GlossaryEntity = GlossaryEntitySummary & {
   chapter_links: ChapterLink[];

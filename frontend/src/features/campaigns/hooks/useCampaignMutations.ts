@@ -6,6 +6,7 @@ import type {
   CreateCampaignPayload,
   EstimateRequest,
   EstimateResponse,
+  UpdateCampaignPayload,
 } from '../types';
 
 /** On-demand cost/time estimate for the wizard's review step. */
@@ -82,6 +83,24 @@ export function useResumeCampaign(opts?: { onSuccess?: (c: Campaign) => void; on
   return useCampaignAction((id, token) => campaignsApi.start(id, token), opts);
 }
 
+/** G2 — re-run failed chapters (null = all failed). Re-arms to running; invalidates
+ *  the campaign detail + progress + report so the monitor reflects it at once. */
+export function useRerunFailed(opts?: { onSuccess?: (c: Campaign) => void; onError?: (err: Error) => void }) {
+  const { accessToken } = useAuth();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { campaignId: string; chapterIds?: string[] | null }) =>
+      campaignsApi.rerunFailed(args.campaignId, args.chapterIds ?? null, accessToken!),
+    onSuccess: async (c) => {
+      await qc.invalidateQueries({ queryKey: ['campaigns', c.campaign_id] });
+      await qc.invalidateQueries({ queryKey: ['campaign-progress', c.campaign_id] });
+      await qc.invalidateQueries({ queryKey: ['campaign-report', c.campaign_id] });
+      opts?.onSuccess?.(c);
+    },
+    onError: (err) => opts?.onError?.(err as Error),
+  });
+}
+
 /** Raise/lower the budget cap (PATCH). Does NOT auto-resume a paused campaign. */
 export function useUpdateBudget(opts?: { onSuccess?: (c: Campaign) => void; onError?: (err: Error) => void }) {
   const { accessToken } = useAuth();
@@ -89,6 +108,24 @@ export function useUpdateBudget(opts?: { onSuccess?: (c: Campaign) => void; onEr
   return useMutation({
     mutationFn: (args: { campaignId: string; budgetUsd: string }) =>
       campaignsApi.updateBudget(args.campaignId, args.budgetUsd, accessToken!),
+    onSuccess: async (c) => {
+      await qc.invalidateQueries({ queryKey: ['campaigns', c.campaign_id] });
+      await qc.invalidateQueries({ queryKey: ['campaign-progress', c.campaign_id] });
+      opts?.onSuccess?.(c);
+    },
+    onError: (err) => opts?.onError?.(err as Error),
+  });
+}
+
+/** D-FACTORY-SWITCH-MODEL-RESUME — partial PATCH (budget and/or the switchable
+ *  models). Invalidates the campaign detail so the new picks render; the caller
+ *  chains a resume on success. */
+export function useUpdateCampaign(opts?: { onSuccess?: (c: Campaign) => void; onError?: (err: Error) => void }) {
+  const { accessToken } = useAuth();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { campaignId: string; patch: UpdateCampaignPayload }) =>
+      campaignsApi.updateCampaign(args.campaignId, args.patch, accessToken!),
     onSuccess: async (c) => {
       await qc.invalidateQueries({ queryKey: ['campaigns', c.campaign_id] });
       await qc.invalidateQueries({ queryKey: ['campaign-progress', c.campaign_id] });

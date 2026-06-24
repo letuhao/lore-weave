@@ -2,13 +2,28 @@ import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/commo
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { AppConfig, ProviderConfig, loadConfig } from '../config/config.js';
-import { Catalog, computeCatalog, ProviderResult } from './catalog.js';
+import { Catalog, computeCatalog, ProviderAvailability, ProviderResult } from './catalog.js';
 
 /** Per-call identity forwarded to a provider (SO-1 / INV-7). Never sourced from the LLM. */
 export interface Envelope {
   userId?: string;
   sessionId?: string;
   traceId?: string;
+  /**
+   * Active project scope (X-Project-Id) — forwarded so project-scoped provider
+   * tools (kg_build_graph, kg_build_wiki, any `ctx.project_id`-resolving tool)
+   * can resolve "the current project" downstream. Lifted off the request headers
+   * only (SEC-1 — never from the LLM); forwarded only when present.
+   */
+  projectId?: string;
+  /**
+   * Admin authority (INV-T2) — the RS256 `admin:write` token, forwarded ONLY on
+   * the admin federation path as `X-Admin-Token`. It is a bearer credential and
+   * MUST NEVER be logged or serialized (spec §6.7, §11 #7). The normal `/mcp`
+   * federation never sets this; `extractEnvelope` (handlers.ts) never reads it
+   * for the user/book surface.
+   */
+  adminToken?: string;
 }
 
 const EMPTY: Catalog = {
@@ -16,6 +31,7 @@ const EMPTY: Catalog = {
   toolToProvider: new Map(),
   version: '',
   partial: false,
+  providers: [],
 };
 
 /**
@@ -58,6 +74,14 @@ export class FederationService implements OnModuleInit, OnModuleDestroy {
   }
   providerCount(): number {
     return this.cfg.providers.length;
+  }
+  /** H10 — per-provider availability (`{name, available}`); a down provider
+   * reads `available:false` so a consumer's find_tools can say "try again",
+   * not "no such tool". Mirrors the configured provider set even before the
+   * first refresh (all unavailable until federation runs). */
+  providerAvailability(): ProviderAvailability[] {
+    if (this.state.providers.length > 0) return this.state.providers;
+    return this.cfg.providers.map((p) => ({ name: p.name, available: false }));
   }
   providerFor(tool: string): ProviderConfig | undefined {
     return this.state.toolToProvider.get(tool);
@@ -116,6 +140,7 @@ export class FederationService implements OnModuleInit, OnModuleDestroy {
     if (env.userId) headers['X-User-Id'] = env.userId;
     if (env.sessionId) headers['X-Session-Id'] = env.sessionId;
     if (env.traceId) headers['X-Trace-Id'] = env.traceId;
+    if (env.projectId) headers['X-Project-Id'] = env.projectId;
 
     const client = new Client({ name: 'ai-gateway', version: '0.1.0' });
     const transport = new StreamableHTTPClientTransport(new URL(p.mcpUrl), {

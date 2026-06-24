@@ -1,0 +1,108 @@
+# infra/pagerduty/rotation_schedule.yaml — L7.C.2 (RAID cycle 35)
+#
+# Per SR2 §12AE.3 rotation table.
+#
+# V1 (now)   : Solo-dev — founder takes all pages 24/7.
+# V1+30d     : 2-person — founder + first SRE hire, 1-week rotation.
+# V2+        : 4-person — proper follow-the-sun, secondary tier, 1-week rotation.
+#
+# Active phase is declared per-schedule by `phase`. PagerDuty terraform reads
+# only the schedule whose active flag is set to the boolean true value.
+#
+# LOCKED:
+#   Q-L7C-1 PagerDuty V1
+#   Q-L7C-2 SLA targets internal (oncall-sla.md), NOT user-facing
+
+version: 1
+shipped_cycle: 35
+
+# Time zone for all schedules below. Per SR2 §12AE.3 — founder is in Asia/Bangkok;
+# document the actual zone so rotations match wall-clock expectations.
+time_zone: Asia/Bangkok
+
+schedules:
+
+  # ────────────────────────────────────────────────────────────────────
+  # V1 — solo-dev, all 5 services point here.
+  # ────────────────────────────────────────────────────────────────────
+  - id: solo-dev-247
+    name: 'Solo-dev 24/7 (V1)'
+    phase: v1
+    active: true
+    description: |
+      Founder on-call 24/7 for all 5 PagerDuty services. Acceptable for V1
+      because:
+        - SLO-driven auto-mitigation (degraded mode, circuit breakers) absorbs
+          most "outages" without paging.
+        - Silence + inhibition rules (cycle 34) prevent storm-paging.
+        - Q-L7C-2 internal SLA (oncall-sla.md) honestly documents weekend
+          response targets ("4h non-SEV0").
+      Replaced by `two-person-rotation` (phase v1plus30d) on first SRE hire.
+    layers:
+      - id: primary
+        rotation: continuous_24_7
+        users:
+          - founder
+        start: 2026-06-01T00:00:00+07:00
+        rotation_interval: P7D
+
+  # ────────────────────────────────────────────────────────────────────
+  # V1+30d — 2-person rotation.
+  # ────────────────────────────────────────────────────────────────────
+  - id: two-person-rotation
+    name: '2-person SRE rotation (V1+30d)'
+    phase: v1plus30d
+    active: false
+    description: |
+      Founder + first SRE hire, weekly handoff at Monday 09:00 local.
+      Backup falls back to the other person automatically via PagerDuty.
+    layers:
+      - id: primary
+        rotation: weekly_handoff_monday_09_local
+        users:
+          - founder
+          - sre-hire-1
+        start: 1970-01-01T00:00:00+07:00   # date set at V1+30d activation
+        rotation_interval: P7D
+
+  # ────────────────────────────────────────────────────────────────────
+  # V2+ — 4-person follow-the-sun.
+  # ────────────────────────────────────────────────────────────────────
+  - id: four-person-fts
+    name: '4-person follow-the-sun (V2+)'
+    phase: v2plus
+    active: false
+    description: |
+      Proper follow-the-sun with 2 primary timezones + secondary tier.
+      Activated when SRE team grows past 3 hires AND paid tier launches.
+    layers:
+      - id: primary-apac
+        rotation: weekly_handoff_monday_09_local
+        users:
+          - sre-apac-1
+          - sre-apac-2
+        start: 1970-01-01T00:00:00+07:00
+        rotation_interval: P7D
+      - id: primary-emea
+        rotation: weekly_handoff_monday_09_local
+        users:
+          - sre-emea-1
+          - sre-emea-2
+        start: 1970-01-01T00:00:00+02:00
+        rotation_interval: P7D
+      - id: secondary
+        rotation: weekly_handoff_monday_09_local
+        users:
+          - tech-lead
+        start: 1970-01-01T00:00:00+07:00
+        rotation_interval: P7D
+
+# Drift guard — exactly 3 schedules; exactly 1 active.
+expected_schedule_count: 3
+expected_active_schedule: solo-dev-247
+
+# Cross-reference
+references:
+  oncall_sla_doc: docs/governance/oncall-sla.md
+  alertmanager_channels: infra/alertmanager/channels.yaml
+  services_file: infra/pagerduty/services.yaml

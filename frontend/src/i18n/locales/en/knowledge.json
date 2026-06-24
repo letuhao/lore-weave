@@ -14,6 +14,104 @@
       "insights": "Insights"
     }
   },
+  "graph": {
+    "title": "Knowledge graph",
+    "counts": "{{nodes}} nodes · {{edges}} relations",
+    "truncated": "showing the top {{n}} — expand a node to load more",
+    "expanding": "expanding…",
+    "hint": "Scroll to zoom · drag empty space to pan · click a node for detail · ⊞ to expand",
+    "loading": "Loading graph…",
+    "loadFailed": "Failed to load graph: {{error}}",
+    "empty": "No knowledge graph yet — build this project to explore its network."
+  },
+  "shell": {
+    "backToProjects": "All projects",
+    "sections": {
+      "label": "Project sections",
+      "overview": "Overview",
+      "entities": "Entities",
+      "timeline": "Timeline",
+      "evidence": "Evidence",
+      "proposals": "Proposals",
+      "gap": "Gap",
+      "insights": "Insights",
+      "graph": "Build / Explore graph"
+    },
+    "notFound": "Project not found.",
+    "loading": "Loading project…",
+    "overview": {
+      "configHeading": "Configuration",
+      "embeddingModel": "Embedding model",
+      "rerankModel": "Rerank model",
+      "extraction": "Extraction",
+      "extractionEnabled": "Enabled",
+      "extractionDisabled": "Disabled",
+      "book": "Book",
+      "world": "World",
+      "none": "—"
+    },
+    "placeholder": {
+      "proposals": "Pending proposals land here (C11).",
+      "gap": "The glossary gap report lands here (C10).",
+      "graph": "Graph build & explore lands here (C5 / C19)."
+    }
+  },
+  "gap": {
+    "heading": "Glossary gap report",
+    "subtitle": "High-mention characters, places and concepts we found in your book that aren't in the glossary yet. Promote the ones worth keeping.",
+    "summary": {
+      "candidates": "Gap candidates",
+      "threshold": "Min mentions",
+      "top": "Top gap",
+      "topLabel": "Top gap",
+      "topMentions": "{{count}} mentions",
+      "none": "—"
+    },
+    "controls": {
+      "minMentions": "Min mentions",
+      "limit": "Show up to"
+    },
+    "selectAll": "Select all",
+    "selectRow": "Select {{name}}",
+    "loading": "Loading gaps…",
+    "empty": "No gaps above this threshold. Lower the min-mentions to surface more, or your glossary is well covered.",
+    "error": "Couldn't load the gap report. Try again.",
+    "mentions": "{{count}} mentions",
+    "mentionsTitle": "Times mentioned across the book",
+    "itemFailed": "Failed",
+    "bulkPromote": {
+      "cta_one": "Promote {{count}} to glossary",
+      "cta_other": "Promote {{count}} to glossary",
+      "cta_zero": "Promote to glossary",
+      "progress": "{{done}} / {{total}} promoted",
+      "failedCount": "({{count}} failed)",
+      "allOk": "Promoted {{count}} to glossary drafts.",
+      "allFailed": "All {{count}} promotions failed. Try again.",
+      "partial": "Promoted {{ok}}; {{failed}} failed."
+    }
+  },
+  "proposals": {
+    "heading": "Pending proposals",
+    "subtitle": "One inbox for everything awaiting your review — glossary AI suggestions, wiki edits, and lore-enrichment proposals. Open a row to review and accept it in its own surface.",
+    "noBook": "Link a book to this project to see its proposal queues.",
+    "loading": "Loading proposals…",
+    "error": "Couldn't load the proposals inbox. Try again.",
+    "empty": "No pending proposals. New AI suggestions will appear here as they're produced.",
+    "review": "Review",
+    "openRow": "Review {{title}}",
+    "sourceError": "Couldn't load this queue. The others are still shown.",
+    "origin": {
+      "glossary": "Glossary draft",
+      "wiki": "Wiki edit",
+      "enrichment": "Lore proposal"
+    },
+    "originLabel": {
+      "glossary": "Glossary AI drafts",
+      "wiki": "Wiki suggestions",
+      "enrichment": "Lore-enrichment proposals"
+    },
+    "count": "{{count}}"
+  },
   "mobile": {
     "sections": {
       "global": "Global bio",
@@ -92,6 +190,7 @@
     "notIndexed": "This project isn't indexed for semantic search yet.",
     "notIndexedHint": "Run extraction with an embedding model to enable drawer search.",
     "refreshing": "Refreshing…",
+    "embedCost": "Query embedded: {{tokens}} tokens · ${{cost}}",
     "retry": "Retry",
     "fixConfig": "Check your project's embedding model configuration in Settings.",
     "unknownError": "Unknown error. Please try again.",
@@ -117,7 +216,12 @@
       "matchLabel": "Match score",
       "openLabel": "Open {{sourceType}} drawer with {{score}} match",
       "hubBadge": "Summary",
-      "hubHint": "This chunk is a summary or long-bio excerpt; it's penalized in ranking but may still surface."
+      "hubHint": "This chunk is a summary or long-bio excerpt; it's penalized in ranking but may still surface.",
+      "langHint": "Source language: {{lang}}"
+    },
+    "coverage": {
+      "partial": "{{count}} of {{total}} results are in your language ({{lang}}); the rest are shown in the source language.",
+      "none": "No results in your language ({{lang}}); showing source-language results."
     },
     "detail": {
       "title": "Drawer",
@@ -149,7 +253,24 @@
       "chronologicalRange": "Chronological range",
       "after": "After",
       "before": "Before",
-      "chronoReversed": "Before must be greater than After."
+      "chronoReversed": "Before must be greater than After.",
+      "dateRange": "Date range",
+      "dateFrom": "From",
+      "dateTo": "To",
+      "dateInvalid": "Use YYYY, YYYY-MM, or YYYY-MM-DD.",
+      "dateReversed": "\"To\" must be on or after \"From\"."
+    },
+    "sort": {
+      "label": "Sort",
+      "narrative": "Narrative order",
+      "chronological": "Chronological",
+      "direction": "Direction",
+      "asc": "Oldest first",
+      "desc": "Newest first"
+    },
+    "importance": {
+      "major": "Major",
+      "pivotal": "Pivotal"
     },
     "row": {
       "orderLabel": "Narrative order",
@@ -181,10 +302,29 @@
     "filters": {
       "project": "Project",
       "kind": "Kind",
+      "status": "Status",
       "search": "Search",
       "searchPlaceholder": "Name or alias (min 2 chars)",
+      "semantic": "Semantic search",
+      "semanticPlaceholder": "Describe what you're looking for (vector search)",
       "anyProject": "Any project",
-      "anyKind": "Any kind"
+      "anyKind": "Any kind",
+      "anyStatus": "Any status"
+    },
+    "status": {
+      "canonical": "Canonical",
+      "discovered": "Discovered",
+      "archived": "Archived"
+    },
+    "legend": {
+      "title": "Status",
+      "canonical": "in your glossary",
+      "discovered": "found, not yet promoted",
+      "archived": "hidden from retrieval"
+    },
+    "anchor": {
+      "badge": "⚓ {{pct}}",
+      "tooltip": "Anchor score {{pct}}% — how strongly this entity is grounded"
     },
     "table": {
       "ariaLabel": "Entities",
@@ -229,6 +369,23 @@
         "confidence": "Confidence",
         "mentions": "Mentions",
         "anchor": "Anchor score"
+      },
+      "promote": "Promote to glossary",
+      "promoteHint": "Discovered entity. Promote it to create an AI-suggested glossary draft for review.",
+      "promotePending": "Promoting…",
+      "promoteSuccess": "Promoted — a glossary draft was created for review.",
+      "promoteFailed": "Couldn't promote: {{error}}",
+      "unpin": "Remove from context pin",
+      "unpinHint": "This entity is pinned into extraction context.",
+      "unpinSuccess": "Unpinned from context.",
+      "unpinFailed": "Couldn't unpin: {{error}}",
+      "facts": "Known facts ({{count}})",
+      "factSource": "Chapter {{chapter}}",
+      "factType": {
+        "decision": "Decision",
+        "preference": "Preference",
+        "milestone": "Milestone",
+        "negation": "Negation"
       }
     },
     "edit": {
@@ -372,9 +529,34 @@
     },
     "loadFailed": "Failed to load projects: {{error}}",
     "paginationNote": "Showing first 100 projects — full pagination lands with Track 2.",
+    "browser": {
+      "searchPlaceholder": "Search projects…",
+      "searchLabel": "Search projects by name",
+      "filterLabel": "Filter by state",
+      "sortLabel": "Sort projects",
+      "noMatches": "No projects match the current search and filters.",
+      "loadMore": "Load more",
+      "loadingMore": "Loading…",
+      "stateFilter": {
+        "all": "All states",
+        "disabled": "Static memory",
+        "building": "Building",
+        "paused": "Paused",
+        "ready": "Ready",
+        "failed": "Failed",
+        "archived": "Archived"
+      },
+      "sortOption": {
+        "recent": "Recently updated",
+        "oldest": "Oldest first",
+        "name_asc": "Name (A–Z)",
+        "name_desc": "Name (Z–A)"
+      }
+    },
     "card": {
       "staticMemory": "Static memory",
       "archivedBadge": "archived",
+      "open": "Open",
       "edit": "Edit",
       "archive": "Archive",
       "restore": "Restore",
@@ -412,7 +594,7 @@
         "success": "Benchmark complete for {{model}} (recall@3 {{recall}}).",
         "errorNoModel": "Pick an embedding model before running the benchmark.",
         "errorUnknownModel": "This embedding model isn’t supported by the benchmark harness.",
-        "errorNotBenchmarkProject": "Benchmarks must run on a dedicated project. Create a new project before running.",
+        "errorNotBenchmarkProject": "The benchmark couldn’t start on its sandbox — please retry in a moment.",
         "errorAlreadyRunning": "A benchmark is already running for this project. Wait and retry.",
         "errorProviderFlake": "Embedding provider failed mid-run. Please retry.",
         "errorGeneric": "Benchmark failed: {{message}}"
@@ -474,7 +656,9 @@
         "extractNew": "Extract new chapters",
         "ignore": "Ignore",
         "confirm": "Confirm",
-        "confirmModelChange": "Confirm model change"
+        "confirmModelChange": "Confirm model change",
+        "exploreGraph": "Explore graph",
+        "setConcurrency": "Set concurrency"
       },
       "cards": {
         "disabled": {
@@ -493,7 +677,9 @@
           "progress": "{{processed}} / {{total}} items",
           "elapsed": "Elapsed: {{elapsed}}",
           "spent": "Spent: ${{spent}}",
-          "spentOfBudget": "Spent: ${{spent}} / ${{budget}}"
+          "spentOfBudget": "Spent: ${{spent}} / ${{budget}}",
+          "concurrencyLabel": "Parallel calls",
+          "concurrencyApply": "Apply"
         },
         "building_paused_user": {
           "body": "You paused this job. Resume when ready, or cancel to keep the partial graph."
@@ -563,12 +749,56 @@
         "failed": "Estimate failed: {{error}}",
         "cost": "Estimated cost: ${{low}} – ${{high}}",
         "items": "{{chapters}} chapters · {{turns}} chat turns · ~{{tokens}} tokens",
-        "duration": "~{{seconds}}s estimated"
+        "duration": "~{{seconds}}s estimated",
+        "pinned": "Pinned context: +{{tokens}} tokens ({{count}} pinned across all windows)"
       },
       "cancel": "Cancel",
       "confirm": "Build graph",
       "starting": "Starting…",
-      "startFailed": "Start failed: {{error}}"
+      "startSuccess": "Build started — extracting the knowledge graph now.",
+      "startFailed": "Start failed: {{error}}",
+      "wizard": {
+        "step1": "Targets",
+        "step2": "Pinning",
+        "step3": "Budget",
+        "next": "Next",
+        "back": "Back",
+        "step2Placeholder": "Glossary pinning arrives in the next step — for now, every extraction window uses its own chapter context."
+      },
+      "targets": {
+        "label": "What to extract",
+        "hint": "Pick which passes run. Leaving all unchecked runs everything (default).",
+        "entities": "Entities",
+        "relations": "Relationships",
+        "events": "Events · timeline",
+        "facts": "Facts",
+        "summaries": "Summaries",
+        "autoIncluded": "auto-included",
+        "autoIncludedHint": "Entities are extracted automatically because relationships, events, or facts anchor to them.",
+        "recoveryDisabledHint": "Entity recovery and precision filtering are skipped because entities weren't selected as a target."
+      },
+      "concurrency": {
+        "label": "Parallel LLM calls (optional)",
+        "hint": "Cap how many extraction calls run at once. Leave blank for the default."
+      },
+      "pinning": {
+        "intro": "Pin glossary entities to force-inject them into every extraction window — so sparse-but-critical entities stay anchored even in chapters that never mention them.",
+        "autopin": "{{count}} sparse-but-long-reaching entities look worth pinning.",
+        "autopinApply": "Pin {{count}} suggestions",
+        "loading": "Loading entity stats…",
+        "unavailable": "Entity stats unavailable — you can still pin manually below.",
+        "searchPlaceholder": "Search by name…",
+        "kindAll": "All kinds",
+        "minMentions": "Min ×",
+        "available": "Available ({{count}})",
+        "availableEmpty": "No entities match the filters.",
+        "pinned": "Pinned ({{count}})",
+        "pinnedEmpty": "Nothing pinned yet.",
+        "pin": "Pin",
+        "unpin": "Unpin",
+        "budget": "+{{tokens}} tokens per window ({{count}} pinned × ~50).",
+        "noBook": "Pinning needs a linked book. Attach a book to this project first."
+      }
     },
     "errorViewer": {
       "title": "Extraction error",

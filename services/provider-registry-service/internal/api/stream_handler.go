@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -29,6 +30,7 @@ import (
 
 	"github.com/loreweave/observability"
 	"github.com/loreweave/provider-registry-service/internal/billing"
+	"github.com/loreweave/provider-registry-service/internal/jobs"
 	"github.com/loreweave/provider-registry-service/internal/provider"
 )
 
@@ -70,6 +72,13 @@ type streamRequest struct {
 	StreamFormat string         `json:"stream_format,omitempty"`
 	Input        map[string]any `json:"input,omitempty"` // Phase 5a; tts only
 	TraceID      string         `json:"trace_id,omitempty"`
+	// M3 (chat disconnect-cancel) — OPTIONAL caller-minted job id. When set on a
+	// chat stream, doLlmStream persists a BILLING-NEUTRAL observability llm_jobs
+	// row + registers a cancellable context under this id, so a caller (chat-
+	// service) can abort the in-flight stream via DELETE /internal/llm/jobs/{id}
+	// on a client disconnect. Empty (every legacy caller) → today's behavior
+	// verbatim (no row, no registry entry).
+	StreamJobID string `json:"stream_job_id,omitempty"`
 	// Generic extras passed to adapter (forward-compat for tools, response_format).
 	Extra map[string]any `json:"-"`
 }
@@ -284,12 +293,68 @@ WHERE platform_model_id=$1 AND status='active'
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
 
+	// M3 (chat disconnect-cancel) — when a chat stream carries a caller-minted
+	// stream_job_id, persist a BILLING-NEUTRAL observability row + register a
+	// cancellable context so DELETE /internal/llm/jobs/{id} can abort the
+	// in-flight stream. reservation_id stays NULL (the `guard` above owns the
+	// real spend hold) so finalizing here cannot double-bill. Best-effort: an
+	// insert failure logs + degrades to today's uncancellable behavior, never
+	// fails the stream. Replacing r's context with the cancellable child means
+	// every downstream r.Context() (emit + adapter.Stream) honors BOTH the
+	// explicit cancel AND the original client-disconnect.
+	var finalizeStream func(streamErr error)
+	if op == "chat" && s.jobsRepo != nil && in.StreamJobID != "" {
+		if sjid, perr := uuid.Parse(in.StreamJobID); perr != nil {
+			slog.Warn("invalid stream_job_id; cancel/observability disabled", "stream_job_id", in.StreamJobID)
+		} else if _, ierr := s.jobsRepo.Insert(r.Context(), jobs.InsertParams{
+			JobID:       sjid,
+			OwnerUserID: userID,
+			Operation:   "chat",
+			ModelSource: in.ModelSource,
+			ModelRef:    modelRef,
+			Input:       map[string]any{"stream": true},
+			TraceID:     in.TraceID,
+			// ReservationID nil — guard.settle is the sole billing authority.
+		}); ierr != nil {
+			slog.Warn("stream job-row insert failed; cancel/observability disabled",
+				"stream_job_id", sjid.String(), "err", ierr)
+		} else {
+			_, _ = s.jobsRepo.MarkRunning(r.Context(), sjid)
+			streamCtx, cancel := context.WithCancel(r.Context())
+			s.jobCancels.register(sjid, cancel)
+			r = r.WithContext(streamCtx)
+			finalizeStream = func(streamErr error) {
+				s.jobCancels.remove(sjid)
+				cancel()
+				status, reason := "completed", "stop"
+				switch {
+				case streamCtx.Err() != nil:
+					// client disconnect OR an explicit DELETE cancel. The
+					// FinalizeStreamStatus 'running' guard makes this a no-op
+					// when DELETE's Cancel already wrote 'cancelled'.
+					status, reason = "cancelled", "client_cancelled"
+				case guard.didAbort():
+					status, reason = "failed", "budget_exceeded"
+				case streamErr != nil:
+					status, reason = "failed", "upstream_error"
+				}
+				// DetachedContext: the stream ctx is cancelled on disconnect, but
+				// the terminal write MUST still land (mirrors guard.settle, §5c).
+				_, _ = s.jobsRepo.FinalizeStreamStatus(
+					observability.DetachedContext(r.Context()), sjid, status, reason)
+			}
+		}
+	}
+
 	// Branch on operation — chat uses adapter.Stream, tts uses adapter.Speak.
 	switch op {
 	case "tts":
 		s.streamTts(r, w, flusher, adapter, endpointBaseURL, secret, providerModelName, in.Input)
 	default: // "chat"
-		s.streamChat(r, w, flusher, adapter, endpointBaseURL, secret, providerModelName, in, guard)
+		streamErr := s.streamChat(r, w, flusher, adapter, endpointBaseURL, secret, providerModelName, in, guard)
+		if finalizeStream != nil {
+			finalizeStream(streamErr)
+		}
 	}
 }
 
@@ -336,7 +401,7 @@ func (s *Server) streamChat(
 	endpointBaseURL, secret, providerModelName string,
 	in streamRequest,
 	guard *streamGuard,
-) {
+) error {
 	input := buildChatStreamInput(in)
 
 	emit := func(chunk provider.StreamChunk) error {
@@ -375,9 +440,10 @@ func (s *Server) streamChat(
 	if err != nil {
 		// A budget abort already emitted its own error frame; a client
 		// disconnect means nobody is listening. In both cases, do not
-		// emit a second (misleading) error frame.
+		// emit a second (misleading) error frame. The error is still
+		// RETURNED so doLlmStream's M3 finalize can classify the outcome.
 		if guard.didAbort() || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return
+			return err
 		}
 		code := "LLM_UPSTREAM_ERROR"
 		message := err.Error()
@@ -390,6 +456,7 @@ func (s *Server) streamChat(
 			Message: message,
 		})
 	}
+	return err
 }
 
 // streamTts — Phase 5a TTS streaming. Calls adapter.Speak emitting one

@@ -11,6 +11,9 @@ RUN apk add --no-cache git
 # go.mod (=> ../../sdks/go/grantclient) must resolve inside the container.
 COPY sdks/go/observability /src/sdks/go/observability
 COPY sdks/go/grantclient /src/sdks/go/grantclient
+# contracts/adminjwt (D-GKA-SYSTEM-TIER-ADMIN) — verifies admin RS256 JWTs; its
+# replace (=> ../../contracts/adminjwt) must resolve inside the container.
+COPY contracts/adminjwt /src/contracts/adminjwt
 COPY services/glossary-service /src/services/glossary-service
 
 WORKDIR /src/services/glossary-service

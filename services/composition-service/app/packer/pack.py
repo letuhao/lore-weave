@@ -37,6 +37,7 @@ from app.grant_client import GrantClient, GrantLevel
 from app.engine.canon_check import scene_at_order
 from app.packer import assemble
 from app.packer import budget as B
+from app.packer import merge as M
 from app.packer import profile as profile_mod
 from app.packer import spoiler
 from app.packer.lenses import (
@@ -65,6 +66,16 @@ class PackRequest:
     # (B2/B3 chapter+stitch build the synthetic node's story_order from it), pass
     # it here so pack() skips the redundant book.get_chapter_sort_orders call.
     chapter_sort_hint: int | None = None
+    # C25 (dị bản M0) — DERIVATIVE two-project merge. When this Work is a
+    # derivative, `source_project_id` is the SOURCE Work's knowledge project (the
+    # inherited BASE, read ≤ `branch_point`) and `project_id` is the derivative's
+    # OWN project (the DELTA, read full). `overrides` is the freshly-read
+    # `entity_override[]` applied to the inherited base entities BEFORE the prompt
+    # window — re-read + re-applied EVERY pack (self-syncing, NO cache). All None
+    # for a non-derivative (greenfield) Work → the normal single-project path.
+    source_project_id: UUID | None = None
+    branch_point: int | None = None
+    overrides: list[Any] | None = None
 
 
 @dataclass
@@ -97,6 +108,57 @@ def _as_uuid(value: Any) -> UUID | None:
         return None
 
 
+@dataclass
+class DerivativeContext:
+    """C25 — the resolved dị bản inputs for a derivative pack: the inherited BASE
+    project (the source Work's project, read ≤ `branch_point`) and the freshly-read
+    `entity_override[]`. None / empty for a non-derivative Work."""
+    source_project_id: UUID | None = None
+    branch_point: int | None = None
+    overrides: list[Any] = field(default_factory=list)
+
+
+async def build_derivative_context(
+    work: Any, *, user_id: UUID, works_repo: Any, derivatives_repo: Any | None,
+) -> DerivativeContext:
+    """C25 — resolve the two-project merge inputs for a Work at a pack call site.
+
+    A derivative Work carries `source_work_id` + `branch_point` (C23). The BASE
+    knowledge project is the SOURCE Work's `project_id`, resolved by looking the
+    source up by its surrogate `id` (`source_work_id`) — the source's `id` is NOT
+    necessarily its `project_id` (the two diverge for a Work whose surrogate id was
+    minted distinct from its project), so reusing `source_work_id` as a project_id
+    directly would point the base read at the WRONG / a non-existent partition
+    (silently empty base, or — worse — another project). Look it up.
+
+    The `entity_override[]` is read FRESH here on every pack (self-syncing — no
+    cache; an edited override takes effect on the next pack). A non-derivative Work
+    (no source) → an empty context (the normal single-project pack path). If the
+    source Work can't be resolved (deleted), the base project is None → the
+    derivative GUARD will refuse the pack (rather than silently widen)."""
+    src = getattr(work, "source_work_id", None)
+    if src is None:
+        return DerivativeContext()
+    base_project_id: UUID | None = None
+    try:
+        source = await works_repo.get_by_id(user_id, src)
+        if source is not None:
+            base_project_id = source.project_id
+    except Exception:  # noqa: BLE001 — source lookup degrades to a refused derivative pack
+        logger.warning("build_derivative_context: source work lookup failed", exc_info=True)
+    overrides: list[Any] = []
+    if derivatives_repo is not None and getattr(work, "id", None) is not None:
+        try:
+            overrides = await derivatives_repo.list_overrides_for_work(user_id, work.id)
+        except Exception:  # noqa: BLE001 — override read degrades (pack never 500s on it)
+            logger.warning("build_derivative_context: override read failed", exc_info=True)
+            overrides = []
+    return DerivativeContext(
+        source_project_id=base_project_id, branch_point=getattr(work, "branch_point", None),
+        overrides=overrides,
+    )
+
+
 async def pack(
     req: PackRequest, *,
     book: BookClient, glossary: GlossaryClient, knowledge: KnowledgeClient,
@@ -108,6 +170,32 @@ async def pack(
     grant: "GrantClient | None" = None,
     need: "GrantLevel | None" = None,
 ) -> PackedContext:
+    # C16 (WG-3): a GREENFIELD Work whose knowledge project couldn't be created
+    # (knowledge-service outage at setup) carries a null project_id. The writer must
+    # still Generate — so pack tolerates it by degrading grounding to EMPTY: it skips
+    # EVERY knowledge lens (present/timeline/lore) entirely and packs only the local
+    # composition lenses (canon/structural/recent). This PRESERVES the A1/C23 guard —
+    # rather than calling a knowledge lens with project_id=None (which would widen the
+    # timeline endpoint to ALL the user's projects = cross-project grounding leak), we
+    # never call it at all. assert_project_scoped therefore still guards the NON-null
+    # path below (any knowledge read keeps a real scope).
+    # C25: a DERIVATIVE pack grounds on TWO partitions. A Work is a derivative when
+    # ANY divergence signal is present (source project, branch_point, or overrides)
+    # — keying off all three so a malformed/partial derivative (e.g. branch set but
+    # source null) still hits the GUARD instead of silently taking a single-project
+    # or greenfield path. GUARD: both the delta (project_id) and base
+    # (source_project_id) must be non-null before the null short-circuit can mask a
+    # null delta as "greenfield" — a null on either widens a knowledge read
+    # cross-project (the C23 leak).
+    is_derivative = (
+        req.source_project_id is not None
+        or req.branch_point is not None
+        or bool(req.overrides)
+    )
+    if is_derivative:
+        assemble.assert_derivative_scoped(req.project_id, req.source_project_id)
+    elif req.project_id is None:
+        return await _pack_null_project(req, grant=grant, need=need)
     # A1: never pack unscoped (knowledge timeline/entities widen cross-project).
     assemble.assert_project_scoped(req.project_id)
     # SEC2 (E0-4c): grant-aware book chokepoint BEFORE any internal (token-trust)
@@ -131,6 +219,12 @@ async def pack(
     present_ids = [u for u in (
         [_as_uuid(node.get("pov_entity_id"))] + [_as_uuid(e) for e in (node.get("present_entity_ids") or [])]
     ) if u is not None]
+
+    # KG-ML M7 (C6) — the author's reader-language for this book (M3). Resolved
+    # ONCE and threaded into the knowledge/glossary lenses so the pack carries
+    # per-language entity aliases + surfaces in-language lore passages first. Best-
+    # effort (None on unset/outage → the pack stays source-language, never 500s).
+    reader_lang = await book.get_reader_language(req.book_id, req.user_id)
 
     # Resolve the scene's chapter reading position FIRST — it is the timeline
     # cutoff on the DENSE event_order axis (at_order = sort × stride; CM4) AND the
@@ -159,23 +253,76 @@ async def pack(
     # a repo was wired (engine passes it). Otherwise an empty list (no extra read).
     nt_enabled = bool((req.settings or {}).get("narrative_thread_enabled")) and narrative_threads_repo is not None
 
+    # Composition-LOCAL lenses (canon/structural/recent/open_promises) are keyed on
+    # the DELTA project_id — they read the DERIVATIVE Work's own outline/canon/drafts
+    # (a derivative writes forward from branch_point; its delta is its authoring).
+    # The KNOWLEDGE lenses (present/timeline/lore) get the two-project merge below.
     canon, (present, seen_p), (timeline, seen_t), (beat, threads, planned), recent, (lore, seen_l), open_promises = (
         await asyncio.gather(
             gather_canon(canon_repo, req.user_id, req.project_id, story_order),
             gather_present(glossary, knowledge, book_id=req.book_id, user_id=req.user_id,
                            project_id=req.project_id, bearer=req.bearer, query=query,
-                           present_entity_ids=present_ids),
+                           present_entity_ids=present_ids, language=reader_lang),
             gather_timeline(knowledge, req.bearer, req.project_id, at_order, after_order=timeline_after),
             gather_structural(outline_repo, scene_links_repo, user_id=req.user_id,
                               project_id=req.project_id, node=node),
             gather_recent(book, req.book_id, chapter_id, req.bearer,
                           jobs_repo=jobs_repo, user_id=req.user_id, project_id=req.project_id,
                           story_order=story_order) if chapter_id else _empty_list(),
-            gather_lore(knowledge, req.bearer, req.project_id, query),
+            gather_lore(knowledge, req.bearer, req.project_id, query, language=reader_lang),
             gather_open_promises(narrative_threads_repo, req.user_id, req.project_id,
                                  cap=settings.pack_open_promises_cap) if nt_enabled else _empty_list(),
         )
     )
+
+    # C25 — DERIVATIVE two-project base+delta merge (G2). Gather the inherited BASE
+    # knowledge grounding from the SOURCE project, branch-FILTERED to ≤ branch_point
+    # (so the base never leaks content authored after the divergence), then apply the
+    # entity overrides to the inherited base entities, then MERGE with the delta —
+    # DELTA WINS on collision. The override set is re-read+re-applied EVERY pack
+    # (self-syncing; the caller passes a fresh req.overrides — no cache here).
+    extra_canon: list[str] = []
+    if is_derivative:
+        # branch cutoff on the dense reading-order axis (chapter sort × stride). The
+        # base read is capped at min(scene cutoff, branch cutoff) — never past the
+        # branch, and never past the scene's own position either.
+        branch_at_order = scene_at_order(req.branch_point)
+        base_cut = _min_cutoff(at_order, branch_at_order)
+        base_after = _min_cutoff(timeline_after, branch_at_order)
+        (base_present, base_seen_p), (base_timeline, base_seen_t), (base_lore, base_seen_l) = (
+            await asyncio.gather(
+                gather_present(glossary, knowledge, book_id=req.book_id, user_id=req.user_id,
+                               project_id=req.source_project_id, bearer=req.bearer, query=query,
+                               present_entity_ids=present_ids, language=reader_lang),
+                gather_timeline(knowledge, req.bearer, req.source_project_id, base_cut,
+                                after_order=base_after),
+                gather_lore(knowledge, req.bearer, req.source_project_id, query, language=reader_lang),
+            )
+        )
+        # Merge base + delta with DELTA precedence; base timeline is re-capped at the
+        # branch by the per-event filter below (base_cut already bounded the query;
+        # the spoiler re-filter stays the defensive belt).
+        present = M.merge_present(base_present, present)
+        timeline = M.merge_timeline(_cap_events(base_timeline, branch_at_order), timeline)
+        lore = M.merge_lore(_cap_lore(base_lore, req.branch_point), lore)
+        # Override mutation (DPS2) — applied to the MERGED present (AFTER the base+
+        # delta merge), so the derivative's divergence truth wins over BOTH the
+        # inherited base AND the delta version of an entity. This matters because the
+        # glossary `present` lens is BOOK-scoped (not project-scoped): base and delta
+        # surface the SAME glossary bio for an entity, and delta would otherwise
+        # shadow the overridden base copy. The overrides are the derivative's own
+        # statement about the entity, so they apply last. Added canon-rule scope →
+        # extra_canon. CROSS-SPACE reconcile: an override target may be a KNOWLEDGE
+        # node id while present items key on the GLOSSARY anchor — resolve each target
+        # → its glossary_entity_id so the match lands (the normalization seam);
+        # best-effort, a failed resolve falls back to matching the raw target (it may
+        # already be a glossary id). Re-read+re-applied EVERY pack (self-syncing).
+        target_anchor = await _resolve_override_anchors(knowledge, req.bearer, req.overrides)
+        present, extra_canon = M.apply_entity_overrides(
+            present, req.overrides, target_anchor=target_anchor)
+        seen_p = seen_p or base_seen_p
+        seen_t = seen_t or base_seen_t
+        seen_l = seen_l or base_seen_l
 
     # The scene's own chapter sort is resolved above; here resolve ONLY the lore
     # hits whose chapter_index is None (best-effort ingest left it unset).
@@ -213,6 +360,7 @@ async def pack(
         planned=planned, recent=recent, lore=l4.kept,
         knowledge_seen=bool(seen_p or seen_t or seen_l),
         open_promises=open_promises,  # FD-1 S3 — re-injected open-promise ledger
+        extra_canon=extra_canon,  # C25 — added canon-rule scope from overrides
     )
 
     # S2 — when the raw "story so far" is large (long chapter), COMPRESS the older
@@ -268,6 +416,123 @@ async def pack(
     )
 
 
+async def _pack_null_project(
+    req: PackRequest, *, grant: "GrantClient | None", need: "GrantLevel | None",
+) -> PackedContext:
+    """C16 (WG-3): build an EMPTY-but-valid pack for a lazy null-project Work.
+
+    No knowledge lens is called (the project has no knowledge graph yet — and a
+    null project_id would widen the timeline endpoint cross-project, the C23 leak),
+    so grounding is empty and `grounding_available=False`. The book grant is STILL
+    enforced (a null project_id doesn't bypass authorization). The author guide is
+    sanitised and kept so the writer's instruction still reaches the prompt. Generate
+    proceeds → prose returns (the FE already signposts empty grounding, C15)."""
+    from app.grant_client import get_grant_client
+    from app.grant_deps import authorize_book
+    await authorize_book(
+        grant or get_grant_client(), req.book_id, req.user_id, need or GrantLevel.VIEW,
+    )
+
+    profile = profile_mod.from_settings(req.settings)
+    bundle = LensBundle(
+        canon=[], present=[], timeline=[], beat=[], threads=[],
+        planned=[], recent=[], lore=[], knowledge_seen=False, open_promises=[],
+    )
+    segs = assemble.build_segments(bundle, guide=req.guide)
+    bres = B.enforce_budget(segs, settings.pack_token_budget, B.default_counter())
+    blocks = assemble.segments_to_blocks(bres.kept)
+    warnings = [
+        "grounding_unavailable: this work has no knowledge project yet "
+        "(knowledge-service was unavailable at setup) — writing proceeds, grounding "
+        "will enrich once the project is created (C16/WG-3)",
+    ]
+    if bres.over_budget:
+        warnings.append("over_budget: protected context exceeds the token target")
+    return PackedContext(
+        blocks=blocks, prompt=assemble.render(blocks), profile=profile,
+        token_count=bres.total_tokens, dropped_count=bres.dropped_count,
+        l4_dropped_no_position=0, grounding_available=False,
+        over_budget=bres.over_budget, scene_sort_order=None,
+        reinjected_promise_count=0, warnings=warnings,
+    )
+
+
 async def _empty_list() -> list[Any]:
     """gather() placeholder for the L3 lens when the scene has no chapter_id."""
     return []
+
+
+async def _resolve_override_anchors(
+    knowledge: KnowledgeClient, bearer: str, overrides: list[Any] | None,
+) -> dict[str, str]:
+    """C25 — resolve each override's `target_entity_id` (a KNOWLEDGE canonical_id,
+    as recorded by the C24 wizard) to its GLOSSARY anchor (`glossary_entity_id`), so
+    the override-apply can match a present item (which keys on the glossary anchor).
+    Returns {raw_target: glossary_anchor}; a target that doesn't resolve (or has no
+    anchor) is simply omitted (apply_entity_overrides then falls back to matching
+    the raw target — it may already be a glossary id). Best-effort: a knowledge
+    outage yields an empty map (the override degrades, never 500s the pack)."""
+    if not overrides:
+        return {}
+    # NOTE (adversary review): get_entity is user-scoped but NOT project-scoped — the
+    # override DECLARES its own target id, so we resolve it project-agnostically. This
+    # can't leak grounding content: the resolved anchor only re-keys the override for
+    # matching against present items that are ALREADY base/delta-scoped; a target that
+    # names another project's node simply won't match any present item (the override
+    # silently no-ops) rather than widening any read.
+    tids = [str(getattr(ov, "target_entity_id", "")) for ov in overrides
+            if getattr(ov, "target_entity_id", None) is not None]
+    if not tids:
+        return {}
+    # Resolve all targets concurrently (one pack can carry many overrides — avoid N
+    # serial round-trips). dedup tids so a repeated target is fetched once.
+    uniq = list(dict.fromkeys(tids))
+    details = await asyncio.gather(*(knowledge.get_entity(bearer, t) for t in uniq))
+    out: dict[str, str] = {}
+    for tid, detail in zip(uniq, details):
+        anchor = ((detail or {}).get("entity") or {}).get("glossary_entity_id")
+        if anchor:
+            out[tid] = str(anchor)
+    return out
+
+
+def _min_cutoff(a: int | None, b: int | None) -> int | None:
+    """C25 — the tighter of two reading-order cutoffs (None = unbounded). Used to
+    cap the BASE read at min(scene cutoff, branch cutoff): the base must never carry
+    content past the branch_point NOR past the scene's own position."""
+    if a is None:
+        return b
+    if b is None:
+        return a
+    return min(a, b)
+
+
+def _cap_events(events: list[dict[str, Any]], branch_at_order: int | None) -> list[dict[str, Any]]:
+    """C25 belt-and-suspenders — drop BASE events at/after the branch cutoff on the
+    dense event_order axis (the query already bounded ≤ branch, this re-asserts it
+    so a stub/misorder can't leak post-branch base canon into the derivative). A
+    None branch cutoff (unplaceable) keeps all (the downstream spoiler filter still
+    applies the scene cutoff)."""
+    if branch_at_order is None:
+        return events
+    return [
+        e for e in events
+        if not (isinstance(e.get("event_order"), int) and e["event_order"] >= branch_at_order)
+    ]
+
+
+def _cap_lore(hits: list[dict[str, Any]], branch_point: int | None) -> list[dict[str, Any]]:
+    """C25 — drop BASE lore hits whose chapter reading position is at/after the
+    branch_point (keep only ≤ branch). A hit with no resolvable chapter_index is
+    KEPT here (the downstream L4 reading-order spoiler filter conservative-drops it
+    against the scene position) — capping it here would double-drop without the
+    l4_dropped_no_position accounting."""
+    if branch_point is None:
+        return hits
+    out: list[dict[str, Any]] = []
+    for h in hits:
+        ci = h.get("chapter_index")
+        if isinstance(ci, int) and ci >= branch_point:
+            continue
+        out.append(h)
+    return out

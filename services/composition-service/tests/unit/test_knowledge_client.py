@@ -51,6 +51,53 @@ async def test_non_200_returns_none():
         await c.aclose()
 
 
+# ── C27 (dị bản M4) extract_item — the delta flywheel dispatch ──────────
+
+EXTRACT_URL = f"{BASE}/internal/extraction/extract-item"
+
+
+@respx.mock
+async def test_extract_item_dispatches_into_the_given_delta_project():
+    route = respx.post(EXTRACT_URL).mock(
+        return_value=httpx.Response(200, json={"entities_merged": 2, "events_merged": 1})
+    )
+    c = await _client()
+    job = uuid.uuid4()
+    try:
+        res = await c.extract_item(
+            user_id=USER, project_id=PROJECT, source_id="ch-1",
+            chapter_text="张若尘 is now a woman.", model_source="user_model",
+            model_ref="model-uuid", job_id=job,
+        )
+    finally:
+        await c.aclose()
+    assert res == {"entities_merged": 2, "events_merged": 1}
+    sent = route.calls.last.request
+    import json as _json
+    body = _json.loads(sent.content)
+    # Targets the GIVEN (delta) project, uses the internal token, item_type=chapter.
+    assert body["project_id"] == str(PROJECT)
+    assert body["item_type"] == "chapter"
+    assert body["chapter_text"] == "张若尘 is now a woman."
+    assert body["model_ref"] == "model-uuid"
+    assert sent.headers["X-Internal-Token"] == "intok"
+
+
+@respx.mock
+async def test_extract_item_returns_none_on_outage():
+    # a knowledge outage (5xx) → None so the approval doesn't 500.
+    respx.post(EXTRACT_URL).mock(return_value=httpx.Response(503, json={"detail": "down"}))
+    c = await _client()
+    try:
+        res = await c.extract_item(
+            user_id=USER, project_id=PROJECT, source_id="ch-1",
+            chapter_text="x", model_source="user_model", model_ref="m", job_id=uuid.uuid4(),
+        )
+    finally:
+        await c.aclose()
+    assert res is None
+
+
 @respx.mock
 async def test_transport_error_returns_none():
     respx.get(URL).mock(side_effect=httpx.ConnectError("down"))
@@ -203,5 +250,112 @@ async def test_fact_for_check_no_ids_returns_none_without_call():
     c = await _client()
     try:
         assert await c.fact_for_check(project_id=PROJECT, at_order=1) is None
+    finally:
+        await c.aclose()
+
+
+# ── C16 (WG-3) create_project error discrimination ──
+
+@respx.mock
+async def test_create_project_success_returns_dict():
+    respx.post(URL).mock(
+        return_value=httpx.Response(201, json={"project_id": str(PROJECT)}))
+    c = await _client()
+    try:
+        out = await c.create_project(BOOK, "My Book", "jwt")
+    finally:
+        await c.aclose()
+    assert out == {"project_id": str(PROJECT)}
+
+
+@respx.mock
+async def test_create_project_force_new_sends_flag_in_payload():
+    # C23-fix (dị bản G2): the derive path passes force_new=True so knowledge
+    # skips its per-(user,book) dedup and mints a DISTINCT is_derivative project.
+    route = respx.post(URL).mock(
+        return_value=httpx.Response(201, json={"project_id": str(PROJECT)}))
+    c = await _client()
+    try:
+        await c.create_project(BOOK, "My Book", "jwt", force_new=True)
+    finally:
+        await c.aclose()
+    import json as _json
+    sent = _json.loads(route.calls.last.request.content)
+    assert sent["force_new"] is True
+    assert sent["project_type"] == "book" and sent["book_id"] == str(BOOK)
+
+
+@respx.mock
+async def test_create_project_default_omits_force_new():
+    # Back-compat: the greenfield POST /work path does NOT send force_new
+    # (knowledge stays idempotent per (user, book)).
+    route = respx.post(URL).mock(
+        return_value=httpx.Response(201, json={"project_id": str(PROJECT)}))
+    c = await _client()
+    try:
+        await c.create_project(BOOK, "My Book", "jwt")
+    finally:
+        await c.aclose()
+    import json as _json
+    sent = _json.loads(route.calls.last.request.content)
+    assert "force_new" not in sent
+
+
+@respx.mock
+async def test_create_project_5xx_returns_none_outage():
+    # 5xx = OUTAGE → degrade (None), caller may create a lazy null-project Work.
+    respx.post(URL).mock(return_value=httpx.Response(503, json={"detail": "down"}))
+    c = await _client()
+    try:
+        out = await c.create_project(BOOK, "My Book", "jwt")
+    finally:
+        await c.aclose()
+    assert out is None
+
+
+@respx.mock
+async def test_create_project_transport_error_returns_none_outage():
+    respx.post(URL).mock(side_effect=httpx.ConnectError("refused"))
+    c = await _client()
+    try:
+        out = await c.create_project(BOOK, "My Book", "jwt")
+    finally:
+        await c.aclose()
+    assert out is None
+
+
+@respx.mock
+async def test_create_project_4xx_raises_contract_error():
+    # 4xx = CONTRACT bug → raise (must surface, NOT silently degrade).
+    from app.clients.knowledge_client import KnowledgeContractError
+    import pytest
+    respx.post(URL).mock(return_value=httpx.Response(422, json={"detail": "bad"}))
+    c = await _client()
+    try:
+        with pytest.raises(KnowledgeContractError) as ei:
+            await c.create_project(BOOK, "My Book", "jwt")
+        assert ei.value.status_code == 422
+    finally:
+        await c.aclose()
+
+
+@respx.mock
+async def test_create_project_403_auth_raises_contract_error():
+    # An auth/forbidden 4xx is surfaced too — never degraded into a grounding-blind Work.
+    from app.clients.knowledge_client import KnowledgeContractError
+    import pytest
+    respx.post(URL).mock(return_value=httpx.Response(403, json={"detail": "no"}))
+    c = await _client()
+    try:
+        with pytest.raises(KnowledgeContractError):
+            await c.create_project(BOOK, "My Book", "jwt")
+    finally:
+        await c.aclose()
+
+
+async def test_create_project_empty_bearer_returns_none():
+    c = await _client()
+    try:
+        assert await c.create_project(BOOK, "My Book", "") is None
     finally:
         await c.aclose()

@@ -13,6 +13,7 @@ knowledge-service is unavailable.
 """
 from __future__ import annotations
 
+import json
 import os
 from typing import Callable
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -641,7 +642,7 @@ class TestGetToolDefinitions:
                 "name": "memory_forget", "description": "forget a fact",
                 # An empty-input tool MUST advertise properties:{} — OpenAI-compatible
                 # providers (LM Studio) 400 the whole request on a missing `properties`
-                # (live-smoke bug: glossary_list_kinds had no properties).
+                # (live-smoke bug: glossary_list_system_standards had no properties).
                 "parameters": {"type": "object", "properties": {}}}},
         ]
         await client.aclose()
@@ -776,3 +777,75 @@ class TestToolCallingEnabledField:
         assert result.mode == "degraded"
         assert result.tool_calling_enabled is True
         await client.aclose()
+
+
+# ── M4: init_working_memory (goal-authority write path, best-effort) ──────────
+
+
+@pytest.mark.asyncio
+async def test_init_working_memory_posts_charter():
+    captured = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        captured["url"] = str(req.url)
+        captured["token"] = req.headers.get("X-Internal-Token")
+        captured["body"] = json.loads(req.content)
+        return httpx.Response(204)
+
+    client = _make_client(handler)
+    ok = await client.init_working_memory(
+        session_id="s-1", user_id="u-1",
+        charter={"goal": "g", "phases": ["warmup"], "checklist": [], "language": "vi"},
+    )
+    assert ok is True
+    assert captured["url"].endswith("/internal/working-memory/init")
+    assert captured["token"] == "unit-test-token"
+    assert captured["body"]["charter"]["goal"] == "g"
+    assert captured["body"]["session_id"] == "s-1"
+
+
+@pytest.mark.asyncio
+async def test_init_working_memory_swallows_failure():
+    def handler(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(500)
+
+    client = _make_client(handler)
+    # Best-effort: a knowledge outage must not raise — the session anchors from
+    # its own seed (EC-4).
+    ok = await client.init_working_memory(
+        session_id="s", user_id="u", charter={"goal": "g", "phases": ["x"], "language": "en"},
+    )
+    assert ok is False
+
+
+@pytest.mark.asyncio
+async def test_tick_working_memory_posts_turns_and_returns_status():
+    captured = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        captured["url"] = str(req.url)
+        captured["body"] = json.loads(req.content)
+        return httpx.Response(200, json={"status": "updated"})
+
+    client = _make_client(handler)
+    status = await client.tick_working_memory(
+        session_id="s-1", user_id="u-1",
+        model_source="user_model", model_ref="m-1",
+        recent_turns=[{"role": "user", "content": "hi"}],
+    )
+    assert status == "updated"
+    assert captured["url"].endswith("/internal/working-memory/tick")
+    assert captured["body"]["recent_turns"][0]["content"] == "hi"
+    assert captured["body"]["model_ref"] == "m-1"
+
+
+@pytest.mark.asyncio
+async def test_tick_working_memory_swallows_failure():
+    def handler(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(503)
+
+    client = _make_client(handler)
+    status = await client.tick_working_memory(
+        session_id="s", user_id="u", model_source="user_model", model_ref="m", recent_turns=[],
+    )
+    assert status is None

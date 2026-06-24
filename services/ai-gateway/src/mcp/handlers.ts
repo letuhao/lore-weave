@@ -17,11 +17,25 @@ export function extractEnvelope(headers: Headers): Envelope {
     userId: headerValue(headers, 'x-user-id'),
     sessionId: headerValue(headers, 'x-session-id'),
     traceId: headerValue(headers, 'x-trace-id'),
+    projectId: headerValue(headers, 'x-project-id'),
   };
 }
 
-export function handleListTools(federation: FederationService): { tools: any[] } {
-  return { tools: federation.catalog() as any[] };
+export function handleListTools(federation: FederationService): {
+  tools: any[];
+  _meta: { unavailable_providers: string[]; partial: boolean };
+} {
+  // MCP fan-out (H10) — carry the per-provider availability on the list-tools
+  // `_meta` so the consumer's find_tools can distinguish "no such tool" from
+  // "owning provider temporarily unavailable" (→ "try again", never "I can't").
+  const unavailable = federation
+    .providerAvailability()
+    .filter((p) => !p.available)
+    .map((p) => p.name);
+  return {
+    tools: federation.catalog() as any[],
+    _meta: { unavailable_providers: unavailable, partial: federation.isPartial() },
+  };
 }
 
 /**
@@ -40,7 +54,7 @@ export async function handleCallTool(
   const env = extractEnvelope(headers);
   // A CallTool with no caller identity is almost always a bug. Per-tool identity
   // enforcement stays on the PROVIDER (SEC-2 — and some tools, e.g.
-  // glossary_list_kinds, are legitimately global), so the gateway forwards
+  // glossary_list_system_standards, are legitimately global), so the gateway forwards
   // regardless but logs the anomaly for observability rather than failing blind.
   if (!env.userId) {
     log.warn(`tool '${name}' called with no X-User-Id envelope`);
@@ -50,10 +64,13 @@ export async function handleCallTool(
     // headers, §20) so a provider that reads req.Params.Meta still receives it.
     return await federation.executeTool(name, args, env, meta);
   } catch (e) {
+    // Full detail stays server-side only. The LLM-visible text is GENERIC: a
+    // transport failure's `String(e)` includes the internal provider URL (e.g.
+    // http://book-service:8082/mcp), which must never leak to the model.
     log.warn(`tool '${name}' execution failed: ${e}`);
     return {
       isError: true,
-      content: [{ type: 'text', text: `tool '${name}' failed: ${String(e)}` }],
+      content: [{ type: 'text', text: `tool '${name}' failed: provider error` }],
     };
   }
 }

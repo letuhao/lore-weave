@@ -1,0 +1,135 @@
+# Foundation-dev docker-compose — B5 isolation from existing prod
+# Per RAID_WORKFLOW.md §13.5.
+#
+# This is the DEDICATED dev environment for foundation cycles 1-37 work.
+# It is ISOLATED from existing prod (different ports, different volumes,
+# different network).
+#
+# Use:
+#   docker compose -f infra/foundation-dev/docker-compose.yml up -d
+#   docker compose -f infra/foundation-dev/docker-compose.yml down -v
+#
+# Foundation cycles target THIS env, NEVER existing prod.loreweave.app.
+
+services:
+  postgres-foundation:
+    # Cycle 16 (L3.I) switched from `postgres:16-alpine` to
+    # `pgvector/pgvector:pg16` so the `vector` extension is preinstalled in
+    # the image. The image is a thin layer on top of the official Postgres
+    # 16 image — same volume layout, same env vars, same default user.
+    # See https://hub.docker.com/r/pgvector/pgvector.
+    #
+    # Per-reality DBs created by the world-service provisioner (cycle 5
+    # `apply_initial_migration` step) inherit this image since they're
+    # CREATE DATABASE'd on the same cluster. The extension itself is
+    # installed per-database by 0008_pgvector_setup.up.sql.
+    image: pgvector/pgvector:pg16
+    container_name: foundation-dev-postgres
+    # Preload pg_stat_statements so the G1 structural perf gate
+    # (scripts/perf/w5-append-stmt-shape.sh) can read per-statement `calls` to
+    # assert the event-append high-water SELECT does NOT scale with batch size
+    # (an N+1 a higher layer could introduce). The module ships in the image; it
+    # only needs the preload + a per-DB `CREATE EXTENSION` (the harness does the
+    # latter in a throwaway schema). Harmless to the rest of the dev stack.
+    command: ["postgres", "-c", "shared_preload_libraries=pg_stat_statements"]
+    environment:
+      POSTGRES_USER: foundation
+      POSTGRES_PASSWORD: foundation
+      POSTGRES_DB: foundation
+    ports:
+      # Phase 0 (DEFERRED 041): host port is env-overridable with a
+      # NON-CONFLICTING default (55432) so this stack boots alongside the
+      # pre-existing free-context-hub stack, which already holds host :5432.
+      # Override with FOUNDATION_PG_PORT if 55432 is also taken.
+      - "127.0.0.1:${FOUNDATION_PG_PORT:-55432}:5432"
+    volumes:
+      - foundation-pg-data:/var/lib/postgresql/data
+      # Cycle 16 (L3.I) — init script that runs once on first container
+      # boot (when /var/lib/postgresql/data is empty). Creates the `vector`
+      # extension in the `foundation` template database so any per-reality
+      # DB cloned from template inherits it. Per-reality DB migrations
+      # (0008_pgvector_setup) still run `CREATE EXTENSION IF NOT EXISTS`
+      # for explicitness + dev databases not cloned from template.
+      - ./pgvector-init.sh:/docker-entrypoint-initdb.d/10-pgvector.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U foundation -d foundation"]
+      interval: 5s
+      retries: 10
+
+  # Note: Patroni HA + etcd cluster (C1 L1.E deliverable) added in cycle 1.
+  # C0 ships the skeleton compose; cycle 1 extends with patroni-1/2/3 + etcd-1/2/3.
+
+  redis-foundation:
+    image: redis:7-alpine
+    container_name: foundation-dev-redis
+    ports:
+      # Phase 0 (DEFERRED 041): env-overridable, non-conflicting default
+      # (56379) — host :6379 is held by the free-context-hub redis.
+      - "127.0.0.1:${FOUNDATION_REDIS_PORT:-56379}:6379"
+    volumes:
+      - foundation-redis-data:/data
+
+  minio-foundation:
+    image: minio/minio:latest
+    container_name: foundation-dev-minio
+    environment:
+      MINIO_ROOT_USER: foundation
+      MINIO_ROOT_PASSWORD: foundation-secret-dev-only
+    command: server /data --console-address ":9001"
+    ports:
+      # Phase 0 (DEFERRED 041): env-overridable, non-conflicting defaults
+      # (59000 / 59001). Host :9000-9001 may be held by another foundation-dev
+      # or infra minio; :9123-9124 by existing prod minio.
+      - "127.0.0.1:${FOUNDATION_MINIO_PORT:-59000}:9000"
+      - "127.0.0.1:${FOUNDATION_MINIO_CONSOLE_PORT:-59001}:9001"
+    volumes:
+      - foundation-minio-data:/data
+
+  # S6 (Battery D) — toxiproxy fault-injection harness. Sits BETWEEN consumers
+  # and postgres/redis on the same network; fault drills point their DSN at the
+  # proxy listen ports and inject toxics (latency / timeout / down) via the admin
+  # API (scripts/chaos/toxic.sh). Only started for fault drills — a normal `up`
+  # can include it harmlessly (it idles until proxies are created at runtime).
+  #
+  # `-host=0.0.0.0` is REQUIRED: the toxiproxy-server default `-host localhost`
+  # binds 127.0.0.1 INSIDE the container, unreachable from the host. The proxy
+  # listen ports (55433 pg, 56380 redis) are pre-published here because toxiproxy
+  # binds them at runtime and Docker only forwards ports declared in compose.
+  toxiproxy-foundation:
+    image: ${FOUNDATION_TOXIPROXY_IMAGE:-ghcr.io/shopify/toxiproxy:2.11.0}
+    container_name: foundation-dev-toxiproxy
+    command: ["-host=0.0.0.0"]
+    # host:container use the SAME var on both sides so a single override shifts
+    # BOTH (the proxy binds the container port == the published port). On Windows
+    # the default 55433 falls in the excluded range 55394-55493 → override
+    # FOUNDATION_PG_PROXY_PORT (e.g. 55601); 55433 is fine on Linux CI.
+    ports:
+      - "127.0.0.1:${FOUNDATION_TOXIPROXY_PORT:-8474}:8474" # admin API
+      - "127.0.0.1:${FOUNDATION_PG_PROXY_PORT:-55433}:${FOUNDATION_PG_PROXY_PORT:-55433}" # pg_proxy listen
+      - "127.0.0.1:${FOUNDATION_REDIS_PROXY_PORT:-56380}:${FOUNDATION_REDIS_PROXY_PORT:-56380}" # redis_proxy listen
+
+  # Phase 0 (D1=LocalStack): AWS KMS emulation for the PII KEK landing in P2.
+  # Minimal — only the kms service is enabled. The P2 PII work points its KMS
+  # endpoint at http://localhost:${FOUNDATION_KMS_PORT:-54566}.
+  #
+  # Image is PINNED to the 3.x line: KMS is a Community-edition service there
+  # and starts WITHOUT a license/auth token. The floating `:latest`
+  # (2026.x) now license-gates startup and exits 55 with
+  # "License activation failed" when LOCALSTACK_AUTH_TOKEN is unset — which
+  # would break a clean `up` for anyone without a Pro account. Override the
+  # tag via FOUNDATION_LOCALSTACK_IMAGE if a licensed image is desired.
+  localstack-foundation:
+    image: ${FOUNDATION_LOCALSTACK_IMAGE:-localstack/localstack:3}
+    container_name: foundation-dev-localstack
+    environment:
+      SERVICES: kms
+    ports:
+      - "127.0.0.1:${FOUNDATION_KMS_PORT:-54566}:4566"
+    volumes:
+      - foundation-localstack-data:/var/lib/localstack
+
+volumes:
+  foundation-pg-data:
+  foundation-redis-data:
+  foundation-minio-data:
+  foundation-localstack-data:

@@ -15,20 +15,12 @@
 use std::collections::BTreeMap;
 
 use crate::biome::BiomeKind;
+use crate::params::{BiomeParams, RouteParams};
 use crate::pathfind::{self, UnionFind};
 use crate::world_map::{Route, RouteKind, Settlement};
 
-/// Top-N Mountain/Hill chokepoint edges promoted to MountainPass routes
-/// (GEO_004 §5.2 step 15 — `mountain_pass_target`, default 5 per continent).
-const MOUNTAIN_PASS_TARGET: usize = 5;
-
-/// Build the route network.
-///
-/// **Phase 1 Stage B (2026-05-20):** `centers` is now 3D unit-sphere points;
-/// the port-anchor distance step uses spherical distance.
-// Triangular pairwise iteration over settlement indices, plus index loops that
-// each address several parallel arrays — clearer than `enumerate` gymnastics.
-#[allow(clippy::needless_range_loop)]
+/// Build the route network using the **default** tuning. Thin wrapper over
+/// [`build_with`] for callers that don't tune it (the civ adapter + tests).
 pub fn build(
     centers: &[[f32; 3]],
     neighbors: &[Vec<u32>],
@@ -38,7 +30,32 @@ pub fn build(
     is_coast: &[bool],
     settlements: &[Settlement],
 ) -> Vec<Route> {
-    let cost = |c: usize| biomes[c].terrain_cost();
+    build_with(
+        centers, neighbors, biomes, river_flux, river_threshold, is_coast, settlements,
+        &RouteParams::default(), &BiomeParams::default(),
+    )
+}
+
+/// Build the route network with caller-tuned [`RouteParams`] (parameterization
+/// P5). Default params ⇒ byte-identical to the prior consts.
+///
+/// **Phase 1 Stage B (2026-05-20):** `centers` is now 3D unit-sphere points;
+/// the port-anchor distance step uses spherical distance.
+// Triangular pairwise iteration over settlement indices, plus index loops that
+// each address several parallel arrays — clearer than `enumerate` gymnastics.
+#[allow(clippy::needless_range_loop, clippy::too_many_arguments)]
+pub fn build_with(
+    centers: &[[f32; 3]],
+    neighbors: &[Vec<u32>],
+    biomes: &[BiomeKind],
+    river_flux: &[f32],
+    river_threshold: f32,
+    is_coast: &[bool],
+    settlements: &[Settlement],
+    rp: &RouteParams,
+    bp: &BiomeParams,
+) -> Vec<Route> {
+    let cost = |c: usize| bp.terrain_cost(biomes[c]);
     let mut sink = RouteSink::new();
     // Road + Trail cell paths — scanned by RiverNavigation (7e).
     let mut land_paths: Vec<Vec<u32>> = Vec::new();
@@ -46,7 +63,7 @@ pub fn build(
     // Road-eligible settlements, sorted by cell id; Dijkstra from each.
     let mut road: Vec<&Settlement> = settlements
         .iter()
-        .filter(|s| s.population_tier >= 2)
+        .filter(|s| s.population_tier as u32 >= rp.road_tier_min)
         .collect();
     road.sort_by_key(|s| s.cell);
     let dij: Vec<(Vec<u32>, Vec<u32>)> = road
@@ -111,7 +128,7 @@ pub fn build(
     // --- 7b Trail: each tier 0-1 settlement → nearest road settlement ---
     let mut trail: Vec<&Settlement> = settlements
         .iter()
-        .filter(|s| s.population_tier <= 1)
+        .filter(|s| s.population_tier as u32 <= rp.trail_tier_max)
         .collect();
     trail.sort_by_key(|s| s.cell);
     for ts in &trail {
@@ -252,7 +269,7 @@ pub fn build(
         .collect();
     // Highest betweenness first; (lo, hi) cell tie-break → deterministic.
     eligible.sort_by(|x, y| y.1.cmp(&x.1).then(x.0.cmp(&y.0)));
-    for &((a, b), _) in eligible.iter().take(MOUNTAIN_PASS_TARGET) {
+    for &((a, b), _) in eligible.iter().take(rp.mountain_pass_target as usize) {
         sink.push(RouteKind::MountainPass, vec![a, b], 1);
     }
 
@@ -267,7 +284,7 @@ pub fn build(
                 while i < path.len() && river_flux[path[i] as usize] > river_threshold {
                     i += 1;
                 }
-                if i - s >= 3 {
+                if (i - s) as u32 >= rp.river_nav_min_run {
                     sink.push(RouteKind::RiverNavigation, path[s..i].to_vec(), (i - s) as u32);
                 }
             } else {

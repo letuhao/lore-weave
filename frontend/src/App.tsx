@@ -21,6 +21,7 @@ import { PlaceholderPage } from '@/pages/PlaceholderPage';
 import { BooksPage } from '@/pages/BooksPage';
 import { TrashPage } from '@/pages/TrashPage';
 import { ChatPage } from '@/pages/ChatPage';
+import { RoleplayPage } from '@/features/roleplay/pages/RoleplayPage';
 import { BookDetailPage } from '@/pages/BookDetailPage';
 import { ChapterEditorPage } from '@/pages/ChapterEditorPage';
 import { ChapterComparePage } from '@/pages/ChapterComparePage';
@@ -36,9 +37,15 @@ import { ResetPage } from '@/pages/auth/ResetPage';
 import { HomePage } from '@/pages/HomePage';
 import { UsagePage } from '@/pages/UsagePage';
 import { KnowledgePage } from '@/pages/KnowledgePage';
+import { ProjectDetailShell } from '@/pages/ProjectDetailShell';
+import { WorldsPage } from '@/features/world/pages/WorldsPage';
+import { WorldWorkspacePage } from '@/features/world/pages/WorldWorkspacePage';
 import { CampaignsPage } from '@/features/campaigns/pages/CampaignsPage';
 import { CreateCampaignWizardPage } from '@/features/campaigns/pages/CreateCampaignWizardPage';
 import { CampaignDetailPage } from '@/features/campaigns/pages/CampaignDetailPage';
+import { StandardsPage } from '@/features/standards/pages/StandardsPage';
+import { JobsPage } from '@/features/jobs/pages/JobsPage';
+import { JobDetailPage } from '@/features/jobs/pages/JobDetailPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { BrowsePage } from '@/pages/BrowsePage';
 import { PublicBookDetailPage } from '@/pages/PublicBookDetailPage';
@@ -50,6 +57,7 @@ import { LeaderboardPage } from '@/pages/LeaderboardPage';
 import { ProfilePage } from '@/pages/ProfilePage';
 import { NotificationsPage } from '@/pages/NotificationsPage';
 import { RawSearchPage } from '@/pages/RawSearchPage';
+import { OnboardingPage } from '@/features/onboarding/pages/OnboardingPage';
 
 function AuthenticatedThemeProvider({ children }: { children: React.ReactNode }) {
   const { accessToken } = useAuth();
@@ -112,16 +120,28 @@ export function App() {
           <Route element={<RequireAuth><ChatLayout /></RequireAuth>}>
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/chat/:sessionId" element={<ChatPage />} />
+            {/* Roleplay practice — reuses the chat turn loop + voice; scripts +
+                start come from roleplay-service (/v1/roleplay). Interview is a
+                preset genre. /interview redirects (kept for old links). */}
+            <Route path="/roleplay" element={<RoleplayPage />} />
+            <Route path="/interview" element={<Navigate to="/roleplay" replace />} />
           </Route>
 
           {/* Dashboard pages (full sidebar) */}
           <Route element={<RequireAuth><DashboardLayout /></RequireAuth>}>
+            {/* C22 — first-run intent fork. /onboarding is the gate (shows the
+                fork only on first run, else redirects to /books); /onboarding/new
+                is the re-entry "start something new" affordance (always shows). */}
+            <Route path="/onboarding" element={<OnboardingPage />} />
+            <Route path="/onboarding/new" element={<OnboardingPage forceShow />} />
+
             {/* Workspace */}
             <Route path="/books" element={<BooksPage />} />
             <Route path="/trash" element={<TrashPage />} />
             <Route path="/books/:bookId" element={<BookDetailPage />} />
             <Route path="/books/:bookId/translation" element={<BookDetailPage />} />
             <Route path="/books/:bookId/glossary" element={<BookDetailPage />} />
+            <Route path="/books/:bookId/kg-ontology" element={<BookDetailPage />} />
             <Route path="/books/:bookId/enrichment" element={<BookDetailPage />} />
             <Route path="/books/:bookId/sharing" element={<BookDetailPage />} />
             <Route path="/books/:bookId/settings" element={<BookDetailPage />} />
@@ -132,15 +152,35 @@ export function App() {
 
             {/* Knowledge Service */}
             <Route path="/knowledge" element={<Navigate to="/knowledge/projects" replace />} />
+            {/* C6 (G6) — project-detail shell. The 4-segment nested route is
+                more specific than the 2-segment flat-tab route below, so it
+                wins; they don't conflict. */}
+            <Route
+              path="/knowledge/projects/:projectId/:section"
+              element={<ProjectDetailShell />}
+            />
             <Route path="/knowledge/:tab" element={<KnowledgePage />} />
+
+            {/* C21 — World container (prose-less worldbuilding). HOME browser +
+                workspace shell; no manuscript. */}
+            <Route path="/worlds" element={<WorldsPage />} />
+            <Route path="/worlds/:worldId" element={<WorldWorkspacePage />} />
 
             {/* Auto-Draft Factory (campaigns) */}
             <Route path="/campaigns" element={<CampaignsPage />} />
             <Route path="/campaigns/new" element={<CreateCampaignWizardPage />} />
             <Route path="/campaigns/:campaignId" element={<CampaignDetailPage />} />
 
+            {/* Unified Jobs control plane (P4) — every background job the user owns. */}
+            <Route path="/jobs" element={<JobsPage />} />
+            <Route path="/jobs/:service/:jobId" element={<JobDetailPage />} />
+
             {/* Manage */}
             <Route path="/usage" element={<UsagePage />} />
+
+            {/* Glossary standards library (per-user, tier-scoped) */}
+            <Route path="/standards" element={<Navigate to="/standards/genres" replace />} />
+            <Route path="/standards/:tab" element={<StandardsPage />} />
 
             {/* Settings */}
             <Route path="/settings" element={<Navigate to="/settings/account" replace />} />

@@ -68,6 +68,54 @@ def test_benchmark_status_returns_has_run_true_when_row_exists():
     assert body["recall_at_3"] == 0.85
 
 
+def test_benchmark_status_surfaces_gate_failures_from_raw_report():
+    """R2 (D-JOURNEY-KG-BENCHMARK-UX): a non-passing run carries its named gates
+    out of the stored raw_report so the FE badge can distinguish inconclusive
+    (insufficient_runs) from a real quality fail. Empty raw_report → []."""
+    run = _passing_run()
+    failing = BenchmarkRun(
+        benchmark_run_id=run.benchmark_run_id,
+        project_id=run.project_id,
+        embedding_provider_id=None,
+        embedding_model="bge-m3",
+        run_id="run-fail",
+        recall_at_3=1.0,  # perfect recall — but...
+        mrr=1.0,
+        avg_score_positive=0.7,
+        stddev=0.0,
+        negative_control_pass=True,
+        passed=False,  # ...not passing, ONLY because of too few runs
+        raw_report={"gate_failures": ["insufficient_runs"]},
+        created_at=run.created_at,
+    )
+    repo = AsyncMock()
+    repo.get_latest = AsyncMock(return_value=failing)
+    app.dependency_overrides[get_benchmark_runs_repo] = lambda: repo
+
+    client = TestClient(app, raise_server_exceptions=False)
+    resp = client.get(
+        f"/internal/projects/{uuid4()}/benchmark-status",
+        params={"user_id": str(uuid4())},
+        headers=_INTERNAL_TOKEN_HEADER,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["passed"] is False
+    assert body["gate_failures"] == ["insufficient_runs"]
+    assert body["recall_at_3"] == 1.0  # the badge must NOT say "low-quality" here
+
+
+def test_gate_failures_from_raw_is_defensive():
+    from app.routers.internal_benchmark import gate_failures_from_raw
+
+    assert gate_failures_from_raw({"gate_failures": ["low_recall", "low_mrr"]}) == [
+        "low_recall", "low_mrr",
+    ]
+    assert gate_failures_from_raw({}) == []
+    assert gate_failures_from_raw(None) == []
+    assert gate_failures_from_raw({"gate_failures": "oops-not-a-list"}) == []
+
+
 def test_benchmark_status_returns_has_run_false_when_empty():
     """No-run-yet is a valid 200 response (not a 404) — the FE
     renders a 'Run benchmark' CTA for this state."""

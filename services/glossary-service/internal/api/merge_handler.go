@@ -15,6 +15,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
@@ -42,7 +43,7 @@ func entityNameAndAliases(ctx context.Context, q pgxQuerier, entityID uuid.UUID)
 	}).Query(ctx, `
 		SELECT ad.code, eav.original_value
 		FROM entity_attribute_values eav
-		JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+		JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
 		WHERE eav.entity_id = $1 AND ad.code IN ('name','aliases')`, entityID)
 	if err != nil {
 		return "", nil
@@ -126,8 +127,27 @@ func (s *Server) mergeEntities(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := r.Context()
+	results, err := s.mergeEntitiesCore(r.Context(), bookID, winnerID, req.LoserIDs, userID)
+	if errors.Is(err, errMergeBadWinner) {
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_BAD_WINNER", "winner not a live entity in this book")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "merge failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"winner_id": winnerID.String(), "results": results})
+}
 
+// errMergeBadWinner — the winner is not a live entity in this book (→ 422 / re-proposable).
+var errMergeBadWinner = errors.New("winner not a live entity in this book")
+
+// mergeEntitiesCore validates the winner, merges each loser into it (per-loser
+// transaction + journal via mergeOne), fires best-effort post-commit events, and flips
+// fully-resolved merge candidates to merged. Returns the per-loser results. Grant +
+// loser-non-empty are the CALLER's concern. Single source of truth for the HTTP merge
+// handler and the glossary_propose_merge confirm effect.
+func (s *Server) mergeEntitiesCore(ctx context.Context, bookID, winnerID uuid.UUID, loserIDs []string, actor uuid.UUID) ([]mergeResultItem, error) {
 	// Winner must exist, live, in this book — resolve its kind for the same-kind check.
 	var winnerKind uuid.UUID
 	var winnerDeleted *time.Time
@@ -135,23 +155,24 @@ func (s *Server) mergeEntities(w http.ResponseWriter, r *http.Request) {
 	if err := s.pool.QueryRow(ctx,
 		`SELECT kind_id, deleted_at, book_id FROM glossary_entities WHERE entity_id = $1`, winnerID,
 	).Scan(&winnerKind, &winnerDeleted, &winnerBook); err != nil {
-		writeError(w, http.StatusNotFound, "GLOSS_NOT_FOUND", "winner entity not found")
-		return
+		if err == pgx.ErrNoRows {
+			return nil, errMergeBadWinner
+		}
+		return nil, err
 	}
 	if winnerBook != bookID || winnerDeleted != nil {
-		writeError(w, http.StatusUnprocessableEntity, "GLOSS_BAD_WINNER", "winner not a live entity in this book")
-		return
+		return nil, errMergeBadWinner
 	}
 
-	results := make([]mergeResultItem, 0, len(req.LoserIDs))
-	mergedLosers := make([]uuid.UUID, 0, len(req.LoserIDs))
-	for _, raw := range req.LoserIDs {
+	results := make([]mergeResultItem, 0, len(loserIDs))
+	mergedLosers := make([]uuid.UUID, 0, len(loserIDs))
+	for _, raw := range loserIDs {
 		loserID, err := uuid.Parse(raw)
 		if err != nil {
 			results = append(results, mergeResultItem{LoserID: raw, Status: "skipped", Reason: "invalid uuid"})
 			continue
 		}
-		jid, reason, merr := s.mergeOne(ctx, bookID, winnerID, winnerKind, loserID, userID)
+		jid, reason, merr := s.mergeOne(ctx, bookID, winnerID, winnerKind, loserID, actor)
 		if merr != nil {
 			// MED-3b: don't abort the whole request — earlier losers already
 			// committed. Record this one as failed and continue so the response
@@ -184,8 +205,7 @@ func (s *Server) mergeEntities(w http.ResponseWriter, r *http.Request) {
 	// proposed (review-impl MED-1). Done once after the loop with the full
 	// merged-loser set so subset semantics are exact.
 	s.markCandidatesMerged(ctx, bookID, winnerID, mergedLosers)
-
-	writeJSON(w, http.StatusOK, map[string]any{"winner_id": winnerID.String(), "results": results})
+	return results, nil
 }
 
 // mergeOne performs the transactional merge of one loser into the winner.
@@ -263,8 +283,11 @@ func (s *Server) mergeOne(
 	// the loser's aliases on revert (MED-1).
 	var aliasDef uuid.UUID
 	var aliasDefPtr *uuid.UUID
-	if tx.QueryRow(ctx,
-		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id = $1 AND code = 'aliases' LIMIT 1`,
+	if tx.QueryRow(ctx, `
+		SELECT ba.attr_id FROM book_attributes ba
+		JOIN book_genres g ON g.genre_id = ba.genre_id
+		WHERE ba.kind_id = $1 AND ba.code = 'aliases'
+		ORDER BY (g.code = 'universal') DESC, ba.sort_order LIMIT 1`,
 		winnerKind,
 	).Scan(&aliasDef) == nil {
 		aliasDefPtr = &aliasDef
@@ -366,6 +389,12 @@ func (s *Server) mergeOne(
 				VALUES ($1, $2, 'zh', $3)`, winnerID, aliasDef, string(newJSON)); e != nil {
 				return uuid.Nil, "", e
 			}
+		}
+		// D-GLOSSARY-MULTIROW slice 2 — sync the per-item child rows to the merged alias
+		// union (a list value). 'machine' (an automated merge, not a human curation); a
+		// human can verify individual aliases later. In-tx → atomic with the merge.
+		if e := syncListItems(ctx, tx, winnerID, aliasDef, string(newJSON), "machine", nil); e != nil {
+			return uuid.Nil, "", e
 		}
 	}
 
@@ -507,7 +536,7 @@ func (s *Server) revertMergeCore(ctx context.Context, bookID, journalID uuid.UUI
 	}
 	// Restore the winner's aliases (or delete the row we inserted).
 	var aliasDef uuid.UUID
-	if e := tx.QueryRow(ctx, `SELECT ad.attr_def_id FROM attribute_definitions ad JOIN glossary_entities ge ON ge.kind_id=ad.kind_id WHERE ge.entity_id=$1 AND ad.code='aliases' LIMIT 1`, winnerID).Scan(&aliasDef); e == nil {
+	if e := tx.QueryRow(ctx, `SELECT ad.attr_id FROM book_attributes ad JOIN glossary_entities ge ON ge.kind_id=ad.kind_id JOIN book_genres g ON g.genre_id=ad.genre_id WHERE ge.entity_id=$1 AND ad.code='aliases' ORDER BY (g.code='universal') DESC, ad.sort_order LIMIT 1`, winnerID).Scan(&aliasDef); e == nil {
 		if aliasesBefore != nil {
 			if _, err := tx.Exec(ctx, `UPDATE entity_attribute_values SET original_value=$1 WHERE entity_id=$2 AND attr_def_id=$3`, *aliasesBefore, winnerID, aliasDef); err != nil {
 				return "", err

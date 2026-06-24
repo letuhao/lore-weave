@@ -309,3 +309,37 @@ OPTIONS {
     `vector.similarity_function`: 'cosine'
   }
 };
+
+// ─────────────────────────────────────────────────────────────────
+// KG-ML M6 (D12 / V6) — CJK full-text index over :Passage text.
+//
+// The lexical leg's other home (book-service Postgres) only has pg_trgm:
+// trigram ranking is noise on CJK and a GIN-trigram index can't accelerate a
+// 2-char query, so a short Chinese proper-noun keyword search has poor recall
+// (V6 FAIL). Neo4j ships a built-in `cjk` analyzer (bi-grams, normalised,
+// case-folded) — the M6-entry probe confirmed it's available with NO custom
+// image (Postgres zhparser/pg_jieba are NOT, so they'd need an infra change).
+// So the CJK-tokenized lexical leg lives HERE, over the same `:Passage` nodes
+// the semantic leg already searches (they carry `source_lang`, M1/M2). The
+// book-service trigram leg stays as the script-agnostic fallback.
+//
+// Full-text indexes are global (like vector indexes) — the query helper
+// post-filters on `user_id`/`project_id`/`canon` for tenant scope. Idempotent
+// via IF NOT EXISTS.
+CREATE FULLTEXT INDEX passage_text_cjk_ft IF NOT EXISTS
+FOR (n:Passage) ON EACH [n.text]
+OPTIONS { indexConfig: { `fulltext.analyzer`: 'cjk' } };
+
+// ── KG customizable-ontology epic (L1) — additive seam, unused at v1 ─────────
+// `schema_version` stamps each edge with the resolved-schema version it was
+// written under (M3); `graph_id` is the layer-4 partition seam on the EDGE
+// (M2 — nodes are shared across views/graphs, so the seam lives on the
+// relationship, never the node). Both default NULL and are populated only at
+// L7 enforcement / a later partition epic. Indexed now so the seam is query-
+// ready without a later reindex. RELATES_TO is the canonical relation edge
+// (app/db/neo4j_repos/relations.py).
+CREATE INDEX relates_to_schema_version IF NOT EXISTS
+FOR ()-[r:RELATES_TO]-() ON (r.schema_version);
+
+CREATE INDEX relates_to_graph_id IF NOT EXISTS
+FOR ()-[r:RELATES_TO]-() ON (r.graph_id);

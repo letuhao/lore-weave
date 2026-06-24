@@ -41,6 +41,17 @@ def _entity(name: str = "Kai") -> Any:
     )
 
 
+def _hierarchy_paths() -> Any:
+    """Minimal valid HierarchyPaths for the C12 summary-gate tests."""
+    from app.extraction.pass2_writer import HierarchyPaths
+    return HierarchyPaths(
+        book_id="b1", book_path="book", book_title="B",
+        part_id="p1", part_path="book/part-1", part_index=1, part_title="P",
+        chapter_id="c1", chapter_path="book/part-1/chapter-1",
+        chapter_index=1, chapter_title="C", scenes=[],
+    )
+
+
 def _write_result(entities: int = 1, relations: int = 0,
                   events: int = 0, facts: int = 0,
                   source_id: str = "ch-1") -> Any:
@@ -171,6 +182,173 @@ async def test_run_pipeline_happy_path_writes_all_four_lists(
     assert write_kwargs["relations"] == ["rel"]
     assert write_kwargs["events"] == ["ev1", "ev2"]
     assert write_kwargs["facts"] == ["fact"]
+
+
+# ── L7B (D-KG-L7B-EXTRACT-ITEM) — schema split reaches the writer ──────
+
+
+@pytest.mark.asyncio
+@patch(f"{_ORCH}.write_pass2_extraction", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_events", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_entities", new_callable=AsyncMock)
+async def test_write_schema_and_triage_repo_reach_writer(
+    mock_entities, mock_relations, mock_events, mock_facts, mock_write,
+):
+    """L7B: when the caller (/extract-item) splits the advisory prompt schema
+    from the authoritative write schema, the orchestrator feeds the SDK with the
+    advisory `schema` but hands the WRITER the authoritative `write_schema` +
+    `triage_repo` — so the closed-edge guard + off-schema park run at the write
+    boundary (the same activation /persist-pass2 has)."""
+    from app.extraction.pass2_orchestrator import extract_pass2_chapter
+    from loreweave_extraction.schema_projection import ExtractionSchema
+
+    mock_entities.return_value = [_entity("Kai")]
+    mock_relations.return_value = ["rel"]
+    mock_events.return_value = []
+    mock_facts.return_value = []
+    mock_write.return_value = _write_result(entities=1, relations=1)
+
+    advisory = ExtractionSchema(
+        edge_predicates=("disciple_of",), allow_free_edges=True,
+        schema_version=2, label="p@v2",
+    )
+    authoritative = ExtractionSchema(
+        edge_predicates=("disciple_of",), allow_free_edges=False,
+        schema_version=2, label="p@v2",
+    )
+    triage_repo = MagicMock()
+
+    await extract_pass2_chapter(
+        session=MagicMock(),
+        user_id=_USER_ID, project_id=_PROJECT_ID,
+        source_type="chapter", source_id="ch-1", job_id=_JOB_ID,
+        chapter_text="Kai bows to the master.",
+        model_source="user_model", model_ref="test-model",
+        llm_client=MagicMock(),
+        schema=advisory,
+        write_schema=authoritative,
+        triage_repo=triage_repo,
+    )
+
+    # SDK extractors received the ADVISORY schema (hint, never pre-drops).
+    assert mock_entities.call_args.kwargs["schema"] is advisory
+    assert mock_relations.call_args.kwargs["schema"] is advisory
+    # The writer received the AUTHORITATIVE schema (real closed flag) + the
+    # triage_repo so an off-schema drop PARKS instead of vanishing.
+    write_kwargs = mock_write.call_args.kwargs
+    assert write_kwargs["schema"] is authoritative
+    assert write_kwargs["triage_repo"] is triage_repo
+
+
+@pytest.mark.asyncio
+@patch(f"{_ORCH}.write_pass2_extraction", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_events", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_entities", new_callable=AsyncMock)
+async def test_write_schema_none_falls_back_to_advisory_schema_no_triage(
+    mock_entities, mock_relations, mock_events, mock_facts, mock_write,
+):
+    """Back-compat: when write_schema/triage_repo are omitted (every pre-L7B
+    caller), the writer receives the single `schema` and triage_repo=None —
+    byte-identical to before the split."""
+    from app.extraction.pass2_orchestrator import extract_pass2_chapter
+    from loreweave_extraction.schema_projection import ExtractionSchema
+
+    mock_entities.return_value = [_entity("Kai")]
+    mock_relations.return_value = ["rel"]
+    mock_events.return_value = []
+    mock_facts.return_value = []
+    mock_write.return_value = _write_result(entities=1, relations=1)
+
+    schema = ExtractionSchema(
+        edge_predicates=("x",), allow_free_edges=True, schema_version=1, label="p@v1",
+    )
+
+    await extract_pass2_chapter(
+        session=MagicMock(),
+        user_id=_USER_ID, project_id=_PROJECT_ID,
+        source_type="chapter", source_id="ch-1", job_id=_JOB_ID,
+        chapter_text="Kai walks.",
+        model_source="user_model", model_ref="test-model",
+        llm_client=MagicMock(),
+        schema=schema,  # no write_schema / triage_repo
+    )
+
+    write_kwargs = mock_write.call_args.kwargs
+    assert write_kwargs["schema"] is schema  # fell back to the single schema
+    assert write_kwargs["triage_repo"] is None
+
+
+# ── C13 — glossary pinning: pinned names reach EVERY window ─────────
+
+
+@pytest.mark.asyncio
+@patch(f"{_ORCH}.write_pass2_extraction", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_events", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_entities", new_callable=AsyncMock)
+async def test_pinned_names_injected_into_known_entities_when_absent_from_text(
+    mock_entities, mock_relations, mock_events, mock_facts, mock_write,
+):
+    """C13 acceptance: pinned glossary names appear in known_entities for a
+    window whose chapter text NEVER mentions them. This is the whole point of
+    pinning — a sparse-but-critical entity (a god in ch1 & ch5000) must be in
+    the prompt context of every chapter, even ones it doesn't appear in."""
+    from app.extraction.pass2_orchestrator import extract_pass2_chapter
+
+    mock_entities.return_value = [_entity("Kai")]
+    mock_relations.return_value = []
+    mock_events.return_value = []
+    mock_facts.return_value = []
+    mock_write.return_value = _write_result(entities=1)
+
+    await extract_pass2_chapter(
+        session=MagicMock(),
+        user_id=_USER_ID, project_id=_PROJECT_ID,
+        source_type="chapter", source_id="ch-42", job_id=_JOB_ID,
+        # The text mentions only Kai — NOT the pinned god "PanGu".
+        chapter_text="Kai walks alone through the empty hall.",
+        known_entities=["Zhao"],          # caller-supplied known
+        pinned_names=["PanGu", "Nuwa"],   # C13 pinned glossary entities
+        model_source="user_model", model_ref="test-model",
+        llm_client=MagicMock(),
+    )
+
+    # entity extractor's known_entities = pinned (first, priority) + caller
+    # known, even though neither pinned name appears in the chapter text.
+    entity_known = mock_entities.call_args.kwargs["known_entities"]
+    assert "PanGu" in entity_known
+    assert "Nuwa" in entity_known
+    assert "Zhao" in entity_known
+    # Pinned names come FIRST (anchor priority).
+    assert entity_known[:2] == ["PanGu", "Nuwa"]
+
+    # R/E/F gather also carries the pinned names (merged with extracted Kai).
+    for mock in (mock_relations, mock_events, mock_facts):
+        rkn = mock.call_args.kwargs["known_entities"]
+        assert "PanGu" in rkn
+        assert "Nuwa" in rkn
+
+
+def test_merge_pinned_dedupes_and_prepends_order_stable():
+    """C13 _merge_pinned: pinned first, dedup (exact), blanks dropped,
+    None pinned ⇒ legacy known_entities unchanged."""
+    from app.extraction.pass2_orchestrator import _merge_pinned
+
+    # pinned ahead of known; duplicate "Kai" collapses to the pinned slot.
+    assert _merge_pinned(["PanGu", "Kai"], ["Kai", "Zhao"]) == [
+        "PanGu", "Kai", "Zhao",
+    ]
+    # blank / whitespace pinned dropped.
+    assert _merge_pinned(["  ", "PanGu", ""], ["Zhao"]) == ["PanGu", "Zhao"]
+    # None pinned ⇒ identical to known list (back-compat).
+    assert _merge_pinned(None, ["A", "B"]) == ["A", "B"]
+    # None known + None pinned ⇒ empty.
+    assert _merge_pinned(None, None) == []
 
 
 # ── _emit_log job_logs telemetry hooks fire at expected stages ─────
@@ -830,9 +1008,12 @@ async def test_orchestrator_emits_filter_applied_stage_log(
     assert "filter_coverage" in ev
 
 
-def test_load_precision_filter_config_orchestrator_env_set() -> None:
-    """Env reader: KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_REF set
-    → PrecisionFilterConfig parsed correctly."""
+def test_load_precision_filter_config_ignores_env_model_ref() -> None:
+    """D-WX-PRECISION-FILTER-MODEL-ARCH — the env is NO LONGER a filter-model source.
+    Even with KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_REF set, the loader returns
+    None: a global env model is cross-tenant (404'd for every non-owning user, stalling
+    the decoupled fold). The filter model now comes ONLY from the per-project
+    extraction_config.precision_filter override, resolved per-user. Regression-lock."""
     import os
     from app.extraction.pass2_orchestrator import _load_precision_filter_config
 
@@ -844,38 +1025,10 @@ def test_load_precision_filter_config_orchestrator_env_set() -> None:
         )
     }
     try:
-        os.environ["KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_REF"] = "claude-4.7-opus-uuid"
+        os.environ["KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_REF"] = "some-cross-tenant-uuid"
         os.environ["KNOWLEDGE_EXTRACTION_PRECISION_FILTER_PARTIAL_POLICY"] = "drop"
-        config = _load_precision_filter_config()
-        assert config is not None
-        assert config.model_ref == "claude-4.7-opus-uuid"
-        assert config.partial_policy == "drop"
-        # cycle 73b — default categories backward-compat = all 3
-        assert config.categories == ("entity", "relation", "event")
-    finally:
-        for k, v in saved.items():
-            os.environ.pop(k, None)
-            if v is not None:
-                os.environ[k] = v
-
-
-def test_load_precision_filter_config_categories_relation_only() -> None:
-    """Cycle 73b — categories env reads as a tuple subset."""
-    import os
-    from app.extraction.pass2_orchestrator import _load_precision_filter_config
-
-    saved = {
-        k: os.environ.pop(k, None) for k in (
-            "KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_REF",
-            "KNOWLEDGE_EXTRACTION_PRECISION_FILTER_CATEGORIES",
-        )
-    }
-    try:
-        os.environ["KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_REF"] = "test-model"
         os.environ["KNOWLEDGE_EXTRACTION_PRECISION_FILTER_CATEGORIES"] = "relation"
-        config = _load_precision_filter_config()
-        assert config is not None
-        assert config.categories == ("relation",)
+        assert _load_precision_filter_config() is None
     finally:
         for k, v in saved.items():
             os.environ.pop(k, None)
@@ -1360,3 +1513,238 @@ def test_load_precision_filter_config_orchestrator_env_unset() -> None:
     finally:
         if original is not None:
             os.environ["KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_REF"] = original
+
+
+# ── C12 — target-typed extraction (orchestrator) ───────────────────
+
+
+@pytest.mark.asyncio
+@patch(f"{_ORCH}.write_pass2_extraction", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_events", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_entities", new_callable=AsyncMock)
+async def test_orchestrator_targets_events_only_skips_relations_facts(
+    mock_entities, mock_relations, mock_events, mock_facts, mock_write,
+):
+    """targets={entities,events} ⇒ orchestrator runs entities+events, NOT
+    relations/facts. Only the gather task-list is conditional."""
+    from app.extraction.pass2_orchestrator import extract_pass2_chapter
+
+    mock_entities.return_value = [_entity("Kai")]
+    mock_events.return_value = ["ev1"]
+    mock_write.return_value = _write_result(entities=1, events=1)
+
+    await extract_pass2_chapter(
+        session=MagicMock(),
+        user_id=_USER_ID, project_id=_PROJECT_ID,
+        source_type="chapter", source_id="ch-1", job_id=_JOB_ID,
+        chapter_text="Kai walks.",
+        model_source="user_model", model_ref="test-model",
+        llm_client=MagicMock(),
+        targets={"entities", "events"},
+    )
+
+    mock_entities.assert_called_once()
+    mock_events.assert_called_once()
+    mock_relations.assert_not_called()
+    mock_facts.assert_not_called()
+    write_kwargs = mock_write.call_args.kwargs
+    assert write_kwargs["events"] == ["ev1"]
+    assert write_kwargs["relations"] == []
+    assert write_kwargs["facts"] == []
+
+
+@pytest.mark.asyncio
+@patch(f"{_ORCH}.write_pass2_extraction", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_events", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_entities", new_callable=AsyncMock)
+async def test_orchestrator_targets_none_runs_all(
+    mock_entities, mock_relations, mock_events, mock_facts, mock_write,
+):
+    """targets=None (default) ⇒ all four extractors run (back-compat)."""
+    from app.extraction.pass2_orchestrator import extract_pass2_chapter
+
+    mock_entities.return_value = [_entity("Kai")]
+    mock_relations.return_value = []
+    mock_events.return_value = []
+    mock_facts.return_value = []
+    mock_write.return_value = _write_result(entities=1)
+
+    await extract_pass2_chapter(
+        session=MagicMock(),
+        user_id=_USER_ID, project_id=_PROJECT_ID,
+        source_type="chapter", source_id="ch-1", job_id=_JOB_ID,
+        chapter_text="Kai walks.",
+        model_source="user_model", model_ref="test-model",
+        llm_client=MagicMock(),
+        # targets omitted
+    )
+
+    mock_entities.assert_called_once()
+    mock_relations.assert_called_once()
+    mock_events.assert_called_once()
+    mock_facts.assert_called_once()
+
+
+@pytest.mark.asyncio
+@patch(f"{_ORCH}.enqueue_chapter_and_maybe_book_summaries", new_callable=AsyncMock)
+@patch(f"{_ORCH}.write_pass2_extraction", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_events", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_entities", new_callable=AsyncMock)
+async def test_orchestrator_summaries_gated_out_when_not_in_targets(
+    mock_entities, mock_relations, mock_events, mock_facts, mock_write,
+    mock_enqueue,
+):
+    """When summaries ∉ targets, the summary enqueue is NOT fired even
+    though hierarchy + embedding deps are present."""
+    from app.extraction.pass2_orchestrator import extract_pass2_chapter
+    mock_entities.return_value = [_entity("Kai")]
+    mock_relations.return_value = []
+    mock_events.return_value = []
+    mock_facts.return_value = []
+    mock_write.return_value = _write_result(entities=1)
+
+    hp = _hierarchy_paths()
+
+    await extract_pass2_chapter(
+        session=MagicMock(),
+        user_id=_USER_ID, project_id=_PROJECT_ID,
+        source_type="chapter", source_id="ch-1", job_id=_JOB_ID,
+        chapter_text="Kai walks.",
+        model_source="user_model", model_ref="test-model",
+        llm_client=MagicMock(),
+        targets={"entities", "relations"},  # summaries NOT requested
+        hierarchy_paths=hp,
+        embedding_model_uuid="emb-uuid",
+        embedding_dimension=1024,
+        summary_enqueue=AsyncMock(),
+    )
+
+    mock_enqueue.assert_not_called()
+
+
+@pytest.mark.asyncio
+@patch(f"{_ORCH}.enqueue_chapter_and_maybe_book_summaries", new_callable=AsyncMock)
+@patch(f"{_ORCH}.write_pass2_extraction", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_events", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_entities", new_callable=AsyncMock)
+async def test_orchestrator_summaries_enqueued_when_in_targets(
+    mock_entities, mock_relations, mock_events, mock_facts, mock_write,
+    mock_enqueue,
+):
+    """When summaries ∈ targets (and deps present), enqueue fires."""
+    from app.extraction.pass2_orchestrator import extract_pass2_chapter
+    mock_entities.return_value = [_entity("Kai")]
+    mock_relations.return_value = []
+    mock_events.return_value = []
+    mock_facts.return_value = []
+    mock_write.return_value = _write_result(entities=1)
+
+    hp = _hierarchy_paths()
+
+    await extract_pass2_chapter(
+        session=MagicMock(),
+        user_id=_USER_ID, project_id=_PROJECT_ID,
+        source_type="chapter", source_id="ch-1", job_id=_JOB_ID,
+        chapter_text="Kai walks.",
+        model_source="user_model", model_ref="test-model",
+        llm_client=MagicMock(),
+        targets={"entities", "summaries"},
+        hierarchy_paths=hp,
+        embedding_model_uuid="emb-uuid",
+        embedding_dimension=1024,
+        summary_enqueue=AsyncMock(),
+    )
+
+    mock_enqueue.assert_called_once()
+
+
+@pytest.mark.asyncio
+@patch(f"{_ORCH}.enqueue_chapter_and_maybe_book_summaries", new_callable=AsyncMock)
+@patch(f"{_ORCH}.write_pass2_extraction", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_events", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_entities", new_callable=AsyncMock)
+async def test_orchestrator_summaries_default_targets_enqueues(
+    mock_entities, mock_relations, mock_events, mock_facts, mock_write,
+    mock_enqueue,
+):
+    """targets=None (default all) ⇒ summaries enqueue fires (back-compat)."""
+    from app.extraction.pass2_orchestrator import extract_pass2_chapter
+    mock_entities.return_value = [_entity("Kai")]
+    mock_relations.return_value = []
+    mock_events.return_value = []
+    mock_facts.return_value = []
+    mock_write.return_value = _write_result(entities=1)
+
+    hp = _hierarchy_paths()
+
+    await extract_pass2_chapter(
+        session=MagicMock(),
+        user_id=_USER_ID, project_id=_PROJECT_ID,
+        source_type="chapter", source_id="ch-1", job_id=_JOB_ID,
+        chapter_text="Kai walks.",
+        model_source="user_model", model_ref="test-model",
+        llm_client=MagicMock(),
+        hierarchy_paths=hp,
+        embedding_model_uuid="emb-uuid",
+        embedding_dimension=1024,
+        summary_enqueue=AsyncMock(),
+    )
+
+    mock_enqueue.assert_called_once()
+
+
+@pytest.mark.asyncio
+@patch(f"{_ORCH}.write_pass2_extraction", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_events", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_entities", new_callable=AsyncMock)
+async def test_orchestrator_recovery_filter_disabled_when_entities_not_requested(
+    mock_entities, mock_relations, mock_events, mock_facts, mock_write,
+):
+    """When entities ∉ requested targets (e.g. {events}), recovery +
+    precision-filter are NOT applied even when env-configured."""
+    from loreweave_extraction import EntityRecoveryConfig, PrecisionFilterConfig
+    from app.extraction.pass2_orchestrator import extract_pass2_chapter
+
+    mock_entities.return_value = [_entity("Kai")]
+    mock_events.return_value = []
+    mock_write.return_value = _write_result(entities=1)
+
+    recovery_calls: list[Any] = []
+    filter_calls: list[Any] = []
+
+    async def _stub_recovery(candidates, **kwargs):
+        recovery_calls.append(kwargs)
+        return candidates
+
+    async def _stub_filter(candidates, **kwargs):
+        filter_calls.append(kwargs)
+        return candidates
+
+    with patch(f"{_ORCH}._ENTITY_RECOVERY_CONFIG", EntityRecoveryConfig(model_ref="r")), \
+         patch(f"{_ORCH}._PRECISION_FILTER_CONFIG", PrecisionFilterConfig(model_ref="f")), \
+         patch(f"{_ORCH}.recover_missing_entities", new=_stub_recovery), \
+         patch(f"{_ORCH}.apply_precision_filter", new=_stub_filter):
+        await extract_pass2_chapter(
+            session=MagicMock(),
+            user_id=_USER_ID, project_id=_PROJECT_ID,
+            source_type="chapter", source_id="ch-1", job_id=_JOB_ID,
+            chapter_text="Kai walks.",
+            model_source="user_model", model_ref="test-model",
+            llm_client=MagicMock(),
+            targets={"events"},  # entities NOT explicitly requested
+        )
+
+    assert recovery_calls == []
+    assert filter_calls == []

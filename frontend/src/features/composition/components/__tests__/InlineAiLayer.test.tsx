@@ -35,15 +35,15 @@ describe('InlineAiLayer (T3.3)', () => {
     ghost.mockReturnValue({ ...base });
   });
 
-  it('defaults to Classic mode — no Continue affordance', () => {
+  it('C17 (WG-5): "Continue from cursor" is first-class — present in Classic mode (defaults Classic), not buried behind the AI toggle', () => {
     render0();
     expect(screen.getByTestId('inline-mode-classic').getAttribute('aria-pressed')).toBe('true');
-    expect(screen.queryByTestId('inline-continue')).not.toBeInTheDocument();
+    // The continue-from-cursor action is visible without switching to AI mode.
+    expect(screen.getByTestId('inline-continue')).toBeInTheDocument();
   });
 
-  it('AI mode shows Continue; clicking it streams', () => {
+  it('clicking "Continue from cursor" streams a caret-anchored continuation', () => {
     render0();
-    fireEvent.click(screen.getByTestId('inline-mode-ai'));
     const cont = screen.getByTestId('inline-continue');
     fireEvent.click(cont);
     expect(continueDraft).toHaveBeenCalled();
@@ -52,14 +52,12 @@ describe('InlineAiLayer (T3.3)', () => {
   it('disables Continue when it cannot run (no scene/model)', () => {
     ghost.mockReturnValue({ ...base, canContinue: false });
     render0({ sceneId: null });
-    fireEvent.click(screen.getByTestId('inline-mode-ai'));
     expect(screen.getByTestId('inline-continue')).toBeDisabled();
   });
 
   it('disables Continue while a ghost is pending (resolve it first)', () => {
     ghost.mockReturnValue({ ...base, anchor: { pos: 3, coords: { top: 10, left: 10 } }, ghost: 'draft' });
     render0();
-    fireEvent.click(screen.getByTestId('inline-mode-ai'));
     expect(screen.getByTestId('inline-continue')).toBeDisabled();
   });
 
@@ -75,14 +73,13 @@ describe('InlineAiLayer (T3.3)', () => {
     expect(discard).toHaveBeenCalled();
   });
 
-  it('keeps the in-flight ghost visible after toggling back to Classic (anchor-based)', () => {
+  it('keeps the in-flight ghost visible after toggling between AI and Classic (anchor-based — never lose a stream)', () => {
     ghost.mockReturnValue({ ...base, anchor: { pos: 5, coords: { top: 50, left: 20 } }, ghost: 'streaming…', streaming: true });
     render0();
     fireEvent.click(screen.getByTestId('inline-mode-ai'));
     expect(screen.getByTestId('inline-ghost')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('inline-mode-classic')); // toggle back mid-stream
-    expect(screen.getByTestId('inline-ghost')).toBeInTheDocument(); // NOT lost
-    expect(screen.queryByTestId('inline-continue')).not.toBeInTheDocument(); // button gated by mode
+    expect(screen.getByTestId('inline-ghost')).toBeInTheDocument(); // NOT lost — anchor-based, mode-independent
   });
 
   it('persists the mode to localStorage', () => {

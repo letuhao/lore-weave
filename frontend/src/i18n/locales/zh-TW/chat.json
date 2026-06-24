@@ -147,6 +147,49 @@
     "ok": "成功",
     "failed": "失敗"
   },
+  "actionConfirm": {
+    "label": "確認操作",
+    "batch_count": "{{count}} 項",
+    "warning": "此變更影響重大 — 請確認。",
+    "warning_destructive": "此操作具破壞性且會連帶影響 — 請確認。",
+    "confirm": "確認",
+    "confirm_all": "全部確認",
+    "cancel": "取消",
+    "done": "完成 ✓",
+    "expired": "此確認已失效 — 請再次要求以重新提出。",
+    "expired_short": "已過期 — 請重問",
+    "error": "無法套用變更。",
+    "error_short": "失敗",
+    "cancelled": "已取消"
+  },
+  "recordEdit": {
+    "label": "建議的編輯",
+    "field": "欄位",
+    "fields": "{{count}} 個欄位",
+    "empty": "(空白)",
+    "apply": "套用",
+    "dismiss": "略過",
+    "applied": "已套用 ✓",
+    "conflict": "自提出後已變更 — 請再次要求以查看最新內容。",
+    "conflict_short": "自提出後已變更 — 請重問",
+    "error": "無法儲存變更。",
+    "error_short": "儲存失敗",
+    "dismissed": "已略過"
+  },
+  "activity": {
+    "label": "已為您完成",
+    "undo": "復原",
+    "undone": "已復原"
+  },
+  "translation_review": {
+    "header": "已提議 {{lang}} 名稱翻譯",
+    "header_aliases": "已提議 {{lang}} 別名",
+    "draft": "草稿",
+    "more": "另外 {{count}} 項",
+    "written": "已寫入 {{count}} 項",
+    "skipped": "已略過 {{count}} 項",
+    "verify_hint": "在詞彙表中確認"
+  },
   "facts": {
     "type": {
       "decision": "決定",

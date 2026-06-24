@@ -8,16 +8,28 @@
 use serde::{Deserialize, Serialize};
 
 use crate::climate::ClimateZone;
+use crate::params::{
+    BiomeParams, ClimateParams, CultureParams, ErosionParams, HierarchyParams, HydrologyParams,
+    IntensityKnobs, PoliticalParams, ReliefParams, RenderTheme, RouteParams, SettlementParams,
+    TectonicsParams,
+};
 
 /// Creative direction for a generated world.
 // `Eq` dropped in Phase 2 — `continental_fraction: f32` is not `Eq`.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct CreativeSeed {
+    /// `#[serde(default)]` so a `dump-config` template can be trimmed to only
+    /// the fields you change — every field falls back to the byte-identical
+    /// default (P8: the centralized profile is fully partial-friendly).
+    #[serde(default = "default_world_scale")]
     pub world_scale: WorldScale,
     /// World genre. **Currently inert** — see [`WorldArchetype`].
+    #[serde(default = "default_world_archetype")]
     pub world_archetype: WorldArchetype,
+    #[serde(default = "default_coastline_profile")]
     pub coastline_profile: CoastlineProfile,
     /// Which way the continent faces the poles — drives latitude → climate.
+    #[serde(default = "default_hemisphere_orientation")]
     pub hemisphere_orientation: HemisphereOrientation,
     /// Direction the prevailing wind blows *from* — drives the orographic rain
     /// shadow. `#[serde(default)]` (`West`) so a pre-wind config JSON loads.
@@ -29,10 +41,13 @@ pub struct CreativeSeed {
     #[serde(default)]
     pub erosion: ErosionStrength,
     /// Optional nudge toward a climate zone (`None` = unbiased).
+    #[serde(default)]
     pub climate_bias: Option<ClimateZone>,
     /// How densely settlements are placed (Phase 3).
+    #[serde(default = "default_settlement_density")]
     pub settlement_density: SettlementDensity,
-    /// Number of culture regions (Phase 3); clamped to `1..=16` at use.
+    /// Number of culture regions (Phase 3); clamped to `1..=count_max` at use.
+    #[serde(default = "default_culture_count")]
     pub culture_count: u8,
     /// How the macro landform is generated (Phase 2). `#[serde(default)]`
     /// (`Tectonic`) so a pre-Phase-2 config JSON loads — and gets the new
@@ -53,20 +68,103 @@ pub struct CreativeSeed {
     /// `1.0` = farthest-point spread so land covers equator → both poles, for a
     /// full latitudinal biome gradient (tropics + boreal/polar/tundra). Clamped
     /// to `0.0..=1.0` at use. `#[serde(default)]` = **0.0** (opt-in — the
-    /// default world is byte-identical to the legacy random placement; the full
-    /// tropics→tundra gradient also needs the v2 seasonality fix, DEFERRED #045).
+    /// default world is byte-identical to the legacy random placement). The v2
+    /// seasonality fix the full tropics→tundra gradient relies on (#045) has
+    /// shipped; flipping this default on still wants a biome-proportion sweep
+    /// first (see the world-gen debt-cleanup plan).
     #[serde(default = "default_continent_latitude_spread")]
     pub continent_latitude_spread: f32,
     /// Target number of geographic **regions** (L2) per subcontinent in the
     /// geometric hierarchy (C3 arc). `#[serde(default)]` = 4; clamped to
-    /// `1..=12` at use. A subcontinent with fewer cells than this gets one
+    /// `1..=hierarchy_params.region_subdivision_max` (default ceiling 12) at use
+    /// (parameterization P6). A subcontinent with fewer cells than this gets one
     /// region per cell.
     #[serde(default = "default_region_subdivision")]
     pub region_subdivision: u8,
     /// Target number of **counties** per province (political tier, C-2).
-    /// `#[serde(default)]` = 4; clamped to `1..=8` at use.
+    /// `#[serde(default)]` = 4; clamped to `1..=political_params.county_max`
+    /// (default ceiling 8) at use (parameterization P6).
     #[serde(default = "default_county_subdivision")]
     pub county_subdivision: u8,
+    /// Granular tectonics / isostasy tuning (parameterization P1). All fields
+    /// `#[serde(default)]` to the prior hardcoded values → a default profile is
+    /// byte-identical. See [`TectonicsParams`].
+    #[serde(default)]
+    pub tectonics: TectonicsParams,
+    /// Granular relief / bathymetry / quantize / heightmap-noise tuning
+    /// (parameterization P2). Default = prior `terrain.rs` consts (byte-identical).
+    #[serde(default)]
+    pub relief_params: ReliefParams,
+    /// Granular climate-classification tuning (parameterization P3).
+    /// Default = prior `climate.rs` consts (byte-identical).
+    #[serde(default)]
+    pub climate_params: ClimateParams,
+    /// Granular hydraulic-erosion strength table (parameterization P4).
+    /// Default = prior `erosion.rs` table (byte-identical).
+    #[serde(default)]
+    pub erosion_params: ErosionParams,
+    /// Granular hydrology thresholds (parameterization P4).
+    /// Default = prior `hydrology.rs` consts (byte-identical).
+    #[serde(default)]
+    pub hydrology_params: HydrologyParams,
+    /// Granular settlement-placement tuning (parameterization P5).
+    /// Default = prior `settlement.rs` consts (byte-identical).
+    #[serde(default)]
+    pub settlement_params: SettlementParams,
+    /// Granular route-network tuning (parameterization P5).
+    /// Default = prior `routes.rs` consts (byte-identical).
+    #[serde(default)]
+    pub route_params: RouteParams,
+    /// Granular political-tier quota tuning (parameterization P6).
+    /// Default = prior `political::build_nested` consts (byte-identical).
+    #[serde(default)]
+    pub political_params: PoliticalParams,
+    /// Granular culture-layer tuning (parameterization P6).
+    /// Default = prior `culture.rs` consts (byte-identical).
+    #[serde(default)]
+    pub culture_params: CultureParams,
+    /// Granular geometric-hierarchy tuning (parameterization P6).
+    /// Default = prior `hierarchy.rs` consts (byte-identical).
+    #[serde(default)]
+    pub hierarchy_params: HierarchyParams,
+    /// Granular biome-derivation tuning (parameterization P7): the elevation
+    /// tiers plus the terrain-cost / culture-barrier / habitability tables.
+    /// Default = prior `biome.rs` literals + methods (byte-identical).
+    #[serde(default)]
+    pub biome_params: BiomeParams,
+    /// Render-time colour theme (parameterization P8b): palettes + ramps +
+    /// supersample. Cosmetic — not part of `content_hash`. Default = prior
+    /// `render.rs` literals (byte-identical render output).
+    #[serde(default)]
+    pub render_theme: RenderTheme,
+    /// Macro "intensity" knobs (parameterization) — convenience scalers over
+    /// groups of granular params; default `1.0` = no-op. See [`IntensityKnobs`].
+    #[serde(default)]
+    pub intensity: IntensityKnobs,
+}
+
+fn default_world_scale() -> WorldScale {
+    WorldScale::Continent
+}
+
+fn default_world_archetype() -> WorldArchetype {
+    WorldArchetype::HighFantasy
+}
+
+fn default_coastline_profile() -> CoastlineProfile {
+    CoastlineProfile::Coastal
+}
+
+fn default_hemisphere_orientation() -> HemisphereOrientation {
+    HemisphereOrientation::Northern
+}
+
+fn default_settlement_density() -> SettlementDensity {
+    SettlementDensity::Medium
+}
+
+fn default_culture_count() -> u8 {
+    5
 }
 
 fn default_plate_count() -> u8 {
@@ -107,6 +205,19 @@ impl Default for CreativeSeed {
             continent_latitude_spread: default_continent_latitude_spread(),
             region_subdivision: default_region_subdivision(),
             county_subdivision: default_county_subdivision(),
+            tectonics: TectonicsParams::default(),
+            relief_params: ReliefParams::default(),
+            climate_params: ClimateParams::default(),
+            erosion_params: ErosionParams::default(),
+            hydrology_params: HydrologyParams::default(),
+            settlement_params: SettlementParams::default(),
+            route_params: RouteParams::default(),
+            political_params: PoliticalParams::default(),
+            culture_params: CultureParams::default(),
+            hierarchy_params: HierarchyParams::default(),
+            biome_params: BiomeParams::default(),
+            render_theme: RenderTheme::default(),
+            intensity: IntensityKnobs::default(),
         }
     }
 }
@@ -418,6 +529,68 @@ mod tests {
             let back: CreativeSeed = serde_json::from_str(&json).expect("deserialize");
             assert_eq!(back.erosion, e);
         }
+    }
+
+    #[test]
+    fn tectonics_and_intensity_round_trip_and_default_when_absent() {
+        // The centralized-profile authoring path (human config + LLM author)
+        // depends on these nested params (de)serializing under their field names.
+        let cs = CreativeSeed {
+            intensity: IntensityKnobs { orogeny: 2.5, collision_frequency: 0.5, ..IntensityKnobs::default() },
+            tectonics: TectonicsParams { fold_peak: 1.2, ..TectonicsParams::default() },
+            climate_params: ClimateParams { t_eq: 31.0, ..ClimateParams::default() },
+            erosion_params: ErosionParams { moderate_erodibility: 5.0, ..ErosionParams::default() },
+            hydrology_params: HydrologyParams { river_percentile: 0.9, ..HydrologyParams::default() },
+            settlement_params: SettlementParams { coast_bonus: 1.5, ..SettlementParams::default() },
+            route_params: RouteParams { mountain_pass_target: 9, ..RouteParams::default() },
+            political_params: PoliticalParams { prov_max: 5, ..PoliticalParams::default() },
+            culture_params: CultureParams { hearth_spacing_coeff: 1.2, ..CultureParams::default() },
+            hierarchy_params: HierarchyParams { region_subdivision_max: 7 },
+            biome_params: BiomeParams { high_t: 0.6, ..BiomeParams::default() },
+            render_theme: RenderTheme { supersample: 3, ..RenderTheme::default() },
+            ..CreativeSeed::default()
+        };
+        let back: CreativeSeed =
+            serde_json::from_str(&serde_json::to_string(&cs).unwrap()).expect("round-trip");
+        assert_eq!(cs, back, "all nested param structs must survive a JSON round-trip");
+        // A pre-parameterization config JSON (no tectonics/intensity/climate) loads
+        // with the byte-identical defaults — backward compatibility.
+        let json = r#"{
+            "world_scale": "Continent", "world_archetype": "HighFantasy",
+            "coastline_profile": "Coastal", "hemisphere_orientation": "Northern",
+            "climate_bias": null, "settlement_density": "Medium", "culture_count": 5
+        }"#;
+        let old: CreativeSeed = serde_json::from_str(json).expect("pre-param JSON loads");
+        assert_eq!(old.tectonics, TectonicsParams::default());
+        assert_eq!(old.intensity, IntensityKnobs::default());
+        assert_eq!(old.climate_params, ClimateParams::default());
+        assert_eq!(old.erosion_params, ErosionParams::default());
+        assert_eq!(old.hydrology_params, HydrologyParams::default());
+        assert_eq!(old.settlement_params, SettlementParams::default());
+        assert_eq!(old.route_params, RouteParams::default());
+        assert_eq!(old.political_params, PoliticalParams::default());
+        assert_eq!(old.culture_params, CultureParams::default());
+        assert_eq!(old.hierarchy_params, HierarchyParams::default());
+        assert_eq!(old.biome_params, BiomeParams::default());
+        assert_eq!(old.render_theme, RenderTheme::default());
+        // A partial override (intensity.orogeny + one climate cutoff) keeps every
+        // other field default — the `#[serde(default)]` per-field fill.
+        let json2 = r#"{
+            "world_scale": "Continent", "world_archetype": "HighFantasy",
+            "coastline_profile": "Coastal", "hemisphere_orientation": "Northern",
+            "climate_bias": null, "settlement_density": "Medium", "culture_count": 5,
+            "intensity": { "orogeny": 1.7, "warmth": 1.3 },
+            "climate_params": { "t_eq": 33.0 }
+        }"#;
+        let partial: CreativeSeed = serde_json::from_str(json2).expect("partial override loads");
+        assert!((partial.intensity.orogeny - 1.7).abs() < 1e-6);
+        assert!((partial.intensity.collision_frequency - 1.0).abs() < 1e-6, "absent knob defaults to 1.0");
+        assert!((partial.intensity.warmth - 1.3).abs() < 1e-6);
+        assert!((partial.climate_params.t_eq - 33.0).abs() < 1e-6, "overridden climate field loads");
+        assert!(
+            (partial.climate_params.t_pole - ClimateParams::default().t_pole).abs() < 1e-6,
+            "absent climate field keeps its default"
+        );
     }
 
     #[test]

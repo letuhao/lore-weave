@@ -1,0 +1,3 @@
+# build artifacts (the CLI is `go run`/`go build` on demand)
+*.exe
+/wg

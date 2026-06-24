@@ -1,0 +1,60 @@
+# .github/workflows/canary.yml — L7.K.3 (RAID cycle 38)
+#
+# SR05 §12AH.4 canary stage controller trigger. Runs after a major-class deploy
+# (repository_dispatch from deploy.yml's deploy tooling, or manual dispatch) and
+# kicks the canary-controller through its 5-stage rollout
+# (0/1%/10%/50%/100%, windows 10min/30min/2h/4h, auto-abort on cohort SLI burn
+# > 2× baseline).
+#
+# Q-L7K-1 LOCKED: GitHub Actions V1. The actual stage advance + auto-abort is
+# performed by the long-running canary-controller service reading deploy_audit;
+# this workflow just builds + smoke-checks the controller and signals it to pick
+# up the new deploy. Credentials via secrets — NEVER hardcoded.
+
+name: canary
+
+on:
+  workflow_dispatch:
+    inputs:
+      deploy_id:
+        description: 'deploy_audit deploy_id to roll out'
+        required: true
+  repository_dispatch:
+    types: [canary-start]
+
+concurrency:
+  group: canary-${{ github.event.inputs.deploy_id || github.event.client_payload.deploy_id }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  canary:
+    name: canary rollout (§12AH.4)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: build + test canary-controller
+        run: |
+          cd services/canary-controller
+          go build ./...
+          go test ./...
+
+      - name: signal canary-controller
+        env:
+          # The controller service is reached via its internal endpoint; the
+          # token + URL come from secrets and are never echoed.
+          CANARY_CONTROLLER_URL: ${{ secrets.CANARY_CONTROLLER_URL }}
+        run: |
+          deploy_id="${{ github.event.inputs.deploy_id || github.event.client_payload.deploy_id }}"
+          if [ -z "$deploy_id" ]; then
+            echo "::error::no deploy_id provided"; exit 1
+          fi
+          echo "canary rollout requested for deploy_id=$deploy_id"
+          # Live signal (POST to the controller) is wired with the deploy
+          # tooling — tracked D-CANARY-LIVE-WIRING. The controller polls
+          # deploy_audit independently, so this trigger is advisory in V1.
+          echo "canary-controller will advance/abort stages per §12AH.4 table"

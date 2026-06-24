@@ -27,6 +27,8 @@ loreweave_lore_enrichment
 loreweave_learning
 loreweave_composition
 loreweave_campaign
+loreweave_video_gen
+loreweave_jobs
 "
 
 for db in $DATABASES; do

@@ -54,14 +54,28 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "Relation",
     "RelationHop",
+    "SubgraphNode",
+    "SubgraphEdge",
+    "Subgraph",
+    "SUBGRAPH_MAX_NODE_CAP",
+    "SUBGRAPH_MAX_HOPS",
     "relation_id",
     "create_relation",
     "recreate_relation",
     "find_relations_for_entity",
     "find_relations_2hop",
+    "get_project_subgraph",
     "invalidate_relation",
     "get_relation",
 ]
+
+# C18 — hard ceilings for the project subgraph read (G5). The route's
+# `limit` (node cap) and `hops` params are clamped to these so a caller
+# cannot ask for an unbounded traversal that OOMs Neo4j on a hub node.
+# The cap is enforced IN the Cypher (deterministic ORDER + LIMIT on the
+# seed-node collection), never post-filtered after fetching everything.
+SUBGRAPH_MAX_NODE_CAP = 500
+SUBGRAPH_MAX_HOPS = 3
 
 
 class Relation(BaseModel):
@@ -150,6 +164,43 @@ def _edge_props_to_relation(
 # ── create_relation ───────────────────────────────────────────────────
 
 
+# KG customizable-ontology (L7, D-KG-L7-CARDINALITY) — auto-close the prior
+# OPEN instance of a `single_active` edge type for this `(subject, predicate)`,
+# BEFORE the new instance is MERGEd. Runs in the same CypherSession transaction
+# as the create, so the close + the new-open are atomic (a reader never sees two
+# open instances, and a rollback leaves both untouched).
+#
+# Cardinality semantic: `single_active` means a subject holds AT MOST ONE open
+# instance of this predicate at a time (e.g. CURRENT_SECT — joining sect B closes
+# the open membership of sect A). So the close scopes to the same SUBJECT +
+# PREDICATE under the SAME `$user_id` partition (no cross-tenant close), across
+# ANY object, and only edges still open (`valid_until IS NULL`). The new
+# instance's OWN id is excluded so re-running an idempotent create of the *same*
+# relation never closes itself, and re-asserting the identical (subj,pred,obj) is
+# a clean no-op. `multi_active` (e.g. PURSUES — multiple coexisting drives) never
+# reaches this query. Mirrors the `invalidate_relation` close primitive
+# (sets `valid_until` + `updated_at`).
+#
+# Project scoping is IMPLICIT and complete: `Entity.id` (entity_canonical_id)
+# folds project_id into its hash, so `{id: $subject_id}` matches exactly one
+# project's subject node, and every outgoing edge of that node was created with
+# that project's (also project-scoped) objects. A user's single_active write in
+# project A therefore cannot reach an open edge in project B — locked by
+# test_L7_single_active_does_not_cross_project_boundary.
+_CLOSE_PRIOR_SINGLE_ACTIVE_CYPHER = """
+MATCH (subj:Entity {id: $subject_id})-[rp:RELATES_TO]->(obj:Entity)
+WHERE rp.user_id = $user_id
+  AND subj.user_id = $user_id
+  AND obj.user_id = $user_id
+  AND rp.predicate = $predicate
+  AND rp.valid_until IS NULL
+  AND rp.id <> $relation_id
+SET rp.valid_until = datetime(),
+    rp.updated_at = datetime()
+RETURN count(rp) AS closed
+"""
+
+
 # Structural MERGE on the edge `id` property. We can't use the
 # bare structural pattern `(a)-[r:RELATES_TO {predicate: $p}]->(b)`
 # because that would collide two relations with the same
@@ -179,6 +230,11 @@ ON CREATE SET
   r.valid_from = coalesce($valid_from, datetime()),
   r.valid_until = NULL,
   r.pending_validation = $pending_validation,
+  // KG customizable-ontology (L7) — stamp the resolved-schema version this edge
+  // was written under (M3) + the layer-4 partition seam (M2, NULL at v1). Both
+  // additive; NULL for legacy/un-adopted writes (no behavior change).
+  r.schema_version = $schema_version,
+  r.graph_id = $graph_id,
   r.created_at = datetime(),
   r.updated_at = datetime()
 ON MATCH SET
@@ -195,6 +251,14 @@ ON MATCH SET
     WHEN $confidence > r.confidence THEN $pending_validation
     ELSE r.pending_validation
   END,
+  // KG customizable-ontology (L7 activation) — re-confirm the schema version on a
+  // re-matched edge so an edge first written pre-activation (NULL) gets stamped on
+  // the next extraction under the resolved schema. COALESCE so a legacy/un-adopted
+  // persist (schema_version NULL) NEVER wipes an existing stamp — only a non-NULL
+  // new value updates. graph_id is intentionally NOT touched on MATCH: it is NULL
+  // at v1 everywhere, and overwriting would clobber a future partition assignment
+  // (M2). The ON CREATE branch still sets graph_id for fresh edges.
+  r.schema_version = coalesce($schema_version, r.schema_version),
   r.updated_at = datetime()
 RETURN properties(r) AS rel,
        properties(subj) AS subj,
@@ -214,6 +278,9 @@ async def create_relation(
     source_chapter: str | None = None,
     valid_from: datetime | None = None,
     pending_validation: bool = False,
+    schema_version: int | None = None,
+    graph_id: str | None = None,
+    cardinality: str | None = None,
 ) -> Relation | None:
     """Idempotent edge upsert. Re-running with the same
     `(subject_id, predicate, object_id)` returns the same edge —
@@ -232,6 +299,15 @@ async def create_relation(
     This is how K17 (LLM Pass 2) promotes a Pass 1 quarantined
     edge: re-create with higher confidence + `pending_validation
     = false`, and the existing edge is upgraded in place.
+
+    `cardinality` (KG L7, D-KG-L7-CARDINALITY): when ``"single_active"``, the
+    prior OPEN edge of this `(subject, predicate, object)` under the SAME
+    `$user_id` is auto-closed (`valid_until = now()`) BEFORE the new instance is
+    written — so a `single_active` edge type can only hold one open instance at a
+    time. ``"multi_active"`` / ``None`` (the default) ⇒ no auto-close, exactly
+    today's behavior. The close runs in the same session transaction as the
+    create (atomic). The new relation's own id is excluded from the close, so a
+    pure idempotent re-create of the same edge never closes itself.
     """
     if not predicate:
         raise ValueError("predicate must be a non-empty string")
@@ -245,6 +321,18 @@ async def create_relation(
         predicate=predicate,
         object_id=object_id,
     )
+    # L7 single_active auto-close — close the prior OPEN instance (same tenant,
+    # same endpoints+predicate) before the MERGE of the new one. multi_active /
+    # None ⇒ skip entirely (legacy path is byte-identical: no extra query).
+    if cardinality == "single_active":
+        await run_write(
+            session,
+            _CLOSE_PRIOR_SINGLE_ACTIVE_CYPHER,
+            user_id=user_id,
+            relation_id=rid,
+            subject_id=subject_id,
+            predicate=predicate,
+        )
     result = await run_write(
         session,
         _CREATE_RELATION_CYPHER,
@@ -258,6 +346,8 @@ async def create_relation(
         source_chapter=source_chapter,
         valid_from=valid_from,
         pending_validation=pending_validation,
+        schema_version=schema_version,
+        graph_id=graph_id,
     )
     record = await result.single()
     if record is None:
@@ -613,6 +703,466 @@ async def find_relations_2hop(
             )
         )
     return hops
+
+
+# ── get_project_subgraph (C18 — n-hop, node-capped) ───────────────────
+
+
+class SubgraphNode(BaseModel):
+    """One node in the project subgraph — a lightweight `:Entity`
+    projection typed for the C19 canvas.
+
+    Deliberately NOT the full `Entity` model: the canvas only needs
+    identity + a couple of layout/style signals (kind for colour,
+    anchor_score/mention_count for node sizing), so we keep the
+    payload small. The canvas pulls full detail lazily via the
+    existing `GET /entities/{id}` route on click.
+    """
+
+    id: str
+    name: str
+    kind: str
+    anchor_score: float = 0.0
+    mention_count: int = 0
+    glossary_entity_id: str | None = None
+    # G4 (W2): in a WORLD rollup union, the source member project this node
+    # came from — lets the C19 canvas legend nodes per book. None for the
+    # single-project C18/C19 view (which never sets it).
+    source_project_id: str | None = None
+
+
+class SubgraphEdge(BaseModel):
+    """One edge in the project subgraph — a `:RELATES_TO` projection.
+
+    `id` is the deterministic `relation_id`; `source`/`target` are the
+    subject/object entity ids so the canvas can wire endpoints without
+    a second lookup. Only edges BETWEEN two nodes that survived the
+    node cap are returned (no dangling pointers into capped-out nodes).
+    """
+
+    id: str
+    source: str
+    target: str
+    predicate: str
+    confidence: float = 0.0
+
+
+class Subgraph(BaseModel):
+    """The `{nodes, edges}` payload for the C19 graph canvas.
+
+    `node_cap_hit` is true when the deterministic node cap trimmed the
+    result — the FE can show a "showing top N — expand to load more"
+    affordance. Raw nodes + edges only; NO server-side layout (the
+    canvas hand-rolls force/radial in C19)."""
+
+    nodes: list[SubgraphNode] = Field(default_factory=list)
+    edges: list[SubgraphEdge] = Field(default_factory=list)
+    node_cap_hit: bool = False
+
+
+# C18 — project-wide subgraph. Two-stage, cap-IN-the-query design so a
+# hub entity can never explode the result or OOM Neo4j:
+#
+#   Stage 1 (seeds): collect up to $limit Entity nodes in the project
+#     partition, deterministically ordered (anchor_score DESC,
+#     mention_count DESC, id ASC) so the SAME query returns the SAME
+#     nodes every call — C19 expand/load-more stability depends on this.
+#     The LIMIT is applied HERE, on the ordered node collection, before
+#     any edge traversal — this is the unbounded-traversal guard.
+#
+#   Stage 2 (edges): return only :RELATES_TO edges whose BOTH endpoints
+#     are in the capped seed set. No traversal beyond the seed set, so
+#     the edge count is bounded by the in-set adjacency, never the
+#     global fan-out of a hub.
+#
+# Both stages bind BOTH $user_id AND $project_id on every node — no
+# cross-user and no cross-project bleed. valid_until IS NULL +
+# confidence >= $min_confidence + archived_at IS NULL match the L2
+# loader's active-edge filters so the canvas shows the live graph.
+_PROJECT_SUBGRAPH_CYPHER = """
+CALL {
+  WITH $user_id AS user_id, $project_id AS project_id
+  MATCH (n:Entity)
+  WHERE n.user_id = user_id
+    AND n.project_id = project_id
+    AND n.archived_at IS NULL
+  RETURN n
+  ORDER BY coalesce(n.anchor_score, 0.0) DESC,
+           coalesce(n.mention_count, 0) DESC,
+           n.id ASC
+  LIMIT $limit
+}
+WITH collect(n) AS seeds
+WITH seeds, [s IN seeds | s.id] AS seed_ids
+UNWIND seeds AS node
+WITH seed_ids, collect(DISTINCT properties(node)) AS node_props
+OPTIONAL MATCH (a:Entity)-[r:RELATES_TO]->(b:Entity)
+WHERE a.id IN seed_ids
+  AND b.id IN seed_ids
+  AND a.project_id = $project_id
+  AND b.project_id = $project_id
+  AND r.user_id = $user_id
+  AND r.valid_until IS NULL
+  AND coalesce(r.confidence, 0.0) >= $min_confidence
+  AND (NOT $exclude_pending OR coalesce(r.pending_validation, false) = false)
+RETURN node_props,
+       collect(DISTINCT properties(r)) AS edge_props
+"""
+
+# C18 — ego-expansion. Same partition + active-edge filters, but the
+# node set is the neighbourhood of $center within $hops, not the
+# project-wide top-N.
+#
+# Hub-safety (adversary F1): we do NOT enumerate full variable-length
+# paths (`(c)-[*1..3]-(m)`) — on a dense hub that materializes ~d^hops
+# paths before any LIMIT could apply, the very explosion the cap is
+# meant to prevent. Instead we expand the *reachable node frontier*
+# hop-by-hop, capping the DISTINCT node set to $limit after EACH hop
+# (`WITH ... collect(DISTINCT ...)[..$limit]`). Each hop's relationship
+# scan is therefore bounded by the already-capped frontier (≤ $limit
+# nodes), not the global fan-out — the work per hop is O($limit * avg
+# degree), independent of any single hub's degree-cubed path count.
+# Stage 3 below selects the in-set edges, identical to the project-wide
+# path.
+#
+# Determinism: the per-hop `[..$limit]` slice is applied to a frontier
+# ORDERed by (anchor_score DESC, mention_count DESC, id ASC), and id is
+# UNIQUE, so the trimmed frontier — and thus the final node set — is
+# stable across calls (C19 expand/load-more).
+#
+# active-edge filter (adversary F3): the per-hop expansion uses the SAME
+# predicate as the returned-edge stage (confidence ≥ $min_confidence,
+# valid_until IS NULL, not pending) so a node is only reachable via an
+# edge that will also be returned — no orphan nodes reached through a
+# quarantined/low-confidence edge that the edge stage then drops.
+#
+# Partition: every frontier node is scoped to BOTH $user_id AND
+# $project_id (and archived_at IS NULL); a neighbour outside the
+# partition is never admitted to the frontier, so a path cannot leak
+# across project/user via an intermediate.
+# Single bounded-frontier expansion step, reused (unrolled) once per
+# hop. Given a list of frontier node ids ($frontier_ids), return up to
+# $limit DISTINCT *new* partition-scoped neighbours reachable via an
+# ACTIVE edge (same predicate as the returned-edge stage → no orphan
+# nodes reached through a quarantined edge). Capping the result to
+# $limit here bounds the next hop's scan, so total work is
+# O($hops * $limit * avg_degree), independent of any hub's degree.
+_EGO_HOP_STEP = """
+  UNWIND $frontier_ids AS fid
+  MATCH (f:Entity {id: fid})-[r:RELATES_TO]-(nbr:Entity)
+  WHERE nbr.user_id = $user_id
+    AND nbr.project_id = $project_id
+    AND nbr.archived_at IS NULL
+    AND NOT nbr.id IN $visited_ids
+    AND r.user_id = $user_id
+    AND r.valid_until IS NULL
+    AND coalesce(r.confidence, 0.0) >= $min_confidence
+    AND (NOT $exclude_pending OR coalesce(r.pending_validation, false) = false)
+  WITH DISTINCT nbr
+  ORDER BY coalesce(nbr.anchor_score, 0.0) DESC,
+           coalesce(nbr.mention_count, 0) DESC,
+           nbr.id ASC
+  LIMIT $limit
+  RETURN collect(nbr.id) AS next_ids
+"""
+
+# The center-node lookup (partition-scoped). Returns the center's id +
+# props, or no row when the center is missing / cross-partition (→ empty
+# subgraph, no existence leak).
+_EGO_CENTER_CYPHER = """
+MATCH (c:Entity {id: $center})
+WHERE c.user_id = $user_id
+  AND c.project_id = $project_id
+  AND c.archived_at IS NULL
+RETURN c.id AS id
+"""
+
+# Final assembly: given the resolved seed id set (center + capped
+# per-hop frontiers, already ≤ $limit), fetch the node props + the
+# in-set active edges. Identical edge stage to the project-wide query
+# (both endpoints partition-scoped — adversary F2 belt).
+_EGO_ASSEMBLE_CYPHER = """
+MATCH (n:Entity)
+WHERE n.id IN $seed_ids
+  AND n.user_id = $user_id
+  AND n.project_id = $project_id
+WITH collect(properties(n)) AS node_props
+OPTIONAL MATCH (a:Entity)-[r:RELATES_TO]->(b:Entity)
+WHERE a.id IN $seed_ids
+  AND b.id IN $seed_ids
+  AND a.project_id = $project_id
+  AND b.project_id = $project_id
+  AND r.user_id = $user_id
+  AND r.valid_until IS NULL
+  AND coalesce(r.confidence, 0.0) >= $min_confidence
+  AND (NOT $exclude_pending OR coalesce(r.pending_validation, false) = false)
+RETURN node_props,
+       collect(DISTINCT properties(r)) AS edge_props
+"""
+
+
+def _node_props_to_subgraph_node(props: dict[str, Any]) -> SubgraphNode:
+    return SubgraphNode(
+        id=str(props.get("id", "")),
+        name=str(props.get("name", "")),
+        kind=str(props.get("kind", "")),
+        anchor_score=float(props.get("anchor_score") or 0.0),
+        mention_count=int(props.get("mention_count") or 0),
+        glossary_entity_id=props.get("glossary_entity_id"),
+    )
+
+
+def _edge_props_to_subgraph_edge(props: dict[str, Any]) -> SubgraphEdge | None:
+    rid = props.get("id")
+    subject_id = props.get("subject_id")
+    object_id = props.get("object_id")
+    if not rid or not subject_id or not object_id:
+        return None
+    return SubgraphEdge(
+        id=str(rid),
+        source=str(subject_id),
+        target=str(object_id),
+        predicate=str(props.get("predicate", "")),
+        confidence=float(props.get("confidence") or 0.0),
+    )
+
+
+async def get_project_subgraph(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str,
+    hops: int = 1,
+    limit: int = 200,
+    center: str | None = None,
+    min_confidence: float = 0.8,
+    exclude_pending: bool = True,
+) -> Subgraph:
+    """C18 (G5) — read-only project subgraph for the C19 canvas.
+
+    Returns `{nodes, edges}` for the `(user_id, project_id)` partition.
+    Two modes:
+
+      - **project-wide** (`center=None`): the top-`limit` entities by
+        `anchor_score DESC, mention_count DESC, id ASC` plus every
+        active `:RELATES_TO` edge between them. This is the default
+        "show me the graph" view.
+      - **ego-expansion** (`center` set): the `hops`-bounded
+        neighbourhood of the `center` entity (powers the canvas
+        expand-hop / click-to-expand). Same cap + deterministic order.
+
+    The node cap is enforced **in the Cypher** (`LIMIT` on a
+    deterministically-ordered node collection), never post-filtered —
+    a hub entity with thousands of edges cannot blow the result or
+    OOM Neo4j. Edges are returned only between nodes that survived the
+    cap, so there are no dangling pointers.
+
+    Multi-tenant + multi-project safety: BOTH `$user_id` AND
+    `$project_id` are bound on every node in the query; a `project_id`
+    the caller does not own (or a different project) yields no foreign
+    nodes. `center` that doesn't exist / is cross-partition simply
+    yields an empty subgraph (no existence leak).
+
+    `node_cap_hit` is true when the result was trimmed to `limit` —
+    the FE shows an "expand to load more" affordance.
+    """
+    if not project_id:
+        raise ValueError("project_id must be a non-empty string")
+    if limit <= 0:
+        raise ValueError(f"limit must be positive, got {limit}")
+    if hops <= 0:
+        raise ValueError(f"hops must be positive, got {hops}")
+    # Clamp to the hard ceilings — defence in depth even though the
+    # route also validates via Query(le=...). A direct repo caller
+    # cannot bypass the cap.
+    effective_limit = min(limit, SUBGRAPH_MAX_NODE_CAP)
+    effective_hops = min(hops, SUBGRAPH_MAX_HOPS)
+
+    if center:
+        seed_ids = await _ego_seed_ids(
+            session,
+            user_id=user_id,
+            project_id=project_id,
+            center=center,
+            hops=effective_hops,
+            limit=effective_limit,
+            min_confidence=min_confidence,
+            exclude_pending=exclude_pending,
+        )
+        if not seed_ids:
+            # center missing / cross-partition → empty subgraph (no leak)
+            return Subgraph(nodes=[], edges=[], node_cap_hit=False)
+        result = await run_read(
+            session,
+            _EGO_ASSEMBLE_CYPHER,
+            user_id=user_id,
+            project_id=project_id,
+            seed_ids=seed_ids,
+            min_confidence=min_confidence,
+            exclude_pending=exclude_pending,
+        )
+    else:
+        result = await run_read(
+            session,
+            _PROJECT_SUBGRAPH_CYPHER,
+            user_id=user_id,
+            project_id=project_id,
+            limit=effective_limit,
+            min_confidence=min_confidence,
+            exclude_pending=exclude_pending,
+        )
+    record = await result.single()
+    if record is None:
+        return Subgraph(nodes=[], edges=[], node_cap_hit=False)
+
+    raw_nodes = record["node_props"] or []
+    raw_edges = record["edge_props"] or []
+    nodes = [_node_props_to_subgraph_node(dict(p)) for p in raw_nodes]
+    edges = [
+        e
+        for e in (
+            _edge_props_to_subgraph_edge(dict(p)) for p in raw_edges
+        )
+        if e is not None
+    ]
+    # node_cap_hit: we asked for effective_limit seeds and got exactly
+    # that many → there may be more (the cap bit). Fewer → the whole
+    # partition (or ego neighbourhood) fit under the cap.
+    node_cap_hit = len(nodes) >= effective_limit
+    return Subgraph(nodes=nodes, edges=edges, node_cap_hit=node_cap_hit)
+
+
+# ── get_world_subgraph (G4 / W2 — rollup union over a world's projects) ──
+
+
+async def get_world_subgraph(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_ids: list[str],
+    limit: int = 200,
+    min_confidence: float = 0.8,
+) -> Subgraph:
+    """G4 (W2) — a world's rollup graph = the UNION of each member project's
+    C18 subgraph (the world-level/bible project PLUS each member book's project).
+
+    Merged in application code: every sub-query still binds BOTH ``user_id`` AND
+    its own ``project_id``, so the union is N isolated per-partition reads
+    stitched together — it never issues a cross-partition Cypher, and there is no
+    cross-user or cross-project bleed (a project the user doesn't own yields an
+    empty subgraph, contributing nothing).
+
+    The result is a FOREST of per-book components (C18 edges are intra-project),
+    NOT a connected cross-book graph — cross-book entity unification is out of
+    scope (world-core territory). Each node is tagged with its
+    ``source_project_id`` so the FE can legend per book.
+
+    Re-cap: the merged node set is trimmed to ``limit`` by the SAME global order
+    as C18 (``anchor_score DESC, mention_count DESC, id ASC``). ``node_cap_hit``
+    is set if ANY member's own subgraph hit its cap OR the union re-cap trimmed —
+    a large book crowding out a small one is flagged, never silent. Edges are
+    kept only between nodes that survived the cap (no dangling pointers).
+    """
+    effective_limit = min(max(1, limit), SUBGRAPH_MAX_NODE_CAP)
+    nodes_by_id: dict[str, SubgraphNode] = {}
+    all_edges: list[SubgraphEdge] = []
+    any_member_capped = False
+    for pid in project_ids:
+        if not pid:
+            continue
+        sg = await get_project_subgraph(
+            session,
+            user_id=user_id,
+            project_id=pid,
+            limit=effective_limit,
+            min_confidence=min_confidence,
+        )
+        any_member_capped = any_member_capped or sg.node_cap_hit
+        for n in sg.nodes:
+            n.source_project_id = pid
+            # ids are project-scoped, so a collision is not expected; dedup
+            # defensively (first writer wins) so the union never doubles a node.
+            nodes_by_id.setdefault(n.id, n)
+        all_edges.extend(sg.edges)
+
+    merged = sorted(
+        nodes_by_id.values(),
+        key=lambda n: (-n.anchor_score, -n.mention_count, n.id),
+    )
+    capped = merged[:effective_limit]
+    union_trimmed = len(merged) > effective_limit
+    surviving = {n.id for n in capped}
+    edges = [e for e in all_edges if e.source in surviving and e.target in surviving]
+    return Subgraph(
+        nodes=capped,
+        edges=edges,
+        node_cap_hit=any_member_capped or union_trimmed,
+    )
+
+
+async def _ego_seed_ids(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str,
+    center: str,
+    hops: int,
+    limit: int,
+    min_confidence: float,
+    exclude_pending: bool,
+) -> list[str]:
+    """Bounded-frontier BFS for the ego seed set (adversary F1).
+
+    Resolves the center (partition-scoped), then expands the reachable
+    node frontier hop-by-hop. After EACH hop the cumulative seed set is
+    capped to ``limit`` (the per-hop step itself returns at most
+    ``limit`` deterministically-ordered new neighbours), so the next
+    hop's relationship scan starts from a bounded frontier — total work
+    is O(hops * limit * avg_degree), never a hub's degree^hops path
+    enumeration. Returns the ordered seed id list (center first, then
+    capped to ``limit``); empty when the center is missing/cross-partition.
+    """
+    center_res = await run_read(
+        session,
+        _EGO_CENTER_CYPHER,
+        user_id=user_id,
+        project_id=project_id,
+        center=center,
+    )
+    center_row = await center_res.single()
+    if center_row is None:
+        return []
+
+    seed_order: list[str] = [center_row["id"]]
+    visited: set[str] = {center_row["id"]}
+    frontier: list[str] = [center_row["id"]]
+
+    for _ in range(hops):
+        if not frontier or len(seed_order) >= limit:
+            break
+        hop_res = await run_read(
+            session,
+            _EGO_HOP_STEP,
+            user_id=user_id,
+            project_id=project_id,
+            frontier_ids=frontier,
+            visited_ids=list(visited),
+            min_confidence=min_confidence,
+            exclude_pending=exclude_pending,
+            limit=limit,
+        )
+        hop_row = await hop_res.single()
+        next_ids: list[str] = (hop_row["next_ids"] if hop_row else None) or []
+        fresh = [nid for nid in next_ids if nid not in visited]
+        if not fresh:
+            break
+        for nid in fresh:
+            if len(seed_order) >= limit:
+                break
+            visited.add(nid)
+            seed_order.append(nid)
+        frontier = fresh
+    return seed_order[:limit]
 
 
 # ── recreate_relation (user-correction path) ──────────────────────────

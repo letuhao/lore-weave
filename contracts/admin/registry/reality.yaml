@@ -1,0 +1,132 @@
+# L7.A reality-domain admin commands — RAID cycle 36 DPS 1.
+#
+# Per-domain command registry per Q-L7A-1 (LOCKED 2026-05-29).
+# Framework auto-merges this with the other domain files at startup.
+#
+# Schema (one entry per command):
+#   name:                   admin subcommand path, e.g. "reality force-close"
+#   version:                semver string
+#   summary:                one-line description
+#   handler:                Go function reference (informational; framework
+#                           dispatches by `name`)
+#   params:                 list of {name, type, required, description}
+#   impact_class:           tier-1-destructive | tier-2-griefing | tier-3-informational
+#   dry_run_required:       bool — true forces --dry-run before --confirm allowed
+#   double_approval_required: bool — Tier-1 destructive must be true
+#   audit:                  always true; admin_action_audit row written by framework
+#   carry_forward_cycle:    cycle number where the underlying implementation shipped
+#                           (cycle 7 capacity-override; cycle 14 rebuild-projection +
+#                           catastrophic-rebuild; cycle 15 lifecycle freeze/thaw); "36" for new.
+#   locked_qs_consumed:     list of LOCKED Q-IDs honored by this command.
+
+domain: reality
+commands:
+  - name: reality force-close
+    version: "1.0.0"
+    summary: "Force-close a reality (writer rejection 503) — operator escape hatch."
+    handler: realityForceClose
+    params:
+      - {name: reality_id, type: uuid, required: true, description: "Target reality UUID"}
+      - {name: reason,     type: string, required: true, description: "Audit explanation (>= 1 char)"}
+    impact_class: tier-1-destructive
+    dry_run_required: true
+    double_approval_required: true
+    carry_forward_cycle: "36"
+    locked_qs_consumed: [Q-L7A-1, Q-L7A-2]
+
+  - name: reality cancel-close
+    version: "1.0.0"
+    summary: "Cancel an in-flight reality close (owner-only; griefing-class)."
+    handler: realityCancelClose
+    params:
+      - {name: reality_id, type: uuid, required: true, description: "Target reality UUID"}
+      - {name: reason,     type: string, required: true, description: "Audit explanation"}
+    impact_class: tier-2-griefing
+    dry_run_required: false
+    double_approval_required: false
+    carry_forward_cycle: "36"
+    locked_qs_consumed: [Q-L7A-1, Q-L7A-2]
+
+  - name: reality freeze
+    version: "1.0.0"
+    summary: "Freeze a reality (writes rejected, 503). L3.G transition gate."
+    handler: realityFreeze
+    params:
+      - {name: reality_id, type: uuid, required: true, description: "Target reality UUID"}
+      - {name: reason,     type: string, required: true, description: "Audit explanation"}
+    impact_class: tier-1-destructive
+    dry_run_required: true
+    double_approval_required: true
+    carry_forward_cycle: "15"  # lifecycle ships in cycle 15
+    locked_qs_consumed: [Q-L7A-1, Q-L7A-2, Q-L3-5]
+
+  - name: reality thaw
+    version: "1.0.0"
+    summary: "Thaw a previously-frozen reality (writes resume). Only after rebuild OK."
+    handler: realityThaw
+    params:
+      - {name: reality_id, type: uuid, required: true, description: "Target reality UUID"}
+      - {name: reason,     type: string, required: true, description: "Audit explanation"}
+    impact_class: tier-2-griefing
+    dry_run_required: false
+    double_approval_required: false
+    carry_forward_cycle: "15"
+    locked_qs_consumed: [Q-L7A-1, Q-L7A-2, Q-L3-5]
+
+  - name: reality rebuild-projection
+    version: "1.0.0"
+    summary: "Freeze-truncate-rebuild a projection table for one reality (CONSOLIDATED from cycle 14)."
+    handler: realityRebuildProjection
+    params:
+      - {name: reality_id,       type: uuid,     required: true,  description: "Target reality UUID"}
+      - {name: projection_name,  type: string,   required: true,  description: "Projection table name"}
+      - {name: reason,           type: string,   required: true,  description: "Audit explanation"}
+      - {name: freeze_timeout,   type: duration, required: false, description: "Max freeze window (cap 30m)"}
+    impact_class: tier-1-destructive
+    dry_run_required: true
+    double_approval_required: true
+    carry_forward_cycle: "14"  # rebuild_projection.go cycle 14
+    locked_qs_consumed: [Q-L7A-1, Q-L7A-2, Q-L3-3, Q-L3-5]
+
+  - name: reality catastrophic-rebuild
+    version: "1.0.0"
+    summary: "Rolling rebuild across N realities (CONSOLIDATED from cycle 14)."
+    handler: realityCatastrophicRebuild
+    params:
+      - {name: scope,                type: enum,      required: true,  description: "reality|all-realities|aggregate-list"}
+      - {name: reality_ids,          type: list,      required: false, description: "UUIDs (scope=reality)"}
+      - {name: aggregate_file,       type: path,      required: false, description: "File of UUIDs (scope=aggregate-list)"}
+      - {name: reason,               type: string,    required: true,  description: "Audit explanation"}
+      - {name: rolling_concurrency,  type: int,       required: false, description: "[1,50] cap"}
+      - {name: per_reality_timeout,  type: duration,  required: false, description: "<=30m cap"}
+    impact_class: tier-1-destructive
+    dry_run_required: true
+    double_approval_required: true
+    carry_forward_cycle: "14"  # catastrophic_rebuild.go cycle 14
+    locked_qs_consumed: [Q-L7A-1, Q-L7A-2, Q-L3-3, Q-L3-5]
+
+  - name: reality capacity-override
+    version: "1.0.0"
+    summary: "Override capacity gate for a shard (24h auto-expire, CONSOLIDATED from cycle 7)."
+    handler: realityCapacityOverride
+    params:
+      - {name: shard_host, type: string, required: true,  description: "Target shard host"}
+      - {name: reason,     type: string, required: true,  description: "Audit explanation"}
+      - {name: hours,      type: int,    required: true,  description: "Override window (<=24)"}
+    impact_class: tier-2-griefing
+    dry_run_required: false
+    double_approval_required: false
+    carry_forward_cycle: "7"   # capacity_override.go cycle 7
+    locked_qs_consumed: [Q-L7A-1, Q-L7A-2, Q-L1L-3]
+
+  - name: reality stats
+    version: "1.0.0"
+    summary: "Print summary stats for a reality (read-only, informational tier)."
+    handler: realityStats
+    params:
+      - {name: reality_id, type: uuid, required: true, description: "Target reality UUID"}
+    impact_class: tier-3-informational
+    dry_run_required: false
+    double_approval_required: false
+    carry_forward_cycle: "36"
+    locked_qs_consumed: [Q-L7A-1, Q-L7A-2]

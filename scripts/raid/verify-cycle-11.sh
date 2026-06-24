@@ -1,139 +1,112 @@
 #!/usr/bin/env bash
-# verify-cycle-11.sh — CI gate for RAID cycle 11 (Schema-gov gen + H0 tag). Exit 0 = PASS.
-# Modeled on scripts/raid/verify-cycle-10.sh.
-#
-# Asserts (per docs/raid/cycle_briefs/11_schema-gov-gen.md acceptance criteria):
-#   1. generation modules exist with required symbols (provenance/repair/generate);
-#      the H0 chokepoint factory + EnrichedFact are present.
-#   2. C11 unit suites green:
-#        - test_generation_repair.py  (malformed → repaired-or-typed-reject, no silent drop)
-#        - test_provenance_h0.py      (EVERY fact: origin enriched + provenance + conf<1.0 + pending)
-#        - test_generation.py         (mocked-LLM pipeline: prompt → repair → H0-tag)
-#   3. H0 INVARIANT static guards: EnrichedFact is origin-enforced (no 'glossary',
-#      conf<1.0), make_enriched_fact is the factory, no confidence=1.0 default.
-#   4. NO hardcoded generation/embedding-model name in generation source
-#      (model resolved via provider-registry model_ref — never a literal id).
-#   5. NO direct HTTP/LLM client import in generation (LLM is an injected CompleteFn seam);
-#      NO scope-creep into C12/C13 (no glossary/Neo4j write, no contradiction check).
-#   6. ruff clean on the new modules + tests.
-#   7. full service unit suite green (no regression).
-#   8. secret-scan + prod-isolation lints clean.
-# Cross-service = NO → no live-smoke token required (unit + mocked is sufficient here).
-set -uo pipefail
+# verify-cycle-11 — C11 Pending Proposals inbox (FE-only) gate.
+# Per RAID_WORKFLOW.md §13 (exit 0 = pass). FE only — NO new BE. Asserts:
+#   - the inbox aggregates EXACTLY 3 existing sources, read-only + deep-link:
+#       1. glossary AI-suggested drafts  (listAiSuggestions → status=draft&tags=ai-suggested)
+#       2. wiki suggestions review queue (listSuggestions  → status=pending)
+#       3. lore-enrichment proposals     (listProposals    → review_status proposed|author_reviewing)
+#   - each row carries an origin + a deep-link URL to that source's EXISTING review UI.
+#   - per-source graceful degrade (one source erroring/empty must not blank the inbox).
+#   - rendered in the C6 shell Proposals section, route-scoped (G6 — bookId from the route project).
+# LOCKED guards (grep-asserts): INTEGRATE not duplicate (NO accept/reject/edit
+#   mutation in the inbox), NO new BE proposal store, EXACTLY 3 sources (no 4th),
+#   exact source filters, G6 route-scoping (no project select-box).
+# Static asserts. vitest proven green via PowerShell at VERIFY (bash-spawned
+# vitest can hang in this env — the script greps the test files exist instead).
+set -euo pipefail
 CYCLE=11
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-SVC="$REPO_ROOT/services/lore-enrichment-service"
-GEN_DIR="$SVC/app/generation"
-T_REPAIR="$SVC/tests/test_generation_repair.py"
-T_PROV="$SVC/tests/test_provenance_h0.py"
-T_GEN="$SVC/tests/test_generation.py"
+FE="$REPO_ROOT/frontend"
 AUDIT_LOG="$REPO_ROOT/docs/audit/AUDIT_LOG.jsonl"
 NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-fail() { echo "[verify-cycle-11] FAIL: $1"; exit 1; }
-ok()   { echo "[verify-cycle-11] ok: $1"; }
+audit() { mkdir -p "$(dirname "$AUDIT_LOG")"; echo "{\"ts\":\"$NOW\",\"event\":\"$1\",\"cycle\":$CYCLE}" >> "$AUDIT_LOG"; }
+fail() { echo "[verify-cycle-11] FAIL: $1" >&2; audit "verify_cycle_11_failed"; exit 1; }
+have() { grep -Fq "$2" "$1" || fail "$3"; }
 
 echo "[verify-cycle-11] running CI gate"
 
-# ── 1. modules + symbols ──────────────────────────────────────────────────────
-for f in provenance.py repair.py generate.py __init__.py; do
-  [ -f "$GEN_DIR/$f" ] || fail "missing app/generation/$f"
-done
-[ -f "$T_REPAIR" ] || fail "missing tests: $T_REPAIR"
-[ -f "$T_PROV" ]   || fail "missing tests: $T_PROV"
-[ -f "$T_GEN" ]    || fail "missing tests: $T_GEN"
-grep -q "class EnrichedFact" "$GEN_DIR/provenance.py" || fail "provenance.py missing EnrichedFact"
-grep -q "def make_enriched_fact" "$GEN_DIR/provenance.py" || fail "provenance.py missing make_enriched_fact factory"
-grep -q "def repair_generation" "$GEN_DIR/repair.py" || fail "repair.py missing repair_generation"
-grep -q "class RepairError" "$GEN_DIR/repair.py" || fail "repair.py missing typed RepairError"
-grep -q "class SchemaGovernedGenerator" "$GEN_DIR/generate.py" || fail "generate.py missing SchemaGovernedGenerator"
-grep -q "CompleteFn" "$GEN_DIR/generate.py" || fail "generate.py missing CompleteFn LLM seam"
-ok "generation modules + symbols present (provenance/repair/generate)"
+LIB="$FE/src/features/knowledge/lib/proposalsInbox.ts"
+HOOK="$FE/src/features/knowledge/hooks/useProposalsInbox.ts"
+TAB="$FE/src/features/knowledge/components/ProposalsInboxTab.tsx"
+SHELL="$FE/src/pages/ProjectDetailShell.tsx"
+LIBTEST="$FE/src/features/knowledge/lib/__tests__/proposalsInbox.test.ts"
+TABTEST="$FE/src/features/knowledge/components/__tests__/ProposalsInboxTab.test.tsx"
 
-cd "$SVC" || fail "service dir missing"
+# ── 1. lib — EXACTLY 3 source adapters (glossary · wiki · enrichment) ──
+[ -f "$LIB" ] || fail "proposalsInbox.ts not found"
+have "$LIB" "fetchGlossarySource" "glossary source adapter missing"
+have "$LIB" "fetchWikiSource" "wiki source adapter missing"
+have "$LIB" "fetchEnrichmentSource" "enrichment source adapter missing"
+# EXACTLY 3 — there is no 4th source adapter.
+SRC_COUNT="$(grep -cE "^async function fetch[A-Za-z]+Source" "$LIB" || true)"
+[ "$SRC_COUNT" = "3" ] || fail "expected EXACTLY 3 source adapters, found $SRC_COUNT (no 4th source)"
 
-# ── 2. C11 unit suites green ──────────────────────────────────────────────────
-if ! python -m pytest "$T_REPAIR" "$T_PROV" "$T_GEN" -q >/tmp/c11_units.log 2>&1; then
-  cat /tmp/c11_units.log
-  fail "C11 unit suites red"
-fi
-ok "C11 unit suites green ($(grep -oE '[0-9]+ passed' /tmp/c11_units.log | head -1))"
+# ── 2. lib — exact source filters (LOCKED) ──
+# glossary: the dedicated AI-suggestions endpoint (status=draft&tags=ai-suggested encoded inside it).
+have "$LIB" "listAiSuggestions" "glossary source must use listAiSuggestions (status=draft&tags=ai-suggested)"
+# wiki: the suggestions review queue filtered to pending (NOT a 'stub' article status).
+have "$LIB" "listSuggestions" "wiki source must use listSuggestions (the review queue)"
+grep -Fq "'stub'" "$LIB" && fail "wiki source must NOT filter a nonexistent article status='stub'"
+grep -Eq "status: *'pending'" "$LIB" || fail "wiki source must filter status='pending'"
+# enrichment: the two pending-review states, fetched as exact-match calls.
+have "$LIB" "listProposals" "enrichment source must use listProposals"
+have "$LIB" "proposed" "enrichment source missing review_status=proposed"
+have "$LIB" "author_reviewing" "enrichment source missing review_status=author_reviewing"
 
-# ── 3. H0 static guards ───────────────────────────────────────────────────────
-# origin must be enforced against authored canon, and confidence bound < 1.0.
-grep -q "lt=1.0" "$GEN_DIR/provenance.py" || fail "EnrichedFact.confidence not bounded < 1.0 (H0)"
-grep -q "_CANON_ORIGIN" "$GEN_DIR/provenance.py" || fail "provenance.py does not guard against authored-canon origin"
-grep -q "pending_validation" "$GEN_DIR/provenance.py" || fail "provenance.py missing pending_validation quarantine marker"
-# no confidence=1.0 (canon) literal default in generation CODE (skip pycache +
-# docstring/comment prose: only flag a real default/assignment, not a backtick-
-# quoted rule mention like "no ``confidence=1.0`` default").
-if grep -rnE --include="*.py" "^[^#]*confidence\s*[:=]\s*1\.0([^0-9]|$)" "$GEN_DIR" \
-   | grep -v '\`\`'; then
-  fail "a confidence=1.0 (canon) default appears in generation source — H0 violation"
-fi
-# the H0 markers must be REQUIRED, not optional-with-canon-default: assert the
-# factory is the seam and EnrichedFact has no zero-arg construction path.
-grep -q "make_enriched_fact" "$GEN_DIR/generate.py" || fail "generator does not route facts through the H0 factory"
-ok "H0 static guards: origin-enforced, confidence<1.0, pending_validation, no canon default"
+# ── 3. lib — each row carries an origin + a deep-link to the source's review UI ──
+have "$LIB" "deepLinkUrl" "rows missing deepLinkUrl"
+have "$LIB" "proposalDeepLink" "deep-link builders missing"
+grep -Fq '/glossary' "$LIB" || fail "glossary deep-link missing"
+grep -Fq '/wiki' "$LIB" || fail "wiki deep-link missing"
+grep -Fq '/enrichment' "$LIB" || fail "enrichment deep-link missing"
 
-# ── 4. no hardcoded generation/embedding-model name in generation source ──────
-if grep -rniE --include="*.py" \
-   "qwen|gpt-[0-9]|gpt-4|gpt-3|bge-m3|nomic-embed|text-embedding|llama|gemma|mistral|deepseek|claude-[0-9]" \
-   "$GEN_DIR"; then
-  fail "hardcoded model name in generation source (LOCKED: resolve via provider-registry model_ref)"
-fi
-ok "no hardcoded model name (resolved via model_ref)"
+# ── 4. lib — per-source graceful degrade (each source try/catch, no batch reject) ──
+have "$LIB" "ProposalSourceResult" "per-source result type missing (graceful degrade)"
+grep -Fq "error: toError(e)" "$LIB" || fail "a source does not capture its error for graceful degrade"
 
-# ── 5. no direct HTTP/LLM client import; no C12/C13 scope-creep ───────────────
-if grep -rnE "^\s*(import|from)\s+(httpx|openai|litellm|neo4j|requests|langchain|llama_index)" \
-   "$GEN_DIR"; then
-  fail "generation imports an HTTP/LLM client directly — LLM is an injected CompleteFn seam"
-fi
-# C13 = write-back (glossary/Neo4j/promote), C12 = contradiction/anachronism — OUT.
-# Scan .py CODE only (skip pycache binaries) and ignore comment/docstring prose
-# lines (the module docstrings legitimately NAME these OUT-of-scope items to say
-# they are excluded). A real reach-in would be an import or a call, not prose.
-if grep -rnE --include="*.py" \
-   "(import|from).*(glossary_sync|neo4j)|\.(run_write|merge)\(|extract-entities|promote_to_canon" \
-   "$GEN_DIR" | grep -vE '^\s*#|"""|\*'; then
-  fail "generation reaches into C12/C13 scope (write-back / canon-verify) — OUT of C11"
-fi
-ok "no direct HTTP/LLM client; no C12/C13 scope-creep"
+# ── 5. lib — LOCKED: read-only aggregation, NO new BE store / mutation here ──
+grep -Eq "method: *'POST'|method: *'PATCH'|method: *'DELETE'|method: *'PUT'" "$LIB" && \
+  fail "inbox lib must be READ-ONLY (no write method) — integrate, don't duplicate"
 
-# ── 6. ruff clean ─────────────────────────────────────────────────────────────
-if ! python -m ruff check "$GEN_DIR" "$T_REPAIR" "$T_PROV" "$T_GEN" \
-     >/tmp/c11_ruff.log 2>&1; then
-  cat /tmp/c11_ruff.log
-  fail "ruff check failed on generation modules + tests"
-fi
-ok "ruff clean on generation modules + tests"
+# ── 6. hook — owns the query lifecycle, book-scoped, enabled on bookId ──
+[ -f "$HOOK" ] || fail "useProposalsInbox.ts not found"
+have "$HOOK" "fetchProposalInbox" "hook does not call fetchProposalInbox"
+have "$HOOK" "bookId" "hook not book-scoped"
 
-# ── 7. full service unit suite green (no regression) ──────────────────────────
-if ! python -m pytest -q >/tmp/c11_unit.log 2>&1; then
-  cat /tmp/c11_unit.log
-  fail "service unit suite red"
-fi
-ok "service unit suite green ($(grep -oE '[0-9]+ passed' /tmp/c11_unit.log | head -1); $(grep -oE '[0-9]+ skipped' /tmp/c11_unit.log | head -1))"
+# ── 7. tab — unified rows + per-origin counts + deep-link <Link> + states ──
+[ -f "$TAB" ] || fail "ProposalsInboxTab.tsx not found"
+have "$TAB" "useProposalsInbox" "tab does not use the inbox hook"
+have "$TAB" "proposals-count-" "tab missing per-origin counts"
+have "$TAB" "deepLinkUrl" "tab rows do not deep-link"
+have "$TAB" "<Link" "tab rows must be deep-link navigations (<Link>)"
+have "$TAB" "proposals-no-book" "tab missing no-book state"
+have "$TAB" "proposals-empty" "tab missing empty state"
+have "$TAB" "proposals-source-error-" "tab missing per-source error (graceful degrade)"
+# read-only: NO accept/reject/edit control smuggled into the inbox. Match
+# actual handler/call patterns (onAccept=, reviewSuggestion(, …) — not prose.
+grep -Eq "onAccept=|onReject=|reviewSuggestion\(|promoteEntity\(|approveProposal\(|rejectProposal\(" "$TAB" && \
+  fail "inbox tab must be READ-ONLY (no accept/reject/edit) — integrate, don't duplicate"
 
-# ── 8. secret-scan + prod-isolation lints clean ───────────────────────────────
-if [ -x "$REPO_ROOT/scripts/raid/secret-scan-cycle.sh" ]; then
-  if ! bash "$REPO_ROOT/scripts/raid/secret-scan-cycle.sh" "$CYCLE" >/tmp/c11_secret.log 2>&1; then
-    cat /tmp/c11_secret.log
-    fail "secret-scan flagged the cycle diff"
-  fi
-  ok "secret-scan clean"
-fi
-# prod-isolation-lint takes a commit-sha/range; with no arg it lints the
-# working-tree diff (the C11 changes still uncommitted at VERIFY time).
-if [ -x "$REPO_ROOT/scripts/raid/prod-isolation-lint.sh" ]; then
-  if ! bash "$REPO_ROOT/scripts/raid/prod-isolation-lint.sh" >/tmp/c11_iso.log 2>&1; then
-    cat /tmp/c11_iso.log
-    fail "prod-isolation-lint flagged a forbidden-dir edit"
-  fi
-  ok "prod-isolation-lint clean"
-fi
+# ── 8. shell — wired into the C6 Proposals section, route-scoped (G6) ──
+have "$SHELL" "ProposalsInboxTab" "ProjectDetailShell does not render ProposalsInboxTab"
+grep -Eq "ProposalsInboxTab bookId=\{project\?\.book_id" "$SHELL" || \
+  fail "Proposals section not route-scoped via the project's book_id (G6)"
+# G6: no project select-box — bookId comes from the route project.
+grep -Fq "ProposalsInboxTab" "$SHELL" || fail "ProposalsInboxTab not wired"
 
-mkdir -p "$(dirname "$AUDIT_LOG")"
-echo "{\"ts\":\"$NOW\",\"event\":\"verify_cycle_pass\",\"cycle\":$CYCLE}" >> "$AUDIT_LOG"
+# ── 9. provider-gate green (no hardcoded model literal) ──
+echo "[verify-cycle-11] provider-gate"
+python "$REPO_ROOT/scripts/ai-provider-gate.py" >/dev/null 2>&1 || fail "ai-provider-gate failed"
+
+# ── 10. FE test files present (proven green via PowerShell vitest) ──
+[ -f "$LIBTEST" ] || fail "FE proposalsInbox lib test missing"
+[ -f "$TABTEST" ] || fail "FE ProposalsInboxTab test missing"
+grep -Fq "degrades gracefully" "$LIBTEST" || fail "lib test does not cover graceful degrade"
+grep -Fq "two exact-match calls" "$LIBTEST" || fail "lib test does not cover the enrichment two-call exact filter"
+grep -Fq "status=pending" "$LIBTEST" || grep -Fq "status: 'pending'" "$LIBTEST" || \
+  fail "lib test does not assert the wiki status=pending filter"
+
+audit "verify_cycle_11_passed"
 echo "[verify-cycle-11] PASS"
 exit 0

@@ -261,37 +261,58 @@ async def _call_filter_llm(
     string. Raises ValueError on any non-usable outcome so the per-batch
     caller's `except ValueError` marks the batch unjudged instead of
     aborting the whole filter pass (mirrors `llm_judge._call_judge`)."""
-    # Conservative output budget: ~250 tokens per verdict, mirrors
-    # llm_judge calibration for reasoning-token bursts. Tune in BUILD
-    # if filter_coverage shows truncation pattern.
-    max_tokens = 1536 + 256 * max(1, n_items)
     try:
         job = await llm_client.submit_and_wait(
             user_id=user_id,
-            operation="chat",
-            model_source=config.model_source,
-            model_ref=config.model_ref,
-            input={
-                "messages": [
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user},
-                ],
-                "response_format": {"type": "text"},
-                "temperature": 0.0,
-                "max_tokens": max_tokens,
-                # Anti-thinking flag for reasoning-tuned local models;
-                # harmless on plain models.
-                "chat_template_kwargs": {
-                    "thinking": False,
-                    "enable_thinking": False,
-                },
-            },
-            chunking=None,
-            job_meta={"extractor": "pass2_filter"},
             transient_retry_budget=config.transient_retry_budget,
+            **build_filter_submit_kwargs(
+                config=config, system=system, user=user, n_items=n_items,
+            ),
         )
     except Exception as exc:  # noqa: BLE001 — translate to ValueError
         raise ValueError(f"filter LLM call failed: {exc}") from exc
+    return parse_filter_job(job)
+
+
+# ── Decouple seams (LLM re-arch Phase 2b WX-T2b) — see extractors/entity.py ──
+
+
+def build_filter_submit_kwargs(
+    *, config: "PrecisionFilterConfig", system: str, user: str, n_items: int,
+) -> dict:
+    """Pure: submit_and_wait / submit_job kwargs for ONE filter chat batch
+    (user_id + transient_retry_budget stay per-call)."""
+    # Conservative output budget: ~250 tokens per verdict, mirrors
+    # llm_judge calibration for reasoning-token bursts.
+    max_tokens = 1536 + 256 * max(1, n_items)
+    return dict(
+        operation="chat",
+        model_source=config.model_source,
+        model_ref=config.model_ref,
+        input={
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "response_format": {"type": "text"},
+            "temperature": 0.0,
+            "max_tokens": max_tokens,
+            # Anti-thinking flag for reasoning-tuned local models;
+            # harmless on plain models.
+            "chat_template_kwargs": {
+                "thinking": False,
+                "enable_thinking": False,
+            },
+        },
+        chunking=None,
+        job_meta={"extractor": "pass2_filter"},
+    )
+
+
+def parse_filter_job(job) -> str:
+    """Pure: validate the terminal Job + extract the filter content. Raises
+    ValueError on any non-usable outcome so the per-batch caller marks the batch
+    unjudged instead of aborting the whole filter pass."""
     if getattr(job, "status", None) != "completed":
         raise ValueError(
             f"filter job ended status={getattr(job, 'status', '?')}"
@@ -368,20 +389,66 @@ async def _filter_one_category(
             [],
         )
 
+    system, batches = build_filter_category_batches(category, items, text, config)
+
+    verdicts_by_idx: dict[int, VerdictLabel] = {}
+    for user_msg, n_batch, batch_start in batches:
+        try:
+            content = await _call_filter_llm(
+                user_id=user_id,
+                config=config,
+                llm_client=llm_client,
+                system=system,
+                user=user_msg,
+                n_items=n_batch,
+            )
+            local_verdicts = _parse_verdicts(content, n_items=n_batch)
+        except ValueError as exc:
+            logger.warning(
+                "pass2 filter batch failed cat=%s batch=[%d,%d): %s",
+                category, batch_start, batch_start + n_batch, exc,
+            )
+            local_verdicts = {}
+
+        # Map local idx → global idx; record verdicts.
+        for local_idx, v in local_verdicts.items():
+            verdicts_by_idx[batch_start + local_idx] = v
+
+    kept_indices, coverage = compute_filter_kept(
+        category, n_input, verdicts_by_idx, config, on_decision,
+    )
+    return (
+        _CategoryResult(
+            kept_indices=kept_indices, verdicts_by_idx=verdicts_by_idx
+        ),
+        coverage,
+        kept_indices,
+    )
+
+
+# ── Decouple seams (LLM re-arch Phase 2b WX-T2c) ────────────────────────
+# The per-(category, batch) prompt build (prepare) + the kept-set computation
+# (apply) are split out PURE so the decoupled WX-T3 orchestrator can submit each
+# batch as a fire-and-forget job (the filter stage is a fan-out over category ×
+# batch) and apply verdicts on the terminal events — WITHOUT reimplementing the
+# formatter/numbering/policy logic. The synchronous _filter_one_category above
+# calls them, so behaviour is byte-identical.
+
+
+def build_filter_category_batches(
+    category: "Category", items: list, text: str, config: "PrecisionFilterConfig",
+) -> tuple[str, list[tuple[str, int, int]]]:
+    """Pure: (system_prompt, [(user_msg, n_items, batch_start), ...]) for one
+    category. Each batch's numbering is LOCAL (0..n-1); the caller maps back to the
+    global idx via batch_start after parsing."""
     item_dicts = [_pydantic_to_dict(it) for it in items]
     formatter = _FORMATTERS[category]
     formatted_lines = [formatter(d) for d in item_dicts]
-
     system = build_precision_prompt(suppress_thinking=True)
-    partial_resolved = _resolve_partial(config.partial_policy)
-
-    verdicts_by_idx: dict[int, VerdictLabel] = {}
     batch_size = config.max_items_per_batch
-
-    # Build user prompts per batch. Each batch's numbering is LOCAL
-    # (0..batch_size-1); we map back to the global idx after parsing.
-    for batch_start in range(0, n_input, batch_size):
-        batch_end = min(batch_start + batch_size, n_input)
+    out: list[tuple[str, int, int]] = []
+    for batch_start in range(0, len(items), batch_size):
+        batch_end = min(batch_start + batch_size, len(items))
         batch_lines = formatted_lines[batch_start:batch_end]
         numbered = "\n".join(
             f"[{i}] {line}" for i, line in enumerate(batch_lines)
@@ -390,31 +457,17 @@ async def _filter_one_category(
             f"SOURCE TEXT:\n{text}\n\n"
             f"ITEMS (category={category}):\n{numbered}\n"
         )
-        try:
-            content = await _call_filter_llm(
-                user_id=user_id,
-                config=config,
-                llm_client=llm_client,
-                system=system,
-                user=user_msg,
-                n_items=batch_end - batch_start,
-            )
-            local_verdicts = _parse_verdicts(
-                content, n_items=batch_end - batch_start
-            )
-        except ValueError as exc:
-            logger.warning(
-                "pass2 filter batch failed cat=%s batch=[%d,%d): %s",
-                category, batch_start, batch_end, exc,
-            )
-            local_verdicts = {}
+        out.append((user_msg, batch_end - batch_start, batch_start))
+    return system, out
 
-        # Map local idx → global idx; record verdicts.
-        for local_idx, v in local_verdicts.items():
-            global_idx = batch_start + local_idx
-            verdicts_by_idx[global_idx] = v
 
-    # Walk every input item to compute kept set + emit decisions.
+def compute_filter_kept(
+    category: "Category", n_input: int, verdicts_by_idx: dict,
+    config: "PrecisionFilterConfig", on_decision: "DecisionHandler | None",
+) -> tuple[list[int], float]:
+    """Pure (modulo the on_decision callback): walk every input item → kept set +
+    per-item decision emit + coverage. Identical to _filter_one_category's tail."""
+    partial_resolved = _resolve_partial(config.partial_policy)
     kept_indices: list[int] = []
     for idx in range(n_input):
         verdict: VerdictLabel = verdicts_by_idx.get(idx, "unjudged")
@@ -422,25 +475,11 @@ async def _filter_one_category(
             kept_indices.append(idx)
         if on_decision is not None:
             try:
-                on_decision(
-                    FilterDecision(
-                        category=category, idx=idx, verdict=verdict
-                    )
-                )
+                on_decision(FilterDecision(category=category, idx=idx, verdict=verdict))
             except Exception:  # noqa: BLE001 — observability must not poison filter
-                logger.exception(
-                    "on_decision callback raised; continuing filter pass"
-                )
-
+                logger.exception("on_decision callback raised; continuing filter pass")
     coverage = len(verdicts_by_idx) / n_input
-
-    return (
-        _CategoryResult(
-            kept_indices=kept_indices, verdicts_by_idx=verdicts_by_idx
-        ),
-        coverage,
-        kept_indices,
-    )
+    return kept_indices, coverage
 
 
 # ── Public entry point ─────────────────────────────────────────────────

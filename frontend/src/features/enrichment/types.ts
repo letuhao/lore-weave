@@ -237,7 +237,7 @@ export interface ComposeBody {
   intent_text?: string;
   gap_targets?: ComposeTargetInput[];
   technique?: string;
-  max_spend_usd?: number | null;
+  max_spend_tokens?: number | null;
   top_k?: number;
 }
 
@@ -261,6 +261,23 @@ export interface ResolvedIntent {
   dimensions: string[];
   technique: string;
   rationale: string;
+}
+
+/** 202 body for the async compose POSTs (profile/suggest, compose/resolve-intent)
+ *  — LLM re-arch Phase 3 M2. The result is fetched by polling getComposeTask. */
+export interface ComposeTaskAccepted {
+  task_id: string;
+  status: 'pending';
+  enqueued?: 'ok' | 'retriggerable';
+}
+
+/** GET /compose-tasks/{id} — the polled task state + its terminal result/error. */
+export interface ComposeTask {
+  task_id: string;
+  kind: 'profile_suggest' | 'intent_resolve';
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  result: ResolvedIntent | SuggestedProfile | null;
+  error: string | null;
 }
 
 /** POST /compose result — async 202 + job_id. */

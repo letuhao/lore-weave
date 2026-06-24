@@ -18,6 +18,7 @@ from app.db.migrate import run_migrations
 from app.db.neo4j import close_neo4j_driver, get_neo4j_driver, init_neo4j_driver
 from app.db.neo4j_schema import run_neo4j_schema
 from app.db.pool import close_pools, create_pools, get_knowledge_pool
+from app.db.seed_graph_schemas import seed_system_graph_schemas
 from app.logging_config import setup_logging, trace_id_var
 from app.middleware.trace_id import TraceIdMiddleware
 from app.routers import (
@@ -29,18 +30,20 @@ from app.routers import (
     internal_canon,
     internal_benchmark,
     internal_dispatch,
+    internal_job_control,
     internal_enrichment,
     internal_extraction,
     internal_parse,
     internal_summarize,
     internal_timeline,
-    internal_tools,
     internal_wiki,
     metrics,
     ping,
+    working_memory,
 )
 from app.routers.public import costs as public_costs
 from app.routers.public import drawers as public_drawers
+from app.routers.public import labels as public_labels
 from app.routers.public import raw_search as public_raw_search
 from app.routers.public import entities as public_entities
 from app.routers.public import extraction as public_extraction
@@ -53,10 +56,20 @@ from app.routers.public import summaries as public_summaries
 from app.routers.public.summaries import close_cooldown_client
 from app.routers.public import timeline as public_timeline
 from app.routers.public import user_data as public_user_data
+# KG customizable-ontology epic (L1) — empty router stubs pre-registered here
+# so lanes LC/LD/LH add handlers in their own files without touching main.py.
+from app.routers.public import ontology as public_ontology
+from app.routers.public import graph_views as public_graph_views
+from app.routers.public import triage as public_triage
+from app.routers.public import kg_actions as public_kg_actions
 # ARCH-1 C1 — MCP server facade. build_mcp_app() returns the ASGI app
 # mounted at /mcp; mcp_server's StreamableHTTP session manager is run
 # inside the lifespan below.
 from app.mcp.server import build_mcp_app, mcp_server
+# KM5-M3 — the System-tier admin MCP server, a PHYSICALLY separate endpoint
+# (/mcp/admin) RS256-gated at the transport before tools/list (INV-T6). Its
+# session manager is run alongside mcp_server in the lifespan below.
+from app.mcp.admin_server import build_admin_mcp_app, mcp_admin_server
 
 logger = logging.getLogger(__name__)
 
@@ -101,12 +114,20 @@ async def lifespan(app: FastAPI):
         # Fail-fast: if either pool cannot be created, raise and stop startup.
         await create_pools(settings.knowledge_db_url, settings.glossary_db_url)
         await run_migrations(get_knowledge_pool())
+        # KG ontology epic (L1) — seed the System graph-schema templates
+        # (general + xianxia-harem). Idempotent + hash-gated; additive (no
+        # project reads these until it adopts → zero behavior change).
+        await seed_system_graph_schemas(get_knowledge_pool())
         # Long-lived httpx client for glossary-service calls (K4b).
         init_glossary_client()
         # K16.2 — long-lived httpx client for book-service chapter counts.
         get_book_client()
         # E0-3 — long-lived httpx client for the book-service grant authority.
         get_grant_client()
+        # D-GRANT-INSTANT-REVOKE — tail book-service grant revokes (Redis) → drop the
+        # cached grant on the spot (vs the 45s TTL). Best-effort; no redis → TTL only.
+        if settings.redis_url:
+            get_grant_client().start_revoke_consumer(settings.redis_url)
         # K12.2 — long-lived httpx client for embedding calls.
         get_embedding_client()
         # loreweave_llm SDK wrapper for unified-gateway LLM calls. Touched
@@ -208,10 +229,14 @@ async def lifespan(app: FastAPI):
             handle_chapter_deleted,
             handle_glossary_entity_updated,
             handle_glossary_entity_merged,
+            handle_translation_published,
         )
 
         dispatcher = EventDispatcher()
         dispatcher.register("chat.turn_completed", handle_chat_turn)
+        # KG-ML M2 — a chapter's translation became active → dual-index its vi
+        # passages (index-only; never re-extracts Layer 1).
+        dispatcher.register("translation.published", handle_translation_published)
         # Canon Model CM3c: canon = published. BOTH graph extraction AND L3
         # passage-ingest now trigger on chapter.published (at the pinned
         # revision), never chapter.saved — so unreviewed draft prose never
@@ -336,20 +361,25 @@ async def lifespan(app: FastAPI):
                 exc_info=True,
             )
 
-    # wiki-llm M6 — wiki-gen stream consumer (flag-gated OFF by default: it
-    # spends tokens, so a deploy never auto-starts generating). Cancel-driven
-    # shutdown like the other background loops.
+    # wiki-llm M6 — wiki-gen stream consumer. ALWAYS started (D-JOURNEY-WIKI-FLAG):
+    # the consumer is idle/free until a job arrives — it does NOT spend by running,
+    # it only blocks on the Redis stream. Spend is bounded where it belongs: per
+    # REQUEST (the user-triggered, cost-gated kg_build_wiki confirm + the job's
+    # max_spend_usd). The old `wiki_gen_enabled` env gated the CONSUMER, so off-by-
+    # default a deploy accepted wiki-gen jobs (202) and then silently pended them
+    # forever — a dead-end with no signal. An ops kill-switch, if ever needed,
+    # belongs on the TRIGGER endpoint (fail loud), never on the consumer.
+    # Cancel-driven shutdown like the other background loops.
     wiki_gen_task = None
-    if settings.wiki_gen_enabled:
-        try:
-            from app.jobs.wiki_gen_processor import run_wiki_gen_consumer
-            wiki_gen_task = asyncio.create_task(run_wiki_gen_consumer())
-            logger.info("wiki-llm M6: wiki-gen consumer started as background task")
-        except Exception:
-            logger.warning(
-                "wiki-llm M6: wiki-gen consumer failed to start (non-fatal)",
-                exc_info=True,
-            )
+    try:
+        from app.jobs.wiki_gen_processor import run_wiki_gen_consumer
+        wiki_gen_task = asyncio.create_task(run_wiki_gen_consumer())
+        logger.info("wiki-llm M6: wiki-gen consumer started as background task")
+    except Exception:
+        logger.warning(
+            "wiki-llm M6: wiki-gen consumer failed to start (non-fatal)",
+            exc_info=True,
+        )
 
     # C14a — reconcile-evidence-count + quarantine-cleanup schedulers.
     # Both wrap existing per-user/global Neo4j functions (K11.9 + K15.10)
@@ -456,7 +486,10 @@ async def lifespan(app: FastAPI):
     try:
         mcp_exit_stack = AsyncExitStack()
         await mcp_exit_stack.enter_async_context(mcp_server.session_manager.run())
-        logger.info("ARCH-1 C1: MCP session manager started; /mcp facade live")
+        # KM5-M3 — the /mcp/admin session manager runs in the SAME exit stack so
+        # both stop together at shutdown. Its surface is RS256-gated at transport.
+        await mcp_exit_stack.enter_async_context(mcp_admin_server.session_manager.run())
+        logger.info("ARCH-1 C1 + KM5-M3: MCP session managers started; /mcp + /mcp/admin live")
     except Exception:
         logger.warning(
             "ARCH-1 C1: MCP session manager failed to start (non-fatal) — "
@@ -677,23 +710,25 @@ app.include_router(health.router)
 app.include_router(ping.public_router)
 app.include_router(ping.internal_router)
 app.include_router(context.router)
+app.include_router(working_memory.router)
 app.include_router(coref.router)
 app.include_router(internal_admin.router)
 app.include_router(internal_backfill.router)
 app.include_router(internal_canon.router)
 app.include_router(internal_benchmark.router)
 app.include_router(internal_dispatch.router)
+app.include_router(internal_job_control.router)
 app.include_router(internal_enrichment.router)
 app.include_router(internal_extraction.router)
 app.include_router(internal_parse.router)
 app.include_router(internal_summarize.router)
 app.include_router(internal_timeline.router)
-app.include_router(internal_tools.router)
 app.include_router(internal_wiki.router)
 app.include_router(metrics.router)
 app.include_router(public_costs.router)
 app.include_router(public_drawers.router)
 app.include_router(public_raw_search.router)
+app.include_router(public_labels.router)
 app.include_router(public_entities.router)
 app.include_router(public_entities.entities_router)
 app.include_router(public_relations.relations_router)
@@ -706,8 +741,22 @@ app.include_router(public_projects.router)
 app.include_router(public_summaries.router)
 app.include_router(public_timeline.timeline_router)
 app.include_router(public_user_data.router)
+# KG ontology epic (L1) — empty stubs; lanes LC/LD/LH fill the handlers.
+app.include_router(public_ontology.router)
+app.include_router(public_graph_views.router)
+app.include_router(public_triage.router)
+# KM6 — class-C confirm-token machinery (generalized preview/confirm spine).
+app.include_router(public_kg_actions.router)
 
-# ARCH-1 C1 — MCP server facade. Dual-run: /internal/tools/* retained.
+# KM5-M3 — the System-tier admin MCP server. MOUNTED BEFORE "/mcp" because
+# Starlette matches mounts by prefix in registration order: "/mcp" would also
+# match "/mcp/admin", so the more-specific admin prefix must be registered first.
+# RS256-gated at the transport (build_admin_mcp_app) before tools/list, so the
+# admin surface cannot be enumerated without a verified X-Admin-Token (INV-T6).
+app.mount("/mcp/admin", build_admin_mcp_app())
+
+# ARCH-1 C1 — MCP server facade. (KM0, 2026-06-20: the legacy dual-run
+# /internal/tools/* HTTP path was retired — MCP is the sole tool transport.)
 # Streamable HTTP transport; auth via X-Internal-Token is checked inside
 # each tool handler's _build_tool_context(). build_mcp_app() returns the
 # Starlette ASGI app synchronously; mounted AFTER all routers so FastAPI

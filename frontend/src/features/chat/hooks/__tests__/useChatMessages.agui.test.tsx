@@ -180,7 +180,7 @@ describe('useChatMessages — AG-UI protocol', () => {
     // call between them does not interrupt the single text message)
     expect(assistant!.content).toBe('One sec. Kai is a knight.');
     expect(assistant!.content_parts?.reasoning).toBe('Let me look. ');
-    expect(assistant!.tool_calls).toEqual([{ tool: 'memory_search', ok: true }]);
+    expect(assistant!.tool_calls).toEqual([expect.objectContaining({ tool: 'memory_search', ok: true })]);
     expect(assistant!.output_tokens).toBe(9);
   });
 

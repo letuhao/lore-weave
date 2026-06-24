@@ -14,21 +14,23 @@ import (
 )
 
 // fakePricer maps a model_ref UUID → its (pricing, found). A nil entry value
-// means "found but empty pricing" (drives the unpriced path).
+// means "found but empty pricing" (drives the unpriced path). `kindByRef`
+// supplies the provider_kind echoed for the cloud/local badge.
 type fakePricer struct {
-	byRef map[uuid.UUID]billing.Pricing
-	known map[uuid.UUID]bool
-	err   error // when set, every lookup returns this (infra-error path)
+	byRef     map[uuid.UUID]billing.Pricing
+	known     map[uuid.UUID]bool
+	kindByRef map[uuid.UUID]string
+	err       error // when set, every lookup returns this (infra-error path)
 }
 
-func (f fakePricer) ModelPricing(_ context.Context, _ string, _ uuid.UUID, ref uuid.UUID) (billing.Pricing, bool, error) {
+func (f fakePricer) EstimateModelInfo(_ context.Context, _ string, _ uuid.UUID, ref uuid.UUID) (billing.Pricing, string, bool, error) {
 	if f.err != nil {
-		return billing.Pricing{}, false, f.err
+		return billing.Pricing{}, "", false, f.err
 	}
 	if !f.known[ref] {
-		return billing.Pricing{}, false, nil
+		return billing.Pricing{}, "", false, nil
 	}
-	return f.byRef[ref], true, nil
+	return f.byRef[ref], f.kindByRef[ref], true, nil
 }
 
 func TestEstimateItems_PricedTextAndEmbedding(t *testing.T) {
@@ -42,6 +44,8 @@ func TestEstimateItems_PricedTextAndEmbedding(t *testing.T) {
 			// $0.10/Mtok in (embedding, input-only).
 			embRef: {InputPerMTok: ptr(0.10)},
 		},
+		// translation runs on a cloud kind, embedding on a local (self-hosted) one.
+		kindByRef: map[uuid.UUID]string{textRef: "openai", embRef: "lm_studio"},
 	}
 	items := []estimateItem{
 		{Label: "translation", ModelSource: "user_model", ModelRef: textRef.String(), Dimension: "text", InputTokens: 1_000_000, OutputTokens: 1_000_000},
@@ -61,6 +65,13 @@ func TestEstimateItems_PricedTextAndEmbedding(t *testing.T) {
 	// embedding input-only: 1M × $0.10/M = $0.10; output dimension ignored even though absent.
 	if out[1].Status != estStatusOK || out[1].EstimatedUSD != 0.10 {
 		t.Fatalf("embedding: got %+v want ok/$0.10", out[1])
+	}
+	// D-FACTORY-EST-PROVIDER-KIND: provider_kind echoed + is_local classified.
+	if out[0].ProviderKind != "openai" || out[0].IsLocal {
+		t.Fatalf("translation kind: got %q/local=%v want openai/cloud", out[0].ProviderKind, out[0].IsLocal)
+	}
+	if out[1].ProviderKind != "lm_studio" || !out[1].IsLocal {
+		t.Fatalf("embedding kind: got %q/local=%v want lm_studio/local", out[1].ProviderKind, out[1].IsLocal)
 	}
 }
 

@@ -11,6 +11,8 @@ import (
 	"net/http/httptest"
 	"sort"
 	"testing"
+
+	"github.com/google/uuid"
 )
 
 // ── unit tests (no DB) ──────────────────────────────────────────────
@@ -102,20 +104,13 @@ func TestListEntities_CursorWalk(t *testing.T) {
 	runK2aMigrations(t, pool)
 
 	bookID := "00000000-0000-0000-0001-000000000c12"
+	bid := uuid.MustParse(bookID)
+	adoptTestBook(t, pool, bid)
 
-	// Look up 'character' kind + its name/aliases attrs.
-	var kindID, nameAttrID, aliasesAttrID string
-	pool.QueryRow(ctx,
-		`SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`,
-	).Scan(&kindID)
-	pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`,
-		kindID,
-	).Scan(&nameAttrID)
-	pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='aliases' LIMIT 1`,
-		kindID,
-	).Scan(&aliasesAttrID)
+	// Look up 'character' kind + its name/aliases attrs (book tier).
+	kindID := bookKindID(t, pool, bid, "character")
+	nameAttrID := bookAttrID(t, pool, bid, kindID, "name")
+	aliasesAttrID := bookAttrID(t, pool, bid, kindID, "aliases")
 
 	// D-GLOSSARY-LISTENTITIES-TEST-STATE: seed short_description into the AUTHORED
 	// COLUMN (glossary_entities.short_description), which the handler reads first via
@@ -130,7 +125,7 @@ func TestListEntities_CursorWalk(t *testing.T) {
 		pool.QueryRow(ctx,
 			`INSERT INTO glossary_entities(book_id,kind_id,status,tags,short_description)
 			 VALUES($1,$2,'active','{}',$3) RETURNING entity_id`,
-			bookID, kindID, nullIfEmpty(shortDesc),
+			bid, kindID, nullIfEmpty(shortDesc),
 		).Scan(&eid)
 		pool.Exec(ctx,
 			`INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value)
@@ -278,22 +273,18 @@ func TestListEntities_NameFilterDoesNotBreakPagination(t *testing.T) {
 	// → parsePathUUID rejected it with 400 "invalid book_id" before the pagination
 	// logic ever ran. Use a well-formed UUID (distinct from CursorWalk's book).
 	bookID := "00000000-0000-0000-0002-00000000c12c"
+	bid := uuid.MustParse(bookID)
+	adoptTestBook(t, pool, bid)
 
-	var kindID, nameAttrID string
-	pool.QueryRow(ctx,
-		`SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`,
-	).Scan(&kindID)
-	pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`,
-		kindID,
-	).Scan(&nameAttrID)
+	kindID := bookKindID(t, pool, bid, "character")
+	nameAttrID := bookAttrID(t, pool, bid, kindID, "name")
 
 	seed := func(name string) string {
 		var eid string
 		pool.QueryRow(ctx,
 			`INSERT INTO glossary_entities(book_id,kind_id,status,tags)
 			 VALUES($1,$2,'active','{}') RETURNING entity_id`,
-			bookID, kindID,
+			bid, kindID,
 		).Scan(&eid)
 		if name != "" {
 			pool.Exec(ctx,
@@ -394,20 +385,27 @@ func TestListEntities_PrefersAuthoredColumnOverEAV(t *testing.T) {
 	runK2aMigrations(t, pool)
 
 	bookID := "00000000-0000-0000-0001-0000000c12d0"
+	bid := uuid.MustParse(bookID)
+	adoptTestBook(t, pool, bid)
 
-	var kindID, nameAttrID, shortAttrID string
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
-	pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`,
-		kindID).Scan(&nameAttrID)
-	_ = pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='short_description' LIMIT 1`,
-		kindID).Scan(&shortAttrID)
+	kindID := bookKindID(t, pool, bid, "character")
+	nameAttrID := bookAttrID(t, pool, bid, kindID, "name")
+	// short_description is NOT a seeded system attribute (it's an authored COLUMN), so
+	// adopt does not copy one into the book tier. Create the book-tier attr under the
+	// universal genre if absent (mirrors the original system-tier fallback), so the
+	// (functionally inert) EAV value below has a valid book_attributes FK target.
+	var shortAttrID string
+	_ = pool.QueryRow(ctx, `
+		SELECT ba.attr_id FROM book_attributes ba
+		JOIN book_genres g ON g.genre_id = ba.genre_id
+		WHERE ba.book_id=$1 AND ba.kind_id=$2 AND ba.code='short_description'
+		ORDER BY (g.code='universal') DESC LIMIT 1`, bid, kindID).Scan(&shortAttrID)
 	if shortAttrID == "" {
-		pool.QueryRow(ctx,
-			`INSERT INTO attribute_definitions(kind_id,code,label,ui_type,sort_order,max_values)
-			 VALUES($1,'short_description','Short description','text',99,1)
-			 RETURNING attr_def_id`, kindID).Scan(&shortAttrID)
+		pool.QueryRow(ctx, `
+			INSERT INTO book_attributes(book_id,kind_id,genre_id,code,name,field_type,sort_order)
+			SELECT $1,$2,g.genre_id,'short_description','Short description','text',99
+			FROM book_genres g WHERE g.book_id=$1 AND g.code='universal'
+			RETURNING attr_id`, bid, kindID).Scan(&shortAttrID)
 	}
 
 	// Seed: (1) both COLUMN + EAV value — column must win; (2) only EAV — fallback;
@@ -417,7 +415,7 @@ func TestListEntities_PrefersAuthoredColumnOverEAV(t *testing.T) {
 		pool.QueryRow(ctx,
 			`INSERT INTO glossary_entities(book_id,kind_id,status,tags,short_description)
 			 VALUES($1,$2,'active','{}',$3) RETURNING entity_id`,
-			bookID, kindID, nullIfEmpty(colDesc)).Scan(&eid)
+			bid, kindID, nullIfEmpty(colDesc)).Scan(&eid)
 		pool.Exec(ctx,
 			`INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value)
 			 VALUES($1,$2,'en',$3)`, eid, nameAttrID, name)

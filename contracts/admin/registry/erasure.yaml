@@ -1,0 +1,55 @@
+# L7.A erasure + PII admin commands — RAID cycle 36 DPS 2.
+#
+# Per-domain registry per Q-L7A-1. Schema documented in reality.yaml header.
+#
+# Erasure/PII commands are EXTRA-SENSITIVE:
+#   * All Tier-1 destructive (cannot be undone).
+#   * All require --dry-run before --confirm.
+#   * Double approval required (Tier-1).
+#   * user-erasure carries §12X.6 GDPR right-to-be-forgotten flow.
+
+domain: erasure
+commands:
+  - name: erasure user-erasure
+    version: "1.0.0"
+    summary: "Full GDPR Art.17 right-to-be-forgotten flow (§12X.6 runbook)."
+    handler: erasureUserErasure
+    params:
+      - {name: user_ref_id, type: uuid,   required: true, description: "Target user reference UUID"}
+      - {name: ticket_id,   type: string, required: true, description: "GDPR ticket / DPO authorization ref"}
+      - {name: reason,      type: string, required: true, description: "Audit explanation (must reference ticket)"}
+      - {name: legal_basis, type: string, required: true, description: "S08 §12X.6 step 1: self_request | court_order | dpa_approved"}
+    impact_class: tier-1-destructive
+    dry_run_required: true
+    double_approval_required: true
+    carry_forward_cycle: "36"
+    locked_qs_consumed: [Q-L7A-1, Q-L7A-2, Q-S08-4]
+
+  - name: erasure kek-rotate
+    version: "1.0.0"
+    summary: "Rotate per-user KEK (cryptographic erasure path)."
+    handler: erasureKekRotate
+    params:
+      - {name: user_ref_id, type: uuid,   required: true,  description: "Target user reference UUID"}
+      - {name: reason,      type: string, required: true,  description: "Audit explanation"}
+      - {name: destroy,     type: bool,   required: false, description: "If true, destroy old KEK after rotate (default false = retain for grace period)"}
+    impact_class: tier-1-destructive
+    dry_run_required: true
+    double_approval_required: true
+    carry_forward_cycle: "36"
+    locked_qs_consumed: [Q-L7A-1, Q-L7A-2]
+
+  - name: erasure pii-export
+    version: "1.0.0"
+    summary: "GDPR Art.15 right-to-access — export all PII for a user as a signed blob."
+    handler: erasurePIIExport
+    params:
+      - {name: user_ref_id, type: uuid,   required: true,  description: "Target user reference UUID"}
+      - {name: ticket_id,   type: string, required: true,  description: "GDPR ticket reference"}
+      - {name: out_path,    type: path,   required: false, description: "Destination path (default stdout)"}
+    impact_class: tier-3-informational
+    dry_run_required: false
+    double_approval_required: false
+    carry_forward_cycle: "36"
+    locked_qs_consumed: [Q-L7A-1, Q-L7A-2]
+

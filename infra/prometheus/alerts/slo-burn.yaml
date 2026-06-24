@@ -1,0 +1,246 @@
+# infra/prometheus/alerts/slo-burn.yaml — L7.I.6 (RAID cycle 34)
+#
+# 4-tier burn-rate alert ladder per SR1 §12AD.4. Each alert maps to a PR
+# label in scripts/feature-freeze-enforcer.sh:
+#
+#   < 50%   normal       — no alert
+#   50–75%  warn         — Slack #alerts (severity: warn)
+#   75–90%  page         — PagerDuty (severity: page) + reliability-review-required label
+#   ≥ 90%   page (SEV1)  — PagerDuty SEV1 + approve-reliability-override label + freeze
+#   ≥ 100%  page (SEV0)  — SLO breach; postmortem required (V2+ public statuspage)
+#
+# Routing is consumed by infra/alertmanager/main.yaml (cycle 34 L7.J).
+# Every alert carries:
+#   - severity: page|warn  (alertmanager filter)
+#   - action: pagerduty|slack  (cycle-19 alert envelope `action` field)
+#   - team: sre  (cycle-19 envelope `labels.team`)
+#   - route: pagerduty|slack  (legacy alertmanager router; kept for back-compat
+#                              with cycle-7 alerts)
+#   - sli_ref: <sli_name>  (SR1 §12AD.7: every alert MUST derive from an SLI)
+#   - tier: <free|paid|premium|platform>  (for receiver routing + dashboards)
+#   - correlation_id is set by alertmanager at delivery time (cycle-19 envelope
+#     carries this end-to-end; ALERT EXPRESSION CANNOT — Prom can only fill
+#     labels at evaluation time, not request-scoped IDs)
+
+groups:
+  # ────────────────────────────────────────────────────────────────────
+  # WARN ladder (50–75% burn) — Slack only
+  # ────────────────────────────────────────────────────────────────────
+  - name: lw_slo_burn_warn
+    rules:
+      - alert: LWSLOBurnWarnSessionAvailability
+        # Burn-rate proxy: 1h ratio compared to 30d target.
+        # If 1h ratio is significantly below target, burn is elevated.
+        # Threshold mapped to ~50-75% budget burn over the window.
+        expr: |
+          (1 - lw:sli_session_availability:ratio_1h) > 2 * (1 - 0.99) and
+          (1 - lw:sli_session_availability:ratio_1h) <= 5 * (1 - 0.99)
+        for: 15m
+        labels:
+          severity: warn
+          team: sre
+          route: slack
+          action: slack
+          sli_ref: sli_session_availability
+        annotations:
+          summary: 'SLO burn 50–75% — sli_session_availability ({{ $labels.tier }})'
+          description: |
+            sli_session_availability for tier={{ $labels.tier }} burning at
+            elevated rate. 1h failure ratio = {{ $value }} (threshold = 2× target error budget).
+            Engineering review at next standup.
+          runbook: runbooks/slo/burn-rate-spike.md
+          dashboard: 'https://grafana.local/d/slo-burn-rate?var-sli=sli_session_availability&var-tier={{ $labels.tier }}'
+          derivation_rule: '(1 - sli_1h_ratio) > 2 × (1 - target); SR1 §12AD.7'
+
+      - alert: LWSLOBurnWarnTurnCompletion
+        expr: |
+          (1 - lw:sli_turn_completion:ratio_1h) > 2 * (1 - 0.99) and
+          (1 - lw:sli_turn_completion:ratio_1h) <= 5 * (1 - 0.99)
+        for: 15m
+        labels:
+          severity: warn
+          team: platform
+          route: slack
+          action: slack
+          sli_ref: sli_turn_completion
+        annotations:
+          summary: 'SLO burn 50–75% — sli_turn_completion ({{ $labels.tier }})'
+          description: 'Turn completion ratio below 2× target — feature work flagged for review.'
+          runbook: runbooks/slo/burn-rate-spike.md
+          dashboard: 'https://grafana.local/d/slo-burn-rate?var-sli=sli_turn_completion'
+          derivation_rule: '(1 - sli_1h_ratio) > 2 × (1 - target)'
+
+      - alert: LWSLOBurnWarnEventDelivery
+        expr: |
+          (1 - lw:sli_event_delivery:ratio_1h) > 2 * (1 - 0.99) and
+          (1 - lw:sli_event_delivery:ratio_1h) <= 5 * (1 - 0.99)
+        for: 15m
+        labels:
+          severity: warn
+          team: sre
+          route: slack
+          action: slack
+          sli_ref: sli_event_delivery
+        annotations:
+          summary: 'SLO burn 50–75% — sli_event_delivery ({{ $labels.tier }})'
+          description: 'WS event delivery 1h ratio below 2× target.'
+          runbook: runbooks/slo/burn-rate-spike.md
+          dashboard: 'https://grafana.local/d/slo-burn-rate?var-sli=sli_event_delivery'
+          derivation_rule: '(1 - sli_1h_ratio) > 2 × (1 - target)'
+
+  # ────────────────────────────────────────────────────────────────────
+  # PAGE ladder (75–90% burn) — PagerDuty + reliability-review-required
+  # ────────────────────────────────────────────────────────────────────
+  - name: lw_slo_burn_page
+    rules:
+      - alert: LWSLOBurnPageSessionAvailability
+        expr: |
+          (1 - lw:sli_session_availability:ratio_1h) > 5 * (1 - 0.99) and
+          (1 - lw:sli_session_availability:ratio_1h) <= 10 * (1 - 0.99)
+        for: 5m
+        labels:
+          severity: page
+          team: sre
+          route: pagerduty
+          action: pagerduty
+          sli_ref: sli_session_availability
+          pr_label: reliability-review-required
+        annotations:
+          summary: 'SLO burn 75–90% — sli_session_availability ({{ $labels.tier }})'
+          description: |
+            Burn rate elevated. Feature PRs require reliability-review-required label.
+            See runbook for triage path.
+          runbook: runbooks/slo/burn-rate-spike.md
+          dashboard: 'https://grafana.local/d/slo-burn-rate?var-sli=sli_session_availability'
+          derivation_rule: '(1 - sli_1h_ratio) > 5 × (1 - target)'
+
+      - alert: LWSLOBurnPageTurnCompletion
+        expr: |
+          (1 - lw:sli_turn_completion:ratio_1h) > 5 * (1 - 0.99) and
+          (1 - lw:sli_turn_completion:ratio_1h) <= 10 * (1 - 0.99)
+        for: 5m
+        labels:
+          severity: page
+          team: platform
+          route: pagerduty
+          action: pagerduty
+          sli_ref: sli_turn_completion
+          pr_label: reliability-review-required
+        annotations:
+          summary: 'SLO burn 75–90% — sli_turn_completion ({{ $labels.tier }})'
+          description: 'Turn completion sustained below 5× target failure.'
+          runbook: runbooks/slo/burn-rate-spike.md
+          dashboard: 'https://grafana.local/d/slo-burn-rate?var-sli=sli_turn_completion'
+          derivation_rule: '(1 - sli_1h_ratio) > 5 × (1 - target)'
+
+  # ────────────────────────────────────────────────────────────────────
+  # SEV1 ladder (≥ 90% burn) — feature freeze
+  # ────────────────────────────────────────────────────────────────────
+  - name: lw_slo_burn_freeze
+    rules:
+      - alert: LWSLOBurnFreezeSessionAvailability
+        expr: |
+          (1 - lw:sli_session_availability:ratio_1h) > 10 * (1 - 0.99) and
+          (1 - lw:sli_session_availability:ratio_1h) <= 14.4 * (1 - 0.99)
+        for: 5m
+        labels:
+          severity: page
+          team: sre
+          route: pagerduty
+          action: pagerduty
+          sli_ref: sli_session_availability
+          pr_label: approve-reliability-override
+          sev: '1'
+        annotations:
+          summary: 'SLO FREEZE — sli_session_availability ({{ $labels.tier }})'
+          description: |
+            Burn ≥ 90%. Feature freeze active. PRs require approve-reliability-override
+            label + tech-lead approval per SR1 §12AD.4.
+          runbook: runbooks/slo/burn-rate-spike.md
+          dashboard: 'https://grafana.local/d/slo-burn-rate?var-sli=sli_session_availability'
+          derivation_rule: '(1 - sli_1h_ratio) > 10 × (1 - target)'
+
+      - alert: LWSLOBurnFreezeAuthSuccess
+        expr: |
+          (1 - lw:sli_auth_success:ratio_1h) > 10 * (1 - 0.999) and
+          (1 - lw:sli_auth_success:ratio_1h) <= 14.4 * (1 - 0.999)
+        for: 5m
+        labels:
+          severity: page
+          team: sre
+          route: pagerduty
+          action: pagerduty
+          sli_ref: sli_auth_success
+          pr_label: approve-reliability-override
+          sev: '1'
+        annotations:
+          summary: 'SLO FREEZE — sli_auth_success'
+          description: |
+            Auth SLO (99.9%) burning at ≥ 10× target failure rate.
+            Auth is foundational — investigate immediately.
+          runbook: runbooks/slo/burn-rate-spike.md
+          dashboard: 'https://grafana.local/d/slo-burn-rate?var-sli=sli_auth_success'
+          derivation_rule: '(1 - sli_1h_ratio) > 10 × (1 - target)'
+
+  # ────────────────────────────────────────────────────────────────────
+  # SEV0 ladder (≥ 100% burn = budget exhausted) — postmortem mandatory
+  # ────────────────────────────────────────────────────────────────────
+  - name: lw_slo_burn_breach
+    rules:
+      - alert: LWSLOBreachSessionAvailability
+        expr: |
+          (1 - lw:sli_session_availability:ratio_1h) > 14.4 * (1 - 0.99)
+        for: 2m
+        labels:
+          severity: page
+          team: sre
+          route: pagerduty
+          action: pagerduty
+          sli_ref: sli_session_availability
+          pr_label: slo-breach-postmortem
+          sev: '0'
+        annotations:
+          summary: 'SLO BREACH — sli_session_availability ({{ $labels.tier }})'
+          description: |
+            Burn-rate over 14.4× target. Budget exhausted.
+            Postmortem MANDATORY (SR1 §12AD.4). Public statuspage update at V2+.
+          runbook: runbooks/slo/burn-rate-spike.md
+          dashboard: 'https://grafana.local/d/slo-burn-rate?var-sli=sli_session_availability'
+          derivation_rule: '(1 - sli_1h_ratio) > 14.4 × (1 - target)'
+
+  # ────────────────────────────────────────────────────────────────────
+  # Multi-tenant isolation (SR1 §12AD.5) — noisy-neighbor detection
+  # ────────────────────────────────────────────────────────────────────
+  - name: lw_slo_multi_tenant_isolation
+    rules:
+      - alert: LWMultiTenantIsolationViolation
+        expr: |
+          (
+            lw_reality_resource_usage_ratio{resource="postgres_conn_pool"} > 0.10
+          )
+          and on (reality_id, resource)
+          (
+            stddev_over_time(lw_reality_resource_usage_ratio{resource="postgres_conn_pool"}[1h])
+            > 3 * stddev_over_time(lw_reality_resource_usage_ratio{resource="postgres_conn_pool"}[24h])
+          )
+        for: 10m
+        labels:
+          severity: warn
+          team: sre
+          route: slack
+          action: slack
+          sli_ref: sli_session_availability
+        annotations:
+          summary: 'Multi-tenant isolation violation — reality {{ $labels.reality_id }}'
+          description: |
+            Reality {{ $labels.reality_id }} exceeds 10% of shared resource
+            ({{ $labels.resource }}) AND shows 3σ anomaly vs its 24h baseline.
+            Investigate cross-reality impact per SR1 §12AD.5.
+          runbook: runbooks/slo/multi-tenant-isolation-violation.md
+          derivation_rule: 'usage > 0.10 AND stddev_1h > 3 × stddev_24h (3σ anomaly)'
+
+# ────────────────────────────────────────────────────────────────────
+# Drift guards (for verify-cycle-34.sh)
+# ────────────────────────────────────────────────────────────────────
+# expected_group_count: 5
+# expected_alert_count: 10 (3 warn + 2 page + 2 freeze + 1 breach + 1 multi-tenant + 1 freeze auth)

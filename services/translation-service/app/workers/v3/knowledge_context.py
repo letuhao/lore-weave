@@ -33,6 +33,9 @@ log = logging.getLogger(__name__)
 
 _MAX_ENTITIES = 20
 _FETCH_CONCURRENCY = 8
+# D-TRANSL-M4B-RESIDUALS: per-entity fetch timeout. A single hung neighbourhood
+# fetch must not stall the whole chapter's brief assembly (best-effort enrichment).
+_FETCH_TIMEOUT_S = 5.0
 _TOKEN_BUDGET = 600
 _TRUST_CONFIDENCE = 0.8  # ≥ this and not pending_validation ⇒ stated as fact
 _MAX_RELATIONS_PER_ENTITY = 4
@@ -105,12 +108,29 @@ def _format_entity(entity: ContextEntity, nb: WikiNeighborhood) -> str | None:
 async def _fetch_all_neighborhoods(
     user_id: str, entities: list[ContextEntity], concurrency: int,
 ) -> list[WikiNeighborhood]:
-    """Fetch every entity's neighbourhood in parallel (bounded). Once per chapter."""
+    """Fetch every entity's neighbourhood in parallel (bounded). Once per chapter.
+
+    D-TRANSL-M4B-RESIDUALS: each fetch is timeout-bounded and failure-isolated — a
+    single slow/failing entity degrades to an EMPTY neighbourhood (that entity still
+    contributes its name/bio line) instead of aborting the whole brief. ``except
+    Exception`` deliberately does NOT catch ``asyncio.CancelledError`` (BaseException
+    in 3.8+), so a job cancel still propagates and aborts the fan-out — the "abort"
+    half of this residual. Result list stays index-aligned with ``entities``.
+    """
     sem = asyncio.Semaphore(concurrency)
 
     async def _one(e: ContextEntity) -> WikiNeighborhood:
         async with sem:
-            return await fetch_wiki_neighborhood(user_id, e.entity_id)
+            try:
+                return await asyncio.wait_for(
+                    fetch_wiki_neighborhood(user_id, e.entity_id), _FETCH_TIMEOUT_S,
+                )
+            except Exception as exc:  # noqa: BLE001 — best-effort; cancel still propagates
+                log.debug(
+                    "knowledge_context: neighborhood fetch failed for %s (%s) — empty",
+                    e.entity_id, exc,
+                )
+                return WikiNeighborhood.empty(e.entity_id)
 
     return await asyncio.gather(*(_one(e) for e in entities))
 

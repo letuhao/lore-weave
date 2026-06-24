@@ -43,6 +43,14 @@ class Settings(BaseSettings):
     redis_url: str = "redis://redis:6379"
     notification_service_internal_url: str = "http://notification-service:8091"
     internal_service_token: str
+    # MCP fan-out S-TRANSL (key-split, /review-impl): the confirm-token signing
+    # secret is DEDICATED — distinct from `internal_service_token` (which gates the
+    # X-Internal-Token route/envelope). Splitting the keys means a leak of one does
+    # not forge the other: the envelope token proves "trusted caller", the confirm
+    # secret proves "this exact priced action was proposed". Fail-closed: required,
+    # no default — the service refuses to start unless CONFIRM_TOKEN_SIGNING_SECRET
+    # is set (an unsigned/shared-secret confirm token is a money-path defect).
+    confirm_token_signing_secret: str
     port: int = 8087
     # M7d-3: opt-in feed of source+translated text into the translation.quality
     # event so the M7d-2 online fidelity judge has inputs to score. OFF by default
@@ -53,6 +61,91 @@ class Settings(BaseSettings):
     # event-bus payload — a head-sample is enough for a fidelity judgment.
     translation_judge_feed_enabled: bool = False
     translation_judge_feed_max_chars: int = 2000
+    # LLM re-arch Phase 2b-T2: opt-in event-driven decouple of the v2 TEXT path.
+    # OFF ⇒ the synchronous session_translator path is unchanged. ON ⇒ the worker
+    # submits the first chunk + releases; the llm_terminal_consumer resumes on each
+    # `loreweave:events:llm_job_terminal` and finalizes (so a worker coroutine isn't
+    # pinned for the whole chapter). Block + V3 decouple = 2b-T3 (still synchronous
+    # under this flag for now).
+    translation_decouple_enabled: bool = False
+
+    # Wave 2a (D-2B-SUBMIT-PERSIST-GAP) — stuck-resume sweeper (parity with worker-ai
+    # Wave 1b). A Redis stream gives no redelivery after ack, so a consumer crash/poison,
+    # a lost terminal event, or a submit→persist gap can strand a chapter_translations
+    # row with resume_state set. This periodic loop re-drives any such row idle past the
+    # timeout by re-checking its provider_job_id's terminal status and replaying the
+    # consumer's idempotent resume dispatch. Only runs when the decouple flag is on.
+    translation_resume_sweep_interval_s: int = 60
+    translation_resume_sweep_timeout_s: int = 900
+    translation_resume_sweep_batch: int = 20
+
+    # P5 — fair scheduling (per-tenant WFQ via loreweave_jobs.FairScheduler). OFF by
+    # default: the coordinator publishes chapter messages directly (legacy path) and no
+    # dispatcher runs. ON ⇒ the coordinator ENQUEUEs chapter units into the per-owner
+    # WFQ; the dispatcher loop releases them round-robin (≤ p5_owner_cap in-flight per
+    # owner, ≤ p5_global_budget total) → publishes translation.chapter; the chapter
+    # worker releases the lease on terminal. Stops one owner's giant job from
+    # monopolizing the fleet. Lane = "translation:chapter".
+    p5_sched_enabled: bool = False
+    p5_owner_cap: int = 5
+    # PROV/M3 (D-PROV-MODEL-OFFSET-HINT): when ON, the extraction prompt numbers the
+    # chapter into ⟦B#⟧ blocks and asks the model for an optional `evidence_block` citation.
+    # The worker validates that citation against the real text (a verified cite → 'exact';
+    # a wrong/absent cite falls to the existing authoritative search → resolved/ambiguous/
+    # unmatched, exactly today's behavior). Default OFF — numbering the prompt is a broad
+    # change to live extraction input; enable per-deployment once a competent model is in use.
+    extraction_evidence_block_hints: bool = False
+    p5_global_budget: int = 0  # 0 ⇒ unlimited (per-owner cap is then the only limit)
+    p5_lease_ttl_ms: int = 3_600_000  # crash-leak backstop; must exceed a chapter's runtime
+    p5_dispatch_interval_s: float = 0.5  # dispatcher tick (latency to first dispatch)
+    p5_reclaim_interval_s: int = 60  # periodic expired-lease self-heal
+
+    # ── MCP fan-out S-TRANSL: cost-estimate (HIGH#1) + re-price-at-execution (H14) ──
+    # Output:input token ratio for the translation cost projection. A translation's
+    # output is roughly the same length as its source (sometimes a touch longer in
+    # a target language). 1.0 is a faithful neutral projection; tune per deployment
+    # without touching code. NOT a model/price literal (those resolve from
+    # provider-registry) — only a workload shape heuristic, so it does NOT trip the
+    # ai-provider-gate.
+    transl_estimate_output_ratio: float = 1.0
+    # H14 re-price-at-execution thresholds. Before a confirmed Tier-W job actually
+    # runs, re-price the SAME scope; if the fresh estimate exceeds BOTH a relative
+    # AND an absolute floor over the confirmed estimate, refuse and signal a
+    # re-confirm rather than silently overspending. "exceeds est×1.25 OR est+$0.50"
+    # (the design's H14) — i.e. trip when actual > est*mult OR actual > est+abs.
+    transl_reprice_mult: float = 1.25
+    transl_reprice_abs_usd: float = 0.50
+
+    # ── CACHE/M6 raw-output offload (D-RAWCACHE-MINIO-OFFLOAD) ──
+    # OPTIONAL object storage for cold-archiving the bulky verbatim `raw_response`
+    # column out of extraction_raw_outputs. Unlike chat-service (which REQUIRES MinIO),
+    # translation-service only uses it for an opt-in maintenance sweep — so every field
+    # is optional with a dev default, and an EMPTY `minio_secret_key` disables offload
+    # entirely (the service boots fine without object storage; the offload endpoint
+    # reports "not configured" and archives nothing). No hardcoded secret — the default
+    # is blank, set MINIO_SECRET_KEY in the stack to enable.
+    minio_endpoint: str = "minio:9000"
+    minio_access_key: str = "loreweave"
+    minio_secret_key: str = ""  # blank ⇒ offload disabled (no boot dependency on MinIO)
+    minio_bucket: str = "lw-extraction-raw"
+    minio_use_ssl: bool = False
+    minio_external_url: str = ""
+    # Offload sweep default: archive raw_response of rows older than this (the verbatim
+    # text is a debug/provenance artifact, never needed for replay — that uses
+    # parsed_entities — so it can move to cold storage after a short hot window).
+    raw_offload_age_days: int = 7
+    # D-CACHE-MODEL-KEY: the raw-output cache is content-addressed (the model is NOT in the key,
+    # §8.1), so switching the extraction model + re-running an unchanged chapter reuses the prior
+    # model's parse. Default OFF preserves that content-addressed reuse. Turn ON to BUST the cache
+    # on a model change: a hit whose stored model_ref ≠ the resolved model falls through to a live
+    # call (re-extract on a model upgrade). The model is stored on every row, so the buster just
+    # compares it — no cache-key fragmentation (which adding model to the key would cause).
+    extraction_cache_bust_on_model_change: bool = False
+    # D-EXTRACTION-ADMISSION-CONTROL: per-user cap on CONCURRENT extraction jobs (pending|running).
+    # P5 fair-scheduling is translation-chapter-only — it places NO bound on extraction job fan-out,
+    # so without this a user can launch unbounded concurrent jobs, each holding HTTP clients +
+    # contending the glossary per-book advisory lock (pool pressure). 0 ⇒ unlimited (disabled).
+    extraction_max_concurrent_jobs_per_user: int = 3
 
     class Config:
         env_file = ".env"

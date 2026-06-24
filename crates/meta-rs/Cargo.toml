@@ -1,0 +1,22 @@
+[package]
+name = "meta-rs"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Rust hot-path port of contracts/meta (Q-L1B-4) — full MetaWrite + AttemptStateTransition + caching + audit surface."
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+thiserror = { workspace = true }
+serde_yaml = "0.9"
+
+[dev-dependencies]
+tokio = { workspace = true }

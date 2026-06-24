@@ -15,6 +15,10 @@ export type Book = {
   visibility?: Visibility;
   genre_tags: string[];
   lifecycle_state: 'active' | 'trashed' | 'purge_pending';
+  /** W6 (G3) — the world this book is grouped into, or null/undefined when
+   *  standalone. Set on the single-book read; drives the "open in world"
+   *  backlink + the SettingsTab world picker's current value. */
+  world_id?: string | null;
   created_at?: string;
   updated_at?: string;
 };
@@ -116,11 +120,21 @@ export const booksApi = {
   listChapters(
     token: string,
     bookId: string,
-    params?: { lifecycle_state?: string; original_language?: string; sort_order?: number; limit?: number; offset?: number },
+    params?: {
+      lifecycle_state?: string;
+      original_language?: string;
+      editorial_status?: string;
+      q?: string;
+      sort_order?: number;
+      limit?: number;
+      offset?: number;
+    },
   ) {
     const qs = new URLSearchParams();
     if (params?.lifecycle_state) qs.set('lifecycle_state', params.lifecycle_state);
     if (params?.original_language) qs.set('original_language', params.original_language);
+    if (params?.editorial_status) qs.set('editorial_status', params.editorial_status);
+    if (params?.q) qs.set('q', params.q);
     if (params?.sort_order !== undefined) qs.set('sort_order', String(params.sort_order));
     if (params?.limit !== undefined) qs.set('limit', String(params.limit));
     if (params?.offset !== undefined) qs.set('offset', String(params.offset));
@@ -141,6 +155,20 @@ export const booksApi = {
   },
   createChapter(token: string, bookId: string, payload: { file: File; original_language: string; title?: string; sort_order?: number }) {
     return this.createChapterUpload(token, bookId, payload);
+  },
+  /** Bulk-create plain-text chapters in one request (folder/large import). The
+   *  caller sends naturally-sorted, exclude-filtered batches SEQUENTIALLY so the
+   *  server's monotonic sort_order preserves order. Returns the created count. */
+  bulkCreateChapters(
+    token: string,
+    bookId: string,
+    chapters: { original_filename: string; content: string; title?: string }[],
+    originalLanguage = 'auto',
+  ): Promise<{ chapters_created: number; skipped_existing: number; book_id: string }> {
+    return apiJson<{ chapters_created: number; skipped_existing: number; book_id: string }>(
+      `/v1/books/${bookId}/chapters/bulk`,
+      { method: 'POST', token, body: JSON.stringify({ chapters, original_language: originalLanguage }) },
+    );
   },
   createChapterEditor(
     token: string,
@@ -286,6 +314,31 @@ export const booksApi = {
     payload: { visibility?: 'private' | 'unlisted' | 'public'; rotate_unlisted_token?: boolean },
   ) {
     return apiJson(`/v1/sharing/books/${bookId}`, { method: 'PATCH', token, body: JSON.stringify(payload) });
+  },
+
+  // ── E0-5 collaborators (owner-only; book-service orchestrates email-invite) ──
+  listCollaborators(token: string, bookId: string) {
+    return apiJson<{ collaborators: Collaborator[] }>(`/v1/books/${bookId}/collaborators`, { token });
+  },
+  // Invite by EMAIL — book-service resolves it to a user via auth-service (404 if
+  // no such active user). Returns the resolved {user_id, role, display_name}.
+  inviteCollaborator(token: string, bookId: string, payload: { email: string; role: CollaboratorRole }) {
+    return apiJson<{ user_id: string; role: CollaboratorRole; display_name: string }>(
+      `/v1/books/${bookId}/collaborators`,
+      { method: 'POST', token, body: JSON.stringify(payload) },
+    );
+  },
+  changeCollaboratorRole(token: string, bookId: string, userId: string, role: CollaboratorRole) {
+    return apiJson<{ user_id: string; role: CollaboratorRole }>(
+      `/v1/books/${bookId}/collaborators/${userId}`,
+      { method: 'PUT', token, body: JSON.stringify({ role }) },
+    );
+  },
+  removeCollaborator(token: string, bookId: string, userId: string) {
+    return apiJson<{ status: string }>(`/v1/books/${bookId}/collaborators/${userId}`, {
+      method: 'DELETE',
+      token,
+    });
   },
   listCatalog(params?: { limit?: number; offset?: number; q?: string }) {
     const qs = new URLSearchParams();
@@ -610,6 +663,18 @@ export const booksApi = {
   listImportJobs(token: string, bookId: string) {
     return apiJson<{ imports: ImportJob[] }>(`/v1/books/${bookId}/imports`, { token });
   },
+};
+
+// E0-5 — a book collaborator (owner grants view|edit|manage). display_name is
+// best-effort from auth-service ("" when unknown).
+export type CollaboratorRole = 'view' | 'edit' | 'manage';
+export type Collaborator = {
+  user_id: string;
+  role: CollaboratorRole;
+  granted_by: string;
+  created_at: string;
+  updated_at: string;
+  display_name: string;
 };
 
 export type ReadingProgress = {

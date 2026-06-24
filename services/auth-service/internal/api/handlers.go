@@ -357,7 +357,11 @@ func (s *Server) patchProfile(w http.ResponseWriter, r *http.Request) {
 		loc = &s
 	}
 	if v, ok := body["avatar_url"]; ok && v != nil {
-		s := fmt.Sprint(v)
+		s := strings.TrimSpace(fmt.Sprint(v))
+		if !validAvatarURL(s) {
+			writeErr(w, http.StatusBadRequest, "AUTH_VALIDATION_ERROR", "avatar_url must be an http(s) URL or empty")
+			return
+		}
 		av = &s
 	}
 	if v, ok := body["bio"]; ok && v != nil {
@@ -1151,6 +1155,39 @@ func (s *Server) internalGetUserProfile(w http.ResponseWriter, r *http.Request) 
 	}
 	if avatarURL != nil {
 		m["avatar_url"] = *avatarURL
+	}
+	writeJSON(w, http.StatusOK, m)
+}
+
+// internalGetUserByEmail (internal, S2S) — resolve an email to a user for the E0-5
+// collaborators panel's email-invite (book-service calls this to turn an invited
+// email into a user_id before writing the book_collaborators row). Case-insensitive
+// match; a deleted account is treated as not-found (you can't invite a closed
+// account). Returns {user_id, email, display_name}; 404 when no active user matches.
+// Network-isolated like the sibling profile endpoint (no JWT; /internal isn't
+// gateway-exposed) — no email-enumeration oracle reaches the public edge.
+func (s *Server) internalGetUserByEmail(w http.ResponseWriter, r *http.Request) {
+	email := strings.TrimSpace(r.URL.Query().Get("email"))
+	if email == "" {
+		writeErr(w, http.StatusBadRequest, "AUTH_VALIDATION_ERROR", "email is required")
+		return
+	}
+	var (
+		userID      uuid.UUID
+		canonical   string
+		displayName *string
+	)
+	err := s.pool.QueryRow(r.Context(),
+		`SELECT id, email, display_name FROM users
+		 WHERE lower(email) = lower($1) AND account_status != 'deleted'`, email,
+	).Scan(&userID, &canonical, &displayName)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "AUTH_USER_NOT_FOUND", "no user with that email")
+		return
+	}
+	m := map[string]any{"user_id": userID.String(), "email": canonical, "display_name": ""}
+	if displayName != nil {
+		m["display_name"] = *displayName
 	}
 	writeJSON(w, http.StatusOK, m)
 }

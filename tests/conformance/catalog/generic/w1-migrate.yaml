@@ -1,0 +1,7 @@
+id: w1-migrate
+description: "W1.2 — migrate CLI live-wiring, LIVE. The migrate CLI binds to real collaborators (pgx SQLApplier + DSN resolver + MetaWrite-backed audit/state), closing D-MIGRATE-CLI-LIVE-WIRING. apply: a non-breaking migration applies to the whole fleet, instance_schema_migrations marked, I8 meta_write_audit present for both meta tables. abort: a broken breaking migration fails the canary ⇒ fan-out NEVER attempted (0 fanout started, N-1 aborted). bite: ignoring the canary result fans out ⇒ the abort guard is non-vacuous. Plus a real-CLI smoke of 0001_initial. Requires the scale rig (meta-pg + pg-shard-0)."
+invariant: I-w1-migrate-canary-gated
+kind: live-probe
+command: ["bash", "scripts/perf/w1-migrate.sh", "smoke"]
+requires: ["scale-rig"]
+skip_when: []

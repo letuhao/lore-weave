@@ -22,7 +22,9 @@ from app.db.models import CompositionWork
 from app.db.repositories import VersionMismatchError
 
 _SELECT_COLS = """
-  project_id, user_id, book_id, active_template_id, status, settings,
+  project_id, user_id, book_id, id, pending_project_backfill,
+  source_work_id, branch_point,
+  active_template_id, status, settings,
   version, created_at, updated_at
 """
 
@@ -77,6 +79,99 @@ class WorksRepo:
                 row = await c.fetchrow(query, *args)
         return _row_to_work(row)
 
+    async def create_pending(
+        self,
+        user_id: UUID,
+        book_id: UUID,
+        *,
+        active_template_id: UUID | None = None,
+        settings: dict[str, Any] | None = None,
+    ) -> CompositionWork:
+        """C16 (WG-3): create a LAZY greenfield Work with a NULL project_id +
+        `pending_project_backfill=true` when knowledge-service could not mint the
+        project (down/5xx). The surrogate `id` PK makes the row addressable; the
+        partial-unique (user,book) WHERE pending index caps it at one — so a
+        concurrent retry that loses the race re-gets the existing pending row.
+        GREENFIELD ONLY: the router refuses this path for a derivative Work (C23
+        guard — a derivative keeps project_id NOT NULL)."""
+        query = f"""
+        INSERT INTO composition_work
+          (project_id, user_id, book_id, pending_project_backfill, active_template_id, settings)
+        VALUES (NULL, $1, $2, true, $3, $4::jsonb)
+        RETURNING {_SELECT_COLS}
+        """
+        args = (user_id, book_id, active_template_id, json.dumps(settings or {}))
+        async with self._pool.acquire() as c:
+            row = await c.fetchrow(query, *args)
+        return _row_to_work(row)
+
+    async def create_derivative(
+        self,
+        user_id: UUID,
+        project_id: UUID,
+        book_id: UUID,
+        source_work_id: UUID,
+        *,
+        branch_point: int | None = None,
+        settings: dict[str, Any] | None = None,
+        conn: asyncpg.Connection | None = None,
+    ) -> CompositionWork:
+        """C23 (dị bản M0): insert a DERIVATIVE Work linked to its source.
+
+        `project_id` MUST be a freshly-minted knowledge project (G2 — the
+        derivative's own delta partition; NEVER the source's) and is NOT NULL: the
+        `chk_derivative_project_required` DB CHECK rejects a null project on a row
+        with `source_work_id` set, the same guard the router enforces before this
+        call. Accepts an optional `conn` so the derive flow can write the Work +
+        its divergence_spec + entity_override[] in one transaction.
+        """
+        query = f"""
+        INSERT INTO composition_work
+          (project_id, user_id, book_id, source_work_id, branch_point, settings)
+        VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+        RETURNING {_SELECT_COLS}
+        """
+        args = (project_id, user_id, book_id, source_work_id, branch_point,
+                json.dumps(settings or {}))
+        if conn is not None:
+            row = await conn.fetchrow(query, *args)
+        else:
+            async with self._pool.acquire() as c:
+                row = await c.fetchrow(query, *args)
+        return _row_to_work(row)
+
+    async def get_pending_for_book(
+        self, user_id: UUID, book_id: UUID
+    ) -> CompositionWork | None:
+        """The (at-most-one) lazy greenfield Work awaiting a knowledge project for
+        this user+book (C16 backfill seam). None when there is none."""
+        query = f"""
+        SELECT {_SELECT_COLS} FROM composition_work
+        WHERE user_id = $1 AND book_id = $2 AND pending_project_backfill
+        ORDER BY created_at
+        LIMIT 1
+        """
+        async with self._pool.acquire() as c:
+            row = await c.fetchrow(query, user_id, book_id)
+        return _row_to_work(row) if row else None
+
+    async def backfill_project(
+        self, user_id: UUID, work_id: UUID, project_id: UUID
+    ) -> CompositionWork | None:
+        """C16 backfill seam: stamp the now-created knowledge `project_id` onto a
+        lazy Work (by surrogate `id`) and clear the pending marker. Idempotent:
+        only updates a still-pending row, so a double-backfill no-ops. Returns the
+        updated row, or None if the row vanished / was already backfilled."""
+        query = f"""
+        UPDATE composition_work
+        SET project_id = $3, pending_project_backfill = false, updated_at = now()
+        WHERE user_id = $1 AND id = $2 AND pending_project_backfill
+        RETURNING {_SELECT_COLS}
+        """
+        async with self._pool.acquire() as c:
+            row = await c.fetchrow(query, user_id, work_id, project_id)
+        return _row_to_work(row) if row else None
+
     async def get(self, user_id: UUID, project_id: UUID) -> CompositionWork | None:
         query = f"""
         SELECT {_SELECT_COLS} FROM composition_work
@@ -86,19 +181,43 @@ class WorksRepo:
             row = await c.fetchrow(query, user_id, project_id)
         return _row_to_work(row) if row else None
 
+    async def get_by_id(self, user_id: UUID, work_id: UUID) -> CompositionWork | None:
+        """Fetch a Work by its surrogate `id` (user-scoped). C25 — the packer
+        resolves a derivative's BASE knowledge project from its `source_work_id`
+        (the source Work's `id`), and the source's `id` is NOT necessarily its
+        `project_id` (the two diverge for a Work whose surrogate id was minted
+        distinct from its project), so the base project MUST be looked up here
+        rather than reusing `source_work_id` as a project_id directly."""
+        query = f"""
+        SELECT {_SELECT_COLS} FROM composition_work
+        WHERE user_id = $1 AND id = $2
+        """
+        async with self._pool.acquire() as c:
+            row = await c.fetchrow(query, user_id, work_id)
+        return _row_to_work(row) if row else None
+
     async def resolve_by_book(
         self, user_id: UUID, book_id: UUID
     ) -> list[CompositionWork]:
-        """Return every MARKED Work for this user+book (§6.2 prefers-marked).
+        """Return every MARKED (real-project) Work for this user+book (§6.2
+        prefers-marked).
 
         The caller (work_resolution.resolve_work) maps the result:
           len == 1 → found · len > 1 → candidates · len == 0 → defer to the
         knowledge book-project lookup. Ordered by created_at so a candidates
         list is stable.
+
+        C16: a LAZY null-project Work (`pending_project_backfill`) is EXCLUDED — it
+        is a placeholder, not yet a grounding-backed marked Work, and would have a
+        null project_id (un-anchorable). Excluding it makes resolution fall through
+        to the knowledge book-project lookup so a retry once knowledge recovers hits
+        the create_project → BACKFILL seam (which stamps the project onto this same
+        pending row) instead of returning the placeholder as a finished `found` Work.
         """
         query = f"""
         SELECT {_SELECT_COLS} FROM composition_work
         WHERE user_id = $1 AND book_id = $2 AND status = 'active'
+          AND NOT pending_project_backfill
         ORDER BY created_at, project_id
         """
         async with self._pool.acquire() as c:

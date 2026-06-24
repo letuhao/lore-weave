@@ -1,0 +1,25 @@
+# infra/comms/templates/incident_identified.yaml — L7.D.5 / Q-L7-2
+# Pre-approved comms: root cause identified, fix in progress.
+
+id: incident_identified
+description: 'Update — we have identified the cause and are applying a fix.'
+channel: status_page
+severities:
+  - SEV0
+  - SEV1
+placeholders:
+  - incident_id
+  - components
+locales:
+  en:
+    subject: 'Identified: applying a fix'
+    body: |
+      We have identified the cause of the issue affecting {{components}}
+      and are applying a fix. We will confirm once service is fully restored.
+      Reference: {{incident_id}}.
+  vi:
+    subject: 'Đã xác định: đang áp dụng bản sửa'
+    body: |
+      Chúng tôi đã xác định nguyên nhân của sự cố ảnh hưởng đến {{components}}
+      và đang áp dụng bản sửa. Chúng tôi sẽ xác nhận khi dịch vụ được khôi phục hoàn toàn.
+      Mã tham chiếu: {{incident_id}}.

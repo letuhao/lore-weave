@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from typing import Any, Literal
 from uuid import UUID
 
@@ -29,10 +30,12 @@ from app.db.neo4j import neo4j_session
 from app.db.neo4j_repos.passages import (
     SUPPORTED_PASSAGE_DIMS,
     PassageSearchHit,
+    find_passages_by_fulltext,
     find_passages_by_vector,
 )
 from app.search.hybrid_fusion import (
     BLOCK_CHAPTER_CAP,
+    apply_language_preference,
     apply_relevance_floor,
     cap_per_chapter,
     rrf_fuse,
@@ -42,6 +45,10 @@ logger = logging.getLogger(__name__)
 
 SearchMode = Literal["lexical", "semantic", "hybrid"]
 Granularity = Literal["chapter", "block"]
+# D-RAWSEARCH-CANON-WIRING — which passages the semantic leg may return.
+# "canon" (default) = published content only; "all" = canon + on-demand-indexed
+# drafts (owner-only — the HTTP layer downgrades a non-owner "all" to "canon").
+Surface = Literal["canon", "all"]
 
 # E5 score-floor default — DISABLED (0.0), an evidence-based choice. Calibration
 # (2026-06-08, bge-m3) showed semantic cosine is compressed in [0.68, 0.82] with
@@ -49,6 +56,23 @@ Granularity = Literal["chapter", "block"]
 # global cosine threshold cleanly drops junk. Real junk-rejection is the
 # cross-encoder rerank leg; the floor stays opt-in via `min_relevance`.
 MIN_RELEVANCE_DEFAULT = 0.0
+
+# KG-ML M6 (D12) — CJK codepoint ranges. A query containing any of these can't be
+# served well by the book-service pg_trgm lexical leg (trigram is noise on CJK +
+# a GIN-trigram index can't accelerate a 2-char term), so we add the Neo4j
+# `cjk`-analyzed full-text leg over :Passage. Covers CJK Unified (+ Ext-A),
+# Hiragana/Katakana, and Hangul — the scripts the bi-gram `cjk` analyzer targets.
+_CJK_RE = re.compile(
+    r"[㐀-䶿一-鿿぀-ヿ가-힯豈-﫿]"
+)
+
+
+def query_has_cjk(text: str) -> bool:
+    """True when the query contains a CJK/Japanese/Korean character — the signal
+    that the trigram lexical leg will under-recall and the cjk full-text leg
+    should run. Operates on the raw query (a bare proper noun is too short for
+    reliable language detection, so we test codepoints, not detected language)."""
+    return bool(_CJK_RE.search(text or ""))
 
 
 class RetrievalResult(BaseModel):
@@ -58,16 +82,26 @@ class RetrievalResult(BaseModel):
     degraded: dict[str, str] = {}
 
 
-def passage_to_hit(h: PassageSearchHit) -> dict[str, Any]:
+def passage_to_hit(h: PassageSearchHit, *, match_type: str = "semantic") -> dict[str, Any]:
     """Map a `:Passage` search hit → the unified raw-search hit shape.
-    Passages are published canon ⇒ surface="canon"/matchType="semantic"."""
+    `surface` reflects the node's canon flag (D-RAWSEARCH-CANON-WIRING):
+    canon passages → "canon", on-demand-indexed drafts → "draft". Legacy
+    nodes (no flag) read as canon via `Passage.canon`'s default.
+
+    KG-ML M6 — `match_type` records WHICH passage leg produced the hit: the
+    vector leg → "semantic" (default), the cjk full-text leg → "lexical". Both
+    read `:Passage` nodes, so without this they'd both report "semantic" (the
+    cosmetic mislabel D-KG-ML-M6-MATCHTYPE)."""
     p = h.passage
     return {
         "chapterId": p.source_id,
         "chapterTitle": None,
         "sortOrder": p.chapter_index if p.chapter_index is not None else 0,
-        "surface": "canon",
-        "matchType": "semantic",
+        "surface": "canon" if p.canon else "draft",
+        "matchType": match_type,
+        # KG-ML M4 — source language of this passage (zh original / vi dual-index),
+        # for language-aware ranking. "mixed" matches any reader pref.
+        "sourceLang": p.source_lang,
         "score": h.raw_score,
         "relevance": h.raw_score,  # E5: native cosine (0–1) for the score-floor
         "snippet": p.text,
@@ -161,6 +195,8 @@ async def run_hybrid_search(
     min_relevance: float = MIN_RELEVANCE_DEFAULT,
     rerank: bool = True,
     min_rerank_score: float | None = None,
+    surface: Surface = "canon",
+    pref_lang: str | None = None,
 ) -> RetrievalResult:
     """Run the hybrid lexical+semantic search for one already-resolved project.
 
@@ -177,11 +213,39 @@ async def run_hybrid_search(
         if mode == "semantic":
             return []
         hits = await book_client.lexical_search(
-            book_id, q, limit=limit, granularity=granularity,
+            book_id, q, limit=limit, granularity=granularity, surface=surface,
         )
         if hits is None:
             degraded["lexical"] = "book_service_unavailable"
             return []
+        return hits
+
+    async def _cjk_lexical() -> list[dict[str, Any]]:
+        # KG-ML M6 (D12) — the CJK-tokenized lexical leg. Only for hybrid/lexical
+        # modes AND only when the query carries CJK (else it's pure overhead —
+        # the trigram leg already serves Latin scripts well). Searches the same
+        # :Passage nodes as the semantic leg via the `cjk` full-text index, so it
+        # needs no embedding model (works even on an un-embedded project). Any
+        # failure (index missing on a not-yet-migrated Neo4j, query error) →
+        # degraded marker, never a raised error.
+        if mode == "semantic" or not query_has_cjk(q):
+            return []
+        try:
+            async with neo4j_session() as session:
+                raw_hits = await find_passages_by_fulltext(
+                    session,
+                    user_id=str(user_id),
+                    project_id=str(project.project_id),
+                    query=q,
+                    source_type="chapter",
+                    limit=limit,
+                    include_drafts=(surface == "all"),
+                )
+        except Exception:
+            degraded["cjk_lexical"] = "unavailable"
+            return []
+        hits = [passage_to_hit(h, match_type="lexical") for h in raw_hits]
+        await enrich_titles(hits, book_client)  # passage hits lack titles
         return hits
 
     async def _semantic() -> list[dict[str, Any]]:
@@ -215,6 +279,8 @@ async def run_hybrid_search(
                     source_type="chapter",
                     limit=limit,
                     include_vectors=False,
+                    # D-RAWSEARCH-CANON-WIRING — owner-only "all" lets drafts through.
+                    include_drafts=(surface == "all"),
                 )
         except ValueError:
             degraded["semantic"] = "embedding_dim_mismatch"
@@ -223,19 +289,27 @@ async def run_hybrid_search(
         await enrich_titles(hits, book_client)  # semantic hits lack titles
         return hits
 
-    lexical_hits, semantic_hits = await asyncio.gather(_lexical(), _semantic())
-    fused = rrf_fuse([lexical_hits, semantic_hits])
+    lexical_hits, cjk_hits, semantic_hits = await asyncio.gather(
+        _lexical(), _cjk_lexical(), _semantic()
+    )
+    # KG-ML M6: the CJK leg fuses as a third RRF input — additive (empty for
+    # non-CJK queries, so Latin-script retrieval is byte-identical to pre-M6).
+    fused = rrf_fuse([lexical_hits, cjk_hits, semantic_hits])
     # E5B: cross-encoder rerank for semantic/hybrid (where junk leaks). Lexical
     # mode is already clean (exact substring) so it skips rerank + stays fast.
-    # D-RERANK-NOT-BYOK: rerank is OPTIONAL — only when the project has a BYOK
-    # rerank model; no model ⇒ skip the step (keep fusion order, mark degraded).
-    if (
-        rerank
-        and settings.rerank_enabled
-        and mode != "lexical"
-        and fused
-        and project.rerank_model
-    ):
+    # D-RERANK-NOT-BYOK: rerank is OPTIONAL and BYOK. Resolve the effective model =
+    # the project's per-project rerank model, else the user's DEFAULT rerank model
+    # (provider-registry user_default_models) — the default restores the UX the
+    # removed RERANK_URL/_MODEL .env config gave. No model anywhere ⇒ skip (keep
+    # fusion order, mark degraded).
+    want_rerank = rerank and settings.rerank_enabled and mode != "lexical" and bool(fused)
+    effective_ref = project.rerank_model
+    effective_source = project.rerank_model_source
+    if want_rerank and not effective_ref:
+        default_ref = await reranker_client.get_default_rerank(str(user_id))
+        if default_ref:
+            effective_ref, effective_source = default_ref, "user_model"
+    if want_rerank and effective_ref:
         floor = settings.min_rerank_score if min_rerank_score is None else min_rerank_score
         fused = await apply_rerank(
             q, fused, reranker_client,
@@ -245,12 +319,20 @@ async def run_hybrid_search(
             min_rerank_score=floor,
             degraded=degraded,
             user_id=str(user_id),
-            model_source=project.rerank_model_source,
-            model_ref=project.rerank_model,
+            model_source=effective_source,
+            model_ref=effective_ref,
         )
-    elif rerank and settings.rerank_enabled and mode != "lexical" and fused and not project.rerank_model:
+    elif want_rerank and not effective_ref:
         degraded["rerank"] = "not_configured"
     fused = apply_relevance_floor(fused, min_relevance)
+    # KG-ML M4 (D5) — language preference is the FINAL ordering pass: a stable
+    # matched-first partition over whatever order rerank/RRF produced (scale-
+    # independent, so it works WITH rerank — a pre-rerank additive boost was
+    # discarded by the cross-encoder re-sort; /review-impl HIGH). Runs BEFORE the
+    # per-chapter cap so the reader's language wins the chapter's single slot.
+    # No-op when pref_lang is None (wiki in-process path unaffected).
+    if pref_lang:
+        fused = apply_language_preference(fused, pref_lang)
     # chapter mode (cap=1) = one best row per chapter (navigate); block mode
     # lifts the cap (exhaustive mine). cap_per_chapter keys on chapterId alone.
     cap = 1 if granularity == "chapter" else BLOCK_CHAPTER_CAP

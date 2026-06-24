@@ -16,8 +16,61 @@ from uuid import uuid4
 import pytest
 
 from app.models import ProviderCredentials
-from app.services.stream_service import stream_response, _Usage
+from app.services.stream_service import (
+    stream_response,
+    _Usage,
+    _thinking_pref,
+    _apply_reasoning_kwargs,
+    parse_inline_effort,
+)
 from tests.conftest import TEST_SESSION_ID, TEST_USER_ID, TEST_MODEL_REF
+
+
+# ── RE: reasoning-effort wiring (the chat thinking no-op fix) ──────────────
+
+
+def test_thinking_pref_mapping():
+    # request toggle wins; True→medium (legacy enabled→medium), False→off.
+    assert _thinking_pref(True, {}) == "medium"
+    assert _thinking_pref(False, {}) == "off"
+    # None → session generation_params default, else platform "off".
+    assert _thinking_pref(None, {}) == "off"
+    assert _thinking_pref(None, {"reasoning_effort": "high"}) == "high"
+    assert _thinking_pref(None, {"thinking": True}) == "medium"
+
+
+def test_apply_reasoning_kwargs_forwards_only_when_present():
+    # The wiring that was missing: stashed reasoning fields reach the request kwargs.
+    rk: dict = {}
+    _apply_reasoning_kwargs(rk, {"reasoning_effort": "high",
+                                 "chat_template_kwargs": {"thinking": True, "enable_thinking": True}})
+    assert rk["reasoning_effort"] == "high"
+    assert rk["chat_template_kwargs"] == {"thinking": True, "enable_thinking": True}
+    # No reasoning in gen_params → nothing added (adaptive/non-reasoning models).
+    empty: dict = {}
+    _apply_reasoning_kwargs(empty, {"temperature": 0.5})
+    assert "reasoning_effort" not in empty and "chat_template_kwargs" not in empty
+
+
+def test_parse_inline_effort_commands():
+    # /no_think → off, stripped.
+    assert parse_inline_effort("summarize this /no_think") == ("summarize this", "off")
+    # /think → medium, leading command.
+    assert parse_inline_effort("/think solve it") == ("solve it", "medium")
+    # /effort=high.
+    assert parse_inline_effort("plan /effort=high the trip") == ("plan the trip", "high")
+    # /effort=none normalizes to "off".
+    assert parse_inline_effort("/effort=none go") == ("go", "off")
+    # No command → unchanged, None.
+    assert parse_inline_effort("just a normal message") == ("just a normal message", None)
+    # Not anchored mid-word → NOT matched (the path '/think/x' has no boundary).
+    text = "see https://x/think/page"
+    assert parse_inline_effort(text) == (text, None)
+    # Last command wins.
+    assert parse_inline_effort("/think a /no_think b")[1] == "off"
+    # Command-ONLY message strips to empty (the caller must guard against an empty
+    # user turn — stream_response keeps the original in that case).
+    assert parse_inline_effort("/no_think") == ("", "off")
 
 
 def _make_creds(**overrides) -> ProviderCredentials:
@@ -412,6 +465,8 @@ def _patched_knowledge(stable: str = "", volatile: str = "", context: str | None
     client = MagicMock()
     client.build_context = AsyncMock(return_value=kctx)
     client.get_tool_definitions = AsyncMock(return_value=tool_defs or [])
+    # MCP-fanout: discovery reads the catalog-meta (availability) synchronously.
+    client.get_catalog_meta = lambda: {}
     return client
 
 
@@ -845,9 +900,11 @@ class TestK21BToolCallingIntegration:
         assert loop_mock.call_args.kwargs["max_iterations"] == 10  # H11
 
     @pytest.mark.asyncio
-    async def test_global_chat_no_skill_default_cap(self):
-        """A non-book-scoped chat gets neither the glossary skill nor the raised
-        cap — the skill/cap are scoped to book surfaces only."""
+    async def test_global_chat_universal_surface_discovery_and_cap(self):
+        """MCP-fanout C-FT/H9: the agui /chat surface WITHOUT a book/editor
+        context is the UNIVERSAL "do anything" surface — it switches on two-stage
+        discovery (cap=20, discovery_catalog passed, universal skill injected,
+        NOT the glossary skill)."""
         pool, conn = _make_pool_with_conn()
         pool.fetch.return_value = []
         conn.fetchval.return_value = 1
@@ -867,17 +924,111 @@ class TestK21BToolCallingIntegration:
                 user_id=TEST_USER_ID, model_source="user_model",
                 model_ref=TEST_MODEL_REF, creds=_make_creds(),
                 pool=pool, billing=AsyncMock(),
-                stream_format="agui",  # agui but NO book/editor context
+                stream_format="agui",  # agui but NO book/editor context = universal
             ):
                 pass
 
         msgs = loop_mock.call_args.kwargs["messages"]
         system = next((m for m in msgs if m["role"] == "system"), None)
-        if system is not None:
-            content = system["content"] if isinstance(system["content"], str) \
-                else " ".join(p["text"] for p in system["content"])
-            assert "Glossary assistant" not in content
+        assert system is not None
+        content = system["content"] if isinstance(system["content"], str) \
+            else " ".join(p["text"] for p in system["content"])
+        # universal skill in, glossary skill out
+        assert "Glossary assistant" not in content
+        assert "Universal assistant" in content
+        # KM5-M4a + merge: the knowledge/graph skill co-injects on this surface
+        # (independent of the universal skill — the merge keeps BOTH).
+        assert "Knowledge & graph assistant" in content
+        # S-WORKFLOW (Wave 3): the cross-service ORDERING fragment composes in on
+        # the same universal surface (chapters -> translate -> glossary -> wiki).
+        assert "Cross-service workflows" in content
+        assert "Build a book end-to-end" in content
+        # H9: universal cap = 20, and discovery is on (catalog passed)
+        assert loop_mock.call_args.kwargs["max_iterations"] == 20
+        assert loop_mock.call_args.kwargs["discovery_catalog"] is not None
+        # C-FT: the first-pass advertisement is the curated core (incl. find_tools
+        # + the generic frontend tools), NOT the full catalog dumped to the LLM.
+        adv_names = [t["function"]["name"] for t in loop_mock.call_args.kwargs["tools"]]
+        assert "find_tools" in adv_names
+        assert "ui_navigate" in adv_names and "confirm_action" in adv_names
+        # memory_search is in the catalog but discovered via find_tools, not core.
+        assert "memory_search" not in adv_names
+
+    @pytest.mark.asyncio
+    async def test_admin_surface_excludes_knowledge_skill(self):
+        """/review-impl LOW-3: the CMS/admin surface advertises ONLY the System-tier
+        admin tools, so the project knowledge/graph skill must NOT be injected there
+        (it would be guidance for tools that aren't present). The admin skill is."""
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+        kc = _patched_knowledge(stable="", volatile="", mode="static")
+        # admin surface fetches the SEPARATE admin catalog (not the user catalog)
+        kc.get_admin_tool_definitions = AsyncMock(
+            return_value=[{"type": "function", "function": {"name": "glossary_admin_propose_genre"}}]
+        )
+
+        async def fake_tool_loop(**kwargs):
+            yield {"content": "ok", "reasoning_content": "", "finish_reason": "stop", "usage": _Usage(1, 1)}
+
+        with patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+             patch("app.services.stream_service._stream_with_tools", side_effect=fake_tool_loop) as loop_mock, \
+             patch("app.services.stream_service._stream_via_gateway"):
+            async for _ in stream_response(
+                session_id=TEST_SESSION_ID, user_message_content="edit system kinds",
+                user_id=TEST_USER_ID, model_source="user_model",
+                model_ref=TEST_MODEL_REF, creds=_make_creds(),
+                pool=pool, billing=AsyncMock(),
+                stream_format="agui", admin_context={"surface": "cms"}, admin_token="adm-tok",
+            ):
+                pass
+
+        msgs = loop_mock.call_args.kwargs["messages"]
+        system = next((m for m in msgs if m["role"] == "system"), None)
+        assert system is not None
+        content = system["content"] if isinstance(system["content"], str) \
+            else " ".join(p["text"] for p in system["content"])
+        # admin skill present, knowledge skill ABSENT (LOW-3)
+        assert "System-tier admin assistant" in content
+        assert "Knowledge & graph assistant" not in content
+
+    @pytest.mark.asyncio
+    async def test_legacy_surface_no_discovery_no_frontend_tools(self):
+        """F2: a LEGACY (non-agui) client never gets discovery or frontend tools —
+        it advertises only the federated catalog as-is (no find_tools, no ui_*,
+        no confirm_action) and never enters the discovery path, so it can't
+        suspend on a frontend tool / hang."""
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+        kc = _patched_knowledge(
+            stable="", volatile="", mode="static",
+            tool_defs=[{"type": "function", "function": {"name": "memory_search"}}],
+        )
+
+        async def fake_tool_loop(**kwargs):
+            yield {"content": "ok", "reasoning_content": "", "finish_reason": "stop", "usage": _Usage(1, 1)}
+
+        with patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+             patch("app.services.stream_service._stream_with_tools", side_effect=fake_tool_loop) as loop_mock, \
+             patch("app.services.stream_service._stream_via_gateway"):
+            async for _ in stream_response(
+                session_id=TEST_SESSION_ID, user_message_content="hi",
+                user_id=TEST_USER_ID, model_source="user_model",
+                model_ref=TEST_MODEL_REF, creds=_make_creds(),
+                pool=pool, billing=AsyncMock(),
+                stream_format="legacy",  # legacy → no discovery, no frontend tools
+            ):
+                pass
+
+        # No discovery, default cap, only the federated catalog advertised.
+        assert loop_mock.call_args.kwargs["discovery_catalog"] is None
         assert loop_mock.call_args.kwargs["max_iterations"] == 5
+        adv_names = [t["function"]["name"] for t in loop_mock.call_args.kwargs["tools"]]
+        assert adv_names == ["memory_search"]
+        assert "find_tools" not in adv_names
+        for fe in ("ui_navigate", "confirm_action", "propose_record_edit", "propose_edit"):
+            assert fe not in adv_names
 
     @pytest.mark.asyncio
     async def test_disable_tools_advertises_no_tools_compose_mode(self):
@@ -1418,3 +1569,108 @@ class TestStreamFormatNegotiation:
         # distinct ids
         start_ids = [_parse_event(e)["toolCallId"] for e in events if '"TOOL_CALL_START"' in e]
         assert start_ids == ["call_a", "call_b"]
+
+
+# ── M3 anchoring — working_memory pinned + tail injection ─────────────────────
+
+
+class TestAnchorInjection:
+    @pytest.mark.asyncio
+    async def test_seed_anchor_is_pinned_and_tailed(self):
+        """A roleplay session (working_memory_seed set, knowledge empty) gets the
+        anchor pinned in the system block AND tail-injected before the user turn."""
+        import json as _json
+
+        pool, conn = _make_pool_with_conn()
+        seed = _json.dumps({
+            "version": 1,
+            "charter": {
+                "goal": "Senior backend interview",
+                "phases": ["warmup", "technical"],
+                "checklist": ["system design"],
+                "time_budget_min": 60,
+                "language": "vi",
+            },
+            "state": {"phase": "", "covered": []},
+        })
+        pool.fetchrow.return_value = {
+            "system_prompt": "You are an interviewer.",
+            "generation_params": {},
+            "working_memory_seed": seed,
+        }
+        pool.fetch.return_value = [{"role": "user", "content": "hello"}]
+        conn.fetchval.return_value = 5
+
+        captured: list[dict] = []
+
+        async def fake_gw(**kwargs):
+            captured.extend(kwargs.get("messages", []))
+            yield _make_chunk("ok")
+            yield _make_chunk(None)
+
+        with patch(
+            "app.services.stream_service.get_knowledge_client",
+            return_value=_patched_knowledge(),  # kctx.working_memory == "" → seed path
+        ), patch(
+            "app.services.stream_service._stream_via_gateway",
+            side_effect=lambda **k: fake_gw(**k),
+        ):
+            async for _ in stream_response(
+                session_id=TEST_SESSION_ID,
+                user_message_content="hello",
+                user_id=TEST_USER_ID,
+                model_source="user_model",
+                model_ref=TEST_MODEL_REF,
+                creds=_make_creds(provider_kind="openai"),
+                pool=pool,
+                billing=AsyncMock(),
+            ):
+                pass
+
+        # Pinned: the system message carries the anchor + the frozen goal.
+        sys_msg = captured[0]
+        assert sys_msg["role"] == "system"
+        assert "ROLEPLAY SESSION" in sys_msg["content"]
+        assert "Senior backend interview" in sys_msg["content"]
+        # Tail: the Director note sits immediately before the latest user turn.
+        assert captured[-1] == {"role": "user", "content": "hello"}
+        assert captured[-2]["role"] == "system"
+        assert captured[-2]["content"].startswith("[Director")
+        assert "Senior backend interview" in captured[-2]["content"]
+
+    @pytest.mark.asyncio
+    async def test_non_roleplay_session_has_no_anchor(self):
+        """A plain chat session (no seed) injects neither pin nor tail."""
+        pool, conn = _make_pool_with_conn()
+        pool.fetchrow.return_value = {"system_prompt": None, "generation_params": {}}
+        pool.fetch.return_value = [{"role": "user", "content": "hi"}]
+        conn.fetchval.return_value = 5
+
+        captured: list[dict] = []
+
+        async def fake_gw(**kwargs):
+            captured.extend(kwargs.get("messages", []))
+            yield _make_chunk("ok")
+            yield _make_chunk(None)
+
+        with patch(
+            "app.services.stream_service.get_knowledge_client",
+            return_value=_patched_knowledge(),
+        ), patch(
+            "app.services.stream_service._stream_via_gateway",
+            side_effect=lambda **k: fake_gw(**k),
+        ):
+            async for _ in stream_response(
+                session_id=TEST_SESSION_ID,
+                user_message_content="hi",
+                user_id=TEST_USER_ID,
+                model_source="user_model",
+                model_ref=TEST_MODEL_REF,
+                creds=_make_creds(provider_kind="openai"),
+                pool=pool,
+                billing=AsyncMock(),
+            ):
+                pass
+
+        assert not any("[Director" in str(m.get("content", "")) for m in captured)
+        assert not any("ROLEPLAY SESSION" in str(m.get("content", "")) for m in captured)

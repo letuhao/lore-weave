@@ -1,0 +1,56 @@
+# .github/workflows/lint-foundation.yml — L1.K.16
+#
+# Wires the 15 foundation lints (L1.K.1–L1.K.15) into PR check.
+# Q-L1K-1 LOCKED: mix — semgrep for cross-language patterns, shell+grep for
+# simple, go vet for Go-specific. V1 ships all-shell since semgrep adds infra
+# overhead; semgrep upgrades land per-lint in a follow-on cycle as patterns
+# mature.
+#
+# Each lint runs in parallel via matrix. Total wall-clock target ≤ 3 min
+# (per L1.K acceptance).
+
+name: lint-foundation
+
+on:
+  pull_request:
+    branches: [main, mmo-rpg/foundation-mega-task]
+  push:
+    branches: [main]
+
+jobs:
+  lint:
+    name: ${{ matrix.lint }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        lint:
+          - meta-write-discipline-lint
+          - pii-classify-lint
+          - transitions-validation-lint
+          - shard-allocation-validation
+          - migration-idempotency-validator
+          - observability-inventory-lint
+          - capacity-budget-lint
+          - dep-pinning-lint
+          - timeout-discipline-lint
+          - language-rule-lint
+          - role-grant-validator
+          - outbox-event-emit-lint
+          - service-acl-matrix-lint
+          - prompt-assembly-discipline-lint
+          - meta-sensitive-read-bypass-lint
+          - read-audit-query-type-drift-lint
+          # W3.3 — lifecycle-bound actor fixtures must use UUIDs (the
+          # lifecycle_transition_audit.actor_id column is UUID NOT NULL). The
+          # script's default mode runs its --selftest bite THEN the lint.
+          - meta-actor-uuid-lint
+          # W3.4 follow-up — an own-baseline `wg -emit` drill must apply migration
+          # 0013 (the emit path stamps events.content_sha256). Default mode runs
+          # its --selftest bite THEN the lint.
+          - emit-migration-0013-lint
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run ${{ matrix.lint }}
+        run: bash scripts/${{ matrix.lint }}.sh

@@ -102,7 +102,20 @@
     "block_mode": "Block",
     "text_mode": "Text",
     "pane_original": "Original",
-    "pane_translation": "Translation"
+    "pane_translation": "Translation",
+    "correct": "Correct",
+    "correcting": "Correcting",
+    "correct_title": "Edit translation blocks inline — corrections save to your edited version and feed learning",
+    "block_saved": "Block saved",
+    "block_save_failed": "Save failed: {{error}}",
+    "block_saving": "Saving…",
+    "block_dirty": "Corrected",
+    "newer_machine_available": "A newer machine translation (v{{num}}) is available — your edits stay active until you adopt it",
+    "view_newer": "View",
+    "adopt_newer": "Adopt",
+    "adopt_confirm": "Adopt the newer machine translation as the active version? Your edited version stays saved but is no longer the published one.",
+    "adopted": "Adopted the newer machine translation",
+    "adopt_failed": "Adopt failed: {{error}}"
   },
   "matrix": {
     "cell_done": "Done",
@@ -111,7 +124,9 @@
     "cell_pending": "Pending",
     "cell_not_translated": "Not translated",
     "cell_version_info": "v{{num}} · {{count}} version(s)",
+    "cell_manage_versions": "v{{num}} · {{count}} version(s) — click to manage / publish",
     "cell_stale_title": "Out of date — the glossary changed since this was translated",
+    "cell_changed_title": "{{count}} segment(s) changed — review & re-translate",
     "legend_stale": "{{count}} affected",
     "select_affected_title": "Select the chapters affected by glossary changes to re-translate",
     "no_chapters_title": "No chapters to translate",
@@ -138,5 +153,18 @@
     "translate_selected": "Translate Selected",
     "extract_glossary": "Extract Glossary",
     "clear": "Clear"
+  },
+  "segments": {
+    "title": "Segment status",
+    "status_untranslated": "Untranslated",
+    "status_dirty": "Source changed",
+    "status_stale": "Glossary changed",
+    "status_clean": "Up to date",
+    "blocks_range": "blocks {{from}}–{{to}}",
+    "needs_count": "{{count}} segment(s) need re-translation",
+    "retranslate_changed": "Re-translate changed ({{count}})",
+    "retranslate_started": "Re-translation started",
+    "empty": "No segments built yet.",
+    "close": "Close"
   }
 }

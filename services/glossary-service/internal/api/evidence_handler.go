@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -202,7 +203,7 @@ func (s *Server) listEntityEvidences(w http.ResponseWriter, r *http.Request) {
 			ev.note, ev.created_at
 		FROM evidences ev
 		JOIN entity_attribute_values eav ON eav.attr_value_id = ev.attr_value_id
-		JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+		JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
 		%s
 		%s
 		%s
@@ -249,7 +250,7 @@ func (s *Server) listEntityEvidences(w http.ResponseWriter, r *http.Request) {
 		attrRows, err := s.pool.Query(ctx, `
 			SELECT eav.attr_value_id, ad.name
 			FROM entity_attribute_values eav
-			JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+			JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
 			WHERE eav.entity_id = $1
 			ORDER BY ad.sort_order, ad.name`, entityID)
 		if err != nil {
@@ -345,6 +346,80 @@ func (s *Server) listEntityEvidences(w http.ResponseWriter, r *http.Request) {
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
+// attrValueInEntity is the auth-free core of verifyAttrValueInEntity: reports whether
+// attr_value_id belongs to entity_id. Used by the MCP create-evidence tool (the HTTP
+// path uses the writer-form helper).
+func (s *Server) attrValueInEntity(ctx context.Context, attrValueID, entityID uuid.UUID) (bool, error) {
+	var exists bool
+	err := s.pool.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM entity_attribute_values WHERE attr_value_id=$1 AND entity_id=$2)`,
+		attrValueID, entityID).Scan(&exists)
+	return exists, err
+}
+
+// evidence create sentinels (shared by the HTTP handler + the MCP write tool).
+var (
+	errEvidenceType    = errors.New("evidence_type must be quote, summary, or reference") // → 422
+	errEvidenceChapter = errors.New("chapter_id must be a UUID")                          // → 422
+)
+
+// createEvidenceCore inserts an evidence row against an attr_value and bumps the owning
+// entity's updated_at in one round-trip. The single source of truth for the HTTP
+// createEvidence handler and the glossary_create_evidence MCP tool. Grant + entity-in-book
+// + attr-value-in-entity are checked by the CALLER. evidenceType/originalLanguage default
+// to "quote"/"zh" when blank; chapterID (string) is parsed+validated here.
+func (s *Server) createEvidenceCore(ctx context.Context, attrValueID uuid.UUID, evidenceType, originalText, originalLanguage, chapterID string, chapterTitle *string, chapterIndex *int, blockOrLine string, note *string) (*evidenceResp, error) {
+	switch evidenceType {
+	case "quote", "summary", "reference":
+	case "":
+		evidenceType = "quote"
+	default:
+		return nil, errEvidenceType
+	}
+	if originalLanguage == "" {
+		originalLanguage = "zh"
+	}
+	var chapterUUID *uuid.UUID
+	if c := strings.TrimSpace(chapterID); c != "" {
+		id, err := uuid.Parse(c)
+		if err != nil {
+			return nil, errEvidenceChapter
+		}
+		chapterUUID = &id
+	}
+
+	var ev evidenceResp
+	ev.Translations = []evidenceTranslationResp{}
+	err := s.pool.QueryRow(ctx, `
+		WITH _ins AS (
+			INSERT INTO evidences(attr_value_id, chapter_id, chapter_title, chapter_index, block_or_line,
+			                      evidence_type, original_language, original_text, note)
+			VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)
+			RETURNING evidence_id, attr_value_id, chapter_id, chapter_title,
+			          block_or_line, evidence_type, original_language, original_text, note, created_at
+		),
+		_bump AS (
+			UPDATE glossary_entities SET updated_at = now()
+			WHERE entity_id = (
+				SELECT entity_id FROM entity_attribute_values WHERE attr_value_id = $1
+			)
+		)
+		SELECT evidence_id, attr_value_id, chapter_id, chapter_title,
+		       block_or_line, evidence_type, original_language, original_text, note, created_at
+		FROM _ins`,
+		attrValueID, chapterUUID, chapterTitle, chapterIndex, blockOrLine,
+		evidenceType, originalLanguage, originalText, note,
+	).Scan(
+		&ev.EvidenceID, &ev.AttrValueID, &ev.ChapterID, &ev.ChapterTitle,
+		&ev.BlockOrLine, &ev.EvidenceType, &ev.OriginalLanguage,
+		&ev.OriginalText, &ev.Note, &ev.CreatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &ev, nil
+}
+
 // verifyEvidenceInAttrValue checks that evidence_id belongs to attr_value_id.
 func (s *Server) verifyEvidenceInAttrValue(w http.ResponseWriter, ctx context.Context, evidenceID, attrValueID uuid.UUID) bool {
 	var exists bool
@@ -381,6 +456,51 @@ func (s *Server) scanEvidence(ctx context.Context, evidenceID, attrValueID uuid.
 	}
 	ev.Translations = []evidenceTranslationResp{}
 	return &ev, nil
+}
+
+// entityEvidenceItem is the compact, LLM-facing shape of one evidence row (no
+// translation/display machinery — the agent reads the original).
+type entityEvidenceItem struct {
+	EvidenceID    string  `json:"evidence_id"`
+	AttrValueID   string  `json:"attr_value_id"`
+	AttributeCode string  `json:"attribute_code"`
+	AttributeName string  `json:"attribute_name"`
+	ChapterID     *string `json:"chapter_id"`
+	ChapterTitle  *string `json:"chapter_title"`
+	BlockOrLine   string  `json:"block_or_line"`
+	EvidenceType  string  `json:"evidence_type"`
+	OriginalText  string  `json:"original_text"`
+	Note          *string `json:"note"`
+}
+
+// queryEntityEvidences lists an entity's evidence rows (newest-first), capped at `limit`.
+// Auth-free core for the glossary_get_entity_evidence read tool; entity-in-book + grant
+// are the CALLER's concern.
+func (s *Server) queryEntityEvidences(ctx context.Context, entityID uuid.UUID, limit int) ([]entityEvidenceItem, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT ev.evidence_id, ev.attr_value_id, ad.code, ad.name,
+		       ev.chapter_id, ev.chapter_title, ev.block_or_line,
+		       ev.evidence_type, ev.original_text, ev.note
+		FROM evidences ev
+		JOIN entity_attribute_values eav ON eav.attr_value_id = ev.attr_value_id
+		JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
+		WHERE eav.entity_id = $1
+		ORDER BY ev.created_at DESC
+		LIMIT $2`, entityID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []entityEvidenceItem{}
+	for rows.Next() {
+		var it entityEvidenceItem
+		if err := rows.Scan(&it.EvidenceID, &it.AttrValueID, &it.AttributeCode, &it.AttributeName,
+			&it.ChapterID, &it.ChapterTitle, &it.BlockOrLine, &it.EvidenceType, &it.OriginalText, &it.Note); err != nil {
+			return nil, err
+		}
+		items = append(items, it)
+	}
+	return items, rows.Err()
 }
 
 // ── POST /v1/glossary/books/{book_id}/entities/{entity_id}/attributes/{attr_value_id}/evidences
@@ -427,59 +547,21 @@ func (s *Server) createEvidence(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY", "invalid JSON")
 		return
 	}
-	switch in.EvidenceType {
-	case "quote", "summary", "reference":
-	case "":
-		in.EvidenceType = "quote"
-	default:
-		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY",
-			"evidence_type must be quote, summary, or reference")
-		return
+	chapterID := ""
+	if in.ChapterID != nil {
+		chapterID = *in.ChapterID
 	}
-	if in.OriginalLanguage == "" {
-		in.OriginalLanguage = "zh"
-	}
-
-	// Validate chapter_id UUID if provided
-	var chapterUUID *uuid.UUID
-	if in.ChapterID != nil && *in.ChapterID != "" {
-		id, err := uuid.Parse(*in.ChapterID)
-		if err != nil {
-			writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "invalid chapter_id")
-			return
-		}
-		chapterUUID = &id
-	}
-
-	var ev evidenceResp
-	ev.Translations = []evidenceTranslationResp{}
-	// CTE inserts the evidence and bumps the entity's updated_at in one round-trip.
-	err := s.pool.QueryRow(r.Context(), `
-		WITH _ins AS (
-			INSERT INTO evidences(attr_value_id, chapter_id, chapter_title, chapter_index, block_or_line,
-			                      evidence_type, original_language, original_text, note)
-			VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)
-			RETURNING evidence_id, attr_value_id, chapter_id, chapter_title,
-			          block_or_line, evidence_type, original_language, original_text, note, created_at
-		),
-		_bump AS (
-			UPDATE glossary_entities SET updated_at = now()
-			WHERE entity_id = (
-				SELECT entity_id FROM entity_attribute_values WHERE attr_value_id = $1
-			)
-		)
-		SELECT evidence_id, attr_value_id, chapter_id, chapter_title,
-		       block_or_line, evidence_type, original_language, original_text, note, created_at
-		FROM _ins`,
-		attrValueID, chapterUUID, in.ChapterTitle, in.ChapterIndex, in.BlockOrLine,
-		in.EvidenceType, in.OriginalLanguage, in.OriginalText, in.Note,
-	).Scan(
-		&ev.EvidenceID, &ev.AttrValueID, &ev.ChapterID, &ev.ChapterTitle,
-		&ev.BlockOrLine, &ev.EvidenceType, &ev.OriginalLanguage,
-		&ev.OriginalText, &ev.Note, &ev.CreatedAt,
-	)
+	ev, err := s.createEvidenceCore(r.Context(), attrValueID, in.EvidenceType, in.OriginalText,
+		in.OriginalLanguage, chapterID, in.ChapterTitle, in.ChapterIndex, in.BlockOrLine, in.Note)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "insert failed")
+		switch {
+		case errors.Is(err, errEvidenceType):
+			writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", err.Error())
+		case errors.Is(err, errEvidenceChapter):
+			writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "invalid chapter_id")
+		default:
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "insert failed")
+		}
 		return
 	}
 	writeJSON(w, http.StatusCreated, ev)

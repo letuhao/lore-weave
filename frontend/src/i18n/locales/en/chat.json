@@ -147,6 +147,49 @@
     "ok": "ok",
     "failed": "failed"
   },
+  "actionConfirm": {
+    "label": "Confirm action",
+    "batch_count": "{{count}} items",
+    "warning": "This change is high-impact — please confirm.",
+    "warning_destructive": "This is destructive and cascades — please confirm.",
+    "confirm": "Confirm",
+    "confirm_all": "Confirm all",
+    "cancel": "Cancel",
+    "done": "Done ✓",
+    "expired": "This confirmation is no longer valid — ask again to propose it afresh.",
+    "expired_short": "Expired — re-ask",
+    "error": "Could not apply the change.",
+    "error_short": "Failed",
+    "cancelled": "Cancelled"
+  },
+  "recordEdit": {
+    "label": "Proposed edit",
+    "field": "Field",
+    "fields": "{{count}} fields",
+    "empty": "(empty)",
+    "apply": "Apply",
+    "dismiss": "Dismiss",
+    "applied": "Applied ✓",
+    "conflict": "This changed since it was proposed — ask again to see the latest.",
+    "conflict_short": "Changed since proposed — re-ask",
+    "error": "Could not save the change.",
+    "error_short": "Save failed",
+    "dismissed": "Dismissed"
+  },
+  "activity": {
+    "label": "Done for you",
+    "undo": "Undo",
+    "undone": "Undone"
+  },
+  "translation_review": {
+    "header": "Proposed {{lang}} name translations",
+    "header_aliases": "Proposed {{lang}} aliases",
+    "draft": "draft",
+    "more": "+{{count}} more",
+    "written": "{{count}} written",
+    "skipped": "{{count}} skipped",
+    "verify_hint": "Verify in Glossary"
+  },
   "facts": {
     "type": {
       "decision": "Decision",

@@ -11,6 +11,7 @@ import enNotifications from './locales/en/notifications.json';
 import enGlossaryEditor from './locales/en/glossaryEditor.json';
 import enWiki from './locales/en/wiki.json';
 import enExtraction from './locales/en/extraction.json';
+import enGlossaryTranslate from './locales/en/glossaryTranslate.json';
 import enKnowledge from './locales/en/knowledge.json';
 import enEditor from './locales/en/editor.json';
 import enReader from './locales/en/reader.json';
@@ -29,6 +30,7 @@ import viNotifications from './locales/vi/notifications.json';
 import viGlossaryEditor from './locales/vi/glossaryEditor.json';
 import viWiki from './locales/vi/wiki.json';
 import viExtraction from './locales/vi/extraction.json';
+import viGlossaryTranslate from './locales/vi/glossaryTranslate.json';
 import viKnowledge from './locales/vi/knowledge.json';
 import viEditor from './locales/vi/editor.json';
 import viReader from './locales/vi/reader.json';
@@ -47,6 +49,7 @@ import jaNotifications from './locales/ja/notifications.json';
 import jaGlossaryEditor from './locales/ja/glossaryEditor.json';
 import jaWiki from './locales/ja/wiki.json';
 import jaExtraction from './locales/ja/extraction.json';
+import jaGlossaryTranslate from './locales/ja/glossaryTranslate.json';
 import jaKnowledge from './locales/ja/knowledge.json';
 import jaEditor from './locales/ja/editor.json';
 import jaReader from './locales/ja/reader.json';
@@ -65,6 +68,7 @@ import zhTWNotifications from './locales/zh-TW/notifications.json';
 import zhTWGlossaryEditor from './locales/zh-TW/glossaryEditor.json';
 import zhTWWiki from './locales/zh-TW/wiki.json';
 import zhTWExtraction from './locales/zh-TW/extraction.json';
+import zhTWGlossaryTranslate from './locales/zh-TW/glossaryTranslate.json';
 import zhTWKnowledge from './locales/zh-TW/knowledge.json';
 import zhTWEditor from './locales/zh-TW/editor.json';
 import zhTWReader from './locales/zh-TW/reader.json';
@@ -90,16 +94,43 @@ import enCampaigns from './locales/en/campaigns.json';
 import viCampaigns from './locales/vi/campaigns.json';
 import jaCampaigns from './locales/ja/campaigns.json';
 import zhTWCampaigns from './locales/zh-TW/campaigns.json';
+import enWorld from './locales/en/world.json';
+import viWorld from './locales/vi/world.json';
+import jaWorld from './locales/ja/world.json';
+import zhTWWorld from './locales/zh-TW/world.json';
+import enOnboarding from './locales/en/onboarding.json';
+import viOnboarding from './locales/vi/onboarding.json';
+import jaOnboarding from './locales/ja/onboarding.json';
+import zhTWOnboarding from './locales/zh-TW/onboarding.json';
+import enJobs from './locales/en/jobs.json';
+import viJobs from './locales/vi/jobs.json';
+import jaJobs from './locales/ja/jobs.json';
+import zhTWJobs from './locales/zh-TW/jobs.json';
+// G6 glossary-tiering UI — en/vi/ja/zh-TW (G6f).
+import enGlossaryTiering from './locales/en/glossaryTiering.json';
+import viGlossaryTiering from './locales/vi/glossaryTiering.json';
+import jaGlossaryTiering from './locales/ja/glossaryTiering.json';
+import zhTWGlossaryTiering from './locales/zh-TW/glossaryTiering.json';
+// Per-user glossary standards library — en/vi/ja/zh-TW.
+import enStandards from './locales/en/standards.json';
+import viStandards from './locales/vi/standards.json';
+import jaStandards from './locales/ja/standards.json';
+import zhTWStandards from './locales/zh-TW/standards.json';
+// KG customizable-ontology UI (adopt/sync/triage) — en/vi/ja/zh-TW.
+import enKgOntology from './locales/en/kgOntology.json';
+import viKgOntology from './locales/vi/kgOntology.json';
+import jaKgOntology from './locales/ja/kgOntology.json';
+import zhTWKgOntology from './locales/zh-TW/kgOntology.json';
 
 i18n
   .use(LanguageDetector)
   .use(initReactI18next)
   .init({
     resources: {
-      en: { common: enCommon, auth: enAuth, books: enBooks, leaderboard: enLeaderboard, profile: enProfile, notifications: enNotifications, glossaryEditor: enGlossaryEditor, wiki: enWiki, extraction: enExtraction, knowledge: enKnowledge, editor: enEditor, reader: enReader, chat: enChat, settings: enSettings, entityEditor: enEntityEditor, catalog: enCatalog, translation: enTranslation, usage: enUsage, enrichment: enEnrichment, composition: enComposition, rawSearch: enRawSearch, campaigns: enCampaigns },
-      vi: { common: viCommon, auth: viAuth, books: viBooks, leaderboard: viLeaderboard, profile: viProfile, notifications: viNotifications, glossaryEditor: viGlossaryEditor, wiki: viWiki, extraction: viExtraction, knowledge: viKnowledge, editor: viEditor, reader: viReader, chat: viChat, settings: viSettings, entityEditor: viEntityEditor, catalog: viCatalog, translation: viTranslation, usage: viUsage, enrichment: viEnrichment, composition: viComposition, rawSearch: viRawSearch, campaigns: viCampaigns },
-      ja: { common: jaCommon, auth: jaAuth, books: jaBooks, leaderboard: jaLeaderboard, profile: jaProfile, notifications: jaNotifications, glossaryEditor: jaGlossaryEditor, wiki: jaWiki, extraction: jaExtraction, knowledge: jaKnowledge, editor: jaEditor, reader: jaReader, chat: jaChat, settings: jaSettings, entityEditor: jaEntityEditor, catalog: jaCatalog, translation: jaTranslation, usage: jaUsage, enrichment: jaEnrichment, composition: jaComposition, rawSearch: jaRawSearch, campaigns: jaCampaigns },
-      'zh-TW': { common: zhTWCommon, auth: zhTWAuth, books: zhTWBooks, leaderboard: zhTWLeaderboard, profile: zhTWProfile, notifications: zhTWNotifications, glossaryEditor: zhTWGlossaryEditor, wiki: zhTWWiki, extraction: zhTWExtraction, knowledge: zhTWKnowledge, editor: zhTWEditor, reader: zhTWReader, chat: zhTWChat, settings: zhTWSettings, entityEditor: zhTWEntityEditor, catalog: zhTWCatalog, translation: zhTWTranslation, usage: zhTWUsage, enrichment: zhTWEnrichment, composition: zhTWComposition, rawSearch: zhTWRawSearch, campaigns: zhTWCampaigns },
+      en: { common: enCommon, auth: enAuth, books: enBooks, leaderboard: enLeaderboard, profile: enProfile, notifications: enNotifications, glossaryEditor: enGlossaryEditor, wiki: enWiki, extraction: enExtraction, glossaryTranslate: enGlossaryTranslate, knowledge: enKnowledge, editor: enEditor, reader: enReader, chat: enChat, settings: enSettings, entityEditor: enEntityEditor, catalog: enCatalog, translation: enTranslation, usage: enUsage, enrichment: enEnrichment, composition: enComposition, rawSearch: enRawSearch, campaigns: enCampaigns, world: enWorld, onboarding: enOnboarding, jobs: enJobs, glossaryTiering: enGlossaryTiering, standards: enStandards, kgOntology: enKgOntology },
+      vi: { common: viCommon, auth: viAuth, books: viBooks, leaderboard: viLeaderboard, profile: viProfile, notifications: viNotifications, glossaryEditor: viGlossaryEditor, wiki: viWiki, extraction: viExtraction, glossaryTranslate: viGlossaryTranslate, knowledge: viKnowledge, editor: viEditor, reader: viReader, chat: viChat, settings: viSettings, entityEditor: viEntityEditor, catalog: viCatalog, translation: viTranslation, usage: viUsage, enrichment: viEnrichment, composition: viComposition, rawSearch: viRawSearch, campaigns: viCampaigns, world: viWorld, onboarding: viOnboarding, jobs: viJobs, glossaryTiering: viGlossaryTiering, standards: viStandards, kgOntology: viKgOntology },
+      ja: { common: jaCommon, auth: jaAuth, books: jaBooks, leaderboard: jaLeaderboard, profile: jaProfile, notifications: jaNotifications, glossaryEditor: jaGlossaryEditor, wiki: jaWiki, extraction: jaExtraction, glossaryTranslate: jaGlossaryTranslate, knowledge: jaKnowledge, editor: jaEditor, reader: jaReader, chat: jaChat, settings: jaSettings, entityEditor: jaEntityEditor, catalog: jaCatalog, translation: jaTranslation, usage: jaUsage, enrichment: jaEnrichment, composition: jaComposition, rawSearch: jaRawSearch, campaigns: jaCampaigns, world: jaWorld, onboarding: jaOnboarding, jobs: jaJobs, glossaryTiering: jaGlossaryTiering, standards: jaStandards, kgOntology: jaKgOntology },
+      'zh-TW': { common: zhTWCommon, auth: zhTWAuth, books: zhTWBooks, leaderboard: zhTWLeaderboard, profile: zhTWProfile, notifications: zhTWNotifications, glossaryEditor: zhTWGlossaryEditor, wiki: zhTWWiki, extraction: zhTWExtraction, glossaryTranslate: zhTWGlossaryTranslate, knowledge: zhTWKnowledge, editor: zhTWEditor, reader: zhTWReader, chat: zhTWChat, settings: zhTWSettings, entityEditor: zhTWEntityEditor, catalog: zhTWCatalog, translation: zhTWTranslation, usage: zhTWUsage, enrichment: zhTWEnrichment, composition: zhTWComposition, rawSearch: zhTWRawSearch, campaigns: zhTWCampaigns, world: zhTWWorld, onboarding: zhTWOnboarding, jobs: zhTWJobs, glossaryTiering: zhTWGlossaryTiering, standards: zhTWStandards, kgOntology: zhTWKgOntology },
     },
     defaultNS: 'common',
     fallbackLng: 'en',

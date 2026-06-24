@@ -37,7 +37,14 @@ export function EditModelModal({ model, onClose, onUpdated }: Props) {
 
   // Verify
   const [verifying, setVerifying] = useState(false);
-  const [verifyResult, setVerifyResult] = useState<{ ok: boolean; latency?: number; error?: string } | null>(null);
+  const [verifyResult, setVerifyResult] = useState<{
+    ok: boolean;
+    latency?: number;
+    error?: string;
+    capability?: string;
+    rankedCount?: number;
+    topScore?: number;
+  } | null>(null);
 
   async function handleSave() {
     if (!accessToken) return;
@@ -103,7 +110,16 @@ export function EditModelModal({ model, onClose, onUpdated }: Props) {
     setVerifyResult(null);
     try {
       const res = await providerApi.verifyUserModel(accessToken, model.user_model_id);
-      setVerifyResult({ ok: res.verified, latency: res.latency_ms, error: res.error });
+      setVerifyResult({
+        ok: res.verified,
+        latency: res.latency_ms,
+        error: res.error,
+        capability: res.capability,
+        // C3: rerank verify proves the model ranks — surface how many docs it
+        // scored and the top relevance so the user sees a real result, not just OK.
+        rankedCount: res.scores?.length,
+        topScore: res.top_score,
+      });
     } catch {
       setVerifyResult({ ok: false, error: t('model_modal.edit.request_failed') });
     } finally {
@@ -204,7 +220,17 @@ export function EditModelModal({ model, onClose, onUpdated }: Props) {
             {verifyResult?.ok ? <CheckCircle className="h-3.5 w-3.5 text-green-400" /> : <Zap className="h-3.5 w-3.5 text-muted-foreground" />}
             <span className="flex-1 text-xs">
               {verifyResult?.ok ? (
-                <span className="font-medium text-green-400">{t('model_modal.edit.verify_ok', { ms: verifyResult.latency })}</span>
+                <span className="font-medium text-green-400">
+                  {/* C3: for rerank, prove it actually ranked — show docs scored + top relevance */}
+                  {verifyResult.capability === 'rerank' && verifyResult.rankedCount
+                    ? t('model_modal.edit.verify_ok_rerank', {
+                        defaultValue: 'Ranked {{count}} docs · top {{score}} · {{ms}}ms',
+                        count: verifyResult.rankedCount,
+                        score: verifyResult.topScore?.toFixed(3) ?? '—',
+                        ms: verifyResult.latency,
+                      })
+                    : t('model_modal.edit.verify_ok', { ms: verifyResult.latency })}
+                </span>
               ) : verifyResult?.ok === false ? (
                 <span className="text-destructive">{verifyResult.error}</span>
               ) : (

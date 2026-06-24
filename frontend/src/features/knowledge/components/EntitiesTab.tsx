@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Sparkles, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useEntities } from '../hooks/useEntities';
 import { useProjects } from '../hooks/useProjects';
 import { EntitiesTable } from './EntitiesTable';
 import { EntityDetailPanel } from './EntityDetailPanel';
+import { EntityStatusLegend } from './EntityStatusLegend';
+import { ENTITY_STATUSES, type EntityStatus } from '../api';
 
 // K19d — Entities tab container. Owns:
 //   - filter state (project_id, kind, search — all nullable/free)
@@ -38,24 +40,62 @@ function useDebounced<T>(value: T, delayMs: number): T {
   return debounced;
 }
 
-export function EntitiesTab() {
+interface EntitiesTabProps {
+  // C6 (G6) — when rendered inside the project-detail shell the project
+  // scope comes from the ROUTE, not a select-box. Providing this both
+  // seeds the project filter AND hides the per-tab project `<select>`
+  // (the G6 IA backbone). Absent ⇒ the legacy cross-project surface with
+  // its dropdown is unchanged.
+  scopedProjectId?: string;
+}
+
+export function EntitiesTab({ scopedProjectId }: EntitiesTabProps = {}) {
   const { t } = useTranslation('knowledge');
-  const [projectFilter, setProjectFilter] = useState<string>('');
+  const [projectFilter, setProjectFilter] = useState<string>(
+    scopedProjectId ?? '',
+  );
   const [kindFilter, setKindFilter] = useState<string>('');
+  const [statusFilter, setStatusFilter] = useState<EntityStatus | ''>('');
   const [searchInput, setSearchInput] = useState<string>('');
+  const [semanticInput, setSemanticInput] = useState<string>('');
   const [offset, setOffset] = useState(0);
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
 
   const debouncedSearch = useDebounced(searchInput, 300);
+  const debouncedSemantic = useDebounced(semanticInput, 300);
+
+  const scoped = !!scopedProjectId;
+  // When scoped by route, the route param is authoritative; the internal
+  // projectFilter state is only used by the cross-project (unscoped) view.
+  const effectiveProjectId = scopedProjectId ?? projectFilter;
+
+  // C8: semantic VECTOR search requires a project (BE 422s otherwise).
+  // The box is only offered when scoped, and it is mutually exclusive
+  // with the plain FTS `search` (BE 422s if both set) — semantic wins
+  // when both have text.
+  const effectiveSemantic =
+    scoped && debouncedSemantic.length >= 2 ? debouncedSemantic : undefined;
   const effectiveSearch =
-    debouncedSearch.length >= 2 ? debouncedSearch : undefined;
+    !effectiveSemantic && debouncedSearch.length >= 2
+      ? debouncedSearch
+      : undefined;
 
   const projectsQuery = useProjects(false);
 
+  // C9 — the scoped project's linked book, threaded to the detail panel
+  // for the glossary context-pin toggle (book-scoped). Resolved from the
+  // already-loaded projects list; null when the project has no book.
+  const scopedBookId =
+    projectsQuery.items.find((p) => p.project_id === effectiveProjectId)
+      ?.book_id ?? null;
+
   const { entities, total, isLoading, error, isFetching } = useEntities({
-    project_id: projectFilter || undefined,
+    project_id: effectiveProjectId || undefined,
     kind: kindFilter || undefined,
     search: effectiveSearch,
+    semantic_query: effectiveSemantic,
+    status: statusFilter || undefined,
+    sort_by: 'anchor_score',
     limit: PAGE_SIZE,
     offset,
   });
@@ -72,26 +112,28 @@ export function EntitiesTab() {
   return (
     <div data-testid="entities-tab">
       <div className="mb-4 flex flex-wrap items-end gap-2">
-        <label className="flex flex-col gap-1 text-[11px]">
-          <span className="text-muted-foreground">
-            {t('entities.filters.project')}
-          </span>
-          <select
-            value={projectFilter}
-            onChange={(e) =>
-              handleFilterChange(() => setProjectFilter(e.target.value))
-            }
-            className="rounded-md border bg-input px-2 py-1.5 text-xs outline-none focus:border-ring"
-            data-testid="entities-filter-project"
-          >
-            <option value="">{t('entities.filters.anyProject')}</option>
-            {projectsQuery.items.map((p) => (
-              <option key={p.project_id} value={p.project_id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        {!scoped && (
+          <label className="flex flex-col gap-1 text-[11px]">
+            <span className="text-muted-foreground">
+              {t('entities.filters.project')}
+            </span>
+            <select
+              value={projectFilter}
+              onChange={(e) =>
+                handleFilterChange(() => setProjectFilter(e.target.value))
+              }
+              className="rounded-md border bg-input px-2 py-1.5 text-xs outline-none focus:border-ring"
+              data-testid="entities-filter-project"
+            >
+              <option value="">{t('entities.filters.anyProject')}</option>
+              {projectsQuery.items.map((p) => (
+                <option key={p.project_id} value={p.project_id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
 
         <label className="flex flex-col gap-1 text-[11px]">
           <span className="text-muted-foreground">
@@ -109,6 +151,29 @@ export function EntitiesTab() {
             {KIND_OPTIONS.map((k) => (
               <option key={k} value={k}>
                 {k}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="flex flex-col gap-1 text-[11px]">
+          <span className="text-muted-foreground">
+            {t('entities.filters.status')}
+          </span>
+          <select
+            value={statusFilter}
+            onChange={(e) =>
+              handleFilterChange(() =>
+                setStatusFilter(e.target.value as EntityStatus | ''),
+              )
+            }
+            className="rounded-md border bg-input px-2 py-1.5 text-xs outline-none focus:border-ring"
+            data-testid="entities-filter-status"
+          >
+            <option value="">{t('entities.filters.anyStatus')}</option>
+            {ENTITY_STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {t(`entities.status.${s}`)}
               </option>
             ))}
           </select>
@@ -133,6 +198,34 @@ export function EntitiesTab() {
           </div>
         </label>
       </div>
+
+      {/* C8: semantic VECTOR search box — distinct from plain FTS. Only
+          when scoped (BE requires a project for vector search). */}
+      {scoped && (
+        <label
+          className="mb-3 flex flex-col gap-1 text-[11px]"
+          data-testid="entities-semantic-search"
+        >
+          <span className="flex items-center gap-1 text-muted-foreground">
+            <Sparkles className="h-3 w-3" />
+            {t('entities.filters.semantic')}
+          </span>
+          <div className="relative">
+            <input
+              type="text"
+              value={semanticInput}
+              onChange={(e) =>
+                handleFilterChange(() => setSemanticInput(e.target.value))
+              }
+              placeholder={t('entities.filters.semanticPlaceholder')}
+              className="w-full rounded-md border bg-input py-1.5 px-2 text-xs outline-none focus:border-ring"
+              data-testid="entities-filter-semantic"
+            />
+          </div>
+        </label>
+      )}
+
+      <EntityStatusLegend />
 
       {isLoading && (
         <div
@@ -222,6 +315,7 @@ export function EntitiesTab() {
           if (!o) setSelectedEntityId(null);
         }}
         entityId={selectedEntityId}
+        bookId={scopedBookId}
       />
     </div>
   );

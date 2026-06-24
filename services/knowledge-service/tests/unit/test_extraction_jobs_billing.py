@@ -64,6 +64,49 @@ def test_row_to_job_roundtrips_billing_columns():
     assert job.embedding_model == "owner-emb"
 
 
+# ── C12 — targets / concurrency_level round-trip ──────────────────
+
+
+def test_row_to_job_roundtrips_targets_and_concurrency():
+    """_row_to_job carries the C12 columns when the SELECT includes them."""
+    job = _row_to_job(
+        _base_row(
+            targets=["entities", "events"],
+            concurrency_level=4,
+        )
+    )
+    assert job.targets == ["entities", "events"]
+    assert job.concurrency_level == 4
+
+
+def test_row_to_job_targets_absent_defaults_to_none():
+    """list_active_for_project omits targets/concurrency_level from its
+    hand-written SELECT; the model must still validate (defaults None)."""
+    job = _row_to_job(_base_row())  # no targets / concurrency_level keys
+    assert job.targets is None
+    assert job.concurrency_level is None
+
+
+def test_extraction_job_create_accepts_targets_and_concurrency():
+    """ExtractionJobCreate carries the C12 fields; None ⇒ defaults."""
+    c = ExtractionJobCreate(
+        project_id=uuid4(),
+        scope="chapters",
+        llm_model="m",
+        embedding_model="e",
+        targets=["entities", "relations"],
+        concurrency_level=8,
+    )
+    assert c.targets == ["entities", "relations"]
+    assert c.concurrency_level == 8
+
+    c2 = ExtractionJobCreate(
+        project_id=uuid4(), scope="chapters", llm_model="m", embedding_model="e",
+    )
+    assert c2.targets is None
+    assert c2.concurrency_level is None
+
+
 def test_row_to_job_billing_absent_defaults_to_none():
     """list_active / list_all_for_user omit billing columns from their SELECT;
     the model must still validate (defaults None), not raise."""

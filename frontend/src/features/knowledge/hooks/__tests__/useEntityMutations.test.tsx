@@ -11,6 +11,8 @@ vi.mock('@/auth', () => ({
 const updateEntityMock = vi.fn();
 const mergeEntityIntoMock = vi.fn();
 const unlockEntityMock = vi.fn();
+const promoteEntityMock = vi.fn();
+const setGlossaryEntityPinnedMock = vi.fn();
 vi.mock('../../api', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('../../api');
   return {
@@ -19,6 +21,9 @@ vi.mock('../../api', async () => {
       updateEntity: (...args: unknown[]) => updateEntityMock(...args),
       mergeEntityInto: (...args: unknown[]) => mergeEntityIntoMock(...args),
       unlockEntity: (...args: unknown[]) => unlockEntityMock(...args),
+      promoteEntity: (...args: unknown[]) => promoteEntityMock(...args),
+      setGlossaryEntityPinned: (...args: unknown[]) =>
+        setGlossaryEntityPinnedMock(...args),
     },
   };
 });
@@ -27,6 +32,8 @@ import {
   useMergeEntity,
   useUnlockEntity,
   useUpdateEntity,
+  usePromoteEntity,
+  useToggleGlossaryPin,
 } from '../useEntityMutations';
 
 function makeWrapper() {
@@ -254,5 +261,95 @@ describe('useUnlockEntity', () => {
       result.current.unlock({ entityId: 'ent-1' }),
     ).rejects.toThrow('boom');
     expect(onError).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── C9 (C9-promote-flow) ──────────────────────────────────────────────
+
+describe('usePromoteEntity', () => {
+  beforeEach(() => {
+    promoteEntityMock.mockReset();
+    useAuthMock.mockReturnValue({
+      accessToken: 'tok',
+      user: { user_id: 'u1', email: 'a@b', display_name: null, avatar_url: null },
+    });
+  });
+
+  it('calls promoteEntity + invalidates list and detail on success', async () => {
+    const anchored = { ...ENTITY, glossary_entity_id: 'g-9', anchor_score: 1 };
+    promoteEntityMock.mockResolvedValue(anchored);
+    const onSuccess = vi.fn();
+    const { Wrapper, invalidateSpy } = makeWrapper();
+    const { result } = renderHook(() => usePromoteEntity({ onSuccess }), {
+      wrapper: Wrapper,
+    });
+
+    await act(async () => {
+      await result.current.promote({ entityId: 'ent-1' });
+    });
+
+    await waitFor(() => {
+      expect(promoteEntityMock).toHaveBeenCalledWith('ent-1', 'tok');
+    });
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ['knowledge-entities', 'u1'],
+    });
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ['knowledge-entity-detail', 'u1', 'ent-1'],
+    });
+    expect(onSuccess).toHaveBeenCalledTimes(1);
+  });
+
+  it('forwards the error to onError', async () => {
+    promoteEntityMock.mockRejectedValue(new Error('glossary_draft_failed'));
+    const onError = vi.fn();
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => usePromoteEntity({ onError }), {
+      wrapper: Wrapper,
+    });
+    await expect(
+      result.current.promote({ entityId: 'ent-1' }),
+    ).rejects.toThrow('glossary_draft_failed');
+    expect(onError).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('useToggleGlossaryPin', () => {
+  beforeEach(() => {
+    setGlossaryEntityPinnedMock.mockReset();
+    useAuthMock.mockReturnValue({
+      accessToken: 'tok',
+      user: { user_id: 'u1', email: 'a@b', display_name: null, avatar_url: null },
+    });
+  });
+
+  it('toggles is_pinned_for_context (pinned=false) on the glossary entity', async () => {
+    setGlossaryEntityPinnedMock.mockResolvedValue(undefined);
+    const onSuccess = vi.fn();
+    const { Wrapper, invalidateSpy } = makeWrapper();
+    const { result } = renderHook(() => useToggleGlossaryPin({ onSuccess }), {
+      wrapper: Wrapper,
+    });
+
+    await act(async () => {
+      await result.current.toggle({
+        entityId: 'ent-1',
+        bookId: 'b-1',
+        glossaryEntityId: 'g-1',
+        pinned: false,
+      });
+    });
+
+    // setGlossaryEntityPinned(bookId, glossaryEntityId, pinned, token)
+    expect(setGlossaryEntityPinnedMock).toHaveBeenCalledWith(
+      'b-1',
+      'g-1',
+      false,
+      'tok',
+    );
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ['knowledge-entity-detail', 'u1', 'ent-1'],
+    });
+    expect(onSuccess).toHaveBeenCalledWith(false);
   });
 });

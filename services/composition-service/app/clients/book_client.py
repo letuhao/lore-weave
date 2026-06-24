@@ -167,6 +167,43 @@ class BookClient:
             logger.warning("book sort-orders unavailable: %s", exc)
             return {}
 
+    async def get_reader_language(self, book_id: UUID, user_id: UUID) -> str | None:
+        """KG-ML M7 (C6) — the user's stored reader-language for this book (M3),
+        via the INTERNAL resolver `GET /internal/books/{id}/reader-language?user_id=`
+        (token-gated, book-scoped). Used by the packer to request grounding context
+        in the author's language (per-language glossary aliases + vi-first lore).
+        Best-effort: returns None when unset / on ANY failure — the pack just stays
+        source-language (never 500s a generate)."""
+        url = f"{self._base_url}/internal/books/{book_id}/reader-language"
+        headers = {"X-Internal-Token": self._internal_token}
+        tid = trace_id_var.get()
+        if tid:
+            headers["X-Trace-Id"] = tid
+        try:
+            resp = await self._http.get(
+                url, params={"user_id": str(user_id)}, headers=headers,
+            )
+            if resp.status_code != 200:
+                return None
+            lang = resp.json().get("reader_language")
+            return lang or None
+        except (httpx.HTTPError, ValueError, AttributeError) as exc:
+            logger.warning("book reader-language unavailable: %s", exc)
+            return None
+
+    async def publish_chapter(
+        self, book_id: UUID, chapter_id: UUID, bearer: str,
+    ) -> dict[str, Any]:
+        """Canonize the chapter draft (Canon Model CM1: draft → published). POSTs
+        to book-service's public `/publish` route (JWT-only — book-service enforces
+        ownership in SQL on the JWT `sub`). Used by the S-COMPOSE Tier-W
+        `composition_publish` confirm path. Raises BookClientError on any non-2xx /
+        transport (e.g. 409 if there is no draft revision to pin)."""
+        resp = await self._request(
+            "POST", f"/v1/books/{book_id}/chapters/{chapter_id}/publish", bearer,
+        )
+        return self._raise_for_status(resp)
+
     async def list_revisions(
         self, book_id: UUID, chapter_id: UUID, bearer: str, *, limit: int = 1,
     ) -> dict[str, Any]:

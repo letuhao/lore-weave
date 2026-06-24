@@ -32,7 +32,7 @@ import logging
 import os
 import time
 from collections.abc import Iterable
-from typing import Any, Literal, TypedDict
+from typing import TYPE_CHECKING, Any, Literal, TypedDict
 from uuid import UUID
 
 from loreweave_extraction import (
@@ -50,6 +50,7 @@ from loreweave_extraction.extractors.entity import extract_entities
 from loreweave_extraction.extractors.event import extract_events
 from loreweave_extraction.extractors.fact import extract_facts
 from loreweave_extraction.extractors.relation import extract_relations
+from loreweave_extraction.schema_projection import ExtractionSchema
 
 from app.clients.book_client import get_book_client
 from app.clients.llm_client import LLMClient
@@ -60,6 +61,11 @@ from app.db.repositories.job_logs import JobLogsRepo
 from app.extraction.anchor_loader import Anchor
 from app.extraction.hierarchy_writer import HierarchyPaths
 from app.extraction.pass2_writer import Pass2WriteResult, write_pass2_extraction
+
+if TYPE_CHECKING:
+    # L7B — the writer's triage-park Protocol, used only as a type annotation
+    # (string-quoted in signatures) so the runtime import graph is unchanged.
+    from app.extraction.pass2_writer import TriageParkProtocol
 from app.jobs.summary_enqueue import SummaryEnqueueFn, SummarizeMessage
 from app.jobs.task_id import compute_task_id
 from app.metrics import (
@@ -101,30 +107,15 @@ def _load_precision_filter_config() -> PrecisionFilterConfig | None:
             cycle-73b ship uses ``"relation"`` for 55% latency
             reduction at near-identical F1).
     """
-    model_ref = os.environ.get(
-        "KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_REF", ""
-    ).strip()
-    if not model_ref:
-        return None
-    partial_policy = os.environ.get(
-        "KNOWLEDGE_EXTRACTION_PRECISION_FILTER_PARTIAL_POLICY", "keep"
-    ).strip() or "keep"
-    model_source = os.environ.get(
-        "KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_SOURCE", "user_model"
-    ).strip() or "user_model"
-    categories_env = os.environ.get(
-        "KNOWLEDGE_EXTRACTION_PRECISION_FILTER_CATEGORIES",
-        "entity,relation,event",
-    ).strip() or "entity,relation,event"
-    categories = tuple(
-        c.strip() for c in categories_env.split(",") if c.strip()
-    )
-    return PrecisionFilterConfig(
-        model_ref=model_ref,
-        model_source=model_source,  # type: ignore[arg-type]
-        partial_policy=partial_policy,  # type: ignore[arg-type]
-        categories=categories,  # type: ignore[arg-type]
-    )
+    # D-WX-PRECISION-FILTER-MODEL-ARCH: the filter MODEL must NOT come from a platform
+    # env. A hardcoded env model_ref is cross-tenant — submitted as user_model scoped
+    # to the request's user, so provider-registry 404'd "model not found" for every
+    # user who didn't own it (decoupled extraction fold stalled — D-WX live-smoke
+    # finding). The filter is configured PER-PROJECT via
+    # extraction_config.precision_filter (PrecisionFilterOverride: enabled + model_ref
+    # + model_source + categories + partial_policy) — FE-set, DB-stored, resolved
+    # per-user, merged onto these (now model-less) global defaults. No env model source.
+    return None
 
 
 # Cached at module load. Re-read by tests via patch on this name.
@@ -565,6 +556,24 @@ async def _fetch_chapter_leaf_text(
     return (None, "missing")
 
 
+def _p2_schema_key(schema: "ExtractionSchema | None") -> str:
+    """Cache-key segment for the resolved ontology schema (D-KG-LB-CACHE-SCHEMA-KEY).
+
+    Returns the schema's ``label`` ("project_id@vN") — the full identity that
+    disambiguates BOTH a schema_version bump within a project AND two projects
+    with distinct custom vocab (schema_version alone collides cross-project).
+    Falls back to ``v<schema_version>`` if the label is blank. ``None`` schema
+    → "" → the legacy task_id hash is preserved byte-for-byte.
+    """
+    if schema is None:
+        return ""
+    label = getattr(schema, "label", "") or ""
+    if label:
+        return label
+    ver = getattr(schema, "schema_version", None)
+    return f"v{ver}" if ver is not None else ""
+
+
 async def _p2_cache_wrap(
     *,
     op: Literal["entity", "relation", "event", "fact"],
@@ -576,6 +585,7 @@ async def _p2_cache_wrap(
     chapter_id: UUID | None,
     model_ref: str,
     save_raw: bool,
+    schema_key: str = "",
 ) -> list[Any]:
     """P2 cache wrapper around a single extractor call.
 
@@ -596,7 +606,7 @@ async def _p2_cache_wrap(
     # Format: `v1-{op}-{8hex}` (vs old `v1-{8hex}`). One-time cache
     # thrash on first deploy: every existing P2 task_id changes once.
     extractor_version = get_extractor_version(op=op)
-    task_id = compute_task_id(leaf_text, op, extractor_version, model_ref)
+    task_id = compute_task_id(leaf_text, op, extractor_version, model_ref, schema_key)
     pool = get_knowledge_pool()
     repo = ExtractionLeavesRepo(pool)
 
@@ -694,6 +704,31 @@ async def _emit_log(
         )
 
 
+def _merge_pinned(
+    pinned_names: list[str] | None,
+    known_entities: Iterable[str] | None,
+) -> list[str]:
+    """C13 — prepend pinned glossary entity names ahead of the window's own
+    known_entities. Pinned names come FIRST (anchor priority), order-stable,
+    de-duplicated (case-sensitive exact match; blank/whitespace dropped). The
+    union is what reaches extract_entities + the R/E/F gather for THIS window,
+    so a pinned entity is in the prompt context even when the chapter text
+    never mentions it. None/empty pinned ⇒ identical to the legacy behaviour."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for name in (pinned_names or ()):
+        n = (name or "").strip()
+        if n and n not in seen:
+            seen.add(n)
+            out.append(n)
+    for name in (known_entities or ()):
+        n = (name or "").strip()
+        if n and n not in seen:
+            seen.add(n)
+            out.append(n)
+    return out
+
+
 async def gather_relations_events_facts(
     *,
     text: str,
@@ -706,6 +741,7 @@ async def gather_relations_events_facts(
     llm_client: LLMClient,
     on_dropped: Any = None,
     context_budget: "ContextBudget | None" = None,
+    schema: ExtractionSchema | None = None,
 ) -> tuple[list[Any], list[Any], list[Any]]:
     """C-PRED-ALIGN-DEF-01 — single source of truth for Pass 2 R+E+F
     parallelism. Returns ``(relations, events, facts)``.
@@ -748,6 +784,7 @@ async def gather_relations_events_facts(
         model_ref=model_ref,
         llm_client=llm_client,
         on_dropped=on_dropped,
+        schema=schema,
     )
     if context_budget is not None:
         extractor_kwargs["context_budget"] = context_budget
@@ -804,6 +841,28 @@ async def _run_pipeline(
     embedding_model_uuid: str | None = None,
     embedding_dimension: int | None = None,
     summary_enqueue: SummaryEnqueueFn | None = None,
+    # C12 — target-typed extraction. None / empty ⇒ ALL passes run
+    # (back-compat). Plural contract names entities/relations/events/facts
+    # gate the R/E/F gather; `summaries` gates the summary enqueue.
+    # Requesting any of {relations,events,facts} auto-includes `entities`.
+    targets: set[str] | None = None,
+    # KG customizable-ontology (lane LB) — resolved project schema projection.
+    # None (default) → static byte-identical prompts + Literal validation
+    # (today's behavior). A non-None ExtractionSchema activates the dynamic
+    # prompt/validation path in the SDK extractors. This is the ADVISORY posture
+    # (allow_free_edges hint, never pre-drop) — see ``write_schema`` below.
+    schema: ExtractionSchema | None = None,
+    # L7B (D-KG-L7B-EXTRACT-ITEM) — the L7 schema SPLIT for the combined
+    # extract-then-write path (/extract-item). ``schema`` above feeds the SDK
+    # prompt as an advisory hint; ``write_schema`` is the AUTHORITATIVE projection
+    # (real ``allow_free_edges``) handed to the write boundary so the closed-edge
+    # guard + ``schema_version`` stamp go live there, and ``triage_repo`` lets an
+    # off-schema edge that the guard drops PARK to kg_triage_items instead of
+    # vanishing. Both default None → the writer receives ``schema`` (back-compat:
+    # before the split the writer got the same advisory schema and no triage_repo,
+    # so ``write_schema=None``/``triage_repo=None`` is byte-identical to today).
+    write_schema: ExtractionSchema | None = None,
+    triage_repo: "TriageParkProtocol | None" = None,
 ) -> Pass2WriteResult:
     """Core pipeline shared by chat_turn and chapter entry points.
 
@@ -828,6 +887,20 @@ async def _run_pipeline(
             **_WRITER_AUTOCREATE_CONFIG,
         )
 
+    # C12 — resolve effective target set (None/empty ⇒ all; dependent
+    # targets auto-include entities). Reuses the SDK's single source of
+    # truth so the gate matches the worker-ai path exactly.
+    from loreweave_extraction.pass2 import normalize_targets
+    eff_targets = normalize_targets(targets)
+    want_relations = "relations" in eff_targets
+    want_events = "events" in eff_targets
+    want_facts = "facts" in eff_targets
+    # LOCK — recovery/precision-filter auto-disable when `entities` was not
+    # explicitly requested (pre-auto-include). None/empty ⇒ entities in ⇒
+    # enabled (back-compat). `summaries` gates the summary enqueue.
+    entities_requested = (not targets) or ("entities" in targets)
+    summaries_requested = (not targets) or ("summaries" in targets)
+
     started = time.perf_counter()
 
     # Step 1 — extract entities first (must run before R/E/F so they
@@ -849,12 +922,14 @@ async def _run_pipeline(
             model_ref=model_ref,
             llm_client=llm_client,
             on_dropped=_on_dropped,
+            schema=schema,
         ),
         deserializer=LLMEntityCandidate.model_validate,
         book_id=book_id,
         chapter_id=chapter_id,
         model_ref=model_ref,
         save_raw=save_raw_extraction,
+        schema_key=_p2_schema_key(schema),
     )
 
     entities_elapsed = time.perf_counter() - started
@@ -921,71 +996,84 @@ async def _run_pipeline(
         model_ref=model_ref,
         llm_client=llm_client,
         on_dropped=_on_dropped,
+        schema=schema,
     )
+    # C12 — build the R/E/F gather task-list CONDITIONALLY. Only the
+    # requested trio ops run; skipped ops yield empty lists. Extractor
+    # internals + the per-op cache wrap are unchanged — only the task-list
+    # assembly is gated.
     gather_started = time.perf_counter()
-    relation_cands, event_cands, fact_cands = await asyncio.gather(
-        _p2_cache_wrap(
-            op="relation",
-            leaf_text=text,
-            extractor_callable=extract_relations,
-            extractor_kwargs=common_kwargs,
-            deserializer=LLMRelationCandidate.model_validate,
-            book_id=book_id, chapter_id=chapter_id,
-            model_ref=model_ref, save_raw=save_raw_extraction,
-        ),
-        _p2_cache_wrap(
-            op="event",
-            leaf_text=text,
-            extractor_callable=extract_events,
-            extractor_kwargs=common_kwargs,
-            deserializer=LLMEventCandidate.model_validate,
-            book_id=book_id, chapter_id=chapter_id,
-            model_ref=model_ref, save_raw=save_raw_extraction,
-        ),
-        _p2_cache_wrap(
-            op="fact",
-            leaf_text=text,
-            extractor_callable=extract_facts,
-            extractor_kwargs=common_kwargs,
-            deserializer=LLMFactCandidate.model_validate,
-            book_id=book_id, chapter_id=chapter_id,
-            model_ref=model_ref, save_raw=save_raw_extraction,
-        ),
-    )
+    _trio_specs: list[tuple[str, str, Any, Any]] = []
+    if want_relations:
+        _trio_specs.append(
+            ("relations", "relation", extract_relations, LLMRelationCandidate.model_validate))
+    if want_events:
+        _trio_specs.append(
+            ("events", "event", extract_events, LLMEventCandidate.model_validate))
+    if want_facts:
+        _trio_specs.append(
+            ("facts", "fact", extract_facts, LLMFactCandidate.model_validate))
+
+    _trio_results: dict[str, list] = {"relations": [], "events": [], "facts": []}
+    if _trio_specs:
+        gathered = await asyncio.gather(
+            *(
+                _p2_cache_wrap(
+                    op=op,
+                    leaf_text=text,
+                    extractor_callable=extractor,
+                    extractor_kwargs=common_kwargs,
+                    deserializer=deser,
+                    book_id=book_id, chapter_id=chapter_id,
+                    model_ref=model_ref, save_raw=save_raw_extraction,
+                    schema_key=_p2_schema_key(schema),
+                )
+                for _key, op, extractor, deser in _trio_specs
+            )
+        )
+        for (key, _op, _ex, _ds), res in zip(_trio_specs, gathered):
+            _trio_results[key] = res
+    relation_cands = _trio_results["relations"]
+    event_cands = _trio_results["events"]
+    fact_cands = _trio_results["facts"]
     gather_elapsed = time.perf_counter() - gather_started
 
     # Cycle 73d — optional entity recovery (runs BEFORE filter so the
     # filter operates on enriched candidates). No-op when env unset.
-    entities, relation_cands, event_cands, fact_cands = await _maybe_apply_entity_recovery(
-        entities=entities,
-        relations=relation_cands,
-        events=event_cands,
-        facts=fact_cands,
-        text=text,
-        user_id=user_id,
-        project_id=project_id,
-        llm_client=llm_client,
-        anchors=anchors,
-        job_logs_repo=job_logs_repo,
-        job_id=job_id,
-        source_type=source_type,
-        source_id=source_id,
-    )
+    # C12 LOCK — also auto-disabled when entities ∉ requested targets
+    # (they refine the canonical entity set; pointless on an R/E/F-only
+    # build where entities run only as anchors).
+    if entities_requested:
+        entities, relation_cands, event_cands, fact_cands = await _maybe_apply_entity_recovery(
+            entities=entities,
+            relations=relation_cands,
+            events=event_cands,
+            facts=fact_cands,
+            text=text,
+            user_id=user_id,
+            project_id=project_id,
+            llm_client=llm_client,
+            anchors=anchors,
+            job_logs_repo=job_logs_repo,
+            job_id=job_id,
+            source_type=source_type,
+            source_id=source_id,
+        )
 
-    # Cycle 72 — optional precision filter (no-op when env unset).
-    entities, relation_cands, event_cands, fact_cands = await _maybe_apply_precision_filter(
-        entities=entities,
-        relations=relation_cands,
-        events=event_cands,
-        facts=fact_cands,
-        text=text,
-        user_id=user_id,
-        llm_client=llm_client,
-        job_logs_repo=job_logs_repo,
-        job_id=job_id,
-        source_type=source_type,
-        source_id=source_id,
-    )
+        # Cycle 72 — optional precision filter (no-op when env unset).
+        entities, relation_cands, event_cands, fact_cands = await _maybe_apply_precision_filter(
+            entities=entities,
+            relations=relation_cands,
+            events=event_cands,
+            facts=fact_cands,
+            text=text,
+            user_id=user_id,
+            llm_client=llm_client,
+            job_logs_repo=job_logs_repo,
+            job_id=job_id,
+            source_type=source_type,
+            source_id=source_id,
+        )
 
     elapsed = time.perf_counter() - started
     logger.info(
@@ -1027,6 +1115,13 @@ async def _run_pipeline(
         extraction_model=model_ref,
         anchors=anchors,
         hierarchy_paths=hierarchy_paths,   # P3 D2a — hierarchy MERGE in same Tx
+        # lane LB / L7B — closed-edge-set write-boundary guard. Prefer the
+        # AUTHORITATIVE write_schema (real allow_free_edges) when the caller
+        # split it from the advisory prompt schema (/extract-item, L7B); else
+        # fall back to the single `schema` (back-compat — byte-identical when
+        # write_schema is None). None ⇒ no-op guard (today's behavior).
+        schema=write_schema if write_schema is not None else schema,
+        triage_repo=triage_repo,  # L7B/C4 — park off-schema edge drops to triage
         **_WRITER_AUTOCREATE_CONFIG,
     )
     write_elapsed = time.perf_counter() - write_started
@@ -1054,8 +1149,11 @@ async def _run_pipeline(
     # P3 (D3): async summary enqueue. Only fires when caller wired all the
     # P3 dependencies (hierarchy_paths + summary_enqueue + embedding model
     # info). Chat-turn path + legacy callers don't trigger.
+    # C12 — gate the summary enqueue on `summaries ∈ targets` (default
+    # all ⇒ enqueue, back-compat).
     if (
-        hierarchy_paths is not None
+        summaries_requested
+        and hierarchy_paths is not None
         and summary_enqueue is not None
         and embedding_model_uuid is not None
         and embedding_dimension is not None
@@ -1165,11 +1263,23 @@ async def extract_pass2_chat_turn(
     user_message: str | None = None,
     assistant_message: str | None = None,
     known_entities: Iterable[str] | None = None,
+    # C13 — glossary pinning. Names of pinned glossary entities, force-injected
+    # into EVERY window's known_entities so sparse-but-critical entities (a god
+    # in ch1 & ch5000) are always anchored regardless of chapter content. Reuses
+    # the proven known_entities seam (name-prefix injection, not a new block).
+    pinned_names: list[str] | None = None,
     model_source: Literal["user_model", "platform_model"],
     model_ref: str,
     llm_client: LLMClient,
     anchors: list[Anchor] | None = None,
     job_logs_repo: JobLogsRepo | None = None,
+    # KG customizable-ontology (lane LB) — resolved schema projection (None ⇒
+    # static byte-identical behavior). Forwarded to _run_pipeline → SDK.
+    schema: ExtractionSchema | None = None,
+    # L7B (D-KG-L7B-EXTRACT-ITEM) — authoritative write-boundary schema + triage
+    # repo for the schema split (see _run_pipeline). Both None ⇒ byte-identical.
+    write_schema: ExtractionSchema | None = None,
+    triage_repo: "TriageParkProtocol | None" = None,
 ) -> Pass2WriteResult:
     """Run the Pass 2 LLM pipeline on a chat turn.
 
@@ -1197,12 +1307,17 @@ async def extract_pass2_chat_turn(
         source_type=source_type,
         source_id=source_id,
         job_id=job_id,
-        known_entities=list(known_entities or ()),
+        # C13 — prepend pinned names so they reach this window's extract_entities
+        # call + every R/E/F extractor (deduped downstream in _run_pipeline).
+        known_entities=_merge_pinned(pinned_names, known_entities),
         model_source=model_source,
         model_ref=model_ref,
         llm_client=llm_client,
         anchors=anchors,
         job_logs_repo=job_logs_repo,
+        schema=schema,
+        write_schema=write_schema,
+        triage_repo=triage_repo,
     )
 
 
@@ -1216,6 +1331,10 @@ async def extract_pass2_chapter(
     job_id: str,
     chapter_text: str,
     known_entities: Iterable[str] | None = None,
+    # C13 — glossary pinning: see extract_pass2_chat_turn. Force-injected into
+    # this window's known_entities so pinned entities are anchored even when the
+    # chapter text never mentions them.
+    pinned_names: list[str] | None = None,
     model_source: Literal["user_model", "platform_model"],
     model_ref: str,
     llm_client: LLMClient,
@@ -1236,6 +1355,15 @@ async def extract_pass2_chapter(
     embedding_model_uuid: str | None = None,
     embedding_dimension: int | None = None,
     summary_enqueue: SummaryEnqueueFn | None = None,
+    # C12 — target-typed extraction (None ⇒ all passes; back-compat).
+    targets: set[str] | None = None,
+    # KG customizable-ontology (lane LB) — resolved schema projection (None ⇒
+    # static byte-identical behavior). Forwarded to _run_pipeline → SDK.
+    schema: ExtractionSchema | None = None,
+    # L7B (D-KG-L7B-EXTRACT-ITEM) — authoritative write-boundary schema + triage
+    # repo for the schema split (see _run_pipeline). Both None ⇒ byte-identical.
+    write_schema: ExtractionSchema | None = None,
+    triage_repo: "TriageParkProtocol | None" = None,
 ) -> Pass2WriteResult:
     """Run the Pass 2 LLM pipeline on a chapter.
 
@@ -1261,7 +1389,8 @@ async def extract_pass2_chapter(
         source_type=source_type,
         source_id=source_id,
         job_id=job_id,
-        known_entities=list(known_entities or ()),
+        # C13 — prepend pinned names into every chapter window.
+        known_entities=_merge_pinned(pinned_names, known_entities),
         model_source=model_source,
         model_ref=model_ref,
         llm_client=llm_client,
@@ -1276,4 +1405,8 @@ async def extract_pass2_chapter(
         embedding_model_uuid=embedding_model_uuid,
         embedding_dimension=embedding_dimension,
         summary_enqueue=summary_enqueue,
+        targets=targets,
+        schema=schema,
+        write_schema=write_schema,
+        triage_repo=triage_repo,
     )

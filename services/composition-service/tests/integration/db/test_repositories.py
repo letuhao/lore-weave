@@ -17,10 +17,12 @@ from datetime import datetime, timedelta, timezone
 import asyncpg
 import pytest
 
-from app.db.migrate import run_migrations
+from app.db.migrate import C23_DOWN_SQL, run_migrations
+from app.db.models import DivergenceSpec, EntityOverride
 from app.db.repositories import ReferenceViolationError, VersionMismatchError
 from app.db.repositories import outbox
 from app.db.repositories.canon_rules import CanonRulesRepo
+from app.db.repositories.derivatives import DerivativesRepo
 from app.db.repositories.generation_corrections import GenerationCorrectionsRepo
 from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.db.repositories.narrative_thread import NarrativeThreadRepo
@@ -37,7 +39,8 @@ pytestmark = pytest.mark.skipif(
 
 _TABLES = [
     "outbox_events", "generation_correction", "generation_job", "narrative_thread",
-    "canon_rule", "scene_link", "outline_node", "structure_template", "composition_work",
+    "canon_rule", "scene_link", "outline_node", "structure_template",
+    "entity_override", "divergence_spec", "composition_work",
 ]
 
 
@@ -73,6 +76,66 @@ async def test_works_create_get_roundtrip(pool):
     assert got is not None and got.settings == {"voice": "wry"}
     # cross-user isolation
     assert await repo.get(uuid.uuid4(), project) is None
+
+
+async def test_works_create_pending_null_project_and_backfill(pool):
+    # C16 (WG-3): a lazy greenfield Work persists with a NULL project_id + the
+    # backfill marker, is addressable by its surrogate id, and a later backfill
+    # stamps the real project + clears the marker. Exercises the re-keyed schema
+    # (surrogate id PK, nullable project_id, partial-unique pending index) on real PG.
+    repo = WorksRepo(pool)
+    user, _, book = _ids()
+    pend = await repo.create_pending(user, book, settings={"voice": "dry"})
+    assert pend.project_id is None
+    assert pend.pending_project_backfill is True
+    assert pend.id is not None and pend.settings == {"voice": "dry"}
+    # findable via the backfill-seam read
+    found = await repo.get_pending_for_book(user, book)
+    assert found is not None and found.id == pend.id
+    # cross-user isolation
+    assert await repo.get_pending_for_book(uuid.uuid4(), book) is None
+    # at most one pending per (user,book) — the partial-unique index rejects a 2nd
+    with pytest.raises(asyncpg.exceptions.UniqueViolationError):
+        await repo.create_pending(user, book)
+    # backfill: stamp the project, clear the marker (idempotent — only still-pending)
+    new_pid = uuid.uuid4()
+    bf = await repo.backfill_project(user, pend.id, new_pid)
+    assert bf is not None and bf.project_id == new_pid
+    assert bf.pending_project_backfill is False
+    assert await repo.get_pending_for_book(user, book) is None  # no longer pending
+    # second backfill no-ops (row no longer pending)
+    assert await repo.backfill_project(user, pend.id, uuid.uuid4()) is None
+    # the backfilled row is now a normal project-keyed Work
+    got = await repo.get(user, new_pid)
+    assert got is not None and got.id == pend.id
+
+
+async def test_works_resolve_excludes_pending_until_backfilled(pool):
+    # C16: a lazy null-project Work must NOT resolve as a finished `found` marked
+    # Work — else a retry (knowledge recovered) returns the placeholder and never
+    # backfills. resolve_by_book excludes pending rows; after backfill it appears.
+    repo = WorksRepo(pool)
+    user, _, book = _ids()
+    pend = await repo.create_pending(user, book)
+    assert await repo.resolve_by_book(user, book) == []  # excluded while pending
+    new_pid = uuid.uuid4()
+    await repo.backfill_project(user, pend.id, new_pid)
+    marked = await repo.resolve_by_book(user, book)
+    assert len(marked) == 1 and marked[0].project_id == new_pid  # now a real marked Work
+
+
+async def test_works_backed_and_null_coexist_unique_only_on_backed(pool):
+    # The 1:1 work⇄project invariant is enforced ONLY for backed rows (partial-unique
+    # WHERE project_id IS NOT NULL); a null-project Work is exempt and coexists.
+    repo = WorksRepo(pool)
+    user, project, book = _ids()
+    await repo.create(user, project, book)  # backed
+    other_book = uuid.uuid4()
+    pend = await repo.create_pending(user, other_book)  # null-project, different book
+    assert pend.project_id is None
+    # a duplicate BACKED project still violates the partial-unique index
+    with pytest.raises(asyncpg.exceptions.UniqueViolationError):
+        await repo.create(user, project, uuid.uuid4())
 
 
 async def test_works_resolve_found_none_candidates(pool):
@@ -115,6 +178,147 @@ async def test_works_update_noop_preserves_version(pool):
     # explicit None on a NOT-NULL field is skipped → empty effective patch
     same = await repo.update(user, project, {"status": None})
     assert same is not None and same.version == 1
+
+
+# ─────────────────────── C23 dị bản (derivative) ───────────────────────
+
+async def test_c23_derivative_guard_rejects_null_project(pool):
+    """The chk_derivative_project_required CHECK rejects a DERIVATIVE (source_work_id
+    set) with a null project_id — the cross-project grounding-leak guard (G2)."""
+    repo = WorksRepo(pool)
+    user, _, book = _ids()
+    src = await repo.create(user, uuid.uuid4(), book)  # a backed source Work
+    async with pool.acquire() as c:
+        with pytest.raises(asyncpg.exceptions.CheckViolationError):
+            await c.execute(
+                "INSERT INTO composition_work (project_id, user_id, book_id, source_work_id) "
+                "VALUES (NULL, $1, $2, $3)",
+                user, book, src.id,
+            )
+
+
+async def test_c23_greenfield_null_still_allowed_after_migration(pool):
+    """C16 greenfield null-path must NOT regress: a NON-derivative (source_work_id
+    NULL) MAY still persist with a null project_id (the conditional guard exempts it)."""
+    repo = WorksRepo(pool)
+    user, _, book = _ids()
+    pend = await repo.create_pending(user, book)  # null project, no source_work_id
+    assert pend.project_id is None and pend.source_work_id is None
+    assert pend.pending_project_backfill is True
+
+
+async def test_c23_create_derivative_links_source_and_branch_point(pool):
+    """create_derivative inserts a derivative with source_work_id + branch_point +
+    a NOT-NULL project_id (its own, distinct from the source's)."""
+    works = WorksRepo(pool)
+    user, _, book = _ids()
+    src = await works.create(user, uuid.uuid4(), book)
+    deriv_pid = uuid.uuid4()
+    deriv = await works.create_derivative(
+        user, deriv_pid, book, src.id, branch_point=12, settings={"tone": "darker"}
+    )
+    assert deriv.source_work_id == src.id
+    assert deriv.branch_point == 12
+    assert deriv.project_id == deriv_pid and deriv.project_id != src.project_id
+    assert deriv.settings == {"tone": "darker"}
+
+
+async def test_c25_get_by_id_resolves_source_work_for_base_project(pool):
+    """C25 — the packer resolves a derivative's BASE knowledge project from its
+    `source_work_id` (the source's surrogate `id`) via get_by_id, NOT by reusing
+    source_work_id as a project_id. Proves get_by_id returns the source row keyed by
+    `id` and exposes its `project_id` (which may differ from `id`)."""
+    works = WorksRepo(pool)
+    user, _, book = _ids()
+    src = await works.create(user, uuid.uuid4(), book)
+    # A derivative links to the source by id; the packer looks the source up by id.
+    deriv = await works.create_derivative(user, uuid.uuid4(), book, src.id, branch_point=2)
+    fetched = await works.get_by_id(user, deriv.source_work_id)
+    assert fetched is not None
+    assert fetched.id == src.id
+    assert fetched.project_id == src.project_id  # the BASE knowledge project
+    # cross-user isolation: another user can't read it by id.
+    assert await works.get_by_id(uuid.uuid4(), src.id) is None
+
+
+async def test_c23_divergence_spec_and_override_roundtrip(pool):
+    """divergence_spec (canon_rule[] + pov_anchor) + entity_override (JSONB) persist
+    and read back; the work_id FK + per-(work,target) unique hold."""
+    works, drepo = WorksRepo(pool), DerivativesRepo(pool)
+    user, _, book = _ids()
+    src = await works.create(user, uuid.uuid4(), book)
+    deriv = await works.create_derivative(user, uuid.uuid4(), book, src.id, branch_point=3)
+    pov = uuid.uuid4()
+    spec = await drepo.create_spec(DivergenceSpec(
+        user_id=user, project_id=deriv.project_id, work_id=deriv.id,
+        taxonomy="pov_shift", pov_anchor=pov, canon_rule=["The villain wins", "No magic"],
+    ))
+    assert spec.taxonomy == "pov_shift" and spec.pov_anchor == pov
+    assert spec.canon_rule == ["The villain wins", "No magic"]
+    got_spec = await drepo.get_spec_for_work(user, deriv.id)
+    assert got_spec is not None and got_spec.id == spec.id
+
+    target = uuid.uuid4()
+    ov = await drepo.create_override(EntityOverride(
+        user_id=user, project_id=deriv.project_id, work_id=deriv.id,
+        target_entity_id=target, overridden_fields={"role": "antagonist", "alive": False},
+    ))
+    assert ov.overridden_fields == {"role": "antagonist", "alive": False}
+    overrides = await drepo.list_overrides_for_work(user, deriv.id)
+    assert len(overrides) == 1 and overrides[0].target_entity_id == target
+    # cross-user isolation
+    assert await drepo.get_spec_for_work(uuid.uuid4(), deriv.id) is None
+    assert await drepo.list_overrides_for_work(uuid.uuid4(), deriv.id) == []
+    # per-(work,target) unique rejects a duplicate override
+    with pytest.raises(asyncpg.exceptions.UniqueViolationError):
+        await drepo.create_override(EntityOverride(
+            user_id=user, project_id=deriv.project_id, work_id=deriv.id,
+            target_entity_id=target, overridden_fields={"x": 1},
+        ))
+
+
+async def test_c23_migration_roundtrip_up_down_up_clean(pool):
+    """Migration round-trip: the C23 substrate (2 columns + 2 tables + the guard) is
+    present after up, GONE after the down SQL, and RESTORED clean on re-up with NO
+    residue. The non-C23 schema (composition_work itself, the C16 re-key) survives."""
+    async def _present(c) -> dict:
+        return {
+            "source_col": await c.fetchval(
+                "SELECT count(*) FROM information_schema.columns "
+                "WHERE table_name='composition_work' AND column_name='source_work_id'"
+            ),
+            "branch_col": await c.fetchval(
+                "SELECT count(*) FROM information_schema.columns "
+                "WHERE table_name='composition_work' AND column_name='branch_point'"
+            ),
+            "spec_tbl": await c.fetchval("SELECT to_regclass('divergence_spec') IS NOT NULL"),
+            "override_tbl": await c.fetchval("SELECT to_regclass('entity_override') IS NOT NULL"),
+            "guard": await c.fetchval(
+                "SELECT count(*) FROM pg_constraint WHERE conname='chk_derivative_project_required'"
+            ),
+            "source_idx": await c.fetchval(
+                "SELECT count(*) FROM pg_indexes WHERE indexname='idx_composition_work_source'"
+            ),
+        }
+
+    # up already ran in the fixture
+    async with pool.acquire() as c:
+        after_up = await _present(c)
+        assert after_up == {"source_col": 1, "branch_col": 1, "spec_tbl": True,
+                            "override_tbl": True, "guard": 1, "source_idx": 1}
+        # composition_work itself survives (this is a partial down, not a full drop)
+        await c.execute(C23_DOWN_SQL)
+        after_down = await _present(c)
+        assert after_down == {"source_col": 0, "branch_col": 0, "spec_tbl": False,
+                             "override_tbl": False, "guard": 0, "source_idx": 0}
+        assert await c.fetchval("SELECT to_regclass('composition_work') IS NOT NULL")
+
+    # re-up restores exactly, idempotently (twice)
+    await run_migrations(pool)
+    await run_migrations(pool)
+    async with pool.acquire() as c:
+        after_reup = await _present(c)
+        assert after_reup == after_up  # no residue, full restoration
 
 
 # ───────────────────────── outline ─────────────────────────
@@ -611,6 +815,40 @@ async def test_reap_stale_jobs_marks_stale_failed_leaves_fresh(pool):
         for sid in stale:
             assert await c.fetchval("SELECT status FROM generation_job WHERE id=$1", sid) == "failed"
         assert await c.fetchval("SELECT status FROM generation_job WHERE id=$1", fresh.id) == "running"
+
+
+async def test_reap_stale_jobs_excludes_worker_ops(pool):
+    # D-M4-REAPER-WORKER-CONFLICT: with the worker on (exclude_operations passed),
+    # a stale WORKER-OP job is left for the worker's own updated_at sweeper, while a
+    # stale inline (non-worker) job is still reaped. Worker-ownership = operation in
+    # SUPPORTED_OPERATIONS OR an input->>'worker_op'.
+    from app.worker.operations import SUPPORTED_OPERATIONS
+
+    repo = GenerationJobsRepo(pool)
+    user, project, _ = _ids()
+    async with pool.acquire() as c:
+        worker_by_op = await c.fetchval(
+            """INSERT INTO generation_job (user_id, project_id, operation, mode, status, input, created_at)
+               VALUES ($1,$2,'stitch_chapter','auto','running','{}'::jsonb, now() - interval '1 hour')
+               RETURNING id""", user, project)
+        worker_by_input = await c.fetchval(
+            """INSERT INTO generation_job (user_id, project_id, operation, mode, status, input, created_at)
+               VALUES ($1,$2,'draft_scene','auto','running',$3::jsonb, now() - interval '1 hour')
+               RETURNING id""", user, project, json.dumps({"worker_op": "generate"}))
+        inline = await c.fetchval(
+            """INSERT INTO generation_job (user_id, project_id, operation, mode, status, input, created_at)
+               VALUES ($1,$2,'draft_chapter','auto','running','{}'::jsonb, now() - interval '1 hour')
+               RETURNING id""", user, project)
+
+    reaped = await repo.reap_stale_jobs(
+        datetime.now(timezone.utc) - timedelta(minutes=30),
+        exclude_operations=list(SUPPORTED_OPERATIONS),
+    )
+    assert reaped == 1  # only the inline job
+    async with pool.acquire() as c:
+        assert await c.fetchval("SELECT status FROM generation_job WHERE id=$1", worker_by_op) == "running"
+        assert await c.fetchval("SELECT status FROM generation_job WHERE id=$1", worker_by_input) == "running"
+        assert await c.fetchval("SELECT status FROM generation_job WHERE id=$1", inline) == "failed"
 
 
 async def test_create_chapter_job_guarded_opportunistic_reap(pool):

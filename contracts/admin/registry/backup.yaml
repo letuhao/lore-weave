@@ -1,0 +1,42 @@
+# L7.A backup-domain admin commands — RAID cycle 36 DPS 4.
+
+domain: backup
+commands:
+  - name: backup trigger
+    version: "1.0.0"
+    summary: "Trigger an out-of-band backup snapshot (overrides scheduler)."
+    handler: backupTrigger
+    params:
+      - {name: scope,  type: enum,   required: true, description: "meta|per-reality|all"}
+      - {name: reason, type: string, required: true, description: "Audit explanation"}
+    impact_class: tier-2-griefing
+    dry_run_required: true
+    double_approval_required: false
+    carry_forward_cycle: "36"
+    locked_qs_consumed: [Q-L7A-1, Q-L7A-2]
+
+  - name: backup restore-drill
+    version: "1.0.0"
+    summary: "Restore latest snapshot to a scratch DB and validate row counts (no prod touch)."
+    handler: backupRestoreDrill
+    params:
+      - {name: snapshot_id, type: string, required: true, description: "Backup snapshot identifier"}
+      - {name: reason,      type: string, required: true, description: "Audit explanation"}
+    impact_class: tier-3-informational
+    dry_run_required: false
+    double_approval_required: false
+    carry_forward_cycle: "36"
+    locked_qs_consumed: [Q-L7A-1, Q-L7A-2]
+
+  - name: backup list
+    version: "1.0.0"
+    summary: "List recent backup snapshots with retention metadata."
+    handler: backupList
+    params:
+      - {name: scope, type: enum, required: false, description: "meta|per-reality|all (default all)"}
+      - {name: since, type: timestamp, required: false, description: "Show snapshots since (default 7d ago)"}
+    impact_class: tier-3-informational
+    dry_run_required: false
+    double_approval_required: false
+    carry_forward_cycle: "36"
+    locked_qs_consumed: [Q-L7A-1, Q-L7A-2]

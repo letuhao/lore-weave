@@ -215,6 +215,48 @@ async def test_get_job_returns_typed_job_envelope():
     assert job.result == {"entities": [{"name": "Holmes", "kind": "person"}]}
 
 
+def test_job_finish_reason_reads_from_result():
+    # M0 (extraction pipeline) — the gateway's chat/json-list aggregators stamp
+    # `finish_reason` into Job.result (it is NOT a top-level wire field). The
+    # typed accessor surfaces it first-class for the truncation taxonomy.
+    truncated = Job(
+        job_id=JOB_UUID, operation="chat", status="completed",
+        result={"messages": [], "finish_reason": "length"},
+        submitted_at="2026-04-26T00:00:00Z",
+    )
+    assert truncated.finish_reason == "length"
+
+    clean = Job(
+        job_id=JOB_UUID, operation="chat", status="completed",
+        result={"messages": [], "finish_reason": "stop"},
+        submitted_at="2026-04-26T00:00:00Z",
+    )
+    assert clean.finish_reason == "stop"
+
+
+def test_job_finish_reason_none_when_absent_or_no_result():
+    # No `finish_reason` key in result → None (not a KeyError).
+    no_key = Job(
+        job_id=JOB_UUID, operation="chat", status="completed",
+        result={"messages": []}, submitted_at="2026-04-26T00:00:00Z",
+    )
+    assert no_key.finish_reason is None
+
+    # No result at all (a failed job) → None.
+    failed = Job(
+        job_id=JOB_UUID, operation="chat", status="failed",
+        result=None, submitted_at="2026-04-26T00:00:00Z",
+    )
+    assert failed.finish_reason is None
+
+    # Non-string junk in the field → None (defensive narrowing).
+    junk = Job(
+        job_id=JOB_UUID, operation="chat", status="completed",
+        result={"finish_reason": 123}, submitted_at="2026-04-26T00:00:00Z",
+    )
+    assert junk.finish_reason is None
+
+
 @pytest.mark.asyncio
 async def test_get_job_404_raises_job_not_found():
     def handler(req: httpx.Request) -> httpx.Response:
@@ -249,6 +291,113 @@ async def test_wait_terminal_polls_until_completed():
     job = await client.wait_terminal(JOB_UUID, poll_interval_s=0.001, max_poll_interval_s=0.001)
     assert job.status == "completed"
     assert state["polls"] == 3
+
+
+@pytest.mark.asyncio
+async def test_await_job_event_returns_terminal():
+    # Explicit event-resume API resolves to the terminal Job (poll path here).
+    state = {"polls": 0}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        state["polls"] += 1
+        status = "completed" if state["polls"] >= 2 else "running"
+        return httpx.Response(200, json={
+            "job_id": JOB_UUID, "operation": "chat", "status": status,
+            "submitted_at": "2026-04-26T00:00:00Z",
+        })
+
+    client = _make_client(handler)
+    job = await client.await_job_event(JOB_UUID, timeout_s=5.0)
+    assert job.status == "completed"
+
+
+@pytest.mark.asyncio
+async def test_await_job_event_times_out():
+    # A job that never terminates → await_job_event raises TimeoutError once the
+    # deadline elapses (unbounded wait_terminal would hang forever).
+    def handler(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={
+            "job_id": JOB_UUID, "operation": "chat", "status": "running",
+            "submitted_at": "2026-04-26T00:00:00Z",
+        })
+
+    client = _make_client(handler)
+    import asyncio as _asyncio
+    with pytest.raises((_asyncio.TimeoutError, TimeoutError)):
+        await client.await_job_event(JOB_UUID, timeout_s=0.05)
+
+
+class _FakeEventRedis:
+    """Minimal stand-in for redis.asyncio: xread returns one terminal event for
+    the target job on the first call, then nothing (block elapses)."""
+
+    def __init__(self, job_id: str):
+        self._job_id = job_id
+        self.xread_calls = 0
+
+    async def xread(self, streams, block, count):
+        self.xread_calls += 1
+        if self.xread_calls == 1:
+            return [(b"loreweave:events:llm_job_terminal",
+                     [(b"1-0", {b"job_id": self._job_id.encode(), b"status": b"completed"})])]
+        return []
+
+    async def aclose(self):
+        pass
+
+
+@pytest.mark.asyncio
+async def test_wait_terminal_event_driven_wakes_poll():
+    # LLM re-arch Phase 1 Commit 2: with an event source, the XREAD wakes the
+    # poll the instant THIS job's terminal event lands (no long sleep). get_job
+    # is the source of truth: running → event wakes → completed.
+    state = {"polls": 0}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        state["polls"] += 1
+        status = "completed" if state["polls"] >= 2 else "running"
+        return httpx.Response(200, json={
+            "job_id": JOB_UUID, "operation": "chat", "status": status,
+            "submitted_at": "2026-04-26T00:00:00Z",
+        })
+
+    client = _make_client(handler)
+    # Opt into the event path + inject the fake redis (skip the lazy from_url).
+    client._event_redis_url = "redis://test"
+    client._event_redis = _FakeEventRedis(JOB_UUID)
+    job = await client.wait_terminal(JOB_UUID)  # default 0.25s poll floor irrelevant — event wakes it
+    assert job.status == "completed"
+    assert state["polls"] == 2
+    assert client._event_redis.xread_calls >= 1  # the event path was exercised
+
+
+@pytest.mark.asyncio
+async def test_wait_terminal_event_redis_fault_falls_back_to_poll():
+    # A Redis fault in the event wait must degrade to a sleep+poll, never crash
+    # the wait (defense in depth, mirrors worker-ai wake.py).
+    state = {"polls": 0}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        state["polls"] += 1
+        status = "completed" if state["polls"] >= 2 else "running"
+        return httpx.Response(200, json={
+            "job_id": JOB_UUID, "operation": "chat", "status": status,
+            "submitted_at": "2026-04-26T00:00:00Z",
+        })
+
+    class _BoomRedis:
+        async def xread(self, *a, **k):
+            raise RuntimeError("redis down")
+        async def aclose(self):
+            pass
+
+    client = _make_client(handler)
+    client._event_redis_url = "redis://test"
+    client._event_redis = _BoomRedis()
+    # Tiny poll interval so the fallback sleep is fast.
+    job = await client.wait_terminal(JOB_UUID, poll_interval_s=0.001, max_poll_interval_s=0.001)
+    assert job.status == "completed"
+    assert state["polls"] == 2
 
 
 @pytest.mark.asyncio

@@ -1,24 +1,32 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { BookOpen, Plus, Search, Filter, Trash2, Settings2, Layers, Sparkles, HelpCircle, Lightbulb, GitMerge } from 'lucide-react';
+import { BookOpen, Plus, Filter, Trash2, Layers, Sparkles, Languages, HelpCircle, Lightbulb, GitMerge, CheckCircle2, CircleSlash, PencilLine } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { glossaryApi } from '@/features/glossary/api';
-import { type GlossaryEntitySummary, type EntityKind, type FilterState, defaultFilters } from '@/features/glossary/types';
+import { useGlossaryDisplayLanguage } from '@/features/glossary/hooks/useGlossaryDisplayLanguage';
+import { type GlossaryEntitySummary, type FilterState, type EntitySort, defaultFilters } from '@/features/glossary/types';
+import { useServerPagedList } from '@/components/pagination/useServerPagedList';
+import { useDebouncedValue } from '@/features/raw-search/hooks/useDebouncedValue';
+import { MatchSnippet } from '@/features/glossary/components/MatchSnippet';
+import { EntityListBrowser } from '@/features/glossary/components/EntityListBrowser';
+import { getLanguageName } from '@/lib/languages';
 import { Skeleton } from '@/components/shared/Skeleton';
-import { EmptyState, ConfirmDialog } from '@/components/shared';
+import { EmptyState, ConfirmDialog, FloatingActionBar, FloatingActionDivider } from '@/components/shared';
 import { cn } from '@/lib/utils';
-import { KindEditor } from './KindEditor';
-import { GenreGroupsPanel } from '@/features/glossary/components/GenreGroupsPanel';
+import { OntologyShell } from '@/features/glossary/components/tiering/OntologyShell';
+import { CreateEntityModal } from '@/features/glossary/components/tiering/CreateEntityModal';
+import { useBookOntology } from '@/features/glossary/hooks/useBookOntology';
 import { UnknownEntitiesPanel } from '@/features/glossary/components/UnknownEntitiesPanel';
 import { AiSuggestionsPanel } from '@/features/glossary/components/AiSuggestionsPanel';
 import { MergeCandidatePanel } from '@/features/glossary/components/MergeCandidatePanel';
 import { EntityEditorModal } from '@/components/entity-editor';
 import { ExtractionWizard } from '@/features/extraction/ExtractionWizard';
-import { BookAssistantDock } from '@/features/chat/BookAssistantDock';
+import { GlossaryTranslateWizard } from '@/features/glossary-translate/GlossaryTranslateWizard';
+import { BatchTranslateDialog } from '@/features/glossary/components/BatchTranslateDialog';
 
-type GlossaryView = 'entities' | 'kinds' | 'genres' | 'unknown' | 'ai_suggestions' | 'merge_candidates';
+type GlossaryView = 'entities' | 'ontology' | 'unknown' | 'ai_suggestions' | 'merge_candidates';
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-amber-400/15 text-amber-400',
@@ -45,22 +53,96 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
   const [filters, setFilters] = useState<FilterState>(defaultFilters);
   const [filterOpen, setFilterOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<GlossaryEntitySummary | null>(null);
-  const [createKindOpen, setCreateKindOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
   const [view, setView] = useState<GlossaryView>('entities');
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const [extractionOpen, setExtractionOpen] = useState(false);
+  const [translateOpen, setTranslateOpen] = useState(false);
+  const [batchTranslateOpen, setBatchTranslateOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  // Default sort = appearance (chapter-link count) DESC, so the most-present
+  // entities (main characters etc.) surface first instead of sinking by recency.
+  const [sort, setSort] = useState<EntitySort>('links');
+  const [searchMode, setSearchMode] = useState<'simple' | 'raw'>('simple');
+  const paged = useServerPagedList(10);
+  // Debounce the search box so we hit the BE once the user pauses, not per keystroke.
+  const debouncedSearch = useDebouncedValue(filters.searchQuery, 300);
 
-  const { data: entityData, isLoading: entitiesLoading, error: entitiesError } = useQuery({
-    queryKey: ['glossary-entities', bookId, filters],
-    queryFn: () => glossaryApi.listEntities(bookId, { ...filters, limit: 100, offset: 0 }, accessToken!),
+  const { displayLanguage, setDisplayLanguage, apiDisplayLanguage, loaded: displayLangLoaded } =
+    useGlossaryDisplayLanguage(bookId, bookOriginalLanguage);
+
+  const { data: translationLangsData } = useQuery({
+    queryKey: ['glossary-translation-languages', bookId],
+    queryFn: () => glossaryApi.listTranslationLanguages(bookId, accessToken!),
     enabled: !!accessToken,
+    staleTime: 60 * 1000,
   });
 
-  const { data: kinds = [] } = useQuery({
+  const languageOptions = useMemo(() => {
+    const opts: { code: string; label: string }[] = [];
+    if (bookOriginalLanguage) {
+      opts.push({
+        code: bookOriginalLanguage,
+        label: t('glossary.display_language_original', { lang: getLanguageName(bookOriginalLanguage) }),
+      });
+    } else {
+      opts.push({
+        code: '',
+        label: t('glossary.display_language_as_authored'),
+      });
+    }
+    const seen = new Set(opts.map((o) => o.code));
+    for (const code of translationLangsData?.languages ?? []) {
+      if (code === bookOriginalLanguage || seen.has(code)) continue;
+      seen.add(code);
+      opts.push({ code, label: getLanguageName(code) });
+    }
+    if (displayLanguage && !seen.has(displayLanguage)) {
+      opts.push({ code: displayLanguage, label: getLanguageName(displayLanguage) });
+    }
+    return opts;
+  }, [bookOriginalLanguage, displayLanguage, t, translationLangsData?.languages]);
+
+  const { data: entityData, isLoading: entitiesLoading, error: entitiesError } = useQuery({
+    queryKey: [
+      'glossary-entities', bookId,
+      filters.kindCodes, filters.status, debouncedSearch, searchMode, sort,
+      paged.offset, paged.limit, apiDisplayLanguage,
+    ],
+    queryFn: () =>
+      glossaryApi.listEntities(
+        bookId,
+        {
+          ...filters,
+          searchQuery: debouncedSearch,
+          searchMode,
+          sort,
+          limit: paged.limit,
+          offset: paged.offset,
+          displayLanguage: apiDisplayLanguage,
+        },
+        accessToken!,
+      ),
+    enabled: !!accessToken && displayLangLoaded,
+    placeholderData: (prev) => prev, // keep the current page visible while the next loads
+  });
+
+  // Book-tier ontology drives the kind filter + count (G6f): entities are book-kind
+  // scoped post-G4, so the filter must list THIS book's adopted kinds — not the global
+  // system kinds (D-GKA-FILTER-BOOKKINDS). Shares the ['glossary-ontology', bookId]
+  // query with the Ontology screens, so it's one fetch.
+  const ontology = useBookOntology(bookId);
+  const kinds = ontology.ontology.kinds;
+
+  // System kinds — still needed by the orthogonal E3 unknown-review flow (reassign an
+  // unrecognized entity to a kind in the system taxonomy). NOT used for the entity
+  // filter, which is book-scoped above.
+  const { data: systemKinds = [] } = useQuery({
     queryKey: ['glossary-kinds'],
     queryFn: () => glossaryApi.getKinds(accessToken!),
     enabled: !!accessToken,
-    staleTime: 10 * 60 * 1000, // kinds rarely change
+    staleTime: 10 * 60 * 1000,
   });
 
   // Unknown-kind review queue count — drives the conditional triage button + badge.
@@ -95,35 +177,48 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
 
   const entities = entityData?.items ?? [];
   const total = entityData?.total ?? 0;
+  const { pageCount, safePage, start, end } = paged.pageInfo(total);
   const loading = entitiesLoading;
   const error = entitiesError ? (entitiesError as Error).message : '';
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['glossary-entities', bookId] });
+  // Filter/sort/search changes reset to page 0 (the old offset is meaningless on a
+  // new result set). Done in handlers, not an effect — page-reset is an event
+  // reaction (FE rule). debouncedSearch is reset via the search box's onChange.
+  const updateFilters = (next: Partial<FilterState>) => {
+    setFilters((f) => ({ ...f, ...next }));
+    paged.reset();
+  };
+  const changeSort = (s: EntitySort) => {
+    setSort(s);
+    paged.reset();
+  };
+  const toggleSearchMode = () => {
+    const next = searchMode === 'raw' ? 'simple' : 'raw';
+    setSearchMode(next);
+    // Raw search defaults to relevance ranking; leaving raw drops back to the
+    // default appearance sort (only if still on relevance — keep any manual pick).
+    setSort((s) => (next === 'raw' ? 'relevance' : s === 'relevance' ? 'links' : s));
+    paged.reset();
+  };
 
+  const invalidate = () => {
+    void queryClient.invalidateQueries({ queryKey: ['glossary-entities', bookId] });
+    void queryClient.invalidateQueries({ queryKey: ['glossary-translation-languages', bookId] });
+  };
+
+  // Book kinds are already book-scoped, so no genre_tags filtering is needed (the old
+  // flat model filtered system kinds by genre_tags; that column was retired in G4).
   const visibleKinds = useMemo(
-    () => kinds
-      .filter((k) => !k.is_hidden)
-      .filter((k) => {
-        const tags = k.genre_tags ?? [];
-        // Empty genre_tags or "universal" = show for all books
-        if (tags.length === 0 || tags.includes('universal')) return true;
-        // Otherwise, show if book has at least one matching genre
-        return bookGenreTags.length === 0 || tags.some((tag) => bookGenreTags.includes(tag));
-      })
-      .sort((a, b) => a.sort_order - b.sort_order),
-    [kinds, bookGenreTags],
+    () => kinds.filter((k) => !k.is_hidden).sort((a, b) => a.sort_order - b.sort_order),
+    [kinds],
   );
 
-  const handleCreate = async (kindId: string) => {
-    if (!accessToken) return;
-    try {
-      await glossaryApi.createEntity(bookId, kindId, accessToken);
-      toast.success(t('glossary.created'));
-      setCreateKindOpen(false);
-      invalidate();
-    } catch (e) {
-      toast.error((e as Error).message);
-    }
+  // G6f: creation moved into CreateEntityModal (post-G4 a kind is a book_kind_id, so the
+  // tiered form picks a BOOK kind and writes its genre override + attribute values). The
+  // new entity surfaces in the list on invalidate; the user opens it to keep editing.
+  const handleEntityCreated = (_entityId: string) => {
+    setCreateOpen(false);
+    invalidate();
   };
 
   const handleDelete = async () => {
@@ -135,6 +230,82 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
       invalidate();
     } catch (e) {
       toast.error((e as Error).message);
+    }
+  };
+
+  // ── Multi-select (bulk status) ─────────────────────────────────────────────
+  // Selection acts on what's visible: select-all/clear + the bulk action all
+  // operate on the currently-filtered `entities`, so "filter draft → select all
+  // → activate" does exactly what the user sees.
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  // The bulk action targets ALL selected ids — including ones not on the loaded
+  // page (the "select all N" button below loop-fetches them) — so activation isn't
+  // silently capped at the first 100 rows on a large book.
+  const allLoadedSelected = entities.length > 0 && entities.every((e) => selectedIds.has(e.entity_id));
+  const hasMoreThanLoaded = total > entities.length;
+  const _BULK_CAP = 1000; // matches the server's entity_ids cap
+  const toggleSelectAll = () => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allLoadedSelected) {
+        entities.forEach((e) => next.delete(e.entity_id));
+      } else {
+        entities.forEach((e) => next.add(e.entity_id));
+      }
+      return next;
+    });
+  };
+  const clearSelection = () => setSelectedIds(new Set());
+
+  // Gmail-style "select all N matching the current filter/search" — loop-fetches
+  // EVERY matching id across all pages (the visible list is one page), so a bulk
+  // action isn't capped at the current page. Honors the active search/sort.
+  const selectAllMatching = async () => {
+    if (!accessToken) return;
+    setBulkBusy(true);
+    try {
+      const ids = new Set<string>();
+      const fetchSize = 200;
+      for (let offset = 0; offset < total && ids.size < _BULK_CAP; offset += fetchSize) {
+        const page = await glossaryApi.listEntities(
+          bookId,
+          { ...filters, searchQuery: debouncedSearch, searchMode, sort, limit: fetchSize, offset, displayLanguage: apiDisplayLanguage },
+          accessToken,
+        );
+        if (page.items.length === 0) break;
+        for (const e of page.items) {
+          if (ids.size >= _BULK_CAP) break;
+          ids.add(e.entity_id);
+        }
+      }
+      setSelectedIds(ids);
+      if (total > _BULK_CAP) toast.info(t('glossary.bulk.cap_note', { cap: _BULK_CAP }));
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const handleBulkStatus = async (status: 'active' | 'inactive') => {
+    const ids = [...selectedIds];
+    if (!accessToken || ids.length === 0) return;
+    setBulkBusy(true);
+    try {
+      const { updated } = await glossaryApi.bulkSetStatus(bookId, status, ids, accessToken);
+      toast.success(t('glossary.bulk.done', { count: updated, status: t(`glossary.status.${status}`) }));
+      clearSelection();
+      invalidate();
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBulkBusy(false);
     }
   };
 
@@ -150,14 +321,11 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
 
   const activeFilterCount = (filters.kindCodes.length > 0 ? 1 : 0) + (filters.status !== 'all' ? 1 : 0);
 
-  if (view === 'kinds') {
-    return <KindEditor bookId={bookId} onClose={() => setView('entities')} />;
-  }
-  if (view === 'genres') {
-    return <GenreGroupsPanel bookId={bookId} kinds={kinds} onClose={() => setView('entities')} />;
+  if (view === 'ontology') {
+    return <OntologyShell bookId={bookId} onClose={() => setView('entities')} />;
   }
   if (view === 'unknown') {
-    return <UnknownEntitiesPanel bookId={bookId} kinds={kinds} onClose={() => setView('entities')} />;
+    return <UnknownEntitiesPanel bookId={bookId} kinds={systemKinds} onClose={() => setView('entities')} />;
   }
   if (view === 'ai_suggestions') {
     return <AiSuggestionsPanel bookId={bookId} onClose={() => setView('entities')} />;
@@ -166,7 +334,7 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
     return <MergeCandidatePanel bookId={bookId} onClose={() => setView('entities')} />;
   }
 
-  if (loading && entities.length === 0) {
+  if (!displayLangLoaded || (loading && entities.length === 0)) {
     return (
       <div className="space-y-3 p-6">
         <Skeleton className="h-8 w-48" />
@@ -179,6 +347,20 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
     return <div className="p-6 text-sm text-destructive">{error}</div>;
   }
 
+  // Sort options for the browser dropdown; "relevance" only makes sense in raw mode.
+  const sortOptions: { value: string; label: string }[] = [
+    ...(searchMode === 'raw' ? [{ value: 'relevance', label: t('glossary.sort.relevance') }] : []),
+    { value: 'links', label: t('glossary.sort.links') },
+    { value: 'evidence', label: t('glossary.sort.evidence') },
+    { value: 'updated_at', label: t('glossary.sort.updated_at') },
+    { value: 'created_at', label: t('glossary.sort.created_at') },
+    { value: 'name', label: t('glossary.sort.name') },
+    { value: 'name_desc', label: t('glossary.sort.name_desc') },
+    { value: 'kind', label: t('glossary.sort.kind') },
+    { value: 'status', label: t('glossary.sort.status') },
+    { value: 'alive', label: t('glossary.sort.alive') },
+  ];
+
   return (
     <div className="space-y-4 p-6">
       {/* Header */}
@@ -190,7 +372,25 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
             {visibleKinds.length > 0 && ` · ${t('glossary.kind_count', { count: visibleKinds.length })}`}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          <div className="flex items-center gap-1.5">
+            <label htmlFor="glossary-display-lang" className="text-[10px] text-muted-foreground whitespace-nowrap">
+              {t('glossary.display_language')}
+            </label>
+            <select
+              id="glossary-display-lang"
+              data-testid="glossary-display-language"
+              value={displayLanguage}
+              onChange={(e) => { setDisplayLanguage(e.target.value); paged.reset(); }}
+              className="h-8 rounded-md border bg-background px-2 text-[11px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
+            >
+              {languageOptions.map((opt) => (
+                <option key={opt.code} value={opt.code}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
           <button
             onClick={() => setExtractionOpen(true)}
             data-testid="glossary-extract-trigger"
@@ -198,6 +398,23 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
           >
             <Sparkles className="h-3.5 w-3.5" />
             {t('glossary.extract')}
+          </button>
+          <button
+            onClick={() => setTranslateOpen(true)}
+            data-testid="glossary-translate-trigger"
+            className="inline-flex items-center gap-1.5 rounded-md border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 transition-colors"
+          >
+            <Languages className="h-3.5 w-3.5" />
+            {t('glossary.translate')}
+          </button>
+          <button
+            onClick={() => setBatchTranslateOpen(true)}
+            data-testid="glossary-batch-translate-trigger"
+            title={t('glossary.batch_translate_hint', { defaultValue: 'Type target names for many entities by hand (drafts; never overwrites verified)' })}
+            className="inline-flex items-center gap-1.5 rounded-md border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 transition-colors"
+          >
+            <PencilLine className="h-3.5 w-3.5" />
+            {t('glossary.batch_translate', { defaultValue: 'Manual translate' })}
           </button>
           {aiSuggestCount > 0 && (
             <button
@@ -233,141 +450,147 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
             </button>
           )}
           <button
-            onClick={() => setView('genres')}
+            onClick={() => setView('ontology')}
+            data-testid="glossary-ontology-trigger"
             className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
           >
             <Layers className="h-3.5 w-3.5" />
-            {t('glossary.genres')}
+            {t('glossary.ontology')}
           </button>
           <button
-            onClick={() => setView('kinds')}
-            className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+            onClick={() => setCreateOpen(true)}
+            data-testid="glossary-new-entity"
+            className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
           >
-            <Settings2 className="h-3.5 w-3.5" />
-            {t('glossary.kinds')}
+            <Plus className="h-3.5 w-3.5" />
+            {t('glossary.new_entity')}
           </button>
-          <div className="relative">
-            <button
-              onClick={() => setCreateKindOpen(!createKindOpen)}
-              className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              {t('glossary.new_entity')}
-            </button>
-            {createKindOpen && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setCreateKindOpen(false)} />
-                <div className="absolute right-0 top-full z-50 mt-1 w-48 rounded-md border bg-card shadow-lg">
-                  {visibleKinds.map((k) => (
-                    <button
-                      key={k.kind_id}
-                      onClick={() => void handleCreate(k.kind_id)}
-                      className="flex w-full items-center gap-2 px-3 py-2 text-xs hover:bg-secondary transition-colors first:rounded-t-md last:rounded-b-md"
-                    >
-                      <span>{k.icon}</span>
-                      <span>{k.name}</span>
-                    </button>
-                  ))}
-                  {visibleKinds.length === 0 && (
-                    <p className="px-3 py-2 text-xs text-muted-foreground">{t('glossary.no_kinds')}</p>
-                  )}
-                </div>
-              </>
+        </div>
+      </div>
+
+      <EntityListBrowser
+        searchValue={filters.searchQuery}
+        onSearchChange={(v) => updateFilters({ searchQuery: v })}
+        searchMode={searchMode}
+        onToggleSearchMode={toggleSearchMode}
+        sort={sort}
+        onSortChange={(s) => changeSort(s as EntitySort)}
+        sortOptions={sortOptions}
+        total={total}
+        paged={paged}
+        pageInfo={{ pageCount, safePage, start, end }}
+        filterControl={
+          <button
+            onClick={() => setFilterOpen(!filterOpen)}
+            className={cn(
+              'inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors',
+              activeFilterCount > 0
+                ? 'border-primary/40 text-primary hover:bg-primary/10'
+                : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
             )}
-          </div>
-        </div>
-      </div>
-
-      {/* Search + Filter bar */}
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          <input
-            type="text"
-            value={filters.searchQuery}
-            onChange={(e) => setFilters((f) => ({ ...f, searchQuery: e.target.value }))}
-            placeholder={t('glossary.search')}
-            data-testid="glossary-search-input"
-            className="w-full rounded-md border bg-background pl-9 pr-3 py-1.5 text-xs focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
-          />
-        </div>
-        <button
-          onClick={() => setFilterOpen(!filterOpen)}
-          className={cn(
-            'inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors',
-            activeFilterCount > 0
-              ? 'border-primary/40 text-primary hover:bg-primary/10'
-              : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
-          )}
-        >
-          <Filter className="h-3.5 w-3.5" />
-          {activeFilterCount > 0 ? t('glossary.filter_count', { count: activeFilterCount }) : t('glossary.filter')}
-        </button>
-      </div>
-
-      {/* Filter panel */}
-      {filterOpen && (
-        <div className="rounded-lg border bg-card p-3 space-y-3">
-          <div className="space-y-1.5">
-            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{t('glossary.kind_label')}</span>
-            <div className="flex flex-wrap gap-1.5">
-              {visibleKinds.map((k) => {
-                const active = filters.kindCodes.includes(k.code);
-                return (
+          >
+            <Filter className="h-3.5 w-3.5" />
+            {activeFilterCount > 0 ? t('glossary.filter_count', { count: activeFilterCount }) : t('glossary.filter')}
+          </button>
+        }
+        filterPanel={filterOpen ? (
+          <div className="rounded-lg border bg-card p-3 space-y-3">
+            <div className="space-y-1.5">
+              <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{t('glossary.kind_label')}</span>
+              <div className="flex flex-wrap gap-1.5">
+                {visibleKinds.map((k) => {
+                  const active = filters.kindCodes.includes(k.code);
+                  return (
+                    <button
+                      key={k.book_kind_id}
+                      onClick={() => updateFilters({
+                        kindCodes: active ? filters.kindCodes.filter((c) => c !== k.code) : [...filters.kindCodes, k.code],
+                      })}
+                      className={cn(
+                        'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium border transition-colors',
+                        active ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:text-foreground',
+                      )}
+                    >
+                      <span>{k.icon}</span> {k.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{t('glossary.status_label')}</span>
+              <div className="flex gap-1.5">
+                {(['all', 'draft', 'active', 'inactive'] as const).map((s) => (
                   <button
-                    key={k.kind_id}
-                    onClick={() => setFilters((f) => ({
-                      ...f,
-                      kindCodes: active ? f.kindCodes.filter((c) => c !== k.code) : [...f.kindCodes, k.code],
-                    }))}
+                    key={s}
+                    onClick={() => updateFilters({ status: s })}
                     className={cn(
-                      'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium border transition-colors',
-                      active ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:text-foreground',
+                      'rounded-full px-2.5 py-1 text-[11px] font-medium border transition-colors',
+                      filters.status === s ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:text-foreground',
                     )}
                   >
-                    <span>{k.icon}</span> {k.name}
+                    {s === 'all' ? t('glossary.status_all') : t(`glossary.status.${s}`)}
                   </button>
-                );
-              })}
+                ))}
+              </div>
             </div>
+            {activeFilterCount > 0 && (
+              <button
+                onClick={() => { setFilters(defaultFilters); paged.reset(); }}
+                className="text-[10px] text-primary hover:underline"
+              >
+                {t('glossary.clear_filters')}
+              </button>
+            )}
           </div>
-          <div className="space-y-1.5">
-            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{t('glossary.status_label')}</span>
-            <div className="flex gap-1.5">
-              {(['all', 'draft', 'active', 'inactive'] as const).map((s) => (
-                <button
-                  key={s}
-                  onClick={() => setFilters((f) => ({ ...f, status: s }))}
-                  className={cn(
-                    'rounded-full px-2.5 py-1 text-[11px] font-medium border transition-colors',
-                    filters.status === s ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:text-foreground',
-                  )}
-                >
-                  {s === 'all' ? t('glossary.status_all') : t(`glossary.status.${s}`)}
-                </button>
-              ))}
-            </div>
-          </div>
-          {activeFilterCount > 0 && (
-            <button
-              onClick={() => setFilters(defaultFilters)}
-              className="text-[10px] text-primary hover:underline"
-            >
-              {t('glossary.clear_filters')}
-            </button>
-          )}
-        </div>
-      )}
-
+        ) : null}
+      >
       {/* Entity list */}
       {entities.length === 0 ? (
-        <EmptyState
-          icon={BookOpen}
-          title={t('glossary.empty.title')}
-          description={t('glossary.empty.description')}
-        />
+        total > 0 ? (
+          // An out-of-range page (e.g. rows deleted while paged deep) — total>0 but
+          // this offset is empty. Offer a jump back rather than a false "empty".
+          <div className="rounded-lg border p-8 text-center text-sm text-muted-foreground">
+            {t('glossary.page_empty')}{' '}
+            <button onClick={() => paged.setPage(0)} className="text-primary hover:underline">
+              {t('glossary.page_empty_first')}
+            </button>
+          </div>
+        ) : (
+          <EmptyState
+            icon={BookOpen}
+            title={t('glossary.empty.title')}
+            description={t('glossary.empty.description')}
+          />
+        )
       ) : (
         <div className="rounded-lg border divide-y">
+          {/* Select-all bar — drives the bulk status actions on the filtered list */}
+          <div className="flex items-center gap-2 px-4 py-2 bg-card/30">
+            <input
+              type="checkbox"
+              checked={allLoadedSelected}
+              onChange={toggleSelectAll}
+              aria-label={t('glossary.bulk.select_all')}
+              className="h-3.5 w-3.5 rounded border-border accent-primary cursor-pointer"
+            />
+            <span className="text-[11px] text-muted-foreground">
+              {selectedIds.size > 0
+                ? t('glossary.bulk.selected', { count: selectedIds.size })
+                : t('glossary.bulk.select_all')}
+            </span>
+            {/* When the list is capped at the loaded page, offer to select every
+                matching entity (loop-fetch) so activation isn't silently limited. */}
+            {hasMoreThanLoaded && allLoadedSelected && selectedIds.size < total && (
+              <button
+                onClick={() => void selectAllMatching()}
+                disabled={bulkBusy}
+                className="text-[11px] text-primary hover:underline disabled:opacity-50"
+              >
+                {t('glossary.bulk.select_all_matching', { count: total })}
+              </button>
+            )}
+          </div>
           {entities.map((e) => (
             <div
               key={e.entity_id}
@@ -378,9 +601,24 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
                 selectedEntityId === e.entity_id && 'bg-primary/5 border-l-2 border-l-primary',
               )}
             >
+              <input
+                type="checkbox"
+                checked={selectedIds.has(e.entity_id)}
+                onClick={(ev) => ev.stopPropagation()}
+                onChange={() => toggleSelect(e.entity_id)}
+                aria-label={t('glossary.bulk.select_row')}
+                className="h-3.5 w-3.5 shrink-0 rounded border-border accent-primary cursor-pointer"
+              />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium truncate">
+                  <span
+                    className="text-sm font-medium truncate"
+                    title={
+                      apiDisplayLanguage && !e.display_name_translation
+                        ? t('glossary.fallback_to_original')
+                        : undefined
+                    }
+                  >
                     {e.display_name || t('glossary.untitled')}
                   </span>
                   <KindBadge kind={e.kind} />
@@ -408,6 +646,10 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
                   {e.evidence_count > 0 && <span>{t('glossary.evidence_count', { count: e.evidence_count })}</span>}
                   {e.tags.length > 0 && <span>{e.tags.join(', ')}</span>}
                 </div>
+                {/* Raw-search: show which field matched + a highlighted snippet. */}
+                {searchMode === 'raw' && e.match && (
+                  <div className="mt-1"><MatchSnippet match={e.match} /></div>
+                )}
               </div>
               <button
                 onClick={() => setDeleteTarget(e)}
@@ -420,6 +662,33 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
           ))}
         </div>
       )}
+
+      </EntityListBrowser>
+
+      {/* Bulk status action bar */}
+      <FloatingActionBar visible={selectedIds.size > 0}>
+        <span className="text-sm font-medium">{t('glossary.bulk.selected', { count: selectedIds.size })}</span>
+        <FloatingActionDivider />
+        <button
+          onClick={() => void handleBulkStatus('active')}
+          disabled={bulkBusy}
+          className="inline-flex items-center gap-1.5 rounded-full bg-green-500/90 px-4 py-1.5 text-xs font-medium text-white hover:bg-green-500 disabled:opacity-50 transition-colors"
+        >
+          <CheckCircle2 className="h-3.5 w-3.5" />
+          {t('glossary.bulk.activate')}
+        </button>
+        <button
+          onClick={() => void handleBulkStatus('inactive')}
+          disabled={bulkBusy}
+          className="inline-flex items-center gap-1.5 rounded-full border border-border px-4 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary disabled:opacity-50 transition-colors"
+        >
+          <CircleSlash className="h-3.5 w-3.5" />
+          {t('glossary.bulk.deactivate')}
+        </button>
+        <button onClick={clearSelection} className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+          {t('glossary.bulk.clear')}
+        </button>
+      </FloatingActionBar>
 
       <ConfirmDialog
         open={!!deleteTarget}
@@ -434,7 +703,9 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
       {/* Entity Editor Modal */}
       {selectedEntityId && (() => {
         const selectedEntity = entities.find((e) => e.entity_id === selectedEntityId);
-        const kindTags = kinds.find((k) => k.kind_id === selectedEntity?.kind_id)?.genre_tags ?? [];
+        // kindGenreTags drove old flat-model genre filtering; genre_tags was retired in
+        // G4 and entities are book-kind scoped, so there are no kind-level genre tags now.
+        const kindTags: string[] = [];
         return (
           <EntityEditorModal
             bookId={bookId}
@@ -442,6 +713,7 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
             bookGenreTags={bookGenreTags}
             kindGenreTags={kindTags}
             bookOriginalLanguage={bookOriginalLanguage}
+            displayLanguage={displayLanguage}
             onClose={() => setSelectedEntityId(null)}
             onSaved={() => invalidate()}
             onDelete={() => {
@@ -451,6 +723,14 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
         );
       })()}
 
+      {createOpen && (
+        <CreateEntityModal
+          bookId={bookId}
+          onClose={() => setCreateOpen(false)}
+          onCreated={handleEntityCreated}
+        />
+      )}
+
       <ExtractionWizard
         open={extractionOpen}
         onOpenChange={setExtractionOpen}
@@ -459,8 +739,24 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
         onComplete={() => invalidate()}
       />
 
-      {/* P5: the book-scoped glossary assistant (floating dock → embedded chat). */}
-      <BookAssistantDock bookId={bookId} />
+      <GlossaryTranslateWizard
+        open={translateOpen}
+        onOpenChange={setTranslateOpen}
+        bookId={bookId}
+        bookOriginalLanguage={bookOriginalLanguage}
+        onComplete={() => invalidate()}
+      />
+
+      {/* S4 — manual per-entity batch translate (complements the auto wizard above). */}
+      {batchTranslateOpen && (
+        <BatchTranslateDialog
+          bookId={bookId}
+          onClose={() => {
+            setBatchTranslateOpen(false);
+            invalidate();
+          }}
+        />
+      )}
     </div>
   );
 }

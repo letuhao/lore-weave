@@ -19,6 +19,7 @@ const sampleJob = {
   max_spend_usd: '5.00',
   started_at: '2026-04-19T12:00:00Z',
   error_message: null,
+  concurrency_level: 4,
 };
 
 const sampleStats = {
@@ -48,6 +49,7 @@ function makeActions(): ProjectStateCardActions {
     onExtractNew: fn(),
     onIgnoreStale: fn(),
     onConfirmModelChange: fn(),
+    onSetConcurrency: fn(),
   };
 }
 

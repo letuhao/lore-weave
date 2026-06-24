@@ -395,6 +395,149 @@ async def test_runaway_job_cannot_run_unbounded_under_tiny_cap():
     assert outcome.spent == 0.0  # budget fully protected
 
 
+# ── M2: external cancel/pause MID-run is honoured + never clobbered (HIGH-1) ───
+#    The runner is the only writer that keeps the row 'running'; the control
+#    endpoint flips it to cancelled/paused out-of-band. These stores simulate
+#    that concurrent flip at each race window the runner guards.
+
+
+class _FlipStatusAtReadStore(InMemoryProposalStore):
+    """Flip the job status to ``flip_to`` on the Nth ``read_job_status`` (the
+    runner reads once at pre-flight, then once before each gap) — simulating a
+    control cancel/pause landing BETWEEN gaps."""
+
+    def __init__(self, *, flip_to: str, flip_after: int) -> None:
+        super().__init__()
+        self._flip_to = flip_to
+        self._flip_after = flip_after
+        self._reads = 0
+
+    async def read_job_status(self, *, job_id: str) -> str | None:
+        self._reads += 1
+        if self._reads > self._flip_after:
+            job = self.jobs.get(job_id)
+            if job is not None:
+                job["status"] = self._flip_to  # the external actor moved it
+            return self._flip_to
+        return await super().read_job_status(job_id=job_id)
+
+
+class _CancelAtCompleteStore(InMemoryProposalStore):
+    """Flip to 'cancelled' exactly when the runner attempts its terminal complete
+    write — a control cancel winning the FINAL race (after the last between-gap
+    read). The runner's CAS complete must then lose and the job stay cancelled."""
+
+    async def mark_job_status(self, *, job_id: str, status: str, **kw) -> bool:
+        if status == "completed":
+            self.jobs.setdefault(job_id, {})["status"] = "cancelled"
+        return await super().mark_job_status(job_id=job_id, status=status, **kw)
+
+
+async def test_external_cancel_between_gaps_yields_cancelled():
+    # flip_after=1: pre-flight read (#1) sees None→proceed; the first between-gap
+    # read (#2) returns 'cancelled' → the runner yields before processing any gap.
+    store = _FlipStatusAtReadStore(flip_to="cancelled", flip_after=1)
+    emitter = _emitter()
+    runner = _runner(
+        store=store, pipeline=_pipeline(), budget=JobCostBudget(None), emitter=emitter,
+    )
+    gaps = [_gap(n) for n in _LOCATIONS]
+    outcome = await runner.run_job(job_id="job-1", gaps=gaps, context=_ctx())
+
+    assert outcome.final_state == "cancelled"
+    assert outcome.proposals == []  # yielded before any gap work
+    assert store.jobs["job-1"]["status"] == "cancelled"  # runner did NOT clobber it
+    # the runner emitted STARTED but never COMPLETED (it yielded, not finished).
+    assert not any(e.event_type is JobEventType.COMPLETED for e in emitter.emitted)
+
+
+async def test_external_cancel_after_first_gap_keeps_done_work():
+    # flip_after=2: pre-flight (#1) + first between-gap (#2) proceed → gap 1 runs;
+    # the second between-gap read (#3) returns 'cancelled' → yield with 1 done gap.
+    store = _FlipStatusAtReadStore(flip_to="cancelled", flip_after=2)
+    runner = _runner(
+        store=store, pipeline=_pipeline(), budget=JobCostBudget(None), emitter=_emitter(),
+    )
+    gaps = [_gap(n) for n in _LOCATIONS]
+    outcome = await runner.run_job(job_id="job-1", gaps=gaps, context=_ctx())
+
+    assert outcome.final_state == "cancelled"
+    # the first gap's proposal IS persisted — done work survives for a resume/retry.
+    assert len(outcome.proposals) == 1
+    assert store.jobs["job-1"]["status"] == "cancelled"
+
+
+async def test_external_pause_between_gaps_is_resumable():
+    store = _FlipStatusAtReadStore(flip_to="paused", flip_after=1)
+    runner = _runner(
+        store=store, pipeline=_pipeline(), budget=JobCostBudget(None), emitter=_emitter(),
+    )
+    gaps = [_gap(n) for n in _LOCATIONS]
+    outcome = await runner.run_job(job_id="job-1", gaps=gaps, context=_ctx())
+
+    assert outcome.final_state == "paused"
+    assert outcome.paused_at_gap is not None  # resumable from this gap
+    assert store.jobs["job-1"]["status"] == "paused"
+
+
+async def test_complete_does_not_clobber_a_racing_cancel():
+    """HIGH-1: a cancel landing AFTER the last gap but BEFORE the terminal write
+    must win — the runner's complete CAS loses and the job stays 'cancelled'."""
+    store = _CancelAtCompleteStore()
+    emitter = _emitter()
+    runner = _runner(
+        store=store, pipeline=_pipeline(), budget=JobCostBudget(None), emitter=emitter,
+    )
+    outcome = await runner.run_job(job_id="job-1", gaps=[_gap("蓬萊")], context=_ctx())
+
+    assert outcome.final_state == "cancelled"  # NOT completed
+    assert store.jobs["job-1"]["status"] == "cancelled"
+    # the gap's work was done (proposal persisted) but the job did NOT finish.
+    assert len(outcome.proposals) == 1
+    assert not any(e.event_type is JobEventType.COMPLETED for e in emitter.emitted)
+
+
+async def test_preflight_already_cancelled_does_no_work():
+    """A job cancelled while queued (before this run starts) does NOTHING — no
+    estimate, no STARTED emit, no spend."""
+    store = InMemoryProposalStore()
+    store.jobs["job-1"] = {"status": "cancelled"}  # control cancelled it pre-run
+    emitter = _emitter()
+    runner = _runner(
+        store=store, pipeline=_pipeline(), budget=JobCostBudget(None), emitter=emitter,
+    )
+    outcome = await runner.run_job(job_id="job-1", gaps=[_gap("蓬萊")], context=_ctx())
+
+    assert outcome.final_state == "cancelled"
+    assert outcome.proposals == []
+    assert emitter.emitted == []  # never even emitted STARTED
+    assert store.jobs["job-1"]["status"] == "cancelled"  # untouched
+
+
+async def test_cancel_mid_run_records_spend_done_so_far():
+    """LOW-3: a cancel mid-run persists actual_cost for the gaps ALREADY done (so the
+    GUI doesn't show $0 for a cancelled job that really spent) WITHOUT changing the
+    control-owned status. flip_after=2 → gap 1 runs (spend > 0), then cancel."""
+    from app.jobs.cost import PER_GAP_WORKING_COST
+
+    store = _FlipStatusAtReadStore(flip_to="cancelled", flip_after=2)
+    runner = _real_runner(  # GapCostModel → real non-zero per-gap cost
+        store=store, pipeline=_pipeline(),
+        # ample cap (≥ all gaps) so the cost-cap never pauses — the CANCEL is what stops it.
+        budget=JobCostBudget(100.0 * PER_GAP_WORKING_COST, eval_reserve=0.0), emitter=_emitter(),
+    )
+    gaps = [_gap(n) for n in _LOCATIONS]
+    outcome = await runner.run_job(job_id="job-1", gaps=gaps, context=_ctx())
+
+    assert outcome.final_state == "cancelled"
+    assert len(outcome.proposals) == 1  # gap 1 done before the cancel
+    assert outcome.spent == pytest.approx(PER_GAP_WORKING_COST)
+    # the spend is persisted (status-preserving write) — NOT left at 0.
+    assert store.jobs["job-1"]["actual_cost"] == pytest.approx(outcome.spent)
+    # the cost write did NOT touch the control-owned status.
+    assert store.jobs["job-1"]["status"] == "cancelled"
+
+
 # ── WARN-1: resume/re-run is SAFE — no double-charge, no duplicate proposals ───
 
 
@@ -527,6 +670,42 @@ async def test_generation_error_surfaces_as_skip():
     )
     assert outcome.final_state == "completed"
     assert outcome.proposals == []
+    assert outcome.skipped_gaps == ["loc:蓬萊"]
+
+
+async def test_empty_completion_skips_gap_not_fail_job():
+    """D-JOURNEY-ENRICH-EMPTY-COMPLETION — a CompletionSeamError (the LLM returned
+    an empty completion / stream hiccup for ONE gap) is a per-gap SKIP, NOT a
+    whole-job failure. One model blip must not discard the other gaps' work."""
+    from app.generation.complete import CompletionSeamError
+
+    store = InMemoryProposalStore()
+
+    class _EmptyOnFirst(SchemaGovernedGenerator):
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)
+            self._n = 0
+
+        async def generate(self, proposal, context):
+            self._n += 1
+            if self._n == 1:
+                raise CompletionSeamError("LLM stream produced no token text (empty completion)")
+            return await super().generate(proposal, context)
+
+    pipeline = GapPipeline(
+        retrieval=_FakeRetrieval(),
+        generator=_EmptyOnFirst(complete=_const_complete("{}")),
+        verifier=_verifier(),
+    )
+    runner = JobRunner(
+        store=store, pipeline=pipeline, cost_strategy=TemplateStrategy(),
+        emitter=_emitter(), budget=JobCostBudget(None),
+    )
+    outcome = await runner.run_job(
+        job_id="job-1", gaps=[_gap("蓬萊")], context=_ctx()
+    )
+    # The job COMPLETES (not failed) with the empty-completion gap skipped.
+    assert outcome.final_state == "completed"
     assert outcome.skipped_gaps == ["loc:蓬萊"]
 
 

@@ -27,10 +27,19 @@ import json
 import logging
 import time
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 import redis.asyncio as aioredis
 from pydantic import BaseModel, ValidationError
+
+if TYPE_CHECKING:  # deps used only as ToolContext type hints (lane LF)
+    from app.clients.grant_client import GrantClient
+    from app.db.repositories.graph_schemas import GraphSchemasRepo
+    from app.db.repositories.graph_views import GraphViewsRepo
+    from app.db.repositories.ontology_mutations import OntologyMutationsRepo
+    from app.db.repositories.triage import TriageRepo
+    from app.ontology.resolver import OntologyResolver
 
 from app.clients.embedding_client import EmbeddingClient, EmbeddingError
 from app.config import settings
@@ -62,6 +71,9 @@ from app.tools.definitions import (
     MemorySearchArgs,
     MemoryTimelineArgs,
 )
+from app.tools.build_tools import BUILD_TOOL_HANDLERS
+from app.tools.graph_schema_tools import GRAPH_SCHEMA_HANDLERS
+from app.tools.project_tools import PROJECT_TOOL_HANDLERS
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +113,15 @@ class ToolResult:
 class ToolContext:
     """Per-call scope + dependencies. `user_id` / `project_id` /
     `session_id` come from the chat-service envelope — never from the
-    LLM-supplied tool args (design D3)."""
+    LLM-supplied tool args (design D3).
+
+    The KG-ontology tools (lane LF) need extra repos/clients (grant client,
+    graph views/schemas/triage repos, the ontology resolver + mutations repo).
+    They are optional with `None` defaults so the memory-tool call sites
+    (and their tests) that build a ToolContext don't have to supply them —
+    a KG handler that needs a missing dependency would fail clearly. The MCP
+    server (`app/mcp/server.py`) populates them for the unified `/mcp`
+    surface."""
 
     user_id: UUID
     project_id: UUID | None
@@ -110,6 +130,13 @@ class ToolContext:
     pending_facts_repo: PendingFactsRepo
     embedding_client: EmbeddingClient
     redis: aioredis.Redis | None
+    # ── lane LF (KG ontology MCP tools) — optional deps ───────────────
+    grant_client: "GrantClient | None" = None
+    graph_views_repo: "GraphViewsRepo | None" = None
+    graph_schemas_repo: "GraphSchemasRepo | None" = None
+    triage_repo: "TriageRepo | None" = None
+    ontology_resolver: "OntologyResolver | None" = None
+    ontology_mutations_repo: "OntologyMutationsRepo | None" = None
 
 
 class ToolExecutionError(Exception):
@@ -412,6 +439,16 @@ _HANDLERS = {
     "memory_timeline": _handle_memory_timeline,
     "memory_remember": _handle_memory_remember,
     "memory_forget": _handle_memory_forget,
+    # Lane LF — KG ontology MCP tools (R + reversible W). Registered here so
+    # the executor dispatches them through the SAME validate→dispatch→metrics
+    # path as the memory tools; their ARG_MODELS are appended in definitions.py.
+    **GRAPH_SCHEMA_HANDLERS,
+    # Knowledge-project lifecycle (kg_project_create) — the book↔KG bootstrap the
+    # schema/extraction/wiki tools depend on (D-KG-LF-PROJECT-CREATE-MCP).
+    **PROJECT_TOOL_HANDLERS,
+    # Cost-gated job triggers (kg_build_graph) — mint a confirm-token; the human
+    # confirms + the job starts in the confirm route (D-KG-LF-BUILDKG-MCP).
+    **BUILD_TOOL_HANDLERS,
 }
 
 

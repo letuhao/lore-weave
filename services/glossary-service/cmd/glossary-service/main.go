@@ -67,99 +67,14 @@ func main() {
 	}
 	defer pool.Close()
 
-	if err := migrate.Up(ctx, pool); err != nil {
-		slog.Error("migrate", "error", err)
-		os.Exit(1)
-	}
-	if err := migrate.Seed(ctx, pool); err != nil {
-		slog.Error("seed", "error", err)
-		os.Exit(1)
-	}
-	// Kind-alias epic E2: default aliases (faction→organization, generic→terminology).
-	// MUST run after Seed (it references the seeded kinds) — idempotent, every startup.
-	if err := migrate.SeedKindAliases(ctx, pool); err != nil {
-		slog.Error("seed kind-aliases", "error", err)
-		os.Exit(1)
-	}
-	if err := migrate.UpSnapshot(ctx, pool); err != nil {
-		slog.Error("migrate snapshot", "error", err)
-		os.Exit(1)
-	}
-	if err := migrate.BackfillSnapshots(ctx, pool); err != nil {
-		slog.Error("backfill snapshots", "error", err)
-		os.Exit(1)
-	}
-	if err := migrate.UpSoftDelete(ctx, pool); err != nil {
-		slog.Error("migrate soft-delete", "error", err)
-		os.Exit(1)
-	}
-	if err := migrate.UpGenreGroups(ctx, pool); err != nil {
-		slog.Error("migrate genre-groups", "error", err)
-		os.Exit(1)
-	}
-	if err := migrate.UpWiki(ctx, pool); err != nil {
-		slog.Error("migrate wiki", "error", err)
-		os.Exit(1)
-	}
-	if err := migrate.UpWikiSuggestions(ctx, pool); err != nil {
-		slog.Error("migrate wiki-suggestions", "error", err)
-		os.Exit(1)
-	}
-	if err := migrate.UpExtraction(ctx, pool); err != nil {
-		slog.Error("migrate extraction", "error", err)
-		os.Exit(1)
-	}
-	if err := migrate.UpEvidenceChapterIndex(ctx, pool); err != nil {
-		slog.Error("migrate evidence-chapter-index", "error", err)
-		os.Exit(1)
-	}
-	// C4 (K14) — transactional outbox for glossary.entity_updated events.
-	if err := migrate.UpOutbox(ctx, pool); err != nil {
-		slog.Error("migrate outbox", "error", err)
-		os.Exit(1)
-	}
-	if err := migrate.UpKnowledgeMemory(ctx, pool); err != nil {
-		slog.Error("migrate knowledge-memory", "error", err)
-		os.Exit(1)
-	}
-	if err := migrate.BackfillKnowledgeMemory(ctx, pool); err != nil {
-		slog.Error("backfill knowledge-memory", "error", err)
-		os.Exit(1)
-	}
-	if err := migrate.UpShortDescAuto(ctx, pool); err != nil {
-		slog.Error("migrate short-desc-auto", "error", err)
-		os.Exit(1)
-	}
-	// D-K2a-01 + D-K2a-02: defense-in-depth CHECK constraints on
-	// short_description (non-empty + ≤500 runes). Must run AFTER
-	// UpShortDescAuto because the backfill inside this step may
-	// touch columns the prior migration ensures exist, and the
-	// idempotent DO-block pattern is cheap if re-run.
-	if err := migrate.UpShortDescConstraints(ctx, pool); err != nil {
-		slog.Error("migrate short-desc-constraints", "error", err)
-		os.Exit(1)
-	}
-
-	// lore-enrichment supplement layer (F-C13-1 + F-C13-2 / PO ruling B1):
-	// enrichment content lives in its own table, FK→canonical entity, so it
-	// stays structurally distinct from the original authored canon
-	// (short_description). Runs after the entity table + short-desc migrations
-	// since it references glossary_entities(entity_id).
-	if err := migrate.UpEntityEnrichments(ctx, pool); err != nil {
-		slog.Error("migrate entity-enrichments", "error", err)
-		os.Exit(1)
-	}
-	if err := migrate.UpEntityMerge(ctx, pool); err != nil {
-		slog.Error("migrate entity-merge", "error", err)
-		os.Exit(1)
-	}
-	if err := migrate.UpMergeCandidates(ctx, pool); err != nil {
-		slog.Error("migrate merge-candidates", "error", err)
-		os.Exit(1)
-	}
-	// D-GLOSSARY-VERSIONING (VG-1): entity_revisions history store.
-	if err := migrate.UpEntityRevisions(ctx, pool); err != nil {
-		slog.Error("migrate entity-revisions", "error", err)
+	// One-time, ledgered migration chain (schema_migrations). Each step runs EXACTLY
+	// ONCE per database, then is skipped on subsequent boots — no more per-boot DDL/seed
+	// replay (and no more CREATE+seed→DROP churn of the legacy system_kind_attributes
+	// table; D-GKA-G4-SEED-CLEANUP). The ordered sequence + its load-bearing ordering
+	// (FK targets, G4 cutover→cache→drop) lives in internal/migrate/ledger.go. The two
+	// async background backfills below stay OUT of the chain (non-blocking, self-limiting).
+	if err := migrate.RunChain(ctx, pool); err != nil {
+		slog.Error("migrate chain", "error", err)
 		os.Exit(1)
 	}
 
@@ -198,9 +113,27 @@ func main() {
 		} else if rc != nil {
 			go rc.Run(ctx)
 		}
+		// wiki-llm Phase-2 (§5.2) — wiki change-control capture: flags AI articles
+		// stale (ledger) when a source they were built from changes. Never regenerates.
+		if sc, err := events.NewStalenessConsumer(pool, cfg.RedisURL); err != nil {
+			slog.Warn("staleness-consumer init failed (wiki staleness capture disabled)", "error", err)
+		} else if sc != nil {
+			go sc.Run(ctx)
+		}
 	}
 
 	srv := api.NewServer(pool, cfg)
+
+	// D-GRANT-INSTANT-REVOKE — tail book-service grant revokes (Redis) → drop the
+	// matching cached grant from this process's grant client at once (vs the TTL).
+	if cfg.RedisURL != "" {
+		if rc, err := events.NewGrantRevokeConsumer(cfg.RedisURL, srv.GrantClient()); err != nil {
+			slog.Warn("grant-revoke-consumer init failed (instant revoke disabled; TTL still applies)", "error", err)
+		} else if rc != nil {
+			go rc.Run(ctx)
+		}
+	}
+
 	httpSrv := &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           srv.Router(),

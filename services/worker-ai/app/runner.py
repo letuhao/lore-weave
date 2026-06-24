@@ -15,6 +15,7 @@ subset the worker needs.
 
 from __future__ import annotations
 
+import asyncio
 import functools
 import json
 import logging
@@ -28,6 +29,7 @@ from uuid import UUID, uuid4
 
 import asyncpg
 from opentelemetry import trace as _ot_trace
+from loreweave_jobs import JobStatus, emit_job_event_safe
 
 from loreweave_extraction import (
     EntityRecoveryConfig,
@@ -39,7 +41,10 @@ from loreweave_extraction import (
     resolve_effective_config,
 )
 from loreweave_extraction.errors import ExtractionError
+from loreweave_extraction.schema_projection import ExtractionSchema
+from loreweave_llm.errors import LLMError
 
+from app import fair_sched
 from app.clients import (
     BookClient,
     ChapterInfo,
@@ -93,27 +98,18 @@ def _load_precision_filter_config() -> PrecisionFilterConfig | None:
             cycle-73b ship uses ``"relation"`` for 55% latency
             reduction at near-identical F1).
     """
-    model_ref = os.environ.get("WORKER_AI_PRECISION_FILTER_MODEL_REF", "").strip()
-    if not model_ref:
-        return None
-    partial_policy = os.environ.get(
-        "WORKER_AI_PRECISION_FILTER_PARTIAL_POLICY", "keep"
-    ).strip() or "keep"
-    model_source = os.environ.get(
-        "WORKER_AI_PRECISION_FILTER_MODEL_SOURCE", "user_model"
-    ).strip() or "user_model"
-    categories_env = os.environ.get(
-        "WORKER_AI_PRECISION_FILTER_CATEGORIES", "entity,relation,event"
-    ).strip() or "entity,relation,event"
-    categories = tuple(
-        c.strip() for c in categories_env.split(",") if c.strip()
-    )
-    return PrecisionFilterConfig(
-        model_ref=model_ref,
-        model_source=model_source,  # type: ignore[arg-type]
-        partial_policy=partial_policy,  # type: ignore[arg-type]
-        categories=categories,  # type: ignore[arg-type]
-    )
+    # D-WX-PRECISION-FILTER-MODEL-ARCH: the filter MODEL must NOT come from a platform
+    # env. A hardcoded env model_ref is cross-tenant — it was submitted as user_model
+    # scoped to the CAMPAIGN's user, so provider-registry 404'd "model not found" for
+    # every user who didn't own it, leaving the decoupled fold's terminal event
+    # un-acked and stalling the chapter forever (D-WX live-smoke finding). The filter
+    # is now configured PER-PROJECT via extraction_config.precision_filter
+    # (PrecisionFilterOverride: enabled + model_ref + model_source + categories +
+    # partial_policy) — FE-set, DB-stored, resolved per-user, merged onto these
+    # (now model-less) global defaults in resolve_effective_config(project_overrides=).
+    # There is NO global env model source. Behavior knobs without a model are
+    # meaningless, so the whole global default is None.
+    return None
 
 
 # Cached at module load; None when env unset = zero-overhead default.
@@ -370,7 +366,7 @@ def _is_likely_reasoning_model(name: str | None) -> bool:
     if not name:
         return False
     n = name.lower()
-    # OpenAI o-series as a token (o1/o3/o4/o5) without matching e.g. 'gpt-4o'.
+    # OpenAI o-series as a token (o1/o3/o4/o5) without matching e.g. gpt-4o.
     if re.search(r"(?:^|[^a-z0-9])o[1345](?:-|$|[^a-z0-9])", n):
         return True
     return any(p in n for p in _REASONING_MODEL_PATTERNS)
@@ -583,6 +579,25 @@ class JobRow:
     # an extraction_run_sample {run_id, items, source} for the online LLM
     # judge; when False, nothing is stored (redact-by-default).
     save_raw_extraction: bool = False
+    # C12 — target-typed extraction. The subset of Pass-2 passes this job
+    # runs (entities/relations/events/facts/summaries). None ⇒ all (the
+    # column is NOT NULL DEFAULT all-five, so a real row always carries a
+    # concrete set; None only on synthetic/test rows ⇒ treated as all).
+    targets: list[str] | None = None
+    # C12 — passthrough cap on parallel LLM calls. None ⇒ unbounded (current).
+    concurrency_level: int | None = None
+    # C13 — glossary pinning. The glossary entity ids the user pinned; the
+    # runner batch-fetches their names and force-injects them into EVERY
+    # extraction window's known_entities. None/empty ⇒ no pins (back-compat —
+    # the column is JSONB NULL by default).
+    pinned_entity_ids: list[str] | None = None
+    # D-KG-WORKER-GRADED-EFFORT — the graded reasoning effort stored on the row
+    # (knowledge-side clamp at mint, Wave 4). The runner reads it and threads it
+    # through extract_pass2 → the SDK submit builders → the LLM input. The column
+    # is NOT NULL DEFAULT 'none', so a real row always carries a concrete value;
+    # the default here only covers synthetic/test rows. No re-clamp (already
+    # clamped at mint — the runner is single-purpose + trusted).
+    reasoning_effort: str = "none"
 
 
 # ── E0-3 Phase 2a — BYOK dual-identity billing resolution ────────────
@@ -649,6 +664,23 @@ def assert_billing_complete(job: JobRow) -> None:
 # ── DB helpers ───────────────────────────────────────────────────────
 
 
+def _decode_pinned(raw: object) -> list[str] | None:
+    """C13 — normalise extraction_jobs.pinned_entity_ids (JSONB). asyncpg may
+    hand back a raw JSON str or an already-decoded list. NULL ⇒ None (no pins).
+    A non-list / malformed value degrades to None (the job runs un-pinned rather
+    than crashing the poll loop)."""
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except ValueError:
+            return None
+    if isinstance(raw, list):
+        return [str(x) for x in raw]
+    return None
+
+
 async def _get_running_jobs(pool: asyncpg.Pool) -> list[JobRow]:
     """Fetch all jobs in 'running' status.
 
@@ -663,6 +695,8 @@ async def _get_running_jobs(pool: asyncpg.Pool) -> list[JobRow]:
                j.items_total, j.items_processed, j.current_cursor,
                j.cost_spent_usd, j.campaign_id,
                j.billing_user_id, j.billing_embedding_model, j.billing_llm_model,
+               j.targets, j.concurrency_level, j.pinned_entity_ids,
+               j.reasoning_effort,
                p.embedding_dimension,
                p.extraction_config, p.genre, p.save_raw_extraction
         FROM extraction_jobs j
@@ -705,6 +739,15 @@ async def _get_running_jobs(pool: asyncpg.Pool) -> list[JobRow]:
             extraction_config=ec if isinstance(ec, dict) else None,
             genre=r["genre"],
             save_raw_extraction=bool(r["save_raw_extraction"]),
+            # C12 — asyncpg returns a TEXT[] as a python list already.
+            targets=list(r["targets"]) if r["targets"] is not None else None,
+            concurrency_level=r["concurrency_level"],
+            # C13 — pinned_entity_ids is JSONB; asyncpg returns it as a str (raw
+            # JSON) or a decoded list depending on the codec. Normalise both.
+            pinned_entity_ids=_decode_pinned(r["pinned_entity_ids"]),
+            # D-KG-WORKER-GRADED-EFFORT — TEXT NOT NULL DEFAULT 'none'; coerce a
+            # stray NULL (synthetic row / pre-migration replica) to "none".
+            reasoning_effort=r["reasoning_effort"] or "none",
         ))
     return result
 
@@ -812,7 +855,7 @@ async def _append_log(
 
 
 async def _record_spending(
-    pool: asyncpg.Pool, user_id: UUID, project_id: UUID, cost: Decimal,
+    ex: Any, user_id: UUID, project_id: UUID, cost: Decimal,
 ) -> None:
     """D-K16.11-01 — update the per-project monthly + all-time spend
     counters after a successful extraction item.
@@ -827,9 +870,13 @@ async def _record_spending(
     Not guarded by an atomic budget check — that's ``_try_spend``'s job
     on ``extraction_jobs.max_spend_usd``. This function is strictly
     accounting + rollover.
-    """
+
+    ``ex`` is a Pool (default) OR an asyncpg Connection — the latter lets the
+    decoupled-extraction finalize fold the spend into the SAME tx as the
+    cursor-advance + resume-clear, so a crash can't leave spend recorded with
+    resume_state still present (D-WX-PERSIST-DOUBLE-SPEND)."""
     month_key = datetime.now(timezone.utc).strftime("%Y-%m")
-    await pool.execute(
+    await ex.execute(
         """
         UPDATE knowledge_projects
         SET current_month_spent_usd = CASE
@@ -845,33 +892,75 @@ async def _record_spending(
     )
 
 
+#: Unified Job Control Plane P1 — extraction jobs live in the knowledge DB + outbox
+#: (worker-ai shares it); the canonical JobEvent service is the domain owner, "knowledge",
+#: so the projection sees ONE service for the job's whole lifecycle regardless of which
+#: process (knowledge API start/cancel, worker-ai complete/fail) wrote the transition.
+_JOB_SERVICE = "knowledge"
+_JOB_KIND = "extraction"
+
+
 async def _complete_job(pool: asyncpg.Pool, user_id: UUID, job_id: UUID) -> None:
-    """Transition job to 'complete'."""
-    await pool.execute(
-        """
-        UPDATE extraction_jobs
-        SET status = 'complete', completed_at = now(), updated_at = now()
-        WHERE user_id = $1 AND job_id = $2
-          AND status NOT IN ('complete', 'cancelled', 'failed')
-        """,
-        user_id, job_id,
-    )
+    """Transition job to 'complete'. The conditional UPDATE only fires once (not if
+    already terminal) and the RETURNING row gates the emit, so a redelivered/duplicate
+    completion that no-ops the UPDATE can't emit a duplicate terminal event.
+
+    /review-impl MED: the JobEvent emit is **best-effort** (post-commit ``_safe``), NOT
+    in-tx. ``_complete_job`` is called inside ``process_job``'s try whose ``except`` marks
+    the job FAILED — so an in-tx emit that raised (e.g. a transient ``outbox_events``
+    INSERT blip) would roll back the completion AND derail a fully-persisted extraction
+    into a false ``failed``. A terminal status is the source of truth P2's reconcile sweep
+    re-derives, so a best-effort emit (status commits regardless; reconcile backstops a
+    lost event) is the correct trade — the completion must never be lost to an emit error."""
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            UPDATE extraction_jobs
+            SET status = 'complete', completed_at = now(), updated_at = now()
+            WHERE user_id = $1 AND job_id = $2
+              AND status NOT IN ('complete', 'cancelled', 'failed')
+            RETURNING job_id, cost_spent_usd
+            """,
+            user_id, job_id,
+        )
+        if row is not None:
+            # P4 — carry the final cumulative cost on the terminal event (the changing
+            # field); model + params were set on 'running' and kept via the projection's
+            # COALESCE merge.
+            _cost = row["cost_spent_usd"]
+            await emit_job_event_safe(
+                conn, service=_JOB_SERVICE, job_id=str(job_id),
+                owner_user_id=str(user_id), kind=_JOB_KIND, status=JobStatus.COMPLETED,
+                cost_usd=float(_cost) if _cost is not None else None,
+            )
 
 
 async def _fail_job(
     pool: asyncpg.Pool, user_id: UUID, job_id: UUID, error: str,
 ) -> None:
-    """Transition job to 'failed' with an error message."""
-    await pool.execute(
-        """
-        UPDATE extraction_jobs
-        SET status = 'failed', completed_at = now(), updated_at = now(),
-            error_message = $3
-        WHERE user_id = $1 AND job_id = $2
-          AND status NOT IN ('complete', 'cancelled', 'failed')
-        """,
-        user_id, job_id, error[:2000],
-    )
+    """Transition job to 'failed' with an error message (same once-only RETURNING gate +
+    best-effort post-commit emit as ``_complete_job`` — a failed-status write must commit
+    regardless of an emit blip; reconcile backstops a lost event)."""
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            UPDATE extraction_jobs
+            SET status = 'failed', completed_at = now(), updated_at = now(),
+                error_message = $3
+            WHERE user_id = $1 AND job_id = $2
+              AND status NOT IN ('complete', 'cancelled', 'failed')
+            RETURNING job_id, cost_spent_usd
+            """,
+            user_id, job_id, error[:2000],
+        )
+        if row is not None:
+            _cost = row["cost_spent_usd"]
+            await emit_job_event_safe(
+                conn, service=_JOB_SERVICE, job_id=str(job_id),
+                owner_user_id=str(user_id), kind=_JOB_KIND, status=JobStatus.FAILED,
+                cost_usd=float(_cost) if _cost is not None else None,
+                error={"code": "extraction_failed", "message": error[:500]},
+            )
 
 
 async def _get_project_book_id(
@@ -1193,6 +1282,11 @@ async def _extract_and_persist(
     # B2-B-b2 — per-op raw system-prompt overrides {op: {"system": str}} from
     # the job's resolved snapshot ({} when the project has no custom prompts).
     prompt_overrides: dict | None = None,
+    # L7 (Milestone B) — the project's ADVISORY extraction schema, resolved once
+    # per job. Threaded into extract_pass2 so the LLM emits the project's vocab.
+    # None ⇒ static prompt. allow_free_edges is forced True server-side, so the
+    # SDK never pre-drops — /persist-pass2 stays the sole enforce+park point.
+    schema: ExtractionSchema | None = None,
     # B2 follow-up — per-project Pass2-writer autocreate override (forwarded to
     # /persist-pass2). None = chat/glossary callers leave the env default.
     writer_autocreate: bool | None = None,
@@ -1213,6 +1307,21 @@ async def _extract_and_persist(
     billing_user_id: str | None = None,
     billing_llm_model: str | None = None,
     billing_embedding_model: str | None = None,
+    # C12 — target-typed extraction. None ⇒ all passes (chat_turn / glossary
+    # callers omit it → full extraction, unchanged). A concrete list runs only
+    # the requested SDK passes; `summaries` is stripped before the SDK (it's
+    # an orchestrator op, gated on the persist side instead).
+    targets: list[str] | None = None,
+    # C12 — cap on parallel LLM calls in the SDK R/E/F gather. None ⇒ unbounded.
+    concurrency_level: int | None = None,
+    # C13 — pinned glossary names force-injected into THIS window's
+    # known_entities (replaces the legacy hardcoded []). None ⇒ [] (back-compat:
+    # chat_turn / glossary callers leave it unset → no pins).
+    pinned_names: list[str] | None = None,
+    # D-KG-WORKER-GRADED-EFFORT — the job's graded reasoning effort, threaded
+    # into the SDK's core extraction LLM calls. Default "none" ⇒ no reasoning
+    # wire fields (chat_turn / glossary callers omit it → unchanged).
+    reasoning_effort: str = "none",
 ) -> tuple[ExtractionResult, "Pass2Candidates | None"]:
     """Phase 4b-γ — replaces the legacy `knowledge_client.extract_item`.
 
@@ -1251,15 +1360,25 @@ async def _extract_and_persist(
         _ENTITY_RECOVERY_CONFIG if entity_recovery is _GLOBAL_RECOVERY_SENTINEL
         else entity_recovery
     )
+    # C12 — the SDK target set. None ⇒ None (SDK runs all). A concrete list is
+    # passed straight through; the SDK ignores `summaries` (orchestrator op) and
+    # auto-includes `entities` for dependent targets. `summaries` is honoured by
+    # persist-pass2's enqueue gate (via the `targets` field below), NOT here.
+    sdk_targets = set(targets) if targets else None
     try:
         candidates = await extract_pass2(
             text=text,
-            known_entities=[],
+            # C13 — force-inject the pinned glossary names. Replaces the legacy
+            # hardcoded [] ("worker-ai has no glossary access"). None ⇒ [].
+            known_entities=list(pinned_names or []),
             user_id=str(user_id),
             project_id=str(project_id) if project_id else None,
             model_source="user_model",
             model_ref=model_ref,
             llm_client=llm_client,
+            # C12 — gate which Pass-2 passes run (None ⇒ all) + cap parallelism.
+            targets=sdk_targets,
+            concurrency_level=concurrency_level,
             # Cycle 72 / B2-B-b1 — precision filter, now per-project-resolvable.
             # None = no filter; degraded path surfaces via
             # candidates.filter_status without raising.
@@ -1270,6 +1389,11 @@ async def _extract_and_persist(
             entity_recovery=eff_recovery,
             # B2-B-b2 — per-op raw system-prompt overrides ({} = all defaults).
             prompt_overrides=prompt_overrides,
+            # L7 (Milestone B) — advisory project schema (None ⇒ static prompt).
+            schema=schema,
+            # D-KG-WORKER-GRADED-EFFORT — graded effort → core extraction LLM
+            # calls ("none" ⇒ no wire fields; recovery/filter stay force-off).
+            reasoning_effort=reasoning_effort,
         )
     except ExtractionError as exc:
         retryable = exc.stage == "provider_exhausted"
@@ -1330,8 +1454,191 @@ async def _extract_and_persist(
         billing_user_id=billing_user_id,
         billing_llm_model=billing_llm_model,
         billing_embedding_model=billing_embedding_model,
+        # C12 — forward the target set so persist-pass2 gates the summary
+        # enqueue on `summaries ∈ targets` (None ⇒ all ⇒ enqueue, back-compat).
+        targets=targets,
     )
     return persist_result, candidates
+
+
+def _decouple_enabled() -> bool:
+    """WX-T3b flag, read from the env (runner.py uses os.environ, not the pydantic
+    settings object — matches the same EXTRACTION_DECOUPLE_ENABLED that app.main's
+    settings.extraction_decouple_enabled reads, so worker + consumer stay coherent)."""
+    return os.environ.get("EXTRACTION_DECOUPLE_ENABLED", "").strip().lower() in ("1", "true", "yes")
+
+
+async def _start_decoupled_chunk(
+    pool: asyncpg.Pool, llm_client: LLMClient, *,
+    job: "JobRow", ch, text: str, book_id, run_snapshot, run_cfg_hash: str,
+    run_base_version: str, p3_hierarchy_paths, p3_chapter_index,
+    p3_book_parts, p3_is_last: bool,
+    # C13 — pinned glossary names to force-inject into this chunk's
+    # known_entities. [] ⇒ no pins (back-compat).
+    pinned_names: list[str] | None = None,
+    # P5 — the WFQ lease token acquired for this chunk (None when P5 off). Stashed in
+    # resume_state so the decoupled consumer can release the exact slot at the chunk
+    # terminal; released here on submit-failure (no chunk ends up in flight).
+    p5_token: str | None = None,
+    # L7 (Milestone B) — the project's ADVISORY extraction schema (None ⇒ static
+    # prompt). Stashed in resume_state so the consumer rebuilds it for build_*_system.
+    extraction_schema: ExtractionSchema | None = None,
+) -> None:
+    """WX-T3b — seed resume_state for one chapter + submit its entity job, then
+    return (released). The llm_extract_consumer folds the terminal events through
+    entity→trio→persist. The full per-chapter persist + cursor + spend context is
+    serialized into resume_state so the consumer (which only sees a job_id) can
+    finalize without the loop locals. run_payload is pre-built here (metrics zeroed —
+    the consumer fills counts from the persist result). Campaign + BYOK attribution
+    flow through the contextvars process_job already bound (submit_job stamps them)."""
+    from app import decoupled_extract as dx
+
+    eff_model_ref = job.billing_llm_model if job.billing_user_id else run_snapshot.model_ref
+    # WX Wave 4 — recovery/filter are now decoupled fan-out stages (no sync fallback).
+    eff_recovery = run_snapshot.entity_recovery
+    eff_filter = run_snapshot.precision_filter
+    # C12 LOCK — recovery/precision-filter auto-disable when `entities` was not
+    # explicitly requested (they refine the canonical entity set; pointless on
+    # an R/E/F-only build where entities run only as anchors). None/empty
+    # targets ⇒ entities requested ⇒ enabled (back-compat).
+    entities_requested = (not job.targets) or ("entities" in job.targets)
+    rs = dx.new_extract_state(
+        # C13 — force-inject the pinned glossary names into THIS chunk's
+        # known_entities (the decoupled consumer threads it into the entity +
+        # R/E/F extractor calls). Replaces the legacy hardcoded []. None ⇒ [].
+        chunk_text=text, known_entities=list(pinned_names or []),
+        has_recovery=(eff_recovery is not None) and entities_requested,
+        has_filter=(eff_filter is not None) and entities_requested,
+        # C12 — the job's pass subset; reduced to the requested trio ops.
+        targets=job.targets,
+    )
+    # C13 — per-window proof that the pinned names reach THIS chapter's
+    # known_entities even when the chapter text never mentions them. Silent when
+    # nothing is pinned (the common case). Load-bearing for the live-smoke.
+    if pinned_names:
+        logger.info(
+            "C13 pinned-injection: chapter %s (idx=%s) known_entities <- %s",
+            ch.chapter_id, p3_chapter_index, pinned_names,
+        )
+    rs.update(
+        user_id=str(job.user_id), project_id=str(job.project_id),
+        model_source="user_model", model_ref=str(eff_model_ref),
+        # D-KG-WORKER-GRADED-EFFORT — stash the job's graded effort in
+        # resume_state alongside model_ref so the decoupled consumer rebuilds the
+        # entity + trio submits with the SAME effort on resume. Missing it here
+        # would silently drop graded effort on the async/resume path.
+        reasoning_effort=job.reasoning_effort,
+        prompt_overrides=run_snapshot.prompts or {},
+        # C12 (D-C12-CONCURRENCY-DECOUPLED) — carry the job's cap on parallel
+        # LLM calls into the decoupled state so the consumer bounds the trio /
+        # recovery / filter submit fan-outs (an asyncio.Semaphore in
+        # _submit_map). None ⇒ unbounded (back-compat with the sync gather).
+        concurrency_level=job.concurrency_level,
+        campaign_id=(str(job.campaign_id) if job.campaign_id else None),
+        billing_user_id=(str(job.billing_user_id) if job.billing_user_id else None),
+        # D-WX-RUN-SAMPLE-DECOUPLE — the project's raw-retention opt-in, seeded so
+        # the consumer's terminal persist can write the extraction_run_sample at
+        # parity with the sync chapter loop (keyed by run_payload's run_id).
+        save_raw_extraction=bool(job.save_raw_extraction),
+        persist_ctx={
+            "source_type": "chapter", "source_id": str(ch.chapter_id),
+            "job_id": str(job.job_id), "project_id": str(job.project_id),
+            "extraction_model": str(eff_model_ref),
+            "hierarchy_paths": p3_hierarchy_paths, "chapter_index": p3_chapter_index,
+            "book_parts": p3_book_parts, "is_last_chapter_of_book": p3_is_last,
+            "embedding_model_uuid": (job.embedding_model if p3_hierarchy_paths else None),
+            "embedding_dimension": (job.embedding_dimension if p3_hierarchy_paths else None),
+            "writer_autocreate": run_snapshot.writer_autocreate,
+            "billing_user_id": (str(job.billing_user_id) if job.billing_user_id else None),
+            "billing_llm_model": job.billing_llm_model,
+            "billing_embedding_model": job.billing_embedding_model,
+            # C12 — the job's pass subset, forwarded so the decoupled persist
+            # gates the summary enqueue on `summaries ∈ targets` (None ⇒ all).
+            "targets": job.targets,
+        },
+        run_payload=_run_payload(
+            job=job, book_id=book_id, chapter_ref=ch.chapter_id, snapshot=run_snapshot,
+            cfg_hash=run_cfg_hash, base_version=run_base_version,
+            outcome="succeeded", result=None,
+        ),
+        chapter_extracted={
+            "user_id": str(job.user_id), "project_id": str(job.project_id),
+            "book_id": str(book_id) if book_id else None,
+            "chapter_id": str(ch.chapter_id),
+        },
+        cursor_to_set={"last_chapter_id": str(ch.chapter_id), "scope": "chapters"},
+    )
+    # P5 — carry the WFQ lease token in resume_state so the consumer's terminal finalize
+    # (_persist_chunk) releases the exact slot this chunk leased. Absent when P5 is off.
+    if p5_token:
+        rs["_p5_tok"] = p5_token
+    # WX Wave 4 — serialize the recovery/filter configs into resume_state so the consumer
+    # (which only sees a job_id) can drive the Tier-3 + category×batch fan-outs over the
+    # WX-T2c seams. worker-ai has no glossary access ⇒ known_entity_kinds is empty ⇒ all
+    # unmatched names go to the Tier-3 LLM classifier (matches the sync path there).
+    if eff_recovery is not None:
+        rs["_recovery_cfg"] = {
+            "model_ref": eff_recovery.model_ref,
+            "model_source": eff_recovery.model_source,
+            "max_items_per_batch": eff_recovery.max_items_per_batch,
+            "transient_retry_budget": eff_recovery.transient_retry_budget,
+            "known_entity_kinds": dict(eff_recovery.known_entity_kinds),
+        }
+    if eff_filter is not None:
+        rs["_filter_cfg"] = {
+            "model_ref": eff_filter.model_ref,
+            "model_source": eff_filter.model_source,
+            "partial_policy": eff_filter.partial_policy,
+            "categories": list(eff_filter.categories),
+            "max_items_per_batch": eff_filter.max_items_per_batch,
+            "transient_retry_budget": eff_filter.transient_retry_budget,
+        }
+    # L7 (Milestone B) — stash the advisory schema projection so the consumer
+    # rebuilds it for build_*_system (vocab hint in the prompt). allow_free_edges
+    # is True (advisory) → never pre-drops; /persist-pass2 stays the enforce+park
+    # point. Absent when the project has no resolved schema.
+    if extraction_schema is not None:
+        rs["_schema"] = {
+            "entity_kinds": list(extraction_schema.entity_kinds),
+            "edge_predicates": list(extraction_schema.edge_predicates),
+            "event_kinds": list(extraction_schema.event_kinds),
+            "fact_types": list(extraction_schema.fact_types),
+            "allow_free_edges": extraction_schema.allow_free_edges,
+            "label": extraction_schema.label,
+            "schema_version": extraction_schema.schema_version,
+        }
+    # Bounded transient-retry on the entity submit — mirrors submit_and_wait's
+    # resilience. A fire-and-forget submit_job has no retry, so without this a single
+    # transient transport blip to provider-registry would PERMANENTLY fail the job
+    # (worse than the sync path). Genuine provider-down (all attempts fail) → raise →
+    # the job fails → the poll / campaign reconcile re-dispatches.
+    entity_kwargs = dx.assemble_entity_submit(rs)
+    submit = None
+    last_exc: Exception | None = None
+    for attempt in range(3):
+        try:
+            submit = await llm_client.submit_job(user_id=str(job.user_id), **entity_kwargs)
+            break
+        except LLMError as exc:
+            last_exc = exc
+            logger.warning(
+                "decoupled entity submit attempt %d/3 failed (transient?) chapter=%s: %s",
+                attempt + 1, ch.chapter_id, exc,
+            )
+            await asyncio.sleep(1.0 * (attempt + 1))
+    if submit is None:
+        # P5 — the chunk never went in flight; free the slot now (the consumer will never
+        # see this chunk, so it can't release it). The job then fails via the caller's
+        # outer except. No-op when P5 off / token None.
+        await fair_sched.release_chunk(job.user_id, p5_token)
+        raise last_exc if last_exc else RuntimeError("decoupled entity submit failed")
+    await pool.execute(
+        """UPDATE extraction_jobs
+           SET resume_state=$2::jsonb, provider_job_ids=$3::jsonb, pipeline_stage=$4,
+               updated_at=now()
+           WHERE job_id=$1""",
+        job.job_id, json.dumps(rs), json.dumps([str(submit.job_id)]), rs["stage"],
+    )
 
 
 # ── Core job processing ─────────────────────────────────────────────
@@ -1374,6 +1681,21 @@ async def process_job(
     # for different campaigns never cross-contaminate.
     set_campaign_id(str(job.campaign_id) if job.campaign_id else None)
 
+    # LLM re-arch Phase 2b WX-T3b — decoupled-extraction in-flight guard. If a chunk
+    # is already in flight (the llm_extract_consumer is driving it off terminal
+    # events), do NOT re-enter: the consumer advances the cursor + clears
+    # resume_state when the chunk persists, and the next poll picks up the FOLLOWING
+    # chapter. Without this, the poll loop would re-submit the in-flight chapter every
+    # cycle. (Flag off ⇒ resume_state is always NULL ⇒ this never fires.)
+    if _decouple_enabled():
+        _inflight = await pool.fetchval(
+            "SELECT resume_state IS NOT NULL FROM extraction_jobs WHERE job_id=$1",
+            job.job_id,
+        )
+        if _inflight:
+            logger.debug("Job %s: a chunk is in-flight (decoupled) — consumer driving; skip poll", job.job_id)
+            return
+
     # FD-27 — reasoning-model advisory (once per job, best-effort). A reasoning
     # model used for extraction risks empty output (thinking suppression is a
     # ~95% prompt preamble, not a hard guarantee). None model name (lookup
@@ -1413,12 +1735,41 @@ async def process_job(
         # Resolve book_id from project (project_id ≠ book_id)
         book_id = await _get_project_book_id(pool, job.user_id, job.project_id)
 
+        # C13 — glossary pinning. Resolve the pinned glossary entity NAMES ONCE
+        # per job (not per chapter) and force-inject them into EVERY extraction
+        # window's known_entities below, so sparse-but-critical entities stay
+        # anchored even in chapters that never mention them. Reuses the existing
+        # X-Internal-Token GlossaryClient (no new secret). Best-effort: a
+        # glossary outage / no book_id → [] → the job runs un-pinned, never
+        # blocks. THE GAP this cycle closes: the runner previously passed an
+        # empty known_entities ("worker-ai has no glossary access").
+        pinned_names: list[str] = []
+        if job.pinned_entity_ids and book_id is not None:
+            pinned_names = await glossary_client.fetch_entities_by_ids(
+                book_id, job.pinned_entity_ids,
+            )
+            logger.info(
+                "Job %s: C13 pinning — %d pinned id(s) resolved to %d name(s)",
+                job.job_id, len(job.pinned_entity_ids), len(pinned_names),
+            )
+
         # B2-A — pin the effective config snapshot ONCE per job (a mid-job
         # filter reload won't change this job's config_hash). Used for the
         # per-chapter extraction_run telemetry; behaviour is unchanged because
         # extract_pass2 still reads the module globals in B2-A (B2-B wires the
         # snapshot into the pipeline).
         run_snapshot, run_cfg_hash, run_base_version = _build_run_config(job)
+
+        # L7 (Milestone B) — resolve the project's ADVISORY extraction schema ONCE
+        # per job (pinned like the config snapshot). Threaded into extract_pass2 so
+        # the LLM emits the project's vocab. None (no project / resolve failure /
+        # un-adopted → general@v1 with no custom vocab) ⇒ static prompt. The
+        # writer (/persist-pass2) resolves the AUTHORITATIVE schema server-side and
+        # stays the sole closed-set enforce+park point — so this advisory copy
+        # never pre-drops an off-schema edge (the R3 reconciliation).
+        extraction_schema = await knowledge_client.resolve_extraction_schema(
+            user_id=job.user_id, project_id=job.project_id,
+        )
 
         # Pre-enumerate items. Done once — the results are reused for
         # both K16.7 items_total counting and the main processing loop,
@@ -1479,15 +1830,34 @@ async def process_job(
                     logger.info("Job %s no longer running (status=%s), stopping", job.job_id, status)
                     return
 
+                # P5 WFQ — gate this owner's next in-flight decoupled chunk BEFORE reserving
+                # cost (a deferred chunk must not inflate cost_spent_usd). Only the decoupled
+                # chapters path holds a cross-poll lease (released by the consumer at the
+                # chunk terminal — that's what bounds real in-flight LLM concurrency per
+                # owner). At cap ⇒ defer the whole chunk to a later poll; the slot frees when
+                # an in-flight chunk finalizes. P5 off ⇒ (True, None) ⇒ proceeds un-capped.
+                _p5_decoupled = _decouple_enabled() and job.scope in ("chapters", "all")
+                _p5_token: str | None = None
+                if _p5_decoupled:
+                    _p5_allowed, _p5_token = await fair_sched.try_acquire_chunk(job.user_id)
+                    if not _p5_allowed:
+                        logger.info(
+                            "Job %s: owner %s at P5 cap — deferring next chunk to a later poll",
+                            job.job_id, job.user_id,
+                        )
+                        return
+
                 # Atomic cost reservation
                 outcome = await _try_spend(
                     pool, job.user_id, job.job_id, _DEFAULT_COST_PER_ITEM,
                 )
                 if outcome == "not_running":
                     logger.info("Job %s try_spend returned not_running, stopping", job.job_id)
+                    await fair_sched.release_chunk(job.user_id, _p5_token)
                     return
                 if outcome == "auto_paused":
                     logger.info("Job %s auto-paused by budget cap", job.job_id)
+                    await fair_sched.release_chunk(job.user_id, _p5_token)
                     await _append_log(
                         pool, job.user_id, job.job_id, "warning",
                         "Job auto-paused: max_spend_usd reached",
@@ -1538,6 +1908,9 @@ async def process_job(
                         {"last_chapter_id": ch.chapter_id, "scope": "chapters"},
                         unavail_payload,
                     )
+                    # P5 — this chapter did no LLM work; free its slot before the next
+                    # iteration (which re-acquires). No-op when P5 off / token None.
+                    await fair_sched.release_chunk(job.user_id, _p5_token)
                     continue
 
                 # P3 D-P3-EXTRACTION-CALLER-WIRE-UP — fetch hierarchy
@@ -1602,6 +1975,39 @@ async def process_job(
                         and ch.chapter_id == pre_chapters[-1].chapter_id
                     )
 
+                # LLM re-arch Phase 2b WX-T3b — event-driven decouple of the chapter
+                # extraction. Submit the entity job + RELEASE (return); the
+                # llm_extract_consumer drives entity→trio→[recovery]→[filter]→persist off
+                # the terminal events and advances the cursor + emits chapter_extracted.
+                # WX Wave 4 — recovery/filter are now decoupled fan-out stages too, so the
+                # branch is no longer gated to projects without them (the prior gate is
+                # dropped). The next poll (resume_state cleared by the consumer) handles
+                # the next chapter.
+                if (
+                    _decouple_enabled()
+                    and job.scope in ("chapters", "all")
+                ):
+                    await _start_decoupled_chunk(
+                        pool, llm_client, job=job, ch=ch, text=text, book_id=book_id,
+                        run_snapshot=run_snapshot, run_cfg_hash=run_cfg_hash,
+                        run_base_version=run_base_version,
+                        p3_hierarchy_paths=p3_hierarchy_paths,
+                        p3_chapter_index=p3_chapter_index,
+                        p3_book_parts=p3_book_parts, p3_is_last=p3_is_last,
+                        # C13 — pinned names resolved once per job above.
+                        pinned_names=pinned_names,
+                        # P5 — the WFQ lease for this chunk; stashed in resume_state so the
+                        # consumer releases it at the chunk terminal. None when P5 off.
+                        p5_token=_p5_token,
+                        # L7 (Milestone B) — advisory project schema (None ⇒ static prompt).
+                        extraction_schema=extraction_schema,
+                    )
+                    logger.info(
+                        "Job %s: chapter %s submitted via DECOUPLED extraction (released)",
+                        job.job_id, ch.chapter_id,
+                    )
+                    return  # release — the consumer drives this chapter to persist
+
                 # Extract: Phase 4b-γ — worker-ai now runs the LLM
                 # stage in-process via loreweave_extraction.extract_pass2,
                 # then POSTs candidates to /persist-pass2.
@@ -1630,6 +2036,8 @@ async def process_job(
                     entity_recovery=run_snapshot.entity_recovery,
                     prompt_overrides=run_snapshot.prompts,
                     writer_autocreate=run_snapshot.writer_autocreate,
+                    # L7 (Milestone B) — advisory project schema (None ⇒ static).
+                    schema=extraction_schema,
                     text=text,
                     hierarchy_paths=p3_hierarchy_paths,
                     chapter_index=p3_chapter_index,  # FD-4 (066) — flat-book event_order
@@ -1650,6 +2058,18 @@ async def process_job(
                     ),
                     billing_llm_model=job.billing_llm_model,
                     billing_embedding_model=job.billing_embedding_model,
+                    # C12 — target-typed extraction: the job's chosen pass subset.
+                    # None ⇒ all passes (back-compat). The SDK strips `summaries`
+                    # (orchestrator-gated); persist-pass2 honours it for the
+                    # summary enqueue gate.
+                    targets=job.targets,
+                    # C12 — cap parallel R/E/F LLM calls (None ⇒ unbounded).
+                    concurrency_level=job.concurrency_level,
+                    # C13 — pinned names resolved once per job above; injected
+                    # into this window's known_entities.
+                    pinned_names=pinned_names,
+                    # D-KG-WORKER-GRADED-EFFORT — the job's stored graded effort.
+                    reasoning_effort=job.reasoning_effort,
                 )
 
                 if result.error:
@@ -1753,7 +2173,8 @@ async def process_job(
                 # never fail the extraction. Non-opted → write nothing.
                 if job.save_raw_extraction and candidates is not None:
                     await persist_run_sample_best_effort(
-                        pool, run_id=run_id, job=job, book_id=book_id,
+                        pool, run_id=run_id, user_id=job.user_id,
+                        project_id=job.project_id, book_id=book_id,
                         config_hash=run_cfg_hash, candidates=candidates,
                         source_text=text,
                     )
@@ -1844,6 +2265,14 @@ async def process_job(
                     # collaborator path; job.llm_model (owner's) when billing NULL.
                     model_ref=eff_llm_ref(job),
                     text=turn_text,
+                    # C13 — pins reach EVERY extraction window, chat turns
+                    # included (the cost estimate's num_windows counts chat turns,
+                    # so the injection must too). Resolved once per job above.
+                    pinned_names=pinned_names,
+                    # L7 (Milestone B) — advisory project schema (None ⇒ static).
+                    schema=extraction_schema,
+                    # D-KG-WORKER-GRADED-EFFORT — the job's stored graded effort.
+                    reasoning_effort=job.reasoning_effort,
                 )
 
                 if result.error and not result.retryable:
@@ -2174,6 +2603,18 @@ async def poll_and_run(
     jobs = await _get_running_jobs(pool)
     if not jobs:
         return 0
+
+    # P5 WFQ — when fair scheduling is on, interleave jobs across owners (round-robin)
+    # instead of strict created_at, so a new owner's job isn't stuck behind one owner's
+    # giant book. Also periodically reclaim expired leases (crash-leak backstop). Both
+    # are no-ops when P5 is off (created_at order preserved). Best-effort: a scheduler/
+    # redis blip must never block the poll cycle.
+    if fair_sched.enabled():
+        try:
+            await fair_sched.reclaim()
+            jobs = fair_sched.round_robin_by_owner(jobs)
+        except Exception:  # noqa: BLE001 — fairness must not block extraction
+            logger.warning("P5: poll-loop WFQ ordering/reclaim failed — created_at order", exc_info=True)
 
     for job in jobs:
         await process_job(

@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CompositionPanel } from '../CompositionPanel';
 
@@ -44,6 +45,7 @@ vi.mock('../../hooks/useWork', () => ({
   useChapterScenes: () => ({ data: [{ id: 's1', title: 'Scene 1', status: 'done' }] }),
   useCreateScene: () => ({ mutate: vi.fn(), isPending: false }),
   useSetSceneStatus: () => ({ mutate: vi.fn(), isPending: false }),
+  usePendingWorkResolver: () => ({ state: 'idle', start: vi.fn(), retry: vi.fn() }),
 }));
 vi.mock('../../../ai-models/api', () => ({
   aiModelsApi: { listUserModels: vi.fn().mockResolvedValue({ items: [] }) },
@@ -53,11 +55,13 @@ beforeEach(() => {
   mounts.compose = mounts.cowriter = mounts.assemble = mounts.planner = mounts.beats = mounts.graph = mounts.cast = mounts.relmap = mounts.timeline = mounts.arc = mounts.worldmap = mounts.grounding = mounts.canon = mounts.quality = mounts.settings = 0;
 });
 
-function renderPanel() {
+function renderPanel(initialEntries: string[] = ['/books/b']) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <CompositionPanel bookId="b" chapterId="c" token="tok" onAccept={vi.fn()} />
+      <MemoryRouter initialEntries={initialEntries}>
+        <CompositionPanel bookId="b" chapterId="c" token="tok" onAccept={vi.fn()} />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }
@@ -104,5 +108,29 @@ describe('CompositionPanel sub-tab CSS-hidden (visibility-transition)', () => {
     // round-trip did NOT remount either panel (a ternary would have).
     expect(mounts.compose).toBe(1);
     expect(mounts.assemble).toBe(1);
+  });
+});
+
+// Overflow-containment regression: in a narrow (resizable) right panel the 16-tab
+// strip and the tab content must stay INSIDE the panel — the strip scrolls
+// horizontally (no-shrink tabs) and content wraps/scrolls, never escaping the
+// viewport. We assert the structural classes that enforce this.
+describe('CompositionPanel overflow containment (narrow right panel)', () => {
+  it('the tab strip scrolls horizontally with non-shrinking tabs', () => {
+    renderPanel();
+    const strip = screen.getByTestId('composition-subtabs');
+    expect(strip).toHaveClass('overflow-x-auto');
+    // each tab refuses to shrink so labels stay readable; the row scrolls instead.
+    const tab = screen.getByTestId('composition-subtab-settings');
+    expect(tab).toHaveClass('shrink-0');
+    expect(tab).toHaveClass('whitespace-nowrap');
+  });
+
+  it('the content wrapper contains wide content (min-w-0 + overflow + wrap)', () => {
+    renderPanel();
+    const content = screen.getByTestId('composition-content');
+    expect(content).toHaveClass('min-w-0');
+    expect(content).toHaveClass('overflow-auto');
+    expect(content.className).toContain('[overflow-wrap:anywhere]');
   });
 });

@@ -94,13 +94,8 @@ func newWbFixture(t *testing.T, suffix string) *wbFixture {
 	ctx := context.Background()
 	f := &wbFixture{pool: pool, ctx: ctx, srv: newWritebackServer(pool),
 		bookID: uuid.MustParse("019e0000-0000-7000-cccc-" + suffix)}
-	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&f.kindID)
-	if f.kindID == uuid.Nil {
-		pool.Exec(ctx, `INSERT INTO entity_kinds(code,name,icon,color,is_default,is_hidden,sort_order)
-			SELECT 'character','Character','user','#888888',true,false,0
-			WHERE NOT EXISTS (SELECT 1 FROM entity_kinds WHERE code='character')`)
-		pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&f.kindID)
-	}
+	adoptTestBook(t, pool, f.bookID)
+	f.kindID = bookKindID(t, pool, f.bookID, "character")
 	t.Cleanup(func() { pool.Exec(ctx, `DELETE FROM glossary_entities WHERE book_id=$1`, f.bookID) })
 	return f
 }
@@ -248,6 +243,46 @@ func TestWriteback_SuggestionOverHumanEdit(t *testing.T) {
 	}
 }
 
+// D-WIKI-M5-SUGGESTION-DEDUP: repeated AI regen over a human-edited article keeps
+// exactly ONE pending ai-regen suggestion (latest wins) and never deletes a human
+// feedback suggestion.
+func TestWriteback_SuggestionDedupKeepsLatestAndSparesHuman(t *testing.T) {
+	f := newWbFixture(t, "000000000009")
+	ent := f.seedEntity(t)
+	aid := f.seedArticle(t, ent, "owner") // human edit → AI writes file suggestions
+
+	// A pre-existing HUMAN feedback suggestion (different reason) must survive the dedup.
+	if _, err := f.pool.Exec(f.ctx,
+		`INSERT INTO wiki_suggestions (article_id, user_id, diff_json, reason, status)
+		 VALUES ($1, $2, '{"type":"doc","content":[]}', 'human fix', 'pending')`,
+		aid, uuid.New(),
+	); err != nil {
+		t.Fatalf("seed human suggestion: %v", err)
+	}
+
+	// Three AI regens in a row — each files an ai-regen suggestion.
+	for i := range 3 {
+		if action, _ := decodeAction(t, postWriteback(t, f.srv, f.bookID.String(), f.body(ent))); action != "suggestion" {
+			t.Fatalf("regen %d: expected suggestion, got %q", i, action)
+		}
+	}
+
+	var aiCount int
+	f.pool.QueryRow(f.ctx,
+		`SELECT COUNT(*) FROM wiki_suggestions WHERE article_id=$1 AND status='pending' AND reason='AI regeneration (article has human edits)'`,
+		aid).Scan(&aiCount)
+	if aiCount != 1 {
+		t.Fatalf("want exactly 1 pending ai-regen suggestion (latest wins), got %d", aiCount)
+	}
+	var humanCount int
+	f.pool.QueryRow(f.ctx,
+		`SELECT COUNT(*) FROM wiki_suggestions WHERE article_id=$1 AND status='pending' AND reason='human fix'`,
+		aid).Scan(&humanCount)
+	if humanCount != 1 {
+		t.Fatalf("human feedback suggestion must be untouched, got %d", humanCount)
+	}
+}
+
 func TestWriteback_SuggestionOverUnknownAuthorType(t *testing.T) {
 	// Allowlist fail-safe: a non-ai/non-system author_type (e.g. a future
 	// human-ish 'editor') must NOT be clobbered — file a suggestion.
@@ -271,7 +306,7 @@ func TestWriteback_RegenReplacesSourceUsage(t *testing.T) {
 	// appends — the §5.1 index reflects the CURRENT generation only.
 	f := newWbFixture(t, "000000000007")
 	ent := f.seedEntity(t)
-	decodeAction(t, postWriteback(t, f.srv, f.bookID.String(), f.body(ent))) // 1st write: 2 usage rows
+	decodeAction(t, postWriteback(t, f.srv, f.bookID.String(), f.body(ent)))           // 1st write: 2 usage rows
 	_, aid := decodeAction(t, postWriteback(t, f.srv, f.bookID.String(), f.body(ent))) // regen
 	var usage int
 	f.pool.QueryRow(f.ctx, `SELECT COUNT(*) FROM wiki_article_source_usage WHERE article_id=$1`, aid).Scan(&usage)

@@ -7,7 +7,7 @@ from typing import Optional
 from uuid import UUID
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 # ── Domain vocabulary (mirrors the DB CHECK-free string columns) ──────────
 GATING_MODES = {"phase_barrier", "cold_start"}
@@ -57,6 +57,11 @@ class CreateCampaignPayload(BaseModel):
     # S4d: per-campaign cumulative budget cap (USD). None = uncapped. The campaign
     # auto-pauses once its summed spend reaches this (reactive).
     budget_usd: Optional[Decimal] = None
+    # G1 (wake-up report): the launch-time estimate band (from the wizard's
+    # /estimate call), persisted so the completion report can show spent-vs-estimate.
+    # None when the user launched without estimating.
+    est_usd_low: Optional[Decimal] = None
+    est_usd_high: Optional[Decimal] = None
 
     @field_validator("gating_mode")
     @classmethod
@@ -76,16 +81,53 @@ class CreateCampaignPayload(BaseModel):
             raise ValueError("budget_usd exceeds the maximum (numeric(16,8))")
         return v
 
+    @model_validator(mode="after")
+    def _valid_est_band(self):
+        # G1 (review-impl LOW): the persisted estimate band must be sane — non-negative
+        # and low ≤ high — so the report's spent-vs-estimate can't show a garbage band.
+        lo, hi = self.est_usd_low, self.est_usd_high
+        for v in (lo, hi):
+            if v is not None and v < 0:
+                raise ValueError("est_usd_low/high must be >= 0")
+        if lo is not None and hi is not None and lo > hi:
+            raise ValueError("est_usd_low must be <= est_usd_high")
+        return self
 
-class UpdateBudgetPayload(BaseModel):
-    """S4d — PATCH /campaigns/{id}: raise/lower the budget cap. Lowering below the
-    current spend is allowed (bounds new work) but does NOT auto-resume a paused
-    campaign — resume via /start once the budget is above spent_usd."""
-    budget_usd: Decimal
+
+class RerunFailedPayload(BaseModel):
+    """G2 — re-run failed chapters. `chapter_ids` None/omitted = ALL failed chapters
+    in the campaign; otherwise just those. The campaign re-arms to `running` so the
+    driver re-dispatches the reset stages."""
+    chapter_ids: Optional[list[UUID]] = None
+
+
+class UpdateCampaignPayload(BaseModel):
+    """PATCH /campaigns/{id}: a partial update. Only fields explicitly present in the
+    body are applied (Pydantic `model_fields_set`); an absent field is left untouched.
+
+    - `budget_usd` (S4d): raise/lower the budget cap (any non-terminal status). Lowering
+      below current spend bounds new work but does NOT auto-resume — resume via /start.
+    - The four switchable LLM models (D-FACTORY-SWITCH-MODEL-RESUME): re-pick a paused
+      campaign's translation/knowledge/verifier/eval-judge model, then resume so the
+      remaining chapters run on the new model. Gated to created/paused at the router
+      (no mid-run swap). Embedding/rerank are excluded (knowledge-project SSOT)."""
+    model_config = ConfigDict(protected_namespaces=())
+
+    budget_usd: Optional[Decimal] = None
+    translation_model_source: Optional[str] = None
+    translation_model_ref: Optional[UUID] = None
+    knowledge_model_source: Optional[str] = None
+    knowledge_model_ref: Optional[UUID] = None
+    verifier_model_source: Optional[str] = None
+    verifier_model_ref: Optional[UUID] = None
+    eval_judge_model_source: Optional[str] = None
+    eval_judge_model_ref: Optional[UUID] = None
 
     @field_validator("budget_usd")
     @classmethod
-    def _positive(cls, v: Decimal) -> Decimal:
+    def _positive(cls, v: Optional[Decimal]) -> Optional[Decimal]:
+        if v is None:
+            return v
         if v <= 0:
             raise ValueError("budget_usd must be > 0")
         if v >= _BUDGET_USD_MAX:
@@ -93,9 +135,23 @@ class UpdateBudgetPayload(BaseModel):
         return v
 
 
+# The model-only fields of UpdateCampaignPayload — a PATCH touching any of these is
+# a model switch (gated to created/paused). budget_usd is editable in any status.
+MODEL_PATCH_FIELDS = frozenset({
+    "translation_model_source", "translation_model_ref",
+    "knowledge_model_source", "knowledge_model_ref",
+    "verifier_model_source", "verifier_model_ref",
+    "eval_judge_model_source", "eval_judge_model_ref",
+})
+
+
 class Campaign(BaseModel):
     campaign_id: UUID
     owner_user_id: UUID
+    # E0-4b — the book owner = knowledge-graph partition / project owner. Equals
+    # owner_user_id for an owner-run campaign; differs when a manage-collaborator
+    # created it (owner_user_id = caller, billed). Optional/None for older rows.
+    book_owner_user_id: Optional[UUID] = None
     book_id: UUID
     name: str
     status: str
@@ -103,6 +159,9 @@ class Campaign(BaseModel):
     stages: list[str]
     target_language: Optional[str]
     knowledge_project_id: Optional[UUID]
+    # E0-4b — the caller's own ref for the SAME embedding model the project uses,
+    # forwarded as billing_embedding_model on the collaborator knowledge dispatch.
+    embedding_model_ref: Optional[UUID] = None
     knowledge_model_source: Optional[str]
     knowledge_model_ref: Optional[UUID]
     translation_model_source: Optional[str]
@@ -155,6 +214,12 @@ class StageEstimate(BaseModel):
     model_ref: Optional[str]
     status: str          # ok | unpriced | not_found | bad_request | not_estimated
     estimated_usd: Decimal
+    input_tokens: int = 0   # #5 polish — the workload the band was priced on
+    output_tokens: int = 0
+    # D-FACTORY-EST-PROVIDER-KIND — the resolved provider kind + whether it runs
+    # on the user's own hardware ($0 local). None/False for a not-estimated stage.
+    provider_kind: Optional[str] = None
+    is_local: bool = False
 
 
 class EstimateResponse(BaseModel):
@@ -184,9 +249,24 @@ class CampaignChapter(BaseModel):
     eval_fidelity_score: Optional[Decimal] = None
 
 
+class ChapterPage(BaseModel):
+    """D-S6-CHAPTER-PAGING — one server-side page of the per-chapter projection."""
+    items: list[CampaignChapter] = []
+    total: int = 0
+
+
 class CampaignDetail(Campaign):
-    """Campaign + its per-chapter projection (the Monitor's data source)."""
+    """Campaign metadata for the Monitor. `chapters` is no longer embedded
+    (D-S6-CHAPTER-PAGING — the table fetches `GET /{id}/chapters` paginated); kept
+    in the schema, defaults []."""
     chapters: list[CampaignChapter] = []
+
+
+class CampaignListItem(Campaign):
+    """#2 polish — Campaign + a lightweight progress count for the list's progress
+    bar (translation done+skipped, the deliverable). One aggregate per row in the
+    list query (no per-row extra request)."""
+    progress_done: int = 0
 
 
 class StageCounts(BaseModel):
@@ -207,6 +287,50 @@ class CampaignProgress(BaseModel):
     budget_usd: Optional[Decimal]
     total_chapters: int
     stages: dict[str, StageCounts]  # knowledge / translation / eval
+
+
+class ErrorGroup(BaseModel):
+    """G1 — failed chapters bucketed by normalized cause (e.g. rate-limit vs
+    empty-body), for the completion report's error breakdown + remediation hint."""
+    cause: str            # normalized label: rate_limit | empty_body | circuit_open | zero_output | other
+    count: int
+    remediable: bool      # True → a re-run is likely to succeed (transient); False → source/data issue
+
+
+class CampaignReport(BaseModel):
+    """G1 — completion / wake-up report for a terminal (or any) campaign: a one-read
+    summary of outcome, spend-vs-estimate, and failure breakdown."""
+    campaign_id: UUID
+    status: str
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+    duration_seconds: Optional[int] = None
+    total_chapters: int
+    stages: dict[str, StageCounts]          # knowledge / translation / eval
+    spent_usd: Decimal
+    budget_usd: Optional[Decimal] = None
+    est_usd_low: Optional[Decimal] = None
+    est_usd_high: Optional[Decimal] = None
+    error_groups: list[ErrorGroup] = []
+
+
+class ActivityEntry(BaseModel):
+    """D-FACTORY-INFLIGHT-LOG — one logged stage-status transition (from the
+    campaign_chapters trigger)."""
+    id: int
+    chapter_id: UUID
+    chapter_sort: int
+    stage: str            # knowledge | translation | eval
+    status: str           # dispatched | done | skipped | failed
+    detail: Optional[str] = None   # last_error, only on a failed transition
+    created_at: datetime
+
+
+class ActivityPage(BaseModel):
+    """A recent-first page of the activity log. `next_before` = pass it back as
+    `before_id` to fetch the next (older) page; None when no older rows remain."""
+    items: list[ActivityEntry] = []
+    next_before: Optional[int] = None
 
 
 class ErrorResponse(BaseModel):

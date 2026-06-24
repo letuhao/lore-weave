@@ -38,11 +38,38 @@ func (s *Server) mcpHandler() http.Handler {
 			"counts) by id, within a book. Use after glossary_search to read an entity in depth.",
 	}, s.toolGetEntity)
 
+	// F2 (§12.3): retarget of the old glossary_list_kinds → the "what CAN I adopt"
+	// standards-browse role. Use BEFORE adopting; for the in-book schema use
+	// glossary_book_ontology_read.
 	mcp.AddTool(srv, &mcp.Tool{
-		Name: "glossary_list_kinds",
-		Description: "List the glossary's entity kinds and their attribute definitions " +
-			"(the schema). Use to learn what kinds/attributes exist before reasoning about entities.",
+		Name: "glossary_list_system_standards",
+		Description: "List the SYSTEM standards catalogue (entity kinds + their attribute " +
+			"definitions) — the templates a book can adopt. Use to learn what standards exist " +
+			"BEFORE scaffolding a book. For what a specific book ALREADY has, use glossary_book_ontology_read.",
 	}, s.toolListKinds)
+
+	// T1: book-tier ontology tools (read, adopt, create/patch/delete, set-genres,
+	// entity-genres) register in their own file so tier streams don't contend here.
+	s.RegisterBookTools(srv)
+	// T2: book sync tools (available R + apply C). T3: user-tier standards tools.
+	// Each appends here from its own file — append-only registration is the
+	// per-tier parallelism enabler (buildplan §4).
+	s.RegisterSyncTools(srv)
+	s.RegisterUserTools(srv)
+	// Pipeline M1: read tools (merge-candidates / chapter-links / revisions / unknowns).
+	s.RegisterPipelineReadTools(srv)
+	// Pipeline M2: direct (class-W) additive write tools (chapter-links, evidence).
+	s.RegisterPipelineWriteTools(srv)
+	// Pipeline M2: class-C propose tools for destructive curation (status / restore /
+	// reassign-kind / merge) — mint a confirm card, never write directly.
+	s.RegisterPipelineProposeTools(srv)
+	// Pipeline M4: entity-translation tool (class-W; draft, never overwrites verified).
+	s.RegisterPipelineTranslateTools(srv)
+	// S5: web-search deep-research tool (class-C; paid outward call → confirm-gated).
+	s.RegisterDeepResearchTools(srv)
+	// General free-form web research (class-R read; paid outward call, not gated —
+	// returns neutralized sources for topic research before any entity exists).
+	s.RegisterWebSearchTool(srv)
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "glossary_propose_new_entity",
@@ -50,29 +77,34 @@ func (s *Server) mcpHandler() http.Handler {
 			"glossary. It is created as a DRAFT suggestion in the review inbox — NOT canon — and " +
 			"must be approved by a human. If the name already exists, or was previously rejected, " +
 			"no duplicate is created. Call glossary_search first to confirm it doesn't already exist; " +
-			"call glossary_list_kinds to pick a valid kind.",
+			"call glossary_book_ontology_read to pick a valid kind.",
 	}, s.toolProposeNewEntity)
 
-	// Tier-S (P4): schema proposals. These MINT a confirm token (no write) — the
-	// actual create is the human-confirmed, JWT-only /v1/glossary/schema/confirm
-	// (there is deliberately NO MCP tool that creates schema — INV-9/H8). After
-	// calling one, pass its confirm_token to the glossary_confirm_schema frontend
-	// tool so the human can review and confirm.
+	// Class-C proposals. These MINT a generalized action confirm token (no write) +
+	// a confirm card — the actual write is the human-confirmed, JWT-only
+	// /v1/glossary/actions/confirm (there is deliberately NO MCP tool that writes —
+	// INV-T1/INV-T3). After calling one, pass its confirm_token to the
+	// glossary_confirm_action frontend tool so the human can review and confirm.
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "glossary_propose_new_kind",
 		Description: "Propose a NEW entity KIND (a schema-level type like 'Power System' that every " +
-			"entity of that kind is described by). This is high-impact — it does NOT create anything; it " +
-			"returns a confirm_token + preview that a human must explicitly confirm. Pass the confirm_token " +
-			"to glossary_confirm_schema. Use sparingly, only when no existing kind (glossary_list_kinds) fits.",
+			"entity of that kind is described by). PASS the kind's defining `attributes` in the SAME call " +
+			"(each with a clear `description` — extraction uses it as the per-attribute instruction): they are " +
+			"created ATOMICALLY with the kind on ONE confirm, so no follow-up per-attribute call is needed. A " +
+			"kind with no attributes can't describe anything. This is high-impact — it does NOT create " +
+			"anything; it returns a confirm_token + preview that a human must explicitly confirm. Pass the " +
+			"confirm_token to glossary_confirm_action. Use sparingly, only when no existing kind " +
+			"(glossary_book_ontology_read) fits.",
 	}, s.toolProposeNewKind)
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "glossary_propose_new_attribute",
 		Description: "Propose a NEW attribute on an existing kind (e.g. add 'cultivation_realm' to the " +
 			"character kind). Schema-level and high-impact — it does NOT write; it returns a confirm_token + " +
-			"preview a human must confirm via glossary_confirm_schema. Call glossary_list_kinds first to pick " +
+			"preview a human must confirm via glossary_confirm_action. Call glossary_book_ontology_read first to pick " +
 			"the kind_code and avoid duplicating an existing attribute.",
 	}, s.toolProposeNewAttribute)
+	// glossary_book_delete + glossary_book_* tools are registered in RegisterBookTools (T1).
 
 	streamable := mcp.NewStreamableHTTPHandler(
 		func(*http.Request) *mcp.Server { return srv },
@@ -221,6 +253,34 @@ func (s *Server) toolGetEntity(ctx context.Context, _ *mcp.CallToolRequest, in g
 	return nil, getEntityToolOut{Entity: detail}, nil
 }
 
+type bookOntologyReadToolIn struct {
+	BookID string `json:"book_id" jsonschema:"the book whose local ontology to read (UUID)"`
+}
+type bookOntologyReadToolOut struct {
+	Ontology *bookOntologyResp `json:"ontology"`
+}
+
+// toolBookOntologyRead reads a book's local ontology (genres/kinds/attributes/links).
+// View-gated — the in-book schema read for an assistant working inside a book.
+func (s *Server) toolBookOntologyRead(ctx context.Context, _ *mcp.CallToolRequest, in bookOntologyReadToolIn) (*mcp.CallToolResult, bookOntologyReadToolOut, error) {
+	userID, ok := userIDFromCtx(ctx)
+	if !ok {
+		return nil, bookOntologyReadToolOut{}, errors.New("missing caller identity")
+	}
+	bookID, err := uuid.Parse(in.BookID)
+	if err != nil {
+		return nil, bookOntologyReadToolOut{}, errors.New("book_id must be a UUID")
+	}
+	if err := s.checkGrant(ctx, bookID, userID, grantclient.GrantView); err != nil {
+		return nil, bookOntologyReadToolOut{}, uniformOwnershipError(err)
+	}
+	ont, err := s.loadBookOntology(ctx, bookID)
+	if err != nil {
+		return nil, bookOntologyReadToolOut{}, errors.New("failed to load book ontology")
+	}
+	return nil, bookOntologyReadToolOut{Ontology: ont}, nil
+}
+
 func (s *Server) toolListKinds(ctx context.Context, _ *mcp.CallToolRequest, _ listKindsToolIn) (*mcp.CallToolResult, listKindsToolOut, error) {
 	// Kinds are global (not book-scoped); the X-Internal-Token gate is sufficient.
 	kinds, err := s.loadKinds(ctx)
@@ -246,7 +306,7 @@ const tagAssistant = "assistant"
 
 type proposeEntityToolIn struct {
 	BookID     string         `json:"book_id" jsonschema:"the book to add the entity to (UUID)"`
-	Kind       string         `json:"kind" jsonschema:"the entity kind code (e.g. character, place) — see glossary_list_kinds"`
+	Kind       string         `json:"kind" jsonschema:"the entity kind code (e.g. character, place) — see glossary_book_ontology_read"`
 	Name       string         `json:"name" jsonschema:"the entity's name"`
 	Attributes map[string]any `json:"attributes,omitempty" jsonschema:"optional attribute code → value map"`
 }
@@ -279,7 +339,7 @@ func (s *Server) toolProposeNewEntity(ctx context.Context, _ *mcp.CallToolReques
 	if err := s.checkGrant(ctx, bookID, userID, grantclient.GrantEdit); err != nil {
 		return nil, proposeEntityToolOut{}, uniformOwnershipError(err)
 	}
-	kindMap, err := s.loadKindMap(ctx)
+	kindMap, err := s.loadKindMap(ctx, bookID)
 	if err != nil {
 		return nil, proposeEntityToolOut{}, errors.New("failed to resolve kinds")
 	}
@@ -301,12 +361,12 @@ func (s *Server) toolProposeNewEntity(ctx context.Context, _ *mcp.CallToolReques
 // canon). The caller must have verified book ownership. Returns the entity id +
 // a status: created | skipped_exists | skipped_tombstoned.
 func (s *Server) proposeNewEntity(ctx context.Context, bookID, kindID uuid.UUID, name string, attrs map[string]any) (uuid.UUID, string, []string, error) {
-	existingID, err := s.findEntityByNameOrAlias(ctx, bookID, kindID, name)
+	existingID, err := s.findEntityByNameOrAlias(ctx, s.pool, bookID, kindID, name)
 	if err != nil {
 		return uuid.Nil, "", nil, fmt.Errorf("entity lookup: %w", err)
 	}
 	if existingID != uuid.Nil {
-		rejected, err := s.entityHasTag(ctx, existingID, tagAIRejected)
+		rejected, err := s.entityHasTag(ctx, s.pool, existingID, tagAIRejected)
 		if err != nil {
 			return uuid.Nil, "", nil, fmt.Errorf("tombstone check: %w", err)
 		}
@@ -316,7 +376,7 @@ func (s *Server) proposeNewEntity(ctx context.Context, bookID, kindID uuid.UUID,
 		return existingID, "skipped_exists", nil, nil
 	}
 
-	attrDefMap, err := s.loadAttrDefMap(ctx)
+	attrDefMap, err := s.loadAttrDefMap(ctx, bookID)
 	if err != nil {
 		return uuid.Nil, "", nil, fmt.Errorf("attr defs: %w", err)
 	}
@@ -332,7 +392,7 @@ func (s *Server) proposeNewEntity(ctx context.Context, bookID, kindID uuid.UUID,
 	ent := extractedEntity{Name: name, Attributes: attrs}
 	// "und" (ISO 639-2 undetermined) for the tool-proposed name's language — the
 	// human can correct it when reviewing the draft in the inbox.
-	entityID, err := s.createExtractedEntity(ctx, bookID, kindID, ent, nil, attrDefMap, "und", []string{tagAISuggested, tagAssistant})
+	entityID, err := s.createExtractedEntity(ctx, s.pool, bookID, kindID, ent, nil, attrDefMap, "und", []string{tagAISuggested, tagAssistant})
 	if err != nil {
 		return uuid.Nil, "", nil, fmt.Errorf("create draft: %w", err)
 	}

@@ -43,6 +43,11 @@ class EmbeddingResult:
     embeddings: list[list[float]]
     dimension: int
     model: str
+    # D-K19e-γa-02 — upstream provider's reported input-token usage for the
+    # embed call (provider-registry forwards OpenAI/LM Studio
+    # `usage.prompt_tokens`). 0 when the provider omits it (e.g. Ollama) —
+    # callers treat 0 as "unknown", not "free".
+    prompt_tokens: int = 0
 
 
 class EmbeddingClient:
@@ -98,6 +103,9 @@ class EmbeddingClient:
                 embeddings=data["embeddings"],
                 dimension=data["dimension"],
                 model=data["model"],
+                # provider-registry omits the field for backends that don't
+                # report usage; default 0 → "unknown".
+                prompt_tokens=int(data.get("prompt_tokens") or 0),
             )
 
         retryable = resp.status_code in (502, 503, 429)

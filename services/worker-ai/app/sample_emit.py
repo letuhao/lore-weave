@@ -65,7 +65,8 @@ async def persist_run_sample(
     executor: _Executor,
     *,
     run_id: str,
-    job: Any,
+    user_id: Any,
+    project_id: Any,
     book_id: Any,
     config_hash: str | None,
     candidates: Any,
@@ -73,7 +74,11 @@ async def persist_run_sample(
 ) -> None:
     """INSERT one extraction_run_sample. Idempotent on `run_id`
     (ON CONFLICT DO NOTHING — run_id is fresh per chapter; a conflict
-    only happens on a re-emit race, first write wins)."""
+    only happens on a re-emit race, first write wins).
+
+    `user_id`/`project_id` are passed explicitly (not via a `job` object) so the
+    decoupled event-path consumer — which has no JobRow, only resume_state — can
+    write the sample at parity with the synchronous chapter loop."""
     items = project_items(candidates)
     await executor.execute(
         """
@@ -84,8 +89,8 @@ async def persist_run_sample(
         ON CONFLICT (run_id) DO NOTHING
         """,
         uuid.UUID(str(run_id)),
-        job.user_id,
-        job.project_id,
+        user_id,
+        project_id,
         uuid.UUID(str(book_id)) if book_id else None,
         config_hash,
         json.dumps(items),
@@ -97,7 +102,8 @@ async def persist_run_sample_best_effort(
     executor: _Executor,
     *,
     run_id: str,
-    job: Any,
+    user_id: Any,
+    project_id: Any,
     book_id: Any,
     config_hash: str | None,
     candidates: Any,
@@ -110,8 +116,8 @@ async def persist_run_sample_best_effort(
     work already persisted to Neo4j + the cursor already advanced)."""
     try:
         await persist_run_sample(
-            executor, run_id=run_id, job=job, book_id=book_id,
-            config_hash=config_hash, candidates=candidates,
+            executor, run_id=run_id, user_id=user_id, project_id=project_id,
+            book_id=book_id, config_hash=config_hash, candidates=candidates,
             source_text=source_text,
         )
     except Exception:

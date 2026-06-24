@@ -7,6 +7,160 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 
+# ── Interview-roleplay: working_memory (charter + state) ─────────────────────
+# The pinned goal-state block. Mirrors contracts/interview/working_memory.schema.json.
+# `charter` is written ONLY by the goal authority (template here) and is the frozen
+# anchor; `state` is the executive-rewritten progress estimate (safe-when-wrong).
+# Spec: docs/specs/2026-06-23-interview-roleplay.md.
+
+class WorkingMemoryCharter(BaseModel):
+    """Committed goal/intention. Frozen for interview (template writes once)."""
+
+    goal: str
+    phases: list[str] = Field(min_length=1)
+    checklist: list[str] = Field(default_factory=list)
+    time_budget_min: int | None = None
+    language: str
+
+
+class WorkingMemoryState(BaseModel):
+    """Mutable progress estimate. `covered` is monotonic; `remaining` is derived."""
+
+    phase: str = ""
+    covered: list[str] = Field(default_factory=list)
+    elapsed_min: int | None = None
+    drift_note: str | None = None
+    redirect_hint: str | None = None
+
+
+class WorkingMemory(BaseModel):
+    version: int = 1
+    charter: WorkingMemoryCharter
+    state: WorkingMemoryState = Field(default_factory=WorkingMemoryState)
+
+    def remaining(self) -> list[str]:
+        """Derived, never stored: charter.checklist − state.covered."""
+        done = set(self.state.covered)
+        return [c for c in self.charter.checklist if c not in done]
+
+
+# ── Interview-roleplay: session_templates (the goal authority) ───────────────
+# A reusable interviewer persona + the scenario that seeds a session's frozen
+# `charter`. Tenancy: System tier (owner_user_id NULL, seeded via migration,
+# admin-managed) is read-only to users; Per-user tier is the user's own. The
+# user-facing write API only ever touches the caller's own Per-user rows —
+# System rows are never writable through it (a regular user MUST NOT mutate a
+# shared/System row).
+
+class SessionTemplateScenario(BaseModel):
+    """Seeds working_memory.charter at session create (the goal authority)."""
+
+    goal: str
+    phases: list[str] = Field(min_length=1)
+    checklist: list[str] = Field(default_factory=list)
+    time_budget_min: int | None = None
+    language: str = "en"
+
+
+class CreateTemplateRequest(BaseModel):
+    code: str = Field(min_length=1, max_length=100)
+    name: str = Field(min_length=1, max_length=255)
+    description: str | None = None
+    system_prompt: str = Field(min_length=1)
+    model_source: str | None = None
+    model_ref: UUID | None = None
+    scenario: SessionTemplateScenario
+    rubric: dict[str, Any] | None = None
+
+
+class PatchTemplateRequest(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    system_prompt: str | None = None
+    model_source: str | None = None
+    model_ref: UUID | None = None
+    scenario: SessionTemplateScenario | None = None
+    rubric: dict[str, Any] | None = None
+    is_active: bool | None = None
+
+
+class SessionTemplate(BaseModel):
+    template_id: UUID
+    owner_user_id: UUID | None
+    tier: str
+    code: str
+    name: str
+    description: str | None
+    system_prompt: str
+    model_source: str | None
+    model_ref: UUID | None
+    scenario: SessionTemplateScenario
+    rubric: Any | None
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class TemplateListResponse(BaseModel):
+    items: list[SessionTemplate]
+
+
+class StartPracticeRequest(BaseModel):
+    """Clone a template into a new chat session (seeds the frozen charter)."""
+
+    title: str | None = None
+    # Override the template's default model when set; else the template must
+    # carry one.
+    model_source: str | None = None
+    model_ref: UUID | None = None
+    project_id: UUID | None = None
+
+
+# ── Interview-roleplay: evaluation scorecard (M6) ────────────────────────────
+# A non-agentic pipeline scores the finished practice transcript against the
+# frozen charter.checklist (+ optional template rubric) → a structured
+# Scorecard, stored as a ChatOutput (output_type='scorecard'). The model emits
+# the JSON; we coerce it defensively so a hallucinating model can never invent a
+# checklist item or 500 the endpoint.
+
+class ChecklistVerdict(BaseModel):
+    """Per-charter-checklist verdict. `item` is always a verbatim charter item;
+    the coercion step guarantees every charter item has exactly one verdict so
+    the model can neither drop nor invent items."""
+
+    item: str
+    covered: bool = False
+    note: str | None = None  # one-line evidence (covered) or what was missing
+
+
+class Scorecard(BaseModel):
+    """Structured interview scorecard (spec §3.5). Every field is optional/
+    defaulted: the LLM fills what it can, coercion supplies the rest. `partial`
+    is set by the server (EC-13), never trusted from the model."""
+
+    overall_score: int | None = None        # 0-100, model's holistic estimate
+    star_coverage: str | None = None        # Situation/Task/Action/Result narrative
+    clarity: str | None = None              # how clearly the candidate communicated
+    filler: str | None = None               # rambling / filler-word observation
+    checklist: list[ChecklistVerdict] = Field(default_factory=list)
+    strengths: list[str] = Field(default_factory=list)
+    improvements: list[str] = Field(default_factory=list)  # improvement tips
+    summary: str | None = None
+    # Server-set: the transcript didn't reach `wrap`, was short, or was clipped
+    # to the prompt budget — the scorecard scores only what exists (EC-13).
+    partial: bool = False
+
+
+class EvaluateResponse(BaseModel):
+    """The evaluate result: the persisted ChatOutput id + the structured card."""
+
+    output_id: UUID
+    session_id: UUID
+    scorecard: Scorecard
+    model_source: str
+    model_ref: str
+
+
 # ── Message feedback (Q3 — Production Eval + Feedback Flywheel) ───────────────
 
 
@@ -140,6 +294,17 @@ class BookContext(BaseModel):
     book_id: str
 
 
+class AdminContext(BaseModel):
+    """Tiered-MCP-tools T4c — present when the cms-frontend ADMIN chat panel sends
+    a message. A presence marker only: it signals chat-service to advertise the
+    System-tier admin tools from glossary's `/mcp/admin` (instead of the book/user
+    `/mcp` catalog). It carries NO admin credential — the RS256 `admin:write` token
+    rides the `X-Admin-Token` HEADER (bearer hygiene, §6.7), never the body. The
+    optional `label` is a UI string only and grants no authority (INV-T2: admin
+    authority is the verified RS256 token, never anything in this model)."""
+    label: str | None = None
+
+
 class SendMessageRequest(BaseModel):
     content: str
     edit_from_sequence: int | None = None
@@ -147,7 +312,9 @@ class SendMessageRequest(BaseModel):
     thinking: bool | None = None  # Override session default: true=think, false=fast, None=use session default
     editor_context: EditorContext | None = None  # ARCH-1 C6: editor panel → enable frontend write-back tool
     book_context: BookContext | None = None  # Glossary-assistant P3: book-scoped chat → enable glossary edit tool
+    admin_context: AdminContext | None = None  # T4c: cms admin chat → advertise System-tier admin tools (token via X-Admin-Token header)
     disable_tools: bool = False  # Editor "Compose" mode: advertise no tools this turn (prose-only; reasoning model drafts, user Applies)
+    display_language: str | None = None  # S6: the user's display language → knowledge composes entity aliases in this language (omit = source-language)
 
 
 class ToolResultRequest(BaseModel):
@@ -163,8 +330,13 @@ class ToolResultRequest(BaseModel):
     reports the REAL outcome (claim success only on applied_saved)."""
     run_id: str
     tool_call_id: str
-    outcome: str
+    # Optional because MCP-fanout ui_* nav tools resolve with a structured
+    # `result` instead of the outcome enum (no human gate — see `result`).
+    outcome: str | None = None
     applied_text: str | None = None
+    # MCP fan-out (C-NAV): structured result for a ui_* nav resolve (e.g.
+    # {"navigated": true}); fed back verbatim as the tool result on the 2nd pass.
+    result: dict | None = None
 
 
 class ChatMessage(BaseModel):

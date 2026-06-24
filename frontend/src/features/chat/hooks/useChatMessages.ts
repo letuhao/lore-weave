@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/auth';
 import { chatApi } from '../api';
-import type { ChatMessage, ToolCallRecord } from '../types';
+import type { ActivityEvent, ChatMessage, ToolCallRecord } from '../types';
 import { AgUiEventType } from './agUiEvents';
 import type {
   CustomEvent as AgUiCustomEvent,
@@ -39,10 +39,10 @@ export type FrontendToolOutcome =
   | 'applied_saved'
   | 'applied_conflict'
   | 'applied_error'
-  // Tier-S schema confirm (P4)
-  | 'schema_created'
+  // Generalized class-C action confirm (spec §13) — supersedes the schema_* set
+  | 'action_done'
   | 'token_expired'
-  | 'schema_error'
+  | 'action_error'
   | 'cancelled';
 
 export function useChatMessages(
@@ -55,6 +55,10 @@ export function useChatMessages(
   /** Glossary-assistant P3: book-scoped chat (glossary page / reader) that is
    *  NOT the chapter editor. Enables the glossary edit-existing frontend tool. */
   bookContext?: { book_id: string },
+  /** S6: the user's per-book display language (set only when showing a
+   *  translation). Forwarded so knowledge-service composes entity aliases in
+   *  this language for the chat context. Omitted → source-language aliases. */
+  displayLanguage?: string,
 ) {
   const { accessToken } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -132,6 +136,10 @@ export function useChatMessages(
       // to the locally-appended assistantMessage so the indicator works
       // from the live stream without a refetch.
       const accumulatedToolCalls: ToolCallRecord[] = [];
+      // MCP fan-out (C-ACTIVITY): Tier-A auto-applied ops streamed this turn as
+      // CUSTOM{name:"activity"} events. Attached to the assistant message so the
+      // Undo strip renders from the live stream like tool_calls.
+      const accumulatedActivities: ActivityEvent[] = [];
       // ARCH-1 C4: AG-UI frames a tool call across TOOL_CALL_START (carries the
       // name) and TOOL_CALL_RESULT (carries ok). Hold the name by toolCallId
       // between the two so the resolved record is {tool, ok} like the legacy
@@ -176,6 +184,11 @@ export function useChatMessages(
         // editor_context (book_id); a glossary-page chat sends this instead.
         if (bookContext) {
           body.book_context = bookContext;
+        }
+        // S6: forward the per-book display language so knowledge composes entity
+        // aliases in it (omitted when not viewing a translation → source aliases).
+        if (displayLanguage) {
+          body.display_language = displayLanguage;
         }
         // Compose mode: prose-only turn, no tool advertising (server-side gate).
         if (composeMode) {
@@ -293,15 +306,23 @@ export function useChatMessages(
                   if (tool === undefined) break; // RESULT without a START — skip
                   openToolCalls.delete(e.toolCallId);
                   let ok = true;
+                  let result: unknown;
                   try {
                     const parsed = JSON.parse(e.content);
+                    result = parsed;
                     if (parsed && typeof parsed === 'object' && parsed.ok === false) {
                       ok = false;
                     }
                   } catch {
                     // non-JSON content → treat as a successful opaque result
+                    result = e.content;
                   }
-                  accumulatedToolCalls.push({ tool, ok });
+                  // Keep the parsed result on the record (matches the replay shape from
+                  // the tool_calls JSONB). AssistantMessage reads it to auto-render a
+                  // confirm card when a class-C propose tool minted a confirm_token but
+                  // the model never called the frontend confirm tool — so the human gate
+                  // appears LIVE, not only after a reload.
+                  accumulatedToolCalls.push({ tool, ok, result });
                   break;
                 }
                 case AgUiEventType.CUSTOM: {
@@ -317,6 +338,18 @@ export function useChatMessages(
                   } else if (e.name === 'composing') {
                     // A2A phase-2: the composer model is drafting (on/off).
                     setIsComposing(!!e.value?.active);
+                  } else if (e.name === 'activity') {
+                    // MCP fan-out (C-ACTIVITY): a Tier-A auto-applied op. The
+                    // value carries {op, summary, undo}. Accumulate for the
+                    // Undo strip on the assistant message.
+                    const a = e.value as unknown as ActivityEvent;
+                    if (a && typeof a.op === 'string' && typeof a.summary === 'string') {
+                      accumulatedActivities.push({
+                        op: a.op,
+                        summary: a.summary,
+                        ...(a.undo ? { undo: a.undo } : {}),
+                      });
+                    }
                   }
                   break;
                 }
@@ -395,6 +428,8 @@ export function useChatMessages(
           // ToolCallIndicator renders from the live stream. null when
           // the turn made no tool calls — keeps the indicator hidden.
           tool_calls: accumulatedToolCalls.length > 0 ? accumulatedToolCalls : null,
+          // MCP fan-out (C-ACTIVITY): Tier-A ops streamed this turn → Undo strip.
+          activities: accumulatedActivities.length > 0 ? accumulatedActivities : null,
         };
         setMessages((prev) => [...prev, assistantMessage]);
         onStreamEndRef.current?.();
@@ -424,7 +459,7 @@ export function useChatMessages(
         setIsComposing(false);  // never leave the drafting indicator stuck on
       }
     },
-    [accessToken, sessionId, fetchMessages, editorContext, composeMode, bookContext],
+    [accessToken, sessionId, fetchMessages, editorContext, composeMode, bookContext, displayLanguage],
   );
 
   // ── ARCH-1 C6: resume a suspended run after a frontend-tool decision ──────────
@@ -437,6 +472,23 @@ export function useChatMessages(
       return streamPost('', undefined, undefined, {
         url: chatApi.toolResultsUrl(sessionId),
         body: { run_id: runId, tool_call_id: toolCallId, outcome, applied_text: appliedText },
+      });
+    },
+    [sessionId, streamPost],
+  );
+
+  // ── MCP fan-out (C-NAV): resume a suspended nav tool with a structured result.
+  /** Resolve a `ui_*` navigation tool immediately (no human Apply): the executor
+   *  performs the router action, then POSTs the resolve payload (e.g.
+   *  `{navigated:true}`) which the agent reads as the tool's result on its next
+   *  pass. Distinct from submitToolResult (an outcome-enum gate) because nav
+   *  tools resolve with an arbitrary result object, not the apply/confirm enum. */
+  const submitToolResolve = useCallback(
+    (runId: string, toolCallId: string, result: Record<string, unknown>) => {
+      if (!sessionId) return Promise.resolve('');
+      return streamPost('', undefined, undefined, {
+        url: chatApi.toolResultsUrl(sessionId),
+        body: { run_id: runId, tool_call_id: toolCallId, result },
       });
     },
     [sessionId, streamPost],
@@ -539,6 +591,8 @@ export function useChatMessages(
     refreshBranch,
     /** ARCH-1 C6: resume a suspended run with a frontend-tool outcome. */
     submitToolResult,
+    /** MCP fan-out (C-NAV): resolve a suspended `ui_*` nav tool immediately. */
+    submitToolResolve,
     /** Set a callback to receive per-token deltas during streaming */
     onStreamDeltaRef,
     /** Set a callback for when streaming ends (success or abort) */

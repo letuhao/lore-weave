@@ -37,12 +37,13 @@ Data: Postgres (per-service DBs), RabbitMQ (job/event bus — translation & extr
 
 ### Key Rules
 - **Contract-first**: API contract frozen before frontend flow
-- **Gateway invariant**: all external traffic through `api-gateway-bff`
+- **Gateway invariant**: all external traffic through `api-gateway-bff` — with ONE sanctioned exception (PRR-20): the `game-server` real-time WebSocket transport (Colyseus) is a second public entry point that inherits the same auth/rate-limit/audit edge controls. See `docs/03_planning/LLM_MMO_RPG/00_foundation/02_invariants.md` I1 amendment.
 - **MCP-first invariant (AI agent logic)** — *any* AI **agent** capability (logic where an LLM decides actions, calls tools, or reasons multi-step over tools/data) MUST be exposed and invoked as an **MCP tool-call through `ai-gateway`** — never a bespoke HTTP endpoint driven by a raw prompt. **If the tool doesn't exist, create it** as an MCP tool on the owning domain service (domain owns its tools; `ai-gateway` only federates/routes — see `docs/specs/2026-06-10-glossary-assistant-architecture.md`). Non-agentic LLM *pipelines* (e.g. translation, enrichment) are exempt, but **new** agentic logic is not. Legacy agentic logic still on HTTP/raw-prompt is **tracked for migration in Deferred**, never silently grandfathered.
-- **Provider gateway invariant (ENFORCED)** — NO service imports a provider SDK or calls a provider API directly; every LLM/embedding/image/audio/STT call goes through **`provider-registry-service`** (the only place provider SDKs/HTTP live). Verified held across all AI services 2026-06-10. Any new direct provider SDK import is a defect, not a shortcut.
+- **Provider gateway invariant (ENFORCED)** — NO service imports a provider SDK or calls a provider API directly; every LLM/embedding/**rerank**/image/audio/STT call goes through **`provider-registry-service`** (the only place provider SDKs/HTTP live). Verified held across all AI services 2026-06-10. Any new direct provider SDK import is a defect, not a shortcut.
+  - **Local/self-hosted model backends are NOT an exception** — a sibling local service (e.g. `local-rerank-service` :28417, `local-stt-service`, `local-tts-service`, ollama/lm_studio) is reached **only** as a **BYOK provider credential through provider-registry** (`user_models` JOIN `provider_credentials`: kind + `endpoint_base_url` + secret), never via direct `*_URL`/`*_MODEL`/`*_SERVICE_TOKEN` platform config in a consuming service. This is the exact mistake `D-RERANK-NOT-BYOK` fixed: rerank was first wired as platform config in knowledge-service (RERANK_URL/MODEL/SERVICE_TOKEN) instead of resolving the user's model via provider-registry like embed. **Adding a new model capability or a new local backend → register it as a provider-registry credential + a `user_models` row (capability flag, pricing), and resolve it via an `/internal/*` provider-registry route. Do NOT add a per-service URL/token env var for a model backend.**
 - **No hardcoded model names (ENFORCED)** — model names *and pricing* resolve from `provider-registry-service`, never literal in service runtime code (exceptions: provider-registry's own preconfig/pricing, and test fixtures). On a violation: fix now if cheap, else add a Deferred migration row — never leave it untracked.
 - **Provider-rule gate** — the two ENFORCED rules above are checked programmatically by `scripts/ai-provider-gate.py` (cross-platform; provider-SDK imports for Py/TS/Go + hardcoded model literals, with an allowlist + DEFERRED tracking). Wired as a **pre-commit** hook via `git config core.hooksPath .githooks` (run once per checkout); CI/manual: `python scripts/ai-provider-gate.py`. Known-deferred drift is allowlisted (see DEFERRED 065); a genuinely new legacy case must get a DEFERRED row + an explicit allowlist entry, never an untracked bypass.
-- **Language rule**: Go for domain services, Python for AI/LLM services, TypeScript for gateway/BFF
+- **Language rule** (I3, amended & LOCKED 2026-05-29): **Rust** for kernel-derived services (world/travel/tilemap, the DP-kernel consumers), **Go** for domain + meta services, **Python** for AI/LLM services, **TypeScript** for gateway/BFF + realtime transport. The authoritative service→language map is `contracts/language-rule.yaml`, enforced by `scripts/language-rule-lint.sh` (FAILs on mismatch, on a present service mapped `missing`, and on a present service with no row). See `docs/plans/2026-05-29-foundation-mega-task/I3_INVARIANT_AMENDMENT.md` §5.
 - Each microservice owns its own Postgres database
 - **No hardcoded secrets** — all secrets via env vars, services fail to start if missing
 
@@ -83,6 +84,26 @@ features/<name>/
 - **Self-hosted does NOT mean local PC** — it means user controls the infrastructure (could be AWS, GCP, VPS, homelab)
 - **Multi-device, multi-user** — design for users accessing from PC, phone, tablet simultaneously
 - **No platform lock-in** — no Vercel, no Cloudflare-specific APIs. Standard Docker + Postgres + S3
+
+### User Boundaries & Tenancy (LOCKED — read before designing ANY feature)
+
+**Root-cause note:** early in this project the agent conflated "self-hosted" with "single-user" and designed features with **no user boundary** — shared rows any user could mutate for everyone (the canonical bug: `glossary_entities`'s `entity_kinds` were *globally unique + user-mutable*, so one user editing a "kind" changed it for all users). **Self-hosted ≠ single-user.** Every deployment is **multi-tenant**: many users, each with private data, sharing one DB and one set of system defaults.
+
+**The scoping tiers — every user-facing resource MUST declare which tier it belongs to:**
+
+| Tier | Owner | Who may WRITE | Visible to | Example |
+|---|---|---|---|---|
+| **System** | the platform | **admin only** (never a regular user) | everyone (read-only) | default entity-kinds, the 12 seeded glossary kinds, pricing presets |
+| **Per-user** | a `user_id` | that user | that user (+ collaborators they grant) | a user's custom glossary kinds, BYOK credentials, preferences |
+| **Per-book** (or per-project/per-resource) | a `book_id`/`project_id` | the owner + grantees (E0 grants) | the owner + grantees | book-specific kinds, glossary entities, campaigns |
+
+**Hard rules:**
+- **A regular user MUST NOT mutate a System-tier (shared/global) row.** System defaults are seeded + admin-managed; users *clone* or *override* them into their own per-user/per-book tier, never edit the shared original. A write endpoint on a shared resource that any authenticated user can call is a **tenancy defect**, not a feature.
+- **Every table holding user-customizable data carries a scope key** — `owner_user_id` and/or `book_id` — and **every query filters by it**. A `UNIQUE(code)` on a shared table (no scope column) is the smell that produced the kinds bug; the correct constraint is `UNIQUE(owner_user_id, code)` / `UNIQUE(book_id, code)`.
+- **Cross-tenant access is grant-gated, never implicit** — sharing happens only through the E0 collaboration grants (see the Gateway/grants invariants), never by a global row everyone can see/edit.
+- **Resolution merges tiers, lowest-precedence first:** System (defaults) → Per-user (the user's overrides/additions) → Per-book (book-specific). Higher tiers shadow lower by `code`.
+
+**Design checklist (apply to every new feature before building):** Who owns each row? What is its scope key? Can user A's action affect user B's data or view? If a "shared" or "global" resource is user-editable, STOP — it almost certainly needs a per-user/per-book tier instead, with System read-only + admin-only writes.
 
 ---
 
@@ -160,14 +181,33 @@ Update `docs/sessions/SESSION_HANDOFF.md` at meaningful phase boundaries:
 LoreWeave is a hobby project with **no fixed deadline**. This shapes how reviews and planning work:
 
 - **Don't rush past quality issues.** A second-pass code review after every BUILD is mandatory, not optional. If you find a bug or smell, fix it now unless it genuinely belongs in a later phase.
-- **"Defer" must mean "tracked", not "forgotten".** Every intentional postponement gets a row in the **Deferred Items** section of `docs/sessions/SESSION_HANDOFF.md` with: ID, origin phase, description, target phase. Categories:
-  - **Naturally-next-phase** — implement when its target phase begins
-  - **Track 2 planning** — document only, no Track 1 action
-  - **Perf items** — fix when profiling shows pain
-  - **Won't-fix** — conscious decision, removed from mental backlog
+
+- **FIX-NOW is the default; deferral is the exception that must EARN its row.** The Deferred
+  list is not a parking lot for every finding — it exists only for work that genuinely cannot be
+  resolved in the current run. Tracking is mandatory (a deferral must never be silently dropped),
+  but tracking is *not* a licence to defer. A defer row carries ongoing cost: it's re-read at
+  every PLAN and re-evaluated every session. **If fixing the bug is cheaper than writing +
+  carrying its defer row, just fix it.** Small, in-scope, root-cause-clear bugs (a wrong
+  condition, a misleading message, a missing guard, a one-file logic error) are fix-now — even if
+  found late in a run. Writing a defer row for a one-line fix is the anti-pattern this rule kills.
+
+- **Defer-eligibility gate — a finding may be deferred ONLY if it meets at least one of:**
+  1. **Out of scope** — belongs to a different branch/module/track than the one in flight (fixing it here would scope-creep the current effort).
+  2. **Large / structural** — the correct fix needs a refactor, a schema/DB migration, a new feature, or touches a cross-service contract — i.e. it needs a *serious plan*, not a quick edit.
+  3. **Naturally-next-phase** — it is genuinely implementable only when a later phase begins (its prerequisites don't exist yet).
+  4. **Blocked / unresolvable now** — waiting on an external dependency, a product decision, or profiling evidence (perf items: fix when profiling shows pain).
+  5. **Conscious won't-fix** — a deliberate decision to not fix, recorded so it stops re-surfacing.
+
+  If a finding fits **none** of these, it is NOT eligible to defer — fix it this run. When in
+  doubt between "small enough to fix now" and "large enough to defer", **fix it now**; only the
+  things that clearly clear the gate above earn a row.
+
+- **A deferral that passes the gate gets a tracked row** in the **Deferred Items** section of
+  `docs/sessions/SESSION_HANDOFF.md` (and `docs/deferred/DEFERRED.md` in AMAW mode): ID, origin
+  phase, description, the gate reason (which of 1–5), and target phase/trigger.
 - **At every PLAN phase, read the Deferred Items section.** Any row whose Target phase equals the current phase is a must-do for that phase.
-- **Whenever a deferral is cleared, move it to "Recently cleared"** (or delete after a few sessions). The list should shrink as often as it grows.
-- **Avoid the "we'll come back to it" trap.** If you find yourself saying "skip if time is tight", that's a yellow flag — there is no time pressure here. Either it's genuinely Track 2, or it's a real bug to fix now.
+- **Whenever a deferral is cleared, move it to "Recently cleared"** (or delete after a few sessions). The list should shrink as often as it grows — if it's only growing, the gate above is being applied too loosely.
+- **Avoid the "we'll come back to it" trap.** "Skip if time is tight" is a yellow flag — there is no time pressure here. Either it clears the defer gate, or it's a real bug to fix now.
 
 ---
 
@@ -215,20 +255,43 @@ CLARIFY → DESIGN → REVIEW → PLAN → BUILD → VERIFY → REVIEW → QC �
 
 ### Task Size Classification (MANDATORY — before work begins)
 
-Count: **files touched · logic changes · side effects** (API/DB/config/types).
+**Size by COMPLEXITY + RISK, not file count** (2026-06-12 redesign). The old file-count
+table over-sized wide-but-shallow changes (one param added across 12 files read as XL),
+fragmenting coherent work into needless ceremony on a large-context window. The axes:
 
-| Size | Files | Logic | Side effects | Allowed skips |
-|------|-------|-------|--------------|---------------|
-| **XS** | 1 | 0-1 | None | CLARIFY + PLAN |
-| **S** | 1-2 | 2-3 | None | PLAN only |
-| **M** | 3-5 | 4+ | Maybe | None |
-| **L** | 6+ | Any | Yes | None — write plan file |
-| **XL** | 10+ | Any | Yes | None — write spec + plan; subagent recommended |
+- **Logic** = distinct **semantic** changes (new behaviors, contracts, branches) — the **primary** axis.
+- **Side effects** = API/DB/config/migration/auth — **risk**; sets a hard **floor** (undersizing can't cross it).
+- **Files** = a **breadth** signal only. A mechanical sweep (low logic-per-file) does **NOT** escalate; breadth bumps size **one tier** only when the change is genuinely deep across it (`logic ≳ files`).
+
+| Size | Logic (primary) | Risk floor | Allowed skips |
+|------|-----------------|-----------|---------------|
+| **XS** | 0-1 | no side effects | CLARIFY + PLAN |
+| **S** | 2-3 | ≥1 side effect ⇒ min S | PLAN only |
+| **M** | 4-6 | ≥2 side effects ⇒ min M | None |
+| **L** | 7-12 | Yes | None — write plan file |
+| **XL** | 13+ | Yes | None — write spec + plan; subagent recommended |
+
+**Classify the whole EFFORT, not each sub-task.** A coherent multi-part change (e.g. a
+re-arch spanning several services) is ONE classification + ONE continuous run — not N
+small tasks each with its own size→build→review→commit cycle. Undersizing on **breadth**
+is allowed (the gate warns, you proceed); undersizing below the **risk floor** is blocked.
+
+**Budget-driven checkpoint cadence (the big unlock).** On a large-context model, let the
+**context budget** — not file count — drive when to stop. Pass current context % as the
+5th arg: `size <S> <files> <logic> <side_effects> <context_pct>`.
+- **Ample budget (<~70%):** run continuously. Checkpoint/commit at genuine **risk boundaries**
+  (a new contract, a migration, a cross-service seam, a shippable milestone), **not** at
+  arbitrary file/sub-task counts.
+- **Filling (>~80%):** checkpoint/commit + `/compact` at the next risk boundary.
+- **PO checkpoints (CLARIFY end + POST-REVIEW) are BATCHED per-milestone:** one CLARIFY for
+  the effort's scope; POST-REVIEW at each shippable risk boundary — not per sub-task.
+- **Quality gates stay, applied per-milestone:** VERIFY evidence, 2-stage REVIEW, live-smoke
+  (≥2 services), `/review-impl` for load-bearing code. These caught real bugs; keep them.
 
 **ENFORCEMENT** — state machine (`.workflow-state.json`) + pre-commit hook block phase jumps and commits without VERIFY+POST-REVIEW+SESSION evidence:
 
 ```bash
-./scripts/workflow-gate.sh size XS 1 1 0       # Classify
+./scripts/workflow-gate.sh size M 3 4 0 45      # Classify (files=3 logic=4 se=0, context=45%)
 ./scripts/workflow-gate.sh phase build          # Enter phase
 ./scripts/workflow-gate.sh complete build "tests pass"  # Mark done with evidence
 ./scripts/workflow-gate.sh status               # Check progress
@@ -343,5 +406,17 @@ mcp_url:         http://localhost:3000/mcp (optional, ContextHub — a DISTINCT 
 email:    claude-test@loreweave.dev
 password: Claude@Test2026
 name:     Claude Test
+auth id:  019d5e3c-7cc5-7e6a-8b27-1344e148bf7c   (loreweave_auth.users.id)
 ```
 Use this account for browser smoke tests (Playwright MCP, etc.).
+
+**It also has ~15 active BYOK `user_models`** (in `loreweave_provider_registry`),
+so it can drive **real LLM smokes**, not just browser tests. Chat-capable models
+include **gpt-4o** (OpenAI — real cost) and several **local lm_studio** chat
+models (e.g. *Qwen2.5 7B Instruct*, *Gemma-4 26B*, *Qwen3 35B*) plus *bge-m3*
+(embedding), *bge-reranker-v2-m3* (rerank), *Kokoro* (tts). Prefer a **local**
+chat model for $0 spend (needs lm_studio running). The `model_ref` to pass is the
+`user_model_id` UUID — resolve live:
+`SELECT user_model_id, alias, capability_flags FROM user_models WHERE owner_user_id='019d5e3c-…' AND is_active;`
+Caveat: `user_default_models` is **empty** for this account — anything resolving
+a "default model for capability X" gets nothing; pass an explicit `model_ref`.

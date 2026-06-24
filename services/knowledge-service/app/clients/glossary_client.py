@@ -159,11 +159,16 @@ class GlossaryClient:
         max_entities: int = 20,
         max_tokens: int = 800,
         exclude_ids: list[str] | None = None,
+        language: str | None = None,
     ) -> list[GlossaryEntityForContext]:
         """POST /internal/books/{book_id}/select-for-context.
 
         Returns an empty list on any failure — never raises. The caller
         treats missing glossary as "degrade silently".
+
+        `language` (S6, optional): when set, entity aliases are augmented with the
+        per-language alias set for that language (source ∪ target). Omitted →
+        source-language aliases only.
         """
         url = f"{self._base_url}/internal/books/{book_id}/select-for-context"
         body = {
@@ -173,6 +178,8 @@ class GlossaryClient:
             "max_tokens": int(max_tokens),
             "exclude_ids": exclude_ids or [],
         }
+        if language:
+            body["language"] = language
 
         # K6.4 — circuit breaker gate. `_cb_enter` returns one of three
         # states: "closed" (breaker healthy, proceed), "probe" (this
@@ -294,15 +301,42 @@ class GlossaryClient:
             logger.warning("glossary entity-count failed: %s", exc)
             return None
 
+    async def get_entity_stats(self, book_id: UUID) -> dict | None:
+        """GET /internal/books/{book_id}/entities/stats (C13).
+
+        Per-entity mention-span + coverage aggregate over chapter_entity_links,
+        for the build-wizard auto-pin suggestion banner. Returns the raw
+        ``{"items": [...], "chapter_count": int}`` payload, or None on failure
+        (the FE degrades to manual pinning — never blocks the wizard).
+        """
+        url = f"{self._base_url}/internal/books/{book_id}/entities/stats"
+        tid = trace_id_var.get()
+        try:
+            resp = await self._http.get(
+                url, headers={"X-Trace-Id": tid} if tid else None,
+            )
+            if resp.status_code != 200:
+                logger.warning("glossary entities/stats %d", resp.status_code)
+                return None
+            return resp.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            logger.warning("glossary entities/stats failed: %s", exc)
+            return None
+
     # ── K11.10 — HTTP methods for extraction pipeline ────────────────
 
     async def list_entities(
-        self, book_id: UUID, *, status_filter: str = "active",
+        self, book_id: UUID, *, status_filter: str = "active", min_frequency: int = 2,
     ) -> list[dict] | None:
         """GET /internal/books/{book_id}/known-entities.
 
         Returns entity list for anchor pre-loading (K13.0).
         Returns None on failure.
+
+        ``min_frequency`` gates on chapter-appearance count (the Go handler's
+        ``HAVING COUNT(chapter_entity_links) >= min_frequency``, default 2 — the
+        extraction-anchor semantics). Callers that want EVERY entity regardless of
+        chapter spread (e.g. wiki generation on a low-chapter book) pass 1.
         """
         url = f"{self._base_url}/internal/books/{book_id}/known-entities"
         tid = trace_id_var.get()
@@ -310,7 +344,7 @@ class GlossaryClient:
             resp = await self._http.get(
                 url,
                 headers={"X-Trace-Id": tid} if tid else None,
-                params={"status": status_filter},
+                params={"status": status_filter, "min_frequency": str(min_frequency)},
             )
             if resp.status_code != 200:
                 logger.warning("glossary list-entities %d", resp.status_code)
@@ -405,20 +439,26 @@ class GlossaryClient:
         *,
         book_id: UUID,
         entity_ids: list[str],
+        language: str | None = None,
     ) -> list[GlossaryEntityForContext]:
         """POST /internal/books/{book_id}/entities/by-ids (mui #4).
 
         Batch-fetch glossary entities by id so the semantic selector can
         enrich vector hits with canon detail. Best-effort: returns [] on any
         failure — the caller degrades to FTS.
+
+        `language` (S6, optional): augment aliases with the per-language set.
         """
         if not entity_ids:
             return []
         url = f"{self._base_url}/internal/books/{book_id}/entities/by-ids"
         tid = trace_id_var.get()
+        body: dict = {"entity_ids": entity_ids}
+        if language:
+            body["language"] = language
         try:
             resp = await self._http.post(
-                url, json={"entity_ids": entity_ids},
+                url, json=body,
                 headers={"X-Trace-Id": tid} if tid else None,
             )
             if resp.status_code != 200:
@@ -432,6 +472,50 @@ class GlossaryClient:
         except (httpx.HTTPError, ValueError) as exc:
             logger.warning("glossary entities/by-ids failed: %s", exc)
             return []
+
+    async def fetch_entity_display_names(
+        self,
+        *,
+        book_id: UUID,
+        entity_ids: list[str],
+        language: str,
+    ) -> dict[str, str]:
+        """POST /internal/books/{book_id}/entity-display-names (KG-ML M5 C9).
+
+        Resolve a set of glossary entity ids to their display name in
+        ``language``. Returns ``{entity_id: translated_name}`` for ONLY the
+        entities that actually had a translation in that language — an entity
+        whose name has no translation is omitted (the KG node then keeps its
+        canonical name, an honest source-fallback per AC1). Best-effort:
+        returns ``{}`` on any failure or an empty input, so the KG graph-view
+        degrades to canonical names rather than failing the read.
+        """
+        if not entity_ids or not language:
+            return {}
+        url = f"{self._base_url}/internal/books/{book_id}/entity-display-names"
+        tid = trace_id_var.get()
+        try:
+            resp = await self._http.post(
+                url,
+                json={"language": language, "entity_ids": entity_ids},
+                headers={"X-Trace-Id": tid} if tid else None,
+            )
+            if resp.status_code != 200:
+                logger.warning("glossary entity-display-names %d", resp.status_code)
+                return {}
+            data = resp.json()
+            out: dict[str, str] = {}
+            for it in data.get("items", []):
+                eid = it.get("entity_id")
+                name = it.get("display_name")
+                # Only genuinely-translated names override the canonical; an
+                # untranslated entity is omitted so name_label stays None.
+                if eid and name and it.get("translated"):
+                    out[str(eid)] = str(name)
+            return out
+        except (httpx.HTTPError, ValueError) as exc:
+            logger.warning("glossary entity-display-names failed: %s", exc)
+            return {}
 
     async def propose_entities(
         self,
@@ -542,6 +626,32 @@ class GlossaryClient:
         except (httpx.HTTPError, ValueError) as exc:
             logger.warning("glossary wiki-writeback failed: %s", exc)
             return None
+
+    async def fetch_wiki_gold_pairs(
+        self,
+        book_id: UUID,
+        *,
+        limit: int,
+    ) -> list[dict]:
+        """D-WIKI-M8-FEWSHOT — GET /internal/books/{book_id}/wiki/gold-pairs.
+
+        Returns up to `limit` recent gold AI→human revision pairs (plaintext, truncated
+        server-side) as `[{article_id, entity_id, ai_text, human_text}]`. Best-effort:
+        returns [] on ANY failure — missing exemplars must never break generation."""
+        url = f"{self._base_url}/internal/books/{book_id}/wiki/gold-pairs"
+        tid = trace_id_var.get()
+        try:
+            resp = await self._http.get(
+                url, params={"limit": limit},
+                headers={"X-Trace-Id": tid} if tid else None,
+            )
+            if resp.status_code != 200:
+                logger.warning("glossary wiki-gold-pairs %d", resp.status_code)
+                return []
+            return resp.json().get("pairs", [])
+        except (httpx.HTTPError, ValueError) as exc:
+            logger.warning("glossary wiki-gold-pairs failed: %s", exc)
+            return []
 
     async def generate_wiki_stubs(
         self,

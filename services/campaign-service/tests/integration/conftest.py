@@ -32,7 +32,7 @@ async def pool():
     await run_migrations(p)
     async with p.acquire() as conn:
         await conn.execute(
-            "TRUNCATE campaigns, campaign_chapters, campaign_usage_seen "
+            "TRUNCATE campaigns, campaign_chapters, campaign_usage_seen, campaign_activity "
             "RESTART IDENTITY CASCADE"
         )
     try:

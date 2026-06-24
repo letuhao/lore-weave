@@ -1,0 +1,7 @@
+id: w2-sustained
+description: "W2.1 — sustained-workload generator mode, LIVE. The workload generator gained a steady-rate emit loop (-duration + -rate) so a soak/fault has a workload that keeps running while the fault is injected (prerequisite for W2.2-under-load + W2.3 RSS soak). Closes D-S6-SUSTAINED-WORKLOAD. Sustained: emit at ~rate for the duration → assert it actually sustained (emitted ≈ rate×duration). Bite: the one-shot burst path emits a single batch ≪ target → the sustained floor rejects it (non-vacuous). Requires the scale rig shard-0."
+invariant: I-w2-sustained-steady-rate
+kind: live-probe
+command: ["bash", "scripts/perf/w2-sustained.sh", "smoke"]
+requires: ["scale-rig"]
+skip_when: []

@@ -7,6 +7,8 @@
   "noMatch": "Không có bài nào phù hợp với bộ lọc",
   "articles": "{{count}} bài",
   "articles_other": "{{count}} bài",
+  "aiSplit": "{{count}} do AI sinh",
+  "aiSplit_other": "{{count}} do AI sinh",
   "revisions": "{{count}} phiên bản",
   "revisions_other": "{{count}} phiên bản",
   "allKinds": "Tất cả",
@@ -52,6 +54,11 @@
   "gen": {
     "title": "Tạo bài viết Wiki",
     "description": "Tạo khung bài viết tất định, hoặc chọn một mô hình để tạo bài viết đầy đủ bằng AI.",
+    "mode": {
+      "label": "Chế độ",
+      "stub": "Mẫu cố định",
+      "llm": "AI tạo sinh"
+    },
     "cancel": "Hủy",
     "starting": "Đang bắt đầu…",
     "confirmStub": "Tạo khung",
@@ -63,6 +70,17 @@
       "llmHint": "Tạo bài viết có dẫn nguồn bằng mô hình đã chọn.",
       "pickRequired": "Chọn một mô hình…"
     },
+    "reviseModel": {
+      "label": "Mô hình chỉnh sửa (tùy chọn)",
+      "same": "Giống mô hình tạo sinh",
+      "hint": "Chỉ dùng cho lần tạo lại để sửa các bài bị gắn cờ canon."
+    },
+    "context": {
+      "language": "Ngôn ngữ sinh: {{lang}}",
+      "indexed": "Đã lập chỉ mục tri thức",
+      "notIndexed": "Chưa lập chỉ mục tri thức — AI sẽ bỏ qua thực thể không có nền tảng",
+      "budget": "Đã dùng tháng này: {{used}} / {{limit}}"
+    },
     "kinds": {
       "label": "Giới hạn theo loại (tùy chọn)",
       "hint": "Để trống để tạo cho mọi loại thực thể."
@@ -72,7 +90,13 @@
       "hint": "Tạm dừng tác vụ trước khi vượt chi phí ước tính này.",
       "invalid": "Nhập số tiền hợp lệ (vd: 1.50)."
     },
+    "estimate": {
+      "loading": "Đang ước tính chi phí…",
+      "forN": "Chi phí ước tính: ~{{count}} × {{perArticle}} ≈ {{total}}",
+      "perArticle": "Chi phí ước tính: ~{{perArticle}} mỗi bài"
+    },
     "started": "Đã bắt đầu tạo",
+    "startedTruncated": "Đang tạo {{selected}} trên {{total}} thực thể — phần còn lại bị bỏ qua do giới hạn. Tăng giới hạn để bao gồm chúng.",
     "noEntities": "Không có thực thể phù hợp để tạo",
     "alreadyRunning": "Đã có tác vụ tạo đang chạy cho sách này",
     "notIndexed": "Hãy xây dựng đồ thị tri thức cho sách này trước",
@@ -96,6 +120,29 @@
     "regenDescription": "Tạo lại bài viết này bằng AI. Bài viết đã có chỉnh sửa của người sẽ thành đề xuất thay vì bị ghi đè.",
     "regenHint": "Chọn một mô hình để tạo lại bài viết này.",
     "confirmRegen": "Tạo lại",
+    "results": {
+      "title": "Kết quả tạo",
+      "dismiss": "Đóng kết quả",
+      "cites": "Trích dẫn",
+      "flags": "Cờ kiểm tra",
+      "queued": "{{count}} đang chờ",
+      "queued_other": "{{count}} đang chờ"
+    },
+    "outcome": {
+      "written": "Đã tạo",
+      "suggestion": "Đề xuất",
+      "skipped": "Bỏ qua",
+      "writeback_failed": "Thất bại",
+      "error": "Lỗi",
+      "processing": "Đang xử lý"
+    },
+    "pass": {
+      "context": "Truy xuất",
+      "generate": "Viết",
+      "verify": "Kiểm chứng",
+      "revise": "Chỉnh sửa",
+      "writeback": "Lưu"
+    },
     "badge": {
       "generated": "AI",
       "generatedHint": "Do AI tạo, đã qua kiểm tra.",
@@ -115,5 +162,70 @@
         "regurgitation": "Sao chép nguyên văn"
       }
     }
+  },
+  "staleness": {
+    "banner": "Cập nhật tri thức — {{count}} bài có thể đã lỗi thời",
+    "banner_other": "Cập nhật tri thức — {{count}} bài có thể đã lỗi thời",
+    "title": "Cập nhật tri thức",
+    "subtitle": "{{count}} bài bị đánh dấu do nguồn đã thay đổi. Không có gì tự tạo lại cho đến khi bạn chọn.",
+    "subtitle_other": "{{count}} bài bị đánh dấu do nguồn đã thay đổi. Không có gì tự tạo lại cho đến khi bạn chọn.",
+    "close": "Đóng",
+    "empty": "Không có bài lỗi thời — mọi thứ đều khớp với nguồn.",
+    "outdated": "Lỗi thời",
+    "dismiss": "Bỏ qua",
+    "dismissed": "Đã đánh dấu cập nhật",
+    "dismissFailed": "Không thể bỏ qua",
+    "viewSource": "Xem nguồn",
+    "viewDiff": "Xem khác biệt",
+    "diffLoading": "Đang tải khác biệt…",
+    "noDiff": "Bài này chưa có ảnh chụp nguồn — hãy xem nguồn.",
+    "diffApproximate": "Gần đúng — đoạn chương có thể khác với lúc tạo.",
+    "select": "Chọn {{name}}",
+    "selectedCount": "Đã chọn {{count}}",
+    "nArticles": "{{count}} bài",
+    "nArticles_other": "{{count}} bài",
+    "regenerateSelected": "Tạo lại",
+    "regenerateSelected_other": "Tạo lại ({{count}})",
+    "dismissSelected": "Bỏ qua đã chọn",
+    "dismissedN": "Đã bỏ qua {{count}}",
+    "dismissedN_other": "Đã bỏ qua {{count}}",
+    "estimateLabel": "Ước tính",
+    "rescan": "Quét lại",
+    "rescanning": "Đang quét…",
+    "rescanDone": "Quét xong — {{count}} thay đổi mới",
+    "rescanDone_other": "Quét xong — {{count}} thay đổi mới",
+    "rescanPartial": "Quét xong (bỏ qua recipe — knowledge chưa cấp phiên bản) — {{count}} mới",
+    "rescanPartial_other": "Quét xong (bỏ qua recipe — knowledge chưa cấp phiên bản) — {{count}} mới",
+    "rescanFailed": "Quét lại thất bại",
+    "ledgerNote": "Thay đổi tri thức được ghi tự động ở đây (ledger trễ, không phải realtime). Cờ tự lật nhưng không bài nào tự tạo lại — token chỉ tốn khi bạn bấm Tạo lại.",
+    "reason": {
+      "entity_changed": "Mục từ điển đã đổi",
+      "name_changed": "Tên đã đổi",
+      "enrichment_changed": "Bổ sung đã đổi",
+      "merged": "Thực thể đã hợp nhất",
+      "chapter_regrounded": "Chương đã đăng lại",
+      "citation_broken": "Chương được trích đã bị xóa",
+      "recipe_drift": "Công thức tạo đã cập nhật",
+      "kg_drift": "Thực thể liên quan đã thay đổi"
+    },
+    "severity": {
+      "hard": "Hỏng",
+      "structural": "Cấu trúc",
+      "content": "Nội dung"
+    }
+  },
+  "suggestions": {
+    "aiRegen": "AI tái tạo (grounded)",
+    "community": "Cộng đồng",
+    "humanEditedNote": "Bài này đã có chỉnh sửa của người → bản AI thành đề xuất, không ghi đè.",
+    "preview": "Bản đề xuất",
+    "showDiff": "Xem khác biệt",
+    "hideDiff": "Ẩn khác biệt",
+    "accept": "Chấp nhận",
+    "reject": "Từ chối",
+    "pendingChip": "{{count}} đề xuất",
+    "pendingChip_other": "{{count}} đề xuất",
+    "pendingTitle": "Đề xuất chờ duyệt ({{count}})",
+    "pendingTitle_other": "Đề xuất chờ duyệt ({{count}})"
   }
 }

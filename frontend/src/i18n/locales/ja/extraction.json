@@ -16,13 +16,17 @@
     "addInSettings": "設定で追加",
     "selectModel": "モデルを選択...",
     "kindsSelected": "{{count}}種類を有効化",
+    "selectAllKinds": "すべて選択",
+    "deselectAllKinds": "すべて解除",
     "attrsSelected": "{{count}}属性",
     "actionFill": "未入力を補完",
     "actionOverwrite": "上書き",
     "actionSkip": "スキップ",
     "allFill": "全て補完",
     "allOverwrite": "全て上書き",
-    "required": "必須"
+    "required": "必須",
+    "thinkingEnabled": "思考／推論を有効にする",
+    "thinkingHint": "JSON抽出ではオフ推奨。Gemmaなどで推論させたい場合のみオンにしてください。"
   },
   "batch": {
     "title": "バッチ設定",
@@ -54,6 +58,8 @@
     "estimateNote": "これは見積もりです。実際の使用量はチャプターの長さとトークナイザーに依存します。",
     "profileSummary": "プロファイル概要",
     "attrs": "{{count}}属性",
+    "thinkingOn": "思考：オン",
+    "thinkingOff": "思考：オフ（高速・JSON向き）",
     "startExtraction": "抽出開始",
     "editProfile": "プロファイル編集"
   },
@@ -93,6 +99,7 @@
     "estimated": "見積もり: {{tokens}}",
     "draftNote": "新規エンティティはすべて下書きとして作成 — 用語集タブで確認",
     "viewGlossary": "用語集で確認",
+    "runAgain": "再度抽出",
     "close": "閉じる"
   },
   "button": {

@@ -118,6 +118,13 @@ class CreateJobPayload(BaseModel):
     # "ensure translated"). Set force_retranslate=true to re-translate regardless
     # (explicit user request — the 3rd valid re-translate trigger).
     force_retranslate: bool = False
+    # T2-M2 dirty-only re-translate: when set, the worker translates ONLY these
+    # block positions (chapter_blocks.block_index = position in the body content
+    # array) and copies every other block from `seed_version_id`, finalizing a
+    # normal new llm version. Single-chapter jobs only (the retranslate-dirty
+    # endpoint sets force_retranslate=true so the skip-gate doesn't drop the chapter).
+    block_index_filter: Optional[list[int]] = None
+    seed_version_id: Optional[UUID] = None
 
     @field_validator("pipeline_version")
     @classmethod
@@ -219,6 +226,21 @@ class SaveEditedTranslationRequest(BaseModel):
     translated_body_format: str = "text"
 
 
+class PatchTranslationBlockRequest(BaseModel):
+    """T1: patch a single translated block in the chapter's (one) human-version.
+
+    Per-block correction model (a): the first patch get-or-creates the human-version
+    seeded from ``base_version_id``; subsequent patches edit it in place. ``block`` is
+    the corrected Tiptap block; ``block_index`` is its position in the version's block
+    array. ``source_block_text`` (optional) anchors the per-block learning gold to the
+    source paragraph. Block (json) format only."""
+    target_language: str
+    base_version_id: UUID
+    block_index: int = Field(ge=0)
+    block: dict
+    source_block_text: Optional[str] = None
+
+
 class TranslationJob(BaseModel):
     job_id: UUID
     book_id: UUID
@@ -287,6 +309,9 @@ class VersionSummary(BaseModel):
     input_tokens: Optional[int]
     output_tokens: Optional[int]
     created_at: datetime
+    # T1 AC4: lets the FE detect "a human-version exists but a newer machine version
+    # was translated after it" → show the adopt-with-confirm banner.
+    authored_by: str = "llm"
 
 
 class LanguageVersionGroup(BaseModel):
@@ -326,3 +351,20 @@ class BookCoverageResponse(BaseModel):
     book_id: UUID
     coverage: list[ChapterCoverage]
     known_languages: list[str]
+
+
+# ── T2-M3: per-segment coverage rollup (matrix badge + drill-down summary) ─────
+
+class SegmentCoverageChapter(BaseModel):
+    chapter_id: UUID
+    segment_total: int
+    translated_count: int   # segments with a recorded translation for this language
+    dirty_count: int        # source changed since last translate (or never translated)
+    stale_count: int = 0    # glossary-stale segments (T2-M3.2; 0 until then)
+    needs_count: int        # dirty ∪ stale — segments that need re-translation
+
+
+class SegmentCoverageResponse(BaseModel):
+    book_id: UUID
+    target_language: str
+    chapters: list[SegmentCoverageChapter]

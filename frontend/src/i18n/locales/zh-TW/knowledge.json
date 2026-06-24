@@ -14,6 +14,103 @@
       "insights": "洞察"
     }
   },
+  "graph": {
+    "title": "知識圖譜",
+    "counts": "{{nodes}} 個節點 · {{edges}} 個關係",
+    "truncated": "顯示前 {{n}} 個 — 展開節點以載入更多",
+    "expanding": "展開中…",
+    "hint": "滾動以縮放 · 拖曳空白處以平移 · 點擊節點查看詳情 · ⊞ 以展開",
+    "loading": "正在載入圖譜…",
+    "loadFailed": "載入圖譜失敗：{{error}}",
+    "empty": "尚無知識圖譜 — 建立此專案以探索其網路。"
+  },
+  "shell": {
+    "backToProjects": "所有專案",
+    "sections": {
+      "label": "專案區段",
+      "overview": "總覽",
+      "entities": "實體",
+      "timeline": "時間軸",
+      "evidence": "證據",
+      "proposals": "提案",
+      "gap": "缺口",
+      "insights": "洞察",
+      "graph": "建構／探索圖譜"
+    },
+    "notFound": "找不到專案。",
+    "loading": "正在載入專案…",
+    "overview": {
+      "configHeading": "設定",
+      "embeddingModel": "嵌入模型",
+      "rerankModel": "重排模型",
+      "extraction": "擷取",
+      "extractionEnabled": "已啟用",
+      "extractionDisabled": "已停用",
+      "bookId": "書籍",
+      "none": "—"
+    },
+    "placeholder": {
+      "proposals": "待處理提案將顯示於此（C11）。",
+      "gap": "詞彙缺口報告將顯示於此（C10）。",
+      "graph": "圖譜建構與探索將顯示於此（C5 / C19）。"
+    }
+  },
+  "gap": {
+    "heading": "詞彙缺口報告",
+    "subtitle": "在書中被多次提及、但尚未加入詞彙表的角色、地點與概念。將值得保留的項目提升為詞彙。",
+    "summary": {
+      "candidates": "缺口候選",
+      "threshold": "最少提及數",
+      "top": "最高缺口",
+      "topLabel": "最高缺口",
+      "topMentions": "提及 {{count}} 次",
+      "none": "—"
+    },
+    "controls": {
+      "minMentions": "最少提及數",
+      "limit": "最多顯示"
+    },
+    "selectAll": "全選",
+    "selectRow": "選擇 {{name}}",
+    "loading": "正在載入缺口…",
+    "empty": "此門檻之上沒有缺口。降低最少提及數以顯示更多，或您的詞彙表已相當完整。",
+    "error": "無法載入缺口報告。請重試。",
+    "mentions": "提及 {{count}} 次",
+    "mentionsTitle": "在全書中被提及的次數",
+    "itemFailed": "失敗",
+    "bulkPromote": {
+      "cta_one": "將 {{count}} 項提升至詞彙表",
+      "cta_other": "將 {{count}} 項提升至詞彙表",
+      "cta_zero": "提升至詞彙表",
+      "progress": "已提升 {{done}} / {{total}}",
+      "failedCount": "（{{count}} 項失敗）",
+      "allOk": "已將 {{count}} 項提升為詞彙草稿。",
+      "allFailed": "全部 {{count}} 項提升皆失敗。請重試。",
+      "partial": "已提升 {{ok}} 項；{{failed}} 項失敗。"
+    }
+  },
+  "proposals": {
+    "heading": "待處理提案",
+    "subtitle": "所有待您審核的內容集中於一個收件匣 — 詞彙表 AI 建議、維基編輯與知識增補提案。開啟一列即可在其原本的介面審核與接受。",
+    "noBook": "為此專案連結一本書，即可查看其提案佇列。",
+    "loading": "正在載入提案…",
+    "error": "無法載入提案收件匣。請再試一次。",
+    "empty": "沒有待處理的提案。新的 AI 建議產生後會顯示在此。",
+    "review": "審核",
+    "openRow": "審核 {{title}}",
+    "sourceError": "無法載入此佇列。其餘佇列仍會顯示。",
+    "origin": {
+      "glossary": "詞彙表草稿",
+      "wiki": "維基編輯",
+      "enrichment": "知識提案"
+    },
+    "originLabel": {
+      "glossary": "詞彙表 AI 草稿",
+      "wiki": "維基建議",
+      "enrichment": "知識增補提案"
+    },
+    "count": "{{count}}"
+  },
   "mobile": {
     "sections": {
       "global": "全域簡介",
@@ -92,6 +189,7 @@
     "notIndexed": "此專案尚未為語意搜尋建立索引。",
     "notIndexedHint": "使用嵌入模型執行擷取以啟用抽屜搜尋。",
     "refreshing": "重新整理中…",
+    "embedCost": "查詢嵌入：{{tokens}} 個 token · ${{cost}}",
     "retry": "重試",
     "fixConfig": "在設定中檢查專案的嵌入模型設定。",
     "unknownError": "未知錯誤。請再試一次。",
@@ -117,7 +215,12 @@
       "matchLabel": "匹配度",
       "openLabel": "以{{score}}匹配度開啟{{sourceType}}抽屜",
       "hubBadge": "摘要",
-      "hubHint": "此區塊是摘要或長篇簡介摘錄；排序時會降權但仍可能顯示。"
+      "hubHint": "此區塊是摘要或長篇簡介摘錄；排序時會降權但仍可能顯示。",
+      "langHint": "來源語言：{{lang}}"
+    },
+    "coverage": {
+      "partial": "{{total}} 筆結果中有 {{count}} 筆是您的語言（{{lang}}）；其餘以來源語言顯示。",
+      "none": "沒有您語言（{{lang}}）的結果；改以來源語言顯示。"
     },
     "detail": {
       "title": "抽屜",
@@ -149,7 +252,24 @@
       "chronologicalRange": "時序範圍",
       "after": "之後",
       "before": "之前",
-      "chronoReversed": "「之前」必須大於「之後」。"
+      "chronoReversed": "「之前」必須大於「之後」。",
+      "dateRange": "日期範圍",
+      "dateFrom": "起",
+      "dateTo": "迄",
+      "dateInvalid": "請使用 YYYY、YYYY-MM 或 YYYY-MM-DD。",
+      "dateReversed": "「迄」必須等於或晚於「起」。"
+    },
+    "sort": {
+      "label": "排序",
+      "narrative": "敘事順序",
+      "chronological": "時間順序",
+      "direction": "方向",
+      "asc": "最舊優先",
+      "desc": "最新優先"
+    },
+    "importance": {
+      "major": "重要",
+      "pivotal": "關鍵"
     },
     "row": {
       "orderLabel": "敘事順序",
@@ -181,10 +301,29 @@
     "filters": {
       "project": "專案",
       "kind": "類型",
+      "status": "狀態",
       "search": "搜尋",
       "searchPlaceholder": "名稱或別名（至少 2 個字元）",
+      "semantic": "語意搜尋",
+      "semanticPlaceholder": "描述你要找的內容（向量搜尋）",
       "anyProject": "任何專案",
-      "anyKind": "任何類型"
+      "anyKind": "任何類型",
+      "anyStatus": "任何狀態"
+    },
+    "status": {
+      "canonical": "正典",
+      "discovered": "已發現",
+      "archived": "已封存"
+    },
+    "legend": {
+      "title": "狀態",
+      "canonical": "已在你的詞彙表中",
+      "discovered": "已找到，尚未提升",
+      "archived": "已從檢索中隱藏"
+    },
+    "anchor": {
+      "badge": "⚓ {{pct}}",
+      "tooltip": "錨定分數 {{pct}}% — 此實體的紮根強度"
     },
     "table": {
       "ariaLabel": "實體",
@@ -229,7 +368,24 @@
         "anchor": "錨定分數"
       },
       "edit": "編輯",
-      "merge": "合併到其他實體"
+      "merge": "合併到其他實體",
+      "promote": "提升至詞彙表",
+      "promoteHint": "已發現的實體。提升後會建立一份待審的 AI 建議詞彙表草稿。",
+      "promotePending": "提升中…",
+      "promoteSuccess": "已提升 — 已建立一份待審的詞彙表草稿。",
+      "promoteFailed": "無法提升：{{error}}",
+      "unpin": "從情境釘選移除",
+      "unpinHint": "此實體已釘選至擷取情境中。",
+      "unpinSuccess": "已從情境取消釘選。",
+      "unpinFailed": "無法取消釘選：{{error}}",
+      "facts": "已知事實 ({{count}})",
+      "factSource": "第 {{chapter}} 章",
+      "factType": {
+        "decision": "決定",
+        "preference": "偏好",
+        "milestone": "里程碑",
+        "negation": "否定"
+      }
     },
     "edit": {
       "title": "編輯實體",
@@ -372,9 +528,34 @@
     },
     "loadFailed": "載入專案失敗: {{error}}",
     "paginationNote": "顯示前 100 個專案 — 完整分頁將於 Track 2 推出。",
+    "browser": {
+      "searchPlaceholder": "搜尋專案…",
+      "searchLabel": "依名稱搜尋專案",
+      "filterLabel": "依狀態篩選",
+      "sortLabel": "排序專案",
+      "noMatches": "沒有符合目前搜尋與篩選條件的專案。",
+      "loadMore": "載入更多",
+      "loadingMore": "載入中…",
+      "stateFilter": {
+        "all": "所有狀態",
+        "disabled": "靜態記憶",
+        "building": "建構中",
+        "paused": "已暫停",
+        "ready": "就緒",
+        "failed": "失敗",
+        "archived": "已封存"
+      },
+      "sortOption": {
+        "recent": "最近更新",
+        "oldest": "最舊優先",
+        "name_asc": "名稱 (A–Z)",
+        "name_desc": "名稱 (Z–A)"
+      }
+    },
     "card": {
       "staticMemory": "靜態記憶",
       "archivedBadge": "已封存",
+      "open": "開啟",
       "edit": "編輯",
       "archive": "封存",
       "restore": "還原",
@@ -441,7 +622,7 @@
         "success": "{{model}} 的基準測試完成 (recall@3 {{recall}})。",
         "errorNoModel": "執行基準測試前請先選擇一個嵌入模型。",
         "errorUnknownModel": "這個嵌入模型不受基準測試工具支援。",
-        "errorNotBenchmarkProject": "基準測試必須在專用專案上執行。請先建立新專案再執行。",
+        "errorNotBenchmarkProject": "基準測試無法在沙箱中啟動，請稍後再試。",
         "errorAlreadyRunning": "此專案已有基準測試正在執行。請稍候再試。",
         "errorProviderFlake": "嵌入服務提供者在執行期間失敗。請重試。",
         "errorGeneric": "基準測試失敗: {{message}}"
@@ -503,7 +684,9 @@
         "extractNew": "抽取新章節",
         "ignore": "忽略",
         "confirm": "確認",
-        "confirmModelChange": "確認變更模型"
+        "confirmModelChange": "確認變更模型",
+        "exploreGraph": "探索圖譜",
+        "setConcurrency": "設定並行數"
       },
       "cards": {
         "disabled": {
@@ -522,7 +705,9 @@
           "progress": "{{processed}} / {{total}} 項",
           "elapsed": "已過：{{elapsed}}",
           "spent": "已花費：${{spent}}",
-          "spentOfBudget": "已花費：${{spent}} / ${{budget}}"
+          "spentOfBudget": "已花費：${{spent}} / ${{budget}}",
+          "concurrencyLabel": "並行呼叫數",
+          "concurrencyApply": "套用"
         },
         "building_paused_user": {
           "body": "你已暫停此作業。準備好時恢復,或取消以保留部分圖譜。"
@@ -592,12 +777,56 @@
         "failed": "估算失敗: {{error}}",
         "cost": "預估成本: ${{low}} – ${{high}}",
         "items": "{{chapters}} 章 · {{turns}} 聊天輪 · 約 {{tokens}} tokens",
-        "duration": "約 {{seconds}} 秒"
+        "duration": "約 {{seconds}} 秒",
+        "pinned": "釘選情境：+{{tokens}} 個 token（所有視窗共釘選 {{count}} 個）"
       },
       "cancel": "取消",
       "confirm": "建立圖譜",
       "starting": "正在啟動…",
-      "startFailed": "啟動失敗: {{error}}"
+      "startSuccess": "已開始建構 — 正在抽取知識圖譜。",
+      "startFailed": "啟動失敗: {{error}}",
+      "wizard": {
+        "step1": "目標",
+        "step2": "釘選",
+        "step3": "預算",
+        "next": "下一步",
+        "back": "上一步",
+        "step2Placeholder": "詞彙表釘選將於下一步推出 — 目前每個抽取視窗使用各自的章節脈絡。"
+      },
+      "targets": {
+        "label": "抽取內容",
+        "hint": "選擇要執行的階段。全部不勾選則執行全部（預設）。",
+        "entities": "實體",
+        "relations": "關係",
+        "events": "事件 · 時間軸",
+        "facts": "事實",
+        "summaries": "摘要",
+        "autoIncluded": "自動納入",
+        "autoIncludedHint": "由於關係、事件或事實會錨定到實體，實體會自動抽取。",
+        "recoveryDisabledHint": "因為未將實體選為目標，實體復原與精準過濾會被略過。"
+      },
+      "concurrency": {
+        "label": "並行 LLM 呼叫數（選填）",
+        "hint": "限制同時執行的抽取呼叫數。留空則使用預設。"
+      },
+      "pinning": {
+        "intro": "釘選詞彙表實體，將其強制注入每個抽取視窗——讓稀疏但關鍵的實體即使在未提及的章節也始終被錨定。",
+        "autopin": "有 {{count}} 個稀疏但跨度大的實體值得釘選。",
+        "autopinApply": "釘選 {{count}} 個建議",
+        "loading": "正在載入實體統計…",
+        "unavailable": "無法取得實體統計——你仍可在下方手動釘選。",
+        "searchPlaceholder": "依名稱搜尋…",
+        "kindAll": "所有類型",
+        "minMentions": "最少 ×",
+        "available": "可用 ({{count}})",
+        "availableEmpty": "沒有符合篩選的實體。",
+        "pinned": "已釘選 ({{count}})",
+        "pinnedEmpty": "尚未釘選任何項目。",
+        "pin": "釘選",
+        "unpin": "取消釘選",
+        "budget": "每個視窗 +{{tokens}} 個 token（已釘選 {{count}} 個 × 約50）。",
+        "noBook": "釘選需要連結的書籍。請先為此專案附加一本書。"
+      }
     },
     "errorViewer": {
       "title": "擷取錯誤",

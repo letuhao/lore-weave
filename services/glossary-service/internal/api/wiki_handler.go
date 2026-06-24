@@ -31,6 +31,9 @@ type wikiArticleListItem struct {
 	// AI-generated) | 'generated' | 'needs_review' | 'blocked'. omitempty so a
 	// plain article carries no badge field.
 	GenerationStatus *string `json:"generation_status,omitempty"`
+	// wiki-llm Phase-2 — a knowledge source the article was built from changed; the
+	// FE shows an "Outdated" badge. Cleared on regenerate (§5.3).
+	IsKnowledgeStale bool `json:"is_knowledge_stale"`
 }
 
 type wikiArticleListResp struct {
@@ -166,12 +169,13 @@ func (s *Server) listWikiArticles(w http.ResponseWriter, r *http.Request) {
 		SELECT COUNT(*)
 		FROM wiki_articles wa
 		JOIN glossary_entities ge ON ge.entity_id = wa.entity_id
-		JOIN entity_kinds ek ON ek.kind_id = ge.kind_id
+		JOIN book_kinds ek ON ek.book_kind_id = ge.kind_id
 		LEFT JOIN entity_attribute_values dn ON dn.entity_id = ge.entity_id
 			AND dn.attr_def_id = (
-				SELECT ad.attr_def_id FROM attribute_definitions ad
+				SELECT ad.attr_id FROM book_attributes ad
+				JOIN book_genres g ON g.genre_id = ad.genre_id
 				WHERE ad.kind_id = ge.kind_id AND ad.code IN ('name','term')
-				ORDER BY ad.sort_order LIMIT 1
+				ORDER BY (g.code = 'universal') DESC, ad.sort_order LIMIT 1
 			)
 		WHERE %s AND ge.deleted_at IS NULL`, whereClause)
 	if err := s.pool.QueryRow(r.Context(), countSQL, args...).Scan(&total); err != nil {
@@ -185,18 +189,19 @@ func (s *Server) listWikiArticles(w http.ResponseWriter, r *http.Request) {
 		SELECT
 			wa.article_id, wa.entity_id, wa.book_id,
 			COALESCE(dn.original_value, '') AS display_name,
-			ek.kind_id, ek.code, ek.name, ek.icon, ek.color,
+			ek.book_kind_id, ek.code, ek.name, ek.icon, ek.color,
 			wa.status, wa.template_code,
 			(SELECT COUNT(*) FROM wiki_revisions wr WHERE wr.article_id = wa.article_id) AS revision_count,
-			wa.updated_at, wa.generation_status
+			wa.updated_at, wa.generation_status, wa.is_knowledge_stale
 		FROM wiki_articles wa
 		JOIN glossary_entities ge ON ge.entity_id = wa.entity_id
-		JOIN entity_kinds ek ON ek.kind_id = ge.kind_id
+		JOIN book_kinds ek ON ek.book_kind_id = ge.kind_id
 		LEFT JOIN entity_attribute_values dn ON dn.entity_id = ge.entity_id
 			AND dn.attr_def_id = (
-				SELECT ad.attr_def_id FROM attribute_definitions ad
+				SELECT ad.attr_id FROM book_attributes ad
+				JOIN book_genres g ON g.genre_id = ad.genre_id
 				WHERE ad.kind_id = ge.kind_id AND ad.code IN ('name','term')
-				ORDER BY ad.sort_order LIMIT 1
+				ORDER BY (g.code = 'universal') DESC, ad.sort_order LIMIT 1
 			)
 		WHERE %s AND ge.deleted_at IS NULL
 		ORDER BY wa.updated_at DESC
@@ -220,7 +225,7 @@ func (s *Server) listWikiArticles(w http.ResponseWriter, r *http.Request) {
 			&it.Kind.KindID, &it.Kind.Code, &it.Kind.Name, &it.Kind.Icon, &it.Kind.Color,
 			&it.Status, &it.TemplateCode,
 			&it.RevisionCount,
-			&it.UpdatedAt, &it.GenerationStatus,
+			&it.UpdatedAt, &it.GenerationStatus, &it.IsKnowledgeStale,
 		); err != nil {
 			slog.Error("listWikiArticles scan", "error", err)
 			writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
@@ -592,6 +597,7 @@ func (s *Server) patchWikiArticle(w http.ResponseWriter, r *http.Request) {
 				BookID:                bookID.String(),
 				ArticleID:             articleID.String(),
 				EntityID:              corrEntityID.String(),
+				UserID:                userID.String(),
 				PriorGenerationStatus: prior,
 				EmittedAt:             time.Now().UTC().Format(time.RFC3339),
 			}); err != nil {
@@ -918,6 +924,26 @@ func (s *Server) restoreWikiRevision(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, detail)
 }
 
+// injectGenSelectionCounts adds `total_matched` and `selected` to a wiki-gen
+// delegate's JSON-object response body (D-WIKI-M7B-GEN-LIMIT). `selected` is
+// the number of entities actually enqueued (== job item count); `total_matched`
+// is how many matched before the genLimit cap. The FE compares them to warn
+// "generating N of M". A body that isn't a JSON object (or fails to round-trip)
+// is returned unchanged — surfacing the counts is best-effort, never fatal.
+func injectGenSelectionCounts(body []byte, totalMatched, selected int) []byte {
+	var obj map[string]any
+	if err := json.Unmarshal(body, &obj); err != nil || obj == nil {
+		return body
+	}
+	obj["total_matched"] = totalMatched
+	obj["selected"] = selected
+	merged, err := json.Marshal(obj)
+	if err != nil {
+		return body
+	}
+	return merged
+}
+
 // ── 9. generateWikiStubs ─────────────────────────────────────────────────────
 
 func (s *Server) generateWikiStubs(w http.ResponseWriter, r *http.Request) {
@@ -948,6 +974,10 @@ func (s *Server) generateWikiStubs(w http.ResponseWriter, r *http.Request) {
 		// of resolving by kind — so a "Regenerate" button re-runs exactly one
 		// entity (the clobber-guard still protects any human-edited article).
 		EntityIDs []string `json:"entity_ids"`
+		// wiki-llm W5 — optional override model for the corrective revise re-gen
+		// (null/empty ⇒ knowledge reuses the prose model). Forwarded as a pair.
+		ReviseModelRef    string `json:"revise_model_ref"`
+		ReviseModelSource string `json:"revise_model_source"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "WIKI_BAD_REQUEST", "invalid JSON body")
@@ -963,7 +993,7 @@ func (s *Server) generateWikiStubs(w http.ResponseWriter, r *http.Request) {
 	// knowledge-service; propagate its 202/409/404. The deterministic stub path
 	// below is unchanged (the fallback when no model_ref is supplied).
 	if req.ModelRef != "" {
-		entityIDs, err := s.resolveDelegateEntityIDs(r.Context(), bookID, req.EntityIDs, req.KindCodes, genLimit)
+		entityIDs, totalMatched, err := s.resolveDelegateEntityIDs(r.Context(), bookID, req.EntityIDs, req.KindCodes, genLimit)
 		if err != nil {
 			if verr, ok := err.(*badEntityIDError); ok {
 				writeError(w, http.StatusBadRequest, "WIKI_BAD_REQUEST", verr.Error())
@@ -974,19 +1004,33 @@ func (s *Server) generateWikiStubs(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if len(entityIDs) == 0 {
-			writeJSON(w, http.StatusOK, map[string]any{"action": "none", "entities": 0})
+			writeJSON(w, http.StatusOK, map[string]any{"action": "none", "entities": 0, "total_matched": totalMatched})
 			return
 		}
 		modelSource := req.ModelSource
 		if modelSource == "" {
 			modelSource = "user_model"
 		}
+		// W5 — pair the revise source with its ref (default 'user_model' when a
+		// revise ref is given without an explicit source); empty ref = no override.
+		reviseSource := req.ReviseModelSource
+		if req.ReviseModelRef != "" && reviseSource == "" {
+			reviseSource = "user_model"
+		}
 		status, body, err := s.triggerWikiGeneration(
-			r.Context(), bookID, userID, modelSource, req.ModelRef, entityIDs, req.MaxSpendUSD)
+			r.Context(), bookID, userID, modelSource, req.ModelRef, entityIDs, req.MaxSpendUSD,
+			reviseSource, req.ReviseModelRef)
 		if err != nil {
 			slog.Error("generateWikiStubs delegate", "error", err)
 			writeError(w, http.StatusBadGateway, "WIKI_DELEGATE", "generation service unavailable")
 			return
+		}
+		// D-WIKI-M7B-GEN-LIMIT — additively surface the selection counts on a
+		// successful 202 so the FE can warn when the genLimit silently dropped
+		// candidates (total_matched > selected). Best-effort: a body that isn't a
+		// JSON object is forwarded unchanged.
+		if status == http.StatusAccepted {
+			body = injectGenSelectionCounts(body, totalMatched, len(entityIDs))
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(status)
@@ -1003,12 +1047,12 @@ func (s *Server) generateWikiStubs(w http.ResponseWriter, r *http.Request) {
 		SELECT ge.entity_id, ek.code, ek.name,
 			COALESCE((
 				SELECT eav.original_value FROM entity_attribute_values eav
-				JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+				JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
 				WHERE eav.entity_id = ge.entity_id AND ad.code IN ('name','term')
 				ORDER BY ad.sort_order LIMIT 1
 			), '') AS display_name
 		FROM glossary_entities ge
-		JOIN entity_kinds ek ON ek.kind_id = ge.kind_id
+		JOIN book_kinds ek ON ek.book_kind_id = ge.kind_id
 		WHERE ge.book_id = $1
 		  AND ge.deleted_at IS NULL
 		  AND ge.status = 'active'
@@ -1161,16 +1205,17 @@ func (s *Server) generateWikiStubs(w http.ResponseWriter, r *http.Request) {
 		SELECT
 			wa.article_id, wa.entity_id, wa.book_id,
 			COALESCE(dn.original_value, '') AS display_name,
-			ek.kind_id, ek.code, ek.name, ek.icon, ek.color,
+			ek.book_kind_id, ek.code, ek.name, ek.icon, ek.color,
 			wa.status, wa.template_code, 1 AS revision_count, wa.updated_at
 		FROM wiki_articles wa
 		JOIN glossary_entities ge ON ge.entity_id = wa.entity_id
-		JOIN entity_kinds ek ON ek.kind_id = ge.kind_id
+		JOIN book_kinds ek ON ek.book_kind_id = ge.kind_id
 		LEFT JOIN entity_attribute_values dn ON dn.entity_id = ge.entity_id
 			AND dn.attr_def_id = (
-				SELECT ad.attr_def_id FROM attribute_definitions ad
+				SELECT ad.attr_id FROM book_attributes ad
+				JOIN book_genres g ON g.genre_id = ad.genre_id
 				WHERE ad.kind_id = ge.kind_id AND ad.code IN ('name','term')
-				ORDER BY ad.sort_order LIMIT 1
+				ORDER BY (g.code = 'universal') DESC, ad.sort_order LIMIT 1
 			)
 		WHERE wa.article_id IN (%s)
 		ORDER BY wa.created_at`, strings.Join(placeholders, ",")), fetchArgs...)
@@ -1219,7 +1264,7 @@ func (s *Server) loadEntityWikiAttrs(ctx context.Context, entityID uuid.UUID) ([
 	rows, err := s.pool.Query(ctx, `
 		SELECT ad.name, eav.original_value
 		FROM entity_attribute_values eav
-		JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+		JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
 		WHERE eav.entity_id = $1
 		  AND ad.code NOT IN ('name','term')
 		  AND eav.original_value <> ''
@@ -1281,19 +1326,20 @@ func (s *Server) loadWikiArticleDetail(r *http.Request, bookID, articleID uuid.U
 		SELECT
 			wa.article_id, wa.entity_id, wa.book_id,
 			COALESCE(dn.original_value, '') AS display_name,
-			ek.kind_id, ek.code, ek.name, ek.icon, ek.color,
+			ek.book_kind_id, ek.code, ek.name, ek.icon, ek.color,
 			wa.status, wa.template_code,
 			(SELECT COUNT(*) FROM wiki_revisions wr WHERE wr.article_id = wa.article_id) AS revision_count,
 			wa.updated_at, wa.body_json, wa.spoiler_chapters, wa.created_at, wa.superseded_by_entity_id,
-			wa.generation_status, wa.generation_provenance, wa.generated_at
+			wa.generation_status, wa.generation_provenance, wa.generated_at, wa.is_knowledge_stale
 		FROM wiki_articles wa
 		JOIN glossary_entities ge ON ge.entity_id = wa.entity_id
-		JOIN entity_kinds ek ON ek.kind_id = ge.kind_id
+		JOIN book_kinds ek ON ek.book_kind_id = ge.kind_id
 		LEFT JOIN entity_attribute_values dn ON dn.entity_id = ge.entity_id
 			AND dn.attr_def_id = (
-				SELECT ad.attr_def_id FROM attribute_definitions ad
+				SELECT ad.attr_id FROM book_attributes ad
+				JOIN book_genres g ON g.genre_id = ad.genre_id
 				WHERE ad.kind_id = ge.kind_id AND ad.code IN ('name','term')
-				ORDER BY ad.sort_order LIMIT 1
+				ORDER BY (g.code = 'universal') DESC, ad.sort_order LIMIT 1
 			)
 		WHERE wa.article_id = $1 AND wa.book_id = $2`,
 		articleID, bookID,
@@ -1304,7 +1350,7 @@ func (s *Server) loadWikiArticleDetail(r *http.Request, bookID, articleID uuid.U
 		&d.Status, &d.TemplateCode,
 		&d.RevisionCount,
 		&d.UpdatedAt, &d.BodyJSON, &spoilerChapters, &d.CreatedAt, &d.SupersededBy,
-		&d.GenerationStatus, &d.GenerationProvenance, &d.GeneratedAt,
+		&d.GenerationStatus, &d.GenerationProvenance, &d.GeneratedAt, &d.IsKnowledgeStale,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("loadWikiArticleDetail main: %w", err)
@@ -1321,10 +1367,10 @@ func (s *Server) loadWikiArticleDetail(r *http.Request, bookID, articleID uuid.U
 	avRows, err := s.pool.Query(r.Context(), `
 		SELECT
 			eav.attr_value_id, eav.entity_id, eav.attr_def_id,
-			ad.attr_def_id, ad.code, ad.name, ad.field_type, ad.is_required, ad.is_system, ad.sort_order,
+			ad.attr_id, ad.code, ad.name, ad.field_type, ad.is_required, false, ad.sort_order,
 			eav.original_language, eav.original_value
 		FROM entity_attribute_values eav
-		JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+		JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
 		WHERE eav.entity_id = $1
 		ORDER BY ad.sort_order`, entityID)
 	if err != nil {
@@ -1461,12 +1507,13 @@ func (s *Server) publicListWikiArticles(w http.ResponseWriter, r *http.Request) 
 		SELECT COUNT(*)
 		FROM wiki_articles wa
 		JOIN glossary_entities ge ON ge.entity_id = wa.entity_id
-		JOIN entity_kinds ek ON ek.kind_id = ge.kind_id
+		JOIN book_kinds ek ON ek.book_kind_id = ge.kind_id
 		LEFT JOIN entity_attribute_values dn ON dn.entity_id = ge.entity_id
 			AND dn.attr_def_id = (
-				SELECT ad.attr_def_id FROM attribute_definitions ad
+				SELECT ad.attr_id FROM book_attributes ad
+				JOIN book_genres g ON g.genre_id = ad.genre_id
 				WHERE ad.kind_id = ge.kind_id AND ad.code IN ('name','term')
-				ORDER BY ad.sort_order LIMIT 1
+				ORDER BY (g.code = 'universal') DESC, ad.sort_order LIMIT 1
 			)
 		WHERE %s AND ge.deleted_at IS NULL`, whereClause)
 	if err := s.pool.QueryRow(r.Context(), countSQL, args...).Scan(&total); err != nil {
@@ -1479,17 +1526,18 @@ func (s *Server) publicListWikiArticles(w http.ResponseWriter, r *http.Request) 
 		SELECT
 			wa.article_id, wa.entity_id,
 			COALESCE(dn.original_value, '') AS display_name,
-			ek.kind_id, ek.code, ek.name, ek.icon, ek.color,
+			ek.book_kind_id, ek.code, ek.name, ek.icon, ek.color,
 			wa.template_code,
 			wa.updated_at
 		FROM wiki_articles wa
 		JOIN glossary_entities ge ON ge.entity_id = wa.entity_id
-		JOIN entity_kinds ek ON ek.kind_id = ge.kind_id
+		JOIN book_kinds ek ON ek.book_kind_id = ge.kind_id
 		LEFT JOIN entity_attribute_values dn ON dn.entity_id = ge.entity_id
 			AND dn.attr_def_id = (
-				SELECT ad.attr_def_id FROM attribute_definitions ad
+				SELECT ad.attr_id FROM book_attributes ad
+				JOIN book_genres g ON g.genre_id = ad.genre_id
 				WHERE ad.kind_id = ge.kind_id AND ad.code IN ('name','term')
-				ORDER BY ad.sort_order LIMIT 1
+				ORDER BY (g.code = 'universal') DESC, ad.sort_order LIMIT 1
 			)
 		WHERE %s AND ge.deleted_at IS NULL
 		ORDER BY wa.updated_at DESC
@@ -1790,12 +1838,13 @@ func (s *Server) listWikiSuggestions(w http.ResponseWriter, r *http.Request) {
 		FROM wiki_suggestions ws
 		JOIN wiki_articles wa ON wa.article_id = ws.article_id
 		JOIN glossary_entities ge ON ge.entity_id = wa.entity_id
-		JOIN entity_kinds ek ON ek.kind_id = ge.kind_id
+		JOIN book_kinds ek ON ek.book_kind_id = ge.kind_id
 		LEFT JOIN entity_attribute_values dn ON dn.entity_id = ge.entity_id
 			AND dn.attr_def_id = (
-				SELECT ad.attr_def_id FROM attribute_definitions ad
+				SELECT ad.attr_id FROM book_attributes ad
+				JOIN book_genres g ON g.genre_id = ad.genre_id
 				WHERE ad.kind_id = ge.kind_id AND ad.code IN ('name','term')
-				ORDER BY ad.sort_order LIMIT 1
+				ORDER BY (g.code = 'universal') DESC, ad.sort_order LIMIT 1
 			)
 		WHERE %s
 		ORDER BY ws.created_at DESC
@@ -1922,6 +1971,33 @@ func (s *Server) reviewWikiSuggestion(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Action == "accept" {
+		// An AI regeneration that the clobber-guard filed as a suggestion (because the
+		// article had human edits) stores an ENVELOPE in diff_json —
+		// {body_json, generation_status, generation_provenance} — NOT a raw body. A
+		// human community suggestion stores the TipTap doc directly. Discriminate on
+		// the envelope's two server-set keys (body_json + a validated generation_status)
+		// — a TipTap doc, {"type":"doc",...}, carries neither, so a client-crafted diff
+		// can't masquerade as a regen. For an AI regen we unwrap the real body and
+		// restore the generation metadata, so the accepted article reflects the new AI
+		// generation (badges/provenance correct) and is logged as an 'ai' revision —
+		// future regens then overwrite it freely instead of re-filing suggestions.
+		var env struct {
+			BodyJSON             json.RawMessage `json:"body_json"`
+			GenerationStatus     *string         `json:"generation_status"`
+			GenerationProvenance json.RawMessage `json:"generation_provenance"`
+		}
+		_ = json.Unmarshal(diffJSON, &env)
+		isAIRegen := env.BodyJSON != nil && env.GenerationStatus != nil
+
+		applyBody := diffJSON
+		authorType := "community"
+		summary := "Community suggestion accepted"
+		if isAIRegen {
+			applyBody = env.BodyJSON
+			authorType = "ai"
+			summary = "AI regeneration accepted"
+		}
+
 		// Lock article for revision version safety
 		if _, err := tx.Exec(r.Context(),
 			`SELECT 1 FROM wiki_articles WHERE article_id=$1 FOR UPDATE`, articleID); err != nil {
@@ -1930,23 +2006,57 @@ func (s *Server) reviewWikiSuggestion(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Apply diff_json to article body
-		if _, err := tx.Exec(r.Context(),
+		// Apply the accepted body. An AI regen also restores its generation metadata.
+		if isAIRegen {
+			if _, err := tx.Exec(r.Context(), `
+				UPDATE wiki_articles
+				   SET body_json=$1, generation_status=$2, generation_provenance=$3,
+				       generated_at=now(), updated_at=now()
+				 WHERE article_id=$4`,
+				applyBody, env.GenerationStatus, env.GenerationProvenance, articleID,
+			); err != nil {
+				slog.Error("reviewWikiSuggestion apply", "error", err)
+				writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+				return
+			}
+		} else if _, err := tx.Exec(r.Context(),
 			`UPDATE wiki_articles SET body_json=$1, updated_at=now() WHERE article_id=$2`,
-			diffJSON, articleID,
+			applyBody, articleID,
 		); err != nil {
 			slog.Error("reviewWikiSuggestion apply", "error", err)
 			writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
 			return
 		}
 
-		// Create community revision
+		// Create the revision: 'community' for a human suggestion, 'ai' for a regen.
 		if _, err := tx.Exec(r.Context(), `
 			INSERT INTO wiki_revisions (article_id, version, body_json, author_id, author_type, summary)
-			VALUES ($1, COALESCE((SELECT MAX(version) FROM wiki_revisions WHERE article_id=$1), 0) + 1, $2, $3, 'community', $4)`,
-			articleID, diffJSON, sugUserID, "Community suggestion accepted",
+			VALUES ($1, COALESCE((SELECT MAX(version) FROM wiki_revisions WHERE article_id=$1), 0) + 1, $2, $3, $4, $5)`,
+			articleID, applyBody, sugUserID, authorType, summary,
 		); err != nil {
 			slog.Error("reviewWikiSuggestion revision", "error", err)
+			writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+			return
+		}
+
+		// wiki-llm Phase-2b (D-WIKI-P2B-SUGGESTION-RESOLVE) — accepting a suggestion
+		// brings the article up to date, so resolve its pending staleness ledger rows
+		// and clear the denormalized "Outdated" flag (symmetric with the direct-write
+		// resolve in wiki_writeback.go). A REJECT intentionally leaves the staleness
+		// pending — the changed source is still unaddressed.
+		if _, err := tx.Exec(r.Context(),
+			`UPDATE wiki_staleness SET status='regenerated' WHERE article_id=$1 AND status='pending'`,
+			articleID,
+		); err != nil {
+			slog.Error("reviewWikiSuggestion resolve staleness", "error", err)
+			writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+			return
+		}
+		if _, err := tx.Exec(r.Context(),
+			`UPDATE wiki_articles SET is_knowledge_stale=false WHERE article_id=$1`,
+			articleID,
+		); err != nil {
+			slog.Error("reviewWikiSuggestion clear stale flag", "error", err)
 			writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
 			return
 		}
@@ -1971,6 +2081,7 @@ func (s *Server) reviewWikiSuggestion(w http.ResponseWriter, r *http.Request) {
 		BookID:         bookID.String(),
 		ArticleID:      articleID.String(),
 		SuggestionID:   sugID.String(),
+		UserID:         userID.String(),
 		Action:         req.Action,
 		WasAIGenerated: revGenStatus != nil,
 		EmittedAt:      time.Now().UTC().Format(time.RFC3339),

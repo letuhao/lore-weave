@@ -26,7 +26,7 @@ _SELECT_COLS = """
   rerank_model, rerank_model_source,
   extraction_config, last_extracted_at, estimated_cost_usd, actual_cost_usd,
   is_archived, tool_calling_enabled, memory_remember_confirm, save_raw_extraction,
-  genre, version, created_at, updated_at
+  genre, is_derivative, world_id, version, created_at, updated_at
 """
 
 # Explicit allowlist for dynamic UPDATE SET. Pydantic's ProjectUpdate already
@@ -57,7 +57,10 @@ _UPDATABLE_COLUMNS: frozenset[str] = frozenset(
      # source. rerank_model is nullable (clears the selection → raw-search skips
      # rerank); rerank_model_source is NOT NULL (default 'user_model') so, like
      # tool_calling_enabled, an explicit None is skipped. FE picker = S0b.
-     "rerank_model", "rerank_model_source"}
+     "rerank_model", "rerank_model_source",
+     # G4: attach/detach a project to a world. Nullable (explicit None clears
+     # the world link) — listed in _NULLABLE_UPDATE_COLUMNS below.
+     "world_id"}
 )
 
 # Columns that accept NULL. For everything else, a None value on an
@@ -72,7 +75,44 @@ _UPDATABLE_COLUMNS: frozenset[str] = frozenset(
 _NULLABLE_UPDATE_COLUMNS: frozenset[str] = frozenset(
     {"book_id", "embedding_model", "embedding_dimension", "genre",
      # D-RERANK-NOT-BYOK: None clears the rerank model selection.
-     "rerank_model"}
+     "rerank_model",
+     # G4: None clears the world link (detach a project from a world).
+     "world_id"}
+)
+
+
+# ── C7-followup (KN-7) — server-side projects-list filtering ──────────
+# The projects browser narrows over ALL projects server-side now (was a
+# client-side filter over loaded cursor pages — didn't scale). The sort
+# is a CLOSED allowlist mapping the public `sort_by` token to a real
+# column + the cursor's seek key. `status` filters on the project's
+# derived state (extraction_status column + the `archived` pseudo-state).
+#
+# Cursor stability: the seek key is ALWAYS (sort_col, project_id) with
+# project_id as the deterministic secondary tiebreaker — created_at /
+# updated_at can tie under millisecond clocks and name / status are
+# heavily non-unique, so project_id is what makes a page boundary stable
+# under concurrent inserts. The cursor encodes the sort value (as the
+# row's first element) + project_id; see public/projects.py.
+
+# token → (column, is_text). is_text drives the cursor value (re)typing
+# in the router: a text column round-trips the raw string; a timestamp
+# column parses back to a datetime.
+_PROJECT_SORT_COLUMNS: dict[str, tuple[str, bool]] = {
+    "created_at": ("created_at", False),
+    "updated_at": ("updated_at", False),
+    "name": ("name", True),
+    # `status` sorts on the extraction lifecycle column (disabled /
+    # building / paused / ready / failed) — a stable text ordering.
+    "status": ("extraction_status", True),
+}
+
+# Project-level status the public `status` filter accepts. The five
+# extraction_status enum values plus the `archived` pseudo-state (which
+# is the is_archived flag, not an extraction_status). A closed set so an
+# unknown value 422s at the router rather than silently matching nothing.
+_PROJECT_STATUS_FILTERS: frozenset[str] = frozenset(
+    {"disabled", "building", "paused", "ready", "failed", "archived"}
 )
 
 
@@ -106,8 +146,9 @@ class ProjectsRepo:
     ) -> asyncpg.Record:
         query = f"""
         INSERT INTO knowledge_projects
-          (user_id, name, description, project_type, book_id, instructions, genre)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+          (user_id, name, description, project_type, book_id, instructions,
+           genre, is_derivative, world_id)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         RETURNING {_SELECT_COLS}
         """
         return await conn.fetchrow(
@@ -119,6 +160,12 @@ class ProjectsRepo:
             data.book_id,
             data.instructions,
             data.genre,
+            # C23-fix (dị bản G2): force_new ⇒ this is a derivative's own
+            # fresh partition; stamp is_derivative so the source book's
+            # create_or_get / get_by_book never hand it back.
+            data.force_new,
+            # G4: world-level project binding (NULL for normal projects).
+            data.world_id,
         )
 
     async def create_or_get(
@@ -137,8 +184,18 @@ class ProjectsRepo:
         book-typed one with no `book_id` — still always inserts (the FE general-
         project create UX is unchanged). No UNIQUE(user, book_id) constraint is
         added (legacy rows may have several projects per book; `resolve_work`
-        already tolerates that by picking the earliest)."""
-        if not (data.project_type == "book" and data.book_id is not None):
+        already tolerates that by picking the earliest).
+
+        C23-fix (dị bản G2): when ``data.force_new`` is set (the composition
+        derive path) we BYPASS the dedup entirely and ALWAYS insert a fresh
+        project — `_insert` stamps it is_derivative=true. Combined with the
+        ``AND NOT is_derivative`` predicate in the dedup SELECT below (and in
+        `get_by_book`), a derivative is never returned for the SOURCE book, so
+        the derivative gets its OWN distinct project_id (its own Neo4j delta
+        partition) and composition's uq_composition_work_project holds."""
+        if data.force_new or not (
+            data.project_type == "book" and data.book_id is not None
+        ):
             return await self.create(user_id, data), True
         async with self._pool.acquire() as conn:
             async with conn.transaction():
@@ -153,14 +210,80 @@ class ProjectsRepo:
                     SELECT {_SELECT_COLS} FROM knowledge_projects
                     WHERE user_id = $1 AND project_type = 'book'
                       AND book_id = $2 AND NOT is_archived
+                      AND NOT is_derivative
                     ORDER BY created_at ASC
                     LIMIT 1
                     """,
                     user_id, data.book_id,
                 )
                 if existing is not None:
+                    # G4: idempotent world-binding. Stamp world_id onto the
+                    # existing bible-book project ONLY when it is not yet bound
+                    # (first world-create binding, or a re-provision after the
+                    # column landed). We deliberately do NOT rebind a project
+                    # that already carries a (different) world_id — a bible book
+                    # belongs to exactly one world and never moves, so a
+                    # differing world_id would be a caller bug, not a re-home;
+                    # refusing it keeps the binding stable. Re-provision with the
+                    # SAME world_id is a no-op. Not a content edit, so `version`
+                    # is left untouched (If-Match is for user PATCHes).
+                    if (
+                        data.world_id is not None
+                        and existing["world_id"] is None
+                    ):
+                        existing = await conn.fetchrow(
+                            f"""
+                            UPDATE knowledge_projects
+                            SET world_id = $3, updated_at = now()
+                            WHERE user_id = $1 AND project_id = $2
+                            RETURNING {_SELECT_COLS}
+                            """,
+                            user_id, existing["project_id"], data.world_id,
+                        )
                     return _row_to_project(existing), False
                 return _row_to_project(await self._insert(conn, user_id, data)), True
+
+    async def get_or_create_benchmark_sandbox(
+        self, user_id: UUID, embedding_model: str, embedding_dimension: int
+    ) -> Project:
+        """R1 (D-JOURNEY-KG-BENCHMARK-UX) — resolve (or lazily create) the hidden
+        benchmark SANDBOX project for ``(user, embedding_model)``. The K17.9
+        benchmark runs HERE, never on the user's real content-bearing build
+        project, so it cannot trip ``not_benchmark_project`` and its ~10 synthetic
+        fixture passages never pollute real data. Owner-scoped, ``book_id`` NULL,
+        ``is_benchmark_sandbox=true``, and excluded from every project listing.
+        Idempotent via a per-(user, model) advisory lock so two concurrent
+        benchmark POSTs can't create duplicate sandboxes."""
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                await conn.execute(
+                    "SELECT pg_advisory_xact_lock($1, hashtext($2))",
+                    _PROJECT_BOOK_LOCK_NS, f"benchmark:{user_id}:{embedding_model}",
+                )
+                existing = await conn.fetchrow(
+                    f"""
+                    SELECT {_SELECT_COLS} FROM knowledge_projects
+                    WHERE user_id = $1 AND is_benchmark_sandbox
+                      AND embedding_model = $2 AND NOT is_archived
+                    ORDER BY created_at ASC
+                    LIMIT 1
+                    """,
+                    user_id, embedding_model,
+                )
+                if existing is not None:
+                    return _row_to_project(existing)
+                row = await conn.fetchrow(
+                    f"""
+                    INSERT INTO knowledge_projects
+                      (user_id, name, project_type, is_benchmark_sandbox,
+                       embedding_model, embedding_dimension)
+                    VALUES ($1, $2, 'general', true, $3, $4)
+                    RETURNING {_SELECT_COLS}
+                    """,
+                    user_id, f"__benchmark__:{embedding_model}",
+                    embedding_model, embedding_dimension,
+                )
+                return _row_to_project(row)
 
     async def list(
         self,
@@ -168,53 +291,122 @@ class ProjectsRepo:
         *,
         include_archived: bool = False,
         limit: int = 50,
-        cursor_created_at: datetime | None = None,
+        cursor_sort_value: object | None = None,
         cursor_project_id: UUID | None = None,
         book_id: UUID | None = None,
+        world_id: UUID | None = None,
+        search: str | None = None,
+        sort_by: str = "created_at",
+        sort_dir: str = "desc",
+        status: str | None = None,
     ) -> list[Project]:
-        """K7.2 (D-K1-03 cleanup): cursor-paginated listing.
+        """K7.2 (D-K1-03) + C7-followup (KN-7): cursor-paginated listing
+        with server-side search / sort / status narrowing.
 
-        Order: created_at DESC, project_id DESC. The pair acts as a
-        stable sort key — created_at alone is not unique under
-        millisecond-precision Postgres clocks. Cursor is "skip rows
-        ordered AT-OR-AFTER (cursor_created_at, cursor_project_id)".
-        Both cursor params must be supplied together; passing only
-        one is treated as no cursor (the router enforces both-or-none
-        before calling).
+        Order: ``<sort_col> <dir>, project_id <dir>``. project_id is the
+        deterministic secondary key that makes the page boundary stable —
+        created_at / updated_at can tie under millisecond clocks, and
+        name / status are heavily non-unique. The cursor's seek predicate
+        is the row-value comparison ``(<sort_col>, project_id) <op>
+        (cursor_sort_value, cursor_project_id)`` where ``<op>`` is ``<``
+        for descending and ``>`` for ascending, matching the ORDER BY so
+        paging is stable even with concurrent inserts. Both cursor params
+        must be supplied together (the router enforces both-or-none).
 
-        We fetch `limit + 1` rows so the router can detect "more
-        pages exist" without a second COUNT query.
+        Additive + back-compatible: no params ⇒ the original
+        ``created_at DESC, project_id DESC`` behaviour. ``sort_by`` is a
+        CLOSED allowlist (router 422s an unknown token before calling).
+
+        ``search`` is a case-insensitive substring on ``name`` (ILIKE
+        with the wildcards escaped so a user typing ``%`` / ``_`` doesn't
+        get a surprise wildcard). ``status`` filters on the project's
+        derived state: ``archived`` ⇒ ``is_archived = true``; any other
+        value ⇒ ``extraction_status = <value>``.
+
+        We fetch ``limit + 1`` rows so the router can detect "more pages
+        exist" without a second COUNT query.
         """
         # Cap the requested limit defensively — router enforces the
         # public ceiling but the repo defends in depth.
         capped = max(1, min(limit, 100))
         fetch_limit = capped + 1
 
+        # Resolve the sort column from the closed allowlist — defense in
+        # depth (the router validates, but a future internal caller might
+        # not). An unknown token is a programming error, not user input.
+        col, _is_text = _PROJECT_SORT_COLUMNS.get(sort_by, ("created_at", False))
+        direction = "ASC" if sort_dir == "asc" else "DESC"
+        seek_op = ">" if direction == "ASC" else "<"
+
         # Build query in two static halves so the planner can pick
         # idx_knowledge_projects_user (partial WHERE NOT is_archived)
         # on the common path.
-        archived_pred = "" if include_archived else " AND NOT is_archived"
         params: list[object] = [user_id]
-        cursor_pred = ""
-        if cursor_created_at is not None and cursor_project_id is not None:
-            params.extend([cursor_created_at, cursor_project_id])
-            cursor_pred = (
-                " AND (created_at, project_id) < ($2, $3)"
+
+        # status filter takes precedence over include_archived for the
+        # archived bucket: ?status=archived forces is_archived=true even
+        # when include_archived wasn't set. Other status values are
+        # implicitly non-archived (a "ready but archived" project belongs
+        # to the archived bucket, not the ready bucket).
+        if status == "archived":
+            status_pred = " AND is_archived"
+        elif status is not None:
+            params.append(status)
+            status_pred = (
+                f" AND NOT is_archived AND extraction_status = ${len(params)}"
             )
+        elif include_archived:
+            status_pred = ""
+        else:
+            status_pred = " AND NOT is_archived"
+
+        search_pred = ""
+        if search:
+            # Escape ILIKE wildcards so a literal % / _ doesn't widen the
+            # match. ESCAPE '\' pairs with the backslash-escaped wildcards.
+            escaped = (
+                search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            )
+            params.append(f"%{escaped}%")
+            search_pred = f" AND name ILIKE ${len(params)} ESCAPE '\\'"
+
+        cursor_pred = ""
+        if cursor_sort_value is not None and cursor_project_id is not None:
+            params.extend([cursor_sort_value, cursor_project_id])
+            cursor_pred = (
+                f" AND ({col}, project_id) {seek_op} "
+                f"(${len(params) - 1}, ${len(params)})"
+            )
+
         # C5 (ARCH-1): optional book filter — the editor AI panel resolves a
         # book's knowledge project by book_id. Placeholder is numbered
-        # dynamically so it composes with the optional cursor params above.
+        # dynamically so it composes with the optional params above.
         book_pred = ""
         if book_id is not None:
             params.append(book_id)
             book_pred = f" AND book_id = ${len(params)}"
+
+        # G4: world-level project visibility.
+        # - explicit world_id filter ⇒ return that world's project(s) (the
+        #   world-rollup resolver / world workspace).
+        # - no world_id AND no book_id (the HOME projects browse) ⇒ HIDE
+        #   world-level projects (world_id IS NOT NULL) so the bible/world
+        #   project never appears as a phantom row.
+        # - a book_id filter (editor AI panel / useWorldProject graph resolver)
+        #   is EXEMPT — it must still resolve the bible book's world project.
+        world_pred = ""
+        if world_id is not None:
+            params.append(world_id)
+            world_pred = f" AND world_id = ${len(params)}"
+        elif book_id is None:
+            world_pred = " AND world_id IS NULL"
         params.append(fetch_limit)
 
         query = f"""
         SELECT {_SELECT_COLS}
         FROM knowledge_projects
-        WHERE user_id = $1{archived_pred}{cursor_pred}{book_pred}
-        ORDER BY created_at DESC, project_id DESC
+        WHERE user_id = $1 AND NOT is_benchmark_sandbox{status_pred}{search_pred}{cursor_pred}{book_pred}{world_pred}
+        ORDER BY {col} {direction}, project_id {direction}
         LIMIT ${len(params)}
         """
         async with self._pool.acquire() as conn:
@@ -236,7 +428,7 @@ class ProjectsRepo:
         query = f"""
         SELECT {_SELECT_COLS}
         FROM knowledge_projects
-        WHERE user_id = $1
+        WHERE user_id = $1 AND NOT is_benchmark_sandbox
         ORDER BY created_at, project_id
         LIMIT {self.EXPORT_HARD_CAP + 1}
         """
@@ -272,11 +464,16 @@ class ProjectsRepo:
         """E0-3 — the (single, book-owner-owned) active book project for a book,
         NOT user-scoped. Book-scoped routes (raw-search) call this AFTER a book
         grant check so a collaborator searches the owner's project. Creation is
-        book-owner-only, so there is at most one 'book' project per book."""
+        book-owner-only, so there is at most one 'book' project per book.
+
+        C23-fix (dị bản G2): `AND NOT is_derivative` so a derivative project
+        sharing the source's book_id is never mistaken for the source book's
+        canonical project (raw-search must always resolve the SOURCE partition)."""
         query = f"""
         SELECT {_SELECT_COLS}
         FROM knowledge_projects
         WHERE book_id = $1 AND project_type = 'book' AND NOT is_archived
+          AND NOT is_derivative
         ORDER BY created_at
         LIMIT 1
         """

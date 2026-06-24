@@ -18,9 +18,27 @@ import httpx
 from app.config import settings
 from app.logging_config import trace_id_var
 
-__all__ = ["BookClient", "init_book_client", "get_book_client"]
+__all__ = [
+    "BookClient",
+    "init_book_client",
+    "get_book_client",
+    "WorldNotFound",
+    "BookServiceUnavailable",
+]
 
 logger = logging.getLogger(__name__)
+
+
+class WorldNotFound(Exception):
+    """The world does not exist or is not owned by the requesting user
+    (book-service returned 404). The world-rollup endpoint maps this to a
+    uniform 404 — no existence oracle."""
+
+
+class BookServiceUnavailable(Exception):
+    """book-service was unreachable or errored resolving world membership
+    (transport error / 5xx). The world-rollup endpoint maps this to 503 —
+    distinct from 404 so the FE can tell "no such world" from "try later"."""
 
 _client: "BookClient | None" = None
 
@@ -96,9 +114,120 @@ class BookClient:
             )
             return None
 
+    # book-service clamps page size to 100 (chapter-list-limit100 fix), so we
+    # paginate. The cap bounds a runaway loop / pathological book; a book at the
+    # cap is logged rather than silently truncated.
+    _LIST_CHAPTERS_PAGE = 100
+    _LIST_CHAPTERS_MAX = 5000
+
+    async def list_chapters(
+        self,
+        book_id: UUID,
+        *,
+        editorial_status: str | None = None,
+    ) -> list[dict] | None:
+        """D-RAWSEARCH-CANON-WIRING — list ALL a book's chapters (id + sort_order +
+        editorial_status) via ``GET /internal/books/{book_id}/chapters``, paging
+        past book-service's 100-row clamp so a >100-chapter book isn't silently
+        truncated. ``editorial_status='draft'`` scopes to unpublished chapters
+        (what the on-demand draft-indexing endpoint enumerates). Returns the full
+        item list, or None on any failure (caller decides)."""
+        url = f"{self._base_url}/internal/books/{book_id}/chapters"
+        tid = trace_id_var.get()
+        collected: list[dict] = []
+        offset = 0
+        try:
+            while True:
+                params: dict[str, str] = {
+                    "limit": str(self._LIST_CHAPTERS_PAGE),
+                    "offset": str(offset),
+                }
+                if editorial_status is not None:
+                    params["editorial_status"] = editorial_status
+                resp = await self._http.get(
+                    url,
+                    params=params,
+                    headers={"X-Trace-Id": tid} if tid else None,
+                )
+                if resp.status_code != 200:
+                    logger.warning(
+                        "book-service %s returned %d, trace_id=%s",
+                        url, resp.status_code, tid,
+                    )
+                    return None
+                body = resp.json()
+                items = body.get("items", [])
+                if not isinstance(items, list):
+                    return None
+                collected.extend(items)
+                total = int(body.get("total", len(collected)))
+                offset += self._LIST_CHAPTERS_PAGE
+                if len(collected) >= total or not items:
+                    break
+                if len(collected) >= self._LIST_CHAPTERS_MAX:
+                    logger.warning(
+                        "list_chapters: book=%s hit the %d-chapter cap (total=%s) "
+                        "— remaining chapters not enumerated",
+                        book_id, self._LIST_CHAPTERS_MAX, total,
+                    )
+                    break
+            return collected
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            logger.warning(
+                "book-service unavailable: %s, trace_id=%s",
+                exc, tid,
+            )
+            return None
+
+    async def list_world_books(
+        self, world_id: UUID, user_id: UUID
+    ) -> list[dict]:
+        """G4 (W2) — the member books of a world, for the world-rollup subgraph.
+
+        Calls book-service ``GET /internal/worlds/{world_id}/books?user_id=``
+        (X-Internal-Token; book-service owner-scopes by the user_id param, so a
+        world the user does not own yields 404). Returns the member-book dicts
+        (``book_id`` is the only field the rollup needs; ``is_bible`` is already
+        excluded server-side).
+
+        Unlike the cost-estimate calls this does NOT degrade-to-None: membership
+        is load-bearing for the rollup, and a silent empty list would mask "no
+        such world" as "empty graph". Raises ``WorldNotFound`` on 404 and
+        ``BookServiceUnavailable`` on transport/5xx so the endpoint maps them to
+        a uniform 404 vs a 503.
+        """
+        url = f"{self._base_url}/internal/worlds/{world_id}/books"
+        tid = trace_id_var.get()
+        try:
+            resp = await self._http.get(
+                url,
+                params={"user_id": str(user_id)},
+                headers={"X-Trace-Id": tid} if tid else None,
+            )
+        except httpx.HTTPError as exc:
+            logger.warning("book-service world-books unreachable: %s, trace_id=%s", exc, tid)
+            raise BookServiceUnavailable(str(exc)) from exc
+        if resp.status_code == 404:
+            raise WorldNotFound(str(world_id))
+        if resp.status_code != 200:
+            logger.warning(
+                "book-service %s returned %d, trace_id=%s", url, resp.status_code, tid,
+            )
+            raise BookServiceUnavailable(f"status {resp.status_code}")
+        try:
+            items = resp.json().get("items", [])
+        except ValueError as exc:
+            raise BookServiceUnavailable("malformed response") from exc
+        # A 200 whose `items` isn't a list is a contract drift — raise rather than
+        # silently degrade to an empty membership (which would mask a broken seam
+        # as an "empty world" and drop every member book from the rollup).
+        if not isinstance(items, list):
+            raise BookServiceUnavailable("malformed response: items is not a list")
+        return items
+
     async def lexical_search(
         self, book_id: UUID, q: str, *, limit: int = 20,
-        granularity: str = "chapter",
+        granularity: str = "chapter", surface: str = "canon",
     ) -> list[dict] | None:
         """Raw-search Phase 2 — lexical leg. Calls book-service
         GET /internal/books/{book_id}/lexical-search and returns the list
@@ -107,13 +236,22 @@ class BookClient:
 
         E5 — `granularity` ("chapter" = best block per chapter for max
         distinct-chapter recall / navigate; "block" = every matching block
-        for exhaustive mining) is forwarded to book-service verbatim."""
+        for exhaustive mining) is forwarded to book-service verbatim.
+
+        D-RAWSEARCH-CANON-WIRING — `surface` ("canon" = published-revision
+        text only, the default; "all" = canon + live draft, merged) is
+        forwarded so the lexical leg honours the same canon gate as the
+        semantic leg. Previously unset → book-service defaulted to "draft",
+        leaking unpublished text into a nominally-canon search."""
         url = f"{self._base_url}/internal/books/{book_id}/lexical-search"
         tid = trace_id_var.get()
         try:
             resp = await self._http.get(
                 url,
-                params={"q": q, "limit": str(limit), "granularity": granularity},
+                params={
+                    "q": q, "limit": str(limit),
+                    "granularity": granularity, "surface": surface,
+                },
                 headers={"X-Trace-Id": tid} if tid else None,
             )
             if resp.status_code != 200:
@@ -128,6 +266,34 @@ class BookClient:
             logger.warning(
                 "book-service lexical-search unavailable: %s, trace_id=%s",
                 exc, tid,
+            )
+            return None
+
+    async def get_reader_language(
+        self, book_id: UUID, user_id: UUID,
+    ) -> str | None:
+        """KG-ML M4 (DD3) — resolve a user's stored reader-language for a book.
+
+        Calls book-service GET /internal/books/{book_id}/reader-language?user_id=
+        (the M3 resolver source). Returns the stored tag (e.g. "vi") or None when
+        unset / on ANY failure — language-aware ranking then falls back to the
+        next resolver tier (detected query language) and never 500s the search.
+        """
+        url = f"{self._base_url}/internal/books/{book_id}/reader-language"
+        tid = trace_id_var.get()
+        try:
+            resp = await self._http.get(
+                url,
+                params={"user_id": str(user_id)},
+                headers={"X-Trace-Id": tid} if tid else None,
+            )
+            if resp.status_code != 200:
+                return None
+            lang = resp.json().get("reader_language")
+            return lang if isinstance(lang, str) and lang.strip() else None
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            logger.warning(
+                "book-service reader-language unavailable: %s, trace_id=%s", exc, tid,
             )
             return None
 

@@ -103,10 +103,12 @@ def _make_client(
     projects_repo.get = AsyncMock(return_value=repo_return)
     projects_repo.set_extraction_state = AsyncMock(return_value=repo_return)
 
-    # active_job=None means no active jobs → list_active returns []
+    # active_job=None means no active jobs → list_active_for_project returns []
+    # (B8: the helper now uses the project-scoped query, not the cross-project
+    # list_active + in-memory filter).
     active_list = [active_job] if active_job is not None else []
     jobs_repo = AsyncMock()
-    jobs_repo.list_active = AsyncMock(return_value=active_list)
+    jobs_repo.list_active_for_project = AsyncMock(return_value=active_list)
     jobs_repo.update_status = AsyncMock(
         return_value=updated_job or (active_job if active_job else _job_stub()),
     )

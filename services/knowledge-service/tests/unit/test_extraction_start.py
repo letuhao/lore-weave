@@ -40,6 +40,18 @@ def _clear_overrides():
     app.dependency_overrides.clear()
 
 
+@pytest.fixture(autouse=True)
+def _stub_model_name_resolve():
+    """P4 — the start path resolves the model NAME via provider-registry (HTTP) for the
+    'running' lifecycle event's `model`/`params`. Stub it so unit tests don't attempt a
+    real network call (best-effort None on failure, but a real connect attempt is slow)."""
+    with patch(
+        "app.routers.public.extraction.resolve_model_name",
+        new=AsyncMock(return_value="qwen2.5-7b-instruct"),
+    ):
+        yield
+
+
 def _project_stub(book_id: UUID | None = _TEST_BOOK):
     from app.db.models import Project
     return Project(
@@ -120,6 +132,7 @@ def _make_client(
     project_budget_check=None,  # D-K16.11-01: can_start_job override
     user_budget_check=None,  # D-K16.11-01: check_user_monthly_budget override
     wake_fn=None,  # FD-22: override the extraction wake emitter (default: recording mock)
+    book_client=None,  # D-K19a.5-04: configure count_chapters for the out-of-bounds guard
 ) -> TestClient:
     """Build a TestClient with all deps overridden.
 
@@ -159,10 +172,11 @@ def _make_client(
     jobs_repo.get = AsyncMock(return_value=job_after_create or _job_stub())
 
     benchmark_repo = AsyncMock()
+    # R1: the start gate is now MODEL-scoped (get_latest_for_model), not project-scoped.
     if benchmark is _NO_BENCHMARK:
-        benchmark_repo.get_latest = AsyncMock(return_value=None)
+        benchmark_repo.get_latest_for_model = AsyncMock(return_value=None)
     else:
-        benchmark_repo.get_latest = AsyncMock(
+        benchmark_repo.get_latest_for_model = AsyncMock(
             return_value=benchmark if benchmark is not None else _benchmark_run_stub(),
         )
 
@@ -191,7 +205,8 @@ def _make_client(
     app.dependency_overrides[get_projects_repo] = lambda: projects_repo
     app.dependency_overrides[get_extraction_jobs_repo] = lambda: jobs_repo
     app.dependency_overrides[get_extraction_pending_repo] = lambda: AsyncMock()
-    app.dependency_overrides[get_book_client] = lambda: AsyncMock(spec=BookClient)
+    _book_client = book_client if book_client is not None else AsyncMock(spec=BookClient)
+    app.dependency_overrides[get_book_client] = lambda: _book_client
     app.dependency_overrides[get_glossary_client] = lambda: AsyncMock(spec=GlossaryClient)
     app.dependency_overrides[get_benchmark_runs_repo] = lambda: benchmark_repo
     # FD-22: override the wake emitter so the route never touches real Redis.
@@ -330,6 +345,33 @@ def test_start_job_concurrent_start_unique_violation_409():
     resp = _post_start(client)
     assert resp.status_code == 409
     assert "concurrent start" in resp.json()["detail"]
+
+
+def test_start_job_chapter_range_out_of_bounds_returns_422():
+    """D-K19a.5-04 — a chapter_range matching NO published chapter is rejected up
+    front (422). The worker-ai runner enforces `lo <= sort_order <= hi`, so an
+    out-of-bounds range would otherwise silently complete a 0-item job. The guard
+    counts in-range published chapters via the injected book_client."""
+    mock_bc = AsyncMock(spec=BookClient)
+    mock_bc.count_chapters = AsyncMock(return_value=0)  # range matches nothing
+    client = _make_client(book_client=mock_bc)
+    resp = _post_start(
+        client, scope="chapters", scope_range={"chapter_range": [1000, 2000]},
+    )
+    assert resp.status_code == 422
+    assert "matches no published chapters" in resp.json()["detail"]
+    mock_bc.count_chapters.assert_awaited_once()
+
+
+def test_start_job_chapter_range_in_bounds_proceeds():
+    """Counterpart — an in-range request (count > 0) is NOT blocked by the guard."""
+    mock_bc = AsyncMock(spec=BookClient)
+    mock_bc.count_chapters = AsyncMock(return_value=5)
+    client = _make_client(book_client=mock_bc)
+    resp = _post_start(
+        client, scope="chapters", scope_range={"chapter_range": [1, 5]},
+    )
+    assert resp.status_code == 201
 
 
 def test_start_job_empty_model_rejected():

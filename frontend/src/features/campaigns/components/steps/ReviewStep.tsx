@@ -15,15 +15,29 @@ interface Props {
   budgetUsd: string;
   setBudget: (v: string) => void;
   onLaunched: (campaignId: string) => void;
+  // G1 — bubble the estimate band up so the wizard persists it on launch (report).
+  onEstimated?: (low: string, high: string) => void;
+}
+
+/** D-S5C-BUDGET-VALIDATE — pure budget-input check mirroring the backend rule
+ *  (CreateCampaignPayload): blank = uncapped (valid → null); else must be a positive
+ *  finite number below the NUMERIC(16,8) ceiling (1e8). Pure → unit-tested. */
+export function validateBudget(raw: string): 'invalid' | 'tooLarge' | null {
+  const v = raw.trim();
+  if (v === '') return null;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n <= 0) return 'invalid';
+  if (n >= 1e8) return 'tooLarge';
+  return null;
 }
 
 /** Step 4 (view): budget cap + on-demand cost/time estimate + Launch (create→start). */
-export function ReviewStep({ buildEstimateRequest, buildCreatePayload, budgetUsd, setBudget, onLaunched }: Props) {
+export function ReviewStep({ buildEstimateRequest, buildCreatePayload, budgetUsd, setBudget, onLaunched, onEstimated }: Props) {
   const { t } = useTranslation('campaigns');
   const [estimate, setEstimate] = useState<EstimateResponse | null>(null);
 
   const est = useEstimateCampaign({
-    onSuccess: setEstimate,
+    onSuccess: (r) => { setEstimate(r); onEstimated?.(r.estimated_usd_low, r.estimated_usd_high); },
     onError: (e) => toast.error(t('review.estimateFailed', { defaultValue: 'Estimate failed: {{error}}', error: e.message })),
   });
 
@@ -41,7 +55,17 @@ export function ReviewStep({ buildEstimateRequest, buildCreatePayload, budgetUsd
     },
   });
 
+  // D-S5C-BUDGET-VALIDATE — map the pure validation code to a localized message.
+  const budgetCode = validateBudget(budgetUsd);
+  const budgetError =
+    budgetCode === 'invalid' ? t('review.budgetInvalid', { defaultValue: 'Enter a positive amount, or leave blank for uncapped.' })
+    : budgetCode === 'tooLarge' ? t('review.budgetTooLarge', { defaultValue: 'Budget is too large.' })
+    : null;
+
   const money = (v: string) => `$${Number(v).toFixed(4)}`;
+  // #5 polish — compact token count (31.0M / 3.2K / 0).
+  const tok = (n: number) =>
+    n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}K` : String(n);
   const fieldCls = 'w-40 rounded-md border bg-input px-3 py-2 text-sm outline-none focus:border-ring';
 
   return (
@@ -50,12 +74,15 @@ export function ReviewStep({ buildEstimateRequest, buildCreatePayload, budgetUsd
         <span className="text-xs font-medium text-muted-foreground">
           {t('review.budget', { defaultValue: 'Budget cap (USD, optional)' })}
         </span>
-        <input className={fieldCls} value={budgetUsd}
+        <input className={`${fieldCls} ${budgetError ? 'border-destructive' : ''}`} value={budgetUsd}
           onChange={(e) => setBudget(e.target.value)}
+          aria-invalid={!!budgetError}
           placeholder={t('review.budgetPlaceholder', { defaultValue: 'blank = uncapped' })} />
-        <span className="text-[11px] text-muted-foreground">
-          {t('review.budgetHint', { defaultValue: 'The campaign auto-pauses once summed spend reaches this.' })}
-        </span>
+        {budgetError
+          ? <span className="text-[11px] text-destructive">{budgetError}</span>
+          : <span className="text-[11px] text-muted-foreground">
+              {t('review.budgetHint', { defaultValue: 'The campaign auto-pauses once summed spend reaches this.' })}
+            </span>}
       </label>
 
       <button type="button"
@@ -75,11 +102,34 @@ export function ReviewStep({ buildEstimateRequest, buildCreatePayload, budgetUsd
             <span><strong>{t('review.chapters', { defaultValue: 'Chapters' })}:</strong> {estimate.chapter_count}</span>
           </div>
           <table className="text-[12px]">
+            <thead className="text-muted-foreground">
+              <tr className="text-left">
+                <th className="py-1 pr-4 font-medium">{t('review.stage', { defaultValue: 'Stage' })}</th>
+                <th className="py-1 pr-4 font-medium">{t('review.status', { defaultValue: 'Status' })}</th>
+                <th className="py-1 pr-4 font-medium">{t('review.tokens', { defaultValue: 'Tokens (in/out)' })}</th>
+                <th className="py-1 text-right font-medium">{t('review.usd', { defaultValue: 'USD' })}</th>
+              </tr>
+            </thead>
             <tbody>
               {estimate.per_stage.map((s) => (
                 <tr key={s.stage} className="border-t">
-                  <td className="py-1 pr-4 capitalize">{s.stage}</td>
+                  <td className="py-1 pr-4">
+                    <span className="capitalize">{s.stage}</span>
+                    {s.provider_kind && (
+                      <span className={`ml-2 rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                        s.is_local
+                          ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400'
+                          : 'bg-sky-500/15 text-sky-700 dark:text-sky-400'}`}>
+                        {s.is_local
+                          ? t('review.localFree', { defaultValue: '🖥 {{kind}} · free', kind: s.provider_kind })
+                          : t('review.cloud', { defaultValue: '☁ {{kind}}', kind: s.provider_kind })}
+                      </span>
+                    )}
+                  </td>
                   <td className="py-1 pr-4 text-muted-foreground">{s.status}</td>
+                  <td className="py-1 pr-4 text-muted-foreground">
+                    {s.input_tokens || s.output_tokens ? `${tok(s.input_tokens)} / ${tok(s.output_tokens)}` : '—'}
+                  </td>
                   <td className="py-1 text-right">{s.status === 'ok' ? money(s.estimated_usd) : '—'}</td>
                 </tr>
               ))}
@@ -96,7 +146,7 @@ export function ReviewStep({ buildEstimateRequest, buildCreatePayload, budgetUsd
 
       <button type="button"
         onClick={() => launch.mutate(buildCreatePayload())}
-        disabled={launch.isPending}
+        disabled={launch.isPending || !!budgetError}
         className="self-start rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60">
         {launch.isPending
           ? t('review.launching', { defaultValue: 'Launching…' })

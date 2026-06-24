@@ -20,6 +20,8 @@
       "attributes": "Attributes",
       "evidences": "Evidences"
     },
+    "viewing_in_language": "Viewing in {{lang}}",
+    "viewing_original": "Original ({{lang}})",
     "translation_lang_aria": "Translation language",
     "no_translation": "No translation",
     "add_language": "+ Add language...",
@@ -50,6 +52,7 @@
     "save": "Save",
     "delete_aria": "Delete translation",
     "placeholder": "{{lang}} translation...",
+    "tags_add": "+ Add alias",
     "delete_title": "Delete translation?",
     "delete_desc": "The {{lang}} translation for this attribute will be permanently deleted.",
     "delete_confirm": "Delete",

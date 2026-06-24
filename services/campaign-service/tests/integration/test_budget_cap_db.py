@@ -82,7 +82,7 @@ async def test_update_budget_owner_scoped(pool):
     cid = await _make_campaign(pool, budget_usd=Decimal("5"))
     owner = await pool.fetchval("SELECT owner_user_id FROM campaigns WHERE campaign_id=$1", cid)
     # wrong owner → None (404)
-    assert await repo.update_budget(pool, cid, uuid4(), Decimal("20")) is None
+    assert await repo.update_campaign_fields(pool, cid, uuid4(), {"budget_usd": Decimal("20")}) is None
     # right owner → updated
-    row = await repo.update_budget(pool, cid, owner, Decimal("20"))
+    row = await repo.update_campaign_fields(pool, cid, owner, {"budget_usd": Decimal("20")})
     assert row is not None and row["budget_usd"] == Decimal("20")

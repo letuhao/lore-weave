@@ -77,6 +77,42 @@ async def run_online_judge(
     }
 
 
+def aggregate_precision_dicts(verdicts_by_category: dict[str, list[dict]]) -> dict:
+    """Build the ``run_online_judge``-shaped ``judge_result`` from per-category
+    verdict DICTS (``{"idx","verdict"}``), for the decoupled judge SM finalize.
+
+    The fan-out judge accumulates each batch's verdicts as JSON dicts in its
+    resume_state (not ItemVerdict objects), so this mirrors ``run_online_judge``'s
+    aggregation over the persisted shape — same credit map, same denominator
+    (unjudged excluded), same ``per_category`` / ``overall_precision`` output that
+    ``persist_online_judge`` consumes."""
+    per_category: dict[str, dict] = {}
+    total_credit = 0.0
+    total_judged = 0
+    for category in _CATEGORIES:
+        verdicts = verdicts_by_category.get(category) or []
+        if not verdicts:
+            continue
+        credits = [
+            _PRECISION_CREDIT.get(v.get("verdict"), 0.0)
+            for v in verdicts
+            if v.get("verdict") != "unjudged"
+        ]
+        n = len(credits)
+        per_category[category] = {
+            "precision": (sum(credits) / n) if n else None,
+            "n_judged": n,
+            "verdicts": [{"idx": v.get("idx"), "verdict": v.get("verdict")} for v in verdicts],
+        }
+        total_credit += sum(credits)
+        total_judged += n
+    return {
+        "per_category": per_category,
+        "overall_precision": (total_credit / total_judged) if total_judged else None,
+        "n_judged": total_judged,
+    }
+
+
 async def persist_online_judge(
     pool: asyncpg.Pool,
     *,

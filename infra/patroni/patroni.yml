@@ -1,0 +1,113 @@
+# infra/patroni/patroni.yml
+#
+# L1.E.4 — Patroni HA cluster configuration for meta Postgres.
+# Cycle 1 of foundation-mega-task.
+#
+# Per OPEN_QUESTIONS_LOCKED.md:
+#   Q-L1E-2 — etcd self-hosted on dedicated EC2/EKS (NOT managed etcd / AWS)
+#             to avoid vendor lock + match upstream Patroni docs
+#
+# Per parent layer plan L1.E acceptance:
+#   - Manual failover (`patronictl switchover`) completes < 30s (RTO target)
+#   - Sync replication enforced: synchronous_standby_names = 'ANY 1 (sync_replica_a)'
+#   - WAL ship via archive_command (defined in postgresql.conf, see L1.E.6)
+#
+# Mounted into all meta Postgres nodes by infra/docker-compose.meta-ha.yml.
+
+# ─── Cluster identity ─────────────────────────────────────────────────────────
+scope: lw-meta-pg
+namespace: /db/
+name: ${PATRONI_NODE_NAME}                  # primary | sync_replica_a | async_replica_0
+
+# ─── REST API (Patroni → Patroni control plane) ───────────────────────────────
+restapi:
+  listen: 0.0.0.0:8008
+  connect_address: ${PATRONI_REST_CONNECT_ADDRESS}
+  authentication:
+    username: patroni_admin
+    password: ${PATRONI_REST_PASSWORD}        # from secrets/env, never hardcoded
+
+# ─── etcd DCS (per Q-L1E-2 self-hosted) ───────────────────────────────────────
+etcd3:
+  hosts: ${PATRONI_ETCD_HOSTS}                # e.g. "etcd-0:2379,etcd-1:2379,etcd-2:2379"
+  protocol: http                              # mTLS in V1+30d staging
+  username: patroni
+  password: ${PATRONI_ETCD_PASSWORD}
+
+# ─── Bootstrap (initial cluster only — ignored on existing cluster) ───────────
+bootstrap:
+  dcs:
+    ttl: 30                                   # leader lock TTL
+    loop_wait: 10
+    retry_timeout: 10
+    maximum_lag_on_failover: 1048576          # 1 MiB — fail-safe on excessive lag
+    synchronous_mode: true
+    synchronous_mode_strict: true             # MUST have sync replica before commit
+    synchronous_node_count: 1                 # V1/V2 = 1; V3+ raises to 2 (sync_replica.tf)
+    postgresql:
+      use_pg_rewind: true
+      use_slots: true
+      parameters:
+        # ─── DURABILITY INVARIANTS (mirror postgresql.conf) ──────────────────
+        wal_level: replica
+        hot_standby: 'on'
+        max_wal_senders: 10
+        wal_keep_size: 2GB
+        synchronous_commit: 'on'
+        synchronous_standby_names: 'ANY 1 (sync_replica_a)'
+        # ─── ARCHIVE ─────────────────────────────────────────────────────────
+        archive_mode: 'on'
+        archive_command: '/usr/local/bin/lw-wal-ship.sh %p %f'
+        archive_timeout: 60
+        # ─── PERF ────────────────────────────────────────────────────────────
+        max_connections: 500
+        shared_buffers: 512MB
+        # ─── LOGGING (L1.I metrics) ──────────────────────────────────────────
+        shared_preload_libraries: 'pg_stat_statements'
+        track_io_timing: 'on'
+        log_min_duration_statement: 500
+        log_checkpoints: 'on'
+        log_lock_waits: 'on'
+
+  # initdb only runs once on new cluster
+  initdb:
+    - encoding: UTF8
+    - data-checksums
+
+  # Replication user (Patroni manages)
+  users:
+    replicator:
+      password: ${PATRONI_REPLICATION_PASSWORD}
+      options:
+        - REPLICATION
+
+  # Postgres pg_hba.conf entries (Patroni renders)
+  pg_hba:
+    - local all all                                   trust
+    - host  all all 0.0.0.0/0                         md5
+    - host  replication replicator 0.0.0.0/0          md5
+
+# ─── Per-node Postgres config overlay (Patroni applies dynamically) ───────────
+postgresql:
+  listen: 0.0.0.0:5432
+  connect_address: ${PATRONI_POSTGRES_CONNECT_ADDRESS}
+  data_dir: /var/lib/postgresql/data
+  bin_dir: /usr/lib/postgresql/16/bin
+  pgpass: /tmp/pgpass
+  authentication:
+    superuser:
+      username: postgres
+      password: ${PATRONI_SUPERUSER_PASSWORD}
+    replication:
+      username: replicator
+      password: ${PATRONI_REPLICATION_PASSWORD}
+  parameters:
+    # archive_command sourced from the WAL ship script (L1.E.7)
+    archive_command: '/usr/local/bin/lw-wal-ship.sh %p %f'
+
+# ─── Tags (per-node role hints; failover priority) ────────────────────────────
+tags:
+  nofailover: ${PATRONI_NOFAILOVER}           # "true" for async_replica (never promote)
+  noloadbalance: false
+  clonefrom: false
+  nosync: ${PATRONI_NOSYNC}                   # "true" for async_replica (not counted in sync set)

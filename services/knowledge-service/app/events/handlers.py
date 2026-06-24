@@ -171,6 +171,7 @@ async def handle_chapter_published(event: EventData, *, pool: asyncpg.Pool) -> N
         user_id=user_id,
         embedding_model=embedding_model,
         embedding_dim=embedding_dim,
+        pool=pool,
     )
 
 
@@ -183,6 +184,7 @@ async def _ingest_published_passages(
     user_id: UUID,
     embedding_model: str | None,
     embedding_dim: int | None,
+    pool: asyncpg.Pool | None = None,
 ) -> None:
     """CM3c — ingest L3 passages for a published chapter at its pinned revision.
 
@@ -240,11 +242,115 @@ async def _ingest_published_passages(
                 # Transient pinned-revision-fetch failure must NOT wipe canon
                 # passages (R3-WARN#1) — keep what we have.
                 delete_stale_on_missing=False,
+                # KG-ML M1 (C10) — meter embedding spend on the live publish path.
+                pool=pool,
             )
     except Exception:
         logger.warning(
             "CM3c: passage ingest failed for chapter=%s project=%s — non-fatal",
             chapter_uuid, project_id, exc_info=True,
+        )
+
+
+async def handle_translation_published(event: EventData, *, pool: asyncpg.Pool) -> None:
+    """KG-ML M2 — dual-index a chapter's ACTIVE translation as `source_lang`=target
+    `:Passage` nodes.
+
+    Fired when a translation version becomes active (manual publish / human edit /
+    auto-promote — DD5). INDEX-ONLY: this NEVER re-extracts entities/relations
+    (Layer 1 stays canonical, built from the source language only — R1). The vi
+    passages share `source_id=chapter_id` but are distinct nodes via the
+    language-scoped canonical id, carry the SAME `project_id` (so project/book
+    purge cascades — AC8), and re-embed only THIS language on republish (the
+    ingester's content-hash skip-gate dedups a no-op edit — R7).
+
+    Payload: {book_id, chapter_id, target_language}. Resolves project via book_id;
+    skips when the book has no knowledge project or no embedding model configured.
+    Wholly best-effort — a failure must not block the event loop.
+    """
+    payload = event.payload
+    book_id = _uuid(payload.get("book_id"))
+    chapter_uuid = _uuid(payload.get("chapter_id"))
+    target_language = (payload.get("target_language") or "").strip().lower()
+
+    if book_id is None or chapter_uuid is None or not target_language:
+        logger.warning(
+            "translation.published missing book_id/chapter_id/target_language: %s",
+            event.message_id,
+        )
+        return
+
+    project_row = await pool.fetchrow(
+        """
+        SELECT project_id, user_id, embedding_model, embedding_dimension
+        FROM knowledge_projects WHERE book_id = $1 LIMIT 1
+        """,
+        book_id,
+    )
+    if project_row is None:
+        logger.debug(
+            "No knowledge project for book %s — skipping translation.published", book_id
+        )
+        return
+    embedding_model = project_row["embedding_model"]
+    embedding_dim = project_row["embedding_dimension"]
+    if not embedding_model or not embedding_dim:
+        logger.debug(
+            "translation.published: project for book %s has no embedding model — skipping",
+            book_id,
+        )
+        return
+
+    from app.config import settings as _settings
+    if not _settings.neo4j_uri:
+        logger.debug("translation.published: NEO4J_URI unset — skipping")
+        return
+
+    from app.clients.book_client import get_book_client
+    from app.clients.embedding_client import get_embedding_client
+    from app.clients.translation_client import get_translation_client
+    from app.db.neo4j import neo4j_session
+    from app.extraction.passage_ingester import ingest_chapter_passages
+
+    # Fetch the ACTIVE translated text for this language.
+    vi_text = await get_translation_client().get_active_translation_text(
+        chapter_uuid, target_language,
+    )
+    if not vi_text:
+        logger.info(
+            "translation.published: no active %s text for chapter=%s — skipping",
+            target_language, chapter_uuid,
+        )
+        return
+
+    book_client = get_book_client()
+    # Mirror chapter_index off the source chapter's sort_order so the vi reading
+    # axis matches the zh passages + the graph event_order.
+    sort_orders = await book_client.get_chapter_sort_orders([chapter_uuid])
+    chapter_index = sort_orders.get(chapter_uuid)
+
+    try:
+        async with neo4j_session() as session:
+            await ingest_chapter_passages(
+                session,
+                book_client,
+                get_embedding_client(),
+                user_id=project_row["user_id"],
+                project_id=project_row["project_id"],
+                book_id=book_id,
+                chapter_id=chapter_uuid,
+                chapter_index=chapter_index,
+                embedding_model=embedding_model,
+                embedding_dim=embedding_dim,
+                canon=True,  # an active translation is canon for its language
+                source_lang=target_language,
+                text_override=vi_text,
+                pool=pool,
+            )
+    except Exception:
+        logger.warning(
+            "translation.published: dual-index failed chapter=%s lang=%s — non-fatal",
+            chapter_uuid, target_language, exc_info=True,
         )
 
 

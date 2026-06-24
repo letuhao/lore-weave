@@ -1,0 +1,35 @@
+# EXAMPLE /warp Slice Manifest — canonical reference + validator fixture.
+#
+# Validated by: python scripts/workflow-gate.py slices docs/warp/EXAMPLE-manifest.yaml
+# Spec:         docs/specs/2026-06-12-warp-parallel-mode.md §6
+#
+# A real run writes its own manifest to docs/warp/<task-slug>/manifest.yaml at the
+# DESIGN phase, then the validator gates the DESIGN->REVIEW (PT-verdict) boundary.
+# The invariant that makes parallel fan-out safe: every slice's `writes` is a
+# path-prefix-disjoint subtree, and the inter-slice contract lives in
+# `frozen_interface` (immutable for the duration of the fan-out).
+
+task: factory-budget-and-i18n
+
+# The junction: settled in DESIGN, pinned by sha, read-only during fan-out.
+frozen_interface:
+  - path: contracts/api/campaign.yaml
+    sha: 0000000000000000000000000000000000000000   # git blob sha at freeze time
+
+slices:
+  - id: 1
+    label: budget-validate-backend
+    writes: [services/campaign-service/internal/budget/**]   # OWN disjoint subtree
+    reads:  [contracts/api/campaign.yaml]                     # frozen interface only
+    acceptance: ["go test ./services/campaign-service/internal/budget/..."]
+
+  - id: 2
+    label: picker-dedup-frontend
+    writes: [frontend/src/features/campaigns/**]
+    reads:  [contracts/api/campaign.yaml]
+    acceptance: ["pnpm -C frontend vitest run campaigns"]
+
+merge_plan:
+  integrate_order: [1, 2]                # Tank rebases slices in this order
+  reconcile_evidence: "live smoke: create campaign -> budget rejects over-cap -> picker dedups model list"
+  on_contract_violation: HALT_REDESIGN   # never patch a slice to absorb a frozen-interface change

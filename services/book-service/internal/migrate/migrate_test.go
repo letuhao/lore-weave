@@ -164,6 +164,122 @@ func TestBackfillIsMarkerGatedOneTime(t *testing.T) {
 	}
 }
 
+// ── C20 (world container) - 2026-06-14 ──────────────────────────────────────
+// Regression lock for the worlds table + nullable world_id FK on books + the
+// is_bible hidden-chapter flag. Pure string check; real round-trip + live-smoke
+// run at VERIFY. Additive (IF NOT EXISTS) — book-service has no down-migration
+// ledger; Up() idempotency is the rollback story, WorldsDownSQL is the explicit
+// reversible DDL exercised by the VERIFY round-trip (up→down→re-up on real PG).
+
+func TestSchemaContainsWorldsTable(t *testing.T) {
+	if !strings.Contains(schemaSQL, "CREATE TABLE IF NOT EXISTS worlds") {
+		t.Fatal("schemaSQL missing worlds table — C20 world container broke")
+	}
+	for _, col := range []string{
+		"id UUID PRIMARY KEY DEFAULT uuidv7()",
+		"owner_user_id UUID NOT NULL",
+		"name TEXT NOT NULL",
+		"description TEXT",
+		"created_at TIMESTAMPTZ NOT NULL DEFAULT now()",
+		"updated_at TIMESTAMPTZ NOT NULL DEFAULT now()",
+	} {
+		if !strings.Contains(schemaSQL, col) {
+			t.Fatalf("worlds table missing column: %q", col)
+		}
+	}
+	if !strings.Contains(schemaSQL, "CREATE INDEX IF NOT EXISTS idx_worlds_owner") {
+		t.Fatal("worlds missing idx_worlds_owner (owner-scoped list)")
+	}
+}
+
+// G1 LOCKED: world_id is a NULLABLE FK on books, default NULL, ON DELETE SET NULL.
+// Deleting a world SET-NULLs member books (returns them to standalone), NOT cascade.
+// The column must be additive (IF NOT EXISTS) so existing world_id=NULL books are
+// untouched. A regression to NOT NULL / cascade-delete / backfill is a LOCK breach.
+func TestSchemaAddsBooksWorldIDColumn(t *testing.T) {
+	for _, frag := range []string{
+		"ALTER TABLE books ADD COLUMN IF NOT EXISTS world_id UUID",
+		"REFERENCES worlds(id) ON DELETE SET NULL",
+		"CREATE INDEX IF NOT EXISTS idx_books_world",
+	} {
+		if !strings.Contains(schemaSQL, frag) {
+			t.Fatalf("books world_id DDL missing: %q", frag)
+		}
+	}
+	// MUST NOT be NOT NULL and MUST NOT carry a non-NULL default (no backfill).
+	if strings.Contains(schemaSQL, "world_id UUID NOT NULL") {
+		t.Fatal("world_id must be NULLABLE (default NULL = standalone) — NOT NULL is a LOCK breach")
+	}
+	if strings.Contains(schemaSQL, "ON DELETE CASCADE") && strings.Contains(schemaSQL, "REFERENCES worlds(id) ON DELETE CASCADE") {
+		t.Fatal("world deletion must SET NULL on member books, never cascade-delete books")
+	}
+}
+
+// ARCH-REVIEW LOCKED: the auto-created world-bible chapter is HIDDEN. The flag is
+// is_bible BOOLEAN DEFAULT false; the lore machinery anchors to this sort_order-0
+// chapter. Additive column on chapters.
+func TestSchemaAddsChapterIsBibleFlag(t *testing.T) {
+	if !strings.Contains(schemaSQL, "ALTER TABLE chapters ADD COLUMN IF NOT EXISTS is_bible BOOLEAN NOT NULL DEFAULT false") {
+		t.Fatal("chapters missing is_bible flag — world-bible hidden chapter cannot be marked")
+	}
+}
+
+// The world-bible CONTAINER book must also carry an is_bible flag so it is hidden
+// from the normal library / world book list / counts — else the auto-created
+// bible book leaks as a visible junk book (adversary M1).
+func TestSchemaAddsBookIsBibleFlag(t *testing.T) {
+	if !strings.Contains(schemaSQL, "ALTER TABLE books ADD COLUMN IF NOT EXISTS is_bible BOOLEAN NOT NULL DEFAULT false") {
+		t.Fatal("books missing is_bible flag — world-bible container book would leak into the library")
+	}
+}
+
+// Idempotency: every C20 CREATE/ALTER must use IF NOT EXISTS so an Up() re-run is
+// a no-op (book-service has no migration ledger). No DO block / no backfill.
+func TestSchemaC20AdditionsAreIdempotent(t *testing.T) {
+	const sentinel = "C20 (world container) - 2026-06-14"
+	idx := strings.Index(schemaSQL, sentinel)
+	if idx == -1 {
+		t.Fatal("C20 sentinel not found in schemaSQL")
+	}
+	region := schemaSQL[idx:]
+	for _, line := range strings.Split(region, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "CREATE TABLE") && !strings.Contains(trimmed, "IF NOT EXISTS") {
+			t.Fatalf("C20 region has non-idempotent CREATE TABLE: %q", trimmed)
+		}
+		if strings.HasPrefix(trimmed, "ALTER TABLE") && !strings.Contains(trimmed, "IF NOT EXISTS") {
+			t.Fatalf("C20 region has non-idempotent ALTER TABLE: %q", trimmed)
+		}
+		if strings.HasPrefix(trimmed, "CREATE INDEX") && !strings.Contains(trimmed, "IF NOT EXISTS") {
+			t.Fatalf("C20 region has non-idempotent CREATE INDEX: %q", trimmed)
+		}
+	}
+	if strings.Contains(region, "DO $$") {
+		t.Fatal("C20 region must not contain a DO $$ block — no backfill (G1 LOCKED)")
+	}
+}
+
+// WorldsDownSQL must cleanly reverse C20: drop the world_id column FIRST (it
+// depends on worlds), then the worlds table. is_bible stays (additive, harmless on
+// re-up; dropping it would orphan no FK). Round-trip (up→down→re-up) is exercised
+// on real PG at VERIFY; this asserts the DDL ordering so the round-trip can't
+// fail on a dangling FK.
+func TestWorldsDownSQLOrdering(t *testing.T) {
+	for _, frag := range []string{
+		"ALTER TABLE books DROP COLUMN IF EXISTS world_id",
+		"DROP TABLE IF EXISTS worlds",
+	} {
+		if !strings.Contains(WorldsDownSQL, frag) {
+			t.Fatalf("WorldsDownSQL missing reversible DDL: %q", frag)
+		}
+	}
+	colIdx := strings.Index(WorldsDownSQL, "DROP COLUMN IF EXISTS world_id")
+	tblIdx := strings.Index(WorldsDownSQL, "DROP TABLE IF EXISTS worlds")
+	if colIdx == -1 || tblIdx == -1 || colIdx > tblIdx {
+		t.Fatal("WorldsDownSQL must drop the world_id column BEFORE the worlds table (FK ordering)")
+	}
+}
+
 // ── Raw search Phase 1 (lexical leg) - 2026-06-07 ───────────────────────────
 // Regression lock for the pg_trgm extension + GIN trigram index. IF NOT EXISTS
 // = idempotent (book-service has no down-migration; Up() re-run is rollback).
@@ -184,5 +300,25 @@ func TestRawSearchTrigramMigration(t *testing.T) {
 	// restricted-privilege role. It must be a best-effort separate Exec.
 	if strings.Contains(schemaSQL, "pg_trgm") {
 		t.Fatal("pg_trgm DDL must be best-effort in Up(), not in schemaSQL (review-impl MED-1)")
+	}
+}
+
+// ── MCP fan-out Tier-W single-use confirm-token ledger - 2026-06-20 ─────────
+// Regression lock for book_consumed_tokens (/review-impl HIGH). The confirm route
+// keys single-use on token_hash (PK); a replay hits the PK and is refused. Mirrors
+// provider-registry settings_consumed_tokens. Additive + idempotent (IF NOT EXISTS).
+func TestSchemaContainsConsumedTokensTable(t *testing.T) {
+	if !strings.Contains(schemaSQL, "CREATE TABLE IF NOT EXISTS book_consumed_tokens") {
+		t.Fatal("schemaSQL missing book_consumed_tokens — Tier-W single-use replay guard broke")
+	}
+	for _, frag := range []string{
+		"token_hash  TEXT PRIMARY KEY",
+		"consumed_at TIMESTAMPTZ NOT NULL DEFAULT now()",
+		"exp         TIMESTAMPTZ",
+		"CREATE INDEX IF NOT EXISTS idx_book_consumed_tokens_exp ON book_consumed_tokens(exp)",
+	} {
+		if !strings.Contains(schemaSQL, frag) {
+			t.Fatalf("book_consumed_tokens missing fragment: %q", frag)
+		}
 	}
 }

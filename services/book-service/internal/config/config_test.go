@@ -8,6 +8,7 @@ func TestLoadValidation(t *testing.T) {
 	t.Setenv("QUOTA_BYTES_DEFAULT", "123")
 	t.Setenv("DATABASE_URL", "postgres://user:pw@localhost:5432/db?sslmode=disable")
 	t.Setenv("JWT_SECRET", "12345678901234567890123456789012")
+	t.Setenv("CONFIRM_TOKEN_SIGNING_SECRET", "12345678901234567890123456789012")
 	t.Setenv("INTERNAL_SERVICE_TOKEN", "tok")
 	t.Setenv("MINIO_SECRET_KEY", "msk")
 	t.Setenv("MINIO_EXTERNAL_URL", "http://localhost:9123")

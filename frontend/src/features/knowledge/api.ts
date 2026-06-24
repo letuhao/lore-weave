@@ -44,6 +44,14 @@ export interface ExtractionJobWire {
   items_total: number | null;
   cost_spent_usd: string;
   current_cursor: Record<string, unknown> | null;
+  /**
+   * C7 raise-cap (KN-7) — the job's parallel-LLM concurrency cap. `null`
+   * ⇒ unbounded (started without a cap). The running-build control reads
+   * this and PATCHes it in-flight. Optional in practice during a
+   * rollout window where an older BE response lacks the field, so
+   * consumers should treat `undefined`/`null` identically.
+   */
+  concurrency_level: number | null;
   started_at: string;
   paused_at: string | null;
   completed_at: string | null;
@@ -111,12 +119,25 @@ export interface EstimateExtractionPayload {
   scope: ExtractionJobScopeWire;
   scope_range?: { chapter_range: [number, number] };
   llm_model: string;
+  // C13 — number of glossary entities the user intends to pin. Drives the
+  // pinned-injection cost line (pinned_count × ~50 × num_windows). Omit ⇒ 0.
+  pinned_count?: number;
 }
 
 // Mirrors StartJobRequest in
 // services/knowledge-service/app/routers/public/extraction.py — BOTH
 // llm_model and embedding_model are required by the BE; omitting either
 // returns 422. Callers must have a prior job or a user-selected model.
+// C12 — target-typed extraction taxonomy (mirrors StartJobRequest's
+// ExtractionTarget Literal). `summaries` is the summary-enqueue pass;
+// the FE picker's "events·timeline" label is the `events` op.
+export type ExtractionTarget =
+  | 'entities'
+  | 'relations'
+  | 'events'
+  | 'facts'
+  | 'summaries';
+
 export interface ExtractionStartPayload {
   scope: ExtractionJobScopeWire;
   scope_range?: { chapter_range: [number, number] };
@@ -124,6 +145,33 @@ export interface ExtractionStartPayload {
   embedding_model: string;
   max_spend_usd?: string;
   items_total?: number;
+  // C12 — the subset of passes to run. Omitted ⇒ all (back-compat). The BE
+  // validator auto-includes `entities` for dependent targets.
+  targets?: ExtractionTarget[];
+  // C12 — passthrough cap on parallel LLM calls. Omitted ⇒ unbounded.
+  concurrency_level?: number;
+  // C13 — glossary entity ids to pin (force-inject into every extraction
+  // window's known_entities). Omitted / empty ⇒ no pins (back-compat).
+  pinned_glossary_entity_ids?: string[];
+}
+
+// C13 — one entity in the build-wizard auto-pin suggestion data. Mirrors
+// GlossaryEntityStat in services/knowledge-service/.../entities.py (which
+// proxies glossary-service's /internal/books/{id}/entities/stats).
+export interface GlossaryEntityStat {
+  entity_id: string;
+  name: string;
+  kind: string;
+  mention_count: number;
+  first_chapter_index: number | null;
+  last_chapter_index: number | null;
+  // distinct linked chapters / total book chapters, in [0,1].
+  coverage_pct: number;
+}
+
+export interface GlossaryEntityStatsResponse {
+  items: GlossaryEntityStat[];
+  chapter_count: number;
 }
 
 // Mirrors RebuildRequest (no `scope` field — handler hard-codes scope=all).
@@ -178,6 +226,13 @@ export interface Entity {
   anchor_score: number;
   archived_at: string | null;
   archive_reason: string | null;
+  /** C8: DERIVED server-side from glossary_entity_id + archived_at.
+   *  `canonical` = glossary-anchored · `discovered` = unanchored active ·
+   *  `archived` = archived_at set. Precedence archived > canonical >
+   *  discovered (mirrors the BE `Entity.status` computed field). Never
+   *  a stored column. Optional in the type so pre-C8 fixtures / a
+   *  rollout-window response without the field degrade gracefully. */
+  status?: EntityStatus;
   evidence_count: number;
   mention_count: number;
   /** K19d γ-a: set to true by PATCH /entities/{id}; gates the Unlock
@@ -285,12 +340,27 @@ export interface RegenerateResponse {
 
 // ── K19d.2 / K19d.4 — entities browse + detail ────────────────────────
 
+/** C8: closed set of derived entity statuses. Source of truth for the
+ *  FE — the status filter + the row glyph map iterate this tuple. */
+export const ENTITY_STATUSES = ['canonical', 'discovered', 'archived'] as const;
+export type EntityStatus = (typeof ENTITY_STATUSES)[number];
+
+/** C8: ordering keys accepted by the entities list endpoint. */
+export type EntitySortBy = 'mention_count' | 'anchor_score';
+
 export interface EntitiesListParams {
   project_id?: string;
   kind?: string;
   /** FE enforces min length 2 (matches BE Query min_length=2) so
    *  filter-free short keystrokes don't round-trip to a 422. */
   search?: string;
+  /** C8: natural-language VECTOR search. Mutually exclusive with
+   *  `search` (BE 422s if both set); requires `project_id`. */
+  semantic_query?: string;
+  /** C8: filter to a single derived status. */
+  status?: EntityStatus;
+  /** C8: ordering key. Defaults to `mention_count` BE-side. */
+  sort_by?: EntitySortBy;
   limit?: number;
   offset?: number;
 }
@@ -298,6 +368,83 @@ export interface EntitiesListParams {
 export interface EntitiesBrowseResponse {
   entities: Entity[];
   total: number;
+  /** C8: set on the `semantic_query` vector path ("searched via X");
+   *  null on the plain FTS/browse path OR when the project isn't
+   *  indexed yet. */
+  embedding_model?: string | null;
+}
+
+// ── C10 (C10-gap-report) — entity Gap Report ─────────────────────────
+//
+// ENTITY gaps: high-mention DISCOVERED entities with no glossary entry,
+// from knowledge-service `find_gap_candidates()`. Distinct from
+// lore-enrichment's attribute-dimension `detect-gaps` (a different
+// feature in features/enrichment — do not conflate).
+export interface GapReportParams {
+  /** Mention-count floor; the FE threshold control feeds this straight
+   *  to the BE query (pass-through). */
+  min_mentions?: number;
+  limit?: number;
+}
+
+export interface GapReportResponse {
+  /** Discovered (unanchored) entities above the threshold. Each is a
+   *  full Entity (status === 'discovered'), so the same StatusGlyph /
+   *  promote machinery as the Entities tab applies. */
+  gaps: Entity[];
+  total: number;
+  /** The active threshold, echoed by the BE — labels the report. */
+  min_mentions: number;
+}
+
+// ── C18/C19 (G5) — GET /projects/{id}/subgraph ────────────────────────
+//
+// The read-only project subgraph for the C19 graph canvas. Mirrors the
+// BE `Subgraph` model (relations.py): a lightweight node projection
+// (identity + kind for colour + anchor_score/mention_count for sizing,
+// NOT the full Entity — the canvas pulls full detail lazily via
+// `getEntityDetail` on click) and `:RELATES_TO` edge projection. Raw
+// nodes + edges; NO server-side layout (the canvas hand-rolls
+// force/radial). `node_cap_hit` flags that the deterministic node cap
+// trimmed the result so the canvas can offer expand / load-more.
+export interface SubgraphNode {
+  id: string;
+  name: string;
+  kind: string;
+  anchor_score: number;
+  mention_count: number;
+  glossary_entity_id: string | null;
+  /** W2 (G4) — set ONLY by the world rollup (`getWorldSubgraph`): the member
+   *  project this node came from, so the FE can legend the per-book islands.
+   *  `undefined`/`null` on the single-project subgraph (it never tags source). */
+  source_project_id?: string | null;
+}
+
+export interface SubgraphEdge {
+  id: string;
+  source: string;
+  target: string;
+  predicate: string;
+  confidence: number;
+}
+
+export interface SubgraphResponse {
+  nodes: SubgraphNode[];
+  edges: SubgraphEdge[];
+  node_cap_hit: boolean;
+}
+
+export interface SubgraphParams {
+  /** Traversal depth for ego-expansion (only applies when `center` is
+   *  set). 1–3, clamped server-side. */
+  hops?: number;
+  /** Hard node cap (≤500, clamped server-side). Selected
+   *  deterministically so expand / load-more is stable. */
+  limit?: number;
+  /** Optional entity id to ego-expand from — returns the `hops`-bounded
+   *  neighbourhood instead of the project-wide top-N. Powers
+   *  click-to-expand. */
+  center?: string;
 }
 
 /**
@@ -467,7 +614,30 @@ export interface TimelineEvent {
   version: number;
   created_at: string | null;
   updated_at: string | null;
+  /** C14 (C14-importance-major-pivotal) — DERIVED salience the BE computes
+   *  from existing signals (mention_count, participants, confidence); never
+   *  a stored field, never re-extracted. `null` = ordinary/unbadged event
+   *  (the common case — the long tail is NOT mislabeled). The rail badges
+   *  only the non-null `major`/`pivotal` events. */
+  importance: EventImportance | null;
 }
+
+// C14 — closed importance enum mirroring the BE EVENT_IMPORTANCE tuple
+// one-to-one. `major`/`pivotal` ONLY — no enum drift. The Event wire field
+// is `EventImportance | null` (null = unbadged).
+export const EVENT_IMPORTANCE = ['major', 'pivotal'] as const;
+export type EventImportance = (typeof EVENT_IMPORTANCE)[number];
+
+// C14 — timeline sort axis. `narrative` (default) = reading position
+// (event_order); `chronological` = in-story chronology. Mirrors the BE
+// TIMELINE_SORT_KEYS allowlist. Omitting it is back-compatible.
+export const TIMELINE_SORT_KEYS = ['narrative', 'chronological'] as const;
+export type TimelineSortBy = (typeof TIMELINE_SORT_KEYS)[number];
+
+// D-K19e-α-03 — sort direction for the chosen axis. `asc` (default, back-compat)
+// = earliest-first; `desc` = latest-first. Mirrors the BE TIMELINE_SORT_DIRECTIONS.
+export const TIMELINE_SORT_DIRECTIONS = ['asc', 'desc'] as const;
+export type TimelineSortDir = (typeof TIMELINE_SORT_DIRECTIONS)[number];
 
 // ── Phase B C — relation + event correction payloads ─────────────────
 
@@ -504,6 +674,17 @@ export interface TimelineListParams {
   /** T2.1: spoiler-window the timeline THROUGH this book chapter (resolved
    *  server-side to a before_order ceiling). An explicit `before_order` wins. */
   before_chapter_id?: string;
+  /** C14 (C14-narrative-order-sort): sort axis. `narrative` (default,
+   *  back-compat when omitted) = reading position; `chronological` =
+   *  in-story chronology. */
+  sort_by?: TimelineSortBy;
+  /** D-K19e-α-03: sort direction for the chosen `sort_by` axis. `asc` (default,
+   *  back-compat) = earliest-first; `desc` = latest-first. */
+  sort_dir?: TimelineSortDir;
+  /** D-K19e-α-02: inclusive ISO date-range bounds (YYYY / YYYY-MM / YYYY-MM-DD)
+   *  on `event_date_iso`. Events with NULL date are excluded when either is set. */
+  event_date_from?: string;
+  event_date_to?: string;
   limit?: number;
   offset?: number;
 }
@@ -511,6 +692,15 @@ export interface TimelineListParams {
 export interface TimelineResponse {
   events: TimelineEvent[];
   total: number;
+}
+
+// D-WORLD-TIMELINE-ROLLUP — the world timeline union (mirror of the W2 graph
+// rollup). Events carry their own `project_id` so the FE can legend per book;
+// `truncated` flags that the merged union exceeded the cap.
+export interface WorldTimelineResponse {
+  events: TimelineEvent[];
+  total: number;
+  truncated: boolean;
 }
 
 // ── K19e.5 — Drawer (passage) search ──────────────────────────────────
@@ -533,6 +723,20 @@ export interface DrawerSearchHit {
   chapter_index: number | null;
   created_at: string | null;
   raw_score: number;
+  /** KG-ML M7 (C12): the passage's source language (M1/M2). "unknown" for
+   *  legacy untagged passages. Lets the card badge each hit's language. */
+  source_lang?: string;
+}
+
+/** KG-ML M7 (C12): reader-language coverage for a drawer/raw search. Mirrors
+ *  the BE ``language_coverage`` shape. ``note`` is null when coverage is full
+ *  or no results; the FE shows it only when present. */
+export interface LanguageCoverage {
+  reader_lang: string;
+  total: number;
+  in_language: number;
+  partial: boolean;
+  note: string | null;
 }
 
 /** C8 (D-K19e-γa-01): closed enum mirrored from the BE's
@@ -550,6 +754,9 @@ export interface DrawerSearchParams {
   limit?: number;
   /** C8: optional filter. Omit for "Any". */
   source_type?: DrawerSourceType;
+  /** KG-ML M7 (C12): reader-language preference. Soft matched-first ordering
+   *  (not a filter) + a coverage note. Omit for no preference. */
+  language?: string;
 }
 
 export interface DrawerSearchResponse {
@@ -563,6 +770,15 @@ export interface DrawerSearchResponse {
    *  FE pill row stays layout-stable. Reflects project-wide totals
    *  filtered to the project's current embedding_model. */
   source_type_counts: Record<string, number>;
+  /** KG-ML M7 (C12): reader-language coverage when ?language= was set; null
+   *  otherwise (or when nothing to flag). */
+  coverage?: LanguageCoverage | null;
+  /** D-K19e-γa-02: per-search embedding cost transparency. Both null until
+   *  the query was actually embedded, AND when the provider didn't report
+   *  token usage (e.g. Ollama → "unknown", not "$0"). A genuinely-free
+   *  self-hosted model reports tokens with a "0.00000000" cost. */
+  embedding_prompt_tokens?: number | null;
+  embedding_cost_usd?: string | null;
 }
 
 export type DrawerSearchErrorCode =
@@ -713,6 +929,12 @@ export const knowledgeApi = {
     if (params.cursor) qs.set('cursor', params.cursor);
     if (params.include_archived) qs.set('include_archived', 'true');
     if (params.book_id) qs.set('book_id', params.book_id);
+    // C7-followup (KN-7): server-side narrowing. Only send a non-empty
+    // search so a cleared box reverts to the unfiltered list.
+    if (params.search) qs.set('search', params.search);
+    if (params.sort_by) qs.set('sort_by', params.sort_by);
+    if (params.sort_dir) qs.set('sort_dir', params.sort_dir);
+    if (params.status) qs.set('status', params.status);
     const q = qs.toString();
     return apiJson<ProjectListResponse>(
       `${BASE}/projects${q ? `?${q}` : ''}`,
@@ -1001,6 +1223,17 @@ export const knowledgeApi = {
     );
   },
 
+  // C13 — auto-pin suggestion data for the build-wizard Step-2 banner.
+  getGlossaryEntityStats(
+    projectId: string,
+    token: string,
+  ): Promise<GlossaryEntityStatsResponse> {
+    return apiJson<GlossaryEntityStatsResponse>(
+      `${BASE}/projects/${encodeURIComponent(projectId)}/glossary-entity-stats`,
+      { method: 'GET', token },
+    );
+  },
+
   pauseExtraction(projectId: string, token: string): Promise<ExtractionJobWire> {
     return apiJson<ExtractionJobWire>(
       `${BASE}/projects/${projectId}/extraction/pause`,
@@ -1019,6 +1252,25 @@ export const knowledgeApi = {
     return apiJson<ExtractionJobWire>(
       `${BASE}/projects/${projectId}/extraction/cancel`,
       { method: 'POST', token },
+    );
+  },
+
+  // C7 raise-cap (KN-7) — change a running/paused job's parallel-LLM
+  // concurrency cap IN-FLIGHT. The worker re-reads it each poll cycle, so
+  // the next chapter window picks up the new cap. Bounds 1–64 (BE 422s
+  // outside that); 409 if the job is terminal.
+  updateJobConcurrency(
+    jobId: string,
+    concurrencyLevel: number,
+    token: string,
+  ): Promise<ExtractionJobWire> {
+    return apiJson<ExtractionJobWire>(
+      `${BASE}/extraction/jobs/${encodeURIComponent(jobId)}/concurrency`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ concurrency_level: concurrencyLevel }),
+        token,
+      },
     );
   },
 
@@ -1160,6 +1412,10 @@ export const knowledgeApi = {
     if (params.project_id != null) qs.set('project_id', params.project_id);
     if (params.kind != null) qs.set('kind', params.kind);
     if (params.search != null) qs.set('search', params.search);
+    if (params.semantic_query != null)
+      qs.set('semantic_query', params.semantic_query);
+    if (params.status != null) qs.set('status', params.status);
+    if (params.sort_by != null) qs.set('sort_by', params.sort_by);
     if (params.limit != null) qs.set('limit', String(params.limit));
     if (params.offset != null) qs.set('offset', String(params.offset));
     const q = qs.toString();
@@ -1172,6 +1428,74 @@ export const knowledgeApi = {
   getEntityDetail(entityId: string, token: string): Promise<EntityDetail> {
     return apiJson<EntityDetail>(
       `${BASE}/entities/${encodeURIComponent(entityId)}`,
+      { token },
+    );
+  },
+
+  // ── C10 (C10-gap-report) — GET /projects/{id}/gaps ──────────────────
+  //
+  // Thin pass-through to find_gap_candidates: high-mention DISCOVERED
+  // entities with no glossary entry. `min_mentions` + `limit` flow to
+  // the BE query. Project is route-scoped (G6) — passed positionally,
+  // never via a select-box.
+  getProjectGaps(
+    projectId: string,
+    params: GapReportParams,
+    token: string,
+  ): Promise<GapReportResponse> {
+    const qs = new URLSearchParams();
+    if (params.min_mentions != null)
+      qs.set('min_mentions', String(params.min_mentions));
+    if (params.limit != null) qs.set('limit', String(params.limit));
+    const q = qs.toString();
+    return apiJson<GapReportResponse>(
+      `${BASE}/projects/${encodeURIComponent(projectId)}/gaps${q ? `?${q}` : ''}`,
+      { token },
+    );
+  },
+
+  // ── C19 (G5) — GET /projects/{id}/subgraph ──────────────────────────
+  //
+  // Read-only project subgraph for the graph canvas. Thin client over
+  // C18's endpoint: `center` ego-expands (with `hops`), no center =
+  // project-wide top-N. `limit` is the node cap. Project route-scoped
+  // (G6). No new BE — C18 owns this endpoint.
+  getProjectSubgraph(
+    projectId: string,
+    params: SubgraphParams,
+    token: string,
+  ): Promise<SubgraphResponse> {
+    const qs = new URLSearchParams();
+    if (params.hops != null) qs.set('hops', String(params.hops));
+    if (params.limit != null) qs.set('limit', String(params.limit));
+    if (params.center != null) qs.set('center', params.center);
+    const q = qs.toString();
+    return apiJson<SubgraphResponse>(
+      `${BASE}/projects/${encodeURIComponent(projectId)}/subgraph${q ? `?${q}` : ''}`,
+      { token },
+    );
+  },
+
+  // ── W2 (G4) — GET /worlds/{id}/subgraph (world rollup) ────────────────
+  //
+  // The world's canon rollup: a UNION of each member book's C18 subgraph +
+  // the world-level (bible) project, merged server-side into one
+  // `{nodes, edges, node_cap_hit}` payload (same Subgraph wire as the
+  // per-project view). Nodes carry `source_project_id` so the FE can legend
+  // the per-book islands. Owner-scoped server-side (a world the caller
+  // doesn't own → 404). No `center`/expand — the union is flat (the per-book
+  // graphs are disconnected components by design). 503 if book-service (the
+  // membership source) is unavailable.
+  getWorldSubgraph(
+    worldId: string,
+    params: { limit?: number },
+    token: string,
+  ): Promise<SubgraphResponse> {
+    const qs = new URLSearchParams();
+    if (params.limit != null) qs.set('limit', String(params.limit));
+    const q = qs.toString();
+    return apiJson<SubgraphResponse>(
+      `${BASE}/worlds/${encodeURIComponent(worldId)}/subgraph${q ? `?${q}` : ''}`,
       { token },
     );
   },
@@ -1223,6 +1547,53 @@ export const knowledgeApi = {
       `${BASE}/entities/${encodeURIComponent(entityId)}/unlock`,
       {
         method: 'POST',
+        token,
+      },
+    );
+  },
+
+  // ── C9 (C9-promote-flow) — POST /entities/{id}/promote ───────────────
+  //
+  // Promote a DISCOVERED entity into the glossary curation flywheel. The
+  // BE orchestrates the two-call flow server-side: (1) create a glossary
+  // DRAFT (status=draft, tag `ai-suggested`) and (2) anchor the entity
+  // (glossary_entity_id + anchor_score=1.0). Returns the now-canonical
+  // Entity. Errors carry a structured `detail.error_code`:
+  //   - 404                          — entity missing / cross-user
+  //   - 409 `already_anchored`       — entity already canonical (no re-promote)
+  //   - 422 `no_book`                — project has no linked book
+  //   - 502 `glossary_draft_failed`  — draft-create failed (NOT anchored)
+  //   - 502 `anchor_failed`          — draft created but anchor missed
+  //                                    (retry is safe; no duplicate draft)
+  promoteEntity(entityId: string, token: string): Promise<Entity> {
+    return apiJson<Entity>(
+      `${BASE}/entities/${encodeURIComponent(entityId)}/promote`,
+      {
+        method: 'POST',
+        token,
+      },
+    );
+  },
+
+  // ── C9 — glossary context-pin toggle (is_pinned_for_context) ─────────
+  //
+  // POST/DELETE /v1/glossary/books/{book_id}/entities/{glossary_entity_id}/pin
+  // — idempotent toggle of the glossary entity's `is_pinned_for_context`
+  // flag (the entity-detail "unpin" control). Only meaningful for a
+  // canonical knowledge entity (it has a `glossary_entity_id`); the FE
+  // gates the control on that. 204 No Content on success.
+  setGlossaryEntityPinned(
+    bookId: string,
+    glossaryEntityId: string,
+    pinned: boolean,
+    token: string,
+  ): Promise<void> {
+    return apiJson<void>(
+      `/v1/glossary/books/${encodeURIComponent(bookId)}/entities/${encodeURIComponent(
+        glossaryEntityId,
+      )}/pin`,
+      {
+        method: pinned ? 'POST' : 'DELETE',
         token,
       },
     );
@@ -1380,11 +1751,37 @@ export const knowledgeApi = {
     if (params.entity_id != null) qs.set('entity_id', params.entity_id);
     if (params.before_chapter_id != null)
       qs.set('before_chapter_id', params.before_chapter_id);
+    if (params.sort_by != null) qs.set('sort_by', params.sort_by);
+    if (params.sort_dir != null) qs.set('sort_dir', params.sort_dir);
+    if (params.event_date_from != null)
+      qs.set('event_date_from', params.event_date_from);
+    if (params.event_date_to != null)
+      qs.set('event_date_to', params.event_date_to);
     if (params.limit != null) qs.set('limit', String(params.limit));
     if (params.offset != null) qs.set('offset', String(params.offset));
     const q = qs.toString();
     return apiJson<TimelineResponse>(
       `${BASE}/timeline${q ? `?${q}` : ''}`,
+      { token },
+    );
+  },
+
+  // ── D-WORLD-TIMELINE-ROLLUP — GET /worlds/{id}/timeline ──────────────
+  //
+  // The world's canon timeline rollup: a UNION of each member book's timeline +
+  // the world-level (bible) project, merged + re-sorted server-side. Same
+  // owner-scoping / 404 / 503 semantics as the world subgraph. Read-only.
+  getWorldTimeline(
+    worldId: string,
+    params: { sort_by?: TimelineSortBy; limit?: number },
+    token: string,
+  ): Promise<WorldTimelineResponse> {
+    const qs = new URLSearchParams();
+    if (params.sort_by) qs.set('sort_by', params.sort_by);
+    if (params.limit != null) qs.set('limit', String(params.limit));
+    const q = qs.toString();
+    return apiJson<WorldTimelineResponse>(
+      `${BASE}/worlds/${encodeURIComponent(worldId)}/timeline${q ? `?${q}` : ''}`,
       { token },
     );
   },
@@ -1434,6 +1831,7 @@ export const knowledgeApi = {
     qs.set('query', params.query);
     if (params.limit != null) qs.set('limit', String(params.limit));
     if (params.source_type != null) qs.set('source_type', params.source_type);
+    if (params.language) qs.set('language', params.language);
     return apiJson<DrawerSearchResponse>(
       `${BASE}/drawers/search?${qs.toString()}`,
       { token },

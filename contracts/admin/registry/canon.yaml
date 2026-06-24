@@ -1,0 +1,43 @@
+# L7.A canon-domain admin commands — RAID cycle 36 DPS 3.
+# Per-domain registry per Q-L7A-1. Schema in reality.yaml header.
+
+domain: canon
+commands:
+  - name: canon decanonize
+    version: "1.0.0"
+    summary: "Remove a fact from canon (DMCA takedown / authorial retract)."
+    handler: canonDecanonize
+    params:
+      - {name: fact_id,   type: uuid,   required: true, description: "Canon fact UUID"}
+      - {name: ticket_id, type: string, required: true, description: "DMCA ticket or revision ref"}
+      - {name: reason,    type: string, required: true, description: "Audit explanation"}
+    impact_class: tier-1-destructive
+    dry_run_required: true
+    double_approval_required: true
+    carry_forward_cycle: "36"
+    locked_qs_consumed: [Q-L7A-1, Q-L7A-2]
+
+  - name: canon force-propagate
+    version: "1.0.0"
+    summary: "Force canon propagation to all subscribed realities (skip lag-throttle)."
+    handler: canonForcePropagate
+    params:
+      - {name: fact_id, type: uuid,   required: true, description: "Canon fact UUID"}
+      - {name: reason,  type: string, required: true, description: "Audit explanation"}
+    impact_class: tier-2-griefing
+    dry_run_required: true
+    double_approval_required: false
+    carry_forward_cycle: "36"
+    locked_qs_consumed: [Q-L7A-1, Q-L7A-2]
+
+  - name: canon conflict-list
+    version: "1.0.0"
+    summary: "List unresolved canon conflicts across realities (informational)."
+    handler: canonConflictList
+    params:
+      - {name: since, type: timestamp, required: false, description: "Show conflicts since (default 24h ago)"}
+    impact_class: tier-3-informational
+    dry_run_required: false
+    double_approval_required: false
+    carry_forward_cycle: "36"
+    locked_qs_consumed: [Q-L7A-1, Q-L7A-2]

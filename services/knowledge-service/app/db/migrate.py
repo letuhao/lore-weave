@@ -318,6 +318,10 @@ CREATE TABLE IF NOT EXISTS extraction_jobs (
 ALTER TABLE extraction_jobs
   ADD COLUMN IF NOT EXISTS campaign_id UUID;
 
+-- Unified Job Control Plane reconcile source: GET /internal/knowledge/jobs?since=
+-- filters extraction_jobs by updated_at — index it so the periodic sweep isn't a seq-scan.
+CREATE INDEX IF NOT EXISTS idx_extraction_jobs_updated_at ON extraction_jobs(updated_at);
+
 -- E0-3 Phase 2a (D-E0-3-CALLER-PAYS-EXTRACTION): BYOK dual-identity billing.
 -- A collaborator's extraction must charge the COLLABORATOR's key, never the
 -- owner's (only a key's owner may cause it to be charged). These three columns
@@ -330,6 +334,50 @@ ALTER TABLE extraction_jobs
   ADD COLUMN IF NOT EXISTS billing_user_id         UUID,
   ADD COLUMN IF NOT EXISTS billing_embedding_model TEXT,
   ADD COLUMN IF NOT EXISTS billing_llm_model       TEXT;
+
+-- LLM re-arch Phase 2b WX-T1 (worker-ai extraction decouple): event-driven resume
+-- state. extract_pass2 is a multi-stage DAG with a concurrent fan-in (entity →
+-- gather(relation,event,fact) → recovery → filter, × chunks), so the decoupled
+-- orchestrator must persist (a) the IN-FLIGHT job set — the trio puts ≥3 jobs in
+-- flight at once → fan-in on all their terminal events — and (b) an explicit
+-- partial-extraction blob (stage cursor + per-op accumulators) that can't be
+-- reconstructed from anything else. All additive; NULL ⇒ legacy synchronous path
+-- (zero behavior change until extraction_decouple_enabled flips on). See
+-- docs/plans/2026-06-11-llm-rearch-phase2b-workerai-extraction-decouple-design.md.
+ALTER TABLE extraction_jobs
+  ADD COLUMN IF NOT EXISTS provider_job_ids JSONB,
+  ADD COLUMN IF NOT EXISTS resume_state     JSONB,
+  ADD COLUMN IF NOT EXISTS pipeline_stage   TEXT;
+
+-- C12 — target-typed extraction. `targets` selects which Pass-2 passes a
+-- build runs (entities/relations/events/facts/summaries). NOT NULL with a
+-- DEFAULT of ALL passes ⇒ every pre-C12 job + every caller that omits the
+-- field gets the original behaviour unchanged (the SDK + orchestrator
+-- treat the full set as "run all"). Requesting any of {relations,events,
+-- facts} auto-includes `entities` (enforced in the request layer + SDK
+-- guard, not the column). `concurrency_level` is a passthrough cap on
+-- parallel LLM calls; NULL ⇒ current unbounded behaviour. Both additive.
+ALTER TABLE extraction_jobs
+  ADD COLUMN IF NOT EXISTS targets TEXT[] NOT NULL
+    DEFAULT ARRAY['entities','relations','events','facts','summaries'],
+  ADD COLUMN IF NOT EXISTS concurrency_level INT;
+
+-- C13 — glossary pinning. `pinned_entity_ids` is the set of glossary entity
+-- ids the user chose to force-inject into EVERY extraction window's
+-- known_entities context (so sparse-but-critical entities stay anchored even
+-- in chapters that never mention them). JSONB array of id strings; NULL ⇒ no
+-- pins (back-compat — pre-C13 jobs + any caller that omits the field). The
+-- worker reads it, batch-fetches the names from glossary-service, and prepends
+-- them to known_entities. Additive.
+ALTER TABLE extraction_jobs
+  ADD COLUMN IF NOT EXISTS pinned_entity_ids JSONB;
+
+-- D-RE-OTHER-AGENTIC-EFFORT: the clamped graded reasoning effort (none|low|medium|high) the
+-- kg_build_graph cost-gate captured (clamped to the caller's grant at mint + confirm). worker-ai
+-- honors it via D-KG-WORKER-GRADED-EFFORT. Additive + idempotent; default 'none' ⇒ no behavior
+-- change for existing rows / callers that omit it.
+ALTER TABLE extraction_jobs
+  ADD COLUMN IF NOT EXISTS reasoning_effort TEXT NOT NULL DEFAULT 'none';
 
 CREATE INDEX IF NOT EXISTS idx_extraction_jobs_project
   ON extraction_jobs (project_id, created_at DESC);
@@ -806,6 +854,24 @@ CREATE INDEX IF NOT EXISTS idx_outbox_pending
   ON outbox_events(created_at) WHERE published_at IS NULL;
 
 -- ═══════════════════════════════════════════════════════════════
+-- C23-fix (dị bản G2) — derivative-project flag on knowledge_projects.
+-- A DERIVATIVE work's knowledge project must get its OWN fresh partition
+-- and must NEVER be returned by the SOURCE book's per-(user,book)
+-- get-or-create dedup (create_or_get) or by get_by_book — otherwise the
+-- derivative inherits the source's project_id and composition's
+-- uq_composition_work_project (1 work : 1 project) is violated (the
+-- UniqueViolationError that 500'd POST /works/{id}/derive). Additive +
+-- backward-compatible: DEFAULT false ⇒ every existing row + every
+-- non-derivative create path behaves exactly as before. The repo's
+-- create_or_get/get_by_book SELECTs add `AND NOT is_derivative` so a
+-- derivative is excluded from the source book's dedup; the derive path
+-- sets force_new=true which both skips the dedup lock/select AND stamps
+-- is_derivative=true. ADD COLUMN IF NOT EXISTS keeps the DDL idempotent.
+-- ═══════════════════════════════════════════════════════════════
+ALTER TABLE knowledge_projects
+  ADD COLUMN IF NOT EXISTS is_derivative BOOLEAN NOT NULL DEFAULT false;
+
+-- ═══════════════════════════════════════════════════════════════
 -- Phase E2 — genre tag on knowledge_projects (2026-06-01)
 -- Free-text, user-settable (e.g. "Tiên hiệp", "trinh thám").
 -- Copied to extraction_runs at run-emit time for genre-segment
@@ -813,6 +879,39 @@ CREATE INDEX IF NOT EXISTS idx_outbox_pending
 -- ═══════════════════════════════════════════════════════════════
 ALTER TABLE knowledge_projects
   ADD COLUMN IF NOT EXISTS genre TEXT;
+
+-- ═══════════════════════════════════════════════════════════════
+-- G4 (world-level knowledge project, 2026-06-15) — world_id binding.
+-- A world's dedicated knowledge partition (bound to its hidden bible
+-- book) carries world_id so it has first-class identity independent of
+-- "the project whose book_id == the bible book". FK-by-convention to
+-- book-service worlds.id (cross-DB, no SQL FK — same as user_id/book_id).
+-- NULL for every normal per-book / general / derivative project, so the
+-- column is additive + backward-compatible (existing rows read back NULL).
+-- The partial index serves the world-rollup resolver (list WHERE world_id);
+-- the HOME projects browser excludes world_id IS NOT NULL rows in the repo.
+-- ═══════════════════════════════════════════════════════════════
+ALTER TABLE knowledge_projects
+  ADD COLUMN IF NOT EXISTS world_id UUID;
+
+CREATE INDEX IF NOT EXISTS idx_knowledge_projects_world
+  ON knowledge_projects(world_id) WHERE world_id IS NOT NULL;
+
+-- ═══════════════════════════════════════════════════════════════
+-- D-JOURNEY-KG-BENCHMARK-UX (R1) — hidden per-(user, embedding_model)
+-- benchmark SANDBOX projects. The K17.9 embedding benchmark runs on a
+-- dedicated empty project (the runner refuses any project with real
+-- passages), but the build gate is now MODEL-scoped, so a passing run on
+-- this sandbox unlocks every real project using the same model — without
+-- the run ever touching (or polluting) the content-bearing build project.
+-- Sandboxes are owner-scoped, book_id IS NULL, and excluded from every
+-- user-facing project listing.
+-- ═══════════════════════════════════════════════════════════════
+ALTER TABLE knowledge_projects
+  ADD COLUMN IF NOT EXISTS is_benchmark_sandbox BOOLEAN NOT NULL DEFAULT false;
+
+CREATE INDEX IF NOT EXISTS idx_knowledge_projects_benchmark_sandbox
+  ON knowledge_projects(user_id, embedding_model) WHERE is_benchmark_sandbox;
 
 -- ═══════════════════════════════════════════════════════════════
 -- Q4b-feed — per-run items+source sample for the online LLM judge
@@ -884,6 +983,222 @@ CREATE INDEX IF NOT EXISTS idx_wiki_gen_jobs_project
 CREATE UNIQUE INDEX IF NOT EXISTS idx_wiki_gen_jobs_one_active_per_book
   ON wiki_gen_jobs (book_id)
   WHERE status IN ('pending','running','paused');
+
+-- wiki-llm W4a — per-entity result detail + live sub-step progress (the FE
+-- screen-③ results table). `results` is an OBJECT keyed by entity_id →
+-- {outcome, citations, flags, name}; it carries both the in-flight ('processing')
+-- and finished rows (cheap idempotent upsert via `|| jsonb_build_object`, so a
+-- resume/retry overwrites). `current_entity_id`/`current_pass` point at the one
+-- in-flight entity + its pipeline pass (context|generate|verify|revise|writeback);
+-- both are NULL when no entity is processing (cleared at complete/pause/fail).
+ALTER TABLE wiki_gen_jobs
+  ADD COLUMN IF NOT EXISTS results            JSONB NOT NULL DEFAULT '{}',
+  ADD COLUMN IF NOT EXISTS current_entity_id  TEXT,
+  ADD COLUMN IF NOT EXISTS current_pass       TEXT;
+
+-- wiki-llm W5 (D-WIKI-PER-STEP-MODEL) — an OPTIONAL second model for the
+-- corrective revise re-gen ("write with A, fix canon-flagged articles with B").
+-- NULL ⇒ the revise reuses the prose model_ref/model_source (unchanged behavior).
+-- verify_article is rule-based (no LLM), so this only affects revise_article.
+ALTER TABLE wiki_gen_jobs
+  ADD COLUMN IF NOT EXISTS revise_model_ref    TEXT,
+  ADD COLUMN IF NOT EXISTS revise_model_source TEXT;
+
+-- D-RE-OTHER-AGENTIC-EFFORT: clamped reasoning effort for the wiki-gen LLM (kg_build_wiki
+-- cost-gate, clamped to the caller's grant at mint). Additive; default 'none' (no thinking).
+ALTER TABLE wiki_gen_jobs
+  ADD COLUMN IF NOT EXISTS reasoning_effort TEXT NOT NULL DEFAULT 'none';
+
+-- ═══════════════════════════════════════════════════════════════
+-- KG CUSTOMIZABLE ONTOLOGY (epic 2026-06-20, lane L1) — additive.
+-- Tiered graph schemas (system/user/project) describing GRAPH SHAPE
+-- (edge types · fact/state types · controlled vocab · expected node
+-- kinds). Postgres is SSOT; Neo4j stays derived. Scope-keyed UNIQUE
+-- (NULLS NOT DISTINCT) — never UNIQUE(code) globally (the glossary
+-- kinds-bug class). Nothing reads these until a project adopts, so old
+-- projects are unaffected (additive-first).
+-- Spec: docs/specs/2026-06-20-knowledge-graph-customizable-ontology.md §3.
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS kg_graph_schemas (
+  schema_id        UUID PRIMARY KEY DEFAULT uuidv7(),
+  scope            TEXT NOT NULL CHECK (scope IN ('system','user','project')),
+  scope_id         TEXT,                       -- NULL=system; user_id; project_id
+  code             TEXT NOT NULL CHECK (length(code) BETWEEN 1 AND 120),
+  name             TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 200),
+  description      TEXT NOT NULL DEFAULT '',
+  schema_version   INT  NOT NULL DEFAULT 1,
+  -- Q2 (LOCKED S0): true => off-vocab free-string predicates allowed
+  -- (today's behavior); false => closed to kg_edge_types (off-vocab → triage).
+  allow_free_edges BOOLEAN NOT NULL DEFAULT true,
+  content_hash     TEXT,                        -- semantic surface hash, for Sync
+  source_ref       TEXT,                        -- 'system:<id>' | 'user:<id>' | NULL native
+  source_hash      TEXT,                        -- upstream content_hash frozen at adopt
+  deprecated_at    TIMESTAMPTZ,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+-- scope-keyed uniqueness; NULLS NOT DISTINCT so two system rows can't share a
+-- code. PARTIAL (active rows only) — review-impl: replace-on-adopt deprecates
+-- the prior project schema then inserts a fresh copy with the SAME code, so a
+-- deprecated row must NOT occupy the (scope,scope_id,code) slot (else re-adopting
+-- the same template — or the M1 fill-glossary-then-re-adopt flow — would hit a
+-- unique violation). Uniqueness is enforced among NON-deprecated rows only.
+DROP INDEX IF EXISTS idx_kg_graph_schemas_scope_code;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_kg_graph_schemas_active_scope_code
+  ON kg_graph_schemas (scope, scope_id, code) NULLS NOT DISTINCT
+  WHERE deprecated_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_kg_graph_schemas_scope
+  ON kg_graph_schemas (scope, scope_id);
+
+CREATE TABLE IF NOT EXISTS kg_edge_types (
+  edge_type_id        UUID PRIMARY KEY DEFAULT uuidv7(),
+  schema_id           UUID NOT NULL REFERENCES kg_graph_schemas(schema_id) ON DELETE CASCADE,
+  code                TEXT NOT NULL CHECK (length(code) BETWEEN 1 AND 120),
+  label               TEXT NOT NULL,
+  directed            BOOLEAN NOT NULL DEFAULT true,
+  source_node_kinds   TEXT[] NOT NULL DEFAULT '{}',   -- glossary kind codes (soft ref)
+  target_node_kinds   TEXT[] NOT NULL DEFAULT '{}',
+  temporal            BOOLEAN NOT NULL DEFAULT false,  -- true => valid_from + EVIDENCED_BY required (L7)
+  provenance_required BOOLEAN NOT NULL DEFAULT false,
+  cardinality         TEXT NOT NULL DEFAULT 'multi_active'
+                        CHECK (cardinality IN ('single_active','multi_active')),
+  description         TEXT NOT NULL DEFAULT '',
+  deprecated_at       TIMESTAMPTZ,
+  UNIQUE (schema_id, code)
+);
+
+CREATE TABLE IF NOT EXISTS kg_fact_types (
+  fact_type_id     UUID PRIMARY KEY DEFAULT uuidv7(),
+  schema_id        UUID NOT NULL REFERENCES kg_graph_schemas(schema_id) ON DELETE CASCADE,
+  code             TEXT NOT NULL CHECK (length(code) BETWEEN 1 AND 120),
+  label            TEXT NOT NULL,
+  description      TEXT NOT NULL DEFAULT '',
+  deprecated_at    TIMESTAMPTZ,
+  UNIQUE (schema_id, code)
+);
+
+-- M1 (LOCKED S0): expected node-kinds anchored to glossary, with adopt strength.
+-- `required` gates adopt (block if glossary missing); `optional` warns + triages.
+CREATE TABLE IF NOT EXISTS kg_schema_node_kinds (
+  schema_node_kind_id UUID PRIMARY KEY DEFAULT uuidv7(),
+  schema_id           UUID NOT NULL REFERENCES kg_graph_schemas(schema_id) ON DELETE CASCADE,
+  kind_code           TEXT NOT NULL CHECK (length(kind_code) BETWEEN 1 AND 120),
+  strength            TEXT NOT NULL CHECK (strength IN ('required','optional')),
+  deprecated_at       TIMESTAMPTZ,
+  UNIQUE (schema_id, kind_code)
+);
+
+CREATE TABLE IF NOT EXISTS kg_vocab_sets (
+  vocab_set_id     UUID PRIMARY KEY DEFAULT uuidv7(),
+  schema_id        UUID NOT NULL REFERENCES kg_graph_schemas(schema_id) ON DELETE CASCADE,
+  code             TEXT NOT NULL CHECK (length(code) BETWEEN 1 AND 120),
+  label            TEXT NOT NULL,
+  description      TEXT NOT NULL DEFAULT '',
+  closed           BOOLEAN NOT NULL DEFAULT true,  -- true => assign-only, no coin
+  deprecated_at    TIMESTAMPTZ,
+  UNIQUE (schema_id, code)
+);
+
+CREATE TABLE IF NOT EXISTS kg_vocab_values (
+  vocab_value_id   UUID PRIMARY KEY DEFAULT uuidv7(),
+  vocab_set_id     UUID NOT NULL REFERENCES kg_vocab_sets(vocab_set_id) ON DELETE CASCADE,
+  code             TEXT NOT NULL CHECK (length(code) BETWEEN 1 AND 120),
+  label            TEXT NOT NULL,
+  metadata         JSONB NOT NULL DEFAULT '{}',    -- e.g. { axis, has_target, archetype } for drive
+  deprecated_at    TIMESTAMPTZ,                    -- A4: soft-deprecate, never hard-drop (review-impl HIGH)
+  UNIQUE (vocab_set_id, code)
+);
+-- review-impl HIGH: existing DBs created kg_vocab_values before deprecated_at —
+-- A4 (never hard-drop a row that may have referencing graph data) requires the
+-- column so sync removed_upstream can deprecate instead of DELETE.
+ALTER TABLE kg_vocab_values ADD COLUMN IF NOT EXISTS deprecated_at TIMESTAMPTZ;
+
+-- Layer 3 views — per-user named lenses over a project graph (READ-only).
+CREATE TABLE IF NOT EXISTS kg_views (
+  view_id          UUID PRIMARY KEY DEFAULT uuidv7(),
+  project_id       TEXT NOT NULL,
+  user_id          UUID NOT NULL,                  -- owner (view per-user in shared project)
+  code             TEXT NOT NULL CHECK (length(code) BETWEEN 1 AND 120),
+  name             TEXT NOT NULL,
+  description      TEXT NOT NULL DEFAULT '',
+  edge_type_codes  TEXT[] NOT NULL DEFAULT '{}',
+  node_kind_codes  TEXT[] NOT NULL DEFAULT '{}',
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (project_id, user_id, code)
+);
+
+-- Triage queue (spec §3.7) — extraction elements that don't match the resolved
+-- schema park here (NOT written to Neo4j) and resolve human-gated by signature.
+CREATE TABLE IF NOT EXISTS kg_triage_items (
+  triage_id        UUID PRIMARY KEY DEFAULT uuidv7(),
+  user_id          UUID NOT NULL,
+  project_id       TEXT NOT NULL,
+  source           JSONB NOT NULL DEFAULT '{}',    -- {run_id, chapter_id, chapter_ord}
+  item_type        TEXT NOT NULL CHECK (item_type IN
+                     ('unknown_node_kind','unknown_edge_type','edge_kind_mismatch',
+                      'unknown_vocab_value','edge_cardinality_conflict','proposed_edge')),
+  payload          JSONB NOT NULL DEFAULT '{}',
+  signature        TEXT NOT NULL,                  -- normalized group key, e.g. "drive:curiosity"
+  status           TEXT NOT NULL DEFAULT 'pending' CHECK (status IN
+                     ('pending','pending_glossary','resolved','dismissed')),
+  resolution       JSONB,
+  schema_version   INT,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  resolved_at      TIMESTAMPTZ,
+  resolved_by      TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_kg_triage_user_project_status
+  ON kg_triage_items (user_id, project_id, status);
+CREATE INDEX IF NOT EXISTS idx_kg_triage_project_signature
+  ON kg_triage_items (project_id, signature);
+-- D-KG-LF-PROPOSE-EDGE-INBOX: a well-formed on-schema edge PROPOSED by the agent
+-- (kg_propose_edge) is a clean draft awaiting human placement — NOT a cardinality
+-- conflict (a stateful condition the tool can't check per INV-K1). It gets its own
+-- `proposed_edge` item_type. Existing DBs created the CHECK with the old 5-member
+-- list; widen it idempotently (drop-then-add the auto-named column CHECK).
+ALTER TABLE kg_triage_items DROP CONSTRAINT IF EXISTS kg_triage_items_item_type_check;
+ALTER TABLE kg_triage_items ADD CONSTRAINT kg_triage_items_item_type_check
+  CHECK (item_type IN ('unknown_node_kind','unknown_edge_type','edge_kind_mismatch',
+                       'unknown_vocab_value','edge_cardinality_conflict','proposed_edge'));
+
+-- ═══════════════════════════════════════════════════════════════
+-- consumed_tokens (KM6 — class-C confirm-token single-use ledger, spec §13.4)
+-- Backs the single-use guarantee of the generalized confirm machinery
+-- (app/ontology/confirm.py + routers/public/kg_actions.py): a confirm-token's jti
+-- is recorded here the FIRST time it is redeemed, so a replay of the SAME token
+-- finds the row present and is rejected (the C2 guarantee). `exp` lets a future
+-- janitor prune long-expired rows; correctness does not depend on pruning — the PK
+-- dedup is what enforces single-use. Mirrors glossary's consumed_tokens.
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS consumed_tokens (
+  jti         TEXT PRIMARY KEY,
+  descriptor  TEXT NOT NULL,
+  consumed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  exp         TIMESTAMPTZ NOT NULL
+);
+
+-- ═══════════════════════════════════════════════════════════════
+-- session_working_memory — the pinned goal-state block (SSOT).
+-- docs/specs/2026-06-23-interview-roleplay.md (M4).
+--
+-- `charter` and `state` are SEPARATE columns ON PURPOSE: the repo exposes
+-- update_state() but NO update_charter(), so the summarizing executive (M5)
+-- can structurally never write the goal — only the goal authority writes
+-- `charter`, once, via init (ON CONFLICT DO NOTHING keeps it frozen and
+-- preserves any state). For interview the authority is chat-service pushing
+-- the template charter; for roleplay it is the world model (the POC seam).
+-- Keyed by session_id (working memory is per-session, not per-project), with
+-- user_id for tenant scoping. No cross-DB FK (session_id lives in loreweave_chat).
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS session_working_memory (
+  session_id  UUID PRIMARY KEY,                            -- no FK (cross-DB)
+  user_id     UUID NOT NULL,
+  charter     JSONB NOT NULL,
+  state       JSONB NOT NULL DEFAULT '{"phase":"","covered":[]}'::jsonb,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 """
 
 

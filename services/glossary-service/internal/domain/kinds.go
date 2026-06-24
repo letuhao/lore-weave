@@ -33,7 +33,7 @@ type AttrDef struct {
 	TranslationHint *string  `json:"translation_hint"`
 }
 
-// SeedKind is the static definition used to seed entity_kinds + attribute_definitions.
+// SeedKind is the static definition used to seed system_kinds + system_kind_attributes.
 type SeedKind struct {
 	Code      string
 	Name      string

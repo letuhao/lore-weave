@@ -182,6 +182,23 @@ CREATE TABLE IF NOT EXISTS reading_progress (
 );
 CREATE INDEX IF NOT EXISTS idx_rp_user_book ON reading_progress(user_id, book_id);
 
+-- ── KG-ML M3 (DD3): per-(user,book) reader-language preference ──────────
+-- Server SSOT for the language a user prefers to READ a book in — distinct
+-- from UI language (auth.user_preferences.ui_language). Per-(user,book) so it
+-- can NEVER become a shared mutable row (tenancy rule); cross-device because it
+-- lives in the DB, not localStorage (CLAUDE.md data-persistence rule). Read by
+-- knowledge-service language-aware retrieval (M4) + chat/composition consumers
+-- (M7) via the /internal/books/{id}/reader-language resolver. No FK to books
+-- (matches reading_progress — a soft per-user table; book existence is gated at
+-- the handler via canViewOrPublic).
+CREATE TABLE IF NOT EXISTS user_book_prefs (
+  user_id         UUID NOT NULL,
+  book_id         UUID NOT NULL,
+  reader_language TEXT NOT NULL,
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, book_id)
+);
+
 CREATE TABLE IF NOT EXISTS book_views (
   id         UUID PRIMARY KEY DEFAULT uuidv7(),
   book_id    UUID NOT NULL,
@@ -288,6 +305,77 @@ CREATE TABLE IF NOT EXISTS canon_model_migration (
   id         TEXT PRIMARY KEY,
   applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- ═══════════════════════════════════════════════════════════════
+-- C20 (world container) - 2026-06-14
+-- Spec: docs/raid/cycle_briefs/20_world-container-api.md ; G1 + ARCH-REVIEW LOCKED.
+--
+-- A "world" groups books (book-service-only; lore stays book_id/chapter_id-keyed
+-- and rolls up to a world via its books — NO world_id column on glossary/
+-- knowledge/composition). books.world_id is a NULLABLE FK (default NULL =
+-- standalone book), ON DELETE SET NULL so deleting a world returns its member
+-- books to standalone (NEVER cascade-deletes the books). No backfill: existing
+-- world_id=NULL books behave exactly as today.
+--
+-- ARCH-REVIEW LOCK: world creation auto-provisions a HIDDEN "world bible" chapter
+-- at sort_order 0 (is_bible flag) so the chapter-keyed lore machinery (glossary
+-- chapter_entity_links.chapter_id NOT NULL, knowledge chapter-keyed extraction,
+-- composition outline) works prose-less. The is_bible flag marks it hidden.
+-- ═══════════════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS worlds (
+  id UUID PRIMARY KEY DEFAULT uuidv7(),
+  owner_user_id UUID NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_worlds_owner ON worlds(owner_user_id, created_at DESC);
+
+ALTER TABLE books ADD COLUMN IF NOT EXISTS world_id UUID
+  REFERENCES worlds(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_books_world ON books(world_id)
+  WHERE world_id IS NOT NULL;
+
+-- books.is_bible marks the auto-created world-bible CONTAINER book hidden, so it
+-- never leaks into the user's normal library, the world's book list, or book
+-- counts (the chapter-level is_bible hides the lore anchor; this hides its book).
+ALTER TABLE books ADD COLUMN IF NOT EXISTS is_bible BOOLEAN NOT NULL DEFAULT false;
+
+ALTER TABLE chapters ADD COLUMN IF NOT EXISTS is_bible BOOLEAN NOT NULL DEFAULT false;
+
+-- ═══════════════════════════════════════════════════════════════
+-- MCP fan-out Tier-W single-use confirm-token ledger - 2026-06-20
+-- /review-impl HIGH: the confirm route (confirmBookAction) must be single-use.
+-- The stateless kit confirm token carries no jti, so we key on the SHA-256 hash
+-- of the full token string. confirmBookAction claims the hash (INSERT … ON
+-- CONFLICT DO NOTHING) BEFORE running the effect; a replay within the 10-min TTL
+-- hits the PK (0 rows affected) and is refused, so publish/delete/etc. run at
+-- most once per token (no duplicate chapter_revisions row, no duplicate
+-- chapter.published outbox event). exp is optional metadata for a future janitor.
+-- Mirrors provider-registry settings_consumed_tokens. Additive + idempotent —
+-- book-service has no down-migration; Up() re-run is the rollback story.
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS book_consumed_tokens (
+  token_hash  TEXT PRIMARY KEY,
+  consumed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  exp         TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_book_consumed_tokens_exp ON book_consumed_tokens(exp);
+`
+
+// WorldsDownSQL is the explicit reversible DDL for the C20 world container.
+// book-service has NO migration ledger (Up() idempotency is the normal rollback
+// story), but the cycle's acceptance gate exercises a real-PG round-trip
+// (up → down → re-up) to prove the additions are cleanly reversible. The world_id
+// COLUMN must be dropped BEFORE the worlds TABLE (the FK depends on it); is_bible
+// is left in place (additive, harmless on re-up — dropping it orphans no FK).
+const WorldsDownSQL = `
+ALTER TABLE books DROP COLUMN IF EXISTS world_id;
+DROP INDEX IF EXISTS idx_books_world;
+DROP TABLE IF EXISTS worlds;
+DROP INDEX IF EXISTS idx_worlds_owner;
 `
 
 // rawSearchExtensionSQL / rawSearchIndexSQL — lexical leg of raw-search

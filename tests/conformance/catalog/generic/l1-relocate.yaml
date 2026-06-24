@@ -1,0 +1,7 @@
+id: l1-relocate
+description: "S13/Inc-4 — cross-shard reality relocation, LIVE on the multi-shard rig (shard-0→shard-1). active→migrating (CAS) → real cross-host pg_dump|restore copy → content-checksum gate (event_id+aggregate_version+payload, target==source) → migrating→active carrying the new db_host as Payload in the SAME CAS UPDATE → decommission source. fault: a kill BETWEEN copy and the flip leaves db_host at the full SOURCE (no loss) → resume rolls forward. bite: flip db_host to an EMPTY target ⇒ the content-checksum catches the short target (the gate has teeth). Requires the scale rig up with >=2 shards."
+invariant: I-l1-relocation-loss-free-atomic-flip
+kind: live-probe
+command: ["bash", "scripts/perf/l1-relocate.sh", "smoke"]
+requires: ["scale-rig"]
+skip_when: []

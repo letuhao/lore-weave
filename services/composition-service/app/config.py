@@ -13,11 +13,26 @@ class Settings(BaseSettings):
     composition_db_url: str
     internal_service_token: str
     jwt_secret: str
+    # DEDICATED confirm-token signing secret (key-split from internal_service_token).
+    # The Tier-W confirm token is minted/verified with THIS secret, NOT the envelope
+    # gate token — so rotating/compromising one does not affect the other. Fail-closed:
+    # the service refuses to start if unset (env CONFIRM_TOKEN_SIGNING_SECRET).
+    confirm_token_signing_secret: str
 
     # Optional with defaults.
     redis_url: str = "redis://redis:6379"
     log_level: str = "INFO"
     port: int = 8093
+
+    # Phase 3 M4 — composition batch-job worker. When True, the batch endpoints
+    # (decompose/generate/selection-edit/chapter-gen/stitch) create a job + enqueue
+    # on the composition_jobs stream + return 202 (a separate `python -m app.worker`
+    # process runs the LLM compute off the request path); GET /jobs/{id} polls.
+    # Default False → today's inline behavior verbatim (zero contract change until
+    # the FE adopts the 202 + poll). The worker consumer + its sweep run only when on.
+    composition_worker_enabled: bool = False
+    composition_job_sweep_secs: int = 60
+    composition_job_sweep_timeout_secs: int = 900
 
     # Internal service URLs — consumed by the M3 client wrappers.
     knowledge_internal_url: str = "http://knowledge-service:8092"

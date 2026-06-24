@@ -232,9 +232,13 @@ CREATE TABLE IF NOT EXISTS enrichment_job (
                                                   --   GUI; project_id stays the GENERAL
                                                   --   scope. Nullable (cross-DB, no FK;
                                                   --   legacy rows predate it).
-  estimated_cost_usd NUMERIC(10,4) NOT NULL DEFAULT 0,
-  actual_cost_usd    NUMERIC(10,4) NOT NULL DEFAULT 0,
-  max_spend_usd      NUMERIC(10,4),               -- cost guardrail (C8)
+  -- D-JOURNEY-ENRICH-COST-UNITS: these are denominated in REAL TOKENS, not USD
+  -- (the per-job cost-cap is a token count per the C1 PO ruling — see app/jobs/
+  -- tokens.py / cost.py). The columns were originally misnamed `*_usd`; renamed to
+  -- `*_tokens` (a guarded rename below brings already-deployed tables across).
+  estimated_cost_tokens NUMERIC(14,2) NOT NULL DEFAULT 0,
+  actual_cost_tokens    NUMERIC(14,2) NOT NULL DEFAULT 0,
+  max_spend_tokens      NUMERIC(14,2),            -- token cost guardrail (C8)
   proposals_total    INT NOT NULL DEFAULT 0,
   error_message      TEXT,
   started_at      TIMESTAMPTZ,
@@ -250,6 +254,36 @@ CREATE INDEX IF NOT EXISTS idx_enrichment_job_scope
 CREATE INDEX IF NOT EXISTS idx_enrichment_job_active
   ON enrichment_job(status)
   WHERE status IN ('pending','estimating','running','paused');
+
+-- Unified Job Control Plane reconcile source: GET /internal/lore_enrichment/jobs?since=
+-- filters enrichment_job by updated_at — index it so the periodic sweep isn't a seq-scan.
+CREATE INDEX IF NOT EXISTS idx_enrichment_job_updated_at ON enrichment_job(updated_at);
+
+-- ── D-JOURNEY-ENRICH-COST-UNITS: rename the misnamed *_usd cost columns to *_tokens
+-- (they always held TOKEN counts per the C1 PO ruling, never dollars) AND widen them
+-- (a token count can exceed the old USD-sized NUMERIC(10,4) ≈ 1M cap). Guarded so an
+-- ALREADY-DEPLOYED table is brought across in place (CREATE TABLE IF NOT EXISTS skips
+-- the new column names on it), and a FRESH table (already *_tokens) is a no-op. ──────
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_name='enrichment_job' AND column_name='estimated_cost_usd') THEN
+    ALTER TABLE enrichment_job RENAME COLUMN estimated_cost_usd TO estimated_cost_tokens;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_name='enrichment_job' AND column_name='actual_cost_usd') THEN
+    ALTER TABLE enrichment_job RENAME COLUMN actual_cost_usd TO actual_cost_tokens;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_name='enrichment_job' AND column_name='max_spend_usd') THEN
+    ALTER TABLE enrichment_job RENAME COLUMN max_spend_usd TO max_spend_tokens;
+  END IF;
+END $$;
+
+ALTER TABLE enrichment_job
+  ALTER COLUMN estimated_cost_tokens TYPE NUMERIC(14,2),
+  ALTER COLUMN actual_cost_tokens    TYPE NUMERIC(14,2),
+  ALTER COLUMN max_spend_tokens      TYPE NUMERIC(14,2);
 
 -- ── book scope (additive) ────────────────────────────────────────────────────
 -- Enrichment is book-bound; persist the book_id so the review GUI can list a
@@ -599,6 +633,83 @@ CREATE TABLE IF NOT EXISTS enrichment_upload (
 
 CREATE INDEX IF NOT EXISTS idx_enrichment_upload_scope
   ON enrichment_upload(user_id, book_id, created_at DESC);
+
+-- ═══════════════════════════════════════════════════════════════
+-- enrichment_compose_task (Phase 3 M2) — the durable row for a one-shot
+-- interactive LLM task moved OFF the request path. The two compose endpoints
+-- (profile/suggest, compose/resolve-intent) used to run their single LLM call
+-- inline and return the result; they now create a 'pending' task here, enqueue a
+-- trigger on the resume stream, and return 202 + task_id. The resume worker runs
+-- the compute and writes result_json; GET /compose-tasks/{id} polls.
+--
+-- DISTINCT from enrichment_job (gap-fill: C8 state machine, technique CHECK,
+-- proposal children, cost-cap pause) — a one-shot suggest/intent fits none of
+-- that, so this is a dedicated lightweight table, NOT a new enrichment_job kind.
+-- Per-user/project scope (Q3); book_id is the always-present GUI anchor. No FK
+-- (cross-DB ids). request_json holds only the request shape (model_ref UUIDs +
+-- params + acting user) — NEVER a secret; result_json holds the draft output the
+-- author reviews (a suggested profile / a resolved intent). ADDITIVE.
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS enrichment_compose_task (
+  task_id        UUID PRIMARY KEY DEFAULT uuidv7(),
+  kind           TEXT NOT NULL
+    CHECK (kind IN ('profile_suggest','intent_resolve')),
+  status         TEXT NOT NULL DEFAULT 'pending'
+    -- 'cancelled' added for D-JOBS-P3-LORE-COMPOSE-TASK-CONTROL (status-only cancel of a
+    -- still-queued one-shot task). Existing DBs widened by the DO $$ block below.
+    CHECK (status IN ('pending','running','completed','failed','cancelled')),
+  user_id        UUID NOT NULL,                   -- scope (Q3); no FK (cross-DB)
+  project_id     UUID NOT NULL,                   -- scope (Q3); no FK (cross-DB)
+  book_id        UUID,                            -- GUI anchor (always set today)
+  request_json   JSONB NOT NULL,                  -- request shape only (no secret)
+  result_json    JSONB,                           -- draft output (author reviews)
+  error_message  TEXT,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- D-JOBS-P3-LORE-COMPOSE-TASK-CONTROL — widen the status CHECK on an already-deployed
+-- table to admit 'cancelled' (status-only cancel). DROP the auto-named inline constraint
+-- + ADD a named one (ADD CONSTRAINT has no IF NOT EXISTS) inside a DO $$ block so it is
+-- idempotent on every startup. ADDITIVE (only widens the allowed set).
+DO $$
+BEGIN
+  ALTER TABLE enrichment_compose_task DROP CONSTRAINT IF EXISTS enrichment_compose_task_status_check;
+  ALTER TABLE enrichment_compose_task DROP CONSTRAINT IF EXISTS enrichment_compose_task_status_vocab;
+  ALTER TABLE enrichment_compose_task
+    ADD CONSTRAINT enrichment_compose_task_status_vocab
+    CHECK (status IN ('pending','running','completed','failed','cancelled'));
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_enrichment_compose_task_scope
+  ON enrichment_compose_task(user_id, book_id, created_at DESC);
+
+-- D-M2-COMPOSE-TASK-SWEEPER — a partial index for the stuck-task sweep: the worker
+-- periodically scans for rows still ('pending','running') idle past a timeout (a
+-- redis-miss at submit, or a crash mid-compute) and re-drives them. The partial
+-- predicate keeps the index tiny (terminal rows are excluded), ordered by updated_at
+-- so the oldest-stranded LIMITed batch is a cheap index scan. ADDITIVE + idempotent.
+CREATE INDEX IF NOT EXISTS idx_enrichment_compose_task_stuck
+  ON enrichment_compose_task(updated_at)
+  WHERE status IN ('pending','running');
+
+-- ── outbox_events: standard (matches knowledge/composition); relayed by worker-infra
+-- to loreweave:events:<aggregate_type>. Unified Job Control Plane P1 — lore-enrichment
+-- job-lifecycle JobEvents are written here with aggregate_type='jobs' (→
+-- loreweave:events:jobs) in the SAME tx as the enrichment_job / compose_task status
+-- change (emit_job_event).
+CREATE TABLE IF NOT EXISTS outbox_events (
+  id             UUID PRIMARY KEY DEFAULT uuidv7(),
+  aggregate_type TEXT NOT NULL DEFAULT 'lore_enrichment',
+  aggregate_id   UUID NOT NULL,
+  event_type     TEXT NOT NULL,
+  payload        JSONB NOT NULL DEFAULT '{}',
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  published_at   TIMESTAMPTZ,
+  retry_count    INT NOT NULL DEFAULT 0,
+  last_error     TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_outbox_pending ON outbox_events(created_at) WHERE published_at IS NULL;
 """
 
 
@@ -612,6 +723,7 @@ CREATE INDEX IF NOT EXISTS idx_enrichment_upload_scope
 #   been up-migrated, breaking the down→up round-trip (and the db-test fixture's
 #   per-test reset). It was added to the UP DDL but not here.
 DOWN_DDL = """
+DROP TABLE IF EXISTS enrichment_compose_task;
 DROP TABLE IF EXISTS enrichment_upload;
 DROP TABLE IF EXISTS enrichment_book_profile;
 DROP TABLE IF EXISTS enrichment_eval_runs;

@@ -20,6 +20,8 @@
       "attributes": "屬性",
       "evidences": "佐證"
     },
+    "viewing_in_language": "以 {{lang}} 檢視",
+    "viewing_original": "原文（{{lang}}）",
     "translation_lang_aria": "翻譯語言",
     "no_translation": "不翻譯",
     "add_language": "+ 新增語言...",
@@ -50,6 +52,7 @@
     "save": "儲存",
     "delete_aria": "刪除翻譯",
     "placeholder": "{{lang}} 翻譯...",
+    "tags_add": "+ 新增別名",
     "delete_title": "刪除翻譯？",
     "delete_desc": "此屬性的 {{lang}} 翻譯將被永久刪除。",
     "delete_confirm": "刪除",

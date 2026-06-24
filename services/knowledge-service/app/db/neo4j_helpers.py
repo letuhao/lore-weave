@@ -248,6 +248,42 @@ async def drop_summary_index(session: CypherSession, name: str) -> None:
     await session.run(f"DROP INDEX {name} IF EXISTS")
 
 
+async def purge_project(session: CypherSession, project_id: str) -> dict[str, int]:
+    """Delete ALL Neo4j nodes for a project + drop its per-project summary vector
+    indexes — `D-KNOWLEDGE-PROJECT-DELETE-NEO4J-ORPHAN`: deleting a knowledge project
+    must not orphan its graph.
+
+    Every project node carries `project_id` (Entity/Event/Fact/Passage/
+    ExtractionSource/EntityStatus — verified: no node connected to the project's nodes
+    lacks `project_id`), so a single `project_id`-scoped `DETACH DELETE` is complete.
+    The SHARED dimension-bucketed indexes (`entity_embeddings_1024`,
+    `passage_embeddings_384`, …) are NEVER touched — other projects share them; only
+    THIS project's `<level>_summary_emb_p<id>_e<model>` indexes are dropped (reusing the
+    name-validated helpers). Returns `{nodes_deleted, indexes_dropped}`.
+
+    The CALLER runs this best-effort: the authoritative owner-gated delete is the
+    Postgres row removal; a Neo4j failure must not fail it (it just leaves an orphan to
+    re-sweep). Perf follow-up: a very large graph is one `DETACH DELETE` transaction —
+    batch via `CALL { … } IN TRANSACTIONS` if a huge project ever needs it.
+    """
+    rows = await session.run(
+        "MATCH (n {project_id: $pid}) RETURN count(n) AS n", pid=project_id
+    )
+    nodes = 0
+    async for rec in rows:
+        nodes = int(rec["n"])
+    if nodes:
+        # count-then-delete: RETURN-after-DELETE isn't reliable across drivers.
+        await session.run("MATCH (n {project_id: $pid}) DETACH DELETE n", pid=project_id)
+    proj_hex = project_id.replace("-", "").lower()
+    dropped = 0
+    for idx in await list_summary_vector_indexes(session):
+        if idx["project_id"] == proj_hex:
+            await drop_summary_index(session, idx["name"])
+            dropped += 1
+    return {"nodes_deleted": nodes, "indexes_dropped": dropped}
+
+
 async def ensure_summary_indexes(
     session: CypherSession,
     project_id: str,

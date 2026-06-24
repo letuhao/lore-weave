@@ -1,0 +1,22 @@
+{
+  "heading": "What do you want to do?",
+  "subheading": "Pick a starting point — you can switch any time.",
+  "intent": {
+    "write": {
+      "title": "Write",
+      "desc": "Start a new book or continue writing — draft chapters with an AI co-writer."
+    },
+    "world": {
+      "title": "Build a world",
+      "desc": "Author lore — characters, places, factions — with no manuscript required."
+    },
+    "translate": {
+      "title": "Translate",
+      "desc": "Bring an existing book into another language with the translation pipeline."
+    },
+    "explore": {
+      "title": "Explore",
+      "desc": "Browse your knowledge — entities, timelines and the relationship graph."
+    }
+  }
+}

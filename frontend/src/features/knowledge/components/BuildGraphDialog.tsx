@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { FormDialog } from '@/components/shared';
+import { AddModelCta } from '@/components/shared/AddModelCta';
 import { useAuth } from '@/auth';
 import { aiModelsApi, type UserModel } from '../../ai-models/api';
 import {
@@ -10,13 +11,19 @@ import {
   type EstimateExtractionPayload,
   type ExtractionJobScopeWire,
   type ExtractionStartPayload,
+  type ExtractionTarget,
 } from '../api';
 import type { BenchmarkStatus, Project } from '../types';
 import type { CostEstimate } from '../types/projectState';
 import { readBackendError } from '../lib/readBackendError';
 import { formatUSD } from '../lib/formatUSD';
+import { canonicalTargets } from '../lib/targetPicker';
 import { useUserCosts } from '../hooks/useUserCosts';
 import { EmbeddingModelPicker } from './EmbeddingModelPicker';
+import { TargetPicker } from './TargetPicker';
+import { BuildWizardSteps, type WizardStep } from './BuildWizardSteps';
+import { PinningStep } from './PinningStep';
+import { usePinning } from '../hooks/usePinning';
 
 // K19a.5 — modal for starting an extraction job. Triggered from the
 // DisabledCard's "Build graph" button (and replaces the K19a.4 toast-stub
@@ -114,6 +121,16 @@ export function BuildGraphDialog({
   const [chapterRangeFrom, setChapterRangeFrom] = useState<string>('');
   const [chapterRangeTo, setChapterRangeTo] = useState<string>('');
   const [starting, setStarting] = useState(false);
+  // C12 — wizard step + Step-1 target picker + concurrency. Empty target
+  // selection ⇒ omit `targets` from the payload ⇒ BE runs all passes
+  // (back-compat). The picker enforces the dependent auto-include in-UI.
+  const [wizardStep, setWizardStep] = useState<WizardStep>(1);
+  const [targets, setTargets] = useState<ExtractionTarget[]>([]);
+  const [concurrency, setConcurrency] = useState<string>('');
+  // C13 — glossary pinning controller (owns the pinned-set + stats query).
+  // Stats fetch is gated on the dialog being open AND a linked book existing
+  // (the BE 422s no_book otherwise; pinning has no meaning without a book).
+  const pinning = usePinning(project.project_id, open && !!project.book_id);
 
   // D-K19a.5-03 (cleared in K19b.6): user-wide monthly remaining hint
   // shown near the max_spend input so the user knows how much headroom
@@ -141,6 +158,12 @@ export function BuildGraphDialog({
     setChapterRangeFrom('');
     setChapterRangeTo('');
     setStarting(false);
+    // C12 — reset wizard to Step 1 + clear target/concurrency per open.
+    setWizardStep(1);
+    setTargets([]);
+    setConcurrency('');
+    // C13 — clear the pinned-set + filters per open.
+    pinning.reset();
     setDebounced({ scope: openScope, llm: openLlm });
     // `openScope` / `openLlm` / `openEmbedding` / `openMaxSpend` already
     // fold in both `project` + `initialValues` — listing them directly
@@ -199,6 +222,9 @@ export function BuildGraphDialog({
     debounced.scope === 'chapters' && chapterRange.range
       ? chapterRange.range.join('-')
       : 'none';
+  // C13 — pinned count drives the pinned-injection cost line; include it in the
+  // estimate key so the preview refreshes as the user pins/unpins.
+  const pinnedCount = pinning.pinnedIdList.length;
   const estimateQuery = useQuery<CostEstimate>({
     queryKey: [
       'knowledge',
@@ -207,6 +233,7 @@ export function BuildGraphDialog({
       debounced.scope,
       debounced.llm,
       estimateRangeKey,
+      pinnedCount,
     ],
     queryFn: () => {
       const payload: EstimateExtractionPayload = {
@@ -215,6 +242,7 @@ export function BuildGraphDialog({
         ...(debounced.scope === 'chapters' && chapterRange.range
           ? { scope_range: { chapter_range: chapterRange.range } }
           : {}),
+        ...(pinnedCount > 0 ? { pinned_count: pinnedCount } : {}),
       };
       return knowledgeApi.estimateExtraction(project.project_id, payload, accessToken!);
     },
@@ -244,25 +272,63 @@ export function BuildGraphDialog({
   });
 
   const maxSpendValid = maxSpend === '' || DECIMAL_REGEX.test(maxSpend);
+  // C12 — concurrency: blank ⇒ omit (default). Else an integer in [1, 64]
+  // (matches the BE Field(ge=1, le=64)).
+  const concurrencyValid = (() => {
+    if (concurrency.trim() === '') return true;
+    const n = Number(concurrency);
+    return Number.isInteger(n) && n >= 1 && n <= 64;
+  })();
+  const hasEmbedding = embeddingModel !== null && embeddingModel !== '';
+  // C5: while the benchmark status is still loading for a selected embedding
+  // model, we don't yet KNOW if the gate passes — treat it as not-ok so Confirm
+  // can't enable-too-early (adversary focus), then settle to the real verdict.
+  const benchmarkLoading = hasEmbedding && benchmarkQuery.isLoading;
   const benchmarkOk =
     !benchmarkQuery.data ||
     (benchmarkQuery.data.has_run && benchmarkQuery.data.passed);
+  // C5 (KN-1/BL-16): the golden-set benchmark is a VISIBLE gate — extraction
+  // stays disabled until a passing benchmark exists (the EmbeddingModelPicker
+  // renders the status badge + Run-benchmark button for this same project/model).
+  const llmEmpty = !modelsQuery.isLoading && (modelsQuery.data?.items?.length ?? 0) === 0;
 
   const canConfirm =
     !starting &&
     llmModel !== '' &&
-    embeddingModel !== null &&
-    embeddingModel !== '' &&
+    hasEmbedding &&
     maxSpendValid &&
     chapterRangeValid &&
+    concurrencyValid &&
+    !benchmarkLoading &&
     benchmarkOk;
+
+  // C5: name the missing precondition so a disabled Confirm is never a mystery.
+  const disabledReason: string | null = (() => {
+    if (starting) return null;
+    if (llmModel === '') return t('projects.buildDialog.disabled.pickLlm', { defaultValue: 'Pick an extraction LLM model.' });
+    if (!hasEmbedding) return t('projects.buildDialog.disabled.pickEmbedding', { defaultValue: 'Pick an embedding model.' });
+    if (benchmarkLoading) return t('projects.buildDialog.disabled.checkingBenchmark', { defaultValue: 'Checking the embedding benchmark…' });
+    if (!benchmarkOk) return t('projects.buildDialog.disabled.benchmarkRequired', { defaultValue: 'Run the golden-set benchmark and pass it to enable extraction (above).' });
+    if (!maxSpendValid) return t('projects.buildDialog.disabled.fixMaxSpend', { defaultValue: 'Enter a valid spending cap.' });
+    if (!chapterRangeValid) return t('projects.buildDialog.disabled.fixRange', { defaultValue: 'Fix the chapter range.' });
+    if (!concurrencyValid) return t('projects.buildDialog.disabled.fixConcurrency', { defaultValue: 'Parallel calls must be 1–64.' });
+    return null;
+  })();
 
   const handleConfirm = async () => {
     if (!accessToken || !embeddingModel) return;
     if (!maxSpendValid) return;
     if (!chapterRangeValid) return;
+    if (!concurrencyValid) return;
     setStarting(true);
     try {
+      // C12 — post the user's RAW selection (deduped/canonical), NOT the
+      // entities-auto-included set: the BE/SDK add `entities` at runtime as a
+      // mandatory anchor pass, and they key the recovery/filter-disable LOCK
+      // off the user's EXPLICIT request. Baking `entities` in here would make a
+      // relations-only build read as "entities requested" and wrongly keep
+      // recovery/filter on. Empty ⇒ omit `targets` ⇒ all passes (back-compat).
+      const postedTargets = canonicalTargets(targets);
       const payload: ExtractionStartPayload = {
         scope,
         llm_model: llmModel,
@@ -274,8 +340,23 @@ export function BuildGraphDialog({
         ...(scope === 'chapters' && chapterRange.range
           ? { scope_range: { chapter_range: chapterRange.range } }
           : {}),
+        // C12 — only send when a subset was actually picked.
+        ...(postedTargets.length > 0 ? { targets: postedTargets } : {}),
+        ...(concurrency.trim() !== ''
+          ? { concurrency_level: Number(concurrency) }
+          : {}),
+        // C13 — pinned glossary entity ids (force-injected into every window's
+        // known_entities). Only send when the user pinned at least one.
+        ...(pinning.pinnedIdList.length > 0
+          ? { pinned_glossary_entity_ids: pinning.pinnedIdList }
+          : {}),
       };
       await knowledgeApi.startExtraction(project.project_id, payload, accessToken);
+      // KN-5 (C7) — post-submit feedback: confirm the build actually
+      // started. The state card also flips to "Building…" via the
+      // onStarted() jobs-query invalidation, but a toast removes any
+      // doubt that the click registered (the prior flow was silent).
+      toast.success(t('projects.buildDialog.startSuccess'));
       onStarted();
       onOpenChange(false);
     } catch (err) {
@@ -312,6 +393,15 @@ export function BuildGraphDialog({
       description={t('projects.buildDialog.description')}
       footer={
         <>
+          {/* C5: name the missing precondition next to a disabled Confirm. */}
+          {disabledReason && (
+            <span
+              className="mr-auto self-center text-[11px] text-muted-foreground"
+              data-testid="build-graph-disabled-reason"
+            >
+              {disabledReason}
+            </span>
+          )}
           <button
             type="button"
             onClick={() => onOpenChange(false)}
@@ -333,7 +423,57 @@ export function BuildGraphDialog({
         </>
       }
     >
-      <div className="flex flex-col gap-4">
+      {/* C12 — 3-step wizard shell. Step bodies use CSS `hidden` (not
+          conditional unmount) so form/picker state survives step switches
+          per the FE no-unmount rule. */}
+      <BuildWizardSteps step={wizardStep} onStepChange={setWizardStep}>
+        {/* ── Step 1 — scope + models + targets + concurrency ── */}
+        <div
+          className={`flex flex-col gap-4 ${wizardStep === 1 ? '' : 'hidden'}`}
+          data-testid="build-wizard-body-1"
+        >
+        {/* R5 (KN-1/BL-16) — leading prerequisite checklist so the build chain
+            (LLM → embedding → passing benchmark) is visible up front with a
+            ✓/✗/⋯ per item, not just a disabled-Confirm reason at the bottom. */}
+        <ul
+          className="flex flex-col gap-1 rounded-md border border-border/60 bg-muted/30 p-2 text-[11px]"
+          data-testid="build-graph-prereqs"
+        >
+          <PrereqRow
+            ok={llmModel !== ''}
+            label={t('projects.buildDialog.prereq.llm', {
+              defaultValue: 'Extraction LLM model selected',
+            })}
+          />
+          <PrereqRow
+            ok={hasEmbedding}
+            label={t('projects.buildDialog.prereq.embedding', {
+              defaultValue: 'Embedding model selected',
+            })}
+          />
+          <PrereqRow
+            ok={!!(hasEmbedding && benchmarkOk && !benchmarkLoading)}
+            pending={benchmarkLoading}
+            label={
+              benchmarkLoading
+                ? t('projects.buildDialog.prereq.benchmarkChecking', {
+                    defaultValue: 'Checking the embedding benchmark…',
+                  })
+                : !hasEmbedding
+                  ? t('projects.buildDialog.prereq.benchmarkPending', {
+                      defaultValue: 'Embedding benchmark passing (pick a model first)',
+                    })
+                  : benchmarkOk
+                    ? t('projects.buildDialog.prereq.benchmarkPassed', {
+                        defaultValue: 'Embedding benchmark passing',
+                      })
+                    : t('projects.buildDialog.prereq.benchmarkRequired', {
+                        defaultValue:
+                          'Embedding benchmark passing — run it from the model picker below',
+                      })
+            }
+          />
+        </ul>
         {/* Scope selector */}
         <fieldset className="flex flex-col gap-1">
           <legend className="text-xs font-medium text-muted-foreground">
@@ -439,9 +579,12 @@ export function BuildGraphDialog({
               );
             })}
           </select>
-          {!modelsQuery.isLoading && chatModels.length === 0 && (
-            <span className="text-[11px] text-muted-foreground">
+          {llmEmpty && (
+            // C5 (KN-1/BL-16): no chat model → in-flow AddModelCta (deep-link +
+            // return), not a dead-end. Resolved from provider-registry; no literal.
+            <span className="flex flex-col gap-1 text-[11px] text-muted-foreground">
               {t('projects.buildDialog.llmModel.empty')}
+              <AddModelCta capability="chat" variant="link" />
             </span>
           )}
         </label>
@@ -453,6 +596,51 @@ export function BuildGraphDialog({
           projectId={project.project_id}
         />
 
+        {/* C12 — Step-1 target picker. Empty selection ⇒ all passes. */}
+        <TargetPicker selected={targets} onChange={setTargets} />
+
+        {/* C12 — concurrency cap (optional). */}
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-muted-foreground">
+            {t('projects.buildDialog.concurrency.label')}
+          </span>
+          <input
+            type="number"
+            min={1}
+            max={64}
+            inputMode="numeric"
+            value={concurrency}
+            onChange={(e) => setConcurrency(e.target.value)}
+            aria-invalid={!concurrencyValid}
+            placeholder="—"
+            className="w-24 rounded-md border bg-input px-2 py-1.5 text-sm outline-none focus:border-ring aria-[invalid=true]:border-destructive"
+            data-testid="build-concurrency"
+          />
+          <span className="text-[11px] text-muted-foreground">
+            {t('projects.buildDialog.concurrency.hint')}
+          </span>
+        </label>
+        </div>
+
+        {/* ── Step 2 — glossary pinning dual-list (C13) ── */}
+        <div
+          className={`flex flex-col gap-3 ${wizardStep === 2 ? '' : 'hidden'}`}
+          data-testid="build-wizard-body-2"
+        >
+          {project.book_id ? (
+            <PinningStep pinning={pinning} />
+          ) : (
+            <p className="rounded-md border border-dashed p-3 text-[12px] text-muted-foreground">
+              {t('projects.buildDialog.pinning.noBook')}
+            </p>
+          )}
+        </div>
+
+        {/* ── Step 3 — budget + estimate ── */}
+        <div
+          className={`flex flex-col gap-4 ${wizardStep === 3 ? '' : 'hidden'}`}
+          data-testid="build-wizard-body-3"
+        >
         {/* Max spend */}
         <label className="flex flex-col gap-1">
           <span className="text-xs font-medium text-muted-foreground">
@@ -527,6 +715,17 @@ export function BuildGraphDialog({
                   tokens: estimateQuery.data.estimated_tokens,
                 })}
               </span>
+              {/* C13 — pinned-injection cost as its OWN line (the dominant
+                  driver — pinned_count × ~50 × num_windows). Shown only when
+                  the user pinned something. */}
+              {(estimateQuery.data.estimated_pinned_tokens ?? 0) > 0 && (
+                <span data-testid="estimate-pinned-line">
+                  {t('projects.buildDialog.estimate.pinned', {
+                    tokens: estimateQuery.data.estimated_pinned_tokens,
+                    count: pinnedCount,
+                  })}
+                </span>
+              )}
               <span className="text-muted-foreground">
                 {t('projects.buildDialog.estimate.duration', {
                   seconds: estimateQuery.data.estimated_duration_seconds,
@@ -535,7 +734,37 @@ export function BuildGraphDialog({
             </div>
           )}
         </div>
-      </div>
+        </div>
+      </BuildWizardSteps>
     </FormDialog>
+  );
+}
+
+/** One row of the R5 build-prerequisite checklist: ✓ (met) / ✗ (missing) /
+ * ⋯ (still checking). View-only — gating stays in `canConfirm`. */
+function PrereqRow({
+  ok,
+  pending,
+  label,
+}: {
+  ok: boolean;
+  pending?: boolean;
+  label: string;
+}) {
+  const mark = pending ? '⋯' : ok ? '✓' : '✗';
+  const color = pending
+    ? 'text-muted-foreground'
+    : ok
+      ? 'text-green-600 dark:text-green-400'
+      : 'text-destructive';
+  return (
+    <li className="flex items-center gap-1.5">
+      <span className={`font-semibold ${color}`} aria-hidden>
+        {mark}
+      </span>
+      <span className={ok || pending ? 'text-foreground' : 'text-muted-foreground'}>
+        {label}
+      </span>
+    </li>
   );
 }

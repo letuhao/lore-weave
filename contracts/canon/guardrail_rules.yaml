@@ -1,0 +1,80 @@
+# contracts/canon/guardrail_rules.yaml — L5.I.3 canon-guardrail rules (RAID cycle 27).
+#
+# Loaded by `contracts_prompt::canon_guardrail::YamlGuardrail` (Rust) to
+# enforce L1 axiomatic canon at the roleplay-service pre-prompt-assembly
+# check (Q-L5-5 LOCKED).
+#
+# Production guardrail wiring: roleplay-service constructs YamlGuardrail
+# from this file at startup, then calls `check_proposed_write` for every
+# proposed L3 event BEFORE the event is written.
+#
+# # Versioning
+#
+# Manifest format version 1. New rule predicates land as new Predicate
+# variants in canon_guardrail.rs. Mutating an existing predicate variant
+# is a breaking change — bump the manifest version + ship an upcaster.
+#
+# # Authoring guidelines
+#
+# - Each rule MUST have a unique `axiom_id` (referenced in violation
+#   reasons + governance documentation).
+# - `attribute_path_glob` supports `exact` and `*` (single-segment
+#   wildcard). See canon_guardrail.rs::glob_match for grammar.
+# - `severity: warn` does NOT block in V1 (rides a metrics side-channel
+#   added in a downstream cycle).
+# - Adding a rule MUST land with an updated test fixture in
+#   `crates/contracts-prompt/src/canon_guardrail.rs::tests`.
+#
+# # LOCKED
+#
+# Q-L5-5 — full impl backwards-compat with cycle 25 `CanonGuardrail`
+# trait (canon_guardrail.rs implements the same trait; production swaps
+# `NoOpGuardrail` → `YamlGuardrail` transparently).
+
+version: 1
+
+rules:
+  # ─── Sample foundation-scope rules ──────────────────────────────────
+  # Real per-book rules are owned by the glossary / governance team and
+  # ship in a per-book overlay manifest at runtime. The rules below are
+  # FOUNDATION-SCOPE EXAMPLES that exercise every Predicate variant for
+  # smoke + integration tests.
+
+  - axiom_id: FOUNDATION_SAMPLE_climate_immutable
+    reason: "[sample] world.climate is L1 axiomatic; allowed values fixed by foundation example"
+    attribute_path_glob: world.climate
+    predicate:
+      kind: equals_any
+      values:
+        - "arid"
+        - "temperate"
+        - "polar"
+        - "tropical"
+    severity: block
+
+  - axiom_id: FOUNDATION_SAMPLE_no_chaos_allegiance
+    reason: "[sample] forbidden allegiance values in foundation demo manifest"
+    attribute_path_glob: faction.allegiance
+    predicate:
+      kind: forbids_value
+      values:
+        - "chaos_unrestricted"
+        - "anarchy_total"
+    severity: block
+
+  - axiom_id: FOUNDATION_SAMPLE_region_population_range
+    reason: "[sample] region.population must be 0..1e9"
+    attribute_path_glob: region.population
+    predicate:
+      kind: numeric_range
+      min: 0.0
+      max: 1000000000.0
+    severity: block
+
+  - axiom_id: FOUNDATION_SAMPLE_lore_no_secret_token
+    reason: "[sample] lore.* MUST NOT contain the foundation-test reserved token"
+    attribute_path_glob: lore.intro
+    predicate:
+      kind: forbids_regex
+      pattern: "FOUNDATION_TEST_FORBIDDEN_TOKEN"
+    severity: block

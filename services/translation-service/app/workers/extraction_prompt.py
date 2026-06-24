@@ -15,7 +15,18 @@ from dataclasses import dataclass
 
 log = logging.getLogger(__name__)
 
-SCHEMA_TOKEN_BUDGET = 2000  # max schema tokens per LLM call
+SCHEMA_TOKEN_BUDGET = 2000  # max schema tokens per LLM call (INPUT side)
+
+# Output-side guard against finish_reason=length truncation. plan_kind_batches
+# historically budgeted only the *schema* (input) tokens, so a book with many kinds
+# packed 7+ kinds into one call — and the model's *output* (every entity × every
+# attribute for all those kinds) blew past max_tokens, getting cut mid-JSON →
+# unparseable → 0 entities. Output size scales with the number of kinds in a batch,
+# so we also cap kinds-per-batch. With max_entities_per_kind entities × (attrs+5)
+# fields each, ~3 kinds keeps a batch comfortably under the worker's max_tokens even
+# on entity-dense chapters. (See D-EXTRACTION-CONSTRAINED-DECODING for the longer-term
+# json_schema/grammar-constrained-decoding fix that also eliminates malformed JSON.)
+MAX_KINDS_PER_BATCH = 3
 
 SYSTEM_TEMPLATE = """\
 You are a literary entity extractor. Analyze the following {source_language} novel \
@@ -103,7 +114,11 @@ def plan_kind_batches(
         # ~40 tokens per attribute description + ~20 tokens overhead per kind
         kind_tokens = 20 + len(attr_actions) * 40
 
-        if current_tokens + kind_tokens > SCHEMA_TOKEN_BUDGET and current_batch:
+        # Break the batch when EITHER the input schema budget OR the output-side
+        # kinds cap would be exceeded — the latter prevents max_tokens truncation.
+        over_schema = current_tokens + kind_tokens > SCHEMA_TOKEN_BUDGET
+        over_kinds = len(current_batch) >= MAX_KINDS_PER_BATCH
+        if (over_schema or over_kinds) and current_batch:
             batches.append(current_batch)
             current_batch = []
             current_tokens = 0
@@ -124,11 +139,14 @@ def build_extraction_prompt(
     kind_batch: list[str],
     extraction_profile: dict[str, dict[str, str]],
     kinds_metadata: list[dict],
+    *,
+    block_hints: bool = False,
 ) -> str:
     """Build dynamic schema section for ONE BATCH of kinds.
 
     Security: Whitelist validates kind_codes and attr_codes against
-    glossary-service metadata (design §S4).
+    glossary-service metadata (design §S4). When ``block_hints``, the schema asks for an
+    optional ``evidence_block`` (the ⟦B#⟧ number the evidence quote came from).
     """
     valid_kind_codes = {k["code"] for k in kinds_metadata}
 
@@ -177,6 +195,10 @@ def build_extraction_prompt(
 
         # Special fields always included
         json_fields["evidence"] = "..."
+        if block_hints:
+            # The ⟦B#⟧ block the evidence quote came from (a number, e.g. 3). The quote
+            # itself must be the EXACT source text WITHOUT the ⟦B#⟧ marker.
+            json_fields["evidence_block"] = "0"
         json_fields["relevance"] = "major|appears"
 
         sections.append(
@@ -231,8 +253,18 @@ def build_system_prompt(
     )
 
 
-def build_user_prompt(chapter_text: str) -> str:
-    """Assemble the user prompt with chapter text."""
+def build_user_prompt(chapter_text: str, *, block_hints: bool = False) -> str:
+    """Assemble the user prompt with chapter text. When ``block_hints``, the chapter is
+    rendered as ⟦B#⟧-numbered paragraphs (the SAME segmentation the provenance validator
+    uses) so the model can cite an ``evidence_block`` per quote — validated downstream."""
+    if block_hints:
+        from app.workers.extraction_provenance import build_block_offset_map
+
+        blocks = build_block_offset_map(chapter_text)
+        if blocks:
+            chapter_text = "\n".join(
+                f"⟦B{b.index}⟧ {chapter_text[b.start:b.end]}" for b in blocks
+            )
     return USER_TEMPLATE.format(chapter_text=chapter_text)
 
 
@@ -251,24 +283,37 @@ def _extract_json_from_text(text: str) -> str | None:
     """
     text = text.strip()
 
-    # Try markdown fences first
-    fence_match = _MARKDOWN_FENCE_RE.search(text)
-    if fence_match:
-        return fence_match.group(1).strip()
+    # Strip a markdown fence — closed OR unterminated. Truncation (finish_reason=
+    # length) routinely cuts the closing ```, so a fence-only regex would miss the
+    # body entirely and the salvageable partial array would be discarded. Prefer the
+    # closed-fence body; otherwise just drop the opening fence line and continue.
+    closed = _MARKDOWN_FENCE_RE.search(text)
+    if closed:
+        text = closed.group(1).strip()
+    else:
+        opener = re.match(r"```(?:json)?\s*", text)
+        if opener:
+            text = text[opener.end():].strip()
 
-    # Try to find a complete JSON array directly
-    arr_match = _JSON_ARRAY_RE.search(text)
-    if arr_match:
-        return arr_match.group(0)
+    # Everything before the first array opener is prose/reasoning.
+    start = text.find("[")
+    if start == -1:
+        return None
+    text = text[start:]
 
-    # If starts with bracket, use as-is (may need closing bracket)
-    if text.startswith("["):
-        if text.endswith("]"):
+    # Complete + well-formed array → return as-is. We re-validate here (not just
+    # endswith "]") because the old greedy regex could over-capture to an inner "]"
+    # and yield malformed JSON; on any parse failure we fall through to repair.
+    if text.endswith("]"):
+        try:
+            json.loads(text)
             return text
-        # Truncated array — try to repair by closing incomplete trailing entry
-        return _repair_truncated_array(text)
+        except json.JSONDecodeError:
+            pass
 
-    return None
+    # Truncated or malformed — close the array at the last COMPLETE object so the
+    # entities the model finished before being cut off are still recovered.
+    return _repair_truncated_array(text)
 
 
 def _repair_truncated_array(text: str) -> str:
@@ -311,12 +356,37 @@ def _repair_truncated_array(text: str) -> str:
     return text + "\n]"  # fallback: just close it
 
 
+@dataclass
+class ParseStats:
+    """Signals the OBS batch-outcome taxonomy needs that a bare entity list can't
+    carry (extraction-pipeline §8.3 / INV-F15). ``raw_count`` is how many entries the
+    model's array held BEFORE validation — the discriminator between *empty_valid* (the
+    model correctly returned ``[]``) and *validation_rejected* (it returned entities that
+    were all rejected, e.g. kind mismatch). ``parse_ok`` is False when no JSON array could
+    be parsed at all (garbage / prose / mid-truncation that even repair couldn't close)."""
+
+    raw_count: int = 0
+    parse_ok: bool = False
+
+
 def parse_and_validate(
     response_text: str,
     kind_batch: list[str],
     extraction_profile: dict[str, dict[str, str]],
 ) -> list[dict]:
-    """Parse LLM output and validate against extraction profile.
+    """Parse + validate LLM output → the validated entity list (back-compat wrapper)."""
+    entities, _ = parse_and_validate_with_stats(response_text, kind_batch, extraction_profile)
+    return entities
+
+
+def parse_and_validate_with_stats(
+    response_text: str,
+    kind_batch: list[str],
+    extraction_profile: dict[str, dict[str, str]],
+) -> tuple[list[dict], ParseStats]:
+    """Parse LLM output and validate against extraction profile, returning the validated
+    entities AND a ``ParseStats`` (raw pre-validation count + parse-success) so the worker
+    can classify the batch outcome (OBS/M2). The validation logic is unchanged.
 
     Steps (design §6.8):
     1. Extract JSON from response (handles markdown fences, reasoning text, raw arrays)
@@ -328,21 +398,21 @@ def parse_and_validate(
     json_text = _extract_json_from_text(response_text)
     if json_text is None:
         log.warning("extraction parse failed: no JSON array found in response (len=%d)", len(response_text))
-        return []
+        return [], ParseStats(raw_count=0, parse_ok=False)
 
     # Step 1: parse JSON
     try:
         data = json.loads(json_text)
     except json.JSONDecodeError:
         log.warning("extraction parse failed: invalid JSON (extracted len=%d)", len(json_text))
-        return []
+        return [], ParseStats(raw_count=0, parse_ok=False)
 
     if not isinstance(data, list):
         if isinstance(data, dict):
             data = [data]
         else:
             log.warning("extraction parse: expected array, got %s", type(data).__name__)
-            return []
+            return [], ParseStats(raw_count=0, parse_ok=False)
 
     valid_kinds = set(kind_batch)
     validated: list[dict] = []
@@ -363,36 +433,65 @@ def parse_and_validate(
         allowed_attrs = set(extraction_profile.get(kind, {}).keys())
         attrs = {}
         for key, val in entry.items():
-            if key in ("kind", "name", "evidence", "relevance"):
+            if key in ("kind", "name", "evidence", "evidence_block", "relevance"):
                 continue
             if key in allowed_attrs:
                 attrs[key] = val
 
-        validated.append({
+        out = {
             "kind_code": kind,
             "name": name,
             "attributes": attrs,
             "evidence": entry.get("evidence", ""),
             "relevance": entry.get("relevance", "appears"),
-        })
+        }
+        # PROV/M3 — carry the model's optional block citation (validated downstream).
+        if "evidence_block" in entry:
+            out["evidence_block"] = entry.get("evidence_block")
+        validated.append(out)
 
     log.info("extraction parsed: %d valid entities from %d raw entries", len(validated), len(data))
-    return validated
+    return validated, ParseStats(raw_count=len(data), parse_ok=True)
 
 
 # ── Cost estimation ──────────────────────────────────────────────────────────
+
+
+# Reasoning models emit hidden reasoning tokens that count toward OUTPUT, so a higher
+# reasoning_effort costs MORE than the entity JSON alone. These are rough multipliers on
+# the per-call output reservation (the estimate is "estimate, not quote" — design §6.7.1);
+# 'none'/'off' = no reasoning overhead. Keyed defensively (unknown → 1.0).
+_EFFORT_OUTPUT_MULTIPLIER = {"none": 1.0, "off": 1.0, "low": 1.5, "medium": 2.5, "high": 4.0}
 
 
 def estimate_extraction_cost(
     chapters: list[dict],
     extraction_profile: dict[str, dict[str, str]],
     kinds_metadata: list[dict],
+    *,
+    model_context_window: int | None = None,
+    reasoning_effort: str = "none",
 ) -> dict:
-    """Estimate token cost before starting extraction job.
+    """Estimate token cost before starting an extraction job.
 
     Returns dict with estimated_input_tokens, estimated_output_tokens,
-    estimated_total_tokens, llm_calls, chapters_count.
-    """
+    estimated_total_tokens, llm_calls, chapters_count, batches_per_chapter — plus
+    (when the planner is available) calls_per_chapter, unplannable, model_fit_warning.
+
+    D-CACHE-PLANNER-WIRING (Part 1): SPLIT-AWARE via the two-phase planner (PLAN lane,
+    `loreweave_extraction.plan`). The old heuristic charged `chapters × batches` calls each
+    over the WHOLE chapter — blind to the windowing the executor actually does, so a chapter
+    that exceeds the model context (→ N sub-chapter windows × batches) was undercounted N×.
+    The planner models each (chapter × kind-batch) as a `chunk`-splittable unit and splits an
+    oversized one into windows, so the quote tracks the executor's real call fan-out.
+
+    `max_units_per_call=1` is LOAD-BEARING: in extraction the chapter/window text is injected
+    PER kind-batch call (each batch is its own LLM call), NOT shared across packed units —
+    so packing would double-count the shared text. One unit per call keeps the planner's
+    per-unit input sum equal to extraction's real per-call input.
+
+    Falls back to the flat heuristic if the planner SDK isn't importable (keeps the estimate
+    working through any SDK-distribution drift — the old `D-SDK-DISTRIBUTION-SPLIT` blocker)."""
     batches = plan_kind_batches(extraction_profile, kinds_metadata)
     batches_per_chapter = len(batches)
 
@@ -401,25 +500,71 @@ def estimate_extraction_cost(
         20 + len(attrs) * 40
         for attrs in extraction_profile.values()
     )
-    output_per_call = 2000  # ~30 entities × ~60 tokens
+    _effort_mult = _EFFORT_OUTPUT_MULTIPLIER.get(reasoning_effort or "none", 1.0)
+    output_per_call = int(2000 * _effort_mult)  # ~30 entities × ~60 tokens, + reasoning overhead
 
-    total_input = 0
-    total_output = 0
-
-    for ch in chapters:
-        # Estimate chapter tokens: text_length / 2 for CJK (rough)
+    def _chapter_tokens(ch: dict) -> int:
+        # text_length / 2 for CJK (rough); floor so an empty/short chapter still costs a call.
         text_len = ch.get("text_length", ch.get("byte_size", 4000))
-        chapter_tokens = max(text_len // 2, 500)
+        return max(text_len // 2, 500)
 
-        for _ in range(batches_per_chapter):
-            total_input += prompt_overhead + schema_tokens + chapter_tokens
-            total_output += output_per_call
+    try:
+        from loreweave_extraction import (
+            DEFAULT_MODEL_CONTEXT, ModelCaps, PlanRequest, Policy, Unit,
+            effort_output_multiplier, plan,
+        )
 
-    return {
-        "estimated_input_tokens": total_input,
-        "estimated_output_tokens": total_output,
-        "estimated_total_tokens": total_input + total_output,
-        "llm_calls": len(chapters) * batches_per_chapter,
-        "chapters_count": len(chapters),
-        "batches_per_chapter": batches_per_chapter,
-    }
+        # D-RE-EFFORT-COST-ESTIMATE: a reasoning model spends extra OUTPUT tokens on its thinking
+        # trace, so the quote must grow with effort. The planner's per-call output RESERVATION
+        # already scales by effort (Policy.reasoning_effort), but the reported `est_output` is the
+        # sum of unit outputs — so scale the per-call output by the SAME multiplier here, and pass
+        # the effort to Policy so the split/budget math stays consistent with the larger output.
+        out_per_call = int(round(output_per_call * effort_output_multiplier(reasoning_effort)))
+        units: list[Unit] = []
+        for ci, ch in enumerate(chapters):
+            cid = str(ch.get("chapter_id") or ch.get("id") or ci)
+            unit_in = prompt_overhead + schema_tokens + _chapter_tokens(ch)
+            for bi in range(batches_per_chapter):
+                units.append(Unit(
+                    id=f"{cid}:b{bi}", kind="extract", est_input=unit_in,
+                    est_output=out_per_call, splittable=True, split_axis="chunk", group=cid,
+                ))
+        caps = ModelCaps(context_window=model_context_window or DEFAULT_MODEL_CONTEXT)
+        p = plan(PlanRequest(
+            pipeline="extraction", units=units, model=caps,
+            policy=Policy(max_units_per_call=1, reasoning_effort=reasoning_effort),
+        ))
+        total_input = sum(c.est_input for c in p.calls)
+        total_output = sum(c.est_output for c in p.calls)
+        return {
+            "estimated_input_tokens": total_input,
+            "estimated_output_tokens": total_output,
+            "estimated_total_tokens": total_input + total_output,
+            "llm_calls": p.est_llm_calls,
+            "chapters_count": len(chapters),
+            "batches_per_chapter": batches_per_chapter,
+            "calls_per_chapter": round(p.calls_per_chapter, 2),
+            "unplannable": len(p.unplannable),
+            "model_fit_warning": p.model_fit_warning,
+        }
+    except Exception as exc:  # noqa: BLE001
+        # Planner SDK unavailable (ImportError — the D-SDK-DISTRIBUTION-SPLIT net) OR any
+        # planner failure — degrade to the flat heuristic. A cost ESTIMATE must never fail
+        # job creation; a windowing-blind number beats a 500.
+        if not isinstance(exc, ImportError):
+            log.warning("estimate_extraction_cost: planner failed (%s) — flat heuristic", exc)
+        total_input = 0
+        total_output = 0
+        for ch in chapters:
+            chapter_tokens = _chapter_tokens(ch)
+            for _ in range(batches_per_chapter):
+                total_input += prompt_overhead + schema_tokens + chapter_tokens
+                total_output += output_per_call
+        return {
+            "estimated_input_tokens": total_input,
+            "estimated_output_tokens": total_output,
+            "estimated_total_tokens": total_input + total_output,
+            "llm_calls": len(chapters) * batches_per_chapter,
+            "chapters_count": len(chapters),
+            "batches_per_chapter": batches_per_chapter,
+        }

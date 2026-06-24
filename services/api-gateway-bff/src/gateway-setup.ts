@@ -19,6 +19,7 @@ export function configureGatewayApp(
     translationUrl: string;
     glossaryUrl: string;
     chatUrl: string;
+    roleplayUrl: string;
     videoGenUrl: string;
     statisticsUrl: string;
     notificationUrl: string;
@@ -27,6 +28,7 @@ export function configureGatewayApp(
     loreEnrichmentUrl: string;
     learningUrl: string;
     compositionUrl: string;
+    jobsUrl: string;
   },
 ): void {
   app.enableCors({
@@ -36,7 +38,12 @@ export function configureGatewayApp(
     // GET. Without an explicit entry here the CORS preflight
     // (OPTIONS) rejects any PATCH that includes it, even though
     // the actual verb would have been allowed.
-    allowedHeaders: ['Content-Type', 'Authorization', 'If-Match'],
+    // MCP fan-out: `x-loreweave-stream-format` is the AG-UI stream-format
+    // negotiation header the chat FE sends on /chat messages + tool-results.
+    // The entire MCP-fanout FE runs on the agui surface, so a cross-origin
+    // deployment is broken without this (preflight rejects the POST). Found by
+    // the COMPOSE-C browser pass.
+    allowedHeaders: ['Content-Type', 'Authorization', 'If-Match', 'x-loreweave-stream-format'],
     // ETag is a response header, not a request header. Browsers
     // expose a small default set (Content-Type, etc.) to JS; any
     // non-default header must be explicitly exposed. The FE only
@@ -49,7 +56,7 @@ export function configureGatewayApp(
     target: urls.authUrl,
     changeOrigin: true,
     pathFilter: (pathname: string) =>
-      pathname.startsWith('/v1/auth') || pathname.startsWith('/v1/account') || pathname.startsWith('/v1/me/preferences') || pathname.startsWith('/v1/users'),
+      pathname.startsWith('/v1/auth') || pathname.startsWith('/v1/account') || pathname.startsWith('/v1/me/preferences') || pathname.startsWith('/v1/users') || pathname.startsWith('/v1/admin'),
   });
   const bookProxy = createProxyMiddleware({
     target: urls.bookUrl,
@@ -57,6 +64,27 @@ export function configureGatewayApp(
     // Allow large bodies for cover image upload (multipart/form-data)
     selfHandleResponse: false,
     pathFilter: (pathname: string) => pathname.startsWith('/v1/books'),
+  });
+  // C21 — thin `/v1/worlds*` passthrough to book-service (worlds + bible
+  // provisioning live in book-service, same target as `/v1/books`). This is a
+  // gateway-invariant enabling passthrough only — NO world business logic in the
+  // gateway; it just forwards. Mirrors bookProxy exactly.
+  const worldsProxy = createProxyMiddleware({
+    target: urls.bookUrl,
+    changeOrigin: true,
+    selfHandleResponse: false,
+    pathFilter: (pathname: string) => pathname.startsWith('/v1/worlds'),
+  });
+  // MCP-fanout C-CONFIRM seam fix (live-pass): the generic confirm card commits a
+  // book Tier-W/S action via `/v1/book/actions/{preview,confirm}` (SINGULAR
+  // `book`, the domain enum used by confirm_action). bookProxy only matches
+  // `/v1/books` (plural), so this pair fell through to a 404 and the book confirm
+  // round-trip never completed. Thin passthrough to book-service, same target.
+  const bookActionsProxy = createProxyMiddleware({
+    target: urls.bookUrl,
+    changeOrigin: true,
+    selfHandleResponse: false,
+    pathFilter: (pathname: string) => pathname.startsWith('/v1/book/actions'),
   });
   const sharingProxy = createProxyMiddleware({
     target: urls.sharingUrl,
@@ -73,6 +101,16 @@ export function configureGatewayApp(
     changeOrigin: true,
     pathFilter: (pathname: string) => pathname.startsWith('/v1/model-registry'),
   });
+  // MCP-fanout C-CONFIRM seam fix (live-pass): the generic confirm card commits a
+  // settings Tier-W/S action (e.g. set a default model) via
+  // `/v1/settings/actions/{preview,confirm}` on provider-registry. There was no
+  // `/v1/settings` proxy (the service is otherwise reached at `/v1/model-registry`),
+  // so the settings confirm round-trip 404'd. Thin passthrough, same target.
+  const settingsActionsProxy = createProxyMiddleware({
+    target: urls.providerRegistryUrl,
+    changeOrigin: true,
+    pathFilter: (pathname: string) => pathname.startsWith('/v1/settings/actions'),
+  });
   const usageBillingProxy = createProxyMiddleware({
     target: urls.usageBillingUrl,
     changeOrigin: true,
@@ -88,6 +126,11 @@ export function configureGatewayApp(
     changeOrigin: true,
     pathFilter: (pathname: string) => pathname.startsWith('/v1/extraction'),
   });
+  const glossaryTranslateProxy = createProxyMiddleware({
+    target: urls.translationUrl,
+    changeOrigin: true,
+    pathFilter: (pathname: string) => pathname.startsWith('/v1/glossary-translate'),
+  });
   const glossaryProxy = createProxyMiddleware({
     target: urls.glossaryUrl,
     changeOrigin: true,
@@ -99,6 +142,15 @@ export function configureGatewayApp(
     // Disable body buffering so SSE streams pass through immediately
     selfHandleResponse: false,
     pathFilter: (pathname: string) => pathname.startsWith('/v1/chat'),
+  });
+  // roleplay-service (Rust) — scripts + start-orchestration. A normal domain
+  // REST proxy (gateway invariant holds); roleplay-service validates the JWT
+  // itself (like book-service), so Authorization passes through unchanged. The
+  // path is forwarded verbatim — roleplay-service serves `/v1/roleplay/*`.
+  const roleplayProxy = createProxyMiddleware({
+    target: urls.roleplayUrl,
+    changeOrigin: true,
+    pathFilter: (pathname: string) => pathname.startsWith('/v1/roleplay'),
   });
   const videoGenProxy = createProxyMiddleware({
     target: urls.videoGenUrl,
@@ -124,7 +176,12 @@ export function configureGatewayApp(
   const knowledgeProxy = createProxyMiddleware({
     target: urls.knowledgeUrl,
     changeOrigin: true,
-    pathFilter: (pathname: string) => pathname.startsWith('/v1/knowledge'),
+    // Both /v1/knowledge (projects, entities, …) AND /v1/kg (the KG customizable-
+    // ontology surface: graph-schemas, adopt, views, sync, triage) live on
+    // knowledge-service — the FE ontologyApi targets /v1/kg. (D-KG-ONTOLOGY-FE-WIRING:
+    // the BFF previously proxied only /v1/knowledge, so every /v1/kg call 404'd.)
+    pathFilter: (pathname: string) =>
+      pathname.startsWith('/v1/knowledge') || pathname.startsWith('/v1/kg'),
     // K-CLEAN-5 (Gate-5-I4 + D-K8-04): when knowledge-service is
     // unreachable (container down, DNS, refused) http-proxy-middleware
     // would otherwise propagate the upstream connection error as a
@@ -185,6 +242,15 @@ export function configureGatewayApp(
     target: urls.loreEnrichmentUrl,
     changeOrigin: true,
     pathFilter: (pathname: string) => pathname.startsWith('/v1/lore-enrichment'),
+  });
+
+  // Unified Job Control Plane P2 — jobs-service (/v1/jobs list/detail + SSE
+  // stream). `selfHandleResponse:false` (default) so GET /v1/jobs/stream passes
+  // through un-buffered, the chat/composition SSE precedent.
+  const jobsProxy = createProxyMiddleware({
+    target: urls.jobsUrl,
+    changeOrigin: true,
+    pathFilter: (pathname: string) => pathname.startsWith('/v1/jobs'),
   });
 
   // Phase B — learning-service (Axis-1 correction read API).
@@ -255,6 +321,21 @@ export function configureGatewayApp(
     res: Response,
     next: NextFunction,
   ) => void;
+  const worldsProxyFn = worldsProxy as unknown as (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => void;
+  const bookActionsProxyFn = bookActionsProxy as unknown as (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => void;
+  const settingsActionsProxyFn = settingsActionsProxy as unknown as (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => void;
   const sharingProxyFn = sharingProxy as unknown as (
     req: Request,
     res: Response,
@@ -285,12 +366,22 @@ export function configureGatewayApp(
     res: Response,
     next: NextFunction,
   ) => void;
+  const glossaryTranslateProxyFn = glossaryTranslateProxy as unknown as (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => void;
   const glossaryProxyFn = glossaryProxy as unknown as (
     req: Request,
     res: Response,
     next: NextFunction,
   ) => void;
   const chatProxyFn = chatProxy as unknown as (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => void;
+  const roleplayProxyFn = roleplayProxy as unknown as (
     req: Request,
     res: Response,
     next: NextFunction,
@@ -335,18 +426,37 @@ export function configureGatewayApp(
     res: Response,
     next: NextFunction,
   ) => void;
+  const jobsProxyFn = jobsProxy as unknown as (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => void;
   instance.use((req: Request, res: Response, next: NextFunction) => {
-    if (req.path.startsWith('/v1/auth') || req.path.startsWith('/v1/account') || req.path.startsWith('/v1/me/preferences') || req.path.startsWith('/v1/users')) {
+    if (req.path.startsWith('/v1/auth') || req.path.startsWith('/v1/account') || req.path.startsWith('/v1/me/preferences') || req.path.startsWith('/v1/users') || req.path.startsWith('/v1/admin')) {
       return authProxyFn(req, res, next);
+    }
+    // MCP-fanout C-CONFIRM: `/v1/book/actions/*` (singular) → book-service. Must
+    // precede the `/v1/books` (plural) check; the two are disjoint but keeping the
+    // generic-confirm action route first documents the intent.
+    if (req.path.startsWith('/v1/book/actions')) {
+      return bookActionsProxyFn(req, res, next);
     }
     if (req.path.startsWith('/v1/books')) {
       return bookProxyFn(req, res, next);
+    }
+    if (req.path.startsWith('/v1/worlds')) {
+      return worldsProxyFn(req, res, next);
     }
     if (req.path.startsWith('/v1/sharing')) {
       return sharingProxyFn(req, res, next);
     }
     if (req.path.startsWith('/v1/catalog')) {
       return catalogProxyFn(req, res, next);
+    }
+    // MCP-fanout C-CONFIRM: `/v1/settings/actions/*` → provider-registry (the
+    // settings domain commit path for the generic confirm card).
+    if (req.path.startsWith('/v1/settings/actions')) {
+      return settingsActionsProxyFn(req, res, next);
     }
     if (req.path.startsWith('/v1/model-registry')) {
       return providerRegistryProxyFn(req, res, next);
@@ -357,6 +467,9 @@ export function configureGatewayApp(
     if (req.path.startsWith('/v1/extraction')) {
       return extractionProxyFn(req, res, next);
     }
+    if (req.path.startsWith('/v1/glossary-translate')) {
+      return glossaryTranslateProxyFn(req, res, next);
+    }
     if (req.path.startsWith('/v1/translation')) {
       return translationProxyFn(req, res, next);
     }
@@ -365,6 +478,9 @@ export function configureGatewayApp(
     }
     if (req.path.startsWith('/v1/chat')) {
       return chatProxyFn(req, res, next);
+    }
+    if (req.path.startsWith('/v1/roleplay')) {
+      return roleplayProxyFn(req, res, next);
     }
     if (req.path.startsWith('/v1/video-gen')) {
       return videoGenProxyFn(req, res, next);
@@ -378,7 +494,7 @@ export function configureGatewayApp(
     ) {
       return notificationProxyFn(req, res, next);
     }
-    if (req.path.startsWith('/v1/knowledge')) {
+    if (req.path.startsWith('/v1/knowledge') || req.path.startsWith('/v1/kg')) {
       return knowledgeProxyFn(req, res, next);
     }
     if (req.path.startsWith('/v1/campaigns')) {
@@ -392,6 +508,9 @@ export function configureGatewayApp(
     }
     if (req.path.startsWith('/v1/lore-enrichment')) {
       return loreEnrichmentProxyFn(req, res, next);
+    }
+    if (req.path.startsWith('/v1/jobs')) {
+      return jobsProxyFn(req, res, next);
     }
     return next();
   });

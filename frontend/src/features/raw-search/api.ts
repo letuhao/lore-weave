@@ -1,5 +1,9 @@
 import { apiJson } from '@/api';
-import type { RawSearchParams, RawSearchResponse } from './types';
+import type {
+  IndexDraftsResponse,
+  RawSearchParams,
+  RawSearchResponse,
+} from './types';
 
 // Lexical leg → book-service (always available, draft surface).
 function lexicalSearch(
@@ -33,6 +37,10 @@ async function hybridSearch(
   qs.set('mode', params.mode ?? 'hybrid');
   if (params.limit != null) qs.set('limit', String(params.limit));
   if (params.granularity) qs.set('granularity', params.granularity);
+  // D-RAWSEARCH-CANON-WIRING — surface=all asks the owner-only draft layer; the
+  // BE silently downgrades a non-owner 'all' to 'canon'. Only send 'all' (canon
+  // is the BE default) to keep the URL clean.
+  if (params.surface === 'all') qs.set('surface', 'all');
   // Only send rerank when disabling it (Mine) — backend default is on.
   if (params.rerank === false) qs.set('rerank', 'false');
   try {
@@ -59,7 +67,18 @@ async function hybridSearch(
   }
 }
 
+// D-RAWSEARCH-CANON-WIRING — owner-only, on-demand semantic indexing of this
+// book's draft (unpublished) chapters, so surface=all can then surface them.
+// 403 (owner_only) / 409 (project not indexed) / 502 propagate to the caller.
+function indexDrafts(bookId: string, token: string): Promise<IndexDraftsResponse> {
+  return apiJson<IndexDraftsResponse>(
+    `/v1/knowledge/books/${bookId}/index-drafts`,
+    { method: 'POST', token },
+  );
+}
+
 export const rawSearchApi = {
   search: lexicalSearch,
   searchHybrid: hybridSearch,
+  indexDrafts,
 };

@@ -15,7 +15,7 @@ from uuid import uuid4
 import pytest
 
 from app.clients import KnowledgeClient, SummarizeMessageResult
-from app.summary_consumer import _dispatch_one_message, consume_summary_stream
+from app.summary_consumer import _dispatch_one_message, SummaryConsumer
 
 
 # ── _dispatch_one_message unit tests ────────────────────────────────
@@ -314,168 +314,52 @@ async def test_knowledge_client_shares_http_when_no_explicit_summarize_timeout()
     await kc.aclose()
 
 
-# ── consume_summary_stream integration shape ────────────────────────
+# ── SummaryConsumer wiring (transport is SDK-tested centrally) ────────
+# The Redis transport (xack-on-success, idle-TimeoutError-continue, BUSYGROUP-safe group,
+# bounded-retry/poison, startup PEL drain) is now owned + unit-tested by the shared
+# loreweave_jobs.BaseTerminalConsumer. Here we only cover the SummaryConsumer SEAM: that
+# handle() wires _dispatch_one_message → ack on should_ack, raise on retryable.
+
+
+def _summary_consumer(kc):
+    return SummaryConsumer("redis://test", kc, consumer_group="g", consumer_name="c")
 
 
 @pytest.mark.asyncio
-async def test_consume_stream_xacks_on_success(monkeypatch):
-    """End-to-end: simulate one XREADGROUP delivery, verify XACK fires
-    + the loop exits cleanly on cancel."""
-    fake_client = MagicMock()
-    fake_client.xgroup_create = AsyncMock(return_value=None)
-    fake_client.xack = AsyncMock(return_value=1)
-    fake_client.aclose = AsyncMock()
-
-    # First call returns one message; subsequent calls return [] so
-    # the loop blocks until we cancel it.
-    one_message = [(b"extraction.summarize", [(b"1-0", _fields())])]
-    fake_client.xreadgroup = AsyncMock(side_effect=[
-        one_message, asyncio.CancelledError(),
-    ])
-
-    monkeypatch.setattr(
-        "app.summary_consumer.aioredis.from_url",
-        lambda *a, **kw: fake_client,
-    )
-
-    kc = MagicMock(spec=KnowledgeClient)
-    kc.process_summarize_message = AsyncMock(return_value=SummarizeMessageResult(
-        level="chapter", node_id="n1",
-        cache_hit=False, race_winner=True,
-        re_enqueued=False, skipped_retry_exhausted=False,
-        summary_id="s1",
-    ))
-
-    with pytest.raises(asyncio.CancelledError):
-        await consume_summary_stream(
-            kc,
-            redis_url="redis://test",
-            consumer_group="g", consumer_name="c", block_ms=10,
-        )
-
-    fake_client.xack.assert_awaited_once()
-    fake_client.aclose.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_consume_stream_continues_on_idle_timeout(monkeypatch):
-    """D-REDIS8-CONSUMERS: redis-py 8 makes a blocking XREADGROUP(block=) raise
-    TimeoutError on idle. The loop must treat it as normal idle (continue, no
-    WARNING, no backoff) and keep reading — proven by processing the message
-    that arrives AFTER the idle timeout."""
-    import redis.asyncio as aioredis
-
-    fake_client = MagicMock()
-    fake_client.xgroup_create = AsyncMock(return_value=None)
-    fake_client.xack = AsyncMock(return_value=1)
-    fake_client.aclose = AsyncMock()
-    fake_client.xreadgroup = AsyncMock(side_effect=[
-        aioredis.TimeoutError("Timeout reading from redis:6379"),  # idle tick
-        [(b"extraction.summarize", [(b"1-0", _fields())])],         # real message
-        asyncio.CancelledError(),
-    ])
-    monkeypatch.setattr(
-        "app.summary_consumer.aioredis.from_url",
-        lambda *a, **kw: fake_client,
-    )
-
+async def test_handle_acks_on_success(monkeypatch):
     kc = MagicMock(spec=KnowledgeClient)
     kc.process_summarize_message = AsyncMock(return_value=SummarizeMessageResult(
         level="chapter", node_id="n1", cache_hit=False, race_winner=True,
         re_enqueued=False, skipped_retry_exhausted=False, summary_id="s1",
     ))
-
-    with pytest.raises(asyncio.CancelledError):
-        await consume_summary_stream(
-            kc, redis_url="redis://test",
-            consumer_group="g", consumer_name="c", block_ms=10,
-        )
-    # processed the post-timeout message → the idle TimeoutError was a clean continue
-    fake_client.xack.assert_awaited_once()
+    consumer = _summary_consumer(kc)
+    r = AsyncMock()
+    await consumer._process_msg(r, "1-0", _fields())
+    r.xack.assert_awaited_once()  # should_ack=True → base acks
 
 
 @pytest.mark.asyncio
-async def test_consume_stream_does_not_xack_on_retryable(monkeypatch):
-    """Retryable failure → no XACK so PEL re-delivers."""
-    fake_client = MagicMock()
-    fake_client.xgroup_create = AsyncMock(return_value=None)
-    fake_client.xack = AsyncMock(return_value=1)
-    fake_client.aclose = AsyncMock()
-    fake_client.xreadgroup = AsyncMock(side_effect=[
-        [(b"s", [(b"1-0", _fields())])],
-        asyncio.CancelledError(),
-    ])
-    monkeypatch.setattr(
-        "app.summary_consumer.aioredis.from_url",
-        lambda *a, **kw: fake_client,
-    )
-
+async def test_handle_retryable_leaves_unacked(monkeypatch):
     kc = MagicMock(spec=KnowledgeClient)
     kc.process_summarize_message = AsyncMock(return_value=SummarizeMessageResult(
-        level="chapter", node_id="n1",
-        cache_hit=False, race_winner=False,
-        re_enqueued=False, skipped_retry_exhausted=False,
-        summary_id=None,
+        level="chapter", node_id="n1", cache_hit=False, race_winner=False,
+        re_enqueued=False, skipped_retry_exhausted=False, summary_id=None,
         retryable=True, error="HTTP 503",
     ))
-
-    with pytest.raises(asyncio.CancelledError):
-        await consume_summary_stream(
-            kc, redis_url="redis://test",
-            consumer_group="g", consumer_name="c", block_ms=10,
-        )
-    fake_client.xack.assert_not_called()
+    consumer = _summary_consumer(kc)
+    r = AsyncMock()
+    r.incr = AsyncMock(return_value=1)  # below max_retries → redelivered
+    await consumer._process_msg(r, "1-0", _fields())
+    r.xack.assert_not_called()  # retryable → handle raises → base leaves un-acked
 
 
 @pytest.mark.asyncio
-async def test_consume_stream_creates_group_idempotently(monkeypatch):
-    """BUSYGROUP error on second start is swallowed."""
-    import redis.asyncio as aioredis
-    fake_client = MagicMock()
-    fake_client.xgroup_create = AsyncMock(
-        side_effect=aioredis.ResponseError("BUSYGROUP Consumer Group name already exists"),
-    )
-    fake_client.aclose = AsyncMock()
-    fake_client.xreadgroup = AsyncMock(side_effect=asyncio.CancelledError())
-    monkeypatch.setattr(
-        "app.summary_consumer.aioredis.from_url",
-        lambda *a, **kw: fake_client,
-    )
-
+async def test_handle_malformed_acks_as_poison(monkeypatch):
     kc = MagicMock(spec=KnowledgeClient)
-
-    with pytest.raises(asyncio.CancelledError):
-        await consume_summary_stream(
-            kc, redis_url="redis://test",
-            consumer_group="g", consumer_name="c", block_ms=10,
-        )
-    fake_client.aclose.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_consume_stream_dispatcher_crash_does_not_kill_loop(monkeypatch):
-    """If process_summarize_message raises unhandled, the consumer
-    catches, logs, leaves the message un-ACKed, and continues."""
-    fake_client = MagicMock()
-    fake_client.xgroup_create = AsyncMock(return_value=None)
-    fake_client.xack = AsyncMock(return_value=1)
-    fake_client.aclose = AsyncMock()
-    fake_client.xreadgroup = AsyncMock(side_effect=[
-        [(b"s", [(b"1-0", _fields())])],
-        asyncio.CancelledError(),
-    ])
-    monkeypatch.setattr(
-        "app.summary_consumer.aioredis.from_url",
-        lambda *a, **kw: fake_client,
-    )
-
-    kc = MagicMock(spec=KnowledgeClient)
-    kc.process_summarize_message = AsyncMock(side_effect=RuntimeError("crash"))
-
-    with pytest.raises(asyncio.CancelledError):
-        await consume_summary_stream(
-            kc, redis_url="redis://test",
-            consumer_group="g", consumer_name="c", block_ms=10,
-        )
-    # No XACK on dispatcher crash — message returns to PEL for retry.
-    fake_client.xack.assert_not_called()
+    kc.process_summarize_message = AsyncMock()
+    consumer = _summary_consumer(kc)
+    r = AsyncMock()
+    # missing required fields → _dispatch returns True (drop poison) → ack, no HTTP call
+    await consumer._process_msg(r, "1-0", {"event_type": "x"})
+    r.xack.assert_awaited_once()
+    kc.process_summarize_message.assert_not_awaited()

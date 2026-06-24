@@ -1,0 +1,7 @@
+id: w3-schema-derived
+description: "W3.2 — schema-derived projection-table sweep, LIVE (closes D-PROJCHECK-TABLE-DRIFT). The no-orphan sweep used to read a HARDCODED projection-table list; a new projection table added by a migration was silently unchecked. projcheck now DERIVES the set from the live schema (every projection table carries the VerificationMeta last_verified_event_version column). Clean DB → -check-projections PASS; then a NEW table zzz_projection (verif-meta marker + an orphan row) is created → the sweep DISCOVERS + flags it, naming zzz_projection (a hardcoded list of the canonical 11 would have MISSED it → drift closed, non-vacuous). Reuses the scale rig shard-0."
+invariant: I-w3-projection-discovery-schema-derived
+kind: live-probe
+command: ["bash", "scripts/perf/w3-schema-derived.sh"]
+requires: ["scale-rig"]
+skip_when: []

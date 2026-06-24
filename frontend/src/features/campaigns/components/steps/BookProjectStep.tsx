@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/auth';
-import { booksApi } from '../../../books/api';
+import { BookPicker } from '@/components/shared/BookPicker';
 import { knowledgeApi } from '../../../knowledge/api';
 import type { WizardForm } from '../../hooks/useCampaignWizard';
 
@@ -16,14 +16,11 @@ export function BookProjectStep({ form, setField }: Props) {
   const { t } = useTranslation('campaigns');
   const { accessToken } = useAuth();
 
-  const books = useQuery({
-    queryKey: ['campaign-wizard', 'books'],
-    queryFn: () => booksApi.listBooks(accessToken!, { limit: 200 }),
-    enabled: !!accessToken,
-  });
   const projects = useQuery({
     queryKey: ['campaign-wizard', 'projects'],
-    queryFn: () => knowledgeApi.listProjects({ limit: 200 }, accessToken!),
+    // knowledge /projects caps limit at 100 (>100 → 422, which silently emptied
+    // the dropdown and made the wizard unusable — Next never enabled).
+    queryFn: () => knowledgeApi.listProjects({ limit: 100 }, accessToken!),
     enabled: !!accessToken,
   });
 
@@ -47,16 +44,13 @@ export function BookProjectStep({ form, setField }: Props) {
         <span className="text-xs font-medium text-muted-foreground">
           {t('fields.book', { defaultValue: 'Book' })}
         </span>
-        <select
-          className={fieldCls}
-          value={form.bookId ?? ''}
-          onChange={(e) => setField('bookId', e.target.value || null)}
-        >
-          <option value="">{t('fields.bookNone', { defaultValue: 'Select a book…' })}</option>
-          {(books.data?.items ?? []).map((b) => (
-            <option key={b.book_id} value={b.book_id}>{b.title}</option>
-          ))}
-        </select>
+        {/* C4 (BL-3/G6): searchable book picker — scales past the 200-cap <select>;
+            emits book_id, empty stays valid (book optional). */}
+        <BookPicker
+          value={form.bookId ?? null}
+          onChange={(id) => setField('bookId', id)}
+          placeholder={t('fields.bookNone', { defaultValue: 'Search your books by title…' })}
+        />
       </label>
 
       <label className="flex flex-col gap-1">

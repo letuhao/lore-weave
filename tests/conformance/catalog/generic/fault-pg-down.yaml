@@ -1,0 +1,10 @@
+id: fault-pg-down
+description: "S6 (Battery D) — graceful-degradation drill: Postgres unreachable on the EMIT path (toxiproxy down). Deterministic bracket: down pg_proxy -> emit fails fast + cleanly (no partial corruption, transactional rollback) -> up -> fresh emit + C3 verify clean. NOT a convergence-to-seed claim (an interrupted non-idempotent emit can't be completed)."
+invariant: I-writer-fails-clean
+kind: live-probe
+command: ["bash", "scripts/chaos/fault-pg-down.sh"]
+# Needs PG + Redis (foundation-stack predicate) + toxiproxy (the script boots it).
+# Bare runner → notrun. Missing workload-gen binary → exit 2 → notrun.
+requires: ["foundation-stack"]
+skip_when: []
+fail_closed_on_setup_error: false

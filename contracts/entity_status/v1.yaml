@@ -1,0 +1,65 @@
+# L4.E.2 — entity_status OpenAPI surface.
+#
+# Internal documentation only (Q-L4-5): api-gateway-bff does NOT serve this
+# directly; service-to-service callers consume entity_status via the
+# in-process library (Go: contracts/entity_status; Rust: crates/dp-kernel::entity_status).
+#
+# The OpenAPI document below is a STABLE wire-contract reference for any
+# future cross-language client (TS, Python). It mirrors the Go + Rust
+# struct shapes byte-for-byte.
+
+openapi: 3.0.3
+info:
+  title: LoreWeave Entity Status (shared kernel)
+  version: "1.0"
+  description: |
+    Resolves the lifecycle GoneState of any addressable game entity
+    (PC, NPC, region, world_kv, session). Returns a versioned envelope
+    that combines reality-level + entity-level + PII-level signals
+    via the S10 §12Z precedence order.
+
+paths:
+  /v1/internal/entity_status:
+    post:
+      operationId: getEntityStatus
+      summary: Resolve the GoneState of one entity.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EntityRef'
+      responses:
+        '200':
+          description: Envelope returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EntityStatusEnvelope'
+
+components:
+  schemas:
+    EntityRef:
+      type: object
+      required: [entity_id, aggregate_type, reality_id]
+      properties:
+        entity_id:       { type: string, format: uuid }
+        aggregate_type:  { type: string, enum: [pc, npc, region, world_kv, session] }
+        reality_id:      { type: string, format: uuid }
+
+    GoneState:
+      type: string
+      enum: [active, severed, archived, dropped, user_erased]
+
+    EntityStatusEnvelope:
+      type: object
+      required: [envelope_version, ref, state, source_layer, resolved_at]
+      properties:
+        envelope_version: { type: integer, minimum: 1 }
+        ref:              { $ref: '#/components/schemas/EntityRef' }
+        state:            { $ref: '#/components/schemas/GoneState' }
+        source_layer:
+          type: string
+          enum: [pii_kek, reality_registry, reality_ancestry, projections, default_active]
+        aggregate_version: { type: integer, format: int64, minimum: 0 }
+        resolved_at:      { type: string, format: date-time }

@@ -178,13 +178,15 @@ def test_build_run_config_returns_hash_and_base_version():
 
 
 def test_malformed_extraction_config_falls_back_to_globals_no_raise():
-    """/review-impl MED-3 — a malformed per-project override (filter enabled
-    with no model_ref, and no global filter in this test env) must NOT raise
-    from the telemetry path; it degrades to global defaults."""
+    """/review-impl MED-3 — a per-project override that enables the filter with no
+    model_ref must NOT raise from the telemetry path. Since D-WX-PRECISION-FILTER-MODEL-ARCH
+    (94bba787) the env is no longer a model source, so the fallback for an enabled filter
+    with no model is the per-user EXTRACTION model — NOT None."""
     job = _job(extraction_config={"precision_filter": {"enabled": True}})
     snapshot, cfg_hash, base_version = _build_run_config(job)  # must not raise
-    # global env has no precision filter in tests → fallback yields None filter
-    assert snapshot.precision_filter is None
+    # enabled-without-model → reuse the extraction model (env is no longer a model source).
+    assert snapshot.precision_filter is not None
+    assert snapshot.precision_filter.model_ref == "extractor-model"
     assert len(cfg_hash) == 64
 
 
@@ -293,6 +295,108 @@ async def test_extract_and_persist_omitted_filter_uses_global(monkeypatch):
         job_id=uuid.uuid4(), model_ref="m", text="hello",
     )
     assert captured["precision_filter"] is sentinel_cfg
+
+
+async def test_extract_and_persist_forwards_targets_to_sdk_and_persist(monkeypatch):
+    """C12 — targets reach extract_pass2 (as a set) AND persist_pass2 (as a
+    list, for the summary-enqueue gate)."""
+    from app import runner
+
+    captured = {}
+    persist_kwargs = {}
+
+    class _Cands:
+        entities = []
+        relations = []
+        events = []
+        facts = []
+        filter_status = "skipped"
+
+    async def fake_extract_pass2(**kwargs):
+        captured.update(kwargs)
+        return _Cands()
+
+    async def fake_persist(**kwargs):
+        persist_kwargs.update(kwargs)
+        return ExtractionResult(
+            source_id="s", entities_merged=0, relations_created=0,
+            events_merged=0, facts_merged=0,
+        )
+
+    monkeypatch.setattr(runner, "extract_pass2", fake_extract_pass2)
+    kc = AsyncMock()
+    kc.persist_pass2 = AsyncMock(side_effect=fake_persist)
+    await runner._extract_and_persist(
+        knowledge_client=kc, llm_client=MagicMock(), user_id=uuid.uuid4(),
+        project_id=uuid.uuid4(), source_type="chapter", source_id="s",
+        job_id=uuid.uuid4(), model_ref="m", text="hello",
+        targets=["entities", "events"],
+    )
+    assert captured["targets"] == {"entities", "events"}
+    assert persist_kwargs["targets"] == ["entities", "events"]
+
+
+async def test_extract_and_persist_forwards_concurrency_level(monkeypatch):
+    """C12 — concurrency_level reaches extract_pass2 (caps the R/E/F gather)."""
+    from app import runner
+
+    captured = {}
+
+    class _Cands:
+        entities = []
+        relations = []
+        events = []
+        facts = []
+        filter_status = "skipped"
+
+    async def fake_extract_pass2(**kwargs):
+        captured.update(kwargs)
+        return _Cands()
+
+    monkeypatch.setattr(runner, "extract_pass2", fake_extract_pass2)
+    kc = AsyncMock()
+    kc.persist_pass2 = AsyncMock(return_value=ExtractionResult(
+        source_id="s", entities_merged=0, relations_created=0,
+        events_merged=0, facts_merged=0,
+    ))
+    await runner._extract_and_persist(
+        knowledge_client=kc, llm_client=MagicMock(), user_id=uuid.uuid4(),
+        project_id=uuid.uuid4(), source_type="chapter", source_id="s",
+        job_id=uuid.uuid4(), model_ref="m", text="hello",
+        concurrency_level=2,
+    )
+    assert captured["concurrency_level"] == 2
+
+
+async def test_extract_and_persist_targets_none_passes_none(monkeypatch):
+    """C12 back-compat — targets omitted ⇒ None to the SDK (all passes)."""
+    from app import runner
+
+    captured = {}
+
+    class _Cands:
+        entities = []
+        relations = []
+        events = []
+        facts = []
+        filter_status = "skipped"
+
+    async def fake_extract_pass2(**kwargs):
+        captured.update(kwargs)
+        return _Cands()
+
+    monkeypatch.setattr(runner, "extract_pass2", fake_extract_pass2)
+    kc = AsyncMock()
+    kc.persist_pass2 = AsyncMock(return_value=ExtractionResult(
+        source_id="s", entities_merged=0, relations_created=0,
+        events_merged=0, facts_merged=0,
+    ))
+    await runner._extract_and_persist(
+        knowledge_client=kc, llm_client=MagicMock(), user_id=uuid.uuid4(),
+        project_id=uuid.uuid4(), source_type="chat_turn", source_id="s",
+        job_id=uuid.uuid4(), model_ref="m", text="hello",
+    )
+    assert captured["targets"] is None
 
 
 async def test_extract_and_persist_forwards_prompt_overrides(monkeypatch):

@@ -3,9 +3,12 @@ import { useTranslation } from 'react-i18next';
 import {
   BookOpen,
   Brain,
+  Globe2,
+  GraduationCap,
   MessageCircle,
   Search,
   Factory,
+  ListChecks,
   BarChart3,
   Settings,
   LogOut,
@@ -18,6 +21,8 @@ import {
   Moon,
   Sunset,
   Monitor,
+  Sparkles,
+  Library,
 } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { useSidebar } from '@/providers/SidebarProvider';
@@ -30,17 +35,27 @@ type NavItem = { to: string; icon: React.ElementType; labelKey: string; auth?: b
 
 // auth: true = only show when logged in, undefined = always show
 const mainNav: NavItem[] = [
+  // C22 — re-entry into the intent fork ("start something new"); first-run is
+  // gated via /onboarding, this is the always-available door back in.
+  { to: '/onboarding/new', icon: Sparkles, labelKey: 'nav.startNew', auth: true },
   { to: '/books', icon: BookOpen, labelKey: 'nav.workspace', auth: true },
   { to: '/chat', icon: MessageCircle, labelKey: 'nav.chat', auth: true },
+  { to: '/roleplay', icon: GraduationCap, labelKey: 'nav.roleplay', auth: true },
   // K8.1-R1: `to` is `/knowledge` (not `/knowledge/projects`) so NavLink's
   // `startsWith(to + '/')` match keeps the entry active across all
   // tab sub-routes. The /knowledge path itself redirects to /projects.
   { to: '/knowledge', icon: Brain, labelKey: 'nav.knowledge', auth: true },
+  // C21 — prose-less worldbuilding entry. `/worlds` (workspace sub-routes keep
+  // the entry active via the startsWith match).
+  { to: '/worlds', icon: Globe2, labelKey: 'nav.worlds', auth: true },
   { to: '/campaigns', icon: Factory, labelKey: 'nav.campaigns', auth: true },
+  // Per-user glossary standards library (genres/kinds/attributes) — feeds book adopt.
+  { to: '/standards', icon: Library, labelKey: 'nav.standards', auth: true },
   { to: '/browse', icon: Search, labelKey: 'nav.browse' },
 ];
 
 const manageNav: NavItem[] = [
+  { to: '/jobs', icon: ListChecks, labelKey: 'nav.jobs', auth: true },
   { to: '/trash', icon: Trash2, labelKey: 'nav.trash', auth: true },
   { to: '/usage', icon: BarChart3, labelKey: 'nav.usage', auth: true },
   { to: '/leaderboard', icon: Trophy, labelKey: 'nav.leaderboard' },

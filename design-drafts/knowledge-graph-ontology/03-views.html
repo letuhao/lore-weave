@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Views / lenses — KG Ontology Drafts</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = { theme: { extend: { colors: { primary:'#6366f1', edge:'#8b5cf6', temporal:'#f59e0b', drive:'#10b981', gloss:'#14b8a6' } } } };
+</script>
+<style>
+  body { font-family: ui-sans-serif, system-ui, "Segoe UI", sans-serif; }
+  .chip { display:inline-flex; align-items:center; gap:.25rem; border-radius:.375rem; padding:.05rem .4rem; font-size:10px; font-weight:600; }
+  .chip-edge   { background:#8b5cf61a; color:#6d28d9; border:1px solid #8b5cf640; }
+  .chip-gloss  { background:#14b8a61a; color:#0f766e; border:1px solid #14b8a640; }
+  .tier-proj   { background:#0ea5e91a; color:#0369a1; border:1px solid #0ea5e940; }
+  .gap { border:1px dashed #f59e0b; background:#fffbeb; }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+
+<header class="border-b bg-white">
+  <div class="mx-auto max-w-6xl px-6 py-4">
+    <div class="flex items-center justify-between">
+      <div><h1 class="text-lg font-bold">Views / lenses — multi-graph v1</h1>
+      <p class="text-xs text-slate-500">A named {edge-types + node-kinds} filter over the ONE project graph. READ-only. Solves "a graph per problem" without partitions.</p></div>
+      <span class="chip tier-proj">per-user · project VCTĐ</span>
+    </div>
+    <nav class="mt-3 flex flex-wrap gap-2 text-sm">
+      <a href="index.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Model</a>
+      <a href="01-adopt.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Adopt template</a>
+      <a href="02-schema-editor.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Schema editor</a>
+      <a href="03-views.html" class="rounded-md bg-primary px-3 py-1.5 font-medium text-white">Views / lenses</a>
+      <a href="04-graph-explore.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Graph explore</a>
+      <a href="05-extraction-triage.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Extraction &amp; triage</a>
+      <a href="06-sync.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Updates &amp; Sync</a>
+    </nav>
+  </div>
+</header>
+
+<main class="mx-auto max-w-6xl grid gap-6 px-6 py-8 lg:grid-cols-3">
+
+  <!-- view list -->
+  <section class="space-y-3">
+    <h2 class="text-sm font-bold">My views</h2>
+    <div class="rounded-lg border-2 border-primary bg-white p-3">
+      <div class="flex items-center justify-between"><b class="text-[13px]">Relationship / hậu cung</b><span class="text-[11px] text-slate-400">5 edges</span></div>
+      <p class="mt-0.5 text-[11px] text-slate-500">Who loves / betrays / kills whom.</p>
+    </div>
+    <div class="rounded-lg border bg-white p-3">
+      <div class="flex items-center justify-between"><b class="text-[13px]">Cultivation</b><span class="text-[11px] text-slate-400">3 edges</span></div>
+      <p class="mt-0.5 text-[11px] text-slate-500">Realm progression · techniques · dao.</p>
+    </div>
+    <div class="rounded-lg border bg-white p-3">
+      <div class="flex items-center justify-between"><b class="text-[13px]">Political factions</b><span class="text-[11px] text-slate-400">5 edges</span></div>
+      <p class="mt-0.5 text-[11px] text-slate-500">Sects · alliances · wars.</p>
+    </div>
+    <div class="rounded-lg border bg-white p-3">
+      <div class="flex items-center justify-between"><b class="text-[13px]">Motivation (drives)</b><span class="text-[11px] text-slate-400">1 edge</span></div>
+      <p class="mt-0.5 text-[11px] text-slate-500">PURSUES across the whole cast.</p>
+    </div>
+    <button class="w-full rounded-md border border-dashed py-2 text-[12px] text-slate-500">+ New view</button>
+    <div class="gap rounded-md p-2.5 text-[11px] text-amber-900">❓ <b>Gap (Q4):</b> views are <b>per-user</b>. In a shared project, can a collaborator see the owner's views, or only their own? "Share view" vs private — unspecified.</div>
+  </section>
+
+  <!-- view builder -->
+  <section class="lg:col-span-2 space-y-4">
+    <div class="rounded-lg border bg-white p-5">
+      <h3 class="text-sm font-bold">Edit view · Relationship / hậu cung</h3>
+      <div class="mt-3 grid gap-4 md:grid-cols-2">
+        <div>
+          <label class="text-[11px] font-semibold uppercase text-slate-500">Edge types in this view</label>
+          <div class="mt-2 flex flex-wrap gap-1.5">
+            <span class="chip chip-edge">LOVER_OF ✓</span><span class="chip chip-edge">BETROTHED_TO ✓</span><span class="chip chip-edge">DAO_COMPANION_OF ✓</span><span class="chip chip-edge">RIVAL_OF ✓</span><span class="chip chip-edge">BETRAYED ✓</span>
+            <span class="chip" style="background:#f1f5f9;color:#94a3b8">KILLED</span><span class="chip" style="background:#f1f5f9;color:#94a3b8">MEMBER_OF</span><span class="chip" style="background:#f1f5f9;color:#94a3b8">PURSUES</span>
+          </div>
+        </div>
+        <div>
+          <label class="text-[11px] font-semibold uppercase text-slate-500">Node kinds shown</label>
+          <div class="mt-2 flex flex-wrap gap-1.5">
+            <span class="chip chip-gloss">character ✓</span><span class="chip chip-gloss">relationship ✓</span>
+            <span class="chip" style="background:#f1f5f9;color:#94a3b8">organization</span><span class="chip" style="background:#f1f5f9;color:#94a3b8">location</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- overlap viz -->
+    <div class="rounded-lg border bg-white p-5">
+      <h3 class="text-sm font-bold">Views overlap — same nodes, different edges</h3>
+      <p class="mt-1 text-[12px] text-slate-600"><b>Trương Nhược Trần</b> appears in 3 views at once. That's why a view is a filter, not a partition.</p>
+      <div class="mt-3 grid gap-2 sm:grid-cols-3 text-[11px]">
+        <div class="rounded-md border bg-rose-50/50 p-2"><b>Relationship</b><div class="mt-1 text-slate-600">↔ Trì Dao (BETRAYED)</div></div>
+        <div class="rounded-md border bg-indigo-50/50 p-2"><b>Cultivation</b><div class="mt-1 text-slate-600">→ Không Gian Đạo (COMPREHENDS)</div></div>
+        <div class="rounded-md border bg-emerald-50/50 p-2"><b>Motivation</b><div class="mt-1 text-slate-600">→ revenge (PURSUES)</div></div>
+      </div>
+      <div class="gap mt-3 rounded-md p-2.5 text-[11px] text-amber-900">❓ <b>Gap (M2 / §10-C4):</b> "promote view → partition" is shown disabled because the node is in 3 views — partitioning by node breaks. Seam = <code>graph_id</code> on <b>edge</b>. Confirm promotion is a separate future feature, not the default path.</div>
+      <button class="mt-2 cursor-not-allowed rounded-md bg-slate-100 px-3 py-1.5 text-[12px] text-slate-400" disabled>Promote to separate graph (Layer 4 — deferred)</button>
+    </div>
+  </section>
+</main>
+</body>
+</html>

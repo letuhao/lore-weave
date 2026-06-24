@@ -1,9 +1,14 @@
 {
   "nav": {
+    "startNew": "Bắt đầu điều gì đó mới",
     "workspace": "Không gian làm việc",
     "chat": "Trò chuyện",
+    "roleplay": "Nhập vai",
     "knowledge": "Tri thức",
+    "worlds": "Thế giới",
     "campaigns": "Chiến dịch",
+    "standards": "Tiêu chuẩn",
+    "jobs": "Tác vụ",
     "browse": "Khám phá",
     "usage": "Sử dụng",
     "leaderboard": "Bảng xếp hạng",

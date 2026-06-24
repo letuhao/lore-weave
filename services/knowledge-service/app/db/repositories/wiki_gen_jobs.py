@@ -12,23 +12,28 @@ re-generates one it already wrote.
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
 import asyncpg
+from loreweave_jobs import emit_job_event
 from pydantic import BaseModel
 
 __all__ = ["WikiGenJob", "ActiveJobExists", "WikiGenJobsRepo"]
 
+# Unified Job Control Plane (D-JOBS-WIKI-GEN-UNWIRED) — the physical owning
+# service + the kind that disambiguates wiki-gen from knowledge's `extraction`
+# jobs (both federate to service='knowledge'). `complete` is the wiki-native
+# terminal; the canonical control-plane status is `completed`.
+_JOB_SERVICE = "knowledge"
+_JOB_KIND = "wiki_gen"
 
-def _affected(tag: str) -> int:
-    """Rows touched, from an asyncpg command tag ('UPDATE 1'). Robust to the
-    multi-digit case ('UPDATE 21'.endswith('1') would lie)."""
-    try:
-        return int(tag.rsplit(" ", 1)[-1])
-    except (ValueError, IndexError):
-        return 0
+
+def _canonical_status(status: str) -> str:
+    """wiki status enum → canonical control-plane JobStatus (`complete`→`completed`)."""
+    return "completed" if status == "complete" else status
 
 
 class ActiveJobExists(Exception):
@@ -55,12 +60,23 @@ class WikiGenJob(BaseModel):
     items_processed: int = 0
     cost_spent_usd: Decimal = Decimal("0")
     error_message: str | None = None
+    # W4a — per-entity result detail (entity_id → {outcome, citations, flags, name})
+    # + the live sub-step pointer (the one in-flight entity + its pipeline pass).
+    results: dict[str, Any] = {}
+    current_entity_id: str | None = None
+    current_pass: str | None = None
+    # W5 — optional second model for the corrective revise re-gen (null = prose model).
+    revise_model_ref: str | None = None
+    revise_model_source: str | None = None
+    # D-RE-OTHER-AGENTIC-EFFORT: clamped reasoning effort for the wiki-gen LLM. Default 'none'.
+    reasoning_effort: str = "none"
 
 
 _COLS = (
     "job_id, user_id, project_id, book_id, status, model_source, model_ref, "
     "entity_ids, items_done, max_spend_usd, items_total, items_processed, "
-    "cost_spent_usd, error_message"
+    "cost_spent_usd, error_message, results, current_entity_id, current_pass, "
+    "revise_model_ref, revise_model_source, reasoning_effort"
 )
 
 
@@ -68,6 +84,13 @@ def _parse_list(raw: Any) -> list[str]:
     if isinstance(raw, str):
         raw = json.loads(raw) if raw.strip() else []
     return [str(x) for x in raw] if isinstance(raw, list) else []
+
+
+def _parse_obj(raw: Any) -> dict[str, Any]:
+    """JSONB object → dict (asyncpg may hand back a JSON string or a dict)."""
+    if isinstance(raw, str):
+        raw = json.loads(raw) if raw.strip() else {}
+    return dict(raw) if isinstance(raw, dict) else {}
 
 
 def _row_to_job(row: asyncpg.Record) -> WikiGenJob:
@@ -79,6 +102,11 @@ def _row_to_job(row: asyncpg.Record) -> WikiGenJob:
         max_spend_usd=row["max_spend_usd"], items_total=row["items_total"],
         items_processed=row["items_processed"], cost_spent_usd=row["cost_spent_usd"],
         error_message=row["error_message"],
+        results=_parse_obj(row["results"]),
+        current_entity_id=row["current_entity_id"], current_pass=row["current_pass"],
+        revise_model_ref=row["revise_model_ref"],
+        revise_model_source=row["revise_model_source"],
+        reasoning_effort=row["reasoning_effort"],
     )
 
 
@@ -90,23 +118,38 @@ class WikiGenJobsRepo:
         self, *, user_id: UUID, project_id: UUID, book_id: UUID,
         model_source: str, model_ref: str, entity_ids: list[str],
         max_spend_usd: Decimal | None, items_total: int | None,
+        revise_model_ref: str | None = None, revise_model_source: str | None = None,
+        reasoning_effort: str = "none",
     ) -> WikiGenJob:
         """Insert a pending job. The per-book partial-unique index makes a 2nd
-        active job for the book raise UniqueViolation → :class:`ActiveJobExists`."""
+        active job for the book raise UniqueViolation → :class:`ActiveJobExists`.
+        ``revise_model_*`` (W5) is the optional corrective-revise override (null =
+        the revise reuses the prose model)."""
         try:
             async with self._pool.acquire() as conn:
-                row = await conn.fetchrow(
-                    f"""
-                    INSERT INTO wiki_gen_jobs
-                      (user_id, project_id, book_id, model_source, model_ref,
-                       entity_ids, max_spend_usd, items_total)
-                    VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8)
-                    RETURNING {_COLS}
-                    """,
-                    user_id, project_id, book_id, model_source, model_ref,
-                    json.dumps([str(e) for e in entity_ids]), max_spend_usd, items_total,
-                )
-            return _row_to_job(row)
+                async with conn.transaction():  # INSERT + emit_job_event atomic (H1)
+                    row = await conn.fetchrow(
+                        f"""
+                        INSERT INTO wiki_gen_jobs
+                          (user_id, project_id, book_id, model_source, model_ref,
+                           entity_ids, max_spend_usd, items_total,
+                           revise_model_ref, revise_model_source, reasoning_effort)
+                        VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11)
+                        RETURNING {_COLS}
+                        """,
+                        user_id, project_id, book_id, model_source, model_ref,
+                        json.dumps([str(e) for e in entity_ids]), max_spend_usd, items_total,
+                        revise_model_ref or None, revise_model_source or None,
+                        reasoning_effort,
+                    )
+                    job = _row_to_job(row)
+                    # Unified Job Control Plane — emit the initial lifecycle event so the
+                    # job is visible on the unified Jobs screen from creation.
+                    await emit_job_event(
+                        conn, service=_JOB_SERVICE, job_id=str(job.job_id),
+                        owner_user_id=str(user_id), kind=_JOB_KIND, status="pending",
+                    )
+            return job
         except asyncpg.UniqueViolationError:
             existing = await self.get_active_for_book(book_id)
             raise ActiveJobExists(existing.job_id if existing else None) from None
@@ -116,6 +159,14 @@ class WikiGenJobsRepo:
             row = await conn.fetchrow(
                 f"SELECT {_COLS} FROM wiki_gen_jobs WHERE job_id=$1", job_id)
         return _row_to_job(row) if row else None
+
+    async def read_status(self, job_id: UUID) -> str | None:
+        """The current persisted status only (D-WIKI-M7B). The orchestrator reads
+        this BETWEEN entities to honour an external cancel/pause mid-run without
+        loading the whole job row each iteration. None if no such job."""
+        async with self._pool.acquire() as conn:
+            return await conn.fetchval(
+                "SELECT status FROM wiki_gen_jobs WHERE job_id=$1", job_id)
 
     async def list_resumable(self, *, limit: int = 100) -> list[WikiGenJob]:
         """Jobs that should be (re)driven on a consumer startup — pending (the
@@ -152,6 +203,28 @@ class WikiGenJobsRepo:
                 book_id, user_id)
         return _row_to_job(row) if row else None
 
+    async def list_since(self, since: datetime, *, limit: int = 1000) -> list[dict[str, Any]]:
+        """Reconcile SOURCE (Unified Job Control Plane H1 backstop): wiki-gen jobs
+        updated at/after `since` (oldest-first, capped), ALL owners. Returns the
+        minimal projection the reconcile endpoint ships (not full WikiGenJob) — the
+        sweep only needs id/owner/status/cost/error/ts. wiki_gen_jobs is small (one
+        active job per book) so a seq-scan here is fine; a dedicated updated_at index
+        is deferred as a perf row (D-JOBS-WIKI-GEN-RECONCILE-INDEX)."""
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                """SELECT job_id, user_id, status, cost_spent_usd, error_message, updated_at
+                   FROM wiki_gen_jobs
+                   WHERE updated_at >= $1
+                   ORDER BY updated_at ASC LIMIT $2""",
+                since, limit)
+        out = []
+        for r in rows:
+            d = dict(r)
+            d["native_status"] = d["status"]  # keep raw for the failed-error predicate
+            d["status"] = _canonical_status(d["status"])  # complete → completed
+            out.append(d)
+        return out
+
     async def mark_running(self, job_id: UUID, *, items_total: int) -> bool:
         """Claim a job for a run: pending|running → running. The status guard makes
         this a CLAIM, not a blind write — if a concurrent cancel flipped the job to
@@ -159,13 +232,46 @@ class WikiGenJobsRepo:
         and here, this affects 0 rows and the orchestrator aborts rather than
         resurrecting a cancelled job (M7b /review-impl F1). Returns True iff claimed."""
         async with self._pool.acquire() as conn:
-            tag = await conn.execute(
+            async with conn.transaction():  # UPDATE + emit_job_event atomic (H1)
+                row = await conn.fetchrow(
+                    """UPDATE wiki_gen_jobs
+                       SET status='running', started_at=COALESCE(started_at, now()),
+                           items_total=$2, current_entity_id=NULL, current_pass=NULL,
+                           updated_at=now()
+                       WHERE job_id=$1 AND status IN ('pending','running')
+                       RETURNING user_id""",
+                    job_id, items_total)
+                if row is None:  # cancelled/terminal between pull and claim → don't emit
+                    return False
+                await emit_job_event(
+                    conn, service=_JOB_SERVICE, job_id=str(job_id),
+                    owner_user_id=str(row["user_id"]), kind=_JOB_KIND, status="running")
+        return True
+
+    async def set_progress(self, job_id: UUID, entity_id: str, pass_name: str) -> None:
+        """W4a — point the live sub-step pointer at the entity currently in flight
+        and its pipeline pass (context|generate|verify|revise|writeback). A cheap
+        UPDATE called before each pass; the FE poll renders the live indicator off
+        it. Best-effort at the call site (a progress write must not crash the run)."""
+        async with self._pool.acquire() as conn:
+            await conn.execute(
                 """UPDATE wiki_gen_jobs
-                   SET status='running', started_at=COALESCE(started_at, now()),
-                       items_total=$2, updated_at=now()
-                   WHERE job_id=$1 AND status IN ('pending','running')""",
-                job_id, items_total)
-        return _affected(tag) == 1
+                   SET current_entity_id=$2, current_pass=$3, updated_at=now()
+                   WHERE job_id=$1""",
+                job_id, entity_id, pass_name)
+
+    async def record_result(self, job_id: UUID, entity_id: str, detail: dict[str, Any]) -> None:
+        """W4a — upsert one entity's result detail into the ``results`` object
+        ({outcome, citations, flags, name}). Idempotent: a preliminary 'processing'
+        row is overwritten by the final outcome, and a resume/retry overwrites a
+        prior attempt. Best-effort at the call site."""
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                """UPDATE wiki_gen_jobs
+                   SET results = results || jsonb_build_object($2::text, $3::jsonb),
+                       updated_at=now()
+                   WHERE job_id=$1""",
+                job_id, entity_id, json.dumps(detail))
 
     async def mark_entity_done(self, job_id: UUID, entity_id: str, *, cost: Decimal) -> None:
         """Append the entity to items_done (skip-on-resume) + bump processed/cost,
@@ -182,19 +288,49 @@ class WikiGenJobsRepo:
                    WHERE job_id=$1""",
                 job_id, entity_id, cost)
 
+    async def _emit(self, conn: asyncpg.Connection, job_id: UUID, row: asyncpg.Record,
+                    status: str, *, error: str | None = None) -> None:
+        """Emit a lifecycle event for a status write, in the caller's tx (H1). `row`
+        carries `user_id` + `cost_spent_usd` (every caller's RETURNING includes both).
+        Cost is carried on each transition (cumulative; the projection COALESCE-merges it)."""
+        cost = row["cost_spent_usd"]
+        await emit_job_event(
+            conn, service=_JOB_SERVICE, job_id=str(job_id),
+            owner_user_id=str(row["user_id"]), kind=_JOB_KIND, status=status,
+            cost_usd=float(cost) if cost is not None else None,
+            error=({"code": "wiki_gen_failed", "message": (error or "")[:500]}
+                   if status == "failed" else None),
+        )
+
     async def pause(self, job_id: UUID, *, reason: str) -> None:
+        # Guarded to active states: pausing an already-paused/terminal job is a no-op
+        # (and emits nothing) — so a stray re-pause can't emit a spurious 'paused'.
         async with self._pool.acquire() as conn:
-            await conn.execute(
-                """UPDATE wiki_gen_jobs SET status='paused', paused_at=now(),
-                   error_message=$2, updated_at=now() WHERE job_id=$1""",
-                job_id, reason)
+            async with conn.transaction():  # UPDATE + emit_job_event atomic (H1)
+                row = await conn.fetchrow(
+                    """UPDATE wiki_gen_jobs SET status='paused', paused_at=now(),
+                       error_message=$2, current_entity_id=NULL, current_pass=NULL,
+                       updated_at=now() WHERE job_id=$1 AND status IN ('pending','running')
+                       RETURNING user_id, cost_spent_usd""",
+                    job_id, reason)
+                if row is not None:
+                    await self._emit(conn, job_id, row, "paused")
 
     async def complete(self, job_id: UUID) -> None:
+        # Terminal-guarded: a job already in a terminal state is NOT re-written (and
+        # emits no duplicate 'completed'). The orchestrator reaches complete() once,
+        # but the guard makes a redelivery / double-call idempotent at the source.
         async with self._pool.acquire() as conn:
-            await conn.execute(
-                """UPDATE wiki_gen_jobs SET status='complete', completed_at=now(),
-                   updated_at=now() WHERE job_id=$1""",
-                job_id)
+            async with conn.transaction():  # UPDATE + emit_job_event atomic (H1)
+                row = await conn.fetchrow(
+                    """UPDATE wiki_gen_jobs SET status='complete', completed_at=now(),
+                       current_entity_id=NULL, current_pass=NULL,
+                       updated_at=now()
+                       WHERE job_id=$1 AND status NOT IN ('complete','failed','cancelled')
+                       RETURNING user_id, cost_spent_usd""",
+                    job_id)
+                if row is not None:
+                    await self._emit(conn, job_id, row, "completed")
 
     async def resume(self, job_id: UUID) -> bool:
         """paused → pending so a startup-drain / fresh XADD re-drives it (skip-done
@@ -202,31 +338,51 @@ class WikiGenJobsRepo:
         cancel/complete can't be clobbered; returns True iff it actually flipped a
         paused job. Clears the budget pause marker."""
         async with self._pool.acquire() as conn:
-            tag = await conn.execute(
-                """UPDATE wiki_gen_jobs
-                   SET status='pending', paused_at=NULL, error_message=NULL, updated_at=now()
-                   WHERE job_id=$1 AND status='paused'""",
-                job_id)
-        return _affected(tag) == 1
+            async with conn.transaction():  # UPDATE + emit_job_event atomic (H1)
+                row = await conn.fetchrow(
+                    """UPDATE wiki_gen_jobs
+                       SET status='pending', paused_at=NULL, error_message=NULL, updated_at=now()
+                       WHERE job_id=$1 AND status='paused'
+                       RETURNING user_id, cost_spent_usd""",
+                    job_id)
+                if row is None:
+                    return False
+                await self._emit(conn, job_id, row, "pending")
+        return True
 
     async def cancel(self, job_id: UUID) -> bool:
-        """Cancel a not-yet-running job (pending|paused → cancelled), releasing the
-        per-book lock (the partial-unique index excludes 'cancelled'). A *running*
-        job is intentionally NOT cancellable here — the orchestrator doesn't poll
-        status mid-loop, so a cancelled-while-running row would be clobbered by its
-        terminal complete()/pause() write (D-WIKI-M7B-RUNNING-CANCEL). Returns True
-        iff a pending|paused job was cancelled."""
+        """Cancel a job from any non-terminal state (pending|paused|running →
+        cancelled), releasing the per-book lock (the partial-unique index excludes
+        'cancelled'). Running-cancel is honoured by the orchestrator's between-entity
+        status poll, which stops the loop promptly so no further articles are
+        generated (D-WIKI-M7B-RUNNING-CANCEL). The terminal complete()/fail()/pause()
+        writes are all guarded `WHERE status NOT IN (terminal)` / `IN ('pending',
+        'running')`, so a cancel that lands as the loop ends is never clobbered back.
+        Returns True iff a non-terminal job was cancelled."""
         async with self._pool.acquire() as conn:
-            tag = await conn.execute(
-                """UPDATE wiki_gen_jobs
-                   SET status='cancelled', completed_at=now(), updated_at=now()
-                   WHERE job_id=$1 AND status IN ('pending','paused')""",
-                job_id)
-        return _affected(tag) == 1
+            async with conn.transaction():  # UPDATE + emit_job_event atomic (H1)
+                row = await conn.fetchrow(
+                    """UPDATE wiki_gen_jobs
+                       SET status='cancelled', completed_at=now(), updated_at=now()
+                       WHERE job_id=$1 AND status IN ('pending','paused','running')
+                       RETURNING user_id, cost_spent_usd""",
+                    job_id)
+                if row is None:
+                    return False
+                await self._emit(conn, job_id, row, "cancelled")
+        return True
 
     async def fail(self, job_id: UUID, *, error: str) -> None:
+        # Terminal-guarded: never overwrite an already-terminal job (and emit no
+        # duplicate 'failed') — a complete/cancelled job stays as it landed.
         async with self._pool.acquire() as conn:
-            await conn.execute(
-                """UPDATE wiki_gen_jobs SET status='failed', error_message=$2,
-                   updated_at=now() WHERE job_id=$1""",
-                job_id, error[:2000])
+            async with conn.transaction():  # UPDATE + emit_job_event atomic (H1)
+                row = await conn.fetchrow(
+                    """UPDATE wiki_gen_jobs SET status='failed', error_message=$2,
+                       current_entity_id=NULL, current_pass=NULL,
+                       updated_at=now()
+                       WHERE job_id=$1 AND status NOT IN ('complete','failed','cancelled')
+                       RETURNING user_id, cost_spent_usd""",
+                    job_id, error[:2000])
+                if row is not None:
+                    await self._emit(conn, job_id, row, "failed", error=error)

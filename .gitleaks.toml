@@ -1,0 +1,43 @@
+# gitleaks configuration for LoreWeave foundation RAID execution
+# Per RAID_WORKFLOW.md §13.6 B6
+#
+# Strategy: extend default rules; allowlist test-fixture placeholders.
+# Real secrets ONLY in env vars (per CLAUDE.md "no hardcoded secrets").
+
+title = "loreweave-foundation-raid"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "anthropic-api-key"
+description = "Anthropic API key"
+regex = '''sk-ant-[A-Za-z0-9\-_]{20,}'''
+tags = ["key", "anthropic"]
+
+[[rules]]
+id = "loreweave-prod-postgres-url"
+description = "Production Postgres URL"
+regex = '''postgres(?:ql)?:\/\/[^\s'\"<>]+@(?:prod-postgres\.loreweave|prod\.loreweave\.app)[^\s'\"<>]+'''
+tags = ["url", "loreweave", "prod"]
+
+[allowlist]
+description = "Allowlists for test fixtures + placeholders"
+paths = [
+  '''\.gitleaks\.toml''',
+  '''docs/raid/cycle_briefs/.*\.md''',  # briefs may show example URLs
+  '''docs/audit/findings-.*\.md''',     # adversary findings may quote patterns
+  '''docs/plans/.*\.md''',              # plan docs may show example secrets in fenced blocks
+  '''scripts/raid/test/.*''',           # test-only helpers may use fake creds
+]
+regexes = [
+  '''<REDACTED-FAKE-SECRET>''',
+  '''test-only-not-a-real-token''',
+  '''placeholder-[A-Za-z0-9_-]+''',
+  '''postgres://test:test@localhost''',  # per-DPS isolated test stack (B2)
+  '''minioadmin''',                       # MinIO default for B2 test stack
+  '''sk-ant-FAKE-DEMO-[A-Z]+''',
+]
+stopwords = [
+  "loreweave-fake",
+]

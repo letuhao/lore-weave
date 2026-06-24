@@ -99,6 +99,48 @@ async def test_timeout_returns_empty_list(gc: GlossaryClient):
     assert entities == []
 
 
+# ── KG-ML M5 (C9) — fetch_entity_display_names ─────────────────────────────
+def _display_names_url(book_id: str) -> str:
+    return f"http://glossary-service:8088/internal/books/{book_id}/entity-display-names"
+
+
+@pytest.mark.asyncio
+async def test_fetch_entity_display_names_keeps_only_translated(gc: GlossaryClient):
+    book_id = uuid4()
+    payload = {
+        "language": "vi",
+        "items": [
+            {"entity_id": "g1", "display_name": "Hỏa Ma", "translated": True},
+            # untranslated → display_name is the canonical fallback; MUST be dropped
+            {"entity_id": "g2", "display_name": "天剑峰", "translated": False},
+        ],
+    }
+    with respx.mock(assert_all_called=True) as mock:
+        mock.post(_display_names_url(str(book_id))).respond(200, json=payload)
+        names = await gc.fetch_entity_display_names(
+            book_id=book_id, entity_ids=["g1", "g2"], language="vi"
+        )
+    assert names == {"g1": "Hỏa Ma"}  # only the genuinely-translated name
+
+
+@pytest.mark.asyncio
+async def test_fetch_entity_display_names_empty_inputs_skip_call(gc: GlossaryClient):
+    # No HTTP call when there's nothing to resolve / no language.
+    assert await gc.fetch_entity_display_names(book_id=uuid4(), entity_ids=[], language="vi") == {}
+    assert await gc.fetch_entity_display_names(book_id=uuid4(), entity_ids=["g1"], language="") == {}
+
+
+@pytest.mark.asyncio
+async def test_fetch_entity_display_names_error_returns_empty(gc: GlossaryClient):
+    book_id = uuid4()
+    with respx.mock() as mock:
+        mock.post(_display_names_url(str(book_id))).respond(503)
+        names = await gc.fetch_entity_display_names(
+            book_id=book_id, entity_ids=["g1"], language="vi"
+        )
+    assert names == {}
+
+
 @pytest.mark.asyncio
 async def test_5xx_retries_then_returns_empty(gc: GlossaryClient):
     book_id = uuid4()
@@ -282,6 +324,27 @@ async def test_list_entities_forwards_status_filter(gc: GlossaryClient):
         await gc.list_entities(book_id, status_filter="inactive")
 
     assert captured_params == ["inactive"]
+
+
+@pytest.mark.asyncio
+async def test_list_entities_forwards_min_frequency(gc: GlossaryClient):
+    """min_frequency must be sent as the `min_frequency` query param (the Go
+    handler's chapter-appearance gate). Default is 2 (extraction-anchor semantics);
+    wiki overrides to 1 to include every entity on a low-chapter book."""
+    book_id = uuid4()
+    captured: list[tuple[str, str]] = []
+
+    def capture(request: httpx.Request) -> httpx.Response:
+        p = request.url.params
+        captured.append((p.get("status") or "", p.get("min_frequency") or ""))
+        return httpx.Response(200, json=[])
+
+    with respx.mock() as mock:
+        mock.get(_known_entities_url(str(book_id))).mock(side_effect=capture)
+        await gc.list_entities(book_id)  # default
+        await gc.list_entities(book_id, min_frequency=1)  # wiki path
+
+    assert captured == [("active", "2"), ("active", "1")]
 
 
 @pytest.mark.asyncio

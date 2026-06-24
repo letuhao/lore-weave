@@ -18,10 +18,15 @@ import { AudioReplayPlayer } from './AudioReplayPlayer';
 import { ToolCallIndicator } from './ToolCallIndicator';
 import { ProposeEditCard } from './ProposeEditCard';
 import { GlossaryDiffCard } from './GlossaryDiffCard';
-import { SchemaConfirmCard } from './SchemaConfirmCard';
+import { ConfirmCard } from './ConfirmCard';
+import { ConfirmActionCard, descriptorDomain } from './ConfirmActionCard';
+import { RecordDiffCard } from './RecordDiffCard';
+import { TranslationReviewCard, isTranslationProposeCall, summarizeTranslationReview } from './TranslationReviewCard';
+import { ActivityStrip } from './ActivityStrip';
 import { useMessageFeedback } from '../hooks/useMessageFeedback';
+import { useActivityUndo } from '../hooks/useActivityUndo';
 import { firePasteToEditor } from '../utils/pasteToEditor';
-import type { ToolCallRecord } from '../types';
+import type { ActivityEvent, ToolCallRecord } from '../types';
 
 interface AssistantMessageProps {
   content: string;
@@ -46,6 +51,55 @@ interface AssistantMessageProps {
   voiceTtsSentences?: number;
   /** K21-C (D2): memory tool calls made during this turn. */
   toolCalls?: ToolCallRecord[] | null;
+  /** MCP fan-out (C-ACTIVITY): Tier-A auto-applied ops streamed this turn. */
+  activities?: ActivityEvent[] | null;
+}
+
+// ── Auto-rendered confirm cards (model-independent human gate) ────────────────
+// A class-C glossary tool (glossary_propose_new_kind/_attribute, glossary_book_delete,
+// adopt/sync/revert/status/merge/restore, deep_research) MINTS a confirm_token in its
+// RESULT but performs no write — the human gate is the confirm card. A capable model
+// then calls the frontend glossary_confirm_action tool to render it, but weaker local
+// models routinely skip that call, leaving the user with no way to approve. So we ALSO
+// auto-render a confirm card directly from a completed propose result that carries a
+// live confirm_token (independent of whether the model called the frontend tool). The
+// reused card's resume() safely no-ops without a runId; Confirm still POSTs to
+// /v1/<domain>/actions/confirm (the only write path, single-use).
+interface ProposeConfirm { confirm_token: string; descriptor?: string; title?: string }
+
+/** The action token's claims are its base64url segment-0 (a 2-part token:
+ * claims.hmac, not a JWT header.payload). Return false once past `exp` so stale
+ * proposals on REPLAY don't render dead approve cards. Unparseable → treat as live
+ * (the confirm/preview call re-validates authoritatively). */
+function actionTokenLive(token: string): boolean {
+  try {
+    const seg = token.split('.')[0];
+    const claims = JSON.parse(atob(seg.replace(/-/g, '+').replace(/_/g, '/'))) as { exp?: number };
+    if (typeof claims.exp === 'number') return claims.exp * 1000 > Date.now();
+  } catch { /* fall through — confirm re-validates */ }
+  return true;
+}
+
+/** Extract a confirm payload from a COMPLETED propose tool result. Handles the
+ * {confirm_token,...}, {result:{confirm_token,...}} and JSON-string shapes. */
+function proposeConfirm(tc: ToolCallRecord): ProposeConfirm | null {
+  if (tc.pending) return null;
+  let r: unknown = tc.result;
+  if (typeof r === 'string') { try { r = JSON.parse(r); } catch { return null; } }
+  if (!r || typeof r !== 'object') return null;
+  const o = r as Record<string, unknown>;
+  const p = (typeof o.confirm_token === 'string' ? o
+    : (o.result && typeof o.result === 'object' ? o.result as Record<string, unknown> : null));
+  if (!p || typeof p.confirm_token !== 'string' || !p.confirm_token) return null;
+  // Glossary propose tools return `title`; KG tools return `summary` — accept either
+  // so the auto-card has a label without waiting on the (best-effort) preview fetch.
+  const label = typeof p.title === 'string' ? p.title
+    : typeof p.summary === 'string' ? p.summary : undefined;
+  return {
+    confirm_token: p.confirm_token,
+    descriptor: typeof p.descriptor === 'string' ? p.descriptor : undefined,
+    title: label,
+  };
 }
 
 export function AssistantMessage({
@@ -64,11 +118,13 @@ export function AssistantMessage({
   messageId,
   voiceTtsSentences,
   toolCalls,
+  activities,
 }: AssistantMessageProps) {
   const { t } = useTranslation('chat');
   const [showMore, setShowMore] = useState(false);
   const moreRef = useRef<HTMLDivElement>(null);
   const feedback = useMessageFeedback(messageId);
+  const undoActivity = useActivityUndo();
 
   // Regenerate is an implicit negative signal on this turn (the user wasn't
   // satisfied) — post it silently, then run the parent's regenerate.
@@ -134,24 +190,101 @@ export function AssistantMessage({
           Apply/Dismiss card instead of a passive chip. */}
       {toolCalls && toolCalls.length > 0 && (() => {
         // H15: route a pending (suspended) frontend tool to its renderer BY NAME.
-        // propose_edit → prose card; glossary_propose_entity_edit → diff card.
-        const FRONTEND_TOOLS = ['propose_edit', 'glossary_propose_entity_edit', 'glossary_confirm_schema'];
+        //   propose_edit                  → prose card
+        //   glossary_propose_entity_edit  → glossary diff card (legacy)
+        //   glossary_confirm_action       → glossary confirm card (legacy)
+        //   confirm_action               → GENERIC confirm card (C-CONFIRM, incl. batch)
+        //   propose_record_edit          → GENERIC record-diff card (C-PROPOSE)
+        // ui_* nav tools are NOT rendered here — useUiToolExecutor resolves them
+        // headlessly (no human gate), so they never reach this surface.
+        const FRONTEND_TOOLS = [
+          'propose_edit',
+          'glossary_propose_entity_edit',
+          'glossary_confirm_action',
+          'confirm_action',
+          'propose_record_edit',
+        ];
         const isPendingFrontend = (tc: ToolCallRecord) =>
           tc.pending === true && FRONTEND_TOOLS.includes(tc.tool);
         const proposals = toolCalls.filter(isPendingFrontend);
-        const rest = toolCalls.filter((tc) => !isPendingFrontend(tc));
+        // S4: completed class-W translation/alias proposals render as a review card
+        // (visible drafts), not a passive chip — but ONLY when the record carries
+        // something renderable. A sparse record (e.g. replayed {tool, ok} with no
+        // args/result) has no summary, so it stays a chip rather than vanishing from
+        // both surfaces.
+        const isRenderableTranslation = (tc: ToolCallRecord) =>
+          isTranslationProposeCall(tc) && summarizeTranslationReview(tc) !== null;
+        const translationCards = toolCalls.filter(isRenderableTranslation);
+        const rest = toolCalls.filter(
+          (tc) => !isPendingFrontend(tc) && !isRenderableTranslation(tc),
+        );
+        // Model-independent human gate: auto-render a confirm card for any completed
+        // propose result that minted a LIVE confirm_token, unless an explicit (pending)
+        // confirm card already handles that token (avoid double cards). Deduped by token.
+        const explicitTokens = new Set(
+          toolCalls
+            .filter((tc) => tc.pending && (tc.tool === 'glossary_confirm_action' || tc.tool === 'confirm_action'))
+            .map((tc) => (tc.args as { confirm_token?: string } | undefined)?.confirm_token)
+            .filter((x): x is string => !!x),
+        );
+        const seenTokens = new Set<string>();
+        const autoConfirms: ProposeConfirm[] = [];
+        for (const tc of toolCalls) {
+          const p = proposeConfirm(tc);
+          if (!p || explicitTokens.has(p.confirm_token) || seenTokens.has(p.confirm_token)) continue;
+          if (!actionTokenLive(p.confirm_token)) continue;
+          seenTokens.add(p.confirm_token);
+          autoConfirms.push(p);
+        }
         return (
           <>
             {rest.length > 0 && <ToolCallIndicator toolCalls={rest} />}
+            {translationCards.map((tc) => (
+              <TranslationReviewCard key={tc.toolCallId ?? `${tc.tool}-${tc.iteration ?? 0}`} record={tc} />
+            ))}
             {proposals.map((tc) => {
               const key = tc.toolCallId ?? tc.tool;
               if (tc.tool === 'glossary_propose_entity_edit') return <GlossaryDiffCard key={key} record={tc} />;
-              if (tc.tool === 'glossary_confirm_schema') return <SchemaConfirmCard key={key} record={tc} />;
+              if (tc.tool === 'glossary_confirm_action') {
+                // Route BY DESCRIPTOR, not just tool name: on a book-scoped chat the
+                // model is offered both glossary_confirm_action (glossary-only) and
+                // the generic confirm_action, and may pick the glossary tool for a
+                // NON-glossary action (e.g. book.publish). A dotted generic-domain
+                // descriptor → the generic card (commits to /v1/<domain>/actions/*);
+                // glossary's own non-dotted descriptors → the legacy glossary card.
+                const desc = (tc.args as { descriptor?: string } | undefined)?.descriptor;
+                if (descriptorDomain(desc)) return <ConfirmActionCard key={key} record={tc} />;
+                return <ConfirmCard key={key} record={tc} />;
+              }
+              if (tc.tool === 'confirm_action') return <ConfirmActionCard key={key} record={tc} />;
+              if (tc.tool === 'propose_record_edit') return <RecordDiffCard key={key} record={tc} />;
               return <ProposeEditCard key={key} record={tc} />;
+            })}
+            {/* Auto-rendered confirm cards (model called the propose tool but not the
+                frontend confirm tool). Synthetic record: no runId → resume no-ops;
+                Confirm POSTs to the real /actions/confirm endpoint. Routed by
+                descriptor domain (dotted generic → ConfirmActionCard, glossary's
+                non-dotted → ConfirmCard). */}
+            {autoConfirms.map((p) => {
+              const synthetic: ToolCallRecord = {
+                tool: 'glossary_confirm_action',
+                ok: true,
+                args: { confirm_token: p.confirm_token, descriptor: p.descriptor, title: p.title },
+              };
+              const key = `auto-${p.confirm_token.slice(0, 20)}`;
+              return descriptorDomain(p.descriptor)
+                ? <ConfirmActionCard key={key} record={synthetic} />
+                : <ConfirmCard key={key} record={synthetic} />;
             })}
           </>
         );
       })()}
+
+      {/* MCP fan-out (C-ACTIVITY): Tier-A auto-applied ops + Undo. Renders
+          nothing when the turn auto-applied nothing. */}
+      {activities && activities.length > 0 && (
+        <ActivityStrip activities={activities} onUndo={undoActivity} disabled={disabled} />
+      )}
 
       {/* Audio replay (voice pipeline V2) */}
       {!isStreaming && sessionId && messageId && voiceTtsSentences && voiceTtsSentences > 0 && (

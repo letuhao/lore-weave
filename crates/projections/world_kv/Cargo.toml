@@ -1,0 +1,17 @@
+[package]
+name = "projections-world-kv"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "L3.B.6 — world_kv projection skeleton (RAID cycle 13)."
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+dp-kernel = { path = "../../dp-kernel" }
+serde_json = { workspace = true }
+uuid = { workspace = true }

@@ -16,13 +16,17 @@
     "addInSettings": "Add in Settings",
     "selectModel": "Select model...",
     "kindsSelected": "{{count}} kind(s) enabled",
+    "selectAllKinds": "Select all",
+    "deselectAllKinds": "Deselect all",
     "attrsSelected": "{{count}} attributes",
     "actionFill": "Fill missing",
     "actionOverwrite": "Overwrite",
     "actionSkip": "Skip",
     "allFill": "All Fill",
     "allOverwrite": "All Overwrite",
-    "required": "required"
+    "required": "required",
+    "thinkingEnabled": "Enable thinking / reasoning",
+    "thinkingHint": "Off is recommended for JSON extraction. Turn on for models like Gemma that reason differently when thinking is enabled."
   },
   "batch": {
     "title": "Batch Config",
@@ -54,6 +58,8 @@
     "estimateNote": "This is an estimate. Actual usage depends on chapter length and model tokenizer.",
     "profileSummary": "Profile Summary",
     "attrs": "{{count}} attrs",
+    "thinkingOn": "Thinking: on (reasoning enabled)",
+    "thinkingOff": "Thinking: off (faster, better JSON)",
     "startExtraction": "Start Extraction",
     "editProfile": "Edit Profile"
   },
@@ -93,6 +99,7 @@
     "estimated": "Estimated: {{tokens}}",
     "draftNote": "All new entities created as draft — review in Glossary tab",
     "viewGlossary": "Review in Glossary",
+    "runAgain": "Extract again",
     "close": "Close"
   },
   "button": {

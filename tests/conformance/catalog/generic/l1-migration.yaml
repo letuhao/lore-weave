@@ -1,0 +1,7 @@
+id: l1-migration
+description: "S13/Inc-3 — L1 migration canary-gated rollout, LIVE. Drives the REAL canary.Orchestrator + runner.Runner with a REAL Applier running migration SQL on REAL per-reality DBs (gate injected). The two DISTINCT abort paths each get a non-vacuity bite: Phase-1 apply-fail (canary apply fails → abort, 0 fanout; bite ignores the canary result → fanout runs) and Phase-2 verification gate (verification fails → abort, 0 fanout; bite passes the gate → fanout runs). Per-reality isolation: one poison reality dead-letters (retries exhausted) while the rest migrate; concurrency cap binds (peak==cap). Requires the scale rig shard up."
+invariant: I-l1-migration-canary-gates-fanout
+kind: live-probe
+command: ["bash", "scripts/perf/l1-migration.sh", "smoke"]
+requires: ["scale-rig"]
+skip_when: []

@@ -25,6 +25,14 @@ export function useChatStream() {
   return ctx;
 }
 
+/** Non-throwing variant — returns null outside a ChatStreamProvider. Used by
+ *  leaf renderers (e.g. the activity Undo action) that must call a hook
+ *  unconditionally yet may be rendered in isolation (tests, storybook) without
+ *  the provider. */
+export function useChatStreamOptional() {
+  return useContext(ChatStreamCtx);
+}
+
 // ── Provider ───────────────────────────────────────────────────────────────────
 
 export function ChatStreamProvider({
@@ -32,6 +40,7 @@ export function ChatStreamProvider({
   editorContext,
   composeMode,
   bookContext,
+  displayLanguage,
 }: {
   children: React.ReactNode;
   // ARCH-1 C6: editor panel context — enables the write-back frontend tool +
@@ -42,9 +51,15 @@ export function ChatStreamProvider({
   // Glossary-assistant P3: book-scoped (non-editor) chat → enables the glossary
   // edit-existing frontend tool. Undefined for the global chat page.
   bookContext?: { book_id: string };
+  // S6: the user's per-book display language (the glossary `apiDisplayLanguage`,
+  // set only when viewing a translation). Forwarded so knowledge composes entity
+  // aliases in it. Undefined → source-language aliases.
+  displayLanguage?: string;
 }) {
   const { activeSession, refreshSessions, updateActiveSession } = useChatSession();
-  const chat = useChatMessages(activeSession?.session_id ?? null, editorContext, composeMode, bookContext);
+  const chat = useChatMessages(
+    activeSession?.session_id ?? null, editorContext, composeMode, bookContext, displayLanguage,
+  );
   // K21-C (D8): pending-facts review for the active session. A turn
   // may have queued a fact (knowledge-service design D6); the FE
   // discovers it by polling, so we refetch on stream-end below.

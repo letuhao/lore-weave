@@ -15,6 +15,10 @@ import type {
   Confidence,
   EntityRevisionSummary,
   EntityRevisionDetail,
+  ActionPreview,
+  TranslationCandidatesResponse,
+  ApplyTranslationsResponse,
+  ApplyTranslationItem,
 } from './types';
 
 const BASE = '/v1/glossary';
@@ -24,15 +28,60 @@ export const glossaryApi = {
     return apiJson<EntityKind[]>(`${BASE}/kinds`, { token });
   },
 
+  listTranslationLanguages(bookId: string, token: string): Promise<{ languages: string[] }> {
+    return apiJson<{ languages: string[] }>(
+      `${BASE}/books/${bookId}/translation-languages`,
+      { token },
+    );
+  },
+
+  // S4 — batch translate: list entities with untranslated attrs for a target language.
+  listTranslationCandidates(
+    bookId: string,
+    targetLanguage: string,
+    opts: { overwriteMode?: 'missing_only' | 'refresh_machine'; limit?: number; offset?: number },
+    token: string,
+  ): Promise<TranslationCandidatesResponse> {
+    const qs = new URLSearchParams({ target_language: targetLanguage });
+    if (opts.overwriteMode) qs.set('overwrite_mode', opts.overwriteMode);
+    if (opts.limit) qs.set('limit', String(opts.limit));
+    if (opts.offset) qs.set('offset', String(opts.offset));
+    return apiJson<TranslationCandidatesResponse>(
+      `${BASE}/books/${bookId}/translation-candidates?${qs.toString()}`,
+      { token },
+    );
+  },
+
+  // S4 — batch translate: write draft translations (never overwrites verified; per-item
+  // partial-failure report).
+  applyTranslations(
+    bookId: string,
+    req: { target_language: string; items: ApplyTranslationItem[] },
+    token: string,
+  ): Promise<ApplyTranslationsResponse> {
+    return apiJson<ApplyTranslationsResponse>(
+      `${BASE}/books/${bookId}/apply-translations`,
+      { method: 'POST', body: JSON.stringify(req), token },
+    );
+  },
+
   listEntities(
     bookId: string,
-    filters: FilterState & { limit?: number; offset?: number; sort?: string },
+    filters: FilterState & {
+      limit?: number;
+      offset?: number;
+      sort?: string;
+      displayLanguage?: string;
+      searchMode?: 'simple' | 'raw';
+    },
     token: string,
   ): Promise<GlossaryEntityListResponse> {
     const params = new URLSearchParams();
     if (filters.kindCodes.length > 0) params.set('kind_codes', filters.kindCodes.join(','));
     if (filters.status !== 'all') params.set('status', filters.status);
     if (filters.searchQuery) params.set('search', filters.searchQuery);
+    if (filters.searchMode === 'raw') params.set('search_mode', 'raw');
+    if (filters.displayLanguage) params.set('display_language', filters.displayLanguage);
     if (filters.limit) params.set('limit', String(filters.limit));
     if (filters.offset) params.set('offset', String(filters.offset));
     if (filters.sort) params.set('sort', filters.sort);
@@ -43,10 +92,13 @@ export const glossaryApi = {
     );
   },
 
-  createEntity(bookId: string, kindId: string, token: string): Promise<GlossaryEntity> {
+  // genreIds (optional) is the per-entity genre override applied atomically at create:
+  // the backend seeds value rows for exactly those genres' attributes (keep-both
+  // conflicts included). Omit ⇒ the entity follows the book's active genres.
+  createEntity(bookId: string, kindId: string, token: string, genreIds?: string[]): Promise<GlossaryEntity> {
     return apiJson<GlossaryEntity>(`${BASE}/books/${bookId}/entities`, {
       method: 'POST',
-      body: JSON.stringify({ kind_id: kindId }),
+      body: JSON.stringify(genreIds ? { kind_id: kindId, genre_ids: genreIds } : { kind_id: kindId }),
       token,
     });
   },
@@ -55,11 +107,22 @@ export const glossaryApi = {
     return apiJson<GlossaryEntity>(`${BASE}/books/${bookId}/entities/${entityId}`, { token });
   },
 
-  // Tier-S (P4): the token-gated schema-create. The assistant proposed a new
-  // kind/attribute (minting `confirmToken`); this confirms it after the human
-  // clicks Confirm. The endpoint is JWT-only — no gateway/MCP route reaches it.
-  confirmSchema(confirmToken: string, token: string): Promise<unknown> {
-    return apiJson<unknown>(`${BASE}/schema/confirm`, {
+  // Generalized class-C confirm (spec §13). The assistant proposed a high-impact
+  // action (schema create, book_delete, …) minting `confirmToken`; this confirms it
+  // after the human clicks Confirm. JWT-only — no gateway/MCP route reaches it.
+  // Single-use: a replay or a stale/expired token 422s.
+  confirmAction(confirmToken: string, token: string): Promise<unknown> {
+    return apiJson<unknown>(`${BASE}/actions/confirm`, {
+      method: 'POST',
+      body: JSON.stringify({ confirm_token: confirmToken }),
+      token,
+    });
+  },
+
+  // Non-consuming current-state render of a pending action's confirm card (§13.5).
+  // Called when the card mounts so the human confirms against what is true NOW.
+  previewAction(confirmToken: string, token: string): Promise<ActionPreview> {
+    return apiJson<ActionPreview>(`${BASE}/actions/preview`, {
       method: 'POST',
       body: JSON.stringify({ confirm_token: confirmToken }),
       token,
@@ -99,6 +162,22 @@ export const glossaryApi = {
       body: JSON.stringify(changes),
       token,
       ...(opts?.ifMatch ? { headers: { 'If-Match': opts.ifMatch } } : {}),
+    });
+  },
+
+  /** Bulk-flip status for many entities in one request (e.g. activate freshly
+   *  extracted drafts so they feed the translation glossary). Returns the count
+   *  actually updated (book-scoped; absent/foreign ids are ignored). */
+  bulkSetStatus(
+    bookId: string,
+    status: 'active' | 'inactive' | 'draft',
+    entityIds: string[],
+    token: string,
+  ): Promise<{ updated: number }> {
+    return apiJson<{ updated: number }>(`${BASE}/books/${bookId}/entities/bulk-status`, {
+      method: 'POST',
+      body: JSON.stringify({ status, entity_ids: entityIds }),
+      token,
     });
   },
 
@@ -342,40 +421,11 @@ export const glossaryApi = {
 
   // ── Genre Groups ────────────────────────────────────────────────────────────
 
+  // Old-model genre-groups read — still used by SettingsTab's genre-tag picker.
+  // The write fns (createGenre/patchGenre/deleteGenre) retired with GenreGroupsPanel
+  // in G6f; the book genre tier is now managed via tieringApi + useBookOntology.
   listGenres(bookId: string, token: string): Promise<GenreGroup[]> {
     return apiJson<GenreGroup[]>(`${BASE}/books/${bookId}/genres`, { token });
-  },
-
-  createGenre(
-    bookId: string,
-    payload: { name: string; color?: string; description?: string; sort_order?: number },
-    token: string,
-  ): Promise<GenreGroup> {
-    return apiJson<GenreGroup>(`${BASE}/books/${bookId}/genres`, {
-      method: 'POST',
-      body: JSON.stringify(payload),
-      token,
-    });
-  },
-
-  patchGenre(
-    bookId: string,
-    genreId: string,
-    changes: Record<string, unknown>,
-    token: string,
-  ): Promise<GenreGroup> {
-    return apiJson<GenreGroup>(`${BASE}/books/${bookId}/genres/${genreId}`, {
-      method: 'PATCH',
-      body: JSON.stringify(changes),
-      token,
-    });
-  },
-
-  deleteGenre(bookId: string, genreId: string, token: string): Promise<void> {
-    return apiJson<void>(`${BASE}/books/${bookId}/genres/${genreId}`, {
-      method: 'DELETE',
-      token,
-    });
   },
 
   // ── Attribute Translations ────────────────────────────────────────────────

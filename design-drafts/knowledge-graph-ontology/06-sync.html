@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Updates & Sync — KG Ontology Drafts</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = { theme: { extend: { colors: { primary:'#6366f1', edge:'#8b5cf6', temporal:'#f59e0b', drive:'#10b981', gloss:'#14b8a6' } } } };
+</script>
+<style>
+  body { font-family: ui-sans-serif, system-ui, "Segoe UI", sans-serif; }
+  .chip { display:inline-flex; align-items:center; gap:.25rem; border-radius:.375rem; padding:.05rem .4rem; font-size:10px; font-weight:600; }
+  .chip-edge   { background:#8b5cf61a; color:#6d28d9; border:1px solid #8b5cf640; }
+  .chip-drive  { background:#10b9811a; color:#047857; border:1px solid #10b98140; }
+  .tier-system { background:#64748b1a; color:#475569; border:1px solid #64748b40; }
+  .tier-proj   { background:#0ea5e91a; color:#0369a1; border:1px solid #0ea5e940; }
+  .gap { border:1px dashed #f59e0b; background:#fffbeb; }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+
+<header class="border-b bg-white">
+  <div class="mx-auto max-w-6xl px-6 py-4">
+    <div class="flex items-center justify-between">
+      <div><h1 class="text-lg font-bold">Updates & Sync — tree-granular</h1>
+      <p class="text-xs text-slate-500">The project's adopted schema vs its upstream template. Pull on demand, per node of the schema tree.</p></div>
+      <span class="chip tier-proj">project schema · adopted from xianxia-harem</span>
+    </div>
+    <nav class="mt-3 flex flex-wrap gap-2 text-sm">
+      <a href="index.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Model</a>
+      <a href="01-adopt.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Adopt template</a>
+      <a href="02-schema-editor.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Schema editor</a>
+      <a href="03-views.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Views / lenses</a>
+      <a href="04-graph-explore.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Graph explore</a>
+      <a href="05-extraction-triage.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Extraction &amp; triage</a>
+      <a href="06-sync.html" class="rounded-md bg-primary px-3 py-1.5 font-medium text-white">Updates &amp; Sync</a>
+    </nav>
+  </div>
+</header>
+
+<main class="mx-auto max-w-6xl space-y-5 px-6 py-8">
+
+  <div class="flex items-center justify-between rounded-lg border bg-white p-4">
+    <div class="text-[13px]"><b>3 updates available</b> from <span class="chip tier-system">system: xianxia-harem</span> <span class="text-slate-400">since you adopted (source_hash diverged)</span></div>
+    <div class="flex gap-2 text-[12px]"><button class="rounded-md border px-3 py-1.5">Keep all mine</button><button class="rounded-md bg-primary px-3 py-1.5 text-white">Review</button></div>
+  </div>
+
+  <!-- tree diff -->
+  <section class="overflow-hidden rounded-lg border bg-white">
+    <div class="border-b bg-slate-50 px-4 py-2 text-[11px] font-semibold uppercase text-slate-500">Schema tree diff</div>
+    <ul class="divide-y text-[12px]">
+      <!-- added edge type -->
+      <li class="flex items-center justify-between px-4 py-2.5">
+        <span class="flex items-center gap-2"><span class="rounded bg-emerald-100 px-1.5 text-[10px] font-bold text-emerald-700">ADDED</span><span class="chip chip-edge">SWORN_SIBLING_OF</span> edge type</span>
+        <span class="flex gap-2 text-[11px]"><button class="rounded border px-2 py-0.5">Ignore</button><button class="rounded bg-emerald-600 px-2 py-0.5 text-white">Take theirs</button></span>
+      </li>
+      <!-- modified edge type -->
+      <li class="flex items-center justify-between bg-amber-50/50 px-4 py-2.5">
+        <span class="flex items-center gap-2"><span class="rounded bg-amber-100 px-1.5 text-[10px] font-bold text-amber-700">MODIFIED</span><span class="chip chip-edge">BETROTHED_TO</span> <span class="text-slate-500">cardinality single→multi; description changed</span></span>
+        <span class="flex gap-2 text-[11px]"><button class="rounded border px-2 py-0.5">Keep mine</button><button class="rounded bg-amber-600 px-2 py-0.5 text-white">Take theirs</button></span>
+      </li>
+      <!-- added vocab value (nested) -->
+      <li class="flex items-center justify-between px-4 py-2.5 pl-8">
+        <span class="flex items-center gap-2"><span class="rounded bg-emerald-100 px-1.5 text-[10px] font-bold text-emerald-700">ADDED</span><span class="chip chip-drive">obsession</span> <span class="text-slate-500">value in vocab</span> <span class="chip chip-drive">drive</span></span>
+        <span class="flex gap-2 text-[11px]"><button class="rounded border px-2 py-0.5">Ignore</button><button class="rounded bg-emerald-600 px-2 py-0.5 text-white">Take theirs</button></span>
+      </li>
+      <!-- conflict: locally edited + upstream changed -->
+      <li class="flex items-center justify-between bg-rose-50/50 px-4 py-2.5">
+        <span class="flex items-center gap-2"><span class="rounded bg-rose-100 px-1.5 text-[10px] font-bold text-rose-700">CONFLICT</span><span class="chip chip-edge">PURSUES</span> <span class="text-slate-500">you renamed locally; upstream changed target kind</span></span>
+        <span class="flex gap-2 text-[11px]"><button class="rounded border px-2 py-0.5">Keep mine</button><button class="rounded border px-2 py-0.5">Take theirs</button><button class="rounded border border-slate-300 px-2 py-0.5 text-slate-400">Diff…</button></span>
+      </li>
+    </ul>
+  </section>
+
+  <div class="grid gap-6 md:grid-cols-2">
+    <div class="gap rounded-lg p-4 text-[12px] text-amber-900">
+      ❓ <b>Gap (§10-A3):</b> glossary sync was per-row over flat tables. Here the diff is a <b>tree</b> (schema → edge/fact/vocab → vocab value). Apply must work per tree-node, and a nested ADD (a vocab value) is shown indented. The tree-diff/apply algorithm is new vs glossary — confirm scope.
+    </div>
+    <div class="gap rounded-lg p-4 text-[12px] text-amber-900">
+      ❓ <b>Gap:</b> "Take theirs" on <code>BETROTHED_TO</code> cardinality single→multi affects <b>existing extracted edges</b> (a single_active edge that auto-closed siblings now shouldn't). Does sync re-open/recompute data, or only change the rule going forward? Schema-change-vs-data again (M3).
+    </div>
+  </div>
+
+  <!-- source retired -->
+  <section class="rounded-lg border border-slate-200 bg-white p-5">
+    <h3 class="text-sm font-bold">Source-retired case</h3>
+    <p class="mt-1 text-[12px] text-slate-600">If admin <b>deletes</b> an edge type upstream that you adopted, sync shows it as <span class="chip" style="background:#fee2e2;color:#b91c1c">source_retired</span> — your copy stays (boundary independence), you're just told the upstream is gone.</p>
+    <div class="mt-2 flex items-center justify-between rounded-md bg-slate-50 px-3 py-2 text-[12px]"><span class="flex items-center gap-2"><span class="chip chip-edge">DAO_COMPANION_OF</span> <span class="chip" style="background:#fee2e2;color:#b91c1c">source_retired</span></span><span class="text-[11px] text-slate-500">keep as book-native · no action needed</span></div>
+  </section>
+</main>
+</body>
+</html>

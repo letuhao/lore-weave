@@ -9,11 +9,15 @@ import (
 	"syscall"
 	"time"
 
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	awskms "github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/loreweave/observability"
 
+	"github.com/loreweave/auth-service/internal/adminprincipal"
 	"github.com/loreweave/auth-service/internal/api"
+	"github.com/loreweave/auth-service/internal/authjwt"
 	"github.com/loreweave/auth-service/internal/config"
 	"github.com/loreweave/auth-service/internal/migrate"
 )
@@ -69,6 +73,45 @@ func main() {
 		os.Exit(1)
 	}
 	srv := api.NewServer(pool, cfg)
+
+	// Admin-JWT issuance (074/075). Build the KMS-backed signer (the RSA private
+	// key never leaves KMS) and enable the endpoints. Fails closed at startup if
+	// the KMS key is unreachable or not RSA (NewKMSSigner does a GetPublicKey).
+	if cfg.AdminIssuanceEnabled {
+		var signer authjwt.DigestSigner
+		if cfg.KMSAdminSigningKeyID != "" {
+			// Production path: KMS-backed signer; RSA private key never leaves KMS.
+			awsCfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(cfg.AWSRegion))
+			if err != nil {
+				slog.Error("aws config load failed", "error", err)
+				os.Exit(1)
+			}
+			kmsClient := awskms.NewFromConfig(awsCfg, func(o *awskms.Options) {
+				if cfg.KMSEndpoint != "" {
+					o.BaseEndpoint = &cfg.KMSEndpoint
+				}
+			})
+			ks, err := authjwt.NewKMSSigner(ctx, kmsClient, cfg.KMSAdminSigningKeyID)
+			if err != nil {
+				slog.Error("admin KMS signer init failed", "error", err)
+				os.Exit(1)
+			}
+			signer = ks
+		} else {
+			// DEV / self-hosted path: in-process RSA key from config. Loud warning —
+			// the private key lives in the process, not KMS.
+			ls, err := authjwt.NewLocalKeySigner([]byte(cfg.AdminJWTLocalPrivateKeyPEM))
+			if err != nil {
+				slog.Error("admin local signer init failed", "error", err)
+				os.Exit(1)
+			}
+			signer = ls
+			slog.Warn("admin-JWT issuance using a LOCAL in-process signing key (dev/self-hosted) — production should use KMS")
+		}
+		srv.EnableAdminIssuance(signer, adminprincipal.New(pool), cfg.AdminTokenIssuerSecret, cfg.AdminAuditHMACKey, cfg.AdminTokenTTL)
+		slog.Info("admin-JWT issuance enabled", "kid", signer.KID())
+	}
+
 	httpSrv := &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           srv.Router(),

@@ -96,6 +96,11 @@ class KnowledgeContext(BaseModel):
     # an older knowledge-service that omits the field, the no-project
     # path, and the degraded path all leave tool-calling enabled.
     tool_calling_enabled: bool = True
+    # Interview-roleplay — rendered working_memory anchor (charter + state).
+    # Pinned into the system block AND tail-injected by stream_service. "" when
+    # the session has no working_memory block or on the degraded path; chat-service
+    # then falls back to the session's working_memory_seed (EC-4). M4 populates it.
+    working_memory: str = ""
 
 
 def _degraded() -> KnowledgeContext:
@@ -110,7 +115,7 @@ def _degraded() -> KnowledgeContext:
 def _normalize_tool_parameters(input_schema: dict | None) -> dict:
     """Normalize an MCP tool's inputSchema to a valid OpenAI function-call
     `parameters` object. OpenAI-compatible providers (e.g. LM Studio) REQUIRE a
-    `properties` object — a tool with an empty input (e.g. glossary_list_kinds,
+    `properties` object — a tool with an empty input (e.g. glossary_list_system_standards,
     whose Go input struct is empty) yields `{"type":"object"}` with no
     `properties`, which 400s the WHOLE request. Default the missing keys so an
     argument-less tool advertises `{"type":"object","properties":{}}`.
@@ -169,9 +174,24 @@ class KnowledgeClient:
         if transport is not None:
             client_kwargs["transport"] = transport
         self._http = httpx.AsyncClient(**client_kwargs)
-        # K21-B — process cache for GET /internal/tools/definitions.
+        # K21-B — process cache for the federated tool catalog. Sourced from the
+        # ai-gateway `/mcp` MCP `tools/list` (see get_tool_definitions); the legacy
+        # `/internal/tools/definitions` HTTP path was retired in KM0.
         # None = not fetched yet; a list = the cached OpenAI schemas.
         self._tool_definitions: list[dict] | None = None
+        # T4c — separate process cache for the ADMIN catalog (`/mcp/admin`). The
+        # catalog is identical for every admin (only the per-request RS256 token
+        # varies), so the CATALOG is cached but the token is NEVER part of the
+        # cache key and is NEVER cached. Kept distinct from `_tool_definitions`
+        # so admin tools can never bleed into the user/book `/mcp` catalog (E17).
+        self._admin_tool_definitions: list[dict] | None = None
+        # MCP-fanout C-FT/C-GW (H10) — catalog-level metadata from the most recent
+        # successful list-tools (the gateway's `_meta`). Carries the partial-catalog
+        # / per-provider availability signal so find_tools can distinguish
+        # "no such tool" from "provider temporarily unavailable". None until a
+        # successful fetch; {} when the gateway sends no signal yet (clean seam
+        # for S-GATEWAY — see get_catalog_meta()).
+        self._catalog_meta: dict | None = None
 
     async def aclose(self) -> None:
         await self._http.aclose()
@@ -183,6 +203,7 @@ class KnowledgeClient:
         session_id: str | None = None,
         project_id: str | None = None,
         message: str = "",
+        language: str | None = None,
     ) -> KnowledgeContext:
         """POST /internal/context/build.
 
@@ -214,6 +235,10 @@ class KnowledgeClient:
             "user_id": user_id,
             "message": safe_message,
         }
+        # S6 — the display/target language for entity aliases (optional). Omitted
+        # when unset → knowledge returns source-language aliases (back-compat).
+        if language:
+            body["language"] = language
         # Truthy checks (not `is not None`) so empty strings are omitted,
         # which prevents knowledge-service's UUID validator from 422-ing
         # the call.
@@ -244,6 +269,66 @@ class KnowledgeClient:
 
         # Gateway and direct both unreachable → degraded (turn proceeds tool/context-free).
         return _degraded()
+
+    async def init_working_memory(
+        self, *, session_id: str, user_id: str, charter: dict
+    ) -> bool:
+        """POST /internal/working-memory/init — the goal-authority write path.
+
+        Pushes the FROZEN charter so knowledge-service owns the evolving block
+        (the executive then updates state). Best-effort: on any failure returns
+        False and logs — the session still anchors from its own
+        working_memory_seed (EC-4), so a knowledge outage never blocks start.
+        """
+        url = f"{self._base_url}/internal/working-memory/init"
+        body = {"session_id": session_id, "user_id": user_id, "charter": charter}
+        tid = current_trace_id()
+        headers = {"X-Trace-Id": tid} if tid else None
+        try:
+            resp = await self._http.post(url, json=body, headers=headers)
+            if resp.status_code in (200, 204):
+                return True
+            logger.warning("init_working_memory non-2xx: %s", resp.status_code)
+            return False
+        except Exception:
+            logger.warning("init_working_memory failed for session %s", session_id, exc_info=True)
+            return False
+
+    async def tick_working_memory(
+        self, *, session_id: str, user_id: str,
+        model_source: str | None, model_ref: str | None,
+        recent_turns: list[dict],
+    ) -> str | None:
+        """POST /internal/working-memory/tick — run one executive pass.
+
+        Sends the session's model (the executive runs on it) + the recent-turns
+        window so knowledge-service needn't call back into chat. Best-effort:
+        returns the status string on success, None on any failure (the anchor
+        still holds from the existing block / seed).
+
+        Uses the LONGER tool timeout: the executive makes an LLM call, so the
+        build_context-sized default would disconnect mid-pass and could abort the
+        server-side handler before it writes state.
+        """
+        url = f"{self._base_url}/internal/working-memory/tick"
+        body = {
+            "session_id": session_id, "user_id": user_id,
+            "model_source": model_source, "model_ref": model_ref,
+            "recent_turns": recent_turns,
+        }
+        tid = current_trace_id()
+        headers = {"X-Trace-Id": tid} if tid else None
+        try:
+            resp = await self._http.post(
+                url, json=body, headers=headers, timeout=self._tool_timeout_s,
+            )
+            if resp.status_code == 200:
+                return resp.json().get("status")
+            logger.warning("tick_working_memory non-200: %s", resp.status_code)
+            return None
+        except Exception:
+            logger.warning("tick_working_memory failed for session %s", session_id, exc_info=True)
+            return None
 
     async def _build_context_at(
         self,
@@ -363,6 +448,77 @@ class KnowledgeClient:
             logger.warning("get_tool_definitions (mcp list-tools) failed: %s", exc)
             return []
 
+        tools = []
+        for t in listed.tools:
+            fn: dict = {
+                "name": t.name,
+                "description": t.description or "",
+                "parameters": _normalize_tool_parameters(t.inputSchema),
+            }
+            # MCP-fanout C-TOOL: preserve the per-tool `_meta` (tier / scope /
+            # synonyms / undo_hint) so the consumer can drive tier-based
+            # advertising + find_tools recall WITHOUT it ever reaching the
+            # provider — strip_tool_meta() removes it before the wire request.
+            meta = getattr(t, "meta", None)
+            if isinstance(meta, dict) and meta:
+                fn["_meta"] = dict(meta)
+            tools.append({"type": "function", "function": fn})
+        # MCP-fanout H10: stash the gateway's catalog-level `_meta` (availability /
+        # partial-catalog signal). The seam exists even when S-GATEWAY hasn't
+        # populated it yet (then it's {} and find_tools degrades to "no such tool"
+        # everywhere — never a false outage claim).
+        cat_meta = getattr(listed, "meta", None)
+        self._catalog_meta = dict(cat_meta) if isinstance(cat_meta, dict) else {}
+        self._tool_definitions = tools
+        return tools
+
+    async def get_admin_tool_definitions(self, admin_token: str | None) -> list[dict]:
+        """T4c — fetch the SYSTEM-TIER admin tool catalog from the gateway's
+        SEPARATE ``/mcp/admin`` endpoint (NOT ``/mcp``), presenting the caller's
+        RS256 ``admin:write`` token in ``X-Admin-Token``.
+
+        Curation (E17/INV-T6): this is the ONLY method that dials ``/mcp/admin``;
+        the user/book ``get_tool_definitions`` never does, so admin tool names
+        never appear in a non-admin session's catalog. Conversely an admin
+        session calls THIS, not ``get_tool_definitions``.
+
+        The CATALOG is cached process-wide (identical for every admin); the
+        ``admin_token`` is NEVER cached and NEVER logged (§6.7). No token, or any
+        transport/auth failure (incl. a 401 from the transport gate) → ``[]`` so
+        the turn degrades tool-free, same contract as the user path.
+        """
+        if not admin_token:
+            return []
+        if self._admin_tool_definitions is not None:
+            return self._admin_tool_definitions
+        if streamablehttp_client is None or ClientSession is None:
+            logger.warning(
+                "get_admin_tool_definitions called but the 'mcp' package is not installed"
+            )
+            return []
+
+        mcp_url = f"{self._tools_base_url}/mcp/admin"
+        headers = {
+            "X-Internal-Token": self._http.headers["X-Internal-Token"],
+            "X-Admin-Token": admin_token,
+        }
+        tid = current_trace_id()
+        if tid:
+            headers["X-Trace-Id"] = tid
+        try:
+            async with streamablehttp_client(
+                mcp_url, headers=headers,
+                timeout=self._tool_timeout_s, sse_read_timeout=self._tool_timeout_s,
+            ) as (read, write, _):
+                async with ClientSession(read, write) as mcp_session:
+                    await mcp_session.initialize()
+                    listed = await mcp_session.list_tools()
+        except Exception as exc:
+            # NOTE: log only the exception, never `headers` — `X-Admin-Token`
+            # is a bearer credential and must not reach the logs (§6.7).
+            logger.warning("get_admin_tool_definitions (mcp list-tools) failed: %s", exc)
+            return []
+
         tools = [
             {
                 "type": "function",
@@ -374,8 +530,21 @@ class KnowledgeClient:
             }
             for t in listed.tools
         ]
-        self._tool_definitions = tools
+        self._admin_tool_definitions = tools
         return tools
+
+    def get_catalog_meta(self) -> dict:
+        """MCP-fanout H10 — the gateway's catalog-level `_meta` from the last
+        successful list-tools, or ``{}`` if none was fetched / sent.
+
+        S-GATEWAY (C-GW) is expected to populate a per-provider availability map
+        here, e.g. ``{"unavailable_providers": ["book"], "partial": true}``, so a
+        consumer's find_tools can tell "no such tool" from "provider temporarily
+        down" (→ the agent says "try again," never "I can't"). Until that lands
+        this returns ``{}`` (a clean, non-lying default). TODO(S-GATEWAY): pin the
+        exact key shape at COMPOSE A.
+        """
+        return self._catalog_meta or {}
 
     async def mcp_execute_tool(
         self,
@@ -385,6 +554,7 @@ class KnowledgeClient:
         tool_name: str,
         tool_args: dict,
         project_id: str | None = None,
+        admin_token: str | None = None,
     ) -> dict:
         """ARCH-2 C2 — execute a memory tool via MCP streamable HTTP transport.
 
@@ -395,6 +565,11 @@ class KnowledgeClient:
         Context headers carry user_id / project_id / session_id — they never
         appear in tool_args (design D3). A transport or protocol failure returns
         success=False (graceful degradation, same contract as execute_tool()).
+
+        T4c — when ``admin_token`` is set the call routes to the SEPARATE
+        ``/mcp/admin`` endpoint with the RS256 token in ``X-Admin-Token`` and
+        DOES NOT send ``X-User-Id``: admin authority is the verified RS256 token,
+        never the user id (INV-T2). The token is never logged (§6.7).
         """
         if streamablehttp_client is None or ClientSession is None:
             logger.warning("mcp_execute_tool called but the 'mcp' package is not installed")
@@ -404,13 +579,22 @@ class KnowledgeClient:
                 "error": "mcp tool backend unavailable: mcp package not installed",
             }
 
-        mcp_url = f"{self._tools_base_url}/mcp"
-        headers = {
-            "X-Internal-Token": self._http.headers["X-Internal-Token"],
-            "X-User-Id": user_id,
-            "X-Session-Id": session_id,
-        }
-        if project_id:
+        if admin_token:
+            # System-tier admin tool: separate endpoint, RS256 authority, NO X-User-Id.
+            mcp_url = f"{self._tools_base_url}/mcp/admin"
+            headers = {
+                "X-Internal-Token": self._http.headers["X-Internal-Token"],
+                "X-Admin-Token": admin_token,
+                "X-Session-Id": session_id,
+            }
+        else:
+            mcp_url = f"{self._tools_base_url}/mcp"
+            headers = {
+                "X-Internal-Token": self._http.headers["X-Internal-Token"],
+                "X-User-Id": user_id,
+                "X-Session-Id": session_id,
+            }
+        if project_id and not admin_token:
             headers["X-Project-Id"] = project_id
         # K7e — mirror execute_tool: forward the caller's trace_id so
         # knowledge-service stitches its logs to the originating chat turn.

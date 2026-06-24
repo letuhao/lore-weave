@@ -18,8 +18,31 @@ from typing import Optional
 from uuid import UUID
 
 import asyncpg
+from loreweave_jobs import emit_job_event, emit_job_event_safe
 
 from .saga.gating import ChapterState
+
+#: Unified Job Control Plane P1 — the service id stamped on every emitted JobEvent.
+_JOB_SERVICE = "campaign"
+
+# campaign-native status → canonical JobStatus. Only `created` is non-canonical
+# (maps to `pending`); every other native value is already a canonical JobStatus
+# (running/paused/cancelling/completed/failed/cancelled). The native string is
+# preserved verbatim in the event's `detail_status` whenever it differs.
+_CANONICAL_STATUS = {
+    "created": "pending",
+    "running": "running",
+    "paused": "paused",
+    "cancelling": "cancelling",
+    "cancelled": "cancelled",
+    "completed": "completed",
+    "failed": "failed",
+}
+
+
+def _canonical_status(native: str) -> str:
+    """Map a campaign-native status to the closest canonical JobStatus."""
+    return _CANONICAL_STATUS.get(native, native)
 
 # Whitelist: stage → projection column. Interpolated into SQL ONLY after this
 # membership check, so a rogue stage string can never reach the query.
@@ -34,8 +57,8 @@ _ATTEMPTS_COL = {
 }
 
 _CAMPAIGN_COLS = """
-  campaign_id, owner_user_id, book_id, name, status, gating_mode, stages,
-  target_language, knowledge_project_id,
+  campaign_id, owner_user_id, book_owner_user_id, book_id, name, status, gating_mode, stages,
+  target_language, knowledge_project_id, embedding_model_ref,
   knowledge_model_source, knowledge_model_ref,
   translation_model_source, translation_model_ref,
   verifier_model_source, verifier_model_ref,
@@ -52,6 +75,17 @@ def _stage_col(stage: str) -> str:
     return col
 
 
+def _match_id_col(stage: str) -> str:
+    """E0-4b — which campaign identity an inbound completion event correlates on.
+    A `knowledge.chapter_extracted` event carries the GRAPH owner's user_id
+    (= the book owner, the knowledge-graph partition), so it matches
+    `book_owner_user_id`. Translation/eval events carry the CALLER's user_id
+    (caller-attributed/paid), so they match `owner_user_id`. For an owner-run
+    campaign the two columns are equal, so both stages correlate as before.
+    Whitelisted (never request-derived) → safe to interpolate."""
+    return "book_owner_user_id" if stage == "knowledge" else "owner_user_id"
+
+
 # ── Campaign CRUD ─────────────────────────────────────────────────────────
 
 
@@ -59,11 +93,13 @@ async def create_campaign(
     conn: asyncpg.Connection,
     *,
     owner_user_id: UUID,
+    book_owner_user_id: UUID,
     book_id: UUID,
     name: str,
     gating_mode: str,
     target_language: Optional[str],
     knowledge_project_id: Optional[UUID],
+    embedding_model_ref: Optional[UUID],
     knowledge_model_source: Optional[str],
     knowledge_model_ref: Optional[UUID],
     translation_model_source: Optional[str],
@@ -76,27 +112,70 @@ async def create_campaign(
     verifier_model_ref: Optional[UUID] = None,
     eval_judge_model_source: Optional[str] = None,
     eval_judge_model_ref: Optional[UUID] = None,
+    est_usd_low: Optional[Decimal] = None,
+    est_usd_high: Optional[Decimal] = None,
+    knowledge_model_name: Optional[str] = None,
+    translation_model_name: Optional[str] = None,
 ) -> asyncpg.Record:
-    return await conn.fetchrow(
+    row = await conn.fetchrow(
         f"""
         INSERT INTO campaigns (
-          owner_user_id, book_id, name, gating_mode, target_language,
-          knowledge_project_id, knowledge_model_source, knowledge_model_ref,
+          owner_user_id, book_owner_user_id, book_id, name, gating_mode, target_language,
+          knowledge_project_id, embedding_model_ref,
+          knowledge_model_source, knowledge_model_ref,
           translation_model_source, translation_model_ref,
           verifier_model_source, verifier_model_ref,
           eval_judge_model_source, eval_judge_model_ref,
-          chapter_from, chapter_to, total_chapters, budget_usd
+          chapter_from, chapter_to, total_chapters, budget_usd,
+          est_usd_low, est_usd_high
         )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
         RETURNING {_CAMPAIGN_COLS}
         """,
-        owner_user_id, book_id, name, gating_mode, target_language,
-        knowledge_project_id, knowledge_model_source, knowledge_model_ref,
+        owner_user_id, book_owner_user_id, book_id, name, gating_mode, target_language,
+        knowledge_project_id, embedding_model_ref,
+        knowledge_model_source, knowledge_model_ref,
         translation_model_source, translation_model_ref,
         verifier_model_source, verifier_model_ref,
         eval_judge_model_source, eval_judge_model_ref,
         chapter_from, chapter_to, total_chapters, budget_usd,
+        est_usd_low, est_usd_high,
     )
+    # Unified Job Control Plane P1 — emit the initial lifecycle event on the SAME
+    # conn as the INSERT (the router wraps both in one tx, so the event commits
+    # atomically with the new campaign row — H1). A campaign starts `created`,
+    # whose canonical JobStatus is `pending`; the native string rides detail_status.
+    native = row["status"]
+    canonical = _canonical_status(native)
+    # P4 — whitelisted params + cost (spent_usd, 0 at create; accumulates via the S4
+    # SpendConsumer). D-JOBS-P4-CAMPAIGN-MODEL-NAMES: per-stage model NAMES are now resolved
+    # by the ROUTER OUT-OF-TX (resolving here would be HTTP inside the router's tx — H1) and
+    # passed in; emitted ONLY on create, where the projection's COALESCE keeps them across
+    # the later status events. The refs still ride params too. (top-level `model` carries the
+    # translation-stage name as the campaign's primary model for the GUI's model column.)
+    _spent = row["spent_usd"]
+    await emit_job_event(
+        conn, service=_JOB_SERVICE, job_id=str(row["campaign_id"]),
+        owner_user_id=str(row["owner_user_id"]), kind="campaign", status=canonical,
+        detail_status=native if native != canonical else None,
+        title=row["name"],
+        cost_usd=float(_spent) if _spent is not None else None,
+        model=translation_model_name or knowledge_model_name,
+        params={
+            "gating_mode": row["gating_mode"],
+            "target_language": row["target_language"],
+            "total_chapters": row["total_chapters"],
+            "knowledge_model_ref": (
+                str(row["knowledge_model_ref"]) if row["knowledge_model_ref"] else None
+            ),
+            "translation_model_ref": (
+                str(row["translation_model_ref"]) if row["translation_model_ref"] else None
+            ),
+            "knowledge_model": knowledge_model_name,
+            "translation_model": translation_model_name,
+        },
+    )
+    return row
 
 
 async def seed_campaign_chapters(
@@ -122,21 +201,37 @@ async def seed_campaign_chapters(
 
 
 async def get_campaign(
-    pool: asyncpg.Pool, campaign_id: UUID, owner_user_id: UUID,
+    pool: asyncpg.Pool, campaign_id: UUID,
 ) -> Optional[asyncpg.Record]:
+    """E0-4b: fetch by campaign_id ONLY (PK). The grant gate is the access
+    chokepoint (the router resolves the campaign's book + grant before calling
+    this) — dropping the owner predicate gives the shared per-book read view."""
     return await pool.fetchrow(
-        f"SELECT {_CAMPAIGN_COLS} FROM campaigns "
-        f"WHERE campaign_id = $1 AND owner_user_id = $2",
-        campaign_id, owner_user_id,
+        f"SELECT {_CAMPAIGN_COLS} FROM campaigns WHERE campaign_id = $1",
+        campaign_id,
     )
 
 
 async def list_campaigns(
-    pool: asyncpg.Pool, owner_user_id: UUID,
+    pool: asyncpg.Pool, *, owner_user_id: Optional[UUID] = None, book_id: Optional[UUID] = None,
 ) -> list[asyncpg.Record]:
+    # #2 polish — include a lightweight progress count (translation done+skipped) per
+    # row via a correlated subquery, for the list's progress bar (one query total).
+    # E0-4b: `book_id` → shared per-book view (the router grant-gates the book, then
+    # lists every campaign on it, dropping the owner predicate — IDOR-safe, book scopes).
+    # `owner_user_id` → the cross-book "my campaigns" dashboard (a grantee's own).
+    progress = """,
+          (SELECT COUNT(*) FROM campaign_chapters cc
+           WHERE cc.campaign_id = campaigns.campaign_id
+             AND cc.translation_status IN ('done', 'skipped')) AS progress_done
+        FROM campaigns"""
+    if book_id is not None:
+        return await pool.fetch(
+            f"SELECT {_CAMPAIGN_COLS}{progress} WHERE book_id = $1 ORDER BY created_at DESC",
+            book_id,
+        )
     return await pool.fetch(
-        f"SELECT {_CAMPAIGN_COLS} FROM campaigns "
-        f"WHERE owner_user_id = $1 ORDER BY created_at DESC",
+        f"SELECT {_CAMPAIGN_COLS}{progress} WHERE owner_user_id = $1 ORDER BY created_at DESC",
         owner_user_id,
     )
 
@@ -154,6 +249,82 @@ async def get_campaign_chapters(
         ORDER BY chapter_sort ASC
         """,
         campaign_id,
+    )
+
+
+_ATTENTION_FILTER = (
+    "AND NOT (knowledge_status IN ('done','skipped') "
+    "AND translation_status IN ('done','skipped') "
+    "AND eval_status IN ('done','skipped'))"
+)
+# D-FACTORY-INFLIGHT-PANEL — rows with a stage currently dispatched to a provider
+# (the "Now processing" panel). Only knowledge/translation are driver-dispatched
+# (eval is observed, never sits in 'dispatched'); mirrors count_inflight's predicate.
+_INFLIGHT_FILTER = "AND 'dispatched' IN (knowledge_status, translation_status)"
+
+# status → WHERE fragment. A whitelist (never raw-interpolated): the router clamps
+# the request value to these keys; an unknown value falls back to "attention".
+_CHAPTER_FILTERS = {
+    "attention": _ATTENTION_FILTER,
+    "inflight": _INFLIGHT_FILTER,
+    "all": "",
+}
+
+
+async def get_campaign_chapters_page(
+    pool: asyncpg.Pool, campaign_id: UUID, *,
+    status: str = "attention", limit: int = 200, offset: int = 0,
+) -> tuple[list[asyncpg.Record], int]:
+    """D-S6-CHAPTER-PAGING — one page of the per-chapter projection + the total
+    (server-side, so a 4000-chapter campaign doesn't ship every row to the monitor).
+    `status='attention'` filters to rows that aren't fully settled (failed or
+    in-progress) — the table's default; `'inflight'` = rows with a stage currently
+    dispatched (the processing panel); `'all'` returns everything. The filter is a
+    fixed literal chosen by a whitelisted `status` (never raw-interpolated)."""
+    where = _CHAPTER_FILTERS.get(status, _ATTENTION_FILTER)
+    total = await pool.fetchval(
+        f"SELECT COUNT(*) FROM campaign_chapters WHERE campaign_id = $1 {where}",
+        campaign_id,
+    )
+    rows = await pool.fetch(
+        f"""
+        SELECT chapter_id, chapter_sort, ingest_status, knowledge_status,
+               translation_status, eval_status, knowledge_attempts,
+               translation_attempts, last_error, eval_fidelity_score
+        FROM campaign_chapters
+        WHERE campaign_id = $1 {where}
+        ORDER BY chapter_sort ASC
+        LIMIT $2 OFFSET $3
+        """,
+        campaign_id, limit, offset,
+    )
+    return rows, int(total or 0)
+
+
+async def get_campaign_activity(
+    pool: asyncpg.Pool, campaign_id: UUID, *, limit: int = 50, before_id: Optional[int] = None,
+) -> list[asyncpg.Record]:
+    """D-FACTORY-INFLIGHT-LOG — one recent-first page of the activity log (written by
+    the campaign_chapters trigger). Keyset pagination: `before_id` returns rows older
+    than that id (id DESC), so newer rows arriving at the head never shift a page."""
+    if before_id is not None:
+        return await pool.fetch(
+            """
+            SELECT id, chapter_id, chapter_sort, stage, status, detail, created_at
+            FROM campaign_activity
+            WHERE campaign_id = $1 AND id < $2
+            ORDER BY id DESC LIMIT $3
+            """,
+            campaign_id, before_id, limit,
+        )
+    return await pool.fetch(
+        """
+        SELECT id, chapter_id, chapter_sort, stage, status, detail, created_at
+        FROM campaign_activity
+        WHERE campaign_id = $1
+        ORDER BY id DESC LIMIT $2
+        """,
+        campaign_id, limit,
     )
 
 
@@ -184,6 +355,47 @@ async def get_campaign_progress(
     )
 
 
+async def get_report_row(
+    pool: asyncpg.Pool, campaign_id: UUID,
+) -> Optional[asyncpg.Record]:
+    """G1 — summary row for the completion report (status, timing, spend, budget,
+    persisted estimate band). E0-4b: fetch by campaign_id (PK); the router
+    grant-gates the book before calling (shared per-book read view)."""
+    return await pool.fetchrow(
+        """
+        SELECT status, total_chapters, spent_usd, budget_usd,
+               est_usd_low, est_usd_high, started_at, finished_at,
+               EXTRACT(EPOCH FROM (COALESCE(finished_at, now()) - started_at))::bigint
+                 AS duration_seconds
+        FROM campaigns
+        WHERE campaign_id = $1
+        """,
+        campaign_id,
+    )
+
+
+async def get_failed_error_strings(
+    pool: asyncpg.Pool, campaign_id: UUID,
+) -> list[asyncpg.Record]:
+    """G1 — (last_error, count) for chapters with a FAILED knowledge/translation
+    stage, for the report's error grouping. The router buckets each `last_error` via
+    `normalize_error_cause` and sums counts per cause (bucketing is a pure, unit-
+    tested fn). Scoped to knowledge/translation (NOT eval) to match
+    `reset_failed_stages` — eval is observed (rides translation.quality), not
+    dispatched, so an eval failure is neither actionable nor re-runnable; counting it
+    here would report an "error" that "Re-run all failed" can't clear (review-impl)."""
+    return await pool.fetch(
+        """
+        SELECT last_error, COUNT(*) AS n
+        FROM campaign_chapters
+        WHERE campaign_id = $1
+          AND 'failed' IN (knowledge_status, translation_status)
+        GROUP BY last_error
+        """,
+        campaign_id,
+    )
+
+
 async def set_campaign_status(
     pool: asyncpg.Pool,
     campaign_id: UUID,
@@ -193,18 +405,46 @@ async def set_campaign_status(
     set_started: bool = False,
     set_finished: bool = False,
 ) -> None:
-    await pool.execute(
-        """
-        UPDATE campaigns
-        SET status = $2,
-            error_message = COALESCE($3, error_message),
-            started_at = CASE WHEN $4 AND started_at IS NULL THEN now() ELSE started_at END,
-            finished_at = CASE WHEN $5 THEN now() ELSE finished_at END,
-            updated_at = now()
-        WHERE campaign_id = $1
-        """,
-        campaign_id, status, error_message, set_started, set_finished,
-    )
+    """Transition a campaign's status (the PRIMARY lifecycle chokepoint — driven by
+    the /start, /pause, /cancel, /rerun-failed routes and the saga driver's
+    complete/cancel paths). Unified Job Control Plane P1: emits the lifecycle
+    JobEvent in the SAME tx as the UPDATE (H1 — the status change and its event
+    commit atomically), only when a row actually matched. `status` is the
+    campaign-native value; it maps to the closest canonical JobStatus for the
+    event (native string preserved in detail_status when it differs)."""
+    async with pool.acquire() as conn:
+        async with conn.transaction():  # UPDATE + emit_job_event atomic (H1)
+            row = await conn.fetchrow(
+                """
+                UPDATE campaigns
+                SET status = $2,
+                    error_message = COALESCE($3, error_message),
+                    started_at = CASE WHEN $4 AND started_at IS NULL THEN now() ELSE started_at END,
+                    finished_at = CASE WHEN $5 THEN now() ELSE finished_at END,
+                    updated_at = now()
+                WHERE campaign_id = $1
+                RETURNING campaign_id, owner_user_id, status, error_message, spent_usd
+                """,
+                campaign_id, status, error_message, set_started, set_finished,
+            )
+            if row is None:
+                return  # campaign vanished (cross-tenant / deleted) — nothing to emit
+            native = row["status"]
+            canonical = _canonical_status(native)
+            # P4 — carry the CHANGING accumulated spend (params set once at create).
+            _spent = row["spent_usd"]
+            await emit_job_event(
+                conn, service=_JOB_SERVICE, job_id=str(row["campaign_id"]),
+                owner_user_id=str(row["owner_user_id"]), kind="campaign",
+                status=canonical,
+                detail_status=native if native != canonical else None,
+                cost_usd=float(_spent) if _spent is not None else None,
+                error=(
+                    {"code": "error", "message": str(row["error_message"])}
+                    if native == "failed" and row["error_message"]
+                    else None
+                ),
+            )
 
 
 # ── S4d budget cap: spend accumulation + budget update ─────────────────────
@@ -238,7 +478,7 @@ async def accumulate_and_maybe_pause(
             )
             if fresh is None:
                 return False  # already counted — no-op
-            await conn.execute(
+            updated = await conn.fetchrow(
                 """
                 UPDATE campaigns
                 SET spent_usd = spent_usd + $2,
@@ -252,26 +492,62 @@ async def accumulate_and_maybe_pause(
                         ELSE error_message END,
                     updated_at = now()
                 WHERE campaign_id = $1
+                RETURNING owner_user_id, spent_usd, status
                 """,
                 campaign_id, cost_usd,
             )
-            return True
+    # D-JOBS-CAMPAIGN-SPEND-EMIT — surface the LIVE accumulated cost (and any auto-pause
+    # folded into the UPDATE above) to the Jobs GUI. POST-COMMIT + best-effort: telemetry
+    # must NEVER roll back the money accumulation, so a failed emit can't under-count spend;
+    # the projection's COALESCE + the next status event are the durability backstop.
+    if updated is not None:
+        native = updated["status"]
+        canonical = _canonical_status(native)
+        _spent = updated["spent_usd"]
+        await emit_job_event_safe(
+            pool, service=_JOB_SERVICE, job_id=str(campaign_id),
+            owner_user_id=str(updated["owner_user_id"]), kind="campaign", status=canonical,
+            detail_status=native if native != canonical else None,
+            cost_usd=float(_spent) if _spent is not None else None,
+        )
+    return True
 
 
-async def update_budget(
-    pool: asyncpg.Pool, campaign_id: UUID, owner_user_id: UUID, budget_usd: Decimal,
+# D-FACTORY-SWITCH-MODEL-RESUME — columns a PATCH may update. A whitelist so a
+# rogue key can never reach the SET clause (the field name is interpolated only
+# after this membership check; values stay parameterized). Embedding/rerank are
+# NOT here (knowledge-project SSOT; embedding change is destructive to the graph).
+_UPDATABLE_COLS = (
+    "budget_usd",
+    "translation_model_source", "translation_model_ref",
+    "knowledge_model_source", "knowledge_model_ref",
+    "verifier_model_source", "verifier_model_ref",
+    "eval_judge_model_source", "eval_judge_model_ref",
+)
+
+
+async def update_campaign_fields(
+    pool: asyncpg.Pool, campaign_id: UUID, fields: dict,
 ) -> Optional[asyncpg.Record]:
-    """Owner-scoped budget update (PATCH). Returns the updated row, or None when the
-    campaign isn't found / not owned (→ 404). Does NOT change status — a paused
-    campaign stays paused; resume via /start once budget_usd is above spent_usd."""
+    """Partial update (PATCH) of whitelisted campaign columns (budget + the four
+    switchable LLM models). Only keys in `_UPDATABLE_COLS` are applied — the column
+    name is interpolated solely from that whitelist, values stay parameterized.
+    E0-4b: scoped by campaign_id (PK); the router grant-gates `manage` on the book
+    before calling. Returns the updated row, or None when no valid field is given /
+    the campaign isn't found. Status is unchanged (resume via /start)."""
+    cols = [c for c in _UPDATABLE_COLS if c in fields]
+    if not cols:
+        return None
+    set_frag = ", ".join(f"{c} = ${i + 2}" for i, c in enumerate(cols))
+    values = [fields[c] for c in cols]
     return await pool.fetchrow(
         f"""
         UPDATE campaigns
-        SET budget_usd = $3, updated_at = now()
-        WHERE campaign_id = $1 AND owner_user_id = $2
+        SET {set_frag}, updated_at = now()
+        WHERE campaign_id = $1
         RETURNING {_CAMPAIGN_COLS}
         """,
-        campaign_id, owner_user_id, budget_usd,
+        campaign_id, *values,
     )
 
 
@@ -301,6 +577,7 @@ async def mark_stage_done_by_chapter(
     would silently mark a campaign's chapter done in the WRONG language. Pass
     None for the language-agnostic knowledge stage (no filter)."""
     col = _stage_col(stage)
+    id_col = _match_id_col(stage)
     result = await pool.execute(
         f"""
         UPDATE campaign_chapters cc
@@ -308,7 +585,7 @@ async def mark_stage_done_by_chapter(
         FROM campaigns c
         WHERE c.campaign_id = cc.campaign_id
           AND c.book_id = $1
-          AND c.owner_user_id = $2
+          AND c.{id_col} = $2
           -- 'paused' included (S3c): a paused campaign stops NEW dispatch but
           -- must still absorb completions of already-in-flight jobs, else those
           -- chapters stay 'dispatched' and get stuck on resume.
@@ -376,11 +653,12 @@ async def pause_campaigns_for_dispatched_chapter(
     (not unrelated campaigns on the same book). Returns rows paused. Idempotent
     (WHERE status='running')."""
     col = _stage_col(stage)
+    id_col = _match_id_col(stage)
     result = await pool.execute(
         f"""
         UPDATE campaigns c
         SET status = 'paused', error_message = $4, updated_at = now()
-        WHERE c.owner_user_id = $1
+        WHERE c.{id_col} = $1
           AND c.book_id = $2
           AND c.status = 'running'
           AND EXISTS (
@@ -630,6 +908,35 @@ async def reset_stuck_stage(
         WHERE campaign_id = $1 AND chapter_id = $2 AND {col} = 'dispatched'
         """,
         campaign_id, UUID(chapter_id), reason[:2000],
+    )
+    try:
+        return int(result.split()[-1])
+    except (ValueError, IndexError, AttributeError):
+        return 0
+
+
+async def reset_failed_stages(
+    pool: asyncpg.Pool, campaign_id: UUID, chapter_ids: Optional[list[UUID]] = None,
+) -> int:
+    """G2 (user re-run-failed): reset FAILED knowledge/translation stages to
+    'pending' + zero their attempts + clear last_error, so gating re-dispatches
+    them (the downstream skip-gate prevents re-spend on already-done work). Scoped
+    to `chapter_ids` (None = ALL failed chapters in the campaign). `eval` is OBSERVED
+    (rides translation.quality), so it is not reset here. Returns rows changed."""
+    result = await pool.execute(
+        """
+        UPDATE campaign_chapters
+        SET knowledge_status   = CASE WHEN knowledge_status='failed'   THEN 'pending' ELSE knowledge_status END,
+            knowledge_attempts = CASE WHEN knowledge_status='failed'   THEN 0 ELSE knowledge_attempts END,
+            translation_status = CASE WHEN translation_status='failed' THEN 'pending' ELSE translation_status END,
+            translation_attempts = CASE WHEN translation_status='failed' THEN 0 ELSE translation_attempts END,
+            last_error = NULL,
+            updated_at = now()
+        WHERE campaign_id = $1
+          AND 'failed' IN (knowledge_status, translation_status)
+          AND ($2::uuid[] IS NULL OR chapter_id = ANY($2::uuid[]))
+        """,
+        campaign_id, chapter_ids,
     )
     try:
         return int(result.split()[-1])

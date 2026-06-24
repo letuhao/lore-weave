@@ -1,8 +1,16 @@
-// LOOM Composition (T3.3) — the editor's inline AI layer: a Classic⇄AI mode toggle +
-// a ✦ Continue affordance (AI mode) that streams an inline ghost at the caret. Mounted
-// inside TiptapEditor via the `aiLayer` slot (gets the live editor); the mode is
-// per-device UI state (localStorage). The ghost overlay is ANCHOR-based, not mode-gated,
-// so an in-flight stream survives a Classic toggle (AC: never lose an in-flight stream).
+// LOOM Composition (T3.3 + C17/WG-5) — the editor's inline AI layer: a Classic⇄AI
+// mode toggle + a first-class "Continue from cursor" affordance that streams an
+// inline ghost at the caret. Mounted inside TiptapEditor via the `aiLayer` slot (gets
+// the live editor); the mode is per-device UI state (localStorage). The ghost overlay
+// is ANCHOR-based, not mode-gated, so an in-flight stream survives a mode toggle (AC:
+// never lose an in-flight stream).
+//
+// C17 (WG-5): "Continue from cursor" used to be buried behind the AI-mode toggle
+// (which defaults to Classic → the action was invisible to a writer continuing an
+// existing chapter). It is now PROMINENT and ALWAYS visible — continuing reads as
+// continuing, not as a mode you must discover first. It streams operation:'continue'
+// grounded on the active scene from the live caret position (useInlineGhost handles
+// the empty-doc / caret-at-start / caret-mid + stale-pos edge cases safely).
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Editor } from '@tiptap/react';
@@ -59,19 +67,20 @@ export function InlineAiLayer({
             {t('inline.mode_ai', { defaultValue: 'AI' })}
           </button>
         </div>
-        {mode === 'ai' && (
-          <button
-            type="button" data-testid="inline-continue"
-            className="rounded-full border bg-background/90 px-2 py-0.5 disabled:opacity-50"
-            // also gated while a ghost is pending (g.anchor) so a 2nd Continue can't
-            // silently abandon an un-resolved ghost — resolve it (Accept/Discard) first.
-            disabled={!g.canContinue || g.streaming || !!g.anchor}
-            title={disabledHint || undefined}
-            onClick={g.continueDraft}
-          >
-            ✦ {t('inline.continue', { defaultValue: 'Continue' })}
-          </button>
-        )}
+        {/* C17 (WG-5) — first-class "Continue from cursor": ALWAYS visible (not gated
+            by mode), prominent (primary fill), explicit handler → caret-anchored
+            stream. Direct onClick (no useEffect-for-events). Gated while a ghost is
+            pending (g.anchor) so a 2nd Continue can't abandon an un-resolved ghost —
+            resolve it (Accept/Discard) first. */}
+        <button
+          type="button" data-testid="inline-continue"
+          className="rounded-full border border-primary bg-primary px-2 py-0.5 font-medium text-primary-foreground disabled:opacity-50"
+          disabled={!g.canContinue || g.streaming || !!g.anchor}
+          title={disabledHint || t('inline.continueHint', { defaultValue: 'Stream an AI continuation from your cursor.' })}
+          onClick={g.continueDraft}
+        >
+          ✦ {t('inline.continueFromCursor', { defaultValue: 'Continue from cursor' })}
+        </button>
       </div>
 
       {/* anchor-based → a streaming ghost stays visible even if the user toggles Classic */}

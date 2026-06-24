@@ -20,9 +20,36 @@ import type {
   ContextLicense,
   UploadResult,
   ResolvedIntent,
+  ComposeTask,
+  ComposeTaskAccepted,
 } from './types';
 
 const BASE = '/v1/lore-enrichment';
+
+// LLM re-arch Phase 3 M2 — the interactive compose LLM calls (profile/suggest,
+// compose/resolve-intent) run OFF the request path: POST → 202 + task_id, then
+// poll the task to terminal. The submit+poll is hidden inside the two api methods
+// so the hooks/components keep their existing "await the result" contract.
+const COMPOSE_POLL_INTERVAL_MS = 1500;
+// ~225s budget — MUST exceed the backend completion ceiling (complete.py's 180s LLM
+// timeout + the pre-LLM HTTP for projection/chapters/KG/glossary). A shorter budget
+// makes the FE abandon a task the worker then completes anyway → orphaned result +
+// a duplicate LLM call on retry (/review-impl M2 #1).
+const COMPOSE_POLL_MAX = 150;
+const _sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function _pollComposeTask(taskId: string, token: string): Promise<ComposeTask> {
+  let t = await enrichmentApi.getComposeTask(taskId, token);
+  for (
+    let i = 0;
+    i < COMPOSE_POLL_MAX && (t.status === 'pending' || t.status === 'running');
+    i++
+  ) {
+    await _sleep(COMPOSE_POLL_INTERVAL_MS);
+    t = await enrichmentApi.getComposeTask(taskId, token);
+  }
+  return t;
+}
 
 // Enrichment is BOOK-bound, so the GUI scopes by `book_id`. The backend's
 // project-scoped routes (per-proposal actions, detect-gaps / auto-enrich / sources)
@@ -121,7 +148,7 @@ export const enrichmentApi = {
       generation_model_ref: string;
       technique?: string;
       max_gaps?: number;
-      max_spend_usd?: number | null;
+      max_spend_tokens?: number | null;
       top_k?: number;
       /** LE-064 — when set, enrich exactly these gaps (per-row "enrich →"). */
       targets?: EnrichTarget[];
@@ -190,13 +217,29 @@ export const enrichmentApi = {
     );
   },
 
-  /** Mode B step 1 — resolve a free-text intent into a proposed target (no job). */
-  resolveIntent(bookId: string, intentText: string, genModel: string, token: string): Promise<ResolvedIntent> {
-    return apiJson<ResolvedIntent>(`${BASE}/projects/${bookId}/compose/resolve-intent`, {
-      method: 'POST',
-      body: JSON.stringify({ book_id: bookId, intent_text: intentText, generation_model_ref: genModel }),
-      token,
-    });
+  /** Poll one async compose task (profile-suggest / intent-resolve). */
+  getComposeTask(taskId: string, token: string): Promise<ComposeTask> {
+    return apiJson<ComposeTask>(`${BASE}/compose-tasks/${taskId}`, { token });
+  },
+
+  /** Mode B step 1 — resolve a free-text intent into a proposed target (async:
+   *  202 + task, then poll to terminal — Phase 3 M2). */
+  async resolveIntent(
+    bookId: string, intentText: string, genModel: string, token: string,
+  ): Promise<ResolvedIntent> {
+    const accepted = await apiJson<ComposeTaskAccepted>(
+      `${BASE}/projects/${bookId}/compose/resolve-intent`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ book_id: bookId, intent_text: intentText, generation_model_ref: genModel }),
+        token,
+      },
+    );
+    const task = await _pollComposeTask(accepted.task_id, token);
+    if (task.status !== 'completed' || !task.result) {
+      throw new Error(task.error || 'intent resolve did not complete');
+    }
+    return task.result as ResolvedIntent;
   },
 
   // ── sources (corpus) — project_id := bookId ─────────────────────────────────
@@ -281,16 +324,21 @@ export const enrichmentApi = {
     });
   },
 
-  /** AI-suggest a DRAFT (not persisted). suggest_model_ref is a BYOK chat model. */
-  suggestBookProfile(
+  /** AI-suggest a DRAFT (not persisted). suggest_model_ref is a BYOK chat model.
+   *  Async (Phase 3 M2): 202 + task, then poll to terminal for the draft. */
+  async suggestBookProfile(
     bookId: string,
     body: { project_id: string; suggest_model_ref: string; sample_chapter_ids?: string[] },
     token: string,
   ): Promise<SuggestedProfile> {
-    return apiJson<SuggestedProfile>(`${BASE}/books/${bookId}/profile/suggest`, {
-      method: 'POST',
-      body: JSON.stringify(body),
-      token,
-    });
+    const accepted = await apiJson<ComposeTaskAccepted>(
+      `${BASE}/books/${bookId}/profile/suggest`,
+      { method: 'POST', body: JSON.stringify(body), token },
+    );
+    const task = await _pollComposeTask(accepted.task_id, token);
+    if (task.status !== 'completed' || !task.result) {
+      throw new Error(task.error || 'profile suggest did not complete');
+    }
+    return task.result as SuggestedProfile;
   },
 };

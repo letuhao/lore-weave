@@ -1,0 +1,71 @@
+{
+  "title": "LoreWeave — Projection Health (cycle 15 L3.J — backfilled cycle 34)",
+  "uid": "lw-projection-health",
+  "tags": ["loreweave", "projection", "integrity", "cycle-15", "cycle-34-backfill", "L3.J"],
+  "timezone": "utc",
+  "schemaVersion": 39,
+  "version": 2,
+  "refresh": "1m",
+  "editable": true,
+  "graphTooltip": 0,
+  "annotations": {"list": []},
+  "templating": {"list": []},
+  "time": {"from": "now-24h", "to": "now"},
+  "_comment": "L3.J dashboard. RAID cycle 15. Per-reality projection-health view. Source metrics live in services/integrity-checker/pkg/metrics + cycle-13 inventory entries. Cycle 34 backfill brought to STANDARDS.md conformance (added cycle-15 tag + timezone utc + LOCKED datasource UID).",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Projection drift count (per reality × table)",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "prom-primary"},
+      "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+      "targets": [
+        {"expr": "lw_projection_drift_count", "legendFormat": "{{reality_id}} / {{table}}", "refId": "A"}
+      ],
+      "fieldConfig": {"defaults": {"min": 0, "color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 1}, {"color": "red", "value": 5}]}}}
+    },
+    {
+      "id": 2,
+      "title": "Projection lag seconds (per reality × table)",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "prom-primary"},
+      "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+      "targets": [
+        {"expr": "lw_projection_lag_seconds", "legendFormat": "{{reality_id}} / {{table}}", "refId": "A"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "s", "min": 0, "color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 60}, {"color": "red", "value": 300}]}}}
+    },
+    {
+      "id": 3,
+      "title": "Integrity-checker run outcomes (mode × outcome)",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "prom-primary"},
+      "gridPos": {"x": 0, "y": 8, "w": 12, "h": 6},
+      "targets": [
+        {"expr": "rate(lw_projection_check_runs_total[5m])", "legendFormat": "{{mode}} / {{outcome}}", "refId": "A"}
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Integrity-checker duration P99 (per mode × table)",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "prom-primary"},
+      "gridPos": {"x": 12, "y": 8, "w": 12, "h": 6},
+      "targets": [
+        {"expr": "histogram_quantile(0.99, rate(lw_projection_check_duration_seconds_bucket[5m]))", "legendFormat": "{{mode}} / {{table}}", "refId": "A"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "s"}}
+    },
+    {
+      "id": 5,
+      "title": "Stale verifications (last-check age per reality × table)",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "prom-primary"},
+      "gridPos": {"x": 0, "y": 14, "w": 24, "h": 6},
+      "targets": [
+        {"expr": "lw_projection_drift_last_check_age_seconds", "legendFormat": "{{reality_id}} / {{table}}", "refId": "A"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "s", "color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 86400}, {"color": "red", "value": 604800}]}}}
+    }
+  ]
+}

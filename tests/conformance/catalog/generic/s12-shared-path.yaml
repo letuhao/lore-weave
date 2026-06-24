@@ -1,0 +1,7 @@
+id: s12-shared-path
+description: "S12/Inc-2 (centerpiece) — the SHARED aggregate paths: meta-worker I7 single-consumer consume ceiling (serial-capacity, ~22k/s < DP-S5 T3 50k/s ⇒ ranked refactor-risk: batch the XACK), reality_registry route/provision ceiling, Redis per-reality fan-out read-amplification (DP-A7). Each cpuset-isolated + OWN-CPU + a non-vacuity bite. Requires the scale rig up (scale-rig.sh up + migrate + crossshard)."
+invariant: I-s12-shared-path-ceilings
+kind: live-probe
+command: ["bash", "scripts/perf/shared-path.sh", "all"]
+requires: ["scale-rig"]
+skip_when: []

@@ -1,9 +1,16 @@
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { useTimeline } from '../hooks/useTimeline';
 import { useProjects } from '../hooks/useProjects';
-import type { Entity } from '../api';
+import {
+  TIMELINE_SORT_DIRECTIONS,
+  TIMELINE_SORT_KEYS,
+  type Entity,
+  type TimelineSortBy,
+  type TimelineSortDir,
+} from '../api';
 import { TimelineEventRow } from './TimelineEventRow';
 import { TimelineFilters } from './TimelineFilters';
 
@@ -18,9 +25,18 @@ import { TimelineFilters } from './TimelineFilters';
 
 const PAGE_SIZE = 50;
 
-export function TimelineTab() {
+interface TimelineTabProps {
+  // C6 (G6) — route-scoped project when hosted inside the project-detail
+  // shell. Seeds the filter AND hides the per-tab project `<select>`.
+  // Absent ⇒ legacy cross-project surface (dropdown rendered) unchanged.
+  scopedProjectId?: string;
+}
+
+export function TimelineTab({ scopedProjectId }: TimelineTabProps = {}) {
   const { t } = useTranslation('knowledge');
-  const [projectFilter, setProjectFilter] = useState<string>('');
+  const [projectFilter, setProjectFilter] = useState<string>(
+    scopedProjectId ?? '',
+  );
   const [offset, setOffset] = useState(0);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   // C10 (D-K19e-α-01 + D-K19e-α-03) — secondary filters. Entity is
@@ -33,6 +49,17 @@ export function TimelineTab() {
   const [beforeChronological, setBeforeChronological] = useState<number | null>(
     null,
   );
+  // C14 (C14-narrative-order-sort) — sort axis. Default 'narrative' =
+  // reading order (back-compat with the BE's unset default).
+  const [sortBy, setSortBy] = useState<TimelineSortBy>('narrative');
+  // D-K19e-α-03 — sort direction. Default 'asc' = earliest-first (back-compat).
+  const [sortDir, setSortDir] = useState<TimelineSortDir>('asc');
+  // D-K19e-α-02 — in-story ISO date-range filter (null = unbounded).
+  const [eventDateFrom, setEventDateFrom] = useState<string | null>(null);
+  const [eventDateTo, setEventDateTo] = useState<string | null>(null);
+
+  const scoped = !!scopedProjectId;
+  const effectiveProjectId = scopedProjectId ?? projectFilter;
 
   const projectsQuery = useProjects(false);
 
@@ -43,10 +70,14 @@ export function TimelineTab() {
 
   const { events, total, isLoading, error, isFetching } = useTimeline(
     {
-      project_id: projectFilter || undefined,
+      project_id: effectiveProjectId || undefined,
       entity_id: entityFilter?.id,
       after_chronological: afterChronological ?? undefined,
       before_chronological: beforeChronological ?? undefined,
+      event_date_from: eventDateFrom ?? undefined,
+      event_date_to: eventDateTo ?? undefined,
+      sort_by: sortBy,
+      sort_dir: sortDir,
       limit: PAGE_SIZE,
       offset,
     },
@@ -70,37 +101,98 @@ export function TimelineTab() {
 
   return (
     <div data-testid="timeline-tab">
-      <div className="mb-4 flex flex-wrap items-end gap-2">
-        <label className="flex flex-col gap-1 text-[11px]">
-          <span className="text-muted-foreground">
-            {t('timeline.filters.project')}
-          </span>
-          <select
-            value={projectFilter}
-            onChange={(e) =>
-              handleFilterChange(() => {
-                setProjectFilter(e.target.value);
-                // C10 — reset secondary filters when project changes.
-                // An entity from project A wouldn't return anything
-                // under project B; chrono bounds tuned to one project
-                // are rarely meaningful in another. Mirrors the C8
-                // drawer-search pattern.
-                setEntityFilter(null);
-                setAfterChronological(null);
-                setBeforeChronological(null);
-              })
-            }
-            className="rounded-md border bg-input px-2 py-1.5 text-xs outline-none focus:border-ring"
-            data-testid="timeline-filter-project"
-          >
-            <option value="">{t('timeline.filters.anyProject')}</option>
-            {projectsQuery.items.map((p) => (
-              <option key={p.project_id} value={p.project_id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        </label>
+      {!scoped && (
+        <div className="mb-4 flex flex-wrap items-end gap-2">
+          <label className="flex flex-col gap-1 text-[11px]">
+            <span className="text-muted-foreground">
+              {t('timeline.filters.project')}
+            </span>
+            <select
+              value={projectFilter}
+              onChange={(e) =>
+                handleFilterChange(() => {
+                  setProjectFilter(e.target.value);
+                  // C10 — reset secondary filters when project changes.
+                  // An entity from project A wouldn't return anything
+                  // under project B; chrono bounds tuned to one project
+                  // are rarely meaningful in another. Mirrors the C8
+                  // drawer-search pattern.
+                  setEntityFilter(null);
+                  setAfterChronological(null);
+                  setBeforeChronological(null);
+                  setEventDateFrom(null);
+                  setEventDateTo(null);
+                })
+              }
+              className="rounded-md border bg-input px-2 py-1.5 text-xs outline-none focus:border-ring"
+              data-testid="timeline-filter-project"
+            >
+              <option value="">{t('timeline.filters.anyProject')}</option>
+              {projectsQuery.items.map((p) => (
+                <option key={p.project_id} value={p.project_id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      )}
+
+      {/* C14 — sort axis toggle (narrative ↔ chronological). A segmented
+          control, NOT a project select — the route owns the project scope
+          (G6). Default 'narrative' matches the BE's back-compat default. */}
+      <div className="mb-3 flex items-center gap-2 text-[11px]">
+        <span className="text-muted-foreground">{t('timeline.sort.label')}</span>
+        <div
+          className="inline-flex overflow-hidden rounded-md border"
+          role="group"
+          aria-label={t('timeline.sort.label')}
+          data-testid="timeline-sort"
+        >
+          {TIMELINE_SORT_KEYS.map((key) => (
+            <button
+              key={key}
+              type="button"
+              aria-pressed={sortBy === key}
+              onClick={() => handleFilterChange(() => setSortBy(key))}
+              className={cn(
+                'px-2.5 py-1 transition-colors',
+                sortBy === key
+                  ? 'bg-primary text-primary-foreground'
+                  : 'hover:bg-secondary',
+              )}
+              data-testid={`timeline-sort-${key}`}
+            >
+              {t(`timeline.sort.${key}`)}
+            </button>
+          ))}
+        </div>
+        {/* D-K19e-α-03 — direction toggle (asc ↔ desc), applies to the chosen
+            axis. Default 'asc' matches the BE back-compat default. */}
+        <div
+          className="inline-flex overflow-hidden rounded-md border"
+          role="group"
+          aria-label={t('timeline.sort.direction')}
+          data-testid="timeline-sort-dir"
+        >
+          {TIMELINE_SORT_DIRECTIONS.map((dir) => (
+            <button
+              key={dir}
+              type="button"
+              aria-pressed={sortDir === dir}
+              onClick={() => handleFilterChange(() => setSortDir(dir))}
+              className={cn(
+                'px-2.5 py-1 transition-colors',
+                sortDir === dir
+                  ? 'bg-primary text-primary-foreground'
+                  : 'hover:bg-secondary',
+              )}
+              data-testid={`timeline-sort-dir-${dir}`}
+            >
+              {t(`timeline.sort.${dir}`)}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* C10 — secondary filters (entity + chronological range). Row
@@ -108,7 +200,7 @@ export function TimelineTab() {
           enough horizontal room. */}
       <div className="mb-4">
         <TimelineFilters
-          projectId={projectFilter || undefined}
+          projectId={effectiveProjectId || undefined}
           entity={entityFilter}
           onEntityChange={(ent) =>
             handleFilterChange(() => setEntityFilter(ent))
@@ -119,6 +211,14 @@ export function TimelineTab() {
             handleFilterChange(() => {
               setAfterChronological(after);
               setBeforeChronological(before);
+            })
+          }
+          eventDateFrom={eventDateFrom}
+          eventDateTo={eventDateTo}
+          onDateRangeChange={(from, to) =>
+            handleFilterChange(() => {
+              setEventDateFrom(from);
+              setEventDateTo(to);
             })
           }
         />

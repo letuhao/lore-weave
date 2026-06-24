@@ -98,7 +98,32 @@ export function useCompositionStream(token: string | null) {
           body: JSON.stringify(body),
           signal: controller.signal,
         });
-        if (!res.ok || !res.body) {
+        if (!res.ok) {
+          setError(`generate failed (${res.status})`);
+          return;
+        }
+        // M4: with COMPOSITION_WORKER_ENABLED on, a batch endpoint (selection-edit)
+        // answers 202 application/json `{ job_id, status: 'pending' }` instead of an
+        // SSE stream. Detect the non-stream content-type, poll the job to terminal,
+        // and surface the result text as the ghost (same accept flow as a stream).
+        const ctype = res.headers?.get?.('content-type') ?? '';
+        if (ctype.includes('application/json')) {
+          const accepted = (await res.json()) as { job_id?: string; status?: string };
+          if (accepted.job_id) setJobId(accepted.job_id);
+          if (accepted.job_id && (accepted.status === 'pending' || accepted.status === 'running')) {
+            const job = await compositionApi.awaitJob(accepted.job_id, token ?? '', controller.signal);
+            if (abortRef.current !== controller) return; // superseded — don't clobber
+            if (job.status === 'failed') {
+              setError((job.result as { error?: string } | null)?.error ?? 'edit failed');
+            } else if (job.status === 'completed') {
+              setGhost((job.result as { text?: string } | null)?.text ?? '');
+            } else {
+              setError('edit did not complete in time');
+            }
+          }
+          return;
+        }
+        if (!res.body) {
           setError(`generate failed (${res.status})`);
           return;
         }

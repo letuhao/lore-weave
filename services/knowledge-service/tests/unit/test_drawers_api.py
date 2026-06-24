@@ -209,6 +209,60 @@ def test_drawers_happy(mock_find):
     assert ec["texts"] == ["bridge duel"]
 
 
+def _lang_hit(chunk_index: int, source_lang: str, score: float) -> PassageSearchHit:
+    p = _passage_stub(chunk_index=chunk_index)
+    p = p.model_copy(update={"source_lang": source_lang, "source_id": f"ch-{source_lang}"})
+    return PassageSearchHit(passage=p, raw_score=score, vector=None)
+
+
+@patch(
+    "app.routers.public.drawers.find_passages_by_vector",
+    new_callable=AsyncMock,
+)
+@patch(
+    "app.routers.public.drawers.neo4j_session", new=lambda: _noop_session()
+)
+def test_drawers_language_partition_and_coverage(mock_find):
+    """KG-ML M7 (C12) — ?language=vi soft-orders vi hits first (stable, not a
+    filter) + reports honest partial coverage; each hit carries source_lang."""
+    # higher cosine for zh/en so only the partition (not score) can put vi first
+    mock_find.return_value = [
+        _lang_hit(0, "zh", 0.95),
+        _lang_hit(1, "en", 0.90),
+        _lang_hit(2, "vi", 0.70),
+    ]
+    client, _, _ = _make_client()
+    resp = client.get(
+        f"/v1/knowledge/drawers/search?project_id={_PROJECT_ID}&query=test&language=vi-VN"
+    )
+    assert resp.status_code == 200, resp.json()
+    body = resp.json()
+    # vi hit partitioned to the front despite its lower cosine; nothing dropped.
+    assert [h["source_lang"] for h in body["hits"]] == ["vi", "zh", "en"]
+    cov = body["coverage"]
+    assert cov["reader_lang"] == "vi"  # vi-VN folded to primary subtag
+    assert cov["total"] == 3 and cov["in_language"] == 1
+    assert cov["partial"] is True
+    assert "1 of 3" in cov["note"]
+
+
+@patch(
+    "app.routers.public.drawers.find_passages_by_vector",
+    new_callable=AsyncMock,
+)
+@patch(
+    "app.routers.public.drawers.neo4j_session", new=lambda: _noop_session()
+)
+def test_drawers_no_language_has_null_coverage(mock_find):
+    mock_find.return_value = [_lang_hit(0, "zh", 0.9)]
+    client, _, _ = _make_client()
+    resp = client.get(
+        f"/v1/knowledge/drawers/search?project_id={_PROJECT_ID}&query=test"
+    )
+    assert resp.status_code == 200
+    assert resp.json()["coverage"] is None  # no preference → no note
+
+
 @patch(
     "app.routers.public.drawers.find_passages_by_vector",
     new_callable=AsyncMock,
@@ -225,6 +279,89 @@ def test_drawers_limit_forwarded(mock_find):
     )
     assert resp.status_code == 200
     assert mock_find.await_args.kwargs["limit"] == 25
+
+
+# ── D-K19e-γa-02 — per-search embed cost ─────────────────────────────
+
+
+@patch(
+    "app.routers.public.drawers.find_passages_by_vector",
+    new_callable=AsyncMock,
+)
+@patch(
+    "app.routers.public.drawers.neo4j_session", new=lambda: _noop_session()
+)
+def test_drawers_embed_cost_surfaced_for_priced_model(mock_find):
+    """When the provider reports prompt_tokens AND the model has a known
+    rate, the response carries the token count + a non-zero USD cost."""
+    mock_find.return_value = [_hit_stub(0, 0.9)]
+    client, _, _ = _make_client(
+        project=_project_stub(embedding_model="text-embedding-3-small"),
+        embed_return=EmbeddingResult(
+            embeddings=[[0.1] * 1024],
+            dimension=1024,
+            model="text-embedding-3-small",  # rate 0.00000002 / token
+            prompt_tokens=1000,
+        ),
+    )
+    resp = client.get(
+        f"/v1/knowledge/drawers/search?project_id={_PROJECT_ID}&query=bridge+duel"
+    )
+    assert resp.status_code == 200, resp.json()
+    body = resp.json()
+    assert body["embedding_prompt_tokens"] == 1000
+    # 1000 × 0.00000002 = 0.00002000
+    assert Decimal(body["embedding_cost_usd"]) == Decimal("0.00002000")
+
+
+@patch(
+    "app.routers.public.drawers.find_passages_by_vector",
+    new_callable=AsyncMock,
+)
+@patch(
+    "app.routers.public.drawers.neo4j_session", new=lambda: _noop_session()
+)
+def test_drawers_embed_cost_zero_for_free_local_model(mock_find):
+    """A self-hosted model (rate 0) reports its tokens with an explicit
+    0.00 cost — distinct from 'unknown' (null)."""
+    mock_find.return_value = []
+    client, _, _ = _make_client(
+        embed_return=EmbeddingResult(
+            embeddings=[[0.1] * 1024], dimension=1024,
+            model="bge-m3", prompt_tokens=42,
+        ),
+    )
+    resp = client.get(
+        f"/v1/knowledge/drawers/search?project_id={_PROJECT_ID}&query=test"
+    )
+    body = resp.json()
+    assert body["embedding_prompt_tokens"] == 42
+    assert Decimal(body["embedding_cost_usd"]) == Decimal("0")
+
+
+@patch(
+    "app.routers.public.drawers.find_passages_by_vector",
+    new_callable=AsyncMock,
+)
+@patch(
+    "app.routers.public.drawers.neo4j_session", new=lambda: _noop_session()
+)
+def test_drawers_embed_cost_null_when_tokens_unreported(mock_find):
+    """Provider omits usage (prompt_tokens=0, e.g. Ollama) → both fields
+    null ('unknown', NOT a misleading $0)."""
+    mock_find.return_value = []
+    client, _, _ = _make_client(
+        embed_return=EmbeddingResult(
+            embeddings=[[0.1] * 1024], dimension=1024,
+            model="bge-m3", prompt_tokens=0,
+        ),
+    )
+    resp = client.get(
+        f"/v1/knowledge/drawers/search?project_id={_PROJECT_ID}&query=test"
+    )
+    body = resp.json()
+    assert body["embedding_prompt_tokens"] is None
+    assert body["embedding_cost_usd"] is None
 
 
 # ── empty-state branches ─────────────────────────────────────────────

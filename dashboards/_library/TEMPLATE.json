@@ -1,0 +1,119 @@
+{
+  "_meta": {
+    "_comment": "L7.H.8 (cycle 33) — canonical dashboard template. COPY this file as a starting point for any new dashboard, then rename title + uid + tags. The dashboard-validator.sh script asserts new dashboards match the structural rules below (datasource UIDs, panel title required, variables present, refresh + time range).",
+    "shipped_cycle": 33,
+    "owner": "platform",
+    "standards_ref": "dashboards/_library/STANDARDS.md"
+  },
+  "annotations": {
+    "list": [
+      {
+        "name": "Deploys",
+        "datasource": {"type": "prometheus", "uid": "prom-primary"},
+        "expr": "changes(kube_deployment_status_observed_generation[5m]) > 0",
+        "iconColor": "blue",
+        "enable": false
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {"type": "prometheus", "uid": "prom-primary"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "red", "value": null},
+              {"color": "yellow", "value": 0.9},
+              {"color": "green", "value": 0.99}
+            ]
+          }
+        }
+      },
+      "gridPos": {"h": 4, "w": 24, "x": 0, "y": 0},
+      "id": 1,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}
+      },
+      "targets": [
+        {
+          "datasource": {"type": "prometheus", "uid": "prom-primary"},
+          "expr": "avg(up{lw_env=\"$lw_env\"})",
+          "refId": "A"
+        }
+      ],
+      "title": "Current health (top stat — template placeholder)",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prom-primary"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+      "id": 2,
+      "targets": [
+        {
+          "datasource": {"type": "prometheus", "uid": "prom-primary"},
+          "expr": "sum by (service) (rate(http_requests_total{lw_env=\"$lw_env\"}[5m]))",
+          "legendFormat": "{{service}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Request rate by service (template placeholder)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prom-primary"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+      "id": 3,
+      "targets": [
+        {
+          "datasource": {"type": "prometheus", "uid": "prom-primary"},
+          "expr": "lw:http_error_ratio:by_service{lw_env=\"$lw_env\"}",
+          "legendFormat": "{{service}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Error ratio by service (template placeholder)",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["_template", "cycle-33", "L7.H"],
+  "templating": {
+    "list": [
+      {
+        "name": "lw_env",
+        "label": "Environment",
+        "query": "dev,staging,prod",
+        "type": "custom",
+        "current": {"text": "dev", "value": "dev"}
+      },
+      {
+        "datasource": {"type": "prometheus", "uid": "prom-primary"},
+        "name": "service",
+        "label": "Service",
+        "query": "label_values(up, service)",
+        "type": "query",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true,
+        "current": {"text": "All", "value": "$__all"}
+      }
+    ]
+  },
+  "time": {"from": "now-1h", "to": "now"},
+  "timepicker": {},
+  "timezone": "utc",
+  "title": "TEMPLATE — COPY ME (cycle 33 L7.H)",
+  "uid": "_template",
+  "version": 1
+}

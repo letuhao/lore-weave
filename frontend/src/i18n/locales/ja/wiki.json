@@ -7,6 +7,8 @@
   "noMatch": "フィルターに一致する記事がありません",
   "articles": "{{count}}件の記事",
   "articles_other": "{{count}}件の記事",
+  "aiSplit": "AI生成 {{count}}件",
+  "aiSplit_other": "AI生成 {{count}}件",
   "revisions": "{{count}}件のリビジョン",
   "revisions_other": "{{count}}件のリビジョン",
   "allKinds": "すべて",
@@ -52,6 +54,11 @@
   "gen": {
     "title": "Wiki記事を生成",
     "description": "確定的なスタブを生成するか、モデルを選んでAIで本格的な記事を生成します。",
+    "mode": {
+      "label": "モード",
+      "stub": "確定的",
+      "llm": "AI生成"
+    },
     "cancel": "キャンセル",
     "starting": "開始中…",
     "confirmStub": "スタブを生成",
@@ -63,6 +70,17 @@
       "llmHint": "選択したモデルで出典付きの記事を生成します。",
       "pickRequired": "モデルを選択…"
     },
+    "reviseModel": {
+      "label": "修正モデル（任意）",
+      "same": "生成モデルと同じ",
+      "hint": "canonフラグが付いた記事の修正再生成にのみ使用します。"
+    },
+    "context": {
+      "language": "生成言語: {{lang}}",
+      "indexed": "ナレッジグラフ構築済み",
+      "notIndexed": "ナレッジグラフ未構築 — AIは根拠のないエンティティをスキップします",
+      "budget": "今月の使用額: {{used}} / {{limit}}"
+    },
     "kinds": {
       "label": "種別で絞り込み（任意）",
       "hint": "空欄ですべてのエンティティ種別を対象にします。"
@@ -72,7 +90,13 @@
       "hint": "この見積費用を超える前にジョブを一時停止します。",
       "invalid": "有効な金額を入力してください（例: 1.50）。"
     },
+    "estimate": {
+      "loading": "費用を見積もり中…",
+      "forN": "見積費用: ~{{count}} × {{perArticle}} ≈ {{total}}",
+      "perArticle": "見積費用: 1記事あたり ~{{perArticle}}"
+    },
     "started": "生成を開始しました",
+    "startedTruncated": "{{total}} 件中 {{selected}} 件のエンティティを生成中——残りは上限によりスキップされました。上限を上げて含めてください。",
     "noEntities": "生成対象のエンティティがありません",
     "alreadyRunning": "この本の生成ジョブはすでに実行中です",
     "notIndexed": "先にこの本のナレッジグラフを構築してください",
@@ -96,6 +120,29 @@
     "regenDescription": "この記事をAIで再生成します。人が編集した記事は上書きされず、提案として登録されます。",
     "regenHint": "再生成するモデルを選択してください。",
     "confirmRegen": "再生成",
+    "results": {
+      "title": "生成結果",
+      "dismiss": "結果を閉じる",
+      "cites": "引用",
+      "flags": "検証フラグ",
+      "queued": "{{count}}件待機中",
+      "queued_other": "{{count}}件待機中"
+    },
+    "outcome": {
+      "written": "作成",
+      "suggestion": "提案",
+      "skipped": "スキップ",
+      "writeback_failed": "失敗",
+      "error": "エラー",
+      "processing": "処理中"
+    },
+    "pass": {
+      "context": "取得",
+      "generate": "作成",
+      "verify": "検証",
+      "revise": "修正",
+      "writeback": "保存"
+    },
     "badge": {
       "generated": "AI",
       "generatedHint": "AI生成・検証済み。",
@@ -115,5 +162,70 @@
         "regurgitation": "丸写し"
       }
     }
+  },
+  "staleness": {
+    "banner": "ナレッジ更新 — {{count}}件の記事が古い可能性",
+    "banner_other": "ナレッジ更新 — {{count}}件の記事が古い可能性",
+    "title": "ナレッジ更新",
+    "subtitle": "ソース変更により{{count}}件にフラグ。選択するまで再生成されません。",
+    "subtitle_other": "ソース変更により{{count}}件にフラグ。選択するまで再生成されません。",
+    "close": "閉じる",
+    "empty": "古い記事はありません — すべてソースと一致しています。",
+    "outdated": "古い",
+    "dismiss": "無視",
+    "dismissed": "最新として記録",
+    "dismissFailed": "無視に失敗しました",
+    "viewSource": "ソースを表示",
+    "viewDiff": "差分を表示",
+    "diffLoading": "差分を読み込み中…",
+    "noDiff": "この記事のスナップショットがありません — ソースを表示してください。",
+    "diffApproximate": "概算 — 章の文章は生成時と異なる場合があります。",
+    "select": "{{name}}を選択",
+    "selectedCount": "{{count}}件選択",
+    "nArticles": "{{count}}件の記事",
+    "nArticles_other": "{{count}}件の記事",
+    "regenerateSelected": "再生成",
+    "regenerateSelected_other": "再生成（{{count}}）",
+    "dismissSelected": "選択を無視",
+    "dismissedN": "{{count}} 件を無視しました",
+    "dismissedN_other": "{{count}} 件を無視しました",
+    "estimateLabel": "見積",
+    "rescan": "再スキャン",
+    "rescanning": "スキャン中…",
+    "rescanDone": "スキャン完了 — 新しい変更 {{count}} 件",
+    "rescanDone_other": "スキャン完了 — 新しい変更 {{count}} 件",
+    "rescanPartial": "スキャン完了（recipe はスキップ — knowledge がバージョン未提供） — 新規 {{count}} 件",
+    "rescanPartial_other": "スキャン完了（recipe はスキップ — knowledge がバージョン未提供） — 新規 {{count}} 件",
+    "rescanFailed": "再スキャンに失敗",
+    "ledgerNote": "ナレッジの変更はここに自動記録されます（リアルタイムではなく遅延台帳）。フラグは立ちますが自動では再生成されません — トークンは「再生成」を押したときだけ消費されます。",
+    "reason": {
+      "entity_changed": "用語集の項目が変更",
+      "name_changed": "名前が変更",
+      "enrichment_changed": "補足が変更",
+      "merged": "エンティティが統合",
+      "chapter_regrounded": "章が再公開",
+      "citation_broken": "引用された章が削除",
+      "recipe_drift": "生成レシピが更新",
+      "kg_drift": "関連エンティティが変更"
+    },
+    "severity": {
+      "hard": "破損",
+      "structural": "構造",
+      "content": "内容"
+    }
+  },
+  "suggestions": {
+    "aiRegen": "AI再生成（grounded）",
+    "community": "コミュニティ",
+    "humanEditedNote": "この記事には人の編集があります → AI版は上書きせず提案になります。",
+    "preview": "提案",
+    "showDiff": "変更を表示",
+    "hideDiff": "変更を隠す",
+    "accept": "承認",
+    "reject": "却下",
+    "pendingChip": "提案 {{count}} 件",
+    "pendingChip_other": "提案 {{count}} 件",
+    "pendingTitle": "承認待ちの提案（{{count}}）",
+    "pendingTitle_other": "承認待ちの提案（{{count}}）"
   }
 }

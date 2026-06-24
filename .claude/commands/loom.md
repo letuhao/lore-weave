@@ -12,14 +12,18 @@ description: Run the 12-phase v2.2 human-in-loop workflow on a task — classify
 
 ## The 12 phases
 `CLARIFY → DESIGN → REVIEW → PLAN → BUILD → VERIFY → REVIEW → QC → POST-REVIEW → SESSION → COMMIT → RETRO`
-- **PO checkpoints — STOP and WAIT for the human:** end of **CLARIFY** and at **POST-REVIEW**.
+- **PO checkpoints — STOP and WAIT for the human:** end of **CLARIFY** and at **POST-REVIEW**. On a multi-part effort these are **batched per-milestone** (one CLARIFY for the whole effort; POST-REVIEW at each shippable risk boundary), **not** per sub-task.
 - Phases may be skipped **only** per the size-table allowances in `CLAUDE.md` (XS: CLARIFY+PLAN · S: PLAN). Never self-authorize a skip — STOP and ask.
+- **Continuous-flow (2026-06-12):** size by **complexity+risk, not file count**, and classify the **whole effort** as ONE run. On ample context budget, drive straight through; checkpoint/commit at **risk boundaries** (contract, migration, cross-service seam, milestone) or when context >~80% — never fragment a coherent effort into N size→build→review→commit cycles.
 
 ## Process when /loom is invoked
 1. **Scope** the task from the argument (or the ▶ NEXT block on `continue`/empty). State the task + its goal in one line.
-2. **Classify size** — from the **repo root only** (a subdir invocation splits the state file):
-   `bash scripts/workflow-gate.sh size <XS|S|M|L|XL> <files> <logic> <sideeffects>`
-   (count files touched · logic changes · side effects, per the `CLAUDE.md` size table).
+2. **Classify size of the whole EFFORT** — from the **repo root only** (a subdir invocation splits the state file):
+   `bash scripts/workflow-gate.sh size <XS|S|M|L|XL> <files> <logic> <sideeffects> <context_pct>`
+   Size by **complexity (logic) + risk (side effects)**, NOT file count — a wide-but-mechanical
+   change (e.g. one param × N files) sizes by its logic, not its breadth (the gate breadth-discounts
+   it). Pass current context % as the 5th arg so budget — not file count — drives the checkpoint
+   cadence. See the `CLAUDE.md` size table.
 3. **`/amaw` opt-in** when the task is **L+ and load-bearing**: data migrations, schema changes, tenant/isolation boundaries, security-critical paths, multi-system contracts. Announce + invoke `/amaw` before BUILD. Don't invoke for everyday work.
 4. **Enter CLARIFY** (`bash scripts/workflow-gate.sh phase clarify`); recover the acceptance criteria from the task's spec/plan row. **STOP at CLARIFY end** for the PO checkpoint (skip the stop only when resuming a phase already past it).
 5. Drive the phases with the gate (`phase <name>` / `complete <name> "<evidence>"`). **VERIFY is an evidence gate** — run the command, read the full output, *then* claim. If the change touches **≥2 services**, the VERIFY evidence needs a **live-smoke token** (or `LIVE-SMOKE deferred to D-<NAME>` / `live infra unavailable: <reason>`).

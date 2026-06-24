@@ -66,6 +66,58 @@ async def test_get_job_status_projects_counts():
 
 
 @pytest.mark.asyncio
+async def test_get_job_status_projects_results_and_live_pass():
+    # W4a — the screen-③ table data + live sub-step pointer flow through the poll.
+    book, user = uuid4(), uuid4()
+    job = _job(book_id=book, user_id=user, status="running")
+    job.results = {
+        "e1": {"outcome": "written", "citations": 2, "flags": 0, "name": "Mina"},
+        "e2": {"outcome": "processing", "citations": 0, "flags": 0, "name": "Count"},
+    }
+    job.current_entity_id = "e2"
+    job.current_pass = "verify"
+    with _patch_repo(_repo(get_latest=job)):
+        out = await iw.get_wiki_gen_job(book, user)
+    assert out.results["e1"]["outcome"] == "written"
+    assert out.results["e1"]["citations"] == 2
+    assert out.current_entity_id == "e2"
+    assert out.current_pass == "verify"
+
+
+# ── W6b-2b: current source text (the diff "after") ───────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_source_text_returns_only_requested_current_texts():
+    repo = MagicMock()
+    repo.list = AsyncMock(return_value=[MagicMock(project_id=uuid4())])
+    with patch.multiple(
+        iw,
+        gather_entity_context=AsyncMock(return_value=MagicMock()),
+        source_texts=MagicMock(return_value={
+            "entity:e1": "name\ndesc", "kg:e1": "facts", "block:c1": "passage"}),
+        get_glossary_client=MagicMock(), get_book_client=MagicMock(),
+        get_embedding_client=MagicMock(), get_reranker_client=MagicMock(),
+    ):
+        req = iw.WikiSourceTextRequest(
+            user_id=uuid4(), entity_id="e1",
+            sources=[iw.WikiSourceRef(source_type="entity", source_id="e1")])
+        out = await iw.wiki_source_text(uuid4(), req, projects_repo=repo)
+    assert out.texts == {"entity:e1": "name\ndesc"}  # only the requested source
+
+
+@pytest.mark.asyncio
+async def test_source_text_empty_when_not_indexed():
+    repo = MagicMock()
+    repo.list = AsyncMock(return_value=[])  # no project → not indexed
+    req = iw.WikiSourceTextRequest(
+        user_id=uuid4(), entity_id="e1",
+        sources=[iw.WikiSourceRef(source_type="entity", source_id="e1")])
+    out = await iw.wiki_source_text(uuid4(), req, projects_repo=repo)
+    assert out.texts == {}
+
+
+@pytest.mark.asyncio
 async def test_get_job_status_404_when_no_job():
     with _patch_repo(_repo(get_latest=None)):
         with pytest.raises(HTTPException) as exc:
@@ -152,10 +204,25 @@ async def test_cancel_pending_job_releases_lock():
 
 
 @pytest.mark.asyncio
-async def test_cancel_409_when_running_or_terminal():
+async def test_cancel_running_job_now_cancellable():
+    # D-WIKI-M7B — a RUNNING wiki-gen job is now cancellable (repo.cancel guards on
+    # pending|paused|running; the orchestrator's between-entity poll stops it).
     book, user = uuid4(), uuid4()
     job = _job(book_id=book, user_id=user, status="running")
-    repo = _repo(get=job, cancel=False)  # repo.cancel guards on pending|paused
+    repo = _repo(get=job, cancel=True)
+    with _patch_repo(repo):
+        out = await iw.cancel_wiki_gen_job(
+            book, job.job_id, iw.WikiGenJobActionRequest(user_id=user))
+    assert out["status"] == "cancelled"
+    repo.cancel.assert_awaited_once_with(job.job_id)
+
+
+@pytest.mark.asyncio
+async def test_cancel_409_when_terminal():
+    # An already-terminal job → repo.cancel returns False (guard misses) → 409.
+    book, user = uuid4(), uuid4()
+    job = _job(book_id=book, user_id=user, status="complete")
+    repo = _repo(get=job, cancel=False)
     with _patch_repo(repo):
         with pytest.raises(HTTPException) as exc:
             await iw.cancel_wiki_gen_job(

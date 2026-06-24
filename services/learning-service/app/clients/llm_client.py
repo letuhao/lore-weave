@@ -67,10 +67,21 @@ class JudgeClient:
 def build_judge_client(*, base_url: str, internal_token: str) -> JudgeClient:
     """Construct a JudgeClient against provider-registry (internal auth,
     per-call user_id for multi-tenant BYOK judge models)."""
-    sdk = SDKClient(
+    return JudgeClient(build_judge_sdk(base_url=base_url, internal_token=internal_token))
+
+
+def build_judge_sdk(*, base_url: str, internal_token: str) -> SDKClient:
+    """The raw SDK Client (internal auth, multi-tenant per-call user_id) for the
+    DECOUPLED judge path (LLM re-arch Phase 3 M1).
+
+    Unlike ``build_judge_client`` (which wraps ``submit_and_wait``, pinning the
+    consumer for the whole judge), the decoupled judge SM needs ``submit_job`` +
+    ``get_job`` directly: it submits one batch, persists ``provider_job_id``, and
+    resumes off the terminal-event stream. No ``event_redis_url`` — resume is the
+    learning-service consumer's job, not the SDK's wait."""
+    return SDKClient(
         base_url=base_url,
         auth_mode="internal",
         internal_token=internal_token,
         user_id=None,
     )
-    return JudgeClient(sdk)

@@ -8,6 +8,14 @@ class Settings(BaseSettings):
     internal_service_token: str
     jwt_secret: str
 
+    # KM5 — RS256 admin-signing public key (SPKI/PKIX "PUBLIC KEY" PEM, or
+    # base64 of it). The public half of auth-service's KMS admin key; when set,
+    # System-tier admin actions verify an RS256 admin JWT against it (INV-T2).
+    # Unset (default) → System-tier admin is DISABLED, those paths 503. Same
+    # contract + env-var name as glossary (ADMIN_JWT_PUBLIC_KEY_PEM) so one
+    # platform admin token works across both services.
+    admin_jwt_public_key_pem: str = ""
+
     # Optional with defaults.
     redis_url: str = "redis://redis:6379"
     # FD-22 — emit a Redis wake signal when an extraction job starts so worker-ai
@@ -66,6 +74,11 @@ class Settings(BaseSettings):
     book_service_url: str = "http://book-service:8082"
     book_client_timeout_s: float = 5.0
 
+    # KG-ML M2 — translation-service internal client: fetch a chapter's ACTIVE
+    # translation text (for dual-indexing vi passages on `translation.published`).
+    translation_service_url: str = "http://translation-service:8087"
+    translation_client_timeout_s: float = 10.0
+
     # wiki-llm M1 (option A) — lore-enrichment hosts the authored de-bias
     # BookProfile (worldview/voice/era/language/anachronism). The wiki
     # generator reads it over the internal token to shape its prompt. The
@@ -76,17 +89,40 @@ class Settings(BaseSettings):
     lore_enrichment_client_timeout_s: float = 5.0
     book_profile_cache_ttl_s: float = 60.0
 
-    # wiki-llm M6 — batch wiki-generation orchestrator. `wiki_gen_enabled` gates
-    # the stream consumer (OFF by default: generation costs tokens, so a deploy
-    # never auto-starts generating). cost_per_article is the per-article ESTIMATE
-    # charged against a job's max_spend_usd (the LLMClient meters real tokens via
-    # provider-registry; precise per-job metering is a follow-up). prompt/pipeline
-    # version stamp the C7 build_inputs fingerprint (Phase-2 staleness).
-    wiki_gen_enabled: bool = False
+    # wiki-llm M6 — batch wiki-generation orchestrator.
+    # NOTE (D-JOURNEY-WIKI-FLAG): `wiki_gen_enabled` is DEPRECATED + no longer gates
+    # the stream consumer, which now ALWAYS runs (it is idle/free until a user-
+    # triggered, cost-gated job arrives — gating it off-by-default silently pended
+    # every wiki-gen job). Spend is bounded per-request (max_spend_usd + the
+    # cost-gated trigger), not by this platform env. Kept only for back-compat;
+    # default True. cost_per_article is the per-article ESTIMATE charged against a
+    # job's max_spend_usd. prompt/pipeline version stamp the C7 build_inputs
+    # fingerprint (Phase-2 staleness).
+    wiki_gen_enabled: bool = True
     wiki_gen_cost_per_article_usd: float = 0.05
     wiki_gen_passage_limit: int = 8
     wiki_prompt_version: str = "wiki-v1"
     wiki_pipeline_version: str = "wiki-m6"
+
+    # D-WIKI-M8-EVAL-PLUS Phase 2 — automatic-sampled groundedness judge. After a wiki
+    # article generates, with probability `sample_rate` it is judged via the learning
+    # service's on-demand judge endpoint (the SAME Phase-1 endpoint, reusing the fresh
+    # article + FULL context sources). OFF by default + rate 0.0 = zero cost; both an
+    # enable flag AND a positive rate AND a model are required to sample. Best-effort:
+    # a judge call never blocks or fails generation.
+    wiki_llm_judge_enabled: bool = False
+    wiki_llm_judge_sample_rate: float = 0.0          # P(judge) per generated article, [0,1]
+    wiki_llm_judge_model_ref: str = ""               # judge model UUID (BYOK user_model)
+    wiki_llm_judge_model_source: str = "user_model"
+    learning_internal_url: str = "http://learning-service:8094"
+
+    # D-WIKI-M8-FEWSHOT — inject gold AI-draft→human-edit pairs as few-shot exemplars
+    # into wiki generation (the model learns the editorial style humans apply). OFF by
+    # default (adds tokens to every prompt). max_examples bounds the count fetched once
+    # per job; the glossary gold-pairs endpoint truncates each body server-side AND
+    # hard-caps the count at 5 (goldPairsMaxLimit) — a value above 5 here is clamped.
+    wiki_fewshot_enabled: bool = False
+    wiki_fewshot_max_examples: int = 3
 
     # P1 (2026-05-23) — /internal/parse body size cap. Default 200 MiB
     # matches book-service's maxImportSize at services/book-service/internal/api/import.go.

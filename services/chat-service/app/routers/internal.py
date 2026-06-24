@@ -5,10 +5,12 @@ The `chat.turn_completed` outbox event carries only ids + content *lengths* (not
 the prose), so the extraction worker must fetch the turn text by id from here.
 """
 
+import json
 from uuid import UUID
 
 import asyncpg
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, status
+from pydantic import BaseModel
 
 from app.config import settings
 from app.deps import get_db
@@ -21,6 +23,48 @@ def require_internal_token(x_internal_token: str | None = Header(default=None)) 
     chat-service clients use for provider/billing internal calls)."""
     if not settings.internal_service_token or x_internal_token != settings.internal_service_token:
         raise HTTPException(status_code=401, detail="invalid internal token")
+
+
+class InternalCreateSession(BaseModel):
+    """Create a chat session on behalf of a JWT-verified caller (roleplay-service
+    start-orchestration). The OWNER is in the body because the caller already
+    authenticated the user — the X-Internal-Token gates the trust boundary. The
+    `working_memory_seed` is the frozen charter (+ optional rubric sidecar), the
+    same shape `/templates/{id}/start` writes."""
+
+    owner_user_id: UUID
+    title: str
+    model_source: str
+    model_ref: UUID
+    system_prompt: str | None = None
+    working_memory_seed: dict | None = None
+
+
+@router.post("/sessions", dependencies=[Depends(require_internal_token)], status_code=status.HTTP_201_CREATED)
+async def internal_create_session(
+    body: InternalCreateSession, db: asyncpg.Pool = Depends(get_db)
+) -> dict:
+    """Create a `chat_sessions` row carrying a `working_memory_seed`. The exact
+    INSERT `/templates/{id}/start` uses — extracted so roleplay-service (the new
+    goal authority) can own scripts while chat-service still owns the session +
+    turn loop + M3 anchoring + M6 debrief."""
+    row = await db.fetchrow(
+        """
+        INSERT INTO chat_sessions
+          (owner_user_id, title, model_source, model_ref, system_prompt,
+           project_id, working_memory_seed)
+        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
+        RETURNING session_id
+        """,
+        str(body.owner_user_id),
+        body.title,
+        body.model_source,
+        str(body.model_ref),
+        body.system_prompt,
+        None,
+        json.dumps(body.working_memory_seed) if body.working_memory_seed is not None else None,
+    )
+    return {"session_id": str(row["session_id"])}
 
 
 @router.get("/turns/{message_id}/text", dependencies=[Depends(require_internal_token)])

@@ -330,6 +330,37 @@ async def test_mixed_tier1_and_tier3_resolution() -> None:
 
 
 @pytest.mark.asyncio
+async def test_tier3_multi_batch_maps_local_decisions_to_global_names() -> None:
+    """WX-T2c regression guard: >max_items_per_batch unmatched names split into
+    multiple Tier-3 batches; each batch's decisions are LOCAL-indexed (0..n-1).
+    apply_recovery_batch must map local_idx → the right name (batch[local_idx]).
+    Every other recovery test is single-batch (one Tier-3 call), so this is the only
+    guard on the WX-T2c build_recovery_batches + apply_recovery_batch seams."""
+    cands = Pass2Candidates(
+        entities=[_entity("Alice")],
+        relations=[_relation("Alice", "rel", n) for n in ("N1", "N2", "N3", "N4", "N5")],
+    )
+    # max_items_per_batch=2 → unmatched [N1..N5] → 3 batches [N1,N2],[N3,N4],[N5].
+    contents = [
+        _decisions_json((0, "entity", "person"), (1, "abstract", None)),  # N1 keep, N2 abstract
+        _decisions_json((0, "entity", "place"), (1, "abstract", None)),   # N3 keep, N4 abstract
+        _decisions_json((0, "entity", "person")),                         # N5 keep
+    ]
+    client = _mock_client(contents)
+    result = await recover_missing_entities(
+        cands, text="x", config=_config(max_items_per_batch=2),
+        user_id="u1", llm_client=client,
+    )
+    assert client.submit_and_wait.await_count == 3  # three Tier-3 batch calls
+    names = {e.name for e in result.entities}
+    assert {"N1", "N3", "N5"} <= names                # entity verdicts promoted
+    assert "N2" not in names and "N4" not in names    # abstract verdicts not promoted
+    # relations referencing abstract names (N2,N4) dropped; the entity ones kept —
+    # proves each batch's local verdicts mapped to the right global name.
+    assert {r.object for r in result.relations} == {"N1", "N3", "N5"}
+
+
+@pytest.mark.asyncio
 async def test_config_validates_batch_size() -> None:
     with pytest.raises(ValueError, match="max_items_per_batch"):
         EntityRecoveryConfig(model_ref="x", max_items_per_batch=0)

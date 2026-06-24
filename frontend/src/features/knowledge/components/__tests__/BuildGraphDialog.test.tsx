@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router-dom';
 
 // Mock the auth + API modules before the component imports them.
 vi.mock('@/auth', () => ({
@@ -25,6 +26,10 @@ vi.mock('../../api', async () => {
       estimateExtraction: (...args: unknown[]) => estimateMock(...args),
       startExtraction: (...args: unknown[]) => startMock(...args),
       getBenchmarkStatus: (...args: unknown[]) => benchmarkMock(...args),
+      // C13 — usePinning fetches auto-pin stats; stub to an empty payload so the
+      // existing target/budget tests don't hit a real call.
+      getGlossaryEntityStats: () =>
+        Promise.resolve({ items: [], chapter_count: 0 }),
     },
   };
 });
@@ -52,8 +57,13 @@ vi.mock('../EmbeddingModelPicker', () => ({
 }));
 
 const toastErrorMock = vi.fn();
+const toastSuccessMock = vi.fn();
 vi.mock('sonner', () => ({
-  toast: { error: (...args: unknown[]) => toastErrorMock(...args) },
+  toast: {
+    error: (...args: unknown[]) => toastErrorMock(...args),
+    // C7 (KN-5): the dialog now fires a success toast on start.
+    success: (...args: unknown[]) => toastSuccessMock(...args),
+  },
 }));
 
 // K19b.6 (D-K19a.5-03): the dialog now reads user-wide costs to show
@@ -256,6 +266,69 @@ describe('BuildGraphDialog', () => {
     expect(onStarted).toHaveBeenCalledTimes(1);
     expect(onStarted).toHaveBeenCalledWith();
     expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  // ── C12 — 3-step wizard + target picker ──
+  it('renders the 3-step wizard shell with the Step-1 target picker', () => {
+    renderDialog();
+    expect(screen.getByTestId('build-wizard')).toBeDefined();
+    expect(screen.getByTestId('build-wizard-step-1')).toBeDefined();
+    expect(screen.getByTestId('build-wizard-step-2')).toBeDefined();
+    expect(screen.getByTestId('build-wizard-step-3')).toBeDefined();
+    // Step-1 target picker is rendered with all five targets.
+    expect(screen.getByTestId('build-target-picker')).toBeDefined();
+    expect(screen.getByTestId('build-target-entities')).toBeDefined();
+    expect(screen.getByTestId('build-target-summaries')).toBeDefined();
+  });
+
+  it('toggling the events target posts the RAW selection targets=[events] (entities added at runtime)', async () => {
+    estimateMock.mockResolvedValue(sampleEstimate());
+    startMock.mockResolvedValue(sampleJob());
+    renderDialog();
+    await waitFor(() => {
+      expect(screen.getByRole('option', { name: /GPT-5/ })).toBeDefined();
+    });
+    fireEvent.change(screen.getByRole('combobox', { name: 'projects.buildDialog.llmModel.label' }), {
+      target: { value: 'm1' },
+    });
+    fireEvent.change(screen.getByTestId('embedding-picker'), {
+      target: { value: 'bge-m3' },
+    });
+    // Pick the events target — entities is auto-included by the picker.
+    fireEvent.click(screen.getByTestId('build-target-events'));
+    // entities checkbox becomes checked + disabled (auto-included).
+    const entitiesBox = screen.getByTestId('build-target-entities') as HTMLInputElement;
+    expect(entitiesBox.checked).toBe(true);
+    expect(entitiesBox.disabled).toBe(true);
+    await new Promise((r) => setTimeout(r, 350));
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'projects.buildDialog.confirm' }));
+    });
+
+    await waitFor(() => {
+      expect(startMock).toHaveBeenCalledWith(
+        'p1',
+        {
+          scope: 'chapters',
+          llm_model: 'm1',
+          embedding_model: 'bge-m3',
+          targets: ['events'],
+        },
+        'tok-test',
+      );
+    });
+  });
+
+  it('switching wizard steps preserves the target selection (no unmount)', () => {
+    renderDialog();
+    fireEvent.click(screen.getByTestId('build-target-facts'));
+    const factsBox = () => screen.getByTestId('build-target-facts') as HTMLInputElement;
+    expect(factsBox().checked).toBe(true);
+    // Jump to Step 2 then back to Step 1 — selection survives (CSS hidden).
+    fireEvent.click(screen.getByTestId('build-wizard-step-2'));
+    fireEvent.click(screen.getByTestId('build-wizard-step-1'));
+    expect(factsBox().checked).toBe(true);
   });
 
   it('toasts on start failure and keeps dialog open', async () => {
@@ -747,5 +820,71 @@ describe('BuildGraphDialog', () => {
     // Default mock already returns costs=null, hint should not render.
     renderDialog();
     expect(screen.queryByTestId('build-dialog-monthly-remaining')).toBeNull();
+  });
+});
+
+// ── C5 (KN-1/BL-16): build-graph gates — empty-model CTA + benchmark gate ──
+describe('BuildGraphDialog gates (C5)', () => {
+  beforeEach(() => {
+    listUserModelsMock.mockReset();
+    benchmarkMock.mockReset();
+    estimateMock.mockReset();
+    startMock.mockReset();
+    useUserCostsMock.mockReturnValue({ costs: null, isLoading: false, error: null });
+  });
+
+  // AddModelCta uses react-router; wrap in a MemoryRouter.
+  function renderGated() {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <BuildGraphDialog open onOpenChange={vi.fn()} project={sampleProject} onStarted={vi.fn()} />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+  }
+
+  const confirm = () => screen.getByRole('button', { name: 'projects.buildDialog.confirm' });
+
+  it('no chat model ⇒ AddModelCta shown + Confirm disabled', async () => {
+    listUserModelsMock.mockResolvedValue({ items: [] }); // no chat models
+    renderGated();
+    const cta = await screen.findByRole('link');
+    expect(cta.getAttribute('href')).toContain('/settings/providers');
+    expect(confirm()).toBeDisabled();
+  });
+
+  it('unbenchmarked embedding ⇒ Confirm disabled + benchmark disabled-reason', async () => {
+    listUserModelsMock.mockResolvedValue({
+      items: [{ user_model_id: 'm1', provider_kind: 'openai', provider_model_name: 'gpt-5', alias: 'GPT-5', is_active: true, capability_flags: { chat: true } }],
+    });
+    benchmarkMock.mockResolvedValue({ has_run: false, passed: null, recall_at_3: null });
+    renderGated();
+    // target the LLM <select> deterministically via its option (not by index)
+    const llmOption = await screen.findByText('GPT-5 (gpt-5)');
+    const llmSelect = llmOption.closest('select')!;
+    fireEvent.change(llmSelect, { target: { value: 'm1' } });
+    fireEvent.change(screen.getByTestId('embedding-picker'), { target: { value: 'bge-m3' } });
+    await waitFor(() => expect(benchmarkMock).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(screen.getByTestId('build-graph-disabled-reason').textContent).toMatch(/benchmark/i),
+    );
+    expect(confirm()).toBeDisabled();
+  });
+
+  it('passing benchmark ⇒ Confirm enabled', async () => {
+    listUserModelsMock.mockResolvedValue({
+      items: [{ user_model_id: 'm1', provider_kind: 'openai', provider_model_name: 'gpt-5', alias: 'GPT-5', is_active: true, capability_flags: { chat: true } }],
+    });
+    benchmarkMock.mockResolvedValue({ has_run: true, passed: true, recall_at_3: 0.9 });
+    renderGated();
+    // wait for LLM options to load, then target the LLM <select> via its option.
+    const llmOption = await screen.findByText('GPT-5 (gpt-5)');
+    const llmSelect = llmOption.closest('select')!;
+    fireEvent.change(screen.getByTestId('embedding-picker'), { target: { value: 'bge-m3' } });
+    await waitFor(() => expect(benchmarkMock).toHaveBeenCalled());
+    fireEvent.change(llmSelect, { target: { value: 'm1' } });
+    await waitFor(() => expect(confirm()).toBeEnabled(), { timeout: 4000 });
   });
 });

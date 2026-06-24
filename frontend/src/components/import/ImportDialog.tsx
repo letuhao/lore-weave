@@ -1,8 +1,10 @@
 import { useState, useRef, useCallback } from 'react';
-import { Upload, X, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
+import { Upload, X, CheckCircle2, AlertCircle, Loader2, FolderOpen, FileText } from 'lucide-react';
 import { FormDialog } from '@/components/shared/FormDialog';
 import { booksApi, ImportJob } from '@/features/books/api';
 import { useImportEvents } from '@/hooks/useImportEvents';
+import { ChapterImportReview } from './ChapterImportReview';
+import { filterTxtFiles, readChapters, naturalCompare, type ParsedChapter } from './parseChapters';
 
 interface ImportDialogProps {
   open: boolean;
@@ -12,28 +14,31 @@ interface ImportDialogProps {
 }
 
 const ACCEPTED_EXTENSIONS = '.txt,.docx,.epub';
-const ACCEPTED_MIME = 'text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/epub+zip';
-const MAX_SIZE = 200 * 1024 * 1024; // 200 MB
+const MAX_SIZE = 200 * 1024 * 1024; // 200 MB per doc file
+const BULK_BATCH = 100; // chapters per bulk request (sequential → order preserved)
 
-type ImportState = 'idle' | 'uploading' | 'processing' | 'completed' | 'failed';
+type ImportState = 'idle' | 'reading' | 'uploading' | 'processing' | 'completed' | 'failed';
 
 export function ImportDialog({ open, onOpenChange, bookId, onImported }: ImportDialogProps) {
-  const [files, setFiles] = useState<File[]>([]);
+  // Plain-text chapters go through the paginated review + bulk endpoint.
+  const [parsed, setParsed] = useState<ParsedChapter[]>([]);
+  // .docx/.epub keep the existing async per-file import-job flow.
+  const [docFiles, setDocFiles] = useState<File[]>([]);
   const [importState, setImportState] = useState<ImportState>('idle');
+  const [readProgress, setReadProgress] = useState({ done: 0, total: 0 });
+  const [bulkProgress, setBulkProgress] = useState({ done: 0, total: 0 });
   const [uploadProgress, setUploadProgress] = useState(0);
   const [currentJob, setCurrentJob] = useState<ImportJob | null>(null);
+  const [createdCount, setCreatedCount] = useState(0);
+  const [skippedCount, setSkippedCount] = useState(0);
   const [error, setError] = useState('');
-  const [fileIndex, setFileIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const folderRef = useRef<HTMLInputElement | null>(null);
 
-  // Resolve refs for the active job's promise settle callbacks
   const resolveRef = useRef<(() => void) | null>(null);
   const rejectRef = useRef<((err: Error) => void) | null>(null);
   const activeJobIdRef = useRef<string | null>(null);
 
-  const accept = `${ACCEPTED_EXTENSIONS},${ACCEPTED_MIME}`;
-
-  // Get auth token for WS connection
   const token = (() => {
     try {
       return JSON.parse(localStorage.getItem('lw_auth') ?? '{}').accessToken ?? null;
@@ -42,180 +47,148 @@ export function ImportDialog({ open, onOpenChange, bookId, onImported }: ImportD
     }
   })();
 
-  // WebSocket handler — instant status updates from worker-infra via RabbitMQ → gateway
   const handleWSEvent = useCallback(
     (event: { job_id: string; status: string; chapters_created: number; error?: string }) => {
       if (event.job_id !== activeJobIdRef.current) return;
-
       setCurrentJob((prev) =>
         prev ? { ...prev, status: event.status as ImportJob['status'], chapters_created: event.chapters_created, error: event.error ?? null } : prev,
       );
-
       if (event.status === 'completed') {
         resolveRef.current?.();
-        resolveRef.current = null;
-        rejectRef.current = null;
+        resolveRef.current = null; rejectRef.current = null;
       } else if (event.status === 'failed') {
         rejectRef.current?.(new Error(event.error || 'Import failed'));
-        resolveRef.current = null;
-        rejectRef.current = null;
+        resolveRef.current = null; rejectRef.current = null;
       }
     },
     [],
   );
-
   useImportEvents(open ? token : null, handleWSEvent);
 
-  const handleFiles = (fileList: FileList | null) => {
+  const ingest = async (fileList: FileList | null) => {
     if (!fileList) return;
-    const newFiles = Array.from(fileList).filter((f) => {
-      if (f.size > MAX_SIZE) {
-        setError(`${f.name} exceeds 200 MB limit`);
-        return false;
-      }
-      return true;
-    });
-    setFiles((prev) => [...prev, ...newFiles]);
+    const all = Array.from(fileList);
+    const txt = filterTxtFiles(all);
+    const docs = all.filter((f) => /\.(docx|epub)$/i.test(f.name) && f.size <= MAX_SIZE);
     setError('');
+    if (docs.length) setDocFiles((prev) => [...prev, ...docs]);
+    if (txt.length) {
+      setImportState('reading');
+      setReadProgress({ done: 0, total: txt.length });
+      try {
+        const rows = await readChapters(txt, (done, total) => setReadProgress({ done, total }));
+        // Append + keep globally natural-sorted by filename across batches.
+        setParsed((prev) => [...prev, ...rows].sort((a, b) => naturalCompare(a.filename, b.filename)));
+      } catch (e) {
+        setError(`Failed to read files: ${(e as Error).message}`);
+      } finally {
+        setImportState('idle');
+      }
+    }
   };
 
-  const removeFile = (index: number) => {
-    setFiles((prev) => prev.filter((_, i) => i !== index));
-  };
+  const setIncluded = (id: string, included: boolean) =>
+    setParsed((prev) => prev.map((c) => (c.id === id ? { ...c, included } : c)));
+  const setTitle = (id: string, title: string) =>
+    setParsed((prev) => prev.map((c) => (c.id === id ? { ...c, title } : c)));
+  const setAllIncluded = (included: boolean) =>
+    setParsed((prev) => prev.map((c) => ({ ...c, included })));
 
-  const getFileIcon = (name: string) => {
-    if (name.endsWith('.epub')) return '📖';
-    if (name.endsWith('.docx')) return '📄';
-    return '📝';
-  };
+  const includedChapters = parsed.filter((c) => c.included);
+  const totalToImport = includedChapters.length + docFiles.length;
 
   const handleImport = async () => {
-    if (files.length === 0) {
-      setError('No files selected.');
-      return;
-    }
-
-    if (!token) {
-      setError('Not authenticated');
-      return;
-    }
-
-    setImportState('uploading');
+    if (!token) { setError('Not authenticated'); return; }
+    if (totalToImport === 0) { setError('Nothing selected to import.'); return; }
     setError('');
-    setFileIndex(0);
-
+    let created = 0;
+    let skipped = 0;
     const errors: string[] = [];
 
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      setFileIndex(i);
-      setUploadProgress(0);
-
-      try {
-        if (file.name.endsWith('.txt')) {
-          await booksApi.createChapterUpload(token, bookId, {
-            file,
-            original_language: 'auto',
-            title: file.name.replace('.txt', ''),
-          });
-        } else {
-          const job = await booksApi.startImport(token, bookId, file, 'auto', (pct) =>
-            setUploadProgress(pct),
-          );
-          setCurrentJob(job);
-          setImportState('processing');
-          activeJobIdRef.current = job.id;
-
-          // Wait for completion — WS resolves instantly, poll is fallback (5s interval)
-          await new Promise<void>((resolve, reject) => {
-            resolveRef.current = resolve;
-            rejectRef.current = reject;
-
-            // Fallback poll in case WS is not connected
-            const interval = setInterval(async () => {
-              try {
-                const updated = await booksApi.getImportJob(token, bookId, job.id);
-                setCurrentJob(updated);
-                if (updated.status === 'completed') {
-                  clearInterval(interval);
-                  resolveRef.current?.();
-                  resolveRef.current = null;
-                  rejectRef.current = null;
-                } else if (updated.status === 'failed') {
-                  clearInterval(interval);
-                  rejectRef.current?.(new Error(updated.error || 'Import failed'));
-                  resolveRef.current = null;
-                  rejectRef.current = null;
-                }
-              } catch {
-                // keep polling
-              }
-            }, 5000); // 5s interval (WS handles instant updates)
-
-            // Timeout after 10 minutes
-            setTimeout(() => {
-              clearInterval(interval);
-              rejectRef.current?.(new Error('Import timed out'));
-              resolveRef.current = null;
-              rejectRef.current = null;
-            }, 10 * 60 * 1000);
-          });
-
-          activeJobIdRef.current = null;
+    // 1) Bulk plain-text chapters — sequential batches preserve order.
+    if (includedChapters.length > 0) {
+      setImportState('uploading');
+      setBulkProgress({ done: 0, total: includedChapters.length });
+      for (let i = 0; i < includedChapters.length; i += BULK_BATCH) {
+        const batch = includedChapters.slice(i, i + BULK_BATCH).map((c) => ({
+          original_filename: c.filename,
+          content: c.content,
+          title: c.title.trim() || undefined,
+        }));
+        try {
+          const res = await booksApi.bulkCreateChapters(token, bookId, batch);
+          created += res.chapters_created;
+          skipped += res.skipped_existing ?? 0;
+          setBulkProgress({ done: Math.min(i + batch.length, includedChapters.length), total: includedChapters.length });
+        } catch (e) {
+          errors.push(`Batch ${i / BULK_BATCH + 1}: ${(e as Error).message}`);
+          break; // stop on first batch error (order integrity)
         }
+      }
+    }
+
+    // 2) .docx/.epub — existing async per-file import jobs.
+    for (const file of docFiles) {
+      try {
+        setImportState('uploading');
+        setUploadProgress(0);
+        const job = await booksApi.startImport(token, bookId, file, 'auto', (pct) => setUploadProgress(pct));
+        setCurrentJob(job);
+        setImportState('processing');
+        activeJobIdRef.current = job.id;
+        await new Promise<void>((resolve, reject) => {
+          resolveRef.current = resolve; rejectRef.current = reject;
+          const interval = setInterval(async () => {
+            try {
+              const updated = await booksApi.getImportJob(token, bookId, job.id);
+              setCurrentJob(updated);
+              if (updated.status === 'completed') { clearInterval(interval); resolveRef.current?.(); resolveRef.current = null; rejectRef.current = null; }
+              else if (updated.status === 'failed') { clearInterval(interval); rejectRef.current?.(new Error(updated.error || 'Import failed')); resolveRef.current = null; rejectRef.current = null; }
+            } catch { /* keep polling */ }
+          }, 5000);
+          setTimeout(() => { clearInterval(interval); rejectRef.current?.(new Error('Import timed out')); resolveRef.current = null; rejectRef.current = null; }, 10 * 60 * 1000);
+        });
+        created += currentJob?.chapters_created ?? 0;
+        activeJobIdRef.current = null;
       } catch (e) {
         errors.push(`${file.name}: ${(e as Error).message}`);
       }
     }
 
-    if (errors.length > 0) {
-      setImportState('failed');
-      setError(errors.join('\n'));
-    } else {
-      setImportState('completed');
-      onImported();
-    }
+    setCreatedCount(created);
+    setSkippedCount(skipped);
+    if (errors.length > 0) { setImportState('failed'); setError(errors.join('\n')); }
+    else { setImportState('completed'); onImported(); }
   };
 
   const handleClose = () => {
-    if (importState === 'uploading' || importState === 'processing') return;
-    setFiles([]);
-    setImportState('idle');
-    setUploadProgress(0);
-    setCurrentJob(null);
-    setError('');
+    if (importState === 'reading' || importState === 'uploading' || importState === 'processing') return;
+    setParsed([]); setDocFiles([]); setImportState('idle');
+    setReadProgress({ done: 0, total: 0 }); setBulkProgress({ done: 0, total: 0 });
+    setUploadProgress(0); setCurrentJob(null); setCreatedCount(0); setSkippedCount(0); setError('');
     activeJobIdRef.current = null;
     onOpenChange(false);
   };
 
-  const isProcessing = importState === 'uploading' || importState === 'processing';
+  const isBusy = importState === 'reading' || importState === 'uploading' || importState === 'processing';
+  const hasSelection = parsed.length > 0 || docFiles.length > 0;
 
   return (
     <FormDialog
       open={open}
       onOpenChange={handleClose}
       title="Import Chapters"
-      description="Upload .txt, .docx, or .epub files to create chapters. EPUB files are split into multiple chapters automatically."
+      description="Choose a folder or files (.txt for bulk, or .docx/.epub). Review and reorder-free natural sorting is applied before import."
       footer={
         <>
-          <button
-            type="button"
-            onClick={handleClose}
-            disabled={isProcessing}
-            className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-secondary disabled:opacity-50"
-          >
+          <button type="button" onClick={handleClose} disabled={isBusy}
+            className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-secondary disabled:opacity-50">
             {importState === 'completed' ? 'Close' : 'Cancel'}
           </button>
           {importState !== 'completed' && (
-            <button
-              type="button"
-              onClick={() => void handleImport()}
-              disabled={files.length === 0 || isProcessing}
-              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-            >
-              {isProcessing
-                ? 'Importing...'
-                : `Import ${files.length} file${files.length !== 1 ? 's' : ''}`}
+            <button type="button" onClick={() => void handleImport()} disabled={!hasSelection || isBusy || totalToImport === 0}
+              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+              {isBusy ? 'Working…' : `Import ${totalToImport} chapter${totalToImport !== 1 ? 's' : ''}`}
             </button>
           )}
         </>
@@ -233,105 +206,101 @@ export function ImportDialog({ open, onOpenChange, bookId, onImported }: ImportD
           <div className="flex items-center gap-2 rounded-md border border-green-500/30 bg-green-500/5 px-3 py-2 text-sm text-green-700 dark:text-green-400">
             <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
             <span>
-              Import complete
-              {currentJob ? ` — ${currentJob.chapters_created} chapter${currentJob.chapters_created !== 1 ? 's' : ''} created` : ''}
+              Import complete — {createdCount} chapter{createdCount !== 1 ? 's' : ''} created
+              {skippedCount > 0 ? ` · ${skippedCount} skipped (already imported)` : ''}
             </span>
           </div>
         )}
 
-        {/* Drop zone */}
-        {!isProcessing && importState !== 'completed' && (
+        {/* Pickers */}
+        {!isBusy && importState !== 'completed' && (
           <div
-            onClick={() => inputRef.current?.click()}
-            onDragOver={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-            }}
-            onDrop={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              handleFiles(e.dataTransfer.files);
-            }}
-            className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed py-8 transition-colors hover:border-ring/40"
+            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+            onDrop={(e) => { e.preventDefault(); e.stopPropagation(); void ingest(e.dataTransfer.files); }}
+            className="flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed py-6"
           >
-            <Upload className="mb-3 h-8 w-8 text-muted-foreground/40" />
-            <p className="text-sm text-muted-foreground">Click to upload or drag and drop</p>
-            <p className="mt-1 text-xs text-muted-foreground/60">
-              .txt .docx .epub — max 200 MB per file
-            </p>
+            <Upload className="h-7 w-7 text-muted-foreground/40" />
+            <p className="text-xs text-muted-foreground">Drag & drop, or</p>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => inputRef.current?.click()}
+                className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-secondary">
+                <FileText className="h-3.5 w-3.5" /> Choose files
+              </button>
+              <button type="button" onClick={() => folderRef.current?.click()}
+                className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-secondary">
+                <FolderOpen className="h-3.5 w-3.5" /> Choose folder
+              </button>
+            </div>
+            <p className="text-[10px] text-muted-foreground/60">.txt (bulk) · .docx · .epub — max 200 MB per doc</p>
           </div>
         )}
 
-        {/* File list */}
-        {files.length > 0 && importState !== 'completed' && (
-          <div className="max-h-60 space-y-1 overflow-y-auto rounded-lg border p-2">
-            {files.map((file, i) => (
-              <div
-                key={`${file.name}-${i}`}
-                className="flex items-center gap-3 rounded px-3 py-2 hover:bg-secondary/50"
-              >
-                <span className="text-base">{getFileIcon(file.name)}</span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs font-medium">{file.name}</p>
-                  <p className="text-[10px] text-muted-foreground">
-                    {(file.size / 1024 / 1024).toFixed(1)} MB
-                  </p>
-                </div>
-                {!isProcessing && (
-                  <button
-                    type="button"
-                    title="Remove file"
-                    onClick={() => removeFile(i)}
-                    className="rounded p-1 text-muted-foreground hover:text-foreground"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
+        {/* Reading progress */}
+        {importState === 'reading' && (
+          <ProgressBar label={`Reading files… ${readProgress.done}/${readProgress.total}`}
+            pct={readProgress.total ? (readProgress.done / readProgress.total) * 100 : 0} />
+        )}
+
+        {/* Plain-text review */}
+        {importState !== 'completed' && parsed.length > 0 && (
+          <ChapterImportReview
+            chapters={parsed}
+            onSetIncluded={setIncluded}
+            onSetTitle={setTitle}
+            onSetAllIncluded={setAllIncluded}
+          />
+        )}
+
+        {/* Doc files (docx/epub) */}
+        {importState !== 'completed' && docFiles.length > 0 && (
+          <div className="space-y-1 rounded-lg border p-2">
+            {docFiles.map((f, i) => (
+              <div key={`${f.name}-${i}`} className="flex items-center gap-3 rounded px-3 py-1.5 text-xs">
+                <span>{f.name.endsWith('.epub') ? '📖' : '📄'}</span>
+                <span className="min-w-0 flex-1 truncate">{f.name}</span>
+                {!isBusy && (
+                  <button type="button" title="Remove" onClick={() => setDocFiles((p) => p.filter((_, j) => j !== i))}
+                    className="rounded p-1 text-muted-foreground hover:text-foreground"><X className="h-3 w-3" /></button>
                 )}
               </div>
             ))}
           </div>
         )}
 
-        {/* Progress */}
-        {isProcessing && (
+        {/* Import progress */}
+        {(importState === 'uploading' || importState === 'processing') && (
           <div className="space-y-2">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              <span>
-                {importState === 'uploading'
-                  ? `Uploading ${files[fileIndex]?.name ?? 'file'}... ${uploadProgress}%`
-                  : `Processing ${files[fileIndex]?.name ?? 'file'}...`}
-              </span>
-            </div>
-            <div className="h-1.5 overflow-hidden rounded-full bg-secondary">
-              <div
-                className="h-full rounded-full bg-primary transition-all"
-                style={{
-                  width: importState === 'uploading' ? `${uploadProgress}%` : '100%',
-                }}
-              />
-            </div>
-            {importState === 'processing' && (
-              <p className="text-[10px] text-muted-foreground text-center">
-                Converting document and creating chapters...
-              </p>
+            {bulkProgress.total > 0 && (
+              <ProgressBar label={`Importing chapters… ${bulkProgress.done}/${bulkProgress.total}`}
+                pct={(bulkProgress.done / bulkProgress.total) * 100} />
+            )}
+            {docFiles.length > 0 && (
+              <ProgressBar label={importState === 'uploading' ? `Uploading document… ${uploadProgress}%` : 'Converting document…'}
+                pct={importState === 'uploading' ? uploadProgress : 100} />
             )}
           </div>
         )}
 
-        <input
-          ref={inputRef}
-          type="file"
-          accept={accept}
-          multiple
-          title="Select files to import"
-          className="hidden"
-          onChange={(e) => {
-            handleFiles(e.target.files);
-            if (inputRef.current) inputRef.current.value = '';
-          }}
-        />
+        <input ref={inputRef} type="file" accept={ACCEPTED_EXTENSIONS} multiple className="hidden"
+          title="Select files" onChange={(e) => { void ingest(e.target.files); if (inputRef.current) inputRef.current.value = ''; }} />
+        {/* Folder picker — webkitdirectory set via ref to avoid TS prop typing */}
+        <input ref={(el) => { if (el) { el.setAttribute('webkitdirectory', ''); el.setAttribute('directory', ''); } folderRef.current = el; }}
+          type="file" multiple className="hidden" title="Select a folder"
+          onChange={(e) => { void ingest(e.target.files); if (folderRef.current) folderRef.current.value = ''; }} />
       </div>
     </FormDialog>
+  );
+}
+
+function ProgressBar({ label, pct }: { label: string; pct: number }) {
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <Loader2 className="h-3.5 w-3.5 animate-spin" /> <span>{label}</span>
+      </div>
+      <div className="h-1.5 overflow-hidden rounded-full bg-secondary">
+        <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${Math.min(100, pct)}%` }} />
+      </div>
+    </div>
   );
 }

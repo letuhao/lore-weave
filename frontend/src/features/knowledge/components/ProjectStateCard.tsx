@@ -37,6 +37,14 @@ export interface ProjectStateCardActions {
   onExtractNew: () => void;
   onIgnoreStale: () => void;
   onConfirmModelChange: () => void;
+  // C7 raise-cap (KN-7) — change the running job's parallel-LLM
+  // concurrency cap in-flight. Only the building_running card calls it.
+  onSetConcurrency: (jobId: string, level: number) => void;
+  // C6 (G6) — optional deep-link into the project-detail shell's graph/
+  // entities section. Only supplied when the card is hosted inside the
+  // shell's Overview; in the flat ProjectsTab list it's omitted and the
+  // CompleteCard hides its "Explore graph" CTA + clickable stats.
+  onExploreGraph?: () => void;
 }
 
 interface Props {
@@ -64,6 +72,7 @@ export function ProjectStateCard({ state, actions }: Props) {
           job={state.job}
           onPause={actions.onPause}
           onCancel={actions.onCancel}
+          onSetConcurrency={actions.onSetConcurrency}
         />
       );
     case 'building_paused_user':
@@ -102,6 +111,7 @@ export function ProjectStateCard({ state, actions }: Props) {
           onChangeModel={actions.onChangeModel}
           onDeleteGraph={actions.onDeleteGraph}
           onDisable={actions.onDisable}
+          onExploreGraph={actions.onExploreGraph}
         />
       );
     case 'stale':

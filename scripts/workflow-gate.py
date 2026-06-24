@@ -327,45 +327,88 @@ def fail(msg: str) -> None:
 # ── Commands ─────────────────────────────────────────────────────────
 
 
+SIZES = ["XS", "S", "M", "L", "XL"]
+
+
+def _expected_size(files: int, logic: int, side_effects: int) -> tuple[str, int]:
+    """Return (expected_size, risk_floor_index).
+
+    Sizing is by COMPLEXITY + RISK, not file count (2026-06-12 redesign — file count
+    over-sized wide-but-shallow changes, e.g. one param added across N files, forcing
+    needless ceremony). `logic` (distinct SEMANTIC changes) is the primary axis; `files`
+    is only a BREADTH signal that can bump one tier — and ONLY when the change is genuinely
+    deep across that breadth (logic ≳ files), so a mechanical sweep (low logic-per-file)
+    never escalates. `side_effects` (API/DB/config/migration/auth — real risk) set a hard
+    floor that undersizing cannot cross."""
+    if logic <= 1:
+        base = 0   # XS
+    elif logic <= 3:
+        base = 1   # S
+    elif logic <= 6:
+        base = 2   # M
+    elif logic <= 12:
+        base = 3   # L
+    else:
+        base = 4   # XL
+    # Breadth bump: a deep change spread across many files (NOT a mechanical sweep —
+    # logic-per-file is substantial) is genuinely larger → +1 tier.
+    if files >= 6 and logic >= files:
+        base = min(4, base + 1)
+    # Risk floor (load-bearing — undersizing below this BLOCKS): real side effects can't be XS.
+    floor = 0
+    if side_effects >= 1:
+        floor = max(floor, 1)   # ≥ S
+    if side_effects >= 2:
+        floor = max(floor, 2)   # ≥ M
+    base = max(base, floor)
+    return SIZES[base], floor
+
+
 def cmd_size(args: list[str]) -> None:
     if len(args) < 4:
-        fail("Usage: workflow-gate.py size <XS|S|M|L|XL> <files> <logic> <side_effects>")
+        fail("Usage: workflow-gate.py size <XS|S|M|L|XL> <files> <logic> <side_effects> [context_pct]")
 
     size = args[0].upper()
-    if size not in ("XS", "S", "M", "L", "XL"):
+    if size not in SIZES:
         fail(f"Invalid size '{size}'. Must be XS, S, M, L, or XL.")
 
     files, logic, side_effects = int(args[1]), int(args[2]), int(args[3])
+    context_pct = int(args[4]) if len(args) > 4 else None
 
-    # Determine expected size from counts
-    if files <= 1 and logic <= 1 and side_effects == 0:
-        expected = "XS"
-    elif files <= 2 and logic <= 3 and side_effects == 0:
-        expected = "S"
-    elif files <= 5:
-        expected = "M"
-    elif files <= 9:
-        expected = "L"
-    else:
-        expected = "XL"
+    expected, floor = _expected_size(files, logic, side_effects)
+    chosen_idx = SIZES.index(size)
 
-    sizes = ["XS", "S", "M", "L", "XL"]
-    if sizes.index(size) < sizes.index(expected):
+    # Undersizing is now ADVISORY (your complexity judgment on breadth wins) — EXCEPT the
+    # risk floor: real side effects keep a hard minimum. So a 20-file/1-logic sweep can be S,
+    # but a schema migration can never be XS.
+    if chosen_idx < floor:
         fail(
-            f"Cannot undersize: you said {size} but counts suggest {expected} "
-            f"({files} files, {logic} logic, {side_effects} side effects). "
-            f"Use '{expected}' or larger."
+            f"Cannot undersize below the RISK floor: {side_effects} side effect(s) require "
+            f"at least {SIZES[floor]} — you said {size}. (Breadth can be discounted; risk cannot.)"
         )
 
     state = load_state()
     state["size"] = size
     state["size_counts"] = {"files": files, "logic": logic, "side_effects": side_effects}
+    if context_pct is not None:
+        state["context_pct"] = context_pct
     save_state(state)
 
     skips = SKIPPABLE.get(size, set())
     skip_msg = f"  Allowed skips: {', '.join(sorted(skips))}" if skips else "  No phases may be skipped"
     print(f"OK: Task classified as {size} (files={files}, logic={logic}, side_effects={side_effects})")
+    if chosen_idx < SIZES.index(expected):
+        print(f"  NOTE: complexity suggests ~{expected}; you sized down to {size} (breadth-discounted — OK).")
     print(skip_msg)
+    # Context-budget guidance (2026-06-12) — let budget, not file count, drive checkpoint cadence.
+    if context_pct is not None:
+        if context_pct < 60:
+            print(f"  BUDGET: context at {context_pct}% — ample. Prefer ONE continuous run over "
+                  f"many small tasks; checkpoint/commit at RISK boundaries (contract, migration, "
+                  f"cross-service seam), not at file-count thresholds.")
+        elif context_pct >= 80:
+            print(f"  BUDGET: context at {context_pct}% — filling. Checkpoint/commit + /compact at "
+                  f"the next risk boundary.")
 
 
 def cmd_phase(args: list[str]) -> None:
@@ -785,6 +828,24 @@ def cmd_check_stack(args: list[str]) -> None:
     # Advisory: never propagate a non-zero exit.
 
 
+def cmd_slices(args: list[str]) -> None:
+    """Validate a /warp slice manifest's independence invariants before fan-out.
+
+    Thin wrapper over scripts/warp/slice-manifest-validate.py — the pairwise
+    disjoint-write-set guarantee that makes parallel slice execution safe (see
+    docs/specs/2026-06-12-warp-parallel-mode.md §6). Unlike check-stack this is a
+    HARD gate: it propagates the validator's exit code (0 = clean / WARN-only,
+    1 = BLOCK) so /warp can gate the DESIGN→REVIEW (PT-verdict) boundary — a
+    BLOCK means the slicing is unsafe to fan out, fall back to serial /loom."""
+    if not args:
+        fail("Usage: workflow-gate.py slices <manifest.yaml|.json>")
+    script = Path(__file__).resolve().parent / "warp" / "slice-manifest-validate.py"
+    if not script.exists():
+        fail(f"slice-manifest validator not found: {script}")
+    result = subprocess.run([sys.executable, str(script), *args])
+    sys.exit(result.returncode)
+
+
 # ── Main ─────────────────────────────────────────────────────────────
 
 
@@ -794,6 +855,7 @@ COMMANDS = {
     "complete": cmd_complete,
     "check": cmd_check,
     "check-stack": cmd_check_stack,
+    "slices": cmd_slices,
     "skip": cmd_skip,
     "pre-commit": cmd_pre_commit,
     "status": cmd_status,
@@ -807,7 +869,7 @@ COMMANDS = {
 
 def main() -> None:
     if len(sys.argv) < 2 or sys.argv[1] not in COMMANDS:
-        print("Usage: workflow-gate.py {size|phase|complete|check|skip|pre-commit|status|reset|amaw-enable|amaw-pre-commit|pragmatic-stop} [args]")
+        print("Usage: workflow-gate.py {size|phase|complete|check|slices|skip|pre-commit|status|reset|amaw-enable|amaw-pre-commit|pragmatic-stop} [args]")
         print()
         print("Commands:")
         print("  size <XS|S|M|L|XL> <files> <logic> <effects>  Classify task size")
@@ -817,6 +879,7 @@ def main() -> None:
         print("  skip <name> <reason>                           Skip with reason")
         print("  pre-commit                                     Gate check for commits")
         print("  check-stack [--probe-only|--drift-only]        ADVISORY: warn if a running image is stale (F-LIVE-1)")
+        print("  slices <manifest.yaml|.json>                   /warp: assert slice write-sets are disjoint (gate before fan-out)")
         print("  status                                         Show current state")
         print("  reset                                          Reset for new task")
         print()

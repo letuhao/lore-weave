@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import logging
 from decimal import Decimal
+from typing import Any
 from uuid import UUID
 
 import redis.asyncio as aioredis
@@ -37,8 +38,15 @@ from pydantic import BaseModel, Field
 from app.config import settings
 from app.db.neo4j import neo4j_session
 from app.db.neo4j_repos.entities import get_neighborhood_by_glossary_id
+from app.wiki.context import DEFAULT_KG_LIMIT, gather_entity_context, gather_kg_facts
+from app.wiki.fingerprint import stable_hash
+from app.wiki.writeback import source_texts
+from app.clients.book_client import get_book_client
+from app.clients.embedding_client import get_embedding_client
+from app.clients.glossary_client import get_glossary_client
+from app.clients.reranker_client import get_reranker_client
 from app.db.repositories.projects import ProjectsRepo
-from app.db.repositories.wiki_gen_jobs import ActiveJobExists, WikiGenJobsRepo
+from app.db.repositories.wiki_gen_jobs import ActiveJobExists, WikiGenJob, WikiGenJobsRepo
 from app.deps import get_knowledge_pool, get_projects_repo
 from app.jobs.wiki_gen_enqueue import enqueue_wiki_gen
 from app.middleware.internal_auth import require_internal_token
@@ -178,6 +186,103 @@ async def get_wiki_neighborhood(
     )
 
 
+# ── wiki-llm Phase-2 (D-WIKI-P2-KG-SWEEP) — current KG-neighbourhood hashes ────
+
+
+class WikiKgHashesRequest(BaseModel):
+    user_id: UUID
+    entity_ids: list[str] = Field(default_factory=list)
+
+
+class WikiKgHashesResponse(BaseModel):
+    hashes: dict[str, str]
+
+
+@router.post("/books/{book_id}/wiki/kg-hashes", response_model=WikiKgHashesResponse)
+async def wiki_kg_hashes(
+    book_id: UUID,
+    req: WikiKgHashesRequest,
+    projects_repo: ProjectsRepo = Depends(get_projects_repo),
+) -> WikiKgHashesResponse:
+    """Recompute the CURRENT ``kg_neighborhood_hash`` for each entity for the KG-drift
+    sweep (glossary compares it to the stored ``build_inputs.kg_neighborhood_hash``).
+
+    PARITY IS MANDATORY: this reuses the SAME ``gather_kg_facts`` + ``stable_hash``
+    path as generation (``kg_limit=DEFAULT_KG_LIMIT``) so an unchanged neighbourhood
+    hashes identically — a divergent hash would false-flag every article.
+
+    An entity whose KG read is UNAVAILABLE (Neo4j down — the ``degraded`` marker) is
+    OMITTED, never returned as the empty-list hash, so a transient outage can't drive
+    false ``kg_drift``. No project (book not indexed) → an empty map (nothing to sweep).
+    """
+    if not req.entity_ids:
+        return WikiKgHashesResponse(hashes={})
+    projects = await projects_repo.list(req.user_id, book_id=book_id, limit=1)
+    if not projects:
+        return WikiKgHashesResponse(hashes={})
+    project = projects[0]
+
+    hashes: dict[str, str] = {}
+    for eid in req.entity_ids:
+        degraded: dict[str, str] = {}
+        facts = await gather_kg_facts(
+            entity_id=eid, user_id=req.user_id, project=project,
+            kg_limit=DEFAULT_KG_LIMIT, degraded=degraded,
+        )
+        if degraded.get("kg") == "unavailable":
+            continue  # KG unreachable for this entity — omit (don't fabricate a hash)
+        hashes[eid] = stable_hash(sorted(facts))
+    return WikiKgHashesResponse(hashes=hashes)
+
+
+# ── wiki-llm W6b-2b — current source text (the change-diff "after") ───────────
+
+
+class WikiSourceRef(BaseModel):
+    source_type: str
+    source_id: str
+
+
+class WikiSourceTextRequest(BaseModel):
+    user_id: UUID
+    entity_id: str
+    sources: list[WikiSourceRef] = Field(default_factory=list)
+
+
+class WikiSourceTextResponse(BaseModel):
+    texts: dict[str, str]
+
+
+@router.post("/books/{book_id}/wiki/source-text", response_model=WikiSourceTextResponse)
+async def wiki_source_text(
+    book_id: UUID,
+    req: WikiSourceTextRequest,
+    projects_repo: ProjectsRepo = Depends(get_projects_repo),
+) -> WikiSourceTextResponse:
+    """The CURRENT source text for each requested source (the W6b-2 diff "after"),
+    keyed ``f"{source_type}:{source_id}"``. Re-gathers through the SAME context path
+    as generation (``gather_entity_context`` → :func:`source_texts`) so the before
+    (captured at gen time) and after are formatted identically — a diff then shows
+    only real content changes. Empty when the book isn't indexed or the entity can't
+    be gathered (the caller degrades to no-diff). NOTE: a ``block`` source is a
+    retrieval result, so its "after" is APPROXIMATE (re-retrieval may differ)."""
+    if not req.sources:
+        return WikiSourceTextResponse(texts={})
+    projects = await projects_repo.list(req.user_id, book_id=book_id, limit=1)
+    if not projects:
+        return WikiSourceTextResponse(texts={})
+    context = await gather_entity_context(
+        entity_id=req.entity_id, book_id=book_id, user_id=req.user_id, project=projects[0],
+        glossary_client=get_glossary_client(), book_client=get_book_client(),
+        embedding_client=get_embedding_client(), reranker_client=get_reranker_client(),
+    )
+    if context is None:
+        return WikiSourceTextResponse(texts={})
+    all_texts = source_texts(context)
+    wanted = {f"{s.source_type}:{s.source_id}" for s in req.sources}
+    return WikiSourceTextResponse(texts={k: v for k, v in all_texts.items() if k in wanted})
+
+
 # ── wiki-llm M6 — batch generation trigger ───────────────────────────────────
 
 _redis_client: aioredis.Redis | None = None
@@ -200,6 +305,9 @@ class WikiGenerateRequest(BaseModel):
     #: the selection by kind and passes explicit ids); generate-ALL is a follow-up.
     entity_ids: list[str] = Field(default_factory=list)
     max_spend_usd: Decimal | None = None
+    #: W5 — optional override model for the corrective revise re-gen (null = prose).
+    revise_model_ref: str | None = None
+    revise_model_source: str | None = None
 
 
 @router.post("/books/{book_id}/wiki/generate", status_code=status.HTTP_202_ACCEPTED)
@@ -224,6 +332,7 @@ async def trigger_wiki_generation(
             model_source=req.model_source, model_ref=req.model_ref,
             entity_ids=req.entity_ids, max_spend_usd=req.max_spend_usd,
             items_total=len(req.entity_ids),
+            revise_model_ref=req.revise_model_ref, revise_model_source=req.revise_model_source,
         )
     except ActiveJobExists as exc:
         raise HTTPException(
@@ -256,6 +365,11 @@ class WikiGenJobStatus(BaseModel):
     cost_spent_usd: Decimal = Decimal("0")
     max_spend_usd: Decimal | None = None
     error_message: str | None = None
+    # W4a — the screen-③ results table: per-entity detail (entity_id →
+    # {outcome, citations, flags, name}) + the live sub-step pointer.
+    results: dict[str, Any] = Field(default_factory=dict)
+    current_entity_id: str | None = None
+    current_pass: str | None = None
 
 
 def _to_status(job: WikiGenJob) -> WikiGenJobStatus:
@@ -265,6 +379,8 @@ def _to_status(job: WikiGenJob) -> WikiGenJobStatus:
         items_processed=job.items_processed, items_done_count=len(job.items_done),
         entity_count=len(job.entity_ids), cost_spent_usd=job.cost_spent_usd,
         max_spend_usd=job.max_spend_usd, error_message=job.error_message,
+        results=job.results, current_entity_id=job.current_entity_id,
+        current_pass=job.current_pass,
     )
 
 
@@ -291,6 +407,32 @@ async def get_wiki_gen_job(book_id: UUID, user_id: UUID) -> WikiGenJobStatus:
     return _to_status(job)
 
 
+class WikiGenConfig(BaseModel):
+    """Pre-flight cost basis for the FE estimate (D-WIKI-P2B-COST-ESTIMATE) — the
+    flat per-article estimate the orchestrator's budget gate charges, so the shown
+    estimate and the live ``cost_spent_usd`` agree. Token-precise pricing is the
+    separate D-WIKI-M6-PRECISE-COST follow-up.
+
+    W2 (gap-closure) also surfaces the CURRENT recipe versions here so the glossary
+    public ``staleness/sweep`` proxy can run the recipe-drift sweep (stored
+    build_inputs versions vs current) without knowing knowledge's config itself."""
+
+    cost_per_article_usd: Decimal
+    prompt_version: str
+    pipeline_version: str
+
+
+@router.get("/wiki/gen-config", response_model=WikiGenConfig)
+async def get_wiki_gen_config() -> WikiGenConfig:
+    """The flat per-article wiki-gen cost estimate + current recipe versions (global
+    config; not book-scoped)."""
+    return WikiGenConfig(
+        cost_per_article_usd=Decimal(str(settings.wiki_gen_cost_per_article_usd)),
+        prompt_version=settings.wiki_prompt_version,
+        pipeline_version=settings.wiki_pipeline_version,
+    )
+
+
 class WikiGenJobActionRequest(BaseModel):
     user_id: UUID
 
@@ -314,9 +456,10 @@ async def resume_wiki_gen_job(
 async def cancel_wiki_gen_job(
     book_id: UUID, job_id: UUID, req: WikiGenJobActionRequest
 ) -> dict:
-    """Cancel a not-yet-running job (pending|paused), releasing the per-book lock.
-    404 if not the owner's; 409 if it can't be cancelled (running/terminal —
-    running-cancel is D-WIKI-M7B-RUNNING-CANCEL)."""
+    """Cancel a non-terminal job (pending|paused|running), releasing the per-book
+    lock. A running job is cancelled too (D-WIKI-M7B): the orchestrator polls status
+    between entities and stops promptly. 404 if not the owner's; 409 only if already
+    terminal (complete/failed/cancelled)."""
     repo = WikiGenJobsRepo(get_knowledge_pool())
     await _owned_job(repo, job_id=job_id, book_id=book_id, user_id=req.user_id)
     if not await repo.cancel(job_id):

@@ -1,0 +1,24 @@
+# L7.A projection-domain admin commands — RAID cycle 36 DPS 3.
+# Per-domain registry per Q-L7A-1.
+#
+# NOTE: per-reality rebuild-projection lives under `reality` domain (with the
+# reality_id parameter dominant). Cross-projection commands live here.
+#
+# Cycle 36 ships ONE projection-domain command (drift-check). The cross-reality
+# rebuild-all alias was dropped to avoid duplicating reality catastrophic-rebuild —
+# operators with `--scope all-realities` get the same thing on the reality side.
+
+domain: projection
+commands:
+  - name: projection drift-check
+    version: "1.0.0"
+    summary: "Compare projection rows vs event-replay expectation (informational)."
+    handler: projectionDriftCheck
+    params:
+      - {name: projection_name, type: string, required: true,  description: "Projection table name"}
+      - {name: sample_size,     type: int,    required: false, description: "Aggregates to sample (default 100)"}
+    impact_class: tier-3-informational
+    dry_run_required: false
+    double_approval_required: false
+    carry_forward_cycle: "36"
+    locked_qs_consumed: [Q-L7A-1, Q-L7A-2]

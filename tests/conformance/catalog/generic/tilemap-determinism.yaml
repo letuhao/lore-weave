@@ -1,0 +1,7 @@
+id: tilemap-determinism
+description: "S10/H1 — tilemap determinism-DST: the REAL place_tilemap engine (synchronous, TMP-A4) is byte-identical across a 16-seed in-process corpus AND across a fresh PROCESS boundary (catches process-global nondeterminism — HashMap random-state / allocator addresses — an in-process repeat cannot). Runs clean THEN --bite (test-local injected nondeterminism must break the gate; engine untouched). CPU-only, no stack."
+invariant: I-tilemap-deterministic
+kind: rust-test
+command: ["bash", "-c", "cargo run -q --manifest-path tests/sim/Cargo.toml --bin sim tilemap && cargo run -q --manifest-path tests/sim/Cargo.toml --bin sim tilemap --bite"]
+requires: ["cargo"]
+skip_when: []

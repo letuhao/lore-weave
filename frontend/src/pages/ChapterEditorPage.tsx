@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import {
   Save, PanelLeft, PanelRight, Clock, ChevronRight, ChevronLeft, ChevronRight as ChevronRightNav, SpellCheck,
-  BookOpen, FileText, BookMarked, ListTree, Pen, Sparkles, Languages, AlertTriangle,
+  BookOpen, FileText, BookMarked, ListTree, Pen, Sparkles, Languages, AlertTriangle, Eye,
 } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { apiBase } from '@/api';
@@ -32,9 +32,12 @@ import { Chat } from '@/features/chat/Chat';
 import { fireSendToChat } from '@/features/chat/context/sendToChat';
 import { registerEditorTarget } from '@/features/chat/context/editorBridge';
 import { CompositionPanel } from '@/features/composition/components/CompositionPanel';
+import { CowriteBridgeButton } from '@/features/composition/components/CowriteBridgeButton';
 import { SelectionToolbar } from '@/features/composition/components/SelectionToolbar';
 import { InlineAiLayer } from '@/features/composition/components/InlineAiLayer';
-import { useWorkResolution } from '@/features/composition/hooks/useWork';
+import { useWorkResolution, useChapterScenes } from '@/features/composition/hooks/useWork';
+import { aiModelsApi } from '@/features/ai-models/api';
+import { useQuery } from '@tanstack/react-query';
 import { OutlineTree } from '@/features/composition/components/OutlineTree';
 import { useChapterPublishGate, publishGateMessages } from '@/features/composition/hooks/usePublishGate';
 
@@ -153,9 +156,32 @@ export function ChapterEditorPage() {
       : workResolution.data?.status === 'candidates' ? (workResolution.data.candidates[0] ?? null)
         : null;
   const composeProjectId = composeWork?.project_id ?? null;
-  const composeDefaultModel =
+  // C17 (WG-5) — "Continue from cursor" needs a model. Prefer the persisted per-Work
+  // default; otherwise fall back to the SOLE registered chat model (same auto-pick
+  // rule as the guided first-run — only when exactly one exists, never 0/≥2, and read
+  // from the registry, no hardcoded model name) so a guided writer can Continue from
+  // their cursor without first opening the co-writer Settings to set a default.
+  const chatModels = useQuery({
+    queryKey: ['composition', 'chat-models'],
+    queryFn: () => aiModelsApi.listUserModels(accessToken!, { capability: 'chat' }),
+    enabled: !!accessToken,
+    select: (d) => d.items.filter((m) => m.is_active),
+  });
+  const persistedDefaultModel =
     typeof composeWork?.settings?.default_model_ref === 'string' ? composeWork.settings.default_model_ref : null;
+  const soleChatModel = chatModels.data?.length === 1 ? chatModels.data[0].user_model_id : null;
+  const composeDefaultModel = persistedDefaultModel ?? soleChatModel;
+  // Model metadata for the inline-continue reasoning-strategy hint (parity with the
+  // Compose panel's generate path). Resolved from the registry — no hardcoded name.
+  const composeDefaultModelMeta = chatModels.data?.find((m) => m.user_model_id === composeDefaultModel);
   const [activeSceneId, setActiveSceneId] = useState('');
+  // C17 (WG-5) — "Continue from cursor" grounds on a scene. The guided first-run
+  // (DPS1) auto-creates an opening scene, but the writer never touched the Compose
+  // panel's scene selector, so activeSceneId is still empty. Fall back to this
+  // chapter's first scene from the outline so inline Continue works straight after
+  // the guided setup — same react-query-cached outline the Compose panel reads.
+  const chapterScenes = useChapterScenes(composeProjectId ?? undefined, chapterId, accessToken);
+  const effectiveSceneId = activeSceneId || chapterScenes.data?.[0]?.id || '';
 
   // ARCH-1 C5: when the AI panel opens (or the chapter changes while it's
   // open), auto-attach the current chapter as chat context via the existing
@@ -561,6 +587,21 @@ export function ChapterEditorPage() {
 
           <div className="mx-1 h-4 w-px bg-border" />
 
+          {/* C15 (WG-6) — plain-editor → AI bridge. A visible, inline hand-off from
+              plain prose into the AI co-writer: open the (always-mounted) Compose
+              panel. Direct handler (no useEffect-for-events). Ensures the right panel
+              is open AND selects the compose tab. Writing needs only a chat model;
+              the Compose panel surfaces the register CTA + ready-to-draft cue (C15). */}
+          <CowriteBridgeButton
+            active={panels.right && rightTab === 'compose'}
+            onActivate={() => {
+              setRightTab('compose');
+              if (!panels.right) panels.toggleRight();
+            }}
+          />
+
+          <div className="mx-1 h-4 w-px bg-border" />
+
           {/* Grammar check toggle */}
           <label
             className={cn(
@@ -590,6 +631,20 @@ export function ChapterEditorPage() {
           >
             <Languages className="h-3.5 w-3.5" />
             {translating ? t('translating') : t('translate')}
+          </button>
+
+          {/* View saved translation versions (language switcher, version history,
+              side-by-side compare) — the canonical ChapterTranslationsPage, which
+              was previously only reachable from the translation matrix. Guarded so
+              an unsaved draft prompts to save before leaving. */}
+          <button
+            data-testid="editor-view-translations"
+            onClick={() => guardedNavigate(`/books/${bookId}/chapters/${chapterId}/translations`)}
+            className="flex items-center gap-1 rounded px-2 py-1 text-[10px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+            title={t('view_translations_title')}
+          >
+            <Eye className="h-3.5 w-3.5" />
+            {t('view_translations')}
           </button>
 
           <button
@@ -888,7 +943,7 @@ export function ChapterEditorPage() {
                     <SelectionToolbar
                       editor={editor}
                       projectId={composeProjectId}
-                      sceneContext={activeSceneId || null}
+                      sceneContext={effectiveSceneId || null}
                       token={accessToken}
                     />
                   )
@@ -899,8 +954,10 @@ export function ChapterEditorPage() {
                     <InlineAiLayer
                       editor={editor}
                       projectId={composeProjectId}
-                      sceneId={activeSceneId || null}
+                      sceneId={effectiveSceneId || null}
                       modelRef={composeDefaultModel}
+                      modelKind={composeDefaultModelMeta?.provider_kind}
+                      modelName={composeDefaultModelMeta?.provider_model_name}
                       token={accessToken}
                     />
                   )

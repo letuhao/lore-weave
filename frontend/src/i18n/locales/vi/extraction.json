@@ -16,13 +16,17 @@
     "addInSettings": "Thêm trong Cài đặt",
     "selectModel": "Chọn mô hình...",
     "kindsSelected": "{{count}} loại đã bật",
+    "selectAllKinds": "Chọn tất cả",
+    "deselectAllKinds": "Bỏ chọn tất cả",
     "attrsSelected": "{{count}} thuộc tính",
     "actionFill": "Điền thiếu",
     "actionOverwrite": "Ghi đè",
     "actionSkip": "Bỏ qua",
     "allFill": "Tất cả điền",
     "allOverwrite": "Tất cả ghi đè",
-    "required": "bắt buộc"
+    "required": "bắt buộc",
+    "thinkingEnabled": "Bật suy nghĩ / reasoning",
+    "thinkingHint": "Nên tắt khi trích xuất JSON. Bật với Gemma và model tương tự nếu muốn model suy luận trước khi trả lời."
   },
   "batch": {
     "title": "Cấu hình hàng loạt",
@@ -54,6 +58,8 @@
     "estimateNote": "Đây là ước tính. Sử dụng thực tế phụ thuộc vào độ dài chương và tokenizer.",
     "profileSummary": "Tóm tắt hồ sơ",
     "attrs": "{{count}} thuộc tính",
+    "thinkingOn": "Suy nghĩ: bật",
+    "thinkingOff": "Suy nghĩ: tắt (nhanh hơn, JSON ổn định hơn)",
     "startExtraction": "Bắt đầu trích xuất",
     "editProfile": "Sửa hồ sơ"
   },
@@ -93,6 +99,7 @@
     "estimated": "Ước tính: {{tokens}}",
     "draftNote": "Tất cả thực thể mới tạo ở trạng thái nháp — xem lại trong tab Glossary",
     "viewGlossary": "Xem trong Glossary",
+    "runAgain": "Trích xuất tiếp",
     "close": "Đóng"
   },
   "button": {

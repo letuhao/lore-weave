@@ -1,11 +1,16 @@
 """M1b: V3 Corrector — rule-triggered targeted re-translation."""
 import pytest
 
-from app.workers.v3.corrector import correct_high_severity_blocks
+from app.workers.chunk_splitter import estimate_tokens
+from app.workers.v3.corrector import (
+    correct_high_severity_blocks, build_corrector_submit_kwargs,
+    _CORRECTOR_OUT_FLOOR, _CORRECTOR_OUT_FACTOR, _TRANSLATION_MAX_OUTPUT_TOKENS,
+)
 from app.workers.v3.quality import Issue, IssueReport
 from tests.test_session_translator import FakeLLMClient
 
 _MSG = {"user_id": "u", "model_source": "platform_model", "model_ref": "m"}
+_ISSUE = [Issue(0, "untranslated", "high", "leak")]
 
 
 @pytest.mark.asyncio
@@ -44,3 +49,55 @@ async def test_corrector_only_acts_on_high_severity():
     )
     assert out == {}
     assert len(fake.calls) == 0
+
+
+# ── D-TRANSL-CORRECTOR-LIMITS: bounded output (max_tokens) ─────────────────────
+
+def _kwargs(source_text: str) -> dict:
+    return build_corrector_submit_kwargs(
+        source_text, "draft", _ISSUE, "zh", "vi", "", block_idx=0,
+    )
+
+
+def test_corrector_max_tokens_present():
+    assert "max_tokens" in _kwargs("提拉米来了。")["input"]
+
+
+def test_corrector_max_tokens_floor_for_short_block():
+    # A tiny source → the floor, never starved below it.
+    assert _kwargs("短")["input"]["max_tokens"] == _CORRECTOR_OUT_FLOOR
+
+
+def test_corrector_max_tokens_scales_with_source():
+    # A mid-size block → scales with the source estimate (between floor and ceiling).
+    src = "字" * 2000
+    expected = estimate_tokens(src) * _CORRECTOR_OUT_FACTOR
+    assert _CORRECTOR_OUT_FLOOR < expected < _TRANSLATION_MAX_OUTPUT_TOKENS
+    assert _kwargs(src)["input"]["max_tokens"] == expected
+
+
+def test_corrector_max_tokens_capped_at_global_ceiling():
+    # A huge block can never exceed the translator's own output ceiling.
+    assert _kwargs("字" * 40000)["input"]["max_tokens"] == _TRANSLATION_MAX_OUTPUT_TOKENS
+
+
+def test_corrector_max_tokens_budgets_off_larger_of_source_and_draft():
+    """/review-impl MED: a dense source + a verbose prior draft (e.g. CJK→Latin) must
+    budget off the DRAFT (the output-language proxy), not under-budget off the source
+    and truncate the correction."""
+    src = "字" * 100              # tiny source token estimate
+    draft = "word " * 2000        # large prior draft (output language)
+    kw = build_corrector_submit_kwargs(src, draft, _ISSUE, "zh", "en", "", block_idx=0)
+    expected = min(
+        _TRANSLATION_MAX_OUTPUT_TOKENS,
+        max(_CORRECTOR_OUT_FLOOR, estimate_tokens(draft) * _CORRECTOR_OUT_FACTOR),
+    )
+    assert kw["input"]["max_tokens"] == expected
+    # Strictly larger than budgeting off the (denser) source alone.
+    assert kw["input"]["max_tokens"] > estimate_tokens(src) * _CORRECTOR_OUT_FACTOR
+
+
+def test_corrector_system_prompt_preserves_structure():
+    msgs = _kwargs("提拉米来了。")["input"]["messages"]
+    system = next(m["content"] for m in msgs if m["role"] == "system")
+    assert "structure" in system.lower()

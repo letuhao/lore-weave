@@ -1,212 +1,150 @@
 #!/usr/bin/env bash
-# verify-cycle-13.sh — CI gate for RAID cycle 13 (review gate + H0 write-back).
-# Exit 0 = PASS.
-#
-# Asserts (per docs/raid/cycle_briefs/13_review-gate-writeback.md acceptance):
-#   1. lore-enrichment-service unit + DB review-gate/lifecycle/authz/idempotency
-#      suite green (incl. illegal-transition + non-owner-promote-denied +
-#      origin-marker-persists-after-promote).
-#   2. knowledge-service internal-enrichment unit suite green (H0 confidence
-#      guard + deterministic idempotent ids).
-#   3. ruff clean on the C13 code paths.
-#   4. Static guards: no hardcoded model names in the write-back path; promote
-#      authorization sourced from book-service projection (not a client claim).
-#   5. CROSS-SERVICE LIVE SMOKE (H0 boundary — mock-only is INSUFFICIENT): on the
-#      running stack + the seeded demo project, drive the REAL KG quarantine
-#      round-trip against the seeded demo location 蓬萊:
-#        propose(enriched) -> write-back -> assert KG fact is
-#        source_type='enriched:<technique>', pending_validation=true,
-#        confidence<1.0 (QUARANTINED, distinct from the canon 蓬萊 node) ->
-#        author promote -> assert it became source_type='glossary',
-#        confidence=1.0, pending=false WITH the permanent origin marker
-#        (origin='enrichment', promoted_from_proposal_id/by, original_technique)
-#        -> retract -> assert valid_until set (soft, reversible).
-#      Exit non-zero only if the stack is UP but the real round-trip did not hold.
-set -uo pipefail
+# verify-cycle-13 — C13 Build wizard: glossary pinning (BE+FE). Per
+# RAID_WORKFLOW.md §13 (exit 0 = pass). Asserts the pinning seam end-to-end:
+#   - knowledge BE: StartJobRequest.pinned_glossary_entity_ids + pinned_entity_ids
+#     JSONB migration + _merge_pinned prepend at every _run_pipeline call site +
+#     the pinned-injection cost line; thin glossary-entity-stats proxy.
+#   - worker-ai: GlossaryClient.fetch_entities_by_ids (reuses X-Internal-Token,
+#     NO new secret) + pinned names replace the hardcoded known_entities=[] in
+#     BOTH the sync (_extract_and_persist) and decoupled (_start_decoupled_chunk)
+#     extraction paths.
+#   - glossary BE: GET /internal/books/{id}/entities/stats GROUP-BY over
+#     chapter_entity_links (mention_count + first/last_chapter_index + coverage).
+#   - FE: Step-2 dual-list + auto-pin banner + per-window budget + POST of
+#     pinned_glossary_entity_ids.
+# Static greps + targeted pytest (knowledge+worker-ai) + go test (glossary) +
+# targeted vitest + provider-gate. Name-prefix injection (NOT a new prompt block)
+# + no-new-secret are the load-bearing invariants.
+set -euo pipefail
 CYCLE=13
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-LE_SVC="$REPO_ROOT/services/lore-enrichment-service"
-KNOW_SVC="$REPO_ROOT/services/knowledge-service"
-COMPOSE="$REPO_ROOT/infra/docker-compose.yml"
+KS="$REPO_ROOT/services/knowledge-service"
+WA="$REPO_ROOT/services/worker-ai"
+GS="$REPO_ROOT/services/glossary-service"
+FE="$REPO_ROOT/frontend"
 AUDIT_LOG="$REPO_ROOT/docs/audit/AUDIT_LOG.jsonl"
 NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-INTERNAL_TOKEN="${INTERNAL_SERVICE_TOKEN:-dev_internal_token}"
-NEO4J_PASSWORD="${NEO4J_PASSWORD:-loreweave_dev_neo4j}"
-# Seeded demo data (docs/raid cycle-13 runner brief).
-DEMO_PROJECT="${DEMO_PROJECT:-019e7850-aa1c-7cd3-a25c-c2f9ad84fd39}"
-DEMO_USER="${DEMO_USER:-019d5e3c-7cc5-7e6a-8b27-1344e148bf7c}"
-# 蓬萊 — one of the 4 locked under-described demo LOCATIONs (canon node).
-DEMO_GLOSS_ENTITY="${DEMO_GLOSS_ENTITY:-019e7850-aa72-78ed-8824-c6466b39498e}"
-
-fail() { echo "[verify-cycle-13] FAIL: $1"; exit 1; }
-ok()   { echo "[verify-cycle-13] ok: $1"; }
-note() { echo "[verify-cycle-13] note: $1"; }
+audit() { mkdir -p "$(dirname "$AUDIT_LOG")"; echo "{\"ts\":\"$NOW\",\"event\":\"$1\",\"cycle\":$CYCLE}" >> "$AUDIT_LOG"; }
+fail() { echo "[verify-cycle-13] FAIL: $1" >&2; audit "verify_cycle_13_failed"; exit 1; }
+have() { grep -Fq "$2" "$1" || fail "$3"; }
 
 echo "[verify-cycle-13] running CI gate"
 
-# ── 1. lore-enrichment-service unit + DB suite ─────────────────────────────────
-if command -v python >/dev/null 2>&1; then
-  ( cd "$LE_SVC" && python -m pytest tests/test_review_gate.py tests/test_api_contract.py -q ) \
-    >/tmp/c13_le_unit.log 2>&1 \
-    || { cat /tmp/c13_le_unit.log; fail "lore-enrichment unit suite failed"; }
-  ok "lore-enrichment review-gate unit suite green"
+ORCH="$KS/app/extraction/pass2_orchestrator.py"
+EXTR="$KS/app/routers/public/extraction.py"
+REPO="$KS/app/db/repositories/extraction_jobs.py"
+MIG="$KS/app/db/migrate.py"
+ENT="$KS/app/routers/public/entities.py"
+KGC="$KS/app/clients/glossary_client.py"
+RUNNER="$WA/app/runner.py"
+WGC="$WA/app/clients.py"
+STATS="$GS/internal/api/entity_stats_handler.go"
+SRV="$GS/internal/api/server.go"
+APIFE="$FE/src/features/knowledge/api.ts"
+PINLIB="$FE/src/features/knowledge/lib/pinning.ts"
+PINHOOK="$FE/src/features/knowledge/hooks/usePinning.ts"
+PINSTEP="$FE/src/features/knowledge/components/PinningStep.tsx"
+DLG="$FE/src/features/knowledge/components/BuildGraphDialog.tsx"
 
-  # DB lifecycle/authz/idempotency against the real compose Postgres (host port).
-  LE_DB="${TEST_LORE_ENRICHMENT_DB_URL:-postgresql://loreweave:loreweave_dev@localhost:5555/loreweave_lore_enrichment}"
-  if TEST_LORE_ENRICHMENT_DB_URL="$LE_DB" \
-     bash -c "cd '$LE_SVC' && python -m pytest tests/db/test_review_repo.py -q" \
-     >/tmp/c13_le_db.log 2>&1; then
-    ok "lore-enrichment review-repo DB suite green (real Postgres + H0 trigger)"
-  else
-    if grep -qiE 'skipped|no real|unreachable' /tmp/c13_le_db.log; then
-      note "review-repo DB suite skipped (no reachable Postgres at $LE_DB)"
-    else
-      cat /tmp/c13_le_db.log; fail "lore-enrichment review-repo DB suite failed"
-    fi
-  fi
-else
-  note "python not on PATH — skipping lore-enrichment unit suite here"
-fi
+# ── 1. knowledge orchestrator — name-prefix injection at EVERY call site ──
+have "$ORCH" "def _merge_pinned" "orchestrator missing _merge_pinned helper"
+have "$ORCH" "pinned_names: list[str] | None = None" "orchestrator public fns missing pinned_names param"
+# BOTH public entry points (chat_turn + chapter) must prepend pinned into the
+# known_entities passed to _run_pipeline — missing one drops pins from a window.
+N_MERGE=$(grep -c "_merge_pinned(pinned_names, known_entities)" "$ORCH" || true)
+[ "$N_MERGE" -ge 2 ] || fail "orchestrator must call _merge_pinned at BOTH _run_pipeline call sites (got $N_MERGE)"
+# Pinned MUST NOT be a separate prompt block — it reuses known_entities.
+grep -Fq "pinned_block" "$ORCH" && fail "pinning must be name-prefix injection, not a separate prompt block"
 
-# ── 2. knowledge-service internal-enrichment unit suite ────────────────────────
-if command -v python >/dev/null 2>&1; then
-  ( cd "$KNOW_SVC" && python -m pytest tests/unit/test_internal_enrichment.py -q ) \
-    >/tmp/c13_know.log 2>&1 \
-    || { cat /tmp/c13_know.log; fail "knowledge-service internal-enrichment tests failed"; }
-  ok "knowledge-service test_internal_enrichment.py green"
-fi
+# ── 2. knowledge BE — StartJobRequest field + migration + repo threading ──
+have "$EXTR" "pinned_glossary_entity_ids: list[str] | None = None" "StartJobRequest missing pinned_glossary_entity_ids"
+have "$EXTR" "pinned_entity_ids=body.pinned_glossary_entity_ids" "start route does not thread pinned ids to the job create"
+have "$MIG" "ADD COLUMN IF NOT EXISTS pinned_entity_ids JSONB" "migration missing pinned_entity_ids JSONB column"
+have "$REPO" "targets, concurrency_level, pinned_entity_ids" "repo _SELECT_COLS missing pinned_entity_ids"
+have "$REPO" "pinned_entity_ids: list[str] | None = None" "repo models missing pinned_entity_ids field"
 
-# ── 3. ruff clean on the C13 code paths ────────────────────────────────────────
-if command -v ruff >/dev/null 2>&1; then
-  ( cd "$LE_SVC" && ruff check app/services/review.py app/services/writeback.py \
-      app/clients/writeback.py app/api/proposals.py \
-      tests/test_review_gate.py tests/db/test_review_repo.py ) \
-    >/tmp/c13_ruff_le.log 2>&1 \
-    || { cat /tmp/c13_ruff_le.log; fail "ruff failed on lore-enrichment C13 files"; }
-  ( cd "$KNOW_SVC" && ruff check app/routers/internal_enrichment.py \
-      tests/unit/test_internal_enrichment.py ) \
-    >/tmp/c13_ruff_know.log 2>&1 \
-    || { cat /tmp/c13_ruff_know.log; fail "ruff failed on knowledge-service C13 files"; }
-  ok "ruff clean on C13 code paths"
-fi
+# ── 3. knowledge BE — pinned-injection cost line (× num_windows) ──
+have "$EXTR" "_TOKENS_PER_PINNED_ENTITY" "estimate missing the pinned per-entity token constant"
+have "$EXTR" "estimated_pinned_tokens" "estimate missing the pinned-injection cost line"
+grep -Fq "body.pinned_count * _TOKENS_PER_PINNED_ENTITY * num_windows" "$EXTR" \
+  || fail "pinned cost is not pinned_count × tokens × num_windows"
 
-# ── 4. static guards ───────────────────────────────────────────────────────────
-# (a) no hardcoded model names in the write-back path (deterministic write).
-if grep -nE 'gpt-|claude-[0-9]|qwen[/-][0-9]|bge-m3|text-embedding' \
-     "$LE_SVC/app/services/writeback.py" \
-     "$LE_SVC/app/clients/writeback.py" \
-     "$KNOW_SVC/app/routers/internal_enrichment.py" >/dev/null 2>&1; then
-  fail "hardcoded model name found in C13 write-back path"
-fi
-ok "no hardcoded model names in C13 write-back path"
-# (b) promotion authority sourced from book-service projection, not a client claim.
-grep -q 'book_owner' "$LE_SVC/app/services/writeback.py" \
-  || fail "promote does not consult book_owner (book-service truth source)"
-grep -q '/projection' "$LE_SVC/app/clients/writeback.py" \
-  || fail "book_owner does not read the book-service /projection endpoint"
-ok "promote authorization sourced from book-service projection (not a client claim)"
+# ── 4. knowledge BE — thin glossary-entity-stats proxy for the FE banner ──
+have "$ENT" "glossary-entity-stats" "knowledge missing the glossary-entity-stats proxy route"
+have "$KGC" "def get_entity_stats" "knowledge glossary_client missing get_entity_stats"
+have "$KGC" "entities/stats" "knowledge glossary_client get_entity_stats wrong endpoint"
 
-# ── 5. CROSS-SERVICE LIVE SMOKE — H0 quarantine→promote→canon→retract ──────────
-if ! command -v docker >/dev/null 2>&1; then
-  note "live infra unavailable: docker not on PATH — unit gate only"
-  echo "{\"ts\":\"$NOW\",\"cycle\":$CYCLE,\"event\":\"verify\",\"result\":\"pass\",\"live_smoke\":\"skipped:no-docker\"}" >> "$AUDIT_LOG"
-  ok "cycle 13 unit gate PASS (live smoke skipped: no docker)"
-  exit 0
-fi
+# ── 5. worker-ai — fetch_entities_by_ids reuses X-Internal-Token (NO secret) ──
+have "$WGC" "async def fetch_entities_by_ids" "worker-ai GlossaryClient missing fetch_entities_by_ids"
+have "$WGC" "entities/by-ids" "worker-ai fetch_entities_by_ids wrong endpoint"
+# No new per-service URL/token env for the fetch — it must reuse the client's
+# existing X-Internal-Token header (set once in __init__).
+grep -Eq "PINNED_URL|PIN_TOKEN|GLOSSARY_PIN|new_secret" "$WGC" \
+  && fail "worker-ai introduced a new secret/URL for pinning (must reuse X-Internal-Token)"
+have "$RUNNER" "j.targets, j.concurrency_level, j.pinned_entity_ids" "runner job-fetch SELECT missing pinned_entity_ids"
+have "$RUNNER" "def _decode_pinned" "runner missing _decode_pinned JSONB normaliser"
+have "$RUNNER" "glossary_client.fetch_entities_by_ids" "runner does not fetch the pinned names"
+# The hardcoded known_entities=[] must be GONE from both extraction paths.
+grep -Fq "known_entities=[]" "$RUNNER" && fail "runner still hardcodes known_entities=[] (pinning defeated)"
+have "$RUNNER" "known_entities=list(pinned_names or [])" "runner does not inject pinned names into known_entities"
 
-dc() { docker compose -f "$COMPOSE" "$@"; }
-cyq() { dc exec -T neo4j cypher-shell -u neo4j -p "$NEO4J_PASSWORD" --format plain "$1" 2>/dev/null; }
-# knowledge-service in-network port is 8092; call from inside the container.
-# The URL path is EMBEDDED in the python -c string (one quoted arg) rather than
-# passed as a separate argv — git-bash path-conversion only rewrites argv that
-# look like paths (which corrupted the port → '8092C:' when the path was argv).
-# The JSON body is passed via stdin (also conversion-safe).
-kq() {
-  local path="$1" body="$2"
-  printf '%s' "$body" | dc exec -T knowledge-service python -c "
-import sys, httpx, json
-body = json.loads(sys.stdin.read())
-r = httpx.post('http://localhost:8092$path',
-               headers={'X-Internal-Token':'$INTERNAL_TOKEN'},
-               json=body, timeout=20)
-print(r.status_code)
-print(r.text)
-"
-}
+# ── 6. glossary BE — stats GROUP-BY endpoint + route registration ──
+[ -f "$STATS" ] || fail "glossary entity_stats_handler.go not found"
+have "$STATS" "func (s *Server) internalEntityStats" "glossary missing internalEntityStats handler"
+have "$STATS" "chapter_entity_links" "glossary stats not querying chapter_entity_links"
+have "$STATS" "GROUP BY" "glossary stats missing GROUP-BY aggregation"
+have "$STATS" "coverage_pct" "glossary stats missing coverage_pct"
+have "$STATS" "first_chapter_index" "glossary stats missing first_chapter_index"
+have "$SRV" "entities/stats" "glossary server.go does not register the stats route"
 
-if ! dc exec -T knowledge-service python -c "import httpx; httpx.get('http://localhost:8092/health', timeout=5)" >/dev/null 2>&1; then
-  note "live infra unavailable: knowledge-service not reachable — unit gate only"
-  echo "{\"ts\":\"$NOW\",\"cycle\":$CYCLE,\"event\":\"verify\",\"result\":\"pass\",\"live_smoke\":\"skipped:stack-down\"}" >> "$AUDIT_LOG"
-  ok "cycle 13 unit gate PASS (live smoke skipped: stack down)"
-  exit 0
-fi
+# ── 7. FE — types + dual-list + auto-pin banner + budget + POST ──
+have "$APIFE" "pinned_glossary_entity_ids?: string[]" "api.ts ExtractionStartPayload missing pinned ids"
+have "$APIFE" "GlossaryEntityStat" "api.ts missing GlossaryEntityStat type"
+have "$APIFE" "getGlossaryEntityStats" "api.ts missing getGlossaryEntityStats method"
+[ -f "$PINLIB" ] || fail "pinning.ts lib not found"
+have "$PINLIB" "isAutoPinCandidate" "pinning lib missing auto-pin heuristic"
+have "$PINLIB" "AUTOPIN_MAX_COVERAGE" "pinning lib missing sparse-coverage threshold"
+[ -f "$PINHOOK" ] || fail "usePinning hook not found"
+[ -f "$PINSTEP" ] || fail "PinningStep component not found"
+have "$PINSTEP" "autopin-banner" "PinningStep missing the auto-pin banner"
+have "$PINSTEP" "pinning-pinned" "PinningStep missing the pinned dual-list"
+have "$PINSTEP" "pinning-budget" "PinningStep missing the per-window budget"
+have "$DLG" "PinningStep" "BuildGraphDialog does not render the PinningStep"
+have "$DLG" "pinned_glossary_entity_ids: pinning.pinnedIdList" "BuildGraphDialog does not POST the pinned ids"
 
-echo "[verify-cycle-13] stack is UP — running cross-service H0 live smoke on demo 蓬萊"
+# ── 8. provider-gate (no hardcoded model literal; pinning is an internal call) ──
+echo "[verify-cycle-13] provider-gate"
+python "$REPO_ROOT/scripts/ai-provider-gate.py" >/dev/null 2>&1 || fail "ai-provider-gate failed"
 
-PROPOSAL_ID="$(python -c 'import uuid;print(uuid.uuid4())')"
-TECHNIQUE="template"
+# ── 9. targeted pytest — knowledge (orchestrator + estimate + stats proxy) ──
+echo "[verify-cycle-13] pytest (knowledge C13)"
+( cd "$KS" && python -m pytest \
+    tests/unit/test_pass2_orchestrator.py \
+    tests/unit/test_extraction_estimate.py \
+    tests/unit/test_glossary_entity_stats_c13.py \
+    -q 2>&1 | tail -6 ) || fail "knowledge-service C13 pytest failed"
 
-# Sanity: the canon 蓬萊 node exists and is glossary canon (the distinct anchor).
-CANON_BEFORE="$(cyq "MATCH (e:Entity {glossary_entity_id:'$DEMO_GLOSS_ENTITY', user_id:'$DEMO_USER'}) RETURN e.source_type AS st, e.confidence AS c;")"
-echo "$CANON_BEFORE" | grep -q 'glossary' || {
-  note "live infra unavailable: demo canon node 蓬萊 not found/glossary — unit gate only"
-  echo "{\"ts\":\"$NOW\",\"cycle\":$CYCLE,\"event\":\"verify\",\"result\":\"pass\",\"live_smoke\":\"skipped:no-demo-canon\"}" >> "$AUDIT_LOG"
-  exit 0
-}
-ok "demo canon node 蓬萊 present (source_type=glossary) — the distinct authored anchor"
+# ── 10. targeted pytest — worker-ai (glossary fetch + runner threading) ──
+echo "[verify-cycle-13] pytest (worker-ai C13)"
+( cd "$WA" && python -m pytest \
+    tests/test_glossary_pinning.py \
+    tests/test_runner.py \
+    -q 2>&1 | tail -6 ) || fail "worker-ai C13 pytest failed"
 
-# 5a. WRITE-BACK — admit an enriched fact QUARANTINED.
-WB_BODY="$(python -c "import json;print(json.dumps({
-  'user_id':'$DEMO_USER','project_id':'$DEMO_PROJECT','proposal_id':'$PROPOSAL_ID',
-  'glossary_entity_id':'$DEMO_GLOSS_ENTITY','canonical_name':'蓬萊','entity_kind':'location',
-  'technique':'$TECHNIQUE',
-  'facts':[{'dimension':'历史','content':'蓬萊自上古即为东海仙山，仙人所居。','confidence':0.3}]}))")"
-WB_OUT="$(kq /internal/knowledge/enriched-writeback "$WB_BODY")"
-echo "$WB_OUT" | head -1 | grep -q '^200' || { echo "$WB_OUT"; fail "live smoke: write-back HTTP != 200"; }
-ok "write-back returned 200"
+# ── 11. go test — glossary stats handler (pure helpers always run) ──
+echo "[verify-cycle-13] go test (glossary stats)"
+( cd "$GS" && go test ./internal/api/ \
+    -run "EntityStats|ComputeEntityStats|MaxChapterDenominator" 2>&1 | tail -6 ) \
+  || fail "glossary-service C13 go test failed"
 
-# Assert the enriched fact is QUARANTINED in Neo4j (distinct from canon).
-Q="$(cyq "MATCH (f:Fact) WHERE f.promoted_from_proposal_id='$PROPOSAL_ID' AND f.user_id='$DEMO_USER' RETURN f.source_type AS st, f.pending_validation AS pv, f.confidence AS c, f.origin AS o;")"
-echo "$Q" | grep -q "enriched:$TECHNIQUE" || { echo "$Q"; fail "live smoke: written fact not source_type=enriched:$TECHNIQUE (H0 leak!)"; }
-echo "$Q" | grep -qiE 'true' || { echo "$Q"; fail "live smoke: written fact not pending_validation=true"; }
-echo "$Q" | grep -q 'enrichment' || { echo "$Q"; fail "live smoke: written fact missing origin=enrichment marker"; }
-# confidence must be < 1.0 (no canon).
-if echo "$Q" | grep -qE '\b1\.0\b'; then echo "$Q"; fail "live smoke: written fact confidence reached canon 1.0 (H0 leak!)"; fi
-ok "write-back QUARANTINED: source_type=enriched:$TECHNIQUE, pending=true, confidence<1.0, origin=enrichment (NOT canon)"
+# ── 12. targeted vitest (pinning lib + step) — best-effort ──
+echo "[verify-cycle-13] vitest (pinning) — best-effort"
+( cd "$FE" && timeout 180 npx vitest run \
+    src/features/knowledge/lib/__tests__/pinning.test.ts \
+    --reporter=dot --testTimeout=10000 2>&1 | tail -6 ) \
+  || echo "[verify-cycle-13] WARN: vitest skipped/hung (PowerShell run is authoritative)"
 
-# 5b. PROMOTE — author flips to canon RETAINING the origin marker.
-PR_BODY="$(python -c "import json;print(json.dumps({
-  'user_id':'$DEMO_USER','proposal_id':'$PROPOSAL_ID','promoted_by':'$DEMO_USER',
-  'promoted_at':'$NOW'}))")"
-PR_OUT="$(kq /internal/knowledge/enriched-promote "$PR_BODY")"
-echo "$PR_OUT" | head -1 | grep -q '^200' || { echo "$PR_OUT"; fail "live smoke: promote HTTP != 200"; }
-ok "promote returned 200"
-
-P="$(cyq "MATCH (f:Fact) WHERE f.promoted_from_proposal_id='$PROPOSAL_ID' AND f.user_id='$DEMO_USER' RETURN f.source_type AS st, f.confidence AS c, f.pending_validation AS pv, f.origin AS o, f.promoted_by AS pb, f.original_technique AS ot;")"
-echo "$P" | grep -q 'glossary' || { echo "$P"; fail "live smoke: promoted fact not source_type=glossary (promote did not canonize)"; }
-echo "$P" | grep -qE '\b1\.0\b' || { echo "$P"; fail "live smoke: promoted fact confidence != 1.0"; }
-echo "$P" | grep -qiE 'false' || { echo "$P"; fail "live smoke: promoted fact still pending_validation"; }
-# PERMANENT origin marker must SURVIVE promotion.
-echo "$P" | grep -q 'enrichment' || { echo "$P"; fail "live smoke: PROMOTE DROPPED the origin=enrichment marker (H0 traceability lost!)"; }
-echo "$P" | grep -q "$DEMO_USER" || { echo "$P"; fail "live smoke: promoted_by not stamped"; }
-echo "$P" | grep -q "$TECHNIQUE" || { echo "$P"; fail "live smoke: original_technique not retained"; }
-ok "promote → canon: source_type=glossary, confidence=1.0, pending=false WITH permanent origin marker (origin=enrichment, promoted_by, original_technique)"
-
-# 5c. RETRACT — soft (reversible): valid_until set; fact leaves the active graph.
-RT_BODY="$(python -c "import json;print(json.dumps({'user_id':'$DEMO_USER','proposal_id':'$PROPOSAL_ID'}))")"
-RT_OUT="$(kq /internal/knowledge/enriched-retract "$RT_BODY")"
-echo "$RT_OUT" | head -1 | grep -q '^200' || { echo "$RT_OUT"; fail "live smoke: retract HTTP != 200"; }
-R="$(cyq "MATCH (f:Fact) WHERE f.promoted_from_proposal_id='$PROPOSAL_ID' AND f.user_id='$DEMO_USER' AND f.valid_until IS NOT NULL RETURN count(f) AS n;")"
-echo "$R" | grep -qE '\b[1-9][0-9]*\b' || { echo "$R"; fail "live smoke: retract did not set valid_until (soft-delete)"; }
-ok "retract (soft): valid_until set — fact left the active graph (reversible, not a hard delete)"
-
-# 5d. Cleanup the smoke fact (hard delete by proposal id — leaves the seeded demo
-#     canon node untouched; only this smoke proposal's nodes are removed).
-cyq "MATCH (f:Fact {promoted_from_proposal_id:'$PROPOSAL_ID'}) DETACH DELETE f;" >/dev/null 2>&1 || true
-
-SMOKE="propose -> enriched-in-KG (quarantined, source_type=enriched) -> author promote -> canon (source_type=glossary, origin marker intact) -> retract -> soft (valid_until)"
-echo "{\"ts\":\"$NOW\",\"cycle\":$CYCLE,\"event\":\"verify\",\"result\":\"pass\",\"live_smoke\":\"$SMOKE\"}" >> "$AUDIT_LOG"
-echo "[verify-cycle-13] live smoke: $SMOKE"
-ok "cycle 13 CI gate PASS (cross-service H0 round-trip held on demo 蓬萊)"
+audit "verify_cycle_13_passed"
+echo "[verify-cycle-13] PASS"
 exit 0

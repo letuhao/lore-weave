@@ -18,7 +18,11 @@ import pytest
 
 from app.db.models import Project
 from app.db.neo4j_repos.passages import Passage, PassageSearchHit
-from app.search.retriever import RetrievalResult, run_hybrid_search
+from app.search.retriever import (
+    RetrievalResult,
+    passage_to_hit,
+    run_hybrid_search,
+)
 
 _USER = uuid4()
 _BOOK = uuid4()
@@ -45,11 +49,13 @@ def _project(
     )
 
 
-def _passage_hit(chunk_index=0, score=0.9) -> PassageSearchHit:
+def _passage_hit(chunk_index=0, score=0.9, source_lang="unknown",
+                 source_id="ch-canon") -> PassageSearchHit:
     p = Passage(
-        id=f"pg-{chunk_index}", user_id=str(_USER), project_id=str(_PROJECT_ID),
-        source_type="chapter", source_id="ch-canon", chunk_index=chunk_index,
+        id=f"pg-{source_lang}-{chunk_index}", user_id=str(_USER), project_id=str(_PROJECT_ID),
+        source_type="chapter", source_id=source_id, chunk_index=chunk_index,
         text="canon prose", embedding_model="bge-m3", is_hub=False, chapter_index=9,
+        source_lang=source_lang,
         created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc),
     )
     return PassageSearchHit(passage=p, raw_score=score, vector=None)
@@ -70,6 +76,18 @@ async def _noop_session():
     yield MagicMock()
 
 
+@pytest.fixture(autouse=True)
+def _stub_cjk_leg():
+    """KG-ML M6 — the CJK full-text leg fires for CJK queries (most tests here use
+    '姜子牙'). Stub it to [] by default so existing assertions see it as an additive
+    empty leg; the M6 fusion test overrides the return value."""
+    with patch(
+        "app.search.retriever.find_passages_by_fulltext", new_callable=AsyncMock
+    ) as m:
+        m.return_value = []
+        yield m
+
+
 def _clients(lex_hits=None, passage_hits=None, rerank_passthrough=True):
     book = MagicMock()
     book.lexical_search = AsyncMock(return_value=lex_hits)
@@ -82,6 +100,9 @@ def _clients(lex_hits=None, passage_hits=None, rerank_passthrough=True):
         rr.rerank = AsyncMock(side_effect=_pass)
     else:
         rr.rerank = AsyncMock(return_value=None)
+    # No user-level default rerank model by default; tests override to exercise the
+    # project-unset → user-default fallback.
+    rr.get_default_rerank = AsyncMock(return_value=None)
     return book, embed, rr
 
 
@@ -155,3 +176,242 @@ async def test_lexical_mode_skips_rerank(embed, find):
     rr.rerank.assert_not_awaited()  # lexical is clean → no rerank
     embed.assert_not_awaited()      # semantic leg skipped
     assert [h["surface"] for h in out.hits] == ["draft"]
+
+
+@pytest.mark.asyncio
+@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
+async def test_no_project_rerank_falls_back_to_user_default(embed, find):
+    # Project has NO per-project rerank model, but the user has a DEFAULT rerank
+    # model (provider-registry user_default_models) → rerank runs with it.
+    embed.return_value = [0.1] * 1024
+    find.return_value = [_passage_hit()]
+    book, emb, rr = _clients(lex_hits=[_lex_hit()])
+    rr.get_default_rerank = AsyncMock(return_value="44444444-4444-4444-4444-444444444444")
+    out = await run_hybrid_search(
+        user_id=_USER, book_id=_BOOK, query="姜子牙", project=_project(rerank_model=None),
+        book_client=book, embedding_client=emb, reranker_client=rr,
+    )
+    rr.get_default_rerank.assert_awaited_once()
+    rr.rerank.assert_awaited()  # ran via the user-default model
+    # the resolved default model_ref is passed through to the rerank call
+    assert rr.rerank.await_args.kwargs["model_ref"] == "44444444-4444-4444-4444-444444444444"
+    assert "rerank" not in out.degraded
+
+
+@pytest.mark.asyncio
+@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
+async def test_no_rerank_anywhere_marks_not_configured(embed, find):
+    # No per-project model AND no user default → skip rerank, mark degraded.
+    embed.return_value = [0.1] * 1024
+    find.return_value = [_passage_hit()]
+    book, emb, rr = _clients(lex_hits=[_lex_hit()])  # get_default_rerank → None
+    out = await run_hybrid_search(
+        user_id=_USER, book_id=_BOOK, query="姜子牙", project=_project(rerank_model=None),
+        book_client=book, embedding_client=emb, reranker_client=rr,
+    )
+    rr.rerank.assert_not_awaited()
+    assert out.degraded.get("rerank") == "not_configured"
+
+
+# ── D-RAWSEARCH-CANON-WIRING ────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
+async def test_surface_canon_default_excludes_drafts_both_legs(embed, find):
+    """Default surface=canon → semantic include_drafts=False AND lexical surface=canon
+    (the latter was previously unset → book-service defaulted to draft, a leak)."""
+    embed.return_value = [0.1] * 1024
+    find.return_value = [_passage_hit()]
+    book, emb, rr = _clients(lex_hits=[_lex_hit()])
+    await run_hybrid_search(
+        user_id=_USER, book_id=_BOOK, query="姜子牙", project=_project(),
+        book_client=book, embedding_client=emb, reranker_client=rr,
+    )
+    assert find.await_args.kwargs["include_drafts"] is False
+    assert book.lexical_search.await_args.kwargs["surface"] == "canon"
+
+
+@pytest.mark.asyncio
+@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
+async def test_surface_all_includes_drafts_both_legs(embed, find):
+    """surface=all → semantic include_drafts=True AND lexical surface=all."""
+    embed.return_value = [0.1] * 1024
+    find.return_value = [_passage_hit()]
+    book, emb, rr = _clients(lex_hits=[_lex_hit()])
+    await run_hybrid_search(
+        user_id=_USER, book_id=_BOOK, query="姜子牙", project=_project(),
+        book_client=book, embedding_client=emb, reranker_client=rr,
+        surface="all",
+    )
+    assert find.await_args.kwargs["include_drafts"] is True
+    assert book.lexical_search.await_args.kwargs["surface"] == "all"
+
+
+# ── KG-ML M4: language-aware retrieval ──────────────────────────────────────
+
+
+def test_passage_to_hit_carries_source_lang():
+    p = Passage(
+        id="p", user_id=str(_USER), source_type="chapter", source_id="ch1",
+        chunk_index=0, text="t", source_lang="vi",
+    )
+    assert passage_to_hit(PassageSearchHit(passage=p, raw_score=0.9))["sourceLang"] == "vi"
+
+
+@pytest.mark.asyncio
+@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
+async def test_pref_lang_orders_matching_first_rerank_off(embed, find):
+    """A vi reader's pref lifts the vi passage above the zh one (rerank OFF)."""
+    embed.return_value = [0.1] * 1024
+    find.return_value = [
+        _passage_hit(source_lang="zh", source_id="ch-zh"),
+        _passage_hit(source_lang="vi", source_id="ch-vi"),
+    ]
+    book, emb, rr = _clients(lex_hits=None)
+    out = await run_hybrid_search(
+        user_id=_USER, book_id=_BOOK, query="Dracula", project=_project(),
+        book_client=book, embedding_client=emb, reranker_client=rr,
+        mode="semantic", rerank=False, pref_lang="vi",
+    )
+    assert out.hits[0]["sourceLang"] == "vi"
+    assert out.hits[0]["langMatch"] is True
+    rr.rerank.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
+async def test_pref_lang_survives_rerank(embed, find):
+    """/review-impl HIGH regression — the language preference is the FINAL pass,
+    so it survives the cross-encoder rerank (which re-sorts the whole pool by its
+    own relevance and would otherwise discard a pre-rerank boost). Rerank is ON
+    (project has a model + passthrough reranker); a vi reader still gets vi #0."""
+    embed.return_value = [0.1] * 1024
+    # rerank passthrough scores in input order (0.9, 0.85, …) → without the final
+    # language pass, the zh passage (returned first) would stay #0.
+    find.return_value = [
+        _passage_hit(source_lang="zh", source_id="ch-zh"),
+        _passage_hit(source_lang="vi", source_id="ch-vi"),
+    ]
+    book, emb, rr = _clients(lex_hits=None)  # rerank passthrough (default)
+    out = await run_hybrid_search(
+        user_id=_USER, book_id=_BOOK, query="Dracula", project=_project(),
+        book_client=book, embedding_client=emb, reranker_client=rr,
+        mode="semantic", rerank=True, pref_lang="vi",
+    )
+    rr.rerank.assert_awaited()  # rerank really ran
+    assert out.hits[0]["sourceLang"] == "vi"
+    assert out.hits[0]["langMatch"] is True
+    # soft, not a filter: the zh passage still present, just after
+    assert {h["sourceLang"] for h in out.hits} == {"vi", "zh"}
+
+
+@pytest.mark.asyncio
+@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
+async def test_pref_lang_wins_per_chapter_cap_under_rerank(embed, find):
+    """The language pass runs BEFORE the per-chapter cap, so for a chapter with
+    both a vi and an en passage (same chapterId), the vi one wins the single
+    chapter=granularity slot for a vi reader — even with rerank on."""
+    embed.return_value = [0.1] * 1024
+    find.return_value = [  # SAME source_id → one chapter, two languages
+        _passage_hit(chunk_index=0, source_lang="en", source_id="ch-1"),
+        _passage_hit(chunk_index=1, source_lang="vi", source_id="ch-1"),
+    ]
+    book, emb, rr = _clients(lex_hits=None)
+    out = await run_hybrid_search(
+        user_id=_USER, book_id=_BOOK, query="Dracula", project=_project(),
+        book_client=book, embedding_client=emb, reranker_client=rr,
+        mode="semantic", granularity="chapter", rerank=True, pref_lang="vi",
+    )
+    assert len(out.hits) == 1  # cap=1 per chapter
+    assert out.hits[0]["sourceLang"] == "vi"
+
+
+@pytest.mark.asyncio
+@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
+async def test_no_pref_lang_leaves_order_unboosted(embed, find):
+    """pref_lang=None (wiki path / no reader pref) → no langMatch annotation."""
+    embed.return_value = [0.1] * 1024
+    find.return_value = [
+        _passage_hit(score=0.95, source_lang="zh", source_id="ch-zh"),
+        _passage_hit(score=0.80, source_lang="vi", source_id="ch-vi"),
+    ]
+    book, emb, rr = _clients(lex_hits=None)
+    out = await run_hybrid_search(
+        user_id=_USER, book_id=_BOOK, query="Dracula", project=_project(),
+        book_client=book, embedding_client=emb, reranker_client=rr,
+        mode="semantic", rerank=False,  # pref_lang defaults None
+    )
+    assert all("langMatch" not in h for h in out.hits)
+    assert out.hits[0]["sourceLang"] == "zh"  # higher cosine wins, unboosted
+
+
+@pytest.mark.asyncio
+@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
+async def test_cjk_query_runs_cjk_lexical_leg(embed, find, _stub_cjk_leg):
+    """KG-ML M6 — a CJK query fuses the cjk full-text leg; its passage shows up
+    even when lexical (trigram) + semantic legs are empty."""
+    embed.return_value = [0.1] * 1024
+    find.return_value = []  # semantic empty
+    _stub_cjk_leg.return_value = [_passage_hit(source_lang="zh", source_id="ch-zh")]
+    book, emb, rr = _clients(lex_hits=[])  # trigram empty
+    out = await run_hybrid_search(
+        user_id=_USER, book_id=_BOOK, query="姜子牙", project=_project(),
+        book_client=book, embedding_client=emb, reranker_client=rr, rerank=False,
+    )
+    _stub_cjk_leg.assert_awaited_once()
+    zh_hits = [h for h in out.hits if h["sourceLang"] == "zh"]
+    assert zh_hits
+    # KG-ML M6 (D-KG-ML-M6-MATCHTYPE cleared) — cjk-leg hits label "lexical",
+    # not the passage default "semantic".
+    assert all(h["matchType"] == "lexical" for h in zh_hits)
+
+
+@pytest.mark.asyncio
+@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
+async def test_latin_query_skips_cjk_leg(embed, find, _stub_cjk_leg):
+    """A Latin-script query never invokes the cjk leg — pre-M6 behavior is
+    byte-identical for non-CJK retrieval (the leg is pure overhead otherwise)."""
+    embed.return_value = [0.1] * 1024
+    find.return_value = [_passage_hit(source_lang="en", source_id="ch-en")]
+    book, emb, rr = _clients(lex_hits=[])
+    out = await run_hybrid_search(
+        user_id=_USER, book_id=_BOOK, query="Dracula", project=_project(),
+        book_client=book, embedding_client=emb, reranker_client=rr, rerank=False,
+    )
+    _stub_cjk_leg.assert_not_called()
+    assert "cjk_lexical" not in out.degraded
+
+
+def test_passage_to_hit_surface_reflects_canon_flag():
+    """passage_to_hit labels surface from the node's canon flag, not a hardcode."""
+    canon_p = Passage(
+        id="c", user_id=str(_USER), source_type="chapter", source_id="ch1",
+        chunk_index=0, text="t", canon=True,
+    )
+    draft_p = Passage(
+        id="d", user_id=str(_USER), source_type="chapter", source_id="ch2",
+        chunk_index=0, text="t", canon=False,
+    )
+    assert passage_to_hit(PassageSearchHit(passage=canon_p, raw_score=0.9))["surface"] == "canon"
+    assert passage_to_hit(PassageSearchHit(passage=draft_p, raw_score=0.9))["surface"] == "draft"

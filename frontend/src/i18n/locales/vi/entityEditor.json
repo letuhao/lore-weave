@@ -20,6 +20,8 @@
       "attributes": "Thuộc tính",
       "evidences": "Dẫn chứng"
     },
+    "viewing_in_language": "Đang xem bằng {{lang}}",
+    "viewing_original": "Gốc ({{lang}})",
     "translation_lang_aria": "Ngôn ngữ bản dịch",
     "no_translation": "Không dịch",
     "add_language": "+ Thêm ngôn ngữ...",
@@ -50,6 +52,7 @@
     "save": "Lưu",
     "delete_aria": "Xóa bản dịch",
     "placeholder": "Bản dịch {{lang}}...",
+    "tags_add": "+ Thêm bí danh",
     "delete_title": "Xóa bản dịch?",
     "delete_desc": "Bản dịch {{lang}} cho thuộc tính này sẽ bị xóa vĩnh viễn.",
     "delete_confirm": "Xóa",

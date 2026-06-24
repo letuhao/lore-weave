@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { booksApi } from '@/features/books/api';
 import { Skeleton } from '@/components/shared/Skeleton';
+import { CollaboratorsPanel } from '@/features/books/components/CollaboratorsPanel';
 import { cn } from '@/lib/utils';
 
 type Visibility = 'private' | 'unlisted' | 'public';
@@ -147,6 +148,11 @@ export function SharingTab({ bookId }: { bookId: string }) {
           </button>
         </div>
       )}
+
+      {/* E0-5 — owner-only collaborators (renders nothing for a non-owner). */}
+      <div className="border-t pt-6">
+        <CollaboratorsPanel bookId={bookId} />
+      </div>
     </div>
   );
 }

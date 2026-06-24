@@ -10,6 +10,10 @@ import (
 
 type entitiesByIDsRequest struct {
 	EntityIDs []string `json:"entity_ids"`
+	// Language (S6, optional): when set, each entity's aliases are augmented with its
+	// per-language alias SET for that language (source ∪ target, deduped). Omitted →
+	// source-language aliases only (back-compat).
+	Language string `json:"language"`
 }
 
 type entitiesByIDsResponse struct {
@@ -53,7 +57,7 @@ func (s *Server) internalEntitiesByIDs(w http.ResponseWriter, r *http.Request) {
 	query := fmt.Sprintf(`
 		SELECT %s
 		FROM glossary_entities e
-		JOIN entity_kinds ek ON ek.kind_id = e.kind_id
+		JOIN book_kinds ek ON ek.book_kind_id = e.kind_id
 		WHERE e.book_id = $1
 		  AND e.deleted_at IS NULL
 		  AND e.entity_id = ANY($2::uuid[])`, selectCols)
@@ -77,6 +81,9 @@ func (s *Server) internalEntitiesByIDs(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "by-ids rows error")
 		return
 	}
+
+	// S6: augment aliases with the requested language's alias set (best-effort).
+	s.composePerLanguageAliases(r.Context(), bookID, items, req.Language)
 
 	writeJSON(w, http.StatusOK, entitiesByIDsResponse{Items: items})
 }

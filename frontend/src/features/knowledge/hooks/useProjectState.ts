@@ -57,6 +57,8 @@ const ACTION_KEYS = {
   // error toast reads "Confirm model change: <error>" rather than the
   // generic "Confirm: <error>" from the shared confirm button.
   confirmModelChange: 'projects.state.actions.confirmModelChange',
+  // C7 raise-cap (KN-7) — in-flight concurrency-cap change.
+  setConcurrency: 'projects.state.actions.setConcurrency',
 } as const;
 
 // Exported so ProjectRow can share the same keys for the destructive
@@ -117,6 +119,9 @@ function toSummary(wire: ExtractionJobWire): ExtractionJobSummary {
     max_spend_usd: wire.max_spend_usd,
     started_at: wire.started_at,
     error_message: wire.error_message,
+    // C7 raise-cap (KN-7) — `?? null` so a rollout-window response that
+    // omits the field reads as "unbounded" rather than `undefined`.
+    concurrency_level: wire.concurrency_level ?? null,
   };
 }
 
@@ -330,6 +335,19 @@ export function useProjectState(project: Project): UseProjectStateResult {
       onCancel: () => {
         if (!token) return;
         void runAction(t, ACTION_KEYS.cancel, () => knowledgeApi.cancelExtraction(project.project_id, token), invalidate);
+      },
+      // C7 raise-cap (KN-7) — PATCH the running job's concurrency cap.
+      // job_id is passed by the card (it owns the live job summary); the
+      // shared runAction surfaces BE 409/422 as a toast and re-invalidates
+      // so the next poll reflects the new cap.
+      onSetConcurrency: (jobId: string, level: number) => {
+        if (!token) return;
+        void runAction(
+          t,
+          ACTION_KEYS.setConcurrency,
+          () => knowledgeApi.updateJobConcurrency(jobId, level, token),
+          invalidate,
+        );
       },
       onDeleteGraph: () => {
         if (!token) return;

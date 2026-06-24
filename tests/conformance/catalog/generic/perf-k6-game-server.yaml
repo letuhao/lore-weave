@@ -1,0 +1,9 @@
+id: perf-k6-game-server
+description: "S7/F4 — open-loop load vs game-server (PRR-20 second public WS entry). k6 constant-arrival-rate (coordinated-omission-correct) over /livez + /matchmake, plus a colyseus.js WS echo round-trip, against a dev static-token boot. Produces p50/p99/p999 summary artifacts. NO threshold asserted (baselines-first)."
+invariant: I-perf-edge-load
+kind: live-probe
+# live-probe: notrun when k6/node absent or game-server can't boot; runs on the
+# CI nightly perf job (which installs k6).
+command: ["bash", "scripts/perf/k6-game-server.sh"]
+requires: ["k6", "node"]
+skip_when: []

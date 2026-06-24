@@ -15,6 +15,26 @@ export function syncPrefsToServer(key: string, value: unknown, token: string | n
 }
 
 /**
+ * Awaitable write-through of a single preference key. Unlike syncPrefsToServer
+ * (fire-and-forget), this resolves only after the PATCH settles, so a caller can
+ * order a follow-up action (e.g. navigation) AFTER the durable write. Resolves to
+ * true on success, false on failure (caller decides whether to proceed anyway).
+ */
+export async function savePrefToServer(key: string, value: unknown, token: string | null | undefined): Promise<boolean> {
+  if (!token) return false;
+  try {
+    await apiJson('/v1/me/preferences', {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify({ prefs: { [key]: value } }),
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Load a preference key from the server-side prefs object.
  * Returns undefined if not found or not authenticated.
  */

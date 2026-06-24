@@ -40,6 +40,9 @@ function defaultProps(overrides = {}) {
     afterChronological: null as number | null,
     beforeChronological: null as number | null,
     onChronologicalRangeChange: vi.fn(),
+    eventDateFrom: null as string | null,
+    eventDateTo: null as string | null,
+    onDateRangeChange: vi.fn(),
     ...overrides,
   };
 }
@@ -221,5 +224,49 @@ describe('TimelineFilters', () => {
       },
       { timeout: 1500 },
     );
+  });
+
+  // ── D-K19e-α-02 — ISO date-range filter ──────────────────────────────
+  it('renders the ISO date-range inputs', () => {
+    render(<TimelineFilters {...defaultProps()} />);
+    expect(screen.getByTestId('timeline-filter-date-from')).toBeInTheDocument();
+    expect(screen.getByTestId('timeline-filter-date-to')).toBeInTheDocument();
+  });
+
+  it('debounces a valid ISO date to onDateRangeChange', async () => {
+    const onDateRangeChange = vi.fn();
+    render(<TimelineFilters {...defaultProps({ onDateRangeChange })} />);
+    const from = screen.getByTestId('timeline-filter-date-from');
+    fireEvent.change(from, { target: { value: '2024' } });
+    fireEvent.change(from, { target: { value: '2024-03' } });
+    expect(onDateRangeChange).not.toHaveBeenCalled();
+    await waitFor(() => expect(onDateRangeChange).toHaveBeenCalled(), {
+      timeout: 1500,
+    });
+    expect(onDateRangeChange).toHaveBeenLastCalledWith('2024-03', null);
+  });
+
+  it('shows the invalid hint and does NOT commit a malformed date', async () => {
+    const onDateRangeChange = vi.fn();
+    render(<TimelineFilters {...defaultProps({ onDateRangeChange })} />);
+    fireEvent.change(screen.getByTestId('timeline-filter-date-from'), {
+      target: { value: '2024-13-99' }, // month 13 / day 99 → invalid
+    });
+    expect(
+      screen.getByTestId('timeline-filter-date-invalid'),
+    ).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 500));
+    expect(onDateRangeChange).not.toHaveBeenCalled(); // never sends a 422-bound value
+  });
+
+  it('shows the reversed-range hint when from > to', () => {
+    render(
+      <TimelineFilters
+        {...defaultProps({ eventDateFrom: '2025', eventDateTo: '2020' })}
+      />,
+    );
+    expect(
+      screen.getByTestId('timeline-filter-date-reversed'),
+    ).toBeInTheDocument();
   });
 });

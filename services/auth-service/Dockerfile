@@ -8,6 +8,9 @@ RUN apk add --no-cache git
 # context: .. and dockerfile: services/auth-service/Dockerfile.
 # Copy the shared module first (separate cache layer), then service files.
 COPY sdks/go/observability /src/sdks/go/observability
+# contracts/adminjwt (admin-JWT issuance 074/075 + admin-session exchange); its
+# replace (=> ../../contracts/adminjwt) must resolve inside the container.
+COPY contracts/adminjwt /src/contracts/adminjwt
 COPY services/auth-service /src/services/auth-service
 
 WORKDIR /src/services/auth-service

@@ -10,6 +10,8 @@ function fakeFederation(over: Partial<FederationService>): FederationService {
   return {
     catalog: () => [],
     executeTool: async () => ({ ok: true }),
+    providerAvailability: () => [],
+    isPartial: () => false,
     ...over,
   } as unknown as FederationService;
 }
@@ -29,12 +31,40 @@ describe('headerValue / extractEnvelope', () => {
     });
     expect(env).toEqual({ userId: 'u1', sessionId: 's1', traceId: 'tr1' });
   });
+
+  it('lifts X-Project-Id into the envelope so project-scoped tools resolve downstream', () => {
+    const env = extractEnvelope({
+      'x-user-id': 'u1',
+      'x-project-id': 'proj-9',
+    });
+    expect(env.projectId).toBe('proj-9');
+    // omitted when the header is absent (so it is forwarded only when present)
+    expect(extractEnvelope({ 'x-user-id': 'u1' }).projectId).toBeUndefined();
+  });
 });
 
 describe('handleListTools', () => {
-  it('returns the federated catalog', () => {
+  it('returns the federated catalog with an availability _meta (H10)', () => {
     const fed = fakeFederation({ catalog: () => [{ name: 'memory_search' }] as any });
-    expect(handleListTools(fed)).toEqual({ tools: [{ name: 'memory_search' }] });
+    expect(handleListTools(fed)).toEqual({
+      tools: [{ name: 'memory_search' }],
+      _meta: { unavailable_providers: [], partial: false },
+    });
+  });
+
+  it('reports a down provider in _meta.unavailable_providers (H10)', () => {
+    const fed = fakeFederation({
+      catalog: () => [] as any,
+      providerAvailability: () => [
+        { name: 'knowledge', available: true },
+        { name: 'book', available: false },
+      ],
+      isPartial: () => true,
+    });
+    expect(handleListTools(fed)._meta).toEqual({
+      unavailable_providers: ['book'],
+      partial: true,
+    });
   });
 });
 
@@ -60,6 +90,19 @@ describe('handleCallTool', () => {
     expect(res).toEqual({ content: [{ type: 'text', text: 'ok' }] });
   });
 
+  it('carries X-Project-Id through the envelope to executeTool (M1 fix)', async () => {
+    const executeTool = jest.fn().mockResolvedValue({ content: [] });
+    const fed = fakeFederation({ executeTool });
+    await handleCallTool(
+      fed,
+      'kg_build_wiki',
+      { model_ref: 'm' },
+      { 'x-user-id': 'u1', 'x-project-id': 'proj-9' },
+    );
+    const env = executeTool.mock.calls[0][2];
+    expect(env.projectId).toBe('proj-9');
+  });
+
   it('turns a provider failure into an MCP tool error (isError), not a throw', async () => {
     const fed = fakeFederation({
       executeTool: async () => {
@@ -68,6 +111,23 @@ describe('handleCallTool', () => {
     });
     const res = await handleCallTool(fed, 'memory_search', {}, {});
     expect(res.isError).toBe(true);
-    expect(res.content[0].text).toContain('provider down');
+    // Generic LLM-facing message — names the tool, not the failure detail.
+    expect(res.content[0].text).toBe("tool 'memory_search' failed: provider error");
+  });
+
+  it('does NOT leak the internal provider URL into the LLM-visible tool-error text', async () => {
+    const fed = fakeFederation({
+      executeTool: async () => {
+        // A real transport failure embeds the internal endpoint in its message.
+        throw new Error('fetch failed: connect ECONNREFUSED http://book-service:8082/mcp');
+      },
+    });
+    const res = await handleCallTool(fed, 'book_create', {}, {});
+    expect(res.isError).toBe(true);
+    const text = res.content[0].text as string;
+    expect(text).not.toContain('book-service');
+    expect(text).not.toContain('8082');
+    expect(text).not.toContain('ECONNREFUSED');
+    expect(text).toBe("tool 'book_create' failed: provider error");
   });
 });

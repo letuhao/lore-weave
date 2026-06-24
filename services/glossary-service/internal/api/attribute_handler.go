@@ -43,9 +43,9 @@ func (s *Server) scanAttrValueBasic(ctx context.Context, attrValueID uuid.UUID) 
 	err := s.pool.QueryRow(ctx, `
 		SELECT eav.attr_value_id, eav.entity_id, eav.attr_def_id,
 		       eav.original_language, eav.original_value,
-		       ad.attr_def_id, ad.code, ad.name, ad.field_type, ad.is_required, ad.sort_order
+		       ad.attr_id, ad.code, ad.name, ad.field_type, ad.is_required, ad.sort_order
 		FROM entity_attribute_values eav
-		JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+		JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
 		WHERE eav.attr_value_id = $1`,
 		attrValueID,
 	).Scan(
@@ -125,6 +125,10 @@ func (s *Server) patchAttributeValue(w http.ResponseWriter, r *http.Request) {
 	setClauses := []string{}
 	args := []any{}
 	argN := 1
+	// D-GLOSSARY-MULTIROW slice 2 — the new SOURCE value when original_value is patched,
+	// so the per-item child rows can be synced (verified) after the UPDATE. nil ⇒ value
+	// not touched by this PATCH.
+	var newSourceValue *string
 
 	if raw, ok := in["original_language"]; ok {
 		var lang string
@@ -146,11 +150,34 @@ func (s *Server) patchAttributeValue(w http.ResponseWriter, r *http.Request) {
 		setClauses = append(setClauses, fmt.Sprintf("original_value = $%d", argN))
 		args = append(args, val)
 		argN++
+		// MERGE/M5 (INV-8) — a human authoring a SOURCE value marks it 'verified', so a
+		// later machine re-extraction's verified-clobber guard refuses to overwrite it.
+		// Literal (no placeholder) so it rides both the If-Match guard-CTE and plain paths.
+		setClauses = append(setClauses, "confidence = 'verified'")
+		v := val
+		newSourceValue = &v
 	}
 
 	ctx := r.Context()
 
 	if len(setClauses) > 0 {
+		// Transactional (parity with patchEntity): the attr UPDATE, the K3.3b
+		// short_description regen, and the glossary.entity_updated event commit
+		// atomically — and the before/after snapshot is captured consistently
+		// with the write (no TOCTOU). Without this event, a manual attribute edit
+		// (the UI's primary edit path) never reaches the staleness consumer,
+		// glossary_sync→Neo4j, or learning-service (D-WIKI-W2-ATTR-EMIT).
+		tx, err := s.pool.Begin(ctx)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "begin tx failed")
+			return
+		}
+		defer tx.Rollback(ctx)
+
+		// BEFORE snapshot (pre-edit; the subsequent UPDATE locks the row).
+		beforeName, beforeKind, beforeAliases, beforeShortDesc, beforeOK :=
+			loadEntityEventFields(ctx, tx, entityID)
+
 		args = append(args, attrValueID, entityID)
 		if ifMatch != "" {
 			// H5: gate both writes on the entity version in-SQL (no TOCTOU). The
@@ -169,7 +196,7 @@ func (s *Server) patchAttributeValue(w http.ResponseWriter, r *http.Request) {
 				UPDATE glossary_entities SET updated_at = now()
 				WHERE entity_id = $%d AND updated_at = $%d::timestamptz`,
 				argN+1, strings.Join(setClauses, ", "), argN, argN+2, argN+1, argN+2)
-			tag, err := s.pool.Exec(ctx, updateSQL, args...)
+			tag, err := tx.Exec(ctx, updateSQL, args...)
 			if err != nil {
 				writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "update failed")
 				return
@@ -187,10 +214,68 @@ func (s *Server) patchAttributeValue(w http.ResponseWriter, r *http.Request) {
 				)
 				UPDATE glossary_entities SET updated_at = now() WHERE entity_id = $%d`,
 				strings.Join(setClauses, ", "), argN, argN+1)
-			if _, err := s.pool.Exec(ctx, updateSQL, args...); err != nil {
+			if _, err := tx.Exec(ctx, updateSQL, args...); err != nil {
 				writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "update failed")
 				return
 			}
+		}
+
+		// D-GLOSSARY-MULTIROW slice 2 — sync the per-item child rows for a LIST value
+		// (scalar ⇒ no-op), stamped 'verified' (a human edit). Keeps items in step with
+		// the editor's original_value so per-item verify/tombstone and a later append see
+		// the curated list. In-tx → atomic with the edit.
+		if newSourceValue != nil {
+			if err := syncListItemsByID(ctx, tx, attrValueID, *newSourceValue, "verified", nil); err != nil {
+				writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "item sync failed")
+				return
+			}
+		}
+
+		// K3.3b auto-regen IN-TX: when the description attribute is the one being
+		// patched AND short_description is still auto-generated, rebuild it from
+		// the new text — so the AFTER snapshot + the event reflect it. Best-effort:
+		// a regen failure is logged, never rolls back the edit.
+		var attrCode string
+		if err := tx.QueryRow(ctx, `
+			SELECT ad.code FROM entity_attribute_values eav
+			JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
+			WHERE eav.attr_value_id = $1`, attrValueID).Scan(&attrCode); err != nil {
+			slog.Warn("patch-attr: attr code lookup failed (non-fatal)",
+				"attr_value_id", attrValueID.String(), "error", err.Error())
+		}
+		if attrCode == "description" {
+			if err := s.regenerateAutoShortDescription(ctx, tx, entityID); err != nil {
+				slog.Warn("regenerate short_description failed",
+					"entity_id", entityID.String(), "error", err.Error())
+			}
+		}
+
+		// AFTER snapshot + ONE transactional user-correction event (parity with
+		// patchEntity). A book-owner PATCH is a user correction by construction
+		// (verifyBookOwner above → actor = owner).
+		afterName, afterKind, afterAliases, afterShortDesc, _ :=
+			loadEntityEventFields(ctx, tx, entityID)
+		var before *EntitySnapshot
+		if beforeOK {
+			before = &EntitySnapshot{
+				Name:             beforeName,
+				Kind:             beforeKind,
+				Aliases:          beforeAliases,
+				ShortDescription: beforeShortDesc,
+			}
+		}
+		payload := buildEntityEventPayload(
+			bookID.String(), entityID.String(),
+			afterName, afterKind, afterAliases, afterShortDesc, "updated",
+			"user", userID.String(), before,
+		)
+		if err := emitEntityUpdatedTx(ctx, tx, entityID, payload); err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "outbox emit failed")
+			return
+		}
+		if err := tx.Commit(ctx); err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "commit failed")
+			return
 		}
 	}
 
@@ -200,47 +285,46 @@ func (s *Server) patchAttributeValue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// K3.3b auto-regen: when the description attribute is the one being
-	// patched AND the entity's short_description is still auto-generated
-	// (not user-overridden), rebuild short_description from the new text.
-	// Failures are logged but don't fail the PATCH — regeneration is
-	// best-effort.
-	if av.AttributeDef.Code == "description" {
-		if err := s.regenerateAutoShortDescription(ctx, entityID); err != nil {
-			slog.Warn("regenerate short_description failed",
-				"entity_id", entityID.String(), "error", err.Error())
-		}
-	}
-
 	writeJSON(w, http.StatusOK, av)
+}
+
+// pgxExecQuerier is the read+write interface shared by *pgxpool.Pool and
+// pgx.Tx, so a helper can run either standalone (post-commit, on the pool) or
+// enlisted in an open transaction (so its writes commit atomically with the
+// caller's edit).
+type pgxExecQuerier interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 }
 
 // regenerateAutoShortDescription recomputes short_description from the
 // current name/description/kind and writes it back — but only if the
 // entity's short_description_auto flag is still true. Used by the
 // patchAttributeValue hook so editing a description keeps the auto
-// summary in sync.
-func (s *Server) regenerateAutoShortDescription(ctx context.Context, entityID uuid.UUID) error {
+// summary in sync. `q` is the pool (post-commit callers) or the open tx
+// (patchAttributeValue, so the regenerated summary lands in the SAME tx as the
+// edit and is captured by the entity_updated before/after snapshot).
+func (s *Server) regenerateAutoShortDescription(ctx context.Context, q pgxExecQuerier, entityID uuid.UUID) error {
 	var (
 		name     string
 		desc     string
 		kindName string
 		auto     bool
 	)
-	err := s.pool.QueryRow(ctx, `
+	err := q.QueryRow(ctx, `
 		SELECT
 		  COALESCE(e.cached_name, ''),
 		  COALESCE((
 		    SELECT av.original_value
 		    FROM entity_attribute_values av
-		    JOIN attribute_definitions ad ON ad.attr_def_id = av.attr_def_id
+		    JOIN book_attributes ad ON ad.attr_id = av.attr_def_id
 		    WHERE av.entity_id = e.entity_id AND ad.code = 'description'
 		    LIMIT 1
 		  ), ''),
 		  ek.name,
 		  e.short_description_auto
 		FROM glossary_entities e
-		JOIN entity_kinds ek ON ek.kind_id = e.kind_id
+		JOIN book_kinds ek ON ek.book_kind_id = e.kind_id
 		WHERE e.entity_id = $1`, entityID,
 	).Scan(&name, &desc, &kindName, &auto)
 	if err != nil {
@@ -262,7 +346,7 @@ func (s *Server) regenerateAutoShortDescription(ctx context.Context, entityID uu
 	// on top of the eav-trigger's one. Reduces the common description-PATCH
 	// path from 3 recalcs down to 1 (when short_description is unchanged)
 	// or 2 (when it legitimately changed).
-	_, err = s.pool.Exec(ctx, `
+	_, err = q.Exec(ctx, `
 		UPDATE glossary_entities
 		SET short_description = $1
 		WHERE entity_id = $2

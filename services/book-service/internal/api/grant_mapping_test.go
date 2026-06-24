@@ -118,6 +118,9 @@ func readRoutes() []grantRoute {
 		{http.MethodGet, "/v1/books/{b}/chapters/{c}/media-versions", GrantView, ``},
 		{http.MethodGet, "/v1/books/{b}/chapters/{c}/audio", GrantView, ``},
 		{http.MethodGet, "/v1/books/{b}/imports", GrantView, ``},
+		// KG-ML M3 — reader-language read is view-gated (canViewOrPublic): a
+		// non-grantee on a private book gets 404 (no existence oracle).
+		{http.MethodGet, "/v1/books/{b}/reader-language", GrantView, ``},
 	}
 }
 

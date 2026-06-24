@@ -1,0 +1,115 @@
+{
+  "title": "Tiêu chuẩn thuật ngữ",
+  "subtitle": "Các thể loại, loại và thuộc tính có thể tái sử dụng của bạn. Nhân bản một mặc định hệ thống vào tầng của bạn để tùy chỉnh, hoặc tự tạo riêng.",
+  "tabs_aria": "Các phần tiêu chuẩn",
+  "tab": {
+    "genres": "Thể loại",
+    "kinds": "Loại",
+    "attributes": "Thuộc tính"
+  },
+  "loading": "Đang tải tiêu chuẩn…",
+  "error": "Không tải được tiêu chuẩn của bạn. Hãy thử lại.",
+  "empty": {
+    "genres": "Chưa có thể loại nào.",
+    "kinds": "Chưa có loại nào."
+  },
+  "action": {
+    "clone": "Nhân bản vào tầng của tôi",
+    "yours": "Của bạn",
+    "edit": "Sửa",
+    "delete": "Xóa"
+  },
+  "genres": { "new": "Thể loại mới" },
+  "kinds": { "new": "Loại mới" },
+  "toast": {
+    "cloned": "Đã nhân bản “{{name}}” vào tiêu chuẩn của bạn",
+    "cloneError": "Không thể nhân bản “{{name}}”",
+    "created": "Đã tạo “{{name}}”",
+    "createError": "Không thể tạo",
+    "saved": "Đã lưu",
+    "saveError": "Không thể lưu",
+    "deleted": "Đã chuyển “{{name}}” vào thùng rác",
+    "deleteError": "Không thể xóa “{{name}}”",
+    "attrCreated": "Đã thêm “{{name}}”",
+    "attrError": "Không thể thêm “{{name}}”",
+    "linksSaved": "Đã cập nhật thể loại",
+    "linksError": "Không thể cập nhật thể loại"
+  },
+  "attributes": {
+    "no_user_kinds": "Hãy nhân bản hoặc tạo một loại trước — thuộc tính gắn vào loại của riêng bạn.",
+    "no_user_genres": "Hãy nhân bản hoặc tạo một thể loại trước — thuộc tính gắn vào thể loại của riêng bạn.",
+    "pick_kind": "Chọn một loại…",
+    "pick_genre": "Chọn một thể loại…",
+    "pick_both": "Chọn một loại và một thể loại để xem và thêm thuộc tính.",
+    "new": "Thuộc tính mới",
+    "empty": "Chưa có thuộc tính nào cho cặp này.",
+    "system_ref": "Từ hệ thống (chỉ đọc)",
+    "your_attrs": "Thuộc tính của bạn"
+  },
+  "attrform": {
+    "title_create": "Thuộc tính mới",
+    "title_edit": "Sửa thuộc tính",
+    "name": "Tên",
+    "name_placeholder": "vd. Cấp bậc",
+    "name_required": "Tên là bắt buộc",
+    "code": "Mã",
+    "code_hint": "Tùy chọn — suy ra từ tên nếu để trống.",
+    "field_type": "Kiểu trường",
+    "required": "Bắt buộc",
+    "options": "Tùy chọn",
+    "options_hint": "Mỗi dòng một mục (cho select / tags).",
+    "cancel": "Hủy",
+    "create": "Thêm thuộc tính",
+    "save": "Lưu",
+    "saving": "Đang lưu…",
+    "ft": {
+      "text": "Văn bản",
+      "textarea": "Văn bản dài",
+      "select": "Chọn",
+      "number": "Số",
+      "date": "Ngày",
+      "tags": "Thẻ",
+      "url": "URL",
+      "boolean": "Có / Không"
+    }
+  },
+  "stdform": {
+    "title_create_genre": "Thể loại mới",
+    "title_edit_genre": "Sửa thể loại",
+    "title_create_kind": "Loại mới",
+    "title_edit_kind": "Sửa loại",
+    "name": "Tên",
+    "name_required": "Tên là bắt buộc",
+    "icon": "Biểu tượng",
+    "color": "Màu",
+    "code": "Mã",
+    "code_hint": "Tùy chọn — suy ra từ tên nếu để trống.",
+    "description": "Mô tả",
+    "cancel": "Hủy",
+    "create": "Tạo",
+    "save": "Lưu",
+    "saving": "Đang lưu…"
+  },
+  "links": {
+    "edit": "Thể loại",
+    "title": "Thể loại cho {{name}}",
+    "save": "Lưu",
+    "saving": "Đang lưu…",
+    "empty": "Chưa có thể loại người dùng để liên kết. Hãy nhân bản hoặc tạo một thể loại trước.",
+    "cancel": "Hủy"
+  },
+  "trash": {
+    "open": "Thùng rác",
+    "title": "Thùng rác",
+    "close": "Đóng",
+    "genres": "Thể loại",
+    "kinds": "Loại",
+    "empty_section": "Không có gì ở đây.",
+    "restore": "Khôi phục",
+    "purge": "Xóa vĩnh viễn",
+    "restored": "Đã khôi phục",
+    "restoreError": "Không thể khôi phục",
+    "purged": "Đã xóa vĩnh viễn",
+    "purgeError": "Không thể xóa"
+  }
+}

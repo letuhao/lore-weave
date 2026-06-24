@@ -20,6 +20,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from loreweave_extraction.reasoning_wire import reasoning_wire_fields
+
 from app.clients.book_profile_client import BookProfile
 from app.clients.llm_client import LLMClient
 from app.wiki.context import GenerationContext
@@ -75,9 +77,14 @@ async def _call_llm(
     messages: list[dict[str, str]],
     max_tokens: int,
     temperature: float,
+    reasoning_effort: str = "none",
 ) -> str | None:
     """One generation LLM call → the Markdown body, or ``None`` on any failure
-    (exception / non-completed job). A completed-but-contentless job → ``""``."""
+    (exception / non-completed job). A completed-but-contentless job → ``""``.
+
+    D-KG-WIKI-WORKER-GRADED-EFFORT: the stored ``wiki_gen_jobs.reasoning_effort``
+    (clamped at mint, W4) is applied to the prose-generation call — default
+    "none" emits NO wire fields (byte-identical for the prior path)."""
     try:
         job = await llm.submit_and_wait(
             user_id=user_id,
@@ -88,6 +95,9 @@ async def _call_llm(
                 "messages": messages,
                 "temperature": temperature,
                 "max_tokens": max_tokens,
+                # D-KG-WIKI-WORKER-GRADED-EFFORT — graded effort wire fields
+                # ({} default ⇒ unchanged for non-opt-in callers).
+                **reasoning_wire_fields(reasoning_effort),
             },
             job_meta={"feature": "wiki_generate"},
             transient_retry_budget=1,
@@ -117,6 +127,10 @@ async def generate_article(
     temperature: float = 0.3,
     max_attempts: int = 2,
     initial_corrective: str | None = None,
+    exemplars: list[tuple[str, str]] | None = None,
+    # D-KG-WIKI-WORKER-GRADED-EFFORT — graded effort for the prose call
+    # (default "none" ⇒ no wire fields, byte-identical for prior callers).
+    reasoning_effort: str = "none",
 ) -> GenerateResult:
     """Generate one grounded article IR for ``context``'s entity (bounded retry).
 
@@ -133,10 +147,12 @@ async def generate_article(
     for attempt in range(1, max_attempts + 1):
         messages = build_messages(
             brief=brief, profile=profile, items=context.items, corrective=corrective,
+            exemplars=exemplars,
         )
         markdown = await _call_llm(
             llm, user_id=user_id, model_source=model_source, model_ref=model_ref,
             messages=messages, max_tokens=max_tokens, temperature=temperature,
+            reasoning_effort=reasoning_effort,
         )
         if markdown is None:
             last = GenerateResult(status="llm_failed", attempts=attempt)

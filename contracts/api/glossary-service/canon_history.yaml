@@ -1,0 +1,193 @@
+openapi: 3.0.3
+info:
+  title: LoreWeave Glossary Service — Canon Change History API (L5.J)
+  version: 1.0.0
+  description: |
+    L5.J author-UI RPC contract. Read-only query interface over the
+    APPEND-ONLY canon_change_history table.
+
+    ## Scope (RAID cycle 27 DPS 3)
+
+      * GET /v1/canon/{book_id}/history
+          → bulk query — list change entries for an attribute path or
+            canon_entry_id, with optional reality_id + since filter.
+      * GET /v1/canon/entries/{canon_entry_id}/history
+          → entry-scoped query — list ALL changes for one canon row.
+
+    ## APPEND-ONLY discipline
+
+    There is NO PUT / PATCH / DELETE / POST surface on this contract.
+    The change-history table is APPEND-ONLY (writes happen through
+    canon_history_writer in meta-worker; the wire format has no
+    edit/delete affordance).
+
+    ## LOCKED decisions consumed
+
+      * **Q-L5-4**: HTTP/JSON V1; gRPC V2+. This spec is the canonical
+        V1 transport.
+      * **Q-L5A-1**: foundation owns ONLY the contract. The glossary-
+        service server impl is a separate sub-program.
+      * **Q-L5-3**: `canon_layer` enum = {`L1_axiom`, `L2_seeded`}.
+      * **Q-L1A-2**: change history conceptually lives in glossary DB;
+        the foundation ships migration proposal under
+        `contracts/migrations/glossary/0001_canon_change_history.up.sql`.
+
+    ## Auth
+
+    SVID-based mutual TLS per cycle-22 L4.M service ACL.
+
+servers:
+  - url: https://glossary-service.loreweave.dev
+
+paths:
+  /v1/canon/{book_id}/history:
+    get:
+      summary: List change history entries for a book attribute path
+      parameters:
+        - in: path
+          name: book_id
+          required: true
+          schema: { type: string, format: uuid }
+        - in: query
+          name: attribute_path
+          required: true
+          schema: { type: string }
+        - in: query
+          name: reality_id
+          schema: { type: string, format: uuid }
+          description: Optional per-reality filter
+        - in: query
+          name: since
+          schema: { type: string, format: date-time }
+          description: Return entries with recorded_at >= since
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 1000 }
+      responses:
+        '200':
+          description: List of change entries (ordered by recorded_at ASC)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HistoryListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /v1/canon/entries/{canon_entry_id}/history:
+    get:
+      summary: List all change history entries for a canon row
+      parameters:
+        - in: path
+          name: canon_entry_id
+          required: true
+          schema: { type: string, format: uuid }
+        - in: query
+          name: reality_id
+          schema: { type: string, format: uuid }
+        - in: query
+          name: since
+          schema: { type: string, format: date-time }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 1000 }
+      responses:
+        '200':
+          description: List of change entries (ordered by recorded_at ASC)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HistoryListResponse'
+        '404':
+          description: canon_entry_id has no history
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+components:
+  schemas:
+    ChangeEntry:
+      type: object
+      required:
+        - change_id
+        - canon_entry_id
+        - book_id
+        - attribute_path
+        - kind
+        - new_value
+        - canon_layer
+        - source_event_id
+        - source_event_type
+        - recorded_at
+      properties:
+        change_id:
+          type: string
+          format: uuid
+        canon_entry_id:
+          type: string
+          format: uuid
+        book_id:
+          type: string
+          format: uuid
+        attribute_path:
+          type: string
+        reality_id:
+          type: string
+          format: uuid
+          description: Per-reality scope (zero/absent for book-wide changes)
+        kind:
+          type: string
+          enum: ["authored", "force_propagate", "propagation_completed"]
+        old_value:
+          type: string
+          format: byte
+          description: Canonical JSON bytes of the prior value (base64)
+        new_value:
+          type: string
+          format: byte
+          description: Canonical JSON bytes of the new value (base64)
+        canon_layer:
+          type: string
+          enum: ["L1_axiom", "L2_seeded"]
+        source_event_id:
+          type: string
+          format: uuid
+        source_event_type:
+          type: string
+        recorded_at:
+          type: string
+          format: date-time
+
+    HistoryListResponse:
+      type: object
+      required: [entries, count]
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChangeEntry'
+        count:
+          type: integer
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+
+  responses:
+    BadRequest:
+      description: Malformed request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: SVID lacks RPC permission
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

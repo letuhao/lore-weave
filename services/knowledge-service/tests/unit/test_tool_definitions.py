@@ -35,9 +35,18 @@ def _defn(name: str) -> dict:
 # ── registry consistency ──────────────────────────────────────────────
 
 
-def test_five_tools_defined():
-    assert len(TOOL_DEFINITIONS) == 5
-    assert len(TOOL_NAMES) == 5
+def test_memory_tools_still_defined():
+    """The 5 memory tools remain registered (lane LF appended KG tools but
+    must not drop any). The exact total is asserted in test_graph_schema_tools."""
+    names = {d["function"]["name"] for d in TOOL_DEFINITIONS}
+    assert {
+        "memory_search",
+        "memory_recall_entity",
+        "memory_timeline",
+        "memory_remember",
+        "memory_forget",
+    }.issubset(names)
+    assert len(TOOL_DEFINITIONS) == len(TOOL_NAMES)
 
 
 def test_tool_names_match_arg_models_and_definitions():

@@ -1,0 +1,8 @@
+id: w4-reference-projector
+description: "W4.6 / D-C2-REFERENCE-PROJECTOR — the independent projection oracle the C2 golden battery is NOT. crate projection-reference, derived from the event contract + table DDL (never crates/projections/*): a conformance oracle over all 20 events (table/column/pk/kind/direct-field validity vs the schema) + a from-design reproduction reference for the relationship + canon arms. 11 tests: production conformant (0 violations) across 20 events; reference == production for 6 reproduced events; table-set drift guard; 5 bites prove it DISAGREES with wrong impls (hallucinated column, wrong pk, wrong-key read, wrong table, reproduction vs a wrong-key arm) — classes C2 can't catch. CPU-only."
+invariant: I-w4-reference-projector-independent
+kind: rust-test
+command: ["bash", "-c", "cargo test -p projection-reference"]
+# cargo (Rust toolchain) absent on the Go-only bare runner → notrun, not fail.
+requires: ["cargo"]
+skip_when: []

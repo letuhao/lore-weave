@@ -1,0 +1,22 @@
+{
+  "heading": "Bạn muốn làm gì?",
+  "subheading": "Chọn một điểm khởi đầu — bạn có thể đổi bất cứ lúc nào.",
+  "intent": {
+    "write": {
+      "title": "Viết",
+      "desc": "Bắt đầu một cuốn sách mới hoặc viết tiếp — soạn chương cùng trợ lý AI."
+    },
+    "world": {
+      "title": "Dựng thế giới",
+      "desc": "Sáng tạo tri thức — nhân vật, địa điểm, phe phái — không cần bản thảo."
+    },
+    "translate": {
+      "title": "Dịch thuật",
+      "desc": "Chuyển một cuốn sách hiện có sang ngôn ngữ khác bằng quy trình dịch."
+    },
+    "explore": {
+      "title": "Khám phá",
+      "desc": "Duyệt tri thức của bạn — thực thể, dòng thời gian và đồ thị quan hệ."
+    }
+  }
+}

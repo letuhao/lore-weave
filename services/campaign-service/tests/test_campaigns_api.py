@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -110,11 +110,93 @@ def test_create_requires_knowledge_project(client, mocker):
     assert resp.json()["detail"]["code"] == "CAMPAIGN_NO_KNOWLEDGE_PROJECT"
 
 
-def test_create_forbidden_when_not_owner(client, mocker):
-    _book_stub(mocker, owner="ffffffff-ffff-ffff-ffff-ffffffffffff")
+def test_create_denied_without_grant_404(client, mocker, fake_grant):
+    # E0-4b: access is grant-based, not owner-compare. No grant → 404 (anti-oracle,
+    # uniform with a missing book), BEFORE any book existence is revealed.
+    from app.grant_client import GrantLevel
+    fake_grant.resolve_grant.return_value = GrantLevel.NONE
+    _book_stub(mocker)
+    resp = client.post("/v1/campaigns", json=_payload())
+    assert resp.status_code == 404
+    assert resp.json()["detail"]["code"] == "CAMPAIGN_NOT_FOUND"
+
+
+def test_create_under_tier_403(client, mocker, fake_grant):
+    # E0-4b: create needs `manage`; a view/edit grantee is forbidden (403).
+    from app.grant_client import GrantLevel
+    fake_grant.resolve_grant.return_value = GrantLevel.EDIT
+    _book_stub(mocker)
     resp = client.post("/v1/campaigns", json=_payload())
     assert resp.status_code == 403
     assert resp.json()["detail"]["code"] == "CAMPAIGN_FORBIDDEN"
+
+
+OTHER_OWNER = "ffffffff-ffff-ffff-ffff-ffffffffffff"
+EMB = "44444444-4444-4444-4444-444444444444"
+
+
+def test_collaborator_create_persists_dual_identity_and_skips_project_mutation(client, mocker, fake_grant):
+    # E0-4b: a manage-collaborator (book owned by OTHER) running a campaign on a
+    # shared book must (a) persist book_owner_user_id = the BOOK OWNER (graph
+    # partition, NOT the caller), (b) persist their own embedding_model_ref (billing
+    # ref), (c) verify the project against the BOOK OWNER, and (d) NOT mutate the
+    # owner's project models (set_campaign_models skipped — R-project-corruption guard).
+    from app.grant_client import GrantLevel
+    fake_grant.resolve_grant.return_value = GrantLevel.MANAGE
+    book = _book_stub(mocker, owner=OTHER_OWNER)  # also stubs the KnowledgeDispatchClient
+    create = mocker.patch("app.repositories.create_campaign",
+                          new_callable=AsyncMock, return_value=_campaign_row())
+    mocker.patch("app.repositories.seed_campaign_chapters", new_callable=AsyncMock)
+    resp = client.post("/v1/campaigns", json=_payload(
+        embedding_model_source="user_model", embedding_model_ref=EMB))
+    assert resp.status_code == 201, resp.text
+    # (a) book owner is the graph partition, (b) caller's embedding ref persisted.
+    assert str(create.call_args.kwargs["book_owner_user_id"]) == OTHER_OWNER
+    assert str(create.call_args.kwargs["embedding_model_ref"]) == EMB
+    # owner_user_id stays the caller (billed).
+    assert str(create.call_args.kwargs["owner_user_id"]) == TEST_USER
+
+
+def test_collaborator_create_verifies_project_against_book_owner(client, mocker, fake_grant):
+    from app.grant_client import GrantLevel
+    fake_grant.resolve_grant.return_value = GrantLevel.MANAGE
+    _book_stub(mocker, owner=OTHER_OWNER)
+    kn = _knowledge_stub(mocker)  # re-patch to capture verify_project_owner args
+    mocker.patch("app.repositories.create_campaign", new_callable=AsyncMock,
+                 return_value=_campaign_row())
+    mocker.patch("app.repositories.seed_campaign_chapters", new_callable=AsyncMock)
+    resp = client.post("/v1/campaigns", json=_payload(
+        embedding_model_source="user_model", embedding_model_ref=EMB))
+    assert resp.status_code == 201, resp.text
+    # (c) project verified against the BOOK OWNER (the project is owner-owned, the
+    # caller won't own it); (d) the owner's project models are NOT mutated.
+    assert kn.verify_project_owner.call_args.kwargs["user_id"] == OTHER_OWNER
+    kn.set_campaign_models.assert_not_called()
+
+
+def test_collaborator_create_without_embedding_ref_400(client, mocker, fake_grant):
+    # E0-4b: a collaborator's knowledge stage caller-pays needs their own embedding
+    # ref (the knowledge dispatch 422s without it) → blocked at create.
+    from app.grant_client import GrantLevel
+    fake_grant.resolve_grant.return_value = GrantLevel.MANAGE
+    _book_stub(mocker, owner=OTHER_OWNER)
+    create = mocker.patch("app.repositories.create_campaign", new_callable=AsyncMock)
+    resp = client.post("/v1/campaigns", json=_payload())  # no embedding_model_ref
+    assert resp.status_code == 400
+    assert resp.json()["detail"]["code"] == "CAMPAIGN_NO_BILLING_EMBEDDING"
+    create.assert_not_called()  # blocked before the write
+
+
+def test_owner_run_create_persists_book_owner_equal_to_owner(client, mocker):
+    # The common case: owner runs their own campaign → book_owner_user_id == owner.
+    _book_stub(mocker)  # owner defaults to TEST_USER
+    create = mocker.patch("app.repositories.create_campaign",
+                          new_callable=AsyncMock, return_value=_campaign_row())
+    mocker.patch("app.repositories.seed_campaign_chapters", new_callable=AsyncMock)
+    resp = client.post("/v1/campaigns", json=_payload())
+    assert resp.status_code == 201, resp.text
+    assert str(create.call_args.kwargs["book_owner_user_id"]) == TEST_USER
+    assert str(create.call_args.kwargs["owner_user_id"]) == TEST_USER
 
 
 def test_create_book_not_found(client, mocker):
@@ -141,6 +223,13 @@ def test_create_no_chapters_in_range(client, mocker):
 def test_create_invalid_gating_mode_422(client, mocker):
     _book_stub(mocker)
     resp = client.post("/v1/campaigns", json=_payload(gating_mode="bogus"))
+    assert resp.status_code == 422
+
+
+def test_create_invalid_est_band_422(client, mocker):
+    # G1 (review-impl LOW): est_usd_low > est_usd_high is rejected at validation.
+    _book_stub(mocker)
+    resp = client.post("/v1/campaigns", json=_payload(est_usd_low="10.00", est_usd_high="5.00"))
     assert resp.status_code == 422
 
 
@@ -252,6 +341,264 @@ def test_progress_per_stage_counts(client, mocker):
     assert tr["in_progress"] == 5  # 10 - 4 - 0 - 1
 
 
+def _report_row(**over):
+    base = {
+        "status": "completed", "total_chapters": 10,
+        "spent_usd": Decimal("8.50"), "budget_usd": Decimal("12.00"),
+        "est_usd_low": Decimal("7.00"), "est_usd_high": Decimal("11.00"),
+        "started_at": NOW, "finished_at": NOW, "duration_seconds": 3600,
+    }
+    base.update(over)
+    return FakeRecord(base)
+
+
+def test_report_summary_and_error_groups(client, mocker):
+    # G1: report returns outcome + spent-vs-estimate + error groups bucketed by cause.
+    # E0-4b: the report route grant-gates via get_campaign first → mock it so the gate passes.
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock,
+                 return_value=_campaign_row())
+    mocker.patch("app.repositories.get_report_row", new_callable=AsyncMock,
+                 return_value=_report_row())
+    mocker.patch("app.repositories.get_campaign_progress", new_callable=AsyncMock,
+                 return_value=_agg())
+    mocker.patch("app.repositories.get_failed_error_strings", new_callable=AsyncMock,
+                 return_value=[
+                     FakeRecord({"last_error": "HTTP 429 rate limit", "n": 3}),
+                     FakeRecord({"last_error": "provider 429 again", "n": 2}),
+                     FakeRecord({"last_error": "empty body", "n": 1}),
+                 ])
+    resp = client.get(f"/v1/campaigns/{CAMP}/report")
+    assert resp.status_code == 200, resp.text
+    b = resp.json()
+    assert b["status"] == "completed"
+    assert b["duration_seconds"] == 3600
+    assert b["est_usd_low"] == "7.00" and b["spent_usd"] == "8.50"
+    assert b["stages"]["knowledge"]["done"] == 6
+    groups = {g["cause"]: g for g in b["error_groups"]}
+    assert groups["rate_limit"]["count"] == 5 and groups["rate_limit"]["remediable"] is True
+    assert groups["empty_body"]["count"] == 1 and groups["empty_body"]["remediable"] is False
+    # rate_limit (5) sorts before empty_body (1)
+    assert b["error_groups"][0]["cause"] == "rate_limit"
+
+
+def test_report_404_when_not_owned(client, mocker):
+    mocker.patch("app.repositories.get_report_row", new_callable=AsyncMock, return_value=None)
+    resp = client.get(f"/v1/campaigns/{CAMP}/report")
+    assert resp.status_code == 404
+
+
+def _chap_row(sort, **over):
+    base = {
+        "chapter_id": "11111111-1111-1111-1111-111111111111", "chapter_sort": sort,
+        "ingest_status": "done", "knowledge_status": "done", "translation_status": "failed",
+        "eval_status": "pending", "knowledge_attempts": 0, "translation_attempts": 1,
+        "last_error": "boom", "eval_fidelity_score": None,
+    }
+    base.update(over)
+    return FakeRecord(base)
+
+
+def test_chapters_page_returns_items_and_total(client, mocker):
+    # D-S6-CHAPTER-PAGING — paginated endpoint returns {items, total}, owner-scoped.
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock,
+                 return_value=_campaign_row(status="running"))
+    page = mocker.patch("app.repositories.get_campaign_chapters_page",
+                        new_callable=AsyncMock, return_value=([_chap_row(1), _chap_row(2)], 57))
+    resp = client.get(f"/v1/campaigns/{CAMP}/chapters?status=all&limit=2&offset=4")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["total"] == 57 and len(body["items"]) == 2
+    # params threaded through
+    assert page.call_args.kwargs["status"] == "all"
+    assert page.call_args.kwargs["limit"] == 2 and page.call_args.kwargs["offset"] == 4
+
+
+def test_chapters_page_clamps_and_defaults(client, mocker):
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock,
+                 return_value=_campaign_row())
+    page = mocker.patch("app.repositories.get_campaign_chapters_page",
+                        new_callable=AsyncMock, return_value=([], 0))
+    # bogus status → 'attention'; limit over cap → 500; negative offset → 0
+    resp = client.get(f"/v1/campaigns/{CAMP}/chapters?status=bogus&limit=9999&offset=-5")
+    assert resp.status_code == 200
+    assert page.call_args.kwargs["status"] == "attention"
+    assert page.call_args.kwargs["limit"] == 500 and page.call_args.kwargs["offset"] == 0
+
+
+def test_chapters_page_404_when_not_owned(client, mocker):
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock, return_value=None)
+    resp = client.get(f"/v1/campaigns/{CAMP}/chapters")
+    assert resp.status_code == 404
+
+
+def test_patch_budget_only_still_works(client, mocker):
+    # backward-compat: a budget-only PATCH applies without touching models.
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock,
+                 return_value=_campaign_row(status="running"))
+    upd = mocker.patch("app.repositories.update_campaign_fields", new_callable=AsyncMock,
+                       return_value=_campaign_row(status="running", budget_usd=Decimal("5")))
+    resp = client.patch(f"/v1/campaigns/{CAMP}", json={"budget_usd": "5"})
+    assert resp.status_code == 200, resp.text
+    # only budget_usd forwarded (no model keys). E0-4b: update_campaign_fields dropped
+    # the owner_user_id arg, so fields is now args[2] (was args[3]).
+    assert set(upd.call_args.args[2].keys()) == {"budget_usd"}
+
+
+def test_patch_switch_model_on_paused(client, mocker):
+    # D-FACTORY-SWITCH-MODEL-RESUME — a paused campaign accepts a model switch.
+    new_ref = str(uuid4())
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock,
+                 return_value=_campaign_row(status="paused"))
+    upd = mocker.patch("app.repositories.update_campaign_fields", new_callable=AsyncMock,
+                       return_value=_campaign_row(status="paused"))
+    resp = client.patch(f"/v1/campaigns/{CAMP}",
+                        json={"translation_model_source": "user_model", "translation_model_ref": new_ref})
+    assert resp.status_code == 200, resp.text
+    fields = upd.call_args.args[2]
+    assert fields["translation_model_source"] == "user_model"
+    assert str(fields["translation_model_ref"]) == new_ref
+
+
+def test_patch_switch_model_on_running_is_409(client, mocker):
+    # a model change on a RUNNING campaign is rejected (pause first).
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock,
+                 return_value=_campaign_row(status="running"))
+    upd = mocker.patch("app.repositories.update_campaign_fields", new_callable=AsyncMock)
+    resp = client.patch(f"/v1/campaigns/{CAMP}",
+                        json={"translation_model_ref": str(uuid4())})
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["code"] == "CAMPAIGN_MODELS_LOCKED"
+    upd.assert_not_called()  # blocked before the write
+
+
+def test_patch_empty_body_is_400(client, mocker):
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock,
+                 return_value=_campaign_row(status="paused"))
+    resp = client.patch(f"/v1/campaigns/{CAMP}", json={})
+    assert resp.status_code == 400
+    assert resp.json()["detail"]["code"] == "CAMPAIGN_PATCH_EMPTY"
+
+
+def test_patch_404_when_not_owned(client, mocker):
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock, return_value=None)
+    resp = client.patch(f"/v1/campaigns/{CAMP}", json={"budget_usd": "5"})
+    assert resp.status_code == 404
+
+
+def _act_row(id_, sort, stage, status, detail=None):
+    return FakeRecord({
+        "id": id_, "chapter_id": UUID(CAMP), "chapter_sort": sort,
+        "stage": stage, "status": status, "detail": detail, "created_at": NOW,
+    })
+
+
+def test_activity_returns_page_with_next_before(client, mocker):
+    # D-FACTORY-INFLIGHT-LOG — a FULL page advertises next_before (= last id) for paging.
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock,
+                 return_value=_campaign_row(status="running"))
+    act = mocker.patch("app.repositories.get_campaign_activity", new_callable=AsyncMock,
+                       return_value=[_act_row(9, 5, "translation", "done"),
+                                     _act_row(8, 7, "knowledge", "failed", "HTTP 429")])
+    resp = client.get(f"/v1/campaigns/{CAMP}/activity?limit=2")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert [i["id"] for i in body["items"]] == [9, 8]
+    assert body["items"][1]["detail"] == "HTTP 429"
+    assert body["next_before"] == 8           # full page → more may remain
+    assert act.call_args.kwargs["before_id"] is None
+
+
+def test_activity_partial_page_has_no_next_before(client, mocker):
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock,
+                 return_value=_campaign_row(status="running"))
+    mocker.patch("app.repositories.get_campaign_activity", new_callable=AsyncMock,
+                 return_value=[_act_row(3, 1, "knowledge", "dispatched")])
+    resp = client.get(f"/v1/campaigns/{CAMP}/activity?limit=50")
+    assert resp.status_code == 200
+    assert resp.json()["next_before"] is None  # 1 < 50 → end of log
+
+
+def test_activity_404_when_not_owned(client, mocker):
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock, return_value=None)
+    resp = client.get(f"/v1/campaigns/{CAMP}/activity")
+    assert resp.status_code == 404
+
+
+def test_chapters_page_accepts_inflight_status(client, mocker):
+    # D-FACTORY-INFLIGHT-PANEL — 'inflight' is a valid status (not clamped to attention)
+    # and is threaded to the repo for the "Now processing" panel.
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock,
+                 return_value=_campaign_row(status="running"))
+    page = mocker.patch("app.repositories.get_campaign_chapters_page",
+                        new_callable=AsyncMock, return_value=([_chap_row(2)], 1))
+    resp = client.get(f"/v1/campaigns/{CAMP}/chapters?status=inflight&limit=50")
+    assert resp.status_code == 200, resp.text
+    assert page.call_args.kwargs["status"] == "inflight"
+
+
+def test_list_includes_progress_done(client, mocker):
+    # #2 polish — the list carries a per-row progress_done (defaults 0 when absent).
+    row_with = FakeRecord({**dict(_campaign_row(total_chapters=5)), "progress_done": 3})
+    mocker.patch("app.repositories.list_campaigns", new_callable=AsyncMock,
+                 return_value=[_campaign_row(total_chapters=10), row_with])
+    resp = client.get("/v1/campaigns")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body[0]["progress_done"] == 0   # no key in the record → default
+    assert body[1]["progress_done"] == 3
+
+
+def test_rerun_failed_resets_and_rearms(client, mocker):
+    # G2: re-run resets failed stages and re-arms a terminal campaign to running.
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock,
+                 return_value=_campaign_row(status="completed"))
+    reset = mocker.patch("app.repositories.reset_failed_stages", new_callable=AsyncMock, return_value=3)
+    setst = mocker.patch("app.repositories.set_campaign_status", new_callable=AsyncMock)
+    resp = client.post(f"/v1/campaigns/{CAMP}/rerun-failed", json={})
+    assert resp.status_code == 200, resp.text
+    reset.assert_awaited_once()
+    setst.assert_awaited_once()
+    assert setst.call_args.args[2] == "running"
+
+
+def test_rerun_failed_passes_chapter_ids(client, mocker):
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock,
+                 return_value=_campaign_row(status="failed"))
+    reset = mocker.patch("app.repositories.reset_failed_stages", new_callable=AsyncMock, return_value=1)
+    mocker.patch("app.repositories.set_campaign_status", new_callable=AsyncMock)
+    cid = "11111111-1111-1111-1111-111111111111"
+    resp = client.post(f"/v1/campaigns/{CAMP}/rerun-failed", json={"chapter_ids": [cid]})
+    assert resp.status_code == 200, resp.text
+    assert str(reset.call_args.args[2][0]) == cid
+
+
+def test_rerun_failed_nothing_failed_no_rearm(client, mocker):
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock,
+                 return_value=_campaign_row(status="completed"))
+    mocker.patch("app.repositories.reset_failed_stages", new_callable=AsyncMock, return_value=0)
+    setst = mocker.patch("app.repositories.set_campaign_status", new_callable=AsyncMock)
+    resp = client.post(f"/v1/campaigns/{CAMP}/rerun-failed", json={})
+    assert resp.status_code == 200
+    setst.assert_not_awaited()  # nothing failed → no re-arm
+
+
+def test_rerun_failed_refuses_cancelled(client, mocker):
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock,
+                 return_value=_campaign_row(status="cancelled"))
+    resp = client.post(f"/v1/campaigns/{CAMP}/rerun-failed", json={})
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["code"] == "CAMPAIGN_NOT_RERUNNABLE"
+
+
+def test_rerun_failed_over_budget(client, mocker):
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock,
+                 return_value=_campaign_row(status="failed",
+                                            budget_usd=Decimal("5"), spent_usd=Decimal("5")))
+    resp = client.post(f"/v1/campaigns/{CAMP}/rerun-failed", json={})
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["code"] == "CAMPAIGN_OVER_BUDGET"
+
+
 def test_progress_404_when_not_owned(client, mocker):
     mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock, return_value=None)
     resp = client.get(f"/v1/campaigns/{CAMP}/progress")
@@ -278,7 +625,9 @@ def test_create_rejects_nonpositive_budget_422(client, mocker):
 
 
 def test_patch_budget_updates(client, mocker):
-    mocker.patch("app.repositories.update_budget", new_callable=AsyncMock,
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock,
+                 return_value=_campaign_row(status="running"))
+    mocker.patch("app.repositories.update_campaign_fields", new_callable=AsyncMock,
                  return_value=_campaign_row(budget_usd=Decimal("10.00")))
     resp = client.patch(f"/v1/campaigns/{CAMP}", json={"budget_usd": "10.00"})
     assert resp.status_code == 200, resp.text
@@ -286,7 +635,7 @@ def test_patch_budget_updates(client, mocker):
 
 
 def test_patch_budget_not_found_404(client, mocker):
-    mocker.patch("app.repositories.update_budget", new_callable=AsyncMock, return_value=None)
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock, return_value=None)
     resp = client.patch(f"/v1/campaigns/{CAMP}", json={"budget_usd": "10.00"})
     assert resp.status_code == 404
     assert resp.json()["detail"]["code"] == "CAMPAIGN_NOT_FOUND"
@@ -338,21 +687,15 @@ def test_get_not_found(client, mocker):
     assert resp.status_code == 404
 
 
-def test_get_returns_projection(client, mocker):
+def test_get_returns_lightweight_detail(client, mocker):
+    # D-S6-CHAPTER-PAGING — the detail no longer embeds chapters (the table fetches
+    # them paginated via GET /{id}/chapters); chapters is an empty list here.
     mocker.patch("app.repositories.get_campaign",
                  new_callable=AsyncMock, return_value=_campaign_row())
-    mocker.patch("app.repositories.get_campaign_chapters", new_callable=AsyncMock,
-                 return_value=[FakeRecord({
-                     "chapter_id": UUID(C1), "chapter_sort": 0,
-                     "ingest_status": "done", "knowledge_status": "pending",
-                     "translation_status": "pending", "eval_status": "pending",
-                     "knowledge_attempts": 0, "translation_attempts": 0,
-                     "last_error": None,
-                 })])
     resp = client.get(f"/v1/campaigns/{CAMP}")
     assert resp.status_code == 200
-    assert len(resp.json()["chapters"]) == 1
-    assert resp.json()["chapters"][0]["chapter_id"] == C1
+    assert resp.json()["campaign_id"] == CAMP
+    assert resp.json()["chapters"] == []
 
 
 # ── start / cancel ───────────────────────────────────────────────────────────

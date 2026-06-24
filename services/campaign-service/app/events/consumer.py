@@ -23,14 +23,13 @@ the S3 stuck-timeout reconcile; until then the chapter shows in-flight).
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
-import platform
 from uuid import UUID
 
 import asyncpg
-import redis.asyncio as aioredis
+
+from loreweave_jobs import BaseProjectionConsumer
 
 from .. import repositories as repo
 
@@ -177,74 +176,25 @@ async def _handle_eval_judged(pool: asyncpg.Pool, payload: dict) -> bool:
     return True
 
 
-class ProjectionConsumer:
-    """Redis Streams consumer; run() as a lifespan background task."""
+class ProjectionConsumer(BaseProjectionConsumer):
+    """Campaign projection collector on the shared scaffold. run() as a lifespan
+    background task. Idempotent + convergent handlers → `ack_on_error` (a failed advance
+    self-heals via the S3 stuck-timeout reconcile; no poison-message loop), so there is no
+    DLQ and the PEL never lingers (reclaim disabled)."""
 
-    def __init__(
-        self,
-        redis_url: str,
-        pool: asyncpg.Pool,
-        *,
-        consumer_name: str | None = None,
-    ) -> None:
-        self._redis_url = redis_url
+    streams = STREAMS
+    group = GROUP_NAME
+    ack_on_error = True
+    reclaim_every_n_loops = 0   # always-ack → nothing stays pending
+    count = 20
+    block_ms = BLOCK_MS
+    consumer_name_prefix = "campaign"
+
+    def __init__(self, redis_url: str, pool: asyncpg.Pool, *, consumer_name: str | None = None) -> None:
+        super().__init__(redis_url, consumer_name=consumer_name)
         self._pool = pool
-        self._consumer_name = consumer_name or f"campaign-{platform.node()}"
-        self._redis: aioredis.Redis | None = None
-        self._running = False
 
-    async def _ensure_redis(self) -> aioredis.Redis:
-        if self._redis is None:
-            self._redis = aioredis.from_url(self._redis_url, decode_responses=True)
-        return self._redis
-
-    async def _ensure_groups(self) -> None:
-        r = await self._ensure_redis()
-        for stream in STREAMS:
-            try:
-                await r.xgroup_create(stream, GROUP_NAME, id="0", mkstream=True)
-                logger.info("created consumer group %s on %s", GROUP_NAME, stream)
-            except aioredis.ResponseError as e:
-                if "BUSYGROUP" not in str(e):
-                    raise
-
-    async def run(self) -> None:
-        await self._ensure_groups()
-        self._running = True
-        r = await self._ensure_redis()
-        logger.info(
-            "projection consumer started (group=%s, consumer=%s)",
-            GROUP_NAME, self._consumer_name,
-        )
-        while self._running:
-            try:
-                streams_dict = {s: ">" for s in STREAMS}
-                results = await r.xreadgroup(
-                    GROUP_NAME, self._consumer_name, streams_dict,
-                    count=20, block=BLOCK_MS,
-                )
-                if not results:
-                    continue
-                for stream_name, messages in results:
-                    for msg_id, fields in messages:
-                        await self._handle_message(r, stream_name, msg_id, fields)
-            except asyncio.CancelledError:
-                break
-            except aioredis.TimeoutError:
-                continue
-            except aioredis.ConnectionError:
-                logger.warning("redis connection lost, reconnecting in 5s")
-                self._redis = None
-                await asyncio.sleep(5)
-                r = await self._ensure_redis()
-            except Exception:
-                logger.exception("projection consumer loop error, retrying in 2s")
-                await asyncio.sleep(2)
-        await self.close()
-
-    async def _handle_message(
-        self, r: aioredis.Redis, stream: str, msg_id: str, fields: dict[str, str],
-    ) -> None:
+    async def handle(self, stream: str, msg_id: str, fields: dict) -> None:
         event_type = fields.get("event_type", "")
         raw_payload = fields.get("payload", "{}")
         try:
@@ -252,21 +202,4 @@ class ProjectionConsumer:
         except json.JSONDecodeError:
             payload = {}
             logger.warning("invalid JSON payload: stream=%s id=%s", stream, msg_id)
-        try:
-            await handle_event(self._pool, event_type, payload)
-            # Idempotent + convergent → always ack (a failed advance self-heals
-            # via the S3 stuck-timeout reconcile; no poison-message loop in S1).
-            await r.xack(stream, GROUP_NAME, msg_id)
-        except Exception:
-            logger.exception(
-                "projection handler error: stream=%s id=%s type=%s", stream, msg_id, event_type
-            )
-            await r.xack(stream, GROUP_NAME, msg_id)
-
-    async def stop(self) -> None:
-        self._running = False
-
-    async def close(self) -> None:
-        if self._redis is not None:
-            await self._redis.aclose()
-            self._redis = None
+        await handle_event(self._pool, event_type, payload)
