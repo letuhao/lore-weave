@@ -11,12 +11,15 @@ package api
 // GLOSSARY_TEST_DB_URL and skip otherwise.
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/google/uuid"
+
+	"github.com/loreweave/glossary-service/internal/migrate"
 )
 
 const glossStandardsInternalToken = "gloss-standards-test-token"
@@ -160,5 +163,40 @@ func TestGlossStandards_UnionsPerUserTierAndShadows(t *testing.T) {
 	}
 	if bTier[systemCode] != "system" {
 		t.Fatalf("user B's %q must be the unshadowed System kind, got %q", systemCode, bTier[systemCode])
+	}
+}
+
+// TestGlossStandards_SystemKindsCarryViLabels — KG-ML M5 (C4): after the
+// name_i18n migration, the resolved System kinds carry admin-seeded vi labels
+// (e.g. "character" → "Nhân vật"), so a vi reader's KG/timeline can localize the
+// kind. The English `Name` is unchanged (it IS the en label).
+func TestGlossStandards_SystemKindsCarryViLabels(t *testing.T) {
+	pool := openTestDB(t)
+	runUserKindMigrations(t, pool)
+	if err := migrate.UpKindNameI18n(context.Background(), pool); err != nil {
+		t.Fatalf("migrate.UpKindNameI18n: %v", err)
+	}
+
+	srv, token := newGlossStandardsServer(t)
+	srv.pool = pool
+
+	out, _ := decodeStandards(t, glossStandards(t, srv, uuid.NewString(), token))
+	byCode := make(map[string]internalOntologyKind, len(out.Kinds))
+	for _, k := range out.Kinds {
+		byCode[k.Code] = k
+	}
+	character, ok := byCode["character"]
+	if !ok {
+		t.Fatalf("seeded System kind 'character' missing from standards")
+	}
+	if character.Name != "Character" {
+		t.Errorf("en name should be unchanged, got %q", character.Name)
+	}
+	if character.NameI18n["vi"] != "Nhân vật" {
+		t.Errorf("character vi label: want \"Nhân vật\", got %q (full=%v)",
+			character.NameI18n["vi"], character.NameI18n)
+	}
+	if loc, ok := byCode["location"]; ok && loc.NameI18n["vi"] != "Địa điểm" {
+		t.Errorf("location vi label: want \"Địa điểm\", got %q", loc.NameI18n["vi"])
 	}
 }

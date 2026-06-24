@@ -1,6 +1,8 @@
 package api
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 
@@ -20,6 +22,38 @@ type internalOntologyKind struct {
 	Code string `json:"code"`
 	Name string `json:"name"`
 	Tier string `json:"tier"`
+	// KG-ML M5 (C4 / DD4) — localized kind labels {language: label}. Empty/omitted
+	// ⇒ the consumer falls back to the canonical `Name`. Inherits the tier's scope.
+	NameI18n map[string]string `json:"name_i18n,omitempty"`
+}
+
+// loadKindNameI18n runs a `(code, name_i18n)` query and returns code → label map.
+// JSONB is scanned as []byte then unmarshalled (the pgx-portable path) so a NULL /
+// malformed value degrades to an empty map rather than failing the read. Used to
+// attach localized labels to the internal ontology reads without disturbing the
+// public kinds-CRUD load path.
+func (s *Server) loadKindNameI18n(ctx context.Context, query string, args ...any) (map[string]map[string]string, error) {
+	rows, err := s.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make(map[string]map[string]string)
+	for rows.Next() {
+		var code string
+		var raw []byte
+		if err := rows.Scan(&code, &raw); err != nil {
+			return nil, err
+		}
+		labels := map[string]string{}
+		if len(raw) > 0 {
+			_ = json.Unmarshal(raw, &labels) // malformed → empty, never fatal
+		}
+		if len(labels) > 0 {
+			out[code] = labels
+		}
+	}
+	return out, rows.Err()
 }
 
 type internalOntologyKinds struct {
@@ -43,9 +77,15 @@ func (s *Server) internalBookOntology(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	bid := bookID.String()
+	// KG-ML M5 (C4) — localized book-kind labels (graceful: nil map if the column
+	// is absent on an un-migrated DB, so the adopt-gate read never breaks).
+	bookI18n, _ := s.loadKindNameI18n(r.Context(),
+		`SELECT code, name_i18n FROM book_kinds WHERE book_id = $1`, bookID)
 	kinds := make([]internalOntologyKind, 0, len(ont.Kinds))
 	for _, k := range ont.Kinds {
-		kinds = append(kinds, internalOntologyKind{Code: k.Code, Name: k.Name, Tier: "book"})
+		kinds = append(kinds, internalOntologyKind{
+			Code: k.Code, Name: k.Name, Tier: "book", NameI18n: bookI18n[k.Code],
+		})
 	}
 	writeJSON(w, http.StatusOK, internalOntologyKinds{Source: "book", BookID: &bid, Kinds: kinds})
 }
@@ -110,6 +150,23 @@ func (s *Server) internalUserGlossaryStandards(w http.ResponseWriter, r *http.Re
 	if err := rows.Err(); err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "user kind rows error")
 		return
+	}
+
+	// KG-ML M5 (C4) — attach localized labels per tier (graceful: a nil map on an
+	// un-migrated DB just yields no labels, never a 500). A System row's vi label is
+	// admin-seeded; a per-user row carries its owner's (deferred authoring, so empty
+	// today). Resolution stays tier-correct: a user kind shadows by code AND label.
+	sysI18n, _ := s.loadKindNameI18n(r.Context(), `SELECT code, name_i18n FROM system_kinds`)
+	userI18n, _ := s.loadKindNameI18n(r.Context(),
+		`SELECT code, name_i18n FROM user_kinds
+		 WHERE owner_user_id = $1 AND is_active = true
+		   AND deleted_at IS NULL AND permanently_deleted_at IS NULL`, userID)
+	for i := range out {
+		if out[i].Tier == "user" {
+			out[i].NameI18n = userI18n[out[i].Code]
+		} else {
+			out[i].NameI18n = sysI18n[out[i].Code]
+		}
 	}
 	writeJSON(w, http.StatusOK, internalOntologyKinds{Source: "user_standards", Kinds: out})
 }
