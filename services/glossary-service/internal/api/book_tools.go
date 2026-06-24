@@ -130,7 +130,7 @@ func (s *Server) toolAdoptStandards(ctx context.Context, _ *mcp.CallToolRequest,
 
 type bookCreateToolIn struct {
 	BookID          string   `json:"book_id" jsonschema:"the book (UUID)"`
-	Level           string   `json:"level" jsonschema:"genre | kind | attribute"`
+	Level           string   `json:"level" jsonschema:"REQUIRED discriminator — what to create: 'genre' | 'kind' | 'attribute'. Always set this first."`
 	Code            string   `json:"code,omitempty" jsonschema:"machine code (derived from name if omitted)"`
 	Name            string   `json:"name" jsonschema:"display name"`
 	Description     string   `json:"description,omitempty"`
@@ -215,7 +215,7 @@ func bookCreateToolErr(err error) error {
 
 type bookPatchToolIn struct {
 	BookID          string    `json:"book_id" jsonschema:"the book (UUID)"`
-	Level           string    `json:"level" jsonschema:"genre | kind | attribute"`
+	Level           string    `json:"level" jsonschema:"REQUIRED discriminator — what to edit: 'genre' | 'kind' | 'attribute'. Always set this first."`
 	Code            string    `json:"code" jsonschema:"the row's code"`
 	KindCode        string    `json:"kind_code,omitempty" jsonschema:"attribute only"`
 	GenreCode       string    `json:"genre_code,omitempty" jsonschema:"attribute only"`
