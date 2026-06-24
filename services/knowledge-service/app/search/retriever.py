@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from typing import Any, Literal
 from uuid import UUID
 
@@ -29,6 +30,7 @@ from app.db.neo4j import neo4j_session
 from app.db.neo4j_repos.passages import (
     SUPPORTED_PASSAGE_DIMS,
     PassageSearchHit,
+    find_passages_by_fulltext,
     find_passages_by_vector,
 )
 from app.search.hybrid_fusion import (
@@ -54,6 +56,23 @@ Surface = Literal["canon", "all"]
 # global cosine threshold cleanly drops junk. Real junk-rejection is the
 # cross-encoder rerank leg; the floor stays opt-in via `min_relevance`.
 MIN_RELEVANCE_DEFAULT = 0.0
+
+# KG-ML M6 (D12) — CJK codepoint ranges. A query containing any of these can't be
+# served well by the book-service pg_trgm lexical leg (trigram is noise on CJK +
+# a GIN-trigram index can't accelerate a 2-char term), so we add the Neo4j
+# `cjk`-analyzed full-text leg over :Passage. Covers CJK Unified (+ Ext-A),
+# Hiragana/Katakana, and Hangul — the scripts the bi-gram `cjk` analyzer targets.
+_CJK_RE = re.compile(
+    r"[㐀-䶿一-鿿぀-ヿ가-힯豈-﫿]"
+)
+
+
+def query_has_cjk(text: str) -> bool:
+    """True when the query contains a CJK/Japanese/Korean character — the signal
+    that the trigram lexical leg will under-recall and the cjk full-text leg
+    should run. Operates on the raw query (a bare proper noun is too short for
+    reliable language detection, so we test codepoints, not detected language)."""
+    return bool(_CJK_RE.search(text or ""))
 
 
 class RetrievalResult(BaseModel):
@@ -196,6 +215,34 @@ async def run_hybrid_search(
             return []
         return hits
 
+    async def _cjk_lexical() -> list[dict[str, Any]]:
+        # KG-ML M6 (D12) — the CJK-tokenized lexical leg. Only for hybrid/lexical
+        # modes AND only when the query carries CJK (else it's pure overhead —
+        # the trigram leg already serves Latin scripts well). Searches the same
+        # :Passage nodes as the semantic leg via the `cjk` full-text index, so it
+        # needs no embedding model (works even on an un-embedded project). Any
+        # failure (index missing on a not-yet-migrated Neo4j, query error) →
+        # degraded marker, never a raised error.
+        if mode == "semantic" or not query_has_cjk(q):
+            return []
+        try:
+            async with neo4j_session() as session:
+                raw_hits = await find_passages_by_fulltext(
+                    session,
+                    user_id=str(user_id),
+                    project_id=str(project.project_id),
+                    query=q,
+                    source_type="chapter",
+                    limit=limit,
+                    include_drafts=(surface == "all"),
+                )
+        except Exception:
+            degraded["cjk_lexical"] = "unavailable"
+            return []
+        hits = [passage_to_hit(h) for h in raw_hits]
+        await enrich_titles(hits, book_client)  # passage hits lack titles
+        return hits
+
     async def _semantic() -> list[dict[str, Any]]:
         if mode == "lexical":
             return []
@@ -237,8 +284,12 @@ async def run_hybrid_search(
         await enrich_titles(hits, book_client)  # semantic hits lack titles
         return hits
 
-    lexical_hits, semantic_hits = await asyncio.gather(_lexical(), _semantic())
-    fused = rrf_fuse([lexical_hits, semantic_hits])
+    lexical_hits, cjk_hits, semantic_hits = await asyncio.gather(
+        _lexical(), _cjk_lexical(), _semantic()
+    )
+    # KG-ML M6: the CJK leg fuses as a third RRF input — additive (empty for
+    # non-CJK queries, so Latin-script retrieval is byte-identical to pre-M6).
+    fused = rrf_fuse([lexical_hits, cjk_hits, semantic_hits])
     # E5B: cross-encoder rerank for semantic/hybrid (where junk leaks). Lexical
     # mode is already clean (exact substring) so it skips rerank + stays fast.
     # D-RERANK-NOT-BYOK: rerank is OPTIONAL and BYOK. Resolve the effective model =

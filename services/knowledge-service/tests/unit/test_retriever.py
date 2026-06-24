@@ -76,6 +76,18 @@ async def _noop_session():
     yield MagicMock()
 
 
+@pytest.fixture(autouse=True)
+def _stub_cjk_leg():
+    """KG-ML M6 — the CJK full-text leg fires for CJK queries (most tests here use
+    '姜子牙'). Stub it to [] by default so existing assertions see it as an additive
+    empty leg; the M6 fusion test overrides the return value."""
+    with patch(
+        "app.search.retriever.find_passages_by_fulltext", new_callable=AsyncMock
+    ) as m:
+        m.return_value = []
+        yield m
+
+
 def _clients(lex_hits=None, passage_hits=None, rerank_passthrough=True):
     book = MagicMock()
     book.lexical_search = AsyncMock(return_value=lex_hits)
@@ -348,6 +360,43 @@ async def test_no_pref_lang_leaves_order_unboosted(embed, find):
     )
     assert all("langMatch" not in h for h in out.hits)
     assert out.hits[0]["sourceLang"] == "zh"  # higher cosine wins, unboosted
+
+
+@pytest.mark.asyncio
+@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
+async def test_cjk_query_runs_cjk_lexical_leg(embed, find, _stub_cjk_leg):
+    """KG-ML M6 — a CJK query fuses the cjk full-text leg; its passage shows up
+    even when lexical (trigram) + semantic legs are empty."""
+    embed.return_value = [0.1] * 1024
+    find.return_value = []  # semantic empty
+    _stub_cjk_leg.return_value = [_passage_hit(source_lang="zh", source_id="ch-zh")]
+    book, emb, rr = _clients(lex_hits=[])  # trigram empty
+    out = await run_hybrid_search(
+        user_id=_USER, book_id=_BOOK, query="姜子牙", project=_project(),
+        book_client=book, embedding_client=emb, reranker_client=rr, rerank=False,
+    )
+    _stub_cjk_leg.assert_awaited_once()
+    assert any(h["sourceLang"] == "zh" for h in out.hits)
+
+
+@pytest.mark.asyncio
+@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
+async def test_latin_query_skips_cjk_leg(embed, find, _stub_cjk_leg):
+    """A Latin-script query never invokes the cjk leg — pre-M6 behavior is
+    byte-identical for non-CJK retrieval (the leg is pure overhead otherwise)."""
+    embed.return_value = [0.1] * 1024
+    find.return_value = [_passage_hit(source_lang="en", source_id="ch-en")]
+    book, emb, rr = _clients(lex_hits=[])
+    out = await run_hybrid_search(
+        user_id=_USER, book_id=_BOOK, query="Dracula", project=_project(),
+        book_client=book, embedding_client=emb, reranker_client=rr, rerank=False,
+    )
+    _stub_cjk_leg.assert_not_called()
+    assert "cjk_lexical" not in out.degraded
 
 
 def test_passage_to_hit_surface_reflects_canon_flag():

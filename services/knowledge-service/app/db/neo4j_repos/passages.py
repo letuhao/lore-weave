@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 from datetime import datetime
 from typing import Any
 
@@ -32,6 +33,9 @@ __all__ = [
     "upsert_passage",
     "delete_passages_for_source",
     "find_passages_by_vector",
+    "find_passages_by_fulltext",
+    "PASSAGE_CJK_FT_INDEX",
+    "lucene_escape",
     "count_passages_by_source_type",
     "set_source_lang_for_source",
     "get_source_ingest_state",
@@ -572,6 +576,94 @@ async def find_passages_by_vector(
                 passage=_node_to_passage(record["p"]),
                 raw_score=float(record["raw_score"]),
                 vector=vector,
+            )
+        )
+    return hits
+
+
+# KG-ML M6 (D12) — the CJK full-text index name (mirrors neo4j_schema.cypher).
+PASSAGE_CJK_FT_INDEX = "passage_text_cjk_ft"
+
+# Lucene query-syntax special characters. The `cjk` analyzer tokenizes the query
+# text, but the surrounding Lucene query PARSER still interprets these — an
+# unescaped one in a user query (e.g. a stray `?` or `:`) is a parse error or a
+# wildcard, not a literal. We escape them so a raw keyword query is matched
+# literally (the analyzer then bi-grams the CJK runs).
+_LUCENE_SPECIALS = r'+-&|!(){}[]^"~*?:\/'
+_LUCENE_ESCAPE_RE = re.compile("([" + re.escape(_LUCENE_SPECIALS) + "])")
+
+
+def lucene_escape(query: str) -> str:
+    """Escape Lucene query-syntax specials so a raw keyword is matched literally.
+
+    `&&`/`||` are covered char-by-char (each `&`/`|` is escaped). Returns a
+    trimmed, escaped string; empty when the input is blank."""
+    return _LUCENE_ESCAPE_RE.sub(r"\\\1", str(query or "").strip())
+
+
+_FIND_BY_FULLTEXT_CYPHER = """
+CALL db.index.fulltext.queryNodes($index_name, $q, {limit: $oversample_limit})
+YIELD node, score
+WITH node, score
+WHERE node.user_id = $user_id
+  AND ($project_id IS NULL OR node.project_id = $project_id)
+  AND ($source_type IS NULL OR node.source_type = $source_type)
+  AND ($source_lang IS NULL OR coalesce(node.source_lang, 'unknown') = $source_lang)
+  AND ($include_drafts OR coalesce(node.canon, true) = true)
+RETURN node AS p, score AS raw_score
+ORDER BY raw_score DESC
+LIMIT $limit
+"""
+
+
+async def find_passages_by_fulltext(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str | None,
+    query: str,
+    source_type: str | None = None,
+    source_lang: str | None = None,
+    limit: int = 40,
+    oversample_factor: int = 10,
+    include_drafts: bool = False,
+) -> list[PassageSearchHit]:
+    """KG-ML M6 (D12) — CJK-tokenized lexical search over `:Passage` text.
+
+    Queries the `cjk`-analyzed full-text index (built-in bi-gram tokenizer), so a
+    short Chinese/Japanese/Korean keyword (the case pg_trgm fails on) recalls the
+    right passages. Full-text indexes are global → oversample then post-filter on
+    tenant scope + canon, identical to `find_passages_by_vector`. `raw_score` is
+    the Lucene score (the RRF fusion only uses rank, so the absolute scale doesn't
+    matter). A blank query (or one that escapes to empty) returns []. Best-effort
+    at the call site — the retriever treats any failure as a degraded lexical leg.
+    """
+    if limit <= 0:
+        raise ValueError(f"limit must be positive, got {limit}")
+    if oversample_factor < 1:
+        raise ValueError(f"oversample_factor must be >= 1, got {oversample_factor}")
+    q = lucene_escape(query)
+    if not q:
+        return []
+    result = await run_read(
+        session,
+        _FIND_BY_FULLTEXT_CYPHER,
+        index_name=PASSAGE_CJK_FT_INDEX,
+        q=q,
+        user_id=user_id,
+        project_id=project_id,
+        source_type=source_type,
+        source_lang=source_lang,
+        include_drafts=include_drafts,
+        oversample_limit=limit * oversample_factor,
+        limit=limit,
+    )
+    hits: list[PassageSearchHit] = []
+    async for record in result:
+        hits.append(
+            PassageSearchHit(
+                passage=_node_to_passage(record["p"]),
+                raw_score=float(record["raw_score"]),
             )
         )
     return hits
