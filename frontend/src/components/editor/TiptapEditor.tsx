@@ -25,6 +25,7 @@ import GlobalDragHandle from 'tiptap-extension-global-drag-handle';
 import { GrammarExtension, setGrammarEnabled } from './GrammarPlugin';
 import { GlossaryExtension, setGlossaryEntities, setGlossaryEnabled, getGlossaryCount } from './GlossaryPlugin';
 import { CitationMark } from './CitationMark';
+import { FocusLineExtension } from './FocusLineExtension';
 
 export interface TiptapEditorHandle {
   /** Reset editor content from Tiptap JSON (e.g. revision restore, discard) */
@@ -68,6 +69,11 @@ interface TiptapEditorProps {
    *  to the live editor. Rendered inside (editable) so it can position at the caret
    *  and commit via editor commands. Default: nothing. */
   aiLayer?: (editor: Editor) => React.ReactNode;
+  /** T5.1: focus/typewriter mode. When true, the wrapper gets `lw-focus` (the CSS
+   *  dims non-current paragraphs) and the paragraph at the caret is marked
+   *  `.focusline` + scrolled to center on every selection/text change (typewriter).
+   *  Default off → other TiptapEditor consumers are unaffected. */
+  focusMode?: boolean;
 }
 
 import { extractText, addTextSnapshots } from '@/lib/tiptap-utils';
@@ -76,7 +82,7 @@ export { extractText, addTextSnapshots };
 export { setGlossaryEntities, setGlossaryEnabled, getGlossaryCount };
 
 export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
-  function TiptapEditor({ content, onUpdate, editable = true, grammarEnabled = true, editorMode = 'classic', className, selectionMenu, aiLayer }, ref) {
+  function TiptapEditor({ content, onUpdate, editable = true, grammarEnabled = true, editorMode = 'classic', className, selectionMenu, aiLayer, focusMode = false }, ref) {
     const initialContent = useRef(content);
     const prevContent = useRef(content);
     const isExternalUpdate = useRef(false);
@@ -118,6 +124,7 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
         GrammarExtension,
         GlossaryExtension,
         SlashMenuExtension,
+        FocusLineExtension, // T5.1 — marks the caret's block `.focusline` (PM decoration)
       ],
       content: initialContent.current,
       editable,
@@ -173,6 +180,35 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
       }
     }, [editor, editorMode]);
 
+    // T5.1 — typewriter scroll: keep the caret's `.focusline` block (marked by
+    // FocusLineExtension) centered on every selection/text change. Active only in
+    // focusMode; rAF-coalesced to avoid layout thrash while typing. The `.focusline`
+    // CLASS is owned by the PM decoration (FocusLineExtension) — this effect only
+    // scrolls, it does not touch the DOM class.
+    useEffect(() => {
+      if (!editor || !focusMode) return;
+      const root = editor.view.dom as HTMLElement;
+      let raf = 0;
+      const scrollToLine = () => {
+        cancelAnimationFrame(raf);
+        raf = requestAnimationFrame(() => {
+          const el = root.querySelector('.focusline') as HTMLElement | null;
+          // guarded: scrollIntoView is absent in jsdom / very old browsers
+          if (el && typeof el.scrollIntoView === 'function') {
+            el.scrollIntoView({ block: 'center', behavior: 'auto' });
+          }
+        });
+      };
+      editor.on('selectionUpdate', scrollToLine);
+      editor.on('update', scrollToLine);
+      scrollToLine();
+      return () => {
+        cancelAnimationFrame(raf);
+        editor.off('selectionUpdate', scrollToLine);
+        editor.off('update', scrollToLine);
+      };
+    }, [editor, focusMode]);
+
     const setContentHandler = useCallback((newContent: any) => {
       if (!editor) return;
       isExternalUpdate.current = true;
@@ -222,7 +258,7 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
     if (!editor) return null;
 
     return (
-      <div className={`${className ?? ''} tiptap-editor-wrapper relative`}>
+      <div className={`${className ?? ''} tiptap-editor-wrapper relative${focusMode ? ' lw-focus' : ''}`}>
         {editable && <FormatToolbar editor={editor} mode={editorMode} />}
         {showSource ? (
           <SourceView json={editor.getJSON()} />

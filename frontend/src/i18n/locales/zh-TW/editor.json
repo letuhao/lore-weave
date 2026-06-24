@@ -1,4 +1,9 @@
 {
+  "focus": {
+    "toggle": "專注模式",
+    "continuity": "連貫性 ✓",
+    "hint": "✦ 點擊一行查看接地內容"
+  },
   "saved": "已儲存章節",
   "no_content": "沒有可翻譯的內容",
   "translation_failed": "翻譯失敗",

@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import {
   Save, PanelLeft, PanelRight, Clock, ChevronRight, ChevronLeft, ChevronRight as ChevronRightNav, SpellCheck,
-  BookOpen, FileText, BookMarked, ListTree, Pen, Sparkles, Languages, AlertTriangle, Eye,
+  BookOpen, FileText, BookMarked, ListTree, Pen, Sparkles, Languages, AlertTriangle, Eye, Focus,
 } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { apiBase } from '@/api';
@@ -36,6 +36,7 @@ import { CowriteBridgeButton } from '@/features/composition/components/CowriteBr
 import { SelectionToolbar } from '@/features/composition/components/SelectionToolbar';
 import { InlineAiLayer } from '@/features/composition/components/InlineAiLayer';
 import { useWorkResolution, useChapterScenes } from '@/features/composition/hooks/useWork';
+import { useFocusMode } from '@/features/composition/hooks/useFocusMode';
 import { aiModelsApi } from '@/features/ai-models/api';
 import { useQuery } from '@tanstack/react-query';
 import { OutlineTree } from '@/features/composition/components/OutlineTree';
@@ -50,6 +51,7 @@ export function ChapterEditorPage() {
   const { bookId = '', chapterId = '' } = useParams();
   const { accessToken } = useAuth();
   const panels = useEditorPanels();
+  const { focusMode, toggle: toggleFocus } = useFocusMode();  // T5.1 focus/typewriter
 
   // Resizable right panel — drag the left edge. Width is per-device UI state
   // (persisted in useEditorPanels → localStorage per CLAUDE.md). During the
@@ -523,6 +525,17 @@ export function ChapterEditorPage() {
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
+      {/* T5.1 — focus-mode continuity pill (static ambient affordance; the live
+          continuity signal lives in the co-writer Critic/Grounding tabs). */}
+      {focusMode && (
+        <div
+          data-testid="editor-focus-pill"
+          className="fixed right-6 top-14 z-30 inline-flex items-center gap-2 rounded-full border bg-card px-3 py-1.5 text-[11px] shadow-lg"
+        >
+          <span className="font-semibold text-success">🛡 {t('focus.continuity', { defaultValue: 'Continuity ✓' })}</span>
+          <span className="text-muted-foreground">{t('focus.hint', { defaultValue: '✦ tap a line for grounding' })}</span>
+        </div>
+      )}
       {/* ── Toolbar ──────────────────────────────────────────────────────── */}
       <div className="flex h-[42px] flex-shrink-0 items-center justify-between border-b bg-card px-4">
 
@@ -661,6 +674,16 @@ export function ChapterEditorPage() {
           >
             <PanelRight className="h-3.5 w-3.5" />
           </button>
+          {/* T5.1 — focus/typewriter mode: hides both side panels + dims non-current prose */}
+          <button
+            data-testid="editor-focus-toggle"
+            onClick={toggleFocus}
+            aria-pressed={focusMode}
+            className={cn('rounded p-1.5 transition-colors', focusMode ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-secondary')}
+            title={t('focus.toggle', { defaultValue: 'Focus mode' })}
+          >
+            <Focus className="h-3.5 w-3.5" />
+          </button>
           <div className="mx-1 h-4 w-px bg-border" />
 
           {/* Save status */}
@@ -734,7 +757,7 @@ export function ChapterEditorPage() {
 
         {/* Left panel */}
         {panels.left && (
-          <div className="relative flex flex-shrink-0 flex-col border-r bg-card" style={{ width: leftWidth }}>
+          <div className={cn('relative flex flex-shrink-0 flex-col border-r bg-card', focusMode && 'hidden')} style={{ width: leftWidth }}>
             {/* Drag handle — resize by dragging the right edge. */}
             <div
               onMouseDown={startLeftResize}
@@ -936,6 +959,7 @@ export function ChapterEditorPage() {
               onUpdate={(json, text) => { setTiptapJson(json); setTextContent(text); }}
               grammarEnabled={grammarEnabled}
               editorMode={editorMode}
+              focusMode={focusMode}
               className="flex-1 overflow-y-auto"
               // T3.2: AI Selection Tools — only when a co-writer Work exists.
               selectionMenu={composeProjectId
@@ -965,8 +989,8 @@ export function ChapterEditorPage() {
             />
           )}
 
-          {/* Save note */}
-          <div className="flex-shrink-0 border-t px-4 py-2">
+          {/* Save note — dimmed in focus mode (mockup .savenote) */}
+          <div className={cn('flex-shrink-0 border-t px-4 py-2', focusMode && 'pointer-events-none opacity-0')}>
             <input
               value={saveNote}
               onChange={(e) => setSaveNote(e.target.value)}
@@ -978,7 +1002,7 @@ export function ChapterEditorPage() {
 
         {/* Right panel */}
         {panels.right && (
-          <div className="relative flex flex-shrink-0 flex-col border-l bg-card" style={{ width: rightWidth }}>
+          <div className={cn('relative flex flex-shrink-0 flex-col border-l bg-card', focusMode && 'hidden')} style={{ width: rightWidth }}>
             {/* Drag handle — resize the panel by dragging its left edge. */}
             <div
               onMouseDown={startRightResize}

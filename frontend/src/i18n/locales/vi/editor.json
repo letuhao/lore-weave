@@ -1,4 +1,9 @@
 {
+  "focus": {
+    "toggle": "Chế độ tập trung",
+    "continuity": "Mạch truyện ✓",
+    "hint": "✦ chạm vào một dòng để xem nền tảng"
+  },
   "saved": "Đã lưu chương",
   "no_content": "Không có nội dung để dịch",
   "translation_failed": "Dịch thất bại",

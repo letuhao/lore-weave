@@ -1,4 +1,9 @@
 {
+  "focus": {
+    "toggle": "フォーカスモード",
+    "continuity": "連続性 ✓",
+    "hint": "✦ 行をタップしてグラウンディング"
+  },
   "saved": "章を保存しました",
   "no_content": "翻訳するコンテンツがありません",
   "translation_failed": "翻訳に失敗しました",
