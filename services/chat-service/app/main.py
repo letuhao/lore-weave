@@ -13,7 +13,7 @@ from app.config import settings
 from app.db.migrate import run_migrations
 from app.db.pool import close_pool, create_pool, get_pool
 from app.middleware.trace_id import TraceIdMiddleware, current_trace_id
-from app.routers import evaluate, feedback, internal, messages, outputs, sessions, templates, voice
+from app.routers import evaluate, feedback, internal, messages, outputs, sessions, voice
 from app.storage.minio_client import delete_object, ensure_bucket
 
 logger = logging.getLogger(__name__)
@@ -106,7 +106,9 @@ async def _trace_id_500_handler(request: Request, exc: Exception) -> JSONRespons
 
 
 app.include_router(sessions.router)
-app.include_router(templates.router)
+# /v1/chat/templates* retired 2026-06-24 — scripts + start moved to
+# roleplay-service (/v1/roleplay). /evaluate (M6 debrief), the internal
+# session-create, and the turn loop stay here (reused by roleplay-service).
 app.include_router(messages.router)
 app.include_router(outputs.router)
 app.include_router(evaluate.router)  # M6: interview-practice scorecard
