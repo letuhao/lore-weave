@@ -2049,6 +2049,37 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 		return
 	}
 
+	// web_search is an external SERVICE, not an LLM/model: it is verified by a real
+	// /search "ping" and it TOLERATES a keyless backend (e.g. self-hosted SearXNG
+	// with an empty secret). So handle it HERE, before the generic empty-secret
+	// guard below — that guard legitimately rejects an empty secret for chat /
+	// embedding / rerank, but a keyless web-search credential is valid.
+	{
+		var earlyCaps map[string]any
+		_ = json.Unmarshal(capabilityFlagsJSON, &earlyCaps)
+		if detectPrimaryCapability(earlyCaps) == "web_search" {
+			wsSecret := ""
+			if secretCipher != "" {
+				dec, derr := s.decryptSecret(secretCipher)
+				if derr != nil {
+					VerifyRequestsTotal.WithLabelValues(OutcomeDecryptFailed).Inc()
+					writeError(w, http.StatusInternalServerError, "M03_SECRET_DECRYPT_FAILED", "failed to decrypt provider secret")
+					return
+				}
+				wsSecret = dec
+			}
+			wsCtx, wsCancel := context.WithTimeout(r.Context(), 30*time.Second)
+			defer wsCancel()
+			wsStart := time.Now()
+			result := s.verifyWebSearch(wsCtx, endpointBaseURL, wsSecret)
+			result["latency_ms"] = time.Since(wsStart).Milliseconds()
+			result["capability"] = "web_search"
+			VerifyRequestsTotal.WithLabelValues(OutcomeOK).Inc()
+			writeJSON(w, http.StatusOK, result)
+			return
+		}
+	}
+
 	// D-PROXY-01 — invalid state guard. Verify endpoints pre-K17.2a
 	// would decrypt empty → forward empty Authorization → get a
 	// cryptic 401 from upstream. Early-fail with a clear code.
@@ -2223,7 +2254,7 @@ func canEmbed(caps map[string]any) bool {
 func detectPrimaryCapability(caps map[string]any) string {
 	// C3 (BL-10): include rerank so its verify path does a real /v1/rerank
 	// round-trip instead of falling through to the chat ping.
-	for _, cap := range []string{"stt", "tts", "image_gen", "video_gen", "rerank"} {
+	for _, cap := range []string{"stt", "tts", "image_gen", "video_gen", "rerank", "web_search"} {
 		if v, ok := caps[cap]; ok {
 			if b, ok := v.(bool); ok && b {
 				return cap
@@ -2232,8 +2263,8 @@ func detectPrimaryCapability(caps map[string]any) string {
 	}
 	// Inventory-discovered rerank (C2) may carry the capability as the `_capability`
 	// metadata string rather than a boolean flag — recognize that form too.
-	if c, _ := caps["_capability"].(string); c == "rerank" {
-		return "rerank"
+	if c, _ := caps["_capability"].(string); c == "rerank" || c == "web_search" {
+		return c
 	}
 	return "chat"
 }
@@ -2274,6 +2305,22 @@ func (s *Server) verifyRerank(ctx context.Context, baseURL, secret, modelName st
 		out["top_score"] = results[0].Score
 	}
 	return out
+}
+
+// verifyWebSearch runs a minimal real /search "ping" through the canonical
+// provider.WebSearch (the only place web-search HTTP lives) to prove the user's
+// BYOK web-search backend is reachable and answering. A KEYLESS backend (empty
+// secret, e.g. self-hosted SearXNG) is supported — provider.WebSearch omits the
+// Authorization header when secret=="". This surfaces the common misconfig the
+// generic chat-ping could not: an endpoint that resolves to nothing (e.g.
+// `localhost` from inside a container instead of `host.docker.internal`).
+func (s *Server) verifyWebSearch(ctx context.Context, baseURL, secret string) map[string]any {
+	results, _, err := provider.WebSearch(ctx, s.invokeClient, baseURL, secret, "ping",
+		provider.WebSearchOptions{MaxResults: 1})
+	if err != nil {
+		return map[string]any{"verified": false, "error": err.Error()}
+	}
+	return map[string]any{"verified": true, "result_count": len(results)}
 }
 
 // verifySTT sends a tiny silent WAV to the STT endpoint and checks for a text response.
