@@ -1015,6 +1015,25 @@ async def stream_response(
         from app.services.knowledge_skill import KNOWLEDGE_SKILL_PROMPT
         knowledge_skill = KNOWLEDGE_SKILL_PROMPT
 
+    # Surface the book/chapter ids the chat is scoped to so book-scoped tools
+    # (glossary ontology adopt/propose, deep-research, propose-edit) fill book_id /
+    # chapter_id without a placeholder or asking the user. The FE sends these via
+    # editor_context/book_context, but their VALUE was never given to the model —
+    # only their PRESENCE gated tool advertising — so the agent passed
+    # "YOUR_BOOK_ID_HERE"/"none" and the tool 400'd ("book_id must be a UUID").
+    # Carried inside the system message alongside the skills.
+    _ctx_book_id = (editor_context or {}).get("book_id") or (book_context or {}).get("book_id")
+    _ctx_chapter_id = (editor_context or {}).get("chapter_id")
+    book_context_note: str | None = None
+    if _ctx_book_id:
+        book_context_note = f"You are working inside book_id={_ctx_book_id}."
+        if _ctx_chapter_id:
+            book_context_note += f" The active chapter is chapter_id={_ctx_chapter_id}."
+        book_context_note += (
+            " Use these exact ids for any tool that requires a book_id or chapter_id."
+            " Never ask the user for the book_id and never pass a placeholder."
+        )
+
     use_anthropic_cache = (
         creds.provider_kind == "anthropic"
         and kctx.stable_context.strip() != ""
@@ -1049,6 +1068,8 @@ async def stream_response(
             parts.append({"type": "text", "text": knowledge_skill, "cache_control": {"type": "ephemeral"}})
         if universal_skill:
             parts.append({"type": "text", "text": universal_skill, "cache_control": {"type": "ephemeral"}})
+        if book_context_note:
+            parts.append({"type": "text", "text": book_context_note, "cache_control": {"type": "ephemeral"}})
         messages.insert(0, {"role": "system", "content": parts})
     else:
         system_parts: list[str] = []
@@ -1068,6 +1089,8 @@ async def stream_response(
             system_parts.append(knowledge_skill)
         if universal_skill:
             system_parts.append(universal_skill)
+        if book_context_note:
+            system_parts.append(book_context_note)
         if system_parts:
             messages.insert(0, {"role": "system", "content": "\n\n".join(system_parts)})
 
