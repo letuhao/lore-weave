@@ -26,6 +26,7 @@ async function bootstrap() {
   const translationUrl = requireEnv('TRANSLATION_SERVICE_URL');
   const glossaryUrl = requireEnv('GLOSSARY_SERVICE_URL');
   const chatUrl = requireEnv('CHAT_SERVICE_URL');
+  const roleplayUrl = requireEnv('ROLEPLAY_SERVICE_URL');
   const videoGenUrl = requireEnv('VIDEO_GEN_SERVICE_URL');
   const statisticsUrl = requireEnv('STATISTICS_SERVICE_URL');
   const notificationUrl = requireEnv('NOTIFICATION_SERVICE_URL');
@@ -35,7 +36,7 @@ async function bootstrap() {
   const learningUrl = requireEnv('LEARNING_SERVICE_URL');
   const compositionUrl = requireEnv('COMPOSITION_SERVICE_URL');
   const jobsUrl = requireEnv('JOBS_SERVICE_URL');
-  configureGatewayApp(app, { authUrl, bookUrl, sharingUrl, catalogUrl, providerRegistryUrl, usageBillingUrl, translationUrl, glossaryUrl, chatUrl, videoGenUrl, statisticsUrl, notificationUrl, knowledgeUrl, campaignUrl, loreEnrichmentUrl, learningUrl, compositionUrl, jobsUrl });
+  configureGatewayApp(app, { authUrl, bookUrl, sharingUrl, catalogUrl, providerRegistryUrl, usageBillingUrl, translationUrl, glossaryUrl, chatUrl, roleplayUrl, videoGenUrl, statisticsUrl, notificationUrl, knowledgeUrl, campaignUrl, loreEnrichmentUrl, learningUrl, compositionUrl, jobsUrl });
 
   app.enableShutdownHooks();
   const port = parseInt(process.env.PORT || '3000', 10);

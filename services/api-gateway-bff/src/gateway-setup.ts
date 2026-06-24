@@ -19,6 +19,7 @@ export function configureGatewayApp(
     translationUrl: string;
     glossaryUrl: string;
     chatUrl: string;
+    roleplayUrl: string;
     videoGenUrl: string;
     statisticsUrl: string;
     notificationUrl: string;
@@ -141,6 +142,15 @@ export function configureGatewayApp(
     // Disable body buffering so SSE streams pass through immediately
     selfHandleResponse: false,
     pathFilter: (pathname: string) => pathname.startsWith('/v1/chat'),
+  });
+  // roleplay-service (Rust) — scripts + start-orchestration. A normal domain
+  // REST proxy (gateway invariant holds); roleplay-service validates the JWT
+  // itself (like book-service), so Authorization passes through unchanged. The
+  // path is forwarded verbatim — roleplay-service serves `/v1/roleplay/*`.
+  const roleplayProxy = createProxyMiddleware({
+    target: urls.roleplayUrl,
+    changeOrigin: true,
+    pathFilter: (pathname: string) => pathname.startsWith('/v1/roleplay'),
   });
   const videoGenProxy = createProxyMiddleware({
     target: urls.videoGenUrl,
@@ -371,6 +381,11 @@ export function configureGatewayApp(
     res: Response,
     next: NextFunction,
   ) => void;
+  const roleplayProxyFn = roleplayProxy as unknown as (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => void;
   const videoGenProxyFn = videoGenProxy as unknown as (
     req: Request,
     res: Response,
@@ -463,6 +478,9 @@ export function configureGatewayApp(
     }
     if (req.path.startsWith('/v1/chat')) {
       return chatProxyFn(req, res, next);
+    }
+    if (req.path.startsWith('/v1/roleplay')) {
+      return roleplayProxyFn(req, res, next);
     }
     if (req.path.startsWith('/v1/video-gen')) {
       return videoGenProxyFn(req, res, next);

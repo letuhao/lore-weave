@@ -1,0 +1,42 @@
+[package]
+name = "roleplay-service"
+version = "0.1.0-v1"
+description = "LoreWeave roleplay-service (Rust) — scripts + actor-memory (charter/state) + start-orchestration; the MMO roleplay-service seed. v1 is lean: System + Per-user tiers, single platform pool, reuses chat-service for the turn loop / voice / debrief. Built on crates/service-http."
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "roleplay-service"
+path = "src/main.rs"
+
+[lib]
+name = "roleplay_service"
+path = "src/lib.rs"
+
+[dependencies]
+service-http = { path = "../../crates/service-http" }
+
+tokio = { workspace = true }
+axum = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+sqlx = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+reqwest = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+tower = { workspace = true }
+wiremock = { workspace = true }
+serde_json = { workspace = true }
+jsonwebtoken = { workspace = true }
+reqwest = { workspace = true }

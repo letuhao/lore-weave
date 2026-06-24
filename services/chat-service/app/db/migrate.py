@@ -214,6 +214,90 @@ CREATE INDEX IF NOT EXISTS idx_message_feedback_message
   ON message_feedback(message_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_message_feedback_user
   ON message_feedback(user_id, created_at DESC);
+
+-- ══════════════════════════════════════════════════════════════════════
+-- Interview-Practice Roleplay (POC for roleplay-service).
+-- docs/specs/2026-06-23-interview-roleplay.md
+--
+-- session_templates — the "goal authority" for interview sessions. A
+-- reusable interviewer persona + the scenario that seeds a session's frozen
+-- `charter`. TENANCY (LOCKED rules): two tiers keyed by owner_user_id —
+--   * System tier  : owner_user_id IS NULL → platform-owned, admin-write,
+--                     read-only to users (seeded defaults).
+--   * Per-user tier: owner_user_id = a user → that user writes their own.
+-- Resolution merges System (defaults) → Per-user (overrides) by `code`.
+-- NULL-distinct UNIQUE would let two System rows share a code, so the
+-- uniqueness is split into two PARTIAL indexes (the correct fix for the
+-- shared-row tenancy bug: never a bare UNIQUE(code) on a shared table).
+-- ══════════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS session_templates (
+  template_id    UUID PRIMARY KEY DEFAULT uuidv7(),
+  owner_user_id  UUID,                                      -- NULL ⇒ System tier
+  tier           VARCHAR(10) NOT NULL DEFAULT 'user',       -- 'system' | 'user'
+  code           VARCHAR(100) NOT NULL,                     -- stable id for merge/resolution
+  name           VARCHAR(255) NOT NULL,
+  description    TEXT,
+  system_prompt  TEXT NOT NULL,                             -- persona voice + rules
+  model_source   VARCHAR(20),                               -- optional default model
+  model_ref      UUID,
+  scenario       JSONB NOT NULL DEFAULT '{}',               -- seeds working_memory.charter
+  rubric         JSONB,                                     -- optional eval rubric (M6)
+  is_active      BOOLEAN NOT NULL DEFAULT true,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT session_templates_tier_owner_chk CHECK (
+    (tier = 'system' AND owner_user_id IS NULL) OR
+    (tier = 'user'   AND owner_user_id IS NOT NULL)
+  )
+);
+-- System-tier codes globally unique; per-user codes unique within the user.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_session_templates_system_code
+  ON session_templates (code) WHERE owner_user_id IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_session_templates_user_code
+  ON session_templates (owner_user_id, code) WHERE owner_user_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_session_templates_owner
+  ON session_templates (owner_user_id, is_active);
+
+-- working_memory_seed — the frozen `charter` written ONCE at session create
+-- from the chosen template's scenario (goal authority = template). Also the
+-- degraded fallback (EC-4) when knowledge-service is unavailable. NULL for
+-- non-interview sessions.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_sessions' AND column_name='working_memory_seed') THEN
+    ALTER TABLE chat_sessions ADD COLUMN working_memory_seed JSONB;
+  END IF;
+END $$;
+
+-- ══════════════════════════════════════════════════════════════════════
+-- M7 — System-tier seed templates (the admin/platform path). These are the
+-- shared defaults every tenant sees read-only; a user clones one (POST
+-- /templates) to localize/customize. owner_user_id IS NULL ⇒ tier='system'.
+-- ON CONFLICT DO NOTHING keys on the partial unique index
+-- (uq_session_templates_system_code: code WHERE owner_user_id IS NULL) so a
+-- re-run never duplicates and never clobbers an admin edit. Neutral 'en'
+-- defaults — System tier is multi-tenant; localization is a per-user clone.
+-- model_source/model_ref are NULL: the user supplies their own model at /start.
+INSERT INTO session_templates (owner_user_id, tier, code, name, description, system_prompt, scenario, rubric)
+VALUES
+  (NULL, 'system', 'faang_swe',
+   'FAANG SWE Interview',
+   'A senior software-engineer loop: a brief warm-up, a coding/problem-solving round, then wrap-up.',
+   'You are a senior engineer running a FAANG-style software interview. Be professional, concise, and probing. Ask ONE question at a time, let the candidate drive, and follow up on their reasoning (edge cases, complexity, trade-offs). Do not lecture or solve it for them. Keep the interview moving through the phases.',
+   '{"goal":"Assess senior software-engineering skill through a coding/problem-solving interview","phases":["warmup","coding","followup","wrap"],"checklist":["clarifies the problem before coding","states an approach and its complexity","handles edge cases","writes correct working logic"],"time_budget_min":45,"language":"en"}'::jsonb,
+   '{"dimensions":["problem clarification","algorithmic approach","code correctness","communication"]}'::jsonb),
+  (NULL, 'system', 'behavioral_hr',
+   'Behavioral (HR) Interview',
+   'A behavioral interview focused on STAR stories: motivation, teamwork, conflict, and impact.',
+   'You are a thoughtful HR / hiring-manager interviewer running a behavioral interview. Ask open-ended questions that invite STAR (Situation, Task, Action, Result) stories, one at a time. Gently probe for specifics — the candidate''s own actions and measurable results. Stay warm but keep them on track.',
+   '{"goal":"Assess behavioral fit through STAR stories on teamwork, conflict, and impact","phases":["warmup","stories","followup","wrap"],"checklist":["gives a concrete Situation and Task","describes their own Actions specifically","states a measurable Result","tells a genuine conflict / failure story"],"time_budget_min":40,"language":"en"}'::jsonb,
+   '{"dimensions":["STAR structure","specificity","ownership","reflection"]}'::jsonb),
+  (NULL, 'system', 'system_design',
+   'System Design Interview',
+   'A senior system-design interview: requirements, high-level design, deep-dives, and trade-offs.',
+   'You are a staff engineer running a system-design interview. Start from requirements and scale, then guide the candidate through a high-level design and one or two deep-dives. Push on trade-offs, bottlenecks, and failure modes. Ask one prompt at a time; let the candidate lead the design.',
+   '{"goal":"Assess senior system-design skill: requirements, architecture, scaling, and trade-offs","phases":["requirements","high_level","deep_dive","wrap"],"checklist":["clarifies functional and scale requirements","proposes a clear high-level architecture","reasons about a data store and partitioning","discusses bottlenecks and failure modes"],"time_budget_min":50,"language":"en"}'::jsonb,
+   '{"dimensions":["requirements","architecture","scalability","trade-off reasoning"]}'::jsonb)
+ON CONFLICT (code) WHERE owner_user_id IS NULL DO NOTHING;
 """
 
 

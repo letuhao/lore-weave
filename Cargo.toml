@@ -23,6 +23,11 @@ members = [
     "services/tilemap-service",
     "services/world-service",
     "services/travel-service",
+    # roleplay-service (2026-06-24) — first user-facing Rust service (scripts +
+    # actor-memory + start-orchestration; the MMO roleplay-service seed). Built
+    # on `crates/service-http` (the shared axum/auth/health/trace/db kit).
+    "services/roleplay-service",
+    "crates/service-http",
     "crates/world-gen",
     "crates/meta-rs",
     # S6 / H1-loom — tokio-free CircuitBreaker sync core extracted from
@@ -136,7 +141,15 @@ uuid = { version = "1.10", features = ["serde", "v4", "v5"] }
 
 # Structured logging
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# "json" added 2026-06-24 for crates/service-http::init_tracing (platform JSON
+# logs w/ service + trace_id). Additive — tilemap/world `fmt()` unaffected.
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# User-facing JWT auth (crates/service-http::require_user; roleplay-service is
+# the first consumer). HS256, `sub` claim → user_id — mirrors book-service.
+jsonwebtoken = "9"
+# Typed TIMESTAMPTZ <-> DateTime<Utc> in sqlx models (roleplay-service).
+chrono = { version = "0.4", features = ["serde"] }
 
 # HTTP mock server for offline SSE-parser / gateway integration tests (dev-only)
 wiremock = "0.6"
@@ -153,6 +166,11 @@ sqlx = { version = "0.8", default-features = false, features = [
     "uuid",
     "json",
     "macros",
+    # 2026-06-24 (roleplay-service / crates/service-http::db::init):
+    #   "migrate" — sqlx::migrate!() + Migrator for startup migrations.
+    #   "chrono"  — TIMESTAMPTZ <-> chrono::DateTime<Utc> in models.
+    "migrate",
+    "chrono",
 ] }
 
 # Cycle 16 / DEFERRED-059 — embedding-queue live wiring (world-service).

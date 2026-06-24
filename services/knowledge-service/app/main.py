@@ -39,6 +39,7 @@ from app.routers import (
     internal_wiki,
     metrics,
     ping,
+    working_memory,
 )
 from app.routers.public import costs as public_costs
 from app.routers.public import drawers as public_drawers
@@ -709,6 +710,7 @@ app.include_router(health.router)
 app.include_router(ping.public_router)
 app.include_router(ping.internal_router)
 app.include_router(context.router)
+app.include_router(working_memory.router)
 app.include_router(coref.router)
 app.include_router(internal_admin.router)
 app.include_router(internal_backfill.router)

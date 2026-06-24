@@ -1317,6 +1317,7 @@ services:
       TRANSLATION_SERVICE_URL: http://translation-service:8087
       GLOSSARY_SERVICE_URL: http://glossary-service:8088
       CHAT_SERVICE_URL: http://chat-service:8090
+      ROLEPLAY_SERVICE_URL: http://roleplay-service:7110
       VIDEO_GEN_SERVICE_URL: http://video-gen-service:8088
       STATISTICS_SERVICE_URL: http://statistics-service:8089
       NOTIFICATION_SERVICE_URL: http://notification-service:8091
@@ -1329,10 +1330,6 @@ services:
       COMPOSITION_SERVICE_URL: http://composition-service:8093
       # Unified Job Control Plane P2 — jobs-service (/v1/jobs list/detail/SSE).
       JOBS_SERVICE_URL: http://jobs-service:8096
-      # PRR-20 — roleplay (game-server, Colyseus). The BFF requireEnv's this at
-      # boot; the game-server itself is profile-gated (game/full), so this is just
-      # the in-cluster URL the proxy routes to when that profile is up.
-      ROLEPLAY_SERVICE_URL: ${ROLEPLAY_SERVICE_URL:-http://game-server:2567}
       RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
@@ -1624,6 +1621,44 @@ services:
     profiles:
       - tilemap
       - full
+
+  # ────────────────────────────────────────────────────────────────
+  # roleplay-service — first USER-FACING Rust service (scripts + actor-memory
+  # + start-orchestration; the MMO roleplay-service seed). Per-service DB
+  # `loreweave_roleplay`; validates the user JWT itself (HS256, same JWT_SECRET
+  # as the gateway) and calls chat-service over X-Internal-Token at /start (R1).
+  # Built on crates/service-http. NOT profile-gated — the FE Roleplay
+  # destination (R2) reaches it through the gateway `/v1/roleplay` proxy.
+  # Host port 8225 (8221 is taken by lore-enrichment-service).
+  # ────────────────────────────────────────────────────────────────
+  roleplay-service:
+    build:
+      context: ..
+      dockerfile: services/roleplay-service/Dockerfile
+      labels: *build-labels
+    environment:
+      DATABASE_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_roleplay
+      JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      # Compose rewrites INTERNAL_SERVICE_TOKEN → the binary-facing name
+      # (tilemap convention); setting LOREWEAVE_INTERNAL_TOKEN on the host has
+      # no effect.
+      LOREWEAVE_INTERNAL_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      CHAT_SERVICE_URL: http://chat-service:8090
+      ROLEPLAY_HTTP_BIND: "0.0.0.0:7110"
+      LOREWEAVE_CORS_ORIGINS: ${LOREWEAVE_CORS_ORIGINS:-http://localhost:5174}
+      RUST_LOG: ${RUST_LOG:-info,roleplay_service=debug}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:7110/livez"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: on-failure:5
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8225:7110"
 
   # ────────────────────────────────────────────────────────────────
   # game-server — Node + TypeScript + Colyseus.

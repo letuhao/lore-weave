@@ -1569,3 +1569,108 @@ class TestStreamFormatNegotiation:
         # distinct ids
         start_ids = [_parse_event(e)["toolCallId"] for e in events if '"TOOL_CALL_START"' in e]
         assert start_ids == ["call_a", "call_b"]
+
+
+# ── M3 anchoring — working_memory pinned + tail injection ─────────────────────
+
+
+class TestAnchorInjection:
+    @pytest.mark.asyncio
+    async def test_seed_anchor_is_pinned_and_tailed(self):
+        """A roleplay session (working_memory_seed set, knowledge empty) gets the
+        anchor pinned in the system block AND tail-injected before the user turn."""
+        import json as _json
+
+        pool, conn = _make_pool_with_conn()
+        seed = _json.dumps({
+            "version": 1,
+            "charter": {
+                "goal": "Senior backend interview",
+                "phases": ["warmup", "technical"],
+                "checklist": ["system design"],
+                "time_budget_min": 60,
+                "language": "vi",
+            },
+            "state": {"phase": "", "covered": []},
+        })
+        pool.fetchrow.return_value = {
+            "system_prompt": "You are an interviewer.",
+            "generation_params": {},
+            "working_memory_seed": seed,
+        }
+        pool.fetch.return_value = [{"role": "user", "content": "hello"}]
+        conn.fetchval.return_value = 5
+
+        captured: list[dict] = []
+
+        async def fake_gw(**kwargs):
+            captured.extend(kwargs.get("messages", []))
+            yield _make_chunk("ok")
+            yield _make_chunk(None)
+
+        with patch(
+            "app.services.stream_service.get_knowledge_client",
+            return_value=_patched_knowledge(),  # kctx.working_memory == "" → seed path
+        ), patch(
+            "app.services.stream_service._stream_via_gateway",
+            side_effect=lambda **k: fake_gw(**k),
+        ):
+            async for _ in stream_response(
+                session_id=TEST_SESSION_ID,
+                user_message_content="hello",
+                user_id=TEST_USER_ID,
+                model_source="user_model",
+                model_ref=TEST_MODEL_REF,
+                creds=_make_creds(provider_kind="openai"),
+                pool=pool,
+                billing=AsyncMock(),
+            ):
+                pass
+
+        # Pinned: the system message carries the anchor + the frozen goal.
+        sys_msg = captured[0]
+        assert sys_msg["role"] == "system"
+        assert "ROLEPLAY SESSION" in sys_msg["content"]
+        assert "Senior backend interview" in sys_msg["content"]
+        # Tail: the Director note sits immediately before the latest user turn.
+        assert captured[-1] == {"role": "user", "content": "hello"}
+        assert captured[-2]["role"] == "system"
+        assert captured[-2]["content"].startswith("[Director")
+        assert "Senior backend interview" in captured[-2]["content"]
+
+    @pytest.mark.asyncio
+    async def test_non_roleplay_session_has_no_anchor(self):
+        """A plain chat session (no seed) injects neither pin nor tail."""
+        pool, conn = _make_pool_with_conn()
+        pool.fetchrow.return_value = {"system_prompt": None, "generation_params": {}}
+        pool.fetch.return_value = [{"role": "user", "content": "hi"}]
+        conn.fetchval.return_value = 5
+
+        captured: list[dict] = []
+
+        async def fake_gw(**kwargs):
+            captured.extend(kwargs.get("messages", []))
+            yield _make_chunk("ok")
+            yield _make_chunk(None)
+
+        with patch(
+            "app.services.stream_service.get_knowledge_client",
+            return_value=_patched_knowledge(),
+        ), patch(
+            "app.services.stream_service._stream_via_gateway",
+            side_effect=lambda **k: fake_gw(**k),
+        ):
+            async for _ in stream_response(
+                session_id=TEST_SESSION_ID,
+                user_message_content="hi",
+                user_id=TEST_USER_ID,
+                model_source="user_model",
+                model_ref=TEST_MODEL_REF,
+                creds=_make_creds(provider_kind="openai"),
+                pool=pool,
+                billing=AsyncMock(),
+            ):
+                pass
+
+        assert not any("[Director" in str(m.get("content", "")) for m in captured)
+        assert not any("ROLEPLAY SESSION" in str(m.get("content", "")) for m in captured)
