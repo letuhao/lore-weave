@@ -4,7 +4,7 @@
 import { apiBase, apiJson } from '../../api';
 import type {
   AutoGeneration, CanonRule, ChapterGeneration, CommitDecomposePayload, CorrectionBody, CorrectionStats,
-  DecomposePreview, DeriveBody, GenerationJob, Grounding, NarrativeThread, OutlineNode, PublishGate, SceneLink, SceneLinkKind, StructureTemplate, Work, WorkResolution,
+  DecomposePreview, DeriveBody, GenerationJob, Grounding, GroundingItemType, NarrativeThread, OutlineNode, PinAction, PublishGate, SceneLink, SceneLinkKind, StructureTemplate, Work, WorkResolution,
 } from './types';
 
 // A3 decompose preview request (cycle 13).
@@ -216,6 +216,16 @@ export const compositionApi = {
   getGrounding(projectId: string, nodeId: string, guide: string, token: string): Promise<Grounding> {
     const qs = guide ? `?guide=${encodeURIComponent(guide)}` : '';
     return apiJson(`${BASE}/works/${projectId}/scenes/${nodeId}/grounding${qs}`, { token });
+  },
+  // T3.4 — pin / exclude / clear ('none') one addressable grounding item for a scene.
+  setGroundingPin(
+    projectId: string, nodeId: string,
+    body: { item_type: GroundingItemType; item_id: string; action: PinAction },
+    token: string,
+  ): Promise<{ item_type: string; item_id: string; action: string }> {
+    return apiJson(`${BASE}/works/${projectId}/scenes/${nodeId}/grounding-pins`, {
+      method: 'PUT', body: JSON.stringify(body), token,
+    });
   },
   // The full URL for the SSE generate POST (used by useCompositionStream's fetch).
   generateUrl(projectId: string): string {

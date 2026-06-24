@@ -27,6 +27,10 @@ LinkKind = Literal["setup_payoff", "custom"]
 RuleScope = Literal["world", "entity", "reveal_gate"]
 JobMode = Literal["cowrite", "auto"]
 JobStatus = Literal["pending", "running", "completed", "failed", "cancelled"]
+# T3.4 — the addressable grounding item types (the three with stable source ids)
+# + the per-scene steering action.
+GroundingItemType = Literal["present", "canon", "lore"]
+PinAction = Literal["pin", "exclude"]
 # Only genuine-author-choice actions are corrections (§2). accept-as-is is NOT
 # here — mining the reranker's own winner = self-reinforcement (review H2).
 CorrectionKind = Literal["edit", "pick_different", "regenerate", "reject"]
@@ -171,6 +175,21 @@ class CanonRule(BaseModel):
     is_archived: bool = False
     created_at: datetime | None = None
     updated_at: datetime | None = None
+
+
+class SceneGroundingPin(BaseModel):
+    """T3.4 — a per-scene author steering row over one addressable grounding item.
+    `item_id` is a STABLE canonical id (glossary anchor / canon_rule uuid / lore
+    source_id), never a localized label, so the pin survives a reader-language
+    switch or a derivative override."""
+    id: UUID
+    user_id: UUID
+    project_id: UUID
+    outline_node_id: UUID
+    item_type: GroundingItemType
+    item_id: Annotated[str, StringConstraints(max_length=200)]
+    action: PinAction
+    created_at: datetime | None = None
 
 
 class GenerationJob(BaseModel):

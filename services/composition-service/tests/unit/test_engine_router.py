@@ -78,14 +78,17 @@ def ctx(monkeypatch):
     monkeypatch.setattr("app.main.close_pool", AsyncMock())
     monkeypatch.setattr("app.main.get_pool", lambda: object())
 
+    captured: dict = {}
+
     async def fake_pack(req, **kw):
         # reinjected_promise_count=2 (non-default) → the response echo (FD-1 S4b)
         # must carry the pack's value, not a hardcoded 0.
+        # T3.4 — record the grounding-pins repo so a test can LOCK that the engine
+        # threads it into pack (else a refactor silently stops honoring per-scene pins).
+        captured["pack_grounding_pins_repo"] = kw.get("grounding_pins_repo", "__missing__")
         return PackedContext(blocks={}, prompt="GROUNDING", profile=NEUTRAL, token_count=5,
                              dropped_count=0, l4_dropped_no_position=0, grounding_available=True,
                              over_budget=False, reinjected_promise_count=2, warnings=[])
-
-    captured: dict = {}
 
     async def fake_stream(sdk, **kw):
         captured.update(kw)  # so tests can assert what actually reached stream_draft
@@ -101,7 +104,7 @@ def ctx(monkeypatch):
     from app.main import app
     from app.deps import (get_book_client_dep, get_canon_rules_repo, get_derivatives_repo,
                           get_generation_jobs_repo, get_glossary_client_dep,
-                          get_knowledge_client_dep, get_llm_client_dep,
+                          get_grounding_pins_repo, get_knowledge_client_dep, get_llm_client_dep,
                           get_narrative_thread_repo, get_outline_repo, get_scene_links_repo,
                           get_works_repo)
     from app.middleware.jwt_auth import get_bearer_token, get_current_user
@@ -116,6 +119,8 @@ def ctx(monkeypatch):
     app.dependency_overrides[get_scene_links_repo] = lambda: object()
     # FD-1: unused unless work.settings.narrative_thread_enabled (off in these tests).
     app.dependency_overrides[get_narrative_thread_repo] = lambda: object()
+    # T3.4: pack is patched in these tests, so the repo only needs to satisfy DI.
+    app.dependency_overrides[get_grounding_pins_repo] = lambda: object()
     # C25 — derivatives repo (StubWorks returns non-derivative works → never read).
     app.dependency_overrides[get_derivatives_repo] = lambda: SimpleNamespace(
         list_overrides_for_work=lambda *a, **k: [])
@@ -151,6 +156,8 @@ def test_selection_edit_does_not_tag_the_scene_node(ctx):
     assert jobs._last_create["operation"] == "rewrite"
     # the SELECTED passage reached the drafter (a selection prompt, not a scene draft).
     assert "the gate of ash rose" in captured["messages"][1]["content"]
+    # T3.4 lock — selection_edit must thread grounding_pins_repo into pack.
+    assert captured["pack_grounding_pins_repo"] not in (None, "__missing__")
 
 
 def test_selection_edit_worker_enabled_enqueues_202(ctx, monkeypatch):
@@ -229,6 +236,8 @@ def test_generate_reasoning_off_is_user_none(ctx):
     r = c.post(f"/v1/composition/works/{PROJECT}/generate", json={**_gen_body(), "reasoning": "off"})
     assert r.status_code == 200
     assert '"reasoning_source": "user"' in r.text
+    # T3.4 lock — the scene generate path must thread grounding_pins_repo into pack.
+    assert captured["pack_grounding_pins_repo"] not in (None, "__missing__")
     assert '"reasoning_effort": "none"' in r.text
     # /review-impl MED#1: the resolved effort must actually REACH stream_draft.
     assert captured["reasoning_effort"] == "none"

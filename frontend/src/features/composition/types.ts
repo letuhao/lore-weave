@@ -160,6 +160,18 @@ export type PublishGate = {
   can_publish: boolean;
 };
 
+// T3.4 — one addressable grounding item (present-entity / canon-rule / lore-source)
+// with its per-scene pin/exclude state. `id` is a stable canonical id (not a label).
+export type GroundingItemType = 'present' | 'canon' | 'lore';
+export type GroundingItem = {
+  type: GroundingItemType;
+  id: string;
+  label: string;
+  pinned: boolean;
+  excluded: boolean;
+};
+export type PinAction = 'pin' | 'exclude' | 'none';
+
 export type Grounding = {
   blocks: Record<string, string>;
   prompt: string;
@@ -168,6 +180,8 @@ export type Grounding = {
   grounding_available: boolean;
   l4_dropped_no_position: number;
   warnings: string[];
+  // T3.4 — addressable items (may be empty for legacy/derivative paths).
+  grounding_items?: GroundingItem[];
 };
 
 export type CanonRule = {

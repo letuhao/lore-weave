@@ -19,6 +19,7 @@ from app.db.repositories.canon_rules import CanonRulesRepo
 from app.db.repositories.derivatives import DerivativesRepo
 from app.db.repositories.generation_corrections import GenerationCorrectionsRepo
 from app.db.repositories.generation_jobs import GenerationJobsRepo
+from app.db.repositories.grounding_pins import GroundingPinsRepo
 from app.db.repositories.narrative_thread import NarrativeThreadRepo
 from app.db.repositories.outline import OutlineRepo
 from app.db.repositories.scene_links import SceneLinksRepo
@@ -52,6 +53,13 @@ async def get_narrative_thread_repo() -> NarrativeThreadRepo:
 
 async def get_canon_rules_repo() -> CanonRulesRepo:
     return CanonRulesRepo(get_pool())
+
+
+async def get_grounding_pins_repo() -> GroundingPinsRepo:
+    """T3.4 — per-scene grounding pin/exclude steering. Wired into pack() (the
+    grounding preview AND every engine generation call site) so the set is honored
+    everywhere a scene is packed."""
+    return GroundingPinsRepo(get_pool())
 
 
 async def get_generation_jobs_repo() -> GenerationJobsRepo:

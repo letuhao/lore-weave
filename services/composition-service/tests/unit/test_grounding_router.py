@@ -63,7 +63,7 @@ def ctx(monkeypatch):
     from app.main import app
     from app.deps import (get_book_client_dep, get_canon_rules_repo, get_derivatives_repo,
                           get_generation_jobs_repo, get_glossary_client_dep,
-                          get_knowledge_client_dep, get_outline_repo,
+                          get_grounding_pins_repo, get_knowledge_client_dep, get_outline_repo,
                           get_scene_links_repo, get_works_repo)
     from app.middleware.jwt_auth import get_bearer_token, get_current_user
 
@@ -82,6 +82,7 @@ def ctx(monkeypatch):
     app.dependency_overrides[get_glossary_client_dep] = lambda: object()
     app.dependency_overrides[get_knowledge_client_dep] = lambda: object()
     app.dependency_overrides[get_generation_jobs_repo] = lambda: object()  # S1: new pack dep
+    app.dependency_overrides[get_grounding_pins_repo] = lambda: object()  # T3.4: pack stubbed
     # C25 — derivatives repo (StubWorks non-derivative → never read; pack stubbed).
     from types import SimpleNamespace
     app.dependency_overrides[get_derivatives_repo] = lambda: SimpleNamespace(
@@ -141,3 +142,94 @@ def test_grounding_book_down_maps_502(ctx):
     outline.node = _node()
     pack_stub.side_effect = BookClientError(502, "BOOK_SERVICE_UNAVAILABLE")
     assert c.get(_URL).status_code == 502
+
+
+def test_grounding_response_carries_grounding_items(ctx):
+    c, works, outline, _ = ctx
+    works.work = _work()
+    outline.node = _node()
+    body = c.get(_URL).json()
+    assert "grounding_items" in body  # T3.4 — addressable pin/exclude state surfaced
+
+
+# ───────────────────────── PUT grounding-pins (T3.4) ─────────────────────────
+
+_PINS_URL = f"/v1/composition/works/{PROJECT}/scenes/{NODE}/grounding-pins"
+
+
+class _RecordingPins:
+    def __init__(self):
+        self.calls = []
+    async def set_action(self, user_id, project_id, node_id, item_type, item_id, action):
+        self.calls.append(("set", item_type, item_id, action))
+        from types import SimpleNamespace
+        return SimpleNamespace(item_type=item_type, item_id=item_id, action=action)
+    async def clear(self, user_id, project_id, node_id, item_type, item_id):
+        self.calls.append(("clear", item_type, item_id))
+        return True
+
+
+def _use_recording_pins():
+    from app.main import app
+    from app.deps import get_grounding_pins_repo
+    rec = _RecordingPins()
+    app.dependency_overrides[get_grounding_pins_repo] = lambda: rec
+    return rec
+
+
+def test_put_grounding_pin_sets_action(ctx):
+    c, works, outline, _ = ctx
+    works.work = _work()
+    outline.node = _node()
+    rec = _use_recording_pins()
+    r = c.put(_PINS_URL, json={"item_type": "lore", "item_id": "src-1", "action": "pin"})
+    assert r.status_code == 200
+    assert r.json() == {"item_type": "lore", "item_id": "src-1", "action": "pin"}
+    assert rec.calls == [("set", "lore", "src-1", "pin")]
+
+
+def test_put_grounding_pin_none_clears(ctx):
+    c, works, outline, _ = ctx
+    works.work = _work()
+    outline.node = _node()
+    rec = _use_recording_pins()
+    r = c.put(_PINS_URL, json={"item_type": "present", "item_id": "g1", "action": "none"})
+    assert r.status_code == 200
+    assert rec.calls == [("clear", "present", "g1")]  # 'none' routes to clear, not set
+
+
+def test_put_grounding_pin_404_when_work_missing(ctx):
+    c, works, outline, _ = ctx
+    works.work = None  # not owned → 404, no existence oracle
+    _use_recording_pins()
+    r = c.put(_PINS_URL, json={"item_type": "lore", "item_id": "src-1", "action": "pin"})
+    assert r.status_code == 404
+
+
+def test_put_grounding_pin_404_when_node_other_project(ctx):
+    c, works, outline, _ = ctx
+    works.work = _work()
+    outline.node = _node(project_id=uuid.uuid4())  # scene of another project
+    _use_recording_pins()
+    r = c.put(_PINS_URL, json={"item_type": "canon", "item_id": "r1", "action": "exclude"})
+    assert r.status_code == 404
+
+
+def test_put_grounding_pin_rejects_unknown_item_type(ctx):
+    c, works, outline, _ = ctx
+    works.work = _work()
+    outline.node = _node()
+    _use_recording_pins()
+    # 'timeline' is not an addressable type (present/canon/lore) → 422 at validation
+    r = c.put(_PINS_URL, json={"item_type": "timeline", "item_id": "x", "action": "pin"})
+    assert r.status_code == 422
+
+
+def test_put_grounding_pin_rejects_oversize_item_id(ctx):
+    c, works, outline, _ = ctx
+    works.work = _work()
+    outline.node = _node()
+    _use_recording_pins()
+    # >200 chars → 422 at the boundary (not a 500 on the RETURNING-row revalidation)
+    r = c.put(_PINS_URL, json={"item_type": "lore", "item_id": "x" * 201, "action": "pin"})
+    assert r.status_code == 422

@@ -32,6 +32,7 @@ from app.db.repositories.generation_corrections import (
 )
 from app.clients.model_name import resolve_model_name
 from app.db.repositories.generation_jobs import GenerationJobsRepo
+from app.db.repositories.grounding_pins import GroundingPinsRepo
 from app.db.repositories.narrative_thread import NarrativeThreadRepo
 from app.db.repositories.outline import OutlineRepo
 from app.db.repositories.scene_links import SceneLinksRepo
@@ -39,9 +40,9 @@ from app.db.repositories.works import WorksRepo
 from app.deps import (
     get_book_client_dep, get_canon_rules_repo, get_derivatives_repo,
     get_generation_corrections_repo, get_generation_jobs_repo,
-    get_glossary_client_dep, get_knowledge_client_dep, get_llm_client_dep,
-    get_narrative_thread_repo, get_outline_repo, get_scene_links_repo,
-    get_works_repo,
+    get_glossary_client_dep, get_grounding_pins_repo, get_knowledge_client_dep,
+    get_llm_client_dep, get_narrative_thread_repo, get_outline_repo,
+    get_scene_links_repo, get_works_repo,
 )
 from app.db.repositories.derivatives import DerivativesRepo
 from app.db.models import CorrectionKind
@@ -289,6 +290,7 @@ async def generate(
     knowledge: KnowledgeClient = Depends(get_knowledge_client_dep),
     llm: LLMClient = Depends(get_llm_client_dep),
     narrative_threads: NarrativeThreadRepo = Depends(get_narrative_thread_repo),
+    grounding_pins: GroundingPinsRepo = Depends(get_grounding_pins_repo),
     derivatives: DerivativesRepo = Depends(get_derivatives_repo),
 ) -> Any:  # StreamingResponse (cowrite) | JSONResponse (auto)
     work, node = await _load_work_node(works, outline, user_id, project_id, body.outline_node_id)
@@ -335,6 +337,7 @@ async def generate(
             jobs_repo=jobs,  # S1 state-reinjection fallback source (prior generated scenes)
             compress_fn=_compress_fn,  # S2 long-chapter state compression
             narrative_threads_repo=narrative_threads,  # FD-1 S3 open-promise re-injection
+            grounding_pins_repo=grounding_pins,  # T3.4 — generation honors per-scene pins
             need=GrantLevel.EDIT,  # E0-4c: prose-gen is a write/spend → EDIT tier
         )
     except OwnershipError:
@@ -628,6 +631,7 @@ async def selection_edit(
     knowledge: KnowledgeClient = Depends(get_knowledge_client_dep),
     llm: LLMClient = Depends(get_llm_client_dep),
     narrative_threads: NarrativeThreadRepo = Depends(get_narrative_thread_repo),
+    grounding_pins: GroundingPinsRepo = Depends(get_grounding_pins_repo),
     derivatives: DerivativesRepo = Depends(get_derivatives_repo),
 ) -> Any:
     """T3.2 — selection-scoped edit (rewrite/expand/describe) over the author's
@@ -670,7 +674,8 @@ async def selection_edit(
                     book=book, glossary=glossary, knowledge=knowledge, canon_repo=canon,
                     outline_repo=outline, scene_links_repo=scene_links,
                     budget_tokens=settings.pack_token_budget, jobs_repo=jobs,
-                    compress_fn=_compress_fn, narrative_threads_repo=narrative_threads)
+                    compress_fn=_compress_fn, narrative_threads_repo=narrative_threads,
+                    grounding_pins_repo=grounding_pins)  # T3.4 — honor per-scene pins
                 grounding = pc.prompt
             except Exception:  # noqa: BLE001 — grounding is best-effort: a pack
                 # failure of ANY kind degrades to voice-only, never 500s the edit
@@ -791,6 +796,7 @@ async def generate_chapter(
     knowledge: KnowledgeClient = Depends(get_knowledge_client_dep),
     llm: LLMClient = Depends(get_llm_client_dep),
     narrative_threads: NarrativeThreadRepo = Depends(get_narrative_thread_repo),
+    grounding_pins: GroundingPinsRepo = Depends(get_grounding_pins_repo),
     derivatives: DerivativesRepo = Depends(get_derivatives_repo),
 ) -> Any:
     """B2 chapter single-pass (assembly_mode='chapter'): generate a WHOLE chapter
@@ -848,6 +854,7 @@ async def generate_chapter(
             budget_tokens=settings.pack_token_budget, jobs_repo=jobs,
             compress_fn=_compress_fn,
             narrative_threads_repo=narrative_threads,  # FD-1 S3 open-promise re-injection
+            grounding_pins_repo=grounding_pins,  # T3.4 — generation honors per-scene pins
             need=GrantLevel.EDIT)  # E0-4c: prose-gen is a write/spend → EDIT tier
     except OwnershipError:
         raise HTTPException(status_code=404, detail="book not found")

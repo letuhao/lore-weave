@@ -1,4 +1,13 @@
 {
+  "groundingPins": {
+    "present": "場景中的角色",
+    "canon": "正典規則",
+    "lore": "傳說設定",
+    "pin": "釘選 — 永遠保留",
+    "unpin": "取消釘選",
+    "exclude": "排除 — 從接地內容移除",
+    "restore": "復原"
+  },
   "assemble": "組裝",
   "assemblyMode": "組裝模式",
   "assemblyMode_per_scene": "逐場景",

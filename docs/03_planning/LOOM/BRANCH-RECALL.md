@@ -18,7 +18,7 @@
 | 0 | T0.1 ThreadsPanel | (pre-session) |
 | 1 | T1.1a–d Outline (browser / CRUD+restore / dnd-reorder / Corkboard) · T1.2 Beat Sheet · T1.3 Scene Graph | …32727390 · ae406de1 · 4d2097dd |
 | **2 — COMPLETE** | T2.1 Cast&Codex · T2.2 RelationshipMap(+GraphCanvas extraction) · T2.3 Timeline · T2.4 Character Arc · T2.5 World Map | 27f525b4 · 8db1110b · a5061bf5 · 065bbe94 · aad9cbbf |
-| 3 — in progress | T3.1 Co-writer Chat · T3.2 Selection Tools · T3.3 Classic/AI Inline Mode | 72a53541 · d340c051 · 86100ef6 |
+| 3 — in progress | T3.1 Co-writer Chat · T3.2 Selection Tools · T3.3 Classic/AI Inline Mode · T3.4 Grounding Pin/Exclude | 72a53541 · d340c051 · 86100ef6 · (this cycle) |
 
 ### New BE surface added by this branch (easy to lose in a merge — protect it)
 - **knowledge-service** — `POST /v1/knowledge/entities` + `POST /v1/knowledge/relations`
@@ -37,9 +37,12 @@
 - T2.5 **MED** — `useWorldMap` merges positions+backdrop via one `wmRef` (no clobber).
 
 ## ⬜ NOT DONE — remaining V1 (~10–11 features → T5.5)
-**NEXT = T3.4** Grounding Pin/Exclude. Then: T3.5 Style & Voice · T3.6 References · T4.1 Flywheel
-Panel · T4.2 Progress Stats · T5.1 Focus/Typewriter · T5.2 Mention Heatmap · T5.3 AI Provenance
-Highlight · T5.4 Dock/Float Windowing · T5.5 Story Map Power-view.
+**NEXT = T3.5** Style & Voice. Then: T3.6 References · T4.1 Flywheel Panel · T4.2 Progress Stats ·
+T5.1 Focus/Typewriter · T5.2 Mention Heatmap · T5.3 AI Provenance Highlight · T5.4 Dock/Float
+Windowing · T5.5 Story Map Power-view.
+**T3.4 Grounding Pin/Exclude — DONE this cycle (XL/FS):** `scene_grounding_pins` table + repo +
+`pack()` honor (drop excluded / protect pinned, after the spoiler filter) + `PUT …/grounding-pins`
++ `grounding_items` on the GET + `GroundingPanel` 📌/🚫 rows + i18n×4. Wired into all 4 pack sites.
 **Verify status of:** T0.2 suggest-cast-wiring, T1.4 corkboard (not in the BUILD list — may be
 folded into T1.1d or pending).
 
@@ -47,7 +50,7 @@ folded into T1.1d or pending).
 `D-T2.4-{ARC-ENTITY-BOOK-RESET, ARC-PAGING}` · `D-T2.5-{MANUAL-GLOSSARY-SYNC, AUTHORING-EVENTS,
 PLACE-DETAIL-FANOUT, BACKDROP-INSTANT, LINK-DIRECTION}` · `D-T3.1-{SCENE-HINT, GUIDE-APPEND}` ·
 `D-T3.2-{SELECTION-INLINE-GHOST, SELECTION-RANGE-MAP}` · `D-T3.3-{SLASH-CONTINUE, CHAPTER-CONTINUE,
-GHOST-POS-MAP}`.
+GHOST-POS-MAP}` · `D-T3.4-{CHAPTER-MODE-PINS, EXTRA-CANON, LORE-CHUNK-ID}`.
 
 ## ⚠️ MERGE-WATCH — files this branch uniquely owns (preserve on the big merge)
 User confirmed **no conflict expected** — this list is the "don't let it silently drift" checklist.

@@ -25,6 +25,7 @@ from app.db.repositories.canon_rules import CanonRulesRepo
 from app.db.repositories.derivatives import DerivativesRepo
 from app.db.repositories.generation_corrections import GenerationCorrectionsRepo
 from app.db.repositories.generation_jobs import GenerationJobsRepo
+from app.db.repositories.grounding_pins import GroundingPinsRepo
 from app.db.repositories.narrative_thread import NarrativeThreadRepo
 from app.db.repositories.outline import OutlineRepo
 from app.db.repositories.scene_links import SceneLinksRepo
@@ -38,6 +39,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 _TABLES = [
+    "scene_grounding_pins",
     "outbox_events", "generation_correction", "generation_job", "narrative_thread",
     "canon_rule", "scene_link", "outline_node", "structure_template",
     "entity_override", "divergence_spec", "composition_work",
@@ -743,6 +745,49 @@ async def test_canon_rules_ifmatch(pool):
     assert upd is not None and upd.version == 2
     with pytest.raises(VersionMismatchError):
         await repo.update(user, r.id, {"text": "x"}, expected_version=1)
+
+
+# ───────────────────────── grounding_pins (T3.4) ─────────────────────────
+
+async def test_grounding_pins_upsert_flip_clear_and_tenancy(pool):
+    repo = GroundingPinsRepo(pool)
+    olr = OutlineRepo(pool)
+    user, project, _ = _ids()
+    # outline_node_id is an in-DB FK (ON DELETE CASCADE) → create a real scene.
+    scene = await olr.create_node(user, project, kind="scene", chapter_id=uuid.uuid4())
+    # pin a lore source + exclude a cast entity
+    p1 = await repo.set_action(user, project, scene.id, "lore", "src-1", "pin")
+    assert p1.action == "pin" and p1.item_type == "lore" and p1.item_id == "src-1"
+    await repo.set_action(user, project, scene.id, "present", "ent-1", "exclude")
+    rows = await repo.list_for_scene(user, project, scene.id)
+    assert {(r.item_type, r.item_id, r.action) for r in rows} == {
+        ("lore", "src-1", "pin"), ("present", "ent-1", "exclude"),
+    }
+    # flip the lore pin → exclude IN PLACE (still one row for that item)
+    flipped = await repo.set_action(user, project, scene.id, "lore", "src-1", "exclude")
+    assert flipped.action == "exclude"
+    rows = await repo.list_for_scene(user, project, scene.id)
+    assert len(rows) == 2  # no duplicate row for src-1
+    assert next(r for r in rows if r.item_id == "src-1").action == "exclude"
+    # clear → row gone; a second clear is a no-op (False)
+    assert await repo.clear(user, project, scene.id, "lore", "src-1") is True
+    assert await repo.clear(user, project, scene.id, "lore", "src-1") is False
+    assert len(await repo.list_for_scene(user, project, scene.id)) == 1
+    # cross-user isolation — another user sees nothing for this scene
+    assert await repo.list_for_scene(uuid.uuid4(), project, scene.id) == []
+
+
+async def test_grounding_pins_cascade_on_scene_delete(pool):
+    repo = GroundingPinsRepo(pool)
+    olr = OutlineRepo(pool)
+    user, project, _ = _ids()
+    scene = await olr.create_node(user, project, kind="scene", chapter_id=uuid.uuid4())
+    await repo.set_action(user, project, scene.id, "canon", str(uuid.uuid4()), "pin")
+    assert len(await repo.list_for_scene(user, project, scene.id)) == 1
+    # deleting the scene CASCADE-drops its pins (no orphan rows)
+    async with pool.acquire() as c:
+        await c.execute("DELETE FROM outline_node WHERE id = $1", scene.id)
+    assert await repo.list_for_scene(user, project, scene.id) == []
 
 
 # ───────────────────────── generation_jobs ─────────────────────────

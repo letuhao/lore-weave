@@ -42,10 +42,17 @@ def assert_derivative_scoped(project_id: UUID | None, source_project_id: UUID | 
         )
 
 
-def build_segments(bundle: LensBundle, *, guide: str = "") -> list[Segment]:
+def build_segments(
+    bundle: LensBundle, *, guide: str = "", pinned_lore_ids: set[str] | None = None,
+) -> list[Segment]:
     """Flatten a LensBundle (+ author guide) into prioritised, sanitised
-    Segments for the budget pass."""
+    Segments for the budget pass.
+
+    T3.4: a lore hit whose `source_id` is in `pinned_lore_ids` is emitted
+    `protected=True` so the budget keeps it even under a tight trim (present/canon
+    are already protected, so a pin there needs no change here)."""
     segs: list[Segment] = []
+    _pinned_lore = pinned_lore_ids or set()
 
     for r in bundle.canon:
         segs.append(Segment("canon", r.text, B.PRIO_CANON, protected=True))
@@ -124,7 +131,9 @@ def build_segments(bundle: LensBundle, *, guide: str = "") -> list[Segment]:
     for h in bundle.lore:
         txt = sanitize_lore(h.get("text", ""))
         if txt:
-            segs.append(Segment("lore", txt, B.PRIO_LORE))
+            # T3.4 — a pinned lore source is protected so a tight budget keeps it.
+            pinned = str(h.get("source_id")) in _pinned_lore
+            segs.append(Segment("lore", txt, B.PRIO_LORE, protected=pinned))
 
     if guide:
         segs.append(Segment("guide", sanitize_guide(guide), B.PRIO_CANON, protected=True))

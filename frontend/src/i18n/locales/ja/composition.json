@@ -1,4 +1,13 @@
 {
+  "groundingPins": {
+    "present": "シーンの登場人物",
+    "canon": "正典ルール",
+    "lore": "ロア",
+    "pin": "ピン留め — 常に保持",
+    "unpin": "ピン解除",
+    "exclude": "除外 — グラウンディングから外す",
+    "restore": "戻す"
+  },
   "assemble": "組み立て",
   "assemblyMode": "組み立てモード",
   "assemblyMode_per_scene": "シーン単位",

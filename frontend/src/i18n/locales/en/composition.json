@@ -1,4 +1,13 @@
 {
+  "groundingPins": {
+    "present": "Cast in scene",
+    "canon": "Canon rules",
+    "lore": "Lore",
+    "pin": "Pin — always keep this",
+    "unpin": "Unpin",
+    "exclude": "Exclude — drop from grounding",
+    "restore": "Restore"
+  },
   "assemble": "Assemble",
   "assemblyMode": "Assembly mode",
   "assemblyMode_per_scene": "Per-scene",

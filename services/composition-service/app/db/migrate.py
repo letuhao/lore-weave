@@ -365,6 +365,30 @@ CREATE TABLE IF NOT EXISTS decompose_commit (
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_decompose_commit_idem ON decompose_commit(user_id, project_id, idempotency_key);
+
+-- ── scene_grounding_pins: LOOM T3.4 — per-scene author steering of the injected
+-- grounding context. One row per addressed item (present-entity / canon-rule /
+-- lore-source): action='pin' force-keeps it through the budget trim, action=
+-- 'exclude' drops it from the pack. Honored by BOTH the grounding preview and the
+-- engine generation (same pack() chokepoint) so preview == what the model sees.
+-- item_id is a STABLE canonical id (glossary anchor / canon_rule uuid / lore
+-- source_id) — NOT a localized label — so a pin survives a reader-language switch
+-- or a derivative override. UNIQUE(project, scene, type, id) ⇒ pin⇄exclude flips
+-- in place (upsert); a CASCADE drop with the scene leaves no orphan.
+CREATE TABLE IF NOT EXISTS scene_grounding_pins (
+  id              UUID PRIMARY KEY DEFAULT uuidv7(),
+  user_id         UUID NOT NULL,
+  project_id      UUID NOT NULL,
+  outline_node_id UUID NOT NULL REFERENCES outline_node(id) ON DELETE CASCADE,
+  item_type       TEXT NOT NULL CHECK (item_type IN ('present','canon','lore')),
+  item_id         TEXT NOT NULL,
+  action          TEXT NOT NULL CHECK (action IN ('pin','exclude')),
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_scene_grounding_pins_item
+  ON scene_grounding_pins(project_id, outline_node_id, item_type, item_id);
+CREATE INDEX IF NOT EXISTS idx_scene_grounding_pins_scene
+  ON scene_grounding_pins(user_id, project_id, outline_node_id);
 """
 
 # C23 down-migration (round-trip proof only — the live schema is idempotent-forward

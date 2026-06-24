@@ -99,6 +99,12 @@ class PackedContext:
     # S4a's `open_promise_count` (the arc-end unpaid-DEBT total).
     reinjected_promise_count: int = 0
     warnings: list[str] = field(default_factory=list)
+    # T3.4 — the addressable grounding items (present/canon/lore) with their
+    # per-scene pin/exclude state, for the grounding panel. Built from the
+    # spoiler-ELIGIBLE set (so a pin/exclude can only act within eligible items);
+    # excluded items are still listed (flagged) so the FE can un-exclude them, but
+    # were NOT packed into `blocks`. Empty when no pins repo is wired.
+    grounding_items: list[dict[str, Any]] = field(default_factory=list)
 
 
 def _as_uuid(value: Any) -> UUID | None:
@@ -167,6 +173,7 @@ async def pack(
     jobs_repo: GenerationJobsRepo | None = None,
     compress_fn: Callable[[list[str], list[str], str], Awaitable[str]] | None = None,
     narrative_threads_repo=None,  # FD-1 S3 — open-promise re-injection (gated)
+    grounding_pins_repo=None,  # T3.4 — per-scene pin/exclude steering (gated)
     grant: "GrantClient | None" = None,
     need: "GrantLevel | None" = None,
 ) -> PackedContext:
@@ -355,9 +362,20 @@ async def pack(
             l4.dropped_no_position, req.project_id, node.get("id"),
         )
 
+    # T3.4 — per-scene grounding steering. Read the scene's pin/exclude set (best-
+    # effort: an unwired repo or a node without an id → no-op) and apply it to the
+    # spoiler-ELIGIBLE items only (canon/present/lore AFTER the spoiler filters), so
+    # a pin can NEVER resurrect a spoiler-dropped item (preserves the T2.3 cutoff).
+    # Excluded items are dropped from the pack; pinned lore sources are force-kept
+    # through the budget (protected in build_segments below).
+    grounding_items, canon, present, lore_kept, pinned_lore_ids = await _apply_grounding_pins(
+        grounding_pins_repo, req.user_id, req.project_id, node.get("id"),
+        canon=canon, present=present, lore_hits=l4.kept,
+    )
+
     bundle = LensBundle(
         canon=canon, present=present, timeline=tl_kept, beat=beat, threads=threads,
-        planned=planned, recent=recent, lore=l4.kept,
+        planned=planned, recent=recent, lore=lore_kept,
         knowledge_seen=bool(seen_p or seen_t or seen_l),
         open_promises=open_promises,  # FD-1 S3 — re-injected open-promise ledger
         extra_canon=extra_canon,  # C25 — added canon-rule scope from overrides
@@ -393,7 +411,7 @@ async def pack(
             bundle.state_summary = summary
             bundle.recent = immediate
 
-    segs = assemble.build_segments(bundle, guide=req.guide)
+    segs = assemble.build_segments(bundle, guide=req.guide, pinned_lore_ids=pinned_lore_ids)
     bres = B.enforce_budget(segs, budget_tokens, counter or B.default_counter())
     blocks = assemble.segments_to_blocks(bres.kept)
 
@@ -413,6 +431,7 @@ async def pack(
         scene_sort_order=scene_sort_order,
         reinjected_promise_count=len(open_promises),  # FD-1 S4b — S3 fired-signal
         warnings=warnings,
+        grounding_items=grounding_items,  # T3.4 — addressable pin/exclude state
     )
 
 
@@ -460,6 +479,86 @@ async def _pack_null_project(
 async def _empty_list() -> list[Any]:
     """gather() placeholder for the L3 lens when the scene has no chapter_id."""
     return []
+
+
+_GROUNDING_LABEL_MAX = 160
+
+
+def _trim_label(text: str) -> str:
+    """A compact single-line display label for a grounding item (the FE renders
+    these in the pin/exclude panel; full text still lives in the packed block)."""
+    t = " ".join((text or "").split())
+    return t if len(t) <= _GROUNDING_LABEL_MAX else t[: _GROUNDING_LABEL_MAX - 1] + "…"
+
+
+async def _apply_grounding_pins(
+    repo, user_id: UUID, project_id: UUID, node_id: Any, *,
+    canon: list[Any], present: list[dict[str, Any]], lore_hits: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[Any], list[dict[str, Any]], list[dict[str, Any]], set[str]]:
+    """T3.4 — read the scene's pin/exclude set and apply it to the spoiler-eligible
+    items. Returns (grounding_items, kept_canon, kept_present, kept_lore,
+    pinned_lore_ids). Best-effort: an unwired repo, a node with no id, or a repo
+    failure → no steering (all items kept, empty grounding_items)."""
+    node_uuid = _as_uuid(node_id)
+    if repo is None or node_uuid is None:
+        return [], canon, present, lore_hits, set()
+    try:
+        rows = await repo.list_for_scene(user_id, project_id, node_uuid)
+    except Exception:  # noqa: BLE001 — steering is advisory; never fail a pack
+        logger.warning("grounding pins read failed", exc_info=True)
+        return [], canon, present, lore_hits, set()
+
+    pins: set[tuple[str, str]] = set()
+    excludes: set[tuple[str, str]] = set()
+    for r in rows:
+        (excludes if r.action == "exclude" else pins).add((r.item_type, str(r.item_id)))
+
+    items: list[dict[str, Any]] = []
+
+    # canon — id = rule uuid (composition-owned, stable)
+    kept_canon: list[Any] = []
+    for r in canon:
+        key = ("canon", str(r.id))
+        excluded = key in excludes
+        items.append({"type": "canon", "id": str(r.id), "label": _trim_label(r.text),
+                      "pinned": key in pins, "excluded": excluded})
+        if not excluded:
+            kept_canon.append(r)
+
+    # present — id = glossary anchor entity_id (stable, not the localized label)
+    kept_present: list[dict[str, Any]] = []
+    for p in present:
+        eid = p.get("entity_id")
+        if eid is None:  # not addressable — keep, never list
+            kept_present.append(p)
+            continue
+        key = ("present", str(eid))
+        excluded = key in excludes
+        label = f'{p.get("name", "")}: {p.get("summary", "")}'.strip(": ").strip() or str(p.get("name", ""))
+        items.append({"type": "present", "id": str(eid), "label": _trim_label(label),
+                      "pinned": key in pins, "excluded": excluded})
+        if not excluded:
+            kept_present.append(p)
+
+    # lore — id = source_id (deduped for the addressable list; exclude/pin act on
+    # ALL hits of a source). A hit with no source_id is not addressable (kept, never
+    # listed). pinned_lore_ids feeds build_segments' protected flag.
+    excluded_srcs = {iid for (t, iid) in excludes if t == "lore"}
+    pinned_lore_ids = {iid for (t, iid) in pins if t == "lore"}
+    seen_src: set[str] = set()
+    kept_lore: list[dict[str, Any]] = []
+    for h in lore_hits:
+        src = h.get("source_id")
+        src_s = str(src) if src is not None else None
+        if src_s is None or src_s not in excluded_srcs:
+            kept_lore.append(h)
+        if src_s is not None and src_s not in seen_src:
+            seen_src.add(src_s)
+            key = ("lore", src_s)
+            items.append({"type": "lore", "id": src_s, "label": _trim_label(h.get("text", "")),
+                          "pinned": key in pins, "excluded": key in excludes})
+
+    return items, kept_canon, kept_present, kept_lore, pinned_lore_ids
 
 
 async def _resolve_override_anchors(

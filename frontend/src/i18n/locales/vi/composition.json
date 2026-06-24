@@ -1,4 +1,13 @@
 {
+  "groundingPins": {
+    "present": "Nhân vật trong cảnh",
+    "canon": "Luật canon",
+    "lore": "Tri thức",
+    "pin": "Ghim — luôn giữ lại",
+    "unpin": "Bỏ ghim",
+    "exclude": "Loại trừ — bỏ khỏi grounding",
+    "restore": "Khôi phục"
+  },
   "assemble": "Ghép chương",
   "assemblyMode": "Chế độ ghép",
   "assemblyMode_per_scene": "Theo cảnh",
