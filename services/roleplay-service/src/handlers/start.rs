@@ -84,21 +84,55 @@ pub async fn start(
         .and_then(|v| Uuid::parse_str(v).ok())
         .ok_or_else(|| Error::Upstream("chat-service did not return a session_id".into()))?;
 
-    // 5. Record the session + the durable charter in one tx (spec §10.6: the
-    //    rp_memory row is the read-back-validated actor-memory store).
-    let mut tx = s.pool.begin().await?;
-    sqlx::query("INSERT INTO rp_sessions (session_id, script_id, owner_user_id) VALUES ($1, $2, $3)")
-        .bind(session_id)
-        .bind(script.script_id)
-        .bind(uid)
-        .execute(&mut *tx)
-        .await?;
-    sqlx::query("INSERT INTO rp_memory (session_id, charter) VALUES ($1, $2::jsonb)")
-        .bind(session_id)
-        .bind(&charter)
-        .execute(&mut *tx)
-        .await?;
-    tx.commit().await?;
+    // 5. Record the session + the durable charter (spec §10.6: the rp_memory row
+    //    is the read-back-validated actor-memory store). The chat session ALREADY
+    //    exists and carries the seed, so M3 anchoring works regardless of this
+    //    write (EC-3) — therefore a failure here must NOT fail the request (that
+    //    would make the user retry and create a DUPLICATE chat session, orphaning
+    //    this one). Best-effort + idempotent (ON CONFLICT) so a backfill is safe
+    //    to repeat; on persistent failure we log a structured, recoverable error
+    //    and still return the usable session.
+    if let Err(e) = persist_session(&s.pool, session_id, script.script_id, uid, &charter).await {
+        tracing::error!(
+            %session_id, owner_user_id = %uid, script_id = %script.script_id,
+            error = %e, charter = %charter,
+            "rp_memory persist failed after chat-session create — session is usable \
+             (anchored from the seed); backfill rp_memory for this session_id"
+        );
+    }
 
     Ok((StatusCode::CREATED, Json(StartResp { session_id })))
+}
+
+/// Persist `rp_sessions` + `rp_memory` for a started session, in one tx.
+/// Idempotent: `ON CONFLICT (session_id) DO NOTHING` makes a retry/backfill a
+/// no-op, so this can be safely re-invoked to repair a session whose first write
+/// failed (the chat session + seed always exist by this point — EC-3).
+async fn persist_session(
+    pool: &sqlx::PgPool,
+    session_id: Uuid,
+    script_id: Uuid,
+    owner_user_id: Uuid,
+    charter: &Value,
+) -> Result<()> {
+    let mut tx = pool.begin().await?;
+    sqlx::query(
+        "INSERT INTO rp_sessions (session_id, script_id, owner_user_id) \
+         VALUES ($1, $2, $3) ON CONFLICT (session_id) DO NOTHING",
+    )
+    .bind(session_id)
+    .bind(script_id)
+    .bind(owner_user_id)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        "INSERT INTO rp_memory (session_id, charter) VALUES ($1, $2::jsonb) \
+         ON CONFLICT (session_id) DO NOTHING",
+    )
+    .bind(session_id)
+    .bind(charter)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(())
 }

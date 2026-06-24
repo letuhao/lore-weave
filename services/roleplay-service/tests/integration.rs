@@ -74,7 +74,7 @@ async fn r1_tenancy_and_start_roundtrip() {
     Mock::given(method("POST"))
         .and(path("/internal/chat/sessions"))
         .respond_with(ResponseTemplate::new(201).set_body_json(json!({"session_id": sid.to_string()})))
-        .expect(1)
+        .expect(2) // called twice: the round-trip + the idempotency re-start
         .mount(&chat)
         .await;
 
@@ -205,6 +205,23 @@ async fn r1_tenancy_and_start_roundtrip() {
     assert_eq!(sent["model_source"], "user_model");
     assert_eq!(sent["working_memory_seed"]["charter"]["goal"], "p");
     assert_eq!(sent["working_memory_seed"]["version"], 1);
+
+    // --- D-RP-START-RECONCILE: a re-start (same chat session id) is idempotent —
+    //     no duplicate-key error, exactly one rp_sessions / rp_memory row. This is
+    //     also the backfill primitive (ON CONFLICT DO NOTHING). ---
+    let (st2, body2) = send(
+        router.clone(),
+        body_req("POST", &format!("/v1/roleplay/scripts/{script_id}/start"), &token(user_a), &json!({})),
+    )
+    .await;
+    assert_eq!(st2, StatusCode::CREATED, "idempotent re-start must succeed: {body2}");
+    assert_eq!(body2["session_id"], sid.to_string());
+    let n_sessions: (i64,) = sqlx::query_as("SELECT count(*) FROM rp_sessions WHERE session_id=$1")
+        .bind(sid).fetch_one(&pool).await.unwrap();
+    let n_memory: (i64,) = sqlx::query_as("SELECT count(*) FROM rp_memory WHERE session_id=$1")
+        .bind(sid).fetch_one(&pool).await.unwrap();
+    assert_eq!(n_sessions.0, 1, "re-start must not duplicate rp_sessions");
+    assert_eq!(n_memory.0, 1, "re-start must not duplicate rp_memory");
 
     // cleanup
     let _ = sqlx::query("DELETE FROM rp_memory WHERE session_id=$1").bind(sid).execute(&pool).await;
