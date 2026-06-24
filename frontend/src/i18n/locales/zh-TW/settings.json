@@ -251,6 +251,50 @@
       "moderation": "內容審核"
     }
   },
+  "services": {
+    "heading": "外部服務",
+    "subtitle": "你自備（BYOK）的非模型 AI 服務 — 例如網路搜尋。與模型一樣透過 provider-registry 連接。",
+    "add": "新增服務",
+    "empty": "尚無外部服務。新增一個（例如網路搜尋）以啟用深度研究。",
+    "keyless": "免金鑰",
+    "no_endpoint": "無端點",
+    "no_model": "無模型",
+    "activate_aria": "啟用服務",
+    "deactivate_aria": "停用服務",
+    "delete_aria": "刪除 {{name}}",
+    "type": {
+      "web_search": {
+        "label": "網路搜尋",
+        "desc": "從網路搜尋深度研究的佐證來源（例如 SearXNG、Tavily）。"
+      }
+    },
+    "add_dialog": {
+      "aria": "新增外部服務",
+      "title": "新增外部服務",
+      "type": "服務",
+      "endpoint": "端點 URL",
+      "endpoint_hint": "服務的基底 URL — provider-registry 會在伺服器端呼叫。",
+      "key": "API 金鑰",
+      "key_ph": "Bearer token",
+      "key_ph_keyless": "免金鑰的本地服務請留空",
+      "key_hint": "服務的 Bearer 密鑰。",
+      "key_hint_keyless": "選填 — 免金鑰的本地後端（例如 SearXNG）請留空。",
+      "label": "標籤",
+      "label_ph": "例如 searxng-default",
+      "alias": "別名",
+      "alias_ph": "顯示名稱（選填）",
+      "cancel": "取消",
+      "submit": "新增服務",
+      "adding": "新增中…"
+    },
+    "toast": {
+      "added": "已新增 {{name}}",
+      "add_failed": "新增服務失敗",
+      "removed": "已移除服務",
+      "remove_failed": "移除服務失敗",
+      "toggle_failed": "切換服務失敗"
+    }
+  },
   "tags": {
     "label": "標籤",
     "placeholder": "新增標籤...（例如：翻譯、聊天）",

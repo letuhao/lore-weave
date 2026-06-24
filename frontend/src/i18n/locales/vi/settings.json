@@ -251,6 +251,50 @@
       "moderation": "Kiểm duyệt"
     }
   },
+  "services": {
+    "heading": "Dịch vụ ngoài",
+    "subtitle": "Dịch vụ AI không phải model mà bạn tự mang (BYOK) — vd tìm kiếm web. Đi qua provider-registry như các model của bạn.",
+    "add": "Thêm dịch vụ",
+    "empty": "Chưa có dịch vụ ngoài nào. Thêm một cái (vd tìm kiếm web) để bật deep research.",
+    "keyless": "không khóa",
+    "no_endpoint": "chưa có endpoint",
+    "no_model": "thiếu model",
+    "activate_aria": "Bật dịch vụ",
+    "deactivate_aria": "Tắt dịch vụ",
+    "delete_aria": "Xóa {{name}}",
+    "type": {
+      "web_search": {
+        "label": "Tìm kiếm web",
+        "desc": "Tìm trên web để lấy nguồn cho deep research (vd SearXNG, Tavily)."
+      }
+    },
+    "add_dialog": {
+      "aria": "Thêm dịch vụ ngoài",
+      "title": "Thêm dịch vụ ngoài",
+      "type": "Dịch vụ",
+      "endpoint": "Endpoint URL",
+      "endpoint_hint": "URL gốc của dịch vụ — provider-registry gọi phía server.",
+      "key": "API Key",
+      "key_ph": "Bearer token",
+      "key_ph_keyless": "Để trống nếu dịch vụ local không cần khóa",
+      "key_hint": "Bearer secret của dịch vụ.",
+      "key_hint_keyless": "Tùy chọn — để trống nếu backend local không cần khóa (vd SearXNG).",
+      "label": "Nhãn",
+      "label_ph": "vd searxng-default",
+      "alias": "Bí danh",
+      "alias_ph": "Tên hiển thị (tùy chọn)",
+      "cancel": "Hủy",
+      "submit": "Thêm dịch vụ",
+      "adding": "Đang thêm…"
+    },
+    "toast": {
+      "added": "Đã thêm {{name}}",
+      "add_failed": "Thêm dịch vụ thất bại",
+      "removed": "Đã xóa dịch vụ",
+      "remove_failed": "Xóa dịch vụ thất bại",
+      "toggle_failed": "Bật/tắt dịch vụ thất bại"
+    }
+  },
   "tags": {
     "label": "Thẻ",
     "placeholder": "Thêm thẻ... (ví dụ: Dịch thuật, Trò chuyện)",

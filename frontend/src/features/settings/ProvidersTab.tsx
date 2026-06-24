@@ -10,6 +10,8 @@ import { providerApi, type ProviderCredential, type UserModel, type APIStandard 
 import { AddModelModal } from './AddModelModal';
 import { EditModelModal } from './EditModelModal';
 import { DefaultModelsCard } from './DefaultModelsCard';
+import { ExternalServicesCard } from './ExternalServicesCard';
+import { isServiceProvider } from './serviceCatalog';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -95,6 +97,10 @@ export function ProvidersTab() {
   useEffect(() => { void refresh(); }, [refresh]);
 
   const configuredKinds = new Set(providers.map((p) => p.provider_kind));
+  // Split out external (non-model) services (web_search, …) — they render in their
+  // own section, not the LLM/model provider list. (See serviceCatalog.)
+  const serviceProviders = providers.filter((p) => isServiceProvider(p.provider_kind));
+  const llmProviders = providers.filter((p) => !isServiceProvider(p.provider_kind));
   // (unconfigured presets computed inline in render)
 
   // ── Handlers ─────────────────────────────────────────────────────────────
@@ -259,9 +265,12 @@ export function ProvidersTab() {
           UX (BYOK) consumed by raw search. */}
       <DefaultModelsCard />
 
+      {/* External (non-model) BYOK services — web search & future siblings. */}
+      <ExternalServicesCard providers={serviceProviders} models={models} onChanged={refresh} />
+
       <div className="space-y-3">
         {/* Configured providers */}
-        {providers.map((prov) => {
+        {llmProviders.map((prov) => {
           const meta = getProviderMeta(prov.provider_kind);
           const provModels = models.filter((m) => m.provider_credential_id === prov.provider_credential_id);
           return (

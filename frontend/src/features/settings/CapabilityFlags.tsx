@@ -6,6 +6,11 @@ import { RERANK_CAPABILITY } from './api';
 // rerank model surfaces in those pickers. Referencing the constant (not a
 // literal) keeps the register form and the pickers from drifting apart again
 // (the C0 rerank/reranker reconcile).
+// `web_search` is intentionally NOT here — it is not a model capability but an
+// external SERVICE (no model to pick, no per-token pricing). It is registered via
+// the "External Services" section (ExternalServicesCard), which sets the
+// capability_flag server-side. Keeping it out of the model checkboxes avoids the
+// "tick web_search on an LLM" confusion.
 const KNOWN_FLAGS = ['chat', 'vision', 'tool_calling', 'extended_thinking', 'json_mode', 'reasoning', 'tts', 'stt', 'image_gen', 'video_gen', 'embedding', RERANK_CAPABILITY, 'moderation'] as const;
 
 type Props = {

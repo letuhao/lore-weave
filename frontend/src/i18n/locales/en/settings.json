@@ -251,6 +251,50 @@
       "moderation": "Moderation"
     }
   },
+  "services": {
+    "heading": "External Services",
+    "subtitle": "Non-model AI services you bring (BYOK) — e.g. web search. Reached through provider-registry like your models.",
+    "add": "Add Service",
+    "empty": "No external services yet. Add one (e.g. web search) to enable deep research.",
+    "keyless": "keyless",
+    "no_endpoint": "no endpoint",
+    "no_model": "no model",
+    "activate_aria": "Activate service",
+    "deactivate_aria": "Deactivate service",
+    "delete_aria": "Delete {{name}}",
+    "type": {
+      "web_search": {
+        "label": "Web Search",
+        "desc": "Search the web for deep-research evidence (e.g. SearXNG, Tavily)."
+      }
+    },
+    "add_dialog": {
+      "aria": "Add external service",
+      "title": "Add External Service",
+      "type": "Service",
+      "endpoint": "Endpoint URL",
+      "endpoint_hint": "The service base URL — provider-registry calls it server-side.",
+      "key": "API Key",
+      "key_ph": "Bearer token",
+      "key_ph_keyless": "Leave empty for a keyless local service",
+      "key_hint": "Bearer secret for the service.",
+      "key_hint_keyless": "Optional — leave empty for a keyless local backend (e.g. SearXNG).",
+      "label": "Label",
+      "label_ph": "e.g. searxng-default",
+      "alias": "Alias",
+      "alias_ph": "Optional display name",
+      "cancel": "Cancel",
+      "submit": "Add Service",
+      "adding": "Adding…"
+    },
+    "toast": {
+      "added": "{{name}} added",
+      "add_failed": "Failed to add service",
+      "removed": "Service removed",
+      "remove_failed": "Failed to remove service",
+      "toggle_failed": "Failed to toggle service"
+    }
+  },
   "tags": {
     "label": "Tags",
     "placeholder": "Add tag... (e.g. Translation, Chat)",

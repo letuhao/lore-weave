@@ -251,6 +251,50 @@
       "moderation": "モデレーション"
     }
   },
+  "services": {
+    "heading": "外部サービス",
+    "subtitle": "モデル以外の持ち込み（BYOK）AIサービス — 例: ウェブ検索。モデルと同様に provider-registry 経由で接続します。",
+    "add": "サービスを追加",
+    "empty": "外部サービスがまだありません。ディープリサーチを有効にするには追加してください（例: ウェブ検索）。",
+    "keyless": "キー不要",
+    "no_endpoint": "エンドポイントなし",
+    "no_model": "モデルなし",
+    "activate_aria": "サービスを有効化",
+    "deactivate_aria": "サービスを無効化",
+    "delete_aria": "{{name}} を削除",
+    "type": {
+      "web_search": {
+        "label": "ウェブ検索",
+        "desc": "ディープリサーチの根拠をウェブから検索（例: SearXNG、Tavily）。"
+      }
+    },
+    "add_dialog": {
+      "aria": "外部サービスを追加",
+      "title": "外部サービスを追加",
+      "type": "サービス",
+      "endpoint": "エンドポイントURL",
+      "endpoint_hint": "サービスのベースURL — provider-registry がサーバー側で呼び出します。",
+      "key": "APIキー",
+      "key_ph": "ベアラートークン",
+      "key_ph_keyless": "キー不要のローカルサービスは空のまま",
+      "key_hint": "サービスのベアラーシークレット。",
+      "key_hint_keyless": "任意 — キー不要のローカルバックエンド（例: SearXNG）は空のまま。",
+      "label": "ラベル",
+      "label_ph": "例: searxng-default",
+      "alias": "エイリアス",
+      "alias_ph": "表示名（任意）",
+      "cancel": "キャンセル",
+      "submit": "サービスを追加",
+      "adding": "追加中…"
+    },
+    "toast": {
+      "added": "{{name}} を追加しました",
+      "add_failed": "サービスの追加に失敗しました",
+      "removed": "サービスを削除しました",
+      "remove_failed": "サービスの削除に失敗しました",
+      "toggle_failed": "サービスの切り替えに失敗しました"
+    }
+  },
   "tags": {
     "label": "タグ",
     "placeholder": "タグを追加...（例: 翻訳、チャット）",

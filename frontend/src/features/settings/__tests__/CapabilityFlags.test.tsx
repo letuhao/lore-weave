@@ -36,4 +36,13 @@ describe('CapabilityFlags — rerank registration (C1, BL-1)', () => {
       expect.objectContaining({ [RERANK_CAPABILITY]: true }),
     );
   });
+
+  it('does NOT offer web_search as a model capability (it is an External Service, not a model)', () => {
+    // web_search is registered via ExternalServicesCard, not as a tickable model
+    // capability. A checkbox here would re-introduce the "tag web_search on an
+    // LLM" confusion this split removed.
+    expect(KNOWN_FLAGS).not.toContain('web_search');
+    render(<CapabilityFlags flags={{}} onChange={vi.fn()} />);
+    expect(screen.queryByText('capability.flag.web_search')).not.toBeInTheDocument();
+  });
 });
