@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from app.search.hybrid_fusion import (
-    DEFAULT_LANG_PREF_WEIGHT,
     apply_language_preference,
     apply_relevance_floor,
     cap_per_chapter,
@@ -21,10 +20,12 @@ def _h(chapter: str, surface: str, pos: int, score: float = 0.0,
     return h
 
 
-def _lh(chapter: str, score: float, lang: str) -> dict:
-    """A fused hit carrying a sourceLang, for language-preference tests."""
-    return {"chapterId": chapter, "surface": "canon", "score": score,
-            "sourceLang": lang, "location": {"chunkIndex": 0}}
+def _lh(chapter: str, lang: str) -> dict:
+    """A hit carrying a sourceLang, for language-preference tests. The LIST order
+    represents the upstream (rerank/RRF) ranking the partition must preserve
+    within each language group."""
+    return {"chapterId": chapter, "surface": "canon", "sourceLang": lang,
+            "location": {"chunkIndex": 0}}
 
 
 def test_rrf_combines_legs_distinct_keys():
@@ -110,54 +111,75 @@ def test_normalize_lang_primary_subtag():
 
 
 def test_lang_pref_none_is_noop():
-    hits = [_lh("a", 0.02, "zh"), _lh("b", 0.01, "vi")]
+    hits = [_lh("a", "zh"), _lh("b", "vi")]
     out = apply_language_preference(list(hits), None)
     assert [h["chapterId"] for h in out] == ["a", "b"]  # untouched order
     assert "langMatch" not in out[0]  # no annotation when disabled
 
 
-def test_lang_pref_boosts_matching_above_higher_fused():
-    # b (vi, fused 0.01) should leapfrog a (zh, fused 0.02) for a vi reader,
-    # because the boost (~0.0164) exceeds the 0.01 fused gap.
-    hits = [_lh("a", 0.02, "zh"), _lh("b", 0.01, "vi")]
+def test_lang_pref_partitions_matched_first():
+    # upstream order is [a(zh), b(vi)]; a vi reader pulls b to the front even
+    # though it ranked lower upstream (matched-first partition).
+    hits = [_lh("a", "zh"), _lh("b", "vi")]
     out = apply_language_preference(hits, "vi")
-    assert out[0]["chapterId"] == "b"
+    assert [h["chapterId"] for h in out] == ["b", "a"]
     assert out[0]["langMatch"] is True
-    assert out[0]["fusedScore"] == 0.01  # original RRF preserved
-    assert out[0]["score"] == round(0.01 + DEFAULT_LANG_PREF_WEIGHT, 6)
     assert out[1]["langMatch"] is False
 
 
 def test_lang_pref_does_not_filter_offlanguage():
-    # soft, not hard: a zh-only result set still surfaces for a vi reader.
-    hits = [_lh("a", 0.02, "zh"), _lh("b", 0.01, "zh")]
+    # soft, not hard: a zh-only result set still surfaces for a vi reader,
+    # in its original upstream order (nothing dropped, nothing reordered).
+    hits = [_lh("a", "zh"), _lh("b", "zh")]
     out = apply_language_preference(hits, "vi")
-    assert {h["chapterId"] for h in out} == {"a", "b"}
+    assert [h["chapterId"] for h in out] == ["a", "b"]
     assert all(h["langMatch"] is False for h in out)
-    assert [h["chapterId"] for h in out] == ["a", "b"]  # fused order intact
+
+
+def test_lang_pref_preserves_upstream_order_within_groups():
+    # the partition is STABLE: within the matched group AND the unmatched group,
+    # the upstream (rerank/RRF) order is retained. Upstream: en1, vi1, en2, vi2.
+    hits = [_lh("en1", "en"), _lh("vi1", "vi"), _lh("en2", "en"), _lh("vi2", "vi")]
+    out = apply_language_preference(hits, "vi")
+    assert [h["chapterId"] for h in out] == ["vi1", "vi2", "en1", "en2"]
 
 
 def test_lang_pref_mixed_matches_any():
-    hits = [_lh("a", 0.02, "zh"), _lh("b", 0.01, "mixed")]
+    hits = [_lh("a", "zh"), _lh("b", "mixed")]
     out = apply_language_preference(hits, "vi")
-    assert out[0]["chapterId"] == "b"  # mixed boosted for a vi reader
+    assert out[0]["chapterId"] == "b"  # mixed matches a vi reader
     assert out[0]["langMatch"] is True
 
 
 def test_lang_pref_regional_variant_matches():
     # reader pref "zh-Hant" normalizes to "zh" and matches a "zh" passage.
-    hits = [_lh("a", 0.01, "zh"), _lh("b", 0.02, "en")]
+    hits = [_lh("a", "en"), _lh("b", "zh")]
     out = apply_language_preference(hits, "zh-Hant")
-    assert out[0]["chapterId"] == "a"
+    assert out[0]["chapterId"] == "b"
     assert out[0]["langMatch"] is True
 
 
-def test_lang_pref_tiebreak_prefers_match_then_fused():
-    # equal post-boost is impossible here; verify the deterministic sort key:
-    # match first, then fused score. Two vi hits keep fused order.
-    hits = [_lh("a", 0.01, "vi"), _lh("b", 0.02, "vi")]
-    out = apply_language_preference(hits, "vi")
-    assert [h["chapterId"] for h in out] == ["b", "a"]  # both matched → fused order
+def test_lang_pref_idempotent():
+    # re-running with the same pref preserves order (no oscillation).
+    hits = [_lh("a", "zh"), _lh("b", "vi")]
+    once = apply_language_preference(hits, "vi")
+    twice = apply_language_preference(once, "vi")
+    assert [h["chapterId"] for h in twice] == ["b", "a"]
+
+
+def test_rrf_keeps_both_languages_of_same_chapter_chunk():
+    # /review-impl HIGH: a dual-indexed chapter has vi + en passages that share
+    # chapterId + surface(canon) + chunkIndex (the M2 node id keeps source_id
+    # clean). Without sourceLang in the fusion key, RRF collapses them and one
+    # language is dropped BEFORE the language-preference pass — denying a reader
+    # the language they asked for. Both must survive.
+    vi = {"chapterId": "ch", "surface": "canon", "sourceLang": "vi",
+          "location": {"chunkIndex": 0}}
+    en = {"chapterId": "ch", "surface": "canon", "sourceLang": "en",
+          "location": {"chunkIndex": 0}}
+    fused = rrf_fuse([[vi, en]])
+    assert len(fused) == 2
+    assert {h["sourceLang"] for h in fused} == {"vi", "en"}
 
 
 def test_hit_key_keeps_distinct_chunks_sharing_a_block_index():

@@ -259,11 +259,9 @@ def test_passage_to_hit_carries_source_lang():
 @patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
 @patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
-async def test_pref_lang_boosts_matching_passage(embed, find):
-    """A vi reader's pref lifts the vi passage above the zh one even when both
-    fuse equally (rerank OFF so the soft-boost order is the final order)."""
+async def test_pref_lang_orders_matching_first_rerank_off(embed, find):
+    """A vi reader's pref lifts the vi passage above the zh one (rerank OFF)."""
     embed.return_value = [0.1] * 1024
-    # two distinct chapters, identical cosine → identical RRF; language breaks it
     find.return_value = [
         _passage_hit(source_lang="zh", source_id="ch-zh"),
         _passage_hit(source_lang="vi", source_id="ch-vi"),
@@ -277,6 +275,58 @@ async def test_pref_lang_boosts_matching_passage(embed, find):
     assert out.hits[0]["sourceLang"] == "vi"
     assert out.hits[0]["langMatch"] is True
     rr.rerank.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
+async def test_pref_lang_survives_rerank(embed, find):
+    """/review-impl HIGH regression — the language preference is the FINAL pass,
+    so it survives the cross-encoder rerank (which re-sorts the whole pool by its
+    own relevance and would otherwise discard a pre-rerank boost). Rerank is ON
+    (project has a model + passthrough reranker); a vi reader still gets vi #0."""
+    embed.return_value = [0.1] * 1024
+    # rerank passthrough scores in input order (0.9, 0.85, …) → without the final
+    # language pass, the zh passage (returned first) would stay #0.
+    find.return_value = [
+        _passage_hit(source_lang="zh", source_id="ch-zh"),
+        _passage_hit(source_lang="vi", source_id="ch-vi"),
+    ]
+    book, emb, rr = _clients(lex_hits=None)  # rerank passthrough (default)
+    out = await run_hybrid_search(
+        user_id=_USER, book_id=_BOOK, query="Dracula", project=_project(),
+        book_client=book, embedding_client=emb, reranker_client=rr,
+        mode="semantic", rerank=True, pref_lang="vi",
+    )
+    rr.rerank.assert_awaited()  # rerank really ran
+    assert out.hits[0]["sourceLang"] == "vi"
+    assert out.hits[0]["langMatch"] is True
+    # soft, not a filter: the zh passage still present, just after
+    assert {h["sourceLang"] for h in out.hits} == {"vi", "zh"}
+
+
+@pytest.mark.asyncio
+@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
+async def test_pref_lang_wins_per_chapter_cap_under_rerank(embed, find):
+    """The language pass runs BEFORE the per-chapter cap, so for a chapter with
+    both a vi and an en passage (same chapterId), the vi one wins the single
+    chapter=granularity slot for a vi reader — even with rerank on."""
+    embed.return_value = [0.1] * 1024
+    find.return_value = [  # SAME source_id → one chapter, two languages
+        _passage_hit(chunk_index=0, source_lang="en", source_id="ch-1"),
+        _passage_hit(chunk_index=1, source_lang="vi", source_id="ch-1"),
+    ]
+    book, emb, rr = _clients(lex_hits=None)
+    out = await run_hybrid_search(
+        user_id=_USER, book_id=_BOOK, query="Dracula", project=_project(),
+        book_client=book, embedding_client=emb, reranker_client=rr,
+        mode="semantic", granularity="chapter", rerank=True, pref_lang="vi",
+    )
+    assert len(out.hits) == 1  # cap=1 per chapter
+    assert out.hits[0]["sourceLang"] == "vi"
 
 
 @pytest.mark.asyncio

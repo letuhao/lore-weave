@@ -11,12 +11,6 @@ import re
 from typing import Any
 
 RRF_K = 60
-# KG-ML M4 (D5/DD6) — default language-preference boost. ≈ a rank-0 RRF
-# contribution at k=60 (1/(60+1) ≈ 0.0164): a language match adds roughly the
-# weight of appearing first in one leg — enough to lift a reader-language hit
-# above an equally-fused off-language one, without overpowering a hit that wins
-# both legs. Env-tunable (settings.lang_pref_weight); tune against the eval set.
-DEFAULT_LANG_PREF_WEIGHT = 0.0164
 PER_CHAPTER_CAP = 3
 # E5: "block" granularity (exhaustive mining) lifts the per-chapter cap so
 # every matching block can surface; "chapter" granularity uses cap=1 (best
@@ -34,12 +28,21 @@ def _hit_key(hit: Hit) -> tuple:
     chunkIndex is preferred because it is UNIQUE per passage; blockIndex is
     NOT (P3-C: several chunks of one oversized paragraph share a block_index).
     Keying on blockIndex would collide distinct semantic passages and drop
-    them in fusion (review-impl MED-1). Lexical hits carry only blockIndex."""
+    them in fusion (review-impl MED-1). Lexical hits carry only blockIndex.
+
+    KG-ML M4 (/review-impl HIGH) — `sourceLang` is part of the key so a chapter's
+    dual-indexed translation (vi) and its source (zh/en) passages do NOT collide:
+    they share `chapterId` + `surface` (canon) + `chunkIndex` (the M2 node id keeps
+    `source_id` clean), so without language in the key RRF would drop one language
+    before the language-preference pass ever runs — silently denying a reader the
+    very language they asked for. Mirrors `passage_canonical_id`, which already
+    includes `source_lang` (DD1). Missing/None sourceLang groups together (pre-M4
+    back-compat: single-language corpora behave exactly as before)."""
     loc = hit.get("location") or {}
     pos = loc.get("chunkIndex")
     if pos is None:
         pos = loc.get("blockIndex")
-    return (hit.get("chapterId"), hit.get("surface"), pos)
+    return (hit.get("chapterId"), hit.get("surface"), pos, hit.get("sourceLang"))
 
 
 def rrf_fuse(ranked_lists: list[list[Hit]], *, k: int = RRF_K) -> list[Hit]:
@@ -76,41 +79,39 @@ def normalize_lang(value: Any) -> str:
     return re.split(r"[-_]", s, maxsplit=1)[0]
 
 
-def apply_language_preference(
-    hits: list[Hit], pref_lang: str | None, *, w_lang: float = DEFAULT_LANG_PREF_WEIGHT,
-) -> list[Hit]:
-    """KG-ML M4 (D5/DD6) — soft language-preference re-ranking.
+def apply_language_preference(hits: list[Hit], pref_lang: str | None) -> list[Hit]:
+    """KG-ML M4 (D5) — soft language-preference re-ordering.
 
-    Applied POST-RRF / PRE-rerank. For each hit, a match on the reader's
-    preferred language adds `w_lang` to the fused score; hits then re-sort by
-    ``(boosted_score, lang_match, fused_score)`` — a deterministic order where
-    language is a soft tiebreaker, never a hard filter (robust to partial
-    translation; an off-language hit with no on-language alternative still
-    surfaces). A ``"mixed"`` passage matches ANY preference (it contains the
-    reader's language). The original fused RRF score is preserved on
-    ``fusedScore`` so a later rerank / floor can still reason about it.
+    Applied as the FINAL ordering pass (post-rerank, post-floor, pre-cap) so it
+    is the last word on order REGARDLESS of whether the cross-encoder rerank ran.
+    It must therefore be SCALE-INDEPENDENT: a pre-rerank additive boost is
+    discarded because rerank re-sorts the whole pool by its 0–1 relevance (and
+    `w_lang` is meaningless on that scale) — the /review-impl HIGH this replaces.
+
+    Mechanism: a STABLE partition — hits whose `sourceLang` matches the reader's
+    preference move to the front, preserving the upstream (rerank-relevance or
+    RRF) order WITHIN the matched and unmatched groups. Soft, never a hard
+    filter: an off-language hit always still surfaces (just after matched ones),
+    so partial translation degrades gracefully (no vi ⇒ the zh/en order is
+    unchanged). Combined with the relevance floor upstream, the partition only
+    re-orders survivors, never resurrects junk. A ``"mixed"`` passage matches ANY
+    preference (it contains the reader's language). Sets ``langMatch`` for
+    observability.
 
     No-op when `pref_lang` is empty/None (the wiki in-process path and any
     caller that doesn't resolve a reader language) — order is unchanged.
+    Idempotent: re-running with the same pref preserves order.
     """
     pref = normalize_lang(pref_lang)
     if not pref:
         return hits
     for h in hits:
         hl = normalize_lang(h.get("sourceLang"))
-        match = bool(hl) and (hl == pref or hl == "mixed")
-        fused = float(h.get("score") or 0.0)
-        h["fusedScore"] = fused
-        h["langMatch"] = match
-        h["score"] = round(fused + (w_lang if match else 0.0), 6)
-    hits.sort(
-        key=lambda h: (
-            float(h.get("score") or 0.0),
-            1 if h.get("langMatch") else 0,
-            float(h.get("fusedScore") or 0.0),
-        ),
-        reverse=True,
-    )
+        h["langMatch"] = bool(hl) and (hl == pref or hl == "mixed")
+    # Stable sort: matched (key 0) before unmatched (key 1); Python's stable sort
+    # preserves the incoming order within each group — so the upstream relevance
+    # ranking is retained, just partitioned by language.
+    hits.sort(key=lambda h: 0 if h.get("langMatch") else 1)
     return hits
 
 

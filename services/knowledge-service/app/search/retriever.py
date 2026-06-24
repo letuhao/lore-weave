@@ -239,13 +239,6 @@ async def run_hybrid_search(
 
     lexical_hits, semantic_hits = await asyncio.gather(_lexical(), _semantic())
     fused = rrf_fuse([lexical_hits, semantic_hits])
-    # KG-ML M4 (D5/DD6) — soft language-preference boost, POST-fusion / PRE-rerank.
-    # A reader-language hit is lifted up the candidate order (so it makes the rerank
-    # pool, and — with rerank OFF/BYOK-absent — directly ranks higher). The
-    # multilingual cross-encoder still has final say when rerank runs. No-op when
-    # pref_lang is None (the wiki in-process path is unaffected).
-    if pref_lang:
-        fused = apply_language_preference(fused, pref_lang, w_lang=settings.lang_pref_weight)
     # E5B: cross-encoder rerank for semantic/hybrid (where junk leaks). Lexical
     # mode is already clean (exact substring) so it skips rerank + stays fast.
     # D-RERANK-NOT-BYOK: rerank is OPTIONAL and BYOK. Resolve the effective model =
@@ -276,6 +269,14 @@ async def run_hybrid_search(
     elif want_rerank and not effective_ref:
         degraded["rerank"] = "not_configured"
     fused = apply_relevance_floor(fused, min_relevance)
+    # KG-ML M4 (D5) — language preference is the FINAL ordering pass: a stable
+    # matched-first partition over whatever order rerank/RRF produced (scale-
+    # independent, so it works WITH rerank — a pre-rerank additive boost was
+    # discarded by the cross-encoder re-sort; /review-impl HIGH). Runs BEFORE the
+    # per-chapter cap so the reader's language wins the chapter's single slot.
+    # No-op when pref_lang is None (wiki in-process path unaffected).
+    if pref_lang:
+        fused = apply_language_preference(fused, pref_lang)
     # chapter mode (cap=1) = one best row per chapter (navigate); block mode
     # lifts the cap (exhaustive mine). cap_per_chapter keys on chapterId alone.
     cap = 1 if granularity == "chapter" else BLOCK_CHAPTER_CAP
