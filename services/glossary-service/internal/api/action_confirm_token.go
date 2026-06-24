@@ -39,9 +39,10 @@ const (
 	// action descriptors LIVE in Foundation (§13.1). Reserved descriptors
 	// (adopt, sync_apply, book_set_*, system_*) are intentionally NOT accepted
 	// yet — verify fails closed on them until their phase wires the effect.
-	descBookDelete       = "book_delete"
-	descSchemaCreateKind = "schema_create_kind"
-	descSchemaCreateAttr = "schema_create_attribute"
+	descBookDelete        = "book_delete"
+	descSchemaCreateKind  = "schema_create_kind"
+	descSchemaCreateKinds = "schema_create_kinds" // BATCH: many kinds (+ their attrs) on ONE confirm
+	descSchemaCreateAttr  = "schema_create_attribute"
 	descAdopt            = "adopt"       // T1 — scaffold a book by copy-down from standards
 	descSyncApply        = "sync_apply"  // T2 — apply a proposed per-row sync choice set
 	descBookRevert       = "book_revert" // G-U1 — revert a book override back to its parent tier
@@ -77,7 +78,7 @@ var (
 // can never carry intent the confirm path doesn't fully validate.
 func liveDescriptor(d string) bool {
 	switch d {
-	case descBookDelete, descSchemaCreateKind, descSchemaCreateAttr, descAdopt, descSyncApply, descBookRevert,
+	case descBookDelete, descSchemaCreateKind, descSchemaCreateKinds, descSchemaCreateAttr, descAdopt, descSyncApply, descBookRevert,
 		descStatusChange, descRestoreRevision, descReassignKind, descMerge, descDeepResearch,
 		descSystemCreate, descSystemPatch, descSystemDelete, descSystemRestore:
 		return true

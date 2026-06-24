@@ -134,6 +134,8 @@ func (s *Server) confirmAction(w http.ResponseWriter, r *http.Request) {
 		s.effectBookDelete(w, r.Context(), claims)
 	case descSchemaCreateKind:
 		s.effectSchemaCreateKind(w, r.Context(), claims)
+	case descSchemaCreateKinds:
+		s.effectSchemaCreateKinds(w, r.Context(), claims)
 	case descSchemaCreateAttr:
 		s.effectSchemaCreateAttr(w, r.Context(), claims)
 	case descAdopt:
@@ -298,6 +300,68 @@ func (s *Server) effectSchemaCreateKind(w http.ResponseWriter, ctx context.Conte
 	writeJSON(w, http.StatusCreated, k)
 }
 
+// kindsBatchParams is the captured intent of a glossary_propose_kinds proposal: the
+// full list of kinds (each with its attributes) the user confirms in one click.
+type kindsBatchParams struct {
+	Kinds []kindCreateParams `json:"kinds"`
+}
+
+// effectSchemaCreateKinds creates every kind (+ its attributes) in the batch on one
+// confirm. Idempotent: a kind whose code already exists is SKIPPED (unique-violation),
+// so a re-confirm after a partial batch fills only the missing kinds instead of
+// failing the whole package. Auto-scaffolds the baseline ontology once up front.
+func (s *Server) effectSchemaCreateKinds(w http.ResponseWriter, ctx context.Context, claims actionClaims) {
+	var p kindsBatchParams
+	if err := json.Unmarshal(claims.Params, &p); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "bad proposal payload")
+		return
+	}
+	if len(p.Kinds) == 0 {
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "no kinds in this proposal — propose again")
+		return
+	}
+	if err := s.ensureBookScaffolded(ctx, claims.BookID, claims.UserID); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to scaffold book ontology")
+		return
+	}
+	created := make([]string, 0, len(p.Kinds))
+	skipped := make([]string, 0)
+	for _, kp := range p.Kinds {
+		switch _, err := s.createKindFromParams(ctx, claims.BookID, kp); {
+		case err == nil:
+			created = append(created, kp.Code)
+		case isUniqueViolation(err):
+			skipped = append(skipped, kp.Code) // already exists — idempotent re-confirm
+		default:
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to create kind "+kp.Code)
+			return
+		}
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"created":       created,
+		"skipped":       skipped,
+		"created_count": len(created),
+		"skipped_count": len(skipped),
+	})
+}
+
+func (s *Server) previewSchemaCreateKinds(w http.ResponseWriter, claims actionClaims) {
+	var p kindsBatchParams
+	if err := json.Unmarshal(claims.Params, &p); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "bad proposal payload")
+		return
+	}
+	rows := make([]previewRow, 0, len(p.Kinds))
+	for _, kp := range p.Kinds {
+		rows = append(rows, previewRow{Label: "kind", Value: kp.Code, Note: fmt.Sprintf("%s · %d attribute(s)", kp.Name, len(kp.Attributes))})
+	}
+	writeJSON(w, http.StatusOK, actionPreview{
+		Descriptor: descSchemaCreateKinds, Destructive: false,
+		Title:       fmt.Sprintf("Create %d kind(s) with their attributes", len(p.Kinds)),
+		PreviewRows: rows,
+	})
+}
+
 func (s *Server) effectSchemaCreateAttr(w http.ResponseWriter, ctx context.Context, claims actionClaims) {
 	var p attrCreateParams
 	if err := json.Unmarshal(claims.Params, &p); err != nil {
@@ -364,6 +428,8 @@ func (s *Server) previewAction(w http.ResponseWriter, r *http.Request) {
 		s.previewBookDelete(w, r.Context(), claims)
 	case descSchemaCreateKind, descSchemaCreateAttr:
 		s.previewSchemaCreate(w, claims)
+	case descSchemaCreateKinds:
+		s.previewSchemaCreateKinds(w, claims)
 	case descAdopt:
 		s.previewAdopt(w, r.Context(), claims)
 	case descSyncApply:

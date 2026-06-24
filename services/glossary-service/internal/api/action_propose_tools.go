@@ -161,6 +161,92 @@ func (s *Server) toolProposeNewKind(ctx context.Context, _ *mcp.CallToolRequest,
 	return s.mintGrantActionCard(userID, bookID, descSchemaCreateKind, title, params, rows, false)
 }
 
+// ── batch schema create — the WHOLE ontology on ONE confirm ──────────────────
+
+type proposeKindsToolIn struct {
+	BookID string              `json:"book_id" jsonschema:"the book whose schema to extend (UUID; ownership-checked)"`
+	Kinds  []proposeKindItemIn `json:"kinds" jsonschema:"the kinds to create — EACH with its defining attributes; ALL land together on ONE confirm card"`
+}
+
+type proposeKindItemIn struct {
+	Code        string              `json:"code" jsonschema:"machine code for the kind, e.g. cultivation_realm"`
+	Name        string              `json:"name" jsonschema:"display name, e.g. Cultivation Realm"`
+	Description string              `json:"description,omitempty" jsonschema:"optional description"`
+	Icon        string              `json:"icon,omitempty"`
+	Color       string              `json:"color,omitempty"`
+	Attributes  []proposeKindAttrIn `json:"attributes,omitempty" jsonschema:"the kind's defining attributes (each needs a clear description for extraction)"`
+}
+
+// toolProposeKinds proposes MANY kinds (each with its attributes) on a SINGLE
+// confirm card — the user builds a whole ontology with one approval instead of one
+// click per kind. The effect creates them idempotently (skip-on-conflict), so a
+// re-confirm after a partial batch fills only the missing kinds.
+func (s *Server) toolProposeKinds(ctx context.Context, _ *mcp.CallToolRequest, in proposeKindsToolIn) (*mcp.CallToolResult, confirmCardOut, error) {
+	userID, ok := userIDFromCtx(ctx)
+	if !ok {
+		return nil, confirmCardOut{}, errors.New("missing caller identity")
+	}
+	bookID, err := uuid.Parse(in.BookID)
+	if err != nil {
+		return nil, confirmCardOut{}, errors.New("book_id must be a UUID")
+	}
+	if len(in.Kinds) == 0 {
+		return nil, confirmCardOut{}, errors.New("kinds must not be empty")
+	}
+	if len(in.Kinds) > 20 {
+		return nil, confirmCardOut{}, errors.New("at most 20 kinds per batch — split into multiple proposals")
+	}
+	if err := s.checkGrant(ctx, bookID, userID, grantclient.GrantManage); err != nil {
+		return nil, confirmCardOut{}, uniformOwnershipError(err)
+	}
+
+	kinds := make([]kindCreateParams, 0, len(in.Kinds))
+	rows := make([]previewRow, 0, len(in.Kinds))
+	seenKind := map[string]bool{}
+	for _, k := range in.Kinds {
+		code := strings.TrimSpace(k.Code)
+		name := strings.TrimSpace(k.Name)
+		if code == "" || name == "" {
+			return nil, confirmCardOut{}, errors.New("each kind needs a code and a name")
+		}
+		if seenKind[code] {
+			return nil, confirmCardOut{}, errors.New("duplicate kind code in batch: " + code)
+		}
+		seenKind[code] = true
+		var desc *string
+		if d := strings.TrimSpace(k.Description); d != "" {
+			desc = &d
+		}
+		attrs := make([]kindAttrSpec, 0, len(k.Attributes))
+		seenAttr := map[string]bool{"name": true} // `name` is auto-seeded
+		for _, a := range k.Attributes {
+			ac := strings.TrimSpace(a.Code)
+			an := strings.TrimSpace(a.Name)
+			if ac == "" || an == "" {
+				return nil, confirmCardOut{}, errors.New("each attribute needs a code and a name (kind " + code + ")")
+			}
+			if a.FieldType != "" && !isValidFieldType(a.FieldType) {
+				return nil, confirmCardOut{}, errors.New("invalid field_type: " + a.FieldType + " (kind " + code + ")")
+			}
+			if seenAttr[ac] {
+				continue
+			}
+			seenAttr[ac] = true
+			var ad *string
+			if d := strings.TrimSpace(a.Description); d != "" {
+				ad = &d
+			}
+			attrs = append(attrs, kindAttrSpec{Code: ac, Name: an, Description: ad, FieldType: a.FieldType, IsRequired: a.IsRequired, Options: a.Options})
+		}
+		kinds = append(kinds, kindCreateParams{Code: code, Name: name, Description: desc, Icon: k.Icon, Color: k.Color, Attributes: attrs})
+		rows = append(rows, previewRow{Label: "kind", Value: code, Note: fmt.Sprintf("%s · %d attribute(s)", name, len(attrs))})
+	}
+
+	params := kindsBatchParams{Kinds: kinds}
+	title := fmt.Sprintf("Create %d kind(s) with their attributes", len(kinds))
+	return s.mintGrantActionCard(userID, bookID, descSchemaCreateKinds, title, params, rows, false)
+}
+
 // FieldTypeOrDefault returns the spec's field type, defaulting to "text" for the
 // confirm-card preview note.
 func (a kindAttrSpec) FieldTypeOrDefault() string {

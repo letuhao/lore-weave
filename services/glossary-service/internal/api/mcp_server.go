@@ -98,6 +98,17 @@ func (s *Server) mcpHandler() http.Handler {
 	}, s.toolProposeNewKind)
 
 	mcp.AddTool(srv, &mcp.Tool{
+		Name: "glossary_propose_kinds",
+		Description: "Propose MANY entity kinds AT ONCE — the whole ontology in ONE confirm. PREFER this over " +
+			"calling glossary_propose_new_kind repeatedly: the user wants to create an ONTOLOGY, not one kind at a " +
+			"time, so batch every kind you intend to add into a single `kinds` list (each kind carries its own " +
+			"defining `attributes`, each with a clear `description` — extraction uses it as the per-attribute " +
+			"instruction). Returns ONE confirm_token + a preview listing all kinds; the human confirms once via " +
+			"glossary_confirm_action and they are all created (idempotent — an existing kind is skipped). High-impact; " +
+			"creates nothing until confirmed.",
+	}, s.toolProposeKinds)
+
+	mcp.AddTool(srv, &mcp.Tool{
 		Name: "glossary_propose_new_attribute",
 		Description: "Propose a NEW attribute on an existing kind (e.g. add 'cultivation_realm' to the " +
 			"character kind). Schema-level and high-impact — it does NOT write; it returns a confirm_token + " +

@@ -46,6 +46,12 @@ memory, not the glossary.
 what standards a book could adopt, use `glossary_list_system_standards`.
 
 ## Shaping the book's ontology
+- **The user wants an ONTOLOGY, not one kind at a time.** When asked to set up / build / \
+design an ontology (i.e. you intend to add MORE THAN ONE kind), use \
+**`glossary_propose_kinds`** — pass ALL the kinds in a single `kinds` list, each with its \
+own defining `attributes`. This produces ONE confirm card the user approves ONCE, instead \
+of one card per kind (do NOT call `glossary_propose_new_kind` in a loop for this). Reserve \
+the single `glossary_propose_new_kind` for adding just one more kind to an existing ontology.
 - A book starts empty until its standards are ADOPTED. To scaffold one, \
 `glossary_adopt_standards` (genre/kind codes from `glossary_list_system_standards`) \
 returns a `confirm_token` + `descriptor` to confirm via `glossary_confirm_action`.
