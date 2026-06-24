@@ -58,6 +58,15 @@ pub async fn create(
     if req.code.trim().is_empty() || req.name.trim().is_empty() || req.system_prompt.trim().is_empty() {
         return Err(Error::BadRequest("code, name, and system_prompt are required".into()));
     }
+    // `scenario` is optional in the API (OpenAPI default {}), but an omitted
+    // field deserializes to JSON null — binding that to the NOT NULL `scenario`
+    // column either violates the constraint or stores a `null` scalar instead of
+    // the intended {}. Coerce to an empty object.
+    let scenario = if req.scenario.is_null() {
+        serde_json::json!({})
+    } else {
+        req.scenario
+    };
     let sql = format!(
         "INSERT INTO roleplay_scripts \
            (owner_user_id, tier, code, name, description, system_prompt, \
@@ -74,7 +83,7 @@ pub async fn create(
         .bind(req.model_source)
         .bind(req.model_ref)
         .bind(req.rubric)
-        .bind(req.scenario)
+        .bind(scenario)
         .bind(req.genre)
         .fetch_one(&s.pool)
         .await?;

@@ -141,6 +141,37 @@ async fn r1_tenancy_and_start_roundtrip() {
         .unwrap();
     assert_eq!(sys_name.0, "FAANG SWE Interview", "System row must be untouched");
 
+    // --- create with NO scenario → defaults to {} (not null / not a 500) ---
+    let code2 = format!("itest2_{}", Uuid::new_v4().simple());
+    let (st, body2) = send(
+        router.clone(),
+        body_req("POST", "/v1/roleplay/scripts", &token(user_a),
+            &json!({"code": code2, "name": "NoScenario", "system_prompt": "sp"})),
+    )
+    .await;
+    assert_eq!(st, StatusCode::CREATED, "create without scenario must succeed: {body2}");
+    assert_eq!(body2["scenario"], json!({}), "omitted scenario must default to {{}}, got {}", body2["scenario"]);
+    let _ = sqlx::query("DELETE FROM roleplay_scripts WHERE script_id=$1")
+        .bind(Uuid::parse_str(body2["script_id"].as_str().unwrap()).unwrap())
+        .execute(&pool).await;
+
+    // --- list merge: a user script shadows a System script of the same code ---
+    let shadow = send(
+        router.clone(),
+        body_req("POST", "/v1/roleplay/scripts", &token(user_a),
+            &json!({"code": "faang_swe", "name": "My FAANG override", "system_prompt": "sp"})),
+    )
+    .await;
+    assert_eq!(shadow.0, StatusCode::CREATED, "user may create a script with a System code: {}", shadow.1);
+    let shadow_id = shadow.1["script_id"].as_str().unwrap().to_string();
+    let (_, list) = send(router.clone(), get("/v1/roleplay/scripts", &token(user_a))).await;
+    let faang_rows: Vec<&Value> = list.as_array().unwrap().iter().filter(|s| s["code"] == "faang_swe").collect();
+    assert_eq!(faang_rows.len(), 1, "DISTINCT ON (code) must collapse to one faang_swe row");
+    assert_eq!(faang_rows[0]["owner_user_id"], user_a.to_string(), "the user's row must shadow the System one");
+    assert_eq!(faang_rows[0]["name"], "My FAANG override");
+    let _ = sqlx::query("DELETE FROM roleplay_scripts WHERE script_id=$1")
+        .bind(Uuid::parse_str(&shadow_id).unwrap()).execute(&pool).await;
+
     // --- start-orchestration round-trip ---
     let (st, body) = send(
         router.clone(),
