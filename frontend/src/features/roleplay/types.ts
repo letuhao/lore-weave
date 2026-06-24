@@ -1,20 +1,22 @@
-// Interview-practice roleplay (M7) — types mirror the chat-service backend
-// (session_templates + the /evaluate scorecard). The turn loop itself reuses
-// the chat feature's ChatSession/ChatMessage types — we only add the
-// template (persona) and scorecard shapes here.
+// Roleplay practice — types mirror the roleplay-service backend (roleplay_scripts
+// + start) and the chat-service /evaluate scorecard. The turn loop reuses the
+// chat feature's ChatSession/ChatMessage types; we add the script (persona) and
+// scorecard shapes here. Interview is a preset genre of roleplay.
 
 export interface ScenarioCharter {
-  goal: string;
+  goal?: string;
+  premise?: string;
   phases: string[];
   checklist: string[];
+  beats?: string[];
   time_budget_min?: number | null;
-  language: string;
+  language?: string;
 }
 
-export interface SessionTemplate {
-  template_id: string;
+export interface Script {
+  script_id: string;
   owner_user_id: string | null; // null ⇒ System tier (read-only default)
-  tier: 'system' | 'user';
+  tier: 'system' | 'user' | 'book';
   code: string;
   name: string;
   description: string | null;
@@ -23,16 +25,19 @@ export interface SessionTemplate {
   model_ref: string | null;
   scenario: ScenarioCharter;
   rubric: Record<string, unknown> | null;
+  genre: string;
   is_active: boolean;
   created_at: string;
   updated_at: string;
 }
 
-export interface StartPracticePayload {
-  title?: string;
+export interface StartScriptPayload {
   model_source?: string;
   model_ref?: string;
-  project_id?: string;
+}
+
+export interface StartScriptResponse {
+  session_id: string;
 }
 
 export interface ChecklistVerdict {

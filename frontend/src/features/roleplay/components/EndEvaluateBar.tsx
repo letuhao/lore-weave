@@ -11,7 +11,7 @@ interface EndEvaluateBarProps {
 export function EndEvaluateBar({ evaluating, onEvaluate }: EndEvaluateBarProps) {
   return (
     <div className="flex items-center justify-between gap-3 border-t bg-muted/30 px-4 py-2">
-      <span className="text-xs text-muted-foreground">Done? End the interview to get your scorecard.</span>
+      <span className="text-xs text-muted-foreground">Done? End the session to get your scorecard.</span>
       <button
         type="button"
         disabled={evaluating}

@@ -97,13 +97,16 @@ def parse_json_object(content: str) -> dict:
         if s.startswith("json"):
             s = s[4:]
         s = s.strip()
+    # Parse the FIRST balanced JSON object and ignore any trailing prose/data.
+    # Small local models often append text after the object (json.loads then
+    # raises "Extra data: line 1 column N"); raw_decode stops at the first value.
+    start = s.find("{")
+    if start == -1:
+        raise ValueError("no JSON object in reply")
     try:
-        obj = json.loads(s)
-    except (json.JSONDecodeError, ValueError):
-        start, end = s.find("{"), s.rfind("}")
-        if start == -1 or end <= start:
-            raise ValueError("no JSON object in reply")
-        obj = json.loads(s[start:end + 1])
+        obj, _ = json.JSONDecoder().raw_decode(s[start:])
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise ValueError(f"no JSON object in reply: {exc}")
     if not isinstance(obj, dict):
         raise ValueError("reply is not a JSON object")
     return obj

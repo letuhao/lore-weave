@@ -1,4 +1,4 @@
-// View: the interview scorecard overlay. Render only — receives the Scorecard
+// View: the roleplay scorecard overlay. Render only — receives the Scorecard
 // and two callbacks (close → back to the conversation, restart → new persona).
 
 import { Check, X, RotateCcw, ArrowLeft } from 'lucide-react';
@@ -48,7 +48,7 @@ export function ScorecardView({ card, onClose, onRestart }: ScorecardViewProps) 
           <div className="flex flex-col gap-1">
             {card.partial && (
               <span className="w-fit rounded bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-600 dark:text-amber-400">
-                Partial — interview not fully completed
+                Partial — session not fully completed
               </span>
             )}
             {card.summary && <p className="text-sm">{card.summary}</p>}

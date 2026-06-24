@@ -5,7 +5,7 @@
 import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
-import { interviewApi } from '../api';
+import { roleplayApi } from '../api';
 import type { Scorecard } from '../types';
 
 export interface Evaluation {
@@ -25,7 +25,7 @@ export function useEvaluation(): Evaluation {
       if (!accessToken || evaluating) return;
       setEvaluating(true);
       try {
-        const res = await interviewApi.evaluate(accessToken, sessionId);
+        const res = await roleplayApi.evaluate(accessToken, sessionId);
         setScorecard(res.scorecard);
       } catch (err) {
         // apiJson throws an Error with a numeric `.status` (see src/api.ts).

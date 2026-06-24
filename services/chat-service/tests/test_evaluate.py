@@ -111,6 +111,14 @@ def test_parse_handles_fences_and_prose():
     assert ev.parse_json_object('Here: {"overall_score": 90} done')["overall_score"] == 90
 
 
+def test_parse_handles_trailing_data():
+    # Small local models often append text (or a second object) after the JSON,
+    # which json.loads rejects with "Extra data". raw_decode takes the first.
+    assert ev.parse_json_object('{"overall_score": 65}\nNote: well done!')["overall_score"] == 65
+    assert ev.parse_json_object('{"a": {"b": 1}} {"c": 2}')["a"] == {"b": 1}
+    assert ev.parse_json_object('```json\n{"overall_score": 50}\n```\ntrailing')["overall_score"] == 50
+
+
 def test_parse_raises_on_no_object():
     with pytest.raises(ValueError):
         ev.parse_json_object("no json here")

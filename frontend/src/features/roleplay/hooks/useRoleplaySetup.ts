@@ -1,34 +1,35 @@
-// Controller for the persona picker: loads the templates (personas) + the
-// user's chat-capable models, holds the selection, and starts a practice
-// session. No JSX — pure logic + state (React-MVC).
+// Controller for the persona picker: loads the scripts (personas) + the user's
+// chat-capable models, holds the selection, and starts a practice session. No
+// JSX — pure logic + state (React-MVC).
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { aiModelsApi, type UserModel } from '@/features/ai-models/api';
+import { chatApi } from '@/features/chat/api';
 import type { ChatSession } from '@/features/chat/types';
-import { interviewApi } from '../api';
-import type { SessionTemplate } from '../types';
+import { roleplayApi } from '../api';
+import type { Script } from '../types';
 
-export interface InterviewSetup {
-  templates: SessionTemplate[];
+export interface RoleplaySetup {
+  scripts: Script[];
   models: UserModel[];
   loading: boolean;
-  selectedTemplateId: string | null;
+  selectedScriptId: string | null;
   selectedModelId: string | null;
-  selectTemplate: (id: string) => void;
+  selectScript: (id: string) => void;
   selectModel: (id: string) => void;
   starting: boolean;
   canStart: boolean;
   start: () => Promise<ChatSession | null>;
 }
 
-export function useInterviewSetup(): InterviewSetup {
+export function useRoleplaySetup(): RoleplaySetup {
   const { accessToken } = useAuth();
-  const [templates, setTemplates] = useState<SessionTemplate[]>([]);
+  const [scripts, setScripts] = useState<Script[]>([]);
   const [models, setModels] = useState<UserModel[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const [selectedScriptId, setSelectedScriptId] = useState<string | null>(null);
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
 
@@ -37,22 +38,22 @@ export function useInterviewSetup(): InterviewSetup {
     let cancelled = false;
     setLoading(true);
     Promise.all([
-      interviewApi.listTemplates(accessToken),
+      roleplayApi.listScripts(accessToken),
       aiModelsApi.listUserModels(accessToken, { capability: 'chat' }),
     ])
-      .then(([tpl, mdl]) => {
+      .then(([scriptList, mdl]) => {
         if (cancelled) return;
-        setTemplates(tpl.items);
+        setScripts(scriptList);
         setModels(mdl.items);
-        // Sensible defaults: first template, the favorite (or first) model.
-        if (tpl.items.length) setSelectedTemplateId((cur) => cur ?? tpl.items[0].template_id);
+        // Sensible defaults: first script, the favorite (or first) model.
+        if (scriptList.length) setSelectedScriptId((cur) => cur ?? scriptList[0].script_id);
         if (mdl.items.length) {
           const fav = mdl.items.find((m) => m.is_favorite) ?? mdl.items[0];
           setSelectedModelId((cur) => cur ?? fav.user_model_id);
         }
       })
       .catch(() => {
-        if (!cancelled) toast.error('Could not load interview personas or models.');
+        if (!cancelled) toast.error('Could not load roleplay personas or models.');
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -62,41 +63,44 @@ export function useInterviewSetup(): InterviewSetup {
     };
   }, [accessToken]);
 
-  const selectTemplate = useCallback((id: string) => setSelectedTemplateId(id), []);
+  const selectScript = useCallback((id: string) => setSelectedScriptId(id), []);
   const selectModel = useCallback((id: string) => setSelectedModelId(id), []);
 
-  const canStart = Boolean(selectedTemplateId && selectedModelId && !starting);
+  const canStart = Boolean(selectedScriptId && selectedModelId && !starting);
 
   const start = useCallback(async (): Promise<ChatSession | null> => {
-    if (!accessToken || !selectedTemplateId || !selectedModelId) return null;
+    if (!accessToken || !selectedScriptId || !selectedModelId) return null;
     setStarting(true);
     try {
-      const session = await interviewApi.startPractice(accessToken, selectedTemplateId, {
+      // roleplay-service freezes the charter + creates the chat session,
+      // returning its id; load the full ChatSession to hand to chat's
+      // selectSession (the acting loop stays on /v1/chat, seed-anchored).
+      const { session_id } = await roleplayApi.startScript(accessToken, selectedScriptId, {
         model_source: 'user_model',
         model_ref: selectedModelId,
       });
-      return session;
+      return await chatApi.getSession(accessToken, session_id);
     } catch {
       toast.error('Could not start the practice session.');
       return null;
     } finally {
       setStarting(false);
     }
-  }, [accessToken, selectedTemplateId, selectedModelId]);
+  }, [accessToken, selectedScriptId, selectedModelId]);
 
   return useMemo(
     () => ({
-      templates,
+      scripts,
       models,
       loading,
-      selectedTemplateId,
+      selectedScriptId,
       selectedModelId,
-      selectTemplate,
+      selectScript,
       selectModel,
       starting,
       canStart,
       start,
     }),
-    [templates, models, loading, selectedTemplateId, selectedModelId, selectTemplate, selectModel, starting, canStart, start],
+    [scripts, models, loading, selectedScriptId, selectedModelId, selectScript, selectModel, starting, canStart, start],
   );
 }

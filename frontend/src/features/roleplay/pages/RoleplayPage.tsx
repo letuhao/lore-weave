@@ -1,31 +1,31 @@
-// Interview-practice page (M7). The persona picker is the entry; once started it
+// Roleplay-practice page. The persona picker is the entry; once started it
 // REUSES the chat feature's ChatView (text + voice, no fork) for the turn loop,
 // and adds a scorecard overlay on "End & evaluate". The chat providers are
 // driven in embedded mode — the host injects the active session via
-// selectSession() (see ChatSessionContext).
+// selectSession() (see ChatSessionContext). Interview is a preset genre.
 
 import { useCallback } from 'react';
 import { ChatSessionProvider, ChatStreamProvider, useChatSession } from '@/features/chat/providers';
 import { ChatView } from '@/features/chat/components/ChatView';
-import { useInterviewSetup } from '../hooks/useInterviewSetup';
+import { useRoleplaySetup } from '../hooks/useRoleplaySetup';
 import { useEvaluation } from '../hooks/useEvaluation';
 import { PersonaPicker } from '../components/PersonaPicker';
 import { EndEvaluateBar } from '../components/EndEvaluateBar';
 import { ScorecardView } from '../components/ScorecardView';
 
-export function InterviewPage() {
+export function RoleplayPage() {
   return (
     <ChatSessionProvider embedded>
       <ChatStreamProvider>
-        <InterviewRoom />
+        <RoleplayRoom />
       </ChatStreamProvider>
     </ChatSessionProvider>
   );
 }
 
-function InterviewRoom() {
+function RoleplayRoom() {
   const { activeSession, selectSession } = useChatSession();
-  const setup = useInterviewSetup();
+  const setup = useRoleplaySetup();
   const { scorecard, evaluating, evaluate, reset } = useEvaluation();
 
   const handleStart = useCallback(async () => {

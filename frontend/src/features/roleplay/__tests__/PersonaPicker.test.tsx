@@ -1,13 +1,13 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { PersonaPicker } from '../components/PersonaPicker';
-import type { InterviewSetup } from '../hooks/useInterviewSetup';
-import type { SessionTemplate } from '../types';
+import type { RoleplaySetup } from '../hooks/useRoleplaySetup';
+import type { Script } from '../types';
 import type { UserModel } from '@/features/ai-models/api';
 
-function tpl(over: Partial<SessionTemplate> = {}): SessionTemplate {
+function script(over: Partial<Script> = {}): Script {
   return {
-    template_id: 't1',
+    script_id: 's1',
     owner_user_id: null,
     tier: 'system',
     code: 'faang_swe',
@@ -18,6 +18,7 @@ function tpl(over: Partial<SessionTemplate> = {}): SessionTemplate {
     model_ref: null,
     scenario: { goal: 'g', phases: ['warmup', 'coding', 'wrap'], checklist: ['a', 'b'], time_budget_min: 45, language: 'en' },
     rubric: null,
+    genre: 'interview',
     is_active: true,
     created_at: '',
     updated_at: '',
@@ -40,14 +41,14 @@ function model(over: Partial<UserModel> = {}): UserModel {
   };
 }
 
-function makeSetup(over: Partial<InterviewSetup> = {}): InterviewSetup {
+function makeSetup(over: Partial<RoleplaySetup> = {}): RoleplaySetup {
   return {
-    templates: [tpl()],
+    scripts: [script()],
     models: [model()],
     loading: false,
-    selectedTemplateId: 't1',
+    selectedScriptId: 's1',
     selectedModelId: 'm1',
-    selectTemplate: vi.fn(),
+    selectScript: vi.fn(),
     selectModel: vi.fn(),
     starting: false,
     canStart: true,
@@ -57,18 +58,18 @@ function makeSetup(over: Partial<InterviewSetup> = {}): InterviewSetup {
 }
 
 describe('PersonaPicker', () => {
-  it('lists templates with a default badge for System tier', () => {
+  it('lists scripts with a default badge for System tier', () => {
     render(<PersonaPicker setup={makeSetup()} onStart={vi.fn()} />);
     expect(screen.getByText('FAANG SWE Interview')).toBeInTheDocument();
     expect(screen.getByText('default')).toBeInTheDocument();
     expect(screen.getByText(/3 phases · 2 checkpoints · ~45 min/)).toBeInTheDocument();
   });
 
-  it('selecting a template calls the controller', () => {
-    const setup = makeSetup({ templates: [tpl(), tpl({ template_id: 't2', name: 'Behavioral', tier: 'user', owner_user_id: 'u' })] });
+  it('selecting a script calls the controller', () => {
+    const setup = makeSetup({ scripts: [script(), script({ script_id: 's2', name: 'Behavioral', tier: 'user', owner_user_id: 'u' })] });
     render(<PersonaPicker setup={setup} onStart={vi.fn()} />);
     fireEvent.click(screen.getByText('Behavioral'));
-    expect(setup.selectTemplate).toHaveBeenCalledWith('t2');
+    expect(setup.selectScript).toHaveBeenCalledWith('s2');
   });
 
   it('disables Start until canStart and fires onStart', () => {
