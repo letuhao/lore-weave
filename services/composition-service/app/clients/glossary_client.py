@@ -46,11 +46,17 @@ class GlossaryClient:
         self, book_id: UUID, user_id: UUID, query: str, *,
         max_entities: int = 20, max_tokens: int = 1000,
         exclude_ids: list[str] | None = None,
+        language: str | None = None,
     ) -> list[dict[str, Any]]:
         """L0/L1 glossary entities most relevant to `query` for this book.
         Returns the entities list (each carries the stable `entity_id`,
         `cached_name`, `cached_aliases`, `short_description`, `kind_code`,
-        `tier`), or [] on any failure."""
+        `tier`), or [] on any failure.
+
+        KG-ML M7 (C6): `language` (the author's reader-language) augments each
+        entity's aliases with that language's alias set (glossary S6
+        `composePerLanguageAliases`), so the pack carries the names a vi author
+        actually uses. Omitted → source-language aliases only (back-compat)."""
         url = f"{self._base_url}/internal/books/{book_id}/select-for-context"
         payload: dict[str, Any] = {
             "user_id": str(user_id), "query": query,
@@ -58,6 +64,8 @@ class GlossaryClient:
         }
         if exclude_ids:
             payload["exclude_ids"] = exclude_ids
+        if language:
+            payload["language"] = language
         try:
             resp = await self._http.post(url, json=payload, headers=self._headers())
             if resp.status_code != 200:

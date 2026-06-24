@@ -167,6 +167,30 @@ class BookClient:
             logger.warning("book sort-orders unavailable: %s", exc)
             return {}
 
+    async def get_reader_language(self, book_id: UUID, user_id: UUID) -> str | None:
+        """KG-ML M7 (C6) — the user's stored reader-language for this book (M3),
+        via the INTERNAL resolver `GET /internal/books/{id}/reader-language?user_id=`
+        (token-gated, book-scoped). Used by the packer to request grounding context
+        in the author's language (per-language glossary aliases + vi-first lore).
+        Best-effort: returns None when unset / on ANY failure — the pack just stays
+        source-language (never 500s a generate)."""
+        url = f"{self._base_url}/internal/books/{book_id}/reader-language"
+        headers = {"X-Internal-Token": self._internal_token}
+        tid = trace_id_var.get()
+        if tid:
+            headers["X-Trace-Id"] = tid
+        try:
+            resp = await self._http.get(
+                url, params={"user_id": str(user_id)}, headers=headers,
+            )
+            if resp.status_code != 200:
+                return None
+            lang = resp.json().get("reader_language")
+            return lang or None
+        except (httpx.HTTPError, ValueError, AttributeError) as exc:
+            logger.warning("book reader-language unavailable: %s", exc)
+            return None
+
     async def publish_chapter(
         self, book_id: UUID, chapter_id: UUID, bearer: str,
     ) -> dict[str, Any]:

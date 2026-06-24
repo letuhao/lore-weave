@@ -723,6 +723,20 @@ export interface DrawerSearchHit {
   chapter_index: number | null;
   created_at: string | null;
   raw_score: number;
+  /** KG-ML M7 (C12): the passage's source language (M1/M2). "unknown" for
+   *  legacy untagged passages. Lets the card badge each hit's language. */
+  source_lang?: string;
+}
+
+/** KG-ML M7 (C12): reader-language coverage for a drawer/raw search. Mirrors
+ *  the BE ``language_coverage`` shape. ``note`` is null when coverage is full
+ *  or no results; the FE shows it only when present. */
+export interface LanguageCoverage {
+  reader_lang: string;
+  total: number;
+  in_language: number;
+  partial: boolean;
+  note: string | null;
 }
 
 /** C8 (D-K19e-γa-01): closed enum mirrored from the BE's
@@ -740,6 +754,9 @@ export interface DrawerSearchParams {
   limit?: number;
   /** C8: optional filter. Omit for "Any". */
   source_type?: DrawerSourceType;
+  /** KG-ML M7 (C12): reader-language preference. Soft matched-first ordering
+   *  (not a filter) + a coverage note. Omit for no preference. */
+  language?: string;
 }
 
 export interface DrawerSearchResponse {
@@ -753,6 +770,9 @@ export interface DrawerSearchResponse {
    *  FE pill row stays layout-stable. Reflects project-wide totals
    *  filtered to the project's current embedding_model. */
   source_type_counts: Record<string, number>;
+  /** KG-ML M7 (C12): reader-language coverage when ?language= was set; null
+   *  otherwise (or when nothing to flag). */
+  coverage?: LanguageCoverage | null;
   /** D-K19e-γa-02: per-search embedding cost transparency. Both null until
    *  the query was actually embedded, AND when the provider didn't report
    *  token usage (e.g. Ollama → "unknown", not "$0"). A genuinely-free
@@ -1811,6 +1831,7 @@ export const knowledgeApi = {
     qs.set('query', params.query);
     if (params.limit != null) qs.set('limit', String(params.limit));
     if (params.source_type != null) qs.set('source_type', params.source_type);
+    if (params.language) qs.set('language', params.language);
     return apiJson<DrawerSearchResponse>(
       `${BASE}/drawers/search?${qs.toString()}`,
       { token },

@@ -6,9 +6,31 @@ from app.search.hybrid_fusion import (
     apply_language_preference,
     apply_relevance_floor,
     cap_per_chapter,
+    language_coverage,
     normalize_lang,
     rrf_fuse,
 )
+
+
+def test_language_coverage():
+    # full coverage → no note
+    full = language_coverage(["vi", "vi", "mixed"], "vi")
+    assert full["total"] == 3 and full["in_language"] == 3
+    assert full["partial"] is False and full["note"] is None
+    # partial → honest note (mixed counts as in-language)
+    part = language_coverage(["vi", "mixed", "zh", "en"], "vi-VN")
+    assert part["reader_lang"] == "vi"  # folded
+    assert part["in_language"] == 2 and part["total"] == 4
+    assert part["partial"] is True and "2 of 4" in part["note"]
+    # none in language → distinct note
+    none = language_coverage(["zh", "en"], "vi")
+    assert none["in_language"] == 0 and "No results in your language" in none["note"]
+    # no preference → None (no note to show)
+    assert language_coverage(["vi"], None) is None
+    assert language_coverage(["vi"], "") is None
+    # empty result set → no note even with a pref
+    empty = language_coverage([], "vi")
+    assert empty["total"] == 0 and empty["note"] is None
 
 
 def _h(chapter: str, surface: str, pos: int, score: float = 0.0,

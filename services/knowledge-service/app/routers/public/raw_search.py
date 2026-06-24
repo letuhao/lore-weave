@@ -36,6 +36,7 @@ from app.deps import (
 from app.clients.grant_client import GrantClient, GrantLevel
 from app.extraction.patterns import detect_primary_language
 from app.middleware.jwt_auth import get_current_user
+from app.search.hybrid_fusion import language_coverage
 from app.search.retriever import (
     MIN_RELEVANCE_DEFAULT,
     Granularity,
@@ -70,6 +71,10 @@ class RawSearchResponse(BaseModel):
     results: list[dict[str, Any]]
     # Which leg degraded, if any (e.g. {"semantic": "embed_unavailable"}).
     degraded: dict[str, str] = {}
+    # KG-ML M7 (C12) — reader-language coverage when a preference was resolved:
+    # {reader_lang, total, in_language, partial, note}; None otherwise. Each hit
+    # already carries `sourceLang` (M4), so the FE can badge per-hit too.
+    coverage: dict[str, Any] | None = None
 
 
 @router.get("/books/{book_id}/search", response_model=RawSearchResponse)
@@ -157,8 +162,12 @@ async def search_book(
         surface=effective_surface,
         pref_lang=pref_lang,
     )
+    coverage = language_coverage(
+        [h.get("sourceLang") for h in result.hits], pref_lang
+    )
     return RawSearchResponse(
         query=q, mode=mode, results=result.hits, degraded=result.degraded,
+        coverage=coverage,
     )
 
 

@@ -115,6 +115,40 @@ def apply_language_preference(hits: list[Hit], pref_lang: str | None) -> list[Hi
     return hits
 
 
+def language_coverage(langs: list[Any], pref_lang: str | None) -> dict | None:
+    """KG-ML M7 (C12) — coverage summary for a reader-language preference.
+
+    Given the per-hit source languages of a result set + the reader's preference,
+    report how much of what they're seeing is actually in their language, so the
+    consumer can surface an HONEST coverage note (a vi reader on a partially-
+    translated book should know "3 of 8 results are in Vietnamese"). Returns
+    ``None`` when no preference is set (no note to show). ``in_language`` counts
+    `mixed` passages (they contain the reader's language). ``note`` is None when
+    coverage is full (nothing to flag) or there are no results."""
+    pref = normalize_lang(pref_lang)
+    if not pref:
+        return None
+    norm = [normalize_lang(x) for x in langs]
+    total = len(norm)
+    in_lang = sum(1 for x in norm if x and (x == pref or x == "mixed"))
+    if total == 0 or in_lang == total:
+        note = None
+    elif in_lang == 0:
+        note = f"No results in your language ({pref}); showing source-language results."
+    else:
+        note = (
+            f"{in_lang} of {total} results are in your language ({pref}); "
+            "the rest are shown in the source language."
+        )
+    return {
+        "reader_lang": pref,
+        "total": total,
+        "in_language": in_lang,
+        "partial": in_lang < total,
+        "note": note,
+    }
+
+
 def cap_per_chapter(hits: list[Hit], *, cap: int = PER_CHAPTER_CAP) -> list[Hit]:
     """Keep at most `cap` hits per chapterId (post-fusion order preserved)
     so one chapter can't flood the top of the results."""

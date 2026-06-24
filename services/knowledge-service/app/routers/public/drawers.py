@@ -42,7 +42,9 @@ DrawerSourceType = Literal["chapter", "chat", "glossary"]
 from app.db.repositories.projects import ProjectsRepo
 from app.deps import get_embedding_client, get_projects_repo
 from app.auth.grant_deps import GrantLevel, require_project_grant
+from app.labels.reader_lang import clean_lang_param
 from app.middleware.jwt_auth import get_current_user
+from app.search.hybrid_fusion import language_coverage, normalize_lang
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +81,10 @@ class DrawerSearchHit(BaseModel):
     chapter_index: int | None
     created_at: datetime | None
     raw_score: float
+    # KG-ML M7 (C12) — the passage's source language (M1/M2). Lets the FE badge
+    # each hit and the reader see which results are in their language. "unknown"
+    # for legacy untagged passages.
+    source_lang: str = "unknown"
 
 
 class DrawerSearchResponse(BaseModel):
@@ -94,6 +100,11 @@ class DrawerSearchResponse(BaseModel):
     # to the project's current embedding_model (or all passages when
     # no model is configured — useful "not indexed yet" coverage view).
     source_type_counts: dict[str, int]
+    # KG-ML M7 (C12) — reader-language coverage when ?language= is set: how many
+    # hits are in the reader's language + an honest note when coverage is partial.
+    # None when no language was requested. {reader_lang, total, in_language,
+    # partial, note}.
+    coverage: dict | None = None
     # D-K19e-γa-02 — per-search embedding cost transparency. Both null until
     # the query was actually embedded (the "not indexed" / empty-query early
     # returns leave them null), AND null when the provider didn't report token
@@ -126,6 +137,16 @@ async def search_drawers(
         description=(
             "C8: filter hits to a single source_type. Omit for 'Any'. "
             "FastAPI 422s anything outside the Literal enum."
+        ),
+    ),
+    language: str | None = Query(
+        None,
+        max_length=35,
+        description=(
+            "KG-ML M7 (C12): reader-language preference (e.g. 'vi'). Soft "
+            "matched-first re-ordering (not a filter — off-language hits still "
+            "surface, just after in-language ones) + a coverage note. Malformed "
+            "is ignored."
         ),
     ),
     user_id: UUID = Depends(require_project_grant(GrantLevel.VIEW)),
@@ -275,9 +296,24 @@ async def search_drawers(
             chapter_index=h.passage.chapter_index,
             created_at=h.passage.created_at,
             raw_score=h.raw_score,
+            source_lang=h.passage.source_lang,
         )
         for h in raw_hits
     ]
+    # KG-ML M7 (C12) — soft reader-language ordering + coverage. Mirrors the M4
+    # raw-search partition (matched-first, stable, never a hard filter) but over
+    # the DrawerSearchHit list; a `mixed` passage matches any preference. The
+    # coverage note is computed BEFORE the partition (order doesn't affect counts)
+    # so a vi reader sees how much of the result set is actually in their language.
+    pref = normalize_lang(clean_lang_param(language))
+    coverage = None
+    if pref:
+        coverage = language_coverage([h.source_lang for h in hits], pref)
+        hits.sort(
+            key=lambda h: 0
+            if (normalize_lang(h.source_lang) in (pref, "mixed"))
+            else 1
+        )
     # D-K19e-γa-02 — surface the embed cost when the provider reported token
     # usage. `embed_result.model` is the resolved provider model NAME (what
     # `cost_per_token` keys on), not the user_model UUID. tokens==0 → unknown.
@@ -292,6 +328,7 @@ async def search_drawers(
     return DrawerSearchResponse(
         hits=hits, embedding_model=project.embedding_model,
         source_type_counts=counts,
+        coverage=coverage,
         embedding_prompt_tokens=tokens_out,
         embedding_cost_usd=cost_usd,
     )

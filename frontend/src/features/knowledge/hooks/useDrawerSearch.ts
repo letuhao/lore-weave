@@ -5,6 +5,7 @@ import {
   knowledgeApi,
   type DrawerSearchParams,
   type DrawerSearchResponse,
+  type LanguageCoverage,
 } from '../api';
 
 // K19e.5 — drawer semantic-search hook for the Raw tab. queryKey is
@@ -32,6 +33,9 @@ export interface UseDrawerSearchResult {
    *  disabled (no project yet) so the filter pill row can still render
    *  a stable layout. */
   sourceTypeCounts: Record<string, number>;
+  /** KG-ML M7 (C12): reader-language coverage when a `language` was requested;
+   *  null otherwise. The tab shows `coverage.note` when present. */
+  coverage: LanguageCoverage | null;
   /** True when the hook is actively disabled because the user hasn't
    *  supplied a project + meaningful query yet. The tab uses this to
    *  render a "pick a project / type a query" prompt instead of an
@@ -67,6 +71,7 @@ export function useDrawerSearch(
       params.query,
       params.limit ?? 40,
       params.source_type ?? null,
+      params.language ?? null,
     ] as const,
     queryFn: () => knowledgeApi.searchDrawers(params, accessToken!),
     enabled: !!accessToken && queryActive,
@@ -80,6 +85,7 @@ export function useDrawerSearch(
     embeddingPromptTokens: query.data?.embedding_prompt_tokens ?? null,
     embeddingCostUsd: query.data?.embedding_cost_usd ?? null,
     sourceTypeCounts: query.data?.source_type_counts ?? EMPTY_COUNTS,
+    coverage: query.data?.coverage ?? null,
     disabled: !queryActive,
     // react-query already keeps isLoading=false when enabled=false, so
     // no additional queryActive guard is needed here.

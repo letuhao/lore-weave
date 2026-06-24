@@ -216,7 +216,12 @@
       "matchLabel": "Match score",
       "openLabel": "Open {{sourceType}} drawer with {{score}} match",
       "hubBadge": "Summary",
-      "hubHint": "This chunk is a summary or long-bio excerpt; it's penalized in ranking but may still surface."
+      "hubHint": "This chunk is a summary or long-bio excerpt; it's penalized in ranking but may still surface.",
+      "langHint": "Source language: {{lang}}"
+    },
+    "coverage": {
+      "partial": "{{count}} of {{total}} results are in your language ({{lang}}); the rest are shown in the source language.",
+      "none": "No results in your language ({{lang}}); showing source-language results."
     },
     "detail": {
       "title": "Drawer",

@@ -311,17 +311,24 @@ class KnowledgeClient:
 
     async def search_drawers(
         self, bearer: str, *, project_id: UUID, query: str, limit: int = 40,
-        source_type: str | None = None,
+        source_type: str | None = None, language: str | None = None,
     ) -> list[dict[str, Any]]:
         """L4 — semantic search (JWT-forward). `project_id` is REQUIRED by the
         endpoint (cross-project unsupported). Each hit carries `source_id` +
         `chapter_index` (int|None — the packer's reading-order spoiler axis) +
-        `raw_score` (NOT `score`). Returns hits or [] on failure."""
+        `raw_score` (NOT `score`) + `source_lang`. Returns hits or [] on failure.
+
+        KG-ML M7 (C6): `language` (the author's reader-language) soft-orders
+        in-language passages first (matched-first partition, not a filter) so a vi
+        author's lore lens surfaces vi passages — the headline scenario. Omitted →
+        relevance order only (back-compat)."""
         params: dict[str, Any] = {
             "project_id": str(project_id), "query": query, "limit": limit,
         }
         if source_type is not None:
             params["source_type"] = source_type
+        if language:
+            params["language"] = language
         return await self._jwt_get_list(
             "/v1/knowledge/drawers/search", params, bearer, key="hits", label="drawers",
         )
