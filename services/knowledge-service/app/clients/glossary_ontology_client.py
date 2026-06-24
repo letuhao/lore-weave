@@ -24,6 +24,7 @@ Spec: docs/specs/2026-06-20-knowledge-graph-customizable-ontology.md §3.5, D1.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
@@ -52,6 +53,10 @@ class OntologyKind(BaseModel):
     name: str = ""
     # which tier the kind resolved from (system|user|book); advisory only.
     tier: str | None = None
+    # KG-ML M5 (C4) — localized kind labels {language: label}. Empty ⇒ the
+    # consumer falls back to the canonical `name`. Surfaced by the glossary
+    # internal ontology read; tier-resolved (a user/book label shadows System).
+    name_i18n: dict[str, str] = Field(default_factory=dict)
 
 
 class OntologyKinds(BaseModel):
@@ -66,6 +71,23 @@ class OntologyKinds(BaseModel):
     def codes(self) -> set[str]:
         """The set of kind codes — the only thing the resolver/adopt-gate need."""
         return {k.code for k in self.kinds}
+
+    def kind_labels(self, language: str | None) -> dict[str, str]:
+        """KG-ML M5 (C7) — ``{kind_code: localized label}`` for ``language``.
+
+        Only kinds that carry a non-empty label in the requested language's
+        primary subtag are included; the caller falls back to the canonical
+        name (or the raw code) for any kind not in the map. Empty/blank
+        ``language`` ⇒ empty map (no localization)."""
+        lang = re.split(r"[-_]", str(language or "").strip().lower(), maxsplit=1)[0]
+        if not lang:
+            return {}
+        out: dict[str, str] = {}
+        for k in self.kinds:
+            label = (k.name_i18n or {}).get(lang)
+            if label:
+                out[k.code] = label
+        return out
 
 
 @runtime_checkable
@@ -140,10 +162,19 @@ class FakeGlossaryOntologyClient:
         book_kinds: dict[str, list[str]] | None = None,
         user_kinds: dict[str, list[str]] | None = None,
         unavailable: bool = False,
+        kind_labels: dict[str, dict[str, str]] | None = None,
     ) -> None:
         self._book_kinds = book_kinds or {}
         self._user_kinds = user_kinds or {}
         self._unavailable = unavailable
+        # KG-ML M5 (C7) — optional localized labels keyed by kind code →
+        # {language: label}, applied to whichever tier emits that code.
+        self._kind_labels = kind_labels or {}
+
+    def _kind(self, code: str, tier: str) -> OntologyKind:
+        return OntologyKind(
+            code=code, name=code, tier=tier, name_i18n=self._kind_labels.get(code, {})
+        )
 
     async def get_book_ontology(self, book_id: UUID, user_id: UUID) -> OntologyKinds | None:
         if self._unavailable:
@@ -152,7 +183,7 @@ class FakeGlossaryOntologyClient:
         return OntologyKinds(
             source="book",
             book_id=str(book_id),
-            kinds=[OntologyKind(code=c, name=c, tier="book") for c in codes],
+            kinds=[self._kind(c, "book") for c in codes],
         )
 
     async def get_user_standards(self, user_id: UUID) -> OntologyKinds | None:
@@ -161,5 +192,5 @@ class FakeGlossaryOntologyClient:
         codes = self._user_kinds.get(str(user_id), [])
         return OntologyKinds(
             source="user_standards",
-            kinds=[OntologyKind(code=c, name=c, tier="user") for c in codes],
+            kinds=[self._kind(c, "user") for c in codes],
         )

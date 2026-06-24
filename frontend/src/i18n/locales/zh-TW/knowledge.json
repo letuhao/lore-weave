@@ -215,7 +215,12 @@
       "matchLabel": "匹配度",
       "openLabel": "以{{score}}匹配度開啟{{sourceType}}抽屜",
       "hubBadge": "摘要",
-      "hubHint": "此區塊是摘要或長篇簡介摘錄；排序時會降權但仍可能顯示。"
+      "hubHint": "此區塊是摘要或長篇簡介摘錄；排序時會降權但仍可能顯示。",
+      "langHint": "來源語言：{{lang}}"
+    },
+    "coverage": {
+      "partial": "{{total}} 筆結果中有 {{count}} 筆是您的語言（{{lang}}）；其餘以來源語言顯示。",
+      "none": "沒有您語言（{{lang}}）的結果；改以來源語言顯示。"
     },
     "detail": {
       "title": "抽屜",

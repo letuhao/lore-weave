@@ -15,6 +15,7 @@ from app.events.handlers import (
     handle_chapter_unpublished,
     handle_chapter_deleted,
     handle_glossary_entity_updated,
+    handle_translation_published,
 )
 
 
@@ -572,6 +573,116 @@ async def test_glossary_updated_skips_when_no_neo4j(monkeypatch):
         await handle_glossary_entity_updated(_glossary_event(), pool=pool)
 
     sync_mock.assert_not_awaited()
+
+
+# ── KG-ML M2: translation.published → dual-index vi passages ─────────
+
+
+def _translation_event(book_id=str(_BOOK), chapter_id=str(_CHAPTER), lang="vi"):
+    payload = {}
+    if book_id:
+        payload["book_id"] = book_id
+    if chapter_id:
+        payload["chapter_id"] = chapter_id
+    if lang:
+        payload["target_language"] = lang
+    return EventData(
+        stream="loreweave:events:translation",
+        message_id="1-0",
+        event_type="translation.published",
+        aggregate_id=str(uuid4()),  # chapter_translation_id
+        payload=payload,
+        source="translation",
+        raw={},
+    )
+
+
+@pytest.mark.asyncio
+async def test_translation_published_dual_indexes_vi(monkeypatch):
+    """M2: resolves project → fetches active vi text → ingests with
+    text_override + source_lang='vi' (index-only). Never touches the graph
+    queue (no extraction)."""
+    from contextlib import asynccontextmanager
+
+    pool, _conn = _mock_pool()
+    pool.fetchrow = AsyncMock(return_value={
+        "project_id": _PROJECT, "user_id": _USER,
+        "embedding_model": "bge-m3", "embedding_dimension": 1024,
+    })
+    with patch("app.config.settings") as ms:
+        ms.neo4j_uri = "bolt://fake"
+
+        @asynccontextmanager
+        async def fake_session():
+            yield MagicMock()
+
+        ingest_mock = AsyncMock()
+        monkeypatch.setattr("app.db.neo4j.neo4j_session", fake_session)
+        monkeypatch.setattr(
+            "app.extraction.passage_ingester.ingest_chapter_passages", ingest_mock,
+        )
+        monkeypatch.setattr(
+            "app.clients.book_client.get_book_client",
+            lambda: _book_client_with_sort(7),
+        )
+        monkeypatch.setattr(
+            "app.clients.embedding_client.get_embedding_client", lambda: MagicMock(),
+        )
+        tc = MagicMock()
+        tc.get_active_translation_text = AsyncMock(return_value="Bá tước Dracula…")
+        monkeypatch.setattr(
+            "app.clients.translation_client.get_translation_client", lambda: tc,
+        )
+
+        await handle_translation_published(_translation_event(), pool=pool)
+
+    ingest_mock.assert_awaited_once()
+    kw = ingest_mock.await_args.kwargs
+    assert kw["source_lang"] == "vi"
+    assert kw["text_override"] == "Bá tước Dracula…"
+    assert kw["canon"] is True
+    assert kw["chapter_index"] == 7
+    tc.get_active_translation_text.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_translation_published_skips_when_no_active_text(monkeypatch):
+    """No active translation text for the language → no ingest (clean skip)."""
+    pool, _conn = _mock_pool()
+    pool.fetchrow = AsyncMock(return_value={
+        "project_id": _PROJECT, "user_id": _USER,
+        "embedding_model": "bge-m3", "embedding_dimension": 1024,
+    })
+    with patch("app.config.settings") as ms:
+        ms.neo4j_uri = "bolt://fake"
+        ingest_mock = AsyncMock()
+        monkeypatch.setattr(
+            "app.extraction.passage_ingester.ingest_chapter_passages", ingest_mock,
+        )
+        tc = MagicMock()
+        tc.get_active_translation_text = AsyncMock(return_value=None)
+        monkeypatch.setattr(
+            "app.clients.translation_client.get_translation_client", lambda: tc,
+        )
+        await handle_translation_published(_translation_event(), pool=pool)
+
+    ingest_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_translation_published_skips_when_no_project(monkeypatch):
+    """No knowledge project for the book → clean no-op, no translation fetch."""
+    pool, _conn = _mock_pool()
+    pool.fetchrow = AsyncMock(return_value=None)
+    tc = MagicMock()
+    tc.get_active_translation_text = AsyncMock()
+    monkeypatch.setattr(
+        "app.clients.translation_client.get_translation_client", lambda: tc,
+    )
+    await handle_translation_published(_translation_event(), pool=pool)
+
+    pool.fetchrow.assert_called_once()
+    tc.get_active_translation_text.assert_not_called()
 
 
 @pytest.mark.asyncio

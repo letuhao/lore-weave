@@ -13,6 +13,7 @@ from ..grant_deps import (
     get_grant_client_dep,
 )
 from ..workers.segment_status import compute_segment_status
+from ..translation_events import emit_translation_published
 
 log = logging.getLogger(__name__)
 from ..models import (
@@ -254,6 +255,22 @@ async def set_active_version(
         """,
         chapter_id, row["target_language"], version_id, UUID(user_id),
     )
+
+    # KG-ML M2 — a version became active → knowledge-service dual-indexes this
+    # language's passages. Best-effort (matches the reviewed emit below); the
+    # active version is already set, an emit failure must not 500 the publish.
+    try:
+        await emit_translation_published(
+            db,
+            user_id=user_id,
+            book_id=row["book_id"],
+            chapter_id=chapter_id,
+            chapter_translation_id=version_id,
+            target_language=row["target_language"],
+            source="manual",
+        )
+    except Exception:  # noqa: BLE001
+        log.warning("KG-ML M2: failed to emit translation.published (manual)", exc_info=True)
 
     # M7b (Channel 1a — human signal): setting a version active is a human-only
     # action (the worker auto-activates via a different path), so it is a genuine
@@ -517,5 +534,20 @@ async def patch_translation_block(
         )
     except Exception:  # noqa: BLE001 — telemetry must not lose the edit
         log.warning("T1: failed to emit per-block translation.corrected (non-fatal)", exc_info=True)
+
+    # KG-ML M2 — a human block edit changed the ACTIVE translation's text →
+    # knowledge-service re-indexes this language (its skip-gate dedups a no-op).
+    try:
+        await emit_translation_published(
+            db,
+            user_id=user_id,
+            book_id=base["book_id"],
+            chapter_id=chapter_id,
+            chapter_translation_id=updated["id"],
+            target_language=lang,
+            source="human_edit",
+        )
+    except Exception:  # noqa: BLE001
+        log.warning("KG-ML M2: failed to emit translation.published (human_edit)", exc_info=True)
 
     return ChapterTranslation(**dict(updated))

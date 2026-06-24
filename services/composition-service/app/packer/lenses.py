@@ -117,7 +117,7 @@ async def gather_open_promises(
 async def gather_present(
     glossary: GlossaryClient, knowledge: KnowledgeClient, *,
     book_id: UUID, user_id: UUID, project_id: UUID, bearer: str, query: str,
-    present_entity_ids: list[UUID],
+    present_entity_ids: list[UUID], language: str | None = None,
 ) -> tuple[list[dict[str, Any]], bool]:
     """L1a — who is present + their state. Bios from glossary select-for-context
     (rich short_description); currently-valid relations from knowledge for the
@@ -132,7 +132,7 @@ async def gather_present(
     # way (entity_id/cached_name/short_description), so the loop below is shared.
     bios = await knowledge.glossary_semantic(user_id, project_id=project_id, query=query)
     if not bios:
-        bios = await glossary.select_for_context(book_id, user_id, query)
+        bios = await glossary.select_for_context(book_id, user_id, query, language=language)
     for b in bios:
         eid = b.get("entity_id")
         if not eid:  # soft-absent / malformed → skip (DI3)
@@ -265,10 +265,16 @@ async def gather_recent(
 
 async def gather_lore(
     knowledge: KnowledgeClient, bearer: str, project_id: UUID, query: str,
+    language: str | None = None,
 ) -> tuple[list[dict[str, Any]], bool]:
     """L4 — semantic lore hits (RAW; pack.py applies the reading-order spoiler
-    filter). `project_id` is required by the endpoint. Returns (hits, seen)."""
+    filter). `project_id` is required by the endpoint. Returns (hits, seen).
+
+    KG-ML M7 (C6): `language` (author's reader-language) soft-orders in-language
+    passages first so a vi author's lore lens surfaces vi passages (headline)."""
     if not query.strip():
         return [], False
-    hits = await knowledge.search_drawers(bearer, project_id=project_id, query=query)
+    hits = await knowledge.search_drawers(
+        bearer, project_id=project_id, query=query, language=language
+    )
     return hits, bool(hits)

@@ -55,9 +55,12 @@ func TestBuildLexicalHit(t *testing.T) {
 	cid := uuid.New()
 	title := "第5章 龙象般若"
 	// exact substring → boosted score + relevance 1.0 + a highlight span
-	hit := buildLexicalHit(cid, &title, nil, 5, 2, "他修炼龙象般若掌", 0.4, "龙象般若", "draft")
+	hit := buildLexicalHit(cid, &title, nil, 5, 2, "他修炼龙象般若掌", 0.4, "龙象般若", "draft", "zh")
 	if hit["surface"] != "draft" || hit["matchType"] != "lexical" {
 		t.Fatalf("surface/matchType wrong: %v / %v", hit["surface"], hit["matchType"])
+	}
+	if hit["sourceLang"] != "zh" {
+		t.Fatalf("sourceLang = %v, want zh", hit["sourceLang"])
 	}
 	if hit["score"].(float64) != 1.4 {
 		t.Fatalf("exact score = %v, want 1.4 (1+sim)", hit["score"])
@@ -70,7 +73,7 @@ func TestBuildLexicalHit(t *testing.T) {
 	}
 
 	// trigram-only (no exact substring) → score=relevance=sim, no highlight
-	miss := buildLexicalHit(cid, &title, nil, 5, 2, "完全不相关的文字", 0.31, "龙象般若", "canon")
+	miss := buildLexicalHit(cid, &title, nil, 5, 2, "完全不相关的文字", 0.31, "龙象般若", "canon", "zh")
 	if miss["surface"] != "canon" {
 		t.Fatalf("surface should pass through: got %v", miss["surface"])
 	}

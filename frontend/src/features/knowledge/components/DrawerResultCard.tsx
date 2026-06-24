@@ -93,6 +93,18 @@ export function DrawerResultCard({
               {t('drawers.card.hubBadge')}
             </span>
           )}
+          {/* KG-ML M7 (C12) — per-hit source-language badge so a reader can see
+              which results are in their language at a glance. Hidden for legacy
+              untagged passages. */}
+          {hit.source_lang && hit.source_lang !== 'unknown' && (
+            <span
+              className="rounded bg-sky-500/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-sky-700 dark:text-sky-300"
+              title={t('drawers.card.langHint', { lang: hit.source_lang })}
+              data-testid="drawer-result-lang-badge"
+            >
+              {hit.source_lang}
+            </span>
+          )}
         </span>
         <span className="min-w-0 flex-1">
           <span className="mb-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">

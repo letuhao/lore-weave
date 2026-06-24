@@ -269,6 +269,34 @@ class BookClient:
             )
             return None
 
+    async def get_reader_language(
+        self, book_id: UUID, user_id: UUID,
+    ) -> str | None:
+        """KG-ML M4 (DD3) — resolve a user's stored reader-language for a book.
+
+        Calls book-service GET /internal/books/{book_id}/reader-language?user_id=
+        (the M3 resolver source). Returns the stored tag (e.g. "vi") or None when
+        unset / on ANY failure — language-aware ranking then falls back to the
+        next resolver tier (detected query language) and never 500s the search.
+        """
+        url = f"{self._base_url}/internal/books/{book_id}/reader-language"
+        tid = trace_id_var.get()
+        try:
+            resp = await self._http.get(
+                url,
+                params={"user_id": str(user_id)},
+                headers={"X-Trace-Id": tid} if tid else None,
+            )
+            if resp.status_code != 200:
+                return None
+            lang = resp.json().get("reader_language")
+            return lang if isinstance(lang, str) and lang.strip() else None
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            logger.warning(
+                "book-service reader-language unavailable: %s, trace_id=%s", exc, tid,
+            )
+            return None
+
     async def get_chapter_titles(
         self, chapter_ids: list[UUID],
     ) -> dict[UUID, str]:

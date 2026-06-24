@@ -82,6 +82,8 @@ var chain = []Step{
 	// Merge: this branch's 0035 collided with main's 0035_multirow_attr_values; renumbered
 	// to 0036 (idempotent migration, so a DB that already ran it under the old key re-runs cleanly).
 	{"0036_system_attr_descriptions", UpSystemAttrDescriptions},
+	// KG-ML M5 (C4 / DD4) — name_i18n on the kind tiers + System vi seed.
+	{"0037_kind_name_i18n", UpKindNameI18n},
 }
 
 // EnsureLedger creates the schema_migrations bookkeeping table. Idempotent; must run

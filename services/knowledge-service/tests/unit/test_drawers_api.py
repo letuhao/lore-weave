@@ -209,6 +209,60 @@ def test_drawers_happy(mock_find):
     assert ec["texts"] == ["bridge duel"]
 
 
+def _lang_hit(chunk_index: int, source_lang: str, score: float) -> PassageSearchHit:
+    p = _passage_stub(chunk_index=chunk_index)
+    p = p.model_copy(update={"source_lang": source_lang, "source_id": f"ch-{source_lang}"})
+    return PassageSearchHit(passage=p, raw_score=score, vector=None)
+
+
+@patch(
+    "app.routers.public.drawers.find_passages_by_vector",
+    new_callable=AsyncMock,
+)
+@patch(
+    "app.routers.public.drawers.neo4j_session", new=lambda: _noop_session()
+)
+def test_drawers_language_partition_and_coverage(mock_find):
+    """KG-ML M7 (C12) — ?language=vi soft-orders vi hits first (stable, not a
+    filter) + reports honest partial coverage; each hit carries source_lang."""
+    # higher cosine for zh/en so only the partition (not score) can put vi first
+    mock_find.return_value = [
+        _lang_hit(0, "zh", 0.95),
+        _lang_hit(1, "en", 0.90),
+        _lang_hit(2, "vi", 0.70),
+    ]
+    client, _, _ = _make_client()
+    resp = client.get(
+        f"/v1/knowledge/drawers/search?project_id={_PROJECT_ID}&query=test&language=vi-VN"
+    )
+    assert resp.status_code == 200, resp.json()
+    body = resp.json()
+    # vi hit partitioned to the front despite its lower cosine; nothing dropped.
+    assert [h["source_lang"] for h in body["hits"]] == ["vi", "zh", "en"]
+    cov = body["coverage"]
+    assert cov["reader_lang"] == "vi"  # vi-VN folded to primary subtag
+    assert cov["total"] == 3 and cov["in_language"] == 1
+    assert cov["partial"] is True
+    assert "1 of 3" in cov["note"]
+
+
+@patch(
+    "app.routers.public.drawers.find_passages_by_vector",
+    new_callable=AsyncMock,
+)
+@patch(
+    "app.routers.public.drawers.neo4j_session", new=lambda: _noop_session()
+)
+def test_drawers_no_language_has_null_coverage(mock_find):
+    mock_find.return_value = [_lang_hit(0, "zh", 0.9)]
+    client, _, _ = _make_client()
+    resp = client.get(
+        f"/v1/knowledge/drawers/search?project_id={_PROJECT_ID}&query=test"
+    )
+    assert resp.status_code == 200
+    assert resp.json()["coverage"] is None  # no preference → no note
+
+
 @patch(
     "app.routers.public.drawers.find_passages_by_vector",
     new_callable=AsyncMock,

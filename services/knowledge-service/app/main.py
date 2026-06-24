@@ -43,6 +43,7 @@ from app.routers import (
 )
 from app.routers.public import costs as public_costs
 from app.routers.public import drawers as public_drawers
+from app.routers.public import labels as public_labels
 from app.routers.public import raw_search as public_raw_search
 from app.routers.public import entities as public_entities
 from app.routers.public import extraction as public_extraction
@@ -228,10 +229,14 @@ async def lifespan(app: FastAPI):
             handle_chapter_deleted,
             handle_glossary_entity_updated,
             handle_glossary_entity_merged,
+            handle_translation_published,
         )
 
         dispatcher = EventDispatcher()
         dispatcher.register("chat.turn_completed", handle_chat_turn)
+        # KG-ML M2 — a chapter's translation became active → dual-index its vi
+        # passages (index-only; never re-extracts Layer 1).
+        dispatcher.register("translation.published", handle_translation_published)
         # Canon Model CM3c: canon = published. BOTH graph extraction AND L3
         # passage-ingest now trigger on chapter.published (at the pinned
         # revision), never chapter.saved — so unreviewed draft prose never
@@ -723,6 +728,7 @@ app.include_router(metrics.router)
 app.include_router(public_costs.router)
 app.include_router(public_drawers.router)
 app.include_router(public_raw_search.router)
+app.include_router(public_labels.router)
 app.include_router(public_entities.router)
 app.include_router(public_entities.entities_router)
 app.include_router(public_relations.relations_router)

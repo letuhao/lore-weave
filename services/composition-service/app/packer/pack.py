@@ -220,6 +220,12 @@ async def pack(
         [_as_uuid(node.get("pov_entity_id"))] + [_as_uuid(e) for e in (node.get("present_entity_ids") or [])]
     ) if u is not None]
 
+    # KG-ML M7 (C6) — the author's reader-language for this book (M3). Resolved
+    # ONCE and threaded into the knowledge/glossary lenses so the pack carries
+    # per-language entity aliases + surfaces in-language lore passages first. Best-
+    # effort (None on unset/outage → the pack stays source-language, never 500s).
+    reader_lang = await book.get_reader_language(req.book_id, req.user_id)
+
     # Resolve the scene's chapter reading position FIRST — it is the timeline
     # cutoff on the DENSE event_order axis (at_order = sort × stride; CM4) AND the
     # canon-guard / L4 reading position. gather_timeline MUST query
@@ -256,14 +262,14 @@ async def pack(
             gather_canon(canon_repo, req.user_id, req.project_id, story_order),
             gather_present(glossary, knowledge, book_id=req.book_id, user_id=req.user_id,
                            project_id=req.project_id, bearer=req.bearer, query=query,
-                           present_entity_ids=present_ids),
+                           present_entity_ids=present_ids, language=reader_lang),
             gather_timeline(knowledge, req.bearer, req.project_id, at_order, after_order=timeline_after),
             gather_structural(outline_repo, scene_links_repo, user_id=req.user_id,
                               project_id=req.project_id, node=node),
             gather_recent(book, req.book_id, chapter_id, req.bearer,
                           jobs_repo=jobs_repo, user_id=req.user_id, project_id=req.project_id,
                           story_order=story_order) if chapter_id else _empty_list(),
-            gather_lore(knowledge, req.bearer, req.project_id, query),
+            gather_lore(knowledge, req.bearer, req.project_id, query, language=reader_lang),
             gather_open_promises(narrative_threads_repo, req.user_id, req.project_id,
                                  cap=settings.pack_open_promises_cap) if nt_enabled else _empty_list(),
         )
@@ -287,10 +293,10 @@ async def pack(
             await asyncio.gather(
                 gather_present(glossary, knowledge, book_id=req.book_id, user_id=req.user_id,
                                project_id=req.source_project_id, bearer=req.bearer, query=query,
-                               present_entity_ids=present_ids),
+                               present_entity_ids=present_ids, language=reader_lang),
                 gather_timeline(knowledge, req.bearer, req.source_project_id, base_cut,
                                 after_order=base_after),
-                gather_lore(knowledge, req.bearer, req.source_project_id, query),
+                gather_lore(knowledge, req.bearer, req.source_project_id, query, language=reader_lang),
             )
         )
         # Merge base + delta with DELTA precedence; base timeline is re-capped at the

@@ -473,6 +473,50 @@ class GlossaryClient:
             logger.warning("glossary entities/by-ids failed: %s", exc)
             return []
 
+    async def fetch_entity_display_names(
+        self,
+        *,
+        book_id: UUID,
+        entity_ids: list[str],
+        language: str,
+    ) -> dict[str, str]:
+        """POST /internal/books/{book_id}/entity-display-names (KG-ML M5 C9).
+
+        Resolve a set of glossary entity ids to their display name in
+        ``language``. Returns ``{entity_id: translated_name}`` for ONLY the
+        entities that actually had a translation in that language — an entity
+        whose name has no translation is omitted (the KG node then keeps its
+        canonical name, an honest source-fallback per AC1). Best-effort:
+        returns ``{}`` on any failure or an empty input, so the KG graph-view
+        degrades to canonical names rather than failing the read.
+        """
+        if not entity_ids or not language:
+            return {}
+        url = f"{self._base_url}/internal/books/{book_id}/entity-display-names"
+        tid = trace_id_var.get()
+        try:
+            resp = await self._http.post(
+                url,
+                json={"language": language, "entity_ids": entity_ids},
+                headers={"X-Trace-Id": tid} if tid else None,
+            )
+            if resp.status_code != 200:
+                logger.warning("glossary entity-display-names %d", resp.status_code)
+                return {}
+            data = resp.json()
+            out: dict[str, str] = {}
+            for it in data.get("items", []):
+                eid = it.get("entity_id")
+                name = it.get("display_name")
+                # Only genuinely-translated names override the canonical; an
+                # untranslated entity is omitted so name_label stays None.
+                if eid and name and it.get("translated"):
+                    out[str(eid)] = str(name)
+            return out
+        except (httpx.HTTPError, ValueError) as exc:
+            logger.warning("glossary entity-display-names failed: %s", exc)
+            return {}
+
     async def propose_entities(
         self,
         book_id: UUID,

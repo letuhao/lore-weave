@@ -74,6 +74,11 @@ class Settings(BaseSettings):
     book_service_url: str = "http://book-service:8082"
     book_client_timeout_s: float = 5.0
 
+    # KG-ML M2 — translation-service internal client: fetch a chapter's ACTIVE
+    # translation text (for dual-indexing vi passages on `translation.published`).
+    translation_service_url: str = "http://translation-service:8087"
+    translation_client_timeout_s: float = 10.0
+
     # wiki-llm M1 (option A) — lore-enrichment hosts the authored de-bias
     # BookProfile (worldview/voice/era/language/anachronism). The wiki
     # generator reads it over the internal token to shape its prompt. The

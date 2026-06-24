@@ -39,7 +39,10 @@ from pydantic import BaseModel, Field
 
 import asyncpg
 
-from app.auth.grant_deps import GrantLevel, require_project_grant
+from app.auth.grant_deps import GrantLevel, project_meta_dep, require_project_grant
+from app.clients.book_client import BookClient
+from app.clients.glossary_client import GlossaryClient
+from app.clients.glossary_ontology_client import GlossaryOntologyClient
 from app.clients.grant_client import GrantClient
 from app.db.neo4j import neo4j_session
 from app.db.neo4j_helpers import run_read
@@ -48,8 +51,16 @@ from app.db.pool import get_knowledge_pool
 from app.db.repositories.graph_schemas import GraphSchemasRepo
 from app.db.repositories.graph_views import GraphViewsRepo
 from app.db.repositories.projects import ProjectsRepo
-from app.deps import get_grant_client, get_projects_repo
+from app.deps import (
+    get_book_client,
+    get_glossary_client,
+    get_grant_client,
+    get_projects_repo,
+)
+from app.labels.graph_labels import localize_edge_timeline, localize_graph_slice
+from app.labels.reader_lang import clean_lang_param, primary_subtag
 from app.middleware.jwt_auth import get_current_user
+from app.routers.public.ontology import get_glossary_ontology_client
 from app.ontology.view_filter import (
     build_view_scope,
     deprecated_edge_warnings,
@@ -99,6 +110,11 @@ class GraphNode(BaseModel):
     kind: str
     name: str
     glossary_entity_id: str | None = None
+    # KG-ML M5 (C7) — localized labels for a reader whose language differs from
+    # the source. None ⇒ no localized label; the FE keeps the canonical
+    # kind/name (an explicit source-fallback, AC1).
+    kind_label: str | None = None
+    name_label: str | None = None
 
 
 class GraphEdge(BaseModel):
@@ -108,6 +124,8 @@ class GraphEdge(BaseModel):
     valid_from: int | None = None
     valid_to: int | None = None
     schema_version: int | None = None
+    # KG-ML M5 (C7) — localized predicate label (curated → humanized fallback).
+    edge_type_label: str | None = None
 
 
 class GraphSlice(BaseModel):
@@ -125,12 +143,18 @@ class TimelineInstance(BaseModel):
     valid_to: int | None = None
     evidence_chapter_id: str | None = None
     schema_version: int | None = None
+    # KG-ML M5 (C7) — target's glossary anchor (for the name-translation join)
+    # + the localized target name (None ⇒ canonical `target_label` fallback).
+    target_glossary_entity_id: str | None = None
+    target_label_localized: str | None = None
 
 
 class EdgeTimeline(BaseModel):
     entity_id: str
     edge_type: str
     instances: list[TimelineInstance] = Field(default_factory=list)
+    # KG-ML M5 (C7) — localized predicate label (curated → humanized fallback).
+    edge_type_label: str | None = None
 
 
 # ── helpers ───────────────────────────────────────────────────────────────
@@ -297,9 +321,50 @@ def build_timeline(
                 valid_to=_coerce_ordinal(rel.get("valid_to")),
                 evidence_chapter_id=rel.get("source_chapter"),
                 schema_version=_coerce_ordinal(rel.get("schema_version")),
+                target_glossary_entity_id=obj.get("glossary_entity_id"),
             )
         )
     return EdgeTimeline(entity_id=entity_id, edge_type=edge_type, instances=instances)
+
+
+async def _resolve_kg_labels(
+    *,
+    owner: UUID,
+    book_id: UUID | None,
+    language: str,
+    glossary_ontology: Any,
+    glossary: Any,
+    glossary_entity_ids: list[str],
+) -> tuple[dict[str, str], dict[str, str]]:
+    """KG-ML M5 (C7) — gather the two label maps for a localizing read.
+
+    Returns ``(kind_labels, entity_names)``:
+      * ``kind_labels``: ``{kind_code: label}`` from the glossary ontology read
+        (book tier if the project has a book, else the owner's standards),
+        resolved to ``language`` via ``OntologyKinds.kind_labels``.
+      * ``entity_names``: ``{glossary_entity_id: translated_name}`` from the
+        glossary entity-name batch (book-scoped; only translated entries).
+
+    Both are best-effort: a glossary outage yields an empty map (every node
+    falls back to canonical), never an error — the graph read still succeeds.
+    """
+    kind_labels: dict[str, str] = {}
+    try:
+        if book_id is not None:
+            ont = await glossary_ontology.get_book_ontology(book_id, owner)
+        else:
+            ont = await glossary_ontology.get_user_standards(owner)
+        if ont is not None:
+            kind_labels = ont.kind_labels(language)
+    except Exception:  # pragma: no cover - defensive; labels are non-critical
+        logger.warning("kg kind-label resolution failed", exc_info=True)
+
+    entity_names: dict[str, str] = {}
+    if book_id is not None and glossary_entity_ids:
+        entity_names = await glossary.fetch_entity_display_names(
+            book_id=book_id, entity_ids=glossary_entity_ids, language=language
+        )
+    return kind_labels, entity_names
 
 
 async def _records(result: Any) -> list[dict[str, Any]]:
@@ -526,10 +591,24 @@ async def read_graph(
     view: str | None = Query(default=None, description="view code; omit for the whole schema"),
     as_of_chapter: int | None = Query(default=None, ge=0, description="chapter ordinal; omit for latest"),
     limit: int = Query(default=500, ge=1, le=2000),
+    language: str | None = Query(
+        default=None,
+        max_length=35,
+        description=(
+            "KG-ML M5 (C7): localize node kinds, entity names + predicates to "
+            "this reader language (BCP-47-ish; malformed ignored). Omit to "
+            "resolve the caller's stored reader-language preference; absent that, "
+            "the canonical (source-language) graph is returned."
+        ),
+    ),
     owner: UUID = Depends(require_project_grant(GrantLevel.VIEW)),
     caller: UUID = Depends(get_current_user),
     views_repo: GraphViewsRepo = Depends(get_graph_views_repo),
     schemas_repo: GraphSchemasRepo = Depends(get_graph_schemas_repo),
+    meta: Any = Depends(project_meta_dep),
+    book_client: BookClient = Depends(get_book_client),
+    glossary: GlossaryClient = Depends(get_glossary_client),
+    glossary_ontology: GlossaryOntologyClient = Depends(get_glossary_ontology_client),
 ) -> GraphSlice:
     """Read the project graph filtered by `view` + `as_of_chapter`.
 
@@ -562,13 +641,48 @@ async def read_graph(
         records = await _records(result)
 
     deprecated = await _deprecated_edge_codes(schemas_repo, project_str)
-    return build_graph_slice(
+    graph = build_graph_slice(
         records,
         view=selected_view,
         as_of_chapter=as_of_chapter,
         deprecated_edge_codes=deprecated,
         view_code=view,
     )
+
+    # KG-ML M5 (C7) — localize the slice for the reader's language. Resolution:
+    # explicit ?language= (validated) → the caller's stored reader-language pref
+    # for the project's book → none (canonical graph, unchanged). The project's
+    # book_id anchors both the kind-label ontology read and the entity-name join;
+    # a book-less project still localizes kinds (from user standards) + predicates.
+    reader_lang = clean_lang_param(language)
+    # `meta` is the grant gate's already-resolved (owner, book_id) — reused so we
+    # don't re-query. None book_id ⇒ book-less project (kinds still localize).
+    book_id = meta[1] if meta else None
+    if reader_lang is None and book_id is not None:
+        reader_lang = await book_client.get_reader_language(book_id, caller)
+    # Fold to primary subtag so ALL three label types resolve on the same axis
+    # (name_i18n / predicate / entity-name translations are keyed by primary
+    # subtag) — a vi-VN reader must still match vi entity-name translations.
+    reader_lang = primary_subtag(reader_lang)
+    if reader_lang:
+        glossary_entity_ids = [
+            n.glossary_entity_id for n in graph.nodes if n.glossary_entity_id
+        ]
+        kind_labels, entity_names = await _resolve_kg_labels(
+            owner=owner,
+            book_id=book_id,
+            language=reader_lang,
+            glossary_ontology=glossary_ontology,
+            glossary=glossary,
+            glossary_entity_ids=glossary_entity_ids,
+        )
+        localize_graph_slice(
+            graph,
+            kind_labels=kind_labels,
+            entity_names=entity_names,
+            language=reader_lang,
+        )
+    return graph
 
 
 # ── Edge timeline (View-gated on the entity's project) ────────────────────
@@ -580,9 +694,20 @@ async def read_edge_timeline(
     entity_id: str = Path(min_length=1, max_length=200),
     edge_type: str = Path(min_length=1, max_length=120),
     limit: int = Query(default=500, ge=1, le=2000),
+    language: str | None = Query(
+        default=None,
+        max_length=35,
+        description=(
+            "KG-ML M5 (C7): localize the predicate + target entity names to this "
+            "reader language (BCP-47-ish; malformed ignored). Omit to resolve the "
+            "caller's stored reader-language preference."
+        ),
+    ),
     caller: UUID = Depends(get_current_user),
     gc: GrantClient = Depends(get_grant_client),
     projects_repo: ProjectsRepo = Depends(get_projects_repo),
+    book_client: BookClient = Depends(get_book_client),
+    glossary: GlossaryClient = Depends(get_glossary_client),
 ) -> EdgeTimeline:
     """The temporal instance chain for one entity + edge type (e.g. a drive
     arc). View-gated on the entity's project (see
@@ -607,4 +732,40 @@ async def read_edge_timeline(
             limit=limit,
         )
         records = await _records(result)
-    return build_timeline(entity_id, edge_type, records)
+    timeline = build_timeline(entity_id, edge_type, records)
+
+    # KG-ML M5 (C7) — localize the predicate + target names for the reader. The
+    # entity's project anchors the book_id (the entity-name translation join) +
+    # the reader-language preference fallback.
+    book_id: UUID | None = None
+    try:
+        meta = await projects_repo.project_meta(UUID(_project_id))
+        book_id = meta[1] if meta else None
+    except (ValueError, AttributeError):
+        book_id = None  # legacy/global non-uuid project → no book to anchor on
+    reader_lang = clean_lang_param(language)
+    if reader_lang is None and book_id is not None:
+        reader_lang = await book_client.get_reader_language(book_id, caller)
+    reader_lang = primary_subtag(reader_lang)  # same-axis fold (see read_graph)
+    if reader_lang:
+        gids = [
+            i.target_glossary_entity_id
+            for i in timeline.instances
+            if i.target_glossary_entity_id
+        ]
+        glossary_names: dict[str, str] = {}
+        if book_id is not None and gids:
+            glossary_names = await glossary.fetch_entity_display_names(
+                book_id=book_id, entity_ids=gids, language=reader_lang
+            )
+        # Re-key the translated names by the instance target_id (node id) for the
+        # pure decorator (glossary keys by glossary_entity_id).
+        entity_names = {
+            i.target_id: glossary_names[i.target_glossary_entity_id]
+            for i in timeline.instances
+            if i.target_glossary_entity_id in glossary_names
+        }
+        localize_edge_timeline(
+            timeline, entity_names=entity_names, language=reader_lang
+        )
+    return timeline

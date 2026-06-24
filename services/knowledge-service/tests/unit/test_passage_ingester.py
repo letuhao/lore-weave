@@ -26,6 +26,23 @@ BOOK_ID = UUID("33333333-3333-3333-3333-333333333333")
 CHAPTER_ID = UUID("44444444-4444-4444-4444-444444444444")
 
 
+@pytest.fixture(autouse=True)
+def _stub_source_lang_helpers(monkeypatch):
+    """KG-ML M1 — stub the new Neo4j helpers (`get_source_ingest_state`,
+    `set_source_lang_for_source`) so existing ingest tests that pass a MagicMock
+    session don't hit the real run_read/run_write. Default = skip-gate cache miss
+    (None) so ingestion proceeds as before. Tests that exercise the skip-gate
+    override `get_source_ingest_state` explicitly (later setattr wins)."""
+    monkeypatch.setattr(
+        "app.extraction.passage_ingester.get_source_ingest_state",
+        AsyncMock(return_value=None),
+    )
+    monkeypatch.setattr(
+        "app.extraction.passage_ingester.set_source_lang_for_source",
+        AsyncMock(return_value=0),
+    )
+
+
 # ── chunker ────────────────────────────────────────────────────────
 
 
@@ -388,6 +405,364 @@ async def test_ingest_disables_block_map_on_misalignment(monkeypatch):
     assert upsert.await_count >= 1
     for call in upsert.await_args_list:
         assert call.kwargs["block_index"] is None  # mapping disabled, not wrong
+
+
+# ── KG-ML M1: source_lang, cost metering, skip-gate ─────────────────
+
+
+def test_resolve_source_lang_prefers_declared():
+    """Declared chapter original_language wins; no text detection needed."""
+    from app.extraction.passage_ingester import resolve_source_lang
+
+    lang, mixed = resolve_source_lang("ZH", "any text")
+    assert lang == "zh"
+    assert mixed is False
+
+
+def test_resolve_source_lang_falls_back_to_detection(monkeypatch):
+    """Absent/unknown declared lang → detect from text."""
+    from app.extraction import passage_ingester as pi
+
+    monkeypatch.setattr(pi, "detect_primary_language", lambda _t: "vi")
+    assert pi.resolve_source_lang(None, "xin chào") == ("vi", False)
+    assert pi.resolve_source_lang("unknown", "xin chào") == ("vi", False)
+    assert pi.resolve_source_lang("", "xin chào") == ("vi", False)
+
+
+def test_resolve_source_lang_mixed_sets_flag(monkeypatch):
+    """Ambiguous detection → source_lang 'mixed' + mixed=True."""
+    from app.extraction import passage_ingester as pi
+
+    monkeypatch.setattr(pi, "detect_primary_language", lambda _t: "mixed")
+    assert pi.resolve_source_lang(None, "hello 你好") == ("mixed", True)
+
+
+@pytest.mark.asyncio
+async def test_ingest_stamps_declared_source_lang(monkeypatch):
+    """Declared source_lang is forwarded to every upsert_passage + result."""
+    book = _mk_book_client(text="Arthur rode toward Camelot. " * 300)
+
+    async def fake_embed(*, user_id, model_source, model_ref, texts):
+        return EmbeddingResult(
+            embeddings=[[0.1] * 1024 for _ in texts], dimension=1024, model="bge-m3",
+        )
+    emb = MagicMock()
+    emb.embed = fake_embed
+    upsert = AsyncMock()
+    monkeypatch.setattr("app.extraction.passage_ingester.upsert_passage", upsert)
+    monkeypatch.setattr(
+        "app.extraction.passage_ingester.delete_passages_for_source",
+        AsyncMock(return_value=0),
+    )
+
+    result = await ingest_chapter_passages(
+        MagicMock(), book, emb,
+        user_id=USER_ID, project_id=PROJECT_ID,
+        book_id=BOOK_ID, chapter_id=CHAPTER_ID, chapter_index=1,
+        embedding_model="bge-m3", embedding_dim=1024,
+        source_lang="zh",
+    )
+    assert result.source_lang == "zh"
+    assert upsert.await_count == result.chunks_created
+    for call in upsert.await_args_list:
+        assert call.kwargs["source_lang"] == "zh"
+        assert call.kwargs["mixed"] is False
+        assert call.kwargs["content_hash"]  # a hash was stamped
+
+
+@pytest.mark.asyncio
+async def test_ingest_meters_embedding_cost_when_pool_given(monkeypatch):
+    """C10: pool + prompt_tokens>0 → record_spending(cost) called once."""
+    import app.extraction.passage_ingester as pi
+    from decimal import Decimal
+
+    book = _mk_book_client(text="Arthur rode toward Camelot. " * 300)
+
+    async def fake_embed(*, user_id, model_source, model_ref, texts):
+        return EmbeddingResult(
+            embeddings=[[0.1] * 1024 for _ in texts], dimension=1024,
+            model="bge-m3", prompt_tokens=500,
+        )
+    emb = MagicMock()
+    emb.embed = fake_embed
+    monkeypatch.setattr(pi, "upsert_passage", AsyncMock())
+    monkeypatch.setattr(pi, "delete_passages_for_source", AsyncMock(return_value=0))
+    monkeypatch.setattr(pi, "cost_per_token", lambda _m: Decimal("0.0001"))
+    rec = AsyncMock()
+    monkeypatch.setattr(pi, "record_spending", rec)
+
+    pool = MagicMock()
+    await ingest_chapter_passages(
+        MagicMock(), book, emb,
+        user_id=USER_ID, project_id=PROJECT_ID,
+        book_id=BOOK_ID, chapter_id=CHAPTER_ID, chapter_index=1,
+        embedding_model="bge-m3", embedding_dim=1024,
+        pool=pool,
+    )
+    rec.assert_awaited_once()
+    args = rec.await_args.args
+    assert args[0] is pool and args[1] == USER_ID and args[2] == PROJECT_ID
+    assert args[3] == Decimal("0.0001") * Decimal(500)
+
+
+@pytest.mark.asyncio
+async def test_ingest_no_metering_without_pool(monkeypatch):
+    """No pool → record_spending never called (tests/benchmark paths)."""
+    import app.extraction.passage_ingester as pi
+
+    book = _mk_book_client(text="Arthur rode toward Camelot. " * 300)
+
+    async def fake_embed(*, user_id, model_source, model_ref, texts):
+        return EmbeddingResult(
+            embeddings=[[0.1] * 1024 for _ in texts], dimension=1024,
+            model="bge-m3", prompt_tokens=500,
+        )
+    emb = MagicMock()
+    emb.embed = fake_embed
+    monkeypatch.setattr(pi, "upsert_passage", AsyncMock())
+    monkeypatch.setattr(pi, "delete_passages_for_source", AsyncMock(return_value=0))
+    rec = AsyncMock()
+    monkeypatch.setattr(pi, "record_spending", rec)
+
+    await ingest_chapter_passages(
+        MagicMock(), book, emb,
+        user_id=USER_ID, project_id=PROJECT_ID,
+        book_id=BOOK_ID, chapter_id=CHAPTER_ID, chapter_index=1,
+        embedding_model="bge-m3", embedding_dim=1024,
+    )
+    rec.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_ingest_skip_gate_unchanged_text(monkeypatch):
+    """C10: existing content_hash == fresh text hash → skip embed/delete/upsert,
+    re-tag source_lang, return skipped_unchanged=True (bills zero)."""
+    import hashlib
+    import app.extraction.passage_ingester as pi
+
+    text = "Arthur rode toward Camelot. " * 300
+    book = _mk_book_client(text=text)
+    matching_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+    # State matches on hash + canon(True default) + chapter_index(1) + model → skip.
+    monkeypatch.setattr(
+        pi, "get_source_ingest_state",
+        AsyncMock(return_value={
+            "content_hash": matching_hash, "canon": True, "chapter_index": 1,
+            "embedding_model": "bge-m3",
+        }),
+    )
+    tag = AsyncMock(return_value=3)
+    monkeypatch.setattr(pi, "set_source_lang_for_source", tag)
+    upsert = AsyncMock()
+    delete = AsyncMock()
+    monkeypatch.setattr(pi, "upsert_passage", upsert)
+    monkeypatch.setattr(pi, "delete_passages_for_source", delete)
+    emb = MagicMock()
+    emb.embed = AsyncMock()
+
+    result = await ingest_chapter_passages(
+        MagicMock(), book, emb,
+        user_id=USER_ID, project_id=PROJECT_ID,
+        book_id=BOOK_ID, chapter_id=CHAPTER_ID, chapter_index=1,
+        embedding_model="bge-m3", embedding_dim=1024,
+        source_lang="zh",
+    )
+    assert result.skipped_unchanged is True
+    emb.embed.assert_not_called()
+    delete.assert_not_called()
+    upsert.assert_not_called()
+    tag.assert_awaited_once()  # re-tagged source_lang without re-embed
+
+
+@pytest.mark.asyncio
+async def test_skip_gate_does_not_skip_on_canon_flip(monkeypatch):
+    """C10 correctness: identical text but canon flips (draft→publish) → must NOT
+    skip; full re-ingest so published content reaches canon search."""
+    import hashlib
+    import app.extraction.passage_ingester as pi
+
+    text = "Arthur rode toward Camelot. " * 300
+    book = _mk_book_client(text=text)
+    matching_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+    # Existing passages are draft (canon=False); incoming publish is canon=True.
+    monkeypatch.setattr(
+        pi, "get_source_ingest_state",
+        AsyncMock(return_value={
+            "content_hash": matching_hash, "canon": False, "chapter_index": 1,
+            "embedding_model": "bge-m3",
+        }),
+    )
+    monkeypatch.setattr(pi, "set_source_lang_for_source", AsyncMock(return_value=0))
+    upsert = AsyncMock()
+    monkeypatch.setattr(pi, "upsert_passage", upsert)
+    monkeypatch.setattr(pi, "delete_passages_for_source", AsyncMock(return_value=0))
+
+    async def fake_embed(*, user_id, model_source, model_ref, texts):
+        return EmbeddingResult(
+            embeddings=[[0.1] * 1024 for _ in texts], dimension=1024, model="bge-m3",
+        )
+    emb = MagicMock()
+    emb.embed = fake_embed
+
+    result = await ingest_chapter_passages(
+        MagicMock(), book, emb,
+        user_id=USER_ID, project_id=PROJECT_ID,
+        book_id=BOOK_ID, chapter_id=CHAPTER_ID, chapter_index=1,
+        embedding_model="bge-m3", embedding_dim=1024,
+        canon=True,  # publish path
+    )
+    assert result.skipped_unchanged is False
+    assert result.chunks_created > 0
+    for call in upsert.await_args_list:
+        assert call.kwargs["canon"] is True  # re-ingested as canon
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "state_override",
+    [
+        {"chapter_index": 2},          # reorder: same text, different sort_order
+        {"embedding_model": "old-model"},  # model change: same text, new model/dim
+    ],
+)
+async def test_skip_gate_does_not_skip_on_metadata_drift(monkeypatch, state_override):
+    """C10 correctness: identical text but a metadata change (chapter reorder OR
+    embedding-model change — the model-set path does NOT delete passages) MUST
+    re-ingest, not skip. Guards the HIGH stale-dimension regression + reorder."""
+    import hashlib
+    import app.extraction.passage_ingester as pi
+
+    text = "Arthur rode toward Camelot. " * 300
+    book = _mk_book_client(text=text)
+    matching_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    state = {
+        "content_hash": matching_hash, "canon": True, "chapter_index": 1,
+        "embedding_model": "bge-m3",
+    }
+    state.update(state_override)
+    monkeypatch.setattr(pi, "get_source_ingest_state", AsyncMock(return_value=state))
+    monkeypatch.setattr(pi, "set_source_lang_for_source", AsyncMock(return_value=0))
+    upsert = AsyncMock()
+    monkeypatch.setattr(pi, "upsert_passage", upsert)
+    monkeypatch.setattr(pi, "delete_passages_for_source", AsyncMock(return_value=0))
+
+    async def fake_embed(*, user_id, model_source, model_ref, texts):
+        return EmbeddingResult(
+            embeddings=[[0.1] * 1024 for _ in texts], dimension=1024, model="bge-m3",
+        )
+    emb = MagicMock()
+    emb.embed = fake_embed
+
+    result = await ingest_chapter_passages(
+        MagicMock(), book, emb,
+        user_id=USER_ID, project_id=PROJECT_ID,
+        book_id=BOOK_ID, chapter_id=CHAPTER_ID, chapter_index=1,
+        embedding_model="bge-m3", embedding_dim=1024, canon=True,
+    )
+    assert result.skipped_unchanged is False
+    assert result.chunks_created > 0
+
+
+def test_resolve_source_lang_strips_region_subtag(monkeypatch):
+    """#5: BCP-47 region / locale variants normalize to the ISO-639-1 primary
+    subtag so M4's reader_pref==source_lang comparison doesn't miss."""
+    from app.extraction.passage_ingester import resolve_source_lang
+
+    assert resolve_source_lang("zh-CN", "x") == ("zh", False)
+    assert resolve_source_lang("en_US", "x") == ("en", False)
+    assert resolve_source_lang("ZH-Hant", "x") == ("zh", False)
+
+
+# ── KG-ML M2: language-scoped identity + vi dual-index ──────────────
+
+
+def test_canonical_id_distinct_per_language():
+    """M2 (DD1): vi and zh chunks of the SAME chapter (same source_id) get
+    DISTINCT ids so dual-indexing never overwrites the source passages; an
+    empty/'unknown' lang keeps the pre-M2 id byte-identical (back-compat)."""
+    from app.db.neo4j_repos.passages import passage_canonical_id
+
+    base = dict(user_id="u", project_id="p", source_type="chapter",
+                source_id="ch1", chunk_index=0)
+    zh = passage_canonical_id(**base, source_lang="zh")
+    vi = passage_canonical_id(**base, source_lang="vi")
+    none = passage_canonical_id(**base)
+    assert zh != vi  # distinct nodes per language
+    # back-compat: no lang == "" == "unknown" handled by caller; bare call stable
+    assert passage_canonical_id(**base, source_lang="") == none
+    # KG-ML M7 (D-KG-ML-MULTI-TRANSLATION-LANG cleared) — 2+ translation
+    # languages of ONE chapter coexist: source zh + vi + en translations are
+    # THREE distinct nodes (same source_id), none colliding with each other or
+    # the back-compat untagged id.
+    en = passage_canonical_id(**base, source_lang="en")
+    assert len({zh, vi, en, none}) == 4
+
+
+@pytest.mark.asyncio
+async def test_ingest_text_override_bypasses_book_fetch(monkeypatch):
+    """M2: text_override (a translation's text) skips the book-service fetch and
+    drives the same chunk→embed→upsert path with source_lang stamped."""
+    import app.extraction.passage_ingester as pi
+
+    book = _mk_book_client(text="SHOULD NOT BE USED")
+    book.get_chapter_text_and_blocks = AsyncMock(
+        side_effect=AssertionError("book fetch must not run for text_override"),
+    )
+
+    async def fake_embed(*, user_id, model_source, model_ref, texts):
+        return EmbeddingResult(
+            embeddings=[[0.1] * 1024 for _ in texts], dimension=1024, model="bge-m3",
+        )
+    emb = MagicMock()
+    emb.embed = fake_embed
+    upsert = AsyncMock()
+    delete = AsyncMock(return_value=0)
+    monkeypatch.setattr(pi, "upsert_passage", upsert)
+    monkeypatch.setattr(pi, "delete_passages_for_source", delete)
+
+    vi_text = "Bá tước Dracula bước vào lâu đài. " * 200
+    result = await ingest_chapter_passages(
+        MagicMock(), book, emb,
+        user_id=USER_ID, project_id=PROJECT_ID,
+        book_id=BOOK_ID, chapter_id=CHAPTER_ID, chapter_index=1,
+        embedding_model="bge-m3", embedding_dim=1024,
+        source_lang="vi", text_override=vi_text, canon=True,
+    )
+    assert result.chunks_created > 0
+    assert result.source_lang == "vi"
+    # the delete was language-scoped to vi (never wipes zh source passages)
+    assert delete.await_args.kwargs["source_lang"] == "vi"
+    for call in upsert.await_args_list:
+        assert call.kwargs["source_lang"] == "vi"
+
+
+@pytest.mark.asyncio
+async def test_backfill_source_lang_tags_per_chapter(monkeypatch):
+    """KG-ML M1: backfill_source_lang reads each chapter's declared
+    original_language and tags its passages (no re-embed)."""
+    from app.extraction.passage_ingester import backfill_source_lang
+
+    book = MagicMock()
+    book.list_chapters = AsyncMock(return_value=[
+        {"chapter_id": str(CHAPTER_ID), "original_language": "zh"},
+        {"chapter_id": "55555555-5555-5555-5555-555555555555",
+         "original_language": ""},  # no declared lang → skipped
+    ])
+    tag = AsyncMock(return_value=4)
+    monkeypatch.setattr(
+        "app.extraction.passage_ingester.set_source_lang_for_source", tag,
+    )
+
+    res = await backfill_source_lang(
+        MagicMock(), book, user_id=USER_ID, book_id=BOOK_ID,
+    )
+    assert res.chapters_tagged == 1
+    assert res.chapters_skipped == 1
+    assert res.passages_tagged == 4
+    tag.assert_awaited_once()
+    assert tag.await_args.kwargs["source_lang"] == "zh"
 
 
 @pytest.mark.asyncio

@@ -31,6 +31,9 @@ class StubBook:
         return {"text_content": "first para\nsecond para\nthird para"}
     async def get_chapter_sort_orders(self, chapter_ids):
         return {k: v for k, v in self._sort.items() if k in {str(c) for c in chapter_ids}}
+    async def get_reader_language(self, book_id, user_id):
+        # KG-ML M7 — pack() resolves the author's reader-language; default unset.
+        return getattr(self, "_reader_lang", None)
 
 
 class StubGrant:
@@ -199,6 +202,42 @@ async def test_pack_null_project_still_enforces_book_grant():
 async def test_sec2_chokepoint_blocks_non_owner():
     with pytest.raises(OwnershipError):
         await _pack(_req(), book=StubBook(owns=False))
+
+
+async def test_m7_reader_language_threads_into_lenses():
+    """KG-ML M7 (C6) — pack() resolves the author's reader-language and threads it
+    into the glossary (aliases) + lore (vi-first passages) lenses."""
+    captured: dict = {}
+
+    class _RecGlossary(StubGlossary):
+        async def select_for_context(self, book_id, user_id, query, **kw):
+            captured["gloss_lang"] = kw.get("language")
+            return self._bios
+
+    class _RecKnowledge(StubKnowledge):
+        async def search_drawers(self, bearer, *, project_id, query, **kw):
+            captured["lore_lang"] = kw.get("language")
+            return self._hits
+
+    bk = StubBook()
+    bk._reader_lang = "vi"
+    # semantic_bios empty → present falls back to glossary select_for_context (gets language)
+    await _pack(_req(), book=bk, glossary=_RecGlossary(),
+                knowledge=_RecKnowledge(hits=[{"source_id": str(NODE), "chapter_index": 1, "text": "x"}]))
+    assert captured["gloss_lang"] == "vi"
+    assert captured["lore_lang"] == "vi"
+
+
+async def test_m7_no_reader_language_passes_none():
+    captured: dict = {}
+
+    class _RecKnowledge(StubKnowledge):
+        async def search_drawers(self, bearer, *, project_id, query, **kw):
+            captured["lore_lang"] = kw.get("language")
+            return self._hits
+
+    await _pack(_req(), knowledge=_RecKnowledge())  # StubBook reader_lang defaults None
+    assert captured["lore_lang"] is None
 
 
 async def test_c3a_grounding_unavailable_when_no_knowledge():
