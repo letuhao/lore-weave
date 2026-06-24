@@ -86,3 +86,8 @@ WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_video_gen')
 -- dead_letter_events; tables created by jobs-service migrate.py)
 SELECT 'CREATE DATABASE loreweave_jobs'
 WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_jobs')\gexec
+
+-- Roleplay (Rust roleplay-service — scripts + actor-memory + start; tables
+-- created by roleplay-service sqlx::migrate! at startup, R1 onward)
+SELECT 'CREATE DATABASE loreweave_roleplay'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_roleplay')\gexec

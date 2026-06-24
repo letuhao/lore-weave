@@ -28,6 +28,7 @@ services:
   world-service: rust
   travel-service: rust
   tilemap-service: rust
+  roleplay-service: rust           # scaffolded 2026-06-24 — first user-facing Rust service (scripts + actor-memory + start-orchestration; the MMO roleplay-service seed). Pulled forward from "L4 cycle 17+".
 
   # ── Go: foundation + existing novel-platform services
   admin-cli: go
@@ -67,6 +68,7 @@ services:
   composition-service: python     # composition track (PR #29)
   learning-service: python        # learning/eval track
   lore-enrichment-service: python # lore-enrichment track
+  jobs-service: python            # Unified Job Control Plane P2 (was missing a row — PRR-21 drift, added 2026-06-24)
 
   # ── TypeScript gateway / realtime transport
   api-gateway-bff: typescript
@@ -75,7 +77,6 @@ services:
 
   # ── Not yet scaffolded (directory absent; lint allows while truly missing).
   #    Promote to a real language the moment the scaffold lands.
-  roleplay-service: missing            # ships L4 cycle 17+ (per I3 §5)
   embedding-worker: missing            # V1+30d extract (Q-L3-1)
   event-handler: missing               # ships L4 cycle 22+
   chaos-engine: missing                # V1+30d (Q-L4-4)

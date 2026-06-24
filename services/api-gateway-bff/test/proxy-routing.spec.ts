@@ -34,6 +34,7 @@ describe('Gateway proxy routing', () => {
   let translationServer: http.Server;
   let glossaryServer: http.Server;
   let chatServer: http.Server;
+  let roleplayServer: http.Server;
   let videoGenServer: http.Server;
   let statisticsServer: http.Server;
   let notificationServer: http.Server;
@@ -51,6 +52,7 @@ describe('Gateway proxy routing', () => {
       translationServer,
       glossaryServer,
       chatServer,
+      roleplayServer,
       videoGenServer,
       statisticsServer,
       notificationServer,
@@ -66,6 +68,7 @@ describe('Gateway proxy routing', () => {
       startUpstream('translation'),
       startUpstream('glossary'),
       startUpstream('chat'),
+      startUpstream('roleplay'),
       startUpstream('video-gen'),
       startUpstream('statistics'),
       startUpstream('notification'),
@@ -88,6 +91,7 @@ describe('Gateway proxy routing', () => {
       translationUrl: urlOf(translationServer),
       glossaryUrl: urlOf(glossaryServer),
       chatUrl: urlOf(chatServer),
+      roleplayUrl: urlOf(roleplayServer),
       videoGenUrl: urlOf(videoGenServer),
       statisticsUrl: urlOf(statisticsServer),
       notificationUrl: urlOf(notificationServer),
@@ -112,6 +116,7 @@ describe('Gateway proxy routing', () => {
       new Promise((resolve) => translationServer.close(resolve)),
       new Promise((resolve) => glossaryServer.close(resolve)),
       new Promise((resolve) => chatServer.close(resolve)),
+      new Promise((resolve) => roleplayServer.close(resolve)),
       new Promise((resolve) => videoGenServer.close(resolve)),
       new Promise((resolve) => statisticsServer.close(resolve)),
       new Promise((resolve) => notificationServer.close(resolve)),
@@ -155,6 +160,11 @@ describe('Gateway proxy routing', () => {
 
   it('routes /v1/chat/* paths to chat service', async () => {
     await request(app.getHttpServer()).get('/v1/chat/sessions').expect(200).expect('chat');
+  });
+
+  it('routes /v1/roleplay/* paths to roleplay service', async () => {
+    await request(app.getHttpServer()).get('/v1/roleplay/scripts').expect(200).expect('roleplay');
+    await request(app.getHttpServer()).get('/v1/roleplay/livez').expect(200).expect('roleplay');
   });
 
   it('routes /v1/lore-enrichment/* paths to lore-enrichment service', async () => {

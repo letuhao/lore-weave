@@ -96,6 +96,11 @@ class KnowledgeContext(BaseModel):
     # an older knowledge-service that omits the field, the no-project
     # path, and the degraded path all leave tool-calling enabled.
     tool_calling_enabled: bool = True
+    # Interview-roleplay — rendered working_memory anchor (charter + state).
+    # Pinned into the system block AND tail-injected by stream_service. "" when
+    # the session has no working_memory block or on the degraded path; chat-service
+    # then falls back to the session's working_memory_seed (EC-4). M4 populates it.
+    working_memory: str = ""
 
 
 def _degraded() -> KnowledgeContext:
@@ -264,6 +269,66 @@ class KnowledgeClient:
 
         # Gateway and direct both unreachable → degraded (turn proceeds tool/context-free).
         return _degraded()
+
+    async def init_working_memory(
+        self, *, session_id: str, user_id: str, charter: dict
+    ) -> bool:
+        """POST /internal/working-memory/init — the goal-authority write path.
+
+        Pushes the FROZEN charter so knowledge-service owns the evolving block
+        (the executive then updates state). Best-effort: on any failure returns
+        False and logs — the session still anchors from its own
+        working_memory_seed (EC-4), so a knowledge outage never blocks start.
+        """
+        url = f"{self._base_url}/internal/working-memory/init"
+        body = {"session_id": session_id, "user_id": user_id, "charter": charter}
+        tid = current_trace_id()
+        headers = {"X-Trace-Id": tid} if tid else None
+        try:
+            resp = await self._http.post(url, json=body, headers=headers)
+            if resp.status_code in (200, 204):
+                return True
+            logger.warning("init_working_memory non-2xx: %s", resp.status_code)
+            return False
+        except Exception:
+            logger.warning("init_working_memory failed for session %s", session_id, exc_info=True)
+            return False
+
+    async def tick_working_memory(
+        self, *, session_id: str, user_id: str,
+        model_source: str | None, model_ref: str | None,
+        recent_turns: list[dict],
+    ) -> str | None:
+        """POST /internal/working-memory/tick — run one executive pass.
+
+        Sends the session's model (the executive runs on it) + the recent-turns
+        window so knowledge-service needn't call back into chat. Best-effort:
+        returns the status string on success, None on any failure (the anchor
+        still holds from the existing block / seed).
+
+        Uses the LONGER tool timeout: the executive makes an LLM call, so the
+        build_context-sized default would disconnect mid-pass and could abort the
+        server-side handler before it writes state.
+        """
+        url = f"{self._base_url}/internal/working-memory/tick"
+        body = {
+            "session_id": session_id, "user_id": user_id,
+            "model_source": model_source, "model_ref": model_ref,
+            "recent_turns": recent_turns,
+        }
+        tid = current_trace_id()
+        headers = {"X-Trace-Id": tid} if tid else None
+        try:
+            resp = await self._http.post(
+                url, json=body, headers=headers, timeout=self._tool_timeout_s,
+            )
+            if resp.status_code == 200:
+                return resp.json().get("status")
+            logger.warning("tick_working_memory non-200: %s", resp.status_code)
+            return None
+        except Exception:
+            logger.warning("tick_working_memory failed for session %s", session_id, exc_info=True)
+            return None
 
     async def _build_context_at(
         self,

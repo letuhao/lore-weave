@@ -21,6 +21,7 @@ import { PlaceholderPage } from '@/pages/PlaceholderPage';
 import { BooksPage } from '@/pages/BooksPage';
 import { TrashPage } from '@/pages/TrashPage';
 import { ChatPage } from '@/pages/ChatPage';
+import { RoleplayPage } from '@/features/roleplay/pages/RoleplayPage';
 import { BookDetailPage } from '@/pages/BookDetailPage';
 import { ChapterEditorPage } from '@/pages/ChapterEditorPage';
 import { ChapterComparePage } from '@/pages/ChapterComparePage';
@@ -119,6 +120,11 @@ export function App() {
           <Route element={<RequireAuth><ChatLayout /></RequireAuth>}>
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/chat/:sessionId" element={<ChatPage />} />
+            {/* Roleplay practice — reuses the chat turn loop + voice; scripts +
+                start come from roleplay-service (/v1/roleplay). Interview is a
+                preset genre. /interview redirects (kept for old links). */}
+            <Route path="/roleplay" element={<RoleplayPage />} />
+            <Route path="/interview" element={<Navigate to="/roleplay" replace />} />
           </Route>
 
           {/* Dashboard pages (full sidebar) */}

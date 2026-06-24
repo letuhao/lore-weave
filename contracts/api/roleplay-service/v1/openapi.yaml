@@ -1,0 +1,214 @@
+openapi: 3.0.3
+info:
+  title: LoreWeave Roleplay Service
+  version: 0.1.0-v1
+  description: >
+    roleplay-service (Rust) v1 — scripts + actor-memory + start-orchestration;
+    the MMO roleplay-service seed. All routes are proxied by api-gateway-bff
+    under /v1/roleplay and are JWT user-scoped (System rows are read-only;
+    another user's / a System row on a write = 404). roleplay-service makes no
+    LLM calls — /start freezes the charter and creates a chat-service session
+    carrying the frozen working_memory_seed; the FE then opens that session in
+    ChatView (/v1/chat) for the live turn loop, voice, and M6 debrief.
+    Contract-first, additive. Tiers: System + Per-user (book tier + reality_id
+    are forward-schema, unused in v1).
+servers:
+  - url: /v1/roleplay
+security:
+  - bearerAuth: []
+tags:
+  - name: scripts
+  - name: sessions
+
+paths:
+  /scripts:
+    get:
+      tags: [scripts]
+      summary: List visible scripts (System ∪ own, merged by code; own shadows System)
+      responses:
+        '200':
+          description: Active scripts visible to the caller, ordered by name.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Script' }
+    post:
+      tags: [scripts]
+      summary: Create a Per-user script (tier + owner forced server-side)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateScriptRequest' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Script' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '409':
+          description: A script with this code already exists for the caller.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /scripts/{id}:
+    parameters:
+      - { $ref: '#/components/parameters/ScriptId' }
+    get:
+      tags: [scripts]
+      summary: Get a visible script (System or own) — else 404
+      responses:
+        '200':
+          description: The script.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Script' }
+        '404': { $ref: '#/components/responses/Problem' }
+    patch:
+      tags: [scripts]
+      summary: Update an own script (System/other → 404). Absent fields unchanged.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PatchScriptRequest' }
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Script' }
+        '404': { $ref: '#/components/responses/Problem' }
+    delete:
+      tags: [scripts]
+      summary: Delete an own script (System/other → 404; in-use by a session → 409)
+      responses:
+        '204': { description: Deleted. }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+
+  /scripts/{id}/start:
+    parameters:
+      - { $ref: '#/components/parameters/ScriptId' }
+    post:
+      tags: [sessions]
+      summary: Start an acting session — freeze the charter + create a chat session
+      description: >
+        Freezes the charter from the script scenario, creates a chat-service
+        session carrying the frozen working_memory_seed (chat-first, EC-3), and
+        records rp_sessions + rp_memory. Returns the chat session_id the FE opens
+        in ChatView. Model resolution: request override > script default; both
+        absent → 400.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StartRequest' }
+      responses:
+        '201':
+          description: Session created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StartResponse' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '502':
+          description: chat-service (the session creator) was unreachable or errored.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    ScriptId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  responses:
+    Problem:
+      description: RFC 7807 problem (carries a FE-readable `message`).
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+  schemas:
+    Script:
+      type: object
+      properties:
+        script_id: { type: string, format: uuid }
+        owner_user_id: { type: string, format: uuid, nullable: true, description: NULL for System rows }
+        tier: { type: string, enum: [system, user, book] }
+        code: { type: string }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        system_prompt: { type: string }
+        model_source: { type: string, nullable: true, description: "e.g. user_model | platform_model" }
+        model_ref: { type: string, format: uuid, nullable: true }
+        rubric: { type: object, nullable: true, additionalProperties: true }
+        scenario: { type: object, additionalProperties: true, description: "premise/goal, beats/checklist, phases, language, improv_freedom, …" }
+        genre: { type: string, example: roleplay }
+        book_id: { type: string, format: uuid, nullable: true, description: forward-schema (book tier), unused in v1 }
+        reality_id: { type: string, format: uuid, nullable: true, description: forward-schema (game plane), NULL = general reality }
+        attachment_key: { type: string, nullable: true }
+        is_active: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+      required: [script_id, tier, code, name, system_prompt, scenario, genre, is_active, created_at, updated_at]
+    CreateScriptRequest:
+      type: object
+      required: [code, name, system_prompt]
+      properties:
+        code: { type: string, maxLength: 100 }
+        name: { type: string, maxLength: 255 }
+        description: { type: string, nullable: true }
+        system_prompt: { type: string }
+        model_source: { type: string, nullable: true }
+        model_ref: { type: string, format: uuid, nullable: true }
+        rubric: { type: object, nullable: true, additionalProperties: true }
+        scenario: { type: object, additionalProperties: true, default: {} }
+        genre: { type: string, default: roleplay }
+    PatchScriptRequest:
+      type: object
+      description: All fields optional; absent fields are left unchanged.
+      properties:
+        name: { type: string }
+        description: { type: string }
+        system_prompt: { type: string }
+        model_source: { type: string }
+        model_ref: { type: string, format: uuid }
+        rubric: { type: object, additionalProperties: true }
+        scenario: { type: object, additionalProperties: true }
+        genre: { type: string }
+        is_active: { type: boolean }
+    StartRequest:
+      type: object
+      description: Optional model override; else the script's own model is used.
+      properties:
+        model_source: { type: string }
+        model_ref: { type: string, format: uuid }
+    StartResponse:
+      type: object
+      required: [session_id]
+      properties:
+        session_id:
+          type: string
+          format: uuid
+          description: The chat-service session id — the FE opens it in ChatView (/v1/chat).
+    Problem:
+      type: object
+      description: RFC 7807 application/problem+json with a FE-readable `message`.
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        message: { type: string }
+      required: [type, title, status, detail, message]

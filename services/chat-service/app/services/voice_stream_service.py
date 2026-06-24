@@ -35,6 +35,7 @@ from app.models import ProviderCredentials
 from app.services.sentence_buffer import SentenceBuffer
 from app.services.text_normalizer import TextNormalizer
 from app.services.stream_service import _stream_via_gateway
+from app.services.working_memory import resolve_anchor
 from app.storage.minio_client import upload_file
 
 logger = logging.getLogger(__name__)
@@ -296,7 +297,7 @@ async def voice_stream_response(
     # ── Step 3: LLM stream + TTS pipeline ────────────────────────────
     # Load session settings (same as stream_response)
     session_row = await pool.fetchrow(
-        "SELECT system_prompt, generation_params, project_id FROM chat_sessions WHERE session_id = $1",
+        "SELECT system_prompt, generation_params, project_id, working_memory_seed FROM chat_sessions WHERE session_id = $1",
         session_id,
     )
     system_prompt = session_row["system_prompt"] if session_row else None
@@ -315,6 +316,13 @@ async def voice_stream_response(
         session_id=session_id,
         project_id=str(project_id) if project_id else None,
         message=transcript,
+    )
+
+    # ── Anchoring (interview-roleplay) — same shared helper as the text path so
+    # the 2h voice session (the real use) gets the anchor too (EC-3).
+    wm_pinned, wm_tail = resolve_anchor(
+        kctx.working_memory,
+        session_row.get("working_memory_seed") if session_row else None,
     )
 
     # Build message history sized by knowledge_service
@@ -337,6 +345,8 @@ async def voice_stream_response(
         stripped = kctx.context.strip()
         if stripped:
             system_parts.append(stripped)
+    if wm_pinned:
+        system_parts.append(wm_pinned)
     if system_prompt:
         stripped = system_prompt.strip()
         if stripped:
@@ -349,6 +359,10 @@ async def voice_stream_response(
         max(len(messages) - 1, 0),
         {"role": "system", "content": VOICE_SYSTEM_PROMPT},
     )
+
+    # Tail anchor (recency) — closest to the latest user turn (EC-3/EC-7).
+    if wm_tail:
+        messages.insert(max(len(messages) - 1, 0), {"role": "system", "content": wm_tail})
 
     # Phase 1c-ii: gateway resolves api_key / base_url / model_string
     # internally — no per-service resolution needed.
