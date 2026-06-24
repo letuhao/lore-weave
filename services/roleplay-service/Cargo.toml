@@ -38,3 +38,5 @@ tokio = { workspace = true }
 tower = { workspace = true }
 wiremock = { workspace = true }
 serde_json = { workspace = true }
+jsonwebtoken = { workspace = true }
+reqwest = { workspace = true }

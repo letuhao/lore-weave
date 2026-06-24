@@ -2437,6 +2437,7 @@ dependencies = [
  "anyhow",
  "axum",
  "chrono",
+ "jsonwebtoken",
  "reqwest",
  "serde",
  "serde_json",

@@ -5,8 +5,12 @@
 //! chat-service for the turn loop / voice / debrief — no LLM calls here). Built
 //! on `crates/service-http` for serve / health / auth / trace / errors / db.
 
+pub mod charter;
 pub mod config;
+pub mod error;
+pub mod handlers;
 pub mod http;
+pub mod models;
 pub mod state;
 
 pub use config::Config;

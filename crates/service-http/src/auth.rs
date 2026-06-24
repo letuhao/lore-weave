@@ -66,8 +66,11 @@ pub async fn require_user<S: HasJwtSecret>(
         .ok_or_else(|| ProblemDetails::unauthorized("missing or malformed Authorization header"))?;
 
     let mut validation = Validation::new(Algorithm::HS256);
-    validation.validate_exp = true; // matches the Go default (exp checked when present)
-    validation.set_required_spec_claims(&["sub"]);
+    validation.validate_exp = true;
+    // Require BOTH exp and sub. Without exp in the required set, a token lacking
+    // an `exp` claim would never expire (validate_exp only checks exp when it is
+    // present) — defense-in-depth for this shared fleet-wide primitive.
+    validation.set_required_spec_claims(&["exp", "sub"]);
 
     let data = decode::<Claims>(token, &DecodingKey::from_secret(state.jwt_secret()), &validation)
         .map_err(|_| ProblemDetails::unauthorized("invalid token"))?;
@@ -200,6 +203,23 @@ mod tests {
     #[tokio::test]
     async fn non_uuid_sub_rejected() {
         let tok = make_token("not-a-uuid", FUTURE_EXP, SECRET);
+        assert_eq!(status_for(user_app(), bearer("/p", &tok)).await, StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn token_without_exp_rejected() {
+        // A token lacking `exp` must be rejected (it would otherwise never
+        // expire). Mint a claims object with only `sub`.
+        #[derive(Serialize)]
+        struct SubOnly {
+            sub: String,
+        }
+        let tok = encode(
+            &Header::new(Algorithm::HS256),
+            &SubOnly { sub: Uuid::new_v4().to_string() },
+            &EncodingKey::from_secret(SECRET),
+        )
+        .unwrap();
         assert_eq!(status_for(user_app(), bearer("/p", &tok)).await, StatusCode::UNAUTHORIZED);
     }
 

@@ -10,12 +10,13 @@ use std::time::Duration;
 use axum::Router;
 use axum::extract::DefaultBodyLimit;
 use axum::http::{HeaderValue, Method, StatusCode};
-use axum::middleware::from_fn;
-use axum::routing::get;
+use axum::middleware::{from_fn, from_fn_with_state};
+use axum::routing::{get, post};
 use tower_http::cors::CorsLayer;
 use tower_http::timeout::TimeoutLayer;
-use service_http::health;
+use service_http::{health, require_user};
 
+use crate::handlers::{scripts, start};
 use crate::state::AppState;
 
 /// 1 MiB request-body cap (scripts are small JSON; protects the JSON extractor).
@@ -50,16 +51,21 @@ pub fn build_router(state: AppState) -> Router {
         .route("/v1/roleplay/livez", get(health::livez))
         .route("/v1/roleplay/readyz", get(health::readyz::<AppState>));
 
-    // R1: user-JWT route group mounts here —
-    //   let user = Router::new()
-    //       .route("/v1/roleplay/scripts", get(list).post(create))
-    //       .route("/v1/roleplay/scripts/:id", get(get_one).patch(patch).delete(del))
-    //       .route("/v1/roleplay/scripts/:id/start", post(start))
-    //       .layer(from_fn_with_state(state.clone(), require_user::<AppState>));
+    // User-JWT route group: scripts CRUD + start-orchestration. Every handler
+    // reads identity from Extension<UserId> injected by require_user.
+    let user = Router::new()
+        .route("/v1/roleplay/scripts", get(scripts::list).post(scripts::create))
+        .route(
+            "/v1/roleplay/scripts/:id",
+            get(scripts::get_one).patch(scripts::patch).delete(scripts::del),
+        )
+        .route("/v1/roleplay/scripts/:id/start", post(start::start))
+        .layer(from_fn_with_state(state.clone(), require_user::<AppState>));
 
     Router::new()
         .merge(probes)
         .merge(gateway_probes)
+        .merge(user)
         // Layer order (last = outermost): CORS answers preflight first, then
         // trace mints/propagates the id + spans the request, then metrics.
         .layer(from_fn(service_http::metrics::record))
