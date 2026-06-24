@@ -1329,6 +1329,10 @@ services:
       COMPOSITION_SERVICE_URL: http://composition-service:8093
       # Unified Job Control Plane P2 — jobs-service (/v1/jobs list/detail/SSE).
       JOBS_SERVICE_URL: http://jobs-service:8096
+      # PRR-20 — roleplay (game-server, Colyseus). The BFF requireEnv's this at
+      # boot; the game-server itself is profile-gated (game/full), so this is just
+      # the in-cluster URL the proxy routes to when that profile is up.
+      ROLEPLAY_SERVICE_URL: ${ROLEPLAY_SERVICE_URL:-http://game-server:2567}
       RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
