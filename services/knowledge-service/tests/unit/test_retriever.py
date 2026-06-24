@@ -378,7 +378,11 @@ async def test_cjk_query_runs_cjk_lexical_leg(embed, find, _stub_cjk_leg):
         book_client=book, embedding_client=emb, reranker_client=rr, rerank=False,
     )
     _stub_cjk_leg.assert_awaited_once()
-    assert any(h["sourceLang"] == "zh" for h in out.hits)
+    zh_hits = [h for h in out.hits if h["sourceLang"] == "zh"]
+    assert zh_hits
+    # KG-ML M6 (D-KG-ML-M6-MATCHTYPE cleared) — cjk-leg hits label "lexical",
+    # not the passage default "semantic".
+    assert all(h["matchType"] == "lexical" for h in zh_hits)
 
 
 @pytest.mark.asyncio

@@ -82,18 +82,23 @@ class RetrievalResult(BaseModel):
     degraded: dict[str, str] = {}
 
 
-def passage_to_hit(h: PassageSearchHit) -> dict[str, Any]:
+def passage_to_hit(h: PassageSearchHit, *, match_type: str = "semantic") -> dict[str, Any]:
     """Map a `:Passage` search hit → the unified raw-search hit shape.
     `surface` reflects the node's canon flag (D-RAWSEARCH-CANON-WIRING):
     canon passages → "canon", on-demand-indexed drafts → "draft". Legacy
-    nodes (no flag) read as canon via `Passage.canon`'s default."""
+    nodes (no flag) read as canon via `Passage.canon`'s default.
+
+    KG-ML M6 — `match_type` records WHICH passage leg produced the hit: the
+    vector leg → "semantic" (default), the cjk full-text leg → "lexical". Both
+    read `:Passage` nodes, so without this they'd both report "semantic" (the
+    cosmetic mislabel D-KG-ML-M6-MATCHTYPE)."""
     p = h.passage
     return {
         "chapterId": p.source_id,
         "chapterTitle": None,
         "sortOrder": p.chapter_index if p.chapter_index is not None else 0,
         "surface": "canon" if p.canon else "draft",
-        "matchType": "semantic",
+        "matchType": match_type,
         # KG-ML M4 — source language of this passage (zh original / vi dual-index),
         # for language-aware ranking. "mixed" matches any reader pref.
         "sourceLang": p.source_lang,
@@ -239,7 +244,7 @@ async def run_hybrid_search(
         except Exception:
             degraded["cjk_lexical"] = "unavailable"
             return []
-        hits = [passage_to_hit(h) for h in raw_hits]
+        hits = [passage_to_hit(h, match_type="lexical") for h in raw_hits]
         await enrich_titles(hits, book_client)  # passage hits lack titles
         return hits
 

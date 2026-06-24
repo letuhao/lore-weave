@@ -692,6 +692,12 @@ def test_canonical_id_distinct_per_language():
     assert zh != vi  # distinct nodes per language
     # back-compat: no lang == "" == "unknown" handled by caller; bare call stable
     assert passage_canonical_id(**base, source_lang="") == none
+    # KG-ML M7 (D-KG-ML-MULTI-TRANSLATION-LANG cleared) — 2+ translation
+    # languages of ONE chapter coexist: source zh + vi + en translations are
+    # THREE distinct nodes (same source_id), none colliding with each other or
+    # the back-compat untagged id.
+    en = passage_canonical_id(**base, source_lang="en")
+    assert len({zh, vi, en, none}) == 4
 
 
 @pytest.mark.asyncio
