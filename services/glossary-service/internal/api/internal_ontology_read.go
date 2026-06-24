@@ -56,6 +56,24 @@ func (s *Server) loadKindNameI18n(ctx context.Context, query string, args ...any
 	return out, rows.Err()
 }
 
+// mergeLabels overlays override onto base (override wins per-language) — the
+// tier-merge for name_i18n: System defaults shadowed by the higher tier's own
+// labels, BY language. Either may be nil/empty; returns nil when the result is
+// empty so the `omitempty` JSON tag drops it (consumer falls back to canonical).
+func mergeLabels(base, override map[string]string) map[string]string {
+	if len(base) == 0 && len(override) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(base)+len(override))
+	for k, v := range base {
+		out[k] = v
+	}
+	for k, v := range override {
+		out[k] = v
+	}
+	return out
+}
+
 type internalOntologyKinds struct {
 	Source string                 `json:"source"`
 	BookID *string                `json:"book_id,omitempty"`
@@ -78,13 +96,20 @@ func (s *Server) internalBookOntology(w http.ResponseWriter, r *http.Request) {
 	}
 	bid := bookID.String()
 	// KG-ML M5 (C4) — localized book-kind labels (graceful: nil map if the column
-	// is absent on an un-migrated DB, so the adopt-gate read never breaks).
+	// is absent on an un-migrated DB, so the adopt-gate read never breaks). Per the
+	// LOCKED tier-merge (CLAUDE.md › User Boundaries): System defaults → Per-book,
+	// higher shadows lower BY CODE. A book kind therefore INHERITS the System vi
+	// label (admin-seeded in C4) unless the book authored its own override — so a
+	// book-bound KG project localizes kinds even though per-book label authoring is
+	// deferred. Merge per-language (book wins).
+	sysI18n, _ := s.loadKindNameI18n(r.Context(), `SELECT code, name_i18n FROM system_kinds`)
 	bookI18n, _ := s.loadKindNameI18n(r.Context(),
 		`SELECT code, name_i18n FROM book_kinds WHERE book_id = $1`, bookID)
 	kinds := make([]internalOntologyKind, 0, len(ont.Kinds))
 	for _, k := range ont.Kinds {
 		kinds = append(kinds, internalOntologyKind{
-			Code: k.Code, Name: k.Name, Tier: "book", NameI18n: bookI18n[k.Code],
+			Code: k.Code, Name: k.Name, Tier: "book",
+			NameI18n: mergeLabels(sysI18n[k.Code], bookI18n[k.Code]),
 		})
 	}
 	writeJSON(w, http.StatusOK, internalOntologyKinds{Source: "book", BookID: &bid, Kinds: kinds})
@@ -163,7 +188,10 @@ func (s *Server) internalUserGlossaryStandards(w http.ResponseWriter, r *http.Re
 		   AND deleted_at IS NULL AND permanently_deleted_at IS NULL`, userID)
 	for i := range out {
 		if out[i].Tier == "user" {
-			out[i].NameI18n = userI18n[out[i].Code]
+			// A user kind shadowing a System code inherits the System vi label
+			// unless it authored its own (tier-merge: System default ⊕ user
+			// override). A brand-new per-user code just gets its own (empty today).
+			out[i].NameI18n = mergeLabels(sysI18n[out[i].Code], userI18n[out[i].Code])
 		} else {
 			out[i].NameI18n = sysI18n[out[i].Code]
 		}

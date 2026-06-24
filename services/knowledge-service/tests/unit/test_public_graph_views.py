@@ -24,8 +24,14 @@ from fastapi.testclient import TestClient
 import app.routers.public.graph_views as gv
 from app.auth.grant_deps import project_meta_dep
 from app.db.ontology_models import GraphView
-from app.deps import get_grant_client, get_projects_repo
+from app.deps import (
+    get_book_client,
+    get_glossary_client,
+    get_grant_client,
+    get_projects_repo,
+)
 from app.middleware.jwt_auth import get_current_user
+from app.routers.public.ontology import get_glossary_ontology_client
 from app.routers.public.graph_views import (
     _coerce_ordinal,
     build_graph_slice,
@@ -296,6 +302,25 @@ def test_views_are_owner_scoped(repo, auth_user):
     assert c_b.delete(f"/v1/kg/projects/{_PROJ}/views/alens").status_code == 404
 
 
+# KG-ML M5 (C7) — the localizing reads now resolve glossary/book clients +
+# the ontology client. The non-localized tests below don't pass ?language= and
+# resolve to a book-less project, so localization is skipped — these just need
+# the deps to RESOLVE. Harmless stubs suffice; the localized path has dedicated
+# coverage in test_graph_view_localization (below) + test_graph_labels.py.
+class _NoLangBookClient:
+    """Fake book client whose reader-language is always unset, so the localizing
+    reads resolve no preference and skip localization (when no ?language= given)."""
+
+    async def get_reader_language(self, book_id, user_id):
+        return None
+
+
+def _stub_label_deps(app):
+    app.dependency_overrides[get_book_client] = lambda: _NoLangBookClient()
+    app.dependency_overrides[get_glossary_client] = lambda: object()
+    app.dependency_overrides[get_glossary_ontology_client] = lambda: object()
+
+
 # ── graph-read handler with a fake neo4j session ───────────────────────────
 class _FakeResult:
     def __init__(self, records):
@@ -346,6 +371,7 @@ def test_graph_read_applies_view_and_temporal(monkeypatch, repo, auth_user):
     # grant gate: project_meta returns (owner==caller, no book) → _resolve_owner
     # short-circuits to owner (the gate's caller==owner branch).
     app.dependency_overrides[project_meta_dep] = lambda: (auth_user, None)
+    _stub_label_deps(app)
 
     # fake neo4j: two PURSUES instances + one ALLY_OF
     records = [
@@ -384,10 +410,64 @@ def test_graph_read_unknown_view_404(monkeypatch, repo, auth_user):
     app.dependency_overrides[get_graph_schemas_repo] = lambda: object()
     app.dependency_overrides[get_grant_client] = lambda: object()
     app.dependency_overrides[project_meta_dep] = lambda: (auth_user, None)
+    _stub_label_deps(app)
     monkeypatch.setattr(gv, "neo4j_session", lambda **kw: _FakeSession([]))
     client = TestClient(app)
     r = client.get(f"/v1/kg/projects/{project_id}/graph?view=nope")
     assert r.status_code == 404
+
+
+def test_graph_read_localizes_with_language(monkeypatch, repo, auth_user):
+    """KG-ML M5 (C7) AC1 — ?language=vi localizes node kinds (ontology
+    name_i18n), entity names (glossary translation) + predicates, leaving an
+    honest source-fallback (None) where no translation exists."""
+    from app.clients.glossary_ontology_client import FakeGlossaryOntologyClient
+
+    project_id = uuid4()
+    book_id = uuid4()
+
+    class _FakeGloss:
+        async def fetch_entity_display_names(self, *, book_id, entity_ids, language):
+            # only g1 is translated; g2 has no vi name → omitted (fallback)
+            return {"g1": "Hỏa Ma"} if "g1" in entity_ids else {}
+
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[get_current_user] = lambda: auth_user
+    app.dependency_overrides[get_graph_views_repo] = lambda: repo
+    app.dependency_overrides[get_graph_schemas_repo] = lambda: object()
+    app.dependency_overrides[get_grant_client] = lambda: object()
+    # grant gate + label anchor: project has a book → kinds + names localize.
+    app.dependency_overrides[project_meta_dep] = lambda: (auth_user, book_id)
+    app.dependency_overrides[get_book_client] = lambda: _NoLangBookClient()
+    app.dependency_overrides[get_glossary_client] = lambda: _FakeGloss()
+    app.dependency_overrides[get_glossary_ontology_client] = lambda: FakeGlossaryOntologyClient(
+        book_kinds={str(book_id): ["character", "location"]},
+        kind_labels={"character": {"vi": "Nhân vật"}, "location": {"vi": "Địa điểm"}},
+    )
+
+    rec = {
+        "rel": {"predicate": "ALLY_OF", "valid_from": None, "valid_to": None, "schema_version": None},
+        "subj": {"id": "a", "kind": "character", "name": "火魔", "glossary_entity_id": "g1"},
+        "obj": {"id": "b", "kind": "location", "name": "天剑峰", "glossary_entity_id": "g2"},
+    }
+    monkeypatch.setattr(gv, "neo4j_session", lambda **kw: _FakeSession([_FakeRecord(rec)]))
+
+    async def _no_deprecated(repo_, pid):
+        return []
+    monkeypatch.setattr(gv, "_deprecated_edge_codes", _no_deprecated)
+
+    client = TestClient(app)
+    r = client.get(f"/v1/kg/projects/{project_id}/graph?language=vi")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    by_id = {n["id"]: n for n in body["nodes"]}
+    assert by_id["a"]["kind_label"] == "Nhân vật"
+    assert by_id["a"]["name_label"] == "Hỏa Ma"  # translated
+    assert by_id["b"]["kind_label"] == "Địa điểm"
+    assert by_id["b"]["name_label"] is None  # untranslated → canonical fallback
+    assert by_id["b"]["name"] == "天剑峰"  # canonical name still present
+    assert body["edges"][0]["edge_type_label"] == "đồng minh của"
 
 
 # ── timeline handler with a fake neo4j session + stubbed grant ─────────────
@@ -397,6 +477,7 @@ def test_edge_timeline(monkeypatch, auth_user):
     app.dependency_overrides[get_current_user] = lambda: auth_user
     app.dependency_overrides[get_grant_client] = lambda: object()
     app.dependency_overrides[get_projects_repo] = lambda: object()
+    _stub_label_deps(app)
 
     # stub the grant-gate (its own resolution is covered by the dedicated
     # tenancy tests below); here we assert the Cypher→build_timeline wiring.
@@ -599,6 +680,7 @@ def test_timeline_grantee_binds_owner_partition(monkeypatch, auth_user):
     app.dependency_overrides[get_current_user] = lambda: grantee
     app.dependency_overrides[get_grant_client] = lambda: _GCFixed(_GL.VIEW)
     app.dependency_overrides[get_projects_repo] = lambda: _ProjectsRepoFixed((owner, book))
+    _stub_label_deps(app)
 
     _patch_entity(monkeypatch, _owned_entity(owner))
 
@@ -637,6 +719,7 @@ def test_timeline_non_grantee_404(monkeypatch, auth_user):
     app.dependency_overrides[get_current_user] = lambda: stranger
     app.dependency_overrides[get_grant_client] = lambda: _GCFixed(_GL.NONE)
     app.dependency_overrides[get_projects_repo] = lambda: _ProjectsRepoFixed((owner, book))
+    _stub_label_deps(app)
 
     _patch_entity(monkeypatch, _owned_entity(owner))
     client = TestClient(app)

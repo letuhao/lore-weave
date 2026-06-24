@@ -200,3 +200,46 @@ func TestGlossStandards_SystemKindsCarryViLabels(t *testing.T) {
 		t.Errorf("location vi label: want \"Địa điểm\", got %q", loc.NameI18n["vi"])
 	}
 }
+
+// TestBookOntology_BookKindsInheritSystemViLabels — KG-ML M5 (C4/C7): a
+// book-bound KG project resolves its kind labels from the BOOK ontology read.
+// Per the LOCKED tier-merge, a book kind INHERITS the admin-seeded System vi
+// label (book-kinds are adopted copies that carry no own label until per-book
+// authoring lands), so a vi reader's book-bound graph-view localizes kinds.
+func TestBookOntology_BookKindsInheritSystemViLabels(t *testing.T) {
+	pool := openTestDB(t)
+	f := newVersionFixture(t, pool)
+	if err := migrate.UpKindNameI18n(context.Background(), pool); err != nil {
+		t.Fatalf("migrate.UpKindNameI18n: %v", err)
+	}
+	f.srv.cfg.InternalServiceToken = "tok"
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/internal/books/"+f.bookID.String()+"/ontology", nil)
+	req.Header.Set("X-Internal-Token", "tok")
+	w := httptest.NewRecorder()
+	f.srv.Router().ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("book ontology: want 200, got %d %s", w.Code, w.Body.String())
+	}
+	var out internalOntologyKinds
+	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	var character *internalOntologyKind
+	for i := range out.Kinds {
+		if out.Kinds[i].Code == "character" {
+			character = &out.Kinds[i]
+		}
+	}
+	if character == nil {
+		t.Fatalf("book kind 'character' missing (kinds=%+v)", out.Kinds)
+	}
+	if character.Tier != "book" {
+		t.Errorf("tier: want book, got %q", character.Tier)
+	}
+	if character.NameI18n["vi"] != "Nhân vật" {
+		t.Errorf("book kind should inherit System vi label: want \"Nhân vật\", got %q (full=%v)",
+			character.NameI18n["vi"], character.NameI18n)
+	}
+}
