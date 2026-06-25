@@ -166,6 +166,13 @@ Batch the LOWs: `D-T3.1-SCENE-HINT`/`GUIDE-APPEND`, `D-T3.3-SLASH-CONTINUE`/`CHA
   - **⚠ Pre-existing (out of scope, NOT mine):** the full FE suite has **9 `world i18n` parity failures**
     (`world` / MMO-track namespace — e.g. `graph.loadFailed`, `populate.addFailed` missing in non-en locales).
     Untouched by this work; a separate track's i18n debt. Track there, not here.
+- ✅ **WS-D CROSS-WINDOW LIVE SMOKE 2026-06-26 (two real browser windows, Playwright).** Verified
+  `D-T5.4-PANEL-STREAM-HOIST` end-to-end: navigated a 2nd window to the real pop-out **assemble** route → the
+  real `AssembleStateProvider` mounted + posted `assemble-request` on mount (received cross-window over the real
+  `popoutChannel`) → the opener replied `assemble-state` (a draft) → the pop-out's real `ChapterAssembleView`
+  **hydrated** it (preview textarea showed the synced draft, Accept visible). No LLM needed (injected the draft
+  the opener broadcasts post-generation). This is the leg jsdom can't test — the cross-OS-window transport +
+  the real provider mounting in a real pop-out root.
 - ✅ **WS-B3 LIVE SMOKE 2026-06-26 (real stack, test account on Dracula).** **WS-B2 derivative-context
   endpoint VERIFIED end-to-end** — `POST /derive` (au + canon_rule + an entity_override) → `GET
   /works/{deriv}/derivative-context` returned exactly the persisted spec (is_derivative, resolved
