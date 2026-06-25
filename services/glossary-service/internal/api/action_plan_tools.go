@@ -226,14 +226,21 @@ func extractJSONObject(s string) string {
 	return strings.TrimSpace(s)
 }
 
+// maxAttrsInSummary caps how many attribute triples the state summary lists. Bounds
+// the prompt cost of always listing attributes (so a huge ontology can't blow the
+// planner call); beyond it the summary tells the planner to use the GUI. The planner
+// can still delete_attribute any of the shown triples; the cap only limits visibility.
+const maxAttrsInSummary = 100
+
 // ontologyStateSummary is the compact current-state the planner reads so the plan
 // is a DELTA against reality (no duplicate kinds). Kept small — the executor's
 // skip-on-conflict is the real idempotency guarantee, not the planner's care. It
-// lists BOTH kinds and genres by code: kinds anchor create/add (no duplicates), and
-// both anchor the destructive ops — a delete_kind/delete_genre may ONLY reference a
-// code shown here (the planner is otherwise blind to current state and would emit a
-// code that resolves to target_gone). Attributes are intentionally NOT listed (they
-// would bloat every plan call; delete_attribute is therefore not in the planner vocab).
+// lists kinds, genres, AND attributes by code: kinds anchor create/add (no
+// duplicates), and all three anchor the destructive ops — a delete_kind / delete_genre
+// / delete_attribute may ONLY reference a code (or kind×genre×code triple) shown here
+// (the planner is otherwise blind to current state and would emit a code that resolves
+// to target_gone). Attributes are bounded by maxAttrsInSummary (always listed, not
+// goal-gated — multilingual goals make a keyword gate unreliable).
 func (s *Server) ontologyStateSummary(ctx context.Context, bookID uuid.UUID) (string, error) {
 	kinds, err := s.loadKindMap(ctx, bookID)
 	if err != nil {
@@ -254,6 +261,18 @@ func (s *Server) ontologyStateSummary(ctx context.Context, bookID uuid.UUID) (st
 	}
 	if len(genres) > 0 {
 		summary += "\nExisting genres (a delete_genre may target one of these): " + strings.Join(genres, ", ")
+	}
+	// Existing attributes, addressed as delete_attribute keys them (kind × genre × code),
+	// so a delete_attribute can target a real triple instead of resolving to target_gone.
+	// Bounded by maxAttrsInSummary (not a goal-keyword gate — goals here are multilingual,
+	// so a keyword gate would be fragile exactly where it matters); the overflow note
+	// points the planner at the GUI for the elided rest.
+	triples, more, aerr := s.loadBookAttrTriples(ctx, bookID, maxAttrsInSummary)
+	if aerr != nil {
+		return "", aerr
+	}
+	if len(triples) > 0 {
+		summary += "\n" + bookAttributesSummary(triples, more)
 	}
 	// Pending merge candidates (detected duplicate clusters) so the planner can
 	// orchestrate the merge action over them via merge_candidate — copying a stable
@@ -292,6 +311,29 @@ func safePromptField(s string, maxLen int) string {
 		s = strings.TrimSpace(s[:maxLen]) + "…"
 	}
 	return s
+}
+
+// bookAttributesSummary renders the live attribute triples grouped by (kind · genre) on
+// one line each, so the planner can copy a delete_attribute target verbatim. `more`
+// appends an overflow note (the cap elided some — those are GUI-only). Codes are slugs
+// (^[a-z0-9_]+$), so no neutralization is needed (unlike the entity names in the merge
+// block, which are untrusted free text).
+func bookAttributesSummary(triples []bookAttrTriple, more bool) string {
+	var b strings.Builder
+	b.WriteString("Existing attributes (delete_attribute may target one; each is keyed by kind_code × genre_code × code):")
+	var curKind, curGenre string
+	for _, t := range triples {
+		if t.KindCode != curKind || t.GenreCode != curGenre {
+			b.WriteString("\n- " + t.KindCode + " · " + t.GenreCode + ": " + t.Code)
+			curKind, curGenre = t.KindCode, t.GenreCode
+			continue
+		}
+		b.WriteString(", " + t.Code)
+	}
+	if more {
+		b.WriteString("\n(more attributes exist than shown — delete those via the ontology GUI)")
+	}
+	return b.String()
 }
 
 // mergeCandidatesSummary renders pending duplicate clusters for the planner: each with
@@ -349,17 +391,18 @@ OP TYPES (the ONLY allowed types) and their params:
 - "add_attributes": {"kind_code":"<existing slug>","attributes":[{...same attribute shape...}]} — add attributes to an ALREADY-EXISTING kind ONLY.
 - "delete_genre": {"genre_code":"<existing slug>"} — REMOVE a genre listed under "Existing genres" (cascades: deprecates its attributes + kind links). DESTRUCTIVE.
 - "delete_kind": {"kind_code":"<existing slug>"} — REMOVE a kind listed under "Existing kinds" (cascades: deprecates its attributes). DESTRUCTIVE.
+- "delete_attribute": {"kind_code":"<slug>","genre_code":"<slug>","code":"<slug>"} — REMOVE a single attribute listed under "Existing attributes". Copy the kind_code, genre_code and code from one "kind · genre: code" entry there (an attribute is keyed by kind × genre × code). DESTRUCTIVE.
 - "merge_candidate": {"candidate_id":"<uuid from Pending merge candidates>","winner_id":"<optional uuid>"} — RESOLVE one detected duplicate cluster by merging its members into one. Copy candidate_id VERBATIM from the "Pending merge candidates" block; emit ONE merge_candidate op per cluster you want merged. winner_id is OPTIONAL — omit it to keep the detector's suggested winner; supply a member's id only to override. DESTRUCTIVE (the losers are soft-deleted; reversible).
 - "dismiss_candidate": {"candidate_id":"<uuid from Pending merge candidates>"} — REJECT a detected cluster as NOT the same entity (keeps its members separate, hides the suggestion). NON-destructive — no entity is changed. Use when the user says a suggested duplicate is actually two different things.
 
-(EDITING an attribute, and DELETING an individual attribute, are NOT available in a plan yet — the current-state summary lists kinds + genres but not individual attributes, so a plan cannot reliably target one. If the goal needs an attribute edit/delete, describe it in "notes" rather than emitting an op.)
+(EDITING an attribute's definition is NOT available in a plan yet — it needs a row version the planner cannot read. If the goal needs an attribute edit, describe it in "notes" rather than emitting an op. DELETING an attribute IS available — use delete_attribute against an "Existing attributes" triple.)
 
 HARD RULES:
 - Every "code" is a lowercase ASCII slug matching ^[a-z0-9_]+$. Transliterate non-Latin names to slugs; keep display "name" in the original language.
 - EVERY attribute MUST have a clear, specific "description" — it is the extraction instruction. Never emit an attribute without one.
 - A NEW kind's attributes go INSIDE its create_kinds entry. Do NOT also emit add_attributes for a kind you create in this same plan.
 - Give each kind 3-6 defining attributes.
-- DESTRUCTIVE ops (delete_*, merge_candidate) — emit one ONLY when the user EXPLICITLY asks to remove/delete/drop or to dedup/merge duplicates. Never delete or merge to "clean up", "replace", or "reorganize" unless the user asked for it in those words. Reference only codes/candidate_ids present in CURRENT BOOK STATE. The user confirms each destructive op individually before it runs.
+- DESTRUCTIVE ops (delete_genre, delete_kind, delete_attribute, merge_candidate) — emit one ONLY when the user EXPLICITLY asks to remove/delete/drop or to dedup/merge duplicates. Never delete or merge to "clean up", "replace", or "reorganize" unless the user asked for it in those words. Reference only codes/triples/candidate_ids present in CURRENT BOOK STATE. The user confirms each destructive op individually before it runs.
 - Use ONLY the op types above. If the goal needs something else, put a sentence in "notes" — NEVER invent an op type.
 
 CURRENT BOOK STATE:

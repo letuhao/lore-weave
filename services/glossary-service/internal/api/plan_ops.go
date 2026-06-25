@@ -544,6 +544,56 @@ func (s *Server) loadBookGenreCodes(ctx context.Context, bookID uuid.UUID) ([]st
 	return codes, rows.Err()
 }
 
+// bookAttrTriple is one deletable attribute addressed the way delete_attribute keys it:
+// (kind_code × genre_code × code). The planner can only delete_attribute a triple it is
+// shown — without it the planner is blind to attribute identity and any code it guesses
+// resolves to target_gone.
+type bookAttrTriple struct {
+	KindCode  string
+	GenreCode string
+	Code      string
+}
+
+// loadBookAttrTriples returns the live (kind × genre × code) triples for the planner's
+// state summary, ordered (kind, genre, code) and capped at `limit` rows (limit ≤ 0 ⇒ no
+// cap). Joins to LIVE parent kind+genre so a deprecated parent's attributes (already
+// cascade-deprecated) are not offered as delete targets. `more` is true when the cap
+// elided rows (the summary then tells the planner to use the GUI for the rest).
+func (s *Server) loadBookAttrTriples(ctx context.Context, bookID uuid.UUID, limit int) (triples []bookAttrTriple, more bool, err error) {
+	// Fetch one past the cap to detect overflow without a second COUNT query.
+	q := `SELECT k.code, g.code, a.code
+	        FROM book_attributes a
+	        JOIN book_kinds  k ON k.book_kind_id = a.kind_id  AND k.deprecated_at IS NULL
+	        JOIN book_genres g ON g.genre_id     = a.genre_id AND g.deprecated_at IS NULL
+	       WHERE a.book_id = $1 AND a.deprecated_at IS NULL
+	       ORDER BY k.code, g.code, a.code`
+	args := []any{bookID}
+	if limit > 0 {
+		q += ` LIMIT $2`
+		args = append(args, limit+1)
+	}
+	rows, err := s.pool.Query(ctx, q, args...)
+	if err != nil {
+		return nil, false, err
+	}
+	defer rows.Close()
+	out := make([]bookAttrTriple, 0)
+	for rows.Next() {
+		var t bookAttrTriple
+		if err := rows.Scan(&t.KindCode, &t.GenreCode, &t.Code); err != nil {
+			return nil, false, err
+		}
+		out = append(out, t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, err
+	}
+	if limit > 0 && len(out) > limit {
+		return out[:limit], true, nil
+	}
+	return out, false, nil
+}
+
 // resolveDeleteResult folds a delete-target lookup into the kit's outcome sentinels:
 // no row → ErrNotFound (target_gone); already deprecated → ErrAlreadyDone (idempotent
 // skip); live → (id, nil).

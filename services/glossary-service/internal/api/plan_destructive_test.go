@@ -279,6 +279,117 @@ func TestExecutePlan_DismissCandidate_RealPG(t *testing.T) {
 	}
 }
 
+// bookAttributesSummary groups triples by (kind · genre) on one line, comma-joins the
+// codes within a group, and appends the overflow note only when more=true.
+func TestBookAttributesSummary(t *testing.T) {
+	triples := []bookAttrTriple{
+		{KindCode: "character", GenreCode: "universal", Code: "name"},
+		{KindCode: "character", GenreCode: "universal", Code: "realm"},
+		{KindCode: "character", GenreCode: "xianxia", Code: "sect"},
+		{KindCode: "location", GenreCode: "universal", Code: "name"},
+	}
+	out := bookAttributesSummary(triples, false)
+	// character·universal groups name+realm on ONE line; the xianxia genre starts a new line.
+	if !strings.Contains(out, "character · universal: name, realm") {
+		t.Errorf("want grouped character·universal line, got:\n%s", out)
+	}
+	if !strings.Contains(out, "character · xianxia: sect") {
+		t.Errorf("want a distinct line per (kind, genre), got:\n%s", out)
+	}
+	if !strings.Contains(out, "location · universal: name") {
+		t.Errorf("want location·universal line, got:\n%s", out)
+	}
+	if strings.Contains(out, "more attributes exist") {
+		t.Errorf("no overflow note when more=false, got:\n%s", out)
+	}
+	// more=true appends the GUI overflow note.
+	if !strings.Contains(bookAttributesSummary(triples, true), "more attributes exist") {
+		t.Errorf("want overflow note when more=true")
+	}
+}
+
+// TestExecutePlan_DeleteAttribute_RealPG is the destructive round-trip for delete_attribute
+// on real Postgres: a disposable attribute on character·universal is SKIPPED unless enabled,
+// APPLIED (soft-deprecated) when enabled, idempotent (already_done) on re-run, and
+// target_gone for a code that was never an attribute. Proves the (kind × genre × code)
+// resolver + softDeleteBookAttribute against the live schema — the leg that was held out of
+// the planner vocab until the state summary surfaced attribute triples (D-PLAN-DELETE-ATTR-VOCAB).
+func TestExecutePlan_DeleteAttribute_RealPG(t *testing.T) {
+	pool := openTestDB(t)
+	f := newActionFixture(t, pool)
+	ctx := context.Background()
+	kindID := bookKindID(t, pool, f.bookID, "character")
+	const attrCode = "qa_plan_del_attr"
+	t.Cleanup(func() {
+		pool.Exec(ctx, `DELETE FROM book_attributes WHERE book_id=$1 AND kind_id=$2 AND code=$3`, f.bookID, kindID, attrCode)
+	})
+	if _, err := f.srv.createAttrDefFromParams(ctx, f.bookID, attrCreateParams{
+		KindID: kindID.String(), Code: attrCode, Name: "QA Plan Del Attr", FieldType: "text",
+	}); err != nil {
+		t.Fatalf("seed attribute: %v", err)
+	}
+
+	mintPlan := func(rawPlan string) string {
+		plan, perr := f.srv.parseAndValidatePlan(f.bookID, "remove the qa attribute", rawPlan)
+		if perr != nil {
+			t.Fatalf("plan rejected: %v", perr)
+		}
+		params, _ := json.Marshal(plan)
+		return mintActionToken(versionTestSecret, actionClaims{
+			JTI: uuid.NewString(), Authority: authorityGrant, UserID: f.ownerID, BookID: f.bookID,
+			Descriptor: descExecutePlan, Params: params,
+		}, time.Now())
+	}
+	delPlan := `{"ops":[{"type":"delete_attribute","params":{"kind_code":"character","genre_code":"universal","code":"` + attrCode + `"}}]}`
+	isLive := func() bool {
+		var dep *time.Time
+		pool.QueryRow(ctx, `SELECT deprecated_at FROM book_attributes WHERE book_id=$1 AND kind_id=$2 AND code=$3`, f.bookID, kindID, attrCode).Scan(&dep)
+		return dep == nil
+	}
+	decode := func(w *httptest.ResponseRecorder) planSummary {
+		var s planSummary
+		if err := json.Unmarshal(w.Body.Bytes(), &s); err != nil {
+			t.Fatalf("decode summary (%d): %v — %s", w.Code, err, w.Body.String())
+		}
+		return s
+	}
+
+	// (1) confirm WITHOUT enabling → skipped not_confirmed; the attribute stays LIVE.
+	if w := f.confirmOps(t, mintPlan(delPlan), nil); w.Code != http.StatusOK {
+		t.Fatalf("skip path: want 200, got %d (%s)", w.Code, w.Body.String())
+	} else if s := decode(w); len(s.Skipped) != 1 || s.Skipped[0].Reason != "not_confirmed" {
+		t.Fatalf("skip path: want 1 skipped not_confirmed, got %+v", s)
+	}
+	if !isLive() {
+		t.Fatal("attribute was deleted on a non-enabled confirm — the safety default failed")
+	}
+
+	// (2) confirm WITH the op enabled → applied; the attribute deprecates.
+	if w := f.confirmOps(t, mintPlan(delPlan), []string{"op-1"}); w.Code != http.StatusOK {
+		t.Fatalf("apply path: want 200, got %d (%s)", w.Code, w.Body.String())
+	} else if s := decode(w); len(s.Applied) != 1 || s.Applied[0].Type != "delete_attribute" {
+		t.Fatalf("apply path: want 1 applied delete_attribute, got %+v", s)
+	}
+	if isLive() {
+		t.Fatal("attribute was NOT deprecated after an enabled delete_attribute")
+	}
+
+	// (3) re-run the SAME delete (new token) WITH enable → already_done (idempotent skip).
+	if w := f.confirmOps(t, mintPlan(delPlan), []string{"op-1"}); w.Code != http.StatusOK {
+		t.Fatalf("idempotent path: want 200, got %d", w.Code)
+	} else if s := decode(w); len(s.Skipped) != 1 || s.Skipped[0].Reason != "already_done" {
+		t.Fatalf("idempotent path: want 1 skipped already_done, got %+v", s)
+	}
+
+	// (4) a code that was never an attribute → target_gone (failed), never a 500.
+	bogus := `{"ops":[{"type":"delete_attribute","params":{"kind_code":"character","genre_code":"universal","code":"qa_never_existed"}}]}`
+	if w := f.confirmOps(t, mintPlan(bogus), []string{"op-1"}); w.Code != http.StatusOK {
+		t.Fatalf("target_gone path: want 200, got %d", w.Code)
+	} else if s := decode(w); len(s.Failed) != 1 || s.Failed[0].Reason != "target_gone" {
+		t.Fatalf("target_gone path: want 1 failed target_gone, got %+v", s)
+	}
+}
+
 // resolveMergeWinner picks winner_id (a member) over the suggested winner, falls back to
 // the suggested winner, and errors when neither yields a member.
 func TestResolveMergeWinner(t *testing.T) {
