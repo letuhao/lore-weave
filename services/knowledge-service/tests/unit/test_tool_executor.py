@@ -148,10 +148,15 @@ async def test_memory_search_happy_path(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_memory_search_requires_a_project_in_scope():
+async def test_memory_search_no_project_returns_empty_not_error():
+    # No knowledge project linked → a clean EMPTY success (like memory_recall_entity /
+    # memory_timeline), NOT a hard tool_error that renders as a scary "failed" step.
     res = await execute_tool(_ctx(project_id=None), "memory_search", {"query": "x"})
-    assert not res.success
-    assert "project" in res.error.lower()
+    assert res.success
+    assert res.result["count"] == 0
+    assert res.result["hits"] == []
+    # A guiding note so the agent (and user) know memory is available once a project is linked.
+    assert "project" in res.result.get("note", "").lower()
 
 
 @pytest.mark.asyncio

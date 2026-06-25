@@ -10,10 +10,13 @@ repos. Design contract:
     `success=True` with a `{found: false}`-style result — "nothing"
     is a valid answer, not an error.
   * **Tool error vs. infra error** (design D9) — bad args, an unknown
-    tool, a rate-limit rejection, or "no project in scope" are
-    `tool_error`: caught here, returned as `success=False`. Anything
-    unexpected (Neo4j down, etc.) is an `infra_error`: re-raised so the
-    endpoint maps it to HTTP 503. A tool failure never crashes chat.
+    tool, or a rate-limit rejection are `tool_error`: caught here,
+    returned as `success=False`. Anything unexpected (Neo4j down, etc.)
+    is an `infra_error`: re-raised so the endpoint maps it to HTTP 503.
+    A tool failure never crashes chat. NOTE: "no project linked" is NOT
+    a tool_error for the read-memory tools — like an empty result, it's
+    a valid "nothing to search" answer (success with an empty/`found:false`
+    body + a guiding note), so it doesn't surface as a scary "failed" step.
   * **Guardrails** (K21.7) — `memory_remember` writes facts at fixed
     low confidence + a distinguishing `source_type`, rate-limited per
     chat session. The limiter fails OPEN (design D5).
@@ -205,11 +208,18 @@ def _truncate(text: str | None, limit: int = _SNIPPET_CHARS) -> str:
 
 async def _handle_memory_search(ctx: ToolContext, args: MemorySearchArgs) -> dict:
     if ctx.project_id is None:
-        raise ToolExecutionError(
-            "a project must be in scope to search passages"
-        )
+        # No knowledge project linked to this chat → there is simply nothing to search.
+        # Return a clean EMPTY result (as memory_recall_entity / memory_timeline already
+        # do for no-project) instead of a hard tool_error, so "no memory linked" doesn't
+        # surface to the user as an alarming red "failed" step. The note guides both the
+        # agent (fall back to other tools) and the user (link a project to enable memory).
+        return {"hits": [], "count": 0,
+                "note": "no knowledge project is linked to this chat — link one in session "
+                        "settings to enable memory search"}
     project = await ctx.projects_repo.get(ctx.user_id, ctx.project_id)
     if project is None:
+        # A project_id WAS supplied but doesn't resolve (deleted / wrong) — a genuine
+        # error worth surfacing, distinct from "no project linked at all" above.
         raise ToolExecutionError("project not found")
     if project.embedding_model is None or project.embedding_dimension is None:
         return {"hits": [], "count": 0,
