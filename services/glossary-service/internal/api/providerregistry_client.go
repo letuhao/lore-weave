@@ -82,3 +82,49 @@ func (s *Server) webSearch(ctx context.Context, userID uuid.UUID, query string, 
 	}
 	return out.Results, out.Answer, nil
 }
+
+// resolveDefaultModel asks provider-registry for the user's default model for a
+// capability (e.g. "planner"), via GET /internal/default-models/{capability}. It
+// is the BYOK way to pick a model without holding a credential — the same
+// internal-token, user_id-scoped pattern as webSearch. ok=false when the user has
+// set no default (404); the caller surfaces a clear "set a default / pass
+// model_ref" message rather than a 500.
+func (s *Server) resolveDefaultModel(ctx context.Context, userID uuid.UUID, capability string) (string, bool, error) {
+	base := strings.TrimRight(s.cfg.ProviderRegistryURL, "/")
+	if base == "" {
+		return "", false, errWebSearchNotConfigured
+	}
+	endpoint := fmt.Sprintf("%s/internal/default-models/%s?user_id=%s",
+		base, url.PathEscape(capability), url.QueryEscape(userID.String()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return "", false, err
+	}
+	if s.cfg.InternalServiceToken != "" {
+		req.Header.Set("X-Internal-Token", s.cfg.InternalServiceToken)
+	}
+	if tid := TraceIDFromContext(ctx); tid != "" {
+		req.Header.Set(traceIDHeader, tid)
+	}
+	res, err := providerRegistryHTTPClient.Do(req)
+	if err != nil {
+		return "", false, fmt.Errorf("provider-registry unreachable: %w", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode == http.StatusNotFound {
+		return "", false, nil // no default set for this capability
+	}
+	if res.StatusCode != http.StatusOK {
+		return "", false, fmt.Errorf("default-model resolve error (status %d)", res.StatusCode)
+	}
+	var out struct {
+		UserModelID string `json:"user_model_id"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
+		return "", false, err
+	}
+	if strings.TrimSpace(out.UserModelID) == "" {
+		return "", false, nil
+	}
+	return out.UserModelID, true, nil
+}

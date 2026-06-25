@@ -21,6 +21,10 @@ import (
 var defaultModelCapabilities = map[string]bool{
 	"rerank":    true,
 	"embedding": true,
+	// "planner" — the capable chat+tool model the glossary plan-and-execute planner
+	// (glossary_plan) uses; a per-user default so planning isn't stuck on the chat
+	// "Fast" model (D-1). Set from Settings; resolved via /internal/default-models.
+	"planner": true,
 }
 
 // getDefaultModels — GET /v1/model-registry/default-models (JWT). Returns the
