@@ -83,6 +83,9 @@ export function OntologyColumn({
                       {r.meta && <span className="font-mono text-[10px] text-muted-foreground">{r.meta}</span>}
                       {r.tier && <TierChip tier={r.tier} />}
                     </button>
+                    {/* Trash is always visible (muted), red on hover/focus — NOT hover-revealed:
+                        a touch device has no hover, so an opacity-0 trash would be unreachable
+                        on mobile/tablet. Mirrors the always-visible standards StandardRow. */}
                     {onDelete && (
                       <button
                         type="button"
@@ -90,7 +93,7 @@ export function OntologyColumn({
                         title={deleteLabel}
                         aria-label={deleteLabel}
                         data-testid={`ontology-delete-${r.id}`}
-                        className="mr-1 rounded p-1 text-destructive opacity-0 transition-opacity hover:bg-destructive/10 focus:opacity-100 group-hover:opacity-100"
+                        className="mr-1 rounded p-1 text-muted-foreground/60 transition-colors hover:bg-destructive/10 hover:text-destructive focus:text-destructive"
                       >
                         <Trash2 className="h-3 w-3" />
                       </button>

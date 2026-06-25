@@ -24,6 +24,9 @@ describe('OntologyColumn delete affordance', () => {
       />,
     );
     const del = screen.getByTestId('ontology-delete-g1');
+    // Must be visible on touch devices — NOT hover-revealed (opacity-0/group-hover would
+    // leave it unreachable on mobile, the original review-impl MED finding).
+    expect(del.className).not.toMatch(/opacity-0|group-hover/);
     fireEvent.click(del);
     expect(onDelete).toHaveBeenCalledTimes(1);
     expect(onDelete).toHaveBeenCalledWith(rows[0]);
