@@ -7,7 +7,7 @@
 import type { Dispatch, SetStateAction } from 'react';
 import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useCompositionStream } from '../hooks/useCompositionStream';
+import { useLiveStream } from '../context/LiveStateContext';
 import { useCritique } from '../hooks/useCritique';
 import { useAutoGenerate, useCorrection } from '../hooks/useAutoGenerate';
 import { CandidatesView } from './CandidatesView';
@@ -40,7 +40,10 @@ export function ComposeView({ projectId, sceneId, modelRef, modelKind, modelName
   const [reasoning, setReasoning] = useState<ReasoningPref>('auto');
   // Diverge = controlled-auto gate (K options). OFF = V0 live token stream.
   const [diverge, setDiverge] = useState(false);
-  const stream = useCompositionStream(token);
+  // T5.4 — the co-writer stream is HOISTED to LiveStateProvider (above the windowing
+  // layer) so a docked/floated/popped Compose keeps streaming through a move. The
+  // `token` prop is retained for the other (non-hoisted) hooks below.
+  const stream = useLiveStream();
   const auto = useAutoGenerate(token);
   const correction = useCorrection(token);
   const { critique, dismiss } = useCritique(token);

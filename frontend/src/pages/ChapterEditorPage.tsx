@@ -32,6 +32,7 @@ import { Chat } from '@/features/chat/Chat';
 import { fireSendToChat } from '@/features/chat/context/sendToChat';
 import { registerEditorTarget } from '@/features/chat/context/editorBridge';
 import { CompositionPanel } from '@/features/composition/components/CompositionPanel';
+import { WorkspaceShell } from '@/features/composition/components/workspace/WorkspaceShell';
 import { CowriteBridgeButton } from '@/features/composition/components/CowriteBridgeButton';
 import { SelectionToolbar } from '@/features/composition/components/SelectionToolbar';
 import { InlineAiLayer } from '@/features/composition/components/InlineAiLayer';
@@ -1149,22 +1150,27 @@ export function ChapterEditorPage() {
                   inserts at the cursor via insertAtCursor (which dirties + autosaves
                   the EDITOR doc); the streaming ghost stays FE-local until then. */}
               {rightTab === 'compose' && (
-                <CompositionPanel
-                  key={bookId}
-                  bookId={bookId}
-                  chapterId={chapterId}
-                  token={accessToken}
-                  onAccept={(text, meta) =>
-                    tiptapEditorRef.current?.insertAtCursor(text, {
-                      source: 'ai', status: 'unreviewed', model: meta?.model ?? null,
-                      ts: new Date().toISOString(),
-                    })
-                  }
-                  sceneId={activeSceneId}
-                  onSceneChange={setActiveSceneId}
-                  heatmapEnabled={heatmapEnabled}
-                  onToggleHeatmap={() => setHeatmapEnabled((v) => !v)}
-                />
+                // T5.4 — WorkspaceShell hoists the live co-writer stream (+ owns the
+                // windowing layout) ABOVE the studio panels so a docked/floated/popped
+                // panel survives a move. M1: renders CompositionPanel unchanged.
+                <WorkspaceShell token={accessToken} bookId={bookId}>
+                  <CompositionPanel
+                    key={bookId}
+                    bookId={bookId}
+                    chapterId={chapterId}
+                    token={accessToken}
+                    onAccept={(text, meta) =>
+                      tiptapEditorRef.current?.insertAtCursor(text, {
+                        source: 'ai', status: 'unreviewed', model: meta?.model ?? null,
+                        ts: new Date().toISOString(),
+                      })
+                    }
+                    sceneId={activeSceneId}
+                    onSceneChange={setActiveSceneId}
+                    heatmapEnabled={heatmapEnabled}
+                    onToggleHeatmap={() => setHeatmapEnabled((v) => !v)}
+                  />
+                </WorkspaceShell>
               )}
             </div>
           </div>

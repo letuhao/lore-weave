@@ -13,7 +13,9 @@ const { mockStream, mockCritique, mockAuto, mockCorrection } = vi.hoisted(() => 
   mockAuto: { mutate: vi.fn(), reset: vi.fn(), data: undefined as unknown, isPending: false, isError: false },
   mockCorrection: { mutate: vi.fn(), isPending: false },
 }));
-vi.mock('../../hooks/useCompositionStream', () => ({ useCompositionStream: () => mockStream }));
+// T5.4 — the co-writer stream is now consumed via the hoisted LiveStateContext, so
+// the mock targets useLiveStream (ComposeView no longer calls useCompositionStream).
+vi.mock('../../context/LiveStateContext', () => ({ useLiveStream: () => mockStream }));
 vi.mock('../../hooks/useCritique', () => ({ useCritique: () => mockCritique }));
 vi.mock('../../hooks/useAutoGenerate', () => ({
   useAutoGenerate: () => mockAuto,
