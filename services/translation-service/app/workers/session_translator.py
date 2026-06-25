@@ -35,6 +35,7 @@ from ..config import settings, DEFAULT_COMPACT_SYSTEM_PROMPT, DEFAULT_COMPACT_US
 from ..llm_client import LLMClient
 from ..metrics import record_stage
 from .chunk_splitter import estimate_tokens, split_chapter
+from .llm_thinking import thinking_llm_fields
 
 log = logging.getLogger(__name__)
 
@@ -888,6 +889,7 @@ async def translate_batch_with_retry(
     out_max: int,
     max_retries: int,
     job_meta_base: dict,
+    thinking_enabled: bool = False,
 ) -> BatchTranslateResult:
     """Translate one [BLOCK N] batch: SDK call → validate → retry with a correction
     prompt on failure. Shared per-batch kernel (M5d/TD2) — the worker pipeline wraps
@@ -922,8 +924,10 @@ async def translate_batch_with_retry(
                 input={
                     "messages": messages,
                     "max_tokens": out_max,
-                    "reasoning_effort": "none",
-                    "chat_template_kwargs": {"enable_thinking": False},
+                    # D-TRANSLATE-REASONING-TOGGLE — per-job reasoning control. Default
+                    # OFF (thinking_enabled=False) keeps the prior behavior; ON enables
+                    # the local model's thinking via chat_template_kwargs.enable_thinking.
+                    **thinking_llm_fields(enabled=thinking_enabled),
                 },
                 chunking=None,
                 job_meta={**job_meta_base, "attempt": attempt},
@@ -1158,6 +1162,7 @@ async def translate_chapter_blocks(
             combined=combined, block_indices=batch.block_indices, input_texts=input_texts,
             out_max=out_max, max_retries=_MAX_BATCH_RETRIES,
             job_meta_base={"chapter_translation_id": str(chapter_translation_id), "batch_idx": batch_idx},
+            thinking_enabled=bool(msg.get("thinking_enabled", False)),
         )
         parsed = _br.parsed
         total_input += _br.input_tokens
