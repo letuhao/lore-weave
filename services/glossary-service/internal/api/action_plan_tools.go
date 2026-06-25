@@ -25,6 +25,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/loreweave/grantclient"
 
+	"github.com/loreweave/glossary-service/internal/sanitize"
 	llm "github.com/loreweave/loreweave_llm"
 	plankit "github.com/loreweave/loreweave_mcp"
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -278,6 +279,21 @@ func planPreviewRows(plan plankit.Plan) []previewRow {
 	return rows
 }
 
+// safePromptField makes one untrusted string (an entity name, a detector rationale)
+// safe to embed in the planner's SYSTEM prompt: NeutralizeCanonText strips invisibles
+// and inert-izes chat-template / role-spoof markers (the same canon-boundary defense
+// the deep-research path uses, INV-6), then we collapse ALL whitespace to single spaces
+// (so a smuggled newline/tab cannot break the line-per-candidate structure and forge a
+// field) and cap the length (bounds prompt cost + injection payload).
+func safePromptField(s string, maxLen int) string {
+	s = sanitize.NeutralizeCanonText(s)
+	s = strings.Join(strings.Fields(s), " ") // collapse \n\r\t + runs of spaces
+	if len(s) > maxLen {
+		s = strings.TrimSpace(s[:maxLen]) + "…"
+	}
+	return s
+}
+
 // mergeCandidatesSummary renders pending duplicate clusters for the planner: each with
 // its stable candidate_id (to copy into a merge_candidate op), member names + entity-ids
 // + link counts, the detector's suggested winner, and the rationale. Capped so a large
@@ -295,8 +311,8 @@ func mergeCandidatesSummary(cands []mergeCandidateView) string {
 		b.WriteString(fmt.Sprintf("\n- candidate_id=%s [%s] score=%.2f", c.CandidateID, c.KindCode, c.Score))
 		parts := make([]string, 0, len(c.Members))
 		for _, m := range c.Members {
-			name := m.Name
-			if strings.TrimSpace(name) == "" {
+			name := safePromptField(m.Name, 80)
+			if name == "" {
 				name = "(unnamed)"
 			}
 			parts = append(parts, fmt.Sprintf("%q(id=%s, %d links)", name, m.EntityID, m.ChapterLinks))
@@ -305,7 +321,7 @@ func mergeCandidatesSummary(cands []mergeCandidateView) string {
 		if c.SuggestedWinner != "" {
 			b.WriteString("\n    suggested winner id: " + c.SuggestedWinner)
 		}
-		if r := strings.TrimSpace(c.Rationale); r != "" {
+		if r := safePromptField(c.Rationale, 200); r != "" {
 			b.WriteString("\n    why: " + r)
 		}
 	}
