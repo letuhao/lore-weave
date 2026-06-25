@@ -594,3 +594,32 @@ async def test_process_chapter_skips_stale_writeback_on_source_drift(caplog):
     assert result["created"] == 0
     post.assert_not_awaited()  # nothing written back
     assert any("DRIFTED" in r.getMessage() for r in caplog.records)
+
+
+# ── D-LLM-FAILURE-RATE #1 — structured-output schema builder ──────────────────
+
+
+def test_entity_response_format_is_loose_array_schema():
+    """The json_schema must force a top-level ARRAY of objects that require
+    kind (restricted to the batch's kinds) + name, while leaving attributes FREE
+    (additionalProperties) so the per-kind profile fields aren't constrained."""
+    rf = ew._entity_response_format(["character", "location", "item"])
+    assert rf["type"] == "json_schema"
+    schema = rf["json_schema"]["schema"]
+    assert schema["type"] == "array"
+    item = schema["items"]
+    assert item["type"] == "object"
+    assert item["required"] == ["kind", "name"]
+    assert item["additionalProperties"] is True
+    # kind is enum-restricted to exactly this batch's kinds (kills wrong-kind output)
+    assert item["properties"]["kind"]["enum"] == ["character", "location", "item"]
+    assert item["properties"]["name"]["type"] == "string"
+
+
+def test_entity_response_format_enum_tracks_the_batch():
+    """A different batch → a different kind enum (per-call, not global)."""
+    rf = ew._entity_response_format(["event", "relationship"])
+    assert rf["json_schema"]["schema"]["items"]["properties"]["kind"]["enum"] == [
+        "event",
+        "relationship",
+    ]

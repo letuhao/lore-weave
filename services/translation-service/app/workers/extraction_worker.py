@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 from uuid import UUID
 
 import httpx
@@ -89,6 +90,43 @@ from .extraction_model import get_model_context_window as _get_model_context_win
 _EXTRACTION_OUTPUT_CEILING = 8000  # per-window output cap (entities JSON is small)
 _EXTRACTION_OUTPUT_FLOOR = 1024
 _CONTEXT_SAFETY_RATIO = 0.15  # mirror the gateway's context-fit safety margin
+
+# D-LLM-FAILURE-RATE #1 — structured-output enforcement. Default ON; set
+# EXTRACTION_STRUCTURED_OUTPUT=0 to disable fleet-wide. The per-call
+# LLMInvalidRequest fallback already degrades a single unsupported model safely,
+# so the flag is only an emergency global off-switch.
+_STRUCTURED_OUTPUT_ENABLED = os.getenv(
+    "EXTRACTION_STRUCTURED_OUTPUT", "1"
+).strip().lower() not in ("0", "false", "no", "off")
+
+
+def _entity_response_format(kinds: list[str]) -> dict:
+    """A LOOSE json_schema for the extraction output: a top-level array whose
+    items require ``kind`` (restricted to THIS batch's kinds) + ``name``, with
+    attributes left FREE (``additionalProperties``). It forces syntactically-valid
+    JSON AND a valid kind — the two clean-finish failure modes behind the residual
+    ``completed_with_errors`` (malformed array / wrong-kind rejection) — without
+    constraining the per-kind profile fields the model fills in. Passed as
+    ``response_format`` to the gateway, which forwards it to LM Studio/vLLM; a model
+    that rejects the shape is retried once WITHOUT it (caller fallback)."""
+    return {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "extracted_entities",
+            "schema": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "kind": {"type": "string", "enum": list(kinds)},
+                        "name": {"type": "string"},
+                    },
+                    "required": ["kind", "name"],
+                    "additionalProperties": True,
+                },
+            },
+        },
+    }
 
 
 def _plan_chapter_windows(chapter: dict, chapter_text: str, context_window: int, source_language: str) -> list[str]:
@@ -787,37 +825,38 @@ async def _process_extraction_chapter(
         # Phase 4c-γ: HIGH#1 lesson from cycle 11 applied — catch
         # permanent SDK subclasses BEFORE generic LLMError so a
         # misconfigured BYOK doesn't poison the whole batch loop.
-        try:
-            sdk_job = await llm_client.submit_and_wait(
+        call_input: dict = {
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "temperature": 0.1,
+            # Output ceiling — generous headroom so an entity-dense chapter completes
+            # instead of truncating at finish_reason=length; if a batch still
+            # truncates, the parser repairs the partial array.
+            "max_tokens": out_budget,
+            # D-RE-WORKER-GRADED-EFFORT: graded reasoning effort (none disables hidden
+            # thinking so reasoning_tokens don't burn the output budget).
+            **reasoning_fields(ReasoningDirective(
+                effort=reasoning_effort, passthrough=False, source="user")),
+        }
+        # D-LLM-FAILURE-RATE #1 — force a valid JSON array of valid-kind entities
+        # (kills the clean-finish malformed/wrong-kind residual). Gateway forwards it
+        # to LM Studio/vLLM; a model/server that rejects the shape raises
+        # LLMInvalidRequest and is retried ONCE without it (below), so structured
+        # output never breaks a working model in a heterogeneous local fleet.
+        if _STRUCTURED_OUTPUT_ENABLED:
+            call_input["response_format"] = _entity_response_format(batch)
+
+        async def _submit(_inp: dict):
+            return await llm_client.submit_and_wait(
                 user_id=str(owner_user_id),
-                # /review-impl MED#1 — operation="chat" routes to the
-                # SAME chatAggregator as "translation" but accurately
-                # labels glossary entity extraction in gateway telemetry/
-                # billing dashboards. "translation" would mislabel.
+                # operation="chat" routes to the chatAggregator but labels glossary
+                # extraction accurately in gateway telemetry/billing.
                 operation="chat",
                 model_source=model_source,
                 model_ref=str(model_ref),
-                input={
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    "temperature": 0.1,
-                    # Output ceiling. A batch is capped at MAX_KINDS_PER_BATCH kinds
-                    # (extraction_prompt) so its output stays well under this; the
-                    # headroom is generous on purpose (typical model context is tens
-                    # of thousands of tokens and the extraction input is only ~4–5k),
-                    # so an entity-dense chapter completes instead of truncating at
-                    # finish_reason=length. If a batch still truncates, the parser
-                    # repairs the partial array rather than dropping every entity.
-                    "max_tokens": out_budget,
-                    # D-RE-WORKER-GRADED-EFFORT: graded reasoning effort (low/medium/high/none),
-                    # not the old bool→medium. The worker doesn't resolve model-capability dispatch
-                    # (a later improvement), so a direct user-source directive — same wire shape as
-                    # the prior thinking_llm_fields, but graded.
-                    **reasoning_fields(ReasoningDirective(
-                        effort=reasoning_effort, passthrough=False, source="user")),
-                },
+                input=_inp,
                 chunking=None,
                 job_meta={
                     "extractor": "glossary",
@@ -827,6 +866,22 @@ async def _process_extraction_chapter(
                 },
                 transient_retry_budget=1,
             )
+
+        try:
+            try:
+                sdk_job = await _submit(call_input)
+            except LLMInvalidRequest:
+                # Most likely the model/server rejected response_format — degrade to
+                # the prior (unstructured) behavior for this call rather than failing
+                # the batch. A second 4xx propagates as a real permanent error below.
+                if "response_format" not in call_input:
+                    raise
+                log.warning(
+                    "extraction: response_format rejected for chapter %s batch %d/%d — retrying without structured output",
+                    chapter_id, batch_idx + 1, len(batches),
+                )
+                call_input.pop("response_format", None)
+                sdk_job = await _submit(call_input)
         except (LLMQuotaExceeded, LLMModelNotFound, LLMAuthFailed,
                 LLMInvalidRequest, LLMDecodeError, LLMStreamNotSupported) as exc:
             log.error(
