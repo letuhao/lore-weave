@@ -248,7 +248,8 @@ describe('SceneGraphCanvas (T1.3)', () => {
     fireEvent.click(promoteBtn());
     expect(promoteSpy).toHaveBeenCalled();
     // seeded the ready take as a scene node in the DERIVATIVE project...
-    await waitFor(() => expect(createNodeSpy).toHaveBeenCalledWith('deriv-p', expect.objectContaining({ kind: 'scene' }), 't'));
+    // seeded with the anchor scene's chapter_id (a scene REQUIRES a chapter — live-smoke fix)
+    await waitFor(() => expect(createNodeSpy).toHaveBeenCalledWith('deriv-p', expect.objectContaining({ kind: 'scene', chapter_id: 'C1' }), 't'));
     // ...then switched the studio (AFTER seeding settles) + discarded the branch
     await waitFor(() => expect(onPromotedSpy).toHaveBeenCalledWith(expect.objectContaining({ project_id: 'deriv-p' })));
     expect(screen.queryByTestId('whatif-alt-node')).toBeNull();

@@ -166,6 +166,14 @@ Batch the LOWs: `D-T3.1-SCENE-HINT`/`GUIDE-APPEND`, `D-T3.3-SLASH-CONTINUE`/`CHA
   - **⚠ Pre-existing (out of scope, NOT mine):** the full FE suite has **9 `world i18n` parity failures**
     (`world` / MMO-track namespace — e.g. `graph.loadFailed`, `populate.addFailed` missing in non-en locales).
     Untouched by this work; a separate track's i18n debt. Track there, not here.
+- ✅ **WS-B3 LIVE SMOKE 2026-06-26 (real stack, test account on Dracula).** **WS-B2 derivative-context
+  endpoint VERIFIED end-to-end** — `POST /derive` (au + canon_rule + an entity_override) → `GET
+  /works/{deriv}/derivative-context` returned exactly the persisted spec (is_derivative, resolved
+  source_project_id, branch_point, taxonomy, canon_rules, overrides). **WS-B3 M3 seed BUG CAUGHT + FIXED** —
+  `createNode({kind:'scene', chapter_id:null})` violates the DB CHECK `outline_chapter_required` (a scene
+  requires a chapter); the unit test had mocked `createNode` so it missed this. Fix: seed take-scenes with the
+  **anchor scene's `chapter_id`** (a book chapter, shared by the COW derivative) — proven live (201 CREATED).
+  Residue: one "Dracula — dị bản" derivative Work + knowledge project + 1 scene node (harmless smoke leftovers).
 - ✅ **WS-B3 BUILD COMPLETE 2026-06-26 — M1 + M2 + M3.** **M3 (promote → derivative):** a Promote button
   (enabled once ≥1 take is ready) runs `useWhatIfPromotion` → `deriveWork` (branch_point = the anchor scene's
   **chapter** sort_order, taxonomy:'au', no overrides) and seeds each ready take as a scene node in the

@@ -120,8 +120,12 @@ export function SceneGraphCanvas({ work, bookId, token, onPromoted }: {
       };
       if (derivative.project_id && token && ready.length) {
         const proj = derivative.project_id;
+        // A scene REQUIRES a chapter (DB CHECK `outline_chapter_required` — caught by a
+        // live smoke). The take is an alternate of the anchor scene, so it belongs to the
+        // anchor's chapter (a book chapter, shared by the COW derivative).
+        const chapterId = anchorScene?.chapter_id ?? null;
         void Promise.allSettled(
-          ready.map((a) => compositionApi.createNode(proj, { kind: 'scene', title: a.title }, token)),
+          ready.map((a) => compositionApi.createNode(proj, { kind: 'scene', title: a.title, chapter_id: chapterId }, token)),
         ).then((results) => {
           const failed = results.filter((r) => r.status === 'rejected').length;
           if (failed) toast.error(t('whatif.promotedPartial', { defaultValue: 'Promoted, but {{n}} take(s) couldn’t be added.', n: failed }));
