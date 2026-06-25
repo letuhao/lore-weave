@@ -136,10 +136,20 @@ direct tools.
    out of the box and power users can override. *(User: "cho option để user chọn, nhưng mặc định là 1 model".)*
 2. **Destructive ops — explicit per-op toggle.** `delete`/`merge` in a plan require the user to enable a
    per-op confirm toggle in the plan review; approving a plan never silently deletes. Preserves INV-1.
+   *Mechanism (kit §4, G1):* the toggles are a **confirm-time input** (`enabled_ops: [op_id]`) sent
+   alongside the signed token — they are NOT in the token (the plan payload is immutable inside the HMAC);
+   the executor skips any destructive op not in `enabled_ops` as `skipped: not_confirmed`. `destructive`
+   is stamped from the op registration, never trusted from planner output.
 3. **Plan review UX (Phase 1) — reuse ConfirmCard.** Ops render as preview rows, approved as-is. No new FE
    for Phase 1; the editable plan panel is Phase 3.
 4. **Executor atomicity — per-op idempotent + summary.** Robust to partial re-run (skip-existing), not one
-   all-or-nothing transaction. Returns `{applied, skipped, failed}`.
+   all-or-nothing transaction. Returns `{applied, skipped, failed, aborted}`.
+   *Mechanism (kit §5):* an **idempotency contract per op** (create→skip-on-conflict; set-value→absolute-X
+   only, no toggle/increment; paid `research`→guard on prior effect so re-propose never double-charges,
+   G3); **optimistic concurrency** via a `base_version` on every edit/delete op, re-checked at execute so a
+   plan can't clobber a concurrent edit (G2); a fixed **error-class→outcome table** where only an internal
+   error aborts the rest (S1); and `failed[]` carrying per-op reasons the agent surfaces, with a **K=2
+   re-propose stop** to prevent deterministic-failure loops (G4).
 
 **Build cadence:** spec LOCKED this session; **implementation deferred to a later session** (user: "chỉ chốt
 spec, build sau"). Phase 1 implementation plan to be written at the start of the build session.
