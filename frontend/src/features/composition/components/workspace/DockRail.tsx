@@ -17,9 +17,9 @@ import type { WorkspacePanelId } from '../../workspace/types';
 import { computeReorder } from '../../workspace/dock';
 import { ComponentPicker } from './ComponentPicker';
 
-function SortableTab({ id, active, label, onSelect, onHide }: {
-  id: WorkspacePanelId; active: boolean; label: string;
-  onSelect: () => void; onHide: () => void;
+function SortableTab({ id, active, label, floatLabel, onSelect, onHide, onFloat }: {
+  id: WorkspacePanelId; active: boolean; label: string; floatLabel: string;
+  onSelect: () => void; onHide: () => void; onFloat: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
@@ -34,6 +34,13 @@ function SortableTab({ id, active, label, onSelect, onHide }: {
         {label}
       </button>
       <button
+        type="button" data-testid={`dock-float-${id}`}
+        className="text-neutral-400 opacity-0 hover:text-neutral-600 group-hover:opacity-100"
+        onClick={onFloat}
+        aria-label={floatLabel}
+        title={floatLabel}
+      >⤢</button>
+      <button
         type="button" data-testid={`dock-hide-${id}`}
         className="text-neutral-400 opacity-0 hover:text-neutral-600 group-hover:opacity-100"
         onClick={onHide}
@@ -43,7 +50,7 @@ function SortableTab({ id, active, label, onSelect, onHide }: {
   );
 }
 
-export function DockRail({ visibleIds, hiddenIds, active, onSelect, onReorder, onHide, onShow, rightSlot }: {
+export function DockRail({ visibleIds, hiddenIds, active, onSelect, onReorder, onHide, onShow, onFloat, rightSlot }: {
   visibleIds: WorkspacePanelId[];
   hiddenIds: WorkspacePanelId[];
   active: WorkspacePanelId;
@@ -51,6 +58,7 @@ export function DockRail({ visibleIds, hiddenIds, active, onSelect, onReorder, o
   onReorder: (ids: WorkspacePanelId[]) => void;
   onHide: (id: WorkspacePanelId) => void;
   onShow: (id: WorkspacePanelId) => void;
+  onFloat: (id: WorkspacePanelId) => void;   // M3 — pop the panel into a floating window
   rightSlot?: ReactNode;   // e.g. the Power-view trigger — kept available in dock mode
 }) {
   const { t } = useTranslation('composition');
@@ -74,8 +82,10 @@ export function DockRail({ visibleIds, hiddenIds, active, onSelect, onReorder, o
               <SortableTab
                 key={id} id={id} active={id === active}
                 label={t(id, { defaultValue: id })}
+                floatLabel={t('dock.float', { defaultValue: 'Float' })}
                 onSelect={() => onSelect(id)}
                 onHide={() => onHide(id)}
+                onFloat={() => onFloat(id)}
               />
             ))}
           </SortableContext>

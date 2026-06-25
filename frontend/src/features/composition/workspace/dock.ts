@@ -1,5 +1,5 @@
-// LOOM Composition (T5.4 M2) — pure dock-layout helpers (tested in isolation).
-import type { WorkspaceLayout, WorkspacePanelId } from './types';
+// LOOM Composition (T5.4 M2/M3) — pure dock-layout helpers (tested in isolation).
+import type { Rect, WorkspaceLayout, WorkspacePanelId } from './types';
 
 // The 'threads' panel is conditional (the Work must opt into narrative_thread). The
 // dock must NOT surface it when disabled, even though defaultLayout() seeds an entry
@@ -45,4 +45,24 @@ export function nextActiveAfterHide(
   if (!remaining.length) return null;
   const idx = visible.indexOf(hidingId);
   return remaining[Math.min(idx, remaining.length - 1)];
+}
+
+// ── M3: in-app floating windows ──────────────────────────────────────────────
+
+/** The floated panels (each rendered as a FloatingWindow). Gated on threadsEnabled
+ *  like the dock listings, sorted by dock `order` for a stable initial z-baseline. */
+export function floatingDockIds(layout: WorkspaceLayout, threadsEnabled: boolean): WorkspacePanelId[] {
+  return (Object.entries(layout.panels) as [WorkspacePanelId, NonNullable<WorkspaceLayout['panels'][WorkspacePanelId]>][])
+    .filter(([id, st]) => st.placement === 'float' && included(id, threadsEnabled))
+    .sort((a, b) => (a[1].order ?? 0) - (b[1].order ?? 0))
+    .map(([id]) => id);
+}
+
+/** A new floating window's initial geometry, cascaded by how many windows are already
+ *  open so a freshly-floated panel doesn't land exactly on top of the last one. Clamped
+ *  to a sane default size; the user then drags/resizes (persisted as rect). */
+export function defaultFloatRect(openCount: number): Rect {
+  const step = 28;
+  const offset = (openCount % 6) * step;   // cascade, wrapping after 6 so it stays on-screen
+  return { x: 96 + offset, y: 96 + offset, w: 520, h: 420 };
 }

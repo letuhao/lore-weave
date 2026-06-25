@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { defaultLayout, type WorkspaceLayout } from '../types';
-import { visibleDockIds, hiddenDockIds, computeReorder, nextActiveAfterHide } from '../dock';
+import { visibleDockIds, hiddenDockIds, computeReorder, nextActiveAfterHide, floatingDockIds, defaultFloatRect } from '../dock';
 
 function layoutWith(overrides: Partial<WorkspaceLayout['panels']>): WorkspaceLayout {
   const base = defaultLayout();
@@ -49,5 +49,32 @@ describe('dock helpers (T5.4 M2)', () => {
     expect(nextActiveAfterHide([...vis], 'cast')).toBe('grounding');   // min(idx, len-1) → 1 → 'grounding'
     expect(nextActiveAfterHide([...vis], 'grounding')).toBe('cast');   // last → clamp to prev
     expect(nextActiveAfterHide(['compose'], 'compose')).toBeNull();    // nothing left
+  });
+
+  it('floatingDockIds lists floated panels and excludes them from the rail (M3)', () => {
+    const l = layoutWith({
+      cast: { placement: 'float', order: 6, rect: { x: 10, y: 10, w: 400, h: 300 } },
+      grounding: { placement: 'float', order: 11 },
+    });
+    expect(floatingDockIds(l, true)).toEqual(['cast', 'grounding']);   // sorted by order
+    expect(visibleDockIds(l, true)).not.toContain('cast');             // floated ⇒ off the rail
+    expect(visibleDockIds(l, true)).not.toContain('grounding');
+    expect(hiddenDockIds(l, true)).not.toContain('cast');              // floated ≠ hidden
+  });
+
+  it('floatingDockIds respects the threads gate (M3)', () => {
+    const l = layoutWith({ threads: { placement: 'float', order: 15 } });
+    expect(floatingDockIds(l, false)).not.toContain('threads');
+    expect(floatingDockIds(l, true)).toContain('threads');
+  });
+
+  it('defaultFloatRect cascades and wraps so windows stay on-screen (M3)', () => {
+    const r0 = defaultFloatRect(0);
+    const r1 = defaultFloatRect(1);
+    expect(r1.x).toBeGreaterThan(r0.x);            // cascade offset
+    expect(r1.y).toBeGreaterThan(r0.y);
+    expect(defaultFloatRect(6)).toEqual(r0);       // wraps after 6
+    expect(r0.w).toBeGreaterThan(0);
+    expect(r0.h).toBeGreaterThan(0);
   });
 });

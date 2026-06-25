@@ -30,9 +30,10 @@ import { WorldMap } from './WorldMap';
 import { GroundingPanel } from './GroundingPanel';
 import { ReferencesPanel } from './ReferencesPanel';
 import { DockRail } from './workspace/DockRail';
+import { DockSlot } from './workspace/DockSlot';
 import { useWorkspaceLayoutOptional } from '../context/WorkspaceLayoutContext';
-import { visibleDockIds, hiddenDockIds, nextActiveAfterHide } from '../workspace/dock';
-import type { WorkspacePanelId } from '../workspace/types';
+import { visibleDockIds, hiddenDockIds, floatingDockIds, nextActiveAfterHide, defaultFloatRect } from '../workspace/dock';
+import type { Rect, WorkspacePanelId } from '../workspace/types';
 import { DivergenceWizardButton } from './DivergenceWizardButton';
 import { PromoteWhatIfButton } from './PromoteWhatIfButton';
 import { DerivativeBanner } from './DerivativeBanner';
@@ -95,6 +96,10 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
   // T3.1: the compose guide is lifted here so the co-writer chat's "Use as guide"
   // can pre-fill it (then switch to the compose tab).
   const [composeGuide, setComposeGuide] = useState('');
+  // T5.4 M3 — floating-window z-order (focus stack, most-recent last). Ephemeral
+  // per-device-session UI state (NOT persisted — z-order across reload is immaterial);
+  // a window click moves it to the top. The placement + geometry ARE persisted (layout).
+  const [floatFocus, setFloatFocus] = useState<WorkspacePanelId[]>([]);
 
   // C24 (dị bản M0) — when the wizard spawns a derivative, the studio switches to
   // edit THAT Work so the writer lands in the dị bản (banner + 2-layer badges). The
@@ -314,6 +319,48 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
     }
     ws.dispatch({ type: 'toggle-hidden', id });
   };
+  // T5.4 M3 — in-app floating windows. A floated panel leaves the rail (placement
+  // filters exclude it) and renders as a FloatingWindow via DockSlot; its content is
+  // the SAME element (re-parented, not duplicated) so the M1-hoisted co-writer stream
+  // survives the move. dock↔float reuses the persisted rect so a window reopens where
+  // it last sat.
+  const dockFloating = dockOn ? floatingDockIds(ws!.layout, threadsEnabled) : [];
+  const focusFloat = (id: WorkspacePanelId) =>
+    setFloatFocus((prev) => [...prev.filter((x) => x !== id), id]);
+  // zIndex stays below the Power-view overlay (z-50): base 40 + focus position, capped.
+  const floatZ = (id: WorkspacePanelId) => 40 + Math.min(Math.max(floatFocus.indexOf(id), 0), 9);
+  const floatPanel = (id: WorkspacePanelId) => {
+    if (!ws) return;
+    const rect = ws.layout.panels[id]?.rect ?? defaultFloatRect(dockFloating.length);
+    ws.dispatch({ type: 'set-placement', id, placement: 'float', rect });
+    focusFloat(id);
+    // if the panel being floated was the active dock tab, advance focus so the dock
+    // content pane doesn't go blank (the rail no longer lists it).
+    if (activeTab === id) {
+      const next = nextActiveAfterHide(dockVisible, id);
+      if (next) ws.dispatch({ type: 'set-active', id: next });
+    }
+  };
+  const dockPanel = (id: WorkspacePanelId) => {
+    if (!ws) return;
+    ws.dispatch({ type: 'set-placement', id, placement: 'dock' }); // rect preserved for re-float
+    setFloatFocus((prev) => prev.filter((x) => x !== id));
+  };
+  // Per-panel placement-aware host props (shared by every DockSlot). When the flag is
+  // OFF / there's no provider, `floated` is always false ⇒ DockSlot renders the M2
+  // visible/hidden div, byte-identical to before.
+  const slot = (id: WorkspacePanelId) => ({
+    id,
+    active: activeTab === id,
+    floated: dockOn && ws?.layout.panels[id]?.placement === 'float',
+    rect: ws?.layout.panels[id]?.rect ?? defaultFloatRect(0),
+    title: t(id, { defaultValue: id }),
+    zIndex: floatZ(id),
+    onMove: (rect: Rect) => ws?.dispatch({ type: 'set-rect', id, rect }),
+    onResize: (rect: Rect) => ws?.dispatch({ type: 'set-rect', id, rect }),
+    onDock: () => dockPanel(id),
+    onFocus: () => focusFloat(id),
+  });
   // T5.5 — open the story-map views full-screen. Shared by both the dock rail and the
   // fixed strip (the DockRail rightSlot), so the affordance survives flag ON.
   const powerViewBtn = (
@@ -513,6 +560,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
           onReorder={(ids) => ws.dispatch({ type: 'reorder', ids })}
           onHide={hideDockPanel}
           onShow={(id) => ws.dispatch({ type: 'toggle-hidden', id })}
+          onFloat={floatPanel}
           rightSlot={powerViewBtn}
         />
       ) : (
@@ -544,7 +592,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
             never opened — QualityPanel (correction-stats) + CanonRulesPanel (list).
             Both are bounded + react-query-cached; GroundingPanel self-guards on an
             empty sceneId (no eager query). Accepted for uniform state-preservation. */}
-        <div className={activeTab === 'compose' ? '' : 'hidden'}>
+        <DockSlot {...slot('compose')}>
           <ComposeView
             projectId={work.project_id}
             sceneId={effectiveScene}
@@ -556,15 +604,15 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
             guide={composeGuide}
             onGuideChange={setComposeGuide}
           />
-        </div>
-        <div className={activeTab === 'cowriter' ? '' : 'hidden'}>
+        </DockSlot>
+        <DockSlot {...slot('cowriter')}>
           <CoWriterChat
             bookId={bookId}
             onAccept={acceptProse}
             onUseAsGuide={(text) => { setComposeGuide(text); selectTab('compose'); }}
           />
-        </div>
-        <div className={activeTab === 'assemble' ? '' : 'hidden'}>
+        </DockSlot>
+        <DockSlot {...slot('assemble')}>
           <ChapterAssembleView
             projectId={work.project_id}
             bookId={bookId}
@@ -577,17 +625,17 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
             token={token}
             onAccept={acceptProse}
           />
-        </div>
-        <div className={activeTab === 'planner' ? '' : 'hidden'}>
+        </DockSlot>
+        <DockSlot {...slot('planner')}>
           <PlannerView projectId={work.project_id} bookId={bookId} modelRef={effectiveModelRef} modelSource="user_model" models={models.data ?? []} token={token} />
-        </div>
-        <div className={activeTab === 'beats' ? '' : 'hidden'}>
+        </DockSlot>
+        <DockSlot {...slot('beats')}>
           <BeatSheetView bookId={bookId} projectId={work.project_id} token={token} />
-        </div>
-        <div className={activeTab === 'graph' ? '' : 'hidden'}>
+        </DockSlot>
+        <DockSlot {...slot('graph')}>
           <SceneGraphCanvas work={work} bookId={bookId} token={token} />
-        </div>
-        <div className={activeTab === 'cast' ? '' : 'hidden'}>
+        </DockSlot>
+        <DockSlot {...slot('cast')}>
           <CastCodexPanel
             bookId={bookId}
             chapterId={chapterId}
@@ -596,14 +644,14 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
             search={castSearch}
             onSearchChange={setCastSearch}
           />
-        </div>
-        <div className={activeTab === 'relmap' ? '' : 'hidden'}>
+        </DockSlot>
+        <DockSlot {...slot('relmap')}>
           <RelationshipMap bookId={bookId} token={token} />
-        </div>
-        <div className={activeTab === 'timeline' ? '' : 'hidden'}>
+        </DockSlot>
+        <DockSlot {...slot('timeline')}>
           <TimelineView bookId={bookId} chapterId={chapterId} token={token} />
-        </div>
-        <div className={activeTab === 'arc' ? '' : 'hidden'}>
+        </DockSlot>
+        <DockSlot {...slot('arc')}>
           <CharacterArcView
             bookId={bookId}
             chapterId={chapterId}
@@ -611,8 +659,8 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
             entityId={arcEntityId}
             onEntityChange={setArcEntityId}
           />
-        </div>
-        <div className={activeTab === 'worldmap' ? '' : 'hidden'}>
+        </DockSlot>
+        <DockSlot {...slot('worldmap')}>
           <WorldMap
             work={work}
             bookId={bookId}
@@ -620,8 +668,8 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
             token={token}
             onViewCast={(name) => { setCastSearch(name); selectTab('cast'); }}
           />
-        </div>
-        <div className={activeTab === 'grounding' ? '' : 'hidden'}>
+        </DockSlot>
+        <DockSlot {...slot('grounding')}>
           {/* C24 (dị bản M0) — on a derivative Work, decorate the grounding tab with
               the 2-layer (INHERITED/OVERRIDDEN) canon view + read-only reference
               spine. No-ops on a greenfield Work. */}
@@ -640,38 +688,38 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
             heatmapEnabled={heatmapEnabled}
             onToggleHeatmap={onToggleHeatmap}
           />
-        </div>
-        <div className={activeTab === 'references' ? '' : 'hidden'}>
+        </DockSlot>
+        <DockSlot {...slot('references')}>
           <ReferencesPanel
             projectId={work.project_id}
             sceneId={effectiveScene}
             token={token}
             models={models.data ?? []}
           />
-        </div>
-        <div className={activeTab === 'style' ? '' : 'hidden'}>
+        </DockSlot>
+        <DockSlot {...slot('style')}>
           <StyleVoicePanel
             projectId={work.project_id}
             chapterId={chapterId}
             sceneId={effectiveScene}
             token={token}
           />
-        </div>
-        <div className={activeTab === 'canon' ? '' : 'hidden'}>
+        </DockSlot>
+        <DockSlot {...slot('canon')}>
           <CanonRulesPanel projectId={work.project_id} bookId={bookId} token={token} />
-        </div>
+        </DockSlot>
         {threadsEnabled && (
-          <div className={activeTab === 'threads' ? '' : 'hidden'}>
+          <DockSlot {...slot('threads')}>
             <ThreadsPanel projectId={work.project_id} token={token} enabled={threadsEnabled} />
-          </div>
+          </DockSlot>
         )}
-        <div className={activeTab === 'progress' ? '' : 'hidden'}>
+        <DockSlot {...slot('progress')}>
           <ProgressPanel projectId={work.project_id} bookId={bookId} settings={work.settings} token={token} />
-        </div>
-        <div className={activeTab === 'quality' ? '' : 'hidden'}>
+        </DockSlot>
+        <DockSlot {...slot('quality')}>
           <QualityPanel projectId={work.project_id} token={token} />
-        </div>
-        <div className={activeTab === 'flywheel' ? '' : 'hidden'}>
+        </DockSlot>
+        <DockSlot {...slot('flywheel')}>
           <FlywheelPanel
             projectId={work.project_id}
             token={token}
@@ -679,8 +727,8 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
             onOpenTimeline={() => selectTab('timeline')}
             onOpenRelations={() => selectTab('relmap')}
           />
-        </div>
-        <div className={activeTab === 'settings' ? '' : 'hidden'}>
+        </DockSlot>
+        <DockSlot {...slot('settings')}>
           <CompositionSettingsView
             projectId={work.project_id}
             bookId={bookId}
@@ -688,7 +736,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
             models={models.data ?? []}
             token={token}
           />
-        </div>
+        </DockSlot>
       </div>
       {/* T5.5 — Story Map Power-view overlay (mount-on-open, fresh each open) */}
       {powerViewOpen && (

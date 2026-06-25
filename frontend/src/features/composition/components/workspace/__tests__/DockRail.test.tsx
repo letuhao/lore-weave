@@ -12,6 +12,7 @@ function setup(over: Partial<Parameters<typeof DockRail>[0]> = {}) {
     onReorder: vi.fn(),
     onHide: vi.fn(),
     onShow: vi.fn(),
+    onFloat: vi.fn(),
     ...over,
   };
   render(<DockRail {...props} rightSlot={<button data-testid="rs">RS</button>} />);
@@ -37,6 +38,12 @@ describe('DockRail (T5.4 M2)', () => {
     const p = setup();
     fireEvent.click(screen.getByTestId('dock-hide-grounding'));
     expect(p.onHide).toHaveBeenCalledWith('grounding');
+  });
+
+  it('the ⤢ floats a panel (M3)', () => {
+    const p = setup();
+    fireEvent.click(screen.getByTestId('dock-float-cast'));
+    expect(p.onFloat).toHaveBeenCalledWith('cast');
   });
 
   it('the component picker re-shows a hidden panel', () => {

@@ -227,4 +227,28 @@ describe('CompositionPanel dock mode (T5.4 M2)', () => {
     // another panel became active (the content pane isn't blank)
     expect(wrapperOf('compose')).toHaveClass('hidden');
   });
+
+  it('floating a panel re-parents it into a window and removes its dock tab; docking restores it (M3)', () => {
+    renderDockPanel();
+    expect(screen.getByTestId('dock-tab-cast')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('dock-float-cast'));
+    // the panel left the rail and now lives in a floating window (content re-parented,
+    // not duplicated — still exactly one mock-cast in the tree)
+    expect(screen.queryByTestId('dock-tab-cast')).toBeNull();
+    expect(screen.getByTestId('floating-window')).toBeInTheDocument();
+    expect(screen.getAllByTestId('mock-cast')).toHaveLength(1);
+    // dock it back → window closes, rail tab returns
+    fireEvent.click(screen.getByTestId('floating-window-dock'));
+    expect(screen.queryByTestId('floating-window')).toBeNull();
+    expect(screen.getByTestId('dock-tab-cast')).toBeInTheDocument();
+  });
+
+  it('floating the ACTIVE panel advances dock focus so the content pane is not blank (M3)', () => {
+    renderDockPanel();   // compose is active by default
+    fireEvent.click(screen.getByTestId('dock-float-compose'));
+    expect(screen.queryByTestId('dock-tab-compose')).toBeNull();      // compose floated out of the rail
+    expect(screen.getByTestId('floating-window')).toBeInTheDocument();
+    // the next docked panel (cowriter, order 1) is now active — the pane isn't blank
+    expect(wrapperOf('cowriter')).not.toHaveClass('hidden');
+  });
 });

@@ -233,7 +233,7 @@
   "flywheel": "Flywheel",
   "flywheelPanel": { "loading": "Loading…", "empty": "Publish a chapter to grow your canon — new entities, relations and events will show up here.", "subtitle": "Your latest publish grew the canon:", "entities": "entities", "relations": "relations", "events": "events", "highlights": "New highlights", "kind": { "entity": "Entity", "event": "Event", "relation": "Relation" } },
   "view": { "power_view": "Power view", "back_to_editor": "Back to editor" },
-  "dock": { "addPanel": "Add panel" },
+  "dock": { "addPanel": "Add panel", "float": "Float", "dock": "Dock" },
   "references": "References",
   "referencesPanel": { "title": "Title", "author": "Author", "contentPlaceholder": "Paste a reference passage / influence…", "pickEmbedModel": "Embedding model (set once for this work)", "noEmbedModel": "Add an embedding model (e.g. bge-m3) in AI settings to enable reference retrieval.", "add": "Add reference", "adding": "Adding…", "relevant": "For this scene", "searchPlaceholder": "Search…", "unavailable": "Retrieval unavailable (embedding provider down).", "noHits": "No matching references yet.", "library": "Library", "delete": "Delete", "empty": "No references yet — add influences above." },
   "progressPanel": {
