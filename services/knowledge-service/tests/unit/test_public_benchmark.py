@@ -87,6 +87,12 @@ def _client(*, project=..., benchmark=...) -> tuple[TestClient, AsyncMock]:
     benchmark_repo.get_latest = AsyncMock(
         return_value=_passing_run() if benchmark is ... else benchmark,
     )
+    # D-JOURNEY-KG-BENCHMARK-UX — when a model is supplied the endpoint now uses the
+    # MODEL-scoped lookup (matching the extraction gate; finds the hidden-sandbox
+    # run). Mock both so existing model-provided tests still see the row.
+    benchmark_repo.get_latest_for_model = AsyncMock(
+        return_value=_passing_run() if benchmark is ... else benchmark,
+    )
     app.dependency_overrides[get_current_user] = lambda: _TEST_USER
     app.dependency_overrides[get_projects_repo] = lambda: projects_repo
     app.dependency_overrides[get_benchmark_runs_repo] = lambda: benchmark_repo
@@ -157,20 +163,57 @@ def test_public_benchmark_status_forwards_embedding_model_filter():
         assert call_args.args[2] is None
 
 
-def test_public_benchmark_status_forwards_model_when_set():
-    """With ?embedding_model=bge-m3 → repo.get_latest receives "bge-m3".
-    Catches a regression in the query-param plumbing."""
+def test_public_benchmark_status_with_model_uses_model_scoped_lookup():
+    """D-JOURNEY-KG-BENCHMARK-UX — with ?embedding_model=bge-m3 the endpoint MUST
+    use the MODEL-scoped get_latest_for_model (the same lookup the extraction gate
+    uses), NOT the project-scoped get_latest. Otherwise a passing run on the hidden
+    per-model sandbox project is invisible to the badge → the build button stays
+    disabled forever after a passing benchmark (the "ran it, FE won't update" bug)."""
     client, benchmark_repo = _client(benchmark=None)
     resp = client.get(
         f"/v1/knowledge/projects/{_TEST_PROJECT}/benchmark-status",
         params={"embedding_model": "bge-m3"},
     )
     assert resp.status_code == 200
-    call_args = benchmark_repo.get_latest.await_args
+    benchmark_repo.get_latest_for_model.assert_awaited_once()
+    # project-scoped get_latest must NOT be used when a model is supplied
+    benchmark_repo.get_latest.assert_not_awaited()
+    call_args = benchmark_repo.get_latest_for_model.await_args
     if "embedding_model" in call_args.kwargs:
         assert call_args.kwargs["embedding_model"] == "bge-m3"
     else:
-        assert call_args.args[2] == "bge-m3"
+        assert call_args.args[1] == "bge-m3"
+
+
+def test_public_benchmark_status_surfaces_sandbox_run():
+    """The model-scoped run may live under a DIFFERENT (sandbox) project_id; the
+    badge still surfaces it as passing so the build button enables."""
+    sandbox_run = _passing_run()
+    sandbox_run = BenchmarkRun(
+        benchmark_run_id=sandbox_run.benchmark_run_id,
+        project_id=uuid4(),  # the hidden benchmark sandbox, NOT _TEST_PROJECT
+        embedding_provider_id=None,
+        embedding_model="bge-m3",
+        run_id="run-sandbox",
+        recall_at_3=1.0,
+        mrr=1.0,
+        avg_score_positive=0.9,
+        stddev=0.0,
+        negative_control_pass=True,
+        passed=True,
+        raw_report={},
+        created_at=sandbox_run.created_at,
+    )
+    client, _ = _client(benchmark=sandbox_run)
+    resp = client.get(
+        f"/v1/knowledge/projects/{_TEST_PROJECT}/benchmark-status",
+        params={"embedding_model": "bge-m3"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["has_run"] is True
+    assert body["passed"] is True
+    assert body["run_id"] == "run-sandbox"
 
 
 def test_public_benchmark_status_failed_run_visible():

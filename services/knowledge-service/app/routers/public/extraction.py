@@ -1755,7 +1755,18 @@ async def get_project_benchmark_status(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="project not found",
         )
-    row = await benchmark_repo.get_latest(user_id, project_id, embedding_model)
+    # D-JOURNEY-KG-BENCHMARK-UX — the badge MUST agree with the extraction-start
+    # gate, which is MODEL-scoped: benchmarks run on a hidden per-(user, model)
+    # SANDBOX project, so a passing run lives under the sandbox's project_id, NOT
+    # this content project. The old project-scoped get_latest never saw the sandbox
+    # run, so the badge stayed "no benchmark yet" and the Build button stayed
+    # disabled even after a passing benchmark (the "ran it, FE won't update" bug).
+    # Use the same model-scoped lookup the gate uses when a model is given; fall
+    # back to the project-scoped "has the user ever benchmarked?" read otherwise.
+    if embedding_model:
+        row = await benchmark_repo.get_latest_for_model(user_id, embedding_model)
+    else:
+        row = await benchmark_repo.get_latest(user_id, project_id, embedding_model)
     if row is None:
         return BenchmarkStatusResponse(has_run=False)
     return BenchmarkStatusResponse(
