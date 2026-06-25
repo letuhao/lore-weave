@@ -10,6 +10,7 @@ import { OntologyColumn, type ColumnRow } from './OntologyColumn';
 import { AttributeEditorPanel } from './AttributeEditorPanel';
 import { AdoptPicklistModal } from './AdoptPicklistModal';
 import { QuickCreateModal } from './QuickCreateModal';
+import { ConfirmDialog } from '@/components/shared';
 
 /** 01-manage: the book ontology Manage workspace. Genre → kind → attribute drilldown
  *  over the book-local ontology, with adopt copy-down + book-tier attribute editing.
@@ -23,6 +24,7 @@ export function ManageWorkspace({ bookId }: { bookId: string }) {
   const [attrId, setAttrId] = useState<string | null>(null);
   const [showAdopt, setShowAdopt] = useState(false);
   const [quickCreate, setQuickCreate] = useState<'genre' | 'kind' | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{ type: 'genre' | 'kind'; id: string; name: string } | null>(null);
 
   const { genres, kinds, kind_genres, attributes } = ont.ontology;
 
@@ -76,6 +78,35 @@ export function ManageWorkspace({ bookId }: { bookId: string }) {
       t('toast.saved'),
       'toast.save_failed',
     );
+  };
+
+  // Genre/kind delete cascades server-side (deprecates attributes + kind links), so it
+  // goes through a destructive confirm. On success, clear any selection that pointed at
+  // the now-deleted row so the drilldown doesn't show a stale parent.
+  const onConfirmDelete = () => {
+    if (!confirmDelete) return;
+    const { type, id } = confirmDelete;
+    void guard(
+      async () => {
+        if (type === 'genre') {
+          await ont.deleteGenre(id);
+          if (genreId === id) {
+            setGenreId(null);
+            setKindId(null);
+            setAttrId(null);
+          }
+        } else {
+          await ont.deleteKind(id);
+          if (kindId === id) {
+            setKindId(null);
+            setAttrId(null);
+          }
+        }
+      },
+      t('toast.deleted'),
+      'toast.delete_failed',
+    );
+    setConfirmDelete(null);
   };
 
   if (ont.isLoading) return <p className="p-4 text-sm text-muted-foreground">{t('manage.loading')}</p>;
@@ -134,6 +165,8 @@ export function ManageWorkspace({ bookId }: { bookId: string }) {
           onNew={() => setQuickCreate('genre')}
           newLabel={t('col.new_genre')}
           emptyText={t('col.select_genre')}
+          onDelete={(r) => setConfirmDelete({ type: 'genre', id: r.id, name: r.label })}
+          deleteLabel={t('col.delete_genre')}
         />
         <OntologyColumn
           title={genreId ? t('col.kinds_in', { genre: genres.find((g) => g.genre_id === genreId)?.name ?? '' }) : t('col.kinds')}
@@ -147,6 +180,8 @@ export function ManageWorkspace({ bookId }: { bookId: string }) {
           newLabel={t('col.new_kind')}
           emptyText={genreId ? t('col.empty_kinds') : t('col.select_genre')}
           disabled={!genreId}
+          onDelete={(r) => setConfirmDelete({ type: 'kind', id: r.id, name: r.label })}
+          deleteLabel={t('col.delete_kind')}
         />
         <OntologyColumn
           title={t('col.attributes')}
@@ -191,6 +226,23 @@ export function ManageWorkspace({ bookId }: { bookId: string }) {
           kind={quickCreate}
           onCreate={onQuickCreate}
           onClose={() => setQuickCreate(null)}
+        />
+      )}
+
+      {confirmDelete && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => {
+            if (!o) setConfirmDelete(null);
+          }}
+          variant="destructive"
+          title={t(confirmDelete.type === 'genre' ? 'del.genre_title' : 'del.kind_title', {
+            name: confirmDelete.name,
+          })}
+          description={t(confirmDelete.type === 'genre' ? 'del.genre_body' : 'del.kind_body')}
+          confirmLabel={t('del.confirm')}
+          cancelLabel={t('del.cancel')}
+          onConfirm={onConfirmDelete}
         />
       )}
     </div>

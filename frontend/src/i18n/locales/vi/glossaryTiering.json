@@ -57,6 +57,8 @@
     "new_genre": "Thể loại mới",
     "new_kind": "Loại mới",
     "new_attr": "Thuộc tính mới",
+    "delete_genre": "Xóa thể loại",
+    "delete_kind": "Xóa loại",
     "select_genre": "Chọn một thể loại",
     "select_kind": "Chọn một loại để xem các thuộc tính của nó",
     "empty_kinds": "Chưa có loại nào liên kết với thể loại này.",
@@ -142,6 +144,14 @@
     "entity_genre": "thể loại",
     "entity_kind": "loại",
     "entity_attribute": "thuộc tính"
+  },
+  "del": {
+    "genre_title": "Xóa \"{{name}}\"?",
+    "genre_body": "Gỡ thể loại này khỏi cuốn sách và ngừng dùng các thuộc tính cùng liên kết loại của nó. Các thực thể hiện có vẫn giữ dữ liệu; bạn có thể áp dụng lại thể loại sau.",
+    "kind_title": "Xóa \"{{name}}\"?",
+    "kind_body": "Gỡ loại này khỏi cuốn sách và ngừng dùng các thuộc tính của nó. Các thực thể hiện có thuộc loại này vẫn giữ dữ liệu; bạn có thể áp dụng lại loại sau.",
+    "confirm": "Xóa",
+    "cancel": "Hủy"
   },
   "toast": {
     "adopted": "Đã áp dụng vào cuốn sách này",

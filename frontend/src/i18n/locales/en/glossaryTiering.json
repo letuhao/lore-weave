@@ -57,6 +57,8 @@
     "new_genre": "New genre",
     "new_kind": "New kind",
     "new_attr": "New attribute",
+    "delete_genre": "Delete genre",
+    "delete_kind": "Delete kind",
     "select_genre": "Select a genre",
     "select_kind": "Select a kind to see its attributes",
     "empty_kinds": "No kinds linked to this genre yet.",
@@ -142,6 +144,14 @@
     "entity_genre": "genre",
     "entity_kind": "kind",
     "entity_attribute": "attribute"
+  },
+  "del": {
+    "genre_title": "Delete \"{{name}}\"?",
+    "genre_body": "Removes this genre from the book and deprecates its attributes and kind links. Existing entities keep their data; you can re-adopt the genre later.",
+    "kind_title": "Delete \"{{name}}\"?",
+    "kind_body": "Removes this kind from the book and deprecates its attributes. Existing entities of this kind keep their data; you can re-adopt the kind later.",
+    "confirm": "Delete",
+    "cancel": "Cancel"
   },
   "toast": {
     "adopted": "Adopted into this book",

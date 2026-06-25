@@ -57,6 +57,8 @@
     "new_genre": "新增類型",
     "new_kind": "新增種類",
     "new_attr": "新增屬性",
+    "delete_genre": "刪除類型",
+    "delete_kind": "刪除種類",
     "select_genre": "選擇一個類型",
     "select_kind": "選擇一個種類以檢視其屬性",
     "empty_kinds": "尚未有種類連結到此類型。",
@@ -142,6 +144,14 @@
     "entity_genre": "類型",
     "entity_kind": "種類",
     "entity_attribute": "屬性"
+  },
+  "del": {
+    "genre_title": "刪除「{{name}}」？",
+    "genre_body": "從這本書移除此類型，並停用其屬性與種類連結。既有實體仍保留資料；你之後可重新採用此類型。",
+    "kind_title": "刪除「{{name}}」？",
+    "kind_body": "從這本書移除此種類，並停用其屬性。此種類的既有實體仍保留資料；你之後可重新採用此種類。",
+    "confirm": "刪除",
+    "cancel": "取消"
   },
   "toast": {
     "adopted": "已採用進這本書",
