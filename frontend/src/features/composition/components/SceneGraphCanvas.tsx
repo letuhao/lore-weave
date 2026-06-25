@@ -5,17 +5,22 @@
 // A then B (both ring), choose kind/label, "+ link" → POST (409 dup → toast). An
 // edge click selects it → ✕ delete. The open (↗) button jumps to the scene.
 // View; all data logic in useOutline/useSceneLinks + useSetWorkSettings.
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useOutline, useOutlineMutations, useSceneLinks } from '../hooks/useOutline';
 import { useSetWorkSettings } from '../hooks/useWork';
+import { useSceneWhatIf, whatIfAltPositions, whatIfAltEdges, type WhatIfEdge } from '../hooks/useSceneWhatIf';
 import type { OutlineNode, SceneLink, SceneLinkKind, Work } from '../types';
 import { SceneNode } from './SceneNode';
 import { SceneEdge } from './SceneEdge';
+import { WhatIfAltNode } from './WhatIfAltNode';
 import { GraphCanvas } from './GraphCanvas';
 import { autoLayout, NODE_H, NODE_W, PAD, type Pos } from './sceneGraphLayout';
+
+type GraphEdge = SceneLink | WhatIfEdge;
+const isWhatIfEdge = (e: GraphEdge): e is WhatIfEdge => 'wi' in e;
 
 export function SceneGraphCanvas({ work, bookId, token }: { work: Work; bookId: string; token: string | null }) {
   const { t } = useTranslation('composition');
@@ -45,6 +50,9 @@ export function SceneGraphCanvas({ work, bookId, token }: { work: Work; bookId: 
   const [selectedEdge, setSelectedEdge] = useState<string | null>(null);
   const [kind, setKind] = useState<SceneLinkKind>('setup_payoff');
   const [label, setLabel] = useState('');
+  // WS-B3 M1 — the ephemeral on-canvas what-if branch (dashed, beside canon; nothing
+  // persisted until a future Promote step). Discard leaves zero residue.
+  const whatIf = useSceneWhatIf();
 
   const persist = (positions: Record<string, Pos>) => {
     const sg = (work.settings.scene_graph as Record<string, unknown> | undefined) ?? {};
@@ -85,6 +93,21 @@ export function SceneGraphCanvas({ work, bookId, token }: { work: Work; bookId: 
   const byId = useMemo(() => new Map(scenes.map((s) => [s.id, s])), [scenes]);
   const positions: Record<string, Pos> = Object.fromEntries(scenes.map((s) => [s.id, posOf(s.id)]));
 
+  // WS-B3 M1 — merge the ephemeral what-if branch (dashed alt nodes + edges) into the
+  // graph passed to GraphCanvas. Empty when no branch is open (canon graph unchanged).
+  const branch = whatIf.branch;
+  // Auto-discard the branch if its anchor scene is deleted out from under it (a legit
+  // synchronization effect): a what-if is meaningless without its anchor, and a stale
+  // anchorSceneId would later derive a branch_point from a non-existent scene (M3).
+  useEffect(() => {
+    if (branch && !scenes.some((s) => s.id === branch.anchorSceneId)) whatIf.discard();
+  }, [branch, scenes, whatIf.discard]);
+  const altById = useMemo(() => new Map((branch?.alts ?? []).map((a) => [a.id, a])), [branch]);
+  const altPositions = branch ? whatIfAltPositions(branch, posOf(branch.anchorSceneId)) : {};
+  const allPositions: Record<string, Pos> = { ...positions, ...altPositions };
+  const allNodeIds = [...scenes.map((s) => s.id), ...(branch?.alts ?? []).map((a) => a.id)];
+  const allEdges: GraphEdge[] = branch ? [...links, ...whatIfAltEdges(branch)] : links;
+
   return (
     <div className="flex h-full flex-col" data-testid="composition-graph">
       <div className="flex flex-shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2 text-[11px]">
@@ -120,6 +143,37 @@ export function SceneGraphCanvas({ work, bookId, token }: { work: Work; bookId: 
             </button>
           </div>
         )}
+
+        {/* WS-B3 M1 — what-if controls. Entry: exactly one scene selected + no branch
+            yet → branch from it. Active: add another alternate / discard (zero residue). */}
+        {!whatIf.active && selected.length === 1 && (
+          <button
+            type="button" data-testid="scenegraph-whatif-start"
+            className="ml-auto rounded border border-purple-300 px-2 py-0.5 text-purple-700 hover:bg-purple-50 dark:border-purple-700 dark:text-purple-300 dark:hover:bg-purple-950/30"
+            onClick={() => { whatIf.start(selected[0]); setSelected([]); }}
+          >
+            ⑂ {t('whatif.start', { defaultValue: 'What-if from here' })}
+          </button>
+        )}
+        {whatIf.active && (
+          <div className="ml-auto flex items-center gap-1" data-testid="scenegraph-whatif-bar">
+            <span className="text-purple-700/80 dark:text-purple-300/80">{t('whatif.active', { defaultValue: 'What-if branch (unsaved)' })}</span>
+            <button
+              type="button" data-testid="scenegraph-whatif-add"
+              className="rounded border border-purple-300 px-2 py-0.5 text-purple-700 hover:bg-purple-50 dark:border-purple-700 dark:text-purple-300 dark:hover:bg-purple-950/30"
+              onClick={whatIf.addAlt}
+            >
+              + {t('whatif.addAlt', { defaultValue: 'alternate' })}
+            </button>
+            <button
+              type="button" data-testid="scenegraph-whatif-discard"
+              className="rounded px-2 py-0.5 text-muted-foreground hover:text-foreground"
+              onClick={whatIf.discard}
+            >
+              {t('whatif.discard', { defaultValue: 'Discard what-if' })}
+            </button>
+          </div>
+        )}
       </div>
 
       {scenes.length === 0 ? (
@@ -127,15 +181,15 @@ export function SceneGraphCanvas({ work, bookId, token }: { work: Work; bookId: 
           {t('scenegraph.empty', { defaultValue: 'No scenes yet — plan some scenes in the outline to see the graph.' })}
         </div>
       ) : (
-        <GraphCanvas<SceneLink>
+        <GraphCanvas<GraphEdge>
           testid="scenegraph-svg"
-          positions={positions}
-          nodeIds={scenes.map((s) => s.id)}
-          edges={links}
+          positions={allPositions}
+          nodeIds={allNodeIds}
+          edges={allEdges}
           edgeEndpoints={(l) => ({ from: l.from_node_id, to: l.to_node_id })}
           edgeKey={(l) => l.id}
           nodeSize={{ w: NODE_W, h: NODE_H }}
-          onNodeClick={toggleSelect}
+          onNodeClick={(id) => { if (!altById.has(id)) toggleSelect(id); }}
           onNodeDrag={(id, pos) => applyLocal({ ...localRef.current, [id]: pos })}
           onNodeDragEnd={() => persist(localRef.current)}
           onBackgroundClick={clearSelection}
@@ -144,19 +198,32 @@ export function SceneGraphCanvas({ work, bookId, token }: { work: Work; bookId: 
               <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8" />
             </marker>
           )}
-          renderEdge={(l, from, to) => (
-            <SceneEdge
-              link={l} from={from} to={to}
-              selected={selectedEdge === l.id}
-              onSelect={() => { setSelected([]); setSelectedEdge(l.id); }}
-              onDelete={() => deleteEdge(l.id)}
-            />
-          )}
+          renderEdge={(l, from, to) =>
+            isWhatIfEdge(l) ? (
+              // dashed branch edge anchor → alternate (purple, no arrow/selection)
+              <line
+                key={l.id} data-testid={`whatif-edge-${l.id}`}
+                x1={from.x + NODE_W} y1={from.y + NODE_H / 2} x2={to.x} y2={to.y + NODE_H / 2}
+                stroke="#a855f7" strokeWidth={1.5} strokeDasharray="4 3"
+              />
+            ) : (
+              <SceneEdge
+                link={l} from={from} to={to}
+                selected={selectedEdge === l.id}
+                onSelect={() => { setSelected([]); setSelectedEdge(l.id); }}
+                onDelete={() => deleteEdge(l.id)}
+              />
+            )
+          }
           renderNode={(id, h) => {
+            const alt = altById.get(id);
+            if (alt) {
+              return <WhatIfAltNode alt={alt} pos={allPositions[id]} onRemove={() => whatIf.removeAlt(id)} />;
+            }
             const n = byId.get(id)!;
             return (
               <SceneNode
-                node={n} pos={positions[id]} selected={selected.includes(id)}
+                node={n} pos={allPositions[id]} selected={selected.includes(id)}
                 onPointerDown={h.onPointerDown} onSelect={() => toggleSelect(id)} onOpen={() => openScene(n)}
               />
             );

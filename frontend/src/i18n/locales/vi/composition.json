@@ -119,6 +119,14 @@
     "open": "Mở cảnh",
     "empty": "Chưa có cảnh nào — hãy lập kế hoạch cảnh trong dàn ý để xem sơ đồ."
   },
+  "whatif": {
+    "start": "Giả định từ đây",
+    "active": "Nhánh giả định (chưa lưu)",
+    "addAlt": "phương án",
+    "discard": "Bỏ giả định",
+    "removeAlt": "Xóa phương án",
+    "altHint": "Phác thảo một phương án (xem trước) — chưa lưu cho đến khi bạn thăng cấp."
+  },
   "cast": "Nhân vật",
   "codex": {
     "title": "Nhân vật & Từ điển",

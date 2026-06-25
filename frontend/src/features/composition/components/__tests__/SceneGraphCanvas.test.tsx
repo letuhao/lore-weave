@@ -130,6 +130,52 @@ describe('SceneGraphCanvas (T1.3)', () => {
     expect(navigateFn).toHaveBeenCalledWith('/books/b/chapters/C2/edit');
   });
 
+  // ── WS-B3 M1 — on-canvas what-if (ephemeral, zero residue) ──
+  it('selecting ONE scene reveals "What-if from here"; starting it draws a dashed alt node + edge', () => {
+    render(<SceneGraphCanvas work={work} bookId="b" token="t" />);
+    clickNode('s1');                                   // exactly one scene selected
+    fireEvent.click(screen.getByTestId('scenegraph-whatif-start'));
+    // a dashed alternate + branch edge appear; canon nodes are unchanged
+    expect(screen.getByTestId('whatif-alt-node')).toBeInTheDocument();
+    expect(document.querySelector('[data-testid^="whatif-edge-"]')).toBeTruthy();
+    expect(screen.getAllByTestId('scene-node')).toHaveLength(2);
+    expect(createSceneLink.mutate).not.toHaveBeenCalled(); // ephemeral — nothing persisted
+  });
+
+  it('"+ alternate" adds another alt; "Discard" removes the whole branch (zero residue)', () => {
+    render(<SceneGraphCanvas work={work} bookId="b" token="t" />);
+    clickNode('s1');
+    fireEvent.click(screen.getByTestId('scenegraph-whatif-start'));
+    fireEvent.click(screen.getByTestId('scenegraph-whatif-add'));
+    expect(screen.getAllByTestId('whatif-alt-node')).toHaveLength(2);
+    fireEvent.click(screen.getByTestId('scenegraph-whatif-discard'));
+    expect(screen.queryByTestId('whatif-alt-node')).toBeNull();   // branch gone
+    expect(screen.getAllByTestId('scene-node')).toHaveLength(2);  // canon intact
+    expect(setSettings.mutate).not.toHaveBeenCalled();            // no persistence on discard
+  });
+
+  it('the ✕ on an alt node removes it (last alt → branch closes)', () => {
+    render(<SceneGraphCanvas work={work} bookId="b" token="t" />);
+    clickNode('s1');
+    fireEvent.click(screen.getByTestId('scenegraph-whatif-start'));
+    const altId = (screen.getByTestId('whatif-alt-node').getAttribute('data-alt'))!;
+    fireEvent.click(screen.getByTestId(`whatif-alt-remove-${altId}`));
+    // it was the only alt → the whole branch closes (zero residue)
+    expect(screen.queryByTestId('whatif-alt-node')).toBeNull();
+    expect(screen.queryByTestId('scenegraph-whatif-bar')).toBeNull();
+  });
+
+  it('auto-discards the branch if its anchor scene is deleted (no orphan + no stale branch_point)', () => {
+    const { rerender } = render(<SceneGraphCanvas work={work} bookId="b" token="t" />);
+    clickNode('s1');
+    fireEvent.click(screen.getByTestId('scenegraph-whatif-start'));
+    expect(screen.getByTestId('whatif-alt-node')).toBeInTheDocument();
+    // s1 (the anchor) is deleted out from under the open what-if
+    outlineHook.mockReturnValue({ data: [node({ id: 's2', story_order: 1, title: 'Payoff', chapter_id: 'C2' })] });
+    rerender(<SceneGraphCanvas work={work} bookId="b" token="t" />);
+    expect(screen.queryByTestId('whatif-alt-node')).toBeNull();   // branch auto-discarded
+  });
+
   it('dragging a node past the threshold persists positions to work.settings', () => {
     render(<SceneGraphCanvas work={work} bookId="b" token="t" />);
     fireEvent.pointerDown(body('s1'), { clientX: 0, clientY: 0 });

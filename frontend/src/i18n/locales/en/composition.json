@@ -119,6 +119,14 @@
     "open": "Open scene",
     "empty": "No scenes yet — plan some scenes in the outline to see the graph."
   },
+  "whatif": {
+    "start": "What-if from here",
+    "active": "What-if branch (unsaved)",
+    "addAlt": "alternate",
+    "discard": "Discard what-if",
+    "removeAlt": "Remove alternate",
+    "altHint": "Draft an alternate (preview) — not saved until you promote."
+  },
   "cast": "Cast",
   "codex": {
     "title": "Cast & Codex",

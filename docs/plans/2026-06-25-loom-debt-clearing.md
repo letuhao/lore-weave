@@ -166,7 +166,14 @@ Batch the LOWs: `D-T3.1-SCENE-HINT`/`GUIDE-APPEND`, `D-T3.3-SLASH-CONTINUE`/`CHA
   - **⚠ Pre-existing (out of scope, NOT mine):** the full FE suite has **9 `world i18n` parity failures**
     (`world` / MMO-track namespace — e.g. `graph.loadFailed`, `populate.addFailed` missing in non-en locales).
     Untouched by this work; a separate track's i18n debt. Track there, not here.
-- ✅ **WS-B3 SPEC AUTHORED 2026-06-26 (no build, as locked)** — code-grounded feature spec
+- 🟡 **WS-B3 BUILD STARTED 2026-06-26 — M1 (on-canvas scaffold) BUILT** (§8 resolved: build). The ephemeral
+  what-if branch on the Scene Graph: `useSceneWhatIf` (branch model — start/addAlt/removeAlt/discard, **zero
+  residue**, nothing persisted), `WhatIfAltNode` (dashed/tinted alt beside canon), and `SceneGraphCanvas`
+  integration (a "⑂ What-if from here" entry on a selected scene → dashed alt nodes + branch edges merged into
+  the canvas; +alternate / discard). 4-locale i18n. +8 tests (hook + canvas render incl. zero-residue discard);
+  composition suite + parity green, tsc clean. **M2 (per-node generate-take ghost + judge badge) + M3 (promote
+  → derivative bridge) remain** — see the spec's V1 §3.
+- ✅ **WS-B3 SPEC AUTHORED 2026-06-26** — code-grounded feature spec
   [2026-06-26-scene-graph-whatif.md](../specs/2026-06-26-scene-graph-whatif.md): the on-canvas what-if is an
   **ephemeral branch preview that PROMOTES into the existing derivative flow** (`useWhatIfPromotion` →
   `deriveWork`), NOT a second persistence path — which resolves the wizard-overlap question. Dashed branch +
