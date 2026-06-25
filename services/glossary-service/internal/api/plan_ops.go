@@ -31,6 +31,10 @@ import (
 // Lowercase ASCII slug — the same shape the create cores assume downstream.
 var slugPattern = regexp.MustCompile(`^[a-z0-9_]+$`)
 
+// maxKindsPerOp bounds a single create_kinds op (MaxPlanOps caps op COUNT, not the
+// kinds inside one op). Keeps the plan token + execution bounded (MED-4).
+const maxKindsPerOp = 30
+
 // ── op param shapes (thin wrappers over the existing typed params) ────────────
 
 // createKindsParams is the create_kinds op payload — the same batch shape the
@@ -205,6 +209,14 @@ func (s *Server) planRegistry() mcp.Registry {
 // errVersionConflict (→ ErrStaleVersion) and a missing row as pgx.ErrNoRows (→
 // ErrNotFound), both via mapCoreErr at the call site.
 func (s *Server) editAttributeCore(ctx context.Context, bookID uuid.UUID, p editAttributeParams, base string) (any, error) {
+	// Fail closed when no base_version is supplied: compareBaseVersion treats "" as
+	// "no check", so without this an edit would silently clobber a concurrent change.
+	// The planner cannot read row versions, so plan-driven edits land here — reject
+	// them rather than clobber (HIGH-1). edit_attribute via a plan is deferred until
+	// the planner threads per-row versions.
+	if strings.TrimSpace(base) == "" {
+		return nil, fmt.Errorf("%w: edit_attribute requires a base_version (not supported via a plan yet)", mcp.ErrBadParams)
+	}
 	if p.Fields.FieldType != nil && !isValidFieldType(*p.Fields.FieldType) {
 		return nil, errInvalidFieldType
 	}
@@ -269,9 +281,15 @@ func validateCreateKinds(params json.RawMessage) error {
 	if len(p.Kinds) == 0 {
 		return errors.New("create_kinds: at least one kind is required")
 	}
+	if len(p.Kinds) > maxKindsPerOp {
+		return fmt.Errorf("create_kinds: at most %d kinds per op (got %d) — split the goal into a smaller plan", maxKindsPerOp, len(p.Kinds))
+	}
 	for _, k := range p.Kinds {
 		if !slugPattern.MatchString(k.Code) {
 			return fmt.Errorf("create_kinds: kind code %q must match ^[a-z0-9_]+$", k.Code)
+		}
+		if strings.TrimSpace(k.Name) == "" {
+			return fmt.Errorf("create_kinds: kind %q must have a non-empty name", k.Code)
 		}
 		for _, a := range k.Attributes {
 			if err := validateAttrSpec("create_kinds", a); err != nil {
@@ -306,6 +324,9 @@ func validateAddAttributes(params json.RawMessage) error {
 func validateAttrSpec(op string, a kindAttrSpec) error {
 	if !slugPattern.MatchString(a.Code) {
 		return fmt.Errorf("%s: attribute code %q must match ^[a-z0-9_]+$", op, a.Code)
+	}
+	if strings.TrimSpace(a.Name) == "" {
+		return fmt.Errorf("%s: attribute %q must have a non-empty name", op, a.Code)
 	}
 	if a.Description == nil || strings.TrimSpace(*a.Description) == "" {
 		return fmt.Errorf("%s: attribute %q must have a non-empty description", op, a.Code)
