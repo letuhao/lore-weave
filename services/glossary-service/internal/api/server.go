@@ -407,6 +407,9 @@ func (s *Server) Router() http.Handler {
 			r.Get("/kinds/{kind_id}/research-estimate", s.researchEstimate)
 			r.Get("/research-jobs", s.listResearchJobs)
 			r.Get("/research-jobs/{job_id}", s.getResearchJob)
+			r.Post("/research-jobs/{job_id}/pause", s.pauseResearchJob)
+			r.Post("/research-jobs/{job_id}/resume", s.resumeResearchJob)
+			r.Post("/research-jobs/{job_id}/cancel", s.cancelResearchJob)
 			r.Route("/entities", func(r chi.Router) {
 				r.Get("/", s.listEntities)
 				r.Post("/", s.createEntity)
