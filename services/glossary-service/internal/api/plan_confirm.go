@@ -96,6 +96,12 @@ func (s *Server) previewExecutePlan(w http.ResponseWriter, ctx context.Context, 
 		anyDestructive = anyDestructive || op.Destructive
 		rows = append(rows, row)
 	}
+	// Surface the planner's notes (things it could NOT express as an op) on the card too —
+	// the FE planner view renders rows whose label is "note" as a trailing notes block.
+	// Mirrors planPreviewRows (the mint path); previously only ops were previewed.
+	for _, n := range plan.Notes {
+		rows = append(rows, previewRow{Label: "note", Value: n})
+	}
 	writeJSON(w, http.StatusOK, actionPreview{
 		Descriptor:  descExecutePlan,
 		Destructive: anyDestructive,

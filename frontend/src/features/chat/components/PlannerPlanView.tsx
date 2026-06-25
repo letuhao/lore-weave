@@ -11,8 +11,10 @@ import type { ActionPreviewRow } from '../actionsApi';
  * Render-only: the parent (ConfirmActionCard) owns the enabled-ops set + toggle.
  */
 
-// Op-type → human label. Unknown types fall back to a humanized slug so a NEW op the BE
-// adds still reads sensibly without a FE change.
+// Op label → display. In production the execute_plan PREVIEW already sends a human label
+// ("create kinds", "delete genre"), which falls through to the slug-humanizer (just
+// capitalized). This map is a defensive fallback for the raw op-type form (the mint path)
+// so either shape reads sensibly without a FE change.
 const OP_LABELS: Record<string, string> = {
   adopt_genres: 'Adopt standard genres & kinds',
   create_kinds: 'Create kinds',
@@ -76,6 +78,10 @@ export function PlannerPlanView({
                     </span>
                   )}
                 </div>
+                {/* The concrete target / counts (BE preview puts the "what" here: a kind
+                    code, an attribute path, "3 new", merge winner/losers). Must render —
+                    dropping it leaves the step without its subject. */}
+                {r.value && <p className="mt-0.5 break-words text-[10px] text-foreground/80">{r.value}</p>}
                 {r.note && <p className="mt-0.5 text-[10px] leading-snug text-muted-foreground">{r.note}</p>}
                 {isDestructive && (
                   <label className="mt-1 flex cursor-pointer items-center gap-1.5 text-[10px] text-red-500">
