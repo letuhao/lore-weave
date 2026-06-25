@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { ShieldAlert, Check, X } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { actionsApi, type ActionPreview } from '../actionsApi';
+import { PlannerPlanView } from './PlannerPlanView';
 import { useChatStream } from '../providers';
 import type { FrontendToolOutcome } from '../hooks/useChatMessages';
 import type { ToolCallRecord } from '../types';
@@ -130,6 +131,9 @@ export function ConfirmActionCard({ record }: Props) {
   const title = preview?.title || argTitle;
   const rows = preview?.preview_rows ?? [];
   const destructive = preview?.destructive ?? false;
+  // execute_plan cards (the glossary planner) get the richer step-by-step PlannerPlanView
+  // instead of the terse label:value rows.
+  const isPlan = (preview?.descriptor ?? args.descriptor) === 'execute_plan';
 
   async function resume(outcome: FrontendToolOutcome) {
     if (record.runId && record.toolCallId) {
@@ -260,10 +264,18 @@ export function ConfirmActionCard({ record }: Props) {
         </>
       )}
 
-      {/* Non-batch single-action / plan preview rows (token-scoped). A destructive
-          plan op (op_id + destructive) renders an OPT-IN checkbox — default OFF, so
-          the executor skips it unless the human ticks it (G1). */}
-      {!isBatch && rows.length > 0 && (
+      {/* execute_plan → the richer planner view (numbered steps + rationale + per-op
+          destructive opt-in). Other actions keep the terse label:value rows. A destructive
+          plan op (op_id + destructive) renders an OPT-IN checkbox — default OFF (G1). */}
+      {!isBatch && rows.length > 0 && isPlan && (
+        <PlannerPlanView
+          rows={rows}
+          enabledOps={enabledOps}
+          onToggleOp={toggleOp}
+          disabled={busy || state !== null}
+        />
+      )}
+      {!isBatch && rows.length > 0 && !isPlan && (
         <ul className="mb-1 space-y-0.5 text-[10px] text-foreground/90">
           {rows.map((r, i) => (
             r.destructive && r.op_id ? (
