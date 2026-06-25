@@ -188,6 +188,11 @@ class GenerationParams(BaseModel):
     temperature: float | None = None
     top_p: float | None = None
     thinking: bool | None = None
+    # Granular reasoning-effort default for the session (resolve_reasoning reads it,
+    # taking precedence over the legacy boolean `thinking`). "off" disables hidden
+    # thinking entirely — the cure for an over-thinking / runaway-reasoning model that
+    # burns tokens without finishing. None ⇒ fall back to `thinking` / platform default.
+    reasoning_effort: str | None = None
 
     def model_post_init(self, __context: Any) -> None:
         if self.temperature is not None and not (0.0 <= self.temperature <= 2.0):
@@ -196,6 +201,10 @@ class GenerationParams(BaseModel):
             raise ValueError("top_p must be between 0.0 and 1.0")
         if self.max_tokens is not None and self.max_tokens < 0:
             raise ValueError("max_tokens must be non-negative")
+        if self.reasoning_effort is not None and self.reasoning_effort not in (
+            "off", "auto", "low", "medium", "high",
+        ):
+            raise ValueError("reasoning_effort must be off|auto|low|medium|high")
 
 
 class CreateSessionRequest(BaseModel):

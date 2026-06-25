@@ -1,11 +1,16 @@
 // ── Chat V2 Types ─────────────────────────────────────────────────────────────
 // Mirrors chat-service backend models.
 
+export type ReasoningEffort = 'off' | 'auto' | 'low' | 'medium' | 'high';
+
 export interface GenerationParams {
   max_tokens?: number | null;
   temperature?: number | null;
   top_p?: number | null;
   thinking?: boolean | null;
+  // Granular reasoning effort (takes precedence over `thinking`). 'off' disables hidden
+  // thinking — the fix for an over-thinking model that loops without finishing.
+  reasoning_effort?: ReasoningEffort | null;
 }
 
 export interface ChatSession {
