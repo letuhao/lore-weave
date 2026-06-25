@@ -156,3 +156,51 @@ spec, build sau"). Phase 1 implementation plan to be written at the start of the
 "dựng ontology cho <book>" → agent calls `glossary_plan` once → ONE plan card lists all genres+kinds+attrs
 → user approves ONCE → executor creates everything (idempotent) → agent reports the real summary. Zero
 per-kind clicks, zero narration-without-action, zero forgotten-param retries.
+
+## 9. Relation to prior art (why this design, not a framework)
+
+This is the established **Plan-and-Execute** pattern (a.k.a. plan-then-execute), validated against the
+literature 2026-06-25. We adopt the pattern but deliberately diverge from the typical framework
+implementation in one way that makes it *more* reliable, and defer one piece the literature considers core.
+
+**The pattern, and the evidence for it.** Separate a capable **planner** that decomposes the goal upfront
+from an **executor** that applies it. The reliability argument is measured, not hand-wavy: typed/structured
+plans reach ~99% accuracy on multi-step workflows vs **89-94% for ReAct** loops, because "reasoning errors
+in one cycle compound through subsequent cycles" — exactly the compounding-failure root cause in §1.
+Planning upfront also yields **control-flow integrity against indirect prompt injection**: because the plan
+is fixed before any write, injected instructions in tool/research output cannot redirect the agent's
+strategy. That is our INV-6 (data ≠ instructions) restated as an architectural property, on top of the
+INV-1 human gate (which the security literature calls an *essential* HITL verification step).
+*(Sources: LangChain "Plan-and-Execute Agents"; apxml plan-and-execute reliability data;
+arXiv:2509.08646 "Architecting Resilient LLM Agents: Secure Plan-then-Execute".)*
+
+**Where we go beyond the baseline (§3.3).** The textbook executor is *still an LLM* picking a tool per step
+— which re-introduces a per-step failure surface. Ours has **no LLM in the executor**: each typed op maps
+1:1 to an existing domain core func, so there is no tool-selection decision left to get wrong at execute
+time. This is closer to a *compiled* plan (the LLMCompiler line of work) than to basic plan-and-execute,
+and it is why we can claim deterministic execution rather than "reliable-ish" execution.
+
+**Plan representation — why a flat typed list, not a DAG or variable-passing.** The variants differ by plan
+shape: flat list (basic), list + variable references like `#E2` (ReWOO), or a dependency DAG (LLMCompiler,
+for parallel scheduling). Our op union is a flat typed list run under **fixed dependency tiers** (adopt →
+kinds → attributes → entities), resolving cross-op references by stable **`code` / `kind_code`** rather than
+`#E2`-style variables. For ontology this is sufficient and simpler — codes are human-authored and stable.
+The thing to revisit (Risks §7) is the day an op must consume a *server-generated id* from an earlier op in
+the same plan: that is precisely the ReWOO variable-passing case, and the trigger to add it.
+
+**The one load-bearing deferral.** The literature treats the **re-planning loop** (executor reports failure
+→ planner reads new state → revises plan) as a *core* part of the pattern, not optional polish. Our Phase 1
+substitutes idempotent skip-existing + a `{applied, skipped, failed}` summary, and pushes true re-planning
+to **Phase 3** (§5). That is a sound Phase-1 simplification, but Phase 3 re-planning is therefore
+**load-bearing for robustness on messy input, not a nice-to-have** — it should not be dropped or downgraded.
+It is also cheap given our deterministic executor: feeding `failed[]` back into `glossary_plan` is a small
+skill-level loop, which is the second reason a planning *framework* (LangGraph/CrewAI/LlamaIndex) buys us
+little here.
+
+**Why no framework.** Those frameworks earn their keep as a stateful multi-step orchestration *runtime*
+(graph executor, executor-LLM per node, checkpointing). Our planner is ONE structured-output call and our
+executor is a deterministic Go loop over existing core funcs — there is no graph runtime to host. A
+framework would also fight three invariants: glossary-service is **Go** (the frameworks are Python), the
+**provider-gateway invariant** forbids the direct provider-SDK calls they make, and the **MCP-first
+invariant** already places the planner behind an MCP tool rather than a bespoke agent loop. We take the
+pattern and the evidence; we do not take the runtime.
