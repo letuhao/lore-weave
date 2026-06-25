@@ -117,13 +117,15 @@ direct tools.
 ## 5. Phasing (XL+ → incremental, each shippable)
 
 - **Phase 0 — DONE:** `glossary_propose_kinds` batch (one confirm → N kinds). Proves batch + auto-scaffold.
-- **Phase 1 — MVP planner (ontology ops):** two layers (see §10). (a) **Kit:** add the plan/action layer to
-  `loreweave_mcp` (Plan envelope + propose helper + confirm-dispatch + executor skeleton + planner contract),
-  Go first with the Python kit kept aligned. (b) **Glossary consumer:** register the ontology op-set
-  `{adopt_genres, create_kinds, add_attributes, edit_attribute, delete}` + handlers onto the kit, exposed via
-  `glossary_plan`; `execute_plan` descriptor dispatched by the kit's confirm; reuse ConfirmCard to render the
-  plan; skill routes the agent into plan→review→execute. **Validates both the kit and the architecture on the
-  highest-pain workflow.**
+- **Phase 1 — MVP planner (ontology ops), ADDITIVE-ONLY:** two layers (see §10). (a) **Kit:** add the
+  plan/action layer to `loreweave_mcp` (Plan envelope + propose helper + confirm-dispatch + executor skeleton
+  + planner contract), Go first with the Python kit kept aligned. (b) **Glossary consumer:** register the
+  additive ontology op-set `{adopt_genres, create_kinds, add_attributes, edit_attribute}` + handlers onto the
+  kit, exposed via `glossary_plan`; `execute_plan` descriptor dispatched by the kit's confirm; reuse
+  ConfirmCard **unchanged** to render the plan (no destructive ops ⇒ no `enabled_ops` toggle UI yet, kit
+  §18); skill routes the agent into plan→review→execute. **Validates both the kit and the architecture on the
+  highest-pain workflow.** Destructive ops (`delete`, `merge`) are deferred to Phase 2 with the toggle UI;
+  one-off deletes meanwhile use the existing single-op `glossary_book_delete` card.
 - **Phase 2 — entities + research + sync:** add `create_entity / edit_entity / research / sync` ops.
 - **Phase 3 — richer UX + recovery:** an editable plan panel (toggle/edit ops before approve); re-plan loop
   on partial failure; planner sees prior failures.

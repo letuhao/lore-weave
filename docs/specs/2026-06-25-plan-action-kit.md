@@ -138,10 +138,11 @@ Only an *internal* error aborts the remaining plan (the stack is unhealthy); eve
 isolated to its op so one bad op never sinks the batch. This generalizes exactly what
 `effectSchemaCreateKinds` does (unique-violation → skip; internal → 500-abort).
 
-**G2 — optimistic concurrency.** Before an `edit_attribute` / `edit_entity` / `delete` handler mutates,
-the executor re-checks the row's current version against the op's `base_version` (captured at plan-read
-time). Mismatch → `stale_version` → `failed: changed_since_planned` (no clobber). Create/adopt ops carry
-no `base_version` (nothing to clobber).
+**G2 — optimistic concurrency.** Before an **edit** handler (`edit_attribute` / `edit_entity`) mutates, the
+executor re-checks the row's current version against the op's `base_version` (captured at plan-read time).
+Mismatch → `stale_version` → `failed: changed_since_planned` (no clobber). Create/adopt ops carry no
+`base_version` (nothing to clobber); **`delete` carries none either** — it re-resolves by `code` and removes
+whatever is present (idempotent remove; `target_gone` → skipped). See §17 for the precise rule.
 
 **G3 — idempotency contract (declared per op in the registration):**
 
@@ -264,3 +265,192 @@ own, gets: a planner MCP tool that mints ONE typed plan card, a confirm route th
 destructive toggles and runs a deterministic, idempotent, concurrency-checked, error-isolated executor,
 and a preview that re-validates against live state. Glossary Phase 1 demonstrates all of §10 green on the
 "dựng ontology cho <book>" workflow.
+
+---
+
+# Part II — Detailed design (every open question resolved)
+
+This part turns the mechanism above into concrete types, the glossary Phase-1 op-set, the planner's
+output strategy, and the precise rules for id/dedupe/base_version — so nothing is left to discover at
+build. §20 is the explicit resolved-questions ledger.
+
+## 13. Concrete Go types & signatures (`sdks/go/loreweave_mcp`)
+
+```go
+// ── plan.go ──────────────────────────────────────────────────────────────────
+type Plan struct {
+    Version int      `json:"version"`           // == 1
+    BookID  uuid.UUID `json:"book_id"`
+    Goal    string   `json:"goal"`
+    Ops     []Op     `json:"ops"`               // ids assigned by the kit at mint (§16), frozen in the token
+    Notes   []string `json:"notes,omitempty"`   // planner's unsupported-intent surfacings (§6.4)
+}
+type Op struct {
+    ID          string          `json:"id"`           // "op-1".. assigned by kit, deterministic, in-token
+    Type        string          `json:"type"`         // registered op type
+    Params      json.RawMessage `json:"params"`       // validated against OpSpec.ParamSchema (§15)
+    Rationale   string          `json:"rationale,omitempty"`
+    Destructive bool            `json:"destructive"`  // stamped from OpSpec, NOT from planner (G1)
+    BaseVersion string          `json:"base_version,omitempty"` // EDIT ops only (§17)
+}
+
+// ── execute.go ───────────────────────────────────────────────────────────────
+type OpOutcome struct {
+    OpID, Type string
+    Status     string // "applied" | "skipped" | "failed"
+    Reason     string // skip/fail class: already_exists | not_confirmed | target_gone |
+                      //   changed_since_planned | bad_params | already_done | internal
+    Message    string // human-readable (failures)
+    Detail     any    // applied: compact {code,name}, NOT the full row (bounds summary size)
+}
+type Summary struct {
+    Applied, Skipped, Failed []OpOutcome
+    Aborted                  bool // an `internal` error stopped the run early
+}
+
+// The service supplies these; the kit owns the control flow.
+type OpSpec struct {
+    Type        string
+    Tier        int
+    Destructive bool
+    Idempotent  bool                  // MUST be true; RegisterOp panics at startup if false (G3)
+    ParamSchema []byte                // strict JSON Schema, required-fields-per-variant (S4)
+    IdentityKey func(params json.RawMessage) (string, error)        // for dedupe/conflict (§16)
+    Validate    func(params json.RawMessage) error                 // slug code, non-empty desc (S4)
+    Handler     func(ctx context.Context, bookID, userID uuid.UUID,
+                     params json.RawMessage, baseVersion string) (detail any, err error)
+}
+type Registry map[string]OpSpec // type -> spec
+
+type TokenLedger interface { // the service's consumed_tokens; kit stays storage-agnostic
+    Claim(ctx context.Context, jti, descriptor string, exp time.Time) (claimed bool, err error)
+}
+
+func Execute(ctx context.Context, p Plan, enabledOps map[string]bool, reg Registry) Summary
+func MintPlan(secret string, userID, bookID uuid.UUID, p Plan, ttl time.Duration) (token string, err error)
+
+// ConfirmPlan wires the proven order: verify → authorize(callback) → ledger.Claim → Execute.
+func ConfirmPlan(ctx, secret string, token string, enabledOps []string,
+                 authorize func() error, ledger TokenLedger, reg Registry) (Summary, *HTTPError)
+```
+
+**Error mapping is the handler's job, normalized by the kit.** A handler returns a sentinel
+(`ErrUniqueViolation`, `ErrNotFound`, `ErrStaleVersion`, `ErrBadParams`, `ErrAlreadyDone`) or a generic
+error (→ `internal`, aborts). The kit's per-op loop maps sentinel → `OpOutcome.Reason` per the §5 table.
+This is the same shape `effectSchemaCreateKinds` already uses (`isUniqueViolation` → skip; default → 500).
+
+**Each handler is self-transactional** (its own DB tx, like `createKindFromParams`). The executor does
+NOT wrap the plan in one tx (D-4 non-atomic) — it loops, isolating failures per the table.
+
+## 14. Glossary Phase-1 op-set (concrete registration)
+
+Phase 1 is **additive-only** (resolves the D-2 ↔ D-3 tension — see §18): no destructive ops, so
+`enabled_ops` is unused and the FE ConfirmCard is literally unchanged. `delete`/`merge` move to Phase 2
+with the toggle UI. One-off deletes still use the existing single-op `glossary_book_delete` card.
+
+| `type` | Tier | Destructive | Params (reuse existing types) | Identity key | Handler → core | base_version |
+|---|---|---|---|---|---|---|
+| `adopt_genres` | 0 | no | `{genres:[code], kinds:[code]}` (`adoptParams`) | `"adopt"` (singleton) | `adoptBookOntologyCore` | — |
+| `create_kinds` | 1 | no | `{kinds:[kindCreateParams]}` (each with its `attributes`) | per kind `code` | `createKindFromParams` (loop) | — |
+| `add_attributes` | 2 | no | `{kind_code, attributes:[kindAttrSpec]}` | `kind_code+attr.code` | `createAttrDefFromParams` | — |
+| `edit_attribute` | 4 | no | `{kind_code, genre_code, code, fields{name?,description?,field_type?}}` | `kind+genre+code` | `book_patch` core (flat fields) | **yes (§17)** |
+
+**Op-semantics rule (resolves the create-vs-add ambiguity):** a NEW kind's defining attributes go **inside
+its `create_kinds` op** (`kindCreateParams.Attributes`, created atomically with the kind in one tx).
+`add_attributes` is **only** for attaching attributes to a kind that already exists (pre-plan). The skill
+states this so the planner never both creates a kind AND emits a separate `add_attributes` for the same
+kind (which would race tiers and double-propose).
+
+**`adopt_genres` is a singleton op** — at most one per plan (identity key constant); a second is a
+dedupe-collapse. It always runs at tier 0 so kinds/attributes that follow can anchor to the scaffolded
+`universal` genre (the executor calls `ensureBookScaffolded` equivalent via `adoptBookOntologyCore` with
+the picked genres; nil-safe baseline seed unchanged).
+
+## 15. Planner output strategy (the structured-output question, resolved)
+
+**Decision: loose-emit + server-side strict-validate + bounded repair — NOT reliance on provider `oneOf`.**
+Local lm_studio models (the $0 target, per project policy) handle discriminated-union `oneOf` schemas
+poorly. So:
+
+1. The planner asks the model for `{ops:[{type, params}], notes:[]}` where `type` is an **enum** of the
+   registered op types and `params` is a free object — a schema even weak models satisfy. Provider
+   structured-output / JSON-mode is used **if available** (via `loreweave_llm`), else plain JSON in the
+   prompt.
+2. The kit then **validates each op server-side** against `OpSpec.ParamSchema` + `OpSpec.Validate`
+   (the strict gate, S4). This is the real guarantee — independent of model capability.
+3. **Bounded repair:** if K ops fail validation, the planner re-asks the model **once** with the specific
+   validation errors ("op create_kinds: params.kinds[0].code must match `^[a-z0-9_]+$`"). Max **1 repair
+   round**; ops still invalid after it are dropped to `notes[]` ("couldn't formulate X") — never minted
+   malformed. This is the same tolerate-at-validate / filter-at-postprocess discipline used elsewhere.
+4. If **zero** valid ops survive → no card; return "nothing actionable" + the notes (S3).
+
+**Planner model resolution (the `planner` role, resolved):** resolve via provider-registry
+`user_default_models` in order: `planner` slot → else `chat` slot → else an explicit `model_ref` passed to
+the tool → else `422 no planner model`. Adding the `planner` slot is a small provider-registry addition
+(a new `user_default_models` capability key, like `rerank`); until a user sets it, the `chat` fallback
+means the feature works out of the box on their existing strong chat model. The service MAY pin a
+capability floor later; not required for Phase 1.
+
+## 16. Op id assignment, dedupe & conflict (resolved)
+
+- **Ids are assigned by the kit at mint**, not by the LLM (LLM ids are unreliable). After dedupe, ops are
+  numbered `op-1..op-N` in **emitted order** and that id is **frozen in the signed Plan** (in the token).
+  Preview and confirm both read ids from the token → stable across the round-trip (needed for `enabled_ops`
+  when destructive ops arrive in Phase 2).
+- **Dedupe:** two ops with the same `(type, IdentityKey)` AND byte-identical `params` → collapse to one.
+- **Conflict:** same `(type, IdentityKey)` but **different** `params` → **validation error**
+  `duplicate_conflict` (the planner contradicted itself), routed to the §15 repair round, not silently
+  resolved by picking one.
+- Execution order is by `Tier` then id (stable); ids do not change under the tier sort.
+
+## 17. `base_version` — capture & re-check (resolved)
+
+- **Applies to EDIT ops only** (`edit_attribute`, and Phase-2 `edit_entity`). Create/adopt have nothing to
+  clobber; **`delete` does NOT use it** — delete re-resolves by `code` at execute and removes whatever is
+  present (idempotent remove; `target_gone` → skipped). This refines §5 G2: *edit* ops carry base_version;
+  *delete* is re-resolve-by-code.
+- **Value:** the exact `base_version` string `glossary_book_ontology_read` already returns and
+  `glossary_book_patch` already checks (the row's optimistic-concurrency token / `updated_at`). The planner
+  captures it at state-read time and the kit copies it onto the op; the handler passes it straight to the
+  existing `book_patch` core, which already raises a stale-version error → kit maps to
+  `changed_since_planned`. **No new concurrency machinery** — it reuses the column the single-op edit path
+  already enforces.
+
+## 18. FE decision — Phase 1 needs NO ConfirmCard change (resolves D-2 ↔ D-3)
+
+D-2 (per-op destructive toggle) and D-3 (reuse ConfirmCard, no new FE) only conflict if a Phase-1 plan
+contains destructive ops. It doesn't: **§14's op-set is additive-only.** So Phase 1 sends just
+`{confirm_token}` to the unchanged confirm route, ConfirmCard renders the preview rows as today, and the
+`enabled_ops` mechanism — fully specified in §4 — is **first exercised in Phase 2** when `delete`/`merge`
+enter, alongside the editable plan panel (companion §5 Phase 3 / Phase 2). This keeps Phase 1 a pure
+backend+skill change on the FE side.
+
+## 19. Caps, costs, and limits (resolved numbers)
+
+| Limit | Value | Rationale |
+|---|---|---|
+| `MaxPlanOps` | 50 | bounds token size, execution time, preview cost; over → planner returns "narrow the goal" |
+| `PlanTokenTTL` | 30 min | multi-op review time (vs 10-min single-op) |
+| Planner repair rounds | 1 | bounded; residual invalid ops → `notes[]` |
+| Re-propose stop (skill) | K=2 same-`failed[]` | debugging-protocol stop; prevents deterministic loop |
+| Preview destructive cascade queries | ≤ `MaxPlanOps` | acceptable at 50; Phase-1 has none (additive) |
+| Planner provider call | 1 per goal | metered via provider-registry like any LLM call; no extra gate Phase 1 |
+
+## 20. Resolved-questions ledger (was open → now decided)
+
+| Open question | Decision |
+|---|---|
+| Rely on model `oneOf` for the op union? | No — loose-emit + server-side strict-validate + 1 repair round (§15) |
+| Which model plans? | provider-registry `planner` slot → `chat` fallback → explicit `model_ref` (§15) |
+| Who assigns op ids? | the kit at mint, frozen in the token, emitted-order (§16) |
+| Duplicate ops in a plan? | identical → collapse; same-identity-different-params → `duplicate_conflict` repair (§16) |
+| New kind's attributes — in create or add? | inside `create_kinds`; `add_attributes` only for pre-existing kinds (§14) |
+| Does `delete` need base_version? | No — re-resolve by code, idempotent remove; only EDIT ops carry base_version (§17) |
+| What is base_version concretely? | the existing `glossary_book_ontology_read`/`book_patch` concurrency token (§17) |
+| Does Phase 1 change the FE? | No — additive-only op-set, ConfirmCard unchanged; `enabled_ops` first used Phase 2 (§18) |
+| New DB schema? | No — reuse `consumed_tokens` ledger via the `TokenLedger` interface (§13) |
+| Whole-plan transaction? | No — per-op self-transactional handlers, failure-isolated (§13, D-4) |
+| `applied[].detail` size? | compact `{code,name}`, not the full row (§13) |
+| Plan with zero valid ops? | no card; return "nothing actionable" + notes (§15, S3) |
+| Cross-book plan? | out of scope — one `book_id` per plan == token ResourceID (§10) |
+| Planner cost gate? | none beyond provider-registry metering for Phase 1 (§19) |
