@@ -213,6 +213,10 @@ class CreateSessionRequest(BaseModel):
     # (model_ref) can call compose_prose, which streams THIS model for prose.
     composer_model_source: str | None = None
     composer_model_ref: UUID | None = None
+    # D-PLAN-PLANNER-DEFAULT-FE phase 2: optional per-session PLANNER model.
+    # When set, chat-service injects it into the agent's glossary_plan call.
+    planner_model_source: str | None = None
+    planner_model_ref: UUID | None = None
 
 
 class PatchSessionRequest(BaseModel):
@@ -229,6 +233,9 @@ class PatchSessionRequest(BaseModel):
     # A2A phase-2: set/clear the composer model (same exclude_unset semantics).
     composer_model_source: str | None = None
     composer_model_ref: UUID | None = None
+    # D-PLAN-PLANNER-DEFAULT-FE phase 2: set/clear the per-session planner model.
+    planner_model_source: str | None = None
+    planner_model_ref: UUID | None = None
 
 
 class ChatSession(BaseModel):
@@ -248,6 +255,8 @@ class ChatSession(BaseModel):
     project_id: UUID | None = None  # K5
     composer_model_source: str | None = None  # A2A phase-2
     composer_model_ref: UUID | None = None
+    planner_model_source: str | None = None  # D-PLAN-PLANNER-DEFAULT-FE phase 2
+    planner_model_ref: UUID | None = None
     # K-CLEAN-5 (D-K8-04): client-derived initial memory mode for the
     # session header indicator. The router computes this from
     # `project_id` alone (no_project / static) on GET — `degraded` only

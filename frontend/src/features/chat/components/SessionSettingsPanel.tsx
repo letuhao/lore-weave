@@ -44,6 +44,9 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
   const [modelsLoading, setModelsLoading] = useState(false);
   // A2A phase-2: optional composer model (in-turn prose delegation). '' = none.
   const [selectedComposerRef, setSelectedComposerRef] = useState(session.composer_model_ref ?? '');
+  // D-PLAN-PLANNER-DEFAULT-FE phase 2: optional per-session planner model. '' = none
+  // (falls back to the per-user planner default / chat fallback).
+  const [selectedPlannerRef, setSelectedPlannerRef] = useState(session.planner_model_ref ?? '');
 
   // K9.1 / W4: project picker — drives knowledge-service memory mode for
   // this session. The shared ProjectPicker self-loads active projects and
@@ -213,6 +216,16 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
     });
   }
 
+  function handlePlannerChange(modelId: string) {
+    // '' clears the per-session planner (falls back to the per-user default).
+    const next = modelId || null;
+    setSelectedPlannerRef(modelId);
+    patchSession({
+      planner_model_source: next ? 'user_model' : null,
+      planner_model_ref: next,
+    });
+  }
+
   function handleProjectChange(next: string | null) {
     // ProjectPicker emits null on clear. Send explicit null so
     // chat-service's model_fields_set sees the unlink.
@@ -302,6 +315,36 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
           )}
           <p className="mt-1 text-[10px] text-muted-foreground">
             {t('settings.composer_hint', { defaultValue: 'When set, the AI can delegate prose-writing to this model via compose_prose (best: a reasoning model for writing + a tool-capable main model).' })}
+          </p>
+        </div>
+
+        {/* ── Planner model (per-session override for glossary_plan) ──── */}
+        <div>
+          <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+            {t('settings.planner_model', { defaultValue: 'Planner model (optional)' })}
+          </label>
+          {modelsLoading ? (
+            <div className="h-9 animate-pulse rounded-md bg-muted" />
+          ) : (
+            <select
+              value={selectedPlannerRef}
+              onChange={(e) => handlePlannerChange(e.target.value)}
+              className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-ring focus:shadow-[0_0_0_3px_rgba(212,149,42,0.2)]"
+            >
+              <option value="">{t('settings.planner_none', { defaultValue: 'Use my default planner' })}</option>
+              {Object.entries(groupedModels).map(([provider, models]) => (
+                <optgroup key={provider} label={provider}>
+                  {models.map((m) => (
+                    <option key={m.user_model_id} value={m.user_model_id}>
+                      {m.alias ?? m.provider_model_name}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          )}
+          <p className="mt-1 text-[10px] text-muted-foreground">
+            {t('settings.planner_hint', { defaultValue: 'The model the glossary assistant plans multi-step ontology changes with (overrides your Settings default for this session). Pick a strong, tool-capable model.' })}
           </p>
         </div>
 

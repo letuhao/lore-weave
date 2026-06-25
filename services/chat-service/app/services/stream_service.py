@@ -411,6 +411,7 @@ async def _stream_with_tools(
     seed_usage: tuple[int, int] | None = None,
     composer_model: tuple[str, str] | None = None,
     composer_system_prompt: str | None = None,
+    planner_model_ref: str | None = None,
     max_iterations: int = MAX_TOOL_ITERATIONS,
     admin_token: str | None = None,
     discovery_catalog: list[dict] | None = None,
@@ -690,6 +691,18 @@ async def _stream_with_tools(
                         }
                         break
 
+                # D-PLAN-PLANNER-DEFAULT-FE phase 2: per-session planner override. When the
+                # agent calls glossary_plan and this session pins a planner model, inject it
+                # as model_ref (unless the model already chose one) so planning uses the
+                # session's model instead of the per-user provider-registry default.
+                if (
+                    c["name"] == "glossary_plan"
+                    and planner_model_ref
+                    and isinstance(args_obj, dict)
+                    and not args_obj.get("model_ref")
+                ):
+                    args_obj["model_ref"] = planner_model_ref
+
                 # backend tool — execute via the ai-gateway over MCP (ai-gateway
                 # P0: the only tool transport). Tier-A auto-commits here (the
                 # "lazy man" path); Tier-W/S domain tools MINT a confirm_token and
@@ -832,7 +845,7 @@ async def stream_response(
     # ── Load session settings ───────────────────────────────────────────────
     session_row = await pool.fetchrow(
         "SELECT system_prompt, generation_params, project_id, composer_model_source, composer_model_ref, "
-        "working_memory_seed "
+        "planner_model_ref, working_memory_seed "
         "FROM chat_sessions WHERE session_id = $1",
         session_id,
     )
@@ -869,6 +882,11 @@ async def stream_response(
     composer_src = session_row.get("composer_model_source") if session_row else None
     composer_ref = session_row.get("composer_model_ref") if session_row else None
     composer_model = (composer_src, str(composer_ref)) if composer_src and composer_ref else None
+    # D-PLAN-PLANNER-DEFAULT-FE phase 2: optional per-session planner model. When set, it
+    # is injected into the agent's glossary_plan call so planning uses this model instead
+    # of the per-user provider-registry default (str → the user_model UUID glossary expects).
+    planner_ref = session_row.get("planner_model_ref") if session_row else None
+    planner_model_ref = str(planner_ref) if planner_ref else None
 
     knowledge_client = get_knowledge_client()
 
@@ -1215,6 +1233,7 @@ async def stream_response(
         seed_usage=None,
         composer_model=composer_model,
         composer_system_prompt=system_prompt,
+        planner_model_ref=planner_model_ref,
         # Iteration budget by surface (H9 / H11): universal /chat = 20 (find_tools
         # + reads uncounted), book-scoped + admin (cms) = 10, plain = 5.
         max_iterations=(
@@ -1253,6 +1272,7 @@ async def _emit_chat_turn(
     seed_usage: tuple[int, int] | None,
     composer_model: tuple[str, str] | None = None,
     composer_system_prompt: str | None = None,
+    planner_model_ref: str | None = None,
     max_iterations: int = MAX_TOOL_ITERATIONS,
     discovery_catalog: list[dict] | None = None,
     discovery_extra_frontend: list[dict] | None = None,
@@ -1305,6 +1325,7 @@ async def _emit_chat_turn(
                 seed_usage=seed_usage,
                 composer_model=composer_model,
                 composer_system_prompt=composer_system_prompt,
+                planner_model_ref=planner_model_ref,
                 max_iterations=max_iterations,
                 admin_token=admin_token,
                 discovery_catalog=discovery_catalog,
@@ -1674,7 +1695,7 @@ async def resume_stream_response(
 
     # Re-derive session gen_params + tool defs for the 2nd pass.
     session_row = await pool.fetchrow(
-        "SELECT generation_params, project_id, system_prompt, composer_model_source, composer_model_ref "
+        "SELECT generation_params, project_id, system_prompt, composer_model_source, composer_model_ref, planner_model_ref "
         "FROM chat_sessions WHERE session_id = $1",
         session_id,
     )
@@ -1689,6 +1710,8 @@ async def resume_stream_response(
     composer_ref = session_row.get("composer_model_ref") if session_row else None
     composer_model = (composer_src, str(composer_ref)) if composer_src and composer_ref else None
     composer_system_prompt = session_row.get("system_prompt") if session_row else None
+    planner_resume_ref = session_row.get("planner_model_ref") if session_row else None
+    planner_model_ref = str(planner_resume_ref) if planner_resume_ref else None
 
     knowledge_client = get_knowledge_client()
     resume_discovery_catalog: list[dict] | None = None
@@ -1778,6 +1801,7 @@ async def resume_stream_response(
         seed_usage=(susp.input_tokens, susp.output_tokens),
         composer_model=composer_model,
         composer_system_prompt=composer_system_prompt,
+        planner_model_ref=planner_model_ref,
         # H9/H11: an agui resume continues a frontend-tool turn → keep a rich cap
         # (universal when discovery is on, else the book-scoped cap) so the
         # post-Apply/Confirm follow-up isn't truncated.

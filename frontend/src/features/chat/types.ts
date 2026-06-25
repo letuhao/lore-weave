@@ -32,6 +32,9 @@ export interface ChatSession {
   // (model_ref) can call compose_prose, which streams THIS model for prose.
   composer_model_source?: string | null;
   composer_model_ref?: string | null;
+  // D-PLAN-PLANNER-DEFAULT-FE phase 2: optional per-session planner model.
+  planner_model_source?: string | null;
+  planner_model_ref?: string | null;
   // K-CLEAN-5 (D-K8-04): memory mode for the chat header
   // MemoryIndicator.
   //   no_project — no project linked, AI sees only the global bio
@@ -175,4 +178,7 @@ export interface PatchSessionPayload {
   // semantics as project_id — emit explicit null to clear.
   composer_model_source?: string | null;
   composer_model_ref?: string | null;
+  // D-PLAN-PLANNER-DEFAULT-FE phase 2: set/clear the per-session planner model.
+  planner_model_source?: string | null;
+  planner_model_ref?: string | null;
 }

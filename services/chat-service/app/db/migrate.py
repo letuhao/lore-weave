@@ -131,6 +131,17 @@ DO $$ BEGIN
   END IF;
 END $$;
 
+-- D-PLAN-PLANNER-DEFAULT-FE phase 2 — optional per-session PLANNER model. When set,
+-- chat-service injects this model_ref into the agent's glossary_plan call so planning
+-- uses a session-chosen model instead of the per-user provider-registry default. NULL →
+-- the planner resolves its model the usual way (planner default → chat fallback).
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_sessions' AND column_name='planner_model_ref') THEN
+    ALTER TABLE chat_sessions ADD COLUMN planner_model_source VARCHAR(20);
+    ALTER TABLE chat_sessions ADD COLUMN planner_model_ref UUID;
+  END IF;
+END $$;
+
 -- K13.1 — outbox_events: transactional outbox for event-driven pipeline.
 -- Matches book-service schema so worker-infra outbox-relay can pick up
 -- events uniformly. Worker-infra publishes to Redis Stream

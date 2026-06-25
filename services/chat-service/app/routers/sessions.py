@@ -48,6 +48,8 @@ def _row_to_session(r: asyncpg.Record) -> ChatSession:
         memory_mode=memory_mode,
         composer_model_source=r.get("composer_model_source"),
         composer_model_ref=r.get("composer_model_ref"),
+        planner_model_source=r.get("planner_model_source"),
+        planner_model_ref=r.get("planner_model_ref"),
     )
 
 
@@ -60,14 +62,16 @@ async def create_session(
     gp = json.dumps(body.generation_params.model_dump(exclude_unset=True)) if body.generation_params else "{}"
     row = await pool.fetchrow(
         """
-        INSERT INTO chat_sessions (owner_user_id, title, model_source, model_ref, system_prompt, generation_params, project_id, composer_model_source, composer_model_ref)
-        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9)
+        INSERT INTO chat_sessions (owner_user_id, title, model_source, model_ref, system_prompt, generation_params, project_id, composer_model_source, composer_model_ref, planner_model_source, planner_model_ref)
+        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11)
         RETURNING *
         """,
         user_id, body.title, body.model_source, str(body.model_ref), body.system_prompt, gp,
         str(body.project_id) if body.project_id else None,
         body.composer_model_source,
         str(body.composer_model_ref) if body.composer_model_ref else None,
+        body.planner_model_source,
+        str(body.planner_model_ref) if body.planner_model_ref else None,
     )
     return _row_to_session(row)
 
@@ -191,6 +195,11 @@ async def patch_session(
     composer_source_value = body.composer_model_source
     composer_ref_value = str(body.composer_model_ref) if body.composer_model_ref else None
 
+    # D-PLAN-PLANNER-DEFAULT-FE phase 2: per-session planner model — same semantics.
+    set_planner = "planner_model_ref" in body.model_fields_set
+    planner_source_value = body.planner_model_source
+    planner_ref_value = str(body.planner_model_ref) if body.planner_model_ref else None
+
     row = await pool.fetchrow(
         """
         UPDATE chat_sessions SET
@@ -204,6 +213,8 @@ async def patch_session(
           project_id            = CASE WHEN $10::boolean THEN $11::uuid ELSE project_id END,
           composer_model_source = CASE WHEN $12::boolean THEN $13 ELSE composer_model_source END,
           composer_model_ref    = CASE WHEN $12::boolean THEN $14::uuid ELSE composer_model_ref END,
+          planner_model_source  = CASE WHEN $15::boolean THEN $16 ELSE planner_model_source END,
+          planner_model_ref     = CASE WHEN $15::boolean THEN $17::uuid ELSE planner_model_ref END,
           updated_at            = now()
         WHERE session_id=$1 AND owner_user_id=$2
         RETURNING *
@@ -214,6 +225,7 @@ async def patch_session(
         body.status, gp_patch, body.is_pinned,
         set_project, project_id_value,
         set_composer, composer_source_value, composer_ref_value,
+        set_planner, planner_source_value, planner_ref_value,
     )
     return _row_to_session(row)
 
