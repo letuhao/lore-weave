@@ -154,7 +154,19 @@ Batch the LOWs: `D-T3.1-SCENE-HINT`/`GUIDE-APPEND`, `D-T3.3-SLASH-CONTINUE`/`CHA
     `D-T5.3-COUNT-SEMANTICS`/`VISIBILITY-DOM-CLASS` are all **gate-5 conscious-won't-fix-until-trigger** or
     by-design ("add X *if* Y appears", "*if* a flash is observed", feature flags) — implementing them now would
     be speculative work for triggers that don't exist. Not silently skipped; they earn their rows.
-- **~25 open**, mapped above. **Next: WS-C (PM position-remap) → WS-B3 (scene-graph what-if spec) → WS-D.**
+- ✅ **WS-C (PM position-remap) SHIPPED 2026-06-26** — new `TrackedPositions` PM plugin + extension
+  (`trackPosition`/`trackRange` handles with `.current()`/`.release()`), the position analogue of
+  `GrammarPlugin`'s `decorations.map`. Wired into **SelectionToolbar** (selection range) + **useInlineGhost**
+  (ghost caret): a saved insert point/range is now remapped through any mid-stream edit instead of the crude
+  `pos > doc.size` check that silently inserted at the wrong offset after an edit BEFORE the range. Site 3
+  (provenance mark) stays OUT (native PM mark mapping is already position-safe). Added inert-when-empty to the
+  shared `TiptapEditor` (like FocusLine/Grammar). 7-test real-editor unit suite + SelectionToolbar tests; tsc
+  clean. **Also fixed a surfaced pre-existing composition-i18n parity gap** (3 `derive.anchor*` keys were
+  en-only → added to ja/vi/zh-TW).
+  - **⚠ Pre-existing (out of scope, NOT mine):** the full FE suite has **9 `world i18n` parity failures**
+    (`world` / MMO-track namespace — e.g. `graph.loadFailed`, `populate.addFailed` missing in non-en locales).
+    Untouched by this work; a separate track's i18n debt. Track there, not here.
+- **~25 open**, mapped above. **Next: WS-B3 (scene-graph what-if spec) → WS-D (multi-window hardening).**
 - **⚠ Audit correction (from detailed-design research):** **`D-T5.4-CHAT-HOIST` is NOT resolved** — the
   co-writer chat SSE still runs its own `fetch`/`ReadableStream` in `useChatMessages` *below* the windowing
   layer; it survives a float but is **killed by a pop-out**. Re-opened (see WS-D detailed design).

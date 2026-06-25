@@ -35,6 +35,7 @@ import {
 } from './ProvenanceMark';
 import { CitationMark } from './CitationMark';
 import { FocusLineExtension } from './FocusLineExtension';
+import { TrackedPositionsExtension } from './TrackedPositions';
 
 export interface TiptapEditorHandle {
   /** Reset editor content from Tiptap JSON (e.g. revision restore, discard) */
@@ -148,6 +149,7 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
         FocusLineExtension, // T5.1 — marks the caret's block `.focusline` (PM decoration)
         HeatmapExtension, // T5.2 — tints entity names by mention-density band (inert until enabled)
         ProvenanceMark, // T5.3 — AI-provenance mark (click-to-review; rides in body_json)
+        TrackedPositionsExtension, // WS-C — remaps saved insert points/ranges through edits (inert when empty)
       ],
       content: initialContent.current,
       editable,

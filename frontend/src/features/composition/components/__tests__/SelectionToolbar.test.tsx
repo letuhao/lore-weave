@@ -16,6 +16,20 @@ const { streamState, start, stop, clearGhost } = vi.hoisted(() => ({
 vi.mock('../../hooks/useCompositionStream', () => ({
   useCompositionStream: () => ({ ...streamState, start, stop, clearGhost }),
 }));
+// WS-C: the fake editor has no real PM `view`, so mock the tracked-range helper.
+// `rangeNow` controls what the tracked handle reports as the live mapped range
+// (null = the span was deleted/collapsed → the precise stale signal).
+const { trackRangeMock, rangeRelease, rangeNow } = vi.hoisted(() => ({
+  trackRangeMock: vi.fn(),
+  rangeRelease: vi.fn(),
+  rangeNow: { value: null as { from: number; to: number } | null },
+}));
+vi.mock('../../../../components/editor/TrackedPositions', () => ({
+  trackRange: (...a: unknown[]) => {
+    trackRangeMock(...a);
+    return { current: () => rangeNow.value, release: rangeRelease };
+  },
+}));
 vi.mock('../../../ai-models/api', () => ({
   aiModelsApi: {
     listUserModels: vi.fn().mockResolvedValue({
@@ -50,12 +64,14 @@ function renderTB(editor: any) {
 describe('SelectionToolbar (T3.2)', () => {
   beforeEach(() => {
     start.mockReset(); stop.mockReset(); clearGhost.mockReset();
+    trackRangeMock.mockReset(); rangeRelease.mockReset(); rangeNow.value = null;
     (toast.error as ReturnType<typeof vi.fn>).mockReset();
     streamState.ghost = ''; streamState.streaming = false; streamState.error = null;
   });
 
-  it('running an op streams the selection-edit with the operation + selection + scene', async () => {
-    renderTB(fakeEditor());
+  it('running an op streams the selection-edit + tracks the range for Accept', async () => {
+    const editor = fakeEditor();
+    renderTB(editor);
     await waitFor(() => expect((screen.getByTestId('selection-model') as HTMLSelectElement).value).toBe('m1'));
     fireEvent.click(screen.getByTestId('selection-rewrite'));
     expect(start).toHaveBeenCalledTimes(1);
@@ -63,15 +79,18 @@ describe('SelectionToolbar (T3.2)', () => {
       projectId: 'p1', selection: 'the gate of ash', operation: 'rewrite',
       sceneContext: 'scene-9', modelSource: 'user_model', modelRef: 'm1',
     });
+    // WS-C: the captured selection is registered as a TRACKED range (not a raw {from,to}).
+    expect(trackRangeMock).toHaveBeenCalledWith(editor, 5, 20);
   });
 
-  it('Accept replaces the SAVED range with the ghost', async () => {
+  it('Accept replaces the tracked range (remapped) with the ghost', async () => {
     const editor = fakeEditor('the gate of ash', 5, 20, 100);
     const { rerender } = renderTB(editor);
     await waitFor(() => expect((screen.getByTestId('selection-model') as HTMLSelectElement).value).toBe('m1'));
     fireEvent.click(screen.getByTestId('selection-expand'));
-    // stream completes with a ghost.
+    // stream completes with a ghost; the tracked range reports its (remapped) span.
     streamState.ghost = 'EXPANDED PROSE';
+    rangeNow.value = { from: 5, to: 20 };
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     rerender(
       <QueryClientProvider client={qc}>
@@ -83,13 +102,13 @@ describe('SelectionToolbar (T3.2)', () => {
     expect(editor._chain.insertContentAt).toHaveBeenCalledWith(5, 'EXPANDED PROSE');
   });
 
-  it('Accept aborts (no replace) when the saved range is now out of bounds', async () => {
-    // doc shrank mid-stream → saved range.to (20) exceeds doc size (10).
+  it('Accept aborts (no replace) when the tracked range was deleted (.current() null)', async () => {
     const editor = fakeEditor('the gate of ash', 5, 20, 10);
     const { rerender } = renderTB(editor);
     await waitFor(() => expect((screen.getByTestId('selection-model') as HTMLSelectElement).value).toBe('m1'));
     fireEvent.click(screen.getByTestId('selection-rewrite'));
     streamState.ghost = 'NEW';
+    rangeNow.value = null;   // the span was deleted/collapsed mid-stream
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     rerender(
       <QueryClientProvider client={qc}>
