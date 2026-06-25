@@ -400,6 +400,13 @@ func (s *Server) Router() http.Handler {
 			// Confirm == the existing entities/{id}/merge endpoint.
 			r.Get("/merge-candidates", s.listMergeCandidates)
 			r.Post("/merge-candidates/{candidate_id}/dismiss", s.dismissMergeCandidate)
+			// D-BATCH-RESEARCH-JOB — async batch entity-research over a kind. create +
+			// estimate are kind-scoped (Manage/View); list + status are book-scoped (View).
+			// Lifecycle actions (pause/resume/cancel) arrive with the M2 worker.
+			r.Post("/kinds/{kind_id}/research-jobs", s.createResearchJob)
+			r.Get("/kinds/{kind_id}/research-estimate", s.researchEstimate)
+			r.Get("/research-jobs", s.listResearchJobs)
+			r.Get("/research-jobs/{job_id}", s.getResearchJob)
 			r.Route("/entities", func(r chi.Router) {
 				r.Get("/", s.listEntities)
 				r.Post("/", s.createEntity)

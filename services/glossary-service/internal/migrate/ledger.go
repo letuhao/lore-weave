@@ -84,6 +84,8 @@ var chain = []Step{
 	{"0036_system_attr_descriptions", UpSystemAttrDescriptions},
 	// KG-ML M5 (C4 / DD4) — name_i18n on the kind tiers + System vi seed.
 	{"0037_kind_name_i18n", UpKindNameI18n},
+	// D-BATCH-RESEARCH-JOB M1 — async batch entity-research job table.
+	{"0038_entity_research_jobs", UpEntityResearchJobs},
 }
 
 // EnsureLedger creates the schema_migrations bookkeeping table. Idempotent; must run

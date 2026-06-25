@@ -1,6 +1,17 @@
 # Spec — Batch entity-research job (glossary-service)
 
-**Status:** DESIGN (checkpoint) · 2026-06-25 · branch `feat/composition-service`
+**Status:** M1 SHIPPED · 2026-06-25 · branch `feat/composition-service`
+
+> **BUILD REFINEMENT (M1):** provider-registry's BYOK web-search returns **no per-call cost**
+> (the user's provider bills them; LoreWeave doesn't meter it like LLM tokens). So the spec's
+> per-search `max_spend_usd` cap is **unmeasurable** and was replaced by a **`max_entities`** cap
+> (each entity = 1 paid search → cost is bounded upfront). `est_cost_usd` is an **indicative**
+> display estimate (`items_total × webSearchEstUSDPerQuery`), never a billing/budget driver — no
+> silent seam pretending we meter a cost we can't see. This **drops the `paused_budget` state**:
+> the job's scope *is* the entity cap, so it runs to completion / `paused_user` / `cancelled` /
+> `failed`. A `researchJobMaxEntitiesHardCap=500` is the runaway backstop. Sections below that say
+> `max_spend_usd` / `paused_budget` are superseded by this note.
+
 **Origin:** Plan-action Phase-2 "research-orchestration" item. A scout found that wiring it as
 a **synchronous plan op** (the `glossary_plan` executor) is the wrong vehicle; the user chose an
 **async batch-research job** instead. This spec resolves the architecture + lifecycle so the build
