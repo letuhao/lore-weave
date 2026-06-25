@@ -138,6 +138,7 @@ async def resolve_or_merge_entity(
     alias_map_repo: EntityAliasMapRepo | None = None,
     auto_created: bool = False,
     provenance: str = "human_authored",
+    job_id: str | None = None,
 ) -> Entity:
     """Anchor-aware wrapper around `merge_entity`.
 
@@ -229,4 +230,5 @@ async def resolve_or_merge_entity(
         confidence=confidence,
         auto_created=auto_created,
         provenance=provenance,
+        job_id=job_id,
     )

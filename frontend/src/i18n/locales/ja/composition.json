@@ -230,6 +230,8 @@
   },
   "heatmap": { "title": "言及ヒートマップ", "inProse": "本文中" },
   "provenance": { "title": "AI来歴", "unreviewedCount": "未確認 {{n}} 件", "show": "表示", "hide": "非表示", "markAllReviewed": "すべて確認済みにする", "ai": "AI", "reviewed": "確認済み", "unreviewed": "未確認", "clickToReview": "（クリックで確認）" },
+  "flywheel": "フライホイール",
+  "flywheelPanel": { "loading": "読み込み中…", "empty": "章を公開すると正典が育ちます — 新しいエンティティ・関係・イベントがここに表示されます。", "subtitle": "最新の公開で正典が成長しました:", "entities": "エンティティ", "relations": "関係", "events": "イベント", "highlights": "新しいハイライト", "kind": { "entity": "エンティティ", "event": "イベント", "relation": "関係" } },
   "progressPanel": {
     "loading": "進捗を読み込み中…",
     "error": "進捗を読み込めませんでした。",

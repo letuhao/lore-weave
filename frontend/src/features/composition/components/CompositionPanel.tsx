@@ -22,6 +22,7 @@ import { BeatSheetView } from './BeatSheetView';
 import { SceneGraphCanvas } from './SceneGraphCanvas';
 import { CastCodexPanel } from './CastCodexPanel';
 import { RelationshipMap } from './RelationshipMap';
+import { FlywheelPanel } from './FlywheelPanel';
 import { TimelineView } from './TimelineView';
 import { CharacterArcView } from './CharacterArcView';
 import { WorldMap } from './WorldMap';
@@ -55,7 +56,7 @@ type Props = {
   onToggleHeatmap?: () => void;
 };
 
-type SubTab = 'compose' | 'cowriter' | 'assemble' | 'planner' | 'beats' | 'graph' | 'cast' | 'relmap' | 'timeline' | 'arc' | 'worldmap' | 'grounding' | 'style' | 'canon' | 'threads' | 'progress' | 'quality' | 'settings';
+type SubTab = 'compose' | 'cowriter' | 'assemble' | 'planner' | 'beats' | 'graph' | 'cast' | 'relmap' | 'timeline' | 'arc' | 'worldmap' | 'grounding' | 'style' | 'canon' | 'threads' | 'progress' | 'quality' | 'flywheel' | 'settings';
 
 export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: sceneIdProp, onSceneChange, heatmapEnabled, onToggleHeatmap }: Props) {
   const { t } = useTranslation('composition');
@@ -453,7 +454,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
         testid="composition-subtabs"
         className="flex gap-1 overflow-x-auto border-b border-neutral-200 px-2 pt-1 text-sm dark:border-neutral-700"
       >
-        {(['compose', 'cowriter', 'assemble', 'planner', 'beats', 'graph', 'cast', 'relmap', 'timeline', 'arc', 'worldmap', 'grounding', 'style', 'canon', ...(threadsEnabled ? ['threads' as const] : []), 'progress', 'quality', 'settings'] as SubTab[]).map((tb) => (
+        {(['compose', 'cowriter', 'assemble', 'planner', 'beats', 'graph', 'cast', 'relmap', 'timeline', 'arc', 'worldmap', 'grounding', 'style', 'canon', ...(threadsEnabled ? ['threads' as const] : []), 'progress', 'quality', 'flywheel', 'settings'] as SubTab[]).map((tb) => (
           <button
             key={tb}
             data-testid={`composition-subtab-${tb}`}
@@ -593,6 +594,15 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
         </div>
         <div className={tab === 'quality' ? '' : 'hidden'}>
           <QualityPanel projectId={work.project_id} token={token} />
+        </div>
+        <div className={tab === 'flywheel' ? '' : 'hidden'}>
+          <FlywheelPanel
+            projectId={work.project_id}
+            token={token}
+            onOpenCast={(name) => { if (name) setCastSearch(name); setTab('cast'); }}
+            onOpenTimeline={() => setTab('timeline')}
+            onOpenRelations={() => setTab('relmap')}
+          />
         </div>
         <div className={tab === 'settings' ? '' : 'hidden'}>
           <CompositionSettingsView

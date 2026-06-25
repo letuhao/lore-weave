@@ -230,6 +230,8 @@
   },
   "heatmap": { "title": "Bản đồ nhiệt nhắc đến", "inProse": "Trong văn bản" },
   "provenance": { "title": "Nguồn gốc AI", "unreviewedCount": "{{n}} chưa duyệt", "show": "Hiện", "hide": "Ẩn", "markAllReviewed": "Đánh dấu tất cả đã duyệt", "ai": "AI", "reviewed": "đã duyệt", "unreviewed": "chưa duyệt", "clickToReview": "(nhấp để duyệt)" },
+  "flywheel": "Bánh đà",
+  "flywheelPanel": { "loading": "Đang tải…", "empty": "Xuất bản một chương để mở rộng kho tri thức — thực thể, quan hệ và sự kiện mới sẽ hiện ở đây.", "subtitle": "Lần xuất bản gần nhất đã mở rộng kho tri thức:", "entities": "thực thể", "relations": "quan hệ", "events": "sự kiện", "highlights": "Điểm nổi bật mới", "kind": { "entity": "Thực thể", "event": "Sự kiện", "relation": "Quan hệ" } },
   "progressPanel": {
     "loading": "Đang tải tiến độ…",
     "error": "Không tải được tiến độ.",

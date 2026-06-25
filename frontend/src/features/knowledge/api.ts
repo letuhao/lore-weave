@@ -30,6 +30,22 @@ export type ExtractionJobScopeWire =
   | 'chat'
   | 'glossary_sync';
 
+// T4.1 — the canon-growth delta surfaced by the composition Flywheel panel.
+export interface FlywheelItemWire {
+  kind: 'entity' | 'event' | 'relation';
+  id: string;
+  name: string;
+}
+export interface FlywheelDeltaWire {
+  has_delta: boolean;
+  job_id: string | null;
+  completed_at: string | null;
+  entities_added: number;
+  relations_added: number;
+  events_added: number;
+  new_items: FlywheelItemWire[];
+}
+
 export interface ExtractionJobWire {
   job_id: string;
   user_id: string;
@@ -1168,6 +1184,14 @@ export const knowledgeApi = {
   listExtractionJobs(projectId: string, token: string): Promise<ExtractionJobWire[]> {
     return apiJson<ExtractionJobWire[]>(
       `${BASE}/projects/${projectId}/extraction/jobs`,
+      { token },
+    );
+  },
+
+  // T4.1 — the canon-growth delta from the latest completed extraction job.
+  getFlywheel(projectId: string, token: string): Promise<FlywheelDeltaWire> {
+    return apiJson<FlywheelDeltaWire>(
+      `${BASE}/projects/${projectId}/flywheel`,
       { token },
     );
   },

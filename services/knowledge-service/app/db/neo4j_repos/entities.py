@@ -263,6 +263,11 @@ ON CREATE SET
   e.version = 1,
   e.auto_created = $auto_created,
   e.created_at = datetime(),
+  // T4.1 flywheel — the extraction job that first minted this node (net-new
+  // attribution). Set ONLY on create, so it permanently credits the creating
+  // job; a later match by another job never changes it. NULL for non-job writes
+  // and pre-T4.1 nodes.
+  e.created_job_id = $job_id,
   e.updated_at = datetime()
 ON MATCH SET
   e.aliases = CASE
@@ -309,6 +314,7 @@ async def merge_entity(
     canonical_version: int = 1,
     auto_created: bool = False,
     provenance: str = "human_authored",
+    job_id: str | None = None,
 ) -> Entity:
     """Idempotent upsert. Re-running with the same (user_id, project_id,
     name, kind) tuple returns the same node — no duplicates.
@@ -354,6 +360,7 @@ async def merge_entity(
         confidence=confidence,
         auto_created=auto_created,
         provenance=provenance,
+        job_id=job_id,
     )
     record = await result.single()
     if record is None:

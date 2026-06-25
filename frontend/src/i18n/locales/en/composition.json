@@ -230,6 +230,8 @@
   },
   "heatmap": { "title": "Mention heatmap", "inProse": "In prose" },
   "provenance": { "title": "AI provenance", "unreviewedCount": "{{n}} unreviewed", "show": "Show", "hide": "Hide", "markAllReviewed": "Mark all reviewed", "ai": "AI", "reviewed": "reviewed", "unreviewed": "unreviewed", "clickToReview": "(click to review)" },
+  "flywheel": "Flywheel",
+  "flywheelPanel": { "loading": "Loading…", "empty": "Publish a chapter to grow your canon — new entities, relations and events will show up here.", "subtitle": "Your latest publish grew the canon:", "entities": "entities", "relations": "relations", "events": "events", "highlights": "New highlights", "kind": { "entity": "Entity", "event": "Event", "relation": "Relation" } },
   "progressPanel": {
     "loading": "Loading progress…",
     "error": "Couldn't load progress.",

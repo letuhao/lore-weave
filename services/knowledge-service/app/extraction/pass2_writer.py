@@ -436,6 +436,7 @@ async def write_pass2_extraction(
             confidence=ent.confidence,
             alias_map_repo=alias_map_repo,
             provenance=provenance,
+            job_id=job_id,
         )
         merged_entity_ids.add(entity.id)
         entities_merged += 1
@@ -579,6 +580,7 @@ async def write_pass2_extraction(
                     alias_map_repo=alias_map_repo,
                     auto_created=True,
                     provenance=provenance,
+                    job_id=job_id,
                 )
             except Exception:
                 logger.warning(
@@ -691,6 +693,7 @@ async def write_pass2_extraction(
             schema_version=schema.schema_version if schema else None,
             graph_id=None,
             cardinality=edge_cardinality,
+            job_id=job_id,
         )
         if result is not None:
             relations_created += 1
@@ -762,6 +765,7 @@ async def write_pass2_extraction(
             source_type=source_type,
             confidence=evt.confidence,
             provenance=provenance,
+            job_id=job_id,
         )
         events_merged += 1
         if evt.event_date:

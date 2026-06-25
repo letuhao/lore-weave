@@ -256,6 +256,8 @@ ON CREATE SET
   e.archived_at = NULL,
   e.version = 1,
   e.created_at = datetime(),
+  // T4.1 flywheel — the extraction job that first minted this event (net-new).
+  e.created_job_id = $job_id,
   e.updated_at = datetime()
 ON MATCH SET
   e.summary = coalesce($summary, e.summary),
@@ -335,6 +337,7 @@ async def merge_event(
     source_type: str = "book_content",
     confidence: float = 0.0,
     provenance: str = "human_authored",
+    job_id: str | None = None,
 ) -> Event:
     """Idempotent upsert. Same (user, project, chapter, title)
     returns the same node.
@@ -406,6 +409,7 @@ async def merge_event(
         source_type=source_type,
         confidence=confidence,
         provenance=provenance,
+        job_id=job_id,
     )
     record = await result.single()
     if record is None:

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import datetime
 from decimal import Decimal
 from typing import Annotated, Any, Literal
 from uuid import UUID
@@ -31,6 +32,7 @@ from app.clients.model_name import resolve_model_name
 from app.config import settings as app_settings
 from app.pricing import cost_per_token
 from app.db.neo4j import neo4j_session
+from app.db.neo4j_repos.flywheel import get_flywheel_delta
 from app.db.pool import get_knowledge_pool
 from app.db.repositories.benchmark_runs import BenchmarkRunsRepo
 from app.routers.internal_benchmark import BenchmarkStatusResponse, gate_failures_from_raw
@@ -1647,6 +1649,78 @@ async def list_extraction_jobs(
     # C6 (D-K19b.3-01) — resolve current_cursor.last_chapter_id titles.
     await enrich_jobs_with_current_chapter_titles(jobs, book_client)
     return jobs
+
+
+# ── T4.1 Flywheel — net-new delta for the latest completed extraction ──
+
+
+class FlywheelItemResponse(BaseModel):
+    kind: Literal["entity", "event", "relation"]
+    id: str
+    name: str
+
+
+class FlywheelDeltaResponse(BaseModel):
+    """The canon growth from the most-recent completed extraction job.
+
+    ``has_delta`` is False when no extraction has completed yet (FE renders a
+    neutral empty state, not an error). Counts are exact; ``new_items`` is a
+    capped named sample with deep-link ids per kind.
+    """
+
+    has_delta: bool
+    job_id: UUID | None = None
+    completed_at: datetime | None = None
+    entities_added: int = 0
+    relations_added: int = 0
+    events_added: int = 0
+    new_items: list[FlywheelItemResponse] = Field(default_factory=list)
+
+
+@router.get(
+    "/{project_id}/flywheel",
+    response_model=FlywheelDeltaResponse,
+)
+async def get_flywheel(
+    project_id: UUID,
+    user_id: UUID = Depends(require_project_grant(GrantLevel.VIEW)),
+    projects_repo: ProjectsRepo = Depends(get_projects_repo),
+    jobs_repo: ExtractionJobsRepo = Depends(get_extraction_jobs_repo),
+) -> FlywheelDeltaResponse:
+    """Net-new entities/relations/events added by the latest COMPLETED
+    extraction job for this project (the composition Flywheel panel).
+
+    Reads the ``created_job_id`` stamp (Pass-2 writer, ON CREATE) — so re-runs
+    never double-count and re-mentions of existing canon don't inflate the
+    delta. Cross-user / nonexistent project → 404 (no existence leak).
+    """
+    project = await projects_repo.get(user_id, project_id)
+    if project is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="project not found",
+        )
+    jobs = await jobs_repo.list_for_project(user_id, project_id)  # newest first
+    latest = next((j for j in jobs if j.status == "complete"), None)
+    if latest is None:
+        return FlywheelDeltaResponse(has_delta=False)
+
+    async with neo4j_session() as session:
+        delta = await get_flywheel_delta(
+            session, job_id=str(latest.job_id), user_id=str(user_id),
+        )
+    return FlywheelDeltaResponse(
+        has_delta=True,
+        job_id=latest.job_id,
+        completed_at=latest.completed_at,
+        entities_added=delta.entities_added,
+        relations_added=delta.relations_added,
+        events_added=delta.events_added,
+        new_items=[
+            FlywheelItemResponse(kind=i.kind, id=i.id, name=i.name)
+            for i in delta.new_items
+        ],
+    )
 
 
 # ── T2-close-1b-FE — Public benchmark-status ────────────────────────
