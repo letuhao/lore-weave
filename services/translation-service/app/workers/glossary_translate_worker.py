@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from uuid import UUID
 
 from loreweave_llm.errors import (
@@ -21,6 +22,7 @@ from loreweave_jobs import emit_job_event_safe
 from ..llm_client import LLMClient
 from .glossary_client import fetch_translation_candidates, post_apply_translations
 from .glossary_translate_prompt import (
+    attr_response_format,
     build_system_prompt,
     build_user_prompt,
     parse_translation_response,
@@ -28,6 +30,14 @@ from .glossary_translate_prompt import (
 from .llm_thinking import thinking_llm_fields
 
 log = logging.getLogger(__name__)
+
+# D-LLM-FAILURE-RATE #1 — structured-output enforcement for the translation
+# pipelines. Default ON; set TRANSLATION_STRUCTURED_OUTPUT=0 to disable fleet-wide
+# (the per-call LLMInvalidRequest fallback already degrades a single unsupported
+# model safely).
+_STRUCTURED_OUTPUT_ENABLED = os.getenv(
+    "TRANSLATION_STRUCTURED_OUTPUT", "1"
+).strip().lower() not in ("0", "false", "no", "off")
 
 _PAGE_SIZE = 25
 
@@ -210,21 +220,29 @@ async def _run_job(
                 ent.get("display_name", ""), ent.get("kind_code", ""), attrs,
             )
 
-            try:
-                sdk_job = await llm_client.submit_and_wait(
+            call_input: dict = {
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                "temperature": 0.2,
+                "max_tokens": 4096,
+                **thinking_llm_fields(enabled=thinking_enabled),
+            }
+            # D-LLM-FAILURE-RATE #1 — force a valid JSON object of the expected
+            # attribute codes (kills the "Expecting ',' delimiter" parse failures
+            # that fail an entity). A model/server that rejects the shape raises
+            # LLMInvalidRequest and is retried ONCE without it.
+            if _STRUCTURED_OUTPUT_ENABLED:
+                call_input["response_format"] = attr_response_format(expected_codes)
+
+            async def _submit(_inp: dict):
+                return await llm_client.submit_and_wait(
                     user_id=str(owner_user_id),
                     operation="chat",
                     model_source=model_source,
                     model_ref=str(model_ref),
-                    input={
-                        "messages": [
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": user_prompt},
-                        ],
-                        "temperature": 0.2,
-                        "max_tokens": 4096,
-                        **thinking_llm_fields(enabled=thinking_enabled),
-                    },
+                    input=_inp,
                     chunking=None,
                     job_meta={
                         "operation": "glossary_translate",
@@ -233,6 +251,19 @@ async def _run_job(
                     },
                     transient_retry_budget=1,
                 )
+
+            try:
+                try:
+                    sdk_job = await _submit(call_input)
+                except LLMInvalidRequest:
+                    if "response_format" not in call_input:
+                        raise
+                    log.warning(
+                        "glossary_translate: response_format rejected for entity %s — retrying without structured output",
+                        entity_id,
+                    )
+                    call_input.pop("response_format", None)
+                    sdk_job = await _submit(call_input)
             except (LLMQuotaExceeded, LLMModelNotFound, LLMAuthFailed,
                     LLMInvalidRequest, LLMDecodeError, LLMStreamNotSupported) as exc:
                 log.error("glossary_translate: permanent error entity %s: %s", entity_id, exc)
