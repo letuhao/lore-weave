@@ -3,7 +3,7 @@
 // Resolves/creates the Work for the book, lets the author target a scene + a
 // drafter model, then switches between Compose / Grounding / Canon sub-views.
 // Render-only: all logic lives in the hooks.
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -179,6 +179,24 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
     newSceneTitle: guidedSceneTitle,
   });
 
+  // T5.3 — attribute accepted AI prose with the selected model's name (for the
+  // provenance hover tag). HOISTED above the early returns (rules-of-hooks): a hook
+  // below the `if (resolution.isLoading) return` was masked in the opener (its query
+  // cache is pre-warmed by ChapterEditorPage) but CRASHED the pop-out, whose separate
+  // React root has a COLD query cache → first render early-returns with fewer hooks,
+  // then the resolved render runs this one → "rendered more hooks". The model name is
+  // read via a ref (assigned below, after the Work resolves) so the deps stay stable.
+  const modelNameRef = useRef<string | undefined>(undefined);
+  const acceptProse = useCallback(
+    (text: string) => onAccept(text, { model: modelNameRef.current }),
+    [onAccept],
+  );
+  // T5.4 — the windowing layout/flag (null without a provider, e.g. unit tests / the
+  // flag-OFF path). HOISTED above the early returns for the same rules-of-hooks reason
+  // as acceptProse: a cold-cache first render (the pop-out's separate root) early-returns
+  // before this line, then the resolved render reaches it → "rendered more hooks".
+  const ws = useWorkspaceLayoutOptional();
+
   if (resolution.isLoading) return <Hint>{t('loading', { defaultValue: 'Loading co-writer…' })}</Hint>;
   if (res?.status === 'unavailable')
     return <Hint>{t('unavailable', { defaultValue: 'Grounding service unavailable.' })}</Hint>;
@@ -273,13 +291,9 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
   // The selected model's metadata — hints for the server's auto-reasoning
   // strategy (adaptive pass-through vs our rule-based scorer).
   const selectedModel = models.data?.find((m) => m.user_model_id === effectiveModelRef);
-  // T5.3 — attribute accepted AI prose with the selected model's name so the
-  // provenance hover tag can show it. Stable so the no-unmount child views don't
-  // churn on every render.
-  const acceptProse = useCallback(
-    (text: string) => onAccept(text, { model: selectedModel?.provider_model_name }),
-    [onAccept, selectedModel?.provider_model_name],
-  );
+  // Feed the hoisted acceptProse the current model name via its ref (plain assignment,
+  // not a hook — safe after the early returns).
+  modelNameRef.current = selectedModel?.provider_model_name;
   // T0.1 — the plot-thread debt panel is opt-in: only surface its sub-tab when
   // the book has narrative-thread tracking on (same gate as the producer).
   const threadsEnabled = work.settings?.narrative_thread_enabled === true;
@@ -296,7 +310,8 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
   // replaced by a reorderable DockRail and the active panel is driven by the (per-
   // device) layout; OFF (or no provider — unit tests) keeps the local `tab` state +
   // fixed strip UNCHANGED. The 19 content divs stay MOUNTED either way (no remount).
-  const ws = useWorkspaceLayoutOptional();
+  // `ws` is the hoisted hook value (read above the early returns); the derivations below
+  // use it only after the Work resolves.
   const dockOn = !!ws?.enabled;
   const dockVisible = dockOn ? visibleDockIds(ws!.layout, threadsEnabled) : [];
   // CLAMP the active panel to a VISIBLE one (/review-impl MED): a persisted active

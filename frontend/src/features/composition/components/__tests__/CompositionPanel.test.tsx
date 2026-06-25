@@ -44,8 +44,12 @@ vi.mock('../FlywheelPanel', () => ({ FlywheelPanel: mockPanel('flywheel') }));
 vi.mock('../CompositionSettingsView', () => ({ CompositionSettingsView: mockPanel('settings') }));
 
 const work = { project_id: 'proj-1', book_id: 'b', settings: {} as Record<string, unknown> };
+// Controllable resolution state — lets a test reproduce the pop-out's COLD-cache path
+// (isLoading:true first render → resolved next render), which exposed the rules-of-hooks
+// crash (a hook below the `if (resolution.isLoading) return`). Defaults to resolved.
+const wr = vi.hoisted(() => ({ loading: false }));
 vi.mock('../../hooks/useWork', () => ({
-  useWorkResolution: () => ({ data: { status: 'found', work }, isLoading: false }),
+  useWorkResolution: () => (wr.loading ? { data: undefined, isLoading: true } : { data: { status: 'found', work }, isLoading: false }),
   useCreateWork: () => ({ mutate: vi.fn(), isPending: false }),
   useChapterScenes: () => ({ data: [{ id: 's1', title: 'Scene 1', status: 'done' }] }),
   useCreateScene: () => ({ mutate: vi.fn(), isPending: false }),
@@ -58,6 +62,7 @@ vi.mock('../../../ai-models/api', () => ({
 
 beforeEach(() => {
   localStorage.clear();   // T5.4 — the dock flag/layout must not leak across tests
+  wr.loading = false;     // default resolved; the cold-cache test flips this
   mounts.compose = mounts.cowriter = mounts.assemble = mounts.planner = mounts.beats = mounts.graph = mounts.cast = mounts.relmap = mounts.timeline = mounts.arc = mounts.worldmap = mounts.grounding = mounts.references = mounts.style = mounts.canon = mounts.progress = mounts.quality = mounts.flywheel = mounts.settings = 0;
 });
 
@@ -274,6 +279,30 @@ describe('CompositionPanel solo / OS pop-out mode (T5.4 M4)', () => {
     // the other panels are NOT mounted in the popout (only the solo one)
     expect(screen.queryByTestId('mock-compose')).toBeNull();
     expect(screen.queryByTestId('mock-grounding')).toBeNull();
+  });
+
+  it('survives a cold-cache loading→resolved transition (the pop-out path) without a rules-of-hooks crash', async () => {
+    // Live-smoke caught this: the pop-out is a SEPARATE React root with a COLD react-query
+    // cache, so useWorkResolution is isLoading on first render (early return → fewer hooks),
+    // then resolves (full render → the hooks below the return). With acceptProse/ws NOT
+    // hoisted this threw "rendered more hooks". The opener masked it (its cache is warm).
+    wr.loading = true;
+    localStorage.setItem('loom.workspace.enabled', 'true');
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const ui = (
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={['/books/b']}>
+          <WorkspaceLayoutProvider>
+            <CompositionPanel bookId="b" chapterId="c" token="tok" onAccept={vi.fn()} />
+          </WorkspaceLayoutProvider>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+    const { rerender } = render(ui);                 // loading render (Hint, fewer hooks pre-fix)
+    expect(screen.queryByTestId('mock-compose')).toBeNull();
+    wr.loading = false;
+    expect(() => rerender(ui)).not.toThrow();         // resolved render — pre-fix this crashed
+    expect(await screen.findByTestId('mock-compose')).toBeInTheDocument();
   });
 
   it('popping a panel out opens an OS window and unmounts it from the opener (M4)', () => {
