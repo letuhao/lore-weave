@@ -31,8 +31,9 @@ import { GroundingPanel } from './GroundingPanel';
 import { ReferencesPanel } from './ReferencesPanel';
 import { DockRail } from './workspace/DockRail';
 import { DockSlot } from './workspace/DockSlot';
+import { PopoutBridge } from './workspace/PopoutBridge';
 import { useWorkspaceLayoutOptional } from '../context/WorkspaceLayoutContext';
-import { visibleDockIds, hiddenDockIds, floatingDockIds, nextActiveAfterHide, defaultFloatRect } from '../workspace/dock';
+import { visibleDockIds, hiddenDockIds, floatingDockIds, popoutDockIds, nextActiveAfterHide, defaultFloatRect } from '../workspace/dock';
 import type { Rect, WorkspacePanelId } from '../workspace/types';
 import { DivergenceWizardButton } from './DivergenceWizardButton';
 import { PromoteWhatIfButton } from './PromoteWhatIfButton';
@@ -61,11 +62,16 @@ type Props = {
    *  the editor decoration); the GroundingPanel renders the toggle control. */
   heatmapEnabled?: boolean;
   onToggleHeatmap?: () => void;
+  /** T5.4 M4 — popout/solo mode: when set, render ONLY this panel (no dock rail, no
+   *  windowing chrome) — used by the /composition/popout route so a popped-out panel
+   *  shows just itself in its own OS window. Omitted ⇒ the full studio (default). */
+  soloPanel?: WorkspacePanelId;
 };
 
 type SubTab = 'compose' | 'cowriter' | 'assemble' | 'planner' | 'beats' | 'graph' | 'cast' | 'relmap' | 'timeline' | 'arc' | 'worldmap' | 'grounding' | 'references' | 'style' | 'canon' | 'threads' | 'progress' | 'quality' | 'flywheel' | 'settings';
 
-export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: sceneIdProp, onSceneChange, heatmapEnabled, onToggleHeatmap }: Props) {
+export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: sceneIdProp, onSceneChange, heatmapEnabled, onToggleHeatmap, soloPanel }: Props) {
+  const solo = soloPanel != null;
   const { t } = useTranslation('composition');
   const qc = useQueryClient();
   const resolution = useWorkResolution(bookId, token);
@@ -346,13 +352,30 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
     ws.dispatch({ type: 'set-placement', id, placement: 'dock' }); // rect preserved for re-float
     setFloatFocus((prev) => prev.filter((x) => x !== id));
   };
+  // T5.4 M4 — OS pop-out. A popped panel leaves the rail AND the opener content area
+  // (it runs in its OWN window via PopoutBridge → the /composition/popout route); only
+  // its bridge stays mounted here, owning that window's lifecycle. Closing the window
+  // (or its Dock button) re-docks it (dockPanel, via the bridge's close-poll).
+  const dockPopped = dockOn ? popoutDockIds(ws!.layout, threadsEnabled) : [];
+  const popoutPanel = (id: WorkspacePanelId) => {
+    if (!ws) return;
+    ws.dispatch({ type: 'set-placement', id, placement: 'popout' });
+    if (activeTab === id) {
+      const next = nextActiveAfterHide(dockVisible, id);
+      if (next) ws.dispatch({ type: 'set-active', id: next });
+    }
+  };
   // Per-panel placement-aware host props (shared by every DockSlot). When the flag is
   // OFF / there's no provider, `floated` is always false ⇒ DockSlot renders the M2
-  // visible/hidden div, byte-identical to before.
+  // visible/hidden div, byte-identical to before. In SOLO mode (the popout shell) only
+  // `soloPanel` is mounted, forced visible, never floated/popped (it IS the window).
   const slot = (id: WorkspacePanelId) => ({
     id,
-    active: activeTab === id,
-    floated: dockOn && ws?.layout.panels[id]?.placement === 'float',
+    active: solo ? id === soloPanel : activeTab === id,
+    floated: !solo && dockOn && ws?.layout.panels[id]?.placement === 'float',
+    // Not mounted here when: a non-solo panel in the popout shell, OR (in the opener)
+    // a panel that's popped out to its own window.
+    mounted: solo ? id === soloPanel : ws?.layout.panels[id]?.placement !== 'popout',
     rect: ws?.layout.panels[id]?.rect ?? defaultFloatRect(0),
     title: t(id, { defaultValue: id }),
     zIndex: floatZ(id),
@@ -548,10 +571,24 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
         </div>
       )}
 
+      {/* T5.4 M4 — opener-side OS pop-out bridges (render nothing; own each popped
+          panel's window). Never in SOLO mode (the popout shell IS a window). */}
+      {!solo && dockPopped.map((id) => (
+        <PopoutBridge
+          key={id}
+          id={id}
+          bookId={bookId}
+          chapterId={chapterId}
+          sceneId={effectiveScene}
+          onClosed={() => dockPanel(id)}
+        />
+      ))}
+
       {/* sub-tabs strip — DockRail (reorderable) when the windowing flag is ON, else
           the fixed TabScrollStrip. Both keep the Power-view trigger (shared rightSlot)
-          and the 19 content divs below stay MOUNTED either way (no remount). */}
-      {dockOn && ws ? (
+          and the 19 content divs below stay MOUNTED either way (no remount). SOLO mode
+          (the popout shell) shows no strip — the window IS the single panel. */}
+      {solo ? null : dockOn && ws ? (
         <DockRail
           visibleIds={dockVisible}
           hiddenIds={hiddenDockIds(ws.layout, threadsEnabled)}
@@ -561,6 +598,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
           onHide={hideDockPanel}
           onShow={(id) => ws.dispatch({ type: 'toggle-hidden', id })}
           onFloat={floatPanel}
+          onPopout={popoutPanel}
           rightSlot={powerViewBtn}
         />
       ) : (

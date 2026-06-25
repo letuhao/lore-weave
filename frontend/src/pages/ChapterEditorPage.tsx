@@ -40,6 +40,7 @@ import { useWorkResolution, useChapterScenes } from '@/features/composition/hook
 import { useReportProgress, useEnsureBaseline } from '@/features/composition/hooks/useProgress';
 import { useMentionHeatmap } from '@/features/composition/hooks/useMentionHeatmap';
 import { useFocusMode } from '@/features/composition/hooks/useFocusMode';
+import { usePopoutInsertRelay } from '@/features/composition/hooks/usePopoutInsertRelay';
 import { useProvenance } from '@/features/composition/hooks/useProvenance';
 import { ProvenanceToolbar } from '@/features/composition/components/ProvenanceToolbar';
 import { ProvenanceTag } from '@/features/composition/components/ProvenanceTag';
@@ -146,6 +147,16 @@ export function ChapterEditorPage() {
   const [tiptapJson, setTiptapJson] = useState<any>(null);
   const [textContent, setTextContent] = useState('');
   const tiptapEditorRef = useRef<TiptapEditorHandle>(null);
+
+  // T5.4 M4 — prose accepted in a popped-out Compose/co-writer window has no editor of
+  // its own; it relays over the per-book channel and lands here at the cursor (same as
+  // the in-app onAccept path below), so popping a panel to monitor 2 still writes to the
+  // manuscript on monitor 1.
+  usePopoutInsertRelay(bookId, chapterId, (text, model) =>
+    tiptapEditorRef.current?.insertAtCursor(text, {
+      source: 'ai', status: 'unreviewed', model: model ?? null, ts: new Date().toISOString(),
+    }),
+  );
 
   // Editor mode + grammar
   const [editorMode, setEditorMode] = useEditorMode();

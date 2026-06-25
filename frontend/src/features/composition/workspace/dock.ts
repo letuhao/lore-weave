@@ -58,6 +58,16 @@ export function floatingDockIds(layout: WorkspaceLayout, threadsEnabled: boolean
     .map(([id]) => id);
 }
 
+/** The popped-out panels (each driving a separate OS window via PopoutBridge). Gated
+ *  on threadsEnabled like the other listings. These are NOT mounted in the opener's
+ *  content area (they live in their own window) — only their bridge is. */
+export function popoutDockIds(layout: WorkspaceLayout, threadsEnabled: boolean): WorkspacePanelId[] {
+  return (Object.entries(layout.panels) as [WorkspacePanelId, NonNullable<WorkspaceLayout['panels'][WorkspacePanelId]>][])
+    .filter(([id, st]) => st.placement === 'popout' && included(id, threadsEnabled))
+    .sort((a, b) => (a[1].order ?? 0) - (b[1].order ?? 0))
+    .map(([id]) => id);
+}
+
 /** A new floating window's initial geometry, cascaded by how many windows are already
  *  open so a freshly-floated panel doesn't land exactly on top of the last one. Clamped
  *  to a sane default size; the user then drags/resizes (persisted as rect). */

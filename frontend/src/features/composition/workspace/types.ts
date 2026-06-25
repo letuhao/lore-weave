@@ -11,6 +11,17 @@ export type WorkspacePanelId =
   | 'relmap' | 'timeline' | 'arc' | 'worldmap' | 'grounding' | 'references'
   | 'style' | 'canon' | 'threads' | 'progress' | 'quality' | 'flywheel' | 'settings';
 
+const PANEL_IDS: WorkspacePanelId[] = [
+  'compose', 'cowriter', 'assemble', 'planner', 'beats', 'graph', 'cast', 'relmap',
+  'timeline', 'arc', 'worldmap', 'grounding', 'references', 'style', 'canon',
+  'threads', 'progress', 'quality', 'flywheel', 'settings',
+];
+
+/** Narrow an untrusted string (e.g. a popout URL param) to a known panel id. */
+export function isWorkspacePanelId(v: string): v is WorkspacePanelId {
+  return (PANEL_IDS as string[]).includes(v);
+}
+
 export type Placement = 'dock' | 'float' | 'popout';
 
 export type Rect = { x: number; y: number; w: number; h: number };

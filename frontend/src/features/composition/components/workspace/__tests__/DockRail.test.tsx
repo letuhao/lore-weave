@@ -13,6 +13,7 @@ function setup(over: Partial<Parameters<typeof DockRail>[0]> = {}) {
     onHide: vi.fn(),
     onShow: vi.fn(),
     onFloat: vi.fn(),
+    onPopout: vi.fn(),
     ...over,
   };
   render(<DockRail {...props} rightSlot={<button data-testid="rs">RS</button>} />);
@@ -44,6 +45,12 @@ describe('DockRail (T5.4 M2)', () => {
     const p = setup();
     fireEvent.click(screen.getByTestId('dock-float-cast'));
     expect(p.onFloat).toHaveBeenCalledWith('cast');
+  });
+
+  it('the ⮬ pops a panel out to an OS window (M4)', () => {
+    const p = setup();
+    fireEvent.click(screen.getByTestId('dock-popout-cast'));
+    expect(p.onPopout).toHaveBeenCalledWith('cast');
   });
 
   it('the component picker re-shows a hidden panel', () => {

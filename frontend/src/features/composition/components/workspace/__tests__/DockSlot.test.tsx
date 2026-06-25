@@ -49,4 +49,11 @@ describe('DockSlot (T5.4 M3)', () => {
     fireEvent.click(screen.getByTestId('floating-window-dock'));
     expect(p.onDock).toHaveBeenCalledTimes(1);
   });
+
+  it('mounted=false renders nothing (a popped-out / non-solo panel lives elsewhere) (M4)', () => {
+    setup({ mounted: false, active: true });
+    expect(screen.queryByTestId('dock-slot-compose')).toBeNull();
+    expect(screen.queryByTestId('floating-window')).toBeNull();
+    expect(screen.queryByTestId('body')).toBeNull();   // children not rendered here at all
+  });
 });

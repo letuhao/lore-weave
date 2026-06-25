@@ -17,9 +17,9 @@ import type { WorkspacePanelId } from '../../workspace/types';
 import { computeReorder } from '../../workspace/dock';
 import { ComponentPicker } from './ComponentPicker';
 
-function SortableTab({ id, active, label, floatLabel, onSelect, onHide, onFloat }: {
-  id: WorkspacePanelId; active: boolean; label: string; floatLabel: string;
-  onSelect: () => void; onHide: () => void; onFloat: () => void;
+function SortableTab({ id, active, label, floatLabel, popoutLabel, onSelect, onHide, onFloat, onPopout }: {
+  id: WorkspacePanelId; active: boolean; label: string; floatLabel: string; popoutLabel: string;
+  onSelect: () => void; onHide: () => void; onFloat: () => void; onPopout: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
@@ -41,6 +41,13 @@ function SortableTab({ id, active, label, floatLabel, onSelect, onHide, onFloat 
         title={floatLabel}
       >⤢</button>
       <button
+        type="button" data-testid={`dock-popout-${id}`}
+        className="text-neutral-400 opacity-0 hover:text-neutral-600 group-hover:opacity-100"
+        onClick={onPopout}
+        aria-label={popoutLabel}
+        title={popoutLabel}
+      >⮬</button>
+      <button
         type="button" data-testid={`dock-hide-${id}`}
         className="text-neutral-400 opacity-0 hover:text-neutral-600 group-hover:opacity-100"
         onClick={onHide}
@@ -50,7 +57,7 @@ function SortableTab({ id, active, label, floatLabel, onSelect, onHide, onFloat 
   );
 }
 
-export function DockRail({ visibleIds, hiddenIds, active, onSelect, onReorder, onHide, onShow, onFloat, rightSlot }: {
+export function DockRail({ visibleIds, hiddenIds, active, onSelect, onReorder, onHide, onShow, onFloat, onPopout, rightSlot }: {
   visibleIds: WorkspacePanelId[];
   hiddenIds: WorkspacePanelId[];
   active: WorkspacePanelId;
@@ -58,7 +65,8 @@ export function DockRail({ visibleIds, hiddenIds, active, onSelect, onReorder, o
   onReorder: (ids: WorkspacePanelId[]) => void;
   onHide: (id: WorkspacePanelId) => void;
   onShow: (id: WorkspacePanelId) => void;
-  onFloat: (id: WorkspacePanelId) => void;   // M3 — pop the panel into a floating window
+  onFloat: (id: WorkspacePanelId) => void;    // M3 — pop the panel into a floating window
+  onPopout: (id: WorkspacePanelId) => void;   // M4 — pop the panel into a separate OS window
   rightSlot?: ReactNode;   // e.g. the Power-view trigger — kept available in dock mode
 }) {
   const { t } = useTranslation('composition');
@@ -83,9 +91,11 @@ export function DockRail({ visibleIds, hiddenIds, active, onSelect, onReorder, o
                 key={id} id={id} active={id === active}
                 label={t(id, { defaultValue: id })}
                 floatLabel={t('dock.float', { defaultValue: 'Float' })}
+                popoutLabel={t('dock.popout', { defaultValue: 'Pop out' })}
                 onSelect={() => onSelect(id)}
                 onHide={() => onHide(id)}
                 onFloat={() => onFloat(id)}
+                onPopout={() => onPopout(id)}
               />
             ))}
           </SortableContext>

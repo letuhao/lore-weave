@@ -11,11 +11,13 @@ import type { Rect, WorkspacePanelId } from '../../workspace/types';
 import { FloatingWindow } from './FloatingWindow';
 
 export function DockSlot({
-  id, active, floated, rect, title, zIndex, onMove, onResize, onDock, onFocus, children,
+  id, active, floated, mounted = true, rect, title, zIndex, onMove, onResize, onDock, onFocus, children,
 }: {
   id: WorkspacePanelId;
   active: boolean;       // the focused docked panel (drives the visible/hidden div)
   floated: boolean;      // placement === 'float' (only ever true when the flag is ON)
+  mounted?: boolean;     // M4 — false for a popped-out panel (it lives in its own window)
+                         // or a non-solo panel in a popout shell; render nothing here.
   rect: Rect;
   title: ReactNode;
   zIndex: number;
@@ -25,6 +27,7 @@ export function DockSlot({
   onFocus?: () => void;
   children: ReactNode;
 }) {
+  if (!mounted) return null;
   if (floated) {
     return (
       <FloatingWindow

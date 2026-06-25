@@ -24,6 +24,7 @@ import { ChatPage } from '@/pages/ChatPage';
 import { RoleplayPage } from '@/features/roleplay/pages/RoleplayPage';
 import { BookDetailPage } from '@/pages/BookDetailPage';
 import { ChapterEditorPage } from '@/pages/ChapterEditorPage';
+import { PopoutHost } from '@/features/composition/components/workspace/PopoutHost';
 import { ChapterComparePage } from '@/pages/ChapterComparePage';
 import { WikiEditorPage } from '@/pages/WikiEditorPage';
 import { ReaderPage } from '@/pages/ReaderPage';
@@ -97,6 +98,9 @@ export function App() {
 
           {/* Reader — full screen, no sidebar */}
           <Route path="/books/:bookId/chapters/:chapterId/read" element={<ReaderPage />} />
+
+          {/* T5.4 M4 — composition panel OS pop-out window (own root, full-screen, auth) */}
+          <Route path="/composition/popout" element={<RequireAuth><PopoutHost /></RequireAuth>} />
 
           {/* Translation review — full screen, auth required */}
           <Route path="/books/:bookId/chapters/:chapterId/review/:versionId" element={<RequireAuth><TranslationReviewPage /></RequireAuth>} />
