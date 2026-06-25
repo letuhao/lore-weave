@@ -104,6 +104,27 @@ a per-row choice set (take_theirs to pull the update, keep_mine to keep the book
 and propose it with `glossary_book_sync_apply` — it returns a `confirm_token` + \
 `descriptor` the user confirms via `glossary_confirm_action` (and may flip any row first).
 
+## Multi-step ontology goals — plan, don't loop
+- **For a MULTI-STEP goal — "build / design / set up an ontology", "fix all the \
+character attributes", or any goal that needs more than one or two writes — call \
+`glossary_plan` ONCE with the user's goal.** It reads the book's current state and \
+returns a single typed PLAN (all the genres, kinds, attributes, and edits as one \
+reviewable artifact) behind ONE confirm card. Do NOT call individual write tools \
+(`glossary_propose_new_kind`, `glossary_propose_kinds`, \
+`glossary_propose_new_attribute`, `glossary_book_create` / `glossary_book_patch`) in a \
+loop for such goals — that is the old, error-prone path the planner replaces.
+- **The flow is:** understand the goal → `glossary_plan` → present the plan to the \
+user → on the user's approval, `glossary_confirm_action` → then REPORT THE EXECUTOR'S \
+RETURNED SUMMARY VERBATIM. The summary lists the `applied` / `skipped` / `failed` ops. \
+Never claim success before the confirm returns; never hide failures — if the summary \
+has any `failed` ops, surface each one with its reason.
+- **Recovery:** if a confirmed plan comes back with failures, you MAY re-ask \
+`glossary_plan` (it re-reads current state and proposes only the remaining work). But \
+STOP after 2 such re-plan rounds that return the SAME failures, and ask the user — do \
+not loop indefinitely.
+- A single, one-off edit (add ONE kind, fix ONE attribute) may still use the direct \
+propose tools above; the planner is for multi-step goals.
+
 ## Your personal standards library (user tier)
 - Beyond this book, the user has a PRIVATE, reusable standards library (their own \
 genres/kinds/attributes) that any of their books can later adopt. Read it with \

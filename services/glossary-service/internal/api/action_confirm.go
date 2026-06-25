@@ -154,6 +154,8 @@ func (s *Server) confirmAction(w http.ResponseWriter, r *http.Request) {
 		s.effectMerge(w, r.Context(), claims)
 	case descDeepResearch:
 		s.effectDeepResearch(w, r.Context(), claims)
+	case descExecutePlan:
+		s.effectExecutePlan(w, r.Context(), claims)
 	default:
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "unknown action")
 	}
@@ -446,6 +448,8 @@ func (s *Server) previewAction(w http.ResponseWriter, r *http.Request) {
 		s.previewMerge(w, r.Context(), claims)
 	case descDeepResearch:
 		s.previewDeepResearch(w, r.Context(), claims)
+	case descExecutePlan:
+		s.previewExecutePlan(w, r.Context(), claims)
 	default:
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "unknown action")
 	}

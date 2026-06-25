@@ -9,6 +9,7 @@ require (
 	github.com/jackc/pgx/v5 v5.6.0
 	github.com/loreweave/foundation/contracts/adminjwt v0.0.0
 	github.com/loreweave/grantclient v0.1.0
+	github.com/loreweave/loreweave_mcp v0.0.0
 	github.com/loreweave/observability v0.1.0
 	github.com/modelcontextprotocol/go-sdk v1.6.1
 	github.com/prometheus/client_golang v1.23.2
@@ -19,6 +20,8 @@ require (
 replace github.com/loreweave/foundation/contracts/adminjwt => ../../contracts/adminjwt
 
 replace github.com/loreweave/grantclient => ../../sdks/go/grantclient
+
+replace github.com/loreweave/loreweave_mcp => ../../sdks/go/loreweave_mcp
 
 replace github.com/loreweave/observability => ../../sdks/go/observability
 
