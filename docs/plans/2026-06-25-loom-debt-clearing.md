@@ -174,7 +174,22 @@ Batch the LOWs: `D-T3.1-SCENE-HINT`/`GUIDE-APPEND`, `D-T3.3-SLASH-CONTINUE`/`CHA
   before promote). Mostly FE + orchestration; the only net-new BE is seeding outline nodes in the derivative
   project at promote (prefer reusing `createNode`, no new endpoint). **§8 carries the one open product call**
   (build it as its own L/XL cycle vs. record on-canvas as conscious won't-build with the wizard canonical).
-- **~24 open**, mapped above. **Next: WS-D (multi-window hardening) — the final workstream.**
+- ✅ **WS-D (multi-window hardening) BUILT 2026-06-26** (chat-hoist stays its own task, as locked):
+  - **WORKER-HEALTHCHECK** (S) — `useSharedCompositionStream` arms a 4s ack-timeout on connect (cleared by
+    the hub's connect-replay); fires → degrade with a clear error instead of a silent hang.
+  - **SERVER-SYNC** (M) — `loom_workspace` pref `{enabled, layout}` via `syncPrefs`: synchronous localStorage
+    paint, hydrate-from-server on login (LWW + forward-merge), debounced echo-guarded write-through. +3 tests.
+  - **PANEL-STREAM-HOIST** (reclassified **L** — cross-window, not the plan's S–M) — new cross-window
+    `AssembleStateProvider`: the Assemble draft `{result,edited,last}` syncs over the per-(book,chapter)
+    BroadcastChannel (request→reply hydration on pop-out mount + debounced broadcast + **value-compare
+    echo-guard**, no loop), mounted in both roots (WorkspaceShell + PopoutHost); `ChapterAssembleView` consumes
+    it via an optional hook (local fallback for bare mounts). +4 cross-window tests. **Self-review fixed** a
+    per-keystroke broadcast write-storm (debounced) + a batching-fragile echo guard (→ value-compare). Also
+    **hardened 3 pre-existing BroadcastChannel delivery-timing flakes** (PopoutHost/PopoutBridge: await delivery
+    vs `setTimeout(0)`). 532 composition+editor green (stable ×3), tsc clean.
+- **~22 open** — all workstreams (A, B1, B2, B3-spec, C, D, E) cleared or specced; remaining open items are
+  the deferred-by-design (WS-F blocked/mobile) + the newly-tracked `D-DERIVATIVE-ADAPT-FROM-SOURCE` + the
+  scheduled chat-hoist + the world-i18n parity (separate track).
 - **⚠ Audit correction (from detailed-design research):** **`D-T5.4-CHAT-HOIST` is NOT resolved** — the
   co-writer chat SSE still runs its own `fetch`/`ReadableStream` in `useChatMessages` *below* the windowing
   layer; it survives a float but is **killed by a pop-out**. Re-opened (see WS-D detailed design).

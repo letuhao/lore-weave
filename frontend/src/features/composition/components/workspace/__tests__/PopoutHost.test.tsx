@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { PopoutHost } from '../PopoutHost';
@@ -54,8 +54,10 @@ describe('PopoutHost (T5.4 M4)', () => {
     opener.subscribe((m) => got.push(m));
     renderAt('?book=PHOST_b1&chapter=c1&panel=compose');
     fireEvent.click(screen.getByTestId('emit-accept'));
-    await new Promise((r) => setTimeout(r, 0));
-    expect(got).toContainEqual({ kind: 'insert-prose', text: 'drafted', model: 'qwen' });
+    // AWAIT delivery (BroadcastChannel timing varies under load) rather than a fixed
+    // setTimeout(0) that races it — and the popout's AssembleStateProvider now also
+    // posts on this channel, so other traffic must not starve the assertion.
+    await waitFor(() => expect(got).toContainEqual({ kind: 'insert-prose', text: 'drafted', model: 'qwen' }));
     opener.close();
   });
 
@@ -66,8 +68,7 @@ describe('PopoutHost (T5.4 M4)', () => {
     opener.subscribe((m) => got.push(m));
     renderAt('?book=PHOST_b9&chapter=c1&panel=grounding');
     fireEvent.click(screen.getByTestId('popout-dock-back'));
-    await new Promise((r) => setTimeout(r, 0));
-    expect(got).toContainEqual({ kind: 'dock-back', panel: 'grounding' });
+    await waitFor(() => expect(got).toContainEqual({ kind: 'dock-back', panel: 'grounding' }));
     expect(close).toHaveBeenCalledTimes(1);
     opener.close();
     close.mockRestore();

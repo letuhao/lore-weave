@@ -1164,7 +1164,7 @@ export function ChapterEditorPage() {
                 // T5.4 — WorkspaceShell hoists the live co-writer stream (+ owns the
                 // windowing layout) ABOVE the studio panels so a docked/floated/popped
                 // panel survives a move. M1: renders CompositionPanel unchanged.
-                <WorkspaceShell token={accessToken} bookId={bookId}>
+                <WorkspaceShell token={accessToken} bookId={bookId} chapterId={chapterId}>
                   <CompositionPanel
                     key={bookId}
                     bookId={bookId}

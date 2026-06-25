@@ -12,13 +12,14 @@
 import type { ReactNode } from 'react';
 import { LiveStateProvider } from '../../context/LiveStateContext';
 import { CriticStateProvider } from '../../context/CriticStateContext';
+import { AssembleStateProvider } from '../../context/AssembleStateContext';
 import { WorkspaceLayoutProvider } from '../../context/WorkspaceLayoutContext';
 
-export function WorkspaceShell({ token, bookId, children }: {
-  token: string | null; bookId: string; children: ReactNode;
+export function WorkspaceShell({ token, bookId, chapterId, children }: {
+  token: string | null; bookId: string; chapterId?: string; children: ReactNode;
 }) {
   return (
-    <WorkspaceLayoutProvider>
+    <WorkspaceLayoutProvider token={token}>
       {/* key={bookId} resets the hoisted co-writer stream on a book change — the
           stream USED to live inside CompositionPanel (which is key={bookId}), so the
           hoist would otherwise leak a streaming ghost/jobId from one book into the
@@ -30,9 +31,15 @@ export function WorkspaceShell({ token, bookId, children }: {
             Inside the book-keyed LiveStateProvider → the verdict resets on book change.
             A POPPED-OUT panel (separate root, no this provider) re-fetches by jobId. */}
         <CriticStateProvider>
-          {/* M1: render the studio as-is. M2+ swaps this for the dock/float/popout host
-              when the flag is ON, keeping `children` (the fixed strip) as the OFF fallback. */}
-          {children}
+          {/* WS-D: the Assemble draft is owned here (above the dock/float layer) and
+              synced cross-window over the channel, so popping out the Assemble panel
+              mid-draft keeps the un-accepted result + edits. key={chapterId} resets the
+              draft on a chapter change (a new chapter is a new draft). */}
+          <AssembleStateProvider key={chapterId} bookId={bookId} chapterId={chapterId}>
+            {/* M1: render the studio as-is. M2+ swaps this for the dock/float/popout host
+                when the flag is ON, keeping `children` (the fixed strip) as the OFF fallback. */}
+            {children}
+          </AssembleStateProvider>
         </CriticStateProvider>
       </LiveStateProvider>
     </WorkspaceLayoutProvider>

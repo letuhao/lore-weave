@@ -9,11 +9,25 @@
 //     PopoutBridge close-poll is the backstop, this is just the fast path).
 // Slice B adds live-stream fan-out here (or via a SharedWorker); the channel is the
 // seam both slices share.
+import type { ChapterGeneration } from '../types';
 import type { WorkspacePanelId } from './types';
+
+/** WS-D (D-T5.4-PANEL-STREAM-HOIST) — the at-risk Assemble-tab draft that a pop-out
+ *  (a separate React root) would otherwise lose: the generated result + the human's
+ *  in-progress edits + which mode produced it. Synced across windows over the channel. */
+export type AssembleSnapshot = {
+  result: ChapterGeneration | null;
+  edited: string;
+  last: 'chapter' | 'stitch';
+};
 
 export type PopoutMessage =
   | { kind: 'insert-prose'; text: string; model?: string }
-  | { kind: 'dock-back'; panel: WorkspacePanelId };
+  | { kind: 'dock-back'; panel: WorkspacePanelId }
+  // WS-D: the Assemble draft sync. `assemble-request` asks the other window(s) for the
+  // current draft (a fresh pop-out hydrates from the opener); `assemble-state` carries it.
+  | { kind: 'assemble-request' }
+  | { kind: 'assemble-state'; state: AssembleSnapshot };
 
 const PREFIX = 'loom.workspace.popout';
 

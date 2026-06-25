@@ -1,15 +1,28 @@
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { renderHook } from '@testing-library/react';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { WorkspaceLayoutProvider, useWorkspaceLayout } from '../WorkspaceLayoutContext';
+
+// WS-D server-sync: mock the prefs transport so the localStorage-only tests stay
+// unchanged (no token wrapper → these are never called) and the token tests can
+// drive hydrate + write-through deterministically.
+const { loadMock, syncMock } = vi.hoisted(() => ({ loadMock: vi.fn(), syncMock: vi.fn() }));
+vi.mock('@/lib/syncPrefs', () => ({
+  loadPrefFromServer: (...a: unknown[]) => loadMock(...a),
+  syncPrefsToServer: (...a: unknown[]) => syncMock(...a),
+  savePrefToServer: vi.fn(),
+}));
 
 const FLAG_KEY = 'loom.workspace.enabled';
 const LAYOUT_KEY = 'loom.workspace.layout';
 
-beforeEach(() => localStorage.clear());
+beforeEach(() => { localStorage.clear(); loadMock.mockReset(); syncMock.mockReset(); loadMock.mockResolvedValue(undefined); });
 
 function wrapper({ children }: { children: React.ReactNode }) {
   return <WorkspaceLayoutProvider>{children}</WorkspaceLayoutProvider>;
+}
+function tokenWrapper({ children }: { children: React.ReactNode }) {
+  return <WorkspaceLayoutProvider token="tok">{children}</WorkspaceLayoutProvider>;
 }
 
 describe('WorkspaceLayoutContext (T5.4 M1)', () => {
@@ -75,5 +88,60 @@ describe('WorkspaceLayoutContext (T5.4 M1)', () => {
 
   it('useWorkspaceLayout throws outside the provider', () => {
     expect(() => renderHook(() => useWorkspaceLayout())).toThrow(/WorkspaceLayoutProvider/);
+  });
+
+  // ── WS-D (D-T5.4-SERVER-SYNC) ──
+  it('without a token, never touches the server (per-device only)', () => {
+    const { result } = renderHook(() => useWorkspaceLayout(), { wrapper });
+    act(() => result.current.setEnabled(true));
+    expect(loadMock).not.toHaveBeenCalled();
+    expect(syncMock).not.toHaveBeenCalled();
+  });
+
+  it('hydrates {enabled, layout} from the server on login, forward-merging the layout (LWW)', async () => {
+    loadMock.mockResolvedValue({
+      enabled: true,
+      layout: {
+        version: 1, active: 'compose',
+        panels: { compose: { placement: 'dock', order: 0 }, cast: { placement: 'float', order: 1, rect: { x: 1, y: 2, w: 300, h: 200 } } },
+      },
+    });
+    const { result } = renderHook(() => useWorkspaceLayout(), { wrapper: tokenWrapper });
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    expect(loadMock).toHaveBeenCalledWith('loom_workspace', 'tok');
+    expect(result.current.enabled).toBe(true);                       // server enabled wins
+    expect(result.current.layout.panels.cast?.placement).toBe('float');
+    expect(result.current.layout.panels.references?.placement).toBe('dock'); // forward-merge keeps new panels
+  });
+
+  it('writes the workspace pref through to the server on change (debounced, LWW)', () => {
+    vi.useFakeTimers();
+    try {
+      const { result } = renderHook(() => useWorkspaceLayout(), { wrapper: tokenWrapper });
+      act(() => result.current.setEnabled(true));
+      expect(syncMock).not.toHaveBeenCalled();                       // debounced, not yet
+      act(() => { vi.advanceTimersByTime(800); });
+      expect(syncMock).toHaveBeenCalledWith('loom_workspace', expect.objectContaining({ enabled: true }), 'tok');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('hydrate cancels a write-through armed BEFORE it resolved (no stale post → no divergence)', async () => {
+    // /review-impl MED: a user change racing the hydrate must not POST after the
+    // server value wins, or server & local diverge.
+    let resolveLoad: (v: unknown) => void = () => {};
+    loadMock.mockReturnValue(new Promise((r) => { resolveLoad = r; }));
+    vi.useFakeTimers();
+    try {
+      const { result } = renderHook(() => useWorkspaceLayout(), { wrapper: tokenWrapper });
+      act(() => result.current.setEnabled(true));                    // user change → arms the 800ms timer
+      await act(async () => { resolveLoad({ enabled: false }); await Promise.resolve(); await Promise.resolve(); });
+      expect(result.current.enabled).toBe(false);                    // server won on load
+      act(() => { vi.advanceTimersByTime(800); });
+      expect(syncMock).not.toHaveBeenCalled();                       // the stale pre-hydrate timer was cancelled
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react';
+import { render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PopoutBridge } from '../PopoutBridge';
 import { openPopoutChannel } from '../../../workspace/popoutChannel';
@@ -69,8 +69,9 @@ describe('PopoutBridge (T5.4 M4)', () => {
     // a popout posts dock-back for THIS panel (the popout's "Dock" button)
     const popout = openPopoutChannel('PBRIDGE_dock', 'c1');
     popout.post({ kind: 'dock-back', panel: 'cast' });
-    await new Promise((r) => setTimeout(r, 0));
-    expect(onClosed).toHaveBeenCalledTimes(1);   // re-docked without waiting for the poll
+    // AWAIT delivery (real BroadcastChannel timing varies) instead of a fixed
+    // setTimeout(0) that races it — the re-dock fires without waiting for the 500ms poll.
+    await waitFor(() => expect(onClosed).toHaveBeenCalledTimes(1));
     popout.close();
   });
 

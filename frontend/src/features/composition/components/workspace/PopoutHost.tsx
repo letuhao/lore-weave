@@ -13,6 +13,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/auth';
 import { CompositionPanel } from '../CompositionPanel';
 import { LiveStateProvider } from '../../context/LiveStateContext';
+import { AssembleStateProvider } from '../../context/AssembleStateContext';
 import { openPopoutChannel } from '../../workspace/popoutChannel';
 import { isWorkspacePanelId } from '../../workspace/types';
 
@@ -57,15 +58,19 @@ export function PopoutHost() {
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">
         <LiveStateProvider token={accessToken} forceShared>
-          <CompositionPanel
-            bookId={bookId}
-            chapterId={chapterId}
-            token={accessToken}
-            sceneId={sceneId}
-            soloPanel={panel}
-            // The opener owns the editor — relay accepted prose for it to insert at cursor.
-            onAccept={(text, meta) => channel?.post({ kind: 'insert-prose', text, model: meta?.model })}
-          />
+          {/* WS-D: a popped Assemble panel hydrates the in-progress draft from the
+              opener (and keeps it live two-way) over the same per-(book,chapter) channel. */}
+          <AssembleStateProvider bookId={bookId} chapterId={chapterId}>
+            <CompositionPanel
+              bookId={bookId}
+              chapterId={chapterId}
+              token={accessToken}
+              sceneId={sceneId}
+              soloPanel={panel}
+              // The opener owns the editor — relay accepted prose for it to insert at cursor.
+              onAccept={(text, meta) => channel?.post({ kind: 'insert-prose', text, model: meta?.model })}
+            />
+          </AssembleStateProvider>
         </LiveStateProvider>
       </div>
     </div>
