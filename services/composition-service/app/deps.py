@@ -11,6 +11,7 @@ the active connection.
 from __future__ import annotations
 
 from app.clients.book_client import BookClient, get_book_client
+from app.clients.embedding_client import EmbeddingClient, get_embedding_client
 from app.clients.glossary_client import GlossaryClient, get_glossary_client
 from app.clients.knowledge_client import KnowledgeClient, get_knowledge_client
 from app.clients.llm_client import LLMClient, get_llm_client
@@ -23,6 +24,7 @@ from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.db.repositories.grounding_pins import GroundingPinsRepo
 from app.db.repositories.narrative_thread import NarrativeThreadRepo
 from app.db.repositories.outline import OutlineRepo
+from app.db.repositories.references import ReferencesRepo
 from app.db.repositories.scene_links import SceneLinksRepo
 from app.db.repositories.structure_templates import StructureTemplatesRepo
 from app.db.repositories.style_voice import StyleProfileRepo, VoiceProfileRepo
@@ -93,8 +95,20 @@ async def get_structure_templates_repo() -> StructureTemplatesRepo:
     return StructureTemplatesRepo(get_pool())
 
 
+async def get_references_repo() -> ReferencesRepo:
+    """T3.6 — the author's per-Work reference shelf (embedded influences). Resolved
+    by pack() (gather_references) and the references router (CRUD + search)."""
+    return ReferencesRepo(get_pool())
+
+
 async def get_knowledge_client_dep() -> KnowledgeClient:
     return get_knowledge_client()
+
+
+async def get_embedding_client_dep() -> EmbeddingClient:
+    """T3.6 — provider-registry /internal/embed (reference content + scene queries).
+    The ONLY embedding path in composition (provider-gateway invariant)."""
+    return get_embedding_client()
 
 
 async def get_book_client_dep() -> BookClient:

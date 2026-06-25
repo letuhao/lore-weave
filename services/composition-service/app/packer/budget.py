@@ -28,6 +28,7 @@ PRIO_RELATIONS_2HOP = 35
 PRIO_THREADS_STALE = 30
 PRIO_RECENT_OLDER = 25
 PRIO_LORE = 20          # L4 refs — dropped first
+PRIO_REFERENCES = 18    # T3.6 author reference passages — softest steer; trimmed before lore (a PINNED reference is protected)
 
 
 @dataclass

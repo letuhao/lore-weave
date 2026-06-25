@@ -461,6 +461,52 @@ CREATE TABLE IF NOT EXISTS voice_profile (
   updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (user_id, project_id, entity_id)
 );
+
+-- ── reference_source: LOOM T3.6 — the author's per-Work reference shelf (external
+-- influences / passages, with source attribution). composition-OWNED authoring data
+-- (NOT knowledge-graph content): the content is embedded via provider-registry
+-- /internal/embed and the vector is stored HERE as a plain `real[]` (a reference
+-- shelf is small — dozens to low-hundreds of rows — so retrieval is brute-force
+-- cosine top-K in app code; no pgvector extension / ivfflat index / fixed-dimension
+-- column needed). All rows of a Work share ONE embedding model (work.settings.
+-- reference_embed_model_ref, set write-through on first add) so the vectors live in
+-- one space. `embedding` is NULL only transiently if an embed failed at insert (the
+-- router rejects that path; a null-vector row is simply never a search hit). Per-user
+-- + per-book tier — every query filters user_id + project_id (tenancy).
+CREATE TABLE IF NOT EXISTS reference_source (
+  id              UUID PRIMARY KEY DEFAULT uuidv7(),
+  user_id         UUID NOT NULL,
+  project_id      UUID NOT NULL,
+  title           TEXT NOT NULL DEFAULT '',
+  author          TEXT NOT NULL DEFAULT '',
+  source_url      TEXT NOT NULL DEFAULT '',
+  content         TEXT NOT NULL,
+  embedding       REAL[],
+  embedding_model TEXT NOT NULL DEFAULT '',
+  embedding_dim   INT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_reference_source_project
+  ON reference_source(user_id, project_id, created_at DESC);
+
+-- T3.6 — let a scene pin/exclude a reference too. Extend the T3.4 item_type CHECK
+-- from ('present','canon','lore') to include 'reference'. Idempotent: the DO-block
+-- DROPs + re-ADDs the named constraint only when 'reference' isn't yet allowed (a
+-- probe INSERT into the catalog check would be fragile, so we test the constraint
+-- definition text). The UNIQUE/scene indexes are unaffected.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'scene_grounding_pins_item_type_check'
+      AND conrelid = 'scene_grounding_pins'::regclass
+      AND pg_get_constraintdef(oid) LIKE '%reference%'
+  ) THEN
+    ALTER TABLE scene_grounding_pins DROP CONSTRAINT IF EXISTS scene_grounding_pins_item_type_check;
+    ALTER TABLE scene_grounding_pins ADD CONSTRAINT scene_grounding_pins_item_type_check
+      CHECK (item_type IN ('present','canon','lore','reference'));
+  END IF;
+END $$;
 """
 
 # C23 down-migration (round-trip proof only — the live schema is idempotent-forward

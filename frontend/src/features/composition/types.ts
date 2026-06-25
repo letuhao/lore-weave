@@ -190,7 +190,7 @@ export type VoiceProfile = {
 
 // T3.4 — one addressable grounding item (present-entity / canon-rule / lore-source)
 // with its per-scene pin/exclude state. `id` is a stable canonical id (not a label).
-export type GroundingItemType = 'present' | 'canon' | 'lore';
+export type GroundingItemType = 'present' | 'canon' | 'lore' | 'reference';
 export type GroundingItem = {
   type: GroundingItemType;
   id: string;
@@ -199,6 +199,31 @@ export type GroundingItem = {
   excluded: boolean;
 };
 export type PinAction = 'pin' | 'exclude' | 'none';
+
+// T3.6 — the author's reference shelf.
+export type ReferenceSource = {
+  id: string;
+  title: string;
+  author: string;
+  source_url: string;
+  content: string;
+  embedding_model: string;
+  embedding_dim: number | null;
+  created_at: string | null;
+};
+export type ReferenceList = { references: ReferenceSource[]; embed_model_set: boolean };
+// A per-scene retrieval hit: attribution + cosine score + the scene's pin state.
+export type ReferenceHit = ReferenceSource & {
+  score: number;
+  pinned: boolean;
+  excluded: boolean;
+};
+export type ReferenceSearch = {
+  hits: ReferenceHit[];
+  embed_model_set: boolean;
+  query: string;
+  unavailable?: boolean;
+};
 
 export type Grounding = {
   blocks: Record<string, string>;

@@ -42,8 +42,9 @@ from app.packer import profile as profile_mod
 from app.packer import spoiler
 from app.packer.lenses import (
     LensBundle, gather_canon, gather_lore, gather_open_promises, gather_present,
-    gather_recent, gather_structural, gather_timeline,
+    gather_recent, gather_references, gather_structural, gather_timeline,
 )
+from app.db.repositories.references import reference_embed_model
 
 logger = logging.getLogger(__name__)
 
@@ -176,6 +177,8 @@ async def pack(
     grounding_pins_repo=None,  # T3.4 — per-scene pin/exclude steering (gated)
     style_profile_repo=None,  # T3.5 — per-scope density/pace (gated)
     voice_profile_repo=None,  # T3.5 — per-character voice tags (gated)
+    references_repo=None,  # T3.6 — author reference shelf (gated)
+    embedding_client=None,  # T3.6 — provider-registry embed for reference retrieval (gated)
     grant: "GrantClient | None" = None,
     need: "GrantLevel | None" = None,
 ) -> PackedContext:
@@ -290,7 +293,12 @@ async def pack(
     # the DELTA project_id — they read the DERIVATIVE Work's own outline/canon/drafts
     # (a derivative writes forward from branch_point; its delta is its authoring).
     # The KNOWLEDGE lenses (present/timeline/lore) get the two-project merge below.
-    canon, (present, seen_p), (timeline, seen_t), (beat, threads, planned), recent, (lore, seen_l), open_promises = (
+    # T3.6 — the reference lens is composition-LOCAL (own DB + provider-registry
+    # embed), keyed on the DELTA project (a derivative's references are its OWN
+    # authoring, never inherited). The embed model is the Work's configured one;
+    # None (unset) → the lens no-ops. Gated on both the repo and client being wired.
+    ref_model = reference_embed_model(req.settings)
+    canon, (present, seen_p), (timeline, seen_t), (beat, threads, planned), recent, (lore, seen_l), open_promises, (references, _seen_r) = (
         await asyncio.gather(
             gather_canon(canon_repo, req.user_id, req.project_id, story_order),
             gather_present(glossary, knowledge, book_id=req.book_id, user_id=req.user_id,
@@ -305,6 +313,8 @@ async def pack(
             gather_lore(knowledge, req.bearer, req.project_id, query, language=reader_lang),
             gather_open_promises(narrative_threads_repo, req.user_id, req.project_id,
                                  cap=settings.pack_open_promises_cap) if nt_enabled else _empty_list(),
+            gather_references(references_repo, embedding_client, user_id=req.user_id,
+                              project_id=req.project_id, query=query, model=ref_model),
         )
     )
 
@@ -394,9 +404,11 @@ async def pack(
     # a pin can NEVER resurrect a spoiler-dropped item (preserves the T2.3 cutoff).
     # Excluded items are dropped from the pack; pinned lore sources are force-kept
     # through the budget (protected in build_segments below).
-    grounding_items, canon, present, lore_kept, pinned_lore_ids = await _apply_grounding_pins(
-        grounding_pins_repo, req.user_id, req.project_id, node.get("id"),
-        canon=canon, present=present, lore_hits=l4.kept,
+    grounding_items, canon, present, lore_kept, references_kept, pinned_lore_ids, pinned_reference_ids = (
+        await _apply_grounding_pins(
+            grounding_pins_repo, req.user_id, req.project_id, node.get("id"),
+            canon=canon, present=present, lore_hits=l4.kept, references=references,
+        )
     )
 
     bundle = LensBundle(
@@ -405,6 +417,7 @@ async def pack(
         knowledge_seen=bool(seen_p or seen_t or seen_l),
         open_promises=open_promises,  # FD-1 S3 — re-injected open-promise ledger
         extra_canon=extra_canon,  # C25 — added canon-rule scope from overrides
+        references=references_kept,  # T3.6 — author reference passages (excludes dropped)
     )
 
     # S2 — when the raw "story so far" is large (long chapter), COMPRESS the older
@@ -437,7 +450,8 @@ async def pack(
             bundle.state_summary = summary
             bundle.recent = immediate
 
-    segs = assemble.build_segments(bundle, guide=req.guide, pinned_lore_ids=pinned_lore_ids)
+    segs = assemble.build_segments(bundle, guide=req.guide, pinned_lore_ids=pinned_lore_ids,
+                                   pinned_reference_ids=pinned_reference_ids)
     bres = B.enforce_budget(segs, budget_tokens, counter or B.default_counter())
     blocks = assemble.segments_to_blocks(bres.kept)
 
@@ -520,19 +534,22 @@ def _trim_label(text: str) -> str:
 async def _apply_grounding_pins(
     repo, user_id: UUID, project_id: UUID, node_id: Any, *,
     canon: list[Any], present: list[dict[str, Any]], lore_hits: list[dict[str, Any]],
-) -> tuple[list[dict[str, Any]], list[Any], list[dict[str, Any]], list[dict[str, Any]], set[str]]:
-    """T3.4 — read the scene's pin/exclude set and apply it to the spoiler-eligible
+    references: list[dict[str, Any]] | None = None,
+) -> tuple[list[dict[str, Any]], list[Any], list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], set[str], set[str]]:
+    """T3.4/T3.6 — read the scene's pin/exclude set and apply it to the eligible
     items. Returns (grounding_items, kept_canon, kept_present, kept_lore,
-    pinned_lore_ids). Best-effort: an unwired repo, a node with no id, or a repo
-    failure → no steering (all items kept, empty grounding_items)."""
+    kept_references, pinned_lore_ids, pinned_reference_ids). Best-effort: an unwired
+    repo, a node with no id, or a repo failure → no steering (all items kept, empty
+    grounding_items)."""
+    references = references or []
     node_uuid = _as_uuid(node_id)
     if repo is None or node_uuid is None:
-        return [], canon, present, lore_hits, set()
+        return [], canon, present, lore_hits, references, set(), set()
     try:
         rows = await repo.list_for_scene(user_id, project_id, node_uuid)
     except Exception:  # noqa: BLE001 — steering is advisory; never fail a pack
         logger.warning("grounding pins read failed", exc_info=True)
-        return [], canon, present, lore_hits, set()
+        return [], canon, present, lore_hits, references, set(), set()
 
     pins: set[tuple[str, str]] = set()
     excludes: set[tuple[str, str]] = set()
@@ -584,7 +601,27 @@ async def _apply_grounding_pins(
             items.append({"type": "lore", "id": src_s, "label": _trim_label(h.get("text", "")),
                           "pinned": key in pins, "excluded": key in excludes})
 
-    return items, kept_canon, kept_present, kept_lore, pinned_lore_ids
+    # references — id = reference_source.id (composition-owned, stable). exclude
+    # drops it from the pack; pin force-keeps it through the budget (protected in
+    # build_segments). A hit with no id is not addressable (kept, never listed).
+    pinned_reference_ids = {iid for (t, iid) in pins if t == "reference"}
+    kept_references: list[dict[str, Any]] = []
+    for h in references:
+        rid = h.get("id")
+        rid_s = str(rid) if rid is not None else None
+        if rid_s is None:
+            kept_references.append(h)
+            continue
+        key = ("reference", rid_s)
+        excluded = key in excludes
+        if not excluded:
+            kept_references.append(h)
+        label = " — ".join(x for x in [str(h.get("title") or "").strip(),
+                                       str(h.get("content") or "").strip()] if x)
+        items.append({"type": "reference", "id": rid_s, "label": _trim_label(label),
+                      "pinned": key in pins, "excluded": excluded})
+
+    return items, kept_canon, kept_present, kept_lore, kept_references, pinned_lore_ids, pinned_reference_ids
 
 
 async def _resolve_override_anchors(

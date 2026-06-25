@@ -4,7 +4,7 @@
 import { apiBase, apiJson } from '../../api';
 import type {
   AutoGeneration, CanonRule, ChapterGeneration, CommitDecomposePayload, CorrectionBody, CorrectionStats,
-  DecomposePreview, DeriveBody, GenerationJob, Grounding, GroundingItemType, NarrativeThread, OutlineNode, PinAction, ProgressStats, PublishGate, SceneLink, SceneLinkKind, StructureTemplate, StyleProfile, StyleScope, VoiceProfile, Work, WorkResolution,
+  DecomposePreview, DeriveBody, GenerationJob, Grounding, GroundingItemType, NarrativeThread, OutlineNode, PinAction, ProgressStats, PublishGate, ReferenceList, ReferenceSearch, ReferenceSource, SceneLink, SceneLinkKind, StructureTemplate, StyleProfile, StyleScope, VoiceProfile, Work, WorkResolution,
 } from './types';
 
 // A3 decompose preview request (cycle 13).
@@ -277,6 +277,32 @@ export const compositionApi = {
     return apiJson(`${BASE}/works/${projectId}/scenes/${nodeId}/grounding-pins`, {
       method: 'PUT', body: JSON.stringify(body), token,
     });
+  },
+  // T3.6 — the author's reference shelf (per-Work, embedded via provider-registry).
+  listReferences(projectId: string, token: string): Promise<ReferenceList> {
+    return apiJson(`${BASE}/works/${projectId}/references`, { token });
+  },
+  // `modelRef`/`modelSource` set the Work's embedding model on the FIRST add
+  // (write-through); ignored once the Work already has one.
+  addReference(
+    projectId: string,
+    body: { content: string; title?: string; author?: string; source_url?: string;
+            model_ref?: string; model_source?: string },
+    token: string,
+  ): Promise<ReferenceSource> {
+    return apiJson(`${BASE}/works/${projectId}/references`, {
+      method: 'POST', body: JSON.stringify(body), token,
+    });
+  },
+  deleteReference(referenceId: string, token: string): Promise<{ id: string; deleted: boolean }> {
+    return apiJson(`${BASE}/references/${referenceId}`, { method: 'DELETE', token });
+  },
+  // Per-scene semantic retrieval. `q` overrides the auto query (scene synopsis/beat).
+  searchReferences(
+    projectId: string, nodeId: string, token: string, q?: string,
+  ): Promise<ReferenceSearch> {
+    const qs = q ? `?q=${encodeURIComponent(q)}` : '';
+    return apiJson(`${BASE}/works/${projectId}/scenes/${nodeId}/references${qs}`, { token });
   },
   // The full URL for the SSE generate POST (used by useCompositionStream's fetch).
   generateUrl(projectId: string): string {

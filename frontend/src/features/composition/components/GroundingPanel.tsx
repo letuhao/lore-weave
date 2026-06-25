@@ -11,8 +11,11 @@ import type { GroundingItem, GroundingItemType } from '../types';
 
 const BLOCK_ORDER = ['canon', 'present', 'threads', 'beat', 'recent', 'memory', 'lore', 'guide'];
 const ADDRESSABLE = ['present', 'canon', 'lore'];
-const ITEM_GROUPS: GroundingItemType[] = ['present', 'canon', 'lore'];
-const GROUP_LABEL: Record<GroundingItemType, string> = {
+// The grounding preview renders only these three item groups; 'reference' items
+// (also addressable, T3.6) have their own ReferencesPanel, so they're not grouped here.
+type GroundingGroup = 'present' | 'canon' | 'lore';
+const ITEM_GROUPS: GroundingGroup[] = ['present', 'canon', 'lore'];
+const GROUP_LABEL: Record<GroundingGroup, string> = {
   present: 'Cast in scene', canon: 'Canon rules', lore: 'Lore',
 };
 

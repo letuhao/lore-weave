@@ -27,9 +27,9 @@ LinkKind = Literal["setup_payoff", "custom"]
 RuleScope = Literal["world", "entity", "reveal_gate"]
 JobMode = Literal["cowrite", "auto"]
 JobStatus = Literal["pending", "running", "completed", "failed", "cancelled"]
-# T3.4 — the addressable grounding item types (the three with stable source ids)
-# + the per-scene steering action.
-GroundingItemType = Literal["present", "canon", "lore"]
+# T3.4 — the addressable grounding item types (those with stable source ids)
+# + the per-scene steering action. T3.6 added 'reference' (id = reference_source.id).
+GroundingItemType = Literal["present", "canon", "lore", "reference"]
 PinAction = Literal["pin", "exclude"]
 # Only genuine-author-choice actions are corrections (§2). accept-as-is is NOT
 # here — mining the reranker's own winner = self-reinforcement (review H2).
@@ -189,6 +189,25 @@ class SceneGroundingPin(BaseModel):
     item_type: GroundingItemType
     item_id: Annotated[str, StringConstraints(max_length=200)]
     action: PinAction
+    created_at: datetime | None = None
+
+
+class ReferenceSource(BaseModel):
+    """T3.6 — one author-curated reference passage (an external influence) for a
+    Work. composition-owned: `content` is embedded via provider-registry and the
+    vector is stored in `embedding` (a plain float list — brute-force cosine top-K
+    at search time). All of a Work's references share ONE embedding model. The
+    `embedding` is omitted from the list/search projection (the vector stays on the
+    server); a row with a null embedding is never a search hit."""
+    id: UUID
+    user_id: UUID
+    project_id: UUID
+    title: _Title = ""
+    author: _Title = ""
+    source_url: _Title = ""
+    content: _Long
+    embedding_model: _Title = ""
+    embedding_dim: int | None = None
     created_at: datetime | None = None
 
 

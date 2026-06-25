@@ -28,6 +28,7 @@ import { TimelineView } from './TimelineView';
 import { CharacterArcView } from './CharacterArcView';
 import { WorldMap } from './WorldMap';
 import { GroundingPanel } from './GroundingPanel';
+import { ReferencesPanel } from './ReferencesPanel';
 import { DivergenceWizardButton } from './DivergenceWizardButton';
 import { PromoteWhatIfButton } from './PromoteWhatIfButton';
 import { DerivativeBanner } from './DerivativeBanner';
@@ -57,7 +58,7 @@ type Props = {
   onToggleHeatmap?: () => void;
 };
 
-type SubTab = 'compose' | 'cowriter' | 'assemble' | 'planner' | 'beats' | 'graph' | 'cast' | 'relmap' | 'timeline' | 'arc' | 'worldmap' | 'grounding' | 'style' | 'canon' | 'threads' | 'progress' | 'quality' | 'flywheel' | 'settings';
+type SubTab = 'compose' | 'cowriter' | 'assemble' | 'planner' | 'beats' | 'graph' | 'cast' | 'relmap' | 'timeline' | 'arc' | 'worldmap' | 'grounding' | 'references' | 'style' | 'canon' | 'threads' | 'progress' | 'quality' | 'flywheel' | 'settings';
 
 export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: sceneIdProp, onSceneChange, heatmapEnabled, onToggleHeatmap }: Props) {
   const { t } = useTranslation('composition');
@@ -457,7 +458,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
         testid="composition-subtabs"
         className="flex gap-1 overflow-x-auto border-b border-neutral-200 px-2 pt-1 text-sm dark:border-neutral-700"
       >
-        {(['compose', 'cowriter', 'assemble', 'planner', 'beats', 'graph', 'cast', 'relmap', 'timeline', 'arc', 'worldmap', 'grounding', 'style', 'canon', ...(threadsEnabled ? ['threads' as const] : []), 'progress', 'quality', 'flywheel', 'settings'] as SubTab[]).map((tb) => (
+        {(['compose', 'cowriter', 'assemble', 'planner', 'beats', 'graph', 'cast', 'relmap', 'timeline', 'arc', 'worldmap', 'grounding', 'references', 'style', 'canon', ...(threadsEnabled ? ['threads' as const] : []), 'progress', 'quality', 'flywheel', 'settings'] as SubTab[]).map((tb) => (
           <button
             key={tb}
             data-testid={`composition-subtab-${tb}`}
@@ -584,6 +585,14 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
             token={token}
             heatmapEnabled={heatmapEnabled}
             onToggleHeatmap={onToggleHeatmap}
+          />
+        </div>
+        <div className={tab === 'references' ? '' : 'hidden'}>
+          <ReferencesPanel
+            projectId={work.project_id}
+            sceneId={effectiveScene}
+            token={token}
+            models={models.data ?? []}
           />
         </div>
         <div className={tab === 'style' ? '' : 'hidden'}>

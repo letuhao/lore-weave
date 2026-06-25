@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, StringConstraints
 
 from app.clients.book_client import BookClient, BookClientError
+from app.clients.embedding_client import EmbeddingClient
 from app.clients.glossary_client import GlossaryClient
 from app.clients.knowledge_client import KnowledgeClient
 from app.config import settings
@@ -25,14 +26,16 @@ from app.db.repositories.derivatives import DerivativesRepo
 from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.db.repositories.grounding_pins import GroundingPinsRepo
 from app.db.repositories.outline import OutlineRepo
+from app.db.repositories.references import ReferencesRepo
 from app.db.repositories.scene_links import SceneLinksRepo
 from app.db.repositories.style_voice import StyleProfileRepo, VoiceProfileRepo
 from app.db.repositories.works import WorksRepo
 from app.deps import (
     get_book_client_dep, get_canon_rules_repo, get_derivatives_repo,
-    get_generation_jobs_repo, get_glossary_client_dep, get_grounding_pins_repo,
-    get_knowledge_client_dep, get_outline_repo, get_scene_links_repo,
-    get_style_profile_repo, get_voice_profile_repo, get_works_repo,
+    get_embedding_client_dep, get_generation_jobs_repo, get_glossary_client_dep,
+    get_grounding_pins_repo, get_knowledge_client_dep, get_outline_repo,
+    get_references_repo, get_scene_links_repo, get_style_profile_repo,
+    get_voice_profile_repo, get_works_repo,
 )
 from app.middleware.jwt_auth import get_bearer_token, get_current_user
 from app.grant_deps import InsufficientGrant
@@ -70,6 +73,8 @@ async def get_grounding(
     grounding_pins: GroundingPinsRepo = Depends(get_grounding_pins_repo),
     style_profiles: StyleProfileRepo = Depends(get_style_profile_repo),
     voice_profiles: VoiceProfileRepo = Depends(get_voice_profile_repo),
+    references: ReferencesRepo = Depends(get_references_repo),
+    embedder: EmbeddingClient = Depends(get_embedding_client_dep),
 ) -> dict[str, Any]:
     work = await works.get(user_id, project_id)
     if work is None:
@@ -97,6 +102,8 @@ async def get_grounding(
             grounding_pins_repo=grounding_pins,  # T3.4 — honor per-scene pins
             style_profile_repo=style_profiles,  # T3.5 — density/pace
             voice_profile_repo=voice_profiles,  # T3.5 — present-character voices
+            references_repo=references,  # T3.6 — author reference shelf
+            embedding_client=embedder,  # T3.6 — provider-registry embed
         )
     except OwnershipError:
         raise HTTPException(status_code=404, detail="book not found")

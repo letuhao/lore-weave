@@ -20,6 +20,7 @@ from fastapi.responses import JSONResponse
 from loreweave_obs import current_otel_trace_id, setup_tracing
 
 from app.clients.book_client import close_book_client
+from app.clients.embedding_client import close_embedding_client
 from app.clients.glossary_client import close_glossary_client
 from app.clients.knowledge_client import close_knowledge_client
 from app.clients.llm_client import close_llm_client
@@ -34,7 +35,8 @@ from app.mcp.server import build_mcp_app, mcp_server
 from app.middleware.trace_id import TraceIdMiddleware
 from app.routers import (
     actions, approve, canon, engine, grounding, health, internal_eval, internal_job_control,
-    metrics, narrative_threads, outline, ping, plan, progress, prose, style_voice, works,
+    metrics, narrative_threads, outline, ping, plan, progress, prose, references, style_voice,
+    works,
 )
 
 logger = logging.getLogger(__name__)
@@ -127,6 +129,7 @@ async def lifespan(app: FastAPI):
         await close_knowledge_client()
         await close_book_client()
         await close_glossary_client()
+        await close_embedding_client()
         await close_llm_client()
         await close_grant_client()  # E0-4c
         await close_pool()
@@ -173,6 +176,7 @@ app.include_router(approve.router)
 app.include_router(grounding.router)
 app.include_router(progress.router)  # LOOM T4.2 — writing-progress stats
 app.include_router(style_voice.router)  # LOOM T3.5 — style & voice steering
+app.include_router(references.router)  # LOOM T3.6 — author reference shelf + retrieval
 app.include_router(engine.router)
 app.include_router(outline.router)
 app.include_router(plan.router)

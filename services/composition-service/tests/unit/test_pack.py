@@ -155,9 +155,26 @@ class StubVoiceRepo:
         return [v for v in self._rows if str(v.entity_id) in ids]
 
 
+class StubRefsRepo:
+    """T3.6 — references repo: search() returns the cosine-ranked hits."""
+    def __init__(self, hits=None):
+        self._hits = hits or []
+
+    async def search(self, user_id, project_id, vector, *, limit=6):
+        return list(self._hits)
+
+
+class StubEmbedder:
+    """T3.6 — provider-registry embed stub (returns a fixed query vector)."""
+    async def embed(self, *, user_id, model_source, model_ref, texts):
+        from app.clients.embedding_client import EmbeddingResult
+        return EmbeddingResult(embeddings=[[1.0, 0.0]], dimension=2, model="bge-m3")
+
+
 async def _pack(req, *, book=None, glossary=None, knowledge=None, canon=None,
                 narrative_threads=None, grounding_pins=None,
-                style_profiles=None, voice_profiles=None, budget_tokens=10_000):
+                style_profiles=None, voice_profiles=None,
+                references=None, embedding_client=None, budget_tokens=10_000):
     bk = book or StubBook()
     return await pack(
         req, book=bk, glossary=glossary or StubGlossary(),
@@ -168,8 +185,38 @@ async def _pack(req, *, book=None, glossary=None, knowledge=None, canon=None,
         grounding_pins_repo=grounding_pins,
         style_profile_repo=style_profiles,
         voice_profile_repo=voice_profiles,
+        references_repo=references,
+        embedding_client=embedding_client,
         grant=_grant_for(bk),
     )
+
+
+async def test_pack_injects_references_block():
+    # T3.6 — a wired references repo + embedder + a Work embed model → the retrieved
+    # references reach the <references> block (the gather→bundle→assemble wiring).
+    req = _req(settings={"reference_embed_model_ref": "m1"})
+    refs = StubRefsRepo([{"id": "r1", "title": "Dune", "author": "", "content": "the spice must flow", "score": 0.9}])
+    pc = await _pack(req, references=refs, embedding_client=StubEmbedder())
+    assert "the spice must flow" in pc.blocks.get("references", "")
+    assert "<references>" in pc.prompt
+
+
+async def test_pack_noops_references_without_embed_model():
+    # No work embed model (empty settings) → gather_references no-ops → no block,
+    # even with a wired repo+embedder (the model gate, not the repo, is the switch).
+    req = _req(settings={})
+    refs = StubRefsRepo([{"id": "r1", "title": "X", "content": "should not appear", "score": 0.9}])
+    pc = await _pack(req, references=refs, embedding_client=StubEmbedder())
+    assert "references" not in pc.blocks
+
+
+async def test_pack_excludes_reference_via_scene_pin():
+    # An exclude pin on the reference drops it from the packed block.
+    req = _req(settings={"reference_embed_model_ref": "m1"})
+    refs = StubRefsRepo([{"id": "r1", "title": "A", "author": "", "content": "alpha-passage", "score": 0.5}])
+    pins = StubGroundingPins([("reference", "r1", "exclude")])
+    pc = await _pack(req, references=refs, embedding_client=StubEmbedder(), grounding_pins=pins)
+    assert "alpha-passage" not in pc.blocks.get("references", "")
 
 
 async def test_pack_threads_style_and_voice_into_profile():

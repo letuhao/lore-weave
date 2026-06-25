@@ -119,7 +119,11 @@ def test_open_promises_summary_is_sanitized():
 
 
 def _profile():
-    return SimpleNamespace(source_language="auto", voice="")
+    # density/pace/character_voices are part of the BookProfile contract that
+    # style_directive (T3.5) consumes — the stub must carry them or build_messages
+    # raises AttributeError (pre-existing stale-fixture fix, folded into T3.6).
+    return SimpleNamespace(source_language="auto", voice="", density_level=50,
+                           pace_level=50, character_voices=())
 
 
 def test_build_messages_steers_when_open_promises_present():

@@ -233,6 +233,8 @@
   "flywheel": "飛輪",
   "flywheelPanel": { "loading": "載入中…", "empty": "發佈章節以擴充你的正典 — 新的實體、關係與事件將顯示於此。", "subtitle": "最近一次發佈擴充了正典:", "entities": "實體", "relations": "關係", "events": "事件", "highlights": "新亮點", "kind": { "entity": "實體", "event": "事件", "relation": "關係" } },
   "view": { "power_view": "全景檢視", "back_to_editor": "返回編輯器" },
+  "references": "參考資料",
+  "referencesPanel": { "title": "標題", "author": "作者", "contentPlaceholder": "貼上一段參考文字／影響來源…", "pickEmbedModel": "嵌入模型（此作品設定一次）", "noEmbedModel": "在 AI 設定中新增嵌入模型（例如 bge-m3）以啟用參考檢索。", "add": "新增參考", "adding": "新增中…", "relevant": "用於此場景", "searchPlaceholder": "搜尋…", "unavailable": "檢索無法使用（嵌入供應商停擺）。", "noHits": "尚無相符的參考資料。", "library": "資料庫", "delete": "刪除", "empty": "尚無參考資料 — 在上方新增影響來源。" },
   "progressPanel": {
     "loading": "載入進度中…",
     "error": "無法載入進度。",
