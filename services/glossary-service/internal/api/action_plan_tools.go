@@ -301,7 +301,7 @@ func safePromptField(s string, maxLen int) string {
 func mergeCandidatesSummary(cands []mergeCandidateView) string {
 	const maxShown = 25
 	var b strings.Builder
-	b.WriteString("Pending merge candidates — detected duplicate clusters you MAY resolve with merge_candidate (copy the candidate_id verbatim):")
+	b.WriteString("Pending merge candidates — detected duplicate clusters you MAY resolve with merge_candidate (merge them) or dismiss_candidate (reject as not-duplicates). Copy the candidate_id verbatim:")
 	n := len(cands)
 	if n > maxShown {
 		n = maxShown
@@ -350,6 +350,7 @@ OP TYPES (the ONLY allowed types) and their params:
 - "delete_genre": {"genre_code":"<existing slug>"} — REMOVE a genre listed under "Existing genres" (cascades: deprecates its attributes + kind links). DESTRUCTIVE.
 - "delete_kind": {"kind_code":"<existing slug>"} — REMOVE a kind listed under "Existing kinds" (cascades: deprecates its attributes). DESTRUCTIVE.
 - "merge_candidate": {"candidate_id":"<uuid from Pending merge candidates>","winner_id":"<optional uuid>"} — RESOLVE one detected duplicate cluster by merging its members into one. Copy candidate_id VERBATIM from the "Pending merge candidates" block; emit ONE merge_candidate op per cluster you want merged. winner_id is OPTIONAL — omit it to keep the detector's suggested winner; supply a member's id only to override. DESTRUCTIVE (the losers are soft-deleted; reversible).
+- "dismiss_candidate": {"candidate_id":"<uuid from Pending merge candidates>"} — REJECT a detected cluster as NOT the same entity (keeps its members separate, hides the suggestion). NON-destructive — no entity is changed. Use when the user says a suggested duplicate is actually two different things.
 
 (EDITING an attribute, and DELETING an individual attribute, are NOT available in a plan yet — the current-state summary lists kinds + genres but not individual attributes, so a plan cannot reliably target one. If the goal needs an attribute edit/delete, describe it in "notes" rather than emitting an op.)
 

@@ -103,6 +103,14 @@ type mergeCandidateParams struct {
 	WinnerID    string `json:"winner_id,omitempty"`
 }
 
+// dismissCandidateParams rejects a detected duplicate cluster ("these are NOT the same
+// entity"). Non-destructive — it only flips the candidate's status to 'dismissed'; no
+// entity is merged or deleted. The planner copies a candidate_id from the same context
+// block merge uses.
+type dismissCandidateParams struct {
+	CandidateID string `json:"candidate_id"`
+}
+
 // planRegistry builds the glossary Phase-1 op registry consumed by the kit's
 // executor. Each Handler is self-transactional (delegates to a core that owns its
 // own tx) and maps core errors to the kit sentinels.
@@ -383,6 +391,51 @@ func (s *Server) planRegistry() mcp.Registry {
 				return map[string]any{"candidate_id": candID.String(), "winner_id": winner.String(), "merged": merged, "results": results}, nil
 			},
 		},
+
+		// tier 4 — dismiss_candidate (NON-destructive: reject a detected duplicate
+		// cluster as "not the same entity"; flips status to 'dismissed', no entity
+		// touched). Applies on confirm without an enable toggle.
+		mcp.OpSpec{
+			Type:        "dismiss_candidate",
+			Tier:        4,
+			Destructive: false,
+			Idempotent:  true,
+			IdentityKey: dismissCandidateIdentity,
+			Validate:    validateDismissCandidate,
+			Handler: func(ctx context.Context, bookID, _ uuid.UUID, params json.RawMessage, _ string) (any, error) {
+				var p dismissCandidateParams
+				if err := json.Unmarshal(params, &p); err != nil {
+					return nil, fmt.Errorf("%w: %v", mcp.ErrBadParams, err)
+				}
+				candID, perr := uuid.Parse(strings.TrimSpace(p.CandidateID))
+				if perr != nil {
+					return nil, fmt.Errorf("%w: candidate_id %q is not a uuid", mcp.ErrBadParams, p.CandidateID)
+				}
+				_, _, status, found, lerr := s.loadCandidateForMerge(ctx, bookID, candID)
+				if lerr != nil {
+					return nil, lerr // → ReasonInternal (abort)
+				}
+				if !found {
+					return nil, fmt.Errorf("%w: merge candidate %s not found in this book", mcp.ErrNotFound, candID)
+				}
+				if status != "proposed" {
+					// already dismissed, or already merged — either way it is resolved.
+					return nil, fmt.Errorf("%w: candidate %s is already %s", mcp.ErrAlreadyDone, candID, status)
+				}
+				reason, derr := s.dismissMergeCandidateCore(ctx, bookID, candID)
+				if derr != nil {
+					return nil, derr // → ReasonInternal (abort)
+				}
+				switch reason {
+				case "":
+					return map[string]any{"dismissed": candID.String()}, nil
+				case "already_merged":
+					return nil, fmt.Errorf("%w: candidate %s was merged before it could be dismissed", mcp.ErrAlreadyDone, candID)
+				default: // "not_found" (raced to delete)
+					return nil, fmt.Errorf("%w: candidate %s is no longer present", mcp.ErrNotFound, candID)
+				}
+			},
+		},
 	)
 }
 
@@ -609,6 +662,14 @@ func mergeCandidateIdentity(params json.RawMessage) (string, error) {
 	return strings.TrimSpace(p.CandidateID), nil // one merge per candidate (dedupe)
 }
 
+func dismissCandidateIdentity(params json.RawMessage) (string, error) {
+	var p dismissCandidateParams
+	if err := json.Unmarshal(params, &p); err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(p.CandidateID), nil
+}
+
 // ── Validate (S4 — slug code + mandatory description) ─────────────────────────
 
 func validateCreateKinds(params json.RawMessage) error {
@@ -714,6 +775,17 @@ func validateMergeCandidate(params json.RawMessage) error {
 		if _, err := uuid.Parse(w); err != nil {
 			return fmt.Errorf("merge_candidate: winner_id %q must be a uuid", p.WinnerID)
 		}
+	}
+	return nil
+}
+
+func validateDismissCandidate(params json.RawMessage) error {
+	var p dismissCandidateParams
+	if err := json.Unmarshal(params, &p); err != nil {
+		return err
+	}
+	if _, err := uuid.Parse(strings.TrimSpace(p.CandidateID)); err != nil {
+		return fmt.Errorf("dismiss_candidate: candidate_id %q must be a uuid (copy it from the Pending merge candidates block)", p.CandidateID)
 	}
 	return nil
 }

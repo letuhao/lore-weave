@@ -182,6 +182,103 @@ func TestParseAndValidateMergeCandidatePlan(t *testing.T) {
 	}
 }
 
+// dismiss_candidate is NON-destructive — it parses to a non-destructive op (no enable
+// toggle), addressed by candidate_id.
+func TestParseAndValidateDismissCandidatePlan(t *testing.T) {
+	s := &Server{}
+	bookID := uuid.New()
+	cid := uuid.NewString()
+
+	good := `{"ops":[{"type":"dismiss_candidate","params":{"candidate_id":"` + cid + `"}}]}`
+	plan, err := s.parseAndValidatePlan(bookID, "these are not the same character", good)
+	if err != nil {
+		t.Fatalf("valid dismiss plan rejected: %v", err)
+	}
+	if len(plan.Ops) != 1 || plan.Ops[0].Destructive {
+		t.Fatalf("dismiss_candidate must be 1 NON-destructive op, got %+v", plan.Ops)
+	}
+
+	bad := `{"ops":[{"type":"dismiss_candidate","params":{"candidate_id":"not-a-uuid"}}]}`
+	if _, err := s.parseAndValidatePlan(bookID, "x", bad); err == nil {
+		t.Fatalf("non-uuid candidate_id: want a validation error")
+	}
+}
+
+// TestExecutePlan_DismissCandidate_RealPG: a dismiss_candidate op flips a proposed
+// candidate to 'dismissed' and — being NON-destructive — APPLIES on a plain confirm with
+// NO enabled_ops (proving non-destructive ops need no toggle). Re-run → already_done;
+// bogus id → target_gone. The candidate's members need not be real entities (dismiss
+// only changes status), so a lightweight seed suffices.
+func TestExecutePlan_DismissCandidate_RealPG(t *testing.T) {
+	pool := openTestDB(t)
+	f := newActionFixture(t, pool)
+	ctx := context.Background()
+	// newActionFixture's base chain omits the merge tables/triggers; run the full
+	// (idempotent) merge chain so this test doesn't depend on another test creating
+	// merge_candidates first (the shared-DB ordering trap) and the kind_id FK is the
+	// post-G4 book_kinds target.
+	runMergeMigrations(t, pool)
+	kindID := bookKindID(t, pool, f.bookID, "character")
+	t.Cleanup(func() { pool.Exec(ctx, `DELETE FROM merge_candidates WHERE book_id=$1`, f.bookID) })
+
+	members := []uuid.UUID{uuid.New(), uuid.New()}
+	ss := []string{members[0].String(), members[1].String()}
+	sort.Strings(ss)
+	var candID uuid.UUID
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO merge_candidates(book_id,kind_id,member_entity_ids,member_set_key,score,status)
+		VALUES($1,$2,$3,$4,0.7,'proposed') RETURNING candidate_id`,
+		f.bookID, kindID, members, strings.Join(ss, ",")).Scan(&candID); err != nil {
+		t.Fatalf("seed candidate: %v", err)
+	}
+
+	mint := func(cid string) string {
+		raw := `{"ops":[{"type":"dismiss_candidate","params":{"candidate_id":"` + cid + `"}}]}`
+		plan, perr := f.srv.parseAndValidatePlan(f.bookID, "not duplicates", raw)
+		if perr != nil {
+			t.Fatalf("plan rejected: %v", perr)
+		}
+		params, _ := json.Marshal(plan)
+		return mintActionToken(versionTestSecret, actionClaims{
+			JTI: uuid.NewString(), Authority: authorityGrant, UserID: f.ownerID, BookID: f.bookID,
+			Descriptor: descExecutePlan, Params: params,
+		}, time.Now())
+	}
+	decode := func(w *httptest.ResponseRecorder) planSummary {
+		var s planSummary
+		if err := json.Unmarshal(w.Body.Bytes(), &s); err != nil {
+			t.Fatalf("decode (%d): %v — %s", w.Code, err, w.Body.String())
+		}
+		return s
+	}
+
+	// (1) plain confirm — NO enabled_ops — applies (non-destructive needs no toggle).
+	if w := f.confirm(t, mint(candID.String())); w.Code != http.StatusOK {
+		t.Fatalf("apply: want 200, got %d (%s)", w.Code, w.Body.String())
+	} else if s := decode(w); len(s.Applied) != 1 || s.Applied[0].Type != "dismiss_candidate" {
+		t.Fatalf("apply: want 1 applied dismiss_candidate, got %+v", s)
+	}
+	var status string
+	pool.QueryRow(ctx, `SELECT status FROM merge_candidates WHERE candidate_id=$1`, candID).Scan(&status)
+	if status != "dismissed" {
+		t.Fatalf("candidate status=%q after dismiss, want dismissed", status)
+	}
+
+	// (2) re-run → already_done.
+	if w := f.confirm(t, mint(candID.String())); w.Code != http.StatusOK {
+		t.Fatalf("idempotent: want 200, got %d", w.Code)
+	} else if s := decode(w); len(s.Skipped) != 1 || s.Skipped[0].Reason != "already_done" {
+		t.Fatalf("idempotent: want 1 skipped already_done, got %+v", s)
+	}
+
+	// (3) bogus id → target_gone.
+	if w := f.confirm(t, mint(uuid.NewString())); w.Code != http.StatusOK {
+		t.Fatalf("target_gone: want 200, got %d", w.Code)
+	} else if s := decode(w); len(s.Failed) != 1 || s.Failed[0].Reason != "target_gone" {
+		t.Fatalf("target_gone: want 1 failed target_gone, got %+v", s)
+	}
+}
+
 // resolveMergeWinner picks winner_id (a member) over the suggested winner, falls back to
 // the suggested winner, and errors when neither yields a member.
 func TestResolveMergeWinner(t *testing.T) {
@@ -374,6 +471,7 @@ func TestExecutePlan_MergeCandidate_RealPG(t *testing.T) {
 	pool := openTestDB(t)
 	f := newActionFixture(t, pool)
 	ctx := context.Background()
+	runMergeMigrations(t, pool) // full (idempotent) merge chain — tables/triggers + post-G4 FK
 
 	kindID := bookKindID(t, pool, f.bookID, "character")
 	nameAttr := bookAttrID(t, pool, f.bookID, kindID, "name")

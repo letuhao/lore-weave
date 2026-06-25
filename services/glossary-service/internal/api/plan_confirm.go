@@ -184,6 +184,28 @@ func (s *Server) previewPlanOp(ctx context.Context, bookID uuid.UUID, op mcp.Op,
 		return previewRow{Label: "delete attribute", Value: p.KindCode + "/" + p.Code, Note: "deprecates this attribute"}
 	case "merge_candidate":
 		return s.previewMergeCandidateOp(ctx, bookID, op)
+	case "dismiss_candidate":
+		var p dismissCandidateParams
+		if err := json.Unmarshal(op.Params, &p); err != nil {
+			return previewRow{Label: "dismiss", Value: "?", Note: "unreadable op"}
+		}
+		candID, perr := uuid.Parse(strings.TrimSpace(p.CandidateID))
+		if perr != nil {
+			return previewRow{Label: "dismiss", Value: p.CandidateID, Note: "invalid candidate id"}
+		}
+		members, _, status, found, _ := s.loadCandidateForMerge(ctx, bookID, candID)
+		if !found || status != "proposed" {
+			return previewRow{Label: "dismiss", Value: p.CandidateID, Note: "already resolved — will be skipped"}
+		}
+		names := make([]string, 0, len(members))
+		for _, m := range members {
+			n, _ := entityNameAndAliases(ctx, s.pool, m)
+			if n == "" {
+				n = m.String()
+			}
+			names = append(names, n)
+		}
+		return previewRow{Label: "dismiss (not duplicates)", Value: strings.Join(names, ", "), Note: "keeps them separate; the suggestion is rejected (no entity changed)"}
 	default:
 		return previewRow{Label: op.Type, Value: op.ID}
 	}
